@@ -3,5 +3,6 @@
 codex.exe
 codex
 STOP
+logs/_last_session_marker
 **/*.rs.bk
 .DS_Store

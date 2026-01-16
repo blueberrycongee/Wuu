@@ -1,6 +1,7 @@
 param(
   [int]$MaxIters = 200,
-  [string]$Distro = "Ubuntu"
+  [string]$Distro = "Ubuntu",
+  [int]$MaxNoProgress = 5
 )
 
 $ErrorActionPreference = "Stop"
@@ -62,6 +63,8 @@ if (-not [string]::IsNullOrWhiteSpace($dirty)) {
   exit 1
 }
 
+$noProgress = 0
+
 for ($i = 1; $i -le $MaxIters; $i++) {
   if (Test-Path .\STOP) {
     Write-Host "STOP file found. Exiting."
@@ -90,11 +93,19 @@ for ($i = 1; $i -le $MaxIters; $i++) {
     $modelArg = " --model " + $codexModel
   }
 
-  $cmdLine = "type prompt.md | " + $codexQuoted +
-    " --dangerously-bypass-approvals-and-sandbox exec -C " + $workdirQuoted +
+  $promptFile = "prompt.md"
+  $subcmd = "exec"
+  if (Test-Path "logs\\_last_session_marker") {
+    $promptFile = "prompt_followup.md"
+    $subcmd = "exec resume --last"
+  }
+
+  $cmdLine = "type " + $promptFile + " | " + $codexQuoted +
+    " --dangerously-bypass-approvals-and-sandbox " + $subcmd + " -C " + $workdirQuoted +
     $modelArg + " 1> " + $logQuoted + " 2>&1"
 
   cmd /c $cmdLine | Out-Null
+  Set-Content -Path "logs\\_last_session_marker" -Value "ok" -Encoding ascii
 
   if (Test-Path .\STOP) {
     Write-Host "STOP file found after run. Exiting."
@@ -103,8 +114,14 @@ for ($i = 1; $i -le $MaxIters; $i++) {
 
   $after = (git rev-parse HEAD)
   if ($before -eq $after) {
-    Write-Host "No new commit detected. Exiting."
-    exit 0
+    $noProgress += 1
+    Write-Host "No new commit detected ($noProgress/$MaxNoProgress)."
+    if ($noProgress -ge $MaxNoProgress) {
+      Write-Host "No progress threshold reached. Exiting."
+      exit 0
+    }
+  } else {
+    $noProgress = 0
   }
 }
 

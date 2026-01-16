@@ -31,6 +31,7 @@ Stop conditions:
 
 - create a file named `STOP` in the repo root
 - or let the script hit its max-iterations limit
+- or the script hits its "no progress" threshold (no new commits for several iterations)
 
 ## Keep caches on D:
 
@@ -88,3 +89,4 @@ Note: `scripts/autoloop.sh` requires `codex` to be installed inside the WSL dist
 
 Each autoloop iteration starts a new `codex` CLI process and waits for it to exit before starting the next iteration.
 To reduce cold-start overhead, the prompt instructs Codex to complete as many milestones as possible within a single run.
+If Codex ends a run after only planning (needs a follow-up), the next iteration uses `codex exec resume --last` with `prompt_followup.md`.
