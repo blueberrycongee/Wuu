@@ -1,0 +1,1 @@
+workflow run( )->Bool effects{Net.Http,Store.Kv,} pre: ok post:ok {step "s"{return;}}

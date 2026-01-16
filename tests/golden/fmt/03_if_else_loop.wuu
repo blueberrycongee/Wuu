@@ -1,0 +1,1 @@
+fn decide(flag: Bool){if flag{loop{return;}}else{return flag;}}

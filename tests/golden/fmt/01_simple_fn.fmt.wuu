@@ -1,0 +1,5 @@
+fn add(x: Int, y: Int) -> Int
+{
+    let z = x;
+    return z;
+}

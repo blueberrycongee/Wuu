@@ -230,6 +230,38 @@ Known limitations:
 - Expression parsing is minimal (identifiers, paths, string literals only).
 - String literal unescaping is not implemented yet.
 
+## Milestone 2026-01-17: M0.3 Canonical formatter (AST -> text) + golden snapshots
+
+Goal:
+
+- Canonical AST formatter for the Section 16 subset with snapshot tests and idempotence checks.
+
+Changes made:
+
+- Added AST formatter: `src/format.rs` (Allman-style blocks, stable spacing for params/effects/contracts).
+- `wuu fmt` now parses and formats the AST: `src/main.rs`.
+- Added golden fmt harness and fixtures:
+  - `tests/format_tests.rs`
+  - `tests/golden/fmt/*.wuu` + `*.fmt.wuu`
+- Formatter reads the AST produced by `src/parser.rs`; legacy `src/syntax.rs` tests remain intact.
+
+Acceptance criteria:
+
+- Snapshot tests enforce deterministic formatting and idempotence.
+- `wuu fmt --check` errors when formatting differs.
+- `cargo test` passes.
+
+Validation (WSL):
+
+- `wsl -d Ubuntu -- bash -lc "cd /mnt/d/Desktop/Wuu && . /mnt/d/wuu-cache/cargo/env && RUSTUP_HOME=/mnt/d/wuu-cache/rustup cargo fmt --all"`
+- `wsl -d Ubuntu -- bash -lc "cd /mnt/d/Desktop/Wuu && . /mnt/d/wuu-cache/cargo/env && RUSTUP_HOME=/mnt/d/wuu-cache/rustup cargo clippy --all-targets -- -D warnings"`
+- `wsl -d Ubuntu -- bash -lc "cd /mnt/d/Desktop/Wuu && . /mnt/d/wuu-cache/cargo/env && RUSTUP_HOME=/mnt/d/wuu-cache/rustup cargo test"`
+
+Known limitations:
+
+- Formatter does not preserve comments or original whitespace (AST only).
+- Expression formatting remains minimal (identifiers, paths, string literals).
+
 ## Next recommended tasks (pick one)
 
 0) Follow the closed-loop self-host plan

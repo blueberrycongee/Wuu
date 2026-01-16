@@ -1,0 +1,2 @@
+fn empty(){}
+workflow empty_wf(){step "s"{}}

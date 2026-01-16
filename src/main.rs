@@ -28,7 +28,7 @@ fn main() -> anyhow::Result<()> {
     match cli.cmd {
         Command::Fmt { path, check } => {
             let input = std::fs::read(&path)?;
-            let formatted = wuu::syntax::format_source_bytes(&input)?;
+            let formatted = wuu::format::format_source_bytes(&input)?;
             if check {
                 let input_str =
                     std::str::from_utf8(&input).map_err(|_| anyhow::anyhow!("invalid utf-8"))?;

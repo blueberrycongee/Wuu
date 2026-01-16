@@ -1,6 +1,6 @@
 # Next
 
-Target milestone: M0.3 Canonical formatter (AST -> text) + golden snapshots
+Target milestone: M0.4 Effect extraction and checking (subset)
 
 Reference plan: `docs/wuu-lang/SELF_HOST_PLAN.md`
 
