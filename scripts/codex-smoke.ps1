@@ -67,9 +67,9 @@ $lastMsgFile = Join-Path "logs" ("codex-smoke-last-" + $ts + ".txt")
 Write-Host "codex exec smoke run (non-interactive)..."
 if ($model) {
   # Explicitly request the configured model so we verify the CLI accepts it.
-  $null = $prompt | & $codexPath -a never -s workspace-write exec -C (Get-Location) --model $model --output-last-message $lastMsgFile
+  $null = $prompt | & $codexPath --dangerously-bypass-approvals-and-sandbox exec -C (Get-Location) --model $model --output-last-message $lastMsgFile
 } else {
-  $null = $prompt | & $codexPath -a never -s workspace-write exec -C (Get-Location) --output-last-message $lastMsgFile
+  $null = $prompt | & $codexPath --dangerously-bypass-approvals-and-sandbox exec -C (Get-Location) --output-last-message $lastMsgFile
 }
 
 Write-Host "codex last message file: $lastMsgFile"
