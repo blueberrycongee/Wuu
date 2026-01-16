@@ -133,6 +133,9 @@ Changes made:
 - Added loop scripts:
   - `scripts/autoloop.ps1`
   - `scripts/autoloop.sh`
+- Added smoke test + double-click launchers:
+  - `scripts/codex-smoke.ps1` / `scripts/codex-smoke.cmd`
+  - `scripts/start-autoloop.cmd`
 - Linked plan from docs:
   - `docs/wuu-lang/SPEC.md`
   - `README.md`
