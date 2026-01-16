@@ -94,18 +94,27 @@ for ($i = 1; $i -le $MaxIters; $i++) {
   }
 
   $promptFile = "prompt.md"
-  $subcmd = "exec"
+  $cmdCore = "exec"
   if (Test-Path "logs\\_last_session_marker") {
     $promptFile = "prompt_followup.md"
-    $subcmd = "exec resume --last"
+    # Resume requires placing -C on `exec`, not on `resume`.
+    # Use `-` so the follow-up prompt is read from stdin.
+    $cmdCore = "exec -C " + $workdirQuoted + " resume --last -"
+  } else {
+    $cmdCore = "exec -C " + $workdirQuoted
   }
 
   $cmdLine = "type " + $promptFile + " | " + $codexQuoted +
-    " --dangerously-bypass-approvals-and-sandbox " + $subcmd + " -C " + $workdirQuoted +
-    $modelArg + " 1> " + $logQuoted + " 2>&1"
+    " --dangerously-bypass-approvals-and-sandbox" + $modelArg + " " + $cmdCore +
+    " 1> " + $logQuoted + " 2>&1"
 
   cmd /c $cmdLine | Out-Null
-  Set-Content -Path "logs\\_last_session_marker" -Value "ok" -Encoding ascii
+  $codexExit = $LASTEXITCODE
+  if ($codexExit -eq 0) {
+    Set-Content -Path "logs\\_last_session_marker" -Value "ok" -Encoding ascii
+  } else {
+    Remove-Item -Force "logs\\_last_session_marker" -ErrorAction SilentlyContinue
+  }
 
   if (Test-Path .\STOP) {
     Write-Host "STOP file found after run. Exiting."

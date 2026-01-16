@@ -55,3 +55,4 @@ At the end of the run:
 - Keep changes minimal and focused to the current milestone.
 - Add new modules under `src/` with unit tests under `tests/`.
 - Prefer stable error messages and spans; tests should assert them.
+- Tooling note: if `rg` (ripgrep) is not available on Windows, fall back to PowerShell `Get-ChildItem -Recurse` + `Select-String`.
