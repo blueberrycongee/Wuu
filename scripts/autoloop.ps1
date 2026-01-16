@@ -57,7 +57,9 @@ for ($i = 1; $i -le $MaxIters; $i++) {
   # Enforce single-thread main-branch mode.
   git checkout main | Out-Null
   if ($LASTEXITCODE -ne 0) { throw "failed to checkout main" }
-  git pull --rebase origin main 2>$null | Out-Null
+  # Git frequently writes progress/info to stderr; merge streams so PowerShell doesn't treat it as an error.
+  $null = git pull --rebase origin main 2>&1
+  if ($LASTEXITCODE -ne 0) { throw "git pull --rebase failed" }
 
   $before = (git rev-parse HEAD)
   $ts = Get-Date -Format "yyyyMMdd-HHmmss"
