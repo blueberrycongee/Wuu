@@ -9,9 +9,13 @@ Your job is to advance the project toward self-hosting by following the closed-l
 2) Use TDD: write tests first, then implement until they pass.
 3) Never leave the repo in a failing state at the end of the run.
 4) All validation must run in WSL Ubuntu:
-   - `cargo fmt --all`
-   - `cargo clippy --all-targets -- -D warnings`
-   - `cargo test`
+   - Always keep caches on D:
+     - `RUSTUP_HOME=/mnt/d/wuu-cache/rustup`
+     - source: `. /mnt/d/wuu-cache/cargo/env`
+   - Then run:
+     - `cargo fmt --all`
+     - `cargo clippy --all-targets -- -D warnings`
+     - `cargo test`
 5) After finishing a milestone, append a detailed entry to `docs/PROGRESS.md` and update `docs/NEXT.md`.
 6) After finishing a milestone with green validation, you MUST:
    - `git add -A`

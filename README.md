@@ -16,6 +16,14 @@ cargo run -- fmt path/to/file.wuu
 cargo run -- check path/to/file.wuu
 ```
 
+### WSL + D: drive caches (this machine)
+
+One-time:
+
+```powershell
+.\scripts\wsl-bootstrap-rust.ps1
+```
+
 ## Autoloop
 
 See `docs/AUTOLOOP.md` and `prompt.md`.

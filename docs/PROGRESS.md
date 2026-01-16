@@ -12,8 +12,10 @@ What's in this repo right now:
 
 ### Environment notes (this machine)
 
-- Windows host does not have `cargo` on PATH (PowerShell `cargo` fails).
-- Use WSL (default distro: `Ubuntu`) for build/test/lint.
+- Windows host has Cargo installed, but it is not on PATH.
+  - Use: `C:\Users\10758\.cargo\bin\cargo.exe`
+- Use WSL (`Ubuntu`) for build/test/lint.
+- Prefer keeping caches on the D: drive (see below).
 - You may see warnings like `wsl: Failed to translate 'E:\flutter\bin'`; they are PATH translation noise and did not block builds/tests.
 
 ### Commands (WSL)
@@ -21,9 +23,9 @@ What's in this repo right now:
 From Windows PowerShell:
 
 ```powershell
-wsl -d Ubuntu -- bash -lc "cd /mnt/d/Desktop/Wuu && cargo test"
-wsl -d Ubuntu -- bash -lc "cd /mnt/d/Desktop/Wuu && cargo clippy --all-targets -- -D warnings"
-wsl -d Ubuntu -- bash -lc "cd /mnt/d/Desktop/Wuu && cargo fmt --all"
+wsl -d Ubuntu -- bash -lc "cd /mnt/d/Desktop/Wuu && . /mnt/d/wuu-cache/cargo/env && RUSTUP_HOME=/mnt/d/wuu-cache/rustup cargo test"
+wsl -d Ubuntu -- bash -lc "cd /mnt/d/Desktop/Wuu && . /mnt/d/wuu-cache/cargo/env && RUSTUP_HOME=/mnt/d/wuu-cache/rustup cargo clippy --all-targets -- -D warnings"
+wsl -d Ubuntu -- bash -lc "cd /mnt/d/Desktop/Wuu && . /mnt/d/wuu-cache/cargo/env && RUSTUP_HOME=/mnt/d/wuu-cache/rustup cargo fmt --all"
 ```
 
 Run the prototype CLI:
