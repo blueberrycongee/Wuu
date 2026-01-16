@@ -24,7 +24,7 @@ Your job is to advance the project toward self-hosting by following the closed-l
 6) After finishing a milestone with green validation, you MUST:
    - `git add -A`
    - `git commit -m "<milestone>: <short summary>"`
-   - `git push origin main`
+   - `git -c http.sslBackend=schannel push origin main`
 7) Work as far as possible in one run, but stop if:
    - a file named `STOP` exists in the repo root
    - you have completed all currently-unblocked milestones

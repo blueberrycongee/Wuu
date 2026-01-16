@@ -262,6 +262,21 @@ Known limitations:
 - Formatter does not preserve comments or original whitespace (AST only).
 - Expression formatting remains minimal (identifiers, paths, string literals).
 
+## Tooling 2026-01-17: GitHub HTTPS `SSL_ERROR_SYSCALL` (Windows) workaround
+
+Issue observed:
+
+- Git-for-Windows may fail to talk to `github.com:443` with `OpenSSL SSL_connect: SSL_ERROR_SYSCALL`.
+
+Resolution:
+
+- Use the Windows TLS backend (Schannel):
+  - per-command: `git -c http.sslBackend=schannel push origin main`
+  - permanent: `git config --global http.sslBackend schannel`
+- Repo tooling uses this to reduce autoloop stalls:
+  - `scripts/autoloop.ps1` applies Schannel for network git commands
+  - `prompt.md` uses Schannel for the required `git push`
+
 ## Next recommended tasks (pick one)
 
 0) Follow the closed-loop self-host plan

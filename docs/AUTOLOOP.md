@@ -41,6 +41,29 @@ Stop conditions:
 - or let the script hit its max-iterations limit
 - or the script hits its "no progress" threshold (no new commits for several iterations)
 
+## Common issues
+
+### Autoloop refuses to run (dirty working tree)
+
+`scripts/autoloop.ps1` will stop before `git pull --rebase` if there are any uncommitted changes.
+
+Fix:
+
+- check: `git status --porcelain`
+- discard everything (dangerous): `git restore -SW .`
+- or commit/stash your changes first
+
+### `git push` fails with `SSL_ERROR_SYSCALL` (Windows)
+
+If Git-for-Windows fails to talk to `github.com:443` with:
+
+`OpenSSL SSL_connect: SSL_ERROR_SYSCALL`
+
+Workarounds:
+
+- per-command: `git -c http.sslBackend=schannel push origin main`
+- permanent (recommended): `git config --global http.sslBackend schannel`
+
 ## Keep caches on D:
 
 This machine prefers keeping build caches off the system drive.

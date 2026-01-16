@@ -42,9 +42,19 @@ function Invoke-GitSafe {
   # Windows PowerShell 5.1 treats native stderr output as error records when
   # $ErrorActionPreference=Stop. Git writes some normal progress messages to stderr.
   # Running through cmd.exe avoids turning stderr into terminating errors.
-  cmd /c ("git " + $Args + " 1>nul 2>nul")
+  $sslBackend = ""
+  if ($Args -match "^(pull|push|fetch|clone|ls-remote)\\b") {
+    # Some machines hit `OpenSSL SSL_connect: SSL_ERROR_SYSCALL` talking to github.com over HTTPS.
+    # Git-for-Windows supports switching to the Windows TLS stack via Schannel.
+    $sslBackend = "-c http.sslBackend=schannel "
+  }
+
+  $cmd = "git " + $sslBackend + $Args + " 2>&1"
+  $output = cmd /c $cmd
   if ($LASTEXITCODE -ne 0) {
-    throw ("git " + $Args + " failed with exit code " + $LASTEXITCODE)
+    $text = ""
+    if ($output) { $text = "`n" + ($output -join "`n") }
+    throw ("git " + $Args + " failed with exit code " + $LASTEXITCODE + $text)
   }
 }
 
@@ -72,6 +82,16 @@ for ($i = 1; $i -le $MaxIters; $i++) {
   if (Test-Path .\STOP) {
     Write-Host "STOP file found. Exiting."
     exit 0
+  }
+
+  # Avoid unsafe `git pull --rebase` when an earlier iteration left uncommitted changes.
+  $dirty = git status --porcelain
+  if (-not [string]::IsNullOrWhiteSpace($dirty)) {
+    Write-Host "Working tree is not clean; refusing to run autoloop."
+    Write-Host "Run: git status --porcelain"
+    Write-Host $dirty
+    Write-Host "Fix by committing/stashing changes, or discard with: git restore -SW ."
+    exit 1
   }
 
   # Enforce single-thread main-branch mode.
