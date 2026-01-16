@@ -12,6 +12,10 @@ for ((i=1; i<=MAX_ITERS; i++)); do
     exit 0
   fi
 
+  # Enforce single-thread main-branch mode.
+  git checkout main >/dev/null 2>&1 || true
+  git pull --rebase origin main >/dev/null 2>&1 || true
+
   before="$(git rev-parse HEAD)"
   ts="$(date +%Y%m%d-%H%M%S)"
   log="logs/codex-${ts}.log"

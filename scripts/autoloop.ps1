@@ -36,6 +36,11 @@ for ($i = 1; $i -le $MaxIters; $i++) {
     exit 0
   }
 
+  # Enforce single-thread main-branch mode.
+  git checkout main | Out-Null
+  if ($LASTEXITCODE -ne 0) { throw "failed to checkout main" }
+  git pull --rebase origin main 2>$null | Out-Null
+
   $before = (git rev-parse HEAD)
   $ts = Get-Date -Format "yyyyMMdd-HHmmss"
   $log = Join-Path "logs" ("codex-" + $ts + ".log")

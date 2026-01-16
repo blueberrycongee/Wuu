@@ -68,3 +68,8 @@ Note: `scripts/autoloop.sh` requires `codex` to be installed inside the WSL dist
   - known limitations
 - Update `docs/NEXT.md` with the next target
 - Commit and push if validation is green
+
+## Session behavior note
+
+Each autoloop iteration starts a new `codex` CLI process and waits for it to exit before starting the next iteration.
+To reduce cold-start overhead, the prompt instructs Codex to complete as many milestones as possible within a single run.

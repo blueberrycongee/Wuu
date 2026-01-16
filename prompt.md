@@ -8,6 +8,10 @@ Your job is to advance the project toward self-hosting by following the closed-l
 1) Use the plan in `docs/wuu-lang/SELF_HOST_PLAN.md` as the source of truth.
 2) Use TDD: write tests first, then implement until they pass.
 3) Never leave the repo in a failing state at the end of the run.
+4) Single-thread mode:
+   - Always work directly on branch `main` (no feature branches).
+   - Keep changes atomic: one milestone -> one commit (or the smallest number of commits that keep tests green).
+   - After each milestone is green, immediately commit and push.
 4) All validation must run in WSL Ubuntu:
    - Always keep caches on D:
      - `RUSTUP_HOME=/mnt/d/wuu-cache/rustup`
@@ -23,12 +27,14 @@ Your job is to advance the project toward self-hosting by following the closed-l
    - `git push origin main`
 7) Work as far as possible in one run, but stop if:
    - a file named `STOP` exists in the repo root
+   - you have completed all currently-unblocked milestones
    - you are blocked after 3 attempts (write a blocking report + next steps into `docs/PROGRESS.md`, then stop)
 
 ## How to pick work
 
 1) Read `docs/NEXT.md` for the current target milestone.
 2) If `docs/NEXT.md` is missing or stale, scan `docs/wuu-lang/SELF_HOST_PLAN.md` and pick the first milestone that is not complete according to `docs/PROGRESS.md`.
+3) Within a single run, after completing the current milestone, immediately proceed to the next milestone and repeat until stopped or blocked.
 
 ## Required output discipline
 

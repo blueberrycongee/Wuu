@@ -1,4 +1,6 @@
 /target/
 /logs/
+codex.exe
+codex
 **/*.rs.bk
 .DS_Store
