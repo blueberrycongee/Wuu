@@ -280,7 +280,10 @@ impl<'a> Parser<'a> {
         match self.peek_kind() {
             Some(TokenKind::Ident) => {
                 let path = self.parse_path()?;
-                if path.len() == 1 {
+                if self.consume_punct('(') {
+                    let args = self.parse_call_args()?;
+                    Ok(Expr::Call { callee: path, args })
+                } else if path.len() == 1 {
                     Ok(Expr::Ident(path[0].clone()))
                 } else {
                     Ok(Expr::Path(path))
@@ -289,6 +292,27 @@ impl<'a> Parser<'a> {
             Some(TokenKind::StringLiteral) => Ok(Expr::String(self.expect_string_literal()?)),
             _ => Err(self.error_current("expected expression")),
         }
+    }
+
+    fn parse_call_args(&mut self) -> Result<Vec<Expr>, ParseError> {
+        let mut args = Vec::new();
+        if self.consume_punct(')') {
+            return Ok(args);
+        }
+
+        loop {
+            args.push(self.parse_expr()?);
+            if self.consume_punct(',') {
+                if self.consume_punct(')') {
+                    break;
+                }
+                continue;
+            }
+            self.expect_punct(')')?;
+            break;
+        }
+
+        Ok(args)
     }
 
     fn parse_path(&mut self) -> Result<Path, ParseError> {

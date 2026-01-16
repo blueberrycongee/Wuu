@@ -111,4 +111,5 @@ pub enum Expr {
     Ident(String),
     String(String),
     Path(Path),
+    Call { callee: Path, args: Vec<Expr> },
 }

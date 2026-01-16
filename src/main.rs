@@ -40,7 +40,8 @@ fn main() -> anyhow::Result<()> {
         }
         Command::Check { path } => {
             let input = std::fs::read(&path)?;
-            let _ = wuu::parser::parse_module_bytes(&input)?;
+            let module = wuu::parser::parse_module_bytes(&input)?;
+            wuu::effects::check_module(&module)?;
         }
     }
 

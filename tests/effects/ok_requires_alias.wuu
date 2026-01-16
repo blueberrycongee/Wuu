@@ -1,0 +1,7 @@
+fn fetch() requires { net:http } {
+    return;
+}
+
+fn main() effects { net.http } {
+    fetch();
+}

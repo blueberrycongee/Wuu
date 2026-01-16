@@ -262,6 +262,39 @@ Known limitations:
 - Formatter does not preserve comments or original whitespace (AST only).
 - Expression formatting remains minimal (identifiers, paths, string literals).
 
+## Milestone 2026-01-17: M0.4 Effect extraction and checking (subset)
+
+Goal:
+
+- Enforce v0 effect set inclusion for direct calls with default `effects {}` for undeclared functions.
+
+Changes made:
+
+- Added effect checker: `src/effects.rs` with deterministic error messages.
+- Parsed call expressions so direct calls can be checked: `src/ast.rs`, `src/parser.rs`, `src/format.rs`.
+- Wired `wuu check` to run effect checks after parsing: `src/main.rs`.
+- Added effect fixtures and harness:
+  - `tests/effects/*.wuu`
+  - `tests/effects/*.err`
+  - `tests/effects_tests.rs`
+
+Acceptance criteria:
+
+- `tests/effects/*.wuu` cover success and deterministic failure cases.
+- `wuu check` rejects calls whose required effects are not a subset of the caller.
+- `cargo test` passes.
+
+Validation (WSL):
+
+- `wsl -d Ubuntu -- bash -lc "cd /mnt/d/Desktop/Wuu && . /mnt/d/wuu-cache/cargo/env && RUSTUP_HOME=/mnt/d/wuu-cache/rustup cargo fmt --all"`
+- `wsl -d Ubuntu -- bash -lc "cd /mnt/d/Desktop/Wuu && . /mnt/d/wuu-cache/cargo/env && RUSTUP_HOME=/mnt/d/wuu-cache/rustup cargo clippy --all-targets -- -D warnings"`
+- `wsl -d Ubuntu -- bash -lc "cd /mnt/d/Desktop/Wuu && . /mnt/d/wuu-cache/cargo/env && RUSTUP_HOME=/mnt/d/wuu-cache/rustup cargo test"`
+
+Known limitations:
+
+- Effect checking only considers direct calls to locally-defined single-segment names.
+- Call argument expressions are parsed but still use the minimal expression subset.
+
 ## Tooling 2026-01-17: GitHub HTTPS `SSL_ERROR_SYSCALL` (Windows) workaround
 
 Issue observed:

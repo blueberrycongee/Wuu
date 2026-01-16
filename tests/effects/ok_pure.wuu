@@ -1,0 +1,7 @@
+fn pure() {
+    return;
+}
+
+fn main() {
+    pure();
+}

@@ -1,0 +1,7 @@
+fn fetch() effects { Net.Http } {
+    return;
+}
+
+fn main() {
+    fetch();
+}

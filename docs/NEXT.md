@@ -1,6 +1,6 @@
 # Next
 
-Target milestone: M0.4 Effect extraction and checking (subset)
+Target milestone: M0.5 Lock down workflow log schema (code + tests)
 
 Reference plan: `docs/wuu-lang/SELF_HOST_PLAN.md`
 

@@ -228,6 +228,10 @@ fn format_expr(expr: &Expr) -> String {
         Expr::Ident(name) => name.clone(),
         Expr::Path(path) => format_path(path),
         Expr::String(value) => format_string_literal(value),
+        Expr::Call { callee, args } => {
+            let args_str = args.iter().map(format_expr).collect::<Vec<_>>().join(", ");
+            format!("{}({})", format_path(callee), args_str)
+        }
     }
 }
 
