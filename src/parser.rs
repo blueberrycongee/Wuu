@@ -278,7 +278,13 @@ impl<'a> Parser<'a> {
 
     fn parse_expr(&mut self) -> Result<Expr, ParseError> {
         match self.peek_kind() {
+            Some(TokenKind::Number) => self.parse_number(),
             Some(TokenKind::Ident) => {
+                if self.peek_is_bool_literal() {
+                    let value = self.expect_ident()?;
+                    return Ok(Expr::Bool(value == "true"));
+                }
+
                 let path = self.parse_path()?;
                 if self.consume_punct('(') {
                     let args = self.parse_call_args()?;
@@ -291,6 +297,36 @@ impl<'a> Parser<'a> {
             }
             Some(TokenKind::StringLiteral) => Ok(Expr::String(self.expect_string_literal()?)),
             _ => Err(self.error_current("expected expression")),
+        }
+    }
+
+    fn parse_number(&mut self) -> Result<Expr, ParseError> {
+        let token = match self.peek().cloned() {
+            Some(token) if token.kind == TokenKind::Number => token,
+            _ => return Err(self.error_current("expected number literal")),
+        };
+        let text = self.token_text(token.span).to_string();
+        let span = token.span;
+        self.advance();
+
+        let value = text
+            .parse::<i64>()
+            .map_err(|_| self.error_at(span, "invalid integer literal"))?;
+        Ok(Expr::Int(value))
+    }
+
+    fn peek_is_bool_literal(&self) -> bool {
+        match self.peek() {
+            Some(Token {
+                kind: TokenKind::Ident,
+                span,
+            }) => {
+                let text = self.token_text(*span);
+                (text == "true" || text == "false")
+                    && !self.peek_next_is_punct('.')
+                    && !self.peek_next_is_punct('(')
+            }
+            _ => false,
         }
     }
 
@@ -415,6 +451,10 @@ impl<'a> Parser<'a> {
         self.tokens
             .get(self.cursor + 1)
             .map(|token| token.kind.clone())
+    }
+
+    fn peek_next_is_punct(&self, ch: char) -> bool {
+        matches!(self.peek_next_kind(), Some(TokenKind::Punct(found)) if found == ch)
     }
 
     fn advance(&mut self) {

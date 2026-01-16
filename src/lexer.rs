@@ -28,6 +28,7 @@ pub enum TokenKind {
     Ident,
     Keyword(Keyword),
     Punct(char),
+    Number,
     StringLiteral,
     Comment,
     Whitespace,
@@ -188,6 +189,19 @@ pub fn lex(input: &str) -> Result<Vec<Token>, ParseError> {
             };
             tokens.push(Token {
                 kind,
+                span: Span { start, end: i },
+            });
+            continue;
+        }
+
+        if b.is_ascii_digit() {
+            let start = i;
+            i += 1;
+            while i < bytes.len() && bytes[i].is_ascii_digit() {
+                i += 1;
+            }
+            tokens.push(Token {
+                kind: TokenKind::Number,
                 span: Span { start, end: i },
             });
             continue;

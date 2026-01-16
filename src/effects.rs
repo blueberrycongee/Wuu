@@ -113,7 +113,7 @@ fn check_expr(
             }
             Ok(())
         }
-        Expr::Ident(_) | Expr::String(_) | Expr::Path(_) => Ok(()),
+        Expr::Int(_) | Expr::Bool(_) | Expr::Ident(_) | Expr::String(_) | Expr::Path(_) => Ok(()),
     }
 }
 

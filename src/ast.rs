@@ -108,6 +108,8 @@ pub struct StepStmt {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Expr {
+    Int(i64),
+    Bool(bool),
     Ident(String),
     String(String),
     Path(Path),

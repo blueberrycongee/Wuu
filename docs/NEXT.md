@@ -1,6 +1,6 @@
 # Next
 
-Target milestone: M1.1 Minimal interpreter for pure subset (ephemeral)
+Target milestone: M1.2 Workflow runtime (replay-only first)
 
 Reference plan: `docs/wuu-lang/SELF_HOST_PLAN.md`
 

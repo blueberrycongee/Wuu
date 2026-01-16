@@ -324,6 +324,40 @@ Known limitations:
 
 - Log schema does not yet include checkpoints/failures or log version headers.
 
+## Milestone 2026-01-17: M1.1 Minimal interpreter for pure subset (ephemeral)
+
+Goal:
+
+- Execute a pure subset (`Int`, `Bool`, `String`) with literals, variables, calls, `if`, and `return`.
+
+Changes made:
+
+- Added interpreter with value model and execution: `src/interpreter.rs`.
+- Extended expression parsing for integers/bools and call arguments: `src/ast.rs`, `src/parser.rs`.
+- Formatter now prints integer/bool literals: `src/format.rs`.
+- `wuu run <file> --entry <fn>` executes entry and prints return value: `src/main.rs`.
+- Added run fixtures + harness:
+  - `tests/run/*.wuu`
+  - `tests/run/*.out`
+  - `tests/run_tests.rs`
+
+Acceptance criteria:
+
+- `wuu run` executes a pure entry function deterministically.
+- `tests/run/*.wuu` cover return values for literals, calls, and `if`.
+- `cargo test` passes.
+
+Validation (WSL):
+
+- `wsl -d Ubuntu -- bash -lc "cd /mnt/d/Desktop/Wuu && . /mnt/d/wuu-cache/cargo/env && RUSTUP_HOME=/mnt/d/wuu-cache/rustup cargo fmt --all"`
+- `wsl -d Ubuntu -- bash -lc "cd /mnt/d/Desktop/Wuu && . /mnt/d/wuu-cache/cargo/env && RUSTUP_HOME=/mnt/d/wuu-cache/rustup cargo clippy --all-targets -- -D warnings"`
+- `wsl -d Ubuntu -- bash -lc "cd /mnt/d/Desktop/Wuu && . /mnt/d/wuu-cache/cargo/env && RUSTUP_HOME=/mnt/d/wuu-cache/rustup cargo test"`
+
+Known limitations:
+
+- The interpreter does not support loops, steps, or arithmetic yet.
+- Only single-segment function calls are supported in the interpreter.
+
 ## Tooling 2026-01-17: GitHub HTTPS `SSL_ERROR_SYSCALL` (Windows) workaround
 
 Issue observed:

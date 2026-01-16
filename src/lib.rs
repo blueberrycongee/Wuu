@@ -2,6 +2,7 @@ pub mod ast;
 pub mod effects;
 pub mod error;
 pub mod format;
+pub mod interpreter;
 pub mod lexer;
 pub mod log;
 pub mod parser;

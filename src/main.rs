@@ -20,6 +20,11 @@ enum Command {
     Check {
         path: PathBuf,
     },
+    Run {
+        path: PathBuf,
+        #[arg(long)]
+        entry: String,
+    },
 }
 
 fn main() -> anyhow::Result<()> {
@@ -42,6 +47,14 @@ fn main() -> anyhow::Result<()> {
             let input = std::fs::read(&path)?;
             let module = wuu::parser::parse_module_bytes(&input)?;
             wuu::effects::check_module(&module)?;
+        }
+        Command::Run { path, entry } => {
+            let input = std::fs::read(&path)?;
+            let module = wuu::parser::parse_module_bytes(&input)?;
+            let value = wuu::interpreter::run_entry(&module, &entry)?;
+            if !value.is_unit() {
+                println!("{value}");
+            }
         }
     }
 

@@ -225,6 +225,8 @@ fn format_path(path: &crate::ast::Path) -> String {
 
 fn format_expr(expr: &Expr) -> String {
     match expr {
+        Expr::Int(value) => value.to_string(),
+        Expr::Bool(value) => value.to_string(),
         Expr::Ident(name) => name.clone(),
         Expr::Path(path) => format_path(path),
         Expr::String(value) => format_string_literal(value),
