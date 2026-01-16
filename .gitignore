@@ -2,5 +2,6 @@
 /logs/
 codex.exe
 codex
+STOP
 **/*.rs.bk
 .DS_Store
