@@ -27,6 +27,14 @@ Or double-click: `scripts/codex-smoke.cmd`
 
 If `where codex` prints nothing in PowerShell, use `where.exe codex` (PowerShell's `where` can be an alias, not the Windows `where.exe`).
 
+## Verify sandbox mode (optional)
+
+To confirm the autoloop uses the correct `codex.exe` and starts in `sandbox: danger-full-access`:
+
+```powershell
+.\scripts\codex-header.ps1
+```
+
 Stop conditions:
 
 - create a file named `STOP` in the repo root

@@ -11,6 +11,9 @@ Set-Location $PSScriptRoot\..
 New-Item -ItemType Directory -Force -Path logs | Out-Null
 
 function Resolve-CodexPath {
+  $local = Join-Path (Get-Location) "codex.exe"
+  if (Test-Path $local) { return $local }
+
   $cmd = Get-Command codex.exe -ErrorAction SilentlyContinue
   if ($cmd) { return $cmd.Source }
 
