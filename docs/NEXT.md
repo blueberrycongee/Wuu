@@ -1,6 +1,6 @@
 # Next
 
-Target milestone: M0.5 Lock down workflow log schema (code + tests)
+Target milestone: M1.1 Minimal interpreter for pure subset (ephemeral)
 
 Reference plan: `docs/wuu-lang/SELF_HOST_PLAN.md`
 

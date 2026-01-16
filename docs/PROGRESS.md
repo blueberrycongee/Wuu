@@ -295,6 +295,35 @@ Known limitations:
 - Effect checking only considers direct calls to locally-defined single-segment names.
 - Call argument expressions are parsed but still use the minimal expression subset.
 
+## Milestone 2026-01-17: M0.5 Lock down workflow log schema (code + tests)
+
+Goal:
+
+- Define log record structs and canonical CBOR encoding/decoding with forward-compatible decoding.
+
+Changes made:
+
+- Added log module with record types and encode/decode: `src/log/mod.rs`.
+- Canonical encoding uses CBOR maps keyed by small integers to keep ordering deterministic.
+- Added roundtrip + forward-compat tests: `tests/log_tests.rs`.
+- Added CBOR dependency: `Cargo.toml`, `Cargo.lock`.
+
+Acceptance criteria:
+
+- `LogRecord` encodes to deterministic CBOR bytes and roundtrips in tests.
+- Decoder ignores unknown fields without failing.
+- `cargo test` passes.
+
+Validation (WSL):
+
+- `wsl -d Ubuntu -- bash -lc "cd /mnt/d/Desktop/Wuu && . /mnt/d/wuu-cache/cargo/env && RUSTUP_HOME=/mnt/d/wuu-cache/rustup cargo fmt --all"`
+- `wsl -d Ubuntu -- bash -lc "cd /mnt/d/Desktop/Wuu && . /mnt/d/wuu-cache/cargo/env && RUSTUP_HOME=/mnt/d/wuu-cache/rustup cargo clippy --all-targets -- -D warnings"`
+- `wsl -d Ubuntu -- bash -lc "cd /mnt/d/Desktop/Wuu && . /mnt/d/wuu-cache/cargo/env && RUSTUP_HOME=/mnt/d/wuu-cache/rustup cargo test"`
+
+Known limitations:
+
+- Log schema does not yet include checkpoints/failures or log version headers.
+
 ## Tooling 2026-01-17: GitHub HTTPS `SSL_ERROR_SYSCALL` (Windows) workaround
 
 Issue observed:
