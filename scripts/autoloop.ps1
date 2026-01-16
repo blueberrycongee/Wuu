@@ -80,10 +80,21 @@ for ($i = 1; $i -le $MaxIters; $i++) {
 
   # Feed the prompt to codex and capture output.
   # If codex returns non-zero, we still keep the log and continue unless STOP exists.
-  $prompt = Get-Content .\prompt.md -Raw
-  $args = @("--dangerously-bypass-approvals-and-sandbox", "exec", "-C", (Get-Location))
-  if ($codexModel) { $args += @("--model", $codexModel) }
-  $prompt | & $codexPath @args 2>&1 | Out-File -FilePath $log -Encoding utf8
+  # Run via cmd.exe to avoid Windows PowerShell turning native stderr output into terminating errors.
+  $workdir = (Get-Location).Path
+  $codexQuoted = '"' + $codexPath + '"'
+  $logQuoted = '"' + $log + '"'
+  $workdirQuoted = '"' + $workdir + '"'
+  $modelArg = ""
+  if ($codexModel) {
+    $modelArg = " --model " + $codexModel
+  }
+
+  $cmdLine = "type prompt.md | " + $codexQuoted +
+    " --dangerously-bypass-approvals-and-sandbox exec -C " + $workdirQuoted +
+    $modelArg + " 1> " + $logQuoted + " 2>&1"
+
+  cmd /c $cmdLine | Out-Null
 
   if (Test-Path .\STOP) {
     Write-Host "STOP file found after run. Exiting."
