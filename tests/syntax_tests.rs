@@ -1,6 +1,6 @@
 use pretty_assertions::assert_eq;
 
-use wuu::syntax::{DeclKind, format_decl, format_source, parse_decl};
+use wuu::syntax::{DeclKind, format_decl, format_source, format_source_bytes, parse_decl};
 
 // Edge cases to keep stable in v0 prototype:
 // - extra whitespace
@@ -40,4 +40,31 @@ fn format_source_rewrites_decls_only() {
     let input = r#"fn f()effects{Net.Http,Store.Kv,}{return;}"#;
     let out = format_source(input).unwrap();
     assert_eq!(out, r#"fn f()effects { Net.Http, Store.Kv }{return;}"#);
+}
+
+#[test]
+fn format_source_ignores_effects_in_string() {
+    let input = r#"let s = "effects{Net.Http,Store.Kv,}";effects{Net.Http,Store.Kv,}"#;
+    let out = format_source(input).unwrap();
+    assert_eq!(
+        out,
+        r#"let s = "effects{Net.Http,Store.Kv,}";effects { Net.Http, Store.Kv }"#
+    );
+}
+
+#[test]
+fn format_source_ignores_effects_in_comment() {
+    let input = "// effects{Net.Http,Store.Kv,}\neffects{Net.Http,Store.Kv,}";
+    let out = format_source(input).unwrap();
+    assert_eq!(
+        out,
+        "// effects{Net.Http,Store.Kv,}\neffects { Net.Http, Store.Kv }"
+    );
+}
+
+#[test]
+fn format_source_rejects_invalid_utf8() {
+    let input = vec![0xff, 0xfe, b'e'];
+    let err = format_source_bytes(&input).unwrap_err();
+    assert!(err.to_string().contains("invalid utf-8"));
 }

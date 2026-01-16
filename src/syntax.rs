@@ -1,5 +1,7 @@
 use std::fmt;
 
+use crate::lexer::{Keyword, Token, TokenKind, lex};
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DeclKind {
     Effects,
@@ -199,74 +201,79 @@ pub fn format_decl(decl: &Decl) -> String {
     }
 }
 
-pub fn format_source(input: &str) -> Result<String, ParseError> {
-    let bytes = input.as_bytes();
-    let mut out = String::with_capacity(input.len());
+pub fn format_source_bytes(input: &[u8]) -> Result<String, ParseError> {
+    let source = std::str::from_utf8(input).map_err(|_| ParseError {
+        message: "invalid utf-8".to_string(),
+    })?;
+    format_source(source)
+}
 
+pub fn format_source(input: &str) -> Result<String, ParseError> {
+    let tokens = lex(input)?;
+    let mut out = String::with_capacity(input.len());
     let mut last = 0usize;
-    let mut it = input.char_indices().peekable();
-    while let Some((i, ch)) = it.next() {
-        if !ch.is_ascii() {
+    let mut i = 0usize;
+
+    while i < tokens.len() {
+        let token = &tokens[i];
+        if matches!(
+            token.kind,
+            TokenKind::Keyword(Keyword::Effects | Keyword::Requires)
+        ) && let Some((decl, end)) = try_parse_decl_tokens(input, &tokens, i)?
+        {
+            out.push_str(&input[last..token.span.start]);
+            out.push_str(&format_decl(&decl));
+            last = end;
+
+            while i < tokens.len() && tokens[i].span.end <= end {
+                i += 1;
+            }
             continue;
         }
-
-        let b = bytes[i];
-        if is_ident_start(b) {
-            let prev_is_ident = i > 0 && is_ident_continue(bytes[i - 1]);
-            if !prev_is_ident && let Some((decl, consumed)) = try_parse_decl_at(input, i)? {
-                out.push_str(&input[last..i]);
-                out.push_str(&format_decl(&decl));
-                let skip_to = i + consumed;
-                last = skip_to;
-
-                while let Some(&(next_i, _)) = it.peek() {
-                    if next_i >= skip_to {
-                        break;
-                    }
-                    let _ = it.next();
-                }
-            }
-        }
+        i += 1;
     }
 
     out.push_str(&input[last..]);
     Ok(out)
 }
 
-fn try_parse_decl_at(input: &str, i: usize) -> Result<Option<(Decl, usize)>, ParseError> {
-    let bytes = input.as_bytes();
-    if parse_keyword(bytes, i, b"effects").is_none()
-        && parse_keyword(bytes, i, b"requires").is_none()
-    {
-        return Ok(None);
+fn try_parse_decl_tokens(
+    input: &str,
+    tokens: &[Token],
+    kw_index: usize,
+) -> Result<Option<(Decl, usize)>, ParseError> {
+    let start = tokens[kw_index].span.start;
+    let mut i = kw_index + 1;
+
+    while i < tokens.len() {
+        match tokens[i].kind {
+            TokenKind::Whitespace | TokenKind::Comment => {
+                i += 1;
+            }
+            TokenKind::Punct('{') => break,
+            _ => return Ok(None),
+        }
     }
 
-    // Word boundary after keyword.
-    let kw_len = if parse_keyword(bytes, i, b"effects").is_some() {
-        7
-    } else {
-        8
-    };
-    let after_kw = i + kw_len;
-    if after_kw < bytes.len() && is_ident_continue(bytes[after_kw]) {
-        return Ok(None);
-    }
-
-    // Find the end of the {...} block for this decl without trying to parse arbitrary nesting.
-    let mut j = after_kw;
-    j = skip_ws(bytes, j);
-    if j >= bytes.len() || bytes[j] != b'{' {
+    if i >= tokens.len() {
         return Ok(None);
     }
 
     let mut depth = 0usize;
-    while j < bytes.len() {
-        match bytes[j] {
-            b'{' => depth += 1,
-            b'}' => {
-                depth = depth.saturating_sub(1);
+    let mut end = None;
+    let mut j = i;
+    while j < tokens.len() {
+        match tokens[j].kind {
+            TokenKind::Punct('{') => depth += 1,
+            TokenKind::Punct('}') => {
                 if depth == 0 {
-                    j += 1;
+                    return Err(ParseError {
+                        message: "unterminated declaration".to_string(),
+                    });
+                }
+                depth -= 1;
+                if depth == 0 {
+                    end = Some(tokens[j].span.end);
                     break;
                 }
             }
@@ -274,13 +281,17 @@ fn try_parse_decl_at(input: &str, i: usize) -> Result<Option<(Decl, usize)>, Par
         }
         j += 1;
     }
-    if depth != 0 {
-        return Err(ParseError {
-            message: "unterminated declaration".to_string(),
-        });
-    }
 
-    let decl_str = &input[i..j];
+    let end = match end {
+        Some(end) => end,
+        None => {
+            return Err(ParseError {
+                message: "unterminated declaration".to_string(),
+            });
+        }
+    };
+
+    let decl_str = &input[start..end];
     let decl = parse_decl(decl_str)?;
-    Ok(Some((decl, j - i)))
+    Ok(Some((decl, end)))
 }

@@ -27,16 +27,20 @@ fn main() -> anyhow::Result<()> {
 
     match cli.cmd {
         Command::Fmt { path, check } => {
-            let input = std::fs::read_to_string(path)?;
-            let formatted = wuu::syntax::format_source(&input)?;
-            if check && formatted != input {
-                anyhow::bail!("file is not formatted");
+            let input = std::fs::read(&path)?;
+            let formatted = wuu::syntax::format_source_bytes(&input)?;
+            if check {
+                let input_str =
+                    std::str::from_utf8(&input).map_err(|_| anyhow::anyhow!("invalid utf-8"))?;
+                if formatted != input_str {
+                    anyhow::bail!("file is not formatted");
+                }
             }
             print!("{formatted}");
         }
         Command::Check { path } => {
-            let input = std::fs::read_to_string(path)?;
-            let _ = wuu::syntax::format_source(&input)?;
+            let input = std::fs::read(&path)?;
+            let _ = wuu::syntax::format_source_bytes(&input)?;
         }
     }
 

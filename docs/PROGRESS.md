@@ -168,6 +168,32 @@ Validation:
 - Local (WSL): `cargo fmt --all`, `cargo clippy --all-targets -- -D warnings`, `cargo test`
 - Remote (GitHub Actions): runs on push/PR via `.github/workflows/ci.yml`
 
+## Milestone 2026-01-17: M0.1 Lexer (strings/comments/keywords are real)
+
+Goal:
+
+- Replace substring scanning with a real lexer so `effects/requires` inside strings/comments are not treated as decls.
+
+Changes made:
+
+- Added lexer: `src/lexer.rs`
+  - Token kinds: keywords, identifiers, punctuation, whitespace, comments, string literals.
+  - Comment syntax: `// ...` and `/* ... */` (block comment must be terminated).
+- Exported lexer module: `src/lib.rs`
+- Switched formatter rewrite to use lexer tokens:
+  - `src/syntax.rs` now finds `effects`/`requires` keywords via tokens (not raw substring scan).
+  - Added `format_source_bytes(&[u8])` which rejects invalid UTF-8.
+- Added tests:
+  - `tests/lexer_tests.rs` validates tokenization (keyword/punct/comment/string/whitespace).
+  - `tests/syntax_tests.rs` now asserts:
+    - `effects{...}` inside string is untouched
+    - `effects{...}` inside comment is untouched
+    - invalid UTF-8 is rejected
+
+Validation:
+
+- `wsl -d Ubuntu -- bash -lc "cd /mnt/d/Desktop/Wuu && ./scripts/wsl-validate.sh"`
+
 ## Next recommended tasks (pick one)
 
 0) Follow the closed-loop self-host plan
