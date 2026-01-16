@@ -46,7 +46,10 @@ function Invoke-GitSafe {
   if ($Args -match "^(pull|push|fetch|clone|ls-remote)\\b") {
     # Some machines hit `OpenSSL SSL_connect: SSL_ERROR_SYSCALL` talking to github.com over HTTPS.
     # Git-for-Windows supports switching to the Windows TLS stack via Schannel.
-    $sslBackend = "-c http.sslBackend=schannel "
+    #
+    # Note: Schannel revocation checks can also break GitHub HTTPS on some networks; disabling
+    # revocation checks here makes the autoloop significantly more stable in practice.
+    $sslBackend = "-c http.sslBackend=schannel -c http.schannelCheckRevoke=false "
   }
 
   $cmd = "git " + $sslBackend + $Args + " 2>&1"

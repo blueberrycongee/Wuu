@@ -271,8 +271,9 @@ Issue observed:
 Resolution:
 
 - Use the Windows TLS backend (Schannel):
-  - per-command: `git -c http.sslBackend=schannel push origin main`
+  - per-command: `git -c http.sslBackend=schannel -c http.schannelCheckRevoke=false push origin main`
   - permanent: `git config --global http.sslBackend schannel`
+  - if Schannel still fails: `git config --global http.schannelCheckRevoke false`
 - Repo tooling uses this to reduce autoloop stalls:
   - `scripts/autoloop.ps1` applies Schannel for network git commands
   - `prompt.md` uses Schannel for the required `git push`

@@ -61,8 +61,10 @@ If Git-for-Windows fails to talk to `github.com:443` with:
 
 Workarounds:
 
-- per-command: `git -c http.sslBackend=schannel push origin main`
-- permanent (recommended): `git config --global http.sslBackend schannel`
+- per-command: `git -c http.sslBackend=schannel -c http.schannelCheckRevoke=false push origin main`
+- permanent (recommended):
+  - `git config --global http.sslBackend schannel`
+  - `git config --global http.schannelCheckRevoke false`
 
 ## Keep caches on D:
 
