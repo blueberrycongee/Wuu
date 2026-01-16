@@ -30,6 +30,24 @@ function Resolve-CodexPath {
 
 $codexPath = Resolve-CodexPath
 
+function Get-CodexModelFromConfig {
+  $cfg = Join-Path $env:USERPROFILE ".codex\\config.toml"
+  if (!(Test-Path $cfg)) { return $null }
+  $cfgText = Get-Content $cfg -Raw
+  $m = ([regex]::Match($cfgText, '^\s*model\s*=\s*\"([^\"]+)\"', 'Multiline')).Groups[1].Value
+  if ([string]::IsNullOrWhiteSpace($m)) { return $null }
+  return $m
+}
+
+$codexModel = Get-CodexModelFromConfig
+
+# Autoloop assumes a clean working tree; otherwise `git pull --rebase` is unsafe.
+$dirty = git status --porcelain
+if (-not [string]::IsNullOrWhiteSpace($dirty)) {
+  Write-Host "Working tree is not clean. Please commit/stash changes before starting autoloop."
+  exit 1
+}
+
 for ($i = 1; $i -le $MaxIters; $i++) {
   if (Test-Path .\STOP) {
     Write-Host "STOP file found. Exiting."
@@ -49,7 +67,10 @@ for ($i = 1; $i -le $MaxIters; $i++) {
 
   # Feed the prompt to codex and capture output.
   # If codex returns non-zero, we still keep the log and continue unless STOP exists.
-  Get-Content .\prompt.md -Raw | & $codexPath 2>&1 | Out-File -FilePath $log -Encoding utf8
+  $prompt = Get-Content .\prompt.md -Raw
+  $args = @("--dangerously-bypass-approvals-and-sandbox", "exec", "-C", (Get-Location))
+  if ($codexModel) { $args += @("--model", $codexModel) }
+  $prompt | & $codexPath @args 2>&1 | Out-File -FilePath $log -Encoding utf8
 
   if (Test-Path .\STOP) {
     Write-Host "STOP file found after run. Exiting."
