@@ -390,6 +390,34 @@ Known limitations:
 - Only workflows with top-level `step` statements and straight-line bodies are supported.
 - Effect calls require path-qualified names and literal arguments only.
 
+## Milestone 2026-01-17: M1.3 Typechecker (minimum to support Wuu-in-Wuu tools)
+
+Goal:
+
+- Add a minimal typechecker for the current AST subset (Int/Bool/String + nominal types) with deterministic errors.
+
+Changes made:
+
+- Added typechecker module and integrated it into `wuu check`: `src/typeck.rs`, `src/main.rs`, `src/lib.rs`.
+- Typechecks function signatures, let bindings, if conditions, return statements, and call arguments.
+- Added fixture-based typechecking tests: `tests/typeck_tests.rs`, `tests/typeck/*.wuu`, `tests/typeck/*.err`.
+
+Acceptance criteria:
+
+- `tests/typeck/*.wuu` cover success + deterministic error cases (arg counts/types, return mismatches, bad if conditions).
+- `wuu check` runs typechecking before effect checking.
+- `cargo test` passes.
+
+Validation (WSL):
+
+- `wsl -d Ubuntu -- bash -lc "cd /mnt/d/Desktop/Wuu && ./scripts/wsl-validate.sh"`
+
+Known limitations:
+
+- No generics or user-defined types yet; type names are nominal paths.
+- Functions without explicit return types are treated as returning `Unit`.
+- Qualified paths/calls in expressions are rejected for now.
+
 ## Tooling 2026-01-17: GitHub HTTPS `SSL_ERROR_SYSCALL` (Windows) workaround
 
 Issue observed:

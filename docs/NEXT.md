@@ -1,6 +1,6 @@
 # Next
 
-Target milestone: M1.3 Typechecker (minimum to support Wuu-in-Wuu tools)
+Target milestone: M2.x WASM backend (IR lowering + WASM codegen)
 
 Reference plan: `docs/wuu-lang/SELF_HOST_PLAN.md`
 

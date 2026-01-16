@@ -62,6 +62,7 @@ fn main() -> anyhow::Result<()> {
         Command::Check { path } => {
             let input = std::fs::read(&path)?;
             let module = wuu::parser::parse_module_bytes(&input)?;
+            wuu::typeck::check_module(&module)?;
             wuu::effects::check_module(&module)?;
         }
         Command::Run { path, entry } => {

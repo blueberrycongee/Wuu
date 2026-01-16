@@ -1,0 +1,11 @@
+fn flag() -> Bool {
+    return true;
+}
+
+fn main() -> Int {
+    if flag() {
+        return 1;
+    } else {
+        return 2;
+    }
+}

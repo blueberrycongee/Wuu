@@ -9,3 +9,4 @@ pub mod parser;
 pub mod replay;
 pub mod span;
 pub mod syntax;
+pub mod typeck;

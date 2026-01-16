@@ -1,0 +1,4 @@
+fn main() -> Int {
+    let flag: Bool = 1;
+    return 0;
+}
