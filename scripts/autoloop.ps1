@@ -30,6 +30,20 @@ function Resolve-CodexPath {
 
 $codexPath = Resolve-CodexPath
 
+function Invoke-GitSafe {
+  param(
+    [Parameter(Mandatory = $true)][string]$Args
+  )
+
+  # Windows PowerShell 5.1 treats native stderr output as error records when
+  # $ErrorActionPreference=Stop. Git writes some normal progress messages to stderr.
+  # Running through cmd.exe avoids turning stderr into terminating errors.
+  cmd /c ("git " + $Args + " 1>nul 2>nul")
+  if ($LASTEXITCODE -ne 0) {
+    throw ("git " + $Args + " failed with exit code " + $LASTEXITCODE)
+  }
+}
+
 function Get-CodexModelFromConfig {
   $cfg = Join-Path $env:USERPROFILE ".codex\\config.toml"
   if (!(Test-Path $cfg)) { return $null }
@@ -55,11 +69,8 @@ for ($i = 1; $i -le $MaxIters; $i++) {
   }
 
   # Enforce single-thread main-branch mode.
-  git checkout main | Out-Null
-  if ($LASTEXITCODE -ne 0) { throw "failed to checkout main" }
-  # Git frequently writes progress/info to stderr; merge streams so PowerShell doesn't treat it as an error.
-  $null = git pull --rebase origin main 2>&1
-  if ($LASTEXITCODE -ne 0) { throw "git pull --rebase failed" }
+  Invoke-GitSafe "checkout main"
+  Invoke-GitSafe "pull --rebase origin main"
 
   $before = (git rev-parse HEAD)
   $ts = Get-Date -Format "yyyyMMdd-HHmmss"
