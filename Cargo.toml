@@ -1,0 +1,16 @@
+[package]
+name = "wuu"
+version = "0.0.0"
+edition = "2024"
+license = "Apache-2.0"
+
+[dependencies]
+anyhow = "1.0.95"
+clap = { version = "4.5.27", features = ["derive"] }
+
+[dev-dependencies]
+pretty_assertions = "1.4.1"
+
+[profile.dev]
+debug = true
+
