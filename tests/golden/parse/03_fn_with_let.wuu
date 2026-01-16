@@ -1,0 +1,4 @@
+fn bind(x: Int) {
+    let y: Int = x;
+    y;
+}

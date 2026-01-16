@@ -1,5 +1,4 @@
-use std::fmt;
-
+use crate::error::ParseError;
 use crate::lexer::{Keyword, Token, TokenKind, lex};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -13,19 +12,6 @@ pub struct Decl {
     pub kind: DeclKind,
     pub items: Vec<String>,
 }
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ParseError {
-    pub message: String,
-}
-
-impl fmt::Display for ParseError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.message)
-    }
-}
-
-impl std::error::Error for ParseError {}
 
 fn is_ident_start(b: u8) -> bool {
     b.is_ascii_alphabetic() || b == b'_'
@@ -44,9 +30,7 @@ fn skip_ws(input: &[u8], mut i: usize) -> usize {
 
 fn parse_ident(input: &[u8], mut i: usize) -> Result<(String, usize), ParseError> {
     if i >= input.len() || !is_ident_start(input[i]) {
-        return Err(ParseError {
-            message: "invalid identifier".to_string(),
-        });
+        return Err(ParseError::new("invalid identifier"));
     }
     let start = i;
     i += 1;
@@ -55,9 +39,7 @@ fn parse_ident(input: &[u8], mut i: usize) -> Result<(String, usize), ParseError
     }
     Ok((
         std::str::from_utf8(&input[start..i])
-            .map_err(|_| ParseError {
-                message: "invalid identifier encoding".to_string(),
-            })?
+            .map_err(|_| ParseError::new("invalid identifier encoding"))?
             .to_string(),
         i,
     ))
@@ -70,9 +52,7 @@ fn parse_path(input: &[u8], mut i: usize) -> Result<(String, usize), ParseError>
     while i < input.len() && input[i] == b'.' {
         i += 1;
         if i >= input.len() {
-            return Err(ParseError {
-                message: "invalid path: trailing '.'".to_string(),
-            });
+            return Err(ParseError::new("invalid path: trailing '.'"));
         }
         let (seg, next) = parse_ident(input, i)?;
         parts.push(seg);
@@ -101,16 +81,12 @@ pub fn parse_decl(input: &str) -> Result<Decl, ParseError> {
     } else if let Some(j) = parse_keyword(bytes, i, b"requires") {
         (DeclKind::Requires, j)
     } else {
-        return Err(ParseError {
-            message: "expected 'effects' or 'requires'".to_string(),
-        });
+        return Err(ParseError::new("expected 'effects' or 'requires'"));
     };
 
     i = skip_ws(bytes, after_kw);
     if i >= bytes.len() || bytes[i] != b'{' {
-        return Err(ParseError {
-            message: "expected '{'".to_string(),
-        });
+        return Err(ParseError::new("expected '{'"));
     }
     i += 1;
 
@@ -118,9 +94,7 @@ pub fn parse_decl(input: &str) -> Result<Decl, ParseError> {
     loop {
         i = skip_ws(bytes, i);
         if i >= bytes.len() {
-            return Err(ParseError {
-                message: "unterminated declaration".to_string(),
-            });
+            return Err(ParseError::new("unterminated declaration"));
         }
 
         if bytes[i] == b'}' {
@@ -130,27 +104,22 @@ pub fn parse_decl(input: &str) -> Result<Decl, ParseError> {
 
         match kind {
             DeclKind::Effects => {
-                let (path, next) = parse_path(bytes, i).map_err(|e| ParseError {
-                    message: format!("invalid effects path: {e}"),
-                })?;
+                let (path, next) = parse_path(bytes, i)
+                    .map_err(|e| ParseError::new(format!("invalid effects path: {e}")))?;
                 items.push(path);
                 i = next;
             }
             DeclKind::Requires => {
-                let (left, next) = parse_ident(bytes, i).map_err(|e| ParseError {
-                    message: format!("invalid requires pair: {e}"),
-                })?;
+                let (left, next) = parse_ident(bytes, i)
+                    .map_err(|e| ParseError::new(format!("invalid requires pair: {e}")))?;
                 i = skip_ws(bytes, next);
                 if i >= bytes.len() || bytes[i] != b':' {
-                    return Err(ParseError {
-                        message: "invalid requires pair: expected ':'".to_string(),
-                    });
+                    return Err(ParseError::new("invalid requires pair: expected ':'"));
                 }
                 i += 1;
                 i = skip_ws(bytes, i);
-                let (right, next2) = parse_ident(bytes, i).map_err(|e| ParseError {
-                    message: format!("invalid requires pair: {e}"),
-                })?;
+                let (right, next2) = parse_ident(bytes, i)
+                    .map_err(|e| ParseError::new(format!("invalid requires pair: {e}")))?;
                 items.push(format!("{left}:{right}"));
                 i = next2;
             }
@@ -158,9 +127,7 @@ pub fn parse_decl(input: &str) -> Result<Decl, ParseError> {
 
         i = skip_ws(bytes, i);
         if i >= bytes.len() {
-            return Err(ParseError {
-                message: "unterminated declaration".to_string(),
-            });
+            return Err(ParseError::new("unterminated declaration"));
         }
         match bytes[i] {
             b',' => {
@@ -172,18 +139,14 @@ pub fn parse_decl(input: &str) -> Result<Decl, ParseError> {
                 break;
             }
             _ => {
-                return Err(ParseError {
-                    message: "invalid declaration: expected ',' or '}'".to_string(),
-                });
+                return Err(ParseError::new("invalid declaration: expected ',' or '}'"));
             }
         }
     }
 
     i = skip_ws(bytes, i);
     if i != bytes.len() {
-        return Err(ParseError {
-            message: "unexpected trailing input".to_string(),
-        });
+        return Err(ParseError::new("unexpected trailing input"));
     }
 
     Ok(Decl { kind, items })
@@ -202,9 +165,7 @@ pub fn format_decl(decl: &Decl) -> String {
 }
 
 pub fn format_source_bytes(input: &[u8]) -> Result<String, ParseError> {
-    let source = std::str::from_utf8(input).map_err(|_| ParseError {
-        message: "invalid utf-8".to_string(),
-    })?;
+    let source = std::str::from_utf8(input).map_err(|_| ParseError::new("invalid utf-8"))?;
     format_source(source)
 }
 
@@ -267,9 +228,7 @@ fn try_parse_decl_tokens(
             TokenKind::Punct('{') => depth += 1,
             TokenKind::Punct('}') => {
                 if depth == 0 {
-                    return Err(ParseError {
-                        message: "unterminated declaration".to_string(),
-                    });
+                    return Err(ParseError::new("unterminated declaration"));
                 }
                 depth -= 1;
                 if depth == 0 {
@@ -285,9 +244,7 @@ fn try_parse_decl_tokens(
     let end = match end {
         Some(end) => end,
         None => {
-            return Err(ParseError {
-                message: "unterminated declaration".to_string(),
-            });
+            return Err(ParseError::new("unterminated declaration"));
         }
     };
 

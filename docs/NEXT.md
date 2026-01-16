@@ -1,6 +1,6 @@
 # Next
 
-Target milestone: M0.2 Parser for Section 16 subset
+Target milestone: M0.3 Canonical formatter (AST -> text) + golden snapshots
 
 Reference plan: `docs/wuu-lang/SELF_HOST_PLAN.md`
 

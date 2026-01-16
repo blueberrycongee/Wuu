@@ -1,0 +1,11 @@
+workflow nested() {
+    if cond {
+        step "a" {
+            return;
+        }
+    } else {
+        loop {
+            return;
+        }
+    }
+}

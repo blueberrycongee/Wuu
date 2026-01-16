@@ -1,0 +1,7 @@
+fn branch(flag: Bool) {
+    if flag {
+        return;
+    } else {
+        return;
+    }
+}

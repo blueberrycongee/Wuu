@@ -1,0 +1,3 @@
+fn net() effects { Net.Http, Store.Kv, } {
+    return;
+}

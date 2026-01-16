@@ -1,0 +1,7 @@
+fn guarded(x: Int)
+pre: x
+post: x
+invariant: x
+{
+    return x;
+}

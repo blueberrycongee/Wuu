@@ -1,10 +1,5 @@
-use crate::syntax::ParseError;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Span {
-    pub start: usize,
-    pub end: usize,
-}
+use crate::error::ParseError;
+use crate::span::Span;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Keyword {
@@ -124,9 +119,11 @@ pub fn lex(input: &str) -> Result<Vec<Token>, ParseError> {
                     i += 1;
                 }
                 if !closed {
-                    return Err(ParseError {
-                        message: "unterminated block comment".to_string(),
-                    });
+                    return Err(ParseError::with_span(
+                        "unterminated block comment",
+                        Span { start, end: i },
+                        input,
+                    ));
                 }
                 tokens.push(Token {
                     kind: TokenKind::Comment,
@@ -147,9 +144,11 @@ pub fn lex(input: &str) -> Result<Vec<Token>, ParseError> {
                         if i < bytes.len() {
                             i += 1;
                         } else {
-                            return Err(ParseError {
-                                message: "unterminated string literal".to_string(),
-                            });
+                            return Err(ParseError::with_span(
+                                "unterminated string literal",
+                                Span { start, end: i },
+                                input,
+                            ));
                         }
                     }
                     b'"' => {
@@ -163,9 +162,11 @@ pub fn lex(input: &str) -> Result<Vec<Token>, ParseError> {
                 }
             }
             if !closed {
-                return Err(ParseError {
-                    message: "unterminated string literal".to_string(),
-                });
+                return Err(ParseError::with_span(
+                    "unterminated string literal",
+                    Span { start, end: i },
+                    input,
+                ));
             }
             tokens.push(Token {
                 kind: TokenKind::StringLiteral,
@@ -205,9 +206,10 @@ pub fn lex(input: &str) -> Result<Vec<Token>, ParseError> {
             continue;
         }
 
-        let ch = input[i..].chars().next().ok_or(ParseError {
-            message: "invalid utf-8".to_string(),
-        })?;
+        let ch = input[i..]
+            .chars()
+            .next()
+            .ok_or_else(|| ParseError::new("invalid utf-8"))?;
         let len = ch.len_utf8();
         tokens.push(Token {
             kind: TokenKind::Other,

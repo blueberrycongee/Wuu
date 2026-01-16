@@ -194,6 +194,42 @@ Validation:
 
 - `wsl -d Ubuntu -- bash -lc "cd /mnt/d/Desktop/Wuu && ./scripts/wsl-validate.sh"`
 
+## Milestone 2026-01-17: M0.2 Parser for Section 16 subset (AST exists)
+
+Goal:
+
+- Parse the Section 16 minimal subset into an AST with stable error spans.
+
+Changes made:
+
+- Added AST and parser modules: `src/ast.rs`, `src/parser.rs`.
+- Centralized parse errors and spans: `src/error.rs`, `src/span.rs`.
+- Wired `wuu check` to parse into an AST: `src/main.rs`.
+- Lexer now reports errors with spans: `src/lexer.rs`.
+- Formatter continues to use the lexer with shared error type: `src/syntax.rs`.
+- Added parser tests and golden parse fixtures:
+  - `tests/parser_tests.rs`
+  - `tests/golden_parse_tests.rs`
+  - `tests/golden/parse/*.wuu` (10 files)
+
+Acceptance criteria:
+
+- Unit tests cover parse success/failure with stable line/column spans.
+- At least 10 golden parse files under `tests/golden/parse/`.
+- `wuu check` parses a `.wuu` file into an AST.
+- `cargo test` passes.
+
+Validation (WSL):
+
+- `wsl -d Ubuntu -- bash -lc "cd /mnt/d/Desktop/Wuu && . /mnt/d/wuu-cache/cargo/env && RUSTUP_HOME=/mnt/d/wuu-cache/rustup cargo fmt --all"`
+- `wsl -d Ubuntu -- bash -lc "cd /mnt/d/Desktop/Wuu && . /mnt/d/wuu-cache/cargo/env && RUSTUP_HOME=/mnt/d/wuu-cache/rustup cargo clippy --all-targets -- -D warnings"`
+- `wsl -d Ubuntu -- bash -lc "cd /mnt/d/Desktop/Wuu && . /mnt/d/wuu-cache/cargo/env && RUSTUP_HOME=/mnt/d/wuu-cache/rustup cargo test"`
+
+Known limitations:
+
+- Expression parsing is minimal (identifiers, paths, string literals only).
+- String literal unescaping is not implemented yet.
+
 ## Next recommended tasks (pick one)
 
 0) Follow the closed-loop self-host plan

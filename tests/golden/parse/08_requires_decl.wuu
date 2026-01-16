@@ -1,0 +1,5 @@
+workflow req() requires { net:http, store:kv } {
+    step "s" {
+        return;
+    }
+}
