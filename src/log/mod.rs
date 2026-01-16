@@ -79,11 +79,34 @@ pub fn encode_record(record: &LogRecord) -> Result<Vec<u8>, LogError> {
     })
 }
 
+pub fn encode_log(records: &[LogRecord]) -> Result<Vec<u8>, LogError> {
+    let values = records.iter().map(encode_record_value).collect::<Vec<_>>();
+    let value = Value::Array(values);
+    serde_cbor::to_vec(&value).map_err(|err| LogError {
+        message: format!("encode error: {err}"),
+    })
+}
+
 pub fn decode_record(bytes: &[u8]) -> Result<LogRecord, LogError> {
     let value: Value = serde_cbor::from_slice(bytes).map_err(|err| LogError {
         message: format!("decode error: {err}"),
     })?;
     decode_record_value(value)
+}
+
+pub fn decode_log(bytes: &[u8]) -> Result<Vec<LogRecord>, LogError> {
+    let value: Value = serde_cbor::from_slice(bytes).map_err(|err| LogError {
+        message: format!("decode error: {err}"),
+    })?;
+    match value {
+        Value::Array(values) => values
+            .into_iter()
+            .map(decode_record_value)
+            .collect::<Result<Vec<_>, _>>(),
+        _ => Err(LogError {
+            message: "decode error: expected array".to_string(),
+        }),
+    }
 }
 
 fn encode_record_value(record: &LogRecord) -> Value {

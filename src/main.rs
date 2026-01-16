@@ -25,6 +25,22 @@ enum Command {
         #[arg(long)]
         entry: String,
     },
+    Workflow {
+        #[command(subcommand)]
+        cmd: WorkflowCommand,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+enum WorkflowCommand {
+    Replay {
+        #[arg(long)]
+        log: PathBuf,
+        #[arg(long)]
+        module: PathBuf,
+        #[arg(long)]
+        entry: String,
+    },
 }
 
 fn main() -> anyhow::Result<()> {
@@ -56,6 +72,13 @@ fn main() -> anyhow::Result<()> {
                 println!("{value}");
             }
         }
+        Command::Workflow { cmd } => match cmd {
+            WorkflowCommand::Replay { log, module, entry } => {
+                let module_src = std::fs::read(&module)?;
+                let module = wuu::parser::parse_module_bytes(&module_src)?;
+                wuu::replay::replay_workflow(&module, &entry, &log)?;
+            }
+        },
     }
 
     Ok(())

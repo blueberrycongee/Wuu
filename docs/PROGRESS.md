@@ -358,6 +358,38 @@ Known limitations:
 - The interpreter does not support loops, steps, or arithmetic yet.
 - Only single-segment function calls are supported in the interpreter.
 
+## Milestone 2026-01-17: M1.2 Workflow runtime (replay-only first)
+
+Goal:
+
+- Replay workflows against a recorded log and detect mismatches deterministically.
+
+Changes made:
+
+- Added replay runtime with log validation: `src/replay.rs`.
+- Log module can encode/decode full logs as CBOR sequences: `src/log/mod.rs`.
+- Added replay CLI: `wuu workflow replay --log <path> --module <path> --entry <workflow>` in `src/main.rs`.
+- Added replay fixtures and tests:
+  - `tests/replay/ok.wuu`
+  - `tests/replay_tests.rs`
+
+Acceptance criteria:
+
+- Replay succeeds with matching workflow + log.
+- Mismatched effect call fails deterministically.
+- `cargo test` passes.
+
+Validation (WSL):
+
+- `wsl -d Ubuntu -- bash -lc "cd /mnt/d/Desktop/Wuu && . /mnt/d/wuu-cache/cargo/env && RUSTUP_HOME=/mnt/d/wuu-cache/rustup cargo fmt --all"`
+- `wsl -d Ubuntu -- bash -lc "cd /mnt/d/Desktop/Wuu && . /mnt/d/wuu-cache/cargo/env && RUSTUP_HOME=/mnt/d/wuu-cache/rustup cargo clippy --all-targets -- -D warnings"`
+- `wsl -d Ubuntu -- bash -lc "cd /mnt/d/Desktop/Wuu && . /mnt/d/wuu-cache/cargo/env && RUSTUP_HOME=/mnt/d/wuu-cache/rustup cargo test"`
+
+Known limitations:
+
+- Only workflows with top-level `step` statements and straight-line bodies are supported.
+- Effect calls require path-qualified names and literal arguments only.
+
 ## Tooling 2026-01-17: GitHub HTTPS `SSL_ERROR_SYSCALL` (Windows) workaround
 
 Issue observed:

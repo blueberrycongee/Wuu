@@ -6,5 +6,6 @@ pub mod interpreter;
 pub mod lexer;
 pub mod log;
 pub mod parser;
+pub mod replay;
 pub mod span;
 pub mod syntax;

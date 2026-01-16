@@ -1,6 +1,6 @@
 # Next
 
-Target milestone: M1.2 Workflow runtime (replay-only first)
+Target milestone: M1.3 Typechecker (minimum to support Wuu-in-Wuu tools)
 
 Reference plan: `docs/wuu-lang/SELF_HOST_PLAN.md`
 
