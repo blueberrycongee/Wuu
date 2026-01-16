@@ -12,6 +12,7 @@ for ((i=1; i<=MAX_ITERS; i++)); do
     exit 0
   fi
 
+  before="$(git rev-parse HEAD)"
   ts="$(date +%Y%m%d-%H%M%S)"
   log="logs/codex-${ts}.log"
   echo "Iteration ${i}/${MAX_ITERS} -> ${log}"
@@ -26,12 +27,12 @@ for ((i=1; i<=MAX_ITERS; i++)); do
     exit 0
   fi
 
-  if [[ -z "$(git status --porcelain)" ]]; then
-    echo "No changes detected. Exiting."
+  after="$(git rev-parse HEAD)"
+  if [[ "${before}" == "${after}" ]]; then
+    echo "No new commit detected. Exiting."
     exit 0
   fi
 done
 
 echo "Max iterations reached. Exiting."
 exit 0
-

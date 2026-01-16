@@ -14,6 +14,7 @@ for ($i = 1; $i -le $MaxIters; $i++) {
     exit 0
   }
 
+  $before = (git rev-parse HEAD)
   $ts = Get-Date -Format "yyyyMMdd-HHmmss"
   $log = Join-Path "logs" ("codex-" + $ts + ".log")
 
@@ -28,14 +29,12 @@ for ($i = 1; $i -le $MaxIters; $i++) {
     exit 0
   }
 
-  # If no repo changes happened, stop to avoid infinite loops.
-  $status = git status --porcelain
-  if ([string]::IsNullOrWhiteSpace($status)) {
-    Write-Host "No changes detected. Exiting."
+  $after = (git rev-parse HEAD)
+  if ($before -eq $after) {
+    Write-Host "No new commit detected. Exiting."
     exit 0
   }
 }
 
 Write-Host "Max iterations reached. Exiting."
 exit 0
-

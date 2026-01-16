@@ -143,7 +143,25 @@ Validation:
 
 Known limitations:
 
-- `scripts/autoloop.ps1` stops if there are no git changes; it does not yet detect "blocked" states unless `STOP` is created.
+- The loop scripts stop if an iteration produces no new commit; they do not yet detect "blocked" states unless `STOP` is created.
+
+## Milestone 2026-01-16: GitHub repo + CI + Apache-2.0 license
+
+Goal:
+
+- Make the project clonable and runnable by others with a standard OSS license and CI checks.
+
+Changes made:
+
+- Initialized git repo and pushed to GitHub: `https://github.com/blueberrycongee/Wuu`
+- Added license: `LICENSE` (Apache-2.0) and updated `Cargo.toml` metadata.
+- Added CI workflow: `.github/workflows/ci.yml` (fmt + clippy -D warnings + test).
+- Updated autoloop scripts to stop when an iteration produces no new commit (requires Codex to commit+push per iteration).
+
+Validation:
+
+- Local (WSL): `cargo fmt --all`, `cargo clippy --all-targets -- -D warnings`, `cargo test`
+- Remote (GitHub Actions): runs on push/PR via `.github/workflows/ci.yml`
 
 ## Next recommended tasks (pick one)
 

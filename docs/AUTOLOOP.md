@@ -19,6 +19,14 @@ Stop conditions:
 - create a file named `STOP` in the repo root
 - or let the script hit its max-iterations limit
 
+This autoloop assumes each successful Codex iteration ends with:
+
+- green validation (fmt/clippy/test)
+- a git commit on `main`
+- a push to `origin/main`
+
+The scripts stop when an iteration does not produce a new commit.
+
 ## Alternative (bash)
 
 From WSL:
@@ -40,4 +48,4 @@ From WSL:
   - how to validate
   - known limitations
 - Update `docs/NEXT.md` with the next target
-
+- Commit and push if validation is green

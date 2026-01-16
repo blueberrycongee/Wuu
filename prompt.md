@@ -13,7 +13,11 @@ Your job is to advance the project toward self-hosting by following the closed-l
    - `cargo clippy --all-targets -- -D warnings`
    - `cargo test`
 5) After finishing a milestone, append a detailed entry to `docs/PROGRESS.md` and update `docs/NEXT.md`.
-6) Work as far as possible in one run, but stop if:
+6) After finishing a milestone with green validation, you MUST:
+   - `git add -A`
+   - `git commit -m "<milestone>: <short summary>"`
+   - `git push origin main`
+7) Work as far as possible in one run, but stop if:
    - a file named `STOP` exists in the repo root
    - you are blocked after 3 attempts (write a blocking report + next steps into `docs/PROGRESS.md`, then stop)
 
@@ -34,10 +38,10 @@ At the end of the run:
   - exact commands you ran to validate
   - limitations and follow-ups
 - Update `docs/NEXT.md` to the next milestone.
+- If validation is green: commit and push to `origin/main`.
 
 ## Preferred repo conventions
 
 - Keep changes minimal and focused to the current milestone.
 - Add new modules under `src/` with unit tests under `tests/`.
 - Prefer stable error messages and spans; tests should assert them.
-

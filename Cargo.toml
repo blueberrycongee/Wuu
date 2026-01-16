@@ -3,6 +3,8 @@ name = "wuu"
 version = "0.0.0"
 edition = "2024"
 license = "Apache-2.0"
+readme = "README.md"
+repository = "https://github.com/blueberrycongee/Wuu"
 
 [dependencies]
 anyhow = "1.0.95"
@@ -13,4 +15,3 @@ pretty_assertions = "1.4.1"
 
 [profile.dev]
 debug = true
-
