@@ -15,6 +15,8 @@ This repo is designed to be advanced by repeatedly running Codex with a stable p
 .\scripts\autoloop.ps1
 ```
 
+If `where codex` prints nothing in PowerShell, use `where.exe codex` (PowerShell's `where` can be an alias, not the Windows `where.exe`).
+
 Stop conditions:
 
 - create a file named `STOP` in the repo root
@@ -49,6 +51,8 @@ From WSL:
 ```bash
 ./scripts/autoloop.sh
 ```
+
+Note: `scripts/autoloop.sh` requires `codex` to be installed inside the WSL distro. If you only have the Windsurf/VScode-installed `codex.exe` on Windows, use the PowerShell loop instead.
 
 ## What Codex must do each iteration
 
