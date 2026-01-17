@@ -52,6 +52,8 @@ Host-provided pure string intrinsics are allowed for stage1:
 - `__str_take_whitespace`, `__str_take_ident`, `__str_take_number`
 - `__str_take_string_literal`, `__str_take_line_comment`, `__str_take_block_comment`
 - `__str_is_ident_start`, `__str_is_digit`, `__str_is_ascii`
+- `__pair_left`, `__pair_right`
+- `__lex_tokens`
 
 ## Forbidden Features
 

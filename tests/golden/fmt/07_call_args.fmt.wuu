@@ -1,0 +1,5 @@
+fn call(a: Int)
+{
+    foo.bar(1, "hi", a);
+    return;
+}

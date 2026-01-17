@@ -226,6 +226,9 @@ fn eval_builtin(name: &str, args: &[Value]) -> Option<Result<Value, RunError>> {
         "__str_is_ident_start" => Some(eval_str_is_ident_start(args)),
         "__str_is_digit" => Some(eval_str_is_digit(args)),
         "__str_is_ascii" => Some(eval_str_is_ascii(args)),
+        "__pair_left" => Some(eval_pair_left(args)),
+        "__pair_right" => Some(eval_pair_right(args)),
+        "__lex_tokens" => Some(eval_lex_tokens(args)),
         _ => None,
     }
 }
@@ -462,6 +465,70 @@ fn eval_str_is_ascii(args: &[Value]) -> Result<Value, RunError> {
     let value = expect_string_arg(args, 0, "__str_is_ascii")?;
     let ch = expect_single_char(value, "__str_is_ascii")?;
     Ok(Value::Bool(ch.is_ascii()))
+}
+
+fn eval_pair_left(args: &[Value]) -> Result<Value, RunError> {
+    expect_arg_count(args, 1, "__pair_left")?;
+    let value = expect_string_arg(args, 0, "__pair_left")?;
+    let sep = "\n<SEP>\n";
+    match value.find(sep) {
+        Some(index) => Ok(Value::String(value[..index].to_string())),
+        None => Ok(Value::String(value.to_string())),
+    }
+}
+
+fn eval_pair_right(args: &[Value]) -> Result<Value, RunError> {
+    expect_arg_count(args, 1, "__pair_right")?;
+    let value = expect_string_arg(args, 0, "__pair_right")?;
+    let sep = "\n<SEP>\n";
+    match value.find(sep) {
+        Some(index) => Ok(Value::String(value[index + sep.len()..].to_string())),
+        None => Ok(Value::String(String::new())),
+    }
+}
+
+fn eval_lex_tokens(args: &[Value]) -> Result<Value, RunError> {
+    expect_arg_count(args, 1, "__lex_tokens")?;
+    let source = expect_string_arg(args, 0, "__lex_tokens")?;
+    let tokens = crate::lexer::lex(source).map_err(|err| RunError {
+        message: format!("__lex_tokens failed: {err}"),
+    })?;
+
+    let mut lines = Vec::new();
+    for token in tokens {
+        match token.kind {
+            crate::lexer::TokenKind::Whitespace | crate::lexer::TokenKind::Comment => continue,
+            crate::lexer::TokenKind::Keyword(_) => {
+                let text = token_text(source, &token);
+                lines.push(format!("Keyword {text}"));
+            }
+            crate::lexer::TokenKind::Ident => {
+                let text = token_text(source, &token);
+                lines.push(format!("Ident {text}"));
+            }
+            crate::lexer::TokenKind::Number => {
+                let text = token_text(source, &token);
+                lines.push(format!("Number {text}"));
+            }
+            crate::lexer::TokenKind::StringLiteral => {
+                let text = token_text(source, &token);
+                lines.push(format!("StringLiteral {text}"));
+            }
+            crate::lexer::TokenKind::Punct(ch) => {
+                lines.push(format!("Punct {ch}"));
+            }
+            crate::lexer::TokenKind::Other => {
+                let text = token_text(source, &token);
+                lines.push(format!("Other {text}"));
+            }
+        }
+    }
+
+    Ok(Value::String(lines.join("\n")))
+}
+
+fn token_text<'a>(source: &'a str, token: &crate::lexer::Token) -> &'a str {
+    &source[token.span.start..token.span.end]
 }
 
 fn is_ident_start(b: u8) -> bool {

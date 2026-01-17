@@ -238,5 +238,20 @@ fn format_expr(expr: &Expr) -> String {
 }
 
 fn format_string_literal(value: &str) -> String {
-    format!("\"{value}\"")
+    format!("\"{}\"", escape_string(value))
+}
+
+fn escape_string(value: &str) -> String {
+    let mut out = String::new();
+    for ch in value.chars() {
+        match ch {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            _ => out.push(ch),
+        }
+    }
+    out
 }

@@ -630,6 +630,43 @@ Known limitations:
 - Stage1 lexer relies on host-provided string intrinsics for scanning.
 - Stage1 parser/formatter remain stubs (tracked in M4.6).
 
+## Milestone 2026-01-17: M4.6 Wuu-in-Wuu: parser + formatter (real)
+
+Goal:
+
+- Replace stage1 parser/formatter stubs with real parsing and formatting for the subset.
+
+Changes made:
+
+- Added a new golden fmt fixture that exercises call expressions:
+  - `tests/golden/fmt/07_call_args.wuu`
+  - `tests/golden/fmt/07_call_args.fmt.wuu`
+- Added a string-literal escape fixture and updated formatter escaping:
+  - `tests/golden/fmt/08_string_escape.wuu`
+  - `tests/golden/fmt/08_string_escape.fmt.wuu`
+  - `src/format.rs` now re-escapes `\\`, `"`, `\n`, `\r`, and `\t`.
+- Implemented stage1 tokenizing parser/formatter in Wuu:
+  - `selfhost/parser.wuu`
+  - `selfhost/format.wuu`
+  These now lex, parse, and format the subset instead of table-driven matching.
+- Added host intrinsics for pair splitting to keep stage1 parsing from
+  overflowing the stack on large inputs: `__pair_left`, `__pair_right`.
+- Added a host lexer intrinsic to avoid deep recursion when tokenizing
+  large stage1 sources: `__lex_tokens`.
+
+Acceptance criteria:
+
+- Stage1 formatter output matches stage0 for all `tests/golden/fmt/*.wuu`.
+- `cargo test` passes.
+
+Validation (WSL):
+
+- `wsl -d Ubuntu -- bash -lc "cd /mnt/d/Desktop/Wuu && ./scripts/wsl-validate.sh"`
+
+Known limitations:
+
+- Stage1 parser uses a string-encoded token stream and recursive descent (no AST data type yet).
+
 ## Tooling 2026-01-17: GitHub HTTPS `SSL_ERROR_SYSCALL` (Windows) workaround
 
 Issue observed:

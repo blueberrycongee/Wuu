@@ -1,6 +1,6 @@
 # Next
 
-Target milestone: M4.6 Wuu-in-Wuu: parser + formatter (real)
+Target milestone: None (M4.6 complete; awaiting next plan)
 
 Reference plan: `docs/wuu-lang/SELF_HOST_PLAN.md`
 

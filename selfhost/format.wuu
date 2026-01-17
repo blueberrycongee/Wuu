@@ -1,39 +1,851 @@
 fn format(source: String) -> String {
-    if __str_eq(source, "fn  add( x:Int,y: Int)->Int{let z= x;return z;}\r\n") {
-        return "fn add(x: Int, y: Int) -> Int\n{\n    let z = x;\n    return z;\n}\n";
-    } else {
-        if __str_eq(
-            source,
-            "workflow run( )->Bool effects{Net.Http,Store.Kv,} pre: ok post:ok {step \"s\"{return;}}\r\n",
-        ) {
-            return "workflow run() -> Bool\neffects { Net.Http, Store.Kv }\npre: ok\npost: ok\n{\n    step \"s\"\n    {\n        return;\n    }\n}\n";
-        } else {
-            if __str_eq(
-                source,
-                "fn decide(flag: Bool){if flag{loop{return;}}else{return flag;}}\r\n",
-            ) {
-                return "fn decide(flag: Bool)\n{\n    if flag\n    {\n        loop\n        {\n            return;\n        }\n    }\n    else\n    {\n        return flag;\n    }\n}\n";
-            } else {
-                if __str_eq(
-                    source,
-                    "workflow req()requires{net:http,store:kv,}{step \"x\"{return;}}\r\n",
-                ) {
-                    return "workflow req()\nrequires { net:http, store:kv }\n{\n    step \"x\"\n    {\n        return;\n    }\n}\n";
-                } else {
-                    if __str_eq(source, "fn log(){ \"hi\";return;}\r\n") {
-                        return "fn log()\n{\n    \"hi\";\n    return;\n}\n";
-                    } else {
-                        if __str_eq(
-                            source,
-                            "fn empty(){}\nworkflow empty_wf(){step \"s\"{}}\r\n",
-                        ) {
-                            return "fn empty()\n{\n}\n\nworkflow empty_wf()\n{\n    step \"s\"\n    {\n    }\n}\n";
-                        } else {
-                            return source;
-                        }
-                    }
-                }
-            }
+    let tokens = __lex_tokens(source);
+    let result = parse_module(tokens, "");
+    return pair_left(result);
+}
+
+fn parse_module(tokens: String, indent: String) -> String {
+    if __str_is_empty(tokens) {
+        return pair("", tokens);
+    }
+
+    let item_pair = parse_item(tokens, indent);
+    let item_text = pair_left(item_pair);
+    let rest_tokens = pair_right(item_pair);
+    if __str_is_empty(rest_tokens) {
+        return pair(item_text, rest_tokens);
+    }
+
+    let next_pair = parse_module(rest_tokens, indent);
+    let next_text = pair_left(next_pair);
+    let next_rest = pair_right(next_pair);
+    let gap = __str_concat(item_text, "\n");
+    let joined = __str_concat(gap, next_text);
+    return pair(joined, next_rest);
+}
+
+fn parse_item(tokens: String, indent: String) -> String {
+    if token_is_keyword(tokens, "fn") {
+        return parse_fn_like(tokens, indent, "fn");
+    }
+    if token_is_keyword(tokens, "workflow") {
+        return parse_fn_like(tokens, indent, "workflow");
+    }
+    return pair("", tokens);
+}
+
+fn parse_fn_like(tokens: String, indent: String, keyword: String) -> String {
+    let after_kw = consume_keyword(tokens, keyword);
+    let name_pair = take_ident(after_kw);
+    let name = pair_left(name_pair);
+    let after_name = pair_right(name_pair);
+
+    let params_pair = parse_params(after_name);
+    let params = pair_left(params_pair);
+    let after_params = pair_right(params_pair);
+
+    let return_pair = parse_return_type(after_params);
+    let return_text = pair_left(return_pair);
+    let after_return = pair_right(return_pair);
+
+    let effects_pair = parse_effects_decl(after_return, indent);
+    let effects_lines = pair_left(effects_pair);
+    let after_effects = pair_right(effects_pair);
+
+    let contracts_pair = parse_contracts(after_effects, indent);
+    let contract_lines = pair_left(contracts_pair);
+    let after_contracts = pair_right(contracts_pair);
+
+    let block_pair = parse_block(after_contracts, indent);
+    let block_text = pair_left(block_pair);
+    let after_block = pair_right(block_pair);
+
+    let signature = format_signature(keyword, name, params, return_text);
+    let header = line(indent, signature);
+
+    let with_effects = __str_concat(header, effects_lines);
+    let with_contracts = __str_concat(with_effects, contract_lines);
+    let full_text = __str_concat(with_contracts, block_text);
+    return pair(full_text, after_block);
+}
+
+fn format_signature(keyword: String, name: String, params: String, ret: String) -> String {
+    let base = __str_concat(keyword, " ");
+    let base = __str_concat(base, name);
+    let base = __str_concat(base, "(");
+    let base = __str_concat(base, params);
+    let base = __str_concat(base, ")");
+    return __str_concat(base, ret);
+}
+
+fn parse_params(tokens: String) -> String {
+    let after_open = consume_punct(tokens, "(");
+    if token_is_punct(after_open, ")") {
+        let rest = consume_punct(after_open, ")");
+        return pair("", rest);
+    }
+
+    let first_pair = parse_param(after_open);
+    let first = pair_left(first_pair);
+    let rest = pair_right(first_pair);
+    return parse_params_tail(first, rest);
+}
+
+fn parse_params_tail(current: String, tokens: String) -> String {
+    if token_is_punct(tokens, ",") {
+        let after_comma = token_rest(tokens);
+        if token_is_punct(after_comma, ")") {
+            let rest = consume_punct(after_comma, ")");
+            return pair(current, rest);
+        }
+        let next_pair = parse_param(after_comma);
+        let next = pair_left(next_pair);
+        let rest = pair_right(next_pair);
+        let combined = __str_concat(current, ", ");
+        let combined = __str_concat(combined, next);
+        return parse_params_tail(combined, rest);
+    }
+    let rest = consume_punct(tokens, ")");
+    return pair(current, rest);
+}
+
+fn parse_param(tokens: String) -> String {
+    let name_pair = take_ident(tokens);
+    let name = pair_left(name_pair);
+    let after_name = pair_right(name_pair);
+    let after_colon = consume_punct(after_name, ":");
+    let type_pair = parse_type(after_colon);
+    let ty = pair_left(type_pair);
+    let rest = pair_right(type_pair);
+    let combined = __str_concat(name, ": ");
+    let combined = __str_concat(combined, ty);
+    return pair(combined, rest);
+}
+
+fn parse_return_type(tokens: String) -> String {
+    if starts_with_arrow(tokens) {
+        let after_dash = consume_punct(tokens, "-");
+        let after_arrow = consume_punct(after_dash, ">");
+        let type_pair = parse_type(after_arrow);
+        let ty = pair_left(type_pair);
+        let rest = pair_right(type_pair);
+        let ret = __str_concat(" -> ", ty);
+        return pair(ret, rest);
+    }
+    return pair("", tokens);
+}
+
+fn starts_with_arrow(tokens: String) -> Bool {
+    if token_is_punct(tokens, "-") {
+        let rest = token_rest(tokens);
+        if token_is_punct(rest, ">") {
+            return true;
         }
     }
+    return false;
+}
+
+fn parse_effects_decl(tokens: String, indent: String) -> String {
+    if token_is_keyword(tokens, "effects") {
+        let after_kw = consume_keyword(tokens, "effects");
+        let after_open = consume_punct(after_kw, "{");
+        if token_is_punct(after_open, "}") {
+            let rest = consume_punct(after_open, "}");
+            let line_text = line(indent, "effects {}");
+            return pair(line_text, rest);
+        }
+        let list_pair = parse_path_list(after_open);
+        let list = pair_left(list_pair);
+        let after_list = pair_right(list_pair);
+        let rest = consume_punct(after_list, "}");
+        let line_text = __str_concat("effects { ", list);
+        let line_text = __str_concat(line_text, " }");
+        let line_text = line(indent, line_text);
+        return pair(line_text, rest);
+    }
+
+    if token_is_keyword(tokens, "requires") {
+        let after_kw = consume_keyword(tokens, "requires");
+        let after_open = consume_punct(after_kw, "{");
+        if token_is_punct(after_open, "}") {
+            let rest = consume_punct(after_open, "}");
+            let line_text = line(indent, "requires {}");
+            return pair(line_text, rest);
+        }
+        let list_pair = parse_require_list(after_open);
+        let list = pair_left(list_pair);
+        let after_list = pair_right(list_pair);
+        let rest = consume_punct(after_list, "}");
+        let line_text = __str_concat("requires { ", list);
+        let line_text = __str_concat(line_text, " }");
+        let line_text = line(indent, line_text);
+        return pair(line_text, rest);
+    }
+
+    return pair("", tokens);
+}
+
+fn parse_path_list(tokens: String) -> String {
+    let path_pair = parse_path(tokens);
+    let path = pair_left(path_pair);
+    let rest = pair_right(path_pair);
+    if token_is_punct(rest, ",") {
+        let after_comma = token_rest(rest);
+        if token_is_punct(after_comma, "}") {
+            return pair(path, after_comma);
+        }
+        let tail_pair = parse_path_list(after_comma);
+        let tail = pair_left(tail_pair);
+        let rest2 = pair_right(tail_pair);
+        let combined = __str_concat(path, ", ");
+        let combined = __str_concat(combined, tail);
+        return pair(combined, rest2);
+    }
+    return pair(path, rest);
+}
+
+fn parse_require_list(tokens: String) -> String {
+    let left_pair = take_ident(tokens);
+    let left = pair_left(left_pair);
+    let after_left = pair_right(left_pair);
+    let after_colon = consume_punct(after_left, ":");
+    let right_pair = take_ident(after_colon);
+    let right = pair_left(right_pair);
+    let rest = pair_right(right_pair);
+    let combined = __str_concat(left, ":");
+    let combined = __str_concat(combined, right);
+    if token_is_punct(rest, ",") {
+        let after_comma = token_rest(rest);
+        if token_is_punct(after_comma, "}") {
+            return pair(combined, after_comma);
+        }
+        let tail_pair = parse_require_list(after_comma);
+        let tail = pair_left(tail_pair);
+        let rest2 = pair_right(tail_pair);
+        let full = __str_concat(combined, ", ");
+        let full = __str_concat(full, tail);
+        return pair(full, rest2);
+    }
+    return pair(combined, rest);
+}
+
+fn parse_contracts(tokens: String, indent: String) -> String {
+    if token_is_keyword(tokens, "pre") {
+        return parse_contract(tokens, indent, "pre");
+    }
+    if token_is_keyword(tokens, "post") {
+        return parse_contract(tokens, indent, "post");
+    }
+    if token_is_keyword(tokens, "invariant") {
+        return parse_contract(tokens, indent, "invariant");
+    }
+    return pair("", tokens);
+}
+
+fn parse_contract(tokens: String, indent: String, keyword: String) -> String {
+    let after_kw = consume_keyword(tokens, keyword);
+    let after_colon = consume_punct(after_kw, ":");
+    let expr_pair = parse_expr(after_colon);
+    let expr = pair_left(expr_pair);
+    let rest = pair_right(expr_pair);
+    let line_text = __str_concat(keyword, ": ");
+    let line_text = __str_concat(line_text, expr);
+    let line_text = line(indent, line_text);
+
+    let tail_pair = parse_contracts(rest, indent);
+    let tail_text = pair_left(tail_pair);
+    let tail_rest = pair_right(tail_pair);
+
+    let combined = __str_concat(line_text, tail_text);
+    return pair(combined, tail_rest);
+}
+
+fn parse_block(tokens: String, indent: String) -> String {
+    let after_open = consume_punct(tokens, "{");
+    let open_line = line(indent, "{");
+    let inner = indent_more(indent);
+
+    let stmt_pair = parse_stmt_list(after_open, inner);
+    let stmts = pair_left(stmt_pair);
+    let rest = pair_right(stmt_pair);
+
+    let after_close = consume_punct(rest, "}");
+    let close_line = line(indent, "}");
+    let full = __str_concat(open_line, stmts);
+    let full = __str_concat(full, close_line);
+    return pair(full, after_close);
+}
+
+fn parse_stmt_list(tokens: String, indent: String) -> String {
+    if token_is_punct(tokens, "}") {
+        return pair("", tokens);
+    }
+    let stmt_pair = parse_stmt(tokens, indent);
+    let stmt_text = pair_left(stmt_pair);
+    let rest = pair_right(stmt_pair);
+
+    let tail_pair = parse_stmt_list(rest, indent);
+    let tail_text = pair_left(tail_pair);
+    let tail_rest = pair_right(tail_pair);
+
+    let combined = __str_concat(stmt_text, tail_text);
+    return pair(combined, tail_rest);
+}
+
+fn parse_stmt(tokens: String, indent: String) -> String {
+    if token_is_keyword(tokens, "let") {
+        let after_kw = consume_keyword(tokens, "let");
+        let name_pair = take_ident(after_kw);
+        let name = pair_left(name_pair);
+        let after_name = pair_right(name_pair);
+        if token_is_punct(after_name, ":") {
+            let after_colon = token_rest(after_name);
+            let type_pair = parse_type(after_colon);
+            let ty = pair_left(type_pair);
+            let after_type = pair_right(type_pair);
+            let after_eq = consume_punct(after_type, "=");
+            let expr_pair = parse_expr(after_eq);
+            let expr = pair_left(expr_pair);
+            let after_expr = pair_right(expr_pair);
+            let rest = consume_punct(after_expr, ";");
+            let line_text = __str_concat("let ", name);
+            let line_text = __str_concat(line_text, ": ");
+            let line_text = __str_concat(line_text, ty);
+            let line_text = __str_concat(line_text, " = ");
+            let line_text = __str_concat(line_text, expr);
+            let line_text = __str_concat(line_text, ";");
+            let line_text = line(indent, line_text);
+            return pair(line_text, rest);
+        }
+
+        let after_eq = consume_punct(after_name, "=");
+        let expr_pair = parse_expr(after_eq);
+        let expr = pair_left(expr_pair);
+        let after_expr = pair_right(expr_pair);
+        let rest = consume_punct(after_expr, ";");
+        let line_text = __str_concat("let ", name);
+        let line_text = __str_concat(line_text, " = ");
+        let line_text = __str_concat(line_text, expr);
+        let line_text = __str_concat(line_text, ";");
+        let line_text = line(indent, line_text);
+        return pair(line_text, rest);
+    }
+
+    if token_is_keyword(tokens, "return") {
+        let after_kw = consume_keyword(tokens, "return");
+        if token_is_punct(after_kw, ";") {
+            let rest = consume_punct(after_kw, ";");
+            let line_text = line(indent, "return;");
+            return pair(line_text, rest);
+        }
+        let expr_pair = parse_expr(after_kw);
+        let expr = pair_left(expr_pair);
+        let after_expr = pair_right(expr_pair);
+        let rest = consume_punct(after_expr, ";");
+        let line_text = __str_concat("return ", expr);
+        let line_text = __str_concat(line_text, ";");
+        let line_text = line(indent, line_text);
+        return pair(line_text, rest);
+    }
+
+    if token_is_keyword(tokens, "if") {
+        let after_kw = consume_keyword(tokens, "if");
+        let expr_pair = parse_expr(after_kw);
+        let expr = pair_left(expr_pair);
+        let after_expr = pair_right(expr_pair);
+        let line_text = __str_concat("if ", expr);
+        let line_text = line(indent, line_text);
+
+        let then_pair = parse_block(after_expr, indent);
+        let then_text = pair_left(then_pair);
+        let after_then = pair_right(then_pair);
+
+        if token_is_keyword(after_then, "else") {
+            let after_else = consume_keyword(after_then, "else");
+            let else_line = line(indent, "else");
+            let else_pair = parse_block(after_else, indent);
+            let else_text = pair_left(else_pair);
+            let after_else_block = pair_right(else_pair);
+            let combined = __str_concat(line_text, then_text);
+            let combined = __str_concat(combined, else_line);
+            let combined = __str_concat(combined, else_text);
+            return pair(combined, after_else_block);
+        }
+
+        let combined = __str_concat(line_text, then_text);
+        return pair(combined, after_then);
+    }
+
+    if token_is_keyword(tokens, "loop") {
+        let after_kw = consume_keyword(tokens, "loop");
+        let header = line(indent, "loop");
+        let body_pair = parse_block(after_kw, indent);
+        let body = pair_left(body_pair);
+        let rest = pair_right(body_pair);
+        let combined = __str_concat(header, body);
+        return pair(combined, rest);
+    }
+
+    if token_is_keyword(tokens, "step") {
+        let after_kw = consume_keyword(tokens, "step");
+        let label_pair = take_string_literal(after_kw);
+        let label = pair_left(label_pair);
+        let after_label = pair_right(label_pair);
+        let header = __str_concat("step ", label);
+        let header = line(indent, header);
+        let body_pair = parse_block(after_label, indent);
+        let body = pair_left(body_pair);
+        let rest = pair_right(body_pair);
+        let combined = __str_concat(header, body);
+        return pair(combined, rest);
+    }
+
+    let expr_pair = parse_expr(tokens);
+    let expr = pair_left(expr_pair);
+    let after_expr = pair_right(expr_pair);
+    let rest = consume_punct(after_expr, ";");
+    let line_text = __str_concat(expr, ";");
+    let line_text = line(indent, line_text);
+    return pair(line_text, rest);
+}
+
+fn parse_expr(tokens: String) -> String {
+    if token_is_number(tokens) {
+        let number_pair = take_number(tokens);
+        return number_pair;
+    }
+    if token_is_string(tokens) {
+        let string_pair = take_string_literal(tokens);
+        return string_pair;
+    }
+    if token_is_ident(tokens) {
+        let ident_pair = take_ident(tokens);
+        let ident = pair_left(ident_pair);
+        let rest = pair_right(ident_pair);
+        if is_bool_literal(ident, rest) {
+            return pair(ident, rest);
+        }
+        let path_pair = parse_path_tail(ident, rest);
+        let path = pair_left(path_pair);
+        let after_path = pair_right(path_pair);
+        if token_is_punct(after_path, "(") {
+            let after_open = consume_punct(after_path, "(");
+            let args_pair = parse_call_args(after_open);
+            let args = pair_left(args_pair);
+            let rest_tokens = pair_right(args_pair);
+            let call = __str_concat(path, "(");
+            let call = __str_concat(call, args);
+            let call = __str_concat(call, ")");
+            return pair(call, rest_tokens);
+        }
+        return pair(path, after_path);
+    }
+    return pair("", tokens);
+}
+
+fn parse_call_args(tokens: String) -> String {
+    if token_is_punct(tokens, ")") {
+        let rest = consume_punct(tokens, ")");
+        return pair("", rest);
+    }
+
+    let expr_pair = parse_expr(tokens);
+    let expr = pair_left(expr_pair);
+    let rest = pair_right(expr_pair);
+    return parse_expr_list_tail(expr, rest);
+}
+
+fn parse_expr_list_tail(current: String, tokens: String) -> String {
+    if token_is_punct(tokens, ",") {
+        let after_comma = token_rest(tokens);
+        if token_is_punct(after_comma, ")") {
+            let rest = consume_punct(after_comma, ")");
+            return pair(current, rest);
+        }
+        let next_pair = parse_expr(after_comma);
+        let next = pair_left(next_pair);
+        let rest = pair_right(next_pair);
+        let combined = __str_concat(current, ", ");
+        let combined = __str_concat(combined, next);
+        return parse_expr_list_tail(combined, rest);
+    }
+    let rest = consume_punct(tokens, ")");
+    return pair(current, rest);
+}
+
+fn parse_path(tokens: String) -> String {
+    let first_pair = take_ident(tokens);
+    let first = pair_left(first_pair);
+    let rest = pair_right(first_pair);
+    return parse_path_tail(first, rest);
+}
+
+fn parse_path_tail(current: String, tokens: String) -> String {
+    if token_is_punct(tokens, ".") {
+        let after_dot = token_rest(tokens);
+        let next_pair = take_ident(after_dot);
+        let next = pair_left(next_pair);
+        let rest = pair_right(next_pair);
+        let combined = __str_concat(current, ".");
+        let combined = __str_concat(combined, next);
+        return parse_path_tail(combined, rest);
+    }
+    return pair(current, tokens);
+}
+
+fn parse_type(tokens: String) -> String {
+    return parse_path(tokens);
+}
+
+fn is_bool_literal(text: String, tokens: String) -> Bool {
+    if __str_eq(text, "true") {
+        if token_is_punct(tokens, ".") {
+            return false;
+        }
+        if token_is_punct(tokens, "(") {
+            return false;
+        }
+        return true;
+    }
+    if __str_eq(text, "false") {
+        if token_is_punct(tokens, ".") {
+            return false;
+        }
+        if token_is_punct(tokens, "(") {
+            return false;
+        }
+        return true;
+    }
+    return false;
+}
+
+fn line(indent: String, text: String) -> String {
+    let line = __str_concat(indent, text);
+    return __str_concat(line, "\n");
+}
+
+fn indent_more(indent: String) -> String {
+    return __str_concat(indent, "    ");
+}
+
+fn pair(left: String, right: String) -> String {
+    let sep = "\n<SEP>\n";
+    let combined = __str_concat(left, sep);
+    return __str_concat(combined, right);
+}
+
+fn pair_left(value: String) -> String {
+    return __pair_left(value);
+}
+
+fn pair_right(value: String) -> String {
+    return __pair_right(value);
+}
+
+fn take_until_sep(value: String) -> String {
+    if __str_is_empty(value) {
+        return "";
+    }
+    if __str_starts_with(value, "\n<SEP>\n") {
+        return "";
+    }
+    let head = __str_head(value);
+    let tail = __str_tail(value);
+    let rest = take_until_sep(tail);
+    return __str_concat(head, rest);
+}
+
+fn drop_until_sep(value: String) -> String {
+    if __str_is_empty(value) {
+        return "";
+    }
+    if __str_starts_with(value, "\n<SEP>\n") {
+        return __str_strip_prefix(value, "\n<SEP>\n");
+    }
+    return drop_until_sep(__str_tail(value));
+}
+
+fn split_line(value: String) -> String {
+    if __str_is_empty(value) {
+        return pair("", "");
+    }
+    let head = __str_head(value);
+    if __str_eq(head, "\n") {
+        let rest = __str_tail(value);
+        return pair("", rest);
+    }
+    let next = split_line(__str_tail(value));
+    let line = pair_left(next);
+    let rest = pair_right(next);
+    let combined = __str_concat(head, line);
+    return pair(combined, rest);
+}
+
+fn first_line(tokens: String) -> String {
+    let split = split_line(tokens);
+    return pair_left(split);
+}
+
+fn rest_lines(tokens: String) -> String {
+    let split = split_line(tokens);
+    return pair_right(split);
+}
+
+fn token_is_keyword(tokens: String, keyword: String) -> Bool {
+    if __str_is_empty(tokens) {
+        return false;
+    }
+    let line = first_line(tokens);
+    let expected = __str_concat("Keyword ", keyword);
+    return __str_eq(line, expected);
+}
+
+fn token_is_ident(tokens: String) -> Bool {
+    if __str_is_empty(tokens) {
+        return false;
+    }
+    let line = first_line(tokens);
+    return __str_starts_with(line, "Ident ");
+}
+
+fn token_is_number(tokens: String) -> Bool {
+    if __str_is_empty(tokens) {
+        return false;
+    }
+    let line = first_line(tokens);
+    return __str_starts_with(line, "Number ");
+}
+
+fn token_is_string(tokens: String) -> Bool {
+    if __str_is_empty(tokens) {
+        return false;
+    }
+    let line = first_line(tokens);
+    return __str_starts_with(line, "StringLiteral ");
+}
+
+fn token_is_punct(tokens: String, ch: String) -> Bool {
+    if __str_is_empty(tokens) {
+        return false;
+    }
+    let line = first_line(tokens);
+    let expected = __str_concat("Punct ", ch);
+    return __str_eq(line, expected);
+}
+
+fn token_rest(tokens: String) -> String {
+    return rest_lines(tokens);
+}
+
+fn take_ident(tokens: String) -> String {
+    let line = first_line(tokens);
+    let rest = rest_lines(tokens);
+    let text = __str_strip_prefix(line, "Ident ");
+    return pair(text, rest);
+}
+
+fn take_number(tokens: String) -> String {
+    let line = first_line(tokens);
+    let rest = rest_lines(tokens);
+    let text = __str_strip_prefix(line, "Number ");
+    return pair(text, rest);
+}
+
+fn take_string_literal(tokens: String) -> String {
+    let line = first_line(tokens);
+    let rest = rest_lines(tokens);
+    let text = __str_strip_prefix(line, "StringLiteral ");
+    return pair(text, rest);
+}
+
+fn consume_keyword(tokens: String, keyword: String) -> String {
+    if token_is_keyword(tokens, keyword) {
+        return rest_lines(tokens);
+    }
+    return tokens;
+}
+
+fn consume_punct(tokens: String, ch: String) -> String {
+    if token_is_punct(tokens, ch) {
+        return rest_lines(tokens);
+    }
+    return tokens;
+}
+
+fn lex_tokens(source: String) -> String {
+    let trimmed = skip_trivia(source);
+    if __str_is_empty(trimmed) {
+        return "";
+    }
+
+    if __str_starts_with(trimmed, "\"") {
+        let literal = __str_take_string_literal(trimmed);
+        let rest = __str_strip_prefix(trimmed, literal);
+        let line = make_token_line("StringLiteral", literal);
+        let rest_lines = lex_tokens(rest);
+        return join_lines(line, rest_lines);
+    }
+
+    let head = __str_head(trimmed);
+    if __str_is_ident_start(head) {
+        let ident = __str_take_ident(trimmed);
+        let rest = __str_strip_prefix(trimmed, ident);
+        let line = keyword_or_ident_line(ident);
+        let rest_lines = lex_tokens(rest);
+        return join_lines(line, rest_lines);
+    }
+
+    if __str_is_digit(head) {
+        let number = __str_take_number(trimmed);
+        let rest = __str_strip_prefix(trimmed, number);
+        let line = make_token_line("Number", number);
+        let rest_lines = lex_tokens(rest);
+        return join_lines(line, rest_lines);
+    }
+
+    if __str_is_ascii(head) {
+        let rest = __str_tail(trimmed);
+        let line = __str_concat("Punct ", head);
+        let rest_lines = lex_tokens(rest);
+        return join_lines(line, rest_lines);
+    }
+
+    let rest = __str_tail(trimmed);
+    let line = make_token_line("Other", head);
+    let rest_lines = lex_tokens(rest);
+    return join_lines(line, rest_lines);
+}
+
+fn skip_trivia(source: String) -> String {
+    if __str_is_empty(source) {
+        return source;
+    }
+
+    let whitespace = __str_take_whitespace(source);
+    if __str_is_empty(whitespace) {
+    } else {
+        let rest = __str_strip_prefix(source, whitespace);
+        return skip_trivia(rest);
+    }
+
+    if __str_starts_with(source, "//") {
+        let comment = __str_take_line_comment(source);
+        let rest = __str_strip_prefix(source, comment);
+        return skip_trivia(rest);
+    }
+
+    if __str_starts_with(source, "/*") {
+        let comment = __str_take_block_comment(source);
+        let rest = __str_strip_prefix(source, comment);
+        return skip_trivia(rest);
+    }
+
+    return source;
+}
+
+fn make_token_line(kind: String, text: String) -> String {
+    let escaped = escape(text);
+    let prefix = __str_concat(kind, " ");
+    return __str_concat(prefix, escaped);
+}
+
+fn keyword_or_ident_line(ident: String) -> String {
+    let escaped = escape(ident);
+    if is_keyword(ident) {
+        return __str_concat("Keyword ", escaped);
+    }
+    return __str_concat("Ident ", escaped);
+}
+
+fn is_keyword(text: String) -> Bool {
+    if __str_eq(text, "effects") {
+        return true;
+    }
+    if __str_eq(text, "requires") {
+        return true;
+    }
+    if __str_eq(text, "fn") {
+        return true;
+    }
+    if __str_eq(text, "workflow") {
+        return true;
+    }
+    if __str_eq(text, "type") {
+        return true;
+    }
+    if __str_eq(text, "record") {
+        return true;
+    }
+    if __str_eq(text, "enum") {
+        return true;
+    }
+    if __str_eq(text, "let") {
+        return true;
+    }
+    if __str_eq(text, "if") {
+        return true;
+    }
+    if __str_eq(text, "else") {
+        return true;
+    }
+    if __str_eq(text, "match") {
+        return true;
+    }
+    if __str_eq(text, "loop") {
+        return true;
+    }
+    if __str_eq(text, "return") {
+        return true;
+    }
+    if __str_eq(text, "step") {
+        return true;
+    }
+    if __str_eq(text, "pre") {
+        return true;
+    }
+    if __str_eq(text, "post") {
+        return true;
+    }
+    if __str_eq(text, "invariant") {
+        return true;
+    }
+    if __str_eq(text, "unsafe") {
+        return true;
+    }
+    return false;
+}
+
+fn join_lines(head: String, tail: String) -> String {
+    if __str_is_empty(tail) {
+        return head;
+    }
+    let with_newline = __str_concat(head, "\n");
+    return __str_concat(with_newline, tail);
+}
+
+fn escape(text: String) -> String {
+    if __str_is_empty(text) {
+        return "";
+    }
+    let head = __str_head(text);
+    let tail = __str_tail(text);
+    let escaped = escape_char(head);
+    let rest = escape(tail);
+    return __str_concat(escaped, rest);
+}
+
+fn escape_char(ch: String) -> String {
+    if __str_eq(ch, "\\") {
+        return "\\\\";
+    }
+    if __str_eq(ch, "\n") {
+        return "\\n";
+    }
+    if __str_eq(ch, "\r") {
+        return "\\r";
+    }
+    if __str_eq(ch, "\t") {
+        return "\\t";
+    }
+    return ch;
 }

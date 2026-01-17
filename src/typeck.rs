@@ -200,6 +200,27 @@ fn insert_builtin_signatures(signatures: &mut HashMap<String, Signature>) -> Res
             return_type: bool_ty.clone(),
         },
     );
+    signatures.insert(
+        "__pair_left".to_string(),
+        Signature {
+            params: vec![string.clone()],
+            return_type: string.clone(),
+        },
+    );
+    signatures.insert(
+        "__pair_right".to_string(),
+        Signature {
+            params: vec![string.clone()],
+            return_type: string.clone(),
+        },
+    );
+    signatures.insert(
+        "__lex_tokens".to_string(),
+        Signature {
+            params: vec![string.clone()],
+            return_type: string.clone(),
+        },
+    );
     Ok(())
 }
 
