@@ -58,6 +58,25 @@ fn selfhost_parser_matches_stage0_for_parse_fixtures() {
     assert!(count >= 3, "expected at least 3 parse fixtures");
 }
 
+#[test]
+fn selfhost_parser_uses_lex_tokens_wrapper() {
+    let parser_path = Path::new("selfhost/parser.wuu");
+    let parser_source = fs::read_to_string(parser_path).expect("read parser.wuu failed");
+
+    assert!(
+        parser_source.contains("let tokens = lex_tokens"),
+        "selfhost/parser.wuu should route through lex_tokens"
+    );
+    assert!(
+        parser_source.contains("__lex_tokens"),
+        "selfhost/parser.wuu should include a host-backed lex_tokens fallback"
+    );
+    assert!(
+        !parser_source.contains("let tokens = __lex_tokens"),
+        "selfhost/parser.wuu should not call __lex_tokens directly in parse()"
+    );
+}
+
 fn split_pair(value: &str) -> Option<(String, String)> {
     value.find(PAIR_SEP).map(|index| {
         let left = value[..index].to_string();

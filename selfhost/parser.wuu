@@ -1,5 +1,5 @@
 fn parse(source: String) -> String {
-    let tokens = __lex_tokens(source);
+    let tokens = lex_tokens(source);
     return parse_module(tokens, "");
 }
 
@@ -678,47 +678,7 @@ fn consume_punct(tokens: String, ch: String) -> String {
 }
 
 fn lex_tokens(source: String) -> String {
-    let trimmed = skip_trivia(source);
-    if __str_is_empty(trimmed) {
-        return "";
-    }
-
-    if __str_starts_with(trimmed, "\"") {
-        let literal = __str_take_string_literal(trimmed);
-        let rest = __str_strip_prefix(trimmed, literal);
-        let line = make_token_line("StringLiteral", literal);
-        let rest_lines = lex_tokens(rest);
-        return join_lines(line, rest_lines);
-    }
-
-    let head = __str_head(trimmed);
-    if __str_is_ident_start(head) {
-        let ident = __str_take_ident(trimmed);
-        let rest = __str_strip_prefix(trimmed, ident);
-        let line = keyword_or_ident_line(ident);
-        let rest_lines = lex_tokens(rest);
-        return join_lines(line, rest_lines);
-    }
-
-    if __str_is_digit(head) {
-        let number = __str_take_number(trimmed);
-        let rest = __str_strip_prefix(trimmed, number);
-        let line = make_token_line("Number", number);
-        let rest_lines = lex_tokens(rest);
-        return join_lines(line, rest_lines);
-    }
-
-    if __str_is_ascii(head) {
-        let rest = __str_tail(trimmed);
-        let line = __str_concat("Punct ", head);
-        let rest_lines = lex_tokens(rest);
-        return join_lines(line, rest_lines);
-    }
-
-    let rest = __str_tail(trimmed);
-    let line = make_token_line("Other", head);
-    let rest_lines = lex_tokens(rest);
-    return join_lines(line, rest_lines);
+    return __lex_tokens(source);
 }
 
 fn skip_trivia(source: String) -> String {

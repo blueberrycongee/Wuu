@@ -591,6 +591,27 @@ Done when:
 
 - Stage1 formatting no longer calls `__lex_tokens` directly in `format()`.
 
+### M4.16 Stage1 parser uses lex_tokens wrapper
+
+Goal: route stage1 parsing through a lexing wrapper while keeping stack-safe
+tokenization.
+
+Deliverables:
+
+- `selfhost/parser.wuu` routes `parse()` through `lex_tokens(...)`.
+- `lex_tokens(...)` uses the host `__lex_tokens` intrinsic for stack safety.
+- A test asserts the wrapper is used.
+
+Acceptance:
+
+- Stage1 parser still matches stage0 formatting on golden parse fixtures.
+- `selfhost/parser.wuu` uses `lex_tokens` and includes a host-backed fallback.
+- `cargo test` passes.
+
+Done when:
+
+- Stage1 parsing no longer calls `__lex_tokens` directly in `parse()`.
+
 ## 5) How far are we right now?
 
 Current state (as of the latest entry in `docs/PROGRESS.md`):
