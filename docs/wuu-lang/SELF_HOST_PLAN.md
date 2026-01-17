@@ -545,6 +545,31 @@ Done when:
 
 - Stage1 formatter parity can be verified from the CLI.
 
+### M4.14 Stage1 formatter check strictness
+
+Goal: make stage1 `--check` validate both parity and formatted input.
+
+Deliverables:
+
+- `wuu fmt --stage1 --check <path>` verifies:
+  - stage1 output matches stage0 output
+  - input is already formatted (matches stage1 output)
+- CLI tests cover:
+  - formatted input success
+  - unformatted input failure with stable message
+  - parity mismatch failure with stable message
+
+Acceptance:
+
+- Stage1 `--check` exits zero on a formatted fixture.
+- Stage1 `--check` fails on unformatted input (even if parity matches).
+- Stage1 `--check` fails on stage1/stage0 mismatch.
+- `cargo test` passes.
+
+Done when:
+
+- Stage1 `fmt --check` is safe as a formatting gate and parity checker.
+
 ## 5) How far are we right now?
 
 Current state (as of the latest entry in `docs/PROGRESS.md`):

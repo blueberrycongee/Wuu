@@ -884,6 +884,39 @@ Known limitations:
 
 - Stage1 parity check compares formatter outputs only; it does not validate that the input is already formatted.
 
+## Milestone 2026-01-17: M4.14 Stage1 formatter check strictness
+
+Goal:
+
+- Make stage1 `fmt --check` validate both parity with stage0 and formatted input.
+
+Changes made:
+
+- Stage1 `fmt --check` now verifies parity and rejects unformatted input:
+  - `src/main.rs`
+- Expanded CLI tests for formatted success, unformatted failure, and parity mismatch:
+  - `tests/cli_stage1_fmt_tests.rs`
+- Added milestone to the closed-loop plan and set next target:
+  - `docs/wuu-lang/SELF_HOST_PLAN.md`
+  - `docs/NEXT.md`
+
+Acceptance criteria:
+
+- Stage1 `--check` exits zero on a formatted fixture.
+- Stage1 `--check` fails on unformatted input (even when parity matches).
+- Stage1 `--check` fails on stage1/stage0 mismatch.
+- `cargo test` passes.
+
+Validation (WSL):
+
+- `wsl -d Ubuntu -- bash -lc "cd /mnt/d/Desktop/Wuu && . /mnt/d/wuu-cache/cargo/env && RUSTUP_HOME=/mnt/d/wuu-cache/rustup cargo fmt --all"`
+- `wsl -d Ubuntu -- bash -lc "cd /mnt/d/Desktop/Wuu && . /mnt/d/wuu-cache/cargo/env && RUSTUP_HOME=/mnt/d/wuu-cache/rustup cargo clippy --all-targets -- -D warnings"`
+- `wsl -d Ubuntu -- bash -lc "cd /mnt/d/Desktop/Wuu && . /mnt/d/wuu-cache/cargo/env && RUSTUP_HOME=/mnt/d/wuu-cache/rustup cargo test"`
+
+Known limitations:
+
+- Stage1 `fmt --check` still relies on loading `selfhost/format.wuu` on every invocation.
+
 ## Tooling 2026-01-17: GitHub HTTPS `SSL_ERROR_SYSCALL` (Windows) workaround
 
 Issue observed:

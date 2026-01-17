@@ -78,6 +78,11 @@ fn main() -> anyhow::Result<()> {
                     if stage1_output != stage0_output {
                         anyhow::bail!("stage1 formatter output differs from stage0");
                     }
+                    let input_str = std::str::from_utf8(&input)
+                        .map_err(|_| anyhow::anyhow!("invalid utf-8"))?;
+                    if stage1_output != input_str {
+                        anyhow::bail!("file is not formatted");
+                    }
                 } else if write {
                     std::fs::write(&path, stage1_output)?;
                 } else {
