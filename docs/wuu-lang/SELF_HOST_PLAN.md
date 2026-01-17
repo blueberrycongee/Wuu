@@ -570,6 +570,27 @@ Done when:
 
 - Stage1 `fmt --check` is safe as a formatting gate and parity checker.
 
+### M4.15 Stage1 formatter uses lex_tokens wrapper
+
+Goal: route stage1 formatting through a lexing wrapper while keeping stack-safe
+tokenization.
+
+Deliverables:
+
+- `selfhost/format.wuu` routes `format()` through `lex_tokens(...)`.
+- `lex_tokens(...)` uses the host `__lex_tokens` intrinsic for stack safety.
+- A test asserts the wrapper is used.
+
+Acceptance:
+
+- Stage1 formatter still matches stage0 output on golden fixtures.
+- `selfhost/format.wuu` uses `lex_tokens` and includes a host-backed fallback.
+- `cargo test` passes.
+
+Done when:
+
+- Stage1 formatting no longer calls `__lex_tokens` directly in `format()`.
+
 ## 5) How far are we right now?
 
 Current state (as of the latest entry in `docs/PROGRESS.md`):

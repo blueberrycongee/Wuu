@@ -917,6 +917,39 @@ Known limitations:
 
 - Stage1 `fmt --check` still relies on loading `selfhost/format.wuu` on every invocation.
 
+## Milestone 2026-01-17: M4.15 Stage1 formatter uses lex_tokens wrapper
+
+Goal:
+
+- Route stage1 formatting through a lexing wrapper while keeping stack-safe tokenization.
+
+Changes made:
+
+- Stage1 formatter now calls `lex_tokens` and the wrapper delegates to the host intrinsic to
+  avoid stack overflows on large sources:
+  - `selfhost/format.wuu`
+- Added a test that asserts `format()` routes through `lex_tokens` and that the wrapper exists:
+  - `tests/selfhost_format_tests.rs`
+- Updated the closed-loop plan and next milestone:
+  - `docs/wuu-lang/SELF_HOST_PLAN.md`
+  - `docs/NEXT.md`
+
+Acceptance criteria:
+
+- Stage1 formatter still matches stage0 output on golden fixtures.
+- `selfhost/format.wuu` uses `lex_tokens` and includes a host-backed fallback.
+- `cargo test` passes.
+
+Validation (WSL):
+
+- `wsl -d Ubuntu -- bash -lc "cd /mnt/d/Desktop/Wuu && . /mnt/d/wuu-cache/cargo/env && RUSTUP_HOME=/mnt/d/wuu-cache/rustup cargo fmt --all"`
+- `wsl -d Ubuntu -- bash -lc "cd /mnt/d/Desktop/Wuu && . /mnt/d/wuu-cache/cargo/env && RUSTUP_HOME=/mnt/d/wuu-cache/rustup cargo clippy --all-targets -- -D warnings"`
+- `wsl -d Ubuntu -- bash -lc "cd /mnt/d/Desktop/Wuu && . /mnt/d/wuu-cache/cargo/env && RUSTUP_HOME=/mnt/d/wuu-cache/rustup cargo test"`
+
+Known limitations:
+
+- Stage1 formatting still depends on the host `__lex_tokens` intrinsic for stack safety.
+
 ## Tooling 2026-01-17: GitHub HTTPS `SSL_ERROR_SYSCALL` (Windows) workaround
 
 Issue observed:

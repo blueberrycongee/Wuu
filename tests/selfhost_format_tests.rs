@@ -56,3 +56,18 @@ fn selfhost_format_matches_stage0() {
 
     assert!(count >= 3, "expected at least 3 format fixtures");
 }
+
+#[test]
+fn selfhost_format_uses_lex_tokens_wrapper() {
+    let format_path = Path::new("selfhost/format.wuu");
+    let format_source_text =
+        fs::read_to_string(format_path).expect("read selfhost/format.wuu failed");
+    assert!(
+        format_source_text.contains("let tokens = lex_tokens"),
+        "selfhost/format.wuu should route through lex_tokens"
+    );
+    assert!(
+        format_source_text.contains("__lex_tokens"),
+        "selfhost/format.wuu should provide a host-backed lex_tokens fallback"
+    );
+}
