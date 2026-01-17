@@ -785,6 +785,41 @@ Known limitations:
 - Invalid inputs are surfaced via leftover tokens or interpreter errors, not
   rich parse diagnostics.
 
+## Milestone 2026-01-17: M4.11 Stage1 parser CLI
+
+Goal:
+
+- Expose the stage1 parser via the CLI and fail on leftover tokens.
+
+Changes made:
+
+- Added `wuu parse --stage1` CLI support with pair-output handling:
+  - `src/main.rs`
+- Added CLI tests for stage1 parse success and leftover-token failure:
+  - `tests/cli_stage1_parse_tests.rs`
+- Added M4.11 milestone to the plan and updated `docs/NEXT.md` while working.
+
+Acceptance criteria:
+
+- Stage1 parse output matches stage0 formatting on a fixture.
+- Stage1 parse fails (non-zero) on invalid input with leftover tokens.
+- `cargo test` passes.
+
+Edge cases covered:
+
+- Stage1 parse on a valid parse fixture (formatted output matches stage0).
+- Stage1 parse on unsupported top-level items leaves tokens and errors.
+
+Validation (WSL):
+
+- `wsl -d Ubuntu -- bash -lc "cd /mnt/d/Desktop/Wuu && . /mnt/d/wuu-cache/cargo/env && RUSTUP_HOME=/mnt/d/wuu-cache/rustup cargo fmt --all"`
+- `wsl -d Ubuntu -- bash -lc "cd /mnt/d/Desktop/Wuu && . /mnt/d/wuu-cache/cargo/env && RUSTUP_HOME=/mnt/d/wuu-cache/rustup cargo clippy --all-targets -- -D warnings"`
+- `wsl -d Ubuntu -- bash -lc "cd /mnt/d/Desktop/Wuu && . /mnt/d/wuu-cache/cargo/env && RUSTUP_HOME=/mnt/d/wuu-cache/rustup cargo test"`
+
+Known limitations:
+
+- Stage1 parser still outputs formatted text rather than a structured AST.
+
 ## Tooling 2026-01-17: GitHub HTTPS `SSL_ERROR_SYSCALL` (Windows) workaround
 
 Issue observed:

@@ -482,6 +482,28 @@ Done when:
 
 - Stage1 parser can be exercised from Rust tests with token-consumption checks.
 
+### M4.11 Stage1 parser CLI
+
+Goal: expose the stage1 parser through the CLI and surface leftover tokens as a
+stable error.
+
+Deliverables:
+
+- `wuu parse --stage1 <path>` runs `selfhost/parser.wuu` and prints the formatted
+  output from the pair-encoded result.
+- If stage1 parsing leaves leftover tokens, the CLI exits with a stable error.
+- CLI tests cover success and leftover-token failure paths.
+
+Acceptance:
+
+- Stage1 parse output matches stage0 formatting on a fixture.
+- Stage1 parse fails (non-zero) on an invalid input with leftover tokens.
+- `cargo test` passes.
+
+Done when:
+
+- Stage1 parser can be exercised from the CLI with tests.
+
 ## 5) How far are we right now?
 
 Current state (as of the latest entry in `docs/PROGRESS.md`):

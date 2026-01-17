@@ -27,6 +27,11 @@ enum Command {
         #[arg(long)]
         stage1: bool,
     },
+    Parse {
+        path: PathBuf,
+        #[arg(long)]
+        stage1: bool,
+    },
     Check {
         path: PathBuf,
     },
@@ -87,6 +92,15 @@ fn main() -> anyhow::Result<()> {
                 lex_stage1(&input)?
             } else {
                 lex_stage0(&input)?
+            };
+            print!("{output}");
+        }
+        Command::Parse { path, stage1 } => {
+            let input = std::fs::read(&path)?;
+            let output = if stage1 {
+                parse_stage1(&input)?
+            } else {
+                wuu::format::format_source_bytes(&input)?
             };
             print!("{output}");
         }
@@ -152,6 +166,35 @@ fn lex_stage1(input: &[u8]) -> anyhow::Result<String> {
             "stage1 lexer returned non-string value: {other:?}"
         )),
     }
+}
+
+fn parse_stage1(input: &[u8]) -> anyhow::Result<String> {
+    let source = std::str::from_utf8(input).map_err(|_| anyhow::anyhow!("invalid utf-8"))?;
+    let parser_path = PathBuf::from("selfhost/parser.wuu");
+    let parser_source = std::fs::read_to_string(&parser_path)
+        .map_err(|err| anyhow::anyhow!("failed to read {}: {err}", parser_path.display()))?;
+    let module = wuu::parser::parse_module(&parser_source)?;
+    wuu::typeck::check_module(&module)?;
+    let value = run_entry_with_args(&module, "parse", vec![Value::String(source.to_string())])?;
+    let output = match value {
+        Value::String(output) => output,
+        other => {
+            return Err(anyhow::anyhow!(
+                "stage1 parser returned non-string value: {other:?}"
+            ));
+        }
+    };
+    let (formatted, rest) = split_pair_output(&output)
+        .ok_or_else(|| anyhow::anyhow!("stage1 parser returned invalid output"))?;
+    if !rest.is_empty() {
+        anyhow::bail!("stage1 parser left unconsumed tokens");
+    }
+    Ok(formatted.to_string())
+}
+
+fn split_pair_output(output: &str) -> Option<(&str, &str)> {
+    const PAIR_SEP: &str = "\n<SEP>\n";
+    output.split_once(PAIR_SEP)
 }
 
 fn format_tokens(source: &str, tokens: &[wuu::lexer::Token]) -> String {
