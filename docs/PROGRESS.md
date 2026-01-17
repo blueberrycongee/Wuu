@@ -596,6 +596,40 @@ Known limitations:
 
 - Stage1 formatter is still table-driven; bootstrap only verifies idempotence on stage0 output.
 
+## Milestone 2026-01-17: M4.5 Wuu-in-Wuu lexer (real)
+
+Goal:
+
+- Replace the stage1 lexer stub with a real scanner that matches Rust tokens.
+
+Changes made:
+
+- Added stage1 string intrinsics to the typechecker and interpreter:
+  `__str_is_empty`, `__str_concat`, `__str_head`, `__str_tail`,
+  `__str_starts_with`, `__str_strip_prefix`, `__str_take_whitespace`,
+  `__str_take_ident`, `__str_take_number`, `__str_take_string_literal`,
+  `__str_take_line_comment`, `__str_take_block_comment`,
+  `__str_is_ident_start`, `__str_is_digit`, `__str_is_ascii`.
+- Implemented a recursive lexer in `selfhost/lexer.wuu` that emits the same
+  token stream format as the Rust harness.
+- Added stage1 lexer conformance tests: `tests/selfhost_lexer_conformance_tests.rs`.
+- Documented the intrinsics in `docs/wuu-lang/SELF_HOST_SUBSET.md` and extended
+  the plan in `docs/wuu-lang/SELF_HOST_PLAN.md`.
+
+Acceptance criteria:
+
+- Stage1 lexer output matches Rust tokens on `tests/golden/lexer/*.wuu`.
+- `cargo test` passes.
+
+Validation (WSL):
+
+- `wsl -d Ubuntu -- bash -lc "cd /mnt/d/Desktop/Wuu && ./scripts/wsl-validate.sh"`
+
+Known limitations:
+
+- Stage1 lexer relies on host-provided string intrinsics for scanning.
+- Stage1 parser/formatter remain stubs (tracked in M4.6).
+
 ## Tooling 2026-01-17: GitHub HTTPS `SSL_ERROR_SYSCALL` (Windows) workaround
 
 Issue observed:

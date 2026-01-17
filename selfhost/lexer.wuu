@@ -1,3 +1,181 @@
 fn lex(source: String) -> String {
+    return lex_tokens(source);
+}
+
+fn lex_tokens(source: String) -> String {
+    let trimmed = skip_trivia(source);
+    if __str_is_empty(trimmed) {
+        return "";
+    }
+
+    if __str_starts_with(trimmed, "\"") {
+        let literal = __str_take_string_literal(trimmed);
+        let rest = __str_strip_prefix(trimmed, literal);
+        let line = token_line("StringLiteral", literal);
+        let rest_lines = lex_tokens(rest);
+        return join_lines(line, rest_lines);
+    }
+
+    let head = __str_head(trimmed);
+    if __str_is_ident_start(head) {
+        let ident = __str_take_ident(trimmed);
+        let rest = __str_strip_prefix(trimmed, ident);
+        let line = keyword_or_ident_line(ident);
+        let rest_lines = lex_tokens(rest);
+        return join_lines(line, rest_lines);
+    }
+
+    if __str_is_digit(head) {
+        let number = __str_take_number(trimmed);
+        let rest = __str_strip_prefix(trimmed, number);
+        let line = token_line("Number", number);
+        let rest_lines = lex_tokens(rest);
+        return join_lines(line, rest_lines);
+    }
+
+    if __str_is_ascii(head) {
+        let rest = __str_tail(trimmed);
+        let line = __str_concat("Punct ", head);
+        let rest_lines = lex_tokens(rest);
+        return join_lines(line, rest_lines);
+    }
+
+    let rest = __str_tail(trimmed);
+    let line = token_line("Other", head);
+    let rest_lines = lex_tokens(rest);
+    return join_lines(line, rest_lines);
+}
+
+fn skip_trivia(source: String) -> String {
+    if __str_is_empty(source) {
+        return source;
+    }
+
+    let whitespace = __str_take_whitespace(source);
+    if __str_is_empty(whitespace) {
+    } else {
+        let rest = __str_strip_prefix(source, whitespace);
+        return skip_trivia(rest);
+    }
+
+    if __str_starts_with(source, "//") {
+        let comment = __str_take_line_comment(source);
+        let rest = __str_strip_prefix(source, comment);
+        return skip_trivia(rest);
+    }
+
+    if __str_starts_with(source, "/*") {
+        let comment = __str_take_block_comment(source);
+        let rest = __str_strip_prefix(source, comment);
+        return skip_trivia(rest);
+    }
+
     return source;
+}
+
+fn token_line(kind: String, text: String) -> String {
+    let escaped = escape(text);
+    let prefix = __str_concat(kind, " ");
+    return __str_concat(prefix, escaped);
+}
+
+fn keyword_or_ident_line(ident: String) -> String {
+    let escaped = escape(ident);
+    if is_keyword(ident) {
+        return __str_concat("Keyword ", escaped);
+    }
+    return __str_concat("Ident ", escaped);
+}
+
+fn is_keyword(text: String) -> Bool {
+    if __str_eq(text, "effects") {
+        return true;
+    }
+    if __str_eq(text, "requires") {
+        return true;
+    }
+    if __str_eq(text, "fn") {
+        return true;
+    }
+    if __str_eq(text, "workflow") {
+        return true;
+    }
+    if __str_eq(text, "type") {
+        return true;
+    }
+    if __str_eq(text, "record") {
+        return true;
+    }
+    if __str_eq(text, "enum") {
+        return true;
+    }
+    if __str_eq(text, "let") {
+        return true;
+    }
+    if __str_eq(text, "if") {
+        return true;
+    }
+    if __str_eq(text, "else") {
+        return true;
+    }
+    if __str_eq(text, "match") {
+        return true;
+    }
+    if __str_eq(text, "loop") {
+        return true;
+    }
+    if __str_eq(text, "return") {
+        return true;
+    }
+    if __str_eq(text, "step") {
+        return true;
+    }
+    if __str_eq(text, "pre") {
+        return true;
+    }
+    if __str_eq(text, "post") {
+        return true;
+    }
+    if __str_eq(text, "invariant") {
+        return true;
+    }
+    if __str_eq(text, "unsafe") {
+        return true;
+    }
+    return false;
+}
+
+fn join_lines(head: String, tail: String) -> String {
+    if __str_is_empty(tail) {
+        return head;
+    }
+    let with_newline = __str_concat(head, "\n");
+    return __str_concat(with_newline, tail);
+}
+
+fn escape(text: String) -> String {
+    if __str_is_empty(text) {
+        return "";
+    }
+    let head = __str_head(text);
+    let tail = __str_tail(text);
+    let escaped = escape_char(head);
+    let rest = escape(tail);
+    return __str_concat(escaped, rest);
+}
+
+fn escape_char(ch: String) -> String {
+    if __str_eq(ch, "\\") {
+        return "\\\\";
+    }
+    if __str_eq(ch, "\n") {
+        return "\\n";
+    }
+    if __str_eq(ch, "\r") {
+        return "\\r";
+    }
+    if __str_eq(ch, "\t") {
+        return "\\t";
+    }
+    return ch;
 }

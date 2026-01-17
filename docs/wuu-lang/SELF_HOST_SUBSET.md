@@ -45,6 +45,14 @@ All standard types are nominal and non-generic for stage1:
 Allowed functions are limited to stage1-local pure functions. There is no
 ambient IO. Any IO boundary is handled outside stage1 by the host toolchain.
 
+Host-provided pure string intrinsics are allowed for stage1:
+
+- `__str_eq`, `__str_is_empty`, `__str_concat`
+- `__str_head`, `__str_tail`, `__str_starts_with`, `__str_strip_prefix`
+- `__str_take_whitespace`, `__str_take_ident`, `__str_take_number`
+- `__str_take_string_literal`, `__str_take_line_comment`, `__str_take_block_comment`
+- `__str_is_ident_start`, `__str_is_digit`, `__str_is_ascii`
+
 ## Forbidden Features
 
 The following are explicitly disallowed for stage1:

@@ -85,11 +85,119 @@ pub fn check_module(module: &Module) -> Result<(), TypeError> {
 }
 
 fn insert_builtin_signatures(signatures: &mut HashMap<String, Signature>) -> Result<(), TypeError> {
+    let string = Type::string();
+    let bool_ty = Type::bool();
+
     signatures.insert(
         "__str_eq".to_string(),
         Signature {
-            params: vec![Type::string(), Type::string()],
-            return_type: Type::bool(),
+            params: vec![string.clone(), string.clone()],
+            return_type: bool_ty.clone(),
+        },
+    );
+    signatures.insert(
+        "__str_is_empty".to_string(),
+        Signature {
+            params: vec![string.clone()],
+            return_type: bool_ty.clone(),
+        },
+    );
+    signatures.insert(
+        "__str_concat".to_string(),
+        Signature {
+            params: vec![string.clone(), string.clone()],
+            return_type: string.clone(),
+        },
+    );
+    signatures.insert(
+        "__str_head".to_string(),
+        Signature {
+            params: vec![string.clone()],
+            return_type: string.clone(),
+        },
+    );
+    signatures.insert(
+        "__str_tail".to_string(),
+        Signature {
+            params: vec![string.clone()],
+            return_type: string.clone(),
+        },
+    );
+    signatures.insert(
+        "__str_starts_with".to_string(),
+        Signature {
+            params: vec![string.clone(), string.clone()],
+            return_type: bool_ty.clone(),
+        },
+    );
+    signatures.insert(
+        "__str_strip_prefix".to_string(),
+        Signature {
+            params: vec![string.clone(), string.clone()],
+            return_type: string.clone(),
+        },
+    );
+    signatures.insert(
+        "__str_take_whitespace".to_string(),
+        Signature {
+            params: vec![string.clone()],
+            return_type: string.clone(),
+        },
+    );
+    signatures.insert(
+        "__str_take_ident".to_string(),
+        Signature {
+            params: vec![string.clone()],
+            return_type: string.clone(),
+        },
+    );
+    signatures.insert(
+        "__str_take_number".to_string(),
+        Signature {
+            params: vec![string.clone()],
+            return_type: string.clone(),
+        },
+    );
+    signatures.insert(
+        "__str_take_string_literal".to_string(),
+        Signature {
+            params: vec![string.clone()],
+            return_type: string.clone(),
+        },
+    );
+    signatures.insert(
+        "__str_take_line_comment".to_string(),
+        Signature {
+            params: vec![string.clone()],
+            return_type: string.clone(),
+        },
+    );
+    signatures.insert(
+        "__str_take_block_comment".to_string(),
+        Signature {
+            params: vec![string.clone()],
+            return_type: string.clone(),
+        },
+    );
+    signatures.insert(
+        "__str_is_ident_start".to_string(),
+        Signature {
+            params: vec![string.clone()],
+            return_type: bool_ty.clone(),
+        },
+    );
+    signatures.insert(
+        "__str_is_digit".to_string(),
+        Signature {
+            params: vec![string.clone()],
+            return_type: bool_ty.clone(),
+        },
+    );
+    signatures.insert(
+        "__str_is_ascii".to_string(),
+        Signature {
+            params: vec![string.clone()],
+            return_type: bool_ty.clone(),
         },
     );
     Ok(())

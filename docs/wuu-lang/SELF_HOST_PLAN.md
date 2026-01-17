@@ -359,6 +359,47 @@ Done when:
 
 - we have a repeatable bootstrap procedure that is stable across runs.
 
+### M4.5 Wuu-in-Wuu: lexer (real)
+
+Goal: replace the stage1 lexer stub with a real scanner that matches the Rust
+lexer on the subset.
+
+Deliverables:
+
+- Add pure string intrinsics needed by stage1 lexer (typechecker + interpreter).
+- Implement `selfhost/lexer.wuu` to scan and emit the same token stream format
+  as the Rust lexer harness.
+- Add a conformance test that runs stage1 lexer against the golden inputs.
+
+Acceptance:
+
+- `tests/golden/lexer/*.wuu` produce the same token stream in stage1 as in Rust.
+- `cargo test` passes.
+
+Done when:
+
+- stage1 lexer output matches Rust tokenization on the golden suite.
+
+### M4.6 Wuu-in-Wuu: parser + formatter (real)
+
+Goal: replace stage1 parser/formatter stubs with real implementations for the
+subset.
+
+Deliverables:
+
+- Implement `selfhost/parser.wuu` to parse the subset into a real AST.
+- Implement `selfhost/format.wuu` to format that AST (no table-driven mapping).
+- Add a conformance test that validates stage1 formatting against stage0.
+
+Acceptance:
+
+- `tests/golden/fmt/*.wuu` match stage0 output using the stage1 parser/formatter.
+- `cargo test` passes.
+
+Done when:
+
+- stage1 parser/formatter are real and no longer table-driven.
+
 ## 5) How far are we right now?
 
 Current state (as of the latest entry in `docs/PROGRESS.md`):
@@ -368,4 +409,3 @@ Current state (as of the latest entry in `docs/PROGRESS.md`):
 
 In this plan, "self-hosting subset" starts at M4.2.
 So we are still early, but the next steps are clear and verifiable.
-
