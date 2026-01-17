@@ -480,6 +480,32 @@ Known limitations:
 - Property cases support literal `Int`/`Bool`/`String`/`unit` values only.
 - Benchmarks use wall-clock thresholds and run the interpreter backend.
 
+## Milestone 2026-01-17: M4.1 Define the "self-hosting subset" precisely
+
+Goal:
+
+- Define a precise stage1 subset in a standalone doc with a completed checklist.
+
+Changes made:
+
+- Added subset spec and checklist: `docs/wuu-lang/SELF_HOST_SUBSET.md`.
+- Added a validation test that enforces required headings and completed checklist items:
+  - `tests/self_host_subset_tests.rs`
+
+Acceptance criteria:
+
+- `docs/wuu-lang/SELF_HOST_SUBSET.md` contains syntax subset, stdlib subset, and forbidden features.
+- Review checklist inside the doc is fully checked.
+- `cargo test` passes.
+
+Validation (WSL):
+
+- `wsl -d Ubuntu -- bash -lc "cd /mnt/d/Desktop/Wuu && ./scripts/wsl-validate.sh"`
+
+Known limitations:
+
+- Stage1 subset forbids workflows, effects, and user-defined types until later milestones.
+
 ## Tooling 2026-01-17: GitHub HTTPS `SSL_ERROR_SYSCALL` (Windows) workaround
 
 Issue observed:

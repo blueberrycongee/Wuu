@@ -1,6 +1,6 @@
 # Next
 
-Target milestone: M4.1 Define the "self-hosting subset" precisely
+Target milestone: M4.2 Wuu-in-Wuu: lexer
 
 Reference plan: `docs/wuu-lang/SELF_HOST_PLAN.md`
 
