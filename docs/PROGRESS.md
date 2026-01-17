@@ -418,6 +418,38 @@ Known limitations:
 - Functions without explicit return types are treated as returning `Unit`.
 - Qualified paths/calls in expressions are rejected for now.
 
+## Milestone 2026-01-17: M2.x WASM backend (IR lowering + WASM codegen)
+
+Goal:
+
+- Add a minimal WASM backend with IR lowering, codegen, and equivalence tests.
+
+Changes made:
+
+- Added IR lowering for the pure Int/Bool subset: `src/ir.rs`.
+- Added WASM encoder + runtime wrapper with a host ABI stub: `src/wasm.rs`.
+- Added WASM fixtures and equivalence/error harnesses:
+  - `tests/wasm_tests.rs`
+  - `tests/wasm/*.wuu`, `tests/wasm/*.out`
+  - `tests/wasm_errors/*.wuu`, `tests/wasm_errors/*.err`
+- Added dependencies for codegen/runtime: `wasm-encoder`, `wasmi`.
+
+Acceptance criteria:
+
+- WASM output executes the same as the interpreter on a small pure program set.
+- Unsupported surface (String/workflow/loop/step) is rejected deterministically.
+- `cargo test` passes.
+
+Validation (WSL):
+
+- `wsl -d Ubuntu -- bash -lc "cd /mnt/d/Desktop/Wuu && ./scripts/wsl-validate.sh"`
+
+Known limitations:
+
+- Only `Int`/`Bool`/`Unit` are supported in the WASM backend.
+- No workflow support or host imports beyond a stub.
+- `if` is compiled as a statement; returns inside branches are lowered with `unreachable` fallthrough.
+
 ## Tooling 2026-01-17: GitHub HTTPS `SSL_ERROR_SYSCALL` (Windows) workaround
 
 Issue observed:

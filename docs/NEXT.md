@@ -1,6 +1,6 @@
 # Next
 
-Target milestone: M2.x WASM backend (IR lowering + WASM codegen)
+Target milestone: M3.x Evidence gates (example tests + property tests + benches)
 
 Reference plan: `docs/wuu-lang/SELF_HOST_PLAN.md`
 

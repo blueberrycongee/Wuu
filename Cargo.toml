@@ -10,6 +10,8 @@ repository = "https://github.com/blueberrycongee/Wuu"
 anyhow = "1.0.95"
 clap = { version = "4.5.27", features = ["derive"] }
 serde_cbor = "0.11"
+wasm-encoder = "0.244.0"
+wasmi = "1.0.7"
 
 [dev-dependencies]
 pretty_assertions = "1.4.1"

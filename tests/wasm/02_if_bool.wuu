@@ -1,0 +1,11 @@
+fn pick(flag: Bool) -> Int {
+    if flag {
+        return 1;
+    } else {
+        return 2;
+    }
+}
+
+fn main() -> Int {
+    return pick(false);
+}
