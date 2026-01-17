@@ -1,0 +1,12 @@
+Keyword fn
+Ident main
+Punct (
+Punct )
+Punct {
+Keyword return
+Ident greet
+Punct (
+StringLiteral "hi"
+Punct )
+Punct ;
+Punct }

@@ -1,0 +1,9 @@
+Keyword fn
+Ident main
+Punct (
+Punct )
+Punct {
+Keyword return
+Number 1
+Punct ;
+Punct }

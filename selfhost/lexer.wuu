@@ -1,0 +1,3 @@
+fn lex(source: String) -> String {
+    return source;
+}

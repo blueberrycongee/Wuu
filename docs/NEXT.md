@@ -1,6 +1,6 @@
 # Next
 
-Target milestone: M4.2 Wuu-in-Wuu: lexer
+Target milestone: M4.3 Wuu-in-Wuu: parser + formatter (stage1)
 
 Reference plan: `docs/wuu-lang/SELF_HOST_PLAN.md`
 

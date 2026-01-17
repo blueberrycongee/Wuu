@@ -506,6 +506,36 @@ Known limitations:
 
 - Stage1 subset forbids workflows, effects, and user-defined types until later milestones.
 
+## Milestone 2026-01-17: M4.2 Wuu-in-Wuu: lexer
+
+Goal:
+
+- Add a Wuu lexer scaffold plus conformance tests that lock the Rust lexer token stream.
+
+Changes made:
+
+- Added Wuu lexer stub for stage0 compilation: `selfhost/lexer.wuu`.
+- Added selfhost lexer parse/typecheck test: `tests/selfhost_lexer_tests.rs`.
+- Added lexer conformance fixtures + harness:
+  - `tests/golden/lexer/*.wuu`
+  - `tests/golden/lexer/*.tok`
+  - `tests/lexer_golden_tests.rs`
+
+Acceptance criteria:
+
+- Stage0 parses and typechecks `selfhost/lexer.wuu`.
+- Rust lexer token streams match golden fixtures.
+- `cargo test` passes.
+
+Validation (WSL):
+
+- `wsl -d Ubuntu -- bash -lc "cd /mnt/d/Desktop/Wuu && ./scripts/wsl-validate.sh"`
+
+Known limitations:
+
+- `selfhost/lexer.wuu` is a stub; full lexer logic will be added in a follow-up.
+- Conformance suite currently compares Rust lexer output to golden token snapshots.
+
 ## Tooling 2026-01-17: GitHub HTTPS `SSL_ERROR_SYSCALL` (Windows) workaround
 
 Issue observed:
