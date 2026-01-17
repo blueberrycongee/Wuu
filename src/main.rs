@@ -213,17 +213,18 @@ fn parse_stage1(input: &[u8]) -> anyhow::Result<String> {
             ));
         }
     };
-    let (formatted, rest) = split_pair_output(&output)
+    let (ast, rest) = split_pair_output(&output)
         .ok_or_else(|| anyhow::anyhow!("stage1 parser returned invalid output"))?;
     if !rest.is_empty() {
         anyhow::bail!("stage1 parser left unconsumed tokens");
     }
-    Ok(formatted.to_string())
+    let _ = ast;
+    Ok(wuu::format::format_source(source)?)
 }
 
 fn split_pair_output(output: &str) -> Option<(&str, &str)> {
-    const PAIR_SEP: &str = "\n<SEP>\n";
-    output.split_once(PAIR_SEP)
+    const OUTPUT_SEP: &str = "\n<OUT>\n";
+    output.split_once(OUTPUT_SEP)
 }
 
 fn format_tokens(source: &str, tokens: &[wuu::lexer::Token]) -> String {

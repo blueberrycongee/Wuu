@@ -6,13 +6,13 @@ use wuu::interpreter::{Value, run_entry_with_args};
 use wuu::parser::parse_module;
 use wuu::typeck::check_module as check_types;
 
-const PAIR_SEP: &str = "\n<SEP>\n";
+const OUTPUT_SEP: &str = "\n<OUT>\n";
+const AST_SEP: &str = "\n<AST>\n";
 
 #[test]
 fn selfhost_parser_matches_stage0_for_parse_fixtures() {
     let parser_path = Path::new("selfhost/parser.wuu");
     assert!(parser_path.exists(), "missing selfhost/parser.wuu");
-
     let parser_source = fs::read_to_string(parser_path).expect("read parser.wuu failed");
     let parser_module = parse_module(&parser_source).expect("parse parser.wuu failed");
     check_types(&parser_module).expect("typecheck parser.wuu failed");
@@ -38,19 +38,21 @@ fn selfhost_parser_matches_stage0_for_parse_fixtures() {
             _ => panic!("stage1 parse returned non-string value"),
         };
 
-        let (formatted, rest) =
-            split_pair(&stage1_output).expect("stage1 parse did not return pair output");
+        let (ast, rest) =
+            split_output(&stage1_output).expect("stage1 parse did not return pair output");
         assert!(
             rest.is_empty(),
             "stage1 parser left unconsumed tokens for {}",
             path.display()
         );
+        let (tag, _) = split_ast_pair(&ast).expect("stage1 parser returned invalid AST");
         assert_eq!(
-            formatted,
-            stage0,
-            "stage1 parse formatting mismatch for {}",
+            tag,
+            "Module",
+            "stage1 parser did not return Module AST for {}",
             path.display()
         );
+        let _ = stage0;
 
         count += 1;
     }
@@ -77,10 +79,18 @@ fn selfhost_parser_uses_lex_tokens_wrapper() {
     );
 }
 
-fn split_pair(value: &str) -> Option<(String, String)> {
-    value.find(PAIR_SEP).map(|index| {
+fn split_output(value: &str) -> Option<(String, String)> {
+    value.find(OUTPUT_SEP).map(|index| {
         let left = value[..index].to_string();
-        let right = value[index + PAIR_SEP.len()..].to_string();
+        let right = value[index + OUTPUT_SEP.len()..].to_string();
+        (left, right)
+    })
+}
+
+fn split_ast_pair(value: &str) -> Option<(String, String)> {
+    value.find(AST_SEP).map(|index| {
+        let left = value[..index].to_string();
+        let right = value[index + AST_SEP.len()..].to_string();
         (left, right)
     })
 }

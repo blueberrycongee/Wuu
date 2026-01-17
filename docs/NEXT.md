@@ -1,6 +1,6 @@
 # Next
 
-Target milestone: M4.20 Stage1 AST data model (structured parse output)
+Target milestone: M4.21 Stage1 formatter consumes AST end-to-end
 
 Reference plan: `docs/wuu-lang/SELF_HOST_PLAN.md`
 

@@ -1077,6 +1077,37 @@ Known limitations:
 
 - CLI stage1 lex depends on the host `__lex_tokens` intrinsic via the stage1 lexer.
 
+## Milestone 2026-01-17: M4.20 Stage1 AST output (structured parse result)
+
+Goal:
+
+- Stage1 parser returns a structured AST instead of formatted text.
+
+Changes made:
+
+- Stage1 parser now emits a tagged AST via `selfhost/parser.wuu` (Module/Item/Stmt/Expr tags).
+- Added AST-aware conformance checks in `tests/selfhost_parser_conformance_tests.rs`
+  that validate the returned AST tag and token consumption.
+- Stage1 parse CLI now returns stage0 formatting until the AST formatter lands (M4.21):
+  `src/main.rs`.
+- Simplified AST escaping to avoid stack overflows by treating `\n<AST>\n` as a
+  reserved separator (no escaping): `selfhost/parser.wuu`, `selfhost/format.wuu`.
+
+Acceptance criteria:
+
+- Stage1 parser produces AST for all golden parse fixtures (tagged `Module`).
+- Stage1 parser consumes all tokens on those fixtures.
+- `cargo test` passes.
+
+Validation (WSL):
+
+- `wsl -d Ubuntu -- bash -lc "cd /mnt/d/Desktop/Wuu && ./scripts/wsl-validate.sh"`
+
+Known limitations:
+
+- AST encoding assumes `\n<AST>\n` does not appear in data; escaping is deferred.
+- Stage1 parse CLI emits stage0 formatting output until M4.21 implements AST -> fmt.
+
 ## Tooling 2026-01-17: GitHub HTTPS `SSL_ERROR_SYSCALL` (Windows) workaround
 
 Issue observed:

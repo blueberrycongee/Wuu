@@ -4,6 +4,10 @@ fn format(source: String) -> String {
     return pair_left(result);
 }
 
+fn format_ast(ast: String) -> String {
+    return format_module_ast(ast, "");
+}
+
 fn parse_module(tokens: String, indent: String) -> String {
     if __str_is_empty(tokens) {
         return pair("", tokens);
@@ -808,4 +812,506 @@ fn escape_char(ch: String) -> String {
         return "\\t";
     }
     return ch;
+}
+
+fn format_module_ast(module: String, indent: String) -> String {
+    let items = ast_left(node_payload(module));
+    return format_items_ast(items, indent);
+}
+
+fn format_items_ast(items: String, indent: String) -> String {
+    if list_is_empty(items) {
+        return "";
+    }
+    let head = list_head(items);
+    let tail = list_tail(items);
+    let head_text = format_item_ast(head, indent);
+    if list_is_empty(tail) {
+        return head_text;
+    }
+    if __str_eq(tail, items) {
+        return head_text;
+    }
+    let tail_text = format_items_ast(tail, indent);
+    let gap = __str_concat(head_text, "\n");
+    return __str_concat(gap, tail_text);
+}
+
+fn format_item_ast(item: String, indent: String) -> String {
+    let tag = node_tag(item);
+    if __str_eq(tag, "ItemFn") {
+        return format_fn_like_ast(item, indent, "fn");
+    }
+    if __str_eq(tag, "ItemWorkflow") {
+        return format_fn_like_ast(item, indent, "workflow");
+    }
+    return "";
+}
+
+fn format_fn_like_ast(item: String, indent: String, keyword: String) -> String {
+    let payload = node_payload(item);
+    let name = ast_left(payload);
+    let rest1 = ast_right(payload);
+    let params = ast_left(rest1);
+    let rest2 = ast_right(rest1);
+    let ret = ast_left(rest2);
+    let rest3 = ast_right(rest2);
+    let effects_opt = ast_left(rest3);
+    let rest4 = ast_right(rest3);
+    let contracts = ast_left(rest4);
+    let block = ast_right(rest4);
+
+    let signature = format_signature_ast(keyword, name, params, ret);
+    let header = line(indent, signature);
+
+    let effects_lines = format_effects_and_contracts_ast(effects_opt, contracts, indent);
+    let block_text = format_block_ast(block, indent);
+    let with_effects = __str_concat(header, effects_lines);
+    return __str_concat(with_effects, block_text);
+}
+
+fn format_signature_ast(keyword: String, name: String, params: String, ret: String) -> String {
+    let base = __str_concat(keyword, " ");
+    let base = __str_concat(base, name);
+    let base = __str_concat(base, "(");
+    let params_text = format_params_ast(params);
+    let base = __str_concat(base, params_text);
+    let base = __str_concat(base, ")");
+    let ret_text = format_return_type_ast(ret);
+    return __str_concat(base, ret_text);
+}
+
+fn format_params_ast(params: String) -> String {
+    if list_is_empty(params) {
+        return "";
+    }
+    let head = list_head(params);
+    let tail = list_tail(params);
+    let head_text = format_param_ast(head);
+    if list_is_empty(tail) {
+        return head_text;
+    }
+    if __str_eq(tail, params) {
+        return head_text;
+    }
+    let tail_text = format_params_ast(tail);
+    let combined = __str_concat(head_text, ", ");
+    return __str_concat(combined, tail_text);
+}
+
+fn format_param_ast(param: String) -> String {
+    let payload = node_payload(param);
+    let name = ast_left(payload);
+    let ty_opt = ast_right(payload);
+    if option_is_none(ty_opt) {
+        return name;
+    }
+    let ty = option_unwrap(ty_opt);
+    let ty_text = format_type_ast(ty);
+    let combined = __str_concat(name, ": ");
+    return __str_concat(combined, ty_text);
+}
+
+fn format_return_type_ast(ret: String) -> String {
+    if option_is_none(ret) {
+        return "";
+    }
+    let ty = option_unwrap(ret);
+    let ty_text = format_type_ast(ty);
+    let combined = __str_concat(" -> ", ty_text);
+    return combined;
+}
+
+fn format_effects_and_contracts_ast(effects_opt: String, contracts: String, indent: String) -> String {
+    if option_is_none(effects_opt) {
+        return format_contracts_ast(contracts, indent);
+    }
+    let effect_decl = format_effects_decl_ast(option_unwrap(effects_opt));
+    let effect_line = line(indent, effect_decl);
+    let contract_lines = format_contracts_ast(contracts, indent);
+    return __str_concat(effect_line, contract_lines);
+}
+
+fn format_effects_decl_ast(effects_decl: String) -> String {
+    let tag = node_tag(effects_decl);
+    let payload = ast_left(node_payload(effects_decl));
+    if __str_eq(tag, "Effects") {
+        if list_is_empty(payload) {
+            return "effects {}";
+        }
+        let list = format_paths_ast(payload);
+        let line_text = __str_concat("effects { ", list);
+        return __str_concat(line_text, " }");
+    }
+    if __str_eq(tag, "Requires") {
+        if list_is_empty(payload) {
+            return "requires {}";
+        }
+        let list = format_require_list_ast(payload);
+        let line_text = __str_concat("requires { ", list);
+        return __str_concat(line_text, " }");
+    }
+    return "";
+}
+
+fn format_require_list_ast(reqs: String) -> String {
+    if list_is_empty(reqs) {
+        return "";
+    }
+    let head = list_head(reqs);
+    let tail = list_tail(reqs);
+    let head_text = format_require_ast(head);
+    if list_is_empty(tail) {
+        return head_text;
+    }
+    if __str_eq(tail, reqs) {
+        return head_text;
+    }
+    let tail_text = format_require_list_ast(tail);
+    let combined = __str_concat(head_text, ", ");
+    return __str_concat(combined, tail_text);
+}
+
+fn format_require_ast(req: String) -> String {
+    let payload = node_payload(req);
+    let left = ast_left(payload);
+    let right = ast_right(payload);
+    let combined = __str_concat(left, ":");
+    return __str_concat(combined, right);
+}
+
+fn format_contracts_ast(contracts: String, indent: String) -> String {
+    if list_is_empty(contracts) {
+        return "";
+    }
+    let head = list_head(contracts);
+    let tail = list_tail(contracts);
+    let head_text = format_contract_ast(head);
+    let line_text = line(indent, head_text);
+    if __str_eq(tail, contracts) {
+        return line_text;
+    }
+    let tail_text = format_contracts_ast(tail, indent);
+    return __str_concat(line_text, tail_text);
+}
+
+fn format_contract_ast(contract: String) -> String {
+    let payload = node_payload(contract);
+    let kind = ast_left(payload);
+    let expr = ast_right(payload);
+    let expr_text = format_expr_ast(expr);
+    let line_text = __str_concat(kind, ": ");
+    return __str_concat(line_text, expr_text);
+}
+
+fn format_block_ast(block: String, indent: String) -> String {
+    let open_line = line(indent, "{");
+    let inner = indent_more(indent);
+    let stmts = ast_left(node_payload(block));
+    let stmt_text = format_stmt_list_ast(stmts, inner);
+    let close_line = line(indent, "}");
+    let combined = __str_concat(open_line, stmt_text);
+    return __str_concat(combined, close_line);
+}
+
+fn format_stmt_list_ast(stmts: String, indent: String) -> String {
+    if list_is_empty(stmts) {
+        return "";
+    }
+    let head = list_head(stmts);
+    let tail = list_tail(stmts);
+    let head_text = format_stmt_ast(head, indent);
+    if __str_eq(tail, stmts) {
+        return head_text;
+    }
+    let tail_text = format_stmt_list_ast(tail, indent);
+    return __str_concat(head_text, tail_text);
+}
+
+fn format_stmt_ast(stmt: String, indent: String) -> String {
+    let tag = node_tag(stmt);
+    if __str_eq(tag, "StmtLet") {
+        let payload = node_payload(stmt);
+        let name = ast_left(payload);
+        let rest = ast_right(payload);
+        let ty_opt = ast_left(rest);
+        let expr = ast_right(rest);
+        if option_is_none(ty_opt) {
+            let line_text = __str_concat("let ", name);
+            let line_text = __str_concat(line_text, " = ");
+            let line_text = __str_concat(line_text, format_expr_ast(expr));
+            let line_text = __str_concat(line_text, ";");
+            return line(indent, line_text);
+        }
+        let ty = option_unwrap(ty_opt);
+        let line_text = __str_concat("let ", name);
+        let line_text = __str_concat(line_text, ": ");
+        let line_text = __str_concat(line_text, format_type_ast(ty));
+        let line_text = __str_concat(line_text, " = ");
+        let line_text = __str_concat(line_text, format_expr_ast(expr));
+        let line_text = __str_concat(line_text, ";");
+        return line(indent, line_text);
+    }
+    if __str_eq(tag, "StmtReturn") {
+        let expr_opt = ast_unescape(node_payload(stmt));
+        if option_is_none(expr_opt) {
+            return line(indent, "return;");
+        }
+        let expr = option_unwrap(expr_opt);
+        let line_text = __str_concat("return ", format_expr_ast(expr));
+        let line_text = __str_concat(line_text, ";");
+        return line(indent, line_text);
+    }
+    if __str_eq(tag, "StmtExpr") {
+        let expr = ast_unescape(node_payload(stmt));
+        let line_text = __str_concat(format_expr_ast(expr), ";");
+        return line(indent, line_text);
+    }
+    if __str_eq(tag, "StmtIf") {
+        let payload = node_payload(stmt);
+        let cond = ast_left(payload);
+        let rest = ast_right(payload);
+        let then_block = ast_left(rest);
+        let else_opt = ast_right(rest);
+        let header = __str_concat("if ", format_expr_ast(cond));
+        let head_line = line(indent, header);
+        let then_text = format_block_ast(then_block, indent);
+        if option_is_none(else_opt) {
+            return __str_concat(head_line, then_text);
+        }
+        let else_block = option_unwrap(else_opt);
+        let else_line = line(indent, "else");
+        let else_text = format_block_ast(else_block, indent);
+        let combined = __str_concat(head_line, then_text);
+        let combined = __str_concat(combined, else_line);
+        return __str_concat(combined, else_text);
+    }
+    if __str_eq(tag, "StmtLoop") {
+        let block = ast_unescape(node_payload(stmt));
+        let header = line(indent, "loop");
+        let body = format_block_ast(block, indent);
+        return __str_concat(header, body);
+    }
+    if __str_eq(tag, "StmtStep") {
+        let payload = node_payload(stmt);
+        let label = ast_left(payload);
+        let block = ast_right(payload);
+        let header = __str_concat("step ", label);
+        let header = line(indent, header);
+        let body = format_block_ast(block, indent);
+        return __str_concat(header, body);
+    }
+    return "";
+}
+
+fn format_expr_ast(expr: String) -> String {
+    let tag = node_tag(expr);
+    if __str_eq(tag, "ExprNumber") {
+        return ast_left(node_payload(expr));
+    }
+    if __str_eq(tag, "ExprString") {
+        return ast_left(node_payload(expr));
+    }
+    if __str_eq(tag, "ExprBool") {
+        return ast_left(node_payload(expr));
+    }
+    if __str_eq(tag, "ExprPath") {
+        return format_path_ast(ast_left(node_payload(expr)));
+    }
+    if __str_eq(tag, "ExprCall") {
+        let payload = node_payload(expr);
+        let path = ast_left(payload);
+        let args = ast_right(payload);
+        let args_text = format_call_args_ast(args);
+        let call = __str_concat(format_path_ast(path), "(");
+        let call = __str_concat(call, args_text);
+        return __str_concat(call, ")");
+    }
+    return "";
+}
+
+fn format_call_args_ast(args: String) -> String {
+    if list_is_empty(args) {
+        return "";
+    }
+    let head = list_head(args);
+    let tail = list_tail(args);
+    let head_text = format_expr_ast(head);
+    if list_is_empty(tail) {
+        return head_text;
+    }
+    if __str_eq(tail, args) {
+        return head_text;
+    }
+    let tail_text = format_call_args_ast(tail);
+    let combined = __str_concat(head_text, ", ");
+    return __str_concat(combined, tail_text);
+}
+
+fn format_type_ast(ty: String) -> String {
+    let tag = node_tag(ty);
+    if __str_eq(tag, "TypePath") {
+        let path = ast_left(node_payload(ty));
+        return format_path_ast(path);
+    }
+    return "";
+}
+
+fn format_path_ast(path: String) -> String {
+    return format_path_segments(ast_left(node_payload(path)));
+}
+
+fn format_path_segments(segments: String) -> String {
+    if list_is_empty(segments) {
+        return "";
+    }
+    let head = list_head(segments);
+    let tail = list_tail(segments);
+    if list_is_empty(tail) {
+        return head;
+    }
+    if __str_eq(tail, segments) {
+        return head;
+    }
+    let tail_text = format_path_segments(tail);
+    let combined = __str_concat(head, ".");
+    return __str_concat(combined, tail_text);
+}
+
+fn format_paths_ast(paths: String) -> String {
+    if list_is_empty(paths) {
+        return "";
+    }
+    let head = list_head(paths);
+    let tail = list_tail(paths);
+    let head_text = format_path_ast(head);
+    if list_is_empty(tail) {
+        return head_text;
+    }
+    if __str_eq(tail, paths) {
+        return head_text;
+    }
+    let tail_text = format_paths_ast(tail);
+    let combined = __str_concat(head_text, ", ");
+    return __str_concat(combined, tail_text);
+}
+
+fn node_tag(node: String) -> String {
+    return ast_left(node);
+}
+
+fn node_payload(node: String) -> String {
+    return ast_right(node);
+}
+
+fn ast_norm(value: String) -> String {
+    if ast_has_sep(value) {
+        return value;
+    }
+    if ast_has_esc_sep(value) {
+        return ast_norm(ast_unescape(value));
+    }
+    return value;
+}
+
+fn ast_has_sep(value: String) -> Bool {
+    if __str_is_empty(value) {
+        return false;
+    }
+    if __str_starts_with(value, "\n<AST>\n") {
+        return true;
+    }
+    return ast_has_sep(__str_tail(value));
+}
+
+fn ast_has_esc_sep(value: String) -> Bool {
+    if __str_is_empty(value) {
+        return false;
+    }
+    if __str_starts_with(value, "\n<AST_ESC>\n") {
+        return true;
+    }
+    return ast_has_esc_sep(__str_tail(value));
+}
+
+fn ast_has_esc_esc_sep(value: String) -> Bool {
+    if __str_is_empty(value) {
+        return false;
+    }
+    if __str_starts_with(value, "\n<AST_ESC_ESC>\n") {
+        return true;
+    }
+    return ast_has_esc_esc_sep(__str_tail(value));
+}
+
+fn list_is_empty(list: String) -> Bool {
+    return __str_eq(node_tag(list), "Nil");
+}
+
+fn list_head(list: String) -> String {
+    let payload = node_payload(list);
+    return ast_left(payload);
+}
+
+fn list_tail(list: String) -> String {
+    let payload = node_payload(list);
+    return ast_right(payload);
+}
+
+fn option_is_none(option: String) -> Bool {
+    return __str_eq(node_tag(option), "None");
+}
+
+fn option_unwrap(option: String) -> String {
+    let payload = node_payload(option);
+    return ast_left(payload);
+}
+
+fn ast_left(value: String) -> String {
+    let normalized = ast_unescape(value);
+    return ast_left_raw(normalized);
+}
+
+fn ast_right(value: String) -> String {
+    let normalized = ast_unescape(value);
+    return ast_right_raw(normalized);
+}
+
+fn ast_left_raw(value: String) -> String {
+    return ast_take_until_sep(value);
+}
+
+fn ast_right_raw(value: String) -> String {
+    return ast_drop_until_sep(value);
+}
+
+fn ast_take_until_sep(value: String) -> String {
+    if __str_is_empty(value) {
+        return "";
+    }
+    if __str_starts_with(value, "\n<AST>\n") {
+        return "";
+    }
+    let head = __str_head(value);
+    let tail = __str_tail(value);
+    let rest = ast_take_until_sep(tail);
+    return __str_concat(head, rest);
+}
+
+fn ast_drop_until_sep(value: String) -> String {
+    if __str_is_empty(value) {
+        return "";
+    }
+    if __str_starts_with(value, "\n<AST>\n") {
+        return __str_strip_prefix(value, "\n<AST>\n");
+    }
+    return ast_drop_until_sep(__str_tail(value));
+}
+
+fn ast_escape(value: String) -> String {
+    return value;
+}
+
+fn ast_unescape(value: String) -> String {
+    return value;
 }

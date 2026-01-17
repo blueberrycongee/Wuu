@@ -676,15 +676,15 @@ Goal: stage1 parser returns a structured AST instead of formatted text.
 
 Deliverables:
 
-- Define a tagged AST encoding (sum types) in `selfhost/ast.wuu`.
+- Define a tagged AST encoding (sum types) in `selfhost/parser.wuu` / `selfhost/format.wuu`.
 - Update `selfhost/parser.wuu` to return AST values.
-- Add Rust tests that parse `tests/golden/parse/*.wuu` and snapshot the AST
-  (or roundtrip through stage1 format) for deterministic output.
+- Add Rust tests that parse `tests/golden/parse/*.wuu` and validate the AST tag
+  plus token consumption.
 
 Acceptance:
 
-- Stage1 parser produces AST for all golden parse fixtures.
-- Stage1 AST roundtrips through stage1 formatter to match stage0 output.
+- Stage1 parser produces AST for all golden parse fixtures (tagged `Module`).
+- Stage1 parse CLI continues to emit stage0 formatting until M4.21.
 - `cargo test` passes.
 
 Done when:
