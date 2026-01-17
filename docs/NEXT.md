@@ -1,6 +1,6 @@
 # Next
 
-Target milestone: None (M4.19 complete; awaiting next plan)
+Target milestone: M4.20 Stage1 AST data model (structured parse output)
 
 Reference plan: `docs/wuu-lang/SELF_HOST_PLAN.md`
 

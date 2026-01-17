@@ -670,12 +670,513 @@ Done when:
 
 - Escape fixtures are covered in the CLI test suite.
 
+### M4.20 Stage1 AST data model (structured parse output)
+
+Goal: stage1 parser returns a structured AST instead of formatted text.
+
+Deliverables:
+
+- Define a tagged AST encoding (sum types) in `selfhost/ast.wuu`.
+- Update `selfhost/parser.wuu` to return AST values.
+- Add Rust tests that parse `tests/golden/parse/*.wuu` and snapshot the AST
+  (or roundtrip through stage1 format) for deterministic output.
+
+Acceptance:
+
+- Stage1 parser produces AST for all golden parse fixtures.
+- Stage1 AST roundtrips through stage1 formatter to match stage0 output.
+- `cargo test` passes.
+
+Done when:
+
+- Stage1 parse output is structured (no formatted-string pair output).
+
+### M4.21 Stage1 formatter consumes AST end-to-end
+
+Goal: stage1 formatting is driven by AST, not token streams.
+
+Deliverables:
+
+- Update `selfhost/format.wuu` to accept AST values.
+- Update stage1 CLI paths to parse -> AST -> format for `fmt --stage1`.
+- Add tests that validate AST->text formatting parity with stage0.
+
+Acceptance:
+
+- Stage1 formatter output matches stage0 on `tests/golden/fmt/*.wuu`.
+- `wuu fmt --stage1 --check` still enforces parity + formatted input.
+- `cargo test` passes.
+
+Done when:
+
+- Stage1 formatting no longer accepts token streams directly.
+
+### M4.22 Stage1 diagnostics with spans
+
+Goal: stage1 parser reports stable line/col spans on errors.
+
+Deliverables:
+
+- Add a span type and propagate spans into AST nodes in stage1.
+- Update stage1 parser error reporting to include line/col ranges.
+- Add fixtures that assert deterministic error messages and spans.
+
+Acceptance:
+
+- Stage1 parse errors are stable and include line/col info.
+- CLI surface shows the stage1 error with spans.
+- `cargo test` passes.
+
+Done when:
+
+- Stage1 diagnostics are usable without falling back to stage0 errors.
+
+### M4.23 Stage1 lexer without host intrinsic (bounded mode)
+
+Goal: reduce host dependency by adding a pure Wuu lexer path.
+
+Deliverables:
+
+- Implement a pure lexer path in `selfhost/lexer.wuu`.
+- Keep `__lex_tokens` as a fallback for large inputs; add a size threshold.
+- Add tests that force the pure path on golden fixtures and compare tokens.
+
+Acceptance:
+
+- Pure stage1 lexer matches Rust tokens on golden fixtures.
+- Large-input path still uses host `__lex_tokens` for stack safety.
+- `cargo test` passes.
+
+Done when:
+
+- Stage1 can lex without host support on bounded inputs.
+
+### M4.24 Stage1 parser without host pair intrinsics
+
+Goal: remove `__pair_left` / `__pair_right` from stage1 parsing.
+
+Deliverables:
+
+- Replace pair-encoded parsing with explicit list/stack structures.
+- Update `selfhost/parser.wuu` to use iterative parsing where needed.
+- Add tests that cover large parse fixtures without stack overflows.
+
+Acceptance:
+
+- Stage1 parser passes all golden parse fixtures without host pair helpers.
+- `cargo test` passes.
+
+Done when:
+
+- Stage1 parsing no longer depends on host pair intrinsics.
+
+### M4.25 Stage1 stdlib consolidation
+
+Goal: centralize stage1 string and list helpers for reuse and testing.
+
+Deliverables:
+
+- Add `selfhost/stdlib.wuu` with tested string/list helpers used by lexer/parser.
+- Update stage1 sources to use stdlib helpers.
+- Add unit tests for stdlib helpers in Rust harness.
+
+Acceptance:
+
+- Stage1 lexer/parser still pass conformance tests.
+- Stdlib helper tests cover edge cases (empty input, unicode rejection).
+- `cargo test` passes.
+
+Done when:
+
+- Stage1 core logic is factored through a tested stdlib layer.
+
+### M5.1 Stage1 bytecode VM (host) for subset
+
+Goal: run stage1 tools on a dedicated bytecode VM instead of the interpreter.
+
+Deliverables:
+
+- Define a tiny bytecode/IR for the stage1 subset.
+- Implement a Rust VM with deterministic execution.
+- Add VM-vs-interpreter equivalence tests on `tests/run/*.wuu`.
+
+Acceptance:
+
+- VM produces identical outputs to the interpreter on the pure subset.
+- `cargo test` passes.
+
+Done when:
+
+- The VM can run stage1 tools for small inputs.
+
+### M5.2 Stage1 compiler to bytecode (in Wuu)
+
+Goal: compile the stage1 subset to the new bytecode.
+
+Deliverables:
+
+- Implement a stage1 compiler in Wuu (AST -> bytecode).
+- Add tests that compile and run fixtures via the VM.
+
+Acceptance:
+
+- Compiled stage1 tools produce identical outputs to interpreter runs.
+- `cargo test` passes.
+
+Done when:
+
+- Stage1 compiler can build stage1 tools into bytecode.
+
+### M5.3 Stage2 bootstrap (stage1 -> stage2)
+
+Goal: use the stage1 compiler to build stage2 and compare outputs.
+
+Deliverables:
+
+- Bootstrap test: stage1 compiler builds stage2 bytecode.
+- Run stage2 tools on golden fixtures and compare to stage1 outputs.
+
+Acceptance:
+
+- Stage2 outputs match stage1 outputs on golden suites.
+- `cargo test` passes.
+
+Done when:
+
+- Stage2 is a reproducible, validated artifact.
+
+### M5.4 Host intrinsic inventory and reduction
+
+Goal: document and shrink the remaining host intrinsics.
+
+Deliverables:
+
+- Add a `docs/wuu-lang/HOST_INTRINSICS.md` inventory.
+- Replace any remaining pure intrinsics with Wuu code where possible.
+- Add tests that enforce the allowed intrinsic list.
+
+Acceptance:
+
+- The intrinsic list is explicit and enforced by tests.
+- `cargo test` passes.
+
+Done when:
+
+- Remaining host dependencies are documented and minimal.
+
+### M6.0 Full self-host bootstrap (stage2 -> stage3)
+
+Goal: the toolchain can compile itself end-to-end with deterministic artifacts.
+
+Deliverables:
+
+- Complete the M6.x sub-milestones below (M6.1-M6.4).
+
+Acceptance:
+
+- M6.1-M6.4 acceptance criteria are all green.
+- `cargo test` passes.
+
+Done when:
+
+- Self-hosted toolchain is reproducible and deterministic.
+
+### M6.1 Stage2 -> Stage3 build outputs (artifact contract)
+
+Goal: define a stable stage3 artifact format and build output contract.
+
+Deliverables:
+
+- A dedicated output directory and naming scheme for stage3 artifacts.
+- A manifest or checksum file that captures the exact build inputs.
+- Tests that assert the artifact contract is deterministic.
+
+Acceptance:
+
+- Stage2 produces identical stage3 artifacts across two consecutive runs.
+- Artifact manifest/checksum matches the produced outputs.
+- `cargo test` passes.
+
+Done when:
+
+- Stage3 artifact format and output paths are stable and tested.
+
+### M6.2 Stage2 builds stage3
+
+Goal: stage2 compiler builds stage3 using only Wuu code plus minimal runtime.
+
+Deliverables:
+
+- Stage2 build pipeline for stage3 (script or test harness).
+- Tests that compile stage3 and run stage3 tools on golden suites.
+
+Acceptance:
+
+- Stage3 tools pass golden `fmt/parse/lex` fixtures.
+- No fallback to stage0 in the stage3 path.
+- `cargo test` passes.
+
+Done when:
+
+- Stage3 artifacts are produced by stage2 and validated by tests.
+
+### M6.3 Stage3 self-compile parity
+
+Goal: stage3 compiles stage3 with byte-for-byte identical outputs.
+
+Deliverables:
+
+- A bootstrap test that runs stage3 -> stage3 and compares outputs.
+- Stable output hashing for comparison.
+
+Acceptance:
+
+- Stage3 self-compile outputs match the stage2-built stage3 artifacts.
+- `cargo test` passes.
+
+Done when:
+
+- Stage3 is reproducible and self-compiled without differences.
+
+### M6.4 Self-hosted CLI mode
+
+Goal: expose a CLI mode that uses stage3 for core tooling.
+
+Deliverables:
+
+- `wuu fmt/check/lex/parse --selfhost` uses stage3.
+- CLI tests that ensure `--selfhost` output matches stage0 on golden suites.
+
+Acceptance:
+
+- `--selfhost` mode passes golden fixtures and parity checks.
+- `cargo test` passes.
+
+Done when:
+
+- The CLI can run fully self-hosted tools by default or via flag.
+
+### M6.5 Business language core: modules and imports
+
+Goal: support multi-module projects with explicit imports.
+
+Deliverables:
+
+- Module syntax and resolver rules (single-root packages).
+- `wuu check` resolves imports and reports stable errors.
+- Golden fixtures for multi-module programs.
+
+Acceptance:
+
+- Import resolution works on test fixtures.
+- Stable error spans for missing or cyclic imports.
+- `cargo test` passes.
+
+Done when:
+
+- Multi-module project structure is supported.
+
+### M6.6 Business language core: collections and records
+
+Goal: first-class collection literals and record manipulation.
+
+Deliverables:
+
+- List and map literals, indexing, and basic iteration.
+- Record updates and field access with stable typing rules.
+- Formatter support for the new syntax.
+
+Acceptance:
+
+- Typechecking and formatting pass new fixtures.
+- `cargo test` passes.
+
+Done when:
+
+- Collections and records are usable for business logic.
+
+### M6.7 Business language core: error handling
+
+Goal: ergonomic error paths with `Result`/`Option` and early returns.
+
+Deliverables:
+
+- `Result`/`Option` syntax and typechecking rules.
+- `try`/`?`-style propagation or explicit match-based patterns.
+- Tests for deterministic error messages.
+
+Acceptance:
+
+- Error propagation works in interpreter and typechecker.
+- `cargo test` passes.
+
+Done when:
+
+- Business code can handle failures without ad-hoc patterns.
+
+### M6.8 Business language core: IO boundaries and effects
+
+Goal: make file/system IO explicit and capability-gated.
+
+Deliverables:
+
+- Effects for file read/write and clock/time.
+- Runtime stubs for IO with deterministic logging.
+- Tests that enforce effect gating and replay safety.
+
+Acceptance:
+
+- IO requires declared effects in `wuu check`.
+- IO calls are logged and replayable.
+- `cargo test` passes.
+
+Done when:
+
+- IO is usable and auditable under capabilities.
+
+### M6.9 Business language core: data formats (JSON/CSV)
+
+Goal: parse and emit structured data needed for business apps.
+
+Deliverables:
+
+- Minimal JSON and CSV parsing/serialization in stdlib or host bridges.
+- Tests covering invalid inputs and roundtrips.
+
+Acceptance:
+
+- Data parsing works on fixtures with stable error messages.
+- `cargo test` passes.
+
+Done when:
+
+- The language can process real-world business data.
+
+### M7.0 Medium project capability (real product in Wuu)
+
+Goal: Wuu can ship a medium-sized, real-world business app with evidence gates.
+
+Definition of "medium project":
+
+- 3-10 modules, 2-5k LOC of Wuu code (excluding tests).
+- Uses IO, structured data, and non-trivial business rules.
+- Has evidence blocks that cover key requirements and edge cases.
+
+Deliverables:
+
+- Complete M7.x sub-milestones below (M7.1-M7.5).
+
+Acceptance:
+
+- M7.1-M7.5 acceptance criteria are all green.
+- `cargo test` passes.
+
+Done when:
+
+- A real medium app is built in Wuu and validated end-to-end.
+
+### M7.1 Project definition and evidence baseline
+
+Goal: lock the real-world target app and define executable intent.
+
+Deliverables:
+
+- One-page project brief: inputs, outputs, constraints, success criteria.
+- Evidence blocks that encode the top 3 requirements and 3 edge cases.
+- Sample input/output fixtures under `examples/<app>/`.
+
+Acceptance:
+
+- Evidence blocks run and fail before implementation.
+- Fixtures are checked into the repo.
+- `cargo test` passes (expected failures are explicitly asserted).
+
+Done when:
+
+- The target app is frozen and intent is executable.
+
+### M7.2 Data model + parsing layer
+
+Goal: implement the data structures and parsers required by the app.
+
+Deliverables:
+
+- Domain types in Wuu.
+- Parsing functions from JSON/CSV or flat text inputs.
+- Evidence tests for valid and invalid inputs.
+
+Acceptance:
+
+- Parsers accept valid fixtures and reject invalid ones deterministically.
+- `cargo test` passes.
+
+Done when:
+
+- The app can ingest its real inputs.
+
+### M7.3 Core business rules and classification
+
+Goal: implement the non-trivial business logic.
+
+Deliverables:
+
+- Rule engine or rule functions with clear ordering.
+- Evidence tests for correctness and edge cases.
+
+Acceptance:
+
+- Rule outputs match expected fixtures.
+- `cargo test` passes.
+
+Done when:
+
+- The app produces correct domain outputs.
+
+### M7.4 Output generation + CLI interface
+
+Goal: produce user-visible output and provide a runnable CLI.
+
+Deliverables:
+
+- Report generation (summary + detail output).
+- `wuu run` or `wuu app` entrypoint with flags/config.
+- Docs for running the app and sample command lines.
+
+Acceptance:
+
+- CLI produces the documented outputs on fixtures.
+- `cargo test` passes.
+
+Done when:
+
+- The app is runnable end-to-end from CLI.
+
+### M7.5 Audit log and replay verification
+
+Goal: make the app fully auditable and replayable.
+
+Deliverables:
+
+- Structured log output for all effectful operations.
+- Replay command that validates a prior run.
+- Evidence tests that validate replay and mismatch errors.
+
+Acceptance:
+
+- Replay succeeds on recorded fixtures and fails on tampered logs.
+- `cargo test` passes.
+
+Done when:
+
+- The app is auditable and replayable end-to-end.
+
 ## 5) How far are we right now?
 
 Current state (as of the latest entry in `docs/PROGRESS.md`):
 
-- We have a Rust CLI and tests for a tiny decl formatter.
-- We do NOT yet have lexer/parser/AST; we are pre-M0.1.
+- M4.19 is complete (stage1 lexer/parser/formatter parity + CLI coverage).
+- Stage1 parsing still returns formatted text and relies on host intrinsics.
+- Next step is M4.20 (stage1 AST output) to move toward stage2 bootstrap.
 
 In this plan, "self-hosting subset" starts at M4.2.
 So we are still early, but the next steps are clear and verifiable.
