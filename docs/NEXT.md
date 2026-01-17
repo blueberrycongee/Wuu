@@ -1,6 +1,6 @@
 # Next
 
-Target milestone: M3.x Evidence gates (example tests + property tests + benches)
+Target milestone: M4.1 Define the "self-hosting subset" precisely
 
 Reference plan: `docs/wuu-lang/SELF_HOST_PLAN.md`
 

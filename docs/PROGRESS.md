@@ -450,6 +450,36 @@ Known limitations:
 - No workflow support or host imports beyond a stub.
 - `if` is compiled as a statement; returns inside branches are lowered with `unreachable` fallthrough.
 
+## Milestone 2026-01-17: M3.x Evidence gates (example tests + property tests + benches)
+
+Goal:
+
+- Turn `example:`/`property:`/`bench:` blocks into executable evidence gates.
+
+Changes made:
+
+- Added evidence parser + runner: `src/evidence.rs`.
+- Added interpreter entry support for property case args: `src/interpreter.rs`.
+- Added evidence tests and fixtures:
+  - `tests/evidence_tests.rs`
+  - `docs/wuu-lang/EVIDENCE.md`
+
+Acceptance criteria:
+
+- `example:` blocks execute and compare expected values.
+- `property:` cases run with argument lists and deterministic checks.
+- `bench:` blocks run with iterations + max_ms thresholds.
+- `cargo test` passes.
+
+Validation (WSL):
+
+- `wsl -d Ubuntu -- bash -lc "cd /mnt/d/Desktop/Wuu && ./scripts/wsl-validate.sh"`
+
+Known limitations:
+
+- Property cases support literal `Int`/`Bool`/`String`/`unit` values only.
+- Benchmarks use wall-clock thresholds and run the interpreter backend.
+
 ## Tooling 2026-01-17: GitHub HTTPS `SSL_ERROR_SYSCALL` (Windows) workaround
 
 Issue observed:

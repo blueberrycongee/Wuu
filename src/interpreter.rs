@@ -42,6 +42,14 @@ impl fmt::Display for RunError {
 impl std::error::Error for RunError {}
 
 pub fn run_entry(module: &Module, entry: &str) -> Result<Value, RunError> {
+    run_entry_with_args(module, entry, Vec::new())
+}
+
+pub fn run_entry_with_args(
+    module: &Module,
+    entry: &str,
+    args: Vec<Value>,
+) -> Result<Value, RunError> {
     let mut functions = HashMap::new();
     for item in &module.items {
         if let Item::Fn(func) = item {
@@ -54,7 +62,7 @@ pub fn run_entry(module: &Module, entry: &str) -> Result<Value, RunError> {
         message: format!("entry function '{entry}' not found"),
     })?;
 
-    interpreter.eval_fn(entry_fn, Vec::new())
+    interpreter.eval_fn(entry_fn, args)
 }
 
 struct Interpreter<'a> {

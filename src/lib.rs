@@ -1,6 +1,7 @@
 pub mod ast;
 pub mod effects;
 pub mod error;
+pub mod evidence;
 pub mod format;
 pub mod interpreter;
 pub mod ir;
