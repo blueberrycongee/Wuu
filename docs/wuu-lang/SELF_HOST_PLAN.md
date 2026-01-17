@@ -633,6 +633,25 @@ Done when:
 
 - Stage1 lexing no longer calls `__lex_tokens` directly in `lex()`.
 
+### M4.18 Stage1 lexer escapes token text
+
+Goal: make stage1 lexer output match Rust's escaped token stream formatting.
+
+Deliverables:
+
+- `selfhost/lexer.wuu` post-processes `__lex_tokens` output to escape `\\`, `\n`,
+  `\r`, and `\t` in token text.
+- A golden lexer fixture includes escaped sequences.
+
+Acceptance:
+
+- Stage1 lexer matches Rust tokens on the new escape fixture.
+- `cargo test` passes.
+
+Done when:
+
+- Stage1 lexer output is stable for backslash and whitespace escapes.
+
 ## 5) How far are we right now?
 
 Current state (as of the latest entry in `docs/PROGRESS.md`):

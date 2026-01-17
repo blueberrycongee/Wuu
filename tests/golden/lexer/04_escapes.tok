@@ -1,0 +1,12 @@
+Keyword fn
+Ident main
+Punct (
+Punct )
+Punct {
+Keyword return
+Ident show
+Punct (
+StringLiteral "\\\\n\\\\t\\\\\\\\"
+Punct )
+Punct ;
+Punct }

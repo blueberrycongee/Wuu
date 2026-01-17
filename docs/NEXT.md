@@ -1,6 +1,6 @@
 # Next
 
-Target milestone: None (M4.17 complete; awaiting next plan)
+Target milestone: None (M4.18 complete; awaiting next plan)
 
 Reference plan: `docs/wuu-lang/SELF_HOST_PLAN.md`
 

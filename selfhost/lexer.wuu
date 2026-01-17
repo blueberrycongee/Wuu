@@ -3,7 +3,8 @@ fn lex(source: String) -> String {
 }
 
 fn lex_tokens(source: String) -> String {
-    return __lex_tokens(source);
+    let raw = __lex_tokens(source);
+    return escape_tokens(raw);
 }
 
 fn skip_trivia(source: String) -> String {
@@ -113,6 +114,43 @@ fn join_lines(head: String, tail: String) -> String {
     return __str_concat(with_newline, tail);
 }
 
+fn escape_tokens(tokens: String) -> String {
+    if __str_is_empty(tokens) {
+        return "";
+    }
+    let split = split_line(tokens);
+    let line = pair_left(split);
+    let rest = pair_right(split);
+    let escaped_line = escape_token_line(line);
+    let tail = escape_tokens(rest);
+    return join_lines(escaped_line, tail);
+}
+
+fn escape_token_line(line: String) -> String {
+    if __str_starts_with(line, "Keyword ") {
+        return escape_line_with_prefix("Keyword ", line);
+    }
+    if __str_starts_with(line, "Ident ") {
+        return escape_line_with_prefix("Ident ", line);
+    }
+    if __str_starts_with(line, "Number ") {
+        return escape_line_with_prefix("Number ", line);
+    }
+    if __str_starts_with(line, "StringLiteral ") {
+        return escape_line_with_prefix("StringLiteral ", line);
+    }
+    if __str_starts_with(line, "Other ") {
+        return escape_line_with_prefix("Other ", line);
+    }
+    return line;
+}
+
+fn escape_line_with_prefix(prefix: String, line: String) -> String {
+    let rest = __str_strip_prefix(line, prefix);
+    let escaped = escape(rest);
+    return __str_concat(prefix, escaped);
+}
+
 fn escape(text: String) -> String {
     if __str_is_empty(text) {
         return "";
@@ -138,4 +176,34 @@ fn escape_char(ch: String) -> String {
         return "\\t";
     }
     return ch;
+}
+
+fn split_line(value: String) -> String {
+    if __str_is_empty(value) {
+        return pair("", "");
+    }
+    let head = __str_head(value);
+    if __str_eq(head, "\n") {
+        let rest = __str_tail(value);
+        return pair("", rest);
+    }
+    let next = split_line(__str_tail(value));
+    let line = pair_left(next);
+    let rest = pair_right(next);
+    let combined = __str_concat(head, line);
+    return pair(combined, rest);
+}
+
+fn pair(left: String, right: String) -> String {
+    let sep = "\n<SEP>\n";
+    let combined = __str_concat(left, sep);
+    return __str_concat(combined, right);
+}
+
+fn pair_left(value: String) -> String {
+    return __pair_left(value);
+}
+
+fn pair_right(value: String) -> String {
+    return __pair_right(value);
 }

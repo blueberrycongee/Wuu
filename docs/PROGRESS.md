@@ -1014,6 +1014,38 @@ Known limitations:
 
 - Stage1 lexing still depends on the host `__lex_tokens` intrinsic for stack safety.
 
+## Milestone 2026-01-17: M4.18 Stage1 lexer escapes token text
+
+Goal:
+
+- Make stage1 lexer output match Rust's escaped token stream formatting.
+
+Changes made:
+
+- Stage1 lexer now escapes token text after calling the host lex intrinsic:
+  - `selfhost/lexer.wuu`
+- Added an escape-focused lexer fixture:
+  - `tests/golden/lexer/04_escapes.wuu`
+  - `tests/golden/lexer/04_escapes.tok`
+- Updated the closed-loop plan and next milestone:
+  - `docs/wuu-lang/SELF_HOST_PLAN.md`
+  - `docs/NEXT.md`
+
+Acceptance criteria:
+
+- Stage1 lexer matches Rust tokens on the escape fixture.
+- `cargo test` passes.
+
+Validation (WSL):
+
+- `wsl -d Ubuntu -- bash -lc "cd /mnt/d/Desktop/Wuu && . /mnt/d/wuu-cache/cargo/env && RUSTUP_HOME=/mnt/d/wuu-cache/rustup cargo fmt --all"`
+- `wsl -d Ubuntu -- bash -lc "cd /mnt/d/Desktop/Wuu && . /mnt/d/wuu-cache/cargo/env && RUSTUP_HOME=/mnt/d/wuu-cache/rustup cargo clippy --all-targets -- -D warnings"`
+- `wsl -d Ubuntu -- bash -lc "cd /mnt/d/Desktop/Wuu && . /mnt/d/wuu-cache/cargo/env && RUSTUP_HOME=/mnt/d/wuu-cache/rustup cargo test"`
+
+Known limitations:
+
+- Stage1 lexing still depends on the host `__lex_tokens` intrinsic for stack safety.
+
 ## Tooling 2026-01-17: GitHub HTTPS `SSL_ERROR_SYSCALL` (Windows) workaround
 
 Issue observed:
