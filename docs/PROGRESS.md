@@ -719,6 +719,31 @@ Known limitations:
 
 - Write mode overwrites the file without diff output.
 
+## Milestone 2026-01-17: M4.9 Stage1 lexer CLI
+
+Goal:
+
+- Expose the stage1 lexer via the CLI for self-hosted validation.
+
+Changes made:
+
+- Added `wuu lex --stage1` with a stage0 fallback: `src/main.rs`.
+- Added CLI test for stage1 lexer output:
+  - `tests/cli_stage1_lex_tests.rs`
+
+Acceptance criteria:
+
+- Stage1 lexer output matches the golden token fixtures.
+- `cargo test` passes.
+
+Validation (WSL):
+
+- `wsl -d Ubuntu -- bash -lc "cd /mnt/d/Desktop/Wuu && ./scripts/wsl-validate.sh"`
+
+Known limitations:
+
+- Lexer CLI does not yet support a `--check` mode.
+
 ## Tooling 2026-01-17: GitHub HTTPS `SSL_ERROR_SYSCALL` (Windows) workaround
 
 Issue observed:

@@ -438,6 +438,25 @@ Done when:
 
 - stage1 formatter can rewrite files deterministically via CLI.
 
+### M4.9 Stage1 lexer CLI
+
+Goal: expose the stage1 lexer through the CLI for self-host validation.
+
+Deliverables:
+
+- `wuu lex --stage1 <path>` emits the same token stream format as the golden
+  lexer fixtures.
+- CLI tests for stage1 lexer output.
+
+Acceptance:
+
+- Stage1 lexer output matches `tests/golden/lexer/*.tok`.
+- `cargo test` passes.
+
+Done when:
+
+- stage1 lexer can be exercised from the CLI with tests.
+
 ## 5) How far are we right now?
 
 Current state (as of the latest entry in `docs/PROGRESS.md`):
