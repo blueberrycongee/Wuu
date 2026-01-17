@@ -53,6 +53,25 @@ fn selfhost_lexer_matches_rust_tokens() {
     assert!(count >= 3, "expected at least 3 lexer fixtures");
 }
 
+#[test]
+fn selfhost_lexer_uses_lex_tokens_wrapper() {
+    let lexer_path = Path::new("selfhost/lexer.wuu");
+    let lexer_source = fs::read_to_string(lexer_path).expect("read lexer.wuu failed");
+
+    assert!(
+        lexer_source.contains("return lex_tokens"),
+        "selfhost/lexer.wuu should route through lex_tokens"
+    );
+    assert!(
+        lexer_source.contains("__lex_tokens"),
+        "selfhost/lexer.wuu should include a host-backed lex_tokens fallback"
+    );
+    assert!(
+        !lexer_source.contains("fn lex(source: String) -> String {\n    return __lex_tokens"),
+        "selfhost/lexer.wuu should not call __lex_tokens directly in lex()"
+    );
+}
+
 fn format_tokens(source: &str, tokens: &[Token]) -> String {
     let mut lines = Vec::new();
     for token in tokens {

@@ -982,6 +982,38 @@ Known limitations:
 
 - Stage1 parsing still depends on the host `__lex_tokens` intrinsic for stack safety.
 
+## Milestone 2026-01-17: M4.17 Stage1 lexer uses lex_tokens wrapper
+
+Goal:
+
+- Route stage1 lexing through a wrapper while keeping stack-safe tokenization.
+
+Changes made:
+
+- Stage1 lexer now calls `lex_tokens` and the wrapper delegates to the host intrinsic:
+  - `selfhost/lexer.wuu`
+- Added a test that asserts `lex()` routes through `lex_tokens` and the wrapper exists:
+  - `tests/selfhost_lexer_conformance_tests.rs`
+- Updated the closed-loop plan and next milestone:
+  - `docs/wuu-lang/SELF_HOST_PLAN.md`
+  - `docs/NEXT.md`
+
+Acceptance criteria:
+
+- Stage1 lexer still matches Rust tokens on golden lexer fixtures.
+- `selfhost/lexer.wuu` uses `lex_tokens` and includes a host-backed fallback.
+- `cargo test` passes.
+
+Validation (WSL):
+
+- `wsl -d Ubuntu -- bash -lc "cd /mnt/d/Desktop/Wuu && . /mnt/d/wuu-cache/cargo/env && RUSTUP_HOME=/mnt/d/wuu-cache/rustup cargo fmt --all"`
+- `wsl -d Ubuntu -- bash -lc "cd /mnt/d/Desktop/Wuu && . /mnt/d/wuu-cache/cargo/env && RUSTUP_HOME=/mnt/d/wuu-cache/rustup cargo clippy --all-targets -- -D warnings"`
+- `wsl -d Ubuntu -- bash -lc "cd /mnt/d/Desktop/Wuu && . /mnt/d/wuu-cache/cargo/env && RUSTUP_HOME=/mnt/d/wuu-cache/rustup cargo test"`
+
+Known limitations:
+
+- Stage1 lexing still depends on the host `__lex_tokens` intrinsic for stack safety.
+
 ## Tooling 2026-01-17: GitHub HTTPS `SSL_ERROR_SYSCALL` (Windows) workaround
 
 Issue observed:
