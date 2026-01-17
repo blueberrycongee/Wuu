@@ -571,6 +571,31 @@ Known limitations:
 - Stage1 formatter uses exact input matching against the current golden inputs (not a full parser yet).
 - Parser stub does not build an AST yet; it returns the source unchanged.
 
+## Milestone 2026-01-17: M4.4 Stage pipeline (stage0 -> stage1 -> stage2)
+
+Goal:
+
+- Add a bootstrap test that exercises stage0 -> stage1 -> stage2 formatting pipeline.
+
+Changes made:
+
+- Added bootstrap harness to compare stage0 formatting output with stage1 output,
+  and confirm stage1 is idempotent: `tests/bootstrap_tests.rs`.
+
+Acceptance criteria:
+
+- Stage0 produces canonical sources for `selfhost/*.wuu`.
+- Stage1 formatting of stage0 output matches stage0 output (stage2 equals stage1).
+- `cargo test` passes.
+
+Validation (WSL):
+
+- `wsl -d Ubuntu -- bash -lc "cd /mnt/d/Desktop/Wuu && ./scripts/wsl-validate.sh"`
+
+Known limitations:
+
+- Stage1 formatter is still table-driven; bootstrap only verifies idempotence on stage0 output.
+
 ## Tooling 2026-01-17: GitHub HTTPS `SSL_ERROR_SYSCALL` (Windows) workaround
 
 Issue observed:

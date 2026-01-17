@@ -1,6 +1,6 @@
 # Next
 
-Target milestone: M4.4 Stage pipeline (stage0 -> stage1 -> stage2)
+Target milestone: None (M4.4 complete; awaiting next plan)
 
 Reference plan: `docs/wuu-lang/SELF_HOST_PLAN.md`
 
