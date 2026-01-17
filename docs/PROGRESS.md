@@ -667,6 +667,32 @@ Known limitations:
 
 - Stage1 parser uses a string-encoded token stream and recursive descent (no AST data type yet).
 
+## Milestone 2026-01-17: M4.7 Stage1 formatter CLI
+
+Goal:
+
+- Expose stage1 formatting through the CLI with test coverage.
+
+Changes made:
+
+- Added CLI flag to run stage1 formatter: `wuu fmt --stage1` in `src/main.rs`.
+- Added CLI tests for stage1 output and `--check` failure:
+  - `tests/cli_stage1_fmt_tests.rs`
+
+Acceptance criteria:
+
+- Stage1 output matches stage0 on golden fmt fixtures.
+- `wuu fmt --stage1 --check` fails on unformatted input.
+- `cargo test` passes.
+
+Validation (WSL):
+
+- `wsl -d Ubuntu -- bash -lc "cd /mnt/d/Desktop/Wuu && ./scripts/wsl-validate.sh"`
+
+Known limitations:
+
+- Stage1 CLI path always reloads `selfhost/format.wuu` per invocation.
+
 ## Tooling 2026-01-17: GitHub HTTPS `SSL_ERROR_SYSCALL` (Windows) workaround
 
 Issue observed:

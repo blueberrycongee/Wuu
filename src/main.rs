@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
+use wuu::interpreter::{Value, run_entry_with_args};
 
 #[derive(Debug, Parser)]
 #[command(name = "wuu")]
@@ -16,6 +17,8 @@ enum Command {
         path: PathBuf,
         #[arg(long)]
         check: bool,
+        #[arg(long)]
+        stage1: bool,
     },
     Check {
         path: PathBuf,
@@ -47,9 +50,17 @@ fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     match cli.cmd {
-        Command::Fmt { path, check } => {
+        Command::Fmt {
+            path,
+            check,
+            stage1,
+        } => {
             let input = std::fs::read(&path)?;
-            let formatted = wuu::format::format_source_bytes(&input)?;
+            let formatted = if stage1 {
+                format_stage1(&input)?
+            } else {
+                wuu::format::format_source_bytes(&input)?
+            };
             if check {
                 let input_str =
                     std::str::from_utf8(&input).map_err(|_| anyhow::anyhow!("invalid utf-8"))?;
@@ -83,4 +94,20 @@ fn main() -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+fn format_stage1(input: &[u8]) -> anyhow::Result<String> {
+    let source = std::str::from_utf8(input).map_err(|_| anyhow::anyhow!("invalid utf-8"))?;
+    let format_path = PathBuf::from("selfhost/format.wuu");
+    let format_source = std::fs::read_to_string(&format_path)
+        .map_err(|err| anyhow::anyhow!("failed to read {}: {err}", format_path.display()))?;
+    let module = wuu::parser::parse_module(&format_source)?;
+    wuu::typeck::check_module(&module)?;
+    let value = run_entry_with_args(&module, "format", vec![Value::String(source.to_string())])?;
+    match value {
+        Value::String(output) => Ok(output),
+        other => Err(anyhow::anyhow!(
+            "stage1 formatter returned non-string value: {other:?}"
+        )),
+    }
 }

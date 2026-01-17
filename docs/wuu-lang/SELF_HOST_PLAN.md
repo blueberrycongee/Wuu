@@ -400,6 +400,25 @@ Done when:
 
 - stage1 parser/formatter are real and no longer table-driven.
 
+### M4.7 Stage1 formatter CLI
+
+Goal: expose the stage1 formatter through the CLI to validate self-hosted tooling.
+
+Deliverables:
+
+- `wuu fmt --stage1 <path>` runs the stage1 formatter (`selfhost/format.wuu`).
+- Tests for stage1 fmt output and `--check` behavior.
+
+Acceptance:
+
+- Stage1 output matches stage0 on golden fmt fixtures.
+- `wuu fmt --stage1 --check` fails on unformatted input.
+- `cargo test` passes.
+
+Done when:
+
+- stage1 formatter can be exercised from the CLI with tests.
+
 ## 5) How far are we right now?
 
 Current state (as of the latest entry in `docs/PROGRESS.md`):
