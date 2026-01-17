@@ -65,6 +65,7 @@ impl std::error::Error for TypeError {}
 
 pub fn check_module(module: &Module) -> Result<(), TypeError> {
     let mut signatures = HashMap::new();
+    insert_builtin_signatures(&mut signatures)?;
     for item in &module.items {
         match item {
             Item::Fn(func) => {
@@ -80,6 +81,17 @@ pub fn check_module(module: &Module) -> Result<(), TypeError> {
     for item in &module.items {
         checker.check_item(item)?;
     }
+    Ok(())
+}
+
+fn insert_builtin_signatures(signatures: &mut HashMap<String, Signature>) -> Result<(), TypeError> {
+    signatures.insert(
+        "__str_eq".to_string(),
+        Signature {
+            params: vec![Type::string(), Type::string()],
+            return_type: Type::bool(),
+        },
+    );
     Ok(())
 }
 

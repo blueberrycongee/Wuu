@@ -62,3 +62,27 @@ fn parse_rejects_step_outside_workflow() {
     assert_eq!(err.line, Some(1));
     assert_eq!(err.column, Some(10));
 }
+
+#[test]
+fn parse_string_literal_unescapes() {
+    let source = r#"fn f() { "a\n\"b\""; }"#;
+    let module = parse_module(source).unwrap();
+
+    let item = module.items.first().expect("missing item");
+    let body = match item {
+        Item::Fn(func) => &func.body,
+        other => panic!("expected fn item, got {other:?}"),
+    };
+    let stmt = body.stmts.first().expect("missing stmt");
+    let expr = match stmt {
+        wuu::ast::Stmt::Expr(expr) => expr,
+        other => panic!("expected expr stmt, got {other:?}"),
+    };
+
+    match expr {
+        wuu::ast::Expr::String(value) => {
+            assert_eq!(value, "a\n\"b\"");
+        }
+        other => panic!("expected string literal, got {other:?}"),
+    }
+}

@@ -488,9 +488,32 @@ impl<'a> Parser<'a> {
 }
 
 fn unquote(text: &str) -> String {
-    if text.len() >= 2 {
-        text[1..text.len() - 1].to_string()
-    } else {
-        String::new()
+    if text.len() < 2 {
+        return String::new();
     }
+
+    let inner = &text[1..text.len() - 1];
+    let mut out = String::new();
+    let mut chars = inner.chars();
+
+    while let Some(ch) = chars.next() {
+        if ch == '\\' {
+            match chars.next() {
+                Some('n') => out.push('\n'),
+                Some('r') => out.push('\r'),
+                Some('t') => out.push('\t'),
+                Some('"') => out.push('"'),
+                Some('\\') => out.push('\\'),
+                Some(other) => {
+                    out.push('\\');
+                    out.push(other);
+                }
+                None => out.push('\\'),
+            }
+        } else {
+            out.push(ch);
+        }
+    }
+
+    out
 }

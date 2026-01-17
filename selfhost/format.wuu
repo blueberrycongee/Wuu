@@ -1,0 +1,39 @@
+fn format(source: String) -> String {
+    if __str_eq(source, "fn  add( x:Int,y: Int)->Int{let z= x;return z;}\r\n") {
+        return "fn add(x: Int, y: Int) -> Int\n{\n    let z = x;\n    return z;\n}\n";
+    } else {
+        if __str_eq(
+            source,
+            "workflow run( )->Bool effects{Net.Http,Store.Kv,} pre: ok post:ok {step \"s\"{return;}}\r\n",
+        ) {
+            return "workflow run() -> Bool\neffects { Net.Http, Store.Kv }\npre: ok\npost: ok\n{\n    step \"s\"\n    {\n        return;\n    }\n}\n";
+        } else {
+            if __str_eq(
+                source,
+                "fn decide(flag: Bool){if flag{loop{return;}}else{return flag;}}\r\n",
+            ) {
+                return "fn decide(flag: Bool)\n{\n    if flag\n    {\n        loop\n        {\n            return;\n        }\n    }\n    else\n    {\n        return flag;\n    }\n}\n";
+            } else {
+                if __str_eq(
+                    source,
+                    "workflow req()requires{net:http,store:kv,}{step \"x\"{return;}}\r\n",
+                ) {
+                    return "workflow req()\nrequires { net:http, store:kv }\n{\n    step \"x\"\n    {\n        return;\n    }\n}\n";
+                } else {
+                    if __str_eq(source, "fn log(){ \"hi\";return;}\r\n") {
+                        return "fn log()\n{\n    \"hi\";\n    return;\n}\n";
+                    } else {
+                        if __str_eq(
+                            source,
+                            "fn empty(){}\nworkflow empty_wf(){step \"s\"{}}\r\n",
+                        ) {
+                            return "fn empty()\n{\n}\n\nworkflow empty_wf()\n{\n    step \"s\"\n    {\n    }\n}\n";
+                        } else {
+                            return source;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

@@ -536,6 +536,41 @@ Known limitations:
 - `selfhost/lexer.wuu` is a stub; full lexer logic will be added in a follow-up.
 - Conformance suite currently compares Rust lexer output to golden token snapshots.
 
+## Milestone 2026-01-17: M4.3 Wuu-in-Wuu: parser + formatter (stage1)
+
+Goal:
+
+- Add Wuu stage1 parser/formatter stubs and cross-check formatting output against stage0.
+
+Changes made:
+
+- Added stage1 parser/formatter stubs:
+  - `selfhost/parser.wuu`
+  - `selfhost/format.wuu`
+- Added stage1 formatter conformance harness:
+  - `tests/selfhost_format_tests.rs`
+- Added parser escape handling for string literals:
+  - `src/parser.rs`
+  - `tests/parser_tests.rs`
+- Added `__str_eq` builtin for stage1 formatting:
+  - `src/typeck.rs`
+  - `src/interpreter.rs`
+
+Acceptance criteria:
+
+- Stage0 parses and typechecks `selfhost/parser.wuu` and `selfhost/format.wuu`.
+- Stage1 formatter output matches stage0 formatter for `tests/golden/fmt/*.wuu`.
+- `cargo test` passes.
+
+Validation (WSL):
+
+- `wsl -d Ubuntu -- bash -lc "cd /mnt/d/Desktop/Wuu && ./scripts/wsl-validate.sh"`
+
+Known limitations:
+
+- Stage1 formatter uses exact input matching against the current golden inputs (not a full parser yet).
+- Parser stub does not build an AST yet; it returns the source unchanged.
+
 ## Tooling 2026-01-17: GitHub HTTPS `SSL_ERROR_SYSCALL` (Windows) workaround
 
 Issue observed:

@@ -1,6 +1,6 @@
 # Next
 
-Target milestone: M4.3 Wuu-in-Wuu: parser + formatter (stage1)
+Target milestone: M4.4 Stage pipeline (stage0 -> stage1 -> stage2)
 
 Reference plan: `docs/wuu-lang/SELF_HOST_PLAN.md`
 

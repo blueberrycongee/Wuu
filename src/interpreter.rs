@@ -196,6 +196,9 @@ impl<'a> Interpreter<'a> {
                     });
                 }
                 let name = &callee[0];
+                if let Some(result) = eval_builtin(name, &eval_args) {
+                    return result;
+                }
                 let func = self.functions.get(name.as_str()).ok_or_else(|| RunError {
                     message: format!("unknown function '{name}'"),
                 })?;
@@ -203,4 +206,36 @@ impl<'a> Interpreter<'a> {
             }
         }
     }
+}
+
+fn eval_builtin(name: &str, args: &[Value]) -> Option<Result<Value, RunError>> {
+    match name {
+        "__str_eq" => Some(eval_str_eq(args)),
+        _ => None,
+    }
+}
+
+fn eval_str_eq(args: &[Value]) -> Result<Value, RunError> {
+    if args.len() != 2 {
+        return Err(RunError {
+            message: format!("__str_eq expects 2 args but got {}", args.len()),
+        });
+    }
+    let left = match &args[0] {
+        Value::String(value) => value,
+        _ => {
+            return Err(RunError {
+                message: "__str_eq expects String args".to_string(),
+            });
+        }
+    };
+    let right = match &args[1] {
+        Value::String(value) => value,
+        _ => {
+            return Err(RunError {
+                message: "__str_eq expects String args".to_string(),
+            });
+        }
+    };
+    Ok(Value::Bool(left == right))
 }
