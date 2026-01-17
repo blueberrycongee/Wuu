@@ -855,6 +855,35 @@ Known limitations:
 
 - `wuu lex --check` is only supported with `--stage1`.
 
+## Milestone 2026-01-17: M4.13 Stage1 formatter check parity
+
+Goal:
+
+- Add a stage1 formatter check mode that verifies parity with stage0 output.
+
+Changes made:
+
+- Updated `wuu fmt --stage1 --check` to compare stage1 output against stage0 output:
+  - `src/main.rs`
+- Updated CLI tests to cover parity success + mismatch:
+  - `tests/cli_stage1_fmt_tests.rs`
+
+Acceptance criteria:
+
+- Stage1 `--check` exits zero when stage1 matches stage0 for a fixture.
+- Stage1 `--check` fails when stage1 output differs from stage0.
+- `cargo test` passes.
+
+Validation (WSL):
+
+- `wsl -d Ubuntu -- bash -lc "cd /mnt/d/Desktop/Wuu && . /mnt/d/wuu-cache/cargo/env && RUSTUP_HOME=/mnt/d/wuu-cache/rustup cargo fmt --all"`
+- `wsl -d Ubuntu -- bash -lc "cd /mnt/d/Desktop/Wuu && . /mnt/d/wuu-cache/cargo/env && RUSTUP_HOME=/mnt/d/wuu-cache/rustup cargo clippy --all-targets -- -D warnings"`
+- `wsl -d Ubuntu -- bash -lc "cd /mnt/d/Desktop/Wuu && . /mnt/d/wuu-cache/cargo/env && RUSTUP_HOME=/mnt/d/wuu-cache/rustup cargo test"`
+
+Known limitations:
+
+- Stage1 parity check compares formatter outputs only; it does not validate that the input is already formatted.
+
 ## Tooling 2026-01-17: GitHub HTTPS `SSL_ERROR_SYSCALL` (Windows) workaround
 
 Issue observed:

@@ -71,21 +71,31 @@ fn main() -> anyhow::Result<()> {
             write,
         } => {
             let input = std::fs::read(&path)?;
-            let formatted = if stage1 {
-                format_stage1(&input)?
-            } else {
-                wuu::format::format_source_bytes(&input)?
-            };
-            if check {
-                let input_str =
-                    std::str::from_utf8(&input).map_err(|_| anyhow::anyhow!("invalid utf-8"))?;
-                if formatted != input_str {
-                    anyhow::bail!("file is not formatted");
+            if stage1 {
+                let stage1_output = format_stage1(&input)?;
+                if check {
+                    let stage0_output = wuu::format::format_source_bytes(&input)?;
+                    if stage1_output != stage0_output {
+                        anyhow::bail!("stage1 formatter output differs from stage0");
+                    }
+                } else if write {
+                    std::fs::write(&path, stage1_output)?;
+                } else {
+                    print!("{stage1_output}");
                 }
-            } else if write {
-                std::fs::write(&path, formatted)?;
             } else {
-                print!("{formatted}");
+                let formatted = wuu::format::format_source_bytes(&input)?;
+                if check {
+                    let input_str = std::str::from_utf8(&input)
+                        .map_err(|_| anyhow::anyhow!("invalid utf-8"))?;
+                    if formatted != input_str {
+                        anyhow::bail!("file is not formatted");
+                    }
+                } else if write {
+                    std::fs::write(&path, formatted)?;
+                } else {
+                    print!("{formatted}");
+                }
             }
         }
         Command::Lex {
