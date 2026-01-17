@@ -744,6 +744,47 @@ Known limitations:
 
 - Lexer CLI does not yet support a `--check` mode.
 
+## Milestone 2026-01-17: M4.10 Stage1 parser conformance harness
+
+Goal:
+
+- Validate that stage1 parsing consumes all tokens and matches stage0 formatting
+  on the golden parse fixtures.
+
+Changes made:
+
+- Updated `selfhost/parser.wuu` to return a pair-encoded output
+  (`formatted\n<SEP>\nrest_tokens`) and added no-progress guards to avoid
+  infinite recursion when parsing unexpected tokens.
+- Added stage1 parser conformance tests:
+  - `tests/selfhost_parser_conformance_tests.rs`
+- Added a new plan entry for M4.10 and set `docs/NEXT.md` to target it while
+  implementing.
+
+Acceptance criteria:
+
+- Stage1 parser output matches stage0 formatting for `tests/golden/parse/*.wuu`.
+- Stage1 parser leaves no unconsumed tokens on those fixtures.
+- `cargo test` passes.
+
+Edge cases covered:
+
+- Empty or minimal modules in the parse fixtures.
+- Nested blocks and control-flow constructs (`if`, `loop`, `workflow`).
+- Contracts/effects/requires declarations in parse fixtures.
+
+Validation (WSL):
+
+- `wsl -d Ubuntu -- bash -lc "cd /mnt/d/Desktop/Wuu && . /mnt/d/wuu-cache/cargo/env && RUSTUP_HOME=/mnt/d/wuu-cache/rustup cargo fmt --all"`
+- `wsl -d Ubuntu -- bash -lc "cd /mnt/d/Desktop/Wuu && . /mnt/d/wuu-cache/cargo/env && RUSTUP_HOME=/mnt/d/wuu-cache/rustup cargo clippy --all-targets -- -D warnings"`
+- `wsl -d Ubuntu -- bash -lc "cd /mnt/d/Desktop/Wuu && . /mnt/d/wuu-cache/cargo/env && RUSTUP_HOME=/mnt/d/wuu-cache/rustup cargo test"`
+
+Known limitations:
+
+- Stage1 parser still returns formatted text instead of a structured AST.
+- Invalid inputs are surfaced via leftover tokens or interpreter errors, not
+  rich parse diagnostics.
+
 ## Tooling 2026-01-17: GitHub HTTPS `SSL_ERROR_SYSCALL` (Windows) workaround
 
 Issue observed:

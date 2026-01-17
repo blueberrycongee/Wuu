@@ -457,6 +457,31 @@ Done when:
 
 - stage1 lexer can be exercised from the CLI with tests.
 
+### M4.10 Stage1 parser conformance harness
+
+Goal: validate that the stage1 parser consumes all tokens and matches stage0
+formatting on the golden parse fixtures.
+
+Deliverables:
+
+- Update `selfhost/parser.wuu` to return a pair-encoded string
+  (`formatted\n<SEP>\nrest_tokens`) so the host can detect leftover tokens.
+- Add a no-progress guard in stage1 parsing to avoid infinite recursion when
+  parsing invalid inputs.
+- Add a conformance test that runs stage1 parsing on
+  `tests/golden/parse/*.wuu`, compares to stage0 formatting output, and asserts
+  there are no leftover tokens.
+
+Acceptance:
+
+- Stage1 parser output matches stage0 formatting for the golden parse fixtures.
+- Stage1 parser leaves no unconsumed tokens on those fixtures.
+- `cargo test` passes.
+
+Done when:
+
+- Stage1 parser can be exercised from Rust tests with token-consumption checks.
+
 ## 5) How far are we right now?
 
 Current state (as of the latest entry in `docs/PROGRESS.md`):

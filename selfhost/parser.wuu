@@ -1,7 +1,6 @@
 fn parse(source: String) -> String {
     let tokens = __lex_tokens(source);
-    let result = parse_module(tokens, "");
-    return pair_left(result);
+    return parse_module(tokens, "");
 }
 
 fn parse_module(tokens: String, indent: String) -> String {
@@ -12,6 +11,9 @@ fn parse_module(tokens: String, indent: String) -> String {
     let item_pair = parse_item(tokens, indent);
     let item_text = pair_left(item_pair);
     let rest_tokens = pair_right(item_pair);
+    if __str_eq(rest_tokens, tokens) {
+        return pair(item_text, rest_tokens);
+    }
     if __str_is_empty(rest_tokens) {
         return pair(item_text, rest_tokens);
     }
@@ -283,6 +285,9 @@ fn parse_stmt_list(tokens: String, indent: String) -> String {
     let stmt_pair = parse_stmt(tokens, indent);
     let stmt_text = pair_left(stmt_pair);
     let rest = pair_right(stmt_pair);
+    if __str_eq(rest, tokens) {
+        return pair(stmt_text, rest);
+    }
 
     let tail_pair = parse_stmt_list(rest, indent);
     let tail_text = pair_left(tail_pair);
