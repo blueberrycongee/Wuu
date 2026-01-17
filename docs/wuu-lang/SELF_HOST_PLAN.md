@@ -525,6 +525,26 @@ Done when:
 
 - Stage1 lexer parity can be verified from the CLI.
 
+### M4.13 Stage1 formatter check parity
+
+Goal: add a stage1 formatter check mode that verifies parity with stage0 output.
+
+Deliverables:
+
+- `wuu fmt --stage1 --check <path>` compares stage1 formatting to stage0 output
+  and fails if they differ.
+- CLI tests cover a passing fixture and a mismatch case.
+
+Acceptance:
+
+- Stage1 `--check` exits zero when stage1 matches stage0 for a fixture.
+- Stage1 `--check` fails when stage1 output differs from stage0.
+- `cargo test` passes.
+
+Done when:
+
+- Stage1 formatter parity can be verified from the CLI.
+
 ## 5) How far are we right now?
 
 Current state (as of the latest entry in `docs/PROGRESS.md`):
