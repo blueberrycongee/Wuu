@@ -693,6 +693,32 @@ Known limitations:
 
 - Stage1 CLI path always reloads `selfhost/format.wuu` per invocation.
 
+## Milestone 2026-01-17: M4.8 Stage1 formatter write mode
+
+Goal:
+
+- Add a stage1 `--write` path for rewriting files in place.
+
+Changes made:
+
+- Added `--write` support to `wuu fmt --stage1` (conflicts with `--check`): `src/main.rs`.
+- Added CLI tests for stage1 write and flag conflicts:
+  - `tests/cli_stage1_fmt_write_tests.rs`
+- Added plan entry for M4.8 and updated next milestone selection.
+
+Acceptance criteria:
+
+- Stage1 `--write` updates a file to match the golden formatted output.
+- `cargo test` passes.
+
+Validation (WSL):
+
+- `wsl -d Ubuntu -- bash -lc "cd /mnt/d/Desktop/Wuu && ./scripts/wsl-validate.sh"`
+
+Known limitations:
+
+- Write mode overwrites the file without diff output.
+
 ## Tooling 2026-01-17: GitHub HTTPS `SSL_ERROR_SYSCALL` (Windows) workaround
 
 Issue observed:

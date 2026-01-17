@@ -419,6 +419,25 @@ Done when:
 
 - stage1 formatter can be exercised from the CLI with tests.
 
+### M4.8 Stage1 formatter write mode
+
+Goal: allow stage1 formatter to rewrite files in place (parity with common fmt workflows).
+
+Deliverables:
+
+- `wuu fmt --stage1 --write <path>` overwrites the file with stage1 output.
+- `--write` conflicts with `--check`.
+- CLI tests cover write behavior.
+
+Acceptance:
+
+- Stage1 `--write` updates a file to match the golden formatted output.
+- `cargo test` passes.
+
+Done when:
+
+- stage1 formatter can rewrite files deterministically via CLI.
+
 ## 5) How far are we right now?
 
 Current state (as of the latest entry in `docs/PROGRESS.md`):

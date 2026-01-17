@@ -19,6 +19,8 @@ enum Command {
         check: bool,
         #[arg(long)]
         stage1: bool,
+        #[arg(long, conflicts_with = "check")]
+        write: bool,
     },
     Check {
         path: PathBuf,
@@ -54,6 +56,7 @@ fn main() -> anyhow::Result<()> {
             path,
             check,
             stage1,
+            write,
         } => {
             let input = std::fs::read(&path)?;
             let formatted = if stage1 {
@@ -67,8 +70,11 @@ fn main() -> anyhow::Result<()> {
                 if formatted != input_str {
                     anyhow::bail!("file is not formatted");
                 }
+            } else if write {
+                std::fs::write(&path, formatted)?;
+            } else {
+                print!("{formatted}");
             }
-            print!("{formatted}");
         }
         Command::Check { path } => {
             let input = std::fs::read(&path)?;
