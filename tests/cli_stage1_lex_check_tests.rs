@@ -35,6 +35,25 @@ fn stage1_lex_check_succeeds_on_fixture() {
 }
 
 #[test]
+fn stage1_lex_check_succeeds_on_escape_fixture() {
+    let bin = env!("CARGO_BIN_EXE_wuu");
+    let input = Path::new("tests/golden/lexer/04_escapes.wuu");
+
+    let output = Command::new(bin)
+        .args([
+            "lex",
+            "--stage1",
+            "--check",
+            input.to_str().expect("input path utf-8"),
+        ])
+        .output()
+        .expect("run wuu lex --stage1 --check failed");
+
+    assert!(output.status.success(), "stage1 lex --check failed");
+    assert!(output.stdout.is_empty(), "expected empty stdout");
+}
+
+#[test]
 fn stage1_lex_check_fails_on_invalid_utf8() {
     let bin = env!("CARGO_BIN_EXE_wuu");
     let temp_path = temp_file_path("stage1_lex_invalid.wuu");

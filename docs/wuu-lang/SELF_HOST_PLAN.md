@@ -652,6 +652,24 @@ Done when:
 
 - Stage1 lexer output is stable for backslash and whitespace escapes.
 
+### M4.19 Stage1 lexer CLI covers escape fixtures
+
+Goal: ensure CLI lexing covers escaped token output fixtures.
+
+Deliverables:
+
+- CLI tests exercise `wuu lex --stage1` and `--check` on the escape fixture.
+
+Acceptance:
+
+- CLI stage1 lex output matches `tests/golden/lexer/04_escapes.tok`.
+- Stage1 `lex --check` succeeds on the escape fixture.
+- `cargo test` passes.
+
+Done when:
+
+- Escape fixtures are covered in the CLI test suite.
+
 ## 5) How far are we right now?
 
 Current state (as of the latest entry in `docs/PROGRESS.md`):

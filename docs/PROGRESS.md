@@ -1046,6 +1046,37 @@ Known limitations:
 
 - Stage1 lexing still depends on the host `__lex_tokens` intrinsic for stack safety.
 
+## Milestone 2026-01-17: M4.19 Stage1 lexer CLI covers escape fixtures
+
+Goal:
+
+- Ensure CLI stage1 lex paths cover the escape fixture.
+
+Changes made:
+
+- Added CLI tests for `wuu lex --stage1` and `--check` on the escape fixture:
+  - `tests/cli_stage1_lex_tests.rs`
+  - `tests/cli_stage1_lex_check_tests.rs`
+- Updated the closed-loop plan and next milestone:
+  - `docs/wuu-lang/SELF_HOST_PLAN.md`
+  - `docs/NEXT.md`
+
+Acceptance criteria:
+
+- CLI stage1 lex output matches `tests/golden/lexer/04_escapes.tok`.
+- Stage1 `lex --check` succeeds on the escape fixture.
+- `cargo test` passes.
+
+Validation (WSL):
+
+- `wsl -d Ubuntu -- bash -lc "cd /mnt/d/Desktop/Wuu && . /mnt/d/wuu-cache/cargo/env && RUSTUP_HOME=/mnt/d/wuu-cache/rustup cargo fmt --all"`
+- `wsl -d Ubuntu -- bash -lc "cd /mnt/d/Desktop/Wuu && . /mnt/d/wuu-cache/cargo/env && RUSTUP_HOME=/mnt/d/wuu-cache/rustup cargo clippy --all-targets -- -D warnings"`
+- `wsl -d Ubuntu -- bash -lc "cd /mnt/d/Desktop/Wuu && . /mnt/d/wuu-cache/cargo/env && RUSTUP_HOME=/mnt/d/wuu-cache/rustup cargo test"`
+
+Known limitations:
+
+- CLI stage1 lex depends on the host `__lex_tokens` intrinsic via the stage1 lexer.
+
 ## Tooling 2026-01-17: GitHub HTTPS `SSL_ERROR_SYSCALL` (Windows) workaround
 
 Issue observed:
