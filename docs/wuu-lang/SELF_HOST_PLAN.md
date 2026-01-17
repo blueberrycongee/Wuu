@@ -504,6 +504,27 @@ Done when:
 
 - Stage1 parser can be exercised from the CLI with tests.
 
+### M4.12 Stage1 lexer check mode
+
+Goal: add a stage1 lexer check mode that verifies parity with stage0 tokens.
+
+Deliverables:
+
+- `wuu lex --stage1 --check <path>` runs both stage1 and stage0 lexers and
+  fails if the token streams differ.
+- `--check` is only supported with `--stage1`.
+- CLI tests cover a passing fixture and invalid utf-8 failure.
+
+Acceptance:
+
+- Stage1 `--check` exits zero on a golden lexer fixture.
+- Stage1 `--check` fails on invalid utf-8 input.
+- `cargo test` passes.
+
+Done when:
+
+- Stage1 lexer parity can be verified from the CLI.
+
 ## 5) How far are we right now?
 
 Current state (as of the latest entry in `docs/PROGRESS.md`):

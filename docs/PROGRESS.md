@@ -820,6 +820,41 @@ Known limitations:
 
 - Stage1 parser still outputs formatted text rather than a structured AST.
 
+## Milestone 2026-01-17: M4.12 Stage1 lexer check mode
+
+Goal:
+
+- Add a stage1 lexer check mode that verifies parity with stage0 tokens.
+
+Changes made:
+
+- Added `--check` to `wuu lex --stage1` to compare stage1 tokens against stage0:
+  - `src/main.rs`
+- Added CLI tests for stage1 lex check success and invalid utf-8 failure:
+  - `tests/cli_stage1_lex_check_tests.rs`
+- Added M4.12 milestone to the plan and updated `docs/NEXT.md` while working.
+
+Acceptance criteria:
+
+- Stage1 `--check` exits zero on a golden lexer fixture.
+- Stage1 `--check` fails on invalid utf-8 input.
+- `cargo test` passes.
+
+Edge cases covered:
+
+- Stage1 lex parity check on a valid lexer fixture.
+- Stage1 lex check error on invalid utf-8 input.
+
+Validation (WSL):
+
+- `wsl -d Ubuntu -- bash -lc "cd /mnt/d/Desktop/Wuu && . /mnt/d/wuu-cache/cargo/env && RUSTUP_HOME=/mnt/d/wuu-cache/rustup cargo fmt --all"`
+- `wsl -d Ubuntu -- bash -lc "cd /mnt/d/Desktop/Wuu && . /mnt/d/wuu-cache/cargo/env && RUSTUP_HOME=/mnt/d/wuu-cache/rustup cargo clippy --all-targets -- -D warnings"`
+- `wsl -d Ubuntu -- bash -lc "cd /mnt/d/Desktop/Wuu && . /mnt/d/wuu-cache/cargo/env && RUSTUP_HOME=/mnt/d/wuu-cache/rustup cargo test"`
+
+Known limitations:
+
+- `wuu lex --check` is only supported with `--stage1`.
+
 ## Tooling 2026-01-17: GitHub HTTPS `SSL_ERROR_SYSCALL` (Windows) workaround
 
 Issue observed:

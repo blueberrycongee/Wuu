@@ -26,6 +26,8 @@ enum Command {
         path: PathBuf,
         #[arg(long)]
         stage1: bool,
+        #[arg(long, requires = "stage1")]
+        check: bool,
     },
     Parse {
         path: PathBuf,
@@ -86,14 +88,26 @@ fn main() -> anyhow::Result<()> {
                 print!("{formatted}");
             }
         }
-        Command::Lex { path, stage1 } => {
+        Command::Lex {
+            path,
+            stage1,
+            check,
+        } => {
             let input = std::fs::read(&path)?;
-            let output = if stage1 {
-                lex_stage1(&input)?
+            if check {
+                let stage1_output = lex_stage1(&input)?;
+                let stage0_output = lex_stage0(&input)?;
+                if stage1_output != stage0_output {
+                    anyhow::bail!("stage1 lex output differs from stage0");
+                }
             } else {
-                lex_stage0(&input)?
-            };
-            print!("{output}");
+                let output = if stage1 {
+                    lex_stage1(&input)?
+                } else {
+                    lex_stage0(&input)?
+                };
+                print!("{output}");
+            }
         }
         Command::Parse { path, stage1 } => {
             let input = std::fs::read(&path)?;
