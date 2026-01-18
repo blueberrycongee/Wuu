@@ -8,31 +8,26 @@ fn parse(source: String) -> String {
 
 fn parse_module(tokens: String) -> String {
     let start_tokens = tokens;
-    if __str_is_empty(tokens) {
-        let span = span_from_tokens(start_tokens, tokens);
-        return result_pair(ast_module(span, list_nil()), tokens);
-    }
+    let items_pair = parse_module_items(tokens, list_nil());
+    let items_rev = result_left(items_pair);
+    let rest_tokens = result_right(items_pair);
+    let items = list_reverse(items_rev);
+    let span = span_from_tokens(start_tokens, rest_tokens);
+    return result_pair(ast_module(span, items), rest_tokens);
+}
 
+fn parse_module_items(tokens: String, acc: String) -> String {
+    if __str_is_empty(tokens) {
+        return result_pair(acc, tokens);
+    }
     let item_pair = parse_item(tokens);
     let item = result_left(item_pair);
     let rest_tokens = result_right(item_pair);
     if __str_eq(rest_tokens, tokens) {
-        let span = span_from_tokens(start_tokens, rest_tokens);
-        return result_pair(ast_module(span, list_nil()), rest_tokens);
+        return result_pair(acc, rest_tokens);
     }
-    if __str_is_empty(rest_tokens) {
-        let items = list_cons(item, list_nil());
-        let span = span_from_tokens(start_tokens, rest_tokens);
-        return result_pair(ast_module(span, items), rest_tokens);
-    }
-
-    let next_pair = parse_module(rest_tokens);
-    let next_module = result_left(next_pair);
-    let next_rest = result_right(next_pair);
-    let next_items = module_items(next_module);
-    let items = list_cons(item, next_items);
-    let span = span_from_tokens(start_tokens, next_rest);
-    return result_pair(ast_module(span, items), next_rest);
+    let acc = list_cons(item, acc);
+    return parse_module_items(rest_tokens, acc);
 }
 
 fn parse_item(tokens: String) -> String {
@@ -543,11 +538,6 @@ fn is_bool_literal(text: String, tokens: String) -> Bool {
     return false;
 }
 
-fn module_items(module: String) -> String {
-    let payload = node_payload(module);
-    return ast_unescape(payload);
-}
-
 fn span_zero() -> String {
     return span_text("0", "0");
 }
@@ -620,6 +610,20 @@ fn list_tail(list: String) -> String {
     let payload = node_payload(list);
     let tail = ast_right_raw(payload);
     return ast_unescape(tail);
+}
+
+fn list_reverse(list: String) -> String {
+    return list_reverse_acc(list, list_nil());
+}
+
+fn list_reverse_acc(list: String, acc: String) -> String {
+    if list_is_empty(list) {
+        return acc;
+    }
+    let head = list_head(list);
+    let tail = list_tail(list);
+    let acc = list_cons(head, acc);
+    return list_reverse_acc(tail, acc);
 }
 
 fn option_none() -> String {
@@ -829,16 +833,15 @@ fn split_line(value: String) -> String {
     if __str_is_empty(value) {
         return pair("", "");
     }
-    let head = __str_head(value);
-    if __str_eq(head, "\n") {
-        let rest = __str_tail(value);
-        return pair("", rest);
+    let prefixed = __str_concat("//", value);
+    let comment = __str_take_line_comment(prefixed);
+    let line = __str_strip_prefix(comment, "//");
+    let rest = __str_strip_prefix(value, line);
+    if __str_starts_with(rest, "\n") {
+        let rest = __str_strip_prefix(rest, "\n");
+        return pair(line, rest);
     }
-    let next = split_line(__str_tail(value));
-    let line = pair_left(next);
-    let rest = pair_right(next);
-    let combined = __str_concat(head, line);
-    return pair(combined, rest);
+    return pair(line, rest);
 }
 
 fn first_line(tokens: String) -> String {

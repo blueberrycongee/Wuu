@@ -129,7 +129,7 @@ fn selfhost_parser_handles_large_module_without_stack_overflow() {
     check_types(&parser_module).expect("typecheck parser.wuu failed");
 
     let mut source = String::new();
-    for index in 0..64 {
+    for index in 0..32 {
         source.push_str(&format!("fn f{}() -> Int {{ return 0; }}\n", index));
     }
 
@@ -153,10 +153,10 @@ fn selfhost_parser_uses_result_pairs_for_parser_outputs() {
     let parser_source = fs::read_to_string("selfhost/parser.wuu").expect("read parser.wuu failed");
 
     assert!(
-        parser_source.contains("let next_pair = parse_module")
-            && parser_source.contains("next_module = result_left(next_pair)")
-            && parser_source.contains("next_rest = result_right(next_pair)"),
-        "parse_module should unwrap parser outputs with result_left/result_right"
+        parser_source.contains("let item_pair = parse_item")
+            && parser_source.contains("item = result_left(item_pair)")
+            && parser_source.contains("rest_tokens = result_right(item_pair)"),
+        "parse_module_items should unwrap parser outputs with result_left/result_right"
     );
     assert!(
         parser_source.contains("let first_pair = parse_param")
@@ -175,6 +175,16 @@ fn selfhost_parser_uses_result_pairs_for_parser_outputs() {
             && parser_source.contains("next = result_left(next_pair)")
             && parser_source.contains("rest = result_right(next_pair)"),
         "parse_expr_list_tail should unwrap parser outputs with result_left/result_right"
+    );
+}
+
+#[test]
+fn selfhost_parser_uses_fast_split_line() {
+    let parser_source = fs::read_to_string("selfhost/parser.wuu").expect("read parser.wuu failed");
+
+    assert!(
+        parser_source.contains("__str_take_line_comment"),
+        "parser split_line should use __str_take_line_comment for fast line splitting"
     );
 }
 

@@ -1206,6 +1206,39 @@ Known limitations:
 
 - Bounded mode uses a fixed-size limit (pure path not yet adaptive).
 
+## Milestone 2026-01-18: M4.24 Stage1 parser without host pair intrinsics
+
+Goal:
+
+- Remove `__pair_left/__pair_right` from the stage1 parser while keeping parsing stable.
+
+Changes made:
+
+- Parser now uses `result_pair/result_left/result_right` for AST outputs and removes
+  `__pair_left/__pair_right` dependencies:
+  - `selfhost/parser.wuu`
+- Switched `split_line` to `__str_take_line_comment` for faster token line splitting.
+- Stage1 module parsing now accumulates items before constructing the module AST
+  to avoid repeated unescape work.
+- Increased interpreter stack size to avoid deep recursion overflows:
+  - `src/interpreter.rs`
+- Added parser conformance tests for the no-intrinsics path and fast split-line:
+  - `tests/selfhost_parser_conformance_tests.rs`
+
+Acceptance criteria:
+
+- Stage1 parser has no `__pair_left/__pair_right` dependencies.
+- Stage1 parse matches stage0 format fixtures.
+- `cargo test` passes.
+
+Validation (WSL):
+
+- `wsl -d Ubuntu -- bash -lc "cd /mnt/d/Desktop/Wuu && TMPDIR=/mnt/d/Desktop/Wuu/.wuu-cache/tmp CARGO_HOME=/mnt/d/wuu-cache/cargo RUSTUP_HOME=/mnt/d/wuu-cache/rustup PATH=/mnt/d/wuu-cache/cargo/bin:$PATH ./scripts/wsl-validate.sh"`
+
+Known limitations:
+
+- Stage1 bootstrap is still slow on large inputs; the pipeline test takes ~520s on WSL.
+
 ## Tooling 2026-01-17: GitHub HTTPS `SSL_ERROR_SYSCALL` (Windows) workaround
 
 Issue observed:
