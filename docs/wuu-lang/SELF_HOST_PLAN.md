@@ -841,7 +841,8 @@ Done when:
 
 Status:
 
-- In progress (2026-01-18): compiler emits text bytecode for return-int/string and let/call fixtures.
+- In progress (2026-01-18): compiler emits jumps/labels with explicit call arity and matches
+  interpreter outputs for lexer/parser/format on small fixtures.
 
 ### M5.3 Stage2 bootstrap (stage1 -> stage2)
 

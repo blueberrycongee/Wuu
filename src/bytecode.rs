@@ -88,6 +88,9 @@ enum TextInstr {
         argc: Option<usize>,
         builtin: bool,
     },
+    Label(String),
+    Jump(String),
+    JumpIfFalse(String),
     Return,
 }
 
@@ -103,8 +106,8 @@ pub fn parse_text_module(source: &str) -> Result<BytecodeModule, DecodeError> {
     let mut current: Option<TextFunction> = None;
 
     for (line_no, raw) in source.lines().enumerate() {
-        let line = raw.trim();
-        if line.is_empty() {
+        let line = raw.trim_start();
+        if line.trim().is_empty() {
             continue;
         }
 
@@ -118,18 +121,10 @@ pub fn parse_text_module(source: &str) -> Result<BytecodeModule, DecodeError> {
             let name = parts.next().ok_or_else(|| DecodeError {
                 message: format!("line {}: missing function name", line_no + 1),
             })?;
-            let extras: Vec<&str> = parts.collect();
-            if extras.len() > 2 {
+            if parts.next().is_some() {
                 return Err(DecodeError {
-                    message: format!("line {}: too many fields in function header", line_no + 1),
+                    message: format!("line {}: unexpected fields in function header", line_no + 1),
                 });
-            }
-            for extra in extras {
-                if extra.parse::<usize>().is_err() {
-                    return Err(DecodeError {
-                        message: format!("line {}: invalid numeric field in header", line_no + 1),
-                    });
-                }
             }
             current = Some(TextFunction {
                 name: name.to_string(),
@@ -139,7 +134,7 @@ pub fn parse_text_module(source: &str) -> Result<BytecodeModule, DecodeError> {
             continue;
         }
 
-        if line == "end" {
+        if line.trim_end() == "end" {
             let builder = current.take().ok_or_else(|| DecodeError {
                 message: format!("line {}: end without function header", line_no + 1),
             })?;
@@ -211,6 +206,7 @@ fn resolve_text_function(
     let mut next_local = locals.len() as u32;
     let mut code = Vec::new();
     let mut pending_args = 0usize;
+    let labels = collect_labels(&func)?;
 
     for instr in func.instrs {
         match instr {
@@ -281,6 +277,29 @@ fn resolve_text_function(
             TextInstr::Pop => {
                 code.push(Instr::Pop);
             }
+            TextInstr::Label(_) => {}
+            TextInstr::Jump(label) => {
+                if pending_args > 0 {
+                    return Err(DecodeError {
+                        message: format!("dangling arg marker in '{}'", func.name),
+                    });
+                }
+                let target = *labels.get(&label).ok_or_else(|| DecodeError {
+                    message: format!("unknown label '{label}' in '{}'", func.name),
+                })?;
+                code.push(Instr::Jump(target));
+            }
+            TextInstr::JumpIfFalse(label) => {
+                if pending_args > 0 {
+                    return Err(DecodeError {
+                        message: format!("dangling arg marker in '{}'", func.name),
+                    });
+                }
+                let target = *labels.get(&label).ok_or_else(|| DecodeError {
+                    message: format!("unknown label '{label}' in '{}'", func.name),
+                })?;
+                code.push(Instr::JumpIfFalse(target));
+            }
             TextInstr::Return => {
                 if pending_args > 0 {
                     return Err(DecodeError {
@@ -306,6 +325,27 @@ fn resolve_text_function(
     })
 }
 
+fn collect_labels(func: &TextFunction) -> Result<HashMap<String, usize>, DecodeError> {
+    let mut labels = HashMap::new();
+    let mut pc = 0usize;
+    for instr in &func.instrs {
+        match instr {
+            TextInstr::Label(name) => {
+                if labels.insert(name.clone(), pc).is_some() {
+                    return Err(DecodeError {
+                        message: format!("duplicate label '{name}' in '{}'", func.name),
+                    });
+                }
+            }
+            TextInstr::Arg => {}
+            _ => {
+                pc += 1;
+            }
+        }
+    }
+    Ok(labels)
+}
+
 fn decode_text_instruction(line: &str, line_no: usize) -> Result<TextInstr, DecodeError> {
     if let Some(rest) = line.strip_prefix("const_int ") {
         let value = rest.trim().parse::<i64>().map_err(|_| DecodeError {
@@ -321,6 +361,9 @@ fn decode_text_instruction(line: &str, line_no: usize) -> Result<TextInstr, Deco
                 message: format!("line {}: invalid const_bool", line_no),
             }),
         };
+    }
+    if line == "const_string" {
+        return Ok(TextInstr::ConstString(String::new()));
     }
     if let Some(rest) = line.strip_prefix("const_string ") {
         let value = decode_text_string(rest).map_err(|err| DecodeError {
@@ -354,6 +397,33 @@ fn decode_text_instruction(line: &str, line_no: usize) -> Result<TextInstr, Deco
     }
     if line == "arg" {
         return Ok(TextInstr::Arg);
+    }
+    if let Some(rest) = line.strip_prefix("label ") {
+        let name = rest.trim();
+        if name.is_empty() {
+            return Err(DecodeError {
+                message: format!("line {}: empty label name", line_no),
+            });
+        }
+        return Ok(TextInstr::Label(name.to_string()));
+    }
+    if let Some(rest) = line.strip_prefix("jump ") {
+        let name = rest.trim();
+        if name.is_empty() {
+            return Err(DecodeError {
+                message: format!("line {}: empty jump label", line_no),
+            });
+        }
+        return Ok(TextInstr::Jump(name.to_string()));
+    }
+    if let Some(rest) = line.strip_prefix("jump_if_false ") {
+        let name = rest.trim();
+        if name.is_empty() {
+            return Err(DecodeError {
+                message: format!("line {}: empty jump_if_false label", line_no),
+            });
+        }
+        return Ok(TextInstr::JumpIfFalse(name.to_string()));
     }
     if let Some(rest) = line.strip_prefix("call_builtin ") {
         return decode_call(rest, line_no, true);

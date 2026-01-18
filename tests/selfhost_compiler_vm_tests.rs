@@ -33,6 +33,14 @@ fn stage1_compiler_handles_let_and_call() {
     assert_eq!(result, expected);
 }
 
+#[test]
+fn stage1_compiler_handles_if_else() {
+    let source = fs::read_to_string("tests/run/02_if_bool.wuu").expect("read fixture failed");
+    let expected = stage0_run(&source);
+    let result = stage1_compile_and_run(&source);
+    assert_eq!(result, expected);
+}
+
 fn stage1_compile_and_run(source: &str) -> Value {
     let parser_module = load_stage1_module("selfhost/parser.wuu");
     let compiler_module = load_stage1_module("selfhost/compiler.wuu");

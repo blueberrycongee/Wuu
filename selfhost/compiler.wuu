@@ -112,6 +112,9 @@ fn compile_stmt(stmt: String) -> String {
         let store_line = __str_concat("store ", name);
         return join_lines(expr_code, store_line);
     }
+    if __str_eq(tag, "StmtIf") {
+        return compile_if(stmt);
+    }
     if __str_eq(tag, "StmtReturn") {
         let expr_opt = node_payload(stmt);
         return compile_return(expr_opt);
@@ -166,10 +169,46 @@ fn compile_expr(expr: String) -> String {
         if __str_is_empty(name) {
             return "";
         }
-        let call_line = compile_call_line(name);
+        let argc = count_list(args);
+        let call_line = compile_call_line(name, argc);
         return join_non_empty(args_code, call_line);
     }
     return "";
+}
+
+fn compile_if(stmt: String) -> String {
+    let payload = node_payload(stmt);
+    let cond = ast_left(payload);
+    let rest = ast_right(payload);
+    let then_block = ast_left(rest);
+    let else_opt = ast_right(rest);
+
+    let span = node_span(stmt);
+    let else_label = make_label(span, "else");
+    let end_label = make_label(span, "end");
+
+    let cond_code = compile_expr(cond);
+    let then_code = compile_block(then_block);
+    if option_is_none(else_opt) {
+        let jump_line = __str_concat("jump_if_false ", end_label);
+        let with_jump = join_non_empty(cond_code, jump_line);
+        let with_then = join_non_empty(with_jump, then_code);
+        let label_line = __str_concat("label ", end_label);
+        return join_non_empty(with_then, label_line);
+    }
+
+    let else_block = option_unwrap(else_opt);
+    let else_code = compile_block(else_block);
+    let jump_else = __str_concat("jump_if_false ", else_label);
+    let after_cond = join_non_empty(cond_code, jump_else);
+    let after_then = join_non_empty(after_cond, then_code);
+    let jump_end = __str_concat("jump ", end_label);
+    let after_jump_end = join_non_empty(after_then, jump_end);
+    let label_else = __str_concat("label ", else_label);
+    let after_label_else = join_non_empty(after_jump_end, label_else);
+    let after_else = join_non_empty(after_label_else, else_code);
+    let label_end = __str_concat("label ", end_label);
+    return join_non_empty(after_else, label_end);
 }
 
 fn compile_call_args(args: String) -> String {
@@ -182,7 +221,7 @@ fn compile_call_args(args: String) -> String {
     if __str_is_empty(head_expr) {
         return "";
     }
-    let head_with_arg = join_lines(head_expr, "arg");
+    let head_with_arg = head_expr;
     if list_is_empty(tail) {
         return head_with_arg;
     }
@@ -193,11 +232,15 @@ fn compile_call_args(args: String) -> String {
     return join_non_empty(head_with_arg, tail_code);
 }
 
-fn compile_call_line(name: String) -> String {
+fn compile_call_line(name: String, argc: String) -> String {
     if __str_starts_with(name, "__") {
-        return __str_concat("call_builtin ", name);
+        let prefix = __str_concat("call_builtin ", name);
+        let prefix = __str_concat(prefix, " ");
+        return __str_concat(prefix, argc);
     }
-    return __str_concat("call ", name);
+    let prefix = __str_concat("call ", name);
+    let prefix = __str_concat(prefix, " ");
+    return __str_concat(prefix, argc);
 }
 
 fn path_single_name(path: String) -> String {
@@ -214,6 +257,83 @@ fn path_single_name(path: String) -> String {
         return head;
     }
     return "";
+}
+
+fn count_list(list: String) -> String {
+    if list_is_empty(list) {
+        return "0";
+    }
+    let tail = list_tail(list);
+    let rest = count_list(tail);
+    return inc_decimal(rest);
+}
+
+fn inc_decimal(text: String) -> String {
+    if __str_is_empty(text) {
+        return "1";
+    }
+    let last = last_char(text);
+    let prefix = strip_last_char(text);
+    if __str_eq(last, "0") {
+        return __str_concat(prefix, "1");
+    }
+    if __str_eq(last, "1") {
+        return __str_concat(prefix, "2");
+    }
+    if __str_eq(last, "2") {
+        return __str_concat(prefix, "3");
+    }
+    if __str_eq(last, "3") {
+        return __str_concat(prefix, "4");
+    }
+    if __str_eq(last, "4") {
+        return __str_concat(prefix, "5");
+    }
+    if __str_eq(last, "5") {
+        return __str_concat(prefix, "6");
+    }
+    if __str_eq(last, "6") {
+        return __str_concat(prefix, "7");
+    }
+    if __str_eq(last, "7") {
+        return __str_concat(prefix, "8");
+    }
+    if __str_eq(last, "8") {
+        return __str_concat(prefix, "9");
+    }
+    if __str_eq(last, "9") {
+        let next = inc_decimal(prefix);
+        return __str_concat(next, "0");
+    }
+    return __str_concat(prefix, last);
+}
+
+fn last_char(value: String) -> String {
+    if __str_is_empty(value) {
+        return "";
+    }
+    let head = __str_head(value);
+    let tail = __str_tail(value);
+    if __str_is_empty(tail) {
+        return head;
+    }
+    return last_char(tail);
+}
+
+fn node_span(node: String) -> String {
+    let tag_span = ast_left_value(node);
+    let split = split_at_char(tag_span, "@");
+    return pair_right(split);
+}
+
+fn make_label(span: String, suffix: String) -> String {
+    if __str_is_empty(span) {
+        let base = __str_concat("if_", suffix);
+        return __str_concat(base, "_0");
+    }
+    let base = __str_concat("if_", span);
+    let base = __str_concat(base, "_");
+    return __str_concat(base, suffix);
 }
 
 fn unquote_literal(text: String) -> String {

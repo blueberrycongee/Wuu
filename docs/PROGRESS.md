@@ -1308,7 +1308,7 @@ Known limitations:
 
 - Bytecode VM does not yet support workflows/loops/steps; large stage1 inputs may still be slow.
 
-## Milestone 2026-01-18: M5.2 Stage1 compiler to bytecode (in Wuu) - initial subset
+## Milestone 2026-01-18: M5.2 Stage1 compiler to bytecode (in Wuu) - growing subset
 
 Goal:
 
@@ -1316,23 +1316,27 @@ Goal:
 
 Changes made:
 
-- Added a stage1 compiler that emits text bytecode for params, let/call, and literals:
+- Expanded the stage1 compiler to handle if/else control flow and explicit call arity:
   - `selfhost/compiler.wuu`
-- Extended the text bytecode decoder to resolve params/locals and call sites:
+- Stabilized the text bytecode format (labels, jumps, explicit arg counts, string escapes):
+  - `docs/wuu-lang/BYTECODE_TEXT_FORMAT.md`
   - `src/bytecode.rs`
-- Added end-to-end tests that run stage1 parse -> compile -> VM on fixtures:
+- Added end-to-end tests for stage1 compile -> VM on return/let/call/if fixtures:
   - `tests/selfhost_compiler_vm_tests.rs`
+- Added stage1 compiler consistency tests for lexer/parser/format outputs:
+  - `tests/stage1_compiler_consistency_tests.rs`
 
 Acceptance criteria:
 
-- Stage1 compiler emits bytecode that runs `01_return_int.wuu`, `03_call_and_let.wuu`, and
-  `04_return_string.wuu` on the VM.
+- Stage1 compiler emits bytecode that runs `01_return_int.wuu`, `02_if_bool.wuu`,
+  `03_call_and_let.wuu`, and `04_return_string.wuu` on the VM.
+- Stage1-compiled lexer/parser/formatter match interpreter output on small fixtures.
 - `cargo test` passes.
 
 Known limitations:
 
-- Compiler does not yet support if/loop/step, qualified paths, or type/effects lowering.
-- Text bytecode uses arg markers instead of explicit arg counts.
+- Compiler does not yet support loop/step, qualified paths, or type/effects lowering.
+- Parser/format consistency tests are slow (stage1 compiler on large modules).
 ## Tooling 2026-01-17: GitHub HTTPS `SSL_ERROR_SYSCALL` (Windows) workaround
 
 Issue observed:
