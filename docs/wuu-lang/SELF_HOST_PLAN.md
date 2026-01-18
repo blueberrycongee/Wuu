@@ -861,6 +861,8 @@ Status:
   check runs by default; parser/format parity checks require `WUU_SLOW_TESTS=1`.
 - In progress (2026-01-19): stage2 tool bytecode artifacts are checked into
   `tests/golden/stage2/*.bytecode.txt` and updated via `WUU_UPDATE_GOLDENS=1`.
+- In progress (2026-01-19): use `scripts/gen-stage2-artifacts.sh --fast|--slow`
+  to refresh stage2 bytecode artifacts (slow is default).
 
 Acceptance:
 
