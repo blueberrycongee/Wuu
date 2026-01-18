@@ -41,6 +41,32 @@ fn stage1_compiler_handles_if_else() {
     assert_eq!(result, expected);
 }
 
+#[test]
+fn stage1_compiler_handles_loop() {
+    let source = r#"
+fn main() {
+    loop {
+        return 5;
+    }
+}
+"#;
+    let result = stage1_compile_and_run(source);
+    assert_eq!(result, Value::Int(5));
+}
+
+#[test]
+fn stage1_compiler_handles_step_in_workflow() {
+    let source = r#"
+workflow main() {
+    step "a" {
+        return 7;
+    }
+}
+"#;
+    let result = stage1_compile_and_run(source);
+    assert_eq!(result, Value::Int(7));
+}
+
 fn stage1_compile_and_run(source: &str) -> Value {
     let parser_module = load_stage1_module("selfhost/parser.wuu");
     let compiler_module = load_stage1_module("selfhost/compiler.wuu");

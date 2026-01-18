@@ -31,6 +31,9 @@ fn compile_item(item: String) -> String {
     if __str_eq(tag, "ItemFn") {
         return compile_fn(item);
     }
+    if __str_eq(tag, "ItemWorkflow") {
+        return compile_fn(item);
+    }
     return "";
 }
 
@@ -111,6 +114,12 @@ fn compile_stmt(stmt: String) -> String {
         let expr_code = compile_expr(expr);
         let store_line = __str_concat("store ", name);
         return join_lines(expr_code, store_line);
+    }
+    if __str_eq(tag, "StmtLoop") {
+        return compile_loop(stmt);
+    }
+    if __str_eq(tag, "StmtStep") {
+        return compile_step(stmt);
     }
     if __str_eq(tag, "StmtIf") {
         return compile_if(stmt);
@@ -209,6 +218,23 @@ fn compile_if(stmt: String) -> String {
     let after_else = join_non_empty(after_label_else, else_code);
     let label_end = __str_concat("label ", end_label);
     return join_non_empty(after_else, label_end);
+}
+
+fn compile_loop(stmt: String) -> String {
+    let block = node_payload(stmt);
+    let span = node_span(stmt);
+    let start_label = make_loop_label(span);
+    let label_line = __str_concat("label ", start_label);
+    let body_code = compile_block(block);
+    let jump_line = __str_concat("jump ", start_label);
+    let with_body = join_non_empty(label_line, body_code);
+    return join_non_empty(with_body, jump_line);
+}
+
+fn compile_step(stmt: String) -> String {
+    let payload = node_payload(stmt);
+    let block = ast_right(payload);
+    return compile_block(block);
 }
 
 fn compile_call_args(args: String) -> String {
@@ -334,6 +360,14 @@ fn make_label(span: String, suffix: String) -> String {
     let base = __str_concat("if_", span);
     let base = __str_concat(base, "_");
     return __str_concat(base, suffix);
+}
+
+fn make_loop_label(span: String) -> String {
+    if __str_is_empty(span) {
+        return "loop_0";
+    }
+    let base = __str_concat("loop_", span);
+    return __str_concat(base, "_start");
 }
 
 fn unquote_literal(text: String) -> String {

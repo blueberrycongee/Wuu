@@ -841,8 +841,8 @@ Done when:
 
 Status:
 
-- In progress (2026-01-18): compiler emits jumps/labels with explicit call arity and matches
-  interpreter outputs for lexer/parser/format on small fixtures.
+- In progress (2026-01-18): compiler emits jumps/labels for if/loop/step with explicit call
+  arity and matches interpreter outputs for lexer/parser/format on small fixtures.
 
 ### M5.3 Stage2 bootstrap (stage1 -> stage2)
 

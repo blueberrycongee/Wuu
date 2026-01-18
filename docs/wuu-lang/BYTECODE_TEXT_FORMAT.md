@@ -43,3 +43,4 @@ Determinism requirements:
 - Locals are allocated by first `store` occurrence in AST traversal order.
 - Labels are derived from node spans (`if_<span>_else`, `if_<span>_end`) to keep
   output stable across runs.
+- Loops use `loop_<span>_start` labels and compile to `label` + `jump`.

@@ -1316,7 +1316,7 @@ Goal:
 
 Changes made:
 
-- Expanded the stage1 compiler to handle if/else control flow and explicit call arity:
+- Expanded the stage1 compiler to handle if/else/loop/step control flow and explicit call arity:
   - `selfhost/compiler.wuu`
 - Stabilized the text bytecode format (labels, jumps, explicit arg counts, string escapes):
   - `docs/wuu-lang/BYTECODE_TEXT_FORMAT.md`
@@ -1329,13 +1329,13 @@ Changes made:
 Acceptance criteria:
 
 - Stage1 compiler emits bytecode that runs `01_return_int.wuu`, `02_if_bool.wuu`,
-  `03_call_and_let.wuu`, and `04_return_string.wuu` on the VM.
+  `03_call_and_let.wuu`, and `04_return_string.wuu` on the VM, plus loop/step smoke cases.
 - Stage1-compiled lexer/parser/formatter match interpreter output on small fixtures.
 - `cargo test` passes.
 
 Known limitations:
 
-- Compiler does not yet support loop/step, qualified paths, or type/effects lowering.
+- Compiler does not yet support qualified paths, or type/effects lowering.
 - Parser/format consistency tests are slow (stage1 compiler on large modules).
 ## Tooling 2026-01-17: GitHub HTTPS `SSL_ERROR_SYSCALL` (Windows) workaround
 
