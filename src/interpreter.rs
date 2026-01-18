@@ -50,6 +50,28 @@ pub fn run_entry_with_args(
     entry: &str,
     args: Vec<Value>,
 ) -> Result<Value, RunError> {
+    const STACK_SIZE: usize = 256 * 1024 * 1024;
+    let module = module.clone();
+    let entry = entry.to_string();
+    let handle = std::thread::Builder::new()
+        .stack_size(STACK_SIZE)
+        .spawn(move || run_entry_with_args_inner(&module, &entry, args))
+        .map_err(|err| RunError {
+            message: format!("failed to spawn interpreter thread: {err}"),
+        })?;
+    match handle.join() {
+        Ok(result) => result,
+        Err(_) => Err(RunError {
+            message: "interpreter thread panicked".to_string(),
+        }),
+    }
+}
+
+fn run_entry_with_args_inner(
+    module: &Module,
+    entry: &str,
+    args: Vec<Value>,
+) -> Result<Value, RunError> {
     let mut functions = HashMap::new();
     for item in &module.items {
         if let Item::Fn(func) = item {

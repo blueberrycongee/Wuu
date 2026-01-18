@@ -1,8 +1,8 @@
 fn parse(source: String) -> String {
     let tokens = lex_tokens(source);
     let result = parse_module(tokens);
-    let ast = pair_left(result);
-    let rest = pair_right(result);
+    let ast = result_left(result);
+    let rest = result_right(result);
     return output_pair(ast, rest);
 }
 
@@ -10,29 +10,29 @@ fn parse_module(tokens: String) -> String {
     let start_tokens = tokens;
     if __str_is_empty(tokens) {
         let span = span_from_tokens(start_tokens, tokens);
-        return pair(ast_module(span, list_nil()), tokens);
+        return result_pair(ast_module(span, list_nil()), tokens);
     }
 
     let item_pair = parse_item(tokens);
-    let item = pair_left(item_pair);
-    let rest_tokens = pair_right(item_pair);
+    let item = result_left(item_pair);
+    let rest_tokens = result_right(item_pair);
     if __str_eq(rest_tokens, tokens) {
         let span = span_from_tokens(start_tokens, rest_tokens);
-        return pair(ast_module(span, list_nil()), rest_tokens);
+        return result_pair(ast_module(span, list_nil()), rest_tokens);
     }
     if __str_is_empty(rest_tokens) {
         let items = list_cons(item, list_nil());
         let span = span_from_tokens(start_tokens, rest_tokens);
-        return pair(ast_module(span, items), rest_tokens);
+        return result_pair(ast_module(span, items), rest_tokens);
     }
 
     let next_pair = parse_module(rest_tokens);
-    let next_module = pair_left(next_pair);
-    let next_rest = pair_right(next_pair);
+    let next_module = result_left(next_pair);
+    let next_rest = result_right(next_pair);
     let next_items = module_items(next_module);
     let items = list_cons(item, next_items);
     let span = span_from_tokens(start_tokens, next_rest);
-    return pair(ast_module(span, items), next_rest);
+    return result_pair(ast_module(span, items), next_rest);
 }
 
 fn parse_item(tokens: String) -> String {
@@ -42,7 +42,7 @@ fn parse_item(tokens: String) -> String {
     if token_is_keyword(tokens, "workflow") {
         return parse_fn_like(tokens, "workflow");
     }
-    return pair("", tokens);
+    return result_pair("", tokens);
 }
 
 fn parse_fn_like(tokens: String, keyword: String) -> String {
@@ -53,49 +53,49 @@ fn parse_fn_like(tokens: String, keyword: String) -> String {
     let after_name = pair_right(name_pair);
 
     let params_pair = parse_params(after_name);
-    let params = pair_left(params_pair);
-    let after_params = pair_right(params_pair);
+    let params = result_left(params_pair);
+    let after_params = result_right(params_pair);
 
     let return_pair = parse_return_type(after_params);
-    let return_ty = pair_left(return_pair);
-    let after_return = pair_right(return_pair);
+    let return_ty = result_left(return_pair);
+    let after_return = result_right(return_pair);
 
     let effects_pair = parse_effects_decl(after_return);
-    let effects_opt = pair_left(effects_pair);
-    let after_effects = pair_right(effects_pair);
+    let effects_opt = result_left(effects_pair);
+    let after_effects = result_right(effects_pair);
 
     let contracts_pair = parse_contracts(after_effects);
-    let contracts = pair_left(contracts_pair);
-    let after_contracts = pair_right(contracts_pair);
+    let contracts = result_left(contracts_pair);
+    let after_contracts = result_right(contracts_pair);
 
     let block_pair = parse_block(after_contracts);
-    let block = pair_left(block_pair);
-    let after_block = pair_right(block_pair);
+    let block = result_left(block_pair);
+    let after_block = result_right(block_pair);
     let span = span_from_tokens(start_tokens, after_block);
 
     if __str_eq(keyword, "fn") {
         let item = ast_item_fn(span, name, params, return_ty, effects_opt, contracts, block);
-        return pair(item, after_block);
+        return result_pair(item, after_block);
     }
     let item = ast_item_workflow(span, name, params, return_ty, effects_opt, contracts, block);
-    return pair(item, after_block);
+    return result_pair(item, after_block);
 }
 
 fn parse_params(tokens: String) -> String {
     let after_open = consume_punct(tokens, "(");
     if token_is_punct(after_open, ")") {
         let rest = consume_punct(after_open, ")");
-        return pair(list_nil(), rest);
+        return result_pair(list_nil(), rest);
     }
 
     let first_pair = parse_param(after_open);
-    let first = pair_left(first_pair);
-    let rest = pair_right(first_pair);
+    let first = result_left(first_pair);
+    let rest = result_right(first_pair);
     let tail_pair = parse_params_tail(rest);
-    let tail = pair_left(tail_pair);
-    let rest2 = pair_right(tail_pair);
+    let tail = result_left(tail_pair);
+    let rest2 = result_right(tail_pair);
     let list = list_cons(first, tail);
-    return pair(list, rest2);
+    return result_pair(list, rest2);
 }
 
 fn parse_params_tail(tokens: String) -> String {
@@ -103,19 +103,19 @@ fn parse_params_tail(tokens: String) -> String {
         let after_comma = token_rest(tokens);
         if token_is_punct(after_comma, ")") {
             let rest = consume_punct(after_comma, ")");
-            return pair(list_nil(), rest);
+            return result_pair(list_nil(), rest);
         }
         let next_pair = parse_param(after_comma);
-        let next = pair_left(next_pair);
-        let rest = pair_right(next_pair);
+        let next = result_left(next_pair);
+        let rest = result_right(next_pair);
         let tail_pair = parse_params_tail(rest);
-        let tail = pair_left(tail_pair);
-        let rest2 = pair_right(tail_pair);
+        let tail = result_left(tail_pair);
+        let rest2 = result_right(tail_pair);
         let list = list_cons(next, tail);
-        return pair(list, rest2);
+        return result_pair(list, rest2);
     }
     let rest = consume_punct(tokens, ")");
-    return pair(list_nil(), rest);
+    return result_pair(list_nil(), rest);
 }
 
 fn parse_param(tokens: String) -> String {
@@ -126,13 +126,13 @@ fn parse_param(tokens: String) -> String {
     if token_is_punct(after_name, ":") {
         let after_colon = consume_punct(after_name, ":");
         let type_pair = parse_type(after_colon);
-        let ty = pair_left(type_pair);
-        let rest = pair_right(type_pair);
+        let ty = result_left(type_pair);
+        let rest = result_right(type_pair);
         let span = span_from_tokens(start_tokens, rest);
-        return pair(ast_param(span, name, option_some(ty)), rest);
+        return result_pair(ast_param(span, name, option_some(ty)), rest);
     }
     let span = span_from_tokens(start_tokens, after_name);
-    return pair(ast_param(span, name, option_none()), after_name);
+    return result_pair(ast_param(span, name, option_none()), after_name);
 }
 
 fn parse_return_type(tokens: String) -> String {
@@ -140,11 +140,11 @@ fn parse_return_type(tokens: String) -> String {
         let after_dash = consume_punct(tokens, "-");
         let after_arrow = consume_punct(after_dash, ">");
         let type_pair = parse_type(after_arrow);
-        let ty = pair_left(type_pair);
-        let rest = pair_right(type_pair);
-        return pair(option_some(ty), rest);
+        let ty = result_left(type_pair);
+        let rest = result_right(type_pair);
+        return result_pair(option_some(ty), rest);
     }
-    return pair(option_none(), tokens);
+    return result_pair(option_none(), tokens);
 }
 
 fn starts_with_arrow(tokens: String) -> Bool {
@@ -165,14 +165,14 @@ fn parse_effects_decl(tokens: String) -> String {
         if token_is_punct(after_open, "}") {
             let rest = consume_punct(after_open, "}");
             let span = span_from_tokens(start_tokens, rest);
-            return pair(option_some(ast_effects(span, list_nil())), rest);
+            return result_pair(option_some(ast_effects(span, list_nil())), rest);
         }
         let list_pair = parse_path_list(after_open);
-        let list = pair_left(list_pair);
-        let after_list = pair_right(list_pair);
+        let list = result_left(list_pair);
+        let after_list = result_right(list_pair);
         let rest = consume_punct(after_list, "}");
         let span = span_from_tokens(start_tokens, rest);
-        return pair(option_some(ast_effects(span, list)), rest);
+        return result_pair(option_some(ast_effects(span, list)), rest);
     }
 
     if token_is_keyword(tokens, "requires") {
@@ -181,34 +181,34 @@ fn parse_effects_decl(tokens: String) -> String {
         if token_is_punct(after_open, "}") {
             let rest = consume_punct(after_open, "}");
             let span = span_from_tokens(start_tokens, rest);
-            return pair(option_some(ast_requires(span, list_nil())), rest);
+            return result_pair(option_some(ast_requires(span, list_nil())), rest);
         }
         let list_pair = parse_require_list(after_open);
-        let list = pair_left(list_pair);
-        let after_list = pair_right(list_pair);
+        let list = result_left(list_pair);
+        let after_list = result_right(list_pair);
         let rest = consume_punct(after_list, "}");
         let span = span_from_tokens(start_tokens, rest);
-        return pair(option_some(ast_requires(span, list)), rest);
+        return result_pair(option_some(ast_requires(span, list)), rest);
     }
 
-    return pair(option_none(), tokens);
+    return result_pair(option_none(), tokens);
 }
 
 fn parse_path_list(tokens: String) -> String {
     let path_pair = parse_path(tokens);
-    let path = pair_left(path_pair);
-    let rest = pair_right(path_pair);
+    let path = result_left(path_pair);
+    let rest = result_right(path_pair);
     if token_is_punct(rest, ",") {
         let after_comma = token_rest(rest);
         if token_is_punct(after_comma, "}") {
-            return pair(list_cons(path, list_nil()), after_comma);
+            return result_pair(list_cons(path, list_nil()), after_comma);
         }
         let tail_pair = parse_path_list(after_comma);
-        let tail = pair_left(tail_pair);
-        let rest2 = pair_right(tail_pair);
-        return pair(list_cons(path, tail), rest2);
+        let tail = result_left(tail_pair);
+        let rest2 = result_right(tail_pair);
+        return result_pair(list_cons(path, tail), rest2);
     }
-    return pair(list_cons(path, list_nil()), rest);
+    return result_pair(list_cons(path, list_nil()), rest);
 }
 
 fn parse_require_list(tokens: String) -> String {
@@ -225,14 +225,14 @@ fn parse_require_list(tokens: String) -> String {
     if token_is_punct(rest, ",") {
         let after_comma = token_rest(rest);
         if token_is_punct(after_comma, "}") {
-            return pair(list_cons(req, list_nil()), after_comma);
+            return result_pair(list_cons(req, list_nil()), after_comma);
         }
         let tail_pair = parse_require_list(after_comma);
-        let tail = pair_left(tail_pair);
-        let rest2 = pair_right(tail_pair);
-        return pair(list_cons(req, tail), rest2);
+        let tail = result_left(tail_pair);
+        let rest2 = result_right(tail_pair);
+        return result_pair(list_cons(req, tail), rest2);
     }
-    return pair(list_cons(req, list_nil()), rest);
+    return result_pair(list_cons(req, list_nil()), rest);
 }
 
 fn parse_contracts(tokens: String) -> String {
@@ -245,7 +245,7 @@ fn parse_contracts(tokens: String) -> String {
     if token_is_keyword(tokens, "invariant") {
         return parse_contract(tokens, "invariant");
     }
-    return pair(list_nil(), tokens);
+    return result_pair(list_nil(), tokens);
 }
 
 fn parse_contract(tokens: String, keyword: String) -> String {
@@ -253,16 +253,16 @@ fn parse_contract(tokens: String, keyword: String) -> String {
     let after_kw = consume_keyword(tokens, keyword);
     let after_colon = consume_punct(after_kw, ":");
     let expr_pair = parse_expr(after_colon);
-    let expr = pair_left(expr_pair);
-    let rest = pair_right(expr_pair);
+    let expr = result_left(expr_pair);
+    let rest = result_right(expr_pair);
     let span = span_from_tokens(start_tokens, rest);
     let contract = ast_contract(span, keyword, expr);
 
     let tail_pair = parse_contracts(rest);
-    let tail = pair_left(tail_pair);
-    let tail_rest = pair_right(tail_pair);
+    let tail = result_left(tail_pair);
+    let tail_rest = result_right(tail_pair);
 
-    return pair(list_cons(contract, tail), tail_rest);
+    return result_pair(list_cons(contract, tail), tail_rest);
 }
 
 fn parse_block(tokens: String) -> String {
@@ -270,30 +270,30 @@ fn parse_block(tokens: String) -> String {
     let after_open = consume_punct(tokens, "{");
 
     let stmt_pair = parse_stmt_list(after_open);
-    let stmts = pair_left(stmt_pair);
-    let rest = pair_right(stmt_pair);
+    let stmts = result_left(stmt_pair);
+    let rest = result_right(stmt_pair);
 
     let after_close = consume_punct(rest, "}");
     let span = span_from_tokens(start_tokens, after_close);
-    return pair(ast_block(span, stmts), after_close);
+    return result_pair(ast_block(span, stmts), after_close);
 }
 
 fn parse_stmt_list(tokens: String) -> String {
     if token_is_punct(tokens, "}") {
-        return pair(list_nil(), tokens);
+        return result_pair(list_nil(), tokens);
     }
     let stmt_pair = parse_stmt(tokens);
-    let stmt = pair_left(stmt_pair);
-    let rest = pair_right(stmt_pair);
+    let stmt = result_left(stmt_pair);
+    let rest = result_right(stmt_pair);
     if __str_eq(rest, tokens) {
-        return pair(list_nil(), rest);
+        return result_pair(list_nil(), rest);
     }
 
     let tail_pair = parse_stmt_list(rest);
-    let tail = pair_left(tail_pair);
-    let tail_rest = pair_right(tail_pair);
+    let tail = result_left(tail_pair);
+    let tail_rest = result_right(tail_pair);
 
-    return pair(list_cons(stmt, tail), tail_rest);
+    return result_pair(list_cons(stmt, tail), tail_rest);
 }
 
 fn parse_stmt(tokens: String) -> String {
@@ -306,26 +306,26 @@ fn parse_stmt(tokens: String) -> String {
         if token_is_punct(after_name, ":") {
             let after_colon = consume_punct(after_name, ":");
             let type_pair = parse_type(after_colon);
-            let ty = pair_left(type_pair);
-            let after_type = pair_right(type_pair);
+            let ty = result_left(type_pair);
+            let after_type = result_right(type_pair);
             let after_eq = consume_punct(after_type, "=");
             let expr_pair = parse_expr(after_eq);
-            let expr = pair_left(expr_pair);
-            let after_expr = pair_right(expr_pair);
+            let expr = result_left(expr_pair);
+            let after_expr = result_right(expr_pair);
             let rest = consume_punct(after_expr, ";");
             let span = span_from_tokens(start_tokens, rest);
             let stmt = ast_stmt_let(span, name, option_some(ty), expr);
-            return pair(stmt, rest);
+            return result_pair(stmt, rest);
         }
 
         let after_eq = consume_punct(after_name, "=");
         let expr_pair = parse_expr(after_eq);
-        let expr = pair_left(expr_pair);
-        let after_expr = pair_right(expr_pair);
+        let expr = result_left(expr_pair);
+        let after_expr = result_right(expr_pair);
         let rest = consume_punct(after_expr, ";");
         let span = span_from_tokens(start_tokens, rest);
         let stmt = ast_stmt_let(span, name, option_none(), expr);
-        return pair(stmt, rest);
+        return result_pair(stmt, rest);
     }
 
     if token_is_keyword(tokens, "return") {
@@ -334,50 +334,50 @@ fn parse_stmt(tokens: String) -> String {
             let rest = consume_punct(after_kw, ";");
             let span = span_from_tokens(start_tokens, rest);
             let stmt = ast_stmt_return(span, option_none());
-            return pair(stmt, rest);
+            return result_pair(stmt, rest);
         }
         let expr_pair = parse_expr(after_kw);
-        let expr = pair_left(expr_pair);
-        let after_expr = pair_right(expr_pair);
+        let expr = result_left(expr_pair);
+        let after_expr = result_right(expr_pair);
         let rest = consume_punct(after_expr, ";");
         let span = span_from_tokens(start_tokens, rest);
         let stmt = ast_stmt_return(span, option_some(expr));
-        return pair(stmt, rest);
+        return result_pair(stmt, rest);
     }
 
     if token_is_keyword(tokens, "if") {
         let after_kw = consume_keyword(tokens, "if");
         let expr_pair = parse_expr(after_kw);
-        let expr = pair_left(expr_pair);
-        let after_expr = pair_right(expr_pair);
+        let expr = result_left(expr_pair);
+        let after_expr = result_right(expr_pair);
 
         let then_pair = parse_block(after_expr);
-        let then_block = pair_left(then_pair);
-        let after_then = pair_right(then_pair);
+        let then_block = result_left(then_pair);
+        let after_then = result_right(then_pair);
 
         if token_is_keyword(after_then, "else") {
             let after_else = consume_keyword(after_then, "else");
             let else_pair = parse_block(after_else);
-            let else_block = pair_left(else_pair);
-            let after_else_block = pair_right(else_pair);
+            let else_block = result_left(else_pair);
+            let after_else_block = result_right(else_pair);
             let span = span_from_tokens(start_tokens, after_else_block);
             let stmt = ast_stmt_if(span, expr, then_block, option_some(else_block));
-            return pair(stmt, after_else_block);
+            return result_pair(stmt, after_else_block);
         }
 
         let span = span_from_tokens(start_tokens, after_then);
         let stmt = ast_stmt_if(span, expr, then_block, option_none());
-        return pair(stmt, after_then);
+        return result_pair(stmt, after_then);
     }
 
     if token_is_keyword(tokens, "loop") {
         let after_kw = consume_keyword(tokens, "loop");
         let body_pair = parse_block(after_kw);
-        let body = pair_left(body_pair);
-        let rest = pair_right(body_pair);
+        let body = result_left(body_pair);
+        let rest = result_right(body_pair);
         let span = span_from_tokens(start_tokens, rest);
         let stmt = ast_stmt_loop(span, body);
-        return pair(stmt, rest);
+        return result_pair(stmt, rest);
     }
 
     if token_is_keyword(tokens, "step") {
@@ -386,20 +386,20 @@ fn parse_stmt(tokens: String) -> String {
         let label = pair_left(label_pair);
         let after_label = pair_right(label_pair);
         let body_pair = parse_block(after_label);
-        let body = pair_left(body_pair);
-        let rest = pair_right(body_pair);
+        let body = result_left(body_pair);
+        let rest = result_right(body_pair);
         let span = span_from_tokens(start_tokens, rest);
         let stmt = ast_stmt_step(span, label, body);
-        return pair(stmt, rest);
+        return result_pair(stmt, rest);
     }
 
     let expr_pair = parse_expr(tokens);
-    let expr = pair_left(expr_pair);
-    let after_expr = pair_right(expr_pair);
+    let expr = result_left(expr_pair);
+    let after_expr = result_right(expr_pair);
     let rest = consume_punct(after_expr, ";");
     let span = span_from_tokens(start_tokens, rest);
     let stmt = ast_stmt_expr(span, expr);
-    return pair(stmt, rest);
+    return result_pair(stmt, rest);
 }
 
 fn parse_expr(tokens: String) -> String {
@@ -409,14 +409,14 @@ fn parse_expr(tokens: String) -> String {
         let number = pair_left(number_pair);
         let rest = pair_right(number_pair);
         let span = span_from_tokens(start_tokens, rest);
-        return pair(ast_expr_number(span, number), rest);
+        return result_pair(ast_expr_number(span, number), rest);
     }
     if token_is_string(tokens) {
         let string_pair = take_string_literal(tokens);
         let value = pair_left(string_pair);
         let rest = pair_right(string_pair);
         let span = span_from_tokens(start_tokens, rest);
-        return pair(ast_expr_string(span, value), rest);
+        return result_pair(ast_expr_string(span, value), rest);
     }
     if token_is_ident(tokens) {
         let ident_pair = take_ident(tokens);
@@ -424,43 +424,43 @@ fn parse_expr(tokens: String) -> String {
         let rest = pair_right(ident_pair);
         if is_bool_literal(ident, rest) {
             let span = span_from_tokens(start_tokens, rest);
-            return pair(ast_expr_bool(span, ident), rest);
+            return result_pair(ast_expr_bool(span, ident), rest);
         }
         let tail_pair = parse_path_tail(rest);
-        let tail = pair_left(tail_pair);
-        let after_path = pair_right(tail_pair);
+        let tail = result_left(tail_pair);
+        let after_path = result_right(tail_pair);
         let segments = list_cons(ident, tail);
         let path_span = span_from_tokens(start_tokens, after_path);
         let path = ast_path(path_span, segments);
         if token_is_punct(after_path, "(") {
             let after_open = consume_punct(after_path, "(");
             let args_pair = parse_call_args(after_open);
-            let args = pair_left(args_pair);
-            let rest_tokens = pair_right(args_pair);
+            let args = result_left(args_pair);
+            let rest_tokens = result_right(args_pair);
             let span = span_from_tokens(start_tokens, rest_tokens);
             let expr = ast_expr_call(span, path, args);
-            return pair(expr, rest_tokens);
+            return result_pair(expr, rest_tokens);
         }
         let span = span_from_tokens(start_tokens, after_path);
-        return pair(ast_expr_path(span, path), after_path);
+        return result_pair(ast_expr_path(span, path), after_path);
     }
-    return pair("", tokens);
+    return result_pair("", tokens);
 }
 
 fn parse_call_args(tokens: String) -> String {
     if token_is_punct(tokens, ")") {
         let rest = consume_punct(tokens, ")");
-        return pair(list_nil(), rest);
+        return result_pair(list_nil(), rest);
     }
 
     let expr_pair = parse_expr(tokens);
-    let expr = pair_left(expr_pair);
-    let rest = pair_right(expr_pair);
+    let expr = result_left(expr_pair);
+    let rest = result_right(expr_pair);
     let tail_pair = parse_expr_list_tail(rest);
-    let tail = pair_left(tail_pair);
-    let rest2 = pair_right(tail_pair);
+    let tail = result_left(tail_pair);
+    let rest2 = result_right(tail_pair);
     let list = list_cons(expr, tail);
-    return pair(list, rest2);
+    return result_pair(list, rest2);
 }
 
 fn parse_expr_list_tail(tokens: String) -> String {
@@ -468,19 +468,19 @@ fn parse_expr_list_tail(tokens: String) -> String {
         let after_comma = token_rest(tokens);
         if token_is_punct(after_comma, ")") {
             let rest = consume_punct(after_comma, ")");
-            return pair(list_nil(), rest);
+            return result_pair(list_nil(), rest);
         }
         let next_pair = parse_expr(after_comma);
-        let next = pair_left(next_pair);
-        let rest = pair_right(next_pair);
+        let next = result_left(next_pair);
+        let rest = result_right(next_pair);
         let tail_pair = parse_expr_list_tail(rest);
-        let tail = pair_left(tail_pair);
-        let rest2 = pair_right(tail_pair);
+        let tail = result_left(tail_pair);
+        let rest2 = result_right(tail_pair);
         let list = list_cons(next, tail);
-        return pair(list, rest2);
+        return result_pair(list, rest2);
     }
     let rest = consume_punct(tokens, ")");
-    return pair(list_nil(), rest);
+    return result_pair(list_nil(), rest);
 }
 
 fn parse_path(tokens: String) -> String {
@@ -489,12 +489,12 @@ fn parse_path(tokens: String) -> String {
     let first = pair_left(first_pair);
     let rest = pair_right(first_pair);
     let tail_pair = parse_path_tail(rest);
-    let tail = pair_left(tail_pair);
-    let rest2 = pair_right(tail_pair);
+    let tail = result_left(tail_pair);
+    let rest2 = result_right(tail_pair);
     let segments = list_cons(first, tail);
     let span = span_from_tokens(start_tokens, rest2);
     let path = ast_path(span, segments);
-    return pair(path, rest2);
+    return result_pair(path, rest2);
 }
 
 fn parse_path_tail(tokens: String) -> String {
@@ -504,21 +504,21 @@ fn parse_path_tail(tokens: String) -> String {
         let next = pair_left(next_pair);
         let rest = pair_right(next_pair);
         let tail_pair = parse_path_tail(rest);
-        let tail = pair_left(tail_pair);
-        let rest2 = pair_right(tail_pair);
+        let tail = result_left(tail_pair);
+        let rest2 = result_right(tail_pair);
         let list = list_cons(next, tail);
-        return pair(list, rest2);
+        return result_pair(list, rest2);
     }
-    return pair(list_nil(), tokens);
+    return result_pair(list_nil(), tokens);
 }
 
 fn parse_type(tokens: String) -> String {
     let start_tokens = tokens;
     let path_pair = parse_path(tokens);
-    let path = pair_left(path_pair);
-    let rest = pair_right(path_pair);
+    let path = result_left(path_pair);
+    let rest = result_right(path_pair);
     let span = span_from_tokens(start_tokens, rest);
-    return pair(ast_type_path(span, path), rest);
+    return result_pair(ast_type_path(span, path), rest);
 }
 
 fn is_bool_literal(text: String, tokens: String) -> Bool {
@@ -735,6 +735,30 @@ fn pair(left: String, right: String) -> String {
     return __str_concat(combined, right);
 }
 
+fn split_pair_left(value: String, sep: String) -> String {
+    if __str_is_empty(value) {
+        return "";
+    }
+    if __str_starts_with(value, sep) {
+        return "";
+    }
+    let head = __str_head(value);
+    let rest = __str_tail(value);
+    let tail = split_pair_left(rest, sep);
+    return __str_concat(head, tail);
+}
+
+fn split_pair_right(value: String, sep: String) -> String {
+    if __str_is_empty(value) {
+        return "";
+    }
+    if __str_starts_with(value, sep) {
+        return __str_strip_prefix(value, sep);
+    }
+    let rest = __str_tail(value);
+    return split_pair_right(rest, sep);
+}
+
 fn output_pair(left: String, right: String) -> String {
     let sep = "\n<OUT>\n";
     let combined = __str_concat(left, sep);
@@ -775,12 +799,30 @@ fn ast_unescape(value: String) -> String {
     return __ast_unescape(value);
 }
 
+fn result_pair(left: String, right: String) -> String {
+    let sep = "\n<AST>\n";
+    let safe_left = ast_escape(left);
+    let combined = __str_concat(safe_left, sep);
+    return __str_concat(combined, right);
+}
+
+fn result_left(value: String) -> String {
+    let left = ast_left_raw(value);
+    return ast_unescape(left);
+}
+
+fn result_right(value: String) -> String {
+    return ast_right_raw(value);
+}
+
 fn pair_left(value: String) -> String {
-    return __pair_left(value);
+    let sep = "\n<SEP>\n";
+    return split_pair_left(value, sep);
 }
 
 fn pair_right(value: String) -> String {
-    return __pair_right(value);
+    let sep = "\n<SEP>\n";
+    return split_pair_right(value, sep);
 }
 
 fn split_line(value: String) -> String {
