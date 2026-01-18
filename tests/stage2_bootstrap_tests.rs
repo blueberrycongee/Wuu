@@ -19,7 +19,7 @@ struct ToolArtifact {
 struct BaseToolchain {
     parser_vm: BytecodeModule,
     stage1_compiler_vm: BytecodeModule,
-    stage2_compiler_vm: BytecodeModule,
+    stage2_compiler: ToolArtifact,
 }
 
 fn base_toolchain() -> &'static BaseToolchain {
@@ -27,11 +27,11 @@ fn base_toolchain() -> &'static BaseToolchain {
     TOOLCHAIN.get_or_init(|| {
         let parser_vm = load_stage1_vm("selfhost/parser.wuu");
         let stage1_compiler_vm = load_stage1_vm("selfhost/compiler.wuu");
-        let stage2_compiler_vm = build_stage2_compiler_vm(&parser_vm, &stage1_compiler_vm);
+        let stage2_compiler = build_stage2_compiler_artifact(&parser_vm, &stage1_compiler_vm);
         BaseToolchain {
             parser_vm,
             stage1_compiler_vm,
-            stage2_compiler_vm,
+            stage2_compiler,
         }
     })
 }
@@ -84,7 +84,7 @@ fn lexer_artifacts() -> &'static (ToolArtifact, ToolArtifact) {
         );
         let stage2 = compile_tool_with_compiler(
             &toolchain.parser_vm,
-            &toolchain.stage2_compiler_vm,
+            &toolchain.stage2_compiler.module,
             "selfhost/lexer.wuu",
         );
         (stage1, stage2)
@@ -102,7 +102,7 @@ fn parser_artifacts() -> &'static (ToolArtifact, ToolArtifact) {
         );
         let stage2 = compile_tool_with_compiler(
             &toolchain.parser_vm,
-            &toolchain.stage2_compiler_vm,
+            &toolchain.stage2_compiler.module,
             "selfhost/parser.wuu",
         );
         (stage1, stage2)
@@ -120,7 +120,7 @@ fn format_artifacts() -> &'static (ToolArtifact, ToolArtifact) {
         );
         let stage2 = compile_tool_with_compiler(
             &toolchain.parser_vm,
-            &toolchain.stage2_compiler_vm,
+            &toolchain.stage2_compiler.module,
             "selfhost/format.wuu",
         );
         (stage1, stage2)
@@ -132,7 +132,7 @@ fn stage2_compiler_matches_stage1_output() {
     let toolchain = base_toolchain();
     let parser_vm = &toolchain.parser_vm;
     let compiler_vm = &toolchain.stage1_compiler_vm;
-    let stage2_compiler = &toolchain.stage2_compiler_vm;
+    let stage2_compiler = &toolchain.stage2_compiler.module;
 
     let input = fs::read_to_string("tests/run/01_return_int.wuu").expect("read fixture failed");
     let input_ast = run_stage1_parse_vm(parser_vm, &input);
@@ -206,6 +206,15 @@ fn stage2_lexer_bytecode_matches_golden() {
 }
 
 #[test]
+fn stage2_compiler_bytecode_matches_golden() {
+    let toolchain = base_toolchain();
+    compare_or_update_golden(
+        "tests/golden/stage2/compiler.bytecode.txt",
+        &toolchain.stage2_compiler.text,
+    );
+}
+
+#[test]
 fn stage2_parser_bytecode_matches_golden() {
     if !slow_tests_enabled() {
         return;
@@ -236,14 +245,18 @@ fn load_stage1_vm(path: &str) -> BytecodeModule {
     compile_module(&module).expect("compile stage1 module failed")
 }
 
-fn build_stage2_compiler_vm(
+fn build_stage2_compiler_artifact(
     parser_vm: &BytecodeModule,
     compiler_vm: &BytecodeModule,
-) -> BytecodeModule {
+) -> ToolArtifact {
     let compiler_source = selfhost_support::load_with_stdlib(Path::new("selfhost/compiler.wuu"));
     let compiler_ast = run_stage1_parse_vm(parser_vm, &compiler_source);
     let stage2_text = run_stage1_compile_vm(compiler_vm, compiler_ast);
-    parse_text_module(&stage2_text).expect("parse stage2 compiler failed")
+    let module = parse_text_module(&stage2_text).expect("parse stage2 compiler failed");
+    ToolArtifact {
+        text: stage2_text,
+        module,
+    }
 }
 
 fn compile_tool_with_compiler(

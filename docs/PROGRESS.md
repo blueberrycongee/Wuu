@@ -1331,9 +1331,10 @@ Changes made:
   behind `WUU_SLOW_TESTS=1`):
   - `tests/stage2_bootstrap_tests.rs`
 - Locked stage2 tool bytecode artifacts against golden files (update with
-  `WUU_UPDATE_GOLDENS=1`):
+  `WUU_UPDATE_GOLDENS=1` or `scripts/gen-stage2-artifacts.sh`):
   - `tests/golden/stage2/*.bytecode.txt`
   - `tests/stage2_bootstrap_tests.rs`
+  - `scripts/gen-stage2-artifacts.sh`
 
 Acceptance criteria:
 

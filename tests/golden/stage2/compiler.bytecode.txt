@@ -1,0 +1,1627 @@
+fn pair
+param left
+param right
+const_string \n<SEP>\n
+store sep
+load left
+load sep
+call_builtin __str_concat 2
+store combined
+load combined
+load right
+call_builtin __str_concat 2
+return
+end
+fn split_pair_left
+param value
+param sep
+load value
+call_builtin __str_is_empty 1
+jump_if_false if_228:284_end
+const_string 
+return
+label if_228:284_end
+load value
+load sep
+call_builtin __str_starts_with 2
+jump_if_false if_284:348_end
+const_string 
+return
+label if_284:348_end
+load value
+call_builtin __str_head 1
+store head
+load value
+call_builtin __str_tail 1
+store rest
+load rest
+load sep
+call split_pair_left 2
+store tail
+load head
+load tail
+call_builtin __str_concat 2
+return
+end
+fn split_pair_right
+param value
+param sep
+load value
+call_builtin __str_is_empty 1
+jump_if_false if_559:615_end
+const_string 
+return
+label if_559:615_end
+load value
+load sep
+call_builtin __str_starts_with 2
+jump_if_false if_615:707_end
+load value
+load sep
+call_builtin __str_strip_prefix 2
+return
+label if_615:707_end
+load value
+call_builtin __str_tail 1
+store rest
+load rest
+load sep
+call split_pair_right 2
+return
+end
+fn pair_left
+param value
+const_string \n<SEP>\n
+store sep
+load value
+load sep
+call split_pair_left 2
+return
+end
+fn pair_right
+param value
+const_string \n<SEP>\n
+store sep
+load value
+load sep
+call split_pair_right 2
+return
+end
+fn join_lines
+param head
+param tail
+load tail
+call_builtin __str_is_empty 1
+jump_if_false if_1060:1117_end
+load head
+return
+label if_1060:1117_end
+load head
+const_string \n
+call_builtin __str_concat 2
+store with_newline
+load with_newline
+load tail
+call_builtin __str_concat 2
+return
+end
+fn split_line
+param value
+load value
+call_builtin __str_is_empty 1
+jump_if_false if_1255:1321_end
+const_string 
+const_string 
+call pair 2
+return
+label if_1255:1321_end
+const_string //
+load value
+call_builtin __str_concat 2
+store prefixed
+load prefixed
+call_builtin __str_take_line_comment 1
+store comment
+load comment
+const_string //
+call_builtin __str_strip_prefix 2
+store line
+load value
+load line
+call_builtin __str_strip_prefix 2
+store rest
+load rest
+const_string \n
+call_builtin __str_starts_with 2
+jump_if_false if_1518:1647_end
+load rest
+const_string \n
+call_builtin __str_strip_prefix 2
+store rest
+load line
+load rest
+call pair 2
+return
+label if_1518:1647_end
+load line
+load rest
+call pair 2
+return
+end
+fn escape
+param text
+load text
+call_builtin __str_is_empty 1
+jump_if_false if_1715:1770_end
+const_string 
+return
+label if_1715:1770_end
+load text
+call_builtin __str_head 1
+store head
+load text
+call_builtin __str_tail 1
+store tail
+load head
+call escape_char 1
+store escaped
+load tail
+call escape 1
+store rest
+load escaped
+load rest
+call_builtin __str_concat 2
+return
+end
+fn escape_char
+param ch
+load ch
+const_string \\
+call_builtin __str_eq 2
+jump_if_false if_1984:2041_end
+const_string \\\\
+return
+label if_1984:2041_end
+load ch
+const_string \n
+call_builtin __str_eq 2
+jump_if_false if_2041:2097_end
+const_string \\n
+return
+label if_2041:2097_end
+load ch
+const_string \r
+call_builtin __str_eq 2
+jump_if_false if_2097:2153_end
+const_string \\r
+return
+label if_2097:2153_end
+load ch
+const_string \t
+call_builtin __str_eq 2
+jump_if_false if_2153:2209_end
+const_string \\t
+return
+label if_2153:2209_end
+load ch
+return
+end
+fn split_at_char
+param value
+param ch
+load value
+call_builtin __str_is_empty 1
+jump_if_false if_2283:2349_end
+const_string 
+const_string 
+call pair 2
+return
+label if_2283:2349_end
+load value
+call_builtin __str_head 1
+store head
+load head
+load ch
+call_builtin __str_eq 2
+jump_if_false if_2383:2486_end
+load value
+call_builtin __str_tail 1
+store rest
+const_string 
+load rest
+call pair 2
+return
+label if_2383:2486_end
+load value
+call_builtin __str_tail 1
+load ch
+call split_at_char 2
+store next
+load next
+call pair_left 1
+store left
+load next
+call pair_right 1
+store right
+load head
+load left
+call_builtin __str_concat 2
+store combined
+load combined
+load right
+call pair 2
+return
+end
+fn span_zero
+const_string 0
+const_string 0
+call span_text 2
+return
+end
+fn span_text
+param start
+param end
+const_string :
+store sep
+load start
+load sep
+call_builtin __str_concat 2
+store combined
+load combined
+load end
+call_builtin __str_concat 2
+return
+end
+fn ast_pair
+param left
+param right
+const_string \n<AST>\n
+store sep
+load left
+call ast_escape 1
+store safe_left
+load right
+call ast_escape 1
+store safe_right
+load safe_left
+load sep
+call_builtin __str_concat 2
+store combined
+load combined
+load safe_right
+call_builtin __str_concat 2
+return
+end
+fn node_raw
+param tag
+param payload
+load tag
+load payload
+call ast_pair 2
+return
+end
+fn node_with_span
+param tag
+param payload
+param span
+load tag
+const_string @
+call_builtin __str_concat 2
+store tag_span
+load tag_span
+load span
+call_builtin __str_concat 2
+store tag_span
+load tag_span
+load payload
+call ast_pair 2
+return
+end
+fn node
+param tag
+param payload
+load tag
+load payload
+call span_zero 0
+call node_with_span 3
+return
+end
+fn ast_left_raw
+param value
+load value
+call_builtin __ast_left 1
+return
+end
+fn ast_right_raw
+param value
+load value
+call_builtin __ast_right 1
+return
+end
+fn ast_escape
+param value
+load value
+call_builtin __ast_escape 1
+return
+end
+fn ast_unescape
+param value
+load value
+call_builtin __ast_unescape 1
+return
+end
+fn ast_left
+param value
+load value
+call ast_left_raw 1
+return
+end
+fn ast_right
+param value
+load value
+call ast_right_raw 1
+return
+end
+fn ast_left_value
+param value
+load value
+call ast_left_raw 1
+call ast_unescape 1
+return
+end
+fn ast_right_value
+param value
+load value
+call ast_right_raw 1
+call ast_unescape 1
+return
+end
+fn node_tag
+param node
+load node
+call ast_left_value 1
+store tag_span
+load tag_span
+const_string @
+call split_at_char 2
+store split
+load split
+call pair_left 1
+return
+end
+fn node_payload
+param node
+load node
+call ast_right_raw 1
+return
+end
+fn list_nil
+const_string Nil
+const_string 
+call node 2
+return
+end
+fn list_cons
+param head
+param tail
+const_string Cons
+load head
+load tail
+call ast_pair 2
+call node 2
+return
+end
+fn list_is_empty
+param list
+load list
+call node_tag 1
+const_string Nil
+call_builtin __str_eq 2
+return
+end
+fn list_head
+param list
+load list
+call node_payload 1
+store payload
+load payload
+call ast_left 1
+return
+end
+fn list_tail
+param list
+load list
+call node_payload 1
+store payload
+load payload
+call ast_right 1
+return
+end
+fn option_none
+const_string None
+const_string 
+call node 2
+return
+end
+fn option_some
+param value
+const_string Some
+load value
+call node 2
+return
+end
+fn option_is_none
+param option
+load option
+call node_tag 1
+const_string None
+call_builtin __str_eq 2
+return
+end
+fn option_unwrap
+param option
+load option
+call node_payload 1
+return
+end
+fn compile_module
+param ast
+load ast
+call_builtin __str_is_empty 1
+jump_if_false if_5284:5338_end
+const_string 
+return
+label if_5284:5338_end
+load ast
+call node_tag 1
+const_string Module
+call_builtin __str_eq 2
+jump_if_false if_5338:5463_end
+load ast
+call node_payload 1
+store items
+load items
+call compile_items 1
+return
+label if_5338:5463_end
+const_string 
+return
+end
+fn compile_items
+param items
+load items
+call list_is_empty 1
+jump_if_false if_5525:5580_end
+const_string 
+return
+label if_5525:5580_end
+load items
+call list_head 1
+store head
+load items
+call list_tail 1
+store tail
+load head
+call compile_item 1
+store head_code
+load tail
+call list_is_empty 1
+jump_if_false if_5686:5747_end
+load head_code
+return
+label if_5686:5747_end
+load tail
+load items
+call_builtin __str_eq 2
+jump_if_false if_5747:5810_end
+load head_code
+return
+label if_5747:5810_end
+load tail
+call compile_items 1
+store tail_code
+load head_code
+load tail_code
+call join_non_empty 2
+return
+end
+fn compile_item
+param item
+load item
+call node_tag 1
+store tag
+load tag
+const_string ItemFn
+call_builtin __str_eq 2
+jump_if_false if_5975:6047_end
+load item
+call compile_fn 1
+return
+label if_5975:6047_end
+load tag
+const_string ItemWorkflow
+call_builtin __str_eq 2
+jump_if_false if_6047:6125_end
+load item
+call compile_fn 1
+return
+label if_6047:6125_end
+const_string 
+return
+end
+fn compile_fn
+param item
+load item
+call node_payload 1
+store payload
+load payload
+call ast_left_value 1
+store name
+load payload
+call ast_right 1
+store rest1
+load rest1
+call ast_left 1
+store params
+load rest1
+call ast_right 1
+store rest2
+load rest2
+call ast_left 1
+store _ret
+load rest2
+call ast_right 1
+store rest3
+load rest3
+call ast_left 1
+store _effects_opt
+load rest3
+call ast_right 1
+store rest4
+load rest4
+call ast_left 1
+store _contracts
+load rest4
+call ast_right 1
+store block
+const_string fn 
+load name
+call_builtin __str_concat 2
+store header
+load params
+call compile_params 1
+store param_lines
+load block
+call compile_block 1
+store body
+load header
+load param_lines
+call join_non_empty 2
+store with_params
+load with_params
+load body
+call join_non_empty 2
+store with_body
+load with_body
+const_string end
+call join_lines 2
+return
+end
+fn compile_params
+param params
+load params
+call list_is_empty 1
+jump_if_false if_6909:6965_end
+const_string 
+return
+label if_6909:6965_end
+load params
+call list_head 1
+store head
+load params
+call list_tail 1
+store tail
+load head
+call compile_param 1
+store head_line
+load tail
+call list_is_empty 1
+jump_if_false if_7074:7135_end
+load head_line
+return
+label if_7074:7135_end
+load tail
+load params
+call_builtin __str_eq 2
+jump_if_false if_7135:7199_end
+load head_line
+return
+label if_7135:7199_end
+load tail
+call compile_params 1
+store tail_lines
+load head_line
+load tail_lines
+call join_non_empty 2
+return
+end
+fn compile_param
+param param
+load param
+call node_payload 1
+store payload
+load payload
+call ast_left_value 1
+store name
+const_string param 
+load name
+call_builtin __str_concat 2
+return
+end
+fn compile_block
+param block
+load block
+call node_payload 1
+store stmts
+load stmts
+call compile_stmt_list 1
+return
+end
+fn compile_stmt_list
+param stmts
+load stmts
+call list_is_empty 1
+jump_if_false if_7631:7686_end
+const_string 
+return
+label if_7631:7686_end
+load stmts
+call list_head 1
+store head
+load stmts
+call list_tail 1
+store tail
+load head
+call compile_stmt 1
+store head_code
+load tail
+call list_is_empty 1
+jump_if_false if_7792:7853_end
+load head_code
+return
+label if_7792:7853_end
+load tail
+load stmts
+call_builtin __str_eq 2
+jump_if_false if_7853:7916_end
+load head_code
+return
+label if_7853:7916_end
+load tail
+call compile_stmt_list 1
+store tail_code
+load head_code
+load tail_code
+call join_non_empty 2
+return
+end
+fn compile_stmt
+param stmt
+load stmt
+call node_tag 1
+store tag
+load tag
+const_string StmtLet
+call_builtin __str_eq 2
+jump_if_false if_8085:8469_end
+load stmt
+call node_payload 1
+store payload
+load payload
+call ast_left_value 1
+store name
+load payload
+call ast_right 1
+store rest
+load rest
+call ast_left 1
+store _ty
+load rest
+call ast_right 1
+store expr
+load expr
+call compile_expr 1
+store expr_code
+const_string store 
+load name
+call_builtin __str_concat 2
+store store_line
+load expr_code
+load store_line
+call join_lines 2
+return
+label if_8085:8469_end
+load tag
+const_string StmtLoop
+call_builtin __str_eq 2
+jump_if_false if_8469:8545_end
+load stmt
+call compile_loop 1
+return
+label if_8469:8545_end
+load tag
+const_string StmtStep
+call_builtin __str_eq 2
+jump_if_false if_8545:8621_end
+load stmt
+call compile_step 1
+return
+label if_8545:8621_end
+load tag
+const_string StmtIf
+call_builtin __str_eq 2
+jump_if_false if_8621:8693_end
+load stmt
+call compile_if 1
+return
+label if_8621:8693_end
+load tag
+const_string StmtReturn
+call_builtin __str_eq 2
+jump_if_false if_8693:8820_end
+load stmt
+call node_payload 1
+store expr_opt
+load expr_opt
+call compile_return 1
+return
+label if_8693:8820_end
+load tag
+const_string StmtExpr
+call_builtin __str_eq 2
+jump_if_false if_8820:8989_end
+load stmt
+call node_payload 1
+store expr
+load expr
+call compile_expr 1
+store expr_code
+load expr_code
+const_string pop
+call join_lines 2
+return
+label if_8820:8989_end
+const_string 
+return
+end
+fn compile_return
+param expr_opt
+load expr_opt
+call option_is_none 1
+jump_if_false if_9055:9146_end
+const_string const_unit
+const_string return
+call join_lines 2
+return
+label if_9055:9146_end
+load expr_opt
+call option_unwrap 1
+store expr
+load expr
+call compile_expr 1
+store expr_code
+load expr_code
+const_string return
+call join_lines 2
+return
+end
+fn compile_expr
+param expr
+load expr
+call node_tag 1
+store tag
+load tag
+const_string ExprNumber
+call_builtin __str_eq 2
+jump_if_false if_9345:9490_end
+load expr
+call node_payload 1
+call ast_unescape 1
+store text
+const_string const_int 
+load text
+call_builtin __str_concat 2
+return
+label if_9345:9490_end
+load tag
+const_string ExprBool
+call_builtin __str_eq 2
+jump_if_false if_9490:9634_end
+load expr
+call node_payload 1
+call ast_unescape 1
+store text
+const_string const_bool 
+load text
+call_builtin __str_concat 2
+return
+label if_9490:9634_end
+load tag
+const_string ExprString
+call_builtin __str_eq 2
+jump_if_false if_9634:9868_end
+load expr
+call node_payload 1
+call ast_unescape 1
+store text
+load text
+call unquote_literal 1
+store raw
+load raw
+call encode_string 1
+store encoded
+const_string const_string 
+load encoded
+call_builtin __str_concat 2
+return
+label if_9634:9868_end
+load tag
+const_string ExprPath
+call_builtin __str_eq 2
+jump_if_false if_9868:10102_end
+load expr
+call node_payload 1
+store path
+load path
+call path_single_name 1
+store name
+load name
+call_builtin __str_is_empty 1
+jump_if_false if_9989:10056_end
+const_string 
+return
+label if_9989:10056_end
+const_string load 
+load name
+call_builtin __str_concat 2
+return
+label if_9868:10102_end
+load tag
+const_string ExprCall
+call_builtin __str_eq 2
+jump_if_false if_10102:10566_end
+load expr
+call node_payload 1
+store payload
+load payload
+call ast_left 1
+store path
+load payload
+call ast_right 1
+store args
+load args
+call compile_call_args 1
+store args_code
+load path
+call path_single_name 1
+store name
+load name
+call_builtin __str_is_empty 1
+jump_if_false if_10352:10419_end
+const_string 
+return
+label if_10352:10419_end
+load args
+call count_list 1
+store argc
+load name
+load argc
+call compile_call_line 2
+store call_line
+load args_code
+load call_line
+call join_non_empty 2
+return
+label if_10102:10566_end
+const_string 
+return
+end
+fn compile_if
+param stmt
+load stmt
+call node_payload 1
+store payload
+load payload
+call ast_left 1
+store cond
+load payload
+call ast_right 1
+store rest
+load rest
+call ast_left 1
+store then_block
+load rest
+call ast_right 1
+store else_opt
+load stmt
+call node_span 1
+store span
+load span
+const_string else
+call make_label 2
+store else_label
+load span
+const_string end
+call make_label 2
+store end_label
+load cond
+call compile_expr 1
+store cond_code
+load then_block
+call compile_block 1
+store then_code
+load else_opt
+call option_is_none 1
+jump_if_false if_11017:11363_end
+const_string jump_if_false 
+load end_label
+call_builtin __str_concat 2
+store jump_line
+load cond_code
+load jump_line
+call join_non_empty 2
+store with_jump
+load with_jump
+load then_code
+call join_non_empty 2
+store with_then
+const_string label 
+load end_label
+call_builtin __str_concat 2
+store label_line
+load with_then
+load label_line
+call join_non_empty 2
+return
+label if_11017:11363_end
+load else_opt
+call option_unwrap 1
+store else_block
+load else_block
+call compile_block 1
+store else_code
+const_string jump_if_false 
+load else_label
+call_builtin __str_concat 2
+store jump_else
+load cond_code
+load jump_else
+call join_non_empty 2
+store after_cond
+load after_cond
+load then_code
+call join_non_empty 2
+store after_then
+const_string jump 
+load end_label
+call_builtin __str_concat 2
+store jump_end
+load after_then
+load jump_end
+call join_non_empty 2
+store after_jump_end
+const_string label 
+load else_label
+call_builtin __str_concat 2
+store label_else
+load after_jump_end
+load label_else
+call join_non_empty 2
+store after_label_else
+load after_label_else
+load else_code
+call join_non_empty 2
+store after_else
+const_string label 
+load end_label
+call_builtin __str_concat 2
+store label_end
+load after_else
+load label_end
+call join_non_empty 2
+return
+end
+fn compile_loop
+param stmt
+load stmt
+call node_payload 1
+store block
+load stmt
+call node_span 1
+store span
+load span
+call make_loop_label 1
+store start_label
+const_string label 
+load start_label
+call_builtin __str_concat 2
+store label_line
+load block
+call compile_block 1
+store body_code
+const_string jump 
+load start_label
+call_builtin __str_concat 2
+store jump_line
+load label_line
+load body_code
+call join_non_empty 2
+store with_body
+load with_body
+load jump_line
+call join_non_empty 2
+return
+end
+fn compile_step
+param stmt
+load stmt
+call node_payload 1
+store payload
+load payload
+call ast_right 1
+store block
+load block
+call compile_block 1
+return
+end
+fn compile_call_args
+param args
+load args
+call list_is_empty 1
+jump_if_false if_12678:12732_end
+const_string 
+return
+label if_12678:12732_end
+load args
+call list_head 1
+store head
+load args
+call list_tail 1
+store tail
+load head
+call compile_expr 1
+store head_expr
+load head_expr
+call_builtin __str_is_empty 1
+jump_if_false if_12836:12896_end
+const_string 
+return
+label if_12836:12896_end
+load head_expr
+store head_with_arg
+load tail
+call list_is_empty 1
+jump_if_false if_12931:12996_end
+load head_with_arg
+return
+label if_12931:12996_end
+load tail
+load args
+call_builtin __str_eq 2
+jump_if_false if_12996:13062_end
+load head_with_arg
+return
+label if_12996:13062_end
+load tail
+call compile_call_args 1
+store tail_code
+load head_with_arg
+load tail_code
+call join_non_empty 2
+return
+end
+fn compile_call_line
+param name
+param argc
+load name
+const_string __
+call_builtin __str_starts_with 2
+jump_if_false if_13224:13418_end
+const_string call_builtin 
+load name
+call_builtin __str_concat 2
+store prefix
+load prefix
+const_string  
+call_builtin __str_concat 2
+store prefix
+load prefix
+load argc
+call_builtin __str_concat 2
+return
+label if_13224:13418_end
+const_string call 
+load name
+call_builtin __str_concat 2
+store prefix
+load prefix
+const_string  
+call_builtin __str_concat 2
+store prefix
+load prefix
+load argc
+call_builtin __str_concat 2
+return
+end
+fn path_single_name
+param path
+load path
+call node_payload 1
+store segments
+load segments
+call list_is_empty 1
+jump_if_false if_13635:13693_end
+const_string 
+return
+label if_13635:13693_end
+load segments
+call list_head 1
+call ast_unescape 1
+store head
+load segments
+call list_tail 1
+store tail
+load tail
+call list_is_empty 1
+jump_if_false if_13779:13835_end
+load head
+return
+label if_13779:13835_end
+load tail
+load segments
+call_builtin __str_eq 2
+jump_if_false if_13835:13896_end
+load head
+return
+label if_13835:13896_end
+const_string 
+return
+end
+fn count_list
+param list
+load list
+call list_is_empty 1
+jump_if_false if_13954:14009_end
+const_string 0
+return
+label if_13954:14009_end
+load list
+call list_tail 1
+store tail
+load tail
+call count_list 1
+store rest
+load rest
+call inc_decimal 1
+return
+end
+fn inc_decimal
+param text
+load text
+call_builtin __str_is_empty 1
+jump_if_false if_14148:14204_end
+const_string 1
+return
+label if_14148:14204_end
+load text
+call last_char 1
+store last
+load text
+call strip_last_char 1
+store prefix
+load last
+const_string 0
+call_builtin __str_eq 2
+jump_if_false if_14276:14353_end
+load prefix
+const_string 1
+call_builtin __str_concat 2
+return
+label if_14276:14353_end
+load last
+const_string 1
+call_builtin __str_eq 2
+jump_if_false if_14353:14430_end
+load prefix
+const_string 2
+call_builtin __str_concat 2
+return
+label if_14353:14430_end
+load last
+const_string 2
+call_builtin __str_eq 2
+jump_if_false if_14430:14507_end
+load prefix
+const_string 3
+call_builtin __str_concat 2
+return
+label if_14430:14507_end
+load last
+const_string 3
+call_builtin __str_eq 2
+jump_if_false if_14507:14584_end
+load prefix
+const_string 4
+call_builtin __str_concat 2
+return
+label if_14507:14584_end
+load last
+const_string 4
+call_builtin __str_eq 2
+jump_if_false if_14584:14661_end
+load prefix
+const_string 5
+call_builtin __str_concat 2
+return
+label if_14584:14661_end
+load last
+const_string 5
+call_builtin __str_eq 2
+jump_if_false if_14661:14738_end
+load prefix
+const_string 6
+call_builtin __str_concat 2
+return
+label if_14661:14738_end
+load last
+const_string 6
+call_builtin __str_eq 2
+jump_if_false if_14738:14815_end
+load prefix
+const_string 7
+call_builtin __str_concat 2
+return
+label if_14738:14815_end
+load last
+const_string 7
+call_builtin __str_eq 2
+jump_if_false if_14815:14892_end
+load prefix
+const_string 8
+call_builtin __str_concat 2
+return
+label if_14815:14892_end
+load last
+const_string 8
+call_builtin __str_eq 2
+jump_if_false if_14892:14969_end
+load prefix
+const_string 9
+call_builtin __str_concat 2
+return
+label if_14892:14969_end
+load last
+const_string 9
+call_builtin __str_eq 2
+jump_if_false if_14969:15084_end
+load prefix
+call inc_decimal 1
+store next
+load next
+const_string 0
+call_builtin __str_concat 2
+return
+label if_14969:15084_end
+load prefix
+load last
+call_builtin __str_concat 2
+return
+end
+fn last_char
+param value
+load value
+call_builtin __str_is_empty 1
+jump_if_false if_15166:15222_end
+const_string 
+return
+label if_15166:15222_end
+load value
+call_builtin __str_head 1
+store head
+load value
+call_builtin __str_tail 1
+store tail
+load tail
+call_builtin __str_is_empty 1
+jump_if_false if_15290:15347_end
+load head
+return
+label if_15290:15347_end
+load tail
+call last_char 1
+return
+end
+fn node_span
+param node
+load node
+call ast_left_value 1
+store tag_span
+load tag_span
+const_string @
+call split_at_char 2
+store split
+load split
+call pair_right 1
+return
+end
+fn make_label
+param span
+param suffix
+load span
+call_builtin __str_is_empty 1
+jump_if_false if_15593:15718_end
+const_string if_
+load suffix
+call_builtin __str_concat 2
+store base
+load base
+const_string _0
+call_builtin __str_concat 2
+return
+label if_15593:15718_end
+const_string if_
+load span
+call_builtin __str_concat 2
+store base
+load base
+const_string _
+call_builtin __str_concat 2
+store base
+load base
+load suffix
+call_builtin __str_concat 2
+return
+end
+fn make_loop_label
+param span
+load span
+call_builtin __str_is_empty 1
+jump_if_false if_15887:15948_end
+const_string loop_0
+return
+label if_15887:15948_end
+const_string loop_
+load span
+call_builtin __str_concat 2
+store base
+load base
+const_string _start
+call_builtin __str_concat 2
+return
+end
+fn unquote_literal
+param text
+load text
+call strip_first_char 1
+store inner
+load inner
+call strip_last_char 1
+store inner
+load inner
+call unescape_string 1
+return
+end
+fn strip_first_char
+param value
+load value
+call_builtin __str_is_empty 1
+jump_if_false if_16246:16302_end
+const_string 
+return
+label if_16246:16302_end
+load value
+call_builtin __str_tail 1
+return
+end
+fn strip_last_char
+param value
+load value
+call_builtin __str_is_empty 1
+jump_if_false if_16381:16437_end
+const_string 
+return
+label if_16381:16437_end
+load value
+call_builtin __str_head 1
+store head
+load value
+call_builtin __str_tail 1
+store tail
+load tail
+call_builtin __str_is_empty 1
+jump_if_false if_16505:16560_end
+const_string 
+return
+label if_16505:16560_end
+load tail
+call strip_last_char 1
+store rest
+load head
+load rest
+call_builtin __str_concat 2
+return
+end
+fn unescape_string
+param value
+load value
+call_builtin __str_is_empty 1
+jump_if_false if_16684:16740_end
+const_string 
+return
+label if_16684:16740_end
+load value
+call_builtin __str_head 1
+store head
+load value
+call_builtin __str_tail 1
+store tail
+load head
+const_string \\
+call_builtin __str_eq 2
+jump_if_false if_16808:17112_end
+load tail
+call_builtin __str_is_empty 1
+jump_if_false if_16842:16909_end
+const_string 
+return
+label if_16842:16909_end
+load tail
+call_builtin __str_head 1
+store esc
+load tail
+call_builtin __str_tail 1
+store rest
+load esc
+call decode_escape 1
+store decoded
+load rest
+call unescape_string 1
+store next
+load decoded
+load next
+call_builtin __str_concat 2
+return
+label if_16808:17112_end
+load tail
+call unescape_string 1
+store next
+load head
+load next
+call_builtin __str_concat 2
+return
+end
+fn decode_escape
+param ch
+load ch
+const_string n
+call_builtin __str_eq 2
+jump_if_false if_17231:17285_end
+const_string \n
+return
+label if_17231:17285_end
+load ch
+const_string r
+call_builtin __str_eq 2
+jump_if_false if_17285:17339_end
+const_string \r
+return
+label if_17285:17339_end
+load ch
+const_string t
+call_builtin __str_eq 2
+jump_if_false if_17339:17393_end
+const_string \t
+return
+label if_17339:17393_end
+load ch
+const_string \\
+call_builtin __str_eq 2
+jump_if_false if_17393:17448_end
+const_string \\
+return
+label if_17393:17448_end
+load ch
+const_string \"
+call_builtin __str_eq 2
+jump_if_false if_17448:17503_end
+const_string \"
+return
+label if_17448:17503_end
+load ch
+return
+end
+fn encode_string
+param value
+load value
+call_builtin __str_is_empty 1
+jump_if_false if_17565:17621_end
+const_string 
+return
+label if_17565:17621_end
+load value
+call_builtin __str_head 1
+store head
+load value
+call_builtin __str_tail 1
+store tail
+load head
+call encode_char 1
+store encoded
+load tail
+call encode_string 1
+store rest
+load encoded
+load rest
+call_builtin __str_concat 2
+return
+end
+fn encode_char
+param ch
+load ch
+const_string \\
+call_builtin __str_eq 2
+jump_if_false if_17844:17901_end
+const_string \\\\
+return
+label if_17844:17901_end
+load ch
+const_string \n
+call_builtin __str_eq 2
+jump_if_false if_17901:17957_end
+const_string \\n
+return
+label if_17901:17957_end
+load ch
+const_string \r
+call_builtin __str_eq 2
+jump_if_false if_17957:18013_end
+const_string \\r
+return
+label if_17957:18013_end
+load ch
+const_string \t
+call_builtin __str_eq 2
+jump_if_false if_18013:18069_end
+const_string \\t
+return
+label if_18013:18069_end
+load ch
+const_string \"
+call_builtin __str_eq 2
+jump_if_false if_18069:18126_end
+const_string \\\"
+return
+label if_18069:18126_end
+load ch
+return
+end
+fn join_non_empty
+param head
+param tail
+load head
+call_builtin __str_is_empty 1
+jump_if_false if_18202:18259_end
+load tail
+return
+label if_18202:18259_end
+load tail
+call_builtin __str_is_empty 1
+jump_if_false if_18259:18316_end
+load head
+return
+label if_18259:18316_end
+load head
+load tail
+call join_lines 2
+return
+end
