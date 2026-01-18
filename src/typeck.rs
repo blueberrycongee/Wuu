@@ -84,6 +84,38 @@ pub fn check_module(module: &Module) -> Result<(), TypeError> {
     Ok(())
 }
 
+pub fn intrinsic_names() -> Vec<String> {
+    vec![
+        "__str_eq",
+        "__str_is_empty",
+        "__str_concat",
+        "__str_head",
+        "__str_tail",
+        "__str_starts_with",
+        "__str_strip_prefix",
+        "__str_take_whitespace",
+        "__str_take_ident",
+        "__str_take_number",
+        "__str_take_string_literal",
+        "__str_take_line_comment",
+        "__str_take_block_comment",
+        "__str_is_ident_start",
+        "__str_is_digit",
+        "__str_is_ascii",
+        "__pair_left",
+        "__pair_right",
+        "__lex_tokens",
+        "__lex_tokens_spanned",
+        "__ast_escape",
+        "__ast_unescape",
+        "__ast_left",
+        "__ast_right",
+    ]
+    .into_iter()
+    .map(str::to_string)
+    .collect()
+}
+
 fn insert_builtin_signatures(signatures: &mut HashMap<String, Signature>) -> Result<(), TypeError> {
     let string = Type::string();
     let bool_ty = Type::bool();

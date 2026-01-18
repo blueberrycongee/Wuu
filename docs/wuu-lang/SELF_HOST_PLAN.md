@@ -884,6 +884,11 @@ Deliverables:
 - Replace any remaining pure intrinsics with Wuu code where possible.
 - Add tests that enforce the allowed intrinsic list.
 
+Status:
+
+- In progress (2026-01-19): `HOST_INTRINSICS.md` is checked in and a test
+  enforces the intrinsic list.
+
 Acceptance:
 
 - The intrinsic list is explicit and enforced by tests.
@@ -918,6 +923,9 @@ Deliverables:
 
 - A dedicated output directory and naming scheme for stage3 artifacts.
 - A manifest or checksum file that captures the exact build inputs.
+- A fixed input set for stage3 builds (selfhost sources only).
+- A written artifact contract:
+  - `docs/wuu-lang/STAGE3_ARTIFACT_CONTRACT.md`
 - Tests that assert the artifact contract is deterministic.
 
 Acceptance:

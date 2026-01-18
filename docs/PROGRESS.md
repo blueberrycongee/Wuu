@@ -1308,7 +1308,7 @@ Known limitations:
 
 - Bytecode VM does not yet support workflows/loops/steps; large stage1 inputs may still be slow.
 
-## Milestone 2026-01-18: M5.2 Stage1 compiler to bytecode (in Wuu) - growing subset
+## Milestone 2026-01-18: M5.2/M5.3 Stage1 compiler to bytecode (in Wuu) + stage2 bootstrap
 
 Goal:
 
@@ -1349,6 +1349,11 @@ Acceptance criteria:
   with updates gated by `WUU_UPDATE_GOLDENS=1`.
 - `cargo test` passes.
 
+Status:
+
+- M5.3 complete (2026-01-19): stage2 tool parity and bytecode artifacts are checked in
+  with scriptable updates and slow coverage.
+
 Known limitations:
 
 - Compiler does not yet support qualified paths, or type/effects lowering.
@@ -1356,6 +1361,33 @@ Known limitations:
 - Stage2 parser/format parity checks are gated by `WUU_SLOW_TESTS=1` to keep
   default test runs fast.
 - Stage2 bytecode golden updates are manual via `WUU_UPDATE_GOLDENS=1`.
+
+## Milestone 2026-01-19: M5.4 Host intrinsic inventory (in progress)
+
+Goal:
+
+- Document and enforce the remaining host intrinsics.
+
+Changes made:
+
+- Added host intrinsic inventory doc:
+  - `docs/wuu-lang/HOST_INTRINSICS.md`
+- Added enforcement test for the intrinsic list:
+  - `tests/host_intrinsics_tests.rs`
+- Exposed the intrinsic list in the typechecker:
+  - `src/typeck.rs`
+
+Acceptance criteria:
+
+- The intrinsic list is explicit and enforced by tests.
+- `cargo test` passes.
+
+## Milestone 2026-01-19: M6.0 Prep (artifact contract draft)
+
+Changes made:
+
+- Drafted the stage3 artifact contract:
+  - `docs/wuu-lang/STAGE3_ARTIFACT_CONTRACT.md`
 ## Tooling 2026-01-17: GitHub HTTPS `SSL_ERROR_SYSCALL` (Windows) workaround
 
 Issue observed:
