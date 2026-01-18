@@ -1327,6 +1327,9 @@ Changes made:
   - `tests/stage1_compiler_consistency_tests.rs`
 - Added a stage2 bootstrap test that compares stage1 vs stage2 compiler output:
   - `tests/stage2_bootstrap_tests.rs`
+- Added stage2 tool parity checks against stage1 outputs (lexer by default; parser/format
+  behind `WUU_SLOW_TESTS=1`):
+  - `tests/stage2_bootstrap_tests.rs`
 
 Acceptance criteria:
 
@@ -1334,12 +1337,16 @@ Acceptance criteria:
   `03_call_and_let.wuu`, and `04_return_string.wuu` on the VM, plus loop/step smoke cases.
 - Stage1-compiled lexer/parser/formatter match interpreter output on small fixtures.
 - Stage2 compiler output matches stage1 compiler output on a minimal fixture.
+- Stage2 lexer output matches stage1 output on a golden fixture (parser/format
+  comparisons require `WUU_SLOW_TESTS=1`).
 - `cargo test` passes.
 
 Known limitations:
 
 - Compiler does not yet support qualified paths, or type/effects lowering.
 - Parser/format consistency tests are slow (stage1 compiler on large modules).
+- Stage2 parser/format parity checks are gated by `WUU_SLOW_TESTS=1` to keep
+  default test runs fast.
 ## Tooling 2026-01-17: GitHub HTTPS `SSL_ERROR_SYSCALL` (Windows) workaround
 
 Issue observed:
