@@ -57,11 +57,16 @@ const LEXER_FIXTURES_SLOW: &[&str] = &[
 const PARSER_FIXTURES_SLOW: &[&str] = &[
     "tests/golden/parse/03_fn_with_let.wuu",
     "tests/golden/parse/06_loop.wuu",
+    "tests/golden/parse/07_effects_decl.wuu",
+    "tests/golden/parse/08_requires_decl.wuu",
+    "tests/golden/parse/09_contracts.wuu",
     "tests/golden/parse/10_nested_blocks.wuu",
 ];
 const FORMAT_FIXTURES_SLOW: &[&str] = &[
     "tests/golden/fmt/01_simple_fn.wuu",
+    "tests/golden/fmt/02_workflow_effects.wuu",
     "tests/golden/fmt/03_if_else_loop.wuu",
+    "tests/golden/fmt/07_call_args.wuu",
     "tests/golden/fmt/08_string_escape.wuu",
 ];
 
