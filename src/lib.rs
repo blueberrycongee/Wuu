@@ -1,4 +1,5 @@
 pub mod ast;
+pub mod bytecode;
 pub mod effects;
 pub mod error;
 pub mod evidence;

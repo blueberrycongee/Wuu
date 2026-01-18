@@ -1273,6 +1273,34 @@ Known limitations:
 
 - Stage1 bootstrap remains slow (pipeline test ~380s on WSL).
 
+## Milestone 2026-01-18: M5.1 Stage1 bytecode VM (host) - minimal subset
+
+Goal:
+
+- Define a tiny bytecode and host VM that can run the pure subset fixtures.
+
+Changes made:
+
+- Added a bytecode compiler and VM for a pure subset (ints/bools/strings, let/return/if/call):
+  - `src/bytecode.rs`
+- Exported bytecode module for tests:
+  - `src/lib.rs`
+- Added VM-vs-interpreter equivalence tests on `tests/run/*.wuu`:
+  - `tests/bytecode_vm_tests.rs`
+
+Acceptance criteria:
+
+- VM matches interpreter outputs on `tests/run/*.wuu`.
+- `cargo test` passes.
+
+Validation (WSL):
+
+- `wsl -d Ubuntu -- bash -lc "cd /mnt/d/Desktop/Wuu && TMPDIR=/mnt/d/Desktop/Wuu/.wuu-cache/tmp CARGO_HOME=/mnt/d/wuu-cache/cargo RUSTUP_HOME=/mnt/d/wuu-cache/rustup PATH=/mnt/d/wuu-cache/cargo/bin:$PATH ./scripts/wsl-validate.sh"`
+
+Known limitations:
+
+- Bytecode VM does not yet support intrinsics or workflows; stage1 tools still run via the interpreter.
+
 ## Tooling 2026-01-17: GitHub HTTPS `SSL_ERROR_SYSCALL` (Windows) workaround
 
 Issue observed:

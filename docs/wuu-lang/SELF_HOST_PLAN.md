@@ -817,6 +817,10 @@ Done when:
 
 - The VM can run stage1 tools for small inputs.
 
+Status:
+
+- In progress (2026-01-18): host VM matches interpreter on run fixtures; intrinsics pending.
+
 ### M5.2 Stage1 compiler to bytecode (in Wuu)
 
 Goal: compile the stage1 subset to the new bytecode.
