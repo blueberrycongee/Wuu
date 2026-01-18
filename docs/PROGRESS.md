@@ -1325,12 +1325,15 @@ Changes made:
   - `tests/selfhost_compiler_vm_tests.rs`
 - Added stage1 compiler consistency tests for lexer/parser/format outputs:
   - `tests/stage1_compiler_consistency_tests.rs`
+- Added a stage2 bootstrap test that compares stage1 vs stage2 compiler output:
+  - `tests/stage2_bootstrap_tests.rs`
 
 Acceptance criteria:
 
 - Stage1 compiler emits bytecode that runs `01_return_int.wuu`, `02_if_bool.wuu`,
   `03_call_and_let.wuu`, and `04_return_string.wuu` on the VM, plus loop/step smoke cases.
 - Stage1-compiled lexer/parser/formatter match interpreter output on small fixtures.
+- Stage2 compiler output matches stage1 compiler output on a minimal fixture.
 - `cargo test` passes.
 
 Known limitations:

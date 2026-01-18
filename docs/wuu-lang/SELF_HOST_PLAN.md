@@ -843,6 +843,7 @@ Status:
 
 - In progress (2026-01-18): compiler emits jumps/labels for if/loop/step with explicit call
   arity and matches interpreter outputs for lexer/parser/format on small fixtures.
+- Stage2 bootstrap test compares stage1 vs stage2 compiler output on a minimal fixture.
 
 ### M5.3 Stage2 bootstrap (stage1 -> stage2)
 
