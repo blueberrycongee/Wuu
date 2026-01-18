@@ -1108,6 +1108,104 @@ Known limitations:
 - AST encoding assumes `\n<AST>\n` does not appear in data; escaping is deferred.
 - Stage1 parse CLI emits stage0 formatting output until M4.21 implements AST -> fmt.
 
+## Milestone 2026-01-18: M4.21 Stage1 formatter consumes AST end-to-end
+
+Goal:
+
+- Drive stage1 formatting from AST values instead of token streams.
+
+Changes made:
+
+- Stage1 formatter now accepts AST values and walks tag/payload pairs:
+  - `selfhost/format.wuu`
+- Stage1 CLI now parses -> AST -> format for `fmt --stage1`:
+  - `src/main.rs`
+- AST escaping/splitting uses host intrinsics for nested AST safety:
+  - `selfhost/parser.wuu`
+  - `selfhost/format.wuu`
+  - `src/interpreter.rs`
+  - `src/typeck.rs`
+- Formatter parity tests now use the stage1 AST pipeline:
+  - `tests/selfhost_format_tests.rs`
+  - `tests/bootstrap_tests.rs`
+
+Acceptance criteria:
+
+- Stage1 formatter output matches stage0 on `tests/golden/fmt/*.wuu`.
+- `wuu fmt --stage1 --check` still enforces parity + formatted input.
+- `cargo test` passes.
+
+Validation (WSL):
+
+- `wsl -d Ubuntu -- bash -lc "cd /mnt/d/Desktop/Wuu && CARGO_HOME=/mnt/d/wuu-cache/cargo RUSTUP_HOME=/mnt/d/wuu-cache/rustup PATH=/mnt/d/wuu-cache/cargo/bin:$PATH ./scripts/wsl-validate.sh"`
+
+Known limitations:
+
+- AST escape/split helpers still rely on host intrinsics.
+
+## Milestone 2026-01-18: M4.22 Stage1 diagnostics with spans
+
+Goal:
+
+- Add stable line/col spans to stage1 parser diagnostics.
+
+Changes made:
+
+- Stage1 parser embeds span data in AST tags (`Tag@start:end`) and extracts
+  spanned token offsets from a host lexer:
+  - `selfhost/parser.wuu`
+  - `src/interpreter.rs`
+  - `src/typeck.rs`
+- Stage1 formatter ignores span suffixes while walking AST:
+  - `selfhost/format.wuu`
+- CLI stage1 parse errors now include line/col using spanned token offsets:
+  - `src/main.rs`
+- Added span coverage tests for CLI and parser conformance:
+  - `tests/cli_stage1_parse_tests.rs`
+  - `tests/selfhost_parser_conformance_tests.rs`
+
+Acceptance criteria:
+
+- Stage1 parse errors are stable and include line/col info.
+- CLI surface shows the stage1 error with spans.
+- `cargo test` passes.
+
+Validation (WSL):
+
+- `wsl -d Ubuntu -- bash -lc "cd /mnt/d/Desktop/Wuu && TMPDIR=/mnt/d/Desktop/Wuu/.wuu-cache/tmp CARGO_HOME=/mnt/d/wuu-cache/cargo RUSTUP_HOME=/mnt/d/wuu-cache/rustup PATH=/mnt/d/wuu-cache/cargo/bin:$PATH ./scripts/wsl-validate.sh"`
+
+Known limitations:
+
+- Span encoding is embedded in AST tags (no separate span node yet).
+
+## Milestone 2026-01-18: M4.23 Stage1 lexer without host intrinsic (bounded mode)
+
+Goal:
+
+- Add a pure Wuu lexer path and keep a host fallback for large inputs.
+
+Changes made:
+
+- Implemented a bounded pure lexer in `selfhost/lexer.wuu` with a size threshold
+  and `__lex_tokens` fallback for larger inputs.
+- Added `lex_pure` entry for forcing the pure path in tests.
+- Added a conformance test that compares pure lexer output to Rust tokens:
+  - `tests/selfhost_lexer_conformance_tests.rs`
+
+Acceptance criteria:
+
+- Pure stage1 lexer matches Rust tokens on golden fixtures.
+- Large-input path still uses host `__lex_tokens` for stack safety.
+- `cargo test` passes.
+
+Validation (WSL):
+
+- `wsl -d Ubuntu -- bash -lc "cd /mnt/d/Desktop/Wuu && TMPDIR=/mnt/d/Desktop/Wuu/.wuu-cache/tmp CARGO_HOME=/mnt/d/wuu-cache/cargo RUSTUP_HOME=/mnt/d/wuu-cache/rustup PATH=/mnt/d/wuu-cache/cargo/bin:$PATH ./scripts/wsl-validate.sh"`
+
+Known limitations:
+
+- Bounded mode uses a fixed-size limit (pure path not yet adaptive).
+
 ## Tooling 2026-01-17: GitHub HTTPS `SSL_ERROR_SYSCALL` (Windows) workaround
 
 Issue observed:
