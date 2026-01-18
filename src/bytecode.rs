@@ -28,6 +28,7 @@ enum Instr {
     StoreLocal(u32),
     Pop,
     Call { func: usize, argc: usize },
+    CallBuiltin { name: String, argc: usize },
     Jump(usize),
     JumpIfFalse(usize),
     Return,
@@ -261,6 +262,13 @@ fn compile_expr(
                 });
             }
             let name = &callee[0];
+            if name.starts_with("__") {
+                code.push(Instr::CallBuiltin {
+                    name: name.clone(),
+                    argc: args.len(),
+                });
+                return Ok(());
+            }
             let func = name_to_index.get(name).ok_or_else(|| CompileError {
                 message: format!("unknown function '{name}'"),
             })?;
@@ -387,6 +395,28 @@ impl<'a> Vm<'a> {
                         locals,
                         stack: Vec::new(),
                     });
+                }
+                Instr::CallBuiltin { name, argc } => {
+                    let mut args = Vec::with_capacity(argc);
+                    for _ in 0..argc {
+                        args.push(frame.stack.pop().ok_or_else(|| VmError {
+                            message: "stack underflow on builtin call".to_string(),
+                        })?);
+                    }
+                    args.reverse();
+                    match crate::interpreter::eval_builtin(&name, &args) {
+                        Some(result) => {
+                            let value = result.map_err(|err| VmError {
+                                message: err.to_string(),
+                            })?;
+                            frame.stack.push(value);
+                        }
+                        None => {
+                            return Err(VmError {
+                                message: format!("unknown builtin '{name}'"),
+                            });
+                        }
+                    }
                 }
                 Instr::Jump(target) => {
                     frame.ip = target;

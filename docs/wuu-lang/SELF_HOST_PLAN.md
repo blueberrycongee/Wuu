@@ -819,7 +819,7 @@ Done when:
 
 Status:
 
-- In progress (2026-01-18): host VM matches interpreter on run fixtures; intrinsics pending.
+- Done (2026-01-18): host VM supports intrinsics and runs stage1 lexer/parser/format on golden fixtures.
 
 ### M5.2 Stage1 compiler to bytecode (in Wuu)
 

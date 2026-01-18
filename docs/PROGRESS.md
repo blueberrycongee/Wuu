@@ -1287,10 +1287,17 @@ Changes made:
   - `src/lib.rs`
 - Added VM-vs-interpreter equivalence tests on `tests/run/*.wuu`:
   - `tests/bytecode_vm_tests.rs`
+- Added bytecode intrinsic dispatch for stage1 builtins:
+  - `src/bytecode.rs`
+  - `src/interpreter.rs`
+- Added bytecode VM coverage for intrinsics and stage1 tools:
+  - `tests/bytecode_intrinsics_tests.rs`
+  - `tests/selfhost_vm_tests.rs`
 
 Acceptance criteria:
 
 - VM matches interpreter outputs on `tests/run/*.wuu`.
+- VM runs stage1 lexer/parser/formatter on golden fixtures via bytecode.
 - `cargo test` passes.
 
 Validation (WSL):
@@ -1299,7 +1306,7 @@ Validation (WSL):
 
 Known limitations:
 
-- Bytecode VM does not yet support intrinsics or workflows; stage1 tools still run via the interpreter.
+- Bytecode VM does not yet support workflows/loops/steps; large stage1 inputs may still be slow.
 
 ## Tooling 2026-01-17: GitHub HTTPS `SSL_ERROR_SYSCALL` (Windows) workaround
 

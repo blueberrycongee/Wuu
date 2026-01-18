@@ -230,7 +230,7 @@ impl<'a> Interpreter<'a> {
     }
 }
 
-fn eval_builtin(name: &str, args: &[Value]) -> Option<Result<Value, RunError>> {
+pub(crate) fn eval_builtin(name: &str, args: &[Value]) -> Option<Result<Value, RunError>> {
     match name {
         "__str_eq" => Some(eval_str_eq(args)),
         "__str_is_empty" => Some(eval_str_is_empty(args)),
