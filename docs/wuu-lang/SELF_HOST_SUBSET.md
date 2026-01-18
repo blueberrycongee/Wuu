@@ -54,6 +54,8 @@ Host-provided pure string intrinsics are allowed for stage1:
 - `__str_is_ident_start`, `__str_is_digit`, `__str_is_ascii`
 - `__pair_left`, `__pair_right`
 - `__lex_tokens`
+- `__lex_tokens_spanned`
+- `__ast_escape`, `__ast_unescape`, `__ast_left`, `__ast_right`
 
 ## Forbidden Features
 

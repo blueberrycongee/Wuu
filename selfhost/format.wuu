@@ -815,7 +815,7 @@ fn escape_char(ch: String) -> String {
 }
 
 fn format_module_ast(module: String, indent: String) -> String {
-    let items = ast_left(node_payload(module));
+    let items = node_payload(module);
     return format_items_ast(items, indent);
 }
 
@@ -850,7 +850,7 @@ fn format_item_ast(item: String, indent: String) -> String {
 
 fn format_fn_like_ast(item: String, indent: String, keyword: String) -> String {
     let payload = node_payload(item);
-    let name = ast_left(payload);
+    let name = ast_left_value(payload);
     let rest1 = ast_right(payload);
     let params = ast_left(rest1);
     let rest2 = ast_right(rest1);
@@ -901,7 +901,7 @@ fn format_params_ast(params: String) -> String {
 
 fn format_param_ast(param: String) -> String {
     let payload = node_payload(param);
-    let name = ast_left(payload);
+    let name = ast_left_value(payload);
     let ty_opt = ast_right(payload);
     if option_is_none(ty_opt) {
         return name;
@@ -934,7 +934,7 @@ fn format_effects_and_contracts_ast(effects_opt: String, contracts: String, inde
 
 fn format_effects_decl_ast(effects_decl: String) -> String {
     let tag = node_tag(effects_decl);
-    let payload = ast_left(node_payload(effects_decl));
+    let payload = node_payload(effects_decl);
     if __str_eq(tag, "Effects") {
         if list_is_empty(payload) {
             return "effects {}";
@@ -974,8 +974,8 @@ fn format_require_list_ast(reqs: String) -> String {
 
 fn format_require_ast(req: String) -> String {
     let payload = node_payload(req);
-    let left = ast_left(payload);
-    let right = ast_right(payload);
+    let left = ast_left_value(payload);
+    let right = ast_right_value(payload);
     let combined = __str_concat(left, ":");
     return __str_concat(combined, right);
 }
@@ -997,7 +997,7 @@ fn format_contracts_ast(contracts: String, indent: String) -> String {
 
 fn format_contract_ast(contract: String) -> String {
     let payload = node_payload(contract);
-    let kind = ast_left(payload);
+    let kind = ast_left_value(payload);
     let expr = ast_right(payload);
     let expr_text = format_expr_ast(expr);
     let line_text = __str_concat(kind, ": ");
@@ -1007,7 +1007,7 @@ fn format_contract_ast(contract: String) -> String {
 fn format_block_ast(block: String, indent: String) -> String {
     let open_line = line(indent, "{");
     let inner = indent_more(indent);
-    let stmts = ast_left(node_payload(block));
+    let stmts = node_payload(block);
     let stmt_text = format_stmt_list_ast(stmts, inner);
     let close_line = line(indent, "}");
     let combined = __str_concat(open_line, stmt_text);
@@ -1032,7 +1032,7 @@ fn format_stmt_ast(stmt: String, indent: String) -> String {
     let tag = node_tag(stmt);
     if __str_eq(tag, "StmtLet") {
         let payload = node_payload(stmt);
-        let name = ast_left(payload);
+        let name = ast_left_value(payload);
         let rest = ast_right(payload);
         let ty_opt = ast_left(rest);
         let expr = ast_right(rest);
@@ -1053,7 +1053,7 @@ fn format_stmt_ast(stmt: String, indent: String) -> String {
         return line(indent, line_text);
     }
     if __str_eq(tag, "StmtReturn") {
-        let expr_opt = ast_unescape(node_payload(stmt));
+        let expr_opt = node_payload(stmt);
         if option_is_none(expr_opt) {
             return line(indent, "return;");
         }
@@ -1063,7 +1063,7 @@ fn format_stmt_ast(stmt: String, indent: String) -> String {
         return line(indent, line_text);
     }
     if __str_eq(tag, "StmtExpr") {
-        let expr = ast_unescape(node_payload(stmt));
+        let expr = node_payload(stmt);
         let line_text = __str_concat(format_expr_ast(expr), ";");
         return line(indent, line_text);
     }
@@ -1087,14 +1087,14 @@ fn format_stmt_ast(stmt: String, indent: String) -> String {
         return __str_concat(combined, else_text);
     }
     if __str_eq(tag, "StmtLoop") {
-        let block = ast_unescape(node_payload(stmt));
+        let block = node_payload(stmt);
         let header = line(indent, "loop");
         let body = format_block_ast(block, indent);
         return __str_concat(header, body);
     }
     if __str_eq(tag, "StmtStep") {
         let payload = node_payload(stmt);
-        let label = ast_left(payload);
+        let label = ast_left_value(payload);
         let block = ast_right(payload);
         let header = __str_concat("step ", label);
         let header = line(indent, header);
@@ -1107,16 +1107,16 @@ fn format_stmt_ast(stmt: String, indent: String) -> String {
 fn format_expr_ast(expr: String) -> String {
     let tag = node_tag(expr);
     if __str_eq(tag, "ExprNumber") {
-        return ast_left(node_payload(expr));
+        return ast_unescape(node_payload(expr));
     }
     if __str_eq(tag, "ExprString") {
-        return ast_left(node_payload(expr));
+        return ast_unescape(node_payload(expr));
     }
     if __str_eq(tag, "ExprBool") {
-        return ast_left(node_payload(expr));
+        return ast_unescape(node_payload(expr));
     }
     if __str_eq(tag, "ExprPath") {
-        return format_path_ast(ast_left(node_payload(expr)));
+        return format_path_ast(node_payload(expr));
     }
     if __str_eq(tag, "ExprCall") {
         let payload = node_payload(expr);
@@ -1151,21 +1151,21 @@ fn format_call_args_ast(args: String) -> String {
 fn format_type_ast(ty: String) -> String {
     let tag = node_tag(ty);
     if __str_eq(tag, "TypePath") {
-        let path = ast_left(node_payload(ty));
+        let path = node_payload(ty);
         return format_path_ast(path);
     }
     return "";
 }
 
 fn format_path_ast(path: String) -> String {
-    return format_path_segments(ast_left(node_payload(path)));
+    return format_path_segments(node_payload(path));
 }
 
 fn format_path_segments(segments: String) -> String {
     if list_is_empty(segments) {
         return "";
     }
-    let head = list_head(segments);
+    let head = ast_unescape(list_head(segments));
     let tail = list_tail(segments);
     if list_is_empty(tail) {
         return head;
@@ -1196,12 +1196,30 @@ fn format_paths_ast(paths: String) -> String {
     return __str_concat(combined, tail_text);
 }
 
+fn split_at_char(value: String, ch: String) -> String {
+    if __str_is_empty(value) {
+        return pair("", "");
+    }
+    let head = __str_head(value);
+    if __str_eq(head, ch) {
+        let rest = __str_tail(value);
+        return pair("", rest);
+    }
+    let next = split_at_char(__str_tail(value), ch);
+    let left = pair_left(next);
+    let right = pair_right(next);
+    let combined = __str_concat(head, left);
+    return pair(combined, right);
+}
+
 fn node_tag(node: String) -> String {
-    return ast_left(node);
+    let tag_span = ast_left_value(node);
+    let split = split_at_char(tag_span, "@");
+    return pair_left(split);
 }
 
 fn node_payload(node: String) -> String {
-    return ast_right(node);
+    return ast_right_raw(node);
 }
 
 fn ast_norm(value: String) -> String {
@@ -1263,55 +1281,37 @@ fn option_is_none(option: String) -> Bool {
 }
 
 fn option_unwrap(option: String) -> String {
-    let payload = node_payload(option);
-    return ast_left(payload);
+    return node_payload(option);
 }
 
 fn ast_left(value: String) -> String {
-    let normalized = ast_unescape(value);
-    return ast_left_raw(normalized);
+    return ast_left_raw(value);
 }
 
 fn ast_right(value: String) -> String {
-    let normalized = ast_unescape(value);
-    return ast_right_raw(normalized);
+    return ast_right_raw(value);
+}
+
+fn ast_left_value(value: String) -> String {
+    return ast_unescape(ast_left_raw(value));
+}
+
+fn ast_right_value(value: String) -> String {
+    return ast_unescape(ast_right_raw(value));
 }
 
 fn ast_left_raw(value: String) -> String {
-    return ast_take_until_sep(value);
+    return __ast_left(value);
 }
 
 fn ast_right_raw(value: String) -> String {
-    return ast_drop_until_sep(value);
-}
-
-fn ast_take_until_sep(value: String) -> String {
-    if __str_is_empty(value) {
-        return "";
-    }
-    if __str_starts_with(value, "\n<AST>\n") {
-        return "";
-    }
-    let head = __str_head(value);
-    let tail = __str_tail(value);
-    let rest = ast_take_until_sep(tail);
-    return __str_concat(head, rest);
-}
-
-fn ast_drop_until_sep(value: String) -> String {
-    if __str_is_empty(value) {
-        return "";
-    }
-    if __str_starts_with(value, "\n<AST>\n") {
-        return __str_strip_prefix(value, "\n<AST>\n");
-    }
-    return ast_drop_until_sep(__str_tail(value));
+    return __ast_right(value);
 }
 
 fn ast_escape(value: String) -> String {
-    return value;
+    return __ast_escape(value);
 }
 
 fn ast_unescape(value: String) -> String {
-    return value;
+    return __ast_unescape(value);
 }

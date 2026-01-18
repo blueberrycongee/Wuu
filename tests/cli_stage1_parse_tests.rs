@@ -57,7 +57,39 @@ fn stage1_parse_fails_on_leftover_tokens() {
     assert!(!output.status.success(), "expected parse failure");
     let stderr = String::from_utf8(output.stderr).expect("stderr utf-8");
     assert!(
-        stderr.contains("left unconsumed tokens"),
+        stderr.contains("stage1 parser left unconsumed tokens"),
         "unexpected stderr: {stderr}"
+    );
+    assert!(
+        stderr.contains("1:1:"),
+        "expected line/col span in stderr: {stderr}"
+    );
+}
+
+#[test]
+fn stage1_parse_reports_span_on_second_line() {
+    let bin = env!("CARGO_BIN_EXE_wuu");
+    let temp_path = temp_file_path("stage1_parse_invalid_line2.wuu");
+    let source = "fn ok() {}\ntype Foo {}";
+    fs::write(&temp_path, source).expect("write temp file failed");
+
+    let output = Command::new(bin)
+        .args([
+            "parse",
+            "--stage1",
+            temp_path.to_str().expect("temp path utf-8"),
+        ])
+        .output()
+        .expect("run wuu parse --stage1 failed");
+
+    assert!(!output.status.success(), "expected parse failure");
+    let stderr = String::from_utf8(output.stderr).expect("stderr utf-8");
+    assert!(
+        stderr.contains("stage1 parser left unconsumed tokens"),
+        "unexpected stderr: {stderr}"
+    );
+    assert!(
+        stderr.contains("2:1:"),
+        "expected line/col span in stderr: {stderr}"
     );
 }

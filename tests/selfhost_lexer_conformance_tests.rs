@@ -54,6 +54,56 @@ fn selfhost_lexer_matches_rust_tokens() {
 }
 
 #[test]
+fn selfhost_lexer_pure_matches_rust_tokens() {
+    let lexer_path = Path::new("selfhost/lexer.wuu");
+    assert!(lexer_path.exists(), "missing selfhost/lexer.wuu");
+
+    let lexer_source = fs::read_to_string(lexer_path).expect("read lexer.wuu failed");
+    let lexer_module = parse_module(&lexer_source).expect("parse lexer.wuu failed");
+    check_types(&lexer_module).expect("typecheck lexer.wuu failed");
+
+    let dir = Path::new("tests/golden/lexer");
+    let mut count = 0usize;
+
+    for entry in fs::read_dir(dir).expect("read_dir failed") {
+        let entry = entry.expect("dir entry failed");
+        let path = entry.path();
+        if path.extension().and_then(|ext| ext.to_str()) != Some("wuu") {
+            continue;
+        }
+
+        let source = fs::read_to_string(&path).expect("read source failed");
+        let tokens = lex(&source).expect("lex failed");
+        let expected = format_tokens(&source, &tokens);
+
+        let stage1_value = run_entry_with_args(
+            &lexer_module,
+            "lex_pure",
+            vec![Value::String(source.clone())],
+        )
+        .expect("stage1 lex_pure failed");
+        let actual = match stage1_value {
+            Value::String(value) => value,
+            _ => panic!("stage1 lex_pure returned non-string value"),
+        };
+
+        let expected_norm = normalize_newlines(&expected).trim().to_string();
+        let actual_norm = normalize_newlines(&actual).trim().to_string();
+
+        assert_eq!(
+            actual_norm,
+            expected_norm,
+            "stage1 pure token mismatch for {}",
+            path.display()
+        );
+
+        count += 1;
+    }
+
+    assert!(count >= 3, "expected at least 3 lexer fixtures");
+}
+
+#[test]
 fn selfhost_lexer_uses_lex_tokens_wrapper() {
     let lexer_path = Path::new("selfhost/lexer.wuu");
     let lexer_source = fs::read_to_string(lexer_path).expect("read lexer.wuu failed");

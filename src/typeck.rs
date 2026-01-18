@@ -221,6 +221,41 @@ fn insert_builtin_signatures(signatures: &mut HashMap<String, Signature>) -> Res
             return_type: string.clone(),
         },
     );
+    signatures.insert(
+        "__lex_tokens_spanned".to_string(),
+        Signature {
+            params: vec![string.clone()],
+            return_type: string.clone(),
+        },
+    );
+    signatures.insert(
+        "__ast_escape".to_string(),
+        Signature {
+            params: vec![string.clone()],
+            return_type: string.clone(),
+        },
+    );
+    signatures.insert(
+        "__ast_unescape".to_string(),
+        Signature {
+            params: vec![string.clone()],
+            return_type: string.clone(),
+        },
+    );
+    signatures.insert(
+        "__ast_left".to_string(),
+        Signature {
+            params: vec![string.clone()],
+            return_type: string.clone(),
+        },
+    );
+    signatures.insert(
+        "__ast_right".to_string(),
+        Signature {
+            params: vec![string.clone()],
+            return_type: string.clone(),
+        },
+    );
     Ok(())
 }
 

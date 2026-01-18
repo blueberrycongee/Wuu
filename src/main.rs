@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
+use wuu::error::ParseError;
 use wuu::interpreter::{Value, run_entry_with_args};
 
 #[derive(Debug, Parser)]
@@ -161,18 +162,8 @@ fn main() -> anyhow::Result<()> {
 
 fn format_stage1(input: &[u8]) -> anyhow::Result<String> {
     let source = std::str::from_utf8(input).map_err(|_| anyhow::anyhow!("invalid utf-8"))?;
-    let format_path = PathBuf::from("selfhost/format.wuu");
-    let format_source = std::fs::read_to_string(&format_path)
-        .map_err(|err| anyhow::anyhow!("failed to read {}: {err}", format_path.display()))?;
-    let module = wuu::parser::parse_module(&format_source)?;
-    wuu::typeck::check_module(&module)?;
-    let value = run_entry_with_args(&module, "format", vec![Value::String(source.to_string())])?;
-    match value {
-        Value::String(output) => Ok(output),
-        other => Err(anyhow::anyhow!(
-            "stage1 formatter returned non-string value: {other:?}"
-        )),
-    }
+    let ast = stage1_parse_ast(source)?;
+    stage1_format_ast(&ast)
 }
 
 fn lex_stage0(input: &[u8]) -> anyhow::Result<String> {
@@ -199,6 +190,27 @@ fn lex_stage1(input: &[u8]) -> anyhow::Result<String> {
 
 fn parse_stage1(input: &[u8]) -> anyhow::Result<String> {
     let source = std::str::from_utf8(input).map_err(|_| anyhow::anyhow!("invalid utf-8"))?;
+    let ast = stage1_parse_ast(source)?;
+    stage1_format_ast(&ast)
+}
+
+fn split_pair_output(output: &str) -> Option<(&str, &str)> {
+    const OUTPUT_SEP: &str = "\n<OUT>\n";
+    output.split_once(OUTPUT_SEP)
+}
+
+fn parse_spanned_token_span(tokens: &str) -> Option<wuu::span::Span> {
+    let line = tokens.lines().next()?;
+    let mut parts = line.splitn(2, ' ');
+    let prefix = parts.next()?;
+    let range = prefix.strip_prefix('@')?;
+    let mut nums = range.splitn(2, ':');
+    let start = nums.next()?.parse::<usize>().ok()?;
+    let end = nums.next()?.parse::<usize>().ok()?;
+    Some(wuu::span::Span { start, end })
+}
+
+fn stage1_parse_ast(source: &str) -> anyhow::Result<String> {
     let parser_path = PathBuf::from("selfhost/parser.wuu");
     let parser_source = std::fs::read_to_string(&parser_path)
         .map_err(|err| anyhow::anyhow!("failed to read {}: {err}", parser_path.display()))?;
@@ -216,15 +228,28 @@ fn parse_stage1(input: &[u8]) -> anyhow::Result<String> {
     let (ast, rest) = split_pair_output(&output)
         .ok_or_else(|| anyhow::anyhow!("stage1 parser returned invalid output"))?;
     if !rest.is_empty() {
+        if let Some(span) = parse_spanned_token_span(rest) {
+            let err = ParseError::with_span("stage1 parser left unconsumed tokens", span, source);
+            return Err(anyhow::anyhow!(err));
+        }
         anyhow::bail!("stage1 parser left unconsumed tokens");
     }
-    let _ = ast;
-    Ok(wuu::format::format_source(source)?)
+    Ok(ast.to_string())
 }
 
-fn split_pair_output(output: &str) -> Option<(&str, &str)> {
-    const OUTPUT_SEP: &str = "\n<OUT>\n";
-    output.split_once(OUTPUT_SEP)
+fn stage1_format_ast(ast: &str) -> anyhow::Result<String> {
+    let format_path = PathBuf::from("selfhost/format.wuu");
+    let format_source = std::fs::read_to_string(&format_path)
+        .map_err(|err| anyhow::anyhow!("failed to read {}: {err}", format_path.display()))?;
+    let module = wuu::parser::parse_module(&format_source)?;
+    wuu::typeck::check_module(&module)?;
+    let value = run_entry_with_args(&module, "format_ast", vec![Value::String(ast.to_string())])?;
+    match value {
+        Value::String(output) => Ok(output),
+        other => Err(anyhow::anyhow!(
+            "stage1 formatter returned non-string value: {other:?}"
+        )),
+    }
 }
 
 fn format_tokens(source: &str, tokens: &[wuu::lexer::Token]) -> String {

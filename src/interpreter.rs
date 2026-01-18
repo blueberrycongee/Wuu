@@ -229,6 +229,11 @@ fn eval_builtin(name: &str, args: &[Value]) -> Option<Result<Value, RunError>> {
         "__pair_left" => Some(eval_pair_left(args)),
         "__pair_right" => Some(eval_pair_right(args)),
         "__lex_tokens" => Some(eval_lex_tokens(args)),
+        "__lex_tokens_spanned" => Some(eval_lex_tokens_spanned(args)),
+        "__ast_escape" => Some(eval_ast_escape(args)),
+        "__ast_unescape" => Some(eval_ast_unescape(args)),
+        "__ast_left" => Some(eval_ast_left(args)),
+        "__ast_right" => Some(eval_ast_right(args)),
         _ => None,
     }
 }
@@ -525,6 +530,185 @@ fn eval_lex_tokens(args: &[Value]) -> Result<Value, RunError> {
     }
 
     Ok(Value::String(lines.join("\n")))
+}
+
+fn eval_lex_tokens_spanned(args: &[Value]) -> Result<Value, RunError> {
+    expect_arg_count(args, 1, "__lex_tokens_spanned")?;
+    let source = expect_string_arg(args, 0, "__lex_tokens_spanned")?;
+    let tokens = crate::lexer::lex(source).map_err(|err| RunError {
+        message: format!("__lex_tokens_spanned failed: {err}"),
+    })?;
+
+    let mut lines = Vec::new();
+    for token in tokens {
+        match token.kind {
+            crate::lexer::TokenKind::Whitespace | crate::lexer::TokenKind::Comment => continue,
+            crate::lexer::TokenKind::Keyword(_) => {
+                let text = token_text(source, &token);
+                lines.push(format!(
+                    "@{}:{} Keyword {text}",
+                    token.span.start, token.span.end
+                ));
+            }
+            crate::lexer::TokenKind::Ident => {
+                let text = token_text(source, &token);
+                lines.push(format!(
+                    "@{}:{} Ident {text}",
+                    token.span.start, token.span.end
+                ));
+            }
+            crate::lexer::TokenKind::Number => {
+                let text = token_text(source, &token);
+                lines.push(format!(
+                    "@{}:{} Number {text}",
+                    token.span.start, token.span.end
+                ));
+            }
+            crate::lexer::TokenKind::StringLiteral => {
+                let text = token_text(source, &token);
+                lines.push(format!(
+                    "@{}:{} StringLiteral {text}",
+                    token.span.start, token.span.end
+                ));
+            }
+            crate::lexer::TokenKind::Punct(ch) => {
+                lines.push(format!(
+                    "@{}:{} Punct {ch}",
+                    token.span.start, token.span.end
+                ));
+            }
+            crate::lexer::TokenKind::Other => {
+                let text = token_text(source, &token);
+                lines.push(format!(
+                    "@{}:{} Other {text}",
+                    token.span.start, token.span.end
+                ));
+            }
+        }
+    }
+
+    Ok(Value::String(lines.join("\n")))
+}
+
+fn eval_ast_escape(args: &[Value]) -> Result<Value, RunError> {
+    expect_arg_count(args, 1, "__ast_escape")?;
+    let value = expect_string_arg(args, 0, "__ast_escape")?;
+    Ok(Value::String(ast_escape_level(value)))
+}
+
+fn eval_ast_unescape(args: &[Value]) -> Result<Value, RunError> {
+    expect_arg_count(args, 1, "__ast_unescape")?;
+    let value = expect_string_arg(args, 0, "__ast_unescape")?;
+    Ok(Value::String(ast_unescape_level(value)))
+}
+
+fn eval_ast_left(args: &[Value]) -> Result<Value, RunError> {
+    expect_arg_count(args, 1, "__ast_left")?;
+    let value = expect_string_arg(args, 0, "__ast_left")?;
+    match find_ast_sep(value) {
+        Some((index, _level, _len)) => Ok(Value::String(value[..index].to_string())),
+        None => Ok(Value::String(value.to_string())),
+    }
+}
+
+fn eval_ast_right(args: &[Value]) -> Result<Value, RunError> {
+    expect_arg_count(args, 1, "__ast_right")?;
+    let value = expect_string_arg(args, 0, "__ast_right")?;
+    match find_ast_sep(value) {
+        Some((index, _level, len)) => Ok(Value::String(value[index + len..].to_string())),
+        None => Ok(Value::String(String::new())),
+    }
+}
+
+fn find_ast_sep(value: &str) -> Option<(usize, usize, usize)> {
+    let mut best: Option<(usize, usize, usize)> = None;
+    let mut i = 0usize;
+    while let Some(pos) = value[i..].find("\n<AST") {
+        let start = i + pos;
+        if let Some((level, len)) = parse_ast_sep(&value[start..]) {
+            match best {
+                None => {
+                    best = Some((start, level, len));
+                    if level == 0 {
+                        return best;
+                    }
+                }
+                Some((best_index, best_level, _)) => {
+                    if level < best_level || (level == best_level && start < best_index) {
+                        best = Some((start, level, len));
+                        if level == 0 {
+                            return best;
+                        }
+                    }
+                }
+            }
+        }
+        i = start + 1;
+    }
+    best
+}
+
+fn parse_ast_sep(value: &str) -> Option<(usize, usize)> {
+    let prefix = "\n<AST";
+    if !value.starts_with(prefix) {
+        return None;
+    }
+    let mut level = 0usize;
+    let mut idx = prefix.len();
+    while value[idx..].starts_with("_ESC") {
+        level += 1;
+        idx += "_ESC".len();
+    }
+    if value[idx..].starts_with(">\n") {
+        Some((level, idx + ">\n".len()))
+    } else {
+        None
+    }
+}
+
+fn ast_escape_level(value: &str) -> String {
+    let mut out = String::new();
+    let mut i = 0usize;
+    while let Some(pos) = value[i..].find("\n<AST") {
+        let start = i + pos;
+        out.push_str(&value[i..start]);
+        if let Some((level, len)) = parse_ast_sep(&value[start..]) {
+            out.push_str("\n<AST");
+            for _ in 0..(level + 1) {
+                out.push_str("_ESC");
+            }
+            out.push_str(">\n");
+            i = start + len;
+        } else {
+            out.push_str("\n<AST");
+            i = start + "\n<AST".len();
+        }
+    }
+    out.push_str(&value[i..]);
+    out
+}
+
+fn ast_unescape_level(value: &str) -> String {
+    let mut out = String::new();
+    let mut i = 0usize;
+    while let Some(pos) = value[i..].find("\n<AST") {
+        let start = i + pos;
+        out.push_str(&value[i..start]);
+        if let Some((level, len)) = parse_ast_sep(&value[start..]) {
+            out.push_str("\n<AST");
+            let new_level = level.saturating_sub(1);
+            for _ in 0..new_level {
+                out.push_str("_ESC");
+            }
+            out.push_str(">\n");
+            i = start + len;
+        } else {
+            out.push_str("\n<AST");
+            i = start + "\n<AST".len();
+        }
+    }
+    out.push_str(&value[i..]);
+    out
 }
 
 fn token_text<'a>(source: &'a str, token: &crate::lexer::Token) -> &'a str {

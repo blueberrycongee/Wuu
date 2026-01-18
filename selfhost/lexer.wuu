@@ -2,9 +2,79 @@ fn lex(source: String) -> String {
     return lex_tokens(source);
 }
 
+fn lex_pure(source: String) -> String {
+    let raw = lex_tokens_pure(source);
+    return escape_tokens(raw);
+}
+
 fn lex_tokens(source: String) -> String {
+    if is_bounded(source, lex_limit()) {
+        let raw = lex_tokens_pure(source);
+        return escape_tokens(raw);
+    }
     let raw = __lex_tokens(source);
     return escape_tokens(raw);
+}
+
+fn lex_tokens_pure(source: String) -> String {
+    let rest = skip_trivia(source);
+    if __str_is_empty(rest) {
+        return "";
+    }
+    let head = __str_head(rest);
+    if __str_is_ident_start(head) {
+        let ident = __str_take_ident(rest);
+        let tail = __str_strip_prefix(rest, ident);
+        let line = keyword_or_ident_line_raw(ident);
+        let next = lex_tokens_pure(tail);
+        return join_lines(line, next);
+    }
+    if __str_is_digit(head) {
+        let number = __str_take_number(rest);
+        let tail = __str_strip_prefix(rest, number);
+        let line = token_line_raw("Number", number);
+        let next = lex_tokens_pure(tail);
+        return join_lines(line, next);
+    }
+    if __str_eq(head, "\"") {
+        let literal = __str_take_string_literal(rest);
+        let tail = __str_strip_prefix(rest, literal);
+        let line = token_line_raw("StringLiteral", literal);
+        let next = lex_tokens_pure(tail);
+        return join_lines(line, next);
+    }
+    if __str_is_ascii(head) {
+        let line = __str_concat("Punct ", head);
+        let tail = __str_tail(rest);
+        let next = lex_tokens_pure(tail);
+        return join_lines(line, next);
+    }
+    let line = token_line_raw("Other", head);
+    let tail = __str_tail(rest);
+    let next = lex_tokens_pure(tail);
+    return join_lines(line, next);
+}
+
+fn is_bounded(source: String, limit: String) -> Bool {
+    if __str_is_empty(source) {
+        return true;
+    }
+    if __str_is_empty(limit) {
+        return false;
+    }
+    let next_source = __str_tail(source);
+    let next_limit = __str_tail(limit);
+    return is_bounded(next_source, next_limit);
+}
+
+fn lex_limit() -> String {
+    let chunk = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx";
+    let chunk = __str_concat(chunk, chunk);
+    let chunk = __str_concat(chunk, chunk);
+    let chunk = __str_concat(chunk, chunk);
+    let chunk = __str_concat(chunk, chunk);
+    let chunk = __str_concat(chunk, chunk);
+    return chunk;
 }
 
 fn skip_trivia(source: String) -> String {
@@ -46,6 +116,18 @@ fn keyword_or_ident_line(ident: String) -> String {
         return __str_concat("Keyword ", escaped);
     }
     return __str_concat("Ident ", escaped);
+}
+
+fn token_line_raw(kind: String, text: String) -> String {
+    let prefix = __str_concat(kind, " ");
+    return __str_concat(prefix, text);
+}
+
+fn keyword_or_ident_line_raw(ident: String) -> String {
+    if is_keyword(ident) {
+        return __str_concat("Keyword ", ident);
+    }
+    return __str_concat("Ident ", ident);
 }
 
 fn is_keyword(text: String) -> Bool {
