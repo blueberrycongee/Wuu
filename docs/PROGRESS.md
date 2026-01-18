@@ -1335,6 +1335,7 @@ Changes made:
   - `tests/golden/stage2/*.bytecode.txt`
   - `tests/stage2_bootstrap_tests.rs`
   - `scripts/gen-stage2-artifacts.sh`
+  - Fast/slow modes: `scripts/gen-stage2-artifacts.sh --fast|--slow`
 
 Acceptance criteria:
 
