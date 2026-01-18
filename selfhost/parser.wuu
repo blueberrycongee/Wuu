@@ -538,80 +538,6 @@ fn is_bool_literal(text: String, tokens: String) -> Bool {
     return false;
 }
 
-fn span_zero() -> String {
-    return span_text("0", "0");
-}
-
-fn span_text(start: String, end: String) -> String {
-    let sep = ":";
-    let combined = __str_concat(start, sep);
-    return __str_concat(combined, end);
-}
-
-fn node_raw(tag: String, payload: String) -> String {
-    return ast_pair(tag, payload);
-}
-
-fn node_with_span(tag: String, payload: String, span: String) -> String {
-    let tag_span = __str_concat(tag, "@");
-    let tag_span = __str_concat(tag_span, span);
-    return ast_pair(tag_span, payload);
-}
-
-fn node(tag: String, payload: String) -> String {
-    return node_with_span(tag, payload, span_zero());
-}
-
-fn split_at_char(value: String, ch: String) -> String {
-    if __str_is_empty(value) {
-        return pair("", "");
-    }
-    let head = __str_head(value);
-    if __str_eq(head, ch) {
-        let rest = __str_tail(value);
-        return pair("", rest);
-    }
-    let next = split_at_char(__str_tail(value), ch);
-    let left = pair_left(next);
-    let right = pair_right(next);
-    let combined = __str_concat(head, left);
-    return pair(combined, right);
-}
-
-fn node_tag(node: String) -> String {
-    let tag_span = ast_left(node);
-    let split = split_at_char(tag_span, "@");
-    return pair_left(split);
-}
-
-fn node_payload(node: String) -> String {
-    return ast_right_raw(node);
-}
-
-fn list_nil() -> String {
-    return node("Nil", "");
-}
-
-fn list_cons(head: String, tail: String) -> String {
-    return node("Cons", ast_pair(head, tail));
-}
-
-fn list_is_empty(list: String) -> Bool {
-    return __str_eq(node_tag(list), "Nil");
-}
-
-fn list_head(list: String) -> String {
-    let payload = node_payload(list);
-    let head = ast_left_raw(payload);
-    return ast_unescape(head);
-}
-
-fn list_tail(list: String) -> String {
-    let payload = node_payload(list);
-    let tail = ast_right_raw(payload);
-    return ast_unescape(tail);
-}
-
 fn list_reverse(list: String) -> String {
     return list_reverse_acc(list, list_nil());
 }
@@ -624,23 +550,6 @@ fn list_reverse_acc(list: String, acc: String) -> String {
     let tail = list_tail(list);
     let acc = list_cons(head, acc);
     return list_reverse_acc(tail, acc);
-}
-
-fn option_none() -> String {
-    return node("None", "");
-}
-
-fn option_some(value: String) -> String {
-    return node("Some", value);
-}
-
-fn option_is_none(option: String) -> Bool {
-    return __str_eq(node_tag(option), "None");
-}
-
-fn option_unwrap(option: String) -> String {
-    let payload = node_payload(option);
-    return ast_unescape(payload);
 }
 
 fn ast_module(span: String, items: String) -> String {
@@ -733,74 +642,10 @@ fn ast_path(span: String, segments: String) -> String {
     return node_with_span("Path", segments, span);
 }
 
-fn pair(left: String, right: String) -> String {
-    let sep = "\n<SEP>\n";
-    let combined = __str_concat(left, sep);
-    return __str_concat(combined, right);
-}
-
-fn split_pair_left(value: String, sep: String) -> String {
-    if __str_is_empty(value) {
-        return "";
-    }
-    if __str_starts_with(value, sep) {
-        return "";
-    }
-    let head = __str_head(value);
-    let rest = __str_tail(value);
-    let tail = split_pair_left(rest, sep);
-    return __str_concat(head, tail);
-}
-
-fn split_pair_right(value: String, sep: String) -> String {
-    if __str_is_empty(value) {
-        return "";
-    }
-    if __str_starts_with(value, sep) {
-        return __str_strip_prefix(value, sep);
-    }
-    let rest = __str_tail(value);
-    return split_pair_right(rest, sep);
-}
-
 fn output_pair(left: String, right: String) -> String {
     let sep = "\n<OUT>\n";
     let combined = __str_concat(left, sep);
     return __str_concat(combined, right);
-}
-
-fn ast_pair(left: String, right: String) -> String {
-    let sep = "\n<AST>\n";
-    let safe_left = ast_escape(left);
-    let safe_right = ast_escape(right);
-    let combined = __str_concat(safe_left, sep);
-    return __str_concat(combined, safe_right);
-}
-
-fn ast_left(value: String) -> String {
-    let left = ast_left_raw(value);
-    return ast_unescape(left);
-}
-
-fn ast_right(value: String) -> String {
-    let right = ast_right_raw(value);
-    return ast_unescape(right);
-}
-
-fn ast_left_raw(value: String) -> String {
-    return __ast_left(value);
-}
-
-fn ast_right_raw(value: String) -> String {
-    return __ast_right(value);
-}
-
-fn ast_escape(value: String) -> String {
-    return __ast_escape(value);
-}
-
-fn ast_unescape(value: String) -> String {
-    return __ast_unescape(value);
 }
 
 fn result_pair(left: String, right: String) -> String {
@@ -817,31 +662,6 @@ fn result_left(value: String) -> String {
 
 fn result_right(value: String) -> String {
     return ast_right_raw(value);
-}
-
-fn pair_left(value: String) -> String {
-    let sep = "\n<SEP>\n";
-    return split_pair_left(value, sep);
-}
-
-fn pair_right(value: String) -> String {
-    let sep = "\n<SEP>\n";
-    return split_pair_right(value, sep);
-}
-
-fn split_line(value: String) -> String {
-    if __str_is_empty(value) {
-        return pair("", "");
-    }
-    let prefixed = __str_concat("//", value);
-    let comment = __str_take_line_comment(prefixed);
-    let line = __str_strip_prefix(comment, "//");
-    let rest = __str_strip_prefix(value, line);
-    if __str_starts_with(rest, "\n") {
-        let rest = __str_strip_prefix(rest, "\n");
-        return pair(line, rest);
-    }
-    return pair(line, rest);
 }
 
 fn first_line(tokens: String) -> String {

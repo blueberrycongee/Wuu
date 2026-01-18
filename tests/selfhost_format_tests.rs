@@ -6,6 +6,8 @@ use wuu::interpreter::{Value, run_entry_with_args};
 use wuu::parser::parse_module;
 use wuu::typeck::check_module as check_types;
 
+mod selfhost_support;
+
 const OUTPUT_SEP: &str = "\n<OUT>\n";
 
 #[test]
@@ -15,12 +17,10 @@ fn selfhost_format_matches_stage0() {
     let parser_path = Path::new("selfhost/parser.wuu");
     assert!(parser_path.exists(), "missing selfhost/parser.wuu");
 
-    let format_source_text =
-        fs::read_to_string(format_path).expect("read selfhost/format.wuu failed");
+    let format_source_text = selfhost_support::load_with_stdlib(format_path);
     let format_module = parse_module(&format_source_text).expect("parse format.wuu failed");
     check_types(&format_module).expect("typecheck format.wuu failed");
-    let parser_source_text =
-        fs::read_to_string(parser_path).expect("read selfhost/parser.wuu failed");
+    let parser_source_text = selfhost_support::load_with_stdlib(parser_path);
     let parser_module = parse_module(&parser_source_text).expect("parse parser.wuu failed");
     check_types(&parser_module).expect("typecheck parser.wuu failed");
 

@@ -6,12 +6,14 @@ use wuu::lexer::{Token, TokenKind, lex};
 use wuu::parser::parse_module;
 use wuu::typeck::check_module as check_types;
 
+mod selfhost_support;
+
 #[test]
 fn selfhost_lexer_matches_rust_tokens() {
     let lexer_path = Path::new("selfhost/lexer.wuu");
     assert!(lexer_path.exists(), "missing selfhost/lexer.wuu");
 
-    let lexer_source = fs::read_to_string(lexer_path).expect("read lexer.wuu failed");
+    let lexer_source = selfhost_support::load_with_stdlib(lexer_path);
     let lexer_module = parse_module(&lexer_source).expect("parse lexer.wuu failed");
     check_types(&lexer_module).expect("typecheck lexer.wuu failed");
 
@@ -58,7 +60,7 @@ fn selfhost_lexer_pure_matches_rust_tokens() {
     let lexer_path = Path::new("selfhost/lexer.wuu");
     assert!(lexer_path.exists(), "missing selfhost/lexer.wuu");
 
-    let lexer_source = fs::read_to_string(lexer_path).expect("read lexer.wuu failed");
+    let lexer_source = selfhost_support::load_with_stdlib(lexer_path);
     let lexer_module = parse_module(&lexer_source).expect("parse lexer.wuu failed");
     check_types(&lexer_module).expect("typecheck lexer.wuu failed");
 

@@ -6,6 +6,8 @@ use wuu::interpreter::{Value, run_entry_with_args};
 use wuu::parser::parse_module;
 use wuu::typeck::check_module as check_types;
 
+mod selfhost_support;
+
 const OUTPUT_SEP: &str = "\n<OUT>\n";
 const AST_SEP: &str = "\n<AST>\n";
 
@@ -13,7 +15,7 @@ const AST_SEP: &str = "\n<AST>\n";
 fn selfhost_parser_matches_stage0_for_parse_fixtures() {
     let parser_path = Path::new("selfhost/parser.wuu");
     assert!(parser_path.exists(), "missing selfhost/parser.wuu");
-    let parser_source = fs::read_to_string(parser_path).expect("read parser.wuu failed");
+    let parser_source = selfhost_support::load_with_stdlib(parser_path);
     let parser_module = parse_module(&parser_source).expect("parse parser.wuu failed");
     check_types(&parser_module).expect("typecheck parser.wuu failed");
 
@@ -81,7 +83,7 @@ fn selfhost_parser_uses_lex_tokens_wrapper() {
 #[test]
 fn selfhost_parser_includes_span_nodes() {
     let parser_path = Path::new("selfhost/parser.wuu");
-    let parser_source = fs::read_to_string(parser_path).expect("read parser.wuu failed");
+    let parser_source = selfhost_support::load_with_stdlib(parser_path);
     let parser_module = parse_module(&parser_source).expect("parse parser.wuu failed");
     check_types(&parser_module).expect("typecheck parser.wuu failed");
 
@@ -124,7 +126,7 @@ fn selfhost_parser_has_no_host_pair_intrinsics() {
 #[test]
 fn selfhost_parser_handles_large_module_without_stack_overflow() {
     let parser_path = Path::new("selfhost/parser.wuu");
-    let parser_source = fs::read_to_string(parser_path).expect("read parser.wuu failed");
+    let parser_source = selfhost_support::load_with_stdlib(parser_path);
     let parser_module = parse_module(&parser_source).expect("parse parser.wuu failed");
     check_types(&parser_module).expect("typecheck parser.wuu failed");
 
@@ -180,11 +182,11 @@ fn selfhost_parser_uses_result_pairs_for_parser_outputs() {
 
 #[test]
 fn selfhost_parser_uses_fast_split_line() {
-    let parser_source = fs::read_to_string("selfhost/parser.wuu").expect("read parser.wuu failed");
+    let stdlib_source = selfhost_support::load_stdlib_source();
 
     assert!(
-        parser_source.contains("__str_take_line_comment"),
-        "parser split_line should use __str_take_line_comment for fast line splitting"
+        stdlib_source.contains("__str_take_line_comment"),
+        "stdlib split_line should use __str_take_line_comment for fast line splitting"
     );
 }
 

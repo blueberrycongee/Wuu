@@ -770,6 +770,10 @@ Done when:
 
 - Stage1 parsing no longer depends on host pair intrinsics.
 
+Status:
+
+- Done (2026-01-18).
+
 ### M4.25 Stage1 stdlib consolidation
 
 Goal: centralize stage1 string and list helpers for reuse and testing.
@@ -789,6 +793,10 @@ Acceptance:
 Done when:
 
 - Stage1 core logic is factored through a tested stdlib layer.
+
+Status:
+
+- Done (2026-01-18).
 
 ### M5.1 Stage1 bytecode VM (host) for subset
 

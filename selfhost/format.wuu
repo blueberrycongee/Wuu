@@ -532,20 +532,6 @@ fn indent_more(indent: String) -> String {
     return __str_concat(indent, "    ");
 }
 
-fn pair(left: String, right: String) -> String {
-    let sep = "\n<SEP>\n";
-    let combined = __str_concat(left, sep);
-    return __str_concat(combined, right);
-}
-
-fn pair_left(value: String) -> String {
-    return __pair_left(value);
-}
-
-fn pair_right(value: String) -> String {
-    return __pair_right(value);
-}
-
 fn take_until_sep(value: String) -> String {
     if __str_is_empty(value) {
         return "";
@@ -567,22 +553,6 @@ fn drop_until_sep(value: String) -> String {
         return __str_strip_prefix(value, "\n<SEP>\n");
     }
     return drop_until_sep(__str_tail(value));
-}
-
-fn split_line(value: String) -> String {
-    if __str_is_empty(value) {
-        return pair("", "");
-    }
-    let head = __str_head(value);
-    if __str_eq(head, "\n") {
-        let rest = __str_tail(value);
-        return pair("", rest);
-    }
-    let next = split_line(__str_tail(value));
-    let line = pair_left(next);
-    let rest = pair_right(next);
-    let combined = __str_concat(head, line);
-    return pair(combined, rest);
 }
 
 fn first_line(tokens: String) -> String {
@@ -777,41 +747,6 @@ fn is_keyword(text: String) -> Bool {
         return true;
     }
     return false;
-}
-
-fn join_lines(head: String, tail: String) -> String {
-    if __str_is_empty(tail) {
-        return head;
-    }
-    let with_newline = __str_concat(head, "\n");
-    return __str_concat(with_newline, tail);
-}
-
-fn escape(text: String) -> String {
-    if __str_is_empty(text) {
-        return "";
-    }
-    let head = __str_head(text);
-    let tail = __str_tail(text);
-    let escaped = escape_char(head);
-    let rest = escape(tail);
-    return __str_concat(escaped, rest);
-}
-
-fn escape_char(ch: String) -> String {
-    if __str_eq(ch, "\\") {
-        return "\\\\";
-    }
-    if __str_eq(ch, "\n") {
-        return "\\n";
-    }
-    if __str_eq(ch, "\r") {
-        return "\\r";
-    }
-    if __str_eq(ch, "\t") {
-        return "\\t";
-    }
-    return ch;
 }
 
 fn format_module_ast(module: String, indent: String) -> String {
@@ -1196,32 +1131,6 @@ fn format_paths_ast(paths: String) -> String {
     return __str_concat(combined, tail_text);
 }
 
-fn split_at_char(value: String, ch: String) -> String {
-    if __str_is_empty(value) {
-        return pair("", "");
-    }
-    let head = __str_head(value);
-    if __str_eq(head, ch) {
-        let rest = __str_tail(value);
-        return pair("", rest);
-    }
-    let next = split_at_char(__str_tail(value), ch);
-    let left = pair_left(next);
-    let right = pair_right(next);
-    let combined = __str_concat(head, left);
-    return pair(combined, right);
-}
-
-fn node_tag(node: String) -> String {
-    let tag_span = ast_left_value(node);
-    let split = split_at_char(tag_span, "@");
-    return pair_left(split);
-}
-
-fn node_payload(node: String) -> String {
-    return ast_right_raw(node);
-}
-
 fn ast_norm(value: String) -> String {
     if ast_has_sep(value) {
         return value;
@@ -1260,58 +1169,4 @@ fn ast_has_esc_esc_sep(value: String) -> Bool {
         return true;
     }
     return ast_has_esc_esc_sep(__str_tail(value));
-}
-
-fn list_is_empty(list: String) -> Bool {
-    return __str_eq(node_tag(list), "Nil");
-}
-
-fn list_head(list: String) -> String {
-    let payload = node_payload(list);
-    return ast_left(payload);
-}
-
-fn list_tail(list: String) -> String {
-    let payload = node_payload(list);
-    return ast_right(payload);
-}
-
-fn option_is_none(option: String) -> Bool {
-    return __str_eq(node_tag(option), "None");
-}
-
-fn option_unwrap(option: String) -> String {
-    return node_payload(option);
-}
-
-fn ast_left(value: String) -> String {
-    return ast_left_raw(value);
-}
-
-fn ast_right(value: String) -> String {
-    return ast_right_raw(value);
-}
-
-fn ast_left_value(value: String) -> String {
-    return ast_unescape(ast_left_raw(value));
-}
-
-fn ast_right_value(value: String) -> String {
-    return ast_unescape(ast_right_raw(value));
-}
-
-fn ast_left_raw(value: String) -> String {
-    return __ast_left(value);
-}
-
-fn ast_right_raw(value: String) -> String {
-    return __ast_right(value);
-}
-
-fn ast_escape(value: String) -> String {
-    return __ast_escape(value);
-}
-
-fn ast_unescape(value: String) -> String {
-    return __ast_unescape(value);
 }

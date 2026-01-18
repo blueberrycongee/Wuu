@@ -1239,6 +1239,40 @@ Known limitations:
 
 - Stage1 bootstrap is still slow on large inputs; the pipeline test takes ~520s on WSL.
 
+## Milestone 2026-01-18: M4.25 Stage1 stdlib consolidation
+
+Goal:
+
+- Centralize stage1 string/list helpers for reuse and testing.
+
+Changes made:
+
+- Added a shared stdlib with string/list helpers and AST node accessors:
+  - `selfhost/stdlib.wuu`
+- Removed duplicate helpers from stage1 sources and routed them through stdlib:
+  - `selfhost/lexer.wuu`
+  - `selfhost/parser.wuu`
+  - `selfhost/format.wuu`
+- Stage1 CLI and test harness now load stdlib alongside stage1 sources:
+  - `src/main.rs`
+  - `tests/selfhost_support.rs`
+- Added stdlib unit tests covering pair, split, escape, list, and option helpers:
+  - `tests/selfhost_stdlib_tests.rs`
+
+Acceptance criteria:
+
+- Stage1 lexer/parser still pass conformance tests.
+- Stdlib helper tests cover edge cases (empty inputs and escapes).
+- `cargo test` passes.
+
+Validation (WSL):
+
+- `wsl -d Ubuntu -- bash -lc "cd /mnt/d/Desktop/Wuu && TMPDIR=/mnt/d/Desktop/Wuu/.wuu-cache/tmp CARGO_HOME=/mnt/d/wuu-cache/cargo RUSTUP_HOME=/mnt/d/wuu-cache/rustup PATH=/mnt/d/wuu-cache/cargo/bin:$PATH ./scripts/wsl-validate.sh"`
+
+Known limitations:
+
+- Stage1 bootstrap remains slow (pipeline test ~380s on WSL).
+
 ## Tooling 2026-01-17: GitHub HTTPS `SSL_ERROR_SYSCALL` (Windows) workaround
 
 Issue observed:

@@ -1,4 +1,3 @@
-use std::fs;
 use std::path::Path;
 
 use wuu::ast::Item;
@@ -6,12 +5,14 @@ use wuu::effects::check_module as check_effects;
 use wuu::parser::parse_module;
 use wuu::typeck::check_module as check_types;
 
+mod selfhost_support;
+
 #[test]
 fn selfhost_lexer_parses_and_typechecks() {
     let path = Path::new("selfhost/lexer.wuu");
     assert!(path.exists(), "missing selfhost/lexer.wuu");
 
-    let source = fs::read_to_string(path).expect("read lexer.wuu failed");
+    let source = selfhost_support::load_with_stdlib(path);
     let module = parse_module(&source).expect("parse failed");
     check_types(&module).expect("typecheck failed");
     check_effects(&module).expect("effect check failed");
@@ -28,7 +29,7 @@ fn selfhost_parser_parses_and_typechecks() {
     let path = Path::new("selfhost/parser.wuu");
     assert!(path.exists(), "missing selfhost/parser.wuu");
 
-    let source = fs::read_to_string(path).expect("read parser.wuu failed");
+    let source = selfhost_support::load_with_stdlib(path);
     let module = parse_module(&source).expect("parse failed");
     check_types(&module).expect("typecheck failed");
     check_effects(&module).expect("effect check failed");

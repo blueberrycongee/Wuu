@@ -175,8 +175,7 @@ fn lex_stage0(input: &[u8]) -> anyhow::Result<String> {
 fn lex_stage1(input: &[u8]) -> anyhow::Result<String> {
     let source = std::str::from_utf8(input).map_err(|_| anyhow::anyhow!("invalid utf-8"))?;
     let lexer_path = PathBuf::from("selfhost/lexer.wuu");
-    let lexer_source = std::fs::read_to_string(&lexer_path)
-        .map_err(|err| anyhow::anyhow!("failed to read {}: {err}", lexer_path.display()))?;
+    let lexer_source = read_selfhost_with_stdlib(&lexer_path)?;
     let module = wuu::parser::parse_module(&lexer_source)?;
     wuu::typeck::check_module(&module)?;
     let value = run_entry_with_args(&module, "lex", vec![Value::String(source.to_string())])?;
@@ -212,8 +211,7 @@ fn parse_spanned_token_span(tokens: &str) -> Option<wuu::span::Span> {
 
 fn stage1_parse_ast(source: &str) -> anyhow::Result<String> {
     let parser_path = PathBuf::from("selfhost/parser.wuu");
-    let parser_source = std::fs::read_to_string(&parser_path)
-        .map_err(|err| anyhow::anyhow!("failed to read {}: {err}", parser_path.display()))?;
+    let parser_source = read_selfhost_with_stdlib(&parser_path)?;
     let module = wuu::parser::parse_module(&parser_source)?;
     wuu::typeck::check_module(&module)?;
     let value = run_entry_with_args(&module, "parse", vec![Value::String(source.to_string())])?;
@@ -239,8 +237,7 @@ fn stage1_parse_ast(source: &str) -> anyhow::Result<String> {
 
 fn stage1_format_ast(ast: &str) -> anyhow::Result<String> {
     let format_path = PathBuf::from("selfhost/format.wuu");
-    let format_source = std::fs::read_to_string(&format_path)
-        .map_err(|err| anyhow::anyhow!("failed to read {}: {err}", format_path.display()))?;
+    let format_source = read_selfhost_with_stdlib(&format_path)?;
     let module = wuu::parser::parse_module(&format_source)?;
     wuu::typeck::check_module(&module)?;
     let value = run_entry_with_args(&module, "format_ast", vec![Value::String(ast.to_string())])?;
@@ -283,6 +280,15 @@ fn format_tokens(source: &str, tokens: &[wuu::lexer::Token]) -> String {
         }
     }
     lines.join("\n")
+}
+
+fn read_selfhost_with_stdlib(path: &PathBuf) -> anyhow::Result<String> {
+    let stdlib_path = PathBuf::from("selfhost/stdlib.wuu");
+    let stdlib_source = std::fs::read_to_string(&stdlib_path)
+        .map_err(|err| anyhow::anyhow!("failed to read {}: {err}", stdlib_path.display()))?;
+    let source = std::fs::read_to_string(path)
+        .map_err(|err| anyhow::anyhow!("failed to read {}: {err}", path.display()))?;
+    Ok(format!("{stdlib_source}\n\n{source}"))
 }
 
 fn token_text<'a>(source: &'a str, token: &wuu::lexer::Token) -> &'a str {
