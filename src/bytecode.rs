@@ -73,17 +73,34 @@ impl fmt::Display for DecodeError {
 
 impl std::error::Error for DecodeError {}
 
-pub fn parse_text_module(source: &str) -> Result<BytecodeModule, DecodeError> {
-    struct FunctionBuilder {
+#[derive(Debug, Clone)]
+enum TextInstr {
+    Arg,
+    ConstInt(i64),
+    ConstBool(bool),
+    ConstString(String),
+    ConstUnit,
+    Load(String),
+    Store(String),
+    Pop,
+    Call {
         name: String,
-        params: usize,
-        locals: usize,
-        code: Vec<Instr>,
-    }
+        argc: Option<usize>,
+        builtin: bool,
+    },
+    Return,
+}
 
+#[derive(Debug, Clone)]
+struct TextFunction {
+    name: String,
+    params: Vec<String>,
+    instrs: Vec<TextInstr>,
+}
+
+pub fn parse_text_module(source: &str) -> Result<BytecodeModule, DecodeError> {
     let mut functions = Vec::new();
-    let mut name_to_index = HashMap::new();
-    let mut current: Option<FunctionBuilder> = None;
+    let mut current: Option<TextFunction> = None;
 
     for (line_no, raw) in source.lines().enumerate() {
         let line = raw.trim();
@@ -101,29 +118,23 @@ pub fn parse_text_module(source: &str) -> Result<BytecodeModule, DecodeError> {
             let name = parts.next().ok_or_else(|| DecodeError {
                 message: format!("line {}: missing function name", line_no + 1),
             })?;
-            let params_text = parts.next().unwrap_or("0");
-            let locals_text = parts.next().unwrap_or(params_text);
-            if parts.next().is_some() {
+            let extras: Vec<&str> = parts.collect();
+            if extras.len() > 2 {
                 return Err(DecodeError {
                     message: format!("line {}: too many fields in function header", line_no + 1),
                 });
             }
-            let params = params_text.parse::<usize>().map_err(|_| DecodeError {
-                message: format!("line {}: invalid param count", line_no + 1),
-            })?;
-            let locals = locals_text.parse::<usize>().map_err(|_| DecodeError {
-                message: format!("line {}: invalid locals count", line_no + 1),
-            })?;
-            if name_to_index.contains_key(name) {
-                return Err(DecodeError {
-                    message: format!("line {}: duplicate function '{}'", line_no + 1, name),
-                });
+            for extra in extras {
+                if extra.parse::<usize>().is_err() {
+                    return Err(DecodeError {
+                        message: format!("line {}: invalid numeric field in header", line_no + 1),
+                    });
+                }
             }
-            current = Some(FunctionBuilder {
+            current = Some(TextFunction {
                 name: name.to_string(),
-                params,
-                locals,
-                code: Vec::new(),
+                params: Vec::new(),
+                instrs: Vec::new(),
             });
             continue;
         }
@@ -132,22 +143,25 @@ pub fn parse_text_module(source: &str) -> Result<BytecodeModule, DecodeError> {
             let builder = current.take().ok_or_else(|| DecodeError {
                 message: format!("line {}: end without function header", line_no + 1),
             })?;
-            let index = functions.len();
-            name_to_index.insert(builder.name.clone(), index);
-            functions.push(Function {
-                name: builder.name,
-                params: builder.params,
-                locals: builder.locals,
-                code: builder.code,
-            });
+            functions.push(builder);
             continue;
         }
 
         let builder = current.as_mut().ok_or_else(|| DecodeError {
             message: format!("line {}: instruction outside of function", line_no + 1),
         })?;
-        let instr = decode_instruction(line, line_no + 1)?;
-        builder.code.push(instr);
+        if let Some(rest) = line.strip_prefix("param ") {
+            let name = rest.trim();
+            if name.is_empty() {
+                return Err(DecodeError {
+                    message: format!("line {}: empty param name", line_no + 1),
+                });
+            }
+            builder.params.push(name.to_string());
+            continue;
+        }
+        let instr = decode_text_instruction(line, line_no + 1)?;
+        builder.instrs.push(instr);
     }
 
     if current.is_some() {
@@ -161,23 +175,148 @@ pub fn parse_text_module(source: &str) -> Result<BytecodeModule, DecodeError> {
         });
     }
 
+    let mut name_to_index = HashMap::new();
+    for (index, func) in functions.iter().enumerate() {
+        if name_to_index.contains_key(&func.name) {
+            return Err(DecodeError {
+                message: format!("duplicate function '{}'", func.name),
+            });
+        }
+        name_to_index.insert(func.name.clone(), index);
+    }
+
+    let mut resolved = Vec::with_capacity(functions.len());
+    for func in functions {
+        resolved.push(resolve_text_function(func, &name_to_index)?);
+    }
+
     Ok(BytecodeModule {
-        functions,
+        functions: resolved,
         name_to_index,
     })
 }
 
-fn decode_instruction(line: &str, line_no: usize) -> Result<Instr, DecodeError> {
+fn resolve_text_function(
+    func: TextFunction,
+    name_to_index: &HashMap<String, usize>,
+) -> Result<Function, DecodeError> {
+    let mut locals = HashMap::new();
+    for (index, name) in func.params.iter().enumerate() {
+        if locals.insert(name.clone(), index as u32).is_some() {
+            return Err(DecodeError {
+                message: format!("duplicate param '{}' in function '{}'", name, func.name),
+            });
+        }
+    }
+    let mut next_local = locals.len() as u32;
+    let mut code = Vec::new();
+    let mut pending_args = 0usize;
+
+    for instr in func.instrs {
+        match instr {
+            TextInstr::Arg => {
+                pending_args += 1;
+            }
+            TextInstr::Call {
+                name,
+                argc,
+                builtin,
+            } => {
+                let argc = match argc {
+                    Some(value) => {
+                        if pending_args > 0 && pending_args != value {
+                            return Err(DecodeError {
+                                message: format!(
+                                    "call arg mismatch in '{}': expected {value}, saw {pending_args}",
+                                    func.name
+                                ),
+                            });
+                        }
+                        value
+                    }
+                    None => pending_args,
+                };
+                pending_args = 0;
+                if builtin {
+                    code.push(Instr::CallBuiltin { name, argc });
+                } else {
+                    let func_index = *name_to_index.get(&name).ok_or_else(|| DecodeError {
+                        message: format!("unknown function '{name}'"),
+                    })?;
+                    code.push(Instr::Call {
+                        func: func_index,
+                        argc,
+                    });
+                }
+            }
+            TextInstr::ConstInt(value) => {
+                code.push(Instr::ConstInt(value));
+            }
+            TextInstr::ConstBool(value) => {
+                code.push(Instr::ConstBool(value));
+            }
+            TextInstr::ConstString(value) => {
+                code.push(Instr::ConstString(value));
+            }
+            TextInstr::ConstUnit => {
+                code.push(Instr::ConstUnit);
+            }
+            TextInstr::Load(name) => {
+                let index = locals.get(&name).ok_or_else(|| DecodeError {
+                    message: format!("unknown local '{name}' in '{}'", func.name),
+                })?;
+                code.push(Instr::LoadLocal(*index));
+            }
+            TextInstr::Store(name) => {
+                let index = if let Some(index) = locals.get(&name) {
+                    *index
+                } else {
+                    let index = next_local;
+                    locals.insert(name, index);
+                    next_local += 1;
+                    index
+                };
+                code.push(Instr::StoreLocal(index));
+            }
+            TextInstr::Pop => {
+                code.push(Instr::Pop);
+            }
+            TextInstr::Return => {
+                if pending_args > 0 {
+                    return Err(DecodeError {
+                        message: format!("dangling arg marker in '{}'", func.name),
+                    });
+                }
+                code.push(Instr::Return);
+            }
+        }
+    }
+
+    if pending_args > 0 {
+        return Err(DecodeError {
+            message: format!("dangling arg marker in '{}'", func.name),
+        });
+    }
+
+    Ok(Function {
+        name: func.name,
+        params: func.params.len(),
+        locals: locals.len(),
+        code,
+    })
+}
+
+fn decode_text_instruction(line: &str, line_no: usize) -> Result<TextInstr, DecodeError> {
     if let Some(rest) = line.strip_prefix("const_int ") {
         let value = rest.trim().parse::<i64>().map_err(|_| DecodeError {
             message: format!("line {}: invalid const_int", line_no),
         })?;
-        return Ok(Instr::ConstInt(value));
+        return Ok(TextInstr::ConstInt(value));
     }
     if let Some(rest) = line.strip_prefix("const_bool ") {
         return match rest.trim() {
-            "true" => Ok(Instr::ConstBool(true)),
-            "false" => Ok(Instr::ConstBool(false)),
+            "true" => Ok(TextInstr::ConstBool(true)),
+            "false" => Ok(TextInstr::ConstBool(false)),
             _ => Err(DecodeError {
                 message: format!("line {}: invalid const_bool", line_no),
             }),
@@ -187,16 +326,69 @@ fn decode_instruction(line: &str, line_no: usize) -> Result<Instr, DecodeError> 
         let value = decode_text_string(rest).map_err(|err| DecodeError {
             message: format!("line {}: {err}", line_no),
         })?;
-        return Ok(Instr::ConstString(value));
+        return Ok(TextInstr::ConstString(value));
     }
     if line == "const_unit" {
-        return Ok(Instr::ConstUnit);
+        return Ok(TextInstr::ConstUnit);
+    }
+    if let Some(rest) = line.strip_prefix("load ") {
+        let name = rest.trim();
+        if name.is_empty() {
+            return Err(DecodeError {
+                message: format!("line {}: empty load target", line_no),
+            });
+        }
+        return Ok(TextInstr::Load(name.to_string()));
+    }
+    if let Some(rest) = line.strip_prefix("store ") {
+        let name = rest.trim();
+        if name.is_empty() {
+            return Err(DecodeError {
+                message: format!("line {}: empty store target", line_no),
+            });
+        }
+        return Ok(TextInstr::Store(name.to_string()));
+    }
+    if line == "pop" {
+        return Ok(TextInstr::Pop);
+    }
+    if line == "arg" {
+        return Ok(TextInstr::Arg);
+    }
+    if let Some(rest) = line.strip_prefix("call_builtin ") {
+        return decode_call(rest, line_no, true);
+    }
+    if let Some(rest) = line.strip_prefix("call ") {
+        return decode_call(rest, line_no, false);
     }
     if line == "return" {
-        return Ok(Instr::Return);
+        return Ok(TextInstr::Return);
     }
     Err(DecodeError {
         message: format!("line {}: unknown instruction '{line}'", line_no),
+    })
+}
+
+fn decode_call(rest: &str, line_no: usize, builtin: bool) -> Result<TextInstr, DecodeError> {
+    let mut parts = rest.split_whitespace();
+    let name = parts.next().ok_or_else(|| DecodeError {
+        message: format!("line {}: missing call target", line_no),
+    })?;
+    let argc = match parts.next() {
+        Some(value) => Some(value.parse::<usize>().map_err(|_| DecodeError {
+            message: format!("line {}: invalid call arg count", line_no),
+        })?),
+        None => None,
+    };
+    if parts.next().is_some() {
+        return Err(DecodeError {
+            message: format!("line {}: too many call fields", line_no),
+        });
+    }
+    Ok(TextInstr::Call {
+        name: name.to_string(),
+        argc,
+        builtin,
     })
 }
 

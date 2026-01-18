@@ -1308,7 +1308,7 @@ Known limitations:
 
 - Bytecode VM does not yet support workflows/loops/steps; large stage1 inputs may still be slow.
 
-## Milestone 2026-01-18: M5.2 Stage1 compiler to bytecode (in Wuu) - minimal path
+## Milestone 2026-01-18: M5.2 Stage1 compiler to bytecode (in Wuu) - initial subset
 
 Goal:
 
@@ -1316,21 +1316,23 @@ Goal:
 
 Changes made:
 
-- Added a minimal stage1 compiler that emits text bytecode for simple returns:
+- Added a stage1 compiler that emits text bytecode for params, let/call, and literals:
   - `selfhost/compiler.wuu`
-- Added a text bytecode decoder for the host VM:
+- Extended the text bytecode decoder to resolve params/locals and call sites:
   - `src/bytecode.rs`
-- Added an end-to-end test that runs stage1 parse -> compile -> VM on a fixture:
+- Added end-to-end tests that run stage1 parse -> compile -> VM on fixtures:
   - `tests/selfhost_compiler_vm_tests.rs`
 
 Acceptance criteria:
 
-- Stage1 compiler emits bytecode that runs the `01_return_int.wuu` fixture on the VM.
+- Stage1 compiler emits bytecode that runs `01_return_int.wuu`, `03_call_and_let.wuu`, and
+  `04_return_string.wuu` on the VM.
 - `cargo test` passes.
 
 Known limitations:
 
-- Compiler supports only `ItemFn` with zero params and `return` of number/bool literals.
+- Compiler does not yet support if/loop/step, qualified paths, or type/effects lowering.
+- Text bytecode uses arg markers instead of explicit arg counts.
 ## Tooling 2026-01-17: GitHub HTTPS `SSL_ERROR_SYSCALL` (Windows) workaround
 
 Issue observed:

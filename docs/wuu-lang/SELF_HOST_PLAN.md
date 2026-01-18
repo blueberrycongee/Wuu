@@ -841,7 +841,7 @@ Done when:
 
 Status:
 
-- In progress (2026-01-18): minimal stage1 compiler emits text bytecode for a return-int fixture.
+- In progress (2026-01-18): compiler emits text bytecode for return-int/string and let/call fixtures.
 
 ### M5.3 Stage2 bootstrap (stage1 -> stage2)
 

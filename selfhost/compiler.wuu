@@ -47,15 +47,35 @@ fn compile_fn(item: String) -> String {
     let _contracts = ast_left(rest4);
     let block = ast_right(rest4);
 
+    let header = __str_concat("fn ", name);
+    let param_lines = compile_params(params);
+    let body = compile_block(block);
+    let with_params = join_non_empty(header, param_lines);
+    let with_body = join_non_empty(with_params, body);
+    return join_lines(with_body, "end");
+}
+
+fn compile_params(params: String) -> String {
     if list_is_empty(params) {
-    } else {
         return "";
     }
+    let head = list_head(params);
+    let tail = list_tail(params);
+    let head_line = compile_param(head);
+    if list_is_empty(tail) {
+        return head_line;
+    }
+    if __str_eq(tail, params) {
+        return head_line;
+    }
+    let tail_lines = compile_params(tail);
+    return join_non_empty(head_line, tail_lines);
+}
 
-    let header = __str_concat("fn ", name);
-    let body = compile_block(block);
-    let with_header = join_non_empty(header, body);
-    return join_lines(with_header, "end");
+fn compile_param(param: String) -> String {
+    let payload = node_payload(param);
+    let name = ast_left_value(payload);
+    return __str_concat("param ", name);
 }
 
 fn compile_block(block: String) -> String {
@@ -82,9 +102,24 @@ fn compile_stmt_list(stmts: String) -> String {
 
 fn compile_stmt(stmt: String) -> String {
     let tag = node_tag(stmt);
+    if __str_eq(tag, "StmtLet") {
+        let payload = node_payload(stmt);
+        let name = ast_left_value(payload);
+        let rest = ast_right(payload);
+        let _ty = ast_left(rest);
+        let expr = ast_right(rest);
+        let expr_code = compile_expr(expr);
+        let store_line = __str_concat("store ", name);
+        return join_lines(expr_code, store_line);
+    }
     if __str_eq(tag, "StmtReturn") {
         let expr_opt = node_payload(stmt);
         return compile_return(expr_opt);
+    }
+    if __str_eq(tag, "StmtExpr") {
+        let expr = node_payload(stmt);
+        let expr_code = compile_expr(expr);
+        return join_lines(expr_code, "pop");
     }
     return "";
 }
@@ -108,7 +143,172 @@ fn compile_expr(expr: String) -> String {
         let text = ast_unescape(node_payload(expr));
         return __str_concat("const_bool ", text);
     }
+    if __str_eq(tag, "ExprString") {
+        let text = ast_unescape(node_payload(expr));
+        let raw = unquote_literal(text);
+        let encoded = encode_string(raw);
+        return __str_concat("const_string ", encoded);
+    }
+    if __str_eq(tag, "ExprPath") {
+        let path = node_payload(expr);
+        let name = path_single_name(path);
+        if __str_is_empty(name) {
+            return "";
+        }
+        return __str_concat("load ", name);
+    }
+    if __str_eq(tag, "ExprCall") {
+        let payload = node_payload(expr);
+        let path = ast_left(payload);
+        let args = ast_right(payload);
+        let args_code = compile_call_args(args);
+        let name = path_single_name(path);
+        if __str_is_empty(name) {
+            return "";
+        }
+        let call_line = compile_call_line(name);
+        return join_non_empty(args_code, call_line);
+    }
     return "";
+}
+
+fn compile_call_args(args: String) -> String {
+    if list_is_empty(args) {
+        return "";
+    }
+    let head = list_head(args);
+    let tail = list_tail(args);
+    let head_expr = compile_expr(head);
+    if __str_is_empty(head_expr) {
+        return "";
+    }
+    let head_with_arg = join_lines(head_expr, "arg");
+    if list_is_empty(tail) {
+        return head_with_arg;
+    }
+    if __str_eq(tail, args) {
+        return head_with_arg;
+    }
+    let tail_code = compile_call_args(tail);
+    return join_non_empty(head_with_arg, tail_code);
+}
+
+fn compile_call_line(name: String) -> String {
+    if __str_starts_with(name, "__") {
+        return __str_concat("call_builtin ", name);
+    }
+    return __str_concat("call ", name);
+}
+
+fn path_single_name(path: String) -> String {
+    let segments = node_payload(path);
+    if list_is_empty(segments) {
+        return "";
+    }
+    let head = ast_unescape(list_head(segments));
+    let tail = list_tail(segments);
+    if list_is_empty(tail) {
+        return head;
+    }
+    if __str_eq(tail, segments) {
+        return head;
+    }
+    return "";
+}
+
+fn unquote_literal(text: String) -> String {
+    let inner = strip_first_char(text);
+    let inner = strip_last_char(inner);
+    return unescape_string(inner);
+}
+
+fn strip_first_char(value: String) -> String {
+    if __str_is_empty(value) {
+        return "";
+    }
+    return __str_tail(value);
+}
+
+fn strip_last_char(value: String) -> String {
+    if __str_is_empty(value) {
+        return "";
+    }
+    let head = __str_head(value);
+    let tail = __str_tail(value);
+    if __str_is_empty(tail) {
+        return "";
+    }
+    let rest = strip_last_char(tail);
+    return __str_concat(head, rest);
+}
+
+fn unescape_string(value: String) -> String {
+    if __str_is_empty(value) {
+        return "";
+    }
+    let head = __str_head(value);
+    let tail = __str_tail(value);
+    if __str_eq(head, "\\") {
+        if __str_is_empty(tail) {
+            return "";
+        }
+        let esc = __str_head(tail);
+        let rest = __str_tail(tail);
+        let decoded = decode_escape(esc);
+        let next = unescape_string(rest);
+        return __str_concat(decoded, next);
+    }
+    let next = unescape_string(tail);
+    return __str_concat(head, next);
+}
+
+fn decode_escape(ch: String) -> String {
+    if __str_eq(ch, "n") {
+        return "\n";
+    }
+    if __str_eq(ch, "r") {
+        return "\r";
+    }
+    if __str_eq(ch, "t") {
+        return "\t";
+    }
+    if __str_eq(ch, "\\") {
+        return "\\";
+    }
+    if __str_eq(ch, "\"") {
+        return "\"";
+    }
+    return ch;
+}
+
+fn encode_string(value: String) -> String {
+    if __str_is_empty(value) {
+        return "";
+    }
+    let head = __str_head(value);
+    let tail = __str_tail(value);
+    let encoded = encode_char(head);
+    let rest = encode_string(tail);
+    return __str_concat(encoded, rest);
+}
+
+fn encode_char(ch: String) -> String {
+    if __str_eq(ch, "\\") {
+        return "\\\\";
+    }
+    if __str_eq(ch, "\n") {
+        return "\\n";
+    }
+    if __str_eq(ch, "\r") {
+        return "\\r";
+    }
+    if __str_eq(ch, "\t") {
+        return "\\t";
+    }
+    if __str_eq(ch, "\"") {
+        return "\\\"";
+    }
+    return ch;
 }
 
 fn join_non_empty(head: String, tail: String) -> String {
