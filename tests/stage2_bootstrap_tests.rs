@@ -11,6 +11,11 @@ mod selfhost_support;
 
 const OUTPUT_SEP: &str = "\n<OUT>\n";
 
+struct ToolArtifact {
+    text: String,
+    module: BytecodeModule,
+}
+
 struct BaseToolchain {
     parser_vm: BytecodeModule,
     stage1_compiler_vm: BytecodeModule,
@@ -35,8 +40,41 @@ fn slow_tests_enabled() -> bool {
     std::env::var("WUU_SLOW_TESTS").is_ok()
 }
 
-fn lexer_vms() -> &'static (BytecodeModule, BytecodeModule) {
-    static LEXER_VMS: OnceLock<(BytecodeModule, BytecodeModule)> = OnceLock::new();
+fn update_goldens_enabled() -> bool {
+    std::env::var("WUU_UPDATE_GOLDENS").is_ok()
+}
+
+const LEXER_FIXTURES_FAST: &[&str] = &[
+    "tests/golden/lexer/01_basic.wuu",
+    "tests/golden/lexer/04_escapes.wuu",
+];
+const LEXER_FIXTURES_SLOW: &[&str] = &[
+    "tests/golden/lexer/01_basic.wuu",
+    "tests/golden/lexer/02_string_call.wuu",
+    "tests/golden/lexer/03_effects.wuu",
+    "tests/golden/lexer/04_escapes.wuu",
+];
+const PARSER_FIXTURES_SLOW: &[&str] = &[
+    "tests/golden/parse/03_fn_with_let.wuu",
+    "tests/golden/parse/06_loop.wuu",
+    "tests/golden/parse/10_nested_blocks.wuu",
+];
+const FORMAT_FIXTURES_SLOW: &[&str] = &[
+    "tests/golden/fmt/01_simple_fn.wuu",
+    "tests/golden/fmt/03_if_else_loop.wuu",
+    "tests/golden/fmt/08_string_escape.wuu",
+];
+
+fn lexer_fixtures() -> &'static [&'static str] {
+    if slow_tests_enabled() {
+        LEXER_FIXTURES_SLOW
+    } else {
+        LEXER_FIXTURES_FAST
+    }
+}
+
+fn lexer_artifacts() -> &'static (ToolArtifact, ToolArtifact) {
+    static LEXER_VMS: OnceLock<(ToolArtifact, ToolArtifact)> = OnceLock::new();
     LEXER_VMS.get_or_init(|| {
         let toolchain = base_toolchain();
         let stage1 = compile_tool_with_compiler(
@@ -53,8 +91,8 @@ fn lexer_vms() -> &'static (BytecodeModule, BytecodeModule) {
     })
 }
 
-fn parser_vms() -> &'static (BytecodeModule, BytecodeModule) {
-    static PARSER_VMS: OnceLock<(BytecodeModule, BytecodeModule)> = OnceLock::new();
+fn parser_artifacts() -> &'static (ToolArtifact, ToolArtifact) {
+    static PARSER_VMS: OnceLock<(ToolArtifact, ToolArtifact)> = OnceLock::new();
     PARSER_VMS.get_or_init(|| {
         let toolchain = base_toolchain();
         let stage1 = compile_tool_with_compiler(
@@ -71,8 +109,8 @@ fn parser_vms() -> &'static (BytecodeModule, BytecodeModule) {
     })
 }
 
-fn format_vms() -> &'static (BytecodeModule, BytecodeModule) {
-    static FORMAT_VMS: OnceLock<(BytecodeModule, BytecodeModule)> = OnceLock::new();
+fn format_artifacts() -> &'static (ToolArtifact, ToolArtifact) {
+    static FORMAT_VMS: OnceLock<(ToolArtifact, ToolArtifact)> = OnceLock::new();
     FORMAT_VMS.get_or_init(|| {
         let toolchain = base_toolchain();
         let stage1 = compile_tool_with_compiler(
@@ -112,15 +150,16 @@ fn stage2_compiler_matches_stage1_output() {
 
 #[test]
 fn stage2_lexer_matches_stage1_output() {
-    let lexer_vms = lexer_vms();
-    let stage1_lexer_vm = &lexer_vms.0;
-    let stage2_lexer_vm = &lexer_vms.1;
+    let lexer_artifacts = lexer_artifacts();
+    let stage1_lexer_vm = &lexer_artifacts.0.module;
+    let stage2_lexer_vm = &lexer_artifacts.1.module;
 
-    let input =
-        fs::read_to_string("tests/golden/lexer/01_basic.wuu").expect("read lexer fixture failed");
-    let stage1 = run_string_entry(stage1_lexer_vm, "lex", vec![input.clone()]);
-    let stage2 = run_string_entry(stage2_lexer_vm, "lex", vec![input]);
-    assert_eq!(stage2, stage1);
+    for path in lexer_fixtures() {
+        let input = fs::read_to_string(path).expect("read lexer fixture failed");
+        let stage1 = run_string_entry(stage1_lexer_vm, "lex", vec![input.clone()]);
+        let stage2 = run_string_entry(stage2_lexer_vm, "lex", vec![input]);
+        assert_eq!(stage2, stage1, "lexer mismatch for {path}");
+    }
 }
 
 #[test]
@@ -128,15 +167,16 @@ fn stage2_parser_matches_stage1_output() {
     if !slow_tests_enabled() {
         return;
     }
-    let parser_vms = parser_vms();
-    let stage1_parser_vm = &parser_vms.0;
-    let stage2_parser_vm = &parser_vms.1;
+    let parser_artifacts = parser_artifacts();
+    let stage1_parser_vm = &parser_artifacts.0.module;
+    let stage2_parser_vm = &parser_artifacts.1.module;
 
-    let input = fs::read_to_string("tests/golden/parse/03_fn_with_let.wuu")
-        .expect("read parse fixture failed");
-    let stage1 = run_string_entry(stage1_parser_vm, "parse", vec![input.clone()]);
-    let stage2 = run_string_entry(stage2_parser_vm, "parse", vec![input]);
-    assert_eq!(stage2, stage1);
+    for path in PARSER_FIXTURES_SLOW {
+        let input = fs::read_to_string(path).expect("read parse fixture failed");
+        let stage1 = run_string_entry(stage1_parser_vm, "parse", vec![input.clone()]);
+        let stage2 = run_string_entry(stage2_parser_vm, "parse", vec![input]);
+        assert_eq!(stage2, stage1, "parser mismatch for {path}");
+    }
 }
 
 #[test]
@@ -144,15 +184,49 @@ fn stage2_format_matches_stage1_output() {
     if !slow_tests_enabled() {
         return;
     }
-    let format_vms = format_vms();
-    let stage1_format_vm = &format_vms.0;
-    let stage2_format_vm = &format_vms.1;
+    let format_artifacts = format_artifacts();
+    let stage1_format_vm = &format_artifacts.0.module;
+    let stage2_format_vm = &format_artifacts.1.module;
 
-    let input =
-        fs::read_to_string("tests/golden/fmt/01_simple_fn.wuu").expect("read fmt fixture failed");
-    let stage1 = run_string_entry(stage1_format_vm, "format", vec![input.clone()]);
-    let stage2 = run_string_entry(stage2_format_vm, "format", vec![input]);
-    assert_eq!(stage2, stage1);
+    for path in FORMAT_FIXTURES_SLOW {
+        let input = fs::read_to_string(path).expect("read fmt fixture failed");
+        let stage1 = run_string_entry(stage1_format_vm, "format", vec![input.clone()]);
+        let stage2 = run_string_entry(stage2_format_vm, "format", vec![input]);
+        assert_eq!(stage2, stage1, "format mismatch for {path}");
+    }
+}
+
+#[test]
+fn stage2_lexer_bytecode_matches_golden() {
+    let lexer_artifacts = lexer_artifacts();
+    compare_or_update_golden(
+        "tests/golden/stage2/lexer.bytecode.txt",
+        &lexer_artifacts.1.text,
+    );
+}
+
+#[test]
+fn stage2_parser_bytecode_matches_golden() {
+    if !slow_tests_enabled() {
+        return;
+    }
+    let parser_artifacts = parser_artifacts();
+    compare_or_update_golden(
+        "tests/golden/stage2/parser.bytecode.txt",
+        &parser_artifacts.1.text,
+    );
+}
+
+#[test]
+fn stage2_format_bytecode_matches_golden() {
+    if !slow_tests_enabled() {
+        return;
+    }
+    let format_artifacts = format_artifacts();
+    compare_or_update_golden(
+        "tests/golden/stage2/format.bytecode.txt",
+        &format_artifacts.1.text,
+    );
 }
 
 fn load_stage1_vm(path: &str) -> BytecodeModule {
@@ -176,11 +250,12 @@ fn compile_tool_with_compiler(
     parser_vm: &BytecodeModule,
     compiler_vm: &BytecodeModule,
     path: &str,
-) -> BytecodeModule {
+) -> ToolArtifact {
     let source = selfhost_support::load_with_stdlib(Path::new(path));
     let ast = run_stage1_parse_vm(parser_vm, &source);
     let text = run_stage1_compile_vm(compiler_vm, ast);
-    parse_text_module(&text).expect("parse tool bytecode failed")
+    let module = parse_text_module(&text).expect("parse tool bytecode failed");
+    ToolArtifact { text, module }
 }
 
 fn run_stage1_parse_vm(parser_vm: &BytecodeModule, source: &str) -> String {
@@ -212,6 +287,15 @@ fn run_string_entry(vm: &BytecodeModule, entry: &str, args: Vec<String>) -> Stri
         Value::String(value) => value,
         _ => panic!("vm returned non-string value"),
     }
+}
+
+fn compare_or_update_golden(path: &str, actual: &str) {
+    if update_goldens_enabled() {
+        fs::write(path, actual).expect("write golden file failed");
+        return;
+    }
+    let expected = fs::read_to_string(path).expect("read golden file failed");
+    assert_eq!(actual, expected, "golden mismatch for {path}");
 }
 
 fn split_output(value: &str) -> Option<(String, String)> {

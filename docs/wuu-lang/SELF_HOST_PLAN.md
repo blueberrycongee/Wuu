@@ -853,15 +853,19 @@ Deliverables:
 
 - Bootstrap test: stage1 compiler builds stage2 bytecode.
 - Run stage2 tools on golden fixtures and compare to stage1 outputs.
+- Check in stage2 tool bytecode artifacts and compare against golden files.
 
 Status:
 
 - In progress (2026-01-19): stage2 compiler parity test is in place; stage2 lexer parity
   check runs by default; parser/format parity checks require `WUU_SLOW_TESTS=1`.
+- In progress (2026-01-19): stage2 tool bytecode artifacts are checked into
+  `tests/golden/stage2/*.bytecode.txt` and updated via `WUU_UPDATE_GOLDENS=1`.
 
 Acceptance:
 
 - Stage2 outputs match stage1 outputs on golden suites.
+- Stage2 tool bytecode matches golden artifacts.
 - `cargo test` passes.
 
 Done when:
