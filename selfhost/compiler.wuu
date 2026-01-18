@@ -1,0 +1,122 @@
+fn compile_module(ast: String) -> String {
+    if __str_is_empty(ast) {
+        return "";
+    }
+    if __str_eq(node_tag(ast), "Module") {
+        let items = node_payload(ast);
+        return compile_items(items);
+    }
+    return "";
+}
+
+fn compile_items(items: String) -> String {
+    if list_is_empty(items) {
+        return "";
+    }
+    let head = list_head(items);
+    let tail = list_tail(items);
+    let head_code = compile_item(head);
+    if list_is_empty(tail) {
+        return head_code;
+    }
+    if __str_eq(tail, items) {
+        return head_code;
+    }
+    let tail_code = compile_items(tail);
+    return join_non_empty(head_code, tail_code);
+}
+
+fn compile_item(item: String) -> String {
+    let tag = node_tag(item);
+    if __str_eq(tag, "ItemFn") {
+        return compile_fn(item);
+    }
+    return "";
+}
+
+fn compile_fn(item: String) -> String {
+    let payload = node_payload(item);
+    let name = ast_left_value(payload);
+    let rest1 = ast_right(payload);
+    let params = ast_left(rest1);
+    let rest2 = ast_right(rest1);
+    let _ret = ast_left(rest2);
+    let rest3 = ast_right(rest2);
+    let _effects_opt = ast_left(rest3);
+    let rest4 = ast_right(rest3);
+    let _contracts = ast_left(rest4);
+    let block = ast_right(rest4);
+
+    if list_is_empty(params) {
+    } else {
+        return "";
+    }
+
+    let header = __str_concat("fn ", name);
+    let body = compile_block(block);
+    let with_header = join_non_empty(header, body);
+    return join_lines(with_header, "end");
+}
+
+fn compile_block(block: String) -> String {
+    let stmts = node_payload(block);
+    return compile_stmt_list(stmts);
+}
+
+fn compile_stmt_list(stmts: String) -> String {
+    if list_is_empty(stmts) {
+        return "";
+    }
+    let head = list_head(stmts);
+    let tail = list_tail(stmts);
+    let head_code = compile_stmt(head);
+    if list_is_empty(tail) {
+        return head_code;
+    }
+    if __str_eq(tail, stmts) {
+        return head_code;
+    }
+    let tail_code = compile_stmt_list(tail);
+    return join_non_empty(head_code, tail_code);
+}
+
+fn compile_stmt(stmt: String) -> String {
+    let tag = node_tag(stmt);
+    if __str_eq(tag, "StmtReturn") {
+        let expr_opt = node_payload(stmt);
+        return compile_return(expr_opt);
+    }
+    return "";
+}
+
+fn compile_return(expr_opt: String) -> String {
+    if option_is_none(expr_opt) {
+        return join_lines("const_unit", "return");
+    }
+    let expr = option_unwrap(expr_opt);
+    let expr_code = compile_expr(expr);
+    return join_lines(expr_code, "return");
+}
+
+fn compile_expr(expr: String) -> String {
+    let tag = node_tag(expr);
+    if __str_eq(tag, "ExprNumber") {
+        let text = ast_unescape(node_payload(expr));
+        return __str_concat("const_int ", text);
+    }
+    if __str_eq(tag, "ExprBool") {
+        let text = ast_unescape(node_payload(expr));
+        return __str_concat("const_bool ", text);
+    }
+    return "";
+}
+
+fn join_non_empty(head: String, tail: String) -> String {
+    if __str_is_empty(head) {
+        return tail;
+    }
+    if __str_is_empty(tail) {
+        return head;
+    }
+    return join_lines(head, tail);
+}

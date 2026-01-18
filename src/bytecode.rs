@@ -60,6 +60,167 @@ impl fmt::Display for VmError {
 
 impl std::error::Error for VmError {}
 
+#[derive(Debug)]
+pub struct DecodeError {
+    message: String,
+}
+
+impl fmt::Display for DecodeError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.message)
+    }
+}
+
+impl std::error::Error for DecodeError {}
+
+pub fn parse_text_module(source: &str) -> Result<BytecodeModule, DecodeError> {
+    struct FunctionBuilder {
+        name: String,
+        params: usize,
+        locals: usize,
+        code: Vec<Instr>,
+    }
+
+    let mut functions = Vec::new();
+    let mut name_to_index = HashMap::new();
+    let mut current: Option<FunctionBuilder> = None;
+
+    for (line_no, raw) in source.lines().enumerate() {
+        let line = raw.trim();
+        if line.is_empty() {
+            continue;
+        }
+
+        if let Some(rest) = line.strip_prefix("fn ") {
+            if current.is_some() {
+                return Err(DecodeError {
+                    message: format!("line {}: nested function header", line_no + 1),
+                });
+            }
+            let mut parts = rest.split_whitespace();
+            let name = parts.next().ok_or_else(|| DecodeError {
+                message: format!("line {}: missing function name", line_no + 1),
+            })?;
+            let params_text = parts.next().unwrap_or("0");
+            let locals_text = parts.next().unwrap_or(params_text);
+            if parts.next().is_some() {
+                return Err(DecodeError {
+                    message: format!("line {}: too many fields in function header", line_no + 1),
+                });
+            }
+            let params = params_text.parse::<usize>().map_err(|_| DecodeError {
+                message: format!("line {}: invalid param count", line_no + 1),
+            })?;
+            let locals = locals_text.parse::<usize>().map_err(|_| DecodeError {
+                message: format!("line {}: invalid locals count", line_no + 1),
+            })?;
+            if name_to_index.contains_key(name) {
+                return Err(DecodeError {
+                    message: format!("line {}: duplicate function '{}'", line_no + 1, name),
+                });
+            }
+            current = Some(FunctionBuilder {
+                name: name.to_string(),
+                params,
+                locals,
+                code: Vec::new(),
+            });
+            continue;
+        }
+
+        if line == "end" {
+            let builder = current.take().ok_or_else(|| DecodeError {
+                message: format!("line {}: end without function header", line_no + 1),
+            })?;
+            let index = functions.len();
+            name_to_index.insert(builder.name.clone(), index);
+            functions.push(Function {
+                name: builder.name,
+                params: builder.params,
+                locals: builder.locals,
+                code: builder.code,
+            });
+            continue;
+        }
+
+        let builder = current.as_mut().ok_or_else(|| DecodeError {
+            message: format!("line {}: instruction outside of function", line_no + 1),
+        })?;
+        let instr = decode_instruction(line, line_no + 1)?;
+        builder.code.push(instr);
+    }
+
+    if current.is_some() {
+        return Err(DecodeError {
+            message: "unterminated function at end of bytecode".to_string(),
+        });
+    }
+    if functions.is_empty() {
+        return Err(DecodeError {
+            message: "bytecode text contained no functions".to_string(),
+        });
+    }
+
+    Ok(BytecodeModule {
+        functions,
+        name_to_index,
+    })
+}
+
+fn decode_instruction(line: &str, line_no: usize) -> Result<Instr, DecodeError> {
+    if let Some(rest) = line.strip_prefix("const_int ") {
+        let value = rest.trim().parse::<i64>().map_err(|_| DecodeError {
+            message: format!("line {}: invalid const_int", line_no),
+        })?;
+        return Ok(Instr::ConstInt(value));
+    }
+    if let Some(rest) = line.strip_prefix("const_bool ") {
+        return match rest.trim() {
+            "true" => Ok(Instr::ConstBool(true)),
+            "false" => Ok(Instr::ConstBool(false)),
+            _ => Err(DecodeError {
+                message: format!("line {}: invalid const_bool", line_no),
+            }),
+        };
+    }
+    if let Some(rest) = line.strip_prefix("const_string ") {
+        let value = decode_text_string(rest).map_err(|err| DecodeError {
+            message: format!("line {}: {err}", line_no),
+        })?;
+        return Ok(Instr::ConstString(value));
+    }
+    if line == "const_unit" {
+        return Ok(Instr::ConstUnit);
+    }
+    if line == "return" {
+        return Ok(Instr::Return);
+    }
+    Err(DecodeError {
+        message: format!("line {}: unknown instruction '{line}'", line_no),
+    })
+}
+
+fn decode_text_string(input: &str) -> Result<String, &'static str> {
+    let mut out = String::new();
+    let mut chars = input.chars();
+    while let Some(ch) = chars.next() {
+        if ch != '\\' {
+            out.push(ch);
+            continue;
+        }
+        let escaped = chars.next().ok_or("dangling escape")?;
+        match escaped {
+            'n' => out.push('\n'),
+            'r' => out.push('\r'),
+            't' => out.push('\t'),
+            '\\' => out.push('\\'),
+            '"' => out.push('"'),
+            _ => return Err("unsupported escape"),
+        }
+    }
+    Ok(out)
+}
+
 pub fn compile_module(module: &Module) -> Result<BytecodeModule, CompileError> {
     let mut functions = Vec::new();
     let mut name_to_index = HashMap::new();

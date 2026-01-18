@@ -839,6 +839,10 @@ Done when:
 
 - Stage1 compiler can build stage1 tools into bytecode.
 
+Status:
+
+- In progress (2026-01-18): minimal stage1 compiler emits text bytecode for a return-int fixture.
+
 ### M5.3 Stage2 bootstrap (stage1 -> stage2)
 
 Goal: use the stage1 compiler to build stage2 and compare outputs.
