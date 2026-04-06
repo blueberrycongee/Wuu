@@ -7,21 +7,24 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/blueberrycongee/wuu/internal/agent"
 )
 
 // Config defines runtime dependencies for the interactive UI.
 type Config struct {
-	Provider   string
-	Model      string
-	ConfigPath string
-	MemoryPath string
-	RunPrompt  func(ctx context.Context, prompt string) (string, error)
+	Provider     string
+	Model        string
+	ConfigPath   string
+	MemoryPath   string
+	RunPrompt    func(ctx context.Context, prompt string) (string, error)
+	StreamRunner *agent.StreamRunner // optional, used when available
 }
 
 // Run starts the interactive terminal UI.
 func Run(cfg Config) error {
-	if cfg.RunPrompt == nil {
-		return errors.New("run prompt function is required")
+	if cfg.RunPrompt == nil && cfg.StreamRunner == nil {
+		return errors.New("run prompt function or stream runner is required")
 	}
 	if strings.TrimSpace(cfg.Provider) == "" {
 		return errors.New("provider is required")

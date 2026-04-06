@@ -12,6 +12,9 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/blueberrycongee/wuu/internal/agent"
+	"github.com/blueberrycongee/wuu/internal/providers"
 )
 
 const (
@@ -32,6 +35,10 @@ type responseMsg struct {
 	elapsed time.Duration
 }
 
+type streamEventMsg struct {
+	event providers.StreamEvent
+}
+
 type transcriptEntry struct {
 	Role    string
 	Content string
@@ -45,6 +52,8 @@ type Model struct {
 	workspaceRoot string
 	memoryPath    string
 	runPrompt     func(ctx context.Context, prompt string) (string, error)
+	streamRunner  *agent.StreamRunner
+	streamCh      chan providers.StreamEvent
 
 	viewport viewport.Model
 	input    textarea.Model
@@ -94,6 +103,7 @@ func NewModel(cfg Config) Model {
 		workspaceRoot: filepath.Dir(cfg.ConfigPath),
 		memoryPath:    cfg.MemoryPath,
 		runPrompt:     cfg.RunPrompt,
+		streamRunner:  cfg.StreamRunner,
 		viewport:      vp,
 		input:         in,
 		autoFollow:    true,
@@ -188,6 +198,62 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, streamTickCmd()
 
+	case streamEventMsg:
+		switch msg.event.Type {
+		case providers.EventContentDelta:
+			if m.streamTarget >= 0 && m.streamTarget < len(m.entries) {
+				if m.entries[m.streamTarget].Content == "(empty)" {
+					m.entries[m.streamTarget].Content = ""
+				}
+				m.entries[m.streamTarget].Content += msg.event.Content
+				m.refreshViewport(true)
+			}
+			return m, waitStreamEvent(m.streamCh)
+
+		case providers.EventToolUseStart:
+			toolName := ""
+			if msg.event.ToolCall != nil {
+				toolName = msg.event.ToolCall.Name
+			}
+			m.statusLine = fmt.Sprintf("executing tool: %s", toolName)
+			return m, waitStreamEvent(m.streamCh)
+
+		case providers.EventToolUseEnd:
+			m.statusLine = "streaming"
+			return m, waitStreamEvent(m.streamCh)
+
+		case providers.EventDone:
+			m.streaming = false
+			m.pendingRequest = false
+			if m.streamTarget >= 0 && m.streamTarget < len(m.entries) {
+				raw := m.entries[m.streamTarget].Content
+				rendered, err := m.renderMarkdown(raw)
+				if err == nil {
+					m.entries[m.streamTarget].Content = rendered
+				}
+			}
+			m.streamTarget = -1
+			m.statusLine = "ready"
+			m.refreshViewport(true)
+			return m, nil
+
+		case providers.EventError:
+			m.streaming = false
+			m.pendingRequest = false
+			m.streamTarget = -1
+			errMsg := "stream error"
+			if msg.event.Error != nil {
+				errMsg = msg.event.Error.Error()
+			}
+			m.appendEntry("system", fmt.Sprintf("error: %s", errMsg))
+			m.statusLine = "request failed"
+			m.refreshViewport(true)
+			return m, nil
+
+		default:
+			return m, waitStreamEvent(m.streamCh)
+		}
+
 	case tea.MouseMsg:
 		if m.showJump &&
 			msg.Action == tea.MouseActionPress &&
@@ -268,9 +334,29 @@ func (m Model) submit() (tea.Model, tea.Cmd) {
 	m.appendEntry("user", raw)
 	m.input.Reset()
 	m.pendingRequest = true
-	m.statusLine = "running prompt"
+	m.streaming = true
+	m.streamTarget = m.appendEntry("assistant", "")
+	m.statusLine = "streaming"
 	m.refreshViewport(true)
 
+	if m.streamRunner != nil {
+		ch := make(chan providers.StreamEvent, 64)
+		m.streamCh = ch
+		runner := m.streamRunner
+		go func() {
+			defer close(ch)
+			runner.OnEvent = func(event providers.StreamEvent) {
+				ch <- event
+			}
+			_, err := runner.Run(context.Background(), raw)
+			if err != nil {
+				ch <- providers.StreamEvent{Type: providers.EventError, Error: err}
+			}
+		}()
+		return m, waitStreamEvent(ch)
+	}
+
+	// Fallback to blocking path.
 	start := time.Now()
 	return m, func() tea.Msg {
 		answer, err := m.runPrompt(context.Background(), raw)
@@ -279,6 +365,16 @@ func (m Model) submit() (tea.Model, tea.Cmd) {
 			err:     err,
 			elapsed: time.Since(start),
 		}
+	}
+}
+
+func waitStreamEvent(ch <-chan providers.StreamEvent) tea.Cmd {
+	return func() tea.Msg {
+		event, ok := <-ch
+		if !ok {
+			return streamEventMsg{event: providers.StreamEvent{Type: providers.EventDone}}
+		}
+		return streamEventMsg{event: event}
 	}
 }
 

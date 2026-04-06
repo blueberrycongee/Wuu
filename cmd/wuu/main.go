@@ -179,10 +179,10 @@ func runTUI(args []string) error {
 	systemPrompt := fs.String("system-prompt", "", "system prompt override")
 	workdir := fs.String("workdir", "", "workspace directory")
 	noTools := fs.Bool("no-tools", false, "disable local tools")
-	requestTimeout := fs.Duration("request-timeout", 10*time.Minute, "single request timeout (e.g. 2m)")
+	fs.Duration("request-timeout", 10*time.Minute, "single request timeout (e.g. 2m)")
 	memoryFile := fs.String("memory-file", ".wuu/session.jsonl", "session memory file path")
-	preHook := fs.String("pre-hook", strings.TrimSpace(os.Getenv("WUU_PRE_HOOK")), "shell command before each prompt")
-	postHook := fs.String("post-hook", strings.TrimSpace(os.Getenv("WUU_POST_HOOK")), "shell command after each prompt")
+	fs.String("pre-hook", strings.TrimSpace(os.Getenv("WUU_PRE_HOOK")), "shell command before each prompt")
+	fs.String("post-hook", strings.TrimSpace(os.Getenv("WUU_POST_HOOK")), "shell command after each prompt")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -205,7 +205,7 @@ func runTUI(args []string) error {
 		providerCfg.Model = *modelOverride
 	}
 
-	client, err := providerfactory.BuildClient(providerCfg)
+	client, err := providerfactory.BuildStreamClient(providerCfg)
 	if err != nil {
 		return err
 	}
@@ -219,7 +219,7 @@ func runTUI(args []string) error {
 		toolExecutor = kit
 	}
 
-	runner := agent.Runner{
+	streamRunner := &agent.StreamRunner{
 		Client:       client,
 		Tools:        toolExecutor,
 		Model:        providerCfg.Model,
@@ -228,13 +228,13 @@ func runTUI(args []string) error {
 		Temperature:  cfg.Agent.Temperature,
 	}
 	if *maxSteps > 0 {
-		runner.MaxSteps = *maxSteps
+		streamRunner.MaxSteps = *maxSteps
 	}
 	if *temperature >= 0 {
-		runner.Temperature = *temperature
+		streamRunner.Temperature = *temperature
 	}
 	if strings.TrimSpace(*systemPrompt) != "" {
-		runner.SystemPrompt = *systemPrompt
+		streamRunner.SystemPrompt = *systemPrompt
 	}
 
 	resolvedMemoryPath, err := resolveRuntimePath(rootDir, *memoryFile)
@@ -242,21 +242,12 @@ func runTUI(args []string) error {
 		return err
 	}
 
-	runPrompt := func(ctx context.Context, prompt string) (string, error) {
-		if *requestTimeout <= 0 {
-			return runPromptWithHooks(ctx, *preHook, *postHook, prompt, runner.Run)
-		}
-		callCtx, cancel := context.WithTimeout(ctx, *requestTimeout)
-		defer cancel()
-		return runPromptWithHooks(callCtx, *preHook, *postHook, prompt, runner.Run)
-	}
-
 	return tui.Run(tui.Config{
-		Provider:   resolvedName,
-		Model:      providerCfg.Model,
-		ConfigPath: configPath,
-		MemoryPath: resolvedMemoryPath,
-		RunPrompt:  runPrompt,
+		Provider:     resolvedName,
+		Model:        providerCfg.Model,
+		ConfigPath:   configPath,
+		MemoryPath:   resolvedMemoryPath,
+		StreamRunner: streamRunner,
 	})
 }
 
