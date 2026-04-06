@@ -1,5 +1,7 @@
 # wuu
 
+[中文](README_zh.md)
+
 Terminal-native AI coding agent. Written in Go.
 
 Named after its author (Wu) — the goal is to build a coding companion so good that every developer goes *wuuuuu!*
