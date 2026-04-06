@@ -83,6 +83,11 @@ type Model struct {
 
 	mdRenderer *glamour.TermRenderer
 	mdWidth    int
+
+	// Slash command completion popup.
+	completionVisible bool
+	completionItems   []command
+	completionIndex   int
 }
 
 // NewModel builds the initial UI model.
@@ -91,7 +96,7 @@ func NewModel(cfg Config) Model {
 	vp.SetContent("")
 
 	in := textarea.New()
-	in.Placeholder = "Type prompt or slash command (/resume /fork /worktree /skills /insight)"
+	in.Placeholder = "Ask anything..."
 	in.Focus()
 	in.SetWidth(80)
 	in.SetHeight(3)
@@ -297,10 +302,45 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case tea.KeyMsg:
+		// Handle completion popup navigation first.
+		if m.completionVisible {
+			switch msg.String() {
+			case "up":
+				if m.completionIndex > 0 {
+					m.completionIndex--
+				} else {
+					m.completionIndex = len(m.completionItems) - 1
+				}
+				return m, nil
+			case "down":
+				if m.completionIndex < len(m.completionItems)-1 {
+					m.completionIndex++
+				} else {
+					m.completionIndex = 0
+				}
+				return m, nil
+			case "tab", "enter":
+				if m.completionIndex >= 0 && m.completionIndex < len(m.completionItems) {
+					selected := m.completionItems[m.completionIndex]
+					m.input.SetValue("/" + selected.Name + " ")
+					m.input.CursorEnd()
+					m.completionVisible = false
+					m.completionItems = nil
+					return m, nil
+				}
+			case "esc":
+				m.completionVisible = false
+				m.completionItems = nil
+				return m, nil
+			}
+		}
+
 		switch msg.String() {
 		case "ctrl+c":
 			return m, tea.Quit
 		case "enter":
+			m.completionVisible = false
+			m.completionItems = nil
 			return m.submit()
 		case "ctrl+j", "end":
 			m.viewport.GotoBottom()
@@ -332,6 +372,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if newLines != m.inputLines {
 		m.relayout()
 	}
+
+	// Update slash command completion popup.
+	m.updateCompletion()
 
 	m.viewport, cmd = m.viewport.Update(msg)
 	if cmd != nil {
@@ -561,12 +604,17 @@ func (m Model) View() string {
 			Render(inputBox)
 	}
 
-	return strings.Join([]string{
-		header,
-		outputBox,
-		inputBox,
-		footer,
-	}, "\n")
+	parts := []string{header, outputBox}
+
+	// Slash command completion popup.
+	if m.completionVisible && len(m.completionItems) > 0 {
+		popup := renderCompletion(m.completionItems, m.completionIndex, m.width)
+		parts = append(parts, popup)
+	}
+
+	parts = append(parts, inputBox, footer)
+
+	return strings.Join(parts, "\n")
 }
 
 func trimToWidth(value string, width int) string {
