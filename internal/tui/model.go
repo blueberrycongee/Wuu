@@ -91,6 +91,9 @@ type Model struct {
 	completionItems   []command
 	completionIndex   int
 
+	// Cancel in-flight stream on quit.
+	cancelStream context.CancelFunc
+
 	// Double ctrl+c to quit.
 	ctrlCPressed bool
 	quitting     bool
@@ -408,6 +411,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "ctrl+c":
 			if m.ctrlCPressed {
+				if m.cancelStream != nil {
+					m.cancelStream()
+				}
 				m.quitting = true
 				return m, tea.Quit
 			}
@@ -503,6 +509,9 @@ func (m Model) submit() (tea.Model, tea.Cmd) {
 
 	if output, handled := m.handleSlash(raw); handled {
 		if output == "__exit__" {
+			if m.cancelStream != nil {
+				m.cancelStream()
+			}
 			m.quitting = true
 			return m, tea.Quit
 		}
@@ -538,6 +547,8 @@ func (m Model) submit() (tea.Model, tea.Cmd) {
 		ch := make(chan providers.StreamEvent, 64)
 		m.streamCh = ch
 		runner := m.streamRunner
+		ctx, cancel := context.WithCancel(context.Background())
+		m.cancelStream = cancel
 		done := make(chan struct{})
 		go func() {
 			defer close(ch)
@@ -548,7 +559,7 @@ func (m Model) submit() (tea.Model, tea.Cmd) {
 				case <-done:
 				}
 			}
-			_, err := runner.Run(context.Background(), raw)
+			_, err := runner.Run(ctx, raw)
 			if err != nil {
 				select {
 				case ch <- providers.StreamEvent{Type: providers.EventError, Error: err}:
