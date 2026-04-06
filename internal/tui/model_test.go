@@ -134,6 +134,40 @@ func TestRelayoutFitsWindow(t *testing.T) {
 	}
 }
 
+func TestMouseClickPositionsCursor(t *testing.T) {
+	m := NewModel(Config{
+		Provider:   "test",
+		Model:      "test-model",
+		ConfigPath: "/tmp/.wuu.json",
+		RunPrompt: func(_ctx context.Context, prompt string) (string, error) {
+			return prompt, nil
+		},
+	})
+	m.width = 100
+	m.height = 24
+	m.relayout()
+
+	m.input.SetValue("hello world")
+	m.input.SetCursor(0) // cursor at start
+
+	// Click at column 7 inside the input area.
+	// Non-compact: border adds 1 col on left, prompt "> " adds 2 cols.
+	// So to hit text column 4, click at X = 1 (border) + 2 (prompt) + 4 = 7.
+	inputY := m.layout.Input.Y + 1 // +1 for top border in non-compact
+	updated, _ := m.Update(tea.MouseMsg{
+		Action: tea.MouseActionPress,
+		Button: tea.MouseButtonLeft,
+		X:      7,
+		Y:      inputY,
+	})
+	after := updated.(Model)
+
+	li := after.input.LineInfo()
+	if li.CharOffset != 4 {
+		t.Fatalf("expected cursor at column 4, got %d", li.CharOffset)
+	}
+}
+
 func renderEntries(entries []transcriptEntry) string {
 	var b strings.Builder
 	for i, e := range entries {
