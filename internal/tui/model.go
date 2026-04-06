@@ -97,6 +97,11 @@ type Model struct {
 
 	// Lazy session creation — only write to disk on first message.
 	sessionCreated bool
+
+	// Input history — user messages for up/down recall.
+	inputHistory []string
+	historyIndex int // -1 = not browsing, 0..len-1 = browsing
+	historyDraft string // saves current input when entering history
 }
 
 // NewModel builds the initial UI model.
@@ -128,6 +133,7 @@ func NewModel(cfg Config) Model {
 		clock:         time.Now().Format("15:04:05"),
 		statusLine:    "ready",
 		streamTarget:  -1,
+		historyIndex:  -1,
 	}
 
 	// Session isolation: create or resume session.
@@ -168,6 +174,17 @@ func (m Model) loadMemory() Model {
 		return m
 	}
 	m.entries = append(m.entries, entries...)
+
+	// Populate input history from loaded user messages.
+	for _, e := range entries {
+		if e.Role == "USER" {
+			content := strings.TrimSpace(e.Content)
+			if content != "" && content != "(empty)" {
+				m.inputHistory = append(m.inputHistory, content)
+			}
+		}
+	}
+
 	m.statusLine = fmt.Sprintf("resumed %d entries", len(entries))
 	m.refreshViewport(true)
 	return m
@@ -363,6 +380,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.completionVisible = false
 			m.completionItems = nil
 			return m.submit()
+		case "up":
+			if m.canNavigateHistory() && len(m.inputHistory) > 0 {
+				return m.historyUp()
+			}
+		case "down":
+			if m.historyIndex >= 0 {
+				return m.historyDown()
+			}
 		case "ctrl+j", "end":
 			m.viewport.GotoBottom()
 			m.autoFollow = true
@@ -431,6 +456,14 @@ func (m Model) submit() (tea.Model, tea.Cmd) {
 
 	m.appendEntry("user", raw)
 	m.input.Reset()
+
+	// Record in input history (skip duplicates).
+	if len(m.inputHistory) == 0 || m.inputHistory[len(m.inputHistory)-1] != raw {
+		m.inputHistory = append(m.inputHistory, raw)
+	}
+	m.historyIndex = -1
+	m.historyDraft = ""
+
 	m.pendingRequest = true
 	m.streaming = true
 	m.streamTarget = m.appendEntry("assistant", "")
@@ -550,6 +583,53 @@ func (m *Model) ensureSessionFile() {
 	}
 	m.memoryPath = session.FilePath(m.sessionDir, sess.ID)
 	m.sessionCreated = true
+}
+
+// canNavigateHistory returns true when up/down should browse history
+// instead of moving the cursor within the textarea.
+func (m *Model) canNavigateHistory() bool {
+	val := m.input.Value()
+	if val == "" {
+		return true
+	}
+	// If currently browsing and text matches the recalled entry, keep navigating.
+	if m.historyIndex >= 0 && m.historyIndex < len(m.inputHistory) {
+		return val == m.inputHistory[m.historyIndex]
+	}
+	return false
+}
+
+func (m Model) historyUp() (tea.Model, tea.Cmd) {
+	if m.historyIndex < 0 {
+		// Entering history mode — save current draft.
+		m.historyDraft = m.input.Value()
+		m.historyIndex = len(m.inputHistory) - 1
+	} else if m.historyIndex > 0 {
+		m.historyIndex--
+	} else {
+		return m, nil // already at oldest
+	}
+	m.input.SetValue(m.inputHistory[m.historyIndex])
+	m.input.CursorEnd()
+	return m, nil
+}
+
+func (m Model) historyDown() (tea.Model, tea.Cmd) {
+	if m.historyIndex < 0 {
+		return m, nil
+	}
+	if m.historyIndex < len(m.inputHistory)-1 {
+		m.historyIndex++
+		m.input.SetValue(m.inputHistory[m.historyIndex])
+		m.input.CursorEnd()
+	} else {
+		// Past newest — exit history, restore draft.
+		m.historyIndex = -1
+		m.input.SetValue(m.historyDraft)
+		m.input.CursorEnd()
+		m.historyDraft = ""
+	}
+	return m, nil
 }
 
 func (m *Model) refreshViewport(forceBottom bool) {
