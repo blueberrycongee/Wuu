@@ -40,6 +40,8 @@ type streamEventMsg struct {
 	event providers.StreamEvent
 }
 
+type streamFinishedMsg struct{}
+
 type ctrlCResetMsg struct{}
 
 type transcriptEntry struct {
@@ -223,6 +225,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.clock = msg.now.Format("15:04:05")
 		return m, tickCmd()
 
+	case streamFinishedMsg:
+		// Runner goroutine completed (channel closed).
+		m.streaming = false
+		m.pendingRequest = false
+		m.streamTarget = -1
+		m.statusLine = "ready"
+		m.refreshViewport(true)
+		return m, nil
+
 	case ctrlCResetMsg:
 		m.ctrlCPressed = false
 		if m.statusLine == "press ctrl+c again to exit" {
@@ -269,13 +280,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case streamEventMsg:
 		switch msg.event.Type {
 		case providers.EventContentDelta:
-			if m.streamTarget >= 0 && m.streamTarget < len(m.entries) {
-				if m.entries[m.streamTarget].Content == "(empty)" {
-					m.entries[m.streamTarget].Content = ""
-				}
-				m.entries[m.streamTarget].Content += msg.event.Content
-				m.refreshViewport(true)
+			if m.streamTarget < 0 || m.streamTarget >= len(m.entries) {
+				// New round of streaming — create a fresh assistant entry.
+				m.streamTarget = m.appendEntry("assistant", "")
 			}
+			if m.entries[m.streamTarget].Content == "(empty)" {
+				m.entries[m.streamTarget].Content = ""
+			}
+			m.entries[m.streamTarget].Content += msg.event.Content
+			m.refreshViewport(true)
 			return m, waitStreamEvent(m.streamCh)
 
 		case providers.EventToolUseStart:
@@ -283,7 +296,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if msg.event.ToolCall != nil {
 				toolName = msg.event.ToolCall.Name
 			}
-			m.statusLine = fmt.Sprintf("executing tool: %s", toolName)
+			m.statusLine = fmt.Sprintf("tool: %s", toolName)
+			m.refreshViewport(false)
 			return m, waitStreamEvent(m.streamCh)
 
 		case providers.EventToolUseEnd:
@@ -291,12 +305,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, waitStreamEvent(m.streamCh)
 
 		case providers.EventDone:
-			m.streaming = false
-			m.pendingRequest = false
-			m.streamTarget = -1
-			m.statusLine = "ready"
+			// One SSE stream finished. The runner may continue with tool
+			// execution and start another stream, so keep listening.
+			if m.streamTarget >= 0 && m.streamTarget < len(m.entries) {
+				content := strings.TrimSpace(m.entries[m.streamTarget].Content)
+				if content == "" || content == "(empty)" {
+					// No text content in this round (pure tool call).
+					// Remove the empty assistant entry.
+					m.entries = m.entries[:m.streamTarget]
+					m.streamTarget = -1
+				}
+			}
 			m.refreshViewport(true)
-			return m, nil
+			return m, waitStreamEvent(m.streamCh)
 
 		case providers.EventError:
 			m.streaming = false
@@ -591,7 +612,8 @@ func waitStreamEvent(ch <-chan providers.StreamEvent) tea.Cmd {
 	return func() tea.Msg {
 		event, ok := <-ch
 		if !ok {
-			return streamEventMsg{event: providers.StreamEvent{Type: providers.EventDone}}
+			// Channel closed — runner goroutine finished.
+			return streamFinishedMsg{}
 		}
 		return streamEventMsg{event: event}
 	}
