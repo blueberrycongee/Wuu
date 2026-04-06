@@ -15,6 +15,7 @@ import (
 	"github.com/blueberrycongee/wuu/internal/config"
 	"github.com/blueberrycongee/wuu/internal/providerfactory"
 	"github.com/blueberrycongee/wuu/internal/tools"
+	"github.com/blueberrycongee/wuu/internal/tui"
 )
 
 func main() {
@@ -35,6 +36,8 @@ func run(args []string) error {
 		return runInit(args[1:])
 	case "run":
 		return runTask(args[1:])
+	case "tui":
+		return runTUI(args[1:])
 	case "help", "-h", "--help":
 		printUsage()
 		return nil
@@ -164,6 +167,89 @@ func runTask(args []string) error {
 	return nil
 }
 
+func runTUI(args []string) error {
+	fs := flag.NewFlagSet("tui", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+
+	providerName := fs.String("provider", "", "provider name in config")
+	modelOverride := fs.String("model", "", "model override")
+	maxSteps := fs.Int("max-steps", 0, "max tool loop steps")
+	temperature := fs.Float64("temperature", -1, "sampling temperature override")
+	systemPrompt := fs.String("system-prompt", "", "system prompt override")
+	workdir := fs.String("workdir", "", "workspace directory")
+	noTools := fs.Bool("no-tools", false, "disable local tools")
+	requestTimeout := fs.Duration("request-timeout", 10*time.Minute, "single request timeout (e.g. 2m)")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	rootDir, err := resolveWorkdir(*workdir)
+	if err != nil {
+		return err
+	}
+
+	cfg, configPath, err := config.LoadFrom(rootDir, os.Getenv("HOME"))
+	if err != nil {
+		return err
+	}
+
+	providerCfg, resolvedName, err := cfg.ResolveProvider(*providerName)
+	if err != nil {
+		return err
+	}
+	if *modelOverride != "" {
+		providerCfg.Model = *modelOverride
+	}
+
+	client, err := providerfactory.BuildClient(providerCfg)
+	if err != nil {
+		return err
+	}
+
+	var toolExecutor agent.ToolExecutor
+	if !*noTools {
+		kit, newErr := tools.New(rootDir)
+		if newErr != nil {
+			return newErr
+		}
+		toolExecutor = kit
+	}
+
+	runner := agent.Runner{
+		Client:       client,
+		Tools:        toolExecutor,
+		Model:        providerCfg.Model,
+		SystemPrompt: cfg.Agent.SystemPrompt,
+		MaxSteps:     cfg.Agent.MaxSteps,
+		Temperature:  cfg.Agent.Temperature,
+	}
+	if *maxSteps > 0 {
+		runner.MaxSteps = *maxSteps
+	}
+	if *temperature >= 0 {
+		runner.Temperature = *temperature
+	}
+	if strings.TrimSpace(*systemPrompt) != "" {
+		runner.SystemPrompt = *systemPrompt
+	}
+
+	runPrompt := func(ctx context.Context, prompt string) (string, error) {
+		if *requestTimeout <= 0 {
+			return runner.Run(ctx, prompt)
+		}
+		callCtx, cancel := context.WithTimeout(ctx, *requestTimeout)
+		defer cancel()
+		return runner.Run(callCtx, prompt)
+	}
+
+	return tui.Run(tui.Config{
+		Provider:   resolvedName,
+		Model:      providerCfg.Model,
+		ConfigPath: configPath,
+		RunPrompt:  runPrompt,
+	})
+}
+
 func resolveWorkdir(input string) (string, error) {
 	if strings.TrimSpace(input) == "" {
 		cwd, err := os.Getwd()
@@ -217,6 +303,7 @@ func printUsage() {
 Usage:
   wuu init [--force]
   wuu run [flags] "your coding task"
+  wuu tui [flags]
 
 Run flags:
   --provider        provider name from config
@@ -226,5 +313,15 @@ Run flags:
   --system-prompt   system prompt override
   --workdir         workspace directory
   --no-tools        disable local tools
-  --timeout         total timeout (default 10m)`)
+  --timeout         total timeout (default 10m)
+
+TUI flags:
+  --provider        provider name from config
+  --model           model override
+  --max-steps       max tool loop steps
+  --temperature     temperature override
+  --system-prompt   system prompt override
+  --workdir         workspace directory
+  --no-tools        disable local tools
+  --request-timeout single request timeout (default 10m)`)
 }
