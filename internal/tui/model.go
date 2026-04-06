@@ -18,7 +18,9 @@ const (
 	minOutputHeight = 6
 	inputHeight     = 3
 	headerHeight    = 2
-	footerHeight    = 2
+	footerHeight    = 1
+	boxChromeHeight = 2
+	boxChromeWidth  = 2
 	streamChunkSize = 24
 	streamTickDelay = 30 * time.Millisecond
 )
@@ -367,12 +369,15 @@ func (m *Model) relayout() {
 		return
 	}
 
-	m.input.SetWidth(max(16, m.width-2))
-	outputHeight := m.height - headerHeight - footerHeight - inputHeight
+	innerWidth := max(16, m.width-boxChromeWidth)
+	m.input.SetWidth(innerWidth)
+
+	inputOuterHeight := inputHeight + boxChromeHeight
+	outputHeight := m.height - headerHeight - footerHeight - inputOuterHeight - boxChromeHeight
 	if outputHeight < minOutputHeight {
 		outputHeight = minOutputHeight
 	}
-	m.viewport.Width = max(16, m.width-2)
+	m.viewport.Width = innerWidth
 	m.viewport.Height = outputHeight
 	m.refreshViewport(false)
 }
@@ -384,37 +389,30 @@ func (m Model) View() string {
 	}
 
 	title := lipgloss.NewStyle().Bold(true).Render(
-		fmt.Sprintf("wuu tui | provider=%s | model=%s", m.provider, m.modelName),
+		trimToWidth(fmt.Sprintf("wuu tui | provider=%s | model=%s", m.provider, m.modelName), m.width),
 	)
-	meta := lipgloss.NewStyle().Faint(true).Render(fmt.Sprintf("config: %s", m.configPath))
+	meta := lipgloss.NewStyle().Faint(true).Render(trimToWidth(fmt.Sprintf("config: %s", m.configPath), m.width))
 	jumpHint := ""
 	if m.showJump {
 		jumpHint = " | [Jump to bottom: click or Ctrl+J]"
 	}
-	clock := lipgloss.NewStyle().Faint(true).Render(m.clock)
+	clockText := m.clock
 	statusText := m.statusLine
 	if m.streaming {
-		statusText += " (editing input is still available)"
+		statusText += " (streaming; input editable)"
 	}
-	status := lipgloss.NewStyle().Faint(true).Render(statusText + jumpHint)
-	footer := lipgloss.JoinHorizontal(
-		lipgloss.Left,
-		status,
-		strings.Repeat(" ", max(1, m.width-lipgloss.Width(status)-lipgloss.Width(clock)-2)),
-		clock,
-	)
+
+	availableStatus := max(1, m.width-lipgloss.Width(clockText)-1)
+	statusText = trimToWidth(statusText+jumpHint, availableStatus)
+	gap := max(1, m.width-lipgloss.Width(statusText)-lipgloss.Width(clockText))
+	footer := lipgloss.NewStyle().Faint(true).Render(statusText + strings.Repeat(" ", gap) + clockText)
 
 	outputBox := lipgloss.NewStyle().
 		Border(lipgloss.NormalBorder()).
-		Padding(0, 1).
-		Width(max(16, m.width-2)).
-		Height(m.viewport.Height).
 		Render(m.viewport.View())
 
 	inputBox := lipgloss.NewStyle().
 		Border(lipgloss.NormalBorder()).
-		Padding(0, 1).
-		Width(max(16, m.width-2)).
 		Render(m.input.View())
 
 	return strings.Join([]string{
@@ -438,4 +436,26 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+func trimToWidth(value string, width int) string {
+	if width <= 0 {
+		return ""
+	}
+	if lipgloss.Width(value) <= width {
+		return value
+	}
+	if width == 1 {
+		return "…"
+	}
+
+	var b strings.Builder
+	for _, r := range value {
+		next := b.String() + string(r)
+		if lipgloss.Width(next+"…") > width {
+			break
+		}
+		b.WriteRune(r)
+	}
+	return b.String() + "…"
 }

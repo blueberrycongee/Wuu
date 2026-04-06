@@ -103,6 +103,30 @@ func TestJumpToBottomToggle(t *testing.T) {
 	}
 }
 
+func TestRelayoutFitsWindow(t *testing.T) {
+	m := NewModel(Config{
+		Provider:   "test",
+		Model:      "test-model",
+		ConfigPath: "/tmp/.wuu.json",
+		RunPrompt: func(_ctx context.Context, prompt string) (string, error) {
+			return prompt, nil
+		},
+	})
+
+	m.width = 80
+	m.height = 24
+	m.relayout()
+
+	totalHeight := headerHeight + footerHeight + boxChromeHeight + inputHeight + boxChromeHeight + m.viewport.Height
+	if totalHeight > m.height {
+		t.Fatalf("layout exceeds window height: used=%d window=%d", totalHeight, m.height)
+	}
+
+	if m.viewport.Width+boxChromeWidth > m.width {
+		t.Fatalf("layout exceeds window width: used=%d window=%d", m.viewport.Width+boxChromeWidth, m.width)
+	}
+}
+
 func renderEntries(entries []transcriptEntry) string {
 	var b strings.Builder
 	for i, e := range entries {
