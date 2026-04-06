@@ -44,6 +44,8 @@ type streamFinishedMsg struct{}
 
 type ctrlCResetMsg struct{}
 
+type queueDrainMsg struct{}
+
 type transcriptEntry struct {
 	Role    string
 	Content string
@@ -107,6 +109,9 @@ type Model struct {
 	inputHistory []string
 	historyIndex int // -1 = not browsing, 0..len-1 = browsing
 	historyDraft string // saves current input when entering history
+
+	// Message queue — Tab queues, Enter cuts in line.
+	messageQueue []string
 }
 
 // NewModel builds the initial UI model.
@@ -232,7 +237,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.streamTarget = -1
 		m.statusLine = "ready"
 		m.refreshViewport(true)
-		return m, nil
+		return m, func() tea.Msg { return queueDrainMsg{} }
 
 	case ctrlCResetMsg:
 		m.ctrlCPressed = false
@@ -240,6 +245,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.statusLine = "ready"
 		}
 		return m, nil
+
+	case queueDrainMsg:
+		return m.drainQueue()
 
 	case responseMsg:
 		m.pendingRequest = false
@@ -265,7 +273,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if m.streamCursor >= len(m.streamRunes) {
 			m.finishStream()
-			return m, nil
+			return m, func() tea.Msg { return queueDrainMsg{} }
 		}
 		end := min(m.streamCursor+streamChunkSize, len(m.streamRunes))
 		m.entries[m.streamTarget].Content += string(m.streamRunes[m.streamCursor:end])
@@ -273,7 +281,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.refreshViewport(true)
 		if m.streamCursor >= len(m.streamRunes) {
 			m.finishStream()
-			return m, nil
+			return m, func() tea.Msg { return queueDrainMsg{} }
 		}
 		return m, streamTickCmd()
 
@@ -475,7 +483,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "enter":
 			m.completionVisible = false
 			m.completionItems = nil
-			return m.submit()
+			return m.submit(false)
+		case "tab":
+			if !m.completionVisible {
+				return m.submit(true)
+			}
 		case "up":
 			if m.canNavigateHistory() && len(m.inputHistory) > 0 {
 				return m.historyUp()
@@ -527,7 +539,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, tea.Batch(cmds...)
 }
 
-func (m Model) submit() (tea.Model, tea.Cmd) {
+func (m Model) submit(shouldQueue bool) (tea.Model, tea.Cmd) {
 	raw := strings.TrimSpace(m.input.Value())
 	if raw == "" {
 		return m, nil
@@ -548,25 +560,37 @@ func (m Model) submit() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	if m.pendingRequest {
-		m.statusLine = "request already running"
-		return m, nil
-	}
-
-	m.appendEntry("user", raw)
-	m.input.Reset()
-
 	// Record in input history (skip duplicates).
 	if len(m.inputHistory) == 0 || m.inputHistory[len(m.inputHistory)-1] != raw {
 		m.inputHistory = append(m.inputHistory, raw)
 	}
 	m.historyIndex = -1
 	m.historyDraft = ""
+	m.input.Reset()
+
+	if m.pendingRequest && shouldQueue {
+		// Tab while busy — queue the message.
+		m.messageQueue = append(m.messageQueue, raw)
+		m.statusLine = fmt.Sprintf("queued (%d pending)", len(m.messageQueue))
+		return m, nil
+	}
+
+	// Enter always sends immediately, even if busy (cancel + resend).
+	// If not busy, both Tab and Enter send directly.
+	return m.sendMessage(raw)
+}
+
+func (m Model) sendMessage(raw string) (tea.Model, tea.Cmd) {
+	m.appendEntry("user", raw)
 
 	m.pendingRequest = true
 	m.streaming = true
 	m.streamTarget = m.appendEntry("assistant", "")
-	m.statusLine = "streaming"
+	queueHint := ""
+	if len(m.messageQueue) > 0 {
+		queueHint = fmt.Sprintf(" · %d queued", len(m.messageQueue))
+	}
+	m.statusLine = "streaming" + queueHint
 	m.refreshViewport(true)
 
 	if m.streamRunner != nil {
@@ -617,6 +641,16 @@ func waitStreamEvent(ch <-chan providers.StreamEvent) tea.Cmd {
 		}
 		return streamEventMsg{event: event}
 	}
+}
+
+// drainQueue sends the next queued message if idle.
+func (m Model) drainQueue() (tea.Model, tea.Cmd) {
+	if m.pendingRequest || len(m.messageQueue) == 0 {
+		return m, nil
+	}
+	next := m.messageQueue[0]
+	m.messageQueue = m.messageQueue[1:]
+	return m.sendMessage(next)
 }
 
 func (m *Model) finishStream() {
@@ -762,13 +796,6 @@ func (m *Model) refreshViewport(forceBottom bool) {
 			b.WriteString("\n")
 
 			content := truncateForDisplay(entry.Content)
-			// Render markdown for completed assistant messages.
-			if entry.Role == "ASSISTANT" && !(m.streaming && i == m.streamTarget) {
-				rendered, err := m.renderMarkdown(content)
-				if err == nil {
-					content = rendered
-				}
-			}
 			b.WriteString(content)
 		}
 		if m.pendingRequest {
@@ -837,7 +864,12 @@ func (m Model) View() string {
 		jumpHint = " · ▼ jump"
 	}
 
-	footerLeft := fmt.Sprintf("%s %s%s", iconStyled, state, jumpHint)
+	queueHint := ""
+	if len(m.messageQueue) > 0 {
+		queueHint = fmt.Sprintf(" · %d queued", len(m.messageQueue))
+	}
+
+	footerLeft := fmt.Sprintf("%s %s%s%s", iconStyled, state, queueHint, jumpHint)
 	footerRight := m.clock
 	availableW := max(1, m.width-lipgloss.Width(footerRight)-1)
 	footerLeft = trimToWidth(footerLeft, availableW)

@@ -22,7 +22,7 @@ func TestSubmitPromptFlow(t *testing.T) {
 	m.relayout()
 
 	m.input.SetValue("hello world")
-	nextModel, cmd := m.submit()
+	nextModel, cmd := m.submit(false)
 	if cmd == nil {
 		t.Fatal("expected async command from submit")
 	}
