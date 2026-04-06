@@ -280,20 +280,6 @@ func cmdExit(_ string, _ *Model) string {
 // Helpers
 // ---------------------------------------------------------------------------
 
-func currentBranch(root string) string {
-	cmd := exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD")
-	cmd.Dir = root
-	out, err := cmd.Output()
-	if err != nil {
-		return "(unknown)"
-	}
-	branch := strings.TrimSpace(string(out))
-	if branch == "" {
-		return "(unknown)"
-	}
-	return branch
-}
-
 func discoverLocalSkills(baseDir string) []string {
 	entries, err := os.ReadDir(baseDir)
 	if err != nil {

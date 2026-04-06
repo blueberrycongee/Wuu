@@ -436,10 +436,6 @@ func (m *Model) appendEntry(role, content string) int {
 	return len(m.entries) - 1
 }
 
-func (m Model) entryCount() int {
-	return len(m.entries)
-}
-
 func (m *Model) refreshViewport(forceBottom bool) {
 	var b strings.Builder
 	for i, entry := range m.entries {
@@ -535,20 +531,6 @@ func (m Model) View() string {
 		inputBox,
 		footer,
 	}, "\n")
-}
-
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }
 
 func trimToWidth(value string, width int) string {

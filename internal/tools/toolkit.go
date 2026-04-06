@@ -376,13 +376,6 @@ func truncate(value string, maxBytes int) (string, bool) {
 	return value[:maxBytes], true
 }
 
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
 func normalizeDisplayPath(rootDir, absPath string) string {
 	rel, err := filepath.Rel(rootDir, absPath)
 	if err != nil {
