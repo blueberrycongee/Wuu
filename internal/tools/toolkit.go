@@ -3,12 +3,14 @@ package tools
 import (
 	"bytes"
 	"context"
+	"bufio"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -113,6 +115,72 @@ func (t *Toolkit) Definitions() []providers.ToolDefinition {
 				},
 			},
 		},
+		{
+			Name:        "edit_file",
+			Description: "Replace exact text in a file. Provide old_text (must match exactly) and new_text. Use for precise edits without rewriting the whole file.",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"path": map[string]any{
+						"type":        "string",
+						"description": "Relative file path in workspace.",
+					},
+					"old_text": map[string]any{
+						"type":        "string",
+						"description": "Exact text to find and replace. Must match exactly once in the file.",
+					},
+					"new_text": map[string]any{
+						"type":        "string",
+						"description": "Text to replace old_text with. Use empty string to delete.",
+					},
+				},
+				"required": []string{"path", "old_text", "new_text"},
+			},
+		},
+		{
+			Name:        "grep",
+			Description: "Search file contents using a regex pattern. Returns matching lines with file paths and line numbers.",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"pattern": map[string]any{
+						"type":        "string",
+						"description": "Regex pattern to search for.",
+					},
+					"path": map[string]any{
+						"type":        "string",
+						"description": "Directory or file to search in. Default is workspace root.",
+					},
+					"include": map[string]any{
+						"type":        "string",
+						"description": "Glob pattern to filter files (e.g. '*.go', '*.ts').",
+					},
+					"max_results": map[string]any{
+						"type":        "integer",
+						"description": "Maximum number of matching lines to return. Default 50.",
+					},
+				},
+				"required": []string{"pattern"},
+			},
+		},
+		{
+			Name:        "glob",
+			Description: "Find files matching a glob pattern in the workspace. Supports ** for recursive matching.",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"pattern": map[string]any{
+						"type":        "string",
+						"description": "Glob pattern (e.g. '**/*.go', 'src/**/*.ts', '*.json').",
+					},
+					"max_results": map[string]any{
+						"type":        "integer",
+						"description": "Maximum number of files to return. Default 100.",
+					},
+				},
+				"required": []string{"pattern"},
+			},
+		},
 	}
 }
 
@@ -127,6 +195,12 @@ func (t *Toolkit) Execute(ctx context.Context, call providers.ToolCall) (string,
 		return t.writeFile(call.Arguments)
 	case "list_files":
 		return t.listFiles(call.Arguments)
+	case "edit_file":
+		return t.editFile(call.Arguments)
+	case "grep":
+		return t.grep(call.Arguments)
+	case "glob":
+		return t.glob(call.Arguments)
 	default:
 		return "", fmt.Errorf("unknown tool %q", call.Name)
 	}
@@ -322,6 +396,207 @@ func (t *Toolkit) listFiles(argsJSON string) (string, error) {
 	return mustJSON(result)
 }
 
+func (t *Toolkit) editFile(argsJSON string) (string, error) {
+	var args struct {
+		Path    string `json:"path"`
+		OldText string `json:"old_text"`
+		NewText string `json:"new_text"`
+	}
+	if err := decodeArgs(argsJSON, &args); err != nil {
+		return "", err
+	}
+	if strings.TrimSpace(args.Path) == "" {
+		return "", errors.New("edit_file requires path")
+	}
+	if args.OldText == "" {
+		return "", errors.New("edit_file requires old_text")
+	}
+
+	resolved, err := t.resolvePath(args.Path)
+	if err != nil {
+		return "", err
+	}
+
+	content, err := os.ReadFile(resolved)
+	if err != nil {
+		return "", fmt.Errorf("read file: %w", err)
+	}
+
+	text := string(content)
+	count := strings.Count(text, args.OldText)
+	if count == 0 {
+		return "", errors.New("old_text not found in file")
+	}
+	if count > 1 {
+		return "", fmt.Errorf("old_text matches %d times, must be unique", count)
+	}
+
+	newContent := strings.Replace(text, args.OldText, args.NewText, 1)
+	if err := os.WriteFile(resolved, []byte(newContent), 0o644); err != nil {
+		return "", fmt.Errorf("write file: %w", err)
+	}
+
+	result := map[string]any{
+		"path":         normalizeDisplayPath(t.rootDir, resolved),
+		"old_text_len": len(args.OldText),
+		"new_text_len": len(args.NewText),
+	}
+	return mustJSON(result)
+}
+
+func (t *Toolkit) grep(argsJSON string) (string, error) {
+	var args struct {
+		Pattern    string `json:"pattern"`
+		Path       string `json:"path"`
+		Include    string `json:"include"`
+		MaxResults int    `json:"max_results"`
+	}
+	if err := decodeArgs(argsJSON, &args); err != nil {
+		return "", err
+	}
+	if strings.TrimSpace(args.Pattern) == "" {
+		return "", errors.New("grep requires pattern")
+	}
+
+	re, err := regexp.Compile(args.Pattern)
+	if err != nil {
+		return "", fmt.Errorf("invalid regex: %w", err)
+	}
+
+	limit := args.MaxResults
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 500 {
+		limit = 500
+	}
+
+	searchRoot := t.rootDir
+	if strings.TrimSpace(args.Path) != "" {
+		resolved, err := t.resolvePath(args.Path)
+		if err != nil {
+			return "", err
+		}
+		searchRoot = resolved
+	}
+
+	type match struct {
+		File    string `json:"file"`
+		Line    int    `json:"line"`
+		Content string `json:"content"`
+	}
+	var matches []match
+
+	filepath.Walk(searchRoot, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil
+		}
+		if info.IsDir() {
+			if isSkippedDir(info.Name()) {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if len(matches) >= limit {
+			return filepath.SkipAll
+		}
+		if args.Include != "" {
+			if matched, _ := filepath.Match(args.Include, info.Name()); !matched {
+				return nil
+			}
+		}
+		if isBinaryFile(path) {
+			return nil
+		}
+
+		f, err := os.Open(path)
+		if err != nil {
+			return nil
+		}
+		defer f.Close()
+
+		rel, _ := filepath.Rel(t.rootDir, path)
+		scanner := bufio.NewScanner(f)
+		lineNum := 0
+		for scanner.Scan() {
+			lineNum++
+			line := scanner.Text()
+			if re.MatchString(line) {
+				matches = append(matches, match{
+					File:    rel,
+					Line:    lineNum,
+					Content: line,
+				})
+				if len(matches) >= limit {
+					break
+				}
+			}
+		}
+		return nil
+	})
+
+	result := map[string]any{
+		"pattern":   args.Pattern,
+		"total":     len(matches),
+		"truncated": len(matches) >= limit,
+		"matches":   matches,
+	}
+	return mustJSON(result)
+}
+
+func (t *Toolkit) glob(argsJSON string) (string, error) {
+	var args struct {
+		Pattern    string `json:"pattern"`
+		MaxResults int    `json:"max_results"`
+	}
+	if err := decodeArgs(argsJSON, &args); err != nil {
+		return "", err
+	}
+	if strings.TrimSpace(args.Pattern) == "" {
+		return "", errors.New("glob requires pattern")
+	}
+
+	limit := args.MaxResults
+	if limit <= 0 {
+		limit = 100
+	}
+	if limit > 1000 {
+		limit = 1000
+	}
+
+	pattern := args.Pattern
+	var matches []string
+
+	filepath.Walk(t.rootDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil
+		}
+		if info.IsDir() {
+			if isSkippedDir(info.Name()) {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+
+		rel, _ := filepath.Rel(t.rootDir, path)
+		if matchGlob(pattern, rel) {
+			matches = append(matches, rel)
+		}
+		if len(matches) >= limit {
+			return filepath.SkipAll
+		}
+		return nil
+	})
+
+	result := map[string]any{
+		"pattern":   pattern,
+		"total":     len(matches),
+		"truncated": len(matches) >= limit,
+		"files":     matches,
+	}
+	return mustJSON(result)
+}
+
 func (t *Toolkit) resolvePath(input string) (string, error) {
 	candidate := strings.TrimSpace(input)
 	if candidate == "" {
@@ -385,4 +660,74 @@ func normalizeDisplayPath(rootDir, absPath string) string {
 		return "."
 	}
 	return rel
+}
+
+func isSkippedDir(name string) bool {
+	switch name {
+	case ".git", ".wuu", ".hg", ".svn", "node_modules", "vendor", "__pycache__", ".tox", ".venv":
+		return true
+	}
+	return strings.HasPrefix(name, ".")
+}
+
+func isBinaryFile(path string) bool {
+	f, err := os.Open(path)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	buf := make([]byte, 512)
+	n, _ := f.Read(buf)
+	for _, b := range buf[:n] {
+		if b == 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func matchGlob(pattern, path string) bool {
+	// Handle **/ prefix: match suffix against any file in the tree
+	if strings.HasPrefix(pattern, "**/") {
+		suffix := pattern[3:]
+		// Match against just the filename
+		if matched, _ := filepath.Match(suffix, filepath.Base(path)); matched {
+			return true
+		}
+		// Match against each possible tail of the path
+		parts := strings.Split(path, string(filepath.Separator))
+		for i := range parts {
+			tail := strings.Join(parts[i:], string(filepath.Separator))
+			if matched, _ := filepath.Match(suffix, tail); matched {
+				return true
+			}
+		}
+		return false
+	}
+
+	// Handle patterns with ** in the middle (e.g. src/**/*.ts)
+	if idx := strings.Index(pattern, "/**/"); idx >= 0 {
+		prefix := pattern[:idx]
+		suffix := pattern[idx+4:]
+		parts := strings.Split(path, string(filepath.Separator))
+		for i := range parts {
+			dirPart := strings.Join(parts[:i], string(filepath.Separator))
+			filePart := strings.Join(parts[i:], string(filepath.Separator))
+			prefixMatch, _ := filepath.Match(prefix, dirPart)
+			suffixMatch, _ := filepath.Match(suffix, filepath.Base(filePart))
+			if prefixMatch && suffixMatch {
+				return true
+			}
+		}
+		return false
+	}
+
+	// Direct match
+	matched, _ := filepath.Match(pattern, path)
+	if matched {
+		return true
+	}
+	// Also try matching just the filename for simple patterns
+	matched, _ = filepath.Match(pattern, filepath.Base(path))
+	return matched
 }
