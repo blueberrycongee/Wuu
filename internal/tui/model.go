@@ -538,14 +538,22 @@ func (m Model) submit() (tea.Model, tea.Cmd) {
 		ch := make(chan providers.StreamEvent, 64)
 		m.streamCh = ch
 		runner := m.streamRunner
+		done := make(chan struct{})
 		go func() {
 			defer close(ch)
+			defer close(done)
 			runner.OnEvent = func(event providers.StreamEvent) {
-				ch <- event
+				select {
+				case ch <- event:
+				case <-done:
+				}
 			}
 			_, err := runner.Run(context.Background(), raw)
 			if err != nil {
-				ch <- providers.StreamEvent{Type: providers.EventError, Error: err}
+				select {
+				case ch <- providers.StreamEvent{Type: providers.EventError, Error: err}:
+				case <-done:
+				}
 			}
 		}()
 		return m, waitStreamEvent(ch)
