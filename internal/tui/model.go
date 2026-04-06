@@ -468,19 +468,25 @@ func (m *Model) appendEntry(role, content string) int {
 
 func (m *Model) refreshViewport(forceBottom bool) {
 	var b strings.Builder
-	for i, entry := range m.entries {
-		if i > 0 {
-			b.WriteString("\n\n")
+
+	if len(m.entries) == 0 && !m.pendingRequest {
+		// Show welcome screen when chat is empty.
+		b.WriteString(welcomeScreen(m.viewport.Width, m.provider, m.modelName, m.sessionID))
+	} else {
+		for i, entry := range m.entries {
+			if i > 0 {
+				b.WriteString("\n\n")
+			}
+			b.WriteString(entry.Role)
+			b.WriteString("\n")
+			b.WriteString(entry.Content)
 		}
-		b.WriteString(entry.Role)
-		b.WriteString("\n")
-		b.WriteString(entry.Content)
-	}
-	if m.pendingRequest {
-		if b.Len() > 0 {
-			b.WriteString("\n\n")
+		if m.pendingRequest {
+			if b.Len() > 0 {
+				b.WriteString("\n\n")
+			}
+			b.WriteString("ASSISTANT\nthinking...")
 		}
-		b.WriteString("ASSISTANT\nthinking...")
 	}
 
 	m.viewport.SetContent(b.String())
