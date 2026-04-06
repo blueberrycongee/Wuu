@@ -352,6 +352,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 
 				// Move to target row.
+				// NOTE: Line() returns logical row, targetRow is visual row.
+				// This works correctly for hard newlines but may misalign
+				// with soft-wrapped lines. Acceptable for typical input widths.
 				currentRow := m.input.Line()
 				for currentRow < targetRow && currentRow < m.input.LineCount()-1 {
 					m.input.CursorDown()
