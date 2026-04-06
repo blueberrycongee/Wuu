@@ -16,11 +16,6 @@ import (
 
 const (
 	minOutputHeight = 6
-	inputHeight     = 3
-	headerHeight    = 2
-	footerHeight    = 1
-	boxChromeHeight = 2
-	boxChromeWidth  = 2
 	streamChunkSize = 24
 	streamTickDelay = 30 * time.Millisecond
 )
@@ -54,6 +49,9 @@ type Model struct {
 	viewport viewport.Model
 	input    textarea.Model
 
+	layout     layout
+	inputLines int
+
 	width  int
 	height int
 
@@ -84,7 +82,7 @@ func NewModel(cfg Config) Model {
 	in.Placeholder = "Type prompt or slash command (/resume /fork /worktree /skills /insight)"
 	in.Focus()
 	in.SetWidth(80)
-	in.SetHeight(inputHeight)
+	in.SetHeight(3)
 	in.ShowLineNumbers = false
 	in.Prompt = "> "
 	in.CharLimit = 0
@@ -233,6 +231,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, cmd)
 	}
 
+	// Re-layout when input line count changes.
+	newLines := clampInputLines(strings.Count(m.input.Value(), "\n")+1, 15)
+	if newLines != m.inputLines {
+		m.relayout()
+	}
+
 	m.viewport, cmd = m.viewport.Update(msg)
 	if cmd != nil {
 		cmds = append(cmds, cmd)
@@ -368,17 +372,13 @@ func (m *Model) relayout() {
 	if m.width <= 0 || m.height <= 0 {
 		return
 	}
+	m.inputLines = clampInputLines(strings.Count(m.input.Value(), "\n")+1, 15)
+	m.layout = computeLayout(m.width, m.height, m.inputLines)
 
-	innerWidth := max(16, m.width-boxChromeWidth)
-	m.input.SetWidth(innerWidth)
-
-	inputOuterHeight := inputHeight + boxChromeHeight
-	outputHeight := m.height - headerHeight - footerHeight - inputOuterHeight - boxChromeHeight
-	if outputHeight < minOutputHeight {
-		outputHeight = minOutputHeight
-	}
-	m.viewport.Width = innerWidth
-	m.viewport.Height = outputHeight
+	m.input.SetWidth(m.layout.Input.Width)
+	m.input.SetHeight(m.layout.Input.Height)
+	m.viewport.Width = m.layout.Chat.Width
+	m.viewport.Height = m.layout.Chat.Height
 	m.refreshViewport(false)
 }
 
@@ -407,13 +407,16 @@ func (m Model) View() string {
 	gap := max(1, m.width-lipgloss.Width(statusText)-lipgloss.Width(clockText))
 	footer := lipgloss.NewStyle().Faint(true).Render(statusText + strings.Repeat(" ", gap) + clockText)
 
-	outputBox := lipgloss.NewStyle().
-		Border(lipgloss.NormalBorder()).
-		Render(m.viewport.View())
-
-	inputBox := lipgloss.NewStyle().
-		Border(lipgloss.NormalBorder()).
-		Render(m.input.View())
+	outputBox := m.viewport.View()
+	inputBox := m.input.View()
+	if !m.layout.Compact {
+		outputBox = lipgloss.NewStyle().
+			Border(lipgloss.NormalBorder()).
+			Render(outputBox)
+		inputBox = lipgloss.NewStyle().
+			Border(lipgloss.NormalBorder()).
+			Render(inputBox)
+	}
 
 	return strings.Join([]string{
 		title,
