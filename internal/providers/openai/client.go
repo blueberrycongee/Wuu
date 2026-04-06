@@ -1,6 +1,7 @@
 package openai
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -151,6 +152,174 @@ func (c *Client) Chat(ctx context.Context, req providers.ChatRequest) (providers
 	}, nil
 }
 
+// StreamChat opens an SSE stream and returns a channel of streaming events.
+func (c *Client) StreamChat(ctx context.Context, req providers.ChatRequest) (<-chan providers.StreamEvent, error) {
+	if strings.TrimSpace(req.Model) == "" {
+		return nil, errors.New("model is required")
+	}
+	if len(req.Messages) == 0 {
+		return nil, errors.New("messages is required")
+	}
+
+	payload := chatCompletionsRequest{
+		Model:       req.Model,
+		Messages:    make([]chatMessage, 0, len(req.Messages)),
+		Temperature: req.Temperature,
+		Stream:      true,
+	}
+	for _, msg := range req.Messages {
+		payload.Messages = append(payload.Messages, mapMessage(msg))
+	}
+	if len(req.Tools) > 0 {
+		payload.ToolChoice = "auto"
+		payload.Tools = make([]toolDefinition, 0, len(req.Tools))
+		for _, tool := range req.Tools {
+			payload.Tools = append(payload.Tools, toolDefinition{
+				Type: "function",
+				Function: toolFunctionDefinition{
+					Name:        tool.Name,
+					Description: tool.Description,
+					Parameters:  tool.InputSchema,
+				},
+			})
+		}
+	}
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("marshal request: %w", err)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/chat/completions", bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("build request: %w", err)
+	}
+	httpReq.Header.Set("Authorization", "Bearer "+c.apiKey)
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Accept", "text/event-stream")
+	for k, v := range c.headers {
+		httpReq.Header.Set(k, v)
+	}
+
+	// Use a separate client without short timeout for long-lived SSE connections.
+	streamClient := &http.Client{Timeout: 10 * time.Minute}
+	resp, err := streamClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("request failed: %w", err)
+	}
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		defer resp.Body.Close()
+		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 400))
+		return nil, fmt.Errorf("provider returned %s: %s", resp.Status, string(snippet))
+	}
+
+	ch := make(chan providers.StreamEvent, 64)
+	go c.readSSE(resp, ch)
+	return ch, nil
+}
+
+func (c *Client) readSSE(resp *http.Response, ch chan<- providers.StreamEvent) {
+	defer close(ch)
+	defer resp.Body.Close()
+
+	type pendingTool struct {
+		id   string
+		name string
+		args strings.Builder
+	}
+	pending := make(map[int]*pendingTool)
+	var lastUsage *providers.TokenUsage
+
+	emitToolEnds := func() {
+		for idx, pt := range pending {
+			ch <- providers.StreamEvent{
+				Type: providers.EventToolUseEnd,
+				ToolCall: &providers.ToolCall{
+					ID:        pt.id,
+					Name:      pt.name,
+					Arguments: pt.args.String(),
+				},
+			}
+			delete(pending, idx)
+		}
+	}
+
+	scanner := bufio.NewScanner(resp.Body)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if line == "" || strings.HasPrefix(line, "event:") {
+			continue
+		}
+		if !strings.HasPrefix(line, "data: ") {
+			continue
+		}
+		data := strings.TrimPrefix(line, "data: ")
+		if data == "[DONE]" {
+			emitToolEnds()
+			ch <- providers.StreamEvent{
+				Type:  providers.EventDone,
+				Usage: lastUsage,
+			}
+			return
+		}
+
+		var chunk chatCompletionsChunk
+		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
+			ch <- providers.StreamEvent{Type: providers.EventError, Error: fmt.Errorf("parse chunk: %w", err)}
+			return
+		}
+
+		if chunk.Usage != nil {
+			lastUsage = &providers.TokenUsage{
+				InputTokens:  chunk.Usage.PromptTokens,
+				OutputTokens: chunk.Usage.CompletionTokens,
+			}
+		}
+
+		if len(chunk.Choices) == 0 {
+			continue
+		}
+		choice := chunk.Choices[0]
+
+		if choice.Delta.Content != "" {
+			ch <- providers.StreamEvent{
+				Type:    providers.EventContentDelta,
+				Content: choice.Delta.Content,
+			}
+		}
+
+		for _, tc := range choice.Delta.ToolCalls {
+			pt, exists := pending[tc.Index]
+			if !exists {
+				pt = &pendingTool{id: tc.ID, name: tc.Function.Name}
+				pending[tc.Index] = pt
+				ch <- providers.StreamEvent{
+					Type: providers.EventToolUseStart,
+					ToolCall: &providers.ToolCall{
+						ID:   tc.ID,
+						Name: tc.Function.Name,
+					},
+				}
+			} else {
+				pt.args.WriteString(tc.Function.Arguments)
+				ch <- providers.StreamEvent{
+					Type:    providers.EventToolUseDelta,
+					Content: tc.Function.Arguments,
+				}
+			}
+		}
+
+		if choice.FinishReason != nil && *choice.FinishReason == "tool_calls" {
+			emitToolEnds()
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		ch <- providers.StreamEvent{Type: providers.EventError, Error: fmt.Errorf("read stream: %w", err)}
+	}
+}
+
 func mapMessage(msg providers.ChatMessage) chatMessage {
 	mapped := chatMessage{
 		Role:       msg.Role,
@@ -218,6 +387,7 @@ type chatCompletionsRequest struct {
 	Tools       []toolDefinition `json:"tools,omitempty"`
 	ToolChoice  string           `json:"tool_choice,omitempty"`
 	Temperature float64          `json:"temperature,omitempty"`
+	Stream      bool             `json:"stream,omitempty"`
 }
 
 type chatMessage struct {
@@ -261,4 +431,36 @@ type chatChoice struct {
 type chatResponseMessage struct {
 	Content   json.RawMessage `json:"content"`
 	ToolCalls []toolCall      `json:"tool_calls"`
+}
+
+type chatCompletionsChunk struct {
+	Choices []chatChunkChoice `json:"choices"`
+	Usage   *chunkUsage       `json:"usage,omitempty"`
+}
+
+type chatChunkChoice struct {
+	Delta        chatChunkDelta `json:"delta"`
+	FinishReason *string        `json:"finish_reason"`
+}
+
+type chatChunkDelta struct {
+	Content   string          `json:"content,omitempty"`
+	ToolCalls []toolCallDelta `json:"tool_calls,omitempty"`
+}
+
+type toolCallDelta struct {
+	Index    int               `json:"index"`
+	ID       string            `json:"id,omitempty"`
+	Type     string            `json:"type,omitempty"`
+	Function toolFunctionDelta `json:"function,omitempty"`
+}
+
+type toolFunctionDelta struct {
+	Name      string `json:"name,omitempty"`
+	Arguments string `json:"arguments,omitempty"`
+}
+
+type chunkUsage struct {
+	PromptTokens     int `json:"prompt_tokens"`
+	CompletionTokens int `json:"completion_tokens"`
 }
