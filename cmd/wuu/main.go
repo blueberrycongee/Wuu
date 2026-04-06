@@ -17,6 +17,7 @@ import (
 
 	"github.com/blueberrycongee/wuu/internal/agent"
 	"github.com/blueberrycongee/wuu/internal/config"
+	"github.com/blueberrycongee/wuu/internal/providers"
 	"github.com/blueberrycongee/wuu/internal/providerfactory"
 	"github.com/blueberrycongee/wuu/internal/session"
 	"github.com/blueberrycongee/wuu/internal/tools"
@@ -235,6 +236,9 @@ func runTUI(args []string) error {
 	if err != nil {
 		return err
 	}
+
+	// Initialize debug logging.
+	providers.InitDebugLog(rootDir)
 
 	var toolExecutor agent.ToolExecutor
 	if !*noTools {

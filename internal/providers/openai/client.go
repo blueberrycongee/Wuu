@@ -248,6 +248,7 @@ func (c *Client) readSSE(resp *http.Response, ch chan<- providers.StreamEvent) {
 	scanner := bufio.NewScanner(resp.Body)
 	for scanner.Scan() {
 		line := scanner.Text()
+		providers.DebugLogf("SSE raw: %s", line)
 		if line == "" || strings.HasPrefix(line, "event:") {
 			continue
 		}
@@ -256,6 +257,7 @@ func (c *Client) readSSE(resp *http.Response, ch chan<- providers.StreamEvent) {
 		}
 		data := strings.TrimPrefix(line, "data: ")
 		if data == "[DONE]" {
+			providers.DebugLogf("SSE [DONE]")
 			emitToolEnds()
 			ch <- providers.StreamEvent{
 				Type:  providers.EventDone,
@@ -266,9 +268,26 @@ func (c *Client) readSSE(resp *http.Response, ch chan<- providers.StreamEvent) {
 
 		var chunk chatCompletionsChunk
 		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
+			providers.DebugLogf("SSE parse error: %v, data: %s", err, data)
 			ch <- providers.StreamEvent{Type: providers.EventError, Error: fmt.Errorf("parse chunk: %w", err)}
 			return
 		}
+
+		providers.DebugLogf("SSE chunk: choices=%d, content=%q, tool_calls=%d",
+			len(chunk.Choices),
+			func() string {
+				if len(chunk.Choices) > 0 {
+					return chunk.Choices[0].Delta.Content
+				}
+				return ""
+			}(),
+			func() int {
+				if len(chunk.Choices) > 0 {
+					return len(chunk.Choices[0].Delta.ToolCalls)
+				}
+				return 0
+			}(),
+		)
 
 		if chunk.Usage != nil {
 			lastUsage = &providers.TokenUsage{

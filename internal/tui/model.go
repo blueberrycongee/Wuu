@@ -308,12 +308,24 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case providers.EventError:
 			m.streaming = false
 			m.pendingRequest = false
+			// Show accumulated content so far (if any) before the error.
+			if m.streamTarget >= 0 && m.streamTarget < len(m.entries) {
+				content := strings.TrimSpace(m.entries[m.streamTarget].Content)
+				if content == "" || content == "(empty)" {
+					m.entries[m.streamTarget].Content = ""
+				}
+			}
 			m.streamTarget = -1
-			errMsg := "stream error"
+			errMsg := "unknown stream error"
 			if msg.event.Error != nil {
 				errMsg = msg.event.Error.Error()
 			}
-			m.appendEntry("system", fmt.Sprintf("error: %s", errMsg))
+			// Display error in red in the chat area.
+			styledErr := lipgloss.NewStyle().
+				Foreground(currentTheme.Error).
+				Bold(true).
+				Render("ERROR: " + errMsg)
+			m.appendEntry("system", styledErr)
 			m.statusLine = "request failed"
 			m.refreshViewport(true)
 			return m, nil

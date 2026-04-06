@@ -144,10 +144,13 @@ func (r *StreamRunner) Run(ctx context.Context, prompt string) (string, error) {
 		}
 
 		for _, call := range toolCalls {
+			providers.DebugLogf("executing tool: %s, id: %s, args: %s", call.Name, call.ID, call.Arguments)
 			toolResult, execErr := r.Tools.Execute(ctx, call)
 			if execErr != nil {
+				providers.DebugLogf("tool error: %s: %v", call.Name, execErr)
 				toolResult = errorJSON(execErr)
 			}
+			providers.DebugLogf("tool result: %s: %s", call.Name, truncateLog(toolResult, 500))
 			messages = append(messages, providers.ChatMessage{
 				Role:       "tool",
 				Name:       call.Name,
@@ -158,4 +161,11 @@ func (r *StreamRunner) Run(ctx context.Context, prompt string) (string, error) {
 	}
 
 	return "", fmt.Errorf("max steps exceeded (%d)", maxSteps)
+}
+
+func truncateLog(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen] + "..."
 }
