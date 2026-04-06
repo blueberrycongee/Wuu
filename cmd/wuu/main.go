@@ -18,6 +18,7 @@ import (
 	"github.com/blueberrycongee/wuu/internal/session"
 	"github.com/blueberrycongee/wuu/internal/tools"
 	"github.com/blueberrycongee/wuu/internal/tui"
+	"github.com/blueberrycongee/wuu/internal/version"
 )
 
 func main() {
@@ -29,8 +30,7 @@ func main() {
 
 func run(args []string) error {
 	if len(args) == 0 {
-		printUsage()
-		return nil
+		return runTUI(nil)
 	}
 
 	switch args[0] {
@@ -40,11 +40,15 @@ func run(args []string) error {
 		return runTask(args[1:])
 	case "tui":
 		return runTUI(args[1:])
+	case "version", "-v", "--version":
+		fmt.Println(version.String())
+		return nil
 	case "help", "-h", "--help":
 		printUsage()
 		return nil
 	default:
-		return fmt.Errorf("unknown command %q", args[0])
+		// No subcommand → default to TUI.
+		return runTUI(args)
 	}
 }
 

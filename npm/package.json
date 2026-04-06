@@ -1,0 +1,31 @@
+{
+  "name": "@blueberrycongee/wuu",
+  "version": "0.0.0",
+  "description": "AI coding agent for the terminal",
+  "license": "MIT",
+  "bin": {
+    "wuu": "bin/wuu"
+  },
+  "scripts": {
+    "postinstall": "node install.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/blueberrycongee/wuu"
+  },
+  "keywords": [
+    "ai",
+    "coding",
+    "agent",
+    "cli",
+    "terminal"
+  ],
+  "os": [
+    "darwin",
+    "linux"
+  ],
+  "cpu": [
+    "x64",
+    "arm64"
+  ]
+}
