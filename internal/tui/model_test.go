@@ -90,6 +90,17 @@ func TestJumpToBottomToggle(t *testing.T) {
 	if jumped.showJump {
 		t.Fatal("expected jump hint cleared after jump-to-bottom")
 	}
+
+	updated, _ = paged.Update(tea.MouseMsg{
+		Action: tea.MouseActionPress,
+		Button: tea.MouseButtonLeft,
+		X:      4,
+		Y:      paged.height - 1,
+	})
+	clicked := updated.(Model)
+	if clicked.showJump {
+		t.Fatal("expected jump hint cleared after mouse click")
+	}
 }
 
 func renderEntries(entries []transcriptEntry) string {

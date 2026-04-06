@@ -188,6 +188,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, streamTickCmd()
 
+	case tea.MouseMsg:
+		if m.showJump &&
+			msg.Action == tea.MouseActionPress &&
+			msg.Button == tea.MouseButtonLeft &&
+			msg.Y >= m.height-1 &&
+			msg.X <= 32 {
+			m.viewport.GotoBottom()
+			m.autoFollow = true
+			m.showJump = false
+			return m, nil
+		}
+
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c":
@@ -377,7 +389,7 @@ func (m Model) View() string {
 	meta := lipgloss.NewStyle().Faint(true).Render(fmt.Sprintf("config: %s", m.configPath))
 	jumpHint := ""
 	if m.showJump {
-		jumpHint = " | Ctrl+J jump to bottom"
+		jumpHint = " | [Jump to bottom: click or Ctrl+J]"
 	}
 	clock := lipgloss.NewStyle().Faint(true).Render(m.clock)
 	statusText := m.statusLine
