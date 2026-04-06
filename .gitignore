@@ -3,6 +3,18 @@ wuu
 
 # Local runtime config
 .wuu.json
+.wuu/
 
 # Third party dependencies
 thirdparty/
+
+# Local AI agent/editor config
+CLAUDE.md
+AGENTS.md
+
+# Local docs/notes
+doc/
+docs/plans/
+
+# Worktrees
+.worktrees/

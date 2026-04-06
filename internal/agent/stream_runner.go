@@ -84,17 +84,17 @@ func (r *StreamRunner) Run(ctx context.Context, prompt string) (string, error) {
 				}
 
 			case providers.EventToolUseDelta:
-				if event.ToolCall != nil {
-					for _, tc := range pendingTools {
-						if tc.ID == event.ToolCall.ID || (event.ToolCall.ID == "" && tc.Arguments == "") {
-							tc.Arguments += event.Content
-							break
-						}
-					}
+				// Append partial arguments to the most recently started tool call.
+				if len(pendingTools) > 0 {
+					latest := pendingTools[len(pendingTools)-1]
+					latest.Arguments += event.Content
 				}
 
 			case providers.EventToolUseEnd:
-				if event.ToolCall != nil {
+				// EventToolUseEnd carries the fully accumulated arguments from
+				// the provider layer. Use them if present; otherwise keep what
+				// we accumulated from deltas.
+				if event.ToolCall != nil && event.ToolCall.Arguments != "" {
 					for _, tc := range pendingTools {
 						if tc.ID == event.ToolCall.ID {
 							tc.Arguments = event.ToolCall.Arguments
