@@ -15,11 +15,26 @@ const (
 	globalConfigRelative = ".config/wuu/config.json"
 )
 
+// HookEntry defines a single hook command.
+type HookEntry struct {
+	Tool    string `json:"tool,omitempty"`    // tool name filter, "*" for all
+	Command string `json:"command"`           // shell command to execute
+}
+
+// HooksConfig defines lifecycle hook commands.
+type HooksConfig struct {
+	PrePrompt  []HookEntry `json:"pre_prompt,omitempty"`
+	PostPrompt []HookEntry `json:"post_prompt,omitempty"`
+	PreTool    []HookEntry `json:"pre_tool,omitempty"`
+	PostTool   []HookEntry `json:"post_tool,omitempty"`
+}
+
 // Config holds CLI runtime settings.
 type Config struct {
 	DefaultProvider string                    `json:"default_provider"`
 	Providers       map[string]ProviderConfig `json:"providers"`
 	Agent           AgentConfig               `json:"agent"`
+	Hooks           HooksConfig               `json:"hooks,omitempty"`
 }
 
 // ProviderConfig configures one model gateway.
