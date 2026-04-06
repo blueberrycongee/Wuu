@@ -77,24 +77,42 @@ func normalizeType(value string) string {
 	return s
 }
 
-func resolveAPIKey(provider config.ProviderConfig) (string, error) {
+// ResolveAPIKeyWithHome resolves API key with explicit home directory.
+func ResolveAPIKeyWithHome(provider config.ProviderConfig, providerName, home string) (string, error) {
+	// 1. Explicit api_key in config.
 	if strings.TrimSpace(provider.APIKey) != "" {
 		return strings.TrimSpace(provider.APIKey), nil
 	}
 
+	// 2. Environment variable.
 	envKey := strings.TrimSpace(provider.APIKeyEnv)
 	if envKey == "" {
 		envKey = defaultAPIKeyEnv(normalizeType(provider.Type))
 	}
-	if envKey == "" {
-		return "", fmt.Errorf("provider %q requires api_key or api_key_env", provider.Type)
+	if envKey != "" {
+		value := strings.TrimSpace(os.Getenv(envKey))
+		if value != "" {
+			return value, nil
+		}
 	}
 
-	value := strings.TrimSpace(os.Getenv(envKey))
-	if value == "" {
-		return "", fmt.Errorf("environment variable %s is empty", envKey)
+	// 3. Global auth store.
+	if home != "" && providerName != "" {
+		key, err := config.LoadAuthKey(home, providerName)
+		if err == nil && key != "" {
+			return key, nil
+		}
 	}
-	return value, nil
+
+	hint := "set api_key or run wuu init"
+	if envKey != "" {
+		hint = fmt.Sprintf("set api_key, %s env var, or run wuu init", envKey)
+	}
+	return "", fmt.Errorf("no API key found for provider %q (%s)", provider.Type, hint)
+}
+
+func resolveAPIKey(provider config.ProviderConfig) (string, error) {
+	return ResolveAPIKeyWithHome(provider, "", os.Getenv("HOME"))
 }
 
 func defaultAPIKeyEnv(providerType string) string {
