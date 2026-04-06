@@ -44,13 +44,19 @@ func IndexPath(sessDir string) string {
 }
 
 // Create initializes a new session: creates the directory, data file, and index entry.
-func Create(sessDir string) (*Session, error) {
+// If id is non-empty, it is used as the session ID; otherwise a new one is generated.
+func Create(sessDir string, id ...string) (*Session, error) {
 	if err := os.MkdirAll(sessDir, 0o755); err != nil {
 		return nil, fmt.Errorf("create sessions dir: %w", err)
 	}
 
+	sessID := NewID()
+	if len(id) > 0 && id[0] != "" {
+		sessID = id[0]
+	}
+
 	sess := &Session{
-		ID:        NewID(),
+		ID:        sessID,
 		CreatedAt: time.Now().UTC(),
 	}
 

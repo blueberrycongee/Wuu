@@ -45,8 +45,8 @@ func Run(cfg Config) error {
 		return fmt.Errorf("run tui: %w", err)
 	}
 
-	// Print resume hint after exiting alt screen.
-	if fm, ok := finalModel.(Model); ok && fm.sessionID != "" {
+	// Print resume hint after exiting alt screen — only if conversation happened.
+	if fm, ok := finalModel.(Model); ok && fm.sessionID != "" && fm.sessionCreated && len(fm.entries) > 0 {
 		fmt.Println()
 		fmt.Printf("To resume this session:\n")
 		fmt.Printf("  wuu --resume %s\n", fm.sessionID)

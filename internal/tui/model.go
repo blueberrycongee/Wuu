@@ -94,6 +94,9 @@ type Model struct {
 	// Double ctrl+c to quit.
 	ctrlCPressed bool
 	quitting     bool
+
+	// Lazy session creation — only write to disk on first message.
+	sessionCreated bool
 }
 
 // NewModel builds the initial UI model.
@@ -135,19 +138,16 @@ func NewModel(cfg Config) Model {
 			if err == nil {
 				m.sessionID = cfg.ResumeID
 				m.memoryPath = path
+				m.sessionCreated = true // already on disk
 			} else {
 				m.statusLine = fmt.Sprintf("resume failed: %v", err)
 			}
 		}
 		if m.sessionID == "" {
-			// Create new session.
-			sess, err := session.Create(m.sessionDir)
-			if err == nil {
-				m.sessionID = sess.ID
-				m.memoryPath = session.FilePath(m.sessionDir, sess.ID)
-			} else {
-				m.statusLine = fmt.Sprintf("session create failed: %v", err)
-			}
+			// Generate session ID but don't write to disk yet.
+			// Files are created lazily on first message (see ensureSessionFile).
+			m.sessionID = session.NewID()
+			m.memoryPath = session.FilePath(m.sessionDir, m.sessionID)
 		}
 	}
 
@@ -528,10 +528,28 @@ func (m *Model) appendEntry(role, content string) int {
 		Content: text,
 	}
 	m.entries = append(m.entries, entry)
+
+	// Lazy session creation: write files on first real message.
+	m.ensureSessionFile()
+
 	if err := appendMemoryEntry(m.memoryPath, entry); err != nil {
 		m.statusLine = fmt.Sprintf("memory write failed: %v", err)
 	}
 	return len(m.entries) - 1
+}
+
+// ensureSessionFile creates the session data file and index entry on first use.
+func (m *Model) ensureSessionFile() {
+	if m.sessionCreated || m.sessionDir == "" || m.sessionID == "" {
+		return
+	}
+	sess, err := session.Create(m.sessionDir, m.sessionID)
+	if err != nil {
+		m.statusLine = fmt.Sprintf("session write failed: %v", err)
+		return
+	}
+	m.memoryPath = session.FilePath(m.sessionDir, sess.ID)
+	m.sessionCreated = true
 }
 
 func (m *Model) refreshViewport(forceBottom bool) {
