@@ -47,10 +47,10 @@ type ctrlCResetMsg struct{}
 type queueDrainMsg struct{}
 
 type transcriptEntry struct {
-	Role    string
-	Content  string // raw content
-	rendered string // markdown-rendered text (cached)
-	renderedLen int // Content length when rendered was last computed
+	Role        string
+	Content     string // raw content
+	rendered    string // markdown-rendered text (cached)
+	renderedLen int    // Content length when rendered was last computed
 }
 
 // Model implements the terminal UI state machine.
@@ -109,7 +109,7 @@ type Model struct {
 
 	// Input history — user messages for up/down recall.
 	inputHistory []string
-	historyIndex int // -1 = not browsing, 0..len-1 = browsing
+	historyIndex int    // -1 = not browsing, 0..len-1 = browsing
 	historyDraft string // saves current input when entering history
 
 	// Message queue — Tab queues, Enter cuts in line.
@@ -589,8 +589,21 @@ func (m Model) submit(shouldQueue bool) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	// Enter always sends immediately, even if busy (cancel + resend).
-	// If not busy, both Tab and Enter send directly.
+	if m.pendingRequest {
+		// Enter while busy — prioritize this message ahead of queued ones.
+		// If the current request is streamable, cancel it and let queue drain
+		// start the prioritized message as soon as the runner exits.
+		m.messageQueue = append([]string{raw}, m.messageQueue...)
+		if m.cancelStream != nil {
+			m.cancelStream()
+			m.statusLine = fmt.Sprintf("interrupting · %d queued", len(m.messageQueue))
+		} else {
+			m.statusLine = fmt.Sprintf("prioritized (%d pending)", len(m.messageQueue))
+		}
+		return m, nil
+	}
+
+	// If idle, both Tab and Enter send directly.
 	return m.sendMessage(raw)
 }
 
