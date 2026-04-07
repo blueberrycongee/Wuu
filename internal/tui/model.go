@@ -1033,7 +1033,9 @@ func (m *Model) refreshViewport(forceBottom bool) {
 			content := truncateForDisplay(entry.Content)
 			if content != "(empty)" {
 				wrapWidth := max(40, m.viewport.Width-2)
-				if entry.rendered != "" {
+				if entry.Role == "USER" {
+					b.WriteString(userContentStyle.Render(wrapText(content, wrapWidth-2)))
+				} else if entry.rendered != "" {
 					b.WriteString(wrapText(entry.rendered, wrapWidth))
 				} else {
 					b.WriteString(wrapText(content, wrapWidth))

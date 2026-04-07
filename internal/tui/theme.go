@@ -97,6 +97,12 @@ var (
 				Border(lipgloss.RoundedBorder()).
 				BorderForeground(darkTheme.InputBorder)
 
+	// User message content — reversed to stand out.
+	userContentStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#FFFFFF")).
+			Background(lipgloss.Color("#333333")).
+			Padding(0, 1)
+
 	// Banner.
 	bannerStyle = lipgloss.NewStyle().
 			Bold(true).
