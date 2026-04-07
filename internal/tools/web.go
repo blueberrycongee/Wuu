@@ -67,8 +67,7 @@ func randomAcceptLang() string {
 
 func (t *Toolkit) webSearch(argsJSON string) (string, error) {
 	var args struct {
-		Query      string `json:"query"`
-		MaxResults int    `json:"max_results"`
+		Query string `json:"query"`
 	}
 	if err := decodeArgs(argsJSON, &args); err != nil {
 		return "", err
@@ -76,13 +75,7 @@ func (t *Toolkit) webSearch(argsJSON string) (string, error) {
 	if strings.TrimSpace(args.Query) == "" {
 		return "", fmt.Errorf("web_search requires query")
 	}
-	maxResults := args.MaxResults
-	if maxResults <= 0 {
-		maxResults = 10
-	}
-	if maxResults > 20 {
-		maxResults = 20
-	}
+	maxResults := 10
 
 	ctx, cancel := context.WithTimeout(context.Background(), webFetchTimeout)
 	defer cancel()

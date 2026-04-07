@@ -18,10 +18,11 @@ import (
 )
 
 const (
-	defaultShellTimeoutSeconds = 60
-	defaultMaxFileBytes        = 16 * 1024
-	defaultMaxEntries          = 200
-	maxToolOutputBytes         = 20 * 1024
+	defaultShellTimeoutSeconds = 120
+	maxShellTimeoutSeconds     = 600
+	defaultMaxFileBytes        = 256 * 1024
+	defaultMaxEntries          = 1000
+	maxToolOutputBytes         = 256 * 1024
 )
 
 // Toolkit executes local coding tools for the agent.
@@ -238,8 +239,8 @@ func (t *Toolkit) runShell(ctx context.Context, argsJSON string) (string, error)
 	if timeout <= 0 {
 		timeout = defaultShellTimeoutSeconds
 	}
-	if timeout > 300 {
-		timeout = 300
+	if timeout > maxShellTimeoutSeconds {
+		timeout = maxShellTimeoutSeconds
 	}
 
 	runCtx, cancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
@@ -281,8 +282,7 @@ func (t *Toolkit) runShell(ctx context.Context, argsJSON string) (string, error)
 
 func (t *Toolkit) readFile(argsJSON string) (string, error) {
 	var args struct {
-		Path     string `json:"path"`
-		MaxBytes int    `json:"max_bytes"`
+		Path string `json:"path"`
 	}
 	if err := decodeArgs(argsJSON, &args); err != nil {
 		return "", err
@@ -301,17 +301,9 @@ func (t *Toolkit) readFile(argsJSON string) (string, error) {
 		return "", fmt.Errorf("read file: %w", err)
 	}
 
-	maxBytes := args.MaxBytes
-	if maxBytes <= 0 {
-		maxBytes = defaultMaxFileBytes
-	}
-	if maxBytes > maxToolOutputBytes {
-		maxBytes = maxToolOutputBytes
-	}
-
 	truncated := false
-	if len(content) > maxBytes {
-		content = content[:maxBytes]
+	if len(content) > defaultMaxFileBytes {
+		content = content[:defaultMaxFileBytes]
 		truncated = true
 	}
 
@@ -356,8 +348,7 @@ func (t *Toolkit) writeFile(argsJSON string) (string, error) {
 
 func (t *Toolkit) listFiles(argsJSON string) (string, error) {
 	var args struct {
-		Path       string `json:"path"`
-		MaxEntries int    `json:"max_entries"`
+		Path string `json:"path"`
 	}
 	if err := decodeArgs(argsJSON, &args); err != nil {
 		return "", err
@@ -376,13 +367,7 @@ func (t *Toolkit) listFiles(argsJSON string) (string, error) {
 		return "", fmt.Errorf("list directory: %w", err)
 	}
 
-	limit := args.MaxEntries
-	if limit <= 0 {
-		limit = defaultMaxEntries
-	}
-	if limit > 1000 {
-		limit = 1000
-	}
+	limit := defaultMaxEntries
 
 	resultEntries := make([]map[string]any, 0, min(limit, len(entries)))
 	for i, entry := range entries {
@@ -462,10 +447,9 @@ func (t *Toolkit) editFile(argsJSON string) (string, error) {
 
 func (t *Toolkit) grep(argsJSON string) (string, error) {
 	var args struct {
-		Pattern    string `json:"pattern"`
-		Path       string `json:"path"`
-		Include    string `json:"include"`
-		MaxResults int    `json:"max_results"`
+		Pattern string `json:"pattern"`
+		Path    string `json:"path"`
+		Include string `json:"include"`
 	}
 	if err := decodeArgs(argsJSON, &args); err != nil {
 		return "", err
@@ -479,13 +463,7 @@ func (t *Toolkit) grep(argsJSON string) (string, error) {
 		return "", fmt.Errorf("invalid regex: %w", err)
 	}
 
-	limit := args.MaxResults
-	if limit <= 0 {
-		limit = 50
-	}
-	if limit > 500 {
-		limit = 500
-	}
+	limit := 250
 
 	searchRoot := t.rootDir
 	if strings.TrimSpace(args.Path) != "" {
@@ -562,8 +540,7 @@ func (t *Toolkit) grep(argsJSON string) (string, error) {
 
 func (t *Toolkit) glob(argsJSON string) (string, error) {
 	var args struct {
-		Pattern    string `json:"pattern"`
-		MaxResults int    `json:"max_results"`
+		Pattern string `json:"pattern"`
 	}
 	if err := decodeArgs(argsJSON, &args); err != nil {
 		return "", err
@@ -572,13 +549,7 @@ func (t *Toolkit) glob(argsJSON string) (string, error) {
 		return "", errors.New("glob requires pattern")
 	}
 
-	limit := args.MaxResults
-	if limit <= 0 {
-		limit = 100
-	}
-	if limit > 1000 {
-		limit = 1000
-	}
+	limit := 100
 
 	pattern := args.Pattern
 	var matches []string
