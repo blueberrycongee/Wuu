@@ -14,6 +14,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/blueberrycongee/wuu/internal/agent"
+	"github.com/blueberrycongee/wuu/internal/compact"
 	"github.com/blueberrycongee/wuu/internal/providers"
 	"github.com/blueberrycongee/wuu/internal/session"
 )
@@ -164,21 +165,22 @@ func NewModel(cfg Config) Model {
 	in.CharLimit = 0
 
 	m := Model{
-		provider:      cfg.Provider,
-		modelName:     cfg.Model,
-		configPath:    cfg.ConfigPath,
-		workspaceRoot: filepath.Dir(cfg.ConfigPath),
-		memoryPath:    cfg.MemoryPath,
-		sessionDir:    cfg.SessionDir,
-		runPrompt:     cfg.RunPrompt,
-		streamRunner:  cfg.StreamRunner,
-		viewport:      vp,
-		input:         in,
-		autoFollow:    true,
-		clock:         time.Now().Format("15:04:05"),
-		statusLine:    "ready",
-		streamTarget:  -1,
-		historyIndex:  -1,
+		provider:         cfg.Provider,
+		modelName:        cfg.Model,
+		configPath:       cfg.ConfigPath,
+		workspaceRoot:    filepath.Dir(cfg.ConfigPath),
+		memoryPath:       cfg.MemoryPath,
+		sessionDir:       cfg.SessionDir,
+		runPrompt:        cfg.RunPrompt,
+		streamRunner:     cfg.StreamRunner,
+		maxContextTokens: cfg.MaxContextTokens,
+		viewport:         vp,
+		input:            in,
+		autoFollow:       true,
+		clock:            time.Now().Format("15:04:05"),
+		statusLine:       "ready",
+		streamTarget:     -1,
+		historyIndex:     -1,
 	}
 
 	// Session isolation: create or resume session.
@@ -643,6 +645,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.showJump = !m.viewport.AtBottom()
 			m.autoFollow = !m.showJump
 			return m, nil
+		case "t":
+			// Toggle thinking block expand/collapse.
+			for i := len(m.entries) - 1; i >= 0; i-- {
+				if m.entries[i].Role == "ASSISTANT" && m.entries[i].ThinkingContent != "" {
+					m.entries[i].ThinkingExpanded = !m.entries[i].ThinkingExpanded
+					m.refreshViewport(false)
+					break
+				}
+			}
+			return m, nil
 		}
 	}
 
@@ -729,6 +741,21 @@ func (m Model) sendMessage(raw string) (tea.Model, tea.Cmd) {
 	m.appendEntry("user", raw)
 	m.chatHistory = append(m.chatHistory, providers.ChatMessage{Role: "user", Content: raw})
 	_ = appendChatMessage(m.memoryPath, providers.ChatMessage{Role: "user", Content: raw})
+
+	// Compact history if approaching context limit.
+	if m.maxContextTokens > 0 && compact.ShouldCompact(m.chatHistory, m.maxContextTokens) {
+		if m.streamRunner != nil {
+			compacted, compactErr := compact.Compact(
+				context.Background(),
+				m.chatHistory,
+				m.streamRunner.Client,
+				m.streamRunner.Model,
+			)
+			if compactErr == nil {
+				m.chatHistory = compacted
+			}
+		}
+	}
 
 	m.pendingRequest = true
 	m.streaming = true
