@@ -11,11 +11,11 @@ import (
 	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/blueberrycongee/wuu/internal/agent"
 	"github.com/blueberrycongee/wuu/internal/compact"
+	"github.com/blueberrycongee/wuu/internal/markdown"
 	"github.com/blueberrycongee/wuu/internal/providers"
 	"github.com/blueberrycongee/wuu/internal/session"
 )
@@ -123,8 +123,7 @@ type Model struct {
 	clock      string
 	statusLine string
 
-	mdRenderer *glamour.TermRenderer
-	mdWidth    int
+	streamCollector *markdown.StreamCollector
 
 	// Slash command completion popup.
 	completionVisible bool
@@ -298,6 +297,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.pendingRequest = false
 		m.streamTarget = -1
 		m.thinkingStart = time.Time{}
+		if m.streamCollector != nil {
+			m.streamCollector = nil
+		}
 		m.statusLine = "ready"
 		m.cacheRenderedEntries()
 
@@ -370,13 +372,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.entries[m.streamTarget].Content = ""
 			}
 			m.entries[m.streamTarget].Content += msg.event.Content
-			// Incremental markdown render every 80 chars of new content.
-			e := &m.entries[m.streamTarget]
-			if len(e.Content)-e.renderedLen >= 80 {
-				if r, err := m.renderMarkdown(e.Content); err == nil {
-					e.rendered = r
-					e.renderedLen = len(e.Content)
+			// Stream through the markdown collector.
+			if m.streamCollector == nil {
+				m.streamCollector = markdown.NewStreamCollector(
+					max(40, m.viewport.Width-2),
+					markdown.DefaultStyles(),
+				)
+			}
+			m.streamCollector.Push(msg.event.Content)
+			if newLines := m.streamCollector.CommitCompleteLines(); len(newLines) > 0 {
+				e := &m.entries[m.streamTarget]
+				if e.rendered != "" {
+					e.rendered += "\n"
 				}
+				e.rendered += strings.Join(newLines, "\n")
+				e.renderedLen = len(e.Content)
 			}
 			m.refreshViewport(true)
 			return m, waitStreamEvent(m.streamCh)
@@ -424,6 +434,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case providers.EventDone:
 			// One SSE stream finished. The runner may continue with tool
 			// execution and start another stream, so keep listening.
+			if m.streamCollector != nil {
+				if finalLines := m.streamCollector.Finalize(); len(finalLines) > 0 {
+					if m.streamTarget >= 0 && m.streamTarget < len(m.entries) {
+						e := &m.entries[m.streamTarget]
+						if e.rendered != "" {
+							e.rendered += "\n"
+						}
+						e.rendered += strings.Join(finalLines, "\n")
+						e.renderedLen = len(e.Content)
+					}
+				}
+				m.streamCollector = nil
+			}
 			if m.streamTarget >= 0 && m.streamTarget < len(m.entries) {
 				content := strings.TrimSpace(m.entries[m.streamTarget].Content)
 				if (content == "" || content == "(empty)") && len(m.entries[m.streamTarget].ToolCalls) == 0 && m.entries[m.streamTarget].ThinkingContent == "" {
@@ -860,25 +883,12 @@ func (m *Model) renderMarkdown(content string) (string, error) {
 	if strings.TrimSpace(content) == "" {
 		return "(empty)", nil
 	}
-
 	width := max(40, m.viewport.Width-6)
-	if m.mdRenderer == nil || m.mdWidth != width {
-		renderer, err := glamour.NewTermRenderer(
-			glamour.WithStandardStyle("dark"),
-			glamour.WithWordWrap(width),
-		)
-		if err != nil {
-			return "", err
-		}
-		m.mdRenderer = renderer
-		m.mdWidth = width
+	rendered := markdown.Render(content, width, markdown.DefaultStyles())
+	if rendered == "" {
+		return "(empty)", nil
 	}
-
-	rendered, err := m.mdRenderer.Render(content)
-	if err != nil {
-		return "", err
-	}
-	return strings.TrimSpace(rendered), nil
+	return rendered, nil
 }
 
 // cacheEntryRendered renders markdown for a single entry and caches the result.
