@@ -911,8 +911,13 @@ func (m *Model) appendEntry(role, content string) int {
 	// Lazy session creation: write files on first real message.
 	m.ensureSessionFile()
 
-	if err := appendMemoryEntry(m.memoryPath, entry); err != nil {
-		m.statusLine = fmt.Sprintf("memory write failed: %v", err)
+	// Only persist non-chat entries via old format.
+	// User/assistant/tool messages are persisted via appendChatMessage elsewhere.
+	upperRole := strings.ToUpper(role)
+	if upperRole != "USER" && upperRole != "ASSISTANT" && upperRole != "TOOL" {
+		if err := appendMemoryEntry(m.memoryPath, entry); err != nil {
+			m.statusLine = fmt.Sprintf("memory write failed: %v", err)
+		}
 	}
 	return len(m.entries) - 1
 }
