@@ -637,7 +637,14 @@ func (m Model) sendMessage(raw string) (tea.Model, tea.Cmd) {
 				case <-ctx.Done():
 				}
 			}
-			_, err := runner.RunWithCallback(ctx, raw, onEvent)
+			// Build a temporary history for this turn.
+				// Task 3 will replace this with proper conversation history.
+				var hist []providers.ChatMessage
+				if sp := runner.SystemPrompt; sp != "" {
+					hist = append(hist, providers.ChatMessage{Role: "system", Content: sp})
+				}
+				hist = append(hist, providers.ChatMessage{Role: "user", Content: raw})
+				_, _, err := runner.RunWithCallback(ctx, hist, onEvent)
 			if err != nil && ctx.Err() == nil {
 				select {
 				case ch <- providers.StreamEvent{Type: providers.EventError, Error: err}:

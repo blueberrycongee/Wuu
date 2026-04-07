@@ -25,27 +25,32 @@ type StreamRunner struct {
 
 // Run executes one prompt with streaming tool-use loop.
 func (r *StreamRunner) Run(ctx context.Context, prompt string) (string, error) {
-	return r.RunWithCallback(ctx, prompt, r.OnEvent)
-}
-
-// RunWithCallback executes one prompt with a per-call event callback.
-// This avoids data races when multiple concurrent calls share the same runner.
-func (r *StreamRunner) RunWithCallback(ctx context.Context, prompt string, onEvent StreamCallback) (string, error) {
-	if r.Client == nil {
-		return "", errors.New("client is required")
-	}
-	if strings.TrimSpace(r.Model) == "" {
-		return "", errors.New("model is required")
-	}
 	if strings.TrimSpace(prompt) == "" {
 		return "", errors.New("prompt is required")
 	}
-
-	messages := []providers.ChatMessage{}
+	var history []providers.ChatMessage
 	if strings.TrimSpace(r.SystemPrompt) != "" {
-		messages = append(messages, providers.ChatMessage{Role: "system", Content: r.SystemPrompt})
+		history = append(history, providers.ChatMessage{Role: "system", Content: r.SystemPrompt})
 	}
-	messages = append(messages, providers.ChatMessage{Role: "user", Content: prompt})
+	history = append(history, providers.ChatMessage{Role: "user", Content: prompt})
+	result, _, err := r.RunWithCallback(ctx, history, r.OnEvent)
+	return result, err
+}
+
+// RunWithCallback executes a conversation turn with a per-call event callback.
+// It accepts the full message history and returns the assistant's text plus
+// any new messages produced during this turn (assistant + tool results).
+func (r *StreamRunner) RunWithCallback(ctx context.Context, history []providers.ChatMessage, onEvent StreamCallback) (string, []providers.ChatMessage, error) {
+	if r.Client == nil {
+		return "", nil, errors.New("client is required")
+	}
+	if strings.TrimSpace(r.Model) == "" {
+		return "", nil, errors.New("model is required")
+	}
+
+	messages := make([]providers.ChatMessage, len(history))
+	copy(messages, history)
+	startLen := len(messages)
 
 	for {
 		req := providers.ChatRequest{
@@ -59,7 +64,7 @@ func (r *StreamRunner) RunWithCallback(ctx context.Context, prompt string, onEve
 
 		ch, err := r.Client.StreamChat(ctx, req)
 		if err != nil {
-			return "", fmt.Errorf("stream request failed: %w", err)
+			return "", nil, fmt.Errorf("stream request failed: %w", err)
 		}
 
 		var contentBuf strings.Builder
@@ -106,9 +111,9 @@ func (r *StreamRunner) RunWithCallback(ctx context.Context, prompt string, onEve
 
 			case providers.EventError:
 				if event.Error != nil {
-					return "", event.Error
+					return "", nil, event.Error
 				}
-				return "", errors.New("stream error")
+				return "", nil, errors.New("stream error")
 
 			case providers.EventDone:
 				// Stream complete.
@@ -134,14 +139,14 @@ func (r *StreamRunner) RunWithCallback(ctx context.Context, prompt string, onEve
 		if len(toolCalls) == 0 {
 			result := strings.TrimSpace(contentBuf.String())
 			if result == "" {
-				return "", errors.New("model returned empty answer")
+				return "", nil, errors.New("model returned empty answer")
 			}
-			return result, nil
+			return result, messages[startLen:], nil
 		}
 
 		// Execute each requested tool.
 		if r.Tools == nil {
-			return "", errors.New("model requested tools but none are configured")
+			return "", nil, errors.New("model requested tools but none are configured")
 		}
 
 		for _, call := range toolCalls {

@@ -94,6 +94,7 @@ func TestStreamRunner_NoToolCallsWhenNoneRequested(t *testing.T) {
 }
 
 func TestStreamRunner_ValidationErrors(t *testing.T) {
+	// Run validates blank prompt.
 	runner := StreamRunner{Model: "m"}
 	_, err := runner.Run(context.Background(), "hi")
 	if err == nil {
@@ -112,6 +113,19 @@ func TestStreamRunner_ValidationErrors(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for blank prompt")
 	}
+
+	// RunWithCallback validates client and model but not prompt.
+	runner = StreamRunner{Model: "m"}
+	_, _, err = runner.RunWithCallback(context.Background(), nil, nil)
+	if err == nil {
+		t.Fatal("expected error for nil client in RunWithCallback")
+	}
+
+	runner = StreamRunner{Client: client}
+	_, _, err = runner.RunWithCallback(context.Background(), nil, nil)
+	if err == nil {
+		t.Fatal("expected error for empty model in RunWithCallback")
+	}
 }
 
 func TestStreamRunner_StreamError(t *testing.T) {
@@ -126,5 +140,55 @@ func TestStreamRunner_StreamError(t *testing.T) {
 	_, err := runner.Run(context.Background(), "hi")
 	if err == nil {
 		t.Fatal("expected error from stream error event")
+	}
+}
+
+func TestStreamRunner_AcceptsHistory(t *testing.T) {
+	client := &mockStreamClient{
+		events: []providers.StreamEvent{
+			{Type: providers.EventContentDelta, Content: "turn2 reply"},
+			{Type: providers.EventDone},
+		},
+	}
+
+	history := []providers.ChatMessage{
+		{Role: "system", Content: "you are helpful"},
+		{Role: "user", Content: "hello"},
+		{Role: "assistant", Content: "hi there"},
+		{Role: "user", Content: "follow up"},
+	}
+
+	runner := StreamRunner{Client: client, Model: "test-model"}
+	result, newMsgs, err := runner.RunWithCallback(context.Background(), history, nil)
+	if err != nil {
+		t.Fatalf("RunWithCallback: %v", err)
+	}
+	if result != "turn2 reply" {
+		t.Fatalf("unexpected result: %q", result)
+	}
+
+	// All history messages should have been sent to the API.
+	if len(client.requests) != 1 {
+		t.Fatalf("expected 1 request, got %d", len(client.requests))
+	}
+	sent := client.requests[0].Messages
+	if len(sent) != len(history) {
+		t.Fatalf("expected %d messages sent, got %d", len(history), len(sent))
+	}
+	for i, msg := range history {
+		if sent[i].Role != msg.Role || sent[i].Content != msg.Content {
+			t.Fatalf("message %d mismatch: got %+v, want %+v", i, sent[i], msg)
+		}
+	}
+
+	// newMsgs should contain exactly the assistant reply.
+	if len(newMsgs) != 1 {
+		t.Fatalf("expected 1 new message, got %d", len(newMsgs))
+	}
+	if newMsgs[0].Role != "assistant" {
+		t.Fatalf("expected assistant message, got %q", newMsgs[0].Role)
+	}
+	if newMsgs[0].Content != "turn2 reply" {
+		t.Fatalf("unexpected new message content: %q", newMsgs[0].Content)
 	}
 }
