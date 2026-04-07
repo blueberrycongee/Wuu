@@ -41,18 +41,13 @@ func (r *StreamRunner) RunWithCallback(ctx context.Context, prompt string, onEve
 		return "", errors.New("prompt is required")
 	}
 
-	maxSteps := r.MaxSteps
-	if maxSteps <= 0 {
-		maxSteps = 8
-	}
-
 	messages := []providers.ChatMessage{}
 	if strings.TrimSpace(r.SystemPrompt) != "" {
 		messages = append(messages, providers.ChatMessage{Role: "system", Content: r.SystemPrompt})
 	}
 	messages = append(messages, providers.ChatMessage{Role: "user", Content: prompt})
 
-	for step := 0; step < maxSteps; step++ {
+	for {
 		req := providers.ChatRequest{
 			Model:       r.Model,
 			Messages:    messages,
@@ -165,8 +160,6 @@ func (r *StreamRunner) RunWithCallback(ctx context.Context, prompt string, onEve
 			})
 		}
 	}
-
-	return "", fmt.Errorf("max steps exceeded (%d)", maxSteps)
 }
 
 func truncateLog(s string, maxLen int) string {
