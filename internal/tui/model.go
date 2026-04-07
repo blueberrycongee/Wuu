@@ -681,7 +681,7 @@ func (m *Model) renderMarkdown(content string) (string, error) {
 	width := max(40, m.viewport.Width-6)
 	if m.mdRenderer == nil || m.mdWidth != width {
 		renderer, err := glamour.NewTermRenderer(
-			glamour.WithAutoStyle(),
+			glamour.WithStandardStyle("dark"),
 			glamour.WithWordWrap(width),
 		)
 		if err != nil {
