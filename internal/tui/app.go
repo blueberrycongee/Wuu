@@ -13,14 +13,15 @@ import (
 
 // Config defines runtime dependencies for the interactive UI.
 type Config struct {
-	Provider     string
-	Model        string
-	ConfigPath   string
-	MemoryPath   string
-	SessionDir   string // .wuu/sessions/ directory for session isolation
-	ResumeID     string // session ID to resume (empty = new session)
-	RunPrompt    func(ctx context.Context, prompt string) (string, error)
-	StreamRunner *agent.StreamRunner // optional, used when available
+	Provider         string
+	Model            string
+	ConfigPath       string
+	MemoryPath       string
+	SessionDir       string // .wuu/sessions/ directory for session isolation
+	ResumeID         string // session ID to resume (empty = new session)
+	MaxContextTokens int
+	RunPrompt        func(ctx context.Context, prompt string) (string, error)
+	StreamRunner     *agent.StreamRunner // optional, used when available
 }
 
 // Run starts the interactive terminal UI.

@@ -1086,7 +1086,7 @@ func (m Model) View() string {
 	}
 	tokenStr := formatTokenCount(tokenEstimate)
 	header := headerStyle.Render(
-		trimToWidth(fmt.Sprintf("wuu · %s/%s · %s tokens", m.provider, m.modelName, tokenStr), m.width),
+		trimToWidth(fmt.Sprintf("wuu · %s/%s │ %s tokens", m.provider, m.modelName, tokenStr), m.width),
 	)
 
 	// Footer
@@ -1095,6 +1095,9 @@ func (m Model) View() string {
 	if m.streaming {
 		iconStyled = statusStreamStyle.Render("●")
 		state = "streaming"
+	} else if m.statusLine == "thinking" {
+		iconStyled = statusStreamStyle.Render("◐")
+		state = "thinking"
 	} else if strings.HasPrefix(m.statusLine, "executing tool:") {
 		iconStyled = statusToolStyle.Render("◆")
 	} else if m.statusLine == "request failed" {
@@ -1114,7 +1117,7 @@ func (m Model) View() string {
 	}
 
 	footerLeft := fmt.Sprintf("%s %s%s%s", iconStyled, state, queueHint, jumpHint)
-	footerRight := m.clock
+	footerRight := fmt.Sprintf("t:thinking · %s", m.clock)
 	availableW := max(1, m.width-lipgloss.Width(footerRight)-1)
 	footerLeft = trimToWidth(footerLeft, availableW)
 	gap := max(1, m.width-lipgloss.Width(footerLeft)-lipgloss.Width(footerRight))

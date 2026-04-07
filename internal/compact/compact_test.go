@@ -1,6 +1,8 @@
 package compact
 
 import (
+	"context"
+	"errors"
 	"testing"
 
 	"github.com/blueberrycongee/wuu/internal/providers"
@@ -68,5 +70,44 @@ func TestShouldCompact_ZeroThreshold(t *testing.T) {
 	messages := []providers.ChatMessage{{Role: "user", Content: "hi"}}
 	if ShouldCompact(messages, 0) {
 		t.Fatal("expected ShouldCompact=false for zero threshold")
+	}
+}
+
+type mockCompactClient struct {
+	response string
+}
+
+func (m *mockCompactClient) Chat(_ context.Context, req providers.ChatRequest) (providers.ChatResponse, error) {
+	return providers.ChatResponse{Content: m.response}, nil
+}
+
+func (m *mockCompactClient) StreamChat(_ context.Context, req providers.ChatRequest) (<-chan providers.StreamEvent, error) {
+	return nil, errors.New("not implemented")
+}
+
+func TestCompact_IncludesToolCallsInSummary(t *testing.T) {
+	messages := []providers.ChatMessage{
+		{Role: "user", Content: "Read main.go"},
+		{Role: "assistant", Content: "Sure.", ToolCalls: []providers.ToolCall{
+			{ID: "c1", Name: "read_file", Arguments: `{"path":"main.go"}`},
+		}},
+		{Role: "tool", Name: "read_file", ToolCallID: "c1", Content: "package main"},
+		{Role: "assistant", Content: "Here is main.go content."},
+		{Role: "user", Content: "Now fix the bug."},
+		{Role: "assistant", Content: "Fixed."},
+		{Role: "user", Content: "Thanks."},
+		{Role: "assistant", Content: "You're welcome."},
+	}
+
+	client := &mockCompactClient{response: "User asked to read main.go, assistant used read_file tool, then fixed a bug."}
+	result, err := Compact(context.Background(), messages, client, "test")
+	if err != nil {
+		t.Fatalf("Compact: %v", err)
+	}
+	if len(result) >= len(messages) {
+		t.Fatalf("expected compacted result to be shorter, got %d vs %d", len(result), len(messages))
+	}
+	if result[0].Role != "system" {
+		t.Fatalf("expected system summary, got %s", result[0].Role)
 	}
 }

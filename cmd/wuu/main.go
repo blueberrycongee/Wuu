@@ -289,13 +289,14 @@ func runTUI(args []string) error {
 	}
 
 	return tui.Run(tui.Config{
-		Provider:     resolvedName,
-		Model:        providerCfg.Model,
-		ConfigPath:   configPath,
-		MemoryPath:   resolvedMemoryPath,
-		SessionDir:   sessDir,
-		ResumeID:     resolvedResumeID,
-		StreamRunner: streamRunner,
+		Provider:         resolvedName,
+		Model:            providerCfg.Model,
+		ConfigPath:       configPath,
+		MemoryPath:       resolvedMemoryPath,
+		SessionDir:       sessDir,
+		ResumeID:         resolvedResumeID,
+		MaxContextTokens: cfg.Agent.MaxContextTokens,
+		StreamRunner:     streamRunner,
 	})
 }
 

@@ -49,9 +49,10 @@ type ProviderConfig struct {
 
 // AgentConfig controls behavior of the local tool loop.
 type AgentConfig struct {
-	MaxSteps     int     `json:"max_steps"`
-	Temperature  float64 `json:"temperature"`
-	SystemPrompt string  `json:"system_prompt"`
+	MaxSteps         int     `json:"max_steps"`
+	MaxContextTokens int     `json:"max_context_tokens"`
+	Temperature      float64 `json:"temperature"`
+	SystemPrompt     string  `json:"system_prompt"`
 }
 
 // Load reads config with priority: .wuu.json, wuu.json, ~/.config/wuu/config.json.
@@ -220,6 +221,9 @@ func TemplateJSON() (string, error) {
 func applyDefaults(cfg *Config) {
 	if cfg.Agent.MaxSteps == 0 {
 		cfg.Agent.MaxSteps = 8
+	}
+	if cfg.Agent.MaxContextTokens == 0 {
+		cfg.Agent.MaxContextTokens = 128000
 	}
 	if cfg.Agent.Temperature == 0 {
 		cfg.Agent.Temperature = 0.2

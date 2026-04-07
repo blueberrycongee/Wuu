@@ -34,7 +34,7 @@ var darkTheme = theme{
 	Error:   lipgloss.Color("#FF6B80"), // bright red
 	Warning: lipgloss.Color("#FFC107"), // amber
 
-	Text:     lipgloss.Color("#FFFFFF"), // white
+	Text:     lipgloss.Color("#E0E0E0"), // soft white
 	Subtle:   lipgloss.Color("#888888"), // medium gray
 	Inactive: lipgloss.Color("#555555"), // dark gray
 

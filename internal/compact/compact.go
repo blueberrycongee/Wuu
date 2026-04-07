@@ -74,7 +74,14 @@ func Compact(ctx context.Context, messages []providers.ChatMessage, client provi
 	var summaryInput strings.Builder
 	summaryInput.WriteString("Summarize the following conversation concisely, preserving key decisions, code changes, and context:\n\n")
 	for _, msg := range toSummarize {
-		summaryInput.WriteString(fmt.Sprintf("[%s]: %s\n\n", msg.Role, truncate(msg.Content, 500)))
+		summaryInput.WriteString(fmt.Sprintf("[%s]: %s\n", msg.Role, truncate(msg.Content, 500)))
+		for _, tc := range msg.ToolCalls {
+			summaryInput.WriteString(fmt.Sprintf("  -> tool_call: %s(%s)\n", tc.Name, truncate(tc.Arguments, 200)))
+		}
+		if msg.ToolCallID != "" {
+			summaryInput.WriteString(fmt.Sprintf("  (result for tool call %s)\n", msg.ToolCallID))
+		}
+		summaryInput.WriteString("\n")
 	}
 
 	summaryReq := providers.ChatRequest{
