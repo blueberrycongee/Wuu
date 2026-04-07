@@ -92,6 +92,8 @@ type Model struct {
 	streamRunner  *agent.StreamRunner
 	streamCh      chan providers.StreamEvent
 
+	maxContextTokens int
+
 	viewport viewport.Model
 	input    textarea.Model
 
@@ -112,6 +114,7 @@ type Model struct {
 	streamTarget   int
 	streamElapsed  time.Duration
 	thinkingStart  time.Time // when thinking began for current turn
+	spinnerTick    int
 
 	autoFollow bool
 	showJump   bool
@@ -280,6 +283,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tickMsg:
 		m.clock = msg.now.Format("15:04:05")
+		m.spinnerTick++
+		if m.streaming || m.pendingRequest || m.statusLine == "thinking" {
+			m.refreshViewport(true)
+		}
 		return m, tickCmd()
 
 	case streamFinishedMsg:
@@ -958,30 +965,63 @@ func (m *Model) refreshViewport(forceBottom bool) {
 			// Color the role label based on type.
 			switch entry.Role {
 			case "USER":
-				b.WriteString(userLabelStyle.Render(entry.Role))
+				b.WriteString(userLabelStyle.Render("❯ user"))
 			case "ASSISTANT":
-				b.WriteString(assistantLabelStyle.Render(entry.Role))
+				b.WriteString(assistantLabelStyle.Render("◆ assistant"))
 			default:
 				b.WriteString(systemLabelStyle.Render(entry.Role))
 			}
 			b.WriteString("\n")
 
+			// Thinking block (if present).
+			if entry.ThinkingContent != "" {
+				elapsed := entry.ThinkingDuration
+				if !entry.ThinkingDone && !m.thinkingStart.IsZero() {
+					elapsed = time.Since(m.thinkingStart)
+				}
+				b.WriteString(renderThinkingBlock(
+					entry.ThinkingContent,
+					entry.ThinkingDone,
+					entry.ThinkingExpanded,
+					elapsed,
+					m.viewport.Width,
+					m.spinnerTick,
+				))
+				b.WriteString("\n")
+			}
+
+			// Tool call cards.
+			for _, tc := range entry.ToolCalls {
+				b.WriteString(renderToolCard(tc, m.viewport.Width))
+				b.WriteString("\n")
+			}
+
+			// Main content.
 			content := truncateForDisplay(entry.Content)
-			wrapWidth := max(40, m.viewport.Width-2)
-			if entry.rendered != "" {
-				// Use cached markdown render, just re-wrap for current width.
-				b.WriteString(wrapText(entry.rendered, wrapWidth))
-			} else {
-				b.WriteString(wrapText(content, wrapWidth))
+			if content != "(empty)" {
+				wrapWidth := max(40, m.viewport.Width-2)
+				if entry.rendered != "" {
+					b.WriteString(wrapText(entry.rendered, wrapWidth))
+				} else {
+					b.WriteString(wrapText(content, wrapWidth))
+				}
+				// Streaming cursor.
+				if m.streaming && i == m.streamTarget {
+					b.WriteString("▌")
+				}
 			}
 		}
-		if m.pendingRequest {
+		if m.pendingRequest && m.streamTarget < 0 {
 			if b.Len() > 0 {
 				b.WriteString("\n\n")
 			}
-			b.WriteString(assistantLabelStyle.Render("ASSISTANT"))
+			b.WriteString(assistantLabelStyle.Render("◆ assistant"))
 			b.WriteString("\n")
-			b.WriteString(lipgloss.NewStyle().Foreground(currentTheme.Subtle).Render("thinking..."))
+			elapsed := time.Duration(0)
+			if !m.thinkingStart.IsZero() {
+				elapsed = time.Since(m.thinkingStart)
+			}
+			b.WriteString(renderThinkingBlock("", false, false, elapsed, m.viewport.Width, m.spinnerTick))
 		}
 	}
 
