@@ -48,8 +48,9 @@ type queueDrainMsg struct{}
 
 type transcriptEntry struct {
 	Role    string
-	Content string // raw content
-	rendered string // markdown-rendered plain text (cached)
+	Content  string // raw content
+	rendered string // markdown-rendered text (cached)
+	renderedLen int // Content length when rendered was last computed
 }
 
 // Model implements the terminal UI state machine.
@@ -299,6 +300,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.entries[m.streamTarget].Content = ""
 			}
 			m.entries[m.streamTarget].Content += msg.event.Content
+			// Incremental markdown render every 80 chars of new content.
+			e := &m.entries[m.streamTarget]
+			if len(e.Content)-e.renderedLen >= 80 {
+				if r, err := m.renderMarkdown(e.Content); err == nil {
+					e.rendered = r
+					e.renderedLen = len(e.Content)
+				}
+			}
 			m.refreshViewport(true)
 			return m, waitStreamEvent(m.streamCh)
 
@@ -704,9 +713,10 @@ func (m *Model) cacheEntryRendered(idx int) {
 		return
 	}
 	e := &m.entries[idx]
-	if e.Role == "ASSISTANT" && e.rendered == "" {
+	if e.Role == "ASSISTANT" {
 		if r, err := m.renderMarkdown(e.Content); err == nil {
 			e.rendered = r
+			e.renderedLen = len(e.Content)
 		}
 	}
 }
