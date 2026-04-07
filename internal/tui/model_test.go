@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -218,4 +219,78 @@ func renderEntries(entries []transcriptEntry) string {
 		b.WriteString(e.Content)
 	}
 	return b.String()
+}
+
+func TestRenderThinkingBlock_Active(t *testing.T) {
+	result := renderThinkingBlock("analyzing...", false, false, 2*time.Second, 80, 0)
+	if !strings.Contains(result, "Thinking...") {
+		t.Fatalf("expected 'Thinking...' in output: %s", result)
+	}
+	if !strings.Contains(result, "2.0s") {
+		t.Fatalf("expected elapsed time in output: %s", result)
+	}
+}
+
+func TestRenderThinkingBlock_Done_Collapsed(t *testing.T) {
+	result := renderThinkingBlock("analyzed the code", true, false, 3200*time.Millisecond, 80, 0)
+	if !strings.Contains(result, "Thought for 3.2s") {
+		t.Fatalf("expected 'Thought for 3.2s' in output: %s", result)
+	}
+	// Content should NOT be visible when not expanded.
+	if strings.Contains(result, "analyzed the code") {
+		t.Fatalf("content should be hidden when collapsed: %s", result)
+	}
+}
+
+func TestRenderThinkingBlock_Done_Expanded(t *testing.T) {
+	result := renderThinkingBlock("analyzed the code", true, true, 3200*time.Millisecond, 80, 0)
+	if !strings.Contains(result, "Thought for 3.2s") {
+		t.Fatalf("expected 'Thought for 3.2s' in output: %s", result)
+	}
+	if !strings.Contains(result, "analyzed the code") {
+		t.Fatalf("content should be visible when expanded: %s", result)
+	}
+}
+
+func TestRenderToolCard_Running(t *testing.T) {
+	tc := ToolCallEntry{
+		Name:   "run_shell",
+		Args:   `{"cmd":"go build ./..."}`,
+		Status: ToolCallRunning,
+	}
+	result := renderToolCard(tc, 80)
+	if !strings.Contains(result, "run_shell") {
+		t.Fatalf("expected tool name in output: %s", result)
+	}
+	if !strings.Contains(result, "running") {
+		t.Fatalf("expected running status: %s", result)
+	}
+}
+
+func TestRenderToolCard_Done_Collapsed(t *testing.T) {
+	tc := ToolCallEntry{
+		Name:      "read_file",
+		Args:      `{"path":"model.go"}`,
+		Result:    "48 lines read",
+		Status:    ToolCallDone,
+		Collapsed: true,
+	}
+	result := renderToolCard(tc, 80)
+	if !strings.Contains(result, "read_file") {
+		t.Fatalf("expected tool name: %s", result)
+	}
+	if !strings.Contains(result, "done") {
+		t.Fatalf("expected done status: %s", result)
+	}
+}
+
+func TestRenderToolCard_Error(t *testing.T) {
+	tc := ToolCallEntry{
+		Name:   "run_shell",
+		Status: ToolCallError,
+	}
+	result := renderToolCard(tc, 80)
+	if !strings.Contains(result, "error") {
+		t.Fatalf("expected error status: %s", result)
+	}
 }
