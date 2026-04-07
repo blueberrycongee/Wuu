@@ -32,10 +32,8 @@ func renderThinkingBlock(content string, done bool, expanded bool, duration time
 	var b strings.Builder
 
 	if !done {
-		// Active: spinner + "Thinking..." + elapsed
-		frame := spinnerFrames[tick%len(spinnerFrames)]
-		b.WriteString(" ")
-		b.WriteString(spinnerStyle.Render(frame))
+		// Active: ✻ Thinking... + elapsed
+		b.WriteString(spinnerStyle.Render("✻"))
 		b.WriteString(" ")
 		b.WriteString(labelStyle.Render("Thinking..."))
 		if duration > 0 {
@@ -43,9 +41,8 @@ func renderThinkingBlock(content string, done bool, expanded bool, duration time
 			b.WriteString(timeStyle.Render(fmt.Sprintf("%.1fs", duration.Seconds())))
 		}
 	} else {
-		// Completed: diamond + "Thought for Xs"
-		b.WriteString(" ")
-		b.WriteString(spinnerStyle.Render("◆"))
+		// Completed: ✻ Thought for Xs
+		b.WriteString(spinnerStyle.Render("✻"))
 		b.WriteString(" ")
 		label := fmt.Sprintf("Thought for %.1fs", duration.Seconds())
 		b.WriteString(labelStyle.Render(label))

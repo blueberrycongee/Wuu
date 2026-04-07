@@ -994,16 +994,17 @@ func (m *Model) refreshViewport(forceBottom bool) {
 			if i > 0 {
 				b.WriteString("\n\n")
 			}
-			// Color the role label based on type.
+			// Role indicator — icon only, no text label.
 			switch entry.Role {
 			case "USER":
-				b.WriteString(userLabelStyle.Render("❯ user"))
+				b.WriteString(userLabelStyle.Render("❯"))
+				b.WriteString("\n")
 			case "ASSISTANT":
-				b.WriteString(assistantLabelStyle.Render("◆ assistant"))
+				// No label for assistant — content speaks for itself.
 			default:
 				b.WriteString(systemLabelStyle.Render(entry.Role))
+				b.WriteString("\n")
 			}
-			b.WriteString("\n")
 
 			// Thinking block (if present).
 			if entry.ThinkingContent != "" {
@@ -1047,8 +1048,6 @@ func (m *Model) refreshViewport(forceBottom bool) {
 			if b.Len() > 0 {
 				b.WriteString("\n\n")
 			}
-			b.WriteString(assistantLabelStyle.Render("◆ assistant"))
-			b.WriteString("\n")
 			elapsed := time.Duration(0)
 			if !m.thinkingStart.IsZero() {
 				elapsed = time.Since(m.thinkingStart)
