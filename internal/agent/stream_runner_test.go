@@ -182,12 +182,18 @@ func TestStreamRunner_RetryOnInitialConnectError(t *testing.T) {
 		},
 	}
 
+	var reconnectMsgs []string
 	runner := StreamRunner{
 		Client:                  client,
 		Model:                   "m",
 		StreamMaxRetries:        2,
 		StreamRetryInitialDelay: time.Millisecond,
 		StreamRetryMaxDelay:     2 * time.Millisecond,
+		OnEvent: func(ev providers.StreamEvent) {
+			if ev.Type == providers.EventReconnect {
+				reconnectMsgs = append(reconnectMsgs, ev.Content)
+			}
+		},
 	}
 
 	result, err := runner.Run(context.Background(), "hi")
@@ -199,6 +205,9 @@ func TestStreamRunner_RetryOnInitialConnectError(t *testing.T) {
 	}
 	if client.callCount != 2 {
 		t.Fatalf("expected 2 stream attempts, got %d", client.callCount)
+	}
+	if len(reconnectMsgs) != 1 {
+		t.Fatalf("expected 1 reconnect event, got %d", len(reconnectMsgs))
 	}
 }
 

@@ -162,6 +162,12 @@ func (r *StreamRunner) runStreamWithReconnect(
 			if shouldRetryStreamError(err, attempt, cfg.MaxRetries) {
 				delay := streamRetryDelay(attempt, cfg.InitialDelay, cfg.MaxDelay)
 				providers.DebugLogf("stream connect failed, reconnecting (%d/%d) in %s: %v", attempt+1, cfg.MaxRetries, delay, err)
+				if onEvent != nil {
+					onEvent(providers.StreamEvent{
+						Type:    providers.EventReconnect,
+						Content: fmt.Sprintf("Reconnecting... %d/%d", attempt+1, cfg.MaxRetries),
+					})
+				}
 				if waitErr := waitWithContext(ctx, delay); waitErr != nil {
 					return waitErr
 				}
@@ -249,6 +255,12 @@ func (r *StreamRunner) runStreamWithReconnect(
 		if !sawOutput && shouldRetryStreamError(streamErr, attempt, cfg.MaxRetries) {
 			delay := streamRetryDelay(attempt, cfg.InitialDelay, cfg.MaxDelay)
 			providers.DebugLogf("stream disconnected early, reconnecting (%d/%d) in %s: %v", attempt+1, cfg.MaxRetries, delay, streamErr)
+			if onEvent != nil {
+				onEvent(providers.StreamEvent{
+					Type:    providers.EventReconnect,
+					Content: fmt.Sprintf("Reconnecting... %d/%d", attempt+1, cfg.MaxRetries),
+				})
+			}
 			if waitErr := waitWithContext(ctx, delay); waitErr != nil {
 				return waitErr
 			}

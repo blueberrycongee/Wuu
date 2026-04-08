@@ -354,3 +354,28 @@ func TestStripUserImagePlaceholderLines(t *testing.T) {
 		t.Fatalf("stripUserImagePlaceholderLines() = %q", got)
 	}
 }
+
+func TestStreamReconnectEventUpdatesStatusLine(t *testing.T) {
+	m := NewModel(Config{
+		Provider:   "test",
+		Model:      "test-model",
+		ConfigPath: "/tmp/.wuu.json",
+		RunPrompt: func(_ctx context.Context, _prompt string) (string, error) {
+			return "", nil
+		},
+	})
+	m.streaming = true
+	m.pendingRequest = true
+	m.streamCh = make(chan providers.StreamEvent)
+
+	updated, _ := m.Update(streamEventMsg{
+		event: providers.StreamEvent{
+			Type:    providers.EventReconnect,
+			Content: "Reconnecting... 1/6",
+		},
+	})
+	after := updated.(Model)
+	if after.statusLine != "Reconnecting... 1/6" {
+		t.Fatalf("unexpected status line: %q", after.statusLine)
+	}
+}
