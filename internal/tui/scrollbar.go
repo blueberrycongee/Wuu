@@ -61,6 +61,10 @@ func renderScrollbar(height, contentSize, viewportSize, offset int) string {
 // of the corresponding viewport line. This avoids shrinking the viewport
 // width which would cause content truncation.
 func overlayScrollbar(viewport, scrollbar string, totalWidth int) string {
+	if totalWidth <= 0 {
+		return viewport
+	}
+
 	vLines := strings.Split(viewport, "\n")
 	sLines := strings.Split(scrollbar, "\n")
 
@@ -68,18 +72,11 @@ func overlayScrollbar(viewport, scrollbar string, totalWidth int) string {
 		if i >= len(sLines) {
 			break
 		}
-		lineW := lipgloss.Width(vLines[i])
-		if lineW >= totalWidth {
-			// Replace the last visible column with the scrollbar char.
-			vLines[i] = truncateToWidth(vLines[i], totalWidth-1) + sLines[i]
-		} else {
-			// Pad to position the scrollbar at the right edge.
-			pad := totalWidth - lineW - 1
-			if pad < 0 {
-				pad = 0
-			}
-			vLines[i] = vLines[i] + strings.Repeat(" ", pad) + sLines[i]
-		}
+
+		// Fit content to one column less than viewport, then place scrollbar in
+		// the last column. Padding after truncation is required for wide runes.
+		content := fitToWidth(vLines[i], totalWidth-1)
+		vLines[i] = content + sLines[i]
 	}
 	return strings.Join(vLines, "\n")
 }
@@ -90,4 +87,18 @@ func truncateToWidth(s string, width int) string {
 		return s
 	}
 	return ansi.Truncate(s, width, "")
+}
+
+// fitToWidth ensures the returned string has exactly the target visual width.
+func fitToWidth(s string, width int) string {
+	if width <= 0 {
+		return ""
+	}
+
+	out := truncateToWidth(s, width)
+	current := lipgloss.Width(out)
+	if current < width {
+		out += strings.Repeat(" ", width-current)
+	}
+	return out
 }

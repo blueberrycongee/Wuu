@@ -3,6 +3,8 @@ package tui
 import (
 	"strings"
 	"testing"
+
+	"github.com/charmbracelet/x/ansi"
 )
 
 func TestScrollbarContentFitsViewport(t *testing.T) {
@@ -96,6 +98,28 @@ func TestScrollbarTrackLines(t *testing.T) {
 	for _, line := range lines {
 		if !strings.Contains(line, scrollbarThumb) && !strings.Contains(line, scrollbarTrack) {
 			t.Fatalf("line should be either thumb or track, got %q", line)
+		}
+	}
+}
+
+func TestOverlayScrollbar_PadsAfterWideRuneTruncation(t *testing.T) {
+	// First line width is exactly 10 and ends with a CJK rune (width 2).
+	viewport := "12345678你\nabcdefghij"
+	scrollbar := "│\n│"
+
+	result := overlayScrollbar(viewport, scrollbar, 10)
+	lines := strings.Split(result, "\n")
+	if len(lines) != 2 {
+		t.Fatalf("expected 2 lines, got %d", len(lines))
+	}
+
+	for i, line := range lines {
+		if w := ansi.StringWidth(line); w != 10 {
+			t.Fatalf("line %d width mismatch: got %d want 10", i, w)
+		}
+		right := ansi.Cut(line, 9, 10)
+		if !strings.Contains(right, "│") {
+			t.Fatalf("line %d rightmost cell should contain scrollbar, got %q", i, right)
 		}
 	}
 }
