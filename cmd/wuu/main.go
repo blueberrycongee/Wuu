@@ -45,8 +45,10 @@ func run(args []string) error {
 	case "tui":
 		return runTUI(args[1:])
 	case "version", "-v", "--version":
-		fmt.Println(version.String())
-		return nil
+		if args[0] == "version" {
+			return runVersion(args[1:])
+		}
+		return runVersion(nil)
 	case "help", "-h", "--help":
 		printUsage()
 		return nil
@@ -54,6 +56,33 @@ func run(args []string) error {
 		// No subcommand → default to TUI.
 		return runTUI(args)
 	}
+}
+
+func runVersion(args []string) error {
+	fs := flag.NewFlagSet("version", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	long := fs.Bool("long", false, "show detailed version info")
+	jsonOutput := fs.Bool("json", false, "output version as JSON")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	info := version.Info()
+	if *jsonOutput {
+		data, err := json.MarshalIndent(info, "", "  ")
+		if err != nil {
+			return fmt.Errorf("marshal version info: %w", err)
+		}
+		fmt.Println(string(data))
+		return nil
+	}
+	if *long {
+		fmt.Println(info.LongString())
+		return nil
+	}
+
+	fmt.Println(info.String())
+	return nil
 }
 
 func runInit(args []string) error {
@@ -466,6 +495,7 @@ Usage:
   wuu init [--force]
   wuu run [flags] "your coding task"
   wuu tui [flags]
+  wuu version [--long|--json]
 
 Run flags:
   --provider        provider name from config
