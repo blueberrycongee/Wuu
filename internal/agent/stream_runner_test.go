@@ -192,3 +192,42 @@ func TestStreamRunner_AcceptsHistory(t *testing.T) {
 		t.Fatalf("unexpected new message content: %q", newMsgs[0].Content)
 	}
 }
+
+func TestStreamRunner_MaxStepsExceeded(t *testing.T) {
+	client := &mockStreamClient{
+		events: []providers.StreamEvent{
+			{
+				Type: providers.EventToolUseStart,
+				ToolCall: &providers.ToolCall{
+					ID:   "call_1",
+					Name: "run_shell",
+				},
+			},
+			{
+				Type: providers.EventToolUseEnd,
+				ToolCall: &providers.ToolCall{
+					ID:        "call_1",
+					Name:      "run_shell",
+					Arguments: `{"command":"echo hi"}`,
+				},
+			},
+			{Type: providers.EventDone},
+		},
+	}
+
+	tools := &fakeTools{}
+	runner := StreamRunner{
+		Client:   client,
+		Tools:    tools,
+		Model:    "test-model",
+		MaxSteps: 2,
+	}
+
+	_, err := runner.Run(context.Background(), "loop")
+	if err == nil {
+		t.Fatal("expected max steps error")
+	}
+	if len(tools.calls) != 2 {
+		t.Fatalf("expected 2 tool executions, got %d", len(tools.calls))
+	}
+}

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -20,6 +21,7 @@ type Config struct {
 	SessionDir       string // .wuu/sessions/ directory for session isolation
 	ResumeID         string // session ID to resume (empty = new session)
 	MaxContextTokens int
+	RequestTimeout   time.Duration
 	RunPrompt        func(ctx context.Context, prompt string) (string, error)
 	StreamRunner     *agent.StreamRunner // optional, used when available
 }

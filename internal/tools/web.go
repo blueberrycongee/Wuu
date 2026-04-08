@@ -65,7 +65,7 @@ func randomAcceptLang() string {
 // web_search
 // ---------------------------------------------------------------------------
 
-func (t *Toolkit) webSearch(argsJSON string) (string, error) {
+func (t *Toolkit) webSearch(ctx context.Context, argsJSON string) (string, error) {
 	var args struct {
 		Query string `json:"query"`
 	}
@@ -77,7 +77,10 @@ func (t *Toolkit) webSearch(argsJSON string) (string, error) {
 	}
 	maxResults := 10
 
-	ctx, cancel := context.WithTimeout(context.Background(), webFetchTimeout)
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	ctx, cancel := context.WithTimeout(ctx, webFetchTimeout)
 	defer cancel()
 
 	results, err := duckDuckGoSearch(ctx, args.Query, maxResults)
@@ -229,7 +232,7 @@ func cleanDDGURL(raw string) string {
 // web_fetch
 // ---------------------------------------------------------------------------
 
-func (t *Toolkit) webFetch(argsJSON string) (string, error) {
+func (t *Toolkit) webFetch(ctx context.Context, argsJSON string) (string, error) {
 	var args struct {
 		URL string `json:"url"`
 	}
@@ -240,7 +243,10 @@ func (t *Toolkit) webFetch(argsJSON string) (string, error) {
 		return "", fmt.Errorf("web_fetch requires url")
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), webFetchTimeout)
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	ctx, cancel := context.WithTimeout(ctx, webFetchTimeout)
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(ctx, "GET", args.URL, nil)

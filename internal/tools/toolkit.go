@@ -215,9 +215,9 @@ func (t *Toolkit) Execute(ctx context.Context, call providers.ToolCall) (string,
 	case "glob":
 		return t.glob(call.Arguments)
 	case "web_search":
-		return t.webSearch(call.Arguments)
+		return t.webSearch(ctx, call.Arguments)
 	case "web_fetch":
-		return t.webFetch(call.Arguments)
+		return t.webFetch(ctx, call.Arguments)
 	default:
 		return "", fmt.Errorf("unknown tool %q", call.Name)
 	}

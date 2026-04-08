@@ -188,7 +188,7 @@ func runTUI(args []string) error {
 	systemPrompt := fs.String("system-prompt", "", "system prompt override")
 	workdir := fs.String("workdir", "", "workspace directory")
 	noTools := fs.Bool("no-tools", false, "disable local tools")
-	fs.Duration("request-timeout", 10*time.Minute, "single request timeout (e.g. 2m)")
+	requestTimeout := fs.Duration("request-timeout", 10*time.Minute, "single request timeout (e.g. 2m)")
 	memoryFile := fs.String("memory-file", "", "session memory file path (deprecated, use sessions)")
 	resumeID := fs.String("resume", "", "resume session by ID (empty with flag = most recent)")
 	fs.String("pre-hook", strings.TrimSpace(os.Getenv("WUU_PRE_HOOK")), "shell command before each prompt")
@@ -296,6 +296,7 @@ func runTUI(args []string) error {
 		SessionDir:       sessDir,
 		ResumeID:         resolvedResumeID,
 		MaxContextTokens: cfg.Agent.MaxContextTokens,
+		RequestTimeout:   *requestTimeout,
 		StreamRunner:     streamRunner,
 	})
 }

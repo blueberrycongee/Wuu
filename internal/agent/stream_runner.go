@@ -48,11 +48,16 @@ func (r *StreamRunner) RunWithCallback(ctx context.Context, history []providers.
 		return "", nil, errors.New("model is required")
 	}
 
+	maxSteps := r.MaxSteps
+	if maxSteps <= 0 {
+		maxSteps = 8
+	}
+
 	messages := make([]providers.ChatMessage, len(history))
 	copy(messages, history)
 	startLen := len(messages)
 
-	for {
+	for step := 0; step < maxSteps; step++ {
 		req := providers.ChatRequest{
 			Model:       r.Model,
 			Messages:    messages,
@@ -173,6 +178,8 @@ func (r *StreamRunner) RunWithCallback(ctx context.Context, history []providers.
 			})
 		}
 	}
+
+	return "", nil, fmt.Errorf("max steps exceeded (%d)", maxSteps)
 }
 
 func truncateLog(s string, maxLen int) string {
