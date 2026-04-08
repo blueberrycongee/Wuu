@@ -12,6 +12,8 @@ import (
 	"github.com/yuin/goldmark/text"
 )
 
+const thematicBreakMaxWidth = 20
+
 // Render parses markdown input and returns a styled terminal string.
 func Render(input string, width int, styles Styles) string {
 	if strings.TrimSpace(input) == "" {
@@ -95,7 +97,7 @@ func (w *Writer) walk(n ast.Node) {
 			if entering {
 				w.startBlock()
 				w.openLine()
-				w.lineBuf.WriteString(strings.Repeat("─", min(40, w.width)))
+				w.lineBuf.WriteString(strings.Repeat("─", min(thematicBreakMaxWidth, w.width)))
 				w.flushPendingLine()
 				w.needsNewline = true
 			}
