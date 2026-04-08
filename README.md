@@ -32,6 +32,29 @@ wuu run "describe this repo"  # one-shot task
 
 On first launch, `wuu` walks you through provider setup (API key, model, theme).
 
+## Versioning
+
+- `VERSION` is the single source of truth for the next SemVer release (for example `0.1.0`).
+- Local builds use `vX.Y.Z-dev` by default:
+
+```bash
+make install
+wuu version --long
+```
+
+- Release flow:
+
+```bash
+# 1) update VERSION
+# 2) create release tag from VERSION
+make tag-release
+
+# 3) push tag to trigger GitHub Release workflow
+git push origin v$(cat VERSION)
+```
+
+When a `v*` tag is pushed, GitHub Actions + GoReleaser publishes release artifacts.
+
 ## What It Does
 
 - Interactive TUI with streaming markdown rendering, slash commands, and session memory

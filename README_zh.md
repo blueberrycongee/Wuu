@@ -30,6 +30,29 @@ wuu run "描述一下这个仓库"       # 单次任务
 
 首次启动时，`wuu` 会引导你完成 provider 配置（API key、模型、主题）。
 
+## 版本管理
+
+- `VERSION` 是版本号唯一来源（SemVer，例如 `0.1.0`）。
+- 本地默认构建为 `vX.Y.Z-dev`：
+
+```bash
+make install
+wuu version --long
+```
+
+- 发布流程：
+
+```bash
+# 1) 修改 VERSION
+# 2) 根据 VERSION 创建发布 tag
+make tag-release
+
+# 3) 推送 tag，触发 GitHub Release 工作流
+git push origin v$(cat VERSION)
+```
+
+推送 `v*` tag 后，会由 GitHub Actions + GoReleaser 自动发布二进制产物。
+
 ## 功能
 
 - 交互式 TUI，支持流式 Markdown 渲染、斜杠命令、会话记忆
