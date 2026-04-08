@@ -102,6 +102,21 @@ func TestScrollbarTrackLines(t *testing.T) {
 	}
 }
 
+func TestScrollbarRendersMarkerOnTrack(t *testing.T) {
+	result := renderScrollbarWithMarkers(10, 100, 10, 0, []int{50})
+	if !strings.Contains(result, scrollbarMarker) {
+		t.Fatalf("expected scrollbar marker in output, got %q", result)
+	}
+}
+
+func TestScrollbarRendersMarkerOnThumb(t *testing.T) {
+	result := renderScrollbarWithMarkers(10, 100, 10, 0, []int{0})
+	lines := strings.Split(result, "\n")
+	if len(lines) == 0 || !strings.Contains(lines[0], scrollbarMarkerOnThumb) {
+		t.Fatalf("expected marker-on-thumb at first row, got %q", result)
+	}
+}
+
 func TestOverlayScrollbar_PadsAfterWideRuneTruncation(t *testing.T) {
 	// First line width is exactly 10 and ends with a CJK rune (width 2).
 	viewport := "12345678你\nabcdefghij"

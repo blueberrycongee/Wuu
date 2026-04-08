@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -208,6 +209,59 @@ func TestMouseClickPositionsCursorMultiLine(t *testing.T) {
 	li := after.input.LineInfo()
 	if li.CharOffset != 3 {
 		t.Fatalf("expected cursor at column 3, got %d", li.CharOffset)
+	}
+}
+
+func TestMouseClickScrollbarAnchorJumpsToUserMessage(t *testing.T) {
+	m := NewModel(Config{
+		Provider:   "test",
+		Model:      "test-model",
+		ConfigPath: "/tmp/.wuu.json",
+		RunPrompt: func(_ctx context.Context, prompt string) (string, error) {
+			return prompt, nil
+		},
+	})
+	m.width = 100
+	m.height = 20
+	m.relayout()
+
+	for i := 0; i < 3; i++ {
+		m.appendEntry("USER", fmt.Sprintf("user %d", i))
+		m.appendEntry("ASSISTANT", strings.Repeat("line\n", 20)+"end")
+	}
+	m.refreshViewport(false)
+
+	if len(m.userMessageLineAnchors) < 2 {
+		t.Fatalf("expected at least 2 user anchors, got %d", len(m.userMessageLineAnchors))
+	}
+	maxOffset := max(0, m.viewport.TotalLineCount()-m.viewport.Height)
+	target := 1
+	if m.userMessageLineAnchors[target] >= maxOffset {
+		target = 0
+	}
+	anchorRows := contentLinesToScrollbarRows(
+		m.userMessageLineAnchors,
+		m.layout.Chat.Height,
+		m.viewport.TotalLineCount(),
+	)
+	clickX := m.layout.Chat.X + m.layout.Chat.Width - 1
+	clickY := m.layout.Chat.Y + anchorRows[target]
+
+	updated, _ := m.Update(tea.MouseMsg{
+		Action: tea.MouseActionPress,
+		Button: tea.MouseButtonLeft,
+		X:      clickX,
+		Y:      clickY,
+	})
+	after := updated.(Model)
+
+	want := after.userMessageLineAnchors[target]
+	maxOffset = max(0, after.viewport.TotalLineCount()-after.viewport.Height)
+	if want > maxOffset {
+		want = maxOffset
+	}
+	if after.viewport.YOffset != want {
+		t.Fatalf("expected viewport offset %d after anchor click, got %d", want, after.viewport.YOffset)
 	}
 }
 

@@ -8,13 +8,19 @@ import (
 )
 
 const (
-	scrollbarThumb = "┃"
-	scrollbarTrack = "│"
+	scrollbarThumb         = "┃"
+	scrollbarTrack         = "│"
+	scrollbarMarker        = "•"
+	scrollbarMarkerOnThumb = "●"
 )
 
 // renderScrollbar builds a vertical scrollbar string based on content and viewport size.
 // Returns an empty string if content fits within the viewport.
 func renderScrollbar(height, contentSize, viewportSize, offset int) string {
+	return renderScrollbarWithMarkers(height, contentSize, viewportSize, offset, nil)
+}
+
+func renderScrollbarWithMarkers(height, contentSize, viewportSize, offset int, markerLines []int) string {
 	if height <= 0 || contentSize <= viewportSize {
 		return ""
 	}
@@ -41,20 +47,59 @@ func renderScrollbar(height, contentSize, viewportSize, offset int) string {
 
 	thumbStyle := lipgloss.NewStyle().Foreground(currentTheme.Brand)
 	trackStyle := lipgloss.NewStyle().Foreground(currentTheme.Border)
+	markerStyle := lipgloss.NewStyle().Foreground(currentTheme.BrandLight)
+	markerOnThumbStyle := lipgloss.NewStyle().Foreground(currentTheme.BrandLight)
+	markerRows := markerLinesToScrollbarRows(markerLines, height, contentSize)
 
 	var sb strings.Builder
 	for i := range height {
 		if i > 0 {
 			sb.WriteString("\n")
 		}
-		if i >= thumbPos && i < thumbPos+thumbSize {
+		_, hasMarker := markerRows[i]
+		inThumb := i >= thumbPos && i < thumbPos+thumbSize
+		switch {
+		case inThumb && hasMarker:
+			sb.WriteString(markerOnThumbStyle.Render(scrollbarMarkerOnThumb))
+		case inThumb:
 			sb.WriteString(thumbStyle.Render(scrollbarThumb))
-		} else {
+		case hasMarker:
+			sb.WriteString(markerStyle.Render(scrollbarMarker))
+		default:
 			sb.WriteString(trackStyle.Render(scrollbarTrack))
 		}
 	}
 
 	return sb.String()
+}
+
+func markerLinesToScrollbarRows(markerLines []int, height, contentSize int) map[int]struct{} {
+	rows := make(map[int]struct{}, len(markerLines))
+	for _, row := range contentLinesToScrollbarRows(markerLines, height, contentSize) {
+		rows[row] = struct{}{}
+	}
+	return rows
+}
+
+func contentLinesToScrollbarRows(lines []int, height, contentSize int) []int {
+	rows := make([]int, 0, len(lines))
+	for _, line := range lines {
+		rows = append(rows, contentLineToScrollbarRow(line, height, contentSize))
+	}
+	return rows
+}
+
+func contentLineToScrollbarRow(line, height, contentSize int) int {
+	if height <= 1 || contentSize <= 1 {
+		return 0
+	}
+	maxLine := contentSize - 1
+	if line < 0 {
+		line = 0
+	} else if line > maxLine {
+		line = maxLine
+	}
+	return line * (height - 1) / maxLine
 }
 
 // overlayScrollbar places each scrollbar character at the rightmost column

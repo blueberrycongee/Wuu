@@ -27,6 +27,8 @@ const (
 
 	queuePreviewMaxItems = 2
 	queuePreviewMaxChars = 28
+
+	scrollbarAnchorClickTolerance = 1
 )
 
 type tickMsg struct {
@@ -119,8 +121,8 @@ type Model struct {
 	width  int
 	height int
 
-	entries      []transcriptEntry
-	chatHistory  []providers.ChatMessage
+	entries     []transcriptEntry
+	chatHistory []providers.ChatMessage
 	pendingTurn *pendingTurnResult // shared with goroutine for returning turn result
 
 	pendingRequest bool
@@ -166,6 +168,9 @@ type Model struct {
 
 	// Pending image attachments for the next user message.
 	pendingImages []providers.InputImage
+
+	// Anchors (content line offsets) for user messages in the rendered viewport.
+	userMessageLineAnchors []int
 }
 
 // NewModel builds the initial UI model.
@@ -557,6 +562,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case tea.MouseMsg:
+		if msg.Action == tea.MouseActionPress &&
+			msg.Button == tea.MouseButtonLeft &&
+			m.isScrollbarClick(msg.X, msg.Y) {
+			row := msg.Y - m.layout.Chat.Y
+			if !m.jumpToNearestUserAnchorAtRow(row) {
+				m.jumpToScrollbarRow(row)
+			}
+			return m, nil
+		}
+
 		if m.showJump &&
 			msg.Action == tea.MouseActionPress &&
 			msg.Button == tea.MouseButtonLeft &&
@@ -1178,31 +1193,127 @@ func (m Model) historyDown() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m *Model) hasScrollableContent() bool {
+	return m.layout.Chat.Height > 0 && m.viewport.TotalLineCount() > m.viewport.Height
+}
+
+func (m *Model) isScrollbarClick(x, y int) bool {
+	if !m.hasScrollableContent() {
+		return false
+	}
+	right := m.layout.Chat.X + m.layout.Chat.Width - 1
+	top := m.layout.Chat.Y
+	bottom := top + m.layout.Chat.Height
+	return x == right && y >= top && y < bottom
+}
+
+func (m *Model) setViewportOffset(offset int) {
+	maxOffset := max(0, m.viewport.TotalLineCount()-m.viewport.Height)
+	if offset < 0 {
+		offset = 0
+	} else if offset > maxOffset {
+		offset = maxOffset
+	}
+	m.viewport.YOffset = offset
+	m.autoFollow = m.viewport.AtBottom()
+	m.showJump = !m.viewport.AtBottom()
+}
+
+func (m *Model) jumpToScrollbarRow(row int) {
+	height := m.layout.Chat.Height
+	if height <= 1 {
+		m.setViewportOffset(0)
+		return
+	}
+	if row < 0 {
+		row = 0
+	} else if row >= height {
+		row = height - 1
+	}
+	maxOffset := max(0, m.viewport.TotalLineCount()-m.viewport.Height)
+	offset := row * maxOffset / (height - 1)
+	m.setViewportOffset(offset)
+}
+
+func (m *Model) jumpToNearestUserAnchorAtRow(row int) bool {
+	if len(m.userMessageLineAnchors) == 0 {
+		return false
+	}
+	anchorRows := contentLinesToScrollbarRows(
+		m.userMessageLineAnchors,
+		m.layout.Chat.Height,
+		m.viewport.TotalLineCount(),
+	)
+	nearest := -1
+	bestDistance := scrollbarAnchorClickTolerance + 1
+	for i, anchorRow := range anchorRows {
+		distance := anchorRow - row
+		if distance < 0 {
+			distance = -distance
+		}
+		if distance < bestDistance {
+			bestDistance = distance
+			nearest = i
+		}
+	}
+	if nearest < 0 || bestDistance > scrollbarAnchorClickTolerance {
+		return false
+	}
+	m.setViewportOffset(m.userMessageLineAnchors[nearest])
+	return true
+}
+
 func (m *Model) refreshViewport(forceBottom bool) {
 	var b strings.Builder
+	lineCount := 0
+	appendText := func(text string) {
+		if text == "" {
+			return
+		}
+		b.WriteString(text)
+		newlines := strings.Count(text, "\n")
+		if lineCount == 0 {
+			lineCount = newlines + 1
+			return
+		}
+		lineCount += newlines
+	}
+	currentLine := func() int {
+		if lineCount == 0 {
+			return 0
+		}
+		return lineCount - 1
+	}
+	userAnchors := make([]int, 0, len(m.entries))
 
 	if len(m.entries) == 0 && !m.pendingRequest {
 		// Show welcome screen when chat is empty.
-		b.WriteString(welcomeScreen(m.viewport.Width, m.provider, m.modelName, m.sessionID))
+		appendText(welcomeScreen(m.viewport.Width, m.provider, m.modelName, m.sessionID))
 	} else {
+		renderedAny := false
 		for i, entry := range m.entries {
 			// Skip tool entries — they are merged into assistant entries.
 			if entry.Role == "TOOL" {
 				continue
 			}
-			if i > 0 {
-				b.WriteString("\n\n")
+			if renderedAny {
+				appendText("\n\n")
 			}
+			entryStartLine := currentLine()
+			if entry.Role == "USER" {
+				userAnchors = append(userAnchors, entryStartLine)
+			}
+			renderedAny = true
 			// Role indicator — icon only, no text label.
 			switch entry.Role {
 			case "USER":
-				b.WriteString(userLabelStyle.Render("❯"))
-				b.WriteString("\n")
+				appendText(userLabelStyle.Render("❯"))
+				appendText("\n")
 			case "ASSISTANT":
 				// No label for assistant — content speaks for itself.
 			default:
-				b.WriteString(systemLabelStyle.Render(entry.Role))
-				b.WriteString("\n")
+				appendText(systemLabelStyle.Render(entry.Role))
+				appendText("\n")
 			}
 
 			// Thinking block (if present).
@@ -1211,7 +1322,7 @@ func (m *Model) refreshViewport(forceBottom bool) {
 				if !entry.ThinkingDone && !m.thinkingStart.IsZero() {
 					elapsed = time.Since(m.thinkingStart)
 				}
-				b.WriteString(renderThinkingBlock(
+				appendText(renderThinkingBlock(
 					entry.ThinkingContent,
 					entry.ThinkingDone,
 					entry.ThinkingExpanded,
@@ -1219,13 +1330,13 @@ func (m *Model) refreshViewport(forceBottom bool) {
 					m.viewport.Width,
 					m.spinnerTick,
 				))
-				b.WriteString("\n")
+				appendText("\n")
 			}
 
 			// Tool call cards.
 			for _, tc := range entry.ToolCalls {
-				b.WriteString(renderToolCard(tc, m.viewport.Width))
-				b.WriteString("\n")
+				appendText(renderToolCard(tc, m.viewport.Width))
+				appendText("\n")
 			}
 
 			// Main content.
@@ -1233,30 +1344,31 @@ func (m *Model) refreshViewport(forceBottom bool) {
 			if content != "(empty)" {
 				wrapWidth := max(40, m.viewport.Width-2)
 				if entry.Role == "USER" {
-					b.WriteString(userContentStyle.Render(wrapText(content, wrapWidth-2)))
+					appendText(userContentStyle.Render(wrapText(content, wrapWidth-2)))
 				} else if entry.rendered != "" {
-					b.WriteString(wrapText(entry.rendered, wrapWidth))
+					appendText(wrapText(entry.rendered, wrapWidth))
 				} else {
-					b.WriteString(wrapText(content, wrapWidth))
+					appendText(wrapText(content, wrapWidth))
 				}
 				// Streaming cursor.
 				if m.streaming && i == m.streamTarget {
-					b.WriteString("▌")
+					appendText("▌")
 				}
 			}
 		}
 		if m.pendingRequest && m.streamTarget < 0 {
 			if b.Len() > 0 {
-				b.WriteString("\n\n")
+				appendText("\n\n")
 			}
 			elapsed := time.Duration(0)
 			if !m.thinkingStart.IsZero() {
 				elapsed = time.Since(m.thinkingStart)
 			}
-			b.WriteString(renderThinkingBlock("", false, false, elapsed, m.viewport.Width, m.spinnerTick))
+			appendText(renderThinkingBlock("", false, false, elapsed, m.viewport.Width, m.spinnerTick))
 		}
 	}
 
+	m.userMessageLineAnchors = userAnchors
 	m.viewport.SetContent(b.String())
 	if forceBottom || m.autoFollow {
 		m.viewport.GotoBottom()
@@ -1344,11 +1456,12 @@ func (m Model) View() string {
 	outputBox := m.viewport.View()
 
 	// Overlay scrollbar on the rightmost column of the viewport.
-	sb := renderScrollbar(
+	sb := renderScrollbarWithMarkers(
 		m.layout.Chat.Height,
 		m.viewport.TotalLineCount(),
 		m.viewport.Height,
 		m.viewport.YOffset,
+		m.userMessageLineAnchors,
 	)
 	if sb != "" {
 		outputBox = overlayScrollbar(outputBox, sb, m.layout.Chat.Width)
