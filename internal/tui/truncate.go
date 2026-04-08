@@ -79,3 +79,34 @@ func wrapText(s string, width int) string {
 	// (URLs, hashes, minified text) so viewport never clips lines.
 	return reflowwrap.String(wordwrap.String(s, width), width)
 }
+
+// Content padding applied around all chat messages in the viewport.
+const (
+	contentPadLeft  = 2
+	contentPadRight = 2
+)
+
+// contentWidth returns the inner content width after subtracting the
+// left and right padding from the viewport width, with a sensible
+// minimum so very narrow terminals still render something readable.
+func contentWidth(viewportWidth int) int {
+	w := viewportWidth - contentPadLeft - contentPadRight
+	if w < 40 {
+		return 40
+	}
+	return w
+}
+
+// indentLines prepends n spaces to every line of s. Preserves ANSI
+// escape sequences because the padding is pure ASCII whitespace.
+func indentLines(s string, n int) string {
+	if n <= 0 || s == "" {
+		return s
+	}
+	pad := strings.Repeat(" ", n)
+	lines := strings.Split(s, "\n")
+	for i, l := range lines {
+		lines[i] = pad + l
+	}
+	return strings.Join(lines, "\n")
+}

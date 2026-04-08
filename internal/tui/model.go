@@ -437,7 +437,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Stream through the markdown collector.
 			if m.streamCollector == nil {
 				m.streamCollector = markdown.NewStreamCollector(
-					max(40, m.viewport.Width-2),
+					contentWidth(m.viewport.Width),
 					markdown.DefaultStyles(),
 				)
 			}
@@ -1060,8 +1060,7 @@ func (m *Model) renderMarkdown(content string) (string, error) {
 	if strings.TrimSpace(content) == "" {
 		return "(empty)", nil
 	}
-	width := max(40, m.viewport.Width-6)
-	rendered := markdown.Render(content, width, markdown.DefaultStyles())
+	rendered := markdown.Render(content, contentWidth(m.viewport.Width), markdown.DefaultStyles())
 	if rendered == "" {
 		return "(empty)", nil
 	}
@@ -1372,15 +1371,17 @@ func (m *Model) refreshViewport(forceBottom bool) {
 				userAnchors = append(userAnchors, entryStartLine)
 			}
 			renderedAny = true
+			cw := contentWidth(m.viewport.Width)
+			innerWidth := cw + contentPadRight // thinking/tool cards handle their own right slack
 			// Role indicator — icon only, no text label.
 			switch entry.Role {
 			case "USER":
-				appendText(userLabelStyle.Render("❯"))
+				appendText(indentLines(userLabelStyle.Render("❯"), contentPadLeft))
 				appendText("\n")
 			case "ASSISTANT":
 				// No label for assistant — content speaks for itself.
 			default:
-				appendText(systemLabelStyle.Render(entry.Role))
+				appendText(indentLines(systemLabelStyle.Render(entry.Role), contentPadLeft))
 				appendText("\n")
 			}
 
@@ -1390,33 +1391,35 @@ func (m *Model) refreshViewport(forceBottom bool) {
 				if !entry.ThinkingDone && !m.thinkingStart.IsZero() {
 					elapsed = time.Since(m.thinkingStart)
 				}
-				appendText(renderThinkingBlock(
+				appendText(indentLines(renderThinkingBlock(
 					entry.ThinkingContent,
 					entry.ThinkingDone,
 					entry.ThinkingExpanded,
 					elapsed,
-					m.viewport.Width,
+					innerWidth,
 					m.spinnerTick,
-				))
+				), contentPadLeft))
 				appendText("\n")
 			}
 
 			// Tool call cards.
 			for _, tc := range entry.ToolCalls {
-				appendText(renderToolCard(tc, m.viewport.Width))
+				appendText(indentLines(renderToolCard(tc, innerWidth), contentPadLeft))
 				appendText("\n")
 			}
 
 			// Main content.
 			content := truncateForDisplay(entry.Content)
 			if content != "(empty)" {
-				wrapWidth := max(40, m.viewport.Width-2)
 				if entry.Role == "USER" {
-					appendText(userContentStyle.Render(wrapText(content, wrapWidth-2)))
+					// userContentStyle has Padding(0,1) = 1 char each side, so
+					// wrap to cw-2 to leave room for it.
+					wrapped := userContentStyle.Render(wrapText(content, cw-2))
+					appendText(indentLines(wrapped, contentPadLeft))
 				} else if entry.rendered != "" {
-					appendText(wrapText(entry.rendered, wrapWidth))
+					appendText(indentLines(wrapText(entry.rendered, cw), contentPadLeft))
 				} else {
-					appendText(wrapText(content, wrapWidth))
+					appendText(indentLines(wrapText(content, cw), contentPadLeft))
 				}
 				// Streaming cursor.
 				if m.streaming && i == m.streamTarget {
