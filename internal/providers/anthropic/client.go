@@ -407,12 +407,32 @@ func (c *Client) handleSSEEvent(
 func mapMessage(msg providers.ChatMessage) (anthropicMessage, error) {
 	switch msg.Role {
 	case "user", "assistant":
-		blocks := make([]anthropicBlock, 0, len(msg.ToolCalls)+1)
+		blocks := make([]anthropicBlock, 0, len(msg.ToolCalls)+len(msg.Images)+1)
 		if strings.TrimSpace(msg.Content) != "" {
 			blocks = append(blocks, anthropicBlock{
 				Type: "text",
 				Text: msg.Content,
 			})
+		}
+		if msg.Role == "user" {
+			for _, image := range msg.Images {
+				data := strings.TrimSpace(image.Data)
+				if data == "" {
+					continue
+				}
+				mediaType := strings.TrimSpace(image.MediaType)
+				if mediaType == "" {
+					mediaType = "image/png"
+				}
+				blocks = append(blocks, anthropicBlock{
+					Type: "image",
+					Source: &anthropicImageSource{
+						Type:      "base64",
+						MediaType: mediaType,
+						Data:      data,
+					},
+				})
+			}
 		}
 		for _, call := range msg.ToolCalls {
 			var input any
@@ -474,13 +494,20 @@ type anthropicMessage struct {
 }
 
 type anthropicBlock struct {
+	Type      string                `json:"type"`
+	Text      string                `json:"text,omitempty"`
+	Source    *anthropicImageSource `json:"source,omitempty"`
+	ID        string                `json:"id,omitempty"`
+	Name      string                `json:"name,omitempty"`
+	Input     any                   `json:"input,omitempty"`
+	ToolUseID string                `json:"tool_use_id,omitempty"`
+	Content   string                `json:"content,omitempty"`
+}
+
+type anthropicImageSource struct {
 	Type      string `json:"type"`
-	Text      string `json:"text,omitempty"`
-	ID        string `json:"id,omitempty"`
-	Name      string `json:"name,omitempty"`
-	Input     any    `json:"input,omitempty"`
-	ToolUseID string `json:"tool_use_id,omitempty"`
-	Content   string `json:"content,omitempty"`
+	MediaType string `json:"media_type"`
+	Data      string `json:"data"`
 }
 
 type anthropicTool struct {

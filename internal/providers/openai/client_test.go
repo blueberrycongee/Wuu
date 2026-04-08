@@ -85,6 +85,77 @@ func TestChat_SendsRequestAndParsesToolCall(t *testing.T) {
 	}
 }
 
+func TestChat_SendsImageContentParts(t *testing.T) {
+	t.Helper()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+
+		msgs, ok := body["messages"].([]any)
+		if !ok || len(msgs) != 1 {
+			t.Fatalf("unexpected messages payload: %#v", body["messages"])
+		}
+
+		msg, ok := msgs[0].(map[string]any)
+		if !ok {
+			t.Fatalf("unexpected message type: %#v", msgs[0])
+		}
+
+		content, ok := msg["content"].([]any)
+		if !ok || len(content) != 2 {
+			t.Fatalf("unexpected content payload: %#v", msg["content"])
+		}
+
+		textPart, ok := content[0].(map[string]any)
+		if !ok || textPart["type"] != "text" || textPart["text"] != "look at this" {
+			t.Fatalf("unexpected text part: %#v", content[0])
+		}
+
+		imagePart, ok := content[1].(map[string]any)
+		if !ok || imagePart["type"] != "image_url" {
+			t.Fatalf("unexpected image part: %#v", content[1])
+		}
+		imageURL, ok := imagePart["image_url"].(map[string]any)
+		if !ok {
+			t.Fatalf("unexpected image_url payload: %#v", imagePart["image_url"])
+		}
+		if imageURL["url"] != "data:image/png;base64,AAA" {
+			t.Fatalf("unexpected image data url: %#v", imageURL["url"])
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"ok"}}]}`))
+	}))
+	defer server.Close()
+
+	client, err := New(ClientConfig{
+		BaseURL: server.URL,
+		APIKey:  "test-key",
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	_, err = client.Chat(context.Background(), providers.ChatRequest{
+		Model: "gpt-test",
+		Messages: []providers.ChatMessage{
+			{
+				Role:    "user",
+				Content: "look at this",
+				Images: []providers.InputImage{
+					{MediaType: "image/png", Data: "AAA"},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Chat: %v", err)
+	}
+}
+
 func TestChat_HandlesProviderError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)

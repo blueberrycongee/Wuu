@@ -16,11 +16,18 @@ type ToolCall struct {
 	Arguments string
 }
 
+// InputImage carries one user-provided image in base64 form.
+type InputImage struct {
+	MediaType string
+	Data      string
+}
+
 // ChatMessage is a generic multi-provider chat message.
 type ChatMessage struct {
 	Role       string
 	Name       string
 	Content    string
+	Images     []InputImage
 	ToolCallID string
 	ToolCalls  []ToolCall
 }

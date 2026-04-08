@@ -91,6 +91,74 @@ func TestChat_ToolUseResponse(t *testing.T) {
 	}
 }
 
+func TestChat_SendsImageBlocks(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+
+		msgs, ok := body["messages"].([]any)
+		if !ok || len(msgs) != 1 {
+			t.Fatalf("unexpected messages payload: %#v", body["messages"])
+		}
+
+		msg, ok := msgs[0].(map[string]any)
+		if !ok {
+			t.Fatalf("unexpected message type: %#v", msgs[0])
+		}
+		content, ok := msg["content"].([]any)
+		if !ok || len(content) != 2 {
+			t.Fatalf("unexpected content payload: %#v", msg["content"])
+		}
+
+		textBlock, ok := content[0].(map[string]any)
+		if !ok || textBlock["type"] != "text" || textBlock["text"] != "describe this" {
+			t.Fatalf("unexpected text block: %#v", content[0])
+		}
+
+		imageBlock, ok := content[1].(map[string]any)
+		if !ok || imageBlock["type"] != "image" {
+			t.Fatalf("unexpected image block: %#v", content[1])
+		}
+		source, ok := imageBlock["source"].(map[string]any)
+		if !ok {
+			t.Fatalf("unexpected source payload: %#v", imageBlock["source"])
+		}
+		if source["type"] != "base64" || source["media_type"] != "image/png" || source["data"] != "AAA" {
+			t.Fatalf("unexpected image source: %#v", source)
+		}
+
+		w.Header().Set("content-type", "application/json")
+		_, _ = w.Write([]byte(`{"content":[{"type":"text","text":"ok"}]}`))
+	}))
+	defer server.Close()
+
+	client, err := New(ClientConfig{
+		BaseURL: server.URL,
+		APIKey:  "test-key",
+	})
+	if err != nil {
+		t.Fatalf("new client: %v", err)
+	}
+
+	_, err = client.Chat(context.Background(), providers.ChatRequest{
+		Model: "claude-test",
+		Messages: []providers.ChatMessage{
+			{
+				Role:    "user",
+				Content: "describe this",
+				Images: []providers.InputImage{
+					{MediaType: "image/png", Data: "AAA"},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("chat error: %v", err)
+	}
+}
+
 func TestStreamChat_SSE(t *testing.T) {
 	ssePayload := "event: message_start\n" +
 		"data: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":10}}}\n\n" +

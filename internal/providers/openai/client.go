@@ -344,8 +344,37 @@ func mapMessage(msg providers.ChatMessage) chatMessage {
 		Role:       msg.Role,
 		Name:       msg.Name,
 		ToolCallID: msg.ToolCallID,
-		Content:    msg.Content,
 	}
+
+	if len(msg.Images) > 0 && strings.EqualFold(msg.Role, "user") {
+		parts := make([]chatContentPart, 0, len(msg.Images)+1)
+		if strings.TrimSpace(msg.Content) != "" {
+			parts = append(parts, chatContentPart{
+				Type: "text",
+				Text: msg.Content,
+			})
+		}
+		for _, image := range msg.Images {
+			data := strings.TrimSpace(image.Data)
+			if data == "" {
+				continue
+			}
+			mediaType := strings.TrimSpace(image.MediaType)
+			if mediaType == "" {
+				mediaType = "image/png"
+			}
+			parts = append(parts, chatContentPart{
+				Type: "image_url",
+				ImageURL: &chatImageURL{
+					URL: "data:" + mediaType + ";base64," + data,
+				},
+			})
+		}
+		mapped.Content = parts
+	} else {
+		mapped.Content = msg.Content
+	}
+
 	if len(msg.ToolCalls) > 0 {
 		mapped.ToolCalls = make([]toolCall, 0, len(msg.ToolCalls))
 		for _, call := range msg.ToolCalls {
@@ -411,10 +440,20 @@ type chatCompletionsRequest struct {
 
 type chatMessage struct {
 	Role       string     `json:"role"`
-	Content    string     `json:"content,omitempty"`
+	Content    any        `json:"content,omitempty"`
 	Name       string     `json:"name,omitempty"`
 	ToolCallID string     `json:"tool_call_id,omitempty"`
 	ToolCalls  []toolCall `json:"tool_calls,omitempty"`
+}
+
+type chatContentPart struct {
+	Type     string        `json:"type"`
+	Text     string        `json:"text,omitempty"`
+	ImageURL *chatImageURL `json:"image_url,omitempty"`
+}
+
+type chatImageURL struct {
+	URL string `json:"url"`
 }
 
 type toolDefinition struct {
