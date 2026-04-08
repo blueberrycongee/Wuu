@@ -274,6 +274,7 @@ func cmdNew(_ string, m *Model) string {
 	m.streaming = false
 	m.pendingRequest = false
 	m.messageQueue = nil
+	m.pendingSteers = nil
 	m.pendingImages = nil
 
 	// Create new session if session isolation is active.

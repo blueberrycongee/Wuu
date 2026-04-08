@@ -151,8 +151,10 @@ type Model struct {
 	historyIndex int    // -1 = not browsing, 0..len-1 = browsing
 	historyDraft string // saves current input when entering history
 
-	// Message queue — Tab queues, Enter cuts in line.
+	// Message queue — Tab queues follow-up messages.
 	messageQueue []queuedMessage
+	// Steer queue — Enter while busy adds steer messages.
+	pendingSteers []queuedMessage
 
 	// Pending image attachments for the next user message.
 	pendingImages []providers.InputImage
@@ -799,15 +801,13 @@ func (m Model) submit(shouldQueue bool) (tea.Model, tea.Cmd) {
 	}
 
 	if m.pendingRequest {
-		// Enter while busy — prioritize this message ahead of queued ones.
-		// If the current request is streamable, cancel it and let queue drain
-		// start the prioritized message as soon as the runner exits.
-		m.messageQueue = append([]queuedMessage{message}, m.messageQueue...)
+		// Enter while busy — treat as steer and prioritize over Tab queue.
+		m.pendingSteers = append(m.pendingSteers, message)
 		if m.cancelStream != nil {
 			m.cancelStream()
-			m.statusLine = fmt.Sprintf("interrupting · %d queued", len(m.messageQueue))
+			m.statusLine = fmt.Sprintf("steering (%d pending)", len(m.pendingSteers))
 		} else {
-			m.statusLine = fmt.Sprintf("prioritized (%d pending)", len(m.messageQueue))
+			m.statusLine = fmt.Sprintf("steer queued (%d pending)", len(m.pendingSteers))
 		}
 		return m, nil
 	}
@@ -921,7 +921,26 @@ func waitStreamEvent(ch <-chan providers.StreamEvent) tea.Cmd {
 
 // drainQueue sends the next queued message if idle.
 func (m Model) drainQueue() (tea.Model, tea.Cmd) {
-	if m.pendingRequest || len(m.messageQueue) == 0 {
+	if m.pendingRequest {
+		return m, nil
+	}
+	if len(m.pendingSteers) > 0 {
+		// Merge pending steers into one follow-up that is sent before queued drafts.
+		textParts := make([]string, 0, len(m.pendingSteers))
+		images := make([]providers.InputImage, 0, len(m.pendingSteers))
+		for _, steer := range m.pendingSteers {
+			if steer.Text != "" {
+				textParts = append(textParts, steer.Text)
+			}
+			images = append(images, steer.Images...)
+		}
+		m.pendingSteers = nil
+		return m.sendMessage(queuedMessage{
+			Text:   strings.Join(textParts, "\n"),
+			Images: images,
+		})
+	}
+	if len(m.messageQueue) == 0 {
 		return m, nil
 	}
 	next := m.messageQueue[0]

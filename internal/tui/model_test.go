@@ -379,3 +379,107 @@ func TestStreamReconnectEventUpdatesStatusLine(t *testing.T) {
 		t.Fatalf("unexpected status line: %q", after.statusLine)
 	}
 }
+
+func TestSubmitBusyTabQueuesMessage(t *testing.T) {
+	m := NewModel(Config{
+		Provider:   "test",
+		Model:      "test-model",
+		ConfigPath: "/tmp/.wuu.json",
+		RunPrompt: func(_ctx context.Context, prompt string) (string, error) {
+			return "answer to: " + prompt, nil
+		},
+	})
+	m.pendingRequest = true
+	m.input.SetValue("tab queued")
+
+	nextModel, cmd := m.submit(true)
+	if cmd != nil {
+		t.Fatal("expected no command while request is pending")
+	}
+	next := nextModel.(Model)
+	if len(next.messageQueue) != 1 {
+		t.Fatalf("expected 1 queued message, got %d", len(next.messageQueue))
+	}
+	if next.messageQueue[0].Text != "tab queued" {
+		t.Fatalf("unexpected queued text: %q", next.messageQueue[0].Text)
+	}
+	if len(next.pendingSteers) != 0 {
+		t.Fatalf("expected no pending steers, got %d", len(next.pendingSteers))
+	}
+}
+
+func TestSubmitBusyEnterQueuesSteerAndCancelsStream(t *testing.T) {
+	m := NewModel(Config{
+		Provider:   "test",
+		Model:      "test-model",
+		ConfigPath: "/tmp/.wuu.json",
+		RunPrompt: func(_ctx context.Context, prompt string) (string, error) {
+			return "answer to: " + prompt, nil
+		},
+	})
+	m.pendingRequest = true
+	cancelCalled := false
+	m.cancelStream = func() { cancelCalled = true }
+	m.input.SetValue("steer now")
+
+	nextModel, cmd := m.submit(false)
+	if cmd != nil {
+		t.Fatal("expected no command while request is pending")
+	}
+	if !cancelCalled {
+		t.Fatal("expected cancelStream to be called for steer")
+	}
+	next := nextModel.(Model)
+	if len(next.pendingSteers) != 1 {
+		t.Fatalf("expected 1 pending steer, got %d", len(next.pendingSteers))
+	}
+	if next.pendingSteers[0].Text != "steer now" {
+		t.Fatalf("unexpected steer text: %q", next.pendingSteers[0].Text)
+	}
+	if len(next.messageQueue) != 0 {
+		t.Fatalf("expected no queued follow-up, got %d", len(next.messageQueue))
+	}
+	if next.statusLine != "steering (1 pending)" {
+		t.Fatalf("unexpected status line: %q", next.statusLine)
+	}
+}
+
+func TestDrainQueuePrioritizesPendingSteers(t *testing.T) {
+	m := NewModel(Config{
+		Provider:   "test",
+		Model:      "test-model",
+		ConfigPath: "/tmp/.wuu.json",
+		RunPrompt: func(_ctx context.Context, prompt string) (string, error) {
+			return "answer to: " + prompt, nil
+		},
+	})
+	m.pendingSteers = []queuedMessage{
+		{Text: "first steer"},
+		{Text: "second steer"},
+	}
+	m.messageQueue = []queuedMessage{
+		{Text: "queued follow-up"},
+	}
+
+	nextModel, cmd := m.drainQueue()
+	if cmd == nil {
+		t.Fatal("expected async command from drainQueue")
+	}
+	next := nextModel.(Model)
+	if len(next.pendingSteers) != 0 {
+		t.Fatalf("expected pending steers drained, got %d", len(next.pendingSteers))
+	}
+	if len(next.messageQueue) != 1 {
+		t.Fatalf("expected queued follow-up preserved, got %d", len(next.messageQueue))
+	}
+	if len(next.chatHistory) == 0 {
+		t.Fatal("expected steer message appended to history")
+	}
+	last := next.chatHistory[len(next.chatHistory)-1]
+	if last.Role != "user" {
+		t.Fatalf("expected last message role user, got %q", last.Role)
+	}
+	if last.Content != "first steer\nsecond steer" {
+		t.Fatalf("unexpected merged steer content: %q", last.Content)
+	}
+}
