@@ -82,6 +82,12 @@ func (w *Writer) walk(n ast.Node) {
 				w.flushPendingLine()
 				w.needsNewline = true
 			}
+		case *ast.TextBlock:
+			if entering {
+				w.startBlock()
+			} else {
+				w.flushPendingLine()
+			}
 		case *ast.Heading:
 			if entering {
 				w.startBlock()

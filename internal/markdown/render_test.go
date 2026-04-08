@@ -108,6 +108,29 @@ func TestRender_ThematicBreak(t *testing.T) {
 	}
 }
 
+func TestRender_TightListItemsSeparated(t *testing.T) {
+	input := "- Alpha\n- Beta\n- Gamma"
+	got := Render(input, 80, DefaultStyles())
+	lines := strings.Split(got, "\n")
+	if len(lines) != 3 {
+		t.Fatalf("expected 3 lines for 3 list items, got %d: %q", len(lines), got)
+	}
+	for _, line := range lines {
+		if strings.TrimSpace(line) == "" {
+			t.Fatalf("unexpected blank line in tight list: %q", got)
+		}
+	}
+}
+
+func TestRender_TightOrderedListItemsSeparated(t *testing.T) {
+	input := "1. One\n2. Two\n3. Three"
+	got := Render(input, 80, DefaultStyles())
+	lines := strings.Split(got, "\n")
+	if len(lines) != 3 {
+		t.Fatalf("expected 3 lines for 3 ordered items, got %d: %q", len(lines), got)
+	}
+}
+
 func TestRender_EmptyInput(t *testing.T) {
 	got := Render("", 80, DefaultStyles())
 	if got != "" {
