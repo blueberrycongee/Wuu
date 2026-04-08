@@ -101,6 +101,90 @@ func TestLoadFrom_Defaults(t *testing.T) {
 	}
 }
 
+func TestConfig_HooksConfigParsing(t *testing.T) {
+	workdir := t.TempDir()
+	configPath := filepath.Join(workdir, ".wuu.json")
+	jsonData := `{
+  "default_provider": "main",
+  "providers": {
+    "main": {
+      "type": "openai-compatible",
+      "base_url": "https://example.com/v1",
+      "api_key": "sk-test",
+      "model": "gpt-4"
+    }
+  },
+  "agent": {
+    "system_prompt": "test"
+  },
+  "hooks": {
+    "PreToolUse": [
+      {"matcher": "run_shell", "command": "check.sh", "timeout": 10}
+    ],
+    "SessionStart": [
+      {"command": "setup.sh"}
+    ]
+  }
+}`
+	if err := os.WriteFile(configPath, []byte(jsonData), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cfg, _, err := LoadFrom(workdir, "")
+	if err != nil {
+		t.Fatalf("LoadFrom: %v", err)
+	}
+	if len(cfg.Hooks) != 2 {
+		t.Fatalf("expected 2 hook events, got %d", len(cfg.Hooks))
+	}
+	pre, ok := cfg.Hooks["PreToolUse"]
+	if !ok || len(pre) != 1 {
+		t.Fatal("expected 1 PreToolUse hook")
+	}
+	if pre[0].Matcher != "run_shell" {
+		t.Fatalf("expected matcher run_shell, got %s", pre[0].Matcher)
+	}
+	if pre[0].Timeout != 10 {
+		t.Fatalf("expected timeout 10, got %d", pre[0].Timeout)
+	}
+	start, ok := cfg.Hooks["SessionStart"]
+	if !ok || len(start) != 1 {
+		t.Fatal("expected 1 SessionStart hook")
+	}
+	if start[0].Command != "setup.sh" {
+		t.Fatalf("expected command setup.sh, got %s", start[0].Command)
+	}
+}
+
+func TestConfig_HooksOmittedWhenEmpty(t *testing.T) {
+	workdir := t.TempDir()
+	configPath := filepath.Join(workdir, ".wuu.json")
+	jsonData := `{
+  "default_provider": "main",
+  "providers": {
+    "main": {
+      "type": "openai-compatible",
+      "base_url": "https://example.com/v1",
+      "api_key": "sk-test",
+      "model": "gpt-4"
+    }
+  },
+  "agent": {
+    "system_prompt": "test"
+  }
+}`
+	if err := os.WriteFile(configPath, []byte(jsonData), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, _, err := LoadFrom(workdir, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Hooks != nil && len(cfg.Hooks) != 0 {
+		t.Fatalf("expected nil or empty hooks, got %v", cfg.Hooks)
+	}
+}
+
 func TestLoadFrom_NotFound(t *testing.T) {
 	_, _, err := LoadFrom(t.TempDir(), t.TempDir())
 	if err == nil {
