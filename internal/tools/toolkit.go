@@ -332,6 +332,10 @@ func (t *Toolkit) writeFile(argsJSON string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+
+	// Read old content for diff (if file exists).
+	oldContent, _ := os.ReadFile(resolved)
+
 	if err := os.MkdirAll(filepath.Dir(resolved), 0o755); err != nil {
 		return "", fmt.Errorf("create parent directory: %w", err)
 	}
@@ -342,6 +346,18 @@ func (t *Toolkit) writeFile(argsJSON string) (string, error) {
 	result := map[string]any{
 		"path":          normalizeDisplayPath(t.rootDir, resolved),
 		"written_bytes": len(args.Content),
+	}
+
+	if len(oldContent) > 0 {
+		// Existing file — compute diff.
+		result["diff"] = computeDiff(string(oldContent), args.Content, 3)
+	} else {
+		// New file.
+		lineCount := strings.Count(args.Content, "\n")
+		if len(args.Content) > 0 && !strings.HasSuffix(args.Content, "\n") {
+			lineCount++
+		}
+		result["diff"] = DiffResult{NewFile: true, Lines: lineCount}
 	}
 	return mustJSON(result)
 }
