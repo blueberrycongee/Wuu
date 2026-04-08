@@ -39,12 +39,19 @@ func renderToolCard(tc ToolCallEntry, width int) string {
 		b.WriteString(statusError.Render("✗ error"))
 	}
 
-	// Collapsed: header + human-readable args summary
+	// Collapsed: header + human-readable args summary + diff stats
 	if tc.Collapsed {
 		summary := toolArgsSummary(tc.Name, tc.Args, width-30)
 		if summary != "" {
 			b.WriteString(" ── ")
 			b.WriteString(contentStyle.Render(summary))
+		}
+		// Show +N/-M stats for file-modifying tools.
+		if tc.Result != "" {
+			if dr := diffResultFromJSON(tc.Result); dr != nil {
+				b.WriteString("  ")
+				b.WriteString(diffStats(dr))
+			}
 		}
 		return b.String()
 	}
@@ -66,7 +73,12 @@ func renderToolCard(tc ToolCallEntry, width int) string {
 			content.WriteString(contentStyle.Render(strings.Repeat("─", min(innerW, 40))))
 			content.WriteString("\n")
 		}
-		content.WriteString(contentStyle.Render(wrapText(truncateToolResult(tc.Result, 500), innerW)))
+		// Render diff if available, otherwise fall back to plain text.
+		if dr := diffResultFromJSON(tc.Result); dr != nil {
+			content.WriteString(renderDiff(dr, innerW))
+		} else {
+			content.WriteString(contentStyle.Render(wrapText(truncateToolResult(tc.Result, 500), innerW)))
+		}
 	}
 
 	if content.Len() > 0 {
