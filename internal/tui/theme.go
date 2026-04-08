@@ -23,6 +23,12 @@ type theme struct {
 	HeaderBg    lipgloss.Color // header background accent
 	ToolBorder  lipgloss.Color // tool call borders
 	InputBorder lipgloss.Color // input box border
+
+	// Diff.
+	DiffAddBg    lipgloss.Color // insert line background
+	DiffAddFg    lipgloss.Color // insert line foreground
+	DiffDeleteBg lipgloss.Color // delete line background
+	DiffDeleteFg lipgloss.Color // delete line foreground
 }
 
 // darkTheme is the default color palette.
@@ -42,6 +48,11 @@ var darkTheme = theme{
 	HeaderBg:    lipgloss.Color("#D77757"), // brand orange
 	ToolBorder:  lipgloss.Color("#B1B9F9"), // blue-purple
 	InputBorder: lipgloss.Color("#888888"), // medium gray
+
+	DiffAddBg:    lipgloss.Color("#213A2B"), // dark green
+	DiffAddFg:    lipgloss.Color("#4EBA65"), // bright green
+	DiffDeleteBg: lipgloss.Color("#4A221D"), // dark red
+	DiffDeleteFg: lipgloss.Color("#FF6B80"), // bright red
 }
 
 // currentTheme is the active theme. Swap this for light mode later.
