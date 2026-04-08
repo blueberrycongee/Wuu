@@ -6,6 +6,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/charmbracelet/lipgloss"
+	reflowwrap "github.com/muesli/reflow/wrap"
 	"github.com/muesli/reflow/wordwrap"
 )
 
@@ -71,5 +72,10 @@ func runeSliceFromEnd(s string, n int) string {
 
 // wrapText wraps plain text to the given width, supporting CJK characters.
 func wrapText(s string, width int) string {
-	return wordwrap.String(s, width)
+	if width <= 0 {
+		return ""
+	}
+	// Prefer word boundaries first, then hard-wrap leftover long tokens
+	// (URLs, hashes, minified text) so viewport never clips lines.
+	return reflowwrap.String(wordwrap.String(s, width), width)
 }
