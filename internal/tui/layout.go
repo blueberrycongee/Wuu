@@ -20,23 +20,16 @@ type layout struct {
 func computeLayout(termWidth, termHeight, inputLines int) layout {
 	compact := termWidth < 80
 
-	borderH := 0
-	borderW := 0
-	if !compact {
-		borderH = 2 // top + bottom border
-		borderW = 2 // left + right border
-	}
-
 	headerH := 1
 	footerH := 1
-	inputOuterH := inputLines + borderH
-	// Chat area has no border, only input does.
+	inputOuterH := inputLines
+	// Chat area has no border; input is separated with horizontal lines in View().
 	chatH := termHeight - headerH - footerH - inputOuterH
 	if chatH < 4 {
 		chatH = 4
 	}
 
-	innerW := termWidth - borderW
+	innerW := termWidth
 	if innerW < 16 {
 		innerW = 16
 	}
@@ -49,7 +42,7 @@ func computeLayout(termWidth, termHeight, inputLines int) layout {
 	y += chatH
 
 	input := layoutRect{X: 0, Y: y, Width: innerW, Height: inputLines}
-	y += inputLines + borderH
+	y += inputLines
 
 	footer := layoutRect{X: 0, Y: y, Width: termWidth, Height: footerH}
 

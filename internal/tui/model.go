@@ -649,16 +649,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Mouse click inside input area — reposition cursor.
 		if msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft {
-			borderOff := 0
-			if !m.layout.Compact {
-				borderOff = 1
-			}
 			promptW := 2 // "> " prompt width
 
-			// Check if click is inside the input area (accounting for border).
-			inputTop := m.layout.Input.Y + borderOff
+			// Check if click is inside the input area.
+			inputTop := m.layout.Input.Y
 			inputBot := inputTop + m.layout.Input.Height
-			inputLeft := m.layout.Input.X + borderOff
+			inputLeft := m.layout.Input.X
 
 			if msg.Y >= inputTop && msg.Y < inputBot && msg.X >= inputLeft {
 				targetRow := msg.Y - inputTop
@@ -1672,9 +1668,6 @@ func (m Model) View() string {
 		outputBox = overlayScrollbar(outputBox, sb, m.layout.Chat.Width)
 	}
 	inputBox := m.input.View()
-	if !m.layout.Compact {
-		inputBox = inputBorderStyle.Render(inputBox)
-	}
 
 	// Overlay completion popup on top of outputBox if visible.
 	if m.completionVisible && len(m.completionItems) > 0 {

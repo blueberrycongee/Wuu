@@ -123,12 +123,7 @@ func TestRelayoutFitsWindow(t *testing.T) {
 	m.relayout()
 
 	l := computeLayout(m.width, m.height, m.inputLines)
-	borderH := 0
-	if !l.Compact {
-		borderH = 2
-	}
-	// Chat has no border, only input does.
-	totalHeight := l.Header.Height + l.Footer.Height + l.Chat.Height + l.Input.Height + borderH
+	totalHeight := l.Header.Height + l.Footer.Height + l.Chat.Height + l.Input.Height
 	if totalHeight > m.height {
 		t.Fatalf("layout exceeds window height: used=%d window=%d", totalHeight, m.height)
 	}
@@ -155,14 +150,14 @@ func TestMouseClickPositionsCursor(t *testing.T) {
 	m.input.SetValue("hello world")
 	m.input.SetCursor(0) // cursor at start
 
-	// Click at column 7 inside the input area.
-	// Non-compact: border adds 1 col on left, prompt "> " adds 2 cols.
-	// So to hit text column 4, click at X = 1 (border) + 2 (prompt) + 4 = 7.
-	inputY := m.layout.Input.Y + 1 // +1 for top border in non-compact
+	// Click inside the input area.
+	// Prompt "> " adds 2 cols.
+	// To hit text column 4, click at X = 2 (prompt) + 4 = 6.
+	inputY := m.layout.Input.Y
 	updated, _ := m.Update(tea.MouseMsg{
 		Action: tea.MouseActionPress,
 		Button: tea.MouseButtonLeft,
-		X:      7,
+		X:      6,
 		Y:      inputY,
 	})
 	after := updated.(Model)
@@ -190,10 +185,9 @@ func TestMouseClickPositionsCursorMultiLine(t *testing.T) {
 	m.input.CursorStart() // cursor at start of first line
 
 	// Click on second line (row 1), column 3.
-	borderOff := 1 // non-compact
 	promptW := 2
-	inputY := m.layout.Input.Y + borderOff + 1 // +1 for second row
-	clickX := m.layout.Input.X + borderOff + promptW + 3
+	inputY := m.layout.Input.Y + 1 // +1 for second row
+	clickX := m.layout.Input.X + promptW + 3
 
 	updated, _ := m.Update(tea.MouseMsg{
 		Action: tea.MouseActionPress,
