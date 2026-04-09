@@ -21,16 +21,24 @@ func renderScrollbar(height, contentSize, viewportSize, offset int) string {
 }
 
 func renderScrollbarWithMarkers(height, contentSize, viewportSize, offset int, markerLines []int) string {
+	return renderScrollbarWithHover(height, contentSize, viewportSize, offset, markerLines, -1, false)
+}
+
+func renderScrollbarWithHover(height, contentSize, viewportSize, offset int, markerLines []int, hoverRow int, dragging bool) string {
 	thumbPos, thumbSize, _, _, ok := scrollbarThumbGeometry(height, contentSize, viewportSize, offset)
 	if !ok {
 		return ""
 	}
 
 	thumbStyle := lipgloss.NewStyle().Foreground(currentTheme.Brand)
+	thumbHoverStyle := lipgloss.NewStyle().Foreground(currentTheme.BrandLight).Bold(true)
 	trackStyle := lipgloss.NewStyle().Foreground(currentTheme.Border)
+	trackHoverStyle := lipgloss.NewStyle().Foreground(currentTheme.BrandLight).Bold(true)
 	markerStyle := lipgloss.NewStyle().Foreground(currentTheme.BrandLight)
 	markerOnThumbStyle := lipgloss.NewStyle().Foreground(currentTheme.BrandLight)
 	markerRows := markerLinesToScrollbarRows(markerLines, height, contentSize)
+	hoverActive := hoverRow >= 0 && hoverRow < height
+	hoverOnThumb := hoverActive && hoverRow >= thumbPos && hoverRow < thumbPos+thumbSize
 
 	var sb strings.Builder
 	for i := range height {
@@ -39,15 +47,33 @@ func renderScrollbarWithMarkers(height, contentSize, viewportSize, offset int, m
 		}
 		_, hasMarker := markerRows[i]
 		inThumb := i >= thumbPos && i < thumbPos+thumbSize
+		thumbActive := dragging || (hoverOnThumb && inThumb)
+		hoverTrackRow := hoverActive && i == hoverRow && !inThumb
 		switch {
 		case inThumb && hasMarker:
-			sb.WriteString(markerOnThumbStyle.Render(scrollbarMarkerOnThumb))
+			if thumbActive {
+				sb.WriteString(thumbHoverStyle.Render(scrollbarMarkerOnThumb))
+			} else {
+				sb.WriteString(markerOnThumbStyle.Render(scrollbarMarkerOnThumb))
+			}
 		case inThumb:
-			sb.WriteString(thumbStyle.Render(scrollbarThumb))
+			if thumbActive {
+				sb.WriteString(thumbHoverStyle.Render(scrollbarThumb))
+			} else {
+				sb.WriteString(thumbStyle.Render(scrollbarThumb))
+			}
 		case hasMarker:
-			sb.WriteString(markerStyle.Render(scrollbarMarker))
+			if hoverTrackRow {
+				sb.WriteString(trackHoverStyle.Render(scrollbarMarker))
+			} else {
+				sb.WriteString(markerStyle.Render(scrollbarMarker))
+			}
 		default:
-			sb.WriteString(trackStyle.Render(scrollbarTrack))
+			if hoverTrackRow {
+				sb.WriteString(trackHoverStyle.Render(scrollbarTrack))
+			} else {
+				sb.WriteString(trackStyle.Render(scrollbarTrack))
+			}
 		}
 	}
 
@@ -76,12 +102,34 @@ func scrollbarThumbGeometry(height, contentSize, viewportSize, offset int) (thum
 	}
 	trackSpace = height - thumbSize
 	if trackSpace > 0 {
-		thumbPos = offset * trackSpace / maxOffset
+		thumbPos = roundDiv(offset*trackSpace, maxOffset)
 		if thumbPos > trackSpace {
 			thumbPos = trackSpace
 		}
 	}
 	return thumbPos, thumbSize, trackSpace, maxOffset, true
+}
+
+func scrollbarOffsetForThumbPos(thumbPos, trackSpace, maxOffset int) int {
+	if trackSpace <= 0 || maxOffset <= 0 {
+		return 0
+	}
+	if thumbPos < 0 {
+		thumbPos = 0
+	} else if thumbPos > trackSpace {
+		thumbPos = trackSpace
+	}
+	return roundDiv(thumbPos*maxOffset, trackSpace)
+}
+
+func roundDiv(numerator, denominator int) int {
+	if denominator <= 0 {
+		return 0
+	}
+	if numerator >= 0 {
+		return (numerator + denominator/2) / denominator
+	}
+	return -((-numerator + denominator/2) / denominator)
 }
 
 func markerLinesToScrollbarRows(markerLines []int, height, contentSize int) map[int]struct{} {

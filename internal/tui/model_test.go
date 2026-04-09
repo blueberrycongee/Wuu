@@ -306,9 +306,105 @@ func TestMouseClickScrollbarTrackJumpsProportionally(t *testing.T) {
 	}
 
 	maxOffset := max(0, after.viewport.TotalLineCount()-after.viewport.Height)
-	want := row * maxOffset / (after.layout.Chat.Height - 1)
+	_, afterThumbSize, afterTrackSpace, _, ok := scrollbarThumbGeometry(
+		after.layout.Chat.Height,
+		after.viewport.TotalLineCount(),
+		after.viewport.Height,
+		after.viewport.YOffset,
+	)
+	if !ok {
+		t.Fatal("expected visible scrollbar geometry after track click")
+	}
+	targetThumbPos := row - afterThumbSize/2
+	if targetThumbPos < 0 {
+		targetThumbPos = 0
+	} else if targetThumbPos > afterTrackSpace {
+		targetThumbPos = afterTrackSpace
+	}
+	want := scrollbarOffsetForThumbPos(targetThumbPos, afterTrackSpace, maxOffset)
 	if after.viewport.YOffset != want {
 		t.Fatalf("expected viewport offset %d after track click, got %d", want, after.viewport.YOffset)
+	}
+}
+
+func TestMouseDragScrollbarReanchorsWhenThumbGeometryChanges(t *testing.T) {
+	m := newScrollableModelForScrollbarTest(t)
+	maxOffset := max(0, m.viewport.TotalLineCount()-m.viewport.Height)
+	m.setViewportOffset(maxOffset / 2)
+
+	thumbPos, _, _, _, ok := scrollbarThumbGeometry(
+		m.layout.Chat.Height,
+		m.viewport.TotalLineCount(),
+		m.viewport.Height,
+		m.viewport.YOffset,
+	)
+	if !ok {
+		t.Fatal("expected visible scrollbar thumb")
+	}
+	clickX := m.layout.Chat.X + m.layout.Chat.Width - 1
+	pressY := m.layout.Chat.Y + thumbPos
+	updated, _ := m.Update(tea.MouseMsg{
+		Action: tea.MouseActionPress,
+		Button: tea.MouseButtonLeft,
+		X:      clickX,
+		Y:      pressY,
+	})
+	dragging := updated.(Model)
+	if !dragging.scrollbarDragging {
+		t.Fatal("expected scrollbarDragging=true after thumb press")
+	}
+	offsetBeforeGrowth := dragging.viewport.YOffset
+
+	dragging.appendEntry("ASSISTANT", strings.Repeat("new line\n", 120)+"end")
+	dragging.refreshViewport(false)
+	updated, _ = dragging.Update(tea.MouseMsg{
+		Action: tea.MouseActionMotion,
+		Button: tea.MouseButtonLeft,
+		X:      clickX,
+		Y:      pressY,
+	})
+	after := updated.(Model)
+
+	diff := after.viewport.YOffset - offsetBeforeGrowth
+	if diff < 0 {
+		diff = -diff
+	}
+	if diff > 1 {
+		t.Fatalf("expected offset stable after geometry change with zero drag delta, got before=%d after=%d", offsetBeforeGrowth, after.viewport.YOffset)
+	}
+}
+
+func TestMouseMotionScrollbarHoverState(t *testing.T) {
+	m := newScrollableModelForScrollbarTest(t)
+	rightX := m.layout.Chat.X + m.layout.Chat.Width - 1
+	hoverRow := min(2, m.layout.Chat.Height-1)
+
+	updated, _ := m.Update(tea.MouseMsg{
+		Action: tea.MouseActionMotion,
+		Button: tea.MouseButtonNone,
+		X:      rightX,
+		Y:      m.layout.Chat.Y + hoverRow,
+	})
+	hovered := updated.(Model)
+	if !hovered.scrollbarHoverActive {
+		t.Fatal("expected hover active while pointer is on scrollbar")
+	}
+	if hovered.scrollbarHoverRow != hoverRow {
+		t.Fatalf("expected hover row %d, got %d", hoverRow, hovered.scrollbarHoverRow)
+	}
+
+	updated, _ = hovered.Update(tea.MouseMsg{
+		Action: tea.MouseActionMotion,
+		Button: tea.MouseButtonNone,
+		X:      hovered.layout.Chat.X,
+		Y:      hovered.layout.Chat.Y + hoverRow,
+	})
+	afterLeave := updated.(Model)
+	if afterLeave.scrollbarHoverActive {
+		t.Fatal("expected hover inactive after leaving scrollbar")
+	}
+	if afterLeave.scrollbarHoverRow != -1 {
+		t.Fatalf("expected hover row reset to -1, got %d", afterLeave.scrollbarHoverRow)
 	}
 }
 

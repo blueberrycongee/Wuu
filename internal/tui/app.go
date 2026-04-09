@@ -44,7 +44,7 @@ func Run(cfg Config) error {
 	}
 
 	m := NewModel(cfg)
-	program := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
+	program := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseAllMotion())
 	finalModel, err := program.Run()
 	if err != nil {
 		return fmt.Errorf("run tui: %w", err)

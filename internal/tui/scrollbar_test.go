@@ -138,3 +138,34 @@ func TestOverlayScrollbar_PadsAfterWideRuneTruncation(t *testing.T) {
 		}
 	}
 }
+
+func TestScrollbarOffsetForThumbPos_Clamps(t *testing.T) {
+	got := scrollbarOffsetForThumbPos(-10, 20, 200)
+	if got != 0 {
+		t.Fatalf("expected clamped low thumb offset 0, got %d", got)
+	}
+	got = scrollbarOffsetForThumbPos(30, 20, 200)
+	if got != 200 {
+		t.Fatalf("expected clamped high thumb offset 200, got %d", got)
+	}
+}
+
+func TestRoundDiv(t *testing.T) {
+	tests := []struct {
+		num  int
+		den  int
+		want int
+	}{
+		{num: 5, den: 2, want: 3},
+		{num: 4, den: 2, want: 2},
+		{num: -5, den: 2, want: -3},
+		{num: -4, den: 2, want: -2},
+		{num: 9, den: 0, want: 0},
+	}
+	for _, tc := range tests {
+		got := roundDiv(tc.num, tc.den)
+		if got != tc.want {
+			t.Fatalf("roundDiv(%d,%d)=%d want %d", tc.num, tc.den, got, tc.want)
+		}
+	}
+}

@@ -175,8 +175,15 @@ type Model struct {
 	userMessageLineAnchors []int
 
 	// Scrollbar drag state.
-	scrollbarDragging       bool
-	scrollbarDragGrabOffset int
+	scrollbarDragging        bool
+	scrollbarDragStartRow    int
+	scrollbarDragStartOffset int
+	scrollbarDragTrackSpace  int
+	scrollbarDragMaxOffset   int
+
+	// Scrollbar hover state.
+	scrollbarHoverActive bool
+	scrollbarHoverRow    int
 }
 
 // NewModel builds the initial UI model.
@@ -195,24 +202,25 @@ func NewModel(cfg Config) Model {
 	in.CharLimit = 0
 
 	m := Model{
-		provider:         cfg.Provider,
-		modelName:        cfg.Model,
-		configPath:       cfg.ConfigPath,
-		workspaceRoot:    filepath.Dir(cfg.ConfigPath),
-		memoryPath:       cfg.MemoryPath,
-		sessionDir:       cfg.SessionDir,
-		runPrompt:        cfg.RunPrompt,
-		streamRunner:     cfg.StreamRunner,
-		hookDispatcher:   cfg.HookDispatcher,
-		maxContextTokens: cfg.MaxContextTokens,
-		requestTimeout:   cfg.RequestTimeout,
-		viewport:         vp,
-		input:            in,
-		autoFollow:       true,
-		clock:            time.Now().Format("15:04:05"),
-		statusLine:       "ready",
-		streamTarget:     -1,
-		historyIndex:     -1,
+		provider:          cfg.Provider,
+		modelName:         cfg.Model,
+		configPath:        cfg.ConfigPath,
+		workspaceRoot:     filepath.Dir(cfg.ConfigPath),
+		memoryPath:        cfg.MemoryPath,
+		sessionDir:        cfg.SessionDir,
+		runPrompt:         cfg.RunPrompt,
+		streamRunner:      cfg.StreamRunner,
+		hookDispatcher:    cfg.HookDispatcher,
+		maxContextTokens:  cfg.MaxContextTokens,
+		requestTimeout:    cfg.RequestTimeout,
+		viewport:          vp,
+		input:             in,
+		autoFollow:        true,
+		clock:             time.Now().Format("15:04:05"),
+		statusLine:        "ready",
+		streamTarget:      -1,
+		historyIndex:      -1,
+		scrollbarHoverRow: -1,
 	}
 
 	// Session isolation: create or resume session.
@@ -591,12 +599,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case tea.MouseMsg:
+		hoverChanged := m.updateScrollbarHover(msg.X, msg.Y)
+
 		if msg.Action == tea.MouseActionRelease {
 			m.scrollbarDragging = false
+			m.scrollbarDragTrackSpace = 0
+			m.scrollbarDragMaxOffset = 0
 		}
 
 		if msg.Action == tea.MouseActionMotion && m.scrollbarDragging {
 			m.dragScrollbarToRow(msg.Y - m.layout.Chat.Y)
+			return m, nil
+		}
+		if msg.Action == tea.MouseActionMotion && hoverChanged {
 			return m, nil
 		}
 
@@ -1275,6 +1290,19 @@ func (m *Model) isScrollbarClick(x, y int) bool {
 	return x == right && y >= top && y < bottom
 }
 
+func (m *Model) updateScrollbarHover(x, y int) bool {
+	prevActive := m.scrollbarHoverActive
+	prevRow := m.scrollbarHoverRow
+	if m.isScrollbarClick(x, y) {
+		m.scrollbarHoverActive = true
+		m.scrollbarHoverRow = y - m.layout.Chat.Y
+	} else {
+		m.scrollbarHoverActive = false
+		m.scrollbarHoverRow = -1
+	}
+	return m.scrollbarHoverActive != prevActive || m.scrollbarHoverRow != prevRow
+}
+
 func (m *Model) setViewportOffset(offset int) {
 	maxOffset := max(0, m.viewport.TotalLineCount()-m.viewport.Height)
 	if offset < 0 {
@@ -1289,7 +1317,7 @@ func (m *Model) setViewportOffset(offset int) {
 
 func (m *Model) jumpToScrollbarRow(row int) {
 	height := m.layout.Chat.Height
-	if height <= 1 {
+	if height <= 0 {
 		m.setViewportOffset(0)
 		return
 	}
@@ -1298,13 +1326,23 @@ func (m *Model) jumpToScrollbarRow(row int) {
 	} else if row >= height {
 		row = height - 1
 	}
-	maxOffset := max(0, m.viewport.TotalLineCount()-m.viewport.Height)
-	offset := row * maxOffset / (height - 1)
+	_, thumbSize, trackSpace, maxOffset, ok := scrollbarThumbGeometry(
+		m.layout.Chat.Height,
+		m.viewport.TotalLineCount(),
+		m.viewport.Height,
+		m.viewport.YOffset,
+	)
+	if !ok {
+		m.setViewportOffset(0)
+		return
+	}
+	targetThumbPos := row - thumbSize/2
+	offset := scrollbarOffsetForThumbPos(targetThumbPos, trackSpace, maxOffset)
 	m.setViewportOffset(offset)
 }
 
 func (m *Model) startScrollbarDrag(row int) bool {
-	thumbPos, thumbSize, _, _, ok := scrollbarThumbGeometry(
+	thumbPos, thumbSize, trackSpace, maxOffset, ok := scrollbarThumbGeometry(
 		m.layout.Chat.Height,
 		m.viewport.TotalLineCount(),
 		m.viewport.Height,
@@ -1317,7 +1355,10 @@ func (m *Model) startScrollbarDrag(row int) bool {
 		return false
 	}
 	m.scrollbarDragging = true
-	m.scrollbarDragGrabOffset = row - thumbPos
+	m.scrollbarDragStartRow = row
+	m.scrollbarDragStartOffset = m.viewport.YOffset
+	m.scrollbarDragTrackSpace = trackSpace
+	m.scrollbarDragMaxOffset = maxOffset
 	return true
 }
 
@@ -1341,17 +1382,20 @@ func (m *Model) dragScrollbarToRow(row int) {
 		m.setViewportOffset(0)
 		return
 	}
-	targetThumbPos := row - m.scrollbarDragGrabOffset
-	if targetThumbPos < 0 {
-		targetThumbPos = 0
-	} else if targetThumbPos > trackSpace {
-		targetThumbPos = trackSpace
+	if trackSpace <= 0 || maxOffset <= 0 {
+		m.setViewportOffset(0)
+		return
 	}
-	offset := 0
-	if trackSpace > 0 {
-		offset = targetThumbPos * maxOffset / trackSpace
+	if m.scrollbarDragTrackSpace != trackSpace || m.scrollbarDragMaxOffset != maxOffset {
+		// Content/layout changed during drag; re-anchor to current pointer row.
+		m.scrollbarDragStartRow = row
+		m.scrollbarDragStartOffset = m.viewport.YOffset
+		m.scrollbarDragTrackSpace = trackSpace
+		m.scrollbarDragMaxOffset = maxOffset
 	}
-	m.setViewportOffset(offset)
+	deltaRows := row - m.scrollbarDragStartRow
+	deltaOffset := roundDiv(deltaRows*maxOffset, trackSpace)
+	m.setViewportOffset(m.scrollbarDragStartOffset + deltaOffset)
 }
 
 func (m *Model) jumpToNearestUserAnchorAtRow(row int) bool {
@@ -1516,6 +1560,19 @@ func (m *Model) refreshViewport(forceBottom bool) {
 		m.viewport.GotoBottom()
 	}
 	m.showJump = !m.viewport.AtBottom()
+	if !m.hasScrollableContent() {
+		m.scrollbarHoverActive = false
+		m.scrollbarHoverRow = -1
+		m.scrollbarDragging = false
+		m.scrollbarDragTrackSpace = 0
+		m.scrollbarDragMaxOffset = 0
+	} else if m.scrollbarHoverActive {
+		if m.scrollbarHoverRow < 0 {
+			m.scrollbarHoverRow = 0
+		} else if m.scrollbarHoverRow >= m.layout.Chat.Height {
+			m.scrollbarHoverRow = m.layout.Chat.Height - 1
+		}
+	}
 }
 
 func (m *Model) relayout() {
@@ -1598,12 +1655,18 @@ func (m Model) View() string {
 	outputBox := m.viewport.View()
 
 	// Overlay scrollbar on the rightmost column of the viewport.
-	sb := renderScrollbarWithMarkers(
+	hoverRow := -1
+	if m.scrollbarHoverActive {
+		hoverRow = m.scrollbarHoverRow
+	}
+	sb := renderScrollbarWithHover(
 		m.layout.Chat.Height,
 		m.viewport.TotalLineCount(),
 		m.viewport.Height,
 		m.viewport.YOffset,
 		m.userMessageLineAnchors,
+		hoverRow,
+		m.scrollbarDragging,
 	)
 	if sb != "" {
 		outputBox = overlayScrollbar(outputBox, sb, m.layout.Chat.Width)
