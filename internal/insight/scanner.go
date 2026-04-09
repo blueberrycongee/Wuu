@@ -179,6 +179,11 @@ func scanOneSession(path string, id string) (SessionMeta, error) {
 					}
 				}
 			}
+		case "tool":
+			// Parse diff results from edit_file/write_file tool outputs.
+			added, removed := parseDiffFromToolResult(rec.Content)
+			meta.LinesAdded += added
+			meta.LinesRemoved += removed
 		case "meta":
 			// Token usage records.
 			meta.InputTokens += rec.InputTokens
@@ -425,6 +430,53 @@ func detectLanguageFromArgs(args string, langs map[string]int) {
 			}
 		}
 	}
+}
+
+// parseDiffFromToolResult extracts line add/remove counts from a tool result
+// that contains a DiffResult JSON structure (as produced by wuu's edit_file/write_file).
+func parseDiffFromToolResult(content string) (added, removed int) {
+	// Try parsing as a JSON object containing "hunks" or "diff" fields.
+	var wrapper map[string]json.RawMessage
+	if json.Unmarshal([]byte(content), &wrapper) != nil {
+		return 0, 0
+	}
+
+	// Look for a "diff" field containing the DiffResult.
+	raw, ok := wrapper["diff"]
+	if !ok {
+		// Maybe the content IS a DiffResult directly.
+		raw = []byte(content)
+	}
+
+	var diff struct {
+		Hunks []struct {
+			Lines []struct {
+				Op string `json:"op"`
+			} `json:"lines"`
+		} `json:"hunks"`
+		NewFile bool `json:"new_file"`
+		Lines   int  `json:"lines"`
+	}
+	if json.Unmarshal(raw, &diff) != nil {
+		return 0, 0
+	}
+
+	// New file: all lines are additions.
+	if diff.NewFile && diff.Lines > 0 {
+		return diff.Lines, 0
+	}
+
+	for _, hunk := range diff.Hunks {
+		for _, line := range hunk.Lines {
+			switch line.Op {
+			case "insert":
+				added++
+			case "delete":
+				removed++
+			}
+		}
+	}
+	return added, removed
 }
 
 func isFileModifyTool(name string) bool {
