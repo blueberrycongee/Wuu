@@ -212,7 +212,107 @@ func TestMouseClickPositionsCursorMultiLine(t *testing.T) {
 	}
 }
 
-func TestMouseClickScrollbarAnchorJumpsToUserMessage(t *testing.T) {
+func TestMouseDragScrollbarThumbTracksMotion(t *testing.T) {
+	m := newScrollableModelForScrollbarTest(t)
+
+	thumbPos, thumbSize, _, _, ok := scrollbarThumbGeometry(
+		m.layout.Chat.Height,
+		m.viewport.TotalLineCount(),
+		m.viewport.Height,
+		m.viewport.YOffset,
+	)
+	if !ok {
+		t.Fatal("expected visible scrollbar thumb")
+	}
+	if thumbSize < 1 {
+		t.Fatalf("expected thumb size >= 1, got %d", thumbSize)
+	}
+
+	clickX := m.layout.Chat.X + m.layout.Chat.Width - 1
+	pressY := m.layout.Chat.Y + thumbPos
+
+	updated, _ := m.Update(tea.MouseMsg{
+		Action: tea.MouseActionPress,
+		Button: tea.MouseButtonLeft,
+		X:      clickX,
+		Y:      pressY,
+	})
+	dragging := updated.(Model)
+	if !dragging.scrollbarDragging {
+		t.Fatal("expected scrollbarDragging=true after pressing thumb")
+	}
+
+	motionY := dragging.layout.Chat.Y + dragging.layout.Chat.Height - 1
+	updated, _ = dragging.Update(tea.MouseMsg{
+		Action: tea.MouseActionMotion,
+		Button: tea.MouseButtonLeft,
+		// Simulate fast drag: pointer can drift away from scrollbar column.
+		X: dragging.layout.Chat.X,
+		Y: motionY,
+	})
+	afterMotion := updated.(Model)
+	maxOffset := max(0, afterMotion.viewport.TotalLineCount()-afterMotion.viewport.Height)
+	if afterMotion.viewport.YOffset != maxOffset {
+		t.Fatalf("expected viewport offset %d after drag motion, got %d", maxOffset, afterMotion.viewport.YOffset)
+	}
+	if !afterMotion.scrollbarDragging {
+		t.Fatal("expected scrollbarDragging=true during drag")
+	}
+
+	updated, _ = afterMotion.Update(tea.MouseMsg{
+		Action: tea.MouseActionRelease,
+		Button: tea.MouseButtonLeft,
+		X:      clickX,
+		Y:      motionY,
+	})
+	afterRelease := updated.(Model)
+	if afterRelease.scrollbarDragging {
+		t.Fatal("expected scrollbarDragging=false after release")
+	}
+}
+
+func TestMouseClickScrollbarTrackJumpsProportionally(t *testing.T) {
+	m := newScrollableModelForScrollbarTest(t)
+
+	thumbPos, thumbSize, _, _, ok := scrollbarThumbGeometry(
+		m.layout.Chat.Height,
+		m.viewport.TotalLineCount(),
+		m.viewport.Height,
+		m.viewport.YOffset,
+	)
+	if !ok {
+		t.Fatal("expected visible scrollbar thumb")
+	}
+
+	row := thumbPos + thumbSize
+	if row >= m.layout.Chat.Height {
+		row = thumbPos - 1
+	}
+	if row < 0 || row >= m.layout.Chat.Height {
+		t.Fatalf("failed to choose a track row outside thumb: row=%d", row)
+	}
+
+	clickX := m.layout.Chat.X + m.layout.Chat.Width - 1
+	clickY := m.layout.Chat.Y + row
+	updated, _ := m.Update(tea.MouseMsg{
+		Action: tea.MouseActionPress,
+		Button: tea.MouseButtonLeft,
+		X:      clickX,
+		Y:      clickY,
+	})
+	after := updated.(Model)
+	if after.scrollbarDragging {
+		t.Fatal("expected scrollbarDragging=false after track click")
+	}
+
+	maxOffset := max(0, after.viewport.TotalLineCount()-after.viewport.Height)
+	want := row * maxOffset / (after.layout.Chat.Height - 1)
+	if after.viewport.YOffset != want {
+		t.Fatalf("expected viewport offset %d after track click, got %d", want, after.viewport.YOffset)
+	}
+}
+
+func TestMouseAltClickScrollbarAnchorJumpsToUserMessage(t *testing.T) {
 	m := NewModel(Config{
 		Provider:   "test",
 		Model:      "test-model",
@@ -250,6 +350,7 @@ func TestMouseClickScrollbarAnchorJumpsToUserMessage(t *testing.T) {
 	updated, _ := m.Update(tea.MouseMsg{
 		Action: tea.MouseActionPress,
 		Button: tea.MouseButtonLeft,
+		Alt:    true,
 		X:      clickX,
 		Y:      clickY,
 	})
@@ -263,6 +364,29 @@ func TestMouseClickScrollbarAnchorJumpsToUserMessage(t *testing.T) {
 	if after.viewport.YOffset != want {
 		t.Fatalf("expected viewport offset %d after anchor click, got %d", want, after.viewport.YOffset)
 	}
+}
+
+func newScrollableModelForScrollbarTest(t *testing.T) Model {
+	t.Helper()
+	m := NewModel(Config{
+		Provider:   "test",
+		Model:      "test-model",
+		ConfigPath: "/tmp/.wuu.json",
+		RunPrompt: func(_ctx context.Context, prompt string) (string, error) {
+			return prompt, nil
+		},
+	})
+	m.width = 100
+	m.height = 20
+	m.relayout()
+
+	for i := 0; i < 3; i++ {
+		m.appendEntry("USER", fmt.Sprintf("user %d", i))
+		m.appendEntry("ASSISTANT", strings.Repeat("line\n", 20)+"end")
+	}
+	m.refreshViewport(false)
+	m.setViewportOffset(0)
+	return m
 }
 
 func renderEntries(entries []transcriptEntry) string {

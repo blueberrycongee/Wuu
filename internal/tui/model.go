@@ -99,14 +99,14 @@ type pendingTurnResult struct {
 
 // Model implements the terminal UI state machine.
 type Model struct {
-	provider      string
-	modelName     string
-	configPath    string
-	workspaceRoot string
-	memoryPath    string
-	sessionID     string
-	sessionDir    string
-	runPrompt     func(ctx context.Context, prompt string) (string, error)
+	provider       string
+	modelName      string
+	configPath     string
+	workspaceRoot  string
+	memoryPath     string
+	sessionID      string
+	sessionDir     string
+	runPrompt      func(ctx context.Context, prompt string) (string, error)
 	streamRunner   *agent.StreamRunner
 	hookDispatcher *hooks.Dispatcher
 	streamCh       chan providers.StreamEvent
@@ -173,6 +173,10 @@ type Model struct {
 
 	// Anchors (content line offsets) for user messages in the rendered viewport.
 	userMessageLineAnchors []int
+
+	// Scrollbar drag state.
+	scrollbarDragging       bool
+	scrollbarDragGrabOffset int
 }
 
 // NewModel builds the initial UI model.
@@ -587,17 +591,33 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case tea.MouseMsg:
+		if msg.Action == tea.MouseActionRelease {
+			m.scrollbarDragging = false
+		}
+
+		if msg.Action == tea.MouseActionMotion && m.scrollbarDragging {
+			m.dragScrollbarToRow(msg.Y - m.layout.Chat.Y)
+			return m, nil
+		}
+
 		if msg.Action == tea.MouseActionPress &&
 			msg.Button == tea.MouseButtonLeft &&
 			m.isScrollbarClick(msg.X, msg.Y) {
 			row := msg.Y - m.layout.Chat.Y
-			if !m.jumpToNearestUserAnchorAtRow(row) {
-				if row == 0 {
-					m.jumpToPreviousUserAnchor()
-				} else {
-					m.jumpToScrollbarRow(row)
+			if msg.Alt {
+				if !m.jumpToNearestUserAnchorAtRow(row) {
+					if row == 0 {
+						m.jumpToPreviousUserAnchor()
+					} else {
+						m.jumpToScrollbarRow(row)
+					}
 				}
+				return m, nil
 			}
+			if m.startScrollbarDrag(row) {
+				return m, nil
+			}
+			m.jumpToScrollbarRow(row)
 			return m, nil
 		}
 
@@ -1280,6 +1300,57 @@ func (m *Model) jumpToScrollbarRow(row int) {
 	}
 	maxOffset := max(0, m.viewport.TotalLineCount()-m.viewport.Height)
 	offset := row * maxOffset / (height - 1)
+	m.setViewportOffset(offset)
+}
+
+func (m *Model) startScrollbarDrag(row int) bool {
+	thumbPos, thumbSize, _, _, ok := scrollbarThumbGeometry(
+		m.layout.Chat.Height,
+		m.viewport.TotalLineCount(),
+		m.viewport.Height,
+		m.viewport.YOffset,
+	)
+	if !ok {
+		return false
+	}
+	if row < thumbPos || row >= thumbPos+thumbSize {
+		return false
+	}
+	m.scrollbarDragging = true
+	m.scrollbarDragGrabOffset = row - thumbPos
+	return true
+}
+
+func (m *Model) dragScrollbarToRow(row int) {
+	height := m.layout.Chat.Height
+	if height <= 0 {
+		return
+	}
+	if row < 0 {
+		row = 0
+	} else if row >= height {
+		row = height - 1
+	}
+	_, _, trackSpace, maxOffset, ok := scrollbarThumbGeometry(
+		m.layout.Chat.Height,
+		m.viewport.TotalLineCount(),
+		m.viewport.Height,
+		m.viewport.YOffset,
+	)
+	if !ok {
+		m.setViewportOffset(0)
+		return
+	}
+	targetThumbPos := row - m.scrollbarDragGrabOffset
+	if targetThumbPos < 0 {
+		targetThumbPos = 0
+	} else if targetThumbPos > trackSpace {
+		targetThumbPos = trackSpace
+	}
+	offset := 0
+	if trackSpace > 0 {
+		offset = targetThumbPos * maxOffset / trackSpace
+	}
 	m.setViewportOffset(offset)
 }
 

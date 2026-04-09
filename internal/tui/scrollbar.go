@@ -21,28 +21,9 @@ func renderScrollbar(height, contentSize, viewportSize, offset int) string {
 }
 
 func renderScrollbarWithMarkers(height, contentSize, viewportSize, offset int, markerLines []int) string {
-	if height <= 0 || contentSize <= viewportSize {
+	thumbPos, thumbSize, _, _, ok := scrollbarThumbGeometry(height, contentSize, viewportSize, offset)
+	if !ok {
 		return ""
-	}
-
-	// Thumb size proportional to visible ratio, minimum 1.
-	thumbSize := height * viewportSize / contentSize
-	if thumbSize < 1 {
-		thumbSize = 1
-	}
-
-	// Thumb position mapped to available track space.
-	maxOffset := contentSize - viewportSize
-	if maxOffset <= 0 {
-		return ""
-	}
-	trackSpace := height - thumbSize
-	thumbPos := 0
-	if trackSpace > 0 {
-		thumbPos = offset * trackSpace / maxOffset
-		if thumbPos > trackSpace {
-			thumbPos = trackSpace
-		}
 	}
 
 	thumbStyle := lipgloss.NewStyle().Foreground(currentTheme.Brand)
@@ -71,6 +52,36 @@ func renderScrollbarWithMarkers(height, contentSize, viewportSize, offset int, m
 	}
 
 	return sb.String()
+}
+
+func scrollbarThumbGeometry(height, contentSize, viewportSize, offset int) (thumbPos, thumbSize, trackSpace, maxOffset int, ok bool) {
+	if height <= 0 || viewportSize <= 0 || contentSize <= viewportSize {
+		return 0, 0, 0, 0, false
+	}
+	maxOffset = contentSize - viewportSize
+	if maxOffset <= 0 {
+		return 0, 0, 0, 0, false
+	}
+	// Thumb size proportional to visible ratio, minimum 1.
+	thumbSize = height * viewportSize / contentSize
+	if thumbSize < 1 {
+		thumbSize = 1
+	} else if thumbSize > height {
+		thumbSize = height
+	}
+	if offset < 0 {
+		offset = 0
+	} else if offset > maxOffset {
+		offset = maxOffset
+	}
+	trackSpace = height - thumbSize
+	if trackSpace > 0 {
+		thumbPos = offset * trackSpace / maxOffset
+		if thumbPos > trackSpace {
+			thumbPos = trackSpace
+		}
+	}
+	return thumbPos, thumbSize, trackSpace, maxOffset, true
 }
 
 func markerLinesToScrollbarRows(markerLines []int, height, contentSize int) map[int]struct{} {
