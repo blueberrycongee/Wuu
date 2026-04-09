@@ -52,8 +52,8 @@ func ScanSessions(sessDir string, maxSessions int) ([]SessionMeta, error) {
 		if err != nil {
 			continue // skip corrupt files
 		}
-		if meta.UserMessages == 0 {
-			continue // skip empty sessions
+		if !isSubstantiveSession(meta) {
+			continue
 		}
 		metas = append(metas, meta)
 	}
@@ -295,6 +295,27 @@ func Aggregate(metas []SessionMeta, facets map[string]Facet) AggregatedData {
 	}
 
 	return agg
+}
+
+// --- filtering ---
+
+// isSubstantiveSession returns true if the session is worth analyzing.
+// Filters out: empty sessions, trivial sessions (<2 user messages or <1 min),
+// and meta-sessions (e.g. facet extraction API calls with JSON-only prompts).
+func isSubstantiveSession(meta SessionMeta) bool {
+	if meta.UserMessages < 2 {
+		return false
+	}
+	if meta.Duration > 0 && meta.Duration < time.Minute {
+		return false
+	}
+	// Meta-session detection: if the first user message looks like a JSON
+	// object or contains facet extraction markers, skip it.
+	first := strings.TrimSpace(meta.FirstUserMsg)
+	if strings.HasPrefix(first, "{") || strings.HasPrefix(first, "RESPOND WITH ONLY") {
+		return false
+	}
+	return true
 }
 
 // --- helpers ---
