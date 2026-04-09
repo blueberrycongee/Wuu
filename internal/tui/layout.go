@@ -11,7 +11,6 @@ type layout struct {
 	Header   layoutRect
 	Chat     layoutRect
 	Input    layoutRect
-	Footer   layoutRect
 	Compact  bool // true when terminal width < 80
 }
 
@@ -21,10 +20,9 @@ func computeLayout(termWidth, termHeight, inputLines int) layout {
 	compact := termWidth < 80
 
 	headerH := 1
-	footerH := 1
 	inputOuterH := inputLines
-	sepH := 2 // two separator lines between chat/input and input/footer
-	chatH := termHeight - headerH - footerH - inputOuterH - sepH
+	sepH := 1 // one separator line between chat and input
+	chatH := termHeight - headerH - inputOuterH - sepH
 	if chatH < 4 {
 		chatH = 4
 	}
@@ -42,16 +40,12 @@ func computeLayout(termWidth, termHeight, inputLines int) layout {
 	y += chatH
 
 	input := layoutRect{X: 0, Y: y, Width: innerW, Height: inputLines}
-	y += inputLines
-
-	footer := layoutRect{X: 0, Y: y, Width: termWidth, Height: footerH}
 
 	return layout{
 		Terminal: layoutRect{X: 0, Y: 0, Width: termWidth, Height: termHeight},
 		Header:   header,
 		Chat:     chat,
 		Input:    input,
-		Footer:   footer,
 		Compact:  compact,
 	}
 }

@@ -99,8 +99,8 @@ func TestJumpToBottomToggle(t *testing.T) {
 	updated, _ = paged.Update(tea.MouseMsg{
 		Action: tea.MouseActionPress,
 		Button: tea.MouseButtonLeft,
-		X:      4,
-		Y:      paged.height - 1,
+		X:      paged.width - 5,
+		Y:      0,
 	})
 	clicked := updated.(Model)
 	if clicked.showJump {
@@ -123,7 +123,7 @@ func TestRelayoutFitsWindow(t *testing.T) {
 	m.relayout()
 
 	l := computeLayout(m.width, m.height, m.inputLines)
-	totalHeight := l.Header.Height + l.Footer.Height + l.Chat.Height + l.Input.Height
+	totalHeight := l.Header.Height + l.Chat.Height + l.Input.Height
 	if totalHeight > m.height {
 		t.Fatalf("layout exceeds window height: used=%d window=%d", totalHeight, m.height)
 	}
@@ -654,11 +654,11 @@ func TestView_ShowsSteerAndQueuePreview(t *testing.T) {
 	m.messageQueue = []queuedMessage{{Text: "queued after steer"}}
 
 	view := m.View()
-	if !strings.Contains(view, "steer: steer now") {
-		t.Fatalf("expected steer preview in footer, got: %s", view)
+	if !strings.Contains(view, "steer:1") {
+		t.Fatalf("expected steer hint in header, got: %s", view)
 	}
-	if !strings.Contains(view, "queue: queued after steer") {
-		t.Fatalf("expected queue preview in footer, got: %s", view)
+	if !strings.Contains(view, "queue:1") {
+		t.Fatalf("expected queue hint in header, got: %s", view)
 	}
 }
 

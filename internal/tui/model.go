@@ -769,8 +769,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.showJump &&
 			msg.Action == tea.MouseActionPress &&
 			msg.Button == tea.MouseButtonLeft &&
-			msg.Y >= m.height-1 &&
-			msg.X <= 32 {
+			msg.Y == 0 &&
+			msg.X >= m.width-20 {
 			m.viewport.GotoBottom()
 			m.autoFollow = true
 			m.showJump = false
@@ -1739,45 +1739,37 @@ func (m Model) View() string {
 		return "loading..."
 	}
 
-	// Header
+	// Header — left: brand info, right: hints + clock.
 	tokenEstimate := 0
 	for _, e := range m.entries {
 		tokenEstimate += len(e.Content) / 4
 	}
 	tokenStr := formatTokenCount(tokenEstimate)
-	header := headerStyle.Render(
-		trimToWidth(fmt.Sprintf("wuu · %s/%s │ %s tokens", m.provider, m.modelName, tokenStr), m.width),
-	)
+	headerLeft := fmt.Sprintf("wuu · %s/%s │ %s tokens", m.provider, m.modelName, tokenStr)
 
-	// Footer — simplified, primary status is now inline in chat.
 	var hints []string
-
 	if m.statusLine == "request failed" {
-		hints = append(hints, statusErrorStyle.Render("✗")+" "+m.statusLine)
+		hints = append(hints, statusErrorStyle.Render("✗"))
 	}
 	if len(m.pendingSteers) > 0 {
-		hints = append(hints, fmt.Sprintf("steer: %s", summarizeQueuedMessages(m.pendingSteers)))
+		hints = append(hints, fmt.Sprintf("steer:%d", len(m.pendingSteers)))
 	}
 	if len(m.messageQueue) > 0 {
-		hints = append(hints, fmt.Sprintf("queue: %s", summarizeQueuedMessages(m.messageQueue)))
+		hints = append(hints, fmt.Sprintf("queue:%d", len(m.messageQueue)))
 	}
 	if len(m.pendingImages) > 0 {
-		label := fmt.Sprintf("%d image", len(m.pendingImages))
-		if len(m.pendingImages) > 1 {
-			label += "s"
-		}
-		hints = append(hints, label)
+		hints = append(hints, fmt.Sprintf("img:%d", len(m.pendingImages)))
 	}
 	if m.showJump {
-		hints = append(hints, "▼ jump")
+		hints = append(hints, "▼")
 	}
+	hints = append(hints, m.clock)
+	headerRight := strings.Join(hints, " · ")
 
-	footerLeft := strings.Join(hints, " · ")
-	footerRight := m.clock
-	availableW := max(1, m.width-lipgloss.Width(footerRight)-1)
-	footerLeft = trimToWidth(footerLeft, availableW)
-	gap := max(1, m.width-lipgloss.Width(footerLeft)-lipgloss.Width(footerRight))
-	footer := footerStyle.Render(footerLeft + strings.Repeat(" ", gap) + footerRight)
+	availableW := max(1, m.width-lipgloss.Width(headerRight)-1)
+	headerLeft = trimToWidth(headerLeft, availableW)
+	gap := max(1, m.width-lipgloss.Width(headerLeft)-lipgloss.Width(headerRight))
+	header := headerStyle.Render(headerLeft + strings.Repeat(" ", gap) + headerRight)
 
 	outputBox := m.viewport.View()
 
@@ -1811,7 +1803,7 @@ func (m Model) View() string {
 		Foreground(currentTheme.Border).
 		Render(strings.Repeat("─", m.width))
 
-	parts := []string{header, outputBox, sep, inputBox, sep, footer}
+	parts := []string{header, outputBox, sep, inputBox}
 
 	return strings.Join(parts, "\n")
 }
