@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/blueberrycongee/wuu/internal/providers"
 )
@@ -15,7 +16,7 @@ const maxConcurrentLLM = 3
 
 // GenerateInsights runs parallel LLM calls to produce insight sections,
 // then synthesizes the "At a Glance" summary.
-func GenerateInsights(ctx context.Context, client providers.Client, model string, agg AggregatedData, facets map[string]Facet) ([]InsightSection, AtAGlance, error) {
+func GenerateInsights(ctx context.Context, client providers.Client, model string, agg AggregatedData, facets map[string]Facet, progress chan<- ProgressEvent) ([]InsightSection, AtAGlance, error) {
 	dataContext := buildDataContext(agg, facets)
 
 	// Generate sections in parallel with bounded concurrency.
@@ -27,6 +28,8 @@ func GenerateInsights(ctx context.Context, client providers.Client, model string
 	results := make([]result, len(insightSections))
 	sem := make(chan struct{}, maxConcurrentLLM)
 	var wg sync.WaitGroup
+	var completed int32
+	var mu sync.Mutex
 
 	for i, def := range insightSections {
 		wg.Add(1)
@@ -38,6 +41,24 @@ func GenerateInsights(ctx context.Context, client providers.Client, model string
 			prompt := fmt.Sprintf(def.Prompt, dataContext)
 			section, err := generateSection(ctx, client, model, def, prompt)
 			results[i] = result{idx: i, section: section, err: err}
+
+			mu.Lock()
+			completed++
+			n := completed
+			mu.Unlock()
+
+			status := "done"
+			if err != nil {
+				status = "failed"
+			}
+			pct := 0.75 + 0.15*float64(n)/float64(len(insightSections))
+			if progress != nil {
+				progress <- ProgressEvent{
+					Phase:  "generating",
+					Detail: fmt.Sprintf("Section %d/%d \"%s\" %s", n, len(insightSections), def.Title, status),
+					Pct:    pct,
+				}
+			}
 		}(i, def)
 	}
 	wg.Wait()
@@ -73,7 +94,10 @@ func GenerateInsights(ctx context.Context, client providers.Client, model string
 }
 
 func generateSection(ctx context.Context, client providers.Client, model string, def insightSectionDef, prompt string) (InsightSection, error) {
-	resp, err := client.Chat(ctx, providers.ChatRequest{
+	reqCtx, cancel := context.WithTimeout(ctx, 90*time.Second)
+	defer cancel()
+
+	resp, err := client.Chat(reqCtx, providers.ChatRequest{
 		Model: model,
 		Messages: []providers.ChatMessage{
 			{Role: "user", Content: prompt},
@@ -100,7 +124,10 @@ func synthesizeAtAGlance(ctx context.Context, client providers.Client, model str
 	}
 
 	prompt := fmt.Sprintf(atAGlancePrompt, b.String())
-	resp, err := client.Chat(ctx, providers.ChatRequest{
+	reqCtx, cancel := context.WithTimeout(ctx, 90*time.Second)
+	defer cancel()
+
+	resp, err := client.Chat(reqCtx, providers.ChatRequest{
 		Model: model,
 		Messages: []providers.ChatMessage{
 			{Role: "user", Content: prompt},

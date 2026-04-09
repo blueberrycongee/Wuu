@@ -125,7 +125,7 @@ func Run(ctx context.Context, cfg RunConfig, progress chan<- ProgressEvent) {
 	send(progress, "generating",
 		fmt.Sprintf("Generating %d insight sections in parallel...", len(insightSections)), 0.75)
 
-	sections, glance, err := GenerateInsights(ctx, cfg.Client, cfg.Model, agg, facets)
+	sections, glance, err := GenerateInsights(ctx, cfg.Client, cfg.Model, agg, facets, progress)
 	if err != nil {
 		sendErr(progress, fmt.Errorf("generate insights: %w", err))
 		return

@@ -12,7 +12,11 @@ import (
 
 // ExtractFacet sends a session transcript to the LLM and extracts a structured Facet.
 func ExtractFacet(ctx context.Context, client providers.Client, model string, sessionID string, transcript string) (Facet, error) {
-	resp, err := client.Chat(ctx, providers.ChatRequest{
+	// Per-request timeout to avoid hanging on unresponsive APIs.
+	reqCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
+	resp, err := client.Chat(reqCtx, providers.ChatRequest{
 		Model: model,
 		Messages: []providers.ChatMessage{
 			{Role: "user", Content: facetExtractionPrompt + transcript},
