@@ -402,6 +402,27 @@ func TestMouseMotionScrollbarHoverState(t *testing.T) {
 	}
 }
 
+func TestMouseHoverScrollbarWithinHitboxTolerance(t *testing.T) {
+	m := newScrollableModelForScrollbarTest(t)
+	rightX := m.layout.Chat.X + m.layout.Chat.Width - 1
+	leftToleranceX := rightX - 1
+	if leftToleranceX < m.layout.Chat.X {
+		leftToleranceX = m.layout.Chat.X
+	}
+	hoverY := m.layout.Chat.Y + min(2, m.layout.Chat.Height-1)
+
+	updated, _ := m.Update(tea.MouseMsg{
+		Action: tea.MouseActionMotion,
+		Button: tea.MouseButtonNone,
+		X:      leftToleranceX,
+		Y:      hoverY,
+	})
+	after := updated.(Model)
+	if !after.scrollbarHoverActive {
+		t.Fatal("expected hover active inside scrollbar hitbox tolerance")
+	}
+}
+
 func TestMouseAltClickScrollbarAnchorJumpsToUserMessage(t *testing.T) {
 	m := NewModel(Config{
 		Provider:   "test",

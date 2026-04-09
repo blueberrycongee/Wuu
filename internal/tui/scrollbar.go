@@ -38,7 +38,6 @@ func renderScrollbarWithHover(height, contentSize, viewportSize, offset int, mar
 	markerOnThumbStyle := lipgloss.NewStyle().Foreground(currentTheme.BrandLight)
 	markerRows := markerLinesToScrollbarRows(markerLines, height, contentSize)
 	hoverActive := hoverRow >= 0 && hoverRow < height
-	hoverOnThumb := hoverActive && hoverRow >= thumbPos && hoverRow < thumbPos+thumbSize
 
 	var sb strings.Builder
 	for i := range height {
@@ -47,33 +46,28 @@ func renderScrollbarWithHover(height, contentSize, viewportSize, offset int, mar
 		}
 		_, hasMarker := markerRows[i]
 		inThumb := i >= thumbPos && i < thumbPos+thumbSize
-		thumbActive := dragging || (hoverOnThumb && inThumb)
-		hoverTrackRow := hoverActive && i == hoverRow && !inThumb
+		hoveredCell := hoverActive && i == hoverRow
+		hoverThumbCell := hoveredCell && inThumb
+		hoverTrackCell := hoveredCell && !inThumb
 		switch {
 		case inThumb && hasMarker:
-			if thumbActive {
+			if dragging || hoverThumbCell {
 				sb.WriteString(thumbHoverStyle.Render(scrollbarMarkerOnThumb))
 			} else {
 				sb.WriteString(markerOnThumbStyle.Render(scrollbarMarkerOnThumb))
 			}
 		case inThumb:
-			if thumbActive {
+			if dragging || hoverThumbCell {
 				sb.WriteString(thumbHoverStyle.Render(scrollbarThumb))
 			} else {
 				sb.WriteString(thumbStyle.Render(scrollbarThumb))
 			}
+		case hoverTrackCell:
+			sb.WriteString(trackHoverStyle.Render(scrollbarTrack))
 		case hasMarker:
-			if hoverTrackRow {
-				sb.WriteString(trackHoverStyle.Render(scrollbarMarker))
-			} else {
-				sb.WriteString(markerStyle.Render(scrollbarMarker))
-			}
+			sb.WriteString(markerStyle.Render(scrollbarMarker))
 		default:
-			if hoverTrackRow {
-				sb.WriteString(trackHoverStyle.Render(scrollbarTrack))
-			} else {
-				sb.WriteString(trackStyle.Render(scrollbarTrack))
-			}
+			sb.WriteString(trackStyle.Render(scrollbarTrack))
 		}
 	}
 

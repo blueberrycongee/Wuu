@@ -169,3 +169,15 @@ func TestRoundDiv(t *testing.T) {
 		}
 	}
 }
+
+func TestScrollbarHoverTrackRowOverridesMarker(t *testing.T) {
+	result := renderScrollbarWithHover(10, 100, 10, 0, []int{8}, 8, false)
+	lines := strings.Split(result, "\n")
+	if len(lines) != 10 {
+		t.Fatalf("expected 10 lines, got %d", len(lines))
+	}
+	cell := ansi.Strip(lines[8])
+	if !strings.Contains(cell, scrollbarTrack) {
+		t.Fatalf("expected hover row to render track glyph, got %q", cell)
+	}
+}

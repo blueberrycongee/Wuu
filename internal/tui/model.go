@@ -30,6 +30,7 @@ const (
 	queuePreviewMaxChars = 28
 
 	scrollbarAnchorClickTolerance = 1
+	scrollbarHitboxTolerance      = 1
 )
 
 type tickMsg struct {
@@ -1281,9 +1282,13 @@ func (m *Model) isScrollbarClick(x, y int) bool {
 		return false
 	}
 	right := m.layout.Chat.X + m.layout.Chat.Width - 1
+	left := right - scrollbarHitboxTolerance
+	if left < m.layout.Chat.X {
+		left = m.layout.Chat.X
+	}
 	top := m.layout.Chat.Y
 	bottom := top + m.layout.Chat.Height
-	return x == right && y >= top && y < bottom
+	return x >= left && x <= right && y >= top && y < bottom
 }
 
 func (m *Model) updateScrollbarHover(x, y int) bool {
