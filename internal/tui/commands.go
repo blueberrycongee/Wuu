@@ -349,6 +349,9 @@ func cmdInsight(_ string, m *Model) string {
 	if m.insightRunning {
 		return "insight: already running"
 	}
+	if m.streaming || m.pendingRequest {
+		return "insight: please wait for the current response to finish"
+	}
 	if m.sessionDir == "" {
 		return "insight: no session directory configured"
 	}
