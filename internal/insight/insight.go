@@ -70,8 +70,11 @@ func Run(ctx context.Context, cfg RunConfig, progress chan<- ProgressEvent) {
 		}
 
 		extracted := 0
+		errCount := 0
 		for _, m := range metas {
 			if ctx.Err() != nil {
+				send(progress, "error",
+					fmt.Sprintf("Cancelled: %d extracted, %d failed", extracted-errCount, errCount), 0)
 				sendErr(progress, ctx.Err())
 				return
 			}
@@ -92,6 +95,9 @@ func Run(ctx context.Context, cfg RunConfig, progress chan<- ProgressEvent) {
 
 			transcript, err := FormatTranscript(cfg.SessionDir, m.ID)
 			if err != nil {
+				send(progress, "extracting",
+					fmt.Sprintf("Session %d/%d: failed to read transcript: %v", extracted+1, uncached, err), pct)
+				errCount++
 				extracted++
 				continue
 			}
@@ -99,7 +105,8 @@ func Run(ctx context.Context, cfg RunConfig, progress chan<- ProgressEvent) {
 			facet, err := ExtractFacet(ctx, cfg.Client, cfg.Model, m.ID, transcript)
 			if err != nil {
 				send(progress, "extracting",
-					fmt.Sprintf("Session %d/%d: extraction failed, skipping", extracted+1, uncached), pct)
+					fmt.Sprintf("Session %d/%d: LLM error: %v", extracted+1, uncached, err), pct)
+				errCount++
 				extracted++
 				continue // non-fatal
 			}
@@ -107,6 +114,11 @@ func Run(ctx context.Context, cfg RunConfig, progress chan<- ProgressEvent) {
 			facets[m.ID] = facet
 			_ = SaveCachedFacet(cacheDir, facet)
 			extracted++
+		}
+
+		if errCount > 0 {
+			send(progress, "extracting",
+				fmt.Sprintf("⚠ %d/%d extractions failed (continuing with %d)", errCount, extracted, len(facets)), 0.70)
 		}
 	}
 
@@ -127,12 +139,13 @@ func Run(ctx context.Context, cfg RunConfig, progress chan<- ProgressEvent) {
 
 	sections, glance, err := GenerateInsights(ctx, cfg.Client, cfg.Model, agg, facets, progress)
 	if err != nil {
-		sendErr(progress, fmt.Errorf("generate insights: %w", err))
-		return
+		// LLM generation failed — still produce a stats-only report.
+		send(progress, "generating",
+			fmt.Sprintf("Insight generation failed: %v — producing stats-only report", err), 0.90)
+		sections = nil
+		glance = AtAGlance{}
 	}
 
-	send(progress, "synthesizing", "Building At a Glance summary...", 0.92)
-	// Small delay to let the user see the message before it switches to HTML.
 	send(progress, "synthesizing", "Generating HTML report...", 0.95)
 
 	report := &Report{

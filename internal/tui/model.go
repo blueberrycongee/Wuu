@@ -420,6 +420,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Replace the progress entry with the final report.
 			if m.insightProgressIdx >= 0 && m.insightProgressIdx < len(m.entries) {
 				m.entries[m.insightProgressIdx].Content = insight.FormatReport(msg.event.Report)
+				m.entries[m.insightProgressIdx].rendered = ""
+				m.entries[m.insightProgressIdx].renderedLen = 0
 			} else if msg.event.Report != nil {
 				m.appendEntry("assistant", insight.FormatReport(msg.event.Report))
 			}
@@ -456,7 +458,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case insightFinishedMsg:
 		m.insightRunning = false
+		if m.insightProgressIdx >= 0 && m.insightProgressIdx < len(m.entries) {
+			m.entries[m.insightProgressIdx].Content += "\n\n_Insight generation ended._"
+		}
+		m.insightProgressIdx = -1
 		m.statusLine = "ready"
+		m.refreshViewport(true)
 		return m, nil
 
 	case streamFinishedMsg:
@@ -826,6 +833,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		switch msg.String() {
 		case "ctrl+c":
+			// If insight is running, first ctrl+c cancels it instead of quitting.
+			if m.insightRunning && m.cancelInsight != nil {
+				m.cancelInsight()
+				m.insightRunning = false
+				if m.insightProgressIdx >= 0 && m.insightProgressIdx < len(m.entries) {
+					m.entries[m.insightProgressIdx].Content += "\n\n**Cancelled** by user."
+				}
+				m.insightProgressIdx = -1
+				m.statusLine = "insight cancelled"
+				m.refreshViewport(true)
+				return m, nil
+			}
 			if m.ctrlCPressed {
 				if m.cancelStream != nil {
 					m.cancelStream()
