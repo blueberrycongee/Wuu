@@ -196,6 +196,9 @@ type Model struct {
 	scrollbarHoverActive bool
 	scrollbarHoverRow    int
 
+	// Text selection in viewport.
+	selection selectionState
+
 	// Token usage accumulator for current turn.
 	turnInputTokens  int
 	turnOutputTokens int
@@ -735,8 +738,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.scrollbarDragging = false
 			m.scrollbarDragTrackSpace = 0
 			m.scrollbarDragMaxOffset = 0
+			if m.selection.IsDragging {
+				m.selection.finish()
+				if m.selection.hasSelection() {
+					m.copySelectionToClipboard()
+				}
+				return m, nil
+			}
 		}
 
+		if msg.Action == tea.MouseActionMotion && m.selection.IsDragging {
+			vpRow, vpCol := m.screenToViewportCoords(msg.X, msg.Y)
+			m.selection.update(vpCol, vpRow)
+			return m, nil
+		}
 		if msg.Action == tea.MouseActionMotion && m.scrollbarDragging {
 			m.dragScrollbarToRow(msg.Y - m.layout.Chat.Y)
 			return m, nil
@@ -748,6 +763,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Action == tea.MouseActionPress &&
 			msg.Button == tea.MouseButtonLeft &&
 			m.isScrollbarClick(msg.X, msg.Y) {
+			m.selection.clear()
 			row := msg.Y - m.layout.Chat.Y
 			if msg.Alt {
 				if !m.jumpToNearestUserAnchorAtRow(row) {
@@ -771,6 +787,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			msg.Button == tea.MouseButtonLeft &&
 			msg.Y == 0 &&
 			msg.X >= m.width-20 {
+			m.selection.clear()
 			m.viewport.GotoBottom()
 			m.autoFollow = true
 			m.showJump = false
@@ -787,6 +804,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			inputLeft := m.layout.Input.X
 
 			if msg.Y >= inputTop && msg.Y < inputBot && msg.X >= inputLeft {
+				m.selection.clear()
 				targetRow := msg.Y - inputTop
 				targetCol := msg.X - inputLeft - promptW
 				if targetCol < 0 {
@@ -809,6 +827,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 				// Move to target column.
 				m.input.SetCursor(targetCol)
+				return m, nil
+			}
+		}
+
+		// Start new selection on left-click in viewport area.
+		if msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft {
+			if m.isInChatArea(msg.X, msg.Y) {
+				m.selection.clear()
+				vpRow, vpCol := m.screenToViewportCoords(msg.X, msg.Y)
+				m.selection.start(vpCol, vpRow)
 				return m, nil
 			}
 		}
@@ -845,6 +873,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.completionItems = nil
 				return m, nil
 			}
+		}
+
+		// Clear text selection on Escape.
+		if msg.String() == "esc" && m.selection.hasSelection() {
+			m.selection.clear()
+			return m, nil
 		}
 
 		switch msg.String() {
@@ -1772,6 +1806,14 @@ func (m Model) View() string {
 	header := headerStyle.Render(headerLeft + strings.Repeat(" ", gap) + headerRight)
 
 	outputBox := m.viewport.View()
+
+	// Overlay text selection highlight.
+	if m.selection.hasSelection() {
+		selStyle := lipgloss.NewStyle().
+			Background(currentTheme.Brand).
+			Foreground(lipgloss.Color("#FFFFFF"))
+		outputBox = overlaySelection(outputBox, &m.selection, selStyle)
+	}
 
 	// Overlay scrollbar on the rightmost column of the viewport.
 	hoverRow := -1
