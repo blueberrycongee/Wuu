@@ -1,0 +1,385 @@
+package insight
+
+import (
+	"bufio"
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+	"time"
+)
+
+// memoryRecord mirrors the JSONL schema used by tui/memory.go.
+type memoryRecord struct {
+	Role       string          `json:"role"`
+	Content    string          `json:"content"`
+	At         time.Time       `json:"at"`
+	ToolCalls  []toolCallRec   `json:"tool_calls,omitempty"`
+	ToolCallID string          `json:"tool_call_id,omitempty"`
+	Name       string          `json:"name,omitempty"`
+}
+
+type toolCallRec struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Arguments string `json:"arguments"`
+}
+
+// ScanSessions reads all .jsonl session files in sessDir and returns metadata
+// sorted by creation time descending (most recent first).
+// maxSessions limits how many sessions to return (0 = all).
+func ScanSessions(sessDir string, maxSessions int) ([]SessionMeta, error) {
+	entries, err := os.ReadDir(sessDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	var metas []SessionMeta
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".jsonl") {
+			continue
+		}
+		if entry.Name() == "index.jsonl" {
+			continue
+		}
+		id := strings.TrimSuffix(entry.Name(), ".jsonl")
+		path := filepath.Join(sessDir, entry.Name())
+		meta, err := scanOneSession(path, id)
+		if err != nil {
+			continue // skip corrupt files
+		}
+		if meta.UserMessages == 0 {
+			continue // skip empty sessions
+		}
+		metas = append(metas, meta)
+	}
+
+	sort.Slice(metas, func(i, j int) bool {
+		return metas[i].CreatedAt.After(metas[j].CreatedAt)
+	})
+
+	if maxSessions > 0 && len(metas) > maxSessions {
+		metas = metas[:maxSessions]
+	}
+	return metas, nil
+}
+
+// scanOneSession reads a single .jsonl session file and extracts metadata.
+func scanOneSession(path string, id string) (SessionMeta, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return SessionMeta{}, err
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	scanner.Buffer(make([]byte, 1024), 2*1024*1024)
+
+	meta := SessionMeta{
+		ID:         id,
+		ToolCounts: make(map[string]int),
+		Languages:  make(map[string]int),
+	}
+
+	filesModified := make(map[string]struct{})
+	var firstTime, lastTime time.Time
+	var firstUserMsg string
+
+	for scanner.Scan() {
+		payload := strings.TrimSpace(scanner.Text())
+		if payload == "" {
+			continue
+		}
+		var rec memoryRecord
+		if err := json.Unmarshal([]byte(payload), &rec); err != nil {
+			continue
+		}
+
+		// Track time range.
+		if !rec.At.IsZero() {
+			if firstTime.IsZero() || rec.At.Before(firstTime) {
+				firstTime = rec.At
+			}
+			if rec.At.After(lastTime) {
+				lastTime = rec.At
+			}
+		}
+
+		role := strings.ToLower(strings.TrimSpace(rec.Role))
+		meta.EstTokens += len(rec.Content) / 4
+
+		switch role {
+		case "user":
+			meta.UserMessages++
+			if firstUserMsg == "" {
+				firstUserMsg = truncateStr(rec.Content, 120)
+			}
+			if !rec.At.IsZero() {
+				meta.MessageHours = append(meta.MessageHours, rec.At.Hour())
+				meta.UserTimestamps = append(meta.UserTimestamps, rec.At)
+			}
+		case "assistant":
+			meta.AssistantMsgs++
+			// Count tool calls.
+			for _, tc := range rec.ToolCalls {
+				name := strings.TrimSpace(tc.Name)
+				if name == "" {
+					continue
+				}
+				meta.ToolCounts[name]++
+				// Detect language from file paths in arguments.
+				detectLanguageFromArgs(tc.Arguments, meta.Languages)
+				// Track file modifications.
+				if isFileModifyTool(name) {
+					if fp := extractFilePath(tc.Arguments); fp != "" {
+						filesModified[fp] = struct{}{}
+					}
+				}
+			}
+		}
+	}
+
+	meta.CreatedAt = firstTime
+	if !firstTime.IsZero() && !lastTime.IsZero() {
+		meta.Duration = lastTime.Sub(firstTime)
+	}
+	meta.FirstUserMsg = firstUserMsg
+	meta.FilesModified = len(filesModified)
+
+	return meta, scanner.Err()
+}
+
+// FormatTranscript builds a condensed text transcript of a session for LLM analysis.
+func FormatTranscript(sessDir, sessionID string) (string, error) {
+	path := filepath.Join(sessDir, sessionID+".jsonl")
+	file, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	scanner.Buffer(make([]byte, 1024), 2*1024*1024)
+
+	var b strings.Builder
+	b.WriteString("Session: " + sessionID + "\n\n")
+
+	for scanner.Scan() {
+		payload := strings.TrimSpace(scanner.Text())
+		if payload == "" {
+			continue
+		}
+		var rec memoryRecord
+		if err := json.Unmarshal([]byte(payload), &rec); err != nil {
+			continue
+		}
+
+		role := strings.ToLower(strings.TrimSpace(rec.Role))
+		content := strings.TrimSpace(rec.Content)
+
+		switch role {
+		case "user":
+			b.WriteString("[User]: " + truncateStr(content, 500) + "\n")
+		case "assistant":
+			b.WriteString("[Assistant]: " + truncateStr(content, 300) + "\n")
+			for _, tc := range rec.ToolCalls {
+				b.WriteString("[Tool: " + tc.Name + "]\n")
+			}
+		case "tool":
+			// Skip tool results to keep transcript compact.
+		}
+
+		// Cap total transcript size.
+		if b.Len() > 30000 {
+			b.WriteString("\n... (truncated)\n")
+			break
+		}
+	}
+
+	return b.String(), scanner.Err()
+}
+
+// Aggregate combines multiple SessionMeta and Facets into AggregatedData.
+func Aggregate(metas []SessionMeta, facets map[string]Facet) AggregatedData {
+	agg := AggregatedData{
+		TotalSessions:      len(metas),
+		SessionsWithFacets: len(facets),
+		ToolCounts:         make(map[string]int),
+		Languages:          make(map[string]int),
+		GoalCategories:     make(map[string]int),
+		Outcomes:           make(map[string]int),
+		Satisfaction:        make(map[string]int),
+		SessionTypes:       make(map[string]int),
+		Friction:           make(map[string]int),
+		Success:            make(map[string]int),
+	}
+
+	daysSet := make(map[string]struct{})
+
+	for _, m := range metas {
+		agg.TotalMessages += m.UserMessages + m.AssistantMsgs
+		agg.TotalDurationH += m.Duration.Hours()
+		agg.TotalEstTokens += m.EstTokens
+		agg.TotalLinesAdded += m.LinesAdded
+		agg.TotalLinesRemoved += m.LinesRemoved
+		agg.TotalFilesModified += m.FilesModified
+		agg.MessageHours = append(agg.MessageHours, m.MessageHours...)
+
+		for name, cnt := range m.ToolCounts {
+			agg.ToolCounts[name] += cnt
+		}
+		for lang, cnt := range m.Languages {
+			agg.Languages[lang] += cnt
+		}
+
+		if !m.CreatedAt.IsZero() {
+			day := m.CreatedAt.Format("2006-01-02")
+			daysSet[day] = struct{}{}
+		}
+	}
+
+	// Aggregate facets.
+	for _, f := range facets {
+		for cat, cnt := range f.GoalCategories {
+			agg.GoalCategories[cat] += cnt
+		}
+		if f.Outcome != "" {
+			agg.Outcomes[f.Outcome]++
+		}
+		if f.Satisfaction != "" {
+			agg.Satisfaction[f.Satisfaction]++
+		}
+		if f.SessionType != "" {
+			agg.SessionTypes[f.SessionType]++
+		}
+		for fric, cnt := range f.Friction {
+			agg.Friction[fric] += cnt
+		}
+		if f.PrimarySuccess != "" {
+			agg.Success[f.PrimarySuccess]++
+		}
+	}
+
+	// Summaries from first 50 sessions.
+	limit := 50
+	if len(metas) < limit {
+		limit = len(metas)
+	}
+	for _, m := range metas[:limit] {
+		s := SessionSummary{
+			ID:      m.ID,
+			Date:    m.CreatedAt.Format("2006-01-02"),
+			Summary: m.FirstUserMsg,
+		}
+		if f, ok := facets[m.ID]; ok {
+			s.Goal = f.Goal
+		}
+		agg.Summaries = append(agg.Summaries, s)
+	}
+
+	// Date range.
+	if len(metas) > 0 {
+		agg.DateRange = [2]string{
+			metas[len(metas)-1].CreatedAt.Format("2006-01-02"),
+			metas[0].CreatedAt.Format("2006-01-02"),
+		}
+	}
+
+	agg.DaysActive = len(daysSet)
+	if agg.DaysActive > 0 {
+		agg.MessagesPerDay = float64(agg.TotalMessages) / float64(agg.DaysActive)
+	}
+
+	return agg
+}
+
+// --- helpers ---
+
+func truncateStr(s string, maxLen int) string {
+	s = strings.TrimSpace(s)
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen] + "..."
+}
+
+var langExtMap = map[string]string{
+	".go":    "Go",
+	".ts":    "TypeScript",
+	".tsx":   "TypeScript",
+	".js":    "JavaScript",
+	".jsx":   "JavaScript",
+	".py":    "Python",
+	".rs":    "Rust",
+	".java":  "Java",
+	".rb":    "Ruby",
+	".c":     "C",
+	".cpp":   "C++",
+	".h":     "C",
+	".cs":    "C#",
+	".swift": "Swift",
+	".kt":    "Kotlin",
+	".php":   "PHP",
+	".sh":    "Shell",
+	".bash":  "Shell",
+	".zsh":   "Shell",
+	".sql":   "SQL",
+	".html":  "HTML",
+	".css":   "CSS",
+	".scss":  "CSS",
+	".json":  "JSON",
+	".yaml":  "YAML",
+	".yml":   "YAML",
+	".toml":  "TOML",
+	".md":    "Markdown",
+	".lua":   "Lua",
+	".zig":   "Zig",
+	".dart":  "Dart",
+	".vue":   "Vue",
+	".svelte": "Svelte",
+}
+
+func detectLanguageFromArgs(args string, langs map[string]int) {
+	// Look for file_path or path in tool arguments JSON.
+	var parsed map[string]any
+	if json.Unmarshal([]byte(args), &parsed) != nil {
+		return
+	}
+	for _, key := range []string{"file_path", "path", "filename"} {
+		if v, ok := parsed[key]; ok {
+			if s, ok := v.(string); ok {
+				ext := strings.ToLower(filepath.Ext(s))
+				if lang, ok := langExtMap[ext]; ok {
+					langs[lang]++
+				}
+			}
+		}
+	}
+}
+
+func isFileModifyTool(name string) bool {
+	switch name {
+	case "write_file", "edit_file", "Write", "Edit":
+		return true
+	}
+	return false
+}
+
+func extractFilePath(args string) string {
+	var parsed map[string]any
+	if json.Unmarshal([]byte(args), &parsed) != nil {
+		return ""
+	}
+	for _, key := range []string{"file_path", "path"} {
+		if v, ok := parsed[key]; ok {
+			if s, ok := v.(string); ok {
+				return s
+			}
+		}
+	}
+	return ""
+}

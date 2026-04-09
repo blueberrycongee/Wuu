@@ -16,6 +16,7 @@ import (
 	"github.com/blueberrycongee/wuu/internal/agent"
 	"github.com/blueberrycongee/wuu/internal/compact"
 	"github.com/blueberrycongee/wuu/internal/hooks"
+	"github.com/blueberrycongee/wuu/internal/insight"
 	"github.com/blueberrycongee/wuu/internal/markdown"
 	"github.com/blueberrycongee/wuu/internal/providers"
 	"github.com/blueberrycongee/wuu/internal/session"
@@ -56,6 +57,12 @@ type ctrlCResetMsg struct{}
 type queueDrainMsg struct{}
 
 type inlineSpinMsg struct{}
+
+type insightProgressMsg struct {
+	event insight.ProgressEvent
+}
+
+type insightFinishedMsg struct{}
 
 type ToolCallStatus string
 
@@ -188,6 +195,11 @@ type Model struct {
 	// Scrollbar hover state.
 	scrollbarHoverActive bool
 	scrollbarHoverRow    int
+
+	// Insight generation state.
+	insightRunning bool
+	insightCh      chan insight.ProgressEvent
+	cancelInsight  context.CancelFunc
 }
 
 // NewModel builds the initial UI model.
@@ -345,6 +357,16 @@ func inlineSpinTickCmd() tea.Cmd {
 	})
 }
 
+func waitInsightEvent(ch <-chan insight.ProgressEvent) tea.Cmd {
+	return func() tea.Msg {
+		event, ok := <-ch
+		if !ok {
+			return insightFinishedMsg{}
+		}
+		return insightProgressMsg{event: event}
+	}
+}
+
 // Update handles events.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
@@ -368,6 +390,33 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.refreshViewport(false)
 			return m, inlineSpinTickCmd()
 		}
+		return m, nil
+
+	case insightProgressMsg:
+		switch msg.event.Phase {
+		case "done":
+			m.insightRunning = false
+			if msg.event.Report != nil {
+				m.appendEntry("assistant", insight.FormatReport(msg.event.Report))
+			}
+			m.statusLine = "ready"
+			m.refreshViewport(true)
+			return m, nil
+		case "error":
+			m.insightRunning = false
+			m.appendEntry("system", fmt.Sprintf("insight failed: %v", msg.event.Err))
+			m.statusLine = "ready"
+			m.refreshViewport(true)
+			return m, nil
+		default:
+			m.statusLine = fmt.Sprintf("insight: %s", msg.event.Detail)
+			m.refreshViewport(false)
+			return m, waitInsightEvent(m.insightCh)
+		}
+
+	case insightFinishedMsg:
+		m.insightRunning = false
+		m.statusLine = "ready"
 		return m, nil
 
 	case streamFinishedMsg:
@@ -880,6 +929,10 @@ func (m Model) submit(shouldQueue bool) (tea.Model, tea.Cmd) {
 			m.input.Reset()
 			m.statusLine = "command executed"
 			m.refreshViewport(true)
+			// If insight was launched, start listening for progress events.
+			if m.insightRunning && m.insightCh != nil {
+				return m, waitInsightEvent(m.insightCh)
+			}
 			return m, nil
 		}
 	}

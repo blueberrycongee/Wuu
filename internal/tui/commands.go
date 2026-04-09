@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/blueberrycongee/wuu/internal/insight"
 	"github.com/blueberrycongee/wuu/internal/session"
 )
 
@@ -344,18 +346,32 @@ func cmdSkills(_ string, m *Model) string {
 }
 
 func cmdInsight(_ string, m *Model) string {
-	userCount := 0
-	assistantCount := 0
-	for _, e := range m.entries {
-		switch e.Role {
-		case "USER":
-			userCount++
-		case "ASSISTANT":
-			assistantCount++
-		}
+	if m.insightRunning {
+		return "insight: already running"
 	}
-	return fmt.Sprintf("session insight:\n  total entries: %d\n  user messages: %d\n  assistant messages: %d\n  time: %s",
-		len(m.entries), userCount, assistantCount, time.Now().Format("15:04:05"))
+	if m.sessionDir == "" {
+		return "insight: no session directory configured"
+	}
+	if m.streamRunner == nil {
+		return "insight: requires a streaming provider (no LLM client available)"
+	}
+
+	ch := make(chan insight.ProgressEvent, 16)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+
+	m.insightRunning = true
+	m.insightCh = ch
+	m.cancelInsight = cancel
+
+	go insight.Run(ctx, insight.RunConfig{
+		SessionDir:    m.sessionDir,
+		WorkspaceRoot: m.workspaceRoot,
+		Client:        m.streamRunner.Client,
+		Model:         m.streamRunner.Model,
+		MaxSessions:   50,
+	}, ch)
+
+	return "insight: scanning sessions..."
 }
 
 func cmdExit(_ string, _ *Model) string {
