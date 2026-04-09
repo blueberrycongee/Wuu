@@ -211,6 +211,39 @@ func TestStreamRunner_RetryOnInitialConnectError(t *testing.T) {
 	}
 }
 
+func TestStreamRunner_RetryOnInitialConnectHTTP500(t *testing.T) {
+	client := &mockStreamClient{
+		attempts: []mockStreamAttempt{
+			{err: &providers.HTTPError{StatusCode: 500, Body: "upstream error"}},
+			{
+				events: []providers.StreamEvent{
+					{Type: providers.EventContentDelta, Content: "recovered"},
+					{Type: providers.EventDone},
+				},
+			},
+		},
+	}
+
+	runner := StreamRunner{
+		Client:                  client,
+		Model:                   "m",
+		StreamMaxRetries:        2,
+		StreamRetryInitialDelay: time.Millisecond,
+		StreamRetryMaxDelay:     2 * time.Millisecond,
+	}
+
+	result, err := runner.Run(context.Background(), "hi")
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if result != "recovered" {
+		t.Fatalf("unexpected result: %q", result)
+	}
+	if client.callCount != 2 {
+		t.Fatalf("expected 2 stream attempts, got %d", client.callCount)
+	}
+}
+
 func TestStreamRunner_RetryOnEarlyStreamErrorEvent(t *testing.T) {
 	client := &mockStreamClient{
 		attempts: []mockStreamAttempt{

@@ -142,7 +142,11 @@ func (c *Client) Chat(ctx context.Context, req providers.ChatRequest) (providers
 		if len(snippet) > 400 {
 			snippet = snippet[:400]
 		}
-		return providers.ChatResponse{}, fmt.Errorf("provider returned %s: %s", httpResp.Status, snippet)
+		return providers.ChatResponse{}, &providers.HTTPError{
+			StatusCode: httpResp.StatusCode,
+			Body:       fmt.Sprintf("%s: %s", httpResp.Status, snippet),
+			RetryAfter: providers.ParseRetryAfter(httpResp),
+		}
 	}
 
 	var parsed anthropicResponse
@@ -254,7 +258,11 @@ func (c *Client) StreamChat(ctx context.Context, req providers.ChatRequest) (<-c
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		defer resp.Body.Close()
 		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 400))
-		return nil, fmt.Errorf("provider returned %s: %s", resp.Status, string(snippet))
+		return nil, &providers.HTTPError{
+			StatusCode: resp.StatusCode,
+			Body:       fmt.Sprintf("%s: %s", resp.Status, string(snippet)),
+			RetryAfter: providers.ParseRetryAfter(resp),
+		}
 	}
 
 	ch := make(chan providers.StreamEvent, 64)

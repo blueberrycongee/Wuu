@@ -3,6 +3,7 @@ package openai
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -290,5 +291,12 @@ func TestStreamChat_ServerError(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected error for 500 response")
+	}
+	var httpErr *providers.HTTPError
+	if !errors.As(err, &httpErr) {
+		t.Fatalf("expected HTTPError, got %T (%v)", err, err)
+	}
+	if httpErr.StatusCode != http.StatusInternalServerError {
+		t.Fatalf("unexpected status code: %d", httpErr.StatusCode)
 	}
 }
