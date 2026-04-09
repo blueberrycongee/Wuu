@@ -55,6 +55,8 @@ type ctrlCResetMsg struct{}
 
 type queueDrainMsg struct{}
 
+type inlineSpinMsg struct{}
+
 type ToolCallStatus string
 
 const (
@@ -137,10 +139,11 @@ type Model struct {
 	thinkingStart  time.Time // when thinking began for current turn
 	spinnerTick    int
 
-	autoFollow bool
-	showJump   bool
-	clock      string
-	statusLine string
+	autoFollow     bool
+	showJump       bool
+	clock          string
+	statusLine     string
+	inlineSpinFrame int
 
 	streamCollector *markdown.StreamCollector
 
@@ -336,6 +339,12 @@ func streamTickCmd() tea.Cmd {
 	})
 }
 
+func inlineSpinTickCmd() tea.Cmd {
+	return tea.Tick(150*time.Millisecond, func(_ time.Time) tea.Msg {
+		return inlineSpinMsg{}
+	})
+}
+
 // Update handles events.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
@@ -352,6 +361,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.refreshViewport(false)
 		}
 		return m, tickCmd()
+
+	case inlineSpinMsg:
+		m.inlineSpinFrame++
+		if m.streaming || m.pendingRequest {
+			m.refreshViewport(false)
+			return m, inlineSpinTickCmd()
+		}
+		return m, nil
 
 	case streamFinishedMsg:
 		// Runner goroutine completed (channel closed).
@@ -989,7 +1006,7 @@ func (m Model) sendMessage(message queuedMessage) (tea.Model, tea.Cmd) {
 				}
 			}
 		}()
-		return m, waitStreamEvent(ch)
+		return m, tea.Batch(waitStreamEvent(ch), inlineSpinTickCmd())
 	}
 
 	// Fallback to blocking path.
@@ -1526,6 +1543,8 @@ func (m *Model) refreshViewport(forceBottom bool) {
 
 			// Main content.
 			content := truncateForDisplay(entry.Content)
+			isActiveTarget := (m.streaming || m.pendingRequest) && i == m.streamTarget
+
 			if content != "(empty)" {
 				if entry.Role == "USER" {
 					// userContentStyle has Padding(0,1) = 1 char each side, so
@@ -1542,16 +1561,12 @@ func (m *Model) refreshViewport(forceBottom bool) {
 					appendText("▌")
 				}
 			}
-		}
-		if m.pendingRequest && m.streamTarget < 0 {
-			if b.Len() > 0 {
-				appendText("\n\n")
+
+			// Inline status: show animated indicator on the active assistant entry.
+			if entry.Role == "ASSISTANT" && isActiveTarget {
+				appendText("\n")
+				appendText(indentLines(renderInlineStatus(m.statusLine, m.inlineSpinFrame), contentPadLeft))
 			}
-			elapsed := time.Duration(0)
-			if !m.thinkingStart.IsZero() {
-				elapsed = time.Since(m.thinkingStart)
-			}
-			appendText(renderThinkingBlock("", false, false, elapsed, m.viewport.Width, m.spinnerTick))
 		}
 	}
 
@@ -1606,48 +1621,31 @@ func (m Model) View() string {
 		trimToWidth(fmt.Sprintf("wuu · %s/%s │ %s tokens", m.provider, m.modelName, tokenStr), m.width),
 	)
 
-	// Footer
-	var iconStyled string
-	state := m.statusLine
-	if m.streaming {
-		iconStyled = statusStreamStyle.Render("●")
-		state = "streaming"
-	} else if m.statusLine == "thinking" {
-		iconStyled = statusStreamStyle.Render("◐")
-		state = "thinking"
-	} else if strings.HasPrefix(m.statusLine, "executing tool:") {
-		iconStyled = statusToolStyle.Render("◆")
-	} else if m.statusLine == "request failed" {
-		iconStyled = statusErrorStyle.Render("✗")
-	} else {
-		iconStyled = statusReadyStyle.Render("○")
-	}
+	// Footer — simplified, primary status is now inline in chat.
+	var hints []string
 
-	jumpHint := ""
-	if m.showJump {
-		jumpHint = " · ▼ jump"
+	if m.statusLine == "request failed" {
+		hints = append(hints, statusErrorStyle.Render("✗")+" "+m.statusLine)
 	}
-
-	steerHint := ""
 	if len(m.pendingSteers) > 0 {
-		steerHint = fmt.Sprintf(" · steer: %s", summarizeQueuedMessages(m.pendingSteers))
+		hints = append(hints, fmt.Sprintf("steer: %s", summarizeQueuedMessages(m.pendingSteers)))
 	}
-
-	queueHint := ""
 	if len(m.messageQueue) > 0 {
-		queueHint = fmt.Sprintf(" · queue: %s", summarizeQueuedMessages(m.messageQueue))
+		hints = append(hints, fmt.Sprintf("queue: %s", summarizeQueuedMessages(m.messageQueue)))
 	}
-
-	imageHint := ""
 	if len(m.pendingImages) > 0 {
-		imageHint = fmt.Sprintf(" · %d image", len(m.pendingImages))
+		label := fmt.Sprintf("%d image", len(m.pendingImages))
 		if len(m.pendingImages) > 1 {
-			imageHint += "s"
+			label += "s"
 		}
+		hints = append(hints, label)
+	}
+	if m.showJump {
+		hints = append(hints, "▼ jump")
 	}
 
-	footerLeft := fmt.Sprintf("%s %s%s%s%s%s", iconStyled, state, steerHint, queueHint, imageHint, jumpHint)
-	footerRight := fmt.Sprintf("t:thinking · %s", m.clock)
+	footerLeft := strings.Join(hints, " · ")
+	footerRight := m.clock
 	availableW := max(1, m.width-lipgloss.Width(footerRight)-1)
 	footerLeft = trimToWidth(footerLeft, availableW)
 	gap := max(1, m.width-lipgloss.Width(footerLeft)-lipgloss.Width(footerRight))
