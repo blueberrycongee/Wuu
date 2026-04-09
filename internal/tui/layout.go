@@ -23,8 +23,8 @@ func computeLayout(termWidth, termHeight, inputLines int) layout {
 	headerH := 1
 	footerH := 1
 	inputOuterH := inputLines
-	// Chat area has no border; input is separated with horizontal lines in View().
-	chatH := termHeight - headerH - footerH - inputOuterH
+	sepH := 2 // two separator lines between chat/input and input/footer
+	chatH := termHeight - headerH - footerH - inputOuterH - sepH
 	if chatH < 4 {
 		chatH = 4
 	}
