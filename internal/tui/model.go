@@ -1621,7 +1621,7 @@ func (m Model) View() string {
 
 	// Separator line between chat and input.
 	sep := lipgloss.NewStyle().
-		Foreground(darkTheme.Border).
+		Foreground(currentTheme.Border).
 		Render(strings.Repeat("─", m.width))
 
 	parts := []string{header, outputBox, sep, inputBox, sep, footer}

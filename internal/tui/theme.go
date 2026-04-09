@@ -1,6 +1,11 @@
 package tui
 
-import "github.com/charmbracelet/lipgloss"
+import (
+	"fmt"
+	"strings"
+
+	"github.com/charmbracelet/lipgloss"
+)
 
 // Theme defines the color palette for the TUI.
 type theme struct {
@@ -29,6 +34,10 @@ type theme struct {
 	DiffAddFg    lipgloss.Color // insert line foreground
 	DiffDeleteBg lipgloss.Color // delete line background
 	DiffDeleteFg lipgloss.Color // delete line foreground
+
+	// User bubble.
+	UserBubbleBg lipgloss.Color
+	UserBubbleFg lipgloss.Color
 }
 
 // darkTheme is the default color palette.
@@ -53,75 +62,158 @@ var darkTheme = theme{
 	DiffAddFg:    lipgloss.Color("#4EBA65"), // bright green
 	DiffDeleteBg: lipgloss.Color("#4A221D"), // dark red
 	DiffDeleteFg: lipgloss.Color("#FF6B80"), // bright red
+
+	UserBubbleBg: lipgloss.Color("#2F3842"), // blue-gray (not pure black)
+	UserBubbleFg: lipgloss.Color("#F5F7FA"), // near-white
 }
 
-// currentTheme is the active theme. Swap this for light mode later.
+var lightTheme = theme{
+	Brand:      lipgloss.Color("#B85A39"), // warm orange, darker for light bg
+	BrandLight: lipgloss.Color("#D77757"), // lighter accent
+
+	Success: lipgloss.Color("#2A8F45"), // deep green
+	Error:   lipgloss.Color("#C33A4A"), // deep red
+	Warning: lipgloss.Color("#B88700"), // deep amber
+
+	Text:     lipgloss.Color("#1F2328"), // near-black
+	Subtle:   lipgloss.Color("#5C6670"), // muted gray
+	Inactive: lipgloss.Color("#8A939C"), // inactive gray
+
+	Border:      lipgloss.Color("#C9D1D9"), // light border
+	HeaderBg:    lipgloss.Color("#EDEFF2"), // light header background
+	ToolBorder:  lipgloss.Color("#4C61C9"), // readable indigo
+	InputBorder: lipgloss.Color("#B6BEC7"), // input border
+
+	DiffAddBg:    lipgloss.Color("#E8F7EC"), // light green bg
+	DiffAddFg:    lipgloss.Color("#1E7E34"), // dark green text
+	DiffDeleteBg: lipgloss.Color("#FDECEC"), // light red bg
+	DiffDeleteFg: lipgloss.Color("#A3212F"), // dark red text
+
+	UserBubbleBg: lipgloss.Color("#EAF1FF"), // light blue bubble
+	UserBubbleFg: lipgloss.Color("#1F2328"), // dark text
+}
+
+type themeMode string
+
+const (
+	themeModeAuto  themeMode = "auto"
+	themeModeDark  themeMode = "dark"
+	themeModeLight themeMode = "light"
+)
+
+// currentTheme is the active theme at runtime.
 var currentTheme = darkTheme
 
 // Reusable styles built from the theme.
 var (
 	// Header: bold brand color.
-	headerStyle = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(darkTheme.Brand)
+	headerStyle lipgloss.Style
 
 	// Footer: subtle text.
-	footerStyle = lipgloss.NewStyle().
-			Foreground(darkTheme.Subtle)
+	footerStyle lipgloss.Style
 
 	// User message role label.
-	userLabelStyle = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(darkTheme.Brand)
+	userLabelStyle lipgloss.Style
 
 	// Assistant message role label.
-	assistantLabelStyle = lipgloss.NewStyle().
-				Bold(true).
-				Foreground(darkTheme.Success)
+	assistantLabelStyle lipgloss.Style
 
 	// System message role label.
-	systemLabelStyle = lipgloss.NewStyle().
-				Foreground(darkTheme.Subtle).
-				Italic(true)
+	systemLabelStyle lipgloss.Style
 
 	// Tool call header.
-	toolLabelStyle = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(darkTheme.ToolBorder)
+	toolLabelStyle lipgloss.Style
 
 	// Tool call body (output).
-	toolOutputStyle = lipgloss.NewStyle().
-			Foreground(darkTheme.Inactive)
+	toolOutputStyle lipgloss.Style
 
 	// Status indicators.
-	statusReadyStyle     = lipgloss.NewStyle().Foreground(darkTheme.Success)
-	statusStreamStyle    = lipgloss.NewStyle().Foreground(darkTheme.Brand)
-	statusToolStyle      = lipgloss.NewStyle().Foreground(darkTheme.ToolBorder)
-	statusErrorStyle     = lipgloss.NewStyle().Foreground(darkTheme.Error)
+	statusReadyStyle  lipgloss.Style
+	statusStreamStyle lipgloss.Style
+	statusToolStyle   lipgloss.Style
+	statusErrorStyle  lipgloss.Style
 
 	// Borders.
-	outputBorderStyle = lipgloss.NewStyle().
-				Border(lipgloss.RoundedBorder()).
-				BorderForeground(darkTheme.Border)
+	outputBorderStyle lipgloss.Style
+	inputBorderStyle  lipgloss.Style
 
-	inputBorderStyle = lipgloss.NewStyle().
-				Border(lipgloss.RoundedBorder()).
-				BorderForeground(darkTheme.InputBorder)
-
-	// User message content — reversed to stand out.
-	userContentStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#FFFFFF")).
-			Background(lipgloss.Color("#333333")).
-			Padding(0, 1)
+	// User message content.
+	userContentStyle lipgloss.Style
 
 	// Banner.
-	bannerStyle = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(darkTheme.Brand)
-
-	bannerSubtitleStyle = lipgloss.NewStyle().
-				Foreground(darkTheme.Subtle)
-
-	bannerInfoStyle = lipgloss.NewStyle().
-			Foreground(darkTheme.Inactive)
+	bannerStyle         lipgloss.Style
+	bannerSubtitleStyle lipgloss.Style
+	bannerInfoStyle     lipgloss.Style
 )
+
+func init() {
+	applyTheme(darkTheme)
+}
+
+func normalizeThemeMode(raw string) themeMode {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "", string(themeModeAuto):
+		return themeModeAuto
+	case string(themeModeDark):
+		return themeModeDark
+	case string(themeModeLight):
+		return themeModeLight
+	default:
+		return ""
+	}
+}
+
+// SetThemeMode applies a theme mode: "auto", "dark", or "light".
+func SetThemeMode(mode string) error {
+	normalized := normalizeThemeMode(mode)
+	if normalized == "" {
+		return fmt.Errorf("invalid theme %q (expected: auto, dark, light)", mode)
+	}
+
+	switch normalized {
+	case themeModeDark:
+		applyTheme(darkTheme)
+	case themeModeLight:
+		applyTheme(lightTheme)
+	default:
+		if lipgloss.HasDarkBackground() {
+			applyTheme(darkTheme)
+		} else {
+			applyTheme(lightTheme)
+		}
+	}
+	return nil
+}
+
+func applyTheme(t theme) {
+	currentTheme = t
+
+	headerStyle = lipgloss.NewStyle().Bold(true).Foreground(t.Brand)
+	footerStyle = lipgloss.NewStyle().Foreground(t.Subtle)
+	userLabelStyle = lipgloss.NewStyle().Bold(true).Foreground(t.Brand)
+	assistantLabelStyle = lipgloss.NewStyle().Bold(true).Foreground(t.Success)
+	systemLabelStyle = lipgloss.NewStyle().Foreground(t.Subtle).Italic(true)
+	toolLabelStyle = lipgloss.NewStyle().Bold(true).Foreground(t.ToolBorder)
+	toolOutputStyle = lipgloss.NewStyle().Foreground(t.Inactive)
+
+	statusReadyStyle = lipgloss.NewStyle().Foreground(t.Success)
+	statusStreamStyle = lipgloss.NewStyle().Foreground(t.Brand)
+	statusToolStyle = lipgloss.NewStyle().Foreground(t.ToolBorder)
+	statusErrorStyle = lipgloss.NewStyle().Foreground(t.Error)
+
+	outputBorderStyle = lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(t.Border)
+	inputBorderStyle = lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(t.InputBorder)
+
+	userContentStyle = lipgloss.NewStyle().
+		Foreground(t.UserBubbleFg).
+		Background(t.UserBubbleBg).
+		Padding(0, 1)
+
+	bannerStyle = lipgloss.NewStyle().Bold(true).Foreground(t.Brand)
+	bannerSubtitleStyle = lipgloss.NewStyle().Foreground(t.Subtle)
+	bannerInfoStyle = lipgloss.NewStyle().Foreground(t.Inactive)
+}

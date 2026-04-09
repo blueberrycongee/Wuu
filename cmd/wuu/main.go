@@ -17,8 +17,8 @@ import (
 	"github.com/blueberrycongee/wuu/internal/agent"
 	"github.com/blueberrycongee/wuu/internal/config"
 	"github.com/blueberrycongee/wuu/internal/hooks"
-	"github.com/blueberrycongee/wuu/internal/providers"
 	"github.com/blueberrycongee/wuu/internal/providerfactory"
+	"github.com/blueberrycongee/wuu/internal/providers"
 	"github.com/blueberrycongee/wuu/internal/session"
 	"github.com/blueberrycongee/wuu/internal/tools"
 	"github.com/blueberrycongee/wuu/internal/tui"
@@ -215,6 +215,7 @@ func runTUI(args []string) error {
 	maxSteps := fs.Int("max-steps", 0, "max tool loop steps")
 	temperature := fs.Float64("temperature", -1, "sampling temperature override")
 	systemPrompt := fs.String("system-prompt", "", "system prompt override")
+	themeMode := fs.String("theme", "", "theme override: auto|dark|light")
 	workdir := fs.String("workdir", "", "workspace directory")
 	noTools := fs.Bool("no-tools", false, "disable local tools")
 	requestTimeout := fs.Duration("request-timeout", 10*time.Minute, "single request timeout (e.g. 2m)")
@@ -229,7 +230,32 @@ func runTUI(args []string) error {
 		return err
 	}
 
-	cfg, configPath, err := config.LoadFrom(rootDir, os.Getenv("HOME"))
+	homeDir := os.Getenv("HOME")
+
+	// Resolve theme mode from CLI override or global preferences.
+	globalCfg, err := config.LoadGlobalConfig(homeDir)
+	if err != nil {
+		return fmt.Errorf("load global preferences: %w", err)
+	}
+	resolvedTheme := strings.TrimSpace(globalCfg.Theme)
+	if resolvedTheme == "" {
+		resolvedTheme = "auto"
+	}
+	overrideTheme := strings.TrimSpace(*themeMode)
+	if overrideTheme != "" {
+		resolvedTheme = overrideTheme
+	}
+	if err := tui.SetThemeMode(resolvedTheme); err != nil {
+		if overrideTheme != "" {
+			return err
+		}
+		// Invalid persisted preference should never block startup.
+		if fallbackErr := tui.SetThemeMode("auto"); fallbackErr != nil {
+			return fallbackErr
+		}
+	}
+
+	cfg, configPath, err := config.LoadFrom(rootDir, homeDir)
 	if err != nil {
 		// No config found — run onboarding.
 		result, onboardErr := runOnboarding()
@@ -240,12 +266,12 @@ func runTUI(args []string) error {
 			return nil // user cancelled
 		}
 
-		if writeErr := writeOnboardingResult(rootDir, os.Getenv("HOME"), result); writeErr != nil {
+		if writeErr := writeOnboardingResult(rootDir, homeDir, result); writeErr != nil {
 			return writeErr
 		}
 
 		// Reload config.
-		cfg, configPath, err = config.LoadFrom(rootDir, os.Getenv("HOME"))
+		cfg, configPath, err = config.LoadFrom(rootDir, homeDir)
 		if err != nil {
 			return fmt.Errorf("config still invalid after onboarding: %w", err)
 		}
@@ -475,6 +501,7 @@ Run flags:
 TUI flags:
   --provider        provider name from config
   --model           model override
+  --theme           theme override: auto|dark|light
   --max-steps       max tool loop steps
   --temperature     temperature override
   --system-prompt   system prompt override

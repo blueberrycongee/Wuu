@@ -114,6 +114,7 @@ func modelOptions(providerType string) []selectOption {
 
 func themeOptions() []selectOption {
 	return []selectOption{
+		{"auto", "Auto (match terminal)"},
 		{"dark", "Dark"},
 		{"light", "Light"},
 	}

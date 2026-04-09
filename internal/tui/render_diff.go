@@ -10,29 +10,31 @@ import (
 	"github.com/blueberrycongee/wuu/internal/tools"
 )
 
-// Diff rendering styles.
-var (
-	diffAddStyle = lipgloss.NewStyle().
-			Foreground(darkTheme.DiffAddFg).
-			Background(darkTheme.DiffAddBg)
-
-	diffDeleteStyle = lipgloss.NewStyle().
-				Foreground(darkTheme.DiffDeleteFg).
-				Background(darkTheme.DiffDeleteBg)
-
-	diffContextStyle = lipgloss.NewStyle().
-				Foreground(darkTheme.Text)
-
-	diffGutterStyle = lipgloss.NewStyle().
-				Foreground(darkTheme.Subtle)
-
-	diffHunkSepStyle = lipgloss.NewStyle().
-				Foreground(darkTheme.Inactive)
-
-	diffNewFileStyle = lipgloss.NewStyle().
-				Foreground(darkTheme.Success).
-				Italic(true)
-)
+func diffStyles() (
+	add lipgloss.Style,
+	del lipgloss.Style,
+	context lipgloss.Style,
+	gutter lipgloss.Style,
+	hunkSep lipgloss.Style,
+	newFile lipgloss.Style,
+) {
+	add = lipgloss.NewStyle().
+		Foreground(currentTheme.DiffAddFg).
+		Background(currentTheme.DiffAddBg)
+	del = lipgloss.NewStyle().
+		Foreground(currentTheme.DiffDeleteFg).
+		Background(currentTheme.DiffDeleteBg)
+	context = lipgloss.NewStyle().
+		Foreground(currentTheme.Text)
+	gutter = lipgloss.NewStyle().
+		Foreground(currentTheme.Subtle)
+	hunkSep = lipgloss.NewStyle().
+		Foreground(currentTheme.Inactive)
+	newFile = lipgloss.NewStyle().
+		Foreground(currentTheme.Success).
+		Italic(true)
+	return
+}
 
 // diffResultFromJSON attempts to parse a DiffResult from a tool result JSON string.
 // Returns nil if the result doesn't contain a diff field.
@@ -54,6 +56,7 @@ func diffResultFromJSON(resultJSON string) *tools.DiffResult {
 
 // diffStats returns "+N/-M" summary string from a DiffResult.
 func diffStats(dr *tools.DiffResult) string {
+	diffAddStyle, diffDeleteStyle, _, _, _, _ := diffStyles()
 	if dr.NewFile {
 		return fmt.Sprintf("+%d (new)", dr.Lines)
 	}
@@ -75,6 +78,7 @@ func diffStats(dr *tools.DiffResult) string {
 
 // renderDiff renders a full diff view with gutter, colors, and hunk separators.
 func renderDiff(dr *tools.DiffResult, width int) string {
+	diffAddStyle, diffDeleteStyle, diffContextStyle, diffGutterStyle, diffHunkSepStyle, diffNewFileStyle := diffStyles()
 	if dr.NewFile {
 		return diffNewFileStyle.Render(fmt.Sprintf("  new file (%d lines)", dr.Lines))
 	}
