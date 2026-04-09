@@ -94,6 +94,7 @@ type Report struct {
 	Sections     []InsightSection `json:"sections"`
 	Stats        AggregatedData   `json:"stats"`
 	GeneratedAt  time.Time        `json:"generated_at"`
+	HTMLPath     string           `json:"-"` // path to generated HTML report file
 }
 
 // ProgressEvent is sent from the insight goroutine to the TUI.

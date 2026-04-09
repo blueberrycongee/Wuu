@@ -107,13 +107,18 @@ func Run(ctx context.Context, cfg RunConfig, progress chan<- ProgressEvent) {
 		return
 	}
 
-	send(progress, "synthesizing", "Synthesizing report...", 0.95)
+	send(progress, "synthesizing", "Generating HTML report...", 0.95)
 
 	report := &Report{
 		AtAGlance:   glance,
 		Sections:    sections,
 		Stats:       agg,
 		GeneratedAt: time.Now(),
+	}
+
+	// Generate HTML report.
+	if htmlPath, err := GenerateHTML(cfg.WorkspaceRoot, report); err == nil {
+		report.HTMLPath = htmlPath
 	}
 
 	progress <- ProgressEvent{
@@ -135,6 +140,11 @@ func FormatReport(r *Report) string {
 		r.Stats.TotalMessages,
 		r.Stats.TotalDurationH,
 	))
+
+	// HTML report link.
+	if r.HTMLPath != "" {
+		b.WriteString(fmt.Sprintf("**Full report:** `%s`\n\n", r.HTMLPath))
+	}
 
 	// At a Glance.
 	b.WriteString("## At a Glance\n\n")
