@@ -157,9 +157,13 @@ func (r *StreamRunner) runStreamWithReconnect(
 	cfg := r.streamRetryConfig()
 	attempt := 0
 	for {
+		// Don't retry if the caller's context is already done.
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		ch, err := r.Client.StreamChat(ctx, req)
 		if err != nil {
-			if shouldRetryStreamError(err, attempt, cfg.MaxRetries) {
+			if ctx.Err() == nil && shouldRetryStreamError(err, attempt, cfg.MaxRetries) {
 				delay := streamRetryDelay(attempt, cfg.InitialDelay, cfg.MaxDelay)
 				providers.DebugLogf("stream connect failed, reconnecting (%d/%d) in %s: %v", attempt+1, cfg.MaxRetries, delay, err)
 				if onEvent != nil {
@@ -251,8 +255,9 @@ func (r *StreamRunner) runStreamWithReconnect(
 			return nil
 		}
 
-		// Only retry when the stream failed before producing any user-visible output.
-		if !sawOutput && shouldRetryStreamError(streamErr, attempt, cfg.MaxRetries) {
+		// Only retry when the stream failed before producing any user-visible
+		// output AND the parent context is still alive.
+		if !sawOutput && ctx.Err() == nil && shouldRetryStreamError(streamErr, attempt, cfg.MaxRetries) {
 			delay := streamRetryDelay(attempt, cfg.InitialDelay, cfg.MaxDelay)
 			providers.DebugLogf("stream disconnected early, reconnecting (%d/%d) in %s: %v", attempt+1, cfg.MaxRetries, delay, streamErr)
 			if onEvent != nil {
