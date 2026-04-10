@@ -91,6 +91,42 @@ func TestUsageTracker_ToolCallEnvelopeCounted(t *testing.T) {
 	}
 }
 
+func TestUsageTracker_CacheReadCountsTowardContext(t *testing.T) {
+	// Critical regression: cached tokens still occupy context. A
+	// session with 100k of cache_read + 1k of fresh input must
+	// report ~101k of context usage, not 1k.
+	tr := NewUsageTracker()
+	tr.RecordResponse(&providers.TokenUsage{
+		InputTokens:     1000,
+		CacheReadTokens: 100_000,
+		OutputTokens:    500,
+	})
+
+	got := tr.EstimateCurrent()
+	want := 1000 + 100_000 + 500 // 101_500
+	if got != want {
+		t.Fatalf("expected cache_read in fill: got %d, want %d", got, want)
+	}
+}
+
+func TestUsageTracker_CacheCreationNotDoubleCounted(t *testing.T) {
+	// Anthropic's cache_creation_input_tokens is a SUBSET of
+	// input_tokens, not an addition. Including it would inflate the
+	// reported total.
+	tr := NewUsageTracker()
+	tr.RecordResponse(&providers.TokenUsage{
+		InputTokens:         5000, // already includes the 4000 cache write below
+		CacheCreationTokens: 4000,
+		OutputTokens:        100,
+	})
+
+	got := tr.EstimateCurrent()
+	want := 5000 + 100
+	if got != want {
+		t.Fatalf("expected cache_creation NOT double-counted: got %d, want %d", got, want)
+	}
+}
+
 func TestUsageTracker_Reset(t *testing.T) {
 	tr := NewUsageTracker()
 	tr.RecordResponse(&providers.TokenUsage{InputTokens: 1000})

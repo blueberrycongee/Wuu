@@ -75,10 +75,42 @@ const (
 	EventError         StreamEventType = "error"
 )
 
-// TokenUsage reports token consumption for a streaming response.
+// TokenUsage reports token consumption for a single API call. Cache
+// fields are populated when the provider supports prompt caching:
+// Anthropic returns them on every messages response; OpenAI returns
+// `cached_tokens` under prompt_tokens_details on supporting models.
+//
+// IMPORTANT: cached tokens still occupy the model's context window —
+// they are read out of cache and packed into the prompt, the only
+// difference is the per-token price. Auto-compact's fill-rate
+// calculation must include them, otherwise providers using prompt
+// caching look like they're using almost no context and the trigger
+// fires far too late.
 type TokenUsage struct {
 	InputTokens  int
 	OutputTokens int
+	// CacheCreationTokens are the tokens that were written into the
+	// provider's prompt cache as a side effect of this call (Anthropic
+	// only; OpenAI doesn't expose this separately).
+	CacheCreationTokens int
+	// CacheReadTokens are the tokens served out of the prompt cache
+	// for this call. Reported by both Anthropic
+	// (cache_read_input_tokens) and OpenAI
+	// (prompt_tokens_details.cached_tokens) on models that support
+	// prompt caching.
+	CacheReadTokens int
+}
+
+// TotalContextTokens returns the number of tokens this call actually
+// consumed against the model's context window. Equals InputTokens +
+// CacheReadTokens + OutputTokens. CacheCreationTokens are NOT
+// included because the cache_creation count reported by Anthropic is
+// already a subset of InputTokens — adding it would double-count.
+func (u TokenUsage) TotalContextTokens() int {
+	if u == (TokenUsage{}) {
+		return 0
+	}
+	return u.InputTokens + u.CacheReadTokens + u.OutputTokens
 }
 
 // StreamEvent is a single event from a streaming chat response.

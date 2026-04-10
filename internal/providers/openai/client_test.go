@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -436,5 +437,50 @@ func TestStreamChat_ServerError(t *testing.T) {
 	}
 	if httpErr.StatusCode != http.StatusInternalServerError {
 		t.Fatalf("unexpected status code: %d", httpErr.StatusCode)
+	}
+}
+
+func TestChunkUsage_AsTokenUsage_Cached(t *testing.T) {
+	// gpt-4o reports cached_tokens as a SUBSET of prompt_tokens. The
+	// helper has to split it out so wuu's auto-compact accounts for
+	// the cache portion explicitly.
+	u := &chunkUsage{
+		PromptTokens:     5000,
+		CompletionTokens: 200,
+		PromptTokensDetails: &struct {
+			CachedTokens int `json:"cached_tokens,omitempty"`
+		}{CachedTokens: 4500},
+	}
+	got := u.asTokenUsage()
+	want := &providers.TokenUsage{
+		InputTokens:     500, // 5000 - 4500
+		OutputTokens:    200,
+		CacheReadTokens: 4500,
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %+v, want %+v", got, want)
+	}
+	// And TotalContextTokens should still equal the original
+	// prompt_tokens + completion_tokens.
+	if total := got.TotalContextTokens(); total != 5200 {
+		t.Fatalf("expected total 5200, got %d", total)
+	}
+}
+
+func TestChunkUsage_AsTokenUsage_NoCacheDetails(t *testing.T) {
+	// Older OpenAI / OpenRouter / proxy responses without
+	// prompt_tokens_details should still parse cleanly.
+	u := &chunkUsage{PromptTokens: 1000, CompletionTokens: 300}
+	got := u.asTokenUsage()
+	want := &providers.TokenUsage{InputTokens: 1000, OutputTokens: 300}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %+v, want %+v", got, want)
+	}
+}
+
+func TestChunkUsage_AsTokenUsage_Nil(t *testing.T) {
+	var u *chunkUsage
+	if got := u.asTokenUsage(); got != nil {
+		t.Fatalf("expected nil for nil receiver, got %+v", got)
 	}
 }

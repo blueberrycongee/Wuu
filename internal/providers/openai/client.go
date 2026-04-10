@@ -175,12 +175,7 @@ func (c *Client) Chat(ctx context.Context, req providers.ChatRequest) (providers
 	if resp.StopReason == "length" {
 		resp.Truncated = true
 	}
-	if parsed.Usage != nil {
-		resp.Usage = &providers.TokenUsage{
-			InputTokens:  parsed.Usage.PromptTokens,
-			OutputTokens: parsed.Usage.CompletionTokens,
-		}
-	}
+	resp.Usage = parsed.Usage.asTokenUsage()
 	return resp, nil
 }
 
@@ -369,10 +364,7 @@ func (c *Client) readSSE(resp *http.Response, ch chan<- providers.StreamEvent) {
 		)
 
 		if chunk.Usage != nil {
-			lastUsage = &providers.TokenUsage{
-				InputTokens:  chunk.Usage.PromptTokens,
-				OutputTokens: chunk.Usage.CompletionTokens,
-			}
+			lastUsage = chunk.Usage.asTokenUsage()
 		}
 
 		if len(chunk.Choices) == 0 {
@@ -619,6 +611,35 @@ type toolFunctionDelta struct {
 }
 
 type chunkUsage struct {
-	PromptTokens     int `json:"prompt_tokens"`
-	CompletionTokens int `json:"completion_tokens"`
+	PromptTokens        int `json:"prompt_tokens"`
+	CompletionTokens    int `json:"completion_tokens"`
+	PromptTokensDetails *struct {
+		// CachedTokens is the subset of PromptTokens served from
+		// OpenAI's prompt cache. Returned by gpt-4o and later.
+		CachedTokens int `json:"cached_tokens,omitempty"`
+	} `json:"prompt_tokens_details,omitempty"`
+}
+
+// asTokenUsage converts the OpenAI usage shape to the provider-
+// agnostic providers.TokenUsage. Cached prompt tokens are split out
+// of PromptTokens so wuu's auto-compact accounts for them correctly.
+func (u *chunkUsage) asTokenUsage() *providers.TokenUsage {
+	if u == nil {
+		return nil
+	}
+	cached := 0
+	if u.PromptTokensDetails != nil {
+		cached = u.PromptTokensDetails.CachedTokens
+	}
+	// OpenAI's prompt_tokens already includes cached tokens, so the
+	// "fresh input" portion is the difference.
+	freshInput := u.PromptTokens - cached
+	if freshInput < 0 {
+		freshInput = 0
+	}
+	return &providers.TokenUsage{
+		InputTokens:     freshInput,
+		OutputTokens:    u.CompletionTokens,
+		CacheReadTokens: cached,
+	}
 }

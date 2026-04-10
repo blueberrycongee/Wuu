@@ -204,8 +204,10 @@ func (c *Client) Chat(ctx context.Context, req providers.ChatRequest) (providers
 	}
 	if parsed.Usage != nil {
 		resp.Usage = &providers.TokenUsage{
-			InputTokens:  parsed.Usage.InputTokens,
-			OutputTokens: parsed.Usage.OutputTokens,
+			InputTokens:         parsed.Usage.InputTokens,
+			OutputTokens:        parsed.Usage.OutputTokens,
+			CacheCreationTokens: parsed.Usage.CacheCreationTokens,
+			CacheReadTokens:     parsed.Usage.CacheReadTokens,
 		}
 	}
 	return resp, nil
@@ -405,6 +407,8 @@ func (c *Client) handleSSEEvent(
 		var p messageStartPayload
 		if json.Unmarshal([]byte(raw.Data), &p) == nil {
 			usage.InputTokens = p.Message.Usage.InputTokens
+			usage.CacheCreationTokens = p.Message.Usage.CacheCreationTokens
+			usage.CacheReadTokens = p.Message.Usage.CacheReadTokens
 		}
 
 	case "content_block_start":
@@ -485,8 +489,13 @@ func (c *Client) handleSSEEvent(
 
 	case "message_stop":
 		ch <- providers.StreamEvent{
-			Type:       providers.EventDone,
-			Usage:      &providers.TokenUsage{InputTokens: usage.InputTokens, OutputTokens: usage.OutputTokens},
+			Type: providers.EventDone,
+			Usage: &providers.TokenUsage{
+				InputTokens:         usage.InputTokens,
+				OutputTokens:        usage.OutputTokens,
+				CacheCreationTokens: usage.CacheCreationTokens,
+				CacheReadTokens:     usage.CacheReadTokens,
+			},
 			StopReason: *stopReason,
 			Truncated:  *stopReason == "max_tokens",
 		}
@@ -609,8 +618,10 @@ type anthropicResponse struct {
 	Content    []anthropicBlock `json:"content"`
 	StopReason string           `json:"stop_reason,omitempty"`
 	Usage      *struct {
-		InputTokens  int `json:"input_tokens"`
-		OutputTokens int `json:"output_tokens"`
+		InputTokens         int `json:"input_tokens"`
+		OutputTokens        int `json:"output_tokens"`
+		CacheCreationTokens int `json:"cache_creation_input_tokens,omitempty"`
+		CacheReadTokens     int `json:"cache_read_input_tokens,omitempty"`
 	} `json:"usage,omitempty"`
 }
 
@@ -624,7 +635,9 @@ type sseRawEvent struct {
 type messageStartPayload struct {
 	Message struct {
 		Usage struct {
-			InputTokens int `json:"input_tokens"`
+			InputTokens         int `json:"input_tokens"`
+			CacheCreationTokens int `json:"cache_creation_input_tokens,omitempty"`
+			CacheReadTokens     int `json:"cache_read_input_tokens,omitempty"`
 		} `json:"usage"`
 	} `json:"message"`
 }

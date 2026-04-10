@@ -40,13 +40,19 @@ func NewUsageTracker() *UsageTracker {
 // RecordResponse stores the per-call usage from a successful API
 // response. Callers should pass the same numbers they hand to
 // LoopConfig.OnUsage. nil is a no-op.
+//
+// The "total" we store here uses TokenUsage.TotalContextTokens(),
+// which includes CacheReadTokens. Cached tokens still occupy the
+// model's context window, so dropping them would make a Claude
+// session with prompt caching look almost empty and the auto-compact
+// trigger would never fire.
 func (t *UsageTracker) RecordResponse(usage *providers.TokenUsage) {
 	if t == nil || usage == nil {
 		return
 	}
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	t.lastResponseTotal = usage.InputTokens + usage.OutputTokens
+	t.lastResponseTotal = usage.TotalContextTokens()
 	// The new ground truth already includes everything we'd been
 	// estimating, so the pending delta resets to zero.
 	t.pendingDelta = 0
