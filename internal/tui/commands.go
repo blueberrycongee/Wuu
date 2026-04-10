@@ -347,14 +347,12 @@ func cmdCopy(_ string, m *Model) string {
 		return "nothing to copy"
 	}
 	last := m.entries[len(m.entries)-1]
-	cmd := exec.Command("pbcopy")
-	cmd.Stdin = strings.NewReader(last.Content)
-	if err := cmd.Run(); err != nil {
-		cmd = exec.Command("xclip", "-selection", "clipboard")
-		cmd.Stdin = strings.NewReader(last.Content)
-		if err := cmd.Run(); err != nil {
-			return "clipboard copy failed (install pbcopy or xclip)"
-		}
+	method, err := writeClipboard(last.Content)
+	if err != nil {
+		return "clipboard copy failed (install pbcopy / xclip / wl-copy)"
+	}
+	if method == "osc52" {
+		return "copied via OSC 52 (terminal-dependent)"
 	}
 	return "copied to clipboard"
 }

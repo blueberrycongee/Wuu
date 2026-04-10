@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"os"
+	"os/exec"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -130,16 +131,62 @@ func (m *Model) screenToViewportCoords(x, y int) (vpRow, vpCol int) {
 	return vpRow, vpCol
 }
 
-// copySelectionToClipboard copies selected text to clipboard via OSC 52.
+// copySelectionToClipboard copies the current mouse selection. It
+// prefers a real native clipboard tool (pbcopy / xclip / etc) and only
+// falls back to OSC 52 when none are available — OSC 52 is silently
+// dropped by many terminals, which is what made drag-to-copy look
+// completely broken before.
 func (m *Model) copySelectionToClipboard() {
 	content := m.viewport.View()
 	text := m.selection.selectedText(content)
 	if text == "" {
 		return
 	}
+	method, err := writeClipboard(text)
+	if err != nil {
+		m.statusLine = "copy failed: install pbcopy / xclip / wl-copy"
+		return
+	}
+	if method == "osc52" {
+		// We can't actually verify OSC 52 reached the system clipboard
+		// — many terminals accept the sequence and drop it. Be honest.
+		m.statusLine = "copied via OSC 52 (terminal-dependent)"
+		return
+	}
+	m.statusLine = "copied"
+}
+
+// writeClipboard sends text to the system clipboard. It tries native
+// helpers in order, then falls back to OSC 52. Returns the method name
+// that succeeded ("pbcopy", "wl-copy", "xclip", "xsel", or "osc52").
+func writeClipboard(text string) (string, error) {
+	candidates := []struct {
+		name string
+		args []string
+	}{
+		{"pbcopy", nil},
+		{"wl-copy", nil},
+		{"xclip", []string{"-selection", "clipboard"}},
+		{"xsel", []string{"--clipboard", "--input"}},
+	}
+	for _, c := range candidates {
+		if _, err := exec.LookPath(c.name); err != nil {
+			continue
+		}
+		cmd := exec.Command(c.name, c.args...)
+		cmd.Stdin = strings.NewReader(text)
+		if err := cmd.Run(); err == nil {
+			return c.name, nil
+		}
+	}
+	// OSC 52 fallback. Works in iTerm2 (with the option enabled),
+	// tmux (set-clipboard on), VS Code, kitty, wezterm, etc.
 	encoded := base64.StdEncoding.EncodeToString([]byte(text))
 	seq := fmt.Sprintf("\x1b]52;c;%s\x1b\\", encoded)
-	os.Stdout.WriteString(seq)
+	if _, err := os.Stdout.WriteString(seq); err != nil {
+		return "", err
+	}
+	return "osc52", nil
 }
 
 // --- Rendering helpers ---
