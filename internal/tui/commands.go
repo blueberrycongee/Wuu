@@ -7,12 +7,12 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 
 	"github.com/blueberrycongee/wuu/internal/insight"
 	"github.com/blueberrycongee/wuu/internal/session"
+	"github.com/blueberrycongee/wuu/internal/skills"
 )
 
 // ---------------------------------------------------------------------------
@@ -338,11 +338,26 @@ func cmdWorktree(args string, m *Model) string {
 }
 
 func cmdSkills(_ string, m *Model) string {
-	skills := discoverLocalSkills(filepath.Join(m.workspaceRoot, ".claude", "skills"))
-	if len(skills) == 0 {
-		return "skills: no local skills found under .claude/skills"
+	projectDir := filepath.Join(m.workspaceRoot, ".claude", "skills")
+	userDir := ""
+	if home := os.Getenv("HOME"); home != "" {
+		userDir = filepath.Join(home, ".claude", "skills")
 	}
-	return fmt.Sprintf("skills: %s", strings.Join(skills, ", "))
+	discovered := skills.Discover(projectDir, userDir)
+	if len(discovered) == 0 {
+		return "skills: no skills found in .claude/skills/ (project) or ~/.claude/skills/ (user)"
+	}
+	var b strings.Builder
+	b.WriteString(fmt.Sprintf("skills (%d available):\n", len(discovered)))
+	for _, s := range discovered {
+		desc := s.Description
+		if desc == "" {
+			desc = "(no description)"
+		}
+		fmt.Fprintf(&b, "  • %s [%s] — %s\n", s.Name, s.Source, desc)
+	}
+	b.WriteString("\nThe model can invoke any of these via the load_skill tool.")
+	return b.String()
 }
 
 func cmdInsight(_ string, m *Model) string {
@@ -389,25 +404,6 @@ func cmdExit(_ string, _ *Model) string {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-func discoverLocalSkills(baseDir string) []string {
-	entries, err := os.ReadDir(baseDir)
-	if err != nil {
-		return nil
-	}
-	skills := make([]string, 0, len(entries))
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-		skillPath := filepath.Join(baseDir, entry.Name(), "SKILL.md")
-		if _, statErr := os.Stat(skillPath); statErr == nil {
-			skills = append(skills, entry.Name())
-		}
-	}
-	sort.Strings(skills)
-	return skills
-}
 
 func copyFile(src, dst string) error {
 	input, err := os.Open(src)
