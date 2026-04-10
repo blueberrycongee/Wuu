@@ -344,11 +344,13 @@ func (w *Writer) emitCodeBlock() {
 type tableData struct {
 	headers []string
 	rows    [][]string
-	widths  []int
 	aligns  []xast.Alignment
+	numCols int
 }
 
-// collectTable walks a Table node and extracts cell content and column widths.
+// collectTable walks a Table node and extracts cell content. Width
+// allocation happens later in emitTable so it can take terminal width
+// into account.
 func (w *Writer) collectTable(table *xast.Table) tableData {
 	td := tableData{
 		aligns: table.Alignments,
@@ -356,7 +358,6 @@ func (w *Writer) collectTable(table *xast.Table) tableData {
 
 	for child := table.FirstChild(); child != nil; child = child.NextSibling() {
 		var cells []string
-		// Both TableHeader and TableRow contain TableCell children.
 		for cell := child.FirstChild(); cell != nil; cell = cell.NextSibling() {
 			content := w.renderInlineChildren(cell)
 			cells = append(cells, content)
@@ -369,29 +370,10 @@ func (w *Writer) collectTable(table *xast.Table) tableData {
 		}
 	}
 
-	// Compute column widths.
-	numCols := len(td.headers)
-	if numCols == 0 && len(td.rows) > 0 {
-		numCols = len(td.rows[0])
-	}
-	td.widths = make([]int, numCols)
-	for i, h := range td.headers {
-		if w := lipgloss.Width(h); w > td.widths[i] {
-			td.widths[i] = w
-		}
-	}
+	td.numCols = len(td.headers)
 	for _, row := range td.rows {
-		for i, cell := range row {
-			if i < numCols {
-				if w := lipgloss.Width(cell); w > td.widths[i] {
-					td.widths[i] = w
-				}
-			}
-		}
-	}
-	for i := range td.widths {
-		if td.widths[i] < 3 {
-			td.widths[i] = 3
+		if len(row) > td.numCols {
+			td.numCols = len(row)
 		}
 	}
 	return td
@@ -449,35 +431,156 @@ func (w *Writer) renderInlineNode(n ast.Node, buf *strings.Builder) {
 	}
 }
 
-// emitTable renders the table with box-drawing borders to w.out.
+const (
+	// minColumnWidth is the smallest a column can be after allocation.
+	minColumnWidth = 3
+	// safetyMargin reserves a few columns to absorb terminal-resize
+	// races and prevent flicker. Mirrors CC's SAFETY_MARGIN.
+	tableSafetyMargin = 2
+	// maxRowLines is the threshold above which we switch from
+	// horizontal box-drawing to a vertical key:value layout.
+	maxRowLines = 4
+)
+
+// emitTable renders the table to w.out, choosing between horizontal
+// (box-drawing) and vertical (key:value) layouts based on whether the
+// content fits the available width.
 func (w *Writer) emitTable(td tableData) {
 	w.startBlock()
-
-	numCols := len(td.widths)
-	if numCols == 0 {
+	if td.numCols == 0 || (len(td.headers) == 0 && len(td.rows) == 0) {
 		return
 	}
 
-	// Build border lines.
-	topBorder := w.tableBorder("┌", "─", "┬", "┐", td.widths)
-	midBorder := w.tableBorder("├", "─", "┼", "┤", td.widths)
-	botBorder := w.tableBorder("└", "─", "┴", "┘", td.widths)
+	// 1. Compute min (longest single token) and ideal (full content)
+	// widths per column. Min lets us know how narrow we can squeeze.
+	minWidths := make([]int, td.numCols)
+	idealWidths := make([]int, td.numCols)
+
+	measure := func(cells []string) {
+		for i, c := range cells {
+			if i >= td.numCols {
+				continue
+			}
+			id := lipgloss.Width(c)
+			if id > idealWidths[i] {
+				idealWidths[i] = id
+			}
+			mn := longestWordWidth(c)
+			if mn > minWidths[i] {
+				minWidths[i] = mn
+			}
+		}
+	}
+	measure(td.headers)
+	for _, row := range td.rows {
+		measure(row)
+	}
+	for i := range minWidths {
+		if minWidths[i] < minColumnWidth {
+			minWidths[i] = minColumnWidth
+		}
+		if idealWidths[i] < minWidths[i] {
+			idealWidths[i] = minWidths[i]
+		}
+	}
+
+	// 2. Compute available content width (terminal width minus borders).
+	// Borders consume: leading "│" + per-col (" cell " + "│") = 1 + 3*N.
+	borderOverhead := 1 + 3*td.numCols
+	available := w.width - borderOverhead - tableSafetyMargin
+	if available < td.numCols*minColumnWidth {
+		available = td.numCols * minColumnWidth
+	}
+
+	// 3. Allocate column widths via the 3-tier strategy:
+	//    a) Everything fits at ideal: use ideal widths.
+	//    b) min fits but ideal doesn't: distribute extra proportionally.
+	//    c) Even min doesn't fit: hard-wrap (scale all columns down).
+	totalIdeal := sumInts(idealWidths)
+	totalMin := sumInts(minWidths)
+
+	var widths []int
+	hardWrap := false
+	switch {
+	case totalIdeal <= available:
+		widths = idealWidths
+	case totalMin <= available:
+		extra := available - totalMin
+		widths = make([]int, td.numCols)
+		copy(widths, minWidths)
+		// Distribute the extra space in proportion to (ideal - min).
+		overflows := make([]int, td.numCols)
+		totalOverflow := 0
+		for i := range widths {
+			overflows[i] = idealWidths[i] - minWidths[i]
+			totalOverflow += overflows[i]
+		}
+		if totalOverflow > 0 {
+			given := 0
+			for i := range widths {
+				bonus := overflows[i] * extra / totalOverflow
+				widths[i] += bonus
+				given += bonus
+			}
+			// Distribute any remainder to the first columns.
+			rem := extra - given
+			for i := 0; i < td.numCols && rem > 0; i++ {
+				if widths[i] < idealWidths[i] {
+					widths[i]++
+					rem--
+				}
+			}
+		}
+	default:
+		hardWrap = true
+		widths = make([]int, td.numCols)
+		// Scale min widths down proportionally.
+		for i := range widths {
+			widths[i] = minWidths[i] * available / totalMin
+			if widths[i] < minColumnWidth {
+				widths[i] = minColumnWidth
+			}
+		}
+	}
+
+	// 4. Wrap each row's cells. If any row produces too many lines and
+	// we have terminal width to spare, fall back to vertical layout.
+	wrappedHeader := wrapCells(td.headers, widths, hardWrap)
+	wrappedRows := make([][][]string, 0, len(td.rows))
+	maxLinesInAnyRow := 0
+	for _, row := range td.rows {
+		wr := wrapCells(row, widths, hardWrap)
+		wrappedRows = append(wrappedRows, wr)
+		for _, lines := range wr {
+			if len(lines) > maxLinesInAnyRow {
+				maxLinesInAnyRow = len(lines)
+			}
+		}
+	}
+
+	// Vertical fallback: if any row wraps to more than maxRowLines,
+	// the table is too cramped for horizontal — switch to key:value.
+	if maxLinesInAnyRow > maxRowLines {
+		w.emitTableVertical(td)
+		return
+	}
+
+	// 5. Render horizontal table.
+	topBorder := w.tableBorder("┌", "─", "┬", "┐", widths)
+	midBorder := w.tableBorder("├", "─", "┼", "┤", widths)
+	botBorder := w.tableBorder("└", "─", "┴", "┘", widths)
 
 	w.out.WriteString(topBorder)
 	w.out.WriteString("\n")
 
-	// Header row.
 	if len(td.headers) > 0 {
-		w.out.WriteString(w.tableRow(td.headers, td.widths, td.aligns))
-		w.out.WriteString("\n")
+		w.out.WriteString(w.renderWrappedRow(wrappedHeader, widths, td.aligns, true))
 		w.out.WriteString(midBorder)
 		w.out.WriteString("\n")
 	}
 
-	// Data rows.
-	for _, row := range td.rows {
-		w.out.WriteString(w.tableRow(row, td.widths, td.aligns))
-		w.out.WriteString("\n")
+	for _, row := range wrappedRows {
+		w.out.WriteString(w.renderWrappedRow(row, widths, td.aligns, false))
 	}
 
 	w.out.WriteString(botBorder)
@@ -485,36 +588,105 @@ func (w *Writer) emitTable(td tableData) {
 	w.needsNewline = true
 }
 
+// emitTableVertical renders the table as a key:value list, used when
+// the terminal is too narrow for a useful horizontal layout.
+func (w *Writer) emitTableVertical(td tableData) {
+	sep := strings.Repeat("─", min(w.width, 40))
+	w.out.WriteString(sep)
+	w.out.WriteString("\n")
+	for _, row := range td.rows {
+		for i, cell := range row {
+			label := ""
+			if i < len(td.headers) {
+				label = td.headers[i]
+			} else {
+				label = fmt.Sprintf("col%d", i+1)
+			}
+			lines := wrapAnsi(cell, w.width-len(label)-2, false)
+			if len(lines) == 0 {
+				lines = []string{""}
+			}
+			w.out.WriteString(label)
+			w.out.WriteString(": ")
+			w.out.WriteString(lines[0])
+			w.out.WriteString("\n")
+			indent := strings.Repeat(" ", len(label)+2)
+			for _, line := range lines[1:] {
+				w.out.WriteString(indent)
+				w.out.WriteString(line)
+				w.out.WriteString("\n")
+			}
+		}
+		w.out.WriteString(sep)
+		w.out.WriteString("\n")
+	}
+	w.needsNewline = true
+}
+
+// wrapCells wraps each cell in cells to its allocated width and
+// returns one []string per cell (one entry per wrapped line).
+func wrapCells(cells []string, widths []int, hardWrap bool) [][]string {
+	out := make([][]string, len(widths))
+	for i := range widths {
+		var content string
+		if i < len(cells) {
+			content = cells[i]
+		}
+		out[i] = wrapAnsi(content, widths[i], hardWrap)
+		if len(out[i]) == 0 {
+			out[i] = []string{""}
+		}
+	}
+	return out
+}
+
+// renderWrappedRow renders a multi-line row using the wrapped cell
+// content. Each output line covers all columns with proper padding
+// and box-drawing borders.
+func (w *Writer) renderWrappedRow(wrapped [][]string, widths []int, aligns []xast.Alignment, isHeader bool) string {
+	maxLines := 0
+	for _, lines := range wrapped {
+		if len(lines) > maxLines {
+			maxLines = len(lines)
+		}
+	}
+	if maxLines == 0 {
+		maxLines = 1
+	}
+
+	var b strings.Builder
+	for line := 0; line < maxLines; line++ {
+		b.WriteString("│")
+		for i, cw := range widths {
+			var content string
+			if line < len(wrapped[i]) {
+				content = wrapped[i][line]
+			}
+			align := xast.AlignNone
+			if isHeader {
+				align = xast.AlignCenter
+			} else if i < len(aligns) {
+				align = aligns[i]
+			}
+			b.WriteString(" ")
+			b.WriteString(padCell(content, cw, align))
+			b.WriteString(" │")
+		}
+		b.WriteString("\n")
+	}
+	return b.String()
+}
+
 func (w *Writer) tableBorder(left, fill, mid, right string, widths []int) string {
 	var b strings.Builder
 	b.WriteString(left)
 	for i, cw := range widths {
-		// +2 for 1-space padding on each side.
 		b.WriteString(strings.Repeat(fill, cw+2))
 		if i < len(widths)-1 {
 			b.WriteString(mid)
 		}
 	}
 	b.WriteString(right)
-	return b.String()
-}
-
-func (w *Writer) tableRow(cells []string, widths []int, aligns []xast.Alignment) string {
-	var b strings.Builder
-	b.WriteString("│")
-	for i, cw := range widths {
-		var cell string
-		if i < len(cells) {
-			cell = cells[i]
-		}
-		var align xast.Alignment
-		if i < len(aligns) {
-			align = aligns[i]
-		}
-		b.WriteString(" ")
-		b.WriteString(padCell(cell, cw, align))
-		b.WriteString(" │")
-	}
 	return b.String()
 }
 
@@ -534,6 +706,137 @@ func padCell(cell string, width int, align xast.Alignment) string {
 	default: // AlignLeft, AlignNone
 		return cell + strings.Repeat(" ", gap)
 	}
+}
+
+// wrapAnsi wraps a (possibly ANSI-styled) string to the given width.
+// In soft mode it breaks at word boundaries; in hard mode it can break
+// inside words. ANSI escape sequences are NOT explicitly preserved
+// across breaks — table cells in wuu typically contain plain text or
+// already-styled lipgloss spans that don't span the cell width, so a
+// best-effort byte-aware wrap is sufficient.
+func wrapAnsi(text string, width int, hard bool) []string {
+	if width <= 0 {
+		return []string{text}
+	}
+	if lipgloss.Width(text) <= width {
+		return []string{text}
+	}
+	// Split on whitespace for soft wrap; fall through to hard if a
+	// word is wider than width.
+	var lines []string
+	var cur strings.Builder
+	curWidth := 0
+
+	flush := func() {
+		if cur.Len() > 0 {
+			lines = append(lines, cur.String())
+			cur.Reset()
+			curWidth = 0
+		}
+	}
+
+	for _, word := range splitPreserveWS(text) {
+		ww := lipgloss.Width(word)
+		if word == " " {
+			if curWidth+1 <= width {
+				cur.WriteString(" ")
+				curWidth++
+			}
+			continue
+		}
+		if ww > width && hard {
+			flush()
+			// Hard wrap: break the word at width boundaries.
+			runes := []rune(word)
+			for len(runes) > 0 {
+				take := width
+				if take > len(runes) {
+					take = len(runes)
+				}
+				lines = append(lines, string(runes[:take]))
+				runes = runes[take:]
+			}
+			continue
+		}
+		if curWidth == 0 {
+			cur.WriteString(word)
+			curWidth = ww
+			continue
+		}
+		if curWidth+ww+1 <= width {
+			cur.WriteString(" ")
+			cur.WriteString(word)
+			curWidth += ww + 1
+			continue
+		}
+		flush()
+		cur.WriteString(word)
+		curWidth = ww
+	}
+	flush()
+	if len(lines) == 0 {
+		lines = []string{""}
+	}
+	return lines
+}
+
+// splitPreserveWS splits a string into words, preserving single
+// spaces as their own elements so the wrapper can decide whether to
+// keep them.
+func splitPreserveWS(s string) []string {
+	var out []string
+	var cur strings.Builder
+	for _, r := range s {
+		if r == ' ' || r == '\t' {
+			if cur.Len() > 0 {
+				out = append(out, cur.String())
+				cur.Reset()
+			}
+			out = append(out, " ")
+		} else if r == '\n' {
+			if cur.Len() > 0 {
+				out = append(out, cur.String())
+				cur.Reset()
+			}
+			out = append(out, " ")
+		} else {
+			cur.WriteRune(r)
+		}
+	}
+	if cur.Len() > 0 {
+		out = append(out, cur.String())
+	}
+	return out
+}
+
+// longestWordWidth returns the display width of the widest contiguous
+// non-whitespace token in s. Used as the minimum column width when
+// soft-wrapping.
+func longestWordWidth(s string) int {
+	max := 0
+	cur := 0
+	for _, r := range s {
+		if r == ' ' || r == '\t' || r == '\n' {
+			if cur > max {
+				max = cur
+			}
+			cur = 0
+			continue
+		}
+		cur += lipgloss.Width(string(r))
+	}
+	if cur > max {
+		max = cur
+	}
+	return max
+}
+
+func sumInts(xs []int) int {
+	n := 0
+	for _, x := range xs {
+		n += x
+	}
+	return n
 }
 
 func min(a, b int) int {

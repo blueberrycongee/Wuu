@@ -183,3 +183,82 @@ func TestRender_TableAlignment(t *testing.T) {
 		t.Fatalf("expected aligned cell content, got %q", got)
 	}
 }
+
+func TestRender_TableFitsTerminalWidth(t *testing.T) {
+	// Build a table with a very long cell that would overflow if not wrapped.
+	long := strings.Repeat("alpha beta gamma delta ", 5) // ~115 chars
+	input := "| Name | Description |\n|------|-------------|\n| Alice | " + long + " |"
+	got := Render(input, 50, DefaultStyles())
+	for _, line := range strings.Split(got, "\n") {
+		if w := strings.Count(line, "│"); w == 0 {
+			continue
+		}
+		// Lines containing │ should fit within terminal width.
+		if visW := lipglossWidth(line); visW > 50 {
+			t.Errorf("table line exceeds terminal width 50: got %d (%q)", visW, line)
+		}
+	}
+}
+
+func TestRender_TableWrapsLongCells(t *testing.T) {
+	// Long enough to wrap but short enough to stay in horizontal mode
+	// (≤ maxRowLines after wrapping).
+	long := "this cell wraps to two lines for sure"
+	input := "| Name | Note |\n|------|------|\n| A | " + long + " |"
+	got := Render(input, 30, DefaultStyles())
+
+	// Vertical fallback would have no top box border.
+	if !strings.Contains(got, "┌") {
+		t.Fatalf("expected horizontal layout, got %q", got)
+	}
+
+	// The Note column should wrap, so we expect more than one data
+	// row line between the header separator and the bottom border.
+	rowCount := 0
+	inData := false
+	for _, line := range strings.Split(got, "\n") {
+		if strings.Contains(line, "├") {
+			inData = true
+			continue
+		}
+		if strings.Contains(line, "└") {
+			inData = false
+			continue
+		}
+		if inData && strings.Contains(line, "│") {
+			rowCount++
+		}
+	}
+	if rowCount < 2 {
+		t.Fatalf("expected wrapped row to span multiple lines, got %d lines: %q", rowCount, got)
+	}
+}
+
+func TestRender_TableVerticalFallback(t *testing.T) {
+	// Tiny terminal forces vertical layout.
+	input := "| Name | Description |\n|------|-------------|\n| Alice | a fairly long description that won't fit horizontally in a tiny terminal |"
+	got := Render(input, 20, DefaultStyles())
+	// Vertical fallback uses key:value format, no top box-drawing border.
+	if strings.Contains(got, "┌") {
+		t.Errorf("expected vertical fallback (no ┌ border) for narrow terminal, got %q", got)
+	}
+	if !strings.Contains(got, "Name:") || !strings.Contains(got, "Description:") {
+		t.Errorf("expected key:value format, got %q", got)
+	}
+}
+
+// lipglossWidth is a thin wrapper to keep test imports light.
+func lipglossWidth(s string) int {
+	return runeDisplayWidth(s)
+}
+
+// runeDisplayWidth approximates display width by counting runes,
+// treating box-drawing chars as width-1. Good enough for the table
+// fit tests above where we just want a coarse upper bound.
+func runeDisplayWidth(s string) int {
+	n := 0
+	for range s {
+		n++
+	}
+	return n
+}
