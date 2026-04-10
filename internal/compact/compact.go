@@ -53,9 +53,22 @@ func ShouldCompact(messages []providers.ChatMessage, maxContextTokens int) bool 
 	return estimated > threshold
 }
 
-// Compact compresses older messages into a summary.
-// It finds the oldest assistant message as the compaction boundary,
-// summarizes everything before it, and returns the compacted message list.
+// maxCompactRetries caps how many times Compact will defensively trim
+// the oldest message and re-issue the summarization request after
+// hitting a context-overflow on the compact request itself. Aligned
+// with Codex CLI's safeguard.
+const maxCompactRetries = 3
+
+// Compact compresses older messages into a summary. It finds an
+// appropriate boundary near the end of the conversation, summarizes
+// everything before it, and returns the compacted message list.
+//
+// Defensive trimming: if the summarization request itself overflows
+// the model's context window (because the conversation being
+// compacted is itself enormous), Compact drops the oldest entry from
+// the to-be-summarized slice and retries up to maxCompactRetries
+// times. This prevents the "compact → overflow → compact again →
+// overflow again" deadlock the simple form is vulnerable to.
 func Compact(ctx context.Context, messages []providers.ChatMessage, client providers.Client, model string) ([]providers.ChatMessage, error) {
 	if len(messages) <= 2 {
 		return messages, nil // nothing to compact
@@ -70,45 +83,58 @@ func Compact(ctx context.Context, messages []providers.ChatMessage, client provi
 	toSummarize := messages[:len(messages)-keepCount]
 	toKeep := messages[len(messages)-keepCount:]
 
-	// Build summary prompt
-	var summaryInput strings.Builder
-	summaryInput.WriteString("Summarize the following conversation concisely, preserving key decisions, code changes, and context:\n\n")
+	for attempt := 0; ; attempt++ {
+		summaryInput := buildSummaryPrompt(toSummarize)
+		summaryReq := providers.ChatRequest{
+			Model: model,
+			Messages: []providers.ChatMessage{
+				{Role: "user", Content: summaryInput},
+			},
+			Temperature: 0.3,
+		}
+
+		resp, err := client.Chat(ctx, summaryReq)
+		if err != nil {
+			// If the summary request itself overflowed the model's
+			// context window, drop the oldest message from the slice
+			// being summarized and try again. This is the "compact-
+			// of-compact" backstop borrowed from Codex CLI.
+			if providers.IsContextOverflow(err) && attempt < maxCompactRetries && len(toSummarize) > 1 {
+				toSummarize = toSummarize[1:]
+				continue
+			}
+			return messages, fmt.Errorf("compact summary failed: %w", err)
+		}
+
+		summary := strings.TrimSpace(resp.Content)
+		if summary == "" {
+			return messages, nil
+		}
+
+		compacted := []providers.ChatMessage{
+			{Role: "system", Content: fmt.Sprintf("[Conversation summary]\n%s", summary)},
+		}
+		compacted = append(compacted, toKeep...)
+		return compacted, nil
+	}
+}
+
+// buildSummaryPrompt is the inner formatting helper extracted so the
+// retry loop above doesn't have to duplicate the string-builder code.
+func buildSummaryPrompt(toSummarize []providers.ChatMessage) string {
+	var b strings.Builder
+	b.WriteString("Summarize the following conversation concisely, preserving key decisions, code changes, and context:\n\n")
 	for _, msg := range toSummarize {
-		summaryInput.WriteString(fmt.Sprintf("[%s]: %s\n", msg.Role, truncate(msg.Content, 500)))
+		fmt.Fprintf(&b, "[%s]: %s\n", msg.Role, truncate(msg.Content, 500))
 		for _, tc := range msg.ToolCalls {
-			summaryInput.WriteString(fmt.Sprintf("  -> tool_call: %s(%s)\n", tc.Name, truncate(tc.Arguments, 200)))
+			fmt.Fprintf(&b, "  -> tool_call: %s(%s)\n", tc.Name, truncate(tc.Arguments, 200))
 		}
 		if msg.ToolCallID != "" {
-			summaryInput.WriteString(fmt.Sprintf("  (result for tool call %s)\n", msg.ToolCallID))
+			fmt.Fprintf(&b, "  (result for tool call %s)\n", msg.ToolCallID)
 		}
-		summaryInput.WriteString("\n")
+		b.WriteString("\n")
 	}
-
-	summaryReq := providers.ChatRequest{
-		Model: model,
-		Messages: []providers.ChatMessage{
-			{Role: "user", Content: summaryInput.String()},
-		},
-		Temperature: 0.3,
-	}
-
-	resp, err := client.Chat(ctx, summaryReq)
-	if err != nil {
-		return messages, fmt.Errorf("compact summary failed: %w", err)
-	}
-
-	summary := strings.TrimSpace(resp.Content)
-	if summary == "" {
-		return messages, nil
-	}
-
-	// Build compacted message list
-	compacted := []providers.ChatMessage{
-		{Role: "system", Content: fmt.Sprintf("[Conversation summary]\n%s", summary)},
-	}
-	compacted = append(compacted, toKeep...)
-
-	return compacted, nil
+	return b.String()
 }
 
 func isCJK(r rune) bool {

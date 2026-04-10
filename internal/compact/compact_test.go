@@ -85,6 +85,89 @@ func (m *mockCompactClient) StreamChat(_ context.Context, req providers.ChatRequ
 	return nil, errors.New("not implemented")
 }
 
+// flakyOverflowClient returns context-overflow on the first N calls
+// then a real summary. Used to exercise Compact's defensive trimming.
+type flakyOverflowClient struct {
+	failsRemaining int
+	finalSummary   string
+	calls          int
+}
+
+func (f *flakyOverflowClient) Chat(_ context.Context, _ providers.ChatRequest) (providers.ChatResponse, error) {
+	f.calls++
+	if f.failsRemaining > 0 {
+		f.failsRemaining--
+		return providers.ChatResponse{}, &providers.HTTPError{
+			StatusCode:      400,
+			Body:            "context_length_exceeded",
+			ContextOverflow: true,
+		}
+	}
+	return providers.ChatResponse{Content: f.finalSummary}, nil
+}
+
+func (f *flakyOverflowClient) StreamChat(_ context.Context, _ providers.ChatRequest) (<-chan providers.StreamEvent, error) {
+	return nil, errors.New("not implemented")
+}
+
+func TestCompact_DefensiveTrimOnOverflow(t *testing.T) {
+	// 8 messages, summary request overflows twice then succeeds.
+	// The final compact result should still contain the summary +
+	// the last 4 (kept) messages.
+	messages := []providers.ChatMessage{
+		{Role: "user", Content: "first"},
+		{Role: "assistant", Content: "first reply"},
+		{Role: "user", Content: "second"},
+		{Role: "assistant", Content: "second reply"},
+		{Role: "user", Content: "third"},
+		{Role: "assistant", Content: "third reply"},
+		{Role: "user", Content: "fourth"},
+		{Role: "assistant", Content: "fourth reply"},
+	}
+
+	client := &flakyOverflowClient{
+		failsRemaining: 2,
+		finalSummary:   "summary of older turns",
+	}
+	result, err := Compact(context.Background(), messages, client, "test")
+	if err != nil {
+		t.Fatalf("Compact returned error: %v", err)
+	}
+	if client.calls != 3 {
+		t.Fatalf("expected 3 client calls (2 fails + 1 success), got %d", client.calls)
+	}
+	if len(result) < 5 {
+		t.Fatalf("expected summary + 4 kept messages, got %d", len(result))
+	}
+	if result[0].Role != "system" {
+		t.Fatalf("expected system summary first, got %s", result[0].Role)
+	}
+}
+
+func TestCompact_DefensiveTrimGivesUpAfterMaxRetries(t *testing.T) {
+	// Always overflows. Compact should bail after maxCompactRetries
+	// attempts and propagate the error to the caller.
+	messages := []providers.ChatMessage{
+		{Role: "user", Content: "a"},
+		{Role: "assistant", Content: "b"},
+		{Role: "user", Content: "c"},
+		{Role: "assistant", Content: "d"},
+		{Role: "user", Content: "e"},
+		{Role: "assistant", Content: "f"},
+		{Role: "user", Content: "g"},
+		{Role: "assistant", Content: "h"},
+	}
+	client := &flakyOverflowClient{failsRemaining: 100} // never succeeds
+
+	_, err := Compact(context.Background(), messages, client, "test")
+	if err == nil {
+		t.Fatal("expected error after exhausting retries")
+	}
+	if client.calls != maxCompactRetries+1 {
+		t.Fatalf("expected %d attempts, got %d", maxCompactRetries+1, client.calls)
+	}
+}
+
 func TestCompact_IncludesToolCallsInSummary(t *testing.T) {
 	messages := []providers.ChatMessage{
 		{Role: "user", Content: "Read main.go"},
