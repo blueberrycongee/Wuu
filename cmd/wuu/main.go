@@ -371,8 +371,20 @@ func runTUI(args []string) error {
 		// memory & skills, not the coordinator instructions.
 		workerBasePrompt := systemPromptText
 
+		// Sub-agents get their own client instance with a more
+		// aggressive HTTP retry policy than the interactive main
+		// agent (6 attempts, 2s→60s backoff). Workers run for many
+		// minutes and frequently sit through rate-limit bursts that
+		// would otherwise kill them; the main TUI agent stays on the
+		// snappier 3-attempt default so failures surface faster.
+		workerRetry := providerfactory.SubAgentRetryConfig()
+		workerClient, werr := providerfactory.BuildClientWithRetry(providerCfg, &workerRetry)
+		if werr != nil {
+			return fmt.Errorf("build worker client: %w", werr)
+		}
+
 		c, cerr := coordinator.New(coordinator.Config{
-			Client:          client,
+			Client:          workerClient,
 			DefaultModel:    providerCfg.Model,
 			ParentRepo:      rootDir,
 			WorktreeRoot:    filepath.Join(rootDir, ".wuu", "worktrees"),

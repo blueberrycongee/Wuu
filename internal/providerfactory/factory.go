@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/blueberrycongee/wuu/internal/config"
 	"github.com/blueberrycongee/wuu/internal/providers"
@@ -11,8 +12,18 @@ import (
 	"github.com/blueberrycongee/wuu/internal/providers/openai"
 )
 
-// BuildClient constructs a provider client from config.
+// BuildClient constructs a provider client from config using the
+// default HTTP retry policy (3 attempts).
 func BuildClient(provider config.ProviderConfig) (providers.Client, error) {
+	return BuildClientWithRetry(provider, nil)
+}
+
+// BuildClientWithRetry is like BuildClient but lets the caller pin a
+// specific HTTP retry policy. Use this for long-running consumers
+// (e.g. sub-agents that may run for many minutes and should be more
+// tolerant of transient 429 / 5xx than the interactive main agent).
+// Pass nil to use the provider client's built-in default.
+func BuildClientWithRetry(provider config.ProviderConfig, retry *providers.RetryConfig) (providers.Client, error) {
 	typeName := normalizeType(provider.Type)
 	apiKey, err := resolveAPIKey(provider)
 	if err != nil {
@@ -22,9 +33,10 @@ func BuildClient(provider config.ProviderConfig) (providers.Client, error) {
 	switch typeName {
 	case "openai", "openai-compatible", "codex":
 		client, newErr := openai.New(openai.ClientConfig{
-			BaseURL: provider.BaseURL,
-			APIKey:  apiKey,
-			Headers: provider.Headers,
+			BaseURL:     provider.BaseURL,
+			APIKey:      apiKey,
+			Headers:     provider.Headers,
+			RetryConfig: retry,
 		})
 		if newErr != nil {
 			return nil, newErr
@@ -32,9 +44,10 @@ func BuildClient(provider config.ProviderConfig) (providers.Client, error) {
 		return client, nil
 	case "anthropic", "claude", "anthropic-official":
 		client, newErr := anthropic.New(anthropic.ClientConfig{
-			BaseURL: provider.BaseURL,
-			APIKey:  apiKey,
-			Headers: provider.Headers,
+			BaseURL:     provider.BaseURL,
+			APIKey:      apiKey,
+			Headers:     provider.Headers,
+			RetryConfig: retry,
 		})
 		if newErr != nil {
 			return nil, newErr
@@ -42,6 +55,20 @@ func BuildClient(provider config.ProviderConfig) (providers.Client, error) {
 		return client, nil
 	default:
 		return nil, fmt.Errorf("unsupported provider type %q", provider.Type)
+	}
+}
+
+// SubAgentRetryConfig returns the more aggressive HTTP retry policy
+// recommended for long-running sub-agent runs. Compared to the
+// default (3 attempts, 1s→30s backoff) this gives the worker
+// substantially more headroom to ride out transient rate limits and
+// upstream blips: 6 attempts, 2s→60s backoff. Total worst-case wait
+// before giving up is ~2 minutes instead of ~7 seconds.
+func SubAgentRetryConfig() providers.RetryConfig {
+	return providers.RetryConfig{
+		MaxRetries:   6,
+		InitialDelay: 2 * time.Second,
+		MaxDelay:     60 * time.Second,
 	}
 }
 
