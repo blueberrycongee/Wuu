@@ -30,6 +30,13 @@ type StreamRunner struct {
 	Temperature  float64
 	OnEvent      StreamCallback
 
+	// ContextWindowOverride lets the caller pin a specific context
+	// window for this model instead of consulting the built-in
+	// registry. Use it when a user has configured an unknown or
+	// proxied model that wuu wouldn't otherwise recognize. Zero
+	// means "ask providers.ContextWindowFor(Model)".
+	ContextWindowOverride int
+
 	// DisableAutoCompact turns off the proactive fill-rate trigger.
 	// The reactive context-overflow recovery still runs. Off by default.
 	DisableAutoCompact bool
@@ -72,7 +79,10 @@ func (r *StreamRunner) RunWithCallback(ctx context.Context, history []providers.
 		retry:   r.streamRetryConfig(),
 	}
 
-	maxCtx := providers.ContextWindowFor(r.Model)
+	maxCtx := r.ContextWindowOverride
+	if maxCtx <= 0 {
+		maxCtx = providers.ContextWindowFor(r.Model)
+	}
 	if r.DisableAutoCompact {
 		maxCtx = 0 // disables the proactive trigger inside RunToolLoop
 	}

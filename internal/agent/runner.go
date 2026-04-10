@@ -25,6 +25,11 @@ type Runner struct {
 	SystemPrompt string
 	MaxSteps     int
 	Temperature  float64
+	// ContextWindowOverride pins the context window for this run
+	// instead of consulting providers.ContextWindowFor. Zero falls
+	// back to the registry. Used by sub-agents whose model isn't in
+	// the registry but whose owner knows the right number.
+	ContextWindowOverride int
 }
 
 // RunResult is the structured outcome of a Runner.RunWithUsage call.
@@ -65,12 +70,16 @@ func (r *Runner) RunWithUsage(ctx context.Context, prompt string, onUsage func(i
 	}
 	history = append(history, providers.ChatMessage{Role: "user", Content: prompt})
 
+	maxCtx := r.ContextWindowOverride
+	if maxCtx <= 0 {
+		maxCtx = providers.ContextWindowFor(r.Model)
+	}
 	cfg := LoopConfig{
 		Tools:            r.Tools,
 		Model:            r.Model,
 		Temperature:      r.Temperature,
 		MaxSteps:         r.MaxSteps,
-		MaxContextTokens: providers.ContextWindowFor(r.Model),
+		MaxContextTokens: maxCtx,
 		OnUsage:          onUsage,
 		Compact: func(ctx context.Context, messages []providers.ChatMessage) ([]providers.ChatMessage, error) {
 			return compact.Compact(ctx, messages, r.Client, r.Model)

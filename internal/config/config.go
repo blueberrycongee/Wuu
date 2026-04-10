@@ -56,6 +56,11 @@ type ProviderConfig struct {
 	APIKeyEnv string            `json:"api_key_env,omitempty"`
 	Model     string            `json:"model"`
 	Headers   map[string]string `json:"headers,omitempty"`
+	// ContextWindow optionally overrides wuu's built-in registry for
+	// this provider's model. Use it for new models wuu doesn't know
+	// about yet, custom finetunes, private deployments, or proxies
+	// that rename the upstream model. Zero means "use the registry".
+	ContextWindow int `json:"context_window,omitempty"`
 }
 
 // AgentConfig controls behavior of the local tool loop.

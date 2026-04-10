@@ -415,13 +415,14 @@ func runTUI(args []string) error {
 	}
 
 	streamRunner := &agent.StreamRunner{
-		Client:             client,
-		Tools:              toolExecutor,
-		Model:              providerCfg.Model,
-		SystemPrompt:       systemPromptText,
-		MaxSteps:           cfg.Agent.MaxSteps,
-		Temperature:        cfg.Agent.Temperature,
-		DisableAutoCompact: cfg.Agent.DisableAutoCompact,
+		Client:                client,
+		Tools:                 toolExecutor,
+		Model:                 providerCfg.Model,
+		SystemPrompt:          systemPromptText,
+		MaxSteps:              cfg.Agent.MaxSteps,
+		Temperature:           cfg.Agent.Temperature,
+		ContextWindowOverride: providerCfg.ContextWindow,
+		DisableAutoCompact:    cfg.Agent.DisableAutoCompact,
 	}
 	if *maxSteps > 0 {
 		streamRunner.MaxSteps = *maxSteps
