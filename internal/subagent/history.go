@@ -1,0 +1,58 @@
+package subagent
+
+import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"time"
+)
+
+// historyRecord is the JSON shape we write per sub-agent. It captures
+// the metadata needed for the /workers picker to render a useful view.
+type historyRecord struct {
+	ID          string    `json:"id"`
+	Type        string    `json:"type"`
+	Description string    `json:"description"`
+	Status      string    `json:"status"`
+	StartedAt   time.Time `json:"started_at"`
+	CompletedAt time.Time `json:"completed_at"`
+	Model       string    `json:"model"`
+	Prompt      string    `json:"prompt"`
+	Result      string    `json:"result,omitempty"`
+	Error       string    `json:"error,omitempty"`
+}
+
+// persistHistory writes the sub-agent's final state to its configured
+// HistoryPath. Errors are returned but typically ignored — persistence
+// is best-effort.
+func persistHistory(sa *SubAgent) error {
+	if sa.historyPath == "" {
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(sa.historyPath), 0o755); err != nil {
+		return err
+	}
+
+	sa.mu.Lock()
+	rec := historyRecord{
+		ID:          sa.ID,
+		Type:        sa.Type,
+		Description: sa.Description,
+		Status:      string(sa.Status),
+		StartedAt:   sa.StartedAt,
+		CompletedAt: sa.CompletedAt,
+		Model:       sa.model,
+		Prompt:      sa.prompt,
+		Result:      sa.Result,
+	}
+	if sa.Error != nil {
+		rec.Error = sa.Error.Error()
+	}
+	sa.mu.Unlock()
+
+	data, err := json.MarshalIndent(rec, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(sa.historyPath, data, 0o644)
+}
