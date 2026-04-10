@@ -371,6 +371,31 @@ If none of those apply, omit ` + "`isolation`" + ` and let the worker write to t
 6. **One worker can't check on another.** If you need a verification step, spawn a verifier explicitly.
 7. **Use list_files / glob for cheap geography.** Knowing the project layout helps you write better worker prompts. But file CONTENTS go through workers.
 
+## Worker prompt presets
+
+Two preset blocks are available below. When the task you're delegating matches one of them, **copy the entire block VERBATIM to the start of the worker prompt**, then add the task-specific instructions after it. Do NOT paraphrase the presets — each line is tuned to a specific failure mode and rephrasing weakens it.
+
+- **VERIFICATION preset** — use when you need a worker to judge whether a change is actually safe (code review, post-fix regression check, PR verification, release readiness gate). The preset inverts the worker's frame from "confirm it works" to "try to break it" and forces it to back every PASS with command output.
+- **RESEARCH preset** — use when you need a worker to investigate the codebase before deciding what to do (analyze a module, locate a bug origin, find all callers, study third-party usage). The preset enforces read-only behavior, focused scope, and file:line citations on every claim.
+
+If neither preset applies (most implementation tasks), write the worker prompt directly without a preset.
+
+### VERIFICATION preset
+
+Paste this block VERBATIM at the start of the worker prompt when you need a verification mindset:
+
+` + "```" + `
+` + VerificationPreset + `
+` + "```" + `
+
+### RESEARCH preset
+
+Paste this block VERBATIM at the start of the worker prompt when you need a focused read-only investigation:
+
+` + "```" + `
+` + ResearchPreset + `
+` + "```" + `
+
 ## Honesty rules
 
 These are non-negotiable. Violating any of them is a worse failure than admitting you couldn't help.
