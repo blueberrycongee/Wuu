@@ -9,13 +9,29 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/blueberrycongee/wuu/internal/providers"
 )
 
 const defaultTimeout = 120 * time.Second
+
+// defaultStreamIdleTimeout is the maximum silence between SSE chunks before
+// the watchdog aborts the stream. Aligned with Claude Code's 90s default.
+const defaultStreamIdleTimeout = 90 * time.Second
+
+func streamIdleTimeout() time.Duration {
+	if v := os.Getenv("WUU_STREAM_IDLE_TIMEOUT_MS"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			return time.Duration(n) * time.Millisecond
+		}
+	}
+	return defaultStreamIdleTimeout
+}
 
 // ClientConfig configures an OpenAI-compatible chat completions endpoint.
 type ClientConfig struct {
@@ -268,6 +284,18 @@ func (c *Client) readSSE(resp *http.Response, ch chan<- providers.StreamEvent) {
 	defer close(ch)
 	defer resp.Body.Close()
 
+	// Idle watchdog: if no chunk arrives within streamIdleTimeout(),
+	// close the body to abort the scanner. Wrap the surfaced error in
+	// context.DeadlineExceeded so the retry classifier picks it up.
+	idleTimeout := streamIdleTimeout()
+	var idleFired atomic.Bool
+	idleTimer := time.AfterFunc(idleTimeout, func() {
+		idleFired.Store(true)
+		_ = resp.Body.Close()
+	})
+	defer idleTimer.Stop()
+	resetIdle := func() { idleTimer.Reset(idleTimeout) }
+
 	type pendingTool struct {
 		id   string
 		name string
@@ -292,6 +320,7 @@ func (c *Client) readSSE(resp *http.Response, ch chan<- providers.StreamEvent) {
 
 	scanner := bufio.NewScanner(resp.Body)
 	for scanner.Scan() {
+		resetIdle()
 		line := scanner.Text()
 		providers.DebugLogf("SSE raw: %s", line)
 		if line == "" || strings.HasPrefix(line, "event:") {
@@ -380,7 +409,23 @@ func (c *Client) readSSE(resp *http.Response, ch chan<- providers.StreamEvent) {
 	}
 
 	if err := scanner.Err(); err != nil {
+		if idleFired.Load() {
+			ch <- providers.StreamEvent{
+				Type:  providers.EventError,
+				Error: fmt.Errorf("stream idle timeout after %s: %w", idleTimeout, context.DeadlineExceeded),
+			}
+			return
+		}
 		ch <- providers.StreamEvent{Type: providers.EventError, Error: fmt.Errorf("read stream: %w", err)}
+		return
+	}
+	// Scanner ended cleanly (e.g. body closed) but we never saw [DONE].
+	// If the idle watchdog fired, surface it as a retryable timeout.
+	if idleFired.Load() {
+		ch <- providers.StreamEvent{
+			Type:  providers.EventError,
+			Error: fmt.Errorf("stream idle timeout after %s: %w", idleTimeout, context.DeadlineExceeded),
+		}
 	}
 }
 
