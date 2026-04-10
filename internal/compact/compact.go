@@ -119,11 +119,37 @@ func Compact(ctx context.Context, messages []providers.ChatMessage, client provi
 	}
 }
 
+// compactInstructionPrompt is the framing wuu wraps every
+// summarization request in. Lifted in spirit from Codex CLI's
+// compact/prompt.md: short, model-agnostic, focused on a clean
+// hand-off to "another LLM that will resume the task". Deliberately
+// avoids Claude-specific XML structures so it works equally well on
+// GPT, DeepSeek, Gemini, and any third-party-routed model.
+const compactInstructionPrompt = `You are performing a CONTEXT CHECKPOINT COMPACTION for an AI coding agent.
+Create a handoff summary that another LLM will read to resume the task.
+
+Include, in roughly this order:
+- The user's goal and any explicit instructions or preferences
+- Key decisions made and the reasoning behind them
+- Files inspected or modified, with paths and the gist of the change
+- Errors encountered and how they were resolved (or are still open)
+- Outstanding work and clear next steps
+- Any concrete data, examples, function signatures, or references the
+  next agent will need to continue without re-reading the history
+
+Be concrete and structured. Prefer bullet points over prose. Keep it
+focused — the goal is to let the next agent pick up exactly where you
+left off, not to retell the entire conversation.
+
+--- Conversation to summarize ---
+
+`
+
 // buildSummaryPrompt is the inner formatting helper extracted so the
 // retry loop above doesn't have to duplicate the string-builder code.
 func buildSummaryPrompt(toSummarize []providers.ChatMessage) string {
 	var b strings.Builder
-	b.WriteString("Summarize the following conversation concisely, preserving key decisions, code changes, and context:\n\n")
+	b.WriteString(compactInstructionPrompt)
 	for _, msg := range toSummarize {
 		fmt.Fprintf(&b, "[%s]: %s\n", msg.Role, truncate(msg.Content, 500))
 		for _, tc := range msg.ToolCalls {

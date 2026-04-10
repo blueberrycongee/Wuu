@@ -70,6 +70,7 @@ const (
 	EventToolUseDelta  StreamEventType = "tool_use_delta"
 	EventToolUseEnd    StreamEventType = "tool_use_end"
 	EventReconnect     StreamEventType = "reconnect"
+	EventCompact       StreamEventType = "compact"
 	EventDone          StreamEventType = "done"
 	EventError         StreamEventType = "error"
 )

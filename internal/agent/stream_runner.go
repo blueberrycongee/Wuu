@@ -90,6 +90,19 @@ func (r *StreamRunner) RunWithCallback(ctx context.Context, history []providers.
 				ToolResult: truncateLog(result, 2000),
 			})
 		},
+		// Surface auto-compact events as a stream event so the TUI
+		// can render a system line like "✦ Compacted history: 18 → 5
+		// messages (~12k tokens)". The loop fires this for both the
+		// proactive and the reactive overflow path.
+		OnCompact: func(info CompactInfo) {
+			if onEvent == nil {
+				return
+			}
+			onEvent(providers.StreamEvent{
+				Type:    providers.EventCompact,
+				Content: formatCompactNotice(info),
+			})
+		},
 	}
 
 	res, err := RunToolLoop(ctx, history, cfg, step)
@@ -141,6 +154,38 @@ func truncateLog(s string, maxLen int) string {
 		return s
 	}
 	return s[:maxLen] + "..."
+}
+
+// formatCompactNotice produces the human-readable string surfaced via
+// EventCompact. Kept short — it shows up as a single system line in
+// the chat viewport.
+func formatCompactNotice(info CompactInfo) string {
+	verb := "Compacted"
+	if info.Reason == CompactReasonOverflow {
+		verb = "Recovered from context overflow — compacted"
+	}
+	if info.TokensBefore > 0 {
+		return fmt.Sprintf("✦ %s history: %d → %d messages (was ~%s)",
+			verb, info.MessagesBefore, info.MessagesAfter,
+			formatTokenCount(info.TokensBefore))
+	}
+	return fmt.Sprintf("✦ %s history: %d → %d messages",
+		verb, info.MessagesBefore, info.MessagesAfter)
+}
+
+// formatTokenCount renders a token count in a compact form: 1234 →
+// "1.2k", 12_345 → "12k", 1_234_567 → "1.2M".
+func formatTokenCount(n int) string {
+	switch {
+	case n < 1000:
+		return fmt.Sprintf("%d tokens", n)
+	case n < 10_000:
+		return fmt.Sprintf("%.1fk tokens", float64(n)/1000)
+	case n < 1_000_000:
+		return fmt.Sprintf("%dk tokens", n/1000)
+	default:
+		return fmt.Sprintf("%.1fM tokens", float64(n)/1_000_000)
+	}
 }
 
 func (s *streamStep) runStreamWithReconnect(

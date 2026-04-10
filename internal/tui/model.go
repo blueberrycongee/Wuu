@@ -890,6 +890,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.refreshViewport(false)
 			return m, waitStreamEvent(m.streamCh)
 
+		case providers.EventCompact:
+			// Auto-compact ran inside the loop. Show it as a system
+			// line so the user knows their conversation history was
+			// summarized — long sessions silently shrinking would be
+			// confusing without any signal.
+			notice := strings.TrimSpace(msg.event.Content)
+			if notice == "" {
+				notice = "✦ Compacted conversation history"
+			}
+			m.appendEntry("system", notice)
+			m.refreshViewport(false)
+			return m, waitStreamEvent(m.streamCh)
+
 		case providers.EventError:
 			// Ignore context cancellation — this is normal when the user
 			// interrupts a stream by pressing Enter.
