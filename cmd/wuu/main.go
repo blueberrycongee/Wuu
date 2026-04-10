@@ -418,24 +418,56 @@ func resolveRuntimePath(rootDir, input string) (string, error) {
 	return filepath.Join(rootDir, value), nil
 }
 
-// appendSkillsToPrompt adds a "Skills" section listing available skills with
-// names, descriptions, and instructions for the model to invoke them via the
-// load_skill tool.
+// appendSkillsToPrompt adds a "Session-specific guidance" section that lists
+// available skills, their descriptions, and instructions for invocation.
+// Format mirrors Claude Code's session_guidance system prompt section so the
+// model treats wuu skills with the same conventions.
 func appendSkillsToPrompt(base string, sks []skills.Skill) string {
+	// Filter out skills hidden from model invocation.
+	visible := make([]skills.Skill, 0, len(sks))
+	for _, s := range sks {
+		if s.DisableModelInvoke {
+			continue
+		}
+		visible = append(visible, s)
+	}
+	if len(visible) == 0 {
+		return base
+	}
+
 	var b strings.Builder
 	b.WriteString(strings.TrimRight(base, "\n"))
 	if b.Len() > 0 {
 		b.WriteString("\n\n")
 	}
-	b.WriteString("## Available Skills\n\n")
-	b.WriteString("The following skills are available for you to use. Each skill is a reusable instruction that encodes project-specific or user-specific conventions. ")
-	b.WriteString("When a user request matches a skill's description, call the `load_skill` tool with the skill's name to retrieve its full body, then follow those instructions.\n\n")
-	for _, s := range sks {
+
+	b.WriteString("# Session-specific guidance\n\n")
+	b.WriteString("## Skills\n\n")
+	b.WriteString("The following skills are available in this session. Each skill is a reusable, ")
+	b.WriteString("project- or user-defined instruction set that encodes conventions, recipes, or workflows.\n\n")
+	b.WriteString("**How to use skills:**\n")
+	b.WriteString("1. Read the skill catalog below — match the user's intent against each skill's description and \"when to use\" guidance.\n")
+	b.WriteString("2. When a skill applies, call the `load_skill` tool with the skill's name to retrieve the full body. ")
+	b.WriteString("Pass any user-supplied arguments via the `arguments` parameter.\n")
+	b.WriteString("3. Follow the loaded skill's instructions exactly. If the skill body contains tool restrictions or step orderings, respect them.\n")
+	b.WriteString("4. Users can also invoke skills directly by typing `/<skill-name>` (e.g. `/commit`). When that happens, the skill body is injected as a user message — no need to call `load_skill` separately.\n\n")
+
+	b.WriteString("**Skill catalog:**\n\n")
+	for _, s := range visible {
 		desc := s.Description
 		if desc == "" {
 			desc = "(no description)"
 		}
-		fmt.Fprintf(&b, "- **%s** (%s) — %s\n", s.Name, s.Source, desc)
+		fmt.Fprintf(&b, "- **%s** _[%s]_ — %s\n", s.Name, s.Source, desc)
+		if s.WhenToUse != "" {
+			fmt.Fprintf(&b, "  - When to use: %s\n", s.WhenToUse)
+		}
+		if s.ArgumentHint != "" {
+			fmt.Fprintf(&b, "  - Usage: `/%s %s`\n", s.Name, s.ArgumentHint)
+		}
+		if len(s.AllowedTools) > 0 {
+			fmt.Fprintf(&b, "  - Allowed tools: %s\n", strings.Join(s.AllowedTools, ", "))
+		}
 	}
 	return b.String()
 }
