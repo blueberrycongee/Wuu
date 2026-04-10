@@ -361,10 +361,16 @@ func runTUI(args []string) error {
 
 	// If the workspace is a git repo and we have a toolkit, wire up the
 	// coordinator runtime so spawn_agent and friends become available.
-	// SessionID is bound later via the TUI's OnSessionID callback once
-	// the session is generated.
+	// When coordinator wiring succeeds, we ALSO switch the main agent
+	// to coordinator-only mode (6 tools) and prepend the coordinator
+	// system prompt — this is the wuu default once Phase 6 is active.
 	var coord *coordinator.Coordinator
 	if toolkit != nil && worktree.IsGitRepo(rootDir) {
+		// Capture the worker base prompt BEFORE we prepend the
+		// coordinator preamble — workers should see the project
+		// memory & skills, not the coordinator instructions.
+		workerBasePrompt := systemPromptText
+
 		c, cerr := coordinator.New(coordinator.Config{
 			Client:          client,
 			DefaultModel:    providerCfg.Model,
@@ -372,15 +378,8 @@ func runTUI(args []string) error {
 			WorktreeRoot:    filepath.Join(rootDir, ".wuu", "worktrees"),
 			SessionID:       "session-pending", // overwritten via SetSessionInfo
 			HistoryDir:      "",                // overwritten via SetSessionInfo
-			WorkerSysPrompt: systemPromptText,
+			WorkerSysPrompt: workerBasePrompt,
 			WorkerFactory: func(workerRoot string, _ coordinator.WorkerType) (agent.ToolExecutor, error) {
-				// Phase 4 note: tool whitelisting per worker type is
-				// expressed via the SystemPrompt and the always-blocked
-				// orchestration tools (handled inside the worker since
-				// it never gets a coordinator pointer). Hard-enforced
-				// filtering at the toolkit level can come later by
-				// passing FilterToolsForWorker(wt, ...) into a new
-				// tools.New variant.
 				wkit, werr := tools.New(workerRoot)
 				if werr != nil {
 					return nil, werr
@@ -394,6 +393,12 @@ func runTUI(args []string) error {
 		if cerr == nil {
 			coord = c
 			toolkit.SetCoordinator(coord)
+			toolkit.SetCoordinatorOnly(true)
+			// Prepend coordinator role instructions to the main agent's
+			// system prompt. The coordinator preamble comes first so
+			// the model establishes its role before reading project
+			// memory and skills.
+			systemPromptText = coordinator.SystemPromptPreamble() + "\n\n" + systemPromptText
 		}
 	}
 

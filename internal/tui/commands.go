@@ -54,6 +54,8 @@ func init() {
 		{Name: "worktree", Description: "Create/switch git worktree", ArgHint: "<name>", InlineArgs: true, Type: cmdTypeLocal, Execute: cmdWorktree},
 		{Name: "skills", Description: "List available skills", Type: cmdTypeLocal, Execute: cmdSkills},
 		{Name: "memory", Description: "Show loaded memory files (CLAUDE.md / AGENTS.md)", Type: cmdTypeLocal, Execute: cmdMemory},
+		{Name: "workers", Description: "List active and recent sub-agents", Type: cmdTypeLocal, Execute: cmdWorkers},
+		{Name: "cleanup-worktrees", Description: "Remove all sub-agent worktrees for this session", Type: cmdTypeLocal, Execute: cmdCleanupWorktrees},
 		{Name: "insight", Description: "Session stats and diagnostics", Type: cmdTypeLocal, Execute: cmdInsight},
 		{Name: "exit", Aliases: []string{"quit"}, Description: "Exit wuu", Type: cmdTypeLocal, Execute: cmdExit},
 	}
@@ -414,6 +416,40 @@ func pluralS(n int) string {
 		return ""
 	}
 	return "s"
+}
+
+func cmdWorkers(_ string, m *Model) string {
+	if m.coordinator == nil {
+		return "workers: coordinator not available (not a git repository?)"
+	}
+	list := m.coordinator.List()
+	if len(list) == 0 {
+		return "workers: none spawned in this session yet"
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "workers (%d total):\n", len(list))
+	for _, s := range list {
+		dur := ""
+		if !s.CompletedAt.IsZero() && !s.StartedAt.IsZero() {
+			dur = fmt.Sprintf("  (%s)", s.CompletedAt.Sub(s.StartedAt).Truncate(time.Millisecond))
+		}
+		desc := s.Description
+		if desc == "" {
+			desc = "(no description)"
+		}
+		fmt.Fprintf(&b, "  %s [%s] %s — %s%s\n", s.ID, s.Type, s.Status, desc, dur)
+	}
+	return b.String()
+}
+
+func cmdCleanupWorktrees(_ string, m *Model) string {
+	if m.coordinator == nil {
+		return "cleanup-worktrees: coordinator not available"
+	}
+	if err := m.coordinator.CleanupSession(); err != nil {
+		return fmt.Sprintf("cleanup-worktrees: %v", err)
+	}
+	return "cleanup-worktrees: removed all worktrees for this session"
 }
 
 func cmdInsight(_ string, m *Model) string {
