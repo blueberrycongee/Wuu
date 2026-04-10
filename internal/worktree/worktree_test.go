@@ -183,6 +183,81 @@ func TestList_EmptyDir(t *testing.T) {
 	}
 }
 
+func TestHasChanges(t *testing.T) {
+	dir := t.TempDir()
+	initRepo(t, dir)
+	m, _ := NewManager(dir, filepath.Join(dir, ".wuu", "worktrees"))
+
+	wt, err := m.Create("sess", "wA", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Cleanup(wt)
+
+	// Pristine worktree should be clean.
+	dirty, err := m.HasChanges(wt)
+	if err != nil {
+		t.Fatalf("HasChanges (clean): %v", err)
+	}
+	if dirty {
+		t.Fatal("expected clean, got dirty")
+	}
+
+	// Dropping an untracked file should flip it to dirty.
+	if err := os.WriteFile(filepath.Join(wt.Path, "scratch.txt"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	dirty, err = m.HasChanges(wt)
+	if err != nil {
+		t.Fatalf("HasChanges (untracked): %v", err)
+	}
+	if !dirty {
+		t.Fatal("expected dirty after untracked add")
+	}
+}
+
+func TestCleanupIfClean(t *testing.T) {
+	dir := t.TempDir()
+	initRepo(t, dir)
+	m, _ := NewManager(dir, filepath.Join(dir, ".wuu", "worktrees"))
+
+	// Clean worktree → removed.
+	wt1, err := m.Create("sess", "clean", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	kept, err := m.CleanupIfClean(wt1)
+	if err != nil {
+		t.Fatalf("CleanupIfClean clean: %v", err)
+	}
+	if kept {
+		t.Fatal("clean worktree should not be kept")
+	}
+	if _, err := os.Stat(wt1.Path); !os.IsNotExist(err) {
+		t.Fatalf("clean worktree should be gone, got: %v", err)
+	}
+
+	// Dirty worktree → kept.
+	wt2, err := m.Create("sess", "dirty", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Cleanup(wt2)
+	if err := os.WriteFile(filepath.Join(wt2.Path, "edit.txt"), []byte("hi"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	kept, err = m.CleanupIfClean(wt2)
+	if err != nil {
+		t.Fatalf("CleanupIfClean dirty: %v", err)
+	}
+	if !kept {
+		t.Fatal("dirty worktree should be kept")
+	}
+	if _, err := os.Stat(wt2.Path); err != nil {
+		t.Fatalf("dirty worktree should still exist: %v", err)
+	}
+}
+
 func TestIsGitRepo(t *testing.T) {
 	notGit := t.TempDir()
 	if IsGitRepo(notGit) {

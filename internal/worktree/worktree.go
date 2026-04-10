@@ -128,6 +128,53 @@ func (m *Manager) Cleanup(wt *Worktree) error {
 	return nil
 }
 
+// HasChanges reports whether the worktree contains any uncommitted
+// modifications relative to its base HEAD. Used by the coordinator to
+// decide whether a finished worker's worktree can be auto-pruned.
+//
+// Detects: tracked-file edits, staged changes, and untracked files.
+// Returns false on a pristine worktree (read-only worker did nothing).
+func (m *Manager) HasChanges(wt *Worktree) (bool, error) {
+	if wt == nil || wt.Path == "" {
+		return false, errors.New("worktree is nil")
+	}
+	if _, err := os.Stat(wt.Path); err != nil {
+		return false, fmt.Errorf("stat worktree: %w", err)
+	}
+	cmd := exec.Command("git", "status", "--porcelain")
+	cmd.Dir = wt.Path
+	out, err := cmd.Output()
+	if err != nil {
+		return false, fmt.Errorf("git status: %w", err)
+	}
+	return strings.TrimSpace(string(out)) != "", nil
+}
+
+// CleanupIfClean removes the worktree only when it has no uncommitted
+// changes. Returns kept=true (with no error) if the worktree was dirty
+// and was therefore preserved for the user to inspect.
+//
+// Mirrors Claude Code's behavior: ephemeral read-only sub-agents
+// shouldn't leave detritus on disk, but anything the worker actually
+// modified must survive so the orchestrator (or user) can review and
+// merge it.
+func (m *Manager) CleanupIfClean(wt *Worktree) (kept bool, err error) {
+	if wt == nil || wt.Path == "" {
+		return false, nil
+	}
+	dirty, err := m.HasChanges(wt)
+	if err != nil {
+		return false, err
+	}
+	if dirty {
+		return true, nil
+	}
+	if cleanupErr := m.Cleanup(wt); cleanupErr != nil {
+		return false, cleanupErr
+	}
+	return false, nil
+}
+
 // CleanupSession removes all worktrees belonging to a session.
 func (m *Manager) CleanupSession(sessionID string) error {
 	dir := filepath.Join(m.rootDir, sessionID)
