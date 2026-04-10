@@ -24,10 +24,28 @@ type HookEntry struct {
 
 // Config holds CLI runtime settings.
 type Config struct {
-	DefaultProvider string                       `json:"default_provider"`
-	Providers       map[string]ProviderConfig    `json:"providers"`
-	Agent           AgentConfig                  `json:"agent"`
-	Hooks           map[string][]HookEntry       `json:"hooks,omitempty"`
+	DefaultProvider string                    `json:"default_provider"`
+	Providers       map[string]ProviderConfig `json:"providers"`
+	Agent           AgentConfig               `json:"agent"`
+	Hooks           map[string][]HookEntry    `json:"hooks,omitempty"`
+	Memory          MemoryConfig              `json:"memory,omitempty"`
+}
+
+// MemoryConfig overrides the defaults for memory file discovery
+// (CLAUDE.md / AGENTS.md auto-loading). All fields are optional;
+// empty values fall back to memory.DefaultOptions().
+type MemoryConfig struct {
+	// Filenames to look for in priority order. Default:
+	// ["AGENTS.md", "AGENTS.override.md", "CLAUDE.md"].
+	Filenames []string `json:"filenames,omitempty"`
+	// ProjectRootMarkers stop the upward walk through ancestors.
+	// Default: [".git", ".hg", ".jj", ".svn"].
+	ProjectRootMarkers []string `json:"project_root_markers,omitempty"`
+	// UserDirs are scanned for user-level memory. Tilde-expanded.
+	// Default: ["~/.config/wuu", "~/.claude", "~/.codex"].
+	UserDirs []string `json:"user_dirs,omitempty"`
+	// Disable turns off memory loading entirely.
+	Disable bool `json:"disable,omitempty"`
 }
 
 // ProviderConfig configures one model gateway.

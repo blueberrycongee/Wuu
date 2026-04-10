@@ -333,7 +333,21 @@ func runTUI(args []string) error {
 	// Discover memory files (AGENTS.md / CLAUDE.md / AGENTS.override.md)
 	// from the project hierarchy (bounded by .git markers) and from
 	// user-level directories (~/.config/wuu, ~/.claude, ~/.codex).
-	memoryFiles := memory.Discover(rootDir, homeDir, memory.DefaultOptions())
+	// Honor any overrides set under config.memory.
+	var memoryFiles []memory.File
+	if !cfg.Memory.Disable {
+		memOpts := memory.DefaultOptions()
+		if len(cfg.Memory.Filenames) > 0 {
+			memOpts.Filenames = cfg.Memory.Filenames
+		}
+		if len(cfg.Memory.ProjectRootMarkers) > 0 {
+			memOpts.ProjectRootMarkers = cfg.Memory.ProjectRootMarkers
+		}
+		if len(cfg.Memory.UserDirs) > 0 {
+			memOpts.UserDirs = cfg.Memory.UserDirs
+		}
+		memoryFiles = memory.Discover(rootDir, homeDir, memOpts)
+	}
 
 	systemPromptText := cfg.Agent.SystemPrompt
 	if len(memoryFiles) > 0 {
