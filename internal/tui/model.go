@@ -550,7 +550,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case inlineSpinMsg:
 		m.inlineSpinFrame++
 		if m.streaming || m.pendingRequest {
-			m.refreshViewport(false)
+			// Only advance the frame counter — inline status is rendered
+			// outside the viewport in View(), so no viewport rebuild
+			// needed. BubbleTea's top-level diff redraws only the
+			// status line.
 			return m, inlineSpinTickCmd()
 		}
 		return m, nil
@@ -1965,7 +1968,6 @@ func (m *Model) refreshViewport(forceBottom bool) {
 
 			// Main content.
 			content := truncateForDisplay(entry.Content)
-			isActiveTarget := (m.streaming || m.pendingRequest) && i == m.streamTarget
 
 			if content != "(empty)" {
 				if entry.Role == "USER" {
@@ -1984,11 +1986,9 @@ func (m *Model) refreshViewport(forceBottom bool) {
 				}
 			}
 
-			// Inline status: show animated indicator on the active assistant entry.
-			if entry.Role == "ASSISTANT" && isActiveTarget {
-				appendText("\n")
-				appendText(indentLines(renderInlineStatus(m.statusLine, m.inlineSpinFrame), contentPadLeft))
-			}
+			// NOTE: inline status (Generating / Running tool / Thinking)
+			// is rendered outside the viewport in View() to avoid
+			// spinner animation driving full viewport rebuilds.
 		}
 	}
 
@@ -2110,7 +2110,14 @@ func (m Model) View() string {
 		Foreground(currentTheme.Border).
 		Render(strings.Repeat("─", m.width))
 
-	parts := []string{header, outputBox}
+	// Inline status lives outside the viewport so its spinner
+	// animation (150ms ticks) does not force viewport rebuilds.
+	statusLine := ""
+	if m.streaming || m.pendingRequest {
+		statusLine = indentLines(renderInlineStatus(m.statusLine, m.inlineSpinFrame), contentPadLeft)
+	}
+
+	parts := []string{header, outputBox, statusLine}
 	if panel := m.renderWorkerPanel(m.width); panel != "" {
 		parts = append(parts, sep, panel)
 	}

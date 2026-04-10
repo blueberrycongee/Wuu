@@ -27,7 +27,13 @@ func computeLayout(termWidth, termHeight, inputLines, workerPanelLines int) layo
 	if workerPanelLines > 0 {
 		sepH++ // extra separator above worker panel
 	}
-	chatH := termHeight - headerH - inputOuterH - sepH - workerPanelLines
+	// Reserve exactly one line below the viewport for the inline status
+	// indicator (Generating/Running <tool>/Thinking). Keeping it outside
+	// the viewport is what prevents the spinner animation from forcing a
+	// full viewport rebuild on every frame — see renderInlineStatus usage
+	// in Model.View and the inlineSpinMsg handler.
+	inlineStatusH := 1
+	chatH := termHeight - headerH - inputOuterH - sepH - workerPanelLines - inlineStatusH
 	if chatH < 4 {
 		chatH = 4
 	}
