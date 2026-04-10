@@ -11,25 +11,29 @@ import (
 
 // Skill represents a discovered skill definition.
 type Skill struct {
-	Name        string // e.g. "/commit"
+	Name        string // canonical name without leading slash, e.g. "commit"
 	Description string
 	Content     string // full markdown body after frontmatter
 	Source      string // "project" or "user"
-	Path        string // filesystem path
+	Path        string // filesystem path to the SKILL.md file
 }
 
-// Discover scans directories for skill files and returns deduplicated list.
-// User-level skills override project-level skills with the same name.
+// Discover scans the given directories for skills and returns a deduplicated
+// list. Project skills override user skills with the same name.
+//
+// Each directory is scanned for two formats:
+//  1. Directory format: <dir>/<skill-name>/SKILL.md (preferred, CC-compatible)
+//  2. Flat file format: <dir>/<skill-name>.md (legacy, simpler)
 func Discover(projectDir, userDir string) []Skill {
-	projectSkills := scanDir(projectDir, "project")
 	userSkills := scanDir(userDir, "user")
+	projectSkills := scanDir(projectDir, "project")
 
-	// User overrides project
+	// Project overrides user (project is more specific).
 	byName := make(map[string]Skill, len(projectSkills)+len(userSkills))
-	for _, s := range projectSkills {
+	for _, s := range userSkills {
 		byName[s.Name] = s
 	}
-	for _, s := range userSkills {
+	for _, s := range projectSkills {
 		byName[s.Name] = s
 	}
 
@@ -43,26 +47,92 @@ func Discover(projectDir, userDir string) []Skill {
 	return result
 }
 
+// Find returns the skill with the given name (slash-prefix tolerated), or
+// false if not found.
+func Find(skills []Skill, name string) (Skill, bool) {
+	name = strings.TrimPrefix(strings.TrimSpace(name), "/")
+	for _, s := range skills {
+		if s.Name == name {
+			return s, true
+		}
+	}
+	return Skill{}, false
+}
+
 func scanDir(dir, source string) []Skill {
 	if dir == "" {
 		return nil
 	}
+	info, err := os.Stat(dir)
+	if err != nil || !info.IsDir() {
+		return nil
+	}
+
 	var skills []Skill
-	filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
-		if err != nil || info.IsDir() {
-			return nil
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil
+	}
+
+	for _, entry := range entries {
+		path := filepath.Join(dir, entry.Name())
+
+		if entry.IsDir() {
+			// Directory format: <dir>/<skill-name>/SKILL.md
+			skillFile := findSkillMD(path)
+			if skillFile == "" {
+				continue
+			}
+			skill, parseErr := parseSkillFile(skillFile, source)
+			if parseErr != nil {
+				continue
+			}
+			// Use directory name as canonical name if frontmatter didn't provide one.
+			if skill.Name == "" || skill.Name == strings.TrimSuffix(filepath.Base(skillFile), filepath.Ext(skillFile)) {
+				skill.Name = entry.Name()
+			}
+			skill.Name = canonicalName(skill.Name)
+			skills = append(skills, skill)
+			continue
 		}
-		if !strings.HasSuffix(strings.ToLower(info.Name()), ".md") {
-			return nil
+
+		// Flat file format: <dir>/<skill-name>.md
+		if !strings.HasSuffix(strings.ToLower(entry.Name()), ".md") {
+			continue
 		}
 		skill, parseErr := parseSkillFile(path, source)
 		if parseErr != nil {
-			return nil // skip unparseable files
+			continue
 		}
+		skill.Name = canonicalName(skill.Name)
 		skills = append(skills, skill)
-		return nil
-	})
+	}
 	return skills
+}
+
+// findSkillMD returns the path to SKILL.md (case-insensitive) inside dir,
+// or empty string if not found.
+func findSkillMD(dir string) string {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return ""
+	}
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		if strings.EqualFold(e.Name(), "SKILL.md") {
+			return filepath.Join(dir, e.Name())
+		}
+	}
+	return ""
+}
+
+// canonicalName strips leading slash and lowercases.
+func canonicalName(name string) string {
+	name = strings.TrimSpace(name)
+	name = strings.TrimPrefix(name, "/")
+	return name
 }
 
 func parseSkillFile(path, source string) (Skill, error) {
@@ -73,34 +143,42 @@ func parseSkillFile(path, source string) (Skill, error) {
 	defer f.Close()
 
 	scanner := bufio.NewScanner(f)
+	scanner.Buffer(make([]byte, 4096), 1024*1024)
 
-	// Check for frontmatter start
+	// Check for frontmatter start.
 	if !scanner.Scan() || strings.TrimSpace(scanner.Text()) != "---" {
 		return Skill{}, fmt.Errorf("no frontmatter")
 	}
 
-	// Parse frontmatter
+	// Parse frontmatter (simple key:value pairs, ignore complex YAML).
 	var name, description string
 	for scanner.Scan() {
 		line := scanner.Text()
 		if strings.TrimSpace(line) == "---" {
 			break
 		}
-		if strings.HasPrefix(line, "name:") {
-			name = strings.TrimSpace(strings.TrimPrefix(line, "name:"))
-		}
-		if strings.HasPrefix(line, "description:") {
-			description = strings.TrimSpace(strings.TrimPrefix(line, "description:"))
+		if k, v, ok := splitYAMLLine(line); ok {
+			switch k {
+			case "name":
+				name = v
+			case "description":
+				description = v
+			}
 		}
 	}
 
 	if name == "" {
-		// Use filename as name
+		// Use filename (without extension) as fallback.
 		base := filepath.Base(path)
-		name = "/" + strings.TrimSuffix(base, filepath.Ext(base))
+		// For SKILL.md inside a directory, use the parent directory name.
+		if strings.EqualFold(base, "SKILL.md") {
+			name = filepath.Base(filepath.Dir(path))
+		} else {
+			name = strings.TrimSuffix(base, filepath.Ext(base))
+		}
 	}
 
-	// Read body
+	// Read body.
 	var body strings.Builder
 	for scanner.Scan() {
 		if body.Len() > 0 {
@@ -116,4 +194,16 @@ func parseSkillFile(path, source string) (Skill, error) {
 		Source:      source,
 		Path:        path,
 	}, nil
+}
+
+// splitYAMLLine parses a "key: value" YAML line, stripping quotes.
+func splitYAMLLine(line string) (key, value string, ok bool) {
+	idx := strings.Index(line, ":")
+	if idx < 0 {
+		return "", "", false
+	}
+	key = strings.TrimSpace(line[:idx])
+	value = strings.TrimSpace(line[idx+1:])
+	value = strings.Trim(value, `"'`)
+	return key, value, key != ""
 }

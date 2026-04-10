@@ -19,7 +19,7 @@ func TestParseSkillFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parseSkillFile: %v", err)
 	}
-	if skill.Name != "/commit" {
+	if canonicalName(skill.Name) != "commit" {
 		t.Fatalf("unexpected name: %q", skill.Name)
 	}
 	if skill.Description != "Create a git commit" {
@@ -47,8 +47,8 @@ func TestParseSkillFile_NoName(t *testing.T) {
 		t.Fatalf("parseSkillFile: %v", err)
 	}
 	// Should fall back to filename.
-	if skill.Name != "/review" {
-		t.Fatalf("expected /review, got %q", skill.Name)
+	if canonicalName(skill.Name) != "review" {
+		t.Fatalf("expected review, got %q", skill.Name)
 	}
 }
 
@@ -104,13 +104,13 @@ func TestDiscover(t *testing.T) {
 	}
 
 	// Skills should be sorted by name.
-	if skills[0].Name != "/build" || skills[1].Name != "/deploy" {
+	if skills[0].Name != "build" || skills[1].Name != "deploy" {
 		t.Fatalf("unexpected skill order: %v, %v", skills[0].Name, skills[1].Name)
 	}
 
-	// /build should be the user override.
-	if skills[0].Description != "User build override" {
-		t.Fatalf("expected user override for /build, got %q", skills[0].Description)
+	// build should be the project version (project overrides user).
+	if skills[0].Description != "Build project" {
+		t.Fatalf("expected project description for build, got %q", skills[0].Description)
 	}
 }
 
