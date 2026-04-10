@@ -139,10 +139,12 @@ func (c *Client) Chat(ctx context.Context, req providers.ChatRequest) (providers
 		if len(snippet) > 400 {
 			snippet = snippet[:400]
 		}
+		body := fmt.Sprintf("%s: %s", httpResp.Status, snippet)
 		return providers.ChatResponse{}, &providers.HTTPError{
-			StatusCode: httpResp.StatusCode,
-			Body:       fmt.Sprintf("%s: %s", httpResp.Status, snippet),
-			RetryAfter: providers.ParseRetryAfter(httpResp),
+			StatusCode:      httpResp.StatusCode,
+			Body:            body,
+			RetryAfter:      providers.ParseRetryAfter(httpResp),
+			ContextOverflow: providers.DetectContextOverflow(body),
 		}
 	}
 
@@ -176,8 +178,13 @@ func (c *Client) Chat(ctx context.Context, req providers.ChatRequest) (providers
 	}
 
 	resp := providers.ChatResponse{
-		Content:   strings.TrimSpace(strings.Join(textParts, "\n")),
-		ToolCalls: toolCalls,
+		Content:    strings.TrimSpace(strings.Join(textParts, "\n")),
+		ToolCalls:  toolCalls,
+		StopReason: strings.ToLower(parsed.StopReason),
+	}
+	// Anthropic signals output truncation with stop_reason="max_tokens".
+	if resp.StopReason == "max_tokens" {
+		resp.Truncated = true
 	}
 	if parsed.Usage != nil {
 		resp.Usage = &providers.TokenUsage{
@@ -278,10 +285,12 @@ func (c *Client) doMessagesRequest(
 		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 			snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 400))
 			_ = resp.Body.Close()
+			body := fmt.Sprintf("%s: %s", resp.Status, string(snippet))
 			return &providers.HTTPError{
-				StatusCode: resp.StatusCode,
-				Body:       fmt.Sprintf("%s: %s", resp.Status, string(snippet)),
-				RetryAfter: providers.ParseRetryAfter(resp),
+				StatusCode:      resp.StatusCode,
+				Body:            body,
+				RetryAfter:      providers.ParseRetryAfter(resp),
+				ContextOverflow: providers.DetectContextOverflow(body),
 			}
 		}
 
@@ -549,8 +558,9 @@ type anthropicTool struct {
 }
 
 type anthropicResponse struct {
-	Content []anthropicBlock `json:"content"`
-	Usage   *struct {
+	Content    []anthropicBlock `json:"content"`
+	StopReason string           `json:"stop_reason,omitempty"`
+	Usage      *struct {
 		InputTokens  int `json:"input_tokens"`
 		OutputTokens int `json:"output_tokens"`
 	} `json:"usage,omitempty"`

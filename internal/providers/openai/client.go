@@ -117,10 +117,12 @@ func (c *Client) Chat(ctx context.Context, req providers.ChatRequest) (providers
 		if len(snippet) > 400 {
 			snippet = snippet[:400]
 		}
+		body := fmt.Sprintf("%s: %s", httpResp.Status, snippet)
 		return providers.ChatResponse{}, &providers.HTTPError{
-			StatusCode: httpResp.StatusCode,
-			Body:       fmt.Sprintf("%s: %s", httpResp.Status, snippet),
-			RetryAfter: providers.ParseRetryAfter(httpResp),
+			StatusCode:      httpResp.StatusCode,
+			Body:            body,
+			RetryAfter:      providers.ParseRetryAfter(httpResp),
+			ContextOverflow: providers.DetectContextOverflow(body),
 		}
 	}
 
@@ -132,7 +134,8 @@ func (c *Client) Chat(ctx context.Context, req providers.ChatRequest) (providers
 		return providers.ChatResponse{}, errors.New("provider returned no choices")
 	}
 
-	message := parsed.Choices[0].Message
+	choice := parsed.Choices[0]
+	message := choice.Message
 	content, err := parseContent(message.Content)
 	if err != nil {
 		return providers.ChatResponse{}, err
@@ -148,8 +151,13 @@ func (c *Client) Chat(ctx context.Context, req providers.ChatRequest) (providers
 	}
 
 	resp := providers.ChatResponse{
-		Content:   content,
-		ToolCalls: calls,
+		Content:    content,
+		ToolCalls:  calls,
+		StopReason: strings.ToLower(choice.FinishReason),
+	}
+	// OpenAI signals output truncation with finish_reason="length".
+	if resp.StopReason == "length" {
+		resp.Truncated = true
 	}
 	if parsed.Usage != nil {
 		resp.Usage = &providers.TokenUsage{
@@ -238,10 +246,12 @@ func (c *Client) doChatCompletionsRequest(
 		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 			snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 400))
 			_ = resp.Body.Close()
+			body := fmt.Sprintf("%s: %s", resp.Status, string(snippet))
 			return &providers.HTTPError{
-				StatusCode: resp.StatusCode,
-				Body:       fmt.Sprintf("%s: %s", resp.Status, string(snippet)),
-				RetryAfter: providers.ParseRetryAfter(resp),
+				StatusCode:      resp.StatusCode,
+				Body:            body,
+				RetryAfter:      providers.ParseRetryAfter(resp),
+				ContextOverflow: providers.DetectContextOverflow(body),
 			}
 		}
 
@@ -519,7 +529,8 @@ type chatCompletionsResponse struct {
 }
 
 type chatChoice struct {
-	Message chatResponseMessage `json:"message"`
+	Message      chatResponseMessage `json:"message"`
+	FinishReason string              `json:"finish_reason,omitempty"`
 }
 
 type chatResponseMessage struct {
