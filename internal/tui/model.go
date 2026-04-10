@@ -626,13 +626,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				n.Snapshot.Type, n.Snapshot.ID, n.Snapshot.Description))
 		case subagent.StatusCompleted, subagent.StatusFailed, subagent.StatusCancelled:
 			icon := "✓"
+			suffix := ""
 			if n.Status == subagent.StatusFailed {
 				icon = "✗"
+				// Surface the actual error so the user can tell apart
+				// auth / rate limit / context overflow / fatal at a
+				// glance instead of guessing. The full error string is
+				// also in the <worker-result> XML the orchestrator sees.
+				if n.Snapshot.Error != nil {
+					class := coordinator.ClassifyError(n.Snapshot.Error)
+					suffix = fmt.Sprintf(" — [%s] %s", class,
+						trimWorkerErrMsg(n.Snapshot.Error.Error(), 240))
+				}
 			} else if n.Status == subagent.StatusCancelled {
 				icon = "⊘"
 			}
-			m.appendEntry("system", fmt.Sprintf("%s %s %s: %s",
-				icon, n.Snapshot.Type, n.Status, n.Snapshot.Description))
+			m.appendEntry("system", fmt.Sprintf("%s %s %s: %s%s",
+				icon, n.Snapshot.Type, n.Status, n.Snapshot.Description, suffix))
 			// Inject the worker-result XML into the orchestrator's
 			// next API request as a user-role message.
 			xml := coordinator.FormatWorkerResult(n.Snapshot)
@@ -2132,6 +2142,18 @@ func (m Model) View() string {
 	parts = append(parts, sep, inputBox)
 
 	return strings.Join(parts, "\n")
+}
+
+// trimWorkerErrMsg flattens newlines in a worker error message and
+// caps its length so the TUI failure line stays single-row.
+func trimWorkerErrMsg(s string, max int) string {
+	s = strings.ReplaceAll(s, "\n", " ")
+	s = strings.ReplaceAll(s, "\r", " ")
+	s = strings.Join(strings.Fields(s), " ")
+	if len(s) <= max {
+		return s
+	}
+	return s[:max] + "…"
 }
 
 func trimToWidth(value string, width int) string {

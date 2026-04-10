@@ -9,6 +9,7 @@ import (
 
 	"github.com/blueberrycongee/wuu/internal/agent"
 	"github.com/blueberrycongee/wuu/internal/providers"
+	"github.com/blueberrycongee/wuu/internal/subagent"
 )
 
 // fakeClient returns a canned response on every Chat call.
@@ -378,6 +379,32 @@ func TestFormatWorkerResult(t *testing.T) {
 	}
 	if !contains(xml, "completed") {
 		t.Fatalf("status missing: %s", xml)
+	}
+}
+
+func TestFormatWorkerResult_IncludesErrorClass(t *testing.T) {
+	snap := subagentSnapshotWithError(&providers.HTTPError{
+		StatusCode: 429,
+		Body:       "rate limited",
+	})
+	xml := FormatWorkerResult(snap)
+	if !contains(xml, `<error class="retryable"`) {
+		t.Fatalf("expected retryable error class, got: %s", xml)
+	}
+	if !contains(xml, "rate limited") {
+		t.Fatalf("expected error body in XML, got: %s", xml)
+	}
+}
+
+// subagentSnapshotWithError builds a minimal failed-worker snapshot
+// for FormatWorkerResult tests without actually spawning anything.
+func subagentSnapshotWithError(err error) subagent.SubAgentSnapshot {
+	return subagent.SubAgentSnapshot{
+		ID:          "explorer-test",
+		Type:        "explorer",
+		Description: "test",
+		Status:      subagent.StatusFailed,
+		Error:       err,
 	}
 }
 

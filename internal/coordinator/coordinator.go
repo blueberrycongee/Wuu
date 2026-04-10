@@ -369,6 +369,14 @@ When in doubt: start with the type default. Override only when you have a specif
 
 When a sub-agent completes, you'll see a <worker-result> message in your context with the agent_id, status, and the worker's final summary. Read it carefully and decide the next step.
 
+When a sub-agent fails, the message contains an <error class="..."> tag. Use the class to decide whether to retry:
+
+- ` + "`retryable`" + ` — transient (rate limit, server error, network blip). Re-spawning the SAME prompt has a real chance of succeeding. Wait briefly, then try again.
+- ` + "`auth`" + ` — credentials rejected. DO NOT retry. Report to the user that their API key/config needs fixing.
+- ` + "`context_overflow`" + ` — the worker's prompt was too big even after auto-compact. Re-spawning won't help; split the task into smaller pieces.
+- ` + "`cancelled`" + ` — the worker was stopped on purpose (Ctrl+C). Don't auto-retry.
+- ` + "`fatal`" + ` — unknown / non-recoverable. Report the error to the user and stop.
+
 `
 }
 
@@ -395,7 +403,8 @@ func FormatWorkerResult(snap subagent.SubAgentSnapshot) string {
 		fmt.Fprintf(&b, "<duration_ms>%d</duration_ms>\n", ms)
 	}
 	if snap.Error != nil {
-		fmt.Fprintf(&b, "<error>%s</error>\n", snap.Error.Error())
+		class := ClassifyError(snap.Error)
+		fmt.Fprintf(&b, "<error class=%q>%s</error>\n", class, snap.Error.Error())
 	}
 	if snap.Result != "" {
 		b.WriteString("<result>\n")
