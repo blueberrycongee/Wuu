@@ -20,6 +20,7 @@ import (
 	"github.com/blueberrycongee/wuu/internal/providerfactory"
 	"github.com/blueberrycongee/wuu/internal/providers"
 	"github.com/blueberrycongee/wuu/internal/session"
+	"github.com/blueberrycongee/wuu/internal/skills"
 	"github.com/blueberrycongee/wuu/internal/tools"
 	"github.com/blueberrycongee/wuu/internal/tui"
 	"github.com/blueberrycongee/wuu/internal/version"
@@ -308,20 +309,34 @@ func runTUI(args []string) error {
 	hookRegistry := hooks.NewRegistry(hookEntries)
 	hookDispatcher := hooks.NewDispatcher(hookRegistry)
 
+	// Discover skills from project and user dirs.
+	projectSkillsDir := filepath.Join(rootDir, ".claude", "skills")
+	userSkillsDir := ""
+	if home := os.Getenv("HOME"); home != "" {
+		userSkillsDir = filepath.Join(home, ".claude", "skills")
+	}
+	discoveredSkills := skills.Discover(projectSkillsDir, userSkillsDir)
+
 	var toolExecutor agent.ToolExecutor
 	if !*noTools {
 		kit, newErr := tools.New(rootDir)
 		if newErr != nil {
 			return newErr
 		}
+		kit.SetSkills(discoveredSkills)
 		toolExecutor = hooks.NewHookedExecutor(kit, hookDispatcher, "", rootDir)
+	}
+
+	systemPromptText := cfg.Agent.SystemPrompt
+	if len(discoveredSkills) > 0 {
+		systemPromptText = appendSkillsToPrompt(systemPromptText, discoveredSkills)
 	}
 
 	streamRunner := &agent.StreamRunner{
 		Client:       client,
 		Tools:        toolExecutor,
 		Model:        providerCfg.Model,
-		SystemPrompt: cfg.Agent.SystemPrompt,
+		SystemPrompt: systemPromptText,
 		MaxSteps:     cfg.Agent.MaxSteps,
 		Temperature:  cfg.Agent.Temperature,
 	}
@@ -395,6 +410,28 @@ func resolveRuntimePath(rootDir, input string) (string, error) {
 		return value, nil
 	}
 	return filepath.Join(rootDir, value), nil
+}
+
+// appendSkillsToPrompt adds a "Skills" section listing available skills with
+// names, descriptions, and instructions for the model to invoke them via the
+// load_skill tool.
+func appendSkillsToPrompt(base string, sks []skills.Skill) string {
+	var b strings.Builder
+	b.WriteString(strings.TrimRight(base, "\n"))
+	if b.Len() > 0 {
+		b.WriteString("\n\n")
+	}
+	b.WriteString("## Available Skills\n\n")
+	b.WriteString("The following skills are available for you to use. Each skill is a reusable instruction that encodes project-specific or user-specific conventions. ")
+	b.WriteString("When a user request matches a skill's description, call the `load_skill` tool with the skill's name to retrieve its full body, then follow those instructions.\n\n")
+	for _, s := range sks {
+		desc := s.Description
+		if desc == "" {
+			desc = "(no description)"
+		}
+		fmt.Fprintf(&b, "- **%s** (%s) — %s\n", s.Name, s.Source, desc)
+	}
+	return b.String()
 }
 
 func resolvePrompt(args []string) (string, error) {
