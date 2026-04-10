@@ -393,6 +393,7 @@ func runTUI(args []string) error {
 		StreamRunner:     streamRunner,
 		HookDispatcher:   hookDispatcher,
 		Skills:           discoveredSkills,
+		Memory:           memoryFiles,
 	}
 	if toolkit != nil {
 		cfgUI.OnSessionID = toolkit.SetSessionID

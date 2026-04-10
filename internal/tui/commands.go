@@ -53,6 +53,7 @@ func init() {
 		{Name: "copy", Description: "Copy last output to clipboard", Type: cmdTypeLocal, Execute: cmdCopy},
 		{Name: "worktree", Description: "Create/switch git worktree", ArgHint: "<name>", InlineArgs: true, Type: cmdTypeLocal, Execute: cmdWorktree},
 		{Name: "skills", Description: "List available skills", Type: cmdTypeLocal, Execute: cmdSkills},
+		{Name: "memory", Description: "Show loaded memory files (CLAUDE.md / AGENTS.md)", Type: cmdTypeLocal, Execute: cmdMemory},
 		{Name: "insight", Description: "Session stats and diagnostics", Type: cmdTypeLocal, Execute: cmdInsight},
 		{Name: "exit", Aliases: []string{"quit"}, Description: "Exit wuu", Type: cmdTypeLocal, Execute: cmdExit},
 	}
@@ -393,6 +394,26 @@ func cmdSkills(_ string, m *Model) string {
 	}
 	b.WriteString("\nThe model can invoke any of these via the load_skill tool.")
 	return b.String()
+}
+
+func cmdMemory(_ string, m *Model) string {
+	if len(m.memoryFiles) == 0 {
+		return "memory: no CLAUDE.md or AGENTS.md found in project hierarchy or ~/.claude/"
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "memory (%d file%s loaded):\n", len(m.memoryFiles), pluralS(len(m.memoryFiles)))
+	for _, f := range m.memoryFiles {
+		fmt.Fprintf(&b, "  • [%s] %s  (%d bytes)\n", f.Source, f.Path, len(f.Content))
+	}
+	b.WriteString("\nThese files are injected into the system prompt at session start.")
+	return b.String()
+}
+
+func pluralS(n int) string {
+	if n == 1 {
+		return ""
+	}
+	return "s"
 }
 
 func cmdInsight(_ string, m *Model) string {

@@ -18,6 +18,7 @@ import (
 	"github.com/blueberrycongee/wuu/internal/hooks"
 	"github.com/blueberrycongee/wuu/internal/insight"
 	"github.com/blueberrycongee/wuu/internal/markdown"
+	"github.com/blueberrycongee/wuu/internal/memory"
 	"github.com/blueberrycongee/wuu/internal/providers"
 	"github.com/blueberrycongee/wuu/internal/session"
 	"github.com/blueberrycongee/wuu/internal/skills"
@@ -123,6 +124,7 @@ type Model struct {
 	streamCh       chan providers.StreamEvent
 	onSessionID    func(string)
 	skills         []skills.Skill
+	memoryFiles    []memory.File
 
 	maxContextTokens int
 	requestTimeout   time.Duration
@@ -243,6 +245,7 @@ func NewModel(cfg Config) Model {
 		hookDispatcher:    cfg.HookDispatcher,
 		onSessionID:       cfg.OnSessionID,
 		skills:            cfg.Skills,
+		memoryFiles:       cfg.Memory,
 		maxContextTokens:  cfg.MaxContextTokens,
 		requestTimeout:    cfg.RequestTimeout,
 		viewport:          vp,
