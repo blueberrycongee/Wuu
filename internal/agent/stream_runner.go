@@ -69,10 +69,11 @@ func (r *StreamRunner) RunWithCallback(ctx context.Context, history []providers.
 	}
 
 	cfg := LoopConfig{
-		Tools:       r.Tools,
-		Model:       r.Model,
-		Temperature: r.Temperature,
-		MaxSteps:    r.MaxSteps,
+		Tools:            r.Tools,
+		Model:            r.Model,
+		Temperature:      r.Temperature,
+		MaxSteps:         r.MaxSteps,
+		MaxContextTokens: providers.ContextWindowFor(r.Model),
 		Compact: func(ctx context.Context, messages []providers.ChatMessage) ([]providers.ChatMessage, error) {
 			return compact.Compact(ctx, messages, r.Client, r.Model)
 		},

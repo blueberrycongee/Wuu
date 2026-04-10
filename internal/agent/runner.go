@@ -66,11 +66,12 @@ func (r *Runner) RunWithUsage(ctx context.Context, prompt string, onUsage func(i
 	history = append(history, providers.ChatMessage{Role: "user", Content: prompt})
 
 	cfg := LoopConfig{
-		Tools:       r.Tools,
-		Model:       r.Model,
-		Temperature: r.Temperature,
-		MaxSteps:    r.MaxSteps,
-		OnUsage:     onUsage,
+		Tools:            r.Tools,
+		Model:            r.Model,
+		Temperature:      r.Temperature,
+		MaxSteps:         r.MaxSteps,
+		MaxContextTokens: providers.ContextWindowFor(r.Model),
+		OnUsage:          onUsage,
 		Compact: func(ctx context.Context, messages []providers.ChatMessage) ([]providers.ChatMessage, error) {
 			return compact.Compact(ctx, messages, r.Client, r.Model)
 		},

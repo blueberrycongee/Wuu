@@ -67,11 +67,23 @@ func RunToolLoop(
 		// finally returns a non-truncated response.
 		truncatedBuf         strings.Builder
 		truncationRecoveries int
-		// Auto-compact runs at most once per Run; if a single
-		// compaction isn't enough, surfacing the error is more honest
-		// than silently looping.
+		// Reactive auto-compact (overflow recovery) runs at most once
+		// per Run; if a single compaction isn't enough, surfacing the
+		// error is more honest than silently looping. Proactive
+		// compact is allowed to run multiple times per Run since each
+		// pass shrinks the conversation and the next API call's usage
+		// gives us a fresh ground truth.
 		overflowCompacted bool
+		// Tracks current context fill so we can decide whether to
+		// proactively compact before the next round. Uses
+		// response.usage as ground truth + delta estimation for
+		// messages added since the last successful response.
+		usage = NewUsageTracker()
 	)
+	// Seed the tracker with whatever history the caller passed in so
+	// the first compact decision isn't biased toward "fresh session".
+	usage.RecordPendingMessages(history)
+	threshold := proactiveCompactThreshold(cfg)
 
 	for stepIdx := 0; cfg.MaxSteps == 0 || stepIdx < cfg.MaxSteps; stepIdx++ {
 		req := providers.ChatRequest{
@@ -88,11 +100,23 @@ func RunToolLoop(
 			// Context window exceeded — try a one-shot compaction of
 			// older history and re-issue. Provider-agnostic; the
 			// CompactFn carries whatever client/model knowledge it
-			// needs.
+			// needs. This is the reactive backstop for the case
+			// where our proactive estimate undercounted.
 			if cfg.Compact != nil && providers.IsContextOverflow(err) && !overflowCompacted {
 				overflowCompacted = true // gate first; never retry twice
+				before := usage.EstimateCurrent()
+				msgsBefore := len(messages)
 				if compacted, cerr := cfg.Compact(ctx, messages); cerr == nil {
 					messages = compacted
+					usage.Reset()
+					if cfg.OnCompact != nil {
+						cfg.OnCompact(CompactInfo{
+							Reason:         CompactReasonOverflow,
+							TokensBefore:   before,
+							MessagesBefore: msgsBefore,
+							MessagesAfter:  len(messages),
+						})
+					}
 					continue
 				}
 			}
@@ -109,6 +133,9 @@ func RunToolLoop(
 			if cfg.OnUsage != nil {
 				cfg.OnUsage(result.Usage.InputTokens, result.Usage.OutputTokens)
 			}
+			// Fold the precise per-call usage into the tracker. This
+			// collapses any pending estimate into ground truth.
+			usage.RecordResponse(result.Usage)
 		}
 
 		// Output-token truncation recovery: model hit max_tokens
@@ -174,12 +201,39 @@ func RunToolLoop(
 			if cfg.OnToolResult != nil {
 				cfg.OnToolResult(call, toolResult)
 			}
-			messages = append(messages, providers.ChatMessage{
+			toolMsg := providers.ChatMessage{
 				Role:       "tool",
 				Name:       call.Name,
 				ToolCallID: call.ID,
 				Content:    toolResult,
-			})
+			}
+			messages = append(messages, toolMsg)
+			// Tool results haven't been sent to the provider yet, so
+			// add a delta-estimate to the tracker.
+			usage.RecordPendingMessages([]providers.ChatMessage{toolMsg})
+		}
+
+		// Proactive auto-compact. Check after each round (post-tool-
+		// execution) so the next step starts with a freshly compacted
+		// history if we're approaching the model's context window.
+		// The check honors threshold > 0, which is gated by the
+		// caller passing a non-zero MaxContextTokens.
+		if cfg.Compact != nil && threshold > 0 && usage.EstimateCurrent() >= threshold {
+			before := usage.EstimateCurrent()
+			msgsBefore := len(messages)
+			if compacted, cerr := cfg.Compact(ctx, messages); cerr == nil && len(compacted) < len(messages) {
+				messages = compacted
+				usage.Reset()
+				usage.RecordPendingMessages(messages)
+				if cfg.OnCompact != nil {
+					cfg.OnCompact(CompactInfo{
+						Reason:         CompactReasonProactive,
+						TokensBefore:   before,
+						MessagesBefore: msgsBefore,
+						MessagesAfter:  len(messages),
+					})
+				}
+			}
 		}
 	}
 
@@ -188,6 +242,20 @@ func RunToolLoop(
 		InputTokens:  totalIn,
 		OutputTokens: totalOut,
 	}, fmt.Errorf("max steps exceeded (%d)", cfg.MaxSteps)
+}
+
+// proactiveCompactThreshold returns the absolute token count at which
+// the loop should run a proactive compact pass, or 0 if proactive
+// compact is disabled (caller didn't supply a window).
+func proactiveCompactThreshold(cfg LoopConfig) int {
+	if cfg.MaxContextTokens <= 0 {
+		return 0
+	}
+	pct := cfg.CompactThresholdPct
+	if pct <= 0 || pct >= 1 {
+		pct = defaultCompactThresholdPct
+	}
+	return int(float64(cfg.MaxContextTokens) * pct)
 }
 
 // copyMessages returns an independent copy of msgs so callers can

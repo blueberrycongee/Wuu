@@ -268,6 +268,171 @@ func TestRunToolLoop_OnUsageReceivesPerCall(t *testing.T) {
 	}
 }
 
+func TestRunToolLoop_ProactiveCompactTriggers(t *testing.T) {
+	// First step reports a usage that exceeds the threshold (90% of
+	// 1000 = 900). The loop should call cfg.Compact and the second
+	// step should run on the compacted history.
+	step := &fakeStep{results: []StepResult{
+		{
+			ToolCalls: []providers.ToolCall{{ID: "c1", Name: "t", Arguments: `{}`}},
+			Usage:     &providers.TokenUsage{InputTokens: 950, OutputTokens: 0},
+		},
+		{Content: "compacted answer"},
+	}}
+	tools := &fakeLoopTools{defs: []providers.ToolDefinition{{Name: "t"}}}
+
+	compactCalled := 0
+	compactFn := func(_ context.Context, msgs []providers.ChatMessage) ([]providers.ChatMessage, error) {
+		compactCalled++
+		// Return strictly fewer messages than input to satisfy the
+		// "compact actually shrunk the history" guard.
+		return []providers.ChatMessage{{Role: "user", Content: "summary"}}, nil
+	}
+	var compactInfos []CompactInfo
+	cfg := LoopConfig{
+		Model:            "m",
+		Tools:            tools,
+		Compact:          compactFn,
+		MaxContextTokens: 1000,
+		// Default threshold = 0.9 → 900 tokens.
+		OnCompact: func(info CompactInfo) { compactInfos = append(compactInfos, info) },
+	}
+
+	res, err := RunToolLoop(context.Background(), []providers.ChatMessage{userMsg("hi")}, cfg, step)
+	if err != nil {
+		t.Fatalf("loop error: %v", err)
+	}
+	if compactCalled != 1 {
+		t.Fatalf("expected 1 proactive compact, got %d", compactCalled)
+	}
+	if len(compactInfos) != 1 {
+		t.Fatalf("expected 1 OnCompact callback, got %d", len(compactInfos))
+	}
+	if compactInfos[0].Reason != CompactReasonProactive {
+		t.Fatalf("expected proactive reason, got %q", compactInfos[0].Reason)
+	}
+	if compactInfos[0].MessagesAfter >= compactInfos[0].MessagesBefore {
+		t.Fatalf("expected MessagesAfter < MessagesBefore, got %+v", compactInfos[0])
+	}
+	if res.Content != "compacted answer" {
+		t.Fatalf("expected compacted answer, got %q", res.Content)
+	}
+}
+
+func TestRunToolLoop_ProactiveCompactDisabledWhenNoWindow(t *testing.T) {
+	// MaxContextTokens=0 disables proactive compact entirely; even a
+	// huge usage doesn't trigger.
+	step := &fakeStep{results: []StepResult{
+		{Content: "done", Usage: &providers.TokenUsage{InputTokens: 1_000_000, OutputTokens: 0}},
+	}}
+	compactCalled := 0
+	cfg := LoopConfig{
+		Model: "m",
+		Compact: func(_ context.Context, m []providers.ChatMessage) ([]providers.ChatMessage, error) {
+			compactCalled++
+			return m, nil
+		},
+		// MaxContextTokens left zero
+	}
+	_, err := RunToolLoop(context.Background(), []providers.ChatMessage{userMsg("hi")}, cfg, step)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if compactCalled != 0 {
+		t.Fatalf("proactive compact should be disabled, but ran %d times", compactCalled)
+	}
+}
+
+func TestRunToolLoop_ProactiveCompactRespectsCustomThreshold(t *testing.T) {
+	// 50% of 1000 = 500. First step reports 600 → should compact.
+	step := &fakeStep{results: []StepResult{
+		{
+			ToolCalls: []providers.ToolCall{{ID: "c", Name: "t", Arguments: `{}`}},
+			Usage:     &providers.TokenUsage{InputTokens: 600},
+		},
+		{Content: "ok"},
+	}}
+	compactCalled := 0
+	cfg := LoopConfig{
+		Model: "m",
+		Tools: &fakeLoopTools{defs: []providers.ToolDefinition{{Name: "t"}}},
+		Compact: func(_ context.Context, m []providers.ChatMessage) ([]providers.ChatMessage, error) {
+			compactCalled++
+			return []providers.ChatMessage{{Role: "user", Content: "sum"}}, nil
+		},
+		MaxContextTokens:    1000,
+		CompactThresholdPct: 0.5,
+	}
+	_, err := RunToolLoop(context.Background(), []providers.ChatMessage{userMsg("hi")}, cfg, step)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if compactCalled != 1 {
+		t.Fatalf("expected proactive compact at 50%% threshold, got %d", compactCalled)
+	}
+}
+
+func TestRunToolLoop_ProactiveCompactDoesNotLoopOnNoOpCompact(t *testing.T) {
+	// If Compact returns the same number of messages (no shrinkage),
+	// the loop must NOT trigger another proactive compact next round.
+	// Otherwise we'd thrash forever.
+	step := &fakeStep{results: []StepResult{
+		{
+			ToolCalls: []providers.ToolCall{{ID: "c1", Name: "t", Arguments: `{}`}},
+			Usage:     &providers.TokenUsage{InputTokens: 950},
+		},
+		{
+			ToolCalls: []providers.ToolCall{{ID: "c2", Name: "t", Arguments: `{}`}},
+			Usage:     &providers.TokenUsage{InputTokens: 950},
+		},
+		{Content: "done"},
+	}}
+	compactCalled := 0
+	cfg := LoopConfig{
+		Model: "m",
+		Tools: &fakeLoopTools{defs: []providers.ToolDefinition{{Name: "t"}}},
+		Compact: func(_ context.Context, m []providers.ChatMessage) ([]providers.ChatMessage, error) {
+			compactCalled++
+			return m, nil // no-op: same length
+		},
+		MaxContextTokens: 1000,
+	}
+	_, err := RunToolLoop(context.Background(), []providers.ChatMessage{userMsg("hi")}, cfg, step)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Should be called each round it's eligible, but the no-op result
+	// is rejected — no infinite loop.
+	if compactCalled < 1 {
+		t.Fatalf("expected at least one compact attempt, got %d", compactCalled)
+	}
+}
+
+func TestRunToolLoop_OverflowCompactFiresOnCompactCallback(t *testing.T) {
+	// Reactive overflow should also call the OnCompact callback
+	// (with reason=overflow).
+	overflow := &providers.HTTPError{StatusCode: 400, Body: "context_length_exceeded", ContextOverflow: true}
+	step := &fakeStep{
+		results: []StepResult{{}, {Content: "ok"}},
+		errs:    []error{overflow, nil},
+	}
+	var infos []CompactInfo
+	cfg := LoopConfig{
+		Model: "m",
+		Compact: func(_ context.Context, m []providers.ChatMessage) ([]providers.ChatMessage, error) {
+			return m[len(m)-1:], nil
+		},
+		OnCompact: func(info CompactInfo) { infos = append(infos, info) },
+	}
+	_, err := RunToolLoop(context.Background(), []providers.ChatMessage{userMsg("big")}, cfg, step)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(infos) != 1 || infos[0].Reason != CompactReasonOverflow {
+		t.Fatalf("expected one overflow OnCompact, got %+v", infos)
+	}
+}
+
 func TestRunToolLoop_EmptyAnswerIsError(t *testing.T) {
 	step := &fakeStep{results: []StepResult{{Content: "  "}}}
 	_, err := RunToolLoop(context.Background(), []providers.ChatMessage{userMsg("hi")}, LoopConfig{Model: "m"}, step)
