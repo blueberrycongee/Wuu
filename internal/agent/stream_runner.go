@@ -30,6 +30,13 @@ type StreamRunner struct {
 	Temperature  float64
 	OnEvent      StreamCallback
 
+	// OnUsage, when non-nil, is invoked once per LLM round-trip with
+	// the per-call token counts reported by the provider. This mirrors
+	// the field of the same name on the non-streaming Runner so that
+	// callers driving long-lived background runs (e.g. sub-agents) can
+	// surface live token accumulation while the run is still going.
+	OnUsage func(input, output int)
+
 	// ContextWindowOverride lets the caller pin a specific context
 	// window for this model instead of consulting the built-in
 	// registry. Use it when a user has configured an unknown or
@@ -92,6 +99,7 @@ func (r *StreamRunner) RunWithCallback(ctx context.Context, history []providers.
 		Temperature:      r.Temperature,
 		MaxSteps:         r.MaxSteps,
 		MaxContextTokens: maxCtx,
+		OnUsage:          r.OnUsage,
 		Compact: func(ctx context.Context, messages []providers.ChatMessage) ([]providers.ChatMessage, error) {
 			return compact.Compact(ctx, messages, r.Client, r.Model)
 		},
