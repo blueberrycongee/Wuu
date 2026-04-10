@@ -5,6 +5,7 @@ import (
 	"errors"
 	"math"
 	"math/rand"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -139,6 +140,13 @@ func IsContextWindowError(err error) bool {
 func WithRetry(ctx context.Context, cfg RetryConfig, fn func() error) error {
 	var lastErr error
 	for attempt := 0; attempt <= cfg.MaxRetries; attempt++ {
+		// Bail early if the caller's context is already done.
+		if ctx.Err() != nil {
+			if lastErr != nil {
+				return lastErr
+			}
+			return ctx.Err()
+		}
 		lastErr = fn()
 		if lastErr == nil {
 			return nil
@@ -184,10 +192,24 @@ func isNetworkError(err error) bool {
 	if err == nil {
 		return false
 	}
+	// Type-based checks first — reliable across Go versions.
+	if errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+	var netErr net.Error
+	if errors.As(err, &netErr) {
+		return true // covers timeouts, DNS, connection errors
+	}
+	var opErr *net.OpError
+	if errors.As(err, &opErr) {
+		return true
+	}
+	// String fallback for wrapped errors that lose type info.
 	msg := strings.ToLower(err.Error())
 	return strings.Contains(msg, "connection refused") ||
 		strings.Contains(msg, "connection reset") ||
 		strings.Contains(msg, "no such host") ||
+		strings.Contains(msg, "deadline exceeded") ||
 		strings.Contains(msg, "timeout") ||
 		strings.Contains(msg, "eof")
 }
