@@ -85,6 +85,61 @@ func TestFilterToolsForWorker_Worker(t *testing.T) {
 	}
 }
 
+func TestWorkerType_DefaultIsolation(t *testing.T) {
+	cases := map[string]IsolationMode{
+		"explorer": IsolationInplace,
+		"planner":  IsolationInplace,
+		"verifier": IsolationInplace,
+		"worker":   IsolationWorktree,
+	}
+	for name, want := range cases {
+		wt, err := LookupWorkerType(name)
+		if err != nil {
+			t.Fatalf("LookupWorkerType(%q): %v", name, err)
+		}
+		if wt.DefaultIsolation != want {
+			t.Errorf("%s: want default isolation %q, got %q", name, want, wt.DefaultIsolation)
+		}
+	}
+}
+
+func TestNormalizeIsolation(t *testing.T) {
+	worker, _ := LookupWorkerType("worker")
+	explorer, _ := LookupWorkerType("explorer")
+
+	cases := []struct {
+		name    string
+		raw     string
+		wt      WorkerType
+		want    IsolationMode
+		wantErr bool
+	}{
+		{"empty falls back to type default (worker)", "", worker, IsolationWorktree, false},
+		{"empty falls back to type default (explorer)", "", explorer, IsolationInplace, false},
+		{"explicit inplace", "inplace", worker, IsolationInplace, false},
+		{"explicit worktree", "worktree", explorer, IsolationWorktree, false},
+		{"case insensitive", "InPlace", worker, IsolationInplace, false},
+		{"unknown rejected", "yolo", worker, "", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := NormalizeIsolation(tc.raw, tc.wt)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("expected error, got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tc.want {
+				t.Fatalf("want %q, got %q", tc.want, got)
+			}
+		})
+	}
+}
+
 func TestFilterToolsForWorker_Verifier(t *testing.T) {
 	wt, _ := LookupWorkerType("verifier")
 	full := []string{

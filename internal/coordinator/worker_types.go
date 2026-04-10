@@ -6,6 +6,22 @@ import (
 	"strings"
 )
 
+// IsolationMode controls whether a worker runs in its own git
+// worktree or shares the parent's working directory.
+type IsolationMode string
+
+const (
+	// IsolationInplace runs the worker directly in the parent repo's
+	// working directory. Cheap (no checkout, no disk hit) and the right
+	// default for read-only worker types like explorer/planner/verifier.
+	IsolationInplace IsolationMode = "inplace"
+	// IsolationWorktree creates a fresh `git worktree add --detach`
+	// rooted at HEAD so the worker can edit files without colliding
+	// with the parent or other concurrent workers. Costs one full
+	// checkout per spawn.
+	IsolationWorktree IsolationMode = "worktree"
+)
+
 // WorkerType describes a worker class: which tools it has, what its
 // system prompt says, and how its output should be structured.
 //
@@ -23,6 +39,11 @@ type WorkerType struct {
 	// OneShot signals that follow-up messages don't make sense for
 	// this worker type — it returns once and is done.
 	OneShot bool
+	// DefaultIsolation is the isolation mode used when the spawn
+	// request doesn't specify one. Read-only types should default to
+	// IsolationInplace; types that write to the workspace should
+	// default to IsolationWorktree.
+	DefaultIsolation IsolationMode
 }
 
 // builtinWorkerTypes is the registry of types known to wuu out of
@@ -34,7 +55,8 @@ var builtinWorkerTypes = map[string]WorkerType{
 		AllowedTools: []string{
 			"read_file", "list_files", "grep", "glob", "web_search", "web_fetch", "load_skill",
 		},
-		OneShot: true,
+		OneShot:          true,
+		DefaultIsolation: IsolationInplace,
 		SystemPrompt: `You are an explorer sub-agent. Your job is to investigate the codebase and answer the orchestrator's question.
 
 CRITICAL RULES:
@@ -58,7 +80,8 @@ Do not include preamble, markdown headers, or code blocks unless they add value.
 		AllowedTools: []string{
 			"read_file", "list_files", "grep", "glob", "web_search", "web_fetch", "load_skill",
 		},
-		OneShot: true,
+		OneShot:          true,
+		DefaultIsolation: IsolationInplace,
 		SystemPrompt: `You are a planner sub-agent. Your job is to design an implementation strategy for a task and report it back to the orchestrator.
 
 CRITICAL RULES:
@@ -84,10 +107,11 @@ How to confirm the change works (test command, manual check, etc.).`,
 	},
 
 	"worker": {
-		Name:         "worker",
-		Description:  "General-purpose implementer. Has the full tool set including read/write/edit/run_shell.",
-		AllowedTools: nil, // nil means "all non-orchestration tools"
-		OneShot:      false,
+		Name:             "worker",
+		Description:      "General-purpose implementer. Has the full tool set including read/write/edit/run_shell.",
+		AllowedTools:     nil, // nil means "all non-orchestration tools"
+		OneShot:          false,
+		DefaultIsolation: IsolationWorktree,
 		SystemPrompt: `You are a worker sub-agent. Your job is to implement the changes the orchestrator described and report what you did.
 
 CRITICAL RULES:
@@ -109,7 +133,8 @@ End your final message with a concise summary including:
 		AllowedTools: []string{
 			"read_file", "list_files", "grep", "glob", "run_shell", "load_skill",
 		},
-		OneShot: false,
+		OneShot:          false,
+		DefaultIsolation: IsolationInplace,
 		SystemPrompt: `You are a verifier sub-agent. Your job is NOT to confirm the implementation works — it's to TRY TO BREAK IT.
 
 CRITICAL RULES:
@@ -141,6 +166,24 @@ VERDICT: PASS
 VERDICT: FAIL
 VERDICT: PARTIAL`,
 	},
+}
+
+// NormalizeIsolation validates and lowercases an isolation mode. An
+// empty input returns the worker type's default. Unknown values are
+// rejected so the model can't sneak through arbitrary strings.
+func NormalizeIsolation(raw string, wt WorkerType) (IsolationMode, error) {
+	v := IsolationMode(strings.TrimSpace(strings.ToLower(raw)))
+	if v == "" {
+		if wt.DefaultIsolation == "" {
+			return IsolationWorktree, nil
+		}
+		return wt.DefaultIsolation, nil
+	}
+	switch v {
+	case IsolationInplace, IsolationWorktree:
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown isolation %q (use %q or %q)", raw, IsolationInplace, IsolationWorktree)
 }
 
 // LookupWorkerType returns the named worker type, or an error if
