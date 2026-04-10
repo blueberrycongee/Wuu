@@ -7,8 +7,20 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/blueberrycongee/wuu/internal/compact"
 	"github.com/blueberrycongee/wuu/internal/providers"
 )
+
+// maxTruncationRecoveries caps how many times the runner will ask the
+// model to keep going after hitting its output token cap. Aligned with
+// Claude Code's MAX_OUTPUT_TOKENS_RECOVERY_LIMIT.
+const maxTruncationRecoveries = 3
+
+// truncationContinuePrompt is sent after the model is cut off by its
+// output token limit. Lifted verbatim from Claude Code's recovery flow
+// — terse and emphatic so the model resumes mid-thought instead of
+// re-introducing the topic.
+const truncationContinuePrompt = "Output token limit hit. Resume directly — no apology, no recap of what you were doing. Pick up mid-thought if that is where the cut happened. Break remaining work into smaller pieces."
 
 // ToolExecutor executes model-requested tool calls.
 type ToolExecutor interface {
@@ -69,6 +81,15 @@ func (r *Runner) RunWithUsage(ctx context.Context, prompt string, onUsage func(i
 	messages = append(messages, providers.ChatMessage{Role: "user", Content: prompt})
 
 	totalIn, totalOut := 0, 0
+	// Accumulates partial assistant text across truncation-recovery
+	// rounds. When the model finally returns a non-truncated response,
+	// we prepend this so the caller sees the full concatenated answer.
+	var truncatedBuf strings.Builder
+	truncationRecoveries := 0
+	// We'll only auto-compact-on-overflow once per run. If a single
+	// compaction isn't enough, surfacing the error is more honest than
+	// silently looping.
+	overflowCompacted := false
 
 	for step := 0; maxSteps == 0 || step < maxSteps; step++ {
 		req := providers.ChatRequest{
@@ -82,6 +103,16 @@ func (r *Runner) RunWithUsage(ctx context.Context, prompt string, onUsage func(i
 
 		resp, err := r.Client.Chat(ctx, req)
 		if err != nil {
+			// Context window exceeded — try a one-shot compaction
+			// of older history and re-issue the same step. This is
+			// the provider-agnostic equivalent of CC's auto-compact.
+			if providers.IsContextOverflow(err) && !overflowCompacted {
+				overflowCompacted = true // gate first; never retry twice
+				if compacted, cerr := compact.Compact(ctx, messages, r.Client, r.Model); cerr == nil {
+					messages = compacted
+					continue
+				}
+			}
 			return RunResult{InputTokens: totalIn, OutputTokens: totalOut}, err
 		}
 		if resp.Usage != nil {
@@ -92,6 +123,25 @@ func (r *Runner) RunWithUsage(ctx context.Context, prompt string, onUsage func(i
 			}
 		}
 
+		// Output-token truncation recovery: model hit max_tokens
+		// (Anthropic) / finish_reason=length (OpenAI) without finishing
+		// its thought. Append the partial text, ask it to keep going,
+		// and loop. Tool-calls take priority — if the model still
+		// requested tools we let the normal tool path handle it.
+		if resp.Truncated && len(resp.ToolCalls) == 0 && truncationRecoveries < maxTruncationRecoveries {
+			truncatedBuf.WriteString(resp.Content)
+			messages = append(messages, providers.ChatMessage{
+				Role:    "assistant",
+				Content: resp.Content,
+			})
+			messages = append(messages, providers.ChatMessage{
+				Role:    "user",
+				Content: truncationContinuePrompt,
+			})
+			truncationRecoveries++
+			continue
+		}
+
 		assistant := providers.ChatMessage{
 			Role:      "assistant",
 			Content:   resp.Content,
@@ -100,10 +150,11 @@ func (r *Runner) RunWithUsage(ctx context.Context, prompt string, onUsage func(i
 		messages = append(messages, assistant)
 
 		if len(resp.ToolCalls) == 0 {
-			if strings.TrimSpace(resp.Content) == "" {
+			finalContent := truncatedBuf.String() + resp.Content
+			if strings.TrimSpace(finalContent) == "" {
 				return RunResult{InputTokens: totalIn, OutputTokens: totalOut}, errors.New("model returned empty answer")
 			}
-			return RunResult{Content: resp.Content, InputTokens: totalIn, OutputTokens: totalOut}, nil
+			return RunResult{Content: finalContent, InputTokens: totalIn, OutputTokens: totalOut}, nil
 		}
 
 		if r.Tools == nil {
