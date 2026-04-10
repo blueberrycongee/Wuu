@@ -3,7 +3,6 @@ package agent
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 
 	"github.com/blueberrycongee/wuu/internal/compact"
@@ -16,7 +15,9 @@ type ToolExecutor interface {
 	Execute(ctx context.Context, call providers.ToolCall) (string, error)
 }
 
-// Runner manages one multi-step coding turn.
+// Runner manages one multi-step coding turn against a non-streaming
+// provider. It is a thin wrapper around RunToolLoop that supplies a
+// chatStep adapter (Step → providers.Client.Chat).
 type Runner struct {
 	Client       providers.Client
 	Tools        ToolExecutor
@@ -56,112 +57,49 @@ func (r *Runner) RunWithUsage(ctx context.Context, prompt string, onUsage func(i
 		return RunResult{}, errors.New("prompt is required")
 	}
 
-	// MaxSteps == 0 means unlimited (no step cap). Aligned with
-	// Claude Code's default behavior — the model decides when to
-	// stop by emitting a final assistant message. Users who want a
-	// runaway safety net can set MaxSteps to a positive number.
-	maxSteps := r.MaxSteps
-
-	messages := []providers.ChatMessage{}
+	// Build the initial conversation: optional system prompt + the
+	// user's request. The shared loop takes it from there.
+	history := make([]providers.ChatMessage, 0, 2)
 	if strings.TrimSpace(r.SystemPrompt) != "" {
-		messages = append(messages, providers.ChatMessage{Role: "system", Content: r.SystemPrompt})
+		history = append(history, providers.ChatMessage{Role: "system", Content: r.SystemPrompt})
 	}
-	messages = append(messages, providers.ChatMessage{Role: "user", Content: prompt})
+	history = append(history, providers.ChatMessage{Role: "user", Content: prompt})
 
-	totalIn, totalOut := 0, 0
-	// Accumulates partial assistant text across truncation-recovery
-	// rounds. When the model finally returns a non-truncated response,
-	// we prepend this so the caller sees the full concatenated answer.
-	var truncatedBuf strings.Builder
-	truncationRecoveries := 0
-	// We'll only auto-compact-on-overflow once per run. If a single
-	// compaction isn't enough, surfacing the error is more honest than
-	// silently looping.
-	overflowCompacted := false
-
-	for step := 0; maxSteps == 0 || step < maxSteps; step++ {
-		req := providers.ChatRequest{
-			Model:       r.Model,
-			Messages:    messages,
-			Temperature: r.Temperature,
-		}
-		if r.Tools != nil {
-			req.Tools = r.Tools.Definitions()
-		}
-
-		resp, err := r.Client.Chat(ctx, req)
-		if err != nil {
-			// Context window exceeded — try a one-shot compaction
-			// of older history and re-issue the same step. This is
-			// the provider-agnostic equivalent of CC's auto-compact.
-			if providers.IsContextOverflow(err) && !overflowCompacted {
-				overflowCompacted = true // gate first; never retry twice
-				if compacted, cerr := compact.Compact(ctx, messages, r.Client, r.Model); cerr == nil {
-					messages = compacted
-					continue
-				}
-			}
-			return RunResult{InputTokens: totalIn, OutputTokens: totalOut}, err
-		}
-		if resp.Usage != nil {
-			totalIn += resp.Usage.InputTokens
-			totalOut += resp.Usage.OutputTokens
-			if onUsage != nil {
-				onUsage(resp.Usage.InputTokens, resp.Usage.OutputTokens)
-			}
-		}
-
-		// Output-token truncation recovery: model hit max_tokens
-		// (Anthropic) / finish_reason=length (OpenAI) without finishing
-		// its thought. Append the partial text, ask it to keep going,
-		// and loop. Tool-calls take priority — if the model still
-		// requested tools we let the normal tool path handle it.
-		if resp.Truncated && len(resp.ToolCalls) == 0 && truncationRecoveries < maxTruncationRecoveries {
-			truncatedBuf.WriteString(resp.Content)
-			messages = append(messages, providers.ChatMessage{
-				Role:    "assistant",
-				Content: resp.Content,
-			})
-			messages = append(messages, providers.ChatMessage{
-				Role:    "user",
-				Content: truncationContinuePrompt,
-			})
-			truncationRecoveries++
-			continue
-		}
-
-		assistant := providers.ChatMessage{
-			Role:      "assistant",
-			Content:   resp.Content,
-			ToolCalls: resp.ToolCalls,
-		}
-		messages = append(messages, assistant)
-
-		if len(resp.ToolCalls) == 0 {
-			finalContent := truncatedBuf.String() + resp.Content
-			if strings.TrimSpace(finalContent) == "" {
-				return RunResult{InputTokens: totalIn, OutputTokens: totalOut}, errors.New("model returned empty answer")
-			}
-			return RunResult{Content: finalContent, InputTokens: totalIn, OutputTokens: totalOut}, nil
-		}
-
-		if r.Tools == nil {
-			return RunResult{InputTokens: totalIn, OutputTokens: totalOut}, errors.New("model requested tools but none are configured")
-		}
-
-		for _, call := range resp.ToolCalls {
-			toolResult, execErr := r.Tools.Execute(ctx, call)
-			if execErr != nil {
-				toolResult = errorJSON(execErr)
-			}
-			messages = append(messages, providers.ChatMessage{
-				Role:       "tool",
-				Name:       call.Name,
-				ToolCallID: call.ID,
-				Content:    toolResult,
-			})
-		}
+	cfg := LoopConfig{
+		Tools:       r.Tools,
+		Model:       r.Model,
+		Temperature: r.Temperature,
+		MaxSteps:    r.MaxSteps,
+		OnUsage:     onUsage,
+		Compact: func(ctx context.Context, messages []providers.ChatMessage) ([]providers.ChatMessage, error) {
+			return compact.Compact(ctx, messages, r.Client, r.Model)
+		},
 	}
 
-	return RunResult{InputTokens: totalIn, OutputTokens: totalOut}, fmt.Errorf("max steps exceeded (%d)", maxSteps)
+	res, err := RunToolLoop(ctx, history, cfg, &chatStep{client: r.Client})
+	return RunResult{
+		Content:      res.Content,
+		InputTokens:  res.InputTokens,
+		OutputTokens: res.OutputTokens,
+	}, err
+}
+
+// chatStep adapts a non-streaming providers.Client to the Step
+// interface. One Execute call = one Chat round-trip.
+type chatStep struct {
+	client providers.Client
+}
+
+func (s *chatStep) Execute(ctx context.Context, req providers.ChatRequest) (StepResult, error) {
+	resp, err := s.client.Chat(ctx, req)
+	if err != nil {
+		return StepResult{}, err
+	}
+	return StepResult{
+		Content:    resp.Content,
+		ToolCalls:  resp.ToolCalls,
+		Truncated:  resp.Truncated,
+		StopReason: resp.StopReason,
+		Usage:      resp.Usage,
+	}, nil
 }
