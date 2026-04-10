@@ -449,6 +449,7 @@ func runTUI(args []string) error {
 		HookDispatcher:   hookDispatcher,
 		Skills:           discoveredSkills,
 		Memory:           memoryFiles,
+		Coordinator:      coord,
 	}
 	if toolkit != nil {
 		cfgUI.OnSessionID = func(id string) {

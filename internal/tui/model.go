@@ -15,6 +15,7 @@ import (
 
 	"github.com/blueberrycongee/wuu/internal/agent"
 	"github.com/blueberrycongee/wuu/internal/compact"
+	"github.com/blueberrycongee/wuu/internal/coordinator"
 	"github.com/blueberrycongee/wuu/internal/hooks"
 	"github.com/blueberrycongee/wuu/internal/insight"
 	"github.com/blueberrycongee/wuu/internal/markdown"
@@ -22,6 +23,7 @@ import (
 	"github.com/blueberrycongee/wuu/internal/providers"
 	"github.com/blueberrycongee/wuu/internal/session"
 	"github.com/blueberrycongee/wuu/internal/skills"
+	"github.com/blueberrycongee/wuu/internal/subagent"
 )
 
 const (
@@ -65,6 +67,11 @@ type insightProgressMsg struct {
 }
 
 type insightFinishedMsg struct{}
+
+// workerNotifyMsg is delivered when a sub-agent's status changes.
+type workerNotifyMsg struct {
+	notification subagent.Notification
+}
 
 type ToolCallStatus string
 
@@ -125,6 +132,8 @@ type Model struct {
 	onSessionID    func(string)
 	skills         []skills.Skill
 	memoryFiles    []memory.File
+	coordinator    *coordinator.Coordinator
+	workerNotifyCh chan subagent.Notification
 
 	maxContextTokens int
 	requestTimeout   time.Duration
@@ -246,6 +255,7 @@ func NewModel(cfg Config) Model {
 		onSessionID:       cfg.OnSessionID,
 		skills:            cfg.Skills,
 		memoryFiles:       cfg.Memory,
+		coordinator:       cfg.Coordinator,
 		maxContextTokens:  cfg.MaxContextTokens,
 		requestTimeout:    cfg.RequestTimeout,
 		viewport:          vp,
@@ -281,6 +291,14 @@ func NewModel(cfg Config) Model {
 		if m.onSessionID != nil && m.sessionID != "" {
 			m.onSessionID(m.sessionID)
 		}
+	}
+
+	// Subscribe to coordinator worker notifications, if a coordinator
+	// is wired up. The channel is drained by waitWorkerNotify (a tea.Cmd
+	// returned from Init / Update).
+	if m.coordinator != nil {
+		m.workerNotifyCh = make(chan subagent.Notification, 64)
+		m.coordinator.Subscribe(m.workerNotifyCh)
 	}
 
 	// Seed chatHistory with the system prompt so every API call includes it.
@@ -359,7 +377,23 @@ func (m Model) Init() tea.Cmd {
 			CWD:       m.workspaceRoot,
 		})
 	}
-	return tickCmd()
+	cmds := []tea.Cmd{tickCmd()}
+	if m.workerNotifyCh != nil {
+		cmds = append(cmds, waitWorkerNotify(m.workerNotifyCh))
+	}
+	return tea.Batch(cmds...)
+}
+
+// waitWorkerNotify reads one notification from the worker channel and
+// turns it into a workerNotifyMsg.
+func waitWorkerNotify(ch <-chan subagent.Notification) tea.Cmd {
+	return func() tea.Msg {
+		n, ok := <-ch
+		if !ok {
+			return nil
+		}
+		return workerNotifyMsg{notification: n}
+	}
 }
 
 func tickCmd() tea.Cmd {
@@ -554,6 +588,38 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.statusLine = "ready"
 		m.refreshViewport(true)
 		return m, nil
+
+	case workerNotifyMsg:
+		// Worker status changed. Show transient progress in chat for
+		// "running" / "completed" / "failed". When completed, also
+		// inject the worker-result XML into chatHistory so the
+		// orchestrator sees it on its next turn.
+		n := msg.notification
+		switch n.Status {
+		case subagent.StatusRunning:
+			m.appendEntry("system", fmt.Sprintf("⠋ %s spawned: %s — %s",
+				n.Snapshot.Type, n.Snapshot.ID, n.Snapshot.Description))
+		case subagent.StatusCompleted, subagent.StatusFailed, subagent.StatusCancelled:
+			icon := "✓"
+			if n.Status == subagent.StatusFailed {
+				icon = "✗"
+			} else if n.Status == subagent.StatusCancelled {
+				icon = "⊘"
+			}
+			m.appendEntry("system", fmt.Sprintf("%s %s %s: %s",
+				icon, n.Snapshot.Type, n.Status, n.Snapshot.Description))
+			// Inject the worker-result XML into the orchestrator's
+			// next API request as a user-role message. This is the
+			// mechanism that lets the model "see" the worker's output.
+			xml := coordinator.FormatWorkerResult(n.Snapshot)
+			m.chatHistory = append(m.chatHistory, providers.ChatMessage{
+				Role:    "user",
+				Content: xml,
+			})
+		}
+		m.refreshViewport(false)
+		// Keep listening for the next notification.
+		return m, waitWorkerNotify(m.workerNotifyCh)
 
 	case streamFinishedMsg:
 		// Runner goroutine completed (channel closed).
@@ -974,6 +1040,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				m.insightProgressIdx = -1
 				m.statusLine = "insight cancelled"
+				m.refreshViewport(true)
+				return m, nil
+			}
+			// If any sub-agents are running, first ctrl+c stops all of them.
+			if m.coordinator != nil && m.coordinator.Manager().CountRunning() > 0 {
+				count := m.coordinator.Manager().CountRunning()
+				m.coordinator.StopAll()
+				m.appendEntry("system", fmt.Sprintf("⊘ Stopped %d running sub-agent(s)", count))
+				m.statusLine = "sub-agents cancelled"
 				m.refreshViewport(true)
 				return m, nil
 			}
