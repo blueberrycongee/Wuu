@@ -111,8 +111,10 @@ func (s *streamStep) Execute(ctx context.Context, req providers.ChatRequest) (St
 		contentBuf   strings.Builder
 		pendingTools = map[int]*providers.ToolCall{}
 		usage        *providers.TokenUsage
+		stopReason   string
+		truncated    bool
 	)
-	if err := s.runStreamWithReconnect(ctx, req, &contentBuf, pendingTools, &usage); err != nil {
+	if err := s.runStreamWithReconnect(ctx, req, &contentBuf, pendingTools, &usage, &stopReason, &truncated); err != nil {
 		return StepResult{}, fmt.Errorf("stream request failed: %w", err)
 	}
 
@@ -125,17 +127,11 @@ func (s *streamStep) Execute(ctx context.Context, req providers.ChatRequest) (St
 	}
 
 	return StepResult{
-		Content:   contentBuf.String(),
-		ToolCalls: toolCalls,
-		Usage:     usage,
-		// NOTE: SSE paths in providers/{openai,anthropic} don't yet
-		// surface stop_reason / finish_reason through StreamEvent, so
-		// streaming runs can't trigger truncation recovery today. The
-		// auto-compact-on-overflow branch DOES fire because StreamChat
-		// returns providers.HTTPError with ContextOverflow when the
-		// initial connect fails. Plumbing truncation through SSE is a
-		// follow-up.
-		Truncated: false,
+		Content:    contentBuf.String(),
+		ToolCalls:  toolCalls,
+		Usage:      usage,
+		StopReason: stopReason,
+		Truncated:  truncated,
 	}, nil
 }
 
@@ -152,6 +148,8 @@ func (s *streamStep) runStreamWithReconnect(
 	contentBuf *strings.Builder,
 	pendingTools map[int]*providers.ToolCall,
 	usage **providers.TokenUsage,
+	stopReason *string,
+	truncated *bool,
 ) error {
 	cfg := s.retry
 	onEvent := s.onEvent
@@ -243,6 +241,12 @@ func (s *streamStep) runStreamWithReconnect(
 				sawDone = true
 				if event.Usage != nil {
 					*usage = event.Usage
+				}
+				if event.StopReason != "" {
+					*stopReason = event.StopReason
+				}
+				if event.Truncated {
+					*truncated = true
 				}
 			}
 

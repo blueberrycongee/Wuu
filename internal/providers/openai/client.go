@@ -302,7 +302,10 @@ func (c *Client) readSSE(resp *http.Response, ch chan<- providers.StreamEvent) {
 		args strings.Builder
 	}
 	pending := make(map[int]*pendingTool)
-	var lastUsage *providers.TokenUsage
+	var (
+		lastUsage        *providers.TokenUsage
+		lastFinishReason string
+	)
 
 	emitToolEnds := func() {
 		for idx, pt := range pending {
@@ -334,8 +337,10 @@ func (c *Client) readSSE(resp *http.Response, ch chan<- providers.StreamEvent) {
 			providers.DebugLogf("SSE [DONE]")
 			emitToolEnds()
 			ch <- providers.StreamEvent{
-				Type:  providers.EventDone,
-				Usage: lastUsage,
+				Type:       providers.EventDone,
+				Usage:      lastUsage,
+				StopReason: lastFinishReason,
+				Truncated:  lastFinishReason == "length",
 			}
 			return
 		}
@@ -403,8 +408,11 @@ func (c *Client) readSSE(resp *http.Response, ch chan<- providers.StreamEvent) {
 			}
 		}
 
-		if choice.FinishReason != nil && *choice.FinishReason == "tool_calls" {
-			emitToolEnds()
+		if choice.FinishReason != nil {
+			lastFinishReason = strings.ToLower(*choice.FinishReason)
+			if lastFinishReason == "tool_calls" {
+				emitToolEnds()
+			}
 		}
 	}
 

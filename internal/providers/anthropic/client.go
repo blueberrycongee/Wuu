@@ -342,9 +342,10 @@ func (c *Client) readSSEStream(resp *http.Response, ch chan<- providers.StreamEv
 	resetIdle := func() { idleTimer.Reset(idleTimeout) }
 
 	var (
-		usage  providers.TokenUsage
-		blocks = make(map[int]*blockState)
-		cur    sseRawEvent
+		usage      providers.TokenUsage
+		stopReason string
+		blocks     = make(map[int]*blockState)
+		cur        sseRawEvent
 	)
 
 	scanner := bufio.NewScanner(resp.Body)
@@ -363,14 +364,14 @@ func (c *Client) readSSEStream(resp *http.Response, ch chan<- providers.StreamEv
 
 		// Empty line signals end of an SSE frame.
 		if line == "" && cur.Event != "" {
-			c.handleSSEEvent(cur, &usage, blocks, ch)
+			c.handleSSEEvent(cur, &usage, &stopReason, blocks, ch)
 			cur = sseRawEvent{}
 		}
 	}
 
 	// Process any trailing event without a final blank line.
 	if cur.Event != "" {
-		c.handleSSEEvent(cur, &usage, blocks, ch)
+		c.handleSSEEvent(cur, &usage, &stopReason, blocks, ch)
 	}
 
 	if err := scanner.Err(); err != nil {
@@ -395,6 +396,7 @@ func (c *Client) readSSEStream(resp *http.Response, ch chan<- providers.StreamEv
 func (c *Client) handleSSEEvent(
 	raw sseRawEvent,
 	usage *providers.TokenUsage,
+	stopReason *string,
 	blocks map[int]*blockState,
 	ch chan<- providers.StreamEvent,
 ) {
@@ -476,12 +478,17 @@ func (c *Client) handleSSEEvent(
 		var p messageDeltaPayload
 		if json.Unmarshal([]byte(raw.Data), &p) == nil {
 			usage.OutputTokens = p.Usage.OutputTokens
+			if p.Delta.StopReason != "" {
+				*stopReason = strings.ToLower(p.Delta.StopReason)
+			}
 		}
 
 	case "message_stop":
 		ch <- providers.StreamEvent{
-			Type:  providers.EventDone,
-			Usage: &providers.TokenUsage{InputTokens: usage.InputTokens, OutputTokens: usage.OutputTokens},
+			Type:       providers.EventDone,
+			Usage:      &providers.TokenUsage{InputTokens: usage.InputTokens, OutputTokens: usage.OutputTokens},
+			StopReason: *stopReason,
+			Truncated:  *stopReason == "max_tokens",
 		}
 	}
 }
@@ -643,6 +650,9 @@ type contentBlockDeltaPayload struct {
 }
 
 type messageDeltaPayload struct {
+	Delta struct {
+		StopReason string `json:"stop_reason,omitempty"`
+	} `json:"delta"`
 	Usage struct {
 		OutputTokens int `json:"output_tokens"`
 	} `json:"usage"`

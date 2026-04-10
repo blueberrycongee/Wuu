@@ -88,6 +88,12 @@ type StreamEvent struct {
 	ToolResult string
 	Error      error
 	Usage      *TokenUsage
+	// StopReason / Truncated are populated on the terminal EventDone
+	// when the provider reports them. They mirror the same fields on
+	// ChatResponse so streaming callers can drive truncation-recovery
+	// the same way the non-stream Runner does.
+	StopReason string
+	Truncated  bool
 }
 
 // StreamClient extends Client with streaming support.

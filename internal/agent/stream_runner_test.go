@@ -491,6 +491,45 @@ func TestStreamRunner_ZeroMaxStepsIsUnlimited(t *testing.T) {
 	}
 }
 
+func TestStreamRunner_TruncationRecovery(t *testing.T) {
+	// Three rounds: first two are truncated content-only (no tool calls)
+	// with stop_reason=length; the third returns the final answer.
+	// The shared loop should concatenate them and surface a clean
+	// result via RunWithCallback.
+	client := &mockStreamClient{
+		attempts: []mockStreamAttempt{
+			{events: []providers.StreamEvent{
+				{Type: providers.EventContentDelta, Content: "part1 "},
+				{Type: providers.EventDone, StopReason: "length", Truncated: true},
+			}},
+			{events: []providers.StreamEvent{
+				{Type: providers.EventContentDelta, Content: "part2 "},
+				{Type: providers.EventDone, StopReason: "max_tokens", Truncated: true},
+			}},
+			{events: []providers.StreamEvent{
+				{Type: providers.EventContentDelta, Content: "done."},
+				{Type: providers.EventDone},
+			}},
+		},
+	}
+
+	runner := StreamRunner{
+		Client: client,
+		Model:  "test-model",
+	}
+
+	out, err := runner.Run(context.Background(), "long output")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if out != "part1 part2 done." {
+		t.Fatalf("expected concatenated parts, got %q", out)
+	}
+	if client.callCount != 3 {
+		t.Fatalf("expected 3 stream attempts, got %d", client.callCount)
+	}
+}
+
 func TestStreamRunner_MaxStepsExceeded(t *testing.T) {
 	client := &mockStreamClient{
 		events: []providers.StreamEvent{
