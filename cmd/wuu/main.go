@@ -16,9 +16,11 @@ import (
 
 	"github.com/blueberrycongee/wuu/internal/agent"
 	"github.com/blueberrycongee/wuu/internal/config"
+	"github.com/blueberrycongee/wuu/internal/coordinator"
 	"github.com/blueberrycongee/wuu/internal/hooks"
 	"github.com/blueberrycongee/wuu/internal/providerfactory"
 	"github.com/blueberrycongee/wuu/internal/memory"
+	"github.com/blueberrycongee/wuu/internal/worktree"
 	"github.com/blueberrycongee/wuu/internal/providers"
 	"github.com/blueberrycongee/wuu/internal/session"
 	"github.com/blueberrycongee/wuu/internal/skills"
@@ -357,6 +359,37 @@ func runTUI(args []string) error {
 		systemPromptText = appendSkillsToPrompt(systemPromptText, discoveredSkills)
 	}
 
+	// If the workspace is a git repo and we have a toolkit, wire up the
+	// coordinator runtime so spawn_agent and friends become available.
+	// SessionID is bound later via the TUI's OnSessionID callback once
+	// the session is generated.
+	var coord *coordinator.Coordinator
+	if toolkit != nil && worktree.IsGitRepo(rootDir) {
+		c, cerr := coordinator.New(coordinator.Config{
+			Client:          client,
+			DefaultModel:    providerCfg.Model,
+			ParentRepo:      rootDir,
+			WorktreeRoot:    filepath.Join(rootDir, ".wuu", "worktrees"),
+			SessionID:       "session-pending", // overwritten via SetSessionInfo
+			HistoryDir:      "",                // overwritten via SetSessionInfo
+			WorkerSysPrompt: systemPromptText,
+			WorkerFactory: func(workerRoot string) (agent.ToolExecutor, error) {
+				wkit, werr := tools.New(workerRoot)
+				if werr != nil {
+					return nil, werr
+				}
+				wkit.SetSkills(discoveredSkills)
+				// Workers do NOT get a coordinator (no recursive spawns).
+				return wkit, nil
+			},
+			MaxParallel: 5,
+		})
+		if cerr == nil {
+			coord = c
+			toolkit.SetCoordinator(coord)
+		}
+	}
+
 	streamRunner := &agent.StreamRunner{
 		Client:       client,
 		Tools:        toolExecutor,
@@ -411,7 +444,13 @@ func runTUI(args []string) error {
 		Memory:           memoryFiles,
 	}
 	if toolkit != nil {
-		cfgUI.OnSessionID = toolkit.SetSessionID
+		cfgUI.OnSessionID = func(id string) {
+			toolkit.SetSessionID(id)
+			if coord != nil {
+				historyDir := filepath.Join(rootDir, ".wuu", "sessions", id, "workers")
+				coord.SetSessionInfo(id, historyDir)
+			}
+		}
 	}
 	return tui.Run(cfgUI)
 }

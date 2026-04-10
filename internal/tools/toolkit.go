@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/blueberrycongee/wuu/internal/coordinator"
 	"github.com/blueberrycongee/wuu/internal/providers"
 	"github.com/blueberrycongee/wuu/internal/skills"
 )
@@ -28,9 +29,23 @@ const (
 
 // Toolkit executes local coding tools for the agent.
 type Toolkit struct {
-	rootDir   string
-	skills    []skills.Skill
-	sessionID string
+	rootDir     string
+	skills      []skills.Skill
+	sessionID   string
+	coordinator *coordinator.Coordinator
+}
+
+// SetCoordinator attaches the orchestration runtime so the spawn_agent
+// and related tools become available. When unset, those tools error
+// at execute time. The coordinator is created by main.go after the
+// session is set up.
+func (t *Toolkit) SetCoordinator(c *coordinator.Coordinator) {
+	t.coordinator = c
+}
+
+// Coordinator returns the attached orchestration runtime, or nil.
+func (t *Toolkit) Coordinator() *coordinator.Coordinator {
+	return t.coordinator
 }
 
 // SetSkills attaches the discovered skills so the load_skill tool can find them.
@@ -214,6 +229,38 @@ func (t *Toolkit) Definitions() []providers.ToolDefinition {
 			},
 		},
 		{
+			Name: "spawn_agent",
+			Description: "Spawn a sub-agent to perform a focused task in an isolated git worktree. " +
+				"The sub-agent has its own context, its own tools, and runs in its own working " +
+				"directory based on the current HEAD. Use this for any task that requires reading " +
+				"file contents or making changes — your own context stays clean. " +
+				"In synchronous mode (default for now), this blocks until the worker finishes and " +
+				"returns its final summary. The worktree persists after completion so changes can " +
+				"be inspected or merged manually with git.",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"type": map[string]any{
+						"type":        "string",
+						"description": "Worker type. Choose 'worker' for general tasks. (More types added in Phase 4.)",
+					},
+					"description": map[string]any{
+						"type":        "string",
+						"description": "Short 3-7 word task summary shown in status displays.",
+					},
+					"prompt": map[string]any{
+						"type":        "string",
+						"description": "Self-contained task description. The worker cannot see your conversation, so include all needed context: file paths, line numbers, requirements, acceptance criteria.",
+					},
+					"base_repo": map[string]any{
+						"type":        "string",
+						"description": "Optional: path to another worker's worktree. The new worker is then based on that worktree's HEAD, enabling chained workflows.",
+					},
+				},
+				"required": []string{"description", "prompt"},
+			},
+		},
+		{
 			Name: "load_skill",
 			Description: "Load the full body of a named skill from the project's .claude/skills/ or " +
 				"the user's ~/.claude/skills/ directory. Skills are reusable instructions that you " +
@@ -262,9 +309,41 @@ func (t *Toolkit) Execute(ctx context.Context, call providers.ToolCall) (string,
 		return t.webFetch(ctx, call.Arguments)
 	case "load_skill":
 		return t.loadSkill(ctx, call.Arguments)
+	case "spawn_agent":
+		return t.spawnAgent(ctx, call.Arguments)
 	default:
 		return "", fmt.Errorf("unknown tool %q", call.Name)
 	}
+}
+
+func (t *Toolkit) spawnAgent(ctx context.Context, argsJSON string) (string, error) {
+	if t.coordinator == nil {
+		return "", errors.New("spawn_agent: coordinator not configured (this build does not support sub-agents)")
+	}
+	var args struct {
+		Type        string `json:"type"`
+		Description string `json:"description"`
+		Prompt      string `json:"prompt"`
+		BaseRepo    string `json:"base_repo"`
+	}
+	if err := decodeArgs(argsJSON, &args); err != nil {
+		return "", err
+	}
+	result, err := t.coordinator.Spawn(ctx, coordinator.SpawnRequest{
+		Type:        args.Type,
+		Description: args.Description,
+		Prompt:      args.Prompt,
+		BaseRepo:    args.BaseRepo,
+		Synchronous: true, // Phase 2: sync only. Phase 3 will default to async.
+	})
+	if err != nil {
+		return "", err
+	}
+	out, err := json.Marshal(result)
+	if err != nil {
+		return "", err
+	}
+	return string(out), nil
 }
 
 func (t *Toolkit) loadSkill(ctx context.Context, argsJSON string) (string, error) {

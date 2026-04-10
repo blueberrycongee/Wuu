@@ -70,7 +70,7 @@ func (m *Manager) Spawn(ctx context.Context, opts SpawnOptions) (*SubAgent, erro
 		ID:           id,
 		Type:         opts.Type,
 		Description:  opts.Description,
-		Status:       StatusPending,
+		Status:       StatusRunning, // set synchronously so CountRunning sees it immediately
 		StartedAt:    time.Now(),
 		prompt:       opts.Prompt,
 		systemPrompt: opts.SystemPrompt,
@@ -96,9 +96,8 @@ func (m *Manager) run(ctx context.Context, sa *SubAgent, opts SpawnOptions) {
 	defer close(sa.doneCh)
 	defer sa.cancelFunc()
 
-	sa.mu.Lock()
-	sa.Status = StatusRunning
-	sa.mu.Unlock()
+	// Status was already set to StatusRunning in Spawn (so CountRunning
+	// sees it synchronously). Just notify listeners.
 	m.notify(sa, StatusRunning)
 
 	runner := &agent.Runner{
