@@ -1,6 +1,7 @@
 package providers
 
 import (
+	"context"
 	"testing"
 
 	"charm.land/catwalk/pkg/catwalk"
@@ -96,6 +97,70 @@ func TestCatwalkLookup_HandlesEmptyEmbedded(t *testing.T) {
 	idx2 := buildCatwalkIndex([]catwalk.Provider{})
 	if got := idx2.lookup("gpt-4o"); got != 0 {
 		t.Fatalf("empty providers slice: got %d, want 0", got)
+	}
+}
+
+func TestSetCatwalkSync_InstallsRemoteData(t *testing.T) {
+	// Save and restore the package singleton so we don't pollute
+	// other tests in the same run.
+	t.Cleanup(func() { SetCatwalkSync(nil) })
+
+	customWindow := 1234567
+	client := &fakeCatwalkClient{response: []catwalk.Provider{{
+		Name: "test",
+		Models: []catwalk.Model{
+			{ID: "wuu-test-only-model", ContextWindow: int64(customWindow)},
+		},
+	}}}
+	s := NewCatwalkSync(CatwalkSyncConfig{Client: client})
+
+	SetCatwalkSync(s)
+	got := catwalkLookup("wuu-test-only-model")
+	// catwalkSanityCap is 3M, our test value is well under it.
+	if got != customWindow {
+		t.Fatalf("expected %d from injected sync, got %d", customWindow, got)
+	}
+	if client.calls != 1 {
+		t.Fatalf("expected sync to fetch once, got %d calls", client.calls)
+	}
+}
+
+func TestRefreshCatwalkIndex_NilSyncIsNoOp(t *testing.T) {
+	t.Cleanup(func() { SetCatwalkSync(nil) })
+	SetCatwalkSync(nil)
+	if err := RefreshCatwalkIndex(context.Background()); err != nil {
+		t.Fatalf("expected nil-sync refresh to be no-op, got %v", err)
+	}
+}
+
+func TestRefreshCatwalkIndex_RebuildsAfterRemoteUpdate(t *testing.T) {
+	t.Cleanup(func() { SetCatwalkSync(nil) })
+
+	client := &fakeCatwalkClient{response: []catwalk.Provider{{
+		Name: "test",
+		Models: []catwalk.Model{
+			{ID: "wuu-refresh-test", ContextWindow: 100_000},
+		},
+	}}}
+	s := NewCatwalkSync(CatwalkSyncConfig{Client: client})
+	SetCatwalkSync(s)
+
+	if got := catwalkLookup("wuu-refresh-test"); got != 100_000 {
+		t.Fatalf("first lookup: got %d, want 100000", got)
+	}
+
+	// Server returns a fresher value on the next fetch.
+	client.response = []catwalk.Provider{{
+		Name: "test",
+		Models: []catwalk.Model{
+			{ID: "wuu-refresh-test", ContextWindow: 200_000},
+		},
+	}}
+	if err := RefreshCatwalkIndex(context.Background()); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+	if got := catwalkLookup("wuu-refresh-test"); got != 200_000 {
+		t.Fatalf("after refresh: got %d, want 200000", got)
 	}
 }
 

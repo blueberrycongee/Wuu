@@ -1,6 +1,7 @@
 package providers
 
 import (
+	"context"
 	"strings"
 	"sync"
 
@@ -178,21 +179,76 @@ func (idx *catwalkIndex) lookup(model string) int {
 // snapshot on first lookup, so the very first ContextWindowFor call
 // after process start always has data without any I/O.
 //
-// Future commits will add a remote sync path that can swap the
-// stored index out atomically once a fresher snapshot is fetched.
+// SetCatwalkSync replaces the index source with a CatwalkSync that
+// can fetch fresh data from the remote service. The first call to
+// catwalkLookup after the sync is installed will trigger the remote
+// resolution chain (or block on it briefly), and any subsequent
+// successful Refresh swaps the in-memory index atomically.
 var catwalkStore struct {
 	mu    sync.RWMutex
 	once  sync.Once
 	index *catwalkIndex
+	sync  *CatwalkSync // optional; nil → embedded only
 }
 
-// catwalkLookup returns the embedded catwalk window for model, or 0
-// on a miss. Safe to call from any goroutine.
+// SetCatwalkSync installs a CatwalkSync as the source of truth for
+// catwalkLookup. Call this once early in process startup if you
+// want the catwalk remote service / disk cache path enabled.
+// Passing nil reverts to embedded-only behavior.
+//
+// Safe to call from any goroutine. After install, the sync's first
+// successful Get is mirrored into the package index, and a tiny
+// background helper updates the index whenever Refresh is called.
+func SetCatwalkSync(s *CatwalkSync) {
+	catwalkStore.mu.Lock()
+	catwalkStore.sync = s
+	// Force a re-init on the next lookup so the new sync's data
+	// replaces any embedded-only index that was already populated.
+	catwalkStore.index = nil
+	catwalkStore.once = sync.Once{}
+	catwalkStore.mu.Unlock()
+}
+
+// RefreshCatwalkIndex re-runs the package-level sync's Refresh and
+// rebuilds the in-memory index on success. No-op if no sync is
+// installed. Returns the underlying Refresh error, if any.
+//
+// Intended for callers that want to fold a successful background
+// fetch's data into the live ContextWindowFor lookups without
+// restarting the process.
+func RefreshCatwalkIndex(ctx context.Context) error {
+	catwalkStore.mu.RLock()
+	s := catwalkStore.sync
+	catwalkStore.mu.RUnlock()
+	if s == nil {
+		return nil
+	}
+	if err := s.Refresh(ctx); err != nil {
+		return err
+	}
+	providers, _ := s.Get(ctx)
+	idx := buildCatwalkIndex(providers)
+	catwalkStore.mu.Lock()
+	catwalkStore.index = idx
+	catwalkStore.mu.Unlock()
+	return nil
+}
+
+// catwalkLookup returns the catwalk-known window for model, or 0 on
+// a miss. Safe to call from any goroutine. First call performs the
+// initial population (sync if configured, embedded otherwise).
 func catwalkLookup(model string) int {
 	catwalkStore.once.Do(func() {
 		catwalkStore.mu.Lock()
 		defer catwalkStore.mu.Unlock()
-		catwalkStore.index = buildCatwalkIndex(embedded.GetAll())
+		var providers []catwalk.Provider
+		if catwalkStore.sync != nil {
+			providers, _ = catwalkStore.sync.Get(context.Background())
+		}
+		if len(providers) == 0 {
+			providers = embedded.GetAll()
+		}
+		catwalkStore.index = buildCatwalkIndex(providers)
 	})
 	catwalkStore.mu.RLock()
 	idx := catwalkStore.index

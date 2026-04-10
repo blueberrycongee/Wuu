@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"charm.land/catwalk/pkg/catwalk"
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/blueberrycongee/wuu/internal/agent"
@@ -296,6 +297,29 @@ func runTUI(args []string) error {
 
 	// Initialize debug logging.
 	providers.InitDebugLog(rootDir)
+
+	// Catwalk model registry. Always installs the syncer (so the
+	// embedded → cache resolution chain runs even with autoupdate
+	// off), but only attaches a remote client when autoupdate is
+	// enabled in config. The first ContextWindowFor lookup populates
+	// the index; if autoupdate is on, a tiny background goroutine
+	// also kicks off a remote refresh that swaps the in-memory
+	// index when the fetch returns.
+	catwalkCfg := providers.CatwalkSyncConfig{
+		CachePath: providers.DefaultCatwalkCachePath(),
+	}
+	if cfg.Agent.CatwalkAutoupdate {
+		catwalkCfg.Client = catwalk.NewWithURL(providers.DefaultCatwalkURL)
+	}
+	catwalkSync := providers.NewCatwalkSync(catwalkCfg)
+	providers.SetCatwalkSync(catwalkSync)
+	if cfg.Agent.CatwalkAutoupdate {
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			defer cancel()
+			_ = providers.RefreshCatwalkIndex(ctx)
+		}()
+	}
 
 	// Build hook dispatcher from config.
 	hookEntries := make(map[hooks.Event][]hooks.HookConfig)

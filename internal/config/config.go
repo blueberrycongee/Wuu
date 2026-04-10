@@ -76,6 +76,14 @@ type AgentConfig struct {
 	// when you want full control over compact via the slash command,
 	// or when you're debugging compact behavior itself.
 	DisableAutoCompact bool `json:"disable_auto_compact,omitempty"`
+	// CatwalkAutoupdate enables the background fetch from charm.land's
+	// catwalk service to refresh the model→context-window registry
+	// between wuu builds. Disabled by default — wuu's embedded
+	// snapshot is already curated and the remote fetch isn't needed
+	// unless the user is on the bleeding edge of new models. When
+	// disabled, only the embedded data ships with each wuu binary
+	// is used.
+	CatwalkAutoupdate bool `json:"catwalk_autoupdate,omitempty"`
 }
 
 // Load reads config with priority: .wuu.json, wuu.json, ~/.config/wuu/config.json.

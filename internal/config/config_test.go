@@ -158,6 +158,27 @@ func TestConfig_DisableAutoCompactDefaultsFalse(t *testing.T) {
 	}
 }
 
+func TestConfig_CatwalkAutoupdate(t *testing.T) {
+	workdir := t.TempDir()
+	jsonData := `{
+  "default_provider": "main",
+  "providers": {
+    "main": {"type": "openai-compatible", "base_url": "https://x", "api_key": "k", "model": "test"}
+  },
+  "agent": {"catwalk_autoupdate": true}
+}`
+	if err := os.WriteFile(filepath.Join(workdir, ".wuu.json"), []byte(jsonData), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, _, err := LoadFrom(workdir, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.Agent.CatwalkAutoupdate {
+		t.Fatal("expected CatwalkAutoupdate=true")
+	}
+}
+
 func TestConfig_HooksConfigParsing(t *testing.T) {
 	workdir := t.TempDir()
 	configPath := filepath.Join(workdir, ".wuu.json")
