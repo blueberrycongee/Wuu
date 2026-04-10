@@ -109,19 +109,25 @@ type SpawnRequest struct {
 	Type        string
 	Description string
 	Prompt      string
-	BaseRepo    string // optional: chain off another worktree
+	BaseRepo    string // optional: chain off another worktree (worktree mode only)
 	Synchronous bool
 	Timeout     time.Duration
+	// Isolation overrides the worker type's DefaultIsolation when set.
+	// Empty string means "use the type default". Use this from
+	// spawn_agent to opt a normally-inplace worker into a worktree
+	// (e.g. an explorer that needs to run a destructive script).
+	Isolation string
 }
 
 // SpawnResult is what the spawn_agent tool returns to the model.
 type SpawnResult struct {
-	AgentID     string `json:"agent_id"`
-	Status      string `json:"status"`
-	WorktreePath string `json:"worktree_path"`
-	Result      string `json:"result,omitempty"`
-	Error       string `json:"error,omitempty"`
-	DurationMS  int64  `json:"duration_ms,omitempty"`
+	AgentID      string `json:"agent_id"`
+	Status       string `json:"status"`
+	Isolation    string `json:"isolation"`              // "inplace" or "worktree"
+	WorktreePath string `json:"worktree_path,omitempty"` // empty for inplace spawns
+	Result       string `json:"result,omitempty"`
+	Error        string `json:"error,omitempty"`
+	DurationMS   int64  `json:"duration_ms,omitempty"`
 }
 
 // Spawn launches a sub-agent. In synchronous mode it blocks until
@@ -146,21 +152,44 @@ func (c *Coordinator) Spawn(ctx context.Context, req SpawnRequest) (*SpawnResult
 
 	workerID := newCoordinatorWorkerID(wtype)
 
-	// 1. Create worktree.
-	worktreeRef, err := c.worktrees.Create(c.sessionID, workerID, req.BaseRepo)
+	// Resolve effective isolation: caller override > type default.
+	isolation, err := NormalizeIsolation(req.Isolation, wt)
 	if err != nil {
-		return nil, fmt.Errorf("worktree create: %w", err)
+		return nil, err
+	}
+	// BaseRepo only makes sense for chained worktree spawns.
+	if isolation == IsolationInplace && strings.TrimSpace(req.BaseRepo) != "" {
+		return nil, errors.New("base_repo is only supported with isolation=worktree")
 	}
 
-	// 2. Build worker's toolkit rooted at the worktree.
-	workerKit, err := c.workerFact(worktreeRef.Path, wt)
+	// 1. Determine the worker's working directory.
+	//    - inplace: share the parent repo (no checkout cost)
+	//    - worktree: `git worktree add --detach` based on parent HEAD
+	var (
+		workerRoot  string
+		worktreeRef *worktree.Worktree
+	)
+	if isolation == IsolationWorktree {
+		worktreeRef, err = c.worktrees.Create(c.sessionID, workerID, req.BaseRepo)
+		if err != nil {
+			return nil, fmt.Errorf("worktree create: %w", err)
+		}
+		workerRoot = worktreeRef.Path
+	} else {
+		workerRoot = c.worktrees.ParentRepo()
+	}
+
+	// 2. Build worker's toolkit rooted at the chosen working directory.
+	workerKit, err := c.workerFact(workerRoot, wt)
 	if err != nil {
-		_ = c.worktrees.Cleanup(worktreeRef)
+		if worktreeRef != nil {
+			_ = c.worktrees.Cleanup(worktreeRef)
+		}
 		return nil, fmt.Errorf("worker toolkit: %w", err)
 	}
 
-	// 3. Compose system prompt: type-specific role + worktree path + base prompt.
-	sys := composeWorkerSystemPrompt(c.defaultSys, wt, worktreeRef.Path)
+	// 3. Compose system prompt: type-specific role + working dir + base prompt.
+	sys := composeWorkerSystemPrompt(c.defaultSys, wt, workerRoot, isolation)
 
 	// 4. History path.
 	historyPath := ""
@@ -180,14 +209,19 @@ func (c *Coordinator) Spawn(ctx context.Context, req SpawnRequest) (*SpawnResult
 		HistoryPath:  historyPath,
 	})
 	if err != nil {
-		_ = c.worktrees.Cleanup(worktreeRef)
+		if worktreeRef != nil {
+			_ = c.worktrees.Cleanup(worktreeRef)
+		}
 		return nil, fmt.Errorf("spawn: %w", err)
 	}
 
 	result := &SpawnResult{
-		AgentID:      sa.ID,
-		Status:       string(sa.Status),
-		WorktreePath: worktreeRef.Path,
+		AgentID:   sa.ID,
+		Status:    string(sa.Status),
+		Isolation: string(isolation),
+	}
+	if worktreeRef != nil {
+		result.WorktreePath = worktreeRef.Path
 	}
 
 	if !req.Synchronous {
@@ -338,14 +372,23 @@ func (c *Coordinator) CleanupSession() error {
 }
 
 // composeWorkerSystemPrompt builds the system prompt for a worker.
-// It prepends the worker type's role-specific prompt + the worktree
-// path, then appends the base prompt (typically the main agent's
-// project memory and skills, NOT the coordinator instructions).
-func composeWorkerSystemPrompt(base string, wt WorkerType, worktreePath string) string {
+// It prepends the worker type's role-specific prompt + a description
+// of the working directory and isolation mode, then appends the base
+// prompt (typically the main agent's project memory and skills, NOT
+// the coordinator instructions).
+func composeWorkerSystemPrompt(base string, wt WorkerType, workerRoot string, isolation IsolationMode) string {
 	var b strings.Builder
 	b.WriteString(wt.SystemPrompt)
 	b.WriteString("\n\n")
-	fmt.Fprintf(&b, "Your working directory is %s — a git worktree isolated from other workers. ", worktreePath)
+	switch isolation {
+	case IsolationWorktree:
+		fmt.Fprintf(&b, "Your working directory is %s — a git worktree isolated from other workers. ", workerRoot)
+		b.WriteString("Edits you make stay sandboxed; the orchestrator will inspect the worktree after you finish. ")
+	default: // inplace
+		fmt.Fprintf(&b, "Your working directory is %s — the SHARED parent repository. ", workerRoot)
+		b.WriteString("You are running inplace (no worktree isolation), so be especially careful: ")
+		b.WriteString("read-only operations are safe, but any file you modify is visible to the orchestrator and other workers immediately. ")
+	}
 	b.WriteString("All file paths in your tools resolve relative to this directory. ")
 	b.WriteString("You CANNOT spawn further sub-agents.\n")
 	if base != "" {

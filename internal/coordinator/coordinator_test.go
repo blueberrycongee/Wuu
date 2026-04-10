@@ -104,6 +104,109 @@ func TestSpawn_SyncHappyPath(t *testing.T) {
 	}
 }
 
+func TestSpawn_InplaceSkipsWorktree(t *testing.T) {
+	dir := t.TempDir()
+	initRepo(t, dir)
+
+	c, err := New(Config{
+		Client:        &fakeClient{resp: providers.ChatResponse{Content: "looked at line 42"}},
+		DefaultModel:  "fake-model",
+		ParentRepo:    dir,
+		WorktreeRoot:  filepath.Join(dir, ".wuu", "worktrees"),
+		SessionID:     "sess-inplace",
+		WorkerFactory: func(string, WorkerType) (agent.ToolExecutor, error) { return fakeToolkit{}, nil },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Explorer defaults to inplace.
+	res, err := c.Spawn(context.Background(), SpawnRequest{
+		Type:        "explorer",
+		Description: "look",
+		Prompt:      "p",
+		Synchronous: true,
+	})
+	if err != nil {
+		t.Fatalf("Spawn: %v", err)
+	}
+	if res.Isolation != "inplace" {
+		t.Fatalf("expected isolation=inplace, got %q", res.Isolation)
+	}
+	if res.WorktreePath != "" {
+		t.Fatalf("expected empty worktree path for inplace spawn, got %q", res.WorktreePath)
+	}
+	// And nothing should have been written under the worktree root.
+	if entries, _ := os.ReadDir(filepath.Join(dir, ".wuu", "worktrees", "sess-inplace")); len(entries) != 0 {
+		t.Fatalf("expected no worktrees on disk, got %d entries", len(entries))
+	}
+}
+
+func TestSpawn_IsolationOverride(t *testing.T) {
+	dir := t.TempDir()
+	initRepo(t, dir)
+
+	c, _ := New(Config{
+		Client:        &fakeClient{resp: providers.ChatResponse{Content: "ok"}},
+		DefaultModel:  "fake",
+		ParentRepo:    dir,
+		WorktreeRoot:  filepath.Join(dir, "wt"),
+		SessionID:     "sess-override",
+		WorkerFactory: func(string, WorkerType) (agent.ToolExecutor, error) { return fakeToolkit{}, nil },
+	})
+
+	// Explorer normally inplace; force it into a worktree.
+	res, err := c.Spawn(context.Background(), SpawnRequest{
+		Type:        "explorer",
+		Description: "force-isolated",
+		Prompt:      "p",
+		Isolation:   "worktree",
+		Synchronous: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Isolation != "worktree" {
+		t.Fatalf("override failed: %q", res.Isolation)
+	}
+	if res.WorktreePath == "" {
+		t.Fatal("worktree spawn should report a path")
+	}
+
+	// And: worker (default worktree) overridden to inplace.
+	res2, err := c.Spawn(context.Background(), SpawnRequest{
+		Type:        "worker",
+		Description: "force-inplace",
+		Prompt:      "p",
+		Isolation:   "inplace",
+		Synchronous: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res2.Isolation != "inplace" || res2.WorktreePath != "" {
+		t.Fatalf("worker→inplace override failed: %+v", res2)
+	}
+}
+
+func TestSpawn_UnknownIsolationRejected(t *testing.T) {
+	dir := t.TempDir()
+	initRepo(t, dir)
+	c, _ := New(Config{
+		Client:        &fakeClient{},
+		DefaultModel:  "fake",
+		ParentRepo:    dir,
+		WorktreeRoot:  filepath.Join(dir, "wt"),
+		WorkerFactory: func(string, WorkerType) (agent.ToolExecutor, error) { return fakeToolkit{}, nil },
+	})
+	_, err := c.Spawn(context.Background(), SpawnRequest{
+		Type: "worker", Description: "x", Prompt: "p", Isolation: "yolo",
+	})
+	if err == nil {
+		t.Fatal("expected error for unknown isolation")
+	}
+}
+
 func TestSpawn_RequiresPrompt(t *testing.T) {
 	dir := t.TempDir()
 	initRepo(t, dir)

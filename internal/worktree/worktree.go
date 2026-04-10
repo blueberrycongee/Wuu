@@ -238,6 +238,12 @@ func (m *Manager) pruneFromGit(_ string) error {
 	return cmd.Run()
 }
 
+// ParentRepo returns the absolute path of the source git repository
+// this manager was created against.
+func (m *Manager) ParentRepo() string {
+	return m.parentRepo
+}
+
 // IsGitRepo reports whether the given directory is inside a git repo.
 func IsGitRepo(dir string) bool {
 	return isGitRepo(dir)
