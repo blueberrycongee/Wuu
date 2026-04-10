@@ -213,6 +213,13 @@ type Model struct {
 	// Anchors (content line offsets) for user messages in the rendered viewport.
 	userMessageLineAnchors []int
 
+	// renderedContent is the full multi-line string most recently
+	// passed to viewport.SetContent. We hold our own copy because
+	// the bubbletea viewport's View() only returns the visible
+	// window, and selection / copy need access to lines that may
+	// have scrolled off-screen.
+	renderedContent string
+
 	// Scrollbar drag state.
 	scrollbarDragging        bool
 	scrollbarDragStartRow    int
@@ -2024,7 +2031,8 @@ func (m *Model) refreshViewport(forceBottom bool) {
 	}
 
 	m.userMessageLineAnchors = userAnchors
-	m.viewport.SetContent(b.String())
+	m.renderedContent = b.String()
+	m.viewport.SetContent(m.renderedContent)
 	if forceBottom || m.autoFollow {
 		m.viewport.GotoBottom()
 	}
@@ -2103,12 +2111,15 @@ func (m Model) View() string {
 
 	outputBox := m.viewport.View()
 
-	// Overlay text selection highlight.
+	// Overlay text selection highlight. The selection state is in
+	// content-absolute coordinates; overlaySelection translates to
+	// the visible window via the current YOffset and clips anything
+	// that's scrolled off-screen.
 	if m.selection.hasSelection() {
 		selStyle := lipgloss.NewStyle().
 			Background(currentTheme.Brand).
 			Foreground(lipgloss.Color("#FFFFFF"))
-		outputBox = overlaySelection(outputBox, &m.selection, selStyle)
+		outputBox = overlaySelection(outputBox, &m.selection, m.viewport.YOffset, selStyle)
 	}
 
 	// Overlay scrollbar on the rightmost column of the viewport.

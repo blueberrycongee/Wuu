@@ -11,8 +11,15 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-// selectionPoint is a screen-buffer coordinate (0-indexed col/row within the
-// chat viewport). Matches the anchor/focus model from claude-code's selection.ts.
+// selectionPoint is a content-coordinate position inside the rendered
+// chat history. Row is the absolute 0-indexed line number in the
+// FULL rendered content (not the visible viewport window), and Col
+// is the visual column offset on that line. Storing in content
+// coordinates is what lets the highlight stay glued to the same
+// underlying text when the user scrolls after making a selection —
+// the alternative (viewport-row coordinates) leaves the highlight
+// painted on whichever line happens to be visible at that screen
+// position, which is the bug this comment exists to prevent.
 type selectionPoint struct {
 	Row int
 	Col int
@@ -67,12 +74,17 @@ func (s *selectionState) bounds() (start, end *selectionPoint) {
 	return s.Focus, s.Anchor
 }
 
-func (s *selectionState) selectedText(viewportContent string) string {
+// selectedText extracts the highlighted substring out of the FULL
+// rendered content (not the visible viewport window). Row indices in
+// the selection are absolute content rows; passing the full content
+// here is what lets a copy after scroll return the correct text
+// even if the original selection has scrolled out of view.
+func (s *selectionState) selectedText(fullContent string) string {
 	start, end := s.bounds()
 	if start == nil {
 		return ""
 	}
-	lines := strings.Split(viewportContent, "\n")
+	lines := strings.Split(fullContent, "\n")
 	var sb strings.Builder
 	for row := start.Row; row <= end.Row && row < len(lines); row++ {
 		if row < 0 {
@@ -115,20 +127,29 @@ func (m *Model) isInChatArea(x, y int) bool {
 	return x >= left && x <= right && y >= top && y < bottom
 }
 
-// screenToViewportCoords converts screen (x, y) to viewport-relative (row, col).
-func (m *Model) screenToViewportCoords(x, y int) (vpRow, vpCol int) {
-	vpRow = y - m.layout.Chat.Y
+// screenToViewportCoords converts screen (x, y) to a CONTENT-row and
+// column inside the rendered chat history. The returned row is
+// absolute (visible-row + viewport.YOffset), so a row of 50 means
+// "the 51st line of m.renderedContent" regardless of how far the
+// user has scrolled. This is what lets selection follow scroll.
+//
+// Despite the name, callers can treat the return as content coords;
+// the function is named for backwards compatibility with the call
+// sites that previously assumed viewport coords.
+func (m *Model) screenToViewportCoords(x, y int) (contentRow, vpCol int) {
+	visibleRow := y - m.layout.Chat.Y
+	if visibleRow < 0 {
+		visibleRow = 0
+	}
+	if visibleRow >= m.layout.Chat.Height {
+		visibleRow = m.layout.Chat.Height - 1
+	}
 	vpCol = x - m.layout.Chat.X
-	if vpRow < 0 {
-		vpRow = 0
-	}
-	if vpRow >= m.layout.Chat.Height {
-		vpRow = m.layout.Chat.Height - 1
-	}
 	if vpCol < 0 {
 		vpCol = 0
 	}
-	return vpRow, vpCol
+	contentRow = visibleRow + m.viewport.YOffset
+	return contentRow, vpCol
 }
 
 // copySelectionToClipboard copies the current mouse selection. It
@@ -136,9 +157,12 @@ func (m *Model) screenToViewportCoords(x, y int) (vpRow, vpCol int) {
 // falls back to OSC 52 when none are available — OSC 52 is silently
 // dropped by many terminals, which is what made drag-to-copy look
 // completely broken before.
+//
+// Reads from the FULL rendered content (m.renderedContent) rather
+// than viewport.View() so a selection made before scrolling still
+// copies correctly after the user has scrolled it out of view.
 func (m *Model) copySelectionToClipboard() {
-	content := m.viewport.View()
-	text := m.selection.selectedText(content)
+	text := m.selection.selectedText(m.renderedContent)
 	if text == "" {
 		return
 	}
@@ -191,7 +215,17 @@ func writeClipboard(text string) (string, error) {
 
 // --- Rendering helpers ---
 
-func overlaySelection(output string, sel *selectionState, style lipgloss.Style) string {
+// overlaySelection paints the selection highlight onto the visible
+// viewport window. `output` is the viewport's View() string (only the
+// rows from yOffset to yOffset+H-1). The selection coordinates are
+// absolute CONTENT rows, so we translate them into the visible
+// window's local row indices and clip to the window before painting.
+//
+// Lines outside the visible window are silently skipped — when the
+// user scrolls a selection out of view, the highlight just becomes
+// invisible until they scroll back. The selection state itself is
+// untouched, so a copy still returns the right text.
+func overlaySelection(output string, sel *selectionState, yOffset int, style lipgloss.Style) string {
 	if sel == nil || !sel.hasSelection() {
 		return output
 	}
@@ -200,19 +234,21 @@ func overlaySelection(output string, sel *selectionState, style lipgloss.Style) 
 		return output
 	}
 	lines := strings.Split(output, "\n")
-	for row := start.Row; row <= end.Row && row < len(lines); row++ {
-		if row < 0 {
+	for row := start.Row; row <= end.Row; row++ {
+		// Translate absolute content row → visible-window row index.
+		visible := row - yOffset
+		if visible < 0 || visible >= len(lines) {
 			continue
 		}
 		colStart := 0
 		if row == start.Row {
 			colStart = start.Col
 		}
-		colEnd := lipgloss.Width(lines[row])
+		colEnd := lipgloss.Width(lines[visible])
 		if row == end.Row {
 			colEnd = end.Col + 1
 		}
-		lines[row] = highlightLineRange(lines[row], colStart, colEnd, style)
+		lines[visible] = highlightLineRange(lines[visible], colStart, colEnd, style)
 	}
 	return strings.Join(lines, "\n")
 }
