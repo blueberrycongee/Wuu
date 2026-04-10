@@ -43,7 +43,11 @@ type Coordinator struct {
 
 // Config holds the dependencies needed to build a Coordinator.
 type Config struct {
-	Client       providers.Client
+	// Client is the streaming LLM client every worker spawned by this
+	// coordinator will share. It must be a StreamClient (not just a
+	// Client) so workers run through the same streaming transport as
+	// the interactive main agent.
+	Client       providers.StreamClient
 	DefaultModel string
 	ParentRepo   string // absolute path to the user's workspace (must be a git repo)
 	WorktreeRoot string // .wuu/worktrees/

@@ -12,8 +12,8 @@ import (
 	"github.com/blueberrycongee/wuu/internal/providers"
 )
 
-// fakeClient is a tiny providers.Client stub for tests. It returns
-// the canned response on every Chat call.
+// fakeClient is a tiny providers.StreamClient stub for tests. It
+// returns the canned response on every Chat / StreamChat call.
 type fakeClient struct {
 	response providers.ChatResponse
 	err      error
@@ -34,6 +34,38 @@ func (f *fakeClient) Chat(ctx context.Context, _ providers.ChatRequest) (provide
 		return providers.ChatResponse{}, f.err
 	}
 	return f.response, nil
+}
+
+// StreamChat replays the same canned response as a single content
+// delta followed by a terminal Done event. Errors and the delay knob
+// behave the same way they do for Chat so existing tests don't need
+// to grow a stream-specific code path.
+func (f *fakeClient) StreamChat(ctx context.Context, _ providers.ChatRequest) (<-chan providers.StreamEvent, error) {
+	f.calls.Add(1)
+	if f.err != nil {
+		return nil, f.err
+	}
+	ch := make(chan providers.StreamEvent, 4)
+	go func() {
+		defer close(ch)
+		if f.delay > 0 {
+			select {
+			case <-time.After(f.delay):
+			case <-ctx.Done():
+				ch <- providers.StreamEvent{Type: providers.EventError, Error: ctx.Err()}
+				return
+			}
+		}
+		if f.response.Content != "" {
+			ch <- providers.StreamEvent{Type: providers.EventContentDelta, Content: f.response.Content}
+		}
+		ch <- providers.StreamEvent{
+			Type:       providers.EventDone,
+			StopReason: f.response.StopReason,
+			Truncated:  f.response.Truncated,
+		}
+	}()
+	return ch, nil
 }
 
 // fakeToolkit is a no-op ToolExecutor that satisfies the runner contract.

@@ -86,8 +86,12 @@ type SubAgent struct {
 	toolkit      agent.ToolExecutor
 	historyPath  string
 
-	// LLM client for the sub-agent's runner.
-	client providers.Client
+	// LLM client for the sub-agent's runner. Workers run through the
+	// streaming runner so they share the same transport semantics as
+	// the interactive main agent — most importantly, they avoid the
+	// short idle timeouts that proxies tend to apply to non-stream
+	// HTTP requests during long worker runs.
+	client providers.StreamClient
 
 	// Lifecycle plumbing.
 	cancelFunc context.CancelFunc

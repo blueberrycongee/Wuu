@@ -409,7 +409,7 @@ func runTUI(args []string) error {
 		// would otherwise kill them; the main TUI agent stays on the
 		// snappier 3-attempt default so failures surface faster.
 		workerRetry := providerfactory.SubAgentRetryConfig()
-		workerClient, werr := providerfactory.BuildClientWithRetry(providerCfg, resolvedName, &workerRetry)
+		workerClient, werr := providerfactory.BuildStreamClientWithRetry(providerCfg, resolvedName, &workerRetry)
 		if werr != nil {
 			return fmt.Errorf("build worker client: %w", werr)
 		}

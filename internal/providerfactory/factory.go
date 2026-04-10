@@ -75,10 +75,20 @@ func SubAgentRetryConfig() providers.RetryConfig {
 	}
 }
 
-// BuildStreamClient constructs a streaming-capable provider client.
-// providerName is the config map key — see BuildClient for why this
-// matters for the global auth-store fallback.
+// BuildStreamClient constructs a streaming-capable provider client
+// using the default HTTP retry policy (3 attempts). providerName is
+// the config map key — see BuildClient for why this matters for the
+// global auth-store fallback.
 func BuildStreamClient(provider config.ProviderConfig, providerName string) (providers.StreamClient, error) {
+	return BuildStreamClientWithRetry(provider, providerName, nil)
+}
+
+// BuildStreamClientWithRetry is like BuildStreamClient but lets the
+// caller pin a specific HTTP retry policy. Use this for long-running
+// stream consumers (e.g. sub-agents that may run for many minutes and
+// should be more tolerant of transient 429 / 5xx than the interactive
+// main agent). Pass nil to use the provider client's built-in default.
+func BuildStreamClientWithRetry(provider config.ProviderConfig, providerName string, retry *providers.RetryConfig) (providers.StreamClient, error) {
 	typeName := normalizeType(provider.Type)
 	apiKey, err := resolveAPIKey(provider, providerName)
 	if err != nil {
@@ -88,15 +98,17 @@ func BuildStreamClient(provider config.ProviderConfig, providerName string) (pro
 	switch typeName {
 	case "openai", "openai-compatible", "codex":
 		return openai.New(openai.ClientConfig{
-			BaseURL: provider.BaseURL,
-			APIKey:  apiKey,
-			Headers: provider.Headers,
+			BaseURL:     provider.BaseURL,
+			APIKey:      apiKey,
+			Headers:     provider.Headers,
+			RetryConfig: retry,
 		})
 	case "anthropic", "claude", "anthropic-official":
 		return anthropic.New(anthropic.ClientConfig{
-			BaseURL: provider.BaseURL,
-			APIKey:  apiKey,
-			Headers: provider.Headers,
+			BaseURL:     provider.BaseURL,
+			APIKey:      apiKey,
+			Headers:     provider.Headers,
+			RetryConfig: retry,
 		})
 	default:
 		return nil, fmt.Errorf("unsupported provider type %q", provider.Type)

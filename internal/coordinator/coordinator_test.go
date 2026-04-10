@@ -12,13 +12,26 @@ import (
 	"github.com/blueberrycongee/wuu/internal/subagent"
 )
 
-// fakeClient returns a canned response on every Chat call.
+// fakeClient returns a canned response on every Chat / StreamChat call.
 type fakeClient struct {
 	resp providers.ChatResponse
 }
 
 func (f *fakeClient) Chat(_ context.Context, _ providers.ChatRequest) (providers.ChatResponse, error) {
 	return f.resp, nil
+}
+
+// StreamChat replays the canned response as a single content delta
+// followed by a terminal Done event so workers — which now run
+// through agent.StreamRunner — can be exercised by these tests.
+func (f *fakeClient) StreamChat(_ context.Context, _ providers.ChatRequest) (<-chan providers.StreamEvent, error) {
+	ch := make(chan providers.StreamEvent, 2)
+	if f.resp.Content != "" {
+		ch <- providers.StreamEvent{Type: providers.EventContentDelta, Content: f.resp.Content}
+	}
+	ch <- providers.StreamEvent{Type: providers.EventDone}
+	close(ch)
+	return ch, nil
 }
 
 // fakeToolkit is a no-op tool executor.
@@ -347,6 +360,19 @@ type slowClient struct{}
 func (slowClient) Chat(ctx context.Context, _ providers.ChatRequest) (providers.ChatResponse, error) {
 	<-ctx.Done()
 	return providers.ChatResponse{}, ctx.Err()
+}
+
+// StreamChat opens a channel that only emits an error event once the
+// caller's context is cancelled. Mirrors Chat's blocking semantics so
+// the concurrency-cap test still pins a worker until StopAll fires.
+func (slowClient) StreamChat(ctx context.Context, _ providers.ChatRequest) (<-chan providers.StreamEvent, error) {
+	ch := make(chan providers.StreamEvent, 1)
+	go func() {
+		defer close(ch)
+		<-ctx.Done()
+		ch <- providers.StreamEvent{Type: providers.EventError, Error: ctx.Err()}
+	}()
+	return ch, nil
 }
 
 func TestFormatWorkerResult(t *testing.T) {

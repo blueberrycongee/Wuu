@@ -16,7 +16,7 @@ import (
 // Manager registers and orchestrates sub-agents. It is safe for
 // concurrent use from multiple goroutines.
 type Manager struct {
-	client       providers.Client
+	client       providers.StreamClient
 	defaultModel string
 
 	mu        sync.Mutex
@@ -24,9 +24,9 @@ type Manager struct {
 	listeners []chan<- Notification
 }
 
-// NewManager constructs a Manager backed by the given LLM client.
-// defaultModel is used when SpawnOptions.Model is empty.
-func NewManager(client providers.Client, defaultModel string) *Manager {
+// NewManager constructs a Manager backed by the given streaming LLM
+// client. defaultModel is used when SpawnOptions.Model is empty.
+func NewManager(client providers.StreamClient, defaultModel string) *Manager {
 	return &Manager{
 		client:       client,
 		defaultModel: defaultModel,
@@ -100,16 +100,7 @@ func (m *Manager) run(ctx context.Context, sa *SubAgent, opts SpawnOptions) {
 	// sees it synchronously). Just notify listeners.
 	m.notify(sa, StatusRunning)
 
-	runner := &agent.Runner{
-		Client:       sa.client,
-		Tools:        sa.toolkit,
-		Model:        sa.model,
-		SystemPrompt: sa.systemPrompt,
-		MaxSteps:     opts.MaxSteps,
-		Temperature:  0.2,
-	}
-
-	// Live token accumulation: every Chat round-trip updates the
+	// Live token accumulation: every LLM round-trip updates the
 	// SubAgent's running totals so the activity panel can display
 	// progress while the worker is still going.
 	onUsage := func(input, output int) {
@@ -118,7 +109,18 @@ func (m *Manager) run(ctx context.Context, sa *SubAgent, opts SpawnOptions) {
 		sa.OutputTokens += output
 		sa.mu.Unlock()
 	}
-	res, err := runner.RunWithUsage(ctx, sa.prompt, onUsage)
+
+	runner := &agent.StreamRunner{
+		Client:       sa.client,
+		Tools:        sa.toolkit,
+		Model:        sa.model,
+		SystemPrompt: sa.systemPrompt,
+		MaxSteps:     opts.MaxSteps,
+		Temperature:  0.2,
+		OnUsage:      onUsage,
+	}
+
+	content, err := runner.Run(ctx, sa.prompt)
 
 	sa.mu.Lock()
 	sa.CompletedAt = time.Now()
@@ -131,7 +133,7 @@ func (m *Manager) run(ctx context.Context, sa *SubAgent, opts SpawnOptions) {
 		}
 	} else {
 		sa.Status = StatusCompleted
-		sa.Result = res.Content
+		sa.Result = content
 	}
 	finalStatus := sa.Status
 	sa.mu.Unlock()
