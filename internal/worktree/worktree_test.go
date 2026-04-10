@@ -1,0 +1,197 @@
+package worktree
+
+import (
+	"os"
+	"os/exec"
+	"path/filepath"
+	"testing"
+)
+
+// initRepo creates a minimal git repo at dir with one commit.
+func initRepo(t *testing.T, dir string) {
+	t.Helper()
+	run := func(args ...string) {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	run("init", "-q")
+	run("config", "user.email", "test@example.com")
+	run("config", "user.name", "Test")
+	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte("hello"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	run("add", ".")
+	run("commit", "-q", "-m", "init")
+}
+
+func TestNewManager_NotGitRepo(t *testing.T) {
+	dir := t.TempDir() // not a git repo
+	_, err := NewManager(dir, filepath.Join(dir, "wt"))
+	if err == nil {
+		t.Fatal("expected error for non-git directory")
+	}
+}
+
+func TestNewManager_GitRepo(t *testing.T) {
+	dir := t.TempDir()
+	initRepo(t, dir)
+
+	m, err := NewManager(dir, filepath.Join(dir, ".wuu", "worktrees"))
+	if err != nil {
+		t.Fatalf("NewManager: %v", err)
+	}
+	if m.parentRepo == "" {
+		t.Fatal("parentRepo not set")
+	}
+}
+
+func TestCreateAndCleanup(t *testing.T) {
+	dir := t.TempDir()
+	initRepo(t, dir)
+
+	m, err := NewManager(dir, filepath.Join(dir, ".wuu", "worktrees"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	wt, err := m.Create("sess-1", "worker-A", "")
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if wt.Path == "" {
+		t.Fatal("worktree path empty")
+	}
+	if _, err := os.Stat(wt.Path); err != nil {
+		t.Fatalf("worktree not on disk: %v", err)
+	}
+	// README.md from initial commit should exist in the worktree.
+	if _, err := os.Stat(filepath.Join(wt.Path, "README.md")); err != nil {
+		t.Fatalf("expected README.md in worktree, got: %v", err)
+	}
+	if wt.HEAD == "" {
+		t.Fatal("HEAD not recorded")
+	}
+
+	if err := m.Cleanup(wt); err != nil {
+		t.Fatalf("Cleanup: %v", err)
+	}
+	if _, err := os.Stat(wt.Path); !os.IsNotExist(err) {
+		t.Fatalf("worktree should be removed, got: %v", err)
+	}
+}
+
+func TestCreate_DuplicateFails(t *testing.T) {
+	dir := t.TempDir()
+	initRepo(t, dir)
+	m, _ := NewManager(dir, filepath.Join(dir, ".wuu", "worktrees"))
+
+	wt, err := m.Create("sess", "dup", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Cleanup(wt)
+
+	if _, err := m.Create("sess", "dup", ""); err == nil {
+		t.Fatal("expected duplicate Create to fail")
+	}
+}
+
+func TestCleanupSession(t *testing.T) {
+	dir := t.TempDir()
+	initRepo(t, dir)
+	m, _ := NewManager(dir, filepath.Join(dir, ".wuu", "worktrees"))
+
+	for _, wid := range []string{"a", "b", "c"} {
+		if _, err := m.Create("sess-X", wid, ""); err != nil {
+			t.Fatalf("Create %s: %v", wid, err)
+		}
+	}
+
+	list, _ := m.List("sess-X")
+	if len(list) != 3 {
+		t.Fatalf("expected 3 worktrees, got %d", len(list))
+	}
+
+	if err := m.CleanupSession("sess-X"); err != nil {
+		t.Fatalf("CleanupSession: %v", err)
+	}
+
+	list, _ = m.List("sess-X")
+	if len(list) != 0 {
+		t.Fatalf("expected 0 worktrees after cleanup, got %d", len(list))
+	}
+}
+
+func TestCreate_FromBaseRepo(t *testing.T) {
+	// Make a base repo, commit to it, then create a chained worktree
+	// from a worktree of it.
+	dir := t.TempDir()
+	initRepo(t, dir)
+	m, _ := NewManager(dir, filepath.Join(dir, ".wuu", "worktrees"))
+
+	wtA, err := m.Create("sess", "A", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Cleanup(wtA)
+
+	// Make a change in worktree A and commit it.
+	if err := os.WriteFile(filepath.Join(wtA.Path, "new.txt"), []byte("from A"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{
+		{"add", "new.txt"},
+		{"commit", "-q", "-m", "from A"},
+	} {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = wtA.Path
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v in worktree A: %v\n%s", args, err, out)
+		}
+	}
+
+	// Now spawn worker B based on worktree A.
+	wtB, err := m.Create("sess", "B", wtA.Path)
+	if err != nil {
+		t.Fatalf("Create chained: %v", err)
+	}
+	defer m.Cleanup(wtB)
+
+	// Worker B should see the file A added.
+	if _, err := os.Stat(filepath.Join(wtB.Path, "new.txt")); err != nil {
+		t.Fatalf("chained worktree should contain A's commit: %v", err)
+	}
+}
+
+func TestList_EmptyDir(t *testing.T) {
+	dir := t.TempDir()
+	initRepo(t, dir)
+	m, _ := NewManager(dir, filepath.Join(dir, ".wuu", "worktrees"))
+
+	list, err := m.List("nonexistent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 0 {
+		t.Fatalf("expected empty list, got %d", len(list))
+	}
+}
+
+func TestIsGitRepo(t *testing.T) {
+	notGit := t.TempDir()
+	if IsGitRepo(notGit) {
+		t.Error("temp dir should not be a git repo")
+	}
+
+	gitDir := t.TempDir()
+	initRepo(t, gitDir)
+	if !IsGitRepo(gitDir) {
+		t.Error("initialized dir should be a git repo")
+	}
+}
