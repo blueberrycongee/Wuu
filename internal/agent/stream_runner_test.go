@@ -366,6 +366,75 @@ func TestStreamRunner_AcceptsHistory(t *testing.T) {
 	}
 }
 
+func TestStreamRunner_CancelledCtxStopsRetry(t *testing.T) {
+	// When the parent context is already cancelled, the stream runner
+	// should bail immediately instead of retrying retryable errors.
+	client := &mockStreamClient{
+		attempts: []mockStreamAttempt{
+			{err: context.DeadlineExceeded},
+			{
+				events: []providers.StreamEvent{
+					{Type: providers.EventContentDelta, Content: "should not reach"},
+					{Type: providers.EventDone},
+				},
+			},
+		},
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // cancel before Run
+
+	runner := StreamRunner{
+		Client:                  client,
+		Model:                   "m",
+		StreamMaxRetries:        5,
+		StreamRetryInitialDelay: time.Millisecond,
+		StreamRetryMaxDelay:     2 * time.Millisecond,
+	}
+
+	_, err := runner.Run(ctx, "hi")
+	if err == nil {
+		t.Fatal("expected error on cancelled context")
+	}
+	if client.callCount > 0 {
+		t.Fatalf("expected 0 stream attempts on cancelled ctx, got %d", client.callCount)
+	}
+}
+
+func TestStreamRunner_RetryOnDeadlineExceeded(t *testing.T) {
+	// context.DeadlineExceeded should be retried when the parent ctx is alive.
+	client := &mockStreamClient{
+		attempts: []mockStreamAttempt{
+			{err: context.DeadlineExceeded},
+			{
+				events: []providers.StreamEvent{
+					{Type: providers.EventContentDelta, Content: "recovered"},
+					{Type: providers.EventDone},
+				},
+			},
+		},
+	}
+
+	runner := StreamRunner{
+		Client:                  client,
+		Model:                   "m",
+		StreamMaxRetries:        2,
+		StreamRetryInitialDelay: time.Millisecond,
+		StreamRetryMaxDelay:     2 * time.Millisecond,
+	}
+
+	result, err := runner.Run(context.Background(), "hi")
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if result != "recovered" {
+		t.Fatalf("unexpected result: %q", result)
+	}
+	if client.callCount != 2 {
+		t.Fatalf("expected 2 stream attempts, got %d", client.callCount)
+	}
+}
+
 func TestStreamRunner_MaxStepsExceeded(t *testing.T) {
 	client := &mockStreamClient{
 		events: []providers.StreamEvent{

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -358,6 +359,60 @@ func TestStreamChat_ValidationErrors(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected error for empty messages")
+	}
+}
+
+func TestStreamChat_IdleWatchdogFires(t *testing.T) {
+	// Set a very short idle timeout for the test.
+	t.Setenv("WUU_STREAM_IDLE_TIMEOUT_MS", "100")
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		// Write one chunk then hang forever — the watchdog should fire.
+		_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"hi\"}}]}\n\n"))
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+		// Block until the client disconnects.
+		<-r.Context().Done()
+	}))
+	defer server.Close()
+
+	client, _ := New(ClientConfig{BaseURL: server.URL, APIKey: "k"})
+	ch, err := client.StreamChat(context.Background(), providers.ChatRequest{
+		Model:    "m",
+		Messages: []providers.ChatMessage{{Role: "user", Content: "hi"}},
+	})
+	if err != nil {
+		t.Fatalf("StreamChat: %v", err)
+	}
+
+	var gotContent bool
+	var gotError bool
+	var errMsg string
+	for ev := range ch {
+		switch ev.Type {
+		case providers.EventContentDelta:
+			gotContent = true
+		case providers.EventError:
+			gotError = true
+			if ev.Error != nil {
+				errMsg = ev.Error.Error()
+			}
+		}
+	}
+	if !gotContent {
+		t.Fatal("expected at least one content delta before timeout")
+	}
+	if !gotError {
+		t.Fatal("expected error event from idle watchdog")
+	}
+	if !errors.Is(fmt.Errorf("wrap: %w", context.DeadlineExceeded), context.DeadlineExceeded) {
+		t.Fatal("sanity check failed")
+	}
+	if errMsg == "" || !strings.Contains(errMsg, "idle timeout") {
+		t.Fatalf("expected idle timeout error, got: %q", errMsg)
 	}
 }
 

@@ -1,0 +1,104 @@
+package providers
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"net"
+	"testing"
+	"time"
+)
+
+func TestIsRetryable_ContextDeadlineExceeded(t *testing.T) {
+	if !IsRetryable(context.DeadlineExceeded) {
+		t.Fatal("expected context.DeadlineExceeded to be retryable")
+	}
+}
+
+func TestIsRetryable_WrappedDeadlineExceeded(t *testing.T) {
+	wrapped := fmt.Errorf("stream request failed: request failed: Post https://example.com: %w", context.DeadlineExceeded)
+	if !IsRetryable(wrapped) {
+		t.Fatal("expected wrapped context.DeadlineExceeded to be retryable")
+	}
+}
+
+func TestIsRetryable_NetOpError(t *testing.T) {
+	err := &net.OpError{
+		Op:  "dial",
+		Net: "tcp",
+		Err: errors.New("connection refused"),
+	}
+	if !IsRetryable(err) {
+		t.Fatal("expected net.OpError to be retryable")
+	}
+}
+
+type fakeNetError struct{ timeout bool }
+
+func (e fakeNetError) Error() string   { return "fake net error" }
+func (e fakeNetError) Timeout() bool   { return e.timeout }
+func (e fakeNetError) Temporary() bool { return false }
+
+func TestIsRetryable_NetError(t *testing.T) {
+	if !IsRetryable(fakeNetError{timeout: true}) {
+		t.Fatal("expected net.Error (timeout) to be retryable")
+	}
+	if !IsRetryable(fakeNetError{timeout: false}) {
+		t.Fatal("expected net.Error (non-timeout) to be retryable")
+	}
+}
+
+func TestIsRetryable_AuthError(t *testing.T) {
+	if IsRetryable(&HTTPError{StatusCode: 401, Body: "unauthorized"}) {
+		t.Fatal("expected 401 to not be retryable")
+	}
+	if IsRetryable(&HTTPError{StatusCode: 403, Body: "forbidden"}) {
+		t.Fatal("expected 403 to not be retryable")
+	}
+}
+
+func TestIsRetryable_HTTPServerErrors(t *testing.T) {
+	for _, code := range []int{429, 500, 502, 503, 529} {
+		if !IsRetryable(&HTTPError{StatusCode: code, Body: "error"}) {
+			t.Fatalf("expected HTTP %d to be retryable", code)
+		}
+	}
+}
+
+func TestIsRetryable_StringFallback(t *testing.T) {
+	cases := []struct {
+		msg  string
+		want bool
+	}{
+		{"connection refused", true},
+		{"connection reset by peer", true},
+		{"no such host", true},
+		{"context deadline exceeded", true},
+		{"read tcp: i/o timeout", true},
+		{"unexpected EOF", true},
+		{"bad request", false},
+	}
+	for _, c := range cases {
+		got := IsRetryable(errors.New(c.msg))
+		if got != c.want {
+			t.Fatalf("IsRetryable(%q) = %v, want %v", c.msg, got, c.want)
+		}
+	}
+}
+
+func TestWithRetry_BailsOnCancelledContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // cancel immediately
+
+	calls := 0
+	err := WithRetry(ctx, RetryConfig{MaxRetries: 3, InitialDelay: time.Millisecond, MaxDelay: time.Millisecond}, func() error {
+		calls++
+		return errors.New("should not be called")
+	})
+	if calls != 0 {
+		t.Fatalf("expected 0 fn calls on cancelled ctx, got %d", calls)
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context.Canceled error, got %v", err)
+	}
+}
