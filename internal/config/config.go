@@ -64,6 +64,13 @@ type AgentConfig struct {
 	MaxContextTokens int     `json:"max_context_tokens"`
 	Temperature      float64 `json:"temperature"`
 	SystemPrompt     string  `json:"system_prompt"`
+	// DisableAutoCompact turns off the proactive auto-compact pass
+	// that fires when the conversation reaches ~90% of the model's
+	// context window. The reactive overflow recovery (compact triggered
+	// by an actual context_length_exceeded error) still runs. Use this
+	// when you want full control over compact via the slash command,
+	// or when you're debugging compact behavior itself.
+	DisableAutoCompact bool `json:"disable_auto_compact,omitempty"`
 }
 
 // Load reads config with priority: .wuu.json, wuu.json, ~/.config/wuu/config.json.

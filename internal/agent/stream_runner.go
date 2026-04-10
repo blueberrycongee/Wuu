@@ -30,6 +30,10 @@ type StreamRunner struct {
 	Temperature  float64
 	OnEvent      StreamCallback
 
+	// DisableAutoCompact turns off the proactive fill-rate trigger.
+	// The reactive context-overflow recovery still runs. Off by default.
+	DisableAutoCompact bool
+
 	// Stream reconnect policy (more aggressive than codex default 5).
 	// Zero values use built-in defaults.
 	StreamMaxRetries        int
@@ -68,12 +72,16 @@ func (r *StreamRunner) RunWithCallback(ctx context.Context, history []providers.
 		retry:   r.streamRetryConfig(),
 	}
 
+	maxCtx := providers.ContextWindowFor(r.Model)
+	if r.DisableAutoCompact {
+		maxCtx = 0 // disables the proactive trigger inside RunToolLoop
+	}
 	cfg := LoopConfig{
 		Tools:            r.Tools,
 		Model:            r.Model,
 		Temperature:      r.Temperature,
 		MaxSteps:         r.MaxSteps,
-		MaxContextTokens: providers.ContextWindowFor(r.Model),
+		MaxContextTokens: maxCtx,
 		Compact: func(ctx context.Context, messages []providers.ChatMessage) ([]providers.ChatMessage, error) {
 			return compact.Compact(ctx, messages, r.Client, r.Model)
 		},

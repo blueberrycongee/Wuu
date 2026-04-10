@@ -102,6 +102,62 @@ func TestLoadFrom_Defaults(t *testing.T) {
 	}
 }
 
+func TestConfig_DisableAutoCompact(t *testing.T) {
+	workdir := t.TempDir()
+	configPath := filepath.Join(workdir, ".wuu.json")
+	jsonData := `{
+  "default_provider": "main",
+  "providers": {
+    "main": {
+      "type": "openai-compatible",
+      "base_url": "https://x",
+      "api_key": "k",
+      "model": "test"
+    }
+  },
+  "agent": {
+    "disable_auto_compact": true
+  }
+}`
+	if err := os.WriteFile(configPath, []byte(jsonData), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, _, err := LoadFrom(workdir, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.Agent.DisableAutoCompact {
+		t.Fatal("expected DisableAutoCompact=true")
+	}
+}
+
+func TestConfig_DisableAutoCompactDefaultsFalse(t *testing.T) {
+	workdir := t.TempDir()
+	configPath := filepath.Join(workdir, ".wuu.json")
+	jsonData := `{
+  "default_provider": "main",
+  "providers": {
+    "main": {
+      "type": "openai-compatible",
+      "base_url": "https://x",
+      "api_key": "k",
+      "model": "test"
+    }
+  },
+  "agent": {}
+}`
+	if err := os.WriteFile(configPath, []byte(jsonData), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, _, err := LoadFrom(workdir, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Agent.DisableAutoCompact {
+		t.Fatal("expected DisableAutoCompact to default false")
+	}
+}
+
 func TestConfig_HooksConfigParsing(t *testing.T) {
 	workdir := t.TempDir()
 	configPath := filepath.Join(workdir, ".wuu.json")
