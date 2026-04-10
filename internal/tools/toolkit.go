@@ -261,13 +261,13 @@ func (t *Toolkit) Execute(ctx context.Context, call providers.ToolCall) (string,
 	case "web_fetch":
 		return t.webFetch(ctx, call.Arguments)
 	case "load_skill":
-		return t.loadSkill(call.Arguments)
+		return t.loadSkill(ctx, call.Arguments)
 	default:
 		return "", fmt.Errorf("unknown tool %q", call.Name)
 	}
 }
 
-func (t *Toolkit) loadSkill(argsJSON string) (string, error) {
+func (t *Toolkit) loadSkill(ctx context.Context, argsJSON string) (string, error) {
 	var args struct {
 		Name      string `json:"name"`
 		Arguments string `json:"arguments"`
@@ -287,7 +287,13 @@ func (t *Toolkit) loadSkill(argsJSON string) (string, error) {
 		return "", fmt.Errorf("skill %q not found. available: %s", args.Name, strings.Join(available, ", "))
 	}
 
-	body := substituteSkillVariables(skill.Content, args.Arguments, skill.Dir, t.sessionID)
+	body := skills.ProcessSkillBody(ctx, skill.Content, skills.ProcessOptions{
+		Arguments:        args.Arguments,
+		SkillDir:         skill.Dir,
+		SessionID:        t.sessionID,
+		Shell:            skill.Shell,
+		AllowInlineShell: true,
+	})
 
 	result := map[string]any{
 		"name":        skill.Name,
@@ -306,18 +312,6 @@ func (t *Toolkit) loadSkill(argsJSON string) (string, error) {
 		return "", err
 	}
 	return string(out), nil
-}
-
-// substituteSkillVariables replaces ${ARGUMENTS}, ${CLAUDE_SKILL_DIR},
-// and ${CLAUDE_SESSION_ID} placeholders in a skill body. Matches Claude
-// Code's substitution behavior.
-func substituteSkillVariables(body, arguments, skillDir, sessionID string) string {
-	r := strings.NewReplacer(
-		"${ARGUMENTS}", arguments,
-		"${CLAUDE_SKILL_DIR}", skillDir,
-		"${CLAUDE_SESSION_ID}", sessionID,
-	)
-	return r.Replace(body)
 }
 
 func (t *Toolkit) runShell(ctx context.Context, argsJSON string) (string, error) {

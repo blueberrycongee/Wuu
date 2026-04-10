@@ -115,9 +115,10 @@ func (m *Model) handleSlash(input string) (string, bool) {
 }
 
 // expandSkillShorthand checks whether the input is a /<skill-name> shorthand
-// for a discovered skill. If it is, it returns the expanded skill body
-// (with variable substitution applied) so submit() can dispatch it as a
-// regular user message. The shorthand never matches built-in commands.
+// for a discovered skill. If it is, it returns the fully processed skill
+// body (with variable substitution and inline shell execution applied) so
+// submit() can dispatch it as a regular user message. Built-in commands
+// always take precedence over skills with the same name.
 func (m *Model) expandSkillShorthand(input string) (string, bool) {
 	trimmed := strings.TrimSpace(input)
 	if !strings.HasPrefix(trimmed, "/") {
@@ -128,14 +129,11 @@ func (m *Model) expandSkillShorthand(input string) (string, bool) {
 	if name == "" {
 		return "", false
 	}
-	// Built-in commands take precedence — never expand to a skill if a
-	// command with that name exists.
 	for _, cmd := range commandRegistry {
 		if cmd.Name == name || containsAlias(cmd.Aliases, name) {
 			return "", false
 		}
 	}
-	// Look up the skill.
 	skill, ok := skills.Find(m.skills, name)
 	if !ok {
 		return "", false
@@ -147,11 +145,17 @@ func (m *Model) expandSkillShorthand(input string) (string, bool) {
 	if len(parts) > 1 {
 		args = strings.TrimSpace(parts[1])
 	}
-	// Apply substitution: ${ARGUMENTS}, ${CLAUDE_SKILL_DIR}, ${CLAUDE_SESSION_ID}
-	body := skill.Content
-	body = strings.ReplaceAll(body, "${ARGUMENTS}", args)
-	body = strings.ReplaceAll(body, "${CLAUDE_SKILL_DIR}", skill.Dir)
-	body = strings.ReplaceAll(body, "${CLAUDE_SESSION_ID}", m.sessionID)
+	// Use a per-skill timeout context so a hanging inline command can't
+	// freeze the TUI for more than 60 seconds total.
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	body := skills.ProcessSkillBody(ctx, skill.Content, skills.ProcessOptions{
+		Arguments:        args,
+		SkillDir:         skill.Dir,
+		SessionID:        m.sessionID,
+		Shell:            skill.Shell,
+		AllowInlineShell: true,
+	})
 	return body, true
 }
 
