@@ -10,6 +10,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/mattn/go-runewidth"
 )
 
 // selectionPoint is a content-coordinate position inside the rendered
@@ -92,26 +93,26 @@ func (s *selectionState) selectedText(fullContent string) string {
 			continue
 		}
 		stripped := ansi.Strip(lines[row])
-		runes := []rune(stripped)
+		lineWidth := lipgloss.Width(stripped)
 		colStart := 0
 		if row == start.Row {
 			colStart = start.Col
 		}
-		colEnd := len(runes)
+		colEnd := lineWidth
 		if row == end.Row {
 			colEnd = end.Col + 1
 		}
 		if colStart < 0 {
 			colStart = 0
 		}
-		if colEnd > len(runes) {
-			colEnd = len(runes)
+		if colEnd > lineWidth {
+			colEnd = lineWidth
 		}
 		if row > start.Row {
 			sb.WriteByte('\n')
 		}
 		if colStart < colEnd {
-			sb.WriteString(string(runes[colStart:colEnd]))
+			sb.WriteString(slicePlainTextByVisualCols(stripped, colStart, colEnd))
 		}
 	}
 	return sb.String()
@@ -235,7 +236,7 @@ func (m *Model) tickSelectionAutoScroll() tea.Cmd {
 	} else {
 		edgeRow = m.viewport.YOffset + m.layout.Chat.Height - 1
 	}
-	col := m.selectionAutoScroll.lastX - m.layout.Chat.X
+	col := m.selectionAutoScroll.lastX - m.layout.Chat.X - contentPadLeft
 	if col < 0 {
 		col = 0
 	}
@@ -261,7 +262,7 @@ func (m *Model) screenToViewportCoords(x, y int) (contentRow, vpCol int) {
 	if visibleRow >= m.layout.Chat.Height {
 		visibleRow = m.layout.Chat.Height - 1
 	}
-	vpCol = x - m.layout.Chat.X
+	vpCol = x - m.layout.Chat.X - contentPadLeft
 	if vpCol < 0 {
 		vpCol = 0
 	}
@@ -374,77 +375,102 @@ func highlightLineRange(line string, colStart, colEnd int, style lipgloss.Style)
 	if colStart >= colEnd {
 		return line
 	}
-	stripped := ansi.Strip(line)
-	runes := []rune(stripped)
-	lineWidth := len(runes)
+	lineWidth := lipgloss.Width(ansi.Strip(line))
+	if colStart < 0 {
+		colStart = 0
+	}
 	if colStart >= lineWidth {
 		return line
 	}
 	if colEnd > lineWidth {
 		colEnd = lineWidth
 	}
-	before := ""
-	if colStart > 0 {
-		before = ansi.Truncate(line, colStart, "")
+
+	before := ansi.Truncate(line, colStart, "")
+	selected := ansi.Truncate(cutLeadingVisualCols(line, colStart), colEnd-colStart, "")
+	if selected == "" {
+		return line
 	}
-	middle := style.Render(string(runes[colStart:colEnd]))
-	after := ""
-	if colEnd < lineWidth {
-		after = cutLeadingVisualCols(line, colEnd)
-	}
-	return before + middle + after
+	after := cutLeadingVisualCols(line, colEnd)
+	return before + style.Render(selected) + after
 }
 
 func cutLeadingVisualCols(s string, n int) string {
-	visualCol := 0
-	i := 0
-	bytes := []byte(s)
-	for i < len(bytes) && visualCol < n {
-		if bytes[i] == 0x1b && i+1 < len(bytes) && bytes[i+1] == '[' {
-			j := i + 2
-			for j < len(bytes) && bytes[j] >= 0x30 && bytes[j] <= 0x3F {
-				j++
-			}
-			for j < len(bytes) && bytes[j] >= 0x20 && bytes[j] <= 0x2F {
-				j++
-			}
-			if j < len(bytes) {
-				j++
-			}
-			i = j
-		} else if bytes[i] == 0x1b && i+1 < len(bytes) && bytes[i+1] == ']' {
-			j := i + 2
-			for j < len(bytes) {
-				if bytes[j] == 0x1b && j+1 < len(bytes) && bytes[j+1] == '\\' {
-					j += 2
-					break
-				}
-				if bytes[j] == 0x07 {
-					j++
-					break
-				}
-				j++
-			}
-			i = j
-		} else {
-			sz := 1
-			b := bytes[i]
-			if b >= 0xC0 && b < 0xE0 {
-				sz = 2
-			} else if b >= 0xE0 && b < 0xF0 {
-				sz = 3
-			} else if b >= 0xF0 {
-				sz = 4
-			}
-			if i+sz > len(bytes) {
-				sz = len(bytes) - i
-			}
-			i += sz
-			visualCol++
-		}
+	if n <= 0 {
+		return s
 	}
-	if i >= len(bytes) {
+	return sliceStyledTextFromVisualCol(s, n)
+}
+
+func slicePlainTextByVisualCols(s string, start, end int) string {
+	if start < 0 {
+		start = 0
+	}
+	if end < start {
+		end = start
+	}
+	if start == end || s == "" {
 		return ""
 	}
-	return string(bytes[i:])
+
+	var b strings.Builder
+	col := 0
+	for _, r := range s {
+		w := runewidth.RuneWidth(r)
+		if w == 0 {
+			if col > start && col <= end {
+				b.WriteRune(r)
+			}
+			continue
+		}
+		nextCol := col + w
+		if nextCol <= start {
+			col = nextCol
+			continue
+		}
+		if col >= end {
+			break
+		}
+		if col >= start && nextCol <= end {
+			b.WriteRune(r)
+		}
+		col = nextCol
+	}
+	return b.String()
+}
+
+func sliceStyledTextFromVisualCol(s string, start int) string {
+	if start <= 0 || s == "" {
+		return s
+	}
+
+	var b strings.Builder
+	col := 0
+	writing := false
+	state := byte(0)
+	parser := ansi.GetParser()
+	parser.Reset()
+	for i := 0; i < len(s); {
+		seq, width, n, newState := ansi.DecodeSequence(s[i:], state, parser)
+		if n <= 0 {
+			break
+		}
+		if width == 0 {
+			if writing {
+				b.WriteString(seq)
+			}
+		} else {
+			nextCol := col + width
+			if !writing && nextCol > start {
+				writing = true
+			}
+			if writing && col >= start {
+				b.WriteString(seq)
+			}
+			col = nextCol
+		}
+		i += n
+		state = newState
+	}
+	return b.String()
 }

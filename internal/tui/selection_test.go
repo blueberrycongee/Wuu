@@ -4,7 +4,9 @@ import (
 	"strings"
 	"testing"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/muesli/termenv"
 )
 
@@ -20,7 +22,103 @@ func init() {
 // content-row addressing across scroll positions.
 const fixtureContent = "line0\nline1\nline2\nline3\nline4\nline5\nline6\nline7\nline8\nline9"
 
-func TestSelection_SelectedTextUsesAbsoluteRows(t *testing.T) {
+func TestScreenToViewportCoords_AccountsForContentPadding(t *testing.T) {
+	m := &Model{}
+	m.layout.Chat.X = 10
+	m.layout.Chat.Y = 4
+	m.layout.Chat.Height = 5
+	m.viewport.YOffset = 7
+
+	row, col := m.screenToViewportCoords(10+contentPadLeft+3, 6)
+	if row != 9 {
+		t.Fatalf("row: got %d, want %d", row, 9)
+	}
+	if col != 3 {
+		t.Fatalf("col: got %d, want %d", col, 3)
+	}
+
+	_, col = m.screenToViewportCoords(10, 6)
+	if col != 0 {
+		t.Fatalf("col before content area: got %d, want 0", col)
+	}
+}
+
+func TestMouseSelectionStartsAtContentAreaAfterLeftPadding(t *testing.T) {
+	m := NewModel(Config{Provider: "test", Model: "test-model", ConfigPath: "/tmp/.wuu.json"})
+	m.width = 100
+	m.height = 20
+	m.relayout()
+
+	updated, _ := m.Update(tea.MouseMsg{
+		Action: tea.MouseActionPress,
+		Button: tea.MouseButtonLeft,
+		X:      m.layout.Chat.X + contentPadLeft,
+		Y:      m.layout.Chat.Y,
+	})
+	after := updated.(Model)
+
+	if after.selection.Anchor == nil {
+		t.Fatal("expected selection anchor after mouse press")
+	}
+	if after.selection.Anchor.Col != 0 {
+		t.Fatalf("expected selection anchor col 0 at content start, got %d", after.selection.Anchor.Col)
+	}
+}
+
+func TestSelection_SelectedTextUsesVisualColumnsForWideRunes(t *testing.T) {
+	sel := &selectionState{
+		Anchor: &selectionPoint{Row: 0, Col: 0},
+		Focus:  &selectionPoint{Row: 0, Col: 1},
+	}
+
+	got := sel.selectedText("你好a")
+	want := "你"
+	if got != want {
+		t.Fatalf("selectedText wide rune: got %q, want %q", got, want)
+	}
+}
+
+func TestSelection_SelectedTextUsesVisualColumnsWithANSI(t *testing.T) {
+	line := lipgloss.NewStyle().Foreground(lipgloss.Color("#00FF00")).Render("你好a")
+	sel := &selectionState{
+		Anchor: &selectionPoint{Row: 0, Col: 2},
+		Focus:  &selectionPoint{Row: 0, Col: 3},
+	}
+
+	got := sel.selectedText(line)
+	want := "好"
+	if got != want {
+		t.Fatalf("selectedText ANSI wide rune: got %q, want %q", got, want)
+	}
+}
+
+func TestHighlightLineRange_UsesVisualColumnsForWideRunes(t *testing.T) {
+	style := lipgloss.NewStyle().Background(lipgloss.Color("#FF0000"))
+	out := highlightLineRange("你好a", 2, 4, style)
+	stripped := ansi.Strip(out)
+	if stripped != "你好a" {
+		t.Fatalf("strip: got %q, want %q", stripped, "你好a")
+	}
+	if !strings.Contains(out, style.Render("好")) {
+		t.Fatalf("expected highlighted wide rune, got %q", out)
+	}
+}
+
+func TestHighlightLineRange_PreservesPaddingAlignment(t *testing.T) {
+	style := lipgloss.NewStyle().Background(lipgloss.Color("#FF0000"))
+	line := strings.Repeat(" ", contentPadLeft) + "你好a"
+
+	out := highlightLineRange(line, contentPadLeft+2, contentPadLeft+4, style)
+	stripped := ansi.Strip(out)
+	if stripped != line {
+		t.Fatalf("strip: got %q, want %q", stripped, line)
+	}
+	if !strings.Contains(out, style.Render("好")) {
+		t.Fatalf("expected highlighted wide rune after padding, got %q", out)
+	}
+}
+
+func TestSelection_SelectedTextAcrossMultipleLines(t *testing.T) {
 	sel := &selectionState{
 		Anchor: &selectionPoint{Row: 2, Col: 0},
 		Focus:  &selectionPoint{Row: 4, Col: 4},
