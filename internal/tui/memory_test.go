@@ -251,6 +251,56 @@ func TestLoadChatHistory_BackwardCompatible(t *testing.T) {
 	}
 }
 
+func TestLoadChatHistory_SkipsNonChatRoles(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "session.jsonl")
+
+	if err := appendMemoryEntry(path, transcriptEntry{Role: "SYSTEM", Content: "ui-only notice"}); err != nil {
+		t.Fatalf("append system entry: %v", err)
+	}
+	if err := appendMemoryEntry(path, transcriptEntry{Role: "META", Content: "token_usage"}); err != nil {
+		t.Fatalf("append meta entry: %v", err)
+	}
+	userMsg := providers.ChatMessage{Role: "user", Content: "hello"}
+	if err := appendChatMessage(path, userMsg); err != nil {
+		t.Fatalf("append user msg: %v", err)
+	}
+
+	msgs, err := loadChatHistory(path)
+	if err != nil {
+		t.Fatalf("load chat history: %v", err)
+	}
+	if len(msgs) != 1 {
+		t.Fatalf("expected only chat messages, got %d", len(msgs))
+	}
+	if msgs[0].Role != "user" || msgs[0].Content != "hello" {
+		t.Fatalf("unexpected restored chat message: %#v", msgs[0])
+	}
+}
+
+func TestLoadMemoryEntries_SkipsMetaRecords(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "session.jsonl")
+
+	if err := appendMemoryEntry(path, transcriptEntry{Role: "META", Content: "token_usage"}); err != nil {
+		t.Fatalf("append meta entry: %v", err)
+	}
+	if err := appendMemoryEntry(path, transcriptEntry{Role: "SYSTEM", Content: "ready"}); err != nil {
+		t.Fatalf("append system entry: %v", err)
+	}
+
+	entries, err := loadMemoryEntries(path)
+	if err != nil {
+		t.Fatalf("load entries: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected meta to be skipped, got %d entries", len(entries))
+	}
+	if entries[0].Role != "SYSTEM" || entries[0].Content != "ready" {
+		t.Fatalf("unexpected restored entry: %#v", entries[0])
+	}
+}
+
 func TestChatHistory_WithUserImages(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "images.jsonl")

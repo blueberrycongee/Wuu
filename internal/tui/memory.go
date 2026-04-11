@@ -69,6 +69,9 @@ func loadMemoryEntries(path string) ([]transcriptEntry, error) {
 		if role == "" {
 			role = "SYSTEM"
 		}
+		if role == "META" {
+			continue
+		}
 		content := strings.TrimSpace(rec.Content)
 
 		// Tool results: merge into the previous assistant entry's ToolCalls.
@@ -261,6 +264,12 @@ func loadChatHistory(path string) ([]providers.ChatMessage, error) {
 		if err := json.Unmarshal([]byte(payload), &rec); err != nil {
 			return nil, fmt.Errorf("parse memory line %d: %w", line, err)
 		}
+		role := strings.ToLower(strings.TrimSpace(rec.Role))
+		switch role {
+		case "user", "assistant", "tool":
+		default:
+			continue
+		}
 
 		var tcs []providers.ToolCall
 		for _, tc := range rec.ToolCalls {
@@ -283,7 +292,7 @@ func loadChatHistory(path string) ([]providers.ChatMessage, error) {
 		}
 
 		msgs = append(msgs, providers.ChatMessage{
-			Role:       strings.ToLower(strings.TrimSpace(rec.Role)),
+			Role:       role,
 			Name:       rec.Name,
 			Content:    rec.Content,
 			Images:     imgs,
