@@ -59,6 +59,11 @@ git push origin v$(cat VERSION)
 - Agent 工具调用循环 —— 在你的仓库里读、写、编辑、搜索、执行命令
 - 支持 OpenAI 兼容 API（OpenAI / OpenRouter / one-api 等）和 Anthropic Messages API
 - 内置工具：`run_shell`、`read_file`、`write_file`、`edit_file`、`list_files`、`grep`、`glob`、`web_search`、`web_fetch`
+- 编排与会话工具：`ask_user`、`spawn_agent`、`fork_agent`、`send_message_to_agent`、`stop_agent`、`list_agents`、`load_skill`
+- 工具可用范围：
+  - 主交互代理（TUI 会话）：可用全部工具
+  - 子代理：不可用 `ask_user` 与编排工具（`spawn_agent`、`fork_agent`、`send_message_to_agent`、`stop_agent`、`list_agents`）
+- 当前限制：`send_message_to_agent` 目前仅保留接口，follow-up messaging 尚未在此构建中实现；调用会返回明确错误
 - 文件工具沙箱化，限制在当前工作区内
 - 会话隔离，支持恢复
 - 长对话自动压缩上下文
