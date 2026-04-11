@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -13,8 +14,11 @@ const statusAnimationInterval = 300 * time.Millisecond
 var statusSpinnerFrames = []string{"·", "·", "·", "·"}
 
 const (
-	statusShimmerTrail    = 5
-	statusShimmerLeadSpan = 2
+	statusShimmerPadding       = 10
+	statusShimmerBandHalfWidth = 5.0
+	statusWaveAmplitude        = 0.12
+	statusWaveFrequency        = 0.7
+	statusWaveSpeed            = 0.85
 )
 
 type workPhase int
@@ -149,23 +153,30 @@ func statusGlyph(ws workStatus, frame int) string {
 	}
 }
 
-func statusTextSegments(ws workStatus) []statusTextSegment {
+func italicizeStyle(style lipgloss.Style, italic bool) lipgloss.Style {
+	if italic {
+		return style.Italic(true)
+	}
+	return style
+}
+
+func statusTextSegments(ws workStatus, italic bool) []statusTextSegment {
 	var segments []statusTextSegment
 	label := strings.TrimSpace(ws.Label)
 	if label != "" {
 		segments = append(segments, statusTextSegment{
 			Text:   label,
-			Base:   waitingStatusLabelStyle,
-			Strong: waitingStatusLabelStrongStyle,
-			Bright: waitingStatusLabelBrightStyle,
+			Base:   italicizeStyle(waitingStatusLabelStyle, italic),
+			Strong: italicizeStyle(waitingStatusLabelStrongStyle, italic),
+			Bright: italicizeStyle(waitingStatusLabelBrightStyle, italic),
 		})
 	}
 	if meta := strings.TrimSpace(ws.Meta); meta != "" && meta != ws.Label {
 		segments = append(segments, statusTextSegment{
 			Text:   " · " + trimToWidth(meta, 44),
-			Base:   waitingStatusMetaStyle,
-			Strong: waitingStatusLabelStrongStyle,
-			Bright: waitingStatusLabelBrightStyle,
+			Base:   italicizeStyle(waitingStatusMetaStyle, italic),
+			Strong: italicizeStyle(waitingStatusLabelStrongStyle, italic),
+			Bright: italicizeStyle(waitingStatusLabelBrightStyle, italic),
 		})
 	}
 	return segments
@@ -176,14 +187,14 @@ func statusShimmerCycleLength(segments []statusTextSegment) int {
 	for _, segment := range segments {
 		runes += len([]rune(segment.Text))
 	}
-	cycle := runes + statusShimmerTrail + statusShimmerLeadSpan
+	cycle := runes + statusShimmerPadding*2
 	if cycle <= 0 {
 		cycle = 1
 	}
 	return cycle
 }
 
-func renderShimmerText(segments []statusTextSegment, frame int, running bool) string {
+func renderShimmerText(segments []statusTextSegment, frame int, running bool, wave bool) string {
 	if len(segments) == 0 {
 		return ""
 	}
@@ -195,30 +206,54 @@ func renderShimmerText(segments []statusTextSegment, frame int, running bool) st
 		return plain.String()
 	}
 
-	offset := frame % statusShimmerCycleLength(segments)
+	cycle := statusShimmerCycleLength(segments)
+	offset := frame % cycle
 	if offset < 0 {
-		offset += statusShimmerCycleLength(segments)
+		offset += cycle
 	}
+	position := float64(offset)
 
 	var styled strings.Builder
 	runeIndex := 0
 	for _, segment := range segments {
 		for _, r := range []rune(segment.Text) {
-			styled.WriteString(statusShimmerStyleAt(segment, runeIndex, offset).Render(string(r)))
+			styled.WriteString(statusShimmerStyleAt(segment, runeIndex, position, wave).Render(string(r)))
 			runeIndex++
 		}
 	}
 	return styled.String()
 }
 
-func statusShimmerStyleAt(segment statusTextSegment, idx int, offset int) lipgloss.Style {
-	delta := idx - offset
+func statusShimmerIntensity(idx int, position float64) float64 {
+	dist := math.Abs(float64(idx+statusShimmerPadding) - position)
+	if dist > statusShimmerBandHalfWidth {
+		return 0
+	}
+	x := math.Pi * (dist / statusShimmerBandHalfWidth)
+	return 0.5 * (1.0 + math.Cos(x))
+}
+
+func clampUnit(value float64) float64 {
 	switch {
-	case delta == 0:
+	case value < 0:
+		return 0
+	case value > 1:
+		return 1
+	default:
+		return value
+	}
+}
+
+func statusShimmerStyleAt(segment statusTextSegment, idx int, position float64, wave bool) lipgloss.Style {
+	intensity := statusShimmerIntensity(idx, position)
+	if wave && intensity > 0 {
+		ripple := math.Sin(float64(idx)*statusWaveFrequency-position*statusWaveSpeed) * statusWaveAmplitude
+		intensity = clampUnit(intensity + ripple*intensity)
+	}
+	switch {
+	case intensity >= 0.72:
 		return segment.Bright
-	case delta > 0 && delta <= statusShimmerLeadSpan:
-		return segment.Strong
-	case delta < 0 && delta >= -statusShimmerTrail:
+	case intensity >= 0.18:
 		return segment.Strong
 	default:
 		return segment.Base
@@ -226,16 +261,20 @@ func statusShimmerStyleAt(segment statusTextSegment, idx int, offset int) lipglo
 }
 
 func renderStatusHeader(ws workStatus, frame int) string {
+	return renderStatusHeaderWithOptions(ws, frame, false, false)
+}
+
+func renderStatusHeaderWithOptions(ws workStatus, frame int, italic bool, wave bool) string {
 	if ws.Phase == workPhaseIdle {
 		return ""
 	}
-	segments := statusTextSegments(ws)
+	segments := statusTextSegments(ws, italic)
 	if len(segments) == 0 {
 		return waitingStatusPrefixStyle.Render(statusGlyph(ws, frame))
 	}
 	return strings.Join([]string{
 		waitingStatusPrefixStyle.Render(statusGlyph(ws, frame)),
-		renderShimmerText(segments, frame, ws.Running),
+		renderShimmerText(segments, frame, ws.Running, wave),
 	}, " ")
 }
 
@@ -244,7 +283,7 @@ func renderInlineStatus(status string, frame int, width int) string {
 	if ws.Phase == workPhaseIdle {
 		return ""
 	}
-	line := renderStatusHeader(ws, frame)
+	line := renderStatusHeaderWithOptions(ws, frame, true, true)
 	if width <= 0 {
 		return line
 	}

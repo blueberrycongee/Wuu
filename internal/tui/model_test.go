@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -730,8 +731,8 @@ func renderEntries(entries []transcriptEntry) string {
 }
 
 func TestRenderInlineStatus_AnimatesAcrossFrames(t *testing.T) {
-	frameARaw := renderInlineStatus("streaming", 0, 80)
-	frameBRaw := renderInlineStatus("streaming", 3, 80)
+	frameARaw := renderInlineStatus("streaming", statusShimmerPadding, 80)
+	frameBRaw := renderInlineStatus("streaming", statusShimmerPadding+3, 80)
 	if frameARaw == frameBRaw {
 		t.Fatalf("expected different frames to render differently: %q", frameARaw)
 	}
@@ -751,8 +752,20 @@ func TestRenderInlineStatus_AnimatesAcrossFrames(t *testing.T) {
 	}
 }
 
+func TestRenderInlineStatus_UsesItalicSentence(t *testing.T) {
+	raw := renderInlineStatus("streaming", 0, 80)
+	reItalic := regexp.MustCompile(`\x1b\[(?:\d{1,3};)*3(?:;\d{1,3})*m`)
+	if !reItalic.MatchString(raw) {
+		t.Fatalf("expected italic ANSI style in inline status, got %q", raw)
+	}
+	got := ansi.Strip(raw)
+	if !strings.Contains(got, "Responding · Writing the reply") {
+		t.Fatalf("expected italic full sentence in inline status, got %q", got)
+	}
+}
+
 func TestRenderInlineStatus_ShimmerContinuesIntoMeta(t *testing.T) {
-	frameAtLabelCycle := renderInlineStatus("streaming", len([]rune("Responding"))+statusShimmerTrail+statusShimmerLeadSpan, 80)
+	frameAtLabelCycle := renderInlineStatus("streaming", len([]rune("Responding"))+statusShimmerPadding, 80)
 	frameAtStart := renderInlineStatus("streaming", 0, 80)
 	if frameAtLabelCycle == frameAtStart {
 		t.Fatalf("expected shimmer to continue past the label into meta text instead of restarting")
@@ -765,8 +778,8 @@ func TestRenderInlineStatus_ShimmerContinuesIntoMeta(t *testing.T) {
 
 func TestStatusShimmerCycleLength_CoversWholeRespondingSentence(t *testing.T) {
 	ws := deriveWorkStatus("streaming")
-	segments := statusTextSegments(ws)
-	want := len([]rune("Responding · Writing the reply")) + statusShimmerTrail + statusShimmerLeadSpan
+	segments := statusTextSegments(ws, true)
+	want := len([]rune("Responding · Writing the reply")) + statusShimmerPadding*2
 	if got := statusShimmerCycleLength(segments); got != want {
 		t.Fatalf("expected full sentence shimmer cycle length %d, got %d", want, got)
 	}
@@ -774,7 +787,7 @@ func TestStatusShimmerCycleLength_CoversWholeRespondingSentence(t *testing.T) {
 
 func TestNextStatusFrame_CoversWholeRespondingShimmerCycle(t *testing.T) {
 	frame := 0
-	cycle := statusShimmerCycleLength(statusTextSegments(deriveWorkStatus("streaming")))
+	cycle := statusShimmerCycleLength(statusTextSegments(deriveWorkStatus("streaming"), true))
 	for i := 0; i < cycle; i++ {
 		frame = nextStatusFrame(frame)
 	}
