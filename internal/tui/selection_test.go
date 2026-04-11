@@ -65,6 +65,68 @@ func TestMouseSelectionStartsAtContentAreaAfterLeftPadding(t *testing.T) {
 	}
 }
 
+func TestSelectionBaseColForLine_TracksIndentation(t *testing.T) {
+	if got := selectionBaseColForLine("  plain"); got != contentPadLeft {
+		t.Fatalf("expected base col %d for plain line, got %d", contentPadLeft, got)
+	}
+	if got := selectionBaseColForLine("    ❯"); got != contentPadLeft+2 {
+		t.Fatalf("expected base col %d for user label line, got %d", contentPadLeft+2, got)
+	}
+	if got := selectionBaseColForLine("   x"); got != contentPadLeft+1 {
+		t.Fatalf("expected base col %d for user bubble line, got %d", contentPadLeft+1, got)
+	}
+}
+
+func TestScreenToViewportCoords_UsesRenderedLineIndent(t *testing.T) {
+	m := &Model{}
+	m.layout.Chat.X = 10
+	m.layout.Chat.Y = 4
+	m.layout.Chat.Height = 5
+	m.viewport.YOffset = 0
+	m.renderedContent = "  plain\n    ❯\n   user"
+
+	row, col := m.screenToViewportCoords(10+contentPadLeft+1, 4)
+	if row != 0 || col != 1 {
+		t.Fatalf("row0 col mismatch: got row=%d col=%d", row, col)
+	}
+
+	row, col = m.screenToViewportCoords(10+contentPadLeft+2, 5)
+	if row != 1 || col != 0 {
+		t.Fatalf("row1 col mismatch: got row=%d col=%d", row, col)
+	}
+
+	row, col = m.screenToViewportCoords(10+contentPadLeft+2, 6)
+	if row != 2 || col != 1 {
+		t.Fatalf("row2 col mismatch: got row=%d col=%d", row, col)
+	}
+}
+
+func TestSelectionSelectedText_UsesPerLineBaseIndent(t *testing.T) {
+	sel := &selectionState{
+		Anchor: &selectionPoint{Row: 1, Col: 0},
+		Focus:  &selectionPoint{Row: 2, Col: 0},
+	}
+	content := "  plain\n    ❯\n   user"
+	got := sel.selectedText(content)
+	want := "❯\nu"
+	if got != want {
+		t.Fatalf("selectedText with per-line indent: got %q, want %q", got, want)
+	}
+}
+
+func TestIsInChatArea_ExcludesRightContentPadding(t *testing.T) {
+	m := &Model{}
+	m.layout.Chat = layoutRect{X: 0, Y: 0, Width: 80, Height: 10}
+
+	insideRight := m.layout.Chat.X + m.layout.Chat.Width - 2 - contentPadRight
+	if !m.isInChatArea(insideRight, 0) {
+		t.Fatalf("expected x=%d inside chat area", insideRight)
+	}
+	if m.isInChatArea(insideRight+1, 0) {
+		t.Fatalf("expected x=%d outside chat area (right content padding)", insideRight+1)
+	}
+}
+
 func TestSelection_SelectedTextUsesVisualColumnsForWideRunes(t *testing.T) {
 	sel := &selectionState{
 		Anchor: &selectionPoint{Row: 0, Col: 0},

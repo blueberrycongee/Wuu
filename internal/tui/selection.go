@@ -94,13 +94,14 @@ func (s *selectionState) selectedText(fullContent string) string {
 		}
 		stripped := ansi.Strip(lines[row])
 		lineWidth := lipgloss.Width(stripped)
-		colStart := 0
+		baseCol := selectionBaseColForLine(stripped)
+		colStart := baseCol
 		if row == start.Row {
-			colStart = start.Col
+			colStart = baseCol + start.Col
 		}
 		colEnd := lineWidth
 		if row == end.Row {
-			colEnd = end.Col + 1
+			colEnd = baseCol + end.Col + 1
 		}
 		if colStart < 0 {
 			colStart = 0
@@ -125,7 +126,7 @@ func (m *Model) isInChatArea(x, y int) bool {
 	top := m.layout.Chat.Y
 	bottom := top + m.layout.Chat.Height
 	left := m.layout.Chat.X
-	right := m.layout.Chat.X + m.layout.Chat.Width - 2
+	right := m.layout.Chat.X + m.layout.Chat.Width - 2 - contentPadRight
 	return x >= left && x <= right && y >= top && y < bottom
 }
 
@@ -236,7 +237,8 @@ func (m *Model) tickSelectionAutoScroll() tea.Cmd {
 	} else {
 		edgeRow = m.viewport.YOffset + m.layout.Chat.Height - 1
 	}
-	col := m.selectionAutoScroll.lastX - m.layout.Chat.X - contentPadLeft
+	colBase := m.selectionBaseColForRow(edgeRow)
+	col := m.selectionAutoScroll.lastX - m.layout.Chat.X - colBase
 	if col < 0 {
 		col = 0
 	}
@@ -262,12 +264,47 @@ func (m *Model) screenToViewportCoords(x, y int) (contentRow, vpCol int) {
 	if visibleRow >= m.layout.Chat.Height {
 		visibleRow = m.layout.Chat.Height - 1
 	}
-	vpCol = x - m.layout.Chat.X - contentPadLeft
+	contentRow = visibleRow + m.viewport.YOffset
+	colBase := m.selectionBaseColForRow(contentRow)
+	vpCol = x - m.layout.Chat.X - colBase
 	if vpCol < 0 {
 		vpCol = 0
 	}
-	contentRow = visibleRow + m.viewport.YOffset
 	return contentRow, vpCol
+}
+
+// selectionBaseColForRow returns the visual column offset where text
+// content starts on the given absolute content row.
+func (m *Model) selectionBaseColForRow(contentRow int) int {
+	if contentRow < 0 {
+		return contentPadLeft
+	}
+	lines := strings.Split(m.renderedContent, "\n")
+	if contentRow >= len(lines) {
+		return contentPadLeft
+	}
+	base := selectionBaseColForLine(ansi.Strip(lines[contentRow]))
+	if base < contentPadLeft {
+		return contentPadLeft
+	}
+	return base
+}
+
+// selectionBaseColForLine returns the visual column offset where real
+// text begins in a rendered line. It skips leading spaces used for
+// viewport/message indentation.
+func selectionBaseColForLine(stripped string) int {
+	if stripped == "" {
+		return 0
+	}
+	spaces := 0
+	for _, r := range stripped {
+		if r != ' ' {
+			break
+		}
+		spaces++
+	}
+	return spaces
 }
 
 // copySelectionToClipboard copies the current mouse selection. It
