@@ -351,6 +351,12 @@ func runTUI(args []string) error {
 	}
 	discoveredSkills := skills.Discover(projectSkillsDir, userSkillsDir)
 
+	// AskUserBridge connects the ask_user tool to the TUI's modal
+	// dialog. The main agent's toolkit gets it via SetAskUserBridge;
+	// sub-agent workers get a fresh toolkit without it (see the
+	// WorkerFactory below) so they cannot interrupt the human.
+	askBridge := tui.NewAskUserBridge()
+
 	var toolExecutor agent.ToolExecutor
 	var toolkit *tools.Toolkit
 	if !*noTools {
@@ -359,6 +365,7 @@ func runTUI(args []string) error {
 			return newErr
 		}
 		kit.SetSkills(discoveredSkills)
+		kit.SetAskUserBridge(askBridge)
 		toolkit = kit
 		toolExecutor = hooks.NewHookedExecutor(kit, hookDispatcher, "", rootDir)
 	}
@@ -390,11 +397,23 @@ func runTUI(args []string) error {
 		systemPromptText = appendSkillsToPrompt(systemPromptText, discoveredSkills)
 	}
 
+	// Ensure the cross-agent shared filesystem region exists. Agents
+	// use .wuu/shared/{findings,plans,status,reports} as the data
+	// plane between themselves; the system prompt teaches the
+	// convention but the directories must exist on disk so list_files
+	// returns something sensible on a fresh session.
+	if toolkit != nil {
+		if err := coordinator.EnsureSharedDir(rootDir); err != nil {
+			return fmt.Errorf("ensure shared dir: %w", err)
+		}
+	}
+
 	// If the workspace is a git repo and we have a toolkit, wire up the
-	// coordinator runtime so spawn_agent and friends become available.
-	// When coordinator wiring succeeds, we ALSO switch the main agent
-	// to coordinator-only mode (6 tools) and prepend the coordinator
-	// system prompt — this is the wuu default once Phase 6 is active.
+	// coordinator runtime so the orchestration tools (spawn_agent,
+	// send_message_to_agent, stop_agent, list_agents) become callable
+	// and the orchestration preamble gets prepended to the system
+	// prompt. The main agent keeps its full tool set either way; the
+	// coordinator just adds the inter-agent primitives on top.
 	var coord *coordinator.Coordinator
 	if toolkit != nil && worktree.IsGitRepo(rootDir) {
 		// Capture the worker base prompt BEFORE we prepend the
@@ -436,11 +455,11 @@ func runTUI(args []string) error {
 		if cerr == nil {
 			coord = c
 			toolkit.SetCoordinator(coord)
-			toolkit.SetCoordinatorOnly(true)
-			// Prepend coordinator role instructions to the main agent's
-			// system prompt. The coordinator preamble comes first so
-			// the model establishes its role before reading project
-			// memory and skills.
+			// Prepend the orchestration preamble to the main agent's
+			// system prompt. The preamble teaches the three-plane
+			// discipline (data via filesystem, control via messages,
+			// trajectories as history) and the spawn / fork judgment
+			// heuristic, then defers to project memory and skills.
 			systemPromptText = coordinator.SystemPromptPreamble() + "\n\n" + systemPromptText
 		}
 	}
@@ -500,6 +519,7 @@ func runTUI(args []string) error {
 		Skills:           discoveredSkills,
 		Memory:           memoryFiles,
 		Coordinator:      coord,
+		AskUserBridge:    askBridge,
 	}
 	if toolkit != nil {
 		cfgUI.OnSessionID = func(id string) {

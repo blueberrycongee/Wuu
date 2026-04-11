@@ -193,8 +193,16 @@ func RunToolLoop(
 		// Execute every requested tool call serially. Errors are
 		// turned into JSON error payloads so the model can recover
 		// from them on the next round instead of crashing the loop.
+		//
+		// The tool's execution context carries the current `messages`
+		// slice (via withHistory) so tools that need to read what the
+		// parent agent has done so far — fork_agent in particular —
+		// can extract it via HistoryFromContext. Sub-agent loops do
+		// not inject this key, which is how worker isolation for
+		// fork_agent stays enforced without a separate gate.
+		toolCtx := withHistory(ctx, messages)
 		for _, call := range result.ToolCalls {
-			toolResult, execErr := cfg.Tools.Execute(ctx, call)
+			toolResult, execErr := cfg.Tools.Execute(toolCtx, call)
 			if execErr != nil {
 				toolResult = errorJSON(execErr)
 			}
@@ -279,4 +287,34 @@ func errorJSON(err error) string {
 		return `{"error":"tool execution failed"}`
 	}
 	return string(b)
+}
+
+// historyContextKey is the unexported key under which RunToolLoop
+// threads the current parent-agent message slice into a tool's
+// execution context. Only fork_agent reads this; everyone else can
+// ignore it. Using an unexported zero-sized struct as the key
+// guarantees no collisions with other ctx values.
+type historyContextKey struct{}
+
+// withHistory attaches a snapshot of the parent agent's current
+// message history to ctx so a tool can later retrieve it via
+// HistoryFromContext. The slice is shared by reference — tools must
+// treat it as read-only and copy if they need to retain it past the
+// Execute call.
+func withHistory(ctx context.Context, history []providers.ChatMessage) context.Context {
+	return context.WithValue(ctx, historyContextKey{}, history)
+}
+
+// HistoryFromContext returns the parent agent's current message
+// history if RunToolLoop attached one (i.e. the tool is being called
+// from the main interactive loop). Returns nil otherwise — sub-agent
+// loops do not attach a history, which is how fork_agent's "main
+// agent only" gate stays enforced without an extra check elsewhere.
+//
+// Tools that read this should copy the slice if they need it past
+// the Execute call: it points at the live messages slice that
+// RunToolLoop is mutating.
+func HistoryFromContext(ctx context.Context) []providers.ChatMessage {
+	h, _ := ctx.Value(historyContextKey{}).([]providers.ChatMessage)
+	return h
 }

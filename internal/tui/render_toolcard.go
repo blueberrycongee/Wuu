@@ -9,6 +9,13 @@ import (
 
 // renderToolCard renders a single tool call card.
 func renderToolCard(tc ToolCallEntry, width int, frame int) string {
+	// ask_user has its own card layout that mirrors Claude Code's
+	// "User answered:" rendering — nicer than dumping the JSON
+	// answer payload through the generic body formatter.
+	if tc.Name == "ask_user" {
+		return renderAskUserCard(tc, width)
+	}
+
 	metaStyle := waitingStatusMetaStyle
 	contentStyle := lipgloss.NewStyle().Foreground(currentTheme.Inactive)
 	borderStyle := lipgloss.NewStyle().

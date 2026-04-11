@@ -75,20 +75,33 @@ func TestResearchPreset_OutputShape(t *testing.T) {
 	}
 }
 
-func TestSystemPromptPreamble_EmbedsBothPresets(t *testing.T) {
-	// The preamble must include the preset text verbatim — that's
-	// the only way the coordinator knows to copy them into worker
-	// prompts. Reference-by-name wouldn't work; the model has to
-	// see the actual block to paste it.
+func TestSystemPromptPreamble_TeachesThreePlanes(t *testing.T) {
+	// The three-plane discipline (filesystem for data, send_message
+	// for control, trajectories for history) is the load-bearing
+	// instruction in the new preamble. Without it the model defaults
+	// to chat-era habits and stuffs everything into messages.
 	preamble := SystemPromptPreamble()
-	if !strings.Contains(preamble, VerificationPreset) {
-		t.Error("SystemPromptPreamble does not embed VerificationPreset verbatim")
+	for _, want := range []string{
+		".wuu/shared/",       // the shared filesystem region
+		"send_message",       // the control channel
+		"trajector",          // trajectories as history (matches "trajectory" / "trajectories")
+	} {
+		if !strings.Contains(preamble, want) {
+			t.Errorf("SystemPromptPreamble missing three-plane reference %q", want)
+		}
 	}
-	if !strings.Contains(preamble, ResearchPreset) {
-		t.Error("SystemPromptPreamble does not embed ResearchPreset verbatim")
+}
+
+func TestSystemPromptPreamble_TeachesSpawnVsFork(t *testing.T) {
+	// The preamble must give the model enough to choose between
+	// spawn (clean room) and fork (state inheritance). The
+	// "100-word rule" is the load-bearing heuristic; pin it so a
+	// casual edit doesn't quietly drop it.
+	preamble := SystemPromptPreamble()
+	if !strings.Contains(preamble, "spawn") || !strings.Contains(preamble, "fork") {
+		t.Error("SystemPromptPreamble must teach spawn vs fork")
 	}
-	// And it must instruct the model to copy them verbatim.
-	if !strings.Contains(preamble, "VERBATIM") {
-		t.Error("SystemPromptPreamble does not tell the model to copy presets verbatim")
+	if !strings.Contains(preamble, "100 words") && !strings.Contains(preamble, "100-word") {
+		t.Error("SystemPromptPreamble missing the 100-word spawn/fork heuristic")
 	}
 }
