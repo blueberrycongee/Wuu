@@ -150,9 +150,11 @@ var (
 	inlineStatusSweepStyle lipgloss.Style
 	inlineStatusLabelStyle lipgloss.Style
 
-	waitingStatusPrefixStyle lipgloss.Style
-	waitingStatusLabelStyle  lipgloss.Style
-	waitingStatusMetaStyle   lipgloss.Style
+	waitingStatusPrefixStyle      lipgloss.Style
+	waitingStatusLabelStyle       lipgloss.Style
+	waitingStatusLabelStrongStyle lipgloss.Style
+	waitingStatusLabelBrightStyle lipgloss.Style
+	waitingStatusMetaStyle        lipgloss.Style
 )
 
 func init() {
@@ -230,8 +232,10 @@ func applyTheme(t theme) {
 	inlineStatusSweepStyle = lipgloss.NewStyle().Bold(true).Foreground(t.BrandLight)
 	inlineStatusLabelStyle = lipgloss.NewStyle().Foreground(t.Subtle)
 
-	waitingStatusPrefixStyle = lipgloss.NewStyle().Bold(true).Foreground(t.Brand)
-	waitingStatusLabelStyle = lipgloss.NewStyle().Bold(true).Foreground(t.Text)
+	waitingStatusPrefixStyle = lipgloss.NewStyle().Foreground(t.Subtle)
+	waitingStatusLabelStyle = lipgloss.NewStyle().Foreground(t.Subtle)
+	waitingStatusLabelStrongStyle = lipgloss.NewStyle().Bold(true).Foreground(t.Brand)
+	waitingStatusLabelBrightStyle = lipgloss.NewStyle().Bold(true).Foreground(t.BrandLight)
 	waitingStatusMetaStyle = lipgloss.NewStyle().Foreground(t.Subtle)
 
 	initPickerStyles()

@@ -4,11 +4,18 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/charmbracelet/lipgloss"
 )
 
 const statusAnimationInterval = 150 * time.Millisecond
 
-var statusSpinnerFrames = []string{"◐", "◓", "◑", "◒"}
+var statusSpinnerFrames = []string{"·", "·", "·", "·"}
+
+const (
+	statusShimmerTrail    = 5
+	statusShimmerLeadSpan = 2
+)
 
 type workPhase int
 
@@ -138,13 +145,56 @@ func statusGlyph(ws workStatus, frame int) string {
 	}
 }
 
+func renderShimmerText(label string, frame int, running bool) string {
+	if label == "" {
+		return ""
+	}
+	if !running {
+		return waitingStatusLabelStyle.Render(label)
+	}
+	runes := []rune(label)
+	if len(runes) == 0 {
+		return ""
+	}
+	cycle := len(runes) + statusShimmerTrail + statusShimmerLeadSpan
+	if cycle <= 0 {
+		cycle = 1
+	}
+	offset := frame % cycle
+	if offset < 0 {
+		offset += cycle
+	}
+
+	var plain strings.Builder
+	var styled strings.Builder
+	for i, r := range runes {
+		plain.WriteRune(r)
+		styled.WriteString(statusShimmerStyleAt(i, offset).Render(string(r)))
+	}
+	return lipgloss.NewStyle().SetString(plain.String()).Value() + styled.String()
+}
+
+func statusShimmerStyleAt(idx int, offset int) lipgloss.Style {
+	delta := idx - offset
+	switch {
+	case delta == 0:
+		return waitingStatusLabelBrightStyle
+	case delta > 0 && delta <= statusShimmerLeadSpan:
+		return waitingStatusLabelStrongStyle
+	case delta < 0 && delta >= -statusShimmerTrail:
+		return waitingStatusLabelStrongStyle
+	default:
+		return waitingStatusLabelStyle
+	}
+}
+
 func renderStatusHeader(ws workStatus, frame int) string {
 	if ws.Phase == workPhaseIdle {
 		return ""
 	}
 	parts := []string{
 		waitingStatusPrefixStyle.Render(statusGlyph(ws, frame)),
-		waitingStatusLabelStyle.Render(ws.Label),
+		renderShimmerText(ws.Label, frame, ws.Running),
 	}
 	if meta := strings.TrimSpace(ws.Meta); meta != "" && meta != ws.Label {
 		parts = append(parts, waitingStatusMetaStyle.Render("· "+trimToWidth(meta, 44)))
@@ -161,35 +211,5 @@ func renderInlineStatus(status string, frame int, width int) string {
 	if width <= 0 {
 		return line
 	}
-	if len([]rune(line)) >= width {
-		return trimToWidth(line, width)
-	}
-	trackWidth := width - len([]rune(line)) - 1
-	if trackWidth < 8 {
-		return trimToWidth(line, width)
-	}
-	return line + " " + renderInlineTrack(trackWidth, frame)
-}
-
-func renderInlineTrack(width int, frame int) string {
-	if width <= 0 {
-		return ""
-	}
-	if width == 1 {
-		return inlineStatusTrackStyle.Render("─")
-	}
-	cells := make([]string, width)
-	for i := range cells {
-		cells[i] = inlineStatusTrackStyle.Render("─")
-	}
-	head := frame % width
-	trail := []int{head, (head - 1 + width) % width, (head - 2 + width) % width}
-	for i, idx := range trail {
-		glyph := "━"
-		if i > 0 {
-			glyph = "─"
-		}
-		cells[idx] = inlineStatusSweepStyle.Render(glyph)
-	}
-	return strings.Join(cells, "")
+	return trimToWidth(line, width)
 }
