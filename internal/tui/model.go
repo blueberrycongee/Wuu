@@ -200,10 +200,10 @@ type Model struct {
 	thinkingStart  time.Time // when thinking began for current turn
 	spinnerTick    int
 
-	autoFollow     bool
-	showJump       bool
-	clock          string
-	statusLine     string
+	autoFollow      bool
+	showJump        bool
+	clock           string
+	statusLine      string
 	inlineSpinFrame int
 
 	streamCollector *markdown.StreamCollector
@@ -299,26 +299,26 @@ func NewModel(cfg Config) Model {
 	in.CharLimit = 0
 
 	m := Model{
-		provider:          cfg.Provider,
-		modelName:         cfg.Model,
-		configPath:        cfg.ConfigPath,
-		workspaceRoot:     filepath.Dir(cfg.ConfigPath),
-		memoryPath:        cfg.MemoryPath,
-		sessionDir:        cfg.SessionDir,
-		runPrompt:         cfg.RunPrompt,
-		streamRunner:      cfg.StreamRunner,
-		hookDispatcher:    cfg.HookDispatcher,
-		onSessionID:       cfg.OnSessionID,
-		skills:            cfg.Skills,
-		memoryFiles:       cfg.Memory,
-		coordinator:       cfg.Coordinator,
-		maxContextTokens:  cfg.MaxContextTokens,
-		requestTimeout:    cfg.RequestTimeout,
-		viewport:          vp,
-		input:             in,
-		autoFollow:        true,
-		clock:             time.Now().Format("15:04:05"),
-		statusLine:        "ready",
+		provider:           cfg.Provider,
+		modelName:          cfg.Model,
+		configPath:         cfg.ConfigPath,
+		workspaceRoot:      filepath.Dir(cfg.ConfigPath),
+		memoryPath:         cfg.MemoryPath,
+		sessionDir:         cfg.SessionDir,
+		runPrompt:          cfg.RunPrompt,
+		streamRunner:       cfg.StreamRunner,
+		hookDispatcher:     cfg.HookDispatcher,
+		onSessionID:        cfg.OnSessionID,
+		skills:             cfg.Skills,
+		memoryFiles:        cfg.Memory,
+		coordinator:        cfg.Coordinator,
+		maxContextTokens:   cfg.MaxContextTokens,
+		requestTimeout:     cfg.RequestTimeout,
+		viewport:           vp,
+		input:              in,
+		autoFollow:         true,
+		clock:              time.Now().Format("15:04:05"),
+		statusLine:         "ready",
 		streamTarget:       -1,
 		historyIndex:       -1,
 		scrollbarHoverRow:  -1,
@@ -592,6 +592,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.resumePicker.width = m.width
 			m.resumePicker.height = m.height
 		}
+		return m, nil
+
+	case tea.FocusMsg:
+		m.focusInput()
+		return m, nil
+
+	case tea.BlurMsg:
+		m.blurInput()
 		return m, nil
 
 	case tickMsg:
@@ -1076,6 +1084,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Action == tea.MouseActionPress &&
 			msg.Button == tea.MouseButtonLeft &&
 			m.isScrollbarClick(msg.X, msg.Y) {
+			m.blurInput()
 			m.selection.clear()
 			row := msg.Y - m.layout.Chat.Y
 			if msg.Alt {
@@ -1100,6 +1109,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			msg.Button == tea.MouseButtonLeft &&
 			msg.Y == 0 &&
 			msg.X >= m.width-20 {
+			m.blurInput()
 			m.selection.clear()
 			m.viewport.GotoBottom()
 			m.autoFollow = true
@@ -1117,6 +1127,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			inputLeft := m.layout.Input.X
 
 			if msg.Y >= inputTop && msg.Y < inputBot && msg.X >= inputLeft {
+				m.focusInput()
 				m.selection.clear()
 				targetRow := msg.Y - inputTop
 				targetCol := msg.X - inputLeft - promptW
@@ -1147,6 +1158,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Start new selection on left-click in viewport area.
 		if msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft {
 			if m.isInChatArea(msg.X, msg.Y) {
+				m.blurInput()
 				m.stopSelectionAutoScroll()
 				m.selection.clear()
 				vpRow, vpCol := m.screenToViewportCoords(msg.X, msg.Y)
@@ -1776,6 +1788,14 @@ func (m *Model) ensureSessionFile() {
 
 // canNavigateHistory returns true when up/down should browse history
 // instead of moving the cursor within the textarea.
+func (m *Model) focusInput() {
+	m.input.Focus()
+}
+
+func (m *Model) blurInput() {
+	m.input.Blur()
+}
+
 func (m *Model) canNavigateHistory() bool {
 	val := m.input.Value()
 	if val == "" {

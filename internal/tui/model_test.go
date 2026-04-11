@@ -148,6 +148,7 @@ func TestMouseClickPositionsCursor(t *testing.T) {
 	m.relayout()
 
 	m.input.SetValue("hello world")
+	m.input.Blur()
 	m.input.SetCursor(0) // cursor at start
 
 	// Click inside the input area.
@@ -162,9 +163,56 @@ func TestMouseClickPositionsCursor(t *testing.T) {
 	})
 	after := updated.(Model)
 
+	if !after.input.Focused() {
+		t.Fatal("expected input to be focused after clicking input area")
+	}
 	li := after.input.LineInfo()
 	if li.CharOffset != 4 {
 		t.Fatalf("expected cursor at column 4, got %d", li.CharOffset)
+	}
+}
+
+func TestMouseClickChatAreaBlursInput(t *testing.T) {
+	m := newScrollableModelForScrollbarTest(t)
+	m.input.Focus()
+
+	updated, _ := m.Update(tea.MouseMsg{
+		Action: tea.MouseActionPress,
+		Button: tea.MouseButtonLeft,
+		X:      m.layout.Chat.X + 2,
+		Y:      m.layout.Chat.Y + 1,
+	})
+	after := updated.(Model)
+
+	if after.input.Focused() {
+		t.Fatal("expected input to blur after clicking chat area")
+	}
+	if !after.selection.IsDragging {
+		t.Fatal("expected chat click to start selection drag")
+	}
+}
+
+func TestFocusAndBlurMessagesUpdateInputState(t *testing.T) {
+	m := NewModel(Config{
+		Provider:   "test",
+		Model:      "test-model",
+		ConfigPath: "/tmp/.wuu.json",
+		RunPrompt: func(_ctx context.Context, prompt string) (string, error) {
+			return prompt, nil
+		},
+	})
+	m.input.Blur()
+
+	updated, _ := m.Update(tea.FocusMsg{})
+	afterFocus := updated.(Model)
+	if !afterFocus.input.Focused() {
+		t.Fatal("expected input focused after tea.FocusMsg")
+	}
+
+	updated, _ = afterFocus.Update(tea.BlurMsg{})
+	afterBlur := updated.(Model)
+	if afterBlur.input.Focused() {
+		t.Fatal("expected input blurred after tea.BlurMsg")
 	}
 }
 
