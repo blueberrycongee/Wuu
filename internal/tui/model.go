@@ -2021,6 +2021,9 @@ func (m *Model) jumpToPreviousUserAnchor() {
 }
 
 func (m *Model) refreshViewport(forceBottom bool) {
+	preserveOffset := !forceBottom && !m.autoFollow
+	prevOffset := m.viewport.YOffset
+
 	var b strings.Builder
 	lineCount := 0
 	appendText := func(text string) {
@@ -2135,6 +2138,8 @@ func (m *Model) refreshViewport(forceBottom bool) {
 	m.viewport.SetContent(m.renderedContent)
 	if forceBottom || m.autoFollow {
 		m.viewport.GotoBottom()
+	} else if preserveOffset {
+		m.setViewportOffset(prevOffset)
 	}
 	m.showJump = !m.viewport.AtBottom()
 	if !m.hasScrollableContent() {

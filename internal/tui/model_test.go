@@ -645,6 +645,53 @@ func TestMouseDragSelectionAutoScrollsPastEdge(t *testing.T) {
 	}
 }
 
+func TestRefreshViewportKeepsOffsetWhileStreamingWhenUserScrolledUp(t *testing.T) {
+	m := newScrollableModelForScrollbarTest(t)
+	m.streaming = true
+	m.pendingRequest = true
+	m.streamTarget = len(m.entries) - 1
+	m.setViewportOffset(4)
+	m.autoFollow = false
+	m.showJump = true
+	beforeOffset := m.viewport.YOffset
+
+	m.entries[m.streamTarget].Content += "\nstream update\nmore output"
+	m.refreshViewport(false)
+
+	if m.viewport.YOffset != beforeOffset {
+		t.Fatalf("expected viewport offset to stay at %d while scrolled up, got %d", beforeOffset, m.viewport.YOffset)
+	}
+	if m.autoFollow {
+		t.Fatal("expected autoFollow to remain false while user is away from bottom")
+	}
+}
+
+func TestRefreshViewportFollowsBottomWhileStreamingAtBottom(t *testing.T) {
+	m := newScrollableModelForScrollbarTest(t)
+	m.streaming = true
+	m.pendingRequest = true
+	m.streamTarget = len(m.entries) - 1
+	m.refreshViewport(true)
+	if !m.viewport.AtBottom() {
+		t.Fatal("expected initial viewport at bottom")
+	}
+	m.autoFollow = true
+	beforeOffset := m.viewport.YOffset
+
+	m.entries[m.streamTarget].Content += "\nstream update\nmore output\nand even more"
+	m.refreshViewport(false)
+
+	if !m.viewport.AtBottom() {
+		t.Fatal("expected viewport to keep following bottom during streaming")
+	}
+	if m.viewport.YOffset < beforeOffset {
+		t.Fatalf("expected bottom-follow offset to stay at or below previous bottom, before=%d after=%d", beforeOffset, m.viewport.YOffset)
+	}
+	if !m.autoFollow {
+		t.Fatal("expected autoFollow to remain true at bottom")
+	}
+}
+
 func newScrollableModelForScrollbarTest(t *testing.T) Model {
 	t.Helper()
 	m := NewModel(Config{
