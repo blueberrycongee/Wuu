@@ -67,19 +67,20 @@ func (m *Manager) Spawn(ctx context.Context, opts SpawnOptions) (*SubAgent, erro
 	subCtx, cancel := context.WithCancel(ctx)
 
 	sa := &SubAgent{
-		ID:           id,
-		Type:         opts.Type,
-		Description:  opts.Description,
-		Status:       StatusRunning, // set synchronously so CountRunning sees it immediately
-		StartedAt:    time.Now(),
-		prompt:       opts.Prompt,
-		systemPrompt: opts.SystemPrompt,
-		model:        model,
-		toolkit:      opts.Toolkit,
-		historyPath:  opts.HistoryPath,
-		client:       m.client,
-		cancelFunc:   cancel,
-		doneCh:       make(chan struct{}),
+		ID:             id,
+		Type:           opts.Type,
+		Description:    opts.Description,
+		Status:         StatusRunning, // set synchronously so CountRunning sees it immediately
+		StartedAt:      time.Now(),
+		prompt:         opts.Prompt,
+		systemPrompt:   opts.SystemPrompt,
+		model:          model,
+		toolkit:        opts.Toolkit,
+		historyPath:    opts.HistoryPath,
+		initialHistory: opts.InitialHistory,
+		client:         m.client,
+		cancelFunc:     cancel,
+		doneCh:         make(chan struct{}),
 	}
 
 	m.mu.Lock()
@@ -120,7 +121,29 @@ func (m *Manager) run(ctx context.Context, sa *SubAgent, opts SpawnOptions) {
 		OnUsage:      onUsage,
 	}
 
-	content, err := runner.Run(ctx, sa.prompt)
+	var (
+		content string
+		err     error
+	)
+	if len(sa.initialHistory) > 0 {
+		// Fork path: the parent's history is the worker's starting
+		// state. We append the role-override prompt as the final
+		// user message and call RunWithCallback directly so the
+		// runner does NOT prepend its own [system, user] envelope —
+		// the system message already lives at history[0] (parent's
+		// system prompt verbatim, for prompt-cache friendliness).
+		history := make([]providers.ChatMessage, 0, len(sa.initialHistory)+1)
+		history = append(history, sa.initialHistory...)
+		history = append(history, providers.ChatMessage{
+			Role:    "user",
+			Content: sa.prompt,
+		})
+		content, _, err = runner.RunWithCallback(ctx, history, nil)
+	} else {
+		// Spawn path: fresh conversation built from the worker's
+		// own system prompt + the user prompt as the first message.
+		content, err = runner.Run(ctx, sa.prompt)
+	}
 
 	sa.mu.Lock()
 	sa.CompletedAt = time.Now()

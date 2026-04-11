@@ -64,6 +64,27 @@ type SpawnOptions struct {
 	// HistoryPath, if set, is the absolute path where this sub-agent's
 	// JSONL history should be persisted.
 	HistoryPath string
+
+	// InitialHistory, when non-nil, seeds the worker's conversation
+	// with this exact message slice instead of starting from
+	// [system, user_prompt]. Used by fork_agent so the worker
+	// inherits the parent's full history verbatim — which is what
+	// makes prompt-cache hit work across the fork boundary.
+	//
+	// When InitialHistory is set:
+	//   - SystemPrompt on this struct is IGNORED. The system message
+	//     is whatever the caller put at history[0] (typically the
+	//     parent's system prompt verbatim, for cache friendliness).
+	//   - Prompt becomes the FINAL user message appended to the
+	//     history, not the only user message. It is the place to
+	//     inject role-override instructions (e.g. wrapped in a
+	//     <system-reminder> block).
+	//   - The history MUST end with a complete turn — no dangling
+	//     tool_use without a matching tool_result, or the provider
+	//     API will reject the worker's first request. The caller
+	//     (fork_agent) is responsible for stripping any in-flight
+	//     tool_use blocks before passing the history through.
+	InitialHistory []providers.ChatMessage
 }
 
 // SubAgent is an isolated agent instance managed by Manager.
@@ -80,11 +101,12 @@ type SubAgent struct {
 	OutputTokens int    // cumulative output tokens used so far
 
 	// Internal state — read-only from outside.
-	prompt       string
-	systemPrompt string
-	model        string
-	toolkit      agent.ToolExecutor
-	historyPath  string
+	prompt         string
+	systemPrompt   string
+	model          string
+	toolkit        agent.ToolExecutor
+	historyPath    string
+	initialHistory []providers.ChatMessage
 
 	// LLM client for the sub-agent's runner. Workers run through the
 	// streaming runner so they share the same transport semantics as

@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/blueberrycongee/wuu/internal/agent"
 	"github.com/blueberrycongee/wuu/internal/coordinator"
 	"github.com/blueberrycongee/wuu/internal/providers"
 	"github.com/blueberrycongee/wuu/internal/skills"
@@ -365,6 +366,44 @@ func (t *Toolkit) allDefinitions() []providers.ToolDefinition {
 			},
 		},
 		{
+			Name: "fork_agent",
+			Description: "Spawn a sub-agent that INHERITS your full conversation history — every " +
+				"tool call, every observation, every piece of reasoning you've done so far. Use " +
+				"fork when you've already built up understanding the child needs and would " +
+				"otherwise have to recap a lot of it in prose. The 100-word rule: if you can " +
+				"describe the task in under 100 words without recapping your own context, use " +
+				"spawn_agent. If you'd need to paraphrase a lot of what you've already learned " +
+				"to make the task legible to a fresh worker, use fork_agent instead. " +
+				"The forked worker uses your system prompt verbatim (so prompt-cache hits across " +
+				"the fork boundary) and runs INPLACE in the parent repo — there is no worktree " +
+				"isolation option, because fork is for continuing your work, not for sandboxing. " +
+				"The forked worker CANNOT use spawn_agent, fork_agent, send_message_to_agent, " +
+				"stop_agent, list_agents, or ask_user (those tools are blocked at the worker " +
+				"toolkit level). Your inherited history may reference those tools — the worker " +
+				"sees them as read-only context, not patterns to reproduce. " +
+				"Like spawn_agent, fork_agent is asynchronous by default: returns immediately " +
+				"with an agent_id, the result arrives later as a <worker-result> message. " +
+				"Set synchronous=true to block until the worker finishes.",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"description": map[string]any{
+						"type":        "string",
+						"description": "Short 3-7 word task summary shown in status displays.",
+					},
+					"prompt": map[string]any{
+						"type":        "string",
+						"description": "The specific task for the forked worker to perform. The worker will see your full conversation history as context, so this prompt only needs to describe the NEW work — do not recap what's already in the history.",
+					},
+					"synchronous": map[string]any{
+						"type":        "boolean",
+						"description": "If true, block until the worker completes and return its result inline. If false (default), return immediately and receive the result later via a <worker-result> message.",
+					},
+				},
+				"required": []string{"description", "prompt"},
+			},
+		},
+		{
 			Name: "send_message_to_agent",
 			Description: "Send a follow-up message to an existing sub-agent that is still running " +
 				"or has completed. The agent will resume from its current state and process the " +
@@ -461,6 +500,8 @@ func (t *Toolkit) Execute(ctx context.Context, call providers.ToolCall) (string,
 		return t.askUser(ctx, call.Arguments)
 	case "spawn_agent":
 		return t.spawnAgent(ctx, call.Arguments)
+	case "fork_agent":
+		return t.forkAgent(ctx, call.Arguments)
 	case "send_message_to_agent":
 		return t.sendMessageToAgent(call.Arguments)
 	case "stop_agent":
@@ -578,6 +619,125 @@ func (t *Toolkit) spawnAgent(ctx context.Context, argsJSON string) (string, erro
 		return "", err
 	}
 	return string(out), nil
+}
+
+// forkAgent dispatches a fork_agent tool call. Unlike spawnAgent it
+// reads the parent's current message history out of ctx (RunToolLoop
+// attaches it via withHistory), strips the in-flight assistant turn
+// that contains this very fork_agent tool_use (so the worker's first
+// API request doesn't have a dangling tool_use), wraps the model-
+// supplied prompt in a <system-reminder> role override, and hands
+// it all to coordinator.Fork. The whole point is that the worker's
+// initial API request shares a byte-identical prefix with the
+// parent's most recent request — that's what makes prompt-cache
+// hits work across the fork boundary.
+func (t *Toolkit) forkAgent(ctx context.Context, argsJSON string) (string, error) {
+	if t.coordinator == nil {
+		return "", errors.New("fork_agent: coordinator not configured (this build does not support sub-agents)")
+	}
+	parentHistory := agent.HistoryFromContext(ctx)
+	if len(parentHistory) == 0 {
+		return "", errors.New("fork_agent: no parent history available — only the main agent in an interactive session can fork (workers cannot fork)")
+	}
+
+	var args struct {
+		Description string `json:"description"`
+		Prompt      string `json:"prompt"`
+		Synchronous bool   `json:"synchronous"`
+	}
+	if err := decodeArgs(argsJSON, &args); err != nil {
+		return "", fmt.Errorf("fork_agent: %w", err)
+	}
+	if strings.TrimSpace(args.Description) == "" {
+		return "", errors.New("fork_agent: description is required")
+	}
+	if strings.TrimSpace(args.Prompt) == "" {
+		return "", errors.New("fork_agent: prompt is required")
+	}
+
+	// Strip the in-flight assistant turn that contains THIS
+	// fork_agent tool_use. The Anthropic Messages API requires
+	// every tool_use to be followed by a matching tool_result in
+	// the next user/tool turn — leaving our own dangling tool_use
+	// in the worker's history would make the worker's first
+	// request fail with an invalid_request_error.
+	cleaned := stripDanglingToolUses(parentHistory)
+	if len(cleaned) == 0 {
+		return "", errors.New("fork_agent: history is empty after stripping the in-flight tool_use (nothing to inherit)")
+	}
+
+	wrapped := wrapForkPrompt(args.Prompt)
+
+	result, err := t.coordinator.Fork(ctx, coordinator.ForkRequest{
+		Description: args.Description,
+		Prompt:      wrapped,
+		Synchronous: args.Synchronous,
+	}, cleaned)
+	if err != nil {
+		return "", err
+	}
+	out, err := json.Marshal(result)
+	if err != nil {
+		return "", err
+	}
+	return string(out), nil
+}
+
+// stripDanglingToolUses returns history with any trailing assistant
+// message that contains tool_calls (i.e. tool_use blocks) removed.
+// This handles the case where fork_agent reads the parent's history
+// at the moment its OWN tool_use has just been added but its
+// tool_result has not yet been generated. A more rigorous version
+// would scan back through every dangling tool_use, but in practice
+// only the very last assistant message can be in this state — the
+// loop appends the assistant turn, then runs each tool serially,
+// so any earlier tool_use already has a matching tool_result.
+func stripDanglingToolUses(history []providers.ChatMessage) []providers.ChatMessage {
+	if len(history) == 0 {
+		return history
+	}
+	last := history[len(history)-1]
+	if last.Role == "assistant" && len(last.ToolCalls) > 0 {
+		return history[:len(history)-1]
+	}
+	return history
+}
+
+// wrapForkPrompt builds the role-override message that becomes the
+// forked worker's final user turn. The <system-reminder> tag is
+// recognized by trained models as an authoritative directive that
+// overrides anything else in the conversation — including the
+// parent's system prompt that the worker has inherited verbatim.
+//
+// The override is necessary because the worker is using the
+// parent's system prompt for prompt-cache friendliness, and that
+// system prompt makes claims that don't apply to the worker (it
+// says the agent has spawn_agent / ask_user / fork_agent etc.;
+// the worker's tool list does not contain those).
+func wrapForkPrompt(task string) string {
+	return `<system-reminder>
+You are a forked sub-agent. The conversation history above is the parent
+agent's history — read it as context for your task, but do not continue
+acting as the parent.
+
+This system-reminder OVERRIDES the parent's system prompt for you:
+
+- You CANNOT use spawn_agent, fork_agent, send_message_to_agent,
+  stop_agent, list_agents, or ask_user. Those tools are not in your
+  tool list and any attempt will fail. The parent's history may
+  reference them — treat those references as read-only context, not
+  as patterns you should reproduce.
+- The parent has already aligned with the user's intent. You do not
+  need to re-classify the task (Path A / B / C) or ask for
+  clarification — the parent did that work and the answer is in the
+  history above. Just execute the task below.
+- When you finish, return a concise result summary and stop. Do not
+  loop, do not ask follow-ups.
+
+Your specific task:
+
+` + task + `
+</system-reminder>`
 }
 
 func (t *Toolkit) loadSkill(ctx context.Context, argsJSON string) (string, error) {

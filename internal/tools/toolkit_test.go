@@ -156,6 +156,89 @@ func TestToolkit_AskUser_ValidatesInput(t *testing.T) {
 	}
 }
 
+func TestToolkit_ForkAgent_RegisteredInDefinitions(t *testing.T) {
+	root := t.TempDir()
+	kit, err := New(root)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defs := kit.Definitions()
+	found := false
+	for _, d := range defs {
+		if d.Name == "fork_agent" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("fork_agent must be present in tool definitions")
+	}
+}
+
+func TestToolkit_ForkAgent_FailsWithoutCoordinator(t *testing.T) {
+	root := t.TempDir()
+	kit, err := New(root)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	// Don't call SetCoordinator — simulates a worker toolkit.
+	_, err = kit.Execute(context.Background(), providers.ToolCall{
+		Name:      "fork_agent",
+		Arguments: `{"description":"test","prompt":"do thing"}`,
+	})
+	if err == nil {
+		t.Fatal("expected error when coordinator is not configured")
+	}
+	if !strings.Contains(err.Error(), "coordinator not configured") {
+		t.Fatalf("expected coordinator-not-configured error, got: %v", err)
+	}
+}
+
+func TestStripDanglingToolUses(t *testing.T) {
+	// Last message is an assistant turn with tool_calls — should be stripped.
+	with := []providers.ChatMessage{
+		{Role: "system", Content: "sys"},
+		{Role: "user", Content: "u"},
+		{Role: "assistant", Content: "ok", ToolCalls: []providers.ToolCall{{Name: "fork_agent"}}},
+	}
+	got := stripDanglingToolUses(with)
+	if len(got) != 2 {
+		t.Fatalf("expected last assistant w/ tool_calls stripped, got %d msgs", len(got))
+	}
+	if got[len(got)-1].Role != "user" {
+		t.Fatalf("expected last remaining message to be user, got %s", got[len(got)-1].Role)
+	}
+
+	// Last message is a tool result — should NOT be stripped (the
+	// previous tool_use already has its matching result).
+	clean := []providers.ChatMessage{
+		{Role: "system", Content: "sys"},
+		{Role: "user", Content: "u"},
+		{Role: "assistant", Content: "ok", ToolCalls: []providers.ToolCall{{Name: "read_file"}}},
+		{Role: "tool", Name: "read_file", Content: "result"},
+	}
+	got = stripDanglingToolUses(clean)
+	if len(got) != 4 {
+		t.Fatalf("clean history should pass through unchanged, got %d msgs", len(got))
+	}
+
+	// Last message is an assistant turn WITHOUT tool_calls — should
+	// not be stripped (it's a normal text reply).
+	textOnly := []providers.ChatMessage{
+		{Role: "user", Content: "u"},
+		{Role: "assistant", Content: "ok"},
+	}
+	got = stripDanglingToolUses(textOnly)
+	if len(got) != 2 {
+		t.Fatalf("text-only assistant should not be stripped, got %d msgs", len(got))
+	}
+
+	// Empty history — should pass through.
+	if got := stripDanglingToolUses(nil); got != nil {
+		t.Fatal("nil history should pass through unchanged")
+	}
+}
+
 func TestToolkit_RunShell(t *testing.T) {
 	root := t.TempDir()
 	kit, err := New(root)

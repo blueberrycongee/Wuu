@@ -287,6 +287,111 @@ func (c *Coordinator) recycleWorktreeWhenDone(agentID string, wtRef *worktree.Wo
 	_, _ = c.worktrees.CleanupIfClean(wtRef)
 }
 
+// ForkRequest is the internal shape of a fork_agent tool invocation
+// after argument validation. Unlike SpawnRequest there is no Type or
+// Isolation choice — fork is always inplace (it inherits the parent's
+// conversation continuation, so a worktree sandbox would defeat the
+// continuation semantics) and always uses the default worker type.
+type ForkRequest struct {
+	Description string
+	// Prompt is what the worker sees as its FINAL user message,
+	// appended to the inherited history. Callers should wrap any
+	// role-override instructions in <system-reminder> tags so the
+	// model treats them as authoritative over anything in the
+	// inherited parent system prompt.
+	Prompt      string
+	Synchronous bool
+	Timeout     time.Duration
+}
+
+// Fork launches a sub-agent that inherits a snapshot of the parent
+// agent's conversation history. The worker's first request to the
+// LLM provider replays the parent's history verbatim and adds the
+// fork prompt as the final user message — preserving prompt-cache
+// hits across the fork boundary.
+//
+// `parentHistory` MUST be a complete history with no dangling
+// tool_use blocks: the caller (the fork_agent tool handler) is
+// expected to have already stripped the in-flight fork_agent
+// assistant turn before passing it through.
+func (c *Coordinator) Fork(ctx context.Context, req ForkRequest, parentHistory []providers.ChatMessage) (*SpawnResult, error) {
+	if c.manager.CountRunning() >= c.maxParallel {
+		return nil, fmt.Errorf("max parallel sub-agents reached (%d). Wait for one to complete or stop one with stop_agent.", c.maxParallel)
+	}
+	if strings.TrimSpace(req.Prompt) == "" {
+		return nil, errors.New("prompt is required")
+	}
+	if len(parentHistory) == 0 {
+		return nil, errors.New("fork_agent: no parent history (only the main agent in an interactive session can fork)")
+	}
+
+	// Resolve the default worker type so the worker has the full
+	// tool set (minus orchestration / ask_user, which are blocked
+	// by the no-bridge / no-coordinator pattern in the WorkerFactory).
+	wt, err := LookupWorkerType("worker")
+	if err != nil {
+		return nil, err
+	}
+
+	workerID := newCoordinatorWorkerID("fork")
+	workerRoot := c.worktrees.ParentRepo()
+
+	workerKit, err := c.workerFact(workerRoot, wt)
+	if err != nil {
+		return nil, fmt.Errorf("worker toolkit: %w", err)
+	}
+
+	historyPath := ""
+	if c.historyDir != "" {
+		historyPath = filepath.Join(c.historyDir, workerID+".json")
+	}
+
+	// Note: we deliberately do NOT set SystemPrompt — when
+	// InitialHistory is non-nil, the subagent runner uses
+	// history[0] as the system message and ignores the option.
+	sa, err := c.manager.Spawn(ctx, subagent.SpawnOptions{
+		Type:           "fork",
+		Description:    req.Description,
+		Prompt:         req.Prompt,
+		Toolkit:        workerKit,
+		HistoryPath:    historyPath,
+		InitialHistory: parentHistory,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("spawn: %w", err)
+	}
+
+	result := &SpawnResult{
+		AgentID:   sa.ID,
+		Status:    string(sa.Status),
+		Isolation: string(IsolationInplace),
+	}
+
+	if !req.Synchronous {
+		return result, nil
+	}
+
+	timeout := req.Timeout
+	if timeout <= 0 {
+		timeout = 10 * time.Minute
+	}
+	waitCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	snap, err := c.manager.Wait(waitCtx, sa.ID)
+	if err != nil {
+		return nil, fmt.Errorf("wait: %w", err)
+	}
+	result.Status = string(snap.Status)
+	result.Result = snap.Result
+	if snap.Error != nil {
+		result.Error = snap.Error.Error()
+	}
+	if !snap.CompletedAt.IsZero() && !snap.StartedAt.IsZero() {
+		result.DurationMS = snap.CompletedAt.Sub(snap.StartedAt).Milliseconds()
+	}
+	return result, nil
+}
+
 // StopAll cancels every running worker. Used for Ctrl+C handling.
 func (c *Coordinator) StopAll() {
 	c.manager.StopAll()

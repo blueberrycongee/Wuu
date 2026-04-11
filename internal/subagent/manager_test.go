@@ -13,16 +13,21 @@ import (
 )
 
 // fakeClient is a tiny providers.StreamClient stub for tests. It
-// returns the canned response on every Chat / StreamChat call.
+// returns the canned response on every Chat / StreamChat call and
+// stashes the most recent request payload so tests can assert what
+// the runner actually sent (used by the fork-with-history test).
 type fakeClient struct {
-	response providers.ChatResponse
-	err      error
-	calls    atomic.Int32
-	delay    time.Duration
+	response    providers.ChatResponse
+	err         error
+	calls       atomic.Int32
+	delay       time.Duration
+	lastRequest atomic.Pointer[providers.ChatRequest]
 }
 
-func (f *fakeClient) Chat(ctx context.Context, _ providers.ChatRequest) (providers.ChatResponse, error) {
+func (f *fakeClient) Chat(ctx context.Context, req providers.ChatRequest) (providers.ChatResponse, error) {
 	f.calls.Add(1)
+	cp := req
+	f.lastRequest.Store(&cp)
 	if f.delay > 0 {
 		select {
 		case <-time.After(f.delay):
@@ -40,8 +45,10 @@ func (f *fakeClient) Chat(ctx context.Context, _ providers.ChatRequest) (provide
 // delta followed by a terminal Done event. Errors and the delay knob
 // behave the same way they do for Chat so existing tests don't need
 // to grow a stream-specific code path.
-func (f *fakeClient) StreamChat(ctx context.Context, _ providers.ChatRequest) (<-chan providers.StreamEvent, error) {
+func (f *fakeClient) StreamChat(ctx context.Context, req providers.ChatRequest) (<-chan providers.StreamEvent, error) {
 	f.calls.Add(1)
+	cp := req
+	f.lastRequest.Store(&cp)
 	if f.err != nil {
 		return nil, f.err
 	}
@@ -276,6 +283,101 @@ func TestSpawn_RequiresToolkitAndPrompt(t *testing.T) {
 	_, err = mgr.Spawn(context.Background(), SpawnOptions{Toolkit: fakeToolkit{}})
 	if err == nil {
 		t.Error("expected error for missing prompt")
+	}
+}
+
+// TestSpawn_WithInitialHistory_PrefixIsParentHistory verifies the
+// fork code path in manager.run: when InitialHistory is non-nil, the
+// worker's first request to the LLM should start with that exact
+// history (preserving prompt-cache compatibility) and end with the
+// caller's Prompt as the final user message.
+func TestSpawn_WithInitialHistory_PrefixIsParentHistory(t *testing.T) {
+	client := &fakeClient{response: providers.ChatResponse{Content: "fork done"}}
+	mgr := NewManager(client, "fake-model")
+
+	parentHistory := []providers.ChatMessage{
+		{Role: "system", Content: "you are the parent agent"},
+		{Role: "user", Content: "fix the bug"},
+		{Role: "assistant", Content: "let me read the file"},
+		{Role: "tool", Name: "read_file", Content: "file contents"},
+	}
+
+	sa, err := mgr.Spawn(context.Background(), SpawnOptions{
+		Type:           "fork",
+		Prompt:         "<system-reminder>do the thing</system-reminder>",
+		Toolkit:        fakeToolkit{},
+		InitialHistory: parentHistory,
+		// SystemPrompt intentionally left empty — the fork path
+		// uses the system message in InitialHistory[0] instead.
+	})
+	if err != nil {
+		t.Fatalf("Spawn: %v", err)
+	}
+	snap, err := mgr.Wait(context.Background(), sa.ID)
+	if err != nil {
+		t.Fatalf("Wait: %v", err)
+	}
+	if snap.Status != StatusCompleted {
+		t.Fatalf("expected completed, got %s (err=%v)", snap.Status, snap.Error)
+	}
+
+	last := client.lastRequest.Load()
+	if last == nil {
+		t.Fatal("client never received a request")
+	}
+	got := last.Messages
+	if len(got) != len(parentHistory)+1 {
+		t.Fatalf("expected %d messages (parent history + 1 user), got %d",
+			len(parentHistory)+1, len(got))
+	}
+	for i, want := range parentHistory {
+		if got[i].Role != want.Role || got[i].Content != want.Content {
+			t.Errorf("message %d: got {%s,%s}, want {%s,%s}",
+				i, got[i].Role, got[i].Content, want.Role, want.Content)
+		}
+	}
+	tail := got[len(got)-1]
+	if tail.Role != "user" {
+		t.Errorf("expected final message to be user, got %s", tail.Role)
+	}
+	if tail.Content != "<system-reminder>do the thing</system-reminder>" {
+		t.Errorf("expected fork prompt as final message, got %q", tail.Content)
+	}
+}
+
+// TestSpawn_WithoutInitialHistory_UsesSystemPrompt confirms the
+// non-fork (regular spawn) code path is unchanged: when
+// InitialHistory is nil, the runner builds [system, user] from
+// SystemPrompt + Prompt as it always has.
+func TestSpawn_WithoutInitialHistory_UsesSystemPrompt(t *testing.T) {
+	client := &fakeClient{response: providers.ChatResponse{Content: "spawn done"}}
+	mgr := NewManager(client, "fake-model")
+
+	sa, err := mgr.Spawn(context.Background(), SpawnOptions{
+		Type:         "worker",
+		Prompt:       "do the task",
+		SystemPrompt: "you are a worker",
+		Toolkit:      fakeToolkit{},
+	})
+	if err != nil {
+		t.Fatalf("Spawn: %v", err)
+	}
+	if _, err := mgr.Wait(context.Background(), sa.ID); err != nil {
+		t.Fatalf("Wait: %v", err)
+	}
+
+	last := client.lastRequest.Load()
+	if last == nil {
+		t.Fatal("client never received a request")
+	}
+	if len(last.Messages) != 2 {
+		t.Fatalf("expected 2 messages [system, user], got %d", len(last.Messages))
+	}
+	if last.Messages[0].Role != "system" || last.Messages[0].Content != "you are a worker" {
+		t.Errorf("system message wrong: %+v", last.Messages[0])
+	}
+	if last.Messages[1].Role != "user" || last.Messages[1].Content != "do the task" {
+		t.Errorf("user message wrong: %+v", last.Messages[1])
 	}
 }
 
