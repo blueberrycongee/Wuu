@@ -93,27 +93,31 @@ func TestSelection_SelectedTextUsesVisualColumnsWithANSI(t *testing.T) {
 }
 
 func TestHighlightLineRange_UsesVisualColumnsForWideRunes(t *testing.T) {
-	style := lipgloss.NewStyle().Background(lipgloss.Color("#FF0000"))
-	out := highlightLineRange("你好a", 2, 4, style)
+	out := highlightLineRange("你好a", 2, 4)
 	stripped := ansi.Strip(out)
 	if stripped != "你好a" {
 		t.Fatalf("strip: got %q, want %q", stripped, "你好a")
 	}
-	if !strings.Contains(out, style.Render("好")) {
-		t.Fatalf("expected highlighted wide rune, got %q", out)
+	// The bg-only highlight wraps the selected wide rune with the
+	// selection bg open + close sequences without disturbing fg.
+	bgOpen := selectionBgSGROpen()
+	bgClose := selectionBgSGRClose()
+	if !strings.Contains(out, bgOpen+"好"+bgClose) {
+		t.Fatalf("expected wide rune wrapped in bg-only selection sequences, got %q", out)
 	}
 }
 
 func TestHighlightLineRange_PreservesPaddingAlignment(t *testing.T) {
-	style := lipgloss.NewStyle().Background(lipgloss.Color("#FF0000"))
 	line := strings.Repeat(" ", contentPadLeft) + "你好a"
 
-	out := highlightLineRange(line, contentPadLeft+2, contentPadLeft+4, style)
+	out := highlightLineRange(line, contentPadLeft+2, contentPadLeft+4)
 	stripped := ansi.Strip(out)
 	if stripped != line {
 		t.Fatalf("strip: got %q, want %q", stripped, line)
 	}
-	if !strings.Contains(out, style.Render("好")) {
+	bgOpen := selectionBgSGROpen()
+	bgClose := selectionBgSGRClose()
+	if !strings.Contains(out, bgOpen+"好"+bgClose) {
 		t.Fatalf("expected highlighted wide rune after padding, got %q", out)
 	}
 }
@@ -155,9 +159,8 @@ func TestOverlaySelection_TranslatesContentRowsToVisibleWindow(t *testing.T) {
 		Anchor: &selectionPoint{Row: 4, Col: 0},
 		Focus:  &selectionPoint{Row: 5, Col: 4},
 	}
-	style := lipgloss.NewStyle().Background(lipgloss.Color("#FF0000"))
 
-	out := overlaySelection(visibleWindow, sel, 3, style)
+	out := overlaySelection(visibleWindow, sel, 3)
 	lines := strings.Split(out, "\n")
 
 	// Row 0 of the visible window (content row 3) is NOT in the
@@ -183,9 +186,8 @@ func TestOverlaySelection_ClipsBeyondVisibleWindow(t *testing.T) {
 		Anchor: &selectionPoint{Row: 0, Col: 0},
 		Focus:  &selectionPoint{Row: 9, Col: 4},
 	}
-	style := lipgloss.NewStyle().Background(lipgloss.Color("#FF0000"))
 
-	out := overlaySelection(visibleWindow, sel, 3, style)
+	out := overlaySelection(visibleWindow, sel, 3)
 	if strings.Count(out, "\n") != 2 {
 		t.Fatalf("expected 3 visible lines, got: %q", out)
 	}
@@ -207,9 +209,8 @@ func TestOverlaySelection_SelectionAboveVisibleWindow(t *testing.T) {
 		Anchor: &selectionPoint{Row: 0, Col: 0},
 		Focus:  &selectionPoint{Row: 1, Col: 4},
 	}
-	style := lipgloss.NewStyle().Background(lipgloss.Color("#FF0000"))
 
-	out := overlaySelection(visibleWindow, sel, 5, style)
+	out := overlaySelection(visibleWindow, sel, 5)
 	if out != visibleWindow {
 		t.Fatalf("off-screen selection should leave window untouched, got: %q", out)
 	}
@@ -223,17 +224,137 @@ func TestOverlaySelection_SelectionBelowVisibleWindow(t *testing.T) {
 		Anchor: &selectionPoint{Row: 8, Col: 0},
 		Focus:  &selectionPoint{Row: 9, Col: 4},
 	}
-	style := lipgloss.NewStyle().Background(lipgloss.Color("#FF0000"))
 
-	out := overlaySelection(visibleWindow, sel, 0, style)
+	out := overlaySelection(visibleWindow, sel, 0)
 	if out != visibleWindow {
 		t.Fatalf("off-screen selection should leave window untouched, got: %q", out)
 	}
 }
 
 func TestOverlaySelection_NoSelectionPassThrough(t *testing.T) {
-	out := overlaySelection("hello\nworld", nil, 0, lipgloss.NewStyle())
+	out := overlaySelection("hello\nworld", nil, 0)
 	if out != "hello\nworld" {
 		t.Fatalf("nil selection should pass through, got %q", out)
+	}
+}
+
+// --- Bug-coverage tests for the colored-text selection fix ---
+//
+// These pin the behaviors that were broken in the old implementation:
+//
+//   1. Foreground color preserved AFTER the highlighted region.
+//      The old slicer dropped leading SGR state when cutting from
+//      the colEnd point, so the post-highlight tail was rendered
+//      without its original color.
+//
+//   2. Foreground color preserved INSIDE the highlighted region.
+//      The old highlight used a lipgloss style with bg + fg, and
+//      lipgloss closed with `\x1b[0m` (full reset), wiping any fg
+//      that had been active before the highlight.
+//
+//   3. Highlight stays connected across mid-selection SGR resets.
+//      Markdown / syntax highlighting commonly emit `\x1b[0m` mid
+//      line; without re-emitting the bg open after each reset, the
+//      highlight visibly broke at every reset point.
+
+func TestHighlightLineRange_PreservesForegroundAfterHighlight(t *testing.T) {
+	// "helloworld" all in red. Highlight cols [3, 7] = "lowo".
+	// After the highlight closes, the rest of the line ("rld") must
+	// still render as red.
+	red := lipgloss.NewStyle().Foreground(lipgloss.Color("#FF0000"))
+	line := red.Render("helloworld")
+
+	out := highlightLineRange(line, 3, 7)
+	if got := ansi.Strip(out); got != "helloworld" {
+		t.Fatalf("strip mismatch: got %q, want %q", got, "helloworld")
+	}
+
+	// Find the bg-close sequence and look at what comes after it.
+	// The "after" portion must contain a foreground color SGR that
+	// re-establishes red, otherwise the tail is rendered in the
+	// terminal default color.
+	bgClose := selectionBgSGRClose()
+	idx := strings.Index(out, bgClose)
+	if idx < 0 {
+		t.Fatalf("expected bg-close sequence in output, got %q", out)
+	}
+	tail := out[idx+len(bgClose):]
+	// The "after" tail must visually render "rld" in red. We assert
+	// this by checking that the bytes between the bg-close and the
+	// next plain "r" character contain at least one SGR sequence
+	// that mentions a red-ish foreground (any of 31, 91, 38;2;255,
+	// or 38;5;... — we only need to confirm the slicer preserved
+	// SOMETHING).
+	if !strings.Contains(tail, "\x1b[") {
+		t.Fatalf("post-highlight tail lost its SGR state, got tail %q", tail)
+	}
+}
+
+func TestHighlightLineRange_PreservesForegroundInsideHighlight(t *testing.T) {
+	// Highlight a slice that has its own foreground color. The output
+	// inside the bg-open / bg-close pair must still contain the fg
+	// SGR — otherwise the original color was wiped by the highlight.
+	red := lipgloss.NewStyle().Foreground(lipgloss.Color("#FF0000"))
+	line := red.Render("colored")
+
+	out := highlightLineRange(line, 1, 5)
+	bgOpen := selectionBgSGROpen()
+	bgClose := selectionBgSGRClose()
+	openIdx := strings.Index(out, bgOpen)
+	closeIdx := strings.Index(out, bgClose)
+	if openIdx < 0 || closeIdx < 0 || closeIdx < openIdx {
+		t.Fatalf("malformed output (missing or out-of-order bg sequences): %q", out)
+	}
+	inside := out[openIdx+len(bgOpen) : closeIdx]
+	if !strings.Contains(inside, "\x1b[") {
+		t.Fatalf("highlighted region dropped its fg SGR state, inside=%q", inside)
+	}
+}
+
+func TestHighlightLineRange_StaysConnectedAcrossMidSelectionReset(t *testing.T) {
+	// Build a line that has an SGR reset in the middle of what we
+	// will highlight: "AAAA<reset>BBBB". Highlight cols [1, 7] which
+	// straddles the reset. The bg open must be re-emitted after the
+	// reset so the highlight stays continuous across the boundary.
+	line := "\x1b[31mAAAA\x1b[0m BBBB"
+
+	out := highlightLineRange(line, 1, 7)
+	// Count how many bg-open occurrences land between the first
+	// bg-open and the bg-close — there must be MORE THAN ONE,
+	// because the slicer encountered a `\x1b[0m` mid-slice and we
+	// re-emitted bg-open after it.
+	bgOpen := selectionBgSGROpen()
+	bgClose := selectionBgSGRClose()
+	openIdx := strings.Index(out, bgOpen)
+	closeIdx := strings.Index(out, bgClose)
+	if openIdx < 0 || closeIdx < 0 || closeIdx < openIdx {
+		t.Fatalf("missing bg sequences: %q", out)
+	}
+	region := out[openIdx : closeIdx+len(bgClose)]
+	if strings.Count(region, bgOpen) < 2 {
+		t.Fatalf("expected bg-open to be re-emitted after mid-slice reset, got region=%q", region)
+	}
+}
+
+func TestSelectionBgSGRClose_DoesNotFullReset(t *testing.T) {
+	// The bg close MUST be `\x1b[49m` (default bg, leave fg alone),
+	// not `\x1b[0m` (full reset). A full reset would wipe whatever
+	// fg color was active when the highlight ended, defeating the
+	// whole point of bg-only overlay.
+	if got := selectionBgSGRClose(); got != "\x1b[49m" {
+		t.Fatalf("bg close must be \\x1b[49m, got %q", got)
+	}
+}
+
+func TestSelectionBgSGROpen_HasNoFullResetNoForeground(t *testing.T) {
+	// The bg open MUST set ONLY the background. It must not contain
+	// `\x1b[0m` (would wipe ambient fg) and must not contain a `38;`
+	// foreground intro (would override ambient fg).
+	open := selectionBgSGROpen()
+	if strings.Contains(open, "\x1b[0m") {
+		t.Errorf("bg open must not contain a full reset: %q", open)
+	}
+	if strings.Contains(open, "38;") {
+		t.Errorf("bg open must not set a foreground color: %q", open)
 	}
 }

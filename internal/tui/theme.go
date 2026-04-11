@@ -38,6 +38,16 @@ type theme struct {
 	// User bubble.
 	UserBubbleBg lipgloss.Color
 	UserBubbleFg lipgloss.Color
+
+	// Selection background — used as the background overlay color for
+	// the chat-viewport text selection. Foreground is intentionally NOT
+	// part of the selection style: the highlight only swaps the bg so
+	// the original text colors (markdown styling, syntax highlighting,
+	// role labels) keep showing through. Pick a color that contrasts
+	// with the terminal default text color and isn't already used by
+	// any other styled element in the chat (otherwise the selection
+	// vanishes over those regions).
+	SelectionBg lipgloss.Color
 }
 
 // darkTheme is the default color palette.
@@ -65,6 +75,8 @@ var darkTheme = theme{
 
 	UserBubbleBg: lipgloss.Color("#2F3842"), // blue-gray (not pure black)
 	UserBubbleFg: lipgloss.Color("#F5F7FA"), // near-white
+
+	SelectionBg: lipgloss.Color("#3A4250"), // slate blue-gray, distinct from UserBubbleBg
 }
 
 var lightTheme = theme{
@@ -91,6 +103,8 @@ var lightTheme = theme{
 
 	UserBubbleBg: lipgloss.Color("#EAF1FF"), // light blue bubble
 	UserBubbleFg: lipgloss.Color("#1F2328"), // dark text
+
+	SelectionBg: lipgloss.Color("#C8D7F0"), // muted blue, distinguishable from UserBubbleBg on light bg
 }
 
 type themeMode string

@@ -343,7 +343,16 @@ func writeClipboard(text string) (string, error) {
 // user scrolls a selection out of view, the highlight just becomes
 // invisible until they scroll back. The selection state itself is
 // untouched, so a copy still returns the right text.
-func overlaySelection(output string, sel *selectionState, yOffset int, style lipgloss.Style) string {
+//
+// The highlight is a background-only overlay (it does not touch the
+// foreground color or any other SGR attribute), so any markdown
+// styling, syntax highlighting, or role-label color in the original
+// text remains visible underneath. This mirrors the native behavior
+// of every modern terminal emulator's text selection — and is what
+// Claude Code's screen layer does for the same reason: SGR-7 inverse
+// fragments visually over multi-color text, while a solid bg overlay
+// reads cleanly across any combination of fg styles.
+func overlaySelection(output string, sel *selectionState, yOffset int) string {
 	if sel == nil || !sel.hasSelection() {
 		return output
 	}
@@ -366,12 +375,38 @@ func overlaySelection(output string, sel *selectionState, yOffset int, style lip
 		if row == end.Row {
 			colEnd = end.Col + 1
 		}
-		lines[visible] = highlightLineRange(lines[visible], colStart, colEnd, style)
+		lines[visible] = highlightLineRange(lines[visible], colStart, colEnd)
 	}
 	return strings.Join(lines, "\n")
 }
 
-func highlightLineRange(line string, colStart, colEnd int, style lipgloss.Style) string {
+// highlightLineRange paints the selection background between two
+// visual columns of one rendered line. The original line keeps every
+// foreground attribute it had — color, bold, italic, dim, underline —
+// and only the bg slot is replaced with the selection color across
+// the selected range.
+//
+// Why bg-only:
+//
+//   - Lipgloss's Render(text) emits a leading SGR open and a TRAILING
+//     full reset (`\x1b[0m`). Wrapping the slice that way kills any
+//     foreground color that the parent line had set before the slice,
+//     so the text AFTER the selection rendered in the wrong color.
+//     That was the user-visible "selecting colored text looks weird"
+//     bug.
+//
+//   - SGR-7 inverse looks even worse: each different fg color in the
+//     selection becomes a different bg stripe, so a syntax-highlighted
+//     code block under the selection turns into a barcode. Claude Code's
+//     screen layer documents the same finding — they avoid SGR-7 for
+//     selection for the same reason.
+//
+//   - The fix is to emit ONLY a bg-set sequence at the start and a
+//     bg-default sequence at the end, and to re-emit the bg-set
+//     sequence after any reset that appears INSIDE the selected slice
+//     (otherwise a mid-slice `\x1b[0m` resets bg and the highlight
+//     vanishes for the rest of the slice).
+func highlightLineRange(line string, colStart, colEnd int) string {
 	if colStart >= colEnd {
 		return line
 	}
@@ -386,22 +421,110 @@ func highlightLineRange(line string, colStart, colEnd int, style lipgloss.Style)
 		colEnd = lineWidth
 	}
 
+	// Slicing primitives from the upstream charm/x/ansi package handle
+	// ANSI state preservation correctly: leading SGR codes are kept
+	// when slicing from the right, trailing SGR codes are kept when
+	// truncating from the left, and wide-character / grapheme
+	// boundaries are respected. wuu used to roll its own slicer here
+	// (sliceStyledTextFromVisualCol) which dropped leading SGR state
+	// — that was the second source of the colored-selection bug.
 	before := ansi.Truncate(line, colStart, "")
-	selected := ansi.Truncate(cutLeadingVisualCols(line, colStart), colEnd-colStart, "")
+	selected := ansi.Cut(line, colStart, colEnd)
+	after := ansi.TruncateLeft(line, colEnd, "")
 	if selected == "" {
 		return line
 	}
-	after := cutLeadingVisualCols(line, colEnd)
-	return before + style.Render(selected) + after
+
+	bgOpen := selectionBgSGROpen()
+	bgClose := selectionBgSGRClose()
+
+	// Re-establish the selection bg after any in-slice SGR reset.
+	// Markdown rendering and syntax highlighting commonly emit
+	// `\x1b[0m` mid-line; without this re-emit the bg overlay would
+	// vanish from the reset point onward and the highlight would
+	// look "broken" mid-selection.
+	selected = strings.ReplaceAll(selected, "\x1b[0m", "\x1b[0m"+bgOpen)
+	selected = strings.ReplaceAll(selected, "\x1b[m", "\x1b[m"+bgOpen)
+
+	return before + bgOpen + selected + bgClose + after
 }
 
-func cutLeadingVisualCols(s string, n int) string {
-	if n <= 0 {
-		return s
+// selectionBgSGROpen returns the raw SGR sequence that sets the
+// selection background color WITHOUT touching any other attribute.
+// Built directly from the theme color via the ansi package's
+// background-color helper so we never depend on lipgloss's full-style
+// renderer (which would also emit a trailing reset that breaks the
+// surrounding ANSI state).
+func selectionBgSGROpen() string {
+	hex := string(currentTheme.SelectionBg)
+	r, g, b, ok := parseHexRGB(hex)
+	if !ok {
+		// Theme has no valid hex; fall back to the default background
+		// inverse (`\x1b[7m`) which at least makes selection visible.
+		return "\x1b[7m"
 	}
-	return sliceStyledTextFromVisualCol(s, n)
+	style := ansi.Style{}.BackgroundColor(ansi.TrueColor(packRGB(r, g, b)))
+	return style.String()
 }
 
+// selectionBgSGRClose returns the SGR sequence that resets the
+// background to the terminal default WITHOUT touching foreground or
+// any other attribute. Critically NOT a full reset (`\x1b[0m`) —
+// that would also wipe whatever foreground/bold/italic the original
+// line had active when the selection ended.
+func selectionBgSGRClose() string {
+	return "\x1b[49m"
+}
+
+// parseHexRGB decodes a "#rrggbb" hex color string into 8-bit RGB
+// components. Returns ok=false on any malformed input.
+func parseHexRGB(hex string) (r, g, b uint8, ok bool) {
+	if len(hex) != 7 || hex[0] != '#' {
+		return 0, 0, 0, false
+	}
+	parse := func(s string) (uint8, bool) {
+		var v uint8
+		for i := 0; i < len(s); i++ {
+			c := s[i]
+			var nibble uint8
+			switch {
+			case c >= '0' && c <= '9':
+				nibble = c - '0'
+			case c >= 'a' && c <= 'f':
+				nibble = c - 'a' + 10
+			case c >= 'A' && c <= 'F':
+				nibble = c - 'A' + 10
+			default:
+				return 0, false
+			}
+			v = v<<4 | nibble
+		}
+		return v, true
+	}
+	rr, ok := parse(hex[1:3])
+	if !ok {
+		return 0, 0, 0, false
+	}
+	gg, ok := parse(hex[3:5])
+	if !ok {
+		return 0, 0, 0, false
+	}
+	bb, ok := parse(hex[5:7])
+	if !ok {
+		return 0, 0, 0, false
+	}
+	return rr, gg, bb, true
+}
+
+// packRGB packs 8-bit RGB into the 24-bit integer ansi.TrueColor wants.
+func packRGB(r, g, b uint8) uint32 {
+	return uint32(r)<<16 | uint32(g)<<8 | uint32(b)
+}
+
+// slicePlainTextByVisualCols extracts a substring from `s` (which must
+// be ANSI-stripped already) by visual column range. Used by
+// selection.selectedText for clipboard copy. Wide characters and
+// zero-width combining marks are handled correctly.
 func slicePlainTextByVisualCols(s string, start, end int) string {
 	if start < 0 {
 		start = 0
@@ -435,42 +558,6 @@ func slicePlainTextByVisualCols(s string, start, end int) string {
 			b.WriteRune(r)
 		}
 		col = nextCol
-	}
-	return b.String()
-}
-
-func sliceStyledTextFromVisualCol(s string, start int) string {
-	if start <= 0 || s == "" {
-		return s
-	}
-
-	var b strings.Builder
-	col := 0
-	writing := false
-	state := byte(0)
-	parser := ansi.GetParser()
-	parser.Reset()
-	for i := 0; i < len(s); {
-		seq, width, n, newState := ansi.DecodeSequence(s[i:], state, parser)
-		if n <= 0 {
-			break
-		}
-		if width == 0 {
-			if writing {
-				b.WriteString(seq)
-			}
-		} else {
-			nextCol := col + width
-			if !writing && nextCol > start {
-				writing = true
-			}
-			if writing && col >= start {
-				b.WriteString(seq)
-			}
-			col = nextCol
-		}
-		i += n
-		state = newState
 	}
 	return b.String()
 }

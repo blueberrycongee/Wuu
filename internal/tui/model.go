@@ -2313,12 +2313,12 @@ func (m Model) View() string {
 	// Overlay text selection highlight. The selection state is in
 	// content-absolute coordinates; overlaySelection translates to
 	// the visible window via the current YOffset and clips anything
-	// that's scrolled off-screen.
+	// that's scrolled off-screen. The highlight is a bg-only overlay
+	// (selection.go does the SGR plumbing) so the original text
+	// colors — markdown styling, syntax highlighting, role labels —
+	// keep showing through under the highlighted bg.
 	if m.selection.hasSelection() {
-		selStyle := lipgloss.NewStyle().
-			Background(currentTheme.Brand).
-			Foreground(lipgloss.Color("#FFFFFF"))
-		outputBox = overlaySelection(outputBox, &m.selection, m.viewport.YOffset, selStyle)
+		outputBox = overlaySelection(outputBox, &m.selection, m.viewport.YOffset)
 	}
 
 	// Overlay scrollbar on the rightmost column of the viewport.
