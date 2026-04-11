@@ -36,7 +36,7 @@ func TestShouldRenderInlineStatusSuppressesToolDuplicate(t *testing.T) {
 }
 
 func TestStatusAnimationIntervalSlowerForCalmerShimmer(t *testing.T) {
-	if statusAnimationInterval != 300*time.Millisecond {
-		t.Fatalf("expected status animation interval to be 300ms, got %s", statusAnimationInterval)
+	if statusAnimationInterval != 100*time.Millisecond {
+		t.Fatalf("expected status animation interval to be 100ms, got %s", statusAnimationInterval)
 	}
 }

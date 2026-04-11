@@ -764,6 +764,18 @@ func TestRenderInlineStatus_UsesItalicSentence(t *testing.T) {
 	}
 }
 
+func TestRenderInlineStatus_UsesWaveUnderline(t *testing.T) {
+	reUnderline := regexp.MustCompile(`\x1b\[(?:\d{1,3};)*4(?:;\d{1,3})*m`)
+	cycle := statusShimmerCycleLength(statusTextSegments(deriveWorkStatus("streaming"), true))
+	for frame := 0; frame < cycle; frame++ {
+		raw := renderInlineStatus("streaming", frame, 80)
+		if reUnderline.MatchString(raw) {
+			return
+		}
+	}
+	t.Fatal("expected at least one inline status frame to include underline for wave crest")
+}
+
 func TestRenderInlineStatus_ShimmerContinuesIntoMeta(t *testing.T) {
 	frameAtLabelCycle := renderInlineStatus("streaming", len([]rune("Responding"))+statusShimmerPadding, 80)
 	frameAtStart := renderInlineStatus("streaming", 0, 80)
@@ -793,6 +805,23 @@ func TestNextStatusFrame_CoversWholeRespondingShimmerCycle(t *testing.T) {
 	}
 	if frame != cycle {
 		t.Fatalf("expected shimmer frame to advance across the whole cycle: got %d want %d", frame, cycle)
+	}
+}
+
+func TestStatusWavePhaseOscillates(t *testing.T) {
+	positive := false
+	negative := false
+	for idx := 0; idx < 16; idx++ {
+		phase := statusWavePhase(idx, 12)
+		if phase > 0.3 {
+			positive = true
+		}
+		if phase < -0.3 {
+			negative = true
+		}
+	}
+	if !positive || !negative {
+		t.Fatalf("expected wave phase to oscillate across glyphs, got positive=%v negative=%v", positive, negative)
 	}
 }
 

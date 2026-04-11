@@ -9,14 +9,14 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-const statusAnimationInterval = 300 * time.Millisecond
+const statusAnimationInterval = 100 * time.Millisecond
 
 var statusSpinnerFrames = []string{"·", "·", "·", "·"}
 
 const (
 	statusShimmerPadding       = 10
 	statusShimmerBandHalfWidth = 5.0
-	statusWaveAmplitude        = 0.12
+	statusWaveAmplitude        = 0.55
 	statusWaveFrequency        = 0.7
 	statusWaveSpeed            = 0.85
 )
@@ -244,20 +244,38 @@ func clampUnit(value float64) float64 {
 	}
 }
 
+func statusWavePhase(idx int, position float64) float64 {
+	return math.Sin(float64(idx)*statusWaveFrequency - position*statusWaveSpeed)
+}
+
 func statusShimmerStyleAt(segment statusTextSegment, idx int, position float64, wave bool) lipgloss.Style {
 	intensity := statusShimmerIntensity(idx, position)
+	phase := 0.0
 	if wave && intensity > 0 {
-		ripple := math.Sin(float64(idx)*statusWaveFrequency-position*statusWaveSpeed) * statusWaveAmplitude
+		phase = statusWavePhase(idx, position)
+		ripple := phase * statusWaveAmplitude
 		intensity = clampUnit(intensity + ripple*intensity)
 	}
+
+	var style lipgloss.Style
 	switch {
 	case intensity >= 0.72:
-		return segment.Bright
+		style = segment.Bright
 	case intensity >= 0.18:
-		return segment.Strong
+		style = segment.Strong
 	default:
-		return segment.Base
+		style = segment.Base
 	}
+
+	if wave && intensity >= 0.2 {
+		switch {
+		case phase >= 0.3:
+			style = style.Underline(true)
+		case phase <= -0.35:
+			style = style.Faint(true)
+		}
+	}
+	return style
 }
 
 func renderStatusHeader(ws workStatus, frame int) string {
