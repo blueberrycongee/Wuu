@@ -688,6 +688,44 @@ func TestMouseSelectionDrainsQueuedStreamEvents(t *testing.T) {
 	}
 }
 
+func TestSetCopyStatusLine_PreservesActiveStreamingStatus(t *testing.T) {
+	m := NewModel(Config{
+		Provider:   "test",
+		Model:      "test-model",
+		ConfigPath: "/tmp/.wuu.json",
+		RunPrompt: func(_ctx context.Context, prompt string) (string, error) {
+			return prompt, nil
+		},
+	})
+	m.streaming = true
+	m.pendingRequest = true
+	m.statusLine = "streaming"
+
+	m.setCopyStatusLine("copied")
+
+	if m.statusLine != "streaming" {
+		t.Fatalf("expected active streaming status to be preserved, got %q", m.statusLine)
+	}
+}
+
+func TestSetCopyStatusLine_UpdatesIdleStatus(t *testing.T) {
+	m := NewModel(Config{
+		Provider:   "test",
+		Model:      "test-model",
+		ConfigPath: "/tmp/.wuu.json",
+		RunPrompt: func(_ctx context.Context, prompt string) (string, error) {
+			return prompt, nil
+		},
+	})
+	m.statusLine = "ready"
+
+	m.setCopyStatusLine("copied")
+
+	if m.statusLine != "copied" {
+		t.Fatalf("expected idle status to be updated with copy feedback, got %q", m.statusLine)
+	}
+}
+
 func TestRefreshViewportKeepsOffsetWhileStreamingWhenUserScrolledUp(t *testing.T) {
 	m := newScrollableModelForScrollbarTest(t)
 	m.streaming = true

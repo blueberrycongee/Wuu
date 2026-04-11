@@ -323,16 +323,26 @@ func (m *Model) copySelectionToClipboard() {
 	}
 	method, err := writeClipboard(text)
 	if err != nil {
-		m.statusLine = "copy failed: install pbcopy / xclip / wl-copy"
+		m.setCopyStatusLine("copy failed: install pbcopy / xclip / wl-copy")
 		return
 	}
 	if method == "osc52" {
 		// We can't actually verify OSC 52 reached the system clipboard
 		// — many terminals accept the sequence and drop it. Be honest.
-		m.statusLine = "copied via OSC 52 (terminal-dependent)"
+		m.setCopyStatusLine("copied via OSC 52 (terminal-dependent)")
 		return
 	}
-	m.statusLine = "copied"
+	m.setCopyStatusLine("copied")
+}
+
+// setCopyStatusLine records copy feedback only when it would not hide an
+// active reply/tool/thinking indicator. While a request is in flight, the
+// waiting status is more important than transient clipboard feedback.
+func (m *Model) setCopyStatusLine(status string) {
+	if m.streaming || m.pendingRequest || isWaitingStatus(m.statusLine) {
+		return
+	}
+	m.statusLine = status
 }
 
 // writeClipboard sends text to the system clipboard. It tries native
