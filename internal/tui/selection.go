@@ -404,13 +404,15 @@ func overlaySelection(output string, sel *selectionState, yOffset int) string {
 		if visible < 0 || visible >= len(lines) {
 			continue
 		}
-		colStart := 0
+		stripped := ansi.Strip(lines[visible])
+		baseCol := selectionBaseColForLine(stripped)
+		colStart := baseCol
 		if row == start.Row {
-			colStart = start.Col
+			colStart = baseCol + start.Col
 		}
-		colEnd := lipgloss.Width(lines[visible])
+		colEnd := lipgloss.Width(stripped)
 		if row == end.Row {
-			colEnd = end.Col + 1
+			colEnd = baseCol + end.Col + 1
 		}
 		lines[visible] = highlightLineRange(lines[visible], colStart, colEnd)
 	}
