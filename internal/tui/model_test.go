@@ -647,6 +647,47 @@ func TestMouseDragSelectionAutoScrollsPastEdge(t *testing.T) {
 	}
 }
 
+func TestMouseSelectionDrainsQueuedStreamEvents(t *testing.T) {
+	m := newScrollableModelForScrollbarTest(t)
+	m.streaming = true
+	m.pendingRequest = true
+	m.streamTarget = len(m.entries) - 1
+	m.streamCh = make(chan providers.StreamEvent, 4)
+
+	pressX := m.layout.Chat.X + 2
+	pressY := m.layout.Chat.Y + 1
+	updated, _ := m.Update(tea.MouseMsg{
+		Action: tea.MouseActionPress,
+		Button: tea.MouseButtonLeft,
+		X:      pressX,
+		Y:      pressY,
+	})
+	dragging := updated.(Model)
+	dragging.streamCh <- providers.StreamEvent{
+		Type:    providers.EventContentDelta,
+		Content: "\nqueued update",
+	}
+	before := dragging.entries[dragging.streamTarget].Content
+
+	updated, _ = dragging.Update(tea.MouseMsg{
+		Action: tea.MouseActionMotion,
+		Button: tea.MouseButtonLeft,
+		X:      pressX + 3,
+		Y:      pressY + 1,
+	})
+	after := updated.(Model)
+
+	if !strings.Contains(after.entries[after.streamTarget].Content, "queued update") {
+		t.Fatalf("expected queued stream delta to be applied during mouse drag, got %q", after.entries[after.streamTarget].Content)
+	}
+	if after.entries[after.streamTarget].Content == before {
+		t.Fatal("expected streaming content to advance during selection drag")
+	}
+	if !after.selection.IsDragging {
+		t.Fatal("expected drag selection to remain active")
+	}
+}
+
 func TestRefreshViewportKeepsOffsetWhileStreamingWhenUserScrolledUp(t *testing.T) {
 	m := newScrollableModelForScrollbarTest(t)
 	m.streaming = true

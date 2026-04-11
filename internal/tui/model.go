@@ -30,6 +30,12 @@ const (
 	minOutputHeight = 6
 	streamChunkSize = 24
 	streamTickDelay = 30 * time.Millisecond
+	// interactiveStreamDrainLimit caps how many already-queued stream
+	// events we opportunistically apply during non-stream UI work
+	// (mouse drag/select, spinner ticks). Without this side-drain, a
+	// burst of mouse motion can starve the single waitStreamEvent
+	// command long enough for live reply rendering to look "stuck".
+	interactiveStreamDrainLimit = 8
 
 	queuePreviewMaxItems = 2
 	queuePreviewMaxChars = 28
@@ -682,6 +688,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tickCmd()
 
 	case inlineSpinMsg:
+		m.drainQueuedStreamEvents(interactiveStreamDrainLimit)
 		m.spinnerFrame = nextStatusFrame(m.spinnerFrame)
 		if m.streaming || m.pendingRequest || m.statusLine == "thinking" || len(m.activeWorkerSnapshots()) > 0 {
 			if m.statusLine == "thinking" {
@@ -917,198 +924,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, streamTickCmd()
 
 	case streamEventMsg:
-		switch msg.event.Type {
-		case providers.EventContentDelta:
-			if m.streamTarget < 0 || m.streamTarget >= len(m.entries) {
-				// New round of streaming — create a fresh assistant entry.
-				m.streamTarget = m.appendEntry("assistant", "")
-			}
-			if m.entries[m.streamTarget].Content == "(empty)" {
-				m.entries[m.streamTarget].Content = ""
-			}
-			// When this is the first delta of a fresh round (collector
-			// was reset to nil at the previous EventDone), seed the
-			// collector with the entry's existing Content. Without
-			// this seed, the collector only contains the new round's
-			// deltas, and CommitCompleteLines below would overwrite
-			// entry.rendered with ONLY the new round — causing the
-			// previous rounds' content to vanish from the viewport
-			// until the next EventDone fires (visible flashing in
-			// coordinator mode where multi-round turns are common).
-			if m.streamCollector == nil {
-				m.streamCollector = markdown.NewStreamCollector(
-					contentWidth(m.viewport.Width),
-					markdown.DefaultStyles(),
-				)
-				if existing := m.entries[m.streamTarget].Content; existing != "" {
-					m.streamCollector.Push(existing)
-				}
-			}
-			m.entries[m.streamTarget].Content += msg.event.Content
-			m.streamCollector.Push(msg.event.Content)
-			if rendered := m.streamCollector.CommitCompleteLines(); rendered != "" {
-				e := &m.entries[m.streamTarget]
-				e.rendered = rendered
-				e.renderedLen = len(e.Content)
-			}
-			m.refreshViewport(false)
-			return m, waitStreamEvent(m.streamCh)
-
-		case providers.EventToolUseStart:
-			if m.streamTarget < 0 || m.streamTarget >= len(m.entries) {
-				m.streamTarget = m.appendEntry("assistant", "")
-			}
-			toolName := ""
-			toolID := ""
-			if msg.event.ToolCall != nil {
-				toolName = msg.event.ToolCall.Name
-				toolID = msg.event.ToolCall.ID
-			}
-			e := &m.entries[m.streamTarget]
-			e.ToolCalls = append(e.ToolCalls, ToolCallEntry{
-				ID:     toolID,
-				Name:   toolName,
-				Status: ToolCallRunning,
-			})
-			m.statusLine = fmt.Sprintf("tool: %s", toolName)
-			m.refreshViewport(false)
-			return m, waitStreamEvent(m.streamCh)
-
-		case providers.EventToolUseEnd:
-			if m.streamTarget >= 0 && m.streamTarget < len(m.entries) {
-				e := &m.entries[m.streamTarget]
-				for i := len(e.ToolCalls) - 1; i >= 0; i-- {
-					tc := &e.ToolCalls[i]
-					if tc.Status == ToolCallRunning {
-						if msg.event.ToolCall != nil {
-							tc.Args = msg.event.ToolCall.Arguments
-						}
-						tc.Result = msg.event.ToolResult
-						tc.Status = ToolCallDone
-						tc.Collapsed = true
-						break
-					}
-				}
-			}
-			m.statusLine = "streaming"
-			m.refreshViewport(false)
-			return m, waitStreamEvent(m.streamCh)
-
-		case providers.EventDone:
-			// Accumulate token usage from this stream chunk.
-			if msg.event.Usage != nil {
-				m.turnInputTokens += msg.event.Usage.InputTokens
-				m.turnOutputTokens += msg.event.Usage.OutputTokens
-			}
-			// One SSE stream finished. The runner may continue with tool
-			// execution and start another stream, so keep listening.
-			if m.streamCollector != nil {
-				if final := m.streamCollector.Finalize(); final != "" {
-					if m.streamTarget >= 0 && m.streamTarget < len(m.entries) {
-						e := &m.entries[m.streamTarget]
-						e.rendered = final
-						e.renderedLen = len(e.Content)
-					}
-				}
-				m.streamCollector = nil
-			}
-			if m.streamTarget >= 0 && m.streamTarget < len(m.entries) {
-				content := strings.TrimSpace(m.entries[m.streamTarget].Content)
-				if (content == "" || content == "(empty)") && len(m.entries[m.streamTarget].ToolCalls) == 0 && m.entries[m.streamTarget].ThinkingContent == "" {
-					// No text content, no tool calls, no thinking — remove empty entry.
-					m.entries = m.entries[:m.streamTarget]
-					m.streamTarget = -1
-				} else {
-					m.cacheEntryRendered(m.streamTarget)
-				}
-			}
-			m.refreshViewport(false)
-			return m, waitStreamEvent(m.streamCh)
-
-		case providers.EventReconnect:
-			msg := strings.TrimSpace(msg.event.Content)
-			if msg == "" {
-				msg = "Reconnecting..."
-			}
-			m.statusLine = msg
-			m.refreshViewport(false)
-			return m, waitStreamEvent(m.streamCh)
-
-		case providers.EventCompact:
-			// Auto-compact ran inside the loop. Show it as a system
-			// line so the user knows their conversation history was
-			// summarized — long sessions silently shrinking would be
-			// confusing without any signal.
-			notice := strings.TrimSpace(msg.event.Content)
-			if notice == "" {
-				notice = "✦ Compacted conversation history"
-			}
-			m.appendEntry("system", notice)
-			m.refreshViewport(false)
-			return m, waitStreamEvent(m.streamCh)
-
-		case providers.EventError:
-			// Ignore context cancellation — this is normal when the user
-			// interrupts a stream by pressing Enter.
-			if msg.event.Error != nil && (errors.Is(msg.event.Error, context.Canceled) ||
-				strings.Contains(msg.event.Error.Error(), "context canceled")) {
-				return m, waitStreamEvent(m.streamCh)
-			}
-			m.streaming = false
-			m.pendingRequest = false
-			m.pendingTurn = nil
-			// Show accumulated content so far (if any) before the error.
-			if m.streamTarget >= 0 && m.streamTarget < len(m.entries) {
-				content := strings.TrimSpace(m.entries[m.streamTarget].Content)
-				if content == "" || content == "(empty)" {
-					m.entries[m.streamTarget].Content = ""
-				}
-			}
-			m.streamTarget = -1
-			errMsg := "unknown stream error"
-			if msg.event.Error != nil {
-				errMsg = msg.event.Error.Error()
-			}
-			// Display error in red in the chat area.
-			styledErr := lipgloss.NewStyle().
-				Foreground(currentTheme.Error).
-				Bold(true).
-				Render("ERROR: " + errMsg)
-			m.appendEntry("system", styledErr)
-			m.statusLine = "request failed"
-			m.refreshViewport(true)
-			return m, nil
-
-		case providers.EventThinkingDelta:
-			if m.streamTarget < 0 || m.streamTarget >= len(m.entries) {
-				m.streamTarget = m.appendEntry("assistant", "")
-			}
-			e := &m.entries[m.streamTarget]
-			if e.ThinkingContent == "" {
-				m.thinkingStart = time.Now()
-			}
-			e.ThinkingContent += msg.event.Content
-			m.statusLine = "thinking"
-			m.refreshViewport(false)
-			return m, waitStreamEvent(m.streamCh)
-
-		case providers.EventThinkingDone:
-			if m.streamTarget >= 0 && m.streamTarget < len(m.entries) {
-				e := &m.entries[m.streamTarget]
-				e.ThinkingDone = true
-				if !m.thinkingStart.IsZero() {
-					e.ThinkingDuration = time.Since(m.thinkingStart)
-				}
-			}
-			m.statusLine = "streaming"
-			m.refreshViewport(false)
-			return m, waitStreamEvent(m.streamCh)
-
-		default:
-			return m, waitStreamEvent(m.streamCh)
-		}
+		return m, m.applyStreamEvent(msg.event, true)
 
 	case tea.MouseMsg:
+		m.drainQueuedStreamEvents(interactiveStreamDrainLimit)
 		hoverChanged := m.updateScrollbarHover(msg.X, msg.Y)
 
 		if msg.Action == tea.MouseActionRelease {
@@ -1667,6 +1486,231 @@ func waitStreamEvent(ch <-chan providers.StreamEvent) tea.Cmd {
 			return streamFinishedMsg{}
 		}
 		return streamEventMsg{event: event}
+	}
+}
+
+// drainQueuedStreamEvents opportunistically applies a small batch of
+// already-buffered stream events during unrelated UI work such as mouse
+// dragging. This keeps live reply rendering moving while the user is
+// selecting text instead of letting queued MouseMsg traffic make the
+// stream look frozen.
+func (m *Model) drainQueuedStreamEvents(limit int) {
+	if !m.streaming || m.streamCh == nil || limit <= 0 {
+		return
+	}
+	for i := 0; i < limit; i++ {
+		select {
+		case event, ok := <-m.streamCh:
+			if !ok {
+				return
+			}
+			_ = m.applyStreamEvent(event, false)
+			if !m.streaming {
+				return
+			}
+		default:
+			return
+		}
+	}
+}
+
+func (m *Model) applyStreamEvent(event providers.StreamEvent, rearm bool) tea.Cmd {
+	nextWait := func() tea.Cmd {
+		if !rearm || m.streamCh == nil {
+			return nil
+		}
+		return waitStreamEvent(m.streamCh)
+	}
+
+	switch event.Type {
+	case providers.EventContentDelta:
+		if m.streamTarget < 0 || m.streamTarget >= len(m.entries) {
+			// New round of streaming — create a fresh assistant entry.
+			m.streamTarget = m.appendEntry("assistant", "")
+		}
+		if m.entries[m.streamTarget].Content == "(empty)" {
+			m.entries[m.streamTarget].Content = ""
+		}
+		// When this is the first delta of a fresh round (collector
+		// was reset to nil at the previous EventDone), seed the
+		// collector with the entry's existing Content. Without
+		// this seed, the collector only contains the new round's
+		// deltas, and CommitCompleteLines below would overwrite
+		// entry.rendered with ONLY the new round — causing the
+		// previous rounds' content to vanish from the viewport
+		// until the next EventDone fires (visible flashing in
+		// coordinator mode where multi-round turns are common).
+		if m.streamCollector == nil {
+			m.streamCollector = markdown.NewStreamCollector(
+				contentWidth(m.viewport.Width),
+				markdown.DefaultStyles(),
+			)
+			if existing := m.entries[m.streamTarget].Content; existing != "" {
+				m.streamCollector.Push(existing)
+			}
+		}
+		m.entries[m.streamTarget].Content += event.Content
+		m.streamCollector.Push(event.Content)
+		if rendered := m.streamCollector.CommitCompleteLines(); rendered != "" {
+			e := &m.entries[m.streamTarget]
+			e.rendered = rendered
+			e.renderedLen = len(e.Content)
+		}
+		m.refreshViewport(false)
+		return nextWait()
+
+	case providers.EventToolUseStart:
+		if m.streamTarget < 0 || m.streamTarget >= len(m.entries) {
+			m.streamTarget = m.appendEntry("assistant", "")
+		}
+		toolName := ""
+		toolID := ""
+		if event.ToolCall != nil {
+			toolName = event.ToolCall.Name
+			toolID = event.ToolCall.ID
+		}
+		e := &m.entries[m.streamTarget]
+		e.ToolCalls = append(e.ToolCalls, ToolCallEntry{
+			ID:     toolID,
+			Name:   toolName,
+			Status: ToolCallRunning,
+		})
+		m.statusLine = fmt.Sprintf("tool: %s", toolName)
+		m.refreshViewport(false)
+		return nextWait()
+
+	case providers.EventToolUseEnd:
+		if m.streamTarget >= 0 && m.streamTarget < len(m.entries) {
+			e := &m.entries[m.streamTarget]
+			for i := len(e.ToolCalls) - 1; i >= 0; i-- {
+				tc := &e.ToolCalls[i]
+				if tc.Status == ToolCallRunning {
+					if event.ToolCall != nil {
+						tc.Args = event.ToolCall.Arguments
+					}
+					tc.Result = event.ToolResult
+					tc.Status = ToolCallDone
+					tc.Collapsed = true
+					break
+				}
+			}
+		}
+		m.statusLine = "streaming"
+		m.refreshViewport(false)
+		return nextWait()
+
+	case providers.EventDone:
+		// Accumulate token usage from this stream chunk.
+		if event.Usage != nil {
+			m.turnInputTokens += event.Usage.InputTokens
+			m.turnOutputTokens += event.Usage.OutputTokens
+		}
+		// One SSE stream finished. The runner may continue with tool
+		// execution and start another stream, so keep listening.
+		if m.streamCollector != nil {
+			if final := m.streamCollector.Finalize(); final != "" {
+				if m.streamTarget >= 0 && m.streamTarget < len(m.entries) {
+					e := &m.entries[m.streamTarget]
+					e.rendered = final
+					e.renderedLen = len(e.Content)
+				}
+			}
+			m.streamCollector = nil
+		}
+		if m.streamTarget >= 0 && m.streamTarget < len(m.entries) {
+			content := strings.TrimSpace(m.entries[m.streamTarget].Content)
+			if (content == "" || content == "(empty)") && len(m.entries[m.streamTarget].ToolCalls) == 0 && m.entries[m.streamTarget].ThinkingContent == "" {
+				// No text content, no tool calls, no thinking — remove empty entry.
+				m.entries = m.entries[:m.streamTarget]
+				m.streamTarget = -1
+			} else {
+				m.cacheEntryRendered(m.streamTarget)
+			}
+		}
+		m.refreshViewport(false)
+		return nextWait()
+
+	case providers.EventReconnect:
+		msg := strings.TrimSpace(event.Content)
+		if msg == "" {
+			msg = "Reconnecting..."
+		}
+		m.statusLine = msg
+		m.refreshViewport(false)
+		return nextWait()
+
+	case providers.EventCompact:
+		// Auto-compact ran inside the loop. Show it as a system
+		// line so the user knows their conversation history was
+		// summarized — long sessions silently shrinking would be
+		// confusing without any signal.
+		notice := strings.TrimSpace(event.Content)
+		if notice == "" {
+			notice = "✦ Compacted conversation history"
+		}
+		m.appendEntry("system", notice)
+		m.refreshViewport(false)
+		return nextWait()
+
+	case providers.EventError:
+		// Ignore context cancellation — this is normal when the user
+		// interrupts a stream by pressing Enter.
+		if event.Error != nil && (errors.Is(event.Error, context.Canceled) ||
+			strings.Contains(event.Error.Error(), "context canceled")) {
+			return nextWait()
+		}
+		m.streaming = false
+		m.pendingRequest = false
+		m.pendingTurn = nil
+		// Show accumulated content so far (if any) before the error.
+		if m.streamTarget >= 0 && m.streamTarget < len(m.entries) {
+			content := strings.TrimSpace(m.entries[m.streamTarget].Content)
+			if content == "" || content == "(empty)" {
+				m.entries[m.streamTarget].Content = ""
+			}
+		}
+		m.streamTarget = -1
+		errMsg := "unknown stream error"
+		if event.Error != nil {
+			errMsg = event.Error.Error()
+		}
+		// Display error in red in the chat area.
+		styledErr := lipgloss.NewStyle().
+			Foreground(currentTheme.Error).
+			Bold(true).
+			Render("ERROR: " + errMsg)
+		m.appendEntry("system", styledErr)
+		m.statusLine = "request failed"
+		m.refreshViewport(true)
+		return nil
+
+	case providers.EventThinkingDelta:
+		if m.streamTarget < 0 || m.streamTarget >= len(m.entries) {
+			m.streamTarget = m.appendEntry("assistant", "")
+		}
+		e := &m.entries[m.streamTarget]
+		if e.ThinkingContent == "" {
+			m.thinkingStart = time.Now()
+		}
+		e.ThinkingContent += event.Content
+		m.statusLine = "thinking"
+		m.refreshViewport(false)
+		return nextWait()
+
+	case providers.EventThinkingDone:
+		if m.streamTarget >= 0 && m.streamTarget < len(m.entries) {
+			e := &m.entries[m.streamTarget]
+			e.ThinkingDone = true
+			if !m.thinkingStart.IsZero() {
+				e.ThinkingDuration = time.Since(m.thinkingStart)
+			}
+		}
+		m.statusLine = "streaming"
+		m.refreshViewport(false)
+		return nextWait()
+
+	default:
+		return nextWait()
 	}
 }
 
