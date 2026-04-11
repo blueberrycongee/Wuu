@@ -39,6 +39,46 @@ func TestToolkit_WriteAndReadFile(t *testing.T) {
 	}
 }
 
+func TestToolkit_ReadFileSizeSemantics(t *testing.T) {
+	root := t.TempDir()
+	kit, err := New(root)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	big := strings.Repeat("x", defaultMaxFileBytes+64)
+	if _, err := kit.Execute(context.Background(), providers.ToolCall{
+		Name:      "write_file",
+		Arguments: `{"path":"big.txt","content":"` + big + `"}`,
+	}); err != nil {
+		t.Fatalf("write_file: %v", err)
+	}
+
+	resp, err := kit.Execute(context.Background(), providers.ToolCall{
+		Name:      "read_file",
+		Arguments: `{"path":"big.txt"}`,
+	})
+	if err != nil {
+		t.Fatalf("read_file: %v", err)
+	}
+
+	var parsed map[string]any
+	if err := json.Unmarshal([]byte(resp), &parsed); err != nil {
+		t.Fatalf("parse read_file response: %v", err)
+	}
+	if parsed["truncated"] != true {
+		t.Fatalf("expected truncated=true, got %v", parsed["truncated"])
+	}
+	size := int(parsed["size"].(float64))
+	returned := int(parsed["returned_size"].(float64))
+	if size != len(big) {
+		t.Fatalf("expected size=%d, got %d", len(big), size)
+	}
+	if returned != defaultMaxFileBytes {
+		t.Fatalf("expected returned_size=%d, got %d", defaultMaxFileBytes, returned)
+	}
+}
+
 func TestToolkit_PathEscapeBlocked(t *testing.T) {
 	root := t.TempDir()
 	kit, err := New(root)

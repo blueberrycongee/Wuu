@@ -405,9 +405,9 @@ func (t *Toolkit) allDefinitions() []providers.ToolDefinition {
 		},
 		{
 			Name: "send_message_to_agent",
-			Description: "Send a follow-up message to an existing sub-agent that is still running " +
-				"or has completed. The agent will resume from its current state and process the " +
-				"new instruction.",
+			Description: "(Currently unavailable) Follow-up messaging is not implemented in this build. " +
+				"Calls to this tool will return an explicit error. Keep sub-agent control one-shot " +
+				"for now (spawn new workers instead of resuming an old one).",
 			InputSchema: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
@@ -865,17 +865,20 @@ func (t *Toolkit) readFile(argsJSON string) (string, error) {
 		return "", fmt.Errorf("read file: %w", err)
 	}
 
+	fullSize := len(content)
+	returned := content
 	truncated := false
-	if len(content) > defaultMaxFileBytes {
-		content = content[:defaultMaxFileBytes]
+	if fullSize > defaultMaxFileBytes {
+		returned = content[:defaultMaxFileBytes]
 		truncated = true
 	}
 
 	result := map[string]any{
-		"path":      normalizeDisplayPath(t.rootDir, resolved),
-		"size":      len(content),
-		"truncated": truncated,
-		"content":   string(content),
+		"path":          normalizeDisplayPath(t.rootDir, resolved),
+		"size":          fullSize,
+		"returned_size": len(returned),
+		"truncated":     truncated,
+		"content":       string(returned),
 	}
 	return mustJSON(result)
 }
