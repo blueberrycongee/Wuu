@@ -2246,8 +2246,8 @@ func (m Model) View() string {
 		Foreground(currentTheme.Border).
 		Render(strings.Repeat("─", m.width))
 
-	// Inline status lives outside the viewport so its spinner
-	// animation (150ms ticks) does not force viewport rebuilds.
+	// Inline status lives outside the viewport so its sweep animation
+	// (150ms ticks) does not force viewport rebuilds.
 	statusLine := ""
 	if m.streaming || m.pendingRequest {
 		statusLine = indentLines(renderInlineStatus(m.statusLine, m.inlineSpinFrame), contentPadLeft)

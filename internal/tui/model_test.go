@@ -681,6 +681,47 @@ func renderEntries(entries []transcriptEntry) string {
 	return b.String()
 }
 
+func TestRenderInlineStatus_AnimatesAcrossFrames(t *testing.T) {
+	frameA := renderInlineStatus("streaming", 0)
+	frameB := renderInlineStatus("streaming", 3)
+	if frameA == frameB {
+		t.Fatalf("expected different frames to render differently: %q", frameA)
+	}
+	if !strings.Contains(frameA, "Generating") {
+		t.Fatalf("expected label to remain visible in frame A: %q", frameA)
+	}
+	if !strings.Contains(frameB, "Generating") {
+		t.Fatalf("expected label to remain visible in frame B: %q", frameB)
+	}
+	if !strings.Contains(frameA, "▓") && !strings.Contains(frameB, "▓") {
+		t.Fatalf("expected sweep highlight to appear in at least one frame: A=%q B=%q", frameA, frameB)
+	}
+}
+
+func TestRenderInlineStatus_ShowsWaitingLabels(t *testing.T) {
+	cases := map[string]string{
+		"thinking":             "Thinking",
+		"streaming":            "Generating",
+		"tool: run_shell":      "Running  run_shell",
+		"executing tool: read": "Running  read",
+	}
+	for status, want := range cases {
+		got := renderInlineStatus(status, 1)
+		if !strings.Contains(got, strings.ReplaceAll(want, "  ", " ")) {
+			t.Fatalf("status %q rendered %q, want label containing %q", status, got, want)
+		}
+	}
+}
+
+func TestRenderInlineStatus_HidesForNonWaitingStatus(t *testing.T) {
+	if got := renderInlineStatus("ready", 0); got != "" {
+		t.Fatalf("expected non-waiting status to render empty string, got %q", got)
+	}
+	if got := renderInlineStatus("response in 1.2s", 0); got != "" {
+		t.Fatalf("expected completed status to render empty string, got %q", got)
+	}
+}
+
 func TestRenderThinkingBlock_Active(t *testing.T) {
 	result := renderThinkingBlock("analyzing...", false, false, 2*time.Second, 80, 0)
 	if !strings.Contains(result, "Thinking...") {

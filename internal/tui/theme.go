@@ -146,7 +146,8 @@ var (
 	bannerInfoStyle     lipgloss.Style
 
 	// Inline status (below user message).
-	inlineStatusDotStyle   lipgloss.Style
+	inlineStatusTrackStyle lipgloss.Style
+	inlineStatusSweepStyle lipgloss.Style
 	inlineStatusLabelStyle lipgloss.Style
 )
 
@@ -221,7 +222,8 @@ func applyTheme(t theme) {
 	bannerSubtitleStyle = lipgloss.NewStyle().Foreground(t.Subtle)
 	bannerInfoStyle = lipgloss.NewStyle().Foreground(t.Inactive)
 
-	inlineStatusDotStyle = lipgloss.NewStyle().Bold(true).Foreground(t.Brand)
+	inlineStatusTrackStyle = lipgloss.NewStyle().Foreground(t.Inactive)
+	inlineStatusSweepStyle = lipgloss.NewStyle().Bold(true).Foreground(t.BrandLight)
 	inlineStatusLabelStyle = lipgloss.NewStyle().Foreground(t.Subtle)
 
 	initPickerStyles()
