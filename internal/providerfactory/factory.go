@@ -27,38 +27,7 @@ func BuildClient(provider config.ProviderConfig, providerName string) (providers
 // tolerant of transient 429 / 5xx than the interactive main agent).
 // Pass nil to use the provider client's built-in default.
 func BuildClientWithRetry(provider config.ProviderConfig, providerName string, retry *providers.RetryConfig) (providers.Client, error) {
-	typeName := normalizeType(provider.Type)
-	apiKey, err := resolveAPIKey(provider, providerName)
-	if err != nil {
-		return nil, err
-	}
-
-	switch typeName {
-	case "openai", "openai-compatible", "codex":
-		client, newErr := openai.New(openai.ClientConfig{
-			BaseURL:     provider.BaseURL,
-			APIKey:      apiKey,
-			Headers:     provider.Headers,
-			RetryConfig: retry,
-		})
-		if newErr != nil {
-			return nil, newErr
-		}
-		return client, nil
-	case "anthropic", "claude", "anthropic-official":
-		client, newErr := anthropic.New(anthropic.ClientConfig{
-			BaseURL:     provider.BaseURL,
-			APIKey:      apiKey,
-			Headers:     provider.Headers,
-			RetryConfig: retry,
-		})
-		if newErr != nil {
-			return nil, newErr
-		}
-		return client, nil
-	default:
-		return nil, fmt.Errorf("unsupported provider type %q", provider.Type)
-	}
+	return buildClientWithRetry(provider, providerName, retry)
 }
 
 // SubAgentRetryConfig returns the more aggressive HTTP retry policy
@@ -89,6 +58,14 @@ func BuildStreamClient(provider config.ProviderConfig, providerName string) (pro
 // should be more tolerant of transient 429 / 5xx than the interactive
 // main agent). Pass nil to use the provider client's built-in default.
 func BuildStreamClientWithRetry(provider config.ProviderConfig, providerName string, retry *providers.RetryConfig) (providers.StreamClient, error) {
+	client, err := buildClientWithRetry(provider, providerName, retry)
+	if err != nil {
+		return nil, err
+	}
+	return providers.AdaptStreamClient(client), nil
+}
+
+func buildClientWithRetry(provider config.ProviderConfig, providerName string, retry *providers.RetryConfig) (providers.Client, error) {
 	typeName := normalizeType(provider.Type)
 	apiKey, err := resolveAPIKey(provider, providerName)
 	if err != nil {
@@ -97,19 +74,27 @@ func BuildStreamClientWithRetry(provider config.ProviderConfig, providerName str
 
 	switch typeName {
 	case "openai", "openai-compatible", "codex":
-		return openai.New(openai.ClientConfig{
+		client, newErr := openai.New(openai.ClientConfig{
 			BaseURL:     provider.BaseURL,
 			APIKey:      apiKey,
 			Headers:     provider.Headers,
 			RetryConfig: retry,
 		})
+		if newErr != nil {
+			return nil, newErr
+		}
+		return client, nil
 	case "anthropic", "claude", "anthropic-official":
-		return anthropic.New(anthropic.ClientConfig{
+		client, newErr := anthropic.New(anthropic.ClientConfig{
 			BaseURL:     provider.BaseURL,
 			APIKey:      apiKey,
 			Headers:     provider.Headers,
 			RetryConfig: retry,
 		})
+		if newErr != nil {
+			return nil, newErr
+		}
+		return client, nil
 	default:
 		return nil, fmt.Errorf("unsupported provider type %q", provider.Type)
 	}
