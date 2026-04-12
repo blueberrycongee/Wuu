@@ -43,22 +43,39 @@ func TestScreenToViewportCoords_AccountsForContentPadding(t *testing.T) {
 	}
 }
 
-func TestMouseSelectionStartsAtContentAreaAfterLeftPadding(t *testing.T) {
+func TestMouseSelectionStartsAfterDragThresholdFromContentArea(t *testing.T) {
 	m := NewModel(Config{Provider: "test", Model: "test-model", ConfigPath: "/tmp/.wuu.json"})
 	m.width = 100
 	m.height = 20
 	m.relayout()
 
+	pressX := m.layout.Chat.X + contentPadLeft
+	pressY := m.layout.Chat.Y
 	updated, _ := m.Update(tea.MouseMsg{
 		Action: tea.MouseActionPress,
 		Button: tea.MouseButtonLeft,
-		X:      m.layout.Chat.X + contentPadLeft,
-		Y:      m.layout.Chat.Y,
+		X:      pressX,
+		Y:      pressY,
+	})
+	pressed := updated.(Model)
+
+	if pressed.selection.Anchor != nil {
+		t.Fatal("expected no selection anchor before drag threshold is crossed")
+	}
+	if !pressed.pendingChatClick.active {
+		t.Fatal("expected pending chat click after mouse press")
+	}
+
+	updated, _ = pressed.Update(tea.MouseMsg{
+		Action: tea.MouseActionMotion,
+		Button: tea.MouseButtonLeft,
+		X:      pressX + chatSelectionDragThreshold + 1,
+		Y:      pressY,
 	})
 	after := updated.(Model)
 
 	if after.selection.Anchor == nil {
-		t.Fatal("expected selection anchor after mouse press")
+		t.Fatal("expected selection anchor after drag threshold is crossed")
 	}
 	if after.selection.Anchor.Col != 0 {
 		t.Fatalf("expected selection anchor col 0 at content start, got %d", after.selection.Anchor.Col)

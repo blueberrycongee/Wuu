@@ -42,6 +42,7 @@ const (
 
 	scrollbarAnchorClickTolerance = 1
 	scrollbarHitboxTolerance      = 1
+	chatSelectionDragThreshold    = 1
 
 	// maxAutoResumeChain caps how many turns the main agent can
 	// auto-fire in response to worker completions without seeing
@@ -49,6 +50,8 @@ const (
 	// naturally well before this in normal use.
 	maxAutoResumeChain = 100
 )
+
+var defaultInputTextarea = newInputTextarea()
 
 type tickMsg struct {
 	now time.Time
@@ -156,6 +159,12 @@ type pendingTurnResult struct {
 	newMsgs          []providers.ChatMessage
 	preCompacted     bool
 	historyRewritten bool
+}
+
+type pendingChatClickState struct {
+	active bool
+	x      int
+	y      int
 }
 
 // Model implements the terminal UI state machine.
@@ -270,6 +279,11 @@ type Model struct {
 	// Text selection in viewport.
 	selection selectionState
 
+	// Pending click in the chat area. A plain click should focus the
+	// input on release; only once motion exceeds a small threshold do
+	// we convert it into an actual text-selection drag.
+	pendingChatClick pendingChatClickState
+
 	// Auto-scroll state for drag-select past the viewport edge.
 	// While the mouse is held outside the chat area, a recurring tick
 	// scrolls the viewport in the held direction so the selection can
@@ -308,14 +322,7 @@ func NewModel(cfg Config) Model {
 	vp.SetContent("")
 	vp.MouseWheelDelta = 1
 
-	in := textarea.New()
-	in.Placeholder = "Ask anything..."
-	in.Focus()
-	in.SetWidth(80)
-	in.SetHeight(3)
-	in.ShowLineNumbers = false
-	in.Prompt = "> "
-	in.CharLimit = 0
+	in := newInputTextarea()
 
 	m := Model{
 		provider:           cfg.Provider,
@@ -386,6 +393,53 @@ func NewModel(cfg Config) Model {
 	}
 
 	return m.loadMemory()
+}
+
+func finishInputTextareaSetup(in *textarea.Model) {
+	in.Placeholder = "Ask anything..."
+	in.Focus()
+	in.SetWidth(80)
+	in.SetHeight(3)
+	in.ShowLineNumbers = false
+	in.Prompt = "> "
+	in.CharLimit = 0
+	applyInputTextareaTheme(in)
+}
+
+func newInputTextarea() textarea.Model {
+	in := textarea.New()
+	finishInputTextareaSetup(&in)
+	return in
+}
+
+func refreshTextareasForTheme() {
+	defaultInputTextarea = newInputTextarea()
+	defaultOnboardingTextarea = newOnboardingTextarea()
+}
+
+func applyInputTextareaTheme(in *textarea.Model) {
+	focused := in.FocusedStyle
+	focused.Base = lipgloss.NewStyle()
+	focused.CursorLine = lipgloss.NewStyle()
+	focused.CursorLineNumber = lipgloss.NewStyle().Foreground(currentTheme.Subtle)
+	focused.EndOfBuffer = lipgloss.NewStyle().Foreground(currentTheme.Inactive)
+	focused.LineNumber = lipgloss.NewStyle().Foreground(currentTheme.Subtle)
+	focused.Placeholder = lipgloss.NewStyle().Foreground(currentTheme.Inactive)
+	focused.Prompt = lipgloss.NewStyle().Foreground(currentTheme.Brand)
+	focused.Text = lipgloss.NewStyle().Foreground(currentTheme.Text)
+
+	blurred := in.BlurredStyle
+	blurred.Base = lipgloss.NewStyle()
+	blurred.CursorLine = lipgloss.NewStyle()
+	blurred.CursorLineNumber = lipgloss.NewStyle().Foreground(currentTheme.Subtle)
+	blurred.EndOfBuffer = lipgloss.NewStyle().Foreground(currentTheme.Inactive)
+	blurred.LineNumber = lipgloss.NewStyle().Foreground(currentTheme.Subtle)
+	blurred.Placeholder = lipgloss.NewStyle().Foreground(currentTheme.Inactive)
+	blurred.Prompt = lipgloss.NewStyle().Foreground(currentTheme.Subtle)
+	blurred.Text = lipgloss.NewStyle().Foreground(currentTheme.Text)
+
+	in.FocusedStyle = focused
+	in.BlurredStyle = blurred
 }
 
 func (m Model) loadMemory() Model {
@@ -961,6 +1015,29 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				return m, nil
 			}
+			if m.pendingChatClick.active {
+				m.focusInput()
+				m.selection.clear()
+				return m, nil
+			}
+		}
+
+		if msg.Action == tea.MouseActionMotion && m.pendingChatClick.active {
+			if exceedsChatSelectionDragThreshold(m.pendingChatClick.x, m.pendingChatClick.y, msg.X, msg.Y) {
+				m.blurInput()
+				startRow, startCol := m.screenToViewportCoords(m.pendingChatClick.x, m.pendingChatClick.y)
+				m.clearPendingChatClick()
+				m.stopSelectionAutoScroll()
+				m.selection.clear()
+				m.selection.start(startCol, startRow)
+				vpRow, vpCol := m.screenToViewportCoords(msg.X, msg.Y)
+				cmd := m.refreshSelectionAutoScroll(msg.X, msg.Y)
+				m.selection.update(vpCol, vpRow)
+				return m, cmd
+			}
+			if hoverChanged {
+				return m, nil
+			}
 		}
 
 		if msg.Action == tea.MouseActionMotion && m.selection.IsDragging {
@@ -988,6 +1065,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			msg.Button == tea.MouseButtonLeft &&
 			m.isScrollbarClick(msg.X, msg.Y) {
 			m.blurInput()
+			m.clearPendingChatClick()
 			m.selection.clear()
 			row := msg.Y - m.layout.Chat.Y
 			if msg.Alt {
@@ -1013,6 +1091,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			msg.Y == 0 &&
 			msg.X >= m.width-20 {
 			m.blurInput()
+			m.clearPendingChatClick()
 			m.selection.clear()
 			m.viewport.GotoBottom()
 			m.autoFollow = true
@@ -1032,6 +1111,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if msg.Y >= inputTop && msg.Y < inputBot && msg.X >= inputLeft {
 				m.focusInput()
 				m.selection.clear()
+				m.clearPendingChatClick()
 				targetRow := msg.Y - inputTop
 				targetCol := msg.X - inputLeft - promptW
 				if targetCol < 0 {
@@ -1058,14 +1138,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
-		// Start new selection on left-click in viewport area.
+		// Start pending click on left-click in viewport area.
 		if msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft {
 			if m.isInChatArea(msg.X, msg.Y) {
-				m.blurInput()
-				m.stopSelectionAutoScroll()
-				m.selection.clear()
-				vpRow, vpCol := m.screenToViewportCoords(msg.X, msg.Y)
-				m.selection.start(vpCol, vpRow)
+				m.clearPendingChatClick()
+				m.pendingChatClick = pendingChatClickState{active: true, x: msg.X, y: msg.Y}
 				return m, nil
 			}
 		}
@@ -1088,13 +1165,25 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.completionIndex = 0
 				}
 				return m, nil
-			case "tab", "enter":
+			case "tab":
 				if m.completionIndex >= 0 && m.completionIndex < len(m.completionItems) {
 					selected := m.completionItems[m.completionIndex]
 					m.input.SetValue("/" + selected.Name + " ")
 					m.input.CursorEnd()
 					m.completionVisible = false
 					m.completionItems = nil
+					return m, nil
+				}
+			case "enter":
+				if m.completionIndex >= 0 && m.completionIndex < len(m.completionItems) {
+					selected := m.completionItems[m.completionIndex]
+					m.input.SetValue("/" + selected.Name + " ")
+					m.input.CursorEnd()
+					m.completionVisible = false
+					m.completionItems = nil
+					if selected.completionEnterBehavior() == slashCompletionExecute {
+						return m.submit(false)
+					}
 					return m, nil
 				}
 			case "esc":
@@ -1949,10 +2038,27 @@ func (m *Model) ensureSessionFile() {
 // instead of moving the cursor within the textarea.
 func (m *Model) focusInput() {
 	m.input.Focus()
+	m.clearPendingChatClick()
 }
 
 func (m *Model) blurInput() {
 	m.input.Blur()
+}
+
+func (m *Model) clearPendingChatClick() {
+	m.pendingChatClick = pendingChatClickState{}
+}
+
+func exceedsChatSelectionDragThreshold(startX, startY, x, y int) bool {
+	dx := x - startX
+	if dx < 0 {
+		dx = -dx
+	}
+	dy := y - startY
+	if dy < 0 {
+		dy = -dy
+	}
+	return dx > chatSelectionDragThreshold || dy > chatSelectionDragThreshold
 }
 
 func (m *Model) canNavigateHistory() bool {

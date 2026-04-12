@@ -174,9 +174,9 @@ func TestMouseClickPositionsCursor(t *testing.T) {
 	}
 }
 
-func TestMouseClickChatAreaBlursInput(t *testing.T) {
+func TestMouseClickChatAreaFocusesInputOnRelease(t *testing.T) {
 	m := newScrollableModelForScrollbarTest(t)
-	m.input.Focus()
+	m.input.Blur()
 
 	updated, _ := m.Update(tea.MouseMsg{
 		Action: tea.MouseActionPress,
@@ -184,13 +184,73 @@ func TestMouseClickChatAreaBlursInput(t *testing.T) {
 		X:      m.layout.Chat.X + 2,
 		Y:      m.layout.Chat.Y + 1,
 	})
+	pressed := updated.(Model)
+
+	if !pressed.pendingChatClick.active {
+		t.Fatal("expected chat press to start a pending click")
+	}
+	if pressed.selection.IsDragging {
+		t.Fatal("expected chat press to avoid starting selection immediately")
+	}
+	if pressed.input.Focused() {
+		t.Fatal("expected input to remain blurred until release")
+	}
+
+	updated, _ = pressed.Update(tea.MouseMsg{
+		Action: tea.MouseActionRelease,
+		Button: tea.MouseButtonLeft,
+		X:      m.layout.Chat.X + 2,
+		Y:      m.layout.Chat.Y + 1,
+	})
 	after := updated.(Model)
 
-	if after.input.Focused() {
-		t.Fatal("expected input to blur after clicking chat area")
+	if !after.input.Focused() {
+		t.Fatal("expected chat click release to focus input")
+	}
+	if after.pendingChatClick.active {
+		t.Fatal("expected pending click to clear after release")
+	}
+	if after.selection.IsDragging {
+		t.Fatal("expected no selection drag after plain click")
+	}
+}
+
+func TestMouseDragChatAreaStartsSelectionAfterThreshold(t *testing.T) {
+	m := newScrollableModelForScrollbarTest(t)
+	m.input.Focus()
+	pressX := m.layout.Chat.X + 2
+	pressY := m.layout.Chat.Y + 1
+
+	updated, _ := m.Update(tea.MouseMsg{
+		Action: tea.MouseActionPress,
+		Button: tea.MouseButtonLeft,
+		X:      pressX,
+		Y:      pressY,
+	})
+	pressed := updated.(Model)
+
+	updated, _ = pressed.Update(tea.MouseMsg{
+		Action: tea.MouseActionMotion,
+		Button: tea.MouseButtonLeft,
+		X:      pressX + chatSelectionDragThreshold + 1,
+		Y:      pressY,
+	})
+	after := updated.(Model)
+
+	if after.pendingChatClick.active {
+		t.Fatal("expected drag to clear pending click")
 	}
 	if !after.selection.IsDragging {
-		t.Fatal("expected chat click to start selection drag")
+		t.Fatal("expected drag past threshold to start selection")
+	}
+	if after.selection.Anchor == nil {
+		t.Fatal("expected selection anchor to be set")
+	}
+	if after.selection.Anchor.Row != after.viewport.YOffset+1 {
+		t.Fatalf("expected anchor row %d, got %d", after.viewport.YOffset+1, after.selection.Anchor.Row)
+	}
+	if after.input.Focused() {
+		t.Fatal("expected input to blur once selection drag begins")
 	}
 }
 
@@ -539,7 +599,7 @@ func TestMouseDragSelectionAutoScrollsPastEdge(t *testing.T) {
 	m.setViewportOffset(0)
 	startOffset := m.viewport.YOffset
 
-	// Press inside the chat area to begin a selection.
+	// Press inside the chat area to begin a pending click.
 	pressX := m.layout.Chat.X + 2
 	pressY := m.layout.Chat.Y + 1
 	updated, _ := m.Update(tea.MouseMsg{
@@ -548,21 +608,24 @@ func TestMouseDragSelectionAutoScrollsPastEdge(t *testing.T) {
 		X:      pressX,
 		Y:      pressY,
 	})
-	dragging := updated.(Model)
-	if !dragging.selection.IsDragging {
-		t.Fatal("expected drag to start after press in chat area")
+	pressed := updated.(Model)
+	if !pressed.pendingChatClick.active {
+		t.Fatal("expected pending click after press in chat area")
 	}
 
 	// Drag past the bottom of the chat area. The motion handler
-	// must scroll the viewport AND start the auto-scroll ticker.
-	belowY := dragging.layout.Chat.Y + dragging.layout.Chat.Height + 2
-	updated, cmd := dragging.Update(tea.MouseMsg{
+	// must scroll the viewport, start the selection, and start the auto-scroll ticker.
+	belowY := pressed.layout.Chat.Y + pressed.layout.Chat.Height + 2
+	updated, cmd := pressed.Update(tea.MouseMsg{
 		Action: tea.MouseActionMotion,
 		Button: tea.MouseButtonLeft,
 		X:      pressX + 4,
 		Y:      belowY,
 	})
 	afterMotion := updated.(Model)
+	if !afterMotion.selection.IsDragging {
+		t.Fatal("expected drag past edge to start selection")
+	}
 	if afterMotion.viewport.YOffset <= startOffset {
 		t.Fatalf("expected motion past edge to scroll viewport: start=%d after=%d",
 			startOffset, afterMotion.viewport.YOffset)
@@ -1226,6 +1289,111 @@ func TestSubmitBusyEnterQueuesSteerAndCancelsStream(t *testing.T) {
 	}
 	if next.statusLine != "steering (1 pending)" {
 		t.Fatalf("unexpected status line: %q", next.statusLine)
+	}
+}
+
+func TestCompletionTabInsertsWithoutExecuting(t *testing.T) {
+	m := NewModel(Config{
+		Provider:   "test",
+		Model:      "test-model",
+		ConfigPath: "/tmp/.wuu.json",
+		RunPrompt: func(_ctx context.Context, prompt string) (string, error) {
+			return "answer to: " + prompt, nil
+		},
+	})
+	m.width = 100
+	m.height = 24
+	m.relayout()
+	m.input.SetValue("/he")
+	m.updateCompletion()
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	after := updated.(Model)
+	if cmd != nil {
+		t.Fatal("expected no command when tab-completing slash command")
+	}
+	if got := after.input.Value(); got != "/help " {
+		t.Fatalf("expected tab to insert /help, got %q", got)
+	}
+	if after.completionVisible {
+		t.Fatal("expected completion popup to close after tab insert")
+	}
+	if after.pendingRequest {
+		t.Fatal("tab completion should not execute command")
+	}
+	if len(after.entries) != 0 {
+		t.Fatal("tab completion should not append transcript entries")
+	}
+}
+
+func TestCompletionEnterExecutesSafeCommand(t *testing.T) {
+	m := NewModel(Config{
+		Provider:   "test",
+		Model:      "test-model",
+		ConfigPath: "/tmp/.wuu.json",
+		RunPrompt: func(_ctx context.Context, prompt string) (string, error) {
+			return "answer to: " + prompt, nil
+		},
+	})
+	m.width = 100
+	m.height = 24
+	m.relayout()
+	m.input.SetValue("/he")
+	m.updateCompletion()
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	after := updated.(Model)
+	if cmd != nil {
+		t.Fatal("expected no async command for local safe slash command")
+	}
+	if got := after.input.Value(); got != "" {
+		t.Fatalf("expected executed command to clear input, got %q", got)
+	}
+	if after.completionVisible {
+		t.Fatal("expected completion popup to close after enter")
+	}
+	if len(after.entries) != 1 {
+		t.Fatalf("expected 1 system entry after execution, got %d", len(after.entries))
+	}
+	if after.entries[0].Role != "SYSTEM" {
+		t.Fatalf("expected system entry, got %q", after.entries[0].Role)
+	}
+	if !strings.Contains(after.entries[0].Content, "Available commands") {
+		t.Fatalf("expected help output, got %q", after.entries[0].Content)
+	}
+}
+
+func TestCompletionEnterInsertsCommandThatNeedsArgs(t *testing.T) {
+	m := NewModel(Config{
+		Provider:   "test",
+		Model:      "test-model",
+		ConfigPath: "/tmp/.wuu.json",
+		RunPrompt: func(_ctx context.Context, prompt string) (string, error) {
+			return "answer to: " + prompt, nil
+		},
+	})
+	m.width = 100
+	m.height = 24
+	m.relayout()
+	m.input.SetValue("/mo")
+	m.updateCompletion()
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	after := updated.(Model)
+	if cmd != nil {
+		t.Fatal("expected no command when enter only inserts slash command")
+	}
+	if got := after.input.Value(); got != "/model " {
+		t.Fatalf("expected enter to insert /model, got %q", got)
+	}
+	if after.completionVisible {
+		t.Fatal("expected completion popup to close after enter insert")
+	}
+	if after.pendingRequest {
+		t.Fatal("enter insert should not execute command")
+	}
+	if len(after.entries) != 0 {
+		t.Fatal("enter insert should not append transcript entries")
 	}
 }
 

@@ -252,6 +252,7 @@ func applyTheme(t theme) {
 	waitingStatusLabelBrightStyle = lipgloss.NewStyle().Bold(true).Foreground(t.BrandLight)
 	waitingStatusMetaStyle = lipgloss.NewStyle().Foreground(t.Subtle)
 
+	refreshTextareasForTheme()
 	initPickerStyles()
 	initWorkerPanelStyles()
 }

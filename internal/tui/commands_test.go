@@ -60,3 +60,34 @@ func TestHandleSlash(t *testing.T) {
 		t.Fatal("expected unknown slash command message")
 	}
 }
+
+func TestCommandCompletionEnterBehavior(t *testing.T) {
+	tests := []struct {
+		name string
+		want slashCompletionEnterBehavior
+	}{
+		{name: "help", want: slashCompletionExecute},
+		{name: "exit", want: slashCompletionExecute},
+		{name: "model", want: slashCompletionInsertOnly},
+		{name: "resume", want: slashCompletionInsertOnly},
+		{name: "worktree", want: slashCompletionInsertOnly},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var found *command
+			for i := range commandRegistry {
+				if commandRegistry[i].Name == tc.name {
+					found = &commandRegistry[i]
+					break
+				}
+			}
+			if found == nil {
+				t.Fatalf("command %q not found", tc.name)
+			}
+			if got := found.completionEnterBehavior(); got != tc.want {
+				t.Fatalf("completionEnterBehavior() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}

@@ -8,6 +8,8 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+var defaultOnboardingTextarea = newOnboardingTextarea()
+
 // onboardingStep tracks which screen the user is on.
 type onboardingStep int
 
@@ -51,18 +53,47 @@ type OnboardingResult struct {
 	Completed    bool
 }
 
-// NewOnboardingModel creates a fresh onboarding wizard.
-func NewOnboardingModel() OnboardingModel {
+func newOnboardingTextarea() textarea.Model {
 	ti := textarea.New()
 	ti.ShowLineNumbers = false
 	ti.CharLimit = 256
 	ti.SetHeight(1)
 	ti.Prompt = ""
+	applyOnboardingTextareaTheme(&ti)
+	return ti
+}
 
+func applyOnboardingTextareaTheme(in *textarea.Model) {
+	focused := in.FocusedStyle
+	focused.Base = lipgloss.NewStyle()
+	focused.CursorLine = lipgloss.NewStyle()
+	focused.CursorLineNumber = lipgloss.NewStyle().Foreground(currentTheme.Subtle)
+	focused.EndOfBuffer = lipgloss.NewStyle().Foreground(currentTheme.Inactive)
+	focused.LineNumber = lipgloss.NewStyle().Foreground(currentTheme.Subtle)
+	focused.Placeholder = lipgloss.NewStyle().Foreground(currentTheme.Inactive)
+	focused.Prompt = lipgloss.NewStyle().Foreground(currentTheme.Brand)
+	focused.Text = lipgloss.NewStyle().Foreground(currentTheme.Text)
+
+	blurred := in.BlurredStyle
+	blurred.Base = lipgloss.NewStyle()
+	blurred.CursorLine = lipgloss.NewStyle()
+	blurred.CursorLineNumber = lipgloss.NewStyle().Foreground(currentTheme.Subtle)
+	blurred.EndOfBuffer = lipgloss.NewStyle().Foreground(currentTheme.Inactive)
+	blurred.LineNumber = lipgloss.NewStyle().Foreground(currentTheme.Subtle)
+	blurred.Placeholder = lipgloss.NewStyle().Foreground(currentTheme.Inactive)
+	blurred.Prompt = lipgloss.NewStyle().Foreground(currentTheme.Subtle)
+	blurred.Text = lipgloss.NewStyle().Foreground(currentTheme.Text)
+
+	in.FocusedStyle = focused
+	in.BlurredStyle = blurred
+}
+
+// NewOnboardingModel creates a fresh onboarding wizard.
+func NewOnboardingModel() OnboardingModel {
 	return OnboardingModel{
 		step:      stepProviderType,
 		cursor:    0,
-		textInput: ti,
+		textInput: defaultOnboardingTextarea,
 	}
 }
 

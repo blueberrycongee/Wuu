@@ -37,6 +37,18 @@ type command struct {
 	Execute     func(args string, m *Model) string
 }
 
+func (c command) completionEnterBehavior() slashCompletionEnterBehavior {
+	if c.ArgHint != "" || c.InlineArgs {
+		return slashCompletionInsertOnly
+	}
+	switch c.Name {
+	case "help", "clear", "status", "compact", "fork", "new", "diff", "copy", "skills", "memory", "workers", "cleanup-worktrees", "insight", "exit":
+		return slashCompletionExecute
+	default:
+		return slashCompletionInsertOnly
+	}
+}
+
 var commandRegistry []command
 
 func init() {

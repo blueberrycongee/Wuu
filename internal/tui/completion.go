@@ -7,6 +7,13 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+type slashCompletionEnterBehavior int
+
+const (
+	slashCompletionInsertOnly slashCompletionEnterBehavior = iota
+	slashCompletionExecute
+)
+
 // overlayBottom places the popup over the bottom lines of the base string,
 // keeping the total line count the same (no layout shift).
 func overlayBottom(base, popup string, width int) string {
@@ -125,6 +132,9 @@ func renderCompletion(items []command, selected int, width int) string {
 	dimStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("8"))
 
+	helpStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("8"))
+
 	// Calculate column widths.
 	maxNameW := 0
 	for _, cmd := range items[start:end] {
@@ -164,6 +174,9 @@ func renderCompletion(items []command, selected int, width int) string {
 
 		lines = append(lines, "  "+line)
 	}
+
+	helper := "  Tab inserts · Enter runs safe commands or inserts commands with args"
+	lines = append(lines, helpStyle.Render(helper))
 
 	// Show scroll indicator if there are more items.
 	if len(items) > maxVisible {
