@@ -25,6 +25,7 @@ type workPhase int
 
 const (
 	workPhaseIdle workPhase = iota
+	workPhaseCompacting
 	workPhaseThinking
 	workPhaseTool
 	workPhaseGenerating
@@ -49,6 +50,8 @@ type statusTextSegment struct {
 
 func deriveWorkStatus(status string) workStatus {
 	switch {
+	case strings.HasPrefix(status, compactingHistoryStatus):
+		return workStatus{Phase: workPhaseCompacting, Label: "Compacting history", Meta: "Preparing the next turn", Running: true}
 	case status == "thinking":
 		return workStatus{Phase: workPhaseThinking, Label: "Thinking", Meta: "Working through the next step", Running: true}
 	case status == "streaming" || status == "streaming response":

@@ -3,11 +3,39 @@ package compact
 import (
 	"context"
 	"fmt"
+	"os"
+	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/blueberrycongee/wuu/internal/providers"
 )
+
+const defaultCompactTimeout = 15 * time.Second
+
+func compactTimeout() time.Duration {
+	if v := os.Getenv("WUU_COMPACT_TIMEOUT_MS"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
+			return time.Duration(n) * time.Millisecond
+		}
+	}
+	return defaultCompactTimeout
+}
+
+func withCompactTimeout(ctx context.Context) (context.Context, context.CancelFunc) {
+	timeout := compactTimeout()
+	if timeout <= 0 {
+		return ctx, func() {}
+	}
+	if deadline, ok := ctx.Deadline(); ok {
+		remaining := time.Until(deadline)
+		if remaining > 0 && remaining <= timeout {
+			return ctx, func() {}
+		}
+	}
+	return context.WithTimeout(ctx, timeout)
+}
 
 // EstimateTokens provides a rough token count estimate.
 // English: ~4 chars per token. CJK: ~2 chars per token.
@@ -73,6 +101,8 @@ func Compact(ctx context.Context, messages []providers.ChatMessage, client provi
 	if len(messages) <= 2 {
 		return messages, nil // nothing to compact
 	}
+	ctx, cancel := withCompactTimeout(ctx)
+	defer cancel()
 
 	// Find compaction boundary: keep the last 2 exchanges (4 messages)
 	keepCount := 4

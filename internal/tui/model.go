@@ -68,6 +68,8 @@ type streamEventMsg struct {
 
 type streamFinishedMsg struct{}
 
+const compactingHistoryStatus = "compacting history"
+
 type ctrlCResetMsg struct{}
 
 type queueDrainMsg struct{}
@@ -1355,17 +1357,25 @@ func (m Model) sendMessage(message queuedMessage) (tea.Model, tea.Cmd) {
 
 	m.pendingRequest = true
 	m.streaming = true
-	m.streamTarget = m.appendEntry("assistant", "")
+	m.streamTarget = -1
 	queueHint := ""
 	if len(m.messageQueue) > 0 {
 		queueHint = fmt.Sprintf(" · %d queued", len(m.messageQueue))
 	}
-	m.statusLine = "streaming" + queueHint
-	m.refreshViewport(true)
 
 	if m.streamRunner != nil {
+		if shouldPreCompactHistory(m.chatHistory, m.maxContextTokens, m.streamRunner.Client) {
+			m.statusLine = compactingHistoryStatus + queueHint
+		} else {
+			m.streamTarget = m.appendEntry("assistant", "")
+			m.statusLine = "streaming" + queueHint
+		}
+		m.refreshViewport(true)
 		return m.startStreamingTurn()
 	}
+	m.streamTarget = m.appendEntry("assistant", "")
+	m.statusLine = "streaming" + queueHint
+	m.refreshViewport(true)
 
 	// Fallback to blocking path.
 	start := time.Now()
@@ -1382,8 +1392,9 @@ func (m Model) sendMessage(message queuedMessage) (tea.Model, tea.Cmd) {
 }
 
 // startStreamingTurn launches a streaming runner using the current
-// chatHistory. Caller must already have set pendingRequest/streaming/
-// streamTarget and refreshed the viewport.
+// chatHistory. Caller must already have set pendingRequest/streaming
+// and refreshed the viewport. streamTarget may stay unset until the
+// first stream event when a pre-stream compaction pass is running.
 func (m Model) startStreamingTurn() (tea.Model, tea.Cmd) {
 	ch := make(chan providers.StreamEvent, 64)
 	m.streamCh = ch
@@ -1407,13 +1418,20 @@ func (m Model) startStreamingTurn() (tea.Model, tea.Cmd) {
 			}
 		}
 
-		history = maybeCompactHistory(
+		var compacted bool
+		history, compacted = maybeCompactHistory(
 			ctx,
 			history,
 			m.maxContextTokens,
 			runner.Client,
 			runner.Model,
 		)
+		if compacted {
+			onEvent(providers.StreamEvent{
+				Type:    providers.EventCompact,
+				Content: "✦ Compacted history before replying",
+			})
+		}
 		result.baseHistory = history
 
 		_, newMsgs, err := runner.RunWithCallback(ctx, history, onEvent)
@@ -1444,8 +1462,13 @@ func (m Model) triggerAutoResume() (tea.Model, tea.Cmd) {
 	m.autoResumeChain++
 	m.pendingRequest = true
 	m.streaming = true
-	m.streamTarget = m.appendEntry("assistant", "")
-	m.statusLine = fmt.Sprintf("auto-resume (%d/%d)", m.autoResumeChain, maxAutoResumeChain)
+	m.streamTarget = -1
+	if shouldPreCompactHistory(m.chatHistory, m.maxContextTokens, m.streamRunner.Client) {
+		m.statusLine = compactingHistoryStatus
+	} else {
+		m.streamTarget = m.appendEntry("assistant", "")
+		m.statusLine = fmt.Sprintf("auto-resume (%d/%d)", m.autoResumeChain, maxAutoResumeChain)
+	}
 	m.refreshViewport(true)
 	return m.startStreamingTurn()
 }
@@ -1463,19 +1486,23 @@ func maybeCompactHistory(
 	maxContextTokens int,
 	client providers.Client,
 	model string,
-) []providers.ChatMessage {
-	if client == nil || maxContextTokens <= 0 {
-		return history
-	}
-	if !compact.ShouldCompact(history, maxContextTokens) {
-		return history
+) ([]providers.ChatMessage, bool) {
+	if !shouldPreCompactHistory(history, maxContextTokens, client) {
+		return history, false
 	}
 
 	compacted, err := compact.Compact(ctx, history, client, model)
 	if err != nil {
-		return history
+		return history, false
 	}
-	return compacted
+	return compacted, len(compacted) < len(history)
+}
+
+func shouldPreCompactHistory(history []providers.ChatMessage, maxContextTokens int, client providers.Client) bool {
+	if client == nil || maxContextTokens <= 0 {
+		return false
+	}
+	return compact.ShouldCompact(history, maxContextTokens)
 }
 
 func waitStreamEvent(ch <-chan providers.StreamEvent) tea.Cmd {
@@ -1556,6 +1583,7 @@ func (m *Model) applyStreamEvent(event providers.StreamEvent, rearm bool) tea.Cm
 			e.rendered = rendered
 			e.renderedLen = len(e.Content)
 		}
+		m.statusLine = "streaming"
 		m.refreshViewport(false)
 		return nextWait()
 

@@ -906,6 +906,7 @@ func TestStatusWavePhaseOscillates(t *testing.T) {
 
 func TestRenderInlineStatus_ShowsWaitingLabels(t *testing.T) {
 	cases := map[string]string{
+		"compacting history":   "Compacting history",
 		"thinking":             "Thinking",
 		"streaming":            "Responding",
 		"tool: run_shell":      "Running run_shell",
@@ -1326,6 +1327,42 @@ func TestSendMessage_DoesNotBlockOnCompaction(t *testing.T) {
 	}
 	if got := client.chatCalls.Load(); got == 0 {
 		t.Fatal("expected compaction chat call in background")
+	}
+}
+
+func TestSendMessage_ShowsCompactingHistoryBeforeReply(t *testing.T) {
+	client := &blockingCompactStreamClient{compactSleep: 500 * time.Millisecond}
+	m := NewModel(Config{
+		Provider:   "test",
+		Model:      "test-model",
+		ConfigPath: "/tmp/.wuu.json",
+		StreamRunner: &agent.StreamRunner{
+			Client: client,
+			Model:  "test-model",
+		},
+	})
+	m.maxContextTokens = 10 // force pre-stream compaction
+	m.chatHistory = []providers.ChatMessage{
+		{Role: "user", Content: strings.Repeat("seed ", 40)},
+		{Role: "assistant", Content: strings.Repeat("seed ", 40)},
+		{Role: "user", Content: strings.Repeat("seed ", 40)},
+		{Role: "assistant", Content: strings.Repeat("seed ", 40)},
+	}
+
+	nextModel, cmd := m.sendMessage(queuedMessage{Text: strings.Repeat("long message ", 20)})
+	if cmd == nil {
+		t.Fatal("expected async command from sendMessage")
+	}
+
+	next := nextModel.(Model)
+	if next.statusLine != compactingHistoryStatus {
+		t.Fatalf("expected pre-stream compact status, got %q", next.statusLine)
+	}
+	if next.streamTarget != -1 {
+		t.Fatalf("expected no assistant placeholder before compaction, got streamTarget=%d", next.streamTarget)
+	}
+	if got := renderEntries(next.entries); strings.Contains(got, "ASSISTANT\n") {
+		t.Fatalf("expected no assistant transcript entry before reply starts, got %q", got)
 	}
 }
 

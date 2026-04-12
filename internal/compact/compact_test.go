@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/blueberrycongee/wuu/internal/providers"
 )
@@ -222,5 +223,38 @@ func TestCompact_DoesNotLeaveDanglingToolResults(t *testing.T) {
 	}
 	if result[2].Role != "tool" || result[3].Role != "tool" {
 		t.Fatalf("expected tool results preserved after assistant tool_call, got %+v %+v", result[2], result[3])
+	}
+}
+
+type ctxAwareCompactClient struct{}
+
+func (c *ctxAwareCompactClient) Chat(ctx context.Context, _ providers.ChatRequest) (providers.ChatResponse, error) {
+	<-ctx.Done()
+	return providers.ChatResponse{}, ctx.Err()
+}
+
+func (c *ctxAwareCompactClient) StreamChat(_ context.Context, _ providers.ChatRequest) (<-chan providers.StreamEvent, error) {
+	return nil, errors.New("not implemented")
+}
+
+func TestCompact_UsesInternalTimeout(t *testing.T) {
+	t.Setenv("WUU_COMPACT_TIMEOUT_MS", "20")
+
+	messages := []providers.ChatMessage{
+		{Role: "user", Content: "first"},
+		{Role: "assistant", Content: "first reply"},
+		{Role: "user", Content: "second"},
+		{Role: "assistant", Content: "second reply"},
+		{Role: "user", Content: "third"},
+		{Role: "assistant", Content: "third reply"},
+	}
+
+	start := time.Now()
+	_, err := Compact(context.Background(), messages, &ctxAwareCompactClient{}, "test")
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("expected context deadline exceeded, got %v", err)
+	}
+	if elapsed := time.Since(start); elapsed > 300*time.Millisecond {
+		t.Fatalf("expected internal compact timeout to stop quickly, took %s", elapsed)
 	}
 }
