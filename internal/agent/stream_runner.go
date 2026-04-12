@@ -69,19 +69,23 @@ func (r *StreamRunner) Run(ctx context.Context, prompt string) (string, error) {
 		history = append(history, providers.ChatMessage{Role: "system", Content: r.SystemPrompt})
 	}
 	history = append(history, providers.ChatMessage{Role: "user", Content: prompt})
-	result, _, err := r.RunWithCallback(ctx, history, r.OnEvent)
-	return result, err
+	res, err := r.RunWithCallback(ctx, history, r.OnEvent)
+	if err != nil {
+		return "", err
+	}
+	return res.Content, nil
 }
 
 // RunWithCallback executes a conversation turn with a per-call event callback.
-// It accepts the full message history and returns the assistant's text plus
-// any new messages produced during this turn (assistant + tool results).
-func (r *StreamRunner) RunWithCallback(ctx context.Context, history []providers.ChatMessage, onEvent StreamCallback) (string, []providers.ChatMessage, error) {
+// It accepts the full message history and returns the loop result, including
+// any new messages produced during this turn and whether history was rewritten
+// by auto-compaction.
+func (r *StreamRunner) RunWithCallback(ctx context.Context, history []providers.ChatMessage, onEvent StreamCallback) (LoopResult, error) {
 	if r.Client == nil {
-		return "", nil, errors.New("client is required")
+		return LoopResult{}, errors.New("client is required")
 	}
 	if strings.TrimSpace(r.Model) == "" {
-		return "", nil, errors.New("model is required")
+		return LoopResult{}, errors.New("model is required")
 	}
 
 	step := &streamStep{
@@ -136,8 +140,7 @@ func (r *StreamRunner) RunWithCallback(ctx context.Context, history []providers.
 		},
 	}
 
-	res, err := RunToolLoop(ctx, history, cfg, step)
-	return res.Content, res.NewMessages, err
+	return RunToolLoop(ctx, history, cfg, step)
 }
 
 // streamStep adapts providers.StreamClient (with reconnect) to the

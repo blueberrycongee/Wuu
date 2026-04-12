@@ -144,7 +144,9 @@ func (m *Manager) run(ctx context.Context, sa *SubAgent, opts SpawnOptions) {
 			Content: sa.prompt,
 		})
 		runner.BeforeStep = beforeStep
-		content, _, err = runner.RunWithCallback(ctx, history, nil)
+		var res agent.LoopResult
+		res, err = runner.RunWithCallback(ctx, history, nil)
+		content = res.Content
 	} else {
 		// Spawn path: fresh conversation built from the worker's
 		// own system prompt + the user prompt as the first message.

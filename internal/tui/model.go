@@ -152,8 +152,10 @@ type queuedMessage struct {
 }
 
 type pendingTurnResult struct {
-	baseHistory []providers.ChatMessage
-	newMsgs     []providers.ChatMessage
+	baseHistory      []providers.ChatMessage
+	newMsgs          []providers.ChatMessage
+	preCompacted     bool
+	historyRewritten bool
 }
 
 // Model implements the terminal UI state machine.
@@ -839,14 +841,29 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Merge turn result into chatHistory and persist.
 		if m.pendingTurn != nil {
-			if len(m.pendingTurn.baseHistory) > 0 {
+			rewriteHistory := false
+			switch {
+			case m.pendingTurn.historyRewritten:
+				base := make([]providers.ChatMessage, len(m.pendingTurn.newMsgs))
+				copy(base, m.pendingTurn.newMsgs)
+				m.chatHistory = base
+				rewriteHistory = true
+			case m.pendingTurn.preCompacted:
 				base := make([]providers.ChatMessage, len(m.pendingTurn.baseHistory))
 				copy(base, m.pendingTurn.baseHistory)
 				m.chatHistory = base
+				m.chatHistory = append(m.chatHistory, m.pendingTurn.newMsgs...)
+				rewriteHistory = true
+			default:
+				for _, msg := range m.pendingTurn.newMsgs {
+					m.chatHistory = append(m.chatHistory, msg)
+					_ = appendChatMessage(m.memoryPath, msg)
+				}
 			}
-			for _, msg := range m.pendingTurn.newMsgs {
-				m.chatHistory = append(m.chatHistory, msg)
-				_ = appendChatMessage(m.memoryPath, msg)
+			if rewriteHistory {
+				if err := rewriteChatHistory(m.memoryPath, m.chatHistory); err != nil {
+					m.statusLine = fmt.Sprintf("session write failed: %v", err)
+				}
 			}
 			m.pendingTurn = nil
 		}
@@ -1427,6 +1444,7 @@ func (m Model) startStreamingTurn() (tea.Model, tea.Cmd) {
 			runner.Model,
 		)
 		if compacted {
+			result.preCompacted = true
 			onEvent(providers.StreamEvent{
 				Type:    providers.EventCompact,
 				Content: "✦ Compacted history before replying",
@@ -1434,8 +1452,9 @@ func (m Model) startStreamingTurn() (tea.Model, tea.Cmd) {
 		}
 		result.baseHistory = history
 
-		_, newMsgs, err := runner.RunWithCallback(ctx, history, onEvent)
-		result.newMsgs = newMsgs
+		res, err := runner.RunWithCallback(ctx, history, onEvent)
+		result.newMsgs = res.NewMessages
+		result.historyRewritten = res.HistoryRewritten
 		if err != nil && !errors.Is(ctx.Err(), context.Canceled) {
 			select {
 			case ch <- providers.StreamEvent{Type: providers.EventError, Error: err}:

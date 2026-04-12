@@ -316,6 +316,87 @@ func TestLoadChatHistory_SkipsNonChatRoles(t *testing.T) {
 	}
 }
 
+func TestLoadChatHistory_IncludesConversationSummarySystemMessage(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "session.jsonl")
+
+	summary := providers.ChatMessage{
+		Role:    "system",
+		Content: "[Conversation summary]\nOlder turns were compacted.",
+	}
+	if err := appendChatMessage(path, summary); err != nil {
+		t.Fatalf("append summary msg: %v", err)
+	}
+	if err := appendChatMessage(path, providers.ChatMessage{Role: "user", Content: "hello"}); err != nil {
+		t.Fatalf("append user msg: %v", err)
+	}
+
+	msgs, err := loadChatHistory(path)
+	if err != nil {
+		t.Fatalf("load chat history: %v", err)
+	}
+	if len(msgs) != 2 {
+		t.Fatalf("expected summary + user, got %d", len(msgs))
+	}
+	if msgs[0].Role != "system" || msgs[0].Content != summary.Content {
+		t.Fatalf("unexpected summary message: %#v", msgs[0])
+	}
+}
+
+func TestRewriteChatHistory_PreservesMetaEntries(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "session.jsonl")
+
+	if err := appendChatMessage(path, providers.ChatMessage{Role: "user", Content: "old"}); err != nil {
+		t.Fatalf("append old msg: %v", err)
+	}
+	if err := appendTokenUsage(path, 10, 5); err != nil {
+		t.Fatalf("append token usage: %v", err)
+	}
+
+	replacement := []providers.ChatMessage{
+		{Role: "system", Content: "[Conversation summary]\nOlder turns were compacted."},
+		{Role: "user", Content: "new prompt"},
+		{Role: "assistant", Content: "new answer"},
+	}
+	if err := rewriteChatHistory(path, replacement); err != nil {
+		t.Fatalf("rewrite chat history: %v", err)
+	}
+
+	msgs, err := loadChatHistory(path)
+	if err != nil {
+		t.Fatalf("load rewritten history: %v", err)
+	}
+	if len(msgs) != 3 {
+		t.Fatalf("expected 3 rewritten chat messages, got %d", len(msgs))
+	}
+	if msgs[0].Role != "system" || msgs[2].Content != "new answer" {
+		t.Fatalf("unexpected rewritten history: %#v", msgs)
+	}
+
+	entries, err := loadMemoryEntries(path)
+	if err != nil {
+		t.Fatalf("load memory entries: %v", err)
+	}
+	foundMeta := false
+	for _, entry := range entries {
+		if entry.Role == "META" {
+			foundMeta = true
+		}
+	}
+	if foundMeta {
+		t.Fatal("meta entries should not be materialized into transcript entries")
+	}
+
+	meta, err := loadMetaEntries(path)
+	if err != nil {
+		t.Fatalf("load meta entries: %v", err)
+	}
+	if len(meta) != 1 || meta[0].Content != "token_usage" {
+		t.Fatalf("expected preserved token usage meta, got %#v", meta)
+	}
+}
+
 func TestLoadMemoryEntries_SkipsMetaRecords(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "session.jsonl")

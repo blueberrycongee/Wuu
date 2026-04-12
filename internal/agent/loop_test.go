@@ -317,6 +317,18 @@ func TestRunToolLoop_ProactiveCompactTriggers(t *testing.T) {
 	if res.Content != "compacted answer" {
 		t.Fatalf("expected compacted answer, got %q", res.Content)
 	}
+	if !res.HistoryRewritten {
+		t.Fatal("expected history rewritten after proactive compact")
+	}
+	if len(res.NewMessages) != 2 {
+		t.Fatalf("expected full compacted history snapshot, got %d messages", len(res.NewMessages))
+	}
+	if res.NewMessages[0].Role != "user" || res.NewMessages[0].Content != "summary" {
+		t.Fatalf("expected compacted snapshot to start with summary message, got %+v", res.NewMessages[0])
+	}
+	if res.NewMessages[1].Role != "assistant" || res.NewMessages[1].Content != "compacted answer" {
+		t.Fatalf("expected compacted answer in snapshot, got %+v", res.NewMessages[1])
+	}
 }
 
 func TestRunToolLoop_ProactiveCompactDisabledWhenNoWindow(t *testing.T) {

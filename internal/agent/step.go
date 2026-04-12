@@ -137,10 +137,15 @@ type LoopResult struct {
 	// truncation-recovery rounds have been concatenated.
 	Content string
 	// NewMessages is the slice of messages produced during this run
-	// (assistant turns + tool result turns) in order. Callers that
-	// need to persist or relay the conversation use this to extend
-	// their stored history.
+	// (assistant turns + tool result turns) in order. When a compact
+	// pass rewrote the live history mid-run, this becomes the full
+	// replacement history snapshot and HistoryRewritten is true.
 	NewMessages []providers.ChatMessage
+	// HistoryRewritten reports whether a compact pass replaced the
+	// live history slice mid-run. Callers that persist conversations
+	// should replace stored history instead of append-only extending
+	// it when this is true.
+	HistoryRewritten bool
 	// InputTokens / OutputTokens are the cumulative usage across
 	// every round in this run, including any compact + recovery
 	// rounds. Zero when the provider doesn't report usage.

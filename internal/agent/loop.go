@@ -74,6 +74,7 @@ func RunToolLoop(
 		// pass shrinks the conversation and the next API call's usage
 		// gives us a fresh ground truth.
 		overflowCompacted bool
+		historyRewritten  bool
 		// Tracks current context fill so we can decide whether to
 		// proactively compact before the next round. Uses
 		// response.usage as ground truth + delta estimation for
@@ -115,6 +116,7 @@ func RunToolLoop(
 				msgsBefore := len(messages)
 				if compacted, cerr := cfg.Compact(ctx, messages); cerr == nil {
 					messages = compacted
+					historyRewritten = true
 					usage.Reset()
 					if cfg.OnCompact != nil {
 						cfg.OnCompact(CompactInfo{
@@ -128,9 +130,10 @@ func RunToolLoop(
 				}
 			}
 			return LoopResult{
-				NewMessages:  copyMessages(messages[startLen:]),
-				InputTokens:  totalIn,
-				OutputTokens: totalOut,
+				NewMessages:      newMessagesForReturn(messages, startLen, historyRewritten),
+				HistoryRewritten: historyRewritten,
+				InputTokens:      totalIn,
+				OutputTokens:     totalOut,
 			}, err
 		}
 
@@ -178,24 +181,27 @@ func RunToolLoop(
 			finalContent := truncatedBuf.String() + result.Content
 			if strings.TrimSpace(finalContent) == "" {
 				return LoopResult{
-					NewMessages:  copyMessages(messages[startLen:]),
-					InputTokens:  totalIn,
-					OutputTokens: totalOut,
+					NewMessages:      newMessagesForReturn(messages, startLen, historyRewritten),
+					HistoryRewritten: historyRewritten,
+					InputTokens:      totalIn,
+					OutputTokens:     totalOut,
 				}, errors.New("model returned empty answer")
 			}
 			return LoopResult{
-				Content:      finalContent,
-				NewMessages:  copyMessages(messages[startLen:]),
-				InputTokens:  totalIn,
-				OutputTokens: totalOut,
+				Content:          finalContent,
+				NewMessages:      newMessagesForReturn(messages, startLen, historyRewritten),
+				HistoryRewritten: historyRewritten,
+				InputTokens:      totalIn,
+				OutputTokens:     totalOut,
 			}, nil
 		}
 
 		if cfg.Tools == nil {
 			return LoopResult{
-				NewMessages:  copyMessages(messages[startLen:]),
-				InputTokens:  totalIn,
-				OutputTokens: totalOut,
+				NewMessages:      newMessagesForReturn(messages, startLen, historyRewritten),
+				HistoryRewritten: historyRewritten,
+				InputTokens:      totalIn,
+				OutputTokens:     totalOut,
 			}, errors.New("model requested tools but none are configured")
 		}
 
@@ -240,6 +246,7 @@ func RunToolLoop(
 			msgsBefore := len(messages)
 			if compacted, cerr := cfg.Compact(ctx, messages); cerr == nil && len(compacted) < len(messages) {
 				messages = compacted
+				historyRewritten = true
 				usage.Reset()
 				usage.RecordPendingMessages(messages)
 				if cfg.OnCompact != nil {
@@ -255,9 +262,10 @@ func RunToolLoop(
 	}
 
 	return LoopResult{
-		NewMessages:  copyMessages(messages[startLen:]),
-		InputTokens:  totalIn,
-		OutputTokens: totalOut,
+		NewMessages:      newMessagesForReturn(messages, startLen, historyRewritten),
+		HistoryRewritten: historyRewritten,
+		InputTokens:      totalIn,
+		OutputTokens:     totalOut,
 	}, fmt.Errorf("max steps exceeded (%d)", cfg.MaxSteps)
 }
 
@@ -284,6 +292,19 @@ func copyMessages(msgs []providers.ChatMessage) []providers.ChatMessage {
 	out := make([]providers.ChatMessage, len(msgs))
 	copy(out, msgs)
 	return out
+}
+
+func newMessagesForReturn(messages []providers.ChatMessage, startLen int, historyRewritten bool) []providers.ChatMessage {
+	if historyRewritten {
+		return copyMessages(messages)
+	}
+	if startLen < 0 {
+		startLen = 0
+	}
+	if startLen > len(messages) {
+		startLen = len(messages)
+	}
+	return copyMessages(messages[startLen:])
 }
 
 // errorJSON marshals an error into the JSON payload tool callers see

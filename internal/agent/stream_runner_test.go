@@ -156,13 +156,13 @@ func TestStreamRunner_ValidationErrors(t *testing.T) {
 
 	// RunWithCallback validates client and model but not prompt.
 	runner = StreamRunner{Model: "m"}
-	_, _, err = runner.RunWithCallback(context.Background(), nil, nil)
+	_, err = runner.RunWithCallback(context.Background(), nil, nil)
 	if err == nil {
 		t.Fatal("expected error for nil client in RunWithCallback")
 	}
 
 	runner = StreamRunner{Client: client}
-	_, _, err = runner.RunWithCallback(context.Background(), nil, nil)
+	_, err = runner.RunWithCallback(context.Background(), nil, nil)
 	if err == nil {
 		t.Fatal("expected error for empty model in RunWithCallback")
 	}
@@ -346,10 +346,12 @@ func TestStreamRunner_AcceptsHistory(t *testing.T) {
 	}
 
 	runner := StreamRunner{Client: client, Model: "test-model"}
-	result, newMsgs, err := runner.RunWithCallback(context.Background(), history, nil)
+	res, err := runner.RunWithCallback(context.Background(), history, nil)
 	if err != nil {
 		t.Fatalf("RunWithCallback: %v", err)
 	}
+	result := res.Content
+	newMsgs := res.NewMessages
 	if result != "turn2 reply" {
 		t.Fatalf("unexpected result: %q", result)
 	}

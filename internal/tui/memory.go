@@ -182,6 +182,14 @@ func appendChatMessage(path string, msg providers.ChatMessage) error {
 	}
 	defer file.Close()
 
+	rec := memoryEntryFromChatMessage(msg)
+	if err := json.NewEncoder(file).Encode(rec); err != nil {
+		return fmt.Errorf("write chat message: %w", err)
+	}
+	return nil
+}
+
+func memoryEntryFromChatMessage(msg providers.ChatMessage) memoryEntry {
 	var tcs []toolCallEntry
 	for _, tc := range msg.ToolCalls {
 		tcs = append(tcs, toolCallEntry{
@@ -201,8 +209,7 @@ func appendChatMessage(path string, msg providers.ChatMessage) error {
 			Data:      data,
 		})
 	}
-
-	rec := memoryEntry{
+	return memoryEntry{
 		Role:             strings.ToLower(msg.Role),
 		Content:          msg.Content,
 		ReasoningContent: msg.ReasoningContent,
@@ -212,8 +219,35 @@ func appendChatMessage(path string, msg providers.ChatMessage) error {
 		ToolCallID:       msg.ToolCallID,
 		Name:             msg.Name,
 	}
-	if err := json.NewEncoder(file).Encode(rec); err != nil {
-		return fmt.Errorf("write chat message: %w", err)
+}
+
+func rewriteChatHistory(path string, msgs []providers.ChatMessage) error {
+	if strings.TrimSpace(path) == "" {
+		return nil
+	}
+	metas, err := loadMetaEntries(path)
+	if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("load existing meta entries: %w", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("create memory directory: %w", err)
+	}
+	file, err := os.Create(path)
+	if err != nil {
+		return fmt.Errorf("rewrite chat history: %w", err)
+	}
+	defer file.Close()
+
+	enc := json.NewEncoder(file)
+	for _, msg := range msgs {
+		if err := enc.Encode(memoryEntryFromChatMessage(msg)); err != nil {
+			return fmt.Errorf("write chat history: %w", err)
+		}
+	}
+	for _, rec := range metas {
+		if err := enc.Encode(rec); err != nil {
+			return fmt.Errorf("write meta history: %w", err)
+		}
 	}
 	return nil
 }
@@ -274,6 +308,10 @@ func loadChatHistory(path string) ([]providers.ChatMessage, error) {
 		role := strings.ToLower(strings.TrimSpace(rec.Role))
 		switch role {
 		case "user", "assistant", "tool":
+		case "system":
+			if !isConversationSummaryContent(rec.Content) {
+				continue
+			}
 		default:
 			continue
 		}
@@ -312,4 +350,41 @@ func loadChatHistory(path string) ([]providers.ChatMessage, error) {
 		return nil, fmt.Errorf("scan memory file: %w", err)
 	}
 	return msgs, nil
+}
+
+func loadMetaEntries(path string) ([]memoryEntry, error) {
+	if strings.TrimSpace(path) == "" {
+		return nil, nil
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	scanner.Buffer(make([]byte, 1024), 2*1024*1024)
+
+	var metas []memoryEntry
+	for scanner.Scan() {
+		payload := strings.TrimSpace(scanner.Text())
+		if payload == "" {
+			continue
+		}
+		var rec memoryEntry
+		if err := json.Unmarshal([]byte(payload), &rec); err != nil {
+			return nil, err
+		}
+		if strings.EqualFold(strings.TrimSpace(rec.Role), "meta") {
+			metas = append(metas, rec)
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+	return metas, nil
+}
+
+func isConversationSummaryContent(content string) bool {
+	return strings.HasPrefix(strings.TrimSpace(content), "[Conversation summary]")
 }
