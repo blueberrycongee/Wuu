@@ -662,6 +662,91 @@ func TestToolkit_GlobFallbackWithoutRG(t *testing.T) {
 	}
 }
 
+func TestToolkit_GlobFallbackIncludesHiddenDirectories(t *testing.T) {
+	root := t.TempDir()
+	kit, err := New(root)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	withRGTestHooks(t, func(string) (string, error) { return "", exec.ErrNotFound }, nil)
+
+	for path, content := range map[string]string{
+		".hidden/config/app.yaml": "name: hidden\n",
+		"visible/config/app.yaml": "name: visible\n",
+		".git/config/app.yaml":    "name: skipped\n",
+	} {
+		fullPath := filepath.Join(root, path)
+		if err := os.MkdirAll(filepath.Dir(fullPath), 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", path, err)
+		}
+		if err := os.WriteFile(fullPath, []byte(content), 0o644); err != nil {
+			t.Fatalf("write %s: %v", path, err)
+		}
+	}
+
+	resp, err := kit.Execute(context.Background(), providers.ToolCall{
+		Name:      "glob",
+		Arguments: `{"pattern":"**/*.yaml"}`,
+	})
+	if err != nil {
+		t.Fatalf("glob hidden fallback: %v", err)
+	}
+	var parsed struct {
+		Files []string `json:"files"`
+	}
+	if err := json.Unmarshal([]byte(resp), &parsed); err != nil {
+		t.Fatalf("parse glob response: %v", err)
+	}
+	want := []string{".hidden/config/app.yaml", "visible/config/app.yaml"}
+	if !reflect.DeepEqual(parsed.Files, want) {
+		t.Fatalf("unexpected hidden fallback matches: got %+v want %+v", parsed.Files, want)
+	}
+}
+
+func TestToolkit_GrepFallbackIncludesHiddenDirectories(t *testing.T) {
+	root := t.TempDir()
+	kit, err := New(root)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	withRGTestHooks(t, func(string) (string, error) { return "", exec.ErrNotFound }, nil)
+
+	for path, content := range map[string]string{
+		".hidden/app.env":    "API_KEY=hidden\n",
+		"visible/app.env":    "API_KEY=visible\n",
+		"node_modules/x.env": "API_KEY=skipped\n",
+	} {
+		fullPath := filepath.Join(root, path)
+		if err := os.MkdirAll(filepath.Dir(fullPath), 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", path, err)
+		}
+		if err := os.WriteFile(fullPath, []byte(content), 0o644); err != nil {
+			t.Fatalf("write %s: %v", path, err)
+		}
+	}
+
+	resp, err := kit.Execute(context.Background(), providers.ToolCall{
+		Name:      "grep",
+		Arguments: `{"pattern":"API_KEY","include":"**/*.env"}`,
+	})
+	if err != nil {
+		t.Fatalf("grep hidden fallback: %v", err)
+	}
+	var parsed struct {
+		Matches []grepMatch `json:"matches"`
+	}
+	if err := json.Unmarshal([]byte(resp), &parsed); err != nil {
+		t.Fatalf("parse grep response: %v", err)
+	}
+	want := []grepMatch{
+		{File: ".hidden/app.env", Line: 1, Content: "API_KEY=hidden"},
+		{File: "visible/app.env", Line: 1, Content: "API_KEY=visible"},
+	}
+	if !reflect.DeepEqual(parsed.Matches, want) {
+		t.Fatalf("unexpected hidden grep fallback matches: got %+v want %+v", parsed.Matches, want)
+	}
+}
+
 func TestToolkit_GrepIncludeMatchesRelativePaths_Ripgrep(t *testing.T) {
 	root := t.TempDir()
 	kit, err := New(root)

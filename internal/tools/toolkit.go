@@ -1477,7 +1477,7 @@ func isSkippedDir(name string) bool {
 	case ".git", ".wuu", ".hg", ".svn", "node_modules", "vendor", "__pycache__", ".tox", ".venv":
 		return true
 	}
-	return strings.HasPrefix(name, ".")
+	return false
 }
 
 func isBinaryFile(path string) bool {
