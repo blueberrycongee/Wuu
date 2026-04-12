@@ -8,16 +8,41 @@ import (
 	"github.com/blueberrycongee/wuu/internal/providers"
 )
 
-func TestRunner_RunSimple(t *testing.T) {
-	client := &fakeClient{responses: []providers.ChatResponse{{Content: "done"}}}
-	runner := Runner{Client: client, Model: "gpt-test", SystemPrompt: "sys"}
+type fakeStreamBackedClient struct {
+	streamCalls int
+	events      []providers.StreamEvent
+}
+
+func (f *fakeStreamBackedClient) Chat(_ context.Context, _ providers.ChatRequest) (providers.ChatResponse, error) {
+	return providers.ChatResponse{Content: "should not be used"}, nil
+}
+
+func (f *fakeStreamBackedClient) StreamChat(_ context.Context, _ providers.ChatRequest) (<-chan providers.StreamEvent, error) {
+	f.streamCalls++
+	ch := make(chan providers.StreamEvent, len(f.events))
+	for _, event := range f.events {
+		ch <- event
+	}
+	close(ch)
+	return ch, nil
+}
+
+func TestRunner_UsesStreamingStepPath(t *testing.T) {
+	client := &fakeStreamBackedClient{events: []providers.StreamEvent{
+		{Type: providers.EventContentDelta, Content: "streamed"},
+		{Type: providers.EventDone},
+	}}
+	runner := Runner{Client: client, Model: "gpt-test"}
 
 	answer, err := runner.Run(context.Background(), "hello")
 	if err != nil {
 		t.Fatalf("Run returned error: %v", err)
 	}
-	if answer != "done" {
+	if answer != "streamed" {
 		t.Fatalf("unexpected answer: %s", answer)
+	}
+	if client.streamCalls != 1 {
+		t.Fatalf("expected StreamChat to be called once, got %d", client.streamCalls)
 	}
 }
 

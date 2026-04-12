@@ -156,7 +156,7 @@ func runTask(args []string) error {
 		providerCfg.Model = *modelOverride
 	}
 
-	client, err := providerfactory.BuildClient(providerCfg, resolvedName)
+	client, err := providerfactory.BuildStreamClient(providerCfg, resolvedName)
 	if err != nil {
 		return err
 	}
@@ -172,7 +172,7 @@ func runTask(args []string) error {
 		toolExecutor = kit
 	}
 
-	runner := agent.Runner{
+	runner := agent.StreamRunner{
 		Client:       client,
 		Tools:        toolExecutor,
 		Model:        providerCfg.Model,

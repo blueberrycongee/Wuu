@@ -1,9 +1,9 @@
 // Package agent: Step is the transport-agnostic abstraction the
-// shared tool-use loop drives. Both the non-streaming Runner (which
-// calls providers.Client.Chat) and the streaming StreamRunner (which
-// consumes SSE events) implement Step, so the actual loop logic —
-// step counting, tool execution, truncation recovery, context-overflow
-// auto-compact — lives in exactly one place. See loop.go.
+// shared tool-use loop drives. Both Runner and StreamRunner execute
+// through Step (Runner adapts providers.Client to StreamClient first),
+// so the actual loop logic — step counting, tool execution,
+// truncation recovery, context-overflow auto-compact — lives in
+// exactly one place. See loop.go.
 package agent
 
 import (

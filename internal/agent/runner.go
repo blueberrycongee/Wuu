@@ -15,9 +15,9 @@ type ToolExecutor interface {
 	Execute(ctx context.Context, call providers.ToolCall) (string, error)
 }
 
-// Runner manages one multi-step coding turn against a non-streaming
-// provider. It is a thin wrapper around RunToolLoop that supplies a
-// chatStep adapter (Step → providers.Client.Chat).
+// Runner manages one multi-step coding turn. It is a thin wrapper
+// around RunToolLoop that always executes through the streaming Step
+// path; unary clients are adapted underneath via AdaptStreamClient.
 type Runner struct {
 	Client       providers.Client
 	Tools        ToolExecutor
@@ -86,30 +86,10 @@ func (r *Runner) RunWithUsage(ctx context.Context, prompt string, onUsage func(i
 		},
 	}
 
-	res, err := RunToolLoop(ctx, history, cfg, &chatStep{client: r.Client})
+	res, err := RunToolLoop(ctx, history, cfg, &streamStep{client: providers.AdaptStreamClient(r.Client)})
 	return RunResult{
 		Content:      res.Content,
 		InputTokens:  res.InputTokens,
 		OutputTokens: res.OutputTokens,
 	}, err
-}
-
-// chatStep adapts a non-streaming providers.Client to the Step
-// interface. One Execute call = one Chat round-trip.
-type chatStep struct {
-	client providers.Client
-}
-
-func (s *chatStep) Execute(ctx context.Context, req providers.ChatRequest) (StepResult, error) {
-	resp, err := s.client.Chat(ctx, req)
-	if err != nil {
-		return StepResult{}, err
-	}
-	return StepResult{
-		Content:    resp.Content,
-		ToolCalls:  resp.ToolCalls,
-		Truncated:  resp.Truncated,
-		StopReason: resp.StopReason,
-		Usage:      resp.Usage,
-	}, nil
 }
