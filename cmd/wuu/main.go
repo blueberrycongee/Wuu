@@ -239,21 +239,12 @@ func runTUI(args []string) error {
 
 	homeDir := os.Getenv("HOME")
 
-	// Resolve theme mode from CLI override or global preferences.
-	globalCfg, err := config.LoadGlobalConfig(homeDir)
+	resolvedTheme, err := resolveTUIThemeMode(homeDir, strings.TrimSpace(*themeMode))
 	if err != nil {
-		return fmt.Errorf("load global preferences: %w", err)
-	}
-	resolvedTheme := strings.TrimSpace(globalCfg.Theme)
-	if resolvedTheme == "" {
-		resolvedTheme = "auto"
-	}
-	overrideTheme := strings.TrimSpace(*themeMode)
-	if overrideTheme != "" {
-		resolvedTheme = overrideTheme
+		return err
 	}
 	if err := tui.SetThemeMode(resolvedTheme); err != nil {
-		if overrideTheme != "" {
+		if strings.TrimSpace(*themeMode) != "" {
 			return err
 		}
 		// Invalid persisted preference should never block startup.
@@ -535,6 +526,24 @@ func runTUI(args []string) error {
 		}
 	}
 	return tui.Run(cfgUI)
+}
+
+func resolveTUIThemeMode(homeDir, override string) (string, error) {
+	if override != "" {
+		return override, nil
+	}
+	if strings.TrimSpace(homeDir) == "" {
+		return "auto", nil
+	}
+	globalCfg, err := config.LoadGlobalConfig(homeDir)
+	if err != nil {
+		return "", fmt.Errorf("load global preferences: %w", err)
+	}
+	resolvedTheme := strings.TrimSpace(globalCfg.Theme)
+	if resolvedTheme == "" {
+		return "auto", nil
+	}
+	return resolvedTheme, nil
 }
 
 func resolveWorkdir(input string) (string, error) {

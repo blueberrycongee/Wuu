@@ -9,6 +9,45 @@ import (
 	"testing"
 )
 
+func TestResolveTUIThemeMode_UsesAutoWhenHomeMissing(t *testing.T) {
+	theme, err := resolveTUIThemeMode("", "")
+	if err != nil {
+		t.Fatalf("resolveTUIThemeMode returned error: %v", err)
+	}
+	if theme != "auto" {
+		t.Fatalf("expected auto theme when HOME is missing, got %q", theme)
+	}
+}
+
+func TestResolveTUIThemeMode_PrefersOverrideWhenHomeMissing(t *testing.T) {
+	theme, err := resolveTUIThemeMode("", "dark")
+	if err != nil {
+		t.Fatalf("resolveTUIThemeMode returned error: %v", err)
+	}
+	if theme != "dark" {
+		t.Fatalf("expected override theme, got %q", theme)
+	}
+}
+
+func TestResolveTUIThemeMode_ReturnsLoadErrorsWhenHomePresent(t *testing.T) {
+	home := t.TempDir()
+	prefsPath := home + "/.config/wuu/preferences.json"
+	if err := os.MkdirAll(home+"/.config/wuu", 0o755); err != nil {
+		t.Fatalf("mkdir prefs dir: %v", err)
+	}
+	if err := os.WriteFile(prefsPath, []byte("{"), 0o644); err != nil {
+		t.Fatalf("write prefs: %v", err)
+	}
+
+	_, err := resolveTUIThemeMode(home, "")
+	if err == nil {
+		t.Fatal("expected invalid global preferences to return an error")
+	}
+	if !strings.Contains(err.Error(), "load global preferences") {
+		t.Fatalf("expected load global preferences error, got %v", err)
+	}
+}
+
 func TestRunVersionAliasForwardsJSONFlag(t *testing.T) {
 	output := captureStdout(t, func() {
 		if err := run([]string{"--version", "--json"}); err != nil {
