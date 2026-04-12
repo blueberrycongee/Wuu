@@ -19,6 +19,10 @@ type StepResult struct {
 	// Content is the assistant's text for this round (concatenation
 	// of all content deltas in the streaming case).
 	Content string
+	// ReasoningContent is provider-emitted hidden reasoning for this
+	// round. Some OpenAI-compatible providers require replaying it
+	// verbatim on follow-up assistant tool-call messages.
+	ReasoningContent string
 	// ToolCalls is the ordered list of tool invocations the model
 	// requested in this round, fully assembled (arguments included).
 	ToolCalls []providers.ToolCall

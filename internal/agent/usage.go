@@ -131,6 +131,7 @@ func estimateMessages(msgs []providers.ChatMessage) int {
 		// already accounts for that since CJK runes are 3 bytes in
 		// UTF-8 and pack to 1.5-2 tokens.
 		total += len(m.Content) / 4
+		total += len(m.ReasoningContent) / 4
 		// Per-message overhead (role marker, separators, JSON wrapping
 		// in providers' wire format).
 		total += 4

@@ -161,6 +161,109 @@ func TestChat_SendsImageContentParts(t *testing.T) {
 	}
 }
 
+func TestChat_SendsReasoningContentInAssistantToolCallMessage(t *testing.T) {
+	t.Helper()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Messages []struct {
+				Role             string `json:"role"`
+				Content          any    `json:"content"`
+				ReasoningContent string `json:"reasoning_content"`
+				ToolCalls        []any  `json:"tool_calls"`
+			} `json:"messages"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+		if len(body.Messages) != 3 {
+			t.Fatalf("expected 3 messages, got %d", len(body.Messages))
+		}
+		assistant := body.Messages[1]
+		if assistant.Role != "assistant" {
+			t.Fatalf("expected assistant role, got %q", assistant.Role)
+		}
+		if assistant.ReasoningContent != "inspect repo before tool use" {
+			t.Fatalf("unexpected reasoning_content: %q", assistant.ReasoningContent)
+		}
+		if len(assistant.ToolCalls) != 1 {
+			t.Fatalf("expected tool_calls to be present, got %#v", assistant.ToolCalls)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"ok"}}]}`))
+	}))
+	defer server.Close()
+
+	client, err := New(ClientConfig{BaseURL: server.URL, APIKey: "test-key"})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	_, err = client.Chat(context.Background(), providers.ChatRequest{
+		Model: "gpt-test",
+		Messages: []providers.ChatMessage{
+			{Role: "user", Content: "review this repo"},
+			{
+				Role:             "assistant",
+				ReasoningContent: "inspect repo before tool use",
+				ToolCalls: []providers.ToolCall{
+					{ID: "call_1", Name: "list_files", Arguments: `{}`},
+				},
+			},
+			{Role: "tool", ToolCallID: "call_1", Name: "list_files", Content: "[]"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Chat: %v", err)
+	}
+}
+
+func TestChat_ParsesReasoningContent(t *testing.T) {
+	t.Helper()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+  "choices": [
+    {
+      "message": {
+        "content": "",
+        "reasoning_content": "inspect repo before tool use",
+        "tool_calls": [
+          {
+            "id": "call_1",
+            "type": "function",
+            "function": {
+              "name": "list_files",
+              "arguments": "{}"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}`))
+	}))
+	defer server.Close()
+
+	client, err := New(ClientConfig{BaseURL: server.URL, APIKey: "test-key"})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	resp, err := client.Chat(context.Background(), providers.ChatRequest{
+		Model:    "gpt-test",
+		Messages: []providers.ChatMessage{{Role: "user", Content: "hello"}},
+	})
+	if err != nil {
+		t.Fatalf("Chat: %v", err)
+	}
+	if resp.ReasoningContent != "inspect repo before tool use" {
+		t.Fatalf("unexpected reasoning content: %q", resp.ReasoningContent)
+	}
+}
+
 func TestChat_HandlesProviderError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
@@ -368,6 +471,53 @@ func TestStreamChat_SSE(t *testing.T) {
 	last := events[len(events)-1]
 	if last.Type != providers.EventDone {
 		t.Fatalf("expected last event to be EventDone, got %s", last.Type)
+	}
+}
+
+func TestStreamChat_EmitsThinkingEventsForReasoningContent(t *testing.T) {
+	ssePayload := "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"inspect \"}}]}\n\n" +
+		"data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"repo\"}}]}\n\n" +
+		"data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_1\",\"type\":\"function\",\"function\":{\"name\":\"list_files\",\"arguments\":\"{}\"}}]},\"finish_reason\":\"tool_calls\"}]}\n\n" +
+		"data: [DONE]\n\n"
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(ssePayload))
+	}))
+	defer server.Close()
+
+	client, err := New(ClientConfig{BaseURL: server.URL, APIKey: "test-key"})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	ch, err := client.StreamChat(context.Background(), providers.ChatRequest{
+		Model:    "gpt-test",
+		Messages: []providers.ChatMessage{{Role: "user", Content: "hello"}},
+	})
+	if err != nil {
+		t.Fatalf("StreamChat: %v", err)
+	}
+
+	var events []providers.StreamEvent
+	for ev := range ch {
+		events = append(events, ev)
+	}
+	if len(events) < 5 {
+		t.Fatalf("expected thinking/tool events, got %v", events)
+	}
+	if events[0].Type != providers.EventThinkingDelta || events[0].Content != "inspect " {
+		t.Fatalf("unexpected first event: %+v", events[0])
+	}
+	if events[1].Type != providers.EventThinkingDelta || events[1].Content != "repo" {
+		t.Fatalf("unexpected second event: %+v", events[1])
+	}
+	if events[2].Type != providers.EventThinkingDone {
+		t.Fatalf("expected thinking done before tool call, got %+v", events[2])
+	}
+	if events[3].Type != providers.EventToolUseStart {
+		t.Fatalf("expected tool start after thinking, got %+v", events[3])
 	}
 }
 

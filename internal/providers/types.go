@@ -27,6 +27,10 @@ type ChatMessage struct {
 	Role       string
 	Name       string
 	Content    string
+	// ReasoningContent stores provider-emitted hidden reasoning that
+	// must be replayed in follow-up assistant tool-call messages for
+	// providers like Kimi when thinking mode is enabled.
+	ReasoningContent string
 	Images     []InputImage
 	ToolCallID string
 	ToolCalls  []ToolCall
@@ -42,9 +46,10 @@ type ChatRequest struct {
 
 // ChatResponse is the normalized response from providers.
 type ChatResponse struct {
-	Content   string
-	ToolCalls []ToolCall
-	Usage     *TokenUsage // optional; nil when the provider didn't return usage
+	Content          string
+	ReasoningContent string
+	ToolCalls        []ToolCall
+	Usage            *TokenUsage // optional; nil when the provider didn't return usage
 	// StopReason is the raw provider stop signal, normalized to lowercase.
 	// Common values: "stop" / "end_turn" (natural finish), "length" /
 	// "max_tokens" (output truncation), "tool_calls" / "tool_use".

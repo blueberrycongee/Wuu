@@ -155,12 +155,13 @@ type streamStep struct {
 func (s *streamStep) Execute(ctx context.Context, req providers.ChatRequest) (StepResult, error) {
 	var (
 		contentBuf   strings.Builder
+		thinkingBuf  strings.Builder
 		pendingTools = map[int]*providers.ToolCall{}
 		usage        *providers.TokenUsage
 		stopReason   string
 		truncated    bool
 	)
-	if err := s.runStreamWithReconnect(ctx, req, &contentBuf, pendingTools, &usage, &stopReason, &truncated); err != nil {
+	if err := s.runStreamWithReconnect(ctx, req, &contentBuf, &thinkingBuf, pendingTools, &usage, &stopReason, &truncated); err != nil {
 		return StepResult{}, fmt.Errorf("stream request failed: %w", err)
 	}
 
@@ -173,11 +174,12 @@ func (s *streamStep) Execute(ctx context.Context, req providers.ChatRequest) (St
 	}
 
 	return StepResult{
-		Content:    contentBuf.String(),
-		ToolCalls:  toolCalls,
-		Usage:      usage,
-		StopReason: stopReason,
-		Truncated:  truncated,
+		Content:          contentBuf.String(),
+		ReasoningContent: thinkingBuf.String(),
+		ToolCalls:        toolCalls,
+		Usage:            usage,
+		StopReason:       stopReason,
+		Truncated:        truncated,
 	}, nil
 }
 
@@ -224,6 +226,7 @@ func (s *streamStep) runStreamWithReconnect(
 	ctx context.Context,
 	req providers.ChatRequest,
 	contentBuf *strings.Builder,
+	thinkingBuf *strings.Builder,
 	pendingTools map[int]*providers.ToolCall,
 	usage **providers.TokenUsage,
 	stopReason *string,
@@ -277,6 +280,9 @@ func (s *streamStep) runStreamWithReconnect(
 			switch event.Type {
 			case providers.EventContentDelta:
 				contentBuf.WriteString(event.Content)
+
+			case providers.EventThinkingDelta:
+				thinkingBuf.WriteString(event.Content)
 
 			case providers.EventToolUseStart:
 				if event.ToolCall != nil {

@@ -176,9 +176,10 @@ func (c *Client) Chat(ctx context.Context, req providers.ChatRequest) (providers
 	}
 
 	resp := providers.ChatResponse{
-		Content:    content,
-		ToolCalls:  calls,
-		StopReason: strings.ToLower(choice.FinishReason),
+		Content:          content,
+		ReasoningContent: message.ReasoningContent,
+		ToolCalls:        calls,
+		StopReason:       strings.ToLower(choice.FinishReason),
 	}
 	// OpenAI signals output truncation with finish_reason="length".
 	if resp.StopReason == "length" {
@@ -310,6 +311,8 @@ func (c *Client) readSSE(resp *http.Response, ch chan<- providers.StreamEvent) {
 	var (
 		lastUsage        *providers.TokenUsage
 		lastFinishReason string
+		sawThinking      bool
+		thinkingDone     bool
 	)
 
 	emitToolEnds := func() {
@@ -340,6 +343,10 @@ func (c *Client) readSSE(resp *http.Response, ch chan<- providers.StreamEvent) {
 		data := strings.TrimPrefix(line, "data: ")
 		if data == "[DONE]" {
 			providers.DebugLogf("SSE [DONE]")
+			if sawThinking && !thinkingDone {
+				ch <- providers.StreamEvent{Type: providers.EventThinkingDone}
+				thinkingDone = true
+			}
 			emitToolEnds()
 			ch <- providers.StreamEvent{
 				Type:       providers.EventDone,
@@ -382,7 +389,19 @@ func (c *Client) readSSE(resp *http.Response, ch chan<- providers.StreamEvent) {
 		}
 		choice := chunk.Choices[0]
 
+		if choice.Delta.ReasoningContent != "" {
+			sawThinking = true
+			ch <- providers.StreamEvent{
+				Type:    providers.EventThinkingDelta,
+				Content: choice.Delta.ReasoningContent,
+			}
+		}
+
 		if choice.Delta.Content != "" {
+			if sawThinking && !thinkingDone {
+				ch <- providers.StreamEvent{Type: providers.EventThinkingDone}
+				thinkingDone = true
+			}
 			ch <- providers.StreamEvent{
 				Type:    providers.EventContentDelta,
 				Content: choice.Delta.Content,
@@ -390,6 +409,10 @@ func (c *Client) readSSE(resp *http.Response, ch chan<- providers.StreamEvent) {
 		}
 
 		for _, tc := range choice.Delta.ToolCalls {
+			if sawThinking && !thinkingDone {
+				ch <- providers.StreamEvent{Type: providers.EventThinkingDone}
+				thinkingDone = true
+			}
 			pt, exists := pending[tc.Index]
 			if !exists {
 				pt = &pendingTool{id: tc.ID, name: tc.Function.Name}
@@ -441,9 +464,10 @@ func (c *Client) readSSE(resp *http.Response, ch chan<- providers.StreamEvent) {
 
 func mapMessage(msg providers.ChatMessage) chatMessage {
 	mapped := chatMessage{
-		Role:       msg.Role,
-		Name:       msg.Name,
-		ToolCallID: msg.ToolCallID,
+		Role:             msg.Role,
+		Name:             msg.Name,
+		ToolCallID:       msg.ToolCallID,
+		ReasoningContent: msg.ReasoningContent,
 	}
 
 	if len(msg.Images) > 0 && strings.EqualFold(msg.Role, "user") {
@@ -539,11 +563,12 @@ type chatCompletionsRequest struct {
 }
 
 type chatMessage struct {
-	Role       string     `json:"role"`
-	Content    any        `json:"content,omitempty"`
-	Name       string     `json:"name,omitempty"`
-	ToolCallID string     `json:"tool_call_id,omitempty"`
-	ToolCalls  []toolCall `json:"tool_calls,omitempty"`
+	Role             string     `json:"role"`
+	Content          any        `json:"content,omitempty"`
+	Name             string     `json:"name,omitempty"`
+	ToolCallID       string     `json:"tool_call_id,omitempty"`
+	ReasoningContent string     `json:"reasoning_content,omitempty"`
+	ToolCalls        []toolCall `json:"tool_calls,omitempty"`
 }
 
 type chatContentPart struct {
@@ -589,8 +614,9 @@ type chatChoice struct {
 }
 
 type chatResponseMessage struct {
-	Content   json.RawMessage `json:"content"`
-	ToolCalls []toolCall      `json:"tool_calls"`
+	Content          json.RawMessage `json:"content"`
+	ReasoningContent string          `json:"reasoning_content,omitempty"`
+	ToolCalls        []toolCall      `json:"tool_calls"`
 }
 
 type chatCompletionsChunk struct {
@@ -604,8 +630,9 @@ type chatChunkChoice struct {
 }
 
 type chatChunkDelta struct {
-	Content   string          `json:"content,omitempty"`
-	ToolCalls []toolCallDelta `json:"tool_calls,omitempty"`
+	Content          string          `json:"content,omitempty"`
+	ReasoningContent string          `json:"reasoning_content,omitempty"`
+	ToolCalls        []toolCallDelta `json:"tool_calls,omitempty"`
 }
 
 type toolCallDelta struct {

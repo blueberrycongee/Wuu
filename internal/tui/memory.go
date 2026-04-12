@@ -24,15 +24,16 @@ type imageEntry struct {
 }
 
 type memoryEntry struct {
-	Role         string          `json:"role"`
-	Content      string          `json:"content"`
-	Images       []imageEntry    `json:"images,omitempty"`
-	At           time.Time       `json:"at"`
-	ToolCalls    []toolCallEntry `json:"tool_calls,omitempty"`
-	ToolCallID   string          `json:"tool_call_id,omitempty"`
-	Name         string          `json:"name,omitempty"`
-	InputTokens  int             `json:"input_tokens,omitempty"`
-	OutputTokens int             `json:"output_tokens,omitempty"`
+	Role             string          `json:"role"`
+	Content          string          `json:"content"`
+	ReasoningContent string          `json:"reasoning_content,omitempty"`
+	Images           []imageEntry    `json:"images,omitempty"`
+	At               time.Time       `json:"at"`
+	ToolCalls        []toolCallEntry `json:"tool_calls,omitempty"`
+	ToolCallID       string          `json:"tool_call_id,omitempty"`
+	Name             string          `json:"name,omitempty"`
+	InputTokens      int             `json:"input_tokens,omitempty"`
+	OutputTokens     int             `json:"output_tokens,omitempty"`
 }
 
 func loadMemoryEntries(path string) ([]transcriptEntry, error) {
@@ -128,6 +129,10 @@ func loadMemoryEntries(path string) ([]transcriptEntry, error) {
 				})
 			}
 		}
+		if role == "ASSISTANT" && strings.TrimSpace(rec.ReasoningContent) != "" {
+			entry.ThinkingContent = rec.ReasoningContent
+			entry.ThinkingDone = true
+		}
 
 		entries = append(entries, entry)
 	}
@@ -152,9 +157,10 @@ func appendMemoryEntry(path string, entry transcriptEntry) error {
 	defer file.Close()
 
 	rec := memoryEntry{
-		Role:    strings.ToLower(entry.Role),
-		Content: entry.Content,
-		At:      time.Now().UTC(),
+		Role:             strings.ToLower(entry.Role),
+		Content:          entry.Content,
+		ReasoningContent: entry.ThinkingContent,
+		At:               time.Now().UTC(),
 	}
 	if err := json.NewEncoder(file).Encode(rec); err != nil {
 		return fmt.Errorf("write memory entry: %w", err)
@@ -197,13 +203,14 @@ func appendChatMessage(path string, msg providers.ChatMessage) error {
 	}
 
 	rec := memoryEntry{
-		Role:       strings.ToLower(msg.Role),
-		Content:    msg.Content,
-		Images:     imgs,
-		At:         time.Now().UTC(),
-		ToolCalls:  tcs,
-		ToolCallID: msg.ToolCallID,
-		Name:       msg.Name,
+		Role:             strings.ToLower(msg.Role),
+		Content:          msg.Content,
+		ReasoningContent: msg.ReasoningContent,
+		Images:           imgs,
+		At:               time.Now().UTC(),
+		ToolCalls:        tcs,
+		ToolCallID:       msg.ToolCallID,
+		Name:             msg.Name,
 	}
 	if err := json.NewEncoder(file).Encode(rec); err != nil {
 		return fmt.Errorf("write chat message: %w", err)
@@ -292,12 +299,13 @@ func loadChatHistory(path string) ([]providers.ChatMessage, error) {
 		}
 
 		msgs = append(msgs, providers.ChatMessage{
-			Role:       role,
-			Name:       rec.Name,
-			Content:    rec.Content,
-			Images:     imgs,
-			ToolCallID: rec.ToolCallID,
-			ToolCalls:  tcs,
+			Role:             role,
+			Name:             rec.Name,
+			Content:          rec.Content,
+			ReasoningContent: rec.ReasoningContent,
+			Images:           imgs,
+			ToolCallID:       rec.ToolCallID,
+			ToolCalls:        tcs,
 		})
 	}
 	if err := scanner.Err(); err != nil {

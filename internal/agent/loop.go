@@ -153,8 +153,9 @@ func RunToolLoop(
 		if result.Truncated && len(result.ToolCalls) == 0 && truncationRecoveries < maxTruncationRecoveries {
 			truncatedBuf.WriteString(result.Content)
 			messages = append(messages, providers.ChatMessage{
-				Role:    "assistant",
-				Content: result.Content,
+				Role:             "assistant",
+				Content:          result.Content,
+				ReasoningContent: result.ReasoningContent,
 			})
 			messages = append(messages, providers.ChatMessage{
 				Role:    "user",
@@ -165,9 +166,10 @@ func RunToolLoop(
 		}
 
 		assistant := providers.ChatMessage{
-			Role:      "assistant",
-			Content:   result.Content,
-			ToolCalls: result.ToolCalls,
+			Role:             "assistant",
+			Content:          result.Content,
+			ReasoningContent: result.ReasoningContent,
+			ToolCalls:        result.ToolCalls,
 		}
 		messages = append(messages, assistant)
 

@@ -491,6 +491,64 @@ func TestStreamRunner_ZeroMaxStepsIsUnlimited(t *testing.T) {
 	}
 }
 
+func TestStreamRunner_ReplaysReasoningContentAfterToolCall(t *testing.T) {
+	client := &mockStreamClient{
+		attempts: []mockStreamAttempt{
+			{events: []providers.StreamEvent{
+				{Type: providers.EventThinkingDelta, Content: "inspect repo before tool use"},
+				{
+					Type:     providers.EventToolUseStart,
+					ToolCall: &providers.ToolCall{ID: "call_1", Name: "list_files"},
+				},
+				{
+					Type: providers.EventToolUseEnd,
+					ToolCall: &providers.ToolCall{
+						ID:        "call_1",
+						Name:      "list_files",
+						Arguments: `{}`,
+					},
+				},
+				{Type: providers.EventDone},
+			}},
+			{events: []providers.StreamEvent{
+				{Type: providers.EventContentDelta, Content: "done"},
+				{Type: providers.EventDone},
+			}},
+		},
+	}
+
+	runner := StreamRunner{
+		Client: client,
+		Tools:  &fakeTools{},
+		Model:  "test-model",
+	}
+
+	out, err := runner.Run(context.Background(), "inspect this repo")
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if out != "done" {
+		t.Fatalf("unexpected output: %q", out)
+	}
+	if len(client.requests) != 2 {
+		t.Fatalf("expected 2 provider requests, got %d", len(client.requests))
+	}
+	second := client.requests[1].Messages
+	if len(second) != 3 {
+		t.Fatalf("expected user + assistant + tool in second request, got %d", len(second))
+	}
+	assistant := second[1]
+	if assistant.Role != "assistant" {
+		t.Fatalf("expected assistant message, got %+v", assistant)
+	}
+	if assistant.ReasoningContent != "inspect repo before tool use" {
+		t.Fatalf("unexpected reasoning content replay: %q", assistant.ReasoningContent)
+	}
+	if len(assistant.ToolCalls) != 1 || assistant.ToolCalls[0].ID != "call_1" {
+		t.Fatalf("unexpected tool calls on assistant replay: %+v", assistant.ToolCalls)
+	}
+}
+
 func TestStreamRunner_TruncationRecovery(t *testing.T) {
 	// Three rounds: first two are truncated content-only (no tool calls)
 	// with stop_reason=length; the third returns the final answer.

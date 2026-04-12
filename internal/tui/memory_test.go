@@ -134,6 +134,44 @@ func TestAppendAndLoadChatHistory_WithToolCalls(t *testing.T) {
 	}
 }
 
+func TestAppendAndLoadChatHistory_WithReasoningContent(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "chat.jsonl")
+
+	assistantMsg := providers.ChatMessage{
+		Role:             "assistant",
+		ReasoningContent: "inspect repo before tool use",
+		ToolCalls: []providers.ToolCall{
+			{ID: "call_1", Name: "list_files", Arguments: `{}`},
+		},
+	}
+	if err := appendChatMessage(path, assistantMsg); err != nil {
+		t.Fatalf("append assistant msg: %v", err)
+	}
+
+	msgs, err := loadChatHistory(path)
+	if err != nil {
+		t.Fatalf("load chat history: %v", err)
+	}
+	if len(msgs) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(msgs))
+	}
+	if msgs[0].ReasoningContent != "inspect repo before tool use" {
+		t.Fatalf("unexpected reasoning content: %q", msgs[0].ReasoningContent)
+	}
+
+	entries, err := loadMemoryEntries(path)
+	if err != nil {
+		t.Fatalf("load memory entries: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(entries))
+	}
+	if entries[0].ThinkingContent != "inspect repo before tool use" || !entries[0].ThinkingDone {
+		t.Fatalf("unexpected transcript thinking state: %#v", entries[0])
+	}
+}
+
 func TestLoadMemoryEntries_ToolMerge(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "session.jsonl")
