@@ -231,12 +231,23 @@ func RunToolLoop(
 			ReasoningContent: result.ReasoningContent,
 			ToolCalls:        result.ToolCalls,
 		}
-		appendMessage(assistant)
+		if shouldPersistAssistantMessage(assistant) {
+			appendMessage(assistant)
+		}
 
 		// No tool calls → model is done. Return concatenated content.
 		if len(result.ToolCalls) == 0 {
 			finalContent := truncatedBuf.String() + result.Content
 			if strings.TrimSpace(finalContent) == "" {
+				if isLegitimateEmptyCompletion(result.StopReason) {
+					return LoopResult{
+						Content:          "",
+						NewMessages:      newMessagesForReturn(messages, startLen, historyRewritten),
+						HistoryRewritten: historyRewritten,
+						InputTokens:      totalIn,
+						OutputTokens:     totalOut,
+					}, nil
+				}
 				return LoopResult{
 					NewMessages:      newMessagesForReturn(messages, startLen, historyRewritten),
 					HistoryRewritten: historyRewritten,
@@ -338,6 +349,25 @@ func newMessagesForReturn(messages []providers.ChatMessage, startLen int, histor
 		startLen = len(messages)
 	}
 	return copyMessages(messages[startLen:])
+}
+
+func shouldPersistAssistantMessage(msg providers.ChatMessage) bool {
+	if strings.TrimSpace(msg.Content) != "" {
+		return true
+	}
+	if strings.TrimSpace(msg.ReasoningContent) != "" {
+		return true
+	}
+	return len(msg.ToolCalls) > 0
+}
+
+func isLegitimateEmptyCompletion(stopReason string) bool {
+	switch strings.TrimSpace(strings.ToLower(stopReason)) {
+	case "end_turn", "stop", "stop_sequence":
+		return true
+	default:
+		return false
+	}
 }
 
 // errorJSON marshals an error into the JSON payload tool callers see

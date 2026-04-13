@@ -124,6 +124,36 @@ func TestStreamRunner_SimpleContent(t *testing.T) {
 	}
 }
 
+func TestStreamRunner_AllowsNaturalEmptyCompletionWithoutPersistingAssistantMessage(t *testing.T) {
+	client := &mockStreamClient{
+		events: []providers.StreamEvent{
+			{Type: providers.EventDone, StopReason: "end_turn"},
+		},
+	}
+
+	var received []providers.StreamEvent
+	runner := StreamRunner{
+		Client: client,
+		Model:  "test-model",
+		OnEvent: func(ev providers.StreamEvent) {
+			received = append(received, ev)
+		},
+	}
+
+	result, err := runner.Run(context.Background(), "say hello")
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if result != "" {
+		t.Fatalf("expected empty result, got %q", result)
+	}
+	for _, ev := range received {
+		if ev.Type == providers.EventMessage {
+			t.Fatalf("did not expect persisted assistant message event, got %+v", ev)
+		}
+	}
+}
+
 func TestStreamRunner_NoToolCallsWhenNoneRequested(t *testing.T) {
 	client := &mockStreamClient{
 		events: []providers.StreamEvent{

@@ -532,7 +532,7 @@ func TestRunToolLoop_BeforeStepInjectsMessages(t *testing.T) {
 	}
 }
 
-func TestRunToolLoop_EmptyAnswerIsError(t *testing.T) {
+func TestRunToolLoop_EmptyAnswerWithoutStopReasonIsError(t *testing.T) {
 	step := &fakeStep{results: []StepResult{{Content: "  "}}}
 	_, err := RunToolLoop(context.Background(), []providers.ChatMessage{userMsg("hi")}, LoopConfig{Model: "m"}, step)
 	if err == nil || !IsEmptyAnswer(err) {
@@ -549,5 +549,37 @@ func TestRunToolLoop_EmptyAnswerCarriesStopReason(t *testing.T) {
 	var emptyErr *EmptyAnswerError
 	if !errors.As(err, &emptyErr) || emptyErr.StopReason != "stop" {
 		t.Fatalf("expected StopReason=stop, got %+v", emptyErr)
+	}
+}
+
+func TestRunToolLoop_EmptyAnswerWithNaturalStopReasonSucceeds(t *testing.T) {
+	step := &fakeStep{results: []StepResult{{Content: "  ", StopReason: "end_turn"}}}
+	res, err := RunToolLoop(context.Background(), []providers.ChatMessage{userMsg("hi")}, LoopConfig{Model: "m"}, step)
+	if err != nil {
+		t.Fatalf("expected empty completion to succeed, got %v", err)
+	}
+	if res.Content != "" {
+		t.Fatalf("expected empty final content, got %q", res.Content)
+	}
+	if len(res.NewMessages) != 0 {
+		t.Fatalf("expected no persisted empty assistant message, got %+v", res.NewMessages)
+	}
+}
+
+func TestRunToolLoop_ReasoningOnlyAnswerStillPersistsAssistantMessage(t *testing.T) {
+	step := &fakeStep{results: []StepResult{{
+		Content:          " ",
+		ReasoningContent: "inspect repo before reply",
+		StopReason:       "end_turn",
+	}}}
+	res, err := RunToolLoop(context.Background(), []providers.ChatMessage{userMsg("hi")}, LoopConfig{Model: "m"}, step)
+	if err != nil {
+		t.Fatalf("expected reasoning-only completion to succeed, got %v", err)
+	}
+	if len(res.NewMessages) != 1 {
+		t.Fatalf("expected reasoning-only assistant message to persist, got %+v", res.NewMessages)
+	}
+	if got := res.NewMessages[0].ReasoningContent; got != "inspect repo before reply" {
+		t.Fatalf("unexpected reasoning content: %q", got)
 	}
 }
