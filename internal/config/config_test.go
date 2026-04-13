@@ -119,6 +119,21 @@ func TestDefaultSystemPrompt_ReadOrientedMainAgent(t *testing.T) {
 	}
 }
 
+func TestDefaultSystemPrompt_CommentDiscipline(t *testing.T) {
+	prompt := Default().Agent.SystemPrompt
+	for _, want := range []string{
+		"three comment buckets",
+		"Do not write 'what' comments",
+		"Write 'why' comments only",
+		"future agents will read",
+		"'I will do it later'",
+	} {
+		if !strings.Contains(prompt, want) {
+			t.Fatalf("default system prompt must include comment guidance %q: %q", want, prompt)
+		}
+	}
+}
+
 func TestConfig_DisableAutoCompact(t *testing.T) {
 	workdir := t.TempDir()
 	configPath := filepath.Join(workdir, ".wuu.json")
