@@ -1241,6 +1241,25 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
+		// Escape interrupts a running stream.
+		if msg.String() == "esc" && m.streaming {
+			if m.cancelStream != nil {
+				m.cancelStream()
+			}
+			m.statusLine = "interrupted"
+			return m, nil
+		}
+
+		// Escape clears the input when there is text.
+		if msg.String() == "esc" && m.input.Value() != "" {
+			m.input.SetValue("")
+			m.pendingImages = nil
+			m.historyIndex = -1
+			m.historyDraft = ""
+			m.relayout()
+			return m, nil
+		}
+
 		switch msg.String() {
 		case "ctrl+c":
 			// If insight is running, first ctrl+c cancels it instead of quitting.
