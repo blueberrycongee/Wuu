@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/blueberrycongee/wuu/internal/providers"
@@ -462,5 +463,75 @@ func TestChatHistory_WithUserImages(t *testing.T) {
 	}
 	if entries[0].Content != "check this\n[Image #1]\n[Image #2]" {
 		t.Fatalf("unexpected transcript content: %q", entries[0].Content)
+	}
+}
+
+func TestSessionReaders_HandleLargeJSONLRecords(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "session.jsonl")
+	largeResult := strings.Repeat("x", 2100*1024)
+
+	assistantMsg := providers.ChatMessage{
+		Role:    "assistant",
+		Content: "",
+		ToolCalls: []providers.ToolCall{
+			{ID: "call_big", Name: "grep", Arguments: `{"pattern":"message_start"}`},
+		},
+	}
+	if err := appendChatMessage(path, assistantMsg); err != nil {
+		t.Fatalf("append assistant msg: %v", err)
+	}
+	toolMsg := providers.ChatMessage{
+		Role:       "tool",
+		Content:    largeResult,
+		ToolCallID: "call_big",
+		Name:       "grep",
+	}
+	if err := appendChatMessage(path, toolMsg); err != nil {
+		t.Fatalf("append tool msg: %v", err)
+	}
+	if err := appendTokenUsage(path, 10, 5); err != nil {
+		t.Fatalf("append token usage: %v", err)
+	}
+
+	entries, err := loadMemoryEntries(path)
+	if err != nil {
+		t.Fatalf("loadMemoryEntries: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 transcript entry, got %d", len(entries))
+	}
+	if len(entries[0].ToolCalls) != 1 {
+		t.Fatalf("expected 1 merged tool call, got %d", len(entries[0].ToolCalls))
+	}
+	if entries[0].ToolCalls[0].Result != largeResult {
+		t.Fatalf("unexpected merged tool result size: got %d want %d", len(entries[0].ToolCalls[0].Result), len(largeResult))
+	}
+
+	msgs, err := loadChatHistory(path)
+	if err != nil {
+		t.Fatalf("loadChatHistory: %v", err)
+	}
+	if len(msgs) != 2 {
+		t.Fatalf("expected 2 chat messages, got %d", len(msgs))
+	}
+	if msgs[1].Role != "tool" || msgs[1].Content != largeResult {
+		t.Fatalf("unexpected restored tool message: role=%q len=%d", msgs[1].Role, len(msgs[1].Content))
+	}
+
+	replacement := []providers.ChatMessage{
+		{Role: "user", Content: "after compact"},
+		{Role: "assistant", Content: "still here"},
+	}
+	if err := rewriteChatHistory(path, replacement); err != nil {
+		t.Fatalf("rewriteChatHistory: %v", err)
+	}
+
+	meta, err := loadMetaEntries(path)
+	if err != nil {
+		t.Fatalf("loadMetaEntries: %v", err)
+	}
+	if len(meta) != 1 || meta[0].Content != "token_usage" {
+		t.Fatalf("expected preserved token usage meta, got %#v", meta)
 	}
 }

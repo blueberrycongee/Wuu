@@ -12,6 +12,8 @@ import (
 	"github.com/blueberrycongee/wuu/internal/providers"
 )
 
+const maxSessionRecordBytes = 32 * 1024 * 1024
+
 type toolCallEntry struct {
 	ID        string `json:"id"`
 	Name      string `json:"name"`
@@ -36,6 +38,12 @@ type memoryEntry struct {
 	OutputTokens     int             `json:"output_tokens,omitempty"`
 }
 
+func configureSessionScanner(scanner *bufio.Scanner) {
+	// Real tool outputs can exceed 2 MiB in a single JSONL record.
+	// Keep resume/load paths tolerant of large persisted turns.
+	scanner.Buffer(make([]byte, 1024), maxSessionRecordBytes)
+}
+
 func loadMemoryEntries(path string) ([]transcriptEntry, error) {
 	if strings.TrimSpace(path) == "" {
 		return nil, nil
@@ -51,8 +59,7 @@ func loadMemoryEntries(path string) ([]transcriptEntry, error) {
 	defer file.Close()
 
 	scanner := bufio.NewScanner(file)
-	// Allow long markdown payloads in a single JSON line.
-	scanner.Buffer(make([]byte, 1024), 2*1024*1024)
+	configureSessionScanner(scanner)
 
 	entries := make([]transcriptEntry, 0, 64)
 	line := 0
@@ -291,7 +298,7 @@ func loadChatHistory(path string) ([]providers.ChatMessage, error) {
 	defer file.Close()
 
 	scanner := bufio.NewScanner(file)
-	scanner.Buffer(make([]byte, 1024), 2*1024*1024)
+	configureSessionScanner(scanner)
 
 	var msgs []providers.ChatMessage
 	line := 0
@@ -363,7 +370,7 @@ func loadMetaEntries(path string) ([]memoryEntry, error) {
 	defer file.Close()
 
 	scanner := bufio.NewScanner(file)
-	scanner.Buffer(make([]byte, 1024), 2*1024*1024)
+	configureSessionScanner(scanner)
 
 	var metas []memoryEntry
 	for scanner.Scan() {
