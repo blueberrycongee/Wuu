@@ -148,11 +148,30 @@ func TestSystemPromptPreamble_TeachesWorkerResultSynthesisDiscipline(t *testing.
 	preamble := SystemPromptPreamble()
 	for _, want := range []string{
 		"Workers cannot see your main conversation",
+		"standalone spec",
+		"self-contained",
 		"based on your findings",
-		"concrete next task with explicit file paths, line numbers, constraints, and success criteria",
+		"based on the research",
+		"specific file paths, specific line numbers, exactly what to change, what constraints must hold, and what counts as done",
 	} {
 		if !strings.Contains(preamble, want) {
 			t.Errorf("SystemPromptPreamble missing worker-result synthesis guidance %q", want)
+		}
+	}
+}
+
+func TestSystemPromptPreamble_TeachesReadEnoughBeforeActing(t *testing.T) {
+	preamble := SystemPromptPreamble()
+	for _, want := range []string{
+		"Read enough to understand before acting",
+		"Do not propose changes",
+		"delegate execution before you have that grounding",
+		"Keep it proportionate",
+		"For a very small, very explicit, local task in one obvious file, a light scan is enough",
+		"once you've done the minimum reading needed",
+	} {
+		if !strings.Contains(preamble, want) {
+			t.Errorf("SystemPromptPreamble missing read-before-acting guidance %q", want)
 		}
 	}
 }
