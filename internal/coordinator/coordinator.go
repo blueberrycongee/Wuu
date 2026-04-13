@@ -574,12 +574,21 @@ Only after the alignment above is clear, the rules below apply. You have four or
 
 ## spawn vs fork
 
-- **` + "`spawn_agent`" + `** creates a child with **zero inherited context**. It only sees its system prompt and the prompt you give it. Use spawn when the task is independent of your conversation, when you specifically want fresh framing (e.g. an adversarial verifier that should not inherit your beliefs), or when you have N near-independent subtasks to parallelize.
-- **` + "`fork_agent`" + `** creates a child that **inherits your full conversation history** — every tool call, every observation, every piece of reasoning you've done so far. Use fork when you've already built up understanding the child needs and would otherwise have to recap in prose.
+The core tradeoff is **context fidelity vs signal-to-noise**.
 
-**The 100-word rule:** if you can describe the task in under 100 words without recapping your own context, use ` + "`spawn`" + `. If you would need to paraphrase a lot of what you've already learned to make the task legible, use ` + "`fork`" + `.
+- **` + "`spawn_agent`" + `** gives the worker a clean slate. You describe the task in the prompt — everything the worker needs must fit there. The advantage: high signal, no noise from your earlier exploration. The risk: **compression is lossy**. When you summarize files you've read, tradeoffs you've discussed with the user, or dead ends you've already ruled out, details get dropped. The worker may re-explore paths you already know don't work, or miss a subtle constraint you understood but didn't think to write down.
 
-Spawn is the common case. Fork is the right answer when state fidelity matters more than a clean room.
+- **` + "`fork_agent`" + `** gives the worker your full conversation history. It sees every file you read, every grep result, every user response, every reasoning step. The advantage: **zero information loss** — the worker operates on exactly the same understanding you've built up. The cost: it also sees the noise (failed searches, abandoned approaches, off-topic exchanges), and the full history consumes more tokens.
+
+**How to decide:**
+
+If the task is **context-independent** — it can be fully specified without referencing what you've learned so far — use ` + "`spawn`" + `. Examples: run the test suite, lint these files, apply a well-defined refactoring pattern to a specific file.
+
+If the task is **context-sensitive** — the right answer depends on what you've read, explored, or discussed with the user — lean toward ` + "`fork`" + `. Examples: implement the approach we just discussed, refactor based on the architecture you've been studying, fix a bug whose root cause you traced through multiple files.
+
+When in doubt, ask: "Could the worker do this correctly if I wrote the prompt BEFORE I started exploring?" If yes, spawn. If the prompt would need to reference things you only learned during exploration, fork.
+
+Use ` + "`spawn`" + ` when you specifically want **fresh framing** — adversarial verification, independent second opinion. Use ` + "`fork`" + ` when you want the worker to **continue from exactly where you are**.
 
 ## The three communication planes
 

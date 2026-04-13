@@ -369,8 +369,11 @@ func (t *Toolkit) allDefinitions() []providers.ToolDefinition {
 				"when the work might break the build, when concurrent writers would collide, or " +
 				"when the user explicitly asked for a sandbox. Do NOT use a worktree just because " +
 				"the task involves writing files — additive writes are not a reason for isolation. " +
-				"Use this for any task that requires reading file contents or making changes — your " +
-				"own context stays clean. By default the spawn is asynchronous: this returns " +
+				"Use this for tasks that are context-independent — where a self-contained prompt " +
+				"can fully specify what to do. When the task depends on context you've built up " +
+				"through exploration (files read, user discussions, dead ends ruled out), consider " +
+				"fork_agent instead to avoid losing information to prompt compression. " +
+				"By default the spawn is asynchronous: this returns " +
 				"immediately with an agent_id, and the worker's result will be delivered to you as " +
 				"a <worker-result> message once it completes. Set synchronous=true to block until " +
 				"the worker finishes. Spawn multiple workers in parallel by calling spawn_agent " +
@@ -410,12 +413,13 @@ func (t *Toolkit) allDefinitions() []providers.ToolDefinition {
 		{
 			Name: "fork_agent",
 			Description: "Spawn a sub-agent that INHERITS your full conversation history — every " +
-				"tool call, every observation, every piece of reasoning you've done so far. Use " +
-				"fork when you've already built up understanding the child needs and would " +
-				"otherwise have to recap a lot of it in prose. The 100-word rule: if you can " +
-				"describe the task in under 100 words without recapping your own context, use " +
-				"spawn_agent. If you'd need to paraphrase a lot of what you've already learned " +
-				"to make the task legible to a fresh worker, use fork_agent instead. " +
+				"tool call, every observation, every piece of reasoning you've done so far. " +
+				"The worker gets zero-loss context: everything you read, explored, or discussed " +
+				"with the user is available without you needing to compress it into a prompt. " +
+				"Use fork when the task is context-sensitive — the right execution depends on " +
+				"details you learned during exploration that are hard to fully capture in a " +
+				"summary. Use spawn_agent instead when the task is self-contained and a short " +
+				"prompt can fully specify what to do. " +
 				"The forked worker uses your system prompt verbatim (so prompt-cache hits across " +
 				"the fork boundary) and runs INPLACE in the parent repo — there is no worktree " +
 				"isolation option, because fork is for continuing your work, not for sandboxing. " +
@@ -1128,7 +1132,14 @@ func (t *Toolkit) grep(argsJSON string) (string, error) {
 		"truncated": len(matches) >= limit,
 		"matches":   matches,
 	}
-	return mustJSON(result)
+	out, err := mustJSON(result)
+	if err != nil {
+		return "", err
+	}
+	if len(out) > maxGrepOutputBytes {
+		out = out[:maxGrepOutputBytes]
+	}
+	return out, nil
 }
 
 func (t *Toolkit) grepWithRipgrep(ctx context.Context, pattern, searchRoot, include string, limit int) ([]grepMatch, error) {

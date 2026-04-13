@@ -95,14 +95,18 @@ func TestSystemPromptPreamble_TeachesThreePlanes(t *testing.T) {
 func TestSystemPromptPreamble_TeachesSpawnVsFork(t *testing.T) {
 	// The preamble must give the model enough to choose between
 	// spawn (clean room) and fork (state inheritance). The
-	// "100-word rule" is the load-bearing heuristic; pin it so a
-	// casual edit doesn't quietly drop it.
+	// "context fidelity vs signal-to-noise" framing is the
+	// load-bearing concept; pin it so a casual edit doesn't
+	// quietly drop it.
 	preamble := SystemPromptPreamble()
 	if !strings.Contains(preamble, "spawn") || !strings.Contains(preamble, "fork") {
 		t.Error("SystemPromptPreamble must teach spawn vs fork")
 	}
-	if !strings.Contains(preamble, "100 words") && !strings.Contains(preamble, "100-word") {
-		t.Error("SystemPromptPreamble missing the 100-word spawn/fork heuristic")
+	if !strings.Contains(preamble, "context fidelity") {
+		t.Error("SystemPromptPreamble missing the context-fidelity spawn/fork framing")
+	}
+	if !strings.Contains(preamble, "context-independent") || !strings.Contains(preamble, "context-sensitive") {
+		t.Error("SystemPromptPreamble missing the context-independent / context-sensitive decision criteria")
 	}
 }
 
