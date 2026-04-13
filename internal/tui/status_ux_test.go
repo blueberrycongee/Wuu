@@ -1,8 +1,11 @@
 package tui
 
 import (
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/charmbracelet/x/ansi"
 )
 
 func TestShouldRenderInlineStatusSuppressesTranscriptDuplicates(t *testing.T) {
@@ -35,6 +38,32 @@ func TestShouldRenderInlineStatusSuppressesToolDuplicate(t *testing.T) {
 
 	if m.shouldRenderInlineStatus() {
 		t.Fatal("expected inline tool status to be hidden when a live tool card is already visible")
+	}
+}
+
+func TestShouldRenderInlineStatusKeepsSpawnAgentVisibleWithVisibleToolCard(t *testing.T) {
+	m := Model{streaming: true, statusLine: "tool: spawn_agent"}
+	m.entries = []transcriptEntry{{
+		Role:      "ASSISTANT",
+		ToolCalls: []ToolCallEntry{{Name: "spawn_agent", Status: ToolCallRunning}},
+	}}
+
+	if !m.shouldRenderInlineStatus() {
+		t.Fatal("expected spawn_agent inline status to stay visible even when the tool card is visible")
+	}
+}
+
+func TestRenderInlineStatus_UsesSpawnWorkerCopy(t *testing.T) {
+	got := renderInlineWorkStatus(runningToolWorkStatus("spawn_agent"), 0, 120)
+	if got == "" {
+		t.Fatal("expected spawn_agent inline status to render")
+	}
+	plain := ansi.Strip(got)
+	if strings.Contains(plain, "Running spawn_agent") || strings.Contains(plain, "Making progress with a tool") {
+		t.Fatalf("expected spawn_agent inline status to use worker-oriented copy, got %q", plain)
+	}
+	if !strings.Contains(plain, "Spawning worker") || !strings.Contains(plain, "Dispatching the background task") {
+		t.Fatalf("expected spawn_agent inline status to describe worker dispatch, got %q", plain)
 	}
 }
 

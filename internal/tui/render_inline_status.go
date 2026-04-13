@@ -35,11 +35,12 @@ const (
 )
 
 type workStatus struct {
-	Phase   workPhase
-	Label   string
-	Meta    string
-	Detail  string
-	Running bool
+	Phase              workPhase
+	Label              string
+	Meta               string
+	Detail             string
+	Running            bool
+	PersistentInlineUI bool
 }
 
 type statusTextSegment struct {
@@ -47,6 +48,37 @@ type statusTextSegment struct {
 	Base   lipgloss.Style
 	Strong lipgloss.Style
 	Bright lipgloss.Style
+}
+
+func isOrchestrationTool(name string) bool {
+	switch strings.TrimSpace(name) {
+	case "spawn_agent", "fork_agent":
+		return true
+	default:
+		return false
+	}
+}
+
+func runningToolWorkStatus(name string) workStatus {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		name = "tool"
+	}
+	if isOrchestrationTool(name) {
+		return workStatus{
+			Phase:              workPhaseTool,
+			Label:              "Spawning worker",
+			Meta:               "Dispatching the background task",
+			Running:            true,
+			PersistentInlineUI: true,
+		}
+	}
+	return workStatus{
+		Phase:   workPhaseTool,
+		Label:   fmt.Sprintf("Running %s", name),
+		Meta:    "Making progress with a tool",
+		Running: true,
+	}
 }
 
 func deriveWorkStatus(status string) workStatus {
@@ -57,16 +89,10 @@ func deriveWorkStatus(status string) workStatus {
 		return workStatus{Phase: workPhaseGenerating, Label: "Responding", Meta: "Writing the reply", Running: true}
 	case strings.HasPrefix(status, "tool:"):
 		name := trimToWidth(strings.TrimSpace(strings.TrimPrefix(status, "tool:")), 36)
-		if name == "" {
-			name = "tool"
-		}
-		return workStatus{Phase: workPhaseTool, Label: fmt.Sprintf("Running %s", name), Meta: "Making progress with a tool", Running: true}
+		return runningToolWorkStatus(name)
 	case strings.HasPrefix(status, "executing tool:"):
 		name := trimToWidth(strings.TrimSpace(strings.TrimPrefix(status, "executing tool:")), 36)
-		if name == "" {
-			name = "tool"
-		}
-		return workStatus{Phase: workPhaseTool, Label: fmt.Sprintf("Running %s", name), Meta: "Making progress with a tool", Running: true}
+		return runningToolWorkStatus(name)
 	case strings.HasPrefix(status, "Reconnecting"):
 		label := trimToWidth(strings.TrimSpace(status), 32)
 		if label == "" {
@@ -113,7 +139,7 @@ func toolCallStatus(tc ToolCallEntry) workStatus {
 	}
 	switch tc.Status {
 	case ToolCallRunning:
-		return workStatus{Phase: workPhaseTool, Label: fmt.Sprintf("Running %s", name), Meta: "Making progress with a tool", Running: true}
+		return runningToolWorkStatus(name)
 	case ToolCallError:
 		return workStatus{Phase: workPhaseTool, Label: fmt.Sprintf("%s failed", name), Meta: "Tool run failed", Running: false}
 	default:
