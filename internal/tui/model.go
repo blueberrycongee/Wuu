@@ -1782,13 +1782,24 @@ func (m *Model) applyStreamEvent(event providers.StreamEvent, rearm bool) tea.Cm
 		if event.Error != nil {
 			errMsg = providers.StreamErrorDisplay(event.Error)
 		}
-		// Display error in red in the chat area.
-		styledErr := lipgloss.NewStyle().
-			Foreground(currentTheme.Error).
-			Bold(true).
-			Render("ERROR: " + errMsg)
-		m.appendEntry("system", styledErr)
-		m.statusLine = "request failed"
+		// Empty-answer errors get a warning style with a retry hint
+		// instead of a hard red ERROR — they're typically a provider
+		// compatibility issue, not a fatal failure.
+		if event.Error != nil && agent.IsEmptyAnswer(event.Error) {
+			styledWarn := lipgloss.NewStyle().
+				Foreground(currentTheme.Warning).
+				Bold(true).
+				Render("⚠ " + errMsg)
+			m.appendEntry("system", styledWarn)
+			m.statusLine = "empty response — press Enter to retry"
+		} else {
+			styledErr := lipgloss.NewStyle().
+				Foreground(currentTheme.Error).
+				Bold(true).
+				Render("ERROR: " + errMsg)
+			m.appendEntry("system", styledErr)
+			m.statusLine = "request failed"
+		}
 		m.refreshViewport(true)
 		return nil
 
