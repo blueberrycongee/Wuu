@@ -79,11 +79,15 @@ func RunToolLoop(
 		// proactively compact before the next round. Uses
 		// response.usage as ground truth + delta estimation for
 		// messages added since the last successful response.
-		usage = NewUsageTracker()
+		usage = cfg.UsageTracker
 	)
-	// Seed the tracker with whatever history the caller passed in so
-	// the first compact decision isn't biased toward "fresh session".
-	usage.RecordPendingMessages(history)
+	if usage == nil {
+		usage = NewUsageTracker()
+		// Without caller-owned cross-turn state, seed this run from a
+		// local estimate. Pre-request proactive compact still waits
+		// for a real response.usage baseline before firing.
+		usage.RecordPendingMessages(history)
+	}
 	threshold := proactiveCompactThreshold(cfg)
 	appendMessage := func(msg providers.ChatMessage) {
 		messages = append(messages, msg)
@@ -100,6 +104,24 @@ func RunToolLoop(
 					appendMessage(msg)
 				}
 				usage.RecordPendingMessages(injected)
+			}
+		}
+		if cfg.Compact != nil && threshold > 0 && usage.HasGroundTruth() && usage.EstimateCurrent() >= threshold {
+			before := usage.EstimateCurrent()
+			msgsBefore := len(messages)
+			if compacted, cerr := cfg.Compact(ctx, messages); cerr == nil && len(compacted) < len(messages) {
+				messages = compacted
+				historyRewritten = true
+				usage.Reset()
+				usage.RecordPendingMessages(messages)
+				if cfg.OnCompact != nil {
+					cfg.OnCompact(CompactInfo{
+						Reason:         CompactReasonProactive,
+						TokensBefore:   before,
+						MessagesBefore: msgsBefore,
+						MessagesAfter:  len(messages),
+					})
+				}
 			}
 		}
 		req := providers.ChatRequest{
@@ -127,6 +149,7 @@ func RunToolLoop(
 					messages = compacted
 					historyRewritten = true
 					usage.Reset()
+					usage.RecordPendingMessages(messages)
 					if cfg.OnCompact != nil {
 						cfg.OnCompact(CompactInfo{
 							Reason:         CompactReasonOverflow,
@@ -243,30 +266,6 @@ func RunToolLoop(
 			// Tool results haven't been sent to the provider yet, so
 			// add a delta-estimate to the tracker.
 			usage.RecordPendingMessages([]providers.ChatMessage{toolMsg})
-		}
-
-		// Proactive auto-compact. Check after each round (post-tool-
-		// execution) so the next step starts with a freshly compacted
-		// history if we're approaching the model's context window.
-		// The check honors threshold > 0, which is gated by the
-		// caller passing a non-zero MaxContextTokens.
-		if cfg.Compact != nil && threshold > 0 && usage.EstimateCurrent() >= threshold {
-			before := usage.EstimateCurrent()
-			msgsBefore := len(messages)
-			if compacted, cerr := cfg.Compact(ctx, messages); cerr == nil && len(compacted) < len(messages) {
-				messages = compacted
-				historyRewritten = true
-				usage.Reset()
-				usage.RecordPendingMessages(messages)
-				if cfg.OnCompact != nil {
-					cfg.OnCompact(CompactInfo{
-						Reason:         CompactReasonProactive,
-						TokensBefore:   before,
-						MessagesBefore: msgsBefore,
-						MessagesAfter:  len(messages),
-					})
-				}
-			}
 		}
 	}
 

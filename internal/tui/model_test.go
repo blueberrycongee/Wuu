@@ -1123,7 +1123,6 @@ func TestStatusWavePhaseOscillates(t *testing.T) {
 
 func TestRenderInlineStatus_ShowsWaitingLabels(t *testing.T) {
 	cases := map[string]string{
-		"compacting history":   "Compacting history",
 		"thinking":             "Thinking",
 		"streaming":            "Responding",
 		"tool: run_shell":      "Running run_shell",
@@ -1804,7 +1803,6 @@ func TestSendMessage_DoesNotBlockOnCompaction(t *testing.T) {
 			Model:  "test-model",
 		},
 	})
-	m.maxContextTokens = 10 // force compaction path
 	m.chatHistory = []providers.ChatMessage{
 		{Role: "user", Content: strings.Repeat("seed ", 40)},
 		{Role: "assistant", Content: strings.Repeat("seed ", 40)},
@@ -1830,17 +1828,13 @@ func TestSendMessage_DoesNotBlockOnCompaction(t *testing.T) {
 		t.Fatal("expected pendingRequest=true")
 	}
 
-	// Let background goroutine run and trigger compaction call.
-	deadline := time.Now().Add(2 * time.Second)
-	for client.chatCalls.Load() == 0 && time.Now().Before(deadline) {
-		time.Sleep(20 * time.Millisecond)
-	}
-	if got := client.chatCalls.Load(); got == 0 {
-		t.Fatal("expected compaction chat call in background")
+	time.Sleep(100 * time.Millisecond)
+	if got := client.chatCalls.Load(); got != 0 {
+		t.Fatalf("expected no pre-turn compact without usage ground truth, got %d compact calls", got)
 	}
 }
 
-func TestSendMessage_ShowsCompactingHistoryBeforeReply(t *testing.T) {
+func TestSendMessage_StartsReplyWithoutPreTurnCompactStatus(t *testing.T) {
 	client := &blockingCompactStreamClient{compactSleep: 500 * time.Millisecond}
 	m := NewModel(Config{
 		Provider:   "test",
@@ -1851,7 +1845,6 @@ func TestSendMessage_ShowsCompactingHistoryBeforeReply(t *testing.T) {
 			Model:  "test-model",
 		},
 	})
-	m.maxContextTokens = 10 // force pre-stream compaction
 	m.chatHistory = []providers.ChatMessage{
 		{Role: "user", Content: strings.Repeat("seed ", 40)},
 		{Role: "assistant", Content: strings.Repeat("seed ", 40)},
@@ -1865,14 +1858,11 @@ func TestSendMessage_ShowsCompactingHistoryBeforeReply(t *testing.T) {
 	}
 
 	next := nextModel.(Model)
-	if next.statusLine != compactingHistoryStatus {
-		t.Fatalf("expected pre-stream compact status, got %q", next.statusLine)
+	if next.statusLine != "streaming" {
+		t.Fatalf("expected streaming status, got %q", next.statusLine)
 	}
-	if next.streamTarget != -1 {
-		t.Fatalf("expected no assistant placeholder before compaction, got streamTarget=%d", next.streamTarget)
-	}
-	if got := renderEntries(next.entries); strings.Contains(got, "ASSISTANT\n") {
-		t.Fatalf("expected no assistant transcript entry before reply starts, got %q", got)
+	if next.streamTarget < 0 {
+		t.Fatalf("expected assistant placeholder for live reply, got streamTarget=%d", next.streamTarget)
 	}
 }
 

@@ -1277,7 +1277,7 @@ func (t *Toolkit) glob(argsJSON string) (string, error) {
 		return "", errors.New("glob requires pattern")
 	}
 
-	const limit = 100
+	const limit = 500
 	matches, err := t.globWithRipgrep(context.Background(), args.Pattern, limit)
 	if err != nil {
 		matches, err = t.globWithFallback(args.Pattern, limit)

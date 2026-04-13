@@ -7,6 +7,7 @@ import (
 	"math"
 	"math/rand"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/blueberrycongee/wuu/internal/compact"
@@ -57,6 +58,10 @@ type StreamRunner struct {
 	StreamMaxRetries        int
 	StreamRetryInitialDelay time.Duration
 	StreamRetryMaxDelay     time.Duration
+
+	usageMu           sync.Mutex
+	conversationUsage *UsageTracker
+	trackedHistoryLen int
 }
 
 // Run executes one prompt with streaming tool-use loop.
@@ -87,6 +92,7 @@ func (r *StreamRunner) RunWithCallback(ctx context.Context, history []providers.
 	if strings.TrimSpace(r.Model) == "" {
 		return LoopResult{}, errors.New("model is required")
 	}
+	runUsage, baseHistoryLen := r.prepareUsageTracker(history)
 
 	step := &streamStep{
 		client:  r.Client,
@@ -148,9 +154,64 @@ func (r *StreamRunner) RunWithCallback(ctx context.Context, history []providers.
 				Content: formatCompactNotice(info),
 			})
 		},
+		UsageTracker: runUsage,
 	}
 
-	return RunToolLoop(ctx, history, cfg, step)
+	res, err := RunToolLoop(ctx, history, cfg, step)
+	if err != nil {
+		r.commitUsageTracker(runUsage, baseHistoryLen)
+		return res, err
+	}
+	finalHistoryLen := baseHistoryLen + len(res.NewMessages)
+	if res.HistoryRewritten {
+		finalHistoryLen = len(res.NewMessages)
+	}
+	r.commitUsageTracker(runUsage, finalHistoryLen)
+	return res, nil
+}
+
+// prepareUsageTracker snapshots the runner's shared conversation
+// usage state and advances it to the history passed for this turn.
+// The returned tracker is run-local; callers must commit it
+// explicitly after deciding which history actually persists.
+func (r *StreamRunner) prepareUsageTracker(history []providers.ChatMessage) (*UsageTracker, int) {
+	r.usageMu.Lock()
+	defer r.usageMu.Unlock()
+
+	if r.conversationUsage == nil {
+		r.conversationUsage = NewUsageTracker()
+	}
+
+	tracker := r.conversationUsage.Clone()
+	trackedLen := r.trackedHistoryLen
+	if trackedLen < 0 {
+		trackedLen = 0
+	}
+	if trackedLen > len(history) {
+		tracker.Reset()
+		trackedLen = 0
+	}
+	if trackedLen == 0 {
+		tracker.RecordPendingMessages(history)
+		return tracker, len(history)
+	}
+	if len(history) > trackedLen {
+		tracker.RecordPendingMessages(history[trackedLen:])
+		trackedLen = len(history)
+	}
+	return tracker, trackedLen
+}
+
+// commitUsageTracker publishes a run-local usage snapshot as the new
+// shared baseline for future turns.
+func (r *StreamRunner) commitUsageTracker(tracker *UsageTracker, historyLen int) {
+	if tracker == nil {
+		return
+	}
+	r.usageMu.Lock()
+	defer r.usageMu.Unlock()
+	r.conversationUsage = tracker.Clone()
+	r.trackedHistoryLen = historyLen
 }
 
 // streamStep adapts providers.StreamClient (with reconnect) to the

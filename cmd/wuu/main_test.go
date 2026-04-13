@@ -79,6 +79,24 @@ func TestRunVersionAliasForwardsLongFlag(t *testing.T) {
 	}
 }
 
+func TestResolveContextWindow_PrefersProviderOverride(t *testing.T) {
+	if got := resolveContextWindow("gpt-5.4", 777, 555); got != 777 {
+		t.Fatalf("expected provider override, got %d", got)
+	}
+}
+
+func TestResolveContextWindow_FallsBackToAgentOverride(t *testing.T) {
+	if got := resolveContextWindow("gpt-5.4", 0, 555); got != 555 {
+		t.Fatalf("expected agent override, got %d", got)
+	}
+}
+
+func TestResolveContextWindow_UsesModelRegistryByDefault(t *testing.T) {
+	if got := resolveContextWindow("gpt-5.4", 0, 0); got != 400000 {
+		t.Fatalf("expected model registry context window, got %d", got)
+	}
+}
+
 func captureStdout(t *testing.T, fn func()) string {
 	t.Helper()
 

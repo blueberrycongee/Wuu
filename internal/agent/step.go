@@ -129,6 +129,11 @@ type LoopConfig struct {
 	// OnCompact is invoked once per compact pass (proactive or
 	// reactive). Optional; the TUI uses it to render a status line.
 	OnCompact func(info CompactInfo)
+	// UsageTracker, when non-nil, is the caller-owned conversation
+	// usage state to reuse across runs. This lets the loop make the
+	// same compact decision before the first request of a new turn
+	// that it would make mid-run after receiving fresh usage.
+	UsageTracker *UsageTracker
 }
 
 // defaultCompactThresholdPct is the proactive trigger if the caller

@@ -16,14 +16,25 @@ type mockStreamAttempt struct {
 }
 
 type mockStreamClient struct {
-	events    []providers.StreamEvent
-	attempts  []mockStreamAttempt
-	requests  []providers.ChatRequest
-	callCount int
+	events        []providers.StreamEvent
+	attempts      []mockStreamAttempt
+	chatResponses []providers.ChatResponse
+	chatErrs      []error
+	requests      []providers.ChatRequest
+	callCount     int
+	chatCallCount int
 }
 
 func (m *mockStreamClient) Chat(_ context.Context, req providers.ChatRequest) (providers.ChatResponse, error) {
 	m.requests = append(m.requests, req)
+	idx := m.chatCallCount
+	m.chatCallCount++
+	if idx < len(m.chatErrs) && m.chatErrs[idx] != nil {
+		return providers.ChatResponse{}, m.chatErrs[idx]
+	}
+	if idx < len(m.chatResponses) {
+		return m.chatResponses[idx], nil
+	}
 	return providers.ChatResponse{}, nil
 }
 
@@ -438,6 +449,62 @@ func TestStreamRunner_AcceptsHistory(t *testing.T) {
 	}
 	if newMsgs[0].Content != "turn2 reply" {
 		t.Fatalf("unexpected new message content: %q", newMsgs[0].Content)
+	}
+}
+
+func TestStreamRunner_ReusesUsageAcrossTurnsForPreRequestCompact(t *testing.T) {
+	client := &mockStreamClient{
+		attempts: []mockStreamAttempt{
+			{events: []providers.StreamEvent{
+				{Type: providers.EventContentDelta, Content: "turn1"},
+				{Type: providers.EventDone, Usage: &providers.TokenUsage{InputTokens: 950}},
+			}},
+			{events: []providers.StreamEvent{
+				{Type: providers.EventContentDelta, Content: "turn2"},
+				{Type: providers.EventDone},
+			}},
+		},
+		chatResponses: []providers.ChatResponse{
+			{Content: "summarized"},
+		},
+	}
+
+	runner := StreamRunner{
+		Client:                client,
+		Model:                 "test-model",
+		ContextWindowOverride: 1000,
+	}
+
+	firstHistory := []providers.ChatMessage{
+		{Role: "system", Content: "sys"},
+		{Role: "user", Content: "u1"},
+		{Role: "assistant", Content: "a1"},
+		{Role: "user", Content: "u2"},
+		{Role: "assistant", Content: "a2"},
+	}
+	first, err := runner.RunWithCallback(context.Background(), firstHistory, nil)
+	if err != nil {
+		t.Fatalf("first RunWithCallback: %v", err)
+	}
+
+	secondHistory := append([]providers.ChatMessage{}, firstHistory...)
+	secondHistory = append(secondHistory, first.NewMessages...)
+	secondHistory = append(secondHistory, providers.ChatMessage{Role: "user", Content: "follow up"})
+
+	_, err = runner.RunWithCallback(context.Background(), secondHistory, nil)
+	if err != nil {
+		t.Fatalf("second RunWithCallback: %v", err)
+	}
+
+	if len(client.requests) != 3 {
+		t.Fatalf("expected 3 total requests (stream, compact, stream), got %d", len(client.requests))
+	}
+	if len(client.requests[2].Messages) >= len(secondHistory) {
+		t.Fatalf("expected compacted second request, got %d messages from %d-history input",
+			len(client.requests[2].Messages), len(secondHistory))
+	}
+	if got := client.requests[2].Messages[0].Content; got != "[Conversation summary]\nsummarized" {
+		t.Fatalf("expected compacted root summary, got %q", got)
 	}
 }
 

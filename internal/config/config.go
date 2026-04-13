@@ -276,9 +276,6 @@ func applyDefaults(cfg *Config) {
 	// max_steps = 0 means unlimited (no step cap, the model decides
 	// when to stop). Aligned with Claude Code's default behavior.
 	// Users who set an explicit positive value get a hard cap.
-	if cfg.Agent.MaxContextTokens == 0 {
-		cfg.Agent.MaxContextTokens = 128000
-	}
 	if cfg.Agent.Temperature == 0 {
 		cfg.Agent.Temperature = 0.2
 	}

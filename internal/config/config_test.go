@@ -98,6 +98,9 @@ func TestLoadFrom_Defaults(t *testing.T) {
 	if cfg.Agent.MaxSteps != 0 {
 		t.Fatalf("expected default max_steps 0 (unlimited), got %d", cfg.Agent.MaxSteps)
 	}
+	if cfg.Agent.MaxContextTokens != 0 {
+		t.Fatalf("expected default max_context_tokens 0 (auto), got %d", cfg.Agent.MaxContextTokens)
+	}
 	if cfg.Agent.SystemPrompt == "" {
 		t.Fatal("expected default system prompt")
 	}

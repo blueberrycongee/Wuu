@@ -95,6 +95,13 @@ func (t *UsageTracker) LastResponseTotal() int {
 	return t.lastResponseTotal
 }
 
+// HasGroundTruth reports whether the tracker has seen at least one
+// successful provider response and therefore holds a real usage
+// baseline instead of pure local estimates.
+func (t *UsageTracker) HasGroundTruth() bool {
+	return t.LastResponseTotal() > 0
+}
+
 // PendingDelta returns the current estimate for messages added since
 // the last response. Useful for tests and diagnostics.
 func (t *UsageTracker) PendingDelta() int {
@@ -116,6 +123,21 @@ func (t *UsageTracker) Reset() {
 	defer t.mu.Unlock()
 	t.lastResponseTotal = 0
 	t.pendingDelta = 0
+}
+
+// Clone returns a snapshot copy of the current tracker state. Useful
+// when a caller wants to speculate on one run and only commit the
+// updated usage state if that run's history is actually adopted.
+func (t *UsageTracker) Clone() *UsageTracker {
+	if t == nil {
+		return nil
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return &UsageTracker{
+		lastResponseTotal: t.lastResponseTotal,
+		pendingDelta:      t.pendingDelta,
+	}
 }
 
 // estimateMessages computes a rough token count for a slice of chat

@@ -359,6 +359,89 @@ func TestRunToolLoop_ProactiveCompactTriggers(t *testing.T) {
 	}
 }
 
+func TestRunToolLoop_PreRequestCompactRequiresGroundTruthUsage(t *testing.T) {
+	history := []providers.ChatMessage{
+		{Role: "system", Content: "sys"},
+		{Role: "user", Content: strings.Repeat("seed ", 80)},
+		{Role: "assistant", Content: strings.Repeat("seed ", 80)},
+		{Role: "user", Content: strings.Repeat("seed ", 80)},
+		{Role: "assistant", Content: strings.Repeat("seed ", 80)},
+	}
+	step := &fakeStep{results: []StepResult{{Content: "ok"}}}
+	compactCalled := 0
+	cfg := LoopConfig{
+		Model: "m",
+		Compact: func(_ context.Context, msgs []providers.ChatMessage) ([]providers.ChatMessage, error) {
+			compactCalled++
+			return msgs[:2], nil
+		},
+		MaxContextTokens: 10,
+	}
+
+	res, err := RunToolLoop(context.Background(), history, cfg, step)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if compactCalled != 0 {
+		t.Fatalf("expected no pre-request compact without ground-truth usage, got %d", compactCalled)
+	}
+	if len(step.calls) != 1 {
+		t.Fatalf("expected one provider call, got %d", len(step.calls))
+	}
+	if len(step.calls[0].Messages) != len(history) {
+		t.Fatalf("expected original history to be sent unchanged, got %d messages", len(step.calls[0].Messages))
+	}
+	if res.Content != "ok" {
+		t.Fatalf("unexpected content %q", res.Content)
+	}
+}
+
+func TestRunToolLoop_PreRequestCompactUsesSharedUsageTracker(t *testing.T) {
+	history := []providers.ChatMessage{
+		{Role: "system", Content: "sys"},
+		{Role: "user", Content: "u1"},
+		{Role: "assistant", Content: "a1"},
+		{Role: "user", Content: "u2"},
+		{Role: "assistant", Content: "a2"},
+		{Role: "user", Content: "follow up"},
+	}
+	step := &fakeStep{results: []StepResult{{Content: "ok"}}}
+	tracker := NewUsageTracker()
+	tracker.RecordResponse(&providers.TokenUsage{InputTokens: 950})
+	tracker.RecordPendingMessages(history[len(history)-1:])
+
+	compactCalled := 0
+	cfg := LoopConfig{
+		Model: "m",
+		Compact: func(_ context.Context, _ []providers.ChatMessage) ([]providers.ChatMessage, error) {
+			compactCalled++
+			return []providers.ChatMessage{
+				{Role: "system", Content: "[Conversation summary]\nOlder turns"},
+				{Role: "user", Content: "follow up"},
+			}, nil
+		},
+		MaxContextTokens: 1000,
+		UsageTracker:     tracker,
+	}
+
+	res, err := RunToolLoop(context.Background(), history, cfg, step)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if compactCalled != 1 {
+		t.Fatalf("expected one pre-request compact, got %d", compactCalled)
+	}
+	if len(step.calls) != 1 {
+		t.Fatalf("expected one provider call, got %d", len(step.calls))
+	}
+	if got := step.calls[0].Messages[0].Content; got != "[Conversation summary]\nOlder turns" {
+		t.Fatalf("expected compacted request root, got %q", got)
+	}
+	if !res.HistoryRewritten {
+		t.Fatal("expected history rewrite after pre-request compact")
+	}
+}
+
 func TestRunToolLoop_ProactiveCompactDisabledWhenNoWindow(t *testing.T) {
 	step := &fakeStep{results: []StepResult{{Content: "done", Usage: &providers.TokenUsage{InputTokens: 1_000_000, OutputTokens: 0}}}}
 	compactCalled := 0

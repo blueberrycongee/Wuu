@@ -14,7 +14,6 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/blueberrycongee/wuu/internal/agent"
-	"github.com/blueberrycongee/wuu/internal/compact"
 	"github.com/blueberrycongee/wuu/internal/coordinator"
 	"github.com/blueberrycongee/wuu/internal/hooks"
 	"github.com/blueberrycongee/wuu/internal/insight"
@@ -61,9 +60,6 @@ type streamEventMsg struct {
 }
 
 type streamFinishedMsg struct{}
-
-const compactingHistoryStatus = "compacting history"
-
 type ctrlCResetMsg struct{}
 
 type queueDrainMsg struct{}
@@ -148,9 +144,7 @@ type queuedMessage struct {
 }
 
 type pendingTurnResult struct {
-	baseHistory          []providers.ChatMessage
 	newMsgs              []providers.ChatMessage
-	preCompacted         bool
 	historyRewritten     bool
 	incrementalPersisted bool
 }
@@ -187,8 +181,7 @@ type Model struct {
 	pendingAutoResume bool
 	autoResumeChain   int
 
-	maxContextTokens int
-	requestTimeout   time.Duration
+	requestTimeout time.Duration
 
 	viewport viewport.Model
 	input    textarea.Model
@@ -346,7 +339,6 @@ func NewModel(cfg Config) Model {
 		memoryFiles:        cfg.Memory,
 		coordinator:        cfg.Coordinator,
 		askBridge:          cfg.AskUserBridge,
-		maxContextTokens:   cfg.MaxContextTokens,
 		requestTimeout:     cfg.RequestTimeout,
 		viewport:           vp,
 		input:              in,
@@ -354,10 +346,10 @@ func NewModel(cfg Config) Model {
 		clock:              time.Now().Format("15:04:05"),
 		statusLine:         "ready",
 		pendingViewportEntry: -1,
-		streamTarget:       -1,
-		historyIndex:       -1,
-		scrollbarHoverRow:  -1,
-		insightProgressIdx: -1,
+		streamTarget:         -1,
+		historyIndex:         -1,
+		scrollbarHoverRow:    -1,
+		insightProgressIdx:   -1,
 	}
 
 	// Session isolation: create or resume session.
@@ -908,12 +900,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				base := make([]providers.ChatMessage, len(m.pendingTurn.newMsgs))
 				copy(base, m.pendingTurn.newMsgs)
 				m.chatHistory = base
-				rewriteHistory = true
-			case m.pendingTurn.preCompacted:
-				base := make([]providers.ChatMessage, len(m.pendingTurn.baseHistory))
-				copy(base, m.pendingTurn.baseHistory)
-				m.chatHistory = base
-				m.chatHistory = append(m.chatHistory, m.pendingTurn.newMsgs...)
 				rewriteHistory = true
 			default:
 				if !m.pendingTurn.incrementalPersisted {
@@ -1473,13 +1459,12 @@ func (m Model) sendMessage(message queuedMessage) (tea.Model, tea.Cmd) {
 		queueHint = fmt.Sprintf(" · %d queued", len(m.messageQueue))
 	}
 
-	if shouldPreCompactHistory(m.chatHistory, m.maxContextTokens, m.streamRunner.Client) {
-		m.setLiveWorkStatus(workStatus{Phase: workPhaseCompacting, Label: "Compacting history", Meta: "Preparing the next turn", Running: true})
-		m.statusLine = compactingHistoryStatus + queueHint
-	} else {
+	if m.streamRunner != nil {
 		m.streamTarget = m.appendEntry("assistant", "")
 		m.setLiveWorkStatus(workStatus{Phase: workPhaseGenerating, Label: "Responding", Meta: "Writing the reply", Running: true})
 		m.statusLine = "streaming" + queueHint
+		m.refreshViewport(true)
+		return m.startStreamingTurn()
 	}
 	m.refreshViewport(true)
 	return m.startStreamingTurn()
@@ -1512,23 +1497,6 @@ func (m Model) startStreamingTurn() (tea.Model, tea.Cmd) {
 			}
 		}
 
-		var compacted bool
-		history, compacted = maybeCompactHistory(
-			ctx,
-			history,
-			m.maxContextTokens,
-			runner.Client,
-			runner.Model,
-		)
-		if compacted {
-			result.preCompacted = true
-			onEvent(providers.StreamEvent{
-				Type:    providers.EventCompact,
-				Content: "✦ Compacted history before replying",
-			})
-		}
-		result.baseHistory = history
-
 		res, err := runner.RunWithCallback(ctx, history, onEvent)
 		result.newMsgs = res.NewMessages
 		result.historyRewritten = res.HistoryRewritten
@@ -1558,20 +1526,14 @@ func (m Model) triggerAutoResume() (tea.Model, tea.Cmd) {
 	m.autoResumeChain++
 	m.pendingRequest = true
 	m.streaming = true
-	m.streamTarget = -1
-	if shouldPreCompactHistory(m.chatHistory, m.maxContextTokens, m.streamRunner.Client) {
-		m.setLiveWorkStatus(workStatus{Phase: workPhaseCompacting, Label: "Compacting history", Meta: "Preparing the next turn", Running: true})
-		m.statusLine = compactingHistoryStatus
-	} else {
-		m.streamTarget = m.appendEntry("assistant", "")
-		m.setLiveWorkStatus(workStatus{
-			Phase:   workPhaseAutoResume,
-			Label:   "Continuing",
-			Meta:    fmt.Sprintf("Picking up after worker updates (%d/%d)", m.autoResumeChain, maxAutoResumeChain),
-			Running: true,
-		})
-		m.statusLine = fmt.Sprintf("auto-resume (%d/%d)", m.autoResumeChain, maxAutoResumeChain)
-	}
+	m.streamTarget = m.appendEntry("assistant", "")
+	m.setLiveWorkStatus(workStatus{
+		Phase:   workPhaseAutoResume,
+		Label:   "Continuing",
+		Meta:    fmt.Sprintf("Picking up after worker updates (%d/%d)", m.autoResumeChain, maxAutoResumeChain),
+		Running: true,
+	})
+	m.statusLine = fmt.Sprintf("auto-resume (%d/%d)", m.autoResumeChain, maxAutoResumeChain)
 	m.refreshViewport(true)
 	return m.startStreamingTurn()
 }
@@ -1581,31 +1543,6 @@ func (m Model) newRequestContext() (context.Context, context.CancelFunc) {
 		return context.WithTimeout(context.Background(), m.requestTimeout)
 	}
 	return context.WithCancel(context.Background())
-}
-
-func maybeCompactHistory(
-	ctx context.Context,
-	history []providers.ChatMessage,
-	maxContextTokens int,
-	client providers.Client,
-	model string,
-) ([]providers.ChatMessage, bool) {
-	if !shouldPreCompactHistory(history, maxContextTokens, client) {
-		return history, false
-	}
-
-	compacted, err := compact.Compact(ctx, history, client, model)
-	if err != nil {
-		return history, false
-	}
-	return compacted, len(compacted) < len(history)
-}
-
-func shouldPreCompactHistory(history []providers.ChatMessage, maxContextTokens int, client providers.Client) bool {
-	if client == nil || maxContextTokens <= 0 {
-		return false
-	}
-	return compact.ShouldCompact(history, maxContextTokens)
 }
 
 func waitStreamEvent(ch <-chan providers.StreamEvent) tea.Cmd {

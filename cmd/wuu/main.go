@@ -179,6 +179,11 @@ func runTask(args []string) error {
 		SystemPrompt: cfg.Agent.SystemPrompt,
 		MaxSteps:     cfg.Agent.MaxSteps,
 		Temperature:  cfg.Agent.Temperature,
+		ContextWindowOverride: resolveContextWindow(
+			providerCfg.Model,
+			providerCfg.ContextWindow,
+			cfg.Agent.MaxContextTokens,
+		),
 	}
 
 	if *maxSteps > 0 {
@@ -460,14 +465,18 @@ func runTUI(args []string) error {
 	}
 
 	streamRunner := &agent.StreamRunner{
-		Client:                client,
-		Tools:                 toolExecutor,
-		Model:                 providerCfg.Model,
-		SystemPrompt:          systemPromptText,
-		MaxSteps:              cfg.Agent.MaxSteps,
-		Temperature:           cfg.Agent.Temperature,
-		ContextWindowOverride: providerCfg.ContextWindow,
-		DisableAutoCompact:    cfg.Agent.DisableAutoCompact,
+		Client:       client,
+		Tools:        toolExecutor,
+		Model:        providerCfg.Model,
+		SystemPrompt: systemPromptText,
+		MaxSteps:     cfg.Agent.MaxSteps,
+		Temperature:  cfg.Agent.Temperature,
+		ContextWindowOverride: resolveContextWindow(
+			providerCfg.Model,
+			providerCfg.ContextWindow,
+			cfg.Agent.MaxContextTokens,
+		),
+		DisableAutoCompact: cfg.Agent.DisableAutoCompact,
 	}
 	if *maxSteps > 0 {
 		streamRunner.MaxSteps = *maxSteps
@@ -501,20 +510,19 @@ func runTUI(args []string) error {
 	}
 
 	cfgUI := tui.Config{
-		Provider:         resolvedName,
-		Model:            providerCfg.Model,
-		ConfigPath:       configPath,
-		MemoryPath:       resolvedMemoryPath,
-		SessionDir:       sessDir,
-		ResumeID:         resolvedResumeID,
-		MaxContextTokens: cfg.Agent.MaxContextTokens,
-		RequestTimeout:   *requestTimeout,
-		StreamRunner:     streamRunner,
-		HookDispatcher:   hookDispatcher,
-		Skills:           discoveredSkills,
-		Memory:           memoryFiles,
-		Coordinator:      coord,
-		AskUserBridge:    askBridge,
+		Provider:       resolvedName,
+		Model:          providerCfg.Model,
+		ConfigPath:     configPath,
+		MemoryPath:     resolvedMemoryPath,
+		SessionDir:     sessDir,
+		ResumeID:       resolvedResumeID,
+		RequestTimeout: *requestTimeout,
+		StreamRunner:   streamRunner,
+		HookDispatcher: hookDispatcher,
+		Skills:         discoveredSkills,
+		Memory:         memoryFiles,
+		Coordinator:    coord,
+		AskUserBridge:  askBridge,
 	}
 	if toolkit != nil {
 		cfgUI.OnSessionID = func(id string) {
@@ -571,6 +579,16 @@ func resolveRuntimePath(rootDir, input string) (string, error) {
 		return value, nil
 	}
 	return filepath.Join(rootDir, value), nil
+}
+
+func resolveContextWindow(model string, providerOverride, agentOverride int) int {
+	if providerOverride > 0 {
+		return providerOverride
+	}
+	if agentOverride > 0 {
+		return agentOverride
+	}
+	return providers.ContextWindowFor(model)
 }
 
 // appendMemoryToPrompt prepends the contents of discovered memory files
