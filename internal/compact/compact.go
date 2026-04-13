@@ -15,6 +15,13 @@ import (
 const defaultCompactTimeout = 15 * time.Second
 const toolResultPruneThresholdChars = 400
 
+// maxCompactOutputChars caps the summarization output to approximately
+// 20K tokens (~4 chars per token). Aligned with Claude Code's
+// MAX_OUTPUT_TOKENS_FOR_SUMMARY and Codex's COMPACT_USER_MESSAGE_MAX_TOKENS.
+// Without this cap, the summary itself can consume a large portion of
+// the context window, defeating the purpose of compaction.
+const maxCompactOutputChars = 80_000
+
 func compactTimeout() time.Duration {
 	if v := os.Getenv("WUU_COMPACT_TIMEOUT_MS"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
@@ -139,6 +146,9 @@ func Compact(ctx context.Context, messages []providers.ChatMessage, client provi
 		}
 
 		summary := strings.TrimSpace(resp.Content)
+		if len(summary) > maxCompactOutputChars {
+			summary = summary[:maxCompactOutputChars]
+		}
 		if summary == "" {
 			return messages, nil
 		}
