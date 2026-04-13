@@ -57,12 +57,14 @@ type MemoryConfig struct {
 
 // ProviderConfig configures one model gateway.
 type ProviderConfig struct {
-	Type      string            `json:"type"`
-	BaseURL   string            `json:"base_url"`
-	APIKey    string            `json:"api_key,omitempty"`
-	APIKeyEnv string            `json:"api_key_env,omitempty"`
-	Model     string            `json:"model"`
-	Headers   map[string]string `json:"headers,omitempty"`
+	Type         string            `json:"type"`
+	BaseURL      string            `json:"base_url"`
+	APIKey       string            `json:"api_key,omitempty"`
+	APIKeyEnv    string            `json:"api_key_env,omitempty"`
+	AuthToken    string            `json:"auth_token,omitempty"`
+	AuthTokenEnv string            `json:"auth_token_env,omitempty"`
+	Model        string            `json:"model"`
+	Headers      map[string]string `json:"headers,omitempty"`
 	// StreamConnectTimeoutMS bounds dial/TLS/response-header wait for one
 	// streaming connection attempt. It does not cap the whole turn.
 	StreamConnectTimeoutMS int `json:"stream_connect_timeout_ms,omitempty"`

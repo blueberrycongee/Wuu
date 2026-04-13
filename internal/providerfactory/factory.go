@@ -67,9 +67,15 @@ func BuildStreamClientWithRetry(provider config.ProviderConfig, providerName str
 
 func buildClientWithRetry(provider config.ProviderConfig, providerName string, retry *providers.RetryConfig) (providers.Client, error) {
 	typeName := normalizeType(provider.Type)
-	apiKey, err := resolveAPIKey(provider, providerName)
-	if err != nil {
-		return nil, err
+
+	// Resolve auth token for anthropic providers (Bearer auth, aligned with
+	// the Anthropic SDK's ANTHROPIC_AUTH_TOKEN support).
+	authToken := resolveAuthToken(provider)
+
+	// API key is optional when auth token is available (anthropic providers).
+	apiKey, apiKeyErr := resolveAPIKey(provider, providerName)
+	if apiKeyErr != nil && authToken == "" {
+		return nil, apiKeyErr
 	}
 
 	switch typeName {
@@ -89,6 +95,7 @@ func buildClientWithRetry(provider config.ProviderConfig, providerName string, r
 		client, newErr := anthropic.New(anthropic.ClientConfig{
 			BaseURL:      provider.BaseURL,
 			APIKey:       apiKey,
+			AuthToken:    authToken,
 			Headers:      provider.Headers,
 			RetryConfig:  retry,
 			StreamConfig: providerStreamTransportConfig(provider),
@@ -158,6 +165,19 @@ func ResolveAPIKeyWithHome(provider config.ProviderConfig, providerName, home st
 
 func resolveAPIKey(provider config.ProviderConfig, providerName string) (string, error) {
 	return ResolveAPIKeyWithHome(provider, providerName, os.Getenv("HOME"))
+}
+
+// resolveAuthToken resolves a Bearer auth token from config or environment.
+// This mirrors the Anthropic SDK's ANTHROPIC_AUTH_TOKEN support.
+func resolveAuthToken(provider config.ProviderConfig) string {
+	if t := strings.TrimSpace(provider.AuthToken); t != "" {
+		return t
+	}
+	envKey := strings.TrimSpace(provider.AuthTokenEnv)
+	if envKey == "" {
+		envKey = "ANTHROPIC_AUTH_TOKEN"
+	}
+	return strings.TrimSpace(os.Getenv(envKey))
 }
 
 func defaultAPIKeyEnv(providerType string) string {

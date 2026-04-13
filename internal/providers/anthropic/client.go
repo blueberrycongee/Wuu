@@ -38,6 +38,7 @@ const (
 type ClientConfig struct {
 	BaseURL      string
 	APIKey       string
+	AuthToken    string // Bearer token (ANTHROPIC_AUTH_TOKEN). Used instead of APIKey when set.
 	Headers      map[string]string
 	HTTPClient   *http.Client
 	MaxTokens    int
@@ -49,6 +50,7 @@ type ClientConfig struct {
 type Client struct {
 	baseURL      string
 	apiKey       string
+	authToken    string
 	headers      map[string]string
 	httpClient   *http.Client
 	maxTokens    int
@@ -61,8 +63,8 @@ func New(cfg ClientConfig) (*Client, error) {
 	if strings.TrimSpace(cfg.BaseURL) == "" {
 		return nil, errors.New("base URL is required")
 	}
-	if strings.TrimSpace(cfg.APIKey) == "" {
-		return nil, errors.New("API key is required")
+	if strings.TrimSpace(cfg.APIKey) == "" && strings.TrimSpace(cfg.AuthToken) == "" {
+		return nil, errors.New("either API key or auth token is required")
 	}
 	hc := cfg.HTTPClient
 	if hc == nil {
@@ -81,6 +83,7 @@ func New(cfg ClientConfig) (*Client, error) {
 	return &Client{
 		baseURL:      strings.TrimRight(cfg.BaseURL, "/"),
 		apiKey:       cfg.APIKey,
+		authToken:    cfg.AuthToken,
 		headers:      cloneHeaders(cfg.Headers),
 		httpClient:   hc,
 		maxTokens:    maxTokens,
@@ -337,7 +340,12 @@ func (c *Client) doMessagesRequest(
 			return fmt.Errorf("build request: %w", err)
 		}
 		httpReq.Header.Set("content-type", "application/json")
-		httpReq.Header.Set("x-api-key", c.apiKey)
+		if c.apiKey != "" {
+			httpReq.Header.Set("x-api-key", c.apiKey)
+		}
+		if c.authToken != "" {
+			httpReq.Header.Set("Authorization", "Bearer "+c.authToken)
+		}
 		httpReq.Header.Set("anthropic-version", defaultAnthropicVersion)
 		for k, v := range c.headers {
 			httpReq.Header.Set(k, v)
