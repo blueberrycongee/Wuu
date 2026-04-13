@@ -38,6 +38,7 @@ type workStatus struct {
 	Phase   workPhase
 	Label   string
 	Meta    string
+	Detail  string
 	Running bool
 }
 
@@ -69,7 +70,11 @@ func deriveWorkStatus(status string) workStatus {
 		}
 		return workStatus{Phase: workPhaseTool, Label: fmt.Sprintf("Running %s", name), Meta: "Making progress with a tool", Running: true}
 	case strings.HasPrefix(status, "Reconnecting"):
-		return workStatus{Phase: workPhaseReconnecting, Label: "Reconnecting", Meta: "Restoring the live response", Running: true}
+		label := trimToWidth(strings.TrimSpace(status), 32)
+		if label == "" {
+			label = "Reconnecting"
+		}
+		return workStatus{Phase: workPhaseReconnecting, Label: label, Meta: "Restoring the live response", Running: true}
 	case strings.HasPrefix(status, "auto-resume"):
 		return workStatus{Phase: workPhaseAutoResume, Label: "Continuing", Meta: "Picking up after worker updates", Running: true}
 	default:
@@ -177,6 +182,14 @@ func statusTextSegments(ws workStatus, italic bool) []statusTextSegment {
 	if meta := strings.TrimSpace(ws.Meta); meta != "" && meta != ws.Label {
 		segments = append(segments, statusTextSegment{
 			Text:   " · " + trimToWidth(meta, 44),
+			Base:   italicizeStyle(waitingStatusMetaStyle, italic),
+			Strong: italicizeStyle(waitingStatusLabelStrongStyle, italic),
+			Bright: italicizeStyle(waitingStatusLabelBrightStyle, italic),
+		})
+	}
+	if detail := strings.TrimSpace(ws.Detail); detail != "" && detail != ws.Label && detail != ws.Meta {
+		segments = append(segments, statusTextSegment{
+			Text:   " · " + trimToWidth(detail, 36),
 			Base:   italicizeStyle(waitingStatusMetaStyle, italic),
 			Strong: italicizeStyle(waitingStatusLabelStrongStyle, italic),
 			Bright: italicizeStyle(waitingStatusLabelBrightStyle, italic),

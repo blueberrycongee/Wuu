@@ -1022,6 +1022,26 @@ func TestRenderInlineStatus_ShimmerContinuesIntoMeta(t *testing.T) {
 	}
 }
 
+func TestRenderInlineWorkStatus_IncludesDetail(t *testing.T) {
+	raw := renderInlineWorkStatus(workStatus{
+		Phase:   workPhaseReconnecting,
+		Label:   "Reconnecting... 2/5",
+		Meta:    "Idle timeout waiting for SSE",
+		Detail:  "Next try in 1.5s",
+		Running: true,
+	}, 0, 120)
+	got := ansi.Strip(raw)
+	if !strings.Contains(got, "Reconnecting... 2/5") {
+		t.Fatalf("expected reconnect label in output, got %q", got)
+	}
+	if !strings.Contains(got, "Idle timeout waiting for SSE") {
+		t.Fatalf("expected reconnect reason in output, got %q", got)
+	}
+	if !strings.Contains(got, "Next try in 1.5s") {
+		t.Fatalf("expected reconnect retry delay in output, got %q", got)
+	}
+}
+
 func TestStatusShimmerCycleLength_CoversWholeRespondingSentence(t *testing.T) {
 	ws := deriveWorkStatus("streaming")
 	segments := statusTextSegments(ws, true)
@@ -1344,6 +1364,88 @@ func TestStreamLifecycleEventUpdatesStructuredWorkStatus(t *testing.T) {
 	}
 	if after.currentWorkStatus().Meta != "Retry 2/5" {
 		t.Fatalf("unexpected reconnect meta: %q", after.currentWorkStatus().Meta)
+	}
+}
+
+func TestStreamLifecycleReconnectIncludesReasonAndDelay(t *testing.T) {
+	m := NewModel(Config{
+		Provider:   "test",
+		Model:      "test-model",
+		ConfigPath: "/tmp/.wuu.json",
+		RunPrompt: func(_ctx context.Context, _prompt string) (string, error) {
+			return "", nil
+		},
+	})
+	m.streaming = true
+	m.pendingRequest = true
+
+	updated, _ := m.Update(streamEventMsg{
+		event: providers.StreamEvent{
+			Type: providers.EventLifecycle,
+			Lifecycle: &providers.StreamLifecycle{
+				Phase:      providers.StreamPhaseReconnecting,
+				RetryCount: 2,
+				MaxRetries: 5,
+				RetryIn:    1500 * time.Millisecond,
+				Reason:     "Idle timeout waiting for SSE",
+			},
+		},
+	})
+	after := updated.(Model)
+	ws := after.currentWorkStatus()
+	if ws.Label != "Reconnecting... 2/5" {
+		t.Fatalf("unexpected reconnect label: %q", ws.Label)
+	}
+	if ws.Meta != "Idle timeout waiting for SSE" {
+		t.Fatalf("unexpected reconnect meta: %q", ws.Meta)
+	}
+	if ws.Detail != "Next try in 1.5s" {
+		t.Fatalf("unexpected reconnect detail: %q", ws.Detail)
+	}
+}
+
+func TestStreamReconnectEventPreservesLifecycleDetails(t *testing.T) {
+	m := NewModel(Config{
+		Provider:   "test",
+		Model:      "test-model",
+		ConfigPath: "/tmp/.wuu.json",
+		RunPrompt: func(_ctx context.Context, _prompt string) (string, error) {
+			return "", nil
+		},
+	})
+	m.streaming = true
+	m.pendingRequest = true
+
+	updated, _ := m.Update(streamEventMsg{
+		event: providers.StreamEvent{
+			Type: providers.EventLifecycle,
+			Lifecycle: &providers.StreamLifecycle{
+				Phase:      providers.StreamPhaseReconnecting,
+				RetryCount: 1,
+				MaxRetries: 5,
+				RetryIn:    200 * time.Millisecond,
+				Reason:     "stream closed before done",
+			},
+		},
+	})
+	withLifecycle := updated.(Model)
+
+	updated, _ = withLifecycle.Update(streamEventMsg{
+		event: providers.StreamEvent{
+			Type:    providers.EventReconnect,
+			Content: "Reconnecting... 1/5",
+		},
+	})
+	after := updated.(Model)
+	ws := after.currentWorkStatus()
+	if ws.Label != "Reconnecting... 1/5" {
+		t.Fatalf("unexpected reconnect label: %q", ws.Label)
+	}
+	if ws.Meta != "stream closed before done" {
+		t.Fatalf("expected reconnect reason to survive EventReconnect, got %q", ws.Meta)
+	}
+	if ws.Detail != "Next try in 200ms" {
+		t.Fatalf("expected reconnect delay detail to survive EventReconnect, got %q", ws.Detail)
 	}
 }
 

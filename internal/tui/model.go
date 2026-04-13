@@ -1839,11 +1839,7 @@ func (m *Model) applyStreamEvent(event providers.StreamEvent, rearm bool) tea.Cm
 			case providers.StreamPhaseConnected:
 				m.setLiveWorkStatus(workStatus{Phase: workPhaseGenerating, Label: "Responding", Meta: "Writing the reply", Running: true})
 			case providers.StreamPhaseReconnecting:
-				meta := "Restoring the live response"
-				if event.Lifecycle.RetryCount > 0 && event.Lifecycle.MaxRetries > 0 {
-					meta = fmt.Sprintf("Retry %d/%d", event.Lifecycle.RetryCount, event.Lifecycle.MaxRetries)
-				}
-				m.setLiveWorkStatus(workStatus{Phase: workPhaseReconnecting, Label: "Reconnecting", Meta: meta, Running: true})
+				m.setLiveWorkStatus(reconnectWorkStatus(event.Lifecycle))
 			case providers.StreamPhaseFailed:
 				m.clearLiveWorkStatus()
 			}
@@ -1855,7 +1851,15 @@ func (m *Model) applyStreamEvent(event providers.StreamEvent, rearm bool) tea.Cm
 		if msg == "" {
 			msg = "Reconnecting..."
 		}
-		m.setLiveWorkStatus(workStatus{Phase: workPhaseReconnecting, Label: "Reconnecting", Meta: "Restoring the live response", Running: true})
+		reconnect := m.currentWorkStatus()
+		if reconnect.Phase != workPhaseReconnecting {
+			reconnect = reconnectWorkStatus(nil)
+		}
+		reconnect.Label = compactStatusDetail(msg, 32)
+		if reconnect.Label == "" {
+			reconnect.Label = "Reconnecting"
+		}
+		m.setLiveWorkStatus(reconnect)
 		m.statusLine = msg
 		return nextWait()
 
@@ -2648,6 +2652,70 @@ func (m *Model) setLiveWorkStatus(status workStatus) {
 
 func (m *Model) clearLiveWorkStatus() {
 	m.liveWorkStatus = workStatus{}
+}
+
+func compactStatusDetail(raw string, width int) string {
+	raw = strings.Join(strings.Fields(strings.TrimSpace(raw)), " ")
+	if raw == "" {
+		return ""
+	}
+	return trimToWidth(raw, width)
+}
+
+func formatStatusDelay(delay time.Duration) string {
+	if delay <= 0 {
+		return ""
+	}
+	if delay < time.Second {
+		ms := delay.Round(10 * time.Millisecond).Milliseconds()
+		if ms < 1 {
+			ms = 1
+		}
+		return fmt.Sprintf("%dms", ms)
+	}
+	if delay < 10*time.Second {
+		return fmt.Sprintf("%.1fs", delay.Round(100*time.Millisecond).Seconds())
+	}
+	if delay < time.Minute {
+		return fmt.Sprintf("%ds", int(delay.Round(time.Second).Seconds()))
+	}
+	return fmt.Sprintf("%dm%02ds", int(delay.Minutes()), int(delay.Round(time.Second).Seconds())%60)
+}
+
+func reconnectWorkStatus(lifecycle *providers.StreamLifecycle) workStatus {
+	ws := workStatus{
+		Phase:   workPhaseReconnecting,
+		Label:   "Reconnecting",
+		Meta:    "Restoring the live response",
+		Running: true,
+	}
+	if lifecycle == nil {
+		return ws
+	}
+	if lifecycle.RetryCount > 0 && lifecycle.MaxRetries > 0 {
+		ws.Label = fmt.Sprintf("Reconnecting... %d/%d", lifecycle.RetryCount, lifecycle.MaxRetries)
+	} else if lifecycle.Attempt > 1 && lifecycle.MaxAttempts > 0 {
+		ws.Label = fmt.Sprintf("Reconnecting... %d/%d", lifecycle.Attempt, lifecycle.MaxAttempts)
+	}
+
+	reason := compactStatusDetail(lifecycle.Reason, 44)
+	nextTry := ""
+	if delay := formatStatusDelay(lifecycle.RetryIn); delay != "" {
+		nextTry = "Next try in " + delay
+	}
+
+	switch {
+	case reason != "" && nextTry != "":
+		ws.Meta = reason
+		ws.Detail = nextTry
+	case reason != "":
+		ws.Meta = reason
+	case nextTry != "":
+		ws.Meta = nextTry
+	case lifecycle.RetryCount > 0 && lifecycle.MaxRetries > 0:
+		ws.Meta = fmt.Sprintf("Retry %d/%d", lifecycle.RetryCount, lifecycle.MaxRetries)
+	}
+	return ws
 }
 
 func (m Model) currentWorkStatus() workStatus {
