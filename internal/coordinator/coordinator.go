@@ -16,6 +16,9 @@ import (
 	"strings"
 	"time"
 
+	"crypto/rand"
+	"encoding/hex"
+
 	"github.com/blueberrycongee/wuu/internal/agent"
 	"github.com/blueberrycongee/wuu/internal/providers"
 	"github.com/blueberrycongee/wuu/internal/subagent"
@@ -741,5 +744,7 @@ func newCoordinatorWorkerID(typ string) string {
 	if typ == "" {
 		typ = "agent"
 	}
-	return fmt.Sprintf("%s-%d", typ, time.Now().UnixNano()%1_000_000_000)
+	b := make([]byte, 4)
+	_, _ = rand.Read(b)
+	return fmt.Sprintf("%s-%s", typ, hex.EncodeToString(b))
 }
