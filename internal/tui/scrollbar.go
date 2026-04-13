@@ -116,6 +116,37 @@ func scrollbarOffsetForThumbPos(thumbPos, trackSpace, maxOffset int) int {
 	return roundDiv(thumbPos*maxOffset, trackSpace)
 }
 
+func softenScrollbarTrackOffset(currentOffset, targetOffset, viewportSize, maxOffset int) int {
+	if maxOffset <= 0 {
+		return 0
+	}
+	if currentOffset < 0 {
+		currentOffset = 0
+	} else if currentOffset > maxOffset {
+		currentOffset = maxOffset
+	}
+	if targetOffset < 0 {
+		targetOffset = 0
+	} else if targetOffset > maxOffset {
+		targetOffset = maxOffset
+	}
+	delta := targetOffset - currentOffset
+	if delta == 0 {
+		return currentOffset
+	}
+	stepLimit := max(1, viewportSize)
+	if halfRange := maxOffset / 2; stepLimit > halfRange {
+		stepLimit = max(1, halfRange)
+	}
+	if delta > stepLimit {
+		return currentOffset + stepLimit
+	}
+	if delta < -stepLimit {
+		return currentOffset - stepLimit
+	}
+	return targetOffset
+}
+
 func roundDiv(numerator, denominator int) int {
 	if denominator <= 0 {
 		return 0

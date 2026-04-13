@@ -150,6 +150,20 @@ func TestScrollbarOffsetForThumbPos_Clamps(t *testing.T) {
 	}
 }
 
+func TestSoftenScrollbarTrackOffset_LimitsLargeJump(t *testing.T) {
+	got := softenScrollbarTrackOffset(0, 80, 10, 90)
+	if got != 10 {
+		t.Fatalf("expected softened jump to move by one viewport, got %d", got)
+	}
+}
+
+func TestSoftenScrollbarTrackOffset_AllowsSmallJump(t *testing.T) {
+	got := softenScrollbarTrackOffset(20, 26, 10, 90)
+	if got != 26 {
+		t.Fatalf("expected small jump to reach target directly, got %d", got)
+	}
+}
+
 func TestRoundDiv(t *testing.T) {
 	tests := []struct {
 		num  int

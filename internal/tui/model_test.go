@@ -357,7 +357,7 @@ func TestMouseClickPositionsCursorMultiLine(t *testing.T) {
 func TestMouseDragScrollbarThumbTracksMotion(t *testing.T) {
 	m := newScrollableModelForScrollbarTest(t)
 
-	thumbPos, thumbSize, _, _, ok := scrollbarThumbGeometry(
+	thumbPos, thumbSize, trackSpace, maxOffset, ok := scrollbarThumbGeometry(
 		m.layout.Chat.Height,
 		m.viewport.TotalLineCount(),
 		m.viewport.Height,
@@ -366,12 +366,13 @@ func TestMouseDragScrollbarThumbTracksMotion(t *testing.T) {
 	if !ok {
 		t.Fatal("expected visible scrollbar thumb")
 	}
-	if thumbSize < 1 {
-		t.Fatalf("expected thumb size >= 1, got %d", thumbSize)
+	if thumbSize < 2 {
+		t.Fatalf("expected thumb size >= 2 for midpoint drag test, got %d", thumbSize)
 	}
 
 	clickX := m.layout.Chat.X + m.layout.Chat.Width - 1
-	pressY := m.layout.Chat.Y + thumbPos
+	grabRow := thumbPos + thumbSize/2
+	pressY := m.layout.Chat.Y + grabRow
 
 	updated, _ := m.Update(tea.MouseMsg{
 		Action: tea.MouseActionPress,
@@ -383,19 +384,21 @@ func TestMouseDragScrollbarThumbTracksMotion(t *testing.T) {
 	if !dragging.scrollbarDragging {
 		t.Fatal("expected scrollbarDragging=true after pressing thumb")
 	}
+	if dragging.scrollbarDragGrabOffset != grabRow-thumbPos {
+		t.Fatalf("expected grab offset %d, got %d", grabRow-thumbPos, dragging.scrollbarDragGrabOffset)
+	}
 
-	motionY := dragging.layout.Chat.Y + dragging.layout.Chat.Height - 1
+	targetRow := min(dragging.layout.Chat.Height-1, grabRow+3)
 	updated, _ = dragging.Update(tea.MouseMsg{
 		Action: tea.MouseActionMotion,
 		Button: tea.MouseButtonLeft,
-		// Simulate fast drag: pointer can drift away from scrollbar column.
-		X: dragging.layout.Chat.X,
-		Y: motionY,
+		X:      dragging.layout.Chat.X,
+		Y:      dragging.layout.Chat.Y + targetRow,
 	})
 	afterMotion := updated.(Model)
-	maxOffset := max(0, afterMotion.viewport.TotalLineCount()-afterMotion.viewport.Height)
-	if afterMotion.viewport.YOffset != maxOffset {
-		t.Fatalf("expected viewport offset %d after drag motion, got %d", maxOffset, afterMotion.viewport.YOffset)
+	want := scrollbarOffsetForThumbPos(targetRow-dragging.scrollbarDragGrabOffset, trackSpace, maxOffset)
+	if afterMotion.viewport.YOffset != want {
+		t.Fatalf("expected viewport offset %d after drag motion, got %d", want, afterMotion.viewport.YOffset)
 	}
 	if !afterMotion.scrollbarDragging {
 		t.Fatal("expected scrollbarDragging=true during drag")
@@ -405,7 +408,7 @@ func TestMouseDragScrollbarThumbTracksMotion(t *testing.T) {
 		Action: tea.MouseActionRelease,
 		Button: tea.MouseButtonLeft,
 		X:      clickX,
-		Y:      motionY,
+		Y:      dragging.layout.Chat.Y + targetRow,
 	})
 	afterRelease := updated.(Model)
 	if afterRelease.scrollbarDragging {
@@ -416,7 +419,7 @@ func TestMouseDragScrollbarThumbTracksMotion(t *testing.T) {
 func TestMouseClickScrollbarTrackJumpsProportionally(t *testing.T) {
 	m := newScrollableModelForScrollbarTest(t)
 
-	thumbPos, thumbSize, _, _, ok := scrollbarThumbGeometry(
+	thumbPos, thumbSize, trackSpace, maxOffset, ok := scrollbarThumbGeometry(
 		m.layout.Chat.Height,
 		m.viewport.TotalLineCount(),
 		m.viewport.Height,
@@ -434,6 +437,7 @@ func TestMouseClickScrollbarTrackJumpsProportionally(t *testing.T) {
 		t.Fatalf("failed to choose a track row outside thumb: row=%d", row)
 	}
 
+	absoluteTarget := scrollbarOffsetForThumbPos(row-thumbSize/2, trackSpace, maxOffset)
 	clickX := m.layout.Chat.X + m.layout.Chat.Width - 1
 	clickY := m.layout.Chat.Y + row
 	updated, _ := m.Update(tea.MouseMsg{
@@ -446,26 +450,11 @@ func TestMouseClickScrollbarTrackJumpsProportionally(t *testing.T) {
 	if after.scrollbarDragging {
 		t.Fatal("expected scrollbarDragging=false after track click")
 	}
-
-	maxOffset := max(0, after.viewport.TotalLineCount()-after.viewport.Height)
-	_, afterThumbSize, afterTrackSpace, _, ok := scrollbarThumbGeometry(
-		after.layout.Chat.Height,
-		after.viewport.TotalLineCount(),
-		after.viewport.Height,
-		after.viewport.YOffset,
-	)
-	if !ok {
-		t.Fatal("expected visible scrollbar geometry after track click")
+	if after.viewport.YOffset <= m.viewport.YOffset {
+		t.Fatalf("expected track click to move toward target, before=%d after=%d", m.viewport.YOffset, after.viewport.YOffset)
 	}
-	targetThumbPos := row - afterThumbSize/2
-	if targetThumbPos < 0 {
-		targetThumbPos = 0
-	} else if targetThumbPos > afterTrackSpace {
-		targetThumbPos = afterTrackSpace
-	}
-	want := scrollbarOffsetForThumbPos(targetThumbPos, afterTrackSpace, maxOffset)
-	if after.viewport.YOffset != want {
-		t.Fatalf("expected viewport offset %d after track click, got %d", want, after.viewport.YOffset)
+	if absoluteTarget-m.viewport.YOffset > m.viewport.Height && after.viewport.YOffset >= absoluteTarget {
+		t.Fatalf("expected softened track click to stop before absolute target %d, got %d", absoluteTarget, after.viewport.YOffset)
 	}
 }
 
@@ -474,7 +463,7 @@ func TestMouseDragScrollbarReanchorsWhenThumbGeometryChanges(t *testing.T) {
 	maxOffset := max(0, m.viewport.TotalLineCount()-m.viewport.Height)
 	m.setViewportOffset(maxOffset / 2)
 
-	thumbPos, _, _, _, ok := scrollbarThumbGeometry(
+	thumbPos, thumbSize, _, _, ok := scrollbarThumbGeometry(
 		m.layout.Chat.Height,
 		m.viewport.TotalLineCount(),
 		m.viewport.Height,
@@ -483,8 +472,12 @@ func TestMouseDragScrollbarReanchorsWhenThumbGeometryChanges(t *testing.T) {
 	if !ok {
 		t.Fatal("expected visible scrollbar thumb")
 	}
+	grabRow := thumbPos
+	if thumbSize > 1 {
+		grabRow = thumbPos + thumbSize/2
+	}
 	clickX := m.layout.Chat.X + m.layout.Chat.Width - 1
-	pressY := m.layout.Chat.Y + thumbPos
+	pressY := m.layout.Chat.Y + grabRow
 	updated, _ := m.Update(tea.MouseMsg{
 		Action: tea.MouseActionPress,
 		Button: tea.MouseButtonLeft,
@@ -511,7 +504,7 @@ func TestMouseDragScrollbarReanchorsWhenThumbGeometryChanges(t *testing.T) {
 	if diff < 0 {
 		diff = -diff
 	}
-	if diff > 1 {
+	if diff > 2 {
 		t.Fatalf("expected offset stable after geometry change with zero drag delta, got before=%d after=%d", offsetBeforeGrowth, after.viewport.YOffset)
 	}
 }

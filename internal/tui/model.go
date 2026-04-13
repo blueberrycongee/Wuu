@@ -54,7 +54,6 @@ type tickMsg struct {
 	now time.Time
 }
 
-
 type streamEventMsg struct {
 	event providers.StreamEvent
 }
@@ -264,11 +263,10 @@ type Model struct {
 	pendingViewportEntry   int
 
 	// Scrollbar drag state.
-	scrollbarDragging        bool
-	scrollbarDragStartRow    int
-	scrollbarDragStartOffset int
-	scrollbarDragTrackSpace  int
-	scrollbarDragMaxOffset   int
+	scrollbarDragging       bool
+	scrollbarDragGrabOffset int
+	scrollbarDragTrackSpace int
+	scrollbarDragMaxOffset  int
 
 	// Scrollbar hover state.
 	scrollbarHoverActive bool
@@ -326,25 +324,25 @@ func NewModel(cfg Config) Model {
 	in := defaultInputTextarea
 
 	m := Model{
-		provider:           cfg.Provider,
-		modelName:          cfg.Model,
-		configPath:         cfg.ConfigPath,
-		workspaceRoot:      filepath.Dir(cfg.ConfigPath),
-		memoryPath:         cfg.MemoryPath,
-		sessionDir:         cfg.SessionDir,
-		streamRunner:       cfg.StreamRunner,
-		hookDispatcher:     cfg.HookDispatcher,
-		onSessionID:        cfg.OnSessionID,
-		skills:             cfg.Skills,
-		memoryFiles:        cfg.Memory,
-		coordinator:        cfg.Coordinator,
-		askBridge:          cfg.AskUserBridge,
-		requestTimeout:     cfg.RequestTimeout,
-		viewport:           vp,
-		input:              in,
-		autoFollow:         true,
-		clock:              time.Now().Format("15:04:05"),
-		statusLine:         "ready",
+		provider:             cfg.Provider,
+		modelName:            cfg.Model,
+		configPath:           cfg.ConfigPath,
+		workspaceRoot:        filepath.Dir(cfg.ConfigPath),
+		memoryPath:           cfg.MemoryPath,
+		sessionDir:           cfg.SessionDir,
+		streamRunner:         cfg.StreamRunner,
+		hookDispatcher:       cfg.HookDispatcher,
+		onSessionID:          cfg.OnSessionID,
+		skills:               cfg.Skills,
+		memoryFiles:          cfg.Memory,
+		coordinator:          cfg.Coordinator,
+		askBridge:            cfg.AskUserBridge,
+		requestTimeout:       cfg.RequestTimeout,
+		viewport:             vp,
+		input:                in,
+		autoFollow:           true,
+		clock:                time.Now().Format("15:04:05"),
+		statusLine:           "ready",
 		pendingViewportEntry: -1,
 		streamTarget:         -1,
 		historyIndex:         -1,
@@ -1379,7 +1377,6 @@ func (m Model) submit(shouldQueue bool) (tea.Model, tea.Cmd) {
 		}
 	}
 
-
 	// Record in input history (skip duplicates).
 	if raw != "" && (len(m.inputHistory) == 0 || m.inputHistory[len(m.inputHistory)-1] != raw) {
 		m.inputHistory = append(m.inputHistory, raw)
@@ -2236,8 +2233,8 @@ func (m *Model) jumpToScrollbarRow(row int) {
 		return
 	}
 	targetThumbPos := row - thumbSize/2
-	offset := scrollbarOffsetForThumbPos(targetThumbPos, trackSpace, maxOffset)
-	m.setViewportOffset(offset)
+	absoluteTarget := scrollbarOffsetForThumbPos(targetThumbPos, trackSpace, maxOffset)
+	m.setViewportOffset(softenScrollbarTrackOffset(m.viewport.YOffset, absoluteTarget, m.viewport.Height, maxOffset))
 }
 
 func (m *Model) startScrollbarDrag(row int) bool {
@@ -2254,8 +2251,7 @@ func (m *Model) startScrollbarDrag(row int) bool {
 		return false
 	}
 	m.scrollbarDragging = true
-	m.scrollbarDragStartRow = row
-	m.scrollbarDragStartOffset = m.viewport.YOffset
+	m.scrollbarDragGrabOffset = row - thumbPos
 	m.scrollbarDragTrackSpace = trackSpace
 	m.scrollbarDragMaxOffset = maxOffset
 	return true
@@ -2271,7 +2267,7 @@ func (m *Model) dragScrollbarToRow(row int) {
 	} else if row >= height {
 		row = height - 1
 	}
-	_, _, trackSpace, maxOffset, ok := scrollbarThumbGeometry(
+	thumbPos, _, trackSpace, maxOffset, ok := scrollbarThumbGeometry(
 		m.layout.Chat.Height,
 		m.viewport.TotalLineCount(),
 		m.viewport.Height,
@@ -2286,21 +2282,12 @@ func (m *Model) dragScrollbarToRow(row int) {
 		return
 	}
 	if m.scrollbarDragTrackSpace != trackSpace || m.scrollbarDragMaxOffset != maxOffset {
-		// Content/layout changed during drag; re-anchor to current pointer row.
-		m.scrollbarDragStartRow = row
-		m.scrollbarDragStartOffset = m.viewport.YOffset
+		m.scrollbarDragGrabOffset = row - thumbPos
 		m.scrollbarDragTrackSpace = trackSpace
 		m.scrollbarDragMaxOffset = maxOffset
 	}
-	deltaRows := row - m.scrollbarDragStartRow
-	// Cap lines-per-row to one viewport page so long content doesn't
-	// cause huge jumps on each row of mouse movement.
-	linesPerRow := maxOffset / max(1, trackSpace)
-	if maxPerRow := m.viewport.Height; linesPerRow > maxPerRow {
-		linesPerRow = maxPerRow
-	}
-	deltaOffset := deltaRows * linesPerRow
-	m.setViewportOffset(m.scrollbarDragStartOffset + deltaOffset)
+	targetThumbPos := row - m.scrollbarDragGrabOffset
+	m.setViewportOffset(scrollbarOffsetForThumbPos(targetThumbPos, trackSpace, maxOffset))
 }
 
 func (m *Model) jumpToNearestUserAnchorAtRow(row int) bool {
