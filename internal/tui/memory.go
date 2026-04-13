@@ -379,6 +379,24 @@ func loadMetaEntries(path string) ([]memoryEntry, error) {
 	return metas, nil
 }
 
+func loadTokenUsageTotals(path string) (inputTokens, outputTokens int, err error) {
+	metas, err := loadMetaEntries(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return 0, 0, nil
+		}
+		return 0, 0, err
+	}
+	for _, rec := range metas {
+		if rec.Content != "token_usage" {
+			continue
+		}
+		inputTokens += rec.InputTokens
+		outputTokens += rec.OutputTokens
+	}
+	return inputTokens, outputTokens, nil
+}
+
 func isConversationSummaryContent(content string) bool {
 	return strings.HasPrefix(strings.TrimSpace(content), "[Conversation summary]")
 }

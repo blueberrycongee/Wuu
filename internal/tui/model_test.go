@@ -12,6 +12,7 @@ import (
 
 	"github.com/blueberrycongee/wuu/internal/agent"
 	"github.com/blueberrycongee/wuu/internal/providers"
+	"github.com/blueberrycongee/wuu/internal/subagent"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
 )
@@ -70,6 +71,104 @@ func drainStream(t *testing.T, m Model, cmd tea.Cmd) Model {
 		t.Fatal("stream did not finish within deadline")
 	}
 	return m
+}
+
+func TestView_HeaderShowsMainAndWorkerUsage(t *testing.T) {
+	m := NewModel(Config{Provider: "test", Model: "test-model", ConfigPath: "/tmp/.wuu.json"})
+	m.width = 120
+	m.height = 20
+	m.mainInputTokens = 12_345
+	m.mainOutputTokens = 3_210
+	m.workerInputTokens = 8_000
+	m.workerOutputTokens = 6_000
+	m.relayout()
+
+	view := ansi.Strip(m.View())
+	if !strings.Contains(view, "main 12k↑/3.2k↓") {
+		t.Fatalf("expected main usage in header, got: %s", view)
+	}
+	if !strings.Contains(view, "workers 8.0k↑/6.0k↓") {
+		t.Fatalf("expected worker usage in header, got: %s", view)
+	}
+	if strings.Contains(view, " tokens") {
+		t.Fatalf("expected old token estimate text removed, got: %s", view)
+	}
+}
+
+func TestRecordWorkerUsage_DeduplicatesAcrossNotifications(t *testing.T) {
+	m := NewModel(Config{Provider: "test", Model: "test-model", ConfigPath: "/tmp/.wuu.json"})
+
+	m.recordWorkerUsage(subagent.SubAgentSnapshot{ID: "worker-1", InputTokens: 10, OutputTokens: 4})
+	m.recordWorkerUsage(subagent.SubAgentSnapshot{ID: "worker-1", InputTokens: 10, OutputTokens: 4})
+	m.recordWorkerUsage(subagent.SubAgentSnapshot{ID: "worker-2", InputTokens: 3, OutputTokens: 2})
+
+	if m.workerInputTokens != 13 || m.workerOutputTokens != 6 {
+		t.Fatalf("unexpected worker totals after dedupe: in=%d out=%d", m.workerInputTokens, m.workerOutputTokens)
+	}
+}
+
+func TestRecordWorkerUsage_TracksRunningGrowthAndCompletion(t *testing.T) {
+	m := NewModel(Config{Provider: "test", Model: "test-model", ConfigPath: "/tmp/.wuu.json"})
+
+	m.recordWorkerUsage(subagent.SubAgentSnapshot{ID: "worker-1", Status: subagent.StatusRunning, InputTokens: 5, OutputTokens: 2})
+	m.recordWorkerUsage(subagent.SubAgentSnapshot{ID: "worker-1", Status: subagent.StatusRunning, InputTokens: 9, OutputTokens: 4})
+	m.recordWorkerUsage(subagent.SubAgentSnapshot{ID: "worker-1", Status: subagent.StatusCompleted, InputTokens: 9, OutputTokens: 4})
+
+	if m.workerInputTokens != 9 || m.workerOutputTokens != 4 {
+		t.Fatalf("unexpected worker totals after growth/completion: in=%d out=%d", m.workerInputTokens, m.workerOutputTokens)
+	}
+}
+
+func TestApplyStreamEvent_EventDoneAccumulatesMainUsage(t *testing.T) {
+	m := NewModel(Config{Provider: "test", Model: "test-model", ConfigPath: "/tmp/.wuu.json"})
+	m.width = 100
+	m.height = 20
+	m.relayout()
+	m.streaming = true
+	m.pendingRequest = true
+	m.streamTarget = m.appendEntry("assistant", "partial")
+
+	_ = m.applyStreamEvent(providers.StreamEvent{
+		Type: providers.EventDone,
+		Usage: &providers.TokenUsage{
+			InputTokens:  123,
+			OutputTokens: 45,
+		},
+	}, false)
+
+	if m.mainInputTokens != 123 || m.mainOutputTokens != 45 {
+		t.Fatalf("unexpected main usage totals: in=%d out=%d", m.mainInputTokens, m.mainOutputTokens)
+	}
+	if got := m.headerUsageSummary(); !strings.Contains(got, "main 123↑/45↓") {
+		t.Fatalf("expected header summary to show main input/output, got %q", got)
+	}
+}
+
+func TestWorkerNotifyRunningUsageAccumulatesAndPreservesCompletedTotals(t *testing.T) {
+	m := NewModel(Config{Provider: "test", Model: "test-model", ConfigPath: "/tmp/.wuu.json"})
+	m.width = 100
+	m.height = 20
+	m.relayout()
+
+	updated, _ := m.Update(workerNotifyMsg{notification: subagent.Notification{
+		Status:   subagent.StatusRunning,
+		Snapshot: subagent.SubAgentSnapshot{ID: "worker-1", Type: "worker", Description: "first", Status: subagent.StatusRunning, InputTokens: 4, OutputTokens: 1},
+	}})
+	m = updated.(Model)
+	updated, _ = m.Update(workerNotifyMsg{notification: subagent.Notification{
+		Status:   subagent.StatusCompleted,
+		Snapshot: subagent.SubAgentSnapshot{ID: "worker-1", Type: "worker", Description: "first", Status: subagent.StatusCompleted, InputTokens: 7, OutputTokens: 3},
+	}})
+	m = updated.(Model)
+	updated, _ = m.Update(workerNotifyMsg{notification: subagent.Notification{
+		Status:   subagent.StatusRunning,
+		Snapshot: subagent.SubAgentSnapshot{ID: "worker-2", Type: "worker", Description: "second", Status: subagent.StatusRunning, InputTokens: 2, OutputTokens: 5},
+	}})
+	m = updated.(Model)
+
+	if m.workerInputTokens != 9 || m.workerOutputTokens != 8 {
+		t.Fatalf("unexpected worker totals across notifications: in=%d out=%d", m.workerInputTokens, m.workerOutputTokens)
+	}
 }
 
 func TestSubmitPromptFlow(t *testing.T) {

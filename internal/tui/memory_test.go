@@ -467,6 +467,29 @@ func TestChatHistory_WithUserImages(t *testing.T) {
 	}
 }
 
+func TestLoadTokenUsageTotals(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "session.jsonl")
+
+	if err := appendTokenUsage(path, 10, 5); err != nil {
+		t.Fatalf("append first token usage: %v", err)
+	}
+	if err := appendTokenUsage(path, 7, 3); err != nil {
+		t.Fatalf("append second token usage: %v", err)
+	}
+	if err := appendMemoryEntry(path, transcriptEntry{Role: "SYSTEM", Content: "note"}); err != nil {
+		t.Fatalf("append system entry: %v", err)
+	}
+
+	inputTokens, outputTokens, err := loadTokenUsageTotals(path)
+	if err != nil {
+		t.Fatalf("loadTokenUsageTotals: %v", err)
+	}
+	if inputTokens != 17 || outputTokens != 8 {
+		t.Fatalf("unexpected token totals: in=%d out=%d", inputTokens, outputTokens)
+	}
+}
+
 func TestSessionReaders_HandleLargeJSONLRecords(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "session.jsonl")

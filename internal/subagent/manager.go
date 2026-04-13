@@ -110,6 +110,7 @@ func (m *Manager) run(ctx context.Context, sa *SubAgent, opts SpawnOptions) {
 		sa.InputTokens += input
 		sa.OutputTokens += output
 		sa.mu.Unlock()
+		m.BroadcastSnapshot(sa)
 	}
 
 	runner := &agent.StreamRunner{
@@ -192,6 +193,15 @@ func (m *Manager) notify(sa *SubAgent, status Status) {
 		default:
 		}
 	}
+}
+
+// BroadcastSnapshot publishes the agent's current usage/state without
+// changing its status. Used for live worker token updates.
+func (m *Manager) BroadcastSnapshot(sa *SubAgent) {
+	if sa == nil {
+		return
+	}
+	m.notify(sa, sa.Snapshot().Status)
 }
 
 // Get returns the sub-agent with the given ID, or nil if unknown.

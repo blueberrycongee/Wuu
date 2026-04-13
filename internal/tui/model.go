@@ -154,6 +154,11 @@ type pendingChatClickState struct {
 	y      int
 }
 
+type workerUsageSnapshot struct {
+	inputTokens  int
+	outputTokens int
+}
+
 // Model implements the terminal UI state machine.
 type Model struct {
 	provider       string
@@ -292,9 +297,14 @@ type Model struct {
 	// instead of compounding into runaway scroll.
 	selectionAutoScroll selectionAutoScrollState
 
-	// Token usage accumulator for current turn.
-	turnInputTokens  int
-	turnOutputTokens int
+	// Token usage accumulator for current session.
+	mainInputTokens    int
+	mainOutputTokens   int
+	workerInputTokens  int
+	workerOutputTokens int
+	workerUsageByID    map[string]workerUsageSnapshot
+	turnInputTokens    int
+	turnOutputTokens   int
 
 	// Insight generation state.
 	insightRunning     bool
@@ -345,6 +355,7 @@ func NewModel(cfg Config) Model {
 		statusLine:           "ready",
 		pendingViewportEntry: -1,
 		streamTarget:         -1,
+		workerUsageByID:      make(map[string]workerUsageSnapshot),
 		historyIndex:         -1,
 		scrollbarHoverRow:    -1,
 		insightProgressIdx:   -1,
@@ -466,6 +477,7 @@ func (m Model) loadMemory() Model {
 	}
 
 	m.statusLine = fmt.Sprintf("resumed %d entries", len(entries))
+	m.loadPersistedTokenUsage()
 	m.cacheRenderedEntries()
 	m.refreshViewport(true)
 
@@ -586,6 +598,12 @@ func (m Model) applyResume(id string) (tea.Model, tea.Cmd) {
 	m.sessionID = id
 	m.memoryPath = path
 	m.entries = entries
+	m.workerUsageByID = make(map[string]workerUsageSnapshot)
+	m.mainInputTokens = 0
+	m.mainOutputTokens = 0
+	m.workerInputTokens = 0
+	m.workerOutputTokens = 0
+	m.loadPersistedTokenUsage()
 	m.cacheRenderedEntries()
 
 	// Reload chat history for API calls.
@@ -823,6 +841,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// inject the worker-result XML into chatHistory so the
 		// orchestrator sees it on its next turn.
 		n := msg.notification
+		m.recordWorkerUsage(n.Snapshot)
 		injected := false
 		switch n.Status {
 		case subagent.StatusRunning:
@@ -916,10 +935,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		// Persist token usage for this turn.
-		if m.turnInputTokens > 0 || m.turnOutputTokens > 0 {
-			_ = appendTokenUsage(m.memoryPath, m.turnInputTokens, m.turnOutputTokens)
-			m.turnInputTokens = 0
-			m.turnOutputTokens = 0
+		if m.mainInputTokens > 0 || m.mainOutputTokens > 0 {
+			_ = appendTokenUsage(m.memoryPath, m.mainInputTokens, m.mainOutputTokens)
 		}
 
 		// Dispatch Stop hook (fire-and-forget).
@@ -1673,6 +1690,8 @@ func (m *Model) applyStreamEvent(event providers.StreamEvent, rearm bool) tea.Cm
 		if event.Usage != nil {
 			m.turnInputTokens += event.Usage.InputTokens
 			m.turnOutputTokens += event.Usage.OutputTokens
+			m.mainInputTokens += event.Usage.InputTokens
+			m.mainOutputTokens += event.Usage.OutputTokens
 		}
 		// One SSE stream finished. The runner may continue with tool
 		// execution and start another stream, so keep listening.
@@ -1859,6 +1878,49 @@ func (m Model) drainQueue() (tea.Model, tea.Cmd) {
 	next := m.messageQueue[0]
 	m.messageQueue = m.messageQueue[1:]
 	return m.sendMessage(next)
+}
+
+func (m *Model) loadPersistedTokenUsage() {
+	inputTokens, outputTokens, err := loadTokenUsageTotals(m.memoryPath)
+	if err != nil {
+		m.statusLine = fmt.Sprintf("memory load failed: %v", err)
+		return
+	}
+	m.mainInputTokens = inputTokens
+	m.mainOutputTokens = outputTokens
+	m.turnInputTokens = 0
+	m.turnOutputTokens = 0
+}
+
+func (m *Model) recordWorkerUsage(snapshot subagent.SubAgentSnapshot) {
+	if m.workerUsageByID == nil {
+		m.workerUsageByID = make(map[string]workerUsageSnapshot)
+	}
+	prev := m.workerUsageByID[snapshot.ID]
+	if snapshot.InputTokens < prev.inputTokens {
+		snapshot.InputTokens = prev.inputTokens
+	}
+	if snapshot.OutputTokens < prev.outputTokens {
+		snapshot.OutputTokens = prev.outputTokens
+	}
+	m.workerInputTokens += snapshot.InputTokens - prev.inputTokens
+	m.workerOutputTokens += snapshot.OutputTokens - prev.outputTokens
+	m.workerUsageByID[snapshot.ID] = workerUsageSnapshot{
+		inputTokens:  snapshot.InputTokens,
+		outputTokens: snapshot.OutputTokens,
+	}
+}
+
+func (m Model) headerUsageSummary() string {
+	return fmt.Sprintf(
+		"wuu · %s/%s │ main %s↑/%s↓ · workers %s↑/%s↓",
+		m.provider,
+		m.modelName,
+		formatCompactNum(m.mainInputTokens),
+		formatCompactNum(m.mainOutputTokens),
+		formatCompactNum(m.workerInputTokens),
+		formatCompactNum(m.workerOutputTokens),
+	)
 }
 
 func (m *Model) renderMarkdown(content string) (string, error) {
@@ -2466,12 +2528,6 @@ func (m *Model) refreshViewport(forceBottom bool) {
 	m.pendingViewportEntry = -1
 	m.viewport.SetContent(m.renderedContent)
 
-	// Update cached token estimate so View() doesn't re-scan entries every frame.
-	tokenEst := 0
-	for _, e := range m.entries {
-		tokenEst += len(e.Content) / 4
-	}
-	m.cachedTokenEstimate = tokenEst
 	if forceBottom || m.autoFollow {
 		m.viewport.GotoBottom()
 	} else if preserveOffset {
@@ -2652,8 +2708,7 @@ func (m Model) View() string {
 	}
 
 	// Header — left: brand info, right: hints + clock.
-	tokenStr := formatTokenCount(m.cachedTokenEstimate)
-	headerLeft := fmt.Sprintf("wuu · %s/%s │ %s tokens", m.provider, m.modelName, tokenStr)
+	headerLeft := m.headerUsageSummary()
 
 	var hints []string
 	if m.statusLine == "request failed" {
@@ -2757,11 +2812,4 @@ func trimToWidth(value string, width int) string {
 		b.WriteRune(r)
 	}
 	return b.String() + "…"
-}
-
-func formatTokenCount(tokens int) string {
-	if tokens >= 1000 {
-		return fmt.Sprintf("%.1fk", float64(tokens)/1000)
-	}
-	return fmt.Sprintf("%d", tokens)
 }

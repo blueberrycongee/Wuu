@@ -232,6 +232,27 @@ loop:
 	}
 }
 
+func TestBroadcastSnapshotPublishesRunningUsage(t *testing.T) {
+	mgr := NewManager(&fakeClient{}, "fake-model")
+	ch := make(chan Notification, 1)
+	mgr.Subscribe(ch)
+
+	sa := &SubAgent{ID: "worker-1", Type: "worker", Status: StatusRunning, InputTokens: 12, OutputTokens: 7}
+	mgr.BroadcastSnapshot(sa)
+
+	select {
+	case n := <-ch:
+		if n.Status != StatusRunning {
+			t.Fatalf("expected running status, got %s", n.Status)
+		}
+		if n.Snapshot.InputTokens != 12 || n.Snapshot.OutputTokens != 7 {
+			t.Fatalf("unexpected usage snapshot: in=%d out=%d", n.Snapshot.InputTokens, n.Snapshot.OutputTokens)
+		}
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("expected usage snapshot notification")
+	}
+}
+
 func TestPersistHistory(t *testing.T) {
 	dir := t.TempDir()
 	historyPath := filepath.Join(dir, "subagents", "worker.json")
