@@ -1282,13 +1282,12 @@ func (t *Toolkit) grepWithFallback(pattern, searchRoot, include string, limit in
 			return nil
 		}
 
-		f, err := os.Open(path)
+		data, err := os.ReadFile(path)
 		if err != nil {
 			return nil
 		}
-		defer f.Close()
 
-		scanner := bufio.NewScanner(f)
+		scanner := bufio.NewScanner(bytes.NewReader(data))
 		lineNum := 0
 		for scanner.Scan() {
 			lineNum++
