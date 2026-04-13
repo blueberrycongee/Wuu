@@ -404,6 +404,16 @@ func NewModel(cfg Config) Model {
 	return m.loadMemory()
 }
 
+func (m *Model) resetChatHistory() {
+	m.chatHistory = nil
+	if m.streamRunner != nil && strings.TrimSpace(m.streamRunner.SystemPrompt) != "" {
+		m.chatHistory = append(m.chatHistory, providers.ChatMessage{
+			Role:    "system",
+			Content: m.streamRunner.SystemPrompt,
+		})
+	}
+}
+
 func finishInputTextareaSetup(in *textarea.Model) {
 	in.Placeholder = "Ask anything..."
 	in.Focus()

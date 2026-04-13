@@ -322,6 +322,7 @@ func cmdNew(_ string, m *Model) string {
 	}
 
 	m.entries = nil
+	m.resetChatHistory()
 	m.streamTarget = -1
 	m.streaming = false
 	m.pendingRequest = false

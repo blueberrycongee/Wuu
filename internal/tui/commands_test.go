@@ -64,6 +64,67 @@ func TestHandleSlash(t *testing.T) {
 	}
 }
 
+func TestHandleSlashNewResetsChatHistoryButKeepsSystemPrompt(t *testing.T) {
+	m := NewModel(Config{
+		Provider:   "test",
+		Model:      "test-model",
+		ConfigPath: "/tmp/.wuu.json",
+		StreamRunner: &agent.StreamRunner{
+			Client:       &echoStreamClient{answer: func(_ []providers.ChatMessage) string { return "" }},
+			Model:        "test-model",
+			SystemPrompt: "system rules",
+		},
+	})
+	m.chatHistory = []providers.ChatMessage{
+		{Role: "system", Content: "system rules"},
+		{Role: "user", Content: "old user"},
+		{Role: "assistant", Content: "old assistant"},
+		{Role: "tool", Content: "old tool"},
+	}
+	m.entries = []transcriptEntry{{Role: "USER", Content: "visible old entry"}}
+
+	msg, handled := m.handleSlash("/new")
+	if !handled {
+		t.Fatal("expected /new to be handled")
+	}
+	if msg == "" {
+		t.Fatal("expected /new response message")
+	}
+	if len(m.entries) != 0 {
+		t.Fatalf("expected /new to clear visible entries, got %d", len(m.entries))
+	}
+	if len(m.chatHistory) != 1 {
+		t.Fatalf("expected /new to keep only system prompt in chat history, got %+v", m.chatHistory)
+	}
+	if m.chatHistory[0].Role != "system" || m.chatHistory[0].Content != "system rules" {
+		t.Fatalf("expected /new to preserve system prompt, got %+v", m.chatHistory[0])
+	}
+}
+
+func TestHandleSlashNewClearsChatHistoryWithoutSystemPrompt(t *testing.T) {
+	m := NewModel(Config{
+		Provider:   "test",
+		Model:      "test-model",
+		ConfigPath: "/tmp/.wuu.json",
+		StreamRunner: &agent.StreamRunner{
+			Client: &echoStreamClient{answer: func(_ []providers.ChatMessage) string { return "" }},
+			Model:  "test-model",
+		},
+	})
+	m.chatHistory = []providers.ChatMessage{
+		{Role: "user", Content: "old user"},
+		{Role: "assistant", Content: "old assistant"},
+	}
+
+	_, handled := m.handleSlash("/new")
+	if !handled {
+		t.Fatal("expected /new to be handled")
+	}
+	if len(m.chatHistory) != 0 {
+		t.Fatalf("expected /new to clear all chat history without system prompt, got %+v", m.chatHistory)
+	}
+}
+
 func TestCommandCompletionEnterBehavior(t *testing.T) {
 	tests := []struct {
 		name string
