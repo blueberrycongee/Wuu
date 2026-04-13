@@ -23,8 +23,8 @@ import (
 )
 
 const (
-	defaultShellTimeoutSeconds = 120
-	maxShellTimeoutSeconds     = 600
+	defaultShellTimeoutSeconds = 300
+	maxShellTimeoutSeconds     = 3600
 	defaultMaxFileBytes        = 256 * 1024
 	defaultMaxEntries          = 1000
 	// Per-tool output size limits (in bytes). Aligned with Claude Code's
@@ -152,7 +152,7 @@ func (t *Toolkit) allDefinitions() []providers.ToolDefinition {
 					},
 					"timeout_seconds": map[string]any{
 						"type":        "integer",
-						"description": "Max runtime in seconds (1-600).",
+						"description": "Max runtime in seconds (1-3600).",
 					},
 				},
 				"required": []string{"command"},
