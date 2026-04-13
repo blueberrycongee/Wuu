@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 
+	"github.com/blueberrycongee/wuu/internal/agent"
 	"github.com/blueberrycongee/wuu/internal/providers"
 )
 
@@ -50,6 +51,17 @@ func ClassifyError(err error) ErrorClass {
 	if providers.IsAuthError(err) {
 		return ErrorClassAuth
 	}
+	// Empty answer without a stop reason is likely a proxy/compat
+	// issue — worth retrying. With a normal stop reason the model
+	// intentionally returned nothing; retrying won't help.
+	if agent.IsEmptyAnswer(err) {
+		var emptyErr *agent.EmptyAnswerError
+		if errors.As(err, &emptyErr) && emptyErr.StopReason == "" {
+			return ErrorClassRetryable
+		}
+		return ErrorClassFatal
+	}
+
 	// Anything providers.IsRetryable says yes to is, by definition,
 	// transient — even if HTTP-level retry already exhausted its
 	// own attempts, the orchestrator's "wait a bit then re-spawn"

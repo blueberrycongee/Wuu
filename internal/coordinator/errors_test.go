@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/blueberrycongee/wuu/internal/agent"
 	"github.com/blueberrycongee/wuu/internal/providers"
 )
 
@@ -67,8 +68,18 @@ func TestClassifyError(t *testing.T) {
 			want: ErrorClassRetryable,
 		},
 		{
+			name: "empty answer without stop reason → retryable",
+			err:  &agent.EmptyAnswerError{},
+			want: ErrorClassRetryable,
+		},
+		{
+			name: "empty answer with stop reason → fatal",
+			err:  &agent.EmptyAnswerError{StopReason: "stop"},
+			want: ErrorClassFatal,
+		},
+		{
 			name: "completely unknown error → fatal",
-			err:  errors.New("model returned empty answer"),
+			err:  errors.New("something unexpected"),
 			want: ErrorClassFatal,
 		},
 	}
