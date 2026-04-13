@@ -28,8 +28,6 @@ import (
 
 const (
 	minOutputHeight = 6
-	streamChunkSize = 24
-	streamTickDelay = 30 * time.Millisecond
 	// interactiveStreamDrainLimit caps how many already-queued stream
 	// events we opportunistically apply during non-stream UI work
 	// (mouse drag/select, spinner ticks). Without this side-drain, a
@@ -57,13 +55,6 @@ type tickMsg struct {
 	now time.Time
 }
 
-type streamTickMsg struct{}
-
-type responseMsg struct {
-	answer  string
-	err     error
-	elapsed time.Duration
-}
 
 type streamEventMsg struct {
 	event providers.StreamEvent
@@ -179,7 +170,6 @@ type Model struct {
 	memoryPath     string
 	sessionID      string
 	sessionDir     string
-	runPrompt      func(ctx context.Context, prompt string) (string, error)
 	streamRunner   *agent.StreamRunner
 	hookDispatcher *hooks.Dispatcher
 	streamCh       chan providers.StreamEvent
@@ -215,8 +205,6 @@ type Model struct {
 
 	pendingRequest bool
 	streaming      bool
-	streamRunes    []rune
-	streamCursor   int
 	streamTarget   int
 	streamElapsed  time.Duration
 	thinkingStart  time.Time // when thinking began for current turn
@@ -351,7 +339,6 @@ func NewModel(cfg Config) Model {
 		workspaceRoot:      filepath.Dir(cfg.ConfigPath),
 		memoryPath:         cfg.MemoryPath,
 		sessionDir:         cfg.SessionDir,
-		runPrompt:          cfg.RunPrompt,
 		streamRunner:       cfg.StreamRunner,
 		hookDispatcher:     cfg.HookDispatcher,
 		onSessionID:        cfg.OnSessionID,
@@ -559,12 +546,6 @@ func tickCmd() tea.Cmd {
 func statusAnimationCmd() tea.Cmd {
 	return tea.Tick(statusAnimationInterval, func(_ time.Time) tea.Msg {
 		return inlineSpinMsg{}
-	})
-}
-
-func streamTickCmd() tea.Cmd {
-	return tea.Tick(streamTickDelay, func(_ time.Time) tea.Msg {
-		return streamTickMsg{}
 	})
 }
 
@@ -987,43 +968,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case queueDrainMsg:
 		return m.drainQueue()
-
-	case responseMsg:
-		m.pendingRequest = false
-		if msg.err != nil {
-			m.appendEntry("system", fmt.Sprintf("error: %v", msg.err))
-			m.statusLine = "request failed"
-			m.refreshViewport(true)
-			return m, nil
-		}
-
-		m.streaming = true
-		m.streamElapsed = msg.elapsed
-		m.streamRunes = []rune(msg.answer)
-		m.streamCursor = 0
-		m.streamTarget = m.appendEntry("assistant", "")
-		m.setLiveWorkStatus(workStatus{Phase: workPhaseGenerating, Label: "Responding", Meta: "Writing the reply", Running: true})
-		m.statusLine = "streaming response"
-		m.refreshViewport(true)
-		return m, streamTickCmd()
-
-	case streamTickMsg:
-		if !m.streaming || m.streamTarget < 0 || m.streamTarget >= len(m.entries) {
-			return m, nil
-		}
-		if m.streamCursor >= len(m.streamRunes) {
-			m.finishStream()
-			return m, func() tea.Msg { return queueDrainMsg{} }
-		}
-		end := min(m.streamCursor+streamChunkSize, len(m.streamRunes))
-		m.entries[m.streamTarget].Content += string(m.streamRunes[m.streamCursor:end])
-		m.streamCursor = end
-		m.refreshViewportForEntry(m.streamTarget, false)
-		if m.streamCursor >= len(m.streamRunes) {
-			m.finishStream()
-			return m, func() tea.Msg { return queueDrainMsg{} }
-		}
-		return m, streamTickCmd()
 
 	case streamEventMsg:
 		return m, m.applyStreamEvent(msg.event, true)
@@ -1449,10 +1393,6 @@ func (m Model) submit(shouldQueue bool) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	if hasImages && m.streamRunner == nil {
-		m.statusLine = "image paste requires streaming mode"
-		return m, nil
-	}
 
 	// Record in input history (skip duplicates).
 	if raw != "" && (len(m.inputHistory) == 0 || m.inputHistory[len(m.inputHistory)-1] != raw) {
@@ -1533,34 +1473,16 @@ func (m Model) sendMessage(message queuedMessage) (tea.Model, tea.Cmd) {
 		queueHint = fmt.Sprintf(" · %d queued", len(m.messageQueue))
 	}
 
-	if m.streamRunner != nil {
-		if shouldPreCompactHistory(m.chatHistory, m.maxContextTokens, m.streamRunner.Client) {
-			m.setLiveWorkStatus(workStatus{Phase: workPhaseCompacting, Label: "Compacting history", Meta: "Preparing the next turn", Running: true})
-			m.statusLine = compactingHistoryStatus + queueHint
-		} else {
-			m.streamTarget = m.appendEntry("assistant", "")
-			m.setLiveWorkStatus(workStatus{Phase: workPhaseGenerating, Label: "Responding", Meta: "Writing the reply", Running: true})
-			m.statusLine = "streaming" + queueHint
-		}
-		m.refreshViewport(true)
-		return m.startStreamingTurn()
+	if shouldPreCompactHistory(m.chatHistory, m.maxContextTokens, m.streamRunner.Client) {
+		m.setLiveWorkStatus(workStatus{Phase: workPhaseCompacting, Label: "Compacting history", Meta: "Preparing the next turn", Running: true})
+		m.statusLine = compactingHistoryStatus + queueHint
+	} else {
+		m.streamTarget = m.appendEntry("assistant", "")
+		m.setLiveWorkStatus(workStatus{Phase: workPhaseGenerating, Label: "Responding", Meta: "Writing the reply", Running: true})
+		m.statusLine = "streaming" + queueHint
 	}
-	m.streamTarget = m.appendEntry("assistant", "")
-	m.statusLine = "streaming" + queueHint
 	m.refreshViewport(true)
-
-	// Fallback to blocking path.
-	start := time.Now()
-	return m, func() tea.Msg {
-		ctx, cancel := m.newRequestContext()
-		defer cancel()
-		answer, err := m.runPrompt(ctx, message.Text)
-		return responseMsg{
-			answer:  answer,
-			err:     err,
-			elapsed: time.Since(start),
-		}
-	}
+	return m.startStreamingTurn()
 }
 
 // startStreamingTurn launches a streaming runner using the current
@@ -1987,22 +1909,6 @@ func (m Model) drainQueue() (tea.Model, tea.Cmd) {
 	next := m.messageQueue[0]
 	m.messageQueue = m.messageQueue[1:]
 	return m.sendMessage(next)
-}
-
-func (m *Model) finishStream() {
-	finishedEntry := m.streamTarget
-	m.streaming = false
-	m.streamCursor = 0
-	raw := string(m.streamRunes)
-	m.streamRunes = nil
-
-	if m.streamTarget >= 0 && m.streamTarget < len(m.entries) {
-		m.entries[m.streamTarget].Content = raw
-	}
-	m.streamTarget = -1
-	m.clearLiveWorkStatus()
-	m.statusLine = fmt.Sprintf("response in %s", m.streamElapsed.Truncate(10*time.Millisecond))
-	m.refreshViewportForEntry(finishedEntry, false)
 }
 
 func (m *Model) renderMarkdown(content string) (string, error) {

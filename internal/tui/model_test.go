@@ -16,18 +16,67 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-func TestSubmitPromptFlow(t *testing.T) {
+// echoStreamClient is a minimal StreamClient for tests. StreamChat sends
+// the response as a single content delta + done event and closes the channel.
+type echoStreamClient struct {
+	answer func(messages []providers.ChatMessage) string
+}
+
+func (c *echoStreamClient) Chat(_ context.Context, req providers.ChatRequest) (providers.ChatResponse, error) {
+	return providers.ChatResponse{Content: c.answer(req.Messages)}, nil
+}
+
+func (c *echoStreamClient) StreamChat(_ context.Context, req providers.ChatRequest) (<-chan providers.StreamEvent, error) {
+	ch := make(chan providers.StreamEvent, 3)
+	ch <- providers.StreamEvent{Type: providers.EventContentDelta, Content: c.answer(req.Messages)}
+	ch <- providers.StreamEvent{Type: providers.EventDone}
+	close(ch)
+	return ch, nil
+}
+
+// newTestModel creates a Model wired to a mock StreamRunner for testing.
+// The answer function receives the chat messages and returns the assistant reply.
+func newTestModel(answer func([]providers.ChatMessage) string) Model {
+	client := &echoStreamClient{answer: answer}
 	m := NewModel(Config{
 		Provider:   "test",
 		Model:      "test-model",
 		ConfigPath: "/tmp/.wuu.json",
-		RunPrompt: func(_ctx context.Context, prompt string) (string, error) {
-			return "answer to: " + prompt, nil
+		StreamRunner: &agent.StreamRunner{
+			Client: client,
+			Model:  "test-model",
 		},
 	})
 	m.width = 120
 	m.height = 40
 	m.relayout()
+	return m
+}
+
+// drainStream pumps the bubbletea command loop until streaming finishes.
+func drainStream(t *testing.T, m Model, cmd tea.Cmd) Model {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for cmd != nil && time.Now().Before(deadline) {
+		msg := cmd()
+		if msg == nil {
+			break
+		}
+		var next tea.Model
+		next, cmd = m.Update(msg)
+		m = next.(Model)
+	}
+	if m.streaming {
+		t.Fatal("stream did not finish within deadline")
+	}
+	return m
+}
+
+func TestSubmitPromptFlow(t *testing.T) {
+	m := newTestModel(func(msgs []providers.ChatMessage) string {
+		last := msgs[len(msgs)-1].Content
+		return "answer to: " + last
+	})
 
 	m.input.SetValue("hello world")
 	nextModel, cmd := m.submit(false)
@@ -39,24 +88,7 @@ func TestSubmitPromptFlow(t *testing.T) {
 		t.Fatal("expected pendingRequest=true after submit")
 	}
 
-	msg := cmd()
-	afterModel, streamCmd := next.Update(msg)
-	after := afterModel.(Model)
-	if after.pendingRequest {
-		t.Fatal("expected pendingRequest=false after model response")
-	}
-	if !after.streaming {
-		t.Fatal("expected streaming=true before stream ticks")
-	}
-
-	for after.streaming {
-		if streamCmd == nil {
-			t.Fatal("expected stream tick command while streaming")
-		}
-		tick := streamCmd()
-		afterModel, streamCmd = after.Update(tick)
-		after = afterModel.(Model)
-	}
+	after := drainStream(t, next, cmd)
 	content := renderEntries(after.entries)
 	if !strings.Contains(content, "USER\nhello world") {
 		t.Fatalf("missing user entry: %s", content)
@@ -71,8 +103,9 @@ func TestJumpToBottomToggle(t *testing.T) {
 		Provider:   "test",
 		Model:      "test-model",
 		ConfigPath: "/tmp/.wuu.json",
-		RunPrompt: func(_ctx context.Context, prompt string) (string, error) {
-			return prompt, nil
+		StreamRunner: &agent.StreamRunner{
+			Client: &echoStreamClient{answer: func(msgs []providers.ChatMessage) string { return msgs[len(msgs)-1].Content }},
+			Model:  "test-model",
 		},
 	})
 	m.width = 100
@@ -116,8 +149,9 @@ func TestRelayoutFitsWindow(t *testing.T) {
 		Provider:   "test",
 		Model:      "test-model",
 		ConfigPath: "/tmp/.wuu.json",
-		RunPrompt: func(_ctx context.Context, prompt string) (string, error) {
-			return prompt, nil
+		StreamRunner: &agent.StreamRunner{
+			Client: &echoStreamClient{answer: func(msgs []providers.ChatMessage) string { return msgs[len(msgs)-1].Content }},
+			Model:  "test-model",
 		},
 	})
 
@@ -142,8 +176,9 @@ func TestMouseClickPositionsCursor(t *testing.T) {
 		Provider:   "test",
 		Model:      "test-model",
 		ConfigPath: "/tmp/.wuu.json",
-		RunPrompt: func(_ctx context.Context, prompt string) (string, error) {
-			return prompt, nil
+		StreamRunner: &agent.StreamRunner{
+			Client: &echoStreamClient{answer: func(msgs []providers.ChatMessage) string { return msgs[len(msgs)-1].Content }},
+			Model:  "test-model",
 		},
 	})
 	m.width = 100
@@ -260,8 +295,9 @@ func TestFocusAndBlurMessagesUpdateInputState(t *testing.T) {
 		Provider:   "test",
 		Model:      "test-model",
 		ConfigPath: "/tmp/.wuu.json",
-		RunPrompt: func(_ctx context.Context, prompt string) (string, error) {
-			return prompt, nil
+		StreamRunner: &agent.StreamRunner{
+			Client: &echoStreamClient{answer: func(msgs []providers.ChatMessage) string { return msgs[len(msgs)-1].Content }},
+			Model:  "test-model",
 		},
 	})
 	m.input.Blur()
@@ -284,8 +320,9 @@ func TestMouseClickPositionsCursorMultiLine(t *testing.T) {
 		Provider:   "test",
 		Model:      "test-model",
 		ConfigPath: "/tmp/.wuu.json",
-		RunPrompt: func(_ctx context.Context, prompt string) (string, error) {
-			return prompt, nil
+		StreamRunner: &agent.StreamRunner{
+			Client: &echoStreamClient{answer: func(msgs []providers.ChatMessage) string { return msgs[len(msgs)-1].Content }},
+			Model:  "test-model",
 		},
 	})
 	m.width = 100
@@ -539,8 +576,9 @@ func TestMouseAltClickScrollbarAnchorJumpsToUserMessage(t *testing.T) {
 		Provider:   "test",
 		Model:      "test-model",
 		ConfigPath: "/tmp/.wuu.json",
-		RunPrompt: func(_ctx context.Context, prompt string) (string, error) {
-			return prompt, nil
+		StreamRunner: &agent.StreamRunner{
+			Client: &echoStreamClient{answer: func(msgs []providers.ChatMessage) string { return msgs[len(msgs)-1].Content }},
+			Model:  "test-model",
 		},
 	})
 	m.width = 100
@@ -757,8 +795,9 @@ func TestSetCopyStatusLine_PreservesActiveStreamingStatus(t *testing.T) {
 		Provider:   "test",
 		Model:      "test-model",
 		ConfigPath: "/tmp/.wuu.json",
-		RunPrompt: func(_ctx context.Context, prompt string) (string, error) {
-			return prompt, nil
+		StreamRunner: &agent.StreamRunner{
+			Client: &echoStreamClient{answer: func(msgs []providers.ChatMessage) string { return msgs[len(msgs)-1].Content }},
+			Model:  "test-model",
 		},
 	})
 	m.streaming = true
@@ -777,8 +816,9 @@ func TestSetCopyStatusLine_UpdatesIdleStatus(t *testing.T) {
 		Provider:   "test",
 		Model:      "test-model",
 		ConfigPath: "/tmp/.wuu.json",
-		RunPrompt: func(_ctx context.Context, prompt string) (string, error) {
-			return prompt, nil
+		StreamRunner: &agent.StreamRunner{
+			Client: &echoStreamClient{answer: func(msgs []providers.ChatMessage) string { return msgs[len(msgs)-1].Content }},
+			Model:  "test-model",
 		},
 	})
 	m.statusLine = "ready"
@@ -795,8 +835,9 @@ func TestSetCopyStatusLine_PreservesStructuredLiveWorkStatus(t *testing.T) {
 		Provider:   "test",
 		Model:      "test-model",
 		ConfigPath: "/tmp/.wuu.json",
-		RunPrompt: func(_ctx context.Context, prompt string) (string, error) {
-			return prompt, nil
+		StreamRunner: &agent.StreamRunner{
+			Client: &echoStreamClient{answer: func(msgs []providers.ChatMessage) string { return msgs[len(msgs)-1].Content }},
+			Model:  "test-model",
 		},
 	})
 	m.liveWorkStatus = workStatus{Phase: workPhaseGenerating, Label: "Responding", Meta: "Writing the reply", Running: true}
@@ -934,8 +975,9 @@ func newScrollableModelForScrollbarTest(t *testing.T) Model {
 		Provider:   "test",
 		Model:      "test-model",
 		ConfigPath: "/tmp/.wuu.json",
-		RunPrompt: func(_ctx context.Context, prompt string) (string, error) {
-			return prompt, nil
+		StreamRunner: &agent.StreamRunner{
+			Client: &echoStreamClient{answer: func(msgs []providers.ChatMessage) string { return msgs[len(msgs)-1].Content }},
+			Model:  "test-model",
 		},
 	})
 	m.width = 100
@@ -1160,8 +1202,9 @@ func TestNewModel_RequestTimeout(t *testing.T) {
 		Model:          "test-model",
 		ConfigPath:     "/tmp/.wuu.json",
 		RequestTimeout: timeout,
-		RunPrompt: func(_ctx context.Context, prompt string) (string, error) {
-			return prompt, nil
+		StreamRunner: &agent.StreamRunner{
+			Client: &echoStreamClient{answer: func(msgs []providers.ChatMessage) string { return msgs[len(msgs)-1].Content }},
+			Model:  "test-model",
 		},
 	})
 
@@ -1257,8 +1300,9 @@ func TestView_ShowsSteerAndQueuePreview(t *testing.T) {
 		Provider:   "test",
 		Model:      "test-model",
 		ConfigPath: "/tmp/.wuu.json",
-		RunPrompt: func(_ctx context.Context, prompt string) (string, error) {
-			return "answer to: " + prompt, nil
+		StreamRunner: &agent.StreamRunner{
+			Client: &echoStreamClient{answer: func(msgs []providers.ChatMessage) string { return "answer to: " + msgs[len(msgs)-1].Content }},
+			Model:  "test-model",
 		},
 	})
 	m.width = 180
@@ -1276,32 +1320,6 @@ func TestView_ShowsSteerAndQueuePreview(t *testing.T) {
 	}
 }
 
-func TestSubmit_ImageRequiresStreamingMode(t *testing.T) {
-	m := NewModel(Config{
-		Provider:   "test",
-		Model:      "test-model",
-		ConfigPath: "/tmp/.wuu.json",
-		RunPrompt: func(_ctx context.Context, prompt string) (string, error) {
-			return "answer to: " + prompt, nil
-		},
-	})
-	m.pendingImages = []providers.InputImage{
-		{MediaType: "image/png", Data: "AAA"},
-	}
-
-	nextModel, cmd := m.submit(false)
-	if cmd != nil {
-		t.Fatal("expected no command when image submit is unsupported")
-	}
-	next := nextModel.(Model)
-	if next.statusLine != "image paste requires streaming mode" {
-		t.Fatalf("unexpected status line: %q", next.statusLine)
-	}
-	if len(next.pendingImages) != 1 {
-		t.Fatalf("expected pending image to remain, got %d", len(next.pendingImages))
-	}
-}
-
 func TestStripUserImagePlaceholderLines(t *testing.T) {
 	input := "please review\n[Image #1]\n[Image #2]"
 	got := stripUserImagePlaceholderLines(input)
@@ -1315,8 +1333,9 @@ func TestStreamReconnectEventUpdatesStatusLine(t *testing.T) {
 		Provider:   "test",
 		Model:      "test-model",
 		ConfigPath: "/tmp/.wuu.json",
-		RunPrompt: func(_ctx context.Context, _prompt string) (string, error) {
-			return "", nil
+		StreamRunner: &agent.StreamRunner{
+			Client: &echoStreamClient{answer: func(_ []providers.ChatMessage) string { return "" }},
+			Model:  "test-model",
 		},
 	})
 	m.streaming = true
@@ -1340,8 +1359,9 @@ func TestStreamLifecycleEventUpdatesStructuredWorkStatus(t *testing.T) {
 		Provider:   "test",
 		Model:      "test-model",
 		ConfigPath: "/tmp/.wuu.json",
-		RunPrompt: func(_ctx context.Context, _prompt string) (string, error) {
-			return "", nil
+		StreamRunner: &agent.StreamRunner{
+			Client: &echoStreamClient{answer: func(_ []providers.ChatMessage) string { return "" }},
+			Model:  "test-model",
 		},
 	})
 	m.streaming = true
@@ -1372,8 +1392,9 @@ func TestStreamLifecycleReconnectIncludesReasonAndDelay(t *testing.T) {
 		Provider:   "test",
 		Model:      "test-model",
 		ConfigPath: "/tmp/.wuu.json",
-		RunPrompt: func(_ctx context.Context, _prompt string) (string, error) {
-			return "", nil
+		StreamRunner: &agent.StreamRunner{
+			Client: &echoStreamClient{answer: func(_ []providers.ChatMessage) string { return "" }},
+			Model:  "test-model",
 		},
 	})
 	m.streaming = true
@@ -1409,8 +1430,9 @@ func TestStreamReconnectEventPreservesLifecycleDetails(t *testing.T) {
 		Provider:   "test",
 		Model:      "test-model",
 		ConfigPath: "/tmp/.wuu.json",
-		RunPrompt: func(_ctx context.Context, _prompt string) (string, error) {
-			return "", nil
+		StreamRunner: &agent.StreamRunner{
+			Client: &echoStreamClient{answer: func(_ []providers.ChatMessage) string { return "" }},
+			Model:  "test-model",
 		},
 	})
 	m.streaming = true
@@ -1457,8 +1479,9 @@ func TestStreamMessageEventPersistsChatMessageIncrementally(t *testing.T) {
 		Model:      "test-model",
 		ConfigPath: filepath.Join(dir, ".wuu.json"),
 		MemoryPath: path,
-		RunPrompt: func(_ctx context.Context, _prompt string) (string, error) {
-			return "", nil
+		StreamRunner: &agent.StreamRunner{
+			Client: &echoStreamClient{answer: func(_ []providers.ChatMessage) string { return "" }},
+			Model:  "test-model",
 		},
 	})
 	m.pendingTurn = &pendingTurnResult{}
@@ -1499,8 +1522,9 @@ func TestStreamFinishedSkipsDuplicateAppendAfterIncrementalPersistence(t *testin
 		Model:      "test-model",
 		ConfigPath: filepath.Join(dir, ".wuu.json"),
 		MemoryPath: path,
-		RunPrompt: func(_ctx context.Context, _prompt string) (string, error) {
-			return "", nil
+		StreamRunner: &agent.StreamRunner{
+			Client: &echoStreamClient{answer: func(_ []providers.ChatMessage) string { return "" }},
+			Model:  "test-model",
 		},
 	})
 	msg := providers.ChatMessage{Role: "assistant", Content: "already persisted"}
@@ -1535,8 +1559,9 @@ func TestSubmitBusyTabQueuesMessage(t *testing.T) {
 		Provider:   "test",
 		Model:      "test-model",
 		ConfigPath: "/tmp/.wuu.json",
-		RunPrompt: func(_ctx context.Context, prompt string) (string, error) {
-			return "answer to: " + prompt, nil
+		StreamRunner: &agent.StreamRunner{
+			Client: &echoStreamClient{answer: func(msgs []providers.ChatMessage) string { return "answer to: " + msgs[len(msgs)-1].Content }},
+			Model:  "test-model",
 		},
 	})
 	m.pendingRequest = true
@@ -1568,8 +1593,9 @@ func TestSubmitBusyEnterQueuesSteerAndCancelsStream(t *testing.T) {
 		Provider:   "test",
 		Model:      "test-model",
 		ConfigPath: "/tmp/.wuu.json",
-		RunPrompt: func(_ctx context.Context, prompt string) (string, error) {
-			return "answer to: " + prompt, nil
+		StreamRunner: &agent.StreamRunner{
+			Client: &echoStreamClient{answer: func(msgs []providers.ChatMessage) string { return "answer to: " + msgs[len(msgs)-1].Content }},
+			Model:  "test-model",
 		},
 	})
 	m.pendingRequest = true
@@ -1604,8 +1630,9 @@ func TestCompletionTabInsertsWithoutExecuting(t *testing.T) {
 		Provider:   "test",
 		Model:      "test-model",
 		ConfigPath: "/tmp/.wuu.json",
-		RunPrompt: func(_ctx context.Context, prompt string) (string, error) {
-			return "answer to: " + prompt, nil
+		StreamRunner: &agent.StreamRunner{
+			Client: &echoStreamClient{answer: func(msgs []providers.ChatMessage) string { return "answer to: " + msgs[len(msgs)-1].Content }},
+			Model:  "test-model",
 		},
 	})
 	m.width = 100
@@ -1638,8 +1665,9 @@ func TestCompletionEnterExecutesSafeCommand(t *testing.T) {
 		Provider:   "test",
 		Model:      "test-model",
 		ConfigPath: "/tmp/.wuu.json",
-		RunPrompt: func(_ctx context.Context, prompt string) (string, error) {
-			return "answer to: " + prompt, nil
+		StreamRunner: &agent.StreamRunner{
+			Client: &echoStreamClient{answer: func(msgs []providers.ChatMessage) string { return "answer to: " + msgs[len(msgs)-1].Content }},
+			Model:  "test-model",
 		},
 	})
 	m.width = 100
@@ -1675,8 +1703,9 @@ func TestCompletionEnterInsertsCommandThatNeedsArgs(t *testing.T) {
 		Provider:   "test",
 		Model:      "test-model",
 		ConfigPath: "/tmp/.wuu.json",
-		RunPrompt: func(_ctx context.Context, prompt string) (string, error) {
-			return "answer to: " + prompt, nil
+		StreamRunner: &agent.StreamRunner{
+			Client: &echoStreamClient{answer: func(msgs []providers.ChatMessage) string { return "answer to: " + msgs[len(msgs)-1].Content }},
+			Model:  "test-model",
 		},
 	})
 	m.width = 100
@@ -1709,8 +1738,9 @@ func TestDrainQueuePrioritizesPendingSteers(t *testing.T) {
 		Provider:   "test",
 		Model:      "test-model",
 		ConfigPath: "/tmp/.wuu.json",
-		RunPrompt: func(_ctx context.Context, prompt string) (string, error) {
-			return "answer to: " + prompt, nil
+		StreamRunner: &agent.StreamRunner{
+			Client: &echoStreamClient{answer: func(msgs []providers.ChatMessage) string { return "answer to: " + msgs[len(msgs)-1].Content }},
+			Model:  "test-model",
 		},
 	})
 	m.pendingSteers = []queuedMessage{
@@ -1891,8 +1921,9 @@ func TestInlineSpinMsg_DoesNotRebuildViewport(t *testing.T) {
 		Provider:   "test",
 		Model:      "test-model",
 		ConfigPath: "/tmp/.wuu.json",
-		RunPrompt: func(_ctx context.Context, prompt string) (string, error) {
-			return prompt, nil
+		StreamRunner: &agent.StreamRunner{
+			Client: &echoStreamClient{answer: func(msgs []providers.ChatMessage) string { return msgs[len(msgs)-1].Content }},
+			Model:  "test-model",
 		},
 	})
 	m.width = 100
@@ -1947,8 +1978,9 @@ func TestView_InlineStatusRenderedOutsideViewport(t *testing.T) {
 		Provider:   "test",
 		Model:      "test-model",
 		ConfigPath: "/tmp/.wuu.json",
-		RunPrompt: func(_ctx context.Context, prompt string) (string, error) {
-			return prompt, nil
+		StreamRunner: &agent.StreamRunner{
+			Client: &echoStreamClient{answer: func(msgs []providers.ChatMessage) string { return msgs[len(msgs)-1].Content }},
+			Model:  "test-model",
 		},
 	})
 	m.width = 100

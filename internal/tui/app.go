@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -26,8 +25,7 @@ type Config struct {
 	ResumeID         string // session ID to resume (empty = new session)
 	MaxContextTokens int
 	RequestTimeout   time.Duration
-	RunPrompt        func(ctx context.Context, prompt string) (string, error)
-	StreamRunner     *agent.StreamRunner // optional, used when available
+	StreamRunner     *agent.StreamRunner
 	HookDispatcher   *hooks.Dispatcher   // optional, dispatches lifecycle hooks
 	OnSessionID      func(string)        // optional, called when the session ID changes
 	Skills           []skills.Skill      // discovered skills, for /<skill-name> shorthand
@@ -38,8 +36,8 @@ type Config struct {
 
 // Run starts the interactive terminal UI.
 func Run(cfg Config) error {
-	if cfg.RunPrompt == nil && cfg.StreamRunner == nil {
-		return errors.New("run prompt function or stream runner is required")
+	if cfg.StreamRunner == nil {
+		return errors.New("stream runner is required")
 	}
 	if strings.TrimSpace(cfg.Provider) == "" {
 		return errors.New("provider is required")

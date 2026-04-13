@@ -1,8 +1,10 @@
 package tui
 
 import (
-	"context"
 	"testing"
+
+	"github.com/blueberrycongee/wuu/internal/agent"
+	"github.com/blueberrycongee/wuu/internal/providers"
 )
 
 func TestParseSlashCommand(t *testing.T) {
@@ -39,8 +41,9 @@ func TestHandleSlash(t *testing.T) {
 		Provider:   "test",
 		Model:      "test-model",
 		ConfigPath: "/tmp/.wuu.json",
-		RunPrompt: func(_ctx context.Context, _prompt string) (string, error) {
-			return "", nil
+		StreamRunner: &agent.StreamRunner{
+			Client: &echoStreamClient{answer: func(_ []providers.ChatMessage) string { return "" }},
+			Model:  "test-model",
 		},
 	})
 
