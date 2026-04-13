@@ -115,6 +115,14 @@ func New(rootDir string) (*Toolkit, error) {
 	if err != nil {
 		return nil, fmt.Errorf("resolve root directory: %w", err)
 	}
+	// Evaluate symlinks on the root at construction time so that
+	// resolvePath's symlink-aware escape check compares apples to
+	// apples. Without this, a temp dir like /var/folders/... (which
+	// is really /private/var/folders/...) would cause every path to
+	// appear outside the workspace after EvalSymlinks.
+	if ev, err := filepath.EvalSymlinks(abs); err == nil {
+		abs = ev
+	}
 	return &Toolkit{rootDir: abs}, nil
 }
 
@@ -1427,7 +1435,20 @@ func (t *Toolkit) resolvePath(input string) (string, error) {
 		return "", fmt.Errorf("resolve path: %w", err)
 	}
 
-	rel, err := filepath.Rel(t.rootDir, resolved)
+	// EvalSymlinks resolves any symlink components in both the
+	// workspace root and the target path. If either path doesn't
+	// exist yet (e.g. write_file creating a new file), the non-
+	// evaluated absolute path is used as fallback.
+	evalRoot := t.rootDir
+	if ev, err := filepath.EvalSymlinks(t.rootDir); err == nil {
+		evalRoot = ev
+	}
+	evalResolved := resolved
+	if ev, err := filepath.EvalSymlinks(resolved); err == nil {
+		evalResolved = ev
+	}
+
+	rel, err := filepath.Rel(evalRoot, evalResolved)
 	if err != nil {
 		return "", fmt.Errorf("path relation check: %w", err)
 	}
