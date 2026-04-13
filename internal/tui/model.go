@@ -138,6 +138,8 @@ type transcriptEntry struct {
 	Content     string // raw content
 	rendered    string // markdown-rendered text (cached)
 	renderedLen int    // Content length when rendered was last computed
+	renderStart int    // inclusive content line in the last rendered viewport snapshot
+	renderEnd   int    // inclusive content line in the last rendered viewport snapshot
 
 	// Thinking block.
 	ThinkingContent  string
@@ -273,6 +275,13 @@ type Model struct {
 	// Cached separator line, invalidated on width change.
 	cachedSep string
 
+	// Deferred viewport refresh. When the user scrolls away from the
+	// active streaming entry, live deltas update transcript state
+	// immediately but postpone viewport.SetContent until that entry is
+	// visible again (or the user returns to bottom).
+	pendingViewportRefresh bool
+	pendingViewportEntry   int
+
 	// Scrollbar drag state.
 	scrollbarDragging        bool
 	scrollbarDragStartRow    int
@@ -357,6 +366,7 @@ func NewModel(cfg Config) Model {
 		autoFollow:         true,
 		clock:              time.Now().Format("15:04:05"),
 		statusLine:         "ready",
+		pendingViewportEntry: -1,
 		streamTarget:       -1,
 		historyIndex:       -1,
 		scrollbarHoverRow:  -1,
@@ -745,14 +755,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tickMsg:
 		m.clock = msg.now.Format("15:04:05")
 		// Only refresh the viewport when the thinking-block spinner
-		// (which lives inside the viewport) needs to advance.
+		// (which lives inside the viewport) needs to advance and is
+		// actually visible. Off-screen thinking updates are deferred
+		// until the user scrolls back to them.
 		// Everything else that ticks — header clock, inline status,
 		// worker panel elapsed/spinner — renders in View() outside
 		// the viewport, so the frame increment is enough for
 		// BubbleTea to re-call View() and pick up the new frame.
 		// Worker panel height changes are handled by workerNotifyMsg.
 		if m.currentWorkStatus().Phase == workPhaseThinking {
-			m.refreshViewport(false)
+			m.refreshViewportForEntry(m.streamTarget, false)
 		}
 		return m, tickCmd()
 
@@ -762,8 +774,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.streaming || m.pendingRequest || m.currentWorkStatus().Phase != workPhaseIdle || len(m.activeWorkerSnapshots()) > 0 {
 			if m.currentWorkStatus().Phase == workPhaseThinking {
 				// Thinking blocks live inside the viewport, so keep their
-				// spinner in sync with the shared status animation frame.
-				m.refreshViewport(false)
+				// spinner in sync when visible. Off-screen blocks can wait
+				// for the next real viewport refresh.
+				m.refreshViewportForEntry(m.streamTarget, false)
 			}
 			return m, statusAnimationCmd()
 		}
@@ -894,6 +907,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case streamFinishedMsg:
 		// Runner goroutine completed (channel closed).
+		finishedEntry := m.streamTarget
 		m.streaming = false
 		m.pendingRequest = false
 		m.streamTarget = -1
@@ -951,7 +965,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			})
 		}
 
-		m.refreshViewport(false)
+		m.refreshViewportForEntry(finishedEntry, false)
 
 		// If a worker completed while this turn was running, fire an
 		// auto-resume now so the orchestrator processes the queued
@@ -1004,7 +1018,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		end := min(m.streamCursor+streamChunkSize, len(m.streamRunes))
 		m.entries[m.streamTarget].Content += string(m.streamRunes[m.streamCursor:end])
 		m.streamCursor = end
-		m.refreshViewport(false)
+		m.refreshViewportForEntry(m.streamTarget, false)
 		if m.streamCursor >= len(m.streamRunes) {
 			m.finishStream()
 			return m, func() tea.Msg { return queueDrainMsg{} }
@@ -1024,8 +1038,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.isInChatArea(msg.X, msg.Y) {
 				var cmd tea.Cmd
 				m.viewport, cmd = m.viewport.Update(msg)
-				m.autoFollow = m.viewport.AtBottom()
-				m.showJump = !m.autoFollow
+				m.syncViewportState()
 				m.refreshScrollbarCache()
 				return m, cmd
 			}
@@ -1124,8 +1137,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.clearPendingChatClick()
 			m.selection.clear()
 			m.viewport.GotoBottom()
-			m.autoFollow = true
-			m.showJump = false
+			m.syncViewportState()
 			return m, nil
 		}
 
@@ -1330,18 +1342,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "ctrl+j", "end":
 			m.viewport.GotoBottom()
-			m.autoFollow = true
-			m.showJump = false
+			m.syncViewportState()
 			return m, nil
 		case "pgup":
 			m.viewport.ViewUp()
-			m.autoFollow = false
-			m.showJump = !m.viewport.AtBottom()
+			m.syncViewportState()
 			return m, nil
 		case "pgdown":
 			m.viewport.ViewDown()
-			m.showJump = !m.viewport.AtBottom()
-			m.autoFollow = !m.showJump
+			m.syncViewportState()
 			return m, nil
 		case "t":
 			// Toggle thinking block expand/collapse.
@@ -1377,8 +1386,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if cmd != nil {
 		cmds = append(cmds, cmd)
 	}
-	m.autoFollow = m.viewport.AtBottom()
-	m.showJump = !m.autoFollow
+	m.syncViewportState()
 	if m.viewport.YOffset != prevOffset {
 		m.refreshScrollbarCache()
 	}
@@ -1739,7 +1747,7 @@ func (m *Model) applyStreamEvent(event providers.StreamEvent, rearm bool) tea.Cm
 		}
 		m.setLiveWorkStatus(workStatus{Phase: workPhaseGenerating, Label: "Responding", Meta: "Writing the reply", Running: true})
 		m.statusLine = "streaming"
-		m.refreshViewport(false)
+		m.refreshViewportForEntry(m.streamTarget, false)
 		return nextWait()
 
 	case providers.EventToolUseStart:
@@ -1760,7 +1768,7 @@ func (m *Model) applyStreamEvent(event providers.StreamEvent, rearm bool) tea.Cm
 		})
 		m.setLiveWorkStatus(workStatus{Phase: workPhaseTool, Label: fmt.Sprintf("Running %s", toolName), Meta: "Making progress with a tool", Running: true})
 		m.statusLine = fmt.Sprintf("tool: %s", toolName)
-		m.refreshViewport(false)
+		m.refreshViewportForEntry(m.streamTarget, false)
 		return nextWait()
 
 	case providers.EventToolUseEnd:
@@ -1781,10 +1789,11 @@ func (m *Model) applyStreamEvent(event providers.StreamEvent, rearm bool) tea.Cm
 		}
 		m.setLiveWorkStatus(workStatus{Phase: workPhaseGenerating, Label: "Responding", Meta: "Writing the reply", Running: true})
 		m.statusLine = "streaming"
-		m.refreshViewport(false)
+		m.refreshViewportForEntry(m.streamTarget, false)
 		return nextWait()
 
 	case providers.EventDone:
+		finishedEntry := m.streamTarget
 		// Accumulate token usage from this stream chunk.
 		if event.Usage != nil {
 			m.turnInputTokens += event.Usage.InputTokens
@@ -1813,7 +1822,7 @@ func (m *Model) applyStreamEvent(event providers.StreamEvent, rearm bool) tea.Cm
 			}
 		}
 		m.clearLiveWorkStatus()
-		m.refreshViewport(false)
+		m.refreshViewportForEntry(finishedEntry, false)
 		return nextWait()
 
 	case providers.EventMessage:
@@ -1839,7 +1848,6 @@ func (m *Model) applyStreamEvent(event providers.StreamEvent, rearm bool) tea.Cm
 				m.clearLiveWorkStatus()
 			}
 		}
-		m.refreshViewport(false)
 		return nextWait()
 
 	case providers.EventReconnect:
@@ -1849,7 +1857,6 @@ func (m *Model) applyStreamEvent(event providers.StreamEvent, rearm bool) tea.Cm
 		}
 		m.setLiveWorkStatus(workStatus{Phase: workPhaseReconnecting, Label: "Reconnecting", Meta: "Restoring the live response", Running: true})
 		m.statusLine = msg
-		m.refreshViewport(false)
 		return nextWait()
 
 	case providers.EventCompact:
@@ -1861,8 +1868,8 @@ func (m *Model) applyStreamEvent(event providers.StreamEvent, rearm bool) tea.Cm
 		if notice == "" {
 			notice = "✦ Compacted conversation history"
 		}
-		m.appendEntry("system", notice)
-		m.refreshViewport(false)
+		idx := m.appendEntry("system", notice)
+		m.refreshViewportForEntry(idx, false)
 		return nextWait()
 
 	case providers.EventError:
@@ -1909,7 +1916,7 @@ func (m *Model) applyStreamEvent(event providers.StreamEvent, rearm bool) tea.Cm
 		e.ThinkingContent += event.Content
 		m.setLiveWorkStatus(workStatus{Phase: workPhaseThinking, Label: "Thinking", Meta: "Working through the next step", Running: true})
 		m.statusLine = "thinking"
-		m.refreshViewport(false)
+		m.refreshViewportForEntry(m.streamTarget, false)
 		return nextWait()
 
 	case providers.EventThinkingDone:
@@ -1922,7 +1929,7 @@ func (m *Model) applyStreamEvent(event providers.StreamEvent, rearm bool) tea.Cm
 		}
 		m.setLiveWorkStatus(workStatus{Phase: workPhaseGenerating, Label: "Responding", Meta: "Writing the reply", Running: true})
 		m.statusLine = "streaming"
-		m.refreshViewport(false)
+		m.refreshViewportForEntry(m.streamTarget, false)
 		return nextWait()
 
 	default:
@@ -1960,6 +1967,7 @@ func (m Model) drainQueue() (tea.Model, tea.Cmd) {
 }
 
 func (m *Model) finishStream() {
+	finishedEntry := m.streamTarget
 	m.streaming = false
 	m.streamCursor = 0
 	raw := string(m.streamRunes)
@@ -1971,7 +1979,7 @@ func (m *Model) finishStream() {
 	m.streamTarget = -1
 	m.clearLiveWorkStatus()
 	m.statusLine = fmt.Sprintf("response in %s", m.streamElapsed.Truncate(10*time.Millisecond))
-	m.refreshViewport(false)
+	m.refreshViewportForEntry(finishedEntry, false)
 }
 
 func (m *Model) renderMarkdown(content string) (string, error) {
@@ -2219,6 +2227,80 @@ func (m *Model) updateScrollbarHover(x, y int) bool {
 	return changed
 }
 
+func (m Model) viewportVisibleLineRange() (start, end int, ok bool) {
+	if m.viewport.Height <= 0 {
+		return 0, 0, false
+	}
+	start = m.viewport.YOffset
+	end = start + m.viewport.Height - 1
+	return start, end, true
+}
+
+func (m Model) entryVisibleInViewport(idx int) bool {
+	if idx < 0 || idx >= len(m.entries) {
+		return false
+	}
+	start, end, ok := m.viewportVisibleLineRange()
+	if !ok {
+		return false
+	}
+	entry := m.entries[idx]
+	if entry.renderStart < 0 || entry.renderEnd < entry.renderStart {
+		return false
+	}
+	return entry.renderStart <= end && entry.renderEnd >= start
+}
+
+func (m *Model) deferViewportRefresh(idx int) {
+	m.pendingViewportRefresh = true
+	if idx >= 0 && idx < len(m.entries) {
+		m.pendingViewportEntry = idx
+	}
+}
+
+func (m *Model) refreshViewportForEntry(idx int, forceBottom bool) {
+	if forceBottom || m.autoFollow {
+		m.refreshViewport(forceBottom)
+		return
+	}
+	if idx < 0 || idx >= len(m.entries) {
+		m.refreshViewport(forceBottom)
+		return
+	}
+	if m.entries[idx].renderStart < 0 || m.entries[idx].renderEnd < m.entries[idx].renderStart {
+		m.refreshViewport(forceBottom)
+		return
+	}
+	if m.entryVisibleInViewport(idx) {
+		m.refreshViewport(forceBottom)
+		return
+	}
+	m.deferViewportRefresh(idx)
+}
+
+func (m *Model) flushDeferredViewportRefresh() {
+	if !m.pendingViewportRefresh {
+		return
+	}
+	if m.autoFollow {
+		m.refreshViewport(false)
+		return
+	}
+	if m.pendingViewportEntry < 0 || m.pendingViewportEntry >= len(m.entries) {
+		m.refreshViewport(false)
+		return
+	}
+	if m.entryVisibleInViewport(m.pendingViewportEntry) {
+		m.refreshViewport(false)
+	}
+}
+
+func (m *Model) syncViewportState() {
+	m.autoFollow = m.viewport.AtBottom()
+	m.showJump = !m.autoFollow
+	m.flushDeferredViewportRefresh()
+}
+
 func (m *Model) setViewportOffset(offset int) {
 	maxOffset := max(0, m.viewport.TotalLineCount()-m.viewport.Height)
 	if offset < 0 {
@@ -2227,8 +2309,7 @@ func (m *Model) setViewportOffset(offset int) {
 		offset = maxOffset
 	}
 	m.viewport.YOffset = offset
-	m.autoFollow = m.viewport.AtBottom()
-	m.showJump = !m.viewport.AtBottom()
+	m.syncViewportState()
 	m.refreshScrollbarCache()
 }
 
@@ -2390,6 +2471,10 @@ func (m *Model) jumpToPreviousUserAnchor() {
 func (m *Model) refreshViewport(forceBottom bool) {
 	preserveOffset := !forceBottom && !m.autoFollow
 	prevOffset := m.viewport.YOffset
+	for i := range m.entries {
+		m.entries[i].renderStart = -1
+		m.entries[i].renderEnd = -1
+	}
 
 	var b strings.Builder
 	lineCount := 0
@@ -2497,11 +2582,19 @@ func (m *Model) refreshViewport(forceBottom bool) {
 			// NOTE: inline status (Generating / Running tool / Thinking)
 			// is rendered outside the viewport in View() to avoid
 			// spinner animation driving full viewport rebuilds.
+			entryEndLine := currentLine()
+			if entryEndLine < entryStartLine {
+				entryEndLine = entryStartLine
+			}
+			m.entries[i].renderStart = entryStartLine
+			m.entries[i].renderEnd = entryEndLine
 		}
 	}
 
 	m.userMessageLineAnchors = userAnchors
 	m.renderedContent = b.String()
+	m.pendingViewportRefresh = false
+	m.pendingViewportEntry = -1
 	m.viewport.SetContent(m.renderedContent)
 
 	// Update cached token estimate so View() doesn't re-scan entries every frame.
@@ -2589,7 +2682,14 @@ func (m Model) shouldRenderInlineStatus() bool {
 }
 
 func (m Model) hasVisibleRunningTranscriptStatus() bool {
-	for _, entry := range m.entries {
+	for i, entry := range m.entries {
+		if m.viewport.Height > 0 {
+			if entry.renderStart >= 0 && entry.renderEnd >= entry.renderStart {
+				if !m.entryVisibleInViewport(i) {
+					continue
+				}
+			}
+		}
 		if entry.ThinkingContent != "" && !entry.ThinkingDone {
 			return true
 		}
