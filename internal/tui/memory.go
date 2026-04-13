@@ -1,7 +1,7 @@
 package tui
 
 import (
-	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -9,10 +9,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/blueberrycongee/wuu/internal/jsonl"
 	"github.com/blueberrycongee/wuu/internal/providers"
 )
-
-const maxSessionRecordBytes = 32 * 1024 * 1024
 
 type toolCallEntry struct {
 	ID        string `json:"id"`
@@ -38,12 +37,6 @@ type memoryEntry struct {
 	OutputTokens     int             `json:"output_tokens,omitempty"`
 }
 
-func configureSessionScanner(scanner *bufio.Scanner) {
-	// Real tool outputs can exceed 2 MiB in a single JSONL record.
-	// Keep resume/load paths tolerant of large persisted turns.
-	scanner.Buffer(make([]byte, 1024), maxSessionRecordBytes)
-}
-
 func loadMemoryEntries(path string) ([]transcriptEntry, error) {
 	if strings.TrimSpace(path) == "" {
 		return nil, nil
@@ -58,27 +51,24 @@ func loadMemoryEntries(path string) ([]transcriptEntry, error) {
 	}
 	defer file.Close()
 
-	scanner := bufio.NewScanner(file)
-	configureSessionScanner(scanner)
-
 	entries := make([]transcriptEntry, 0, 64)
 	line := 0
-	for scanner.Scan() {
+	err = jsonl.ForEachLine(file, func(raw []byte) error {
 		line++
-		payload := strings.TrimSpace(scanner.Text())
-		if payload == "" {
-			continue
+		payload := bytes.TrimSpace(raw)
+		if len(payload) == 0 {
+			return nil
 		}
 		var rec memoryEntry
-		if err := json.Unmarshal([]byte(payload), &rec); err != nil {
-			return nil, fmt.Errorf("parse memory line %d: %w", line, err)
+		if err := json.Unmarshal(payload, &rec); err != nil {
+			return fmt.Errorf("parse memory line %d: %w", line, err)
 		}
 		role := strings.ToUpper(strings.TrimSpace(rec.Role))
 		if role == "" {
 			role = "SYSTEM"
 		}
 		if role == "META" {
-			continue
+			return nil
 		}
 		content := strings.TrimSpace(rec.Content)
 
@@ -110,7 +100,7 @@ func loadMemoryEntries(path string) ([]transcriptEntry, error) {
 					break
 				}
 			}
-			continue // Don't create a separate entry for tool results.
+			return nil // Don't create a separate entry for tool results.
 		}
 
 		if role == "USER" {
@@ -142,8 +132,9 @@ func loadMemoryEntries(path string) ([]transcriptEntry, error) {
 		}
 
 		entries = append(entries, entry)
-	}
-	if err := scanner.Err(); err != nil {
+		return nil
+	})
+	if err != nil {
 		return nil, fmt.Errorf("scan memory file: %w", err)
 	}
 	return entries, nil
@@ -297,30 +288,27 @@ func loadChatHistory(path string) ([]providers.ChatMessage, error) {
 	}
 	defer file.Close()
 
-	scanner := bufio.NewScanner(file)
-	configureSessionScanner(scanner)
-
 	var msgs []providers.ChatMessage
 	line := 0
-	for scanner.Scan() {
+	err = jsonl.ForEachLine(file, func(raw []byte) error {
 		line++
-		payload := strings.TrimSpace(scanner.Text())
-		if payload == "" {
-			continue
+		payload := bytes.TrimSpace(raw)
+		if len(payload) == 0 {
+			return nil
 		}
 		var rec memoryEntry
-		if err := json.Unmarshal([]byte(payload), &rec); err != nil {
-			return nil, fmt.Errorf("parse memory line %d: %w", line, err)
+		if err := json.Unmarshal(payload, &rec); err != nil {
+			return fmt.Errorf("parse memory line %d: %w", line, err)
 		}
 		role := strings.ToLower(strings.TrimSpace(rec.Role))
 		switch role {
 		case "user", "assistant", "tool":
 		case "system":
 			if !isConversationSummaryContent(rec.Content) {
-				continue
+				return nil
 			}
 		default:
-			continue
+			return nil
 		}
 
 		var tcs []providers.ToolCall
@@ -352,8 +340,9 @@ func loadChatHistory(path string) ([]providers.ChatMessage, error) {
 			ToolCallID:       rec.ToolCallID,
 			ToolCalls:        tcs,
 		})
-	}
-	if err := scanner.Err(); err != nil {
+		return nil
+	})
+	if err != nil {
 		return nil, fmt.Errorf("scan memory file: %w", err)
 	}
 	return msgs, nil
@@ -369,24 +358,22 @@ func loadMetaEntries(path string) ([]memoryEntry, error) {
 	}
 	defer file.Close()
 
-	scanner := bufio.NewScanner(file)
-	configureSessionScanner(scanner)
-
 	var metas []memoryEntry
-	for scanner.Scan() {
-		payload := strings.TrimSpace(scanner.Text())
-		if payload == "" {
-			continue
+	err = jsonl.ForEachLine(file, func(raw []byte) error {
+		payload := bytes.TrimSpace(raw)
+		if len(payload) == 0 {
+			return nil
 		}
 		var rec memoryEntry
-		if err := json.Unmarshal([]byte(payload), &rec); err != nil {
-			return nil, err
+		if err := json.Unmarshal(payload, &rec); err != nil {
+			return err
 		}
 		if strings.EqualFold(strings.TrimSpace(rec.Role), "meta") {
 			metas = append(metas, rec)
 		}
-	}
-	if err := scanner.Err(); err != nil {
+		return nil
+	})
+	if err != nil {
 		return nil, err
 	}
 	return metas, nil
