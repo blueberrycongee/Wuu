@@ -34,6 +34,7 @@ type Config struct {
 	Coordinator      *coordinator.Coordinator // optional, enables worker status panel + result injection
 	AskUserBridge    *AskUserBridge           // optional, enables the ask_user modal dialog
 	ProcessManager   *processruntime.Manager  // optional, enables process panel + commands
+	CleanupSummary   processruntime.CleanupResult
 }
 
 // Run starts the interactive terminal UI.
@@ -59,11 +60,20 @@ func Run(cfg Config) error {
 	}
 
 	// Print resume hint after exiting alt screen — only if conversation happened.
-	if fm, ok := finalModel.(Model); ok && fm.sessionID != "" && fm.sessionCreated && len(fm.entries) > 0 {
-		fmt.Println()
-		fmt.Printf("To resume this session:\n")
-		fmt.Printf("  wuu --resume %s\n", fm.sessionID)
-		fmt.Println()
+	if fm, ok := finalModel.(Model); ok {
+		if len(cfg.CleanupSummary.Cleaned) > 0 {
+			fmt.Println()
+			fmt.Printf("Cleaned up %d session process(es):\n", len(cfg.CleanupSummary.Cleaned))
+			for _, proc := range cfg.CleanupSummary.Cleaned {
+				fmt.Printf("  - %s (%s)\n", proc.Command, proc.ID)
+			}
+		}
+		if fm.sessionID != "" && fm.sessionCreated && len(fm.entries) > 0 {
+			fmt.Println()
+			fmt.Printf("To resume this session:\n")
+			fmt.Printf("  wuu --resume %s\n", fm.sessionID)
+			fmt.Println()
+		}
 	}
 
 	return nil

@@ -66,6 +66,9 @@ type queueDrainMsg struct{}
 
 type inlineSpinMsg struct{}
 type processPollMsg struct{}
+type processNotifyMsg struct {
+	event processruntime.Event
+}
 
 // selectionAutoScrollMsg drives the recurring viewport scroll while a
 // drag-select is held past the chat area's edge. seq must match the
@@ -163,22 +166,23 @@ type workerUsageSnapshot struct {
 
 // Model implements the terminal UI state machine.
 type Model struct {
-	provider       string
-	modelName      string
-	configPath     string
-	workspaceRoot  string
-	memoryPath     string
-	sessionID      string
-	sessionDir     string
-	streamRunner   *agent.StreamRunner
-	hookDispatcher *hooks.Dispatcher
-	streamCh       chan providers.StreamEvent
-	onSessionID    func(string)
-	skills         []skills.Skill
-	memoryFiles    []memory.File
-	coordinator    *coordinator.Coordinator
-	processManager *processruntime.Manager
-	workerNotifyCh chan subagent.Notification
+	provider        string
+	modelName       string
+	configPath      string
+	workspaceRoot   string
+	memoryPath      string
+	sessionID       string
+	sessionDir      string
+	streamRunner    *agent.StreamRunner
+	hookDispatcher  *hooks.Dispatcher
+	streamCh        chan providers.StreamEvent
+	onSessionID     func(string)
+	skills          []skills.Skill
+	memoryFiles     []memory.File
+	coordinator     *coordinator.Coordinator
+	processManager  *processruntime.Manager
+	processNotifyCh chan processruntime.Event
+	workerNotifyCh  chan subagent.Notification
 
 	// Auto-resume state: when a worker completes while the main agent
 	// is busy, we set pendingAutoResume so the streamFinishedMsg
@@ -307,6 +311,7 @@ type Model struct {
 	workerOutputTokens int
 	workerUsageByID    map[string]workerUsageSnapshot
 	workerSpawnedByID  map[string]bool
+	processEventSeen   map[string]bool
 	turnInputTokens    int
 	turnOutputTokens   int
 
@@ -362,6 +367,7 @@ func NewModel(cfg Config) Model {
 		streamTarget:         -1,
 		workerUsageByID:      make(map[string]workerUsageSnapshot),
 		workerSpawnedByID:    make(map[string]bool),
+		processEventSeen:     make(map[string]bool),
 		historyIndex:         -1,
 		scrollbarHoverRow:    -1,
 		insightProgressIdx:   -1,
@@ -397,6 +403,10 @@ func NewModel(cfg Config) Model {
 	if m.coordinator != nil {
 		m.workerNotifyCh = make(chan subagent.Notification, 64)
 		m.coordinator.Subscribe(m.workerNotifyCh)
+	}
+	if m.processManager != nil {
+		m.processNotifyCh = make(chan processruntime.Event, 64)
+		m.processManager.Subscribe(m.processNotifyCh)
 	}
 
 	// Seed chatHistory with the system prompt so every API call includes it.
@@ -541,6 +551,7 @@ func (m Model) Init() tea.Cmd {
 	}
 	if m.processManager != nil {
 		cmds = append(cmds, processPollCmd())
+		cmds = append(cmds, waitProcessNotify(m.processNotifyCh))
 	}
 	return tea.Batch(cmds...)
 }
@@ -573,6 +584,19 @@ func inlineSpinTickCmd() tea.Cmd {
 	return tea.Tick(statusAnimationInterval, func(_ time.Time) tea.Msg {
 		return inlineSpinMsg{}
 	})
+}
+
+func waitProcessNotify(ch <-chan processruntime.Event) tea.Cmd {
+	if ch == nil {
+		return nil
+	}
+	return func() tea.Msg {
+		event, ok := <-ch
+		if !ok {
+			return nil
+		}
+		return processNotifyMsg{event: event}
+	}
 }
 
 func processPollCmd() tea.Cmd {
@@ -799,6 +823,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case processPollMsg:
 		m.relayout()
 		return m, processPollCmd()
+
+	case processNotifyMsg:
+		m.recordProcessEvent(msg.event)
+		m.relayout()
+		m.refreshViewport(false)
+		return m, waitProcessNotify(m.processNotifyCh)
 
 	case selectionAutoScrollMsg:
 		// Stale ticks (left over from a previous burst that has
@@ -2868,4 +2898,40 @@ func trimToWidth(value string, width int) string {
 		b.WriteRune(r)
 	}
 	return b.String() + "…"
+}
+
+func (m *Model) recordProcessEvent(event processruntime.Event) {
+	key := event.Process.ID + ":" + string(event.Type)
+	if m.processEventSeen == nil {
+		m.processEventSeen = make(map[string]bool)
+	}
+	if m.processEventSeen[key] {
+		return
+	}
+	m.processEventSeen[key] = true
+	line := formatProcessEvent(event)
+	if line == "" {
+		return
+	}
+	m.appendEntry("system", line)
+	m.statusLine = line
+}
+
+func formatProcessEvent(event processruntime.Event) string {
+	name := processDisplayName(event.Process)
+	switch event.Type {
+	case processruntime.EventStarted:
+		return fmt.Sprintf("✓ process started: %s (%s)", name, event.Process.ID)
+	case processruntime.EventStopped:
+		return fmt.Sprintf("⊘ process stopped: %s (%s)", name, event.Process.ID)
+	case processruntime.EventFailed:
+		if strings.TrimSpace(event.Process.LastError) != "" {
+			return fmt.Sprintf("✗ process failed: %s (%s) — %s", name, event.Process.ID, event.Process.LastError)
+		}
+		return fmt.Sprintf("✗ process failed: %s (%s)", name, event.Process.ID)
+	case processruntime.EventCleanedUp:
+		return fmt.Sprintf("⊘ process cleaned up: %s (%s)", name, event.Process.ID)
+	default:
+		return ""
+	}
 }

@@ -107,3 +107,72 @@ func TestReadOutput(t *testing.T) {
 	}
 	_, _ = m.Stop(p.ID)
 }
+
+func TestManagerPublishesLifecycleEventsAndCleanupSkipsManaged(t *testing.T) {
+	root := t.TempDir()
+	m, err := NewManager(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := make(chan Event, 16)
+	m.Subscribe(events)
+
+	sessionProc, err := m.Start(context.Background(), StartOptions{Command: "sleep 5", OwnerKind: OwnerMainAgent, OwnerID: "main", Lifecycle: LifecycleSession})
+	if err != nil {
+		t.Fatal(err)
+	}
+	managedProc, err := m.Start(context.Background(), StartOptions{Command: "sleep 5", OwnerKind: OwnerMainAgent, OwnerID: "main", Lifecycle: LifecycleManaged})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got := (<-events); got.Type != EventStarted || got.Process.ID != sessionProc.ID {
+		t.Fatalf("unexpected first event: %+v", got)
+	}
+	if got := (<-events); got.Type != EventStarted || got.Process.ID != managedProc.ID {
+		t.Fatalf("unexpected second event: %+v", got)
+	}
+
+	result, err := m.CleanupSessionWithResult()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Cleaned) != 1 || result.Cleaned[0].ID != sessionProc.ID {
+		t.Fatalf("unexpected cleanup result: %+v", result)
+	}
+
+	gotCleanup := false
+	gotStopped := false
+	deadline := time.After(5 * time.Second)
+	for !(gotCleanup && gotStopped) {
+		select {
+		case ev := <-events:
+			switch {
+			case ev.Type == EventCleanedUp && ev.Process.ID == sessionProc.ID:
+				gotCleanup = true
+			case ev.Type == EventStopped && ev.Process.ID == sessionProc.ID:
+				gotStopped = true
+			case ev.Process.ID == managedProc.ID && ev.Type == EventCleanedUp:
+				t.Fatalf("managed process should not be cleaned up: %+v", ev)
+			}
+		case <-deadline:
+			t.Fatalf("timed out waiting for cleanup events; cleanup=%v stopped=%v", gotCleanup, gotStopped)
+		}
+	}
+
+	list, err := m.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	statuses := map[string]Status{}
+	for _, proc := range list {
+		statuses[proc.ID] = proc.Status
+	}
+	if statuses[sessionProc.ID] != StatusStopped {
+		t.Fatalf("expected session process stopped, got %s", statuses[sessionProc.ID])
+	}
+	if statuses[managedProc.ID] != StatusRunning {
+		t.Fatalf("expected managed process still running, got %s", statuses[managedProc.ID])
+	}
+	_, _ = m.Stop(managedProc.ID)
+}

@@ -21,8 +21,14 @@ import (
 type OwnerKind string
 type Lifecycle string
 type Status string
+type EventType string
 
 const (
+	EventStarted   EventType = "started"
+	EventFailed    EventType = "failed"
+	EventStopped   EventType = "stopped"
+	EventCleanedUp EventType = "cleaned_up"
+
 	OwnerMainAgent OwnerKind = "main_agent"
 	OwnerSubagent  OwnerKind = "subagent"
 
@@ -62,11 +68,22 @@ type StartOptions struct {
 	Lifecycle Lifecycle
 }
 
+type Event struct {
+	Type    EventType
+	Process Process
+}
+
+type CleanupResult struct {
+	Cleaned []Process
+}
+
 type Manager struct {
 	rootDir     string
 	registryDir string
 	logDir      string
 	mu          sync.Mutex
+	subMu       sync.Mutex
+	subscribers []chan<- Event
 }
 
 func NewManager(rootDir string) (*Manager, error) {
@@ -120,6 +137,7 @@ func (m *Manager) Start(ctx context.Context, opt StartOptions) (*Process, error)
 		p.Status = StatusFailed
 		p.LastError = err.Error()
 		_ = m.save(p)
+		m.publish(Event{Type: EventFailed, Process: *p})
 		return p, err
 	}
 	cmd := exec.CommandContext(ctx, "bash", "-lc", opt.Command)
@@ -134,6 +152,7 @@ func (m *Manager) Start(ctx context.Context, opt StartOptions) (*Process, error)
 		p.LastError = err.Error()
 		p.UpdatedAt = time.Now()
 		_ = m.save(p)
+		m.publish(Event{Type: EventFailed, Process: *p})
 		return p, fmt.Errorf("start process: %w", err)
 	}
 	p.PID = cmd.Process.Pid
@@ -145,6 +164,7 @@ func (m *Manager) Start(ctx context.Context, opt StartOptions) (*Process, error)
 	p.Status = StatusRunning
 	p.UpdatedAt = time.Now()
 	_ = m.save(p)
+	m.publish(Event{Type: EventStarted, Process: *p})
 	go m.wait(id, cmd, logf)
 	return p, nil
 }
@@ -172,6 +192,11 @@ func (m *Manager) wait(id string, cmd *exec.Cmd, logf *os.File) {
 	p.StoppedAt = time.Now()
 	p.UpdatedAt = time.Now()
 	_ = m.save(p)
+	eventType := EventStopped
+	if p.Status == StatusFailed {
+		eventType = EventFailed
+	}
+	m.publish(Event{Type: eventType, Process: *p})
 }
 
 func (m *Manager) List() ([]Process, error) {
@@ -256,18 +281,47 @@ func (m *Manager) Stop(id string) (*Process, error) {
 }
 
 func (m *Manager) CleanupSession() error {
+	_, err := m.CleanupSessionWithResult()
+	return err
+}
+
+func (m *Manager) CleanupSessionWithResult() (CleanupResult, error) {
+	result := CleanupResult{}
 	list, err := m.List()
 	if err != nil {
-		return err
+		return result, err
 	}
 	for _, p := range list {
 		if p.Lifecycle == LifecycleSession && (p.Status == StatusRunning || p.Status == StatusStarting || p.Status == StatusStopping) {
-			if _, err := m.Stop(p.ID); err != nil {
-				return err
+			stopped, err := m.Stop(p.ID)
+			if err != nil {
+				return result, err
+			}
+			if stopped != nil {
+				result.Cleaned = append(result.Cleaned, *stopped)
+				m.publish(Event{Type: EventCleanedUp, Process: *stopped})
 			}
 		}
 	}
-	return nil
+	return result, nil
+}
+
+func (m *Manager) Subscribe(ch chan<- Event) {
+	m.subMu.Lock()
+	defer m.subMu.Unlock()
+	m.subscribers = append(m.subscribers, ch)
+}
+
+func (m *Manager) publish(event Event) {
+	m.subMu.Lock()
+	subs := append([]chan<- Event(nil), m.subscribers...)
+	m.subMu.Unlock()
+	for _, ch := range subs {
+		select {
+		case ch <- event:
+		default:
+		}
+	}
 }
 
 func (m *Manager) load(id string) (*Process, error) {

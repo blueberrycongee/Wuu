@@ -2484,3 +2484,48 @@ func TestNewOnboardingTextarea_UsesThemeStyles(t *testing.T) {
 		t.Fatalf("expected onboarding text color %v, got %v", currentTheme.Text, got)
 	}
 }
+
+func TestProcessNotifyAppendsLifecycleEntriesOnce(t *testing.T) {
+	m := NewModel(Config{Provider: "test", Model: "test-model", ConfigPath: "/tmp/.wuu.json"})
+	proc := processruntime.Process{ID: "proc-1", Command: "npm run dev"}
+
+	updated, _ := m.Update(processNotifyMsg{event: processruntime.Event{Type: processruntime.EventStarted, Process: proc}})
+	m = updated.(Model)
+	updated, _ = m.Update(processNotifyMsg{event: processruntime.Event{Type: processruntime.EventStarted, Process: proc}})
+	m = updated.(Model)
+	updated, _ = m.Update(processNotifyMsg{event: processruntime.Event{Type: processruntime.EventStopped, Process: proc}})
+	m = updated.(Model)
+
+	if len(m.entries) != 2 {
+		t.Fatalf("expected deduped start plus stop entries, got %d", len(m.entries))
+	}
+	if !strings.Contains(m.entries[0].Content, "✓ process started: npm run dev") {
+		t.Fatalf("unexpected start entry: %q", m.entries[0].Content)
+	}
+	if !strings.Contains(m.entries[1].Content, "⊘ process stopped: npm run dev") {
+		t.Fatalf("unexpected stop entry: %q", m.entries[1].Content)
+	}
+}
+
+func TestProcessNotifyCleanupUpdatesTranscriptAndStatusLine(t *testing.T) {
+	m := NewModel(Config{Provider: "test", Model: "test-model", ConfigPath: "/tmp/.wuu.json"})
+	proc := processruntime.Process{ID: "proc-2", Command: "vite", LastError: "exit status 1"}
+
+	updated, _ := m.Update(processNotifyMsg{event: processruntime.Event{Type: processruntime.EventFailed, Process: proc}})
+	m = updated.(Model)
+	updated, _ = m.Update(processNotifyMsg{event: processruntime.Event{Type: processruntime.EventCleanedUp, Process: proc}})
+	m = updated.(Model)
+
+	if len(m.entries) != 2 {
+		t.Fatalf("expected failed and cleanup entries, got %d", len(m.entries))
+	}
+	if !strings.Contains(m.entries[0].Content, "✗ process failed: vite") || !strings.Contains(m.entries[0].Content, "exit status 1") {
+		t.Fatalf("unexpected failed entry: %q", m.entries[0].Content)
+	}
+	if !strings.Contains(m.entries[1].Content, "⊘ process cleaned up: vite") {
+		t.Fatalf("unexpected cleanup entry: %q", m.entries[1].Content)
+	}
+	if !strings.Contains(m.statusLine, "process cleaned up: vite") {
+		t.Fatalf("expected status line to reflect latest process event, got %q", m.statusLine)
+	}
+}

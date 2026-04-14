@@ -548,15 +548,30 @@ func runTUI(args []string) error {
 			}
 		}
 	}
+	var cleanupSummary processruntime.CleanupResult
 	defer func() {
-		if processMgr != nil {
-			_ = processMgr.CleanupSession()
-		}
 		if coord != nil {
 			_ = coord.CleanupSession()
 		}
 	}()
-	return tui.Run(cfgUI)
+	if err := tui.Run(cfgUI); err != nil {
+		return err
+	}
+	if processMgr != nil {
+		result, err := processMgr.CleanupSessionWithResult()
+		if err != nil {
+			return err
+		}
+		cleanupSummary = result
+	}
+	if len(cleanupSummary.Cleaned) > 0 {
+		fmt.Println()
+		fmt.Printf("Cleaned up %d session process(es):\n", len(cleanupSummary.Cleaned))
+		for _, proc := range cleanupSummary.Cleaned {
+			fmt.Printf("  - %s (%s)\n", proc.Command, proc.ID)
+		}
+	}
+	return nil
 }
 
 func resolveTUIThemeMode(homeDir, override string) (string, error) {
