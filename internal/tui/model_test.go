@@ -589,11 +589,21 @@ func TestMouseClickPositionsCursor(t *testing.T) {
 		X:      6,
 		Y:      inputY,
 	})
-	after := updated.(Model)
+	pressed := updated.(Model)
 
-	if !after.input.Focused() {
+	if !pressed.input.Focused() {
 		t.Fatal("expected input to be focused after clicking input area")
 	}
+
+	// Release completes the click and positions the cursor.
+	updated, _ = pressed.Update(tea.MouseMsg{
+		Action: tea.MouseActionRelease,
+		Button: tea.MouseButtonLeft,
+		X:      6,
+		Y:      inputY,
+	})
+	after := updated.(Model)
+
 	li := after.input.LineInfo()
 	if li.CharOffset != 4 {
 		t.Fatalf("expected cursor at column 4, got %d", li.CharOffset)
@@ -729,6 +739,15 @@ func TestMouseClickPositionsCursorMultiLine(t *testing.T) {
 
 	updated, _ := m.Update(tea.MouseMsg{
 		Action: tea.MouseActionPress,
+		Button: tea.MouseButtonLeft,
+		X:      clickX,
+		Y:      inputY,
+	})
+	pressed := updated.(Model)
+
+	// Release to complete click and position cursor.
+	updated, _ = pressed.Update(tea.MouseMsg{
+		Action: tea.MouseActionRelease,
 		Button: tea.MouseButtonLeft,
 		X:      clickX,
 		Y:      inputY,

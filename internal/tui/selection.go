@@ -694,3 +694,119 @@ func slicePlainTextByVisualCols(s string, start, end int) string {
 	}
 	return b.String()
 }
+
+// --- Input textarea selection helpers ---
+
+// screenToInputCoords converts screen (x, y) to input-local
+// coordinates where row is the visual line within the textarea
+// and col is the visual column within the text (after the prompt).
+func (m *Model) screenToInputCoords(x, y int) (row, col int) {
+	const promptW = 2 // "> "
+	row = y - m.layout.Input.Y
+	if row < 0 {
+		row = 0
+	}
+	if row >= m.layout.Input.Height {
+		row = m.layout.Input.Height - 1
+	}
+	col = x - m.layout.Input.X - promptW
+	if col < 0 {
+		col = 0
+	}
+	return row, col
+}
+
+// inputSelectedText extracts the highlighted substring from the
+// textarea's plain text Value(). Row/Col in inputSelection are
+// visual lines in the textarea, mapped to logical line breaks.
+func (m *Model) inputSelectedText() string {
+	if !m.inputSelection.hasSelection() {
+		return ""
+	}
+	start, end := m.inputSelection.bounds()
+	if start == nil {
+		return ""
+	}
+	lines := strings.Split(m.input.Value(), "\n")
+	var sb strings.Builder
+	for row := start.Row; row <= end.Row && row < len(lines); row++ {
+		if row < 0 {
+			continue
+		}
+		line := lines[row]
+		lineWidth := runewidth.StringWidth(line)
+		colStart := 0
+		if row == start.Row {
+			colStart = start.Col
+		}
+		colEnd := lineWidth
+		if row == end.Row {
+			colEnd = end.Col + 1
+		}
+		if colStart < 0 {
+			colStart = 0
+		}
+		if colEnd > lineWidth {
+			colEnd = lineWidth
+		}
+		if row > start.Row {
+			sb.WriteByte('\n')
+		}
+		if colStart < colEnd {
+			sb.WriteString(slicePlainTextByVisualCols(line, colStart, colEnd))
+		}
+	}
+	return sb.String()
+}
+
+// copyInputSelectionToClipboard copies the current input selection
+// to the system clipboard.
+func (m *Model) copyInputSelectionToClipboard() {
+	text := m.inputSelectedText()
+	if text == "" {
+		return
+	}
+	method, err := writeClipboard(text)
+	if err != nil {
+		m.setCopyStatusLine("copy failed: install pbcopy / xclip / wl-copy")
+		return
+	}
+	if method == "osc52" {
+		m.setCopyStatusLine("copied via OSC 52 (terminal-dependent)")
+		return
+	}
+	m.setCopyStatusLine("copied")
+}
+
+// overlayInputSelection paints the selection highlight onto the
+// input textarea's View() output. The inputSelection coordinates
+// are input-local (row = visual line, col = visual column after
+// prompt). Reuses highlightLineRange for ANSI-aware bg overlay.
+func overlayInputSelection(inputView string, sel *selectionState) string {
+	if sel == nil || !sel.hasSelection() {
+		return inputView
+	}
+	start, end := sel.bounds()
+	if start == nil {
+		return inputView
+	}
+	const promptW = 2
+	lines := strings.Split(inputView, "\n")
+	for row := start.Row; row <= end.Row; row++ {
+		if row < 0 || row >= len(lines) {
+			continue
+		}
+		stripped := ansi.Strip(lines[row])
+		lineWidth := lipgloss.Width(stripped)
+		colStart := promptW
+		if row == start.Row {
+			colStart = promptW + start.Col
+		}
+		colEnd := lineWidth
+		if row == end.Row {
+			colEnd = promptW + end.Col + 1
+		}
+		lines[row] = highlightLineRange(lines[row], colStart, colEnd)
+	}
+	return strings.Join(lines, "\n")
+}

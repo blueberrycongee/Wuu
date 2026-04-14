@@ -295,6 +295,10 @@ type Model struct {
 	// we convert it into an actual text-selection drag.
 	pendingChatClick pendingChatClickState
 
+	// Text selection in input textarea.
+	inputSelection    selectionState
+	pendingInputClick pendingChatClickState
+
 	// Auto-scroll state for drag-select past the viewport edge.
 	// While the mouse is held outside the chat area, a recurring tick
 	// scrolls the viewport in the held direction so the selection can
@@ -1075,11 +1079,59 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				return m, nil
 			}
+			if m.inputSelection.IsDragging {
+				m.inputSelection.finish()
+				if m.inputSelection.hasSelection() {
+					m.copyInputSelectionToClipboard()
+				}
+				return m, nil
+			}
+			if m.pendingInputClick.active {
+				// No drag happened — position cursor at click point.
+				const promptW = 2
+				targetRow := m.pendingInputClick.y - m.layout.Input.Y
+				targetCol := m.pendingInputClick.x - m.layout.Input.X - promptW
+				if targetCol < 0 {
+					targetCol = 0
+				}
+				m.pendingInputClick = pendingChatClickState{}
+				currentRow := m.input.Line()
+				for currentRow < targetRow && currentRow < m.input.LineCount()-1 {
+					m.input.CursorDown()
+					currentRow++
+				}
+				for currentRow > targetRow && currentRow > 0 {
+					m.input.CursorUp()
+					currentRow--
+				}
+				m.input.SetCursor(targetCol)
+				return m, nil
+			}
 			if m.pendingChatClick.active {
 				m.focusInput()
 				m.selection.clear()
 				return m, nil
 			}
+		}
+
+		// Input area: pending click → drag threshold → start input selection.
+		if msg.Action == tea.MouseActionMotion && m.pendingInputClick.active {
+			if exceedsChatSelectionDragThreshold(m.pendingInputClick.x, m.pendingInputClick.y, msg.X, msg.Y) {
+				startRow, startCol := m.screenToInputCoords(m.pendingInputClick.x, m.pendingInputClick.y)
+				m.pendingInputClick = pendingChatClickState{}
+				m.inputSelection.clear()
+				m.inputSelection.start(startCol, startRow)
+				row, col := m.screenToInputCoords(msg.X, msg.Y)
+				m.inputSelection.update(col, row)
+			}
+			return m, nil
+		}
+
+		// Input area: active drag — extend selection.
+		if msg.Action == tea.MouseActionMotion && m.inputSelection.IsDragging {
+			row, col := m.screenToInputCoords(msg.X, msg.Y)
+			m.inputSelection.update(col, row)
+			return m, nil
 		}
 
 		if msg.Action == tea.MouseActionMotion && m.pendingChatClick.active {
@@ -1158,11 +1210,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-		// Mouse click inside input area — reposition cursor.
+		// Mouse click inside input area — start pending click (may become drag-select).
 		if msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft {
-			promptW := 2 // "> " prompt width
-
-			// Check if click is inside the input area.
 			inputTop := m.layout.Input.Y
 			inputBot := inputTop + m.layout.Input.Height
 			inputLeft := m.layout.Input.X
@@ -1171,28 +1220,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.focusInput()
 				m.selection.clear()
 				m.clearPendingChatClick()
-				targetRow := msg.Y - inputTop
-				targetCol := msg.X - inputLeft - promptW
-				if targetCol < 0 {
-					targetCol = 0
-				}
-
-				// Move to target row.
-				// NOTE: Line() returns logical row, targetRow is visual row.
-				// This works correctly for hard newlines but may misalign
-				// with soft-wrapped lines. Acceptable for typical input widths.
-				currentRow := m.input.Line()
-				for currentRow < targetRow && currentRow < m.input.LineCount()-1 {
-					m.input.CursorDown()
-					currentRow++
-				}
-				for currentRow > targetRow && currentRow > 0 {
-					m.input.CursorUp()
-					currentRow--
-				}
-
-				// Move to target column.
-				m.input.SetCursor(targetCol)
+				m.inputSelection.clear()
+				m.pendingInputClick = pendingChatClickState{active: true, x: msg.X, y: msg.Y}
 				return m, nil
 			}
 		}
@@ -1207,6 +1236,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case tea.KeyMsg:
+		// Any key clears input selection.
+		if m.inputSelection.hasSelection() {
+			m.inputSelection.clear()
+		}
+
 		// Handle completion popup navigation first.
 		if m.completionVisible {
 			switch msg.String() {
@@ -2842,6 +2876,9 @@ func (m Model) View() string {
 		outputBox = overlayScrollbar(outputBox, m.cachedScrollbar, m.layout.Chat.Width)
 	}
 	inputBox := m.input.View()
+	if m.inputSelection.hasSelection() {
+		inputBox = overlayInputSelection(inputBox, &m.inputSelection)
+	}
 
 	// Overlay completion popup on top of outputBox if visible.
 	if m.completionVisible && len(m.completionItems) > 0 {
