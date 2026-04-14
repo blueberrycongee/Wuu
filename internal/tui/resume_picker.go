@@ -323,7 +323,7 @@ func (p *resumePicker) renderListLines(width, rows int) []string {
 			title = "(empty session)"
 		}
 		date := e.Session.CreatedAt.Local().Format("01-02 15:04")
-		msgs := fmt.Sprintf("%dm", e.Session.Entries)
+		msgs := fmt.Sprintf("%dmsg", e.Session.Entries)
 
 		// Layout: marker + title (truncated) + right-aligned meta.
 		marker := "  "
