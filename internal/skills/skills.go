@@ -3,6 +3,7 @@ package skills
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -303,6 +304,93 @@ func parseBool(v string, def bool) bool {
 		return false
 	}
 	return def
+}
+
+// parseSkillContent parses a skill from raw markdown content (with frontmatter).
+// Used by BundledSkills to parse embedded files. The filename is used as a
+// fallback name, source identifies the origin ("bundled", "mcp", etc.).
+func parseSkillContent(content, filename, source, dir string) Skill {
+	s, err := parseSkillReader(strings.NewReader(content), source)
+	if err != nil {
+		return Skill{}
+	}
+	if s.Name == "" {
+		s.Name = strings.TrimSuffix(filename, filepath.Ext(filename))
+	}
+	s.Source = source
+	s.Dir = dir
+	if s.Description == "" {
+		s.Description = firstMarkdownLine(s.Content)
+	}
+	return s
+}
+
+// parseSkillReader is the core frontmatter+body parser, factored out of
+// parseSkillFile so it can be reused for in-memory content.
+func parseSkillReader(r io.Reader, source string) (Skill, error) {
+	scanner := bufio.NewScanner(r)
+	scanner.Buffer(make([]byte, 4096), 1024*1024)
+
+	if !scanner.Scan() || strings.TrimSpace(scanner.Text()) != "---" {
+		return Skill{}, fmt.Errorf("no frontmatter")
+	}
+
+	skill := Skill{
+		Source:        source,
+		UserInvocable: true,
+	}
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.TrimSpace(line) == "---" {
+			break
+		}
+		k, v, ok := splitYAMLLine(line)
+		if !ok {
+			continue
+		}
+		switch k {
+		case "name":
+			skill.Name = v
+		case "description":
+			skill.Description = v
+		case "when-to-use", "when_to_use":
+			skill.WhenToUse = v
+		case "model":
+			skill.Model = v
+		case "context":
+			skill.Context = v
+		case "agent":
+			skill.Agent = v
+		case "allowed-tools", "allowed_tools":
+			skill.AllowedTools = parseList(v)
+		case "user-invocable", "user_invocable":
+			skill.UserInvocable = parseBool(v, true)
+		case "disable-model-invocation", "disable_model_invocation":
+			skill.DisableModelInvoke = parseBool(v, false)
+		case "argument-hint", "argument_hint":
+			skill.ArgumentHint = v
+		case "paths":
+			skill.Paths = parseList(v)
+		case "effort":
+			skill.Effort = v
+		case "version":
+			skill.Version = v
+		case "shell":
+			skill.Shell = v
+		}
+	}
+
+	var body strings.Builder
+	for scanner.Scan() {
+		if body.Len() > 0 {
+			body.WriteString("\n")
+		}
+		body.WriteString(scanner.Text())
+	}
+	skill.Content = body.String()
+
+	return skill, nil
 }
 
 // firstMarkdownLine returns the first non-empty content line from markdown,
