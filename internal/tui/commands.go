@@ -42,7 +42,7 @@ func (c command) completionEnterBehavior() slashCompletionEnterBehavior {
 		return slashCompletionInsertOnly
 	}
 	switch c.Name {
-	case "help", "clear", "status", "compact", "fork", "new", "diff", "copy", "skills", "memory", "workers", "cleanup-worktrees", "insight", "exit":
+	case "help", "clear", "status", "compact", "fork", "new", "diff", "copy", "skills", "memory", "workers", "processes", "cleanup-worktrees", "insight", "exit":
 		return slashCompletionExecute
 	default:
 		return slashCompletionInsertOnly
@@ -67,6 +67,7 @@ func init() {
 		{Name: "skills", Description: "List available skills", Type: cmdTypeLocal, Execute: cmdSkills},
 		{Name: "memory", Description: "Show loaded memory files (CLAUDE.md / AGENTS.md)", Type: cmdTypeLocal, Execute: cmdMemory},
 		{Name: "workers", Description: "List active and recent sub-agents", Type: cmdTypeLocal, Execute: cmdWorkers},
+		{Name: "processes", Description: "List managed background processes", Type: cmdTypeLocal, Execute: cmdProcesses},
 		{Name: "cleanup-worktrees", Description: "Remove all sub-agent worktrees for this session", Type: cmdTypeLocal, Execute: cmdCleanupWorktrees},
 		{Name: "insight", Description: "Session stats and diagnostics", Type: cmdTypeLocal, Execute: cmdInsight},
 		{Name: "exit", Aliases: []string{"quit"}, Description: "Exit wuu", Type: cmdTypeLocal, Execute: cmdExit},
@@ -451,6 +452,31 @@ func cmdWorkers(_ string, m *Model) string {
 		fmt.Fprintf(&b, "  %s [%s] %s — %s%s\n", s.ID, s.Type, s.Status, desc, dur)
 	}
 	return b.String()
+}
+
+func cmdProcesses(_ string, m *Model) string {
+	if m.processManager == nil {
+		return "processes: process manager not available"
+	}
+	list, err := m.processManager.List()
+	if err != nil {
+		return fmt.Sprintf("processes: %v", err)
+	}
+	if len(list) == 0 {
+		return "processes: none started in this session yet"
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "processes (%d total):\n", len(list))
+	for _, p := range list {
+		fmt.Fprintf(&b, "  %s — %s — owner:%s — lifecycle:%s — status:%s\n",
+			p.ID,
+			processDisplayName(p),
+			strings.TrimPrefix(processOwnerLabel(p), "owner:"),
+			p.Lifecycle,
+			p.Status,
+		)
+	}
+	return strings.TrimRight(b.String(), "\n")
 }
 
 func cmdCleanupWorktrees(_ string, m *Model) string {

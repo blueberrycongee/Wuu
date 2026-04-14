@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/blueberrycongee/wuu/internal/agent"
+	processruntime "github.com/blueberrycongee/wuu/internal/process"
 	"github.com/blueberrycongee/wuu/internal/providers"
 	"github.com/blueberrycongee/wuu/internal/subagent"
 	tea "github.com/charmbracelet/bubbletea"
@@ -54,6 +55,27 @@ func newTestModel(answer func([]providers.ChatMessage) string) Model {
 	return m
 }
 
+func newTestProcessManager(t *testing.T) *processruntime.Manager {
+	t.Helper()
+	mgr, err := processruntime.NewManager(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewManager: %v", err)
+	}
+	return mgr
+}
+
+func startTestProcess(t *testing.T, mgr *processruntime.Manager, command string, owner processruntime.OwnerKind, ownerID string, lifecycle processruntime.Lifecycle) processruntime.Process {
+	t.Helper()
+	p, err := mgr.Start(context.Background(), processruntime.StartOptions{Command: command, OwnerKind: owner, OwnerID: ownerID, Lifecycle: lifecycle})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	t.Cleanup(func() {
+		_, _ = mgr.Stop(p.ID)
+	})
+	return *p
+}
+
 // drainStream pumps the bubbletea command loop until streaming finishes.
 func drainStream(t *testing.T, m Model, cmd tea.Cmd) Model {
 	t.Helper()
@@ -71,6 +93,100 @@ func drainStream(t *testing.T, m Model, cmd tea.Cmd) Model {
 		t.Fatal("stream did not finish within deadline")
 	}
 	return m
+}
+
+func TestView_ProcessPanelAppearsAndHides(t *testing.T) {
+	m := NewModel(Config{Provider: "test", Model: "test-model", ConfigPath: "/tmp/.wuu.json"})
+	m.width = 120
+	m.height = 24
+	m.relayout()
+	if strings.Contains(ansi.Strip(m.View()), "Processes") {
+		t.Fatal("expected process panel hidden without processes")
+	}
+
+	mgr := newTestProcessManager(t)
+	startTestProcess(t, mgr, "sleep 30", processruntime.OwnerMainAgent, "main", processruntime.LifecycleSession)
+	m.processManager = mgr
+	m.relayout()
+	view := ansi.Strip(m.View())
+	if !strings.Contains(view, "Processes") {
+		t.Fatalf("expected process panel visible, got: %s", view)
+	}
+	if !strings.Contains(view, "owner:main") {
+		t.Fatalf("expected process owner in panel, got: %s", view)
+	}
+	if !strings.Contains(view, "session") {
+		t.Fatalf("expected process lifecycle in panel, got: %s", view)
+	}
+}
+
+func TestView_WorkerAndProcessPanelsCanRenderTogether(t *testing.T) {
+	mgr := newTestProcessManager(t)
+	startTestProcess(t, mgr, "sleep 30", processruntime.OwnerMainAgent, "main", processruntime.LifecycleSession)
+
+	m := NewModel(Config{Provider: "test", Model: "test-model", ConfigPath: "/tmp/.wuu.json", ProcessManager: mgr})
+	m.width = 120
+	m.height = 24
+	m.statusLine = "streaming"
+	m.pendingRequest = true
+	m.relayout()
+
+	view := ansi.Strip(m.View())
+	if !strings.Contains(view, "Processes") {
+		t.Fatalf("expected process panel in view, got: %s", view)
+	}
+	if !strings.Contains(view, "Responding") {
+		t.Fatalf("expected inline status to coexist with process panel, got: %s", view)
+	}
+	if m.processPanelHeight() == 0 {
+		t.Fatal("expected process panel height > 0")
+	}
+	if m.layout.Chat.Height <= 0 {
+		t.Fatal("expected chat height to remain positive")
+	}
+}
+
+func TestSlashProcessesIncludesLifecycleOwnerAndStatus(t *testing.T) {
+	mgr := newTestProcessManager(t)
+	p := startTestProcess(t, mgr, "sleep 30", processruntime.OwnerMainAgent, "main", processruntime.LifecycleManaged)
+	m := NewModel(Config{Provider: "test", Model: "test-model", ConfigPath: "/tmp/.wuu.json", ProcessManager: mgr})
+
+	out := cmdProcesses("", &m)
+	if !strings.Contains(out, p.ID) {
+		t.Fatalf("expected process id in output, got: %s", out)
+	}
+	if !strings.Contains(out, "lifecycle:managed") {
+		t.Fatalf("expected lifecycle in output, got: %s", out)
+	}
+	if !strings.Contains(out, "owner:main") {
+		t.Fatalf("expected owner in output, got: %s", out)
+	}
+	if !strings.Contains(out, "status:running") {
+		t.Fatalf("expected status in output, got: %s", out)
+	}
+}
+
+func TestProcessLifecycleVisibleThroughModelState(t *testing.T) {
+	mgr := newTestProcessManager(t)
+	p := startTestProcess(t, mgr, "sleep 30", processruntime.OwnerMainAgent, "main", processruntime.LifecycleSession)
+	m := NewModel(Config{Provider: "test", Model: "test-model", ConfigPath: "/tmp/.wuu.json", ProcessManager: mgr})
+	m.width = 120
+	m.height = 24
+	m.relayout()
+
+	processes := m.visibleProcesses()
+	if len(processes) != 1 {
+		t.Fatalf("expected 1 visible process, got %d", len(processes))
+	}
+	if processes[0].ID != p.ID {
+		t.Fatalf("expected process %s, got %s", p.ID, processes[0].ID)
+	}
+	if processes[0].Lifecycle != processruntime.LifecycleSession {
+		t.Fatalf("expected session lifecycle, got %s", processes[0].Lifecycle)
+	}
+	if processes[0].OwnerKind != processruntime.OwnerMainAgent {
+		t.Fatalf("expected main owner, got %s", processes[0].OwnerKind)
+	}
 }
 
 func TestView_HeaderShowsMainAndWorkerUsage(t *testing.T) {

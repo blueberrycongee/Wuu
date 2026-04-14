@@ -19,6 +19,7 @@ import (
 	"github.com/blueberrycongee/wuu/internal/insight"
 	"github.com/blueberrycongee/wuu/internal/markdown"
 	"github.com/blueberrycongee/wuu/internal/memory"
+	processruntime "github.com/blueberrycongee/wuu/internal/process"
 	"github.com/blueberrycongee/wuu/internal/providers"
 	"github.com/blueberrycongee/wuu/internal/session"
 	"github.com/blueberrycongee/wuu/internal/skills"
@@ -64,6 +65,7 @@ type ctrlCResetMsg struct{}
 type queueDrainMsg struct{}
 
 type inlineSpinMsg struct{}
+type processPollMsg struct{}
 
 // selectionAutoScrollMsg drives the recurring viewport scroll while a
 // drag-select is held past the chat area's edge. seq must match the
@@ -175,6 +177,7 @@ type Model struct {
 	skills         []skills.Skill
 	memoryFiles    []memory.File
 	coordinator    *coordinator.Coordinator
+	processManager *processruntime.Manager
 	workerNotifyCh chan subagent.Notification
 
 	// Auto-resume state: when a worker completes while the main agent
@@ -347,6 +350,7 @@ func NewModel(cfg Config) Model {
 		skills:               cfg.Skills,
 		memoryFiles:          cfg.Memory,
 		coordinator:          cfg.Coordinator,
+		processManager:       cfg.ProcessManager,
 		askBridge:            cfg.AskUserBridge,
 		requestTimeout:       cfg.RequestTimeout,
 		viewport:             vp,
@@ -535,6 +539,9 @@ func (m Model) Init() tea.Cmd {
 	if m.askBridge != nil {
 		cmds = append(cmds, waitAskRequest(m.askBridge.Requests()))
 	}
+	if m.processManager != nil {
+		cmds = append(cmds, processPollCmd())
+	}
 	return tea.Batch(cmds...)
 }
 
@@ -565,6 +572,12 @@ func statusAnimationCmd() tea.Cmd {
 func inlineSpinTickCmd() tea.Cmd {
 	return tea.Tick(statusAnimationInterval, func(_ time.Time) tea.Msg {
 		return inlineSpinMsg{}
+	})
+}
+
+func processPollCmd() tea.Cmd {
+	return tea.Tick(time.Second, func(_ time.Time) tea.Msg {
+		return processPollMsg{}
 	})
 }
 
@@ -772,7 +785,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case inlineSpinMsg:
 		m.drainQueuedStreamEvents(interactiveStreamDrainLimit)
 		m.spinnerFrame = nextStatusFrame(m.spinnerFrame)
-		if m.streaming || m.pendingRequest || m.currentWorkStatus().Phase != workPhaseIdle || len(m.activeWorkerSnapshots()) > 0 {
+		if m.streaming || m.pendingRequest || m.currentWorkStatus().Phase != workPhaseIdle || len(m.activeWorkerSnapshots()) > 0 || len(m.visibleProcesses()) > 0 {
 			if m.currentWorkStatus().Phase == workPhaseThinking {
 				// Thinking blocks live inside the viewport, so keep their
 				// spinner in sync when visible. Off-screen blocks can wait
@@ -782,6 +795,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, statusAnimationCmd()
 		}
 		return m, statusAnimationCmd()
+
+	case processPollMsg:
+		m.relayout()
+		return m, processPollCmd()
 
 	case selectionAutoScrollMsg:
 		// Stale ticks (left over from a previous burst that has
@@ -862,6 +879,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					n.Snapshot.Type, n.Snapshot.ID, n.Snapshot.Description))
 				m.markWorkerSpawned(n.Snapshot.ID)
 			}
+			m.relayout()
 		case subagent.StatusCompleted, subagent.StatusFailed, subagent.StatusCancelled:
 			icon := "✓"
 			suffix := ""
@@ -2589,7 +2607,8 @@ func (m *Model) relayout() {
 		return
 	}
 	m.inputLines = clampInputLines(strings.Count(m.input.Value(), "\n")+1, 15)
-	m.layout = computeLayout(m.width, m.height, m.inputLines, m.workerPanelHeight())
+	processPanelLines := m.processPanelHeight()
+	m.layout = computeLayout(m.width, m.height, m.inputLines, m.workerPanelHeight()+processPanelLines)
 
 	m.input.SetWidth(m.layout.Input.Width)
 	m.input.SetHeight(m.layout.Input.Height)
@@ -2807,6 +2826,9 @@ func (m Model) View() string {
 
 	parts := []string{header, outputBox, statusLine}
 	if panel := m.renderWorkerPanel(m.width); panel != "" {
+		parts = append(parts, sep, panel)
+	}
+	if panel := m.renderProcessPanel(m.width); panel != "" {
 		parts = append(parts, sep, panel)
 	}
 	parts = append(parts, sep, inputBox)

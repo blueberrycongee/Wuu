@@ -255,4 +255,5 @@ func applyTheme(t theme) {
 	refreshTextareasForTheme()
 	initPickerStyles()
 	initWorkerPanelStyles()
+	initProcessPanelStyles()
 }

@@ -537,6 +537,7 @@ func runTUI(args []string) error {
 		Memory:         memoryFiles,
 		Coordinator:    coord,
 		AskUserBridge:  askBridge,
+		ProcessManager: processMgr,
 	}
 	if toolkit != nil {
 		cfgUI.OnSessionID = func(id string) {
