@@ -1004,6 +1004,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.turnInputTokens = 0
 		m.turnOutputTokens = 0
 
+		// Update session index with current entries count so the resume
+		// picker shows the correct message count instead of 0.
+		if m.sessionDir != "" && m.sessionID != "" {
+			summary := firstUserSummary(m.entries)
+			session.UpdateIndex(m.sessionDir, m.sessionID, len(m.entries), summary)
+		}
+
 		// Dispatch Stop hook (fire-and-forget).
 		if m.hookDispatcher != nil && m.hookDispatcher.HasHooks(hooks.Stop) {
 			go m.hookDispatcher.Dispatch(context.Background(), hooks.Stop, &hooks.Input{
