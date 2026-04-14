@@ -347,6 +347,10 @@ func (c *Client) doMessagesRequest(
 			httpReq.Header.Set("Authorization", "Bearer "+c.authToken)
 		}
 		httpReq.Header.Set("anthropic-version", defaultAnthropicVersion)
+		if c.authToken != "" {
+			httpReq.Header.Set("anthropic-beta", "oauth-2025-04-20")
+		}
+		httpReq.Header.Set("User-Agent", "claude-cli/2.1.96")
 		for k, v := range c.headers {
 			httpReq.Header.Set(k, v)
 		}

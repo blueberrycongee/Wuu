@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/blueberrycongee/wuu/internal/config"
 	"github.com/blueberrycongee/wuu/internal/insight"
 	processruntime "github.com/blueberrycongee/wuu/internal/process"
 	"github.com/blueberrycongee/wuu/internal/session"
@@ -233,7 +234,10 @@ func cmdModelSwitch(args string, m *Model) string {
 	if m.streamRunner != nil {
 		m.streamRunner.Model = name
 	}
-	return fmt.Sprintf("model switched: %s -> %s", old, name)
+	if err := config.UpdateProviderModel(m.configPath, m.provider, name); err != nil {
+		return fmt.Sprintf("model switched: %s -> %s (save failed: %v)", old, name, err)
+	}
+	return fmt.Sprintf("model switched: %s -> %s (saved)", old, name)
 }
 
 func cmdResume(args string, m *Model) string {

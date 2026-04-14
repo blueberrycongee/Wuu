@@ -339,3 +339,51 @@ func TestLoadFrom_InvalidConfigIsNotNotFound(t *testing.T) {
 		t.Fatalf("invalid config wrongly classified as not-found: %v", err)
 	}
 }
+
+func TestUpdateProviderModel(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".wuu.json")
+	orig := `{
+  "default_provider": "myp",
+  "providers": {
+    "myp": {
+      "type": "anthropic",
+      "base_url": "https://example.com",
+      "model": "old-model"
+    }
+  },
+  "agent": {
+    "system_prompt": "test"
+  }
+}`
+	if err := os.WriteFile(path, []byte(orig), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := UpdateProviderModel(path, "myp", "new-model"); err != nil {
+		t.Fatalf("UpdateProviderModel: %v", err)
+	}
+
+	cfg, _, err := LoadFrom(dir, "")
+	if err != nil {
+		t.Fatalf("reload: %v", err)
+	}
+	p, _, _ := cfg.ResolveProvider("myp")
+	if p.Model != "new-model" {
+		t.Fatalf("expected new-model, got %s", p.Model)
+	}
+}
+
+func TestUpdateProviderModel_NotFound(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".wuu.json")
+	os.WriteFile(path, []byte(`{
+  "default_provider": "a",
+  "providers": {"a": {"type": "x", "base_url": "http://x", "model": "m"}},
+  "agent": {"system_prompt": "t"}
+}`), 0o644)
+
+	if err := UpdateProviderModel(path, "nonexistent", "m"); err == nil {
+		t.Fatal("expected error for missing provider")
+	}
+}

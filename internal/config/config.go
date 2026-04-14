@@ -278,6 +278,37 @@ func TemplateJSON() (string, error) {
 	return string(buf) + "\n", nil
 }
 
+// UpdateProviderModel changes the model field for a named provider in
+// the config file at configPath and writes it back. It operates on the
+// raw JSON to preserve unknown fields and formatting.
+func UpdateProviderModel(configPath, providerName, newModel string) error {
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return fmt.Errorf("read config: %w", err)
+	}
+
+	var raw map[string]any
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return fmt.Errorf("parse config: %w", err)
+	}
+
+	providers, ok := raw["providers"].(map[string]any)
+	if !ok {
+		return fmt.Errorf("providers section not found")
+	}
+	provider, ok := providers[providerName].(map[string]any)
+	if !ok {
+		return fmt.Errorf("provider %q not found", providerName)
+	}
+	provider["model"] = newModel
+
+	out, err := json.MarshalIndent(raw, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal config: %w", err)
+	}
+	return os.WriteFile(configPath, append(out, '\n'), 0644)
+}
+
 func applyDefaults(cfg *Config) {
 	// max_steps = 0 means unlimited (no step cap, the model decides
 	// when to stop). Aligned with Claude Code's default behavior.
