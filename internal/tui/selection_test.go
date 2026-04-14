@@ -433,7 +433,10 @@ func TestSelectionBgSGROpen_HasNoFullResetNoForeground(t *testing.T) {
 	if strings.Contains(open, "\x1b[0m") {
 		t.Errorf("bg open must not contain a full reset: %q", open)
 	}
-	if strings.Contains(open, "38;") {
+	// A foreground SGR starts with \x1b[38; — check the sequence prefix,
+	// not a naive substring (which false-positives when the red channel
+	// of the bg color happens to be 38).
+	if strings.HasPrefix(open, "\x1b[38;") {
 		t.Errorf("bg open must not set a foreground color: %q", open)
 	}
 }
