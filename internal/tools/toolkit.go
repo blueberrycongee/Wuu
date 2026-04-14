@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/blueberrycongee/wuu/internal/agent"
 	"github.com/blueberrycongee/wuu/internal/coordinator"
 	proc "github.com/blueberrycongee/wuu/internal/process"
 	"github.com/blueberrycongee/wuu/internal/providers"
@@ -197,6 +198,20 @@ func (t *Toolkit) Execute(ctx context.Context, call providers.ToolCall) (string,
 // like IsReadOnly() and IsConcurrencySafe() for scheduling.
 func (t *Toolkit) LookupTool(name string) Tool {
 	return t.registry.Lookup(name)
+}
+
+// ToolMetadata implements agent.ToolMetadataProvider so the loop can
+// partition tool calls into concurrent (read-only) and serial (write)
+// batches without importing the tools package.
+func (t *Toolkit) ToolMetadata(name string) (agent.ToolMetadata, bool) {
+	tool := t.registry.Lookup(name)
+	if tool == nil {
+		return agent.ToolMetadata{}, false
+	}
+	return agent.ToolMetadata{
+		ReadOnly:        tool.IsReadOnly(),
+		ConcurrencySafe: tool.IsConcurrencySafe(),
+	}, true
 }
 
 // ── Shared utilities (used by individual tool files) ───────────────

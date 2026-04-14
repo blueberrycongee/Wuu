@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/blueberrycongee/wuu/internal/agent"
 	"github.com/blueberrycongee/wuu/internal/providers"
 )
 
@@ -38,6 +39,16 @@ func NewHookedExecutor(inner ToolExecutor, d *Dispatcher, sessionID, cwd string)
 // Definitions delegates to the inner executor.
 func (h *HookedExecutor) Definitions() []providers.ToolDefinition {
 	return h.inner.Definitions()
+}
+
+// ToolMetadata forwards to the inner executor if it implements
+// agent.ToolMetadataProvider, so the loop's concurrency partitioning
+// works through the hook layer.
+func (h *HookedExecutor) ToolMetadata(name string) (agent.ToolMetadata, bool) {
+	if mp, ok := h.inner.(agent.ToolMetadataProvider); ok {
+		return mp.ToolMetadata(name)
+	}
+	return agent.ToolMetadata{}, false
 }
 
 // Execute fires PreToolUse hooks, delegates to the inner executor, then

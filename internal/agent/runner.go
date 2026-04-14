@@ -15,6 +15,21 @@ type ToolExecutor interface {
 	Execute(ctx context.Context, call providers.ToolCall) (string, error)
 }
 
+// ToolMetadata describes a tool's concurrency characteristics.
+type ToolMetadata struct {
+	ReadOnly        bool
+	ConcurrencySafe bool
+}
+
+// ToolMetadataProvider is an optional interface a ToolExecutor can
+// implement to expose per-tool metadata (read-only, concurrency-safe).
+// The agent loop uses this to partition tool calls — read-only tools
+// run concurrently, write tools run serially. Aligned with Claude
+// Code's partitionToolCalls / runToolsConcurrently architecture.
+type ToolMetadataProvider interface {
+	ToolMetadata(name string) (ToolMetadata, bool)
+}
+
 // Runner manages one multi-step coding turn. It is a thin wrapper
 // around RunToolLoop that always executes through the streaming Step
 // path; unary clients are adapted underneath via AdaptStreamClient.

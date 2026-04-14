@@ -1,12 +1,12 @@
 package agent
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
-
-	"context"
+	"sync"
 
 	"github.com/blueberrycongee/wuu/internal/providers"
 )
@@ -273,9 +273,9 @@ func RunToolLoop(
 			}, errors.New("model requested tools but none are configured")
 		}
 
-		// Execute every requested tool call serially. Errors are
-		// turned into JSON error payloads so the model can recover
-		// from them on the next round instead of crashing the loop.
+		// Execute tool calls. Read-only tools that are concurrency-
+		// safe run in parallel; write tools run serially. This is
+		// aligned with Claude Code's partitionToolCalls architecture.
 		//
 		// The tool's execution context carries the current `messages`
 		// slice (via withHistory) so tools that need to read what the
@@ -284,24 +284,13 @@ func RunToolLoop(
 		// not inject this key, which is how worker isolation for
 		// fork_agent stays enforced without a separate gate.
 		toolCtx := withHistory(ctx, messages)
-		for _, call := range result.ToolCalls {
-			toolResult, execErr := cfg.Tools.Execute(toolCtx, call)
-			if execErr != nil {
-				toolResult = errorJSON(execErr)
+		batches := partitionToolCalls(cfg.Tools, result.ToolCalls)
+		for _, batch := range batches {
+			toolMessages := executeBatch(toolCtx, cfg.Tools, batch, cfg.OnToolResult)
+			for _, toolMsg := range toolMessages {
+				appendMessage(toolMsg)
 			}
-			if cfg.OnToolResult != nil {
-				cfg.OnToolResult(call, toolResult)
-			}
-			toolMsg := providers.ChatMessage{
-				Role:       "tool",
-				Name:       call.Name,
-				ToolCallID: call.ID,
-				Content:    toolResult,
-			}
-			appendMessage(toolMsg)
-			// Tool results haven't been sent to the provider yet, so
-			// add a delta-estimate to the tracker.
-			usage.RecordPendingMessages([]providers.ChatMessage{toolMsg})
+			usage.RecordPendingMessages(toolMessages)
 		}
 	}
 
@@ -410,4 +399,144 @@ func withHistory(ctx context.Context, history []providers.ChatMessage) context.C
 func HistoryFromContext(ctx context.Context) []providers.ChatMessage {
 	h, _ := ctx.Value(historyContextKey{}).([]providers.ChatMessage)
 	return h
+}
+
+// ── Concurrency partitioning ───────────────────────────────────────
+//
+// Aligned with Claude Code's partitionToolCalls / runToolsConcurrently:
+// consecutive read-only tools run in parallel (up to maxToolConcurrency),
+// write tools run serially. This preserves ordering semantics while
+// getting maximum throughput for common patterns like multiple
+// concurrent reads.
+
+const maxToolConcurrency = 10
+
+// toolBatch groups consecutive tool calls that share a concurrency
+// mode. concurrent=true means every call in the batch can run in
+// parallel.
+type toolBatch struct {
+	calls      []providers.ToolCall
+	concurrent bool
+}
+
+// partitionToolCalls groups consecutive tool calls into batches based
+// on concurrency safety. If the ToolExecutor implements
+// ToolMetadataProvider, we use per-tool metadata; otherwise all tools
+// are treated as serial (backwards compatible).
+func partitionToolCalls(executor ToolExecutor, calls []providers.ToolCall) []toolBatch {
+	if len(calls) == 0 {
+		return nil
+	}
+	// Single call — no partitioning needed.
+	if len(calls) == 1 {
+		return []toolBatch{{calls: calls, concurrent: false}}
+	}
+
+	mp, hasMetadata := executor.(ToolMetadataProvider)
+	if !hasMetadata {
+		// No metadata provider — run everything serially.
+		return []toolBatch{{calls: calls, concurrent: false}}
+	}
+
+	var batches []toolBatch
+	var currentCalls []providers.ToolCall
+	currentConcurrent := false
+
+	for i, call := range calls {
+		meta, ok := mp.ToolMetadata(call.Name)
+		canConcur := ok && meta.ReadOnly && meta.ConcurrencySafe
+
+		if i == 0 {
+			currentConcurrent = canConcur
+			currentCalls = []providers.ToolCall{call}
+			continue
+		}
+
+		if canConcur == currentConcurrent {
+			currentCalls = append(currentCalls, call)
+		} else {
+			batches = append(batches, toolBatch{
+				calls:      currentCalls,
+				concurrent: currentConcurrent,
+			})
+			currentCalls = []providers.ToolCall{call}
+			currentConcurrent = canConcur
+		}
+	}
+	batches = append(batches, toolBatch{
+		calls:      currentCalls,
+		concurrent: currentConcurrent,
+	})
+
+	return batches
+}
+
+// executeBatch runs a batch of tool calls. Concurrent batches run up
+// to maxToolConcurrency calls in parallel; serial batches run each
+// call in order. Results are returned in the original call order.
+func executeBatch(
+	ctx context.Context,
+	executor ToolExecutor,
+	batch toolBatch,
+	onResult func(providers.ToolCall, string),
+) []providers.ChatMessage {
+	if !batch.concurrent || len(batch.calls) == 1 {
+		// Serial execution.
+		msgs := make([]providers.ChatMessage, 0, len(batch.calls))
+		for _, call := range batch.calls {
+			result, err := executor.Execute(ctx, call)
+			if err != nil {
+				result = errorJSON(err)
+			}
+			if onResult != nil {
+				onResult(call, result)
+			}
+			msgs = append(msgs, providers.ChatMessage{
+				Role:       "tool",
+				Name:       call.Name,
+				ToolCallID: call.ID,
+				Content:    result,
+			})
+		}
+		return msgs
+	}
+
+	// Concurrent execution with bounded parallelism.
+	type indexedResult struct {
+		idx    int
+		result string
+	}
+	results := make([]indexedResult, len(batch.calls))
+	sem := make(chan struct{}, maxToolConcurrency)
+	var wg sync.WaitGroup
+
+	for i, call := range batch.calls {
+		wg.Add(1)
+		go func(idx int, c providers.ToolCall) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			res, err := executor.Execute(ctx, c)
+			if err != nil {
+				res = errorJSON(err)
+			}
+			if onResult != nil {
+				onResult(c, res)
+			}
+			results[idx] = indexedResult{idx: idx, result: res}
+		}(i, call)
+	}
+	wg.Wait()
+
+	msgs := make([]providers.ChatMessage, len(batch.calls))
+	for i, call := range batch.calls {
+		msgs[i] = providers.ChatMessage{
+			Role:       "tool",
+			Name:       call.Name,
+			ToolCallID: call.ID,
+			Content:    results[i].result,
+		}
+	}
+	return msgs
 }
