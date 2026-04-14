@@ -2868,7 +2868,7 @@ func (m Model) View() string {
 	// colors — markdown styling, syntax highlighting, role labels —
 	// keep showing through under the highlighted bg.
 	if m.selection.hasSelection() {
-		outputBox = overlaySelection(outputBox, &m.selection, m.viewport.YOffset)
+		outputBox = overlaySelection(outputBox, &m.selection, m.viewport.YOffset, m.viewport.Width)
 	}
 
 	// Overlay scrollbar — pre-computed in Update() via refreshScrollbarCache().

@@ -239,7 +239,7 @@ func TestOverlaySelection_TranslatesContentRowsToVisibleWindow(t *testing.T) {
 		Focus:  &selectionPoint{Row: 5, Col: 4},
 	}
 
-	out := overlaySelection(visibleWindow, sel, 3)
+	out := overlaySelection(visibleWindow, sel, 3, 80)
 	lines := strings.Split(out, "\n")
 
 	// Row 0 of the visible window (content row 3) is NOT in the
@@ -266,7 +266,7 @@ func TestOverlaySelection_ClipsBeyondVisibleWindow(t *testing.T) {
 		Focus:  &selectionPoint{Row: 9, Col: 4},
 	}
 
-	out := overlaySelection(visibleWindow, sel, 3)
+	out := overlaySelection(visibleWindow, sel, 3, 80)
 	if strings.Count(out, "\n") != 2 {
 		t.Fatalf("expected 3 visible lines, got: %q", out)
 	}
@@ -289,7 +289,7 @@ func TestOverlaySelection_SelectionAboveVisibleWindow(t *testing.T) {
 		Focus:  &selectionPoint{Row: 1, Col: 4},
 	}
 
-	out := overlaySelection(visibleWindow, sel, 5)
+	out := overlaySelection(visibleWindow, sel, 5, 80)
 	if out != visibleWindow {
 		t.Fatalf("off-screen selection should leave window untouched, got: %q", out)
 	}
@@ -304,14 +304,14 @@ func TestOverlaySelection_SelectionBelowVisibleWindow(t *testing.T) {
 		Focus:  &selectionPoint{Row: 9, Col: 4},
 	}
 
-	out := overlaySelection(visibleWindow, sel, 0)
+	out := overlaySelection(visibleWindow, sel, 0, 80)
 	if out != visibleWindow {
 		t.Fatalf("off-screen selection should leave window untouched, got: %q", out)
 	}
 }
 
 func TestOverlaySelection_NoSelectionPassThrough(t *testing.T) {
-	out := overlaySelection("hello\nworld", nil, 0)
+	out := overlaySelection("hello\nworld", nil, 0, 80)
 	if out != "hello\nworld" {
 		t.Fatalf("nil selection should pass through, got %q", out)
 	}

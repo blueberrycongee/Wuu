@@ -392,15 +392,20 @@ func writeClipboard(text string) (string, error) {
 // invisible until they scroll back. The selection state itself is
 // untouched, so a copy still returns the right text.
 //
+// The highlight extends edge-to-edge across the full viewportWidth:
+// middle lines are highlighted from column 0 to the viewport edge,
+// the start row begins at the click position and extends right, and
+// the end row begins at column 0 and stops at the click position.
+// Each line is padded with spaces up to viewportWidth before the
+// highlight is applied so that short lines and empty lines produce
+// a continuous, gap-free selection block — matching the behavior of
+// native terminal emulators and editors like VS Code.
+//
 // The highlight is a background-only overlay (it does not touch the
 // foreground color or any other SGR attribute), so any markdown
 // styling, syntax highlighting, or role-label color in the original
-// text remains visible underneath. This mirrors the native behavior
-// of every modern terminal emulator's text selection — and is what
-// Claude Code's screen layer does for the same reason: SGR-7 inverse
-// fragments visually over multi-color text, while a solid bg overlay
-// reads cleanly across any combination of fg styles.
-func overlaySelection(output string, sel *selectionState, yOffset int) string {
+// text remains visible underneath.
+func overlaySelection(output string, sel *selectionState, yOffset, viewportWidth int) string {
 	if sel == nil || !sel.hasSelection() {
 		return output
 	}
@@ -416,15 +421,27 @@ func overlaySelection(output string, sel *selectionState, yOffset int) string {
 			continue
 		}
 		stripped := ansi.Strip(lines[visible])
+		lineWidth := lipgloss.Width(stripped)
 		baseCol := selectionBaseColForLine(stripped)
-		colStart := baseCol
+
+		// For middle lines (not start/end), highlight from column 0
+		// to viewport edge — like native terminal or editor selection.
+		// Start row begins at the click position; end row stops there.
+		colStart := 0
 		if row == start.Row {
 			colStart = baseCol + start.Col
 		}
-		colEnd := lipgloss.Width(stripped)
+		colEnd := viewportWidth
 		if row == end.Row {
 			colEnd = baseCol + end.Col + 1
 		}
+
+		// Pad the line with spaces so the highlight can extend
+		// edge-to-edge across the full viewport width.
+		if lineWidth < viewportWidth {
+			lines[visible] += strings.Repeat(" ", viewportWidth-lineWidth)
+		}
+
 		lines[visible] = highlightLineRange(lines[visible], colStart, colEnd)
 	}
 	return strings.Join(lines, "\n")
