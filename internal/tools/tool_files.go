@@ -25,8 +25,15 @@ func (t *ReadFileTool) IsConcurrencySafe() bool  { return true }
 
 func (t *ReadFileTool) Definition() providers.ToolDefinition {
 	return providers.ToolDefinition{
-		Name:        "read_file",
-		Description: "Read a file from workspace.",
+		Name: "read_file",
+		Description: "Reads a file from the workspace. " +
+			"Assume this tool can read any file in the workspace.\n\n" +
+			"Usage:\n" +
+			"- The path parameter is relative to the workspace root\n" +
+			"- Returns file content with size metadata and truncation info\n" +
+			"- Large files (>256KB) are truncated at a valid UTF-8 boundary\n" +
+			"- This tool can only read files, not directories — use list_files for directories\n" +
+			"- Binary files are not supported; use run_shell for binary inspection",
 		InputSchema: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -97,8 +104,12 @@ func (t *WriteFileTool) IsConcurrencySafe() bool  { return false }
 
 func (t *WriteFileTool) Definition() providers.ToolDefinition {
 	return providers.ToolDefinition{
-		Name:        "write_file",
-		Description: "Write full file content in workspace.",
+		Name: "write_file",
+		Description: "Writes full file content to the workspace. Creates parent directories automatically.\n\n" +
+			"Usage:\n" +
+			"- Prefer edit_file for modifying existing files — it only sends the diff\n" +
+			"- Only use this tool to create new files or for complete rewrites\n" +
+			"- Returns a structured diff showing what changed",
 		InputSchema: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -173,8 +184,12 @@ func (t *ListFilesTool) IsConcurrencySafe() bool  { return true }
 
 func (t *ListFilesTool) Definition() providers.ToolDefinition {
 	return providers.ToolDefinition{
-		Name:        "list_files",
-		Description: "List entries under a directory in workspace.",
+		Name: "list_files",
+		Description: "Lists entries under a directory in the workspace.\n\n" +
+			"Usage:\n" +
+			"- Returns name, is_dir, and size for each entry\n" +
+			"- Defaults to workspace root when path is omitted\n" +
+			"- Truncated at 1000 entries for large directories",
 		InputSchema: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -252,8 +267,15 @@ func (t *EditFileTool) IsConcurrencySafe() bool  { return false }
 
 func (t *EditFileTool) Definition() providers.ToolDefinition {
 	return providers.ToolDefinition{
-		Name:        "edit_file",
-		Description: "Replace exact text in a file. Provide old_text (must match exactly) and new_text. Use for precise edits without rewriting the whole file.",
+		Name: "edit_file",
+		Description: "Performs exact string replacement in a file.\n\n" +
+			"Usage:\n" +
+			"- You should read the file before editing to understand its content\n" +
+			"- Provide old_text (must match exactly once in the file) and new_text\n" +
+			"- The edit will FAIL if old_text is not unique — provide more surrounding context to disambiguate\n" +
+			"- Use empty new_text to delete a section\n" +
+			"- Prefer this over write_file for modifications — it only sends the diff\n" +
+			"- Returns a structured diff showing what changed",
 		InputSchema: map[string]any{
 			"type": "object",
 			"properties": map[string]any{

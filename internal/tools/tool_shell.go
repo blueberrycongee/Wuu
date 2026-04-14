@@ -23,8 +23,18 @@ func (t *ShellTool) IsConcurrencySafe() bool  { return false }
 
 func (t *ShellTool) Definition() providers.ToolDefinition {
 	return providers.ToolDefinition{
-		Name:        "run_shell",
-		Description: "Run a non-interactive shell command in the workspace and return output.",
+		Name: "run_shell",
+		Description: "Executes a bash command in the workspace and returns its output.\n\n" +
+			"The working directory is the workspace root. Shell state does not persist between calls.\n\n" +
+			"IMPORTANT: Avoid using this tool to run `cat`, `head`, `tail`, `grep`, `find`, " +
+			"`sed`, `awk`, or `echo` when a dedicated tool exists. Use read_file instead of cat, " +
+			"grep tool instead of grep/rg, glob instead of find, edit_file instead of sed.\n\n" +
+			"Instructions:\n" +
+			"- Commands must be non-interactive; never rely on editors, pagers, or terminal prompts\n" +
+			"- Default timeout is 300s, max 3600s\n" +
+			"- If commands are independent, make multiple tool calls in parallel\n" +
+			"- If commands depend on each other, chain them with '&&'\n" +
+			"- For git operations, prefer the git tool over run_shell",
 		InputSchema: map[string]any{
 			"type": "object",
 			"properties": map[string]any{

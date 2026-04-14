@@ -31,8 +31,14 @@ func (t *GrepTool) IsConcurrencySafe() bool  { return true }
 
 func (t *GrepTool) Definition() providers.ToolDefinition {
 	return providers.ToolDefinition{
-		Name:        "grep",
-		Description: "Search file contents using a regex pattern. Returns matching lines with file paths and line numbers.",
+		Name: "grep",
+		Description: "Search file contents using a regex pattern, powered by ripgrep.\n\n" +
+			"Usage:\n" +
+			"- ALWAYS use this tool for content search. NEVER invoke grep or rg via run_shell\n" +
+			"- Supports full regex syntax (e.g. \"log.*Error\", \"func\\\\s+\\\\w+\")\n" +
+			"- Filter files with the include glob parameter (e.g. \"*.go\", \"*.ts\")\n" +
+			"- Returns matching lines with file paths and line numbers (max 250 matches)\n" +
+			"- Falls back to a pure Go implementation if ripgrep is not installed",
 		InputSchema: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -119,8 +125,13 @@ func (t *GlobTool) IsConcurrencySafe() bool  { return true }
 
 func (t *GlobTool) Definition() providers.ToolDefinition {
 	return providers.ToolDefinition{
-		Name:        "glob",
-		Description: "Find files matching a glob pattern in the workspace. Supports ** for recursive matching.",
+		Name: "glob",
+		Description: "Fast file pattern matching tool that works with any codebase size.\n\n" +
+			"Usage:\n" +
+			"- Supports glob patterns like \"**/*.go\" or \"src/**/*.ts\"\n" +
+			"- Returns matching file paths (max 500 matches)\n" +
+			"- Use this tool when you need to find files by name patterns\n" +
+			"- For content search (finding text inside files), use grep instead",
 		InputSchema: map[string]any{
 			"type": "object",
 			"properties": map[string]any{

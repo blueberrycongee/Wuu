@@ -19,8 +19,16 @@ func (t *GitTool) IsConcurrencySafe() bool  { return false }
 
 func (t *GitTool) Definition() providers.ToolDefinition {
 	return providers.ToolDefinition{
-		Name:        "git",
-		Description: "Run restricted git commands from the main agent: read-only queries (log, status, diff, show, blame, branch (list only), tag (list only), remote -v, remote show, config --get/--get-all/--list, etc.) plus simple git operations like commit and push. branch/tag/remote/config are restricted to read-only operations with flag-level enforcement. git status returns structured {staged, unstaged, untracked} output. Complex or destructive operations (rebase, merge, cherry-pick, clean, reset --hard, stash pop/apply/drop/clear, force push, branch create/delete, tag create/delete, etc.) are not supported and should be delegated to a worker.",
+		Name: "git",
+		Description: "Run restricted git commands in the workspace.\n\n" +
+			"Supported read-only commands: log, show, diff, status, blame, branch (list only), " +
+			"tag (list only), reflog, stash list/show, ls-files, ls-remote, remote -v, " +
+			"remote show, config --get/--get-all/--list, rev-parse, rev-list, describe, " +
+			"cat-file, for-each-ref, grep, worktree list, merge-base, shortlog.\n\n" +
+			"Supported write commands: commit (with explicit -m message), push (plain or -u origin <branch>).\n\n" +
+			"git status returns structured {staged, unstaged, untracked} output.\n\n" +
+			"NOT supported (delegate to a worker): rebase, merge, cherry-pick, clean, reset --hard, " +
+			"stash pop/apply/drop/clear, force push, branch create/delete, tag create/delete.",
 		InputSchema: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
