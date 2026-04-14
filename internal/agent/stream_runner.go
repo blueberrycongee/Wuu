@@ -54,10 +54,10 @@ type StreamRunner struct {
 	// messages are appended to history for that round.
 	BeforeStep func() []providers.ChatMessage
 
-	// Stream reconnect policy. Zero values use the Codex-aligned defaults.
-	StreamMaxRetries        int
-	StreamRetryInitialDelay time.Duration
-	StreamRetryMaxDelay     time.Duration
+	// Stream reconnect policy. Zero values use CC-aligned defaults.
+	StreamReconnectBudget   time.Duration // total time for reconnection (default: 2m)
+	StreamRetryInitialDelay time.Duration // backoff start (default: 1s)
+	StreamRetryMaxDelay     time.Duration // backoff cap (default: 30s)
 
 	usageMu           sync.Mutex
 	conversationUsage *UsageTracker
@@ -97,7 +97,7 @@ func (r *StreamRunner) RunWithCallback(ctx context.Context, history []providers.
 	step := &streamStep{
 		client:  r.Client,
 		onEvent: onEvent,
-		retry:   r.streamRetryConfig(),
+		retry:   r.streamReconnectCfg(),
 	}
 
 	maxCtx := r.ContextWindowOverride
@@ -222,7 +222,7 @@ func (r *StreamRunner) commitUsageTracker(tracker *UsageTracker, historyLen int)
 type streamStep struct {
 	client  providers.StreamClient
 	onEvent StreamCallback
-	retry   providers.RetryConfig
+	retry   streamReconnectConfig
 }
 
 func (s *streamStep) Execute(ctx context.Context, req providers.ChatRequest) (StepResult, error) {
@@ -361,17 +361,26 @@ func (s *streamStep) runStreamWithReconnect(
 	cfg := s.retry
 	onEvent := s.onEvent
 	attempt := 0
+	var reconnectStart time.Time
+
+	elapsed := func() time.Duration {
+		if reconnectStart.IsZero() {
+			return 0
+		}
+		return time.Since(reconnectStart)
+	}
+
 	emitLifecycle := func(phase providers.StreamLifecyclePhase, retryCount int, reason error, retryIn time.Duration) {
 		if onEvent == nil {
 			return
 		}
 		details := &providers.StreamLifecycle{
-			Phase:       phase,
-			Attempt:     retryCount + 1,
-			MaxAttempts: cfg.MaxRetries + 1,
-			RetryCount:  retryCount,
-			MaxRetries:  cfg.MaxRetries,
-			RetryIn:     retryIn,
+			Phase:      phase,
+			Attempt:    retryCount + 1,
+			RetryCount: retryCount,
+			RetryIn:    retryIn,
+			Elapsed:    elapsed(),
+			Budget:     cfg.Budget,
 		}
 		if reason != nil {
 			details.Reason = providers.StreamErrorSummary(reason)
@@ -381,33 +390,55 @@ func (s *streamStep) runStreamWithReconnect(
 			Lifecycle: details,
 		})
 	}
+
+	reconnect := func(err error) (delay time.Duration, ok bool) {
+		if reconnectStart.IsZero() {
+			reconnectStart = time.Now()
+		}
+		el := elapsed()
+		if !shouldRetryStreamError(err, el, cfg.Budget) {
+			return 0, false
+		}
+		delay = streamRetryDelay(attempt, cfg.InitialDelay, cfg.MaxDelay)
+		// Clamp delay so we don't overshoot the budget.
+		if remaining := cfg.Budget - el; delay > remaining {
+			delay = remaining
+		}
+		attempt++
+		providers.DebugLogf("stream reconnecting (%d, %s/%s) in %s: %v",
+			attempt, el.Round(time.Second), cfg.Budget, delay, err)
+		emitLifecycle(providers.StreamPhaseReconnecting, attempt, err, delay)
+		if onEvent != nil {
+			onEvent(providers.StreamEvent{
+				Type:    providers.EventReconnect,
+				Content: fmt.Sprintf("Reconnecting... %s / %s", el.Round(time.Second), cfg.Budget),
+			})
+		}
+		return delay, true
+	}
+
 	for {
-		// Don't retry if the caller's context is already done.
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
 		emitLifecycle(providers.StreamPhaseConnecting, attempt, nil, 0)
+
 		ch, err := s.client.StreamChat(ctx, req)
 		if err != nil {
-			if ctx.Err() == nil && shouldRetryStreamError(err, attempt, cfg.MaxRetries) {
-				delay := streamRetryDelay(attempt, cfg.InitialDelay, cfg.MaxDelay)
-				providers.DebugLogf("stream connect failed, reconnecting (%d/%d) in %s: %v", attempt+1, cfg.MaxRetries, delay, err)
-				emitLifecycle(providers.StreamPhaseReconnecting, attempt+1, err, delay)
-				if onEvent != nil {
-					onEvent(providers.StreamEvent{
-						Type:    providers.EventReconnect,
-						Content: fmt.Sprintf("Reconnecting... %d/%d", attempt+1, cfg.MaxRetries),
-					})
+			if ctx.Err() == nil {
+				if delay, ok := reconnect(err); ok {
+					if waitErr := waitWithContext(ctx, delay); waitErr != nil {
+						return waitErr
+					}
+					continue
 				}
-				if waitErr := waitWithContext(ctx, delay); waitErr != nil {
-					return waitErr
-				}
-				attempt++
-				continue
 			}
 			emitLifecycle(providers.StreamPhaseFailed, attempt, err, 0)
 			return err
 		}
+		// Successful connect resets the reconnect clock.
+		reconnectStart = time.Time{}
+		attempt = 0
 		emitLifecycle(providers.StreamPhaseConnected, attempt, nil, 0)
 
 		var (
@@ -444,16 +475,12 @@ func (s *streamStep) runStreamWithReconnect(
 				}
 
 			case providers.EventToolUseDelta:
-				// Append partial arguments to the most recently started tool call.
 				if len(pendingTools) > 0 {
 					latest := pendingTools[len(pendingTools)-1]
 					latest.Arguments += event.Content
 				}
 
 			case providers.EventToolUseEnd:
-				// EventToolUseEnd carries the fully accumulated arguments from
-				// the provider layer. Use them if present; otherwise keep what
-				// we accumulated from deltas.
 				if event.ToolCall != nil && event.ToolCall.Arguments != "" {
 					for _, tc := range pendingTools {
 						if tc.ID == event.ToolCall.ID {
@@ -498,21 +525,13 @@ func (s *streamStep) runStreamWithReconnect(
 
 		// Only retry when the stream failed before producing any user-visible
 		// output AND the parent context is still alive.
-		if !sawOutput && ctx.Err() == nil && shouldRetryStreamError(streamErr, attempt, cfg.MaxRetries) {
-			delay := streamRetryDelay(attempt, cfg.InitialDelay, cfg.MaxDelay)
-			providers.DebugLogf("stream disconnected early, reconnecting (%d/%d) in %s: %v", attempt+1, cfg.MaxRetries, delay, streamErr)
-			emitLifecycle(providers.StreamPhaseReconnecting, attempt+1, streamErr, delay)
-			if onEvent != nil {
-				onEvent(providers.StreamEvent{
-					Type:    providers.EventReconnect,
-					Content: fmt.Sprintf("Reconnecting... %d/%d", attempt+1, cfg.MaxRetries),
-				})
+		if !sawOutput && ctx.Err() == nil {
+			if delay, ok := reconnect(streamErr); ok {
+				if waitErr := waitWithContext(ctx, delay); waitErr != nil {
+					return waitErr
+				}
+				continue
 			}
-			if waitErr := waitWithContext(ctx, delay); waitErr != nil {
-				return waitErr
-			}
-			attempt++
-			continue
 		}
 
 		emitLifecycle(providers.StreamPhaseFailed, attempt, streamErr, 0)
@@ -526,13 +545,27 @@ func (s *streamStep) runStreamWithReconnect(
 	}
 }
 
-func (r *StreamRunner) streamRetryConfig() providers.RetryConfig {
-	cfg := providers.DefaultRetryConfig()
-	cfg.MaxRetries = 5
-	cfg.InitialDelay = 200 * time.Millisecond
-	cfg.MaxDelay = 5 * time.Second
-	if r.StreamMaxRetries > 0 {
-		cfg.MaxRetries = r.StreamMaxRetries
+// streamReconnectConfig holds CC-aligned time-budget reconnection parameters.
+type streamReconnectConfig struct {
+	Budget       time.Duration
+	InitialDelay time.Duration
+	MaxDelay     time.Duration
+}
+
+const (
+	defaultReconnectBudget = 10 * time.Minute
+	defaultReconnectDelay  = 1 * time.Second
+	defaultReconnectMax    = 30 * time.Second
+)
+
+func (r *StreamRunner) streamReconnectCfg() streamReconnectConfig {
+	cfg := streamReconnectConfig{
+		Budget:       defaultReconnectBudget,
+		InitialDelay: defaultReconnectDelay,
+		MaxDelay:     defaultReconnectMax,
+	}
+	if r.StreamReconnectBudget > 0 {
+		cfg.Budget = r.StreamReconnectBudget
 	}
 	if r.StreamRetryInitialDelay > 0 {
 		cfg.InitialDelay = r.StreamRetryInitialDelay
@@ -546,8 +579,8 @@ func (r *StreamRunner) streamRetryConfig() providers.RetryConfig {
 	return cfg
 }
 
-func shouldRetryStreamError(err error, attempt, maxRetries int) bool {
-	if attempt >= maxRetries {
+func shouldRetryStreamError(err error, elapsed, budget time.Duration) bool {
+	if elapsed >= budget {
 		return false
 	}
 	return providers.IsRetryable(err)
@@ -558,8 +591,8 @@ func streamRetryDelay(attempt int, initial, maxDelay time.Duration) time.Duratio
 	if base > float64(maxDelay) {
 		base = float64(maxDelay)
 	}
-	// 0-20% jitter to avoid herd retry.
-	jitter := base * 0.2 * rand.Float64()
+	// ±25% jitter (CC-aligned) to avoid thundering herd.
+	jitter := 0.25 * base * (2*rand.Float64() - 1)
 	return time.Duration(base + jitter)
 }
 

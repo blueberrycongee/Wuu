@@ -2747,7 +2747,13 @@ func reconnectWorkStatus(lifecycle *providers.StreamLifecycle) workStatus {
 	if lifecycle == nil {
 		return ws
 	}
-	if lifecycle.RetryCount > 0 && lifecycle.MaxRetries > 0 {
+
+	// Time-budget display: "Reconnecting... 45s / 2m0s"
+	if lifecycle.Budget > 0 {
+		ws.Label = fmt.Sprintf("Reconnecting... %s / %s",
+			lifecycle.Elapsed.Round(time.Second),
+			lifecycle.Budget.Round(time.Second))
+	} else if lifecycle.RetryCount > 0 && lifecycle.MaxRetries > 0 {
 		ws.Label = fmt.Sprintf("Reconnecting... %d/%d", lifecycle.RetryCount, lifecycle.MaxRetries)
 	} else if lifecycle.Attempt > 1 && lifecycle.MaxAttempts > 0 {
 		ws.Label = fmt.Sprintf("Reconnecting... %d/%d", lifecycle.Attempt, lifecycle.MaxAttempts)
@@ -2767,6 +2773,8 @@ func reconnectWorkStatus(lifecycle *providers.StreamLifecycle) workStatus {
 		ws.Meta = reason
 	case nextTry != "":
 		ws.Meta = nextTry
+	case lifecycle.Budget > 0:
+		ws.Meta = fmt.Sprintf("Attempt %d", lifecycle.Attempt)
 	case lifecycle.RetryCount > 0 && lifecycle.MaxRetries > 0:
 		ws.Meta = fmt.Sprintf("Retry %d/%d", lifecycle.RetryCount, lifecycle.MaxRetries)
 	}

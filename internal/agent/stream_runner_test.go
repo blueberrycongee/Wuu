@@ -65,16 +65,16 @@ func (m *mockStreamClient) StreamChat(_ context.Context, req providers.ChatReque
 	return ch, nil
 }
 
-func TestStreamRunner_DefaultRetryConfigMatchesCodex(t *testing.T) {
-	cfg := (&StreamRunner{}).streamRetryConfig()
-	if cfg.MaxRetries != 5 {
-		t.Fatalf("expected 5 retries, got %d", cfg.MaxRetries)
+func TestStreamRunner_DefaultReconnectConfigMatchesCC(t *testing.T) {
+	cfg := (&StreamRunner{}).streamReconnectCfg()
+	if cfg.Budget != 10*time.Minute {
+		t.Fatalf("expected 10m budget, got %s", cfg.Budget)
 	}
-	if cfg.InitialDelay != 200*time.Millisecond {
-		t.Fatalf("expected 200ms initial delay, got %s", cfg.InitialDelay)
+	if cfg.InitialDelay != 1*time.Second {
+		t.Fatalf("expected 1s initial delay, got %s", cfg.InitialDelay)
 	}
-	if cfg.MaxDelay != 5*time.Second {
-		t.Fatalf("expected 5s max delay, got %s", cfg.MaxDelay)
+	if cfg.MaxDelay != 30*time.Second {
+		t.Fatalf("expected 30s max delay, got %s", cfg.MaxDelay)
 	}
 }
 
@@ -249,7 +249,7 @@ func TestStreamRunner_RetryOnInitialConnectError(t *testing.T) {
 	runner := StreamRunner{
 		Client:                  client,
 		Model:                   "m",
-		StreamMaxRetries:        2,
+		StreamReconnectBudget:   time.Second,
 		StreamRetryInitialDelay: time.Millisecond,
 		StreamRetryMaxDelay:     2 * time.Millisecond,
 		OnEvent: func(ev providers.StreamEvent) {
@@ -291,7 +291,7 @@ func TestStreamRunner_RetriesOnIncompleteStreamBeforeOutput(t *testing.T) {
 	runner := StreamRunner{
 		Client:                  client,
 		Model:                   "m",
-		StreamMaxRetries:        2,
+		StreamReconnectBudget:   time.Second,
 		StreamRetryInitialDelay: time.Millisecond,
 		StreamRetryMaxDelay:     2 * time.Millisecond,
 		OnEvent: func(ev providers.StreamEvent) {
@@ -333,7 +333,7 @@ func TestStreamRunner_EmitsStructuredLifecycleEvents(t *testing.T) {
 	runner := StreamRunner{
 		Client:                  client,
 		Model:                   "m",
-		StreamMaxRetries:        2,
+		StreamReconnectBudget:   time.Second,
 		StreamRetryInitialDelay: time.Millisecond,
 		StreamRetryMaxDelay:     2 * time.Millisecond,
 		OnEvent: func(ev providers.StreamEvent) {
@@ -351,18 +351,21 @@ func TestStreamRunner_EmitsStructuredLifecycleEvents(t *testing.T) {
 		t.Fatalf("unexpected result: %q", result)
 	}
 	if len(lifecycle) < 4 {
-		t.Fatalf("expected lifecycle events, got %d", len(lifecycle))
+		t.Fatalf("expected >= 4 lifecycle events, got %d", len(lifecycle))
 	}
 	if lifecycle[0].Phase != providers.StreamPhaseConnecting || lifecycle[0].Attempt != 1 {
 		t.Fatalf("unexpected first lifecycle event: %+v", lifecycle[0])
 	}
-	if lifecycle[1].Phase != providers.StreamPhaseReconnecting || lifecycle[1].RetryCount != 1 || lifecycle[1].Attempt != 2 {
+	if lifecycle[1].Phase != providers.StreamPhaseReconnecting || lifecycle[1].RetryCount != 1 {
 		t.Fatalf("unexpected reconnect lifecycle event: %+v", lifecycle[1])
 	}
-	if lifecycle[2].Phase != providers.StreamPhaseConnecting || lifecycle[2].Attempt != 2 {
+	if lifecycle[1].Budget <= 0 {
+		t.Fatalf("expected positive budget in reconnect event, got %s", lifecycle[1].Budget)
+	}
+	if lifecycle[2].Phase != providers.StreamPhaseConnecting {
 		t.Fatalf("unexpected second connecting event: %+v", lifecycle[2])
 	}
-	if lifecycle[3].Phase != providers.StreamPhaseConnected || lifecycle[3].Attempt != 2 {
+	if lifecycle[3].Phase != providers.StreamPhaseConnected {
 		t.Fatalf("unexpected connected lifecycle event: %+v", lifecycle[3])
 	}
 }
@@ -383,7 +386,7 @@ func TestStreamRunner_RetryOnInitialConnectHTTP500(t *testing.T) {
 	runner := StreamRunner{
 		Client:                  client,
 		Model:                   "m",
-		StreamMaxRetries:        2,
+		StreamReconnectBudget:   time.Second,
 		StreamRetryInitialDelay: time.Millisecond,
 		StreamRetryMaxDelay:     2 * time.Millisecond,
 	}
@@ -420,7 +423,7 @@ func TestStreamRunner_RetryOnEarlyStreamErrorEvent(t *testing.T) {
 	runner := StreamRunner{
 		Client:                  client,
 		Model:                   "m",
-		StreamMaxRetries:        2,
+		StreamReconnectBudget:   time.Second,
 		StreamRetryInitialDelay: time.Millisecond,
 		StreamRetryMaxDelay:     2 * time.Millisecond,
 	}
@@ -458,7 +461,7 @@ func TestStreamRunner_DoesNotRetryAfterPartialOutput(t *testing.T) {
 	runner := StreamRunner{
 		Client:                  client,
 		Model:                   "m",
-		StreamMaxRetries:        2,
+		StreamReconnectBudget:   time.Second,
 		StreamRetryInitialDelay: time.Millisecond,
 		StreamRetryMaxDelay:     2 * time.Millisecond,
 	}
@@ -492,7 +495,7 @@ func TestStreamRunner_DoesNotRetryIncompleteStreamAfterPartialOutput(t *testing.
 	runner := StreamRunner{
 		Client:                  client,
 		Model:                   "m",
-		StreamMaxRetries:        2,
+		StreamReconnectBudget:   time.Second,
 		StreamRetryInitialDelay: time.Millisecond,
 		StreamRetryMaxDelay:     2 * time.Millisecond,
 	}
@@ -635,7 +638,7 @@ func TestStreamRunner_CancelledCtxStopsRetry(t *testing.T) {
 	runner := StreamRunner{
 		Client:                  client,
 		Model:                   "m",
-		StreamMaxRetries:        5,
+		StreamReconnectBudget:   time.Second,
 		StreamRetryInitialDelay: time.Millisecond,
 		StreamRetryMaxDelay:     2 * time.Millisecond,
 	}
@@ -666,7 +669,7 @@ func TestStreamRunner_RetryOnDeadlineExceeded(t *testing.T) {
 	runner := StreamRunner{
 		Client:                  client,
 		Model:                   "m",
-		StreamMaxRetries:        2,
+		StreamReconnectBudget:   time.Second,
 		StreamRetryInitialDelay: time.Millisecond,
 		StreamRetryMaxDelay:     2 * time.Millisecond,
 	}
@@ -890,7 +893,6 @@ func TestStreamRunner_NonStreamingFallbackOnEmptyStream(t *testing.T) {
 	runner := &StreamRunner{
 		Client:              client,
 		Model:               "test",
-		StreamMaxRetries:    0,
 		StreamRetryMaxDelay: time.Millisecond,
 	}
 	result, err := runner.Run(context.Background(), "hello")
@@ -918,7 +920,6 @@ func TestStreamRunner_NoFallbackOnNormalStop(t *testing.T) {
 	runner := &StreamRunner{
 		Client:              client,
 		Model:               "test",
-		StreamMaxRetries:    0,
 		StreamRetryMaxDelay: time.Millisecond,
 	}
 	_, err := runner.Run(context.Background(), "hello")

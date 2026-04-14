@@ -138,6 +138,8 @@ type StreamLifecycle struct {
 	RetryCount  int
 	MaxRetries  int
 	RetryIn     time.Duration
+	Elapsed     time.Duration // time since first reconnect attempt
+	Budget      time.Duration // total reconnection time budget
 	Reason      string
 }
 
