@@ -60,28 +60,19 @@ func TestToolkit_ReadFileSizeSemantics(t *testing.T) {
 		t.Fatalf("write_file: %v", err)
 	}
 
-	resp, err := kit.Execute(context.Background(), providers.ToolCall{
+	// New behavior: read_file rejects files > 256KB at stat time with guidance.
+	_, err = kit.Execute(context.Background(), providers.ToolCall{
 		Name:      "read_file",
 		Arguments: `{"path":"big.txt"}`,
 	})
-	if err != nil {
-		t.Fatalf("read_file: %v", err)
+	if err == nil {
+		t.Fatal("expected error for oversized file")
 	}
-
-	var parsed map[string]any
-	if err := json.Unmarshal([]byte(resp), &parsed); err != nil {
-		t.Fatalf("parse read_file response: %v", err)
+	if !strings.Contains(err.Error(), "too large") {
+		t.Fatalf("expected 'too large' error, got: %v", err)
 	}
-	if parsed["truncated"] != true {
-		t.Fatalf("expected truncated=true, got %v", parsed["truncated"])
-	}
-	size := int(parsed["size"].(float64))
-	returned := int(parsed["returned_size"].(float64))
-	if size != len(big) {
-		t.Fatalf("expected size=%d, got %d", len(big), size)
-	}
-	if returned != defaultMaxFileBytes {
-		t.Fatalf("expected returned_size=%d, got %d", defaultMaxFileBytes, returned)
+	if !strings.Contains(err.Error(), "offset and limit") {
+		t.Fatalf("expected guidance about offset/limit, got: %v", err)
 	}
 }
 

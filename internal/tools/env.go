@@ -11,6 +11,14 @@ import (
 	"github.com/blueberrycongee/wuu/internal/skills"
 )
 
+// ReadFileEntry tracks a successful read_file invocation for dedup
+// and must-read-first guards.
+type ReadFileEntry struct {
+	MtimeUnix int64
+	Offset    int
+	Limit     int
+}
+
 // Env holds shared runtime state that individual tools receive at
 // construction time. It replaces the old approach of making every
 // handler a method on *Toolkit.
@@ -29,6 +37,36 @@ type Env struct {
 	// modifies a file. Enables FileChanged hook dispatch without
 	// coupling the tools package to the hooks package.
 	OnFileChanged func(absPath string)
+
+	// ReadState tracks read_file calls for dedup and must-read-first guard.
+	// Keys are absolute resolved paths.
+	ReadState map[string]ReadFileEntry
+}
+
+// RecordRead records a successful read_file invocation.
+func (e *Env) RecordRead(absPath string, entry ReadFileEntry) {
+	if e.ReadState == nil {
+		e.ReadState = make(map[string]ReadFileEntry)
+	}
+	e.ReadState[absPath] = entry
+}
+
+// HasBeenRead reports whether a file has been read via read_file.
+func (e *Env) HasBeenRead(absPath string) bool {
+	if e.ReadState == nil {
+		return false
+	}
+	_, ok := e.ReadState[absPath]
+	return ok
+}
+
+// GetReadEntry returns the read state for a file, if any.
+func (e *Env) GetReadEntry(absPath string) (ReadFileEntry, bool) {
+	if e.ReadState == nil {
+		return ReadFileEntry{}, false
+	}
+	entry, ok := e.ReadState[absPath]
+	return entry, ok
 }
 
 // ResolvePath resolves a user-supplied relative or absolute path to

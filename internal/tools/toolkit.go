@@ -351,6 +351,58 @@ func isBinaryFile(path string) bool {
 	return false
 }
 
+// levenshtein returns the edit distance between two strings.
+func levenshtein(a, b string) int {
+	la, lb := len(a), len(b)
+	if la == 0 {
+		return lb
+	}
+	if lb == 0 {
+		return la
+	}
+	prev := make([]int, lb+1)
+	for j := range prev {
+		prev[j] = j
+	}
+	for i := 1; i <= la; i++ {
+		curr := make([]int, lb+1)
+		curr[0] = i
+		for j := 1; j <= lb; j++ {
+			cost := 1
+			if a[i-1] == b[j-1] {
+				cost = 0
+			}
+			curr[j] = min(curr[j-1]+1, min(prev[j]+1, prev[j-1]+cost))
+		}
+		prev = curr
+	}
+	return prev[lb]
+}
+
+// suggestSimilarFile looks in the same directory for a filename within
+// Levenshtein distance 3 of the requested file. Returns "" if none found.
+func suggestSimilarFile(absPath string) string {
+	dir := filepath.Dir(absPath)
+	target := filepath.Base(absPath)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return ""
+	}
+	bestDist := 4 // threshold + 1
+	bestName := ""
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		d := levenshtein(strings.ToLower(target), strings.ToLower(e.Name()))
+		if d < bestDist {
+			bestDist = d
+			bestName = e.Name()
+		}
+	}
+	return bestName
+}
+
 func matchGlob(pattern, path string) bool {
 	pattern = filepath.ToSlash(strings.TrimSpace(pattern))
 	path = filepath.ToSlash(path)
@@ -411,6 +463,19 @@ type grepMatch struct {
 	Content string `json:"content"`
 }
 
+type grepOptions struct {
+	outputMode string
+	context    int
+	before     int
+	after      int
+	ignoreCase bool
+}
+
+type grepCountResult struct {
+	File  string `json:"file"`
+	Count int    `json:"count"`
+}
+
 type rgJSONEvent struct {
 	Type string `json:"type"`
 	Data struct {
@@ -455,12 +520,25 @@ func buildRGFilesCommand(ctx context.Context, pattern string) *exec.Cmd {
 	return rgCommand(ctx, name, args...)
 }
 
-func buildRGGrepCommand(ctx context.Context, pattern, searchRoot, include string) *exec.Cmd {
+func buildRGGrepCommand(ctx context.Context, pattern, searchRoot, include string, opts grepOptions) *exec.Cmd {
 	name := lookupRG()
 	if name == "" {
 		return nil
 	}
-	args := []string{"--json", "--hidden", "-H", "-n", pattern}
+	args := []string{"--json", "--hidden", "-H", "-n"}
+	if opts.ignoreCase {
+		args = append(args, "-i")
+	}
+	if opts.context > 0 {
+		args = append(args, "-C", fmt.Sprintf("%d", opts.context))
+	}
+	if opts.before > 0 {
+		args = append(args, "-B", fmt.Sprintf("%d", opts.before))
+	}
+	if opts.after > 0 {
+		args = append(args, "-A", fmt.Sprintf("%d", opts.after))
+	}
+	args = append(args, pattern)
 	if include != "" {
 		args = append(args, "--glob", include)
 	}

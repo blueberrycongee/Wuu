@@ -15,6 +15,8 @@ import (
 // read_file
 // ---------------------------------------------------------------------------
 
+const defaultReadLineLimit = 2000
+
 type ReadFileTool struct{ env *Env }
 
 func NewReadFileTool(env *Env) *ReadFileTool { return &ReadFileTool{env: env} }
@@ -26,12 +28,13 @@ func (t *ReadFileTool) IsConcurrencySafe() bool  { return true }
 func (t *ReadFileTool) Definition() providers.ToolDefinition {
 	return providers.ToolDefinition{
 		Name: "read_file",
-		Description: "Reads a file from the workspace. " +
-			"Assume this tool can read any file in the workspace.\n\n" +
+		Description: "Reads a file from the workspace. Returns content with line numbers.\n\n" +
 			"Usage:\n" +
 			"- The path parameter is relative to the workspace root\n" +
-			"- Returns file content with size metadata and truncation info\n" +
-			"- Large files (>256KB) are truncated at a valid UTF-8 boundary\n" +
+			"- Returns content with cat -n style line number prefixes (number + tab)\n" +
+			"- Use offset (1-based line) and limit (default 2000) to paginate large files\n" +
+			"- Files >256KB are rejected at stat time — use offset and limit to read portions\n" +
+			"- Repeated reads of the same file/range return a stub if the file is unchanged\n" +
 			"- This tool can only read files, not directories — use list_files for directories\n" +
 			"- Binary files are not supported; use run_shell for binary inspection",
 		InputSchema: map[string]any{
@@ -41,6 +44,14 @@ func (t *ReadFileTool) Definition() providers.ToolDefinition {
 					"type":        "string",
 					"description": "Relative file path in workspace.",
 				},
+				"offset": map[string]any{
+					"type":        "integer",
+					"description": "1-based line number to start reading from. Default 1.",
+				},
+				"limit": map[string]any{
+					"type":        "integer",
+					"description": "Max lines to return. Default 2000.",
+				},
 			},
 			"required": []string{"path"},
 		},
@@ -49,7 +60,9 @@ func (t *ReadFileTool) Definition() providers.ToolDefinition {
 
 func (t *ReadFileTool) Execute(_ context.Context, argsJSON string) (string, error) {
 	var args struct {
-		Path string `json:"path"`
+		Path   string `json:"path"`
+		Offset int    `json:"offset"`
+		Limit  int    `json:"limit"`
 	}
 	if err := decodeArgs(argsJSON, &args); err != nil {
 		return "", err
@@ -57,10 +70,45 @@ func (t *ReadFileTool) Execute(_ context.Context, argsJSON string) (string, erro
 	if strings.TrimSpace(args.Path) == "" {
 		return "", errors.New("read_file requires path")
 	}
+	if args.Offset <= 0 {
+		args.Offset = 1
+	}
+	if args.Limit <= 0 {
+		args.Limit = defaultReadLineLimit
+	}
 
 	resolved, err := t.env.ResolvePath(args.Path)
 	if err != nil {
 		return "", err
+	}
+
+	info, err := os.Stat(resolved)
+	if err != nil {
+		if os.IsNotExist(err) {
+			hint := suggestSimilarFile(resolved)
+			msg := fmt.Sprintf("File not found: %s", args.Path)
+			if hint != "" {
+				msg += fmt.Sprintf(". Did you mean: %s?", hint)
+			}
+			return "", errors.New(msg)
+		}
+		return "", fmt.Errorf("stat file: %w", err)
+	}
+	if info.Size() > int64(defaultMaxFileBytes) {
+		return "", fmt.Errorf("file too large (%d bytes, max %d). Use offset and limit to read portions", info.Size(), defaultMaxFileBytes)
+	}
+
+	// Dedup check: same file, same range, same mtime → return stub.
+	mtimeUnix := info.ModTime().Unix()
+	if entry, ok := t.env.GetReadEntry(resolved); ok {
+		if entry.Offset == args.Offset && entry.Limit == args.Limit && entry.MtimeUnix == mtimeUnix {
+			result := map[string]any{
+				"path":      t.env.NormalizeDisplayPath(resolved),
+				"unchanged": true,
+				"message":   "File unchanged since last read. Refer to the earlier read result.",
+			}
+			return mustJSON(result)
+		}
 	}
 
 	content, err := os.ReadFile(resolved)
@@ -68,24 +116,45 @@ func (t *ReadFileTool) Execute(_ context.Context, argsJSON string) (string, erro
 		return "", fmt.Errorf("read file: %w", err)
 	}
 
-	fullSize := len(content)
-	returned := content
-	truncated := false
-	if fullSize > defaultMaxFileBytes {
-		cut := defaultMaxFileBytes
-		for cut > 0 && content[cut-1]&0xC0 == 0x80 {
-			cut--
-		}
-		returned = content[:cut]
-		truncated = true
+	allLines := strings.Split(string(content), "\n")
+	// Remove trailing empty element from final newline.
+	if len(allLines) > 0 && allLines[len(allLines)-1] == "" {
+		allLines = allLines[:len(allLines)-1]
+	}
+	totalLines := len(allLines)
+
+	// Slice to requested range.
+	startIdx := args.Offset - 1 // 0-based
+	if startIdx > totalLines {
+		startIdx = totalLines
+	}
+	endIdx := startIdx + args.Limit
+	if endIdx > totalLines {
+		endIdx = totalLines
+	}
+	sliced := allLines[startIdx:endIdx]
+
+	// Format with line numbers (right-aligned to 6 chars + tab).
+	var buf strings.Builder
+	for i, line := range sliced {
+		lineNum := startIdx + i + 1 // 1-based
+		fmt.Fprintf(&buf, "%6d\t%s\n", lineNum, line)
 	}
 
+	// Record read state for dedup and must-read-first.
+	t.env.RecordRead(resolved, ReadFileEntry{
+		MtimeUnix: mtimeUnix,
+		Offset:    args.Offset,
+		Limit:     args.Limit,
+	})
+
 	result := map[string]any{
-		"path":          t.env.NormalizeDisplayPath(resolved),
-		"size":          fullSize,
-		"returned_size": len(returned),
-		"truncated":     truncated,
-		"content":       string(returned),
+		"path":        t.env.NormalizeDisplayPath(resolved),
+		"content":     buf.String(),
+		"num_lines":   len(sliced),
+		"start_line":  args.Offset,
+		"total_lines": totalLines,
+		"truncated":   endIdx < totalLines,
 	}
 	return mustJSON(result)
 }
@@ -273,9 +342,11 @@ func (t *EditFileTool) Definition() providers.ToolDefinition {
 		Name: "edit_file",
 		Description: "Performs exact string replacement in a file.\n\n" +
 			"Usage:\n" +
-			"- You should read the file before editing to understand its content\n" +
-			"- Provide old_text (must match exactly once in the file) and new_text\n" +
-			"- The edit will FAIL if old_text is not unique — provide more surrounding context to disambiguate\n" +
+			"- You must read the file before editing — edits are rejected if the file has not been read\n" +
+			"- Provide old_text (must match exactly once) and new_text\n" +
+			"- Use replace_all=true to replace every occurrence instead of requiring unique match\n" +
+			"- The edit will FAIL if old_text is not unique — provide more context or use replace_all\n" +
+			"- old_text and new_text must differ — identical values are rejected\n" +
 			"- Use empty new_text to delete a section\n" +
 			"- Prefer this over write_file for modifications — it only sends the diff\n" +
 			"- Returns a structured diff showing what changed",
@@ -288,11 +359,15 @@ func (t *EditFileTool) Definition() providers.ToolDefinition {
 				},
 				"old_text": map[string]any{
 					"type":        "string",
-					"description": "Exact text to find and replace. Must match exactly once in the file.",
+					"description": "Exact text to find and replace.",
 				},
 				"new_text": map[string]any{
 					"type":        "string",
 					"description": "Text to replace old_text with. Use empty string to delete.",
+				},
+				"replace_all": map[string]any{
+					"type":        "boolean",
+					"description": "Replace all occurrences. Default false (must match exactly once).",
 				},
 			},
 			"required": []string{"path", "old_text", "new_text"},
@@ -302,9 +377,10 @@ func (t *EditFileTool) Definition() providers.ToolDefinition {
 
 func (t *EditFileTool) Execute(_ context.Context, argsJSON string) (string, error) {
 	var args struct {
-		Path    string `json:"path"`
-		OldText string `json:"old_text"`
-		NewText string `json:"new_text"`
+		Path       string `json:"path"`
+		OldText    string `json:"old_text"`
+		NewText    string `json:"new_text"`
+		ReplaceAll bool   `json:"replace_all"`
 	}
 	if err := decodeArgs(argsJSON, &args); err != nil {
 		return "", err
@@ -315,10 +391,18 @@ func (t *EditFileTool) Execute(_ context.Context, argsJSON string) (string, erro
 	if args.OldText == "" {
 		return "", errors.New("edit_file requires old_text")
 	}
+	if args.OldText == args.NewText {
+		return "", errors.New("old_text and new_text are identical, no changes needed")
+	}
 
 	resolved, err := t.env.ResolvePath(args.Path)
 	if err != nil {
 		return "", err
+	}
+
+	// Must-read-first guard: reject edit if file hasn't been read.
+	if !t.env.HasBeenRead(resolved) {
+		return "", errors.New("file has not been read yet. Use read_file first to inspect the file before editing")
 	}
 
 	content, err := os.ReadFile(resolved)
@@ -331,11 +415,17 @@ func (t *EditFileTool) Execute(_ context.Context, argsJSON string) (string, erro
 	if count == 0 {
 		return "", errors.New("old_text not found in file")
 	}
-	if count > 1 {
-		return "", fmt.Errorf("old_text matches %d times, must be unique", count)
+
+	var newContent string
+	if args.ReplaceAll {
+		newContent = strings.ReplaceAll(text, args.OldText, args.NewText)
+	} else {
+		if count > 1 {
+			return "", fmt.Errorf("old_text matches %d times, must be unique (use replace_all=true to replace all)", count)
+		}
+		newContent = strings.Replace(text, args.OldText, args.NewText, 1)
 	}
 
-	newContent := strings.Replace(text, args.OldText, args.NewText, 1)
 	if err := os.WriteFile(resolved, []byte(newContent), 0o644); err != nil {
 		return "", fmt.Errorf("write file: %w", err)
 	}
