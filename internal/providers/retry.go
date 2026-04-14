@@ -40,7 +40,7 @@ func NormalizeRetryConfig(cfg RetryConfig) RetryConfig {
 // DefaultRetryConfig returns sensible defaults.
 func DefaultRetryConfig() RetryConfig {
 	return RetryConfig{
-		MaxRetries:   3,
+		MaxRetries:   10,
 		InitialDelay: time.Second,
 		MaxDelay:     30 * time.Second,
 	}

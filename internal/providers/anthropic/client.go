@@ -351,6 +351,8 @@ func (c *Client) doMessagesRequest(
 			httpReq.Header.Set("anthropic-beta", "oauth-2025-04-20")
 		}
 		httpReq.Header.Set("User-Agent", "claude-cli/2.1.96")
+		httpReq.Header.Set("x-app", "cli")
+		httpReq.Header.Set("Accept", "text/event-stream")
 		for k, v := range c.headers {
 			httpReq.Header.Set(k, v)
 		}
