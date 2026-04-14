@@ -44,10 +44,13 @@ func pasteImageFromClipboard() (providers.InputImage, error) {
 		return providers.InputImage{}, errors.New("unsupported clipboard image format")
 	}
 
-	return providers.InputImage{
+	img := providers.InputImage{
 		MediaType: mediaType,
 		Data:      base64.StdEncoding.EncodeToString(data),
-	}, nil
+	}
+
+	// Resize if needed to stay within API limits.
+	return maybeResizeImage(img)
 }
 
 func writeClipboardImage(path string) (string, error) {
