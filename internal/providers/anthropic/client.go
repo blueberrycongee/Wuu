@@ -274,6 +274,17 @@ func buildAnthropicRequest(req providers.ChatRequest, maxTokens int, stream bool
 		}
 	}
 	providers.DebugLogf("buildAnthropicRequest: %d input msgs → %d merged msgs", len(req.Messages), len(payload.Messages))
+	// Log the role sequence to diagnose alternation violations.
+	if len(payload.Messages) > 0 {
+		var roles strings.Builder
+		for i, m := range payload.Messages {
+			if i > 0 {
+				roles.WriteString(",")
+			}
+			roles.WriteString(m.Role)
+		}
+		providers.DebugLogf("buildAnthropicRequest: role sequence: [%s]", roles.String())
+	}
 	payload.System = buildAnthropicSystem(systemTexts, req.CacheHint)
 	applyAnthropicCacheHint(&payload, req.CacheHint)
 
@@ -498,17 +509,21 @@ func (c *Client) readSSEStream(resp *http.Response, ch chan<- providers.StreamEv
 
 	if err := scanner.Err(); err != nil {
 		if idleFired.Load() {
+			providers.DebugLogf("readSSEStream: idle timeout after %s", idleTimeout)
 			ch <- providers.StreamEvent{Type: providers.EventError, Error: fmt.Errorf("stream idle timeout after %s: %w", idleTimeout, context.DeadlineExceeded)}
 			return
 		}
+		providers.DebugLogf("readSSEStream: scanner error: %v", err)
 		ch <- providers.StreamEvent{Type: providers.EventError, Error: fmt.Errorf("read SSE stream: %w", err)}
 		return
 	}
 	if idleFired.Load() {
+		providers.DebugLogf("readSSEStream: idle timeout (post-scan) after %s", idleTimeout)
 		ch <- providers.StreamEvent{Type: providers.EventError, Error: fmt.Errorf("stream idle timeout after %s: %w", idleTimeout, context.DeadlineExceeded)}
 		return
 	}
 	if !sawMessageStop && !sawStreamError {
+		providers.DebugLogf("readSSEStream: incomplete stream (no message_stop)")
 		ch <- providers.StreamEvent{
 			Type:  providers.EventError,
 			Error: providers.NewIncompleteStreamError("stream closed before message_stop"),
@@ -603,8 +618,10 @@ func (c *Client) handleSSEEvent(
 		if sawStreamError != nil {
 			*sawStreamError = true
 		}
+		providers.DebugLogf("readSSEStream: error event: %s", raw.Data)
 		var p anthropicErrorPayload
 		if err := json.Unmarshal([]byte(raw.Data), &p); err == nil {
+			providers.DebugLogf("readSSEStream: error code=%s msg=%s", p.Error.Code, p.Error.Message)
 			ch <- providers.StreamEvent{
 				Type:  providers.EventError,
 				Error: providers.NewProviderStreamError(p.Error.Code, p.Error.Message),
