@@ -25,6 +25,11 @@ const (
 	StatusCompleted Status = "completed"
 	StatusFailed    Status = "failed"
 	StatusCancelled Status = "cancelled"
+
+	// DefaultMaxLifetime is the maximum wall-clock time a worker can run
+	// before being forcibly cancelled. Prevents runaway workers from
+	// consuming resources indefinitely.
+	DefaultMaxLifetime = 2 * time.Hour
 )
 
 // SpawnOptions describes a new sub-agent to launch.
@@ -64,6 +69,10 @@ type SpawnOptions struct {
 	// HistoryPath, if set, is the absolute path where this sub-agent's
 	// JSONL history should be persisted.
 	HistoryPath string
+
+	// MaxLifetime caps how long a worker can run before being forcibly
+	// cancelled. Zero defaults to DefaultMaxLifetime (2h).
+	MaxLifetime time.Duration
 
 	// InitialHistory, when non-nil, seeds the worker's conversation
 	// with this exact message slice instead of starting from

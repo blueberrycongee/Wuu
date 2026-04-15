@@ -65,7 +65,11 @@ func (m *Manager) Spawn(ctx context.Context, opts SpawnOptions) (*SubAgent, erro
 	}
 
 	id := newAgentID(opts.Type)
-	subCtx, cancel := context.WithCancel(ctx)
+	lifetime := opts.MaxLifetime
+	if lifetime <= 0 {
+		lifetime = DefaultMaxLifetime
+	}
+	subCtx, cancel := context.WithTimeout(ctx, lifetime)
 
 	sa := &SubAgent{
 		ID:             id,
@@ -97,6 +101,16 @@ func (m *Manager) Spawn(ctx context.Context, opts SpawnOptions) (*SubAgent, erro
 func (m *Manager) run(ctx context.Context, sa *SubAgent, opts SpawnOptions) {
 	defer close(sa.doneCh)
 	defer sa.cancelFunc()
+	defer func() {
+		if r := recover(); r != nil {
+			sa.mu.Lock()
+			sa.Status = StatusFailed
+			sa.Error = fmt.Errorf("worker panic: %v", r)
+			sa.CompletedAt = time.Now()
+			sa.mu.Unlock()
+			m.notify(sa, StatusFailed)
+		}
+	}()
 
 	// Status was already set to StatusRunning in Spawn (so CountRunning
 	// sees it synchronously). Just notify listeners.
@@ -158,9 +172,16 @@ func (m *Manager) run(ctx context.Context, sa *SubAgent, opts SpawnOptions) {
 	sa.mu.Lock()
 	sa.CompletedAt = time.Now()
 	if err != nil {
-		if errors.Is(err, context.Canceled) {
+		switch {
+		case errors.Is(err, context.DeadlineExceeded):
+			sa.Status = StatusFailed
+			sa.Error = fmt.Errorf("worker exceeded max lifetime (%s)", opts.MaxLifetime)
+			if opts.MaxLifetime <= 0 {
+				sa.Error = fmt.Errorf("worker exceeded max lifetime (%s)", DefaultMaxLifetime)
+			}
+		case errors.Is(err, context.Canceled):
 			sa.Status = StatusCancelled
-		} else {
+		default:
 			sa.Status = StatusFailed
 			sa.Error = err
 		}
