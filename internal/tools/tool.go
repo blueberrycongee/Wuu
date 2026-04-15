@@ -42,18 +42,20 @@ type Registry struct {
 	index map[string]Tool
 }
 
-// NewRegistry builds a registry from the given tools. Panics on
-// duplicate names — that's a programming error, not a runtime one.
+// NewRegistry builds a registry from the given tools. Duplicate names
+// are silently skipped (first registration wins) — crashing the
+// process for a duplicate is never the right UX.
 func NewRegistry(tools ...Tool) *Registry {
 	r := &Registry{
-		tools: tools,
+		tools: make([]Tool, 0, len(tools)),
 		index: make(map[string]Tool, len(tools)),
 	}
 	for _, t := range tools {
 		name := t.Name()
 		if _, dup := r.index[name]; dup {
-			panic("duplicate tool name: " + name)
+			continue // first registration wins
 		}
+		r.tools = append(r.tools, t)
 		r.index[name] = t
 	}
 	return r
