@@ -249,7 +249,7 @@ func RunToolLoop(
 			ReasoningContent: result.ReasoningContent,
 			ToolCalls:        result.ToolCalls,
 		}
-		if shouldPersistAssistantMessage(assistant) {
+		if shouldPersistAssistantMessage(assistant, messages) {
 			appendMessage(assistant)
 		}
 
@@ -359,14 +359,30 @@ func newMessagesForReturn(messages []providers.ChatMessage, startLen int, histor
 	return copyMessages(messages[startLen:])
 }
 
-func shouldPersistAssistantMessage(msg providers.ChatMessage) bool {
+func shouldPersistAssistantMessage(msg providers.ChatMessage, prevMessages []providers.ChatMessage) bool {
 	if strings.TrimSpace(msg.Content) != "" {
 		return true
 	}
 	if strings.TrimSpace(msg.ReasoningContent) != "" {
 		return true
 	}
-	return len(msg.ToolCalls) > 0
+	if len(msg.ToolCalls) > 0 {
+		return true
+	}
+	// Even an empty assistant message must be persisted when the
+	// previous message is a tool result. Without it, the next user
+	// message (e.g. worker-result injection) gets merged with the
+	// tool_result into a single user message containing mixed
+	// content blocks (tool_result + text), which many proxies reject.
+	// This maintains strict role alternation:
+	//   assistant(tool_use) → user(tool_result) → assistant("") → user(...)
+	if len(prevMessages) > 0 {
+		last := prevMessages[len(prevMessages)-1]
+		if last.Role == "tool" || last.Role == "user" {
+			return true
+		}
+	}
+	return false
 }
 
 func isLegitimateEmptyCompletion(stopReason string) bool {

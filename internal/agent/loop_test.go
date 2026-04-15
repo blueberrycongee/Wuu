@@ -561,8 +561,10 @@ func TestRunToolLoop_EmptyAnswerWithNaturalStopReasonSucceeds(t *testing.T) {
 	if res.Content != "" {
 		t.Fatalf("expected empty final content, got %q", res.Content)
 	}
-	if len(res.NewMessages) != 0 {
-		t.Fatalf("expected no persisted empty assistant message, got %+v", res.NewMessages)
+	// Empty assistant is persisted when prev message is user/tool
+	// to maintain strict role alternation for proxy compatibility.
+	if len(res.NewMessages) != 1 || res.NewMessages[0].Role != "assistant" {
+		t.Fatalf("expected persisted empty assistant for alternation, got %+v", res.NewMessages)
 	}
 }
 
