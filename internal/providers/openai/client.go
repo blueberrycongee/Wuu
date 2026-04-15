@@ -95,19 +95,16 @@ func (c *Client) Chat(ctx context.Context, req providers.ChatRequest) (providers
 	}
 
 	payload := chatCompletionsRequest{
-		Model:       req.Model,
-		Messages:    make([]chatMessage, 0, len(req.Messages)),
-		Temperature: req.Temperature,
-		MaxTokens:   req.MaxTokens,
+		Model:           req.Model,
+		Messages:        make([]chatMessage, 0, len(req.Messages)),
+		Temperature:     req.Temperature,
+		MaxTokens:       req.MaxTokens,
+		ReasoningEffort: req.Effort,
 	}
 	applyPromptCacheKey(&payload, req.CacheHint, c.promptCacheKeyFormat)
 
 	for _, msg := range req.Messages {
 		mapped := mapMessage(msg)
-		// Merge consecutive messages with the same role. Some
-		// OpenAI-compatible proxies reject consecutive user messages
-		// produced by tool_result + hook context injection. Tool-role
-		// messages are kept separate (each tied to a specific tool_call_id).
 		if mapped.Role != "tool" && mapped.ToolCallID == "" {
 			if n := len(payload.Messages); n > 0 && payload.Messages[n-1].Role == mapped.Role && payload.Messages[n-1].ToolCallID == "" {
 				payload.Messages[n-1].Content = mergeContent(payload.Messages[n-1].Content, mapped.Content)
@@ -209,11 +206,12 @@ func (c *Client) StreamChat(ctx context.Context, req providers.ChatRequest) (<-c
 	}
 
 	payload := chatCompletionsRequest{
-		Model:       req.Model,
-		Messages:    make([]chatMessage, 0, len(req.Messages)),
-		Temperature: req.Temperature,
-		MaxTokens:   req.MaxTokens,
-		Stream:      true,
+		Model:           req.Model,
+		Messages:        make([]chatMessage, 0, len(req.Messages)),
+		Temperature:     req.Temperature,
+		MaxTokens:       req.MaxTokens,
+		Stream:          true,
+		ReasoningEffort: req.Effort,
 	}
 	applyPromptCacheKey(&payload, req.CacheHint, c.promptCacheKeyFormat)
 	for _, msg := range req.Messages {
@@ -710,15 +708,16 @@ func promptCacheKeyHeaderPrefersSnake(headers map[string]string) bool {
 }
 
 type chatCompletionsRequest struct {
-	Model          string           `json:"model"`
-	Messages       []chatMessage    `json:"messages"`
-	Tools          []toolDefinition `json:"tools,omitempty"`
-	ToolChoice     string           `json:"tool_choice,omitempty"`
-	Temperature    float64          `json:"temperature,omitempty"`
-	MaxTokens      int              `json:"max_tokens,omitempty"`
-	Stream         bool             `json:"stream,omitempty"`
-	PromptCacheKey string           `json:"promptCacheKey,omitempty"`
-	AltCacheKey    string           `json:"prompt_cache_key,omitempty"`
+	Model            string           `json:"model"`
+	Messages         []chatMessage    `json:"messages"`
+	Tools            []toolDefinition `json:"tools,omitempty"`
+	ToolChoice       string           `json:"tool_choice,omitempty"`
+	Temperature      float64          `json:"temperature,omitempty"`
+	MaxTokens        int              `json:"max_tokens,omitempty"`
+	Stream           bool             `json:"stream,omitempty"`
+	PromptCacheKey   string           `json:"promptCacheKey,omitempty"`
+	AltCacheKey      string           `json:"prompt_cache_key,omitempty"`
+	ReasoningEffort  string           `json:"reasoning_effort,omitempty"`
 }
 
 type chatMessage struct {

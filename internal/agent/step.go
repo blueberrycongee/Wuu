@@ -148,6 +148,11 @@ type LoopConfig struct {
 	// truncation recovery. Zero defaults to 65 536. Aligned with
 	// Claude Code's "start low, escalate on truncation" strategy.
 	EscalatedMaxTokens int
+	// Effort controls reasoning depth. Empty = API default. Valid:
+	//   Anthropic: "low", "medium", "high", "max"
+	//   OpenAI:    "low", "medium", "high"
+	// Aligned with Claude Code's /effort and Codex's reasoning_effort.
+	Effort string
 }
 
 // defaultCompactThresholdPct is the proactive trigger if the caller

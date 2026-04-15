@@ -83,6 +83,14 @@ type ChatRequest struct {
 	// should use its own default. The agent loop sets this and escalates
 	// it automatically on truncation recovery (e.g. 16 384 → 65 536).
 	MaxTokens int
+	// Effort controls how much reasoning the model performs before
+	// responding. Empty string means "use API default". Valid values
+	// are provider-specific:
+	//   Anthropic: "low", "medium", "high", "max"
+	//   OpenAI:    "low", "medium", "high"
+	// Aligned with Claude Code's /effort command and Codex's
+	// reasoning_effort setting.
+	Effort string
 }
 
 // ChatResponse is the normalized response from providers.

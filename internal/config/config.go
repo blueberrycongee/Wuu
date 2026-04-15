@@ -87,6 +87,10 @@ type AgentConfig struct {
 	MaxContextTokens int     `json:"max_context_tokens"`
 	Temperature      float64 `json:"temperature"`
 	SystemPrompt     string  `json:"system_prompt"`
+	// Effort controls reasoning depth. Valid: "low", "medium", "high",
+	// "max" (Anthropic only). Empty = API default. Aligned with Claude
+	// Code's /effort command and Codex's reasoning_effort setting.
+	Effort string `json:"effort,omitempty"`
 	// DisableAutoCompact turns off the proactive auto-compact pass
 	// that fires when the conversation reaches ~90% of the model's
 	// context window. The reactive overflow recovery (compact triggered

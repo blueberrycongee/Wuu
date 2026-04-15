@@ -287,6 +287,17 @@ func buildAnthropicRequest(req providers.ChatRequest, maxTokens int, stream bool
 			})
 		}
 	}
+
+	// Effort level: maps to output_config.effort. Aligned with Claude
+	// Code's configureEffortParams(). Empty = API default (high).
+	if req.Effort != "" {
+		payload.OutputConfig = &anthropicOutputConfig{Effort: req.Effort}
+		// Adaptive thinking: when effort is set, enable thinking so
+		// the model can use its reasoning budget. Claude Code uses
+		// adaptive mode for newer models (Opus 4.6, Sonnet 4.6).
+		payload.Thinking = &anthropicThinking{Type: "adaptive"}
+	}
+
 	return payload, nil
 }
 
@@ -657,13 +668,28 @@ func cloneHeaders(input map[string]string) map[string]string {
 }
 
 type anthropicRequest struct {
-	Model       string             `json:"model"`
-	System      any                `json:"system,omitempty"`
-	MaxTokens   int                `json:"max_tokens"`
-	Temperature *float64           `json:"temperature,omitempty"`
-	Messages    []anthropicMessage `json:"messages"`
-	Tools       []anthropicTool    `json:"tools,omitempty"`
-	Stream      bool               `json:"stream,omitempty"`
+	Model        string                `json:"model"`
+	System       any                   `json:"system,omitempty"`
+	MaxTokens    int                   `json:"max_tokens"`
+	Temperature  *float64              `json:"temperature,omitempty"`
+	Messages     []anthropicMessage    `json:"messages"`
+	Tools        []anthropicTool       `json:"tools,omitempty"`
+	Stream       bool                  `json:"stream,omitempty"`
+	Thinking     *anthropicThinking    `json:"thinking,omitempty"`
+	OutputConfig *anthropicOutputConfig `json:"output_config,omitempty"`
+}
+
+// anthropicThinking configures extended thinking. Aligned with Claude
+// Code's adaptive thinking mode for newer models.
+type anthropicThinking struct {
+	Type         string `json:"type"`                    // "adaptive" or "enabled"
+	BudgetTokens int    `json:"budget_tokens,omitempty"` // only for type=enabled
+}
+
+// anthropicOutputConfig controls output behavior. The effort field
+// maps to Claude Code's /effort command levels.
+type anthropicOutputConfig struct {
+	Effort string `json:"effort,omitempty"` // "low", "medium", "high", "max"
 }
 
 type anthropicMessage struct {

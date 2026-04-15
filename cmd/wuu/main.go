@@ -188,6 +188,7 @@ func runTask(args []string) error {
 		SystemPrompt: cfg.Agent.SystemPrompt,
 		MaxSteps:     cfg.Agent.MaxSteps,
 		Temperature:  cfg.Agent.Temperature,
+		Effort:       cfg.Agent.Effort,
 		ContextWindowOverride: resolveContextWindow(
 			providerCfg.Model,
 			providerCfg.ContextWindow,
@@ -506,6 +507,7 @@ func runTUI(args []string) error {
 		SystemPrompt: systemPromptText,
 		MaxSteps:     cfg.Agent.MaxSteps,
 		Temperature:  cfg.Agent.Temperature,
+		Effort:       cfg.Agent.Effort,
 		ContextWindowOverride: resolveContextWindow(
 			providerCfg.Model,
 			providerCfg.ContextWindow,

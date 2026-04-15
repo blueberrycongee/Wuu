@@ -64,6 +64,7 @@ func init() {
 		{Name: "status", Description: "Show session config and token usage", Type: cmdTypeLocal, Execute: cmdStatus},
 		{Name: "compact", Description: "Compress conversation context", Type: cmdTypeLocal, Execute: cmdCompact},
 		{Name: "model", Description: "Switch model/provider", ArgHint: "<model-name>", InlineArgs: true, Type: cmdTypeLocal, Execute: cmdModelSwitch},
+		{Name: "effort", Description: "Set reasoning effort level", ArgHint: "[low|medium|high|max]", InlineArgs: true, Type: cmdTypeLocal, Execute: cmdEffort},
 		{Name: "resume", Description: "Resume previous session", ArgHint: "[session-id]", InlineArgs: true, Type: cmdTypeLocal, Execute: cmdResume},
 		{Name: "fork", Description: "Fork current session", Type: cmdTypeLocal, Execute: cmdFork},
 		{Name: "new", Description: "Start new conversation", Type: cmdTypeLocal, Execute: cmdNew},
@@ -280,6 +281,30 @@ func cmdModelSwitch(args string, m *Model) string {
 		}
 	}
 	return msg
+}
+
+var validEffortLevels = map[string]bool{
+	"low": true, "medium": true, "high": true, "max": true,
+}
+
+func cmdEffort(args string, m *Model) string {
+	level := strings.TrimSpace(strings.ToLower(args))
+	if level == "" {
+		current := "default (API decides)"
+		if m.streamRunner != nil && m.streamRunner.Effort != "" {
+			current = m.streamRunner.Effort
+		}
+		return fmt.Sprintf("current effort: %s (use /effort low|medium|high|max)", current)
+	}
+
+	if !validEffortLevels[level] {
+		return fmt.Sprintf("invalid effort level %q — valid: low, medium, high, max", level)
+	}
+
+	if m.streamRunner != nil {
+		m.streamRunner.Effort = level
+	}
+	return fmt.Sprintf("effort set to %s", level)
 }
 
 func cmdResume(args string, m *Model) string {

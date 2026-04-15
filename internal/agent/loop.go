@@ -161,6 +161,7 @@ func RunToolLoop(
 			Temperature: cfg.Temperature,
 			MaxTokens:   currentMaxTokens,
 			CacheHint:   buildCacheHint(messages),
+			Effort:      cfg.Effort,
 		}
 		if cfg.Tools != nil {
 			req.Tools = cfg.Tools.Definitions()

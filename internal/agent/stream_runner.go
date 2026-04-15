@@ -61,6 +61,9 @@ type StreamRunner struct {
 	// messages are appended to history for that round.
 	BeforeStep func() []providers.ChatMessage
 
+	// Effort controls reasoning depth. See ChatRequest.Effort.
+	Effort string
+
 	// Stream reconnect policy. Zero values use CC-aligned defaults.
 	StreamReconnectBudget      time.Duration // total time for reconnection (default: 2m)
 	StreamRetryInitialDelay    time.Duration // backoff start (default: 1s)
@@ -166,6 +169,7 @@ func (r *StreamRunner) RunWithCallback(ctx context.Context, history []providers.
 			})
 		},
 		UsageTracker: runUsage,
+		Effort:       r.Effort,
 	}
 
 	res, err := RunToolLoop(ctx, history, cfg, step)
