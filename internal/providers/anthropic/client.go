@@ -265,10 +265,23 @@ func buildAnthropicRequest(req providers.ChatRequest, maxTokens int, stream bool
 		// Merge consecutive messages with the same role. The Anthropic
 		// API requires strict user/assistant alternation; some relays
 		// and Console-backed proxies reject violations with 503.
-		// WUU produces consecutive user messages from tool_result +
-		// BeforeStep environment injection, so we coalesce here.
+		//
+		// CRITICAL: only merge when content block types are compatible.
+		// A user message with tool_result blocks MUST NOT be merged
+		// with a user message containing text blocks — proxies reject
+		// mixed tool_result+text in a single message. This is the
+		// root cause of the reconnect-after-worker-completion bug.
 		if n := len(payload.Messages); n > 0 && payload.Messages[n-1].Role == mapped.Role {
-			payload.Messages[n-1].Content = append(payload.Messages[n-1].Content, mapped.Content...)
+			if canMergeBlocks(payload.Messages[n-1].Content, mapped.Content) {
+				payload.Messages[n-1].Content = append(payload.Messages[n-1].Content, mapped.Content...)
+			} else {
+				// Insert a minimal empty assistant message to maintain
+				// alternation without mixing block types.
+				payload.Messages = append(payload.Messages,
+					anthropicMessage{Role: "assistant", Content: []anthropicBlock{{Type: "text", Text: ""}}},
+					mapped,
+				)
+			}
 		} else {
 			payload.Messages = append(payload.Messages, mapped)
 		}
@@ -404,15 +417,19 @@ func (c *Client) doSingleMessagesRequest(
 		httpReq.Header.Set("Authorization", "Bearer "+c.authToken)
 	}
 	httpReq.Header.Set("anthropic-version", defaultAnthropicVersion)
-	// Beta headers: prompt-caching is required when cache_control
-	// appears in the request body (which it does whenever CacheHint
-	// is set). Without this header, proxies reject with
-	// "Invalid request data". oauth is needed for auth-token flow.
-	betaHeaders := "prompt-caching-2024-07-31"
-	if c.authToken != "" {
-		betaHeaders += ",oauth-2025-04-20"
+	// Beta headers aligned with Claude Code's getMergedBetas().
+	// The proxy routes requests based on these headers; missing
+	// ones can cause "Invalid request data" or 503 on certain
+	// Console accounts.
+	betas := []string{
+		"interleaved-thinking-2025-05-14",
+		"prompt-caching-2024-07-31",
+		"token-efficient-tools-2026-03-28",
 	}
-	httpReq.Header.Set("anthropic-beta", betaHeaders)
+	if c.authToken != "" {
+		betas = append(betas, "oauth-2025-04-20")
+	}
+	httpReq.Header.Set("anthropic-beta", strings.Join(betas, ","))
 	httpReq.Header.Set("User-Agent", "claude-cli/2.1.96")
 	httpReq.Header.Set("x-app", "cli")
 	httpReq.Header.Set("Accept", "text/event-stream")
@@ -677,6 +694,31 @@ func mapMessage(msg providers.ChatMessage) (anthropicMessage, error) {
 	default:
 		return anthropicMessage{}, fmt.Errorf("unsupported message role %q", msg.Role)
 	}
+}
+
+// canMergeBlocks reports whether two content block slices can be
+// combined into a single message without mixing incompatible types.
+// tool_result blocks must not coexist with text/image blocks — many
+// proxies reject this structure.
+func canMergeBlocks(existing, incoming []anthropicBlock) bool {
+	hasToolResult := false
+	hasNonToolResult := false
+	for _, b := range existing {
+		if b.Type == "tool_result" {
+			hasToolResult = true
+		} else {
+			hasNonToolResult = true
+		}
+	}
+	for _, b := range incoming {
+		if b.Type == "tool_result" {
+			hasToolResult = true
+		} else {
+			hasNonToolResult = true
+		}
+	}
+	// Reject if the merged result would have both types.
+	return !(hasToolResult && hasNonToolResult)
 }
 
 func cloneHeaders(input map[string]string) map[string]string {

@@ -483,8 +483,7 @@ func (t *ListAgentsTool) Definition() providers.ToolDefinition {
 		Description: "List all sub-agents in the current session with their status (running, " +
 			"completed, failed, cancelled), type, description, and timing info.",
 		InputSchema: map[string]any{
-			"type":       "object",
-			"properties": map[string]any{},
+			"type": "object",
 		},
 	}
 }

@@ -59,7 +59,7 @@ func (t *ListProcessesTool) IsConcurrencySafe() bool  { return true }
 func (t *ListProcessesTool) Definition() providers.ToolDefinition {
 	return providers.ToolDefinition{
 		Name: "list_processes", Description: "List wuu-managed background OS processes.",
-		InputSchema: map[string]any{"type": "object", "properties": map[string]any{}},
+		InputSchema: map[string]any{"type": "object"},
 	}
 }
 

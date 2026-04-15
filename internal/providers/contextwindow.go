@@ -180,9 +180,10 @@ func MaxOutputTokensFor(model string) int {
 const defaultMaxOutputTokens = 16_000
 
 var maxOutputTokensRegistry = []contextWindowEntry{
-	// Anthropic Claude 4.6
-	{"opus-4-6", 64_000},
-	{"sonnet-4-6", 32_000},
+	// Anthropic Claude 4.6 — aligned with CC's getMaxOutputTokensForModel().
+	// Start at 16K; the agent loop escalates on truncation recovery.
+	{"opus-4-6", 16_000},
+	{"sonnet-4-6", 16_000},
 	// Anthropic Claude 4.x
 	{"opus-4", 32_000},
 	{"sonnet-4", 32_000},

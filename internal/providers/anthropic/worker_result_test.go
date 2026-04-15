@@ -136,11 +136,12 @@ func TestWorkerResultMessageStructure(t *testing.T) {
 	t.Logf("  sequence: %s", roles)
 }
 
-// TestWorkerResultWithoutFix_WouldProduceMixedBlocks demonstrates the
-// bug that existed before the fix: without the empty assistant message,
-// tool_result and worker-result text merge into one user message.
-func TestWorkerResultWithoutFix_WouldProduceMixedBlocks(t *testing.T) {
-	// Same sequence but WITHOUT the empty assistant (pre-fix state).
+// TestWorkerResultNoMixedBlocks_EvenWithoutEmptyAssistant verifies that
+// canMergeBlocks prevents tool_result+text mixing even when there is no
+// empty assistant separator between tool result and worker-result.
+func TestWorkerResultNoMixedBlocks_EvenWithoutEmptyAssistant(t *testing.T) {
+	// Consecutive user messages: tool result + worker result text.
+	// canMergeBlocks should insert an empty assistant separator.
 	history := []providers.ChatMessage{
 		{Role: "system", Content: "You are a coding agent."},
 		{Role: "user", Content: "Run git pull"},
@@ -148,7 +149,6 @@ func TestWorkerResultWithoutFix_WouldProduceMixedBlocks(t *testing.T) {
 			{ID: "call_001", Name: "spawn_agent", Arguments: `{"description":"git pull","prompt":"run git pull"}`},
 		}},
 		{Role: "tool", ToolCallID: "call_001", Name: "spawn_agent", Content: `{"agent_id":"w-123","status":"running"}`},
-		// NO empty assistant here — this is the pre-fix state.
 		{Role: "user", Content: "<worker-result>Done</worker-result>"},
 	}
 
@@ -160,9 +160,6 @@ func TestWorkerResultWithoutFix_WouldProduceMixedBlocks(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// The tool message (role=tool) maps to role=user with tool_result.
-	// The next message is also role=user (worker-result text).
-	// They get MERGED into one user message.
 	for i, msg := range payload.Messages {
 		if msg.Role != "user" {
 			continue
@@ -178,9 +175,8 @@ func TestWorkerResultWithoutFix_WouldProduceMixedBlocks(t *testing.T) {
 			}
 		}
 		if hasToolResult && hasText {
-			t.Logf("✓ Confirmed: pre-fix produces mixed tool_result+text at msg[%d] (%d blocks)", i, len(msg.Content))
-			return
+			t.Fatalf("msg[%d] has mixed tool_result+text blocks — canMergeBlocks should have prevented this", i)
 		}
 	}
-	t.Fatal("expected mixed blocks in pre-fix scenario but didn't find them")
+	t.Log("✓ No mixed blocks — canMergeBlocks correctly inserted empty assistant separator")
 }
