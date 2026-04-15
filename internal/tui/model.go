@@ -1977,7 +1977,7 @@ func (m *Model) applyStreamEvent(event providers.StreamEvent, rearm bool) tea.Cm
 				Bold(true).
 				Render("ERROR: " + errMsg)
 			m.appendEntry("system", styledErr)
-			m.statusLine = "request failed"
+			m.statusLine = "request failed — press Enter to retry"
 		}
 		m.refreshViewport(true)
 		return nil
@@ -2913,8 +2913,8 @@ func (m Model) View() string {
 	headerLeft := m.headerUsageSummary()
 
 	var hints []string
-	if m.statusLine == "request failed" {
-		hints = append(hints, statusErrorStyle.Render("✗"))
+	if strings.HasPrefix(m.statusLine, "request failed") {
+		hints = append(hints, statusErrorStyle.Render("✗ "+m.statusLine))
 	}
 	if len(m.pendingSteers) > 0 {
 		hints = append(hints, fmt.Sprintf("steer:%d", len(m.pendingSteers)))
