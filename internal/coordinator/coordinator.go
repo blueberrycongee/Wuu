@@ -35,13 +35,15 @@ type WorkerToolkitFactory func(rootDir string, wt WorkerType) (agent.ToolExecuto
 
 // Coordinator owns the orchestration runtime for one wuu session.
 type Coordinator struct {
-	manager     *subagent.Manager
-	worktrees   *worktree.Manager
-	sessionID   string
-	historyDir  string
-	workerFact  WorkerToolkitFactory
-	defaultSys  string // base system prompt prefix added to every worker
-	maxParallel int
+	manager      *subagent.Manager
+	worktrees    *worktree.Manager // nil when workspace is not a git repo
+	parentRepo   string            // absolute path to workspace root
+	worktreeRoot string            // .wuu/worktrees/ directory
+	sessionID    string
+	historyDir   string
+	workerFact   WorkerToolkitFactory
+	defaultSys   string // base system prompt prefix added to every worker
+	maxParallel  int
 }
 
 // Config holds the dependencies needed to build a Coordinator.
@@ -52,8 +54,8 @@ type Config struct {
 	// the interactive main agent.
 	Client          providers.StreamClient
 	DefaultModel    string
-	ParentRepo      string // absolute path to the user's workspace (must be a git repo)
-	WorktreeRoot    string // .wuu/worktrees/
+	ParentRepo      string // absolute path to the user's workspace
+	WorktreeRoot    string // .wuu/worktrees/ (only used when workspace is a git repo)
 	HistoryDir      string // .wuu/sessions/{session-id}/workers/
 	SessionID       string
 	WorkerSysPrompt string
@@ -61,8 +63,9 @@ type Config struct {
 	MaxParallel     int
 }
 
-// New constructs a Coordinator. Returns an error if the parent repo
-// is not a git repository.
+// New constructs a Coordinator. Worktree isolation is only available
+// when the workspace is a git repository; inplace spawns and forks
+// work regardless.
 func New(cfg Config) (*Coordinator, error) {
 	if cfg.Client == nil {
 		return nil, errors.New("Client required")
@@ -70,10 +73,19 @@ func New(cfg Config) (*Coordinator, error) {
 	if cfg.WorkerFactory == nil {
 		return nil, errors.New("WorkerFactory required")
 	}
-	wt, err := worktree.NewManager(cfg.ParentRepo, cfg.WorktreeRoot)
-	if err != nil {
-		return nil, fmt.Errorf("worktree manager: %w", err)
+
+	// Worktree manager is optional — only created when the workspace
+	// is a git repo. Non-git workspaces can still spawn inplace
+	// workers and fork agents; only isolation=worktree is unavailable.
+	var wt *worktree.Manager
+	if worktree.IsGitRepo(cfg.ParentRepo) {
+		var err error
+		wt, err = worktree.NewManager(cfg.ParentRepo, cfg.WorktreeRoot)
+		if err != nil {
+			return nil, fmt.Errorf("worktree manager: %w", err)
+		}
 	}
+
 	mgr := subagent.NewManager(cfg.Client, cfg.DefaultModel)
 
 	maxP := cfg.MaxParallel
@@ -81,13 +93,15 @@ func New(cfg Config) (*Coordinator, error) {
 		maxP = 5
 	}
 	return &Coordinator{
-		manager:     mgr,
-		worktrees:   wt,
-		sessionID:   cfg.SessionID,
-		historyDir:  cfg.HistoryDir,
-		workerFact:  cfg.WorkerFactory,
-		defaultSys:  cfg.WorkerSysPrompt,
-		maxParallel: maxP,
+		manager:      mgr,
+		worktrees:    wt,
+		parentRepo:   cfg.ParentRepo,
+		worktreeRoot: cfg.WorktreeRoot,
+		sessionID:    cfg.SessionID,
+		historyDir:   cfg.HistoryDir,
+		workerFact:   cfg.WorkerFactory,
+		defaultSys:   cfg.WorkerSysPrompt,
+		maxParallel:  maxP,
 	}, nil
 }
 
@@ -177,13 +191,16 @@ func (c *Coordinator) Spawn(ctx context.Context, req SpawnRequest) (*SpawnResult
 		worktreeRef *worktree.Worktree
 	)
 	if isolation == IsolationWorktree {
+		if c.worktrees == nil {
+			return nil, errors.New("isolation=worktree requires a git repository (this workspace is not a git repo)")
+		}
 		worktreeRef, err = c.worktrees.Create(c.sessionID, workerID, req.BaseRepo)
 		if err != nil {
 			return nil, fmt.Errorf("worktree create: %w", err)
 		}
 		workerRoot = worktreeRef.Path
 	} else {
-		workerRoot = c.worktrees.ParentRepo()
+		workerRoot = c.parentRepo
 	}
 
 	// 2. Build worker's toolkit rooted at the chosen working directory.

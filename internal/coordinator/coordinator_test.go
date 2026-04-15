@@ -65,17 +65,21 @@ func initRepo(t *testing.T, dir string) {
 	run("commit", "-q", "-m", "init")
 }
 
-func TestNew_RequiresGitRepo(t *testing.T) {
+func TestNew_NonGitRepoSucceeds(t *testing.T) {
 	dir := t.TempDir() // not a git repo
-	_, err := New(Config{
+	c, err := New(Config{
 		Client:        &fakeClient{},
 		DefaultModel:  "fake",
 		ParentRepo:    dir,
 		WorktreeRoot:  filepath.Join(dir, "wt"),
 		WorkerFactory: func(string, WorkerType) (agent.ToolExecutor, error) { return fakeToolkit{}, nil },
 	})
-	if err == nil {
-		t.Fatal("expected error for non-git directory")
+	if err != nil {
+		t.Fatalf("New should succeed for non-git directory, got: %v", err)
+	}
+	// Worktree manager should be nil for non-git workspaces.
+	if c.worktrees != nil {
+		t.Fatal("worktrees should be nil for non-git directory")
 	}
 }
 

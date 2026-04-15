@@ -444,14 +444,14 @@ func runTUI(args []string) error {
 		}
 	}
 
-	// If the workspace is a git repo and we have a toolkit, wire up the
-	// coordinator runtime so the orchestration tools (spawn_agent,
-	// send_message_to_agent, stop_agent, list_agents) become callable
-	// and the orchestration preamble gets prepended to the system
-	// prompt. The main agent keeps its full tool set either way; the
-	// coordinator just adds the inter-agent primitives on top.
+	// Wire up the coordinator runtime so the orchestration tools
+	// (spawn_agent, fork_agent, send_message_to_agent, stop_agent,
+	// list_agents) become callable and the orchestration preamble gets
+	// prepended to the system prompt. Worktree isolation is only
+	// available when the workspace is a git repo, but inplace spawns
+	// and forks work regardless.
 	var coord *coordinator.Coordinator
-	if toolkit != nil && worktree.IsGitRepo(rootDir) {
+	if toolkit != nil {
 		// Capture the worker base prompt BEFORE we prepend the
 		// coordinator preamble — workers should see the project
 		// memory & skills, not the coordinator instructions.
