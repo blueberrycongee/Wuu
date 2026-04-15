@@ -48,7 +48,6 @@ func withCompactTimeout(ctx context.Context) (context.Context, context.CancelFun
 
 // EstimateTokens provides a rough token count estimate.
 // English: ~4 chars per token. CJK: ~2 chars per token.
-// This is for display only; API returns precise counts.
 func EstimateTokens(text string) int {
 	if text == "" {
 		return 0
@@ -66,22 +65,52 @@ func EstimateTokens(text string) int {
 	return (nonCJK / 4) + (cjkCount / 2) + 1
 }
 
+// EstimateJSONTokens estimates tokens for JSON content. JSON is
+// denser than prose because single-character structural tokens
+// ({, }, :, ,, ") each consume one token. Aligned with Claude Code's
+// file-type-aware bytesPerToken=2 for JSON.
+func EstimateJSONTokens(text string) int {
+	if text == "" {
+		return 0
+	}
+	return utf8.RuneCountInString(text)/2 + 1
+}
+
+// imageTokenEstimate is the fixed token budget for an image content
+// block. The real formula is (width×height)/750, but images are
+// resized to fit within provider limits, and the actual count comes
+// from the API response. 2000 is the conservative heuristic both
+// Claude Code and Codex CLI use.
+const imageTokenEstimate = 2000
+
+// toolDefinitionOverhead is the approximate token cost the API adds
+// for tool definitions in the request (schema preamble, JSON wrapping).
+// Claude Code documents this as ~500 tokens when tools are present.
+const toolDefinitionOverhead = 500
+
 // EstimateMessagesTokens estimates total tokens for a message list.
 // Counts content, reasoning, tool calls (name + arguments + envelope),
-// and per-message overhead. Slightly pessimistic so proactive compact
-// fires before the hard overflow — aligned with the delta estimator
-// in agent/usage.go.
+// images, and per-message overhead. Slightly pessimistic so proactive
+// compact fires before the hard overflow.
 func EstimateMessagesTokens(messages []providers.ChatMessage) int {
 	total := 0
+	hasTools := false
 	for _, msg := range messages {
+		// Tool call arguments are JSON — use denser ratio.
 		total += EstimateTokens(msg.Content)
 		total += EstimateTokens(msg.ReasoningContent)
 		total += 4 // per-message overhead (role, separators)
 		for _, tc := range msg.ToolCalls {
+			hasTools = true
 			total += EstimateTokens(tc.Name)
-			total += EstimateTokens(tc.Arguments)
+			total += EstimateJSONTokens(tc.Arguments)
 			total += 8 // tool call envelope (id, type, JSON wrapping)
 		}
+		// Images: fixed estimate per image block.
+		total += len(msg.Images) * imageTokenEstimate
+	}
+	if hasTools {
+		total += toolDefinitionOverhead
 	}
 	return total
 }

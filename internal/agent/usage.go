@@ -159,10 +159,13 @@ func estimateMessages(msgs []providers.ChatMessage) int {
 		total += 4
 		for _, tc := range m.ToolCalls {
 			total += len(tc.Name) / 4
-			total += len(tc.Arguments) / 4
+			// Tool call arguments are JSON — denser, ~2 bytes/token.
+			total += len(tc.Arguments) / 2
 			// Tool call envelope cost.
 			total += 8
 		}
+		// Fixed estimate per image (2000 tokens each).
+		total += len(m.Images) * 2000
 	}
 	return total
 }
