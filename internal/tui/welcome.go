@@ -50,7 +50,7 @@ func welcomeScreen(width int, provider, model, sessionID string) string {
 	b.WriteString("\n\n")
 
 	// Version + session info.
-	info := fmt.Sprintf("%s  ·  %s/%s", version.String(), provider, model)
+	info := fmt.Sprintf("%s  ·  %s/%s", version.Short(), provider, model)
 	if sessionID != "" {
 		info += fmt.Sprintf("  ·  session %s", sessionID)
 	}
@@ -80,7 +80,7 @@ func welcomeCompact(provider, model, sessionID string) string {
 	b.WriteString(bannerStyle.Render("wuu"))
 	b.WriteString(bannerSubtitleStyle.Render(" · coding agent"))
 	b.WriteString("\n\n")
-	b.WriteString(bannerInfoStyle.Render(fmt.Sprintf("%s · %s/%s", version.String(), provider, model)))
+	b.WriteString(bannerInfoStyle.Render(fmt.Sprintf("%s · %s/%s", version.Short(), provider, model)))
 	b.WriteString("\n")
 	if sessionID != "" {
 		b.WriteString(bannerInfoStyle.Render(fmt.Sprintf("session: %s", sessionID)))
