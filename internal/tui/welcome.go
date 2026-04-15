@@ -5,6 +5,8 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/blueberrycongee/wuu/internal/version"
 )
 
 // ASCII art banner for wuu.
@@ -47,8 +49,8 @@ func welcomeScreen(width int, provider, model, sessionID string) string {
 	b.WriteString(bannerSubtitleStyle.Render(subtitle))
 	b.WriteString("\n\n")
 
-	// Session info.
-	info := fmt.Sprintf("%s/%s", provider, model)
+	// Version + session info.
+	info := fmt.Sprintf("%s  ·  %s/%s", version.String(), provider, model)
 	if sessionID != "" {
 		info += fmt.Sprintf("  ·  session %s", sessionID)
 	}
@@ -78,7 +80,7 @@ func welcomeCompact(provider, model, sessionID string) string {
 	b.WriteString(bannerStyle.Render("wuu"))
 	b.WriteString(bannerSubtitleStyle.Render(" · coding agent"))
 	b.WriteString("\n\n")
-	b.WriteString(bannerInfoStyle.Render(fmt.Sprintf("%s/%s", provider, model)))
+	b.WriteString(bannerInfoStyle.Render(fmt.Sprintf("%s · %s/%s", version.String(), provider, model)))
 	b.WriteString("\n")
 	if sessionID != "" {
 		b.WriteString(bannerInfoStyle.Render(fmt.Sprintf("session: %s", sessionID)))
