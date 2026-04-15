@@ -263,26 +263,14 @@ func buildAnthropicRequest(req providers.ChatRequest, maxTokens int, stream bool
 			return anthropicRequest{}, err
 		}
 		// Merge consecutive messages with the same role. The Anthropic
-		// API requires strict user/assistant alternation; some relays
-		// and Console-backed proxies reject violations with 503.
-		//
-		// CRITICAL: only merge when content block types are compatible.
-		// A user message with tool_result blocks MUST NOT be merged
-		// with a user message containing text blocks — proxies reject
-		// mixed tool_result+text in a single message. This is the
-		// root cause of the reconnect-after-worker-completion bug.
+		// API requires strict user/assistant alternation. Proxies
+		// reject both consecutive same-role messages AND synthetic
+		// empty assistant separators. So we always merge — the
+		// Anthropic API accepts mixed tool_result+text blocks in a
+		// single user message (CC produces these too when tool
+		// results and user context land in the same turn).
 		if n := len(payload.Messages); n > 0 && payload.Messages[n-1].Role == mapped.Role {
-			if canMergeBlocks(payload.Messages[n-1].Content, mapped.Content) {
-				payload.Messages[n-1].Content = append(payload.Messages[n-1].Content, mapped.Content...)
-			} else {
-				// Insert a minimal assistant message to maintain
-				// alternation without mixing block types. Use " "
-				// not "" — omitempty strips empty strings.
-				payload.Messages = append(payload.Messages,
-					anthropicMessage{Role: "assistant", Content: []anthropicBlock{{Type: "text", Text: " "}}},
-					mapped,
-				)
-			}
+			payload.Messages[n-1].Content = append(payload.Messages[n-1].Content, mapped.Content...)
 		} else {
 			payload.Messages = append(payload.Messages, mapped)
 		}

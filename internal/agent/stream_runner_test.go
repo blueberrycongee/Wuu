@@ -147,16 +147,10 @@ func TestStreamRunner_AllowsNaturalEmptyCompletionWithoutPersistingAssistantMess
 	if result != "" {
 		t.Fatalf("expected empty result, got %q", result)
 	}
-	// An empty assistant message IS now persisted to maintain role
-	// alternation (prevents mixed tool_result+text in user messages).
-	var sawAssistant bool
 	for _, ev := range received {
-		if ev.Type == providers.EventMessage && ev.Message != nil && ev.Message.Role == "assistant" {
-			sawAssistant = true
+		if ev.Type == providers.EventMessage {
+			t.Fatalf("did not expect persisted assistant message event, got %+v", ev)
 		}
-	}
-	if !sawAssistant {
-		t.Fatal("expected persisted empty assistant message for alternation")
 	}
 }
 
