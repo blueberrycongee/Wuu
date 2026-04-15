@@ -4,14 +4,19 @@ import (
 	"strings"
 )
 
-// StreamCollector accumulates streaming markdown deltas and returns
-// the full rendered output on each commit. The caller should replace
-// (not append) its cached render on each call, so that block-level
-// structures like tables render correctly as they stream in.
+// StreamCollector accumulates streaming text deltas and returns the
+// raw text during streaming. Markdown is NOT parsed during streaming
+// — this eliminates the O(n²) re-parse-on-every-token bottleneck.
+// Markdown rendering happens once at Finalize() when the stream ends.
+//
+// Aligned with Claude Code's approach: streaming text is displayed as
+// plain text; final message is parsed once and cached.
 type StreamCollector struct {
 	buffer strings.Builder
 	width  int
 	styles Styles
+	// dirty tracks whether new content was pushed since last Commit.
+	dirty bool
 }
 
 // NewStreamCollector creates a new collector for streaming markdown.
@@ -25,51 +30,31 @@ func NewStreamCollector(width int, styles Styles) *StreamCollector {
 // Push appends a delta to the buffer.
 func (c *StreamCollector) Push(delta string) {
 	c.buffer.WriteString(delta)
+	c.dirty = true
 }
 
-// CommitCompleteLines renders everything up to the last newline and
-// returns the full rendered output. Returns "" if there is nothing
-// to render yet (no newline received).
-func (c *StreamCollector) CommitCompleteLines() string {
-	src := c.buffer.String()
-	lastNL := strings.LastIndexByte(src, '\n')
-	if lastNL < 0 {
-		return ""
-	}
-
-	rendered := Render(src[:lastNL+1], c.width, c.styles)
-	return strings.TrimRight(rendered, "\n")
+// Dirty reports whether new content was pushed since the last Commit.
+func (c *StreamCollector) Dirty() bool {
+	return c.dirty
 }
 
-// CommitWithTrailing renders complete lines with full markdown and
-// appends any trailing partial line as raw text. This makes streaming
-// text visible immediately — the user sees words appear as they arrive
-// instead of waiting for the next newline. The trailing raw text gets
-// properly rendered on the next CommitCompleteLines or Finalize call
-// once a newline arrives.
-//
-// Returns "" only when the buffer is completely empty.
-func (c *StreamCollector) CommitWithTrailing() string {
+// Commit returns the full accumulated text as-is (no markdown parse)
+// and clears the dirty flag. Returns "" only when the buffer is empty.
+// The raw text is displayed directly during streaming — users see
+// words appear immediately without any rendering overhead.
+func (c *StreamCollector) Commit() string {
+	c.dirty = false
 	src := c.buffer.String()
 	if src == "" {
 		return ""
 	}
-	lastNL := strings.LastIndexByte(src, '\n')
-	if lastNL < 0 {
-		// No complete lines yet — return raw text so the user sees
-		// something immediately rather than staring at a blank.
-		return src
-	}
-	rendered := Render(src[:lastNL+1], c.width, c.styles)
-	rendered = strings.TrimRight(rendered, "\n")
-	trailing := src[lastNL+1:]
-	if trailing != "" {
-		rendered += "\n" + trailing
-	}
-	return rendered
+	return src
 }
 
-// Finalize renders any remaining buffer content and resets state.
+// Finalize renders the complete buffer through the markdown pipeline
+// and resets state. Called once when the stream ends (EventDone).
+// This is the ONLY point where goldmark is invoked — converting the
+// 200 per-token parses to exactly 1.
 func (c *StreamCollector) Finalize() string {
 	src := c.buffer.String()
 	if src == "" {
@@ -82,5 +67,6 @@ func (c *StreamCollector) Finalize() string {
 
 	rendered := Render(src, c.width, c.styles)
 	c.buffer.Reset()
+	c.dirty = false
 	return strings.TrimRight(rendered, "\n")
 }

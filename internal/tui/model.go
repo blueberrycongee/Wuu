@@ -1795,9 +1795,12 @@ func (m *Model) applyStreamEvent(event providers.StreamEvent, rearm bool) tea.Cm
 		}
 		m.entries[m.streamTarget].Content += event.Content
 		m.streamCollector.Push(event.Content)
-		if rendered := m.streamCollector.CommitWithTrailing(); rendered != "" {
+		// During streaming: display raw text, NO markdown parse.
+		// Markdown is rendered once at EventDone (Finalize).
+		// Aligned with Claude Code's streaming strategy.
+		if raw := m.streamCollector.Commit(); raw != "" {
 			e := &m.entries[m.streamTarget]
-			e.rendered = rendered
+			e.rendered = raw
 			e.renderedLen = len(e.Content)
 		}
 		m.setLiveWorkStatus(workStatus{Phase: workPhaseGenerating, Label: "Responding", Meta: "Writing the reply", Running: true})
