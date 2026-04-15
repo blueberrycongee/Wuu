@@ -67,14 +67,20 @@ func EstimateTokens(text string) int {
 }
 
 // EstimateMessagesTokens estimates total tokens for a message list.
+// Counts content, reasoning, tool calls (name + arguments + envelope),
+// and per-message overhead. Slightly pessimistic so proactive compact
+// fires before the hard overflow — aligned with the delta estimator
+// in agent/usage.go.
 func EstimateMessagesTokens(messages []providers.ChatMessage) int {
 	total := 0
 	for _, msg := range messages {
 		total += EstimateTokens(msg.Content)
+		total += EstimateTokens(msg.ReasoningContent)
 		total += 4 // per-message overhead (role, separators)
 		for _, tc := range msg.ToolCalls {
 			total += EstimateTokens(tc.Name)
 			total += EstimateTokens(tc.Arguments)
+			total += 8 // tool call envelope (id, type, JSON wrapping)
 		}
 	}
 	return total
