@@ -1299,7 +1299,7 @@ func TestRefreshViewportFollowsBottomWhileStreamingAtBottom(t *testing.T) {
 	}
 }
 
-func TestApplyStreamEvent_DoesNotRebuildViewportWhenStreamTargetOffscreen(t *testing.T) {
+func TestApplyStreamEvent_AccumulatesWithoutViewportRefresh(t *testing.T) {
 	m := newScrollableModelForScrollbarTest(t)
 	m.streaming = true
 	m.pendingRequest = true
@@ -1320,27 +1320,14 @@ func TestApplyStreamEvent_DoesNotRebuildViewportWhenStreamTargetOffscreen(t *tes
 		Content: "\nmore offscreen output\n",
 	}, false)
 
+	// Content delta should NOT trigger a viewport refresh — it just
+	// accumulates in the entry and stream collector. The 100ms tick
+	// flushes to screen.
 	if strings.Contains(m.viewport.View(), marker) {
-		t.Fatal("offscreen stream delta must not rebuild the visible viewport content")
-	}
-	if !m.pendingViewportRefresh {
-		t.Fatal("expected offscreen stream delta to defer a viewport refresh")
-	}
-	if m.pendingViewportEntry != m.streamTarget {
-		t.Fatalf("expected deferred refresh to track stream target %d, got %d", m.streamTarget, m.pendingViewportEntry)
+		t.Fatal("stream delta must not rebuild the visible viewport content")
 	}
 	if !strings.Contains(m.entries[m.streamTarget].Content, "more offscreen output") {
-		t.Fatalf("expected stream content to keep advancing offscreen, got %q", m.entries[m.streamTarget].Content)
-	}
-
-	m.viewport.GotoBottom()
-	m.syncViewportState()
-
-	if m.pendingViewportRefresh {
-		t.Fatal("expected deferred viewport refresh to flush after returning to bottom")
-	}
-	if !strings.Contains(ansi.Strip(m.viewport.View()), "more offscreen output") {
-		t.Fatal("expected deferred stream content to appear after viewport catches up")
+		t.Fatalf("expected stream content to accumulate, got %q", m.entries[m.streamTarget].Content)
 	}
 }
 

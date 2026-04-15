@@ -817,10 +817,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.drainQueuedStreamEvents(interactiveStreamDrainLimit)
 		m.spinnerFrame = nextStatusFrame(m.spinnerFrame)
 		if m.streaming || m.pendingRequest || m.currentWorkStatus().Phase != workPhaseIdle || len(m.activeWorkerSnapshots()) > 0 || len(m.visibleProcesses()) > 0 {
-			if m.currentWorkStatus().Phase == workPhaseThinking {
-				// Thinking blocks live inside the viewport, so keep their
-				// spinner in sync when visible. Off-screen blocks can wait
-				// for the next real viewport refresh.
+			// Flush accumulated stream content to viewport on the tick
+			// boundary (100ms). Content deltas accumulate without
+			// refreshing — this tick is the render heartbeat, aligned
+			// with Codex's 80ms commit tick pattern.
+			if m.streamCollector != nil && m.streamCollector.Dirty() && m.streamTarget >= 0 && m.streamTarget < len(m.entries) {
+				if raw := m.streamCollector.Commit(); raw != "" {
+					e := &m.entries[m.streamTarget]
+					e.rendered = raw
+					e.renderedLen = len(e.Content)
+				}
+				m.refreshViewportForEntry(m.streamTarget, false)
+			} else if m.currentWorkStatus().Phase == workPhaseThinking {
 				m.refreshViewportForEntry(m.streamTarget, false)
 			}
 			return m, statusAnimationCmd()
@@ -1795,17 +1803,12 @@ func (m *Model) applyStreamEvent(event providers.StreamEvent, rearm bool) tea.Cm
 		}
 		m.entries[m.streamTarget].Content += event.Content
 		m.streamCollector.Push(event.Content)
-		// During streaming: display raw text, NO markdown parse.
+		// During streaming: accumulate only, do NOT refresh viewport.
+		// The 100ms inlineSpinMsg tick flushes accumulated content to
+		// screen in batches — aligned with Codex's 80ms commit tick.
 		// Markdown is rendered once at EventDone (Finalize).
-		// Aligned with Claude Code's streaming strategy.
-		if raw := m.streamCollector.Commit(); raw != "" {
-			e := &m.entries[m.streamTarget]
-			e.rendered = raw
-			e.renderedLen = len(e.Content)
-		}
 		m.setLiveWorkStatus(workStatus{Phase: workPhaseGenerating, Label: "Responding", Meta: "Writing the reply", Running: true})
 		m.statusLine = "streaming"
-		m.refreshViewportForEntry(m.streamTarget, false)
 		return nextWait()
 
 	case providers.EventToolUseStart:
