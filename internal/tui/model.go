@@ -129,6 +129,7 @@ type transcriptEntry struct {
 	Content     string // raw content
 	rendered    string // markdown-rendered text (cached)
 	renderedLen int    // Content length when rendered was last computed
+	renderedW   int    // viewport width when rendered was last computed
 	renderStart int    // inclusive content line in the last rendered viewport snapshot
 	renderEnd   int    // inclusive content line in the last rendered viewport snapshot
 
@@ -2732,6 +2733,7 @@ func (m *Model) relayout() {
 	if m.width <= 0 || m.height <= 0 {
 		return
 	}
+	oldChatW := m.layout.Chat.Width
 	m.inputLines = clampInputLines(strings.Count(m.input.Value(), "\n")+1, 15)
 	processPanelLines := m.processPanelHeight()
 	imageBarH := 0
@@ -2747,6 +2749,15 @@ func (m *Model) relayout() {
 	m.cachedSep = lipgloss.NewStyle().
 		Foreground(currentTheme.Border).
 		Render(strings.Repeat("─", m.width))
+
+	// Invalidate cached renders when chat width changes — text
+	// rendered for the old width wraps incorrectly at the new width.
+	if m.layout.Chat.Width != oldChatW {
+		for i := range m.entries {
+			m.entries[i].rendered = ""
+			m.entries[i].renderedLen = 0
+		}
+	}
 	m.refreshViewport(false)
 }
 
