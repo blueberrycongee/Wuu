@@ -133,6 +133,13 @@ type transcriptEntry struct {
 	renderStart int    // inclusive content line in the last rendered viewport snapshot
 	renderEnd   int    // inclusive content line in the last rendered viewport snapshot
 
+	// streamBuf accumulates content deltas during streaming via
+	// WriteString (O(1) amortized). When streaming ends, Content is
+	// set to streamBuf.String() once. This replaces the old
+	// Content += delta pattern which copied the entire string on
+	// every token (O(n²) total).
+	streamBuf *strings.Builder
+
 	// Thinking block.
 	ThinkingContent  string
 	ThinkingDuration time.Duration
@@ -1797,11 +1804,22 @@ func (m *Model) applyStreamEvent(event providers.StreamEvent, rearm bool) tea.Cm
 				contentWidth(m.viewport.Width),
 				markdown.DefaultStyles(),
 			)
-			if existing := m.entries[m.streamTarget].Content; existing != "" {
+			e := &m.entries[m.streamTarget]
+			if e.streamBuf == nil {
+				e.streamBuf = &strings.Builder{}
+			}
+			if existing := e.Content; existing != "" {
 				m.streamCollector.Push(existing)
+				e.streamBuf.WriteString(existing)
 			}
 		}
-		m.entries[m.streamTarget].Content += event.Content
+		// O(1) amortized append via Builder instead of O(n) string copy.
+		e := &m.entries[m.streamTarget]
+		if e.streamBuf == nil {
+			e.streamBuf = &strings.Builder{}
+		}
+		e.streamBuf.WriteString(event.Content)
+		e.Content = e.streamBuf.String()
 		m.streamCollector.Push(event.Content)
 		// During streaming: accumulate only, do NOT refresh viewport.
 		// The 100ms inlineSpinMsg tick flushes accumulated content to
@@ -1868,6 +1886,7 @@ func (m *Model) applyStreamEvent(event providers.StreamEvent, rearm bool) tea.Cm
 			if final := m.streamCollector.Finalize(); final != "" {
 				if m.streamTarget >= 0 && m.streamTarget < len(m.entries) {
 					e := &m.entries[m.streamTarget]
+					e.streamBuf = nil // release builder memory
 					e.rendered = final
 					e.renderedLen = len(e.Content)
 				}
