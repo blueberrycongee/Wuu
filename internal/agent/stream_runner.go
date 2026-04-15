@@ -62,9 +62,10 @@ type StreamRunner struct {
 	BeforeStep func() []providers.ChatMessage
 
 	// Stream reconnect policy. Zero values use CC-aligned defaults.
-	StreamReconnectBudget   time.Duration // total time for reconnection (default: 2m)
-	StreamRetryInitialDelay time.Duration // backoff start (default: 1s)
-	StreamRetryMaxDelay     time.Duration // backoff cap (default: 30s)
+	StreamReconnectBudget      time.Duration // total time for reconnection (default: 2m)
+	StreamRetryInitialDelay    time.Duration // backoff start (default: 1s)
+	StreamRetryMaxDelay        time.Duration // backoff cap (default: 30s)
+	StreamPerAttemptTimeout    time.Duration // per-attempt connect timeout (default: 30s)
 
 	usageMu           sync.Mutex
 	conversationUsage *UsageTracker
@@ -105,6 +106,7 @@ func (r *StreamRunner) RunWithCallback(ctx context.Context, history []providers.
 		client:                  r.Client,
 		onEvent:                 onEvent,
 		retry:                   r.streamReconnectCfg(),
+		perAttemptTO:            r.perAttemptTimeout(),
 		tools:                   r.Tools,
 		enableStreamingToolExec: r.StreamingToolExecution,
 	}
@@ -232,6 +234,9 @@ type streamStep struct {
 	client  providers.StreamClient
 	onEvent StreamCallback
 	retry   streamReconnectConfig
+	// Per-attempt connect timeout. Prevents a single hung DNS or TLS
+	// handshake from consuming the entire reconnection budget.
+	perAttemptTO time.Duration
 	// Streaming tool execution: when set, read-only tools start
 	// executing as soon as their arguments are fully received,
 	// overlapping with continued model output.
@@ -489,7 +494,15 @@ func (s *streamStep) runStreamWithReconnect(
 		}
 		emitLifecycle(providers.StreamPhaseConnecting, attempt, nil, 0)
 
-		ch, err := s.client.StreamChat(ctx, req)
+		// Per-attempt timeout prevents a single hung DNS lookup or
+		// TLS handshake from consuming the entire reconnection budget.
+		// Once the connection is established and the channel returned,
+		// the per-attempt context is no longer needed — stream
+		// consumption uses the parent ctx.
+		perAttempt := s.perAttemptTO
+		attemptCtx, attemptCancel := context.WithTimeout(ctx, perAttempt)
+		ch, err := s.client.StreamChat(attemptCtx, req)
+		attemptCancel() // release resources; stream channel outlives this context
 		if err != nil {
 			if ctx.Err() == nil {
 				if delay, ok := reconnect(err); ok {
@@ -630,9 +643,10 @@ type streamReconnectConfig struct {
 }
 
 const (
-	defaultReconnectBudget = 10 * time.Minute
-	defaultReconnectDelay  = 1 * time.Second
-	defaultReconnectMax    = 30 * time.Second
+	defaultReconnectBudget     = 10 * time.Minute
+	defaultReconnectDelay      = 1 * time.Second
+	defaultReconnectMax        = 30 * time.Second
+	defaultPerAttemptTimeout   = 30 * time.Second
 )
 
 func (r *StreamRunner) streamReconnectCfg() streamReconnectConfig {
@@ -654,6 +668,13 @@ func (r *StreamRunner) streamReconnectCfg() streamReconnectConfig {
 		cfg.InitialDelay = cfg.MaxDelay
 	}
 	return cfg
+}
+
+func (r *StreamRunner) perAttemptTimeout() time.Duration {
+	if r.StreamPerAttemptTimeout > 0 {
+		return r.StreamPerAttemptTimeout
+	}
+	return defaultPerAttemptTimeout
 }
 
 func shouldRetryStreamError(err error, elapsed, budget time.Duration) bool {
