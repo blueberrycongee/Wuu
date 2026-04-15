@@ -247,6 +247,8 @@ func runTUI(args []string) error {
 		return err
 	}
 
+	fmt.Fprintf(os.Stderr, "%s\n", version.String())
+
 	rootDir, err := resolveWorkdir(*workdir)
 	if err != nil {
 		return err
