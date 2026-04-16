@@ -2727,9 +2727,10 @@ func (m *Model) compositeEntry(i int, isStreamTarget bool) string {
 	// per-content-block rendering. Falls back to legacy order when
 	// blockOrder is empty (e.g. loaded from session history).
 	fullContent := e.Content
-	// For finished entries, use the markdown-rendered version when available.
-	// During streaming (isStreamTarget), always use raw content since the
-	// markdown renderer hasn't finalized yet.
+	// Use the markdown-rendered version when available. Since Commit()
+	// now renders markdown on every tick (not just at Finalize), the
+	// rendered output is available during streaming too — no more
+	// raw→rendered jump at EventDone.
 	fullRendered := e.rendered
 	isLastSegment := func(segIdx int) bool {
 		return segIdx == len(e.textSegmentOffsets)-1
@@ -2745,18 +2746,15 @@ func (m *Model) compositeEntry(i int, isStreamTarget bool) string {
 			} else if segIdx+1 < len(e.textSegmentOffsets) {
 				segContent = fullContent[start:e.textSegmentOffsets[segIdx+1]]
 			}
-			// For rendered markdown, we only have one rendered string
-			// for the entire Content. Use it only for the last segment
-			// (which is the freshest), fall back to raw for earlier ones.
-			if isLastSegment(segIdx) && fullRendered != "" && !isStreamTarget {
-				// Estimate the rendered offset proportionally. Since
-				// markdown rendering doesn't preserve byte offsets, we
-				// render earlier segments as raw and the last as rendered.
+			// Use the rendered markdown for single-segment entries
+			// (the common case). For multi-segment (interleaved with
+			// tools), use rendered only when this is the sole segment
+			// (start == 0), otherwise fall back to raw per-segment.
+			if isLastSegment(segIdx) && fullRendered != "" {
 				segRendered = fullRendered
 				if start > 0 {
-					// Render only the last segment's portion. For earlier
-					// segments we use raw content, so subtract their raw
-					// text from the rendered version by using raw for all.
+					// Multi-segment: can't split rendered markdown by
+					// byte offset. Fall back to raw for this segment.
 					segRendered = ""
 				}
 			}
