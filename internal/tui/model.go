@@ -2764,6 +2764,9 @@ func (m *Model) compositeEntry(i int, isStreamTarget bool) string {
 		}
 		segContent = truncateForDisplay(segContent)
 		if segContent == "(empty)" || strings.TrimSpace(segContent) == "" {
+			if isStreamTarget && isLastSegment(segIdx) {
+				parts = append(parts, strings.Repeat(" ", contentPadLeft)+"▌")
+			}
 			return
 		}
 		var textPart string
@@ -2789,6 +2792,12 @@ func (m *Model) compositeEntry(i int, isStreamTarget bool) string {
 	renderTextFull := func() {
 		content := truncateForDisplay(e.Content)
 		if content == "(empty)" {
+			// Empty content — but if we're the streaming target, still
+			// reserve a line with the cursor so the viewport doesn't
+			// jump when the first token arrives.
+			if isStreamTarget {
+				parts = append(parts, strings.Repeat(" ", contentPadLeft)+"▌")
+			}
 			return
 		}
 		var textPart string
