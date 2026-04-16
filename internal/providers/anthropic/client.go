@@ -650,17 +650,32 @@ func (c *Client) handleSSEEvent(
 func mapMessage(msg providers.ChatMessage) (anthropicMessage, error) {
 	switch msg.Role {
 	case "user", "assistant":
-		blocks := make([]anthropicBlock, 0, len(msg.ToolCalls)+len(msg.Images)+1)
-		// Always include a text block for every user/assistant message.
-		// When Content is empty, use a single space — omitempty would
-		// strip "" producing {"type":"text"} without a "text" field,
-		// which proxies reject. A space is semantically invisible to
-		// the model but keeps the JSON structure valid.
-		text := msg.Content
-		if strings.TrimSpace(text) == "" {
-			text = " "
+		blocks := make([]anthropicBlock, 0, len(msg.ToolCalls)+len(msg.Images)+2)
+
+		// Thinking block: Anthropic requires thinking blocks from
+		// previous assistant turns to be replayed when adaptive/extended
+		// thinking is enabled. Must come before text/tool_use blocks.
+		hasThinking := msg.Role == "assistant" && strings.TrimSpace(msg.ReasoningContent) != ""
+		if hasThinking {
+			blocks = append(blocks, anthropicBlock{Type: "thinking", Thinking: msg.ReasoningContent})
 		}
-		blocks = append(blocks, anthropicBlock{Type: "text", Text: text})
+
+		// Text block: include when there's actual content. When the
+		// message has no other blocks (no thinking, no tool_use, no
+		// images), use a space fallback — omitempty would strip ""
+		// producing {"type":"text"} without a "text" field, which
+		// proxies reject. But when other blocks carry the message's
+		// meaning (thinking, tool_use), omit the empty text block
+		// entirely — proxies reject assistant messages that contain
+		// a space-only text alongside real content blocks.
+		hasContent := strings.TrimSpace(msg.Content) != ""
+		hasOtherBlocks := hasThinking || len(msg.ToolCalls) > 0 || len(msg.Images) > 0
+		if hasContent {
+			blocks = append(blocks, anthropicBlock{Type: "text", Text: msg.Content})
+		} else if !hasOtherBlocks {
+			blocks = append(blocks, anthropicBlock{Type: "text", Text: " "})
+		}
+
 		if msg.Role == "user" {
 			for _, image := range msg.Images {
 				data := strings.TrimSpace(image.Data)
@@ -692,30 +707,10 @@ func mapMessage(msg providers.ChatMessage) (anthropicMessage, error) {
 	}
 }
 
-// canMergeBlocks reports whether two content block slices can be
-// combined into a single message without mixing incompatible types.
-// tool_result blocks must not coexist with text/image blocks — many
-// proxies reject this structure.
-func canMergeBlocks(existing, incoming []anthropicBlock) bool {
-	hasToolResult := false
-	hasNonToolResult := false
-	for _, b := range existing {
-		if b.Type == "tool_result" {
-			hasToolResult = true
-		} else {
-			hasNonToolResult = true
-		}
-	}
-	for _, b := range incoming {
-		if b.Type == "tool_result" {
-			hasToolResult = true
-		} else {
-			hasNonToolResult = true
-		}
-	}
-	// Reject if the merged result would have both types.
-	return !(hasToolResult && hasNonToolResult)
-}
+// NOTE: canMergeBlocks was removed. Empirical testing confirmed that
+// both the Anthropic API and proxies (e.g. claude-code.club) accept
+// user messages with mixed tool_result+text blocks. Claude Code itself
+// produces this structure. See docs/proxy-compatibility.md.
 
 func cloneHeaders(input map[string]string) map[string]string {
 	if len(input) == 0 {
@@ -761,6 +756,7 @@ type anthropicMessage struct {
 type anthropicBlock struct {
 	Type         string                 `json:"type"`
 	Text         string                 `json:"text,omitempty"`
+	Thinking     string                 `json:"thinking,omitempty"`
 	Source       *anthropicImageSource  `json:"source,omitempty"`
 	ID           string                 `json:"id,omitempty"`
 	Name         string                 `json:"name,omitempty"`

@@ -265,9 +265,10 @@ func TestChat_AddsCacheControlToStableAnthropicPrefix(t *testing.T) {
 		}
 
 		msgs, ok := body["messages"].([]any)
-		if !ok || len(msgs) != 2 {
-			t.Fatalf("unexpected messages payload: %#v", body["messages"])
+		if !ok || len(msgs) != 3 {
+			t.Fatalf("expected 3 messages (user, assistant, user), got %d: %#v", len(msgs), body["messages"])
 		}
+		// First message (user, stable) should have cache_control.
 		firstMsg, ok := msgs[0].(map[string]any)
 		if !ok {
 			t.Fatalf("unexpected first message: %#v", msgs[0])
@@ -285,17 +286,18 @@ func TestChat_AddsCacheControlToStableAnthropicPrefix(t *testing.T) {
 			t.Fatalf("unexpected message cache_control: %#v", textBlock["cache_control"])
 		}
 
-		secondMsg, ok := msgs[1].(map[string]any)
+		// Third message (user, volatile) should NOT have cache_control.
+		thirdMsg, ok := msgs[2].(map[string]any)
 		if !ok {
-			t.Fatalf("unexpected second message: %#v", msgs[1])
+			t.Fatalf("unexpected third message: %#v", msgs[2])
 		}
-		content, ok = secondMsg["content"].([]any)
+		content, ok = thirdMsg["content"].([]any)
 		if !ok || len(content) != 1 {
-			t.Fatalf("unexpected second content payload: %#v", secondMsg["content"])
+			t.Fatalf("unexpected third content payload: %#v", thirdMsg["content"])
 		}
 		textBlock, ok = content[0].(map[string]any)
 		if !ok {
-			t.Fatalf("unexpected second text block: %#v", content[0])
+			t.Fatalf("unexpected third text block: %#v", content[0])
 		}
 		if _, exists := textBlock["cache_control"]; exists {
 			t.Fatalf("did not expect cache_control on volatile message: %#v", textBlock)
@@ -316,6 +318,7 @@ func TestChat_AddsCacheControlToStableAnthropicPrefix(t *testing.T) {
 		Messages: []providers.ChatMessage{
 			{Role: "system", Content: "sys"},
 			{Role: "user", Content: "stable context"},
+			{Role: "assistant", Content: "noted"},
 			{Role: "user", Content: "volatile ask"},
 		},
 		CacheHint: &providers.CacheHint{
