@@ -172,6 +172,12 @@ type transcriptEntry struct {
 	// Claude Code's interleaved display. When empty, falls back to
 	// legacy order (thinking → tools → content).
 	blockOrder []string
+
+	// textSegmentOffsets tracks byte offsets into Content where each
+	// "text" segment begins. Used to split Content into per-segment
+	// slices for interleaved rendering. len(textSegmentOffsets) ==
+	// number of "text" entries in blockOrder.
+	textSegmentOffsets []int
 }
 
 type queuedMessage struct {
@@ -1850,6 +1856,13 @@ func (m *Model) applyStreamEvent(event providers.StreamEvent, rearm bool) tea.Cm
 		// Record block order: if the last block isn't "text", start a new text segment.
 		if len(e.blockOrder) == 0 || e.blockOrder[len(e.blockOrder)-1] != "text" {
 			e.blockOrder = append(e.blockOrder, "text")
+			// Record the byte offset where this text segment starts
+			// so compositeEntry can render each segment independently.
+			offset := len(e.Content) - len(event.Content)
+			if offset < 0 {
+				offset = 0
+			}
+			e.textSegmentOffsets = append(e.textSegmentOffsets, offset)
 		}
 		// During streaming: accumulate only, do NOT refresh viewport.
 		// The 100ms inlineSpinMsg tick flushes accumulated content to
@@ -2713,7 +2726,61 @@ func (m *Model) compositeEntry(i int, isStreamTarget bool) string {
 	// cards interleaved as they arrived). Aligned with Claude Code's
 	// per-content-block rendering. Falls back to legacy order when
 	// blockOrder is empty (e.g. loaded from session history).
-	renderText := func() {
+	fullContent := e.Content
+	// For finished entries, use the markdown-rendered version when available.
+	// During streaming (isStreamTarget), always use raw content since the
+	// markdown renderer hasn't finalized yet.
+	fullRendered := e.rendered
+	isLastSegment := func(segIdx int) bool {
+		return segIdx == len(e.textSegmentOffsets)-1
+	}
+
+	renderTextSegment := func(segIdx int) {
+		// Extract the text for this specific segment.
+		var segContent, segRendered string
+		if segIdx < len(e.textSegmentOffsets) {
+			start := e.textSegmentOffsets[segIdx]
+			if isLastSegment(segIdx) {
+				segContent = fullContent[start:]
+			} else if segIdx+1 < len(e.textSegmentOffsets) {
+				segContent = fullContent[start:e.textSegmentOffsets[segIdx+1]]
+			}
+			// For rendered markdown, we only have one rendered string
+			// for the entire Content. Use it only for the last segment
+			// (which is the freshest), fall back to raw for earlier ones.
+			if isLastSegment(segIdx) && fullRendered != "" && !isStreamTarget {
+				// Estimate the rendered offset proportionally. Since
+				// markdown rendering doesn't preserve byte offsets, we
+				// render earlier segments as raw and the last as rendered.
+				segRendered = fullRendered
+				if start > 0 {
+					// Render only the last segment's portion. For earlier
+					// segments we use raw content, so subtract their raw
+					// text from the rendered version by using raw for all.
+					segRendered = ""
+				}
+			}
+		} else {
+			segContent = fullContent
+			segRendered = fullRendered
+		}
+		segContent = truncateForDisplay(segContent)
+		if segContent == "(empty)" || strings.TrimSpace(segContent) == "" {
+			return
+		}
+		if e.Role == "USER" {
+			wrapped := userContentStyle.Render(wrapText(segContent, cw-2))
+			parts = append(parts, indentLines(wrapped, contentPadLeft))
+		} else if segRendered != "" {
+			parts = append(parts, indentLines(wrapText(segRendered, cw), contentPadLeft))
+		} else {
+			parts = append(parts, indentLines(wrapText(segContent, cw), contentPadLeft))
+		}
+		if isStreamTarget && isLastSegment(segIdx) {
+			parts = append(parts, "▌")
+		}
+	}
+	renderTextFull := func() {
 		content := truncateForDisplay(e.Content)
 		if content == "(empty)" {
 			return
@@ -2736,22 +2803,13 @@ func (m *Model) compositeEntry(i int, isStreamTarget bool) string {
 		}
 	}
 
-	// Find the last "text" position in blockOrder so we render
-	// the full text content exactly once, at its final position.
-	lastTextIdx := -1
-	for bi, block := range e.blockOrder {
-		if block == "text" {
-			lastTextIdx = bi
-		}
-	}
-
 	if len(e.blockOrder) > 0 {
-		// Stream-order rendering.
-		for bi, block := range e.blockOrder {
+		// Stream-order rendering with per-segment text.
+		textSegIdx := 0
+		for _, block := range e.blockOrder {
 			if block == "text" {
-				if bi == lastTextIdx {
-					renderText()
-				}
+				renderTextSegment(textSegIdx)
+				textSegIdx++
 			} else if strings.HasPrefix(block, "tool:") {
 				var idx int
 				fmt.Sscanf(block, "tool:%d", &idx)
@@ -2778,7 +2836,7 @@ func (m *Model) compositeEntry(i int, isStreamTarget bool) string {
 		for idx := range e.ToolCalls {
 			parts = append(parts, indentLines(renderToolCard(&e.ToolCalls[idx], innerWidth, m.spinnerFrame), contentPadLeft))
 		}
-		renderText()
+		renderTextFull()
 	}
 
 	result := strings.Join(parts, "\n")
