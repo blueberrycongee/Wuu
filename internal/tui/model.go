@@ -224,6 +224,13 @@ type Model struct {
 	pendingAutoResume bool
 	autoResumeChain   int
 
+	// pendingWorkerResults holds worker-result XML strings that arrived
+	// while a turn was in progress. They are injected into chatHistory
+	// only after the turn's newMsgs have been committed, preventing the
+	// worker-result from landing between an assistant tool_call and its
+	// tool_result — which Anthropic rejects with HTTP 400.
+	pendingWorkerResults []string
+
 	requestTimeout time.Duration
 
 	viewport viewport.Model
@@ -978,12 +985,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.appendEntry("system", fmt.Sprintf("%s %s %s: %s%s",
 				icon, n.Snapshot.Type, n.Status, n.Snapshot.Description, suffix))
 			// Inject the worker-result XML into the orchestrator's
-			// next API request as a user-role message.
+			// next API request as a user-role message. If a turn is in
+			// progress, buffer it — injecting directly would interleave
+			// the worker-result between an assistant tool_call and its
+			// tool_result, which Anthropic rejects with HTTP 400.
 			xml := coordinator.FormatWorkerResult(n.Snapshot)
-			m.chatHistory = append(m.chatHistory, providers.ChatMessage{
-				Role:    "user",
-				Content: xml,
-			})
+			if m.streaming || m.pendingRequest {
+				m.pendingWorkerResults = append(m.pendingWorkerResults, xml)
+			} else {
+				m.chatHistory = append(m.chatHistory, providers.ChatMessage{
+					Role:    "user",
+					Content: xml,
+				})
+			}
 			injected = true
 		}
 		// Worker count likely changed — re-layout so the activity
@@ -1044,6 +1058,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.pendingTurn = nil
 		}
+
+		// Flush any worker results that arrived during the turn. These
+		// must be appended AFTER newMsgs so they never land between an
+		// assistant tool_call and its tool_result.
+		for _, xml := range m.pendingWorkerResults {
+			msg := providers.ChatMessage{Role: "user", Content: xml}
+			m.chatHistory = append(m.chatHistory, msg)
+			_ = appendChatMessage(m.memoryPath, msg)
+		}
+		m.pendingWorkerResults = nil
 
 		// Persist token usage for this turn.
 		if m.turnInputTokens > 0 || m.turnOutputTokens > 0 {
