@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/blueberrycongee/wuu/internal/coordinator"
 	proc "github.com/blueberrycongee/wuu/internal/process"
@@ -41,10 +42,14 @@ type Env struct {
 	// ReadState tracks read_file calls for dedup and must-read-first guard.
 	// Keys are absolute resolved paths.
 	ReadState map[string]ReadFileEntry
+
+	readStateMu sync.RWMutex
 }
 
 // RecordRead records a successful read_file invocation.
 func (e *Env) RecordRead(absPath string, entry ReadFileEntry) {
+	e.readStateMu.Lock()
+	defer e.readStateMu.Unlock()
 	if e.ReadState == nil {
 		e.ReadState = make(map[string]ReadFileEntry)
 	}
@@ -53,6 +58,8 @@ func (e *Env) RecordRead(absPath string, entry ReadFileEntry) {
 
 // HasBeenRead reports whether a file has been read via read_file.
 func (e *Env) HasBeenRead(absPath string) bool {
+	e.readStateMu.RLock()
+	defer e.readStateMu.RUnlock()
 	if e.ReadState == nil {
 		return false
 	}
@@ -62,6 +69,8 @@ func (e *Env) HasBeenRead(absPath string) bool {
 
 // GetReadEntry returns the read state for a file, if any.
 func (e *Env) GetReadEntry(absPath string) (ReadFileEntry, bool) {
+	e.readStateMu.RLock()
+	defer e.readStateMu.RUnlock()
 	if e.ReadState == nil {
 		return ReadFileEntry{}, false
 	}
