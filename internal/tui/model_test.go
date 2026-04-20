@@ -1577,11 +1577,11 @@ func TestRenderToolCard_Running(t *testing.T) {
 		Status: ToolCallRunning,
 	}
 	result := ansi.Strip(renderToolCard(&tc, 80, 0))
-	if !strings.Contains(result, "run_shell") {
-		t.Fatalf("expected tool name in output: %s", result)
+	if !strings.Contains(result, "Shell") {
+		t.Fatalf("expected verb 'Shell' in output: %s", result)
 	}
-	if !strings.Contains(strings.ToLower(result), "running") {
-		t.Fatalf("expected running status: %s", result)
+	if !strings.Contains(result, "·") {
+		t.Fatalf("expected running spinner icon: %s", result)
 	}
 }
 
@@ -1632,11 +1632,11 @@ func TestRenderToolCard_Done_Collapsed(t *testing.T) {
 		Collapsed: true,
 	}
 	result := ansi.Strip(renderToolCard(&tc, 80, 0))
-	if !strings.Contains(result, "read_file") {
-		t.Fatalf("expected tool name: %s", result)
+	if !strings.Contains(result, "Read") {
+		t.Fatalf("expected verb 'Read' in output: %s", result)
 	}
-	if !strings.Contains(strings.ToLower(result), "finished") {
-		t.Fatalf("expected finished status: %s", result)
+	if !strings.Contains(result, "✓") {
+		t.Fatalf("expected done icon: %s", result)
 	}
 }
 
@@ -1646,8 +1646,11 @@ func TestRenderToolCard_Error(t *testing.T) {
 		Status: ToolCallError,
 	}
 	result := ansi.Strip(renderToolCard(&tc, 80, 0))
-	if !strings.Contains(strings.ToLower(result), "failed") {
-		t.Fatalf("expected failed status: %s", result)
+	if !strings.Contains(result, "✗") {
+		t.Fatalf("expected error icon: %s", result)
+	}
+	if !strings.Contains(result, "Shell") {
+		t.Fatalf("expected verb 'Shell' in output: %s", result)
 	}
 }
 

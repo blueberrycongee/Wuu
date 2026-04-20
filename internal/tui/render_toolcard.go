@@ -9,77 +9,29 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// renderToolCard renders a single tool call card with caching.
-// The cache avoids re-parsing JSON args/results on every viewport
-// refresh. Only invalidated when the card's inputs change.
+// renderToolCard renders a single tool call with a compact tree layout.
 func renderToolCard(tc *ToolCallEntry, width int, frame int) string {
-	// Running tools have an animated spinner — don't cache those.
+	// Running tools have animated spinner — don't cache those.
 	if tc.Status != ToolCallRunning {
 		key := fmt.Sprintf("%s:%v:%d:%d", tc.Status, tc.Collapsed, len(tc.Args), len(tc.Result))
 		if tc.cachedCard != "" && tc.cachedCardKey == key && tc.cachedCardWidth == width {
 			return tc.cachedCard
 		}
 	}
-	// ask_user has its own card layout that mirrors Claude Code's
-	// "User answered:" rendering — nicer than dumping the JSON
-	// answer payload through the generic body formatter.
+
+	// ask_user has its own dedicated card layout.
 	if tc.Name == "ask_user" {
 		return renderAskUserCard(*tc, width)
 	}
 
-	metaStyle := waitingStatusMetaStyle
-	contentStyle := lipgloss.NewStyle().Foreground(currentTheme.Inactive)
-	borderStyle := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(currentTheme.Border)
-
-	ws := toolCallStatus(*tc)
-	headerParts := []string{renderStatusHeader(ws, frame)}
-
 	var result string
 	if tc.Collapsed {
-		summary := toolArgsSummary(tc.Name, tc.Args, width-28)
-		if summary != "" {
-			headerParts = append(headerParts, metaStyle.Render("· "+summary))
-		}
-		if tc.Result != "" {
-			if dr := diffResultFromJSON(tc.Result); dr != nil {
-				headerParts = append(headerParts, diffStats(dr))
-			}
-		}
-		result = strings.Join(headerParts, " ")
+		result = renderToolCardCollapsed(tc, width, frame)
 	} else {
-		var content strings.Builder
-		if tc.Args != "" {
-			formatted := formatToolArgs(tc.Name, tc.Args)
-			content.WriteString(contentStyle.Render(wrapText(formatted, width-6)))
-		}
-		if tc.Result != "" {
-			if content.Len() > 0 {
-				content.WriteString("\n")
-				content.WriteString(metaStyle.Render(strings.Repeat("─", min(width-6, 32))))
-				content.WriteString("\n")
-			}
-			if dr := diffResultFromJSON(tc.Result); dr != nil {
-				content.WriteString(renderDiff(dr, max(20, width-6)))
-			} else {
-				content.WriteString(contentStyle.Render(wrapText(truncateToolResult(tc.Result, 500), max(20, width-6))))
-			}
-		}
-
-		if content.Len() == 0 {
-			result = strings.Join(headerParts, " ")
-		} else {
-			innerW := width - 4
-			if innerW < 20 {
-				innerW = 20
-			}
-			box := borderStyle.Width(innerW).Render(content.String())
-			result = strings.Join(headerParts, " ") + "\n" + box
-		}
+		result = renderToolCardExpanded(tc, width, frame)
 	}
 
-	// Cache for non-running tools (running ones have animated spinner).
+	// Cache for non-running tools.
 	if tc.Status != ToolCallRunning {
 		tc.cachedCard = result
 		tc.cachedCardKey = fmt.Sprintf("%s:%v:%d:%d", tc.Status, tc.Collapsed, len(tc.Args), len(tc.Result))
@@ -88,67 +40,241 @@ func renderToolCard(tc *ToolCallEntry, width int, frame int) string {
 	return result
 }
 
-// toolArgsSummary extracts a human-readable one-line summary from tool arguments.
-func toolArgsSummary(toolName, args string, maxWidth int) string {
-	if args == "" || maxWidth <= 0 {
+// toolVerb maps a raw tool name to a user-facing verb.
+func toolVerb(name string) string {
+	switch strings.TrimSpace(name) {
+	case "read_file":
+		return "Read"
+	case "write_file":
+		return "Write"
+	case "edit_file":
+		return "Edit"
+	case "list_files":
+		return "List"
+	case "run_shell":
+		return "Shell"
+	case "grep":
+		return "Grep"
+	case "glob":
+		return "Glob"
+	case "web_search":
+		return "Search"
+	case "web_fetch":
+		return "Fetch"
+	case "spawn_agent":
+		return "Spawn"
+	case "fork_agent":
+		return "Fork"
+	case "ask_user":
+		return "Ask"
+	default:
+		return name
+	}
+}
+
+// toolStatusIcon returns the icon and style for a tool status.
+func toolStatusIcon(status ToolCallStatus, frame int) (string, lipgloss.Style) {
+	switch status {
+	case ToolCallRunning:
+		return statusSpinner(frame), lipgloss.NewStyle().Foreground(currentTheme.Brand)
+	case ToolCallError:
+		return "✗", lipgloss.NewStyle().Foreground(currentTheme.Error)
+	default:
+		return "✓", lipgloss.NewStyle().Foreground(currentTheme.Success)
+	}
+}
+
+// toolPrimaryArg extracts the most important argument for display.
+func toolPrimaryArg(name, args string) string {
+	if args == "" {
+		return ""
+	}
+	var parsed map[string]any
+	if json.Unmarshal([]byte(args), &parsed) != nil {
 		return ""
 	}
 
-	var parsed map[string]any
-	if json.Unmarshal([]byte(args), &parsed) != nil {
-		// Fallback: strip JSON braces.
-		s := strings.TrimPrefix(strings.TrimSuffix(strings.TrimSpace(args), "}"), "{")
-		s = strings.TrimSpace(s)
-		if len(s) > maxWidth {
-			s = s[:maxWidth] + "…"
-		}
-		return s
-	}
-
-	var summary string
-	switch toolName {
-	case "read_file", "write_file", "edit_file":
+	switch name {
+	case "read_file", "write_file", "edit_file", "list_files":
 		if p, ok := parsed["path"].(string); ok {
-			summary = p
-		}
-	case "list_files":
-		if p, ok := parsed["path"].(string); ok && p != "" {
-			summary = p
-		} else {
-			summary = "."
+			return p
 		}
 	case "run_shell":
 		if c, ok := parsed["command"].(string); ok {
-			summary = c
+			return c
 		}
 	case "grep":
 		if p, ok := parsed["pattern"].(string); ok {
-			summary = p
+			return p
 		}
 	case "glob":
 		if p, ok := parsed["pattern"].(string); ok {
-			summary = p
+			return p
 		}
 	case "web_search":
 		if q, ok := parsed["query"].(string); ok {
-			summary = q
+			return q
 		}
 	case "web_fetch":
 		if u, ok := parsed["url"].(string); ok {
-			summary = u
+			return u
 		}
 	}
+	return ""
+}
 
-	if summary == "" {
-		// Generic fallback: first string value.
-		for _, v := range parsed {
-			if s, ok := v.(string); ok && s != "" {
-				summary = s
-				break
+// toolCompactParams returns a compact "key: val, key: val" summary
+// excluding the primary argument.
+func toolCompactParams(name, args string) string {
+	if args == "" {
+		return ""
+	}
+	var parsed map[string]any
+	if json.Unmarshal([]byte(args), &parsed) != nil {
+		return ""
+	}
+
+	// Remove primary key.
+	primaryKey := ""
+	switch name {
+	case "read_file", "write_file", "edit_file", "list_files":
+		primaryKey = "path"
+	case "run_shell":
+		primaryKey = "command"
+	case "grep":
+		primaryKey = "pattern"
+	case "glob":
+		primaryKey = "pattern"
+	case "web_search":
+		primaryKey = "query"
+	case "web_fetch":
+		primaryKey = "url"
+	}
+	delete(parsed, primaryKey)
+
+	var parts []string
+	for k, v := range parsed {
+		switch val := v.(type) {
+		case string:
+			if len(val) > 50 {
+				val = val[:47] + "…"
+			}
+			parts = append(parts, fmt.Sprintf("%s: %s", k, val))
+		case float64:
+			parts = append(parts, fmt.Sprintf("%s: %v", k, val))
+		case bool:
+			parts = append(parts, fmt.Sprintf("%s: %v", k, val))
+		default:
+			b, _ := json.Marshal(val)
+			if len(b) > 50 {
+				b = append(b[:47], '.', '.', '.')
+			}
+			parts = append(parts, fmt.Sprintf("%s: %s", k, string(b)))
+		}
+	}
+	return strings.Join(parts, ", ")
+}
+
+func renderToolCardCollapsed(tc *ToolCallEntry, width int, frame int) string {
+	icon, iconStyle := toolStatusIcon(tc.Status, frame)
+	verb := toolVerb(tc.Name)
+	primary := toolPrimaryArg(tc.Name, tc.Args)
+
+	metaStyle := lipgloss.NewStyle().Foreground(currentTheme.Subtle)
+	verbStyle := lipgloss.NewStyle().Bold(true).Foreground(currentTheme.Text)
+
+	var b strings.Builder
+	b.WriteString(iconStyle.Render(icon))
+	b.WriteString(" ")
+	b.WriteString(verbStyle.Render(verb))
+	if primary != "" {
+		b.WriteString(" ")
+		b.WriteString(metaStyle.Render("(" + trimToWidth(primary, max(20, width-20)) + ")"))
+	}
+
+	// Inline diff stats for edit/write operations.
+	if tc.Result != "" {
+		if dr := diffResultFromJSON(tc.Result); dr != nil {
+			b.WriteString("  ")
+			b.WriteString(diffStats(dr))
+		} else if tc.Status == ToolCallDone {
+			// Show result length hint.
+			lines := strings.Count(tc.Result, "\n")
+			if lines > 0 {
+				b.WriteString(" ")
+				b.WriteString(metaStyle.Render(fmt.Sprintf("%d lines", lines+1)))
+			}
+		}
+	}
+	return b.String()
+}
+
+func renderToolCardExpanded(tc *ToolCallEntry, width int, frame int) string {
+	header := renderToolCardCollapsed(tc, width, frame)
+	if header == "" {
+		return ""
+	}
+
+	var bodyParts []string
+	innerW := width - 4
+	if innerW < 20 {
+		innerW = 20
+	}
+
+	// Compact params line.
+	params := toolCompactParams(tc.Name, tc.Args)
+	if params != "" {
+		bodyParts = append(bodyParts, "├─ "+params)
+	}
+
+	// Result line.
+	if tc.Result != "" {
+		if dr := diffResultFromJSON(tc.Result); dr != nil {
+			bodyParts = append(bodyParts, "└─ "+diffStats(dr))
+		} else {
+			truncated := truncateToolResult(tc.Result, 300)
+			lines := strings.Split(truncated, "\n")
+			if len(lines) == 1 {
+				bodyParts = append(bodyParts, "└─ "+lines[0])
+			} else {
+				for i, line := range lines {
+					prefix := "└─ "
+					if i > 0 {
+						prefix = "   "
+					}
+					bodyParts = append(bodyParts, prefix+line)
+				}
 			}
 		}
 	}
 
+	if len(bodyParts) == 0 {
+		return header
+	}
+
+	// Style the tree lines.
+	metaStyle := lipgloss.NewStyle().Foreground(currentTheme.Inactive)
+	styledBody := metaStyle.Render(strings.Join(bodyParts, "\n"))
+
+	return header + "\n" + styledBody
+}
+
+// toolArgsSummary extracts a human-readable one-line summary from tool arguments.
+// Kept for backward compatibility — now delegates to toolPrimaryArg.
+func toolArgsSummary(toolName, args string, maxWidth int) string {
+	summary := toolPrimaryArg(toolName, args)
+	if summary == "" {
+		// Generic fallback: first string value.
+		var parsed map[string]any
+		if json.Unmarshal([]byte(args), &parsed) == nil {
+			for _, v := range parsed {
+				if s, ok := v.(string); ok && s != "" {
+					summary = s
+					break
+				}
+			}
+		}
+	}
 	if len(summary) > maxWidth {
 		summary = summary[:maxWidth] + "…"
 	}
@@ -166,7 +292,6 @@ func formatToolArgs(toolName, args string) string {
 	for k, v := range parsed {
 		switch val := v.(type) {
 		case string:
-			// Skip very long values (like file content) in the display.
 			if len(val) > 200 {
 				lines = append(lines, k+": ("+string(rune(len(val)))+" chars)")
 			} else {
