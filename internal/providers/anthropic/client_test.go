@@ -265,9 +265,11 @@ func TestChat_AddsCacheControlToStableAnthropicPrefix(t *testing.T) {
 		}
 
 		msgs, ok := body["messages"].([]any)
-		if !ok || len(msgs) != 2 {
+		if !ok || len(msgs) != 3 {
 			t.Fatalf("unexpected messages payload: %#v", body["messages"])
 		}
+
+		// First message (user "stable context") — no cache_control.
 		firstMsg, ok := msgs[0].(map[string]any)
 		if !ok {
 			t.Fatalf("unexpected first message: %#v", msgs[0])
@@ -280,11 +282,11 @@ func TestChat_AddsCacheControlToStableAnthropicPrefix(t *testing.T) {
 		if !ok {
 			t.Fatalf("unexpected first text block: %#v", content[0])
 		}
-		cacheControl, ok = textBlock["cache_control"].(map[string]any)
-		if !ok || cacheControl["type"] != "ephemeral" {
-			t.Fatalf("unexpected message cache_control: %#v", textBlock["cache_control"])
+		if _, exists := textBlock["cache_control"]; exists {
+			t.Fatalf("did not expect cache_control on first stable message: %#v", textBlock)
 		}
 
+		// Second message (assistant "stable reply") — cache_control on stable prefix boundary.
 		secondMsg, ok := msgs[1].(map[string]any)
 		if !ok {
 			t.Fatalf("unexpected second message: %#v", msgs[1])
@@ -296,6 +298,24 @@ func TestChat_AddsCacheControlToStableAnthropicPrefix(t *testing.T) {
 		textBlock, ok = content[0].(map[string]any)
 		if !ok {
 			t.Fatalf("unexpected second text block: %#v", content[0])
+		}
+		cacheControl, ok = textBlock["cache_control"].(map[string]any)
+		if !ok || cacheControl["type"] != "ephemeral" {
+			t.Fatalf("unexpected message cache_control: %#v", textBlock["cache_control"])
+		}
+
+		// Third message (user "volatile ask") — no cache_control.
+		thirdMsg, ok := msgs[2].(map[string]any)
+		if !ok {
+			t.Fatalf("unexpected third message: %#v", msgs[2])
+		}
+		content, ok = thirdMsg["content"].([]any)
+		if !ok || len(content) != 1 {
+			t.Fatalf("unexpected third content payload: %#v", thirdMsg["content"])
+		}
+		textBlock, ok = content[0].(map[string]any)
+		if !ok {
+			t.Fatalf("unexpected third text block: %#v", content[0])
 		}
 		if _, exists := textBlock["cache_control"]; exists {
 			t.Fatalf("did not expect cache_control on volatile message: %#v", textBlock)
@@ -316,11 +336,12 @@ func TestChat_AddsCacheControlToStableAnthropicPrefix(t *testing.T) {
 		Messages: []providers.ChatMessage{
 			{Role: "system", Content: "sys"},
 			{Role: "user", Content: "stable context"},
+			{Role: "assistant", Content: "stable reply"},
 			{Role: "user", Content: "volatile ask"},
 		},
 		CacheHint: &providers.CacheHint{
 			StableSystem:         true,
-			StablePrefixMessages: 1,
+			StablePrefixMessages: 2,
 		},
 	})
 	if err != nil {

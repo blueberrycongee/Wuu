@@ -98,8 +98,8 @@ func TestAppendAndLoadChatHistory_WithToolCalls(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load chat history: %v", err)
 	}
-	if len(msgs) != 2 {
-		t.Fatalf("expected 2 messages, got %d", len(msgs))
+	if len(msgs) != 3 {
+		t.Fatalf("expected 3 messages (assistant + 2 tool results), got %d", len(msgs))
 	}
 
 	// Verify assistant message tool calls.
@@ -134,6 +134,15 @@ func TestAppendAndLoadChatHistory_WithToolCalls(t *testing.T) {
 	if got2.Content != `{"temp":22}` {
 		t.Fatalf("unexpected content: %s", got2.Content)
 	}
+
+	// Verify synthetic placeholder for missing call_2 result.
+	got3 := msgs[2]
+	if got3.Role != "tool" {
+		t.Fatalf("expected role tool for synthetic placeholder, got %q", got3.Role)
+	}
+	if got3.ToolCallID != "call_2" {
+		t.Fatalf("expected tool_call_id call_2 for synthetic placeholder, got %q", got3.ToolCallID)
+	}
 }
 
 func TestAppendAndLoadChatHistory_WithReasoningContent(t *testing.T) {
@@ -155,8 +164,8 @@ func TestAppendAndLoadChatHistory_WithReasoningContent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load chat history: %v", err)
 	}
-	if len(msgs) != 1 {
-		t.Fatalf("expected 1 message, got %d", len(msgs))
+	if len(msgs) != 2 {
+		t.Fatalf("expected 2 messages (assistant + synthetic tool result), got %d", len(msgs))
 	}
 	if msgs[0].ReasoningContent != "inspect repo before tool use" {
 		t.Fatalf("unexpected reasoning content: %q", msgs[0].ReasoningContent)

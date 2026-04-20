@@ -259,6 +259,78 @@ func renderToolCardExpanded(tc *ToolCallEntry, width int, frame int) string {
 	return header + "\n" + styledBody
 }
 
+// renderToolCallsGrouped renders a slice of tool calls, grouping adjacent
+// same-type completed calls into a single compact display.
+func renderToolCallsGrouped(toolCalls []ToolCallEntry, width int, frame int) []string {
+	var result []string
+	i := 0
+	for i < len(toolCalls) {
+		j := i
+		for j < len(toolCalls) &&
+			toolCalls[j].Status == ToolCallDone &&
+			toolCalls[j].Name == toolCalls[i].Name {
+			j++
+		}
+		if j-i >= 2 && toolCalls[i].Status == ToolCallDone {
+			result = append(result, renderToolCardGroup(toolCalls[i:j], width, frame))
+			i = j
+		} else {
+			result = append(result, renderToolCard(&toolCalls[i], width, frame))
+			i++
+		}
+	}
+	return result
+}
+
+// renderToolCardGroup renders a group of same-type completed tool calls.
+func renderToolCardGroup(calls []ToolCallEntry, width int, frame int) string {
+	if len(calls) == 0 {
+		return ""
+	}
+	verb := toolVerb(calls[0].Name)
+	icon, iconStyle := toolStatusIcon(calls[0].Status, frame)
+	metaStyle := lipgloss.NewStyle().Foreground(currentTheme.Subtle)
+	verbStyle := lipgloss.NewStyle().Bold(true).Foreground(currentTheme.Text)
+
+	var b strings.Builder
+	b.WriteString(iconStyle.Render(icon))
+	b.WriteString(" ")
+	b.WriteString(verbStyle.Render(verb))
+	b.WriteString(" ")
+	b.WriteString(metaStyle.Render(fmt.Sprintf("(%d)", len(calls))))
+
+	var lines []string
+	for k, tc := range calls {
+		primary := toolPrimaryArg(tc.Name, tc.Args)
+		if primary == "" {
+			continue
+		}
+		prefix := "├─ "
+		if k == len(calls)-1 {
+			prefix = "└─ "
+		}
+		line := prefix + primary
+		if tc.Result != "" {
+			if dr := diffResultFromJSON(tc.Result); dr != nil {
+				line += "  " + diffStats(dr)
+			} else {
+				resultLines := strings.Count(tc.Result, "\n")
+				if resultLines > 0 {
+					line += fmt.Sprintf("  %d lines", resultLines+1)
+				}
+			}
+		}
+		lines = append(lines, line)
+	}
+
+	if len(lines) > 0 {
+		bodyStyle := lipgloss.NewStyle().Foreground(currentTheme.Inactive)
+		b.WriteString("\n")
+		b.WriteString(bodyStyle.Render(strings.Join(lines, "\n")))
+	}
+	return b.String()
+}
+
 // toolArgsSummary extracts a human-readable one-line summary from tool arguments.
 // Kept for backward compatibility — now delegates to toolPrimaryArg.
 func toolArgsSummary(toolName, args string, maxWidth int) string {

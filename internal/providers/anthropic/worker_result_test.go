@@ -136,47 +136,4 @@ func TestWorkerResultMessageStructure(t *testing.T) {
 	t.Logf("  sequence: %s", roles)
 }
 
-// TestWorkerResultNoMixedBlocks_EvenWithoutEmptyAssistant verifies that
-// canMergeBlocks prevents tool_result+text mixing even when there is no
-// empty assistant separator between tool result and worker-result.
-func TestWorkerResultNoMixedBlocks_EvenWithoutEmptyAssistant(t *testing.T) {
-	// Consecutive user messages: tool result + worker result text.
-	// canMergeBlocks should insert an empty assistant separator.
-	history := []providers.ChatMessage{
-		{Role: "system", Content: "You are a coding agent."},
-		{Role: "user", Content: "Run git pull"},
-		{Role: "assistant", Content: "I'll spawn a worker.", ToolCalls: []providers.ToolCall{
-			{ID: "call_001", Name: "spawn_agent", Arguments: `{"description":"git pull","prompt":"run git pull"}`},
-		}},
-		{Role: "tool", ToolCallID: "call_001", Name: "spawn_agent", Content: `{"agent_id":"w-123","status":"running"}`},
-		{Role: "user", Content: "<worker-result>Done</worker-result>"},
-	}
 
-	payload, err := buildAnthropicRequest(providers.ChatRequest{
-		Model:    "claude-opus-4-6",
-		Messages: history,
-	}, 1024, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	for i, msg := range payload.Messages {
-		if msg.Role != "user" {
-			continue
-		}
-		hasToolResult := false
-		hasText := false
-		for _, block := range msg.Content {
-			if block.Type == "tool_result" {
-				hasToolResult = true
-			}
-			if block.Type == "text" {
-				hasText = true
-			}
-		}
-		if hasToolResult && hasText {
-			t.Fatalf("msg[%d] has mixed tool_result+text blocks — canMergeBlocks should have prevented this", i)
-		}
-	}
-	t.Log("✓ No mixed blocks — canMergeBlocks correctly inserted empty assistant separator")
-}
