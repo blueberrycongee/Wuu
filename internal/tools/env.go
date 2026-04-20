@@ -20,6 +20,35 @@ type ReadFileEntry struct {
 	Limit     int
 }
 
+// readFileState is a thread-safe record of read_file calls.
+type readFileState struct {
+	mu    sync.RWMutex
+	state map[string]ReadFileEntry
+}
+
+func (r *readFileState) record(absPath string, entry ReadFileEntry) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.state == nil {
+		r.state = make(map[string]ReadFileEntry)
+	}
+	r.state[absPath] = entry
+}
+
+func (r *readFileState) hasBeenRead(absPath string) bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	_, ok := r.state[absPath]
+	return ok
+}
+
+func (r *readFileState) getEntry(absPath string) (ReadFileEntry, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	entry, ok := r.state[absPath]
+	return entry, ok
+}
+
 // Env holds shared runtime state that individual tools receive at
 // construction time. It replaces the old approach of making every
 // handler a method on *Toolkit.
@@ -39,43 +68,31 @@ type Env struct {
 	// coupling the tools package to the hooks package.
 	OnFileChanged func(absPath string)
 
-	// ReadState tracks read_file calls for dedup and must-read-first guard.
-	// Keys are absolute resolved paths.
-	ReadState map[string]ReadFileEntry
-
-	readStateMu sync.RWMutex
+	readState *readFileState
 }
 
 // RecordRead records a successful read_file invocation.
 func (e *Env) RecordRead(absPath string, entry ReadFileEntry) {
-	e.readStateMu.Lock()
-	defer e.readStateMu.Unlock()
-	if e.ReadState == nil {
-		e.ReadState = make(map[string]ReadFileEntry)
+	if e.readState == nil {
+		e.readState = &readFileState{}
 	}
-	e.ReadState[absPath] = entry
+	e.readState.record(absPath, entry)
 }
 
 // HasBeenRead reports whether a file has been read via read_file.
 func (e *Env) HasBeenRead(absPath string) bool {
-	e.readStateMu.RLock()
-	defer e.readStateMu.RUnlock()
-	if e.ReadState == nil {
+	if e.readState == nil {
 		return false
 	}
-	_, ok := e.ReadState[absPath]
-	return ok
+	return e.readState.hasBeenRead(absPath)
 }
 
 // GetReadEntry returns the read state for a file, if any.
 func (e *Env) GetReadEntry(absPath string) (ReadFileEntry, bool) {
-	e.readStateMu.RLock()
-	defer e.readStateMu.RUnlock()
-	if e.ReadState == nil {
+	if e.readState == nil {
 		return ReadFileEntry{}, false
 	}
-	entry, ok := e.ReadState[absPath]
-	return entry, ok
+	return e.readState.getEntry(absPath)
 }
 
 // ResolvePath resolves a user-supplied relative or absolute path to
