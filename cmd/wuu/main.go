@@ -16,8 +16,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/blueberrycongee/wuu/internal/agent"
-	wuucontext "github.com/blueberrycongee/wuu/internal/context"
 	"github.com/blueberrycongee/wuu/internal/config"
+	wuucontext "github.com/blueberrycongee/wuu/internal/context"
 	"github.com/blueberrycongee/wuu/internal/coordinator"
 	"github.com/blueberrycongee/wuu/internal/hooks"
 	"github.com/blueberrycongee/wuu/internal/memory"
@@ -670,6 +670,7 @@ func envContextInjector(rootDir string) func() []providers.ChatMessage {
 		reminder := wuucontext.FormatSystemReminder(env)
 		return []providers.ChatMessage{{
 			Role:    "user",
+			Name:    wuucontext.SystemReminderMessageName,
 			Content: reminder,
 		}}
 	}

@@ -7,10 +7,12 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	wuucontext "github.com/blueberrycongee/wuu/internal/context"
 	"github.com/blueberrycongee/wuu/internal/providers"
 )
 
@@ -113,6 +115,81 @@ func TestChat_AnthropicAddsCacheControlFromHint(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("chat error: %v", err)
+	}
+}
+
+func TestBuildAnthropicRequest_SmooshesSystemReminderIntoToolResult(t *testing.T) {
+	reminder := wuucontext.FormatSystemReminder(wuucontext.EnvInfo{
+		CWD:       "/tmp/project",
+		Date:      "2026-04-21",
+		GitBranch: "main",
+		GitStatus: "clean",
+	})
+
+	payload, err := buildAnthropicRequest(providers.ChatRequest{
+		Model: "claude-test",
+		Messages: []providers.ChatMessage{
+			{Role: "user", Content: "check repo"},
+			{Role: "assistant", ToolCalls: []providers.ToolCall{
+				{ID: "tool_1", Name: "git", Arguments: `{"subcommand":"status"}`},
+			}},
+			{Role: "tool", ToolCallID: "tool_1", Name: "git", Content: `{"exit_code":0}`},
+			{Role: "user", Name: wuucontext.SystemReminderMessageName, Content: reminder},
+		},
+	}, 1024, false)
+	if err != nil {
+		t.Fatalf("buildAnthropicRequest: %v", err)
+	}
+
+	if len(payload.Messages) != 3 {
+		t.Fatalf("expected 3 messages after merge, got %d", len(payload.Messages))
+	}
+	last := payload.Messages[2]
+	if last.Role != "user" {
+		t.Fatalf("expected final message to be user, got %q", last.Role)
+	}
+	if len(last.Content) != 1 {
+		t.Fatalf("expected tool_result-only user content, got %+v", last.Content)
+	}
+	if last.Content[0].Type != "tool_result" {
+		t.Fatalf("expected tool_result block, got %+v", last.Content[0])
+	}
+	if !strings.Contains(last.Content[0].Content, `{"exit_code":0}`) {
+		t.Fatalf("expected tool output to be preserved, got %q", last.Content[0].Content)
+	}
+	if !strings.Contains(last.Content[0].Content, "<system-reminder>") {
+		t.Fatalf("expected system reminder to be folded into tool_result, got %q", last.Content[0].Content)
+	}
+}
+
+func TestBuildAnthropicRequest_LeavesRegularUserTextOutsideToolResult(t *testing.T) {
+	payload, err := buildAnthropicRequest(providers.ChatRequest{
+		Model: "claude-test",
+		Messages: []providers.ChatMessage{
+			{Role: "user", Content: "check repo"},
+			{Role: "assistant", ToolCalls: []providers.ToolCall{
+				{ID: "tool_1", Name: "git", Arguments: `{"subcommand":"status"}`},
+			}},
+			{Role: "tool", ToolCallID: "tool_1", Name: "git", Content: `{"exit_code":0}`},
+			{Role: "user", Content: "real follow-up"},
+		},
+	}, 1024, false)
+	if err != nil {
+		t.Fatalf("buildAnthropicRequest: %v", err)
+	}
+
+	if len(payload.Messages) != 3 {
+		t.Fatalf("expected 3 messages after merge, got %d", len(payload.Messages))
+	}
+	last := payload.Messages[2]
+	if len(last.Content) != 2 {
+		t.Fatalf("expected tool_result + text siblings for real user input, got %+v", last.Content)
+	}
+	if last.Content[0].Type != "tool_result" || last.Content[1].Type != "text" {
+		t.Fatalf("unexpected block order: %+v", last.Content)
+	}
+	if got := last.Content[1].Text; got != "real follow-up" {
+		t.Fatalf("unexpected trailing user text: %q", got)
 	}
 }
 

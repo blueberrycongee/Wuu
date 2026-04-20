@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/blueberrycongee/wuu/internal/agent"
+	wuucontext "github.com/blueberrycongee/wuu/internal/context"
 	processruntime "github.com/blueberrycongee/wuu/internal/process"
 	"github.com/blueberrycongee/wuu/internal/providers"
 	"github.com/blueberrycongee/wuu/internal/subagent"
@@ -93,6 +94,38 @@ func drainStream(t *testing.T, m Model, cmd tea.Cmd) Model {
 		t.Fatal("stream did not finish within deadline")
 	}
 	return m
+}
+
+func TestPersistStreamMessage_SkipsSystemReminder(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "session.jsonl")
+	m := NewModel(Config{
+		Provider:   "test",
+		Model:      "test-model",
+		ConfigPath: filepath.Join(dir, ".wuu.json"),
+		MemoryPath: path,
+		StreamRunner: &agent.StreamRunner{
+			Client: &echoStreamClient{answer: func(_ []providers.ChatMessage) string { return "" }},
+			Model:  "test-model",
+		},
+	})
+
+	m.persistStreamMessage(providers.ChatMessage{
+		Role:    "user",
+		Name:    wuucontext.SystemReminderMessageName,
+		Content: "<system-reminder>\n# Environment\n- CWD: /tmp\n</system-reminder>",
+	})
+
+	if len(m.chatHistory) != 0 {
+		t.Fatalf("expected system reminder to stay ephemeral, got %+v", m.chatHistory)
+	}
+	msgs, err := loadChatHistory(path)
+	if err != nil {
+		t.Fatalf("loadChatHistory: %v", err)
+	}
+	if len(msgs) != 0 {
+		t.Fatalf("expected no persisted chat history, got %+v", msgs)
+	}
 }
 
 func TestView_ProcessPanelAppearsAndHides(t *testing.T) {

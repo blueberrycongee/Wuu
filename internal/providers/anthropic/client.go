@@ -14,6 +14,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	wuucontext "github.com/blueberrycongee/wuu/internal/context"
 	"github.com/blueberrycongee/wuu/internal/providers"
 )
 
@@ -276,6 +277,9 @@ func buildAnthropicRequest(req providers.ChatRequest, maxTokens int, stream bool
 		}
 	}
 	providers.DebugLogf("buildAnthropicRequest: %d input msgs → %d merged msgs", len(req.Messages), len(payload.Messages))
+	for i := range payload.Messages {
+		payload.Messages[i] = smooshSystemReminderBlocks(payload.Messages[i])
+	}
 	// Log the role sequence to diagnose alternation violations.
 	if len(payload.Messages) > 0 {
 		var roles strings.Builder
@@ -692,6 +696,40 @@ func mapMessage(msg providers.ChatMessage) (anthropicMessage, error) {
 	}
 }
 
+func smooshSystemReminderBlocks(msg anthropicMessage) anthropicMessage {
+	if msg.Role != "user" || len(msg.Content) == 0 {
+		return msg
+	}
+
+	lastToolResultIdx := -1
+	reminders := make([]string, 0, 1)
+	kept := make([]anthropicBlock, 0, len(msg.Content))
+	for _, block := range msg.Content {
+		if block.Type == "text" && wuucontext.IsSystemReminder("", block.Text) {
+			reminders = append(reminders, strings.TrimSpace(block.Text))
+			continue
+		}
+		kept = append(kept, block)
+		if block.Type == "tool_result" {
+			lastToolResultIdx = len(kept) - 1
+		}
+	}
+	if lastToolResultIdx < 0 || len(reminders) == 0 {
+		return msg
+	}
+
+	toolResult := kept[lastToolResultIdx]
+	parts := make([]string, 0, 1+len(reminders))
+	if existing := strings.TrimSpace(toolResult.Content); existing != "" {
+		parts = append(parts, existing)
+	}
+	parts = append(parts, reminders...)
+	toolResult.Content = strings.Join(parts, "\n\n")
+	kept[lastToolResultIdx] = toolResult
+	msg.Content = kept
+	return msg
+}
+
 func cloneHeaders(input map[string]string) map[string]string {
 	if len(input) == 0 {
 		return nil
@@ -704,14 +742,14 @@ func cloneHeaders(input map[string]string) map[string]string {
 }
 
 type anthropicRequest struct {
-	Model        string                `json:"model"`
-	System       any                   `json:"system,omitempty"`
-	MaxTokens    int                   `json:"max_tokens"`
-	Temperature  *float64              `json:"temperature,omitempty"`
-	Messages     []anthropicMessage    `json:"messages"`
-	Tools        []anthropicTool       `json:"tools,omitempty"`
-	Stream       bool                  `json:"stream,omitempty"`
-	Thinking     *anthropicThinking    `json:"thinking,omitempty"`
+	Model        string                 `json:"model"`
+	System       any                    `json:"system,omitempty"`
+	MaxTokens    int                    `json:"max_tokens"`
+	Temperature  *float64               `json:"temperature,omitempty"`
+	Messages     []anthropicMessage     `json:"messages"`
+	Tools        []anthropicTool        `json:"tools,omitempty"`
+	Stream       bool                   `json:"stream,omitempty"`
+	Thinking     *anthropicThinking     `json:"thinking,omitempty"`
 	OutputConfig *anthropicOutputConfig `json:"output_config,omitempty"`
 }
 

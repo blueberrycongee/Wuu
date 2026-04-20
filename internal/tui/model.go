@@ -14,6 +14,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/blueberrycongee/wuu/internal/agent"
+	wuucontext "github.com/blueberrycongee/wuu/internal/context"
 	"github.com/blueberrycongee/wuu/internal/coordinator"
 	"github.com/blueberrycongee/wuu/internal/hooks"
 	"github.com/blueberrycongee/wuu/internal/insight"
@@ -1039,13 +1040,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			rewriteHistory := false
 			switch {
 			case m.pendingTurn.historyRewritten:
-				base := make([]providers.ChatMessage, len(m.pendingTurn.newMsgs))
-				copy(base, m.pendingTurn.newMsgs)
+				filtered := filterPersistableChatMessages(m.pendingTurn.newMsgs)
+				base := make([]providers.ChatMessage, len(filtered))
+				copy(base, filtered)
 				m.chatHistory = base
 				rewriteHistory = true
 			default:
 				if !m.pendingTurn.incrementalPersisted {
-					for _, msg := range m.pendingTurn.newMsgs {
+					for _, msg := range filterPersistableChatMessages(m.pendingTurn.newMsgs) {
 						m.chatHistory = append(m.chatHistory, msg)
 						_ = appendChatMessage(m.memoryPath, msg)
 					}
@@ -1727,7 +1729,7 @@ func (m Model) startStreamingTurn() (tea.Model, tea.Cmd) {
 	// results, interleaved worker results, missing results) before the
 	// API sees it.  This is defense-in-depth on top of the real-time
 	// pendingWorkerResults buffer.
-	normalized := normalizeChatHistory(m.chatHistory)
+	normalized := normalizeChatHistory(filterPersistableChatMessages(m.chatHistory))
 	history := make([]providers.ChatMessage, len(normalized))
 	copy(history, normalized)
 
@@ -3102,11 +3104,34 @@ func (m Model) currentWorkStatus() workStatus {
 }
 
 func (m *Model) persistStreamMessage(msg providers.ChatMessage) {
+	if !shouldPersistChatMessage(msg) {
+		return
+	}
 	m.chatHistory = append(m.chatHistory, msg)
 	_ = appendChatMessage(m.memoryPath, msg)
 	if m.pendingTurn != nil {
 		m.pendingTurn.incrementalPersisted = true
 	}
+}
+
+func shouldPersistChatMessage(msg providers.ChatMessage) bool {
+	if msg.Role != "user" {
+		return true
+	}
+	return !wuucontext.IsSystemReminder(msg.Name, msg.Content)
+}
+
+func filterPersistableChatMessages(msgs []providers.ChatMessage) []providers.ChatMessage {
+	if len(msgs) == 0 {
+		return nil
+	}
+	filtered := make([]providers.ChatMessage, 0, len(msgs))
+	for _, msg := range msgs {
+		if shouldPersistChatMessage(msg) {
+			filtered = append(filtered, msg)
+		}
+	}
+	return filtered
 }
 
 func (m Model) shouldRenderInlineStatus() bool {
