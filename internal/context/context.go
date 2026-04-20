@@ -16,6 +16,10 @@ import (
 	"time"
 )
 
+// SystemReminderMessageName marks internal per-step environment context
+// injections so callers can keep them out of persisted chat history.
+const SystemReminderMessageName = "wuu_system_reminder"
+
 // EnvInfo holds the dynamic environment snapshot for one turn.
 type EnvInfo struct {
 	CWD       string
@@ -68,6 +72,18 @@ func FormatSystemReminder(env EnvInfo, sections ...string) string {
 	}
 
 	return "<system-reminder>\n" + strings.TrimRight(b.String(), "\n") + "\n</system-reminder>"
+}
+
+// IsSystemReminder reports whether the given metadata/content belongs to an
+// internal system-reminder block rather than a durable conversation turn.
+func IsSystemReminder(name, content string) bool {
+	if strings.TrimSpace(name) == SystemReminderMessageName {
+		return true
+	}
+	trimmed := strings.TrimSpace(content)
+	return strings.HasPrefix(trimmed, "<system-reminder>") &&
+		strings.HasSuffix(trimmed, "</system-reminder>") &&
+		strings.Contains(trimmed, "# Environment")
 }
 
 // ── git helpers ────────────────────────────────────────────────────
