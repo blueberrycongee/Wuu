@@ -1550,6 +1550,10 @@ func (m Model) submit(shouldQueue bool) (tea.Model, tea.Cmd) {
 			if m.insightRunning && m.insightCh != nil {
 				return m, waitInsightEvent(m.insightCh)
 			}
+			// If a slash command queued messages (e.g. /loop), drain them.
+			if len(m.messageQueue) > 0 || len(m.pendingSteers) > 0 {
+				return m.drainQueue()
+			}
 			return m, nil
 		}
 	}
