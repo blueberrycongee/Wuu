@@ -1057,7 +1057,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.streaming = false
 		m.pendingRequest = false
 		// Clear the composited cache for the finished entry so the
-		// streaming cursor (▌) is removed on the next render.
+		// next render reflects the final state without streaming artifacts.
 		// Without this, OffscreenFreeze skips re-rendering because
 		// compositedH > 0, leaving the cursor artifact visible.
 		if finishedEntry >= 0 && finishedEntry < len(m.entries) {
@@ -2116,7 +2116,7 @@ func (m *Model) applyStreamEvent(event providers.StreamEvent, rearm bool) tea.Cm
 			if content == "" || content == "(empty)" {
 				m.entries[m.streamTarget].Content = ""
 			}
-			// Force re-render to clear the streaming cursor artifact.
+			// Force re-render to clear any streaming artifacts.
 			m.entries[m.streamTarget].composited = ""
 			m.entries[m.streamTarget].compositedH = 0
 		}
@@ -2688,9 +2688,6 @@ func (m *Model) compositeEntry(i int, isStreamTarget bool) string {
 		}
 		segContent = truncateForDisplay(segContent)
 		if segContent == "(empty)" || strings.TrimSpace(segContent) == "" {
-			if isStreamTarget && isLastSegment(segIdx) {
-				parts = append(parts, strings.Repeat(" ", contentPadLeft)+"▌")
-			}
 			return
 		}
 		var textPart string
@@ -2704,24 +2701,11 @@ func (m *Model) compositeEntry(i int, isStreamTarget bool) string {
 		} else {
 			textPart = indentLines(wrapText(segContent, cw), contentPadLeft)
 		}
-		// Append the streaming cursor to the last line of text, not as
-		// a separate part. A standalone "▌" between text and tool card
-		// creates an extra blank line that disappears when streaming
-		// ends, causing visible position jumps.
-		if isStreamTarget && isLastSegment(segIdx) {
-			textPart += "▌"
-		}
 		parts = append(parts, textPart)
 	}
 	renderTextFull := func() {
 		content := truncateForDisplay(e.Content)
 		if content == "(empty)" {
-			// Empty content — but if we're the streaming target, still
-			// reserve a line with the cursor so the viewport doesn't
-			// jump when the first token arrives.
-			if isStreamTarget {
-				parts = append(parts, strings.Repeat(" ", contentPadLeft)+"▌")
-			}
 			return
 		}
 		var textPart string
@@ -2731,9 +2715,6 @@ func (m *Model) compositeEntry(i int, isStreamTarget bool) string {
 			textPart = indentLines(e.rendered, contentPadLeft)
 		} else {
 			textPart = indentLines(wrapText(content, cw), contentPadLeft)
-		}
-		if isStreamTarget {
-			textPart += "▌"
 		}
 		parts = append(parts, textPart)
 	}
