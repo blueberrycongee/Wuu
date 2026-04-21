@@ -1011,6 +1011,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		finishedEntry := m.streamTarget
 		m.streaming = false
 		m.pendingRequest = false
+		// Clear the composited cache for the finished entry so the
+		// streaming cursor (▌) is removed on the next render.
+		// Without this, OffscreenFreeze skips re-rendering because
+		// compositedH > 0, leaving the cursor artifact visible.
+		if finishedEntry >= 0 && finishedEntry < len(m.entries) {
+			m.entries[finishedEntry].composited = ""
+			m.entries[finishedEntry].compositedH = 0
+		}
 		m.streamTarget = -1
 		m.thinkingStart = time.Time{}
 		if m.streamCollector != nil {
@@ -2044,6 +2052,9 @@ func (m *Model) applyStreamEvent(event providers.StreamEvent, rearm bool) tea.Cm
 			if content == "" || content == "(empty)" {
 				m.entries[m.streamTarget].Content = ""
 			}
+			// Force re-render to clear the streaming cursor artifact.
+			m.entries[m.streamTarget].composited = ""
+			m.entries[m.streamTarget].compositedH = 0
 		}
 		m.streamTarget = -1
 		errMsg := "unknown stream error"
@@ -2539,10 +2550,14 @@ func (m *Model) compositeEntry(i int, isStreamTarget bool) string {
 	innerWidth := cw
 	var parts []string
 
-	// Role label.
+	// Role label + metadata row.
 	switch e.Role {
-	case "USER", "ASSISTANT":
-		// No label.
+	case "USER":
+		// No label — user messages have the bubble style.
+	case "ASSISTANT":
+		// Subtle metadata row for assistant messages.
+		meta := metadataStyle.Render(fmt.Sprintf("%s · %s", m.modelName, time.Now().Format("15:04")))
+		parts = append(parts, indentLines(meta, contentPadLeft))
 	default:
 		parts = append(parts, indentLines(systemLabelStyle.Render(e.Role), contentPadLeft))
 	}
@@ -3083,7 +3098,7 @@ func (m Model) View() string {
 	}
 	// Image count is now shown in the image bar; no header hint needed.
 	if m.showJump {
-		hints = append(hints, "▼")
+		hints = append(hints, scrollIndicatorStyle.Render("▼"))
 	}
 	hints = append(hints, m.clock)
 	headerRight := strings.Join(hints, " · ")
@@ -3136,7 +3151,26 @@ func (m Model) View() string {
 		statusLine = indentLines(renderInlineWorkStatus(m.currentWorkStatus(), m.spinnerFrame, contentWidth(m.viewport.Width)), contentPadLeft)
 	}
 
+	// Search status bar — shown when search overlay is active.
+	var searchBar string
+	if m.search.Active {
+		searchPrompt := "/" + m.search.Query + "▌"
+		matchInfo := ""
+		if m.search.hasMatches() {
+			matchInfo = fmt.Sprintf(" %d/%d", m.search.CurrentIdx+1, len(m.search.Matches))
+		}
+		searchBar = indentLines(
+			waitingStatusLabelStrongStyle.Render("Search: ")+
+				waitingStatusLabelStyle.Render(searchPrompt)+
+				waitingStatusMetaStyle.Render(matchInfo+"  ·  n next  ·  N prev  ·  Esc close"),
+			contentPadLeft,
+		)
+	}
+
 	parts := []string{header, outputBox, statusLine}
+	if searchBar != "" {
+		parts = append(parts, searchBar)
+	}
 	if panel := m.renderWorkerPanel(m.width); panel != "" {
 		parts = append(parts, sep, panel)
 	}
