@@ -135,12 +135,12 @@ type ToolCallEntry struct {
 }
 
 type transcriptEntry struct {
-	Role        string
-	Content     string // raw content
-	rendered    string // markdown-rendered text (cached)
+	Role          string
+	Content       string   // raw content
+	rendered      string   // markdown-rendered text (cached)
 	renderedLines []string // lines accumulated from StreamCollector commits
-	renderStart int    // inclusive content line in the last rendered viewport snapshot
-	renderEnd   int    // inclusive content line in the last rendered viewport snapshot
+	renderStart   int      // inclusive content line in the last rendered viewport snapshot
+	renderEnd     int      // inclusive content line in the last rendered viewport snapshot
 
 	// composited is the fully rendered entry output including tool
 	// cards, thinking blocks, content, indent wrapping — everything
@@ -191,10 +191,6 @@ type pendingTurnResult struct {
 	newMsgs              []providers.ChatMessage
 	historyRewritten     bool
 	incrementalPersisted bool
-	// workerResults holds <worker-result> messages that arrived while
-	// this turn was still running. They must be re-injected after a
-	// history rewrite so they are not lost by the compaction.
-	workerResults []providers.ChatMessage
 }
 
 type pendingChatClickState struct {
@@ -229,9 +225,9 @@ type Model struct {
 	workerNotifyCh  chan subagent.Notification
 
 	// Cron scheduler: fires scheduled prompts into messageQueue.
-	scheduler      *cron.Scheduler
-	cronFireCh     chan string
-	schedulerLock  *cron.Lock
+	scheduler     *cron.Scheduler
+	cronFireCh    chan string
+	schedulerLock *cron.Lock
 
 	// Auto-resume state: when a worker completes while the main agent
 	// is busy, we set pendingAutoResume so the streamFinishedMsg
@@ -240,6 +236,12 @@ type Model struct {
 	// without user input — used as a runaway safety net.
 	pendingAutoResume bool
 	autoResumeChain   int
+
+	// pendingWorkerResults holds worker-result messages that arrived
+	// while a turn was still in flight. They are appended only after
+	// the turn's messages have been committed so they cannot land
+	// between an assistant tool_call and its tool result.
+	pendingWorkerResults []providers.ChatMessage
 
 	requestTimeout time.Duration
 
@@ -1009,17 +1011,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.appendEntry("system", fmt.Sprintf("%s %s %s: %s%s",
 				icon, n.Snapshot.Type, n.Status, n.Snapshot.Description, suffix))
 			// Inject the worker-result XML into the orchestrator's
-			// next API request as a user-role message.
+			// next API request as a user-role message. If a turn is
+			// still in flight, buffer it until streamFinishedMsg so
+			// it cannot interleave with assistant/tool messages from
+			// the active turn.
 			xml := coordinator.FormatWorkerResult(n.Snapshot)
 			workerMsg := providers.ChatMessage{
 				Role:    "user",
 				Content: xml,
 			}
-			m.chatHistory = append(m.chatHistory, workerMsg)
-			// If a turn is in flight, also stash the result on the
-			// pendingTurn so it survives a history-rewrite compaction.
-			if m.pendingTurn != nil {
-				m.pendingTurn.workerResults = append(m.pendingTurn.workerResults, workerMsg)
+			if m.streaming || m.pendingRequest {
+				m.pendingWorkerResults = append(m.pendingWorkerResults, workerMsg)
+			} else {
+				m.chatHistory = append(m.chatHistory, workerMsg)
+				_ = appendChatMessage(m.memoryPath, workerMsg)
 			}
 			injected = true
 		}
@@ -1073,11 +1078,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				base := make([]providers.ChatMessage, len(m.pendingTurn.newMsgs))
 				copy(base, m.pendingTurn.newMsgs)
 				m.chatHistory = base
-				// Re-append any worker results that arrived while the turn
-				// was running so they are not swallowed by the rewrite.
-				for _, wmsg := range m.pendingTurn.workerResults {
-					m.chatHistory = append(m.chatHistory, wmsg)
-				}
 				rewriteHistory = true
 			default:
 				if !m.pendingTurn.incrementalPersisted {
@@ -1094,6 +1094,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.pendingTurn = nil
 		}
+		for _, msg := range m.pendingWorkerResults {
+			m.chatHistory = append(m.chatHistory, msg)
+			_ = appendChatMessage(m.memoryPath, msg)
+		}
+		m.pendingWorkerResults = nil
 
 		// Persist token usage for this turn.
 		if m.turnInputTokens > 0 || m.turnOutputTokens > 0 {

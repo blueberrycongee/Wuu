@@ -99,6 +99,17 @@ func NormalizeMessages(msgs []ChatMessage) []ChatMessage {
 	return out
 }
 
+// NormalizeAndValidateMessages repairs any sequence issues that can be
+// safely synthesized client-side, then rejects histories that still
+// violate tool ordering invariants.
+func NormalizeAndValidateMessages(msgs []ChatMessage) ([]ChatMessage, error) {
+	normalized := NormalizeMessages(msgs)
+	if err := ValidateMessageSequence(normalized); err != nil {
+		return nil, fmt.Errorf("invalid message sequence after normalization: %w", err)
+	}
+	return normalized, nil
+}
+
 // ValidateMessageSequence returns a non-nil error when the message slice
 // violates provider ordering rules that are cheap to check client-side.
 // It is intended for diagnostics and tests, not as a gate (NormalizeMessages

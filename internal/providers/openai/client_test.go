@@ -889,6 +889,35 @@ func TestStreamChat_ServerError(t *testing.T) {
 	}
 }
 
+func TestStreamChat_RejectsInvalidMessageSequenceBeforeRequest(t *testing.T) {
+	var hits atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		t.Fatal("request should not reach server for invalid local history")
+	}))
+	defer server.Close()
+
+	client, _ := New(ClientConfig{BaseURL: server.URL, APIKey: "k"})
+	_, err := client.StreamChat(context.Background(), providers.ChatRequest{
+		Model: "m",
+		Messages: []providers.ChatMessage{
+			{Role: "user", Content: "hello"},
+			{Role: "assistant", Content: "", ToolCalls: []providers.ToolCall{{ID: "call_1", Name: "read_file"}}},
+			{Role: "user", Content: "mid"},
+			{Role: "tool", ToolCallID: "call_1", Content: "ok"},
+		},
+	})
+	if err == nil {
+		t.Fatal("expected invalid sequence error")
+	}
+	if hits.Load() != 0 {
+		t.Fatalf("expected zero requests, got %d", hits.Load())
+	}
+	if !strings.Contains(err.Error(), "invalid message sequence after normalization") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestChunkUsage_AsTokenUsage_Cached(t *testing.T) {
 	// gpt-4o reports cached_tokens as a SUBSET of prompt_tokens. The
 	// helper has to split it out so wuu's auto-compact accounts for

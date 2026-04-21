@@ -462,6 +462,151 @@ func TestWorkerNotifyTerminalStatusesStillAppendEntries(t *testing.T) {
 	}
 }
 
+func TestWorkerNotifyCompletedBuffersResultWhileTurnInFlight(t *testing.T) {
+	m := NewModel(Config{Provider: "test", Model: "test-model", ConfigPath: "/tmp/.wuu.json"})
+	m.streaming = true
+	m.pendingRequest = true
+	m.pendingTurn = &pendingTurnResult{}
+
+	updated, _ := m.Update(workerNotifyMsg{notification: subagent.Notification{
+		Status: subagent.StatusCompleted,
+		Snapshot: subagent.SubAgentSnapshot{
+			ID:          "worker-1",
+			Type:        "worker",
+			Description: "first",
+			Status:      subagent.StatusCompleted,
+		},
+	}})
+	after := updated.(Model)
+
+	if len(after.chatHistory) != 0 {
+		t.Fatalf("expected in-flight worker result to stay out of chatHistory, got %+v", after.chatHistory)
+	}
+	if len(after.pendingWorkerResults) != 1 {
+		t.Fatalf("expected one buffered worker result, got %d", len(after.pendingWorkerResults))
+	}
+	if !after.pendingAutoResume {
+		t.Fatal("expected auto-resume flag when worker completes during an active turn")
+	}
+}
+
+func TestStreamFinishedFlushesBufferedWorkerResultsAfterTurnMessages(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "session.jsonl")
+	m := NewModel(Config{
+		Provider:   "test",
+		Model:      "test-model",
+		ConfigPath: filepath.Join(dir, ".wuu.json"),
+		MemoryPath: path,
+	})
+	assistant := providers.ChatMessage{
+		Role:      "assistant",
+		Content:   "",
+		ToolCalls: []providers.ToolCall{{ID: "call_1", Name: "spawn_agent"}},
+	}
+	tool := providers.ChatMessage{
+		Role:       "tool",
+		Name:       "spawn_agent",
+		ToolCallID: "call_1",
+		Content:    `{"agent_id":"worker-1","status":"running"}`,
+	}
+	worker := providers.ChatMessage{
+		Role:    "user",
+		Content: "<worker-result agent-id=\"worker-1\">done</worker-result>",
+	}
+	m.pendingTurn = &pendingTurnResult{
+		newMsgs: []providers.ChatMessage{assistant, tool},
+	}
+	m.pendingWorkerResults = []providers.ChatMessage{worker}
+	m.streaming = true
+	m.pendingRequest = true
+
+	updated, _ := m.Update(streamFinishedMsg{})
+	after := updated.(Model)
+
+	if got := len(after.chatHistory); got != 3 {
+		t.Fatalf("expected 3 messages after flush, got %d", got)
+	}
+	if after.chatHistory[0].Role != "assistant" || after.chatHistory[1].Role != "tool" || after.chatHistory[2].Role != "user" {
+		t.Fatalf("unexpected post-flush order: %+v", after.chatHistory)
+	}
+	if len(after.pendingWorkerResults) != 0 {
+		t.Fatalf("expected buffered worker results to be cleared, got %d", len(after.pendingWorkerResults))
+	}
+	if err := providers.ValidateMessageSequence(after.chatHistory); err != nil {
+		t.Fatalf("expected valid post-flush history, got %v", err)
+	}
+
+	msgs, err := loadChatHistory(path)
+	if err != nil {
+		t.Fatalf("loadChatHistory: %v", err)
+	}
+	if len(msgs) != 3 {
+		t.Fatalf("expected 3 persisted messages, got %+v", msgs)
+	}
+	if msgs[0].Role != "assistant" || msgs[1].Role != "tool" || msgs[2].Role != "user" {
+		t.Fatalf("unexpected persisted order: %+v", msgs)
+	}
+}
+
+func TestStreamFinishedFlushesBufferedWorkerResultsAfterHistoryRewrite(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "session.jsonl")
+	m := NewModel(Config{
+		Provider:   "test",
+		Model:      "test-model",
+		ConfigPath: filepath.Join(dir, ".wuu.json"),
+		MemoryPath: path,
+	})
+	m.chatHistory = []providers.ChatMessage{{Role: "user", Content: "stale"}}
+	assistant := providers.ChatMessage{
+		Role:      "assistant",
+		Content:   "",
+		ToolCalls: []providers.ToolCall{{ID: "call_1", Name: "spawn_agent"}},
+	}
+	tool := providers.ChatMessage{
+		Role:       "tool",
+		Name:       "spawn_agent",
+		ToolCallID: "call_1",
+		Content:    `{"agent_id":"worker-1","status":"running"}`,
+	}
+	worker := providers.ChatMessage{
+		Role:    "user",
+		Content: "<worker-result agent-id=\"worker-1\">done</worker-result>",
+	}
+	m.pendingTurn = &pendingTurnResult{
+		newMsgs:          []providers.ChatMessage{assistant, tool},
+		historyRewritten: true,
+	}
+	m.pendingWorkerResults = []providers.ChatMessage{worker}
+	m.streaming = true
+	m.pendingRequest = true
+
+	updated, _ := m.Update(streamFinishedMsg{})
+	after := updated.(Model)
+
+	if got := len(after.chatHistory); got != 3 {
+		t.Fatalf("expected rewritten history plus worker result, got %d", got)
+	}
+	if after.chatHistory[0].Role != "assistant" || after.chatHistory[1].Role != "tool" || after.chatHistory[2].Role != "user" {
+		t.Fatalf("unexpected rewritten order: %+v", after.chatHistory)
+	}
+	if err := providers.ValidateMessageSequence(after.chatHistory); err != nil {
+		t.Fatalf("expected valid rewritten history, got %v", err)
+	}
+
+	msgs, err := loadChatHistory(path)
+	if err != nil {
+		t.Fatalf("loadChatHistory: %v", err)
+	}
+	if len(msgs) != 3 {
+		t.Fatalf("expected 3 persisted messages after rewrite, got %+v", msgs)
+	}
+	if msgs[0].Role != "assistant" || msgs[1].Role != "tool" || msgs[2].Role != "user" {
+		t.Fatalf("unexpected persisted rewrite order: %+v", msgs)
+	}
+}
+
 func TestSubmitPromptFlow(t *testing.T) {
 	m := newTestModel(func(msgs []providers.ChatMessage) string {
 		last := msgs[len(msgs)-1].Content

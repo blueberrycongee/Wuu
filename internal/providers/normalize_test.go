@@ -123,6 +123,37 @@ func TestNormalizeMessages_noDuplicateSynthetic(t *testing.T) {
 	}
 }
 
+func TestNormalizeAndValidateMessages_repairsMissingOutput(t *testing.T) {
+	msgs := []ChatMessage{
+		{Role: "user", Content: "hello"},
+		{Role: "assistant", Content: "", ToolCalls: []ToolCall{
+			{ID: "call_1", Name: "read_file"},
+		}},
+	}
+	got, err := NormalizeAndValidateMessages(msgs)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("expected synthesized tool result, got %+v", got)
+	}
+	if got[2].Role != "tool" || got[2].ToolCallID != "call_1" {
+		t.Fatalf("expected repaired tool result, got %+v", got[2])
+	}
+}
+
+func TestNormalizeAndValidateMessages_rejectsNonContiguousToolResult(t *testing.T) {
+	msgs := []ChatMessage{
+		{Role: "user", Content: "hello"},
+		{Role: "assistant", Content: "", ToolCalls: []ToolCall{{ID: "call_1", Name: "a"}}},
+		{Role: "user", Content: "mid"},
+		{Role: "tool", ToolCallID: "call_1", Content: "ok"},
+	}
+	if _, err := NormalizeAndValidateMessages(msgs); err == nil {
+		t.Fatal("expected irreparable interleaving to be rejected")
+	}
+}
+
 func TestValidateMessageSequence_ok(t *testing.T) {
 	msgs := []ChatMessage{
 		{Role: "system", Content: "sys"},
