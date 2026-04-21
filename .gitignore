@@ -21,3 +21,6 @@ docs/
 
 # MCP plugin caches
 .playwright-mcp/
+
+# macOS
+.DS_Store
