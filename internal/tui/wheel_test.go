@@ -30,12 +30,13 @@ func TestMouseWheelUp_DuringStreamingWithQueuedEvents(t *testing.T) {
 	m.width = 100
 	m.height = 20
 
-	// Seed enough tool cards so the viewport is scrolled (autoFollow true).
+	// Seed enough non-collapsible tool cards so the viewport is scrolled
+	// even when read/search/list bursts are summarized.
 	idx := m.appendEntry("assistant", "running tools")
 	for i := 0; i < 40; i++ {
 		m.entries[idx].ToolCalls = append(m.entries[idx].ToolCalls, ToolCallEntry{
-			Name:      "list_files",
-			Args:      `{"path":"thirdparty"}`,
+			Name:      "run_shell",
+			Args:      `{"command":"echo tool"}`,
 			Result:    "ok",
 			Status:    ToolCallDone,
 			Collapsed: true,
