@@ -933,6 +933,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Replace the progress entry with the final report.
 			if m.insightProgressIdx >= 0 && m.insightProgressIdx < len(m.entries) {
 				m.entries[m.insightProgressIdx].Content = insight.FormatReport(msg.event.Report)
+				m.entries[m.insightProgressIdx].textSegmentOffsets = nil
+				m.entries[m.insightProgressIdx].blockOrder = nil
 				m.entries[m.insightProgressIdx].rendered = ""
 				m.entries[m.insightProgressIdx].composited = ""
 			} else if msg.event.Report != nil {
@@ -1918,6 +1920,8 @@ func (m *Model) applyStreamEvent(event providers.StreamEvent, rearm bool) tea.Cm
 		}
 		if m.entries[m.streamTarget].Content == "(empty)" {
 			m.entries[m.streamTarget].Content = ""
+			m.entries[m.streamTarget].textSegmentOffsets = nil
+			m.entries[m.streamTarget].blockOrder = nil
 		}
 		// When this is the first delta of a fresh round (collector
 		// was reset to nil at the previous EventDone), seed the
@@ -2115,6 +2119,8 @@ func (m *Model) applyStreamEvent(event providers.StreamEvent, rearm bool) tea.Cm
 			content := strings.TrimSpace(m.entries[m.streamTarget].Content)
 			if content == "" || content == "(empty)" {
 				m.entries[m.streamTarget].Content = ""
+				m.entries[m.streamTarget].textSegmentOffsets = nil
+				m.entries[m.streamTarget].blockOrder = nil
 			}
 			// Force re-render to clear any streaming artifacts.
 			m.entries[m.streamTarget].composited = ""
@@ -2665,10 +2671,20 @@ func (m *Model) compositeEntry(i int, isStreamTarget bool) string {
 		var segContent, segRendered string
 		if segIdx < len(e.textSegmentOffsets) {
 			start := e.textSegmentOffsets[segIdx]
+			if start > len(fullContent) {
+				start = len(fullContent)
+			}
 			if isLastSegment(segIdx) {
 				segContent = fullContent[start:]
 			} else if segIdx+1 < len(e.textSegmentOffsets) {
-				segContent = fullContent[start:e.textSegmentOffsets[segIdx+1]]
+				end := e.textSegmentOffsets[segIdx+1]
+				if end > len(fullContent) {
+					end = len(fullContent)
+				}
+				if end < start {
+					end = start
+				}
+				segContent = fullContent[start:end]
 			}
 			// Use the rendered markdown for single-segment entries
 			// (the common case). For multi-segment (interleaved with
