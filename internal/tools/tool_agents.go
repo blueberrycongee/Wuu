@@ -153,8 +153,7 @@ func (t *SpawnAgentTool) Definition() providers.ToolDefinition {
 			"immediately with an agent_id, and the worker's result will be delivered to you " +
 			"automatically as a <worker-result> message once it completes — you will be " +
 			"notified without any action on your part. After spawning async workers, END " +
-			"YOUR TURN. Do NOT poll with list_agents, do NOT generate waiting messages, " +
-			"do NOT loop checking status. The system handles notification and auto-resume. " +
+			"YOUR TURN — do NOT generate waiting messages or loop checking status. The system handles notification and auto-resume. " +
 			"Set synchronous=true to block until " +
 			"the worker finishes. Spawn multiple workers in parallel by calling spawn_agent " +
 			"multiple times in the same response — they run concurrently.",
@@ -257,8 +256,7 @@ func (t *ForkAgentTool) Definition() providers.ToolDefinition {
 			"sees them as read-only context, not patterns to reproduce. " +
 			"Like spawn_agent, fork_agent is asynchronous by default: returns immediately " +
 			"with an agent_id, the result arrives later automatically as a <worker-result> " +
-			"message. After spawning, END YOUR TURN — do NOT poll with list_agents or " +
-			"generate waiting messages. The system handles notification and auto-resume. " +
+			"message. After spawning, END YOUR TURN — do NOT generate waiting messages. The system handles notification and auto-resume. " +
 			"Set synchronous=true to block until the worker finishes.",
 		InputSchema: map[string]any{
 			"type": "object",
