@@ -82,7 +82,7 @@ func init() {
 		{Name: "cleanup-worktrees", Description: "Remove all sub-agent worktrees for this session", Type: cmdTypeLocal, Execute: cmdCleanupWorktrees},
 		{Name: "insight", Description: "Session stats and diagnostics", Type: cmdTypeLocal, Execute: cmdInsight},
 		{Name: "loop", Description: "Create a scheduled recurring task", ArgHint: "<interval> <prompt>", InlineArgs: true, Type: cmdTypeLocal, Execute: cmdLoop},
-		{Name: "loops", Description: "List scheduled tasks", Type: cmdTypeLocal, Execute: cmdLoops},
+		{Name: "tasks", Description: "List scheduled tasks", Type: cmdTypeLocal, Execute: cmdTasks},
 		{Name: "exit", Aliases: []string{"quit"}, Description: "Exit wuu", Type: cmdTypeLocal, Execute: cmdExit},
 	}
 }
@@ -868,14 +868,14 @@ func cmdLoop(args string, m *Model) string {
 	return fmt.Sprintf("loop: scheduling '%s' every %s (%s)", prompt, interval, cronStr)
 }
 
-func cmdLoops(_ string, m *Model) string {
+func cmdTasks(_ string, m *Model) string {
 	store := cron.NewTaskStore(filepath.Join(m.workspaceRoot, ".wuu", "scheduled_tasks.json"))
 	tasks, err := store.List()
 	if err != nil {
-		return fmt.Sprintf("loops: %v", err)
+		return fmt.Sprintf("tasks: %v", err)
 	}
 	if len(tasks) == 0 {
-		return "loops: no scheduled tasks"
+		return "tasks: no scheduled tasks"
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "scheduled tasks (%d):\n", len(tasks))
