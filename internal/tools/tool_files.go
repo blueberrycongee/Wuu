@@ -94,6 +94,9 @@ func (t *ReadFileTool) Execute(_ context.Context, argsJSON string) (string, erro
 		}
 		return "", fmt.Errorf("stat file: %w", err)
 	}
+	if info.IsDir() {
+		return "", fmt.Errorf("path is a directory: %s. Use list_files to inspect directories or read_file on a file inside it", args.Path)
+	}
 	if info.Size() > int64(defaultMaxFileBytes) {
 		return "", fmt.Errorf("file too large (%d bytes, max %d). Use offset and limit to read portions", info.Size(), defaultMaxFileBytes)
 	}
@@ -288,6 +291,13 @@ func (t *ListFilesTool) Execute(_ context.Context, argsJSON string) (string, err
 	resolved, err := t.env.ResolvePath(args.Path)
 	if err != nil {
 		return "", err
+	}
+	info, err := os.Stat(resolved)
+	if err != nil {
+		return "", fmt.Errorf("stat path: %w", err)
+	}
+	if !info.IsDir() {
+		return "", fmt.Errorf("path is not a directory: %s. Use read_file to inspect files", args.Path)
 	}
 
 	entries, err := os.ReadDir(resolved)

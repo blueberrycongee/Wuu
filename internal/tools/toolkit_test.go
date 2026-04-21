@@ -76,6 +76,56 @@ func TestToolkit_ReadFileSizeSemantics(t *testing.T) {
 	}
 }
 
+func TestToolkit_ReadFileRejectsDirectory(t *testing.T) {
+	root := t.TempDir()
+	kit, err := New(root)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if err := os.Mkdir(filepath.Join(root, "dir"), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	_, err = kit.Execute(context.Background(), providers.ToolCall{
+		Name:      "read_file",
+		Arguments: `{"path":"dir"}`,
+	})
+	if err == nil {
+		t.Fatal("expected directory rejection")
+	}
+	if !strings.Contains(err.Error(), "path is a directory") {
+		t.Fatalf("expected directory guidance, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "Use list_files") {
+		t.Fatalf("expected list_files guidance, got: %v", err)
+	}
+}
+
+func TestToolkit_ListFilesRejectsFile(t *testing.T) {
+	root := t.TempDir()
+	kit, err := New(root)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "a.txt"), []byte("hello"), 0o644); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+
+	_, err = kit.Execute(context.Background(), providers.ToolCall{
+		Name:      "list_files",
+		Arguments: `{"path":"a.txt"}`,
+	})
+	if err == nil {
+		t.Fatal("expected file rejection")
+	}
+	if !strings.Contains(err.Error(), "path is not a directory") {
+		t.Fatalf("expected file guidance, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "Use read_file") {
+		t.Fatalf("expected read_file guidance, got: %v", err)
+	}
+}
+
 func TestToolkit_PathEscapeBlocked(t *testing.T) {
 	root := t.TempDir()
 	kit, err := New(root)
