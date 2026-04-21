@@ -241,6 +241,8 @@ func (c *Client) StreamChat(ctx context.Context, req providers.ChatRequest) (<-c
 }
 
 func buildAnthropicRequest(req providers.ChatRequest, maxTokens int, stream bool) (anthropicRequest, error) {
+	req.Messages = providers.NormalizeMessages(req.Messages)
+
 	payload := anthropicRequest{
 		Model:     req.Model,
 		MaxTokens: maxTokens,
