@@ -316,6 +316,9 @@ type Model struct {
 	// Text selection in viewport.
 	selection selectionState
 
+	// In-viewport search overlay state.
+	search searchState
+
 	// Pending click in the chat area. A plain click should focus the
 	// input on release; only once motion exceeds a small threshold do
 	// we convert it into an actual text-selection drag.
@@ -1362,7 +1365,70 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
+		// ── Search mode keyboard handling ──
+		// When search is active, keyboard input routes to search instead
+		// of the input textarea. This follows Claude Code's overlay pattern
+		// where search is a modal-like overlay above the transcript.
+		if m.search.Active {
+			switch msg.String() {
+			case "esc":
+				m.search.clear()
+				m.statusLine = "search cancelled"
+				return m, nil
+			case "enter", "n":
+				m.search.next()
+				if m.search.hasMatches() {
+					m.statusLine = fmt.Sprintf("search: %d/%d", m.search.CurrentIdx+1, len(m.search.Matches))
+				} else {
+					m.statusLine = fmt.Sprintf("search: no matches for %q", m.search.Query)
+				}
+				return m, nil
+			case "N":
+				m.search.prev()
+				if m.search.hasMatches() {
+					m.statusLine = fmt.Sprintf("search: %d/%d", m.search.CurrentIdx+1, len(m.search.Matches))
+				}
+				return m, nil
+			case "backspace":
+				if len(m.search.Query) > 0 {
+					m.search.Query = m.search.Query[:len(m.search.Query)-1]
+					m.search.Matches = searchInContent(m.renderedContent, m.search.Query, m.search.CaseSensitive)
+					m.search.CurrentIdx = 0
+					if m.search.hasMatches() {
+						m.statusLine = fmt.Sprintf("search: %d matches for %q", len(m.search.Matches), m.search.Query)
+					} else {
+						m.statusLine = fmt.Sprintf("search: no matches for %q", m.search.Query)
+					}
+				}
+				return m, nil
+			case "ctrl+c":
+				m.search.clear()
+				m.statusLine = "search cancelled"
+				return m, nil
+			default:
+				// Append typed character to search query.
+				if len(msg.String()) == 1 {
+					m.search.Query += msg.String()
+					m.search.Matches = searchInContent(m.renderedContent, m.search.Query, m.search.CaseSensitive)
+					m.search.CurrentIdx = 0
+					if m.search.hasMatches() {
+						m.statusLine = fmt.Sprintf("search: %d matches for %q", len(m.search.Matches), m.search.Query)
+					} else {
+						m.statusLine = fmt.Sprintf("search: no matches for %q", m.search.Query)
+					}
+					return m, nil
+				}
+			}
+		}
+
 		switch msg.String() {
+		case "ctrl+f":
+			m.search.Active = true
+			m.search.Query = ""
+			m.search.Matches = nil
+			m.search.CurrentIdx = 0
+			m.statusLine = "search: type to search"
+			return m, nil
 		case "ctrl+c":
 			// If insight is running, first ctrl+c cancels it instead of quitting.
 			if m.insightRunning && m.cancelInsight != nil {
@@ -2653,11 +2719,16 @@ func (m *Model) refreshViewport(forceBottom bool) {
 		return
 	}
 
-	// ── Pass 1: collect visible entry indices and cumulative heights ──
-	// Build a list of non-TOOL entries with their composited heights.
-	// Heights come from the composited cache (compositedH), computed
-	// eagerly for all entries so viewport virtualization can preserve
-	// scroll offsets without rebuilding every entry on every tick.
+	// ── Pass 1: compute heights with OffscreenFreeze ──
+	// For entries that have scrolled far out of viewport, skip
+	// re-rendering even if their state changed (spinner, elapsed).
+	// This is the BubbleTea equivalent of Claude Code's OffscreenFreeze:
+	// once a subtree is in scrollback, return the cached element.
+	//
+	// We do this in two sub-passes:
+	//   1a. Quick height-only pass using cached compositedH when available.
+	//   1b. Determine visible range.
+	//   1c. Re-render only entries inside visible range + margin.
 	type entrySlot struct {
 		idx    int // index into m.entries
 		height int // line count including 2-line gap
@@ -2669,11 +2740,20 @@ func (m *Model) refreshViewport(forceBottom bool) {
 		if m.entries[i].Role == "TOOL" {
 			continue
 		}
-		// Ensure compositedH is populated (compositeEntry caches it).
+		// OffscreenFreeze: if we have a cached height, use it without
+		// re-rendering. Only the stream target is exempt (it must stay
+		// live even when off-screen so the first visible token appears
+		// immediately when the user scrolls back).
 		isStreamTarget := m.streaming && i == m.streamTarget
-		m.compositeEntry(i, isStreamTarget)
-
+		if !isStreamTarget && m.entries[i].compositedH > 0 {
+			// Cached height available — skip render for now.
+		} else {
+			m.compositeEntry(i, isStreamTarget)
+		}
 		h := m.entries[i].compositedH
+		if h <= 0 {
+			h = 1 // safety minimum
+		}
 		if len(slots) > 0 {
 			h += 2 // gap between entries ("\n\n")
 		}
@@ -2713,6 +2793,37 @@ func (m *Model) refreshViewport(forceBottom bool) {
 	if firstVisible < 0 {
 		firstVisible = 0
 		lastVisible = len(slots) - 1
+	}
+
+	// ── Pass 2.5: OffscreenFreeze margin ──
+	// Expand the "must render" window by 2x overscan so entries
+	// just outside the visible range still get updated (smooth scroll).
+	// Entries beyond this margin are truly frozen.
+	freezeMargin := overscanLines * 2
+	freezeTop := visibleTop - freezeMargin
+	freezeBottom := visibleBottom + freezeMargin
+	if freezeTop < 0 {
+		freezeTop = 0
+	}
+	if freezeBottom > totalLines {
+		freezeBottom = totalLines
+	}
+	for si, slot := range slots {
+		slotEnd := slot.offset + slot.height
+		inFreezeZone := slotEnd > freezeTop && slot.offset < freezeBottom
+		isStreamTarget := m.streaming && slot.idx == m.streamTarget
+		if (inFreezeZone || isStreamTarget) && m.entries[slot.idx].composited == "" {
+			// Inside freeze zone but never rendered — render now.
+			m.compositeEntry(slot.idx, isStreamTarget)
+			slot.height = m.entries[slot.idx].compositedH
+			if slot.height <= 0 {
+				slot.height = 1
+			}
+			if si > 0 {
+				slot.height += 2
+			}
+			slots[si] = slot
+		}
 	}
 
 	// ── Pass 3: build viewport content with virtual padding ──
@@ -2760,6 +2871,14 @@ func (m *Model) refreshViewport(forceBottom bool) {
 	m.pendingViewportRefresh = false
 	m.pendingViewportEntry = -1
 	m.viewport.SetContent(m.renderedContent)
+
+	// Refresh search matches when content changes.
+	if m.search.Active && m.search.Query != "" {
+		m.search.Matches = searchInContent(m.renderedContent, m.search.Query, m.search.CaseSensitive)
+		if m.search.CurrentIdx >= len(m.search.Matches) {
+			m.search.CurrentIdx = 0
+		}
+	}
 
 	if forceBottom || m.autoFollow {
 		m.viewport.GotoBottom()
@@ -2985,6 +3104,13 @@ func (m Model) View() string {
 	// keep showing through under the highlighted bg.
 	if m.selection.hasSelection() {
 		outputBox = overlaySelection(outputBox, &m.selection, m.viewport.YOffset, m.viewport.Width)
+	}
+
+	// Overlay search highlight matches on top of the viewport.
+	// Search is a screen overlay — matches are found in renderedContent
+	// and highlighted via SGR, not by re-rendering message components.
+	if m.search.Active && m.search.hasMatches() {
+		outputBox = overlaySearchHighlight(outputBox, &m.search, m.viewport.YOffset, m.viewport.Width)
 	}
 
 	inputBox := m.input.View()
