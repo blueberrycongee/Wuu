@@ -15,6 +15,30 @@ func TestNormalizeMessages_empty(t *testing.T) {
 	}
 }
 
+func TestValidateToolCalls_ok(t *testing.T) {
+	if err := ValidateToolCalls([]ToolCall{
+		{ID: "call_1", Name: "a"},
+		{ID: "call_2", Name: "b"},
+	}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestValidateToolCalls_rejectsMissingID(t *testing.T) {
+	if err := ValidateToolCalls([]ToolCall{{ID: "", Name: "a"}}); err == nil {
+		t.Fatal("expected missing id error")
+	}
+}
+
+func TestValidateToolCalls_rejectsDuplicateID(t *testing.T) {
+	if err := ValidateToolCalls([]ToolCall{
+		{ID: "call_1", Name: "a"},
+		{ID: "call_1", Name: "b"},
+	}); err == nil {
+		t.Fatal("expected duplicate id error")
+	}
+}
+
 func TestNormalizeMessages_noToolCalls(t *testing.T) {
 	msgs := []ChatMessage{
 		{Role: "system", Content: "sys"},
@@ -209,6 +233,28 @@ func TestValidateMessageSequence_toolAfterUser(t *testing.T) {
 	}
 	if err := ValidateMessageSequence(msgs); err == nil {
 		t.Fatalf("expected error for tool after user")
+	}
+}
+
+func TestValidateMessageSequence_rejectsAssistantToolCallMissingID(t *testing.T) {
+	msgs := []ChatMessage{
+		{Role: "user", Content: "hello"},
+		{Role: "assistant", Content: "", ToolCalls: []ToolCall{{ID: "", Name: "a"}}},
+	}
+	if err := ValidateMessageSequence(msgs); err == nil {
+		t.Fatal("expected error for assistant tool_call without id")
+	}
+}
+
+func TestValidateMessageSequence_rejectsAssistantToolCallDuplicateIDAcrossTurns(t *testing.T) {
+	msgs := []ChatMessage{
+		{Role: "user", Content: "hello"},
+		{Role: "assistant", Content: "", ToolCalls: []ToolCall{{ID: "call_1", Name: "a"}}},
+		{Role: "tool", ToolCallID: "call_1", Content: "ok"},
+		{Role: "assistant", Content: "", ToolCalls: []ToolCall{{ID: "call_1", Name: "b"}}},
+	}
+	if err := ValidateMessageSequence(msgs); err == nil {
+		t.Fatal("expected error for duplicate tool_call id across turns")
 	}
 }
 

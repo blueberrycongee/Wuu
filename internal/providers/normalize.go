@@ -4,6 +4,22 @@ import (
 	"fmt"
 )
 
+// ValidateToolCalls rejects malformed provider tool-call metadata
+// before it reaches the shared history machinery.
+func ValidateToolCalls(calls []ToolCall) error {
+	seen := make(map[string]struct{}, len(calls))
+	for i, call := range calls {
+		if call.ID == "" {
+			return fmt.Errorf("tool_call %d: missing id", i)
+		}
+		if _, ok := seen[call.ID]; ok {
+			return fmt.Errorf("tool_call %d: duplicate id %q", i, call.ID)
+		}
+		seen[call.ID] = struct{}{}
+	}
+	return nil
+}
+
 // NormalizeMessages ensures every assistant message that contains
 // tool_calls is followed immediately by matching tool results,
 // repairing interleaved history when needed and removing orphan tool
@@ -100,11 +116,22 @@ func NormalizeAndValidateMessages(msgs []ChatMessage) ([]ChatMessage, error) {
 // It is intended for diagnostics and tests, not as a gate (NormalizeMessages
 // should be used to repair sequences instead).
 func ValidateMessageSequence(msgs []ChatMessage) error {
+	declaredToolCalls := make(map[string]int, 8)
 	for i, msg := range msgs {
 		switch msg.Role {
 		case "system":
 			if i > 0 && msgs[i-1].Role != "system" {
 				return fmt.Errorf("message %d: system message must precede all non-system messages", i)
+			}
+		case "assistant":
+			if err := ValidateToolCalls(msg.ToolCalls); err != nil {
+				return fmt.Errorf("message %d: invalid assistant tool_calls: %w", i, err)
+			}
+			for _, tc := range msg.ToolCalls {
+				if prev, ok := declaredToolCalls[tc.ID]; ok {
+					return fmt.Errorf("message %d: tool_call id %q already declared in message %d", i, tc.ID, prev)
+				}
+				declaredToolCalls[tc.ID] = i
 			}
 		case "tool":
 			if i == 0 {

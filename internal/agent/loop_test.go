@@ -583,3 +583,28 @@ func TestRunToolLoop_ReasoningOnlyAnswerStillPersistsAssistantMessage(t *testing
 		t.Fatalf("unexpected reasoning content: %q", got)
 	}
 }
+
+func TestRunToolLoop_RejectsProviderToolCallWithoutID(t *testing.T) {
+	step := &fakeStep{results: []StepResult{{ToolCalls: []providers.ToolCall{{ID: "", Name: "t", Arguments: `{}`}}}}}
+	_, err := RunToolLoop(context.Background(), nil, LoopConfig{Model: "m"}, step)
+	if err == nil {
+		t.Fatal("expected invalid tool_call error")
+	}
+	if !strings.Contains(err.Error(), "provider returned invalid tool_calls") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestRunToolLoop_RejectsDuplicateProviderToolCallIDs(t *testing.T) {
+	step := &fakeStep{results: []StepResult{{ToolCalls: []providers.ToolCall{
+		{ID: "call_1", Name: "a", Arguments: `{}`},
+		{ID: "call_1", Name: "b", Arguments: `{}`},
+	}}}}
+	_, err := RunToolLoop(context.Background(), nil, LoopConfig{Model: "m"}, step)
+	if err == nil {
+		t.Fatal("expected duplicate tool_call id error")
+	}
+	if !strings.Contains(err.Error(), "provider returned invalid tool_calls") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}

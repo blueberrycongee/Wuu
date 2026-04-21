@@ -212,6 +212,14 @@ func RunToolLoop(
 			// collapses any pending estimate into ground truth.
 			usage.RecordResponse(result.Usage)
 		}
+		if err := providers.ValidateToolCalls(result.ToolCalls); err != nil {
+			return LoopResult{
+				NewMessages:      newMessagesForReturn(messages, startLen, historyRewritten),
+				HistoryRewritten: historyRewritten,
+				InputTokens:      totalIn,
+				OutputTokens:     totalOut,
+			}, fmt.Errorf("provider returned invalid tool_calls: %w", err)
+		}
 
 		// Output-token truncation recovery: model hit max_tokens
 		// (Anthropic) / finish_reason=length (OpenAI) without finishing
