@@ -122,6 +122,18 @@ func Run(ctx context.Context, cfg RunConfig, progress chan<- ProgressEvent) {
 		}
 	}
 
+	// Filter warmup/minimal sessions: if the only goal category is "warmup_minimal",
+	// the session had no real analytical value and should be excluded from the report.
+	filteredMetas := metas[:0]
+	for _, m := range metas {
+		if f, ok := facets[m.ID]; ok && isWarmupOnly(f) {
+			delete(facets, m.ID)
+			continue
+		}
+		filteredMetas = append(filteredMetas, m)
+	}
+	metas = filteredMetas
+
 	send(progress, "extracting",
 		fmt.Sprintf("Analysis complete: %d sessions processed", len(facets)), 0.70)
 
@@ -215,4 +227,19 @@ func send(ch chan<- ProgressEvent, phase, detail string, pct float64) {
 
 func sendErr(ch chan<- ProgressEvent, err error) {
 	ch <- ProgressEvent{Phase: "error", Detail: err.Error(), Err: err}
+}
+
+// isWarmupOnly returns true if the facet has exactly one positive goal category
+// and that category is "warmup_minimal", indicating a trivial/test session.
+func isWarmupOnly(f Facet) bool {
+	if len(f.GoalCategories) == 0 {
+		return false
+	}
+	var cats []string
+	for cat, cnt := range f.GoalCategories {
+		if cnt > 0 {
+			cats = append(cats, cat)
+		}
+	}
+	return len(cats) == 1 && cats[0] == "warmup_minimal"
 }

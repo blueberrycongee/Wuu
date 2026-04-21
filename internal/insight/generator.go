@@ -230,8 +230,8 @@ func buildDataContext(agg AggregatedData, facets map[string]Facet) string {
 
 	// Include session summaries.
 	if len(agg.Summaries) > 0 {
-		fmt.Fprintf(&b, "## Recent Session Summaries (up to 30)\n")
-		limit := 30
+		fmt.Fprintf(&b, "## Recent Session Summaries (up to 10)\n")
+		limit := 10
 		if len(agg.Summaries) < limit {
 			limit = len(agg.Summaries)
 		}
@@ -253,8 +253,8 @@ func buildDataContext(agg AggregatedData, facets map[string]Facet) string {
 		}
 	}
 	if len(frictionDetails) > 0 {
-		fmt.Fprintf(&b, "## Friction Details (up to 20)\n")
-		limit := 20
+		fmt.Fprintf(&b, "## Friction Details (up to 5)\n")
+		limit := 5
 		if len(frictionDetails) < limit {
 			limit = len(frictionDetails)
 		}

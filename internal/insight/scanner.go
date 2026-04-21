@@ -243,7 +243,7 @@ func FormatTranscript(sessDir, sessionID string) (string, error) {
 		}
 
 		// Cap total transcript size.
-		if b.Len() > 30000 {
+		if b.Len() > 15000 {
 			b.WriteString("\n... (truncated)\n")
 			return jsonl.ErrStop
 		}
