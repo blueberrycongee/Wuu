@@ -187,6 +187,10 @@ type pendingTurnResult struct {
 	newMsgs              []providers.ChatMessage
 	historyRewritten     bool
 	incrementalPersisted bool
+	// workerResults holds <worker-result> messages that arrived while
+	// this turn was still running. They must be re-injected after a
+	// history rewrite so they are not lost by the compaction.
+	workerResults []providers.ChatMessage
 }
 
 type pendingChatClickState struct {
@@ -967,10 +971,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Inject the worker-result XML into the orchestrator's
 			// next API request as a user-role message.
 			xml := coordinator.FormatWorkerResult(n.Snapshot)
-			m.chatHistory = append(m.chatHistory, providers.ChatMessage{
+			workerMsg := providers.ChatMessage{
 				Role:    "user",
 				Content: xml,
-			})
+			}
+			m.chatHistory = append(m.chatHistory, workerMsg)
+			// If a turn is in flight, also stash the result on the
+			// pendingTurn so it survives a history-rewrite compaction.
+			if m.pendingTurn != nil {
+				m.pendingTurn.workerResults = append(m.pendingTurn.workerResults, workerMsg)
+			}
 			injected = true
 		}
 		// Worker count likely changed — re-layout so the activity
@@ -1015,6 +1025,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				base := make([]providers.ChatMessage, len(m.pendingTurn.newMsgs))
 				copy(base, m.pendingTurn.newMsgs)
 				m.chatHistory = base
+				// Re-append any worker results that arrived while the turn
+				// was running so they are not swallowed by the rewrite.
+				for _, wmsg := range m.pendingTurn.workerResults {
+					m.chatHistory = append(m.chatHistory, wmsg)
+				}
 				rewriteHistory = true
 			default:
 				if !m.pendingTurn.incrementalPersisted {
@@ -2771,9 +2786,7 @@ func (m *Model) relayout() {
 	m.input.SetHeight(m.layout.Input.Height)
 	m.viewport.Width = m.layout.Chat.Width
 	m.viewport.Height = m.layout.Chat.Height
-	m.cachedSep = lipgloss.NewStyle().
-		Foreground(currentTheme.Border).
-		Render(strings.Repeat("─", m.width))
+	m.cachedSep = dividerStyle.Render(strings.Repeat("─", m.width))
 
 	// Invalidate cached renders when chat width changes — text
 	// rendered for the old width wraps incorrectly at the new width.
