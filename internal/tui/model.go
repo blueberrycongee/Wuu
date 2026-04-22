@@ -385,12 +385,16 @@ func NewModel(cfg Config) Model {
 	vp.MouseWheelDelta = 3
 
 	in := defaultInputTextarea
+	workspaceRoot := strings.TrimSpace(cfg.WorkspaceRoot)
+	if workspaceRoot == "" {
+		workspaceRoot = filepath.Dir(cfg.ConfigPath)
+	}
 
 	m := Model{
 		provider:             cfg.Provider,
 		modelName:            cfg.Model,
 		configPath:           cfg.ConfigPath,
-		workspaceRoot:        filepath.Dir(cfg.ConfigPath),
+		workspaceRoot:        workspaceRoot,
 		memoryPath:           cfg.MemoryPath,
 		sessionDir:           cfg.SessionDir,
 		streamRunner:         cfg.StreamRunner,

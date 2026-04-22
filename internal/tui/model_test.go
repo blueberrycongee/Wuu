@@ -120,6 +120,19 @@ func TestView_ProcessPanelAppearsAndHides(t *testing.T) {
 	}
 }
 
+func TestNewModel_UsesWorkspaceRootOverride(t *testing.T) {
+	m := NewModel(Config{
+		Provider:      "test",
+		Model:         "test-model",
+		WorkspaceRoot: "/tmp/workspace-root",
+		ConfigPath:    "/tmp/config-dir/.wuu.json",
+	})
+
+	if m.workspaceRoot != "/tmp/workspace-root" {
+		t.Fatalf("expected workspaceRoot override, got %q", m.workspaceRoot)
+	}
+}
+
 func TestView_WorkerAndProcessPanelsCanRenderTogether(t *testing.T) {
 	mgr := newTestProcessManager(t)
 	startTestProcess(t, mgr, "sleep 30", processruntime.OwnerMainAgent, "main", processruntime.LifecycleSession)

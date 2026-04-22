@@ -550,6 +550,7 @@ func runTUI(args []string) error {
 	cfgUI := tui.Config{
 		Provider:       resolvedName,
 		Model:          providerCfg.Model,
+		WorkspaceRoot:  rootDir,
 		ConfigPath:     configPath,
 		MemoryPath:     resolvedMemoryPath,
 		SessionDir:     sessDir,

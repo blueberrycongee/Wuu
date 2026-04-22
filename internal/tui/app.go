@@ -20,6 +20,7 @@ import (
 type Config struct {
 	Provider         string
 	Model            string
+	WorkspaceRoot    string
 	ConfigPath       string
 	MemoryPath       string
 	SessionDir       string // .wuu/sessions/ directory for session isolation
