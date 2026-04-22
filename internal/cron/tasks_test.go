@@ -55,6 +55,51 @@ func TestTaskStore_MaxJobs(t *testing.T) {
 	}
 }
 
+func TestSessionTaskStore_CRUD(t *testing.T) {
+	store := NewSessionTaskStore(t.TempDir())
+
+	task := Task{
+		ID:        "session-1",
+		Cron:      "*/5 * * * *",
+		Prompt:    "check deploy",
+		CreatedAt: time.Now().UnixMilli(),
+		Recurring: true,
+	}
+
+	if err := store.Add(task); err != nil {
+		t.Fatalf("Add error: %v", err)
+	}
+
+	list, err := store.List()
+	if err != nil {
+		t.Fatalf("List error: %v", err)
+	}
+	if len(list) != 1 {
+		t.Fatalf("expected 1 task, got %d", len(list))
+	}
+
+	if err := store.UpdateLastFired([]string{"session-1"}, 123); err != nil {
+		t.Fatalf("UpdateLastFired error: %v", err)
+	}
+
+	list, err = store.List()
+	if err != nil {
+		t.Fatalf("List after update error: %v", err)
+	}
+	if list[0].LastFiredAt != 123 {
+		t.Fatalf("expected LastFiredAt=123, got %d", list[0].LastFiredAt)
+	}
+
+	if err := store.Remove("session-1"); err != nil {
+		t.Fatalf("Remove error: %v", err)
+	}
+
+	list, _ = store.List()
+	if len(list) != 0 {
+		t.Fatalf("expected 0 tasks after remove, got %d", len(list))
+	}
+}
+
 func TestJitteredNextRun_recurring(t *testing.T) {
 	ce, _ := ParseCronExpression("*/5 * * * *")
 	now := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)

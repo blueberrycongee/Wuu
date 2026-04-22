@@ -81,7 +81,7 @@ func init() {
 		{Name: "logs", Description: "Show recent output from a managed background process", ArgHint: "<id-or-substring>", InlineArgs: true, Type: cmdTypeLocal, Execute: cmdLogs},
 		{Name: "cleanup-worktrees", Description: "Remove all sub-agent worktrees for this session", Type: cmdTypeLocal, Execute: cmdCleanupWorktrees},
 		{Name: "insight", Description: "Session stats and diagnostics", Type: cmdTypeLocal, Execute: cmdInsight},
-		{Name: "loop", Description: "Create a scheduled recurring task", ArgHint: "<interval> <prompt>", InlineArgs: true, Type: cmdTypeLocal, Execute: cmdLoop},
+		{Name: "loop", Description: "Create a session-only recurring task", ArgHint: "<interval> <prompt>", InlineArgs: true, Type: cmdTypeLocal, Execute: cmdLoop},
 		{Name: "tasks", Description: "List scheduled tasks", Type: cmdTypeLocal, Execute: cmdTasks},
 		{Name: "exit", Aliases: []string{"quit"}, Description: "Exit wuu", Type: cmdTypeLocal, Execute: cmdExit},
 	}
@@ -832,7 +832,7 @@ func cmdExit(_ string, _ *Model) string {
 func cmdLoop(args string, m *Model) string {
 	args = strings.TrimSpace(args)
 	if args == "" {
-		return "usage: /loop <interval> <prompt>\n  interval: 5m, 2h, 1d (default 10m)\n  example: /loop 5m check the deploy"
+		return "usage: /loop <interval> <prompt>\n  interval: 5m, 2h, 1d (default 10m)\n  example: /loop 5m check the deploy\n  note: session-only, stops when this wuu process exits"
 	}
 
 	interval, prompt := parseLoopArgs(args)
@@ -845,9 +845,11 @@ func cmdLoop(args string, m *Model) string {
 		return fmt.Sprintf("loop: invalid interval %q", interval)
 	}
 
-	store := cron.NewTaskStore(filepath.Join(m.workspaceRoot, ".wuu", "scheduled_tasks.json"))
-	tasks, _ := store.List()
-	if len(tasks) >= cron.MaxJobs {
+	fileStore := cron.NewTaskStore(filepath.Join(m.workspaceRoot, ".wuu", "scheduled_tasks.json"))
+	sessionStore := cron.NewSessionTaskStore(m.workspaceRoot)
+	fileTasks, _ := fileStore.List()
+	sessionTasks, _ := sessionStore.List()
+	if len(fileTasks)+len(sessionTasks) >= cron.MaxJobs {
 		return fmt.Sprintf("loop: maximum number of scheduled tasks reached (%d)", cron.MaxJobs)
 	}
 
@@ -858,29 +860,34 @@ func cmdLoop(args string, m *Model) string {
 		CreatedAt: time.Now().UnixMilli(),
 		Recurring: true,
 	}
-	if err := store.Add(task); err != nil {
+	if err := sessionStore.Add(task); err != nil {
 		return fmt.Sprintf("loop: failed to save task: %v", err)
 	}
 
 	// Queue the prompt for immediate execution (UX: don't wait for first cron fire).
 	m.messageQueue = append(m.messageQueue, queuedMessage{Text: prompt})
 
-	return fmt.Sprintf("loop: scheduling '%s' every %s (%s)", prompt, interval, cronStr)
+	return fmt.Sprintf("loop: scheduling '%s' every %s (%s) in this session only", prompt, interval, cronStr)
 }
 
 func cmdTasks(_ string, m *Model) string {
-	store := cron.NewTaskStore(filepath.Join(m.workspaceRoot, ".wuu", "scheduled_tasks.json"))
-	tasks, err := store.List()
+	fileStore := cron.NewTaskStore(filepath.Join(m.workspaceRoot, ".wuu", "scheduled_tasks.json"))
+	sessionStore := cron.NewSessionTaskStore(m.workspaceRoot)
+	fileTasks, err := fileStore.List()
 	if err != nil {
 		return fmt.Sprintf("tasks: %v", err)
 	}
-	if len(tasks) == 0 {
+	sessionTasks, err := sessionStore.List()
+	if err != nil {
+		return fmt.Sprintf("tasks: %v", err)
+	}
+	if len(fileTasks)+len(sessionTasks) == 0 {
 		return "tasks: no scheduled tasks"
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "scheduled tasks (%d):\n", len(tasks))
+	fmt.Fprintf(&b, "scheduled tasks (%d):\n", len(fileTasks)+len(sessionTasks))
 	now := time.Now().UnixMilli()
-	for _, task := range tasks {
+	appendTask := func(task cron.Task, sessionOnly bool) {
 		typeLabel := "one-shot"
 		if task.Recurring {
 			typeLabel = "recurring"
@@ -888,7 +895,16 @@ func cmdTasks(_ string, m *Model) string {
 		if cron.IsExpired(task, now) {
 			typeLabel += " [expired]"
 		}
+		if sessionOnly {
+			typeLabel += " [session-only]"
+		}
 		fmt.Fprintf(&b, "  %s — %s — %s: %s\n", task.ID, task.Cron, typeLabel, stringutil.Truncate(task.Prompt, 40, "..."))
+	}
+	for _, task := range fileTasks {
+		appendTask(task, false)
+	}
+	for _, task := range sessionTasks {
+		appendTask(task, true)
 	}
 	return strings.TrimRight(b.String(), "\n")
 }

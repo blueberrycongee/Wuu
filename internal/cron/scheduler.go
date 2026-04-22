@@ -6,10 +6,11 @@ import (
 )
 
 type SchedulerConfig struct {
-	Store    *TaskStore
-	OnFire   func(prompt string)
-	IsOwner  func() bool
-	IsKilled func() bool
+	Store        *TaskStore
+	SessionStore *SessionTaskStore
+	OnFire       func(prompt string)
+	IsOwner      func() bool
+	IsKilled     func() bool
 }
 
 type Scheduler struct {
@@ -60,88 +61,143 @@ func (s *Scheduler) Stop() {
 }
 
 func (s *Scheduler) check() {
-	if s.cfg.IsOwner != nil && !s.cfg.IsOwner() {
-		return
-	}
-
-	tasks, err := s.cfg.Store.List()
-	if err != nil {
-		return
-	}
-
 	now := time.Now()
-	var toUpdate []string
-	var toRemove []string
+	ownsDurableTasks := true
+	if s.cfg.IsOwner != nil {
+		ownsDurableTasks = s.cfg.IsOwner()
+	}
 
-	for _, task := range tasks {
+	var durableTasks []Task
+	if ownsDurableTasks && s.cfg.Store != nil {
+		tasks, err := s.cfg.Store.List()
+		if err != nil {
+			return
+		}
+		durableTasks = tasks
+	}
+
+	var sessionTasks []Task
+	if s.cfg.SessionStore != nil {
+		tasks, err := s.cfg.SessionStore.List()
+		if err != nil {
+			return
+		}
+		sessionTasks = tasks
+	}
+
+	var durableToUpdate []string
+	var durableToRemove []string
+	var sessionToUpdate []string
+	var sessionToRemove []string
+
+	process := func(task Task, sessionOnly bool) {
 		if s.cfg.IsKilled() {
 			return
 		}
+		taskKey := task.ID
+		if sessionOnly {
+			taskKey = "session:" + task.ID
+		}
 
 		s.mu.Lock()
-		if _, busy := s.inFlight[task.ID]; busy {
+		if _, busy := s.inFlight[taskKey]; busy {
 			s.mu.Unlock()
-			continue
+			return
 		}
 		s.mu.Unlock()
 
 		if task.Recurring && IsExpired(task, now.UnixMilli()) {
-			toRemove = append(toRemove, task.ID)
-			continue
+			if sessionOnly {
+				sessionToRemove = append(sessionToRemove, task.ID)
+			} else {
+				durableToRemove = append(durableToRemove, task.ID)
+			}
+			return
 		}
 
 		next, err := task.NextFireAt()
 		if err != nil {
-			continue
+			return
 		}
 
 		if now.Before(next) {
-			continue
+			return
 		}
 
 		s.mu.Lock()
-		s.inFlight[task.ID] = struct{}{}
+		s.inFlight[taskKey] = struct{}{}
 		s.mu.Unlock()
 
-		go func(t Task) {
+		go func(t Task, key string) {
 			defer func() {
 				s.mu.Lock()
-				delete(s.inFlight, t.ID)
+				delete(s.inFlight, key)
 				s.mu.Unlock()
 			}()
 			if s.cfg.OnFire != nil {
 				s.cfg.OnFire(t.Prompt)
 			}
-		}(task)
+		}(task, taskKey)
 
 		if task.Recurring {
-			toUpdate = append(toUpdate, task.ID)
+			if sessionOnly {
+				sessionToUpdate = append(sessionToUpdate, task.ID)
+			} else {
+				durableToUpdate = append(durableToUpdate, task.ID)
+			}
 		} else {
-			toRemove = append(toRemove, task.ID)
+			if sessionOnly {
+				sessionToRemove = append(sessionToRemove, task.ID)
+			} else {
+				durableToRemove = append(durableToRemove, task.ID)
+			}
 		}
 	}
 
-	if len(toUpdate) > 0 {
-		s.cfg.Store.UpdateLastFired(toUpdate, now.UnixMilli())
+	for _, task := range durableTasks {
+		process(task, false)
 	}
-	if len(toRemove) > 0 {
-		s.cfg.Store.Remove(toRemove...)
+	for _, task := range sessionTasks {
+		process(task, true)
+	}
+
+	if len(durableToUpdate) > 0 && s.cfg.Store != nil {
+		s.cfg.Store.UpdateLastFired(durableToUpdate, now.UnixMilli())
+	}
+	if len(durableToRemove) > 0 && s.cfg.Store != nil {
+		s.cfg.Store.Remove(durableToRemove...)
+	}
+	if len(sessionToUpdate) > 0 && s.cfg.SessionStore != nil {
+		s.cfg.SessionStore.UpdateLastFired(sessionToUpdate, now.UnixMilli())
+	}
+	if len(sessionToRemove) > 0 && s.cfg.SessionStore != nil {
+		s.cfg.SessionStore.Remove(sessionToRemove...)
 	}
 }
 
 func (s *Scheduler) GetNextFireTime() time.Time {
-	tasks, err := s.cfg.Store.List()
-	if err != nil {
-		return time.Time{}
-	}
 	var earliest time.Time
-	for _, task := range tasks {
-		next, err := task.NextFireAt()
-		if err != nil {
-			continue
+	appendEarliest := func(tasks []Task) {
+		for _, task := range tasks {
+			next, err := task.NextFireAt()
+			if err != nil {
+				continue
+			}
+			if earliest.IsZero() || next.Before(earliest) {
+				earliest = next
+			}
 		}
-		if earliest.IsZero() || next.Before(earliest) {
-			earliest = next
+	}
+	if s.cfg.Store != nil {
+		tasks, err := s.cfg.Store.List()
+		if err == nil {
+			appendEarliest(tasks)
+		}
+	}
+	if s.cfg.SessionStore != nil {
+		tasks, err := s.cfg.SessionStore.List()
+		if err == nil {
+			appendEarliest(tasks)
 		}
 	}
 	return earliest

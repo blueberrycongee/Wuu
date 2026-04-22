@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync"
 	"time"
 )
 
@@ -43,8 +45,27 @@ type TaskStore struct {
 	path string
 }
 
+type SessionTaskStore struct {
+	namespace string
+}
+
+var sessionTaskState = struct {
+	mu    sync.Mutex
+	tasks map[string][]Task
+}{
+	tasks: make(map[string][]Task),
+}
+
 func NewTaskStore(path string) *TaskStore {
 	return &TaskStore{path: path}
+}
+
+func NewSessionTaskStore(namespace string) *SessionTaskStore {
+	ns := strings.TrimSpace(namespace)
+	if ns == "" {
+		ns = "default"
+	}
+	return &SessionTaskStore{namespace: ns}
 }
 
 func (s *TaskStore) load() ([]Task, error) {
@@ -127,6 +148,76 @@ func (s *TaskStore) UpdateLastFired(ids []string, firedAt int64) error {
 		}
 	}
 	return s.save(tasks)
+}
+
+func (s *SessionTaskStore) List() ([]Task, error) {
+	sessionTaskState.mu.Lock()
+	defer sessionTaskState.mu.Unlock()
+
+	tasks := sessionTaskState.tasks[s.namespace]
+	out := make([]Task, len(tasks))
+	copy(out, tasks)
+	return out, nil
+}
+
+func (s *SessionTaskStore) Add(task Task) error {
+	sessionTaskState.mu.Lock()
+	defer sessionTaskState.mu.Unlock()
+
+	tasks := sessionTaskState.tasks[s.namespace]
+	if len(tasks) >= MaxJobs {
+		return fmt.Errorf("maximum number of scheduled tasks reached (%d)", MaxJobs)
+	}
+	tasks = append(tasks, task)
+	sessionTaskState.tasks[s.namespace] = tasks
+	return nil
+}
+
+func (s *SessionTaskStore) Remove(ids ...string) error {
+	sessionTaskState.mu.Lock()
+	defer sessionTaskState.mu.Unlock()
+
+	idSet := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		idSet[id] = struct{}{}
+	}
+
+	tasks := sessionTaskState.tasks[s.namespace]
+	filtered := make([]Task, 0, len(tasks))
+	for _, t := range tasks {
+		if _, ok := idSet[t.ID]; !ok {
+			filtered = append(filtered, t)
+		}
+	}
+	if len(filtered) == 0 {
+		delete(sessionTaskState.tasks, s.namespace)
+		return nil
+	}
+	sessionTaskState.tasks[s.namespace] = filtered
+	return nil
+}
+
+func (s *SessionTaskStore) UpdateLastFired(ids []string, firedAt int64) error {
+	sessionTaskState.mu.Lock()
+	defer sessionTaskState.mu.Unlock()
+
+	idSet := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		idSet[id] = struct{}{}
+	}
+
+	tasks := sessionTaskState.tasks[s.namespace]
+	for i := range tasks {
+		if _, ok := idSet[tasks[i].ID]; ok {
+			tasks[i].LastFiredAt = firedAt
+		}
+	}
+	if len(tasks) == 0 {
+		delete(sessionTaskState.tasks, s.namespace)
+		return nil
+	}
+	sessionTaskState.tasks[s.namespace] = tasks
+	return nil
 }
 
 func GenerateTaskID() string {

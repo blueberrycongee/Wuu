@@ -569,10 +569,12 @@ func (m Model) loadMemory() Model {
 	schedPath := filepath.Join(m.workspaceRoot, ".wuu", "scheduled_tasks.json")
 	lockPath := filepath.Join(m.workspaceRoot, ".wuu", "scheduled_tasks.lock")
 	schedStore := cron.NewTaskStore(schedPath)
+	sessionStore := cron.NewSessionTaskStore(m.workspaceRoot)
 	m.cronFireCh = make(chan string, 8)
 	m.schedulerLock = cron.NewLock(lockPath, m.sessionID)
 	m.scheduler = cron.NewScheduler(cron.SchedulerConfig{
-		Store: schedStore,
+		Store:        schedStore,
+		SessionStore: sessionStore,
 		OnFire: func(p string) {
 			select {
 			case m.cronFireCh <- p:

@@ -80,3 +80,59 @@ func TestScheduler_recurringUpdatesLastFired(t *testing.T) {
 		t.Fatal("expected LastFiredAt to be updated")
 	}
 }
+
+func TestScheduler_sessionTasksFireWithoutOwnerLock(t *testing.T) {
+	fileStore := NewTaskStore(filepath.Join(t.TempDir(), "tasks.json"))
+	sessionStore := NewSessionTaskStore(t.TempDir())
+
+	if err := fileStore.Add(Task{
+		ID:        "durable-1",
+		Cron:      "* * * * *",
+		Prompt:    "durable",
+		CreatedAt: time.Now().Add(-2 * time.Minute).UnixMilli(),
+		Recurring: false,
+	}); err != nil {
+		t.Fatalf("fileStore.Add: %v", err)
+	}
+	if err := sessionStore.Add(Task{
+		ID:        "session-1",
+		Cron:      "* * * * *",
+		Prompt:    "session",
+		CreatedAt: time.Now().Add(-2 * time.Minute).UnixMilli(),
+		Recurring: false,
+	}); err != nil {
+		t.Fatalf("sessionStore.Add: %v", err)
+	}
+
+	var fired []string
+	done := make(chan struct{}, 1)
+	s := NewScheduler(SchedulerConfig{
+		Store:        fileStore,
+		SessionStore: sessionStore,
+		OnFire: func(prompt string) {
+			fired = append(fired, prompt)
+			done <- struct{}{}
+		},
+		IsOwner: func() bool { return false },
+	})
+
+	s.check()
+	select {
+	case <-done:
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("timed out waiting for session task fire")
+	}
+
+	if len(fired) != 1 || fired[0] != "session" {
+		t.Fatalf("expected only session task to fire, got %#v", fired)
+	}
+
+	fileTasks, _ := fileStore.List()
+	if len(fileTasks) != 1 {
+		t.Fatalf("expected durable task to remain untouched, got %d", len(fileTasks))
+	}
+	sessionTasks, _ := sessionStore.List()
+	if len(sessionTasks) != 0 {
+		t.Fatalf("expected session task removed after fire, got %d", len(sessionTasks))
+	}
+}
