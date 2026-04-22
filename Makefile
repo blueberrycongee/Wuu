@@ -14,13 +14,16 @@ zig-lib:
 	cd internal/jsonl/zig && zig build
 
 build: zig-lib
-	go build -ldflags "$(LDFLAGS)" -o bin/wuu ./cmd/wuu
+	go build -tags zig -ldflags "$(LDFLAGS)" -o bin/wuu ./cmd/wuu
 
 install: zig-lib
-	go install -ldflags "$(LDFLAGS)" ./cmd/wuu
+	go install -tags zig -ldflags "$(LDFLAGS)" ./cmd/wuu
 
 test:
 	go test ./... -count=1
+
+test-zig: zig-lib
+	go test -tags zig ./internal/jsonl/... -count=1
 
 vet:
 	go vet ./...
