@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -196,6 +197,75 @@ func TestCmdTasksShowsSessionOnlyTasks(t *testing.T) {
 	out := cmdTasks("", &m)
 	if !strings.Contains(out, "[session-only]") {
 		t.Fatalf("expected session-only label, got %q", out)
+	}
+}
+
+func TestCmdUnloopRemovesTaskAndQueuedRun(t *testing.T) {
+	root := t.TempDir()
+	store := cron.NewSessionTaskStore(root)
+	durablePath := filepath.Join(root, ".wuu", "scheduled_tasks.json")
+	task := cron.Task{
+		ID:        "abc123",
+		Cron:      "*/5 * * * *",
+		Prompt:    "check deploy",
+		CreatedAt: 1,
+		Recurring: true,
+	}
+	if err := store.Add(task); err != nil {
+		t.Fatalf("store.Add: %v", err)
+	}
+
+	m := NewModel(Config{
+		Provider:      "test",
+		Model:         "test-model",
+		WorkspaceRoot: root,
+		ConfigPath:    filepath.Join(root, ".wuu.json"),
+		StreamRunner: &agent.StreamRunner{
+			Client: &echoStreamClient{answer: func(_ []providers.ChatMessage) string { return "" }},
+			Model:  "test-model",
+		},
+	})
+	m.messageQueue = []queuedMessage{
+		{Text: "check deploy", ScheduledTaskID: "abc123"},
+		{Text: "keep me"},
+	}
+
+	out := cmdUnloop("abc123", &m)
+	if !strings.Contains(out, "removed 1 queued run") {
+		t.Fatalf("expected queued run cleanup message, got %q", out)
+	}
+
+	tasks, err := store.List()
+	if err != nil {
+		t.Fatalf("store.List: %v", err)
+	}
+	if len(tasks) != 0 {
+		t.Fatalf("expected task removed, got %d", len(tasks))
+	}
+	if len(m.messageQueue) != 1 || m.messageQueue[0].Text != "keep me" {
+		t.Fatalf("expected unrelated queued message preserved, got %#v", m.messageQueue)
+	}
+	if _, err := os.Stat(durablePath); !os.IsNotExist(err) {
+		t.Fatalf("expected session-only unloop not to create durable task file, got err=%v", err)
+	}
+}
+
+func TestCmdUnloopRejectsUnknownTask(t *testing.T) {
+	root := t.TempDir()
+	m := NewModel(Config{
+		Provider:      "test",
+		Model:         "test-model",
+		WorkspaceRoot: root,
+		ConfigPath:    filepath.Join(root, ".wuu.json"),
+		StreamRunner: &agent.StreamRunner{
+			Client: &echoStreamClient{answer: func(_ []providers.ChatMessage) string { return "" }},
+			Model:  "test-model",
+		},
+	})
+
+	out := cmdUnloop("missing", &m)
+	if !strings.Contains(out, `no scheduled task with id "missing"`) {
+		t.Fatalf("unexpected response: %q", out)
 	}
 }
 

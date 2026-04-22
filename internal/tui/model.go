@@ -2330,6 +2330,27 @@ func summarizeQueuedMessages(messages []queuedMessage) string {
 	return strings.Join(parts, " | ")
 }
 
+func (m *Model) removeQueuedScheduledTaskMessages(taskID string) int {
+	if taskID == "" || len(m.messageQueue) == 0 {
+		return 0
+	}
+
+	filtered := m.messageQueue[:0]
+	removed := 0
+	for _, msg := range m.messageQueue {
+		if msg.ScheduledTaskID == taskID {
+			removed++
+			continue
+		}
+		filtered = append(filtered, msg)
+	}
+	if removed == 0 {
+		return 0
+	}
+	m.messageQueue = filtered
+	return removed
+}
+
 func stripUserImagePlaceholderLines(content string) string {
 	lines := strings.Split(content, "\n")
 	kept := make([]string, 0, len(lines))

@@ -82,6 +82,7 @@ func init() {
 		{Name: "cleanup-worktrees", Description: "Remove all sub-agent worktrees for this session", Type: cmdTypeLocal, Execute: cmdCleanupWorktrees},
 		{Name: "insight", Description: "Session stats and diagnostics", Type: cmdTypeLocal, Execute: cmdInsight},
 		{Name: "loop", Description: "Create a session-only recurring task", ArgHint: "<interval> <prompt>", InlineArgs: true, Type: cmdTypeLocal, Execute: cmdLoop},
+		{Name: "unloop", Description: "Cancel a scheduled task by id", ArgHint: "<task-id>", InlineArgs: true, Type: cmdTypeLocal, Execute: cmdUnloop},
 		{Name: "tasks", Description: "List scheduled tasks", Type: cmdTypeLocal, Execute: cmdTasks},
 		{Name: "exit", Aliases: []string{"quit"}, Description: "Exit wuu", Type: cmdTypeLocal, Execute: cmdExit},
 	}
@@ -871,6 +872,59 @@ func cmdLoop(args string, m *Model) string {
 	})
 
 	return fmt.Sprintf("loop: scheduling '%s' every %s (%s) in this session only", prompt, interval, cronStr)
+}
+
+func cmdUnloop(args string, m *Model) string {
+	id := strings.TrimSpace(args)
+	if id == "" {
+		return "usage: /unloop <task-id>"
+	}
+
+	fileStore := cron.NewTaskStore(filepath.Join(m.workspaceRoot, ".wuu", "scheduled_tasks.json"))
+	sessionStore := cron.NewSessionTaskStore(m.workspaceRoot)
+	fileTasks, err := fileStore.List()
+	if err != nil {
+		return fmt.Sprintf("unloop: %v", err)
+	}
+	sessionTasks, err := sessionStore.List()
+	if err != nil {
+		return fmt.Sprintf("unloop: %v", err)
+	}
+
+	foundInFile := false
+	for _, task := range fileTasks {
+		if task.ID == id {
+			foundInFile = true
+			break
+		}
+	}
+	foundInSession := false
+	for _, task := range sessionTasks {
+		if task.ID == id {
+			foundInSession = true
+			break
+		}
+	}
+	if !foundInFile && !foundInSession {
+		return fmt.Sprintf("unloop: no scheduled task with id %q", id)
+	}
+
+	if foundInFile {
+		if err := fileStore.Remove(id); err != nil {
+			return fmt.Sprintf("unloop: %v", err)
+		}
+	}
+	if foundInSession {
+		if err := sessionStore.Remove(id); err != nil {
+			return fmt.Sprintf("unloop: %v", err)
+		}
+	}
+
+	removedQueued := m.removeQueuedScheduledTaskMessages(id)
+	if removedQueued > 0 {
+		return fmt.Sprintf("unloop: cancelled %s and removed %d queued run(s)", id, removedQueued)
+	}
+	return fmt.Sprintf("unloop: cancelled %s", id)
 }
 
 func cmdTasks(_ string, m *Model) string {
