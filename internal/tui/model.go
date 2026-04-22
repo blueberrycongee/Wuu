@@ -64,7 +64,7 @@ type ctrlCResetMsg struct{}
 type queueDrainMsg struct{}
 
 type cronFireMsg struct {
-	prompt string
+	task cron.Task
 }
 
 type inlineSpinMsg struct{}
@@ -183,8 +183,9 @@ type transcriptEntry struct {
 }
 
 type queuedMessage struct {
-	Text   string
-	Images []providers.InputImage
+	Text            string
+	Images          []providers.InputImage
+	ScheduledTaskID string
 }
 
 type pendingTurnResult struct {
@@ -226,7 +227,7 @@ type Model struct {
 
 	// Cron scheduler: fires scheduled prompts into messageQueue.
 	scheduler     *cron.Scheduler
-	cronFireCh    chan string
+	cronFireCh    chan cron.Task
 	schedulerLock *cron.Lock
 
 	// Auto-resume state: when a worker completes while the main agent
@@ -570,14 +571,14 @@ func (m Model) loadMemory() Model {
 	lockPath := filepath.Join(m.workspaceRoot, ".wuu", "scheduled_tasks.lock")
 	schedStore := cron.NewTaskStore(schedPath)
 	sessionStore := cron.NewSessionTaskStore(m.workspaceRoot)
-	m.cronFireCh = make(chan string, 8)
+	m.cronFireCh = make(chan cron.Task, 8)
 	m.schedulerLock = cron.NewLock(lockPath, m.sessionID)
 	m.scheduler = cron.NewScheduler(cron.SchedulerConfig{
 		Store:        schedStore,
 		SessionStore: sessionStore,
-		OnFire: func(p string) {
+		OnFire: func(task cron.Task) {
 			select {
-			case m.cronFireCh <- p:
+			case m.cronFireCh <- task:
 			default:
 			}
 		},
@@ -758,9 +759,9 @@ func waitInsightEvent(ch <-chan insight.ProgressEvent) tea.Cmd {
 	}
 }
 
-func waitCronFire(ch <-chan string) tea.Cmd {
+func waitCronFire(ch <-chan cron.Task) tea.Cmd {
 	return func() tea.Msg {
-		return cronFireMsg{prompt: <-ch}
+		return cronFireMsg{task: <-ch}
 	}
 }
 
@@ -1158,7 +1159,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case cronFireMsg:
 		m.appendEntry("system", fmt.Sprintf("Running scheduled task (%s)", time.Now().Format("Jan 2 3:04pm")))
-		m.messageQueue = append(m.messageQueue, queuedMessage{Text: msg.prompt})
+		m.messageQueue = append(m.messageQueue, queuedMessage{
+			Text:            msg.task.Prompt,
+			ScheduledTaskID: msg.task.ID,
+		})
 		return m, waitCronFire(m.cronFireCh)
 
 	case streamEventMsg:

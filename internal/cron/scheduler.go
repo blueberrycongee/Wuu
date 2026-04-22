@@ -8,7 +8,7 @@ import (
 type SchedulerConfig struct {
 	Store        *TaskStore
 	SessionStore *SessionTaskStore
-	OnFire       func(prompt string)
+	OnFire       func(task Task)
 	IsOwner      func() bool
 	IsKilled     func() bool
 }
@@ -135,7 +135,7 @@ func (s *Scheduler) check() {
 				s.mu.Unlock()
 			}()
 			if s.cfg.OnFire != nil {
-				s.cfg.OnFire(t.Prompt)
+				s.cfg.OnFire(t)
 			}
 		}(task, taskKey)
 

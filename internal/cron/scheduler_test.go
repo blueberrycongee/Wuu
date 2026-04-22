@@ -11,7 +11,10 @@ func TestScheduler_fireOneShot(t *testing.T) {
 	store := NewTaskStore(filepath.Join(t.TempDir(), "tasks.json"))
 
 	var fired atomic.Int32
-	onFire := func(prompt string) {
+	onFire := func(task Task) {
+		if task.Prompt == "" {
+			t.Fatal("expected fired task prompt")
+		}
 		fired.Add(1)
 	}
 
@@ -51,7 +54,7 @@ func TestScheduler_recurringUpdatesLastFired(t *testing.T) {
 	var fired atomic.Int32
 	s := NewScheduler(SchedulerConfig{
 		Store:   store,
-		OnFire:  func(string) { fired.Add(1) },
+		OnFire:  func(Task) { fired.Add(1) },
 		IsOwner: func() bool { return true },
 	})
 
@@ -109,8 +112,8 @@ func TestScheduler_sessionTasksFireWithoutOwnerLock(t *testing.T) {
 	s := NewScheduler(SchedulerConfig{
 		Store:        fileStore,
 		SessionStore: sessionStore,
-		OnFire: func(prompt string) {
-			fired = append(fired, prompt)
+		OnFire: func(task Task) {
+			fired = append(fired, task.Prompt)
 			done <- struct{}{}
 		},
 		IsOwner: func() bool { return false },

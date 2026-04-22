@@ -161,6 +161,12 @@ func TestCmdLoopStoresSessionOnlyTask(t *testing.T) {
 	if len(sessionTasks) != 1 {
 		t.Fatalf("expected 1 session task, got %d", len(sessionTasks))
 	}
+	if len(m.messageQueue) != 1 {
+		t.Fatalf("expected 1 queued message, got %d", len(m.messageQueue))
+	}
+	if m.messageQueue[0].ScheduledTaskID != sessionTasks[0].ID {
+		t.Fatalf("expected queued message to track task id %q, got %q", sessionTasks[0].ID, m.messageQueue[0].ScheduledTaskID)
+	}
 }
 
 func TestCmdTasksShowsSessionOnlyTasks(t *testing.T) {

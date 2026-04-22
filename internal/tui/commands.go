@@ -865,7 +865,10 @@ func cmdLoop(args string, m *Model) string {
 	}
 
 	// Queue the prompt for immediate execution (UX: don't wait for first cron fire).
-	m.messageQueue = append(m.messageQueue, queuedMessage{Text: prompt})
+	m.messageQueue = append(m.messageQueue, queuedMessage{
+		Text:            prompt,
+		ScheduledTaskID: task.ID,
+	})
 
 	return fmt.Sprintf("loop: scheduling '%s' every %s (%s) in this session only", prompt, interval, cronStr)
 }
