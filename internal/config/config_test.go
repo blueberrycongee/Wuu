@@ -122,6 +122,29 @@ func TestDefaultSystemPrompt_ToolUsingMainAgent(t *testing.T) {
 	}
 }
 
+func TestDefaultSystemPrompt_ToolDiscipline(t *testing.T) {
+	prompt := Default().Agent.SystemPrompt
+	if !strings.Contains(prompt, "in parallel") {
+		t.Fatalf("default system prompt must encourage parallel tool calls: %q", prompt)
+	}
+	if !strings.Contains(prompt, "non-interactive") {
+		t.Fatalf("default system prompt must teach non-interactive shell: %q", prompt)
+	}
+	if !strings.Contains(prompt, "git commit -e") {
+		t.Fatalf("default system prompt must forbid interactive git: %q", prompt)
+	}
+}
+
+func TestDefaultSystemPrompt_CommunicationStyle(t *testing.T) {
+	prompt := Default().Agent.SystemPrompt
+	if !strings.Contains(prompt, "short sentence") {
+		t.Fatalf("default system prompt must teach proactive communication: %q", prompt)
+	}
+	if !strings.Contains(prompt, "No fluff") {
+		t.Fatalf("default system prompt must forbid fluff: %q", prompt)
+	}
+}
+
 func TestDefaultSystemPrompt_CommentDiscipline(t *testing.T) {
 	prompt := Default().Agent.SystemPrompt
 	for _, want := range []string{
