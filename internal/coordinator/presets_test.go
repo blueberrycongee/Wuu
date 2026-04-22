@@ -111,6 +111,20 @@ func TestSystemPromptPreamble_ContainsHonestyRules(t *testing.T) {
 	}
 }
 
+func TestSystemPromptPreamble_ContainsDelegationDiscipline(t *testing.T) {
+	preamble := SystemPromptPreamble()
+	for _, want := range []string{
+		"trivial tasks",
+		"higher-level work",
+		"critical path",
+		"blocks your immediate next step",
+	} {
+		if !strings.Contains(preamble, want) {
+			t.Errorf("SystemPromptPreamble missing delegation discipline %q", want)
+		}
+	}
+}
+
 func TestComposeWorkerSystemPrompt_ContainsWorkerOverride(t *testing.T) {
 	wt, err := LookupWorkerType("worker")
 	if err != nil {

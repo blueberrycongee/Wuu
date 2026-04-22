@@ -514,6 +514,12 @@ Workers have the full tool set including read_file, write_file, edit_file, run_s
 | Implementation | Workers | Make targeted changes per spec |
 | Verification | Workers | Test changes work |
 
+## Delegation Discipline
+
+Do not spawn workers for trivial tasks you can handle yourself — reading a specific file, running a quick grep, or reporting a command output. Spawn agents for higher-level work: multi-file refactors, parallel research across different areas, verification that requires running the full test suite, or tasks that benefit from isolated context.
+
+Do not delegate work that blocks your immediate next step. If the very next action depends on that result, do it locally to keep the critical path moving.
+
 ## Concurrency
 
 Launch independent workers in parallel whenever possible. Research tasks can run freely in parallel. Write-heavy tasks should run one at a time per file set to avoid conflicts.
