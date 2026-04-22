@@ -14,6 +14,7 @@ import (
 	"github.com/blueberrycongee/wuu/internal/memory"
 	processruntime "github.com/blueberrycongee/wuu/internal/process"
 	"github.com/blueberrycongee/wuu/internal/skills"
+	"github.com/blueberrycongee/wuu/internal/tools"
 )
 
 // Config defines runtime dependencies for the interactive UI.
@@ -32,10 +33,13 @@ type Config struct {
 	OnSessionID      func(string)             // optional, called when the session ID changes
 	Skills           []skills.Skill           // discovered skills, for /<skill-name> shorthand
 	Memory           []memory.File            // discovered CLAUDE.md / AGENTS.md files
-	Coordinator      *coordinator.Coordinator // optional, enables worker status panel + result injection
-	AskUserBridge    *AskUserBridge           // optional, enables the ask_user modal dialog
-	ProcessManager   *processruntime.Manager  // optional, enables process panel + commands
-	CleanupSummary   processruntime.CleanupResult
+	Coordinator         *coordinator.Coordinator // optional, enables worker status panel + result injection
+	AskUserBridge       *AskUserBridge           // optional, enables the ask_user modal dialog
+	ProcessManager      *processruntime.Manager  // optional, enables process panel + commands
+	Toolkit             *tools.Toolkit           // optional, underlying toolkit for runtime tool switching
+	BaseSystemPrompt    string                   // system prompt without coordinator preamble
+	CoordinatorPreamble string                   // coordinator preamble text
+	CleanupSummary      processruntime.CleanupResult
 }
 
 // Run starts the interactive terminal UI.

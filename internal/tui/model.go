@@ -26,6 +26,7 @@ import (
 	"github.com/blueberrycongee/wuu/internal/session"
 	"github.com/blueberrycongee/wuu/internal/skills"
 	"github.com/blueberrycongee/wuu/internal/subagent"
+	"github.com/blueberrycongee/wuu/internal/tools"
 )
 
 const (
@@ -221,10 +222,16 @@ type Model struct {
 	onSessionID     func(string)
 	skills          []skills.Skill
 	memoryFiles     []memory.File
-	coordinator     *coordinator.Coordinator
-	processManager  *processruntime.Manager
-	processNotifyCh chan processruntime.Event
-	workerNotifyCh  chan subagent.Notification
+	coordinator         *coordinator.Coordinator
+	processManager      *processruntime.Manager
+	processNotifyCh     chan processruntime.Event
+	workerNotifyCh      chan subagent.Notification
+
+	// Toolkit allows runtime toolset switching (normal vs coordinator mode).
+	toolkit             *tools.Toolkit
+	baseSystemPrompt    string
+	coordinatorPreamble string
+	coordinatorMode     bool
 
 	// Cron scheduler: fires scheduled prompts into messageQueue.
 	scheduler     *cron.Scheduler
@@ -416,6 +423,9 @@ func NewModel(cfg Config) Model {
 		processManager:       cfg.ProcessManager,
 		askBridge:            cfg.AskUserBridge,
 		requestTimeout:       cfg.RequestTimeout,
+		toolkit:              cfg.Toolkit,
+		baseSystemPrompt:     cfg.BaseSystemPrompt,
+		coordinatorPreamble:  cfg.CoordinatorPreamble,
 		viewport:             vp,
 		input:                in,
 		autoFollow:           true,
@@ -485,6 +495,53 @@ func (m *Model) resetChatHistory() {
 			Content: m.streamRunner.SystemPrompt,
 		})
 	}
+}
+
+// setCoordinatorMode switches between normal mode (main agent has write tools)
+// and coordinator mode (main agent is read-only, delegates to workers).
+// It updates the toolkit, system prompt, and chatHistory in place.
+func (m *Model) setCoordinatorMode(enabled bool) string {
+	if m.toolkit == nil {
+		return "coordinator mode: toolkit not available"
+	}
+	if m.streaming || m.pendingRequest {
+		return "coordinator mode: cannot switch while a response is in progress"
+	}
+	if enabled && m.coordinator == nil {
+		return "coordinator mode: coordinator runtime not available (not a git repository?)"
+	}
+	if m.coordinatorMode == enabled {
+		if enabled {
+			return "already in coordinator mode"
+		}
+		return "already in normal mode"
+	}
+
+	m.coordinatorMode = enabled
+	if enabled {
+		m.toolkit.DisableTools("write_file", "edit_file", "run_shell")
+	} else {
+		m.toolkit.EnableTools("write_file", "edit_file", "run_shell")
+	}
+
+	// Rebuild system prompt.
+	newPrompt := m.baseSystemPrompt
+	if enabled && m.coordinatorPreamble != "" {
+		newPrompt = m.coordinatorPreamble + "\n\n" + newPrompt
+	}
+	if m.streamRunner != nil {
+		m.streamRunner.UpdateSystemPrompt(newPrompt)
+	}
+
+	// Update the existing system message in chatHistory if present.
+	if len(m.chatHistory) > 0 && m.chatHistory[0].Role == "system" {
+		m.chatHistory[0].Content = newPrompt
+	}
+
+	if enabled {
+		return "entered coordinator mode — write tools disabled, orchestration active"
+	}
+	return "returned to normal mode — write tools enabled"
 }
 
 func finishInputTextareaSetup(in *textarea.Model) {

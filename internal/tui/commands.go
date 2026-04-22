@@ -55,6 +55,7 @@ var commandGroupOrder = []string{
 	"Context",
 	"Info",
 	"Config",
+	"Mode",
 	"Output",
 	"Worktree",
 	"Processes",
@@ -67,7 +68,7 @@ func (c command) completionEnterBehavior() slashCompletionEnterBehavior {
 		return slashCompletionInsertOnly
 	}
 	switch c.Name {
-	case "help", "clear", "status", "context", "compact", "fork", "new", "diff", "copy", "skills", "memory", "workers", "processes", "cleanup-worktrees", "insight", "exit":
+	case "help", "clear", "status", "context", "compact", "fork", "new", "diff", "copy", "skills", "memory", "workers", "processes", "cleanup-worktrees", "insight", "exit", "coordinator", "normal":
 		return slashCompletionExecute
 	default:
 		return slashCompletionInsertOnly
@@ -121,6 +122,10 @@ func init() {
 		{Name: "loop", Group: "Scheduling", Description: "Create a session-only recurring task", ArgHint: "<interval> <prompt>", InlineArgs: true, Type: cmdTypeLocal, Execute: cmdLoop},
 		{Name: "unloop", Group: "Scheduling", Description: "Cancel a scheduled task by id", ArgHint: "<task-id>", InlineArgs: true, Type: cmdTypeLocal, Execute: cmdUnloop},
 		{Name: "tasks", Group: "Scheduling", Description: "List scheduled tasks", Type: cmdTypeLocal, Execute: cmdTasks},
+
+		// ── Mode ───────────────────────────────────────────────────
+		{Name: "coordinator", Group: "Mode", Aliases: []string{"coord"}, Description: "Switch to coordinator mode (disable write tools)", Type: cmdTypeLocal, Execute: cmdCoordinator},
+		{Name: "normal", Group: "Mode", Description: "Return to normal mode (enable write tools)", Type: cmdTypeLocal, Execute: cmdNormal},
 	}
 }
 
@@ -604,6 +609,14 @@ func cmdEffort(args string, m *Model) string {
 		m.streamRunner.Effort = level
 	}
 	return fmt.Sprintf("effort set to %s", level)
+}
+
+func cmdCoordinator(_ string, m *Model) string {
+	return m.setCoordinatorMode(true)
+}
+
+func cmdNormal(_ string, m *Model) string {
+	return m.setCoordinatorMode(false)
 }
 
 func cmdResume(args string, m *Model) string {

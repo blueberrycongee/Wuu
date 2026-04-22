@@ -175,8 +175,9 @@ func runTask(args []string) error {
 		if newErr != nil {
 			return newErr
 		}
-		// Main agent is read-oriented: remove direct/indirect file-writing primitives.
-		kit.DisableTools("write_file", "edit_file", "run_shell")
+		// Default normal mode: main agent retains all tools including write_file,
+		// edit_file, and run_shell. Coordinator mode can be entered at runtime via
+		// the /coordinator slash command.
 		kit.SetProcessManager(processMgr)
 		toolExecutor = kit
 	}
@@ -432,7 +433,9 @@ func runTUI(args []string) error {
 		pb.AddGitContext(gitCtx.Collect())
 	}
 
-	systemPromptText := pb.Build()
+	// Base system prompt without coordinator preamble. This is what
+	// normal mode uses; coordinator mode prepends the preamble at runtime.
+	baseSystemPrompt := pb.Build()
 
 	// Ensure the cross-agent shared filesystem region exists. Agents
 	// use .wuu/shared/{findings,plans,status,reports} as the data
@@ -447,17 +450,11 @@ func runTUI(args []string) error {
 
 	// Wire up the coordinator runtime so the orchestration tools
 	// (spawn_agent, fork_agent, send_message_to_agent, stop_agent,
-	// list_agents) become callable and the orchestration preamble gets
-	// prepended to the system prompt. Worktree isolation is only
-	// available when the workspace is a git repo, but inplace spawns
-	// and forks work regardless.
+	// list_agents) become callable. The preamble is stored separately
+	// and applied at runtime when the user switches to coordinator mode.
 	var coord *coordinator.Coordinator
+	var coordinatorPreamble string
 	if toolkit != nil {
-		// Capture the worker base prompt BEFORE we prepend the
-		// coordinator preamble — workers should see the project
-		// memory & skills, not the coordinator instructions.
-		workerBasePrompt := systemPromptText
-
 		// Sub-agents get their own client instance with a more
 		// aggressive HTTP retry policy than the interactive main
 		// agent (6 attempts, 2s→60s backoff). Workers run for many
@@ -477,7 +474,7 @@ func runTUI(args []string) error {
 			WorktreeRoot:    filepath.Join(rootDir, ".wuu", "worktrees"),
 			SessionID:       "session-pending", // overwritten via SetSessionInfo
 			HistoryDir:      "",                // overwritten via SetSessionInfo
-			WorkerSysPrompt: workerBasePrompt,
+			WorkerSysPrompt: baseSystemPrompt,
 			WorkerFactory: func(workerRoot string, _ coordinator.WorkerType) (agent.ToolExecutor, error) {
 				wkit, werr := tools.New(workerRoot)
 				if werr != nil {
@@ -493,12 +490,12 @@ func runTUI(args []string) error {
 		if cerr == nil {
 			coord = c
 			toolkit.SetCoordinator(coord)
-			// Prepend the orchestration preamble as a static section
-			// (it goes before the base prompt in the cache prefix).
-			pb.AddSection("coordinator", coordinator.SystemPromptPreamble(), true)
-			systemPromptText = pb.Build()
+			coordinatorPreamble = coordinator.SystemPromptPreamble()
 		}
 	}
+
+	// Default to normal mode (no coordinator preamble).
+	systemPromptText := baseSystemPrompt
 
 	streamRunner := &agent.StreamRunner{
 		Client:       client,
@@ -523,7 +520,10 @@ func runTUI(args []string) error {
 		streamRunner.Temperature = *temperature
 	}
 	if strings.TrimSpace(*systemPrompt) != "" {
+		// CLI --system-prompt overrides everything, including base and
+		// coordinator preamble. It becomes the new base for both modes.
 		streamRunner.SystemPrompt = *systemPrompt
+		baseSystemPrompt = *systemPrompt
 	}
 
 	resolvedMemoryPath, err := resolveRuntimePath(rootDir, *memoryFile)
@@ -560,9 +560,12 @@ func runTUI(args []string) error {
 		HookDispatcher: hookDispatcher,
 		Skills:         discoveredSkills,
 		Memory:         memoryFiles,
-		Coordinator:    coord,
-		AskUserBridge:  askBridge,
-		ProcessManager: processMgr,
+		Coordinator:         coord,
+		AskUserBridge:       askBridge,
+		ProcessManager:      processMgr,
+		Toolkit:             toolkit,
+		BaseSystemPrompt:    baseSystemPrompt,
+		CoordinatorPreamble: coordinatorPreamble,
 	}
 	if toolkit != nil {
 		cfgUI.OnSessionID = func(id string) {

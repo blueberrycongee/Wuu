@@ -169,6 +169,17 @@ func (t *Toolkit) DisableTools(names ...string) {
 	}
 }
 
+// EnableTools re-enables specific tools that were previously disabled.
+func (t *Toolkit) EnableTools(names ...string) {
+	for _, n := range names {
+		n = strings.TrimSpace(n)
+		if n == "" {
+			continue
+		}
+		delete(t.disabledTools, n)
+	}
+}
+
 func (t *Toolkit) isToolDisabled(name string) bool {
 	if len(t.disabledTools) == 0 {
 		return false

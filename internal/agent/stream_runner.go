@@ -73,6 +73,8 @@ type StreamRunner struct {
 	usageMu           sync.Mutex
 	conversationUsage *UsageTracker
 	trackedHistoryLen int
+
+	sysPromptMu sync.RWMutex
 }
 
 // Run executes one prompt with streaming tool-use loop.
@@ -81,8 +83,11 @@ func (r *StreamRunner) Run(ctx context.Context, prompt string) (string, error) {
 		return "", errors.New("prompt is required")
 	}
 	var history []providers.ChatMessage
-	if strings.TrimSpace(r.SystemPrompt) != "" {
-		history = append(history, providers.ChatMessage{Role: "system", Content: r.SystemPrompt})
+	r.sysPromptMu.RLock()
+	sysPrompt := r.SystemPrompt
+	r.sysPromptMu.RUnlock()
+	if strings.TrimSpace(sysPrompt) != "" {
+		history = append(history, providers.ChatMessage{Role: "system", Content: sysPrompt})
 	}
 	history = append(history, providers.ChatMessage{Role: "user", Content: prompt})
 	res, err := r.RunWithCallback(ctx, history, r.OnEvent)
@@ -96,6 +101,14 @@ func (r *StreamRunner) Run(ctx context.Context, prompt string) (string, error) {
 // It accepts the full message history and returns the loop result, including
 // any new messages produced during this turn and whether history was rewritten
 // by auto-compaction.
+// UpdateSystemPrompt safely updates the system prompt at runtime.
+// The new prompt takes effect on the next turn.
+func (r *StreamRunner) UpdateSystemPrompt(newPrompt string) {
+	r.sysPromptMu.Lock()
+	defer r.sysPromptMu.Unlock()
+	r.SystemPrompt = newPrompt
+}
+
 func (r *StreamRunner) RunWithCallback(ctx context.Context, history []providers.ChatMessage, onEvent StreamCallback) (LoopResult, error) {
 	if r.Client == nil {
 		return LoopResult{}, errors.New("client is required")
