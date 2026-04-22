@@ -18,8 +18,8 @@ type ScheduleCronTool struct{ env *Env }
 
 func NewScheduleCronTool(env *Env) *ScheduleCronTool { return &ScheduleCronTool{env: env} }
 func (t *ScheduleCronTool) Name() string             { return "schedule_cron" }
-func (t *ScheduleCronTool) IsReadOnly() bool          { return false }
-func (t *ScheduleCronTool) IsConcurrencySafe() bool   { return false }
+func (t *ScheduleCronTool) IsReadOnly() bool         { return false }
+func (t *ScheduleCronTool) IsConcurrencySafe() bool  { return false }
 
 func (t *ScheduleCronTool) Definition() providers.ToolDefinition {
 	return providers.ToolDefinition{
@@ -43,7 +43,7 @@ func (t *ScheduleCronTool) Definition() providers.ToolDefinition {
 				},
 				"durable": map[string]any{
 					"type":        "boolean",
-					"description": "If true (default), persist to disk. If false, session-only.",
+					"description": "If true, persist to disk and survive restarts. If false (default), session-only.",
 				},
 			},
 			"required": []string{"cron", "prompt"},
@@ -78,9 +78,11 @@ func (t *ScheduleCronTool) Execute(ctx context.Context, argsJSON string) (string
 		return "", fmt.Errorf("cron next run is more than 1 year away")
 	}
 
-	store := cron.NewTaskStore(taskStorePath(t.env.RootDir))
-	tasks, _ := store.List()
-	if len(tasks) >= cron.MaxJobs {
+	fileStore := cron.NewTaskStore(taskStorePath(t.env.RootDir))
+	sessionStore := cron.NewSessionTaskStore(t.env.RootDir)
+	fileTasks, _ := fileStore.List()
+	sessionTasks, _ := sessionStore.List()
+	if len(fileTasks)+len(sessionTasks) >= cron.MaxJobs {
 		return "", fmt.Errorf("maximum number of scheduled tasks reached (%d)", cron.MaxJobs)
 	}
 
@@ -92,26 +94,32 @@ func (t *ScheduleCronTool) Execute(ctx context.Context, argsJSON string) (string
 		Recurring: args.Recurring,
 	}
 
-	// Default durable = true.
-	if err := store.Add(task); err != nil {
-		return "", fmt.Errorf("failed to save task: %w", err)
+	storeLabel := "session-only"
+	storeErr := sessionStore.Add(task)
+	if args.Durable {
+		storeLabel = "durable"
+		storeErr = fileStore.Add(task)
+	}
+	if storeErr != nil {
+		return "", fmt.Errorf("failed to save task: %w", storeErr)
 	}
 
 	result := map[string]any{
-		"id":       task.ID,
-		"schedule": args.Cron,
-		"prompt":   args.Prompt,
-		"type":     map[bool]string{true: "recurring", false: "one-shot"}[args.Recurring],
+		"id":         task.ID,
+		"schedule":   args.Cron,
+		"prompt":     args.Prompt,
+		"type":       map[bool]string{true: "recurring", false: "one-shot"}[args.Recurring],
+		"durability": storeLabel,
 	}
 	return mustJSON(result)
 }
 
 type CancelCronTool struct{ env *Env }
 
-func NewCancelCronTool(env *Env) *CancelCronTool { return &CancelCronTool{env: env} }
+func NewCancelCronTool(env *Env) *CancelCronTool  { return &CancelCronTool{env: env} }
 func (t *CancelCronTool) Name() string            { return "cancel_cron" }
-func (t *CancelCronTool) IsReadOnly() bool         { return false }
-func (t *CancelCronTool) IsConcurrencySafe() bool  { return false }
+func (t *CancelCronTool) IsReadOnly() bool        { return false }
+func (t *CancelCronTool) IsConcurrencySafe() bool { return false }
 
 func (t *CancelCronTool) Definition() providers.ToolDefinition {
 	return providers.ToolDefinition{
@@ -141,8 +149,12 @@ func (t *CancelCronTool) Execute(ctx context.Context, argsJSON string) (string, 
 		return "", fmt.Errorf("cancel_cron requires id")
 	}
 
-	store := cron.NewTaskStore(taskStorePath(t.env.RootDir))
-	if err := store.Remove(args.ID); err != nil {
+	fileStore := cron.NewTaskStore(taskStorePath(t.env.RootDir))
+	sessionStore := cron.NewSessionTaskStore(t.env.RootDir)
+	if err := fileStore.Remove(args.ID); err != nil {
+		return "", fmt.Errorf("failed to cancel task: %w", err)
+	}
+	if err := sessionStore.Remove(args.ID); err != nil {
 		return "", fmt.Errorf("failed to cancel task: %w", err)
 	}
 
@@ -152,10 +164,10 @@ func (t *CancelCronTool) Execute(ctx context.Context, argsJSON string) (string, 
 
 type ListCronTool struct{ env *Env }
 
-func NewListCronTool(env *Env) *ListCronTool { return &ListCronTool{env: env} }
-func (t *ListCronTool) Name() string             { return "list_cron" }
-func (t *ListCronTool) IsReadOnly() bool          { return true }
-func (t *ListCronTool) IsConcurrencySafe() bool   { return true }
+func NewListCronTool(env *Env) *ListCronTool    { return &ListCronTool{env: env} }
+func (t *ListCronTool) Name() string            { return "list_cron" }
+func (t *ListCronTool) IsReadOnly() bool        { return true }
+func (t *ListCronTool) IsConcurrencySafe() bool { return true }
 
 func (t *ListCronTool) Definition() providers.ToolDefinition {
 	return providers.ToolDefinition{
@@ -169,15 +181,20 @@ func (t *ListCronTool) Definition() providers.ToolDefinition {
 }
 
 func (t *ListCronTool) Execute(ctx context.Context, argsJSON string) (string, error) {
-	store := cron.NewTaskStore(taskStorePath(t.env.RootDir))
-	tasks, err := store.List()
+	fileStore := cron.NewTaskStore(taskStorePath(t.env.RootDir))
+	sessionStore := cron.NewSessionTaskStore(t.env.RootDir)
+	fileTasks, err := fileStore.List()
+	if err != nil {
+		return "", fmt.Errorf("failed to list tasks: %w", err)
+	}
+	sessionTasks, err := sessionStore.List()
 	if err != nil {
 		return "", fmt.Errorf("failed to list tasks: %w", err)
 	}
 
 	now := time.Now().UnixMilli()
 	var items []map[string]any
-	for _, task := range tasks {
+	appendTask := func(task cron.Task, sessionOnly bool) {
 		typeLabel := "one-shot"
 		if task.Recurring {
 			typeLabel = "recurring"
@@ -185,12 +202,21 @@ func (t *ListCronTool) Execute(ctx context.Context, argsJSON string) (string, er
 		if cron.IsExpired(task, now) {
 			typeLabel += " [expired]"
 		}
+		if sessionOnly {
+			typeLabel += " [session-only]"
+		}
 		items = append(items, map[string]any{
 			"id":       task.ID,
 			"schedule": task.Cron,
 			"type":     typeLabel,
 			"prompt":   task.Prompt,
 		})
+	}
+	for _, task := range fileTasks {
+		appendTask(task, false)
+	}
+	for _, task := range sessionTasks {
+		appendTask(task, true)
 	}
 
 	return mustJSON(map[string]any{"tasks": items, "count": len(items)})
