@@ -383,8 +383,9 @@ func runTUI(args []string) error {
 		if newErr != nil {
 			return newErr
 		}
-		// Main agent is read-oriented: remove direct/indirect file-writing primitives.
-		kit.DisableTools("write_file", "edit_file", "run_shell")
+		// Default normal mode: main agent retains all tools including write_file,
+		// edit_file, and run_shell. Coordinator mode can be entered at runtime via
+		// the /coordinator slash command.
 		kit.SetProcessManager(processMgr)
 		kit.SetSkills(discoveredSkills)
 		kit.SetAskUserBridge(askBridge)

@@ -145,6 +145,19 @@ func TestDefaultSystemPrompt_CommunicationStyle(t *testing.T) {
 	}
 }
 
+func TestDefaultSystemPrompt_AgentDelegation(t *testing.T) {
+	prompt := Default().Agent.SystemPrompt
+	if !strings.Contains(prompt, "spawn sub-agents") {
+		t.Fatalf("default system prompt must mention sub-agent spawning: %q", prompt)
+	}
+	if !strings.Contains(prompt, "spawn_agent") {
+		t.Fatalf("default system prompt must mention spawn_agent: %q", prompt)
+	}
+	if !strings.Contains(prompt, "fork_agent") {
+		t.Fatalf("default system prompt must mention fork_agent: %q", prompt)
+	}
+}
+
 func TestDefaultSystemPrompt_CommentDiscipline(t *testing.T) {
 	prompt := Default().Agent.SystemPrompt
 	for _, want := range []string{
