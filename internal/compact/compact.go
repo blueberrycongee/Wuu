@@ -48,14 +48,19 @@ func withCompactTimeout(ctx context.Context) (context.Context, context.CancelFun
 
 // EstimateTokens provides a rough token count estimate.
 // English: ~4 chars per token. CJK: ~2 chars per token.
+//
+// Counts total runes and CJK runes in a single pass. Invalid UTF-8
+// sequences yield utf8.RuneError (1 rune each) from the range loop,
+// matching the behavior of utf8.RuneCountInString, so the count is
+// identical to the previous two-pass implementation.
 func EstimateTokens(text string) int {
 	if text == "" {
 		return 0
 	}
 
-	cjkCount := 0
-	totalChars := utf8.RuneCountInString(text)
+	var cjkCount, totalChars int
 	for _, r := range text {
+		totalChars++
 		if isCJK(r) {
 			cjkCount++
 		}

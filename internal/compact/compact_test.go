@@ -45,6 +45,19 @@ func TestEstimateTokens_Empty(t *testing.T) {
 	}
 }
 
+// TestEstimateTokens_InvalidUTF8 pins down behavior on malformed bytes so
+// the single-pass implementation stays consistent with the previous
+// two-pass one (which relied on utf8.RuneCountInString). A for-range loop
+// yields one RuneError per invalid sequence, same as RuneCountInString.
+func TestEstimateTokens_InvalidUTF8(t *testing.T) {
+	// Two ASCII runes around one invalid byte: 'a' + 0xFF + 'b'.
+	// RuneError is non-CJK, so total=3 runes, cjk=0, tokens = 3/4 + 1 = 1.
+	text := "a\xffb"
+	if got, want := EstimateTokens(text), 1; got != want {
+		t.Fatalf("invalid utf8 tokens: got %d, want %d", got, want)
+	}
+}
+
 func TestShouldCompact_UnderThreshold(t *testing.T) {
 	messages := []providers.ChatMessage{
 		{Role: "user", Content: "hi"},
