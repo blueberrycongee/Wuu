@@ -11,8 +11,11 @@ package context
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -28,9 +31,67 @@ type EnvInfo struct {
 	GitStatus string // short summary, not full porcelain
 }
 
+// defaultSnapshotCacheTTL is the time-to-live for cached git snapshots.
+// In a tight multi-step tool loop this avoids spawning git subprocesses on
+// every model round (~20 ms saved per hit). 2 s is short enough that a user
+// running shell commands between turns will see fresh state, long enough to
+// amortize the cost across the typical 3–8 rounds in one turn.
+const defaultSnapshotCacheTTL = 2 * time.Second
+
+// snapshotCache holds the most recent EnvInfo so that repeated Snapshot
+// calls inside the same turn can reuse it without shelling out to git.
+var snapshotCache struct {
+	mu       sync.RWMutex
+	info     EnvInfo
+	captured time.Time
+	ttl      time.Duration
+}
+
+func snapshotCacheTTL() time.Duration {
+	if v := os.Getenv("WUU_CONTEXT_CACHE_TTL_MS"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
+			return time.Duration(n) * time.Millisecond
+		}
+	}
+	return defaultSnapshotCacheTTL
+}
+
 // Snapshot captures the current environment state. Safe to call from
 // any goroutine; all data comes from the OS / git CLI.
+//
+// Results are cached per-CWD for a short TTL (default 2 s) so that a single
+// user turn that triggers multiple model rounds only pays the git overhead
+// once.
 func Snapshot(cwd string) EnvInfo {
+	ttl := snapshotCacheTTL()
+	if ttl <= 0 {
+		return snapshotFresh(cwd)
+	}
+
+	snapshotCache.mu.RLock()
+	if !snapshotCache.captured.IsZero() &&
+		time.Since(snapshotCache.captured) < ttl &&
+		snapshotCache.info.CWD == cwd {
+		info := snapshotCache.info
+		snapshotCache.mu.RUnlock()
+		// Date is cheap to refresh and may have rolled over since caching.
+		info.Date = time.Now().Format("2006-01-02")
+		return info
+	}
+	snapshotCache.mu.RUnlock()
+
+	info := snapshotFresh(cwd)
+
+	snapshotCache.mu.Lock()
+	snapshotCache.info = info
+	snapshotCache.captured = time.Now()
+	snapshotCache.ttl = ttl
+	snapshotCache.mu.Unlock()
+
+	return info
+}
+
+func snapshotFresh(cwd string) EnvInfo {
 	info := EnvInfo{
 		CWD:  cwd,
 		Date: time.Now().Format("2006-01-02"),

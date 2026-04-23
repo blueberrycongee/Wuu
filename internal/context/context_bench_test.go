@@ -79,3 +79,31 @@ func BenchmarkGitStatusOnly(b *testing.B) {
 		_, _ = gitStatusSummary(root)
 	}
 }
+
+// BenchmarkSnapshotCached measures the cost when the TTL cache hits.
+// The first iteration warms the cache; the remainder reuse it.
+func BenchmarkSnapshotCached(b *testing.B) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		b.Fatal(err)
+	}
+	root := cwd
+	for {
+		if _, err := os.Stat(filepath.Join(root, ".git")); err == nil {
+			break
+		}
+		parent := filepath.Dir(root)
+		if parent == root {
+			b.Skip("not in a git repo")
+		}
+		root = parent
+	}
+
+	// Warm cache.
+	_ = Snapshot(root)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = Snapshot(root)
+	}
+}
