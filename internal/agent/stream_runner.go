@@ -554,6 +554,16 @@ func (s *streamStep) runStreamWithReconnect(
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
+
+		// A broken attempt may have accumulated partial tool calls that
+		// never received a matching EventToolUseEnd. Those incomplete
+		// JSON arguments would leak into the final StepResult and later
+		// cause mapMessage to fail when the message is replayed as
+		// history. Clear the map on every fresh HTTP attempt.
+		for k := range pendingTools {
+			delete(pendingTools, k)
+		}
+
 		emitLifecycle(providers.StreamPhaseConnecting, attempt, nil, 0)
 
 		// Connection-stage timeouts (dial, TLS, response-header) are
