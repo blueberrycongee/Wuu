@@ -22,7 +22,7 @@ func TestProjectToolResultPreservesOrderAndHidesPrivateMetadata(t *testing.T) {
 		Activity:          &toolresult.ActivityRef{ID: "activity-1", Kind: "browser"},
 	}
 	projected := ProjectToolResult(result)
-	wantText := "first\n[resource_link: docs (https://example.test/docs)]\n[resource: embedded] {\"text\":\"body\",\"uri\":\"file:///tmp/a\"}"
+	wantText := "first\n[resource_link: docs (https://example.test/docs)]\n[resource: embedded] {\"text\":\"body\",\"uri\":\"file:///tmp/a\"}\n{\"json_characters\":13,\"key_count\":2,\"keys\":[\"a\",\"b\"],\"kind\":\"structured_tool_result_index\",\"shape\":\"object\"}"
 	if projected.ToolText != wantText {
 		t.Fatalf("ToolText = %q, want %q", projected.ToolText, wantText)
 	}
@@ -41,6 +41,41 @@ func TestProjectToolResultUsesStructuredContentWhenNoContentExists(t *testing.T)
 	projected := ProjectToolResult(toolresult.Result{StructuredContent: json.RawMessage(`{"b":2,"a":1}`)})
 	if got, want := projected.ToolText, `{"a":1,"b":2}`; got != want {
 		t.Fatalf("ToolText = %q, want %q", got, want)
+	}
+}
+
+func TestProjectToolResultBoundsMixedStructuredContentToShapeIndex(t *testing.T) {
+	keys := make([]string, 0, structuredResultIndexMaxKeys+5)
+	structured := map[string]any{}
+	for index := 0; index < structuredResultIndexMaxKeys+5; index++ {
+		key := strings.Repeat("k", structuredResultIndexMaxKeyRunes+10) + string(rune('a'+index))
+		keys = append(keys, key)
+		structured[key] = strings.Repeat("private-value", 1_000)
+	}
+	raw, err := json.Marshal(structured)
+	if err != nil {
+		t.Fatalf("marshal structured content: %v", err)
+	}
+	projected := ProjectToolResult(toolresult.Result{
+		Content:           []toolresult.ContentPart{{Type: toolresult.ContentTypeText, Text: "human-readable summary"}},
+		StructuredContent: raw,
+	})
+	parts := strings.Split(projected.ToolText, "\n")
+	if len(parts) != 2 || parts[0] != "human-readable summary" {
+		t.Fatalf("mixed projection lost producer text: %.300q", projected.ToolText)
+	}
+	var index map[string]any
+	if err := json.Unmarshal([]byte(parts[1]), &index); err != nil {
+		t.Fatalf("structured index is not JSON: %v", err)
+	}
+	if index["kind"] != "structured_tool_result_index" || index["shape"] != "object" || index["key_count"] != float64(len(keys)) {
+		t.Fatalf("structured index lacks shape metadata: %+v", index)
+	}
+	if got := index["keys"].([]any); len(got) != structuredResultIndexMaxKeys {
+		t.Fatalf("visible keys = %d, want %d", len(got), structuredResultIndexMaxKeys)
+	}
+	if index["keys_omitted"] != float64(5) || strings.Contains(projected.ToolText, "private-value") {
+		t.Fatalf("structured index leaked values or lost omission count: %.300q", projected.ToolText)
 	}
 }
 

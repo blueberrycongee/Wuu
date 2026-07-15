@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/blueberrycongee/wuu/internal/toolresult"
@@ -16,6 +17,11 @@ type ProjectedToolResult struct {
 }
 
 const emptyToolResultText = "Tool completed without a textual result."
+
+const (
+	structuredResultIndexMaxKeys     = 32
+	structuredResultIndexMaxKeyRunes = 120
+)
 
 func ProjectToolResult(result toolresult.Result) ProjectedToolResult {
 	projected := ProjectedToolResult{}
@@ -52,11 +58,18 @@ func ProjectToolResult(result toolresult.Result) ProjectedToolResult {
 			textParts = append(textParts, fmt.Sprintf("[unsupported tool result content: %s]", part.Type))
 		}
 	}
-	// Rich content is the producer-owned model projection. Keep structured
-	// metadata on the durable ToolResult without duplicating it on the wire.
-	// Structured-only tools still receive a canonical text projection.
-	if len(result.Content) == 0 && len(bytes.TrimSpace(result.StructuredContent)) > 0 {
-		textParts = append(textParts, canonicalJSON(result.StructuredContent))
+	// Rich content is the producer-owned model projection. Keep the complete
+	// structured payload on the durable ToolResult instead of duplicating its
+	// values on the wire. A bounded shape index still tells the model that
+	// machine-readable data exists and which fields it contains. Structured-only
+	// tools receive the complete canonical JSON because they have no content
+	// projection of their own.
+	if len(bytes.TrimSpace(result.StructuredContent)) > 0 {
+		if len(result.Content) == 0 {
+			textParts = append(textParts, canonicalJSON(result.StructuredContent))
+		} else if index := structuredToolResultIndex(result.StructuredContent); index != "" {
+			textParts = append(textParts, index)
+		}
 	}
 	projected.ToolText = strings.Join(nonEmptyProjectionParts(textParts), "\n")
 	if projected.ToolText == "" && (len(projected.ObservationImages) > 0 || len(projected.ObservationFiles) > 0) {
@@ -71,6 +84,65 @@ func ProjectToolResult(result toolresult.Result) ProjectedToolResult {
 		projected.ToolText = emptyToolResultText
 	}
 	return projected
+}
+
+func structuredToolResultIndex(raw json.RawMessage) string {
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 {
+		return ""
+	}
+	decoder := json.NewDecoder(bytes.NewReader(trimmed))
+	decoder.UseNumber()
+	var value any
+	if err := decoder.Decode(&value); err != nil {
+		return ""
+	}
+	index := map[string]any{
+		"kind":            "structured_tool_result_index",
+		"json_characters": len(trimmed),
+	}
+	switch typed := value.(type) {
+	case map[string]any:
+		keys := make([]string, 0, len(typed))
+		for key := range typed {
+			keys = append(keys, truncateStructuredResultIndexKey(key))
+		}
+		sort.Strings(keys)
+		index["shape"] = "object"
+		index["key_count"] = len(keys)
+		visible := keys
+		if len(visible) > structuredResultIndexMaxKeys {
+			visible = visible[:structuredResultIndexMaxKeys]
+			index["keys_omitted"] = len(keys) - len(visible)
+		}
+		index["keys"] = visible
+	case []any:
+		index["shape"] = "array"
+		index["item_count"] = len(typed)
+	case string:
+		index["shape"] = "string"
+	case json.Number:
+		index["shape"] = "number"
+	case bool:
+		index["shape"] = "boolean"
+	case nil:
+		index["shape"] = "null"
+	default:
+		return ""
+	}
+	encoded, err := json.Marshal(index)
+	if err != nil {
+		return ""
+	}
+	return string(encoded)
+}
+
+func truncateStructuredResultIndexKey(key string) string {
+	runes := []rune(key)
+	if len(runes) <= structuredResultIndexMaxKeyRunes {
+		return key
+	}
+	return string(runes[:structuredResultIndexMaxKeyRunes]) + "..."
 }
 
 func ApplyToolResultProjections(messages []ChatMessage) []ChatMessage {
