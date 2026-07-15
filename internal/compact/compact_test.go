@@ -2,12 +2,14 @@ package compact
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/blueberrycongee/wuu/internal/providers"
+	"github.com/blueberrycongee/wuu/internal/toolresult"
 )
 
 func TestEstimateTokens_English(t *testing.T) {
@@ -951,38 +953,7 @@ func TestCompact_UsesInternalTimeout(t *testing.T) {
 	}
 }
 
-func TestCompact_PrunesOldLargeToolResultsBeforeSummary(t *testing.T) {
-	large := largePrunableToolOutput("x")
-	messages := []providers.ChatMessage{
-		{Role: "user", Content: "inspect logs"},
-		{Role: "assistant", ToolCalls: []providers.ToolCall{{ID: "c1", Name: "read_file", Arguments: `{"path":"build.log"}`}}},
-		{Role: "tool", Name: "read_file", ToolCallID: "c1", Content: large},
-		{Role: "assistant", Content: "I checked the log."},
-		{Role: "user", Content: "continue"},
-		{Role: "assistant", Content: "working"},
-		{Role: "user", Content: "status?"},
-		{Role: "assistant", Content: "done"},
-	}
-
-	client := &mockCompactClient{response: "summary"}
-	_, err := Compact(context.Background(), messages, client, "test")
-	if err != nil {
-		t.Fatalf("Compact: %v", err)
-	}
-
-	if len(client.lastRequest.Messages) < 2 || client.lastRequest.Messages[0].Role != "system" {
-		t.Fatalf("expected compact summary request to include system instructions, got %+v", client.lastRequest.Messages)
-	}
-	summaryInput := client.lastRequest.Messages[len(client.lastRequest.Messages)-1].Content
-	if strings.Contains(summaryInput, large) {
-		t.Fatal("expected old large tool result to be pruned from summary input")
-	}
-	if !strings.Contains(summaryInput, "[Pruned read_file result.") {
-		t.Fatalf("expected placeholder in summary input, got: %s", summaryInput)
-	}
-}
-
-func TestCompact_DoesNotPruneRecentTailToolResults(t *testing.T) {
+func TestCompact_KeepsRecentTailToolResults(t *testing.T) {
 	large := strings.Repeat("y", 2_000)
 	messages := []providers.ChatMessage{
 		{Role: "user", Content: "older question"},
@@ -1122,41 +1093,56 @@ func TestBuildSummaryPromptMentionsImagesWithoutData(t *testing.T) {
 	}
 }
 
-func TestPruneOldToolResults_PreservesToolCallPairing(t *testing.T) {
-	large := largePrunableToolOutput("z")
-	messages := []providers.ChatMessage{
-		{Role: "assistant", ToolCalls: []providers.ToolCall{{ID: "c1", Name: "grep", Arguments: `{"pattern":"TODO"}`}}},
-		{Role: "tool", Name: "grep", ToolCallID: "c1", Content: large},
-		{Role: "assistant", Content: "done"},
-	}
+func TestBuildSummaryPromptIndexesRichToolResultWithoutData(t *testing.T) {
+	imageData := strings.Repeat("i", 80)
+	fileData := strings.Repeat("f", 60)
+	prompt := buildSummaryPrompt([]providers.ChatMessage{{
+		Role:    "tool",
+		Content: strings.Repeat("long textual result ", 100),
+		ToolResult: &toolresult.Result{
+			Content: []toolresult.ContentPart{
+				{Type: toolresult.ContentTypeText, Text: "long textual result"},
+				{Type: toolresult.ContentTypeImage, Data: imageData, MIMEType: "image/png", Name: "screen.png"},
+				{Type: toolresult.ContentTypeAudio, URI: "https://example.test/audio.wav", MIMEType: "audio/wav", Name: "clip.wav"},
+				{Type: toolresult.ContentTypeFile, Data: fileData, MIMEType: "application/pdf", Name: "brief.pdf"},
+				{Type: toolresult.ContentTypeResource, Name: "record", Resource: json.RawMessage(`{"id":1}`)},
+			},
+			StructuredContent: json.RawMessage(`{"private":"metadata"}`),
+			Meta:              json.RawMessage(`{"source":"mcp"}`),
+			Activity:          &toolresult.ActivityRef{ID: "activity-1", Kind: "computer", State: "ready", PreviewURI: "activity://preview"},
+		},
+	}}, "")
 
-	pruned := pruneOldToolResults(messages)
-	if len(pruned) != len(messages) {
-		t.Fatalf("expected message count to stay the same, got %d vs %d", len(pruned), len(messages))
+	if strings.Contains(prompt, imageData) || strings.Contains(prompt, fileData) || strings.Contains(prompt, `"private":"metadata"`) {
+		t.Fatal("summary prompt must not include raw rich payloads or private metadata")
 	}
-	if len(pruned[0].ToolCalls) != 1 || pruned[0].ToolCalls[0].ID != "c1" {
-		t.Fatalf("expected assistant tool call metadata preserved, got %+v", pruned[0].ToolCalls)
-	}
-	if pruned[1].Role != "tool" || pruned[1].ToolCallID != "c1" {
-		t.Fatalf("expected tool pairing preserved, got %+v", pruned[1])
-	}
-	if pruned[1].Content == "" || strings.Contains(pruned[1].Content, large) {
-		t.Fatalf("expected tool result content replaced with placeholder, got %q", pruned[1].Content)
+	for _, want := range []string{
+		"[tool image index: screen.png, image/png, 80 base64 characters]",
+		"[tool audio index: clip.wav, audio/wav, uri=https://example.test/audio.wav]",
+		"[tool file index: brief.pdf, application/pdf, 60 base64 characters]",
+		"[tool resource index: record, 8 JSON characters]",
+		"[tool activity index: kind=computer, id=activity-1, state=ready, preview=activity://preview]",
+	} {
+		if !strings.Contains(prompt, want) {
+			t.Fatalf("summary prompt lacks rich result index %q: %s", want, prompt)
+		}
 	}
 }
 
-func TestPruneOldToolResults_ProtectsSkillTool(t *testing.T) {
-	large := largePrunableToolOutput("s")
-	messages := []providers.ChatMessage{
-		{Role: "tool", Name: "skill", ToolCallID: "skill-call", Content: large},
-	}
+func TestBuildSummaryPromptIndexesStructuredOnlyResultWithoutValues(t *testing.T) {
+	secret := strings.Repeat("s", 800)
+	prompt := buildSummaryPrompt([]providers.ChatMessage{{
+		Role:    "tool",
+		Content: `{"payload":"` + secret + `","rows":[1,2],"source":"db"}`,
+		ToolResult: &toolresult.Result{
+			StructuredContent: json.RawMessage(`{"payload":"` + secret + `","rows":[1,2],"source":"db"}`),
+		},
+	}}, "")
 
-	pruned := pruneOldToolResults(messages)
-	if pruned[0].Content != large {
-		t.Fatal("skill tool output should be protected from pruning")
+	if strings.Contains(prompt, secret) {
+		t.Fatal("summary prompt must not include large structured values")
 	}
-}
-
-func largePrunableToolOutput(char string) string {
-	return strings.Repeat(char, (toolResultPruneProtectTokens+toolResultPruneMinimumTokens+1_000)*4)
+	if !strings.Contains(prompt, "[tool structured result index: object, 3 keys: payload, rows, source") {
+		t.Fatalf("summary prompt lacks structured result index: %s", prompt)
+	}
 }
