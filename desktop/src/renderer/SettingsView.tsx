@@ -669,9 +669,11 @@ export function SettingsView({
             className={`settings-page${activePage === "archive" ? " settings-page-archive" : ""}`}
             key={activePage}
           >
-            <header className="settings-page-header">
-              <h1 className="settings-page-title">{pageTitle}</h1>
-            </header>
+            {activePage === "memory" ? null : (
+              <header className="settings-page-header">
+                <h1 className="settings-page-title">{pageTitle}</h1>
+              </header>
+            )}
   
             {activePage === "providers" ? (
               <SettingsProvidersPage

@@ -1505,6 +1505,18 @@
   gap: 16px;
 }
 
+.settings-memory-header {
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.settings-memory-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
 .settings-memory-toolbar {
   display: flex;
   align-items: center;
@@ -1554,7 +1566,6 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  margin-left: auto;
 }
 
 .settings-memory-raw-label {
