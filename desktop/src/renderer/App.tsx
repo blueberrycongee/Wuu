@@ -178,6 +178,7 @@ import type { ComposerGoalSummary } from "../shared/protocol";
 import { useSettingsRuntimeState } from "./SettingsRuntimeState";
 import { SidePanelToggleIcon } from "./SidePanelToggleIcon";
 import { JumpToLatestPill } from "./JumpToLatestPill";
+import { ENABLE_COLLABORATION } from "./FeatureFlags";
 import { SkillsCatalog } from "./SkillsCatalog";
 import { TaskBoardView } from "./TaskBoardView";
 import { runDebugPhaseForState } from "./RunDebugPanel";
@@ -2488,10 +2489,16 @@ export function App(): JSX.Element {
             : (!activeThreadReadOnly && activeThreadIsRunning) ||
               viewContextSwitchPending
         }
-        ultraEnabled={Boolean(state.initialized?.ultra)}
-        onToggleUltra={(enabled) => {
-          void updateUltraMode(enabled).catch(() => undefined);
-        }}
+        ultraEnabled={
+          ENABLE_COLLABORATION && Boolean(state.initialized?.ultra)
+        }
+        onToggleUltra={
+          ENABLE_COLLABORATION
+            ? (enabled) => {
+                void updateUltraMode(enabled).catch(() => undefined);
+              }
+            : undefined
+        }
         runtimeControlsDisabled={
           (!activeThreadReadOnly && activeThreadIsRunning) ||
           viewContextSwitchPending
