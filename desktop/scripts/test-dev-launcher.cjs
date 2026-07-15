@@ -78,7 +78,7 @@ assert.equal(
 assert.equal(sourceHashFromBuildInfo({}, () => "fallback"), "fallback");
 assert.match(packageJSON.scripts["pack:mac"], /CSC_IDENTITY_AUTO_DISCOVERY=false/);
 assert.match(packageJSON.scripts["dist:mac"], /CSC_IDENTITY_AUTO_DISCOVERY=false/);
-assert.match(packageJSON.scripts["dev:direct"], /WUU_ENABLE_CUA_MAC=1/);
+assert.equal(packageJSON.scripts["dev:direct"], "WUU_ENABLE_CUA_MAC=1 node scripts/dev.cjs");
 const devLauncherSource = readFileSync(resolve(__dirname, "dev.cjs"), "utf8");
 assert.doesNotMatch(devLauncherSource, /env\.WUU_ENABLE_CUA_MAC\s*=\s*["']1["']/);
 assert.equal(packageJSON.scripts["build:core"], "node scripts/build-core.cjs");
