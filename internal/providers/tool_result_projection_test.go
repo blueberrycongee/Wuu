@@ -22,7 +22,7 @@ func TestProjectToolResultPreservesOrderAndHidesPrivateMetadata(t *testing.T) {
 		Activity:          &toolresult.ActivityRef{ID: "activity-1", Kind: "browser"},
 	}
 	projected := ProjectToolResult(result)
-	wantText := "first\n[resource_link: docs (https://example.test/docs)]\n[resource: embedded] {\"text\":\"body\",\"uri\":\"file:///tmp/a\"}\n{\"a\":1,\"b\":2}"
+	wantText := "first\n[resource_link: docs (https://example.test/docs)]\n[resource: embedded] {\"text\":\"body\",\"uri\":\"file:///tmp/a\"}"
 	if projected.ToolText != wantText {
 		t.Fatalf("ToolText = %q, want %q", projected.ToolText, wantText)
 	}
@@ -34,6 +34,13 @@ func TestProjectToolResultPreservesOrderAndHidesPrivateMetadata(t *testing.T) {
 	}
 	if strings.Contains(projected.ToolText, "must-not-reach-model") || strings.Contains(projected.ToolText, "activity-1") {
 		t.Fatalf("private metadata leaked: %q", projected.ToolText)
+	}
+}
+
+func TestProjectToolResultUsesStructuredContentWhenNoContentExists(t *testing.T) {
+	projected := ProjectToolResult(toolresult.Result{StructuredContent: json.RawMessage(`{"b":2,"a":1}`)})
+	if got, want := projected.ToolText, `{"a":1,"b":2}`; got != want {
+		t.Fatalf("ToolText = %q, want %q", got, want)
 	}
 }
 

@@ -52,7 +52,10 @@ func ProjectToolResult(result toolresult.Result) ProjectedToolResult {
 			textParts = append(textParts, fmt.Sprintf("[unsupported tool result content: %s]", part.Type))
 		}
 	}
-	if len(bytes.TrimSpace(result.StructuredContent)) > 0 {
+	// Rich content is the producer-owned model projection. Keep structured
+	// metadata on the durable ToolResult without duplicating it on the wire.
+	// Structured-only tools still receive a canonical text projection.
+	if len(result.Content) == 0 && len(bytes.TrimSpace(result.StructuredContent)) > 0 {
 		textParts = append(textParts, canonicalJSON(result.StructuredContent))
 	}
 	projected.ToolText = strings.Join(nonEmptyProjectionParts(textParts), "\n")
