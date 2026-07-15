@@ -37,6 +37,7 @@
 | 理解或嵌入 Go 核心 | [架构](#架构) 和 [`app-server` 协议](docs/app-server-protocol.md) |
 | 参与贡献 | [贡献指南](CONTRIBUTING.md) |
 | 了解安全和信任边界 | [安全模型](docs/security-model.md) |
+| 查看可复现的公开评测 | [公开评测记录](evals/) |
 
 ## 动态
 

@@ -1,4 +1,4 @@
-.PHONY: setup dev check check-go check-desktop check-clients test test-go \
+.PHONY: setup dev check repository-check version-check eval-check check-go check-desktop check-clients test test-go \
 	test-desktop test-clients test-native build build-go build-desktop \
 	build-clients build-macos ci install vet clean release-check release-dry \
 	snapshot print-version tag-release version-check release-prepare
@@ -24,7 +24,13 @@ setup:
 dev:
 	cd desktop && npm run dev
 
-check: check-go check-desktop check-clients
+check: repository-check check-go check-desktop check-clients
+
+repository-check: version-check eval-check
+
+eval-check:
+	node scripts/check-evals.mjs --self-test
+	node scripts/check-evals.mjs
 
 check-go:
 	go mod tidy -diff

@@ -14,6 +14,8 @@ Versioning rules are documented in [the release guide](docs/release.md).
   published with the matching changelog section.
 - The npm wrapper installs the GitHub Release matching its own package version
   instead of silently resolving the latest release.
+- Public evaluation claims now have a dedicated, CI-validated evidence format
+  under `evals/`; private and exploratory runs remain under ignored `bench/`.
 
 ## [0.1.0] - 2026-07-10
 

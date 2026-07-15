@@ -37,6 +37,7 @@ Beyond single-turn tasks, wuu can plan multi-step work, delegate to specialized 
 | Understand or embed the Go core | [Architecture](#architecture) and the [`app-server` protocol](docs/app-server-protocol.md) |
 | Contribute | [Contributing](CONTRIBUTING.md) |
 | Review the security and trust boundaries | [Security model](docs/security-model.md) |
+| Inspect reproducible public evaluations | [Public evaluations](evals/) |
 
 ## News
 

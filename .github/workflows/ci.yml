@@ -21,7 +21,7 @@ jobs:
           node-version-file: .node-version
 
       - name: Check repository metadata
-        run: make version-check
+        run: make repository-check
 
   go-check:
     name: Go check
