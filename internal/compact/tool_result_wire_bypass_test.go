@@ -96,11 +96,9 @@ func TestPruneToolResults_RichProjectionKeepsPlaceholderOnWire(t *testing.T) {
 	}
 }
 
-// TestPruneToolResults_LegacyNilResult_PlaceholderReachesWire is the boundary
-// case: when a tool message has no rich ToolResult (older persisted sessions),
-// the projection cannot regenerate Content, so the pruned placeholder does
-// survive to the wire. This isolates the bypass to messages carrying a rich
-// ToolResult.
+// TestPruneToolResults_LegacyNilResult_PlaceholderReachesWire covers older
+// persisted sessions that have no rich ToolResult. Their pruned Content must
+// continue to reach the wire unchanged.
 func TestPruneToolResults_LegacyNilResult_PlaceholderReachesWire(t *testing.T) {
 	bigText := oversizedGrepText()
 

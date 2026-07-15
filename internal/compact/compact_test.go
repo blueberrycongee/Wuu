@@ -3,6 +3,7 @@ package compact
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -1303,5 +1304,35 @@ func TestPruneToolResults_BelowMinimumNotPruned(t *testing.T) {
 	}
 	if pruned[5].Content != recentOld {
 		t.Fatal("tool result under protect threshold should not be pruned")
+	}
+}
+
+func TestPruneToolResults_BoundedResultsStayStableWhenAggregateExceedsBudget(t *testing.T) {
+	const stableProjectionBudgetTokens = 2048
+	bounded := strings.Repeat("b", (stableProjectionBudgetTokens-1)*4)
+	if got := EstimateTokens(bounded); got > stableProjectionBudgetTokens {
+		t.Fatalf("fixture exceeds stable projection budget: %d", got)
+	}
+
+	messages := []providers.ChatMessage{{Role: "user", Content: "old question"}}
+	for i := 0; i < 31; i++ {
+		callID := fmt.Sprintf("bounded-call-%d", i)
+		messages = append(messages,
+			providers.ChatMessage{Role: "assistant", ToolCalls: []providers.ToolCall{{ID: callID, Name: "grep"}}},
+			providers.ChatMessage{Role: "tool", Name: "grep", ToolCallID: callID, Content: bounded},
+		)
+	}
+	messages = append(messages,
+		providers.ChatMessage{Role: "user", Content: "recent question"},
+		providers.ChatMessage{Role: "assistant", Content: "ok"},
+		providers.ChatMessage{Role: "user", Content: "latest question"},
+		providers.ChatMessage{Role: "assistant", Content: "done"},
+	)
+
+	pruned := PruneToolResults(messages)
+	for i, msg := range pruned {
+		if strings.EqualFold(msg.Role, "tool") && msg.Content != bounded {
+			t.Fatalf("bounded tool result %d was rewritten after aggregate growth: %.80q", i, msg.Content)
+		}
 	}
 }

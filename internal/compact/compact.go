@@ -22,6 +22,11 @@ const defaultCompactTimeout = 20 * time.Minute
 const (
 	toolResultPruneProtectTokens = 40_000
 	toolResultPruneMinimumTokens = 20_000
+	// toolResultPruneOversizedTokens matches the stable built-in projection
+	// budget. Results already bounded to this size must remain byte-stable;
+	// aggregate growth is handled by history compaction instead of rewriting
+	// those old request prefixes.
+	toolResultPruneOversizedTokens = 2_048
 	// pruneProtectedTurns is the number of recent user-anchored turns
 	// whose tool results are never pruned by the standalone prune pass.
 	// Aligned with OpenCode V1's "if (turns < 2) continue" guard.
@@ -912,10 +917,12 @@ func pruneOldToolResults(messages []providers.ChatMessage) []providers.ChatMessa
 // removes content; otherwise the original slice is returned as-is.
 //
 // Recent turns (the last pruneProtectedTurns user-anchored turns) are
-// always preserved. Beyond that, the most recent tool-result tokens up
-// to toolResultPruneProtectTokens are protected; older tool results are
-// replaced with a truncated placeholder. Pruning is skipped entirely
-// when the prunable amount is below toolResultPruneMinimumTokens.
+// always preserved. Individually bounded results are also preserved so
+// stable execution-time projections are not rewritten as history grows.
+// Beyond that, the most recent oversized tool-result tokens up to
+// toolResultPruneProtectTokens are protected; older oversized results are
+// replaced with a truncated placeholder. Pruning is skipped entirely when
+// the prunable amount is below toolResultPruneMinimumTokens.
 //
 // The original tool-result content remains in the live history slice
 // for session durability and future archive retrieval; only the request
@@ -945,7 +952,7 @@ func PruneToolResults(messages []providers.ChatMessage) []providers.ChatMessage 
 			continue
 		}
 		size := EstimateTokens(messages[i].Content)
-		if size <= 0 {
+		if size <= toolResultPruneOversizedTokens {
 			continue
 		}
 		total += size
