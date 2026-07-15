@@ -1507,6 +1507,7 @@
 
 .settings-memory-header {
   align-items: center;
+  flex-wrap: wrap;
   margin-bottom: 24px;
 }
 
@@ -1515,6 +1516,7 @@
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
+  margin-left: auto;
 }
 
 .settings-memory-toolbar {
@@ -1862,7 +1864,7 @@
     justify-content: flex-start;
   }
 
-  .settings-page-header {
+  .settings-page-header:not(.settings-memory-header) {
     flex-direction: column;
     align-items: flex-start;
     gap: 12px;
