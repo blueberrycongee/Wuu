@@ -38,6 +38,7 @@ const SIDEBAR_SECTION_ORDER_KEY = "wuu.desktop.sidebarSectionOrder";
 export type SidebarProjectStateController = {
   collapsedSidebarSectionIDs: Set<string>;
   expandedSidebarSectionIDs: Set<string>;
+  loadingProjectThreadIDs: ReadonlySet<string>;
   projectThreadsByProjectID: Record<string, Thread[]>;
   cachedScratchThreads: Thread[];
   sidebarSectionOrder: string[];
@@ -213,6 +214,19 @@ export function useSidebarProjectState({
     () => new Map(projects.map((project) => [project.id, project])),
     [projects],
   );
+  const loadingProjectThreadIDs = useMemo(() => {
+    const loading = new Set(loadingProjectThreadIDsRef.current);
+    for (const project of projects) {
+      if (
+        project.id !== activeProjectID &&
+        sessionTreeSectionExpanded(project.id, expandedSidebarSectionIDs) &&
+        !Object.prototype.hasOwnProperty.call(projectThreadsByProjectID, project.id)
+      ) {
+        loading.add(project.id);
+      }
+    }
+    return loading;
+  }, [activeProjectID, expandedSidebarSectionIDs, projectThreadsByProjectID, projects]);
 
   useEffect(() => {
     window.localStorage.setItem(
@@ -460,6 +474,7 @@ export function useSidebarProjectState({
   return {
     collapsedSidebarSectionIDs,
     expandedSidebarSectionIDs,
+    loadingProjectThreadIDs,
     projectThreadsByProjectID,
     cachedScratchThreads,
     sidebarSectionOrder,

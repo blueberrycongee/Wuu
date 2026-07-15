@@ -480,6 +480,7 @@ export function App(): JSX.Element {
   const {
     collapsedSidebarSectionIDs,
     expandedSidebarSectionIDs,
+    loadingProjectThreadIDs,
     projectThreadsByProjectID,
     cachedScratchThreads,
     sidebarSectionOrder,
@@ -3873,6 +3874,7 @@ export function App(): JSX.Element {
             pendingProjectID={visiblePendingProjectID}
             collapsedSidebarSectionIDs={collapsedSidebarSectionIDs}
             expandedSidebarSectionIDs={expandedSidebarSectionIDs}
+            loadingProjectThreadIDs={loadingProjectThreadIDs}
             projectThreadsByProjectID={sidebarThreadsByProjectID}
             projectMenuOpen={projectMenuOpen}
             projectMenuRef={projectMenuRef}
