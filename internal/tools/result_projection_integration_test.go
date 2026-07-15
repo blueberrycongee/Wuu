@@ -41,7 +41,7 @@ func (f fakeRichMediaTool) ExecuteResult(context.Context, string) (toolresult.Re
 			{Type: toolresult.ContentTypeText, Text: f.text},
 			{Type: toolresult.ContentTypeImage, Data: "aW1hZ2U=", MIMEType: "image/png", Name: "screen.png"},
 		},
-		StructuredContent: json.RawMessage(`{"private":"structured metadata"}`),
+		StructuredContent: json.RawMessage(`{"caption":"structured metadata"}`),
 		Meta:              json.RawMessage(`{"source":"mcp"}`),
 	}, nil
 }
@@ -226,8 +226,8 @@ func TestRichMediaSettlement_IsStableAndKeepsNativeObservation(t *testing.T) {
 	if !reflect.DeepEqual(first, second) {
 		t.Fatal("rich result request projection is not byte-stable")
 	}
-	if got := toolContent(first, call.ID); !strings.Contains(got, record.ResultRef) || strings.Contains(got, "structured metadata") {
-		t.Fatalf("wire tool text is not the bounded projection: %.300q", got)
+	if got := toolContent(first, call.ID); !strings.Contains(got, record.ResultRef) || !strings.Contains(got, "structured metadata") || strings.Contains(got, `"source":"mcp"`) {
+		t.Fatalf("wire tool text lacks bounded structured semantics or leaks private meta: %.500q", got)
 	}
 	if len(first) != 4 || len(first[3].Images) != 1 || first[3].Images[0].Data != "aW1hZ2U=" {
 		t.Fatalf("native image observation missing: %+v", first)
