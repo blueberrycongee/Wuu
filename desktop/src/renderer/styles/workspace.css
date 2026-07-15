@@ -2928,6 +2928,23 @@ html.resizing-workspace-file-split * {
   width: 236px;
 }
 
+.codex-runtime-summary-row {
+  width: 100%;
+}
+
+.codex-runtime-summary-label {
+  flex: 0 0 auto;
+}
+
+.codex-runtime-summary-value {
+  min-width: 0;
+  margin-left: auto;
+  overflow: hidden;
+  color: var(--codex-menu-label-text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .hero-composer-wrap .codex-runtime-menu {
   top: calc(100% + 8px);
   bottom: auto;
