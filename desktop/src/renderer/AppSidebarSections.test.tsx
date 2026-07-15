@@ -1272,9 +1272,12 @@ describe("unified DM/thread row spec (S1)", () => {
     );
   });
 
-  it("participant rows do not share an active-row treatment with thread rows", () => {
-    expect(sidebarCSS).not.toMatch(
-      /\.thread-row\.active,\s*\.participant-roster-row\.active \{/,
+  it("project, thread, and participant rows share one active-row treatment", () => {
+    expect(sidebarCSS).toMatch(
+      /\.project-row\.active,\s*\.thread-row\.active,\s*\.participant-roster-row\.active \{[^}]*background: var\(--sidebar-row-selected-bg\);[^}]*box-shadow: inset 0 0 0 1px var\(--sidebar-row-selected-ring\);[^}]*transform: none;/,
+    );
+    expect(sidebarCSS).toMatch(
+      /\.project-row\.active:hover,\s*\.thread-row\.active:hover,\s*\.participant-roster-row\.active:hover \{[^}]*transform: none;/,
     );
   });
 
