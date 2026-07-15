@@ -8,6 +8,13 @@ Versioning rules are documented in [the release guide](docs/release.md).
 
 ## [Unreleased]
 
+### Changed
+
+- Release versions are synchronized from `VERSION`, validated in CI, and
+  published with the matching changelog section.
+- The npm wrapper installs the GitHub Release matching its own package version
+  instead of silently resolving the latest release.
+
 ## [0.1.0] - 2026-07-10
 
 ### Added
