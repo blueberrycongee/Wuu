@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -955,9 +954,7 @@ func writeSummaryPromptToolResultIndex(b *strings.Builder, result *toolresult.Re
 	if result == nil {
 		return
 	}
-	if len(result.Content) == 0 {
-		writeSummaryPromptStructuredResultIndex(b, result.StructuredContent)
-	}
+	writeSummaryPromptStructuredResultIndex(b, result.StructuredContent)
 	for _, part := range result.Content {
 		switch part.Type {
 		case toolresult.ContentTypeImage, toolresult.ContentTypeAudio, toolresult.ContentTypeFile:
@@ -999,36 +996,8 @@ func writeSummaryPromptToolResultIndex(b *strings.Builder, result *toolresult.Re
 }
 
 func writeSummaryPromptStructuredResultIndex(b *strings.Builder, raw json.RawMessage) {
-	trimmed := strings.TrimSpace(string(raw))
-	if trimmed == "" {
-		return
-	}
-	var value any
-	decoder := json.NewDecoder(strings.NewReader(trimmed))
-	decoder.UseNumber()
-	if err := decoder.Decode(&value); err != nil {
-		return
-	}
-	switch typed := value.(type) {
-	case map[string]any:
-		keys := make([]string, 0, len(typed))
-		for key := range typed {
-			keys = append(keys, key)
-		}
-		sort.Strings(keys)
-		visible := keys
-		if len(visible) > 32 {
-			visible = visible[:32]
-		}
-		fmt.Fprintf(b, "  [tool structured result index: object, %d keys: %s", len(keys), strings.Join(visible, ", "))
-		if omitted := len(keys) - len(visible); omitted > 0 {
-			fmt.Fprintf(b, ", %d keys omitted", omitted)
-		}
-		fmt.Fprintf(b, ", %d JSON characters]\n", len(trimmed))
-	case []any:
-		fmt.Fprintf(b, "  [tool structured result index: array, %d items, %d JSON characters]\n", len(typed), len(trimmed))
-	default:
-		fmt.Fprintf(b, "  [tool structured result index: %T, %d JSON characters]\n", typed, len(trimmed))
+	if index := toolresult.StructuredContentIndexJSON(raw); index != "" {
+		fmt.Fprintf(b, "  [tool structured result index: %s]\n", index)
 	}
 }
 

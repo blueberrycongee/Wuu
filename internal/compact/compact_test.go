@@ -1107,13 +1107,13 @@ func TestBuildSummaryPromptIndexesRichToolResultWithoutData(t *testing.T) {
 				{Type: toolresult.ContentTypeFile, Data: fileData, MIMEType: "application/pdf", Name: "brief.pdf"},
 				{Type: toolresult.ContentTypeResource, Name: "record", Resource: json.RawMessage(`{"id":1}`)},
 			},
-			StructuredContent: json.RawMessage(`{"private":"metadata"}`),
+			StructuredContent: json.RawMessage(`{"status":"ready"}`),
 			Meta:              json.RawMessage(`{"source":"mcp"}`),
 			Activity:          &toolresult.ActivityRef{ID: "activity-1", Kind: "computer", State: "ready", PreviewURI: "activity://preview"},
 		},
 	}}, "")
 
-	if strings.Contains(prompt, imageData) || strings.Contains(prompt, fileData) || strings.Contains(prompt, `"private":"metadata"`) {
+	if strings.Contains(prompt, imageData) || strings.Contains(prompt, fileData) || strings.Contains(prompt, `"source":"mcp"`) {
 		t.Fatal("summary prompt must not include raw rich payloads or private metadata")
 	}
 	for _, want := range []string{
@@ -1122,6 +1122,7 @@ func TestBuildSummaryPromptIndexesRichToolResultWithoutData(t *testing.T) {
 		"[tool file index: brief.pdf, application/pdf, 60 base64 characters]",
 		"[tool resource index: record, 8 JSON characters]",
 		"[tool activity index: kind=computer, id=activity-1, state=ready, preview=activity://preview]",
+		`"value_preview":{"status":"ready"}`,
 	} {
 		if !strings.Contains(prompt, want) {
 			t.Fatalf("summary prompt lacks rich result index %q: %s", want, prompt)
@@ -1142,7 +1143,22 @@ func TestBuildSummaryPromptIndexesStructuredOnlyResultWithoutValues(t *testing.T
 	if strings.Contains(prompt, secret) {
 		t.Fatal("summary prompt must not include large structured values")
 	}
-	if !strings.Contains(prompt, "[tool structured result index: object, 3 keys: payload, rows, source") {
+	if !strings.Contains(prompt, `"key_count":3`) || !strings.Contains(prompt, `"value_preview"`) || !strings.Contains(prompt, `"source":"db"`) {
 		t.Fatalf("summary prompt lacks structured result index: %s", prompt)
+	}
+}
+
+func TestBuildSummaryPromptIndexesMixedStructuredResultValues(t *testing.T) {
+	prompt := buildSummaryPrompt([]providers.ChatMessage{{
+		Role:    "tool",
+		Content: "operation completed",
+		ToolResult: &toolresult.Result{
+			Content:           []toolresult.ContentPart{{Type: toolresult.ContentTypeText, Text: "operation completed"}},
+			StructuredContent: json.RawMessage(`{"status":"ready","count":3}`),
+		},
+	}}, "")
+
+	if !strings.Contains(prompt, `"value_preview":{"count":3,"status":"ready"}`) {
+		t.Fatalf("mixed structured values missing from summary index: %s", prompt)
 	}
 }
