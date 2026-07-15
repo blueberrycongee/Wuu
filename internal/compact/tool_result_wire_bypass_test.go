@@ -8,16 +8,9 @@ import (
 	"github.com/blueberrycongee/wuu/internal/toolresult"
 )
 
-// These tests characterize the CURRENT behavior of the request-time
-// tool-result prune once it reaches the real provider request projection.
-//
-// They intentionally document a known defect: PruneToolResults rewrites only
-// ChatMessage.Content, but providers.PrepareMessagesForModelRequest later
-// regenerates Content from the untouched rich ToolResult, so the placeholder
-// is discarded before the request is lowered to the wire. Any change that
-// makes the request-time prune actually shrink the wire request for results
-// carrying a rich ToolResult MUST update these expectations — that is the
-// point: they pin the observable wire behavior so a fix cannot pass silently.
+// These tests cover the request-time tool-result prune through the real
+// provider request projection. The compact placeholder must remain the single
+// model-visible result even when the history message carries a rich ToolResult.
 
 const bypassSentinel = "WIRE_BYPASS_SENTINEL_GREP_MATCH_LINE"
 
@@ -45,7 +38,7 @@ func findToolByCallID(msgs []providers.ChatMessage, callID string) (providers.Ch
 	return providers.ChatMessage{}, false
 }
 
-func TestPruneToolResults_BypassedByRichProjection_Characterization(t *testing.T) {
+func TestPruneToolResults_RichProjectionKeepsPlaceholderOnWire(t *testing.T) {
 	bigText := oversizedGrepText()
 	bigResult := toolresult.FromText(bigText)
 
@@ -75,13 +68,18 @@ func TestPruneToolResults_BypassedByRichProjection_Characterization(t *testing.T
 	if strings.Contains(prunedOld.Content, bypassSentinel) {
 		t.Fatalf("prune should have removed the sentinel from Content")
 	}
-	// The rich ToolResult is deliberately left intact by the prune.
-	if prunedOld.ToolResult == nil || !strings.Contains(prunedOld.ToolResult.TextProjection(), bypassSentinel) {
-		t.Fatalf("prune must not touch ToolResult; sentinel should remain in the rich result")
+	// The request-only rich result must agree with Content. Otherwise provider
+	// projection would restore the original body below.
+	if prunedOld.ToolResult == nil || prunedOld.ToolResult.TextProjection() != prunedOld.Content {
+		t.Fatalf("pruned ToolResult must match Content, got rich prefix %q", head(prunedOld.ToolResult.TextProjection(), 80))
+	}
+	if !strings.Contains(messages[2].Content, bypassSentinel) || messages[2].ToolResult == nil ||
+		!strings.Contains(messages[2].ToolResult.TextProjection(), bypassSentinel) {
+		t.Fatal("request pruning must not modify durable history")
 	}
 
-	// Step 2: the real provider projection restores the full result on the
-	// wire, defeating the prune. This is the documented bypass.
+	// Step 2: the real provider projection must preserve the placeholder on the
+	// wire instead of restoring the full result.
 	prepared, err := providers.PrepareMessagesForModelRequest("gpt-5", pruned)
 	if err != nil {
 		t.Fatalf("PrepareMessagesForModelRequest: %v", err)
@@ -90,13 +88,11 @@ func TestPruneToolResults_BypassedByRichProjection_Characterization(t *testing.T
 	if !ok {
 		t.Fatalf("old tool message missing after wire preparation")
 	}
-	if !strings.Contains(wireOld.Content, bypassSentinel) {
-		t.Fatalf("BYPASS CHARACTERIZATION FAILED: expected the full result restored on the wire, "+
-			"but Content no longer contains the sentinel. If a prune fix landed, update this test. "+
-			"Got prefix: %q", head(wireOld.Content, 80))
+	if !strings.HasPrefix(wireOld.Content, "[Pruned grep result.") {
+		t.Fatalf("expected placeholder to survive on the wire, got prefix %q", head(wireOld.Content, 80))
 	}
-	if strings.HasPrefix(wireOld.Content, "[Pruned grep result.") {
-		t.Fatalf("unexpected: placeholder survived to the wire (prune fix may have landed)")
+	if strings.Contains(wireOld.Content, bypassSentinel) {
+		t.Fatalf("provider projection restored the pruned result on the wire")
 	}
 }
 

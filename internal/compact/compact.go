@@ -12,6 +12,7 @@ import (
 	"github.com/blueberrycongee/wuu/internal/contextbudget"
 	"github.com/blueberrycongee/wuu/internal/providers"
 	"github.com/blueberrycongee/wuu/internal/stringutil"
+	"github.com/blueberrycongee/wuu/internal/toolresult"
 )
 
 // Compact can be the only recovery path after a provider context overflow.
@@ -961,7 +962,13 @@ func PruneToolResults(messages []providers.ChatMessage) []providers.ChatMessage 
 	pruned := make([]providers.ChatMessage, len(messages))
 	copy(pruned, messages)
 	for _, i := range indexes {
-		pruned[i].Content = summarizePrunedToolResult(pruned[i])
+		placeholder := summarizePrunedToolResult(pruned[i])
+		pruned[i].Content = placeholder
+		if pruned[i].ToolResult != nil {
+			result := toolresult.FromText(placeholder)
+			result.IsError = pruned[i].ToolResult.IsError
+			pruned[i].ToolResult = &result
+		}
 	}
 	return pruned
 }
