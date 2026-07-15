@@ -963,6 +963,8 @@
 .settings-usage-page {
   display: flex;
   flex-direction: column;
+  container-name: settings-usage;
+  container-type: inline-size;
   /* 与页面级模块间距同源，用量页内部的工具栏/热力图/表格之间不再另起一套值。 */
   gap: var(--settings-gap, 40px);
 }
@@ -1045,8 +1047,8 @@
 /* --- Usage table --------------------------------------------------------- */
 
 .settings-usage-table-wrap {
-  overflow-x: auto;
-  overflow-y: visible;
+  min-width: 0;
+  overflow: visible;
 }
 
 /* Table title reads as a section label; cells are flush with the page
@@ -1063,8 +1065,9 @@
 
 .settings-usage-table {
   width: 100%;
-  min-width: 640px;
+  min-width: 0;
   border-collapse: collapse;
+  table-layout: fixed;
 }
 
 .settings-usage-table th,
@@ -1090,8 +1093,13 @@
 
 .settings-usage-table th:first-child,
 .settings-usage-table td:first-child {
+  width: 40%;
   text-align: left;
   padding-left: 0;
+}
+
+.settings-usage-table .settings-usage-num {
+  width: 20%;
 }
 
 .settings-usage-table td:first-child {
@@ -1104,6 +1112,11 @@
   color: var(--ink-muted);
   font-size: var(--font-sm);
   font-weight: var(--weight-medium);
+}
+
+.settings-usage-table td:first-child strong,
+.settings-usage-table td:first-child small {
+  overflow-wrap: anywhere;
 }
 
 .settings-usage-rate {
@@ -1129,6 +1142,78 @@
 .settings-usage-rate.rate-1 {
   background: var(--warning-soft);
   color: var(--warning);
+}
+
+/* Keep the model table part of the page instead of turning it into a nested
+ * horizontal scroller. Once four columns stop reading comfortably, each row
+ * folds into a model heading followed by the three values. */
+@container settings-usage (max-width: 640px) {
+  .settings-usage-table {
+    display: block;
+    table-layout: auto;
+  }
+
+  .settings-usage-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .settings-usage-table tbody {
+    display: block;
+  }
+
+  .settings-usage-table tbody tr {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px 16px;
+    border-bottom: 1px solid var(--hairline-soft);
+    padding: 14px 0;
+  }
+
+  .settings-usage-table tbody tr:last-child {
+    border-bottom: 0;
+  }
+
+  .settings-usage-table tbody td,
+  .settings-usage-table tbody td:first-child,
+  .settings-usage-table .settings-usage-num {
+    display: flex;
+    width: auto;
+    min-width: 0;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 3px;
+    border-bottom: 0;
+    padding: 0;
+    text-align: left;
+  }
+
+  .settings-usage-table tbody td:first-child {
+    grid-column: 1 / -1;
+    padding-bottom: 2px;
+  }
+
+  .settings-usage-table tbody td:nth-child(n + 2)::before {
+    color: var(--ink-muted);
+    font-size: var(--font-xs);
+    font-weight: var(--weight-semibold);
+  }
+
+  .settings-usage-table tbody td:nth-child(2)::before {
+    content: "输入";
+  }
+
+  .settings-usage-table tbody td:nth-child(3)::before {
+    content: "输出";
+  }
+
+  .settings-usage-table tbody td:nth-child(4)::before {
+    content: "命中率";
+  }
 }
 
 /* --- Usage entries (recent list) ---------------------------------------- */
