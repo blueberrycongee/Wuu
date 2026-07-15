@@ -825,7 +825,7 @@ func appendAttachmentOmissionNote(content string, images []providers.InputImage,
 		if mediaType == "" {
 			mediaType = "image"
 		}
-		fmt.Fprintf(&b, "[Image attachment omitted from compacted history: %s, %d base64 characters.]", mediaType, len(strings.TrimSpace(image.Data)))
+		fmt.Fprintf(&b, "[Image attachment omitted from compacted history: %s, %s.]", mediaType, compactMediaEvidence(image.Data, true))
 	}
 	for i, file := range files {
 		if len(images) > 0 || i > 0 {
@@ -839,7 +839,7 @@ func appendAttachmentOmissionNote(content string, images []providers.InputImage,
 		if name == "" {
 			name = "file"
 		}
-		fmt.Fprintf(&b, "[File attachment omitted from compacted history: %s, %s, %d base64 characters.]", mediaType, name, len(strings.TrimSpace(file.Data)))
+		fmt.Fprintf(&b, "[File attachment omitted from compacted history: %s, %s, %s.]", mediaType, name, compactMediaEvidence(file.Data, false))
 	}
 	return b.String()
 }
@@ -928,7 +928,7 @@ func writeSummaryPromptMessage(b *strings.Builder, msg providers.ChatMessage) {
 		if mediaType == "" {
 			mediaType = "image"
 		}
-		fmt.Fprintf(b, "  [image omitted: %s, %d base64 characters]\n", mediaType, len(strings.TrimSpace(image.Data)))
+		fmt.Fprintf(b, "  [image omitted: %s, %s]\n", mediaType, compactMediaEvidence(image.Data, true))
 	}
 	for _, file := range msg.Files {
 		mediaType := strings.TrimSpace(file.MediaType)
@@ -939,7 +939,7 @@ func writeSummaryPromptMessage(b *strings.Builder, msg providers.ChatMessage) {
 		if name == "" {
 			name = "file"
 		}
-		fmt.Fprintf(b, "  [file omitted: %s, %s, %d base64 characters]\n", mediaType, name, len(strings.TrimSpace(file.Data)))
+		fmt.Fprintf(b, "  [file omitted: %s, %s, %s]\n", mediaType, name, compactMediaEvidence(file.Data, false))
 	}
 	for _, tc := range msg.ToolCalls {
 		fmt.Fprintf(b, "  -> tool_call: %s(%s)\n", tc.Name, truncate(tc.Arguments, compactPromptToolArgsMaxChars))
@@ -969,7 +969,7 @@ func writeSummaryPromptToolResultIndex(b *strings.Builder, result *toolresult.Re
 			if uri := strings.TrimSpace(part.URI); uri != "" {
 				fmt.Fprintf(b, "  [tool %s index: %s, %s, uri=%s]\n", part.Type, name, mediaType, truncate(uri, compactPromptToolArgsMaxChars))
 			} else {
-				fmt.Fprintf(b, "  [tool %s index: %s, %s, %d base64 characters]\n", part.Type, name, mediaType, len(strings.TrimSpace(part.Data)))
+				fmt.Fprintf(b, "  [tool %s index: %s, %s, %s]\n", part.Type, name, mediaType, compactMediaEvidence(part.Data, part.Type == toolresult.ContentTypeImage))
 			}
 		case toolresult.ContentTypeResource:
 			name := strings.TrimSpace(part.Name)

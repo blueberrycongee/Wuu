@@ -1,9 +1,15 @@
 package compact
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"image"
+	"image/png"
 	"strings"
 	"testing"
 	"time"
@@ -1011,11 +1017,11 @@ func TestCompact_StripsHistoricalImagesFromKeptTail(t *testing.T) {
 	foundHistorical := false
 	foundLatest := false
 	for _, msg := range result {
-		switch msg.Content {
-		case "second screenshot\n\n[Image attachment omitted from compacted history: image/png, 1200 base64 characters.]":
+		switch {
+		case strings.HasPrefix(msg.Content, "second screenshot\n\n[Image attachment omitted from compacted history: image/png, 1200 base64 characters, 900 decoded bytes, sha256="):
 			historical = msg
 			foundHistorical = true
-		case "third screenshot":
+		case msg.Content == "third screenshot":
 			latest = msg
 			foundLatest = true
 		}
@@ -1056,11 +1062,11 @@ func TestCompact_StripsHistoricalFilesFromKeptTail(t *testing.T) {
 	foundHistorical := false
 	foundLatest := false
 	for _, msg := range result {
-		switch msg.Content {
-		case "second brief\n\n[File attachment omitted from compacted history: application/pdf, brief.pdf, 1400 base64 characters.]":
+		switch {
+		case strings.HasPrefix(msg.Content, "second brief\n\n[File attachment omitted from compacted history: application/pdf, brief.pdf, 1400 base64 characters, 1050 decoded bytes, sha256="):
 			historical = msg
 			foundHistorical = true
-		case "latest brief":
+		case msg.Content == "latest brief":
 			latest = msg
 			foundLatest = true
 		}
@@ -1088,7 +1094,7 @@ func TestBuildSummaryPromptMentionsImagesWithoutData(t *testing.T) {
 	if strings.Contains(prompt, imageData) {
 		t.Fatal("summary prompt must not include raw image data")
 	}
-	if !strings.Contains(prompt, "[image omitted: image/png, 80 base64 characters]") {
+	if !strings.Contains(prompt, "[image omitted: image/png, 80 base64 characters, 60 decoded bytes, sha256=") {
 		t.Fatalf("expected image omission note, got %q", prompt)
 	}
 }
@@ -1117,9 +1123,9 @@ func TestBuildSummaryPromptIndexesRichToolResultWithoutData(t *testing.T) {
 		t.Fatal("summary prompt must not include raw rich payloads or private metadata")
 	}
 	for _, want := range []string{
-		"[tool image index: screen.png, image/png, 80 base64 characters]",
+		"[tool image index: screen.png, image/png, 80 base64 characters, 60 decoded bytes, sha256=",
 		"[tool audio index: clip.wav, audio/wav, uri=https://example.test/audio.wav]",
-		"[tool file index: brief.pdf, application/pdf, 60 base64 characters]",
+		"[tool file index: brief.pdf, application/pdf, 60 base64 characters, 45 decoded bytes, sha256=",
 		"[tool resource index: record, 8 JSON characters]",
 		"[tool activity index: kind=computer, id=activity-1, state=ready, preview=activity://preview]",
 		`"value_preview":{"status":"ready"}`,
@@ -1127,6 +1133,24 @@ func TestBuildSummaryPromptIndexesRichToolResultWithoutData(t *testing.T) {
 		if !strings.Contains(prompt, want) {
 			t.Fatalf("summary prompt lacks rich result index %q: %s", want, prompt)
 		}
+	}
+}
+
+func TestBuildSummaryPromptIndexesImageIdentityAndDimensions(t *testing.T) {
+	var encoded bytes.Buffer
+	if err := png.Encode(&encoded, image.NewRGBA(image.Rect(0, 0, 2, 3))); err != nil {
+		t.Fatal(err)
+	}
+	data := base64.StdEncoding.EncodeToString(encoded.Bytes())
+	hash := sha256.Sum256(encoded.Bytes())
+	prompt := buildSummaryPrompt([]providers.ChatMessage{{
+		Role:   "user",
+		Images: []providers.InputImage{{MediaType: "image/png", Data: data}},
+	}}, "")
+
+	want := fmt.Sprintf("sha256=%x, dimensions=2x3", hash)
+	if !strings.Contains(prompt, want) {
+		t.Fatalf("image identity missing from compact prompt: %s", prompt)
 	}
 }
 
