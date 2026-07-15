@@ -1,9 +1,10 @@
 # Changelog
 
-All notable changes to wuu will be documented in this file.
+This file starts the maintained release record. Earlier GitHub Releases may not
+have complete change notes.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and this project aims to adhere to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+Versioning rules are documented in [the release guide](docs/release.md).
 
 ## [Unreleased]
 
