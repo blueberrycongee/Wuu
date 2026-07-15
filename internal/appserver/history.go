@@ -12,6 +12,7 @@ import (
 	"github.com/blueberrycongee/wuu/internal/compact"
 	"github.com/blueberrycongee/wuu/internal/providers"
 	sessionstore "github.com/blueberrycongee/wuu/internal/session"
+	"github.com/blueberrycongee/wuu/internal/toolresult"
 )
 
 type persistedToolCall struct {
@@ -60,6 +61,7 @@ type persistedMessage struct {
 	ToolCallID          string                             `json:"tool_call_id,omitempty"`
 	ToolInvocationID    string                             `json:"tool_invocation_id,omitempty"`
 	ToolResultKind      string                             `json:"tool_result_kind,omitempty"`
+	ToolResult          *toolresult.Result                 `json:"tool_result,omitempty"`
 	FinishReason        string                             `json:"finish_reason,omitempty"`
 	StopReason          string                             `json:"stop_reason,omitempty"`
 	Truncated           bool                               `json:"truncated,omitempty"`
@@ -153,6 +155,7 @@ func chatMessagesFromPersistedMessages(records []persistedMessage) []providers.C
 			ToolCallID:        rec.ToolCallID,
 			ToolInvocationID:  rec.ToolInvocationID,
 			ToolResultKind:    providers.NormalizeToolCallKind(rec.ToolResultKind),
+			ToolResult:        cloneToolResult(rec.ToolResult),
 			FinishReason:      providers.FinishReason(strings.TrimSpace(rec.FinishReason)),
 			StopReason:        strings.ToLower(strings.TrimSpace(rec.StopReason)),
 			Truncated:         rec.Truncated,
@@ -608,6 +611,7 @@ func persistedMessageFromChatMessage(msg providers.ChatMessage) persistedMessage
 		ToolCallID:        msg.ToolCallID,
 		ToolInvocationID:  msg.ToolInvocationID,
 		ToolResultKind:    string(msg.ToolResultKind),
+		ToolResult:        cloneToolResult(msg.ToolResult),
 		FinishReason:      string(msg.FinishReason),
 		StopReason:        strings.ToLower(strings.TrimSpace(msg.StopReason)),
 		Truncated:         msg.Truncated,
@@ -768,6 +772,7 @@ func historyRecordFromPersistedMessage(rec persistedMessage) sessionstore.Histor
 		ToolCallID:          rec.ToolCallID,
 		ToolInvocationID:    rec.ToolInvocationID,
 		ToolResultKind:      rec.ToolResultKind,
+		ToolResult:          mustJSON(rec.ToolResult),
 		FinishReason:        rec.FinishReason,
 		StopReason:          rec.StopReason,
 		Truncated:           rec.Truncated,
@@ -839,6 +844,9 @@ func persistedMessageFromHistoryRecord(rec sessionstore.HistoryRecord) (persiste
 		return persistedMessage{}, err
 	}
 	if err := unmarshalRaw(rec.DiscoveredTools, &out.DiscoveredTools); err != nil {
+		return persistedMessage{}, err
+	}
+	if err := unmarshalRaw(rec.ToolResult, &out.ToolResult); err != nil {
 		return persistedMessage{}, err
 	}
 	out.DiscoveredTools = providers.CloneLoadableToolDefinitions(out.DiscoveredTools)
