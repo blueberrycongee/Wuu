@@ -131,6 +131,7 @@ import {
   setThreadForPane,
   sortThreads,
   summarizeThreadsForSidebar,
+  threadBelongsToProject,
   threadForTab,
   threadForPane,
   threadSessionTabID,
@@ -3838,7 +3839,18 @@ export function App(): JSX.Element {
           onDebugControlsChange={setDebugControlsEnabled}
           onSidebarResizeStart={startSidebarResize}
           onSidebarSeparatorKey={handleSidebarSeparatorKey}
-          archivedThreads={state.threads.filter((thread) => thread.archived)}
+          archivedThreads={state.threads
+            .filter((thread) => thread.archived)
+            .map((thread) => {
+              const project = state.projects.find((candidate) =>
+                threadBelongsToProject(thread, candidate),
+              );
+              return {
+                ...thread,
+                archive_project_id: project?.id ?? "",
+                archive_project_name: project?.name ?? "无项目",
+              };
+            })}
           onUnarchiveThread={(thread) => void unarchiveThread(thread)}
         />
       </>

@@ -303,24 +303,142 @@
   border-bottom: 0;
 }
 
-/* Archive is an action list, not a settings form: one compact line gives the
- * session name and the only relevant action without exposing its local path. */
-.settings-archive-row {
+.settings-page-archive {
+  --settings-page-max-width: 1088px;
+}
+
+.settings-archive-page,
+.settings-archive-groups {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.settings-archive-page {
+  gap: 32px;
+}
+
+.settings-archive-groups {
+  gap: 34px;
+}
+
+.settings-archive-toolbar {
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) minmax(180px, 280px);
+  gap: 12px;
+}
+
+.settings-archive-search {
+  display: flex;
+  min-width: 0;
+  height: 40px;
+  align-items: center;
+  gap: 10px;
+  padding: 0 12px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  background: var(--paper);
+  color: var(--ink-faint);
+  transition:
+    border-color var(--motion-fast) var(--menu-enter-easing),
+    box-shadow var(--motion-fast) var(--menu-enter-easing);
+}
+
+.settings-archive-search:focus-within {
+  border-color: var(--hairline-strong);
+  box-shadow: 0 0 0 3px var(--ink-overlay-8);
+}
+
+.settings-archive-search input {
+  min-width: 0;
+  width: 100%;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--font-ui);
+}
+
+.settings-archive-search input::placeholder {
+  color: var(--ink-faint);
+}
+
+.select-menu-trigger.settings-archive-filter-trigger {
+  height: 40px;
+  border-radius: var(--radius-md);
+  background: var(--paper);
+}
+
+.settings-archive-group {
+  min-width: 0;
+}
+
+.settings-archive-group-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  min-height: 54px;
+  padding: 0 2px 12px;
+}
+
+.settings-archive-group-name {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+  color: var(--ink-strong);
+  font-size: var(--font-ui);
+  font-weight: var(--weight-semibold);
+}
+
+.settings-archive-group-name span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-archive-group-count {
+  flex: 0 0 auto;
+  color: var(--ink-muted);
+  font-size: var(--font-sm);
+}
+
+.settings-archive-list {
+  overflow: hidden;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-lg);
+  padding: 0 16px;
+  background: var(--paper);
+}
+
+.settings-archive-row {
+  display: flex;
+  min-width: 0;
+  min-height: 68px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
   border-bottom: 1px solid var(--hairline-soft);
-  padding: 8px 0;
+  padding: 10px 0;
 }
 
 .settings-archive-row:last-child {
   border-bottom: 0;
 }
 
-.settings-archive-title {
+.settings-archive-row-copy {
+  display: flex;
+  flex: 1 1 auto;
   min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.settings-archive-title {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
   overflow: hidden;
   color: var(--ink);
   font-size: var(--font-ui);
@@ -328,6 +446,13 @@
   line-height: 1.35;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.settings-archive-time {
+  color: var(--ink-muted);
+  font-size: var(--font-sm);
+  font-weight: var(--weight-medium);
+  line-height: 1.35;
 }
 
 .settings-archive-restore {
@@ -339,7 +464,7 @@
   flex-direction: column;
   align-items: flex-start;
   gap: 4px;
-  padding: 8px 0;
+  padding: 24px 0;
 }
 
 .settings-archive-empty-icon {
@@ -1712,6 +1837,10 @@
 }
 
 @media (max-width: 900px) {
+  .settings-archive-toolbar {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .settings-row {
     grid-template-columns: minmax(0, 1fr);
     gap: 12px;
