@@ -2925,7 +2925,17 @@ html.resizing-workspace-file-split * {
 }
 
 .codex-main-menu {
-  width: 236px;
+  width: 208px;
+}
+
+.codex-main-menu,
+.codex-effort-menu {
+  gap: 0;
+  padding: 4px;
+}
+
+.codex-effort-menu {
+  width: 172px;
 }
 
 .codex-runtime-summary-row {
@@ -2943,6 +2953,18 @@ html.resizing-workspace-file-split * {
   color: var(--codex-menu-label-text);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.codex-main-menu button,
+.codex-effort-menu button {
+  height: 30px;
+  gap: 6px;
+  padding: 0 7px;
+}
+
+.codex-main-menu .codex-menu-chevron {
+  width: 14px;
+  height: 14px;
 }
 
 .hero-composer-wrap .codex-runtime-menu {

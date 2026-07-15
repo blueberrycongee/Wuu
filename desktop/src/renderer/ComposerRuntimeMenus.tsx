@@ -163,7 +163,7 @@ export function RuntimePicker({
           owner="codex-runtime"
           placement={placement}
           align="right"
-          width={236}
+          width={208}
         >
           <RuntimeMainMenu
             selectedVariant={currentVariant}
@@ -181,7 +181,7 @@ export function RuntimePicker({
           owner="codex-runtime"
           placement={placement}
           align="right"
-          width={236}
+          width={172}
         >
           <RuntimeEffortMenu
             selectedVariant={currentVariant}
