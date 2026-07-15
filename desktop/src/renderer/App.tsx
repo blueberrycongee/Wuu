@@ -674,12 +674,13 @@ export function App(): JSX.Element {
       })),
   });
   // Archive is now a single-click action (the previous two-step "click again
-  // to confirm" pattern was too easy to misfire). The toast/notification lives
-  // in `archiveTip` below; the underlying IPC still goes through
+  // to confirm" pattern was too easy to misfire). Success and failure feedback
+  // lives in `archiveTip` below; the underlying IPC still goes through
   // `window.wuu.archiveThread(id, true)`.
   const [archiveTip, setArchiveTip] = useState<{
     threadID: string;
     threadTitle: string;
+    errorMessage?: string;
   } | null>(null);
   const dismissArchiveTip = useCallback(() => {
     setArchiveTip(null);
@@ -3784,6 +3785,7 @@ export function App(): JSX.Element {
   const archiveTipNode = archiveTip ? (
     <ArchiveTip
       threadTitle={archiveTip.threadTitle}
+      errorMessage={archiveTip.errorMessage}
       onViewArchive={() => {
         dismissArchiveTip();
         openArchiveSettings();
@@ -3923,8 +3925,13 @@ export function App(): JSX.Element {
             onTogglePinned={(thread) => void toggleThreadPinned(thread)}
             onArchiveThread={(thread) => {
               const archivedTitle = thread.title?.trim() || "该会话";
-              void archiveThread(thread);
-              setArchiveTip({ threadID: thread.id, threadTitle: archivedTitle });
+              void archiveThread(thread).then((outcome) => {
+                setArchiveTip({
+                  threadID: thread.id,
+                  threadTitle: archivedTitle,
+                  errorMessage: outcome.ok ? undefined : outcome.error,
+                });
+              });
             }}
             onDeleteThread={(thread) => void deleteThread(thread)}
             onRenameThread={(thread, title) => void renameThread(thread, title)}
