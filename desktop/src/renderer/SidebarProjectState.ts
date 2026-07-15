@@ -153,6 +153,17 @@ export function threadListsEquivalent(
   });
 }
 
+export function mergeSidebarThreadSnapshots(
+  cached: Thread[] | undefined,
+  incoming: Thread[],
+): Thread[] {
+  let merged = cached ?? [];
+  for (const thread of incoming) {
+    merged = upsertThread(merged, thread);
+  }
+  return sortThreads(merged);
+}
+
 export function threadsForDesktopProject(
   threads: Thread[],
   project: DesktopProject,
@@ -276,10 +287,14 @@ export function useSidebarProjectState({
     }
     const activeProjectThreads = threadsForDesktopProject(threads, activeProject);
     setProjectThreadsByProjectID((current) => {
-      if (threadListsEquivalent(current[activeProjectID], activeProjectThreads)) {
+      const merged = mergeSidebarThreadSnapshots(
+        current[activeProjectID],
+        activeProjectThreads,
+      );
+      if (threadListsEquivalent(current[activeProjectID], merged)) {
         return current;
       }
-      return { ...current, [activeProjectID]: activeProjectThreads };
+      return { ...current, [activeProjectID]: merged };
     });
   }, [activeContext?.kind, activeProjectID, projectsByID, threads]);
 

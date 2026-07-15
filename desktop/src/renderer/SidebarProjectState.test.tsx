@@ -166,6 +166,29 @@ describe("useSidebarProjectState", () => {
     ).toEqual(["thread-alpha"]);
   });
 
+  it("keeps cached sessions while an active project snapshot is incomplete", async () => {
+    const alpha = project("alpha", "/tmp/alpha");
+    const first = thread("thread-first", "/tmp/alpha");
+    const second = thread("thread-second", "/tmp/alpha");
+    const activeContext: RuntimeContext = {
+      kind: "project",
+      project_id: alpha.id,
+      cwd: alpha.path,
+    };
+    const hook = await renderSidebarProjectState({
+      projects: [alpha],
+      threads: [first, second],
+      activeContext,
+      activeProjectID: alpha.id,
+    });
+
+    await hook.rerender({ threads: [second] });
+
+    expect(
+      hook.get().projectThreadsByProjectID.alpha?.map((item) => item.id).sort(),
+    ).toEqual(["thread-first", "thread-second"]);
+  });
+
   it("keeps scratch threads cached for the no-project context", async () => {
     const alpha = project("alpha", "/tmp/alpha");
     const scratchThread = thread("thread-scratch", "/tmp/other");

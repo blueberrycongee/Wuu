@@ -200,6 +200,7 @@ import { useComposerDraftState } from "./ComposerDraftState";
 import { useComposerPendingState } from "./ComposerPendingState";
 import { useSidebarDrawerState } from "./SidebarDrawerState";
 import {
+  mergeSidebarThreadSnapshots,
   threadsForDesktopProject,
   useSidebarProjectState,
 } from "./SidebarProjectState";
@@ -2000,9 +2001,9 @@ export function App(): JSX.Element {
     }
     return {
       ...projectThreadsByProjectID,
-      [state.activeProjectId]: threadsForDesktopProject(
-        state.threads,
-        activeProject,
+      [state.activeProjectId]: mergeSidebarThreadSnapshots(
+        projectThreadsByProjectID[state.activeProjectId],
+        threadsForDesktopProject(state.threads, activeProject),
       ),
     };
   }, [
