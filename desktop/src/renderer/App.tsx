@@ -1199,7 +1199,6 @@ export function App(): JSX.Element {
     conversationSearchInputRef,
     toggleConversationSearch,
     closeConversationSearch,
-    refreshConversationSearchThreads,
     selectConversationSearchResult,
     handleConversationSearchKeyDown,
     setConversationSearchQuery,
@@ -3975,7 +3974,6 @@ export function App(): JSX.Element {
         dialogRef={conversationSearchRef}
         inputRef={conversationSearchInputRef}
         onClose={closeConversationSearch}
-        onRefresh={() => void refreshConversationSearchThreads()}
         onQueryChange={setConversationSearchQuery}
         onClearQuery={clearConversationSearchQuery}
         onKeyDown={handleConversationSearchKeyDown}

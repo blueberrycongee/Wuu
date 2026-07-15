@@ -14,10 +14,6 @@
   --env-search-input-placeholder: var(--ink-muted);
   --env-search-clear-btn-text: var(--ink-soft);
   --env-search-clear-btn-hover-bg: var(--surface-2);
-  --env-search-status-text: var(--ink-soft);
-  --env-search-spinner-border: var(--ink-overlay-12);
-  --env-search-spinner-top-border: var(--ink-overlay-18);
-  --env-search-status-btn-text: var(--ink-soft);
   --env-search-error-bg: #fff0ed;
   --env-search-error-text: #a74431;
   --env-search-result-text: var(--ink);
@@ -1121,58 +1117,6 @@
   letter-spacing: 0.02em;
   user-select: none;
   -webkit-user-select: none;
-}
-
-.conversation-search-status {
-  display: flex;
-  min-height: 34px;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  color: var(--env-search-status-text);
-  font-size: var(--font-sm);
-  font-weight: var(--weight-medium);
-  padding: 4px 12px 0;
-}
-
-.conversation-search-status-text {
-  display: inline-flex;
-  min-width: 0;
-  align-items: center;
-  gap: 7px;
-}
-
-.conversation-search-status.loading .conversation-search-status-text::before {
-  content: "";
-  display: block;
-  width: 10px;
-  height: 10px;
-  flex: 0 0 auto;
-  border: 2px solid var(--env-search-spinner-border);
-  border-top-color: var(--env-search-spinner-top-border);
-  border-radius: var(--radius-pill);
-  animation: wuu-spin var(--motion-spin) linear infinite;
-}
-
-.conversation-search-status button {
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--env-search-status-btn-text);
-  cursor: pointer;
-  font-size: var(--font-sm);
-  font-weight: var(--weight-semibold);
-  padding: 5px 8px;
-  transition:
-    opacity var(--motion-base) var(--ease-out),
-    transform var(--motion-base) var(--search-motion-easing);
-}
-
-.conversation-search-status button:hover,
-.conversation-search-status button:focus-visible {
-  outline: 0;
-  background: var(--surface-2);
-  color: var(--ink);
-  transform: translate3d(0, -1px, 0);
 }
 
 .conversation-search-error {
