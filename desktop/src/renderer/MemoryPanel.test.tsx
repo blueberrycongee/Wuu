@@ -139,7 +139,9 @@ function unknownMethodError(method: string): Error {
 
 describe("MemoryPanel overview", () => {
   it("keeps the overview controls in the page title row", () => {
-    installMemoryStub();
+    installMemoryStub({
+      getMemoryOverview: vi.fn().mockReturnValue(new Promise<MemoryOverviewResult>(() => {})),
+    });
     mount();
 
     const header = container.querySelector(".settings-memory-header");
