@@ -1272,13 +1272,14 @@ describe("unified DM/thread row spec (S1)", () => {
     );
   });
 
-  it("project, thread, and participant rows share one active-row treatment", () => {
+  it("only leaf destinations share the quiet active-row treatment", () => {
     expect(sidebarCSS).toMatch(
-      /\.project-row\.active,\s*\.thread-row\.active,\s*\.participant-roster-row\.active \{[^}]*background: var\(--sidebar-row-selected-bg\);[^}]*box-shadow: inset 0 0 0 1px var\(--sidebar-row-selected-ring\);[^}]*transform: none;/,
+      /\.thread-row\.active,\s*\.participant-roster-row\.active \{[^}]*background: var\(--sidebar-row-selected-bg\);[^}]*color: var\(--ink\);[^}]*transform: none;/,
     );
     expect(sidebarCSS).toMatch(
-      /\.project-row\.active:hover,\s*\.thread-row\.active:hover,\s*\.participant-roster-row\.active:hover \{[^}]*transform: none;/,
+      /\.thread-row\.active:hover,\s*\.participant-roster-row\.active:hover \{[^}]*box-shadow: none;[^}]*transform: none;/,
     );
+    expect(sidebarCSS).not.toMatch(/\.project-row\.active,\s*\.thread-row\.active/);
   });
 
   it("unread rows share one badge language: info dot plus semibold title", () => {
