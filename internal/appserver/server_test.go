@@ -540,6 +540,48 @@ func TestServerInitializeExposesExtensionInventoryWithoutSecrets(t *testing.T) {
 	}
 }
 
+func TestServerInitializeHidesInactivePluginMCPOverrides(t *testing.T) {
+	rt := newTestRuntime(t, &fakeClient{})
+	t.Setenv("TEST_WUU_KEY", "test")
+	cfg := config.Config{
+		DefaultProvider: "fake",
+		Providers: map[string]config.ProviderConfig{
+			"fake": {Type: "openai-compatible", BaseURL: "https://example.test/v1", APIKeyEnv: "TEST_WUU_KEY", Model: "fake-model"},
+		},
+		MCPServers: map[string]config.MCPServerConfig{
+			"docs":                    {Command: "docs-server"},
+			"plugin.cua-mac.computer": {},
+		},
+	}
+	data, err := json.Marshal(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(rt.ConfigPath, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	out := &lockedBuffer{}
+	srv := New(rt, out)
+	if err := srv.handleLine(context.Background(), []byte(`{"id":"1","method":"initialize"}`)); err != nil {
+		t.Fatalf("initialize: %v", err)
+	}
+
+	msgs := parseOutput(t, out.String())
+	result := remarshal[InitializeResult](t, responseByID(t, msgs, "1")["result"])
+	if _, ok := result.GeneralSettings.MCPServerEnabled["plugin.cua-mac.computer"]; ok {
+		t.Fatalf("inactive plugin MCP override leaked into general settings: %+v", result.GeneralSettings.MCPServerEnabled)
+	}
+	if !result.GeneralSettings.MCPServerEnabled["docs"] {
+		t.Fatalf("ordinary MCP server missing from general settings: %+v", result.GeneralSettings.MCPServerEnabled)
+	}
+	for _, record := range result.ExtensionInventory {
+		if record.Name == "plugin.cua-mac.computer" {
+			t.Fatalf("inactive plugin MCP override leaked into extension inventory: %+v", record)
+		}
+	}
+}
+
 func TestServerInitializeExposesModelSurfaceSummary(t *testing.T) {
 	rt := newTestRuntime(t, &fakeClient{})
 	rt.ProviderName = "openai"
