@@ -359,14 +359,7 @@ func RunToolLoop(
 				Message:      providers.CloneChatMessage(msg),
 			})
 		}
-		// Non-destructive tool-result prune: swap old tool results for
-		// compact placeholders in the request projection only. The transcript
-		// and live history keep full content, so pruning always summarizes
-		// originals — placeholders are never fed back into a later pass.
 		requestMessages := assembly.Messages
-		if cfg.ToolPrune {
-			requestMessages = compact.PruneToolResults(requestMessages)
-		}
 		operation := providers.NewInferenceOperation(
 			cfg.InferenceOperationKind,
 			cfg.InferenceWorkloadProfile,

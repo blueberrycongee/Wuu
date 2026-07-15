@@ -12,7 +12,6 @@ import (
 	"github.com/blueberrycongee/wuu/internal/contextbudget"
 	"github.com/blueberrycongee/wuu/internal/providers"
 	"github.com/blueberrycongee/wuu/internal/stringutil"
-	"github.com/blueberrycongee/wuu/internal/toolresult"
 )
 
 // Compact can be the only recovery path after a provider context overflow.
@@ -22,15 +21,6 @@ const defaultCompactTimeout = 20 * time.Minute
 const (
 	toolResultPruneProtectTokens = 40_000
 	toolResultPruneMinimumTokens = 20_000
-	// toolResultPruneOversizedTokens matches the stable built-in projection
-	// budget. Results already bounded to this size must remain byte-stable;
-	// aggregate growth is handled by history compaction instead of rewriting
-	// those old request prefixes.
-	toolResultPruneOversizedTokens = 2_048
-	// pruneProtectedTurns is the number of recent user-anchored turns
-	// whose tool results are never pruned by the standalone prune pass.
-	// Aligned with OpenCode V1's "if (turns < 2) continue" guard.
-	pruneProtectedTurns = 2
 )
 
 var protectedToolResults = map[string]bool{
@@ -908,80 +898,6 @@ func pruneOldToolResults(messages []providers.ChatMessage) []providers.ChatMessa
 	}
 
 	return pruned
-}
-
-// PruneToolResults is a standalone, non-LLM prune pass that truncates
-// old tool-result content to save context before a provider request.
-// It is non-destructive: the input slice is never modified, and a new
-// slice with pruned content is returned only when pruning actually
-// removes content; otherwise the original slice is returned as-is.
-//
-// Recent turns (the last pruneProtectedTurns user-anchored turns) are
-// always preserved. Individually bounded results are also preserved so
-// stable execution-time projections are not rewritten as history grows.
-// Beyond that, the most recent oversized tool-result tokens up to
-// toolResultPruneProtectTokens are protected; older oversized results are
-// replaced with a truncated placeholder. Pruning is skipped entirely when
-// the prunable amount is below toolResultPruneMinimumTokens.
-//
-// The original tool-result content remains in the live history slice
-// for session durability and future archive retrieval; only the request
-// projection is truncated.
-func PruneToolResults(messages []providers.ChatMessage) []providers.ChatMessage {
-	if len(messages) == 0 {
-		return nil
-	}
-
-	total := 0
-	prunedTokens := 0
-	turnsSeen := 0
-	var indexes []int
-	for i := len(messages) - 1; i >= 0; i-- {
-		// Count user messages as turn boundaries going backwards.
-		if isPruneUserTurnBoundary(messages[i]) {
-			turnsSeen++
-		}
-		// Skip tool results in the last pruneProtectedTurns turns.
-		if turnsSeen < pruneProtectedTurns {
-			continue
-		}
-		if !strings.EqualFold(messages[i].Role, "tool") {
-			continue
-		}
-		if protectedToolResults[strings.TrimSpace(messages[i].Name)] {
-			continue
-		}
-		size := EstimateTokens(messages[i].Content)
-		if size <= toolResultPruneOversizedTokens {
-			continue
-		}
-		total += size
-		if total <= toolResultPruneProtectTokens {
-			continue
-		}
-		prunedTokens += size
-		indexes = append(indexes, i)
-	}
-	if prunedTokens <= toolResultPruneMinimumTokens {
-		return messages
-	}
-
-	pruned := make([]providers.ChatMessage, len(messages))
-	copy(pruned, messages)
-	for _, i := range indexes {
-		placeholder := summarizePrunedToolResult(pruned[i])
-		pruned[i].Content = placeholder
-		if pruned[i].ToolResult != nil {
-			result := toolresult.FromText(placeholder)
-			result.IsError = pruned[i].ToolResult.IsError
-			pruned[i].ToolResult = &result
-		}
-	}
-	return pruned
-}
-
-func isPruneUserTurnBoundary(msg providers.ChatMessage) bool {
-	return strings.EqualFold(msg.Role, "user") && !msg.Hidden && !IsInternalContextMessage(msg)
 }
 
 func summarizePrunedToolResult(msg providers.ChatMessage) string {
