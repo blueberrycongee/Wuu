@@ -36,6 +36,13 @@ export function formatCurrentNumber(
   return new Intl.NumberFormat(activeLocale, options).format(value);
 }
 
+export function formatCurrentDate(
+  value: Date | number | string,
+  options?: Intl.DateTimeFormatOptions,
+): string {
+  return new Intl.DateTimeFormat(activeLocale, options).format(new Date(value));
+}
+
 export function resolveLocale(
   preference: LanguagePreference,
   systemLocale: string = navigator.language,

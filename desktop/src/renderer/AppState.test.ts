@@ -19,8 +19,10 @@ import {
   chatMessagesFromTurns,
   chatReaderCountForThread,
   composerDraftHasContent,
+  composerSubmissionDetail,
   conversationPaneThreadsByID,
   conversationSearchContextLabel,
+  conversationSearchThreadMeta,
   groupThreadSummaries,
   createDraftSessionTab,
   createThreadSessionTab,
@@ -56,6 +58,7 @@ import {
   threadProjectPath,
   threadSessionTabID,
   turnStreamStatusForThread,
+  turnPreview,
   workspacePanelContext,
   type AppState,
   type ComposerDraftState,
@@ -64,6 +67,11 @@ import {
 } from "./AppState";
 import { PROCESS_NOTIFICATION_NAME } from "./InternalUserNotification";
 import { streamTextKey, streamTextStore } from "./StreamText";
+import { setActiveLocale } from "./i18n";
+
+afterEach(() => {
+  setActiveLocale("zh-CN");
+});
 
 function installManualRAF(): {
   flush: () => void;
@@ -3463,6 +3471,88 @@ describe("sessionTabLabel (draft tabs read as their workspace)", () => {
       cwd: "/repo/orphaned-dir",
     });
     expect(sessionTabLabel(tab, state)).toBe("orphaned-dir");
+  });
+});
+
+describe("AppState English localization", () => {
+  it("localizes generated labels while preserving project data", () => {
+    setActiveLocale("en-US");
+    const scratchThread: Thread = {
+      ...threadWithUserTexts(["original prompt"]),
+      cwd: "/Users/test/.wuu/scratch/2026-07-03",
+      pinned: true,
+      updated_at: "invalid",
+      created_at: "invalid",
+    };
+    const draft = createDraftSessionTab("draft:en", {
+      kind: "no_project",
+      cwd: "/scratch",
+    });
+
+    expect(conversationSearchContextLabel(scratchThread, [])).toBe("No project");
+    expect(conversationSearchThreadMeta(scratchThread)).toBe("Pinned · Unknown time");
+    expect(sessionTabLabel(draft, { ...initialState, projects: [] })).toBe(
+      "Conversations",
+    );
+    expect(composerSubmissionDetail(1, 2)).toBe(
+      "Input submitted with 1 image, 2 files",
+    );
+    expect(
+      turnPreview({
+        id: "turn-attachments",
+        items_view: "full",
+        status: "completed",
+        items: [
+          {
+            id: "user",
+            type: "user_message",
+            images: [{ media_type: "image/png", data: "AA==" }],
+          },
+        ],
+      }),
+    ).toBe("[Image #1]");
+  });
+
+  it("localizes stream recovery progress", () => {
+    setActiveLocale("en-US");
+    const thread: Thread = {
+      ...threadWithUserTexts(["hi"]),
+      turns: [
+        {
+          id: "turn-en",
+          items_view: "full",
+          status: "in_progress",
+          items: [],
+        },
+      ],
+    };
+    const state = reduceServerEvent(
+      { ...initialState, thread, threads: [thread], running: true },
+      {
+        kind: "notification",
+        workdir: "/repo",
+        message: {
+          method: "turn/event",
+          params: {
+            thread_id: thread.id,
+            turn_id: "turn-en",
+            event: {
+              lifecycle: {
+                phase: "reconnecting",
+                attempt: 2,
+                max_attempts: 4,
+                retry_in_ms: 1500,
+              },
+            },
+          },
+        },
+      },
+    );
+
+    expect(turnStreamStatusForThread(state, state.thread)).toEqual({
+      text: "Message stream interrupted temporarily; continuing in about 2 seconds (Attempt 2 of 4)",
+      liveProgress: true,
+    });
   });
 });
 
