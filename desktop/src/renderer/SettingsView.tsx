@@ -266,7 +266,7 @@ export function SettingsView({
 
   const core = initialized?.core;
   const selectedProvider = addingProvider ? undefined : providers.find((item) => item.name === providerDraft);
-  const providerLabels = useMemo(() => providerDisplayLabels(providers), [providers]);
+  const providerLabels = useMemo(() => providerDisplayLabels(providers, t), [providers, t]);
   const selectedBaseURL = selectedProvider?.base_url ?? "";
   const connectionLocked = !addingProvider && (selectedProvider?.connection_locked ?? false);
   const variantOptions = providerModelVariantOptions(selectedProvider, modelDraft, variantDraft);
@@ -375,7 +375,7 @@ export function SettingsView({
       setAPIKeyDraft("");
       setSaved(true);
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : "保存失败");
+      setError(saveError instanceof Error ? saveError.message : t("provider.saveFailed"));
     }
   }
 
@@ -396,7 +396,7 @@ export function SettingsView({
       setError(
         removeError instanceof Error
           ? removeError.message
-          : "删除服务失败",
+          : t("provider.removeFailed"),
       );
     }
   }
@@ -508,7 +508,7 @@ export function SettingsView({
       maxContextTokens: maxContextTokensDraft,
       maxSteps: maxStepsDraft,
       temperature: temperatureDraft,
-    });
+    }, t);
     if (update.error) {
       setAdvancedError(update.error);
       return;
@@ -517,7 +517,7 @@ export function SettingsView({
       await onAdvancedSave(update.settings);
       setAdvancedSaved(true);
     } catch (saveError) {
-      setAdvancedError(saveError instanceof Error ? saveError.message : "保存失败");
+      setAdvancedError(saveError instanceof Error ? saveError.message : t("provider.saveFailed"));
     }
   }
 
@@ -576,7 +576,7 @@ export function SettingsView({
       : ""
   }${sidebarAnimating ? " sidebar-animating" : ""}`;
 
-  const pageTitle = settingsPageTitle(activePage);
+  const pageTitle = settingsPageTitle(activePage, t);
 
   return (
     <div ref={effectiveShellRef} className={shellClassName} style={shellStyle}>
@@ -741,6 +741,7 @@ export function SettingsView({
                 )}
                 providerContextWindowSource={advancedContextSourceLabel(
                   initialized?.advanced_settings?.context_window_source,
+                  t,
                 )}
                 maxContextTokens={maxContextTokensDraft}
                 maxSteps={maxStepsDraft}
@@ -972,6 +973,7 @@ function SettingsProvidersPage({
   runningProviderNames: ReadonlySet<string>;
   disabled: boolean;
 }): JSX.Element {
+  const { t } = useI18n();
   const reasoningMode = providerModelReasoningMode(selectedProvider, modelDraft);
   const authFieldUsesToken = isAnthropicProviderType(addingProvider ? providerTypeDraft : selectedProvider?.type);
   const authFieldLabel = authFieldUsesToken ? "Auth token" : "API key";
@@ -987,29 +989,29 @@ function SettingsProvidersPage({
                 disabled={running}
                 onClick={() => onProviderChange(provider.name)}
               >
-                <strong>{providerServiceLabel(provider)}</strong>
+                <strong>{providerServiceLabel(provider, t)}</strong>
                 <small>{provider.name}</small>
-                <small>{provider.model || "未选择模型"}</small>
-                <small>{providerConnectionStatus(provider)}</small>
+                <small>{provider.model || t("provider.noModel")}</small>
+                <small>{providerConnectionStatus(provider, t)}</small>
               </button>
               {onRemoveProvider && !provider.connection_locked ? (
                 <button
                   className="settings-provider-remove"
                   type="button"
-                  aria-label={`删除 ${providerServiceLabel(provider)}`}
-                  title="删除这个模型服务"
+                  aria-label={t("provider.removeNamed", { name: providerServiceLabel(provider, t) })}
+                  title={t("provider.removeTitle")}
                   disabled={running}
                   onClick={(event) => {
                     event.stopPropagation();
                     if (runningProviderNames.has(provider.name.trim())) {
-                      window.alert("这个模型服务正在被运行中的会话使用，等当前回复结束后再删除。");
+                      window.alert(t("provider.inUse"));
                       return;
                     }
                     if (
                       typeof window !== "undefined" &&
                       typeof window.confirm === "function" &&
                       !window.confirm(
-                        `确定要删除 “${providerServiceLabel(provider)}” 吗?这个操作会从配置中移除该服务。`,
+                        t("provider.removeConfirm", { name: providerServiceLabel(provider, t) }),
                       )
                     ) {
                       return;
@@ -1031,7 +1033,7 @@ function SettingsProvidersPage({
               onClick={onStartAddingProvider}
             >
               <Plus className="icon-lg" />
-              <span>新增服务</span>
+              <span>{t("provider.add")}</span>
             </button>
           ) : null}
         </div>
@@ -1044,18 +1046,18 @@ function SettingsProvidersPage({
           onClick={onStartAddingProvider}
         >
           <Plus className="icon-lg" />
-          <span>新增服务</span>
+          <span>{t("provider.add")}</span>
         </button>
       ) : null}
       <form className="settings-card" onSubmit={onSubmit}>
-        <SettingsRow title={addingProvider ? "新增服务" : "当前服务"}>
+        <SettingsRow title={addingProvider ? t("provider.add") : t("provider.current")}>
           <div className="settings-row-control-block">
             {addingProvider ? (
-              <span className="settings-inline-flag">新的模型服务</span>
+              <span className="settings-inline-flag">{t("provider.new")}</span>
             ) : providers.length > 0 ? (
               <SelectMenu
                 triggerClassName="settings-select-trigger"
-                ariaLabel="选择当前会话使用的服务"
+                ariaLabel={t("provider.selectCurrent")}
                 value={providerDraft}
                 onChange={onProviderChange}
                 disabled={running}
@@ -1065,7 +1067,7 @@ function SettingsProvidersPage({
                 }))}
               />
             ) : (
-              <span className="settings-inline-flag">暂无模型服务</span>
+              <span className="settings-inline-flag">{t("provider.none")}</span>
             )}
             <button
               className="settings-button"
@@ -1076,37 +1078,37 @@ function SettingsProvidersPage({
               {addingProvider ? (
                 <>
                   <X className="icon" />
-                  <span>取消</span>
+                  <span>{t("common.cancel")}</span>
                 </>
               ) : (
                 <>
                   <Plus className="icon" />
-                  <span>新增服务</span>
+                  <span>{t("provider.add")}</span>
                 </>
               )}
             </button>
           </div>
         </SettingsRow>
         {addingProvider ? (
-          <SettingsRow title="服务类型">
+          <SettingsRow title={t("provider.type")}>
             <SelectMenu
               triggerClassName="settings-select-trigger"
-              ariaLabel="服务类型"
+              ariaLabel={t("provider.type")}
               dataTestid="settings-provider-type-select"
               value={providerTypeDraft}
               onChange={onProviderTypeDraftChange}
               disabled={running}
               options={[
-                { value: "openai-compatible", label: "OpenAI 兼容" },
-                { value: "anthropic", label: "Anthropic 兼容" }
+                { value: "openai-compatible", label: t("provider.openaiCompatible") },
+                { value: "anthropic", label: t("provider.anthropicCompatible") }
               ]}
             />
           </SettingsRow>
         ) : null}
         {addingProvider ? (
           <SettingsRow
-            title="服务标识"
-            description={providerNameTaken ? "这个名称已存在" : undefined}
+            title={t("provider.identifier")}
+            description={providerNameTaken ? t("provider.nameExists") : undefined}
           >
             <input
               className="settings-input"
@@ -1116,11 +1118,11 @@ function SettingsProvidersPage({
             />
           </SettingsRow>
         ) : selectedProvider ? (
-          <SettingsRow title="服务标识" description={providerTypeLabel(selectedProvider)}>
+          <SettingsRow title={t("provider.identifier")} description={providerTypeLabel(selectedProvider, t)}>
             <span className="settings-row-control-value">{selectedProvider.name}</span>
           </SettingsRow>
         ) : null}
-        <SettingsRow title="模型名称" block>
+        <SettingsRow title={t("provider.modelName")} block>
           <input
             className="settings-input"
             value={modelDraft}
@@ -1129,13 +1131,13 @@ function SettingsProvidersPage({
           />
         </SettingsRow>
         <SettingsRow
-          title="思考强度"
-          description={reasoningMode === "off" ? "当前模型不支持思考" : undefined}
+          title={t("provider.reasoningEffort")}
+          description={reasoningMode === "off" ? t("provider.reasoningUnsupported") : undefined}
           block
         >
           <SelectMenu
             triggerClassName="settings-select-trigger"
-            ariaLabel="思考强度"
+            ariaLabel={t("provider.reasoningEffort")}
             value={variantDraft}
             onChange={onVariantDraftChange}
             disabled={running || reasoningMode === "off"}
@@ -1147,13 +1149,13 @@ function SettingsProvidersPage({
         </SettingsRow>
         <SettingsRow
           title="Base URL"
-          description={connectionLocked ? "由 OpenAI OAuth 管理" : undefined}
+          description={connectionLocked ? t("provider.oauthManaged") : undefined}
           block
         >
           <input
             className="settings-input"
             value={baseURLDraft}
-            placeholder={connectionLocked ? "由 OpenAI OAuth 管理" : "https://api.openai.com/v1"}
+            placeholder={connectionLocked ? t("provider.oauthManaged") : "https://api.openai.com/v1"}
             onChange={(event) => onBaseURLDraftChange(event.target.value)}
             disabled={running || connectionLocked}
           />
@@ -1166,24 +1168,24 @@ function SettingsProvidersPage({
             autoComplete="new-password"
             placeholder={
               connectionLocked
-                ? `不需要 ${authFieldLabel}`
+                ? t("provider.authNotNeeded", { field: authFieldLabel })
                 : addingProvider
-                  ? `输入 ${authFieldLabel}`
+                  ? t("provider.enterAuth", { field: authFieldLabel })
                   : selectedProvider?.api_key_configured
-                    ? "留空保持当前密钥"
-                    : `输入 ${authFieldLabel}`
+                    ? t("provider.keepCurrentAuth")
+                    : t("provider.enterAuth", { field: authFieldLabel })
             }
             onChange={(event) => onAPIKeyDraftChange(event.target.value)}
             disabled={running || connectionLocked}
           />
           {error ? <div className="settings-error">{error}</div> : null}
-          {saved && !error ? <div className="settings-saved">已保存</div> : null}
+          {saved && !error ? <div className="settings-saved">{t("settings.saved")}</div> : null}
           <button
             className="settings-button settings-button-primary"
             type="submit"
             disabled={disabled}
           >
-            {addingProvider ? "添加服务" : "保存配置"}
+            {addingProvider ? t("provider.addAction") : t("provider.saveConfiguration")}
           </button>
         </SettingsRow>
       </form>
@@ -1659,12 +1661,12 @@ function SettingsGeneralPage({
                 <SettingsRow
                   key={name}
                   title={name}
-                  description={server ? formatMCPServerMeta(server) : undefined}
+                  description={server ? formatMCPServerMeta(server, t) : undefined}
                 >
                   {server ? (
                     <span className="settings-row-control-value">
                       <span className={`settings-status-pill ${mcpStateTone(server.state)}`}>
-                        {mcpStateLabel(server.state)}
+                        {mcpStateLabel(server.state, t)}
                       </span>
                     </span>
                   ) : null}
@@ -1674,9 +1676,9 @@ function SettingsGeneralPage({
                         <>
                           <input
                             className="settings-input settings-mcp-code-input"
-                            aria-label={`${name} 授权码`}
+                            aria-label={t("mcp.authCodeNamed", { name })}
                             autoComplete="off"
-                            placeholder="授权码"
+                            placeholder={t("mcp.authCode")}
                             value={oauthCode}
                             disabled={busy}
                             onChange={(event) => {
@@ -1687,8 +1689,8 @@ function SettingsGeneralPage({
                           <button
                             className="settings-button settings-icon-button"
                             type="button"
-                            title="完成 OAuth 登录"
-                            aria-label={`完成 ${name} OAuth 登录`}
+                            title={t("mcp.finishLogin")}
+                            aria-label={t("mcp.finishLoginNamed", { name })}
                             disabled={busy || oauthCode.trim() === ""}
                             onClick={() => void completeMCPAuth(name)}
                           >
@@ -1697,8 +1699,8 @@ function SettingsGeneralPage({
                           <button
                             className="settings-button settings-icon-button"
                             type="button"
-                            title="取消登录"
-                            aria-label={`取消 ${name} OAuth 登录`}
+                            title={t("mcp.cancelLogin")}
+                            aria-label={t("mcp.cancelLoginNamed", { name })}
                             disabled={busy}
                             onClick={() => {
                               setMCPAuthStates((states) => withoutRecordKey(states, name));
@@ -1712,8 +1714,8 @@ function SettingsGeneralPage({
                         <button
                           className="settings-button settings-icon-button"
                           type="button"
-                          title="OAuth 登录"
-                          aria-label={`登录 ${name}`}
+                          title={t("mcp.oauthLogin")}
+                          aria-label={t("mcp.loginNamed", { name })}
                           disabled={busy || disabledByConfig}
                           onClick={() => void beginMCPAuth(name)}
                         >
@@ -1723,8 +1725,8 @@ function SettingsGeneralPage({
                         <button
                           className="settings-button settings-icon-button"
                           type="button"
-                          title="移除 OAuth 登录"
-                          aria-label={`移除 ${name} OAuth 登录`}
+                          title={t("mcp.removeLogin")}
+                          aria-label={t("mcp.removeLoginNamed", { name })}
                           disabled={busy}
                           onClick={() => void onMCPAuthRemove(name)}
                         >
@@ -1734,8 +1736,8 @@ function SettingsGeneralPage({
                       <button
                         className="settings-button settings-icon-button"
                         type="button"
-                        title="刷新"
-                        aria-label={`刷新 ${name}`}
+                        title={t("mcp.refresh")}
+                        aria-label={t("mcp.refreshNamed", { name })}
                         disabled={busy || disabledByConfig}
                         onClick={() => void onMCPAction(name, "refresh")}
                       >
@@ -1744,8 +1746,8 @@ function SettingsGeneralPage({
                       <button
                         className="settings-button settings-icon-button"
                         type="button"
-                        title={disabledByConfig ? "已在配置中关闭" : connected ? "断开" : "连接"}
-                        aria-label={`${connected ? "断开" : "连接"} ${name}`}
+                        title={disabledByConfig ? t("mcp.disabledByConfig") : connected ? t("mcp.disconnect") : t("mcp.connect")}
+                        aria-label={`${connected ? t("mcp.disconnect") : t("mcp.connect")} ${name}`}
                         disabled={busy || disabledByConfig}
                         onClick={() => void onMCPAction(name, connected ? "disconnect" : "connect")}
                       >
@@ -1763,7 +1765,7 @@ function SettingsGeneralPage({
                     onClick={() => void toggleMCPServer(name, !enabled)}
                   >
                     <span className="settings-switch-thumb" aria-hidden="true" />
-                    <span className="sr-only">{enabled ? `关闭 ${name}` : `打开 ${name}`}</span>
+                    <span className="sr-only">{enabled ? t("mcp.disableNamed", { name }) : t("mcp.enableNamed", { name })}</span>
                   </button>
                   {server?.error ? (
                     <small className="settings-mcp-error">{server.error}</small>
@@ -1786,28 +1788,28 @@ function SettingsGeneralPage({
               <SettingsRow
                 key={record.id}
                 title={record.name}
-                description={formatExtensionProvenance(record)}
+                description={formatExtensionProvenance(record, t)}
                 block
               >
                 <div className="settings-extension-detail">
                   <div className="settings-extension-badges">
                     <span className={`settings-status-pill ${extensionStateTone(record.state)}`}>
-                      {extensionStateLabel(record.state)}
+                      {extensionStateLabel(record.state, t)}
                     </span>
                     {record.grant_scope ? (
                       <span className="settings-extension-grant">
-                        {extensionGrantScopeLabel(record.grant_scope)}
+                        {extensionGrantScopeLabel(record.grant_scope, t)}
                       </span>
                     ) : null}
                   </div>
                   {record.requested_permissions?.length ? (
                     <small className="settings-extension-meta">
-                      权限：{record.requested_permissions.join("、")}
+                      {t("extension.permissions", { permissions: record.requested_permissions.join("、") })}
                     </small>
                   ) : null}
                   {record.unsupported_fields?.length ? (
                     <small className="settings-extension-meta settings-extension-warning">
-                      不支持字段：{record.unsupported_fields.join("、")}
+                      {t("extension.unsupportedFields", { fields: record.unsupported_fields.join("、") })}
                     </small>
                   ) : null}
                 </div>
@@ -1846,7 +1848,7 @@ function SettingsGeneralPage({
           <SettingsCard>
             <SettingsRow
               title="Profile"
-              description={formatSurfaceRuntime(initialized)}
+              description={formatSurfaceRuntime(initialized, t)}
             >
               <span className="settings-row-control-value">
                 {initialized?.tool_surface?.profile_name ?? initialized?.model_profile?.profile_name ?? "—"}
@@ -1862,11 +1864,11 @@ function SettingsGeneralPage({
             </SettingsRow>
             <SettingsRow
               title={t("settings.availableTools")}
-              description={formatToolSurfaceCounts(initialized)}
+              description={formatToolSurfaceCounts(initialized, t)}
               block
             >
               <span className="settings-row-control-value">
-                {formatToolSurfaceCapabilities(initialized)}
+                {formatToolSurfaceCapabilities(initialized, t)}
               </span>
             </SettingsRow>
           </SettingsCard>
@@ -2030,7 +2032,7 @@ function SettingsArchivePage({
   );
 }
 
-function archiveThreadTitle(thread: ArchivedSessionView, fallback = "未命名会话"): string {
+function archiveThreadTitle(thread: ArchivedSessionView, fallback: string): string {
   return (thread.title ?? "").trim() || fallback;
 }
 
@@ -2038,7 +2040,7 @@ function archiveProjectID(thread: ArchivedSessionView): string {
   return thread.archive_project_id?.trim() || "no-project";
 }
 
-function archiveProjectName(thread: ArchivedSessionView, fallback = "无项目"): string {
+function archiveProjectName(thread: ArchivedSessionView, fallback: string): string {
   return thread.archive_project_name?.trim() || fallback;
 }
 
@@ -2275,22 +2277,22 @@ type AdvancedDraft = {
 
 type Translate = ReturnType<typeof useI18n>["t"];
 
-function settingsPageTitle(page: SettingsPage): string {
+function settingsPageTitle(page: SettingsPage, t: Translate): string {
   switch (page) {
     case "providers":
-      return "模型服务";
+      return t("settings.providers");
     case "advanced":
-      return "高级";
+      return t("settings.advanced");
     case "general":
-      return "常规";
+      return t("settings.general");
     case "memory":
-      return "记忆";
+      return t("settings.memory");
     case "usage":
-      return "用量";
+      return t("settings.usage");
     case "remote":
-      return "远程";
+      return t("settings.remote");
     case "archive":
-      return "归档";
+      return t("settings.archive");
   }
 }
 
@@ -2301,31 +2303,31 @@ function stableBoolRecordSignature(record: Record<string, boolean>): string {
     .join("|");
 }
 
-function parseAdvancedSettingsDraft(draft: AdvancedDraft): { settings: RuntimeAdvancedSettingsUpdate; error?: string } {
-  const compactPercent = parseOptionalNumber(draft.compactThreshold, "压缩触发阈值");
+function parseAdvancedSettingsDraft(draft: AdvancedDraft, t: Translate): { settings: RuntimeAdvancedSettingsUpdate; error?: string } {
+  const compactPercent = parseOptionalNumber(draft.compactThreshold, t("settings.compactThreshold"), t);
   if (compactPercent.error) {
     return { settings: {}, error: compactPercent.error };
   }
   if (compactPercent.value < 0 || compactPercent.value >= 100) {
-    return { settings: {}, error: "压缩触发阈值必须小于 100" };
+    return { settings: {}, error: t("validation.compactThreshold") };
   }
-  const compactKeepRecent = parseOptionalInteger(draft.compactKeepRecent, "保留最近上下文");
+  const compactKeepRecent = parseOptionalInteger(draft.compactKeepRecent, t("settings.keepRecentContext"), t);
   if (compactKeepRecent.error) {
     return { settings: {}, error: compactKeepRecent.error };
   }
-  const providerContextWindow = parseOptionalInteger(draft.providerContextWindow, "当前服务上下文窗口");
+  const providerContextWindow = parseOptionalInteger(draft.providerContextWindow, t("settings.providerContextLimit"), t);
   if (providerContextWindow.error) {
     return { settings: {}, error: providerContextWindow.error };
   }
-  const maxContextTokens = parseOptionalInteger(draft.maxContextTokens, "未知模型窗口");
+  const maxContextTokens = parseOptionalInteger(draft.maxContextTokens, t("settings.unknownModelLimit"), t);
   if (maxContextTokens.error) {
     return { settings: {}, error: maxContextTokens.error };
   }
-  const maxSteps = parseOptionalInteger(draft.maxSteps, "最大步数");
+  const maxSteps = parseOptionalInteger(draft.maxSteps, t("settings.maxSteps"), t);
   if (maxSteps.error) {
     return { settings: {}, error: maxSteps.error };
   }
-  const temperature = parseTemperatureDraft(draft.temperature);
+  const temperature = parseTemperatureDraft(draft.temperature, t);
   if (temperature.error) {
     return { settings: {}, error: temperature.error };
   }
@@ -2342,37 +2344,37 @@ function parseAdvancedSettingsDraft(draft: AdvancedDraft): { settings: RuntimeAd
   };
 }
 
-function parseOptionalInteger(raw: string, label: string): { value: number; error?: string } {
-  const parsed = parseOptionalNumber(raw, label);
+function parseOptionalInteger(raw: string, label: string, t: Translate): { value: number; error?: string } {
+  const parsed = parseOptionalNumber(raw, label, t);
   if (parsed.error) {
     return parsed;
   }
   if (!Number.isInteger(parsed.value)) {
-    return { value: 0, error: `${label} 必须是整数` };
+    return { value: 0, error: t("validation.integer", { field: label }) };
   }
   return parsed;
 }
 
-function parseOptionalNumber(raw: string, label: string): { value: number; error?: string } {
+function parseOptionalNumber(raw: string, label: string, t: Translate): { value: number; error?: string } {
   const value = raw.trim();
   if (value === "") {
     return { value: 0 };
   }
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed < 0) {
-    return { value: 0, error: `${label} 必须是非负数字` };
+    return { value: 0, error: t("validation.nonNegative", { field: label }) };
   }
   return { value: parsed };
 }
 
-function parseTemperatureDraft(raw: string): { value: number; error?: string } {
+function parseTemperatureDraft(raw: string, t: Translate): { value: number; error?: string } {
   const value = raw.trim();
   if (value === "" || value.toLowerCase() === "auto") {
     return { value: 0 };
   }
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed < 0 || parsed > 2) {
-    return { value: 0, error: "Temperature 必须是 Auto 或 0 到 2 之间的数字" };
+    return { value: 0, error: t("validation.temperature") };
   }
   return { value: parsed };
 }
@@ -2398,36 +2400,38 @@ function formatTemperatureDraft(value: number | undefined): string {
   return String(value);
 }
 
-function advancedContextSourceLabel(source: string | undefined): string {
+function advancedContextSourceLabel(source: string | undefined, t: Translate): string {
   switch (source) {
     case "provider_context_window":
-      return "来自当前服务覆盖";
+      return t("advanced.sourceProviderOverride");
     case "provider_model_limit":
-      return "来自模型配置";
+      return t("advanced.sourceModelConfig");
     case "provider_input_limit":
-      return "来自当前通道输入上限";
+      return t("advanced.sourceInputLimit");
     case "agent_max_context_tokens":
-      return "来自手动上限";
+      return t("advanced.sourceManualLimit");
     case "unknown":
     case "":
     case undefined:
-      return "未识别，主动压缩只依赖服务错误恢复";
+      return t("advanced.sourceUnknown");
     default:
       return source;
   }
 }
 
-function providerConnectionStatus(provider: ProviderSummary): string {
+function providerConnectionStatus(provider: ProviderSummary, t: Translate): string {
   if (provider.connection_locked) {
     return "OAuth";
   }
   const label = isAnthropicProviderType(provider.type) ? "Auth token" : "API key";
-  return provider.api_key_configured ? `${label} 已配置` : `缺少 ${label}`;
+  return provider.api_key_configured
+    ? t("provider.authConfigured", { field: label })
+    : t("provider.authMissing", { field: label });
 }
 
-function providerTypeLabel(provider: ProviderSummary): string {
+function providerTypeLabel(provider: ProviderSummary, t: Translate): string {
   const type = provider.type.trim() || "openai-compatible";
-  return provider.connection_locked ? "OAuth 管理的服务" : type;
+  return provider.connection_locked ? t("provider.oauthManagedService") : type;
 }
 
 function isAnthropicProviderType(type: string | undefined): boolean {
@@ -2579,32 +2583,34 @@ function formatBuildDate(iso: string): string {
   return parsed.toISOString().replace("T", " ").replace(/\.\d{3}Z$/, "Z");
 }
 
-function formatSurfaceRuntime(initialized: InitializeResult | undefined): string {
+function formatSurfaceRuntime(initialized: InitializeResult | undefined, t: Translate): string {
   if (!initialized) {
-    return "未连接";
+    return t("tools.notConnected");
   }
   const provider = initialized.tool_surface?.provider || initialized.model_profile?.provider || initialized.provider;
   const model = initialized.tool_surface?.model || initialized.model_profile?.model || initialized.model;
   return `${provider} · ${model}`;
 }
 
-function formatToolSurfaceCounts(initialized: InitializeResult | undefined): string {
+function formatToolSurfaceCounts(initialized: InitializeResult | undefined, t: Translate): string {
   const surface = initialized?.tool_surface;
   if (!surface) {
-    return "未连接";
+    return t("tools.notConnected");
   }
   const visible = surface.tool_names.length;
   const hidden = surface.hidden_tool_names.length;
-  return `${visible} 个可用，${hidden} 个已隐藏`;
+  return t("tools.counts", { visible, hidden });
 }
 
-function formatToolSurfaceCapabilities(initialized: InitializeResult | undefined): string {
+function formatToolSurfaceCapabilities(initialized: InitializeResult | undefined, t: Translate): string {
   const capabilities = initialized?.tool_surface?.capabilities ?? [];
   if (capabilities.length === 0) {
     return "—";
   }
   const shown = capabilities.slice(0, 4).join("、");
-  return capabilities.length > 4 ? `${shown} 等 ${capabilities.length} 项` : shown;
+  return capabilities.length > 4
+    ? t("tools.moreCapabilities", { shown, count: capabilities.length })
+    : shown;
 }
 
 function upsertMCPServerStatus(servers: MCPServerStatus[], status: MCPServerStatus): MCPServerStatus[] {
@@ -2625,17 +2631,17 @@ function withoutRecordKey(values: Record<string, string>, key: string): Record<s
   return next;
 }
 
-function formatMCPServerMeta(server: MCPServerStatus): string {
-  const pieces = [`${server.tool_count ?? 0} 个工具`];
+function formatMCPServerMeta(server: MCPServerStatus, t: Translate): string {
+  const pieces = [t("mcp.toolCount", { count: server.tool_count ?? 0 })];
   if (server.auth_status && server.auth_status !== "unsupported") {
-    pieces.push(mcpAuthLabel(server.auth_status));
+    pieces.push(mcpAuthLabel(server.auth_status, t));
   }
   return pieces.join(" · ");
 }
 
-function formatExtensionProvenance(record: ExtensionInventoryRecord): string {
-  const source = extensionSourceLabel(record.provenance.source);
-  const scope = extensionScopeLabel(record.provenance.scope);
+function formatExtensionProvenance(record: ExtensionInventoryRecord, t: Translate): string {
+  const source = extensionSourceLabel(record.provenance.source, t);
+  const scope = extensionScopeLabel(record.provenance.scope, t);
   return `${extensionKindLabel(record.kind)} · ${source} · ${scope}`;
 }
 
@@ -2656,42 +2662,42 @@ function extensionKindLabel(kind: ExtensionInventoryRecord["kind"]): string {
   }
 }
 
-function extensionSourceLabel(source: string): string {
+function extensionSourceLabel(source: string, t: Translate): string {
   if (source === "codex") return "Codex";
   if (source === "claude") return "Claude Code";
   if (source === "wuu" || source === "wuu_config") return "Wuu";
-  if (source === "bundled") return "Wuu 内置";
+  if (source === "bundled") return t("extension.bundledSource");
   if (source.startsWith("plugin:")) return source.replace("plugin:", "Plugin · ");
-  return source || "未知来源";
+  return source || t("extension.unknownSource");
 }
 
-function extensionScopeLabel(scope: string): string {
+function extensionScopeLabel(scope: string, t: Translate): string {
   switch (scope) {
     case "project":
-      return "项目";
+      return t("extension.scopeProject");
     case "user":
-      return "用户";
+      return t("extension.scopeUser");
     case "bundled":
-      return "内置";
+      return t("extension.scopeBundled");
     default:
-      return scope || "未知范围";
+      return scope || t("extension.unknownScope");
   }
 }
 
-function extensionStateLabel(state: ExtensionInventoryRecord["state"]): string {
+function extensionStateLabel(state: ExtensionInventoryRecord["state"], t: Translate): string {
   switch (state) {
     case "active":
-      return "已启用";
+      return t("extension.stateActive");
     case "read_only":
-      return "只读";
+      return t("extension.stateReadOnly");
     case "pending":
-      return "待授权";
+      return t("extension.statePending");
     case "granted":
-      return "已授权";
+      return t("extension.stateGranted");
     case "rejected":
-      return "已拒绝";
+      return t("extension.stateRejected");
     case "changed":
-      return "配置已变化";
+      return t("extension.stateChanged");
   }
 }
 
@@ -2710,44 +2716,44 @@ function extensionStateTone(state: ExtensionInventoryRecord["state"]): string {
   }
 }
 
-function extensionGrantScopeLabel(scope: NonNullable<ExtensionInventoryRecord["grant_scope"]>): string {
+function extensionGrantScopeLabel(scope: NonNullable<ExtensionInventoryRecord["grant_scope"]>, t: Translate): string {
   switch (scope) {
     case "action":
-      return "单次授权";
+      return t("extension.grantAction");
     case "session":
-      return "会话授权";
+      return t("extension.grantSession");
     case "project":
-      return "项目授权";
+      return t("extension.grantProject");
     case "user":
-      return "用户授权";
+      return t("extension.grantUser");
   }
 }
 
-function mcpStateLabel(state: string): string {
+function mcpStateLabel(state: string, t: Translate): string {
   switch (state) {
     case "ready":
     case "connected":
-      return "已连接";
+      return t("mcp.connected");
     case "starting":
     case "connecting":
-      return "连接中";
+      return t("mcp.connecting");
     case "error":
     case "failed":
-      return "失败";
+      return t("mcp.failed");
     case "disabled":
-      return "已断开";
+      return t("mcp.disconnected");
     case "auth_required":
     case "needs_auth":
-      return "需认证";
+      return t("mcp.needsAuth");
     case "needs_client_registration":
-      return "需注册";
+      return t("mcp.needsRegistration");
     case "reconnecting":
-      return "重连中";
+      return t("mcp.reconnecting");
     case "stopped":
     case "configured":
-      return "已配置";
+      return t("mcp.configured");
     default:
-      return state || "未知";
+      return state || t("mcp.unknown");
   }
 }
 
@@ -2771,12 +2777,12 @@ function mcpStateTone(state: string): string {
   }
 }
 
-function mcpAuthLabel(status: string): string {
+function mcpAuthLabel(status: string, t: Translate): string {
   switch (status) {
     case "bearer_token":
-      return "Header 认证";
+      return t("mcp.headerAuth");
     case "not_logged_in":
-      return "未登录";
+      return t("mcp.notLoggedIn");
     case "oauth":
       return "OAuth";
     default:
@@ -2784,11 +2790,11 @@ function mcpAuthLabel(status: string): string {
   }
 }
 
-function providerDisplayLabels(providers: ProviderSummary[]): Map<string, string> {
+function providerDisplayLabels(providers: ProviderSummary[], t: Translate): Map<string, string> {
   const baseLabels = new Map<string, string>();
   const counts = new Map<string, number>();
   providers.forEach((provider) => {
-    const label = providerBaseLabel(provider);
+    const label = providerBaseLabel(provider, t);
     baseLabels.set(provider.name, label);
     counts.set(label, (counts.get(label) ?? 0) + 1);
   });
@@ -2812,18 +2818,18 @@ function nextCustomProviderName(providers: ProviderSummary[]): string {
   return `custom-${index}`;
 }
 
-function providerBaseLabel(provider: ProviderSummary): string {
-  const service = providerServiceLabel(provider);
+function providerBaseLabel(provider: ProviderSummary, t: Translate): string {
+  const service = providerServiceLabel(provider, t);
   const model = provider.model.trim();
   return model ? `${service} · ${model}` : service;
 }
 
-function providerServiceLabel(provider: ProviderSummary): string {
+function providerServiceLabel(provider: ProviderSummary, t: Translate): string {
   const type = provider.type.trim().toLowerCase().replaceAll("_", "-");
   if (provider.connection_locked || type === "openai-codex" || type === "codex-subscription" || type === "chatgpt-codex") {
     return "OpenAI OAuth";
   }
-  const baseURLLabel = serviceLabelFromBaseURL(provider.base_url);
+  const baseURLLabel = serviceLabelFromBaseURL(provider.base_url, t);
   if (baseURLLabel) {
     return baseURLLabel;
   }
@@ -2834,25 +2840,25 @@ function providerServiceLabel(provider: ProviderSummary): string {
     return "OpenAI API";
   }
   if (type === "openai-compatible") {
-    return serviceLabelFromBaseURL(provider.base_url) || "OpenAI-compatible";
+    return serviceLabelFromBaseURL(provider.base_url, t) || "OpenAI-compatible";
   }
-  return type || "模型服务";
+  return type || t("provider.genericService");
 }
 
-function serviceLabelFromBaseURL(baseURL?: string): string {
+function serviceLabelFromBaseURL(baseURL: string | undefined, t: Translate): string {
   const host = hostFromBaseURL(baseURL);
   if (!host) return "";
   if (host.includes("api.openai.com")) return "OpenAI API";
   if (host.includes("api.anthropic.com")) return "Anthropic";
   if (host.includes("openrouter.ai")) return "OpenRouter";
   if (host.includes("moonshot") || host.includes("kimi")) return "Kimi";
-  if (host.includes("bigmodel") || host.includes("zhipu")) return "智谱";
+  if (host.includes("bigmodel") || host.includes("zhipu")) return t("provider.zhipu");
   if (host.includes("deepseek")) return "DeepSeek";
   if (host.includes("generativelanguage.googleapis.com") || host.includes("googleapis.com")) return "Google Gemini";
-  if (host.includes("dashscope") || host.includes("aliyuncs.com")) return "阿里云百炼";
-  if (host.includes("volces") || host.includes("ark.cn-beijing.volces.com")) return "火山方舟";
-  if (host.includes("siliconflow")) return "硅基流动";
-  if (host === "localhost" || host === "127.0.0.1" || host === "::1") return "本地模型服务";
+  if (host.includes("dashscope") || host.includes("aliyuncs.com")) return t("provider.alibabaBailian");
+  if (host.includes("volces") || host.includes("ark.cn-beijing.volces.com")) return t("provider.volcengineArk");
+  if (host.includes("siliconflow")) return t("provider.siliconFlow");
+  if (host === "localhost" || host === "127.0.0.1" || host === "::1") return t("provider.localService");
   return host;
 }
 

@@ -71,7 +71,7 @@ export function SettingsRemotePage({
           >
             <RemoteRow
               title={t("remote.relayAddress")}
-              description="ws[s]://主机:端口/v1/connect"
+              description={t("remote.relayFormat")}
               block
             >
               <input
