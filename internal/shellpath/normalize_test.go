@@ -18,6 +18,15 @@ func TestRewriteCmdNullRedirect(t *testing.T) {
 		{"cat 2>nul.txt", "cat 2>nul.txt"},
 		{"grep nul file", "grep nul file"},
 		{"echo 2>/dev/null", "echo 2>/dev/null"},
+		// Quoted text is data, not redirection.
+		{`echo "uses 2>nul on cmd"`, `echo "uses 2>nul on cmd"`},
+		{`echo 'literal 2>nul'`, `echo 'literal 2>nul'`},
+		{`grep "2>nul" doc.md 2>nul`, `grep "2>nul" doc.md 2>/dev/null`},
+		{`echo \" 2>nul`, `echo \" 2>/dev/null`},
+		// Unbalanced quotes: leave the ambiguous tail alone.
+		{`echo "unterminated 2>nul`, `echo "unterminated 2>nul`},
+		// Heredocs carry arbitrary body text; skip the command entirely.
+		{"cat <<EOF\n2>nul\nEOF", "cat <<EOF\n2>nul\nEOF"},
 	}
 	for _, tc := range cases {
 		if got := rewriteCmdNullRedirect(tc.in); got != tc.want {

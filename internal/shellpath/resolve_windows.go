@@ -20,6 +20,11 @@ func fileExists(path string) bool {
 	return err == nil && !info.IsDir()
 }
 
+func dirExists(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && info.IsDir()
+}
+
 // LoginBash is the shell for workspace commands. Windows runs Git Bash
 // with -c rather than -lc: a login shell would source the MSYS profiles
 // on every command (slow, nondeterministic PATH), so CommandEnv injects
@@ -46,5 +51,5 @@ func CommandEnv(env []string) []string {
 	if err != nil {
 		return env
 	}
-	return gitBashCommandEnv(env, path)
+	return gitBashCommandEnv(env, path, dirExists)
 }

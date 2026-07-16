@@ -70,49 +70,47 @@ func pathWithin(root, path string) bool {
 	return rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)))
 }
 
-// gitBashCommandEnv layers the Git Bash runtime requirements onto env:
-// the install's usr/bin and mingw64/bin lead PATH so coreutils resolve
-// deterministically without a login shell, and MSYS argument/path
-// conversion is disabled so native-style arguments (cmd /c, taskkill
-// /pid, C:\ paths) reach programs verbatim.
-func gitBashCommandEnv(env []string, bashPath string) []string {
-	installRoot := filepath.Dir(filepath.Dir(bashPath))
-	prepend := strings.Join([]string{
+// gitBashCommandEnv fronts PATH with the Git install's tool directories
+// so coreutils resolve deterministically without a login shell. Only
+// directories that actually exist are injected: portable and MSYS2
+// layouts differ, and a phantom PATH entry helps nothing. MSYS path/
+// argument conversion is deliberately left at its defaults — models
+// speak POSIX here, and /c/... arguments must keep reaching native
+// programs converted.
+func gitBashCommandEnv(env []string, bashPath string, dirExists func(string) bool) []string {
+	binDir := filepath.Dir(bashPath)
+	installRoot := filepath.Dir(binDir)
+	// usr\bin\bash.exe (MinGit, MSYS2) sits one level deeper than
+	// bin\bash.exe (Git for Windows).
+	if strings.EqualFold(filepath.Base(binDir), "bin") && strings.EqualFold(filepath.Base(installRoot), "usr") {
+		installRoot = filepath.Dir(installRoot)
+	}
+	var toolDirs []string
+	for _, candidate := range []string{
 		filepath.Join(installRoot, "usr", "bin"),
 		filepath.Join(installRoot, "mingw64", "bin"),
-	}, string(filepath.ListSeparator))
+	} {
+		if dirExists(candidate) {
+			toolDirs = append(toolDirs, candidate)
+		}
+	}
+	if len(toolDirs) == 0 {
+		return env
+	}
+	prepend := strings.Join(toolDirs, string(filepath.ListSeparator))
 
-	out := make([]string, 0, len(env)+2)
+	out := make([]string, 0, len(env)+1)
 	sawPath := false
-	sawNoPathConv := false
-	sawArgConvExcl := false
 	for _, entry := range env {
 		key, value, ok := strings.Cut(entry, "=")
-		if !ok {
-			out = append(out, entry)
-			continue
-		}
-		switch {
-		case strings.EqualFold(key, "PATH"):
-			if !sawPath {
-				entry = key + "=" + prepend + string(filepath.ListSeparator) + value
-				sawPath = true
-			}
-		case strings.EqualFold(key, "MSYS_NO_PATHCONV"):
-			sawNoPathConv = true
-		case strings.EqualFold(key, "MSYS2_ARG_CONV_EXCL"):
-			sawArgConvExcl = true
+		if ok && strings.EqualFold(key, "PATH") && !sawPath {
+			entry = key + "=" + prepend + string(filepath.ListSeparator) + value
+			sawPath = true
 		}
 		out = append(out, entry)
 	}
 	if !sawPath {
 		out = append(out, "PATH="+prepend)
-	}
-	if !sawNoPathConv {
-		out = append(out, "MSYS_NO_PATHCONV=1")
-	}
-	if !sawArgConvExcl {
-		out = append(out, "MSYS2_ARG_CONV_EXCL=*")
 	}
 	return out
 }

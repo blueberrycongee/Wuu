@@ -136,9 +136,20 @@ func TestFindGitBashAcceptsPathBashOutsideSystemRoot(t *testing.T) {
 	}
 }
 
+func dirSet(dirs ...string) func(string) bool {
+	set := make(map[string]bool, len(dirs))
+	for _, d := range dirs {
+		set[d] = true
+	}
+	return func(path string) bool { return set[path] }
+}
+
 func TestGitBashCommandEnvPrependsToolDirsOnce(t *testing.T) {
-	bash := filepath.Join(string(filepath.Separator)+"git-install", "bin", "bash.exe")
-	env := gitBashCommandEnv([]string{"Path=C:\\Windows", "HOME=C:\\Users\\dev"}, bash)
+	root := string(filepath.Separator) + "git-install"
+	bash := filepath.Join(root, "bin", "bash.exe")
+	usrBin := filepath.Join(root, "usr", "bin")
+	mingwBin := filepath.Join(root, "mingw64", "bin")
+	env := gitBashCommandEnv([]string{"Path=C:\\Windows", "HOME=C:\\Users\\dev"}, bash, dirSet(usrBin, mingwBin))
 
 	var pathEntries []string
 	for _, entry := range env {
@@ -150,39 +161,46 @@ func TestGitBashCommandEnvPrependsToolDirsOnce(t *testing.T) {
 	if len(pathEntries) != 1 {
 		t.Fatalf("want exactly one PATH entry, got %d in %v", len(pathEntries), env)
 	}
-	usrBin := filepath.Join(string(filepath.Separator)+"git-install", "usr", "bin")
 	if !strings.HasPrefix(pathEntries[0], usrBin) {
 		t.Fatalf("PATH %q does not lead with %q", pathEntries[0], usrBin)
 	}
 	if !strings.HasSuffix(pathEntries[0], "C:\\Windows") {
 		t.Fatalf("PATH %q lost original value", pathEntries[0])
 	}
-
-	assertHasEnv(t, env, "MSYS_NO_PATHCONV", "1")
-	assertHasEnv(t, env, "MSYS2_ARG_CONV_EXCL", "*")
-}
-
-func TestGitBashCommandEnvKeepsExistingMsysSettings(t *testing.T) {
-	bash := filepath.Join(string(filepath.Separator)+"git-install", "bin", "bash.exe")
-	env := gitBashCommandEnv([]string{"MSYS_NO_PATHCONV=0"}, bash)
-	assertHasEnv(t, env, "MSYS_NO_PATHCONV", "0")
 	for _, entry := range env {
-		if entry == "MSYS_NO_PATHCONV=1" {
-			t.Fatalf("existing MSYS_NO_PATHCONV overridden: %v", env)
+		key, _, _ := strings.Cut(entry, "=")
+		if strings.EqualFold(key, "MSYS_NO_PATHCONV") || strings.EqualFold(key, "MSYS2_ARG_CONV_EXCL") {
+			t.Fatalf("MSYS conversion settings must stay at their defaults: %v", env)
 		}
 	}
 }
 
-func assertHasEnv(t *testing.T, env []string, key, want string) {
-	t.Helper()
-	for _, entry := range env {
-		gotKey, value, _ := strings.Cut(entry, "=")
-		if strings.EqualFold(gotKey, key) {
-			if value != want {
-				t.Fatalf("%s = %q, want %q", key, value, want)
-			}
-			return
-		}
+func TestGitBashCommandEnvHandlesUsrBinLayout(t *testing.T) {
+	// MinGit and MSYS2 place bash at <root>\usr\bin\bash.exe; the tool
+	// dirs hang off <root>, not <root>\usr.
+	root := string(filepath.Separator) + "min-git"
+	bash := filepath.Join(root, "usr", "bin", "bash.exe")
+	usrBin := filepath.Join(root, "usr", "bin")
+	env := gitBashCommandEnv([]string{"PATH=/base"}, bash, dirSet(usrBin))
+
+	wantPrefix := "PATH=" + usrBin + string(filepath.ListSeparator)
+	if env[0] != wantPrefix+"/base" {
+		t.Fatalf("PATH = %q, want prefix %q", env[0], wantPrefix)
 	}
-	t.Fatalf("env missing %s: %v", key, env)
+}
+
+func TestGitBashCommandEnvSkipsMissingToolDirs(t *testing.T) {
+	root := string(filepath.Separator) + "git-install"
+	bash := filepath.Join(root, "bin", "bash.exe")
+	usrBin := filepath.Join(root, "usr", "bin")
+	env := gitBashCommandEnv([]string{"PATH=/base"}, bash, dirSet(usrBin))
+	if env[0] != "PATH="+usrBin+string(filepath.ListSeparator)+"/base" {
+		t.Fatalf("PATH = %q, want only the existing tool dir prepended", env[0])
+	}
+
+	// No tool dirs at all: env passes through untouched.
+	env = gitBashCommandEnv([]string{"PATH=/base"}, bash, dirSet())
+	if env[0] != "PATH=/base" {
+		t.Fatalf("PATH = %q, want unchanged", env[0])
+	}
 }
