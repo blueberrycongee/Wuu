@@ -1343,6 +1343,16 @@ export const zhCN = {
   "workspace.files.noContent": "没有内容",
   "workspace.files.cannotPreview": "无法预览",
   "workspace.files.binary": "{path} 是二进制文件。",
+  "workspace.terminal.durationHours": "{hours}小时 {minutes}分钟 {seconds}秒",
+  "workspace.terminal.durationMinutes": "{minutes}分钟 {seconds}秒",
+  "workspace.terminal.durationSeconds": "{seconds}秒",
+  "workspace.terminal.stoppedBy": "由 {signal} 停止，已运行 {duration}",
+  "workspace.terminal.exited": "退出码 {code}，已运行 {duration}",
+  "workspace.terminal.unknown": "未知",
+  "workspace.terminal.error": "终端错误：{message}",
+  "workspace.terminal.startFailed": "终端启动失败",
+  "workspace.terminal.noProjectDescription": "先选择一个项目。",
+  "workspace.terminal.restart": "重新启动",
   "i18n.missing": "内容暂不可用",
 } as const;
 
