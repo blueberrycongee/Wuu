@@ -170,6 +170,7 @@ func (t *Toolkit) CloneForRoot(rootDir string) (*Toolkit, error) {
 		ToolSearchEnabled:           t.env.ToolSearchEnabled,
 		NativeDeferredToolDiscovery: t.env.NativeDeferredToolDiscovery,
 		GitAttributionDisabled:      t.env.GitAttributionDisabled,
+		GitWrapperExecutable:        t.env.GitWrapperExecutable,
 		ProcessMgr:                  t.env.ProcessMgr,
 		AgentControl:                t.env.AgentControl,
 		AutomationManager:           t.env.AutomationManager,

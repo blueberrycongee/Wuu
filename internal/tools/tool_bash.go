@@ -250,9 +250,6 @@ func (t *BashTool) executeRun(ctx context.Context, args bashArgs) (string, error
 		return "", errors.New("bash requires command")
 	}
 	command := strings.TrimSpace(args.Command)
-	if t.env.gitAttributionEnabled() {
-		command = appendWuuGitCommitTrailer(command)
-	}
 	runCWD, err := resolveShellWorkingDir(ctx, t.env, args.CWD)
 	if err != nil {
 		return "", err
@@ -385,8 +382,13 @@ func (t *BashTool) executeStartBackground(ctx context.Context, args bashArgs) (s
 	if strings.TrimSpace(args.Command) == "" {
 		return "", errors.New("bash requires command")
 	}
+	commandPrefix := ""
 	if t.env.gitAttributionEnabled() {
-		args.Command = appendWuuGitCommitTrailer(args.Command)
+		var err error
+		commandPrefix, err = t.env.gitAttributionShellPrefix()
+		if err != nil {
+			return "", err
+		}
 	}
 	args.OwnerKind = defaultProcessOwnerKind(t.env, args.OwnerKind)
 	if strings.TrimSpace(args.OwnerID) == "" {
@@ -396,7 +398,7 @@ func (t *BashTool) executeStartBackground(ctx context.Context, args bashArgs) (s
 	if err != nil {
 		return "", err
 	}
-	p, startErr := m.Start(context.WithoutCancel(ctx), proc.StartOptions{Command: args.Command, CWD: args.CWD, OwnerKind: proc.OwnerKind(args.OwnerKind), OwnerID: args.OwnerID, Lifecycle: proc.Lifecycle(args.Lifecycle), CompletionMode: proc.CompletionMode(args.CompletionMode), TTY: args.TTY, AllowOutsideWorkspace: t.env.BypassToolHardProtections()})
+	p, startErr := m.Start(context.WithoutCancel(ctx), proc.StartOptions{Command: args.Command, CommandPrefix: commandPrefix, CWD: args.CWD, OwnerKind: proc.OwnerKind(args.OwnerKind), OwnerID: args.OwnerID, Lifecycle: proc.Lifecycle(args.Lifecycle), CompletionMode: proc.CompletionMode(args.CompletionMode), TTY: args.TTY, AllowOutsideWorkspace: t.env.BypassToolHardProtections()})
 	response := startProcessResponse{}
 	if p != nil {
 		response.Process = redactProcess(t.env, *p)

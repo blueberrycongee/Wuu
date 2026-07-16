@@ -241,10 +241,13 @@ type Env struct {
 	// The zero value intentionally means enabled so ordinary toolkits inherit
 	// the product default without extra initialization.
 	GitAttributionDisabled bool
-	ProcessMgr             *proc.Manager
-	AgentControl           *agentcontrol.AgentControl
-	AutomationManager      *automation.Manager
-	ParticipantSpeech      ParticipantSpeech
+	// GitWrapperExecutable overrides the WUU executable used by the private
+	// bash git launcher. Production resolves os.Executable when this is empty.
+	GitWrapperExecutable string
+	ProcessMgr           *proc.Manager
+	AgentControl         *agentcontrol.AgentControl
+	AutomationManager    *automation.Manager
+	ParticipantSpeech    ParticipantSpeech
 	// GroupManager backs the resident-only create_group / add_member actions
 	// of manage_participant. Nil means group management is unavailable in this
 	// environment (those actions return an execute-time error).

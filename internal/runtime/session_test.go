@@ -864,17 +864,21 @@ func TestApplyGeneralConfigRefreshesPromptAndMemory(t *testing.T) {
 	}
 	commitThroughToolkit := func(message, content string) string {
 		t.Helper()
+		gitTool := rt.Toolkit.LookupTool("git")
+		if gitTool == nil {
+			t.Fatal("git tool is not registered")
+		}
 		if writeErr := os.WriteFile(filepath.Join(root, "attribution.txt"), []byte(content), 0o644); writeErr != nil {
 			t.Fatal(writeErr)
 		}
-		arguments, _ := json.Marshal(map[string]any{
-			"command": fmt.Sprintf("git add attribution.txt && git commit -m %q", message),
-		})
-		if _, executeErr := rt.Toolkit.Execute(context.Background(), providers.ToolCall{
-			Name:      "bash",
-			Arguments: string(arguments),
-		}); executeErr != nil {
-			t.Fatalf("commit through toolkit: %v", executeErr)
+		for _, invocation := range []map[string]any{
+			{"subcommand": "add", "args": []string{"attribution.txt"}},
+			{"subcommand": "commit", "args": []string{"-m", message}},
+		} {
+			arguments, _ := json.Marshal(invocation)
+			if _, executeErr := gitTool.Execute(context.Background(), string(arguments)); executeErr != nil {
+				t.Fatalf("commit through toolkit: %v", executeErr)
+			}
 		}
 		output, commandErr := exec.Command("git", "-C", root, "log", "-1", "--format=%B").Output()
 		if commandErr != nil {
