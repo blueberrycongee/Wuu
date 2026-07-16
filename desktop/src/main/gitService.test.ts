@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { RuntimeContext } from "../shared/protocol";
-import { GitService } from "./gitService";
+import { GitService, type GitCoauthor } from "./gitService";
 
 const roots: string[] = [];
 
@@ -22,9 +22,9 @@ function makeRepository(): string {
   return root;
 }
 
-function serviceFor(root: string): GitService {
+function serviceFor(root: string, coauthor?: GitCoauthor): GitService {
   const context: RuntimeContext = { kind: "no_project", cwd: root };
-  return new GitService(() => context);
+  return new GitService(() => context, () => coauthor);
 }
 
 afterEach(() => {
@@ -59,5 +59,57 @@ describe("GitService file previews", () => {
         .changes()
         .files.map((file) => file.path),
     ).not.toContain("ignored.txt");
+  });
+});
+
+describe("GitService commit attribution", () => {
+  it("adds an enabled agent identity as a co-author trailer", () => {
+    const root = makeRepository();
+    writeFileSync(join(root, "README.md"), "updated workspace\n");
+
+    serviceFor(root, {
+      name: "WUU Agent",
+      email: "123+wuu-agent@users.noreply.github.com",
+    }).commit({ message: "Update workspace" });
+
+    const message = execFileSync(
+      "git",
+      ["-C", root, "log", "-1", "--format=%B"],
+      { encoding: "utf8" },
+    );
+    expect(message).toBe(
+      "Update workspace\n\nCo-authored-by: WUU Agent <123+wuu-agent@users.noreply.github.com>\n\n",
+    );
+  });
+
+  it("keeps the existing commit message when no co-author is configured", () => {
+    const root = makeRepository();
+    writeFileSync(join(root, "README.md"), "updated workspace\n");
+
+    serviceFor(root).commit({ message: "Update workspace" });
+
+    const message = execFileSync(
+      "git",
+      ["-C", root, "log", "-1", "--format=%B"],
+      { encoding: "utf8" },
+    );
+    expect(message).toBe("Update workspace\n\n");
+  });
+
+  it("rejects malformed co-author data before committing", () => {
+    const root = makeRepository();
+    writeFileSync(join(root, "README.md"), "updated workspace\n");
+
+    expect(() =>
+      serviceFor(root, {
+        name: "WUU Agent\nSigned-off-by: forged",
+        email: "wuu@example.com",
+      }).commit({ message: "Update workspace" }),
+    ).toThrow("git co-author name is invalid");
+    expect(
+      execFileSync("git", ["-C", root, "rev-list", "--count", "HEAD"], {
+        encoding: "utf8",
+      }).trim(),
+    ).toBe("1");
   });
 });
