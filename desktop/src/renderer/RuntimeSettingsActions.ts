@@ -126,7 +126,8 @@ export function createRuntimeSettingsActions(
         (nextEffort === undefined ||
           nextEffort === (state.initialized.effort ?? "")) &&
         (nextVariant === undefined ||
-          nextVariant === (state.initialized.variant ?? "")) &&
+          nextVariant ===
+            (targetThread?.model_variant ?? state.initialized.variant ?? "")) &&
         !connectionChanged &&
         !permissionModeChanged)
     ) {

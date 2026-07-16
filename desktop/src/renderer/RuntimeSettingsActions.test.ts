@@ -299,6 +299,39 @@ describe("createRuntimeSettingsActions", () => {
     expect(api.updateRuntimeSettings).not.toHaveBeenCalled();
   });
 
+  it("does not treat a global variant match as a thread variant no-op", async () => {
+    const api = installWuuApi();
+    const primary = { ...thread("thread-1"), model_variant: "low" };
+    const harness = buildActions({
+      initial: {
+        ...initialState,
+        initialized: initialized({ variant: "medium" }),
+        thread: primary,
+        threads: [primary],
+        status: "ready",
+      },
+    });
+
+    await harness.actions.updateRuntimeSettings(
+      "codex",
+      "gpt-5",
+      "medium",
+      undefined,
+      "medium",
+      "standard",
+    );
+
+    expect(api.updateRuntimeSettings).toHaveBeenCalledWith(
+      "codex",
+      "gpt-5",
+      "medium",
+      undefined,
+      "medium",
+      "standard",
+      "thread-1",
+    );
+  });
+
   it("commits Ultra state only after the app server confirms it", async () => {
     const api = installWuuApi();
     const harness = buildActions();
