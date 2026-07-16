@@ -475,6 +475,9 @@ func gitExecute(env *Env, ctx context.Context, argsJSON string) (string, error) 
 		if err := rejectSensitiveStagedCommitPaths(env, ctx); err != nil {
 			return "", err
 		}
+		if env.gitAttributionEnabled() {
+			gitArgs = append(gitArgs, "--trailer", wuuGitCoauthorTrailer)
+		}
 	}
 
 	return runGit(env, ctx, invocation.Subcommand, gitArgs)
@@ -958,17 +961,19 @@ func isCommitMessageArg(subcmd string, args []string, idx int) bool {
 		if subcmd == "commit" && idx >= 0 && idx < len(args) {
 			arg := args[idx]
 			return strings.HasPrefix(arg, "-m") && arg != "-m" ||
-				strings.HasPrefix(arg, "--message=")
+				strings.HasPrefix(arg, "--message=") ||
+				strings.HasPrefix(arg, "--trailer=")
 		}
 		return false
 	}
 	prev := args[idx-1]
-	if prev == "-m" || prev == "--message" {
+	if prev == "-m" || prev == "--message" || prev == "--trailer" {
 		return true
 	}
 	arg := args[idx]
 	return strings.HasPrefix(arg, "-m") && arg != "-m" ||
-		strings.HasPrefix(arg, "--message=")
+		strings.HasPrefix(arg, "--message=") ||
+		strings.HasPrefix(arg, "--trailer=")
 }
 
 func isExplicitGitPathArg(subcmd, arg string) bool {
@@ -1027,6 +1032,12 @@ func validateCommitArgs(args []string, allowSensitive bool) error {
 			messageSeen = true
 			i++
 			continue
+		case "--trailer":
+			if i+1 >= len(args) {
+				return errors.New("git commit flag \"--trailer\" requires a trailer")
+			}
+			i++
+			continue
 		case "-F", "--file":
 			if i+1 >= len(args) {
 				return fmt.Errorf("git commit flag %q requires a message file", arg)
@@ -1044,6 +1055,9 @@ func validateCommitArgs(args []string, allowSensitive bool) error {
 		}
 		if strings.HasPrefix(arg, "--message=") {
 			messageSeen = true
+			continue
+		}
+		if strings.HasPrefix(arg, "--trailer=") {
 			continue
 		}
 		if strings.HasPrefix(arg, "--file=") {

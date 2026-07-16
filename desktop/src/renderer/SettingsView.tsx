@@ -42,7 +42,6 @@ import type {
   CodexPetsSnapshot,
   DesktopBuildInfo,
   ExtensionInventoryRecord,
-  GitAttributionSettings,
   InitializeResult,
   MCPAuthStartResult,
   MCPServerStatus,
@@ -1415,33 +1414,10 @@ function SettingsGeneralPage({
   const [mcpAuthCodes, setMCPAuthCodes] = useState<Record<string, string>>({});
   const [codexPetBusy, setCodexPetBusy] = useState(false);
   const [codexPetLocalError, setCodexPetLocalError] = useState("");
-  const [gitAttribution, setGitAttribution] = useState<GitAttributionSettings>();
   const [gitAttributionBusy, setGitAttributionBusy] = useState(false);
   const [gitAttributionError, setGitAttributionError] = useState("");
   const [generalError, setGeneralError] = useState("");
   const [generalSaved, setGeneralSaved] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    setGitAttributionError("");
-    void window.wuu
-      .getGitAttributionSettings()
-      .then((settings) => {
-        if (!cancelled) {
-          setGitAttribution(settings);
-        }
-      })
-      .catch((error: unknown) => {
-        if (!cancelled) {
-          setGitAttributionError(
-            error instanceof Error ? error.message : "读取提交署名设置失败",
-          );
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   useEffect(() => {
     setAppendSystemPromptDraft(generalSettings?.append_system_prompt ?? "");
@@ -1483,15 +1459,15 @@ function SettingsGeneralPage({
   }
 
   async function toggleGitAttribution(): Promise<void> {
-    if (!gitAttribution || gitAttributionBusy) {
+    if (!initialized || gitAttributionBusy) {
       return;
     }
     setGitAttributionBusy(true);
     setGitAttributionError("");
     try {
-      setGitAttribution(
-        await window.wuu.setGitAttributionEnabled(!gitAttribution.enabled),
-      );
+      await onGeneralSave({
+        git_attribution_enabled: !gitAttributionEnabled,
+      });
     } catch (error) {
       setGitAttributionError(
         error instanceof Error ? error.message : "保存提交署名设置失败",
@@ -1531,6 +1507,7 @@ function SettingsGeneralPage({
   const codexPetEnabled = Boolean(codexPets?.enabled);
   const codexPetStatus = codexPetLocalError || codexPetsError;
   const extensionInventory = initialized?.extension_inventory ?? [];
+  const gitAttributionEnabled = generalSettings?.git_attribution_enabled ?? true;
 
   async function refreshCodexPets(): Promise<void> {
     setCodexPetBusy(true);
@@ -1677,21 +1654,21 @@ function SettingsGeneralPage({
             </button>
           </SettingsRow>
           <SettingsRow
-            title="提交署名"
-            description="为 WUU 创建的提交添加 wuu-agent[bot] 共同作者；不会授予仓库权限"
+            title="Agent 提交署名"
+            description="为 WUU Agent 通过 Git 工具创建的提交追加 wuu-agent[bot]；保留原作者与其他共同作者"
           >
             <button
               className="settings-switch"
               type="button"
               role="switch"
-              aria-checked={gitAttribution?.enabled ?? false}
+              aria-checked={gitAttributionEnabled}
               data-testid="settings-git-attribution"
-              disabled={!gitAttribution || gitAttributionBusy}
+              disabled={running || !initialized || gitAttributionBusy}
               onClick={() => void toggleGitAttribution()}
             >
               <span className="settings-switch-thumb" aria-hidden="true" />
               <span className="sr-only">
-                {gitAttribution?.enabled ? "关闭 WUU Agent 提交署名" : "打开 WUU Agent 提交署名"}
+                {gitAttributionEnabled ? "关闭 WUU Agent 提交署名" : "打开 WUU Agent 提交署名"}
               </span>
             </button>
             {gitAttributionError ? (

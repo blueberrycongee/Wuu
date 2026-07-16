@@ -105,11 +105,9 @@ import {
   getCodexPetSettings,
   getCodexPetScale,
   getCodexPetSize,
-  getGitAttributionSettings,
   getMessageFlowFontSize,
   getThemePreference,
   setCodexPetSettings,
-  setGitAttributionEnabled,
   setMessageFlowFontSize,
   setThemePreference,
   type MessageFlowFontSize,
@@ -299,15 +297,7 @@ function updateCodexPetSettings(update: CodexPetSettingsUpdate) {
 }
 
 function gitServiceForEvent(event: IpcMainInvokeEvent): GitService {
-  return new GitService(
-    () => runtimeContextForEvent(event),
-    () => {
-      const attribution = getGitAttributionSettings();
-      return attribution.enabled
-        ? { name: attribution.name, email: attribution.email }
-        : undefined;
-    },
-  );
+  return new GitService(() => runtimeContextForEvent(event));
 }
 
 function workspaceFilesForEvent(event: IpcMainInvokeEvent): WorkspaceFileService {
@@ -990,12 +980,6 @@ app.whenReady().then(async () => {
   );
   ipcMain.handle("wuu:git-commit", (event, params: GitCommitParams) =>
     gitServiceForEvent(event).commit(params ?? {}),
-  );
-  ipcMain.handle("wuu:git-attribution-get", () =>
-    getGitAttributionSettings(),
-  );
-  ipcMain.handle("wuu:git-attribution-set", (_event, enabled: unknown) =>
-    setGitAttributionEnabled(enabled === true),
   );
   ipcMain.handle("wuu:git-create-pr", (event, params: GitPullRequestParams) =>
     gitServiceForEvent(event).createPullRequest(params ?? {}),

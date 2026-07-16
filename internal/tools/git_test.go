@@ -53,6 +53,73 @@ func setupGitRemoteRepo(t *testing.T) (*Toolkit, string, string) {
 	return kit, root, remote
 }
 
+func TestGitCommitAttributionPreservesIdentityAndExistingCoauthors(t *testing.T) {
+	kit, root := setupGitRepo(t)
+	runBash(t, root, "printf 'updated\n' > hello.txt")
+	gitCall(t, kit, "add", "hello.txt")
+	gitCall(
+		t,
+		kit,
+		"commit",
+		"-m",
+		"Update hello",
+		"-m",
+		"Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>",
+	)
+
+	identity := strings.TrimSpace(runBash(t, root, "git log -1 --format='%an <%ae>|%cn <%ce>'"))
+	if identity != "tester <test@test.com>|tester <test@test.com>" {
+		t.Fatalf("commit identity changed: %q", identity)
+	}
+	message := runBash(t, root, "git log -1 --format=%B")
+	if !strings.Contains(message, "Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>") {
+		t.Fatalf("existing Claude co-author missing:\n%s", message)
+	}
+	if strings.Count(message, wuuGitCoauthorEmail) != 1 {
+		t.Fatalf("WUU co-author count = %d, want 1:\n%s", strings.Count(message, wuuGitCoauthorEmail), message)
+	}
+}
+
+func TestBashCommitAttributionPreservesMessageFileTrailersAndDeduplicates(t *testing.T) {
+	kit, root := setupGitRepo(t)
+	runBash(t, root, "printf 'updated\n' > hello.txt")
+	runBash(t, root, "printf 'Update hello\n\nCo-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>\nCo-Authored-By: WUU Agent <305930189+wuu-agent[bot]@users.noreply.github.com>\n' > commit-message.txt")
+
+	args, _ := json.Marshal(map[string]any{
+		"command": "git add hello.txt && git commit -F commit-message.txt",
+	})
+	if _, err := kit.Execute(context.Background(), providers.ToolCall{
+		Name:      "bash",
+		Arguments: string(args),
+	}); err != nil {
+		t.Fatalf("bash commit: %v", err)
+	}
+
+	message := runBash(t, root, "git log -1 --format=%B")
+	if !strings.Contains(message, "Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>") {
+		t.Fatalf("existing Claude co-author missing:\n%s", message)
+	}
+	if strings.Count(message, wuuGitCoauthorEmail) != 1 {
+		t.Fatalf("WUU co-author count = %d, want 1:\n%s", strings.Count(message, wuuGitCoauthorEmail), message)
+	}
+}
+
+func TestGitCommitAttributionCanBeDisabled(t *testing.T) {
+	kit, root := setupGitRepo(t)
+	kit.SetGitAttributionEnabled(false)
+	runBash(t, root, "printf 'updated\n' > hello.txt")
+	gitCall(t, kit, "add", "hello.txt")
+	gitCall(t, kit, "commit", "-m", "Update hello", "-m", "Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>")
+
+	message := runBash(t, root, "git log -1 --format=%B")
+	if !strings.Contains(message, "Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>") {
+		t.Fatalf("existing Claude co-author missing:\n%s", message)
+	}
+	if strings.Contains(message, wuuGitCoauthorTrailer) {
+		t.Fatalf("disabled WUU co-author was added:\n%s", message)
+	}
+}
+
 func gitCall(t *testing.T, kit *Toolkit, subcmd string, args ...string) map[string]any {
 	t.Helper()
 	aj, _ := json.Marshal(map[string]any{"subcommand": subcmd, "args": args})

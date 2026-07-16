@@ -24,11 +24,7 @@ const GIT_DIFF_PREVIEW_MAX_BYTES = 512 * 1024;
 const GIT_DIFF_COMMAND_MAX_BUFFER = 8 * 1024 * 1024;
 
 export class GitService {
-  constructor(
-    private readonly getRuntimeContext: () => RuntimeContext,
-    private readonly getCoauthor: () => GitCoauthor | undefined = () =>
-      undefined,
-  ) {}
+  constructor(private readonly getRuntimeContext: () => RuntimeContext) {}
 
   status(options: GitStatusOptions = {}): GitStatusResult {
     return gitStatusResult(this.getRuntimeContext(), options);
@@ -52,7 +48,7 @@ export class GitService {
   }
 
   commit(params: GitCommitParams): GitCommitResult {
-    return commitGitChanges(this.getRuntimeContext(), params, this.getCoauthor());
+    return commitGitChanges(this.getRuntimeContext(), params);
   }
 
   createPullRequest(params: GitPullRequestParams): GitPullRequestResult {
@@ -293,7 +289,6 @@ function createCheckoutGitBranch(
 function commitGitChanges(
   context: RuntimeContext,
   params: GitCommitParams,
-  configuredCoauthor?: GitCoauthor,
 ): GitCommitResult {
   const current = gitStatusResult(context);
   if (!current.is_repo) {
@@ -307,40 +302,13 @@ function commitGitChanges(
     throw new Error("there are no staged changes to commit");
   }
   const message = params.message?.trim() || generatedCommitMessage(context.cwd);
-  const coauthor = normalizedGitCoauthor(configuredCoauthor);
-  const commitArgs = ["commit", "-m", message];
-  if (coauthor) {
-    commitArgs.push("-m", `Co-authored-by: ${coauthor.name} <${coauthor.email}>`);
-  }
-  gitRun(context.cwd, commitArgs);
+  gitRun(context.cwd, ["commit", "-m", message]);
   const commit = gitOutput(context.cwd, ["rev-parse", "--short", "HEAD"]) ?? "";
   return {
     status: gitStatusResult(context),
     commit,
     message,
   };
-}
-
-export type GitCoauthor = {
-  name: string;
-  email: string;
-};
-
-function normalizedGitCoauthor(
-  coauthor: GitCoauthor | undefined,
-): GitCoauthor | undefined {
-  if (!coauthor) {
-    return undefined;
-  }
-  const name = coauthor.name.trim();
-  const email = coauthor.email.trim();
-  if (!name || /[\r\n<>]/.test(name)) {
-    throw new Error("git co-author name is invalid");
-  }
-  if (!/^[^\s<>@]+@[^\s<>@]+$/.test(email)) {
-    throw new Error("git co-author email is invalid");
-  }
-  return { name, email };
 }
 
 function createPullRequest(

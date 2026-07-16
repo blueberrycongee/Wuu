@@ -250,6 +250,9 @@ func (t *BashTool) executeRun(ctx context.Context, args bashArgs) (string, error
 		return "", errors.New("bash requires command")
 	}
 	command := strings.TrimSpace(args.Command)
+	if t.env.gitAttributionEnabled() {
+		command = appendWuuGitCommitTrailer(command)
+	}
 	runCWD, err := resolveShellWorkingDir(ctx, t.env, args.CWD)
 	if err != nil {
 		return "", err
@@ -381,6 +384,9 @@ func (e repeatedBashVerificationFailureError) Error() string {
 func (t *BashTool) executeStartBackground(ctx context.Context, args bashArgs) (string, error) {
 	if strings.TrimSpace(args.Command) == "" {
 		return "", errors.New("bash requires command")
+	}
+	if t.env.gitAttributionEnabled() {
+		args.Command = appendWuuGitCommitTrailer(args.Command)
 	}
 	args.OwnerKind = defaultProcessOwnerKind(t.env, args.OwnerKind)
 	if strings.TrimSpace(args.OwnerID) == "" {

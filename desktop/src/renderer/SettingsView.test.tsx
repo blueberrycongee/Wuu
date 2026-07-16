@@ -42,18 +42,6 @@ afterEach(() => {
 function installBuildInfoStub(info: BuildInfoResult): void {
   const stub: Partial<WuuDesktopApi> = {
     getBuildInfo: vi.fn().mockResolvedValue(info),
-    getGitAttributionSettings: vi.fn().mockResolvedValue({
-      enabled: true,
-      name: "WUU Agent",
-      email: "305930189+wuu-agent[bot]@users.noreply.github.com",
-      profile_url: "https://github.com/apps/wuu-agent",
-    }),
-    setGitAttributionEnabled: vi.fn().mockImplementation(async (enabled: boolean) => ({
-      enabled,
-      name: "WUU Agent",
-      email: "305930189+wuu-agent[bot]@users.noreply.github.com",
-      profile_url: "https://github.com/apps/wuu-agent",
-    })),
     listMCPServers: vi.fn().mockResolvedValue({ servers: [] }),
     connectMCPServer: vi.fn(),
     disconnectMCPServer: vi.fn(),
@@ -590,13 +578,24 @@ describe("SettingsView general settings", () => {
       core: undefined,
       desktop: { version: "0.0.0-test", date: "1970-01-01T00:00:00Z" },
     });
-    renderSettings({ initialized: baseInitialized(), initialPage: "general" });
+    const onGeneralSave = vi.fn().mockResolvedValue(undefined);
+    renderSettings({
+      initialized: baseInitialized({
+        general_settings: {
+          append_system_prompt: "",
+          git_attribution_enabled: true,
+          memory_disabled: false,
+          mcp_server_enabled: {},
+        },
+      }),
+      initialPage: "general",
+      onGeneralSave,
+    });
     await act(async () => {
       await Promise.resolve();
       await Promise.resolve();
     });
 
-    const api = window.wuu;
     const attributionSwitch = container.querySelector<HTMLButtonElement>(
       '[data-testid="settings-git-attribution"]',
     );
@@ -608,8 +607,9 @@ describe("SettingsView general settings", () => {
       await Promise.resolve();
       await Promise.resolve();
     });
-    expect(api.setGitAttributionEnabled).toHaveBeenCalledWith(false);
-    expect(attributionSwitch?.getAttribute("aria-checked")).toBe("false");
+    expect(onGeneralSave).toHaveBeenCalledWith({
+      git_attribution_enabled: false,
+    });
   });
 
   it("renders and saves prompt, memory, and MCP toggles", async () => {
