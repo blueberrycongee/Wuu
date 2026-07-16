@@ -34,7 +34,7 @@ import { MessageReactions } from "./MessageReactions";
 import {
   REACTION_EMOJI,
   REACTION_KEYS,
-  REACTION_LABEL,
+  reactionLabel,
   reactionGlyph,
   ringModel,
   type MessageMarksView,
@@ -507,7 +507,7 @@ function ChatBubbleToolbar({
                 </span>
               )}
               <span className="chat-reaction-picker-label">
-                {REACTION_LABEL[key] ?? key}
+                {reactionLabel(key)}
               </span>
             </button>
           ))}
