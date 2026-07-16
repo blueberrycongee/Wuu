@@ -8,7 +8,7 @@ import type {
 import { DefaultAvatarMark } from "./DefaultAvatar";
 import type { EnvironmentPanelMotionState } from "./EnvironmentPanel";
 import { participantRoleLabel } from "./ParticipantLabels";
-import { translateCurrent, useI18n } from "./i18n";
+import { resolveLocalizedText, translateCurrent, useI18n } from "./i18n";
 
 export function GroupInfoPanel({
   panelRef,
@@ -228,6 +228,9 @@ function ParticipantAvatar({
 }
 
 function groupDisplayName(thread: Thread): string {
-  const title = thread.title?.trim() || thread.preview.trim() || translateCurrent("groupInfo.untitled");
+  const title =
+    thread.title?.trim() ||
+    resolveLocalizedText(thread.preview.trim()) ||
+    translateCurrent("groupInfo.untitled");
   return title.replace(/^#/, "");
 }

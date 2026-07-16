@@ -20,7 +20,7 @@ import {
   type PendingForkState,
 } from "./ConversationHistoryActions";
 import * as TurnViewHelpers from "./TurnViewHelpers";
-import { setActiveLocale } from "./i18n";
+import { resolveLocalizedText, setActiveLocale } from "./i18n";
 
 // `scrollToUserMessage` schedules retry timeouts that would otherwise leak
 // across tests in jsdom (no DOM anchor is mounted, so the helper keeps
@@ -273,7 +273,7 @@ describe("createConversationHistoryActions", () => {
       userItem(),
     );
 
-    expect(harness.getAppState().status).toBe(
+    expect(resolveLocalizedText(harness.getAppState().status)).toBe(
       "History cannot be edited in demo conversations",
     );
   });
@@ -412,7 +412,9 @@ describe("createConversationHistoryActions", () => {
     );
 
     expect(harness.getHistoryMessageEdit()).toBeUndefined();
-    expect(harness.getAppState().status).toBe("先处理待发送消息，再编辑历史");
+    expect(resolveLocalizedText(harness.getAppState().status)).toBe(
+      "先处理待发送消息，再编辑历史",
+    );
   });
 
   it("submits an edited history message and sends the replacement text", async () => {

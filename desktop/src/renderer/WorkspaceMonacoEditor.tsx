@@ -7,6 +7,7 @@ import TsWorker from "monaco-editor/esm/vs/language/typescript/ts.worker?worker"
 import { useEffect, useMemo, useRef } from "react";
 import type { WorkspaceFileSelection } from "./LinkTargets";
 import { useI18n } from "./i18n";
+import { currentAppliedTheme, observeAppliedTheme, type AppliedTheme } from "./Theme";
 
 declare global {
   interface Window {
@@ -31,6 +32,10 @@ type MonacoLanguage =
   | "typescript"
   | "xml"
   | "yaml";
+
+function workspaceMonacoTheme(theme: AppliedTheme): string {
+  return theme === "dark" ? "wuu-workspace-dark" : "wuu-workspace";
+}
 
 export type WorkspaceMonacoViewState = monaco.editor.ICodeEditorViewState;
 
@@ -111,8 +116,11 @@ export function WorkspaceMonacoEditor({
         verticalSliderSize: Math.max(4, scrollbarSize - 2),
       },
       tabSize: 2,
-      theme: "wuu-workspace",
+      theme: workspaceMonacoTheme(currentAppliedTheme()),
       wordWrap: "on",
+    });
+    const stopObservingTheme = observeAppliedTheme((theme) => {
+      monaco.editor.setTheme(workspaceMonacoTheme(theme));
     });
 
     const changeDisposable = editor.onDidChangeModelContent(() => {
@@ -132,6 +140,7 @@ export function WorkspaceMonacoEditor({
 
     return () => {
       onViewStateChangeRef.current?.(editor.saveViewState());
+      stopObservingTheme();
       changeDisposable.dispose();
       editor.dispose();
       model.dispose();
@@ -302,5 +311,20 @@ monaco.editor.defineTheme("wuu-workspace", {
     "editorLineNumber.activeForeground": "#24282d",
     "editor.selectionBackground": "#ef5b1838",
     "editorCursor.foreground": "#ef5b18",
+  },
+});
+
+monaco.editor.defineTheme("wuu-workspace-dark", {
+  base: "vs-dark",
+  inherit: true,
+  rules: [],
+  colors: {
+    "editor.background": "#1d202400",
+    "editor.foreground": "#e4e6e8",
+    "editor.lineHighlightBackground": "#dce4eb0d",
+    "editorLineNumber.foreground": "#7d8388",
+    "editorLineNumber.activeForeground": "#e4e6e8",
+    "editor.selectionBackground": "#ff5a2645",
+    "editorCursor.foreground": "#ff5a26",
   },
 });

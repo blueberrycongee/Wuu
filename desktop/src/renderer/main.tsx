@@ -3,7 +3,7 @@ import { MESSAGE_FLOW_FONT_SIZE_RANGE } from "../shared/protocol";
 import { App } from "./App";
 import { applyMessageFlowFontSize } from "./MessageFlowFontSizeSection";
 import { applyPlatformStamp } from "./platform";
-import { applyThemePreference } from "./Theme";
+import { applyThemePreference, startThemePreferenceSync } from "./Theme";
 import "./styles.css";
 import { I18nProvider } from "./i18n";
 
@@ -11,6 +11,11 @@ import { I18nProvider } from "./i18n";
 // re-applying here takes over the "system" media-query subscription for
 // the lifetime of the window.
 applyThemePreference(window.wuu?.initialThemePreference ?? "system");
+
+// Theme changes made in any window reach every other window through the
+// main-process broadcast; keep this window's data-theme in step for the
+// rest of its lifetime.
+startThemePreferenceSync();
 
 // Same story for data-platform: the preload stamps it pre-paint; this
 // covers boots whose preload was replaced (e2e mocks).

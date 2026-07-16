@@ -19,7 +19,7 @@ import {
   type ComposerFile,
   type ComposerImage,
 } from "./ComposerMessages";
-import { translateCurrent } from "./i18n";
+import { localizedText, translateCurrent } from "./i18n";
 
 type ComposerDraftStatusSetter = (status: string) => void;
 
@@ -95,7 +95,7 @@ async function attachComposerAttachmentFilesToDraft(
   const imageFiles = files.filter(isComposerImageFile);
   const pdfFiles = files.filter(isPDFFile);
   if (imageFiles.length === 0 && pdfFiles.length === 0) {
-    setStatus(translateCurrent("composer.attachment.imagesAndPdfOnly"));
+    setStatus(localizedText("composer.attachment.imagesAndPdfOnly"));
     return;
   }
   try {

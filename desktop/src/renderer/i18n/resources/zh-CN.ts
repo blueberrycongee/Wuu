@@ -1682,6 +1682,7 @@ export const zhCN = {
   "designTokens.storageHint": "值保存到 localStorage",
   "common.restoreDefaults": "恢复默认",
   "settings.messageFontSizePreview": "消息流字号预览",
+  "settings.messageFontSizeSampleUser": "帮我把侧边栏的分组逻辑收敛到既有规范里，改完顺手跑一下测试。",
   "settings.messageFontSizeSampleIntro": "先看一下 README 的目录约定，再读一个相邻页面的 CSS——把改动控制在同一套既有规范里。",
   "settings.messageFontSizeSampleScope": "- 改动只落在 `desktop/src/renderer`，不动 Go 核心",
   "settings.messageFontSizeSampleTests": "- 顺手跑一下单元测试，免得新代码悄悄破坏既有流程",

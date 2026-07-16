@@ -72,7 +72,7 @@ import { MessageFlowFontSizeControl } from "./MessageFlowFontSizeSection";
 import { SettingsRemotePage } from "./SettingsRemotePage";
 import { ThemePreferenceControl } from "./ThemePreferenceSection";
 import { LanguagePreferenceControl } from "./LanguagePreferenceSection";
-import { useI18n } from "./i18n";
+import { formatCurrentNumber, useI18n } from "./i18n";
 
 export type SettingsPage =
   | "providers"
@@ -2448,7 +2448,7 @@ type CacheHeatmapCell = SettingsUsageDay & {
 };
 
 function formatTokenCount(value: number): string {
-  return Math.max(0, value).toLocaleString();
+  return formatCurrentNumber(Math.max(0, value));
 }
 
 function formatOptionalTokenCount(value: number | undefined): string {

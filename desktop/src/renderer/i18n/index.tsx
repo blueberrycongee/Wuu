@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import type { AppLocale, LanguagePreference } from "../../shared/protocol";
 import { enUS } from "./resources/en-US";
 import { zhCN, type TranslationKey } from "./resources/zh-CN";
@@ -13,6 +13,7 @@ const resources: Record<AppLocale, Record<TranslationKey, string>> = {
 // so keep its active locale here and update it synchronously before provider
 // children render. This avoids threading a translator through state logic.
 let activeLocale: AppLocale = "zh-CN";
+const LOCALIZED_TEXT_PREFIX = "wuu:i18n:";
 
 export function setActiveLocale(locale: AppLocale): void {
   activeLocale = locale;
@@ -27,6 +28,62 @@ export function translateCurrent(
   values?: Record<string, string | number>,
 ): string {
   return translate(activeLocale, key, values);
+}
+
+export function localizedText(
+  key: TranslationKey,
+  values?: Record<string, string | number>,
+): string {
+  return `${LOCALIZED_TEXT_PREFIX}${JSON.stringify({ key, values })}`;
+}
+
+export function resolveLocalizedText(
+  value: string,
+  locale: AppLocale = activeLocale,
+): string {
+  if (!value.startsWith(LOCALIZED_TEXT_PREFIX)) return value;
+  try {
+    const payload = JSON.parse(value.slice(LOCALIZED_TEXT_PREFIX.length)) as {
+      key?: unknown;
+      values?: unknown;
+    };
+    if (
+      typeof payload.key !== "string" ||
+      !Object.hasOwn(resources["zh-CN"], payload.key)
+    ) {
+      return value;
+    }
+    if (
+      payload.values !== undefined &&
+      (payload.values === null ||
+        typeof payload.values !== "object" ||
+        Array.isArray(payload.values))
+    ) {
+      return value;
+    }
+    const rawValues = payload.values as Record<string, unknown> | undefined;
+    if (
+      rawValues &&
+      Object.values(rawValues).some(
+        (entry) => typeof entry !== "string" && typeof entry !== "number",
+      )
+    ) {
+      return value;
+    }
+    const values = rawValues
+      ? Object.fromEntries(
+          Object.entries(rawValues).map(([name, entry]) => [
+            name,
+            typeof entry === "number"
+              ? new Intl.NumberFormat(locale).format(entry)
+              : resolveLocalizedText(entry as string, locale),
+          ]),
+        )
+      : undefined;
+    return translate(locale, payload.key as TranslationKey, values);
+  } catch {
+    return value;
+  }
 }
 
 export function formatCurrentNumber(
@@ -104,6 +161,15 @@ export function I18nProvider({ children }: { children: ReactNode }): JSX.Element
     setPreferenceState(next);
     document.documentElement.lang = resolveLocale(next, window.wuu?.initialSystemLocale);
     void window.wuu?.setLanguagePreference(next).catch(() => undefined);
+  }, []);
+  useEffect(() => {
+    return window.wuu?.onLanguagePreferenceChange?.((next) => {
+      setPreferenceState(next);
+      document.documentElement.lang = resolveLocale(
+        next,
+        window.wuu?.initialSystemLocale,
+      );
+    });
   }, []);
   const value = useMemo<I18nContextValue>(() => ({
     locale,

@@ -5,6 +5,7 @@ import {
   dialog,
   ipcMain,
   type IpcMainInvokeEvent,
+  Menu,
   nativeTheme,
   screen,
   session as electronSession,
@@ -128,6 +129,11 @@ import {
 import { TerminalSessionManager } from "./terminalSessions";
 import { WorkspaceFileService } from "./workspaceFiles";
 
+import {
+  appShellWebPreferences,
+  installProductionAppShellGuards,
+  productionApplicationMenuTemplate,
+} from "./appShellGuards";
 import { createWindowRegistry, type WindowRegistry } from "./windowRegistry";
 import {
   computeDefaultMainWindowBounds,
@@ -227,6 +233,7 @@ const codexPetWindowManager = new CodexPetWindowManager(
     // per-frame scale updates never reach this callback.
     updateCodexPetSettings({ scale });
   },
+  app.isPackaged,
 );
 const terminalSessionManager = new TerminalSessionManager(
   (windowID, event) => emitTerminalEvent(windowID, event),
@@ -504,27 +511,50 @@ function windowsTitleBarOverlay(): Electron.TitleBarOverlay {
   };
 }
 
-// Windows redraws the controls overlay only when told to; theme changes
-// (explicit preference or OS dark-mode flips while on "system") re-push
-// the overlay colors to every open window that carries one.
-const titleBarOverlayWindows = new Set<BrowserWindow>();
+// The theme preference is app-global state owned by the main process.
+// Every themed content window (main + pop-outs) registers here; a theme
+// change — explicit preference or an OS dark-mode flip while on
+// "system" — re-pushes the native chrome (Windows controls overlay,
+// non-macOS window background fill) to all of them, and the new
+// preference is broadcast so each renderer re-applies data-theme.
+// macOS skips both: its vibrancy material and transparent fill are
+// theme-independent.
+const themedChromeWindows = new Set<BrowserWindow>();
 
-function registerTitleBarOverlayWindow(win: BrowserWindow): void {
-  if (process.platform !== "win32") return;
-  titleBarOverlayWindows.add(win);
+function registerThemedChromeWindow(win: BrowserWindow): void {
+  themedChromeWindows.add(win);
   win.on("closed", () => {
-    titleBarOverlayWindows.delete(win);
+    themedChromeWindows.delete(win);
   });
 }
 
-function refreshTitleBarOverlays(): void {
-  if (process.platform !== "win32") return;
-  const overlay = windowsTitleBarOverlay();
-  for (const win of titleBarOverlayWindows) {
-    if (!win.isDestroyed()) {
+function syncThemedWindowChrome(): void {
+  if (process.platform === "darwin") return;
+  const background = windowBackgroundColor();
+  const overlay = process.platform === "win32" ? windowsTitleBarOverlay() : undefined;
+  for (const win of themedChromeWindows) {
+    if (win.isDestroyed()) continue;
+    // Windows redraws the controls overlay only when told to, and every
+    // platform keeps the creation-time backgroundColor until re-set —
+    // both must follow the theme or the window frame lags the content.
+    win.setBackgroundColor(background);
+    if (overlay) {
       win.setTitleBarOverlay(overlay);
     }
   }
+}
+
+function broadcastThemePreference(): void {
+  broadcastToAll("wuu:theme-preference-changed", getThemePreference());
+}
+
+function broadcastLanguagePreference(): void {
+  broadcastToAll("wuu:language-preference-changed", getLanguagePreference());
+}
+
+function syncThemeAcrossWindows(): void {
+  syncThemedWindowChrome();
+  broadcastThemePreference();
 }
 
 type PopOutWindowParams =
@@ -597,10 +627,11 @@ function createPopOutWindow(params: PopOutWindowParams): BrowserWindow {
       contextIsolation: true,
       nodeIntegration: false,
       webviewTag: true,
+      ...appShellWebPreferences(app.isPackaged),
     },
   });
   const windowID = win.webContents.id;
-  registerTitleBarOverlayWindow(win);
+  registerThemedChromeWindow(win);
 
   windowRegistry.registerWindow(win, "popped-out", {
     workdir: params.context.cwd,
@@ -629,26 +660,6 @@ function createPopOutWindow(params: PopOutWindowParams): BrowserWindow {
     unregisterWindow(windowID);
   });
 
-  if (params.kind === "thread") {
-    // Async title refresh. We only need the title here; the renderer
-    // hydrates the actual thread through the window-routed app-server path.
-    // Failures are intentionally silent: the placeholder remains usable and
-    // window creation should not be blocked by a title lookup.
-    void appServerClientPool
-      .requestInContext<{ threads: Thread[] }>(params.context, "thread/list")
-      .then((result) => {
-        if (win.isDestroyed()) return;
-        const threads = Array.isArray(result?.threads) ? result.threads : [];
-        const match = threads.find((t) => t.id === params.threadID);
-        const title = typeof match?.title === "string" ? match.title : "";
-        if (title.length > 0) {
-          win.setTitle(`wuu · ${title}`);
-        }
-      })
-      .catch(() => {
-        if (win.isDestroyed()) return;
-      });
-  }
   loadRenderer(win);
   return win;
 }
@@ -670,6 +681,7 @@ function createWindow(): void {
       contextIsolation: true,
       nodeIntegration: false,
       webviewTag: true,
+      ...appShellWebPreferences(app.isPackaged),
     },
   };
   if (restoredBounds) {
@@ -678,7 +690,7 @@ function createWindow(): void {
   }
 
   mainWindow = new BrowserWindow(windowOptions);
-  registerTitleBarOverlayWindow(mainWindow);
+  registerThemedChromeWindow(mainWindow);
 
   windowRegistry.registerWindow(mainWindow, "main");
   const win = mainWindow;
@@ -777,6 +789,27 @@ async function directorySize(path: string): Promise<number> {
 
 app.whenReady().then(async () => {
   setMainLocale(resolveMainLocale(getLanguagePreference(), app.getLocale()));
+  installProductionAppShellGuards({
+    isPackaged: app.isPackaged,
+    setApplicationMenu: () => {
+      Menu.setApplicationMenu(
+        Menu.buildFromTemplate(productionApplicationMenuTemplate(process.platform)),
+      );
+    },
+    onWebContentsCreated: (listener) => {
+      app.on("web-contents-created", (_event, contents) => {
+        listener({
+          onBeforeInputEvent: (handler) => {
+            contents.on("before-input-event", (event, value) => handler(event, value));
+          },
+          onDevToolsOpened: (handler) => {
+            contents.on("devtools-opened", handler);
+          },
+          closeDevTools: () => contents.closeDevTools(),
+        });
+      });
+    },
+  });
   await clearOversizedDevCaches();
   await removeLegacyDesktopCliLink().catch(() => false);
   projectManager.load();
@@ -1330,6 +1363,7 @@ app.whenReady().then(async () => {
     setLanguagePreference(next);
     setMainLocale(resolveMainLocale(next, app.getLocale()));
     codexPetWindowManager.refreshLocale();
+    broadcastLanguagePreference();
     return { ok: true, language: next };
   });
   // Synchronous variant used by the preload script so the first paint
@@ -1341,12 +1375,13 @@ app.whenReady().then(async () => {
     const valid: ThemePreference[] = ["system", "light", "dark"];
     const next = valid.includes(theme) ? theme : "system";
     setThemePreference(next);
-    refreshTitleBarOverlays();
+    syncThemeAcrossWindows();
     return { ok: true, theme: next };
   });
   // "system" preference: OS dark-mode flips arrive here, not through the
-  // preference IPC.
-  nativeTheme.on("updated", refreshTitleBarOverlays);
+  // preference IPC. They go through the same multi-window sync so every
+  // window's content, background, and native chrome move together.
+  nativeTheme.on("updated", syncThemeAcrossWindows);
   ipcMain.on("wuu:message-flow-font-size-get-sync", (event) => {
     // Sync partner of getMessageFlowFontSize — preload needs the value
     // before first paint to stamp --conversation-message-font-size on

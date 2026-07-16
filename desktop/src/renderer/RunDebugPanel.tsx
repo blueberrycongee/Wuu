@@ -37,6 +37,7 @@ import { LiveDuration, formatDuration } from "./TurnProgress";
 import {
   formatCurrentDate,
   formatCurrentNumber,
+  resolveLocalizedText,
   translateCurrent as t,
   useI18n,
 } from "./i18n";
@@ -535,7 +536,7 @@ function debugRuntimeStatusLabel(status: string): string {
     case "opening":
       return t("runDebug.runtimeStatus.opening");
     default:
-      return status;
+      return resolveLocalizedText(status);
   }
 }
 

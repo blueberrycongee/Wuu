@@ -1,5 +1,5 @@
 import type { Thread } from "../shared/protocol";
-import { translateCurrent } from "./i18n";
+import { resolveLocalizedText, translateCurrent } from "./i18n";
 
 export type ThreadTitleSource = Pick<
   Thread,
@@ -32,14 +32,17 @@ export function baseThreadTitle(
     // Prefer source.title (set by the right-click Rename menu) over
     // source.preview (auto-generated) so a renamed source shows the
     // user's title in the fork header.
-    const sourceTitle = source ? source.title?.trim() || source.preview?.trim() : undefined;
+    const sourceTitle = source
+      ? source.title?.trim() || resolveLocalizedText(source.preview?.trim() ?? "")
+      : undefined;
     if (sourceTitle) {
       return sourceTitle;
     }
   }
   // Prefer thread.title (set by Rename) over thread.preview
   // (auto-generated) so a renamed thread shows the user's title.
-  const ownTitle = thread.title?.trim() || thread.preview?.trim();
+  const ownTitle =
+    thread.title?.trim() || resolveLocalizedText(thread.preview?.trim() ?? "");
   return ownTitle || resolvedFallback;
 }
 

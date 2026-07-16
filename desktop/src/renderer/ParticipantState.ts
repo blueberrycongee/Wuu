@@ -9,7 +9,7 @@ import type {
   ParticipantSaveParams,
 } from "../shared/protocol";
 import { desktopApiErrorMessage } from "./WorkspaceReviewHelpers";
-import { formatCurrentNumber, translateCurrent } from "./i18n";
+import { localizedText, translateCurrent } from "./i18n";
 
 const DEFAULT_PARTICIPANT_ARCHIVED_NOTICE_MS = 1_500;
 
@@ -315,7 +315,10 @@ export function useParticipantState({
       setParticipants((current) =>
         saved.reduce(replaceParticipantProfile, current),
       );
-      setStatus(translateCurrent(saved.length === 1 ? "participant.importedOne" : "participant.imported", { count: formatCurrentNumber(saved.length) }));
+      setStatus(localizedText(
+        saved.length === 1 ? "participant.importedOne" : "participant.imported",
+        { count: saved.length },
+      ));
     } catch (error) {
       setStatus(error instanceof Error ? error.message : translateCurrent("participant.importTemplateFailed"));
     }

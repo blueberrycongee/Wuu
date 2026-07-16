@@ -44,6 +44,7 @@ import { statusMessageForError } from "./UserFacingErrors";
 import {
   formatCurrentDate,
   formatCurrentNumber,
+  localizedText,
   translateCurrent as t,
 } from "./i18n";
 
@@ -301,13 +302,13 @@ function reduceServerEvent(state: AppState, event: ServerEvent): AppState {
     case "server-error":
       return {
         ...state,
-        status: statusMessageForError(event.message, t("error.server")),
+        status: statusMessageForError(event.message, localizedText("error.server")),
       };
     case "server-exit":
       return {
         ...state,
         running: false,
-        status: event.message.trim() || t("appState.coreExited"),
+        status: event.message.trim() || localizedText("appState.coreExited"),
       };
   }
 }
@@ -2416,7 +2417,7 @@ function createSkillsSessionTab(context: RuntimeContext): SessionTab {
     id: skillsSessionTabID(context),
     kind: "skills",
     context,
-    title: t("skills.title"),
+    title: "skills",
   };
 }
 
@@ -2756,7 +2757,7 @@ function sessionTabLabel(tab: SessionTab, state: AppState): string {
     return workspaceNameForContext(tab.context, state);
   }
   if (tab.kind === "skills") {
-    return tab.title;
+    return t("skills.title");
   }
   if (tab.kind === "board") {
     // 看板 tab 跟随群名(群改名后下次渲染即更新),前缀区分于群聊 tab 本身。
@@ -3171,21 +3172,23 @@ function turnPreview(turn: Turn): string {
   }
   const images = userItem.images ?? [];
   if (images.length === 1) {
-    return t("appState.imageNumber", { number: formatCurrentNumber(1) });
+    return localizedText("appState.imageNumber", { number: 1 });
   }
   if (images.length > 1) {
-    return t("appState.images", { count: formatCurrentNumber(images.length) });
+    return localizedText("appState.images", { count: images.length });
   }
   const files = userItem.files ?? [];
   if (files.length === 1) {
-    return t("appState.fileNamed", {
-      name:
-        files[0].filename?.trim() ||
-        t("appState.fileNumber", { number: formatCurrentNumber(1) }),
+    const name = files[0].filename?.trim();
+    if (!name) {
+      return localizedText("appState.fileNumber", { number: 1 });
+    }
+    return localizedText("appState.fileNamed", {
+      name,
     });
   }
   if (files.length > 1) {
-    return t("appState.files", { count: formatCurrentNumber(files.length) });
+    return localizedText("appState.files", { count: files.length });
   }
   return "";
 }

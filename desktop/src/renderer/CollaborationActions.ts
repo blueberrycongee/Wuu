@@ -27,7 +27,7 @@ import type { ContextCompositionEntry } from "./ContextCompositionCard";
 import type { InstructionFilesEntry } from "./InstructionFilesCard";
 import { desktopApiErrorMessage } from "./WorkspaceReviewHelpers";
 import type { SettingsPage } from "./SettingsView";
-import { translateCurrent } from "./i18n";
+import { localizedText, translateCurrent } from "./i18n";
 
 type SetAppState = (update: SetStateAction<AppState>) => void;
 
@@ -129,7 +129,7 @@ export function createCollaborationActions(
     if (!activeThread) {
       deps.setAppState((current) => ({
         ...current,
-        status: translateCurrent("collaboration.noCurrentConversation"),
+        status: localizedText("collaboration.noCurrentConversation"),
       }));
       return;
     }
@@ -178,7 +178,7 @@ export function createCollaborationActions(
     if (!activeThread) {
       deps.setAppState((current) => ({
         ...current,
-        status: translateCurrent("collaboration.noCurrentConversation"),
+        status: localizedText("collaboration.noCurrentConversation"),
       }));
       return;
     }

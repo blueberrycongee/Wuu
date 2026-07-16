@@ -25,6 +25,7 @@ import {
   conversationSearchThreadMeta,
   groupThreadSummaries,
   createDraftSessionTab,
+  createSkillsSessionTab,
   createThreadSessionTab,
   focusWorkspaceSendValue,
   sessionTabLabel,
@@ -67,7 +68,7 @@ import {
 } from "./AppState";
 import { PROCESS_NOTIFICATION_NAME } from "./InternalUserNotification";
 import { streamTextKey, streamTextStore } from "./StreamText";
-import { setActiveLocale } from "./i18n";
+import { resolveLocalizedText, setActiveLocale } from "./i18n";
 
 afterEach(() => {
   setActiveLocale("zh-CN");
@@ -3497,20 +3498,38 @@ describe("AppState English localization", () => {
     expect(composerSubmissionDetail(1, 2)).toBe(
       "Input submitted with 1 image, 2 files",
     );
-    expect(
-      turnPreview({
-        id: "turn-attachments",
-        items_view: "full",
-        status: "completed",
-        items: [
-          {
-            id: "user",
-            type: "user_message",
-            images: [{ media_type: "image/png", data: "AA==" }],
-          },
-        ],
-      }),
-    ).toBe("[Image #1]");
+    const attachmentPreview = turnPreview({
+      id: "turn-attachments",
+      items_view: "full",
+      status: "completed",
+      items: [
+        {
+          id: "user",
+          type: "user_message",
+          images: [{ media_type: "image/png", data: "AA==" }],
+        },
+      ],
+    });
+    expect(resolveLocalizedText(attachmentPreview)).toBe("[Image #1]");
+    setActiveLocale("zh-CN");
+    expect(resolveLocalizedText(attachmentPreview)).toBe("[图片 #1]");
+  });
+
+  it("re-resolves persisted app labels after the locale changes", () => {
+    setActiveLocale("en-US");
+    const skills = createSkillsSessionTab({ kind: "no_project", cwd: "/scratch" });
+    const exited = reduceServerEvent(initialState, {
+      kind: "server-exit",
+      workdir: "",
+      code: 0,
+      message: "",
+    });
+    expect(sessionTabLabel(skills, initialState)).toBe("Skills");
+    expect(resolveLocalizedText(exited.status)).toBe("wuu core exited");
+
+    setActiveLocale("zh-CN");
+    expect(sessionTabLabel(skills, initialState)).toBe("技能");
+    expect(resolveLocalizedText(exited.status)).toBe("wuu core 已退出");
   });
 
   it("localizes stream recovery progress", () => {

@@ -16,7 +16,7 @@ import {
   type SessionTab,
 } from "./AppState";
 import { loadRuntime as defaultLoadRuntime } from "./RuntimeLoadState";
-import { translateCurrent } from "./i18n";
+import { localizedText, translateCurrent } from "./i18n";
 
 type SetAppState = (update: SetStateAction<AppState>) => void;
 
@@ -143,7 +143,7 @@ export function createProjectRuntimeActions(
     }
     if (isAnyThreadRunning(currentState)) {
       deps.closeProjectMenus();
-      setStatus(translateCurrent("project.switchWhileRunning"));
+      setStatus(localizedText("project.switchWhileRunning"));
       return;
     }
     const requestID = deps.beginViewSwitch(switchKind, switchTarget);

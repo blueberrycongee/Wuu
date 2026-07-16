@@ -2,7 +2,7 @@ import type { MutableRefObject, SetStateAction } from "react";
 import type { GitCommitResult, GitPullRequestResult } from "../shared/protocol";
 import { sameRuntimeContext, type AppState } from "./AppState";
 import type { EnvironmentPanelMenu } from "./EnvironmentPanel";
-import { translateCurrent } from "./i18n";
+import { localizedText, translateCurrent } from "./i18n";
 
 type SetAppState = (update: SetStateAction<AppState>) => void;
 
@@ -152,7 +152,7 @@ export function createEnvironmentActions(
     deps.setAppState((current) => ({
       ...current,
       gitStatus: result.status,
-      status: translateCurrent("git.commit.completed", { commit: result.commit }),
+      status: localizedText("git.commit.completed", { commit: result.commit }),
     }));
     return result;
   }

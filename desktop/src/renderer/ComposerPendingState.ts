@@ -27,7 +27,7 @@ import {
   type ThreadPendingComposerMessages,
 } from "./ComposerPendingMessages";
 import { isRecord, recordValue, stringValue } from "./ToolActivity";
-import { translateCurrent } from "./i18n";
+import { localizedText, translateCurrent } from "./i18n";
 
 export type ComposerPendingStateController = {
   pendingComposerMessagesByThread: PendingComposerMessagesByThread;
@@ -217,7 +217,7 @@ export function useComposerPendingState({
     try {
       const result = await window.wuu.dequeueTurn(target.threadID, id);
       if (!result.ok) {
-        setStatus(translateCurrent("composer.queueAlreadyHandled"));
+        setStatus(localizedText("composer.queueAlreadyHandled"));
         return false;
       }
       return true;
@@ -262,7 +262,7 @@ export function useComposerPendingState({
     try {
       const result = await window.wuu.unsteerTurn(target.threadID, id);
       if (!result.ok) {
-        setStatus(translateCurrent("composer.guideAlreadyHandled"));
+        setStatus(localizedText("composer.guideAlreadyHandled"));
         return false;
       }
       return true;
@@ -305,7 +305,7 @@ export function useComposerPendingState({
     if (!composerDraftHasContent(getPrimaryComposerDraft())) {
       return true;
     }
-    setStatus(translateCurrent("composer.clearBeforeEditingQueue"));
+    setStatus(localizedText("composer.clearBeforeEditingQueue"));
     return false;
   }
 
@@ -323,7 +323,7 @@ export function useComposerPendingState({
       return;
     }
     restorePendingComposerMessage(target.threadID, target.message);
-    setStatus(translateCurrent("composer.queueRestoredForEditing"));
+    setStatus(localizedText("composer.queueRestoredForEditing"));
   }
 
   async function editGuideMessage(id: string): Promise<void> {
@@ -367,7 +367,7 @@ export function useComposerPendingState({
     }
     const turnID = activeTurnIDForThread(targetThread);
     if (!turnID) {
-      setStatus(translateCurrent("composer.noActiveTurnToGuide"));
+      setStatus(localizedText("composer.noActiveTurnToGuide"));
       return;
     }
     try {

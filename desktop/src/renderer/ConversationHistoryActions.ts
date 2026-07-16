@@ -22,7 +22,7 @@ import {
 } from "./ComposerMessages";
 import { lastUserMessageAnchor, scrollToUserMessage } from "./TurnViewHelpers";
 import { desktopApiErrorMessage } from "./WorkspaceReviewHelpers";
-import { translateCurrent as t } from "./i18n";
+import { localizedText, translateCurrent as t } from "./i18n";
 
 type SetAppState = (update: SetStateAction<AppState>) => void;
 
@@ -134,7 +134,7 @@ export function createConversationHistoryActions(
     if (deps.localDemoThreadsRef.current.has(sourceThread.id)) {
       deps.setAppState((current) => ({
         ...current,
-        status: t("history.demoCannotFork"),
+        status: localizedText("history.demoCannotFork"),
       }));
       return;
     }
@@ -164,7 +164,7 @@ export function createConversationHistoryActions(
     
     deps.setAppState((current) => ({
       ...current,
-      status: t("history.forking"),
+      status: localizedText("history.forking"),
     }));
     try {
       const fork = requireThread(
@@ -269,21 +269,21 @@ export function createConversationHistoryActions(
     if (deps.localDemoThreadsRef.current.has(sourceThread.id)) {
       deps.setAppState((current) => ({
         ...current,
-        status: t("history.demoCannotEdit"),
+        status: localizedText("history.demoCannotEdit"),
       }));
       return;
     }
     if (isThreadRunning(sourceThread)) {
       deps.setAppState((current) => ({
         ...current,
-        status: t("history.waitForReply"),
+        status: localizedText("history.waitForReply"),
       }));
       return;
     }
     if (deps.threadHasPendingComposerMessages(sourceThread.id)) {
       deps.setAppState((current) => ({
         ...current,
-        status: t("history.handlePendingFirst"),
+        status: localizedText("history.handlePendingFirst"),
       }));
       return;
     }
@@ -354,21 +354,21 @@ deps.rememberConversationScrollForEdit();
     if (!message) {
       deps.setAppState((current) => ({
         ...current,
-        status: t("history.emptyEdit"),
+        status: localizedText("history.emptyEdit"),
       }));
       return;
     }
     if (isThreadRunning(sourceThread)) {
       deps.setAppState((current) => ({
         ...current,
-        status: t("history.waitForReply"),
+        status: localizedText("history.waitForReply"),
       }));
       return;
     }
     if (deps.threadHasPendingComposerMessages(sourceThread.id)) {
       deps.setAppState((current) => ({
         ...current,
-        status: t("history.handlePendingFirst"),
+        status: localizedText("history.handlePendingFirst"),
       }));
       return;
     }
@@ -383,7 +383,7 @@ deps.rememberConversationScrollForEdit();
     
     deps.setAppState((current) => ({
       ...current,
-      status: t("history.sendingEdit"),
+      status: localizedText("history.sendingEdit"),
     }));
     try {
       const result = await window.wuu.editThreadMessage(
@@ -405,7 +405,7 @@ deps.rememberConversationScrollForEdit();
           ...thread,
           child_agents: thread.child_agents ?? currentThread.child_agents,
         }),
-        { status: t("app.sendingRequest") },
+        { status: localizedText("app.sendingRequest") },
       );
       deps.setAppState((current) =>
         updateThreadByID(
@@ -415,7 +415,7 @@ deps.rememberConversationScrollForEdit();
             ...thread,
             child_agents: thread.child_agents ?? currentThread.child_agents,
           }),
-          { status: t("app.sendingRequest") },
+          { status: localizedText("app.sendingRequest") },
         ),
       );
       const sent = await deps.sendComposerMessageToThread(message, thread);

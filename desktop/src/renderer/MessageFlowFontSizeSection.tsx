@@ -2,21 +2,27 @@ import {
   type ChangeEvent,
   type PointerEvent,
   useEffect,
+  useMemo,
   useState,
 } from "react";
 import {
   MESSAGE_FLOW_FONT_SIZE_RANGE,
   type MessageFlowFontSize,
+  type ThreadItem,
 } from "../shared/protocol";
-import { StreamingMarkdown } from "./StreamingMarkdown";
 import { useI18n } from "./i18n";
+import { ThreadItemView } from "./ThreadItemView";
 
-// Sample reply the Settings preview shows underneath the slider. It is
-// rendered through the exact pipeline the conversation pane uses
-// (.agent-block > .agent-text > StreamingMarkdown), so the slider
-// previews real message-flow typography instead of a look-alike
-// placeholder. Mixed CJK/Latin prose, inline code, and a short list
-// cover the shapes a typical agent reply takes.
+// Mini conversation the Settings preview shows underneath the slider.
+// Both messages go through the same ThreadItemView pipeline the
+// conversation pane uses — user bubble, hairline divider, agent answer —
+// so the slider previews real message-flow typography instead of a
+// look-alike placeholder. The pair mirrors a typical exchange: a short
+// user request, then an agent reply with mixed CJK/Latin prose, inline
+// code, and a short list.
+const PREVIEW_TURN_ID = "settings-message-flow-preview-turn";
+
+function noop(): void {}
 const { min, max, step, default: defaultSize } = MESSAGE_FLOW_FONT_SIZE_RANGE;
 
 function clampSize(value: unknown): MessageFlowFontSize {
@@ -59,10 +65,28 @@ export function applyMessageFlowFontSize(size: MessageFlowFontSize): void {
  * every drag tick.
  */
 export function MessageFlowFontSizeControl(): JSX.Element {
-  const { locale, t } = useI18n();
+  const { t } = useI18n();
   const [size, setSize] = useState<MessageFlowFontSize>(() =>
     clampSize(window.wuu?.initialMessageFlowFontSize),
   );
+  const previewUserItem = useMemo<ThreadItem>(() => ({
+    id: "settings-preview-user-message",
+    type: "user_message",
+    status: "completed",
+    text: t("settings.messageFontSizeSampleUser"),
+  }), [t]);
+  const previewAgentItem = useMemo<ThreadItem>(() => ({
+    id: "settings-preview-agent-message",
+    type: "agent_message",
+    status: "completed",
+    phase: "final_answer",
+    text: [
+      t("settings.messageFontSizeSampleIntro"),
+      "",
+      t("settings.messageFontSizeSampleScope"),
+      t("settings.messageFontSizeSampleTests"),
+    ].join("\n"),
+  }), [t]);
 
   useEffect(() => {
     let cancelled = false;
@@ -133,21 +157,26 @@ export function MessageFlowFontSizeControl(): JSX.Element {
         aria-label={t("settings.messageFontSizePreview")}
         data-testid="settings-message-flow-font-size-preview"
       >
-        <article className="agent-block">
-          <div className="agent-text">
-            <StreamingMarkdown
-              streamKey={`settings-message-flow-font-size-preview-${locale}`}
-              initialText={[
-                t("settings.messageFontSizeSampleIntro"),
-                "",
-                t("settings.messageFontSizeSampleScope"),
-                t("settings.messageFontSizeSampleTests"),
-              ].join("\n")}
-              isLive={false}
-              phase="final_answer"
-            />
+        <section className="turn" data-turn-status="completed">
+          <ThreadItemView
+            turnID={PREVIEW_TURN_ID}
+            turnStatus="completed"
+            item={previewUserItem}
+            streaming={false}
+            onStreamFrame={noop}
+          />
+          <div className="assistant-turn-shell has-answer">
+            <div className="turn-answer-body">
+              <ThreadItemView
+                turnID={PREVIEW_TURN_ID}
+                turnStatus="completed"
+                item={previewAgentItem}
+                streaming={false}
+                onStreamFrame={noop}
+              />
+            </div>
           </div>
-        </article>
+        </section>
       </div>
     </div>
   );

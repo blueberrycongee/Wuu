@@ -230,7 +230,7 @@ import {
   type HistoryMessageEditState,
   type PendingForkState,
 } from "./ConversationHistoryActions";
-import { useI18n } from "./i18n";
+import { localizedText, resolveLocalizedText, useI18n } from "./i18n";
 import { CachedConversationPanes } from "./CachedConversationPanes";
 import {
   ConversationSidePanels,
@@ -330,7 +330,7 @@ function readPopOutInit(): PopOutInitResult | null {
 }
 
 export function App(): JSX.Element {
-  const { t, formatNumber } = useI18n();
+  const { locale, t, formatNumber } = useI18n();
   const [popOutInit] = useState<PopOutInitResult | null>(() => readPopOutInit());
   const poppedOutMode = Boolean(popOutInit?.kind && popOutInit.context);
   const [state, setState] = useState<AppState>(initialState);
@@ -1748,10 +1748,26 @@ export function App(): JSX.Element {
       : undefined;
   const showingTaskBoard = Boolean(boardSessionTab);
   const activeTitle = showingSkillsCatalog
-    ? "Skills"
+    ? t("skills.title")
     : boardSessionTab
       ? sessionTabLabel(boardSessionTab, state)
-      : activeThread?.preview || t("tabs.newConversation");
+      : resolveLocalizedText(activeThread?.preview ?? "") ||
+        t("tabs.newConversation");
+  const popOutWindowTitle =
+    popOutInit?.kind === "thread"
+      ? activeThread?.title?.trim() ||
+        resolveLocalizedText(activeThread?.preview?.trim() ?? "") ||
+        t("tabs.newConversation")
+      : popOutInit?.kind === "subthread"
+        ? `${t("subthread.label")} · ${popOutInit.subthreadID?.slice(0, 8) ?? ""}`
+        : t("tabs.newConversation");
+  useEffect(() => {
+    if (!poppedOutMode) return;
+    // The renderer owns the loaded page title. This runs after the shared
+    // index.html title and again when either hydrated data or locale changes,
+    // avoiding races with an independent main-process title lookup.
+    document.title = `wuu · ${popOutWindowTitle}`;
+  }, [poppedOutMode, popOutWindowTitle]);
   const currentHour = useCurrentHour();
   const greetingContext: GreetingContext = resolveGreetingContext({
     activeThread,
@@ -2133,9 +2149,12 @@ export function App(): JSX.Element {
       return;
     }
     void api
-      .updateCodexPetRuntime({ running: anyThreadIsRunning, status: state.status })
+      .updateCodexPetRuntime({
+        running: anyThreadIsRunning,
+        status: resolveLocalizedText(state.status),
+      })
       .catch(() => undefined);
-  }, [anyThreadIsRunning, state.status]);
+  }, [anyThreadIsRunning, locale, state.status]);
   // The pet bubble is a lightweight hint of the most relevant session.
   // Re-derive whenever the thread state changes and push the result to
   // the main process, which keeps the always-on-top pet window in sync.
@@ -3038,7 +3057,7 @@ export function App(): JSX.Element {
     if (targetThread?.read_only) {
       setState((current) => ({
         ...current,
-        status: t("app.childTaskReadOnly"),
+        status: localizedText("app.childTaskReadOnly"),
       }));
       return;
     }
@@ -3087,28 +3106,28 @@ export function App(): JSX.Element {
     if (!targetThread) {
       setState((current) => ({
         ...current,
-        status: t("app.openConversationFirst"),
+        status: localizedText("app.openConversationFirst"),
       }));
       return;
     }
     if (targetThread.read_only) {
       setState((current) => ({
         ...current,
-        status: t("app.childTaskReadOnly"),
+        status: localizedText("app.childTaskReadOnly"),
       }));
       return;
     }
     if (isGroupThread(targetThread)) {
       setState((current) => ({
         ...current,
-        status: t("app.groupNoCompactContext"),
+        status: localizedText("app.groupNoCompactContext"),
       }));
       return;
     }
     if (isStateActiveThreadRunning(currentState)) {
       setState((current) => ({
         ...current,
-        status: t("app.currentTaskRunning"),
+        status: localizedText("app.currentTaskRunning"),
       }));
       return;
     }
@@ -3124,12 +3143,12 @@ export function App(): JSX.Element {
     appStateRef.current = {
       ...currentState,
       running: true,
-      status: t("app.compactingContext"),
+      status: localizedText("app.compactingContext"),
     };
     setState((current) => ({
       ...current,
       running: true,
-      status: t("app.compactingContext"),
+      status: localizedText("app.compactingContext"),
     }));
 
     const optimisticTurn = createOptimisticCompactTurn(Date.now());
@@ -3138,14 +3157,14 @@ export function App(): JSX.Element {
       appStateRef.current,
       targetThread.id,
       (thread) => upsertTurn(thread, optimisticTurn),
-      { running: true, status: t("app.compactingContext") },
+      { running: true, status: localizedText("app.compactingContext") },
     );
     setState((current) =>
       updateThreadByID(
         current,
         targetThread.id,
         (thread) => upsertTurn(thread, optimisticTurn),
-        { running: true, status: t("app.compactingContext") },
+        { running: true, status: localizedText("app.compactingContext") },
       ),
     );
 
@@ -3161,7 +3180,7 @@ export function App(): JSX.Element {
             result.turn,
             upsertTurn,
           ),
-        { running: true, status: t("app.compactingContext") },
+        { running: true, status: localizedText("app.compactingContext") },
       );
       setState((current) =>
         updateThreadByID(
@@ -3174,7 +3193,7 @@ export function App(): JSX.Element {
               result.turn,
               upsertTurn,
             ),
-          { running: true, status: t("app.compactingContext") },
+          { running: true, status: localizedText("app.compactingContext") },
         ),
       );
       appendRunDebugEvent({
@@ -3322,12 +3341,12 @@ export function App(): JSX.Element {
     appStateRef.current = {
       ...currentState,
       running: true,
-      status: t("app.sendingRequest"),
+      status: localizedText("app.sendingRequest"),
     };
     setState((current) => ({
       ...current,
       running: true,
-      status: t("app.sendingRequest"),
+      status: localizedText("app.sendingRequest"),
     }));
     let optimisticTurnID: string | undefined;
     let optimisticThreadID: string | undefined;
@@ -3488,7 +3507,7 @@ export function App(): JSX.Element {
     if (targetThread?.read_only) {
       setState((current) => ({
         ...current,
-        status: t("app.childTaskReadOnly"),
+        status: localizedText("app.childTaskReadOnly"),
       }));
       return;
     }
@@ -3565,13 +3584,13 @@ export function App(): JSX.Element {
       ...currentState,
       activePane: pane,
       running: true,
-      status: t("app.sendingRequest"),
+      status: localizedText("app.sendingRequest"),
     };
     setState((current) => ({
       ...current,
       activePane: pane,
       running: true,
-      status: t("app.sendingRequest"),
+      status: localizedText("app.sendingRequest"),
     }));
     let optimisticTurnID: string | undefined;
     try {
@@ -3700,12 +3719,12 @@ export function App(): JSX.Element {
       appStateRef.current = {
         ...currentState,
         running: true,
-        status: t("app.sendingRequest"),
+        status: localizedText("app.sendingRequest"),
       };
       setState((current) => ({
         ...current,
         running: true,
-        status: t("app.sendingRequest"),
+        status: localizedText("app.sendingRequest"),
       }));
     }
     let optimisticTurnID: string | undefined;
@@ -4409,7 +4428,7 @@ export function App(): JSX.Element {
           </div>
         ) : (
           <RuntimeLoading
-            status={state.status}
+            status={resolveLocalizedText(state.status)}
             pinned={previewingLaunch}
             onExitPreview={() => setLaunchPreviewPinned(false)}
           />

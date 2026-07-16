@@ -7,7 +7,7 @@ import { SidebarSection } from "./SidebarSection";
 import { baseThreadTitle, threadShowsForkMarker } from "./ThreadTitles";
 import { revealInFileManagerLabel } from "./platform";
 import { isThreadRunning, isThreadUnread, threadProjectPath, type ThreadSummary } from "./AppState";
-import { useI18n } from "./i18n";
+import { resolveLocalizedText, useI18n } from "./i18n";
 
 function threadsForProjectPath(
   threads: ThreadSummary[],
@@ -598,7 +598,11 @@ function ThreadRows({
   }
 
   function editableThreadTitle(thread: ThreadSummary): string {
-    return thread.title?.trim() || thread.preview?.trim() || "";
+    return (
+      thread.title?.trim() ||
+      resolveLocalizedText(thread.preview?.trim() ?? "") ||
+      ""
+    );
   }
 
   function openRenameDialog(thread: ThreadSummary): void {

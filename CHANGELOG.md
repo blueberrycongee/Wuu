@@ -8,6 +8,27 @@ Versioning rules are documented in [the release guide](docs/release.md).
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-07-16
+
+### Fixed
+
+- Inline code in message conversations and workspace Markdown previews now
+  uses a dark theme-aware surface instead of retaining the light chip background.
+
+## [0.5.1] - 2026-07-16
+
+### Changed
+
+- The message-flow font-size preview now uses the real conversation renderer,
+  so it matches message typography, spacing, and Markdown output.
+
+### Fixed
+
+- Theme changes now stay synchronized across all desktop windows and embedded
+  terminals, editors, and Mermaid diagrams.
+- Bare URLs followed by CJK punctuation no longer absorb the punctuation into
+  the link target.
+
 ## [0.5.0] - 2026-07-16
 
 ### Added
