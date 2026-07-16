@@ -24,6 +24,7 @@ import (
 	"github.com/blueberrycongee/wuu/internal/providers"
 	"github.com/blueberrycongee/wuu/internal/providers/codex"
 	"github.com/blueberrycongee/wuu/internal/runtime"
+	"github.com/blueberrycongee/wuu/internal/session"
 	"github.com/blueberrycongee/wuu/internal/skills"
 	"github.com/blueberrycongee/wuu/internal/subagent"
 	"github.com/blueberrycongee/wuu/internal/version"
@@ -966,7 +967,9 @@ func (s *Server) handleConfigModelUpdate(req Request) error {
 		s.rt.StreamRunner.CompactThresholdTokens = modelBudget.CompactThresholdTokens
 	}
 	s.updateRootAgentControlWorkerDefaults()
-	s.updateThreadRuntimeForModelUpdate(resolvedName, ruleProviderName, model, apiModel, systemPrompt)
+	if err := s.updateThreadRuntimeForModelUpdate(params.ThreadID, resolvedName, model, selection.Variant, systemPrompt); err != nil {
+		return s.writeResponse(req.ID, nil, err)
+	}
 
 	modelProfile, toolSurface := s.currentModelSurfaceSummaries()
 	return s.writeResponse(req.ID, ConfigModelUpdateResult{
@@ -1211,21 +1214,43 @@ func skillSummaries(items []skills.Skill) []SkillSummary {
 	return out
 }
 
-func (s *Server) updateThreadRuntimeForModelUpdate(providerName, ruleProviderName, model, apiModel, systemPrompt string) {
-	update := threadRuntimeUpdate{
-		ProviderName:     providerName,
-		RuleProviderName: ruleProviderName,
-		Model:            model,
-		APIModel:         apiModel,
-		SystemPrompt:     systemPrompt,
+func (s *Server) updateThreadRuntimeForModelUpdate(threadID, providerName, model, variant, systemPrompt string) error {
+	threadID = strings.TrimSpace(threadID)
+	if threadID == "" {
+		return nil
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	for _, th := range s.threads {
-		th.mu.Lock()
-		s.updateThreadRuntimeLocked(th, update)
-		th.mu.Unlock()
+	th, err := s.ensureResidentThread(threadID)
+	if err != nil {
+		return err
 	}
+	if _, err := session.SetModelSelection(s.rt.SessionDir, threadID, providerName, model, variant); err != nil {
+		return err
+	}
+	var detached detachedThreadRuntime
+	th.mu.Lock()
+	th.ModelProvider = providerName
+	th.Model = model
+	th.ModelVariant = variant
+	if strings.TrimSpace(systemPrompt) != "" {
+		th.History = replaceBaseSystemPrompt(th.History, systemPrompt)
+		if th.PersistHistory {
+			if err := rewriteChatHistory(s.rt.SessionDir, th.ID, th.History); err != nil {
+				th.mu.Unlock()
+				return err
+			}
+		}
+	}
+	if th.running || (th.execRuntime != nil && threadRuntimeHasOutstandingAgentWork(th.execRuntime)) {
+		th.pendingRuntimeReset = true
+	} else if th.execRuntime != nil {
+		detached = detachThreadRuntimeLocked(th)
+	}
+	thread := th.snapshotLocked()
+	th.mu.Unlock()
+	if detached.runtime != nil || detached.subscription != nil {
+		releaseDetachedThreadRuntime(detached)
+	}
+	return s.notifyThreadUpdated(thread)
 }
 
 func (s *Server) resetThreadRuntimesForGeneralSettings(systemPrompt string) {

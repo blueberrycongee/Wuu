@@ -32,6 +32,7 @@ func ApplyModelMessageCompatibility(model string, msgs []ChatMessage) []ChatMess
 	}
 	out := cloneMessagesForRequest(msgs)
 	out = sanitizeMessageText(out)
+	out = dropForeignModelState(model, out)
 
 	lower := strings.ToLower(strings.TrimSpace(model))
 	switch {
@@ -42,6 +43,24 @@ func ApplyModelMessageCompatibility(model string, msgs []ChatMessage) []ChatMess
 		out = rewriteToolCallIDs(out, scrubClaudeToolCallID)
 	}
 	return out
+}
+
+func dropForeignModelState(model string, msgs []ChatMessage) []ChatMessage {
+	current := strings.TrimSpace(model)
+	if current == "" {
+		return msgs
+	}
+	for i := range msgs {
+		origin := strings.TrimSpace(msgs[i].ProviderItemModel)
+		if origin == "" || strings.EqualFold(origin, current) {
+			continue
+		}
+		msgs[i].ProviderItemID = ""
+		msgs[i].ReasoningContent = ""
+		msgs[i].ReasoningBlocks = nil
+		msgs[i].DiscoveredTools = nil
+	}
+	return msgs
 }
 
 func cloneMessagesForRequest(msgs []ChatMessage) []ChatMessage {

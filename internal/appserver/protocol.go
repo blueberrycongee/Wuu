@@ -403,6 +403,7 @@ type ExtensionInventoryRecord struct {
 }
 
 type ConfigModelUpdateParams struct {
+	ThreadID       string  `json:"thread_id,omitempty"`
 	Provider       string  `json:"provider,omitempty"`
 	Model          string  `json:"model"`
 	Effort         *string `json:"effort,omitempty"`
@@ -1778,6 +1779,7 @@ type Thread struct {
 	Title            string        `json:"title,omitempty"`
 	ModelProvider    string        `json:"model_provider"`
 	Model            string        `json:"model"`
+	ModelVariant     string        `json:"model_variant,omitempty"`
 	CWD              string        `json:"cwd"`
 	WorkspaceKind    WorkspaceKind `json:"workspace_kind,omitempty"`
 	Status           ThreadStatus  `json:"status"`

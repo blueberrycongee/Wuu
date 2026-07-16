@@ -1058,12 +1058,21 @@ export function App(): JSX.Element {
   // subthread-scoped notification lands; opening a reply bumps the nonce.)
   const activeThreadTurnCount = activeThread?.turns?.length ?? 0;
   const composerInitialized = useMemo(
-    () =>
-      initializedForSelectedPermissionMode(
+    () => {
+      const initialized = initializedForSelectedPermissionMode(
         state.initialized,
         selectedPermissionMode,
-      ),
-    [state.initialized, selectedPermissionMode],
+      );
+      return initialized && activeThread
+        ? {
+            ...initialized,
+            provider: activeThread.model_provider,
+            model: activeThread.model,
+            variant: activeThread.model_variant ?? initialized.variant,
+          }
+        : initialized;
+    },
+    [state.initialized, selectedPermissionMode, activeThread],
   );
   // Per-thread keep-alive for the main conversation pane. We keep the active
   // thread and a small recency buffer mounted so switching back does not
@@ -4035,7 +4044,7 @@ export function App(): JSX.Element {
       <>
         {archiveTipNode}
         <SettingsShellRenderer
-          initialized={state.initialized}
+          initialized={composerInitialized}
           initialPage={settingsInitialPage}
           memoryFocusParticipantID={settingsMemoryFocusID}
           running={viewContextSwitchPending}

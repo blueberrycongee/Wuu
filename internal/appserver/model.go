@@ -55,6 +55,7 @@ func (th *threadState) snapshotLocked() Thread {
 		Title:            th.Title,
 		ModelProvider:    th.ModelProvider,
 		Model:            th.Model,
+		ModelVariant:     th.ModelVariant,
 		CWD:              th.CWD,
 		WorkspaceKind:    th.WorkspaceKind,
 		Status:           status,

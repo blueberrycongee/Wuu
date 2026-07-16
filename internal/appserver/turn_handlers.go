@@ -675,6 +675,9 @@ func (s *Server) ensureThreadRuntime(th *threadState) (*runtime.ThreadRuntime, e
 	}
 	history := cloneHistory(th.History)
 	rootDir := th.CWD
+	modelProvider := th.ModelProvider
+	model := th.Model
+	modelVariant := th.ModelVariant
 	th.mu.Unlock()
 	if detached.runtime != nil || detached.subscription != nil {
 		releaseDetachedThreadRuntime(detached)
@@ -690,7 +693,11 @@ func (s *Server) ensureThreadRuntime(th *threadState) (*runtime.ThreadRuntime, e
 	if s.rt == nil {
 		return nil, errors.New("runtime session is required")
 	}
-	threadRuntime, err := s.rt.NewThreadRuntimeForRoot(th.ID, firstNonEmpty(rootDir, s.rt.RootDir))
+	threadRuntime, err := s.rt.NewThreadRuntimeForRootModel(th.ID, firstNonEmpty(rootDir, s.rt.RootDir), runtime.ThreadModelSelection{
+		Provider: modelProvider,
+		Model:    model,
+		Variant:  modelVariant,
+	})
 	if err != nil {
 		return nil, err
 	}

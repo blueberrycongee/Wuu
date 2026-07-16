@@ -1008,6 +1008,7 @@ export type Thread = {
   source?: string;
   model_provider: string;
   model: string;
+  model_variant?: string;
   cwd: string;
   // workspace_kind tags the thread with the workspace it was created in.
   // "scratch" threads live in the desktop-managed scratch root
@@ -2056,7 +2057,8 @@ export type WuuDesktopApi = {
     effort?: string,
     connection?: RuntimeConnectionUpdate,
     variant?: string,
-    permissionMode?: string
+    permissionMode?: string,
+    threadId?: string
   ) => Promise<ConfigModelUpdateResult>;
   updateUltraMode: (enabled: boolean) => Promise<ConfigModelUpdateResult>;
   removeProvider: (

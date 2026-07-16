@@ -189,6 +189,14 @@ type ThreadRuntime struct {
 	WorkerModelBudget modelbudget.Budget
 }
 
+// ThreadModelSelection is the model choice persisted with one conversation.
+// Empty fields mean the workspace runtime defaults should be used.
+type ThreadModelSelection struct {
+	Provider string
+	Model    string
+	Variant  string
+}
+
 // resolveWorkspaceStateDir returns the workspace state directory, keyed by the
 // stable workspace id when present (so it survives the project moving on disk)
 // and otherwise by the filesystem path (location-anchored roots that never
@@ -707,6 +715,111 @@ func resolveToolLoadingModeForProvider(mode config.ToolLoadingMode, providerCfg 
 // CLI and older call sites.
 func (s *Session) NewThreadRuntime(sessionID string) (*ThreadRuntime, error) {
 	return s.NewThreadRuntimeForRoot(sessionID, s.RootDir)
+}
+
+// NewThreadRuntimeForRootModel creates a thread runtime from a conversation's
+// persisted model selection without mutating the workspace-wide defaults.
+func (s *Session) NewThreadRuntimeForRootModel(sessionID, rootDir string, selected ThreadModelSelection) (*ThreadRuntime, error) {
+	if s == nil {
+		return nil, fmt.Errorf("runtime session is required")
+	}
+	providerName := strings.TrimSpace(selected.Provider)
+	model := strings.TrimSpace(selected.Model)
+	currentVariant := ""
+	if s.StreamRunner != nil {
+		currentVariant = strings.TrimSpace(s.StreamRunner.Variant)
+	}
+	if providerName == "" || model == "" || (providerName == s.ProviderName && model == s.Model && strings.TrimSpace(selected.Variant) == currentVariant) {
+		return s.NewThreadRuntimeForRoot(sessionID, rootDir)
+	}
+	cfg, _, err := s.LoadEffectiveConfig()
+	if err != nil {
+		return nil, err
+	}
+	providerCfg, resolvedName, err := cfg.ResolveProvider(providerName)
+	if err != nil {
+		return nil, err
+	}
+	ruleProviderName, ruleProviderCfg := modelcatalog.EnrichProvider(resolvedName, providerCfg, model)
+	variant := strings.TrimSpace(selected.Variant)
+	selection := modelvariant.ResolveForProvider(ruleProviderName, ruleProviderCfg, model, variant, variant)
+	client, err := providerfactory.BuildStreamClient(ruleProviderCfg, resolvedName)
+	if err != nil {
+		return nil, fmt.Errorf("build thread model client: %w", err)
+	}
+	roles, err := modelroles.Resolve(cfg, modelroles.ResolveOptions{
+		ProviderName: resolvedName, ProviderConfig: providerCfg, Model: model,
+		Effort: selection.LegacyEffort, Variant: selection.Variant,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	shadow := *s
+	shadow.ProviderName = resolvedName
+	shadow.Model = model
+	shadow.ModelRoles = roles
+	shadow.ModelBudget = ResolveModelBudget(model, ruleProviderCfg, cfg.Agent.MaxContextTokens)
+	shadow.WorkerModelBudget = ResolveModelBudget(roles.Worker.Model, roles.Worker.RuleProviderConfig, cfg.Agent.MaxContextTokens)
+	shadow.StreamRunner = cloneStreamRunnerForThread(s.StreamRunner, nil)
+	if shadow.StreamRunner == nil {
+		return nil, fmt.Errorf("stream runner is required")
+	}
+	apiModel := modelcatalog.APIModel(ruleProviderCfg, model)
+	shadow.StreamRunner.Client = client
+	shadow.StreamRunner.Model = model
+	shadow.StreamRunner.APIModel = apiModel
+	shadow.StreamRunner.Effort = selection.LegacyEffort
+	shadow.StreamRunner.Variant = selection.Variant
+	shadow.StreamRunner.ProviderOptions = modelvariant.CloneOptions(selection.ProviderOptions)
+	shadow.StreamRunner.ContextWindowOverride = shadow.ModelBudget.ContextWindowTokens
+	shadow.StreamRunner.MaxInputTokens = shadow.ModelBudget.InputLimitTokens
+	shadow.StreamRunner.OutputReserveTokens = shadow.ModelBudget.OutputReserveTokens
+	shadow.StreamRunner.CompactThresholdTokens = shadow.ModelBudget.CompactThresholdTokens
+	shadow.ToolLoadingMode, shadow.ToolSearchEnabled, shadow.NativeDeferredToolDiscovery = resolveToolLoadingForProvider(cfg.Agent, ruleProviderCfg, apiModel, selection.ProviderOptions)
+
+	threadRoot := strings.TrimSpace(rootDir)
+	if threadRoot == "" {
+		threadRoot = s.RootDir
+	}
+	if s.Toolkit != nil {
+		kit, cloneErr := s.Toolkit.CloneForRoot(threadRoot)
+		if cloneErr != nil {
+			return nil, cloneErr
+		}
+		kit.ConfigureSurfaceForProviderModel(ruleProviderName, apiModel, true)
+		kit.SetToolSearchEnabled(shadow.ToolSearchEnabled)
+		kit.SetNativeDeferredToolDiscovery(shadow.NativeDeferredToolDiscovery)
+		shadow.Toolkit = kit
+		catalog, catalogErr := deferredToolCatalogPromptForToolkit(kit)
+		if catalogErr != nil {
+			return nil, catalogErr
+		}
+		shadow.DeferredToolCatalogPrompt = catalog
+	}
+	workerClient, err := providerfactory.BuildStreamClient(roles.Worker.RuleProviderConfig, roles.Worker.Provider)
+	if err != nil {
+		return nil, fmt.Errorf("build thread worker client: %w", err)
+	}
+	shadow.WorkerClient = workerClient
+
+	var memdirTeaching, memdirIndex string
+	if shadow.MemdirEnabled {
+		userNotebook := memdir.UserMemdir(shadow.WuuHome)
+		memdirTeaching = memdir.SessionTeaching(userNotebook)
+		if snap, readErr := memdir.ReadIndex(userNotebook); readErr == nil {
+			memdirIndex = snap.Content
+		}
+	}
+	promptResult := buildBaseSystemPromptResult(
+		threadRoot, shadow.SessionDate, config.DefaultSystemPrompt(), shadow.UserSystemPrompt,
+		resolvedName, apiModel, activeSurfaceWithDeferredToolCatalog(shadow.Toolkit, shadow.DeferredToolCatalogPrompt),
+		shadow.Memory, memdirTeaching, memdirIndex, shadow.Skills,
+	)
+	shadow.BaseSystemPrompt = promptResult.Content
+	shadow.BaseSystemPromptSections = promptResult.Sections
+	shadow.StreamRunner.UpdateSystemPromptWithSections(promptResult.Content, agentPromptSections(promptResult.Sections))
+	return shadow.NewThreadRuntimeForRoot(sessionID, threadRoot)
 }
 
 // NewThreadRuntimeForRoot creates a per-conversation execution runtime whose

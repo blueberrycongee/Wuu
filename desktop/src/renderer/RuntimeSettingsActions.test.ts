@@ -220,7 +220,18 @@ function buildActions({
 describe("createRuntimeSettingsActions", () => {
   it("saves trimmed runtime settings and patches initialized runtime state", async () => {
     const api = installWuuApi();
-    const harness = buildActions();
+    const primary = thread("thread-1");
+    const secondary = thread("thread-2");
+    const harness = buildActions({
+      initial: {
+        ...initialState,
+        initialized: initialized(),
+        thread: primary,
+        secondaryThread: secondary,
+        threads: [primary, secondary],
+        status: "loading",
+      },
+    });
 
     await harness.actions.updateRuntimeSettings(
       " codex ",
@@ -250,8 +261,16 @@ describe("createRuntimeSettingsActions", () => {
       },
       "high",
       "read_only",
+      "thread-1",
     );
     expect(harness.getAppState().initialized?.model).toBe("gpt-5.1");
+    expect(harness.getAppState().thread?.model).toBe("gpt-5.1");
+    expect(harness.getAppState().thread?.model_variant).toBe("high");
+    expect(harness.getAppState().secondaryThread?.model).toBe("gpt-5");
+    expect(harness.getAppState().threads.map((item) => item.model)).toEqual([
+      "gpt-5.1",
+      "gpt-5",
+    ]);
     expect(harness.getAppState().initialized?.permissions?.mode).toBe(
       "read_only",
     );

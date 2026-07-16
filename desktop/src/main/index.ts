@@ -1121,10 +1121,12 @@ app.whenReady().then(async () => {
       },
       variant?: string,
       permissionMode?: string,
+      threadID?: string,
     ) =>
       appServerRequest<ConfigModelUpdateResult>(event, "config/model/update", {
         provider,
         model,
+        ...(threadID ? { thread_id: threadID } : {}),
         ...(connection?.base_url === undefined
           ? {}
           : { base_url: connection.base_url }),

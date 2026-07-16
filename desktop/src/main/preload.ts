@@ -167,6 +167,7 @@ const api: WuuDesktopApi = {
     connection?: Parameters<WuuDesktopApi["updateRuntimeSettings"]>[3],
     variant?: string,
     permissionMode?: string,
+    threadId?: string,
   ) =>
     ipcRenderer.invoke(
       "wuu:config-model-update",
@@ -176,6 +177,7 @@ const api: WuuDesktopApi = {
       connection,
       variant,
       permissionMode,
+      threadId,
     ),
   updateUltraMode: (enabled: boolean) =>
     ipcRenderer.invoke("wuu:config-ultra-update", enabled),

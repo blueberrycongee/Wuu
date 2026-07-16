@@ -124,6 +124,9 @@ func (s *Server) handleThreadStart(req Request) error {
 		if _, err := session.CreateWithMetadata(s.rt.SessionDir, id, threadCWD); err != nil {
 			return s.writeResponse(req.ID, nil, err)
 		}
+		if _, err := session.SetModelSelection(s.rt.SessionDir, id, s.rt.ProviderName, s.rt.Model, s.currentVariant()); err != nil {
+			return s.writeResponse(req.ID, nil, err)
+		}
 		// Bind the thread to the active workspace's stable id (registered
 		// projects) so its state and listing survive the project moving; DM
 		// and scratch runtimes carry no id and stay matched by cwd.
@@ -140,6 +143,7 @@ func (s *Server) handleThreadStart(req Request) error {
 		history = append(history, providers.ChatMessage{Role: "system", Content: prompt})
 	}
 	th := newThreadState(id, history, s.rt.ProviderName, s.rt.Model, threadCWD, persistHistory, time.Now().UTC())
+	th.ModelVariant = s.currentVariant()
 	th.WorkspaceKind = workspaceKind
 	th.Ephemeral = params.Ephemeral
 
@@ -188,6 +192,9 @@ func (s *Server) createResidentDMThreadState(p participant.Participant, id strin
 	if _, err := session.CreateWithMetadata(s.rt.SessionDir, id, threadCWD); err != nil {
 		return nil, err
 	}
+	if _, err := session.SetModelSelection(s.rt.SessionDir, id, s.rt.ProviderName, s.rt.Model, s.currentVariant()); err != nil {
+		return nil, err
+	}
 	if _, err := session.BindDMParticipant(s.rt.SessionDir, id, p.ID); err != nil {
 		return nil, err
 	}
@@ -196,6 +203,7 @@ func (s *Server) createResidentDMThreadState(p participant.Participant, id strin
 	}
 	history := []providers.ChatMessage{{Role: "system", Content: prompt}}
 	th := newThreadState(id, history, s.rt.ProviderName, s.rt.Model, threadCWD, true, now)
+	th.ModelVariant = s.currentVariant()
 	th.WorkspaceKind = WorkspaceKindDM
 	th.DMParticipantID = p.ID
 	th.Title = p.Name
@@ -483,6 +491,7 @@ type forkSourceThread struct {
 	history       []providers.ChatMessage
 	modelProvider string
 	model         string
+	modelVariant  string
 	cwd           string
 	thread        Thread
 }
@@ -558,6 +567,13 @@ func (s *Server) handleThreadFork(req Request) error {
 		cleanupWorktree()
 		return s.writeResponse(req.ID, nil, err)
 	}
+	updatedSession, err := session.SetModelSelection(s.rt.SessionDir, sess.ID, source.modelProvider, source.model, source.modelVariant)
+	if err != nil {
+		_, _ = session.Delete(s.rt.SessionDir, sess.ID)
+		cleanupWorktree()
+		return s.writeResponse(req.ID, nil, err)
+	}
+	sess = &updatedSession
 	// A fork belongs to the same workspace as its source, so it inherits the
 	// active workspace's stable id (empty for scratch/DM/group runtimes).
 	if wsID := strings.TrimSpace(s.rt.WorkspaceID); wsID != "" {
@@ -578,6 +594,7 @@ func (s *Server) handleThreadFork(req Request) error {
 	}
 
 	th := newThreadState(sess.ID, history, source.modelProvider, source.model, forkCWD, true, now)
+	th.ModelVariant = source.modelVariant
 	applySessionMetadata(th, *sess)
 	s.mu.Lock()
 	s.threads[th.ID] = th
@@ -698,6 +715,7 @@ func (s *Server) loadForkSourceThread(id string, now time.Time) (forkSourceThrea
 			history:       cloneHistory(th.History),
 			modelProvider: th.ModelProvider,
 			model:         th.Model,
+			modelVariant:  th.ModelVariant,
 			cwd:           th.CWD,
 			thread:        th.snapshotLocked(),
 		}, nil
@@ -737,6 +755,7 @@ func (s *Server) loadForkSourceThread(id string, now time.Time) (forkSourceThrea
 		history:       cloneHistory(th.History),
 		modelProvider: th.ModelProvider,
 		model:         th.Model,
+		modelVariant:  th.ModelVariant,
 		cwd:           th.CWD,
 		thread:        thread,
 	}, nil
@@ -991,6 +1010,11 @@ func applySessionMetadata(th *threadState, metadata session.Session) {
 	}
 	th.Title = metadata.Title
 	th.Source = metadata.Source
+	if strings.TrimSpace(metadata.Provider) != "" && strings.TrimSpace(metadata.Model) != "" {
+		th.ModelProvider = metadata.Provider
+		th.Model = metadata.Model
+		th.ModelVariant = metadata.Variant
+	}
 	th.ForkedFromID = metadata.ForkedFromID
 	th.ForkedFromTurnID = metadata.ForkedFromTurnID
 	th.ForkedFromItemID = metadata.ForkedFromItemID
@@ -1015,8 +1039,8 @@ func threadEntryFromSession(sess session.Session, provider, model string) thread
 			Source:           sess.Source,
 			Preview:          firstNonEmpty(sess.Title, sess.Summary),
 			Title:            sess.Title,
-			ModelProvider:    provider,
-			Model:            model,
+			ModelProvider:    firstNonEmpty(sess.Provider, provider),
+			Model:            firstNonEmpty(sess.Model, model),
 			CWD:              sess.CWD,
 			Status:           ThreadStatusIdle,
 			Pinned:           sess.PinnedAt != nil,

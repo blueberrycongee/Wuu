@@ -79,6 +79,7 @@ export function createRuntimeSettingsActions(
     permissionMode?: string,
   ): Promise<void> {
     const state = deps.getAppState();
+    const targetThread = activeThreadForState(state);
     const nextProvider = provider.trim();
     const nextModel = model.trim();
     const nextEffort = effort === undefined ? undefined : effort.trim();
@@ -120,8 +121,8 @@ export function createRuntimeSettingsActions(
       !nextProvider ||
       !nextModel ||
       !state.initialized ||
-      (nextProvider === state.initialized.provider &&
-        nextModel === state.initialized.model &&
+      (nextProvider === (targetThread?.model_provider ?? state.initialized.provider) &&
+        nextModel === (targetThread?.model ?? state.initialized.model) &&
         (nextEffort === undefined ||
           nextEffort === (state.initialized.effort ?? "")) &&
         (nextVariant === undefined ||
@@ -139,6 +140,7 @@ export function createRuntimeSettingsActions(
         nextConnection,
         nextVariant,
         nextPermissionMode,
+        targetThread?.id,
       );
       deps.setAppState((current) => {
         const initialized = current.initialized
@@ -161,6 +163,34 @@ export function createRuntimeSettingsActions(
         return {
           ...current,
           initialized,
+          thread:
+            current.thread?.id === targetThread?.id
+              ? {
+                  ...current.thread,
+                  model_provider: updated.provider,
+                  model: updated.model,
+                  model_variant: updated.variant ?? "",
+                }
+              : current.thread,
+          secondaryThread:
+            current.secondaryThread?.id === targetThread?.id
+              ? {
+                  ...current.secondaryThread,
+                  model_provider: updated.provider,
+                  model: updated.model,
+                  model_variant: updated.variant ?? "",
+                }
+              : current.secondaryThread,
+          threads: current.threads.map((thread) =>
+            thread.id === targetThread?.id
+              ? {
+                  ...thread,
+                  model_provider: updated.provider,
+                  model: updated.model,
+                  model_variant: updated.variant ?? "",
+                }
+              : thread,
+          ),
           status: current.status === "ready" ? current.status : "ready",
         };
       });

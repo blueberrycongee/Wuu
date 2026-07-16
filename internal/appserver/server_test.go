@@ -1080,6 +1080,44 @@ func TestServerConfigModelUpdate(t *testing.T) {
 	}
 }
 
+func TestResidentThreadRestoresPersistedModelSelection(t *testing.T) {
+	rt := newTestRuntime(t, &fakeClient{})
+	if err := os.WriteFile(rt.ConfigPath, []byte(`{
+  "default_provider": "fake-provider",
+  "providers": {
+    "fake-provider": {
+      "type": "openai-compatible",
+      "base_url": "https://example.test/v1",
+      "api_key": "test-key",
+      "model": "fake-model"
+    }
+  }
+}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := session.CreateWithMetadata(rt.SessionDir, "persisted-model-thread", rt.RootDir); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := session.SetModelSelection(rt.SessionDir, "persisted-model-thread", rt.ProviderName, "persisted-model", ""); err != nil {
+		t.Fatal(err)
+	}
+	srv := New(rt, &lockedBuffer{})
+	th, err := srv.ensureResidentThread("persisted-model-thread")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if th.ModelProvider != rt.ProviderName || th.Model != "persisted-model" {
+		t.Fatalf("restored thread model = %s/%s", th.ModelProvider, th.Model)
+	}
+	threadRuntime, err := srv.ensureThreadRuntime(th)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if threadRuntime.StreamRunner.Model != "persisted-model" {
+		t.Fatalf("restored runtime model = %q", threadRuntime.StreamRunner.Model)
+	}
+}
+
 func TestServerConfigModelUpdateSupportsUltraOnly(t *testing.T) {
 	rt := newTestRuntime(t, &fakeClient{})
 	if err := os.WriteFile(rt.ConfigPath, []byte(`{
@@ -1217,7 +1255,13 @@ func TestServerConfigModelUpdateAllowedWithRunningThread(t *testing.T) {
 	srv.threads[running.ID] = running
 	srv.threads[idle.ID] = idle
 
-	if err := srv.handleLine(context.Background(), []byte(`{"id":"1","method":"config/model/update","params":{"model":"new-model","permission_mode":"unconfined"}}`)); err != nil {
+	if _, err := session.CreateWithMetadata(rt.SessionDir, running.ID, rt.RootDir); err != nil {
+		t.Fatalf("create running session: %v", err)
+	}
+	if _, err := session.CreateWithMetadata(rt.SessionDir, idle.ID, rt.RootDir); err != nil {
+		t.Fatalf("create idle session: %v", err)
+	}
+	if err := srv.handleLine(context.Background(), []byte(`{"id":"1","method":"config/model/update","params":{"thread_id":"running-thread","model":"new-model","permission_mode":"unconfined"}}`)); err != nil {
 		t.Fatalf("config/model/update: %v", err)
 	}
 
@@ -1239,7 +1283,7 @@ func TestServerConfigModelUpdateAllowedWithRunningThread(t *testing.T) {
 	if running.execRuntime.StreamRunner.Model != "fake-model" || running.execRuntime.StreamRunner.APIModel != "fake-model" {
 		t.Fatalf("running turn runtime should stay put: model=%q api=%q", running.execRuntime.StreamRunner.Model, running.execRuntime.StreamRunner.APIModel)
 	}
-	if running.pendingRuntimeUpdate == nil {
+	if !running.pendingRuntimeReset {
 		t.Fatal("running thread should defer runtime refresh until the turn finishes")
 	}
 	if _, err := running.execRuntime.Toolkit.Execute(context.Background(), providers.ToolCall{
@@ -1254,37 +1298,32 @@ func TestServerConfigModelUpdateAllowedWithRunningThread(t *testing.T) {
 	running.mu.Lock()
 	running.completeTurnLocked("running-turn", TurnStatusCompleted, nil, now.Add(time.Second), "", "", false)
 	running.mu.Unlock()
-	srv.applyPendingThreadRuntime(running)
+	if _, err := srv.ensureThreadRuntime(running); err != nil {
+		t.Fatalf("rebuild running thread runtime: %v", err)
+	}
 	running.mu.Lock()
-	if running.pendingRuntimeUpdate != nil {
+	if running.pendingRuntimeReset {
 		t.Fatal("pending runtime update should be applied after the turn finishes")
 	}
 	if running.execRuntime.StreamRunner.Model != "new-model" || running.execRuntime.StreamRunner.APIModel != "new-model" {
 		t.Fatalf("running thread runtime should update for next turn: model=%q api=%q", running.execRuntime.StreamRunner.Model, running.execRuntime.StreamRunner.APIModel)
 	}
-	if _, err := running.execRuntime.Toolkit.Execute(context.Background(), providers.ToolCall{
-		ID:        "running-next-full-access",
-		Name:      "write_file",
-		Arguments: `{"path":"running-next-full-access.txt","content":"ok\n","create_only":true}`,
-	}); err != nil {
-		t.Fatalf("running thread should use full-access boundary after pending update applies: %v", err)
-	}
 	running.mu.Unlock()
 
 	idle.mu.Lock()
 	defer idle.mu.Unlock()
-	if idle.ModelProvider != "fake-provider" || idle.Model != "new-model" {
-		t.Fatalf("idle thread model should update: provider=%q model=%q", idle.ModelProvider, idle.Model)
+	if idle.ModelProvider != "fake-provider" || idle.Model != "fake-model" {
+		t.Fatalf("non-target thread model changed: provider=%q model=%q", idle.ModelProvider, idle.Model)
 	}
-	if idle.execRuntime.StreamRunner.Model != "new-model" || idle.execRuntime.StreamRunner.APIModel != "new-model" {
-		t.Fatalf("idle thread runtime should update: model=%q api=%q", idle.execRuntime.StreamRunner.Model, idle.execRuntime.StreamRunner.APIModel)
+	if idle.execRuntime.StreamRunner.Model != "fake-model" || idle.execRuntime.StreamRunner.APIModel != "fake-model" {
+		t.Fatalf("non-target thread runtime changed: model=%q api=%q", idle.execRuntime.StreamRunner.Model, idle.execRuntime.StreamRunner.APIModel)
 	}
 	if _, err := idle.execRuntime.Toolkit.Execute(context.Background(), providers.ToolCall{
-		ID:        "idle-full-access",
+		ID:        "idle-still-read-only",
 		Name:      "write_file",
-		Arguments: `{"path":"idle-full-access.txt","content":"ok\n","create_only":true}`,
-	}); err != nil {
-		t.Fatalf("idle thread should use full-access boundary immediately: %v", err)
+		Arguments: `{"path":"idle-still-read-only.txt","content":"nope\n","create_only":true}`,
+	}); err == nil || !strings.Contains(err.Error(), "boundary_denied") {
+		t.Fatalf("non-target thread permission boundary changed, err=%v", err)
 	}
 }
 
@@ -1324,7 +1363,9 @@ func TestRunningTurnUsesModelSnapshotAfterConfigUpdate(t *testing.T) {
 	rt.Model = "new-model"
 	rt.StreamRunner.Model = "new-model"
 	rt.StreamRunner.APIModel = "new-model"
-	srv.updateThreadRuntimeForModelUpdate(rt.ProviderName, rt.ProviderName, "new-model", "new-model", "new system prompt")
+	if err := srv.updateThreadRuntimeForModelUpdate(th.ID, rt.ProviderName, "new-model", "", "new system prompt"); err != nil {
+		t.Fatalf("update thread model: %v", err)
+	}
 
 	srv.runTurnWithRequestContext(context.Background(), th, threadRuntime, turnID, turnRuntime, []providers.ChatMessage{userMsg}, nil, nil)
 
@@ -1332,8 +1373,8 @@ func TestRunningTurnUsesModelSnapshotAfterConfigUpdate(t *testing.T) {
 	if len(th.Turns) != 1 || th.Turns[0].UsageModel != "fake-model" {
 		t.Fatalf("turn should keep original usage model: %+v", th.Turns)
 	}
-	if th.Model != "new-model" || th.execRuntime.StreamRunner.Model != "new-model" {
-		t.Fatalf("thread should be ready for next model: thread=%q runner=%q", th.Model, th.execRuntime.StreamRunner.Model)
+	if th.Model != "new-model" || th.execRuntime.StreamRunner.Model != "fake-model" || !th.pendingRuntimeReset {
+		t.Fatalf("running thread should defer runtime rebuild: thread=%q runner=%q pending=%v", th.Model, th.execRuntime.StreamRunner.Model, th.pendingRuntimeReset)
 	}
 	th.mu.Unlock()
 	metas, err := loadMetaMessages(rt.SessionDir, th.ID)
@@ -1714,7 +1755,7 @@ func TestServerConfigModelUpdateReconfiguresEditTools(t *testing.T) {
 	if defs := toolDefinitionNames(rt.Toolkit.Definitions()); defs["apply_patch"] || !defs["edit_file"] {
 		t.Fatalf("fixture should start in text edit mode: %+v", defs)
 	}
-	if err := srv.handleLine(context.Background(), []byte(`{"id":"1","method":"config/model/update","params":{"model":"gpt-5.5"}}`)); err != nil {
+	if err := srv.handleLine(context.Background(), []byte(`{"id":"1","method":"config/model/update","params":{"thread_id":"thread-1","model":"gpt-5.5"}}`)); err != nil {
 		t.Fatalf("config/model/update: %v", err)
 	}
 	result := remarshal[ConfigModelUpdateResult](t, responseByID(t, parseOutput(t, out.String()), "1")["result"])
@@ -1741,6 +1782,9 @@ func TestServerConfigModelUpdateReconfiguresEditTools(t *testing.T) {
 	}
 	if rt.Toolkit.ActiveSurface().ProfileName == "" {
 		t.Fatal("runtime toolkit should install active model surface")
+	}
+	if _, err := srv.ensureThreadRuntime(thread); err != nil {
+		t.Fatalf("rebuild target thread runtime: %v", err)
 	}
 	thread.mu.Lock()
 	defer thread.mu.Unlock()
@@ -2844,6 +2888,28 @@ func TestServerThreadStartEphemeralDoesNotPersistSession(t *testing.T) {
 	listed := remarshal[ThreadListResult](t, responseByID(t, parseOutput(t, out.String()), "2")["result"])
 	if len(listed.Threads) != 0 {
 		t.Fatalf("ephemeral thread should not appear in thread list: %+v", listed.Threads)
+	}
+}
+
+func TestServerThreadStartPersistsInitialModelSelection(t *testing.T) {
+	rt := newTestRuntime(t, &fakeClient{})
+	rt.StreamRunner.Variant = "high"
+	out := &lockedBuffer{}
+	srv := New(rt, out)
+
+	if err := srv.handleLine(context.Background(), []byte(`{"id":"1","method":"thread/start"}`)); err != nil {
+		t.Fatalf("thread/start: %v", err)
+	}
+	thread := remarshal[ThreadStartResult](t, responseByID(t, parseOutput(t, out.String()), "1")["result"]).Thread
+	stored, ok, err := session.Find(rt.SessionDir, thread.ID)
+	if err != nil || !ok {
+		t.Fatalf("find session: ok=%v err=%v", ok, err)
+	}
+	if stored.Provider != rt.ProviderName || stored.Model != rt.Model || stored.Variant != "high" {
+		t.Fatalf("initial model selection not persisted: %+v", stored)
+	}
+	if thread.ModelVariant != "high" {
+		t.Fatalf("thread variant = %q, want high", thread.ModelVariant)
 	}
 }
 
