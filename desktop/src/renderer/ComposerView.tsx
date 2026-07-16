@@ -125,6 +125,7 @@ export { permissionModeFromSummary, permissionModeHasAdvancedOverrides } from ".
 
 export function Composer({
   variant = "dock",
+  mainConversation = false,
   containerRef,
   prompt,
   setPrompt,
@@ -207,6 +208,7 @@ export function Composer({
   onResetSideThread
 }: {
   variant?: ComposerVariant;
+  mainConversation?: boolean;
   containerRef?: Ref<HTMLElement>;
   prompt: string;
   setPrompt: (value: string) => void;
@@ -1277,9 +1279,18 @@ export function Composer({
     </div>
   );
   return variant === "hero" ? (
-    <div className={className}>{content}</div>
+    <div
+      className={className}
+      data-main-conversation-composer={mainConversation ? variant : undefined}
+    >
+      {content}
+    </div>
   ) : (
-    <footer className={className} ref={containerRef}>
+    <footer
+      className={className}
+      data-main-conversation-composer={mainConversation ? variant : undefined}
+      ref={containerRef}
+    >
       {content}
     </footer>
   );
