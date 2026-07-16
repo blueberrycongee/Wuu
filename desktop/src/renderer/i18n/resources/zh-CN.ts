@@ -1565,6 +1565,17 @@ export const zhCN = {
   "reaction.sideeye": "存疑",
   "reaction.smug": "得意",
   "reaction.whoa": "惊讶",
+  "sidebar.devFixtures.label": "开发调试会话",
+  "sidebar.devFixtures.title": "开发样例",
+  "sidebar.devFixtures.longConversation": "长对话",
+  "sidebar.devFixtures.richContent": "富内容",
+  "sidebar.devFixtures.running": "运行中",
+  "sidebar.devFixtures.compaction": "上下文压缩",
+  "sidebar.devFixtures.subtasks": "子任务",
+  "sidebar.devFixtures.chipGallery": "Chip 图鉴",
+  "sidebar.editAgentSettings": "编辑设定",
+  "sidebar.pinDM": "置顶 DM",
+  "sidebar.unpinDM": "取消置顶 DM",
   "i18n.missing": "内容暂不可用",
 } as const;
 

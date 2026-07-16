@@ -618,18 +618,18 @@ export function AppSidebar({
             disabled={!hasRuntimeContext}
           >
             <Wrench className="icon-lg" />
-            <span>Skills</span>
+            <span>{t("skills.sectionSkills")}</span>
           </button>
           {debugFixturesVisible ? (
-            <div className="dev-fixture-nav" aria-label="开发调试会话">
-              <div className="dev-fixture-label">开发样例</div>
+            <div className="dev-fixture-nav" aria-label={t("sidebar.devFixtures.label")}>
+              <div className="dev-fixture-label">{t("sidebar.devFixtures.title")}</div>
               <button
                 className="nav-item dev-fixture-button"
                 onClick={() => onSeedConversationFixture("long")}
                 disabled={!fixturesEnabled}
               >
                 <FileText className="icon" />
-                <span>长对话</span>
+                <span>{t("sidebar.devFixtures.longConversation")}</span>
               </button>
               <button
                 className="nav-item dev-fixture-button"
@@ -637,7 +637,7 @@ export function AppSidebar({
                 disabled={!fixturesEnabled}
               >
                 <ListIcon className="icon" />
-                <span>富内容</span>
+                <span>{t("sidebar.devFixtures.richContent")}</span>
               </button>
               <button
                 className="nav-item dev-fixture-button"
@@ -645,7 +645,7 @@ export function AppSidebar({
                 disabled={!fixturesEnabled}
               >
                 <Clock className="icon" />
-                <span>运行中</span>
+                <span>{t("sidebar.devFixtures.running")}</span>
               </button>
               <button
                 className="nav-item dev-fixture-button"
@@ -653,7 +653,7 @@ export function AppSidebar({
                 disabled={!fixturesEnabled}
               >
                 <Archive className="icon" />
-                <span>上下文压缩</span>
+                <span>{t("sidebar.devFixtures.compaction")}</span>
               </button>
               <button
                 className="nav-item dev-fixture-button"
@@ -661,14 +661,14 @@ export function AppSidebar({
                 disabled={!fixturesEnabled}
               >
                 <CornerDownRight className="icon" />
-                <span>子任务</span>
+                <span>{t("sidebar.devFixtures.subtasks")}</span>
               </button>
               <button
                 className="nav-item dev-fixture-button"
                 onClick={onOpenChipGallery}
               >
                 <LayoutGrid className="icon" />
-                <span>Chip 图鉴</span>
+                <span>{t("sidebar.devFixtures.chipGallery")}</span>
               </button>
             </div>
           ) : null}
@@ -876,7 +876,7 @@ export function AppSidebar({
                   y={rosterContextMenu.y}
                   items={[
                     {
-                      label: "编辑设定",
+                      label: t("sidebar.editAgentSettings"),
                       onSelect: () =>
                         setEditingParticipant(rosterContextMenu.participant),
                     },
@@ -885,7 +885,7 @@ export function AppSidebar({
                         const dm = dmThreadByParticipantID.get(
                           rosterContextMenu.participant.id,
                         );
-                        return dm?.pinned ? "取消置顶 DM" : "置顶 DM";
+                        return dm?.pinned ? t("sidebar.unpinDM") : t("sidebar.pinDM");
                       })(),
                       disabled: !dmThreadByParticipantID.has(
                         rosterContextMenu.participant.id,
@@ -923,9 +923,9 @@ export function AppSidebar({
                   key={SIDEBAR_SECTION_AGENTS}
                   id={SIDEBAR_SECTION_AGENTS}
                   className="participant-roster-section"
-                  ariaLabel="Agents"
+                  ariaLabel={t("sidebar.agents")}
                   headerInfo={{
-                    label: "Agents",
+                    label: t("sidebar.agents"),
                     iconKind: "agents",
                     CollapsedIcon: UserRound,
                     ExpandedIcon: UsersRound,
@@ -937,9 +937,9 @@ export function AppSidebar({
                     iconKind="agents"
                     CollapsedIcon={UserRound}
                     ExpandedIcon={UsersRound}
-                    label="Agents"
-                    ariaLabel={`${collapsed ? "展开" : "收起"} Agents`}
-                    title={collapsed ? "展开 Agents" : "收起 Agents"}
+                    label={t("sidebar.agents")}
+                    ariaLabel={t(collapsed ? "sidebar.expandSection" : "sidebar.collapseSection", { section: t("sidebar.agents") })}
+                    title={t(collapsed ? "sidebar.expandSection" : "sidebar.collapseSection", { section: t("sidebar.agents") })}
                     onToggle={() =>
                       onToggleSidebarSectionCollapsed(SIDEBAR_SECTION_AGENTS)
                     }
