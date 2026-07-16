@@ -1737,6 +1737,8 @@ func (s *Server) runTurnWithRequestContext(ctx context.Context, th *threadState,
 	th.mu.Lock()
 	var historyErr error
 	var persistErr error
+	turnKind := th.currentTurnKind
+	turnResumed := th.currentTurnResumed
 	// Retain every valid message the loop produced, including partial assistant
 	// output and paired tool calls/results from failed or interrupted turns.
 	persistNewMessages := err == nil || len(res.NewMessages) > 0
@@ -1821,7 +1823,12 @@ func (s *Server) runTurnWithRequestContext(ctx context.Context, th *threadState,
 			titleHistory = nil
 		}
 	}
-	if terminalErr := s.persistTurnTerminal(th, turnID, status, err, now); terminalErr != nil {
+	shouldPersistTerminal := status != TurnStatusCompleted || (turnKind == TurnKindUser && turnResumed)
+	var terminalErr error
+	if shouldPersistTerminal {
+		terminalErr = s.persistTurnTerminal(th, turnID, turnKind, status, err, now)
+	}
+	if terminalErr != nil {
 		if err != nil {
 			err = errors.Join(err, terminalErr)
 		} else {
