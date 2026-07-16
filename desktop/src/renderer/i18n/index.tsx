@@ -8,6 +8,30 @@ const resources: Record<AppLocale, Record<TranslationKey, string>> = {
   "en-US": enUS,
 };
 
+// Pure renderer helpers (error normalization, slash-command catalogs, tool
+// summaries) cannot use React hooks. Each Electron renderer has one language,
+// so keep its active locale here and update it synchronously before provider
+// children render. This avoids threading a translator through state logic.
+let activeLocale: AppLocale = "zh-CN";
+
+export function setActiveLocale(locale: AppLocale): void {
+  activeLocale = locale;
+}
+
+export function translateCurrent(
+  key: TranslationKey,
+  values?: Record<string, string | number>,
+): string {
+  return translate(activeLocale, key, values);
+}
+
+export function formatCurrentNumber(
+  value: number,
+  options?: Intl.NumberFormatOptions,
+): string {
+  return new Intl.NumberFormat(activeLocale, options).format(value);
+}
+
 export function resolveLocale(
   preference: LanguagePreference,
   systemLocale: string = navigator.language,
@@ -79,6 +103,7 @@ export function I18nProvider({ children }: { children: ReactNode }): JSX.Element
     formatDate: (input, options) => new Intl.DateTimeFormat(locale, options).format(new Date(input)),
     formatRelativeTime: (input, unit) => new Intl.RelativeTimeFormat(locale, { numeric: "auto" }).format(input, unit),
   }), [locale, preference, setPreference]);
+  setActiveLocale(locale);
   document.documentElement.lang = locale;
   return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;
 }

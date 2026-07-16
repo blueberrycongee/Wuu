@@ -1,8 +1,9 @@
-import { describe, expect, it, vi } from "vitest";
-import { resolveLocale, translate } from ".";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { resolveLocale, setActiveLocale, translate, translateCurrent } from ".";
 import type { TranslationKey } from "./resources/zh-CN";
 
 describe("i18n", () => {
+  afterEach(() => setActiveLocale("zh-CN"));
   it("resolves system Chinese locales to zh-CN and all others to en-US", () => {
     expect(resolveLocale("system", "zh-Hans-CN")).toBe("zh-CN");
     expect(resolveLocale("system", "en-GB")).toBe("en-US");
@@ -20,5 +21,12 @@ describe("i18n", () => {
     expect(translate("en-US", "missing" as TranslationKey)).toBe("Content unavailable");
     expect(warning).toHaveBeenCalledWith("[i18n] Missing translation: en-US.missing");
     warning.mockRestore();
+  });
+
+  it("provides the active locale to non-React renderer helpers", () => {
+    setActiveLocale("en-US");
+    expect(translateCurrent("settings.language")).toBe("Language");
+    setActiveLocale("zh-CN");
+    expect(translateCurrent("settings.language")).toBe("语言");
   });
 });
