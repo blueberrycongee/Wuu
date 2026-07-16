@@ -376,14 +376,14 @@ func resolveStartCWD(rootDir, cwd string, allowOutsideWorkspace bool) (string, e
 	return evaluated, nil
 }
 
-func managedCommand(command, cwd string, commandPrefix ...string) (*exec.Cmd, error) {
+func managedCommand(command, cwd, commandPrefix string) (*exec.Cmd, error) {
 	shell, err := shellpath.LoginBash()
 	if err != nil {
 		return nil, err
 	}
 	command = shellpath.NormalizeBashCommand(command)
-	if len(commandPrefix) > 0 {
-		command = commandPrefix[0] + command
+	if commandPrefix != "" {
+		command = commandPrefix + command
 	}
 	cmd := exec.Command(shell.Path, shell.CommandArgs(command)...)
 	cmd.Dir = cwd

@@ -19,6 +19,18 @@ var globalOptionsWithValue = map[string]bool{
 	"--work-tree":    true,
 }
 
+var commitOptionsWithValue = []string{
+	"-m", "--message",
+	"-F", "--file",
+	"-C", "--reuse-message",
+	"-c", "--reedit-message",
+	"--fixup", "--squash",
+	"--author", "--date",
+	"--cleanup", "--trailer",
+	"-t", "--template",
+	"--pathspec-from-file",
+}
+
 // AddToCommitArgs injects WUU attribution at Git's argv boundary. It leaves
 // non-commit commands and amend operations unchanged.
 func AddToCommitArgs(args []string) ([]string, bool) {
@@ -33,10 +45,15 @@ func AddToCommitArgs(args []string) ([]string, bool) {
 		if isAmendFlag(arg) {
 			return args, false
 		}
-		switch arg {
-		case "--":
+		if arg == "--" {
 			pathspecIndex = index
-			index = len(args)
+			break
+		}
+		if commitOptionTakesSeparateValue(arg) {
+			if index+1 >= len(args) {
+				return args, false
+			}
+			index++
 		}
 	}
 
@@ -50,6 +67,18 @@ func AddToCommitArgs(args []string) ([]string, bool) {
 	out = append(out, "--trailer", Trailer)
 	out = append(out, args[pathspecIndex:]...)
 	return out, true
+}
+
+func commitOptionTakesSeparateValue(arg string) bool {
+	for _, option := range commitOptionsWithValue {
+		if arg == option {
+			return true
+		}
+		if strings.HasPrefix(option, "--") && len(arg) > 2 && strings.HasPrefix(option, arg) {
+			return true
+		}
+	}
+	return false
 }
 
 func isAmendFlag(arg string) bool {

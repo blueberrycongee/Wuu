@@ -55,7 +55,7 @@ func EnsureWrapper(executable, stateDir string) (string, error) {
 	}
 
 	scriptPath := filepath.Join(binDir, "git")
-	script := wrapperScript(executable)
+	script := wrapperScript(executable, scriptPath)
 	if existing, readErr := os.ReadFile(scriptPath); readErr == nil && string(existing) == script {
 		if err := os.Chmod(scriptPath, 0o700); err != nil {
 			return "", fmt.Errorf("secure git wrapper: %w", err)
@@ -85,15 +85,16 @@ func EnsureWrapper(executable, stateDir string) (string, error) {
 	return binDir, nil
 }
 
-func wrapperScript(executable string) string {
+func wrapperScript(executable, scriptPath string) string {
 	executable = filepath.ToSlash(executable)
+	scriptPath = filepath.ToSlash(scriptPath)
 	return "#!/bin/sh\n" +
 		"real_git=$(PATH=\"${" + originalPathEnv + ":-$PATH}\" command -v git)\n" +
 		"if [ -z \"$real_git\" ]; then\n" +
 		"  echo 'wuu: git executable not found' >&2\n" +
 		"  exit 127\n" +
 		"fi\n" +
-		"exec " + shellSingleQuote(executable) + " " + internalCommand + " \"$real_git\" \"$@\"\n"
+		"exec " + shellSingleQuote(executable) + " " + internalCommand + " " + shellSingleQuote(scriptPath) + " \"$real_git\" \"$@\"\n"
 }
 
 // ShellPrefix activates the wrapper after login-shell profile loading and
@@ -112,17 +113,17 @@ func Dispatch(args []string) (bool, int) {
 	if len(args) == 0 || args[0] != internalCommand {
 		return false, 0
 	}
-	if len(args) < 2 || strings.TrimSpace(args[1]) == "" {
-		fmt.Fprintln(os.Stderr, "wuu: internal git wrapper requires the real git executable")
+	if len(args) < 3 || strings.TrimSpace(args[1]) == "" || strings.TrimSpace(args[2]) == "" {
+		fmt.Fprintln(os.Stderr, "wuu: internal git wrapper requires the wrapper and real git executable paths")
 		return true, 127
 	}
-	realGit := args[1]
-	baseName := strings.ToLower(filepath.Base(realGit))
-	if baseName != "git" && baseName != "git.exe" {
-		fmt.Fprintf(os.Stderr, "wuu: internal git wrapper rejected executable %q\n", realGit)
+	wrapperPath := args[1]
+	realGit := args[2]
+	if err := validateRealGit(wrapperPath, realGit); err != nil {
+		fmt.Fprintf(os.Stderr, "wuu: internal git wrapper rejected executable %q: %v\n", realGit, err)
 		return true, 127
 	}
-	gitArgs, _ := AddToCommitArgs(args[2:])
+	gitArgs, _ := AddToCommitArgs(args[3:])
 	cmd := exec.Command(realGit, gitArgs...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
@@ -139,6 +140,25 @@ func Dispatch(args []string) (bool, int) {
 		return true, 126
 	}
 	return true, 0
+}
+
+func validateRealGit(wrapperPath, realGit string) error {
+	baseName := strings.ToLower(filepath.Base(realGit))
+	if baseName != "git" && baseName != "git.exe" {
+		return errors.New("executable name is not git")
+	}
+	wrapperInfo, err := os.Stat(wrapperPath)
+	if err != nil {
+		return fmt.Errorf("inspect wrapper: %w", err)
+	}
+	realGitInfo, err := os.Stat(realGit)
+	if err != nil {
+		return fmt.Errorf("inspect git executable: %w", err)
+	}
+	if os.SameFile(wrapperInfo, realGitInfo) {
+		return errors.New("resolved to the WUU git wrapper itself")
+	}
+	return nil
 }
 
 func shellSingleQuote(value string) string {

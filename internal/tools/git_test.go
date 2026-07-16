@@ -136,6 +136,27 @@ func TestBashGitAttributionDoesNotRewriteHeredocAndCoversNestedShell(t *testing.
 	}
 }
 
+func TestBashGitAttributionRejectsWrapperSelfResolution(t *testing.T) {
+	kit, _ := setupGitRepo(t)
+	kit.env.GitWrapperExecutable = buildWuuForGitWrapper(t)
+	kit.SetSessionDir(t.TempDir())
+	args, _ := json.Marshal(map[string]any{
+		"command":         `env -i PATH="$PATH" git status`,
+		"timeout_seconds": 10,
+	})
+	response, err := kit.Execute(context.Background(), providers.ToolCall{Name: "bash", Arguments: string(args)})
+	if err != nil {
+		t.Fatalf("bash self-resolution check: %v", err)
+	}
+	var result shellExecutionResult
+	if err := json.Unmarshal([]byte(response), &result); err != nil {
+		t.Fatalf("parse bash response: %v\n%s", err, response)
+	}
+	if result.ExitCode != 127 || !strings.Contains(result.StderrTail, "resolved to the WUU git wrapper itself") {
+		t.Fatalf("self-resolving wrapper result = %+v", result)
+	}
+}
+
 func TestBashBackgroundGitAttributionUsesWrapper(t *testing.T) {
 	kit, root := setupGitRepo(t)
 	kit.env.GitWrapperExecutable = buildWuuForGitWrapper(t)

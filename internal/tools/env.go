@@ -244,6 +244,7 @@ type Env struct {
 	// GitWrapperExecutable overrides the WUU executable used by the private
 	// bash git launcher. Production resolves os.Executable when this is empty.
 	GitWrapperExecutable string
+	gitAttributionShell  gitAttributionShellState
 	ProcessMgr           *proc.Manager
 	AgentControl         *agentcontrol.AgentControl
 	AutomationManager    *automation.Manager

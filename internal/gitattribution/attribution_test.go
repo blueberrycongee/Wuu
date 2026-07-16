@@ -41,6 +41,25 @@ func TestAddToCommitArgsSkipsNonCommitAndAmend(t *testing.T) {
 	}
 }
 
+func TestAddToCommitArgsDoesNotTreatOptionValuesAsAmend(t *testing.T) {
+	for _, input := range [][]string{
+		{"commit", "-m", "--amend"},
+		{"commit", "--message", "--amend"},
+		{"commit", "-F", "--amend"},
+		{"commit", "--file", "--amend"},
+		{"commit", "--author", "--amend", "-m", "message"},
+		{"commit", "--pathspec-from-file", "--amend", "-m", "message"},
+	} {
+		got, added := AddToCommitArgs(input)
+		if !added {
+			t.Fatalf("expected attribution for option value in %#v", input)
+		}
+		if !containsArgPair(got, "--trailer", Trailer) {
+			t.Fatalf("attribution missing from %#v", got)
+		}
+	}
+}
+
 func TestAddToCommitArgsDeduplicatesNonAdjacentTrailer(t *testing.T) {
 	root := t.TempDir()
 	runGit(t, root, "init", "-q")
@@ -61,6 +80,15 @@ func TestAddToCommitArgsDeduplicatesNonAdjacentTrailer(t *testing.T) {
 	if count := strings.Count(message, Email); count != 1 {
 		t.Fatalf("WUU trailer count = %d, want 1:\n%s", count, message)
 	}
+}
+
+func containsArgPair(args []string, key, value string) bool {
+	for index := 0; index+1 < len(args); index++ {
+		if args[index] == key && args[index+1] == value {
+			return true
+		}
+	}
+	return false
 }
 
 func runGit(t *testing.T, dir string, args ...string) string {

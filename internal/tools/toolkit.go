@@ -152,7 +152,7 @@ func (t *Toolkit) CloneForRoot(rootDir string) (*Toolkit, error) {
 	// sync.RWMutex, and the sync package contract forbids copying a Mutex or
 	// RWMutex after first use (go vet's copylocks analyzer enforces this).
 	// The lock-bearing per-session state fields (readState, testState,
-	// planState, webState, toolTelemetry) stay zero so each cloned session
+	// planState, webState, toolTelemetry, gitAttributionShell) stay zero so each cloned session
 	// owns independent mutable state, matching the original intent.
 	env := Env{
 		RootDir:                     abs,
