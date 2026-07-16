@@ -1,7 +1,5 @@
 import type { Thread } from "../shared/protocol";
-
-const DEFAULT_THREAD_TITLE = "未命名对话";
-const FORK_TITLE_SUFFIX = " · 分叉";
+import { translateCurrent } from "./i18n";
 
 export type ThreadTitleSource = Pick<
   Thread,
@@ -26,8 +24,9 @@ export function threadShowsForkMarker(
 export function baseThreadTitle(
   thread: ThreadTitleSource,
   threads: ThreadTitleSource[] = [],
-  fallback = DEFAULT_THREAD_TITLE
+  fallback?: string
 ): string {
+  const resolvedFallback = fallback ?? translateCurrent("thread.untitled");
   if (threadShowsForkMarker(thread, threads)) {
     const source = threads.find((candidate) => candidate.id === thread.forked_from_id);
     // Prefer source.title (set by the right-click Rename menu) over
@@ -41,20 +40,21 @@ export function baseThreadTitle(
   // Prefer thread.title (set by Rename) over thread.preview
   // (auto-generated) so a renamed thread shows the user's title.
   const ownTitle = thread.title?.trim() || thread.preview?.trim();
-  return ownTitle || fallback;
+  return ownTitle || resolvedFallback;
 }
 
 export function threadDisplayTitle(
   thread: ThreadTitleSource | undefined,
   threads: ThreadTitleSource[] = [],
-  fallback = DEFAULT_THREAD_TITLE
+  fallback?: string
 ): string {
+  const resolvedFallback = fallback ?? translateCurrent("thread.untitled");
   if (!thread) {
-    return fallback;
+    return resolvedFallback;
   }
-  const baseTitle = baseThreadTitle(thread, threads, fallback);
+  const baseTitle = baseThreadTitle(thread, threads, resolvedFallback);
   if (!threadShowsForkMarker(thread, threads)) {
     return baseTitle;
   }
-  return `${baseTitle}${FORK_TITLE_SUFFIX}`;
+  return translateCurrent("thread.forkTitle", { title: baseTitle });
 }
