@@ -29,12 +29,27 @@ describe("environment panel subagent rows", () => {
     expect(main).toMatch(
       /grid-template-columns:\s*minmax\(0,\s*1fr\)\s*minmax\(42px,\s*auto\)/,
     );
-    expect(main).toMatch(/padding:\s*0 8px 0 12px/);
+    expect(main).toMatch(/padding:\s*0 8px/);
 
     const status = cssRule(".subagent-row-status");
     expect(status).toMatch(/justify-content:\s*end/);
     expect(status).toMatch(/min-width:\s*42px/);
     expect(status).toMatch(/background:\s*transparent/);
+  });
+
+  it("aligns a larger avatar with the regular environment row icons", () => {
+    const avatar = cssRule(".subagent-row .participant-chip-avatar");
+    expect(avatar).toMatch(/width:\s*20px/);
+    expect(avatar).toMatch(/height:\s*20px/);
+    expect(cssRule(".environment-row")).toMatch(/padding:\s*0 8px/);
+    expect(cssRule(".subagent-row-main")).toMatch(/padding:\s*0 8px/);
+  });
+
+  it("keeps the running status dot static", () => {
+    expect(cssRule(".subagent-row.running .subagent-row-status::before")).not.toMatch(
+      /animation/,
+    );
+    expect(environmentCSS).not.toMatch(/@keyframes\s+subagent-status-pulse/);
   });
 
   it("puts keyboard focus on the row instead of the inner button outline", () => {

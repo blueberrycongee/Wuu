@@ -119,30 +119,9 @@
 .environment-panel-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 10px;
   padding: 0 2px 8px;
-}
-
-.environment-panel-header h2 {
-  margin: 0;
-  color: var(--ink-muted);
-  font-size: var(--font-title);
-  font-weight: var(--weight-semibold);
-}
-
-.environment-panel-title {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-}
-
-.environment-panel-counter {
-  color: var(--ink-muted);
-  font-size: var(--font-title);
-  font-weight: var(--weight-semibold);
-  font-variant-numeric: tabular-nums;
 }
 
 .environment-panel-actions {
@@ -526,13 +505,6 @@
   }
 }
 
-.environment-section-heading {
-  color: var(--ink-muted);
-  font-size: var(--font-title);
-  font-weight: var(--weight-semibold);
-  padding: 0 8px 8px;
-}
-
 .environment-row,
 .environment-footer-row {
   display: grid;
@@ -714,12 +686,17 @@
   background: transparent;
   border: 0;
   border-radius: inherit;
-  padding: 0 8px 0 12px;
+  padding: 0 8px;
   text-align: left;
   cursor: pointer;
   color: inherit;
   font: inherit;
   transition: padding-right var(--motion-fast) var(--ease-out);
+}
+
+.subagent-row .participant-chip-avatar {
+  width: 20px;
+  height: 20px;
 }
 
 .subagent-row-main:focus-visible {
@@ -769,7 +746,6 @@
 
 .subagent-row.running .subagent-row-status::before {
   display: block;
-  animation: subagent-status-pulse 1600ms ease-in-out infinite;
 }
 
 .subagent-row.failed .subagent-row-status {
@@ -830,23 +806,6 @@
   .subagent-row-main,
   .subagent-row-actions {
     transition: none;
-  }
-
-  .subagent-row.running .subagent-row-status::before {
-    animation: none;
-  }
-}
-
-@keyframes subagent-status-pulse {
-  0%,
-  100% {
-    opacity: 0.45;
-    transform: scale(0.9);
-  }
-
-  50% {
-    opacity: 0.9;
-    transform: scale(1);
   }
 }
 
