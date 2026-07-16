@@ -18,6 +18,10 @@ export function setActiveLocale(locale: AppLocale): void {
   activeLocale = locale;
 }
 
+export function getActiveLocale(): AppLocale {
+  return activeLocale;
+}
+
 export function translateCurrent(
   key: TranslationKey,
   values?: Record<string, string | number>,
