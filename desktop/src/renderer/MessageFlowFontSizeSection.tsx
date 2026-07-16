@@ -9,6 +9,7 @@ import {
   type MessageFlowFontSize,
 } from "../shared/protocol";
 import { StreamingMarkdown } from "./StreamingMarkdown";
+import { useI18n } from "./i18n";
 
 // Sample reply the Settings preview shows underneath the slider. It is
 // rendered through the exact pipeline the conversation pane uses
@@ -16,13 +17,6 @@ import { StreamingMarkdown } from "./StreamingMarkdown";
 // previews real message-flow typography instead of a look-alike
 // placeholder. Mixed CJK/Latin prose, inline code, and a short list
 // cover the shapes a typical agent reply takes.
-const PREVIEW_SAMPLE_MARKDOWN = [
-  "先看一下 README 的目录约定，再读一个相邻页面的 CSS——把改动控制在同一套既有规范里。",
-  "",
-  "- 改动只落在 `desktop/src/renderer`，不动 Go 核心",
-  "- 顺手跑一下单元测试，免得新代码悄悄破坏既有流程",
-].join("\n");
-
 const { min, max, step, default: defaultSize } = MESSAGE_FLOW_FONT_SIZE_RANGE;
 
 function clampSize(value: unknown): MessageFlowFontSize {
@@ -65,6 +59,7 @@ export function applyMessageFlowFontSize(size: MessageFlowFontSize): void {
  * every drag tick.
  */
 export function MessageFlowFontSizeControl(): JSX.Element {
+  const { locale, t } = useI18n();
   const [size, setSize] = useState<MessageFlowFontSize>(() =>
     clampSize(window.wuu?.initialMessageFlowFontSize),
   );
@@ -122,7 +117,7 @@ export function MessageFlowFontSizeControl(): JSX.Element {
           onBlur={(event) =>
             persist(Number.parseFloat(event.currentTarget.value))
           }
-          aria-label="消息流字号"
+          aria-label={t("settings.messageFontSize")}
           data-testid="settings-message-flow-font-size-slider"
         />
         <span
@@ -135,14 +130,19 @@ export function MessageFlowFontSizeControl(): JSX.Element {
       </div>
       <div
         className="message-flow-preview"
-        aria-label="消息流字号预览"
+        aria-label={t("settings.messageFontSizePreview")}
         data-testid="settings-message-flow-font-size-preview"
       >
         <article className="agent-block">
           <div className="agent-text">
             <StreamingMarkdown
-              streamKey="settings-message-flow-font-size-preview"
-              initialText={PREVIEW_SAMPLE_MARKDOWN}
+              streamKey={`settings-message-flow-font-size-preview-${locale}`}
+              initialText={[
+                t("settings.messageFontSizeSampleIntro"),
+                "",
+                t("settings.messageFontSizeSampleScope"),
+                t("settings.messageFontSizeSampleTests"),
+              ].join("\n")}
               isLive={false}
               phase="final_answer"
             />
