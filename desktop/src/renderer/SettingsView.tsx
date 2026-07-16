@@ -177,6 +177,7 @@ export function SettingsView({
   sidebarMotionMs: number;
   activeSessionTabID?: string;
 }): JSX.Element {
+  const { t } = useI18n();
   const providers = initialized?.providers ?? [];
   const runningProviderNameSet = useMemo(
     () => new Set((runningProviderNames ?? []).map((name) => name.trim()).filter(Boolean)),
@@ -609,31 +610,31 @@ export function SettingsView({
           </div>
           <button className="settings-back-button" type="button" onClick={onBack}>
             <ArrowLeft className="icon" />
-            <span>返回应用</span>
+            <span>{t("settings.backToApp")}</span>
           </button>
-          <nav className="settings-nav" aria-label="设置">
+          <nav className="settings-nav" aria-label={t("settings.navigation")}>
             <SettingsNavItem icon={<KeyRound className="icon-lg" />} active={activePage === "providers"} onClick={() => setActivePage("providers")}>
-              模型服务
+              {t("settings.providers")}
             </SettingsNavItem>
             <SettingsNavItem icon={<Settings className="icon-lg" />} active={activePage === "general"} onClick={() => setActivePage("general")}>
-              常规
+              {t("settings.general")}
             </SettingsNavItem>
             <SettingsNavItem icon={<Brain className="icon-lg" />} active={activePage === "memory"} onClick={() => setActivePage("memory")}>
-              记忆
+              {t("settings.memory")}
             </SettingsNavItem>
             <SettingsNavItem icon={<SlidersHorizontal className="icon-lg" />} active={activePage === "advanced"} onClick={() => setActivePage("advanced")}>
-              高级
+              {t("settings.advanced")}
             </SettingsNavItem>
             <SettingsNavItem icon={<BarChart3 className="icon-lg" />} active={activePage === "usage"} onClick={() => setActivePage("usage")}>
-              用量
+              {t("settings.usage")}
             </SettingsNavItem>
             {ENABLE_REMOTE_CONTROL ? (
               <SettingsNavItem icon={<Smartphone className="icon-lg" />} active={activePage === "remote"} onClick={() => setActivePage("remote")}>
-                远程
+                {t("settings.remote")}
               </SettingsNavItem>
             ) : null}
             <SettingsNavItem icon={<Archive className="icon-lg" />} active={activePage === "archive"} onClick={() => setActivePage("archive")}>
-              归档
+              {t("settings.archive")}
             </SettingsNavItem>
           </nav>
         </div>
@@ -642,7 +643,7 @@ export function SettingsView({
         <div
           className="sidebar-resizer"
           role="separator"
-          aria-label="调整设置侧边栏宽度"
+          aria-label={t("settings.resizeSidebar")}
           aria-orientation="vertical"
           aria-valuemin={sidebarMinWidth}
           aria-valuemax={sidebarMaxWidth}
@@ -658,7 +659,7 @@ export function SettingsView({
           <button
             type="button"
             className="icon-button side-panel-toggle-button sidebar-toggle-button settings-sidebar-toggle"
-            aria-label={sidebarCollapsed ? "展开左侧栏" : "收起左侧栏"}
+            aria-label={sidebarCollapsed ? t("settings.expandSidebar") : t("settings.collapseSidebar")}
             aria-pressed={!sidebarCollapsed}
             onClick={onToggleSidebar}
           >
@@ -1439,7 +1440,7 @@ function SettingsGeneralPage({
       });
       setGeneralSaved(true);
     } catch (saveError) {
-      setGeneralError(saveError instanceof Error ? saveError.message : "保存失败");
+      setGeneralError(saveError instanceof Error ? saveError.message : t("settings.saveFailed"));
     }
   }
 
@@ -1453,7 +1454,7 @@ function SettingsGeneralPage({
       await onGeneralSave({ mcp_enabled_toggles: next });
     } catch (toggleError) {
       setMCPEnabledDraft(previous);
-      setMCPToggleError(toggleError instanceof Error ? toggleError.message : "保存失败");
+      setMCPToggleError(toggleError instanceof Error ? toggleError.message : t("settings.saveFailed"));
     } finally {
       setMCPToggleBusy("");
     }
@@ -1496,7 +1497,7 @@ function SettingsGeneralPage({
     try {
       await onCodexPetsRefresh();
     } catch (error) {
-      setCodexPetLocalError(error instanceof Error ? error.message : "刷新失败");
+      setCodexPetLocalError(error instanceof Error ? error.message : t("settings.refreshFailed"));
     } finally {
       setCodexPetBusy(false);
     }
@@ -1508,7 +1509,7 @@ function SettingsGeneralPage({
     try {
       await onCodexPetsUpdate(settings);
     } catch (error) {
-      setCodexPetLocalError(error instanceof Error ? error.message : "保存失败");
+      setCodexPetLocalError(error instanceof Error ? error.message : t("settings.saveFailed"));
     } finally {
       setCodexPetBusy(false);
     }
@@ -1529,7 +1530,7 @@ function SettingsGeneralPage({
           </SettingsRow>
           <SettingsRow
             title="Codex Pet"
-            description={codexPets?.home ? `读取 ${codexPets.home}` : "读取 ~/.wuu/pets"}
+            description={t("settings.petSource", { path: codexPets?.home ?? "~/.wuu/pets" })}
             block
           >
             <div className="settings-codex-pets-controls">
@@ -1543,18 +1544,18 @@ function SettingsGeneralPage({
                 onClick={() => void updateCodexPets({ enabled: !codexPetEnabled })}
               >
                 <span className="settings-switch-thumb" aria-hidden="true" />
-                <span className="sr-only">{codexPetEnabled ? "关闭 Codex Pet" : "打开 Codex Pet"}</span>
+                <span className="sr-only">{codexPetEnabled ? t("settings.disablePet") : t("settings.enablePet")}</span>
               </button>
               <select
                 className="settings-select settings-codex-pet-select"
-                aria-label="选择 Codex Pet"
+                aria-label={t("settings.selectPet")}
                 data-testid="settings-codex-pet-select"
                 value={codexPetSelectedID}
                 disabled={codexPetsLoading || codexPetBusy || codexPetOptions.length === 0}
                 onChange={(event) => void updateCodexPets({ selected_id: event.currentTarget.value })}
               >
                 {codexPetOptions.length === 0 ? (
-                  <option value="">暂无本地宠物</option>
+                  <option value="">{t("settings.noLocalPets")}</option>
                 ) : (
                   codexPetOptions.map((pet) => (
                     <option key={pet.id} value={pet.id}>
@@ -1566,18 +1567,18 @@ function SettingsGeneralPage({
               <button
                 className="settings-button settings-icon-button"
                 type="button"
-                title="刷新本地 Codex Pets"
-                aria-label="刷新本地 Codex Pets"
+                title={t("settings.refreshPets")}
+                aria-label={t("settings.refreshPets")}
                 disabled={codexPetsLoading || codexPetBusy}
                 onClick={() => void refreshCodexPets()}
               >
                 <RefreshCw size={15} aria-hidden="true" />
               </button>
             </div>
-            {codexPetsLoading ? <small className="settings-muted-line">正在读取本地宠物…</small> : null}
+            {codexPetsLoading ? <small className="settings-muted-line">{t("settings.loadingPets")}</small> : null}
             {!codexPetsLoading && codexPetOptions.length === 0 ? (
               <small className="settings-muted-line">
-                把 pet.json 和 spritesheet.webp 放到上面的 Wuu 目录；也兼容 codex-pets.net 安装到 ~/.codex/pets。
+                {t("settings.petInstallHint")}
               </small>
             ) : null}
             {codexPets?.errors.length ? (
@@ -1590,17 +1591,17 @@ function SettingsGeneralPage({
         </SettingsCard>
       </SettingsSection>
 
-      <SettingsSection title="行为" testID="settings-general">
+      <SettingsSection title={t("settings.behavior")} testID="settings-general">
         <form className="settings-card" onSubmit={submitGeneral}>
           <SettingsRow
-            title="附加系统提示"
-            description="追加在内置提示之后"
+            title={t("settings.additionalPrompt")}
+            description={t("settings.additionalPromptDescription")}
             block
           >
             <textarea
               className="settings-input settings-textarea"
               value={appendSystemPromptDraft}
-              placeholder="例如：默认用中文回答。"
+              placeholder={t("settings.additionalPromptPlaceholder")}
               rows={5}
               onChange={(event) => {
                 setAppendSystemPromptDraft(event.target.value);
@@ -1609,18 +1610,18 @@ function SettingsGeneralPage({
               disabled={running || !initialized}
             />
             {generalError ? <div className="settings-error">{generalError}</div> : null}
-            {generalSaved && !generalError ? <div className="settings-saved">已保存</div> : null}
+            {generalSaved && !generalError ? <div className="settings-saved">{t("settings.saved")}</div> : null}
             <button
               className="settings-button settings-button-primary"
               type="submit"
               disabled={running || !initialized}
             >
-              保存
+              {t("settings.save")}
             </button>
           </SettingsRow>
           <SettingsRow
-            title="记忆"
-            description="关闭后不读取或写入长期记忆"
+            title={t("settings.memory")}
+            description={t("settings.memoryDescription")}
           >
             <button
               className="settings-switch"
@@ -1634,16 +1635,16 @@ function SettingsGeneralPage({
               }}
             >
               <span className="settings-switch-thumb" aria-hidden="true" />
-              <span className="sr-only">{memoryDisabledDraft ? "打开记忆" : "关闭记忆"}</span>
+              <span className="sr-only">{memoryDisabledDraft ? t("settings.enableMemory") : t("settings.disableMemory")}</span>
             </button>
           </SettingsRow>
         </form>
       </SettingsSection>
 
-      <SettingsSection title="MCP 服务器" testID="settings-mcp">
+      <SettingsSection title={t("settings.mcpServers")} testID="settings-mcp">
         <SettingsCard>
           {mcpLoading && mcpRowNames.length === 0 ? (
-            <div className="settings-mcp-empty">加载中…</div>
+            <div className="settings-mcp-empty">{t("settings.loading")}</div>
           ) : mcpRowNames.length > 0 ? (
             mcpRowNames.map((name) => {
               const server = mcpServerByName.get(name);
@@ -1770,14 +1771,14 @@ function SettingsGeneralPage({
               );
             })
           ) : (
-            <div className="settings-mcp-empty">暂无 MCP 服务器</div>
+            <div className="settings-mcp-empty">{t("settings.noMcpServers")}</div>
           )}
           {mcpError ? <div className="settings-mcp-empty settings-mcp-error">{mcpError}</div> : null}
           {mcpToggleError ? <div className="settings-mcp-empty settings-mcp-error">{mcpToggleError}</div> : null}
         </SettingsCard>
       </SettingsSection>
 
-      <SettingsSection title="扩展与权限" testID="settings-extensions">
+      <SettingsSection title={t("settings.extensions")} testID="settings-extensions">
         <SettingsCard>
           {extensionInventory.length > 0 ? (
             extensionInventory.map((record) => (
@@ -1812,17 +1813,17 @@ function SettingsGeneralPage({
               </SettingsRow>
             ))
           ) : (
-            <div className="settings-mcp-empty">暂无扩展</div>
+            <div className="settings-mcp-empty">{t("settings.noExtensions")}</div>
           )}
         </SettingsCard>
       </SettingsSection>
 
       {showDebugControlsSetting ? (
-        <SettingsSection title="开发">
+        <SettingsSection title={t("settings.development")}>
           <SettingsCard>
             <SettingsRow
-              title="调试入口"
-              description="显示启动动画、调试面板和开发样例入口"
+              title={t("settings.debugControls")}
+              description={t("settings.debugControlsDescription")}
             >
               <button
                 className="settings-switch"
@@ -1832,7 +1833,7 @@ function SettingsGeneralPage({
                 onClick={() => onDebugControlsChange(!debugControlsEnabled)}
               >
                 <span className="settings-switch-thumb" aria-hidden="true" />
-                <span className="sr-only">{debugControlsEnabled ? "关闭调试入口" : "打开调试入口"}</span>
+                <span className="sr-only">{debugControlsEnabled ? t("settings.disableDebugControls") : t("settings.enableDebugControls")}</span>
               </button>
             </SettingsRow>
           </SettingsCard>
@@ -1840,7 +1841,7 @@ function SettingsGeneralPage({
       ) : null}
 
       {showDebugControlsSetting && debugControlsEnabled ? (
-        <SettingsSection title="工具" testID="settings-tool-surface">
+        <SettingsSection title={t("settings.tools")} testID="settings-tool-surface">
           <SettingsCard>
             <SettingsRow
               title="Profile"
@@ -1851,15 +1852,15 @@ function SettingsGeneralPage({
               </span>
             </SettingsRow>
             <SettingsRow
-              title="编辑方式"
-              description={initialized?.tool_surface?.bash_first ? "终端命令默认走 bash" : "按模型原生方式编辑"}
+              title={t("settings.editMethod")}
+              description={initialized?.tool_surface?.bash_first ? t("settings.editMethodBash") : t("settings.editMethodNative")}
             >
               <span className="settings-row-control-value">
                 {initialized?.tool_surface?.edit_primitive ?? initialized?.model_profile?.edit_primitive ?? "—"}
               </span>
             </SettingsRow>
             <SettingsRow
-              title="可用工具"
+              title={t("settings.availableTools")}
               description={formatToolSurfaceCounts(initialized)}
               block
             >
@@ -1871,20 +1872,20 @@ function SettingsGeneralPage({
         </SettingsSection>
       ) : null}
 
-      <SettingsSection title="关于" testID="settings-about">
+      <SettingsSection title={t("settings.about")} testID="settings-about">
         <SettingsCard>
-          <SettingsRow title="版本">
+          <SettingsRow title={t("settings.version")}>
             <span className="settings-row-control-value">
-              {desktopBuild ? versionLabel(desktopBuild.version) : "加载中…"}
+              {desktopBuild ? versionLabel(desktopBuild.version) : t("settings.loading")}
             </span>
             <button
               className="settings-button"
               type="button"
-              aria-label="复制版本信息"
+              aria-label={t("settings.copyVersion")}
               onClick={() => void onCopyVersion()}
               disabled={!desktopBuild || copyState === "copying"}
             >
-              {copyState === "copied" ? "已复制" : "复制"}
+              {copyState === "copied" ? t("settings.copied") : t("settings.copy")}
             </button>
           </SettingsRow>
         </SettingsCard>

@@ -42,8 +42,11 @@ type I18nContextValue = {
 };
 
 function defaultContextValue(): I18nContextValue {
-  const preference = window.wuu?.initialLanguagePreference ?? "system";
-  const locale = resolveLocale(preference, window.wuu?.initialSystemLocale);
+  // Components are rendered without the app provider in many focused unit
+  // tests and story-like previews. Preserve the desktop's historical Chinese
+  // fixture output there; the real app is always wrapped by I18nProvider.
+  const preference: LanguagePreference = "zh-CN";
+  const locale: AppLocale = "zh-CN";
   return {
     locale,
     preference,
