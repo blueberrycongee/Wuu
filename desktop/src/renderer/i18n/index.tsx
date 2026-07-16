@@ -41,6 +41,20 @@ type I18nContextValue = {
   formatRelativeTime: (value: number, unit: Intl.RelativeTimeFormatUnit) => string;
 };
 
+function defaultContextValue(): I18nContextValue {
+  const preference = window.wuu?.initialLanguagePreference ?? "system";
+  const locale = resolveLocale(preference, window.wuu?.initialSystemLocale);
+  return {
+    locale,
+    preference,
+    setPreference: () => undefined,
+    t: (key, values) => translate(locale, key, values),
+    formatNumber: (number, options) => new Intl.NumberFormat(locale, options).format(number),
+    formatDate: (input, options) => new Intl.DateTimeFormat(locale, options).format(new Date(input)),
+    formatRelativeTime: (input, unit) => new Intl.RelativeTimeFormat(locale, { numeric: "auto" }).format(input, unit),
+  };
+}
+
 const I18nContext = createContext<I18nContextValue | null>(null);
 
 export function I18nProvider({ children }: { children: ReactNode }): JSX.Element {
@@ -68,6 +82,5 @@ export function I18nProvider({ children }: { children: ReactNode }): JSX.Element
 
 export function useI18n(): I18nContextValue {
   const context = useContext(I18nContext);
-  if (!context) throw new Error("useI18n must be used within I18nProvider");
-  return context;
+  return context ?? defaultContextValue();
 }
