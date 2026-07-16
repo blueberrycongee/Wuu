@@ -79,6 +79,28 @@ func TestScheduleCronTool_DurablePersistsToDisk(t *testing.T) {
 	}
 }
 
+func TestScheduleCronToolCreatesThreadHeartbeat(t *testing.T) {
+	dir := t.TempDir()
+	stateDir := filepath.Join(dir, "state")
+	env := &Env{RootDir: dir, StateDir: stateDir, SessionID: "thread-1"}
+	tool := NewCronTool(env)
+
+	result, err := tool.Execute(context.Background(), `{"action":"add","cron":"*/5 * * * *","prompt":"check cache","mode":"thread_heartbeat","recurring":true}`)
+	if err != nil {
+		t.Fatalf("Execute error: %v", err)
+	}
+	if !strings.Contains(result, `"mode":"thread_heartbeat"`) {
+		t.Fatalf("expected heartbeat mode, got %s", result)
+	}
+	tasks, err := cron.NewSessionTaskStore(stateDir).List()
+	if err != nil {
+		t.Fatalf("session store list: %v", err)
+	}
+	if len(tasks) != 1 || tasks[0].HeartbeatThreadID != "thread-1" || tasks[0].CreatorThreadID != "thread-1" {
+		t.Fatalf("heartbeat task = %#v", tasks)
+	}
+}
+
 func TestScheduleCronTool_DurableWriteFailureDoesNotCreateSessionTask(t *testing.T) {
 	dir := t.TempDir()
 	stateDir := filepath.Join(dir, "state")

@@ -19,6 +19,7 @@ import (
 	"github.com/blueberrycongee/wuu/internal/agentcontrol"
 	"github.com/blueberrycongee/wuu/internal/agenttemplate"
 	"github.com/blueberrycongee/wuu/internal/agentthread"
+	"github.com/blueberrycongee/wuu/internal/automation"
 	"github.com/blueberrycongee/wuu/internal/capability"
 	"github.com/blueberrycongee/wuu/internal/config"
 	wuucontext "github.com/blueberrycongee/wuu/internal/context"
@@ -143,6 +144,7 @@ type Session struct {
 	ExperimentalDeferredBundles bool
 	ExperimentalHelpMe          bool
 	DeferredToolCatalogPrompt   string
+	AutomationManager           *automation.Manager
 	CronScheduler               *cron.Scheduler
 	CronLock                    *cron.Lock
 	ReadinessIssues             []ReadinessIssue
@@ -289,6 +291,12 @@ func NewSession(opts Options) (*Session, error) {
 		return nil, err
 	}
 	activityRegistry := activity.NewRegistry()
+	automationManager := automation.NewManager(automation.Config{
+		StateDir: workspaceStateDir,
+		OnError: func(err error) {
+			providers.DebugLogf("automation manager: %v", err)
+		},
+	})
 
 	// File-directory memory (memory-redesign M1): the user notebook index is
 	// read once here — session creation is one of the two allowed
@@ -329,6 +337,7 @@ func NewSession(opts Options) (*Session, error) {
 			return nil, newErr
 		}
 		kit.SetStateDir(workspaceStateDir)
+		kit.SetAutomationManager(automationManager)
 		kit.SetProcessManager(processMgr)
 		kit.SetSkills(discoveredSkills)
 		ConfigureToolkitPermissions(kit, permissions)
@@ -598,6 +607,7 @@ func NewSession(opts Options) (*Session, error) {
 		DeferredToolCatalogPrompt:   deferredToolCatalogPrompt,
 		ReadinessIssues:             readinessIssues,
 		InferenceJournalRuntime:     journalRuntime,
+		AutomationManager:           automationManager,
 	}
 	// The legacy/root control remains dormant until SetSessionID binds its real
 	// artifact directories. Per-thread controls created by NewThreadRuntime are
@@ -1362,13 +1372,8 @@ func (s *Session) Cleanup() (process.CleanupResult, error) {
 		return process.CleanupResult{}, nil
 	}
 	var cleanupErr error
-	if s.CronScheduler != nil {
-		s.CronScheduler.Stop()
-		s.CronScheduler = nil
-	}
-	if s.CronLock != nil {
-		s.CronLock.Release()
-		s.CronLock = nil
+	if s.AutomationManager != nil {
+		s.AutomationManager.Stop()
 	}
 	if s.AgentControl != nil {
 		// Terminal intents are the durable recovery authority. Yield local retry

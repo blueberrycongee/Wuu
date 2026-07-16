@@ -48,6 +48,15 @@ func (t *CronTool) Definition() providers.ToolDefinition {
 					"type":        "string",
 					"description": "Used by action=add. The prompt to execute each time the task fires.",
 				},
+				"mode": map[string]any{
+					"type":        "string",
+					"enum":        []string{"new_thread", "thread_heartbeat"},
+					"description": "Used by action=add. new_thread creates a visible thread per run; thread_heartbeat queues runs in the current thread.",
+				},
+				"heartbeat_thread_id": map[string]any{
+					"type":        "string",
+					"description": "Used with thread_heartbeat. Defaults to the current thread.",
+				},
 				"recurring": map[string]any{
 					"type":        "boolean",
 					"description": "Used by action=add. If true, the task repeats until removed or it expires (7 days). If false, it runs once.",
@@ -68,12 +77,14 @@ func (t *CronTool) Definition() providers.ToolDefinition {
 
 func (t *CronTool) Execute(ctx context.Context, argsJSON string) (string, error) {
 	var args struct {
-		Action    string `json:"action"`
-		Cron      string `json:"cron"`
-		Prompt    string `json:"prompt"`
-		Recurring bool   `json:"recurring"`
-		Durable   bool   `json:"durable"`
-		ID        string `json:"id"`
+		Action            string `json:"action"`
+		Cron              string `json:"cron"`
+		Prompt            string `json:"prompt"`
+		Recurring         bool   `json:"recurring"`
+		Durable           bool   `json:"durable"`
+		ID                string `json:"id"`
+		Mode              string `json:"mode"`
+		HeartbeatThreadID string `json:"heartbeat_thread_id"`
 	}
 	if err := decodeArgs(argsJSON, &args); err != nil {
 		return "", err
@@ -82,7 +93,7 @@ func (t *CronTool) Execute(ctx context.Context, argsJSON string) (string, error)
 	case "list":
 		return t.executeList()
 	case "add":
-		return t.executeAdd(args.Cron, args.Prompt, args.Recurring, args.Durable)
+		return t.executeAdd(args.Cron, args.Prompt, args.Mode, args.HeartbeatThreadID, args.Recurring, args.Durable)
 	case "remove":
 		return t.executeRemove(args.ID)
 	default:
@@ -90,7 +101,7 @@ func (t *CronTool) Execute(ctx context.Context, argsJSON string) (string, error)
 	}
 }
 
-func (t *CronTool) executeAdd(cronExpr, prompt string, recurring, durable bool) (string, error) {
+func (t *CronTool) executeAdd(cronExpr, prompt, mode, heartbeatThreadID string, recurring, durable bool) (string, error) {
 	var args struct {
 		Cron      string
 		Prompt    string
@@ -101,6 +112,20 @@ func (t *CronTool) executeAdd(cronExpr, prompt string, recurring, durable bool) 
 	args.Prompt = strings.TrimSpace(prompt)
 	args.Recurring = recurring
 	args.Durable = durable
+	mode = strings.TrimSpace(mode)
+	if mode == "" {
+		mode = "new_thread"
+	}
+	if mode != "new_thread" && mode != "thread_heartbeat" {
+		return "", fmt.Errorf("cron action=add has invalid mode %q", mode)
+	}
+	heartbeatThreadID = strings.TrimSpace(heartbeatThreadID)
+	if mode == "thread_heartbeat" && heartbeatThreadID == "" {
+		heartbeatThreadID = strings.TrimSpace(t.env.SessionID)
+	}
+	if mode == "thread_heartbeat" && heartbeatThreadID == "" {
+		return "", fmt.Errorf("cron action=add thread_heartbeat requires a thread id")
+	}
 	if args.Cron == "" {
 		return "", fmt.Errorf("cron action=add requires cron")
 	}
@@ -134,12 +159,16 @@ func (t *CronTool) executeAdd(cronExpr, prompt string, recurring, durable bool) 
 	}
 
 	task := cron.Task{
-		ID:        cron.GenerateTaskID(),
-		Cron:      args.Cron,
-		Prompt:    args.Prompt,
-		Metadata:  map[string]string{"kind": "prompt"},
-		CreatedAt: time.Now().UnixMilli(),
-		Recurring: args.Recurring,
+		ID:                cron.GenerateTaskID(),
+		Cron:              args.Cron,
+		Prompt:            args.Prompt,
+		Mode:              mode,
+		Timezone:          time.Local.String(),
+		CreatorThreadID:   strings.TrimSpace(t.env.SessionID),
+		HeartbeatThreadID: heartbeatThreadID,
+		Metadata:          map[string]string{"kind": "prompt"},
+		CreatedAt:         time.Now().UnixMilli(),
+		Recurring:         args.Recurring,
 	}
 
 	storeLabel := "session-only"
@@ -159,6 +188,7 @@ func (t *CronTool) executeAdd(cronExpr, prompt string, recurring, durable bool) 
 		"id":         task.ID,
 		"schedule":   args.Cron,
 		"prompt":     args.Prompt,
+		"mode":       mode,
 		"kind":       taskKind(task),
 		"type":       map[bool]string{true: "recurring", false: "one-shot"}[args.Recurring],
 		"durability": storeLabel,

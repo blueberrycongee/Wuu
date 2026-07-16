@@ -382,6 +382,12 @@ func NewWithCredentialStore(rt *runtime.Session, out io.Writer, store credential
 		}
 	}
 	s.startInferenceJournalMaintenance()
+	if rt != nil && rt.AutomationManager != nil {
+		if err := rt.AutomationManager.Start(s); err != nil {
+			s.startupErr = fmt.Errorf("start automation manager: %w", err)
+			return s
+		}
+	}
 	return s
 }
 

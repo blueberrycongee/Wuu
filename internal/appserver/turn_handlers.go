@@ -113,7 +113,9 @@ type turnRuntimeSnapshot struct {
 	// completing worker's inherited value instead of re-reading a session
 	// value that may have changed while the orchestration tree ran. Rides
 	// the snapshot so queueing and wakeups keep the admitted value.
-	Ultra bool
+	Ultra           bool
+	AutomationRunID string
+	RequestContext  []agent.ContextSegment
 }
 
 func (s *Server) handleTurnStart(ctx context.Context, req Request) error {
@@ -1352,7 +1354,7 @@ func frozenWorkerTreeBlock(pending []agentCompletionTurn, frozen []agentcontrol.
 }
 
 func (s *Server) runTurn(ctx context.Context, th *threadState, threadRuntime *runtime.ThreadRuntime, turnID string, turnRuntime turnRuntimeSnapshot, history []providers.ChatMessage) {
-	s.runTurnWithRequestContext(ctx, th, threadRuntime, turnID, turnRuntime, history, nil, nil)
+	s.runTurnWithRequestContext(ctx, th, threadRuntime, turnID, turnRuntime, history, turnRuntime.RequestContext, nil)
 }
 
 func turnRuntimeSnapshotLocked(th *threadState) turnRuntimeSnapshot {
@@ -1946,6 +1948,11 @@ func (s *Server) runTurnWithRequestContext(ctx context.Context, th *threadState,
 			TracePath:                tracePath,
 			AwaitingAutoContinuation: awaitingAutoContinuation,
 		})
+	}
+	if runID := strings.TrimSpace(turnRuntime.AutomationRunID); runID != "" && s.rt != nil && s.rt.AutomationManager != nil {
+		if completeErr := s.rt.AutomationManager.CompleteRun(runID, th.ID, turnID, err); completeErr != nil {
+			providers.DebugLogf("complete automation run %q: %v", runID, completeErr)
+		}
 	}
 	if residentTurn {
 		s.kickResidentAgent(residentParticipantID)
