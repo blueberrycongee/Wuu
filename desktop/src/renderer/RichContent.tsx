@@ -3,6 +3,7 @@ import { FileText, Github, Globe2, Mail } from "lucide-react";
 import ReactMarkdown, { defaultUrlTransform, type Components, type UrlTransform } from "react-markdown";
 import rehypeRaw from "rehype-raw";
 import remarkGfm from "remark-gfm";
+import remarkCjkAutolinkBoundary from "./remarkCjkAutolinkBoundary";
 import type { WorkspaceFileReferenceResolveResult } from "../shared/protocol";
 import { useImagePreview } from "./ImagePreview";
 import {
@@ -11,6 +12,7 @@ import {
   type WorkspaceFileLinkTarget,
 } from "./LinkTargets";
 import { MessageCopyButton } from "./MessageActions";
+import { currentAppliedTheme, observeAppliedTheme, type AppliedTheme } from "./Theme";
 
 type RichContentProps = {
   text?: string;
@@ -188,7 +190,7 @@ function MarkdownContentView({
   return (
     <ReactMarkdown
       components={components}
-      remarkPlugins={[remarkGfm]}
+      remarkPlugins={[remarkGfm, remarkCjkAutolinkBoundary]}
       rehypePlugins={allowRawHtml ? [rehypeRaw, rehypeHeadingIDs] : [rehypeHeadingIDs]}
       urlTransform={richMarkdownUrlTransform}
     >
@@ -1417,7 +1419,10 @@ function base64URL(value: string): string {
 function MermaidDiagram({ code }: { code: string }): JSX.Element {
   const reactID = useId();
   const diagramID = useMemo(() => `wuu-mermaid-${reactID.replace(/[^a-zA-Z0-9_-]/g, "")}-${hashString(code)}`, [code, reactID]);
+  const [theme, setTheme] = useState<AppliedTheme>(currentAppliedTheme);
   const [state, setState] = useState<MermaidState>({ status: "rendering" });
+
+  useEffect(() => observeAppliedTheme(setTheme), []);
 
   useEffect(() => {
     let cancelled = false;
@@ -1430,16 +1435,9 @@ function MermaidDiagram({ code }: { code: string }): JSX.Element {
           startOnLoad: false,
           securityLevel: "strict",
           theme: "base",
-          themeVariables: {
-            background: "#ffffff",
-            primaryColor: "#eef2f0",
-            primaryTextColor: "#202427",
-            primaryBorderColor: "#ccd6d0",
-            lineColor: "#6f7478",
-            fontFamily: "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"
-          }
+          themeVariables: mermaidThemeVariables(theme),
         });
-        const result = await mermaid.render(diagramID, code);
+        const result = await mermaid.render(`${diagramID}-${theme}`, code);
         if (!cancelled) {
           setState({ status: "rendered", svg: result.svg });
         }
@@ -1453,7 +1451,7 @@ function MermaidDiagram({ code }: { code: string }): JSX.Element {
     return () => {
       cancelled = true;
     };
-  }, [code, diagramID]);
+  }, [code, diagramID, theme]);
 
   if (state.status === "rendered") {
     return <div className="rich-mermaid" dangerouslySetInnerHTML={{ __html: state.svg }} />;
@@ -1469,6 +1467,17 @@ function MermaidDiagram({ code }: { code: string }): JSX.Element {
     );
   }
   return <div className="rich-mermaid rich-mermaid-loading">正在渲染图表</div>;
+}
+
+function mermaidThemeVariables(theme: AppliedTheme): Record<string, string> {
+  return {
+    background: theme === "dark" ? "#1d2024" : "#ffffff",
+    primaryColor: theme === "dark" ? "#24282c" : "#eef2f0",
+    primaryTextColor: theme === "dark" ? "#e4e6e8" : "#202427",
+    primaryBorderColor: theme === "dark" ? "#3a4046" : "#ccd6d0",
+    lineColor: theme === "dark" ? "#a9aeb3" : "#6f7478",
+    fontFamily: "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif",
+  };
 }
 
 function hashString(value: string): string {
