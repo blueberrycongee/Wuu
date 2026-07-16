@@ -182,6 +182,9 @@ func (s *Scheduler) checkStore(kind string, store schedulerStore, sessionOnly bo
 		if s.shouldStopWork() {
 			return
 		}
+		if task.Paused {
+			continue
+		}
 		if task.Recurring && IsExpired(task, now.UnixMilli()) {
 			if _, err := store.RemoveIfUnchanged(task); err != nil {
 				s.reportError(fmt.Errorf("remove expired %s scheduled task %q: %w", kind, task.ID, err))
