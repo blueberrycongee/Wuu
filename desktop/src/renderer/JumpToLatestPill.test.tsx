@@ -152,10 +152,19 @@ function installMockResizeObserver(): MockResizeObserverRecord[] {
   return records;
 }
 
-function flushResizeObservers(records: MockResizeObserverRecord[]): void {
+function flushResizeObservers(
+  records: MockResizeObserverRecord[],
+  target?: Element,
+): void {
   for (const record of records) {
-    const entries = Array.from(record.observed).map((target) => ({
-      target,
+    const observedTargets = target
+      ? Array.from(record.observed).filter((observed) => observed === target)
+      : Array.from(record.observed);
+    if (observedTargets.length === 0) {
+      continue;
+    }
+    const entries = observedTargets.map((observed) => ({
+      target: observed,
       contentRect: {
         x: 0,
         y: 0,
@@ -227,6 +236,32 @@ describe("JumpToLatestPill", () => {
     act(() => {
       setScrollTop(560); // 40px from the bottom, inside the 80px threshold
       node.dispatchEvent(new Event("scroll"));
+    });
+    expect(host.querySelector(".jump-to-latest-pill")).toBeNull();
+  });
+
+  it("clears a transient scroll-away state when folded content settles", () => {
+    const resizeObservers = installMockResizeObserver();
+    const geometry = {
+      scrollHeight: 500,
+      clientHeight: 600,
+      scrollTop: 0,
+    };
+    const { node } = scrollContainer(geometry);
+    const content = document.createElement("div");
+    node.appendChild(content);
+    const host = mountPill(node);
+    expect(host.querySelector(".jump-to-latest-pill")).toBeNull();
+
+    act(() => {
+      geometry.scrollHeight = 900;
+      node.dispatchEvent(new Event("scroll"));
+    });
+    expect(host.querySelector(".jump-to-latest-pill")).not.toBeNull();
+
+    act(() => {
+      geometry.scrollHeight = 500;
+      flushResizeObservers(resizeObservers, content);
     });
     expect(host.querySelector(".jump-to-latest-pill")).toBeNull();
   });

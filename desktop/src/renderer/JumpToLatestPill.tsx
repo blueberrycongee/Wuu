@@ -5,6 +5,7 @@ import {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
+import { observeAutoFollowResizeTargets } from "./AutoFollowScroll";
 import {
   createWindowResizeSettleScheduler,
   isWindowResizing,
@@ -125,16 +126,20 @@ export function JumpToLatestPill({
     scheduleUpdate();
     node.addEventListener("scroll", scheduleUpdate, { passive: true });
 
-    // Re-evaluate on container resize. A thread-panel drag mutates the
-    // scroll container's `clientHeight`; without this listener the
-    // pill would stay hidden or shown based on the pre-resize distance.
+    // Re-evaluate on container and content resize. A thread-panel drag mutates
+    // the container's `clientHeight`, while expanding or collapsing a fold
+    // mutates its child's height and therefore the container's `scrollHeight`.
+    // Observing both prevents a transient fold layout from leaving the pill
+    // stuck in its pre-settle state.
     // Guarded: test environments (jsdom) have no ResizeObserver, and the
     // pill degrades gracefully to scroll-event-only updates without it.
     const resizeObserver =
       typeof ResizeObserver !== "undefined"
         ? new ResizeObserver(scheduleUpdate)
         : undefined;
-    resizeObserver?.observe(node);
+    if (resizeObserver) {
+      observeAutoFollowResizeTargets(node, resizeObserver);
+    }
 
     return () => {
       resizeSettleUpdate.cancel();
