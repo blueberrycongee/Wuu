@@ -104,7 +104,6 @@ import {
   initialSplitComposerDrafts,
   initialState,
   isAnyThreadRunning,
-  activeContextTreeBusy,
   isDMThread,
   groupThreadSummaries,
   isGroupThread,
@@ -329,6 +328,73 @@ function readPopOutInit(): PopOutInitResult | null {
   } catch {
     return null;
   }
+}
+
+function useGitActionBusy(
+  context: RuntimeContext | undefined,
+  runningThreadKey: string,
+): boolean {
+  const [snapshot, setSnapshot] = useState<{
+    lookupKey: string;
+    busy: boolean;
+  }>(() => ({ lookupKey: "", busy: true }));
+  const contextKey = context
+    ? [context.kind, context.kind === "project" ? context.project_id : "", context.cwd].join(
+        "\0",
+      )
+    : "";
+  const lookupKey = `${contextKey}\0${runningThreadKey}`;
+  useEffect(() => {
+    if (!contextKey) {
+      return;
+    }
+    let cancelled = false;
+    let requestID = 0;
+    const refresh = (): void => {
+      const currentRequestID = ++requestID;
+      const query = window.wuu.gitActionBusy;
+      if (typeof query !== "function") {
+        setSnapshot({ lookupKey, busy: true });
+        return;
+      }
+      void query()
+        .then((busy) => {
+          if (!cancelled && currentRequestID === requestID) {
+            setSnapshot({ lookupKey, busy });
+          }
+        })
+        .catch(() => {
+          if (!cancelled && currentRequestID === requestID) {
+            setSnapshot({ lookupKey, busy: true });
+          }
+        });
+    };
+    refresh();
+    const off = window.wuu.onServerEvent((event) => {
+      if (event.kind !== "notification") {
+        return;
+      }
+      const method = event.message.method;
+      if (
+        method === "turn/started" ||
+        method === "turn/completed" ||
+        method === "turn/error" ||
+        method === "thread/started" ||
+        method === "thread/resumed"
+      ) {
+        setSnapshot({ lookupKey: "", busy: true });
+        refresh();
+      }
+    });
+    return () => {
+      cancelled = true;
+      off();
+    };
+  }, [contextKey, lookupKey]);
+  if (!context) {
+    return false;
+  }
+  return snapshot.lookupKey === lookupKey ? snapshot.busy : true;
 }
 
 export function App(): JSX.Element {
@@ -2125,12 +2191,34 @@ export function App(): JSX.Element {
   const activeThreadReadOnly = Boolean(activeThread?.read_only);
   const activeThreadIsRunning = isStateActiveThreadRunning(state);
   const anyThreadIsRunning = isAnyThreadRunning(state) || viewContextSwitchPending;
+  const runningThreadKey = useMemo(() => {
+    const running = new Set<string>();
+    for (const thread of [state.thread, state.secondaryThread, ...state.threads]) {
+      if (thread?.cwd && isThreadRunning(thread)) {
+        running.add(`${thread.id}\0${thread.cwd}`);
+      }
+    }
+    if (state.running && activeThread?.cwd) {
+      running.add(`${activeThread.id}\0${activeThread.cwd}`);
+    }
+    return [...running].sort().join("\x01");
+  }, [
+    activeThread?.cwd,
+    activeThread?.id,
+    state.running,
+    state.secondaryThread,
+    state.thread,
+    state.threads,
+  ]);
+  const activeWorkingTreeBusy = useGitActionBusy(
+    state.activeContext,
+    runningThreadKey,
+  );
   // The Environment panel's git actions (branch switch / commit / PR) mutate the
   // active context's working tree, so they are gated on that tree being busy —
   // not on any thread anywhere running. A worktree-fork thread running in its
   // own cwd, or a thread in another project, no longer blocks them.
-  const environmentGitBusy =
-    activeContextTreeBusy(state) || viewContextSwitchPending;
+  const environmentGitBusy = activeWorkingTreeBusy || viewContextSwitchPending;
   // The desktop pet lives in its own always-on-top window owned by the main
   // process; the renderer only feeds it the session runtime so its sprite
   // state tracks what the app is doing.
