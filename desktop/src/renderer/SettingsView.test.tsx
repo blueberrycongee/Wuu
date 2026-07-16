@@ -42,6 +42,18 @@ afterEach(() => {
 function installBuildInfoStub(info: BuildInfoResult): void {
   const stub: Partial<WuuDesktopApi> = {
     getBuildInfo: vi.fn().mockResolvedValue(info),
+    getGitAttributionSettings: vi.fn().mockResolvedValue({
+      enabled: true,
+      name: "WUU Agent",
+      email: "305930189+wuu-agent[bot]@users.noreply.github.com",
+      profile_url: "https://github.com/apps/wuu-agent",
+    }),
+    setGitAttributionEnabled: vi.fn().mockImplementation(async (enabled: boolean) => ({
+      enabled,
+      name: "WUU Agent",
+      email: "305930189+wuu-agent[bot]@users.noreply.github.com",
+      profile_url: "https://github.com/apps/wuu-agent",
+    })),
     listMCPServers: vi.fn().mockResolvedValue({ servers: [] }),
     connectMCPServer: vi.fn(),
     disconnectMCPServer: vi.fn(),
@@ -573,6 +585,33 @@ describe("SettingsView advanced settings", () => {
 });
 
 describe("SettingsView general settings", () => {
+  it("loads and toggles WUU Agent commit attribution", async () => {
+    installBuildInfoStub({
+      core: undefined,
+      desktop: { version: "0.0.0-test", date: "1970-01-01T00:00:00Z" },
+    });
+    renderSettings({ initialized: baseInitialized(), initialPage: "general" });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const api = window.wuu;
+    const attributionSwitch = container.querySelector<HTMLButtonElement>(
+      '[data-testid="settings-git-attribution"]',
+    );
+    expect(attributionSwitch?.getAttribute("aria-checked")).toBe("true");
+    expect(container.textContent).toContain("wuu-agent[bot]");
+
+    await act(async () => {
+      attributionSwitch?.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(api.setGitAttributionEnabled).toHaveBeenCalledWith(false);
+    expect(attributionSwitch?.getAttribute("aria-checked")).toBe("false");
+  });
+
   it("renders and saves prompt, memory, and MCP toggles", async () => {
     installBuildInfoStub({
       core: undefined,

@@ -45,6 +45,13 @@ export type BuildInfoResult = {
   desktop: DesktopBuildInfo;
 };
 
+export type GitAttributionSettings = {
+  enabled: boolean;
+  name: string;
+  email: string;
+  profile_url: string;
+};
+
 export type InitializeResult = {
   status?: "ready" | "needs_setup";
   issues?: RuntimeIssue[];
@@ -2028,6 +2035,8 @@ export type WuuDesktopApi = {
   checkoutGitBranch: (branch: string) => Promise<GitStatusResult>;
   createCheckoutGitBranch: (branch: string) => Promise<GitCreateBranchResult>;
   commitGitChanges: (params: GitCommitParams) => Promise<GitCommitResult>;
+  getGitAttributionSettings: () => Promise<GitAttributionSettings>;
+  setGitAttributionEnabled: (enabled: boolean) => Promise<GitAttributionSettings>;
   createPullRequest: (params: GitPullRequestParams) => Promise<GitPullRequestResult>;
   // root is an optional absolute directory override, used to root the
   // workspace file tree / preview at the active thread's own cwd (e.g. a

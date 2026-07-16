@@ -6,11 +6,13 @@ import {
   getCodexPetScale,
   getCodexPetSettings,
   getCodexPetSize,
+  getGitAttributionSettings,
   getMainWindowBounds,
   getMessageFlowFontSize,
   getThemePreference,
   readDesktopSettings,
   setCodexPetSettings,
+  setGitAttributionEnabled,
   setMainWindowBounds,
   setMessageFlowFontSize,
   setThemePreference,
@@ -108,6 +110,25 @@ describe("desktopSettings", () => {
     setThemePreference("dark", file);
     expect(getMessageFlowFontSize(file)).toBe(16);
     expect(getThemePreference(file)).toBe("dark");
+  });
+
+  it("defaults Git attribution on with the registered GitHub App identity", () => {
+    expect(getGitAttributionSettings(file)).toEqual({
+      enabled: true,
+      name: "WUU Agent",
+      email: "305930189+wuu-agent[bot]@users.noreply.github.com",
+      profile_url: "https://github.com/apps/wuu-agent",
+    });
+  });
+
+  it("round-trips Git attribution without changing other settings", () => {
+    setThemePreference("dark", file);
+    expect(setGitAttributionEnabled(false, file).enabled).toBe(false);
+    expect(getGitAttributionSettings(file).enabled).toBe(false);
+    expect(getThemePreference(file)).toBe("dark");
+
+    expect(setGitAttributionEnabled(true, file).enabled).toBe(true);
+    expect(getGitAttributionSettings(file).enabled).toBe(true);
   });
 
   it("defaults codex pets to disabled with no selected pet", () => {

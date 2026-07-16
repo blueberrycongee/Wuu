@@ -13,6 +13,7 @@ import {
   MESSAGE_FLOW_FONT_SIZE_RANGE,
   type CodexPetSettings,
   type CodexPetSize,
+  type GitAttributionSettings,
   type MessageFlowFontSize,
   type ThemePreference,
 } from "../shared/protocol";
@@ -27,6 +28,12 @@ export type {
 
 export const DEFAULT_MESSAGE_FLOW_FONT_SIZE: MessageFlowFontSize =
   MESSAGE_FLOW_FONT_SIZE_RANGE.default;
+
+export const WUU_GIT_ATTRIBUTION = {
+  name: "WUU Agent",
+  email: "305930189+wuu-agent[bot]@users.noreply.github.com",
+  profile_url: "https://github.com/apps/wuu-agent",
+} as const;
 
 function isMessageFlowFontSize(value: unknown): value is MessageFlowFontSize {
   return (
@@ -51,6 +58,12 @@ export type DesktopSettings = {
   // pets directory, with ~/.codex/pets as a compatibility source, and keeps
   // only the UI enablement + selected pet here.
   codex_pet?: CodexPetSettings;
+  // Commit trailers created by WUU use the public GitHub App bot identity.
+  // The feature defaults on, matching other agent clients, and remains
+  // independently removable without changing the user's global Git config.
+  git_attribution?: {
+    enabled: boolean;
+  };
   // Last position + size of the main window as captured on close. The center
   // point is checked against the connected displays at load time (in
   // windowState.loadMainWindowBounds) so an unplugged display is treated as
@@ -101,6 +114,16 @@ export function readDesktopSettings(filePath: string = desktopSettingsPath()): D
         ...(size ? { size } : {}),
         ...(scale !== undefined ? { scale } : {}),
       };
+    }
+    if (
+      typeof record.git_attribution === "object" &&
+      record.git_attribution !== null &&
+      !Array.isArray(record.git_attribution)
+    ) {
+      const gitAttribution = record.git_attribution as Record<string, unknown>;
+      if (typeof gitAttribution.enabled === "boolean") {
+        settings.git_attribution = { enabled: gitAttribution.enabled };
+      }
     }
     if (
       typeof record.main_window_bounds === "object" &&
@@ -192,6 +215,27 @@ export function setCodexPetSettings(next: CodexPetSettings, filePath?: string): 
       ...(nextScale !== undefined ? { scale: nextScale } : {}),
     },
   }, filePath);
+}
+
+export function getGitAttributionSettings(
+  filePath?: string,
+): GitAttributionSettings {
+  return {
+    enabled: readDesktopSettings(filePath).git_attribution?.enabled ?? true,
+    ...WUU_GIT_ATTRIBUTION,
+  };
+}
+
+export function setGitAttributionEnabled(
+  enabled: boolean,
+  filePath?: string,
+): GitAttributionSettings {
+  const settings = readDesktopSettings(filePath);
+  writeDesktopSettings({
+    ...settings,
+    git_attribution: { enabled },
+  }, filePath);
+  return getGitAttributionSettings(filePath);
 }
 
 export function getCodexPetSize(filePath?: string): CodexPetSize {
