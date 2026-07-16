@@ -181,8 +181,14 @@ func (m *Manager) AddTask(params AddTaskParams) (Task, error) {
 		Mode:              string(mode),
 		CreatorThreadID:   creatorThreadID,
 		HeartbeatThreadID: heartbeatThreadID,
+		Metadata:          map[string]string{"kind": "prompt"},
 		CreatedAt:         time.Now().UnixMilli(),
 		Recurring:         params.Recurring,
+	}
+	if params.Durable {
+		task.Metadata["durability"] = "durable"
+	} else {
+		task.Metadata["durability"] = "session-only"
 	}
 	if task.Title == "" {
 		task.Title = prompt
@@ -215,6 +221,12 @@ func (m *Manager) ListTasks() ([]Task, error) {
 	if err != nil {
 		return nil, err
 	}
+	for index := range durable {
+		durable[index] = withTaskDurability(durable[index], "durable")
+	}
+	for index := range sessionOnly {
+		sessionOnly[index] = withTaskDurability(sessionOnly[index], "session-only")
+	}
 	return append(durable, sessionOnly...), nil
 }
 
@@ -244,12 +256,12 @@ func (m *Manager) SetPaused(id string, paused bool) (Task, error) {
 	if task, found, err := m.durableStore.SetPaused(id, paused); err != nil {
 		return Task{}, err
 	} else if found {
-		return normalizeTask(task), nil
+		return withTaskDurability(task, "durable"), nil
 	}
 	if task, found, err := m.sessionStore.SetPaused(id, paused); err != nil {
 		return Task{}, err
 	} else if found {
-		return normalizeTask(task), nil
+		return withTaskDurability(task, "session-only"), nil
 	}
 	return Task{}, fmt.Errorf("automation task %q not found", id)
 }
@@ -346,6 +358,16 @@ func normalizeTask(task Task) Task {
 		task.Timezone = time.Local.String()
 	}
 	return task
+}
+
+func withTaskDurability(task Task, durability string) Task {
+	metadata := make(map[string]string, len(task.Metadata)+1)
+	for key, value := range task.Metadata {
+		metadata[key] = value
+	}
+	metadata["durability"] = durability
+	task.Metadata = metadata
+	return normalizeTask(task)
 }
 
 type taskAdder interface {

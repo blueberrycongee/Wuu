@@ -7,13 +7,21 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/blueberrycongee/wuu/internal/automation"
 	"github.com/blueberrycongee/wuu/internal/cron"
 )
+
+func newCronToolTestEnv(rootDir, stateDir, sessionID string) *Env {
+	return &Env{
+		RootDir: rootDir, StateDir: stateDir, SessionID: sessionID,
+		AutomationManager: automation.NewManager(automation.Config{StateDir: stateDir}),
+	}
+}
 
 func TestScheduleCronTool_DefaultsToSessionOnly(t *testing.T) {
 	dir := t.TempDir()
 	stateDir := filepath.Join(dir, "state")
-	env := &Env{RootDir: dir, StateDir: stateDir}
+	env := newCronToolTestEnv(dir, stateDir, "")
 	tool := NewCronTool(env)
 
 	result, err := tool.Execute(context.Background(), `{"action":"add","cron":"*/5 * * * *","prompt":"check deploy","recurring":true}`)
@@ -49,7 +57,7 @@ func TestScheduleCronTool_DefaultsToSessionOnly(t *testing.T) {
 func TestScheduleCronTool_DurablePersistsToDisk(t *testing.T) {
 	dir := t.TempDir()
 	stateDir := filepath.Join(dir, "state")
-	env := &Env{RootDir: dir, StateDir: stateDir}
+	env := newCronToolTestEnv(dir, stateDir, "")
 	tool := NewCronTool(env)
 
 	result, err := tool.Execute(context.Background(), `{"action":"add","cron":"*/5 * * * *","prompt":"check deploy","recurring":true,"durable":true}`)
@@ -82,7 +90,7 @@ func TestScheduleCronTool_DurablePersistsToDisk(t *testing.T) {
 func TestScheduleCronToolCreatesThreadHeartbeat(t *testing.T) {
 	dir := t.TempDir()
 	stateDir := filepath.Join(dir, "state")
-	env := &Env{RootDir: dir, StateDir: stateDir, SessionID: "thread-1"}
+	env := newCronToolTestEnv(dir, stateDir, "thread-1")
 	tool := NewCronTool(env)
 
 	result, err := tool.Execute(context.Background(), `{"action":"add","cron":"*/5 * * * *","prompt":"check cache","mode":"thread_heartbeat","recurring":true}`)
@@ -107,7 +115,7 @@ func TestScheduleCronTool_DurableWriteFailureDoesNotCreateSessionTask(t *testing
 	if err := os.MkdirAll(taskStorePath(stateDir)+".lock", 0o755); err != nil {
 		t.Fatalf("create invalid durable lock path: %v", err)
 	}
-	env := &Env{RootDir: dir, StateDir: stateDir}
+	env := newCronToolTestEnv(dir, stateDir, "")
 	tool := NewCronTool(env)
 
 	_, err := tool.Execute(context.Background(), `{"action":"add","cron":"*/5 * * * *","prompt":"check deploy","recurring":true,"durable":true}`)
@@ -130,7 +138,7 @@ func TestScheduleCronTool_DurableWriteFailureDoesNotCreateSessionTask(t *testing
 func TestCancelCronTool(t *testing.T) {
 	dir := t.TempDir()
 	stateDir := filepath.Join(dir, "state")
-	env := &Env{RootDir: dir, StateDir: stateDir}
+	env := newCronToolTestEnv(dir, stateDir, "")
 	fileStore := cron.NewTaskStore(taskStorePath(stateDir))
 	if err := fileStore.Add(cron.Task{ID: "abc123", Cron: "* * * * *", Prompt: "x"}); err != nil {
 		t.Fatalf("fileStore.Add: %v", err)
@@ -164,7 +172,7 @@ func TestCancelCronTool(t *testing.T) {
 func TestListCronTool(t *testing.T) {
 	dir := t.TempDir()
 	stateDir := filepath.Join(dir, "state")
-	env := &Env{RootDir: dir, StateDir: stateDir}
+	env := newCronToolTestEnv(dir, stateDir, "")
 	fileStore := cron.NewTaskStore(taskStorePath(stateDir))
 	if err := fileStore.Add(cron.Task{ID: "abc", Cron: "*/5 * * * *", Prompt: "check"}); err != nil {
 		t.Fatalf("fileStore.Add: %v", err)

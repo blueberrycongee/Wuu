@@ -39,7 +39,7 @@ func TestManagerAddsHeartbeatTaskWithCreatorThread(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListTasks() error = %v", err)
 	}
-	if len(tasks) != 1 || tasks[0].ID != task.ID {
+	if len(tasks) != 1 || tasks[0].ID != task.ID || tasks[0].Metadata["durability"] != "durable" {
 		t.Fatalf("ListTasks() = %#v", tasks)
 	}
 }
