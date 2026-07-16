@@ -19,6 +19,17 @@ function cssRule(selector: string): string {
 }
 
 describe("environment panel subagent rows", () => {
+  it("overlays the close button beside the first content row", () => {
+    const header = cssRule(".environment-panel-header");
+    expect(header).toMatch(/position:\s*absolute/);
+    expect(header).toMatch(/top:\s*15px/);
+    expect(header).toMatch(/right:\s*14px/);
+    expect(cssRule(".environment-plan-item:first-child")).toMatch(/padding-right:\s*34px/);
+    expect(
+      cssRule(".environment-panel-header + .environment-panel-body .environment-row:first-child"),
+    ).toMatch(/padding-right:\s*40px/);
+  });
+
   it("keeps the status label on a stable right-side axis", () => {
     expect(cssRule(".subagent-row")).toMatch(
       /grid-template-columns:\s*minmax\(0,\s*1fr\)/,

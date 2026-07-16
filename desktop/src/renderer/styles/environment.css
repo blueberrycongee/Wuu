@@ -117,11 +117,14 @@
 }
 
 .environment-panel-header {
+  position: absolute;
+  top: 15px;
+  right: 14px;
+  z-index: 2;
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 10px;
-  padding: 0 2px 8px;
+  padding: 0;
 }
 
 .environment-panel-actions {
@@ -139,6 +142,10 @@
 .environment-panel-body {
   display: grid;
   gap: 3px;
+}
+
+.environment-panel-header + .environment-panel-body .environment-row:first-child {
+  padding-right: 40px;
 }
 
 .environment-side-stack > .environment-panel .environment-panel-body {
@@ -453,6 +460,10 @@
   font-weight: var(--weight-semibold);
   line-height: 1.25;
   animation: environment-plan-item-in var(--motion-base) var(--ease-out) both;
+}
+
+.environment-plan-item:first-child {
+  padding-right: 34px;
 }
 
 .environment-plan-item:nth-child(1) { animation-delay: 0ms; }
