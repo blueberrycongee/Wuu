@@ -1240,12 +1240,13 @@ function SettingsAdvancedPage({
   onTemperatureChange: (value: string) => void;
   onSubmit: (event: ReactFormEvent<HTMLFormElement>) => Promise<void>;
 }): JSX.Element {
+  const { t } = useI18n();
   return (
     <SettingsSection testID="settings-advanced">
       <form className="settings-card" onSubmit={onSubmit}>
         <SettingsRow
-          title="自动压缩"
-          description="接近上下文上限时自动整理旧历史"
+          title={t("settings.autoCompact")}
+          description={t("settings.autoCompactDescription")}
         >
           <button
             className="settings-switch"
@@ -1256,26 +1257,26 @@ function SettingsAdvancedPage({
             onClick={onAutoCompactToggle}
           >
             <span className="settings-switch-thumb" aria-hidden="true" />
-            <span className="sr-only">{autoCompact ? "关闭自动压缩" : "打开自动压缩"}</span>
+            <span className="sr-only">{autoCompact ? t("settings.disableAutoCompact") : t("settings.enableAutoCompact")}</span>
           </button>
         </SettingsRow>
         <SettingsRow
-          title="压缩触发阈值"
-          description="占上下文窗口的百分比"
+          title={t("settings.compactThreshold")}
+          description={t("settings.compactThresholdDescription")}
           block
         >
           <input
             className="settings-input"
             value={compactThreshold}
             inputMode="numeric"
-            placeholder="自动"
+            placeholder={t("settings.automatic")}
             onChange={(event) => onCompactThresholdChange(event.target.value)}
             disabled={running || !initialized}
           />
         </SettingsRow>
         <SettingsRow
-          title="保留最近上下文"
-          description="压缩时保留的 token 数"
+          title={t("settings.keepRecentContext")}
+          description={t("settings.keepRecentContextDescription")}
           block
         >
           <input
@@ -1288,9 +1289,9 @@ function SettingsAdvancedPage({
           />
         </SettingsRow>
         <SettingsRow
-          title="当前服务上下文上限"
+          title={t("settings.providerContextLimit")}
           description={`${providerContextWindowSource}${
-            providerContextWindowCurrent ? `；当前 ${providerContextWindowCurrent} token` : ""
+            providerContextWindowCurrent ? `；${t("settings.currentTokenLimit", { count: providerContextWindowCurrent })}` : ""
           }`}
           block
         >
@@ -1298,28 +1299,28 @@ function SettingsAdvancedPage({
             className="settings-input"
             value={providerContextWindow}
             inputMode="numeric"
-            placeholder="自动识别"
+            placeholder={t("settings.detectAutomatically")}
             onChange={(event) => onProviderContextWindowChange(event.target.value)}
             disabled={running || !initialized}
           />
         </SettingsRow>
         <SettingsRow
-          title="未知模型上限"
-          description="Provider 未覆盖该模型时使用"
+          title={t("settings.unknownModelLimit")}
+          description={t("settings.unknownModelLimitDescription")}
           block
         >
           <input
             className="settings-input"
             value={maxContextTokens}
             inputMode="numeric"
-            placeholder="自动"
+            placeholder={t("settings.automatic")}
             onChange={(event) => onMaxContextTokensChange(event.target.value)}
             disabled={running || !initialized}
           />
         </SettingsRow>
         <SettingsRow
-          title="最大步数"
-          description="0 不限"
+          title={t("settings.maxSteps")}
+          description={t("settings.unlimitedAtZero")}
           block
         >
           <input
@@ -1330,7 +1331,7 @@ function SettingsAdvancedPage({
             disabled={running || !initialized}
           />
         </SettingsRow>
-        <SettingsRow title="Temperature" description="0 到 2" block>
+        <SettingsRow title="Temperature" description={t("settings.temperatureRange")} block>
           <input
             className="settings-input"
             value={temperature}
@@ -1340,13 +1341,13 @@ function SettingsAdvancedPage({
             disabled={running || !initialized}
           />
           {error ? <div className="settings-error">{error}</div> : null}
-          {saved && !error ? <div className="settings-saved">已保存</div> : null}
+          {saved && !error ? <div className="settings-saved">{t("settings.saved")}</div> : null}
           <button
             className="settings-button settings-button-primary"
             type="submit"
             disabled={running || !initialized}
           >
-            保存
+            {t("settings.save")}
           </button>
         </SettingsRow>
       </form>
@@ -1905,6 +1906,7 @@ function SettingsArchivePage({
   archivedThreads: readonly ArchivedSessionView[];
   onUnarchive: (thread: ArchivedSessionView) => void;
 }): JSX.Element {
+  const { t, formatDate } = useI18n();
   const [query, setQuery] = useState("");
   const [projectFilter, setProjectFilter] = useState("all");
   const sortedThreads = useMemo(
@@ -1919,9 +1921,9 @@ function SettingsArchivePage({
         return [];
       }
       seen.add(projectID);
-      return [{ value: projectID, label: archiveProjectName(thread) }];
+      return [{ value: projectID, label: archiveProjectName(thread, t("settings.noProject")) }];
     });
-  }, [sortedThreads]);
+  }, [sortedThreads, t]);
   const groups = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase();
     const grouped = new Map<
@@ -1930,7 +1932,7 @@ function SettingsArchivePage({
     >();
     for (const thread of sortedThreads) {
       const projectID = archiveProjectID(thread);
-      const title = archiveThreadTitle(thread);
+      const title = archiveThreadTitle(thread, t("settings.untitledConversation"));
       if (projectFilter !== "all" && projectID !== projectFilter) {
         continue;
       }
@@ -1938,26 +1940,26 @@ function SettingsArchivePage({
         continue;
       }
       const group = grouped.get(projectID) ?? {
-        projectName: archiveProjectName(thread),
+        projectName: archiveProjectName(thread, t("settings.noProject")),
         threads: [],
       };
       group.threads.push(thread);
       grouped.set(projectID, group);
     }
     return Array.from(grouped, ([projectID, group]) => ({ projectID, ...group }));
-  }, [projectFilter, query, sortedThreads]);
+  }, [projectFilter, query, sortedThreads, t]);
   const noMatches = sortedThreads.length > 0 && groups.length === 0;
 
   return (
     <div className="settings-archive-page">
-      <div className="settings-archive-toolbar" role="search" aria-label="筛选归档会话">
+      <div className="settings-archive-toolbar" role="search" aria-label={t("settings.archiveFilter")}>
         <label className="settings-archive-search">
           <Search className="icon" aria-hidden="true" />
-          <span className="sr-only">搜索归档会话</span>
+          <span className="sr-only">{t("settings.archiveSearch")}</span>
           <input
             type="search"
             value={query}
-            placeholder="搜索归档会话"
+            placeholder={t("settings.archiveSearch")}
             onChange={(event) => setQuery(event.currentTarget.value)}
           />
         </label>
@@ -1966,8 +1968,8 @@ function SettingsArchivePage({
           triggerClassName="settings-archive-filter-trigger"
           value={projectFilter}
           onChange={setProjectFilter}
-          ariaLabel="按项目筛选"
-          options={[{ value: "all", label: "所有项目" }, ...projectOptions]}
+          ariaLabel={t("settings.archiveProjectFilter")}
+          options={[{ value: "all", label: t("settings.allProjects") }, ...projectOptions]}
           flip
         />
       </div>
@@ -1975,16 +1977,16 @@ function SettingsArchivePage({
         <div className="settings-archive-empty" role="status">
           <Archive className="settings-archive-empty-icon" aria-hidden="true" />
           <p className="settings-archive-empty-title">
-            {noMatches ? "没有匹配的归档会话" : "暂无已归档的会话"}
+            {noMatches ? t("settings.noArchiveMatches") : t("settings.noArchivedConversations")}
           </p>
           {noMatches ? null : (
             <p className="settings-archive-empty-hint">
-              在侧边栏行末点击归档按钮后会出现在这里，随时可以恢复。
+              {t("settings.archiveHint")}
             </p>
           )}
         </div>
       ) : (
-        <div className="settings-archive-groups" aria-label="已归档会话列表">
+        <div className="settings-archive-groups" aria-label={t("settings.archivedList")}>
           {groups.map((group) => (
             <section className="settings-archive-group" key={group.projectID}>
               <header className="settings-archive-group-header">
@@ -1993,28 +1995,28 @@ function SettingsArchivePage({
                   <span>{group.projectName}</span>
                 </div>
                 <span className="settings-archive-group-count">
-                  {group.threads.length} 个会话
+                  {t("settings.conversationCount", { count: group.threads.length })}
                 </span>
               </header>
               <div className="settings-archive-list">
                 {group.threads.map((thread) => {
-                  const title = archiveThreadTitle(thread);
+                  const title = archiveThreadTitle(thread, t("settings.untitledConversation"));
                   return (
                     <div className="settings-archive-row" key={thread.id}>
                       <div className="settings-archive-row-copy">
                         <span className="settings-archive-title" title={title}>{title}</span>
                         <time className="settings-archive-time" dateTime={thread.updated_at}>
-                          {formatArchiveTime(thread.updated_at)}
+                          {formatArchiveTime(thread.updated_at, formatDate)}
                         </time>
                       </div>
                       <button
                         type="button"
                         className="settings-button settings-archive-restore"
-                        aria-label={`恢复 ${title}`}
+                        aria-label={t("settings.restoreConversation", { title })}
                         onClick={() => onUnarchive(thread)}
                       >
                         <Archive className="icon-sm" aria-hidden="true" />
-                        恢复
+                        {t("settings.restore")}
                       </button>
                     </div>
                   );
@@ -2028,31 +2030,35 @@ function SettingsArchivePage({
   );
 }
 
-function archiveThreadTitle(thread: ArchivedSessionView): string {
-  return (thread.title ?? "").trim() || "未命名会话";
+function archiveThreadTitle(thread: ArchivedSessionView, fallback = "未命名会话"): string {
+  return (thread.title ?? "").trim() || fallback;
 }
 
 function archiveProjectID(thread: ArchivedSessionView): string {
   return thread.archive_project_id?.trim() || "no-project";
 }
 
-function archiveProjectName(thread: ArchivedSessionView): string {
-  return thread.archive_project_name?.trim() || "无项目";
+function archiveProjectName(thread: ArchivedSessionView, fallback = "无项目"): string {
+  return thread.archive_project_name?.trim() || fallback;
 }
 
-function formatArchiveTime(iso: string): string {
+function formatArchiveTime(
+  iso: string,
+  formatter: (value: Date | number | string, options?: Intl.DateTimeFormatOptions) => string =
+    (value, options) => new Intl.DateTimeFormat("zh-CN", options).format(new Date(value)),
+): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) {
     return iso;
   }
-  return new Intl.DateTimeFormat("zh-CN", {
+  return formatter(date, {
     year: "numeric",
     month: "long",
     day: "numeric",
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
-  }).format(date);
+  });
 }
 
 /* -------------------------------------------------------------------------- */
@@ -2068,6 +2074,7 @@ function SettingsUsagePage({
   usageRange: SettingsUsageRange;
   setUsageRange: (range: SettingsUsageRange) => void;
 }): JSX.Element {
+  const { locale, t, formatNumber } = useI18n();
   const ranges: SettingsUsageRange[] = ["all", "7d", "30d", "90d"];
   const heatmap = usage ? buildCacheHeatmap(usage.days) : [];
   const heatmapCols = heatmap.length > 0 ? Math.ceil(heatmap.length / 7) : 12;
@@ -2105,7 +2112,10 @@ function SettingsUsagePage({
         if (month !== prevMonth) {
           // Skip the very first column if it's at the left edge — avoid label clipping
           if (col > 0) {
-            monthLabels.push({ col, label: `${d.getMonth() + 1}月` });
+            monthLabels.push({
+              col,
+              label: new Intl.DateTimeFormat(locale, { month: "short" }).format(d),
+            });
           }
           prevMonth = month;
         }
@@ -2118,7 +2128,7 @@ function SettingsUsagePage({
         <div
           className="settings-usage-range"
           role="tablist"
-          aria-label="时间范围"
+          aria-label={t("settings.timeRange")}
         >
           {ranges.map((range) => (
             <button
@@ -2130,17 +2140,17 @@ function SettingsUsagePage({
               className={`settings-usage-range-button${usageRange === range ? " active" : ""}`}
               onClick={() => setUsageRange(range)}
             >
-              {formatUsageRange(range)}
+              {formatUsageRange(range, t)}
             </button>
           ))}
         </div>
         {usage && (
           <div className="settings-usage-stats">
-            <UsageStat label="输入" value={formatTokenCount(usage.metrics.input_tokens)} />
-            <UsageStat label="上下文" value={formatTokenCount(usage.metrics.context_tokens)} />
-            <UsageStat label="输出" value={formatTokenCount(usage.metrics.output_tokens)} />
-            <UsageStat label="缓存命中率" value={formatPercent(usage.metrics.cache_hit_rate)} />
-            <UsageStat label="活跃" value={`${usage.metrics.active_days} 天`} />
+            <UsageStat label={t("settings.usageInput")} value={formatNumber(usage.metrics.input_tokens)} />
+            <UsageStat label={t("settings.usageContext")} value={formatNumber(usage.metrics.context_tokens)} />
+            <UsageStat label={t("settings.usageOutput")} value={formatNumber(usage.metrics.output_tokens)} />
+            <UsageStat label={t("settings.cacheHitRate")} value={formatPercent(usage.metrics.cache_hit_rate)} />
+            <UsageStat label={t("settings.activeDays")} value={t("settings.dayCount", { count: formatNumber(usage.metrics.active_days) })} />
           </div>
         )}
       </div>
@@ -2166,7 +2176,7 @@ function SettingsUsagePage({
         <div
           ref={heatmapRef}
           className="settings-cache-heatmap"
-          aria-label="缓存命中率热力图"
+          aria-label={t("settings.cacheHeatmap")}
           role="grid"
           style={{
             "--heatmap-cols": heatmapCols,
@@ -2179,31 +2189,31 @@ function SettingsUsagePage({
               data-level={day.level}
               key={day.date}
               role="gridcell"
-              title={formatHeatmapTitle(day)}
-              aria-label={formatHeatmapTitle(day)}
+              title={formatHeatmapTitle(day, t, formatNumber)}
+              aria-label={formatHeatmapTitle(day, t, formatNumber)}
             />
           ))}
         </div>
         <div className="settings-heatmap-legend" aria-hidden="true">
-          <span>少</span>
+          <span>{t("settings.less")}</span>
           {[0, 1, 2, 3, 4].map((level) => (
             <i className="settings-heatmap-legend-cell" data-level={level} key={level} />
           ))}
-          <span>多</span>
+          <span>{t("settings.more")}</span>
         </div>
       </div>
 
       {usage ? (
         usage.model_breakdowns.length > 0 ? (
           <div className="settings-card settings-usage-table-wrap">
-            <h2 className="settings-usage-table-title">模型使用</h2>
+            <h2 className="settings-usage-table-title">{t("settings.modelUsage")}</h2>
             <table className="settings-usage-table">
               <thead>
                 <tr>
-                  <th scope="col">模型</th>
-                  <th scope="col" className="settings-usage-num">输入</th>
-                  <th scope="col" className="settings-usage-num">输出</th>
-                  <th scope="col" className="settings-usage-num">命中率</th>
+                  <th scope="col">{t("settings.model")}</th>
+                  <th scope="col" className="settings-usage-num">{t("settings.usageInput")}</th>
+                  <th scope="col" className="settings-usage-num">{t("settings.usageOutput")}</th>
+                  <th scope="col" className="settings-usage-num">{t("settings.hitRate")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -2213,11 +2223,11 @@ function SettingsUsagePage({
                   return (
                     <tr key={`${b.provider}\n${b.model}`}>
                       <td>
-                        <strong>{b.provider || "(未知服务)"}</strong>
-                        <small>{b.model || "(未知模型)"}</small>
+                        <strong>{b.provider || t("settings.unknownProvider")}</strong>
+                        <small>{b.model || t("settings.unknownModel")}</small>
                       </td>
-                      <td className="settings-usage-num">{formatTokenCount(b.input_tokens)}</td>
-                      <td className="settings-usage-num">{formatTokenCount(b.output_tokens)}</td>
+                      <td className="settings-usage-num">{formatNumber(b.input_tokens)}</td>
+                      <td className="settings-usage-num">{formatNumber(b.output_tokens)}</td>
                       <td className="settings-usage-num">
                         <span className={`settings-usage-rate rate-${hitRateLevel(rate)}`}>
                           {formatPercent(rate)}
@@ -2230,10 +2240,10 @@ function SettingsUsagePage({
             </table>
           </div>
         ) : (
-          <div className="settings-empty">暂无用量记录</div>
+          <div className="settings-empty">{t("settings.noUsage")}</div>
         )
       ) : (
-        <div className="settings-empty">加载中…</div>
+        <div className="settings-empty">{t("settings.loading")}</div>
       )}
     </div>
   );
@@ -2262,6 +2272,8 @@ type AdvancedDraft = {
   maxSteps: string;
   temperature: string;
 };
+
+type Translate = ReturnType<typeof useI18n>["t"];
 
 function settingsPageTitle(page: SettingsPage): string {
   switch (page) {
@@ -2438,16 +2450,16 @@ function formatOptionalTokenCount(value: number | undefined): string {
   return formatTokenCount(value);
 }
 
-function formatUsageRange(range: SettingsUsageRange): string {
+function formatUsageRange(range: SettingsUsageRange, t: Translate): string {
   switch (range) {
     case "all":
-      return "全部";
+      return t("settings.rangeAll");
     case "7d":
-      return "7 天";
+      return t("settings.rangeDays", { count: 7 });
     case "30d":
-      return "30 天";
+      return t("settings.rangeDays", { count: 30 });
     case "90d":
-      return "90 天";
+      return t("settings.rangeDays", { count: 90 });
   }
 }
 
@@ -2509,11 +2521,20 @@ function hasUsageDayData(day: SettingsUsageDay): boolean {
   );
 }
 
-function formatHeatmapTitle(day: CacheHeatmapCell): string {
+function formatHeatmapTitle(
+  day: CacheHeatmapCell,
+  t: Translate,
+  formatNumber: (value: number, options?: Intl.NumberFormatOptions) => string,
+): string {
   if (!hasUsageDayData(day)) {
-    return `${day.date}：暂无用量`;
+    return t("settings.noUsageOnDate", { date: day.date });
   }
-  return `${day.date}\n输入 ${formatTokenCount(day.input_tokens)} · 输出 ${formatTokenCount(day.output_tokens)} · 命中 ${formatPercent(day.cache_hit_rate)}`;
+  return t("settings.usageOnDate", {
+    date: day.date,
+    input: formatNumber(day.input_tokens),
+    output: formatNumber(day.output_tokens),
+    rate: formatPercent(day.cache_hit_rate),
+  });
 }
 
 
