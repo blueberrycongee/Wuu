@@ -1727,6 +1727,15 @@ export const zhCN = {
   "chipGallery.mock.analyzeLargeFile": "分析这个大文件",
   "chipGallery.inContextDescriptionPrefix": "模拟的 Turn 通过真实",
   "chipGallery.inContextDescriptionSuffix": "渲染，展示 Chip 在用户消息下方或助手 Turn 后的实际位置和间距。",
+  "composer.queueAlreadyHandled": "排队消息已被处理，无法取消",
+  "composer.cancelQueueFailed": "取消排队失败",
+  "composer.guideAlreadyHandled": "引导消息已被处理，无法取消",
+  "composer.cancelGuideFailed": "取消引导失败",
+  "composer.clearBeforeEditingQueue": "先发送或清空当前输入，再编辑排队消息",
+  "composer.queueRestoredForEditing": "已撤回排队消息，可编辑后重新发送",
+  "composer.noActiveTurnToGuide": "没有可引导的任务",
+  "composer.guideFailed": "引导失败",
+  "conversation.jumpToLatest": "跳到最新",
   "i18n.missing": "内容暂不可用",
 } as const;
 
