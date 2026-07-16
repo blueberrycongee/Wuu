@@ -5,6 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { InitializeResult, Thread } from "../shared/protocol";
 import { initialState, type AppState } from "./AppState";
+import { environmentPanelScaleForWidth } from "./EnvironmentPanelScale";
 import { EnvironmentSideStack } from "./EnvironmentSideStack";
 
 let container: HTMLDivElement;
@@ -106,6 +107,7 @@ describe("EnvironmentSideStack", () => {
   it("renders the environment panel without a docked query-history card", () => {
     renderStack();
 
+    expect(container.querySelector(".environment-info-side-stack")).not.toBeNull();
     expect(container.querySelector(".environment-side-stack > .environment-panel")).not.toBeNull();
     expect(container.querySelector(".environment-side-stack > .query-history-environment-slot")).toBeNull();
     expect(container.querySelector(".query-history-popover")).toBeNull();
@@ -118,29 +120,36 @@ describe("EnvironmentSideStack", () => {
     expect(rule).not.toContain("overflow: hidden");
   });
 
+  it("scales the complete environment panel at narrow widths", () => {
+    Object.defineProperty(container, "clientWidth", {
+      configurable: true,
+      value: 420,
+    });
+    renderStack();
+
+    expect(environmentPanelScaleForWidth(560)).toBe(0.8);
+    expect(environmentPanelScaleForWidth(420)).toBe(0.6);
+    expect(environmentPanelScaleForWidth(320)).toBe(0.576);
+
+    const stack = container.querySelector<HTMLElement>(
+      ".environment-info-side-stack",
+    );
+    expect(stack?.style.getPropertyValue("--environment-panel-scale")).toBe(
+      "0.6",
+    );
+
+    const rule = cssRule(".environment-side-stack.environment-info-side-stack");
+    expect(rule).toContain("transform: scale(var(--environment-panel-scale, 1))");
+    expect(rule).toContain("transform-origin: top right");
+  });
+
   it("renders group info instead of session environment rows for group threads", () => {
     renderStack({ thread: groupThread() });
 
-    expect(container.querySelector(".group-info-side-stack")).not.toBeNull();
     expect(container.querySelector(".group-info-panel")).not.toBeNull();
     expect(container.textContent).toContain("群聊信息");
     expect(container.textContent).toContain("前端小队");
     expect(container.textContent).not.toContain("群内容");
     expect(container.textContent).not.toContain("创建拉取请求");
-  });
-
-  it("scales the group info panel and its content by the same ratio", () => {
-    const stack = cssRule(".environment-side-stack.group-info-side-stack");
-    const panel = cssRule(".group-info-panel");
-
-    expect(stack).toContain("container: group-info-stack / inline-size");
-    expect(stack).toMatch(/width:\s*min\(/);
-    expect(panel).toContain("--group-info-body-font: 4.268cqi");
-    expect(panel).toContain("--group-info-avatar-size: 8.537cqi");
-    expect(panel).not.toContain("clamp(");
-    expect(panel).toContain("padding: var(--group-info-panel-padding)");
-    expect(environmentCSS).toMatch(
-      /@container group-info-stack \(max-width: 280px\)[\s\S]*?white-space:\s*normal/,
-    );
   });
 });
