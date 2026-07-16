@@ -1086,6 +1086,8 @@ export const zhCN = {
   "contextMenu.paste": "粘贴",
   "contextMenu.selectAll": "全选",
   "contextMenu.delete": "删除",
+  "emptyHints.label": "新会话提示",
+  "emptyHints.configureModel": "配置模型",
   "turn.requestStopped": "这次请求已停止",
   "turn.waitingForModel": "已收到请求，正在等待模型回应",
   "turn.organizingAnswer": "正在组织回答",

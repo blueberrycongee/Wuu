@@ -1088,6 +1088,8 @@ export const enUS = {
   "contextMenu.paste": "Paste",
   "contextMenu.selectAll": "Select all",
   "contextMenu.delete": "Delete",
+  "emptyHints.label": "New conversation suggestions",
+  "emptyHints.configureModel": "Configure model",
   "turn.requestStopped": "This request was stopped",
   "turn.waitingForModel": "Request received. Waiting for the model to respond",
   "turn.organizingAnswer": "Preparing the answer",
