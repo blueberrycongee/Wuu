@@ -1921,6 +1921,11 @@ func (s *Server) runTurnWithRequestContext(ctx context.Context, th *threadState,
 	awaitingAutoContinuation := err == nil && threadRuntime != nil &&
 		(threadRuntimeHasOutstandingAgentWork(threadRuntime) ||
 			threadHasOutstandingProcessCompletion(th.ID, threadRuntime.AgentControl, threadRuntime.ProcessManager))
+	if runID := strings.TrimSpace(turnRuntime.AutomationRunID); runID != "" && s.rt != nil && s.rt.AutomationManager != nil {
+		if completeErr := s.rt.AutomationManager.CompleteRun(runID, th.ID, turnID, err); completeErr != nil {
+			providers.DebugLogf("complete automation run %q: %v", runID, completeErr)
+		}
+	}
 	if err != nil {
 		notify(NotificationTurnError, TurnErrorNotification{
 			ThreadID:   th.ID,
@@ -1948,11 +1953,6 @@ func (s *Server) runTurnWithRequestContext(ctx context.Context, th *threadState,
 			TracePath:                tracePath,
 			AwaitingAutoContinuation: awaitingAutoContinuation,
 		})
-	}
-	if runID := strings.TrimSpace(turnRuntime.AutomationRunID); runID != "" && s.rt != nil && s.rt.AutomationManager != nil {
-		if completeErr := s.rt.AutomationManager.CompleteRun(runID, th.ID, turnID, err); completeErr != nil {
-			providers.DebugLogf("complete automation run %q: %v", runID, completeErr)
-		}
 	}
 	if residentTurn {
 		s.kickResidentAgent(residentParticipantID)
@@ -2602,6 +2602,8 @@ func (s *Server) startThreadUserTurnWithAdmission(ctx context.Context, th *threa
 		th.frozenTreeResultIDs = nil
 	}
 	turnRuntime.Ultra = snapshot.Ultra
+	turnRuntime.AutomationRunID = snapshot.AutomationRunID
+	turnRuntime.RequestContext = cloneContextSegments(snapshot.RequestContext)
 	th.mu.Unlock()
 
 	return startedThreadTurn{
@@ -2654,10 +2656,7 @@ func (s *Server) startQueuedTurn(ctx context.Context, threadID string, entry que
 		}
 	}
 
-	snapshot := turnRuntimeSnapshot{}.withPermissions(permissions)
-	snapshot.PermissionExplicit = entry.snapshot.PermissionExplicit
-	snapshot.ForceCompact = entry.snapshot.ForceCompact
-	snapshot.CompactOnly = entry.snapshot.CompactOnly
+	snapshot := entry.snapshot.withPermissions(permissions)
 	started, ok, err := s.startThreadUserTurnWithAdmission(
 		ctx,
 		th,
