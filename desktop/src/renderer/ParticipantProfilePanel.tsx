@@ -20,18 +20,9 @@ import { ImagePreviewProvider } from "./ImagePreview";
 import { Modal } from "./Modal";
 import { RichContent } from "./RichContent";
 import { SelectMenu, type SelectMenuGroup } from "./SelectMenu";
+import { PARTICIPANT_ROLES } from "./ParticipantLabels";
 
-export const PARTICIPANT_ROLES = [
-  "general-purpose",
-  "planner",
-  "researcher",
-  "worker",
-  "reviewer",
-  "qa",
-  "debugger",
-  "integrator",
-  "verification",
-];
+export { PARTICIPANT_ROLES } from "./ParticipantLabels";
 
 const AVATAR_MAX_BYTES = 512 * 1024;
 
