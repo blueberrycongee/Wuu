@@ -207,6 +207,27 @@ func abortStartedThreadTurn(th *threadState, started startedThreadTurn, cause er
 
 const turnTerminalHistoryRecord = "turn_terminal"
 
+func (s *Server) persistTurnTerminal(th *threadState, turnID string, status TurnStatus, cause error, at time.Time) error {
+	if s == nil || s.rt == nil || th == nil || !th.PersistHistory || strings.TrimSpace(turnID) == "" {
+		return nil
+	}
+	if status != TurnStatusFailed && status != TurnStatusInterrupted {
+		return nil
+	}
+	message := ""
+	if cause != nil {
+		message = cause.Error()
+	}
+	return session.AppendHistoryRecord(s.rt.SessionDir, th.ID, session.HistoryRecord{
+		Role:           "meta",
+		Content:        turnTerminalHistoryRecord,
+		DisplayContent: message,
+		ClientID:       turnID,
+		StopReason:     string(status),
+		At:             at,
+	})
+}
+
 // abortStartedThreadTurnDurably records a terminal projection for an ordinary
 // user message that was already appended before its runner could be launched.
 // Meta records are excluded from provider history but let restart projection
@@ -216,15 +237,8 @@ func (s *Server) abortStartedThreadTurnDurably(th *threadState, started startedT
 		cause = errors.New("turn start aborted")
 	}
 	var persistErr error
-	if s != nil && s.rt != nil && th != nil && th.PersistHistory && started.userMsgSeq > 0 {
-		persistErr = session.AppendHistoryRecord(s.rt.SessionDir, th.ID, session.HistoryRecord{
-			Role:           "meta",
-			Content:        turnTerminalHistoryRecord,
-			DisplayContent: cause.Error(),
-			ClientID:       started.turnID,
-			StopReason:     string(TurnStatusFailed),
-			At:             time.Now().UTC(),
-		})
+	if started.userMsgSeq > 0 {
+		persistErr = s.persistTurnTerminal(th, started.turnID, TurnStatusFailed, cause, time.Now().UTC())
 	}
 	abortStartedThreadTurn(th, started, cause)
 	if persistErr != nil {

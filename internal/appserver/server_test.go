@@ -1305,8 +1305,14 @@ func TestRunningTurnUsesModelSnapshotAfterConfigUpdate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load meta messages: %v", err)
 	}
-	if len(metas) != 1 || metas[0].Provider != "fake-provider" || metas[0].Model != "fake-model" {
-		t.Fatalf("token usage should use turn snapshot, got %+v", metas)
+	var usageMetas []persistedMessage
+	for _, meta := range metas {
+		if meta.Content == "token_usage" {
+			usageMetas = append(usageMetas, meta)
+		}
+	}
+	if len(usageMetas) != 1 || usageMetas[0].Provider != "fake-provider" || usageMetas[0].Model != "fake-model" {
+		t.Fatalf("token usage should use turn snapshot, got %+v", usageMetas)
 	}
 }
 
@@ -6391,7 +6397,7 @@ func TestServerRejectsUnknownTurnParams(t *testing.T) {
 	}
 }
 
-func TestServerFailedTurnDoesNotPersistPartialToolHistory(t *testing.T) {
+func TestServerFailedTurnPersistsPairedToolHistoryAndReloadsFailure(t *testing.T) {
 	client := &fakeClient{
 		responses: []providers.ChatResponse{{
 			ToolCalls: []providers.ToolCall{{
@@ -6444,13 +6450,74 @@ func TestServerFailedTurnDoesNotPersistPartialToolHistory(t *testing.T) {
 		t.Fatalf("load history: %v", err)
 	}
 	visible := visibleMessagesForTest(persisted)
-	if len(visible) != 1 || visible[0].Role != "user" || visible[0].Content != "inspect" {
-		t.Fatalf("failed turn should persist only the user prompt, got %+v", visible)
+	if len(visible) != 3 {
+		t.Fatalf("failed turn history length = %d, want user + assistant tool call + tool result: %+v", len(visible), visible)
 	}
-	for _, msg := range persisted {
-		if msg.Role == "assistant" || msg.Role == "tool" {
-			t.Fatalf("failed turn persisted partial model/tool history: %+v", persisted)
-		}
+	if visible[0].Role != "user" || visible[0].Content != "inspect" {
+		t.Fatalf("unexpected persisted user message: %+v", visible[0])
+	}
+	if visible[1].Role != "assistant" || len(visible[1].ToolCalls) != 1 || visible[1].ToolCalls[0].ID != "call_1" {
+		t.Fatalf("failed turn did not persist assistant tool call: %+v", visible[1])
+	}
+	if visible[2].Role != "tool" || visible[2].ToolCallID != "call_1" {
+		t.Fatalf("failed turn did not persist paired tool result: %+v", visible[2])
+	}
+
+	reloadOut := &lockedBuffer{}
+	reloaded := New(rt, reloadOut)
+	resume := fmt.Sprintf(`{"id":"reload","method":"thread/resume","params":{"session_id":%q}}`, threadID)
+	if err := reloaded.handleLine(context.Background(), []byte(resume)); err != nil {
+		t.Fatalf("thread/resume: %v", err)
+	}
+	result := remarshal[ThreadResumeResult](t, responseByID(t, parseOutput(t, reloadOut.String()), "reload")["result"])
+	if len(result.Thread.Turns) != 1 {
+		t.Fatalf("reloaded turns = %+v, want one failed turn", result.Thread.Turns)
+	}
+	reloadedTurn := result.Thread.Turns[0]
+	if reloadedTurn.Status != TurnStatusFailed || reloadedTurn.Error == nil || !strings.Contains(reloadedTurn.Error.Message, "provider unavailable") || reloadedTurn.CompletedAt == nil {
+		t.Fatalf("reloaded turn did not restore failure: %+v", reloadedTurn)
+	}
+	if len(reloadedTurn.Items) == 0 || reloadedTurn.Items[len(reloadedTurn.Items)-1].Type != ThreadItemError || !strings.Contains(reloadedTurn.Items[len(reloadedTurn.Items)-1].Error, "provider unavailable") {
+		t.Fatalf("reloaded turn did not restore error item: %+v", reloadedTurn.Items)
+	}
+}
+
+func TestServerInterruptedPartialTurnReloadsInterrupted(t *testing.T) {
+	rt := newTestRuntime(t, &fakeClient{})
+	sess, err := session.CreateWithMetadata(rt.SessionDir, "20260716-000001-interrupted", rt.RootDir)
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	if _, err := appendChatMessage(rt.SessionDir, sess.ID, providers.ChatMessage{Role: "user", Content: "inspect"}); err != nil {
+		t.Fatalf("append user: %v", err)
+	}
+	if _, err := appendChatMessage(rt.SessionDir, sess.ID, providers.ChatMessage{Role: "assistant", Content: "partial answer"}); err != nil {
+		t.Fatalf("append partial assistant: %v", err)
+	}
+
+	srv := New(rt, &lockedBuffer{})
+	th := newThreadState(sess.ID, nil, rt.ProviderName, rt.Model, rt.RootDir, true, time.Now().UTC())
+	completedAt := time.Date(2026, 7, 16, 10, 30, 0, 0, time.UTC)
+	if err := srv.persistTurnTerminal(th, sess.ID+"-turn-0001", TurnStatusInterrupted, context.Canceled, completedAt); err != nil {
+		t.Fatalf("persist terminal turn: %v", err)
+	}
+
+	reloadOut := &lockedBuffer{}
+	reloaded := New(rt, reloadOut)
+	resume := fmt.Sprintf(`{"id":"reload","method":"thread/resume","params":{"session_id":%q}}`, sess.ID)
+	if err := reloaded.handleLine(context.Background(), []byte(resume)); err != nil {
+		t.Fatalf("thread/resume: %v", err)
+	}
+	result := remarshal[ThreadResumeResult](t, responseByID(t, parseOutput(t, reloadOut.String()), "reload")["result"])
+	if len(result.Thread.Turns) != 1 {
+		t.Fatalf("reloaded turns = %+v, want one interrupted turn", result.Thread.Turns)
+	}
+	turn := result.Thread.Turns[0]
+	if turn.Status != TurnStatusInterrupted || turn.Error == nil || turn.Error.Message != context.Canceled.Error() || turn.CompletedAt == nil || !turn.CompletedAt.Equal(completedAt) {
+		t.Fatalf("reloaded turn did not restore interruption: %+v", turn)
+	}
+	if len(turn.Items) < 3 || turn.Items[1].Type != ThreadItemAgentMessage || turn.Items[1].Text != "partial answer" || turn.Items[len(turn.Items)-1].Type != ThreadItemError {
+		t.Fatalf("reloaded partial turn items = %+v", turn.Items)
 	}
 }
 

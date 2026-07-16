@@ -1134,11 +1134,15 @@ func turnsFromPersistedHistoryInScope(threadID, subthreadID string, history []pe
 				if at.IsZero() {
 					at = now
 				}
+				status := TurnStatusFailed
+				if strings.EqualFold(strings.TrimSpace(rec.StopReason), string(TurnStatusInterrupted)) {
+					status = TurnStatusInterrupted
+				}
 				message := strings.TrimSpace(rec.DisplayContent)
 				if message == "" {
 					message = "turn start aborted"
 				}
-				current.Status = TurnStatusFailed
+				current.Status = status
 				current.Error = &TurnError{Message: message}
 				current.CompletedAt = &at
 				appendItem(ThreadItem{
