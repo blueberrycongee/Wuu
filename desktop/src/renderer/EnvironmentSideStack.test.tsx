@@ -129,14 +129,15 @@ describe("EnvironmentSideStack", () => {
     expect(container.textContent).not.toContain("创建拉取请求");
   });
 
-  it("scales the group info panel and its content from the available width", () => {
+  it("scales the group info panel and its content by the same ratio", () => {
     const stack = cssRule(".environment-side-stack.group-info-side-stack");
     const panel = cssRule(".group-info-panel");
 
     expect(stack).toContain("container: group-info-stack / inline-size");
     expect(stack).toMatch(/width:\s*min\(/);
-    expect(panel).toContain("--group-info-body-font: clamp(");
-    expect(panel).toContain("--group-info-avatar-size: clamp(");
+    expect(panel).toContain("--group-info-body-font: 4.268cqi");
+    expect(panel).toContain("--group-info-avatar-size: 8.537cqi");
+    expect(panel).not.toContain("clamp(");
     expect(panel).toContain("padding: var(--group-info-panel-padding)");
     expect(environmentCSS).toMatch(
       /@container group-info-stack \(max-width: 280px\)[\s\S]*?white-space:\s*normal/,

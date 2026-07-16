@@ -69,7 +69,7 @@
   container: group-info-stack / inline-size;
   width: min(
     var(--environment-panel-width),
-    max(260px, 36%),
+    36%,
     calc(100% - 32px)
   );
 }
@@ -163,13 +163,13 @@
 }
 
 .group-info-panel {
-  --group-info-body-font: clamp(12px, 4.27cqi, var(--font-body));
-  --group-info-small-font: clamp(10px, 3.35cqi, var(--font-xs));
-  --group-info-avatar-size: clamp(24px, 8.54cqi, 28px);
-  --group-info-panel-padding: clamp(8px, 3.66cqi, 12px);
-  --group-info-section-gap: clamp(10px, 4.27cqi, 14px);
-  --group-info-row-gap: clamp(7px, 2.74cqi, 9px);
-  --group-info-body-bottom-padding: clamp(2px, 1.22cqi, 4px);
+  --group-info-body-font: 4.268cqi;
+  --group-info-small-font: 3.354cqi;
+  --group-info-avatar-size: 8.537cqi;
+  --group-info-panel-padding: 3.659cqi;
+  --group-info-section-gap: 4.268cqi;
+  --group-info-row-gap: 2.744cqi;
+  --group-info-body-bottom-padding: 1.22cqi;
   padding: var(--group-info-panel-padding);
 }
 
@@ -181,7 +181,7 @@
 .group-info-summary {
   display: grid;
   border-bottom: 1px solid var(--surface-3);
-  padding: 2px 4px clamp(12px, 5.49cqi, 18px);
+  padding: 0.61cqi 1.22cqi 5.488cqi;
 }
 
 .group-info-field {
@@ -285,8 +285,8 @@
 
 .group-info-add-row {
   grid-template-columns: 16px var(--group-info-avatar-size) minmax(0, 1fr);
-  min-height: clamp(34px, 11.59cqi, 38px);
-  padding: clamp(4px, 1.53cqi, 5px) clamp(5px, 2.13cqi, 7px);
+  min-height: 11.585cqi;
+  padding: 1.524cqi 2.134cqi;
   cursor: pointer;
 }
 
@@ -314,7 +314,7 @@
   min-width: 0;
   overflow: hidden;
   color: var(--ink);
-  font-size: clamp(11px, 3.66cqi, var(--font-sm));
+  font-size: 3.659cqi;
   font-weight: var(--weight-semibold);
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -340,8 +340,8 @@
 
 .group-info-member-row {
   grid-template-columns: var(--group-info-avatar-size) minmax(0, 1fr) 24px;
-  min-height: clamp(36px, 12.8cqi, 42px);
-  padding: clamp(4px, 1.83cqi, 6px) 4px;
+  min-height: 12.805cqi;
+  padding: 1.829cqi 1.22cqi;
 }
 
 /* Positioned wrapper so the busy pip can sit at the avatar corner without
