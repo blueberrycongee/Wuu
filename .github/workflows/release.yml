@@ -111,10 +111,16 @@ jobs:
         run: |
           echo "::notice::macOS desktop artifacts are unsigned preview builds; users may need to remove Gatekeeper quarantine after installing."
 
-          version_output="$(release/mac-arm64/wuu.app/Contents/Resources/bin/wuu --version)"
+          core="release/mac-arm64/wuu.app/Contents/Resources/bin/wuu-core"
+          version_output="$("$core" --version)"
           echo "$version_output"
           if echo "$version_output" | grep -q dirty; then
             echo "::error::Packaged core was built from a dirty worktree."
+            exit 1
+          fi
+
+          if [ -e "release/mac-arm64/wuu.app/Contents/Resources/bin/wuu" ]; then
+            echo "::error::Packaged app must keep its core private as wuu-core."
             exit 1
           fi
 

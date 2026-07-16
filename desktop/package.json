@@ -68,8 +68,8 @@
         "from": "build/bin",
         "to": "bin",
         "filter": [
-          "**/*",
-          "!wuu-cua-mac*"
+          "wuu-core",
+          "wuu-core.exe"
         ]
       }
     ],
