@@ -1479,7 +1479,7 @@ function SettingsGeneralPage({
       });
     } catch (error) {
       setGitAttributionError(
-        error instanceof Error ? error.message : "保存提交署名设置失败",
+        error instanceof Error ? error.message : t("settings.saveGitAttributionFailed"),
       );
     } finally {
       setGitAttributionBusy(false);
@@ -1666,8 +1666,8 @@ function SettingsGeneralPage({
             </button>
           </SettingsRow>
           <SettingsRow
-            title="Agent 提交署名"
-            description="为 WUU Agent 通过 Git 工具创建的提交追加 wuu-agent[bot]；保留原作者与其他共同作者"
+            title={t("settings.gitAttribution")}
+            description={t("settings.gitAttributionDescription")}
           >
             <button
               className="settings-switch"
@@ -1680,7 +1680,7 @@ function SettingsGeneralPage({
             >
               <span className="settings-switch-thumb" aria-hidden="true" />
               <span className="sr-only">
-                {gitAttributionEnabled ? "关闭 WUU Agent 提交署名" : "打开 WUU Agent 提交署名"}
+                {gitAttributionEnabled ? t("settings.disableGitAttribution") : t("settings.enableGitAttribution")}
               </span>
             </button>
             {gitAttributionError ? (

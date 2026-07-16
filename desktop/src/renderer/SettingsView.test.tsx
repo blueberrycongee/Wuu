@@ -616,6 +616,7 @@ describe("SettingsView general settings", () => {
     });
     const onGeneralSave = vi.fn().mockResolvedValue(undefined);
     renderSettings({
+      locale: "en-US",
       initialized: baseInitialized({
         general_settings: {
           append_system_prompt: "",
@@ -636,6 +637,7 @@ describe("SettingsView general settings", () => {
       '[data-testid="settings-git-attribution"]',
     );
     expect(attributionSwitch?.getAttribute("aria-checked")).toBe("true");
+    expect(container.textContent).toContain("Agent commit attribution");
     expect(container.textContent).toContain("wuu-agent[bot]");
 
     await act(async () => {
