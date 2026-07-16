@@ -37,7 +37,7 @@ export function SideThreadComposer({
   onInterrupt,
   onReset,
 }: SideThreadComposerProps): JSX.Element {
-  const { locale } = useI18n();
+  const { locale, t } = useI18n();
   const runtimeRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const accessMenuRef = useRef<HTMLDivElement>(null);
@@ -54,7 +54,7 @@ export function SideThreadComposer({
       variant="dock"
       hideRuntimeControls
       textOnly
-      placeholder="询问当前任务，不会加入主对话"
+      placeholder={t("composer.sideThreadPlaceholder")}
       prompt={visibleDraft}
       setPrompt={onChangeDraft}
       files={[]}
