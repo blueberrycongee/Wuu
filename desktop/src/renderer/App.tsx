@@ -78,6 +78,7 @@ import {
   type EnvironmentPanelMotionState,
 } from "./EnvironmentPanel";
 import { createEnvironmentActions } from "./EnvironmentActions";
+import { useGitActionBusy } from "./GitActionBusy";
 import {
   activePlanUpdateForThread,
   activeSessionTab,
@@ -328,73 +329,6 @@ function readPopOutInit(): PopOutInitResult | null {
   } catch {
     return null;
   }
-}
-
-function useGitActionBusy(
-  context: RuntimeContext | undefined,
-  runningThreadKey: string,
-): boolean {
-  const [snapshot, setSnapshot] = useState<{
-    lookupKey: string;
-    busy: boolean;
-  }>(() => ({ lookupKey: "", busy: true }));
-  const contextKey = context
-    ? [context.kind, context.kind === "project" ? context.project_id : "", context.cwd].join(
-        "\0",
-      )
-    : "";
-  const lookupKey = `${contextKey}\0${runningThreadKey}`;
-  useEffect(() => {
-    if (!contextKey) {
-      return;
-    }
-    let cancelled = false;
-    let requestID = 0;
-    const refresh = (): void => {
-      const currentRequestID = ++requestID;
-      const query = window.wuu.gitActionBusy;
-      if (typeof query !== "function") {
-        setSnapshot({ lookupKey, busy: true });
-        return;
-      }
-      void query()
-        .then((busy) => {
-          if (!cancelled && currentRequestID === requestID) {
-            setSnapshot({ lookupKey, busy });
-          }
-        })
-        .catch(() => {
-          if (!cancelled && currentRequestID === requestID) {
-            setSnapshot({ lookupKey, busy: true });
-          }
-        });
-    };
-    refresh();
-    const off = window.wuu.onServerEvent((event) => {
-      if (event.kind !== "notification") {
-        return;
-      }
-      const method = event.message.method;
-      if (
-        method === "turn/started" ||
-        method === "turn/completed" ||
-        method === "turn/error" ||
-        method === "thread/started" ||
-        method === "thread/resumed"
-      ) {
-        setSnapshot({ lookupKey: "", busy: true });
-        refresh();
-      }
-    });
-    return () => {
-      cancelled = true;
-      off();
-    };
-  }, [contextKey, lookupKey]);
-  if (!context) {
-    return false;
-  }
-  return snapshot.lookupKey === lookupKey ? snapshot.busy : true;
 }
 
 export function App(): JSX.Element {
