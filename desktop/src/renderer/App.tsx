@@ -231,6 +231,7 @@ import {
   type HistoryMessageEditState,
   type PendingForkState,
 } from "./ConversationHistoryActions";
+import { localizedText, resolveLocalizedText, useI18n } from "./i18n";
 import { CachedConversationPanes } from "./CachedConversationPanes";
 import {
   ConversationSidePanels,
@@ -271,8 +272,6 @@ const WORKSPACE_SHEET_EXIT_MS = motionDurationMs("--sheet-exit-duration", 220);
 type WorkspaceSheetPhase = "docked" | "arming" | "open" | "exiting" | "docking";
 const ENVIRONMENT_PANEL_WIDTH_PX = 328;
 const ENVIRONMENT_PANEL_WIDTH_CSS = `${ENVIRONMENT_PANEL_WIDTH_PX}px`;
-const WORKTREE_FORK_NON_GIT_REASON =
-  "当前工作目录不是 git 仓库，不能创建 git worktree";
 // Cap on the number of bars rendered in the always-visible rail. The
 // rail is a thin at-a-glance index; if there are more queries than fit,
 // we collapse the tail into a single bar.
@@ -331,7 +330,14 @@ function readPopOutInit(): PopOutInitResult | null {
   }
 }
 
+type MainComposerFocusRequest = {
+  target: ComposerVariant;
+  origin: Element | null;
+  interactionVersion: number;
+};
+
 export function App(): JSX.Element {
+  const { locale, t, formatNumber } = useI18n();
   const [popOutInit] = useState<PopOutInitResult | null>(() => readPopOutInit());
   const poppedOutMode = Boolean(popOutInit?.kind && popOutInit.context);
   const [state, setState] = useState<AppState>(initialState);
@@ -376,6 +382,9 @@ export function App(): JSX.Element {
   const closeProjectMenu = useCallback(() => setProjectMenuOpen(false), []);
   const appShellRef = useRef<HTMLDivElement>(null);
   const settingsShellRef = useRef<HTMLDivElement>(null);
+  const [mainComposerFocusRequest, setMainComposerFocusRequest] =
+    useState<MainComposerFocusRequest | null>(null);
+  const userInteractionVersionRef = useRef(0);
   const {
     sidebarWidth,
     sidebarCollapsed,
@@ -971,7 +980,7 @@ export function App(): JSX.Element {
     } catch (error) {
       setState((current) => ({
         ...current,
-        status: desktopApiErrorMessage(error, "无法接管浏览器"),
+        status: desktopApiErrorMessage(error, t("app.browserTakeoverFailed")),
       }));
     }
   }
@@ -989,7 +998,7 @@ export function App(): JSX.Element {
     } catch (error) {
       setState((current) => ({
         ...current,
-        status: desktopApiErrorMessage(error, "无法交还浏览器控制"),
+        status: desktopApiErrorMessage(error, t("app.browserReleaseFailed")),
       }));
     }
   }
@@ -1007,7 +1016,7 @@ export function App(): JSX.Element {
     } catch (error) {
       setState((current) => ({
         ...current,
-        status: desktopApiErrorMessage(error, "无法停止浏览器 Activity"),
+        status: desktopApiErrorMessage(error, t("app.browserStopFailed")),
       }));
     }
   }
@@ -1296,7 +1305,7 @@ export function App(): JSX.Element {
   );
   const forkWorktreeDisabledReason =
     state.gitStatus?.is_repo === false
-      ? WORKTREE_FORK_NON_GIT_REASON
+      ? t("app.worktreeRequiresGit")
       : undefined;
   const splitConversation = Boolean(state.thread && state.secondaryThread);
 
@@ -1433,6 +1442,18 @@ export function App(): JSX.Element {
   }, [state]);
 
   useEffect(() => {
+    const markUserInteraction = (): void => {
+      userInteractionVersionRef.current += 1;
+    };
+    document.addEventListener("pointerdown", markUserInteraction, true);
+    document.addEventListener("keydown", markUserInteraction, true);
+    return () => {
+      document.removeEventListener("pointerdown", markUserInteraction, true);
+      document.removeEventListener("keydown", markUserInteraction, true);
+    };
+  }, []);
+
+  useEffect(() => {
     void refreshGoalSummary();
   }, [refreshGoalSummary]);
 
@@ -1489,7 +1510,7 @@ export function App(): JSX.Element {
         void refreshParticipants().catch((error) => {
           setState((current) => ({
             ...current,
-            status: desktopApiErrorMessage(error, "无法刷新 Agents"),
+            status: desktopApiErrorMessage(error, t("app.refreshAgentsFailed")),
           }));
         });
       }
@@ -1605,7 +1626,7 @@ export function App(): JSX.Element {
         }
         setState((current) => ({
           ...current,
-          status: error instanceof Error ? error.message : "failed to start",
+          status: error instanceof Error ? error.message : t("runtime.startFailed"),
         }));
       }
     })();
@@ -1636,7 +1657,7 @@ export function App(): JSX.Element {
           ? {
               ...current,
               loading: false,
-              error: desktopApiErrorMessage(error, "无法加载 Agents"),
+              error: desktopApiErrorMessage(error, t("app.loadAgentsFailed")),
             }
           : current,
       );
@@ -1749,10 +1770,26 @@ export function App(): JSX.Element {
       : undefined;
   const showingTaskBoard = Boolean(boardSessionTab);
   const activeTitle = showingSkillsCatalog
-    ? "Skills"
+    ? t("skills.title")
     : boardSessionTab
       ? sessionTabLabel(boardSessionTab, state)
-      : activeThread?.preview || "新对话";
+      : resolveLocalizedText(activeThread?.preview ?? "") ||
+        t("tabs.newConversation");
+  const popOutWindowTitle =
+    popOutInit?.kind === "thread"
+      ? activeThread?.title?.trim() ||
+        resolveLocalizedText(activeThread?.preview?.trim() ?? "") ||
+        t("tabs.newConversation")
+      : popOutInit?.kind === "subthread"
+        ? `${t("subthread.label")} · ${popOutInit.subthreadID?.slice(0, 8) ?? ""}`
+        : t("tabs.newConversation");
+  useEffect(() => {
+    if (!poppedOutMode) return;
+    // The renderer owns the loaded page title. This runs after the shared
+    // index.html title and again when either hydrated data or locale changes,
+    // avoiding races with an independent main-process title lookup.
+    document.title = `wuu · ${popOutWindowTitle}`;
+  }, [poppedOutMode, popOutWindowTitle]);
   const currentHour = useCurrentHour();
   const greetingContext: GreetingContext = resolveGreetingContext({
     activeThread,
@@ -1857,6 +1894,78 @@ export function App(): JSX.Element {
     }
     return conversationScrollRef.current;
   }, [conversationScrollRef, splitConversation, splitPaneRefs, state.activePane]);
+  const focusMainComposer = useCallback(
+    (
+      target: ComposerVariant,
+      origin: Element | null,
+      interactionVersion: number,
+    ): boolean => {
+      const composer = conversationPaneRef.current?.querySelector<HTMLElement>(
+        `[data-main-conversation-composer="${target}"]`,
+      );
+      const textarea = composer?.querySelector<HTMLTextAreaElement>("textarea");
+      if (!textarea || textarea.disabled) {
+        return false;
+      }
+
+      const activeElement = document.activeElement;
+      if (
+        userInteractionVersionRef.current === interactionVersion &&
+        (activeElement === document.body || activeElement === origin)
+      ) {
+        textarea.focus();
+      }
+      return true;
+    },
+    [conversationPaneRef],
+  );
+  const requestMainComposerFocus = useCallback(
+    (
+      target: ComposerVariant,
+      origin: Element | null = document.activeElement,
+    ): MainComposerFocusRequest => {
+      const request = {
+        target,
+        origin,
+        interactionVersion: userInteractionVersionRef.current,
+      };
+      setMainComposerFocusRequest(request);
+      return request;
+    },
+    [],
+  );
+  const cancelMainComposerFocusRequest = useCallback(
+    (request: MainComposerFocusRequest): void => {
+      setMainComposerFocusRequest((current) =>
+        current === request ? null : current,
+      );
+    },
+    [],
+  );
+
+  useLayoutEffect(() => {
+    if (!mainComposerFocusRequest) {
+      return;
+    }
+    if (
+      !focusMainComposer(
+        mainComposerFocusRequest.target,
+        mainComposerFocusRequest.origin,
+        mainComposerFocusRequest.interactionVersion,
+      )
+    ) {
+      return;
+    }
+    setMainComposerFocusRequest((current) =>
+      current === mainComposerFocusRequest ? null : current,
+    );
+  }, [
+    emptyConversation,
+    focusMainComposer,
+    mainComposerFocusRequest,
+    mainConversationDockVisible,
+    state.activeSessionTabID,
+  ]);
   const handleTurnCollapseComplete = useCallback(() => {
     scheduleStreamScroll();
   }, [scheduleStreamScroll]);
@@ -2104,12 +2213,12 @@ export function App(): JSX.Element {
   const scratchPseudoProject = useMemo<DesktopProject>(
     () => ({
       id: SCRATCH_PSEUDO_PROJECT_ID,
-      name: "对话",
+      name: t("sidebar.conversations"),
       path: "",
       created_at: new Date(0).toISOString(),
       updated_at: new Date(0).toISOString(),
     }),
-    [],
+    [t],
   );
   const sidebarProjects = useMemo<DesktopProject[]>(
     () => [scratchPseudoProject, ...state.projects],
@@ -2162,9 +2271,12 @@ export function App(): JSX.Element {
       return;
     }
     void api
-      .updateCodexPetRuntime({ running: anyThreadIsRunning, status: state.status })
+      .updateCodexPetRuntime({
+        running: anyThreadIsRunning,
+        status: resolveLocalizedText(state.status),
+      })
       .catch(() => undefined);
-  }, [anyThreadIsRunning, state.status]);
+  }, [anyThreadIsRunning, locale, state.status]);
   // The pet bubble is a lightweight hint of the most relevant session.
   // Re-derive whenever the thread state changes and push the result to
   // the main process, which keeps the always-on-top pet window in sync.
@@ -2236,7 +2348,7 @@ export function App(): JSX.Element {
     // emoji reactions are attributed to the stable "human" identity by
     // message/react; resolve it to "你" so the reaction chip hover reads right.
     return (id: string): string =>
-      byID.get(id) ?? (id === "human" ? "你" : id);
+      byID.get(id) ?? (id === "human" ? t("subthread.you") : id);
   }, [participants]);
   const chatReaderCount = participants.length;
   // The active thread's dm_participant_id (when set) drives the highlight
@@ -2501,6 +2613,7 @@ export function App(): JSX.Element {
     return (
       <Composer
         variant={variant}
+        mainConversation
         containerRef={variant === "dock" ? dockComposerRef : undefined}
         prompt={prompt}
         setPrompt={setPrompt}
@@ -2539,8 +2652,8 @@ export function App(): JSX.Element {
         status={
           activeThreadReadOnly
             ? activeThreadIsRunning
-              ? "子任务运行中"
-              : "子任务会话只读"
+              ? t("app.childTaskRunning")
+              : t("app.childTaskReadOnly")
             : streamStatus?.text ?? state.status
         }
         statusLiveProgress={
@@ -2557,12 +2670,14 @@ export function App(): JSX.Element {
         activeProject={activeProject}
         compactDisabledReason={
           !activeThread
-            ? "先打开一个对话"
+            ? t("app.openConversationFirst")
             : activeThreadIsGroup
-              ? "群聊暂不支持上下文压缩"
+              ? t("app.groupCompactionUnsupported")
               : undefined
         }
-        sideThreadDisabledReason={!activeThread ? "先发送一条消息" : undefined}
+        sideThreadDisabledReason={
+          !activeThread ? t("app.sendMessageFirst") : undefined
+        }
         codexModels={codexModels}
         codexRuntimeMenu={codexRuntimeMenu}
         codexRuntimeRef={codexRuntimeRef}
@@ -2613,7 +2728,7 @@ export function App(): JSX.Element {
         onSelectGitBranch={(branch) => void checkoutBranch(branch)}
         onCreateProject={() => void createBlankProject()}
         onOpenProject={() => void chooseProjectFolder()}
-        onStartNewThread={() => void startNewThread()}
+        onStartNewThread={startNewThreadWithComposerFocus}
         onOpenSideThread={openSideThreadPanel}
         onOpenWorkspaceTool={openWorkspaceTool}
         onOpenContextComposition={openContextComposition}
@@ -2692,7 +2807,7 @@ export function App(): JSX.Element {
       setState((current) => ({
         ...current,
         status:
-          error instanceof Error ? error.message : "open detached window failed",
+          error instanceof Error ? error.message : t("window.openDetachedFailed"),
       }));
     } finally {
       poppingOutSubthreadIDsRef.current.delete(subthreadID);
@@ -2907,6 +3022,55 @@ export function App(): JSX.Element {
     selectRuntimeContext,
   });
 
+  function focusHeroAfter(
+    action: Promise<void | boolean>,
+    origin: Element | null,
+    matchesDestination: (state: AppState) => boolean,
+  ): void {
+    const interactionVersion = userInteractionVersionRef.current;
+    void action.then((succeeded) => {
+      if (succeeded === false) {
+        return;
+      }
+      window.requestAnimationFrame(() => {
+        const current = appStateRef.current;
+        if (
+          !current.thread &&
+          !current.secondaryThread &&
+          activeSessionTab(current)?.kind === "draft" &&
+          matchesDestination(current)
+        ) {
+          focusMainComposer("hero", origin, interactionVersion);
+        }
+      });
+    });
+  }
+
+  function startNewThreadWithComposerFocus(): void {
+    const origin = document.activeElement;
+    const context = appStateRef.current.activeContext;
+    focusHeroAfter(
+      startNewThread(),
+      origin,
+      (current) => sameRuntimeContext(current.activeContext, context),
+    );
+  }
+
+  function startNewThreadForProjectWithComposerFocus(id: string): void {
+    const origin = document.activeElement;
+    focusHeroAfter(
+      id === SCRATCH_PSEUDO_PROJECT_ID
+        ? useNoProject(true)
+        : startNewThreadForProject(id),
+      origin,
+      (current) =>
+        id === SCRATCH_PSEUDO_PROJECT_ID
+          ? current.activeContext?.kind === "no_project"
+          : current.activeContext?.kind === "project" &&
+            current.activeProjectId === id,
+    );
+  }
+
   const {
     toggleThreadPinned,
     renameThread,
@@ -3052,7 +3216,7 @@ export function App(): JSX.Element {
     restoreConversationScrollForEdit,
     threadHasPendingComposerMessages,
     sendComposerMessageToThread,
-    worktreeForkNonGitReason: WORKTREE_FORK_NON_GIT_REASON,
+    worktreeForkNonGitReason: t("app.worktreeRequiresGit"),
   });
 
   async function sendPrompt(): Promise<void> {
@@ -3063,11 +3227,24 @@ export function App(): JSX.Element {
     const currentState = appStateRef.current;
     const targetThread = activeThreadForState(currentState);
     if (targetThread?.read_only) {
-      setState((current) => ({ ...current, status: "子任务会话只读" }));
+      setState((current) => ({
+        ...current,
+        status: localizedText("app.childTaskReadOnly"),
+      }));
       return;
     }
     if (!message || !currentState.activeContext || !currentState.initialized) {
       return;
+    }
+    let focusRequest: MainComposerFocusRequest | undefined;
+    if (emptyConversation) {
+      const activeElement = document.activeElement;
+      if (
+        activeElement === document.body ||
+        activeElement?.closest("[data-main-conversation-composer]")
+      ) {
+        focusRequest = requestMainComposerFocus("dock", activeElement);
+      }
     }
     setPrompt("");
     setComposerImages([]);
@@ -3096,7 +3273,17 @@ export function App(): JSX.Element {
       }
       return;
     }
-    await sendComposerMessage(message, true);
+    const sent = await sendComposerMessage(message, true);
+    if (!sent && focusRequest) {
+      cancelMainComposerFocusRequest(focusRequest);
+      window.requestAnimationFrame(() => {
+        focusMainComposer(
+          "hero",
+          focusRequest.origin,
+          focusRequest.interactionVersion,
+        );
+      });
+    }
   }
 
   async function compactActiveThread(): Promise<void> {
@@ -3109,22 +3296,31 @@ export function App(): JSX.Element {
       return;
     }
     if (!targetThread) {
-      setState((current) => ({ ...current, status: "先打开一个对话" }));
+      setState((current) => ({
+        ...current,
+        status: localizedText("app.openConversationFirst"),
+      }));
       return;
     }
     if (targetThread.read_only) {
-      setState((current) => ({ ...current, status: "子任务会话只读" }));
+      setState((current) => ({
+        ...current,
+        status: localizedText("app.childTaskReadOnly"),
+      }));
       return;
     }
     if (isGroupThread(targetThread)) {
       setState((current) => ({
         ...current,
-        status: "群聊没有可压缩的模型上下文",
+        status: localizedText("app.groupNoCompactContext"),
       }));
       return;
     }
     if (isStateActiveThreadRunning(currentState)) {
-      setState((current) => ({ ...current, status: "当前任务运行中" }));
+      setState((current) => ({
+        ...current,
+        status: localizedText("app.currentTaskRunning"),
+      }));
       return;
     }
 
@@ -3132,19 +3328,19 @@ export function App(): JSX.Element {
     resetRunDebugEvents({
       source: "client",
       method: "client/compact",
-      detail: "开始压缩上下文",
+      detail: t("app.compactionStarting"),
       tone: "running",
       threadID: targetThread.id,
     });
     appStateRef.current = {
       ...currentState,
       running: true,
-      status: "正在压缩上下文",
+      status: localizedText("app.compactingContext"),
     };
     setState((current) => ({
       ...current,
       running: true,
-      status: "正在压缩上下文",
+      status: localizedText("app.compactingContext"),
     }));
 
     const optimisticTurn = createOptimisticCompactTurn(Date.now());
@@ -3153,14 +3349,14 @@ export function App(): JSX.Element {
       appStateRef.current,
       targetThread.id,
       (thread) => upsertTurn(thread, optimisticTurn),
-      { running: true, status: "正在压缩上下文" },
+      { running: true, status: localizedText("app.compactingContext") },
     );
     setState((current) =>
       updateThreadByID(
         current,
         targetThread.id,
         (thread) => upsertTurn(thread, optimisticTurn),
-        { running: true, status: "正在压缩上下文" },
+        { running: true, status: localizedText("app.compactingContext") },
       ),
     );
 
@@ -3176,7 +3372,7 @@ export function App(): JSX.Element {
             result.turn,
             upsertTurn,
           ),
-        { running: true, status: "正在压缩上下文" },
+        { running: true, status: localizedText("app.compactingContext") },
       );
       setState((current) =>
         updateThreadByID(
@@ -3189,20 +3385,20 @@ export function App(): JSX.Element {
               result.turn,
               upsertTurn,
             ),
-          { running: true, status: "正在压缩上下文" },
+          { running: true, status: localizedText("app.compactingContext") },
         ),
       );
       appendRunDebugEvent({
         source: "client",
         method: "thread/compact/start response",
-        detail: "服务端已接受压缩请求",
+        detail: t("app.compactionAccepted"),
         tone: "running",
         threadID: targetThread.id,
         turnID: result.turn.id,
       });
     } catch (error) {
-      const rawMessage = rawErrorMessage(error, "compact failed");
-      const errorMessage = statusMessageForError(rawMessage, "compact failed");
+      const rawMessage = rawErrorMessage(error, t("composer.compactFailed"));
+      const errorMessage = statusMessageForError(rawMessage, t("composer.compactFailed"));
       appendRunDebugEvent({
         source: "client",
         method: "thread/compact/start failed",
@@ -3285,7 +3481,8 @@ export function App(): JSX.Element {
     } catch (error) {
       setState((current) => ({
         ...current,
-        status: error instanceof Error ? error.message : "排队失败",
+        status:
+          error instanceof Error ? error.message : t("app.queueFailed"),
       }));
       return false;
     }
@@ -3336,12 +3533,12 @@ export function App(): JSX.Element {
     appStateRef.current = {
       ...currentState,
       running: true,
-      status: "正在发送请求",
+      status: localizedText("app.sendingRequest"),
     };
     setState((current) => ({
       ...current,
       running: true,
-      status: "正在发送请求",
+      status: localizedText("app.sendingRequest"),
     }));
     let optimisticTurnID: string | undefined;
     let optimisticThreadID: string | undefined;
@@ -3440,14 +3637,14 @@ export function App(): JSX.Element {
       appendRunDebugEvent({
         source: "client",
         method: "turn/start response",
-        detail: "服务端已接受本轮请求",
+        detail: t("app.turnAccepted"),
         tone: "running",
         threadID: thread.id,
         turnID: result.turn.id,
       });
     } catch (error) {
-      const rawMessage = rawErrorMessage(error, "send failed");
-      const errorMessage = statusMessageForError(rawMessage, "send failed");
+      const rawMessage = rawErrorMessage(error, t("composer.sendFailed"));
+      const errorMessage = statusMessageForError(rawMessage, t("composer.sendFailed"));
       appendRunDebugEvent({
         source: "client",
         method: "turn/start failed",
@@ -3500,7 +3697,10 @@ export function App(): JSX.Element {
     const currentState = appStateRef.current;
     const targetThread = threadForPane(currentState, pane);
     if (targetThread?.read_only) {
-      setState((current) => ({ ...current, status: "子任务会话只读" }));
+      setState((current) => ({
+        ...current,
+        status: localizedText("app.childTaskReadOnly"),
+      }));
       return;
     }
     if (
@@ -3576,13 +3776,13 @@ export function App(): JSX.Element {
       ...currentState,
       activePane: pane,
       running: true,
-      status: "正在发送请求",
+      status: localizedText("app.sendingRequest"),
     };
     setState((current) => ({
       ...current,
       activePane: pane,
       running: true,
-      status: "正在发送请求",
+      status: localizedText("app.sendingRequest"),
     }));
     let optimisticTurnID: string | undefined;
     try {
@@ -3635,14 +3835,14 @@ export function App(): JSX.Element {
       appendRunDebugEvent({
         source: "client",
         method: "turn/start response",
-        detail: "服务端已接受本轮请求",
+        detail: t("app.turnAccepted"),
         tone: "running",
         threadID: targetThread.id,
         turnID: result.turn.id,
       });
     } catch (error) {
-      const rawMessage = rawErrorMessage(error, "send failed");
-      const errorMessage = statusMessageForError(rawMessage, "send failed");
+      const rawMessage = rawErrorMessage(error, t("composer.sendFailed"));
+      const errorMessage = statusMessageForError(rawMessage, t("composer.sendFailed"));
       appendRunDebugEvent({
         source: "client",
         method: "turn/start failed",
@@ -3711,12 +3911,12 @@ export function App(): JSX.Element {
       appStateRef.current = {
         ...currentState,
         running: true,
-        status: "正在发送请求",
+        status: localizedText("app.sendingRequest"),
       };
       setState((current) => ({
         ...current,
         running: true,
-        status: "正在发送请求",
+        status: localizedText("app.sendingRequest"),
       }));
     }
     let optimisticTurnID: string | undefined;
@@ -3772,15 +3972,15 @@ export function App(): JSX.Element {
         appendRunDebugEvent({
           source: "client",
           method: "turn/start response",
-          detail: "服务端已接受本轮请求",
+          detail: t("app.turnAccepted"),
           tone: "running",
           threadID: targetThread.id,
           turnID: result.turn.id,
         });
       }
     } catch (error) {
-      const rawMessage = rawErrorMessage(error, "send failed");
-      const errorMessage = statusMessageForError(rawMessage, "send failed");
+      const rawMessage = rawErrorMessage(error, t("composer.sendFailed"));
+      const errorMessage = statusMessageForError(rawMessage, t("composer.sendFailed"));
       if (targetIsActive) {
         appendRunDebugEvent({
           source: "client",
@@ -3886,7 +4086,7 @@ export function App(): JSX.Element {
               return {
                 ...thread,
                 archive_project_id: project?.id ?? "",
-                archive_project_name: project?.name ?? "无项目",
+                archive_project_name: project?.name ?? t("appState.noProject"),
               };
             })}
           onUnarchiveThread={(thread) => void unarchiveThread(thread)}
@@ -3935,7 +4135,7 @@ export function App(): JSX.Element {
             sectionOrder={sidebarSectionOrder}
             onStartNewThread={() => {
               revealConversationFromFocusedWorkspace();
-              void startNewThread();
+              startNewThreadWithComposerFocus();
             }}
             onOpenSkillsTab={openSkillsTab}
             onToggleConversationSearch={toggleConversationSearch}
@@ -3960,7 +4160,8 @@ export function App(): JSX.Element {
             onExportParticipants={exportParticipantTemplate}
             onTogglePinned={(thread) => void toggleThreadPinned(thread)}
             onArchiveThread={(thread) => {
-              const archivedTitle = thread.title?.trim() || "该会话";
+              const archivedTitle =
+                thread.title?.trim() || t("app.thisConversation");
               void archiveThread(thread).then((outcome) => {
                 setArchiveTip({
                   threadID: thread.id,
@@ -3977,11 +4178,7 @@ export function App(): JSX.Element {
             onToggleSidebarSectionCollapsed={toggleSidebarSectionCollapsed}
             onStartNewThreadForProject={(id) => {
               revealConversationFromFocusedWorkspace();
-              if (id === SCRATCH_PSEUDO_PROJECT_ID) {
-                void useNoProject(true);
-              } else {
-                void startNewThreadForProject(id);
-              }
+              startNewThreadForProjectWithComposerFocus(id);
             }}
             onSelectProjectThread={(projectID, threadID) => {
               revealConversationFromFocusedWorkspace();
@@ -4008,7 +4205,7 @@ export function App(): JSX.Element {
               className="sidebar-resizer"
               inert={rightPanelOpen && rightPanelGlobalized}
               role="separator"
-              aria-label="调整侧边栏宽度"
+              aria-label={t("app.resizeSidebar")}
               aria-orientation="vertical"
               aria-valuemin={SIDEBAR_MIN_WIDTH}
               aria-valuemax={SIDEBAR_MAX_WIDTH}
@@ -4060,7 +4257,11 @@ export function App(): JSX.Element {
               <button
                 className="icon-button side-panel-toggle-button sidebar-toggle-button"
                 type="button"
-                aria-label={sidebarCollapsed ? "展开左侧栏" : "收起左侧栏"}
+                aria-label={t(
+                  sidebarCollapsed
+                    ? "app.expandLeftSidebar"
+                    : "app.collapseLeftSidebar",
+                )}
                 aria-pressed={!sidebarCollapsed}
                 onClick={toggleSidebar}
               >
@@ -4078,7 +4279,7 @@ export function App(): JSX.Element {
               onCloseSessionTab={(tabID) => void closeSessionTab(tabID)}
               onCloseSessionTabs={(tabIDs) => void closeSessionTabs(tabIDs)}
               onPopOutSessionTab={(tabID) => void popOutSessionTab(tabID)}
-              onStartNewThread={() => void startNewThread()}
+              onStartNewThread={startNewThreadWithComposerFocus}
               onReorderSessionTabs={reorderSessionTabs}
             />
           </div>
@@ -4415,7 +4616,7 @@ export function App(): JSX.Element {
           </div>
         ) : (
           <RuntimeLoading
-            status={state.status}
+            status={resolveLocalizedText(state.status)}
             pinned={previewingLaunch}
             onExitPreview={() => setLaunchPreviewPinned(false)}
           />
@@ -4426,19 +4627,30 @@ export function App(): JSX.Element {
         {mainConversationDockVisible && activePlanVisible && !mainConversationScrolledAway ? (
           <div
             className="jump-to-latest-cluster"
-            aria-label="当前位置与进度"
+            aria-label={t("app.currentPositionAndProgress")}
           >
             {activePlanVisible ? (
               <div
                 className="jump-to-latest-progress"
-                aria-label={`当前计划已完成 ${activePlanCompleted} 项，共 ${activePlanTotal} 项`}
+                aria-label={t("app.planProgressLabel", {
+                  completed: formatNumber(activePlanCompleted),
+                  total: formatNumber(activePlanTotal),
+                })}
               >
-                进度 {activePlanCompleted}/{activePlanTotal}
+                {t("app.progressFraction", {
+                  completed: formatNumber(activePlanCompleted),
+                  total: formatNumber(activePlanTotal),
+                })}
                 {activePlanDetailItems.length > 0 ? (
                   <span className="jump-to-latest-progress-detail" aria-hidden="true">
                     {activePlanDetailItems.map((item) => (
                       <span className={`jump-to-latest-progress-step ${item.status}`} key={item.step}>
-                        {item.status === "in_progress" ? "进行中" : "下一步"}：{item.step}
+                        {t(
+                          item.status === "in_progress"
+                            ? "app.planInProgress"
+                            : "app.planNext",
+                          { step: item.step },
+                        )}
                       </span>
                     ))}
                   </span>
@@ -4454,7 +4666,7 @@ export function App(): JSX.Element {
           className="workspace-right-panel-resizer"
           inert={rightPanelGlobalized}
           role="separator"
-          aria-label="调整右侧栏宽度"
+          aria-label={t("app.resizeRightSidebar")}
           aria-orientation="vertical"
           aria-valuemin={WORKSPACE_RIGHT_PANEL_MIN_WIDTH}
           aria-valuemax={WORKSPACE_RIGHT_PANEL_MAX_WIDTH}
