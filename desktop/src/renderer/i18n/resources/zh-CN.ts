@@ -810,6 +810,17 @@ export const zhCN = {
   "message.editAndRetry": "编辑并重试",
   "message.fileNumber": "文件 {number}",
   "message.removeFileNamed": "移除文件 {name}",
+  "search.conversations": "搜索会话",
+  "search.placeholder": "搜索对话内容或提问",
+  "search.clear": "清空搜索",
+  "search.untitledConversation": "未命名对话",
+  "search.searching": "正在搜索会话",
+  "search.noMatches": "没有匹配的会话",
+  "search.noConversations": "暂无会话",
+  "search.preview": "会话预览",
+  "search.selectForPreview": "选择一个会话查看预览",
+  "search.loadingPreview": "加载预览中…",
+  "search.noPreview": "暂无预览",
   "i18n.missing": "内容暂不可用",
 } as const;
 
