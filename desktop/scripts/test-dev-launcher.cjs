@@ -17,6 +17,7 @@ const {
   matchingIdentity,
   parseCodeSigningIdentities,
 } = require("./dev-signing.cjs");
+const { resolveBuildTarget } = require("./build-core.cjs");
 
 assert.deepEqual(
   normalizeElectronArguments([".", "--inspect=9229"], "/repo/desktop"),
@@ -89,6 +90,31 @@ assert.equal(
 const devLauncherSource = readFileSync(resolve(__dirname, "dev.cjs"), "utf8");
 assert.doesNotMatch(devLauncherSource, /env\.WUU_ENABLE_CUA_MAC\s*=\s*["']1["']/);
 assert.equal(packageJSON.scripts["build:core"], "node scripts/build-core.cjs");
+assert.equal(
+  packageJSON.scripts["build:core:win"],
+  "node scripts/build-core.cjs --platform=win32",
+);
+assert.match(packageJSON.scripts["pack:win"], /^npm run build:core:win /);
+assert.match(packageJSON.scripts["dist:win"], /^npm run build:core:win /);
+assert.deepEqual(resolveBuildTarget(["--platform=win32"], "darwin", "arm64"), {
+  platform: "win32",
+  arch: "arm64",
+  goos: "windows",
+  goarch: "arm64",
+  binaryName: "wuu-core.exe",
+  staleBinaryName: "wuu-core",
+});
+assert.deepEqual(
+  resolveBuildTarget(["--platform=win32", "--arch=x64"], "darwin", "arm64"),
+  {
+    platform: "win32",
+    arch: "x64",
+    goos: "windows",
+    goarch: "amd64",
+    binaryName: "wuu-core.exe",
+    staleBinaryName: "wuu-core",
+  },
+);
 assert.doesNotMatch(packageJSON.scripts["pack:mac"], /cua-mac/);
 assert.doesNotMatch(packageJSON.scripts["dist:mac"], /cua-mac/);
 assert.deepEqual(packageJSON.build.extraResources[0].filter, ["wuu-core", "wuu-core.exe"]);
