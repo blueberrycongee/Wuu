@@ -846,6 +846,9 @@ export const zhCN = {
   "tabs.closeOthers": "关闭其他",
   "tabs.closeNotRunning": "关闭未运行的",
   "tabs.closeAll": "关闭全部",
+  "sideThread.title": "侧聊",
+  "sideThread.resize": "调整侧聊宽度",
+  "sideThread.collapse": "收起侧聊",
   "i18n.missing": "内容暂不可用",
 } as const;
 

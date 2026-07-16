@@ -848,5 +848,8 @@ export const enUS = {
   "tabs.closeOthers": "Close others",
   "tabs.closeNotRunning": "Close not running",
   "tabs.closeAll": "Close all",
+  "sideThread.title": "Side chat",
+  "sideThread.resize": "Resize side chat",
+  "sideThread.collapse": "Collapse side chat",
   "i18n.missing": "Content unavailable",
 } as const satisfies Record<TranslationKey, string>;
