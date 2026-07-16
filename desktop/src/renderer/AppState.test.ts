@@ -8,6 +8,7 @@ import type {
   Turn,
 } from "../shared/protocol";
 import {
+  activeContextTreeBusy,
   activePlanUpdateForThread,
   activeThreadForState,
   activeTurnTokenSpeed,
@@ -583,6 +584,104 @@ describe("workspacePanelContext", () => {
       kind: "no_project",
       cwd: thread.cwd,
     });
+  });
+});
+
+describe("activeContextTreeBusy", () => {
+  const baseContext: RuntimeContext = {
+    kind: "project",
+    project_id: "project-1",
+    cwd: "/repo",
+  };
+
+  function runningThread(id: string, cwd: string): Thread {
+    return { ...threadWithUserTexts(["work"]), id, cwd, status: "in_progress" };
+  }
+
+  it("blocks when a thread runs in the active context's own tree", () => {
+    expect(
+      activeContextTreeBusy({
+        ...initialState,
+        activeContext: baseContext,
+        threads: [runningThread("t-1", "/repo")],
+      }),
+    ).toBe(true);
+  });
+
+  it("ignores a running thread that belongs to another project's tree", () => {
+    expect(
+      activeContextTreeBusy({
+        ...initialState,
+        activeContext: baseContext,
+        threads: [runningThread("t-2", "/other-repo")],
+      }),
+    ).toBe(false);
+  });
+
+  it("ignores a running worktree-fork thread rooted outside the base tree", () => {
+    // The whole point of the narrowing: a fork runs `git` out of its own
+    // worktree dir, so a checkout in the base tree can never touch it.
+    const fork = runningThread("fork-1", "/repo/.wuu/worktrees/fork-1");
+    fork.worktree = {
+      path: fork.cwd,
+      base_repo: baseContext.cwd,
+      base_head: "d955824f",
+    };
+    expect(
+      activeContextTreeBusy({
+        ...initialState,
+        activeContext: baseContext,
+        threads: [fork],
+      }),
+    ).toBe(false);
+  });
+
+  it("blocks via state.running when the active conversation runs in the tree", () => {
+    // Covers context compaction: state.running is set before any turn flips to
+    // in_progress, and the active conversation is the base-tree one.
+    expect(
+      activeContextTreeBusy({
+        ...initialState,
+        activeContext: baseContext,
+        thread: { ...threadWithUserTexts(["idle"]), id: "active", cwd: "/repo" },
+        running: true,
+      }),
+    ).toBe(true);
+  });
+
+  it("ignores state.running when the active conversation is a worktree fork", () => {
+    expect(
+      activeContextTreeBusy({
+        ...initialState,
+        activeContext: baseContext,
+        thread: {
+          ...threadWithUserTexts(["idle"]),
+          id: "active-fork",
+          cwd: "/repo/.wuu/worktrees/fork-1",
+        },
+        running: true,
+      }),
+    ).toBe(false);
+  });
+
+  it("is false when nothing runs in the tree", () => {
+    expect(
+      activeContextTreeBusy({
+        ...initialState,
+        activeContext: baseContext,
+        threads: [{ ...threadWithUserTexts(["idle"]), id: "idle", cwd: "/repo" }],
+      }),
+    ).toBe(false);
+  });
+
+  it("is false when there is no active context", () => {
+    expect(
+      activeContextTreeBusy({
+        ...initialState,
+        activeContext: undefined,
+        threads: [runningThread("t-3", "/repo")],
+      }),
+    ).toBe(false);
   });
 });
 

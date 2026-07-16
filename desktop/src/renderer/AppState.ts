@@ -3091,6 +3091,41 @@ function isAnyThreadRunning(state: AppState): boolean {
   );
 }
 
+// Whether a running thread occupies the working tree that the Environment
+// panel's git actions would mutate. Branch switch / commit / PR all run
+// `git -C activeContext.cwd ...` against the base repo working tree
+// (resolveThreadRuntimeContext pins the context to the project root, even for
+// worktree-fork threads whose own cwd points elsewhere). A checkout only swaps
+// files and HEAD out from under an agent when that agent runs in this same
+// tree, so the git-action lock is scoped to it rather than to any running
+// thread: worktree-fork threads run out of their own cwd and are unaffected,
+// and git's own refusal covers the "branch already checked out elsewhere"
+// case. Uses the same path comparison as project membership (sameDesktopPath).
+function activeContextTreeBusy(state: AppState): boolean {
+  const treeCwd = state.activeContext?.cwd;
+  if (!treeCwd) {
+    return false;
+  }
+  const runsInTree = (thread: Thread | undefined): boolean =>
+    Boolean(
+      thread && sameDesktopPath(thread.cwd, treeCwd) && isThreadRunning(thread),
+    );
+  if (state.running) {
+    // state.running mirrors the active conversation being busy, including
+    // context compaction where no turn is in_progress yet. Count it only when
+    // that conversation runs out of the tree the git action would mutate.
+    const active = activeThreadForState(state);
+    if (!active || sameDesktopPath(active.cwd, treeCwd)) {
+      return true;
+    }
+  }
+  return (
+    runsInTree(state.thread) ||
+    runsInTree(state.secondaryThread) ||
+    state.threads.some(runsInTree)
+  );
+}
+
 function upsertTurn(thread: Thread, turn: Turn): Thread {
   const index = thread.turns.findIndex((item) => item.id === turn.id);
   const status = turn.status === "in_progress" ? "in_progress" : "idle";
@@ -3763,6 +3798,7 @@ export {
   hasText,
   initialSplitComposerDrafts,
   initialState,
+  activeContextTreeBusy,
   isAnyThreadRunning,
   isStateActiveThreadRunning,
   isThreadRunning,

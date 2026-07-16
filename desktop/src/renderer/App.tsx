@@ -104,6 +104,7 @@ import {
   initialSplitComposerDrafts,
   initialState,
   isAnyThreadRunning,
+  activeContextTreeBusy,
   isDMThread,
   groupThreadSummaries,
   isGroupThread,
@@ -2124,6 +2125,12 @@ export function App(): JSX.Element {
   const activeThreadReadOnly = Boolean(activeThread?.read_only);
   const activeThreadIsRunning = isStateActiveThreadRunning(state);
   const anyThreadIsRunning = isAnyThreadRunning(state) || viewContextSwitchPending;
+  // The Environment panel's git actions (branch switch / commit / PR) mutate the
+  // active context's working tree, so they are gated on that tree being busy —
+  // not on any thread anywhere running. A worktree-fork thread running in its
+  // own cwd, or a thread in another project, no longer blocks them.
+  const environmentGitBusy =
+    activeContextTreeBusy(state) || viewContextSwitchPending;
   // The desktop pet lives in its own always-on-top window owned by the main
   // process; the renderer only feeds it the session runtime so its sprite
   // state tracks what the app is doing.
@@ -2712,7 +2719,7 @@ export function App(): JSX.Element {
   } = createEnvironmentActions({
     getAppState: () => appStateRef.current,
     setAppState: setState,
-    getAnyThreadIsRunning: () => anyThreadIsRunning,
+    getAnyThreadIsRunning: () => environmentGitBusy,
     closeProjectMenus,
     setEnvironmentPanelOpen,
     setEnvironmentPanelDismissed,
@@ -4122,7 +4129,7 @@ export function App(): JSX.Element {
           environmentPanelMotionState={environmentPanelMotionState}
           activePlanUpdate={activePlanUpdate}
           environmentPanelMenu={environmentPanelMenu}
-          anyThreadIsRunning={anyThreadIsRunning}
+          environmentGitBusy={environmentGitBusy}
           pullRequestDisabledReason={pullRequestDisabledReason}
           onSetEnvironmentPanelMenu={setEnvironmentPanelMenu}
           onCloseEnvironmentPanel={() =>
