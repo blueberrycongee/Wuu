@@ -15,6 +15,7 @@ import {
   type ThreadSummary,
 } from "./AppState";
 import { desktopApiErrorMessage } from "./WorkspaceReviewHelpers";
+import { translateCurrent } from "./i18n";
 
 type SetAppState = (update: SetStateAction<AppState>) => void;
 
@@ -64,9 +65,9 @@ function archiveThreadFailureMessage(error: unknown): string {
     message.includes("already has a running turn") ||
     message.includes("execution is owned by another app-server")
   ) {
-    return "会话仍在运行，结束后再归档";
+    return translateCurrent("thread.archive.running");
   }
-  return desktopApiErrorMessage(error, "归档会话失败");
+  return desktopApiErrorMessage(error, translateCurrent("thread.archive.failed"));
 }
 
 function patchChildAgentInThread(
@@ -216,7 +217,7 @@ export function createThreadMutationActions(
         status: current.status === "ready" ? "ready" : current.status,
       }));
     } catch (error) {
-      setStatus(desktopApiErrorMessage(error, "重命名对话失败"));
+      setStatus(desktopApiErrorMessage(error, translateCurrent("thread.rename.failed")));
     }
   }
 
@@ -239,7 +240,7 @@ export function createThreadMutationActions(
       }));
     } catch (error) {
       setStatus(
-        error instanceof Error ? error.message : "remove thread member failed",
+        error instanceof Error ? error.message : translateCurrent("thread.memberRemove.failed"),
       );
     }
   }
@@ -272,12 +273,12 @@ export function createThreadMutationActions(
     const currentState = deps.getAppState();
     const isLocalDemoThread = deps.localDemoThreadsRef.current.has(thread.id);
     if (!currentState.activeContext) {
-      const error = "当前没有可用的工作区，无法归档";
+      const error = translateCurrent("thread.archive.noWorkspace");
       setStatus(error);
       return { ok: false, error };
     }
     if (!isLocalDemoThread && isThreadRunning(thread)) {
-      const error = "会话仍在运行，结束后再归档";
+      const error = translateCurrent("thread.archive.running");
       setStatus(error);
       return { ok: false, error };
     }
@@ -498,7 +499,7 @@ export function createThreadMutationActions(
       }));
     } catch (error) {
       setStatus(
-        error instanceof Error ? error.message : "archive subagent failed",
+        error instanceof Error ? error.message : translateCurrent("thread.subagentArchive.failed"),
       );
     }
   }
