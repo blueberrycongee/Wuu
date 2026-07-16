@@ -1405,5 +1405,11 @@ export const enUS = {
   "turnDiff.unsupportedPreview": "Preview is not supported for this file type",
   "turnDiff.readingCurrent": "Reading current file…",
   "turnDiff.noContent": "No content to display.",
+  "workspace.monaco.viewer": "File viewer for {path}",
+  "workspace.monaco.editor": "File editor for {path}",
+  "git.branch.createFailed": "Failed to create branch",
+  "git.commit.completed": "Committed {commit}",
+  "git.pr.created": "Pull request created",
+  "workspace.review.binary": "binary",
   "i18n.missing": "Content unavailable",
 } as const satisfies Record<TranslationKey, string>;

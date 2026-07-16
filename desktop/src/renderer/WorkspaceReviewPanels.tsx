@@ -852,15 +852,16 @@ function GitChangeTreeNodeView({
 }
 
 function GitChangeFileStats({ file }: { file: GitChangeFile }): JSX.Element {
+  const { t, formatNumber } = useI18n();
   return (
     <span className="workspace-diff-tree-stats">
       <span className={`workspace-diff-file-status ${file.status}`}>{gitChangeStatusLabel(file.status)}</span>
       {file.binary ? (
-        <span className="workspace-diff-tree-binary">binary</span>
+        <span className="workspace-diff-tree-binary">{t("workspace.review.binary")}</span>
       ) : (
         <>
-          <span className="additions">+{file.additions.toLocaleString()}</span>
-          <span className="deletions">-{file.deletions.toLocaleString()}</span>
+          <span className="additions">+{formatNumber(file.additions)}</span>
+          <span className="deletions">-{formatNumber(file.deletions)}</span>
         </>
       )}
     </span>

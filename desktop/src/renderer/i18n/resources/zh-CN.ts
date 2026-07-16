@@ -1403,6 +1403,12 @@ export const zhCN = {
   "turnDiff.unsupportedPreview": "暂不支持预览这种文件",
   "turnDiff.readingCurrent": "正在读取当前文件…",
   "turnDiff.noContent": "没有可显示的内容。",
+  "workspace.monaco.viewer": "{path} 文件查看器",
+  "workspace.monaco.editor": "{path} 文件编辑器",
+  "git.branch.createFailed": "创建分支失败",
+  "git.commit.completed": "已提交 {commit}",
+  "git.pr.created": "已创建拉取请求",
+  "workspace.review.binary": "二进制",
   "i18n.missing": "内容暂不可用",
 } as const;
 

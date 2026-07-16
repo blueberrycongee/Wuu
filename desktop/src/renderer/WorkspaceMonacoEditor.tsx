@@ -6,6 +6,7 @@ import JsonWorker from "monaco-editor/esm/vs/language/json/json.worker?worker";
 import TsWorker from "monaco-editor/esm/vs/language/typescript/ts.worker?worker";
 import { useEffect, useMemo, useRef } from "react";
 import type { WorkspaceFileSelection } from "./LinkTargets";
+import { useI18n } from "./i18n";
 
 declare global {
   interface Window {
@@ -54,6 +55,7 @@ export function WorkspaceMonacoEditor({
   onSave?: () => void;
   onViewStateChange?: (state: WorkspaceMonacoViewState | null) => void;
 }): JSX.Element {
+  const { t } = useI18n();
   const hostRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const modelRef = useRef<monaco.editor.ITextModel | null>(null);
@@ -195,7 +197,7 @@ export function WorkspaceMonacoEditor({
 
   return (
     <div
-      aria-label={`${path} ${readOnly ? "文件查看器" : "文件编辑器"}`}
+      aria-label={t(readOnly ? "workspace.monaco.viewer" : "workspace.monaco.editor", { path })}
       className="workspace-monaco-editor"
       data-language={language}
       data-path={path}

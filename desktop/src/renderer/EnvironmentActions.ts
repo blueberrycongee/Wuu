@@ -2,6 +2,7 @@ import type { MutableRefObject, SetStateAction } from "react";
 import type { GitCommitResult, GitPullRequestResult } from "../shared/protocol";
 import { sameRuntimeContext, type AppState } from "./AppState";
 import type { EnvironmentPanelMenu } from "./EnvironmentPanel";
+import { translateCurrent } from "./i18n";
 
 type SetAppState = (update: SetStateAction<AppState>) => void;
 
@@ -129,7 +130,7 @@ export function createEnvironmentActions(
       }));
       deps.setEnvironmentPanelMenu(null);
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "create branch failed");
+      setStatus(error instanceof Error ? error.message : translateCurrent("git.branch.createFailed"));
       throw error;
     }
   }
@@ -145,7 +146,7 @@ export function createEnvironmentActions(
     deps.setAppState((current) => ({
       ...current,
       gitStatus: result.status,
-      status: `已提交 ${result.commit}`,
+      status: translateCurrent("git.commit.completed", { commit: result.commit }),
     }));
     return result;
   }
@@ -163,7 +164,9 @@ export function createEnvironmentActions(
     deps.setAppState((current) => ({
       ...current,
       gitStatus: result.status,
-      status: result.already_exists ? "已有拉取请求" : "已创建拉取请求",
+      status: result.already_exists
+        ? translateCurrent("git.pr.exists")
+        : translateCurrent("git.pr.created"),
     }));
     return result;
   }
