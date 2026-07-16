@@ -68,6 +68,7 @@ import {
   type ComposerSlashCommand,
   type ComposerSlashDraft
 } from "./ComposerSlashCommands";
+import { useI18n } from "./i18n";
 import {
   clipboardAttachmentFiles,
   type ComposerFile,
@@ -317,6 +318,7 @@ export function Composer({
   // Reset the side thread this composer is embedded in.
   onResetSideThread?: () => void;
 }): JSX.Element {
+  const { locale } = useI18n();
   const statusText = composerStatusText(status);
   const statusIsLiveProgress = composerStatusIsLiveProgress(statusLiveProgress);
   const className = `composer-wrap ${variant === "hero" ? "hero-composer-wrap" : "dock-composer-wrap"}`;
@@ -382,7 +384,7 @@ export function Composer({
   const slashRuntimeReady = Boolean(activeContext && initialized);
   const builtinSlashCommands = useMemo(
     () => buildComposerSlashCommands({ activeContext, initialized, running, compactDisabledReason, sideThreadDisabledReason, skills: slashSkills }),
-    [activeContext, compactDisabledReason, initialized, running, sideThreadDisabledReason, slashSkills]
+    [activeContext, compactDisabledReason, initialized, locale, running, sideThreadDisabledReason, slashSkills]
   );
   const slashCommands = slashCommandsOverride ?? builtinSlashCommands;
   const fastModelTarget = useMemo(() => runtimeFastModelTarget(initialized), [initialized]);
