@@ -14,11 +14,14 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// startPTYProcess: TTY-mode managed processes are not supported on
-// Windows. Callers fall back to pipe mode, which covers every managed
-// process the agent starts itself.
+// ptySupported reports whether this platform can run tty-mode processes.
+// Start degrades tty requests to pipe mode when this is false.
+func ptySupported() bool { return false }
+
+// startPTYProcess is unreachable behind ptySupported; it exists so both
+// platforms expose the same surface.
 func startPTYProcess(cmd *exec.Cmd) (*os.File, error) {
-	return nil, errors.New("tty processes are not supported on windows: start the process without tty to use pipe mode")
+	return nil, errors.New("tty processes are not supported on windows")
 }
 
 // configureProcessGroup keeps the child addressable and invisible: a new
@@ -80,10 +83,14 @@ func taskkillTree(pid int, force bool) error {
 	return fmt.Errorf("taskkill pid %d: %v: %s", pid, err, strings.TrimSpace(string(out)))
 }
 
-// verifyProcessGroup: no POSIX groups on Windows, so group identity
-// carries no anti-reuse signal; the process start-time identity check in
-// processMatchesRecord is the reuse guard.
+// verifyProcessGroup: Windows has no POSIX groups; records written here
+// always carry PGID == PID. A mismatch means the record came from
+// elsewhere (another OS, hand edits), and signaling PGID would kill a
+// process nobody verified — identity checks ran against PID.
 func verifyProcessGroup(pid, pgid int) (bool, error) {
+	if pgid != pid {
+		return false, fmt.Errorf("recorded group %d does not match pid %d; refusing to signal it", pgid, pid)
+	}
 	return true, nil
 }
 

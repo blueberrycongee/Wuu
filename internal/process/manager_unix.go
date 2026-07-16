@@ -12,6 +12,9 @@ import (
 	"github.com/creack/pty"
 )
 
+// ptySupported reports whether this platform can run tty-mode processes.
+func ptySupported() bool { return true }
+
 // startPTYProcess starts cmd attached to a fresh pty in its own session,
 // so the whole job is addressable as one process group.
 func startPTYProcess(cmd *exec.Cmd) (*os.File, error) {

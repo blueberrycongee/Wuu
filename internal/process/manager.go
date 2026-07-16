@@ -206,6 +206,13 @@ func (m *Manager) Start(ctx context.Context, opt StartOptions) (*Process, error)
 	if err != nil {
 		return nil, err
 	}
+	if opt.TTY && !ptySupported() {
+		// Degrade to pipe mode rather than failing the start: tty is a
+		// fidelity feature, and platforms without pty support (Windows)
+		// still run the process fine. The record keeps TTY=false so
+		// readers see the mode that actually ran.
+		opt.TTY = false
+	}
 	id := "proc-" + randomHex(4)
 	p := &Process{ID: id, OwnerKind: opt.OwnerKind, OwnerID: opt.OwnerID, Lifecycle: opt.Lifecycle, CompletionMode: opt.CompletionMode, Status: StatusStarting, Command: opt.Command, CWD: cwd, TTY: opt.TTY, LogPath: filepath.Join(m.logDir, id+".log"), StartedAt: time.Now(), UpdatedAt: time.Now(), ExitCode: -1}
 	m.mu.Lock()
