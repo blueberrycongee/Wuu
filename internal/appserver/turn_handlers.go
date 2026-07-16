@@ -1757,6 +1757,8 @@ func (s *Server) runTurnWithRequestContext(ctx context.Context, th *threadState,
 		}
 		if historyErr != nil {
 			persistErr = historyErr
+		} else if err != nil {
+			persistErr = s.persistFailedTurnResultLocked(th, res, rewriteHistory, turnRuntime.ProviderName, turnRuntime.Model, turnRuntime.HistoryBaselineSeq)
 		} else {
 			persistErr = s.persistTurnResultLocked(th, res, rewriteHistory, turnRuntime.ProviderName, turnRuntime.Model, turnRuntime.HistoryBaselineSeq)
 		}
@@ -1770,7 +1772,7 @@ func (s *Server) runTurnWithRequestContext(ctx context.Context, th *threadState,
 		if historyErr != nil {
 			persistErr = historyErr
 		} else {
-			persistErr = s.persistTurnResultLocked(th, res, true, turnRuntime.ProviderName, turnRuntime.Model, turnRuntime.HistoryBaselineSeq)
+			persistErr = s.persistFailedTurnResultLocked(th, res, true, turnRuntime.ProviderName, turnRuntime.Model, turnRuntime.HistoryBaselineSeq)
 		}
 	} else {
 		if usageErr := appendTokenUsage(s.rt.SessionDir, th.ID, turnRuntime.ProviderName, turnRuntime.Model, providers.TokenUsage{
@@ -3770,6 +3772,18 @@ func (s *Server) persistTurnResultLocked(th *threadState, res agent.LoopResult, 
 		return err
 	}
 	return session.UpdateIndex(s.rt.SessionDir, th.ID, persistableMessageCount(indexHistory), threadPreview(indexHistory))
+}
+
+func (s *Server) persistFailedTurnResultLocked(th *threadState, res agent.LoopResult, rewriteHistory bool, providerName, model string, historyBaselineSeq int) error {
+	if th.PersistHistory {
+		return s.persistTurnResultLocked(th, res, rewriteHistory, providerName, model, historyBaselineSeq)
+	}
+	return appendTokenUsage(s.rt.SessionDir, th.ID, providerName, model, providers.TokenUsage{
+		InputTokens:         res.InputTokens,
+		OutputTokens:        res.OutputTokens,
+		CacheCreationTokens: res.CacheCreationTokens,
+		CacheReadTokens:     res.CacheReadTokens,
+	}, res.ContextTokens)
 }
 
 func mergeConcurrentParticipantTailIntoTurnsLocked(th *threadState, records []persistedMessage, baselineSeq int, now time.Time, resolve participantSummaryResolver) {

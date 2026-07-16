@@ -6612,6 +6612,32 @@ func TestServerFailedInternalTurnReloadsOnVisibleAggregate(t *testing.T) {
 	}
 }
 
+func TestPersistFailedTurnResultRecordsUsageForNonPersistentThread(t *testing.T) {
+	rt := newTestRuntime(t, &fakeClient{})
+	sess, err := session.CreateWithMetadata(rt.SessionDir, "20260716-000004-ephemeral", rt.RootDir)
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	srv := New(rt, &lockedBuffer{})
+	th := newThreadState(sess.ID, nil, rt.ProviderName, rt.Model, rt.RootDir, false, time.Now().UTC())
+	res := agent.LoopResult{
+		NewMessages:   []providers.ChatMessage{{Role: "assistant", Content: "partial answer"}},
+		InputTokens:   13,
+		OutputTokens:  5,
+		ContextTokens: 21,
+	}
+	if err := srv.persistFailedTurnResultLocked(th, res, false, rt.ProviderName, rt.Model, 0); err != nil {
+		t.Fatalf("persist turn result: %v", err)
+	}
+	metas, err := loadMetaMessages(rt.SessionDir, sess.ID)
+	if err != nil {
+		t.Fatalf("load meta messages: %v", err)
+	}
+	if len(metas) != 1 || metas[0].Content != "token_usage" || metas[0].InputTokens != 13 || metas[0].OutputTokens != 5 || metas[0].ContextTokens != 21 {
+		t.Fatalf("non-persistent turn usage was not recorded: %+v", metas)
+	}
+}
+
 func TestServerFailedTurnPersistsCompactedHistoryRewrite(t *testing.T) {
 	client := &fakeClient{
 		responses: []providers.ChatResponse{
