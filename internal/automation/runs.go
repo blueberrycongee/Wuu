@@ -16,6 +16,7 @@ import (
 type Run struct {
 	ID          string    `json:"id"`
 	TaskID      string    `json:"task_id"`
+	Task        Task      `json:"task"`
 	Mode        string    `json:"mode"`
 	Status      RunStatus `json:"status"`
 	TriggeredAt time.Time `json:"triggered_at"`
@@ -78,6 +79,25 @@ func (s *RunStore) Finish(id string, status RunStatus, threadID, turnID, errorTe
 			run.TurnID = turnID
 		}
 		run.Error = strings.TrimSpace(errorText)
+	})
+}
+
+func (s *RunStore) FailIfPending(id, errorText string) error {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return nil
+	}
+	return s.update(func(runs []Run) ([]Run, error) {
+		for index := range runs {
+			if runs[index].ID != id || runs[index].Status == RunStatusCompleted || runs[index].Status == RunStatusFailed {
+				continue
+			}
+			runs[index].Status = RunStatusFailed
+			runs[index].CompletedAt = time.Now().UTC()
+			runs[index].Error = strings.TrimSpace(errorText)
+			break
+		}
+		return runs, nil
 	})
 }
 

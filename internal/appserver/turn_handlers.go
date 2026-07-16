@@ -558,6 +558,7 @@ func (s *Server) handleTurnDequeue(req Request) error {
 		return err
 	}
 	if removed {
+		s.failQueuedAutomationRuns([]string{queueID}, "queued automation was removed")
 		_ = s.writeNotification(NotificationTurnDequeued, TurnDequeuedNotification{
 			ThreadID: threadID,
 			QueueID:  queueID,
@@ -1212,6 +1213,7 @@ func (s *Server) handleTurnInterrupt(req Request) error {
 	control := threadAgentControlLocked(th)
 	th.mu.Unlock()
 	discardedQueueIDs := s.discardQueuedUserWork(threadID)
+	s.failQueuedAutomationRuns(discardedQueueIDs, "queued automation was interrupted")
 	cancel()
 	// turn/interrupt means "freeze this work", not "leave background workers
 	// running": cancel the whole anonymous-worker tree, clear its queued
@@ -2325,7 +2327,8 @@ func (s *Server) drainQueuedTurns(threadID string) {
 	}
 	th := s.thread(threadID)
 	if th == nil {
-		s.discardQueuedUserTurns(threadID)
+		discardedQueueIDs := s.discardQueuedUserTurns(threadID)
+		s.failQueuedAutomationRuns(discardedQueueIDs, "automation thread no longer exists")
 		s.clearQueuedTurnDrain(threadID)
 		return
 	}
@@ -2343,6 +2346,11 @@ func (s *Server) drainQueuedTurns(threadID string) {
 	executionBusy := errors.Is(err, errThreadExecutionBusy)
 	if err != nil && !executionBusy {
 		providers.DebugLogf("start queued turn for thread %q: %v", threadID, err)
+		if runID := strings.TrimSpace(entry.snapshot.AutomationRunID); runID != "" && s.rt != nil && s.rt.AutomationManager != nil {
+			if completeErr := s.rt.AutomationManager.CompleteRun(runID, threadID, "", err); completeErr != nil {
+				providers.DebugLogf("fail queued automation run %q: %v", runID, completeErr)
+			}
+		}
 	}
 	requeued := false
 	if !started && (err == nil || executionBusy) {
@@ -2673,6 +2681,11 @@ func (s *Server) startQueuedTurn(ctx context.Context, threadID string, entry que
 	if err != nil || !ok {
 		return ok, err
 	}
+	if runID := strings.TrimSpace(started.runtime.AutomationRunID); runID != "" && s.rt != nil && s.rt.AutomationManager != nil {
+		if err := s.rt.AutomationManager.MarkRunRunning(runID, threadID, started.turnID); err != nil {
+			return false, errors.Join(err, s.abortStartedThreadTurnDurably(th, started, err))
+		}
+	}
 
 	if s.beforeQueuedTurnBackgroundForTest != nil {
 		s.beforeQueuedTurnBackgroundForTest()
@@ -2786,6 +2799,17 @@ func (s *Server) notifyQueuedTurnsDequeued(threadID string, queueIDs []string) {
 			ThreadID: threadID,
 			QueueID:  queueID,
 		})
+	}
+}
+
+func (s *Server) failQueuedAutomationRuns(queueIDs []string, reason string) {
+	if s == nil || s.rt == nil || s.rt.AutomationManager == nil {
+		return
+	}
+	for _, queueID := range queueIDs {
+		if err := s.rt.AutomationManager.FailRunIfPending(queueID, reason); err != nil {
+			providers.DebugLogf("fail queued automation run %q: %v", queueID, err)
+		}
 	}
 }
 

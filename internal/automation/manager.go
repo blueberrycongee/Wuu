@@ -96,20 +96,29 @@ func (m *Manager) Start(executor Executor) error {
 	}
 
 	m.mu.Lock()
-	defer m.mu.Unlock()
 	if m.scheduler != nil {
 		m.executor = executor
+		m.mu.Unlock()
 		return nil
 	}
 	m.executor = executor
-	m.scheduler = cron.NewScheduler(cron.SchedulerConfig{
+	scheduler := cron.NewScheduler(cron.SchedulerConfig{
 		Store:        m.durableStore,
 		SessionStore: m.sessionStore,
 		OnFire:       m.Fire,
 		OnError:      m.reportError,
 		IsOwner:      m.ownsDurableTasks,
 	})
-	m.scheduler.Start()
+	m.scheduler = scheduler
+	m.mu.Unlock()
+
+	if m.ownsDurableTasks() {
+		if err := m.recoverRuns(context.Background(), executor); err != nil {
+			m.Stop()
+			return err
+		}
+	}
+	scheduler.Start()
 	return nil
 }
 
@@ -280,6 +289,7 @@ func (m *Manager) Fire(ctx context.Context, task Task) error {
 	run := Run{
 		ID:          newRunID(),
 		TaskID:      task.ID,
+		Task:        task,
 		Mode:        task.Mode,
 		Status:      RunStatusRunning,
 		TriggeredAt: time.Now().UTC(),
@@ -307,6 +317,64 @@ func (m *Manager) CompleteRun(runID, threadID, turnID string, runErr error) erro
 		errorText = runErr.Error()
 	}
 	return m.runStore.Finish(strings.TrimSpace(runID), status, strings.TrimSpace(threadID), strings.TrimSpace(turnID), errorText)
+}
+
+func (m *Manager) MarkRunRunning(runID, threadID, turnID string) error {
+	if m == nil {
+		return errors.New("automation manager is required")
+	}
+	return m.runStore.UpdateAdmission(
+		strings.TrimSpace(runID), RunStatusRunning,
+		strings.TrimSpace(threadID), strings.TrimSpace(turnID), "",
+	)
+}
+
+func (m *Manager) FailRunIfPending(runID, reason string) error {
+	if m == nil {
+		return errors.New("automation manager is required")
+	}
+	return m.runStore.FailIfPending(runID, reason)
+}
+
+func (m *Manager) recoverRuns(ctx context.Context, executor Executor) error {
+	runs, err := m.runStore.List()
+	if err != nil {
+		return fmt.Errorf("load automation runs for recovery: %w", err)
+	}
+	for _, run := range runs {
+		switch run.Status {
+		case RunStatusRunning:
+			if err := m.runStore.Finish(run.ID, RunStatusFailed, run.ThreadID, run.TurnID, "automation stopped before the turn completed"); err != nil {
+				return err
+			}
+		case RunStatusQueued:
+			task := normalizeTask(run.Task)
+			if strings.TrimSpace(task.ID) == "" {
+				task.ID = run.TaskID
+			}
+			if strings.TrimSpace(task.Prompt) == "" {
+				if err := m.runStore.Finish(run.ID, RunStatusFailed, run.ThreadID, run.TurnID, "queued automation payload is unavailable"); err != nil {
+					return err
+				}
+				continue
+			}
+			result, executeErr := executor.ExecuteAutomation(ctx, task, run)
+			if executeErr != nil {
+				if err := m.runStore.Finish(run.ID, RunStatusFailed, run.ThreadID, run.TurnID, executeErr.Error()); err != nil {
+					return err
+				}
+				continue
+			}
+			status := result.Status
+			if status != RunStatusQueued && status != RunStatusRunning {
+				status = RunStatusRunning
+			}
+			if err := m.runStore.UpdateAdmission(run.ID, status, result.ThreadID, result.TurnID, result.QueueID); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func (m *Manager) ensureCapacity() error {

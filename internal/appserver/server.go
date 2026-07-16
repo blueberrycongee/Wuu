@@ -560,6 +560,9 @@ func (s *Server) Close() {
 	}
 	s.closeOnce.Do(func() {
 		s.closed.Store(true)
+		if s.rt != nil && s.rt.AutomationManager != nil {
+			s.rt.AutomationManager.Stop()
+		}
 		s.cancelSideThreads()
 		// Synchronize with startBackground so no new owned goroutine can be
 		// added after the shutdown waiter begins.

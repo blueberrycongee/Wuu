@@ -9,7 +9,6 @@ import (
 
 	"github.com/blueberrycongee/wuu/internal/agent"
 	"github.com/blueberrycongee/wuu/internal/automation"
-	wuucontext "github.com/blueberrycongee/wuu/internal/context"
 	"github.com/blueberrycongee/wuu/internal/providers"
 	"github.com/blueberrycongee/wuu/internal/runtime"
 	"github.com/blueberrycongee/wuu/internal/session"
@@ -151,8 +150,8 @@ func automationRequestContext(task automation.Task, run automation.Run) []agent.
 		strings.TrimSpace(task.ID), strings.TrimSpace(run.ID), run.TriggeredAt.UTC().Format(time.RFC3339),
 		strings.TrimSpace(task.Cron), strings.TrimSpace(task.Timezone), strings.TrimSpace(task.Mode),
 	)
-	return agent.RequestOnlyContextBlocks([]wuucontext.Block{{
-		Kind: wuucontext.BlockAdditionalContext, Title: "Automation", Source: "automation", Content: content,
+	return agent.RequestOnlyContextMessages([]providers.ChatMessage{{
+		Role: "system", Name: "automation_info", Content: content,
 	}})
 }
 

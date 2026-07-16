@@ -12,6 +12,7 @@ import (
 	"github.com/blueberrycongee/wuu/internal/automation"
 	"github.com/blueberrycongee/wuu/internal/providers"
 	"github.com/blueberrycongee/wuu/internal/session"
+	"github.com/blueberrycongee/wuu/internal/statepath"
 )
 
 func TestAutomationRequestContextIsHiddenAndRequestOnly(t *testing.T) {
@@ -26,7 +27,7 @@ func TestAutomationRequestContextIsHiddenAndRequestOnly(t *testing.T) {
 	if segment.Lifecycle != agent.ContextSegmentRequestOnly || segment.Durable || segment.VisibleInUI {
 		t.Fatalf("automation context must be hidden and request-only: %#v", segment)
 	}
-	if len(segment.Messages) != 1 || !strings.Contains(segment.Messages[0].Content, "task_id: task-1") || !strings.Contains(segment.Messages[0].Content, "run_id: run-1") {
+	if len(segment.Messages) != 1 || segment.Messages[0].Role != "system" || !strings.Contains(segment.Messages[0].Content, "task_id: task-1") || !strings.Contains(segment.Messages[0].Content, "run_id: run-1") {
 		t.Fatalf("automation context message = %#v", segment.Messages)
 	}
 }
@@ -81,7 +82,7 @@ func TestAutomationNewThreadRunsAsPersistedAutomationThread(t *testing.T) {
 	var foundHiddenContext bool
 	for _, request := range requests {
 		for _, message := range request.Messages {
-			if message.Hidden && strings.Contains(message.Content, "task_id: "+task.ID) {
+			if message.Hidden && message.Role == "system" && strings.Contains(message.Content, "task_id: "+task.ID) {
 				foundHiddenContext = true
 			}
 		}
@@ -96,15 +97,22 @@ func TestAutomationNewThreadRunsAsPersistedAutomationThread(t *testing.T) {
 }
 
 func TestAutomationHeartbeatQueuesTurnsOnExistingThread(t *testing.T) {
-	started := make(chan struct{})
-	release := make(chan struct{})
-	var releaseOnce sync.Once
+	firstStarted := make(chan struct{})
+	firstRelease := make(chan struct{})
+	secondStarted := make(chan struct{})
+	secondRelease := make(chan struct{})
+	var firstReleaseOnce sync.Once
+	var secondReleaseOnce sync.Once
 	client := &fakeClient{
 		response: providersResponse("done"),
 		onChat: func(call int, _ providers.ChatRequest) {
-			if call == 1 {
-				close(started)
-				<-release
+			switch call {
+			case 1:
+				close(firstStarted)
+				<-firstRelease
+			case 2:
+				close(secondStarted)
+				<-secondRelease
 			}
 		},
 	}
@@ -114,7 +122,8 @@ func TestAutomationHeartbeatQueuesTurnsOnExistingThread(t *testing.T) {
 	out := &lockedBuffer{}
 	srv := New(rt, out)
 	t.Cleanup(func() {
-		releaseOnce.Do(func() { close(release) })
+		firstReleaseOnce.Do(func() { close(firstRelease) })
+		secondReleaseOnce.Do(func() { close(secondRelease) })
 		srv.Close()
 	})
 
@@ -130,7 +139,7 @@ func TestAutomationHeartbeatQueuesTurnsOnExistingThread(t *testing.T) {
 		t.Fatalf("first Fire: %v", err)
 	}
 	select {
-	case <-started:
+	case <-firstStarted:
 	case <-time.After(2 * time.Second):
 		t.Fatal("first heartbeat turn did not start")
 	}
@@ -154,7 +163,32 @@ func TestAutomationHeartbeatQueuesTurnsOnExistingThread(t *testing.T) {
 		t.Fatalf("queued run count = %d, runs = %#v", queued, runs)
 	}
 
-	releaseOnce.Do(func() { close(release) })
+	firstReleaseOnce.Do(func() { close(firstRelease) })
+	select {
+	case <-secondStarted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("queued heartbeat turn did not start")
+	}
+	runs, err = rt.AutomationManager.ListRuns()
+	if err != nil || len(runs) != 2 {
+		t.Fatalf("runs after dequeue = %#v, %v", runs, err)
+	}
+	var completed, running int
+	for _, run := range runs {
+		switch run.Status {
+		case automation.RunStatusCompleted:
+			completed++
+		case automation.RunStatusRunning:
+			running++
+			if run.TurnID == "" || run.QueueID != "" {
+				t.Fatalf("running dequeued run = %#v", run)
+			}
+		}
+	}
+	if completed != 1 || running != 1 {
+		t.Fatalf("dequeued run states = %#v", runs)
+	}
+	secondReleaseOnce.Do(func() { close(secondRelease) })
 	waitForTurnCompletedCountForThread(t, out, threadID, 2)
 	runs, err = rt.AutomationManager.ListRuns()
 	if err != nil || len(runs) != 2 {
@@ -164,5 +198,53 @@ func TestAutomationHeartbeatQueuesTurnsOnExistingThread(t *testing.T) {
 		if run.Status != automation.RunStatusCompleted || run.ThreadID != threadID || run.TurnID == "" {
 			t.Fatalf("completed heartbeat run = %#v", run)
 		}
+	}
+}
+
+func TestAutomationManagerRecoversQueuedHeartbeatIntoPersistedThread(t *testing.T) {
+	client := &fakeClient{response: providersResponse("recovered")}
+	rt := newTestRuntime(t, client)
+	rt.StateDir = filepath.Dir(rt.SessionDir)
+	threadID := "recovered-heartbeat-thread"
+	if _, err := session.CreateWithMetadata(rt.SessionDir, threadID, rt.RootDir); err != nil {
+		t.Fatalf("CreateWithMetadata: %v", err)
+	}
+	task := automation.Task{
+		ID: "recovered-heartbeat-task", Prompt: "resume the scheduled check",
+		Mode: string(automation.ModeThreadHeartbeat), HeartbeatThreadID: threadID,
+		Cron: "*/5 * * * *", Timezone: "UTC",
+	}
+	runStore := automation.NewRunStore(statepath.AutomationRunsPath(rt.StateDir))
+	if err := runStore.Add(automation.Run{
+		ID: "recovered-heartbeat-run", TaskID: task.ID, Task: task,
+		Mode: task.Mode, Status: automation.RunStatusQueued,
+	}); err != nil {
+		t.Fatalf("add queued run: %v", err)
+	}
+	rt.AutomationManager = automation.NewManager(automation.Config{StateDir: rt.StateDir})
+	out := &lockedBuffer{}
+	srv := New(rt, out)
+	t.Cleanup(srv.Close)
+
+	waitForTurnCompletedForThread(t, out, threadID)
+	runs, err := rt.AutomationManager.ListRuns()
+	if err != nil || len(runs) != 1 {
+		t.Fatalf("recovered runs = %#v, %v", runs, err)
+	}
+	if run := runs[0]; run.Status != automation.RunStatusCompleted || run.ThreadID != threadID || run.TurnID == "" {
+		t.Fatalf("recovered run = %#v", run)
+	}
+	records, err := session.LoadHistoryRecords(rt.SessionDir, threadID, true)
+	if err != nil {
+		t.Fatalf("LoadHistoryRecords: %v", err)
+	}
+	var foundPrompt bool
+	for _, record := range records {
+		if record.Role == "user" && strings.Contains(record.Content, task.Prompt) {
+			foundPrompt = true
+		}
+	}
+	if !foundPrompt {
+		t.Fatalf("recovered prompt missing from history: %#v", records)
 	}
 }
