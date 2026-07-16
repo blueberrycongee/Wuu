@@ -98,3 +98,42 @@ func TestManagerRecordsExecutionFailure(t *testing.T) {
 		t.Fatalf("runs = %#v", runs)
 	}
 }
+
+func TestManagerPausesDurableTask(t *testing.T) {
+	manager := NewManager(Config{StateDir: t.TempDir()})
+	task, err := manager.AddTask(AddTaskParams{
+		Prompt: "inspect", Schedule: "*/5 * * * *", Timezone: "UTC", Durable: true,
+	})
+	if err != nil {
+		t.Fatalf("AddTask() error = %v", err)
+	}
+	paused, err := manager.SetPaused(task.ID, true)
+	if err != nil {
+		t.Fatalf("SetPaused() error = %v", err)
+	}
+	if !paused.Paused {
+		t.Fatalf("paused task = %#v", paused)
+	}
+	tasks, err := manager.ListTasks()
+	if err != nil || len(tasks) != 1 || !tasks[0].Paused {
+		t.Fatalf("ListTasks() = %#v, %v", tasks, err)
+	}
+}
+
+func TestRunAdmissionDoesNotOverwriteTerminalStatus(t *testing.T) {
+	store := NewRunStore(t.TempDir() + "/runs.json")
+	run := Run{ID: "run-1", Status: RunStatusRunning}
+	if err := store.Add(run); err != nil {
+		t.Fatalf("Add() error = %v", err)
+	}
+	if err := store.Finish(run.ID, RunStatusCompleted, "thread-1", "turn-1", ""); err != nil {
+		t.Fatalf("Finish() error = %v", err)
+	}
+	if err := store.UpdateAdmission(run.ID, RunStatusRunning, "thread-1", "turn-1", ""); err != nil {
+		t.Fatalf("UpdateAdmission() error = %v", err)
+	}
+	runs, err := store.List()
+	if err != nil || len(runs) != 1 || runs[0].Status != RunStatusCompleted {
+		t.Fatalf("runs = %#v, %v", runs, err)
+	}
+}

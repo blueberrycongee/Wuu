@@ -171,6 +171,28 @@ func (s *TaskStore) Remove(ids ...string) error {
 	})
 }
 
+func (s *TaskStore) SetPaused(id string, paused bool) (Task, bool, error) {
+	var updated Task
+	found := false
+	err := s.updateIfChanged(func(tasks []Task) ([]Task, bool, error) {
+		for index := range tasks {
+			if tasks[index].ID != id {
+				continue
+			}
+			found = true
+			if tasks[index].Paused == paused {
+				updated = tasks[index]
+				return tasks, false, nil
+			}
+			tasks[index].Paused = paused
+			updated = tasks[index]
+			return tasks, true, nil
+		}
+		return tasks, false, nil
+	})
+	return updated, found, err
+}
+
 // ClaimForDispatch atomically consumes one due task occurrence if the stored
 // task still matches the scheduler snapshot. Recurring tasks advance their
 // LastFiredAt timestamp; one-shot tasks are removed. A successful claim is an
@@ -304,6 +326,22 @@ func (s *SessionTaskStore) Remove(ids ...string) error {
 	}
 	sessionTaskState.tasks[s.namespace] = filtered
 	return nil
+}
+
+func (s *SessionTaskStore) SetPaused(id string, paused bool) (Task, bool, error) {
+	sessionTaskState.mu.Lock()
+	defer sessionTaskState.mu.Unlock()
+
+	tasks := sessionTaskState.tasks[s.namespace]
+	for index := range tasks {
+		if tasks[index].ID != id {
+			continue
+		}
+		tasks[index].Paused = paused
+		sessionTaskState.tasks[s.namespace] = tasks
+		return tasks[index], true, nil
+	}
+	return Task{}, false, nil
 }
 
 func (s *SessionTaskStore) ClaimForDispatch(expected Task, firedAt int64) (bool, error) {

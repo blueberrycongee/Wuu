@@ -236,6 +236,24 @@ func (m *Manager) ListRuns() ([]Run, error) {
 	return m.runStore.List()
 }
 
+func (m *Manager) SetPaused(id string, paused bool) (Task, error) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return Task{}, errors.New("automation task id is required")
+	}
+	if task, found, err := m.durableStore.SetPaused(id, paused); err != nil {
+		return Task{}, err
+	} else if found {
+		return normalizeTask(task), nil
+	}
+	if task, found, err := m.sessionStore.SetPaused(id, paused); err != nil {
+		return Task{}, err
+	} else if found {
+		return normalizeTask(task), nil
+	}
+	return Task{}, fmt.Errorf("automation task %q not found", id)
+}
+
 func (m *Manager) Fire(ctx context.Context, task Task) error {
 	if m == nil {
 		return errors.New("automation manager is required")

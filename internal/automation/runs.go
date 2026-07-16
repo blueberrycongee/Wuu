@@ -57,6 +57,9 @@ func (s *RunStore) Add(run Run) error {
 
 func (s *RunStore) UpdateAdmission(id string, status RunStatus, threadID, turnID, queueID string) error {
 	return s.mutate(id, func(run *Run) {
+		if run.Status == RunStatusCompleted || run.Status == RunStatusFailed {
+			return
+		}
 		run.Status = status
 		run.ThreadID = strings.TrimSpace(threadID)
 		run.TurnID = strings.TrimSpace(turnID)
