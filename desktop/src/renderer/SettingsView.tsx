@@ -976,7 +976,9 @@ function SettingsProvidersPage({
   const { t } = useI18n();
   const reasoningMode = providerModelReasoningMode(selectedProvider, modelDraft);
   const authFieldUsesToken = isAnthropicProviderType(addingProvider ? providerTypeDraft : selectedProvider?.type);
-  const authFieldLabel = authFieldUsesToken ? "Auth token" : "API key";
+  const authFieldLabel = authFieldUsesToken
+    ? t("provider.authToken")
+    : t("provider.apiKey");
   return (
     <SettingsSection testID="settings-providers">
       {providers.length > 0 ? (
@@ -1148,7 +1150,7 @@ function SettingsProvidersPage({
           />
         </SettingsRow>
         <SettingsRow
-          title="Base URL"
+          title={t("settings.baseURL")}
           description={connectionLocked ? t("provider.oauthManaged") : undefined}
           block
         >
@@ -1333,12 +1335,12 @@ function SettingsAdvancedPage({
             disabled={running || !initialized}
           />
         </SettingsRow>
-        <SettingsRow title="Temperature" description={t("settings.temperatureRange")} block>
+        <SettingsRow title={t("settings.temperature")} description={t("settings.temperatureRange")} block>
           <input
             className="settings-input"
             value={temperature}
             inputMode="decimal"
-            placeholder="Auto"
+            placeholder={t("settings.automatic")}
             onChange={(event) => onTemperatureChange(event.target.value)}
             disabled={running || !initialized}
           />
@@ -1532,7 +1534,7 @@ function SettingsGeneralPage({
             <MessageFlowFontSizeControl />
           </SettingsRow>
           <SettingsRow
-            title="Codex Pet"
+            title={t("settings.codexPet")}
             description={t("settings.petSource", { path: codexPets?.home ?? "~/.wuu/pets" })}
             block
           >
@@ -1847,7 +1849,7 @@ function SettingsGeneralPage({
         <SettingsSection title={t("settings.tools")} testID="settings-tool-surface">
           <SettingsCard>
             <SettingsRow
-              title="Profile"
+              title={t("settings.profile")}
               description={formatSurfaceRuntime(initialized, t)}
             >
               <span className="settings-row-control-value">
@@ -2423,7 +2425,9 @@ function providerConnectionStatus(provider: ProviderSummary, t: Translate): stri
   if (provider.connection_locked) {
     return "OAuth";
   }
-  const label = isAnthropicProviderType(provider.type) ? "Auth token" : "API key";
+  const label = isAnthropicProviderType(provider.type)
+    ? t("provider.authToken")
+    : t("provider.apiKey");
   return provider.api_key_configured
     ? t("provider.authConfigured", { field: label })
     : t("provider.authMissing", { field: label });
@@ -2642,23 +2646,23 @@ function formatMCPServerMeta(server: MCPServerStatus, t: Translate): string {
 function formatExtensionProvenance(record: ExtensionInventoryRecord, t: Translate): string {
   const source = extensionSourceLabel(record.provenance.source, t);
   const scope = extensionScopeLabel(record.provenance.scope, t);
-  return `${extensionKindLabel(record.kind)} · ${source} · ${scope}`;
+  return `${extensionKindLabel(record.kind, t)} · ${source} · ${scope}`;
 }
 
-function extensionKindLabel(kind: ExtensionInventoryRecord["kind"]): string {
+function extensionKindLabel(kind: ExtensionInventoryRecord["kind"], t: Translate): string {
   switch (kind) {
     case "skill":
-      return "Skill";
+      return t("extension.kindSkill");
     case "agent_template":
-      return "Agent Template";
+      return t("extension.kindAgentTemplate");
     case "mcp":
       return "MCP";
     case "hook":
-      return "Hook";
+      return t("extension.kindHook");
     case "plugin":
-      return "Plugin";
+      return t("extension.kindPlugin");
     case "command":
-      return "Command";
+      return t("extension.kindCommand");
   }
 }
 
@@ -2667,7 +2671,9 @@ function extensionSourceLabel(source: string, t: Translate): string {
   if (source === "claude") return "Claude Code";
   if (source === "wuu" || source === "wuu_config") return "Wuu";
   if (source === "bundled") return t("extension.bundledSource");
-  if (source.startsWith("plugin:")) return source.replace("plugin:", "Plugin · ");
+  if (source.startsWith("plugin:")) {
+    return t("extension.pluginSource", { id: source.slice("plugin:".length) });
+  }
   return source || t("extension.unknownSource");
 }
 

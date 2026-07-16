@@ -62,7 +62,7 @@ export async function loadRuntime(
   const thread = defaultThread
     ? requireThread(
         await window.wuu.resumeThread(defaultThread.id),
-        "resume did not return a thread",
+        translateCurrent("thread.resumeMissing"),
       )
     : undefined;
   return {
@@ -129,7 +129,7 @@ export async function loadPopOutRuntime(
     ]);
   const listedThreads = sortThreads([...listed.threads, ...archived.threads]);
   const thread = reconcileResumedThreadTurns(
-    requireThread(resumed, "resume did not return a thread"),
+    requireThread(resumed, translateCurrent("thread.resumeMissing")),
     listedThreads.find((item) => item.id === init.threadID),
   );
   const tab = createThreadSessionTab(thread, init.context);

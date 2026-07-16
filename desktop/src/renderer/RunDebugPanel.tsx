@@ -161,11 +161,11 @@ export function RunDebugPanel({
             value={state.activeContext?.cwd ?? thread?.cwd ?? t("runDebug.notConnected")}
           />
           <RunDebugRow
-            label="Thread"
+            label={t("runDebug.thread")}
             value={thread ? shortDebugID(thread.id) : t("runDebug.none")}
           />
           <RunDebugRow
-            label="Turn"
+            label={t("runDebug.turn")}
             value={
               turn ? (
                 <>
@@ -286,23 +286,23 @@ function RunDebugItem({
           turnID={turnID}
           item={item}
           field="text"
-          label="text"
+          label={t("runDebug.field.text")}
         />
         <DebugFieldLength
           turnID={turnID}
           item={item}
           field="arguments"
-          label="args"
+          label={t("runDebug.field.arguments")}
         />
         <DebugFieldLength
           turnID={turnID}
           item={item}
           field="result"
-          label="result"
+          label={t("runDebug.field.result")}
         />
         {item.error ? (
           <span className="error" title={item.error}>
-            error: {shortDebugError(item.error)}
+            {t("runDebug.field.error")}: {shortDebugError(item.error)}
           </span>
         ) : null}
       </div>

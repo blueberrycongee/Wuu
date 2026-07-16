@@ -537,8 +537,8 @@ describe("SettingsView advanced settings", () => {
     expect(inputs.length).toBeGreaterThanOrEqual(6);
     const [compactThreshold, compactKeepRecent, providerContextWindow, maxContextTokens, maxSteps, temperature] = inputs;
     expect((temperature as HTMLInputElement).value).toBe("");
-    // Auto 语义由占位符承载，不再出现在行描述文字里。
-    expect((temperature as HTMLInputElement).placeholder).toBe("Auto");
+    // The placeholder carries the automatic-value meaning instead of the row description.
+    expect((temperature as HTMLInputElement).placeholder).toBe("自动");
     await act(async () => {
       setInputValue(compactThreshold, "50");
       setInputValue(compactKeepRecent, "20000");

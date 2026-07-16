@@ -308,7 +308,7 @@ function ChipGalleryGallery(): JSX.Element {
   return (
     <section className="chip-gallery-section">
       <header>
-        <h3>Gallery</h3>
+        <h3>{t("chipGallery.galleryTitle")}</h3>
         <p>
           {t("chipGallery.galleryDescriptionPrefix")} <code>kind · tone</code>{" "}
           {t("chipGallery.galleryDescriptionSuffix")}
@@ -471,7 +471,7 @@ function ChipGalleryInContext(): JSX.Element {
   return (
     <section className="chip-gallery-section">
       <header>
-        <h3>In-Context</h3>
+        <h3>{t("chipGallery.inContextTitle")}</h3>
         <p>
           {t("chipGallery.inContextDescriptionPrefix")} <code>TurnView</code>{" "}
           {t("chipGallery.inContextDescriptionSuffix")}

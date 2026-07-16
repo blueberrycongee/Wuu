@@ -448,7 +448,9 @@ export function createProjectRuntimeActions(
         return;
       }
       setStatus(
-        error instanceof Error ? error.message : "relocate workspace failed",
+        error instanceof Error
+          ? error.message
+          : translateCurrent("project.relocateFailed"),
       );
     }
   }

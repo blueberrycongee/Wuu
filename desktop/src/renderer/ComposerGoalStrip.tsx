@@ -546,7 +546,7 @@ function goalInfoRows(summary: ComposerGoalSummary, nowMS: number): GoalInfoRow[
   }
   if ((summary.tokens_used ?? 0) > 0) {
     rows.push({
-      label: "Tokens",
+      label: translate("goal.tokens"),
       value: formatCompactNumber(summary.tokens_used ?? 0),
     });
   }

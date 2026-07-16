@@ -168,7 +168,9 @@ export function createThreadMutationActions(
         status: current.status === "ready" ? "ready" : current.status,
       }));
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "pin thread failed");
+      setStatus(
+        error instanceof Error ? error.message : translateCurrent("thread.pinFailed"),
+      );
     }
   }
 
@@ -264,7 +266,9 @@ export function createThreadMutationActions(
       }));
     } catch (error) {
       setStatus(
-        error instanceof Error ? error.message : "add thread member failed",
+        error instanceof Error
+          ? error.message
+          : translateCurrent("thread.memberAdd.failed"),
       );
     }
   }
@@ -362,7 +366,11 @@ export function createThreadMutationActions(
         status: current.status === "ready" ? "ready" : current.status,
       }));
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "unarchive thread failed");
+      setStatus(
+        error instanceof Error
+          ? error.message
+          : translateCurrent("thread.unarchiveFailed"),
+      );
     }
   }
 
@@ -398,7 +406,11 @@ export function createThreadMutationActions(
         return archiveMarkThreadState(current, thread.id, false, nextTabs, fallbackDraft);
       });
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "delete thread failed");
+      setStatus(
+        error instanceof Error
+          ? error.message
+          : translateCurrent("thread.deleteFailed"),
+      );
     }
   }
 
@@ -469,7 +481,11 @@ export function createThreadMutationActions(
         status: current.status === "ready" ? "ready" : current.status,
       }));
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "pin subagent failed");
+      setStatus(
+        error instanceof Error
+          ? error.message
+          : translateCurrent("thread.subagentPin.failed"),
+      );
     }
   }
 

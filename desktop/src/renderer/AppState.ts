@@ -301,7 +301,7 @@ function reduceServerEvent(state: AppState, event: ServerEvent): AppState {
     case "server-error":
       return {
         ...state,
-        status: statusMessageForError(event.message, "server error"),
+        status: statusMessageForError(event.message, t("error.server")),
       };
     case "server-exit":
       return {
@@ -2416,7 +2416,7 @@ function createSkillsSessionTab(context: RuntimeContext): SessionTab {
     id: skillsSessionTabID(context),
     kind: "skills",
     context,
-    title: "Skills",
+    title: t("skills.title"),
   };
 }
 

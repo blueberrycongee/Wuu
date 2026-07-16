@@ -64,7 +64,11 @@ export function createEnvironmentActions(
         status: current.status === "ready" ? "ready" : current.status,
       }));
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "checkout branch failed");
+      setStatus(
+        error instanceof Error
+          ? error.message
+          : translateCurrent("git.checkoutFailed"),
+      );
     }
   }
 
@@ -93,7 +97,9 @@ export function createEnvironmentActions(
         return;
       }
       setStatus(
-        error instanceof Error ? error.message : "refresh git status failed",
+        error instanceof Error
+          ? error.message
+          : translateCurrent("git.refreshFailed"),
       );
     } finally {
       deps.gitRefreshInFlightRef.current = false;

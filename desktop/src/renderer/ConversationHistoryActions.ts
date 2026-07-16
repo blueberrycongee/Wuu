@@ -214,7 +214,7 @@ export function createConversationHistoryActions(
     } catch (error) {
       deps.setAppState((current) => ({
         ...current,
-        status: error instanceof Error ? error.message : "fork failed",
+        status: error instanceof Error ? error.message : t("thread.forkFailed"),
       }));
       throw error;
     }

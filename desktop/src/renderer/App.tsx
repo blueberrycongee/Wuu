@@ -1604,7 +1604,7 @@ export function App(): JSX.Element {
         }
         setState((current) => ({
           ...current,
-          status: error instanceof Error ? error.message : "failed to start",
+          status: error instanceof Error ? error.message : t("runtime.startFailed"),
         }));
       }
     })();
@@ -2665,7 +2665,7 @@ export function App(): JSX.Element {
       setState((current) => ({
         ...current,
         status:
-          error instanceof Error ? error.message : "open detached window failed",
+          error instanceof Error ? error.message : t("window.openDetachedFailed"),
       }));
     } finally {
       poppingOutSubthreadIDsRef.current.delete(subthreadID);
@@ -3186,8 +3186,8 @@ export function App(): JSX.Element {
         turnID: result.turn.id,
       });
     } catch (error) {
-      const rawMessage = rawErrorMessage(error, "compact failed");
-      const errorMessage = statusMessageForError(rawMessage, "compact failed");
+      const rawMessage = rawErrorMessage(error, t("composer.compactFailed"));
+      const errorMessage = statusMessageForError(rawMessage, t("composer.compactFailed"));
       appendRunDebugEvent({
         source: "client",
         method: "thread/compact/start failed",
@@ -3432,8 +3432,8 @@ export function App(): JSX.Element {
         turnID: result.turn.id,
       });
     } catch (error) {
-      const rawMessage = rawErrorMessage(error, "send failed");
-      const errorMessage = statusMessageForError(rawMessage, "send failed");
+      const rawMessage = rawErrorMessage(error, t("composer.sendFailed"));
+      const errorMessage = statusMessageForError(rawMessage, t("composer.sendFailed"));
       appendRunDebugEvent({
         source: "client",
         method: "turn/start failed",
@@ -3630,8 +3630,8 @@ export function App(): JSX.Element {
         turnID: result.turn.id,
       });
     } catch (error) {
-      const rawMessage = rawErrorMessage(error, "send failed");
-      const errorMessage = statusMessageForError(rawMessage, "send failed");
+      const rawMessage = rawErrorMessage(error, t("composer.sendFailed"));
+      const errorMessage = statusMessageForError(rawMessage, t("composer.sendFailed"));
       appendRunDebugEvent({
         source: "client",
         method: "turn/start failed",
@@ -3768,8 +3768,8 @@ export function App(): JSX.Element {
         });
       }
     } catch (error) {
-      const rawMessage = rawErrorMessage(error, "send failed");
-      const errorMessage = statusMessageForError(rawMessage, "send failed");
+      const rawMessage = rawErrorMessage(error, t("composer.sendFailed"));
+      const errorMessage = statusMessageForError(rawMessage, t("composer.sendFailed"));
       if (targetIsActive) {
         appendRunDebugEvent({
           source: "client",
