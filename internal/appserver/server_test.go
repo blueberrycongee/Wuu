@@ -6502,6 +6502,51 @@ func TestServerRejectsUnknownTurnParams(t *testing.T) {
 	}
 }
 
+func TestServerHTTP400EmitsSingleTerminalErrorWithoutRetry(t *testing.T) {
+	client := &fakeClient{err: &providers.HTTPError{
+		StatusCode: 400,
+		Body:       `{"error":{"type":"invalid_request_error","message":"Invalid request"}}`,
+	}}
+	rt := newTestRuntime(t, client)
+	out := &lockedBuffer{}
+	srv := New(rt, out)
+
+	if err := srv.handleLine(context.Background(), []byte(`{"id":"1","method":"thread/start"}`)); err != nil {
+		t.Fatalf("thread/start: %v", err)
+	}
+	threadID := remarshal[ThreadStartResult](t, responseByID(t, parseOutput(t, out.String()), "1")["result"]).Thread.ID
+	raw, err := json.Marshal(map[string]any{
+		"id":     "2",
+		"method": MethodTurnStart,
+		"params": TurnStartParams{ThreadID: threadID, Prompt: "trigger invalid request"},
+	})
+	if err != nil {
+		t.Fatalf("marshal turn request: %v", err)
+	}
+	if err := srv.handleLine(context.Background(), raw); err != nil {
+		t.Fatalf("turn/start: %v", err)
+	}
+
+	messages := waitForMethod(t, out, NotificationTurnError)
+	errors := notificationsByMethod(messages, NotificationTurnError)
+	if len(errors) != 1 {
+		t.Fatalf("turn/error notifications = %d, want 1", len(errors))
+	}
+	if completed := notificationsByMethod(messages, NotificationTurnCompleted); len(completed) != 0 {
+		t.Fatalf("turn/completed notifications = %d, want 0", len(completed))
+	}
+	failed := remarshal[TurnErrorNotification](t, errors[0]["params"])
+	if failed.Category != "invalid_request" || failed.StatusCode != 400 || failed.Turn.Status != TurnStatusFailed {
+		t.Fatalf("unexpected HTTP 400 terminal notification: %+v", failed)
+	}
+	client.mu.Lock()
+	requestCount := len(client.requests)
+	client.mu.Unlock()
+	if requestCount != 1 {
+		t.Fatalf("provider requests = %d, want 1", requestCount)
+	}
+}
+
 func TestServerFailedTurnPersistsPairedToolHistoryAndReloadsFailure(t *testing.T) {
 	client := &fakeClient{
 		responses: []providers.ChatResponse{{
