@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { applyThemePreference, resolveThemePreference } from "./Theme";
+import type { ThemePreference } from "../shared/protocol";
+import {
+  applyThemePreference,
+  resolveThemePreference,
+  startThemePreferenceSync,
+} from "./Theme";
 
 type MediaListener = (event: { matches: boolean }) => void;
 
@@ -84,5 +89,37 @@ describe("applyThemePreference", () => {
 
     media.fire(true);
     expect(document.documentElement.dataset.theme).toBe("light");
+  });
+});
+
+describe("startThemePreferenceSync", () => {
+  afterEach(() => {
+    delete (window as { wuu?: unknown }).wuu;
+  });
+
+  it("applies preferences broadcast from other windows and disposes", () => {
+    stubMatchMedia(false);
+    let handler: ((theme: ThemePreference) => void) | undefined;
+    const dispose = vi.fn();
+    (window as { wuu?: unknown }).wuu = {
+      onThemePreferenceChange: (next: (theme: ThemePreference) => void) => {
+        handler = next;
+        return dispose;
+      },
+    };
+
+    const stop = startThemePreferenceSync();
+    handler?.("dark");
+    expect(document.documentElement.dataset.theme).toBe("dark");
+    handler?.("light");
+    expect(document.documentElement.dataset.theme).toBe("light");
+
+    stop();
+    expect(dispose).toHaveBeenCalledTimes(1);
+  });
+
+  it("is a no-op without the desktop bridge", () => {
+    stubMatchMedia(false);
+    expect(() => startThemePreferenceSync()).not.toThrow();
   });
 });
