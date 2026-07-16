@@ -23,8 +23,6 @@ import (
 	"github.com/blueberrycongee/wuu/internal/capability"
 	"github.com/blueberrycongee/wuu/internal/config"
 	wuucontext "github.com/blueberrycongee/wuu/internal/context"
-	"github.com/blueberrycongee/wuu/internal/cron"
-	goalrunner "github.com/blueberrycongee/wuu/internal/goal"
 	"github.com/blueberrycongee/wuu/internal/goalruntime"
 	"github.com/blueberrycongee/wuu/internal/hooks"
 	"github.com/blueberrycongee/wuu/internal/mcp"
@@ -145,8 +143,6 @@ type Session struct {
 	ExperimentalHelpMe          bool
 	DeferredToolCatalogPrompt   string
 	AutomationManager           *automation.Manager
-	CronScheduler               *cron.Scheduler
-	CronLock                    *cron.Lock
 	ReadinessIssues             []ReadinessIssue
 	InferenceJournalRuntime     *session.InferenceJournalRuntime
 }
@@ -702,166 +698,6 @@ func resolveToolLoadingModeForProvider(mode config.ToolLoadingMode, providerCfg 
 		}
 		return config.ToolLoadingFlat, false, false
 	}
-}
-
-func (s *Session) StartCronScheduler() error {
-	if s == nil || s.StreamRunner == nil {
-		return nil
-	}
-	if s.CronScheduler != nil {
-		return nil
-	}
-	stateDir := strings.TrimSpace(s.StateDir)
-	if stateDir == "" {
-		return fmt.Errorf("workspace state directory is required for cron scheduler")
-	}
-
-	lock := cron.NewLock(statepath.ScheduledTasksLockPath(stateDir))
-	ownsDurableTasks := false
-	scheduler := cron.NewScheduler(cron.SchedulerConfig{
-		Store:        cron.NewTaskStore(statepath.ScheduledTasksPath(stateDir)),
-		SessionStore: cron.NewSessionTaskStore(stateDir),
-		OnFire: func(ctx context.Context, task cron.Task) error {
-			return s.runScheduledPrompt(ctx, task)
-		},
-		OnError: func(err error) {
-			providers.DebugLogf("cron scheduler: %v", err)
-		},
-		IsOwner: func() bool {
-			if ownsDurableTasks {
-				return true
-			}
-			ok, err := lock.TryAcquire()
-			if err != nil {
-				providers.DebugLogf("cron scheduler lock acquire failed: %v", err)
-				return false
-			}
-			ownsDurableTasks = ok
-			return ok
-		},
-	})
-	s.CronLock = lock
-	s.CronScheduler = scheduler
-	scheduler.Start()
-	return nil
-}
-
-func (s *Session) runScheduledPrompt(ctx context.Context, task cron.Task) error {
-	prompt := strings.TrimSpace(task.Prompt)
-	if prompt == "" {
-		return fmt.Errorf("scheduled prompt task %q has an empty prompt", task.ID)
-	}
-	goalStore := s.startScheduledGoal(ctx, task, prompt)
-	threadRT, err := s.NewThreadRuntime(scheduledCronSessionID("cron-task", task.ID))
-	if err != nil {
-		err = fmt.Errorf("create isolated runtime: %w", err)
-		s.recordScheduledFailure(goalStore, task.ID, err)
-		return err
-	}
-	if threadRT.StreamRunner == nil {
-		err = errors.New("isolated runtime has no stream runner")
-		s.recordScheduledFailure(goalStore, task.ID, err)
-		return err
-	}
-	if threadRT.AgentControl != nil {
-		defer func() {
-			if shutdownErr := shutdownAndCleanupAgentControl(threadRT.AgentControl); shutdownErr != nil {
-				providers.DebugLogf("scheduled runtime shutdown: %v", shutdownErr)
-			}
-		}()
-		// Scheduled runtimes do not pass through app-server's runtime
-		// installation path. Their worker dependencies are complete once
-		// NewThreadRuntime returns, so enable queued work explicitly here.
-		threadRT.AgentControl.StartWorkerTerminalRecovery()
-		threadRT.AgentControl.StartQueuedWork()
-	}
-	if _, err := threadRT.StreamRunner.Run(ctx, prompt); err != nil {
-		s.recordScheduledFailure(goalStore, task.ID, err)
-		return err
-	}
-	if goalStore != nil {
-		_, _ = goalStore.MarkStepCompleted(goalrunner.StepExecution)
-		_, _ = goalStore.AddProgress(goalrunner.StepSummary, "Scheduled task execution completed.")
-		_, _ = goalStore.SetStatus(goalrunner.StatusCompleted, goalrunner.StepSummary, "scheduled task execution completed")
-	}
-	return nil
-}
-
-func (s *Session) recordScheduledFailure(goalStore *goalrunner.Store, taskID string, err error) {
-	if goalStore == nil || err == nil {
-		return
-	}
-	_, _ = goalStore.AddFailure(goalrunner.Failure{
-		Step:     goalrunner.StepExecution,
-		Kind:     "scheduled_task_failed",
-		Source:   "cron",
-		SourceID: taskID,
-		Message:  err.Error(),
-	})
-}
-
-func (s *Session) startScheduledGoal(ctx context.Context, task cron.Task, prompt string) *goalrunner.Store {
-	stateDir := strings.TrimSpace(s.StateDir)
-	if stateDir == "" {
-		return nil
-	}
-	goalID := scheduledCronSessionID("cron-goal", task.ID)
-	store := goalrunner.NewStore(filepath.Join(stateDir, "goals", goalID))
-	triggerPayload := map[string]string{
-		"task_id":   strings.TrimSpace(task.ID),
-		"cron":      strings.TrimSpace(task.Cron),
-		"kind":      "prompt",
-		"recurring": fmt.Sprintf("%t", task.Recurring),
-	}
-	runner := goalrunner.Runner{Store: store}
-	if _, err := runner.Init(ctx, goalrunner.Spec{
-		ID:            goalID,
-		Goal:          "Scheduled prompt task",
-		Task:          strings.TrimSpace(prompt),
-		AssignedAgent: "cron-scheduler",
-		Trigger: goalrunner.Trigger{
-			Type:    "scheduled",
-			Source:  "cron",
-			Payload: triggerPayload,
-		},
-	}); err != nil {
-		providers.DebugLogf("cron prompt task %q failed to initialize goal: %v", task.ID, err)
-		return nil
-	}
-	if _, err := store.SetStatus(goalrunner.StatusRunning, goalrunner.StepExecution, "scheduled task fired"); err != nil {
-		providers.DebugLogf("cron prompt task %q failed to mark goal running: %v", task.ID, err)
-		return store
-	}
-	if _, _, err := store.AddArtifact("trigger.md", "trigger", renderScheduledGoalTrigger(task, prompt)); err != nil {
-		providers.DebugLogf("cron prompt task %q failed to write goal trigger artifact: %v", task.ID, err)
-	}
-	return store
-}
-
-func renderScheduledGoalTrigger(task cron.Task, prompt string) string {
-	var b strings.Builder
-	fmt.Fprintf(&b, "# Scheduled Trigger\n\n")
-	fmt.Fprintf(&b, "- Task: %s\n", strings.TrimSpace(task.ID))
-	fmt.Fprintf(&b, "- Cron: %s\n", strings.TrimSpace(task.Cron))
-	fmt.Fprintf(&b, "- Recurring: %t\n", task.Recurring)
-	fmt.Fprintf(&b, "- Kind: prompt\n")
-	fmt.Fprintf(&b, "\n## Prompt\n\n%s\n", strings.TrimSpace(prompt))
-	return b.String()
-}
-
-func scheduledCronSessionID(prefix, taskID string) string {
-	id := strings.TrimSpace(taskID)
-	var safe strings.Builder
-	for i := 0; i < len(id); i++ {
-		ch := id[i]
-		if (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || ch == '-' || ch == '_' {
-			safe.WriteByte(ch)
-		}
-	}
-	if safe.Len() == 0 {
-		safe.WriteString("task")
-	}
-	return fmt.Sprintf("%s-%s-%d", prefix, safe.String(), time.Now().UnixNano())
 }
 
 // NewThreadRuntime creates a per-conversation execution runtime from the
