@@ -71,6 +71,8 @@ import { MemoryPanel } from "./MemoryPanel";
 import { MessageFlowFontSizeControl } from "./MessageFlowFontSizeSection";
 import { SettingsRemotePage } from "./SettingsRemotePage";
 import { ThemePreferenceControl } from "./ThemePreferenceSection";
+import { LanguagePreferenceControl } from "./LanguagePreferenceSection";
+import { useI18n } from "./i18n";
 
 export type SettingsPage =
   | "providers"
@@ -1402,6 +1404,7 @@ function SettingsGeneralPage({
   copyState: CopyState;
   onCopyVersion: () => Promise<void>;
 }): JSX.Element {
+  const { t } = useI18n();
   const generalSettings = initialized?.general_settings;
   const configuredMCPEnabled = generalSettings?.mcp_server_enabled ?? {};
   const configuredMCPKey = stableBoolRecordSignature(configuredMCPEnabled);
@@ -1513,12 +1516,15 @@ function SettingsGeneralPage({
 
   return (
     <>
-      <SettingsSection title="外观" testID="settings-appearance">
+      <SettingsSection title={t("settings.appearance")} testID="settings-appearance">
         <SettingsCard>
-          <SettingsRow title="主题">
+          <SettingsRow title={t("settings.language")}>
+            <LanguagePreferenceControl />
+          </SettingsRow>
+          <SettingsRow title={t("settings.theme")}>
             <ThemePreferenceControl />
           </SettingsRow>
-          <SettingsRow title="消息流字号" block>
+          <SettingsRow title={t("settings.messageFontSize")} block>
             <MessageFlowFontSizeControl />
           </SettingsRow>
           <SettingsRow

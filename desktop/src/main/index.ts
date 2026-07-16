@@ -107,11 +107,14 @@ import {
   getCodexPetSize,
   getMessageFlowFontSize,
   getThemePreference,
+  getLanguagePreference,
   setCodexPetSettings,
   setMessageFlowFontSize,
   setThemePreference,
+  setLanguagePreference,
   type MessageFlowFontSize,
   type ThemePreference,
+  type LanguagePreference,
 } from "./desktopSettings";
 import { GitService } from "./gitService";
 import { openExternalURL, wireExternalNavigationGuards } from "./externalNavigation";
@@ -1315,6 +1318,16 @@ app.whenReady().then(async () => {
     return remoteControlSnapshot(workdir);
   });
   ipcMain.handle("wuu:theme-preference-get", () => getThemePreference());
+  ipcMain.handle("wuu:language-preference-get", () => getLanguagePreference());
+  ipcMain.on("wuu:language-preference-get-sync", (event) => {
+    event.returnValue = getLanguagePreference();
+  });
+  ipcMain.handle("wuu:language-preference-set", (_event, language: LanguagePreference) => {
+    const valid: LanguagePreference[] = ["system", "zh-CN", "en-US"];
+    const next = valid.includes(language) ? language : "system";
+    setLanguagePreference(next);
+    return { ok: true, language: next };
+  });
   // Synchronous variant used by the preload script so the first paint
   // already carries the persisted theme (no light-mode flash on boot).
   ipcMain.on("wuu:theme-preference-get-sync", (event) => {

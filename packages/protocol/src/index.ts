@@ -1865,6 +1865,8 @@ export const MESSAGE_FLOW_FONT_SIZE_RANGE = {
 } as const;
 
 export type ThemePreference = "system" | "light" | "dark";
+export type LanguagePreference = "system" | "zh-CN" | "en-US";
+export type AppLocale = Exclude<LanguagePreference, "system">;
 
 // The three OS families the desktop shell distinguishes. Anything more
 // exotic collapses to "linux" (native-frame fallback chrome).
@@ -2114,6 +2116,12 @@ export type WuuDesktopApi = {
   setThemePreference: (
     theme: ThemePreference,
   ) => Promise<{ ok: boolean; theme: ThemePreference }>;
+  initialLanguagePreference?: LanguagePreference;
+  initialSystemLocale?: string;
+  getLanguagePreference: () => Promise<LanguagePreference>;
+  setLanguagePreference: (
+    language: LanguagePreference,
+  ) => Promise<{ ok: boolean; language: LanguagePreference }>;
   // Message-stream reading size. Persists to desktop-settings.json as a
   // fixed three-step ladder. `initialMessageFlowFontSize` is read
   // synchronously in the preload so the first paint already has the

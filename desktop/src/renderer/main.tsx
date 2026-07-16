@@ -5,6 +5,7 @@ import { applyMessageFlowFontSize } from "./MessageFlowFontSizeSection";
 import { applyPlatformStamp } from "./platform";
 import { applyThemePreference } from "./Theme";
 import "./styles.css";
+import { I18nProvider } from "./i18n";
 
 // The preload script already stamped data-theme for the first paint;
 // re-applying here takes over the "system" media-query subscription for
@@ -23,5 +24,5 @@ applyMessageFlowFontSize(
 );
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
-  <App />,
+  <I18nProvider><App /></I18nProvider>,
 );
