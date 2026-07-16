@@ -266,7 +266,38 @@ describe("JumpToLatestPill", () => {
     expect(host.querySelector(".jump-to-latest-pill")).toBeNull();
   });
 
-  it("anchors above the composer via a body portal when bottomAnchor is given", () => {
+  it("observes content nodes inserted after the pill mounts", async () => {
+    const resizeObservers = installMockResizeObserver();
+    const geometry = {
+      scrollHeight: 500,
+      clientHeight: 600,
+      scrollTop: 0,
+    };
+    const { node } = scrollContainer(geometry);
+    const host = mountPill(node);
+    const lateContent = document.createElement("div");
+
+    await act(async () => {
+      node.appendChild(lateContent);
+      await Promise.resolve();
+    });
+
+    act(() => {
+      geometry.scrollHeight = 900;
+      flushResizeObservers(resizeObservers, lateContent);
+    });
+    expect(host.querySelector(".jump-to-latest-pill")).not.toBeNull();
+
+    act(() => {
+      geometry.scrollHeight = 500;
+      flushResizeObservers(resizeObservers, lateContent);
+    });
+    expect(host.querySelector(".jump-to-latest-pill")).toBeNull();
+  });
+
+  it("tracks the visual composer frame and disappears when its anchor is removed", () => {
+    vi.useFakeTimers();
+    const resizeObservers = installMockResizeObserver();
     const { node } = scrollContainer({
       scrollHeight: 1000,
       clientHeight: 400,
@@ -280,6 +311,10 @@ describe("JumpToLatestPill", () => {
     document.body.appendChild(anchor);
     mountedContainers.push(anchor);
     stubRect(anchor, { left: 100, top: 700, bottom: 780, width: 600, height: 80 });
+    const frame = document.createElement("div");
+    frame.className = "composer-frame";
+    anchor.appendChild(frame);
+    stubRect(frame, { left: 100, top: 620, bottom: 780, width: 600, height: 160 });
     Object.defineProperty(window, "innerHeight", {
       configurable: true,
       value: 900,
@@ -288,10 +323,11 @@ describe("JumpToLatestPill", () => {
     const host = document.createElement("div");
     node.appendChild(host);
     const root = createRoot(host);
+    const containerRef = { current: node };
     act(() => {
       root.render(
         createElement(JumpToLatestPill, {
-          containerRef: { current: node },
+          containerRef,
           bottomAnchor: anchor,
         }),
       );
@@ -306,8 +342,31 @@ describe("JumpToLatestPill", () => {
     expect(pill).not.toBeNull();
     // left = container.left + container.width / 2 = 100 + 300
     expect(pill?.style.left).toBe("400px");
-    // bottom = innerHeight - anchor.top + gap(12) = 900 - 700 + 12
-    expect(pill?.style.bottom).toBe("212px");
+    // Expanded composers move their frame above the outer footer. Position
+    // from that visual top, not from the unchanged footer box.
+    expect(pill?.style.bottom).toBe("292px");
+    expect(
+      resizeObservers.some((observer) => observer.observed.has(frame)),
+    ).toBe(true);
+
+    act(() => {
+      stubRect(frame, { left: 100, top: 560, bottom: 780, width: 600, height: 220 });
+      flushResizeObservers(resizeObservers, frame);
+      vi.runAllTimers();
+    });
+    expect(pill?.style.bottom).toBe("352px");
+
+    act(() => {
+      root.render(
+        createElement(JumpToLatestPill, {
+          containerRef,
+          bottomAnchor: null,
+        }),
+      );
+    });
+    expect(
+      document.body.querySelector(".jump-to-latest-pill-anchored"),
+    ).toBeNull();
   });
 
   it("notifies parent via onScrolledAwayChange when the scroll-away boolean flips", () => {
