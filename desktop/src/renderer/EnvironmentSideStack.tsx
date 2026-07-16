@@ -117,7 +117,7 @@ export function EnvironmentSideStack({
   const thread = activeThreadForState(state);
   if (thread && isGroupThread(thread)) {
     return (
-      <div className="environment-side-stack">
+      <div className="environment-side-stack group-info-side-stack">
         <GroupInfoPanel
           panelRef={panelRef}
           motionState={closing ? "closing" : motionState}

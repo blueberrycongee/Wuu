@@ -65,6 +65,15 @@
   pointer-events: none;
 }
 
+.environment-side-stack.group-info-side-stack {
+  container: group-info-stack / inline-size;
+  width: min(
+    var(--environment-panel-width),
+    max(260px, 36%),
+    calc(100% - 32px)
+  );
+}
+
                                                                     
                                                                    
                                                                         
@@ -153,15 +162,26 @@
   overflow: auto;
 }
 
+.group-info-panel {
+  --group-info-body-font: clamp(12px, 4.27cqi, var(--font-body));
+  --group-info-small-font: clamp(10px, 3.35cqi, var(--font-xs));
+  --group-info-avatar-size: clamp(24px, 8.54cqi, 28px);
+  --group-info-panel-padding: clamp(8px, 3.66cqi, 12px);
+  --group-info-section-gap: clamp(10px, 4.27cqi, 14px);
+  --group-info-row-gap: clamp(7px, 2.74cqi, 9px);
+  --group-info-body-bottom-padding: clamp(2px, 1.22cqi, 4px);
+  padding: var(--group-info-panel-padding);
+}
+
 .group-info-panel-body {
-  gap: 14px;
-  padding: 2px 2px 4px;
+  gap: var(--group-info-section-gap);
+  padding: 2px 2px var(--group-info-body-bottom-padding);
 }
 
 .group-info-summary {
   display: grid;
   border-bottom: 1px solid var(--surface-3);
-  padding: 2px 4px 18px;
+  padding: 2px 4px clamp(12px, 5.49cqi, 18px);
 }
 
 .group-info-field {
@@ -173,7 +193,7 @@
 .group-info-field > span,
 .group-info-members-heading span {
   color: var(--ink-tertiary);
-  font-size: var(--font-xs);
+  font-size: var(--group-info-small-font);
   font-weight: var(--weight-medium);
 }
 
@@ -183,8 +203,14 @@
   align-items: center;
   gap: 6px;
   color: var(--ink);
-  font-size: var(--font-body);
+  font-size: var(--group-info-body-font);
   font-weight: var(--weight-semibold);
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.group-info-field strong .icon {
+  flex: 0 0 auto;
 }
 
 .group-info-members {
@@ -204,7 +230,7 @@
 .group-info-members-heading h3 {
   margin: 0;
   color: var(--ink);
-  font-size: var(--font-body);
+  font-size: var(--group-info-body-font);
   font-weight: var(--weight-semibold);
 }
 
@@ -249,7 +275,7 @@
   display: grid;
   min-width: 0;
   align-items: center;
-  gap: 9px;
+  gap: var(--group-info-row-gap);
   border: 0;
   border-radius: var(--radius-sm);
   background: transparent;
@@ -258,9 +284,9 @@
 }
 
 .group-info-add-row {
-  grid-template-columns: 16px 28px minmax(0, 1fr);
-  min-height: 38px;
-  padding: 5px 7px;
+  grid-template-columns: 16px var(--group-info-avatar-size) minmax(0, 1fr);
+  min-height: clamp(34px, 11.59cqi, 38px);
+  padding: clamp(4px, 1.53cqi, 5px) clamp(5px, 2.13cqi, 7px);
   cursor: pointer;
 }
 
@@ -288,7 +314,7 @@
   min-width: 0;
   overflow: hidden;
   color: var(--ink);
-  font-size: var(--font-sm);
+  font-size: clamp(11px, 3.66cqi, var(--font-sm));
   font-weight: var(--weight-semibold);
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -299,7 +325,7 @@
   min-width: 0;
   overflow: hidden;
   color: var(--ink-tertiary);
-  font-size: var(--font-xs);
+  font-size: var(--group-info-small-font);
   font-style: normal;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -313,9 +339,9 @@
 }
 
 .group-info-member-row {
-  grid-template-columns: 28px minmax(0, 1fr) 24px;
-  min-height: 42px;
-  padding: 6px 4px;
+  grid-template-columns: var(--group-info-avatar-size) minmax(0, 1fr) 24px;
+  min-height: clamp(36px, 12.8cqi, 42px);
+  padding: clamp(4px, 1.83cqi, 6px) 4px;
 }
 
 /* Positioned wrapper so the busy pip can sit at the avatar corner without
@@ -324,16 +350,16 @@
 .group-info-avatar-cell {
   position: relative;
   display: inline-flex;
-  width: 28px;
-  height: 28px;
+  width: var(--group-info-avatar-size);
+  height: var(--group-info-avatar-size);
   align-items: center;
   justify-content: center;
 }
 
 .group-info-avatar {
   display: inline-flex;
-  width: 28px;
-  height: 28px;
+  width: var(--group-info-avatar-size);
+  height: var(--group-info-avatar-size);
   align-items: center;
   justify-content: center;
   border-radius: var(--radius-pill);
@@ -373,10 +399,22 @@
   min-width: 0;
   overflow: hidden;
   color: var(--info);
-  font-size: var(--font-xs);
+  font-size: var(--group-info-small-font);
   font-style: normal;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+@container group-info-stack (max-width: 280px) {
+  .group-info-add-row strong,
+  .group-info-add-row em,
+  .group-info-member-text strong,
+  .group-info-member-text em,
+  .group-info-fork-badge {
+    overflow-wrap: anywhere;
+    text-overflow: clip;
+    white-space: normal;
+  }
 }
 
 .group-info-remove-button {

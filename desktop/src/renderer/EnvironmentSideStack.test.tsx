@@ -121,10 +121,25 @@ describe("EnvironmentSideStack", () => {
   it("renders group info instead of session environment rows for group threads", () => {
     renderStack({ thread: groupThread() });
 
+    expect(container.querySelector(".group-info-side-stack")).not.toBeNull();
     expect(container.querySelector(".group-info-panel")).not.toBeNull();
     expect(container.textContent).toContain("群聊信息");
     expect(container.textContent).toContain("前端小队");
     expect(container.textContent).not.toContain("群内容");
     expect(container.textContent).not.toContain("创建拉取请求");
+  });
+
+  it("scales the group info panel and its content from the available width", () => {
+    const stack = cssRule(".environment-side-stack.group-info-side-stack");
+    const panel = cssRule(".group-info-panel");
+
+    expect(stack).toContain("container: group-info-stack / inline-size");
+    expect(stack).toMatch(/width:\s*min\(/);
+    expect(panel).toContain("--group-info-body-font: clamp(");
+    expect(panel).toContain("--group-info-avatar-size: clamp(");
+    expect(panel).toContain("padding: var(--group-info-panel-padding)");
+    expect(environmentCSS).toMatch(
+      /@container group-info-stack \(max-width: 280px\)[\s\S]*?white-space:\s*normal/,
+    );
   });
 });
