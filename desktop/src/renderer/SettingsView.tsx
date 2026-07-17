@@ -1195,6 +1195,8 @@ function SettingsProvidersPage({
             onChange={(event) => onAPIKeyDraftChange(event.target.value)}
             disabled={running || connectionLocked}
           />
+        </SettingsRow>
+        <div className="settings-row settings-row-footer">
           {error ? <div className="settings-error">{error}</div> : null}
           {saved && !error ? <div className="settings-saved">{t("settings.saved")}</div> : null}
           <button
@@ -1204,7 +1206,7 @@ function SettingsProvidersPage({
           >
             {addingProvider ? t("provider.addAction") : t("provider.saveConfiguration")}
           </button>
-        </SettingsRow>
+        </div>
       </form>
     </SettingsSection>
   );
@@ -1282,10 +1284,9 @@ function SettingsAdvancedPage({
         <SettingsRow
           title={t("settings.compactThreshold")}
           description={t("settings.compactThresholdDescription")}
-          block
         >
           <input
-            className="settings-input"
+            className="settings-input settings-input-num"
             value={compactThreshold}
             inputMode="numeric"
             placeholder={t("settings.automatic")}
@@ -1296,10 +1297,9 @@ function SettingsAdvancedPage({
         <SettingsRow
           title={t("settings.keepRecentContext")}
           description={t("settings.keepRecentContextDescription")}
-          block
         >
           <input
-            className="settings-input"
+            className="settings-input settings-input-num"
             value={compactKeepRecent}
             inputMode="numeric"
             placeholder="20,000"
@@ -1312,10 +1312,9 @@ function SettingsAdvancedPage({
           description={`${providerContextWindowSource}${
             providerContextWindowCurrent ? `；${t("settings.currentTokenLimit", { count: providerContextWindowCurrent })}` : ""
           }`}
-          block
         >
           <input
-            className="settings-input"
+            className="settings-input settings-input-num"
             value={providerContextWindow}
             inputMode="numeric"
             placeholder={t("settings.detectAutomatically")}
@@ -1326,10 +1325,9 @@ function SettingsAdvancedPage({
         <SettingsRow
           title={t("settings.unknownModelLimit")}
           description={t("settings.unknownModelLimitDescription")}
-          block
         >
           <input
-            className="settings-input"
+            className="settings-input settings-input-num"
             value={maxContextTokens}
             inputMode="numeric"
             placeholder={t("settings.automatic")}
@@ -1340,25 +1338,26 @@ function SettingsAdvancedPage({
         <SettingsRow
           title={t("settings.maxSteps")}
           description={t("settings.unlimitedAtZero")}
-          block
         >
           <input
-            className="settings-input"
+            className="settings-input settings-input-num"
             value={maxSteps}
             inputMode="numeric"
             onChange={(event) => onMaxStepsChange(event.target.value)}
             disabled={running || !initialized}
           />
         </SettingsRow>
-        <SettingsRow title={t("settings.temperature")} description={t("settings.temperatureRange")} block>
+        <SettingsRow title={t("settings.temperature")} description={t("settings.temperatureRange")}>
           <input
-            className="settings-input"
+            className="settings-input settings-input-num"
             value={temperature}
             inputMode="decimal"
             placeholder={t("settings.automatic")}
             onChange={(event) => onTemperatureChange(event.target.value)}
             disabled={running || !initialized}
           />
+        </SettingsRow>
+        <div className="settings-row settings-row-footer">
           {error ? <div className="settings-error">{error}</div> : null}
           {saved && !error ? <div className="settings-saved">{t("settings.saved")}</div> : null}
           <button
@@ -1368,7 +1367,7 @@ function SettingsAdvancedPage({
           >
             {t("settings.save")}
           </button>
-        </SettingsRow>
+        </div>
       </form>
     </SettingsSection>
   );
@@ -1651,15 +1650,6 @@ function SettingsGeneralPage({
               }}
               disabled={running || !initialized}
             />
-            {generalError ? <div className="settings-error">{generalError}</div> : null}
-            {generalSaved && !generalError ? <div className="settings-saved">{t("settings.saved")}</div> : null}
-            <button
-              className="settings-button settings-button-primary"
-              type="submit"
-              disabled={running || !initialized}
-            >
-              {t("settings.save")}
-            </button>
           </SettingsRow>
           <SettingsRow
             title={t("settings.memory")}
@@ -1704,6 +1694,17 @@ function SettingsGeneralPage({
               </small>
             ) : null}
           </SettingsRow>
+        <div className="settings-row settings-row-footer">
+            {generalError ? <div className="settings-error">{generalError}</div> : null}
+            {generalSaved && !generalError ? <div className="settings-saved">{t("settings.saved")}</div> : null}
+            <button
+              className="settings-button settings-button-primary"
+              type="submit"
+              disabled={running || !initialized}
+            >
+              {t("settings.save")}
+            </button>
+          </div>
         </form>
       </SettingsSection>
 
@@ -1844,45 +1845,40 @@ function SettingsGeneralPage({
         </SettingsCard>
       </SettingsSection>
 
-      <SettingsSection title={t("settings.extensions")} testID="settings-extensions">
-        <SettingsCard>
-          {extensionInventory.length > 0 ? (
-            extensionInventory.map((record) => (
+      {extensionInventory.length > 0 ? (
+        <SettingsSection title={t("settings.extensions")} testID="settings-extensions">
+          <SettingsCard>
+            {extensionInventory.map((record) => (
               <SettingsRow
                 key={record.id}
                 title={record.name}
-                description={formatExtensionProvenance(record, t)}
-                block
+                description={[
+                  formatExtensionProvenance(record, t),
+                  record.requested_permissions?.length
+                    ? t("extension.permissions", { permissions: record.requested_permissions.join("、") })
+                    : "",
+                  record.unsupported_fields?.length
+                    ? t("extension.unsupportedFields", { fields: record.unsupported_fields.join("、") })
+                    : "",
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
               >
-                <div className="settings-extension-detail">
-                  <div className="settings-extension-badges">
-                    <span className={`settings-status-pill ${extensionStateTone(record.state)}`}>
-                      {extensionStateLabel(record.state, t)}
+                <div className="settings-extension-badges">
+                  <span className={`settings-status-pill ${extensionStateTone(record.state)}`}>
+                    {extensionStateLabel(record.state, t)}
+                  </span>
+                  {record.grant_scope ? (
+                    <span className="settings-extension-grant">
+                      {extensionGrantScopeLabel(record.grant_scope, t)}
                     </span>
-                    {record.grant_scope ? (
-                      <span className="settings-extension-grant">
-                        {extensionGrantScopeLabel(record.grant_scope, t)}
-                      </span>
-                    ) : null}
-                  </div>
-                  {record.requested_permissions?.length ? (
-                    <small className="settings-extension-meta">
-                      {t("extension.permissions", { permissions: record.requested_permissions.join("、") })}
-                    </small>
-                  ) : null}
-                  {record.unsupported_fields?.length ? (
-                    <small className="settings-extension-meta settings-extension-warning">
-                      {t("extension.unsupportedFields", { fields: record.unsupported_fields.join("、") })}
-                    </small>
                   ) : null}
                 </div>
               </SettingsRow>
-            ))
-          ) : (
-            <div className="settings-mcp-empty">{t("settings.noExtensions")}</div>
-          )}
-        </SettingsCard>
-      </SettingsSection>
+            ))}
+          </SettingsCard>
+        </SettingsSection>
+      ) : null}
 
       {showDebugControlsSetting ? (
         <SettingsSection title={t("settings.development")}>
@@ -2209,16 +2205,16 @@ function SettingsUsagePage({
             </button>
           ))}
         </div>
-        {usage && (
-          <div className="settings-usage-stats">
-            <UsageStat label={t("settings.usageInput")} value={formatNumber(usage.metrics.input_tokens)} />
-            <UsageStat label={t("settings.usageContext")} value={formatNumber(usage.metrics.context_tokens)} />
-            <UsageStat label={t("settings.usageOutput")} value={formatNumber(usage.metrics.output_tokens)} />
-            <UsageStat label={t("settings.cacheHitRate")} value={formatPercent(usage.metrics.cache_hit_rate)} />
-            <UsageStat label={t("settings.activeDays")} value={t("settings.dayCount", { count: formatNumber(usage.metrics.active_days) })} />
-          </div>
-        )}
       </div>
+      {usage && (
+        <div className="settings-usage-stats">
+          <UsageStat label={t("settings.usageInput")} value={formatNumber(usage.metrics.input_tokens)} />
+          <UsageStat label={t("settings.usageContext")} value={formatNumber(usage.metrics.context_tokens)} />
+          <UsageStat label={t("settings.usageOutput")} value={formatNumber(usage.metrics.output_tokens)} />
+          <UsageStat label={t("settings.cacheHitRate")} value={formatPercent(usage.metrics.cache_hit_rate)} />
+          <UsageStat label={t("settings.activeDays")} value={t("settings.dayCount", { count: formatNumber(usage.metrics.active_days) })} />
+        </div>
+      )}
 
       <div className="settings-heatmap-panel">
         {/* Month labels row */}

@@ -470,6 +470,23 @@
   text-overflow: ellipsis;
 }
 
+/* Compact numeric input for small-value rows (thresholds, limits): sits
+ * in the right-hand control slot instead of stretching the row tall. */
+.settings-input-num {
+  flex: 0 0 auto;
+  width: 104px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Card footer row: feedback text left, the form's submit action right. */
+.settings-row-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .settings-textarea {
   min-height: 112px;
   resize: vertical;
@@ -908,15 +925,6 @@
   padding: 8px 16px;
 }
 
-.settings-extension-detail {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 6px;
-  min-width: 0;
-}
-
 .settings-extension-badges {
   display: flex;
   align-items: center;
@@ -924,16 +932,9 @@
   gap: 8px;
 }
 
-.settings-extension-grant,
-.settings-extension-meta {
+.settings-extension-grant {
   color: var(--ink-muted);
   font-size: var(--font-sm);
-  line-height: 1.45;
-  overflow-wrap: anywhere;
-}
-
-.settings-extension-warning {
-  color: var(--warning);
 }
 
 .settings-codex-pets-controls {
@@ -947,6 +948,7 @@
 .settings-codex-pet-select {
   flex: 1;
   min-width: 0;
+  max-width: 280px;
 }
 
 /* --- Usage page ------------------------------------------------------------------ */
@@ -962,7 +964,6 @@
 .settings-usage-toolbar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 20px;
   flex-wrap: wrap;
 }
@@ -1005,11 +1006,12 @@
   box-shadow: var(--shadow-soft);
 }
 
-/* Stat strip: one mini card per metric, big tabular number over a label. */
+/* Stat strip: one full-width row of mini cards, big tabular number over
+ * a label. Five fit side by side at the default column width; they fold
+ * evenly below it. */
 .settings-usage-stats {
   display: grid;
-  flex: 1;
-  grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
   gap: 8px;
   min-width: 0;
 }
@@ -1139,6 +1141,16 @@
   height: 10px;
   border-radius: 2px;
   background: var(--gray-100);
+}
+
+/* The usage empty state reads as a quiet card, not a bare line. */
+.settings-usage-page > .settings-empty {
+  justify-content: center;
+  min-height: 0;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  background: var(--paper);
+  padding: 48px 16px;
 }
 
 /* Usage table: a card with an inset title and full-bleed rows. */
