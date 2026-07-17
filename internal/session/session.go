@@ -34,17 +34,19 @@ var (
 
 // Session represents one conversation session.
 type Session struct {
-	ID        string    `json:"id"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at,omitempty"`
-	Title     string    `json:"title,omitempty"`
-	Summary   string    `json:"summary,omitempty"`
-	Entries   int       `json:"entries"`
-	CWD       string    `json:"cwd,omitempty"`
-	Source    string    `json:"source,omitempty"`
-	Provider  string    `json:"provider,omitempty"`
-	Model     string    `json:"model,omitempty"`
-	Variant   string    `json:"variant,omitempty"`
+	ID             string    `json:"id"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at,omitempty"`
+	Title          string    `json:"title,omitempty"`
+	Summary        string    `json:"summary,omitempty"`
+	Entries        int       `json:"entries"`
+	CWD            string    `json:"cwd,omitempty"`
+	Source         string    `json:"source,omitempty"`
+	Provider       string    `json:"provider,omitempty"`
+	Model          string    `json:"model,omitempty"`
+	Variant        string    `json:"variant,omitempty"`
+	Effort         string    `json:"effort,omitempty"`
+	PermissionMode string    `json:"permission_mode,omitempty"`
 	// WorkspaceID is the stable, location-independent identity of the workspace
 	// this session belongs to (the desktop's registered-project id). Sessions
 	// of a workspace with an id are listed by that id, so they follow the
@@ -244,7 +246,7 @@ SELECT id, created_at, updated_at, title, summary, entries, cwd,
        pinned_at, archived_at,
        worktree_path, worktree_base_head, worktree_base_repo,
        dm_participant_id, is_group, focus_workspace, workspace_id, source,
-       provider, model, variant
+	       provider, model, variant, effort, permission_mode
 FROM sessions`)
 	if err != nil {
 		return nil, fmt.Errorf("list sessions: %w", err)
@@ -447,19 +449,40 @@ func SetSource(sessDir, id, source string) (Session, error) {
 
 // SetModelSelection persists the model used by this conversation. Sessions
 // created before these fields existed use runtime defaults until changed.
-func SetModelSelection(sessDir, id, provider, model, variant string) (Session, error) {
-	provider = strings.TrimSpace(provider)
-	model = strings.TrimSpace(model)
-	if provider == "" {
+type RuntimeSelection struct {
+	Provider       string
+	Model          string
+	Variant        string
+	Effort         string
+	PermissionMode string
+}
+
+// SetRuntimeSelection persists the runtime defaults pinned to one conversation.
+func SetRuntimeSelection(sessDir, id string, selection RuntimeSelection) (Session, error) {
+	selection.Provider = strings.TrimSpace(selection.Provider)
+	selection.Model = strings.TrimSpace(selection.Model)
+	if selection.Provider == "" {
 		return Session{}, fmt.Errorf("provider is required")
 	}
-	if model == "" {
+	if selection.Model == "" {
 		return Session{}, fmt.Errorf("model is required")
 	}
 	return updateMetadata(sessDir, id, false, func(s *Session) {
-		s.Provider = provider
-		s.Model = model
-		s.Variant = strings.TrimSpace(variant)
+		s.Provider = selection.Provider
+		s.Model = selection.Model
+		s.Variant = strings.TrimSpace(selection.Variant)
+		s.Effort = strings.TrimSpace(selection.Effort)
+		s.PermissionMode = strings.TrimSpace(selection.PermissionMode)
+	})
+}
+
+// SetModelSelection preserves the pre-runtime-selection API for callers that
+// only know about model variants.
+func SetModelSelection(sessDir, id, provider, model, variant string) (Session, error) {
+	return SetRuntimeSelection(sessDir, id, RuntimeSelection{
+		Provider: provider,
+		Model:    model,
+		Variant:  variant,
 	})
 }
 
@@ -1476,6 +1499,12 @@ WHERE workflow_id = ''`); err != nil {
 	if err := addColumnIfMissing(db, "sessions", "variant", "TEXT NOT NULL DEFAULT ''"); err != nil {
 		return err
 	}
+	if err := addColumnIfMissing(db, "sessions", "effort", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+	if err := addColumnIfMissing(db, "sessions", "permission_mode", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
 	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_sessions_workspace_id ON sessions(workspace_id)`); err != nil {
 		return fmt.Errorf("migrate sessions database: %w", err)
 	}
@@ -2041,8 +2070,8 @@ func insertSessionSQL() string {
 		forked_from_id, forked_from_turn_id, forked_from_item_id,
 		pinned_at, archived_at, worktree_path, worktree_base_head, worktree_base_repo,
 		dm_participant_id, is_group, focus_workspace, workspace_id, source,
-		provider, model, variant
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+		provider, model, variant, effort, permission_mode
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 }
 
 func updateSessionTx(tx *sql.Tx, sess Session) error {
@@ -2052,7 +2081,7 @@ SET created_at = ?, updated_at = ?, title = ?, summary = ?, entries = ?, cwd = ?
     forked_from_id = ?, forked_from_turn_id = ?, forked_from_item_id = ?,
     pinned_at = ?, archived_at = ?, worktree_path = ?, worktree_base_head = ?, worktree_base_repo = ?,
     dm_participant_id = ?, is_group = ?, focus_workspace = ?, workspace_id = ?, source = ?,
-    provider = ?, model = ?, variant = ?
+	provider = ?, model = ?, variant = ?, effort = ?, permission_mode = ?
 WHERE id = ?`,
 		timeText(sess.CreatedAt), timeText(sess.UpdatedAt), sess.Title, sess.Summary, sess.Entries, normalizeCWD(sess.CWD),
 		sess.ForkedFromID, sess.ForkedFromTurnID, sess.ForkedFromItemID,
@@ -2060,6 +2089,7 @@ WHERE id = ?`,
 		normalizeCWD(sess.WorktreePath), sess.WorktreeBaseHEAD, normalizeCWD(sess.WorktreeBaseRepo),
 		strings.TrimSpace(sess.DMParticipantID), boolToInt(sess.Group), strings.TrimSpace(sess.FocusWorkspace), strings.TrimSpace(sess.WorkspaceID), strings.TrimSpace(sess.Source),
 		strings.TrimSpace(sess.Provider), strings.TrimSpace(sess.Model), strings.TrimSpace(sess.Variant),
+		strings.TrimSpace(sess.Effort), strings.TrimSpace(sess.PermissionMode),
 		sess.ID,
 	)
 	if err != nil {
@@ -2093,6 +2123,8 @@ func sessionArgs(sess Session) []any {
 		strings.TrimSpace(sess.Provider),
 		strings.TrimSpace(sess.Model),
 		strings.TrimSpace(sess.Variant),
+		strings.TrimSpace(sess.Effort),
+		strings.TrimSpace(sess.PermissionMode),
 	}
 }
 
@@ -2110,7 +2142,7 @@ SELECT id, created_at, updated_at, title, summary, entries, cwd,
        pinned_at, archived_at,
        worktree_path, worktree_base_head, worktree_base_repo,
        dm_participant_id, is_group, focus_workspace, workspace_id, source,
-       provider, model, variant
+	       provider, model, variant, effort, permission_mode
 FROM sessions
 WHERE id = ?`, id)
 	return scanSessionRow(row)
@@ -2123,7 +2155,7 @@ SELECT id, created_at, updated_at, title, summary, entries, cwd,
        pinned_at, archived_at,
        worktree_path, worktree_base_head, worktree_base_repo,
        dm_participant_id, is_group, focus_workspace, workspace_id, source,
-       provider, model, variant
+	       provider, model, variant, effort, permission_mode
 FROM sessions
 WHERE id = ?`, id)
 	return scanSessionRow(row)
@@ -2155,7 +2187,7 @@ func scanSession(scanner interface {
 		&pinnedAt, &archivedAt,
 		&s.WorktreePath, &s.WorktreeBaseHEAD, &s.WorktreeBaseRepo,
 		&s.DMParticipantID, &isGroup, &s.FocusWorkspace, &s.WorkspaceID, &s.Source,
-		&s.Provider, &s.Model, &s.Variant,
+		&s.Provider, &s.Model, &s.Variant, &s.Effort, &s.PermissionMode,
 	); err != nil {
 		return Session{}, err
 	}

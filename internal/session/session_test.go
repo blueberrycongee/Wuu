@@ -50,20 +50,27 @@ func TestDirUsesUserHome(t *testing.T) {
 	}
 }
 
-func TestSetModelSelectionPersists(t *testing.T) {
+func TestSetRuntimeSelectionPersists(t *testing.T) {
 	dir := t.TempDir()
 	if _, err := CreateWithMetadata(dir, "thread-model", t.TempDir()); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := SetModelSelection(dir, "thread-model", "kimi", "k3", "high"); err != nil {
+	if _, err := SetRuntimeSelection(dir, "thread-model", RuntimeSelection{
+		Provider:       "kimi",
+		Model:          "k3",
+		Variant:        "high",
+		Effort:         "xhigh",
+		PermissionMode: "read_only",
+	}); err != nil {
 		t.Fatal(err)
 	}
 	sessions, err := List(dir, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(sessions) != 1 || sessions[0].Provider != "kimi" || sessions[0].Model != "k3" || sessions[0].Variant != "high" {
-		t.Fatalf("model selection was not persisted: %+v", sessions)
+	if len(sessions) != 1 || sessions[0].Provider != "kimi" || sessions[0].Model != "k3" ||
+		sessions[0].Variant != "high" || sessions[0].Effort != "xhigh" || sessions[0].PermissionMode != "read_only" {
+		t.Fatalf("runtime selection was not persisted: %+v", sessions)
 	}
 }
 
