@@ -70,6 +70,7 @@ func dropForeignProviderModelState(provider, model string, msgs []ChatMessage) [
 			msgs[i].ProviderItemModel,
 		)
 		if foreignMessage {
+			msgs[i].Content = downgradeReasoningToAssistantText(msgs[i])
 			msgs[i].ProviderItemID = ""
 			msgs[i].ReasoningContent = ""
 			msgs[i].ReasoningBlocks = nil
@@ -83,6 +84,29 @@ func dropForeignProviderModelState(provider, model string, msgs []ChatMessage) [
 		}
 	}
 	return msgs
+}
+
+// downgradeReasoningToAssistantText follows the cross-model behavior used by
+// other BYOK clients: readable reasoning stays in the conversation as plain
+// assistant text, while the caller removes signatures and opaque payloads.
+func downgradeReasoningToAssistantText(msg ChatMessage) string {
+	readable := make([]string, 0, len(msg.ReasoningBlocks))
+	for _, block := range msg.ReasoningBlocks {
+		if text := strings.TrimSpace(block.Thinking); text != "" {
+			readable = append(readable, text)
+		}
+	}
+	reasoning := strings.Join(readable, "\n")
+	if reasoning == "" {
+		reasoning = strings.TrimSpace(msg.ReasoningContent)
+	}
+	if reasoning == "" {
+		return msg.Content
+	}
+	if strings.TrimSpace(msg.Content) == "" {
+		return reasoning
+	}
+	return reasoning + "\n\n" + msg.Content
 }
 
 func providerStateOriginMismatch(currentProvider, currentModel, originProvider, originModel string) bool {

@@ -50,8 +50,8 @@ func TestApplyModelMessageCompatibilityDropsForeignProviderState(t *testing.T) {
 	}
 
 	got := ApplyModelMessageCompatibility("k3", msgs)
-	if got[0].Content != "visible answer" || got[0].ProviderItemModel != "gpt-5.6-sol" {
-		t.Fatalf("foreign visible history changed: %+v", got[0])
+	if got[0].Content != "private reasoning\n\nvisible answer" || got[0].ProviderItemModel != "gpt-5.6-sol" {
+		t.Fatalf("foreign readable history was not preserved: %+v", got[0])
 	}
 	if got[0].ProviderItemID != "" || got[0].ReasoningContent != "" || len(got[0].ReasoningBlocks) != 0 || len(got[0].DiscoveredTools) != 0 {
 		t.Fatalf("foreign provider state was replayed: %+v", got[0])
@@ -72,7 +72,7 @@ func TestApplyProviderModelMessageCompatibilityDropsSameModelStateFromAnotherPro
 		ProviderItemProvider: "gateway-a",
 		ProviderItemModel:    "shared-model",
 		ReasoningContent:     "private reasoning",
-		ReasoningBlocks:      []ReasoningBlock{{Type: "thinking", Signature: "foreign-signature"}},
+		ReasoningBlocks:      []ReasoningBlock{{Type: "thinking", Thinking: "private reasoning", Signature: "foreign-signature"}},
 		DiscoveredTools:      []LoadableToolDefinition{{Name: "foreign-tool"}},
 		ToolCalls: []ToolCall{{
 			ID:                   "call_1",
@@ -84,8 +84,8 @@ func TestApplyProviderModelMessageCompatibilityDropsSameModelStateFromAnotherPro
 	}}
 
 	got := ApplyProviderModelMessageCompatibility("gateway-b", "shared-model", msgs)
-	if got[0].Content != "visible answer" || got[0].ProviderItemModel != "shared-model" {
-		t.Fatalf("visible history changed: %+v", got[0])
+	if got[0].Content != "private reasoning\n\nvisible answer" || got[0].ProviderItemModel != "shared-model" {
+		t.Fatalf("foreign readable history was not preserved: %+v", got[0])
 	}
 	if got[0].ProviderItemID != "" || got[0].ReasoningContent != "" || len(got[0].ReasoningBlocks) != 0 || len(got[0].DiscoveredTools) != 0 {
 		t.Fatalf("foreign message state was replayed: %+v", got[0])
