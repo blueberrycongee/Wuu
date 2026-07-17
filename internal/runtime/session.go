@@ -169,6 +169,66 @@ func (s *Session) MaxParallel() int {
 	return s.maxParallel
 }
 
+// cloneForThreadModel copies the shared, immutable session dependencies used
+// to build a thread runtime without copying ultraMode's atomic noCopy marker.
+// Thread-specific mutable dependencies are replaced by the caller below.
+func (s *Session) cloneForThreadModel() *Session {
+	if s == nil {
+		return nil
+	}
+	clone := &Session{
+		ProviderName:                s.ProviderName,
+		Model:                       s.Model,
+		RootDir:                     s.RootDir,
+		WorkspaceID:                 s.WorkspaceID,
+		StateDir:                    s.StateDir,
+		ConfigPath:                  s.ConfigPath,
+		HomeDir:                     s.HomeDir,
+		ConfigLoadMode:              s.ConfigLoadMode,
+		SessionDir:                  s.SessionDir,
+		StreamRunner:                s.StreamRunner,
+		TitleClient:                 s.TitleClient,
+		HookDispatcher:              s.HookDispatcher,
+		Skills:                      s.Skills,
+		AgentTemplates:              s.AgentTemplates,
+		AgentTemplateDiagnostics:    s.AgentTemplateDiagnostics,
+		Plugins:                     s.Plugins,
+		PluginHost:                  s.PluginHost,
+		Memory:                      s.Memory,
+		MemdirEnabled:               s.MemdirEnabled,
+		DreamIntervalDays:           s.DreamIntervalDays,
+		AgentControl:                s.AgentControl,
+		ProcessManager:              s.ProcessManager,
+		Toolkit:                     s.Toolkit,
+		ActivityRegistry:            s.ActivityRegistry,
+		WorkerClient:                s.WorkerClient,
+		ModelRoles:                  s.ModelRoles,
+		ModelBudget:                 s.ModelBudget,
+		WorkerModelBudget:           s.WorkerModelBudget,
+		BaseSystemPrompt:            s.BaseSystemPrompt,
+		BaseSystemPromptSections:    s.BaseSystemPromptSections,
+		UserSystemPrompt:            s.UserSystemPrompt,
+		SessionDate:                 s.SessionDate,
+		WuuHome:                     s.WuuHome,
+		Permissions:                 s.Permissions,
+		maxParallel:                 s.maxParallel,
+		CoordinatorPreamble:         s.CoordinatorPreamble,
+		ExperimentalCoordinatorMode: s.ExperimentalCoordinatorMode,
+		ToolLoadingPreference:       s.ToolLoadingPreference,
+		ToolLoadingMode:             s.ToolLoadingMode,
+		ToolSearchEnabled:           s.ToolSearchEnabled,
+		NativeDeferredToolDiscovery: s.NativeDeferredToolDiscovery,
+		ExperimentalDeferredBundles: s.ExperimentalDeferredBundles,
+		ExperimentalHelpMe:          s.ExperimentalHelpMe,
+		DeferredToolCatalogPrompt:   s.DeferredToolCatalogPrompt,
+		AutomationManager:           s.AutomationManager,
+		ReadinessIssues:             s.ReadinessIssues,
+		InferenceJournalRuntime:     s.InferenceJournalRuntime,
+	}
+	clone.ultraMode.Store(s.ultraMode.Load())
+	return clone
+}
+
 type ReadinessIssue struct {
 	Code     string
 	Provider string
@@ -755,7 +815,7 @@ func (s *Session) NewThreadRuntimeForRootModel(sessionID, rootDir string, select
 		return nil, err
 	}
 
-	shadow := *s
+	shadow := s.cloneForThreadModel()
 	shadow.ProviderName = resolvedName
 	shadow.Model = model
 	shadow.ModelRoles = roles
