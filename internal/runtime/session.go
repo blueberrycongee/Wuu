@@ -252,9 +252,11 @@ type ThreadRuntime struct {
 // ThreadModelSelection is the model choice persisted with one conversation.
 // Empty fields mean the workspace runtime defaults should be used.
 type ThreadModelSelection struct {
-	Provider string
-	Model    string
-	Variant  string
+	Provider       string
+	Model          string
+	Variant        string
+	Effort         string
+	PermissionMode string
 }
 
 // resolveWorkspaceStateDir returns the workspace state directory, keyed by the
@@ -795,11 +797,18 @@ func (s *Session) NewThreadRuntimeForRootModel(sessionID, rootDir string, select
 	}
 	providerName := strings.TrimSpace(selected.Provider)
 	model := strings.TrimSpace(selected.Model)
+	permissionMode := strings.TrimSpace(selected.PermissionMode)
+	if permissionMode == "" {
+		permissionMode = s.Permissions.Mode
+	}
+	permissions := config.ResolvedPermissions{Mode: config.NormalizePermissionMode(permissionMode)}
 	currentVariant := ""
+	currentEffort := ""
 	if s.StreamRunner != nil {
 		currentVariant = strings.TrimSpace(s.StreamRunner.Variant)
+		currentEffort = strings.TrimSpace(s.StreamRunner.Effort)
 	}
-	if providerName == "" || model == "" || (providerName == s.ProviderName && model == s.Model && strings.TrimSpace(selected.Variant) == currentVariant) {
+	if providerName == "" || model == "" || (providerName == s.ProviderName && model == s.Model && strings.TrimSpace(selected.Variant) == currentVariant && strings.TrimSpace(selected.Effort) == currentEffort && permissions.Mode == config.NormalizePermissionMode(s.Permissions.Mode)) {
 		return s.NewThreadRuntimeForRoot(sessionID, rootDir)
 	}
 	cfg, _, err := s.LoadEffectiveConfig()
@@ -812,7 +821,8 @@ func (s *Session) NewThreadRuntimeForRootModel(sessionID, rootDir string, select
 	}
 	ruleProviderName, ruleProviderCfg := modelcatalog.EnrichProvider(resolvedName, providerCfg, model)
 	variant := strings.TrimSpace(selected.Variant)
-	selection := modelvariant.ResolveForProvider(ruleProviderName, ruleProviderCfg, model, variant, variant)
+	effort := strings.TrimSpace(selected.Effort)
+	selection := modelvariant.ResolveForProvider(ruleProviderName, ruleProviderCfg, model, variant, effort)
 	client, err := providerfactory.BuildStreamClient(ruleProviderCfg, resolvedName)
 	if err != nil {
 		return nil, fmt.Errorf("build thread model client: %w", err)
@@ -826,6 +836,7 @@ func (s *Session) NewThreadRuntimeForRootModel(sessionID, rootDir string, select
 	}
 
 	shadow := s.cloneForThreadModel()
+	shadow.Permissions = permissions
 	shadow.ProviderName = resolvedName
 	shadow.Model = model
 	shadow.ModelRoles = roles

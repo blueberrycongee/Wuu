@@ -447,8 +447,6 @@ func SetSource(sessDir, id, source string) (Session, error) {
 	})
 }
 
-// SetModelSelection persists the model used by this conversation. Sessions
-// created before these fields existed use runtime defaults until changed.
 type RuntimeSelection struct {
 	Provider       string
 	Model          string
@@ -479,10 +477,18 @@ func SetRuntimeSelection(sessDir, id string, selection RuntimeSelection) (Sessio
 // SetModelSelection preserves the pre-runtime-selection API for callers that
 // only know about model variants.
 func SetModelSelection(sessDir, id, provider, model, variant string) (Session, error) {
-	return SetRuntimeSelection(sessDir, id, RuntimeSelection{
-		Provider: provider,
-		Model:    model,
-		Variant:  variant,
+	provider = strings.TrimSpace(provider)
+	model = strings.TrimSpace(model)
+	if provider == "" {
+		return Session{}, fmt.Errorf("provider is required")
+	}
+	if model == "" {
+		return Session{}, fmt.Errorf("model is required")
+	}
+	return updateMetadata(sessDir, id, false, func(s *Session) {
+		s.Provider = provider
+		s.Model = model
+		s.Variant = strings.TrimSpace(variant)
 	})
 }
 

@@ -1870,7 +1870,9 @@ type Thread struct {
 	Title            string        `json:"title,omitempty"`
 	ModelProvider    string        `json:"model_provider"`
 	Model            string        `json:"model"`
-	ModelVariant     string        `json:"model_variant,omitempty"`
+	ModelVariant     string        `json:"model_variant"`
+	ModelEffort      string        `json:"model_effort"`
+	PermissionMode   string        `json:"permission_mode"`
 	CWD              string        `json:"cwd"`
 	WorkspaceKind    WorkspaceKind `json:"workspace_kind,omitempty"`
 	Status           ThreadStatus  `json:"status"`

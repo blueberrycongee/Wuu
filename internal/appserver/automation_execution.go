@@ -80,7 +80,7 @@ func (s *Server) createAutomationThread() (*threadState, error) {
 	if _, err := session.CreateWithMetadata(s.rt.SessionDir, id, threadCWD); err != nil {
 		return nil, err
 	}
-	if _, err := session.SetModelSelection(s.rt.SessionDir, id, s.rt.ProviderName, s.rt.Model, s.currentVariant()); err != nil {
+	if _, err := session.SetRuntimeSelection(s.rt.SessionDir, id, s.currentSessionRuntimeSelection()); err != nil {
 		return nil, err
 	}
 	if _, err := session.SetSource(s.rt.SessionDir, id, "automation"); err != nil {
@@ -96,7 +96,7 @@ func (s *Server) createAutomationThread() (*threadState, error) {
 		history = append(history, providers.ChatMessage{Role: "system", Content: prompt})
 	}
 	th := newThreadState(id, history, s.rt.ProviderName, s.rt.Model, threadCWD, true, time.Now().UTC())
-	th.ModelVariant = s.currentVariant()
+	applyThreadRuntimeSelection(th, s.currentSessionRuntimeSelection())
 	th.Source = "automation"
 	th.WorkspaceKind = workspaceKindForCWD(s.rt.WuuHome, threadCWD)
 	s.mu.Lock()

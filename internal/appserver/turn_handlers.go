@@ -139,11 +139,11 @@ func (s *Server) handleTurnStart(ctx context.Context, req Request) error {
 	if params.Prompt == "" && len(images) == 0 && len(files) == 0 {
 		return s.writeResponse(req.ID, nil, errors.New("prompt or attachment is required"))
 	}
-	permissions, err := s.resolveTurnPermissions(params.PermissionMode)
+	th, err := s.ensureResidentThread(params.ThreadID)
 	if err != nil {
 		return s.writeResponse(req.ID, nil, err)
 	}
-	th, err := s.ensureResidentThread(params.ThreadID)
+	permissions, err := s.resolveThreadTurnPermissions(th, params.PermissionMode)
 	if err != nil {
 		return s.writeResponse(req.ID, nil, err)
 	}
@@ -247,6 +247,11 @@ func (s *Server) ensureThreadRuntimeAfterAdmission(th *threadState) (*runtime.Th
 		return threadRuntime, err
 	}
 	th.mu.Lock()
+	if threadRuntime.StreamRunner != nil {
+		if prompt := strings.TrimSpace(threadRuntime.StreamRunner.SystemPrompt); prompt != "" {
+			th.History = replaceBaseSystemPrompt(th.History, prompt)
+		}
+	}
 	history := cloneHistory(th.History)
 	threadID := th.ID
 	th.mu.Unlock()
@@ -448,11 +453,11 @@ func (s *Server) handleTurnQueue(req Request) error {
 		}
 		return s.writeResponse(req.ID, nil, errors.New("compact cannot be queued; wait for the current turn to finish"))
 	}
-	permissions, err := s.resolveTurnPermissions(params.PermissionMode)
+	th, err := s.ensureResidentThread(params.ThreadID)
 	if err != nil {
 		return s.writeResponse(req.ID, nil, err)
 	}
-	th, err := s.ensureResidentThread(params.ThreadID)
+	permissions, err := s.resolveThreadTurnPermissions(th, params.PermissionMode)
 	if err != nil {
 		return s.writeResponse(req.ID, nil, err)
 	}
@@ -678,6 +683,8 @@ func (s *Server) ensureThreadRuntime(th *threadState) (*runtime.ThreadRuntime, e
 	modelProvider := th.ModelProvider
 	model := th.Model
 	modelVariant := th.ModelVariant
+	modelEffort := th.ModelEffort
+	permissionMode := th.PermissionMode
 	th.mu.Unlock()
 	if detached.runtime != nil || detached.subscription != nil {
 		releaseDetachedThreadRuntime(detached)
@@ -695,9 +702,11 @@ func (s *Server) ensureThreadRuntime(th *threadState) (*runtime.ThreadRuntime, e
 	}
 	browserWorkdir := firstNonEmpty(rootDir, s.rt.RootDir)
 	threadRuntime, err := s.rt.NewThreadRuntimeForRootModel(th.ID, browserWorkdir, runtime.ThreadModelSelection{
-		Provider: modelProvider,
-		Model:    model,
-		Variant:  modelVariant,
+		Provider:       modelProvider,
+		Model:          model,
+		Variant:        modelVariant,
+		Effort:         modelEffort,
+		PermissionMode: permissionMode,
 	})
 	if err != nil {
 		return nil, err
@@ -1379,8 +1388,9 @@ func turnRuntimeSnapshotLocked(th *threadState) turnRuntimeSnapshot {
 		return turnRuntimeSnapshot{}
 	}
 	return turnRuntimeSnapshot{
-		ProviderName: th.ModelProvider,
-		Model:        th.Model,
+		ProviderName:   th.ModelProvider,
+		Model:          th.Model,
+		PermissionMode: th.PermissionMode,
 	}
 }
 
@@ -1410,6 +1420,32 @@ func (s *Server) resolveTurnPermissions(permissionMode *string) (config.Resolved
 		return normalizeTurnPermissions(s.rt.Permissions), nil
 	}
 	return normalizeTurnPermissions(config.ResolvedPermissions{}), nil
+}
+
+func (s *Server) resolveThreadTurnPermissions(th *threadState, requested *string) (config.ResolvedPermissions, error) {
+	mode := ""
+	if th != nil {
+		th.mu.Lock()
+		mode = strings.TrimSpace(th.PermissionMode)
+		persist := th.PersistHistory
+		threadID := th.ID
+		th.mu.Unlock()
+		if mode == "" && persist && s != nil && s.rt != nil {
+			if metadata, ok, err := session.Find(s.rt.SessionDir, threadID); err != nil {
+				return config.ResolvedPermissions{}, err
+			} else if ok {
+				mode = strings.TrimSpace(metadata.PermissionMode)
+			}
+		}
+	}
+	if mode == "" && s != nil && s.rt != nil {
+		mode = s.rt.Permissions.Mode
+	}
+	permissions := normalizeTurnPermissions(config.ResolvedPermissions{Mode: mode})
+	if requested != nil && config.NormalizePermissionMode(*requested) != permissions.Mode {
+		return config.ResolvedPermissions{}, errors.New("permission mode does not match the thread selection; refresh the thread before starting a turn")
+	}
+	return permissions, nil
 }
 
 func usageContextWindowTokens(runner *agent.StreamRunner) int {
@@ -2690,7 +2726,7 @@ func (s *Server) startQueuedTurn(ctx context.Context, threadID string, entry que
 	var err error
 	permissions := entry.snapshot.permissions()
 	if !entry.snapshot.hasPermissions() {
-		permissions, err = s.resolveTurnPermissions(nil)
+		permissions, err = s.resolveThreadTurnPermissions(th, nil)
 		if err != nil {
 			return false, err
 		}

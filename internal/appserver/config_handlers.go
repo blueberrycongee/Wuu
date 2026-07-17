@@ -31,6 +31,9 @@ import (
 )
 
 func (s *Server) handleInitialize(req Request) error {
+	if err := s.pinLegacyRuntimeSelections(); err != nil {
+		return s.writeResponse(req.ID, nil, err)
+	}
 	core := version.Info()
 	modelProfile, toolSurface := s.currentModelSurfaceSummaries()
 	status := "ready"
@@ -705,9 +708,23 @@ func (s *Server) handleConfigModelUpdate(req Request) error {
 		s.rt.SetUltraMode(*params.Ultra)
 		return s.writeResponse(req.ID, s.currentConfigModelUpdateResult(), nil)
 	}
+	if err := s.pinLegacyRuntimeSelections(); err != nil {
+		return s.writeResponse(req.ID, nil, err)
+	}
+	targetThread, releaseTarget, err := s.beginThreadRuntimeSelectionMutation(params.ThreadID)
+	if err != nil {
+		return s.writeResponse(req.ID, nil, err)
+	}
+	defer releaseTarget()
+
 	providerName := strings.TrimSpace(params.Provider)
 	if providerName == "" {
 		providerName = s.rt.ProviderName
+		if targetThread != nil {
+			targetThread.mu.Lock()
+			providerName = firstNonEmpty(targetThread.ModelProvider, providerName)
+			targetThread.mu.Unlock()
+		}
 	}
 	model := strings.TrimSpace(params.Model)
 	if model == "" {
@@ -828,6 +845,12 @@ func (s *Server) handleConfigModelUpdate(req Request) error {
 	}
 	variant := s.currentVariant()
 	legacyEffort := s.currentEffort()
+	if targetThread != nil {
+		targetThread.mu.Lock()
+		variant = targetThread.ModelVariant
+		legacyEffort = targetThread.ModelEffort
+		targetThread.mu.Unlock()
+	}
 	selectionTouched := params.Variant != nil || params.Effort != nil
 	if params.Variant != nil {
 		variant = strings.TrimSpace(*params.Variant)
@@ -949,7 +972,7 @@ func (s *Server) handleConfigModelUpdate(req Request) error {
 			runtime.ConfigureToolkitPermissions(s.rt.Toolkit, s.rt.Permissions)
 		}
 	}
-	systemPrompt := s.rt.RefreshSystemPrompt(resolvedName, apiModel)
+	s.rt.RefreshSystemPrompt(resolvedName, apiModel)
 	modelBudget := runtime.ResolveModelBudget(model, ruleProviderCfg, cfg.Agent.MaxContextTokens)
 	s.rt.ModelBudget = modelBudget
 	workerBudget := runtime.ResolveModelBudget(roleSelections.Worker.Model, roleSelections.Worker.RuleProviderConfig, cfg.Agent.MaxContextTokens)
@@ -970,13 +993,25 @@ func (s *Server) handleConfigModelUpdate(req Request) error {
 		s.rt.StreamRunner.CompactThresholdTokens = modelBudget.CompactThresholdTokens
 	}
 	s.updateRootAgentControlWorkerDefaults()
-	if connectionChanged || params.PermissionMode != nil {
-		// Connection credentials/endpoints and permission mode are workspace
-		// configuration, so every resident runtime must rebuild before its next
+	if connectionChanged {
+		// Connection credentials/endpoints are workspace configuration, so every
+		// resident runtime must rebuild before its next
 		// turn. Running turns keep their admitted snapshot until they settle.
 		s.resetThreadRuntimesForGeneralSettings("")
 	}
-	if err := s.updateThreadRuntimeForModelUpdate(params.ThreadID, resolvedName, model, selection.Variant, systemPrompt); err != nil {
+	targetPermissionMode := ""
+	if targetThread != nil {
+		targetThread.mu.Lock()
+		targetPermissionMode = targetThread.PermissionMode
+		targetThread.mu.Unlock()
+		if targetPermissionMode == "" {
+			targetPermissionMode = config.NormalizePermissionMode(s.rt.Permissions.Mode)
+		}
+		if params.PermissionMode != nil {
+			targetPermissionMode = config.NormalizePermissionMode(*params.PermissionMode)
+		}
+	}
+	if err := s.updateThreadRuntimeForModelUpdate(targetThread, resolvedName, model, selection.Variant, selection.LegacyEffort, targetPermissionMode); err != nil {
 		return s.writeResponse(req.ID, nil, err)
 	}
 
@@ -1258,35 +1293,72 @@ func skillSummaries(items []skills.Skill) []SkillSummary {
 	return out
 }
 
-func (s *Server) updateThreadRuntimeForModelUpdate(threadID, providerName, model, variant, systemPrompt string) error {
+func (s *Server) beginThreadRuntimeSelectionMutation(threadID string) (*threadState, func(), error) {
 	threadID = strings.TrimSpace(threadID)
 	if threadID == "" {
-		return nil
+		return nil, func() {}, nil
 	}
 	th, err := s.ensureResidentThread(threadID)
 	if err != nil {
-		return err
+		return nil, func() {}, err
 	}
-	if _, err := session.SetModelSelection(s.rt.SessionDir, threadID, providerName, model, variant); err != nil {
-		return err
+	th.mu.Lock()
+	busy := th.running || th.admissionReserved || th.runtimeSelectionMutation ||
+		(th.execRuntime != nil && threadRuntimeHasOutstandingAgentWork(th.execRuntime))
+	if busy {
+		th.mu.Unlock()
+		return nil, func() {}, fmt.Errorf("cannot change model or permission mode while thread %q is running", threadID)
+	}
+	th.runtimeSelectionMutation = true
+	persist := th.PersistHistory
+	th.mu.Unlock()
+
+	var mutationLease *session.ThreadExecutionLease
+	if persist {
+		mutationLease, err = s.tryAcquireThreadMutationLease(threadID)
+		if err != nil {
+			th.mu.Lock()
+			th.runtimeSelectionMutation = false
+			th.mu.Unlock()
+			if errors.Is(err, errThreadExecutionBusy) {
+				return nil, func() {}, fmt.Errorf("cannot change model or permission mode while thread %q is running", threadID)
+			}
+			return nil, func() {}, err
+		}
+	}
+	release := func() {
+		releaseThreadMutationLease(threadID, mutationLease)
+		th.mu.Lock()
+		th.runtimeSelectionMutation = false
+		th.mu.Unlock()
+	}
+	return th, release, nil
+}
+
+func (s *Server) updateThreadRuntimeForModelUpdate(th *threadState, providerName, model, variant, effort, permissionMode string) error {
+	if th == nil {
+		return nil
+	}
+	selection := session.RuntimeSelection{
+		Provider:       providerName,
+		Model:          model,
+		Variant:        variant,
+		Effort:         effort,
+		PermissionMode: permissionMode,
+	}
+	if th.PersistHistory {
+		if _, err := session.SetRuntimeSelection(s.rt.SessionDir, th.ID, selection); err != nil {
+			return err
+		}
 	}
 	var detached detachedThreadRuntime
 	th.mu.Lock()
-	th.ModelProvider = providerName
-	th.Model = model
-	th.ModelVariant = variant
-	if strings.TrimSpace(systemPrompt) != "" {
-		th.History = replaceBaseSystemPrompt(th.History, systemPrompt)
-		if th.PersistHistory {
-			if err := rewriteChatHistory(s.rt.SessionDir, th.ID, th.History); err != nil {
-				th.mu.Unlock()
-				return err
-			}
-		}
-	}
-	if th.running || (th.execRuntime != nil && threadRuntimeHasOutstandingAgentWork(th.execRuntime)) {
-		th.pendingRuntimeReset = true
-	} else if th.execRuntime != nil {
+	modelSelectionChanged := th.ModelProvider != strings.TrimSpace(selection.Provider) ||
+		th.Model != strings.TrimSpace(selection.Model) ||
+		th.ModelVariant != strings.TrimSpace(selection.Variant) ||
+		th.ModelEffort != strings.TrimSpace(selection.Effort)
+	applyThreadRuntimeSelection(th, selection)
+	if modelSelectionChanged && th.execRuntime != nil {
 		detached = detachThreadRuntimeLocked(th)
 	}
 	thread := th.snapshotLocked()
@@ -1506,6 +1578,63 @@ func (s *Server) currentDisplayEffort() string {
 		return variant
 	}
 	return s.currentEffort()
+}
+
+func (s *Server) currentSessionRuntimeSelection() session.RuntimeSelection {
+	selection := session.RuntimeSelection{}
+	if s != nil && s.rt != nil {
+		selection.Provider = s.rt.ProviderName
+		selection.Model = s.rt.Model
+		selection.Variant = s.currentVariant()
+		selection.Effort = s.currentEffort()
+		selection.PermissionMode = config.NormalizePermissionMode(s.rt.Permissions.Mode)
+	}
+	return selection
+}
+
+func (s *Server) pinLegacyRuntimeSelections() error {
+	if s == nil || s.rt == nil {
+		return nil
+	}
+	defaults := s.currentSessionRuntimeSelection()
+	if strings.TrimSpace(defaults.Provider) == "" || strings.TrimSpace(defaults.Model) == "" {
+		return nil
+	}
+	sessions, err := session.ListForCWDWithDMs(s.rt.SessionDir, s.rt.RootDir, s.rt.WorkspaceID, 0)
+	if err != nil {
+		return err
+	}
+	for _, sess := range sessions {
+		selection := session.RuntimeSelection{
+			Provider:       strings.TrimSpace(sess.Provider),
+			Model:          strings.TrimSpace(sess.Model),
+			Variant:        strings.TrimSpace(sess.Variant),
+			Effort:         strings.TrimSpace(sess.Effort),
+			PermissionMode: strings.TrimSpace(sess.PermissionMode),
+		}
+		legacySelection := selection.PermissionMode == ""
+		changed := false
+		if selection.Provider == "" || selection.Model == "" {
+			selection.Provider = defaults.Provider
+			selection.Model = defaults.Model
+			changed = true
+		}
+		if legacySelection && selection.Variant == "" && selection.Effort == "" {
+			selection.Variant = defaults.Variant
+			selection.Effort = defaults.Effort
+			changed = true
+		}
+		if selection.PermissionMode == "" {
+			selection.PermissionMode = defaults.PermissionMode
+			changed = true
+		}
+		if changed {
+			if _, err := session.SetRuntimeSelection(s.rt.SessionDir, sess.ID, selection); err != nil {
+				return fmt.Errorf("pin runtime selection for session %q: %w", sess.ID, err)
+			}
+		}
+	}
+	return nil
 }
 
 func (s *Server) currentProviderOptions() map[string]any {
