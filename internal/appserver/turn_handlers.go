@@ -844,6 +844,7 @@ func (s *Server) configureResidentThreadRuntime(th *threadState, threadRuntime *
 		if client != nil {
 			threadRuntime.StreamRunner.Client = client
 		}
+		threadRuntime.StreamRunner.ProviderName = providerName
 		if modelName != "" {
 			threadRuntime.StreamRunner.Model = modelName
 		}

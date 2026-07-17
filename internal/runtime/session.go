@@ -591,6 +591,7 @@ func NewSession(opts Options) (*Session, error) {
 
 	streamRunner := &agent.StreamRunner{
 		Client:                      client,
+		ProviderName:                resolvedName,
 		Tools:                       toolExecutor,
 		Model:                       providerCfg.Model,
 		APIModel:                    modelcatalog.APIModel(ruleProviderCfg, providerCfg.Model),
@@ -827,6 +828,7 @@ func (s *Session) NewThreadRuntimeForRootModel(sessionID, rootDir string, select
 	}
 	apiModel := modelcatalog.APIModel(ruleProviderCfg, model)
 	shadow.StreamRunner.Client = client
+	shadow.StreamRunner.ProviderName = resolvedName
 	shadow.StreamRunner.Model = model
 	shadow.StreamRunner.APIModel = apiModel
 	shadow.StreamRunner.Effort = selection.LegacyEffort
@@ -1140,6 +1142,7 @@ func cloneStreamRunnerForThread(base *agent.StreamRunner, toolExecutor agent.Too
 	}
 	return &agent.StreamRunner{
 		Client:                      base.Client,
+		ProviderName:                base.ProviderName,
 		Tools:                       toolExecutor,
 		ToolLedger:                  base.ToolLedger,
 		Model:                       base.Model,

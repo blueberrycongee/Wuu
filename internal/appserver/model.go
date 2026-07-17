@@ -1362,27 +1362,28 @@ func chatMessageItem(id string, msg providers.ChatMessage) ThreadItem {
 
 func chatMessageFromPersistedMessage(rec persistedMessage) providers.ChatMessage {
 	msg := providers.ChatMessage{
-		Seq:               rec.Seq,
-		Role:              strings.ToLower(strings.TrimSpace(rec.Role)),
-		Name:              rec.Name,
-		ClientID:          rec.ClientID,
-		Content:           rec.Content,
-		DisplayContent:    rec.DisplayContent,
-		Phase:             providers.NormalizeMessagePhase(rec.Phase),
-		Hidden:            rec.Hidden,
-		ProviderItemID:    rec.ProviderItemID,
-		ProviderItemModel: rec.ProviderItemModel,
-		Steered:           rec.Steered,
-		ReasoningContent:  rec.ReasoningContent,
-		ReasoningBlocks:   append([]providers.ReasoningBlock(nil), rec.ReasoningBlocks...),
-		ToolCallID:        rec.ToolCallID,
-		ToolResultKind:    providers.NormalizeToolCallKind(rec.ToolResultKind),
-		FinishReason:      providers.FinishReason(strings.TrimSpace(rec.FinishReason)),
-		StopReason:        strings.ToLower(strings.TrimSpace(rec.StopReason)),
-		Truncated:         rec.Truncated,
-		DiscoveredTools:   providers.CloneLoadableToolDefinitions(rec.DiscoveredTools),
-		EnvelopeMeta:      append(json.RawMessage(nil), rec.EnvelopeMeta...),
-		FocusMeta:         append(json.RawMessage(nil), rec.FocusMeta...),
+		Seq:                  rec.Seq,
+		Role:                 strings.ToLower(strings.TrimSpace(rec.Role)),
+		Name:                 rec.Name,
+		ClientID:             rec.ClientID,
+		Content:              rec.Content,
+		DisplayContent:       rec.DisplayContent,
+		Phase:                providers.NormalizeMessagePhase(rec.Phase),
+		Hidden:               rec.Hidden,
+		ProviderItemID:       rec.ProviderItemID,
+		ProviderItemProvider: rec.Provider,
+		ProviderItemModel:    rec.ProviderItemModel,
+		Steered:              rec.Steered,
+		ReasoningContent:     rec.ReasoningContent,
+		ReasoningBlocks:      append([]providers.ReasoningBlock(nil), rec.ReasoningBlocks...),
+		ToolCallID:           rec.ToolCallID,
+		ToolResultKind:       providers.NormalizeToolCallKind(rec.ToolResultKind),
+		FinishReason:         providers.FinishReason(strings.TrimSpace(rec.FinishReason)),
+		StopReason:           strings.ToLower(strings.TrimSpace(rec.StopReason)),
+		Truncated:            rec.Truncated,
+		DiscoveredTools:      providers.CloneLoadableToolDefinitions(rec.DiscoveredTools),
+		EnvelopeMeta:         append(json.RawMessage(nil), rec.EnvelopeMeta...),
+		FocusMeta:            append(json.RawMessage(nil), rec.FocusMeta...),
 	}
 	for _, image := range rec.Images {
 		if strings.TrimSpace(image.Data) == "" {
@@ -1407,13 +1408,14 @@ func chatMessageFromPersistedMessage(rec persistedMessage) providers.ChatMessage
 	}
 	for _, tc := range rec.ToolCalls {
 		msg.ToolCalls = append(msg.ToolCalls, providers.ToolCall{
-			ID:                tc.ID,
-			ProviderItemID:    tc.ProviderItemID,
-			ProviderItemModel: tc.ProviderItemModel,
-			Name:              tc.Name,
-			Arguments:         tc.Arguments,
-			Kind:              providers.NormalizeToolCallKind(tc.Kind),
-			Display:           cloneToolCallDisplay(tc.Display),
+			ID:                   tc.ID,
+			ProviderItemID:       tc.ProviderItemID,
+			ProviderItemProvider: tc.ProviderItemProvider,
+			ProviderItemModel:    tc.ProviderItemModel,
+			Name:                 tc.Name,
+			Arguments:            tc.Arguments,
+			Kind:                 providers.NormalizeToolCallKind(tc.Kind),
+			Display:              cloneToolCallDisplay(tc.Display),
 		})
 	}
 	return msg

@@ -11,12 +11,19 @@ import (
 // not mutate stored history; clients call this just before lowering to wire
 // format.
 func PrepareMessagesForModelRequest(model string, msgs []ChatMessage) ([]ChatMessage, error) {
+	return PrepareMessagesForProviderRequest("", model, msgs)
+}
+
+// PrepareMessagesForProviderRequest also enforces provider provenance for
+// provider-native state. Provider adapters should prefer this entry point
+// whenever ChatRequest.Provider is available.
+func PrepareMessagesForProviderRequest(provider, model string, msgs []ChatMessage) ([]ChatMessage, error) {
 	repaired, err := RepairAndValidateToolCallHistory(msgs)
 	if err != nil {
 		return nil, err
 	}
 	projected := ApplyToolResultProjections(repaired)
-	compatible := ApplyModelMessageCompatibility(model, projected)
+	compatible := ApplyProviderModelMessageCompatibility(provider, model, projected)
 	if err := ValidateToolCallHistory(compatible); err != nil {
 		return nil, fmt.Errorf("invalid message sequence after model compatibility: %w", err)
 	}
@@ -27,12 +34,19 @@ func PrepareMessagesForModelRequest(model string, msgs []ChatMessage) ([]ChatMes
 // in OpenCode's ProviderTransform.message that are relevant to wuu's Go
 // clients.
 func ApplyModelMessageCompatibility(model string, msgs []ChatMessage) []ChatMessage {
+	return ApplyProviderModelMessageCompatibility("", model, msgs)
+}
+
+// ApplyProviderModelMessageCompatibility removes request-only native state
+// produced by a different configured provider or model while retaining the
+// visible conversation.
+func ApplyProviderModelMessageCompatibility(provider, model string, msgs []ChatMessage) []ChatMessage {
 	if len(msgs) == 0 {
 		return nil
 	}
 	out := cloneMessagesForRequest(msgs)
 	out = sanitizeMessageText(out)
-	out = dropForeignModelState(model, out)
+	out = dropForeignProviderModelState(provider, model, out)
 
 	lower := strings.ToLower(strings.TrimSpace(model))
 	switch {
@@ -45,22 +59,39 @@ func ApplyModelMessageCompatibility(model string, msgs []ChatMessage) []ChatMess
 	return out
 }
 
-func dropForeignModelState(model string, msgs []ChatMessage) []ChatMessage {
-	current := strings.TrimSpace(model)
-	if current == "" {
-		return msgs
-	}
+func dropForeignProviderModelState(provider, model string, msgs []ChatMessage) []ChatMessage {
+	currentProvider := strings.TrimSpace(provider)
+	currentModel := strings.TrimSpace(model)
 	for i := range msgs {
-		origin := strings.TrimSpace(msgs[i].ProviderItemModel)
-		if origin == "" || strings.EqualFold(origin, current) {
-			continue
+		foreignMessage := providerStateOriginMismatch(
+			currentProvider,
+			currentModel,
+			msgs[i].ProviderItemProvider,
+			msgs[i].ProviderItemModel,
+		)
+		if foreignMessage {
+			msgs[i].ProviderItemID = ""
+			msgs[i].ReasoningContent = ""
+			msgs[i].ReasoningBlocks = nil
+			msgs[i].DiscoveredTools = nil
 		}
-		msgs[i].ProviderItemID = ""
-		msgs[i].ReasoningContent = ""
-		msgs[i].ReasoningBlocks = nil
-		msgs[i].DiscoveredTools = nil
+		for j := range msgs[i].ToolCalls {
+			call := &msgs[i].ToolCalls[j]
+			if foreignMessage || providerStateOriginMismatch(currentProvider, currentModel, call.ProviderItemProvider, call.ProviderItemModel) {
+				call.ProviderItemID = ""
+			}
+		}
 	}
 	return msgs
+}
+
+func providerStateOriginMismatch(currentProvider, currentModel, originProvider, originModel string) bool {
+	originProvider = strings.TrimSpace(originProvider)
+	originModel = strings.TrimSpace(originModel)
+	if currentProvider != "" && originProvider != "" && !strings.EqualFold(originProvider, currentProvider) {
+		return true
+	}
+	return currentModel != "" && originModel != "" && !strings.EqualFold(originModel, currentModel)
 }
 
 func cloneMessagesForRequest(msgs []ChatMessage) []ChatMessage {

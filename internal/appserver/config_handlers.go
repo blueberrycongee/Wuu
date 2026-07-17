@@ -956,6 +956,7 @@ func (s *Server) handleConfigModelUpdate(req Request) error {
 		if client != nil {
 			s.rt.StreamRunner.Client = client
 		}
+		s.rt.StreamRunner.ProviderName = resolvedName
 		s.rt.StreamRunner.Model = model
 		s.rt.StreamRunner.APIModel = apiModel
 		s.rt.StreamRunner.Effort = selection.LegacyEffort
@@ -1378,6 +1379,7 @@ func (s *Server) applyThreadRuntimeUpdateLocked(th *threadState, update threadRu
 	}
 	if th.execRuntime.StreamRunner != nil && s.rt != nil && s.rt.StreamRunner != nil {
 		th.execRuntime.StreamRunner.Client = s.rt.StreamRunner.Client
+		th.execRuntime.StreamRunner.ProviderName = update.ProviderName
 		th.execRuntime.StreamRunner.Model = update.Model
 		th.execRuntime.StreamRunner.APIModel = update.APIModel
 		th.execRuntime.StreamRunner.UpdateSystemPromptWithSections(update.SystemPrompt, s.rt.StreamRunner.SystemPromptSections)
