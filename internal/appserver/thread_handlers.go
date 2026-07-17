@@ -1041,6 +1041,7 @@ func threadEntryFromSession(sess session.Session, provider, model string) thread
 			Title:            sess.Title,
 			ModelProvider:    firstNonEmpty(sess.Provider, provider),
 			Model:            firstNonEmpty(sess.Model, model),
+			ModelVariant:     sess.Variant,
 			CWD:              sess.CWD,
 			Status:           ThreadStatusIdle,
 			Pinned:           sess.PinnedAt != nil,

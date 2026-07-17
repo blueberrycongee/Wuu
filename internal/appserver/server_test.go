@@ -5752,6 +5752,9 @@ func TestServerThreadListUsesSessionIndexMetadata(t *testing.T) {
 	if err := session.UpdateIndex(rt.SessionDir, "old-thread", 2, "old summary"); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := session.SetModelSelection(rt.SessionDir, "old-thread", "anthropic", "claude-sonnet-4-6", "high"); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := session.CreateWithMetadata(rt.SessionDir, "new-thread", rt.RootDir); err != nil {
 		t.Fatal(err)
 	}
@@ -5784,6 +5787,9 @@ func TestServerThreadListUsesSessionIndexMetadata(t *testing.T) {
 	}
 	if result.Threads[0].ID != "old-thread" || !result.Threads[0].Pinned || result.Threads[0].Preview != "old summary" {
 		t.Fatalf("expected pinned old thread first, got %+v", result.Threads)
+	}
+	if result.Threads[0].ModelProvider != "anthropic" || result.Threads[0].Model != "claude-sonnet-4-6" || result.Threads[0].ModelVariant != "high" {
+		t.Fatalf("persisted model selection not restored: %+v", result.Threads[0])
 	}
 	if result.Threads[1].ID != "new-thread" || result.Threads[1].Archived {
 		t.Fatalf("unexpected second thread: %+v", result.Threads[1])
