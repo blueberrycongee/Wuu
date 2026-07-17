@@ -1085,24 +1085,6 @@ function SettingsProvidersPage({
             ) : (
               <span className="settings-inline-flag">{t("provider.none")}</span>
             )}
-            <button
-              className="settings-button"
-              type="button"
-              onClick={addingProvider ? onCancelAddingProvider : onStartAddingProvider}
-              disabled={running}
-            >
-              {addingProvider ? (
-                <>
-                  <X className="icon" />
-                  <span>{t("common.cancel")}</span>
-                </>
-              ) : (
-                <>
-                  <Plus className="icon" />
-                  <span>{t("provider.add")}</span>
-                </>
-              )}
-            </button>
           </div>
         </SettingsRow>
         {addingProvider ? (
@@ -1198,6 +1180,16 @@ function SettingsProvidersPage({
         <div className="settings-row settings-row-footer">
           {error ? <div className="settings-error">{error}</div> : null}
           {saved && !error ? <div className="settings-saved">{t("settings.saved")}</div> : null}
+          {addingProvider ? (
+            <button
+              className="settings-button settings-button-ghost"
+              type="button"
+              onClick={onCancelAddingProvider}
+              disabled={running}
+            >
+              {t("common.cancel")}
+            </button>
+          ) : null}
           <button
             className="settings-button settings-button-primary"
             type="submit"
