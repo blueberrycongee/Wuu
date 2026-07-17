@@ -1553,15 +1553,17 @@ export type TurnError = {
 
 // Canonical error category taxonomy shared with the Go core. The values
 // are the same strings BuildTurnError emits from
-// internal/appserver/turn_error.go::TurnErrorCategory. The Go side has
-// 7 categories that match the front-end's existing UserFacingErrorCategory
-// 1:1; shells translate these diagnostic values into their own
-// user-facing system-event vocabulary.
+// internal/appserver/turn_error.go::TurnErrorCategory; keep the two lists
+// in sync. Shells translate these diagnostic values into their own
+// user-facing system-event vocabulary and must degrade an unrecognized
+// wire value to their internal-error rendering (a newer core may emit
+// categories an older shell does not know yet).
 export type TurnErrorCategory =
   | "cancelled"
   | "network"
   | "auth"
   | "provider"
+  | "invalid_request"
   | "tool"
   | "local"
   | "internal";
