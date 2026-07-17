@@ -115,6 +115,7 @@ func (c *Client) normalizeInclusiveInput(usage *providers.TokenUsage) {
 // Client sends tool-enabled chat requests to Anthropic APIs.
 type Client struct {
 	baseURL                         string
+	messagesURL                     string
 	apiKey                          string
 	authToken                       string
 	headers                         map[string]string
@@ -152,6 +153,7 @@ func New(cfg ClientConfig) (*Client, error) {
 
 	return &Client{
 		baseURL:                         strings.TrimRight(cfg.BaseURL, "/"),
+		messagesURL:                     anthropicMessagesURL(cfg.BaseURL),
 		apiKey:                          cfg.APIKey,
 		authToken:                       cfg.AuthToken,
 		headers:                         cloneHeaders(cfg.Headers),
@@ -169,6 +171,18 @@ func New(cfg ClientConfig) (*Client, error) {
 		// two identical cache_control requests before enabling.
 		inputTokensIncludeCacheRead: cfg.InputTokensIncludeCacheRead,
 	}, nil
+}
+
+func anthropicMessagesURL(baseURL string) string {
+	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
+	switch {
+	case strings.HasSuffix(baseURL, "/v1/messages"):
+		return baseURL
+	case strings.HasSuffix(baseURL, "/v1"):
+		return baseURL + "/messages"
+	default:
+		return baseURL + "/v1/messages"
+	}
 }
 
 // Chat performs one Anthropic messages round.
@@ -406,6 +420,13 @@ func buildAnthropicRequestWithSupport(req providers.ChatRequest, maxTokens int, 
 		}
 		break
 	}
+	allowEmptySignature := false
+	for _, key := range []string{"allow_empty_signature", "allowEmptySignature"} {
+		if enabled, ok := providerOptionBool(req.ProviderOptions[key]); ok {
+			allowEmptySignature = enabled
+			break
+		}
+	}
 
 	cacheTTL := ""
 	if ttlVal, ok := req.ProviderOptions["cacheTTL"].(string); ok {
@@ -449,7 +470,7 @@ func buildAnthropicRequestWithSupport(req providers.ChatRequest, maxTokens int, 
 			continue
 		}
 
-		mapped, err := mapMessage(msg, toolSearchEnabled, thinkingReplay)
+		mapped, err := mapMessage(msg, toolSearchEnabled, thinkingReplay, allowEmptySignature)
 		if err != nil {
 			return anthropicRequest{}, err
 		}
@@ -940,7 +961,7 @@ func (c *Client) doSingleMessagesRequest(
 	attempt providers.InferenceAttempt,
 	mode string,
 ) (*http.Response, *providers.ProviderLease, error) {
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/v1/messages", bytes.NewReader(body))
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.messagesURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, nil, fmt.Errorf("build request: %w", err)
 	}
@@ -1319,7 +1340,7 @@ const (
 	thinkingReplayOff  = "off"
 )
 
-func mapMessage(msg providers.ChatMessage, toolSearchEnabled bool, thinkingReplay string) (anthropicMessage, error) {
+func mapMessage(msg providers.ChatMessage, toolSearchEnabled bool, thinkingReplay string, allowEmptySignature bool) (anthropicMessage, error) {
 	switch msg.Role {
 	case "user":
 		blocks := make([]anthropicBlock, 0, len(msg.Images)+len(msg.Files)+1)
@@ -1373,7 +1394,7 @@ func mapMessage(msg providers.ChatMessage, toolSearchEnabled bool, thinkingRepla
 				blocks = append(blocks, anthropicBlock{Type: "text", Text: "<thinking>\n" + reasoning + "\n</thinking>"})
 			}
 		default:
-			blocks = append(blocks, mapReasoningBlocks(reasoningBlocks)...)
+			blocks = append(blocks, mapReasoningBlocks(reasoningBlocks, allowEmptySignature)...)
 		}
 		// Assistant tool-use turns should replay provider-native
 		// thinking blocks before tool_use. Only synthesize a text
@@ -1465,7 +1486,7 @@ func anthropicToolCallKind(name string) providers.ToolCallKind {
 	return ""
 }
 
-func mapReasoningBlocks(blocks []providers.ReasoningBlock) []anthropicBlock {
+func mapReasoningBlocks(blocks []providers.ReasoningBlock, allowEmptySignature bool) []anthropicBlock {
 	if len(blocks) == 0 {
 		return nil
 	}
@@ -1474,10 +1495,15 @@ func mapReasoningBlocks(blocks []providers.ReasoningBlock) []anthropicBlock {
 		switch block.Type {
 		case "thinking":
 			thinking := block.Thinking
+			var signature *string
+			if block.Signature != "" || allowEmptySignature {
+				signatureValue := block.Signature
+				signature = &signatureValue
+			}
 			out = append(out, anthropicBlock{
 				Type:      "thinking",
 				Thinking:  &thinking,
-				Signature: block.Signature,
+				Signature: signature,
 			})
 		case "redacted_thinking":
 			out = append(out, anthropicBlock{Type: "redacted_thinking", Data: block.Data})
@@ -1491,10 +1517,14 @@ func anthropicReasoningBlock(block anthropicBlock) providers.ReasoningBlock {
 	if block.Thinking != nil {
 		thinking = *block.Thinking
 	}
+	signature := ""
+	if block.Signature != nil {
+		signature = *block.Signature
+	}
 	return providers.ReasoningBlock{
 		Type:      block.Type,
 		Thinking:  thinking,
-		Signature: block.Signature,
+		Signature: signature,
 		Data:      block.Data,
 	}
 }
@@ -1632,7 +1662,7 @@ type anthropicBlock struct {
 	Type         string                 `json:"type"`
 	Text         string                 `json:"text,omitempty"`
 	Thinking     *string                `json:"thinking,omitempty"`
-	Signature    string                 `json:"signature,omitempty"`
+	Signature    *string                `json:"signature,omitempty"`
 	Data         string                 `json:"data,omitempty"`
 	Source       *anthropicImageSource  `json:"source,omitempty"`
 	ID           string                 `json:"id,omitempty"`

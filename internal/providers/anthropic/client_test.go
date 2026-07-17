@@ -16,6 +16,21 @@ import (
 	"github.com/blueberrycongee/wuu/internal/providers"
 )
 
+func TestAnthropicMessagesURL(t *testing.T) {
+	tests := map[string]string{
+		"https://api.anthropic.com":           "https://api.anthropic.com/v1/messages",
+		"https://api.kimi.com/coding/":        "https://api.kimi.com/coding/v1/messages",
+		"https://api.kimi.com/coding/v1":      "https://api.kimi.com/coding/v1/messages",
+		"https://proxy.example/v1/messages":   "https://proxy.example/v1/messages",
+		"https://proxy.example/anthropic/v1/": "https://proxy.example/anthropic/v1/messages",
+	}
+	for baseURL, want := range tests {
+		if got := anthropicMessagesURL(baseURL); got != want {
+			t.Errorf("anthropicMessagesURL(%q) = %q, want %q", baseURL, got, want)
+		}
+	}
+}
+
 func TestChat_TextResponse(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/v1/messages" {
@@ -2936,7 +2951,7 @@ func TestThinkingReplayModes(t *testing.T) {
 	if got := kinds(full); len(got) != 3 || got[0] != "thinking" || got[1] != "redacted_thinking" || got[2] != "text" {
 		t.Fatalf("full replay blocks = %v, want [thinking redacted_thinking text]", got)
 	}
-	if full.Messages[1].Content[0].Signature != "sig-abc" {
+	if signature := full.Messages[1].Content[0].Signature; signature == nil || *signature != "sig-abc" {
 		t.Fatalf("full replay must preserve signature")
 	}
 
@@ -2955,6 +2970,55 @@ func TestThinkingReplayModes(t *testing.T) {
 
 	if got := kinds(build("bogus")); got[0] != "thinking" {
 		t.Fatalf("invalid mode must fall back to full, got %v", got)
+	}
+}
+
+func TestEmptyThinkingSignatureCompatibility(t *testing.T) {
+	history := []providers.ChatMessage{
+		{Role: "user", Content: "question"},
+		{Role: "assistant", ReasoningBlocks: []providers.ReasoningBlock{
+			{Type: "thinking", Thinking: "internal reasoning", Signature: ""},
+		}},
+		{Role: "user", Content: "follow-up"},
+	}
+	build := func(options map[string]any) anthropicRequest {
+		req, err := buildAnthropicRequest(providers.ChatRequest{
+			Model: "compatible-model", Messages: history, ProviderOptions: options,
+		}, 1024, false)
+		if err != nil {
+			t.Fatalf("buildAnthropicRequest: %v", err)
+		}
+		return req
+	}
+
+	withoutCompat := build(nil)
+	withoutCompatBlock := withoutCompat.Messages[1].Content[0]
+	if withoutCompatBlock.Type != "thinking" || withoutCompatBlock.Signature != nil {
+		t.Fatalf("default behavior must omit an empty signature, got %+v", withoutCompatBlock)
+	}
+	withoutCompatJSON, err := json.Marshal(withoutCompatBlock)
+	if err != nil {
+		t.Fatalf("marshal default thinking block: %v", err)
+	}
+	if strings.Contains(string(withoutCompatJSON), `"signature"`) {
+		t.Fatalf("default behavior must omit signature from JSON, got %s", withoutCompatJSON)
+	}
+
+	withCompat := build(map[string]any{"allow_empty_signature": true})
+	block := withCompat.Messages[1].Content[0]
+	if block.Type != "thinking" || block.Signature == nil || *block.Signature != "" {
+		t.Fatalf("compatible endpoint must preserve explicit empty signature, got %+v", block)
+	}
+	encoded, err := json.Marshal(block)
+	if err != nil {
+		t.Fatalf("marshal thinking block: %v", err)
+	}
+	var raw map[string]any
+	if err := json.Unmarshal(encoded, &raw); err != nil {
+		t.Fatalf("decode thinking block: %v", err)
+	}
+	if signature, present := raw["signature"]; !present || signature != "" {
+		t.Fatalf("expected explicit empty signature in JSON, got %s", encoded)
 	}
 }
 
