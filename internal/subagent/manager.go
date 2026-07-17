@@ -53,6 +53,12 @@ type Manager struct {
 	// coordinator that needs crash recovery uses it to durably record the exact
 	// terminal generation that the snapshot is about to publish.
 	terminalPrepare func(Notification) error
+	// wakeAuthority runs on a dormant worker's tool executor immediately
+	// before a follow-up wakes it into a new turn. Waking is an execution
+	// admission: the owner uses this hook to reapply the authority in force
+	// now instead of the one captured at spawn. Running workers are never
+	// touched — a live turn keeps its admitted snapshot until it settles.
+	wakeAuthority func(agent.ToolExecutor)
 }
 
 type ManagerOptions struct {
@@ -257,6 +263,35 @@ func (m *Manager) SetTerminalPrepareObserver(prepare func(Notification) error) {
 	m.mu.Lock()
 	m.terminalPrepare = prepare
 	m.mu.Unlock()
+}
+
+// SetWakeAuthority installs the hook that reconfigures a worker's tool
+// executor when a follow-up wakes it from a dormant state. The hook runs
+// synchronously before the resumed turn can execute tools, so a permission
+// change made while the worker was dormant is in force for the woken turn.
+func (m *Manager) SetWakeAuthority(refresh func(agent.ToolExecutor)) {
+	if m == nil {
+		return
+	}
+	m.mu.Lock()
+	m.wakeAuthority = refresh
+	m.mu.Unlock()
+}
+
+// refreshWakeAuthority applies the wake-authority hook to a worker's tool
+// executor. Callers invoke it only on the wake path: waking a dormant worker
+// is a new execution admission, so its toolkit must not keep the boundary
+// captured when it was spawned or restored.
+func (m *Manager) refreshWakeAuthority(kit agent.ToolExecutor) {
+	if m == nil || kit == nil {
+		return
+	}
+	m.mu.Lock()
+	refresh := m.wakeAuthority
+	m.mu.Unlock()
+	if refresh != nil {
+		refresh(kit)
+	}
 }
 
 // SubscribeStream registers a channel that receives every stream event emitted
@@ -915,6 +950,12 @@ func (m *Manager) followup(ctx context.Context, id, message, forceTool string) (
 		defaults.client = m.defaultsSnapshot().client
 	}
 	sa.mu.Unlock()
+
+	// Waking a dormant worker is a new execution admission: reapply the
+	// current authority to its toolkit before the resumed turn can execute
+	// tools. The spawn-time boundary snapshot must not outlive a permission
+	// change made while the worker sat idle.
+	m.refreshWakeAuthority(sa.toolkit)
 
 	go m.runTurn(runCtx, cancel, sa, maxSteps, history, doneCh, defaults)
 	return snap, nil

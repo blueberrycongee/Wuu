@@ -589,9 +589,10 @@ func NewSession(opts Options) (*Session, error) {
 				}
 				return wkit, nil
 			},
-			ParticipantStore: sessionParticipantStore{sessDir: statepath.SessionsDir(wuuHome)},
-			MaxParallel:      cfg.Agent.MaxParallelValue(),
-			InferenceJournal: workspaceJournal,
+			WorkerWakeAuthority: workerWakeAuthority(toolkit),
+			ParticipantStore:    sessionParticipantStore{sessDir: statepath.SessionsDir(wuuHome)},
+			MaxParallel:         cfg.Agent.MaxParallelValue(),
+			InferenceJournal:    workspaceJournal,
 			ToolLedgerFactory: func(ownerID string) (*toolledger.Ledger, error) {
 				return toolledger.New(sessionDir, ownerID)
 			},
@@ -1169,9 +1170,10 @@ func (s *Session) NewThreadRuntimeForRoot(sessionID, rootDir string) (*ThreadRun
 					}
 					return workerKit, nil
 				},
-				ParticipantStore: sessionParticipantStore{sessDir: statepath.SessionsDir(wuuHome)},
-				MaxParallel:      s.MaxParallel(),
-				InferenceJournal: s.InferenceJournalForOwner(id),
+				WorkerWakeAuthority: workerWakeAuthority(kit),
+				ParticipantStore:    sessionParticipantStore{sessDir: statepath.SessionsDir(wuuHome)},
+				MaxParallel:         s.MaxParallel(),
+				InferenceJournal:    s.InferenceJournalForOwner(id),
 				ToolLedgerFactory: func(ownerID string) (*toolledger.Ledger, error) {
 					return toolledger.New(s.SessionDir, ownerID)
 				},
@@ -1929,6 +1931,23 @@ func ConfigureToolkitPermissions(kit *tools.Toolkit, permissions config.Resolved
 		return
 	}
 	kit.SetBoundary(BoundaryForMode(permissions.Mode))
+}
+
+// workerWakeAuthority builds the wake-time authority refresher for workers
+// cloned from the given parent toolkit. Waking a dormant worker is a new
+// execution admission, so the woken worker re-copies the parent's CURRENT
+// workspace boundary — the same inheritance a fresh spawn performs via
+// CloneForRoot — instead of keeping the boundary captured when it was
+// spawned. The parent toolkit is the permission anchor kept fresh by
+// ConfigureToolkitPermissions at turn starts and permission updates.
+func workerWakeAuthority(parent *tools.Toolkit) func(agent.ToolExecutor) {
+	return func(executor agent.ToolExecutor) {
+		workerKit, ok := executor.(*tools.Toolkit)
+		if !ok || workerKit == nil || parent == nil {
+			return
+		}
+		workerKit.SetBoundary(parent.Boundary())
+	}
 }
 
 func BoundaryForMode(mode string) tools.WorkspaceBoundary {

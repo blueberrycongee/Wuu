@@ -238,6 +238,12 @@ type Config struct {
 	WorkerSysPrompt                string
 	WorkerFactory                  WorkerToolkitFactory
 	WorkerPrompt                   WorkerSystemPromptFactory
+	// WorkerWakeAuthority reapplies the current thread authority to a
+	// dormant worker's tool executor when a follow-up wakes it. Waking is an
+	// execution admission: the woken turn must run under the permissions in
+	// force now, not the ones captured at spawn. Nil keeps spawn-time
+	// authority. Running workers keep their admitted snapshot either way.
+	WorkerWakeAuthority func(agent.ToolExecutor)
 	// ParticipantStore, when set, persists the ephemeral participant
 	// identity created for each spawned worker. Optional: when nil,
 	// participant IDs are still generated in-memory but not persisted.
@@ -322,6 +328,7 @@ func New(cfg Config) (*AgentControl, error) {
 	}
 	mgr.SetTerminalPrepareObserver(c.prepareWorkerTerminal)
 	mgr.SetTerminalObserver(c.consumeWorkerTerminal)
+	mgr.SetWakeAuthority(cfg.WorkerWakeAuthority)
 	c.restoreAgentResultDeliveries()
 	c.registerRootThread()
 	if err := c.restoreQueuedSpawns(); err != nil {
