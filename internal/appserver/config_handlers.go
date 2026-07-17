@@ -1570,13 +1570,7 @@ func (s *Server) pinLegacyRuntimeSelections() {
 		return
 	}
 	for _, sess := range sessions {
-		selection := session.RuntimeSelection{
-			Provider:       strings.TrimSpace(sess.Provider),
-			Model:          strings.TrimSpace(sess.Model),
-			Variant:        strings.TrimSpace(sess.Variant),
-			Effort:         strings.TrimSpace(sess.Effort),
-			PermissionMode: strings.TrimSpace(sess.PermissionMode),
-		}
+		selection := runtimeSelectionFromSession(sess)
 		legacySelection := selection.PermissionMode == ""
 		changed := false
 		if selection.Provider == "" || selection.Model == "" {

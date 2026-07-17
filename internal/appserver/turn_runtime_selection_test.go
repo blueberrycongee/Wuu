@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/blueberrycongee/wuu/internal/config"
+	"github.com/blueberrycongee/wuu/internal/session"
 )
 
 // An explicit process-scoped permission override (exec --permission-mode) must
@@ -103,6 +104,68 @@ func TestEnsureThreadRuntimeRebuildsWhenThreadSelectionChanged(t *testing.T) {
 	}
 	if rebuilt.StreamRunner.Model != "repinned-model" {
 		t.Fatalf("rebuilt runtime model = %q, want repinned-model", rebuilt.StreamRunner.Model)
+	}
+}
+
+// A session pinned to a provider that has since been removed from config must
+// not fail forever: the first turn self-heals the pin to the workspace
+// defaults, persists the healed selection, and broadcasts it so the composer
+// stops showing the dead provider.
+func TestEnsureThreadRuntimeHealsRemovedProviderPin(t *testing.T) {
+	rt := newTestRuntime(t, &fakeClient{})
+	writeSelectionTestConfig(t, rt.ConfigPath)
+	out := &lockedBuffer{}
+	srv := New(rt, out)
+
+	if _, err := session.CreateWithMetadata(rt.SessionDir, "healed-thread", rt.RootDir); err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	if _, err := session.SetRuntimeSelection(rt.SessionDir, "healed-thread", session.RuntimeSelection{
+		Provider: "removed-provider",
+		Model:    "removed-model",
+	}); err != nil {
+		t.Fatalf("pin removed provider: %v", err)
+	}
+	if err := srv.handleLine(context.Background(), []byte(`{"id":"1","method":"thread/resume","params":{"session_id":"healed-thread"}}`)); err != nil {
+		t.Fatalf("thread/resume: %v", err)
+	}
+	th := srv.thread("healed-thread")
+	if th == nil {
+		t.Fatal("resumed thread is not resident")
+	}
+
+	built, err := srv.ensureThreadRuntime(th)
+	if err != nil {
+		t.Fatalf("ensureThreadRuntime should heal the dead pin: %v", err)
+	}
+	if built.StreamRunner.Model != "fake-model" {
+		t.Fatalf("healed runtime model = %q, want workspace default fake-model", built.StreamRunner.Model)
+	}
+	th.mu.Lock()
+	provider, model := th.ModelProvider, th.Model
+	th.mu.Unlock()
+	if provider != "fake-provider" || model != "fake-model" {
+		t.Fatalf("thread selection not healed: provider=%q model=%q", provider, model)
+	}
+	sess, ok, err := session.Find(rt.SessionDir, "healed-thread")
+	if err != nil || !ok {
+		t.Fatalf("find session: ok=%v err=%v", ok, err)
+	}
+	if sess.Provider != "fake-provider" || sess.Model != "fake-model" {
+		t.Fatalf("session row not healed: provider=%q model=%q", sess.Provider, sess.Model)
+	}
+	var healed *Thread
+	for _, msg := range parseOutput(t, out.String()) {
+		if msg["method"] != "thread/updated" {
+			continue
+		}
+		notif := remarshal[ThreadUpdatedNotification](t, msg["params"])
+		if notif.Thread.ID == "healed-thread" {
+			healed = &notif.Thread
+		}
+	}
+	if healed == nil || healed.ModelProvider != "fake-provider" || healed.Model != "fake-model" {
+		t.Fatalf("no thread/updated broadcasting the healed selection, got %+v", healed)
 	}
 }
 

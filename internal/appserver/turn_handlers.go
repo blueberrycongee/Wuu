@@ -709,6 +709,19 @@ func (s *Server) ensureThreadRuntime(th *threadState) (*runtime.ThreadRuntime, e
 		Effort:         modelEffort,
 		PermissionMode: permissionMode,
 	})
+	if errors.Is(err, runtime.ErrThreadProviderUnavailable) {
+		// The pinned provider was removed from config after this session
+		// selected it. Self-heal to the workspace defaults so the turn
+		// proceeds instead of every send failing on the dead pin.
+		defaults := s.resetThreadSelectionToWorkspaceDefaults(th)
+		threadRuntime, err = s.rt.NewThreadRuntimeForRootModel(th.ID, browserWorkdir, runtime.ThreadModelSelection{
+			Provider:       defaults.Provider,
+			Model:          defaults.Model,
+			Variant:        defaults.Variant,
+			Effort:         defaults.Effort,
+			PermissionMode: defaults.PermissionMode,
+		})
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -764,6 +777,30 @@ func (s *Server) ensureThreadRuntime(th *threadState) (*runtime.ThreadRuntime, e
 	th.mu.Unlock()
 	releaseThreadRuntimeSubscription(threadRuntime, sub)
 	return existing, nil
+}
+
+// resetThreadSelectionToWorkspaceDefaults repins a thread whose stored
+// selection can no longer be built (its provider was removed from config) to
+// the current workspace defaults, persists the heal, and broadcasts the new
+// selection so the composer stops showing the dead provider. Persist and
+// notify are best-effort: the heal exists to unblock the turn, so it must not
+// introduce new failure modes of its own.
+func (s *Server) resetThreadSelectionToWorkspaceDefaults(th *threadState) session.RuntimeSelection {
+	defaults := s.currentSessionRuntimeSelection()
+	th.mu.Lock()
+	applyThreadRuntimeSelection(th, defaults)
+	persist := th.PersistHistory
+	thread := th.snapshotLocked()
+	th.mu.Unlock()
+	if persist {
+		if _, err := session.SetRuntimeSelection(s.rt.SessionDir, th.ID, defaults); err != nil {
+			providers.DebugLogf("persist healed runtime selection for thread %q: %v", th.ID, err)
+		}
+	}
+	if err := s.notifyThreadUpdated(thread); err != nil {
+		providers.DebugLogf("notify healed runtime selection for thread %q: %v", th.ID, err)
+	}
+	return defaults
 }
 
 // threadRuntimeMatchesSelectionLocked reports whether an idle resident runtime

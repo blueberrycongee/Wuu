@@ -1022,14 +1022,8 @@ func applySessionMetadata(th *threadState, metadata session.Session) {
 	}
 	th.Title = metadata.Title
 	th.Source = metadata.Source
-	if strings.TrimSpace(metadata.Provider) != "" && strings.TrimSpace(metadata.Model) != "" {
-		applyThreadRuntimeSelection(th, session.RuntimeSelection{
-			Provider:       metadata.Provider,
-			Model:          metadata.Model,
-			Variant:        metadata.Variant,
-			Effort:         metadata.Effort,
-			PermissionMode: metadata.PermissionMode,
-		})
+	if selection := runtimeSelectionFromSession(metadata); selection.Provider != "" && selection.Model != "" {
+		applyThreadRuntimeSelection(th, selection)
 	}
 	th.ForkedFromID = metadata.ForkedFromID
 	th.ForkedFromTurnID = metadata.ForkedFromTurnID
@@ -1042,6 +1036,20 @@ func applySessionMetadata(th *threadState, metadata session.Session) {
 	th.DMParticipantID = metadata.DMParticipantID
 	th.Group = metadata.Group
 	th.FocusWorkspace = metadata.FocusWorkspace
+}
+
+// runtimeSelectionFromSession is the one conversion from a persisted session
+// row to its runtime selection. List entries, resident restores, and legacy
+// migration all read the row through it so they cannot diverge on which
+// selection fields a session carries.
+func runtimeSelectionFromSession(sess session.Session) session.RuntimeSelection {
+	return session.RuntimeSelection{
+		Provider:       strings.TrimSpace(sess.Provider),
+		Model:          strings.TrimSpace(sess.Model),
+		Variant:        strings.TrimSpace(sess.Variant),
+		Effort:         strings.TrimSpace(sess.Effort),
+		PermissionMode: strings.TrimSpace(sess.PermissionMode),
+	}
 }
 
 func applyThreadRuntimeSelection(th *threadState, selection session.RuntimeSelection) {
@@ -1062,15 +1070,22 @@ func threadEntryFromSession(sess session.Session, provider, model string) thread
 	if updatedAt.IsZero() {
 		updatedAt = sess.CreatedAt
 	}
+	selection := runtimeSelectionFromSession(sess)
+	permissionMode := ""
+	if selection.PermissionMode != "" {
+		permissionMode = config.NormalizePermissionMode(selection.PermissionMode)
+	}
 	return threadListEntry{
 		thread: Thread{
 			ID:               sess.ID,
 			Source:           sess.Source,
 			Preview:          firstNonEmpty(sess.Title, sess.Summary),
 			Title:            sess.Title,
-			ModelProvider:    firstNonEmpty(sess.Provider, provider),
-			Model:            firstNonEmpty(sess.Model, model),
-			ModelVariant:     sess.Variant,
+			ModelProvider:    firstNonEmpty(selection.Provider, provider),
+			Model:            firstNonEmpty(selection.Model, model),
+			ModelVariant:     selection.Variant,
+			ModelEffort:      selection.Effort,
+			PermissionMode:   permissionMode,
 			CWD:              sess.CWD,
 			Status:           ThreadStatusIdle,
 			Pinned:           sess.PinnedAt != nil,

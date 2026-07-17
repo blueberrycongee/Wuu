@@ -809,6 +809,12 @@ func (s *Session) NewThreadRuntime(sessionID string) (*ThreadRuntime, error) {
 	return s.NewThreadRuntimeForRoot(sessionID, s.RootDir)
 }
 
+// ErrThreadProviderUnavailable marks a thread-runtime build that failed
+// because the thread's pinned provider is no longer configured. Callers can
+// self-heal by rebuilding on the workspace defaults instead of failing every
+// turn on the dead pin.
+var ErrThreadProviderUnavailable = errors.New("thread provider unavailable")
+
 // NewThreadRuntimeForRootModel creates a thread runtime from a conversation's
 // persisted model selection without mutating the workspace-wide defaults.
 func (s *Session) NewThreadRuntimeForRootModel(sessionID, rootDir string, selected ThreadModelSelection) (*ThreadRuntime, error) {
@@ -853,7 +859,7 @@ func (s *Session) NewThreadRuntimeForRootModel(sessionID, rootDir string, select
 	}
 	providerCfg, resolvedName, err := cfg.ResolveProvider(providerName)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w: %v", ErrThreadProviderUnavailable, err)
 	}
 	ruleProviderName, ruleProviderCfg := modelcatalog.EnrichProvider(resolvedName, providerCfg, model)
 	variant := strings.TrimSpace(selected.Variant)

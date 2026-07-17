@@ -2803,6 +2803,63 @@ func TestServerConfigProviderRemoveRejectsProviderUsedByRunningTurn(t *testing.T
 	}
 }
 
+// Removing a provider must not be blocked by idle sessions that still pin it:
+// those pins heal lazily to the workspace defaults on their next turn
+// (TestEnsureThreadRuntimeHealsRemovedProviderPin), so an archived thread in a
+// drawer somewhere can never hold the provider list hostage.
+func TestServerConfigProviderRemoveAllowsProviderPinnedByIdleArchivedSession(t *testing.T) {
+	rt := newTestRuntime(t, &fakeClient{})
+	if err := os.WriteFile(rt.ConfigPath, []byte(`{
+  "default_provider": "keep",
+  "providers": {
+    "keep": {
+      "type": "openai-compatible",
+      "base_url": "https://keep.example.test/v1",
+      "api_key": "keep-key",
+      "model": "keep-model"
+    },
+    "drop": {
+      "type": "openai-compatible",
+      "base_url": "https://drop.example.test/v1",
+      "api_key": "drop-key",
+      "model": "drop-model"
+    }
+  }
+}`), 0644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	if _, err := session.CreateWithMetadata(rt.SessionDir, "pinned-thread", rt.RootDir); err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	if _, err := session.SetRuntimeSelection(rt.SessionDir, "pinned-thread", session.RuntimeSelection{
+		Provider: "drop",
+		Model:    "drop-model",
+	}); err != nil {
+		t.Fatalf("pin session to provider: %v", err)
+	}
+	if _, err := session.UpdateArchived(rt.SessionDir, "pinned-thread", true); err != nil {
+		t.Fatalf("archive session: %v", err)
+	}
+	out := &lockedBuffer{}
+	srv := New(rt, out)
+
+	req := `{"id":"1","method":"config/provider/remove","params":{"provider":"drop"}}`
+	if err := srv.handleLine(context.Background(), []byte(req)); err != nil {
+		t.Fatalf("config/provider/remove: %v", err)
+	}
+
+	if got := responseByID(t, parseOutput(t, out.String()), "1")["error"]; got != nil {
+		t.Fatalf("idle pinned session must not block removal: %+v", got)
+	}
+	data, err := os.ReadFile(rt.ConfigPath)
+	if err != nil {
+		t.Fatalf("read config: %v", err)
+	}
+	if strings.Contains(string(data), `"drop"`) {
+		t.Fatalf("pinned-but-idle provider was not removed: %s", data)
+	}
+}
+
 func TestServerConfigProviderRemoveAllowsUnusedProviderWithRunningThread(t *testing.T) {
 	rt := newTestRuntime(t, &fakeClient{})
 	if err := os.WriteFile(rt.ConfigPath, []byte(`{
@@ -6074,7 +6131,13 @@ func TestServerThreadListUsesSessionIndexMetadata(t *testing.T) {
 	if err := session.UpdateIndex(rt.SessionDir, "old-thread", 2, "old summary"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := session.SetModelSelection(rt.SessionDir, "old-thread", "anthropic", "claude-sonnet-4-6", "high"); err != nil {
+	if _, err := session.SetRuntimeSelection(rt.SessionDir, "old-thread", session.RuntimeSelection{
+		Provider:       "anthropic",
+		Model:          "claude-sonnet-4-6",
+		Variant:        "high",
+		Effort:         "medium",
+		PermissionMode: config.PermissionModeUnconfined,
+	}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := session.CreateWithMetadata(rt.SessionDir, "new-thread", rt.RootDir); err != nil {
@@ -6112,6 +6175,9 @@ func TestServerThreadListUsesSessionIndexMetadata(t *testing.T) {
 	}
 	if result.Threads[0].ModelProvider != "anthropic" || result.Threads[0].Model != "claude-sonnet-4-6" || result.Threads[0].ModelVariant != "high" {
 		t.Fatalf("persisted model selection not restored: %+v", result.Threads[0])
+	}
+	if result.Threads[0].ModelEffort != "medium" || result.Threads[0].PermissionMode != config.PermissionModeUnconfined {
+		t.Fatalf("persisted effort/permission not restored: %+v", result.Threads[0])
 	}
 	if result.Threads[1].ID != "new-thread" || result.Threads[1].Archived {
 		t.Fatalf("unexpected second thread: %+v", result.Threads[1])
