@@ -69,7 +69,13 @@ type Options struct {
 	Config         config.Config
 	ProviderName   string
 	ModelOverride  string
-	NoTools        bool
+	// PermissionModeExplicit marks Config's permission mode as an explicit
+	// process-scoped execution override (a CLI --permission-mode flag). The
+	// override wins over per-thread pinned modes and persisted session
+	// metadata for every turn this process runs, and is never written back
+	// into sessions.
+	PermissionModeExplicit bool
+	NoTools                bool
 }
 
 // ConfigLoadMode identifies the three supported config source models. It is
@@ -128,9 +134,13 @@ type Session struct {
 	// a long-lived session that crosses a day boundary keeps its start date
 	// instead of churning the prompt cache. Real-time clock reads belong in the
 	// per-turn message stream, never in this cached prefix.
-	SessionDate                 string
-	WuuHome                     string
-	Permissions                 config.ResolvedPermissions
+	SessionDate string
+	WuuHome     string
+	Permissions config.ResolvedPermissions
+	// PermissionModeExplicit reports that Permissions carries an explicit
+	// process-scoped override (see Options.PermissionModeExplicit): it beats
+	// thread pins and session metadata and is never persisted into sessions.
+	PermissionModeExplicit      bool
 	ultraMode                   atomic.Bool
 	maxParallel                 int
 	CoordinatorPreamble         string
@@ -211,6 +221,7 @@ func (s *Session) cloneForThreadModel() *Session {
 		SessionDate:                 s.SessionDate,
 		WuuHome:                     s.WuuHome,
 		Permissions:                 s.Permissions,
+		PermissionModeExplicit:      s.PermissionModeExplicit,
 		maxParallel:                 s.maxParallel,
 		CoordinatorPreamble:         s.CoordinatorPreamble,
 		ExperimentalCoordinatorMode: s.ExperimentalCoordinatorMode,
@@ -247,6 +258,14 @@ type ThreadRuntime struct {
 	ActivityRegistry  *activity.Registry
 	ModelBudget       modelbudget.Budget
 	WorkerModelBudget modelbudget.Budget
+	// Selection is the (trimmed, unresolved) thread model selection this
+	// runtime was built for, with PermissionMode always carrying the
+	// effective normalized mode so a constructor-built stamp is never the
+	// zero value. It is the reuse invariant's comparison key: a resident
+	// runtime must never run a turn after the thread's selection changed
+	// behind its back (e.g. another app-server process repinned the
+	// session), so callers compare this stamp before reusing an idle runtime.
+	Selection ThreadModelSelection
 }
 
 // ThreadModelSelection is the model choice persisted with one conversation.
@@ -672,6 +691,7 @@ func NewSession(opts Options) (*Session, error) {
 		SessionDate:                 sessionDate,
 		WuuHome:                     wuuHome,
 		Permissions:                 permissions,
+		PermissionModeExplicit:      opts.PermissionModeExplicit,
 		maxParallel:                 cfg.Agent.MaxParallelValue(),
 		CoordinatorPreamble:         coordinatorPreamble,
 		ExperimentalCoordinatorMode: cfg.Agent.ExperimentalCoordinatorMode,
@@ -797,19 +817,35 @@ func (s *Session) NewThreadRuntimeForRootModel(sessionID, rootDir string, select
 	}
 	providerName := strings.TrimSpace(selected.Provider)
 	model := strings.TrimSpace(selected.Model)
-	permissionMode := strings.TrimSpace(selected.PermissionMode)
-	if permissionMode == "" {
+	requested := ThreadModelSelection{
+		Provider:       providerName,
+		Model:          model,
+		Variant:        strings.TrimSpace(selected.Variant),
+		Effort:         strings.TrimSpace(selected.Effort),
+		PermissionMode: strings.TrimSpace(selected.PermissionMode),
+	}
+	permissionMode := requested.PermissionMode
+	// An explicit process-scoped override (exec --permission-mode) wins over
+	// the thread's pinned mode; it also keeps the fast path viable when only
+	// the pinned mode differs, so the override never forces a shadow rebuild.
+	if permissionMode == "" || s.PermissionModeExplicit {
 		permissionMode = s.Permissions.Mode
 	}
 	permissions := config.ResolvedPermissions{Mode: config.NormalizePermissionMode(permissionMode)}
+	requested.PermissionMode = permissions.Mode
 	currentVariant := ""
 	currentEffort := ""
 	if s.StreamRunner != nil {
 		currentVariant = strings.TrimSpace(s.StreamRunner.Variant)
 		currentEffort = strings.TrimSpace(s.StreamRunner.Effort)
 	}
-	if providerName == "" || model == "" || (providerName == s.ProviderName && model == s.Model && strings.TrimSpace(selected.Variant) == currentVariant && strings.TrimSpace(selected.Effort) == currentEffort && permissions.Mode == config.NormalizePermissionMode(s.Permissions.Mode)) {
-		return s.NewThreadRuntimeForRoot(sessionID, rootDir)
+	if providerName == "" || model == "" || (providerName == s.ProviderName && model == s.Model && requested.Variant == currentVariant && requested.Effort == currentEffort && permissions.Mode == config.NormalizePermissionMode(s.Permissions.Mode)) {
+		threadRuntime, err := s.NewThreadRuntimeForRoot(sessionID, rootDir)
+		if err != nil {
+			return nil, err
+		}
+		threadRuntime.Selection = requested
+		return threadRuntime, nil
 	}
 	cfg, _, err := s.LoadEffectiveConfig()
 	if err != nil {
@@ -901,7 +937,12 @@ func (s *Session) NewThreadRuntimeForRootModel(sessionID, rootDir string, select
 	shadow.BaseSystemPrompt = promptResult.Content
 	shadow.BaseSystemPromptSections = promptResult.Sections
 	shadow.StreamRunner.UpdateSystemPromptWithSections(promptResult.Content, agentPromptSections(promptResult.Sections))
-	return shadow.NewThreadRuntimeForRoot(sessionID, threadRoot)
+	threadRuntime, err := shadow.NewThreadRuntimeForRoot(sessionID, threadRoot)
+	if err != nil {
+		return nil, err
+	}
+	threadRuntime.Selection = requested
+	return threadRuntime, nil
 }
 
 // NewThreadRuntimeForRoot creates a per-conversation execution runtime whose
@@ -1160,6 +1201,16 @@ func (s *Session) NewThreadRuntimeForRoot(sessionID, rootDir string) (*ThreadRun
 		ActivityRegistry:  s.ActivityRegistry,
 		ModelBudget:       s.ModelBudget,
 		WorkerModelBudget: s.WorkerModelBudget,
+		// Direct callers get the session's own identity as the stamp;
+		// NewThreadRuntimeForRootModel overwrites it with the thread's
+		// requested selection so reuse comparisons stay in thread terms.
+		Selection: ThreadModelSelection{
+			Provider:       s.ProviderName,
+			Model:          s.Model,
+			Variant:        strings.TrimSpace(runner.Variant),
+			Effort:         strings.TrimSpace(runner.Effort),
+			PermissionMode: config.NormalizePermissionMode(s.Permissions.Mode),
+		},
 	}, nil
 }
 

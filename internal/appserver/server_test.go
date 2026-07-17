@@ -3884,7 +3884,7 @@ func TestServerTurnPermissionModeChangesExecutionWithoutCacheDrift(t *testing.T)
 	}
 }
 
-func TestServerQueuedTurnUsesQueuedPermissionSnapshot(t *testing.T) {
+func TestServerQueuedTurnReResolvesPermissionsAtStart(t *testing.T) {
 	client := &fakeClient{
 		responses: []providers.ChatResponse{
 			{ToolCalls: []providers.ToolCall{{
@@ -3896,7 +3896,7 @@ func TestServerQueuedTurnUsesQueuedPermissionSnapshot(t *testing.T) {
 		},
 	}
 	rt := newTestRuntime(t, client)
-	rt.Permissions = config.ResolvedPermissions{Mode: config.PermissionModeUnconfined}
+	rt.Permissions = config.ResolvedPermissions{Mode: config.PermissionModeReadOnly}
 	kit, err := tools.New(rt.RootDir)
 	if err != nil {
 		t.Fatalf("tools.New: %v", err)
@@ -3909,11 +3909,14 @@ func TestServerQueuedTurnUsesQueuedPermissionSnapshot(t *testing.T) {
 		t.Fatalf("thread/start: %v", err)
 	}
 	threadID := remarshal[ThreadStartResult](t, responseByID(t, parseOutput(t, out.String()), "1")["result"]).Thread.ID
-	readOnly := config.ResolvedPermissions{Mode: config.PermissionModeReadOnly}
+	// The snapshot froze the broader mode that governed when the turn was
+	// queued; the thread has since been tightened to read-only. Start-time
+	// re-resolution must ignore the frozen mode and run the turn read-only.
+	unconfined := config.ResolvedPermissions{Mode: config.PermissionModeUnconfined}
 	started, err := srv.startQueuedTurn(context.Background(), threadID, queuedTurn{
-		id:       "queued-read-only",
+		id:       "queued-stale-unconfined",
 		msg:      providers.ChatMessage{Role: "user", Content: "queued write"},
-		snapshot: turnRuntimeSnapshot{}.withPermissions(readOnly),
+		snapshot: turnRuntimeSnapshot{}.withPermissions(unconfined),
 	})
 	if err != nil {
 		t.Fatalf("startQueuedTurn: %v", err)
@@ -3928,7 +3931,7 @@ func TestServerQueuedTurnUsesQueuedPermissionSnapshot(t *testing.T) {
 		t.Fatalf("replay trace: %v", err)
 	}
 	if len(traceSummary.Turns) == 0 || traceSummary.Turns[len(traceSummary.Turns)-1].PermissionMode != config.PermissionModeReadOnly {
-		t.Fatalf("queued turn should record read-only snapshot: %+v", traceSummary.Turns)
+		t.Fatalf("queued turn should re-resolve to the tightened mode: %+v", traceSummary.Turns)
 	}
 	if _, err := os.Stat(filepath.Join(rt.RootDir, "queued-blocked.txt")); !os.IsNotExist(err) {
 		t.Fatalf("queued read-only turn should not create file, stat err=%v", err)

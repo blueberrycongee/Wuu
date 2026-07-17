@@ -674,7 +674,8 @@ func (s *Server) ensureThreadRuntime(th *threadState) (*runtime.ThreadRuntime, e
 	existing := th.execRuntime
 	running := th.running
 	var detached detachedThreadRuntime
-	if existing != nil && th.pendingRuntimeReset && !running && !threadRuntimeHasOutstandingAgentWork(existing) {
+	if existing != nil && !running && !threadRuntimeHasOutstandingAgentWork(existing) &&
+		(th.pendingRuntimeReset || !s.threadRuntimeMatchesSelectionLocked(th, existing)) {
 		detached = detachThreadRuntimeLocked(th)
 		existing = nil
 	}
@@ -763,6 +764,35 @@ func (s *Server) ensureThreadRuntime(th *threadState) (*runtime.ThreadRuntime, e
 	th.mu.Unlock()
 	releaseThreadRuntimeSubscription(threadRuntime, sub)
 	return existing, nil
+}
+
+// threadRuntimeMatchesSelectionLocked reports whether an idle resident runtime
+// was built for the thread's current model selection. Another app-server
+// process can repin the session between turns; admission refreshes th.* from
+// disk, and this single chokepoint keeps a reused runtime from ever running a
+// model it was not built for. Permission mode is deliberately not compared:
+// it is re-resolved and applied to the toolkit on every turn, so a stale
+// runtime never runs stale permissions and a permission-only rebuild would
+// churn the prompt cache for nothing. Callers hold th.mu.
+func (s *Server) threadRuntimeMatchesSelectionLocked(th *threadState, existing *runtime.ThreadRuntime) bool {
+	if th == nil || existing == nil {
+		return false
+	}
+	got := existing.Selection
+	if got == (runtime.ThreadModelSelection{}) {
+		// An unstamped runtime was hand-wired (test fixtures) rather than
+		// built through NewThreadRuntimeForRootModel; there is no build-time
+		// selection to compare against.
+		return true
+	}
+	got.PermissionMode = ""
+	want := runtime.ThreadModelSelection{
+		Provider: strings.TrimSpace(th.ModelProvider),
+		Model:    strings.TrimSpace(th.Model),
+		Variant:  strings.TrimSpace(th.ModelVariant),
+		Effort:   strings.TrimSpace(th.ModelEffort),
+	}
+	return got == want
 }
 
 func (s *Server) replayPendingAgentCompletions(threadID string, threadRuntime *runtime.ThreadRuntime) {
@@ -1422,6 +1452,17 @@ func (s *Server) resolveTurnPermissions(permissionMode *string) (config.Resolved
 }
 
 func (s *Server) resolveThreadTurnPermissions(th *threadState, requested *string) (config.ResolvedPermissions, error) {
+	if s != nil && s.rt != nil && s.rt.PermissionModeExplicit {
+		// A process-scoped explicit override (exec --permission-mode) beats
+		// the thread pin and persisted session metadata: a user asking for
+		// read_only must never silently run with a resumed session's broader
+		// pinned mode. The override is never written back into the session.
+		permissions := normalizeTurnPermissions(s.rt.Permissions)
+		if requested != nil && config.NormalizePermissionMode(*requested) != permissions.Mode {
+			return config.ResolvedPermissions{}, errors.New("permission mode does not match this process's explicit permission override")
+		}
+		return permissions, nil
+	}
 	mode := ""
 	if th != nil {
 		th.mu.Lock()
@@ -2720,13 +2761,12 @@ func (s *Server) startQueuedTurn(ctx context.Context, threadID string, entry que
 		return false, errors.New("group threads do not support queued turns")
 	}
 	var threadRuntime *runtime.ThreadRuntime
-	var err error
-	permissions := entry.snapshot.permissions()
-	if !entry.snapshot.hasPermissions() {
-		permissions, err = s.resolveThreadTurnPermissions(th, nil)
-		if err != nil {
-			return false, err
-		}
+	// Permissions are re-resolved at start time, never trusted from the
+	// queue-time snapshot: a permission change landing while the turn waited
+	// in the queue must govern the turn that actually runs.
+	permissions, err := s.resolveThreadTurnPermissions(th, nil)
+	if err != nil {
+		return false, err
 	}
 
 	snapshot := entry.snapshot.withPermissions(permissions)
