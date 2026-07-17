@@ -12,7 +12,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/blueberrycongee/wuu/internal/config"
 	wuucontext "github.com/blueberrycongee/wuu/internal/context"
+	"github.com/blueberrycongee/wuu/internal/modelcatalog"
+	"github.com/blueberrycongee/wuu/internal/modelvariant"
 	"github.com/blueberrycongee/wuu/internal/providers"
 )
 
@@ -3019,6 +3022,98 @@ func TestEmptyThinkingSignatureCompatibility(t *testing.T) {
 	}
 	if signature, present := raw["signature"]; !present || signature != "" {
 		t.Fatalf("expected explicit empty signature in JSON, got %s", encoded)
+	}
+}
+
+func TestKimiK3MultiRoundToolReplay(t *testing.T) {
+	providerName, provider := modelcatalog.EnrichProvider("kimi-for-coding", config.ProviderConfig{
+		Type:  "anthropic",
+		Model: "k3",
+	}, "k3")
+	selection := modelvariant.ResolveForProvider(providerName, provider, "k3", "", "")
+	model := provider.Models["k3"]
+	if model.Limit == nil {
+		t.Fatal("expected K3 limits")
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/messages" {
+			t.Fatalf("unexpected K3 path: %s", r.URL.Path)
+		}
+		if got := r.Header.Get("User-Agent"); got != "KimiCLI/1.5" {
+			t.Fatalf("unexpected K3 User-Agent: %q", got)
+		}
+		var body anthropicRequest
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode K3 request: %v", err)
+		}
+		if body.Model != "k3" || body.MaxTokens != 131_072 {
+			t.Fatalf("unexpected K3 model request: model=%q max_tokens=%d", body.Model, body.MaxTokens)
+		}
+		if body.Thinking == nil || body.Thinking.Type != "adaptive" || body.Thinking.Display != "summarized" {
+			t.Fatalf("unexpected K3 thinking config: %+v", body.Thinking)
+		}
+		if body.OutputConfig == nil || body.OutputConfig.Effort != "max" {
+			t.Fatalf("unexpected K3 output config: %+v", body.OutputConfig)
+		}
+		if len(body.Messages) != 3 {
+			t.Fatalf("unexpected K3 message count: %+v", body.Messages)
+		}
+		assistant := body.Messages[1]
+		if assistant.Role != "assistant" || len(assistant.Content) != 3 {
+			t.Fatalf("unexpected K3 assistant replay: %+v", assistant)
+		}
+		thinking := assistant.Content[0]
+		if thinking.Type != "thinking" || thinking.Thinking == nil || *thinking.Thinking != "inspect the repository" || thinking.Signature == nil || *thinking.Signature != "" {
+			t.Fatalf("unexpected K3 thinking replay: %+v", thinking)
+		}
+		if redacted := assistant.Content[1]; redacted.Type != "redacted_thinking" || redacted.Data != "opaque-reasoning" {
+			t.Fatalf("unexpected K3 redacted replay: %+v", redacted)
+		}
+		if toolUse := assistant.Content[2]; toolUse.Type != "tool_use" || toolUse.ID != "call_1" || toolUse.Name != "list_files" {
+			t.Fatalf("unexpected K3 tool replay: %+v", toolUse)
+		}
+		if followUp := body.Messages[2].Content; len(followUp) != 2 || followUp[0].Type != "tool_result" || followUp[0].ToolUseID != "call_1" || followUp[1].Type != "text" {
+			t.Fatalf("unexpected K3 tool result sequence: %+v", followUp)
+		}
+		w.Header().Set("content-type", "application/json")
+		_, _ = w.Write([]byte(`{"content":[{"type":"text","text":"done"}]}`))
+	}))
+	defer server.Close()
+
+	client, err := New(ClientConfig{
+		BaseURL:   server.URL,
+		APIKey:    "test-key",
+		Headers:   provider.Headers,
+		MaxTokens: model.Limit.Output,
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	resp, err := client.Chat(context.Background(), providers.ChatRequest{
+		Model: "k3",
+		Messages: []providers.ChatMessage{
+			{Role: "user", Content: "inspect the repository"},
+			{
+				Role: "assistant",
+				ReasoningBlocks: []providers.ReasoningBlock{
+					{Type: "thinking", Thinking: "inspect the repository", Signature: ""},
+					{Type: "redacted_thinking", Data: "opaque-reasoning"},
+				},
+				ToolCalls: []providers.ToolCall{
+					{ID: "call_1", Name: "list_files", Arguments: `{}`},
+				},
+			},
+			{Role: "tool", ToolCallID: "call_1", Content: "README.md"},
+			{Role: "user", Content: "summarize it"},
+		},
+		ProviderOptions: selection.ProviderOptions,
+	})
+	if err != nil {
+		t.Fatalf("K3 chat: %v", err)
+	}
+	if resp.Content != "done" {
+		t.Fatalf("unexpected K3 response: %+v", resp)
 	}
 }
 
