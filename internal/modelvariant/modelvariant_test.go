@@ -6,7 +6,31 @@ import (
 	"testing"
 
 	"github.com/blueberrycongee/wuu/internal/config"
+	"github.com/blueberrycongee/wuu/internal/modelcatalog"
 )
+
+func TestKimiK3UsesExplicitMaxVariant(t *testing.T) {
+	providerName, provider := modelcatalog.EnrichProvider("kimi-for-coding", config.ProviderConfig{
+		Type:  "anthropic",
+		Model: "k3",
+	}, "k3")
+
+	variants := SummariesForProvider(providerName, provider, "k3")
+	if got := variantIDs(variants); len(got) != 1 || got[0] != "max" {
+		t.Fatalf("K3 variants = %v, want [max]", got)
+	}
+	selection := ResolveForProvider(providerName, provider, "k3", "", "")
+	if selection.Variant != "max" {
+		t.Fatalf("K3 default variant = %q, want max", selection.Variant)
+	}
+	if selection.ProviderOptions["effort"] != "max" || selection.ProviderOptions["allow_empty_signature"] != true || selection.ProviderOptions["thinking_replay"] != "full" {
+		t.Fatalf("unexpected K3 provider options: %+v", selection.ProviderOptions)
+	}
+	thinking, ok := selection.ProviderOptions["thinking"].(map[string]any)
+	if !ok || thinking["type"] != "adaptive" || thinking["display"] != "summarized" {
+		t.Fatalf("unexpected K3 thinking options: %+v", selection.ProviderOptions)
+	}
+}
 
 func TestSummariesInferXiaomiReasoningEfforts(t *testing.T) {
 	provider := config.ProviderConfig{

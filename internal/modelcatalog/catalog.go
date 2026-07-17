@@ -25,25 +25,28 @@ type Provider struct {
 }
 
 type Model struct {
-	ID               string            `json:"id"`
-	APIID            string            `json:"api_id,omitempty"`
-	Name             string            `json:"name,omitempty"`
-	Family           string            `json:"family,omitempty"`
-	Status           string            `json:"status,omitempty"`
-	ReleaseDate      string            `json:"release_date,omitempty"`
-	Reasoning        bool              `json:"reasoning"`
-	ReasoningOptions []map[string]any  `json:"reasoning_options,omitempty"`
-	Attachment       *bool             `json:"attachment,omitempty"`
-	ToolCall         *bool             `json:"tool_call,omitempty"`
-	StructuredOutput *bool             `json:"structured_output,omitempty"`
-	Temperature      *bool             `json:"temperature,omitempty"`
-	Interleaved      any               `json:"interleaved,omitempty"`
-	Modalities       *Modalities       `json:"modalities,omitempty"`
-	Cost             map[string]any    `json:"cost,omitempty"`
-	Provider         *ModelProvider    `json:"provider,omitempty"`
-	Limit            *Limit            `json:"limit,omitempty"`
-	Options          map[string]any    `json:"options,omitempty"`
-	Headers          map[string]string `json:"headers,omitempty"`
+	ID               string                    `json:"id"`
+	APIID            string                    `json:"api_id,omitempty"`
+	Name             string                    `json:"name,omitempty"`
+	Family           string                    `json:"family,omitempty"`
+	Status           string                    `json:"status,omitempty"`
+	ReleaseDate      string                    `json:"release_date,omitempty"`
+	Reasoning        bool                      `json:"reasoning"`
+	ReasoningOptions []map[string]any          `json:"reasoning_options,omitempty"`
+	Attachment       *bool                     `json:"attachment,omitempty"`
+	ToolCall         *bool                     `json:"tool_call,omitempty"`
+	StructuredOutput *bool                     `json:"structured_output,omitempty"`
+	Temperature      *bool                     `json:"temperature,omitempty"`
+	Interleaved      any                       `json:"interleaved,omitempty"`
+	Modalities       *Modalities               `json:"modalities,omitempty"`
+	Cost             map[string]any            `json:"cost,omitempty"`
+	Provider         *ModelProvider            `json:"provider,omitempty"`
+	Limit            *Limit                    `json:"limit,omitempty"`
+	Options          map[string]any            `json:"options,omitempty"`
+	Headers          map[string]string         `json:"headers,omitempty"`
+	SupportedEfforts []string                  `json:"supported_efforts,omitempty"`
+	DefaultVariant   string                    `json:"default_variant,omitempty"`
+	Variants         map[string]map[string]any `json:"variants,omitempty"`
 }
 
 type ModelProvider struct {
@@ -75,6 +78,9 @@ var (
 func Providers() ([]Provider, error) {
 	loadOnce.Do(func() {
 		loadErr = json.Unmarshal(catalogJSON, &loaded)
+		if loadErr == nil {
+			applyBuiltinCatalogOverrides(&loaded)
+		}
 	})
 	if loadErr != nil {
 		return nil, loadErr
@@ -382,6 +388,9 @@ func ModelConfig(model Model) config.ProviderModelConfig {
 		Temperature:      cloneBool(model.Temperature),
 		Interleaved:      cloneAny(model.Interleaved),
 		Cost:             cloneOptions(model.Cost),
+		SupportedEfforts: append([]string(nil), model.SupportedEfforts...),
+		DefaultVariant:   strings.TrimSpace(model.DefaultVariant),
+		Variants:         cloneVariants(model.Variants),
 	}
 	if model.Modalities != nil {
 		out.Modalities = &config.ProviderModelModalitiesConfig{
@@ -517,6 +526,15 @@ func MergeModelConfig(primary, fallback config.ProviderModelConfig) config.Provi
 	if len(out.Headers) == 0 {
 		out.Headers = cloneHeaders(fallback.Headers)
 	}
+	if len(out.SupportedEfforts) == 0 {
+		out.SupportedEfforts = append([]string(nil), fallback.SupportedEfforts...)
+	}
+	if strings.TrimSpace(out.DefaultVariant) == "" {
+		out.DefaultVariant = fallback.DefaultVariant
+	}
+	if len(out.Variants) == 0 {
+		out.Variants = cloneVariants(fallback.Variants)
+	}
 	return out
 }
 
@@ -550,6 +568,17 @@ func cloneOptionList(input []map[string]any) []map[string]any {
 	out := make([]map[string]any, 0, len(input))
 	for _, item := range input {
 		out = append(out, cloneOptions(item))
+	}
+	return out
+}
+
+func cloneVariants(input map[string]map[string]any) map[string]map[string]any {
+	if len(input) == 0 {
+		return nil
+	}
+	out := make(map[string]map[string]any, len(input))
+	for key, options := range input {
+		out[key] = cloneOptions(options)
 	}
 	return out
 }

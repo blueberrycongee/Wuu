@@ -184,8 +184,55 @@ func TestCatalogSnapshotMatchesOpenCodeDefaultVisibleCounts(t *testing.T) {
 			}
 		}
 	}
-	if modelCount != 5211 {
-		t.Fatalf("model count = %d, want 5211", modelCount)
+	if modelCount != 5212 {
+		t.Fatalf("model count = %d, want 5212", modelCount)
+	}
+}
+
+func TestKimiK3BuiltinCatalogOverride(t *testing.T) {
+	provider, ok := ProviderByID("kimi-for-coding")
+	if !ok {
+		t.Fatal("expected Kimi For Coding provider")
+	}
+	if provider.API != "https://api.kimi.com/coding/" || provider.NPM != "@ai-sdk/anthropic" {
+		t.Fatalf("unexpected Kimi provider transport: %+v", provider)
+	}
+	var k3 Model
+	for _, model := range provider.Models {
+		if model.ID == "k3" {
+			k3 = model
+			break
+		}
+	}
+	if k3.ID == "" {
+		t.Fatal("expected built-in K3 model")
+	}
+	if k3.Limit == nil || k3.Limit.Context != 1_048_576 || k3.Limit.Output != 131_072 {
+		t.Fatalf("unexpected K3 limits: %+v", k3.Limit)
+	}
+	if got := reasoningEfforts(k3); !equalStrings(got, []string{"max"}) {
+		t.Fatalf("unexpected K3 efforts: %v", got)
+	}
+	if k3.DefaultVariant != "max" || len(k3.Variants) != 1 || k3.Variants["max"] == nil {
+		t.Fatalf("unexpected K3 variants: default=%q variants=%+v", k3.DefaultVariant, k3.Variants)
+	}
+
+	ruleName, enriched := EnrichProvider("kimi-for-coding", config.ProviderConfig{
+		Type:  "anthropic",
+		Model: "k3",
+	}, "k3")
+	if ruleName != "kimi-for-coding" || enriched.BaseURL != "https://api.kimi.com/coding/" {
+		t.Fatalf("unexpected enriched K3 provider: rule=%q provider=%+v", ruleName, enriched)
+	}
+	model := enriched.Models["k3"]
+	if model.Limit == nil || model.Limit.Context != 1_048_576 || model.Limit.Output != 131_072 {
+		t.Fatalf("unexpected enriched K3 limits: %+v", model.Limit)
+	}
+	if model.Options["allow_empty_signature"] != true || model.Options["thinking_replay"] != "full" {
+		t.Fatalf("unexpected K3 compatibility options: %+v", model.Options)
+	}
+	if enriched.Headers["User-Agent"] != "KimiCLI/1.5" {
+		t.Fatalf("unexpected K3 headers: %+v", enriched.Headers)
 	}
 }
 
