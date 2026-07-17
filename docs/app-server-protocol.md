@@ -85,8 +85,22 @@ Returns the current runtime configuration summary. Its result includes
 
 `config/model/update`
 
-Updates the active provider/model settings. It also accepts an optional
-`ultra` field and returns the effective `ultra` and `max_parallel` values.
+Updates the workspace defaults for provider, model, variant/effort, and
+permission mode. When `thread_id` is present, the same selection is pinned to
+that conversation without changing any other existing conversation. A request
+without `thread_id` changes only the defaults inherited by threads created
+after the update.
+
+A targeted update is rejected while that thread owns an active turn, including
+when another app-server process owns its execution lease. Model and permission
+mode are immutable for the admitted turn; after it settles, the user may update
+that thread and the defaults for future threads. Existing non-target threads
+retain their persisted selections.
+
+The method also accepts an optional `ultra` field and returns the effective
+`ultra` and `max_parallel` values. Provider connection fields such as
+`base_url`, `api_key`, and `auth_token` remain shared provider configuration,
+not thread-scoped selection.
 
 `thread/start`
 
@@ -106,7 +120,11 @@ the text entrypoint surface through `wuu exec fork`.
 
 `turn/start`
 
-Starts a user turn with prompt text and optional attachments.
+Starts a user turn with prompt text and optional attachments. The turn snapshots
+the target thread's persisted model and permission mode at admission. The
+legacy optional `permission_mode` request field must match the thread selection;
+clients change the selection through `config/model/update` before starting the
+turn rather than overriding one turn in isolation.
 
 `turn/interrupt`
 
