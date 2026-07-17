@@ -1104,6 +1104,11 @@ func (s *Server) handleConfigProviderRemove(req Request) error {
 	if threadID, inUse := s.runningTurnUsingProvider(resolvedName); inUse {
 		return s.writeResponse(req.ID, nil, fmt.Errorf("cannot remove provider %q while it is used by a running turn in thread %q", resolvedName, threadID))
 	}
+	if threadID, inUse, usageErr := s.threadUsingProvider(resolvedName); usageErr != nil {
+		return s.writeResponse(req.ID, nil, usageErr)
+	} else if inUse {
+		return s.writeResponse(req.ID, nil, fmt.Errorf("cannot remove provider %q while it is selected by thread %q; switch that thread to another provider first", resolvedName, threadID))
+	}
 	// Refuse to remove the last remaining provider when no fallback is
 	// supplied — config.RemoveProvider would surface a similar error but
 	// doing the check here gives the renderer a clearer 4xx-style error.
@@ -1185,6 +1190,36 @@ func (s *Server) runningTurnUsingProvider(providerName string) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+func (s *Server) threadUsingProvider(providerName string) (string, bool, error) {
+	providerName = strings.TrimSpace(providerName)
+	if providerName == "" {
+		return "", false, nil
+	}
+	s.mu.Lock()
+	for _, th := range s.threads {
+		th.mu.Lock()
+		selectedProvider := strings.TrimSpace(th.ModelProvider)
+		threadID := th.ID
+		th.mu.Unlock()
+		if selectedProvider == providerName {
+			s.mu.Unlock()
+			return threadID, true, nil
+		}
+	}
+	s.mu.Unlock()
+
+	sessions, err := session.List(s.rt.SessionDir, 0)
+	if err != nil {
+		return "", false, fmt.Errorf("check sessions before removing provider %q: %w", providerName, err)
+	}
+	for _, sess := range sessions {
+		if strings.TrimSpace(sess.Provider) == providerName {
+			return sess.ID, true, nil
+		}
+	}
+	return "", false, nil
 }
 
 func (s *Server) handleSkillList(req Request) error {

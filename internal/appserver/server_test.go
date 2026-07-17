@@ -2531,6 +2531,74 @@ func TestServerConfigProviderRemoveRejectsProviderUsedByRunningTurn(t *testing.T
 	}
 }
 
+func TestServerConfigProviderRemoveRejectsProviderSelectedByIdleOrPersistedThread(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		prepare func(*testing.T, *runtime.Session, *Server)
+	}{
+		{
+			name: "resident idle thread",
+			prepare: func(t *testing.T, rt *runtime.Session, srv *Server) {
+				t.Helper()
+				thread := newThreadState("idle-thread", nil, "drop", "drop-model", rt.RootDir, false, time.Now().UTC())
+				srv.threads[thread.ID] = thread
+			},
+		},
+		{
+			name: "persisted non-resident thread",
+			prepare: func(t *testing.T, rt *runtime.Session, _ *Server) {
+				t.Helper()
+				if _, err := session.CreateWithMetadata(rt.SessionDir, "persisted-thread", rt.RootDir); err != nil {
+					t.Fatalf("create session: %v", err)
+				}
+				if _, err := session.SetModelSelection(rt.SessionDir, "persisted-thread", "drop", "drop-model", ""); err != nil {
+					t.Fatalf("set session model: %v", err)
+				}
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rt := newTestRuntime(t, &fakeClient{})
+			if err := os.WriteFile(rt.ConfigPath, []byte(`{
+  "default_provider": "keep",
+  "providers": {
+    "keep": {
+      "type": "openai-compatible",
+      "base_url": "https://keep.example.test/v1",
+      "model": "keep-model"
+    },
+    "drop": {
+      "type": "openai-compatible",
+      "base_url": "https://drop.example.test/v1",
+      "model": "drop-model"
+    }
+  }
+}`), 0o644); err != nil {
+				t.Fatalf("write config: %v", err)
+			}
+			out := &lockedBuffer{}
+			srv := New(rt, out)
+			tc.prepare(t, rt, srv)
+
+			if err := srv.handleLine(context.Background(), []byte(`{"id":"1","method":"config/provider/remove","params":{"provider":"drop"}}`)); err != nil {
+				t.Fatalf("config/provider/remove: %v", err)
+			}
+
+			response := responseByID(t, parseOutput(t, out.String()), "1")
+			if response["error"] == nil || !strings.Contains(fmt.Sprint(response["error"]), "selected by thread") {
+				t.Fatalf("expected selected-thread rejection, got %+v", response)
+			}
+			data, err := os.ReadFile(rt.ConfigPath)
+			if err != nil {
+				t.Fatalf("read config: %v", err)
+			}
+			if !strings.Contains(string(data), `"drop"`) {
+				t.Fatalf("provider was removed despite bound thread: %s", data)
+			}
+		})
+	}
+}
+
 func TestServerConfigProviderRemoveAllowsUnusedProviderWithRunningThread(t *testing.T) {
 	rt := newTestRuntime(t, &fakeClient{})
 	if err := os.WriteFile(rt.ConfigPath, []byte(`{
