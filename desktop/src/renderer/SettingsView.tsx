@@ -42,7 +42,6 @@ import { SelectMenu } from "./SelectMenu";
 import type {
   CodexPetsSnapshot,
   DesktopBuildInfo,
-  ExtensionInventoryRecord,
   InitializeResult,
   MCPAuthStartResult,
   MCPServerStatus,
@@ -1529,7 +1528,6 @@ function SettingsGeneralPage({
   const codexPetSelectedID = codexPets?.selected_id ?? "";
   const codexPetEnabled = Boolean(codexPets?.enabled);
   const codexPetStatus = codexPetLocalError || codexPetsError;
-  const extensionInventory = initialized?.extension_inventory ?? [];
   const gitAttributionEnabled = generalSettings?.git_attribution_enabled ?? true;
 
   async function refreshCodexPets(): Promise<void> {
@@ -1844,41 +1842,6 @@ function SettingsGeneralPage({
           {mcpToggleError ? <div className="settings-mcp-empty settings-mcp-error">{mcpToggleError}</div> : null}
         </SettingsCard>
       </SettingsSection>
-
-      {extensionInventory.length > 0 ? (
-        <SettingsSection title={t("settings.extensions")} testID="settings-extensions">
-          <SettingsCard>
-            {extensionInventory.map((record) => (
-              <SettingsRow
-                key={record.id}
-                title={record.name}
-                description={[
-                  formatExtensionProvenance(record, t),
-                  record.requested_permissions?.length
-                    ? t("extension.permissions", { permissions: record.requested_permissions.join("、") })
-                    : "",
-                  record.unsupported_fields?.length
-                    ? t("extension.unsupportedFields", { fields: record.unsupported_fields.join("、") })
-                    : "",
-                ]
-                  .filter(Boolean)
-                  .join(" · ")}
-              >
-                <div className="settings-extension-badges">
-                  <span className={`settings-status-pill ${extensionStateTone(record.state)}`}>
-                    {extensionStateLabel(record.state, t)}
-                  </span>
-                  {record.grant_scope ? (
-                    <span className="settings-extension-grant">
-                      {extensionGrantScopeLabel(record.grant_scope, t)}
-                    </span>
-                  ) : null}
-                </div>
-              </SettingsRow>
-            ))}
-          </SettingsCard>
-        </SettingsSection>
-      ) : null}
 
       {showDebugControlsSetting ? (
         <SettingsSection title={t("settings.development")}>
@@ -2717,98 +2680,6 @@ function formatMCPServerMeta(server: MCPServerStatus, t: Translate): string {
     pieces.push(mcpAuthLabel(server.auth_status, t));
   }
   return pieces.join(" · ");
-}
-
-function formatExtensionProvenance(record: ExtensionInventoryRecord, t: Translate): string {
-  const source = extensionSourceLabel(record.provenance.source, t);
-  const scope = extensionScopeLabel(record.provenance.scope, t);
-  return `${extensionKindLabel(record.kind, t)} · ${source} · ${scope}`;
-}
-
-function extensionKindLabel(kind: ExtensionInventoryRecord["kind"], t: Translate): string {
-  switch (kind) {
-    case "skill":
-      return t("extension.kindSkill");
-    case "agent_template":
-      return t("extension.kindAgentTemplate");
-    case "mcp":
-      return "MCP";
-    case "hook":
-      return t("extension.kindHook");
-    case "plugin":
-      return t("extension.kindPlugin");
-    case "command":
-      return t("extension.kindCommand");
-  }
-}
-
-function extensionSourceLabel(source: string, t: Translate): string {
-  if (source === "codex") return "Codex";
-  if (source === "claude") return "Claude Code";
-  if (source === "wuu" || source === "wuu_config") return "Wuu";
-  if (source === "bundled") return t("extension.bundledSource");
-  if (source.startsWith("plugin:")) {
-    return t("extension.pluginSource", { id: source.slice("plugin:".length) });
-  }
-  return source || t("extension.unknownSource");
-}
-
-function extensionScopeLabel(scope: string, t: Translate): string {
-  switch (scope) {
-    case "project":
-      return t("extension.scopeProject");
-    case "user":
-      return t("extension.scopeUser");
-    case "bundled":
-      return t("extension.scopeBundled");
-    default:
-      return scope || t("extension.unknownScope");
-  }
-}
-
-function extensionStateLabel(state: ExtensionInventoryRecord["state"], t: Translate): string {
-  switch (state) {
-    case "active":
-      return t("extension.stateActive");
-    case "read_only":
-      return t("extension.stateReadOnly");
-    case "pending":
-      return t("extension.statePending");
-    case "granted":
-      return t("extension.stateGranted");
-    case "rejected":
-      return t("extension.stateRejected");
-    case "changed":
-      return t("extension.stateChanged");
-  }
-}
-
-function extensionStateTone(state: ExtensionInventoryRecord["state"]): string {
-  switch (state) {
-    case "active":
-    case "granted":
-      return "success";
-    case "pending":
-    case "changed":
-      return "warning";
-    case "rejected":
-      return "danger";
-    default:
-      return "neutral";
-  }
-}
-
-function extensionGrantScopeLabel(scope: NonNullable<ExtensionInventoryRecord["grant_scope"]>, t: Translate): string {
-  switch (scope) {
-    case "action":
-      return t("extension.grantAction");
-    case "session":
-      return t("extension.grantSession");
-    case "project":
-      return t("extension.grantProject");
-    case "user":
-      return t("extension.grantUser");
-  }
 }
 
 function mcpStateLabel(state: string, t: Translate): string {

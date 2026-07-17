@@ -649,50 +649,6 @@
   transform: translateX(16px);
 }
 
-/* --- Status pill -------------------------------------------------------------- */
-
-.settings-status-pill {
-  display: inline-flex;
-  align-items: center;
-  height: 22px;
-  border-radius: var(--radius-pill);
-  background: var(--surface-2);
-  color: var(--ink-muted);
-  font-size: var(--font-xs);
-  font-weight: var(--weight-semibold);
-  padding: 0 8px;
-}
-
-.settings-status-pill::before {
-  content: "";
-  width: 6px;
-  height: 6px;
-  margin-right: 6px;
-  border-radius: var(--radius-pill);
-  background: currentColor;
-  opacity: 0.6;
-}
-
-.settings-status-pill.success {
-  background: var(--success-soft);
-  color: var(--success);
-}
-
-.settings-status-pill.warning {
-  background: var(--warning-soft);
-  color: var(--warning);
-}
-
-.settings-status-pill.danger {
-  background: var(--danger-soft);
-  color: var(--danger);
-}
-
-.settings-status-pill.neutral {
-  background: var(--surface-2);
-  color: var(--ink-muted);
-}
-
 /* --- Feedback text, empty states, quiet lines ---------------------------------- */
 
 .settings-error,
@@ -923,18 +879,6 @@
   color: var(--ink-muted);
   font-size: var(--font-ui);
   padding: 8px 16px;
-}
-
-.settings-extension-badges {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.settings-extension-grant {
-  color: var(--ink-muted);
-  font-size: var(--font-sm);
 }
 
 .settings-codex-pets-controls {
