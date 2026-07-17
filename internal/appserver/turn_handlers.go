@@ -1038,7 +1038,6 @@ func detachThreadRuntimeLocked(th *threadState) detachedThreadRuntime {
 	}
 	th.execRuntime = nil
 	th.runtimeSubscription = nil
-	th.pendingRuntimeUpdate = nil
 	th.pendingRuntimeReset = false
 	return detached
 }
@@ -1919,14 +1918,12 @@ func (s *Server) runTurnWithRequestContext(ctx context.Context, th *threadState,
 	if structured != nil {
 		th.replaceTurnLocked(turn)
 	}
-	// Keep the execution lease through trace persistence and runner cleanup.
-	// Applying deferred runtime updates and releasing the lease under the same
-	// lock prevents the next turn from observing a half-restored runtime.
+	// Keep the execution lease through trace persistence and runner cleanup so
+	// the next turn cannot observe a half-restored runtime.
 	unconsumedSteers := th.drainPendingSteersLocked()
 	if len(unconsumedSteers) > 0 {
 		s.prependQueuedUserTurns(th.ID, queuedTurnsFromSteers(unconsumedSteers))
 	}
-	s.applyPendingThreadRuntimeLocked(th)
 	completionClaimFailed := len(turnRuntime.AgentCompletionResultIDs) > 0
 	if err == nil && completionAnswerReady && persistErr == nil && threadRuntime != nil && threadRuntime.AgentControl != nil {
 		completionClaimFailed = false

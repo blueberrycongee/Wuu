@@ -84,7 +84,6 @@ type threadState struct {
 	BrowserState          ThreadBrowserState
 
 	execRuntime              *runtime.ThreadRuntime
-	pendingRuntimeUpdate     *threadRuntimeUpdate
 	pendingRuntimeReset      bool
 	runtimeSelectionMutation bool
 	runtimeSubscription      *threadRuntimeSubscription
@@ -139,14 +138,6 @@ func (sub *threadRuntimeSubscription) stop() {
 		close(sub.done)
 	})
 	sub.wg.Wait()
-}
-
-type threadRuntimeUpdate struct {
-	ProviderName     string
-	RuleProviderName string
-	Model            string
-	APIModel         string
-	SystemPrompt     string
 }
 
 type backgroundLaunch struct {

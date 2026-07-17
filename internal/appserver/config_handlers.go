@@ -31,9 +31,7 @@ import (
 )
 
 func (s *Server) handleInitialize(req Request) error {
-	if err := s.pinLegacyRuntimeSelections(); err != nil {
-		return s.writeResponse(req.ID, nil, err)
-	}
+	s.pinLegacyRuntimeSelections()
 	core := version.Info()
 	modelProfile, toolSurface := s.currentModelSurfaceSummaries()
 	status := "ready"
@@ -708,27 +706,31 @@ func (s *Server) handleConfigModelUpdate(req Request) error {
 		s.rt.SetUltraMode(*params.Ultra)
 		return s.writeResponse(req.ID, s.currentConfigModelUpdateResult(), nil)
 	}
-	if err := s.pinLegacyRuntimeSelections(); err != nil {
-		return s.writeResponse(req.ID, nil, err)
-	}
-	targetThread, releaseTarget, err := s.beginThreadRuntimeSelectionMutation(params.ThreadID)
-	if err != nil {
-		return s.writeResponse(req.ID, nil, err)
-	}
-	defer releaseTarget()
-
 	providerName := strings.TrimSpace(params.Provider)
+	model := strings.TrimSpace(params.Model)
+	threadID := strings.TrimSpace(params.ThreadID)
+	// Provider/model/variant/effort/permission are selection state and
+	// dual-write (target thread + workspace defaults) when explicitly
+	// provided. base_url/api_key/auth_token are workspace connection
+	// configuration and never thread-scoped.
+	explicitSelection := providerName != "" || model != "" ||
+		params.Effort != nil || params.Variant != nil || params.PermissionMode != nil
+	if model == "" && (threadID == "" || params.CreateProvider) {
+		return s.writeResponse(req.ID, nil, errors.New("model is required"))
+	}
+	var targetThread *threadState
+	if threadID != "" && explicitSelection {
+		// Only selection changes race turn admission; a connection-only
+		// update stays allowed while the target thread runs.
+		th, releaseTarget, err := s.beginThreadRuntimeSelectionMutation(threadID)
+		if err != nil {
+			return s.writeResponse(req.ID, nil, err)
+		}
+		defer releaseTarget()
+		targetThread = th
+	}
 	if providerName == "" {
 		providerName = s.rt.ProviderName
-		if targetThread != nil {
-			targetThread.mu.Lock()
-			providerName = firstNonEmpty(targetThread.ModelProvider, providerName)
-			targetThread.mu.Unlock()
-		}
-	}
-	model := strings.TrimSpace(params.Model)
-	if model == "" {
-		return s.writeResponse(req.ID, nil, errors.New("model is required"))
 	}
 	cfg, _, err := s.rt.LoadEffectiveConfig()
 	if err != nil {
@@ -790,6 +792,19 @@ func (s *Server) handleConfigModelUpdate(req Request) error {
 		}
 		providerCfg = s.withCachedCodexModels(resolvedName, providerCfg)
 	}
+	if model == "" {
+		// Targeted request without an explicit model: the workspace side
+		// keeps its current selection; the thread layers its own below.
+		if resolvedName == s.rt.ProviderName {
+			model = strings.TrimSpace(s.rt.Model)
+		}
+		if model == "" {
+			model = strings.TrimSpace(providerCfg.Model)
+		}
+		if model == "" {
+			return s.writeResponse(req.ID, nil, errors.New("model is required"))
+		}
+	}
 	previousProviderCfg := providerCfg
 	previousModel := strings.TrimSpace(providerCfg.Model)
 	providerCfg.Model = model
@@ -845,12 +860,6 @@ func (s *Server) handleConfigModelUpdate(req Request) error {
 	}
 	variant := s.currentVariant()
 	legacyEffort := s.currentEffort()
-	if targetThread != nil {
-		targetThread.mu.Lock()
-		variant = targetThread.ModelVariant
-		legacyEffort = targetThread.ModelEffort
-		targetThread.mu.Unlock()
-	}
 	selectionTouched := params.Variant != nil || params.Effort != nil
 	if params.Variant != nil {
 		variant = strings.TrimSpace(*params.Variant)
@@ -880,6 +889,10 @@ func (s *Server) handleConfigModelUpdate(req Request) error {
 	selection := modelvariant.ResolveForProvider(ruleProviderName, ruleProviderCfg, model, variant, legacyEffort)
 	effort := selection.DisplayEffort
 	effortForConfig, variantForConfig := selectionConfigPointers(selection, selectionTouched, s.currentVariant())
+	if !explicitSelection {
+		// Connection-only update: leave the persisted selection untouched.
+		effortForConfig, variantForConfig = nil, nil
+	}
 
 	var client providers.StreamClient
 	if resolvedName != s.rt.ProviderName || connectionChanged || modelHeadersChanged {
@@ -927,8 +940,10 @@ func (s *Server) handleConfigModelUpdate(req Request) error {
 	}
 
 	previousRuntimeProvider := s.rt.ProviderName
-	s.rt.ProviderName = resolvedName
-	s.rt.Model = model
+	if explicitSelection {
+		s.rt.ProviderName = resolvedName
+		s.rt.Model = model
+	}
 	if client != nil || len(s.rt.ReadinessIssues) == 0 {
 		s.rt.ReadinessIssues = nil
 	}
@@ -962,7 +977,7 @@ func (s *Server) handleConfigModelUpdate(req Request) error {
 		}
 		s.rt.WorkerClient = workerClient
 	}
-	if s.rt.Toolkit != nil {
+	if explicitSelection && s.rt.Toolkit != nil {
 		s.rt.Toolkit.ConfigureSurfaceForProviderModel(ruleProviderName, apiModel, true)
 	}
 	if params.PermissionMode != nil {
@@ -972,25 +987,26 @@ func (s *Server) handleConfigModelUpdate(req Request) error {
 			runtime.ConfigureToolkitPermissions(s.rt.Toolkit, s.rt.Permissions)
 		}
 	}
-	s.rt.RefreshSystemPrompt(resolvedName, apiModel)
-	modelBudget := runtime.ResolveModelBudget(model, ruleProviderCfg, cfg.Agent.MaxContextTokens)
-	s.rt.ModelBudget = modelBudget
-	workerBudget := runtime.ResolveModelBudget(roleSelections.Worker.Model, roleSelections.Worker.RuleProviderConfig, cfg.Agent.MaxContextTokens)
-	s.rt.WorkerModelBudget = workerBudget
-	if s.rt.StreamRunner != nil {
-		if client != nil {
-			s.rt.StreamRunner.Client = client
+	if s.rt.StreamRunner != nil && client != nil {
+		s.rt.StreamRunner.Client = client
+	}
+	if explicitSelection {
+		s.rt.RefreshSystemPrompt(resolvedName, apiModel)
+		modelBudget := runtime.ResolveModelBudget(model, ruleProviderCfg, cfg.Agent.MaxContextTokens)
+		s.rt.ModelBudget = modelBudget
+		s.rt.WorkerModelBudget = runtime.ResolveModelBudget(roleSelections.Worker.Model, roleSelections.Worker.RuleProviderConfig, cfg.Agent.MaxContextTokens)
+		if s.rt.StreamRunner != nil {
+			s.rt.StreamRunner.ProviderName = resolvedName
+			s.rt.StreamRunner.Model = model
+			s.rt.StreamRunner.APIModel = apiModel
+			s.rt.StreamRunner.Effort = selection.LegacyEffort
+			s.rt.StreamRunner.Variant = selection.Variant
+			s.rt.StreamRunner.ProviderOptions = modelvariant.CloneOptions(selection.ProviderOptions)
+			s.rt.StreamRunner.ContextWindowOverride = modelBudget.ContextWindowTokens
+			s.rt.StreamRunner.MaxInputTokens = modelBudget.InputLimitTokens
+			s.rt.StreamRunner.OutputReserveTokens = modelBudget.OutputReserveTokens
+			s.rt.StreamRunner.CompactThresholdTokens = modelBudget.CompactThresholdTokens
 		}
-		s.rt.StreamRunner.ProviderName = resolvedName
-		s.rt.StreamRunner.Model = model
-		s.rt.StreamRunner.APIModel = apiModel
-		s.rt.StreamRunner.Effort = selection.LegacyEffort
-		s.rt.StreamRunner.Variant = selection.Variant
-		s.rt.StreamRunner.ProviderOptions = modelvariant.CloneOptions(selection.ProviderOptions)
-		s.rt.StreamRunner.ContextWindowOverride = modelBudget.ContextWindowTokens
-		s.rt.StreamRunner.MaxInputTokens = modelBudget.InputLimitTokens
-		s.rt.StreamRunner.OutputReserveTokens = modelBudget.OutputReserveTokens
-		s.rt.StreamRunner.CompactThresholdTokens = modelBudget.CompactThresholdTokens
 	}
 	s.updateRootAgentControlWorkerDefaults()
 	if connectionChanged {
@@ -999,20 +1015,55 @@ func (s *Server) handleConfigModelUpdate(req Request) error {
 		// turn. Running turns keep their admitted snapshot until they settle.
 		s.resetThreadRuntimesForGeneralSettings("")
 	}
-	targetPermissionMode := ""
 	if targetThread != nil {
+		// The thread pins explicit params layered over its own current
+		// selection, never over workspace-derived values.
 		targetThread.mu.Lock()
-		targetPermissionMode = targetThread.PermissionMode
+		threadProvider := strings.TrimSpace(targetThread.ModelProvider)
+		threadModel := strings.TrimSpace(targetThread.Model)
+		threadVariant := strings.TrimSpace(targetThread.ModelVariant)
+		threadEffort := strings.TrimSpace(targetThread.ModelEffort)
+		threadPermission := strings.TrimSpace(targetThread.PermissionMode)
 		targetThread.mu.Unlock()
-		if targetPermissionMode == "" {
-			targetPermissionMode = config.NormalizePermissionMode(s.rt.Permissions.Mode)
+		if strings.TrimSpace(params.Provider) != "" || threadProvider == "" {
+			threadProvider = resolvedName
+		}
+		if strings.TrimSpace(params.Model) != "" || threadModel == "" {
+			threadModel = model
+		}
+		if params.Variant != nil {
+			threadVariant = strings.TrimSpace(*params.Variant)
+			if threadVariant == "" && params.Effort == nil {
+				threadEffort = ""
+			}
+		}
+		if params.Effort != nil {
+			threadEffort = strings.TrimSpace(*params.Effort)
+			if params.Variant == nil {
+				threadVariant = threadEffort
+			}
+		}
+		if selectionTouched {
+			threadRuleName, threadRuleCfg := ruleProviderName, ruleProviderCfg
+			if threadProvider != resolvedName || threadModel != model {
+				if threadProviderCfg, threadResolvedName, resolveErr := cfg.ResolveProvider(threadProvider); resolveErr == nil {
+					threadProviderCfg = s.withCachedCodexModels(threadResolvedName, threadProviderCfg)
+					threadRuleName, threadRuleCfg = modelcatalog.EnrichProvider(threadResolvedName, threadProviderCfg, threadModel)
+				}
+			}
+			threadSelection := modelvariant.ResolveForProvider(threadRuleName, threadRuleCfg, threadModel, threadVariant, threadEffort)
+			threadVariant = threadSelection.Variant
+			threadEffort = threadSelection.LegacyEffort
+		}
+		if threadPermission == "" {
+			threadPermission = config.NormalizePermissionMode(s.rt.Permissions.Mode)
 		}
 		if params.PermissionMode != nil {
-			targetPermissionMode = config.NormalizePermissionMode(*params.PermissionMode)
+			threadPermission = config.NormalizePermissionMode(*params.PermissionMode)
 		}
-	}
-	if err := s.updateThreadRuntimeForModelUpdate(targetThread, resolvedName, model, selection.Variant, selection.LegacyEffort, targetPermissionMode); err != nil {
-		return s.writeResponse(req.ID, nil, err)
+		if err := s.updateThreadRuntimeForModelUpdate(targetThread, threadProvider, threadModel, threadVariant, threadEffort, threadPermission); err != nil {
+			return s.writeResponse(req.ID, nil, err)
+		}
 	}
 
 	modelProfile, toolSurface := s.currentModelSurfaceSummaries()
@@ -1142,11 +1193,6 @@ func (s *Server) handleConfigProviderRemove(req Request) error {
 	if threadID, inUse := s.runningTurnUsingProvider(resolvedName); inUse {
 		return s.writeResponse(req.ID, nil, fmt.Errorf("cannot remove provider %q while it is used by a running turn in thread %q", resolvedName, threadID))
 	}
-	if threadID, inUse, usageErr := s.threadUsingProvider(resolvedName); usageErr != nil {
-		return s.writeResponse(req.ID, nil, usageErr)
-	} else if inUse {
-		return s.writeResponse(req.ID, nil, fmt.Errorf("cannot remove provider %q while it is selected by thread %q; switch that thread to another provider first", resolvedName, threadID))
-	}
 	// Refuse to remove the last remaining provider when no fallback is
 	// supplied — config.RemoveProvider would surface a similar error but
 	// doing the check here gives the renderer a clearer 4xx-style error.
@@ -1228,36 +1274,6 @@ func (s *Server) runningTurnUsingProvider(providerName string) (string, bool) {
 		}
 	}
 	return "", false
-}
-
-func (s *Server) threadUsingProvider(providerName string) (string, bool, error) {
-	providerName = strings.TrimSpace(providerName)
-	if providerName == "" {
-		return "", false, nil
-	}
-	s.mu.Lock()
-	for _, th := range s.threads {
-		th.mu.Lock()
-		selectedProvider := strings.TrimSpace(th.ModelProvider)
-		threadID := th.ID
-		th.mu.Unlock()
-		if selectedProvider == providerName {
-			s.mu.Unlock()
-			return threadID, true, nil
-		}
-	}
-	s.mu.Unlock()
-
-	sessions, err := session.List(s.rt.SessionDir, 0)
-	if err != nil {
-		return "", false, fmt.Errorf("check sessions before removing provider %q: %w", providerName, err)
-	}
-	for _, sess := range sessions {
-		if strings.TrimSpace(sess.Provider) == providerName {
-			return sess.ID, true, nil
-		}
-	}
-	return "", false, nil
 }
 
 func (s *Server) handleSkillList(req Request) error {
@@ -1412,86 +1428,6 @@ func (s *Server) resetThreadRuntimesForGeneralSettings(systemPrompt string) {
 	}
 }
 
-func (s *Server) updateThreadRuntimeLocked(th *threadState, update threadRuntimeUpdate) {
-	th.ModelProvider = update.ProviderName
-	th.Model = update.Model
-	if strings.TrimSpace(update.SystemPrompt) != "" {
-		th.History = replaceBaseSystemPrompt(th.History, update.SystemPrompt)
-		if th.PersistHistory {
-			if err := rewriteChatHistory(s.rt.SessionDir, th.ID, th.History); err != nil {
-				providers.DebugLogf("rewrite thread %q system prompt after model update: %v", th.ID, err)
-			}
-		}
-	}
-	if th.running {
-		pending := update
-		th.pendingRuntimeUpdate = &pending
-		return
-	}
-	s.applyThreadRuntimeUpdateLocked(th, update)
-}
-
-func (s *Server) applyPendingThreadRuntime(th *threadState) {
-	if th == nil {
-		return
-	}
-	th.mu.Lock()
-	defer th.mu.Unlock()
-	if th.running || th.pendingRuntimeUpdate == nil {
-		return
-	}
-	s.applyPendingThreadRuntimeLocked(th)
-}
-
-func (s *Server) applyPendingThreadRuntimeLocked(th *threadState) {
-	if th == nil || th.pendingRuntimeUpdate == nil {
-		return
-	}
-	update := *th.pendingRuntimeUpdate
-	s.applyThreadRuntimeUpdateLocked(th, update)
-}
-
-func (s *Server) applyThreadRuntimeUpdateLocked(th *threadState, update threadRuntimeUpdate) {
-	th.pendingRuntimeUpdate = nil
-	if th.execRuntime == nil {
-		return
-	}
-	if th.execRuntime.StreamRunner != nil && s.rt != nil && s.rt.StreamRunner != nil {
-		th.execRuntime.StreamRunner.Client = s.rt.StreamRunner.Client
-		th.execRuntime.StreamRunner.ProviderName = update.ProviderName
-		th.execRuntime.StreamRunner.Model = update.Model
-		th.execRuntime.StreamRunner.APIModel = update.APIModel
-		th.execRuntime.StreamRunner.UpdateSystemPromptWithSections(update.SystemPrompt, s.rt.StreamRunner.SystemPromptSections)
-		th.execRuntime.StreamRunner.Effort = s.currentEffort()
-		th.execRuntime.StreamRunner.Variant = s.currentVariant()
-		th.execRuntime.StreamRunner.ProviderOptions = s.currentProviderOptions()
-		th.execRuntime.StreamRunner.ContextWindowOverride = s.rt.StreamRunner.ContextWindowOverride
-		th.execRuntime.StreamRunner.MaxInputTokens = s.rt.StreamRunner.MaxInputTokens
-		th.execRuntime.StreamRunner.OutputReserveTokens = s.rt.StreamRunner.OutputReserveTokens
-		th.execRuntime.StreamRunner.CompactThresholdTokens = s.rt.StreamRunner.CompactThresholdTokens
-		th.execRuntime.StreamRunner.CompactThresholdPct = s.rt.StreamRunner.CompactThresholdPct
-		th.execRuntime.StreamRunner.CompactKeepRecentTokens = s.rt.StreamRunner.CompactKeepRecentTokens
-		th.execRuntime.StreamRunner.DisableAutoCompact = s.rt.StreamRunner.DisableAutoCompact
-		th.execRuntime.StreamRunner.MaxSteps = s.rt.StreamRunner.MaxSteps
-		th.execRuntime.StreamRunner.Temperature = s.rt.StreamRunner.Temperature
-	}
-	th.execRuntime.ModelBudget = s.rt.ModelBudget
-	th.execRuntime.WorkerModelBudget = s.rt.WorkerModelBudget
-	if th.execRuntime.AgentControl != nil {
-		th.execRuntime.AgentControl.UpdateWorkerDefaults(
-			s.rt.WorkerClient,
-			s.rt.ModelRoles.Worker.APIModel,
-			s.currentWorkerManagerOptions(),
-		)
-	}
-	if th.execRuntime.Toolkit != nil {
-		th.execRuntime.Toolkit.ConfigureSurfaceForProviderModel(update.RuleProviderName, update.APIModel, true)
-		if s.rt != nil {
-			runtime.ConfigureToolkitPermissions(th.execRuntime.Toolkit, s.rt.Permissions)
-		}
-	}
-}
-
 func (s *Server) updateIdleThreadAdvancedRuntime() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -1597,17 +1533,41 @@ func (s *Server) currentSessionRuntimeSelection() session.RuntimeSelection {
 	return selection
 }
 
-func (s *Server) pinLegacyRuntimeSelections() error {
+// pinLegacyRuntimeSelections backfills this workspace's persisted sessions
+// that predate per-session runtime selection. Defaults come from the durable
+// config rather than live runtime state so transient process overrides (e.g.
+// a one-shot CLI permission mode) are never pinned. Pinning is best-effort:
+// a bad row is logged and skipped instead of blocking initialization.
+func (s *Server) pinLegacyRuntimeSelections() {
 	if s == nil || s.rt == nil {
-		return nil
+		return
 	}
-	defaults := s.currentSessionRuntimeSelection()
-	if strings.TrimSpace(defaults.Provider) == "" || strings.TrimSpace(defaults.Model) == "" {
-		return nil
-	}
-	sessions, err := session.ListForCWDWithDMs(s.rt.SessionDir, s.rt.RootDir, s.rt.WorkspaceID, 0)
+	cfg, _, err := s.rt.LoadEffectiveConfig()
 	if err != nil {
-		return err
+		providers.DebugLogf("load config to pin legacy runtime selections: %v", err)
+		return
+	}
+	providerCfg, providerName, err := cfg.ResolveProvider("")
+	if err != nil {
+		providers.DebugLogf("resolve default provider to pin legacy runtime selections: %v", err)
+		return
+	}
+	defaults := session.RuntimeSelection{
+		Provider:       strings.TrimSpace(providerName),
+		Model:          strings.TrimSpace(providerCfg.Model),
+		Variant:        strings.TrimSpace(cfg.Agent.Variant),
+		Effort:         strings.TrimSpace(cfg.Agent.Effort),
+		PermissionMode: config.NormalizePermissionMode(cfg.Agent.PermissionMode),
+	}
+	if defaults.Provider == "" || defaults.Model == "" {
+		return
+	}
+	// Strict workspace scoping: DM and group sessions of other workspaces
+	// must keep their own defaults, so the DM-inclusive listing is wrong here.
+	sessions, err := session.ListForCWD(s.rt.SessionDir, s.rt.RootDir, s.rt.WorkspaceID, 0)
+	if err != nil {
+		providers.DebugLogf("list sessions to pin legacy runtime selections: %v", err)
+		return
 	}
 	for _, sess := range sessions {
 		selection := session.RuntimeSelection{
@@ -1635,18 +1595,10 @@ func (s *Server) pinLegacyRuntimeSelections() error {
 		}
 		if changed {
 			if _, err := session.SetRuntimeSelection(s.rt.SessionDir, sess.ID, selection); err != nil {
-				return fmt.Errorf("pin runtime selection for session %q: %w", sess.ID, err)
+				providers.DebugLogf("pin runtime selection for session %q: %v", sess.ID, err)
 			}
 		}
 	}
-	return nil
-}
-
-func (s *Server) currentProviderOptions() map[string]any {
-	if s == nil || s.rt == nil || s.rt.StreamRunner == nil {
-		return nil
-	}
-	return modelvariant.CloneOptions(s.rt.StreamRunner.ProviderOptions)
 }
 
 func selectionConfigPointers(selection modelvariant.Selection, touched bool, previousVariant string) (*string, *string) {
