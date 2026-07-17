@@ -2307,7 +2307,7 @@ func TestServerConfigModelUpdateSwitchesProvider(t *testing.T) {
 	}
 }
 
-func TestServerConfigModelUpdateRecomputesToolLoadingForProvider(t *testing.T) {
+func TestServerConfigModelUpdateRecomputesToolLoadingForSessionProviderSelection(t *testing.T) {
 	rt := newTestRuntime(t, &fakeClient{})
 	if err := os.WriteFile(rt.ConfigPath, []byte(`{
   "default_provider": "fake-provider",
@@ -2340,7 +2340,21 @@ func TestServerConfigModelUpdateRecomputesToolLoadingForProvider(t *testing.T) {
 
 	out := &lockedBuffer{}
 	srv := New(rt, out)
-	if err := srv.handleLine(context.Background(), []byte(`{"id":"1","method":"config/model/update","params":{"provider":"kimi-code","model":"k3"}}`)); err != nil {
+	target := newThreadState("target-thread", nil, rt.ProviderName, rt.Model, rt.RootDir, true, time.Now().UTC())
+	srv.threads[target.ID] = target
+	if _, err := session.CreateWithMetadata(rt.SessionDir, target.ID, rt.RootDir); err != nil {
+		t.Fatalf("create target session: %v", err)
+	}
+	if _, err := session.SetRuntimeSelection(rt.SessionDir, target.ID, session.RuntimeSelection{
+		Provider: rt.ProviderName,
+		Model:    rt.Model,
+	}); err != nil {
+		t.Fatalf("pin target selection: %v", err)
+	}
+
+	// This is the payload emitted by the desktop model picker for an existing
+	// session: the provider/model selection is always scoped by thread_id.
+	if err := srv.handleLine(context.Background(), []byte(`{"id":"1","method":"config/model/update","params":{"thread_id":"target-thread","provider":"kimi-code","model":"k3"}}`)); err != nil {
 		t.Fatalf("config/model/update: %v", err)
 	}
 
@@ -2355,6 +2369,18 @@ func TestServerConfigModelUpdateRecomputesToolLoadingForProvider(t *testing.T) {
 	}
 	if rt.DeferredToolCatalogPrompt != "" || strings.Contains(rt.StreamRunner.SystemPrompt, "# Deferred Tool Catalog") {
 		t.Fatal("provider switch retained the previous provider's deferred catalog")
+	}
+	target.mu.Lock()
+	if target.ModelProvider != "kimi-code" || target.Model != "k3" {
+		t.Fatalf("target session pin not updated: provider=%q model=%q", target.ModelProvider, target.Model)
+	}
+	target.mu.Unlock()
+	metadata, ok, err := session.Find(rt.SessionDir, target.ID)
+	if err != nil || !ok {
+		t.Fatalf("find target session: ok=%v err=%v", ok, err)
+	}
+	if metadata.Provider != "kimi-code" || metadata.Model != "k3" {
+		t.Fatalf("persisted target selection not updated: %+v", metadata)
 	}
 }
 
