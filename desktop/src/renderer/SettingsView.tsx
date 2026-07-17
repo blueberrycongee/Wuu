@@ -578,6 +578,7 @@ export function SettingsView({
   }${sidebarAnimating ? " sidebar-animating" : ""}`;
 
   const pageTitle = settingsPageTitle(activePage, t);
+  const pageDescription = settingsPageDescription(activePage, t);
 
   return (
     <div ref={effectiveShellRef} className={shellClassName} style={shellStyle}>
@@ -614,29 +615,38 @@ export function SettingsView({
             <span>{t("settings.backToApp")}</span>
           </button>
           <nav className="settings-nav" aria-label={t("settings.navigation")}>
-            <SettingsNavItem icon={<KeyRound className="icon-lg" />} active={activePage === "providers"} onClick={() => setActivePage("providers")}>
-              {t("settings.providers")}
-            </SettingsNavItem>
-            <SettingsNavItem icon={<Settings className="icon-lg" />} active={activePage === "general"} onClick={() => setActivePage("general")}>
-              {t("settings.general")}
-            </SettingsNavItem>
-            <SettingsNavItem icon={<Brain className="icon-lg" />} active={activePage === "memory"} onClick={() => setActivePage("memory")}>
-              {t("settings.memory")}
-            </SettingsNavItem>
-            <SettingsNavItem icon={<SlidersHorizontal className="icon-lg" />} active={activePage === "advanced"} onClick={() => setActivePage("advanced")}>
-              {t("settings.advanced")}
-            </SettingsNavItem>
-            <SettingsNavItem icon={<BarChart3 className="icon-lg" />} active={activePage === "usage"} onClick={() => setActivePage("usage")}>
-              {t("settings.usage")}
-            </SettingsNavItem>
-            {ENABLE_REMOTE_CONTROL ? (
-              <SettingsNavItem icon={<Smartphone className="icon-lg" />} active={activePage === "remote"} onClick={() => setActivePage("remote")}>
-                {t("settings.remote")}
+            <div className="settings-nav-group">
+              <div className="settings-nav-group-label">{t("settings.groupModel")}</div>
+              <SettingsNavItem icon={<KeyRound className="icon-lg" />} active={activePage === "providers"} onClick={() => setActivePage("providers")}>
+                {t("settings.providers")}
               </SettingsNavItem>
-            ) : null}
-            <SettingsNavItem icon={<Archive className="icon-lg" />} active={activePage === "archive"} onClick={() => setActivePage("archive")}>
-              {t("settings.archive")}
-            </SettingsNavItem>
+              <SettingsNavItem icon={<Brain className="icon-lg" />} active={activePage === "memory"} onClick={() => setActivePage("memory")}>
+                {t("settings.memory")}
+              </SettingsNavItem>
+              <SettingsNavItem icon={<SlidersHorizontal className="icon-lg" />} active={activePage === "advanced"} onClick={() => setActivePage("advanced")}>
+                {t("settings.advanced")}
+              </SettingsNavItem>
+            </div>
+            <div className="settings-nav-group">
+              <div className="settings-nav-group-label">{t("settings.groupApp")}</div>
+              <SettingsNavItem icon={<Settings className="icon-lg" />} active={activePage === "general"} onClick={() => setActivePage("general")}>
+                {t("settings.general")}
+              </SettingsNavItem>
+              {ENABLE_REMOTE_CONTROL ? (
+                <SettingsNavItem icon={<Smartphone className="icon-lg" />} active={activePage === "remote"} onClick={() => setActivePage("remote")}>
+                  {t("settings.remote")}
+                </SettingsNavItem>
+              ) : null}
+            </div>
+            <div className="settings-nav-group">
+              <div className="settings-nav-group-label">{t("settings.groupData")}</div>
+              <SettingsNavItem icon={<BarChart3 className="icon-lg" />} active={activePage === "usage"} onClick={() => setActivePage("usage")}>
+                {t("settings.usage")}
+              </SettingsNavItem>
+              <SettingsNavItem icon={<Archive className="icon-lg" />} active={activePage === "archive"} onClick={() => setActivePage("archive")}>
+                {t("settings.archive")}
+              </SettingsNavItem>
+            </div>
           </nav>
         </div>
       </aside>
@@ -675,6 +685,7 @@ export function SettingsView({
             {activePage === "memory" ? null : (
               <header className="settings-page-header">
                 <h1 className="settings-page-title">{pageTitle}</h1>
+                <p className="settings-page-description">{pageDescription}</p>
               </header>
             )}
   
@@ -862,18 +873,21 @@ function SettingsNavItem({
 // 只在个别行的 description 里保留单位、约束或禁用原因。
 function SettingsSection({
   title,
+  description,
   testID,
   children
 }: {
   title?: string;
+  description?: string;
   testID?: string;
   children: ReactNode;
 }): JSX.Element {
   return (
     <section className="settings-section" {...(testID ? { "data-testid": testID } : {})}>
-      {title ? (
+      {title || description ? (
         <header className="settings-section-header">
-          <h2 className="settings-section-title">{title}</h2>
+          {title ? <h2 className="settings-section-title">{title}</h2> : null}
+          {description ? <p className="settings-section-description">{description}</p> : null}
         </header>
       ) : null}
       {children}
@@ -897,7 +911,7 @@ function SettingsRow({
   block?: boolean;
 }): JSX.Element {
   return (
-    <div className="settings-row">
+    <div className={`settings-row${block ? " settings-row-block" : ""}`}>
       <div className="settings-row-label">
         <span className="settings-row-label-title">{title}</span>
         {description ? <span className="settings-row-label-description">{description}</span> : null}
@@ -2342,6 +2356,25 @@ function settingsPageTitle(page: SettingsPage, t: Translate): string {
       return t("settings.remote");
     case "archive":
       return t("settings.archive");
+  }
+}
+
+function settingsPageDescription(page: SettingsPage, t: Translate): string {
+  switch (page) {
+    case "providers":
+      return t("settings.descriptionProviders");
+    case "advanced":
+      return t("settings.descriptionAdvanced");
+    case "general":
+      return t("settings.descriptionGeneral");
+    case "memory":
+      return "";
+    case "usage":
+      return t("settings.descriptionUsage");
+    case "remote":
+      return t("settings.descriptionRemote");
+    case "archive":
+      return t("settings.descriptionArchive");
   }
 }
 
