@@ -251,6 +251,7 @@ function renderStatefulComposer(props: {
   initialPrompt?: string;
   onSend?: (prompt: string) => void;
   showUltraToggle?: boolean;
+  activeContext?: RuntimeContext;
 }): void {
   const codexModels: CodexModelLoadState = {
     loading: false,
@@ -277,6 +278,7 @@ function renderStatefulComposer(props: {
           readOnly={false}
           initialized={initialized()}
           projects={[]}
+          activeContext={props.activeContext}
           codexModels={codexModels}
           codexRuntimeMenu={null}
           codexRuntimeRef={createRef<HTMLDivElement>()}
@@ -730,24 +732,24 @@ describe("Composer send control", () => {
     expect(frame?.contains(slashMenu)).toBe(false);
   });
 
-  it("places the caret after the slash inserted from the toolbar", async () => {
-    renderStatefulComposer({});
+  it("places the caret after a command inserted from the plus menu", async () => {
+    renderStatefulComposer({ activeContext: { kind: "no_project", cwd: "/tmp" } });
 
     const plusButton = container.querySelector<HTMLButtonElement>(".composer-plus-button");
     const textarea = container.querySelector<HTMLTextAreaElement>("textarea");
 
     act(() => plusButton?.click());
-    const slashItem = Array.from(
+    const reviewItem = Array.from(
       document.body.querySelectorAll<HTMLButtonElement>(
         '[data-floating-menu-owner="composer-plus"] button',
       ),
-    ).find((button) => button.textContent?.includes("打开斜杠命令"));
-    act(() => slashItem?.click());
+    ).find((button) => button.textContent?.includes("审查当前更改"));
+    act(() => reviewItem?.click());
     await act(async () => nextAnimationFrame());
 
-    expect(textarea?.value).toBe("/");
-    expect(textarea?.selectionStart).toBe(1);
-    expect(textarea?.selectionEnd).toBe(1);
+    expect(textarea?.value).toBe("/review ");
+    expect(textarea?.selectionStart).toBe(8);
+    expect(textarea?.selectionEnd).toBe(8);
   });
 
   it("resizes the slash command menu with its composer and available viewport height", () => {
@@ -907,7 +909,11 @@ describe("Composer send control", () => {
   });
 
   it("folds attachment and slash commands into the plus menu", () => {
-    renderComposer({ variant: "dock", prompt: "follow up" });
+    renderComposer({
+      variant: "dock",
+      prompt: "follow up",
+      activeContext: { kind: "no_project", cwd: "/tmp" },
+    });
 
     const plusButton = container.querySelector<HTMLButtonElement>(".composer-plus-button");
     expect(plusButton).not.toBeNull();
@@ -924,8 +930,13 @@ describe("Composer send control", () => {
     expect(plusButton?.getAttribute("aria-expanded")).toBe("true");
 
     const menu = document.body.querySelector('[data-floating-menu-owner="composer-plus"]');
+    expect(menu?.querySelectorAll(".composer-plus-menu-section")).toHaveLength(2);
+    expect(menu?.textContent).toContain("添加");
     expect(menu?.textContent).toContain("添加附件");
-    expect(menu?.textContent).toContain("打开斜杠命令");
+    expect(menu?.textContent).toContain("图片或 PDF");
+    expect(menu?.textContent).toContain("命令");
+    expect(menu?.textContent).toContain("审查当前更改");
+    expect(menu?.textContent).not.toContain("打开斜杠命令");
 
     const attachmentItem = Array.from(menu?.querySelectorAll("button") ?? []).find(
       (button) => button.textContent?.includes("添加附件"),
@@ -937,21 +948,49 @@ describe("Composer send control", () => {
     expect(document.body.querySelector('[data-floating-menu-owner="composer-plus"]')).toBeNull();
   });
 
-  it("seeds an empty prompt with / from the plus menu slash entry", () => {
+  it("runs prompt commands directly from the plus menu", () => {
     const setPrompt = vi.fn();
-    renderComposer({ variant: "dock", prompt: "", setPrompt });
+    renderComposer({
+      variant: "dock",
+      prompt: "",
+      setPrompt,
+      activeContext: { kind: "no_project", cwd: "/tmp" },
+    });
 
     act(() => {
       container.querySelector<HTMLButtonElement>(".composer-plus-button")?.click();
     });
-    const slashItem = Array.from(
+    const reviewItem = Array.from(
       document.body.querySelectorAll('[data-floating-menu-owner="composer-plus"] button'),
-    ).find((button) => button.textContent?.includes("打开斜杠命令"));
+    ).find((button) => button.textContent?.includes("审查当前更改"));
     act(() => {
-      (slashItem as HTMLButtonElement | undefined)?.click();
+      (reviewItem as HTMLButtonElement | undefined)?.click();
     });
 
-    expect(setPrompt).toHaveBeenCalledWith("/");
+    expect(setPrompt).toHaveBeenCalledWith("/review ");
+    expect(document.body.querySelector('[data-floating-menu-owner="composer-plus"]')).toBeNull();
+  });
+
+  it("runs action commands directly from the plus menu", () => {
+    const onStartNewThread = vi.fn();
+    renderComposer({
+      variant: "dock",
+      prompt: "",
+      onStartNewThread,
+      activeContext: { kind: "no_project", cwd: "/tmp" },
+    });
+
+    act(() => {
+      container.querySelector<HTMLButtonElement>(".composer-plus-button")?.click();
+    });
+    const newThreadItem = Array.from(
+      document.body.querySelectorAll('[data-floating-menu-owner="composer-plus"] button'),
+    ).find((button) => button.textContent?.includes("新建对话"));
+    act(() => {
+      (newThreadItem as HTMLButtonElement | undefined)?.click();
+    });
+
+    expect(onStartNewThread).toHaveBeenCalledTimes(1);
     expect(document.body.querySelector('[data-floating-menu-owner="composer-plus"]')).toBeNull();
   });
 
