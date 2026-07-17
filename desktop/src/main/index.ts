@@ -92,9 +92,8 @@ import type {
   SideThreadSendResult,
 } from "../shared/protocol";
 import { AppServerClientPool } from "./appServerClients";
-import {
-  CUAObservationCoordinator,
-} from "./cuaActivityWindows";
+import { ObservationCoordinator } from "./cuaActivityWindows";
+import { createObservationPiPFactory } from "./browserPiPWindow";
 import { removeLegacyDesktopCliLink } from "./legacyCliLink";
 import {
   defaultCodexPetsDir,
@@ -201,19 +200,6 @@ const appServerClientPool = new AppServerClientPool(
   () => projectManager.activeWorkdir(),
   (event) => emitServerEvent(event),
 );
-const cuaObservationCoordinator = new CUAObservationCoordinator(
-  windowRegistry,
-  async (threadID): Promise<ActivitySession[]> => {
-    const workdir = projectManager.activeWorkdir();
-    if (!workdir) return [];
-    const result = await appServerClientPool.requestForWorkdir<ActivityListResult>(
-      workdir,
-      "activity/list",
-      { thread_id: threadID },
-    );
-    return result.activities ?? [];
-  },
-);
 // Owns every agent-driven embedded browser tab (hidden WebContentsView + CDP
 // bridge). Reverse-RPC browser/* requests are intercepted in emitServerEvent
 // (below) and answered here via the pool's single-shot reply channel. The view
@@ -255,8 +241,27 @@ appServerClientPool.setWorkdirPinnedCheck((workdir) =>
 );
 // Client teardown sink: destroy that workdir's views. Not server-exit driven —
 // the disposing/eviction path suppresses server-exit, so this is the authority.
-appServerClientPool.setClientTorndownHandler((workdir) =>
-  browserHostCoordinator.onClientTorndown(workdir),
+appServerClientPool.setClientTorndownHandler((workdir) => {
+  browserHostCoordinator.onClientTorndown(workdir);
+  observationCoordinator.dropWorkdir(workdir);
+});
+// The single observation surface for agent live activity (CUA native PiP +
+// browser preview), fed by the same activity notifications the renderer uses.
+// The factory picks the surface per activity kind; the coordinator owns
+// lifecycle, single-instance discipline, and position memory.
+const observationCoordinator = new ObservationCoordinator(
+  windowRegistry,
+  async (threadID): Promise<ActivitySession[]> => {
+    const workdir = projectManager.activeWorkdir();
+    if (!workdir) return [];
+    const result = await appServerClientPool.requestForWorkdir<ActivityListResult>(
+      workdir,
+      "activity/list",
+      { thread_id: threadID },
+    );
+    return result.activities ?? [];
+  },
+  createObservationPiPFactory({ browserHost: browserHostCoordinator, isPackaged: app.isPackaged }),
 );
 // The pet is a standalone always-on-top window owned by the main process, so
 // it stays on the desktop when the main window is hidden or minimized. Its
@@ -393,8 +398,9 @@ function emitServerEvent(event: ServerEvent): void {
   // Idempotent with a later disposeClient.
   if (event.kind === "server-exit") {
     browserHostCoordinator.onClientTorndown(event.workdir);
+    observationCoordinator.dropWorkdir(event.workdir);
   }
-  cuaObservationCoordinator.handleServerEvent(event);
+  observationCoordinator.handleServerEvent(event);
   const sideThreadEvent = sideThreadEventFromServerEvent(event);
   if (sideThreadEvent) {
     broadcastToAll("wuu:side-thread-event", sideThreadEvent);
@@ -798,7 +804,7 @@ function createWindow(): void {
       mainWindowBoundsSaveTimer = undefined;
     }
     windowResizeState = false;
-    cuaObservationCoordinator.setActiveThread(undefined);
+    observationCoordinator.setActiveThread(undefined);
     unregisterWindow(windowID);
     mainWindow = null;
   });
@@ -1036,7 +1042,7 @@ app.whenReady().then(async () => {
     // Renderer focus and React mount are independent. Rejecting the initial
     // thread sync while focus is still settling permanently suppresses PiP for
     // that session because no later focus event is guaranteed.
-    cuaObservationCoordinator.setActiveThread(threadID);
+    observationCoordinator.setActiveThread(threadID);
   });
   ipcMain.handle("wuu:project-list", () => projectManager.list());
   ipcMain.handle("wuu:project-select", (_event, projectIDToSelect: string) =>
@@ -1191,8 +1197,8 @@ app.whenReady().then(async () => {
     "wuu:config-model-update",
     (
       event,
-      provider: string,
-      model: string,
+      provider?: string,
+      model?: string,
       effort?: string,
       connection?: {
         base_url?: string;
@@ -1203,10 +1209,17 @@ app.whenReady().then(async () => {
       },
       variant?: string,
       permissionMode?: string,
+      threadID?: string,
     ) =>
       appServerRequest<ConfigModelUpdateResult>(event, "config/model/update", {
-        provider,
-        model,
+        // Omitted provider/model are inherited from the target thread, so
+        // their empties are dropped instead of sent. Effort/variant/permission
+        // forward whenever explicitly provided: an explicit empty variant is
+        // the reset-to-model-default signal (the server clears the stored
+        // selection), so it must not be truthy-dropped.
+        ...(provider ? { provider } : {}),
+        ...(model ? { model } : {}),
+        ...(threadID ? { thread_id: threadID } : {}),
         ...(connection?.base_url === undefined
           ? {}
           : { base_url: connection.base_url }),
