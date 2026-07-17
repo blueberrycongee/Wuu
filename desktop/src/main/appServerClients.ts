@@ -105,6 +105,16 @@ export class AppServerClientPool {
     return client.request<T>(method, params);
   }
 
+  runningThreadCwds(): string[] {
+    const cwds = new Set<string>();
+    for (const client of this.clients.values()) {
+      for (const cwd of client.runningThreadCwds()) {
+        cwds.add(cwd);
+      }
+    }
+    return [...cwds];
+  }
+
   respondToServerRequest(id: string, result: unknown): void {
     const route = this.serverRequestRoutes.get(id);
     if (!route) {
@@ -240,6 +250,7 @@ export class AppServerClientPool {
 export class AppServerClient {
   private child: ChildProcessWithoutNullStreams | null = null;
   private pending = new Map<string, PendingRequest>();
+  private threadCwdsByID = new Map<string, string>();
   private runningThreadIDs = new Set<string>();
   private nextRequestID = 1;
   private stdoutBuffer = "";
@@ -329,6 +340,36 @@ export class AppServerClient {
 
   isBusy(): boolean {
     return this.pending.size > 0 || this.runningThreadIDs.size > 0;
+  }
+
+  runningThreadCwds(): string[] {
+    const cwds = new Set(
+      [...this.runningThreadIDs].map(
+        (threadID) => this.threadCwdsByID.get(threadID) ?? this.workdir,
+      ),
+    );
+    for (const pending of this.pending.values()) {
+      if (
+        pending.method !== "turn/start" &&
+        pending.method !== "thread/start" &&
+        pending.method !== "thread/resume" &&
+        pending.method !== "thread/fork" &&
+        pending.method !== "thread/edit-message"
+      ) {
+        continue;
+      }
+      const params = isRecord(pending.params) ? pending.params : undefined;
+      const threadID =
+        typeof params?.thread_id === "string"
+          ? params.thread_id
+          : typeof params?.session_id === "string"
+            ? params.session_id
+            : undefined;
+      cwds.add(
+        (threadID && this.threadCwdsByID.get(threadID)) ?? this.workdir,
+      );
+    }
+    return [...cwds];
   }
 
   private ensureStarted(): void {
@@ -481,6 +522,7 @@ export class AppServerClient {
     this.stdoutBuffer = "";
     this.lastStderr = "";
     this.pending.clear();
+    this.threadCwdsByID.clear();
     this.runningThreadIDs.clear();
 
     if (terminateChild && !child.killed) {
@@ -635,6 +677,9 @@ export class AppServerClient {
   private updateRunningFromThread(value: unknown): void {
     if (!isRecord(value) || typeof value.id !== "string") {
       return;
+    }
+    if (typeof value.cwd === "string" && value.cwd !== "") {
+      this.threadCwdsByID.set(value.id, value.cwd);
     }
     if (value.status === "in_progress") {
       this.runningThreadIDs.add(value.id);

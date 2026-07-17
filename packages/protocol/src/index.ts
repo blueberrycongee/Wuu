@@ -170,6 +170,7 @@ export type AdvancedSettingsSummary = {
 
 export type GeneralSettingsSummary = {
   append_system_prompt: string;
+  git_attribution_enabled?: boolean;
   memory_disabled: boolean;
   mcp_server_enabled: Record<string, boolean>;
 };
@@ -532,6 +533,7 @@ export type ConfigAdvancedUpdateResult = {
 
 export type RuntimeGeneralSettingsUpdate = {
   append_system_prompt?: string;
+  git_attribution_enabled?: boolean;
   memory_disable?: boolean;
   mcp_enabled_toggles?: Record<string, boolean>;
 };
@@ -1940,6 +1942,8 @@ export const MESSAGE_FLOW_FONT_SIZE_RANGE = {
 } as const;
 
 export type ThemePreference = "system" | "light" | "dark";
+export type LanguagePreference = "system" | "zh-CN" | "en-US";
+export type AppLocale = Exclude<LanguagePreference, "system">;
 
 // The three OS families the desktop shell distinguishes. Anything more
 // exotic collapses to "linux" (native-frame fallback chrome).
@@ -2100,6 +2104,7 @@ export type WuuDesktopApi = {
   gitStatus: () => Promise<GitStatusResult>;
   listGitChanges: () => Promise<GitChangesResult>;
   readGitFileDiff: (path: string, root?: string) => Promise<GitFileDiffResult>;
+  gitActionBusy?: () => Promise<boolean>;
   checkoutGitBranch: (branch: string) => Promise<GitStatusResult>;
   createCheckoutGitBranch: (branch: string) => Promise<GitCreateBranchResult>;
   commitGitChanges: (params: GitCommitParams) => Promise<GitCommitResult>;
@@ -2189,6 +2194,17 @@ export type WuuDesktopApi = {
   setThemePreference: (
     theme: ThemePreference,
   ) => Promise<{ ok: boolean; theme: ThemePreference }>;
+  initialLanguagePreference?: LanguagePreference;
+  initialSystemLocale?: string;
+  getLanguagePreference: () => Promise<LanguagePreference>;
+  setLanguagePreference: (
+    language: LanguagePreference,
+  ) => Promise<{ ok: boolean; language: LanguagePreference }>;
+  // Language is app-global. Main broadcasts changes so already-open pop-outs
+  // update alongside the window where the preference was changed.
+  onLanguagePreferenceChange: (
+    handler: (language: LanguagePreference) => void,
+  ) => () => void;
   // The preference is app-global: the main process broadcasts every change
   // (explicit choice, or an OS dark-mode flip while on "system") to all
   // windows, and each renderer re-applies data-theme. Returns a disposer.
