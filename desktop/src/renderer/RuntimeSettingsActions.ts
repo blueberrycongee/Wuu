@@ -30,7 +30,6 @@ export type RuntimeSettingsActionsDeps = {
   setAccessMenuOpen: (open: boolean) => void;
   setBranchMenuOpen: (open: boolean) => void;
   setCodexRuntimeMenu: (update: SetStateAction<CodexRuntimeMenu>) => void;
-  setSelectedPermissionMode: (mode: PermissionMode) => void;
   clearThreadPendingComposerMessages: (threadID: string) => void;
 };
 
@@ -113,7 +112,8 @@ export function createRuntimeSettingsActions(
       Boolean(nextConnection?.auth_token) ||
       (nextConnection?.base_url !== undefined &&
         nextConnection.base_url !== (currentProvider?.base_url ?? ""));
-    const currentPermissionMode = state.initialized?.permissions?.mode ?? "";
+    const currentPermissionMode =
+      targetThread?.permission_mode || state.initialized?.permissions?.mode || "";
     const permissionModeChanged =
       nextPermissionMode !== undefined &&
       nextPermissionMode !== currentPermissionMode;
@@ -124,7 +124,8 @@ export function createRuntimeSettingsActions(
       (nextProvider === (targetThread?.model_provider ?? state.initialized.provider) &&
         nextModel === (targetThread?.model ?? state.initialized.model) &&
         (nextEffort === undefined ||
-          nextEffort === (state.initialized.effort ?? "")) &&
+          nextEffort ===
+            (targetThread?.model_effort ?? state.initialized.effort ?? "")) &&
         (nextVariant === undefined ||
           nextVariant ===
             (targetThread?.model_variant ?? state.initialized.variant ?? "")) &&
@@ -171,6 +172,11 @@ export function createRuntimeSettingsActions(
                   model_provider: updated.provider,
                   model: updated.model,
                   model_variant: updated.variant ?? "",
+                  model_effort: updated.variant ? "" : (updated.effort ?? ""),
+                  permission_mode:
+                    nextPermissionMode ??
+                    current.thread.permission_mode ??
+                    updated.permissions?.mode,
                 }
               : current.thread,
           secondaryThread:
@@ -180,6 +186,11 @@ export function createRuntimeSettingsActions(
                   model_provider: updated.provider,
                   model: updated.model,
                   model_variant: updated.variant ?? "",
+                  model_effort: updated.variant ? "" : (updated.effort ?? ""),
+                  permission_mode:
+                    nextPermissionMode ??
+                    current.secondaryThread.permission_mode ??
+                    updated.permissions?.mode,
                 }
               : current.secondaryThread,
           threads: current.threads.map((thread) =>
@@ -189,6 +200,11 @@ export function createRuntimeSettingsActions(
                   model_provider: updated.provider,
                   model: updated.model,
                   model_variant: updated.variant ?? "",
+                  model_effort: updated.variant ? "" : (updated.effort ?? ""),
+                  permission_mode:
+                    nextPermissionMode ??
+                    thread.permission_mode ??
+                    updated.permissions?.mode,
                 }
               : thread,
           ),
@@ -452,10 +468,19 @@ export function createRuntimeSettingsActions(
   }
 
   async function selectPermissionMode(mode: PermissionMode): Promise<void> {
-    if (!deps.getAppState().initialized || deps.getViewContextSwitchPending()) {
+    const state = deps.getAppState();
+    if (!state.initialized || deps.getViewContextSwitchPending()) {
       return;
     }
-    deps.setSelectedPermissionMode(mode);
+    const targetThread = activeThreadForState(state);
+    await updateRuntimeSettings(
+      targetThread?.model_provider ?? state.initialized.provider,
+      targetThread?.model ?? state.initialized.model,
+      undefined,
+      undefined,
+      targetThread?.model_variant ?? state.initialized.variant,
+      mode,
+    );
     deps.setAccessMenuOpen(false);
   }
 

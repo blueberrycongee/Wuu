@@ -172,7 +172,6 @@ function buildActions({
   let accessMenuOpen = true;
   let branchMenuOpen = true;
   let codexRuntimeMenu: CodexRuntimeMenu = null;
-  let selectedPermissionMode: string | undefined;
   const clearThreadPendingComposerMessages = vi.fn();
   const actions = createRuntimeSettingsActions({
     getAppState: () => appState,
@@ -197,9 +196,6 @@ function buildActions({
       codexRuntimeMenu =
         typeof update === "function" ? update(codexRuntimeMenu) : update;
     },
-    setSelectedPermissionMode: (mode) => {
-      selectedPermissionMode = mode;
-    },
     clearThreadPendingComposerMessages,
   });
   return {
@@ -212,7 +208,6 @@ function buildActions({
       branchMenuOpen,
       codexRuntimeMenu,
     }),
-    getSelectedPermissionMode: () => selectedPermissionMode,
     clearThreadPendingComposerMessages,
   };
 }
@@ -330,6 +325,36 @@ describe("createRuntimeSettingsActions", () => {
       "standard",
       "thread-1",
     );
+  });
+
+  it("preserves the target thread permission when a model-only update returns global permissions", async () => {
+    installWuuApi();
+    const primary = {
+      ...thread("thread-1"),
+      permission_mode: "unconfined",
+    };
+    const harness = buildActions({
+      initial: {
+        ...initialState,
+        initialized: initialized({ permissions: { mode: "standard" } }),
+        thread: primary,
+        threads: [primary],
+        status: "ready",
+      },
+    });
+
+    await harness.actions.updateRuntimeSettings(
+      "codex",
+      "gpt-5.1",
+      undefined,
+      undefined,
+      "high",
+    );
+
+    expect(harness.getAppState().initialized?.permissions?.mode).toBe(
+      "read_only",
+    );
+    expect(harness.getAppState().thread?.permission_mode).toBe("unconfined");
   });
 
   it("does not synthesize a thread when runtime settings change without an active thread", async () => {
@@ -471,13 +496,22 @@ describe("createRuntimeSettingsActions", () => {
     expect(api.loadCodexModels).toHaveBeenCalledWith("codex");
   });
 
-  it("selects permission mode without persisting until send time", async () => {
-    installWuuApi();
+  it("persists permission mode for the active thread and future threads", async () => {
+    const api = installWuuApi();
     const harness = buildActions();
 
     await harness.actions.selectPermissionMode("read_only");
 
-    expect(harness.getSelectedPermissionMode()).toBe("read_only");
+    expect(api.updateRuntimeSettings).toHaveBeenCalledWith(
+      "codex",
+      "gpt-5",
+      undefined,
+      undefined,
+      "medium",
+      "read_only",
+      "thread-1",
+    );
+    expect(harness.getAppState().thread?.permission_mode).toBe("read_only");
     expect(harness.getRuntimeMenus().accessMenuOpen).toBe(false);
   });
 

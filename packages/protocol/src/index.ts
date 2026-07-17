@@ -1084,6 +1084,8 @@ export type Thread = {
   model_provider: string;
   model: string;
   model_variant?: string;
+  model_effort?: string;
+  permission_mode?: string;
   cwd: string;
   // workspace_kind tags the thread with the workspace it was created in.
   // "scratch" threads live in the desktop-managed scratch root
