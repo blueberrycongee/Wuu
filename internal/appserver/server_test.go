@@ -2307,6 +2307,83 @@ func TestServerConfigModelUpdateSwitchesProvider(t *testing.T) {
 	}
 }
 
+func TestServerConfigModelUpdateRecomputesToolLoadingForSessionProviderSelection(t *testing.T) {
+	rt := newTestRuntime(t, &fakeClient{})
+	if err := os.WriteFile(rt.ConfigPath, []byte(`{
+  "default_provider": "fake-provider",
+  "providers": {
+    "fake-provider": {
+      "type": "openai-compatible",
+      "base_url": "https://api.openai.com/v1",
+      "api_key": "test-key",
+      "wire_api": "responses",
+      "model": "gpt-5.4"
+    },
+    "kimi-code": {
+      "type": "anthropic",
+      "base_url": "https://api.kimi.com/coding",
+      "api_key": "test-key",
+      "model": "k3"
+    }
+  }
+}`), 0644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	// Model the live state left by the first-party OpenAI provider before the
+	// workspace selection changes to a compatible Anthropic endpoint.
+	rt.ToolLoadingMode = config.ToolLoadingNative
+	rt.ToolSearchEnabled = true
+	rt.NativeDeferredToolDiscovery = true
+	rt.Toolkit.SetToolSearchEnabled(true)
+	rt.Toolkit.SetNativeDeferredToolDiscovery(true)
+	rt.StreamRunner.NativeDeferredToolDiscovery = true
+
+	out := &lockedBuffer{}
+	srv := New(rt, out)
+	target := newThreadState("target-thread", nil, rt.ProviderName, rt.Model, rt.RootDir, true, time.Now().UTC())
+	srv.threads[target.ID] = target
+	if _, err := session.CreateWithMetadata(rt.SessionDir, target.ID, rt.RootDir); err != nil {
+		t.Fatalf("create target session: %v", err)
+	}
+	if _, err := session.SetRuntimeSelection(rt.SessionDir, target.ID, session.RuntimeSelection{
+		Provider: rt.ProviderName,
+		Model:    rt.Model,
+	}); err != nil {
+		t.Fatalf("pin target selection: %v", err)
+	}
+
+	// This is the payload emitted by the desktop model picker for an existing
+	// session: the provider/model selection is always scoped by thread_id.
+	if err := srv.handleLine(context.Background(), []byte(`{"id":"1","method":"config/model/update","params":{"thread_id":"target-thread","provider":"kimi-code","model":"k3"}}`)); err != nil {
+		t.Fatalf("config/model/update: %v", err)
+	}
+
+	if rt.ProviderName != "kimi-code" || rt.Model != "k3" {
+		t.Fatalf("runtime selection not updated: provider=%q model=%q", rt.ProviderName, rt.Model)
+	}
+	if rt.ToolLoadingMode != config.ToolLoadingFlat || rt.ToolSearchEnabled || rt.NativeDeferredToolDiscovery {
+		t.Fatalf("provider switch retained stale loading state: mode=%q search=%v native=%v", rt.ToolLoadingMode, rt.ToolSearchEnabled, rt.NativeDeferredToolDiscovery)
+	}
+	if rt.Toolkit.ToolSearchEnabled() || rt.Toolkit.NativeDeferredToolDiscovery() || rt.StreamRunner.NativeDeferredToolDiscovery {
+		t.Fatal("provider switch retained native discovery in toolkit or runner")
+	}
+	if rt.DeferredToolCatalogPrompt != "" || strings.Contains(rt.StreamRunner.SystemPrompt, "# Deferred Tool Catalog") {
+		t.Fatal("provider switch retained the previous provider's deferred catalog")
+	}
+	target.mu.Lock()
+	if target.ModelProvider != "kimi-code" || target.Model != "k3" {
+		t.Fatalf("target session pin not updated: provider=%q model=%q", target.ModelProvider, target.Model)
+	}
+	target.mu.Unlock()
+	metadata, ok, err := session.Find(rt.SessionDir, target.ID)
+	if err != nil || !ok {
+		t.Fatalf("find target session: ok=%v err=%v", ok, err)
+	}
+	if metadata.Provider != "kimi-code" || metadata.Model != "k3" {
+		t.Fatalf("persisted target selection not updated: %+v", metadata)
+	}
+}
+
 func TestServerConfigModelUpdatePersistsProviderConnection(t *testing.T) {
 	rt := newTestRuntime(t, &fakeClient{})
 	if err := os.WriteFile(rt.ConfigPath, []byte(`{
@@ -5349,7 +5426,7 @@ func TestServerGeneratesThreadTitleFromFirstTurnSnapshot(t *testing.T) {
 	srv.threads[th.ID] = th
 	srv.mu.Unlock()
 
-	srv.generateThreadTitle(th.ID, firstTurnHistory)
+	srv.generateThreadTitle(th.ID, firstTurnHistory, nil)
 
 	sessions, err := session.List(rt.SessionDir, 1)
 	if err != nil {
@@ -5398,7 +5475,7 @@ func TestServerGeneratesThreadTitleUsesTitleRoleSelection(t *testing.T) {
 	result, err := srv.generateThreadTitleCore("title-role-thread", []providers.ChatMessage{
 		{Role: "system", Content: "system prompt"},
 		{Role: "user", Content: "make the title role explicit"},
-	}, false, false, true)
+	}, false, false, true, nil)
 	if err != nil {
 		t.Fatalf("generateThreadTitleCore: %v", err)
 	}
@@ -5412,6 +5489,58 @@ func TestServerGeneratesThreadTitleUsesTitleRoleSelection(t *testing.T) {
 	}
 	if req := titleClient.requests[0]; req.Model != "gpt-4.1-mini" || req.Effort != "high" {
 		t.Fatalf("title request did not use title role: %+v", req)
+	}
+}
+
+// When the title role inherits the main model, the title must follow the
+// conversation's pinned model — not the workspace default, which drifts to
+// another session's model after a switch. The thread runtime's client serves
+// the request; the workspace title client stays untouched.
+func TestServerGeneratesThreadTitleInheritsPinnedThreadModel(t *testing.T) {
+	workspaceTitleClient := &fakeClient{response: providers.ChatResponse{Content: "Workspace title"}}
+	rt := newTestRuntime(t, &fakeClient{})
+	rt.TitleClient = workspaceTitleClient
+	rt.ModelRoles = modelroles.Set{
+		Title: modelroles.Selection{Inherited: true, Model: "fake-model", APIModel: "fake-model"},
+	}
+	srv := New(rt, &lockedBuffer{})
+
+	threadClient := &fakeClient{response: providers.ChatResponse{Content: "Thread title"}}
+	threadRuntime := &runtime.ThreadRuntime{
+		StreamRunner: &agent.StreamRunner{
+			Client:   providers.AdaptStreamClient(threadClient),
+			Model:    "session-pinned-model",
+			APIModel: "session-pinned-model",
+		},
+	}
+
+	result, err := srv.generateThreadTitleCore("inherit-thread", []providers.ChatMessage{
+		{Role: "system", Content: "system prompt"},
+		{Role: "user", Content: "pin the session model"},
+	}, false, false, true, threadRuntime)
+	if err != nil {
+		t.Fatalf("generateThreadTitleCore: %v", err)
+	}
+	if result.Model != "session-pinned-model" || result.CleanedTitle != "Thread title" {
+		t.Fatalf("unexpected title result: %+v", result)
+	}
+
+	threadClient.mu.Lock()
+	threadReqs := len(threadClient.requests)
+	gotModel := ""
+	if threadReqs == 1 {
+		gotModel = threadClient.requests[0].Model
+	}
+	threadClient.mu.Unlock()
+	if threadReqs != 1 || gotModel != "session-pinned-model" {
+		t.Fatalf("thread client requests = %d model=%q, want 1 for session-pinned-model", threadReqs, gotModel)
+	}
+
+	workspaceTitleClient.mu.Lock()
+	wsReqs := len(workspaceTitleClient.requests)
+	workspaceTitleClient.mu.Unlock()
+	if wsReqs != 0 {
+		t.Fatalf("workspace title client received %d requests, want 0", wsReqs)
 	}
 }
 
