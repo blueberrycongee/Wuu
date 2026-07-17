@@ -967,6 +967,12 @@ func (s *Server) handleConfigModelUpdate(req Request) error {
 		s.rt.StreamRunner.CompactThresholdTokens = modelBudget.CompactThresholdTokens
 	}
 	s.updateRootAgentControlWorkerDefaults()
+	if connectionChanged || params.PermissionMode != nil {
+		// Connection credentials/endpoints and permission mode are workspace
+		// configuration, so every resident runtime must rebuild before its next
+		// turn. Running turns keep their admitted snapshot until they settle.
+		s.resetThreadRuntimesForGeneralSettings("")
+	}
 	if err := s.updateThreadRuntimeForModelUpdate(params.ThreadID, resolvedName, model, selection.Variant, systemPrompt); err != nil {
 		return s.writeResponse(req.ID, nil, err)
 	}

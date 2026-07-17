@@ -1213,6 +1213,13 @@ func TestServerConfigModelUpdateCombinesUltraAndPreservesNil(t *testing.T) {
 
 func TestServerConfigModelUpdateAllowedWithRunningThread(t *testing.T) {
 	rt := newTestRuntime(t, &fakeClient{})
+	rootKit, err := tools.New(rt.RootDir)
+	if err != nil {
+		t.Fatalf("tools.New root: %v", err)
+	}
+	readOnlyPermissions := config.ResolvedPermissions{Mode: config.PermissionModeReadOnly}
+	runtime.ConfigureToolkitPermissions(rootKit, readOnlyPermissions)
+	rt.Toolkit = rootKit
 	if err := os.WriteFile(rt.ConfigPath, []byte(`{
   "default_provider": "fake-provider",
   "providers": {
@@ -1235,7 +1242,6 @@ func TestServerConfigModelUpdateAllowedWithRunningThread(t *testing.T) {
 	if err != nil {
 		t.Fatalf("tools.New running: %v", err)
 	}
-	readOnlyPermissions := config.ResolvedPermissions{Mode: config.PermissionModeReadOnly}
 	runtime.ConfigureToolkitPermissions(runningKit, readOnlyPermissions)
 	running.execRuntime = &runtime.ThreadRuntime{
 		StreamRunner: &agent.StreamRunner{Model: "fake-model", APIModel: "fake-model"},
@@ -1311,19 +1317,27 @@ func TestServerConfigModelUpdateAllowedWithRunningThread(t *testing.T) {
 	running.mu.Unlock()
 
 	idle.mu.Lock()
-	defer idle.mu.Unlock()
 	if idle.ModelProvider != "fake-provider" || idle.Model != "fake-model" {
 		t.Fatalf("non-target thread model changed: provider=%q model=%q", idle.ModelProvider, idle.Model)
 	}
-	if idle.execRuntime.StreamRunner.Model != "fake-model" || idle.execRuntime.StreamRunner.APIModel != "fake-model" {
-		t.Fatalf("non-target thread runtime changed: model=%q api=%q", idle.execRuntime.StreamRunner.Model, idle.execRuntime.StreamRunner.APIModel)
+	if idle.execRuntime != nil {
+		t.Fatal("non-target idle runtime should be released after a global permission change")
+	}
+	idle.mu.Unlock()
+	if _, err := srv.ensureThreadRuntime(idle); err != nil {
+		t.Fatalf("rebuild non-target thread runtime: %v", err)
+	}
+	idle.mu.Lock()
+	defer idle.mu.Unlock()
+	if idle.ModelProvider != "fake-provider" || idle.Model != "fake-model" {
+		t.Fatalf("non-target thread selection changed after rebuild: provider=%q model=%q", idle.ModelProvider, idle.Model)
 	}
 	if _, err := idle.execRuntime.Toolkit.Execute(context.Background(), providers.ToolCall{
 		ID:        "idle-still-read-only",
 		Name:      "write_file",
-		Arguments: `{"path":"idle-still-read-only.txt","content":"nope\n","create_only":true}`,
-	}); err == nil || !strings.Contains(err.Error(), "boundary_denied") {
-		t.Fatalf("non-target thread permission boundary changed, err=%v", err)
+		Arguments: `{"path":"idle-now-unconfined.txt","content":"ok\n","create_only":true}`,
+	}); err != nil {
+		t.Fatalf("non-target thread did not pick up global permission change: %v", err)
 	}
 }
 
@@ -1896,6 +1910,9 @@ func TestServerConfigModelUpdatePersistsProviderConnection(t *testing.T) {
 	oldClient := rt.StreamRunner.Client
 	out := &lockedBuffer{}
 	srv := New(rt, out)
+	idle := newThreadState("idle-thread", nil, rt.ProviderName, rt.Model, rt.RootDir, false, time.Now().UTC())
+	idle.execRuntime = &runtime.ThreadRuntime{StreamRunner: &agent.StreamRunner{Model: rt.Model}}
+	srv.threads[idle.ID] = idle
 
 	req := `{"id":"1","method":"config/model/update","params":{"provider":"fake-provider","model":"new-model","base_url":"https://custom.example.test/v1","api_key":"new-key"}}`
 	if err := srv.handleLine(context.Background(), []byte(req)); err != nil {
@@ -1914,6 +1931,12 @@ func TestServerConfigModelUpdatePersistsProviderConnection(t *testing.T) {
 	if rt.StreamRunner.Client == oldClient {
 		t.Fatal("expected stream runner client to be rebuilt")
 	}
+	idle.mu.Lock()
+	if idle.execRuntime != nil {
+		idle.mu.Unlock()
+		t.Fatal("idle thread runtime should be released after provider connection changes")
+	}
+	idle.mu.Unlock()
 	data, err := os.ReadFile(rt.ConfigPath)
 	if err != nil {
 		t.Fatalf("read config: %v", err)
