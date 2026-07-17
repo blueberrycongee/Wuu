@@ -2,7 +2,6 @@ import { Copy, X } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import type {
   AppServerNotification,
-  InitializeResult,
   ServerEvent,
   Thread,
   ThreadItem,
@@ -20,6 +19,7 @@ import {
   turnFromRecord,
   type AppState,
 } from "./AppState";
+import { runtimeViewForConversation } from "./SessionRuntimeState";
 import {
   streamTextKey,
   streamTextStore,
@@ -93,11 +93,11 @@ export function RunDebugPanel({
   useI18n();
   const thread = activeThreadForState(state);
   const turn = phase.turn ?? activeDebugTurn(thread);
+  const runtime = runtimeViewForConversation(state.initialized, thread, turn);
   const lastEvent = events.length > 0 ? events[events.length - 1] : undefined;
   const turnStartedAt = turn ? parseTurnTimestampMs(turn.started_at) : NaN;
-  const modelSelection = runDebugModelSelection(state.initialized, thread, turn);
-  const model = modelSelection
-    ? `${modelSelection.provider} / ${modelSelection.model}${modelSelection.variant || modelSelection.effort ? ` / ${modelSelection.variant || modelSelection.effort}` : ""}`
+  const model = runtime
+    ? `${runtime.provider} / ${runtime.model}${runtime.variant || runtime.effort ? ` / ${runtime.variant || runtime.effort}` : ""}`
     : t("runDebug.notInitialized");
   const queueDetail = [
     queuedMessages.length > 0
@@ -542,54 +542,6 @@ function debugRuntimeStatusLabel(status: string): string {
   }
 }
 
-export type RunDebugModelSelection = {
-  provider: string;
-  model: string;
-  variant: string;
-  effort: string;
-};
-
-// runDebugModelSelection resolves the model the debug panel should report for
-// the active conversation. Model semantics are per-conversation (issue #81): the
-// global `initialized` default is only a seed. The active thread's own pinned
-// selection overlays it, and the active turn's captured snapshot (what actually
-// ran) overlays that — mirroring the composer's initializedForActiveTurn so the
-// panel never shows a later global default that a different session selected.
-export function runDebugModelSelection(
-  initialized: InitializeResult | undefined,
-  thread:
-    | Pick<Thread, "model_provider" | "model" | "model_variant" | "model_effort">
-    | undefined,
-  turn: Pick<Turn, "model_provider" | "model"> | undefined,
-): RunDebugModelSelection | undefined {
-  if (!initialized) {
-    return undefined;
-  }
-  let provider = initialized.provider;
-  let model = initialized.model;
-  let variant = initialized.variant ?? "";
-  let effort = initialized.effort ?? "";
-  if (thread?.model_provider) {
-    provider = thread.model_provider;
-  }
-  if (thread?.model) {
-    model = thread.model;
-  }
-  if (thread?.model_variant) {
-    variant = thread.model_variant;
-  }
-  if (thread?.model_effort) {
-    effort = thread.model_effort;
-  }
-  if (turn?.model_provider) {
-    provider = turn.model_provider;
-  }
-  if (turn?.model) {
-    model = turn.model;
-  }
-  return { provider, model, variant, effort };
-}
-
 function activeDebugTurn(thread: Thread | undefined): Turn | undefined {
   const turns = thread?.turns ?? [];
   for (let index = turns.length - 1; index >= 0; index--) {
@@ -941,16 +893,16 @@ export function buildRunDebugSnapshot({
   const phase = runDebugPhaseForState(state);
   const thread = activeThreadForState(state);
   const turn = phase.turn ?? activeDebugTurn(thread);
+  const runtime = runtimeViewForConversation(state.initialized, thread, turn);
   const streamStats = streamTextStore.stats();
-  const modelSelection = runDebugModelSelection(state.initialized, thread, turn);
   const lines = [
     `phase: ${phase.label} (${phase.detail})`,
     `status: ${state.status}`,
     `running: ${String(state.running)}`,
-    `provider: ${modelSelection?.provider ?? "none"}`,
-    `model: ${modelSelection?.model ?? "none"}`,
-    `effort: ${modelSelection?.effort ?? ""}`,
-    `variant: ${modelSelection?.variant ?? ""}`,
+    `provider: ${runtime?.provider ?? "none"}`,
+    `model: ${runtime?.model ?? "none"}`,
+    `effort: ${runtime?.effort ?? ""}`,
+    `variant: ${runtime?.variant ?? ""}`,
     `cwd: ${state.activeContext?.cwd ?? thread?.cwd ?? ""}`,
     `thread: ${thread?.id ?? ""}`,
     `turn: ${turn?.id ?? ""}`,
