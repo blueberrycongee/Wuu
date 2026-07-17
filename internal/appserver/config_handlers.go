@@ -1358,6 +1358,11 @@ func (s *Server) updateThreadRuntimeForModelUpdate(th *threadState, providerName
 		th.ModelVariant != strings.TrimSpace(selection.Variant) ||
 		th.ModelEffort != strings.TrimSpace(selection.Effort)
 	applyThreadRuntimeSelection(th, selection)
+	if modelSelectionChanged && s.rt.StreamRunner != nil {
+		if prompt := strings.TrimSpace(s.rt.StreamRunner.SystemPrompt); prompt != "" {
+			th.History = replaceBaseSystemPrompt(th.History, prompt)
+		}
+	}
 	if modelSelectionChanged && th.execRuntime != nil {
 		detached = detachThreadRuntimeLocked(th)
 	}
