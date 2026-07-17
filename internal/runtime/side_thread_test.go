@@ -32,7 +32,7 @@ func TestNewSideThreadRunnerRemovesMutableMainThreadSurface(t *testing.T) {
 		AfterTurn:            func(context.Context, *agent.StreamRunner, []providers.ChatMessage, agent.LoopResult) { called = true },
 		OnEvent:              func(providers.StreamEvent) { called = true },
 	}
-	runner, err := (&Session{StreamRunner: base}).NewSideThreadRunner("side-actual-id")
+	runner, err := (&Session{StreamRunner: base}).NewSideThreadRunner("side-actual-id", ThreadModelSelection{})
 	if err != nil {
 		t.Fatalf("NewSideThreadRunner: %v", err)
 	}
