@@ -332,6 +332,62 @@ describe("createRuntimeSettingsActions", () => {
     );
   });
 
+  it("does not synthesize a thread when runtime settings change without an active thread", async () => {
+    installWuuApi();
+    const harness = buildActions({
+      initial: {
+        ...initialState,
+        initialized: initialized(),
+        status: "ready",
+      },
+    });
+
+    await harness.actions.updateRuntimeSettings(
+      "codex",
+      "gpt-5.1",
+      undefined,
+      undefined,
+      "high",
+    );
+
+    expect(harness.getAppState().thread).toBeUndefined();
+    expect(harness.getAppState().secondaryThread).toBeUndefined();
+  });
+
+  it("changes effort for the active thread's provider and model", async () => {
+    const api = installWuuApi();
+    const primary = thread("thread-1");
+    const secondary = {
+      ...thread("thread-2"),
+      model_provider: "anthropic",
+      model: "claude-sonnet-4-6",
+      model_variant: "medium",
+    };
+    const harness = buildActions({
+      initial: {
+        ...initialState,
+        initialized: initialized({ provider: "codex", model: "gpt-5" }),
+        thread: primary,
+        secondaryThread: secondary,
+        activePane: "secondary",
+        threads: [primary, secondary],
+        status: "ready",
+      },
+    });
+
+    await harness.actions.selectRuntimeEffort("high");
+
+    expect(api.updateRuntimeSettings).toHaveBeenCalledWith(
+      "anthropic",
+      "claude-sonnet-4-6",
+      undefined,
+      undefined,
+      "high",
+      undefined,
+      "thread-2",
+    );
+  });
+
   it("commits Ultra state only after the app server confirms it", async () => {
     const api = installWuuApi();
     const harness = buildActions();

@@ -165,7 +165,7 @@ export function createRuntimeSettingsActions(
           ...current,
           initialized,
           thread:
-            current.thread?.id === targetThread?.id
+            targetThread && current.thread?.id === targetThread.id
               ? {
                   ...current.thread,
                   model_provider: updated.provider,
@@ -174,7 +174,7 @@ export function createRuntimeSettingsActions(
                 }
               : current.thread,
           secondaryThread:
-            current.secondaryThread?.id === targetThread?.id
+            targetThread && current.secondaryThread?.id === targetThread.id
               ? {
                   ...current.secondaryThread,
                   model_provider: updated.provider,
@@ -440,9 +440,10 @@ export function createRuntimeSettingsActions(
     if (!state.initialized || deps.getViewContextSwitchPending()) {
       return;
     }
+    const targetThread = activeThreadForState(state);
     await updateRuntimeSettings(
-      state.initialized.provider,
-      state.initialized.model,
+      targetThread?.model_provider ?? state.initialized.provider,
+      targetThread?.model ?? state.initialized.model,
       undefined,
       undefined,
       nextVariant,
