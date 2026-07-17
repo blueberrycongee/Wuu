@@ -1205,9 +1205,11 @@ app.whenReady().then(async () => {
       threadID?: string,
     ) =>
       appServerRequest<ConfigModelUpdateResult>(event, "config/model/update", {
-        // Omitted provider/model are inherited from the target thread, and an
-        // explicit empty variant would clear the stored reasoning effort, so
-        // empties are dropped instead of sent.
+        // Omitted provider/model are inherited from the target thread, so
+        // their empties are dropped instead of sent. Effort/variant/permission
+        // forward whenever explicitly provided: an explicit empty variant is
+        // the reset-to-model-default signal (the server clears the stored
+        // selection), so it must not be truthy-dropped.
         ...(provider ? { provider } : {}),
         ...(model ? { model } : {}),
         ...(threadID ? { thread_id: threadID } : {}),
@@ -1223,7 +1225,7 @@ app.whenReady().then(async () => {
         ...(connection?.type === undefined ? {} : { type: connection.type }),
         ...(connection?.create_provider ? { create_provider: true } : {}),
         ...(effort === undefined ? {} : { effort }),
-        ...(variant ? { variant } : {}),
+        ...(variant === undefined ? {} : { variant }),
         ...(permissionMode === undefined
           ? {}
           : { permission_mode: permissionMode }),

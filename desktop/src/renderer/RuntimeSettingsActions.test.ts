@@ -423,6 +423,65 @@ describe("createRuntimeSettingsActions", () => {
     expect(harness.getAppState().initialized?.model).toBe("gpt-5.1");
   });
 
+  it("sends an explicit empty variant when resetting effort to the model default", async () => {
+    const api = installWuuApi();
+    // The thread-scoped reset leaves the workspace selection unchanged, so
+    // the workspace-effective result echoes the current defaults.
+    api.updateRuntimeSettings.mockResolvedValue({
+      provider: "codex",
+      model: "gpt-5",
+      effort: "medium",
+      variant: "medium",
+    });
+    const primary = {
+      ...thread("thread-1"),
+      model_variant: "high",
+      model_effort: "high",
+    };
+    const harness = buildActions({
+      initial: {
+        ...initialState,
+        initialized: initialized(),
+        thread: primary,
+        threads: [primary],
+        status: "ready",
+      },
+    });
+
+    await harness.actions.selectRuntimeEffort("");
+
+    expect(api.updateRuntimeSettings).toHaveBeenCalledWith(
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      "",
+      undefined,
+      "thread-1",
+    );
+    expect(harness.getAppState().thread?.model_variant).toBe("");
+    expect(harness.getAppState().thread?.model_effort).toBe("");
+    expect(harness.getAppState().initialized?.variant).toBe("medium");
+  });
+
+  it("skips the reset when the thread effort is already the model default", async () => {
+    const api = installWuuApi();
+    const primary = { ...thread("thread-1"), model_variant: "" };
+    const harness = buildActions({
+      initial: {
+        ...initialState,
+        initialized: initialized(),
+        thread: primary,
+        threads: [primary],
+        status: "ready",
+      },
+    });
+
+    await harness.actions.selectRuntimeEffort("");
+
+    expect(api.updateRuntimeSettings).not.toHaveBeenCalled();
+  });
+
   it("commits Ultra state only after the app server confirms it", async () => {
     const api = installWuuApi();
     const harness = buildActions();

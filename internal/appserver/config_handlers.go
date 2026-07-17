@@ -805,6 +805,36 @@ func (s *Server) handleConfigModelUpdate(req Request) error {
 			return s.writeResponse(req.ID, nil, errors.New("model is required"))
 		}
 	}
+	// A targeted update inherits omitted provider/model from the target
+	// conversation, so validation and the thread write run against that
+	// effective pair. The workspace dual-write only stays coherent when the
+	// effective provider is the workspace provider itself: a model repin on
+	// a foreign-provider thread must not graft its model onto the workspace
+	// provider's config. An explicit provider param still moves the
+	// workspace pair together, exactly as before.
+	effectiveProvider, effectiveModel := resolvedName, model
+	if targetThread != nil {
+		targetThread.mu.Lock()
+		pinnedProvider := strings.TrimSpace(targetThread.ModelProvider)
+		pinnedModel := strings.TrimSpace(targetThread.Model)
+		targetThread.mu.Unlock()
+		if strings.TrimSpace(params.Provider) == "" && pinnedProvider != "" {
+			effectiveProvider = pinnedProvider
+		}
+		if strings.TrimSpace(params.Model) == "" && pinnedModel != "" {
+			effectiveModel = pinnedModel
+		}
+	}
+	dualWriteWorkspace := strings.TrimSpace(params.Provider) != "" || effectiveProvider == resolvedName
+	if !dualWriteWorkspace {
+		// Thread-scoped selection update: every workspace-side write below
+		// keeps the workspace's current model; the thread write layers the
+		// explicit params over the thread's own pins.
+		model = strings.TrimSpace(s.rt.Model)
+		if model == "" {
+			model = strings.TrimSpace(providerCfg.Model)
+		}
+	}
 	previousProviderCfg := providerCfg
 	previousModel := strings.TrimSpace(providerCfg.Model)
 	providerCfg.Model = model
@@ -876,21 +906,40 @@ func (s *Server) handleConfigModelUpdate(req Request) error {
 	ruleProviderName, ruleProviderCfg := modelcatalog.EnrichProvider(resolvedName, providerCfg, model)
 	_, previousRuleProviderCfg := modelcatalog.EnrichProvider(resolvedName, previousProviderCfg, previousModel)
 	modelHeadersChanged := !reflect.DeepEqual(previousRuleProviderCfg.Headers, ruleProviderCfg.Headers)
+	// Variant/effort params validate against the effective model they will
+	// pin, not the workspace model: rejecting an effort change on a thread
+	// pinned to a different model against the workspace model would break
+	// the documented inherit-from-target-conversation contract.
+	validationRuleName, validationRuleCfg := ruleProviderName, ruleProviderCfg
+	if effectiveProvider != resolvedName || effectiveModel != model {
+		if effectiveProviderCfg, effectiveResolvedName, resolveErr := cfg.ResolveProvider(effectiveProvider); resolveErr == nil {
+			effectiveProviderCfg = s.withCachedCodexModels(effectiveResolvedName, effectiveProviderCfg)
+			validationRuleName, validationRuleCfg = modelcatalog.EnrichProvider(effectiveResolvedName, effectiveProviderCfg, effectiveModel)
+		}
+	}
 	if params.Variant != nil && variant != "" {
-		if _, ok := modelvariant.OptionsForProvider(ruleProviderName, ruleProviderCfg, model, variant); !ok {
-			return s.writeResponse(req.ID, nil, fmt.Errorf("model %s does not support variant %s", model, variant))
+		if _, ok := modelvariant.OptionsForProvider(validationRuleName, validationRuleCfg, effectiveModel, variant); !ok {
+			return s.writeResponse(req.ID, nil, fmt.Errorf("model %s does not support variant %s", effectiveModel, variant))
 		}
 	}
-	if params.Effort != nil && params.Variant == nil && variant != "" && len(modelvariant.SummariesForProvider(ruleProviderName, ruleProviderCfg, model)) > 0 {
-		if _, ok := modelvariant.OptionsForProvider(ruleProviderName, ruleProviderCfg, model, variant); !ok {
-			return s.writeResponse(req.ID, nil, fmt.Errorf("model %s does not support effort %s", model, variant))
+	if params.Effort != nil && params.Variant == nil && variant != "" && len(modelvariant.SummariesForProvider(validationRuleName, validationRuleCfg, effectiveModel)) > 0 {
+		if _, ok := modelvariant.OptionsForProvider(validationRuleName, validationRuleCfg, effectiveModel, variant); !ok {
+			return s.writeResponse(req.ID, nil, fmt.Errorf("model %s does not support effort %s", effectiveModel, variant))
 		}
 	}
-	selection := modelvariant.ResolveForProvider(ruleProviderName, ruleProviderCfg, model, variant, legacyEffort)
+	workspaceVariant, workspaceEffort := variant, legacyEffort
+	if !dualWriteWorkspace {
+		// The selection params stay thread-scoped; the workspace keeps its
+		// current variant/effort in the resolved selection, the runtime
+		// writes, and the workspace-effective result payload.
+		workspaceVariant, workspaceEffort = s.currentVariant(), s.currentEffort()
+	}
+	selection := modelvariant.ResolveForProvider(ruleProviderName, ruleProviderCfg, model, workspaceVariant, workspaceEffort)
 	effort := selection.DisplayEffort
 	effortForConfig, variantForConfig := selectionConfigPointers(selection, selectionTouched, s.currentVariant())
-	if !explicitSelection {
-		// Connection-only update: leave the persisted selection untouched.
+	if !explicitSelection || !dualWriteWorkspace {
+		// Connection-only or thread-scoped update: leave the persisted
+		// workspace selection untouched.
 		effortForConfig, variantForConfig = nil, nil
 	}
 
@@ -1029,7 +1078,9 @@ func (s *Server) handleConfigModelUpdate(req Request) error {
 			threadProvider = resolvedName
 		}
 		if strings.TrimSpace(params.Model) != "" || threadModel == "" {
-			threadModel = model
+			// effectiveModel, not model: on a thread-scoped update the
+			// workspace-side model variable stays the workspace's own model.
+			threadModel = effectiveModel
 		}
 		if params.Variant != nil {
 			threadVariant = strings.TrimSpace(*params.Variant)

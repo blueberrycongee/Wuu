@@ -1567,6 +1567,147 @@ func TestServerConfigModelUpdateExplicitEmptyVariantClearsSelection(t *testing.T
 	}
 }
 
+func writeForeignProviderUpdateConfig(t *testing.T, rt *runtime.Session) {
+	t.Helper()
+	if err := os.WriteFile(rt.ConfigPath, []byte(`{
+  "default_provider": "fake-provider",
+  "agent": {"permission_mode": "read_only", "effort": "high"},
+  "providers": {
+    "fake-provider": {
+      "type": "openai-compatible",
+      "base_url": "https://example.test/v1",
+      "api_key": "test-key",
+      "model": "fake-model"
+    },
+    "xiaomi": {
+      "type": "openai-compatible",
+      "base_url": "https://token-plan-cn.xiaomimimo.com/v1",
+      "api_key": "test-key",
+      "model": "mimo-v2.5-pro"
+    }
+  }
+}`), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+}
+
+func newForeignProviderTargetFixture(t *testing.T, rt *runtime.Session, srv *Server) *threadState {
+	t.Helper()
+	target := newThreadState("foreign-thread", nil, "xiaomi", "mimo-v2.5-pro", rt.RootDir, true, time.Now().UTC())
+	target.PermissionMode = config.PermissionModeReadOnly
+	srv.threads[target.ID] = target
+	if _, err := session.CreateWithMetadata(rt.SessionDir, target.ID, rt.RootDir); err != nil {
+		t.Fatalf("create target session: %v", err)
+	}
+	if _, err := session.SetRuntimeSelection(rt.SessionDir, target.ID, session.RuntimeSelection{
+		Provider:       "xiaomi",
+		Model:          "mimo-v2.5-pro",
+		PermissionMode: config.PermissionModeReadOnly,
+	}); err != nil {
+		t.Fatalf("pin target selection: %v", err)
+	}
+	return target
+}
+
+// A targeted model-only update on a thread pinned to a different provider is
+// thread-scoped: grafting the new model onto the workspace provider would
+// persist an incoherent (provider, model) pair the workspace provider cannot
+// serve.
+func TestServerConfigModelUpdateTargetedModelOnlyForeignProviderStaysThreadScoped(t *testing.T) {
+	rt := newTestRuntime(t, &fakeClient{})
+	rt.Permissions = config.ResolvedPermissions{Mode: config.PermissionModeReadOnly}
+	rt.StreamRunner.Effort = "high"
+	writeForeignProviderUpdateConfig(t, rt)
+	out := &lockedBuffer{}
+	srv := New(rt, out)
+	target := newForeignProviderTargetFixture(t, rt, srv)
+
+	if err := srv.handleLine(context.Background(), []byte(`{"id":"1","method":"config/model/update","params":{"thread_id":"foreign-thread","model":"mimo-v2.5"}}`)); err != nil {
+		t.Fatalf("config/model/update: %v", err)
+	}
+	response := responseByID(t, parseOutput(t, out.String()), "1")
+	if response["error"] != nil {
+		t.Fatalf("unexpected update error: %+v", response["error"])
+	}
+	result := remarshal[ConfigModelUpdateResult](t, response["result"])
+	if result.Provider != "fake-provider" || result.Model != "fake-model" {
+		t.Fatalf("result should stay workspace-effective: %+v", result)
+	}
+	if rt.ProviderName != "fake-provider" || rt.Model != "fake-model" || rt.StreamRunner.Model != "fake-model" {
+		t.Fatalf("workspace runtime drifted: provider=%q model=%q runner=%q",
+			rt.ProviderName, rt.Model, rt.StreamRunner.Model)
+	}
+	data, err := os.ReadFile(rt.ConfigPath)
+	if err != nil {
+		t.Fatalf("read config: %v", err)
+	}
+	if !strings.Contains(string(data), `"model": "fake-model"`) ||
+		!strings.Contains(string(data), `"model": "mimo-v2.5-pro"`) ||
+		!strings.Contains(string(data), `"default_provider": "fake-provider"`) {
+		t.Fatalf("workspace config drifted: %s", data)
+	}
+	target.mu.Lock()
+	if target.ModelProvider != "xiaomi" || target.Model != "mimo-v2.5" {
+		t.Fatalf("target pin wrong: provider=%q model=%q", target.ModelProvider, target.Model)
+	}
+	target.mu.Unlock()
+	metadata, ok, err := session.Find(rt.SessionDir, target.ID)
+	if err != nil || !ok {
+		t.Fatalf("find target session: ok=%v err=%v", ok, err)
+	}
+	if metadata.Provider != "xiaomi" || metadata.Model != "mimo-v2.5" {
+		t.Fatalf("persisted target selection wrong: %+v", metadata)
+	}
+}
+
+// A targeted variant/effort-only update validates against the thread's pinned
+// model, not the workspace model, and on a foreign-provider thread the
+// variant stays out of the workspace config entirely.
+func TestServerConfigModelUpdateTargetedVariantOnlyValidatesAgainstThreadModel(t *testing.T) {
+	rt := newTestRuntime(t, &fakeClient{})
+	rt.Permissions = config.ResolvedPermissions{Mode: config.PermissionModeReadOnly}
+	rt.StreamRunner.Effort = "high"
+	writeForeignProviderUpdateConfig(t, rt)
+	out := &lockedBuffer{}
+	srv := New(rt, out)
+	target := newForeignProviderTargetFixture(t, rt, srv)
+
+	// "high" is a mimo-v2.5-pro variant; the workspace fake-model has no
+	// variants, so validating against the workspace model would hard-reject
+	// this update.
+	if err := srv.handleLine(context.Background(), []byte(`{"id":"1","method":"config/model/update","params":{"thread_id":"foreign-thread","variant":"high"}}`)); err != nil {
+		t.Fatalf("config/model/update: %v", err)
+	}
+	response := responseByID(t, parseOutput(t, out.String()), "1")
+	if response["error"] != nil {
+		t.Fatalf("variant must validate against the thread model, got %+v", response["error"])
+	}
+	if rt.StreamRunner.Variant != "" || rt.StreamRunner.Effort != "high" || rt.Model != "fake-model" {
+		t.Fatalf("thread-scoped variant leaked into the workspace: variant=%q effort=%q model=%q",
+			rt.StreamRunner.Variant, rt.StreamRunner.Effort, rt.Model)
+	}
+	data, err := os.ReadFile(rt.ConfigPath)
+	if err != nil {
+		t.Fatalf("read config: %v", err)
+	}
+	if strings.Contains(string(data), `"variant"`) || !strings.Contains(string(data), `"effort": "high"`) {
+		t.Fatalf("workspace selection drifted: %s", data)
+	}
+	target.mu.Lock()
+	if target.ModelProvider != "xiaomi" || target.Model != "mimo-v2.5-pro" || target.ModelVariant != "high" {
+		t.Fatalf("target pin wrong: provider=%q model=%q variant=%q",
+			target.ModelProvider, target.Model, target.ModelVariant)
+	}
+	target.mu.Unlock()
+	metadata, ok, err := session.Find(rt.SessionDir, target.ID)
+	if err != nil || !ok {
+		t.Fatalf("find target session: ok=%v err=%v", ok, err)
+	}
+	if metadata.Model != "mimo-v2.5-pro" || metadata.Variant != "high" {
+		t.Fatalf("persisted target selection wrong: %+v", metadata)
+	}
+}
+
 func TestServerConfigModelUpdateConnectionOnlyTargetAllowedWhileRunning(t *testing.T) {
 	rt := newTestRuntime(t, &fakeClient{})
 	rt.Permissions = config.ResolvedPermissions{Mode: config.PermissionModeReadOnly}

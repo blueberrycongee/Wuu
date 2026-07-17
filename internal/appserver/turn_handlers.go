@@ -674,10 +674,24 @@ func (s *Server) ensureThreadRuntime(th *threadState) (*runtime.ThreadRuntime, e
 	existing := th.execRuntime
 	running := th.running
 	var detached detachedThreadRuntime
-	if existing != nil && !running && !threadRuntimeHasOutstandingAgentWork(existing) &&
-		(th.pendingRuntimeReset || !s.threadRuntimeMatchesSelectionLocked(th, existing)) {
-		detached = detachThreadRuntimeLocked(th)
-		existing = nil
+	if existing != nil && !running {
+		selectionMismatch := !s.threadRuntimeMatchesSelectionLocked(th, existing)
+		if th.pendingRuntimeReset || selectionMismatch {
+			if !threadRuntimeHasOutstandingAgentWork(existing) {
+				detached = detachThreadRuntimeLocked(th)
+				existing = nil
+			} else if selectionMismatch {
+				// The idle runtime was built for a different selection and
+				// cannot be rebuilt while background agents still depend on
+				// it. Failing admission is honest; silently running the old
+				// model is not. A pending general-settings reset alone stays
+				// deferred instead: the next admission that finds no
+				// outstanding work consumes it.
+				threadID := th.ID
+				th.mu.Unlock()
+				return nil, fmt.Errorf("model selection for thread %q changed while background agents are running; retry after they settle", threadID)
+			}
+		}
 	}
 	history := cloneHistory(th.History)
 	rootDir := th.CWD
@@ -711,15 +725,16 @@ func (s *Server) ensureThreadRuntime(th *threadState) (*runtime.ThreadRuntime, e
 	})
 	if errors.Is(err, runtime.ErrThreadProviderUnavailable) {
 		// The pinned provider was removed from config after this session
-		// selected it. Self-heal to the workspace defaults so the turn
-		// proceeds instead of every send failing on the dead pin.
-		defaults := s.resetThreadSelectionToWorkspaceDefaults(th)
+		// selected it. Self-heal the dead provider/model pair to the
+		// workspace defaults so the turn proceeds instead of every send
+		// failing on the dead pin.
+		healed := s.healThreadSelectionForRemovedProvider(th)
 		threadRuntime, err = s.rt.NewThreadRuntimeForRootModel(th.ID, browserWorkdir, runtime.ThreadModelSelection{
-			Provider:       defaults.Provider,
-			Model:          defaults.Model,
-			Variant:        defaults.Variant,
-			Effort:         defaults.Effort,
-			PermissionMode: defaults.PermissionMode,
+			Provider:       healed.Provider,
+			Model:          healed.Model,
+			Variant:        healed.Variant,
+			Effort:         healed.Effort,
+			PermissionMode: healed.PermissionMode,
 		})
 	}
 	if err != nil {
@@ -779,28 +794,40 @@ func (s *Server) ensureThreadRuntime(th *threadState) (*runtime.ThreadRuntime, e
 	return existing, nil
 }
 
-// resetThreadSelectionToWorkspaceDefaults repins a thread whose stored
+// healThreadSelectionForRemovedProvider repins a thread whose stored
 // selection can no longer be built (its provider was removed from config) to
-// the current workspace defaults, persists the heal, and broadcasts the new
-// selection so the composer stops showing the dead provider. Persist and
-// notify are best-effort: the heal exists to unblock the turn, so it must not
-// introduce new failure modes of its own.
-func (s *Server) resetThreadSelectionToWorkspaceDefaults(th *threadState) session.RuntimeSelection {
+// the workspace default provider/model, persists the heal, and broadcasts the
+// new selection so the composer stops showing the dead provider. Only the
+// dead provider/model pair is healed: the thread's own variant/effort/
+// permission pins survive, because sourcing them from the live workspace
+// would silently widen a read_only pin to the workspace mode and, under an
+// exec --permission-mode override, persist the never-persisted process
+// override into the session row. Persist and notify are best-effort: the heal
+// exists to unblock the turn, so it must not introduce new failure modes of
+// its own.
+func (s *Server) healThreadSelectionForRemovedProvider(th *threadState) session.RuntimeSelection {
 	defaults := s.currentSessionRuntimeSelection()
 	th.mu.Lock()
-	applyThreadRuntimeSelection(th, defaults)
+	healed := session.RuntimeSelection{
+		Provider:       defaults.Provider,
+		Model:          defaults.Model,
+		Variant:        strings.TrimSpace(th.ModelVariant),
+		Effort:         strings.TrimSpace(th.ModelEffort),
+		PermissionMode: strings.TrimSpace(th.PermissionMode),
+	}
+	applyThreadRuntimeSelection(th, healed)
 	persist := th.PersistHistory
 	thread := th.snapshotLocked()
 	th.mu.Unlock()
 	if persist {
-		if _, err := session.SetRuntimeSelection(s.rt.SessionDir, th.ID, defaults); err != nil {
+		if _, err := session.SetRuntimeSelection(s.rt.SessionDir, th.ID, healed); err != nil {
 			providers.DebugLogf("persist healed runtime selection for thread %q: %v", th.ID, err)
 		}
 	}
 	if err := s.notifyThreadUpdated(thread); err != nil {
 		providers.DebugLogf("notify healed runtime selection for thread %q: %v", th.ID, err)
 	}
-	return defaults
+	return healed
 }
 
 // threadRuntimeMatchesSelectionLocked reports whether an idle resident runtime

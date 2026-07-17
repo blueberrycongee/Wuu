@@ -96,9 +96,11 @@ export function createRuntimeSettingsActions(
     let nextModel = update.model?.trim() || undefined;
     const nextEffort =
       update.effort === undefined ? undefined : update.effort.trim();
-    // An explicit empty variant would clear the stored reasoning effort, so
-    // pass-through empties are treated as omitted.
-    const nextVariant = update.variant?.trim() || undefined;
+    // An explicit empty variant resets the stored reasoning effort to the
+    // model default (the server clears the selection), so '' must survive;
+    // only undefined means "not part of this update".
+    const nextVariant =
+      update.variant === undefined ? undefined : update.variant.trim();
     const nextPermissionMode =
       update.permissionMode === undefined
         ? undefined
