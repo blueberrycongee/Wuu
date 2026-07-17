@@ -2,7 +2,6 @@ package runtime
 
 import (
 	"errors"
-	"fmt"
 	"strings"
 
 	"github.com/blueberrycongee/wuu/internal/agent"
@@ -33,10 +32,7 @@ func (s *Session) NewSideThreadRunner(sideThreadID string, selected ThreadModelS
 		return nil, errors.New("side thread id is required")
 	}
 
-	runner, err := s.newSideThreadBaseRunner(selected)
-	if err != nil {
-		return nil, err
-	}
+	runner := s.newSideThreadBaseRunner(selected)
 	runner.Tools = nil
 	runner.ToolLedger = nil
 	runner.SystemPrompt = sideThreadSystemPrompt
@@ -62,12 +58,16 @@ func (s *Session) NewSideThreadRunner(sideThreadID string, selected ThreadModelS
 }
 
 // newSideThreadBaseRunner clones the workspace stream runner and repins it to
-// the main conversation's model selection. An empty selection, a selection that
-// already equals the workspace defaults, or a pinned provider that is no longer
-// configured all fall back to the plain workspace clone. This mirrors the model
-// pinning in NewThreadRuntimeForRootModel, minus the toolkit/worker/permission
-// wiring a read-only side chat has no use for.
-func (s *Session) newSideThreadBaseRunner(selected ThreadModelSelection) (*agent.StreamRunner, error) {
+// the main conversation's model selection. It is best-effort: an empty
+// selection, a selection that already equals the workspace defaults, or any
+// failure to resolve the pinned model (no loadable config, a removed provider,
+// a client that will not build) all fall back to the plain workspace clone.
+// A read-only side chat must never fail to open just because the conversation's
+// pinned model can no longer be resolved — the workspace runner is always a
+// usable answer, and the main thread self-heals to those same defaults on its
+// next turn. This mirrors the model pinning in NewThreadRuntimeForRootModel,
+// minus the toolkit/worker/permission wiring a side chat has no use for.
+func (s *Session) newSideThreadBaseRunner(selected ThreadModelSelection) *agent.StreamRunner {
 	providerName := strings.TrimSpace(selected.Provider)
 	model := strings.TrimSpace(selected.Model)
 	currentVariant := strings.TrimSpace(s.StreamRunner.Variant)
@@ -76,26 +76,25 @@ func (s *Session) newSideThreadBaseRunner(selected ThreadModelSelection) (*agent
 		(providerName == s.ProviderName && model == s.Model &&
 			strings.TrimSpace(selected.Variant) == currentVariant &&
 			strings.TrimSpace(selected.Effort) == currentEffort) {
-		return cloneStreamRunnerForThread(s.StreamRunner, nil), nil
+		return cloneStreamRunnerForThread(s.StreamRunner, nil)
 	}
 
 	cfg, _, err := s.LoadEffectiveConfig()
 	if err != nil {
-		return nil, err
+		providers.DebugLogf("side thread base runner falling back to workspace model (config unavailable): %v", err)
+		return cloneStreamRunnerForThread(s.StreamRunner, nil)
 	}
 	providerCfg, resolvedName, err := cfg.ResolveProvider(providerName)
 	if err != nil {
-		// The conversation pins a provider that was since removed from config.
-		// The main thread self-heals to the workspace defaults on its next
-		// turn, so the side chat follows the same fallback instead of failing.
 		providers.DebugLogf("side thread base runner falling back to workspace model (%q unavailable): %v", providerName, err)
-		return cloneStreamRunnerForThread(s.StreamRunner, nil), nil
+		return cloneStreamRunnerForThread(s.StreamRunner, nil)
 	}
 	ruleProviderName, ruleProviderCfg := modelcatalog.EnrichProvider(resolvedName, providerCfg, model)
 	selection := modelvariant.ResolveForProvider(ruleProviderName, ruleProviderCfg, model, strings.TrimSpace(selected.Variant), strings.TrimSpace(selected.Effort))
 	client, err := providerfactory.BuildStreamClient(ruleProviderCfg, resolvedName)
 	if err != nil {
-		return nil, fmt.Errorf("build side thread model client: %w", err)
+		providers.DebugLogf("side thread base runner falling back to workspace model (build client for %q failed): %v", resolvedName, err)
+		return cloneStreamRunnerForThread(s.StreamRunner, nil)
 	}
 	budget := ResolveModelBudget(model, ruleProviderCfg, cfg.Agent.MaxContextTokens)
 	apiModel := modelcatalog.APIModel(ruleProviderCfg, model)
@@ -112,5 +111,5 @@ func (s *Session) newSideThreadBaseRunner(selected ThreadModelSelection) (*agent
 	runner.MaxInputTokens = budget.InputLimitTokens
 	runner.OutputReserveTokens = budget.OutputReserveTokens
 	runner.CompactThresholdTokens = budget.CompactThresholdTokens
-	return runner, nil
+	return runner
 }
