@@ -59,12 +59,31 @@ export class AppServerClientPool {
   private clients = new Map<string, AppServerClient>();
   private nextServerRequestRouteID = 1;
   private serverRequestRoutes = new Map<string, ServerRequestRoute>();
+  // Optional cross-cutting hooks wired after construction (index.ts) so the
+  // embedded browser coordinator can (a) veto idle-eviction of a workdir that
+  // still owns agent tabs and (b) tear down that workdir's views on dispose.
+  private isWorkdirPinned?: (workdir: string) => boolean;
+  private clientTorndownHandler?: (workdir: string) => void;
 
   constructor(
     private readonly getRuntimeContext: () => RuntimeContext,
     private readonly getActiveWorkdir: () => string | undefined,
     private readonly emitToRenderer: (event: ServerEvent) => void,
   ) {}
+
+  // A workdir the check pins (e.g. it owns a live agent browser tab) is treated
+  // as busy and never idle-evicted, so a page can't vanish mid user-takeover.
+  setWorkdirPinnedCheck(check: (workdir: string) => boolean): void {
+    this.isWorkdirPinned = check;
+  }
+
+  // Fired whenever a client is disposed (idle-evict, workdir removal, shutdown).
+  // This is the authoritative teardown signal for view recycling: the disposing
+  // flag suppresses the server-exit event on these paths, so a server-exit
+  // listener alone would miss them.
+  setClientTorndownHandler(handler: (workdir: string) => void): void {
+    this.clientTorndownHandler = handler;
+  }
 
   request<T>(method: string, params?: unknown): Promise<T> {
     return this.client().request<T>(method, params);
@@ -84,6 +103,16 @@ export class AppServerClientPool {
       return Promise.reject(new Error("activity workspace is no longer connected"));
     }
     return client.request<T>(method, params);
+  }
+
+  runningThreadCwds(): string[] {
+    const cwds = new Set<string>();
+    for (const client of this.clients.values()) {
+      for (const cwd of client.runningThreadCwds()) {
+        cwds.add(cwd);
+      }
+    }
+    return [...cwds];
   }
 
   respondToServerRequest(id: string, result: unknown): void {
@@ -107,6 +136,7 @@ export class AppServerClientPool {
   shutdown(): void {
     for (const client of this.clients.values()) {
       client.dispose();
+      this.clientTorndownHandler?.(client.workdir);
     }
     this.clients.clear();
     this.serverRequestRoutes.clear();
@@ -184,7 +214,12 @@ export class AppServerClientPool {
     }
     const activeWorkdir = this.getActiveWorkdir();
     const idleClients = [...this.clients.values()]
-      .filter((client) => client.workdir !== activeWorkdir && !client.isBusy())
+      .filter(
+        (client) =>
+          client.workdir !== activeWorkdir &&
+          !client.isBusy() &&
+          !this.isWorkdirPinned?.(client.workdir),
+      )
       .sort((a, b) => a.lastUsed() - b.lastUsed());
     for (const client of idleClients) {
       if (this.clients.size <= MAX_APP_SERVER_CLIENTS) {
@@ -198,6 +233,9 @@ export class AppServerClientPool {
     this.clients.delete(client.workdir);
     this.dropServerRequestRoutesForClient(client);
     client.dispose();
+    // After the routes are dropped so any view-recycle broadcast the handler
+    // fires can't collide with an in-flight reply for this client.
+    this.clientTorndownHandler?.(client.workdir);
   }
 
   private dropServerRequestRoutesForClient(client: AppServerClient): void {
@@ -212,6 +250,7 @@ export class AppServerClientPool {
 export class AppServerClient {
   private child: ChildProcessWithoutNullStreams | null = null;
   private pending = new Map<string, PendingRequest>();
+  private threadCwdsByID = new Map<string, string>();
   private runningThreadIDs = new Set<string>();
   private nextRequestID = 1;
   private stdoutBuffer = "";
@@ -301,6 +340,36 @@ export class AppServerClient {
 
   isBusy(): boolean {
     return this.pending.size > 0 || this.runningThreadIDs.size > 0;
+  }
+
+  runningThreadCwds(): string[] {
+    const cwds = new Set(
+      [...this.runningThreadIDs].map(
+        (threadID) => this.threadCwdsByID.get(threadID) ?? this.workdir,
+      ),
+    );
+    for (const pending of this.pending.values()) {
+      if (
+        pending.method !== "turn/start" &&
+        pending.method !== "thread/start" &&
+        pending.method !== "thread/resume" &&
+        pending.method !== "thread/fork" &&
+        pending.method !== "thread/edit-message"
+      ) {
+        continue;
+      }
+      const params = isRecord(pending.params) ? pending.params : undefined;
+      const threadID =
+        typeof params?.thread_id === "string"
+          ? params.thread_id
+          : typeof params?.session_id === "string"
+            ? params.session_id
+            : undefined;
+      cwds.add(
+        (threadID && this.threadCwdsByID.get(threadID)) ?? this.workdir,
+      );
+    }
+    return [...cwds];
   }
 
   private ensureStarted(): void {
@@ -453,6 +522,7 @@ export class AppServerClient {
     this.stdoutBuffer = "";
     this.lastStderr = "";
     this.pending.clear();
+    this.threadCwdsByID.clear();
     this.runningThreadIDs.clear();
 
     if (terminateChild && !child.killed) {
@@ -607,6 +677,9 @@ export class AppServerClient {
   private updateRunningFromThread(value: unknown): void {
     if (!isRecord(value) || typeof value.id !== "string") {
       return;
+    }
+    if (typeof value.cwd === "string" && value.cwd !== "") {
+      this.threadCwdsByID.set(value.id, value.cwd);
     }
     if (value.status === "in_progress") {
       this.runningThreadIDs.add(value.id);
