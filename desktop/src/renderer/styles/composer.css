@@ -1571,6 +1571,14 @@
   color: var(--paper);
 }
 
+/* Solid stop glyph: a filled square reads as "stop" better than an outline,
+ * and the extra ink weight means it can sit smaller inside the 28px circle. */
+.composer-stop-button svg {
+  width: 11px;
+  height: 11px;
+  fill: currentColor;
+}
+
 .hero-project-pill-anchor {
   /* Shrink-to-fit: width follows content (icon + label + chevron).
    * Caps at 220px so a very long project name can't push the other
