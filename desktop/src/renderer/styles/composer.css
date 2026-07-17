@@ -1954,7 +1954,7 @@
 }
 
 .composer-plus-menu {
-  width: 320px;
+  width: 100%;
   max-height: min(420px, calc(100vh - 180px));
   gap: 1px;
   padding: 7px;

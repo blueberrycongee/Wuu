@@ -920,6 +920,19 @@ describe("Composer send control", () => {
     expect(container.querySelector(".composer-attachment-button")).toBeNull();
     expect(container.querySelector(".composer-slash-button")).toBeNull();
 
+    const shell = container.querySelector<HTMLElement>(".composer-shell");
+    vi.spyOn(shell as HTMLElement, "getBoundingClientRect").mockReturnValue({
+      bottom: 580,
+      height: 100,
+      left: 80,
+      right: 720,
+      top: 480,
+      width: 640,
+      x: 80,
+      y: 480,
+      toJSON: () => ({}),
+    });
+
     const fileInput = container.querySelector<HTMLInputElement>(".composer-file-input");
     expect(fileInput).not.toBeNull();
     const inputClickSpy = vi.spyOn(fileInput as HTMLInputElement, "click").mockImplementation(() => {});
@@ -929,7 +942,11 @@ describe("Composer send control", () => {
     });
     expect(plusButton?.getAttribute("aria-expanded")).toBe("true");
 
-    const menu = document.body.querySelector('[data-floating-menu-owner="composer-plus"]');
+    const menu = document.body.querySelector<HTMLElement>('[data-floating-menu-owner="composer-plus"]');
+    expect(menu?.style.width).toBe("640px");
+    expect(menu?.style.left).toBe("80px");
+    expect(menu?.style.bottom).toBe(`${window.innerHeight - 480 + 8}px`);
+    expect(composerCSS).toMatch(/\.composer-plus-menu\s*{[^}]*width:\s*100%;/s);
     expect(menu?.querySelectorAll(".composer-plus-menu-section")).toHaveLength(2);
     expect(menu?.textContent).toContain("添加");
     expect(menu?.textContent).toContain("添加附件");

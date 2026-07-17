@@ -1111,8 +1111,10 @@ export function Composer({
                 {textOnly ? null : (
                   <>
                     <ComposerPlusButton
+                      variant={variant}
                       disabled={readOnly}
                       commands={slashCommands}
+                      menuAnchorRef={composerShellRef}
                       onAddAttachment={() => attachmentInputRef.current?.click()}
                       onSelectCommand={(command) => applySlashCommand(command, undefined)}
                     />

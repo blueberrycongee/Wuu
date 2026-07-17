@@ -489,18 +489,22 @@ function normalizedVariantForRuntimeModel(
 // Open state is local — same pattern as ChatFocusChip — so the host's
 // floating-menu registry needs no wiring for it.
 export function ComposerPlusButton({
+  variant,
   disabled,
   commands,
+  menuAnchorRef,
   onAddAttachment,
   onSelectCommand
 }: {
+  variant: ComposerVariant;
   disabled: boolean;
   commands: ComposerSlashCommand[];
+  menuAnchorRef: RefObject<HTMLElement | null>;
   onAddAttachment: () => void;
   onSelectCommand: (command: ComposerSlashCommand) => void;
 }): JSX.Element {
   const { t } = useI18n();
-  const anchorRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
@@ -512,7 +516,7 @@ export function ComposerPlusButton({
       if (!(target instanceof Node)) {
         return;
       }
-      if (anchorRef.current?.contains(target)) {
+      if (triggerRef.current?.contains(target)) {
         return;
       }
       if (isInsideFloatingMenu(target, "composer-plus")) {
@@ -534,7 +538,7 @@ export function ComposerPlusButton({
   }, [open]);
 
   return (
-    <div className="composer-plus-menu-anchor" ref={anchorRef}>
+    <div className="composer-plus-menu-anchor" ref={triggerRef}>
       <button
         className="composer-tool-button composer-plus-button"
         type="button"
@@ -549,11 +553,13 @@ export function ComposerPlusButton({
       </button>
       {open ? (
         <FloatingMenuPortal
-          anchorRef={anchorRef}
+          anchorRef={menuAnchorRef}
           owner="composer-plus"
           placement="above"
           align="left"
+          offset={variant === "hero" ? 10 : 8}
           width={320}
+          matchAnchorWidth
         >
           <div className="composer-context-menu composer-plus-menu" role="menu" aria-label={t("composer.plusMenu")}>
             <div className="composer-plus-menu-section" role="presentation">{t("composer.plusSectionAdd")}</div>
