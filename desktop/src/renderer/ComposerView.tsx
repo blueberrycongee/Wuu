@@ -20,7 +20,6 @@ import {
   Hammer,
   LifeBuoy,
   MessageSquarePlus,
-  Paperclip,
   PieChart,
   Puzzle,
   RotateCcw,
@@ -28,7 +27,6 @@ import {
   Search,
   Send,
   Settings,
-  Slash,
   Square,
   Terminal,
   X,
@@ -81,6 +79,7 @@ import { ComposerGoalStrip } from "./ComposerGoalStrip";
 import {
   AccessMenu,
   ChatFocusChip,
+  ComposerPlusButton,
   ProjectPickerMenu,
   RuntimePicker,
   permissionModeFromSummary,
@@ -1142,26 +1141,11 @@ export function Composer({
                 ) : null}
                 {textOnly ? null : (
                   <>
-                    <button
-                      className="composer-tool-button composer-attachment-button"
-                      type="button"
-                      aria-label={t("composer.addAttachment")}
-                      title={t("composer.addAttachment")}
+                    <ComposerPlusButton
                       disabled={readOnly}
-                      onClick={() => attachmentInputRef.current?.click()}
-                    >
-                      <Paperclip aria-hidden="true" />
-                    </button>
-                    <button
-                      className="composer-tool-button composer-slash-button"
-                      type="button"
-                      aria-label={t("composer.openSlashCommands")}
-                      title={t("composer.openSlashCommandsHint")}
-                      disabled={readOnly}
-                      onClick={revealSlashCommands}
-                    >
-                      <Slash aria-hidden="true" />
-                    </button>
+                      onAddAttachment={() => attachmentInputRef.current?.click()}
+                      onOpenSlashCommands={revealSlashCommands}
+                    />
                     <div className="permission-menu-anchor" ref={accessMenuRef}>
                       <button
                         className={`permission-chip tone-${permissionOption.chipTone}`}

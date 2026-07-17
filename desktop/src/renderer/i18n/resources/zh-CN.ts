@@ -595,6 +595,7 @@ export const zhCN = {
   "composer.addAttachment": "添加附件",
   "composer.openSlashCommands": "打开斜杠命令",
   "composer.openSlashCommandsHint": "输入 / 打开命令",
+  "composer.plusMenu": "更多操作",
   "composer.permissionMode": "权限模式：{mode}",
   "composer.showCollapsedTextNamed": "在文本框中显示折叠长文本：{title}",
   "composer.showInTextBox": "在文本框中显示",

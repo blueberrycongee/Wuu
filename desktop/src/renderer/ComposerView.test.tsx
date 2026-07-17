@@ -57,7 +57,7 @@ afterEach(() => {
   container.remove();
   document.body
     .querySelectorAll(
-      "[data-floating-menu-owner=\"composer-access\"], [data-floating-menu-owner=\"composer-focus\"]",
+      "[data-floating-menu-owner=\"composer-access\"], [data-floating-menu-owner=\"composer-focus\"], [data-floating-menu-owner=\"composer-plus\"]",
     )
     .forEach((element) => element.remove());
 });
@@ -733,12 +733,16 @@ describe("Composer send control", () => {
   it("places the caret after the slash inserted from the toolbar", async () => {
     renderStatefulComposer({});
 
-    const slashButton = container.querySelector<HTMLButtonElement>(
-      'button[aria-label="打开斜杠命令"]',
-    );
+    const plusButton = container.querySelector<HTMLButtonElement>(".composer-plus-button");
     const textarea = container.querySelector<HTMLTextAreaElement>("textarea");
 
-    act(() => slashButton?.click());
+    act(() => plusButton?.click());
+    const slashItem = Array.from(
+      document.body.querySelectorAll<HTMLButtonElement>(
+        '[data-floating-menu-owner="composer-plus"] button',
+      ),
+    ).find((button) => button.textContent?.includes("打开斜杠命令"));
+    act(() => slashItem?.click());
     await act(async () => nextAnimationFrame());
 
     expect(textarea?.value).toBe("/");
@@ -841,7 +845,7 @@ describe("Composer send control", () => {
       container.querySelector<HTMLButtonElement>("button[aria-label=\"打开项目\"]"),
     ).toBeNull();
     // The composer itself still renders — only the workspace/cwd control is gone.
-    expect(container.querySelector(".composer-attachment-button")).not.toBeNull();
+    expect(container.querySelector(".composer-plus-button")).not.toBeNull();
   });
 
   it("uses the active project name in the hero project selector", () => {
@@ -895,12 +899,60 @@ describe("Composer send control", () => {
     // A sent project/对话 conversation (dock variant) locks its cwd, so no
     // project/cwd control renders in the leading slot anymore.
     expect(leftGroup?.querySelector(".composer-project-control")).toBeNull();
-    expect(leftGroup?.querySelector(".composer-attachment-button")).not.toBeNull();
-    expect(leftGroup?.querySelector(".composer-slash-button")).not.toBeNull();
+    expect(leftGroup?.querySelector(".composer-plus-button")).not.toBeNull();
     expect(leftGroup?.querySelector(".permission-menu-anchor")).not.toBeNull();
     expect(rightGroup?.querySelector(".composer-token-gauge")).not.toBeNull();
     expect(rightGroup?.querySelector(".codex-runtime-anchor")).not.toBeNull();
     expect(rightGroup?.contains(sendButton)).toBe(true);
+  });
+
+  it("folds attachment and slash commands into the plus menu", () => {
+    renderComposer({ variant: "dock", prompt: "follow up" });
+
+    const plusButton = container.querySelector<HTMLButtonElement>(".composer-plus-button");
+    expect(plusButton).not.toBeNull();
+    expect(container.querySelector(".composer-attachment-button")).toBeNull();
+    expect(container.querySelector(".composer-slash-button")).toBeNull();
+
+    const fileInput = container.querySelector<HTMLInputElement>(".composer-file-input");
+    expect(fileInput).not.toBeNull();
+    const inputClickSpy = vi.spyOn(fileInput as HTMLInputElement, "click").mockImplementation(() => {});
+
+    act(() => {
+      plusButton?.click();
+    });
+    expect(plusButton?.getAttribute("aria-expanded")).toBe("true");
+
+    const menu = document.body.querySelector('[data-floating-menu-owner="composer-plus"]');
+    expect(menu?.textContent).toContain("添加附件");
+    expect(menu?.textContent).toContain("打开斜杠命令");
+
+    const attachmentItem = Array.from(menu?.querySelectorAll("button") ?? []).find(
+      (button) => button.textContent?.includes("添加附件"),
+    );
+    act(() => {
+      attachmentItem?.click();
+    });
+    expect(inputClickSpy).toHaveBeenCalledTimes(1);
+    expect(document.body.querySelector('[data-floating-menu-owner="composer-plus"]')).toBeNull();
+  });
+
+  it("seeds an empty prompt with / from the plus menu slash entry", () => {
+    const setPrompt = vi.fn();
+    renderComposer({ variant: "dock", prompt: "", setPrompt });
+
+    act(() => {
+      container.querySelector<HTMLButtonElement>(".composer-plus-button")?.click();
+    });
+    const slashItem = Array.from(
+      document.body.querySelectorAll('[data-floating-menu-owner="composer-plus"] button'),
+    ).find((button) => button.textContent?.includes("打开斜杠命令"));
+    act(() => {
+      (slashItem as HTMLButtonElement | undefined)?.click();
+    });
+
+    expect(setPrompt).toHaveBeenCalledWith("/");
+    expect(document.body.querySelector('[data-floating-menu-owner="composer-plus"]')).toBeNull();
   });
 
   it("keeps runtime controls separate from composer send state", () => {
@@ -971,18 +1023,15 @@ describe("Composer send control", () => {
     const permissionLabelCollapse = responsiveDesignCSS.indexOf("@container composer-toolbar (max-width: 620px)");
     const gaugeCollapse = responsiveDesignCSS.indexOf("@container composer-toolbar (max-width: 560px)");
     const runtimeCollapse = responsiveDesignCSS.indexOf("@container composer-toolbar (max-width: 500px)");
-    const slashCollapse = responsiveDesignCSS.indexOf("@container composer-toolbar (max-width: 440px)");
     const projectCollapse = responsiveDesignCSS.indexOf("@container composer-toolbar (max-width: 360px)");
 
     expect(speedLabelCollapse).toBeGreaterThan(-1);
     expect(permissionLabelCollapse).toBeGreaterThan(speedLabelCollapse);
     expect(gaugeCollapse).toBeGreaterThan(permissionLabelCollapse);
     expect(runtimeCollapse).toBeGreaterThan(gaugeCollapse);
-    expect(slashCollapse).toBeGreaterThan(runtimeCollapse);
-    expect(projectCollapse).toBeGreaterThan(slashCollapse);
+    expect(projectCollapse).toBeGreaterThan(runtimeCollapse);
     expect(responsiveDesignCSS).toContain(".composer-token-gauge-label");
     expect(responsiveDesignCSS).toContain(".codex-runtime-anchor");
-    expect(responsiveDesignCSS).toContain(".composer-slash-button");
     expect(responsiveDesignCSS).toContain(".composer-project-control");
   });
 

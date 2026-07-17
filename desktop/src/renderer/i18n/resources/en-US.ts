@@ -597,6 +597,7 @@ export const enUS = {
   "composer.addAttachment": "Add attachment",
   "composer.openSlashCommands": "Open slash commands",
   "composer.openSlashCommandsHint": "Type / to open commands",
+  "composer.plusMenu": "More actions",
   "composer.permissionMode": "Permission mode: {mode}",
   "composer.showCollapsedTextNamed": "Show collapsed long text in the text box: {title}",
   "composer.showInTextBox": "Show in text box",

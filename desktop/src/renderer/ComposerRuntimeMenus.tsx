@@ -11,8 +11,11 @@ import {
   GitBranch,
   Home,
   LayoutGrid,
+  Paperclip,
+  Plus,
   Search,
   Shield,
+  Slash,
   TriangleAlert,
   type LucideIcon
 } from "lucide-react";
@@ -456,6 +459,105 @@ function normalizedVariantForRuntimeModel(
     return providerModel.default_effort;
   }
   return "";
+}
+
+// Composer-bar "+" menu: folds attachment and slash-command entries (and
+// future plugin actions) into a single utility trigger next to the
+// permission chip. Open state is local — same pattern as ChatFocusChip — so
+// the host's floating-menu registry needs no wiring for it.
+export function ComposerPlusButton({
+  disabled,
+  onAddAttachment,
+  onOpenSlashCommands
+}: {
+  disabled: boolean;
+  onAddAttachment: () => void;
+  onOpenSlashCommands: () => void;
+}): JSX.Element {
+  const { t } = useI18n();
+  const anchorRef = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    if (!open) {
+      return undefined;
+    }
+    function handlePointerDown(event: PointerEvent): void {
+      const target = event.target;
+      if (!(target instanceof Node)) {
+        return;
+      }
+      if (anchorRef.current?.contains(target)) {
+        return;
+      }
+      if (isInsideFloatingMenu(target, "composer-plus")) {
+        return;
+      }
+      setOpen(false);
+    }
+    function handleKeyDown(event: KeyboardEvent): void {
+      if (event.key === "Escape") {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open]);
+
+  return (
+    <div className="composer-plus-menu-anchor" ref={anchorRef}>
+      <button
+        className="composer-tool-button composer-plus-button"
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={t("composer.plusMenu")}
+        title={t("composer.plusMenu")}
+        disabled={disabled}
+        onClick={() => setOpen((current) => !current)}
+      >
+        <Plus aria-hidden="true" />
+      </button>
+      {open ? (
+        <FloatingMenuPortal
+          anchorRef={anchorRef}
+          owner="composer-plus"
+          placement="above"
+          align="left"
+          width={200}
+        >
+          <div className="composer-context-menu composer-plus-menu" role="menu">
+            <button
+              role="menuitem"
+              type="button"
+              onClick={() => {
+                setOpen(false);
+                onAddAttachment();
+              }}
+            >
+              <Paperclip className="icon-lg" />
+              <span>{t("composer.addAttachment")}</span>
+            </button>
+            <button
+              role="menuitem"
+              type="button"
+              onClick={() => {
+                setOpen(false);
+                onOpenSlashCommands();
+              }}
+            >
+              <Slash className="icon-lg" />
+              <span>{t("composer.openSlashCommands")}</span>
+            </button>
+          </div>
+        </FloatingMenuPortal>
+      ) : null}
+    </div>
+  );
 }
 
 export function AccessMenu({
