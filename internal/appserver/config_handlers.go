@@ -1487,6 +1487,7 @@ func (s *Server) currentWorkerManagerOptions() subagent.ManagerOptions {
 		temperature = s.rt.StreamRunner.Temperature
 	}
 	return subagent.ManagerOptions{
+		DefaultProviderName:     workerProviderName(s.rt),
 		DefaultEffort:           s.rt.ModelRoles.Worker.LegacyEffort,
 		DefaultProviderOptions:  s.rt.ModelRoles.Worker.ProviderOptions,
 		ContextWindowOverride:   s.rt.WorkerModelBudget.ContextWindowTokens,

@@ -20,7 +20,12 @@ import (
 // Manager registers and orchestrates sub-agents. It is safe for
 // concurrent use from multiple goroutines.
 type Manager struct {
-	client                 providers.StreamClient
+	client providers.StreamClient
+	// defaultProviderName names the provider client belongs to. The pair is
+	// updated together so the provenance stamped onto worker-produced native
+	// state (Responses item ids, reasoning signatures) always matches the
+	// client that produced it.
+	defaultProviderName    string
 	defaultModel           string
 	defaultEffort          string
 	defaultProviderOptions map[string]any
@@ -51,6 +56,11 @@ type Manager struct {
 }
 
 type ManagerOptions struct {
+	// DefaultProviderName names the provider of the client passed alongside
+	// these options. It is stamped as ProviderName on every worker
+	// StreamRunner that uses that client, so persisted native state carries
+	// its provider of origin.
+	DefaultProviderName     string
 	DefaultEffort           string
 	DefaultProviderOptions  map[string]any
 	ContextWindowOverride   int
@@ -69,6 +79,7 @@ type ManagerOptions struct {
 
 type managerDefaults struct {
 	client            providers.StreamClient
+	providerName      string
 	model             string
 	effort            string
 	options           map[string]any
@@ -99,6 +110,7 @@ func NewManager(client providers.StreamClient, defaultModel string) *Manager {
 func NewManagerWithOptions(client providers.StreamClient, defaultModel string, opts ManagerOptions) *Manager {
 	return &Manager{
 		client:                 client,
+		defaultProviderName:    strings.TrimSpace(opts.DefaultProviderName),
 		defaultModel:           defaultModel,
 		defaultEffort:          strings.TrimSpace(opts.DefaultEffort),
 		defaultProviderOptions: provideroptions.Clone(opts.DefaultProviderOptions),
@@ -126,6 +138,9 @@ func (m *Manager) UpdateDefaults(client providers.StreamClient, defaultModel str
 	defer m.mu.Unlock()
 	if client != nil {
 		m.client = client
+		// The provider name pairs with the client; a nil client keeps the
+		// old pair so the two can never disagree.
+		m.defaultProviderName = strings.TrimSpace(opts.DefaultProviderName)
 	}
 	if strings.TrimSpace(defaultModel) != "" {
 		m.defaultModel = strings.TrimSpace(defaultModel)
@@ -147,6 +162,7 @@ func (m *Manager) defaultsSnapshot() managerDefaults {
 	defer m.mu.Unlock()
 	return managerDefaults{
 		client:            m.client,
+		providerName:      m.defaultProviderName,
 		model:             m.defaultModel,
 		effort:            m.defaultEffort,
 		options:           provideroptions.Clone(m.defaultProviderOptions),
@@ -284,8 +300,10 @@ func (m *Manager) Spawn(ctx context.Context, opts SpawnOptions) (*SubAgent, erro
 		return nil, errors.New("no model configured")
 	}
 	client := opts.Client
+	providerName := strings.TrimSpace(opts.ProviderName)
 	if client == nil {
 		client = defaults.client
+		providerName = defaults.providerName
 	}
 	if client == nil {
 		return nil, errors.New("no stream client configured")
@@ -335,6 +353,7 @@ func (m *Manager) Spawn(ctx context.Context, opts SpawnOptions) (*SubAgent, erro
 		maxLifetime:     lifetime,
 		runtimeDefaults: defaults,
 		client:          client,
+		providerName:    providerName,
 		toolLedger:      toolLedger,
 		cancelFunc:      cancel,
 		doneCh:          make(chan struct{}),
@@ -428,6 +447,7 @@ func (m *Manager) runTurn(ctx context.Context, cancel context.CancelFunc, sa *Su
 
 	runner := &agent.StreamRunner{
 		Client:                   sa.client,
+		ProviderName:             sa.providerName,
 		Tools:                    sa.toolkit,
 		ToolLedger:               sa.toolLedger,
 		Model:                    sa.model,
@@ -914,10 +934,13 @@ type RestoreOptions struct {
 	// Client, when non-nil, pins the resumed run to a specific stream
 	// client (e.g. a rebuilt cross-provider client). Nil lets the next
 	// turn fall back to the manager defaults.
-	Client      providers.StreamClient
-	HistoryPath string
-	MaxSteps    int
-	MaxLifetime time.Duration
+	Client providers.StreamClient
+	// ProviderName names the provider Client belongs to. Ignored when
+	// Client is nil (the manager defaults' provider applies instead).
+	ProviderName string
+	HistoryPath  string
+	MaxSteps     int
+	MaxLifetime  time.Duration
 }
 
 // Restore re-registers a dormant sub-agent rebuilt from a snapshot. The
@@ -949,8 +972,10 @@ func (m *Manager) Restore(opts RestoreOptions) (*SubAgent, error) {
 	// sa.client directly, so it must be non-nil.
 	defaults := m.defaultsSnapshot()
 	client := opts.Client
+	providerName := strings.TrimSpace(opts.ProviderName)
 	if client == nil {
 		client = defaults.client
+		providerName = defaults.providerName
 	}
 	var toolLedger *toolledger.Ledger
 	if defaults.toolLedgerFactory != nil {
@@ -1005,6 +1030,7 @@ func (m *Manager) Restore(opts RestoreOptions) (*SubAgent, error) {
 		maxLifetime:     opts.MaxLifetime,
 		runtimeDefaults: defaults,
 		client:          client,
+		providerName:    providerName,
 		toolLedger:      toolLedger,
 		cancelFunc:      func() {},
 		doneCh:          doneCh,

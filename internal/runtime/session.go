@@ -527,6 +527,7 @@ func NewSession(opts Options) (*Session, error) {
 
 		c, cerr := agentcontrol.New(agentcontrol.Config{
 			Client:                         workerClient,
+			ProviderName:                   roleSelections.Worker.Provider,
 			DefaultModel:                   roleSelections.Worker.APIModel,
 			DefaultEffort:                  roleSelections.Worker.LegacyEffort,
 			DefaultOptions:                 modelvariant.CloneOptions(roleSelections.Worker.ProviderOptions),
@@ -1053,8 +1054,12 @@ func (s *Session) NewThreadRuntimeForRoot(sessionID, rootDir string) (*ThreadRun
 
 	if s.Toolkit != nil {
 		workerClient := s.WorkerClient
+		workerClientProvider := strings.TrimSpace(s.ModelRoles.Worker.Provider)
 		if workerClient == nil {
+			// Falling back to the main-thread client means the worker's
+			// provider identity is the main provider, not the worker role's.
 			workerClient = s.StreamRunner.Client
+			workerClientProvider = strings.TrimSpace(s.ProviderName)
 		}
 		if workerClient != nil {
 			var control *agentcontrol.AgentControl
@@ -1090,6 +1095,7 @@ func (s *Session) NewThreadRuntimeForRoot(sessionID, rootDir string) (*ThreadRun
 			)
 			control, controlErr := agentcontrol.New(agentcontrol.Config{
 				Client:                         workerClient,
+				ProviderName:                   workerClientProvider,
 				DefaultModel:                   workerModel,
 				DefaultEffort:                  s.ModelRoles.Worker.LegacyEffort,
 				DefaultOptions:                 modelvariant.CloneOptions(s.ModelRoles.Worker.ProviderOptions),
