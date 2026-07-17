@@ -1562,12 +1562,12 @@
 .composer-stop-button {
                                                                       
                                                                        
-  background: var(--danger);
+  background: var(--ink);
   color: var(--paper);
 }
 
 .composer-stop-button:hover {
-  background: var(--danger);
+  background: var(--ink-strong);
   color: var(--paper);
 }
 
