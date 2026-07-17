@@ -2142,7 +2142,7 @@ func (s *Server) runTurnWithRequestContext(ctx context.Context, th *threadState,
 		return
 	}
 	if !turnRuntime.CompactOnly {
-		_ = s.startBackground(func() { s.generateThreadTitle(th.ID, titleHistory) })
+		_ = s.startBackground(func() { s.generateThreadTitle(th.ID, titleHistory, threadRuntime) })
 	}
 	s.kickAgentCompletionDrain(th.ID)
 	s.kickQueuedTurnDrain(th.ID)
