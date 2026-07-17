@@ -2034,7 +2034,10 @@ describe("Composer expand button", () => {
       /\.composer-bar\s*\{[^}]*height:\s*40px[^}]*padding:\s*0\s+8px\s+4px\s+calc\(var\(--composer-text-start\)\s*-\s*var\(--composer-control-icon-inset\)\)/,
     );
     expect(composerCSS).toMatch(
-      /\.composer-send-button,\s*\n\.composer-stop-button\s*\{[^}]*width:\s*28px[^}]*height:\s*28px/,
+      /\.composer-send-button,\s*\n\.composer-stop-button\s*\{[^}]*width:\s*28px[^}]*height:\s*28px[^}]*background:\s*var\(--wuu-accent\)[^}]*color:\s*#fff/,
+    );
+    expect(composerCSS).toMatch(
+      /\.composer-send-button:hover,\s*\n\.composer-stop-button:hover\s*\{[^}]*background:\s*var\(--wuu-accent-press\)/,
     );
     expect(composerCSS).toMatch(
       /\.composer-send-button\s+svg\s*\{[^}]*width:\s*14px[^}]*height:\s*14px/,

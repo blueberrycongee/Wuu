@@ -1515,9 +1515,6 @@
 .composer-stop-button {
   width: 28px;
   height: 28px;
-}
-
-.composer-send-button {
   background: var(--wuu-accent);
   color: #fff;
 }
@@ -1545,7 +1542,8 @@
   transform-origin: center;
 }
 
-.composer-send-button:hover {
+.composer-send-button:hover,
+.composer-stop-button:hover {
   background: var(--wuu-accent-press);
 }
 
@@ -1557,18 +1555,6 @@
 
 .composer-send-button:disabled:hover {
   background: var(--surface-4);
-}
-
-.composer-stop-button {
-                                                                      
-                                                                       
-  background: var(--ink);
-  color: var(--paper);
-}
-
-.composer-stop-button:hover {
-  background: var(--ink-strong);
-  color: var(--paper);
 }
 
 /* Solid stop glyph: a filled square reads as "stop" better than an outline,
