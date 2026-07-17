@@ -3,10 +3,12 @@ import type {
   RuntimeAdvancedSettingsUpdate,
   RuntimeConnectionUpdate,
   RuntimeGeneralSettingsUpdate,
+  Thread,
 } from "../shared/protocol";
 import {
   activeThreadForState,
   threadForPane,
+  updateThreadByID,
   type AppState,
   type ConversationPaneID,
 } from "./AppState";
@@ -66,25 +68,48 @@ export type RuntimeSettingsActions = {
   interruptPane: (pane: ConversationPaneID) => Promise<void>;
 };
 
+type RuntimeSelectionUpdate = {
+  provider?: string;
+  model?: string;
+  effort?: string;
+  connection?: RuntimeConnectionUpdate;
+  variant?: string;
+  permissionMode?: string;
+};
+
 export function createRuntimeSettingsActions(
   deps: RuntimeSettingsActionsDeps,
 ): RuntimeSettingsActions {
-  async function updateRuntimeSettings(
-    provider: string,
-    model: string,
-    effort?: string,
-    connection?: RuntimeConnectionUpdate,
-    variant?: string,
-    permissionMode?: string,
+  // Sends only the fields the caller explicitly changed. The server inherits
+  // omitted provider/model/variant/effort/permission from the target thread
+  // and leaves the workspace defaults for them untouched, so forwarding
+  // unchanged thread values here would rewrite the workspace defaults.
+  async function sendRuntimeSelection(
+    update: RuntimeSelectionUpdate,
   ): Promise<void> {
     const state = deps.getAppState();
+    if (!state.initialized) {
+      return;
+    }
     const targetThread = activeThreadForState(state);
-    const nextProvider = provider.trim();
-    const nextModel = model.trim();
-    const nextEffort = effort === undefined ? undefined : effort.trim();
-    const nextVariant = variant === undefined ? undefined : variant.trim();
+    let nextProvider = update.provider?.trim() || undefined;
+    let nextModel = update.model?.trim() || undefined;
+    const nextEffort =
+      update.effort === undefined ? undefined : update.effort.trim();
+    // An explicit empty variant would clear the stored reasoning effort, so
+    // pass-through empties are treated as omitted.
+    const nextVariant = update.variant?.trim() || undefined;
     const nextPermissionMode =
-      permissionMode === undefined ? undefined : permissionMode.trim();
+      update.permissionMode === undefined
+        ? undefined
+        : update.permissionMode.trim();
+    if (!targetThread) {
+      // Workspace-scoped update: the server requires an explicit model when
+      // no thread is targeted.
+      nextProvider = nextProvider ?? state.initialized.provider;
+      nextModel = nextModel ?? state.initialized.model;
+    }
+    const connection = update.connection;
     const nextConnection =
       connection === undefined
         ? undefined
@@ -103,7 +128,7 @@ export function createRuntimeSettingsActions(
               : {}),
             ...(connection.create_provider ? { create_provider: true } : {}),
           };
-    const currentProvider = state.initialized?.providers?.find(
+    const currentProvider = state.initialized.providers?.find(
       (item) => item.name === nextProvider,
     );
     const connectionChanged =
@@ -112,25 +137,34 @@ export function createRuntimeSettingsActions(
       Boolean(nextConnection?.auth_token) ||
       (nextConnection?.base_url !== undefined &&
         nextConnection.base_url !== (currentProvider?.base_url ?? ""));
-    const currentPermissionMode =
-      targetThread?.permission_mode || state.initialized?.permissions?.mode || "";
+    const providerChanged =
+      nextProvider !== undefined &&
+      nextProvider !==
+        (targetThread?.model_provider ?? state.initialized.provider);
+    const modelChanged =
+      nextModel !== undefined &&
+      nextModel !== (targetThread?.model ?? state.initialized.model);
+    const effortChanged =
+      nextEffort !== undefined &&
+      nextEffort !==
+        (targetThread?.model_effort ?? state.initialized.effort ?? "");
+    const variantChanged =
+      nextVariant !== undefined &&
+      nextVariant !==
+        (targetThread?.model_variant ?? state.initialized.variant ?? "");
     const permissionModeChanged =
       nextPermissionMode !== undefined &&
-      nextPermissionMode !== currentPermissionMode;
+      nextPermissionMode !==
+        (targetThread?.permission_mode ||
+          state.initialized.permissions?.mode ||
+          "");
     if (
-      !nextProvider ||
-      !nextModel ||
-      !state.initialized ||
-      (nextProvider === (targetThread?.model_provider ?? state.initialized.provider) &&
-        nextModel === (targetThread?.model ?? state.initialized.model) &&
-        (nextEffort === undefined ||
-          nextEffort ===
-            (targetThread?.model_effort ?? state.initialized.effort ?? "")) &&
-        (nextVariant === undefined ||
-          nextVariant ===
-            (targetThread?.model_variant ?? state.initialized.variant ?? "")) &&
-        !connectionChanged &&
-        !permissionModeChanged)
+      !providerChanged &&
+      !modelChanged &&
+      !effortChanged &&
+      !variantChanged &&
+      !connectionChanged &&
+      !permissionModeChanged
     ) {
       return;
     }
@@ -145,6 +179,8 @@ export function createRuntimeSettingsActions(
         targetThread?.id,
       );
       deps.setAppState((current) => {
+        // The result is workspace-effective, so initialized takes it
+        // wholesale.
         const initialized = current.initialized
           ? {
               ...current.initialized,
@@ -162,53 +198,32 @@ export function createRuntimeSettingsActions(
                 current.initialized.advanced_settings,
             }
           : current.initialized;
+        // Optimistic thread patch limited to the fields this call explicitly
+        // changed; the server's thread/updated snapshot stays the authority
+        // for resolved values.
+        const threadPatch: Partial<Thread> = {
+          ...(nextProvider === undefined
+            ? {}
+            : { model_provider: updated.provider }),
+          ...(nextModel === undefined ? {} : { model: updated.model }),
+          ...(nextVariant === undefined && nextEffort === undefined
+            ? {}
+            : {
+                model_variant: nextVariant ?? nextEffort ?? "",
+                model_effort: nextEffort ?? "",
+              }),
+          ...(nextPermissionMode === undefined
+            ? {}
+            : { permission_mode: nextPermissionMode }),
+        };
+        const next = updateThreadByID(
+          { ...current, initialized },
+          targetThread?.id,
+          (thread) => ({ ...thread, ...threadPatch }),
+        );
         return {
-          ...current,
-          initialized,
-          thread:
-            targetThread && current.thread?.id === targetThread.id
-              ? {
-                  ...current.thread,
-                  model_provider: updated.provider,
-                  model: updated.model,
-                  model_variant: updated.variant ?? "",
-                  model_effort: updated.variant ? "" : (updated.effort ?? ""),
-                  permission_mode:
-                    nextPermissionMode ??
-                    current.thread.permission_mode ??
-                    updated.permissions?.mode,
-                }
-              : current.thread,
-          secondaryThread:
-            targetThread && current.secondaryThread?.id === targetThread.id
-              ? {
-                  ...current.secondaryThread,
-                  model_provider: updated.provider,
-                  model: updated.model,
-                  model_variant: updated.variant ?? "",
-                  model_effort: updated.variant ? "" : (updated.effort ?? ""),
-                  permission_mode:
-                    nextPermissionMode ??
-                    current.secondaryThread.permission_mode ??
-                    updated.permissions?.mode,
-                }
-              : current.secondaryThread,
-          threads: current.threads.map((thread) =>
-            thread.id === targetThread?.id
-              ? {
-                  ...thread,
-                  model_provider: updated.provider,
-                  model: updated.model,
-                  model_variant: updated.variant ?? "",
-                  model_effort: updated.variant ? "" : (updated.effort ?? ""),
-                  permission_mode:
-                    nextPermissionMode ??
-                    thread.permission_mode ??
-                    updated.permissions?.mode,
-                }
-              : thread,
-          ),
-          status: current.status === "ready" ? current.status : "ready",
+          ...next,
+          status: next.status === "ready" ? next.status : "ready",
         };
       });
     } catch (error) {
@@ -221,6 +236,29 @@ export function createRuntimeSettingsActions(
       }));
       throw error;
     }
+  }
+
+  async function updateRuntimeSettings(
+    provider: string,
+    model: string,
+    effort?: string,
+    connection?: RuntimeConnectionUpdate,
+    variant?: string,
+    permissionMode?: string,
+  ): Promise<void> {
+    const nextProvider = provider.trim();
+    const nextModel = model.trim();
+    if (!nextProvider || !nextModel) {
+      return;
+    }
+    await sendRuntimeSelection({
+      provider: nextProvider,
+      model: nextModel,
+      effort,
+      connection,
+      variant,
+      permissionMode,
+    });
   }
 
   async function updateUltraMode(enabled: boolean): Promise<void> {
@@ -447,40 +485,35 @@ export function createRuntimeSettingsActions(
     if (!deps.getAppState().initialized || deps.getViewContextSwitchPending()) {
       return;
     }
-    await updateRuntimeSettings(provider, model, undefined, undefined, variant);
+    try {
+      await sendRuntimeSelection({ provider, model, variant });
+    } catch {
+      // Failure already surfaced through the status line.
+    }
     deps.setCodexRuntimeMenu(null);
   }
 
   async function selectRuntimeEffort(nextVariant: string): Promise<void> {
-    const state = deps.getAppState();
-    if (!state.initialized || deps.getViewContextSwitchPending()) {
+    if (!deps.getAppState().initialized || deps.getViewContextSwitchPending()) {
       return;
     }
-    const targetThread = activeThreadForState(state);
-    await updateRuntimeSettings(
-      targetThread?.model_provider ?? state.initialized.provider,
-      targetThread?.model ?? state.initialized.model,
-      undefined,
-      undefined,
-      nextVariant,
-    );
+    try {
+      await sendRuntimeSelection({ variant: nextVariant });
+    } catch {
+      // Failure already surfaced through the status line.
+    }
     deps.setCodexRuntimeMenu(null);
   }
 
   async function selectPermissionMode(mode: PermissionMode): Promise<void> {
-    const state = deps.getAppState();
-    if (!state.initialized || deps.getViewContextSwitchPending()) {
+    if (!deps.getAppState().initialized || deps.getViewContextSwitchPending()) {
       return;
     }
-    const targetThread = activeThreadForState(state);
-    await updateRuntimeSettings(
-      targetThread?.model_provider ?? state.initialized.provider,
-      targetThread?.model ?? state.initialized.model,
-      undefined,
-      undefined,
-      targetThread?.model_variant ?? state.initialized.variant,
-      mode,
-    );
+    try {
+      await sendRuntimeSelection({ permissionMode: mode });
+    } catch {
+      // Failure already surfaced through the status line.
+    }
     deps.setAccessMenuOpen(false);
   }
 

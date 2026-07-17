@@ -403,14 +403,24 @@ describe("createRuntimeSettingsActions", () => {
     await harness.actions.selectRuntimeEffort("high");
 
     expect(api.updateRuntimeSettings).toHaveBeenCalledWith(
-      "anthropic",
-      "claude-sonnet-4-6",
+      undefined,
+      undefined,
       undefined,
       undefined,
       "high",
       undefined,
       "thread-2",
     );
+    // Only the effort click is stamped on the thread; the workspace-effective
+    // result must not overwrite the thread's pinned provider/model.
+    expect(harness.getAppState().secondaryThread?.model_provider).toBe(
+      "anthropic",
+    );
+    expect(harness.getAppState().secondaryThread?.model).toBe(
+      "claude-sonnet-4-6",
+    );
+    expect(harness.getAppState().secondaryThread?.model_variant).toBe("high");
+    expect(harness.getAppState().initialized?.model).toBe("gpt-5.1");
   });
 
   it("commits Ultra state only after the app server confirms it", async () => {
@@ -503,15 +513,111 @@ describe("createRuntimeSettingsActions", () => {
     await harness.actions.selectPermissionMode("read_only");
 
     expect(api.updateRuntimeSettings).toHaveBeenCalledWith(
-      "codex",
-      "gpt-5",
       undefined,
       undefined,
-      "medium",
+      undefined,
+      undefined,
+      undefined,
       "read_only",
       "thread-1",
     );
     expect(harness.getAppState().thread?.permission_mode).toBe("read_only");
+    expect(harness.getRuntimeMenus().accessMenuOpen).toBe(false);
+  });
+
+  it("keeps thread and workspace efforts intact on a permission-only click", async () => {
+    const api = installWuuApi();
+    // Permission-only updates leave the workspace selection untouched, so the
+    // workspace-effective result echoes the current defaults.
+    api.updateRuntimeSettings.mockResolvedValue({
+      provider: "codex",
+      model: "gpt-5",
+      effort: "medium",
+      variant: "medium",
+      permissions: { mode: "read_only" },
+    });
+    const primary = {
+      ...thread("thread-1"),
+      model_provider: "anthropic",
+      model: "claude-sonnet-4-6",
+      model_variant: "low",
+      model_effort: "low",
+    };
+    const harness = buildActions({
+      initial: {
+        ...initialState,
+        initialized: initialized(),
+        thread: primary,
+        threads: [primary],
+        status: "ready",
+      },
+    });
+
+    await harness.actions.selectPermissionMode("read_only");
+
+    expect(api.updateRuntimeSettings).toHaveBeenCalledWith(
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      "read_only",
+      "thread-1",
+    );
+    expect(harness.getAppState().thread?.model_provider).toBe("anthropic");
+    expect(harness.getAppState().thread?.model).toBe("claude-sonnet-4-6");
+    expect(harness.getAppState().thread?.model_variant).toBe("low");
+    expect(harness.getAppState().thread?.model_effort).toBe("low");
+    expect(harness.getAppState().thread?.permission_mode).toBe("read_only");
+    expect(harness.getAppState().initialized?.variant).toBe("medium");
+    expect(harness.getAppState().initialized?.effort).toBe("medium");
+    expect(harness.getAppState().initialized?.permissions?.mode).toBe(
+      "read_only",
+    );
+  });
+
+  it("does not swallow a permission click that matches the workspace default on a diverged thread", async () => {
+    const api = installWuuApi();
+    const primary = { ...thread("thread-1"), permission_mode: "unconfined" };
+    const harness = buildActions({
+      initial: {
+        ...initialState,
+        initialized: initialized({ permissions: { mode: "standard" } }),
+        thread: primary,
+        threads: [primary],
+        status: "ready",
+      },
+    });
+
+    await harness.actions.selectPermissionMode("unconfined");
+    expect(api.updateRuntimeSettings).not.toHaveBeenCalled();
+
+    await harness.actions.selectPermissionMode("standard");
+    expect(api.updateRuntimeSettings).toHaveBeenCalledWith(
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      "standard",
+      "thread-1",
+    );
+  });
+
+  it("surfaces permission update failures via status without rejecting", async () => {
+    const api = installWuuApi();
+    api.updateRuntimeSettings.mockRejectedValueOnce(
+      new Error("cannot change the model while a turn is running"),
+    );
+    const harness = buildActions();
+
+    await expect(
+      harness.actions.selectPermissionMode("read_only"),
+    ).resolves.toBeUndefined();
+
+    expect(harness.getAppState().status).toBe(
+      "cannot change the model while a turn is running",
+    );
     expect(harness.getRuntimeMenus().accessMenuOpen).toBe(false);
   });
 

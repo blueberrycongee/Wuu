@@ -2130,9 +2130,12 @@ export type WuuDesktopApi = {
   initialize: () => Promise<InitializeResult>;
   getBuildInfo: () => Promise<BuildInfoResult>;
   loadCodexModels: (provider?: string) => Promise<ConfigCodexModelsResult>;
+  // provider/model may be omitted when threadId is set: the server inherits
+  // omitted selection fields from the target thread and leaves the workspace
+  // defaults for them untouched.
   updateRuntimeSettings: (
-    provider: string,
-    model: string,
+    provider?: string,
+    model?: string,
     effort?: string,
     connection?: RuntimeConnectionUpdate,
     variant?: string,
