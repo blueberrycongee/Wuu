@@ -1226,6 +1226,7 @@ func TestServerConfigModelUpdateAllowedWithRunningThread(t *testing.T) {
     "fake-provider": {
       "type": "openai-compatible",
       "base_url": "https://example.test/v1",
+      "api_key": "test-key",
       "model": "fake-model"
     }
   }
