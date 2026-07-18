@@ -697,7 +697,8 @@
   }
 }
 
-.workspace-right-panel.files .workspace-panel-body {
+.workspace-right-panel.files .workspace-panel-body,
+.workspace-right-panel.terminal .workspace-panel-body {
   padding: 0;
 }
 
