@@ -2342,6 +2342,26 @@ func TestStreamRunner_SynchronizeConversationUsageAdoptsExternalCompletedTurn(t 
 	}
 }
 
+func TestStreamRunner_SynchronizeConversationUsageRejectsRepeatedTailAnchor(t *testing.T) {
+	oldHistory := []providers.ChatMessage{userMsg("old"), {Role: "assistant", Content: "Done"}}
+	newHistory := append(providers.CloneChatMessages(oldHistory),
+		userMsg("external ask"),
+		providers.ChatMessage{Role: "assistant", Content: "Done"},
+	)
+	runner := &StreamRunner{}
+	tracker := NewUsageTracker()
+	tracker.RecordResponse(&providers.TokenUsage{InputTokens: 50_000, OutputTokens: 2_000})
+	runner.commitUsageTracker(tracker, oldHistory)
+
+	runner.SynchronizeConversationUsage(newHistory, 9_000)
+
+	got, tracked := runner.prepareUsageTracker(newHistory)
+	breakdown := got.Breakdown()
+	if breakdown.Total() != 9_000 || breakdown.Adjustment != UsageAdjustmentExternalRewriteSeed || tracked != len(newHistory) {
+		t.Fatalf("repeated tail anchor retained stale usage: usage=%+v tracked=%d", breakdown, tracked)
+	}
+}
+
 func TestStreamRunner_SynchronizeConversationUsageDoesNotDoubleCountPendingToolDelta(t *testing.T) {
 	oldHistory := []providers.ChatMessage{userMsg("old"), {Role: "assistant", Content: "old answer"}}
 	toolCall := providers.ChatMessage{Role: "assistant", ToolCalls: []providers.ToolCall{{ID: "call-1", Name: "read_file", Arguments: `{}`}}}

@@ -533,7 +533,7 @@ func (r *StreamRunner) prepareUsageTracker(history []providers.ChatMessage) (*Us
 		// only messages appended after the boundary instead of pessimistically
 		// re-estimating the entire durable transcript.
 		breakdown := tracker.Breakdown()
-		if anchor := findHistoryTailAnchor(history, trackedTailHash); canRebaseUsageAfterTail(history, anchor, breakdown) {
+		if anchor, _ := findHistoryTailAnchor(history, trackedTailHash); canRebaseUsageAfterTail(history, anchor, breakdown) {
 			tracker.SetAdjustment(UsageAdjustmentRequestShapeTailRebase)
 			tracker.RecordPendingMessages(history[anchor+1:])
 			return tracker, len(history)
@@ -596,20 +596,25 @@ func historyTailAnchor(history []providers.ChatMessage) string {
 	return hashMessagesForRequestShape(history[len(history)-1:])
 }
 
-func findHistoryTailAnchor(history []providers.ChatMessage, anchor string) int {
+func findHistoryTailAnchor(history []providers.ChatMessage, anchor string) (int, int) {
 	if anchor == "" {
-		return -1
+		return -1, 0
 	}
+	lastMatch := -1
+	matches := 0
 	for i := len(history) - 1; i >= 0; i-- {
 		if hashMessagesForRequestShape(history[i:i+1]) == anchor {
-			return i
+			if lastMatch < 0 {
+				lastMatch = i
+			}
+			matches++
 		}
 	}
-	return -1
+	return lastMatch, matches
 }
 
 func canRebaseUsageAfterTail(history []providers.ChatMessage, anchor int, usage UsageBreakdown) bool {
-	if usage.LastResponseTotal <= 0 || usage.PendingDelta != 0 || anchor < 0 || anchor >= len(history) {
+	if usage.LastResponseTotal <= 0 || usage.PendingDelta != 0 || anchor < 0 || anchor >= len(history)-1 {
 		return false
 	}
 	for _, msg := range history[anchor+1:] {
@@ -675,7 +680,9 @@ func (r *StreamRunner) SynchronizeConversationUsage(history []providers.ChatMess
 	}
 	if len(history) >= r.trackedHistoryLen {
 		usage := r.conversationUsage.Breakdown()
-		if anchor := findHistoryTailAnchor(history, r.trackedHistoryTailHash); anchor == len(history)-1 && usage.LastResponseTotal > 0 && usage.PendingDelta == 0 {
+		anchor, matches := findHistoryTailAnchor(history, r.trackedHistoryTailHash)
+		persistedMatches := persistedTotal <= 0 || persistedTotal == usage.LastResponseTotal
+		if anchor == len(history)-1 && matches == 1 && persistedMatches && usage.LastResponseTotal > 0 && usage.PendingDelta == 0 {
 			r.conversationUsage.SetAdjustment(UsageAdjustmentRequestShapeTailRebase)
 			r.conversationUsage.RecordPendingMessages(history[anchor+1:])
 			r.trackedHistoryLen = len(history)
