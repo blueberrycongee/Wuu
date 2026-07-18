@@ -129,6 +129,9 @@ export function useConversationScrollState({
   const programmaticScrollTopRef = useRef<number | undefined>(undefined);
   const suppressAutoFollowRearmRef = useRef(false);
   const selectionPausedAutoFollowRef = useRef(false);
+  const pointerScrollGestureRef = useRef<
+    { node: HTMLElement; scrollTop: number; scrollHeight: number } | undefined
+  >(undefined);
   const userScrollAwayIntentRef = useRef(false);
   const userScrollAwayIntentTimerRef = useRef<number | undefined>(undefined);
   const userScrollAwayStartTopRef = useRef<number | undefined>(undefined);
@@ -143,6 +146,15 @@ export function useConversationScrollState({
   > | null>(null);
   const conversationScrollbarHideTimerRef = useRef<number | undefined>(undefined);
   const scrollContentRef = useRef<HTMLDivElement | null>(null);
+
+  const refreshPointerScrollGestureLayout = useCallback((node: HTMLElement): void => {
+    const gesture = pointerScrollGestureRef.current;
+    if (gesture?.node !== node) {
+      return;
+    }
+    gesture.scrollTop = clampScrollTop(node, node.scrollTop);
+    gesture.scrollHeight = node.scrollHeight;
+  }, []);
 
   function conversationViewport(): HTMLElement | undefined {
     if (splitConversation) {
@@ -430,6 +442,16 @@ export function useConversationScrollState({
     // the viewport is still at the latest content. Those must keep
     // auto-follow armed; otherwise the next streaming or settle frame will
     // stop sticking to the bottom even though the user never scrolled away.
+    const pointerGesture = pointerScrollGestureRef.current;
+    if (selectionPausedAutoFollowRef.current && pointerGesture?.node === node) {
+      if (node.scrollHeight !== pointerGesture.scrollHeight) {
+        pointerGesture.scrollTop = clampScrollTop(node, node.scrollTop);
+        pointerGesture.scrollHeight = node.scrollHeight;
+      } else if (node.scrollTop > pointerGesture.scrollTop) {
+        selectionPausedAutoFollowRef.current = false;
+      }
+    }
+
     const previousScrollTop = lastConversationScrollTopRef.current;
     const scrolledUp = node.scrollTop < previousScrollTop;
     const scrolledDown = node.scrollTop > previousScrollTop;
@@ -603,9 +625,16 @@ export function useConversationScrollState({
         return;
       }
       if (event.target === node) {
-        selectionPausedAutoFollowRef.current = false;
+        pointerScrollGestureRef.current = {
+          node,
+          scrollTop: clampScrollTop(node, node.scrollTop),
+          scrollHeight: node.scrollHeight,
+        };
         markUserScrollAwayIntent(clampScrollTop(node, node.scrollTop));
       }
+    };
+    const handlePointerEnd = (): void => {
+      pointerScrollGestureRef.current = undefined;
     };
     const handleSelectionChange = (): void => {
       if (selectionIntersectsNode(document.getSelection(), node)) {
@@ -666,6 +695,8 @@ export function useConversationScrollState({
     };
     node.addEventListener("wheel", handleWheel, { passive: true });
     node.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("pointerup", handlePointerEnd);
+    window.addEventListener("pointercancel", handlePointerEnd);
     document.addEventListener("selectionchange", handleSelectionChange);
     node.addEventListener("touchstart", handleTouchStart, { passive: true });
     node.addEventListener("touchmove", handleTouchMove, { passive: true });
@@ -675,6 +706,8 @@ export function useConversationScrollState({
     return () => {
       node.removeEventListener("wheel", handleWheel);
       node.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("pointerup", handlePointerEnd);
+      window.removeEventListener("pointercancel", handlePointerEnd);
       document.removeEventListener("selectionchange", handleSelectionChange);
       node.removeEventListener("touchstart", handleTouchStart);
       node.removeEventListener("touchmove", handleTouchMove);
@@ -697,6 +730,7 @@ export function useConversationScrollState({
       scrollConversationToBottom();
     });
     const resizeObserver = new ResizeObserver(() => {
+      refreshPointerScrollGestureLayout(node);
       if (isWindowResizing()) {
         scheduleLiveResizeScroll();
         windowResizeScroll.schedule();
@@ -720,6 +754,7 @@ export function useConversationScrollState({
     initialized,
     previewingLaunch,
     primaryTurns,
+    refreshPointerScrollGestureLayout,
     secondaryTurns,
     scrollConversationToBottom,
     scheduleLiveResizeScroll,

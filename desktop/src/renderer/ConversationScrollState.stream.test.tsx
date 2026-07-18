@@ -438,6 +438,51 @@ describe("useConversationScrollState — high-frequency stream", () => {
     expect(layout.scrollTop).toBe(layout.scrollHeight - layout.clientHeight);
   });
 
+  it("does not treat a pointer press without scrollbar movement as return intent", () => {
+    mount({ scrollHeight: 2000, clientHeight: 600 });
+    if (!layout || !handle || !node) throw new Error("not mounted");
+    flushScheduledScroll();
+
+    act(() => selectMessageText());
+    act(() => {
+      node!.dispatchEvent(new Event("pointerdown", { bubbles: true }));
+      window.dispatchEvent(new Event("pointerup"));
+      layout!.scrollHeight += 8;
+      layout!.scrollTop += 8;
+      node!.dispatchEvent(new Event("scroll", { bubbles: false }));
+      layout!.scrollHeight += 40;
+      handle!.scheduleStreamScroll();
+    });
+    flushScheduledScroll();
+
+    expect(layout.scrollTop).toBe(2000 - 600 + 8);
+    expect(layout.scrollTop).toBeLessThan(layout.scrollHeight - layout.clientHeight);
+  });
+
+  it("resumes after an active pointer gesture actually scrolls toward latest", () => {
+    mount({ scrollHeight: 2000, clientHeight: 600 });
+    if (!layout || !handle || !node) throw new Error("not mounted");
+    flushScheduledScroll();
+
+    act(() => selectMessageText());
+    act(() => {
+      node!.dispatchEvent(new Event("pointerdown", { bubbles: true }));
+      layout!.scrollHeight += 80;
+      flushResizeObservers();
+    });
+    rerenderTurns(makeLongTurnsSnapshot(1));
+    act(() => {
+      layout!.scrollTop = layout!.scrollHeight - layout!.clientHeight;
+      node!.dispatchEvent(new Event("scroll", { bubbles: false }));
+      window.dispatchEvent(new Event("pointerup"));
+      layout!.scrollHeight += 40;
+      handle!.scheduleStreamScroll();
+    });
+    flushScheduledScroll();
+
+    expect(layout.scrollTop).toBe(layout.scrollHeight - layout.clientHeight);
+  });
+
   it("keeps following when the conversation selection is collapsed", () => {
     mount({ scrollHeight: 2000, clientHeight: 600 });
     if (!layout || !handle) throw new Error("not mounted");

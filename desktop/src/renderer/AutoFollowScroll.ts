@@ -114,6 +114,9 @@ export function useAutoFollowScrollContainer({
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const autoFollowRef = useRef(true);
   const selectionPausedAutoFollowRef = useRef(false);
+  const pointerScrollGestureRef = useRef<
+    { node: HTMLElement; scrollTop: number; scrollHeight: number } | undefined
+  >(undefined);
   const lastScrollTopRef = useRef(0);
   const programmaticScrollTopRef = useRef<number | undefined>(undefined);
   const userScrollAwayIntentRef = useRef(false);
@@ -128,6 +131,15 @@ export function useAutoFollowScrollContainer({
     if (node) {
       setAutoFollowOverflowAnchor(node, next);
     }
+  }, []);
+
+  const refreshPointerScrollGestureLayout = useCallback((node: HTMLElement): void => {
+    const gesture = pointerScrollGestureRef.current;
+    if (gesture?.node !== node) {
+      return;
+    }
+    gesture.scrollTop = clampScrollTop(node, node.scrollTop);
+    gesture.scrollHeight = node.scrollHeight;
   }, []);
 
   const clearUserScrollAwayIntent = useCallback((): void => {
@@ -212,6 +224,16 @@ export function useAutoFollowScrollContainer({
       }
     }
 
+    const pointerGesture = pointerScrollGestureRef.current;
+    if (selectionPausedAutoFollowRef.current && pointerGesture?.node === node) {
+      if (node.scrollHeight !== pointerGesture.scrollHeight) {
+        pointerGesture.scrollTop = clampScrollTop(node, node.scrollTop);
+        pointerGesture.scrollHeight = node.scrollHeight;
+      } else if (node.scrollTop > pointerGesture.scrollTop) {
+        selectionPausedAutoFollowRef.current = false;
+      }
+    }
+
     const scrolledUp = node.scrollTop < lastScrollTopRef.current;
     const userScrollAwayIntent = userScrollAwayIntentRef.current;
     lastScrollTopRef.current = clampScrollTop(node, node.scrollTop);
@@ -258,9 +280,16 @@ export function useAutoFollowScrollContainer({
     const handlePointerDown = (event: PointerEvent): void => {
       event.stopPropagation();
       if (event.target === node) {
-        selectionPausedAutoFollowRef.current = false;
+        pointerScrollGestureRef.current = {
+          node,
+          scrollTop: clampScrollTop(node, node.scrollTop),
+          scrollHeight: node.scrollHeight,
+        };
         markUserScrollAwayIntent();
       }
+    };
+    const handlePointerEnd = (): void => {
+      pointerScrollGestureRef.current = undefined;
     };
     const handleSelectionChange = (): void => {
       if (selectionIntersectsNode(document.getSelection(), node)) {
@@ -307,6 +336,8 @@ export function useAutoFollowScrollContainer({
     node.addEventListener("scroll", handleScroll, { passive: true });
     node.addEventListener("wheel", handleWheel, { passive: true });
     node.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("pointerup", handlePointerEnd);
+    window.addEventListener("pointercancel", handlePointerEnd);
     document.addEventListener("selectionchange", handleSelectionChange);
     node.addEventListener("touchstart", handleTouchStart, { passive: true });
     node.addEventListener("touchmove", handleTouchMove, { passive: true });
@@ -317,6 +348,8 @@ export function useAutoFollowScrollContainer({
       node.removeEventListener("scroll", handleScroll);
       node.removeEventListener("wheel", handleWheel);
       node.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("pointerup", handlePointerEnd);
+      window.removeEventListener("pointercancel", handlePointerEnd);
       document.removeEventListener("selectionchange", handleSelectionChange);
       node.removeEventListener("touchstart", handleTouchStart);
       node.removeEventListener("touchmove", handleTouchMove);
@@ -333,6 +366,7 @@ export function useAutoFollowScrollContainer({
     }
     const windowResizeScroll = createWindowResizeSettleScheduler(scrollToBottom);
     const resizeObserver = new ResizeObserver(() => {
+      refreshPointerScrollGestureLayout(node);
       if (isWindowResizing()) {
         windowResizeScroll.schedule();
         return;
@@ -344,7 +378,7 @@ export function useAutoFollowScrollContainer({
       windowResizeScroll.cancel();
       resizeObserver.disconnect();
     };
-  }, [observeKey, scrollToBottom]);
+  }, [observeKey, refreshPointerScrollGestureLayout, scrollToBottom]);
 
   useEffect(() => {
     if (!open) {
