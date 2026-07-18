@@ -221,7 +221,7 @@ function AgentRunPane({ run }: { run: AgentRunRecord }): JSX.Element {
     run.durationMs !== undefined ? formatTerminalDuration(run.durationMs) : undefined,
     run.timedOut ? t("workspace.terminal.timedOut") : undefined,
   ].filter((value): value is string => Boolean(value));
-  const hasOutput = Boolean(run.stdout || run.stderr || run.output);
+  const hasOutput = Boolean(run.stdout || run.stderr);
 
   return (
     <article className="workspace-agent-run" data-tool-call-id={run.toolCallID}>
@@ -238,7 +238,6 @@ function AgentRunPane({ run }: { run: AgentRunRecord }): JSX.Element {
       <div className="workspace-agent-run-output">
         {run.stdout ? <RunOutputSection label="stdout" text={run.stdout} /> : null}
         {run.stderr ? <RunOutputSection label="stderr" text={run.stderr} error /> : null}
-        {run.output ? <RunOutputSection label={t("workspace.terminal.output")} text={run.output} /> : null}
         {!hasOutput ? <div className="workspace-agent-run-empty">{t("workspace.terminal.noOutput")}</div> : null}
       </div>
       {run.truncated ? (
@@ -256,8 +255,8 @@ function runStatusLabel(run: AgentRunRecord): string {
       return translateCurrent("workspace.terminal.status.failed");
     case "interrupted":
       return translateCurrent("workspace.terminal.status.interrupted");
-    case "in_progress":
-      return translateCurrent("workspace.terminal.status.inProgress");
+    case "incomplete":
+      return translateCurrent("workspace.terminal.status.incomplete");
   }
 }
 

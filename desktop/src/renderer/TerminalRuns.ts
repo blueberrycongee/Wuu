@@ -1,6 +1,6 @@
 import type { JsonValue, Thread, ThreadItem, Turn } from "../shared/protocol";
 
-export type AgentRunStatus = "in_progress" | "completed" | "failed" | "interrupted";
+export type AgentRunStatus = "incomplete" | "completed" | "failed" | "interrupted";
 
 export type AgentRunLocator = {
   threadID: string;
@@ -18,7 +18,6 @@ export type AgentRunRecord = {
   status: AgentRunStatus;
   stdout?: string;
   stderr?: string;
-  output?: string;
   exitCode?: number;
   durationMs?: number;
   timedOut: boolean;
@@ -137,12 +136,9 @@ function agentRunFromToolCall(
         ? "interrupted"
         : turn.status === "failed"
           ? "failed"
-          : "in_progress";
+          : "incomplete";
   const stdout = nonEmptyString(result, "stdout_tail");
   const stderr = nonEmptyString(result, "stderr_tail");
-  const output = stdout || stderr
-    ? undefined
-    : nonEmptyString(result, "output") ?? plainToolResult(item);
 
   return {
     kind: "agent_run",
@@ -159,7 +155,6 @@ function agentRunFromToolCall(
     status,
     stdout,
     stderr,
-    output,
     exitCode,
     durationMs,
     timedOut,
@@ -187,19 +182,6 @@ function toolResultRecord(item: ThreadItem): Record<string, unknown> | undefined
     }
   }
   return undefined;
-}
-
-function plainToolResult(item: ThreadItem): string | undefined {
-  const result = item.result?.trim();
-  if (result && !parseRecord(result)) {
-    return result;
-  }
-  const text = (item.result_detail?.content ?? [])
-    .filter((part) => part.type === "text" && part.text?.trim())
-    .map((part) => part.text?.trim())
-    .filter((value): value is string => Boolean(value))
-    .find((value) => !parseRecord(value));
-  return text || item.error?.trim() || undefined;
 }
 
 function parseRecord(value: string | undefined): Record<string, unknown> | undefined {

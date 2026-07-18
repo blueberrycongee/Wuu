@@ -58,7 +58,6 @@ describe("terminal run records", () => {
       truncated: false,
       fullLogRef: "/tmp/run.log",
     });
-    expect(run.output).toBeUndefined();
   });
 
   it("marks non-zero exits and timeouts as failed even when the item completed", () => {
@@ -80,10 +79,12 @@ describe("terminal run records", () => {
     const runs = agentRunsForTurn("thread-1", turn([failed, timedOut]));
 
     expect(runs[0]).toMatchObject({ status: "failed", exitCode: 2, stderr: "failed\n" });
-    expect(runs[1]).toMatchObject({ status: "failed", timedOut: true, truncated: true, output: "timeout" });
+    expect(runs[1]).toMatchObject({ status: "failed", timedOut: true, truncated: true });
+    expect(runs[1].stdout).toBeUndefined();
+    expect(runs[1].stderr).toBeUndefined();
   });
 
-  it("preserves plain legacy output and interrupted status", () => {
+  it("does not expose plain legacy output and preserves settled status", () => {
     const [run] = agentRunsForTurn(
       "thread-1",
       turn([
@@ -95,7 +96,14 @@ describe("terminal run records", () => {
     );
 
     expect(run.status).toBe("interrupted");
-    expect(run.output).toBe("partial output");
+    expect(run.stdout).toBeUndefined();
+    expect(run.stderr).toBeUndefined();
+
+    const [incomplete] = agentRunsForTurn(
+      "thread-1",
+      turn([commandItem({ status: "in_progress" })]),
+    );
+    expect(incomplete.status).toBe("incomplete");
   });
 
   it("lists settled turns only and prefers the last failed run", () => {
