@@ -182,6 +182,18 @@ func inferredOptionsForProvider(providerName string, provider config.ProviderCon
 	id := desc.ModelID
 	apiID := desc.APIID
 	adaptiveEfforts := compatAnthropicAdaptiveEfforts(apiID)
+	if (desc.APINPM == compatNPMAnthropic || desc.APINPM == compatNPMVertexAnthropic) && forceAdaptiveThinking(provider.Models[model].Options) {
+		efforts := modelReasoningEfforts(provider.Models[model])
+		if len(efforts) == 0 {
+			efforts = compatWidelySupportedEfforts()
+		}
+		return compatVariantsFromEfforts(efforts, func(effort string) map[string]any {
+			return map[string]any{
+				"thinking": map[string]any{"type": "adaptive", "display": "summarized"},
+				"effort":   effort,
+			}
+		})
+	}
 	if strings.Contains(desc.APIID, "minimax-m3") &&
 		(desc.APINPM == compatNPMAnthropic || desc.APINPM == compatNPMOpenAICompatible) {
 		return map[string]map[string]any{
@@ -284,6 +296,15 @@ func inferredOptionsForProvider(providerName string, provider config.ProviderCon
 	default:
 		return nil
 	}
+}
+
+func forceAdaptiveThinking(options map[string]any) bool {
+	for _, key := range []string{"force_adaptive_thinking", "forceAdaptiveThinking"} {
+		if enabled, ok := options[key].(bool); ok {
+			return enabled
+		}
+	}
+	return false
 }
 
 func modelReasoningEfforts(model config.ProviderModelConfig) []string {

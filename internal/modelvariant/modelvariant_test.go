@@ -32,6 +32,29 @@ func TestKimiK3UsesExplicitMaxVariant(t *testing.T) {
 	}
 }
 
+func TestKimiProviderDefaultsUseAdaptiveThinking(t *testing.T) {
+	providerName, provider := modelcatalog.EnrichProvider("kimi-for-coding", config.ProviderConfig{
+		Type:  "anthropic",
+		Model: "k2p7",
+	}, "k2p7")
+
+	variants := SummariesForProvider(providerName, provider, "k2p7")
+	if got := strings.Join(variantIDs(variants), ","); got != "low,medium,high" {
+		t.Fatalf("Kimi k2p7 variants = %s, want low,medium,high", got)
+	}
+	selection := ResolveForProvider(providerName, provider, "k2p7", "medium", "")
+	if selection.ProviderOptions["effort"] != "medium" || selection.ProviderOptions["force_adaptive_thinking"] != true {
+		t.Fatalf("unexpected Kimi provider options: %+v", selection.ProviderOptions)
+	}
+	thinking, ok := selection.ProviderOptions["thinking"].(map[string]any)
+	if !ok || thinking["type"] != "adaptive" || thinking["display"] != "summarized" {
+		t.Fatalf("unexpected Kimi adaptive thinking: %+v", selection.ProviderOptions)
+	}
+	if _, exists := selection.ProviderOptions["allow_empty_signature"]; exists {
+		t.Fatalf("K3-only empty signature option leaked to k2p7: %+v", selection.ProviderOptions)
+	}
+}
+
 func TestSummariesInferXiaomiReasoningEfforts(t *testing.T) {
 	provider := config.ProviderConfig{
 		Type:    "openai-compatible",
