@@ -1,15 +1,18 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useI18n } from "./i18n";
+import { FloatingMenuPortal } from "./ComposerFloatingMenu";
 
 // Toolbar gauge. The numeric readout is rendered inline next to the dial
-// so the user can see the current rate without hovering. The needle and
-// the text share the same currentColor so the idle/mid/high color tier
-// applies to both.
+// so the user can see the current rate without hovering when the toolbar is
+// wide enough. When the composer is narrow and the inline label is hidden
+// by the container query, the same value is surfaced through a hover tooltip
+// so the speed remains accessible.
 const MAX_TOKENS_PER_SEC = 100;
 const HIGH_SPEED_THRESHOLD = 70;
-const DISPLAY_LERP = 0.055;
 const STALE_HOLD_MS = 1200;
 const STALE_DECAY_MS = 5200;
+const STALE_DECAY_STEP_MS = 100;
+const TOOLTIP_WIDTH = 160;
 
 const GAUGE_ARC_PATH = "M 2.5 17 A 9.5 9.5 0 0 1 21.5 17";
 const GAUGE_ARC_PATH_LENGTH = 100;
@@ -40,68 +43,53 @@ export function ComposerTokenGauge({
   source?: "real" | "estimated" | "none";
 }): JSX.Element {
   const { t, formatNumber } = useI18n();
-  // Displayed value tracks the target with a per-frame lerp so the needle
-  // settles instead of jittering on every sliding-window update. The initial
-  // value is the target itself so the gauge paints the real number on first
-  // mount and tests that render synchronously can see the right value.
+  const tooltipID = useId();
+  const anchorRef = useRef<HTMLDivElement>(null);
+  const [tooltipOpen, setTooltipOpen] = useState(false);
+  // CSS transitions smooth the needle and arc between samples. React only
+  // updates when the target changes or a stale sample is winding down, so a
+  // stable running turn does not keep the renderer on a permanent rAF loop.
   const [displayed, setDisplayed] = useState(() =>
     running ? Math.max(0, tokensPerSecond) : 0,
   );
-  const runningRef = useRef(running);
-  const displayedRef = useRef(displayed);
-  const targetRef = useRef(0);
-  const sampledAtRef = useRef<number | undefined>(sampledAt);
-  runningRef.current = running;
-  targetRef.current = running ? Math.max(0, tokensPerSecond) : 0;
-  sampledAtRef.current = sampledAt;
 
   useEffect(() => {
-    let raf = 0;
-    const shouldAnimate = (): boolean =>
-      runningRef.current ||
-      targetRef.current > 0.05 ||
-      displayedRef.current > 0.05;
-
-    if (!shouldAnimate()) {
-      displayedRef.current = 0;
-      setDisplayed(0);
-      return;
+    const target = running ? Math.max(0, tokensPerSecond) : 0;
+    setDisplayed(target);
+    if (!running || target <= 0.05 || sampledAt === undefined) {
+      return undefined;
     }
 
-    const tick = (): void => {
-      const now = Date.now();
-      // Apply the same stale decay to the display so the gauge visibly
-      // winds down toward 0 once the model stops streaming, instead of
-      // freezing on the last known rate.
-      let resolvedTarget = runningRef.current ? targetRef.current : 0;
-      const sampleAge = sampledAtRef.current
-        ? now - sampledAtRef.current
-        : 0;
-      if (resolvedTarget > 0 && sampleAge > STALE_HOLD_MS) {
-        const decay = Math.max(
-          0,
-          1 - (sampleAge - STALE_HOLD_MS) / STALE_DECAY_MS,
-        );
-        resolvedTarget *= decay;
+    let decayTimer: number | undefined;
+    let decayInterval: number | undefined;
+    const updateDecay = (): boolean => {
+      const decayElapsed = Date.now() - sampledAt - STALE_HOLD_MS;
+      const decay = Math.max(0, 1 - decayElapsed / STALE_DECAY_MS);
+      setDisplayed(target * decay);
+      if (decay === 0 && decayInterval !== undefined) {
+        window.clearInterval(decayInterval);
+        decayInterval = undefined;
       }
-      setDisplayed((current) => {
-        const diff = resolvedTarget - current;
-        let next = resolvedTarget;
-        if (Math.abs(diff) < 0.05) {
-          displayedRef.current = next;
-          return next;
-        }
-        next = current + diff * DISPLAY_LERP;
-        displayedRef.current = next;
-        return next;
-      });
-      if (shouldAnimate()) {
-        raf = window.requestAnimationFrame(tick);
+      return decay > 0;
+    };
+    const startDecay = (): void => {
+      if (updateDecay()) {
+        decayInterval = window.setInterval(updateDecay, STALE_DECAY_STEP_MS);
       }
     };
-    raf = window.requestAnimationFrame(tick);
+    const holdRemaining = Math.max(
+      0,
+      sampledAt + STALE_HOLD_MS - Date.now(),
+    );
+    decayTimer = window.setTimeout(startDecay, holdRemaining);
+
     return () => {
-      window.cancelAnimationFrame(raf);
+      if (decayTimer !== undefined) {
+        window.clearTimeout(decayTimer);
+      }
+      if (decayInterval !== undefined) {
+        window.clearInterval(decayInterval);
+      }
     };
   }, [running, sampledAt, tokensPerSecond]);
 
@@ -112,15 +100,23 @@ export function ComposerTokenGauge({
   const rounded = Math.round(displayed);
   const isEstimated = source === "estimated";
   const speedLabel = t(isEstimated ? "composer.speed.estimatedShort" : "composer.speed.short", { speed: formatNumber(rounded) });
+  const tooltipLabel = t(isEstimated ? "composer.speed.estimatedLabel" : "composer.speed.label", { speed: formatNumber(rounded) });
 
   return (
     <div
+      ref={anchorRef}
       className="composer-token-gauge"
       data-state={running ? "running" : "idle"}
       role="status"
       aria-live="polite"
-      aria-label={t(isEstimated ? "composer.speed.estimatedLabel" : "composer.speed.label", { speed: formatNumber(rounded) })}
+      aria-label={tooltipLabel}
+      aria-describedby={tooltipOpen ? tooltipID : undefined}
+      tabIndex={0}
       style={{ color }}
+      onBlur={() => setTooltipOpen(false)}
+      onFocus={() => setTooltipOpen(true)}
+      onMouseEnter={() => setTooltipOpen(true)}
+      onMouseLeave={() => setTooltipOpen(false)}
     >
       <svg
         viewBox="0 0 24 24"
@@ -163,6 +159,24 @@ export function ComposerTokenGauge({
         />
       </svg>
       <span className="composer-token-gauge-label">{speedLabel}</span>
+      {tooltipOpen ? (
+        <FloatingMenuPortal
+          anchorRef={anchorRef}
+          owner="composer-token-gauge"
+          placement="above"
+          align="right"
+          offset={8}
+          width={TOOLTIP_WIDTH}
+        >
+          <div
+            id={tooltipID}
+            className="composer-token-gauge-tooltip"
+            role="tooltip"
+          >
+            {tooltipLabel}
+          </div>
+        </FloatingMenuPortal>
+      ) : null}
     </div>
   );
 }

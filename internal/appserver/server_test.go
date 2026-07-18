@@ -6428,6 +6428,95 @@ func TestServerThreadEditMessageRespectsCompactionBoundary(t *testing.T) {
 	}
 }
 
+func TestServerThreadEditMessageAfterProviderCheckpointWithEarlierVisibleTurns(t *testing.T) {
+	rt := newTestRuntime(t, &fakeClient{})
+	sess, err := session.CreateWithMetadata(rt.SessionDir, "20260619-000002-edit-checkpoint", rt.RootDir)
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	for _, rec := range []session.HistoryRecord{
+		{Role: "user", Content: "older prompt"},
+		{Role: "assistant", Content: "older answer"},
+	} {
+		if err := session.AppendHistoryRecord(rt.SessionDir, sess.ID, rec); err != nil {
+			t.Fatalf("append history: %v", err)
+		}
+	}
+	if _, err := session.StoreHistoryCheckpointAtBaseline(
+		rt.SessionDir,
+		sess.ID,
+		session.HistoryCheckpointKindProviderRewrite,
+		[]session.HistoryRecord{
+			{Role: "system", Content: compact.BuildSummaryContent("older prompts are summarized")},
+		},
+		2,
+	); err != nil {
+		t.Fatalf("store provider checkpoint: %v", err)
+	}
+	for _, rec := range []session.HistoryRecord{
+		{Role: "user", Content: "after compact"},
+		{Role: "assistant", Content: "after compact answer"},
+		{Role: "user", Content: "replace me"},
+		{
+			Role:       "meta",
+			Content:    turnTerminalHistoryRecord,
+			ClientID:   fmt.Sprintf("%s-turn-0003", sess.ID),
+			StopReason: string(TurnStatusInterrupted),
+		},
+	} {
+		if err := session.AppendHistoryRecord(rt.SessionDir, sess.ID, rec); err != nil {
+			t.Fatalf("append retained history: %v", err)
+		}
+	}
+
+	out := &lockedBuffer{}
+	srv := New(rt, out)
+	resumeReq := fmt.Sprintf(`{"id":"resume","method":"%s","params":{"session_id":%q}}`, MethodThreadResume, sess.ID)
+	if err := srv.handleLine(context.Background(), []byte(resumeReq)); err != nil {
+		t.Fatalf("thread/resume: %v", err)
+	}
+	resumed := remarshal[ThreadResumeResult](t, responseByID(t, parseOutput(t, out.String()), "resume")["result"])
+	if len(resumed.Thread.Turns) != 3 {
+		t.Fatalf("expected earlier visible turn plus two retained turns, got %+v", resumed.Thread.Turns)
+	}
+	targetTurn := resumed.Thread.Turns[2]
+	target := targetTurn.Items[0]
+	if targetTurn.Status != TurnStatusInterrupted || target.Seq != 6 || target.Text != "replace me" {
+		t.Fatalf("unexpected edit target: %+v", target)
+	}
+	editPayload, err := json.Marshal(map[string]any{
+		"id":     "edit",
+		"method": MethodThreadEditMessage,
+		"params": ThreadEditMessageParams{
+			ThreadID: resumed.Thread.ID,
+			TurnID:   targetTurn.ID,
+			ItemID:   target.ID,
+		},
+	})
+	if err != nil {
+		t.Fatalf("marshal edit request: %v", err)
+	}
+	if err := srv.handleLine(context.Background(), editPayload); err != nil {
+		t.Fatalf("thread/edit-message: %v", err)
+	}
+
+	editResponse := responseByID(t, parseOutput(t, out.String()), "edit")
+	if editResponse["error"] != nil {
+		t.Fatalf("thread/edit-message returned error: %+v", editResponse["error"])
+	}
+	result := remarshal[ThreadEditMessageResult](t, editResponse["result"])
+	if result.Draft.Prompt != "replace me" {
+		t.Fatalf("unexpected restored draft: %+v", result.Draft)
+	}
+	persisted, err := loadChatMessages(rt.SessionDir, sess.ID)
+	if err != nil {
+		t.Fatalf("load persisted history: %v", err)
+	}
+	if len(persisted) != 3 || persisted[1].Content != "after compact" || persisted[2].Content != "after compact answer" {
+		t.Fatalf("expected edit to preserve retained history before target, got %+v", persisted)
+	}
+}
+
 func TestServerTurnStartAcceptsImageOnlyPrompt(t *testing.T) {
 	// tinyImageOnlyB64 is a real 1×1 JPEG base64-encoded. imageproc now
 	// runs on every image that crosses the app-server boundary (see
@@ -9741,6 +9830,70 @@ func TestSettingsUsageAggregatesAcrossSessions(t *testing.T) {
 	}
 	if result.ModelBreakdowns[1].Provider != "anthropic" {
 		t.Fatalf("expected anthropic second, got %q", result.ModelBreakdowns[1].Provider)
+	}
+}
+
+func TestSettingsUsageModelBreakdownsSkipZeroUsageBuckets(t *testing.T) {
+	rt := newTestRuntime(t, &fakeClient{})
+	now := time.Now().UTC()
+
+	sess1, err := session.CreateWithMetadata(rt.SessionDir, "usage-real", rt.RootDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, rec := range []session.HistoryRecord{
+		{Role: "user", Content: "real session"},
+		{
+			Role: "meta", Content: "token_usage", Provider: "openai", Model: "gpt-4o",
+			At: now.Add(-time.Hour), InputTokens: 200, OutputTokens: 100, CacheReadTokens: 50,
+		},
+	} {
+		if err := session.AppendHistoryRecord(rt.SessionDir, sess1.ID, rec); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Providers that never report usage (and compaction markers) persist
+	// token_usage rows with all-zero usage but a nonzero context size. A
+	// bucket made only of such rows must not surface as a 0/0 card.
+	sess2, err := session.CreateWithMetadata(rt.SessionDir, "usage-zero", rt.RootDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, rec := range []session.HistoryRecord{
+		{Role: "user", Content: "zero session"},
+		{
+			Role: "meta", Content: "token_usage", Provider: "test", Model: "gpt-test",
+			At: now.Add(-time.Hour), ContextTokens: 4096,
+		},
+	} {
+		if err := session.AppendHistoryRecord(rt.SessionDir, sess2.ID, rec); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	out := &lockedBuffer{}
+	srv := New(rt, out)
+	raw, err := json.Marshal(map[string]any{
+		"id":     "1",
+		"method": MethodSettingsUsage,
+		"params": map[string]any{"range": string(SettingsUsageRangeAll)},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := srv.handleLine(context.Background(), raw); err != nil {
+		t.Fatalf("handleLine: %v", err)
+	}
+
+	msgs := parseOutput(t, out.String())
+	result := remarshal[SettingsUsageResponse](t, responseByID(t, msgs, "1")["result"])
+
+	if len(result.ModelBreakdowns) != 1 {
+		t.Fatalf("expected 1 breakdown, got %d (%+v)", len(result.ModelBreakdowns), result.ModelBreakdowns)
+	}
+	if result.ModelBreakdowns[0].Provider != "openai" || result.ModelBreakdowns[0].InputTokens != 200 {
+		t.Fatalf("expected only the openai breakdown, got %+v", result.ModelBreakdowns[0])
 	}
 }
 

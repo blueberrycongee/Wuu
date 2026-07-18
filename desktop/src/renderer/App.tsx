@@ -23,6 +23,7 @@ import type {
   ServerEvent,
   Thread,
   ThreadItem,
+  Turn,
 } from "../shared/protocol";
 import {
   awaitComposerImages,
@@ -189,7 +190,7 @@ import {
   rawErrorMessage,
   statusMessageForError,
 } from "./UserFacingErrors";
-import { scrollToUserMessage } from "./TurnView";
+import { scrollToUserMessage, TurnView } from "./TurnView";
 import { ConversationTurnRail } from "./ConversationTurnRail";
 import {
   WorkspaceRightPanel,
@@ -1810,6 +1811,14 @@ export function App(): JSX.Element {
     activeProjectName: activeProject?.name,
   });
   const emptyThreadTitle = greetingFor(currentHour, greetingContext);
+  const [pendingNewThreadTurn, setPendingNewThreadTurn] = useState<{
+    sessionTabID: string;
+    turn: Turn;
+  }>();
+  const activePendingNewThreadTurn =
+    pendingNewThreadTurn?.sessionTabID === state.activeSessionTabID
+      ? pendingNewThreadTurn.turn
+      : undefined;
   const turns = activeThread?.turns ?? [];
   const activeContextCompositionEntries = activeThreadID
     ? contextCompositionEntries.filter((entry) => entry.threadID === activeThreadID)
@@ -1817,6 +1826,7 @@ export function App(): JSX.Element {
   const emptyConversation =
     !showingSkillsCatalog &&
     !showingTaskBoard &&
+    !activePendingNewThreadTurn &&
     turns.length === 0 &&
     activeContextCompositionEntries.length === 0;
 
@@ -3574,6 +3584,15 @@ export function App(): JSX.Element {
     }));
     let optimisticTurnID: string | undefined;
     let optimisticThreadID: string | undefined;
+    // Render a tab-scoped optimistic turn before a new thread exists. Once
+    // thread/start returns, the same turn moves into normal thread state.
+    const optimisticTurn = createOptimisticTurn(message, sendClickedAtMs);
+    if (!targetThread && currentState.activeSessionTabID) {
+      setPendingNewThreadTurn({
+        sessionTabID: currentState.activeSessionTabID,
+        turn: optimisticTurn,
+      });
+    }
     try {
       const thread =
         targetThread ??
@@ -3619,12 +3638,6 @@ export function App(): JSX.Element {
             : current.activeSessionTabID,
         threads: upsertThread(current.threads, thread),
       }));
-      // Insert an optimistic in_progress turn before the IPC round-trip so
-      // the live "正在回复/处理" timer starts at the user's click moment
-      // instead of waiting for the server's first turn notification. The
-      // placeholder is replaced (or dropped on error) once the real turn
-      // arrives or the request fails.
-      const optimisticTurn = createOptimisticTurn(message, sendClickedAtMs);
       optimisticTurnID = optimisticTurn.id;
       optimisticThreadID = thread.id;
       appStateRef.current = updateThreadByID(
@@ -3638,6 +3651,9 @@ export function App(): JSX.Element {
           thread.id,
           (currentThread) => upsertTurn(currentThread, optimisticTurn),
         ),
+      );
+      setPendingNewThreadTurn((current) =>
+        current?.turn.id === optimisticTurn.id ? undefined : current,
       );
       const encodedImages = await awaitComposerImages(message.images);
       const images = inputImagesFromComposer(encodedImages);
@@ -3710,6 +3726,9 @@ export function App(): JSX.Element {
         running: false,
         status: errorMessage,
       }));
+      setPendingNewThreadTurn((current) =>
+        current?.turn.id === optimisticTurn.id ? undefined : current,
+      );
       if (restoreDraftOnError) {
         setPrompt(message.text);
         setComposerImages(message.images);
@@ -4587,6 +4606,15 @@ export function App(): JSX.Element {
                     onStreamFrame={scheduleStreamScroll}
                     onOpenFileDiff={openTurnFileDiffPanel}
                   />
+                ) : activePendingNewThreadTurn ? (
+                  <div className="conversation-width session-flow">
+                    <TurnView
+                      turn={activePendingNewThreadTurn}
+                      cwd={state.activeContext?.cwd}
+                      onStreamFrame={scheduleStreamScroll}
+                      isLatestTurn
+                    />
+                  </div>
                 ) : emptyConversation ? (
               <EmptyConversationHome
                 title={emptyThreadTitle}

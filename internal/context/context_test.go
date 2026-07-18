@@ -44,6 +44,77 @@ func TestCompileBlocksRendersTypedContext(t *testing.T) {
 	}
 }
 
+func TestCompileRequestBlocksOmitsRuntimeMetadata(t *testing.T) {
+	got := CompileRequestBlocks([]Block{{
+		Kind: BlockTaskState, Title: "Task", Source: "runtime", Content: "state: active", TokenBudget: 200,
+	}})
+	if !strings.Contains(got, "[TASK_STATE]\nstate: active") {
+		t.Fatalf("compact request block missing kind or content:\n%s", got)
+	}
+	for _, omitted := range []string{"title:", "source:", "token_budget:"} {
+		if strings.Contains(got, omitted) {
+			t.Fatalf("compact request block should omit %q:\n%s", omitted, got)
+		}
+	}
+}
+
+func TestDynamicContextProjectionDefaultsActiveAndSupportsOff(t *testing.T) {
+	t.Setenv(DynamicContextProjectionEnvVar, "")
+	if !DynamicContextProjectionEnabled() {
+		t.Fatal("dynamic context projection should default active")
+	}
+	t.Setenv(DynamicContextProjectionEnvVar, "off")
+	if DynamicContextProjectionEnabled() {
+		t.Fatal("off should disable dynamic context projection")
+	}
+}
+
+func TestDerivedContextLedgersDefaultOffAndSupportOn(t *testing.T) {
+	t.Setenv(DerivedContextLedgersEnvVar, "")
+	if DerivedContextLedgersEnabled() {
+		t.Fatal("derived context ledgers should default off")
+	}
+	t.Setenv(DerivedContextLedgersEnvVar, "on")
+	if !DerivedContextLedgersEnabled() {
+		t.Fatal("on should restore derived context ledgers as the A/B baseline")
+	}
+}
+
+func TestIsDerivedLedgerBlockName(t *testing.T) {
+	nameFor := func(kind BlockKind, source string) string {
+		return SystemReminderBlockMessageName(Block{Kind: kind, Title: "T", Source: source, Content: "x"}, 0)
+	}
+	for _, ledger := range derivedLedgerBlockIdentities {
+		if !IsDerivedLedgerBlockName(nameFor(ledger.kind, ledger.source)) {
+			t.Fatalf("expected derived ledger match for %s/%s", ledger.kind, ledger.source)
+		}
+	}
+	kept := []struct {
+		kind   BlockKind
+		source string
+	}{
+		{BlockTaskState, "session.summary"},
+		{BlockTaskState, "session.checkpoint"},
+		{BlockTaskState, "session.notes"},
+		{BlockTaskState, "runtime.subagent_status"},
+		{BlockTaskState, "runtime"},
+		{BlockActiveFiles, "runtime.active_files"},
+		{BlockTestFailures, "bash"},
+		{BlockToolPolicy, "ultra"},
+		{BlockMemory, "session.notes"},
+	}
+	for _, block := range kept {
+		if IsDerivedLedgerBlockName(nameFor(block.kind, block.source)) {
+			t.Fatalf("kept block %s/%s must not match derived ledgers", block.kind, block.source)
+		}
+	}
+	for _, nonBlock := range []string{"", "wuu_system_reminder", "wuu_agent_notification"} {
+		if IsDerivedLedgerBlockName(nonBlock) {
+			t.Fatalf("non-block name %q must not match derived ledgers", nonBlock)
+		}
+	}
+}
+
 func TestCompileBlocksEnforcesTokenBudget(t *testing.T) {
 	longContent := strings.Repeat("src/internal/really/long/path/to/file.go\n", 200)
 	got := CompileBlocks([]Block{

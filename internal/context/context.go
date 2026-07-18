@@ -13,6 +13,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -26,6 +27,16 @@ import (
 const SystemReminderMessageName = "wuu_system_reminder"
 
 const systemReminderBlockMessageNamePrefix = "wuu_ctx_"
+
+// DynamicContextProjectionEnvVar controls compact request-only context
+// projection. It defaults to active; set it to "off" for the legacy baseline.
+const DynamicContextProjectionEnvVar = "WUU_DYNAMIC_CONTEXT_PROJECTION"
+
+// DerivedContextLedgersEnvVar gates the legacy derived context ledgers
+// (plan TASK_STATE, ACTIVE_FILES, TOOL_RESULT_SUMMARY, WEB_EVIDENCE). They
+// are excluded from the default model projection; set it to "on" for the
+// A/B baseline.
+const DerivedContextLedgersEnvVar = "WUU_DERIVED_CONTEXT_LEDGERS"
 
 // TaskContractMessageName marks legacy hidden task-contract context derived
 // from recent user directives. New requests no longer synthesize this
@@ -96,9 +107,19 @@ func Snapshot(cwd string) EnvInfo {
 }
 
 func CompileBlocks(blocks []Block) string {
+	return compileBlocks(blocks, false)
+}
+
+// CompileRequestBlocks renders request-only blocks without model-visible
+// metadata that is already carried by the block and request telemetry.
+func CompileRequestBlocks(blocks []Block) string {
+	return compileBlocks(blocks, true)
+}
+
+func compileBlocks(blocks []Block, compact bool) string {
 	var b strings.Builder
 	for _, block := range blocks {
-		rendered := renderBlock(block)
+		rendered := renderBlock(block, compact)
 		if rendered == "" {
 			continue
 		}
@@ -108,6 +129,56 @@ func CompileBlocks(blocks []Block) string {
 		b.WriteString(rendered)
 	}
 	return b.String()
+}
+
+// DynamicContextProjectionEnabled returns whether request-only context uses
+// compact projection. Empty and unknown values intentionally resolve active so
+// the feature remains on by default; "off" is the A/B baseline.
+func DynamicContextProjectionEnabled() bool {
+	return !strings.EqualFold(strings.TrimSpace(os.Getenv(DynamicContextProjectionEnvVar)), "off")
+}
+
+// DerivedContextLedgersEnabled returns whether the legacy derived context
+// ledgers ride in request-only context. They default to off: ordinary
+// requests read the same facts from their causal source (update_plan calls,
+// read_file results, web tool results, and the tool transcript itself).
+// "on" restores the ledger projection as the A/B baseline.
+func DerivedContextLedgersEnabled() bool {
+	return strings.EqualFold(strings.TrimSpace(os.Getenv(DerivedContextLedgersEnvVar)), "on")
+}
+
+// derivedLedgerBlockIdentities are the (kind, source) pairs removed from the
+// default model projection. Other blocks sharing a kind — session-memory
+// recovery, subagent status, frozen worker trees — are not ledgers and stay.
+var derivedLedgerBlockIdentities = []struct {
+	kind   BlockKind
+	source string
+}{
+	{BlockTaskState, "update_plan"},
+	{BlockActiveFiles, "read_file"},
+	{BlockToolResultSummary, "tool_telemetry"},
+	{BlockWebEvidence, "web_tools"},
+}
+
+// IsDerivedLedgerBlockName reports whether a system-reminder block message
+// name belongs to a derived ledger excluded from the default projection, so
+// retained request state can drop stale copies instead of re-splicing them
+// into every later request.
+func IsDerivedLedgerBlockName(name string) bool {
+	name = strings.TrimSpace(name)
+	if !strings.HasPrefix(name, systemReminderBlockMessageNamePrefix) {
+		return false
+	}
+	for _, identity := range derivedLedgerBlockIdentities {
+		slug := sanitizeMessageNameSlug(string(identity.kind) + "_" + identity.source)
+		if slug == "" {
+			continue
+		}
+		if strings.HasPrefix(name, systemReminderBlockMessageNamePrefix+slug+"_") {
+			return true
+		}
+	}
+	return false
 }
 
 func FormatSystemReminderBlocks(blocks ...Block) string {
@@ -170,7 +241,7 @@ func sanitizeMessageNameSlug(value string) string {
 	return strings.Trim(b.String(), "_")
 }
 
-func renderBlock(block Block) string {
+func renderBlock(block Block, compact bool) string {
 	content := strings.TrimSpace(block.Content)
 	if content == "" {
 		return ""
@@ -182,6 +253,10 @@ func renderBlock(block Block) string {
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "[%s]\n", kind)
+	if compact {
+		b.WriteString(content)
+		return strings.TrimRight(b.String(), "\n")
+	}
 	if title := strings.TrimSpace(block.Title); title != "" {
 		fmt.Fprintf(&b, "title: %s\n", title)
 	}

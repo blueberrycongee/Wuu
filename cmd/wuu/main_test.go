@@ -18,6 +18,7 @@ import (
 
 	"github.com/blueberrycongee/wuu/internal/appserver"
 	"github.com/blueberrycongee/wuu/internal/config"
+	wuucontext "github.com/blueberrycongee/wuu/internal/context"
 	"github.com/blueberrycongee/wuu/internal/evalharness"
 	wuuexec "github.com/blueberrycongee/wuu/internal/exec"
 	"github.com/blueberrycongee/wuu/internal/modelprofile"
@@ -1163,6 +1164,7 @@ func TestEvalModelProfileObservation(t *testing.T) {
 }
 
 func TestEvalContextBlockObservationsSummarizeRuntimeBlocks(t *testing.T) {
+	t.Setenv(wuucontext.DerivedContextLedgersEnvVar, "on")
 	root := t.TempDir()
 	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module example.com/eval\n"), 0o644); err != nil {
 		t.Fatalf("write go.mod: %v", err)
@@ -1207,7 +1209,7 @@ func TestEvalContextBlockObservationsSummarizeRuntimeBlocks(t *testing.T) {
 		t.Fatalf("stable environment should not be reported as runtime context block: %+v", got)
 	}
 	active := byKind["ACTIVE_FILES"]
-	if active.Source != "read_file" || active.TokenBudget == 0 || !strings.Contains(active.ContentPreview, "main.go") {
+	if active.Source != "read_file" || active.TokenBudget == 0 || !strings.Contains(active.ContentPreview, "files: current=1") {
 		t.Fatalf("active files block missing read metadata: %+v", active)
 	}
 }
