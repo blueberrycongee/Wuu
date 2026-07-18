@@ -3394,6 +3394,68 @@ func TestServerProcessTTYReadWriteResizeAndOwnership(t *testing.T) {
 	}
 }
 
+func TestServerProcessTTYUsesThreadLocalWorktreeManager(t *testing.T) {
+	if goruntime.GOOS == "windows" {
+		t.Skip("managed tty is not supported on windows")
+	}
+	rt := newTestRuntime(t, &fakeClient{})
+	globalManager := attachTestProcessManager(t, rt)
+	threadManager, err := process.NewManager(t.TempDir(), filepath.Join(rt.RootDir, "runtime"))
+	if err != nil {
+		t.Fatalf("thread process.NewManager: %v", err)
+	}
+	started, err := threadManager.Start(context.Background(), process.StartOptions{
+		Command:   `printf 'ready\n'; read line; printf 'got:%s\n' "$line"; sleep 30`,
+		OwnerKind: process.OwnerMainAgent,
+		OwnerID:   "thread-worktree",
+		Lifecycle: process.LifecycleManaged,
+		TTY:       true,
+	})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer func() { _, _ = threadManager.Stop(started.ID) }()
+	if globalManager.InputAvailable(started.ID) {
+		t.Fatal("global manager unexpectedly owns the worktree tty handle")
+	}
+
+	out := &lockedBuffer{}
+	srv := New(rt, out)
+	srv.mu.Lock()
+	srv.threads["thread-worktree"] = &threadState{
+		ID: "thread-worktree",
+		execRuntime: &runtime.ThreadRuntime{
+			ProcessManager: threadManager,
+		},
+	}
+	srv.mu.Unlock()
+
+	listPayload := `{"id":"1","method":"process/list","params":{"thread_id":"thread-worktree"}}`
+	if err := srv.handleLine(context.Background(), []byte(listPayload)); err != nil {
+		t.Fatalf("process/list: %v", err)
+	}
+	listed := remarshal[ProcessListResult](t, responseByID(t, parseOutput(t, out.String()), "1")["result"])
+	if len(listed.Processes) != 1 || !listed.Processes[0].InputAvailable {
+		t.Fatalf("worktree tty should expose input through its thread manager: %+v", listed)
+	}
+
+	writePayload := fmt.Sprintf(`{"id":"2","method":"process/write","params":{"thread_id":"thread-worktree","process_id":%q,"input":"hello\n"}}`, started.ID)
+	if err := srv.handleLine(context.Background(), []byte(writePayload)); err != nil {
+		t.Fatalf("process/write: %v", err)
+	}
+	if got := responseByID(t, parseOutput(t, out.String()), "2")["error"]; got != nil {
+		t.Fatalf("worktree process/write failed: %+v", got)
+	}
+
+	resizePayload := fmt.Sprintf(`{"id":"3","method":"process/resize","params":{"thread_id":"thread-worktree","process_id":%q,"cols":100,"rows":30}}`, started.ID)
+	if err := srv.handleLine(context.Background(), []byte(resizePayload)); err != nil {
+		t.Fatalf("process/resize: %v", err)
+	}
+	if got := responseByID(t, parseOutput(t, out.String()), "3")["error"]; got != nil {
+		t.Fatalf("worktree process/resize failed: %+v", got)
+	}
+}
+
 func TestServerProcessEndpointsValidateErrors(t *testing.T) {
 	rt := newTestRuntime(t, &fakeClient{})
 	out := &lockedBuffer{}

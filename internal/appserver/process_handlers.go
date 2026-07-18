@@ -25,10 +25,11 @@ func (s *Server) handleProcessList(req Request) error {
 	if threadID == "" {
 		return s.writeResponse(req.ID, nil, errors.New("thread_id is required"))
 	}
-	if s.rt == nil || s.rt.ProcessManager == nil {
+	manager := s.processManagerForThread(threadID)
+	if manager == nil {
 		return s.writeResponse(req.ID, nil, errors.New("process manager is not available"))
 	}
-	processes, err := s.rt.ProcessManager.List()
+	processes, err := manager.List()
 	if err != nil {
 		return s.writeResponse(req.ID, nil, err)
 	}
@@ -37,7 +38,7 @@ func (s *Server) handleProcessList(req Request) error {
 		if !s.processBelongsToThread(threadID, p) {
 			continue
 		}
-		summaries = append(summaries, s.managedProcessSummary(p))
+		summaries = append(summaries, managedProcessSummaryForManager(manager, p))
 	}
 	return s.writeResponse(req.ID, ProcessListResult{Processes: summaries}, nil)
 }
@@ -74,7 +75,7 @@ func (s *Server) handleProcessRead(ctx context.Context, req Request) error {
 		return s.writeResponse(req.ID, nil, err)
 	}
 	return s.writeResponse(req.ID, ProcessReadResult{
-		Process:     s.managedProcessSummary(snapshot.Process),
+		Process:     managedProcessSummaryForManager(manager, snapshot.Process),
 		Output:      tools.RedactToolOutput(snapshot.Output),
 		Truncated:   snapshot.Truncated,
 		StartOffset: snapshot.StartOffset,
@@ -101,7 +102,7 @@ func (s *Server) handleProcessWrite(req Request) error {
 		return s.writeResponse(req.ID, nil, err)
 	}
 	return s.writeResponse(req.ID, ProcessWriteResult{
-		Process:      s.managedProcessSummary(*written),
+		Process:      managedProcessSummaryForManager(manager, *written),
 		BytesWritten: len(params.Input),
 	}, nil)
 }
@@ -122,7 +123,7 @@ func (s *Server) handleProcessResize(req Request) error {
 	if err != nil {
 		return s.writeResponse(req.ID, nil, err)
 	}
-	return s.writeResponse(req.ID, ProcessResizeResult{Process: s.managedProcessSummary(*resized)}, nil)
+	return s.writeResponse(req.ID, ProcessResizeResult{Process: managedProcessSummaryForManager(manager, *resized)}, nil)
 }
 
 func (s *Server) handleProcessStop(req Request) error {
@@ -141,7 +142,7 @@ func (s *Server) handleProcessStop(req Request) error {
 	if stopped == nil {
 		return s.writeResponse(req.ID, nil, errors.New("process not found"))
 	}
-	return s.writeResponse(req.ID, ProcessStopResult{Process: s.managedProcessSummary(*stopped)}, nil)
+	return s.writeResponse(req.ID, ProcessStopResult{Process: managedProcessSummaryForManager(manager, *stopped)}, nil)
 }
 
 func (s *Server) authorizedProcess(threadID, processID string) (*process.Manager, *process.Process, error) {
@@ -153,17 +154,36 @@ func (s *Server) authorizedProcess(threadID, processID string) (*process.Manager
 	if processID == "" {
 		return nil, nil, errors.New("process_id is required")
 	}
-	if s.rt == nil || s.rt.ProcessManager == nil {
+	manager := s.processManagerForThread(threadID)
+	if manager == nil {
 		return nil, nil, errors.New("process manager is not available")
 	}
-	p, err := s.rt.ProcessManager.Get(processID)
+	p, err := manager.Get(processID)
 	if err != nil {
 		return nil, nil, err
 	}
 	if !s.processBelongsToThread(threadID, *p) {
 		return nil, nil, errors.New("process does not belong to thread")
 	}
-	return s.rt.ProcessManager, p, nil
+	return manager, p, nil
+}
+
+func (s *Server) processManagerForThread(threadID string) *process.Manager {
+	if th := s.thread(strings.TrimSpace(threadID)); th != nil {
+		th.mu.Lock()
+		var manager *process.Manager
+		if th.execRuntime != nil {
+			manager = th.execRuntime.ProcessManager
+		}
+		th.mu.Unlock()
+		if manager != nil {
+			return manager
+		}
+	}
+	if s.rt == nil {
+		return nil
+	}
+	return s.rt.ProcessManager
 }
 
 func (s *Server) processBelongsToThread(threadID string, p process.Process) bool {
@@ -188,10 +208,10 @@ func (s *Server) processBelongsToThread(threadID string, p process.Process) bool
 	return processEventBelongsToThread(threadID, control, process.Event{Process: p})
 }
 
-func (s *Server) managedProcessSummary(p process.Process) ManagedProcessSummary {
+func managedProcessSummaryForManager(manager *process.Manager, p process.Process) ManagedProcessSummary {
 	summary := managedProcessSummary(p)
-	if s.rt != nil && s.rt.ProcessManager != nil {
-		summary.InputAvailable = p.TTY && s.rt.ProcessManager.InputAvailable(p.ID)
+	if manager != nil {
+		summary.InputAvailable = p.TTY && manager.InputAvailable(p.ID)
 	}
 	return summary
 }
