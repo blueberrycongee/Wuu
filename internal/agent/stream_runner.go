@@ -146,10 +146,11 @@ type StreamRunner struct {
 	// round and nested compaction owned by this runner.
 	InferenceJournal providers.InferenceJournal
 
-	usageMu            sync.Mutex
-	conversationUsage  *UsageTracker
-	trackedHistoryLen  int
-	trackedHistoryHash string
+	usageMu                sync.Mutex
+	conversationUsage      *UsageTracker
+	trackedHistoryLen      int
+	trackedHistoryHash     string
+	trackedHistoryTailHash string
 
 	// retainedContextMu guards the cross-turn request-context state used for
 	// prompt-cache prefix continuity. The state is fingerprinted against the
@@ -510,6 +511,7 @@ func (r *StreamRunner) prepareUsageTracker(history []providers.ChatMessage) (*Us
 	tracker := r.conversationUsage.Clone()
 	trackedLen := r.trackedHistoryLen
 	trackedHash := r.trackedHistoryHash
+	trackedTailHash := r.trackedHistoryTailHash
 	if trackedLen < 0 {
 		trackedLen = 0
 	}
@@ -521,13 +523,28 @@ func (r *StreamRunner) prepareUsageTracker(history []providers.ChatMessage) (*Us
 	// necessarily message-count-smaller.
 	if trackedLen > len(history) {
 		tracker.Reset()
+		tracker.SetAdjustment(UsageAdjustmentLengthReset)
 		trackedLen = 0
 	}
 	if trackedLen > 0 && trackedHash != "" && hashMessagesForRequestShape(history[:trackedLen]) != trackedHash {
+		// Provider checkpoints and durable reloads can expand or normalize the
+		// old prefix while retaining the exact response boundary that the live
+		// provider usage measured. Preserve that trustworthy baseline and count
+		// only messages appended after the boundary instead of pessimistically
+		// re-estimating the entire durable transcript.
+		if anchor := findHistoryTailAnchor(history, trackedTailHash); tracker.HasGroundTruth() && anchor >= 0 {
+			tracker.SetAdjustment(UsageAdjustmentRequestShapeTailRebase)
+			tracker.RecordPendingMessages(history[anchor+1:])
+			return tracker, len(history)
+		}
 		tracker.Reset()
+		tracker.SetAdjustment(UsageAdjustmentRequestShapeReset)
 		trackedLen = 0
 	}
 	if trackedLen == 0 {
+		if tracker.Breakdown().Adjustment == "" {
+			tracker.SetAdjustment(UsageAdjustmentInitialHistoryEstimate)
+		}
 		tracker.RecordPendingMessages(history)
 		return tracker, len(history)
 	}
@@ -568,6 +585,26 @@ func (r *StreamRunner) commitUsageTracker(tracker *UsageTracker, history []provi
 	r.conversationUsage = tracker.Clone()
 	r.trackedHistoryLen = len(history)
 	r.trackedHistoryHash = hashMessagesForRequestShape(history)
+	r.trackedHistoryTailHash = historyTailAnchor(history)
+}
+
+func historyTailAnchor(history []providers.ChatMessage) string {
+	if len(history) == 0 {
+		return ""
+	}
+	return hashMessagesForRequestShape(history[len(history)-1:])
+}
+
+func findHistoryTailAnchor(history []providers.ChatMessage, anchor string) int {
+	if anchor == "" {
+		return -1
+	}
+	for i := len(history) - 1; i >= 0; i-- {
+		if hashMessagesForRequestShape(history[i:i+1]) == anchor {
+			return i
+		}
+	}
+	return -1
 }
 
 // ResetConversationUsage discards the persistent cross-turn usage baseline and
@@ -595,9 +632,11 @@ func (r *StreamRunner) ResetConversationUsage(history []providers.ChatMessage) {
 		r.conversationUsage = NewUsageTracker()
 	}
 	r.conversationUsage.Reset()
+	r.conversationUsage.SetAdjustment(UsageAdjustmentCompactionRewriteEstimate)
 	r.conversationUsage.RecordPendingMessages(history)
 	r.trackedHistoryLen = len(history)
 	r.trackedHistoryHash = hashMessagesForRequestShape(history)
+	r.trackedHistoryTailHash = historyTailAnchor(history)
 }
 
 // SynchronizeConversationUsage reconciles a long-lived runner with the
@@ -618,16 +657,30 @@ func (r *StreamRunner) SynchronizeConversationUsage(history []providers.ChatMess
 	if r.trackedHistoryLen == len(history) &&
 		(r.trackedHistoryHash == "" || r.trackedHistoryHash == historyHash) {
 		r.trackedHistoryHash = historyHash
+		r.trackedHistoryTailHash = historyTailAnchor(history)
 		return
+	}
+	if len(history) >= r.trackedHistoryLen && r.conversationUsage.HasGroundTruth() {
+		if anchor := findHistoryTailAnchor(history, r.trackedHistoryTailHash); anchor >= 0 {
+			r.conversationUsage.SetAdjustment(UsageAdjustmentRequestShapeTailRebase)
+			r.conversationUsage.RecordPendingMessages(history[anchor+1:])
+			r.trackedHistoryLen = len(history)
+			r.trackedHistoryHash = historyHash
+			r.trackedHistoryTailHash = historyTailAnchor(history)
+			return
+		}
 	}
 	r.conversationUsage.Reset()
 	if persistedTotal > 0 {
 		r.conversationUsage.SeedGroundTruth(persistedTotal)
+		r.conversationUsage.SetAdjustment(UsageAdjustmentExternalRewriteSeed)
 	} else {
+		r.conversationUsage.SetAdjustment(UsageAdjustmentExternalRewriteEstimate)
 		r.conversationUsage.RecordPendingMessages(history)
 	}
 	r.trackedHistoryLen = len(history)
 	r.trackedHistoryHash = historyHash
+	r.trackedHistoryTailHash = historyTailAnchor(history)
 }
 
 // SeedConversationUsageBaseline primes the cross-turn usage baseline from a
@@ -649,8 +702,10 @@ func (r *StreamRunner) SeedConversationUsageBaseline(total, historyLen int) {
 		r.conversationUsage = NewUsageTracker()
 	}
 	if r.conversationUsage.SeedGroundTruth(total) {
+		r.conversationUsage.SetAdjustment(UsageAdjustmentRuntimeRebuildSeed)
 		r.trackedHistoryLen = historyLen
 		r.trackedHistoryHash = ""
+		r.trackedHistoryTailHash = ""
 	}
 }
 
