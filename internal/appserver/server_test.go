@@ -3384,13 +3384,24 @@ func TestServerProcessTTYReadWriteResizeAndOwnership(t *testing.T) {
 		t.Fatalf("process/resize: %v", err)
 	}
 
-	secondReadPayload := fmt.Sprintf(`{"id":"5","method":"process/read","params":{"thread_id":"thread-live","process_id":%q,"offset_bytes":%d,"wait_ms":2000}}`, started.ID, first.EndOffset)
-	if err := srv.handleLine(context.Background(), []byte(secondReadPayload)); err != nil {
-		t.Fatalf("second process/read: %v", err)
+	offset := first.EndOffset
+	var incremental strings.Builder
+	deadline := time.Now().Add(3 * time.Second)
+	for attempt := 0; !strings.Contains(incremental.String(), "got:hello") && time.Now().Before(deadline); attempt++ {
+		requestID := fmt.Sprintf("read-%d", attempt)
+		secondReadPayload := fmt.Sprintf(`{"id":%q,"method":"process/read","params":{"thread_id":"thread-live","process_id":%q,"offset_bytes":%d,"wait_ms":500}}`, requestID, started.ID, offset)
+		if err := srv.handleLine(context.Background(), []byte(secondReadPayload)); err != nil {
+			t.Fatalf("incremental process/read: %v", err)
+		}
+		second := remarshal[ProcessReadResult](t, responseByID(t, parseOutput(t, out.String()), requestID)["result"])
+		if second.StartOffset != offset {
+			t.Fatalf("incremental read started at %d, want %d: %+v", second.StartOffset, offset, second)
+		}
+		incremental.WriteString(second.Output)
+		offset = second.EndOffset
 	}
-	second := remarshal[ProcessReadResult](t, responseByID(t, parseOutput(t, out.String()), "5")["result"])
-	if second.StartOffset != first.EndOffset || !strings.Contains(second.Output, "got:hello") {
-		t.Fatalf("unexpected incremental read: %+v", second)
+	if got := incremental.String(); !strings.Contains(got, "got:hello") {
+		t.Fatalf("incremental reads never observed command response: %q", got)
 	}
 }
 
