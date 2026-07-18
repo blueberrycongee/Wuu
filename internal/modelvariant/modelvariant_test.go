@@ -975,6 +975,39 @@ func TestResolveMergesProviderCompatBaseOptions(t *testing.T) {
 	if got := selection.ProviderOptions["store"]; got != false {
 		t.Fatalf("store = %#v", got)
 	}
+	if got := selection.ProviderOptions["promptCacheKeySupported"]; got != true {
+		t.Fatalf("promptCacheKeySupported = %#v", got)
+	}
+}
+
+func TestResolveScopesPromptCacheKeyToSupportingProviders(t *testing.T) {
+	tests := []struct {
+		name       string
+		providerID string
+		provider   config.ProviderConfig
+		want       bool
+	}{
+		{name: "OpenAI", providerID: "openai", provider: config.ProviderConfig{Type: "openai", NPM: "@ai-sdk/openai", Model: "gpt-5.5"}, want: true},
+		{name: "OpenRouter", providerID: "openrouter", provider: config.ProviderConfig{Type: "openai-compatible", NPM: "@openrouter/ai-sdk-provider", Model: "openai/gpt-5.5"}, want: true},
+		{name: "xAI", providerID: "xai", provider: config.ProviderConfig{Type: "openai-compatible", NPM: "@ai-sdk/xai", Model: "grok-4"}},
+		{name: "GLM", providerID: "zai", provider: config.ProviderConfig{Type: "openai-compatible", NPM: "@ai-sdk/openai-compatible", Model: "glm-4.6"}},
+		{name: "Qwen", providerID: "alibaba", provider: config.ProviderConfig{Type: "openai-compatible", NPM: "@ai-sdk/openai-compatible", Model: "qwen-plus"}},
+		{name: "DeepSeek", providerID: "deepseek", provider: config.ProviderConfig{Type: "openai-compatible", NPM: "@ai-sdk/openai-compatible", Model: "deepseek-chat"}},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			selection := ResolveForProvider(tc.providerID, tc.provider, tc.provider.Model, "", "")
+			got, exists := selection.ProviderOptions["promptCacheKeySupported"]
+			if tc.want {
+				if got != true {
+					t.Fatalf("promptCacheKeySupported = %#v; options=%#v", got, selection.ProviderOptions)
+				}
+			} else if exists {
+				t.Fatalf("unsupported provider inherited prompt cache key: %#v", selection.ProviderOptions)
+			}
+		})
+	}
 }
 
 func TestResolveKeepsProviderCompatDefaultOptionsWithoutVariant(t *testing.T) {

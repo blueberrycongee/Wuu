@@ -67,6 +67,9 @@ func BaseOptionsForProvider(providerName string, provider config.ProviderConfig,
 	if desc.ProviderID == "openai" || desc.APINPM == compatNPMOpenAI || desc.APINPM == compatNPMGithubCopilot || desc.APINPM == compatNPMBedrockMantle {
 		setOptionDefault(result, "store", false)
 	}
+	if desc.ProviderID == "openai" || desc.APINPM == compatNPMOpenAI || desc.APINPM == compatNPMOpenRouter {
+		setOptionDefault(result, "promptCacheKeySupported", true)
+	}
 	if desc.APINPM == compatNPMAzure {
 		setOptionDefault(result, "store", false)
 	}

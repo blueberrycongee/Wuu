@@ -283,7 +283,7 @@ func TestChat_SendsOpenRouterProviderOptionsShape(t *testing.T) {
 	}
 }
 
-func TestChat_SendsPromptCacheKeyForOpenAICompatible(t *testing.T) {
+func TestChat_OmitsPromptCacheKeyForUnsupportedCompatibleProvider(t *testing.T) {
 	t.Helper()
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -291,11 +291,11 @@ func TestChat_SendsPromptCacheKeyForOpenAICompatible(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			t.Fatalf("decode request body: %v", err)
 		}
-		if body["promptCacheKey"] != "cache-key-1" {
-			t.Fatalf("expected promptCacheKey, got %#v", body["promptCacheKey"])
+		if _, exists := body["promptCacheKey"]; exists {
+			t.Fatalf("did not expect promptCacheKey: %#v", body)
 		}
 		if _, exists := body["prompt_cache_key"]; exists {
-			t.Fatalf("did not expect prompt_cache_key on standard OpenAI payload: %#v", body["prompt_cache_key"])
+			t.Fatalf("did not expect prompt_cache_key: %#v", body)
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -328,7 +328,7 @@ func TestChat_FiltersUnsupportedProviderOptions(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			t.Fatalf("decode request body: %v", err)
 		}
-		for _, key := range []string{"include", "toolStreaming", "thinkingConfig", "reasoningConfig", "modelParams", "gateway", "temperatureSupported", "temperature_supported"} {
+		for _, key := range []string{"include", "toolStreaming", "thinkingConfig", "reasoningConfig", "modelParams", "gateway", "temperatureSupported", "temperature_supported", "promptCacheKeySupported"} {
 			if _, exists := body[key]; exists {
 				t.Fatalf("chat payload should filter %s: %#v", key, body)
 			}
@@ -351,15 +351,16 @@ func TestChat_FiltersUnsupportedProviderOptions(t *testing.T) {
 		Model:    "gpt-test",
 		Messages: []providers.ChatMessage{{Role: "user", Content: "hello"}},
 		ProviderOptions: map[string]any{
-			"include":               []any{"reasoning.encrypted_content"},
-			"toolStreaming":         false,
-			"thinkingConfig":        map[string]any{"includeThoughts": true},
-			"reasoningConfig":       map[string]any{"type": "enabled"},
-			"modelParams":           map[string]any{"reasoning_effort": "high"},
-			"gateway":               map[string]any{"caching": "auto"},
-			"temperatureSupported":  false,
-			"temperature_supported": false,
-			"metadata":              map[string]any{"eval": "provider-options"},
+			"include":                 []any{"reasoning.encrypted_content"},
+			"toolStreaming":           false,
+			"thinkingConfig":          map[string]any{"includeThoughts": true},
+			"reasoningConfig":         map[string]any{"type": "enabled"},
+			"modelParams":             map[string]any{"reasoning_effort": "high"},
+			"gateway":                 map[string]any{"caching": "auto"},
+			"promptCacheKeySupported": true,
+			"temperatureSupported":    false,
+			"temperature_supported":   false,
+			"metadata":                map[string]any{"eval": "provider-options"},
 		},
 	})
 	if err != nil {
@@ -470,7 +471,7 @@ func TestChat_SendsSnakeCasePromptCacheKeyForOpenRouter(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client, err := New(ClientConfig{BaseURL: server.URL, APIKey: "test-key", Headers: map[string]string{"HTTP-Referer": "https://openrouter.ai/app"}})
+	client, err := New(ClientConfig{BaseURL: server.URL, APIKey: "test-key"})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -480,7 +481,8 @@ func TestChat_SendsSnakeCasePromptCacheKeyForOpenRouter(t *testing.T) {
 		Messages: []providers.ChatMessage{
 			{Role: "user", Content: "hello"},
 		},
-		CacheHint: &providers.CacheHint{PromptCacheKey: "cache-key-2"},
+		CacheHint:       &providers.CacheHint{PromptCacheKey: "cache-key-2"},
+		ProviderOptions: map[string]any{"promptCacheKeySupported": true},
 	})
 	if err != nil {
 		t.Fatalf("Chat: %v", err)
@@ -671,20 +673,20 @@ func TestChat_SendsFileContentParts(t *testing.T) {
 	}
 }
 
-func TestChat_SendsPromptCacheKeyAliases(t *testing.T) {
+func TestChat_SendsSupportedPromptCacheKey(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
-			PromptCacheKey string `json:"promptCacheKey"`
-			AltCacheKey    string `json:"prompt_cache_key"`
+			CamelCacheKey  string `json:"promptCacheKey"`
+			PromptCacheKey string `json:"prompt_cache_key"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			t.Fatalf("decode request body: %v", err)
 		}
 		if body.PromptCacheKey != "cache-key-1" {
-			t.Fatalf("unexpected promptCacheKey: %q", body.PromptCacheKey)
+			t.Fatalf("unexpected prompt_cache_key: %q", body.PromptCacheKey)
 		}
-		if body.AltCacheKey != "" {
-			t.Fatalf("unexpected prompt_cache_key on OpenAI-compatible payload: %q", body.AltCacheKey)
+		if body.CamelCacheKey != "" {
+			t.Fatalf("unexpected promptCacheKey: %q", body.CamelCacheKey)
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -702,7 +704,8 @@ func TestChat_SendsPromptCacheKeyAliases(t *testing.T) {
 		Messages: []providers.ChatMessage{
 			{Role: "user", Content: "hello"},
 		},
-		CacheHint: &providers.CacheHint{PromptCacheKey: "cache-key-1"},
+		CacheHint:       &providers.CacheHint{PromptCacheKey: "cache-key-1"},
+		ProviderOptions: map[string]any{"promptCacheKeySupported": true},
 	})
 	if err != nil {
 		t.Fatalf("Chat: %v", err)
@@ -2425,7 +2428,7 @@ func TestResponsesChat_FiltersUnsupportedProviderOptions(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			t.Fatalf("decode request body: %v", err)
 		}
-		for _, key := range []string{"toolStreaming", "thinkingConfig", "reasoningConfig", "modelParams", "gateway", "usage", "chat_template_args", "enable_thinking", "thinking", "temperatureSupported", "temperature_supported"} {
+		for _, key := range []string{"toolStreaming", "thinkingConfig", "reasoningConfig", "modelParams", "gateway", "usage", "chat_template_args", "enable_thinking", "thinking", "temperatureSupported", "temperature_supported", "promptCacheKeySupported"} {
 			if _, exists := body[key]; exists {
 				t.Fatalf("responses payload should filter %s: %#v", key, body)
 			}
@@ -2451,19 +2454,20 @@ func TestResponsesChat_FiltersUnsupportedProviderOptions(t *testing.T) {
 		Model:    "gpt-test",
 		Messages: []providers.ChatMessage{{Role: "user", Content: "hello"}},
 		ProviderOptions: map[string]any{
-			"include":               []any{"reasoning.encrypted_content"},
-			"toolStreaming":         false,
-			"thinkingConfig":        map[string]any{"includeThoughts": true},
-			"reasoningConfig":       map[string]any{"type": "enabled"},
-			"modelParams":           map[string]any{"reasoning_effort": "high"},
-			"gateway":               map[string]any{"caching": "auto"},
-			"usage":                 map[string]any{"include": true},
-			"chat_template_args":    map[string]any{"enable_thinking": true},
-			"enable_thinking":       true,
-			"thinking":              map[string]any{"type": "enabled"},
-			"temperatureSupported":  false,
-			"temperature_supported": false,
-			"metadata":              map[string]any{"eval": "provider-options"},
+			"include":                 []any{"reasoning.encrypted_content"},
+			"toolStreaming":           false,
+			"thinkingConfig":          map[string]any{"includeThoughts": true},
+			"reasoningConfig":         map[string]any{"type": "enabled"},
+			"modelParams":             map[string]any{"reasoning_effort": "high"},
+			"gateway":                 map[string]any{"caching": "auto"},
+			"usage":                   map[string]any{"include": true},
+			"chat_template_args":      map[string]any{"enable_thinking": true},
+			"enable_thinking":         true,
+			"thinking":                map[string]any{"type": "enabled"},
+			"promptCacheKeySupported": true,
+			"temperatureSupported":    false,
+			"temperature_supported":   false,
+			"metadata":                map[string]any{"eval": "provider-options"},
 		},
 	})
 	if err != nil {
