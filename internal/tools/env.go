@@ -290,6 +290,9 @@ type Env struct {
 	// new snapshot. Consumers can bridge it to runtime events or UI
 	// notifications without coupling the plan tool to either layer.
 	OnPlanUpdated func(snapshot PlanSnapshot)
+	// OnSessionWorkspaceChanged persists and broadcasts an explicit main-agent
+	// workspace move before subsequent tools start resolving paths there.
+	OnSessionWorkspaceChanged func(root string) error
 
 	readState *readFileState
 	testState testRunState

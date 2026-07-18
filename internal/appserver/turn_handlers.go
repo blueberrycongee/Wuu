@@ -843,6 +843,9 @@ func (s *Server) ensureThreadRuntime(th *threadState) (*runtime.ThreadRuntime, e
 		// to the desktop views keyed by (workdir, tab_id). Set once at runtime
 		// creation; the existing-runtime fast path above keeps it attached.
 		threadRuntime.Toolkit.SetBrowserBridge(s.browserBridgeForThread(browserWorkdir, th.ID))
+		threadRuntime.Toolkit.SetOnSessionWorkspaceChanged(func(root string) error {
+			return s.rebindThreadWorkspace(th.ID, root)
+		})
 		if _, restoreErr := threadRuntime.Toolkit.RestorePlanFromHistory(history); restoreErr != nil {
 			providers.DebugLogf("restore update_plan for thread %q: %v", th.ID, restoreErr)
 		}
