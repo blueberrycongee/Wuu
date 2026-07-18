@@ -151,6 +151,7 @@ type StreamRunner struct {
 	trackedHistoryLen      int
 	trackedHistoryHash     string
 	trackedHistoryTailHash string
+	trackedHistoryTailID   string
 
 	// retainedContextMu guards the cross-turn request-context state used for
 	// prompt-cache prefix continuity. The state is fingerprinted against the
@@ -512,6 +513,7 @@ func (r *StreamRunner) prepareUsageTracker(history []providers.ChatMessage) (*Us
 	trackedLen := r.trackedHistoryLen
 	trackedHash := r.trackedHistoryHash
 	trackedTailHash := r.trackedHistoryTailHash
+	trackedTailID := r.trackedHistoryTailID
 	if trackedLen < 0 {
 		trackedLen = 0
 	}
@@ -533,7 +535,7 @@ func (r *StreamRunner) prepareUsageTracker(history []providers.ChatMessage) (*Us
 		// only messages appended after the boundary instead of pessimistically
 		// re-estimating the entire durable transcript.
 		breakdown := tracker.Breakdown()
-		if anchor, _ := findHistoryTailAnchor(history, trackedTailHash); canRebaseUsageAfterTail(history, anchor, breakdown) {
+		if anchor := findHistoryTailAnchor(history, trackedTailHash, trackedTailID); canRebaseUsageAfterTail(history, anchor, breakdown) {
 			tracker.SetAdjustment(UsageAdjustmentRequestShapeTailRebase)
 			tracker.RecordPendingMessages(history[anchor+1:])
 			return tracker, len(history)
@@ -587,6 +589,7 @@ func (r *StreamRunner) commitUsageTracker(tracker *UsageTracker, history []provi
 	r.trackedHistoryLen = len(history)
 	r.trackedHistoryHash = hashMessagesForRequestShape(history)
 	r.trackedHistoryTailHash = historyTailAnchor(history)
+	r.trackedHistoryTailID = historyTailIdentity(history)
 }
 
 func historyTailAnchor(history []providers.ChatMessage) string {
@@ -596,21 +599,55 @@ func historyTailAnchor(history []providers.ChatMessage) string {
 	return hashMessagesForRequestShape(history[len(history)-1:])
 }
 
-func findHistoryTailAnchor(history []providers.ChatMessage, anchor string) (int, int) {
-	if anchor == "" {
-		return -1, 0
+func historyTailIdentity(history []providers.ChatMessage) string {
+	if len(history) == 0 {
+		return ""
 	}
-	lastMatch := -1
-	matches := 0
+	msg := history[len(history)-1]
+	var b strings.Builder
+	writeIdentity := func(kind, provider, model, id string) {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			return
+		}
+		b.WriteString(kind)
+		b.WriteByte(':')
+		b.WriteString(strings.TrimSpace(provider))
+		b.WriteByte(':')
+		b.WriteString(strings.TrimSpace(model))
+		b.WriteByte(':')
+		b.WriteString(id)
+		b.WriteByte('\n')
+	}
+	writeIdentity("message", msg.ProviderItemProvider, msg.ProviderItemModel, msg.ProviderItemID)
+	writeIdentity("tool_result", "", "", msg.ToolCallID)
+	writeIdentity("tool_invocation", "", "", msg.ToolInvocationID)
+	for _, call := range msg.ToolCalls {
+		writeIdentity("tool_call", call.ProviderItemProvider, call.ProviderItemModel, call.ProviderItemID)
+		writeIdentity("tool_call_id", "", "", call.ID)
+	}
+	for _, block := range msg.ReasoningBlocks {
+		writeIdentity("reasoning_signature", "", "", block.Signature)
+	}
+	if b.Len() == 0 {
+		return ""
+	}
+	return shortRequestShapeHash(b.String())
+}
+
+func findHistoryTailAnchor(history []providers.ChatMessage, anchor, identity string) int {
+	if anchor == "" {
+		return -1
+	}
 	for i := len(history) - 1; i >= 0; i-- {
-		if hashMessagesForRequestShape(history[i:i+1]) == anchor {
-			if lastMatch < 0 {
-				lastMatch = i
-			}
-			matches++
+		if hashMessagesForRequestShape(history[i:i+1]) != anchor {
+			continue
+		}
+		if identity == "" || historyTailIdentity(history[i:i+1]) == identity {
+			return i
 		}
 	}
-	return lastMatch, matches
+	return -1
 }
 
 func canRebaseUsageAfterTail(history []providers.ChatMessage, anchor int, usage UsageBreakdown) bool {
@@ -655,6 +692,7 @@ func (r *StreamRunner) ResetConversationUsage(history []providers.ChatMessage) {
 	r.trackedHistoryLen = len(history)
 	r.trackedHistoryHash = hashMessagesForRequestShape(history)
 	r.trackedHistoryTailHash = historyTailAnchor(history)
+	r.trackedHistoryTailID = historyTailIdentity(history)
 }
 
 // SynchronizeConversationUsage reconciles a long-lived runner with the
@@ -676,18 +714,20 @@ func (r *StreamRunner) SynchronizeConversationUsage(history []providers.ChatMess
 		(r.trackedHistoryHash == "" || r.trackedHistoryHash == historyHash) {
 		r.trackedHistoryHash = historyHash
 		r.trackedHistoryTailHash = historyTailAnchor(history)
+		r.trackedHistoryTailID = historyTailIdentity(history)
 		return
 	}
 	if len(history) >= r.trackedHistoryLen {
 		usage := r.conversationUsage.Breakdown()
-		anchor, matches := findHistoryTailAnchor(history, r.trackedHistoryTailHash)
+		anchor := findHistoryTailAnchor(history, r.trackedHistoryTailHash, r.trackedHistoryTailID)
 		persistedMatches := persistedTotal <= 0 || persistedTotal == usage.LastResponseTotal
-		if anchor == len(history)-1 && matches == 1 && persistedMatches && usage.LastResponseTotal > 0 && usage.PendingDelta == 0 {
+		if anchor == len(history)-1 && persistedMatches && usage.LastResponseTotal > 0 && usage.PendingDelta == 0 {
 			r.conversationUsage.SetAdjustment(UsageAdjustmentRequestShapeTailRebase)
 			r.conversationUsage.RecordPendingMessages(history[anchor+1:])
 			r.trackedHistoryLen = len(history)
 			r.trackedHistoryHash = historyHash
 			r.trackedHistoryTailHash = historyTailAnchor(history)
+			r.trackedHistoryTailID = historyTailIdentity(history)
 			return
 		}
 	}
@@ -702,6 +742,7 @@ func (r *StreamRunner) SynchronizeConversationUsage(history []providers.ChatMess
 	r.trackedHistoryLen = len(history)
 	r.trackedHistoryHash = historyHash
 	r.trackedHistoryTailHash = historyTailAnchor(history)
+	r.trackedHistoryTailID = historyTailIdentity(history)
 }
 
 // SeedConversationUsageBaseline primes the cross-turn usage baseline from a
@@ -727,6 +768,7 @@ func (r *StreamRunner) SeedConversationUsageBaseline(total, historyLen int) {
 		r.trackedHistoryLen = historyLen
 		r.trackedHistoryHash = ""
 		r.trackedHistoryTailHash = ""
+		r.trackedHistoryTailID = ""
 	}
 }
 

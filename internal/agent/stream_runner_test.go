@@ -2343,22 +2343,49 @@ func TestStreamRunner_SynchronizeConversationUsageAdoptsExternalCompletedTurn(t 
 }
 
 func TestStreamRunner_SynchronizeConversationUsageRejectsRepeatedTailAnchor(t *testing.T) {
-	oldHistory := []providers.ChatMessage{userMsg("old"), {Role: "assistant", Content: "Done"}}
+	oldHistory := []providers.ChatMessage{userMsg("old"), {
+		Role: "assistant", Content: "Done", ProviderItemID: "msg-old", ProviderItemProvider: "openai-codex", ProviderItemModel: "gpt-test",
+	}}
 	newHistory := append(providers.CloneChatMessages(oldHistory),
 		userMsg("external ask"),
-		providers.ChatMessage{Role: "assistant", Content: "Done"},
+		providers.ChatMessage{Role: "assistant", Content: "Done", ProviderItemID: "msg-new", ProviderItemProvider: "openai-codex", ProviderItemModel: "gpt-test"},
 	)
 	runner := &StreamRunner{}
 	tracker := NewUsageTracker()
 	tracker.RecordResponse(&providers.TokenUsage{InputTokens: 50_000, OutputTokens: 2_000})
 	runner.commitUsageTracker(tracker, oldHistory)
 
-	runner.SynchronizeConversationUsage(newHistory, 9_000)
+	runner.SynchronizeConversationUsage(newHistory, 52_000)
 
 	got, tracked := runner.prepareUsageTracker(newHistory)
 	breakdown := got.Breakdown()
-	if breakdown.Total() != 9_000 || breakdown.Adjustment != UsageAdjustmentExternalRewriteSeed || tracked != len(newHistory) {
+	if breakdown.Total() != 52_000 || breakdown.Adjustment != UsageAdjustmentExternalRewriteSeed || tracked != len(newHistory) {
 		t.Fatalf("repeated tail anchor retained stale usage: usage=%+v tracked=%d", breakdown, tracked)
+	}
+}
+
+func TestStreamRunner_SynchronizeConversationUsageAllowsEarlierMatchingContent(t *testing.T) {
+	current := providers.ChatMessage{
+		Role: "assistant", Content: "Done", ProviderItemID: "msg-current", ProviderItemProvider: "openai-codex", ProviderItemModel: "gpt-test",
+	}
+	oldHistory := []providers.ChatMessage{userMsg("old"), current}
+	expanded := []providers.ChatMessage{
+		userMsg("expanded old ask"),
+		{Role: "assistant", Content: "Done", ProviderItemID: "msg-earlier", ProviderItemProvider: "openai-codex", ProviderItemModel: "gpt-test"},
+		userMsg("current ask"),
+		current,
+	}
+	runner := &StreamRunner{}
+	tracker := NewUsageTracker()
+	tracker.RecordResponse(&providers.TokenUsage{InputTokens: 50_000, OutputTokens: 2_000})
+	runner.commitUsageTracker(tracker, oldHistory)
+
+	runner.SynchronizeConversationUsage(expanded, 0)
+
+	got, tracked := runner.prepareUsageTracker(expanded)
+	breakdown := got.Breakdown()
+	if breakdown.Total() != 52_000 || breakdown.Adjustment != UsageAdjustmentRequestShapeTailRebase || tracked != len(expanded) {
+		t.Fatalf("earlier matching content discarded live usage: usage=%+v tracked=%d", breakdown, tracked)
 	}
 }
 
