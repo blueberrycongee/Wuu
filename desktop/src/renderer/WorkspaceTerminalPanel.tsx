@@ -306,9 +306,8 @@ export function WorkspaceTerminalPanel({
       style={{ "--workspace-terminal-navigation-width": `${navigationWidth}px` } as CSSProperties}
     >
       <nav className="workspace-terminal-navigation" aria-label={t("workspace.terminal.resources")}>
-        <div className="workspace-terminal-navigation-header">
-          <span>{t("workspace.terminal.resources")}</span>
-          {!userTerminalOpened ? (
+        {!userTerminalOpened ? (
+          <div className="workspace-terminal-navigation-header">
             <button
               className="workspace-terminal-new"
               type="button"
@@ -318,8 +317,8 @@ export function WorkspaceTerminalPanel({
             >
               <Plus size={15} />
             </button>
-          ) : null}
-        </div>
+          </div>
+        ) : null}
         <div className="workspace-terminal-run-list">
           {userTerminalOpened ? (
             <button

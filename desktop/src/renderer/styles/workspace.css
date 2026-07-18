@@ -1132,7 +1132,7 @@ html.resizing-workspace-terminal-split * {
   display: flex;
   min-height: 28px;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 8px;
   color: var(--ink-muted);
   font-size: var(--font-xs);
