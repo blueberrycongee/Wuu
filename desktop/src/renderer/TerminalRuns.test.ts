@@ -45,6 +45,7 @@ describe("terminal run records", () => {
 
     expect(run).toMatchObject({
       kind: "agent_run",
+      execution: "snapshot",
       threadID: "thread-1",
       turnID: "turn-1",
       toolCallID: "call-1",
@@ -57,7 +58,45 @@ describe("terminal run records", () => {
       timedOut: false,
       truncated: false,
       fullLogRef: "/tmp/run.log",
+      tty: false,
     });
+  });
+
+  it("binds only start_background results with a managed process id", () => {
+    const [live, missingID] = agentRunsForTurn("thread-1", turn([
+      commandItem({
+        id: "call-live",
+        arguments: JSON.stringify({ action: "start_background", command: "npm run dev", tty: true }),
+        result: JSON.stringify({
+          action: "start_background",
+          id: "proc-123",
+          status: "running",
+          tty: true,
+        }),
+      }),
+      commandItem({
+        id: "call-no-id",
+        arguments: JSON.stringify({ action: "start_background", command: "npm run dev" }),
+        result: JSON.stringify({ action: "start_background", status: "running" }),
+      }),
+    ]));
+
+    expect(live).toMatchObject({
+      execution: "managed",
+      processID: "proc-123",
+      tty: true,
+    });
+    expect(missingID).toMatchObject({ execution: "snapshot", tty: false });
+    expect(missingID.processID).toBeUndefined();
+  });
+
+  it("does not model background process management actions as terminal sessions", () => {
+    const runs = agentRunsForTurn("thread-1", turn([
+      commandItem({ arguments: JSON.stringify({ action: "read_background", process_id: "proc-123" }) }),
+      commandItem({ id: "call-2", arguments: JSON.stringify({ action: "stop_background", process_id: "proc-123" }) }),
+    ]));
+
+    expect(runs).toEqual([]);
   });
 
   it("marks non-zero exits and timeouts as failed even when the item completed", () => {
@@ -106,7 +145,7 @@ describe("terminal run records", () => {
     expect(incomplete.status).toBe("incomplete");
   });
 
-  it("lists settled turns only and prefers the last failed run", () => {
+  it("includes completed command items from an active turn and prefers the last failed run", () => {
     const completed = turn([
       commandItem(),
       commandItem({
@@ -119,15 +158,23 @@ describe("terminal run records", () => {
         arguments: JSON.stringify({ command: "npm run build" }),
       }),
     ]);
-    const running = { ...turn([commandItem({ id: "call-live" })], "in_progress"), id: "turn-live" };
+    const running = {
+      ...turn([commandItem({
+        id: "call-live",
+        arguments: JSON.stringify({ action: "start_background", command: "npm run dev" }),
+        result: JSON.stringify({ action: "start_background", id: "proc-live", status: "running" }),
+      })], "in_progress"),
+      id: "turn-live",
+    };
     const thread: Pick<Thread, "id" | "turns"> = {
       id: "thread-1",
       turns: [turn([{ id: "message-1", type: "agent_message", text: "done" }]), completed, running],
     };
     const groups = agentRunGroupsForThread(thread);
 
-    expect(groups).toHaveLength(1);
+    expect(groups).toHaveLength(2);
     expect(groups[0].turnNumber).toBe(2);
+    expect(groups[1].runs[0]).toMatchObject({ processID: "proc-live", execution: "managed" });
     expect(preferredAgentRun(groups[0].runs)?.toolCallID).toBe("call-2");
     expect(selectAgentRun(groups, { threadID: "thread-1", turnID: "turn-1" })?.toolCallID).toBe("call-2");
     expect(selectAgentRun(groups, {

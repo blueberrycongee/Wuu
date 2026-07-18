@@ -10,6 +10,7 @@ export type AgentRunLocator = {
 
 export type AgentRunRecord = {
   kind: "agent_run";
+  execution: "snapshot" | "managed";
   threadID: string;
   turnID: string;
   toolCallID: string;
@@ -23,6 +24,8 @@ export type AgentRunRecord = {
   timedOut: boolean;
   truncated: boolean;
   fullLogRef?: string;
+  processID?: string;
+  tty: boolean;
 };
 
 export type AgentRunTurnGroup = {
@@ -53,16 +56,16 @@ export function isCommandToolCall(item: ThreadItem): boolean {
 export function agentRunsForTurn(threadID: string, turn: Turn): AgentRunRecord[] {
   return turn.items
     .filter(isCommandToolCall)
-    .map((item) => agentRunFromToolCall(threadID, turn, item));
+    .flatMap((item) => {
+      const run = agentRunFromToolCall(threadID, turn, item);
+      return run ? [run] : [];
+    });
 }
 
 export function agentRunGroupsForThread(
   thread: Pick<Thread, "id" | "turns">,
 ): AgentRunTurnGroup[] {
   return thread.turns.flatMap((turn, turnIndex) => {
-    if (turn.status === "in_progress") {
-      return [];
-    }
     const runs = agentRunsForTurn(thread.id, turn);
     return runs.length > 0
       ? [{
@@ -116,9 +119,17 @@ function agentRunFromToolCall(
   threadID: string,
   turn: Turn,
   item: ThreadItem,
-): AgentRunRecord {
+): AgentRunRecord | undefined {
   const args = parseRecord(item.arguments);
   const result = toolResultRecord(item);
+  const action = nonEmptyString(args, "action") ?? "run";
+  if (action !== "run" && action !== "start_background") {
+    return undefined;
+  }
+  const processID =
+    nonEmptyString(result, "action") === "start_background"
+      ? nonEmptyString(result, "id")
+      : undefined;
   const exitCode = numberValue(result, "exit_code");
   const durationMs = numberValue(result, "duration_ms");
   const timedOut = booleanValue(result, "timed_out") ?? false;
@@ -142,6 +153,7 @@ function agentRunFromToolCall(
 
   return {
     kind: "agent_run",
+    execution: processID ? "managed" : "snapshot",
     threadID,
     turnID: turn.id,
     toolCallID: item.id,
@@ -163,6 +175,8 @@ function agentRunFromToolCall(
       (booleanValue(result, "stdout_tail_truncated") ?? false) ||
       (booleanValue(result, "stderr_tail_truncated") ?? false),
     fullLogRef: nonEmptyString(result, "full_log_ref"),
+    processID,
+    tty: processID ? (booleanValue(result, "tty") ?? false) : false,
   };
 }
 
