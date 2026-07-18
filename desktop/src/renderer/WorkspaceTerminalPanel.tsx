@@ -351,9 +351,6 @@ export function WorkspaceTerminalPanel({
                 <RunStatusIcon run={run} process={process} />
                 <span className="workspace-terminal-resource-copy">
                   <span className="workspace-terminal-resource-name">{run.command}</span>
-                  <span className="workspace-terminal-resource-meta">
-                    {managedRunStatusLabel(run, process, false)}
-                  </span>
                 </span>
               </button>
             );

@@ -1080,7 +1080,7 @@ html.resizing-workspace-file-split * {
   height: 100%;
   min-width: 0;
   min-height: 0;
-  grid-template-columns: var(--workspace-terminal-navigation-width, 212px) 8px minmax(0, 1fr);
+  grid-template-columns: var(--workspace-terminal-navigation-width, 212px) 1px minmax(0, 1fr);
 }
 
 .workspace-terminal-navigation {
@@ -1095,7 +1095,9 @@ html.resizing-workspace-file-split * {
   position: relative;
   z-index: 2;
   grid-column: 2;
+  width: 9px;
   min-height: 0;
+  margin-left: -4px;
   cursor: col-resize;
   outline: 0;
   -webkit-app-region: no-drag;
@@ -1103,7 +1105,7 @@ html.resizing-workspace-file-split * {
 
 .workspace-terminal-resizer::before {
   position: absolute;
-  inset: 0 auto 0 3px;
+  inset: 0 auto 0 4px;
   width: 1px;
   background: var(--surface-3);
   content: "";
@@ -1196,13 +1198,6 @@ html.resizing-workspace-terminal-split * {
 
 .workspace-terminal-resource .icon.live {
   color: var(--success);
-  animation: workspace-terminal-live-pulse 1.4s ease-in-out infinite;
-}
-
-@keyframes workspace-terminal-live-pulse {
-  50% {
-    opacity: 0.45;
-  }
 }
 
 .workspace-terminal-resource-copy {
