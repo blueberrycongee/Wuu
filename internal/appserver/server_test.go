@@ -3421,14 +3421,30 @@ func TestServerProcessTTYUsesThreadLocalWorktreeManager(t *testing.T) {
 
 	out := &lockedBuffer{}
 	srv := New(rt, out)
+	th := newThreadState("thread-worktree", nil, rt.ProviderName, rt.Model, t.TempDir(), false, time.Now().UTC())
+	threadRuntime := &runtime.ThreadRuntime{ProcessManager: threadManager}
+	th.execRuntime = threadRuntime
 	srv.mu.Lock()
-	srv.threads["thread-worktree"] = &threadState{
-		ID: "thread-worktree",
-		execRuntime: &runtime.ThreadRuntime{
-			ProcessManager: threadManager,
-		},
-	}
+	srv.threads[th.ID] = th
 	srv.mu.Unlock()
+
+	srv.resetThreadRuntimesForGeneralSettings("")
+	th.mu.Lock()
+	if th.execRuntime != threadRuntime || !th.pendingRuntimeReset {
+		t.Fatalf("live worktree tty runtime was not deferred: runtime=%p pending=%t", th.execRuntime, th.pendingRuntimeReset)
+	}
+	th.mu.Unlock()
+	ensured, err := srv.ensureThreadRuntime(th)
+	if err != nil {
+		t.Fatalf("ensureThreadRuntime with live tty: %v", err)
+	}
+	if ensured != threadRuntime {
+		t.Fatal("pending runtime reset replaced the live worktree tty manager")
+	}
+	if _, release, err := srv.beginThreadRuntimeSelectionMutation(th.ID); err == nil {
+		release()
+		t.Fatal("runtime selection mutation should be rejected while a managed tty is live")
+	}
 
 	listPayload := `{"id":"1","method":"process/list","params":{"thread_id":"thread-worktree"}}`
 	if err := srv.handleLine(context.Background(), []byte(listPayload)); err != nil {
