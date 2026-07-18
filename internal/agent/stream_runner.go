@@ -532,7 +532,8 @@ func (r *StreamRunner) prepareUsageTracker(history []providers.ChatMessage) (*Us
 		// provider usage measured. Preserve that trustworthy baseline and count
 		// only messages appended after the boundary instead of pessimistically
 		// re-estimating the entire durable transcript.
-		if anchor := findHistoryTailAnchor(history, trackedTailHash); tracker.HasGroundTruth() && anchor >= 0 {
+		breakdown := tracker.Breakdown()
+		if anchor := findHistoryTailAnchor(history, trackedTailHash); canRebaseUsageAfterTail(history, anchor, breakdown) {
 			tracker.SetAdjustment(UsageAdjustmentRequestShapeTailRebase)
 			tracker.RecordPendingMessages(history[anchor+1:])
 			return tracker, len(history)
@@ -607,6 +608,18 @@ func findHistoryTailAnchor(history []providers.ChatMessage, anchor string) int {
 	return -1
 }
 
+func canRebaseUsageAfterTail(history []providers.ChatMessage, anchor int, usage UsageBreakdown) bool {
+	if usage.LastResponseTotal <= 0 || usage.PendingDelta != 0 || anchor < 0 || anchor >= len(history) {
+		return false
+	}
+	for _, msg := range history[anchor+1:] {
+		if !strings.EqualFold(strings.TrimSpace(msg.Role), "user") {
+			return false
+		}
+	}
+	return true
+}
+
 // ResetConversationUsage discards the persistent cross-turn usage baseline and
 // re-seeds it from the supplied post-compaction history. It mirrors the
 // explicit usage.Reset()+RecordPendingMessages the loop performs after an
@@ -660,8 +673,9 @@ func (r *StreamRunner) SynchronizeConversationUsage(history []providers.ChatMess
 		r.trackedHistoryTailHash = historyTailAnchor(history)
 		return
 	}
-	if len(history) >= r.trackedHistoryLen && r.conversationUsage.HasGroundTruth() {
-		if anchor := findHistoryTailAnchor(history, r.trackedHistoryTailHash); anchor >= 0 {
+	if len(history) >= r.trackedHistoryLen {
+		usage := r.conversationUsage.Breakdown()
+		if anchor := findHistoryTailAnchor(history, r.trackedHistoryTailHash); anchor == len(history)-1 && usage.LastResponseTotal > 0 && usage.PendingDelta == 0 {
 			r.conversationUsage.SetAdjustment(UsageAdjustmentRequestShapeTailRebase)
 			r.conversationUsage.RecordPendingMessages(history[anchor+1:])
 			r.trackedHistoryLen = len(history)

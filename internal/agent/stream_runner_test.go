@@ -2322,6 +2322,47 @@ func TestStreamRunner_SynchronizeConversationUsageAdoptsExternalRewrite(t *testi
 	}
 }
 
+func TestStreamRunner_SynchronizeConversationUsageAdoptsExternalCompletedTurn(t *testing.T) {
+	oldHistory := []providers.ChatMessage{userMsg("old"), {Role: "assistant", Content: "old answer"}}
+	newHistory := append(providers.CloneChatMessages(oldHistory),
+		userMsg("external ask"),
+		providers.ChatMessage{Role: "assistant", Content: "external answer"},
+	)
+	runner := &StreamRunner{}
+	tracker := NewUsageTracker()
+	tracker.RecordResponse(&providers.TokenUsage{InputTokens: 50_000, OutputTokens: 2_000})
+	runner.commitUsageTracker(tracker, oldHistory)
+
+	runner.SynchronizeConversationUsage(newHistory, 9_000)
+
+	got, tracked := runner.prepareUsageTracker(newHistory)
+	breakdown := got.Breakdown()
+	if breakdown.Total() != 9_000 || breakdown.Adjustment != UsageAdjustmentExternalRewriteSeed || tracked != len(newHistory) {
+		t.Fatalf("external completed turn did not adopt persisted usage: usage=%+v tracked=%d", breakdown, tracked)
+	}
+}
+
+func TestStreamRunner_SynchronizeConversationUsageDoesNotDoubleCountPendingToolDelta(t *testing.T) {
+	oldHistory := []providers.ChatMessage{userMsg("old"), {Role: "assistant", Content: "old answer"}}
+	toolCall := providers.ChatMessage{Role: "assistant", ToolCalls: []providers.ToolCall{{ID: "call-1", Name: "read_file", Arguments: `{}`}}}
+	toolResult := providers.ChatMessage{Role: "tool", Name: "read_file", ToolCallID: "call-1", Content: "result"}
+	newHistory := append(providers.CloneChatMessages(oldHistory), toolCall, toolResult)
+	runner := &StreamRunner{}
+	tracker := NewUsageTracker()
+	tracker.RecordResponse(&providers.TokenUsage{InputTokens: 50_000})
+	tracker.RecordPendingMessages([]providers.ChatMessage{toolCall, toolResult})
+	runner.commitUsageTracker(tracker, oldHistory)
+
+	runner.SynchronizeConversationUsage(newHistory, 0)
+
+	got, tracked := runner.prepareUsageTracker(newHistory)
+	breakdown := got.Breakdown()
+	want := estimateMessages(newHistory)
+	if breakdown.LastResponseTotal != 0 || breakdown.PendingDelta != want || breakdown.Adjustment != UsageAdjustmentExternalRewriteEstimate || tracked != len(newHistory) {
+		t.Fatalf("pending tool delta was retained across durable replay: usage=%+v want=%d tracked=%d", breakdown, want, tracked)
+	}
+}
+
 func TestStreamRunner_PrepareUsageTrackerResetsSameLengthRewrite(t *testing.T) {
 	original := []providers.ChatMessage{userMsg("old"), {Role: "assistant", Content: "old answer"}}
 	rewritten := []providers.ChatMessage{userMsg("new"), {Role: "assistant", Content: "new answer"}}
