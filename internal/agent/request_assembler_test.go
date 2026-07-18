@@ -51,3 +51,36 @@ func TestRequestOnlyContextProjectionSwitch(t *testing.T) {
 		t.Fatalf("off should restore legacy projection: %+v", legacy)
 	}
 }
+
+func TestRequestBlockMetricsMatchProjectionSwitch(t *testing.T) {
+	block := wuucontext.Block{
+		Kind: wuucontext.BlockTaskState, Title: "Task", Source: "runtime", Content: "state: active", TokenBudget: 200,
+	}
+	measure := func() int {
+		t.Helper()
+		assembly := assembleModelRequest(nil, RequestOnlyContextBlocks([]wuucontext.Block{block}))
+		_, counts, bytesByKind := requestBlockMetrics(assembly)
+		kind := string(wuucontext.BlockTaskState)
+		if counts[kind] != 1 {
+			t.Fatalf("request block count = %d, want 1: %+v", counts[kind], counts)
+		}
+		return bytesByKind[kind]
+	}
+
+	t.Setenv(wuucontext.DynamicContextProjectionEnvVar, "")
+	compactBytes := measure()
+	wantCompact := len([]byte(strings.TrimSpace(wuucontext.CompileRequestBlocks([]wuucontext.Block{block}))))
+	if compactBytes != wantCompact {
+		t.Fatalf("compact block bytes = %d, want projected bytes %d", compactBytes, wantCompact)
+	}
+
+	t.Setenv(wuucontext.DynamicContextProjectionEnvVar, "off")
+	legacyBytes := measure()
+	wantLegacy := len([]byte(strings.TrimSpace(wuucontext.CompileBlocks([]wuucontext.Block{block}))))
+	if legacyBytes != wantLegacy {
+		t.Fatalf("legacy block bytes = %d, want projected bytes %d", legacyBytes, wantLegacy)
+	}
+	if compactBytes >= legacyBytes {
+		t.Fatalf("compact block bytes should be smaller: compact=%d legacy=%d", compactBytes, legacyBytes)
+	}
+}

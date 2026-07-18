@@ -173,11 +173,7 @@ func projectRequestOnlyBlocks(blocks []wuucontext.Block) []requestOnlyBlockProje
 	counts := make(map[string]int, len(blocks))
 	projections := make([]requestOnlyBlockProjection, 0, len(blocks))
 	for _, block := range blocks {
-		compile := wuucontext.CompileBlocks
-		if wuucontext.DynamicContextProjectionEnabled() {
-			compile = wuucontext.CompileRequestBlocks
-		}
-		rendered := compile([]wuucontext.Block{block})
+		rendered := compileRequestOnlyBlocks([]wuucontext.Block{block})
 		if strings.TrimSpace(rendered) == "" {
 			continue
 		}
@@ -198,6 +194,13 @@ func projectRequestOnlyBlocks(blocks []wuucontext.Block) []requestOnlyBlockProje
 		})
 	}
 	return projections
+}
+
+func compileRequestOnlyBlocks(blocks []wuucontext.Block) string {
+	if wuucontext.DynamicContextProjectionEnabled() {
+		return wuucontext.CompileRequestBlocks(blocks)
+	}
+	return wuucontext.CompileBlocks(blocks)
 }
 
 func activeRequestContextContent(name, rendered string) string {
