@@ -2,7 +2,16 @@ import { FitAddon } from "@xterm/addon-fit";
 import { Terminal as XtermTerminal, type ITheme } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import { CheckCircle2, Clock3, Plus, Square, SquareTerminal, Terminal, XCircle } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type {
   ManagedProcessSummary,
   RuntimeContext,
@@ -23,6 +32,11 @@ import { translateCurrent, useI18n } from "./i18n";
 const WORKSPACE_TERMINAL_PENDING_EVENT_IDS = 12;
 const WORKSPACE_TERMINAL_PENDING_EVENTS_PER_ID = 256;
 const WORKSPACE_TERMINAL_PENDING_TEXT_PER_ID = 512 * 1024;
+const WORKSPACE_TERMINAL_NAVIGATION_WIDTH_KEY = "wuu.workspaceTerminalNavigationWidth";
+const WORKSPACE_TERMINAL_NAVIGATION_DEFAULT_WIDTH = 212;
+const WORKSPACE_TERMINAL_NAVIGATION_MIN_WIDTH = 144;
+const WORKSPACE_TERMINAL_NAVIGATION_MAX_WIDTH = 360;
+const WORKSPACE_TERMINAL_NAVIGATION_WIDTH_STEP = 12;
 
 type WorkspaceTerminalState = "starting" | "ready" | "exited" | "error";
 
@@ -126,47 +140,48 @@ export function WorkspaceTerminalPanel({
     () => (thread ? agentRunGroupsForThread(thread) : []),
     [thread],
   );
-  const allRuns = useMemo(
-    () => groups.flatMap((group) => group.runs).reverse(),
-    [groups],
-  );
   const requestedRecord = requestedRun ? selectAgentRun(groups, requestedRun) : undefined;
-  const runs = useMemo(() => {
-    const managedRuns = allRuns.filter((run) => run.execution === "managed");
-    if (!requestedRecord || requestedRecord.execution === "managed") {
-      return managedRuns;
-    }
-    return [requestedRecord, ...managedRuns];
-  }, [allRuns, requestedRecord]);
   const [selectedResourceID, setSelectedResourceID] = useState(
-    () => requestedRecord?.toolCallID ?? runs[0]?.toolCallID ?? "",
+    () => requestedRecord?.toolCallID ?? "",
   );
   const [userTerminalOpened, setUserTerminalOpened] = useState(false);
   const [userTerminalState, setUserTerminalState] = useState<WorkspaceTerminalState>("starting");
   const [managedProcesses, setManagedProcesses] = useState<Record<string, ManagedProcessSummary>>({});
-  const selectedRun = runs.find((run) => run.toolCallID === selectedResourceID);
-  const managedProcessIDs = useMemo(
-    () => runs.flatMap((run) => run.processID ? [run.processID] : []),
-    [runs],
+  const [navigationWidth, setNavigationWidth] = useState(readStoredTerminalNavigationWidth);
+  const [resizingNavigation, setResizingNavigation] = useState(false);
+  const navigationResizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
+  const runs = useMemo(
+    () => Object.values(managedProcesses)
+      .filter(isManagedProcessLive)
+      .sort((left, right) => Date.parse(right.updated_at) - Date.parse(left.updated_at))
+      .map((process) => managedRunFromProcess(thread?.id ?? process.owner_id, process)),
+    [managedProcesses, thread?.id],
   );
-  const managedProcessKey = managedProcessIDs.join("\u0000");
+  const selectedRun = runs.find((run) => run.toolCallID === selectedResourceID)
+    ?? (requestedRecord?.toolCallID === selectedResourceID ? requestedRecord : undefined);
   const handleManagedProcessChange = useCallback((next: ManagedProcessSummary) => {
-    setManagedProcesses((current) => ({
-      ...current,
-      [next.id]: preferManagedProcess(current[next.id], next),
-    }));
+    setManagedProcesses((current) => {
+      if (!isManagedProcessLive(next)) {
+        const updated = { ...current };
+        delete updated[next.id];
+        return updated;
+      }
+      return {
+        ...current,
+        [next.id]: preferManagedProcess(current[next.id], next),
+      };
+    });
   }, []);
 
   useEffect(() => {
     const threadID = thread?.id;
-    if (!threadID || managedProcessIDs.length === 0) {
+    if (!threadID) {
       setManagedProcesses({});
       return undefined;
     }
     let disposed = false;
     let refreshTimer: number | undefined;
     const activeThreadID = threadID;
-    const wanted = new Set(managedProcessIDs);
 
     async function refresh(): Promise<void> {
       try {
@@ -174,16 +189,14 @@ export function WorkspaceTerminalPanel({
         if (disposed) {
           return;
         }
-        const incoming = result.processes.filter((process) => wanted.has(process.id));
+        const incoming = result.processes.filter(isManagedProcessLive);
         setManagedProcesses((current) => {
           return Object.fromEntries(incoming.map((process) => [
             process.id,
             preferManagedProcess(current[process.id], process),
           ]));
         });
-        if (incoming.some(isManagedProcessLive)) {
-          refreshTimer = window.setTimeout(() => void refresh(), 1500);
-        }
+        refreshTimer = window.setTimeout(() => void refresh(), 1500);
       } catch {
         if (!disposed) {
           refreshTimer = window.setTimeout(() => void refresh(), 3000);
@@ -198,7 +211,37 @@ export function WorkspaceTerminalPanel({
         window.clearTimeout(refreshTimer);
       }
     };
-  }, [managedProcessKey, thread?.id]);
+  }, [thread?.id]);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    root.classList.toggle("resizing-workspace-terminal-split", resizingNavigation);
+    if (!resizingNavigation) {
+      return () => root.classList.remove("resizing-workspace-terminal-split");
+    }
+
+    function handlePointerMove(event: PointerEvent): void {
+      const session = navigationResizeRef.current;
+      if (session) {
+        setTerminalNavigationWidth(session.startWidth + event.clientX - session.startX);
+      }
+    }
+
+    function finishResize(): void {
+      navigationResizeRef.current = null;
+      setResizingNavigation(false);
+    }
+
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", finishResize);
+    window.addEventListener("pointercancel", finishResize);
+    return () => {
+      root.classList.remove("resizing-workspace-terminal-split");
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", finishResize);
+      window.removeEventListener("pointercancel", finishResize);
+    };
+  }, [resizingNavigation]);
 
   useEffect(() => {
     if (!requestedRun) {
@@ -222,12 +265,46 @@ export function WorkspaceTerminalPanel({
     setSelectedResourceID("user-terminal");
   }
 
+  function setTerminalNavigationWidth(width: number): void {
+    const next = clampTerminalNavigationWidth(width);
+    window.localStorage.setItem(WORKSPACE_TERMINAL_NAVIGATION_WIDTH_KEY, String(next));
+    setNavigationWidth(next);
+  }
+
+  function startNavigationResize(event: ReactPointerEvent<HTMLDivElement>): void {
+    if (event.button !== 0) {
+      return;
+    }
+    event.preventDefault();
+    navigationResizeRef.current = { startX: event.clientX, startWidth: navigationWidth };
+    setResizingNavigation(true);
+  }
+
+  function handleNavigationResizeKeyDown(event: ReactKeyboardEvent<HTMLDivElement>): void {
+    if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      setTerminalNavigationWidth(navigationWidth - WORKSPACE_TERMINAL_NAVIGATION_WIDTH_STEP);
+    } else if (event.key === "ArrowRight") {
+      event.preventDefault();
+      setTerminalNavigationWidth(navigationWidth + WORKSPACE_TERMINAL_NAVIGATION_WIDTH_STEP);
+    } else if (event.key === "Home") {
+      event.preventDefault();
+      setTerminalNavigationWidth(WORKSPACE_TERMINAL_NAVIGATION_MIN_WIDTH);
+    } else if (event.key === "End") {
+      event.preventDefault();
+      setTerminalNavigationWidth(WORKSPACE_TERMINAL_NAVIGATION_MAX_WIDTH);
+    }
+  }
+
   if (!activeContext?.cwd) {
     return <WorkspacePanelEmpty title={t("workspace.files.noProject")} description={t("workspace.terminal.noProjectDescription")} icon={<Terminal size={24} />} />;
   }
 
   return (
-    <div className="workspace-terminal-workspace">
+    <div
+      className={`workspace-terminal-workspace${resizingNavigation ? " resizing" : ""}`}
+      style={{ "--workspace-terminal-navigation-width": `${navigationWidth}px` } as CSSProperties}
+    >
       <nav className="workspace-terminal-navigation" aria-label={t("workspace.terminal.resources")}>
         <div className="workspace-terminal-navigation-header">
           <span>{t("workspace.terminal.resources")}</span>
@@ -261,9 +338,11 @@ export function WorkspaceTerminalPanel({
           ) : null}
           {runs.map((run) => {
             const process = run.processID ? managedProcesses[run.processID] : undefined;
+            const selected = selectedResourceID === run.toolCallID
+              || (run.processID !== undefined && run.processID === selectedRun?.processID);
             return (
               <button
-                className={`workspace-terminal-resource workspace-terminal-run${selectedResourceID === run.toolCallID ? " active" : ""}`}
+                className={`workspace-terminal-resource workspace-terminal-run${selected ? " active" : ""}`}
                 type="button"
                 key={run.toolCallID}
                 title={run.command}
@@ -284,6 +363,19 @@ export function WorkspaceTerminalPanel({
           ) : null}
         </div>
       </nav>
+      <div
+        className="workspace-terminal-resizer"
+        role="separator"
+        aria-label={t("workspace.terminal.resizeNavigation")}
+        aria-orientation="vertical"
+        aria-valuemin={WORKSPACE_TERMINAL_NAVIGATION_MIN_WIDTH}
+        aria-valuemax={WORKSPACE_TERMINAL_NAVIGATION_MAX_WIDTH}
+        aria-valuenow={Math.round(navigationWidth)}
+        tabIndex={0}
+        onDoubleClick={() => setTerminalNavigationWidth(WORKSPACE_TERMINAL_NAVIGATION_DEFAULT_WIDTH)}
+        onKeyDown={handleNavigationResizeKeyDown}
+        onPointerDown={startNavigationResize}
+      />
       <div className="workspace-terminal-content">
         {userTerminalOpened ? (
           <UserTerminalPane
@@ -310,6 +402,36 @@ export function WorkspaceTerminalPanel({
       </div>
     </div>
   );
+}
+
+function clampTerminalNavigationWidth(width: number): number {
+  return Math.min(
+    WORKSPACE_TERMINAL_NAVIGATION_MAX_WIDTH,
+    Math.max(WORKSPACE_TERMINAL_NAVIGATION_MIN_WIDTH, width),
+  );
+}
+
+function readStoredTerminalNavigationWidth(): number {
+  const stored = Number(window.localStorage.getItem(WORKSPACE_TERMINAL_NAVIGATION_WIDTH_KEY));
+  return Number.isFinite(stored) && stored > 0
+    ? clampTerminalNavigationWidth(stored)
+    : WORKSPACE_TERMINAL_NAVIGATION_DEFAULT_WIDTH;
+}
+
+function managedRunFromProcess(threadID: string, process: ManagedProcessSummary): AgentRunRecord {
+  return {
+    kind: "agent_run",
+    execution: "managed",
+    threadID,
+    turnID: "",
+    toolCallID: `managed:${process.id}`,
+    command: process.command,
+    status: "incomplete",
+    timedOut: false,
+    truncated: false,
+    processID: process.id,
+    tty: process.tty ?? false,
+  };
 }
 
 function UserTerminalStatusIcon({ state }: { state: WorkspaceTerminalState }): JSX.Element {

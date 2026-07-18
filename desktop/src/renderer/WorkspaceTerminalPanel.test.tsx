@@ -78,6 +78,7 @@ let stopManagedProcess: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
   document.documentElement.dataset.theme = "light";
+  window.localStorage.removeItem("wuu.workspaceTerminalNavigationWidth");
   terminalConstructorOptions.length = 0;
   terminalDataHandlers.length = 0;
   terminalInstances.length = 0;
@@ -269,10 +270,58 @@ describe("WorkspaceTerminalPanel", () => {
       <WorkspaceTerminalPanel activeContext={worktreeContext} thread={threadWithRuns} />,
     );
 
-    expect(container.textContent).toContain("还没有终端记录");
+    expect(container.textContent).toContain("没有运行中的终端");
     expect(container.textContent).not.toContain("npm test");
     expect(container.textContent).not.toContain("npm run lint");
     expect(terminalInstances).toHaveLength(0);
+  });
+
+  it("uses the live process inventory without requiring matching command history", async () => {
+    listManagedProcesses.mockResolvedValue({ processes: [runningProcess] });
+    readManagedProcess.mockImplementation(() => new Promise(() => {}));
+
+    await render(
+      <WorkspaceTerminalPanel activeContext={worktreeContext} thread={threadWithRuns} />,
+    );
+
+    await vi.waitFor(() => {
+      const navigation = container.querySelector(".workspace-terminal-navigation");
+      expect(listManagedProcesses).toHaveBeenCalledWith("thread-1");
+      expect(navigation?.textContent).toContain("npm run dev");
+      expect(navigation?.textContent).not.toContain("npm test");
+      expect(navigation?.textContent).not.toContain("npm run lint");
+    });
+  });
+
+  it("does not list managed processes after they stop", async () => {
+    listManagedProcesses.mockResolvedValue({
+      processes: [{ ...runningProcess, status: "stopped", stopped_at: "2026-07-18T08:01:00Z" }],
+    });
+
+    await render(
+      <WorkspaceTerminalPanel activeContext={worktreeContext} thread={threadWithLiveRun} />,
+    );
+
+    await vi.waitFor(() => expect(listManagedProcesses).toHaveBeenCalledWith("thread-1"));
+    expect(container.querySelector(".workspace-terminal-navigation")?.textContent).not.toContain("npm run dev");
+    expect(terminalInstances).toHaveLength(0);
+  });
+
+  it("resizes the terminal list from the separator", async () => {
+    await render(<WorkspaceTerminalPanel activeContext={worktreeContext} />);
+    const separator = container.querySelector<HTMLElement>('[role="separator"]');
+
+    expect(separator?.getAttribute("aria-valuenow")).toBe("212");
+    act(() => separator?.dispatchEvent(new MouseEvent("pointerdown", {
+      bubbles: true,
+      button: 0,
+      clientX: 100,
+    })));
+    act(() => window.dispatchEvent(new MouseEvent("pointermove", { clientX: 140 })));
+
+    expect(separator?.getAttribute("aria-valuenow")).toBe("252");
+    expect(container.querySelector<HTMLElement>(".workspace-terminal-workspace")?.style.getPropertyValue("--workspace-terminal-navigation-width")).toBe("252px");
+    act(() => window.dispatchEvent(new MouseEvent("pointerup")));
   });
 
   it("opens a requested settled run without starting the interactive terminal", async () => {
