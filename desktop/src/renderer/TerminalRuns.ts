@@ -28,6 +28,7 @@ export type AgentRunRecord = {
 
 export type AgentRunTurnGroup = {
   turnID: string;
+  turnNumber: number;
   status: Turn["status"];
   startedAt?: string | null;
   completedAt?: string | null;
@@ -59,7 +60,7 @@ export function agentRunsForTurn(threadID: string, turn: Turn): AgentRunRecord[]
 export function agentRunGroupsForThread(
   thread: Pick<Thread, "id" | "turns">,
 ): AgentRunTurnGroup[] {
-  return thread.turns.flatMap((turn) => {
+  return thread.turns.flatMap((turn, turnIndex) => {
     if (turn.status === "in_progress") {
       return [];
     }
@@ -67,6 +68,7 @@ export function agentRunGroupsForThread(
     return runs.length > 0
       ? [{
           turnID: turn.id,
+          turnNumber: turnIndex + 1,
           status: turn.status,
           startedAt: turn.started_at,
           completedAt: turn.completed_at,
@@ -93,6 +95,10 @@ export function selectAgentRun(
     return undefined;
   }
   if (locator) {
+    const runThreadID = groups[0]?.runs[0]?.threadID;
+    if (runThreadID && runThreadID !== locator.threadID) {
+      return undefined;
+    }
     const group = groups.find((candidate) => candidate.turnID === locator.turnID);
     if (group) {
       if (locator.toolCallID) {

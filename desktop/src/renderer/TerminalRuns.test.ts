@@ -114,11 +114,12 @@ describe("terminal run records", () => {
     const running = { ...turn([commandItem({ id: "call-live" })], "in_progress"), id: "turn-live" };
     const thread: Pick<Thread, "id" | "turns"> = {
       id: "thread-1",
-      turns: [completed, running],
+      turns: [turn([{ id: "message-1", type: "agent_message", text: "done" }]), completed, running],
     };
     const groups = agentRunGroupsForThread(thread);
 
     expect(groups).toHaveLength(1);
+    expect(groups[0].turnNumber).toBe(2);
     expect(preferredAgentRun(groups[0].runs)?.toolCallID).toBe("call-2");
     expect(selectAgentRun(groups, { threadID: "thread-1", turnID: "turn-1" })?.toolCallID).toBe("call-2");
     expect(selectAgentRun(groups, {
@@ -126,5 +127,9 @@ describe("terminal run records", () => {
       turnID: "turn-1",
       toolCallID: "call-3",
     })?.toolCallID).toBe("call-3");
+    expect(selectAgentRun(groups, {
+      threadID: "another-thread",
+      turnID: "turn-1",
+    })).toBeUndefined();
   });
 });

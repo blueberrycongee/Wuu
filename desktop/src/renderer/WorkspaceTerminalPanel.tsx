@@ -1,10 +1,16 @@
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal as XtermTerminal, type ITheme } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
-import { Terminal } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
-import type { RuntimeContext, TerminalSessionEvent } from "../shared/protocol";
+import { CheckCircle2, Clock3, SquareTerminal, Terminal, XCircle } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { RuntimeContext, TerminalSessionEvent, Thread } from "../shared/protocol";
 import { currentAppliedTheme, observeAppliedTheme, type AppliedTheme } from "./Theme";
+import {
+  agentRunGroupsForThread,
+  selectAgentRun,
+  type AgentRunLocator,
+  type AgentRunRecord,
+} from "./TerminalRuns";
 import { WorkspacePanelEmpty } from "./WorkspaceFiles";
 import { desktopApiErrorMessage } from "./WorkspaceReviewHelpers";
 import { translateCurrent, useI18n } from "./i18n";
@@ -99,7 +105,186 @@ function terminalExitText(event: Extract<TerminalSessionEvent, { type: "exit" }>
   });
 }
 
-export function WorkspaceTerminalPanel({ activeContext }: { activeContext?: RuntimeContext }): JSX.Element {
+export type WorkspaceTerminalRunRequest = AgentRunLocator & { requestID: number };
+
+export function WorkspaceTerminalPanel({
+  activeContext,
+  thread,
+  requestedRun,
+}: {
+  activeContext?: RuntimeContext;
+  thread?: Thread;
+  requestedRun?: WorkspaceTerminalRunRequest;
+}): JSX.Element {
+  const { t } = useI18n();
+  const groups = useMemo(
+    () => (thread ? agentRunGroupsForThread(thread) : []),
+    [thread],
+  );
+  const requestedRecord = requestedRun ? selectAgentRun(groups, requestedRun) : undefined;
+  const [selectedResourceID, setSelectedResourceID] = useState(
+    () => requestedRecord?.toolCallID ?? "user-terminal",
+  );
+  const [userTerminalOpened, setUserTerminalOpened] = useState(
+    () => !requestedRecord,
+  );
+  const selectedRun = groups
+    .flatMap((group) => group.runs)
+    .find((run) => run.toolCallID === selectedResourceID);
+
+  useEffect(() => {
+    if (!requestedRun) {
+      return;
+    }
+    const next = selectAgentRun(groups, requestedRun);
+    if (next) {
+      setSelectedResourceID(next.toolCallID);
+    }
+  }, [groups, requestedRun?.requestID, requestedRun?.threadID, requestedRun?.turnID, requestedRun?.toolCallID]);
+
+  useEffect(() => {
+    if (selectedResourceID === "user-terminal" || selectedRun) {
+      return;
+    }
+    setSelectedResourceID("user-terminal");
+    setUserTerminalOpened(true);
+  }, [selectedResourceID, selectedRun]);
+
+  function openUserTerminal(): void {
+    setUserTerminalOpened(true);
+    setSelectedResourceID("user-terminal");
+  }
+
+  return (
+    <div className="workspace-terminal-workspace">
+      <nav className="workspace-terminal-navigation" aria-label={t("workspace.terminal.resources")}>
+        <button
+          className={`workspace-terminal-resource${selectedResourceID === "user-terminal" ? " active" : ""}`}
+          type="button"
+          onClick={openUserTerminal}
+        >
+          <SquareTerminal className="icon" />
+          <span>{t("workspace.terminal.userTerminal")}</span>
+        </button>
+        <div className="workspace-terminal-run-list">
+          <div className="workspace-terminal-nav-heading">{t("workspace.terminal.agentRuns")}</div>
+          {groups.length > 0 ? groups.slice().reverse().map((group) => (
+            <section className="workspace-terminal-turn-group" key={group.turnID}>
+              <div className="workspace-terminal-turn-heading">
+                {t("workspace.terminal.turnLabel", { number: group.turnNumber })}
+              </div>
+              {group.runs.map((run) => (
+                <button
+                  className={`workspace-terminal-resource workspace-terminal-run${selectedResourceID === run.toolCallID ? " active" : ""}`}
+                  type="button"
+                  key={run.toolCallID}
+                  title={run.command}
+                  onClick={() => setSelectedResourceID(run.toolCallID)}
+                >
+                  <RunStatusIcon run={run} />
+                  <span>{run.command}</span>
+                </button>
+              ))}
+            </section>
+          )) : (
+            <div className="workspace-terminal-no-runs">{t("workspace.terminal.noRuns")}</div>
+          )}
+        </div>
+      </nav>
+      <div className="workspace-terminal-content">
+        {userTerminalOpened ? (
+          <UserTerminalPane
+            active={selectedResourceID === "user-terminal"}
+            activeContext={activeContext}
+          />
+        ) : null}
+        {selectedRun ? <AgentRunPane run={selectedRun} /> : null}
+      </div>
+    </div>
+  );
+}
+
+function RunStatusIcon({ run }: { run: AgentRunRecord }): JSX.Element {
+  if (run.status === "failed") {
+    return <XCircle className="icon failed" />;
+  }
+  if (run.status === "completed") {
+    return <CheckCircle2 className="icon completed" />;
+  }
+  return <Clock3 className="icon" />;
+}
+
+function AgentRunPane({ run }: { run: AgentRunRecord }): JSX.Element {
+  const { t } = useI18n();
+  const meta = [
+    run.exitCode !== undefined ? t("workspace.terminal.exitCode", { code: run.exitCode }) : undefined,
+    run.durationMs !== undefined ? formatTerminalDuration(run.durationMs) : undefined,
+    run.timedOut ? t("workspace.terminal.timedOut") : undefined,
+  ].filter((value): value is string => Boolean(value));
+  const hasOutput = Boolean(run.stdout || run.stderr || run.output);
+
+  return (
+    <article className="workspace-agent-run" data-tool-call-id={run.toolCallID}>
+      <header className="workspace-agent-run-header">
+        <div>
+          <div className="workspace-agent-run-kicker">{t("workspace.terminal.readOnlyRun")}</div>
+          <h2>{run.command}</h2>
+        </div>
+        <span className={`workspace-agent-run-status ${run.status}`}>
+          {runStatusLabel(run)}
+        </span>
+      </header>
+      {meta.length > 0 ? <div className="workspace-agent-run-meta">{meta.join(" · ")}</div> : null}
+      <div className="workspace-agent-run-output">
+        {run.stdout ? <RunOutputSection label="stdout" text={run.stdout} /> : null}
+        {run.stderr ? <RunOutputSection label="stderr" text={run.stderr} error /> : null}
+        {run.output ? <RunOutputSection label={t("workspace.terminal.output")} text={run.output} /> : null}
+        {!hasOutput ? <div className="workspace-agent-run-empty">{t("workspace.terminal.noOutput")}</div> : null}
+      </div>
+      {run.truncated ? (
+        <div className="workspace-agent-run-notice">{t("workspace.terminal.retainedOutputTruncated")}</div>
+      ) : null}
+    </article>
+  );
+}
+
+function runStatusLabel(run: AgentRunRecord): string {
+  switch (run.status) {
+    case "completed":
+      return translateCurrent("workspace.terminal.status.completed");
+    case "failed":
+      return translateCurrent("workspace.terminal.status.failed");
+    case "interrupted":
+      return translateCurrent("workspace.terminal.status.interrupted");
+    case "in_progress":
+      return translateCurrent("workspace.terminal.status.inProgress");
+  }
+}
+
+function RunOutputSection({
+  label,
+  text,
+  error = false,
+}: {
+  label: string;
+  text: string;
+  error?: boolean;
+}): JSX.Element {
+  return (
+    <section className={`workspace-agent-run-stream${error ? " error" : ""}`}>
+      <div className="workspace-agent-run-stream-label">{label}</div>
+      <pre>{text}</pre>
+    </section>
+  );
+}
+
+function UserTerminalPane({
+  active,
+  activeContext,
+}: {
+  active: boolean;
+  activeContext?: RuntimeContext;
+}): JSX.Element {
   const { t } = useI18n();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const terminalRef = useRef<XtermTerminal | null>(null);
@@ -108,6 +293,12 @@ export function WorkspaceTerminalPanel({ activeContext }: { activeContext?: Runt
   const [terminalState, setTerminalState] = useState<WorkspaceTerminalState>("starting");
   const [restartKey, setRestartKey] = useState(0);
   const workspaceRoot = activeContext?.cwd;
+
+  useEffect(() => {
+    if (active) {
+      terminalRef.current?.focus();
+    }
+  }, [active]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -271,7 +462,7 @@ export function WorkspaceTerminalPanel({ activeContext }: { activeContext?: Runt
   }
 
   return (
-    <div className="workspace-terminal-panel">
+    <div className="workspace-terminal-panel" hidden={!active}>
       <div className="workspace-terminal-screen" onMouseDown={() => terminalRef.current?.focus()}>
         <div className="workspace-terminal-host" ref={containerRef} />
       </div>

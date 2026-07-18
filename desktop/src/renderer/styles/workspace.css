@@ -1075,6 +1075,103 @@ html.resizing-workspace-file-split * {
   line-height: 1.45;
 }
 
+.workspace-terminal-workspace {
+  display: grid;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  grid-template-columns: minmax(172px, 212px) minmax(0, 1fr);
+}
+
+.workspace-terminal-navigation {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  border-right: 1px solid var(--surface-3);
+  background: var(--surface-1);
+  padding: 10px 8px;
+}
+
+.workspace-terminal-content {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--paper);
+}
+
+.workspace-terminal-resource {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  grid-template-columns: 16px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  border-radius: var(--radius-sm);
+  color: var(--ink-soft);
+  padding: 7px 8px;
+  text-align: left;
+}
+
+.workspace-terminal-resource:hover,
+.workspace-terminal-resource.active {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+
+.workspace-terminal-resource .icon {
+  width: 14px;
+  height: 14px;
+}
+
+.workspace-terminal-resource .icon.completed {
+  color: var(--success);
+}
+
+.workspace-terminal-resource .icon.failed {
+  color: var(--danger);
+}
+
+.workspace-terminal-resource span {
+  overflow: hidden;
+  font-size: var(--font-sm);
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace-terminal-run-list {
+  margin-top: 14px;
+}
+
+.workspace-terminal-nav-heading,
+.workspace-terminal-turn-heading {
+  color: var(--ink-muted);
+  font-size: var(--font-xs);
+  font-weight: var(--weight-semibold);
+}
+
+.workspace-terminal-nav-heading {
+  padding: 0 8px 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.workspace-terminal-turn-group + .workspace-terminal-turn-group {
+  margin-top: 12px;
+}
+
+.workspace-terminal-turn-heading {
+  padding: 0 8px 4px;
+}
+
+.workspace-terminal-no-runs {
+  color: var(--ink-muted);
+  font-size: var(--font-sm);
+  line-height: 1.45;
+  padding: 4px 8px;
+}
+
 .workspace-terminal-panel {
   position: relative;
   display: grid;
@@ -1082,6 +1179,111 @@ html.resizing-workspace-file-split * {
   min-width: 0;
   min-height: 0;
   grid-template-rows: minmax(0, 1fr);
+}
+
+.workspace-agent-run {
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  color: var(--ink);
+  padding: 22px 24px 28px;
+}
+
+.workspace-agent-run-header {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.workspace-agent-run-header > div {
+  min-width: 0;
+}
+
+.workspace-agent-run-kicker {
+  color: var(--ink-muted);
+  font-size: var(--font-xs);
+  font-weight: var(--weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.workspace-agent-run h2 {
+  margin: 6px 0 0;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: var(--font-title);
+  font-weight: var(--weight-semibold);
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.workspace-agent-run-status {
+  flex: 0 0 auto;
+  border-radius: var(--radius-pill);
+  background: var(--surface-2);
+  color: var(--ink-soft);
+  font-size: var(--font-xs);
+  padding: 4px 8px;
+}
+
+.workspace-agent-run-status.failed {
+  color: var(--danger);
+}
+
+.workspace-agent-run-meta {
+  margin-top: 10px;
+  color: var(--ink-muted);
+  font-size: var(--font-sm);
+}
+
+.workspace-agent-run-output {
+  display: grid;
+  gap: 16px;
+  margin-top: 22px;
+}
+
+.workspace-agent-run-stream {
+  min-width: 0;
+}
+
+.workspace-agent-run-stream-label {
+  margin-bottom: 6px;
+  color: var(--ink-muted);
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: var(--font-xs);
+}
+
+.workspace-agent-run-stream pre {
+  min-width: 0;
+  overflow: auto;
+  border: 1px solid var(--surface-3);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  color: var(--ink);
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 0;
+  padding: 12px 14px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.workspace-agent-run-stream.error pre {
+  color: var(--danger);
+}
+
+.workspace-agent-run-empty,
+.workspace-agent-run-notice {
+  color: var(--ink-muted);
+  font-size: var(--font-sm);
+  line-height: 1.45;
+}
+
+.workspace-agent-run-notice {
+  margin-top: 14px;
 }
 
 .workspace-terminal-screen {

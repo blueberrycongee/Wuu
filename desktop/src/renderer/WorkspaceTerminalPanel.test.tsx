@@ -1,7 +1,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { RuntimeContext, TerminalSessionEvent } from "../shared/protocol";
+import type { RuntimeContext, TerminalSessionEvent, Thread } from "../shared/protocol";
 import {
   appendPendingTerminalEvent,
   WorkspaceTerminalPanel,
@@ -107,9 +107,50 @@ describe("WorkspaceTerminalPanel", () => {
     project_id: "project-1",
     cwd: "/worktrees/fork-1/project",
   };
+  const threadWithRuns = {
+    id: "thread-1",
+    turns: [
+      {
+        id: "turn-1",
+        items_view: "full",
+        status: "completed",
+        items: [
+          {
+            id: "call-ok",
+            type: "tool_call",
+            status: "completed",
+            name: "bash",
+            arguments: JSON.stringify({ command: "npm test" }),
+            display: { kind: "command", capability: "command.bash" },
+            result: JSON.stringify({
+              exit_code: 0,
+              duration_ms: 1234,
+              stdout_tail: "tests passed\n",
+            }),
+          },
+          {
+            id: "call-failed",
+            type: "tool_call",
+            status: "completed",
+            name: "bash",
+            arguments: JSON.stringify({ command: "npm run lint" }),
+            display: { kind: "command", capability: "command.bash" },
+            result: JSON.stringify({
+              exit_code: 2,
+              duration_ms: 2500,
+              stderr_tail: "lint failed\n",
+              stderr_tail_truncated: true,
+            }),
+          },
+        ],
+      },
+    ],
+  } as Thread;
 
   it("starts the pty session rooted at the workspace context's cwd (Bug 3: worktree-fork panel root)", async () => {
-    await render(<WorkspaceTerminalPanel activeContext={worktreeContext} />);
+    await render(
+      <WorkspaceTerminalPanel activeContext={worktreeContext} thread={threadWithRuns} />,
+    );
 
     expect(startTerminalSession).toHaveBeenCalledWith(
       expect.objectContaining({ cwd: "/worktrees/fork-1/project" }),
@@ -135,6 +176,34 @@ describe("WorkspaceTerminalPanel", () => {
       expect(terminalInstances[0]?.options.theme?.background).toBe("#1d2024");
       expect(terminalInstances[0]?.options.theme?.foreground).toBe("#e4e6e8");
     });
+  });
+
+  it("opens a requested settled run without starting the interactive terminal", async () => {
+    await render(
+      <WorkspaceTerminalPanel
+        activeContext={worktreeContext}
+        thread={threadWithRuns}
+        requestedRun={{
+          threadID: "thread-1",
+          turnID: "turn-1",
+          requestID: 1,
+        }}
+      />,
+    );
+
+    expect(startTerminalSession).not.toHaveBeenCalled();
+    expect(container.querySelector(".workspace-agent-run")?.textContent).toContain("npm run lint");
+    expect(container.textContent).toContain("退出码 2");
+    expect(container.textContent).toContain("lint failed");
+    expect(container.textContent).toContain("这里只能查看协议保留的输出片段");
+
+    const successfulRun = Array.from(container.querySelectorAll("button")).find(
+      (button) => button.textContent?.includes("npm test"),
+    );
+    act(() => successfulRun?.click());
+
+    expect(container.querySelector(".workspace-agent-run")?.textContent).toContain("tests passed");
+    expect(container.querySelector(".workspace-agent-run")?.textContent).not.toContain("lint failed");
   });
 });
 
