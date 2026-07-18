@@ -219,14 +219,23 @@ describe("WorkspaceTerminalPanel", () => {
     }],
   } as Thread;
 
-  it("starts the pty session rooted at the workspace context's cwd (Bug 3: worktree-fork panel root)", async () => {
+  it("starts a workspace-rooted pty only after the user creates a terminal", async () => {
     await render(
-      <WorkspaceTerminalPanel activeContext={worktreeContext} thread={threadWithRuns} />,
+      <WorkspaceTerminalPanel activeContext={worktreeContext} />,
     );
+
+    expect(startTerminalSession).not.toHaveBeenCalled();
+
+    const newTerminal = container.querySelector<HTMLButtonElement>('button[aria-label="新建终端"]');
+    await act(async () => {
+      newTerminal?.click();
+      await Promise.resolve();
+    });
 
     expect(startTerminalSession).toHaveBeenCalledWith(
       expect.objectContaining({ cwd: "/worktrees/fork-1/project" }),
     );
+    expect(container.textContent).toContain("交互式终端");
   });
 
   it("does not render a terminal without a workspace context", () => {
@@ -240,6 +249,11 @@ describe("WorkspaceTerminalPanel", () => {
 
   it("uses the applied theme and updates an open terminal when it changes", async () => {
     await render(<WorkspaceTerminalPanel activeContext={worktreeContext} />);
+
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>('button[aria-label="新建终端"]')?.click();
+      await Promise.resolve();
+    });
 
     expect(terminalConstructorOptions[0]?.theme?.background).toBe("#ffffff");
 
@@ -266,6 +280,8 @@ describe("WorkspaceTerminalPanel", () => {
     expect(startTerminalSession).not.toHaveBeenCalled();
     expect(container.querySelector(".workspace-agent-terminal")?.textContent).toContain("npm run lint");
     expect(container.textContent).toContain("失败");
+    expect(container.textContent).not.toContain("AI 命令");
+    expect(container.textContent).not.toContain("第 1 轮");
     expect(terminalConstructorOptions[0]).toMatchObject({ convertEol: true, disableStdin: true });
     expect(terminalInstances[0]?.write).toHaveBeenCalledWith("lint failed\n");
     expect(terminalInstances[0]?.writeln).toHaveBeenCalledWith("[这里只能查看协议保留的输出片段。]");

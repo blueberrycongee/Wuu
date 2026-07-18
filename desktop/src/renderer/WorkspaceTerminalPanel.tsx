@@ -1,7 +1,7 @@
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal as XtermTerminal, type ITheme } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
-import { CheckCircle2, Clock3, Square, SquareTerminal, Terminal, XCircle } from "lucide-react";
+import { CheckCircle2, Clock3, Plus, Square, SquareTerminal, Terminal, XCircle } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   ManagedProcessSummary,
@@ -126,20 +126,21 @@ export function WorkspaceTerminalPanel({
     () => (thread ? agentRunGroupsForThread(thread) : []),
     [thread],
   );
+  const runs = useMemo(
+    () => groups.flatMap((group) => group.runs).reverse(),
+    [groups],
+  );
   const requestedRecord = requestedRun ? selectAgentRun(groups, requestedRun) : undefined;
   const [selectedResourceID, setSelectedResourceID] = useState(
-    () => requestedRecord?.toolCallID ?? "user-terminal",
+    () => requestedRecord?.toolCallID ?? runs[0]?.toolCallID ?? "",
   );
-  const [userTerminalOpened, setUserTerminalOpened] = useState(
-    () => !requestedRecord,
-  );
+  const [userTerminalOpened, setUserTerminalOpened] = useState(false);
+  const [userTerminalState, setUserTerminalState] = useState<WorkspaceTerminalState>("starting");
   const [managedProcesses, setManagedProcesses] = useState<Record<string, ManagedProcessSummary>>({});
-  const selectedRun = groups
-    .flatMap((group) => group.runs)
-    .find((run) => run.toolCallID === selectedResourceID);
+  const selectedRun = runs.find((run) => run.toolCallID === selectedResourceID);
   const managedProcessIDs = useMemo(
-    () => groups.flatMap((group) => group.runs.flatMap((run) => run.processID ? [run.processID] : [])),
-    [groups],
+    () => runs.flatMap((run) => run.processID ? [run.processID] : []),
+    [runs],
   );
   const managedProcessKey = managedProcessIDs.join("\u0000");
   const handleManagedProcessChange = useCallback((next: ManagedProcessSummary) => {
@@ -203,52 +204,75 @@ export function WorkspaceTerminalPanel({
   }, [groups, requestedRun?.requestID, requestedRun?.threadID, requestedRun?.turnID, requestedRun?.toolCallID]);
 
   useEffect(() => {
-    if (selectedResourceID === "user-terminal" || selectedRun) {
+    if ((selectedResourceID === "user-terminal" && userTerminalOpened) || selectedRun) {
       return;
     }
-    setSelectedResourceID("user-terminal");
-    setUserTerminalOpened(true);
-  }, [selectedResourceID, selectedRun]);
+    setSelectedResourceID(runs[0]?.toolCallID ?? "");
+  }, [runs, selectedResourceID, selectedRun, userTerminalOpened]);
 
-  function openUserTerminal(): void {
+  function createUserTerminal(): void {
     setUserTerminalOpened(true);
     setSelectedResourceID("user-terminal");
+  }
+
+  if (!activeContext?.cwd) {
+    return <WorkspacePanelEmpty title={t("workspace.files.noProject")} description={t("workspace.terminal.noProjectDescription")} icon={<Terminal size={24} />} />;
   }
 
   return (
     <div className="workspace-terminal-workspace">
       <nav className="workspace-terminal-navigation" aria-label={t("workspace.terminal.resources")}>
-        <button
-          className={`workspace-terminal-resource${selectedResourceID === "user-terminal" ? " active" : ""}`}
-          type="button"
-          onClick={openUserTerminal}
-        >
-          <SquareTerminal className="icon" />
-          <span>{t("workspace.terminal.userTerminal")}</span>
-        </button>
+        <div className="workspace-terminal-navigation-header">
+          <span>{t("workspace.terminal.resources")}</span>
+          {!userTerminalOpened ? (
+            <button
+              className="workspace-terminal-new"
+              type="button"
+              aria-label={t("workspace.terminal.newTerminal")}
+              title={t("workspace.terminal.newTerminal")}
+              onClick={createUserTerminal}
+            >
+              <Plus size={15} />
+            </button>
+          ) : null}
+        </div>
         <div className="workspace-terminal-run-list">
-          <div className="workspace-terminal-nav-heading">{t("workspace.terminal.agentRuns")}</div>
-          {groups.length > 0 ? groups.slice().reverse().map((group) => (
-            <section className="workspace-terminal-turn-group" key={group.turnID}>
-              <div className="workspace-terminal-turn-heading">
-                {t("workspace.terminal.turnLabel", { number: group.turnNumber })}
-              </div>
-              {group.runs.map((run) => (
-                <button
-                  className={`workspace-terminal-resource workspace-terminal-run${selectedResourceID === run.toolCallID ? " active" : ""}`}
-                  type="button"
-                  key={run.toolCallID}
-                  title={run.command}
-                  onClick={() => setSelectedResourceID(run.toolCallID)}
-                >
-                  <RunStatusIcon run={run} process={run.processID ? managedProcesses[run.processID] : undefined} />
-                  <span>{run.command}</span>
-                </button>
-              ))}
-            </section>
-          )) : (
+          {userTerminalOpened ? (
+            <button
+              className={`workspace-terminal-resource${selectedResourceID === "user-terminal" ? " active" : ""}`}
+              type="button"
+              onClick={() => setSelectedResourceID("user-terminal")}
+            >
+              <UserTerminalStatusIcon state={userTerminalState} />
+              <span className="workspace-terminal-resource-copy">
+                <span className="workspace-terminal-resource-name">{t("workspace.terminal.interactiveTerminal")}</span>
+                <span className="workspace-terminal-resource-meta">{userTerminalStatusLabel(userTerminalState)}</span>
+              </span>
+            </button>
+          ) : null}
+          {runs.map((run) => {
+            const process = run.processID ? managedProcesses[run.processID] : undefined;
+            return (
+              <button
+                className={`workspace-terminal-resource workspace-terminal-run${selectedResourceID === run.toolCallID ? " active" : ""}`}
+                type="button"
+                key={run.toolCallID}
+                title={run.command}
+                onClick={() => setSelectedResourceID(run.toolCallID)}
+              >
+                <RunStatusIcon run={run} process={process} />
+                <span className="workspace-terminal-resource-copy">
+                  <span className="workspace-terminal-resource-name">{run.command}</span>
+                  <span className="workspace-terminal-resource-meta">
+                    {managedRunStatusLabel(run, process, false)}
+                  </span>
+                </span>
+              </button>
+            );
+          })}
+          {!userTerminalOpened && runs.length === 0 ? (
             <div className="workspace-terminal-no-runs">{t("workspace.terminal.noRuns")}</div>
-          )}
+          ) : null}
         </div>
       </nav>
       <div className="workspace-terminal-content">
@@ -256,6 +280,7 @@ export function WorkspaceTerminalPanel({
           <UserTerminalPane
             active={selectedResourceID === "user-terminal"}
             activeContext={activeContext}
+            onStateChange={setUserTerminalState}
           />
         ) : null}
         {selectedRun ? (
@@ -266,9 +291,42 @@ export function WorkspaceTerminalPanel({
             onProcessChange={handleManagedProcessChange}
           />
         ) : null}
+        {!userTerminalOpened && !selectedRun ? (
+          <WorkspacePanelEmpty
+            title={t("workspace.terminal.noRuns")}
+            description={t("workspace.terminal.noRunsDescription")}
+            icon={<Terminal size={24} />}
+          />
+        ) : null}
       </div>
     </div>
   );
+}
+
+function UserTerminalStatusIcon({ state }: { state: WorkspaceTerminalState }): JSX.Element {
+  switch (state) {
+    case "ready":
+      return <SquareTerminal className="icon live" />;
+    case "exited":
+      return <CheckCircle2 className="icon completed" />;
+    case "error":
+      return <XCircle className="icon failed" />;
+    case "starting":
+      return <Clock3 className="icon" />;
+  }
+}
+
+function userTerminalStatusLabel(state: WorkspaceTerminalState): string {
+  switch (state) {
+    case "ready":
+      return translateCurrent("workspace.terminal.status.interactive");
+    case "exited":
+      return translateCurrent("workspace.terminal.status.stopped");
+    case "error":
+      return translateCurrent("workspace.terminal.status.failed");
+    case "starting":
+      return translateCurrent("workspace.terminal.status.starting");
+  }
 }
 
 function RunStatusIcon({
@@ -581,9 +639,11 @@ function managedRunStatusLabel(
 function UserTerminalPane({
   active,
   activeContext,
+  onStateChange,
 }: {
   active: boolean;
   activeContext?: RuntimeContext;
+  onStateChange: (state: WorkspaceTerminalState) => void;
 }): JSX.Element {
   const { t } = useI18n();
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -593,6 +653,10 @@ function UserTerminalPane({
   const [terminalState, setTerminalState] = useState<WorkspaceTerminalState>("starting");
   const [restartKey, setRestartKey] = useState(0);
   const workspaceRoot = activeContext?.cwd;
+
+  useEffect(() => {
+    onStateChange(terminalState);
+  }, [onStateChange, terminalState]);
 
   useEffect(() => {
     if (active) {
