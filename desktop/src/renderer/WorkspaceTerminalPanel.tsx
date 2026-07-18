@@ -350,7 +350,7 @@ export function WorkspaceTerminalPanel({
           title={t("workspace.terminal.newTerminal")}
           onClick={createUserTerminal}
         >
-          <Plus size={15} />
+          <Plus size={16} />
         </button>
         <div className="workspace-terminal-run-list">
           {userTerminals.map((terminal, index) => {

@@ -1141,6 +1141,12 @@ html.resizing-workspace-terminal-split * {
   place-items: center;
   border-radius: var(--radius-sm);
   color: var(--ink-soft);
+  line-height: 0;
+  padding: 0;
+}
+
+.workspace-terminal-new > svg {
+  display: block;
 }
 
 .workspace-terminal-new:hover {
