@@ -216,7 +216,11 @@ func inferredOptionsForProvider(providerName string, provider config.ProviderCon
 		return compatReasoningEffortVariants([]string{"low", "high"})
 	}
 	if strings.Contains(id, "grok") {
-		return nil
+		efforts := modelReasoningEfforts(provider.Models[model])
+		if len(efforts) == 0 {
+			return nil
+		}
+		return compatReasoningEffortVariants(efforts)
 	}
 
 	switch desc.APINPM {

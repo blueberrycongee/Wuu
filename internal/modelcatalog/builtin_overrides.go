@@ -31,6 +31,18 @@ func applyBuiltinCatalogOverrides(data *catalogData) {
 			provider.ModelOptions = mergeModelOptions(provider.ModelOptions, map[string]any{
 				"anthropic_default_betas": false,
 			})
+		case "xai":
+			for j := range provider.Models {
+				if len(provider.Models[j].SupportedEfforts) != 0 {
+					continue
+				}
+				switch provider.Models[j].ID {
+				case "grok-4.3":
+					provider.Models[j].SupportedEfforts = []string{"none", "low", "medium", "high"}
+				case "grok-4.20-multi-agent-0309":
+					provider.Models[j].SupportedEfforts = []string{"low", "medium", "high"}
+				}
+			}
 		}
 	}
 }

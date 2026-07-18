@@ -109,6 +109,28 @@ func TestSummariesInferOpenRouterNonOpenAIReasoningEfforts(t *testing.T) {
 	}
 }
 
+func TestSummariesUseExplicitXAIReasoningEfforts(t *testing.T) {
+	tests := []struct {
+		model string
+		want  string
+	}{
+		{model: "grok-4.3", want: "none,low,medium,high"},
+		{model: "grok-4.20-multi-agent-0309", want: "low,medium,high"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.model, func(t *testing.T) {
+			providerName, provider := modelcatalog.EnrichProvider("xai", config.ProviderConfig{
+				Type:  "openai-compatible",
+				Model: tc.model,
+			}, tc.model)
+			variants := SummariesForProvider(providerName, provider, tc.model)
+			if got := strings.Join(variantIDs(variants), ","); got != tc.want {
+				t.Fatalf("variants = %q, want %q: %+v", got, tc.want, variants)
+			}
+		})
+	}
+}
+
 func TestSummariesMatchProviderCompatForGenericOpenAICompatible(t *testing.T) {
 	provider := config.ProviderConfig{
 		Type:  "openai-compatible",
