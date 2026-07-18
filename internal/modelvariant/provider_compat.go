@@ -266,6 +266,7 @@ func inferredOptionsForProvider(providerName string, provider config.ProviderCon
 		}
 		if strings.Contains(apiID, "deepseek-v4") {
 			efforts = appendUniqueEffort(efforts, "max")
+			return compatVariantsFromEfforts(efforts, compatDeepSeekVariantOptions)
 		}
 		return compatReasoningEffortVariants(efforts)
 	case compatNPMAzure:

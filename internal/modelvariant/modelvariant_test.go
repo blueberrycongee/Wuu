@@ -412,6 +412,22 @@ func TestResolveMatchesProviderCompatForZAIAndZhipuThinking(t *testing.T) {
 	}
 }
 
+func TestResolveDeepSeekV4EffortEnablesThinking(t *testing.T) {
+	providerName, provider := modelcatalog.EnrichProvider("deepseek", config.ProviderConfig{
+		Type:  "openai-compatible",
+		Model: "deepseek-v4-pro",
+	}, "deepseek-v4-pro")
+
+	selection := ResolveForProvider(providerName, provider, "deepseek-v4-pro", "high", "")
+	if got := selection.ProviderOptions["reasoningEffort"]; got != "high" {
+		t.Fatalf("reasoningEffort = %#v", got)
+	}
+	thinking, ok := selection.ProviderOptions["thinking"].(map[string]any)
+	if !ok || thinking["type"] != "enabled" {
+		t.Fatalf("thinking = %#v; options=%#v", selection.ProviderOptions["thinking"], selection.ProviderOptions)
+	}
+}
+
 func TestResolveMatchesProviderCompatForAlibabaReasoning(t *testing.T) {
 	reasoning := true
 	provider := config.ProviderConfig{

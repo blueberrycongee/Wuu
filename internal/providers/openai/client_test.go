@@ -13,6 +13,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/blueberrycongee/wuu/internal/config"
+	"github.com/blueberrycongee/wuu/internal/modelcatalog"
+	"github.com/blueberrycongee/wuu/internal/modelvariant"
 	"github.com/blueberrycongee/wuu/internal/providers"
 	"github.com/blueberrycongee/wuu/internal/toolresult"
 )
@@ -317,6 +320,85 @@ func TestChat_OmitsPromptCacheKeyForUnsupportedCompatibleProvider(t *testing.T) 
 	})
 	if err != nil {
 		t.Fatalf("Chat: %v", err)
+	}
+}
+
+func TestCatalogOpenAICompatibleWireContracts(t *testing.T) {
+	tests := []struct {
+		name         string
+		providerID   string
+		model        string
+		variant      string
+		wantEffort   string
+		wantThinking string
+	}{
+		{
+			name:         "GLM coding plan",
+			providerID:   "zai-coding-plan",
+			model:        "glm-5.2",
+			wantThinking: "enabled",
+		},
+		{
+			name:         "DeepSeek V4",
+			providerID:   "deepseek",
+			model:        "deepseek-v4-pro",
+			variant:      "high",
+			wantEffort:   "high",
+			wantThinking: "enabled",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			providerName, provider := modelcatalog.EnrichProvider(tc.providerID, config.ProviderConfig{
+				Type:  "openai-compatible",
+				Model: tc.model,
+			}, tc.model)
+			selection := modelvariant.ResolveForProvider(providerName, provider, tc.model, tc.variant, "")
+
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				var body map[string]any
+				if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+					t.Fatalf("decode request body: %v", err)
+				}
+				if body["model"] != tc.model {
+					t.Fatalf("model = %#v", body["model"])
+				}
+				thinking, ok := body["thinking"].(map[string]any)
+				if !ok || thinking["type"] != tc.wantThinking {
+					t.Fatalf("thinking = %#v; body=%#v", body["thinking"], body)
+				}
+				if got, _ := body["reasoning_effort"].(string); got != tc.wantEffort {
+					t.Fatalf("reasoning_effort = %q, want %q", got, tc.wantEffort)
+				}
+				if _, exists := body["prompt_cache_key"]; exists {
+					t.Fatalf("compatible provider inherited prompt_cache_key: %#v", body)
+				}
+				if tools, ok := body["tools"].([]any); !ok || len(tools) != 1 {
+					t.Fatalf("tools = %#v", body["tools"])
+				}
+
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"ok"}}]}`))
+			}))
+			defer server.Close()
+
+			client, err := New(ClientConfig{BaseURL: server.URL, APIKey: "test-key"})
+			if err != nil {
+				t.Fatalf("New: %v", err)
+			}
+			_, err = client.Chat(context.Background(), providers.ChatRequest{
+				Provider:        providerName,
+				Model:           tc.model,
+				Messages:        []providers.ChatMessage{{Role: "user", Content: "inspect the repository"}},
+				Tools:           []providers.ToolDefinition{{Name: "list_files", InputSchema: map[string]any{"type": "object"}}},
+				CacheHint:       &providers.CacheHint{PromptCacheKey: "thread-cache-key"},
+				ProviderOptions: selection.ProviderOptions,
+			})
+			if err != nil {
+				t.Fatalf("Chat: %v", err)
+			}
+		})
 	}
 }
 

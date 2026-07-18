@@ -3154,7 +3154,7 @@ func TestKimiK3MultiRoundToolReplay(t *testing.T) {
 	}
 }
 
-func TestMiniMaxCatalogDefaultDoesNotSendAnthropicBetas(t *testing.T) {
+func TestMiniMaxCatalogPreservesDocumentedFeaturesWithoutAnthropicBetas(t *testing.T) {
 	providerName, provider := modelcatalog.EnrichProvider("minimax", config.ProviderConfig{
 		Type:  "anthropic",
 		Model: "MiniMax-M3",
@@ -3168,6 +3168,19 @@ func TestMiniMaxCatalogDefaultDoesNotSendAnthropicBetas(t *testing.T) {
 		if got := r.Header.Get("anthropic-beta"); got != "" {
 			t.Fatalf("MiniMax request inherited Anthropic beta headers: %q", got)
 		}
+		var body anthropicRequest
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode MiniMax request: %v", err)
+		}
+		if body.Thinking == nil || body.Thinking.Type != "adaptive" {
+			t.Fatalf("MiniMax thinking = %+v", body.Thinking)
+		}
+		if len(body.Tools) != 1 || body.Tools[0].Name != "list_files" {
+			t.Fatalf("MiniMax tools = %+v", body.Tools)
+		}
+		if len(body.Messages) != 1 || len(body.Messages[0].Content) != 1 || body.Messages[0].Content[0].CacheControl == nil {
+			t.Fatalf("MiniMax cache_control marker missing: %+v", body.Messages)
+		}
 		w.Header().Set("content-type", "application/json")
 		_, _ = w.Write([]byte(`{"content":[{"type":"text","text":"done"}]}`))
 	}))
@@ -3180,6 +3193,8 @@ func TestMiniMaxCatalogDefaultDoesNotSendAnthropicBetas(t *testing.T) {
 	_, err = client.Chat(context.Background(), providers.ChatRequest{
 		Model:           "MiniMax-M3",
 		Messages:        []providers.ChatMessage{{Role: "user", Content: "hello"}},
+		Tools:           []providers.ToolDefinition{{Name: "list_files", InputSchema: map[string]any{"type": "object"}}},
+		CacheHint:       &providers.CacheHint{StablePrefixMessages: 1},
 		ProviderOptions: selection.ProviderOptions,
 	})
 	if err != nil {
