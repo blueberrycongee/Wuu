@@ -482,3 +482,46 @@ func TestMergeModelConfigUserContextWinsOverCatalog(t *testing.T) {
 		t.Fatalf("Limit = %+v, want Context 0 (catalog must not fill the other spelling)", merged.Limit)
 	}
 }
+
+func TestMergeModelConfigPreservesCatalogCompatibilityMaps(t *testing.T) {
+	catalog := config.ProviderModelConfig{
+		Options: map[string]any{
+			"allow_empty_signature": true,
+			"thinking":              map[string]any{"type": "adaptive", "display": "summarized"},
+		},
+		Headers: map[string]string{"User-Agent": "KimiCLI/1.5"},
+		Variants: map[string]map[string]any{
+			"max": {"effort": "max", "thinking": map[string]any{"type": "adaptive"}},
+		},
+	}
+	user := config.ProviderModelConfig{
+		Options: map[string]any{
+			"custom":   true,
+			"thinking": map[string]any{"display": "omitted"},
+		},
+		Headers: map[string]string{"X-Custom": "value"},
+		Variants: map[string]map[string]any{
+			"custom": {"effort": "high"},
+			"max":    {"thinking": map[string]any{"display": "omitted"}},
+		},
+	}
+
+	merged := MergeModelConfig(user, catalog)
+	if merged.Options["allow_empty_signature"] != true || merged.Options["custom"] != true {
+		t.Fatalf("options did not merge: %+v", merged.Options)
+	}
+	thinking, _ := merged.Options["thinking"].(map[string]any)
+	if thinking["type"] != "adaptive" || thinking["display"] != "omitted" {
+		t.Fatalf("nested options did not merge with user precedence: %+v", thinking)
+	}
+	if merged.Headers["User-Agent"] != "KimiCLI/1.5" || merged.Headers["X-Custom"] != "value" {
+		t.Fatalf("headers did not merge: %+v", merged.Headers)
+	}
+	if merged.Variants["custom"]["effort"] != "high" || merged.Variants["max"]["effort"] != "max" {
+		t.Fatalf("variants did not merge: %+v", merged.Variants)
+	}
+	maxThinking, _ := merged.Variants["max"]["thinking"].(map[string]any)
+	if maxThinking["type"] != "adaptive" || maxThinking["display"] != "omitted" {
+		t.Fatalf("nested variant options did not merge with user precedence: %+v", maxThinking)
+	}
+}

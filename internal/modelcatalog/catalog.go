@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/blueberrycongee/wuu/internal/config"
+	"github.com/blueberrycongee/wuu/internal/provideroptions"
 )
 
 //go:generate go run ../../cmd/wuu-modelcatalog-gen -input https://models.dev/api.json -output models_dev_catalog.json
@@ -520,21 +521,15 @@ func MergeModelConfig(primary, fallback config.ProviderModelConfig) config.Provi
 	if out.ContextWindow == 0 && !userSetContext {
 		out.ContextWindow = fallback.ContextWindow
 	}
-	if len(out.Options) == 0 {
-		out.Options = cloneOptions(fallback.Options)
-	}
-	if len(out.Headers) == 0 {
-		out.Headers = cloneHeaders(fallback.Headers)
-	}
+	out.Options = mergeModelOptions(fallback.Options, out.Options)
+	out.Headers = mergeHeaders(fallback.Headers, out.Headers)
 	if len(out.SupportedEfforts) == 0 {
 		out.SupportedEfforts = append([]string(nil), fallback.SupportedEfforts...)
 	}
 	if strings.TrimSpace(out.DefaultVariant) == "" {
 		out.DefaultVariant = fallback.DefaultVariant
 	}
-	if len(out.Variants) == 0 {
-		out.Variants = cloneVariants(fallback.Variants)
-	}
+	out.Variants = mergeVariants(fallback.Variants, out.Variants)
 	return out
 }
 
@@ -583,13 +578,34 @@ func cloneVariants(input map[string]map[string]any) map[string]map[string]any {
 	return out
 }
 
-func cloneOptions(input map[string]any) map[string]any {
-	if len(input) == 0 {
-		return nil
+func mergeVariants(base, override map[string]map[string]any) map[string]map[string]any {
+	out := cloneVariants(base)
+	if len(override) == 0 {
+		return out
 	}
-	out := make(map[string]any, len(input))
-	for key, value := range input {
-		out[key] = value
+	if out == nil {
+		out = make(map[string]map[string]any, len(override))
+	}
+	for key, options := range override {
+		out[key] = mergeModelOptions(out[key], options)
+	}
+	return out
+}
+
+func cloneOptions(input map[string]any) map[string]any {
+	return provideroptions.Clone(input)
+}
+
+func mergeModelOptions(base, override map[string]any) map[string]any {
+	out := provideroptions.Clone(base)
+	if len(override) == 0 {
+		return out
+	}
+	if out == nil {
+		out = make(map[string]any, len(override))
+	}
+	for key, value := range override {
+		provideroptions.MergeValue(out, key, value)
 	}
 	return out
 }
