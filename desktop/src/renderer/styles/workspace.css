@@ -1135,6 +1135,7 @@ html.resizing-workspace-file-split * {
   align-items: center;
   gap: 8px;
   border-radius: var(--radius-sm);
+  background: transparent;
   color: var(--ink-soft);
   padding: 7px 8px;
   text-align: left;

@@ -264,6 +264,17 @@ describe("WorkspaceTerminalPanel", () => {
     });
   });
 
+  it("keeps one-shot command history out of the persistent terminal list", async () => {
+    await render(
+      <WorkspaceTerminalPanel activeContext={worktreeContext} thread={threadWithRuns} />,
+    );
+
+    expect(container.textContent).toContain("还没有终端记录");
+    expect(container.textContent).not.toContain("npm test");
+    expect(container.textContent).not.toContain("npm run lint");
+    expect(terminalInstances).toHaveLength(0);
+  });
+
   it("opens a requested settled run without starting the interactive terminal", async () => {
     await render(
       <WorkspaceTerminalPanel
@@ -285,19 +296,7 @@ describe("WorkspaceTerminalPanel", () => {
     expect(terminalConstructorOptions[0]).toMatchObject({ convertEol: true, disableStdin: true });
     expect(terminalInstances[0]?.write).toHaveBeenCalledWith("lint failed\n");
     expect(terminalInstances[0]?.writeln).toHaveBeenCalledWith("[这里只能查看协议保留的输出片段。]");
-
-    const successfulRun = Array.from(container.querySelectorAll("button")).find(
-      (button) => button.textContent?.includes("npm test"),
-    );
-    await act(async () => {
-      successfulRun?.click();
-      await Promise.resolve();
-    });
-
-    expect(container.querySelector(".workspace-agent-terminal")?.textContent).toContain("npm test");
-    await vi.waitFor(() => {
-      expect(terminalInstances.at(-1)?.write).toHaveBeenCalledWith("tests passed\n");
-    });
+    expect(container.textContent).not.toContain("npm test");
     expect(writeManagedProcess).not.toHaveBeenCalled();
   });
 

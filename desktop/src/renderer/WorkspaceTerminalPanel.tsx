@@ -126,11 +126,18 @@ export function WorkspaceTerminalPanel({
     () => (thread ? agentRunGroupsForThread(thread) : []),
     [thread],
   );
-  const runs = useMemo(
+  const allRuns = useMemo(
     () => groups.flatMap((group) => group.runs).reverse(),
     [groups],
   );
   const requestedRecord = requestedRun ? selectAgentRun(groups, requestedRun) : undefined;
+  const runs = useMemo(() => {
+    const managedRuns = allRuns.filter((run) => run.execution === "managed");
+    if (!requestedRecord || requestedRecord.execution === "managed") {
+      return managedRuns;
+    }
+    return [requestedRecord, ...managedRuns];
+  }, [allRuns, requestedRecord]);
   const [selectedResourceID, setSelectedResourceID] = useState(
     () => requestedRecord?.toolCallID ?? runs[0]?.toolCallID ?? "",
   );
@@ -246,7 +253,9 @@ export function WorkspaceTerminalPanel({
               <UserTerminalStatusIcon state={userTerminalState} />
               <span className="workspace-terminal-resource-copy">
                 <span className="workspace-terminal-resource-name">{t("workspace.terminal.interactiveTerminal")}</span>
-                <span className="workspace-terminal-resource-meta">{userTerminalStatusLabel(userTerminalState)}</span>
+                {userTerminalState !== "ready" ? (
+                  <span className="workspace-terminal-resource-meta">{userTerminalStatusLabel(userTerminalState)}</span>
+                ) : null}
               </span>
             </button>
           ) : null}
