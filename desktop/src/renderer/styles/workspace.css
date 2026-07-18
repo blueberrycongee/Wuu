@@ -1085,6 +1085,7 @@ html.resizing-workspace-file-split * {
 }
 
 .workspace-terminal-navigation {
+  position: relative;
   grid-column: 1;
   min-width: 0;
   min-height: 0;
@@ -1128,19 +1129,11 @@ html.resizing-workspace-terminal-split * {
   user-select: none !important;
 }
 
-.workspace-terminal-navigation-header {
-  display: flex;
-  min-height: 28px;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
-  color: var(--ink-muted);
-  font-size: var(--font-xs);
-  font-weight: var(--weight-semibold);
-  padding: 0 5px 6px 8px;
-}
-
 .workspace-terminal-new {
+  position: absolute;
+  z-index: 1;
+  top: 12px;
+  right: 11px;
   display: grid;
   width: 24px;
   height: 24px;
@@ -1184,6 +1177,19 @@ html.resizing-workspace-terminal-split * {
 
 .workspace-terminal-resource-item .workspace-terminal-resource {
   padding-right: 30px;
+}
+
+.workspace-terminal-resource-item.first .workspace-terminal-resource {
+  padding-right: 56px;
+}
+
+.workspace-terminal-resource-item.first .workspace-terminal-resource-close {
+  right: 32px;
+}
+
+.workspace-terminal-run.first,
+.workspace-terminal-no-runs {
+  padding-right: 34px;
 }
 
 .workspace-terminal-resource-close {

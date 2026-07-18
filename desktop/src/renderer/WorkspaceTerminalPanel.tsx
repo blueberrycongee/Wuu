@@ -343,23 +343,21 @@ export function WorkspaceTerminalPanel({
       style={{ "--workspace-terminal-navigation-width": `${navigationWidth}px` } as CSSProperties}
     >
       <nav className="workspace-terminal-navigation" aria-label={t("workspace.terminal.resources")}>
-        <div className="workspace-terminal-navigation-header">
-          <button
-            className="workspace-terminal-new"
-            type="button"
-            aria-label={t("workspace.terminal.newTerminal")}
-            title={t("workspace.terminal.newTerminal")}
-            onClick={createUserTerminal}
-          >
-            <Plus size={15} />
-          </button>
-        </div>
+        <button
+          className="workspace-terminal-new"
+          type="button"
+          aria-label={t("workspace.terminal.newTerminal")}
+          title={t("workspace.terminal.newTerminal")}
+          onClick={createUserTerminal}
+        >
+          <Plus size={15} />
+        </button>
         <div className="workspace-terminal-run-list">
-          {userTerminals.map((terminal) => {
+          {userTerminals.map((terminal, index) => {
             const name = userTerminalName(terminal, t("workspace.terminal.interactiveTerminal"));
             return (
               <div
-                className={`workspace-terminal-resource-item${selectedResourceID === terminal.id ? " active" : ""}`}
+                className={`workspace-terminal-resource-item${index === 0 ? " first" : ""}${selectedResourceID === terminal.id ? " active" : ""}`}
                 key={terminal.id}
               >
                 <button
@@ -393,7 +391,7 @@ export function WorkspaceTerminalPanel({
               || (run.processID !== undefined && run.processID === selectedRun?.processID);
             return (
               <button
-                className={`workspace-terminal-resource workspace-terminal-run${selected ? " active" : ""}`}
+                className={`workspace-terminal-resource workspace-terminal-run${userTerminals.length === 0 ? " first" : ""}${selected ? " active" : ""}`}
                 type="button"
                 key={run.toolCallID}
                 title={run.command}

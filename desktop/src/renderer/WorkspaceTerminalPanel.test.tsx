@@ -250,6 +250,9 @@ describe("WorkspaceTerminalPanel", () => {
     await render(<WorkspaceTerminalPanel activeContext={worktreeContext} />);
     const newTerminal = container.querySelector<HTMLButtonElement>('button[aria-label="新建终端"]');
 
+    expect(newTerminal?.parentElement).toBe(container.querySelector(".workspace-terminal-navigation"));
+    expect(container.querySelector(".workspace-terminal-navigation-header")).toBeNull();
+
     await act(async () => {
       newTerminal?.click();
       await Promise.resolve();
