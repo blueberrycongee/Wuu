@@ -759,6 +759,13 @@ func systemPromptSectionSummaries(sections []SystemPromptSectionInfo) []provider
 	return out
 }
 
+// NewStreamStep returns a Step that consumes a provider stream to completion
+// without publishing its intermediate events. It lets auxiliary tool loops use
+// the same streaming transport and recovery semantics as StreamRunner.
+func NewStreamStep(client providers.StreamClient) Step {
+	return &streamStep{client: client}
+}
+
 // streamStep adapts providers.StreamClient (with recovery) to the
 // transport-agnostic Step interface. One Execute call opens an SSE
 // stream and consumes it to completion. Recoverable failures create distinct

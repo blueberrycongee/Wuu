@@ -254,6 +254,50 @@ func requestMessagesContain(req providers.ChatRequest, needle string) bool {
 	return false
 }
 
+type memoryStreamOnlyClient struct {
+	content        string
+	chatCalls      int
+	streamRequests []providers.ChatRequest
+}
+
+func (c *memoryStreamOnlyClient) Chat(context.Context, providers.ChatRequest) (providers.ChatResponse, error) {
+	c.chatCalls++
+	return providers.ChatResponse{}, fmt.Errorf("unexpected non-streaming request")
+}
+
+func (c *memoryStreamOnlyClient) StreamChat(_ context.Context, req providers.ChatRequest) (<-chan providers.StreamEvent, error) {
+	c.streamRequests = append(c.streamRequests, req)
+	events := make(chan providers.StreamEvent, 2)
+	events <- providers.StreamEvent{Type: providers.EventContentDelta, Content: c.content}
+	events <- providers.StreamEvent{
+		Type:         providers.EventDone,
+		StopReason:   "stop",
+		FinishReason: providers.FinishReasonStop,
+	}
+	close(events)
+	return events, nil
+}
+
+func TestMemoryOverviewUsesStreamingProviderPath(t *testing.T) {
+	essay := "## 身份背景\n后端工程师。"
+	client := &memoryStreamOnlyClient{content: essay}
+	srv, home := newMemoryPanelServer(t, &fakeClient{})
+	srv.rt.StreamRunner.Client = client
+	writeMemoryFile(t, memdir.UserMemdir(home), "MEMORY.md", "")
+
+	resp := callMemoryRPC(t, srv, "ov-stream", MethodMemoryOverview, `{"scope":"user"}`)
+	result := remarshal[MemoryOverviewResult](t, resp["result"])
+	if result.EssayMD != essay {
+		t.Fatalf("essay = %q, want %q", result.EssayMD, essay)
+	}
+	if client.chatCalls != 0 {
+		t.Fatalf("memory overview made %d non-streaming requests", client.chatCalls)
+	}
+	if len(client.streamRequests) != 1 {
+		t.Fatalf("memory overview made %d streaming requests, want 1", len(client.streamRequests))
+	}
+}
+
 func TestMemoryOverviewCachesForTwelveHoursAndSupportsForcedRefresh(t *testing.T) {
 	essay := "## 身份背景\n后端工程师。\n\n## 协作偏好\n喜欢简短回复。\n\n## 沟通风格\n直接。\n\n## 当前关注\n记忆系统重构。"
 	client := &fakeClient{response: providersResponse(essay)}
