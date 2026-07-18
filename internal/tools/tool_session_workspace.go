@@ -68,10 +68,14 @@ func (t *SetSessionWorkspaceTool) Execute(_ context.Context, argsJSON string) (s
 		return "", errors.New("workspace root must be a directory")
 	}
 	root = filepath.Clean(root)
+	commitRuntime, err := t.env.prepareSessionWorkspaceChange(root)
+	if err != nil {
+		return "", err
+	}
 	if err := t.env.OnSessionWorkspaceChanged(root); err != nil {
 		return "", err
 	}
-	t.env.RootDir = root
+	commitRuntime()
 	result, _ := json.Marshal(map[string]string{"root": root})
 	return string(result), nil
 }

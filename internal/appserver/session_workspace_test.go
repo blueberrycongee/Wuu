@@ -2,6 +2,7 @@ package appserver
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -9,7 +10,14 @@ import (
 	"testing"
 
 	"github.com/blueberrycongee/wuu/internal/session"
+	"github.com/blueberrycongee/wuu/internal/statepath"
 )
+
+type sessionWorkspaceErrorWriter struct{}
+
+func (sessionWorkspaceErrorWriter) Write([]byte) (int, error) {
+	return 0, errors.New("notification unavailable")
+}
 
 func TestRebindThreadWorkspacePersistsLinkedWorktreeAndNotifies(t *testing.T) {
 	repo := initSessionWorkspaceRepo(t)
@@ -115,6 +123,80 @@ func TestRebindThreadWorkspaceRejectsUnrelatedRepositoryAndSubdirectory(t *testi
 	}
 	if stored.CWD != wantRepo || stored.WorktreePath != "" {
 		t.Fatalf("rejected workspace mutated session: %+v", stored)
+	}
+}
+
+func TestRebindThreadWorkspaceCompletesWhenNotificationFails(t *testing.T) {
+	repo := initSessionWorkspaceRepo(t)
+	linked := filepath.Join(t.TempDir(), "linked")
+	runSessionWorkspaceGit(t, repo, "worktree", "add", "-b", "notification-failure", linked)
+
+	rt := newTestRuntime(t, &fakeClient{})
+	rt.RootDir = repo
+	out := &lockedBuffer{}
+	srv := New(rt, out)
+	if err := srv.handleLine(context.Background(), []byte(`{"id":"1","method":"thread/start"}`)); err != nil {
+		t.Fatalf("thread/start: %v", err)
+	}
+	start := remarshal[ThreadStartResult](t, responseByID(t, parseOutput(t, out.String()), "1")["result"])
+	srv.out = sessionWorkspaceErrorWriter{}
+
+	if err := srv.rebindThreadWorkspace(start.Thread.ID, linked); err != nil {
+		t.Fatalf("rebindThreadWorkspace: %v", err)
+	}
+	want, err := canonicalWorkspaceDirectory(linked)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored, found, err := session.Find(rt.SessionDir, start.Thread.ID)
+	if err != nil || !found || stored.CWD != want {
+		t.Fatalf("stored workspace after notification failure: found=%v err=%v session=%+v", found, err, stored)
+	}
+	thread := srv.thread(start.Thread.ID)
+	if thread == nil || thread.CWD != want {
+		t.Fatalf("in-memory workspace after notification failure: %+v", thread)
+	}
+}
+
+func TestRebindThreadWorkspaceCompletesWhenChildAgentLookupFails(t *testing.T) {
+	repo := initSessionWorkspaceRepo(t)
+	linked := filepath.Join(t.TempDir(), "linked")
+	runSessionWorkspaceGit(t, repo, "worktree", "add", "-b", "child-agent-failure", linked)
+
+	rt := newTestRuntime(t, &fakeClient{})
+	rt.RootDir = repo
+	rt.StateDir = t.TempDir()
+	srv := New(rt, &lockedBuffer{})
+	if err := srv.handleLine(context.Background(), []byte(`{"id":"1","method":"thread/start"}`)); err != nil {
+		t.Fatalf("thread/start: %v", err)
+	}
+	threads, err := session.List(rt.SessionDir, 10)
+	if err != nil || len(threads) != 1 {
+		t.Fatalf("List: len=%d err=%v", len(threads), err)
+	}
+	threadID := threads[0].ID
+	threadsPath := filepath.Join(statepath.SessionArtifactDir(rt.StateDir, threadID), "threads")
+	if err := os.MkdirAll(filepath.Dir(threadsPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(threadsPath, []byte("not a directory"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := srv.rebindThreadWorkspace(threadID, linked); err != nil {
+		t.Fatalf("rebindThreadWorkspace: %v", err)
+	}
+	want, err := canonicalWorkspaceDirectory(linked)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored, found, err := session.Find(rt.SessionDir, threadID)
+	if err != nil || !found || stored.CWD != want {
+		t.Fatalf("stored workspace after child-agent failure: found=%v err=%v session=%+v", found, err, stored)
+	}
+	thread := srv.thread(threadID)
+	if thread == nil || thread.CWD != want {
+		t.Fatalf("in-memory workspace after child-agent failure: %+v", thread)
 	}
 }
 

@@ -3,16 +3,22 @@ package tools
 import (
 	"context"
 	"errors"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
 func TestSetSessionWorkspaceUpdatesSubsequentToolRoot(t *testing.T) {
 	root := t.TempDir()
 	oldRoot := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "after.txt"), []byte("linked workspace\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	var reboundRoot string
 	env := &Env{
-		RootDir: oldRoot,
+		RootDir:        oldRoot,
+		FileScopeRoots: []string{oldRoot},
 		OnSessionWorkspaceChanged: func(got string) error {
 			reboundRoot = got
 			return nil
@@ -33,6 +39,16 @@ func TestSetSessionWorkspaceUpdatesSubsequentToolRoot(t *testing.T) {
 	if env.RootDir != want {
 		t.Fatalf("subsequent tool root = %q, want %q", env.RootDir, want)
 	}
+	if len(env.FileScopeRoots) != 1 || env.FileScopeRoots[0] != want {
+		t.Fatalf("file scope roots = %q, want [%q]", env.FileScopeRoots, want)
+	}
+	readResult, err := NewReadFileTool(env).Execute(context.Background(), `{"path":"after.txt"}`)
+	if err != nil {
+		t.Fatalf("read_file after workspace change: %v", err)
+	}
+	if !strings.Contains(readResult, "linked workspace") {
+		t.Fatalf("read_file result = %s", readResult)
+	}
 	if result != `{"root":`+quoteJSONForTest(want)+`}` {
 		t.Fatalf("result = %s", result)
 	}
@@ -41,7 +57,8 @@ func TestSetSessionWorkspaceUpdatesSubsequentToolRoot(t *testing.T) {
 func TestSetSessionWorkspaceDoesNotMoveRootWhenPersistenceFails(t *testing.T) {
 	oldRoot := t.TempDir()
 	env := &Env{
-		RootDir: oldRoot,
+		RootDir:        oldRoot,
+		FileScopeRoots: []string{oldRoot},
 		OnSessionWorkspaceChanged: func(string) error {
 			return errors.New("rejected")
 		},
@@ -56,6 +73,9 @@ func TestSetSessionWorkspaceDoesNotMoveRootWhenPersistenceFails(t *testing.T) {
 	}
 	if env.RootDir != oldRoot {
 		t.Fatalf("tool root changed to %q after failure", env.RootDir)
+	}
+	if len(env.FileScopeRoots) != 1 || env.FileScopeRoots[0] != oldRoot {
+		t.Fatalf("file scope changed after failure: %q", env.FileScopeRoots)
 	}
 }
 

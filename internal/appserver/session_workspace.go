@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/blueberrycongee/wuu/internal/providers"
 	"github.com/blueberrycongee/wuu/internal/session"
 )
 
@@ -70,9 +71,18 @@ func (s *Server) rebindThreadWorkspace(threadID, requestedRoot string) error {
 	}
 	thread, err := s.threadAfterMetadataUpdate(metadata)
 	if err != nil {
-		return err
+		// Child-agent enrichment is presentation data. The returned thread
+		// already contains the persisted workspace metadata, so keep the
+		// runtime move successful and notify with that partial snapshot.
+		providers.DebugLogf("enrich rebound thread %q: %v", threadID, err)
 	}
-	return s.notifyThreadUpdated(thread)
+	if err := s.notifyThreadUpdated(thread); err != nil {
+		// Persistence and the authoritative in-memory thread already moved.
+		// A broken output stream must not report the operation as rejected and
+		// leave the executing toolkit on its old root.
+		providers.DebugLogf("notify rebound thread %q: %v", threadID, err)
+	}
+	return nil
 }
 
 func canonicalWorkspaceDirectory(path string) (string, error) {

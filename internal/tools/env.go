@@ -302,6 +302,61 @@ type Env struct {
 	toolTelemetry toolTelemetry
 }
 
+// prepareSessionWorkspaceChange constructs every fallible runtime dependency
+// before persistence. Its commit function only applies prepared state and is
+// called after the app-server has durably accepted the new workspace.
+func (e *Env) prepareSessionWorkspaceChange(root string) (func(), error) {
+	root = filepath.Clean(root)
+	fileScopeRoots := rebaseRuntimeFileScope(e.FileScopeRoots, e.RootDir, root)
+	commitAgentControl := func() {}
+	if e.AgentControl != nil {
+		var err error
+		commitAgentControl, err = e.AgentControl.PrepareWorkspaceRebind(root)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return func() {
+		e.RootDir = root
+		e.FileScopeRoots = fileScopeRoots
+		if e.ProcessMgr != nil {
+			e.ProcessMgr.SetRootDir(root)
+		}
+		commitAgentControl()
+	}, nil
+}
+
+func rebaseRuntimeFileScope(roots []string, oldRoot, newRoot string) []string {
+	if len(roots) == 0 {
+		return nil
+	}
+	out := append([]string(nil), roots...)
+	for i, root := range out {
+		if sameRuntimeFileScopePath(root, oldRoot) {
+			out[i] = newRoot
+			return out
+		}
+	}
+	return append([]string{newRoot}, out...)
+}
+
+func sameRuntimeFileScopePath(left, right string) bool {
+	canonical := func(path string) string {
+		path = strings.TrimSpace(path)
+		if path == "" {
+			return ""
+		}
+		if abs, err := filepath.Abs(path); err == nil {
+			path = abs
+		}
+		if resolved, err := filepath.EvalSymlinks(path); err == nil {
+			path = resolved
+		}
+		return filepath.Clean(path)
+	}
+	return canonical(left) == canonical(right)
+}
+
 // BrowserScreenshotResult reports the persisted screenshot geometry and on-disk
 // path returned by BrowserBridge.Screenshot. Declared in the tools package so
 // tool_browser never imports the appserver wire types; the bridge implementation
