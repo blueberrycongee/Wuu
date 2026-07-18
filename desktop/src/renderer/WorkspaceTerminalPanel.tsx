@@ -1,9 +1,14 @@
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal as XtermTerminal, type ITheme } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
-import { CheckCircle2, Clock3, SquareTerminal, Terminal, XCircle } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
-import type { RuntimeContext, TerminalSessionEvent, Thread } from "../shared/protocol";
+import { CheckCircle2, Clock3, Square, SquareTerminal, Terminal, XCircle } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type {
+  ManagedProcessSummary,
+  RuntimeContext,
+  TerminalSessionEvent,
+  Thread,
+} from "../shared/protocol";
 import { currentAppliedTheme, observeAppliedTheme, type AppliedTheme } from "./Theme";
 import {
   agentRunGroupsForThread,
@@ -128,9 +133,64 @@ export function WorkspaceTerminalPanel({
   const [userTerminalOpened, setUserTerminalOpened] = useState(
     () => !requestedRecord,
   );
+  const [managedProcesses, setManagedProcesses] = useState<Record<string, ManagedProcessSummary>>({});
   const selectedRun = groups
     .flatMap((group) => group.runs)
     .find((run) => run.toolCallID === selectedResourceID);
+  const managedProcessIDs = useMemo(
+    () => groups.flatMap((group) => group.runs.flatMap((run) => run.processID ? [run.processID] : [])),
+    [groups],
+  );
+  const managedProcessKey = managedProcessIDs.join("\u0000");
+  const handleManagedProcessChange = useCallback((next: ManagedProcessSummary) => {
+    setManagedProcesses((current) => ({
+      ...current,
+      [next.id]: preferManagedProcess(current[next.id], next),
+    }));
+  }, []);
+
+  useEffect(() => {
+    const threadID = thread?.id;
+    if (!threadID || managedProcessIDs.length === 0) {
+      setManagedProcesses({});
+      return undefined;
+    }
+    let disposed = false;
+    let refreshTimer: number | undefined;
+    const activeThreadID = threadID;
+    const wanted = new Set(managedProcessIDs);
+
+    async function refresh(): Promise<void> {
+      try {
+        const result = await window.wuu.listManagedProcesses(activeThreadID);
+        if (disposed) {
+          return;
+        }
+        const incoming = result.processes.filter((process) => wanted.has(process.id));
+        setManagedProcesses((current) => {
+          return Object.fromEntries(incoming.map((process) => [
+            process.id,
+            preferManagedProcess(current[process.id], process),
+          ]));
+        });
+        if (incoming.some(isManagedProcessLive)) {
+          refreshTimer = window.setTimeout(() => void refresh(), 1500);
+        }
+      } catch {
+        if (!disposed) {
+          refreshTimer = window.setTimeout(() => void refresh(), 3000);
+        }
+      }
+    }
+
+    void refresh();
+    return () => {
+      disposed = true;
+      if (refreshTimer !== undefined) {
+        window.clearTimeout(refreshTimer);
+      }
+    };
+  }, [managedProcessKey, thread?.id]);
 
   useEffect(() => {
     if (!requestedRun) {
@@ -181,7 +241,7 @@ export function WorkspaceTerminalPanel({
                   title={run.command}
                   onClick={() => setSelectedResourceID(run.toolCallID)}
                 >
-                  <RunStatusIcon run={run} />
+                  <RunStatusIcon run={run} process={run.processID ? managedProcesses[run.processID] : undefined} />
                   <span>{run.command}</span>
                 </button>
               ))}
@@ -198,51 +258,283 @@ export function WorkspaceTerminalPanel({
             activeContext={activeContext}
           />
         ) : null}
-        {selectedRun ? <AgentRunPane run={selectedRun} /> : null}
+        {selectedRun ? (
+          <AgentTerminalPane
+            key={selectedRun.toolCallID}
+            run={selectedRun}
+            process={selectedRun.processID ? managedProcesses[selectedRun.processID] : undefined}
+            onProcessChange={handleManagedProcessChange}
+          />
+        ) : null}
       </div>
     </div>
   );
 }
 
-function RunStatusIcon({ run }: { run: AgentRunRecord }): JSX.Element {
-  if (run.status === "failed") {
+function RunStatusIcon({
+  run,
+  process,
+}: {
+  run: AgentRunRecord;
+  process?: ManagedProcessSummary;
+}): JSX.Element {
+  if (process ? process.status === "failed" : run.status === "failed") {
     return <XCircle className="icon failed" />;
   }
-  if (run.status === "completed") {
+  if (run.execution === "managed" && (!process || isManagedProcessLive(process))) {
+    return <Clock3 className="icon live" />;
+  }
+  if (process?.status === "stopped" || run.status === "completed") {
     return <CheckCircle2 className="icon completed" />;
   }
   return <Clock3 className="icon" />;
 }
 
-function AgentRunPane({ run }: { run: AgentRunRecord }): JSX.Element {
-  const { t } = useI18n();
-  const meta = [
-    run.exitCode !== undefined ? t("workspace.terminal.exitCode", { code: run.exitCode }) : undefined,
-    run.durationMs !== undefined ? formatTerminalDuration(run.durationMs) : undefined,
-    run.timedOut ? t("workspace.terminal.timedOut") : undefined,
-  ].filter((value): value is string => Boolean(value));
-  const hasOutput = Boolean(run.stdout || run.stderr);
+function isManagedProcessLive(process: ManagedProcessSummary): boolean {
+  return process.status === "starting" || process.status === "running" || process.status === "stopping";
+}
+
+function preferManagedProcess(
+  current: ManagedProcessSummary | undefined,
+  next: ManagedProcessSummary,
+): ManagedProcessSummary {
+  if (!current) {
+    return next;
+  }
+  if (!isManagedProcessLive(current) && isManagedProcessLive(next)) {
+    return current;
+  }
+  return Date.parse(next.updated_at) < Date.parse(current.updated_at) ? current : next;
+}
+
+function AgentTerminalPane({
+  run,
+  process,
+  onProcessChange,
+}: {
+  run: AgentRunRecord;
+  process?: ManagedProcessSummary;
+  onProcessChange: (process: ManagedProcessSummary) => void;
+}): JSX.Element {
+  const { locale, t } = useI18n();
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const terminalRef = useRef<XtermTerminal | null>(null);
+  const processRef = useRef<ManagedProcessSummary | undefined>(process);
+  const onProcessChangeRef = useRef(onProcessChange);
+  const [currentProcess, setCurrentProcess] = useState(process);
+  const [stopping, setStopping] = useState(false);
+  const [terminalError, setTerminalError] = useState<string | undefined>();
+  const processID = run.processID;
+  const live = run.execution === "managed" && (!currentProcess || isManagedProcessLive(currentProcess));
+
+  useEffect(() => {
+    onProcessChangeRef.current = onProcessChange;
+  }, [onProcessChange]);
+
+  useEffect(() => {
+    if (!process) {
+      return;
+    }
+    const next = preferManagedProcess(processRef.current, process);
+    processRef.current = next;
+    setCurrentProcess(next);
+    const terminal = terminalRef.current;
+    if (terminal) {
+      terminal.options.disableStdin = !(next.tty && next.input_available && isManagedProcessLive(next));
+    }
+  }, [process]);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) {
+      return undefined;
+    }
+
+    let disposed = false;
+    let resizeFrame: number | undefined;
+    let didInitialResize = false;
+    let offset = 0;
+    setTerminalError(undefined);
+
+    const terminal = new XtermTerminal({
+      allowTransparency: false,
+      convertEol: !run.tty,
+      cursorBlink: run.execution === "managed" && run.tty,
+      disableStdin: true,
+      fontFamily: '"SFMono-Regular", Consolas, "Liberation Mono", monospace',
+      fontSize: 12,
+      lineHeight: 1.45,
+      scrollback: 10000,
+      theme: workspaceTerminalTheme(currentAppliedTheme()),
+    });
+    const fitAddon = new FitAddon();
+    terminal.loadAddon(fitAddon);
+    terminal.open(container);
+    terminalRef.current = terminal;
+    const stopObservingTheme = observeAppliedTheme((theme) => {
+      terminal.options.theme = workspaceTerminalTheme(theme);
+    });
+
+    function updateProcess(next: ManagedProcessSummary): void {
+      const preferred = preferManagedProcess(processRef.current, next);
+      processRef.current = preferred;
+      terminal.options.disableStdin = !(
+        preferred.tty && preferred.input_available && isManagedProcessLive(preferred)
+      );
+      setCurrentProcess(preferred);
+      onProcessChangeRef.current(preferred);
+    }
+
+    function fitAndResize(): void {
+      if (disposed) {
+        return;
+      }
+      try {
+        fitAddon.fit();
+      } catch {
+        return;
+      }
+      const current = processRef.current;
+      if (processID && current?.tty && isManagedProcessLive(current)) {
+        void window.wuu.resizeManagedProcess(run.threadID, processID, terminal.cols, terminal.rows).catch((error) => {
+          if (!disposed && isManagedProcessLive(processRef.current ?? current)) {
+            setTerminalError(desktopApiErrorMessage(error, translateCurrent("workspace.terminal.resizeFailed")));
+          }
+        });
+      }
+    }
+
+    const dataDisposable = terminal.onData((data) => {
+      const current = processRef.current;
+      if (!processID || !current?.tty || !current.input_available || !isManagedProcessLive(current)) {
+        return;
+      }
+      void window.wuu.writeManagedProcess(run.threadID, processID, data).catch((error) => {
+        if (!disposed) {
+          setTerminalError(desktopApiErrorMessage(error, translateCurrent("workspace.terminal.writeFailed")));
+        }
+      });
+    });
+    const resizeObserver = new ResizeObserver(() => {
+      if (resizeFrame !== undefined) {
+        window.cancelAnimationFrame(resizeFrame);
+      }
+      resizeFrame = window.requestAnimationFrame(fitAndResize);
+    });
+    resizeObserver.observe(container);
+    resizeFrame = window.requestAnimationFrame(fitAndResize);
+
+    if (run.execution === "snapshot" || !processID) {
+      if (run.stdout) {
+        terminal.write(run.stdout);
+      }
+      if (run.stderr) {
+        terminal.write(run.stderr);
+      }
+      if (!run.stdout && !run.stderr) {
+        terminal.writeln(t("workspace.terminal.noOutput"));
+      }
+      if (run.truncated) {
+        terminal.writeln("");
+        terminal.writeln(`[${t("workspace.terminal.retainedOutputTruncated")}]`);
+      }
+    } else {
+      const managedProcessID = processID;
+      async function readManagedOutput(): Promise<void> {
+        while (!disposed) {
+          try {
+            const result = await window.wuu.readManagedProcess({
+              thread_id: run.threadID,
+              process_id: managedProcessID,
+              offset_bytes: offset,
+              max_bytes: 512 * 1024,
+              wait_ms: 10000,
+            });
+            if (disposed) {
+              return;
+            }
+            setTerminalError(undefined);
+            if (result.truncated && result.start_offset > offset) {
+              terminal.writeln(`[${translateCurrent("workspace.terminal.earlierOutputTruncated")}]`);
+            }
+            if (result.output) {
+              terminal.write(result.output);
+            }
+            offset = result.end_offset;
+            updateProcess(result.process);
+            if (!didInitialResize) {
+              didInitialResize = true;
+              fitAndResize();
+            }
+            if (!isManagedProcessLive(result.process)) {
+              return;
+            }
+          } catch (error) {
+            if (!disposed) {
+              setTerminalError(desktopApiErrorMessage(error, translateCurrent("workspace.terminal.readFailed")));
+            }
+            await new Promise((resolve) => window.setTimeout(resolve, 1500));
+            const current = processRef.current;
+            if (disposed || (current && !isManagedProcessLive(current))) {
+              return;
+            }
+          }
+        }
+      }
+      void readManagedOutput();
+    }
+
+    return () => {
+      disposed = true;
+      if (resizeFrame !== undefined) {
+        window.cancelAnimationFrame(resizeFrame);
+      }
+      dataDisposable.dispose();
+      resizeObserver.disconnect();
+      stopObservingTheme();
+      terminal.dispose();
+      terminalRef.current = null;
+    };
+  }, [locale, processID, run.execution, run.stderr, run.stdout, run.threadID, run.toolCallID, run.truncated, run.tty]);
+
+  async function stopProcess(): Promise<void> {
+    if (!processID || stopping) {
+      return;
+    }
+    setStopping(true);
+    setTerminalError(undefined);
+    try {
+      const result = await window.wuu.stopManagedProcess(run.threadID, processID);
+      processRef.current = result.process;
+      setCurrentProcess(result.process);
+      onProcessChange(result.process);
+    } catch (error) {
+      setTerminalError(desktopApiErrorMessage(error, t("workspace.terminal.stopFailed")));
+    } finally {
+      setStopping(false);
+    }
+  }
 
   return (
-    <article className="workspace-agent-run" data-tool-call-id={run.toolCallID}>
-      <header className="workspace-agent-run-header">
-        <div>
-          <div className="workspace-agent-run-kicker">{t("workspace.terminal.readOnlyRun")}</div>
-          <h2>{run.command}</h2>
+    <article className="workspace-agent-terminal" data-tool-call-id={run.toolCallID}>
+      <header className="workspace-agent-terminal-toolbar">
+        <div className="workspace-agent-terminal-command" title={run.command}>{run.command}</div>
+        <div className="workspace-agent-terminal-actions">
+          <span className={`workspace-agent-run-status ${currentProcess?.status ?? run.status}`}>
+            {managedRunStatusLabel(run, currentProcess, stopping)}
+          </span>
+          {live && processID ? (
+            <button type="button" className="workspace-agent-terminal-stop" disabled={stopping} onClick={() => void stopProcess()}>
+              <Square size={12} fill="currentColor" />
+              {stopping ? t("workspace.terminal.stopping") : t("workspace.terminal.stop")}
+            </button>
+          ) : null}
         </div>
-        <span className={`workspace-agent-run-status ${run.status}`}>
-          {runStatusLabel(run)}
-        </span>
       </header>
-      {meta.length > 0 ? <div className="workspace-agent-run-meta">{meta.join(" · ")}</div> : null}
-      <div className="workspace-agent-run-output">
-        {run.stdout ? <RunOutputSection label="stdout" text={run.stdout} /> : null}
-        {run.stderr ? <RunOutputSection label="stderr" text={run.stderr} error /> : null}
-        {!hasOutput ? <div className="workspace-agent-run-empty">{t("workspace.terminal.noOutput")}</div> : null}
+      {terminalError ? <div className="workspace-agent-terminal-error">{terminalError}</div> : null}
+      <div className="workspace-terminal-screen" onMouseDown={() => terminalRef.current?.focus()}>
+        <div className="workspace-terminal-host" ref={containerRef} />
       </div>
-      {run.truncated ? (
-        <div className="workspace-agent-run-notice">{t("workspace.terminal.retainedOutputTruncated")}</div>
-      ) : null}
     </article>
   );
 }
@@ -260,21 +552,30 @@ function runStatusLabel(run: AgentRunRecord): string {
   }
 }
 
-function RunOutputSection({
-  label,
-  text,
-  error = false,
-}: {
-  label: string;
-  text: string;
-  error?: boolean;
-}): JSX.Element {
-  return (
-    <section className={`workspace-agent-run-stream${error ? " error" : ""}`}>
-      <div className="workspace-agent-run-stream-label">{label}</div>
-      <pre>{text}</pre>
-    </section>
-  );
+function managedRunStatusLabel(
+  run: AgentRunRecord,
+  process: ManagedProcessSummary | undefined,
+  stopping: boolean,
+): string {
+  if (stopping || process?.status === "stopping") {
+    return translateCurrent("workspace.terminal.status.stopping");
+  }
+  switch (process?.status) {
+    case "starting":
+      return translateCurrent("workspace.terminal.status.starting");
+    case "running":
+      return process.input_available
+        ? translateCurrent("workspace.terminal.status.interactive")
+        : translateCurrent("workspace.terminal.status.running");
+    case "stopped":
+      return translateCurrent("workspace.terminal.status.stopped");
+    case "failed":
+      return translateCurrent("workspace.terminal.status.failed");
+    default:
+      return run.execution === "managed"
+        ? translateCurrent("workspace.terminal.status.running")
+        : runStatusLabel(run);
+  }
 }
 
 function UserTerminalPane({

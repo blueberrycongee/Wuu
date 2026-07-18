@@ -1132,6 +1132,17 @@ html.resizing-workspace-file-split * {
   color: var(--danger);
 }
 
+.workspace-terminal-resource .icon.live {
+  color: var(--success);
+  animation: workspace-terminal-live-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes workspace-terminal-live-pulse {
+  50% {
+    opacity: 0.45;
+  }
+}
+
 .workspace-terminal-resource span {
   overflow: hidden;
   font-size: var(--font-sm);
@@ -1181,42 +1192,43 @@ html.resizing-workspace-file-split * {
   grid-template-rows: minmax(0, 1fr);
 }
 
-.workspace-agent-run {
+.workspace-agent-terminal {
+  display: flex;
+  flex-direction: column;
   height: 100%;
   min-width: 0;
   min-height: 0;
-  overflow: auto;
   color: var(--ink);
-  padding: 22px 24px 28px;
 }
 
-.workspace-agent-run-header {
+.workspace-agent-terminal-toolbar {
   display: flex;
+  flex: 0 0 auto;
   min-width: 0;
-  align-items: flex-start;
+  min-height: 42px;
+  align-items: center;
   justify-content: space-between;
-  gap: 18px;
+  gap: 12px;
+  border-bottom: 1px solid var(--surface-3);
+  background: var(--surface-1);
+  padding: 7px 10px 7px 14px;
 }
 
-.workspace-agent-run-header > div {
+.workspace-agent-terminal-command {
   min-width: 0;
-}
-
-.workspace-agent-run-kicker {
-  color: var(--ink-muted);
-  font-size: var(--font-xs);
-  font-weight: var(--weight-semibold);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.workspace-agent-run h2 {
-  margin: 6px 0 0;
+  overflow: hidden;
+  color: var(--ink-soft);
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
-  font-size: var(--font-title);
-  font-weight: var(--weight-semibold);
-  line-height: 1.4;
-  overflow-wrap: anywhere;
+  font-size: var(--font-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace-agent-terminal-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
 }
 
 .workspace-agent-run-status {
@@ -1232,62 +1244,40 @@ html.resizing-workspace-file-split * {
   color: var(--danger);
 }
 
-.workspace-agent-run-meta {
-  margin-top: 10px;
-  color: var(--ink-muted);
-  font-size: var(--font-sm);
-}
-
-.workspace-agent-run-output {
-  display: grid;
-  gap: 16px;
-  margin-top: 22px;
-}
-
-.workspace-agent-run-stream {
-  min-width: 0;
-}
-
-.workspace-agent-run-stream-label {
-  margin-bottom: 6px;
-  color: var(--ink-muted);
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
-  font-size: var(--font-xs);
-}
-
-.workspace-agent-run-stream pre {
-  min-width: 0;
-  overflow: auto;
-  border: 1px solid var(--surface-3);
+.workspace-agent-terminal-stop {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   border-radius: var(--radius-sm);
-  background: var(--surface-1);
-  color: var(--ink);
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
-  font-size: 12px;
-  line-height: 1.5;
-  margin: 0;
-  padding: 12px 14px;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
+  background: var(--surface-2);
+  color: var(--ink-soft);
+  font-size: var(--font-xs);
+  font-weight: var(--weight-semibold);
+  padding: 5px 8px;
 }
 
-.workspace-agent-run-stream.error pre {
+.workspace-agent-terminal-stop:hover:not(:disabled) {
+  background: var(--surface-3);
   color: var(--danger);
 }
 
-.workspace-agent-run-empty,
-.workspace-agent-run-notice {
-  color: var(--ink-muted);
-  font-size: var(--font-sm);
-  line-height: 1.45;
+.workspace-agent-terminal-stop:disabled {
+  cursor: default;
+  opacity: 0.58;
 }
 
-.workspace-agent-run-notice {
-  margin-top: 14px;
+.workspace-agent-terminal-error {
+  flex: 0 0 auto;
+  border-bottom: 1px solid var(--surface-3);
+  background: var(--surface-1);
+  color: var(--danger);
+  font-size: var(--font-xs);
+  padding: 6px 14px;
 }
 
 .workspace-terminal-screen {
   position: relative;
+  flex: 1 1 auto;
   height: 100%;
   min-width: 0;
   min-height: 0;
