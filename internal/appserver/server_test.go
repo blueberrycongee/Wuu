@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	goruntime "runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -3311,7 +3312,7 @@ func TestServerProcessListAndStop(t *testing.T) {
 
 	out := &lockedBuffer{}
 	srv := New(rt, out)
-	if err := srv.handleLine(context.Background(), []byte(`{"id":"1","method":"process/list"}`)); err != nil {
+	if err := srv.handleLine(context.Background(), []byte(`{"id":"1","method":"process/list","params":{"thread_id":"test"}}`)); err != nil {
 		t.Fatalf("process/list: %v", err)
 	}
 	listed := remarshal[ProcessListResult](t, responseByID(t, parseOutput(t, out.String()), "1")["result"])
@@ -3327,7 +3328,7 @@ func TestServerProcessListAndStop(t *testing.T) {
 		t.Fatalf("process/list leaked internal process fields: %s", string(rawJSON))
 	}
 
-	stopPayload := fmt.Sprintf(`{"id":"2","method":"process/stop","params":{"process_id":%q}}`, started.ID)
+	stopPayload := fmt.Sprintf(`{"id":"2","method":"process/stop","params":{"thread_id":"test","process_id":%q}}`, started.ID)
 	if err := srv.handleLine(context.Background(), []byte(stopPayload)); err != nil {
 		t.Fatalf("process/stop: %v", err)
 	}
@@ -3337,13 +3338,69 @@ func TestServerProcessListAndStop(t *testing.T) {
 	}
 }
 
+func TestServerProcessTTYReadWriteResizeAndOwnership(t *testing.T) {
+	if goruntime.GOOS == "windows" {
+		t.Skip("managed tty is not supported on windows")
+	}
+	rt := newTestRuntime(t, &fakeClient{})
+	manager := attachTestProcessManager(t, rt)
+	started, err := manager.Start(context.Background(), process.StartOptions{
+		Command:   `printf 'ready\n'; read line; printf 'got:%s\n' "$line"; sleep 30`,
+		OwnerKind: process.OwnerMainAgent,
+		OwnerID:   "thread-live",
+		Lifecycle: process.LifecycleManaged,
+		TTY:       true,
+	})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer func() { _, _ = manager.Stop(started.ID) }()
+
+	out := &lockedBuffer{}
+	srv := New(rt, out)
+	readPayload := fmt.Sprintf(`{"id":"1","method":"process/read","params":{"thread_id":"thread-live","process_id":%q,"offset_bytes":0,"wait_ms":2000}}`, started.ID)
+	if err := srv.handleLine(context.Background(), []byte(readPayload)); err != nil {
+		t.Fatalf("process/read: %v", err)
+	}
+	first := remarshal[ProcessReadResult](t, responseByID(t, parseOutput(t, out.String()), "1")["result"])
+	if !strings.Contains(first.Output, "ready") || !first.Process.InputAvailable {
+		t.Fatalf("unexpected first read: %+v", first)
+	}
+
+	wrongThreadPayload := fmt.Sprintf(`{"id":"2","method":"process/read","params":{"thread_id":"another-thread","process_id":%q,"offset_bytes":0}}`, started.ID)
+	if err := srv.handleLine(context.Background(), []byte(wrongThreadPayload)); err != nil {
+		t.Fatalf("cross-thread process/read: %v", err)
+	}
+	if got := responseByID(t, parseOutput(t, out.String()), "2")["error"]; got == nil || !strings.Contains(fmt.Sprint(got), "does not belong") {
+		t.Fatalf("cross-thread read should fail: %+v", got)
+	}
+
+	writePayload := fmt.Sprintf(`{"id":"3","method":"process/write","params":{"thread_id":"thread-live","process_id":%q,"input":"hello\n"}}`, started.ID)
+	if err := srv.handleLine(context.Background(), []byte(writePayload)); err != nil {
+		t.Fatalf("process/write: %v", err)
+	}
+	resizePayload := fmt.Sprintf(`{"id":"4","method":"process/resize","params":{"thread_id":"thread-live","process_id":%q,"cols":100,"rows":30}}`, started.ID)
+	if err := srv.handleLine(context.Background(), []byte(resizePayload)); err != nil {
+		t.Fatalf("process/resize: %v", err)
+	}
+
+	secondReadPayload := fmt.Sprintf(`{"id":"5","method":"process/read","params":{"thread_id":"thread-live","process_id":%q,"offset_bytes":%d,"wait_ms":2000}}`, started.ID, first.EndOffset)
+	if err := srv.handleLine(context.Background(), []byte(secondReadPayload)); err != nil {
+		t.Fatalf("second process/read: %v", err)
+	}
+	second := remarshal[ProcessReadResult](t, responseByID(t, parseOutput(t, out.String()), "5")["result"])
+	if second.StartOffset != first.EndOffset || !strings.Contains(second.Output, "got:hello") {
+		t.Fatalf("unexpected incremental read: %+v", second)
+	}
+}
+
 func TestServerProcessEndpointsValidateErrors(t *testing.T) {
 	rt := newTestRuntime(t, &fakeClient{})
 	out := &lockedBuffer{}
 	srv := New(rt, out)
 	requests := []string{
-		`{"id":"1","method":"process/list"}`,
-		`{"id":"2","method":"process/stop","params":{"process_id":"proc-missing"}}`,
+		`{"id":"1","method":"process/list","params":{"thread_id":"test"}}`,
+		`{"id":"2","method":"process/stop","params":{"thread_id":"test","process_id":"proc-missing"}}`,
 	}
 	for _, raw := range requests {
 		if err := srv.handleLine(context.Background(), []byte(raw)); err != nil {
@@ -3364,10 +3421,10 @@ func TestServerProcessStopValidatesProcessID(t *testing.T) {
 	attachTestProcessManager(t, rt)
 	out := &lockedBuffer{}
 	srv := New(rt, out)
-	if err := srv.handleLine(context.Background(), []byte(`{"id":"1","method":"process/stop","params":{"process_id":"   "}}`)); err != nil {
+	if err := srv.handleLine(context.Background(), []byte(`{"id":"1","method":"process/stop","params":{"thread_id":"test","process_id":"   "}}`)); err != nil {
 		t.Fatalf("process/stop blank id: %v", err)
 	}
-	if err := srv.handleLine(context.Background(), []byte(`{"id":"2","method":"process/stop","params":{"process_id":"proc-does-not-exist"}}`)); err != nil {
+	if err := srv.handleLine(context.Background(), []byte(`{"id":"2","method":"process/stop","params":{"thread_id":"test","process_id":"proc-does-not-exist"}}`)); err != nil {
 		t.Fatalf("process/stop missing id: %v", err)
 	}
 	msgs := parseOutput(t, out.String())
@@ -3409,7 +3466,7 @@ func TestServerProcessListRedactsSensitiveCommandAndError(t *testing.T) {
 
 	out := &lockedBuffer{}
 	srv := New(rt, out)
-	if err := srv.handleLine(context.Background(), []byte(`{"id":"1","method":"process/list"}`)); err != nil {
+	if err := srv.handleLine(context.Background(), []byte(`{"id":"1","method":"process/list","params":{"thread_id":"test"}}`)); err != nil {
 		t.Fatalf("process/list: %v", err)
 	}
 	listed := remarshal[ProcessListResult](t, responseByID(t, parseOutput(t, out.String()), "1")["result"])
