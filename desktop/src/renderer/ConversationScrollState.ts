@@ -13,12 +13,14 @@ import {
   AUTO_FOLLOW_BOTTOM_THRESHOLD_PX,
   AUTO_FOLLOW_SCROLLBAR_HIDE_DELAY_MS,
   SCROLL_AWAY_KEYS,
+  SCROLL_TOWARD_LATEST_KEYS,
   USER_SCROLL_AWAY_INTENT_WINDOW_MS,
   atLatestScrollView,
   clampScrollTop,
   eventTargetsNestedAutoFollowScroll,
   maxScrollTop,
   observeAutoFollowResizeTargets,
+  selectionIntersectsNode,
   setAutoFollowOverflowAnchor,
 } from "./AutoFollowScroll";
 import {
@@ -126,6 +128,7 @@ export function useConversationScrollState({
   const lastConversationScrollTopRef = useRef(0);
   const programmaticScrollTopRef = useRef<number | undefined>(undefined);
   const suppressAutoFollowRearmRef = useRef(false);
+  const selectionPausedAutoFollowRef = useRef(false);
   const userScrollAwayIntentRef = useRef(false);
   const userScrollAwayIntentTimerRef = useRef<number | undefined>(undefined);
   const userScrollAwayStartTopRef = useRef<number | undefined>(undefined);
@@ -220,6 +223,7 @@ export function useConversationScrollState({
   ): void {
     clearUserScrollAwayIntent();
     suppressAutoFollowRearmRef.current = false;
+    selectionPausedAutoFollowRef.current = false;
     node.scrollTop = top;
     const actualTop = clampScrollTop(node, node.scrollTop);
     if (Math.abs(node.scrollTop - actualTop) > 1) {
@@ -309,6 +313,7 @@ export function useConversationScrollState({
 
   const enableConversationAutoFollow = useCallback((): void => {
     suppressAutoFollowRearmRef.current = false;
+    selectionPausedAutoFollowRef.current = false;
     setAutoFollow(true);
     const node = conversationViewport();
     if (node) {
@@ -471,7 +476,7 @@ export function useConversationScrollState({
       // auto-follow, the next scroll/layout signal yanks the viewport back to
       // the bottom before the jump reaches its target. Only an actual downward
       // move back to the latest content should clear this jump guard.
-      if (scrolledDown) {
+      if (scrolledDown && !selectionPausedAutoFollowRef.current) {
         suppressAutoFollowRearmRef.current = false;
         nextAutoFollow = true;
         setAutoFollow(true);
@@ -589,6 +594,8 @@ export function useConversationScrollState({
       }
       if (event.deltaY < 0) {
         markUserScrollAwayIntent(clampScrollTop(node, node.scrollTop));
+      } else if (event.deltaY > 0) {
+        selectionPausedAutoFollowRef.current = false;
       }
     };
     const handlePointerDown = (event: PointerEvent): void => {
@@ -596,7 +603,14 @@ export function useConversationScrollState({
         return;
       }
       if (event.target === node) {
+        selectionPausedAutoFollowRef.current = false;
         markUserScrollAwayIntent(clampScrollTop(node, node.scrollTop));
+      }
+    };
+    const handleSelectionChange = (): void => {
+      if (selectionIntersectsNode(document.getSelection(), node)) {
+        selectionPausedAutoFollowRef.current = true;
+        disableConversationAutoFollow();
       }
     };
     const handleKeyDown = (event: KeyboardEvent): void => {
@@ -605,6 +619,8 @@ export function useConversationScrollState({
       }
       if (SCROLL_AWAY_KEYS.has(event.key)) {
         markUserScrollAwayIntent(clampScrollTop(node, node.scrollTop));
+      } else if (SCROLL_TOWARD_LATEST_KEYS.has(event.key)) {
+        selectionPausedAutoFollowRef.current = false;
       }
     };
     const handleTouchStart = (event: TouchEvent): void => {
@@ -636,6 +652,12 @@ export function useConversationScrollState({
         currentY > previousY
       ) {
         markUserScrollAwayIntent(clampScrollTop(node, node.scrollTop));
+      } else if (
+        currentY !== undefined &&
+        previousY !== undefined &&
+        currentY < previousY
+      ) {
+        selectionPausedAutoFollowRef.current = false;
       }
       touchLastYRef.current = currentY;
     };
@@ -644,6 +666,7 @@ export function useConversationScrollState({
     };
     node.addEventListener("wheel", handleWheel, { passive: true });
     node.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("selectionchange", handleSelectionChange);
     node.addEventListener("touchstart", handleTouchStart, { passive: true });
     node.addEventListener("touchmove", handleTouchMove, { passive: true });
     node.addEventListener("touchend", handleTouchEnd);
@@ -652,6 +675,7 @@ export function useConversationScrollState({
     return () => {
       node.removeEventListener("wheel", handleWheel);
       node.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("selectionchange", handleSelectionChange);
       node.removeEventListener("touchstart", handleTouchStart);
       node.removeEventListener("touchmove", handleTouchMove);
       node.removeEventListener("touchend", handleTouchEnd);
