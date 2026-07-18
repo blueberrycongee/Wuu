@@ -1,8 +1,10 @@
 package agent
 
 import (
+	"strings"
 	"testing"
 
+	wuucontext "github.com/blueberrycongee/wuu/internal/context"
 	"github.com/blueberrycongee/wuu/internal/providers"
 )
 
@@ -24,5 +26,28 @@ func TestAssembleModelRequestRequiresExplicitRequestOnlyPolicy(t *testing.T) {
 	}
 	if !assembly.Messages[1].Hidden || assembly.Messages[1].Content != "explicit context" {
 		t.Fatalf("explicit request-only projection not normalized: %+v", assembly.Messages[1])
+	}
+}
+
+func TestRequestOnlyContextProjectionSwitch(t *testing.T) {
+	block := wuucontext.Block{
+		Kind: wuucontext.BlockTaskState, Title: "Task", Source: "runtime", Content: "state: active", TokenBudget: 200,
+	}
+	t.Setenv(wuucontext.DynamicContextProjectionEnvVar, "")
+	compact := requestOnlyMessagesFromBlocks([]wuucontext.Block{block})
+	if len(compact) != 1 || !strings.Contains(compact[0].Content, "rule: Latest update for this key wins.") {
+		t.Fatalf("expected compact default projection: %+v", compact)
+	}
+	for _, omitted := range []string{"title: Task", "source: runtime", "token_budget: 200"} {
+		if strings.Contains(compact[0].Content, omitted) {
+			t.Fatalf("compact projection should omit %q:\n%s", omitted, compact[0].Content)
+		}
+	}
+
+	t.Setenv(wuucontext.DynamicContextProjectionEnvVar, "off")
+	legacy := requestOnlyMessagesFromBlocks([]wuucontext.Block{block})
+	if len(legacy) != 1 || !strings.Contains(legacy[0].Content, "title: Task") ||
+		!strings.Contains(legacy[0].Content, "Only the latest context update with this key applies") {
+		t.Fatalf("off should restore legacy projection: %+v", legacy)
 	}
 }

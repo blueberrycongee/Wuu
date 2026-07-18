@@ -173,7 +173,11 @@ func projectRequestOnlyBlocks(blocks []wuucontext.Block) []requestOnlyBlockProje
 	counts := make(map[string]int, len(blocks))
 	projections := make([]requestOnlyBlockProjection, 0, len(blocks))
 	for _, block := range blocks {
-		rendered := wuucontext.CompileBlocks([]wuucontext.Block{block})
+		compile := wuucontext.CompileBlocks
+		if wuucontext.DynamicContextProjectionEnabled() {
+			compile = wuucontext.CompileRequestBlocks
+		}
+		rendered := compile([]wuucontext.Block{block})
 		if strings.TrimSpace(rendered) == "" {
 			continue
 		}
@@ -197,14 +201,22 @@ func projectRequestOnlyBlocks(blocks []wuucontext.Block) []requestOnlyBlockProje
 }
 
 func activeRequestContextContent(name, rendered string) string {
+	rule := "Only the latest context update with this key applies; it replaces earlier active or inactive updates."
+	if wuucontext.DynamicContextProjectionEnabled() {
+		rule = "Latest update for this key wins."
+	}
 	return "<system-reminder>\n" + requestContextUpdateMarker +
 		"\nkey: " + name +
 		"\nstatus: active" +
-		"\nrule: Only the latest context update with this key applies; it replaces earlier active or inactive updates.\n\n" +
+		"\nrule: " + rule + "\n\n" +
 		rendered + "\n</system-reminder>"
 }
 
 func inactiveRequestContextMessage(name string) providers.ChatMessage {
+	rule := "This context is no longer active. Ignore earlier active updates with this key."
+	if wuucontext.DynamicContextProjectionEnabled() {
+		rule = "Inactive; ignore earlier active updates for this key."
+	}
 	return providers.ChatMessage{
 		Role:   "user",
 		Name:   name,
@@ -212,7 +224,7 @@ func inactiveRequestContextMessage(name string) providers.ChatMessage {
 		Content: "<system-reminder>\n" + requestContextUpdateMarker +
 			"\nkey: " + name +
 			"\nstatus: inactive" +
-			"\nrule: This context is no longer active. Ignore earlier active updates with this key.\n" +
+			"\nrule: " + rule + "\n" +
 			"</system-reminder>",
 	}
 }
