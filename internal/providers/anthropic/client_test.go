@@ -3154,6 +3154,39 @@ func TestKimiK3MultiRoundToolReplay(t *testing.T) {
 	}
 }
 
+func TestMiniMaxCatalogDefaultDoesNotSendAnthropicBetas(t *testing.T) {
+	providerName, provider := modelcatalog.EnrichProvider("minimax", config.ProviderConfig{
+		Type:  "anthropic",
+		Model: "MiniMax-M3",
+	}, "MiniMax-M3")
+	selection := modelvariant.ResolveForProvider(providerName, provider, "MiniMax-M3", "", "")
+	if got := selection.ProviderOptions["anthropic_default_betas"]; got != false {
+		t.Fatalf("anthropic_default_betas = %#v, want false", got)
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("anthropic-beta"); got != "" {
+			t.Fatalf("MiniMax request inherited Anthropic beta headers: %q", got)
+		}
+		w.Header().Set("content-type", "application/json")
+		_, _ = w.Write([]byte(`{"content":[{"type":"text","text":"done"}]}`))
+	}))
+	defer server.Close()
+
+	client, err := New(ClientConfig{BaseURL: server.URL, APIKey: "test-key", MaxTokens: 1024})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	_, err = client.Chat(context.Background(), providers.ChatRequest{
+		Model:           "MiniMax-M3",
+		Messages:        []providers.ChatMessage{{Role: "user", Content: "hello"}},
+		ProviderOptions: selection.ProviderOptions,
+	})
+	if err != nil {
+		t.Fatalf("Chat: %v", err)
+	}
+}
+
 // TestTemperatureGating locks the per-model temperature switch and the
 // thinking mutual exclusion: "temperature": false (arriving as the
 // temperatureSupported option) or an active thinking config must drop the
