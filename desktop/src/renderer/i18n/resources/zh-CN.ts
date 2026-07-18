@@ -1359,6 +1359,7 @@ export const zhCN = {
   "workspace.terminal.resources": "终端",
   "workspace.terminal.interactiveTerminal": "交互式终端",
   "workspace.terminal.newTerminal": "新建终端",
+  "workspace.terminal.closeTerminal": "关闭 {name}",
   "workspace.terminal.resizeNavigation": "调整终端列表宽度",
   "workspace.terminal.noRuns": "没有运行中的终端",
   "workspace.terminal.noRunsDescription": "运行中的后台进程和交互式终端会显示在这里。",

@@ -70,11 +70,13 @@ class StubResizeObserver {
 let container: HTMLDivElement;
 let root: Root | null = null;
 let startTerminalSession: ReturnType<typeof vi.fn>;
+let stopTerminalSession: ReturnType<typeof vi.fn>;
 let listManagedProcesses: ReturnType<typeof vi.fn>;
 let readManagedProcess: ReturnType<typeof vi.fn>;
 let writeManagedProcess: ReturnType<typeof vi.fn>;
 let resizeManagedProcess: ReturnType<typeof vi.fn>;
 let stopManagedProcess: ReturnType<typeof vi.fn>;
+const terminalEventHandlers: Array<(event: TerminalSessionEvent) => void> = [];
 
 beforeEach(() => {
   document.documentElement.dataset.theme = "light";
@@ -82,15 +84,17 @@ beforeEach(() => {
   terminalConstructorOptions.length = 0;
   terminalDataHandlers.length = 0;
   terminalInstances.length = 0;
+  terminalEventHandlers.length = 0;
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
-  startTerminalSession = vi.fn().mockResolvedValue({
-    id: "term-1",
+  startTerminalSession = vi.fn().mockImplementation(async () => ({
+    id: `term-${startTerminalSession.mock.calls.length}`,
     cwd: "/repo",
     shell: "/bin/zsh",
     started_at: new Date().toISOString(),
-  });
+  }));
+  stopTerminalSession = vi.fn();
   listManagedProcesses = vi.fn().mockResolvedValue({ processes: [] });
   readManagedProcess = vi.fn();
   writeManagedProcess = vi.fn().mockResolvedValue({ bytes_written: 0 });
@@ -102,13 +106,16 @@ beforeEach(() => {
       startTerminalSession,
       writeTerminalSession: vi.fn(),
       resizeTerminalSession: vi.fn(),
-      stopTerminalSession: vi.fn(),
+      stopTerminalSession,
       listManagedProcesses,
       readManagedProcess,
       writeManagedProcess,
       resizeManagedProcess,
       stopManagedProcess,
-      onTerminalEvent: vi.fn(() => () => {}),
+      onTerminalEvent: vi.fn((handler: (event: TerminalSessionEvent) => void) => {
+        terminalEventHandlers.push(handler);
+        return () => {};
+      }),
     },
   });
   (globalThis as unknown as { ResizeObserver: typeof StubResizeObserver }).ResizeObserver =
@@ -236,7 +243,91 @@ describe("WorkspaceTerminalPanel", () => {
     expect(startTerminalSession).toHaveBeenCalledWith(
       expect.objectContaining({ cwd: "/worktrees/fork-1/project" }),
     );
-    expect(container.textContent).toContain("交互式终端");
+    expect(container.textContent).toContain("zsh");
+  });
+
+  it("keeps the new-terminal action available and preserves ptys while switching", async () => {
+    await render(<WorkspaceTerminalPanel activeContext={worktreeContext} />);
+    const newTerminal = container.querySelector<HTMLButtonElement>('button[aria-label="新建终端"]');
+
+    await act(async () => {
+      newTerminal?.click();
+      await Promise.resolve();
+    });
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>('button[aria-label="新建终端"]')?.click();
+      await Promise.resolve();
+    });
+
+    await vi.waitFor(() => {
+      expect(startTerminalSession).toHaveBeenCalledTimes(2);
+      expect(container.textContent).toContain("zsh 2");
+    });
+    expect(container.querySelector('button[aria-label="新建终端"]')).not.toBeNull();
+    expect(terminalInstances).toHaveLength(2);
+
+    const resources = container.querySelectorAll<HTMLButtonElement>(".workspace-terminal-resource");
+    expect(resources[0]?.textContent).toContain("zsh");
+    expect(resources[1]?.textContent).toContain("zsh 2");
+    expect(container.querySelectorAll<HTMLElement>(".workspace-terminal-panel")[0]?.hidden).toBe(true);
+
+    act(() => resources[0]?.click());
+
+    expect(container.querySelectorAll<HTMLElement>(".workspace-terminal-panel")[0]?.hidden).toBe(false);
+    expect(container.querySelectorAll<HTMLElement>(".workspace-terminal-panel")[1]?.hidden).toBe(true);
+    expect(startTerminalSession).toHaveBeenCalledTimes(2);
+    expect(stopTerminalSession).not.toHaveBeenCalled();
+  });
+
+  it("routes broadcast terminal events to the matching pty", async () => {
+    await render(<WorkspaceTerminalPanel activeContext={worktreeContext} />);
+
+    for (let index = 0; index < 2; index += 1) {
+      await act(async () => {
+        container.querySelector<HTMLButtonElement>('button[aria-label="新建终端"]')?.click();
+        await Promise.resolve();
+      });
+    }
+    await vi.waitFor(() => expect(startTerminalSession).toHaveBeenCalledTimes(2));
+
+    act(() => {
+      for (const handler of terminalEventHandlers) {
+        handler({ type: "data", id: "term-1", text: "first" });
+        handler({ type: "data", id: "term-2", text: "second" });
+      }
+    });
+
+    expect(terminalInstances[0]?.write).toHaveBeenCalledWith("first");
+    expect(terminalInstances[0]?.write).not.toHaveBeenCalledWith("second");
+    expect(terminalInstances[1]?.write).toHaveBeenCalledWith("second");
+    expect(terminalInstances[1]?.write).not.toHaveBeenCalledWith("first");
+  });
+
+  it("stops only the closed pty and selects an adjacent terminal", async () => {
+    await render(<WorkspaceTerminalPanel activeContext={worktreeContext} />);
+
+    for (let index = 0; index < 3; index += 1) {
+      await act(async () => {
+        container.querySelector<HTMLButtonElement>('button[aria-label="新建终端"]')?.click();
+        await Promise.resolve();
+      });
+    }
+    await vi.waitFor(() => expect(startTerminalSession).toHaveBeenCalledTimes(3));
+
+    act(() => container.querySelector<HTMLButtonElement>('button[aria-label="关闭 zsh 3"]')?.click());
+
+    await vi.waitFor(() => expect(stopTerminalSession).toHaveBeenCalledWith("term-3"));
+    expect(stopTerminalSession).toHaveBeenCalledTimes(1);
+    expect(container.textContent).not.toContain("zsh 3");
+    expect(container.querySelector<HTMLButtonElement>(".workspace-terminal-resource.active")?.textContent).toContain("zsh 2");
+    expect(container.querySelectorAll(".workspace-terminal-panel")).toHaveLength(2);
+
+    act(() => container.querySelector<HTMLButtonElement>('button[aria-label="关闭 zsh 2"]')?.click());
+
+    await vi.waitFor(() => expect(stopTerminalSession).toHaveBeenCalledWith("term-2"));
+    expect(stopTerminalSession).toHaveBeenCalledTimes(2);
+    expect(container.querySelector<HTMLButtonElement>(".workspace-terminal-resource.active")?.textContent).toContain("zsh");
+    expect(stopTerminalSession).not.toHaveBeenCalledWith("term-1");
   });
 
   it("does not render a terminal without a workspace context", () => {

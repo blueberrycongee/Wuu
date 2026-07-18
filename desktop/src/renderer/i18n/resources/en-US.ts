@@ -1361,6 +1361,7 @@ export const enUS = {
   "workspace.terminal.resources": "Terminals",
   "workspace.terminal.interactiveTerminal": "Interactive terminal",
   "workspace.terminal.newTerminal": "New terminal",
+  "workspace.terminal.closeTerminal": "Close {name}",
   "workspace.terminal.resizeNavigation": "Resize terminal list",
   "workspace.terminal.noRuns": "No running terminals",
   "workspace.terminal.noRunsDescription": "Running background processes and interactive terminals appear here.",

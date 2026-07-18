@@ -1,7 +1,7 @@
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal as XtermTerminal, type ITheme } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
-import { CheckCircle2, Clock3, Plus, Square, SquareTerminal, Terminal, XCircle } from "lucide-react";
+import { CheckCircle2, Clock3, Plus, Square, SquareTerminal, Terminal, X, XCircle } from "lucide-react";
 import {
   type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
@@ -39,6 +39,13 @@ const WORKSPACE_TERMINAL_NAVIGATION_MAX_WIDTH = 360;
 const WORKSPACE_TERMINAL_NAVIGATION_WIDTH_STEP = 12;
 
 type WorkspaceTerminalState = "starting" | "ready" | "exited" | "error";
+
+type UserTerminalResource = {
+  id: string;
+  ordinal: number;
+  shell?: string;
+  state: WorkspaceTerminalState;
+};
 
 function workspaceTerminalTheme(theme: AppliedTheme): ITheme {
   if (theme === "dark") {
@@ -144,8 +151,8 @@ export function WorkspaceTerminalPanel({
   const [selectedResourceID, setSelectedResourceID] = useState(
     () => requestedRecord?.toolCallID ?? "",
   );
-  const [userTerminalOpened, setUserTerminalOpened] = useState(false);
-  const [userTerminalState, setUserTerminalState] = useState<WorkspaceTerminalState>("starting");
+  const [userTerminals, setUserTerminals] = useState<UserTerminalResource[]>([]);
+  const nextUserTerminalOrdinalRef = useRef(1);
   const [managedProcesses, setManagedProcesses] = useState<Record<string, ManagedProcessSummary>>({});
   const [navigationWidth, setNavigationWidth] = useState(readStoredTerminalNavigationWidth);
   const [resizingNavigation, setResizingNavigation] = useState(false);
@@ -171,6 +178,16 @@ export function WorkspaceTerminalPanel({
         [next.id]: preferManagedProcess(current[next.id], next),
       };
     });
+  }, []);
+  const handleUserTerminalStateChange = useCallback((id: string, state: WorkspaceTerminalState) => {
+    setUserTerminals((current) => current.map((terminal) => (
+      terminal.id === id && terminal.state !== state ? { ...terminal, state } : terminal
+    )));
+  }, []);
+  const handleUserTerminalShellChange = useCallback((id: string, shell: string) => {
+    setUserTerminals((current) => current.map((terminal) => (
+      terminal.id === id && terminal.shell !== shell ? { ...terminal, shell } : terminal
+    )));
   }, []);
 
   useEffect(() => {
@@ -254,15 +271,35 @@ export function WorkspaceTerminalPanel({
   }, [groups, requestedRun?.requestID, requestedRun?.threadID, requestedRun?.turnID, requestedRun?.toolCallID]);
 
   useEffect(() => {
-    if ((selectedResourceID === "user-terminal" && userTerminalOpened) || selectedRun) {
+    if (userTerminals.some((terminal) => terminal.id === selectedResourceID) || selectedRun) {
       return;
     }
-    setSelectedResourceID(runs[0]?.toolCallID ?? "");
-  }, [runs, selectedResourceID, selectedRun, userTerminalOpened]);
+    setSelectedResourceID(userTerminals[0]?.id ?? runs[0]?.toolCallID ?? "");
+  }, [runs, selectedResourceID, selectedRun, userTerminals]);
 
   function createUserTerminal(): void {
-    setUserTerminalOpened(true);
-    setSelectedResourceID("user-terminal");
+    const ordinal = nextUserTerminalOrdinalRef.current;
+    nextUserTerminalOrdinalRef.current += 1;
+    const id = `user-terminal:${ordinal}`;
+    setUserTerminals((current) => [...current, { id, ordinal, state: "starting" }]);
+    setSelectedResourceID(id);
+  }
+
+  function closeUserTerminal(id: string): void {
+    const index = userTerminals.findIndex((terminal) => terminal.id === id);
+    if (index < 0) {
+      return;
+    }
+    const remaining = userTerminals.filter((terminal) => terminal.id !== id);
+    setUserTerminals(remaining);
+    if (selectedResourceID === id) {
+      setSelectedResourceID(
+        remaining[index]?.id
+          ?? remaining[index - 1]?.id
+          ?? runs[0]?.toolCallID
+          ?? "",
+      );
+    }
   }
 
   function setTerminalNavigationWidth(width: number): void {
@@ -306,35 +343,50 @@ export function WorkspaceTerminalPanel({
       style={{ "--workspace-terminal-navigation-width": `${navigationWidth}px` } as CSSProperties}
     >
       <nav className="workspace-terminal-navigation" aria-label={t("workspace.terminal.resources")}>
-        {!userTerminalOpened ? (
-          <div className="workspace-terminal-navigation-header">
-            <button
-              className="workspace-terminal-new"
-              type="button"
-              aria-label={t("workspace.terminal.newTerminal")}
-              title={t("workspace.terminal.newTerminal")}
-              onClick={createUserTerminal}
-            >
-              <Plus size={15} />
-            </button>
-          </div>
-        ) : null}
+        <div className="workspace-terminal-navigation-header">
+          <button
+            className="workspace-terminal-new"
+            type="button"
+            aria-label={t("workspace.terminal.newTerminal")}
+            title={t("workspace.terminal.newTerminal")}
+            onClick={createUserTerminal}
+          >
+            <Plus size={15} />
+          </button>
+        </div>
         <div className="workspace-terminal-run-list">
-          {userTerminalOpened ? (
-            <button
-              className={`workspace-terminal-resource${selectedResourceID === "user-terminal" ? " active" : ""}`}
-              type="button"
-              onClick={() => setSelectedResourceID("user-terminal")}
-            >
-              <UserTerminalStatusIcon state={userTerminalState} />
-              <span className="workspace-terminal-resource-copy">
-                <span className="workspace-terminal-resource-name">{t("workspace.terminal.interactiveTerminal")}</span>
-                {userTerminalState !== "ready" ? (
-                  <span className="workspace-terminal-resource-meta">{userTerminalStatusLabel(userTerminalState)}</span>
-                ) : null}
-              </span>
-            </button>
-          ) : null}
+          {userTerminals.map((terminal) => {
+            const name = userTerminalName(terminal, t("workspace.terminal.interactiveTerminal"));
+            return (
+              <div
+                className={`workspace-terminal-resource-item${selectedResourceID === terminal.id ? " active" : ""}`}
+                key={terminal.id}
+              >
+                <button
+                  className={`workspace-terminal-resource${selectedResourceID === terminal.id ? " active" : ""}`}
+                  type="button"
+                  onClick={() => setSelectedResourceID(terminal.id)}
+                >
+                  <UserTerminalStatusIcon state={terminal.state} />
+                  <span className="workspace-terminal-resource-copy">
+                    <span className="workspace-terminal-resource-name">{name}</span>
+                    {terminal.state !== "ready" ? (
+                      <span className="workspace-terminal-resource-meta">{userTerminalStatusLabel(terminal.state)}</span>
+                    ) : null}
+                  </span>
+                </button>
+                <button
+                  className="workspace-terminal-resource-close"
+                  type="button"
+                  aria-label={t("workspace.terminal.closeTerminal", { name })}
+                  title={t("workspace.terminal.closeTerminal", { name })}
+                  onClick={() => closeUserTerminal(terminal.id)}
+                >
+                  <X size={13} />
+                </button>
+              </div>
+            );
+          })}
           {runs.map((run) => {
             const process = run.processID ? managedProcesses[run.processID] : undefined;
             const selected = selectedResourceID === run.toolCallID
@@ -354,7 +406,7 @@ export function WorkspaceTerminalPanel({
               </button>
             );
           })}
-          {!userTerminalOpened && runs.length === 0 ? (
+          {userTerminals.length === 0 && runs.length === 0 ? (
             <div className="workspace-terminal-no-runs">{t("workspace.terminal.noRuns")}</div>
           ) : null}
         </div>
@@ -373,13 +425,16 @@ export function WorkspaceTerminalPanel({
         onPointerDown={startNavigationResize}
       />
       <div className="workspace-terminal-content">
-        {userTerminalOpened ? (
+        {userTerminals.map((terminal) => (
           <UserTerminalPane
-            active={selectedResourceID === "user-terminal"}
+            active={selectedResourceID === terminal.id}
             activeContext={activeContext}
-            onStateChange={setUserTerminalState}
+            key={terminal.id}
+            resourceID={terminal.id}
+            onShellChange={handleUserTerminalShellChange}
+            onStateChange={handleUserTerminalStateChange}
           />
-        ) : null}
+        ))}
         {selectedRun ? (
           <AgentTerminalPane
             key={selectedRun.toolCallID}
@@ -388,7 +443,7 @@ export function WorkspaceTerminalPanel({
             onProcessChange={handleManagedProcessChange}
           />
         ) : null}
-        {!userTerminalOpened && !selectedRun ? (
+        {userTerminals.length === 0 && !selectedRun ? (
           <WorkspacePanelEmpty
             title={t("workspace.terminal.noRuns")}
             description={t("workspace.terminal.noRunsDescription")}
@@ -428,6 +483,11 @@ function managedRunFromProcess(threadID: string, process: ManagedProcessSummary)
     processID: process.id,
     tty: process.tty ?? false,
   };
+}
+
+function userTerminalName(terminal: UserTerminalResource, fallback: string): string {
+  const base = terminal.shell?.split("/").filter(Boolean).at(-1) ?? fallback;
+  return terminal.ordinal === 1 ? base : `${base} ${terminal.ordinal}`;
 }
 
 function UserTerminalStatusIcon({ state }: { state: WorkspaceTerminalState }): JSX.Element {
@@ -766,11 +826,15 @@ function managedRunStatusLabel(
 function UserTerminalPane({
   active,
   activeContext,
+  resourceID,
+  onShellChange,
   onStateChange,
 }: {
   active: boolean;
   activeContext?: RuntimeContext;
-  onStateChange: (state: WorkspaceTerminalState) => void;
+  resourceID: string;
+  onShellChange: (id: string, shell: string) => void;
+  onStateChange: (id: string, state: WorkspaceTerminalState) => void;
 }): JSX.Element {
   const { t } = useI18n();
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -782,8 +846,8 @@ function UserTerminalPane({
   const workspaceRoot = activeContext?.cwd;
 
   useEffect(() => {
-    onStateChange(terminalState);
-  }, [onStateChange, terminalState]);
+    onStateChange(resourceID, terminalState);
+  }, [onStateChange, resourceID, terminalState]);
 
   useEffect(() => {
     if (active) {
@@ -886,21 +950,24 @@ function UserTerminalPane({
 
     function flushPendingTerminalEvents(id: string): void {
       const events = pendingTerminalEventsRef.current.get(id);
+      pendingTerminalEventsRef.current.clear();
       if (!events) {
         return;
       }
-      pendingTerminalEventsRef.current.delete(id);
       for (const event of events) {
         handleTerminalEvent(event);
       }
     }
 
     const unsubscribeTerminal = window.wuu.onTerminalEvent((event) => {
-      if (event.id !== sessionIDRef.current) {
+      const sessionID = sessionIDRef.current;
+      if (!sessionID) {
         bufferTerminalEvent(event);
         return;
       }
-      handleTerminalEvent(event);
+      if (event.id === sessionID) {
+        handleTerminalEvent(event);
+      }
     });
 
     async function startSession(): Promise<void> {
@@ -916,6 +983,7 @@ function UserTerminalPane({
           return;
         }
         sessionIDRef.current = started.id;
+        onShellChange(resourceID, started.shell);
         setTerminalState("ready");
         flushPendingTerminalEvents(started.id);
         fitAndResize();
@@ -946,7 +1014,7 @@ function UserTerminalPane({
       terminal.dispose();
       terminalRef.current = null;
     };
-  }, [restartKey, workspaceRoot]);
+  }, [onShellChange, resourceID, restartKey, workspaceRoot]);
 
   if (!workspaceRoot) {
     return <WorkspacePanelEmpty title={t("workspace.files.noProject")} description={t("workspace.terminal.noProjectDescription")} icon={<Terminal size={24} />} />;

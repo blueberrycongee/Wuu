@@ -1178,6 +1178,41 @@ html.resizing-workspace-terminal-split * {
   text-align: left;
 }
 
+.workspace-terminal-resource-item {
+  position: relative;
+}
+
+.workspace-terminal-resource-item .workspace-terminal-resource {
+  padding-right: 30px;
+}
+
+.workspace-terminal-resource-close {
+  position: absolute;
+  top: 50%;
+  right: 5px;
+  display: grid;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  border-radius: var(--radius-sm);
+  color: var(--ink-muted);
+  opacity: 0;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.workspace-terminal-resource-item:hover .workspace-terminal-resource-close,
+.workspace-terminal-resource-item:focus-within .workspace-terminal-resource-close,
+.workspace-terminal-resource-item.active .workspace-terminal-resource-close {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.workspace-terminal-resource-close:hover {
+  background: var(--surface-3);
+  color: var(--ink);
+}
+
 .workspace-terminal-resource:hover,
 .workspace-terminal-resource.active {
   background: var(--surface-2);
