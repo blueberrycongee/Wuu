@@ -339,6 +339,27 @@ func TestResolveKeepsExplicitMiniMaxToolSearchOption(t *testing.T) {
 	}
 }
 
+func TestResolveKeepsExplicitMiniMaxThinkingOption(t *testing.T) {
+	reasoning := true
+	provider := config.ProviderConfig{
+		Type:  "anthropic",
+		NPM:   "@ai-sdk/anthropic",
+		Model: "minimax-m3",
+		Models: map[string]config.ProviderModelConfig{
+			"minimax-m3": {
+				Reasoning: &reasoning,
+				Options:   map[string]any{"thinking": map[string]any{"type": "disabled"}},
+			},
+		},
+	}
+
+	selection := Resolve(provider, provider.Model, "", "")
+	thinking, ok := selection.ProviderOptions["thinking"].(map[string]any)
+	if !ok || thinking["type"] != "disabled" {
+		t.Fatalf("explicit thinking option was overwritten: %#v", selection.ProviderOptions)
+	}
+}
+
 func TestResolveMatchesProviderCompatForZAIAndZhipuThinking(t *testing.T) {
 	for _, providerID := range []string{"zai-coding-plan", "zai", "zhipuai-coding-plan", "zhipuai"} {
 		t.Run(providerID, func(t *testing.T) {
@@ -356,6 +377,15 @@ func TestResolveMatchesProviderCompatForZAIAndZhipuThinking(t *testing.T) {
 			if thinking["type"] != "enabled" || thinking["clear_thinking"] != false {
 				t.Fatalf("thinking = %#v", thinking)
 			}
+
+			provider.Models = map[string]config.ProviderModelConfig{
+				provider.Model: {Options: map[string]any{"thinking": map[string]any{"type": "disabled"}}},
+			}
+			selection = ResolveForProvider(providerID, provider, provider.Model, "", "")
+			thinking, ok = selection.ProviderOptions["thinking"].(map[string]any)
+			if !ok || thinking["type"] != "disabled" {
+				t.Fatalf("explicit thinking option was overwritten: %#v", selection.ProviderOptions)
+			}
 		})
 	}
 }
@@ -371,18 +401,31 @@ func TestResolveMatchesProviderCompatForAlibabaReasoning(t *testing.T) {
 		},
 	}
 
-	selection := ResolveForProvider("alibaba-cn", provider, provider.Model, "", "")
-	if got := selection.ProviderOptions["enable_thinking"]; got != true {
-		t.Fatalf("enable_thinking = %#v; options=%#v", got, selection.ProviderOptions)
+	for _, providerID := range []string{
+		"alibaba", "alibaba-cn", "alibaba-coding-plan", "alibaba-coding-plan-cn", "alibaba-token-plan", "alibaba-token-plan-cn",
+	} {
+		selection := ResolveForProvider(providerID, provider, provider.Model, "", "")
+		if got := selection.ProviderOptions["enable_thinking"]; got != true {
+			t.Fatalf("%s enable_thinking = %#v; options=%#v", providerID, got, selection.ProviderOptions)
+		}
 	}
 
 	provider.Model = "kimi-k2-thinking"
 	provider.Models = map[string]config.ProviderModelConfig{
 		"kimi-k2-thinking": {Reasoning: &reasoning},
 	}
-	selection = ResolveForProvider("alibaba-cn", provider, provider.Model, "", "")
+	selection := ResolveForProvider("alibaba-cn", provider, provider.Model, "", "")
 	if _, ok := selection.ProviderOptions["enable_thinking"]; ok {
 		t.Fatalf("kimi-k2-thinking should use provider default thinking: %#v", selection.ProviderOptions)
+	}
+
+	provider.Model = "qwen-plus"
+	provider.Models = map[string]config.ProviderModelConfig{
+		"qwen-plus": {Reasoning: &reasoning, Options: map[string]any{"enable_thinking": false}},
+	}
+	selection = ResolveForProvider("alibaba", provider, provider.Model, "", "")
+	if got := selection.ProviderOptions["enable_thinking"]; got != false {
+		t.Fatalf("explicit enable_thinking = %#v; options=%#v", got, selection.ProviderOptions)
 	}
 }
 

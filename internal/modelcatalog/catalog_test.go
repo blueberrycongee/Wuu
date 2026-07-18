@@ -72,6 +72,21 @@ func TestMatchProviderTreatsTerminalV1AsOptional(t *testing.T) {
 	if enriched.ContextWindow != 0 {
 		t.Fatalf("provider ContextWindow = %d, want 0 without explicit provider override", enriched.ContextWindow)
 	}
+	if got := model.Options["anthropic_default_betas"]; got != false {
+		t.Fatalf("MiniMax default anthropic_default_betas = %#v, want false", got)
+	}
+
+	_, overridden := EnrichProvider("minimax", config.ProviderConfig{
+		Type:    "anthropic",
+		BaseURL: "https://api.minimaxi.com/anthropic",
+		Model:   "MiniMax-M3",
+		Models: map[string]config.ProviderModelConfig{
+			"MiniMax-M3": {Options: map[string]any{"anthropic_default_betas": true}},
+		},
+	}, "MiniMax-M3")
+	if got := overridden.Models["MiniMax-M3"].Options["anthropic_default_betas"]; got != true {
+		t.Fatalf("explicit MiniMax anthropic_default_betas = %#v, want true", got)
+	}
 }
 
 func TestEnrichProviderInheritsKnownOpenAIModelForCompatibleGateway(t *testing.T) {

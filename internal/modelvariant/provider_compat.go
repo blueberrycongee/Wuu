@@ -62,28 +62,28 @@ func BaseOptionsForProvider(providerName string, provider config.ProviderConfig,
 
 	applyCompatSamplingDefaults(result, desc)
 	if desc.APINPM == compatNPMVertexAnthropic || (desc.APINPM == compatNPMAnthropic && !strings.Contains(desc.APIID, "claude")) {
-		result["toolStreaming"] = false
+		setOptionDefault(result, "toolStreaming", false)
 	}
 	if desc.ProviderID == "openai" || desc.APINPM == compatNPMOpenAI || desc.APINPM == compatNPMGithubCopilot || desc.APINPM == compatNPMBedrockMantle {
-		result["store"] = false
+		setOptionDefault(result, "store", false)
 	}
 	if desc.APINPM == compatNPMAzure {
-		result["store"] = false
+		setOptionDefault(result, "store", false)
 	}
 	if desc.APINPM == compatNPMOpenRouter || desc.APINPM == compatNPMLLMGateway {
-		result["usage"] = map[string]any{"include": true}
+		setOptionDefault(result, "usage", map[string]any{"include": true})
 		if strings.Contains(desc.APIID, "gemini-3") {
-			result["reasoning"] = map[string]any{"effort": "high"}
+			setOptionDefault(result, "reasoning", map[string]any{"effort": "high"})
 		}
 	}
 	if desc.ProviderID == "baseten" || (desc.ProviderID == "opencode" && (desc.APIID == "kimi-k2-thinking" || desc.APIID == "glm-4.6")) {
-		result["chat_template_args"] = map[string]any{"enable_thinking": true}
+		setOptionDefault(result, "chat_template_args", map[string]any{"enable_thinking": true})
 	}
 	if (strings.Contains(desc.ProviderID, "zai") || strings.Contains(desc.ProviderID, "zhipuai")) && desc.APINPM == compatNPMOpenAICompatible {
-		result["thinking"] = map[string]any{
+		setOptionDefault(result, "thinking", map[string]any{
 			"type":           "enabled",
 			"clear_thinking": false,
-		}
+		})
 	}
 	if desc.APINPM == compatNPMGoogle || desc.APINPM == compatNPMGoogleVertex {
 		if desc.Reasoning {
@@ -91,49 +91,49 @@ func BaseOptionsForProvider(providerName string, provider config.ProviderConfig,
 			if strings.Contains(desc.APIID, "gemini-3") {
 				thinking["thinkingLevel"] = "high"
 			}
-			result["thinkingConfig"] = thinking
+			setOptionDefault(result, "thinkingConfig", thinking)
 		}
 	}
 	if strings.Contains(desc.APIID, "minimax-m3") && desc.APINPM == compatNPMAnthropic {
-		result["thinking"] = map[string]any{"type": "adaptive"}
+		setOptionDefault(result, "thinking", map[string]any{"type": "adaptive"})
 	}
 	if (desc.APINPM == compatNPMAnthropic || desc.APINPM == compatNPMVertexAnthropic) &&
 		(strings.Contains(desc.APIID, "k2p") || strings.Contains(desc.APIID, "kimi-k2.") || strings.Contains(desc.APIID, "kimi-k2p")) {
-		result["thinking"] = map[string]any{
+		setOptionDefault(result, "thinking", map[string]any{
 			"type":         "enabled",
 			"budgetTokens": compatAnthropicHighBudget(desc.OutputLimit),
-		}
+		})
 	}
-	if desc.ProviderID == "alibaba-cn" && desc.Reasoning && desc.APINPM == compatNPMOpenAICompatible && !strings.Contains(desc.APIID, "kimi-k2-thinking") {
-		result["enable_thinking"] = true
+	if strings.HasPrefix(desc.ProviderID, "alibaba") && desc.Reasoning && desc.APINPM == compatNPMOpenAICompatible && !strings.Contains(desc.APIID, "kimi-k2-thinking") {
+		setOptionDefault(result, "enable_thinking", true)
 	}
 	if desc.APINPM == compatNPMAzure && strings.Contains(desc.APIID, "gpt-5.5") {
-		result["reasoningSummary"] = "auto"
+		setOptionDefault(result, "reasoningSummary", "auto")
 		return nilIfEmpty(result)
 	}
 	if strings.Contains(desc.APIID, "gpt-5") && !strings.Contains(desc.APIID, "gpt-5-chat") {
 		if !strings.Contains(desc.APIID, "gpt-5-pro") {
-			result["reasoningEffort"] = "medium"
+			setOptionDefault(result, "reasoningEffort", "medium")
 			if desc.APINPM == compatNPMOpenAI || desc.APINPM == compatNPMAzure || desc.APINPM == compatNPMGithubCopilot || desc.APINPM == compatNPMBedrockMantle {
-				result["reasoningSummary"] = "auto"
+				setOptionDefault(result, "reasoningSummary", "auto")
 			}
 			if desc.APINPM == compatNPMOpenAI || desc.APINPM == compatNPMBedrockMantle {
-				result["include"] = []any{"reasoning.encrypted_content"}
+				setOptionDefault(result, "include", []any{"reasoning.encrypted_content"})
 			}
 		}
 		if strings.Contains(desc.APIID, "gpt-5.") &&
 			!strings.Contains(desc.APIID, "codex") &&
 			!strings.Contains(desc.APIID, "-chat") &&
 			desc.ProviderID != "azure" {
-			result["textVerbosity"] = "low"
+			setOptionDefault(result, "textVerbosity", "low")
 		}
 		if strings.HasPrefix(desc.ProviderID, "opencode") {
-			result["include"] = []any{"reasoning.encrypted_content"}
-			result["reasoningSummary"] = "auto"
+			setOptionDefault(result, "include", []any{"reasoning.encrypted_content"})
+			setOptionDefault(result, "reasoningSummary", "auto")
 		}
 	}
 	if desc.APINPM == compatNPMGateway {
-		result["gateway"] = map[string]any{"caching": "auto"}
+		setOptionDefault(result, "gateway", map[string]any{"caching": "auto"})
 	}
 	return nilIfEmpty(result)
 }

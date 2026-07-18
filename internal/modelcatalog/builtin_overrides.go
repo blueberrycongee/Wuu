@@ -8,23 +8,30 @@ func applyBuiltinCatalogOverrides(data *catalogData) {
 	}
 	for i := range data.Providers {
 		provider := &data.Providers[i]
-		if provider.ID != kimiForCodingProviderID {
-			continue
-		}
-		provider.API = "https://api.kimi.com/coding/"
-		provider.ModelOptions = map[string]any{
-			"force_adaptive_thinking": true,
-			"anthropic_default_betas": false,
-		}
-		provider.Headers = map[string]string{"User-Agent": "KimiCLI/1.5"}
-		for j := range provider.Models {
-			if provider.Models[j].ID == "k3" {
-				provider.Models[j] = kimiK3Model(provider.Models[j])
-				return
+		switch provider.ID {
+		case kimiForCodingProviderID:
+			provider.API = "https://api.kimi.com/coding/"
+			provider.ModelOptions = mergeModelOptions(provider.ModelOptions, map[string]any{
+				"force_adaptive_thinking": true,
+				"anthropic_default_betas": false,
+			})
+			provider.Headers = map[string]string{"User-Agent": "KimiCLI/1.5"}
+			found := false
+			for j := range provider.Models {
+				if provider.Models[j].ID == "k3" {
+					provider.Models[j] = kimiK3Model(provider.Models[j])
+					found = true
+					break
+				}
 			}
+			if !found {
+				provider.Models = append(provider.Models, kimiK3Model(Model{}))
+			}
+		case "minimax", "minimax-cn", "minimax-coding-plan", "minimax-cn-coding-plan":
+			provider.ModelOptions = mergeModelOptions(provider.ModelOptions, map[string]any{
+				"anthropic_default_betas": false,
+			})
 		}
-		provider.Models = append(provider.Models, kimiK3Model(Model{}))
-		return
 	}
 }
 
