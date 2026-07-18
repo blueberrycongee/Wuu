@@ -12,6 +12,11 @@ func applyBuiltinCatalogOverrides(data *catalogData) {
 			continue
 		}
 		provider.API = "https://api.kimi.com/coding/"
+		provider.ModelOptions = map[string]any{
+			"force_adaptive_thinking": true,
+			"anthropic_default_betas": false,
+		}
+		provider.Headers = map[string]string{"User-Agent": "KimiCLI/1.5"}
 		for j := range provider.Models {
 			if provider.Models[j].ID == "k3" {
 				provider.Models[j] = kimiK3Model(provider.Models[j])
@@ -49,7 +54,6 @@ func kimiK3Model(model Model) Model {
 		"allow_empty_signature": true,
 		"thinking_replay":       "full",
 	}
-	model.Headers = map[string]string{"User-Agent": "KimiCLI/1.5"}
 	model.SupportedEfforts = []string{"max"}
 	model.DefaultVariant = "max"
 	model.Variants = map[string]map[string]any{

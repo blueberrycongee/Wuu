@@ -17,12 +17,14 @@ import (
 var catalogJSON []byte
 
 type Provider struct {
-	ID     string   `json:"id"`
-	Name   string   `json:"name,omitempty"`
-	API    string   `json:"api,omitempty"`
-	NPM    string   `json:"npm,omitempty"`
-	Env    []string `json:"env,omitempty"`
-	Models []Model  `json:"models"`
+	ID           string            `json:"id"`
+	Name         string            `json:"name,omitempty"`
+	API          string            `json:"api,omitempty"`
+	NPM          string            `json:"npm,omitempty"`
+	Env          []string          `json:"env,omitempty"`
+	ModelOptions map[string]any    `json:"model_options,omitempty"`
+	Headers      map[string]string `json:"headers,omitempty"`
+	Models       []Model           `json:"models"`
 }
 
 type Model struct {
@@ -289,6 +291,7 @@ func MergeProvider(provider config.ProviderConfig, catalogProvider Provider, mod
 		!isCodexSubscriptionProviderType(out.Type) {
 		out.APIKeyEnv = firstCatalogEnv(catalogProvider.Env)
 	}
+	out.Headers = mergeHeaders(catalogProvider.Headers, out.Headers)
 
 	modelSet := make(map[string]bool, len(modelIDs))
 	for _, modelID := range modelIDs {
@@ -299,9 +302,12 @@ func MergeProvider(provider config.ProviderConfig, catalogProvider Provider, mod
 	}
 	includeAll := len(modelSet) == 0
 
+	providerModelDefaults := config.ProviderModelConfig{
+		Options: cloneOptions(catalogProvider.ModelOptions),
+	}
 	models := make(map[string]config.ProviderModelConfig, len(out.Models)+len(catalogProvider.Models))
 	for id, model := range out.Models {
-		models[id] = model
+		models[id] = MergeModelConfig(model, providerModelDefaults)
 	}
 	for _, model := range catalogProvider.Models {
 		id := strings.TrimSpace(model.ID)
@@ -311,7 +317,8 @@ func MergeProvider(provider config.ProviderConfig, catalogProvider Provider, mod
 		if !includeAll && !modelSet[id] {
 			continue
 		}
-		models[id] = MergeModelConfig(models[id], ModelConfig(model))
+		catalogModel := MergeModelConfig(ModelConfig(model), providerModelDefaults)
+		models[id] = MergeModelConfig(models[id], catalogModel)
 	}
 	if len(models) > 0 {
 		out.Models = models

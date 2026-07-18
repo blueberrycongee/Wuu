@@ -197,6 +197,11 @@ func TestKimiK3BuiltinCatalogOverride(t *testing.T) {
 	if provider.API != "https://api.kimi.com/coding/" || provider.NPM != "@ai-sdk/anthropic" {
 		t.Fatalf("unexpected Kimi provider transport: %+v", provider)
 	}
+	if provider.Headers["User-Agent"] != "KimiCLI/1.5" ||
+		provider.ModelOptions["force_adaptive_thinking"] != true ||
+		provider.ModelOptions["anthropic_default_betas"] != false {
+		t.Fatalf("unexpected Kimi provider defaults: options=%+v headers=%+v", provider.ModelOptions, provider.Headers)
+	}
 	var k3 Model
 	for _, model := range provider.Models {
 		if model.ID == "k3" {
@@ -228,11 +233,42 @@ func TestKimiK3BuiltinCatalogOverride(t *testing.T) {
 	if model.Limit == nil || model.Limit.Context != 1_048_576 || model.Limit.Output != 131_072 {
 		t.Fatalf("unexpected enriched K3 limits: %+v", model.Limit)
 	}
-	if model.Options["allow_empty_signature"] != true || model.Options["thinking_replay"] != "full" {
+	if model.Options["allow_empty_signature"] != true || model.Options["thinking_replay"] != "full" ||
+		model.Options["force_adaptive_thinking"] != true || model.Options["anthropic_default_betas"] != false {
 		t.Fatalf("unexpected K3 compatibility options: %+v", model.Options)
 	}
 	if enriched.Headers["User-Agent"] != "KimiCLI/1.5" {
 		t.Fatalf("unexpected K3 headers: %+v", enriched.Headers)
+	}
+}
+
+func TestKimiProviderDefaultsApplyWithoutK3ModelOverrides(t *testing.T) {
+	_, enriched := EnrichProvider("kimi-for-coding", config.ProviderConfig{
+		Type:  "anthropic",
+		Model: "k2p7",
+	}, "k2p7")
+
+	model := enriched.Models["k2p7"]
+	if model.Options["force_adaptive_thinking"] != true || model.Options["anthropic_default_betas"] != false {
+		t.Fatalf("unexpected Kimi provider options: %+v", model.Options)
+	}
+	if _, exists := model.Options["allow_empty_signature"]; exists {
+		t.Fatalf("K3-only empty signature option leaked to k2p7: %+v", model.Options)
+	}
+	if enriched.Headers["User-Agent"] != "KimiCLI/1.5" {
+		t.Fatalf("unexpected Kimi provider headers: %+v", enriched.Headers)
+	}
+
+	_, overridden := EnrichProvider("kimi-for-coding", config.ProviderConfig{
+		Type:    "anthropic",
+		Model:   "k2p7",
+		Headers: map[string]string{"User-Agent": "custom-client"},
+		Models: map[string]config.ProviderModelConfig{
+			"k2p7": {Options: map[string]any{"anthropic_default_betas": true}},
+		},
+	}, "k2p7")
+	if overridden.Headers["User-Agent"] != "custom-client" || overridden.Models["k2p7"].Options["anthropic_default_betas"] != true {
+		t.Fatalf("user Kimi overrides lost: provider=%+v model=%+v", overridden.Headers, overridden.Models["k2p7"].Options)
 	}
 }
 
