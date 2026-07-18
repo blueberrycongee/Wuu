@@ -213,7 +213,7 @@ func (c *Client) Chat(ctx context.Context, req providers.ChatRequest) (providers
 		return providers.ChatResponse{}, fmt.Errorf("marshal request: %w", err)
 	}
 
-	httpResp, lease, err := c.doSingleMessagesRequest(ctx, c.httpClient, body, payload.Betas, req.Attempt, "unary")
+	httpResp, lease, err := c.doSingleMessagesRequest(ctx, c.httpClient, body, payload.UseDefaultBetas, payload.Betas, req.Attempt, "unary")
 	if err != nil {
 		return providers.ChatResponse{}, err
 	}
@@ -347,7 +347,7 @@ func (c *Client) StreamChat(ctx context.Context, req providers.ChatRequest) (<-c
 		_ = os.WriteFile(dumpPath, body, 0o644)
 		providers.DebugLogf("StreamChat: dumped request body to %s", dumpPath)
 	}
-	resp, lease, err := c.doSingleMessagesRequest(ctx, sseClient, body, payload.Betas, req.Attempt, "stream")
+	resp, lease, err := c.doSingleMessagesRequest(ctx, sseClient, body, payload.UseDefaultBetas, payload.Betas, req.Attempt, "stream")
 	if err != nil {
 		providers.DebugLogf("StreamChat: error: %v", err)
 		return nil, err
@@ -427,6 +427,13 @@ func buildAnthropicRequestWithSupport(req providers.ChatRequest, maxTokens int, 
 			break
 		}
 	}
+	useDefaultBetas := true
+	for _, key := range []string{"anthropic_default_betas", "anthropicDefaultBetas"} {
+		if enabled, ok := providerOptionBool(req.ProviderOptions[key]); ok {
+			useDefaultBetas = enabled
+			break
+		}
+	}
 
 	cacheTTL := ""
 	if ttlVal, ok := req.ProviderOptions["cacheTTL"].(string); ok {
@@ -443,10 +450,11 @@ func buildAnthropicRequestWithSupport(req providers.ChatRequest, maxTokens int, 
 	}
 
 	payload := anthropicRequest{
-		Model:     req.Model,
-		MaxTokens: maxTokens,
-		Messages:  make([]anthropicMessage, 0, len(req.Messages)),
-		Stream:    stream,
+		Model:           req.Model,
+		MaxTokens:       maxTokens,
+		Messages:        make([]anthropicMessage, 0, len(req.Messages)),
+		Stream:          stream,
+		UseDefaultBetas: useDefaultBetas,
 	}
 	if toolSearchEnabled {
 		payload.Betas = append(payload.Betas, toolSearchBetaHeader1P)
@@ -957,6 +965,7 @@ func (c *Client) doSingleMessagesRequest(
 	ctx context.Context,
 	httpClient *http.Client,
 	body []byte,
+	useDefaultBetas bool,
 	extraBetas []string,
 	attempt providers.InferenceAttempt,
 	mode string,
@@ -973,14 +982,16 @@ func (c *Client) doSingleMessagesRequest(
 		httpReq.Header.Set("Authorization", "Bearer "+c.authToken)
 	}
 	httpReq.Header.Set("anthropic-version", defaultAnthropicVersion)
-	// Beta headers required for certain Anthropic API features.
-	// The proxy routes requests based on these headers; missing
-	// ones can cause "Invalid request data" or 503 on certain
-	// Console accounts.
-	betas := []string{
-		"interleaved-thinking-2025-05-14",
-		"prompt-caching-2024-07-31",
-		"token-efficient-tools-2026-03-28",
+	// Keep the established Anthropic feature betas by default. Compatible
+	// endpoints can disable this first-party set through model metadata while
+	// retaining OAuth, request-specific, and explicitly configured betas below.
+	var betas []string
+	if useDefaultBetas {
+		betas = []string{
+			"interleaved-thinking-2025-05-14",
+			"prompt-caching-2024-07-31",
+			"token-efficient-tools-2026-03-28",
+		}
 	}
 	if c.authToken != "" {
 		betas = append(betas, "oauth-2025-04-20")
@@ -996,7 +1007,9 @@ func (c *Client) doSingleMessagesRequest(
 		}
 		httpReq.Header.Set(k, v)
 	}
-	httpReq.Header.Set("anthropic-beta", strings.Join(betas, ","))
+	if len(betas) > 0 {
+		httpReq.Header.Set("anthropic-beta", strings.Join(betas, ","))
+	}
 
 	lease, err := c.coordinator.AcquireForAttempt(ctx, c.providerScope, attempt)
 	if err != nil {
@@ -1625,20 +1638,21 @@ func splitAnthropicBetas(header string) []string {
 }
 
 type anthropicRequest struct {
-	Model        string                 `json:"model"`
-	System       any                    `json:"system,omitempty"`
-	MaxTokens    int                    `json:"max_tokens"`
-	Temperature  *float64               `json:"temperature,omitempty"`
-	TopP         *float64               `json:"top_p,omitempty"`
-	TopK         *int                   `json:"top_k,omitempty"`
-	Messages     []anthropicMessage     `json:"messages"`
-	Tools        []anthropicTool        `json:"tools,omitempty"`
-	ToolChoice   any                    `json:"tool_choice,omitempty"`
-	Stream       bool                   `json:"stream,omitempty"`
-	Speed        string                 `json:"speed,omitempty"`
-	Thinking     *anthropicThinking     `json:"thinking,omitempty"`
-	OutputConfig *anthropicOutputConfig `json:"output_config,omitempty"`
-	Betas        []string               `json:"-"`
+	Model           string                 `json:"model"`
+	System          any                    `json:"system,omitempty"`
+	MaxTokens       int                    `json:"max_tokens"`
+	Temperature     *float64               `json:"temperature,omitempty"`
+	TopP            *float64               `json:"top_p,omitempty"`
+	TopK            *int                   `json:"top_k,omitempty"`
+	Messages        []anthropicMessage     `json:"messages"`
+	Tools           []anthropicTool        `json:"tools,omitempty"`
+	ToolChoice      any                    `json:"tool_choice,omitempty"`
+	Stream          bool                   `json:"stream,omitempty"`
+	Speed           string                 `json:"speed,omitempty"`
+	Thinking        *anthropicThinking     `json:"thinking,omitempty"`
+	OutputConfig    *anthropicOutputConfig `json:"output_config,omitempty"`
+	UseDefaultBetas bool                   `json:"-"`
+	Betas           []string               `json:"-"`
 }
 
 // anthropicThinking configures extended thinking.

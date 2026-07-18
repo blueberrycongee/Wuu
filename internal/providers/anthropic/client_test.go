@@ -42,6 +42,12 @@ func TestChat_TextResponse(t *testing.T) {
 		if r.Header.Get("x-api-key") != "test-key" {
 			t.Fatalf("missing api key header")
 		}
+		betas := r.Header.Get("anthropic-beta")
+		for _, expected := range []string{"interleaved-thinking-2025-05-14", "prompt-caching-2024-07-31", "token-efficient-tools-2026-03-28"} {
+			if !strings.Contains(betas, expected) {
+				t.Fatalf("default Anthropic beta header %q missing from %q", expected, betas)
+			}
+		}
 		w.Header().Set("content-type", "application/json")
 		_, _ = w.Write([]byte(`{"content":[{"type":"text","text":"hello"}]}`))
 	}))
@@ -168,6 +174,34 @@ func TestChat_ToolSearchNativeMergesConfiguredBetaHeader(t *testing.T) {
 			{Name: "tool_search", InputSchema: map[string]any{"type": "object"}},
 		},
 		ProviderOptions: map[string]any{"anthropicToolSearch": true},
+	})
+	if err != nil {
+		t.Fatalf("Chat: %v", err)
+	}
+}
+
+func TestChat_DisablingDefaultBetasKeepsConfiguredBetaHeader(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("anthropic-beta"); got != "fast-mode-2026-02-01" {
+			t.Fatalf("configured beta header = %q, want only fast mode", got)
+		}
+		w.Header().Set("content-type", "application/json")
+		_, _ = w.Write([]byte(`{"content":[{"type":"text","text":"ok"}]}`))
+	}))
+	defer server.Close()
+
+	client, err := New(ClientConfig{
+		BaseURL: server.URL,
+		APIKey:  "test-key",
+		Headers: map[string]string{"anthropic-beta": "fast-mode-2026-02-01"},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	_, err = client.Chat(context.Background(), providers.ChatRequest{
+		Model:           "compatible-model",
+		Messages:        []providers.ChatMessage{{Role: "user", Content: "hello"}},
+		ProviderOptions: map[string]any{"anthropic_default_betas": false},
 	})
 	if err != nil {
 		t.Fatalf("Chat: %v", err)
@@ -3042,6 +3076,9 @@ func TestKimiK3MultiRoundToolReplay(t *testing.T) {
 		}
 		if got := r.Header.Get("User-Agent"); got != "KimiCLI/1.5" {
 			t.Fatalf("unexpected K3 User-Agent: %q", got)
+		}
+		if got := r.Header.Get("anthropic-beta"); got != "" {
+			t.Fatalf("Kimi request inherited Anthropic beta headers: %q", got)
 		}
 		var body anthropicRequest
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
