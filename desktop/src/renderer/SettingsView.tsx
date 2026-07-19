@@ -195,7 +195,6 @@ export function SettingsView({
   const [providerTypeDraft, setProviderTypeDraft] = useState("openai-compatible");
   const [addingProvider, setAddingProvider] = useState(false);
   const [error, setError] = useState("");
-  const [saved, setSaved] = useState(false);
   const [desktopBuild, setDesktopBuild] = useState<DesktopBuildInfo | undefined>();
   const [activePage, setActivePage] = useState<SettingsPage>(() =>
     availableSettingsPage(initialPage),
@@ -270,7 +269,6 @@ export function SettingsView({
   const core = initialized?.core;
   const selectedProvider = addingProvider ? undefined : providers.find((item) => item.name === providerDraft);
   const providerLabels = useMemo(() => providerDisplayLabels(providers, t), [providers, t]);
-  const selectedBaseURL = selectedProvider?.base_url ?? "";
   const connectionLocked = !addingProvider && (selectedProvider?.connection_locked ?? false);
   const variantOptions = providerModelVariantOptions(selectedProvider, modelDraft, variantDraft);
   const providerNameTaken = addingProvider && providers.some((item) => item.name === providerDraft.trim());
@@ -284,7 +282,6 @@ export function SettingsView({
     setAPIKeyDraft("");
     setAddingProvider(false);
     setError("");
-    setSaved(false);
   }, [initialized?.provider, initialized?.model, initialized?.variant, initialized?.effort, initialized?.providers]);
 
   useEffect(() => {
@@ -308,19 +305,39 @@ export function SettingsView({
     setAdvancedError("");
   }, [initialized?.advanced_settings, initialized?.provider, initialized?.model]);
 
-  function changeProvider(provider: string): void {
+  // Selection is activation: picking a tile or a name in the select
+  // switches the runtime to that provider through the same instant path
+  // the composer runtime menus use. A provider without a model cannot
+  // activate — the form opens for editing, and committing a model name
+  // activates it.
+  async function activateProvider(provider: string): Promise<void> {
     setAddingProvider(false);
-    setProviderDraft(provider);
     // Reset the type draft: it is only meaningful when creating a provider,
     // and leaving add mode via card click should drop any pending type pick.
     setProviderTypeDraft("openai-compatible");
-    setSaved(false);
+    setError("");
     const summary = providers.find((item) => item.name === provider);
-    if (summary) {
-      setModelDraft(summary.model);
-      setVariantDraft(normalizedVariantForProviderModel(initialized?.variant ?? initialized?.effort ?? "", summary, summary.model));
-      setBaseURLDraft(summary.base_url ?? "");
-      setAPIKeyDraft("");
+    if (!summary) {
+      return;
+    }
+    const variant = normalizedVariantForProviderModel(
+      initialized?.variant ?? initialized?.effort ?? "",
+      summary,
+      summary.model,
+    );
+    setProviderDraft(provider);
+    setModelDraft(summary.model);
+    setVariantDraft(variant);
+    setBaseURLDraft(summary.base_url ?? "");
+    setAPIKeyDraft("");
+    if (!summary.model.trim()) {
+      return;
+    }
+    try {
+      await onSave(provider, summary.model, undefined, undefined, variant);
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : t("provider.saveFailed"));
+      cancelAddingProvider();
     }
   }
 
@@ -333,7 +350,6 @@ export function SettingsView({
     setBaseURLDraft("");
     setAPIKeyDraft("");
     setError("");
-    setSaved(false);
   }
 
   function cancelAddingProvider(): void {
@@ -346,45 +362,115 @@ export function SettingsView({
     setBaseURLDraft(summary?.base_url ?? "");
     setAPIKeyDraft("");
     setError("");
-    setSaved(false);
+  }
+
+  // Field edits persist against the selected provider, independently and
+  // instantly: text inputs commit on blur or Enter, the effort select on
+  // change. An emptied required field snaps back to the persisted value;
+  // an empty API key field means "keep the current secret" and never
+  // round-trips.
+  async function commitModelName(): Promise<void> {
+    if (addingProvider) {
+      return;
+    }
+    const model = modelDraft.trim();
+    if (!model) {
+      setModelDraft(selectedProvider?.model ?? "");
+      return;
+    }
+    if (model === (selectedProvider?.model ?? "")) {
+      return;
+    }
+    const variant = normalizedVariantForProviderModel(variantDraft, selectedProvider, model);
+    setVariantDraft(variant);
+    setError("");
+    try {
+      await onSave(providerDraft, model, undefined, undefined, variant);
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : t("provider.saveFailed"));
+    }
+  }
+
+  async function changeVariant(variant: string): Promise<void> {
+    const previous = variantDraft;
+    setVariantDraft(variant);
+    if (addingProvider) {
+      return;
+    }
+    setError("");
+    try {
+      await onSave(providerDraft, modelDraft, undefined, undefined, variant);
+    } catch (saveError) {
+      setVariantDraft(previous);
+      setError(saveError instanceof Error ? saveError.message : t("provider.saveFailed"));
+    }
+  }
+
+  async function commitBaseURL(): Promise<void> {
+    if (addingProvider || connectionLocked) {
+      return;
+    }
+    const baseURL = baseURLDraft.trim();
+    if (!baseURL) {
+      setBaseURLDraft(selectedProvider?.base_url ?? "");
+      return;
+    }
+    if (baseURL === (selectedProvider?.base_url ?? "")) {
+      return;
+    }
+    setError("");
+    try {
+      await onSave(providerDraft, modelDraft, undefined, { base_url: baseURL }, variantDraft);
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : t("provider.saveFailed"));
+    }
+  }
+
+  async function commitAPIKey(): Promise<void> {
+    if (addingProvider || connectionLocked) {
+      return;
+    }
+    const apiKey = apiKeyDraft.trim();
+    if (!apiKey) {
+      return;
+    }
+    const connection: RuntimeConnectionUpdate = {
+      base_url: baseURLDraft.trim() || selectedProvider?.base_url || ""
+    };
+    if (isAnthropicProviderType(selectedProvider?.type)) {
+      connection.auth_token = apiKey;
+    } else {
+      connection.api_key = apiKey;
+    }
+    setError("");
+    try {
+      await onSave(providerDraft, modelDraft, undefined, connection, variantDraft);
+      setAPIKeyDraft("");
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : t("provider.saveFailed"));
+    }
   }
 
   async function submit(event: ReactFormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
+    if (!addingProvider) {
+      return;
+    }
     setError("");
-    setSaved(false);
     try {
-      let connection: RuntimeConnectionUpdate | undefined;
-      const providerType = addingProvider ? providerTypeDraft : selectedProvider?.type;
-      const usesAuthToken = isAnthropicProviderType(providerType);
-      if (addingProvider) {
-        connection = {
-          base_url: baseURLDraft.trim(),
-          type: providerTypeDraft,
-          create_provider: true
-        };
-        if (usesAuthToken) {
-          connection.auth_token = apiKeyDraft.trim();
-        } else {
-          connection.api_key = apiKeyDraft.trim();
-        }
-      } else if (!connectionLocked) {
-        connection = {
-          base_url: baseURLDraft.trim()
-        };
-        const apiKey = apiKeyDraft.trim();
-        if (apiKey) {
-          if (usesAuthToken) {
-            connection.auth_token = apiKey;
-          } else {
-            connection.api_key = apiKey;
-          }
-        }
+      const connection: RuntimeConnectionUpdate = {
+        base_url: baseURLDraft.trim(),
+        type: providerTypeDraft,
+        create_provider: true
+      };
+      if (isAnthropicProviderType(providerTypeDraft)) {
+        connection.auth_token = apiKeyDraft.trim();
+      } else {
+        connection.api_key = apiKeyDraft.trim();
       }
       await onSave(providerDraft, modelDraft, undefined, connection, variantDraft);
       setAddingProvider(false);
       setAPIKeyDraft("");
-      setSaved(true);
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : t("provider.saveFailed"));
     }
@@ -395,14 +481,12 @@ export function SettingsView({
       return;
     }
     setError("");
-    setSaved(false);
     try {
       await onRemoveProvider(name);
       // The parent's state update will refresh initialized.providers
       // and active provider/model; sync the local drafts so the form
       // does not show the now-deleted provider as selected.
       setAddingProvider(false);
-      setSaved(true);
     } catch (removeError) {
       setError(
         removeError instanceof Error
@@ -592,19 +676,15 @@ export function SettingsView({
     }
   }
 
-  const disabled =
+  // The create-transaction submit is the only explicit action left: every
+  // other field on the page applies instantly on commit.
+  const addSubmitDisabled =
     running ||
     !providerDraft.trim() ||
     providerNameTaken ||
     !modelDraft.trim() ||
-    (!connectionLocked && !baseURLDraft.trim()) ||
-    (addingProvider && !apiKeyDraft.trim()) ||
-    (!addingProvider &&
-      providerDraft === initialized?.provider &&
-      modelDraft === initialized?.model &&
-      variantDraft === (initialized?.variant ?? initialized?.effort ?? "") &&
-      (connectionLocked || baseURLDraft.trim() === selectedBaseURL) &&
-      (connectionLocked || !apiKeyDraft.trim()));
+    !baseURLDraft.trim() ||
+    !apiKeyDraft.trim();
   const shellStyle = {
     // Same variables as the main app shell (`--sidebar-width` collapses to 0,
     // `--sidebar-open-width` remembers the open width for the hover drawer)
@@ -770,43 +850,29 @@ export function SettingsView({
                 apiKeyDraft={apiKeyDraft}
                 addingProvider={addingProvider}
                 error={error}
-                saved={saved}
                 selectedProvider={selectedProvider}
                 connectionLocked={connectionLocked}
                 variantOptions={variantOptions}
                 providerNameTaken={Boolean(providerNameTaken)}
-                onProviderChange={changeProvider}
+                onProviderChange={activateProvider}
                 onStartAddingProvider={startAddingProvider}
                 onCancelAddingProvider={cancelAddingProvider}
-                onProviderDraftChange={(value) => {
-                  setProviderDraft(value);
-                  setSaved(false);
-                }}
-                onProviderTypeDraftChange={(value) => {
-                  setProviderTypeDraft(value);
-                  setSaved(false);
-                }}
+                onProviderDraftChange={setProviderDraft}
+                onProviderTypeDraftChange={setProviderTypeDraft}
                 onModelDraftChange={(value) => {
                   setModelDraft(value);
                   setVariantDraft("");
-                  setSaved(false);
                 }}
-                onVariantDraftChange={(value) => {
-                  setVariantDraft(value);
-                  setSaved(false);
-                }}
-                onBaseURLDraftChange={(value) => {
-                  setBaseURLDraft(value);
-                  setSaved(false);
-                }}
-                onAPIKeyDraftChange={(value) => {
-                  setAPIKeyDraft(value);
-                  setSaved(false);
-                }}
+                onVariantDraftChange={changeVariant}
+                onBaseURLDraftChange={setBaseURLDraft}
+                onAPIKeyDraftChange={setAPIKeyDraft}
+                onCommitModel={commitModelName}
+                onCommitBaseURL={commitBaseURL}
+                onCommitAPIKey={commitAPIKey}
                 onSubmit={submit}
                 onRemoveProvider={requestRemoveProvider}
                 runningProviderNames={runningProviderNameSet}
-                disabled={disabled}
+                disabled={addSubmitDisabled}
               />
             ) : activePage === "advanced" ? (
               <SettingsAdvancedPage
@@ -985,7 +1051,6 @@ function SettingsProvidersPage({
   apiKeyDraft,
   addingProvider,
   error,
-  saved,
   selectedProvider,
   connectionLocked,
   variantOptions,
@@ -999,6 +1064,9 @@ function SettingsProvidersPage({
   onVariantDraftChange,
   onBaseURLDraftChange,
   onAPIKeyDraftChange,
+  onCommitModel,
+  onCommitBaseURL,
+  onCommitAPIKey,
   onSubmit,
   onRemoveProvider,
   runningProviderNames,
@@ -1015,7 +1083,6 @@ function SettingsProvidersPage({
   apiKeyDraft: string;
   addingProvider: boolean;
   error: string;
-  saved: boolean;
   selectedProvider: ProviderSummary | undefined;
   connectionLocked: boolean;
   variantOptions: string[];
@@ -1029,6 +1096,9 @@ function SettingsProvidersPage({
   onVariantDraftChange: (value: string) => void;
   onBaseURLDraftChange: (value: string) => void;
   onAPIKeyDraftChange: (value: string) => void;
+  onCommitModel: () => void;
+  onCommitBaseURL: () => void;
+  onCommitAPIKey: () => void;
   onSubmit: (event: ReactFormEvent<HTMLFormElement>) => Promise<void>;
   onRemoveProvider?: (provider: string) => Promise<void> | void;
   runningProviderNames: ReadonlySet<string>;
@@ -1040,6 +1110,18 @@ function SettingsProvidersPage({
   const authFieldLabel = authFieldUsesToken
     ? t("provider.authToken")
     : t("provider.apiKey");
+  // Text fields commit on blur, or on Enter — except while creating a
+  // provider, where Enter submits the create transaction instead.
+  const commitOnEnter =
+    (commit: () => void) =>
+    (event: ReactKeyboardEvent<HTMLInputElement>): void => {
+      if (event.key !== "Enter" || addingProvider) {
+        return;
+      }
+      event.preventDefault();
+      commit();
+      event.currentTarget.blur();
+    };
   return (
     <SettingsSection testID="settings-providers">
       {providers.length > 0 ? (
@@ -1172,6 +1254,8 @@ function SettingsProvidersPage({
             className="settings-input"
             value={modelDraft}
             onChange={(event) => onModelDraftChange(event.target.value)}
+            onBlur={() => onCommitModel()}
+            onKeyDown={commitOnEnter(onCommitModel)}
             disabled={running}
           />
         </SettingsRow>
@@ -1202,6 +1286,8 @@ function SettingsProvidersPage({
             value={baseURLDraft}
             placeholder={connectionLocked ? t("provider.oauthManaged") : "https://api.openai.com/v1"}
             onChange={(event) => onBaseURLDraftChange(event.target.value)}
+            onBlur={() => onCommitBaseURL()}
+            onKeyDown={commitOnEnter(onCommitBaseURL)}
             disabled={running || connectionLocked}
           />
         </SettingsRow>
@@ -1221,13 +1307,14 @@ function SettingsProvidersPage({
                     : t("provider.enterAuth", { field: authFieldLabel })
             }
             onChange={(event) => onAPIKeyDraftChange(event.target.value)}
+            onBlur={() => onCommitAPIKey()}
+            onKeyDown={commitOnEnter(onCommitAPIKey)}
             disabled={running || connectionLocked}
           />
         </SettingsRow>
-        <div className="settings-row settings-row-footer">
-          {error ? <div className="settings-error">{error}</div> : null}
-          {saved && !error ? <div className="settings-saved">{t("settings.saved")}</div> : null}
-          {addingProvider ? (
+        {addingProvider ? (
+          <div className="settings-row settings-row-footer">
+            {error ? <div className="settings-error">{error}</div> : null}
             <button
               className="settings-button settings-button-ghost"
               type="button"
@@ -1236,15 +1323,19 @@ function SettingsProvidersPage({
             >
               {t("common.cancel")}
             </button>
-          ) : null}
-          <button
-            className="settings-button settings-button-primary"
-            type="submit"
-            disabled={disabled}
-          >
-            {addingProvider ? t("provider.addAction") : t("provider.saveConfiguration")}
-          </button>
-        </div>
+            <button
+              className="settings-button settings-button-primary"
+              type="submit"
+              disabled={disabled}
+            >
+              {t("provider.addAction")}
+            </button>
+          </div>
+        ) : error ? (
+          <div className="settings-row settings-row-footer">
+            <div className="settings-error">{error}</div>
+          </div>
+        ) : null}
       </form>
     </SettingsSection>
   );

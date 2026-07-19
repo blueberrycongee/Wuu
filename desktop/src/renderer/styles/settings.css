@@ -685,20 +685,12 @@
 
 /* --- Feedback text, empty states, quiet lines ---------------------------------- */
 
-.settings-error,
-.settings-saved {
+.settings-error {
   margin-right: auto;
   font-size: var(--font-sm);
   font-weight: var(--weight-medium);
   line-height: 1.4;
-}
-
-.settings-error {
   color: var(--danger);
-}
-
-.settings-saved {
-  color: var(--success);
 }
 
 .settings-empty {
