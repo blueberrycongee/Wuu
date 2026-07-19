@@ -10,7 +10,6 @@ import type {
   CodexPetSettingsUpdate,
   RuntimeConnectionUpdate,
   RuntimeGeneralSettingsUpdate,
-  SettingsUsageRange,
   SettingsUsageResponse,
   WuuDesktopApi
 } from "../shared/protocol";
@@ -92,7 +91,6 @@ function emptyCodexPetsSnapshot(overrides: Partial<CodexPetsSnapshot> = {}): Cod
 function renderSettings(props: {
   initialized: InitializeResult | undefined;
   usage?: SettingsUsageResponse;
-  usageRange?: SettingsUsageRange;
   initialPage?: SettingsPage;
   runningProviderNames?: string[];
   codexPets?: CodexPetsSnapshot;
@@ -111,8 +109,6 @@ function renderSettings(props: {
   onUnarchiveThread?: (thread: ArchivedSessionView) => void;
   locale?: "zh-CN" | "en-US";
 }): { about: Element | null; text: () => string; rootText: () => string } {
-  const usageRange: SettingsUsageRange = props.usageRange ?? "all";
-  const setUsageRange = vi.fn();
   if (props.locale) {
     window.wuu.initialLanguagePreference = props.locale;
     window.wuu.initialSystemLocale = props.locale;
@@ -123,8 +119,6 @@ function renderSettings(props: {
         initialPage={props.initialPage ?? "general"}
         running={false}
         usage={props.usage}
-        usageRange={usageRange}
-        setUsageRange={setUsageRange}
         runningProviderNames={props.runningProviderNames}
         codexPets={props.codexPets ?? emptyCodexPetsSnapshot()}
         codexPetsLoading={props.codexPetsLoading ?? false}
@@ -1073,7 +1067,6 @@ describe("SettingsView About section", () => {
       ].join("-");
     });
     const usage: SettingsUsageResponse = {
-      range: "all",
       total_sessions: 1,
       generated_at: "2026-06-18T12:00:00Z",
       metrics: {

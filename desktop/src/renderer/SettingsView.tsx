@@ -20,7 +20,6 @@ import type {
   CodexPetSettingsUpdate,
   RuntimeAdvancedSettingsUpdate,
   RuntimeGeneralSettingsUpdate,
-  SettingsUsageRange,
 } from "../shared/protocol";
 import {
   type CSSProperties,
@@ -120,8 +119,6 @@ export function SettingsView({
   onDebugControlsChange,
   onSidebarResizeStart,
   onSidebarSeparatorKey,
-  usageRange,
-  setUsageRange,
   archivedThreads,
   onUnarchiveThread,
   // The settings rail shares the main sidebar's state and handlers wholesale:
@@ -146,8 +143,6 @@ export function SettingsView({
   // 记忆页「同事」子 Tab 的数据源：现有 roster 状态（App 的 participants），
   // 面板内部只保留在职 named agent。
   participants?: ParticipantProfile[];
-  usageRange: SettingsUsageRange;
-  setUsageRange: (range: SettingsUsageRange) => void;
   showDebugControlsSetting: boolean;
   debugControlsEnabled: boolean;
   codexPets?: CodexPetsSnapshot;
@@ -942,8 +937,6 @@ export function SettingsView({
             ) : (
               <SettingsUsagePage
                 usage={usage}
-                usageRange={usageRange}
-                setUsageRange={setUsageRange}
               />
             )}
           </div>
@@ -2248,16 +2241,11 @@ function formatArchiveTime(
 /* -------------------------------------------------------------------------- */
 
 function SettingsUsagePage({
-  usage,
-  usageRange,
-  setUsageRange
+  usage
 }: {
   usage: SettingsUsageResponse | undefined;
-  usageRange: SettingsUsageRange;
-  setUsageRange: (range: SettingsUsageRange) => void;
 }): JSX.Element {
   const { locale, t, formatNumber } = useI18n();
-  const ranges: SettingsUsageRange[] = ["all", "7d", "30d", "90d"];
   const heatmap = usage ? buildUsageHeatmap(usage.days) : [];
   const heatmapCols = heatmap.length > 0 ? Math.ceil(heatmap.length / 7) : 12;
 
@@ -2306,27 +2294,6 @@ function SettingsUsagePage({
   }
   return (
     <div className="settings-usage-page" data-testid="settings-usage">
-      <div className="settings-usage-toolbar">
-        <div
-          className="settings-usage-range"
-          role="tablist"
-          aria-label={t("settings.timeRange")}
-        >
-          {ranges.map((range) => (
-            <button
-              key={range}
-              type="button"
-              role="tab"
-              aria-selected={usageRange === range}
-              data-range={range}
-              className={`settings-usage-range-button${usageRange === range ? " active" : ""}`}
-              onClick={() => setUsageRange(range)}
-            >
-              {formatUsageRange(range, t)}
-            </button>
-          ))}
-        </div>
-      </div>
       {usage && (
         <div className="settings-usage-stats">
           <UsageStat
@@ -2628,19 +2595,6 @@ function formatOptionalTokenCount(value: number | undefined): string {
     return "";
   }
   return formatTokenCount(value);
-}
-
-function formatUsageRange(range: SettingsUsageRange, t: Translate): string {
-  switch (range) {
-    case "all":
-      return t("settings.rangeAll");
-    case "7d":
-      return t("settings.rangeDays", { count: 7 });
-    case "30d":
-      return t("settings.rangeDays", { count: 30 });
-    case "90d":
-      return t("settings.rangeDays", { count: 90 });
-  }
 }
 
 function formatPercent(value: number | undefined): string {

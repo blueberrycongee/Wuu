@@ -1045,15 +1045,7 @@
   gap: var(--settings-gap, 40px);
 }
 
-.settings-usage-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 20px;
-  flex-wrap: wrap;
-}
-
-/* Range selector + memory tabs share one segmented-control shape. */
-.settings-usage-range,
+/* Memory tabs use a segmented-control shape. */
 .settings-memory-tabs {
   display: inline-flex;
   align-items: center;
@@ -1064,7 +1056,6 @@
   width: fit-content;
 }
 
-.settings-usage-range-button,
 .settings-memory-tab {
   height: 28px;
   border-radius: calc(var(--radius-sm) - 2px);
@@ -1078,12 +1069,10 @@
     color var(--motion-fast) var(--menu-enter-easing);
 }
 
-.settings-usage-range-button:hover,
 .settings-memory-tab:hover {
   color: var(--ink);
 }
 
-.settings-usage-range-button.active,
 .settings-memory-tab.active {
   background: var(--paper);
   color: var(--ink);
@@ -2010,7 +1999,6 @@
   .settings-select,
   .settings-switch,
   .settings-switch-thumb,
-  .settings-usage-range-button,
   .settings-memory-tab,
   .settings-usage-heatmap-cell {
     transition: none;
