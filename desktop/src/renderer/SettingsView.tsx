@@ -577,7 +577,6 @@ export function SettingsView({
   }${sidebarAnimating ? " sidebar-animating" : ""}`;
 
   const pageTitle = settingsPageTitle(activePage, t);
-  const pageDescription = settingsPageDescription(activePage, t);
 
   return (
     <div ref={effectiveShellRef} className={shellClassName} style={shellStyle}>
@@ -684,7 +683,6 @@ export function SettingsView({
             {activePage === "memory" ? null : (
               <header className="settings-page-header">
                 <h1 className="settings-page-title">{pageTitle}</h1>
-                <p className="settings-page-description">{pageDescription}</p>
               </header>
             )}
   
@@ -2352,25 +2350,6 @@ function settingsPageTitle(page: SettingsPage, t: Translate): string {
       return t("settings.remote");
     case "archive":
       return t("settings.archive");
-  }
-}
-
-function settingsPageDescription(page: SettingsPage, t: Translate): string {
-  switch (page) {
-    case "providers":
-      return t("settings.descriptionProviders");
-    case "advanced":
-      return t("settings.descriptionAdvanced");
-    case "general":
-      return t("settings.descriptionGeneral");
-    case "memory":
-      return "";
-    case "usage":
-      return t("settings.descriptionUsage");
-    case "remote":
-      return t("settings.descriptionRemote");
-    case "archive":
-      return t("settings.descriptionArchive");
   }
 }
 
