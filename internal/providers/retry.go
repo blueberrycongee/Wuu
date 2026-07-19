@@ -306,18 +306,6 @@ func DetectContextOverflow(body string) bool {
 	return false
 }
 
-// DetectContextOverflowForRequest reports context overflow for an HTTP
-// provider response from its status and body. HTTP 413 (Content Too Large)
-// needs no body match: for chat-completions endpoints the prompt dominates
-// the payload, so an entity-size rejection is almost always a context
-// rejection, and compaction is the right response either way.
-func DetectContextOverflowForRequest(statusCode int, body string) bool {
-	if statusCode == http.StatusRequestEntityTooLarge {
-		return true
-	}
-	return DetectContextOverflow(body)
-}
-
 func isContextOverflowCode(code string) bool {
 	return strings.EqualFold(strings.TrimSpace(code), "context_length_exceeded")
 }

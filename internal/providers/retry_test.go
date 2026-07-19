@@ -253,21 +253,6 @@ func TestNewProviderStreamError_Auth(t *testing.T) {
 	}
 }
 
-func TestDetectContextOverflowForRequest_Status413(t *testing.T) {
-	if !DetectContextOverflowForRequest(413, "") {
-		t.Fatal("413 with an empty body must be classified as context overflow")
-	}
-	if !DetectContextOverflowForRequest(413, "payload too large") {
-		t.Fatal("413 with an opaque body must be classified as context overflow")
-	}
-	if DetectContextOverflowForRequest(400, "max_tokens must be positive") {
-		t.Fatal("non-overflow 400 must stay non-overflow")
-	}
-	if !DetectContextOverflowForRequest(400, "total message size 2306631 exceeds limit 2097152") {
-		t.Fatal("body-matched overflow must still be detected")
-	}
-}
-
 func TestStreamErrorSummary_RetryableProviderOverload(t *testing.T) {
 	err := NewProviderStreamError("1305", "该模型当前访问量过大，请您稍后再试")
 	if got := StreamErrorSummary(err); got != "Provider is overloaded" {

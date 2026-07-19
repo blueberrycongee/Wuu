@@ -277,7 +277,7 @@ func (c *Client) Chat(ctx context.Context, req providers.ChatRequest) (providers
 			StatusCode:      httpResp.StatusCode,
 			Body:            body,
 			RetryAfter:      providers.ParseRetryAfter(httpResp),
-			ContextOverflow: providers.DetectContextOverflowForRequest(httpResp.StatusCode, body),
+			ContextOverflow: providers.DetectContextOverflow(body),
 		}
 		lease.FailError(err)
 		return providers.ChatResponse{}, err
@@ -476,7 +476,7 @@ func (c *Client) doSingleChatCompletionsRequest(
 			StatusCode:      resp.StatusCode,
 			Body:            body,
 			RetryAfter:      providers.ParseRetryAfter(resp),
-			ContextOverflow: providers.DetectContextOverflowForRequest(resp.StatusCode, body),
+			ContextOverflow: providers.DetectContextOverflow(body),
 		}
 		lease.FailError(err)
 		return nil, nil, err
