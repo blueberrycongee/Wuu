@@ -347,6 +347,25 @@ func GetKanbanRun(sessDir, runID string) (kanban.Run, error) {
 	return r, err
 }
 
+// GetActiveKanbanRunByThreadID finds the queued/running run bound to one
+// execution site (spawned agent id). Returns kanban.ErrRunNotFound when the
+// agent is not executing a kanban run, so terminal hooks can no-op on
+// ordinary participant runs.
+func GetActiveKanbanRunByThreadID(sessDir, threadID string) (kanban.Run, error) {
+	db, err := openStore(sessDir)
+	if err != nil {
+		return kanban.Run{}, err
+	}
+	defer db.Close()
+	r, err := scanKanbanRun(db.QueryRow(`SELECT `+kanbanRunColumns+` FROM kanban_runs
+WHERE thread_id = ? AND status IN (?, ?) ORDER BY created_at DESC LIMIT 1`,
+		threadID, kanban.RunStatusQueued, kanban.RunStatusRunning))
+	if errors.Is(err, sql.ErrNoRows) {
+		return kanban.Run{}, kanban.ErrRunNotFound
+	}
+	return r, err
+}
+
 // ListKanbanRuns lists a task's runs, newest first.
 func ListKanbanRuns(sessDir, taskID string) ([]kanban.Run, error) {
 	db, err := openStore(sessDir)

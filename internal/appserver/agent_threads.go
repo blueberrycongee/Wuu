@@ -134,6 +134,9 @@ func (s *Server) finalizeAgentTerminalWithCompleter(threadID string, control *ag
 			}
 			time.Sleep(participantRunCompletionRetryDelay)
 		}
+		// Kanban-OS hook: if this execution site is bound to a kanban run,
+		// fold the same terminal outcome into it (no-op otherwise).
+		s.completeKanbanRunForAgent(participantID, agentID, n.Status, summary)
 	}
 
 	// Commit the in-memory dedupe only after the durable core succeeds. Two

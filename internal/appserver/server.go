@@ -938,6 +938,18 @@ func (s *Server) handleLine(ctx context.Context, raw []byte) error {
 		return s.handleParticipantReset(req)
 	case MethodParticipantRetire:
 		return s.handleParticipantRetire(req)
+	case MethodKanbanCreateTask:
+		return s.handleKanbanCreateTask(req)
+	case MethodKanbanListTasks:
+		return s.handleKanbanListTasks(req)
+	case MethodKanbanTransitionTask:
+		return s.handleKanbanTransitionTask(req)
+	case MethodKanbanDispatchRun:
+		return s.handleKanbanDispatchRun(ctx, req)
+	case MethodKanbanListRuns:
+		return s.handleKanbanListRuns(req)
+	case MethodKanbanListArtifacts:
+		return s.handleKanbanListArtifacts(req)
 	case MethodMemoryRead:
 		return s.handleMemoryRead(req)
 	case MethodMemoryOverview:

@@ -201,3 +201,29 @@ func TestKanbanArtifacts(t *testing.T) {
 		t.Fatalf("artifacts = %+v, %v", list, err)
 	}
 }
+
+func TestGetActiveKanbanRunByThreadID(t *testing.T) {
+	dir := t.TempDir()
+	target := seedKanbanTarget(t, dir, "worker-1")
+	task := seedKanbanTask(t, dir, "sess-1", kanban.TaskStatusReady)
+	run, err := CreateKanbanRun(dir, kanban.Run{TaskID: task.ID, TargetID: target})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := GetActiveKanbanRunByThreadID(dir, "agt-1"); !errors.Is(err, kanban.ErrRunNotFound) {
+		t.Fatalf("unbound lookup = %v, want ErrRunNotFound", err)
+	}
+	if _, err := StartKanbanRun(dir, run.ID, "agt-1"); err != nil {
+		t.Fatal(err)
+	}
+	active, err := GetActiveKanbanRunByThreadID(dir, "agt-1")
+	if err != nil || active.ID != run.ID {
+		t.Fatalf("active = %+v, %v", active, err)
+	}
+	if _, err := CompleteKanbanRun(dir, run.ID, kanban.RunStatusSucceeded, "done", ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := GetActiveKanbanRunByThreadID(dir, "agt-1"); !errors.Is(err, kanban.ErrRunNotFound) {
+		t.Fatalf("terminal run must not be active: %v", err)
+	}
+}
