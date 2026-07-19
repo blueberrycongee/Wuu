@@ -263,6 +263,12 @@
 .settings-page {
   display: flex;
   min-height: 100%;
+  /* The column is the container for its own breakpoints: whether rows may
+   * stack depends on the column's width, never on the window's — the
+   * rail's width is user-adjustable, so a viewport query would fire with
+   * hundreds of px of slack left in the column. */
+  container-name: settings-page;
+  container-type: inline-size;
   --settings-page-max-width: 640px;
   --settings-pad: 24px;
   --settings-gap: 40px;
@@ -1892,11 +1898,10 @@
   white-space: nowrap;
 }
 
-@media (max-width: 900px) {
-  .settings-archive-toolbar {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
+/* Stack only when the column itself can no longer fit label + control.
+ * 360px = the widest minimum control (160px select) + 24px gap + a label
+ * that stays readable; the archive toolbar stacks at its own minimum. */
+@container settings-page (max-width: 360px) {
   .settings-row {
     grid-template-columns: minmax(0, 1fr);
     gap: 8px;
@@ -1906,11 +1911,11 @@
   .settings-row-control {
     justify-content: flex-start;
   }
+}
 
-  .settings-page-header:not(.settings-memory-header) {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 12px;
+@container settings-page (max-width: 440px) {
+  .settings-archive-toolbar {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
