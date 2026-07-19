@@ -1,26 +1,50 @@
 /* =========================================================================
- * Settings page — grouped-list design
+ * Settings page — flat grouped list on the shared paper chassis
  *
- * The page follows the classic settings-surface pattern (macOS System
- * Settings / Linear): a muted canvas, white rounded cards carrying rows,
- * hairlines between rows, and a grouped navigation rail on the left.
+ * The surface speaks the app's chassis language (see desktop/DESIGN.md):
+ * one paper canvas; grouping carried by structure — a group label,
+ * hairlines between rows, whitespace between groups. Enclosure signals
+ * (fill steps, borders, radii on grouped lists) are banned: one grouping
+ * reads from one signal, and the signal is label-plus-whitespace.
  *
- * Rhythm: everything derives from the 8px baseline. One control height
- * (32px), one control radius (--radius-sm), one card radius (--radius-md),
- * one row padding (14px 16px). Do not introduce new values.
+ * Color budget: paper canvas, the --ink-* text ramp, controls filled from
+ * the --surface-1/2 steps (hover one step deeper, paper + hairline on
+ * focus). Semantic colors only carry state (success/danger/accent). No
+ * local hex values — the usage heatmap is the sanctioned data-viz
+ * exception.
  *
- * Color: neutrals come only from the --gray-* ramp / semantic aliases
- * (see base.css). No local hex values.
+ * Line budget: the only content lines are the hairlines between rows,
+ * running the full column width. Chrome separators (titlebar, rail) and
+ * focus/state rings are structure and state, not decoration. To add a
+ * line, first remove one.
+ *
+ * Rhythm — the 4/8/24/40 ladder, one role each; do not introduce new
+ * values:
+ *   4px   micro: label title ↔ description, icon ↔ text
+ *   8px   row beat: row vertical padding, group label → first row
+ *   24px  frame: page margin on all sides, page title → first group
+ *   40px  inter-group: ≈ one control row tall, reads as an empty line
+ * Type stays on the global ramp: page title --font-heading semibold;
+ * group labels --font-sm muted regular — always quieter than the rows
+ * they name; row titles --font-ui medium; row descriptions --font-sm.
+ *
+ * Alignment: one left axis. Page title, group labels, and row text all
+ * start at x=0 of the content column (640px; archive keeps 1088px for
+ * its wide lists); controls end at the column's right edge.
+ *
+ * Data modules (usage stats, heatmap, module-level empty states) are
+ * content, not group containers: they may carry one quiet --surface-1
+ * fill with --radius-sm, never a border.
  *
  * Primitives:
  *   .settings-shell                  full-bleed grid (sidebar + main)
  *   .settings-sidebar                left navigation rail
  *   .settings-main                   scrollable content surface
  *   .settings-page                   content column
- *   .settings-page-header            page title + description
- *   .settings-section                a logical group (label + card)
- *   .settings-card                   grouped-list card holding rows
- *   .settings-row                    one label/control pair inside a card
+ *   .settings-page-header            page title
+ *   .settings-section                a logical group (label + rows)
+ *   .settings-card                   structural group wrapper — paints nothing
+ *   .settings-row                    one label/control pair
  *   .settings-input / .settings-select   shared form controls
  *   .settings-switch                 boolean toggle
  *   .settings-status-pill            semantic status badge
@@ -690,8 +714,8 @@
 
 /* --- Provider overview tiles ---------------------------------------------------
  * Selectable grid — the one place where selection needs an enclosure.
- * Tiles are paper cards on the muted canvas; the active tile marks itself
- * with a strong border instead of a fill.
+ * Tiles keep a resting hairline border on the paper canvas; the active
+ * tile marks itself with a strong border instead of a fill.
  * ----------------------------------------------------------------------------- */
 
 .settings-provider-overview {
@@ -715,7 +739,7 @@
   gap: 2px;
   min-height: 76px;
   border: 1px solid var(--hairline);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-sm);
   background: var(--paper);
   color: var(--ink);
   padding: 12px 14px;
@@ -814,7 +838,7 @@
   gap: 8px;
   min-height: 76px;
   border: 1px dashed var(--gray-350);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--ink-muted);
   padding: 12px 14px;
@@ -954,9 +978,10 @@
   box-shadow: var(--shadow-soft);
 }
 
-/* Stat strip: one full-width row of mini cards, big tabular number over
- * a label. Five fit side by side at the default column width; they fold
- * evenly below it. */
+/* Stat strip: one full-width row of quiet data modules, big tabular number
+ * over a label. Data modules are content, not group containers: they may
+ * carry one --surface-1 fill, no border. Five fit side by side at the
+ * default column width; they fold evenly below it. */
 .settings-usage-stats {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
@@ -969,10 +994,9 @@
   flex-direction: column;
   gap: 2px;
   min-width: 0;
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-lg);
-  background: var(--paper);
-  padding: 14px 18px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  padding: 12px 14px;
 }
 
 .settings-usage-stat-value {
@@ -993,16 +1017,15 @@
   font-size: var(--font-sm);
 }
 
-/* Heatmap panel: a card whose grid is the content. */
+/* Heatmap panel: a quiet filled module whose grid is the content. */
 .settings-heatmap-panel {
   display: flex;
   flex-direction: column;
   gap: 8px;
   overflow: hidden;
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-lg);
-  background: var(--paper);
-  padding: 16px 20px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  padding: 12px 14px;
 }
 
 /* Month labels: same column grid as the cell grid, labels positioned by col */
@@ -1094,13 +1117,12 @@
   background: var(--gray-100);
 }
 
-/* The usage empty state reads as a quiet card, not a bare line. */
+/* The usage empty state reads as one quiet filled module, not a bare line. */
 .settings-usage-page > .settings-empty {
   justify-content: center;
   min-height: 0;
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-lg);
-  background: var(--paper);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
   padding: 48px 16px;
 }
 
@@ -1350,6 +1372,8 @@
   gap: 8px;
 }
 
+/* Archive toolbar controls share the settings input chrome: a surface-1
+ * box at rest, one step deeper on hover, paper + hairline on focus. */
 .settings-archive-search {
   display: flex;
   min-width: 0;
@@ -1357,16 +1381,22 @@
   align-items: center;
   gap: 8px;
   padding: 0 12px;
-  border: 1px solid var(--hairline);
+  border: 1px solid transparent;
   border-radius: var(--radius-sm);
-  background: var(--paper);
+  background: var(--surface-1);
   color: var(--ink-faint);
   transition:
+    background var(--motion-fast) var(--menu-enter-easing),
     border-color var(--motion-fast) var(--menu-enter-easing),
     box-shadow var(--motion-fast) var(--menu-enter-easing);
 }
 
+.settings-archive-search:hover {
+  background: var(--surface-2);
+}
+
 .settings-archive-search:focus-within {
+  background: var(--paper);
   border-color: var(--gray-350);
   box-shadow: 0 0 0 3px var(--ink-overlay-8);
 }
@@ -1388,8 +1418,14 @@
 
 .select-menu-trigger.settings-archive-filter-trigger {
   height: 32px;
+  border-color: transparent;
   border-radius: var(--radius-sm);
-  background: var(--paper);
+  background: var(--surface-1);
+}
+
+.select-menu-trigger.settings-archive-filter-trigger:hover:not(:disabled) {
+  border-color: transparent;
+  background: var(--surface-2);
 }
 
 .settings-archive-group {
