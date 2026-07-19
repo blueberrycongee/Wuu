@@ -1129,15 +1129,12 @@
   font-size: var(--font-sm);
 }
 
-/* Heatmap panel: a quiet filled module whose grid is the content. */
+/* Heatmap grid: flat on the canvas, no panel — the cells, their month
+ * labels, and the legend carry themselves. */
 .settings-heatmap-panel {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  overflow: hidden;
-  border-radius: var(--radius-sm);
-  background: var(--surface-1);
-  padding: 12px 14px;
 }
 
 /* Month labels: same column grid as the cell grid, labels positioned by col */
@@ -1255,11 +1252,14 @@
   line-height: 1.3;
 }
 
+/* The model table is a content-sized grid: number columns are nowrap
+ * shrink-to-fit, so width pressure folds the model column's whitespace
+ * first and the rightmost value always ends flush with the column edge. */
 .settings-usage-table {
   width: 100%;
   min-width: 0;
   border-collapse: collapse;
-  table-layout: fixed;
+  table-layout: auto;
 }
 
 .settings-usage-table th,
@@ -1285,13 +1285,13 @@
 
 .settings-usage-table th:first-child,
 .settings-usage-table td:first-child {
-  width: 40%;
   padding-left: 0;
   text-align: left;
 }
 
 .settings-usage-table .settings-usage-num {
-  width: 20%;
+  width: 1%;
+  white-space: nowrap;
 }
 
 .settings-usage-number {
@@ -1302,46 +1302,22 @@
   white-space: nowrap;
 }
 
-.settings-usage-table td:first-child {
+.settings-usage-model {
   display: flex;
+  min-width: 0;
   flex-direction: column;
   gap: 2px;
 }
 
-.settings-usage-table td:first-child small {
+.settings-usage-model small {
   color: var(--ink-muted);
   font-size: var(--font-sm);
   font-weight: 400;
 }
 
-.settings-usage-table td:first-child strong,
-.settings-usage-table td:first-child small {
+.settings-usage-model strong,
+.settings-usage-model small {
   overflow-wrap: anywhere;
-}
-
-.settings-usage-rate {
-  display: inline-flex;
-  align-items: center;
-  height: 22px;
-  border-radius: var(--radius-pill);
-  background: var(--surface-2);
-  color: var(--ink-muted);
-  font-size: var(--font-xs);
-  font-weight: var(--weight-semibold);
-  padding: 0 8px;
-  font-variant-numeric: tabular-nums;
-}
-
-.settings-usage-rate.rate-2,
-.settings-usage-rate.rate-3,
-.settings-usage-rate.rate-4 {
-  background: var(--success-soft);
-  color: var(--success);
-}
-
-.settings-usage-rate.rate-1 {
-  background: var(--warning-soft);
-  color: var(--warning);
 }
 
 /* Keep the model table part of the page instead of turning it into a nested

@@ -2417,8 +2417,10 @@ function SettingsUsagePage({
                   return (
                     <tr key={`${b.provider}\n${b.model}`}>
                       <td>
-                        <strong>{b.provider || t("settings.unknownProvider")}</strong>
-                        <small>{b.model || t("settings.unknownModel")}</small>
+                        <div className="settings-usage-model">
+                          <strong>{b.provider || t("settings.unknownProvider")}</strong>
+                          <small>{b.model || t("settings.unknownModel")}</small>
+                        </div>
                       </td>
                       <td className="settings-usage-num">
                         <span className="settings-usage-number" title={formatNumber(b.input_tokens)}>
@@ -2431,9 +2433,7 @@ function SettingsUsagePage({
                         </span>
                       </td>
                       <td className="settings-usage-num">
-                        <span className={`settings-usage-rate rate-${hitRateLevel(rate)}`}>
-                          {formatPercent(rate)}
-                        </span>
+                        <span className="settings-usage-number">{formatPercent(rate)}</span>
                       </td>
                     </tr>
                   );
@@ -2648,14 +2648,6 @@ function formatPercent(value: number | undefined): string {
     return "—";
   }
   return `${Math.round(Math.max(0, Math.min(1, value)) * 100)}%`;
-}
-
-function hitRateLevel(rate: number | undefined): number {
-  if (rate === undefined || rate <= 0) return 0;
-  if (rate < 0.25) return 1;
-  if (rate < 0.5) return 2;
-  if (rate < 0.75) return 3;
-  return 4;
 }
 
 function buildUsageHeatmap(days: SettingsUsageDay[]): UsageHeatmapCell[] {
