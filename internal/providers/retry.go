@@ -253,27 +253,25 @@ func StreamErrorDisplay(err error) string {
 // failures; numeric fields stay inside the patterns so a rate/quota
 // number can't widen the match.
 var contextOverflowPatterns = []*regexp.Regexp{
-	regexp.MustCompile(`(?i)context[_ ]length[_ ]exceeded`),                     // OpenAI code and prose forms
-	regexp.MustCompile(`(?i)exceeds the context window`),                        // OpenAI Completions & Responses
-	regexp.MustCompile(`(?i)context window exceeds limit`),                      // MiniMax
-	regexp.MustCompile(`(?i)maximum context length`),                            // OpenAI-compatible proxies, OpenRouter, Mistral
-	regexp.MustCompile(`(?i)model_context_window_exceeded`),                     // z.ai finish_reason surfaced as error text
-	regexp.MustCompile(`(?i)prompt is too long`),                                // Anthropic
-	regexp.MustCompile(`(?i)request_too_large`),                                 // Anthropic HTTP 413
-	regexp.MustCompile(`(?i)input is too long`),                                 // AWS Bedrock
-	regexp.MustCompile(`(?i)input token count.*exceeds the maximum`),            // Google Gemini
-	regexp.MustCompile(`(?i)maximum prompt length is \d+`),                      // xAI
-	regexp.MustCompile(`(?i)reduce the length of the messages`),                 // Groq
-	regexp.MustCompile(`(?i)exceeds (?:the )?maximum allowed input length`),     // OpenRouter/Poolside
-	regexp.MustCompile(`(?i)is longer than the model'?s context length`),        // Together AI
-	regexp.MustCompile(`(?i)exceeds the limit of \d+`),                          // GitHub Copilot
-	regexp.MustCompile(`(?i)exceeds the available context size`),                // llama.cpp
-	regexp.MustCompile(`(?i)greater than the context length`),                   // LM Studio
-	regexp.MustCompile(`(?i)exceeded model token limit`),                        // Kimi For Coding (legacy phrasing)
-	regexp.MustCompile(`(?i)message size [\d,]+ exceeds limit`),                 // Kimi For Coding k3: "total message size 2306631 exceeds limit 2097152"
-	regexp.MustCompile(`(?i)prompt too long; exceeded (?:max )?context length`), // Ollama
-	regexp.MustCompile(`(?i)too many tokens`),                                   // generic fallback
-	regexp.MustCompile(`(?i)token limit exceeded`),                              // generic fallback
+	regexp.MustCompile(`(?i)context[_ ]length[_ ]exceeded`),                                 // OpenAI code and prose forms
+	regexp.MustCompile(`(?i)exceeds the context window`),                                    // OpenAI Completions & Responses
+	regexp.MustCompile(`(?i)context window exceeds limit`),                                  // MiniMax
+	regexp.MustCompile(`(?i)maximum context length`),                                        // OpenAI-compatible proxies, OpenRouter, Mistral
+	regexp.MustCompile(`(?i)model_context_window_exceeded`),                                 // z.ai finish_reason surfaced as error text
+	regexp.MustCompile(`(?i)prompt is too long`),                                            // Anthropic
+	regexp.MustCompile(`(?i)request_too_large`),                                             // Anthropic HTTP 413
+	regexp.MustCompile(`(?i)input is too long`),                                             // AWS Bedrock
+	regexp.MustCompile(`(?i)input token count.*exceeds the maximum`),                        // Google Gemini
+	regexp.MustCompile(`(?i)maximum prompt length is \d+`),                                  // xAI
+	regexp.MustCompile(`(?i)reduce the length of the messages`),                             // Groq
+	regexp.MustCompile(`(?i)exceeds (?:the )?maximum allowed input length`),                 // OpenRouter/Poolside
+	regexp.MustCompile(`(?i)is longer than the model'?s context length`),                    // Together AI
+	regexp.MustCompile(`(?i)prompt token count(?: of)? [\d,]+ exceeds the limit of [\d,]+`), // GitHub Copilot
+	regexp.MustCompile(`(?i)exceeds the available context size`),                            // llama.cpp
+	regexp.MustCompile(`(?i)greater than the context length`),                               // LM Studio
+	regexp.MustCompile(`(?i)exceeded model token limit`),                                    // Kimi For Coding (legacy phrasing)
+	regexp.MustCompile(`(?i)message size [\d,]+ exceeds limit`),                             // Kimi For Coding k3: "total message size 2306631 exceeds limit 2097152"
+	regexp.MustCompile(`(?i)prompt too long; exceeded (?:max )?context length`),             // Ollama
 }
 
 // contextNonOverflowPatterns veto overflow classification for transient quota

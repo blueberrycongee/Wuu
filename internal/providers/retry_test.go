@@ -233,6 +233,9 @@ func TestDetectContextOverflow_ProviderPhrasings(t *testing.T) {
 		`429 {"error":{"type":"rate_limit_error","message":"We're receiving too many requests at the moment."}}`,
 		"request rate exceeds limit, slow down",
 		"Throttling error: Too many tokens, please wait before trying again.",
+		"429: too many tokens per minute",
+		"monthly token limit exceeded",
+		"request count exceeds the limit of 100",
 		// Gateway byte-buffer limits are not context windows.
 		"HTTP 507: 507 Insufficient Storage: exceeded request buffer limit while retrying upstream",
 	}

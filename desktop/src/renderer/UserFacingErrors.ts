@@ -68,19 +68,34 @@ function httpTitle(code: string): string {
   return key ? `${code} ${t(key)}` : code;
 }
 
-// Context-window overflow phrasings observed across providers. Shared by
-// the category classifier and the title resolver so live structured errors
-// and rebuilt message-only errors land on the same display.
-function hasContextOverflowPhrasing(lower: string): boolean {
-  return (
-    lower.includes("context_length_exceeded") ||
-    lower.includes("context window") ||
-    lower.includes("maximum context length") ||
-    lower.includes("prompt is too long") ||
-    lower.includes("input is too long") ||
-    lower.includes("exceeded model token limit") ||
-    (lower.includes("message size") && lower.includes("exceeds limit"))
-  );
+// Keep this legacy message-only fallback aligned with the Go core's explicit
+// overflow identities. Persisted history does not retain every structured
+// error field, so these patterns must classify a rebuilt turn the same way as
+// the live structured error without guessing from quota wording.
+const CONTEXT_OVERFLOW_PATTERNS = [
+  /context[_ ]length[_ ]exceeded/i,
+  /exceeds the context window/i,
+  /context window exceeds limit/i,
+  /maximum context length/i,
+  /model_context_window_exceeded/i,
+  /prompt is too long/i,
+  /request_too_large/i,
+  /input is too long/i,
+  /input token count.*exceeds the maximum/i,
+  /maximum prompt length is \d+/i,
+  /reduce the length of the messages/i,
+  /exceeds (?:the )?maximum allowed input length/i,
+  /is longer than the model'?s context length/i,
+  /prompt token count(?: of)? [\d,]+ exceeds the limit of [\d,]+/i,
+  /exceeds the available context size/i,
+  /greater than the context length/i,
+  /exceeded model token limit/i,
+  /message size [\d,]+ exceeds limit/i,
+  /prompt too long; exceeded (?:max )?context length/i,
+];
+
+function hasContextOverflowPhrasing(message: string): boolean {
+  return CONTEXT_OVERFLOW_PATTERNS.some((pattern) => pattern.test(message));
 }
 
 function structuredStatusFact(structured: TurnError | undefined): string | undefined {

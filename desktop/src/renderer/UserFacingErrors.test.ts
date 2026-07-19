@@ -265,6 +265,48 @@ describe("userFacingErrorForMessage", () => {
         expect(display.title).toBe("上下文超出窗口");
       }
     });
+
+    it("keeps every core overflow phrasing identical in live and rebuilt paths", () => {
+      const phrasings = [
+        "context length exceeded",
+        "Your input exceeds the context window of this model",
+        "context window exceeds limit",
+        "maximum context length",
+        "model_context_window_exceeded",
+        "prompt is too long",
+        "request_too_large",
+        "input is too long",
+        "input token count (120000) exceeds the maximum number of tokens allowed",
+        "maximum prompt length is 131072",
+        "reduce the length of the messages",
+        "exceeds the maximum allowed input length",
+        "is longer than the model's context length",
+        "prompt token count of 240000 exceeds the limit of 200000",
+        "exceeds the available context size",
+        "greater than the context length",
+        "exceeded model token limit",
+        "message size 2,306,631 exceeds limit",
+        "prompt too long; exceeded max context length",
+      ];
+
+      for (const phrasing of phrasings) {
+        const message = `stream request failed: HTTP 400: ${phrasing}`;
+        const live = userFacingErrorForMessage(
+          {
+            message,
+            category: "provider",
+            status_code: 400,
+          },
+          "turn",
+        );
+        const rebuilt = userFacingErrorForMessage(message, "turn");
+
+        expect(live.category, phrasing).toBe("provider");
+        expect(rebuilt.category, phrasing).toBe("provider");
+        expect(live.title, phrasing).toBe("上下文超出窗口");
+        expect(rebuilt.title, phrasing).toBe(live.title);
+      }
+    });
   });
 
   describe("resume stability (tab switch rebuilds the turn from the persisted message only)", () => {
