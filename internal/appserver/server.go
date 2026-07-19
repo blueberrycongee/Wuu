@@ -954,6 +954,10 @@ func (s *Server) handleLine(ctx context.Context, raw []byte) error {
 		return s.handleKanbanCrystallize(ctx, req)
 	case MethodKanbanAutoDispatch:
 		return s.handleKanbanAutoDispatch(ctx, req)
+	case MethodKanbanSpawnSuggestions:
+		return s.handleKanbanSpawnSuggestions(req)
+	case MethodKanbanSpawnAgent:
+		return s.handleKanbanSpawnAgent(req)
 	case MethodParticipantGetManifest:
 		return s.handleParticipantGetManifest(req)
 	case MethodParticipantSaveManifest:

@@ -82,6 +82,8 @@ const (
 	MethodKanbanListArtifacts      = "kanban/list-artifacts"
 	MethodKanbanCrystallize        = "kanban/crystallize"
 	MethodKanbanAutoDispatch       = "kanban/auto-dispatch"
+	MethodKanbanSpawnSuggestions   = "kanban/spawn-suggestions"
+	MethodKanbanSpawnAgent         = "kanban/spawn-agent"
 	MethodParticipantGetManifest   = "participant/get-manifest"
 	MethodParticipantSaveManifest  = "participant/save-manifest"
 	MethodParticipantSave          = "participant/save"
