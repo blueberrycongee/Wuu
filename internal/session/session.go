@@ -1158,6 +1158,66 @@ func migrateSchema(db *sql.DB) error {
 		`CREATE INDEX IF NOT EXISTS idx_task_attempts_task ON task_attempts(task_id, node_id, ordinal)`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_task_attempts_active_assignee
 		 ON task_attempts(assignee_id) WHERE status IN ('queued', 'running')`,
+		// kanban_tasks is the kanban-OS unit of work: agent-neutral by
+		// construction (no assignee column). Assignment lives only on
+		// kanban_runs; the task merely denormalizes latest_run_id for board
+		// projection. parent_id nests decomposition subtasks.
+		`CREATE TABLE IF NOT EXISTS kanban_tasks (
+			id               TEXT PRIMARY KEY,
+			session_id       TEXT NOT NULL,
+			parent_id        TEXT NOT NULL DEFAULT '',
+			title            TEXT NOT NULL,
+			brief            TEXT NOT NULL DEFAULT '',
+			status           TEXT NOT NULL,
+			source_thread_id TEXT NOT NULL DEFAULT '',
+			created_by       TEXT NOT NULL DEFAULT '',
+			sort_index       INTEGER NOT NULL DEFAULT 0,
+			latest_run_id    TEXT NOT NULL DEFAULT '',
+			created_at       INTEGER NOT NULL,
+			updated_at       INTEGER NOT NULL
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_kanban_tasks_session ON kanban_tasks(session_id, status, sort_index)`,
+		`CREATE INDEX IF NOT EXISTS idx_kanban_tasks_parent ON kanban_tasks(parent_id, sort_index)`,
+		// kanban_runs binds a task to one concrete named-agent execution.
+		// Creating a run with target_id IS the dispatch action and its entire
+		// record; kind distinguishes execution from second-eyes review. The
+		// partial unique index enforces one active run per target participant.
+		`CREATE TABLE IF NOT EXISTS kanban_runs (
+			id            TEXT PRIMARY KEY,
+			task_id       TEXT NOT NULL,
+			session_id    TEXT NOT NULL,
+			kind          TEXT NOT NULL,
+			target_id     TEXT NOT NULL,
+			thread_id     TEXT NOT NULL DEFAULT '',
+			status        TEXT NOT NULL,
+			summary       TEXT NOT NULL DEFAULT '',
+			error_message TEXT NOT NULL DEFAULT '',
+			created_by    TEXT NOT NULL DEFAULT '',
+			created_at    INTEGER NOT NULL,
+			started_at    INTEGER NOT NULL DEFAULT 0,
+			finished_at   INTEGER NOT NULL DEFAULT 0,
+			FOREIGN KEY(task_id) REFERENCES kanban_tasks(id) ON DELETE CASCADE,
+			FOREIGN KEY(target_id) REFERENCES participants(id) ON DELETE CASCADE
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_kanban_runs_task ON kanban_runs(task_id, created_at)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_kanban_runs_active_target
+		 ON kanban_runs(target_id) WHERE status IN ('queued', 'running')`,
+		// kanban_artifacts attributes produced output files to a run and its
+		// task; references resolve lazily from these rows.
+		`CREATE TABLE IF NOT EXISTS kanban_artifacts (
+			id           TEXT PRIMARY KEY,
+			run_id       TEXT NOT NULL,
+			task_id      TEXT NOT NULL,
+			session_id   TEXT NOT NULL,
+			path         TEXT NOT NULL,
+			display_name TEXT NOT NULL DEFAULT '',
+			media_type   TEXT NOT NULL DEFAULT '',
+			size_bytes   INTEGER NOT NULL DEFAULT 0,
+			created_at   INTEGER NOT NULL,
+			FOREIGN KEY(run_id) REFERENCES kanban_runs(id) ON DELETE CASCADE,
+			FOREIGN KEY(task_id) REFERENCES kanban_tasks(id) ON DELETE CASCADE
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_kanban_artifacts_task ON kanban_artifacts(task_id, created_at)`,
 		// task_events is the durable, append-only execution trace for a task
 		// (one conversation_thread upgraded to a task). It is the record the
 		// system, the lead/supervisor, and humans read to understand what
