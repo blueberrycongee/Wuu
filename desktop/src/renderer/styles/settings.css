@@ -176,16 +176,17 @@
 
 /* --- Content surface ------------------------------------------------------- */
 
-/* The settings canvas is the muted `--surface-1`: white grouped-list cards
- * need a tonal step behind them to read as cards. This is what separates a
- * designed settings surface from a flat white page with lines on it. */
+/* The settings canvas is the same paper as the conversation surface: one
+ * quiet chassis for the whole app. Grouping is carried by structure —
+ * a group label, hairlines between rows, and whitespace between groups —
+ * never by a tonal step behind boxed cards. */
 .settings-main {
   display: grid;
   min-width: 0;
   min-height: 0;
   grid-template-rows: 48px minmax(0, 1fr);
   overflow: hidden;
-  background: var(--surface-1);
+  background: var(--paper);
 }
 
 /* Full-width draggable strip mirroring the main conversation titlebar, so
@@ -233,13 +234,14 @@
 
 /* Content column. Two spacing values only: --settings-pad is the gap
  * between the content and the frame, --settings-gap the gap between
- * modules. Every spacing decision below derives from these. */
+ * groups. Every spacing decision below derives from the 4/8/24/40 ladder
+ * documented at the top of this file. */
 .settings-page {
   display: flex;
   min-height: 100%;
-  --settings-page-max-width: 800px;
-  --settings-pad: clamp(24px, 4vw, 40px);
-  --settings-gap: 32px;
+  --settings-page-max-width: 640px;
+  --settings-pad: 24px;
+  --settings-gap: 40px;
   width: min(var(--settings-page-max-width), 100%);
   /* flex-shrink: 0 keeps the bottom padding inside the scrollable area
    * when content exceeds the viewport height. */
@@ -273,31 +275,30 @@
   line-height: 1.3;
 }
 
-/* --- Section + card ---------------------------------------------------------
- * A section is a quiet 13px label above a card. A card is the grouped
- * list: white, 1px hairline, 12px radius; rows inside separate with
- * hairlines. Groups separate by whitespace (--settings-gap), not boxes.
+/* --- Section + rows ---------------------------------------------------------
+ * A section is a quiet 12px label above a run of rows — no box. The label
+ * must read quieter than the row titles it names, so it stays one ramp
+ * step below them and regular weight. Groups separate by whitespace
+ * (--settings-gap), rows by full-width hairlines.
  * ------------------------------------------------------------------------- */
 
 .settings-section {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
 }
 
 .settings-section-header {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  padding: 0 2px;
 }
 
 .settings-section-title {
   margin: 0;
-  color: var(--ink-strong);
-  font-size: 17px;
-  font-weight: var(--weight-semibold);
-  letter-spacing: -0.01em;
+  color: var(--ink-muted);
+  font-size: var(--font-sm);
+  font-weight: 400;
   line-height: 1.3;
 }
 
@@ -309,13 +310,12 @@
   line-height: 1.5;
 }
 
+/* The card is a structural grouping only: it paints nothing. Enclosure
+ * signals (fill, border, radius) are banned from grouped lists — one
+ * grouping, one signal, and the signal is the label-plus-whitespace. */
 .settings-card {
   display: flex;
   flex-direction: column;
-  overflow: hidden;
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-lg);
-  background: var(--paper);
 }
 
 .settings-card .settings-row:last-child {
@@ -324,8 +324,11 @@
 
 /* --- Row -------------------------------------------------------------------
  * Two columns: a growing label on the left, a natural-width control pinned
- * right. `settings-row-block` stacks label over a full-width control for
- * form-style rows (inputs, textareas, compound controls).
+ * right. Rows sit directly on the canvas: text starts at the column's left
+ * axis (x=0), controls end at its right edge, and the separator hairline
+ * runs the full column width. `settings-row-block` stacks label over a
+ * full-width control for form-style rows (inputs, textareas, compound
+ * controls).
  * ------------------------------------------------------------------------- */
 
 .settings-row {
@@ -334,33 +337,33 @@
   align-items: center;
   gap: 24px;
   border-bottom: 1px solid var(--hairline-soft);
-  padding: 16px 20px;
+  padding: 8px 0;
 }
 
 .settings-row-block {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 10px;
+  gap: 8px;
 }
 
 .settings-row-label {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 4px;
   min-width: 0;
 }
 
 .settings-row-label-title {
   color: var(--ink);
-  font-size: var(--font-title);
+  font-size: var(--font-ui);
   font-weight: var(--weight-medium);
   line-height: 1.4;
 }
 
 .settings-row-label-description {
   color: var(--ink-muted);
-  font-size: var(--font-ui);
+  font-size: var(--font-sm);
   font-weight: 400;
   line-height: 1.5;
 }
@@ -674,7 +677,7 @@
   min-height: 48px;
   color: var(--ink-muted);
   font-size: var(--font-ui);
-  padding: 8px 20px;
+  padding: 8px 0;
 }
 
 .settings-muted-line {
@@ -879,7 +882,7 @@
   min-height: 48px;
   color: var(--ink-muted);
   font-size: var(--font-ui);
-  padding: 8px 20px;
+  padding: 8px 0;
 }
 
 .settings-codex-pets-controls {
@@ -903,7 +906,7 @@
   flex-direction: column;
   container-name: settings-usage;
   container-type: inline-size;
-  gap: var(--settings-gap, 32px);
+  gap: var(--settings-gap, 40px);
 }
 
 .settings-usage-toolbar {
@@ -1107,13 +1110,15 @@
   overflow: visible;
 }
 
+/* The model table reads as one group: a quiet group label over full-width
+ * rows, same language as the grouped list. */
 .settings-usage-table-title {
   margin: 0;
-  padding: 16px 20px 8px;
-  color: var(--ink);
-  font-size: var(--font-title);
-  font-weight: var(--weight-medium);
-  line-height: 1.35;
+  padding: 0 0 8px;
+  color: var(--ink-muted);
+  font-size: var(--font-sm);
+  font-weight: 400;
+  line-height: 1.3;
 }
 
 .settings-usage-table {
@@ -1126,7 +1131,7 @@
 .settings-usage-table th,
 .settings-usage-table td {
   border-bottom: 1px solid var(--hairline-soft);
-  padding: 12px 20px;
+  padding: 12px 0 12px 16px;
   text-align: right;
   vertical-align: middle;
   color: var(--ink);
@@ -1147,6 +1152,7 @@
 .settings-usage-table th:first-child,
 .settings-usage-table td:first-child {
   width: 40%;
+  padding-left: 0;
   text-align: left;
 }
 
@@ -1231,7 +1237,7 @@
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 10px 16px;
     border-bottom: 1px solid var(--hairline-soft);
-    padding: 16px 20px;
+    padding: 16px 0;
   }
 
   .settings-usage-table tbody tr:last-child {
@@ -1288,7 +1294,7 @@
   align-items: center;
   gap: 18px;
   border-bottom: 1px solid var(--hairline-soft);
-  padding: 12px 16px;
+  padding: 12px 0;
 }
 
 .settings-usage-entry:last-child {
@@ -1335,7 +1341,7 @@
 }
 
 .settings-archive-groups {
-  gap: 24px;
+  gap: 40px;
 }
 
 .settings-archive-toolbar {
@@ -1395,7 +1401,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 0 2px 8px;
+  padding: 0 0 8px;
 }
 
 .settings-archive-group-name {
@@ -1421,10 +1427,7 @@
 }
 
 .settings-archive-list {
-  overflow: hidden;
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-lg);
-  background: var(--paper);
+  min-width: 0;
 }
 
 .settings-archive-row {
@@ -1434,7 +1437,7 @@
   justify-content: space-between;
   gap: 16px;
   border-bottom: 1px solid var(--hairline-soft);
-  padding: 14px 20px;
+  padding: 8px 0;
 }
 
 .settings-archive-row:last-child {
@@ -1508,13 +1511,12 @@
 .settings-memory {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 24px;
 }
 
 .settings-memory-header {
   align-items: center;
   flex-wrap: wrap;
-  margin-bottom: 8px;
 }
 
 /* The memory header keeps the shared page header's row direction (title
@@ -1558,7 +1560,6 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 16px;
 }
 
 /* 短文/原文/空态在骨架屏之后挂载：轻微淡入 + 2px 上移。子 Tab 或同事
@@ -1592,7 +1593,6 @@
   flex-direction: column;
   align-items: flex-start;
   gap: 12px;
-  padding: 16px;
 }
 
 /* 骨架屏：仓库没有现成 skeleton 组件，这里是记忆面板专用的简洁灰条。 */
@@ -1600,7 +1600,6 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding: 16px;
 }
 
 /* shimmer 渐变从左向右扫过灰条；只用主题 overlay token，亮暗自适配。 */
@@ -1647,11 +1646,16 @@
 .settings-memory-file-table th,
 .settings-memory-file-table td {
   border-bottom: 1px solid var(--hairline-soft);
-  padding: 10px 20px;
+  padding: 10px 0 10px 16px;
   text-align: left;
   vertical-align: middle;
   color: var(--ink);
   font-size: var(--font-sm);
+}
+
+.settings-memory-file-table th:first-child,
+.settings-memory-file-table td:first-child {
+  padding-left: 0;
 }
 
 .settings-memory-file-table th {
@@ -1667,12 +1671,11 @@
   font-size: var(--font-sm);
 }
 
-/* chat 区与概览卡共用分组列表卡外观；气泡复用消息流的浅灰。 */
+/* chat 区与概览卡共用分组列表结构；气泡复用消息流的浅灰。 */
 .settings-memory-chat-card {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 16px;
 }
 
 .settings-memory-chat-log {
@@ -1806,7 +1809,7 @@
   flex-direction: column;
   align-items: center;
   gap: 12px;
-  padding: 24px 16px;
+  padding: 24px 0;
 }
 
 /* The QR carries its own white quiet zone so phones can scan it in dark
@@ -1860,7 +1863,7 @@
 
   .settings-row {
     grid-template-columns: minmax(0, 1fr);
-    gap: 10px;
+    gap: 8px;
     align-items: stretch;
   }
 
