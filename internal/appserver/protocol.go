@@ -80,6 +80,8 @@ const (
 	MethodKanbanDispatchRun        = "kanban/dispatch-run"
 	MethodKanbanListRuns           = "kanban/list-runs"
 	MethodKanbanListArtifacts      = "kanban/list-artifacts"
+	MethodParticipantGetManifest   = "participant/get-manifest"
+	MethodParticipantSaveManifest  = "participant/save-manifest"
 	MethodParticipantSave          = "participant/save"
 	MethodParticipantFeedback      = "participant/feedback"
 	MethodParticipantReset         = "participant/reset"

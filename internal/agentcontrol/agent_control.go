@@ -829,6 +829,13 @@ type SpawnRequest struct {
 	// and must not be exposed through the LLM-facing spawn_agent
 	// tool.
 	ModelPin string
+	// FileScopeRoots is an internal-only per-spawn file-tool whitelist
+	// override. Nil means the worker inherits the factory default scope;
+	// a non-nil slice (including an empty one, which clears the whitelist)
+	// is applied to the freshly built worker toolkit when it supports
+	// SetFileScopeRoots. Like ModelOverride it must never be exposed
+	// through the LLM-facing spawn_agent tool.
+	FileScopeRoots []string
 	// AdmissionPrepare is an internal-only transactional hook for state that
 	// must exist before the worker can become observable or runnable. It is not
 	// exposed through the LLM-facing spawn_agent tool.
@@ -1146,6 +1153,11 @@ func (c *AgentControl) Spawn(ctx context.Context, req SpawnRequest) (spawnResult
 			_ = worktrees.Cleanup(worktreeRef)
 		}
 		return nil, fmt.Errorf("worker toolkit: %w", err)
+	}
+	if req.FileScopeRoots != nil {
+		if scoped, ok := workerKit.(interface{ SetFileScopeRoots([]string) }); ok {
+			scoped.SetFileScopeRoots(req.FileScopeRoots)
+		}
 	}
 
 	// 4. Compose system prompt: type-specific role + working dir + base prompt.

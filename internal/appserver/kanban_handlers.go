@@ -313,7 +313,24 @@ func (s *Server) dispatchKanbanRun(ctx context.Context, hostThreadID, taskID, ta
 	if err != nil {
 		return fail(err)
 	}
-	prompt := namedParticipantPrompt(p, memory, kanbanRunRequestPrompt(task, run, priorArtifacts, outputDir), s.registeredWorkspaces())
+	manifest, err := participant.LoadManifest(workspace)
+	if err != nil {
+		return fail(err)
+	}
+	overlay, err := participant.LoadPromptOverlay(workspace)
+	if err != nil {
+		return fail(err)
+	}
+	requestPrompt := kanbanRunRequestPrompt(task, run, priorArtifacts, outputDir)
+	if overlay != "" || len(manifest.Skills) > 0 {
+		requestPrompt = kanbanStandingInstructionsPrompt(overlay, manifest.Skills) + requestPrompt
+	}
+	prompt := namedParticipantPrompt(p, memory, requestPrompt, s.registeredWorkspaces())
+	modelOverride, clientOverride, err := resolveParticipantModelOverride(
+		newRuntimeSessionReference(s.rt), p.Name, strings.TrimSpace(p.Model), workerProviderName(s.rt))
+	if err != nil {
+		return fail(err)
+	}
 
 	th, err := s.ensureResidentThread(hostThreadID)
 	if err != nil {
@@ -329,7 +346,7 @@ func (s *Server) dispatchKanbanRun(ctx context.Context, hostThreadID, taskID, ta
 	if !s.tryAcquireParticipantBusy(targetID, "task") {
 		return fail(fmt.Errorf("participant %q is busy running another task", firstNonEmpty(p.Name, targetID)))
 	}
-	spawned, err := threadRuntime.AgentControl.Spawn(ctx, agentcontrol.SpawnRequest{
+	spawnReq := agentcontrol.SpawnRequest{
 		Type:             resolveParticipantSubagentType("", p),
 		TaskName:         p.Name,
 		ParticipantID:    targetID,
@@ -340,7 +357,19 @@ func (s *Server) dispatchKanbanRun(ctx context.Context, hostThreadID, taskID, ta
 		ParentPath:       agentthread.RootPath,
 		SpeechCapability: false,
 		Synchronous:      false,
-	})
+	}
+	if manifest.NormalizedPermissionTier() == participant.PermissionTierUnrestricted {
+		// Non-nil empty slice: clear the file-scope whitelist for this run.
+		spawnReq.FileScopeRoots = []string{}
+	}
+	if modelOverride != "" {
+		spawnReq.ModelOverride = modelOverride
+		spawnReq.ModelPin = strings.TrimSpace(p.Model)
+	}
+	if clientOverride != nil {
+		spawnReq.ClientOverride = clientOverride
+	}
+	spawned, err := threadRuntime.AgentControl.Spawn(ctx, spawnReq)
 	if err != nil {
 		s.releaseParticipantBusy(targetID, "")
 		return fail(err)
@@ -406,7 +435,110 @@ func kanbanRunRequestPrompt(task kanban.Task, run kanban.Run, priorArtifacts []k
 	return b.String()
 }
 
-// ---- terminal hook ----
+// kanbanStandingInstructionsPrompt renders the manifest's standing layer
+// (prompt overlay + designated skills) ahead of the per-run request.
+func kanbanStandingInstructionsPrompt(overlay string, skills []string) string {
+	var b strings.Builder
+	b.WriteString("## Standing instructions\n\n")
+	if strings.TrimSpace(overlay) != "" {
+		b.WriteString(strings.TrimSpace(overlay))
+		b.WriteString("\n\n")
+	}
+	if len(skills) > 0 {
+		b.WriteString("Your designated skills (load them with load_skill when the task matches): ")
+		b.WriteString(strings.Join(skills, ", "))
+		b.WriteString("\n\n")
+	}
+	return b.String()
+}
+
+// ---- participant manifest ----
+
+type ParticipantManifestWire struct {
+	Skills         []string `json:"skills"`
+	PermissionTier string   `json:"permission_tier"`
+	PromptOverlay  string   `json:"prompt_overlay"`
+}
+
+type ParticipantManifestParams struct {
+	ParticipantID  string   `json:"participant_id"`
+	Skills         []string `json:"skills,omitempty"`
+	PermissionTier string   `json:"permission_tier,omitempty"`
+	PromptOverlay  *string  `json:"prompt_overlay,omitempty"`
+}
+
+func (s *Server) participantManifestForWire(participantID string) (ParticipantManifestWire, string, error) {
+	p, err := session.GetParticipant(s.rt.SessionDir, strings.TrimSpace(participantID))
+	if err != nil {
+		return ParticipantManifestWire{}, "", err
+	}
+	workspace, err := s.resolvedParticipantWorkspace(p)
+	if err != nil {
+		return ParticipantManifestWire{}, "", err
+	}
+	manifest, err := participant.LoadManifest(workspace)
+	if err != nil {
+		return ParticipantManifestWire{}, "", err
+	}
+	overlay, err := participant.LoadPromptOverlay(workspace)
+	if err != nil {
+		return ParticipantManifestWire{}, "", err
+	}
+	skills := manifest.Skills
+	if skills == nil {
+		skills = []string{}
+	}
+	return ParticipantManifestWire{
+		Skills:         skills,
+		PermissionTier: manifest.NormalizedPermissionTier(),
+		PromptOverlay:  overlay,
+	}, workspace, nil
+}
+
+func (s *Server) handleParticipantGetManifest(req Request) error {
+	var params ParticipantManifestParams
+	if err := decodeParams(req.Params, &params); err != nil {
+		return s.writeResponse(req.ID, nil, err)
+	}
+	if strings.TrimSpace(params.ParticipantID) == "" {
+		return s.writeResponse(req.ID, nil, errors.New("participant_id is required"))
+	}
+	wire, _, err := s.participantManifestForWire(params.ParticipantID)
+	if err != nil {
+		return s.writeResponse(req.ID, nil, err)
+	}
+	return s.writeResponse(req.ID, wire, nil)
+}
+
+func (s *Server) handleParticipantSaveManifest(req Request) error {
+	var params ParticipantManifestParams
+	if err := decodeParams(req.Params, &params); err != nil {
+		return s.writeResponse(req.ID, nil, err)
+	}
+	if strings.TrimSpace(params.ParticipantID) == "" {
+		return s.writeResponse(req.ID, nil, errors.New("participant_id is required"))
+	}
+	_, workspace, err := s.participantManifestForWire(params.ParticipantID)
+	if err != nil {
+		return s.writeResponse(req.ID, nil, err)
+	}
+	if err := participant.SaveManifest(workspace, participant.Manifest{
+		Skills:         params.Skills,
+		PermissionTier: params.PermissionTier,
+	}); err != nil {
+		return s.writeResponse(req.ID, nil, err)
+	}
+	if params.PromptOverlay != nil {
+		if err := participant.SavePromptOverlay(workspace, *params.PromptOverlay); err != nil {
+			return s.writeResponse(req.ID, nil, err)
+		}
+	}
+	wire, _, err := s.participantManifestForWire(params.ParticipantID)
+	if err != nil {
+		return s.writeResponse(req.ID, nil, err)
+	}
+	return s.writeResponse(req.ID, wire, nil)
+}
 
 // completeKanbanRunForAgent folds a spawned execution's terminal outcome back
 // into its kanban run, collects produced artifacts, and notifies the board.
