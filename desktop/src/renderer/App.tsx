@@ -13,8 +13,6 @@ import {
 import type {
   ActivitySession,
   Agent,
-  ConversationSubthread,
-  SubthreadUpdatedNotification,
   DesktopProject,
   InitializeResult,
   InputFile,
@@ -40,7 +38,6 @@ import {
 } from "./ComposerMessages";
 import {
   greetingFor,
-  resolveGreetingContext,
   useCurrentHour,
   type GreetingContext,
 } from "./greetings";
@@ -60,13 +57,11 @@ import { QueryHistoryRail } from "./QueryHistoryRail";
 import { ConversationSearchOverlay } from "./ConversationSearchOverlay";
 import { useConversationScrollState } from "./ConversationScrollState";
 import { useConversationSearch } from "./ConversationSearchState";
-import { useConversationSubthreadState } from "./ConversationSubthreadState";
 import {
   SideThreadPanel,
   type SideThreadPanelHandle,
 } from "./SideThreadPanel";
 import { SideThreadComposer } from "./SideThreadComposer";
-import { useThreadMarkList } from "./useThreadMarks";
 import { useParticipantState } from "./ParticipantState";
 import { ConversationForkDialog } from "./ConversationForkDialog";
 import type { TurnFileDiffSelection } from "./TurnFileDiffTypes";
@@ -92,29 +87,20 @@ import {
   recordPendingStreamingTokenSample,
   type PendingStreamingTokenSamples,
   bindActiveSessionTabToThread,
-  computeBusyParticipantIDs,
-  chatFocusValueForThread,
   cloneSessionTabDraft,
   composerSubmissionDetail,
   conversationPaneThreadsByID,
   createDraftSessionTab,
   emptyComposerDraft,
-  findDMThread,
-  focusWorkspaceSendValue,
   handleStreamingNotification,
   initialSplitComposerDrafts,
   initialState,
   isAnyThreadRunning,
-  isDMThread,
-  groupThreadSummaries,
-  isGroupThread,
   isStateActiveThreadRunning,
   isThreadRunning,
   isThreadUnread,
   latestPlanUpdateForThread,
   markThreadTurnsViewed,
-  mentionedParticipantIDsFromText,
-  overlayMemberBusy,
   pinnedThreadSummaries,
   queryTextForUserItem,
   SCRATCH_PSEUDO_PROJECT_ID,
@@ -126,9 +112,7 @@ import {
   sameRuntimeContext,
   serverEventShouldRefreshGit,
   serverEventTargetsActiveContext,
-  serverEventTargetsGlobalThread,
   sessionTabForLoadedRuntime,
-  sessionTabLabel,
   setThreadForPane,
   sortThreads,
   summarizeThreadsForSidebar,
@@ -180,12 +164,10 @@ import type { ComposerGoalSummary, KanbanCrystallizeResult } from "../shared/pro
 import { useSettingsRuntimeState } from "./SettingsRuntimeState";
 import { SidePanelToggleIcon } from "./SidePanelToggleIcon";
 import { JumpToLatestPill } from "./JumpToLatestPill";
-import { ENABLE_COLLABORATION } from "./FeatureFlags";
 import { SkillsCatalog } from "./SkillsCatalog";
-import { TaskBoardView } from "./TaskBoardView";
 import { KanbanBoardView } from "./KanbanBoardView";
 import { KanbanCrystallizeDialog } from "./KanbanCrystallizeDialog";
-import { CrystallizeOrb } from "./CrystallizeOrb";
+import { KanbanViewToggle } from "./KanbanViewToggle";
 import { runDebugPhaseForState } from "./RunDebugPanel";
 import { useThreadBrowserPreview } from "./ThreadBrowserPreview";
 import { useBrowserVisibility } from "./BrowserVisibility";
@@ -347,14 +329,9 @@ export function App(): JSX.Element {
     setComposerFiles,
     splitComposerDrafts,
     setSplitComposerDrafts,
-    subthreadComposerDraft,
-    setSubthreadComposerDraft,
     attachComposerAttachmentFiles,
     removeComposerImage,
     removeComposerFile,
-    attachSubthreadComposerAttachmentFiles,
-    removeSubthreadComposerImage,
-    removeSubthreadComposerFile,
     setSplitComposerPrompt,
     attachSplitComposerAttachmentFiles,
     removeSplitComposerImage,
@@ -398,11 +375,6 @@ export function App(): JSX.Element {
     startRightPanelResize,
     handleRightPanelSeparatorKey,
     resetWorkspaceRightPanelWidth,
-    clampedThreadPanelWidth,
-    resizingThreadPanel,
-    startThreadPanelResize,
-    handleThreadPanelSeparatorKey,
-    resetThreadPanelWidth,
     toggleSidebar,
     handleSidebarSeparatorKey,
     splitLeftPercent,
@@ -507,13 +479,6 @@ export function App(): JSX.Element {
   });
   const [runtimeMenuOpen, setRuntimeMenuOpen] = useState(false);
   const [accessMenuOpen, setAccessMenuOpen] = useState(false);
-  // Per-thread chat-style "work focus" chip selections made this session.
-  // Keyed by thread ID; absence means the chip was never touched, so the
-  // composer echoes Thread.focus_workspace and turn/start carries no
-  // focus_workspace param (see focusWorkspaceSendValue in AppState.ts).
-  const [chatFocusOverrides, setChatFocusOverrides] = useState<
-    Record<string, string>
-  >({});
   const [codexRuntimeMenu, setCodexRuntimeMenu] =
     useState<CodexRuntimeMenu>(null);
   const [codexModels, setCodexModels] = useState<CodexModelLoadState>({
@@ -643,40 +608,25 @@ export function App(): JSX.Element {
   const [instructionFilesEntries, setInstructionFilesEntries] = useState<
     InstructionFilesEntry[]
   >([]);
-  // Reply subthreads (群中群) for the active chat thread, keyed by
-  // anchor_item_id, feeding the chat view's reply badges / task 活动卡. Loaded
-  // per active chat thread (see effect below); non-active panes never need it.
-  const [chatSubthreads, setChatSubthreads] = useState<{
-    threadID: string;
-    // byAnchor feeds the Thread badge and Task activity card attached to the
-    // source message. Every workflow item has a real group-message anchor.
-    byAnchor: Map<string, ConversationSubthread>;
-  } | null>(null);
-  // Bump on every thread/subUpdated notification: an open task-board tab
-  // reloads on this tick (its thread may not be the active thread, so the
-  // chatSubthreadsNonce path alone would miss it).
   const [boardRefreshTick, setBoardRefreshTick] = useState(0);
   // In-page kanban board view toggle (message | board). Session-local only.
   const [kanbanViewMode, setKanbanViewMode] = useState<"message" | "board">("message");
+  const [collaborationThreadID, setCollaborationThreadID] = useState<string | undefined>();
   // Crystallize flow state.
   const [crystallizeOpen, setCrystallizeOpen] = useState(false);
   const [crystallizePending, setCrystallizePending] = useState(false);
   const [crystallizeResult, setCrystallizeResult] = useState<
     KanbanCrystallizeResult | undefined
   >(undefined);
-  const boardToggleRef = useRef<HTMLButtonElement | null>(null);
   const {
     participants,
     setParticipants,
     participantPanel,
     setParticipantPanel,
     refreshParticipants,
-    handleParticipantDialogSave,
     handleParticipantSave,
     handleParticipantFeedback,
     handleParticipantRetire,
-    exportParticipantTemplate,
-    importParticipantTemplate,
   } = useParticipantState({
     initialized: Boolean(state.initialized),
     setStatus: (status) =>
@@ -764,11 +714,6 @@ export function App(): JSX.Element {
   const runtimeMenuRef = useRef<HTMLDivElement>(null);
   const accessMenuRef = useRef<HTMLDivElement>(null);
   const codexRuntimeRef = useRef<HTMLDivElement>(null);
-  // The split reply panel mounts a second full composer alongside the dock
-  // composer, so its permission (盾牌) menu needs its own anchor + open state —
-  // sharing the dock's would misplace the floating menu and cross-toggle it.
-  const subthreadAccessMenuRef = useRef<HTMLDivElement>(null);
-  const [subthreadAccessMenuOpen, setSubthreadAccessMenuOpen] = useState(false);
   const environmentToggleRef = useRef<HTMLButtonElement>(null);
   const environmentPanelRef = useRef<HTMLDivElement>(null);
   const appStateRef = useRef<AppState>(initialState);
@@ -824,14 +769,7 @@ export function App(): JSX.Element {
   const localDemoThreadsRef = useRef(new Map<string, Thread>());
   const cachedThreadPaneHistoryRef = useRef<string[]>([]);
   const draftSessionTabCounterRef = useRef(0);
-  const poppingOutTabIDsRef = useRef(new Set<string>());
-  const poppingOutSubthreadIDsRef = useRef(new Set<string>());
-  // Synchronous in-flight guard for openParticipantDM. A rapid double-click
-  // on the same agent row otherwise fires two startThread calls and creates
-  // duplicate DM threads; the ref is checked and set before any await so
-  // the second invocation short-circuits immediately, and cleared in the
-  // finally block of openParticipantDM regardless of the resolution path.
-  const openingDMParticipantIDRef = useRef<string | undefined>(undefined);
+  const openingCollaborationRef = useRef(false);
   const currentSessionTab = activeSessionTab(state);
 
   useEffect(() => {
@@ -917,6 +855,28 @@ export function App(): JSX.Element {
       : undefined;
   const activeThread = activeThreadForState(state);
   const activeThreadID = activeThread?.id;
+  const collaborationActive = activeThread?.source === "collaboration";
+  const kanbanBoardVisible = collaborationActive && kanbanViewMode === "board";
+  useEffect(() => {
+    const collaborationThread = state.threads.reduce<Thread | undefined>(
+      (latest, thread) =>
+        thread.source === "collaboration" &&
+        (!latest || thread.updated_at > latest.updated_at)
+          ? thread
+          : latest,
+      undefined,
+    );
+    if (
+      collaborationThread &&
+      collaborationThread.id !== collaborationThreadID
+    ) {
+      setCollaborationThreadID(collaborationThread.id);
+      return;
+    }
+    if (!collaborationThread && collaborationThreadID) {
+      setCollaborationThreadID(undefined);
+    }
+  }, [collaborationThreadID, state.threads]);
   const environmentContext = workspacePanelContext(state.activeContext, activeThread);
   const sideThread = useSideThreadController({
     activeThreadId: activeThreadID,
@@ -1021,43 +981,6 @@ export function App(): JSX.Element {
       }));
     }
   }
-  const {
-    openSubthreadPanel,
-    setOpenSubthreadPanel,
-    chatSubthreadsNonce,
-    handleSubthreadUpdatedNotification,
-    openConversationSubthreadByID,
-    openConversationSubthread,
-    resolveOpenConversationSubthread,
-    sendOpenConversationSubthreadMessage,
-    escalateOpenConversationSubthread,
-    reactToOpenConversationSubthreadMessage,
-  } = useConversationSubthreadState({
-    activeThreadID,
-    subthreadComposerDraft,
-    setSubthreadComposerDraft,
-    onOpenSubthreadPanel: () => {
-      setEnvironmentPanelOpen(false);
-      setEnvironmentPanelDismissed(true);
-      setParticipantPanel(undefined);
-    },
-  });
-  const activeThreadIsGroup = Boolean(activeThread && isGroupThread(activeThread));
-  // Chat-style threads (DM + group) follow chat send semantics (issue #10):
-  // the composer never surfaces the worker-thread queue strip or the stop
-  // button; a send always reads as "message sent" in the transcript.
-  const activeThreadIsChatStyle = Boolean(
-    activeThread && (isDMThread(activeThread) || isGroupThread(activeThread)),
-  );
-  const activeThreadMarks = useThreadMarkList(
-    activeThreadID,
-    activeThreadIsChatStyle,
-  );
-  // Reload trigger for subthread badges: new main-stream messages can anchor
-  // new replies. (cth reply traffic itself is short-circuited off the main
-  // turns, so this misses live reply-count growth — acceptable until a
-  // subthread-scoped notification lands; opening a reply bumps the nonce.)
-  const activeThreadTurnCount = activeThread?.turns?.length ?? 0;
   const sessionRuntime = useMemo(
     () => runtimeViewForSession(state.initialized, activeThread),
     [state.initialized, activeThread],
@@ -1279,7 +1202,7 @@ export function App(): JSX.Element {
   // hide the view while one is open. This covers the common full-window
   // surfaces: settings (which replaces the whole app), the commit / PR
   // dialogs, the fork dialog, and the conversation search overlay. TODO: other
-  // ad-hoc modals/portals (e.g. participant/subthread panels) are not yet
+  // ad-hoc modals/portals (e.g. participant panels) are not yet
   // enumerated here; extend this predicate as more full-window overlays land.
   const browserOverlaySuppressed =
     settingsOpen ||
@@ -1537,28 +1460,6 @@ export function App(): JSX.Element {
           }));
         });
       }
-      // Reply-subthread (cth) traffic never appends a main-stream turn, so the
-      // split reply panel and the reply-count badge only stay live via this
-      // subthread-scoped notification. Handled BEFORE the active/global gate
-      // because it carries the PARENT group thread id and must patch an open
-      // panel / bump the badge regardless of which context started the run.
-      if (
-        event.kind === "notification" &&
-        event.message.method === "thread/subUpdated"
-      ) {
-        const note = event.message
-          .params as unknown as SubthreadUpdatedNotification;
-        handleSubthreadUpdatedNotification(
-          note,
-          activeThreadIDForState(appStateRef.current),
-        );
-        // An open task-board tab may target a non-active thread; its list
-        // reloads on this unconditional tick (cheap: only a mounted board
-        // subscribes to it).
-        if (note?.thread_id) {
-          setBoardRefreshTick((tick) => tick + 1);
-        }
-      }
       // Kanban board changes for this session should refresh the mounted board.
       if (
         event.kind === "notification" &&
@@ -1570,14 +1471,7 @@ export function App(): JSX.Element {
           setBoardRefreshTick((tick) => tick + 1);
         }
       }
-      // Workspace-scoped events (project sessions/files/terminals) stay bound
-      // to the active context, but global-collaboration threads (DM/group) run
-      // under whichever app-server client started them and must pass through so
-      // the roster's busy/unread stays live across project switches (issue #9).
-      if (
-        !serverEventTargetsActiveContext(event, appStateRef.current) &&
-        !serverEventTargetsGlobalThread(event, appStateRef.current)
-      ) {
+      if (!serverEventTargetsActiveContext(event, appStateRef.current)) {
         return;
       }
       recordRunDebugEvent(event);
@@ -1627,20 +1521,6 @@ export function App(): JSX.Element {
             return;
           }
           setState((current) => ({ ...current, ...loadedState }));
-          // A subthread window resumes its PARENT thread for context/participants
-          // (loadPopOutRuntime, above) and then opens the reply panel over it —
-          // the SAME ConversationSubthreadPanel + composer the in-window split
-          // uses, so the popped cth renders identically.
-          if (
-            popOutInit.kind === "subthread" &&
-            popOutInit.threadID &&
-            popOutInit.subthreadID
-          ) {
-            openConversationSubthreadByID(
-              popOutInit.threadID,
-              popOutInit.subthreadID,
-            );
-          }
           return;
         }
         const listedProjects = await window.wuu.listProjects();
@@ -1677,7 +1557,7 @@ export function App(): JSX.Element {
         gitRefreshTimerRef.current = undefined;
       }
     };
-  }, [handleSubthreadUpdatedNotification, popOutInit, refreshParticipants]);
+  }, [popOutInit, refreshParticipants]);
 
   useEffect(() => {
     if (!state.initialized || !state.activeContext) {
@@ -1723,13 +1603,6 @@ export function App(): JSX.Element {
         setAccessMenuOpen(false);
       }
       if (
-        subthreadAccessMenuOpen &&
-        !subthreadAccessMenuRef.current?.contains(target) &&
-        !isInsideFloatingMenu(target, "composer-access")
-      ) {
-        setSubthreadAccessMenuOpen(false);
-      }
-      if (
         codexRuntimeMenu &&
         !codexRuntimeRef.current?.contains(target) &&
         !isInsideFloatingMenu(target, "codex-runtime")
@@ -1764,7 +1637,6 @@ export function App(): JSX.Element {
     projectMenuOpen,
     runDebugOpen,
     runtimeMenuOpen,
-    subthreadAccessMenuOpen,
   ]);
 
   useEffect(() => {
@@ -1797,41 +1669,30 @@ export function App(): JSX.Element {
     !previewingLaunch &&
     currentSessionTab?.kind === "skills",
   );
-  const boardSessionTab =
-    state.initialized &&
-    !previewingLaunch &&
-    currentSessionTab?.kind === "board"
-      ? currentSessionTab
-      : undefined;
-  const showingTaskBoard = Boolean(boardSessionTab);
   const activeTitle = showingSkillsCatalog
     ? t("skills.title")
-    : boardSessionTab
-      ? sessionTabLabel(boardSessionTab, state)
-      : resolveLocalizedText(activeThread?.preview ?? "") ||
-        t("tabs.newConversation");
+    : resolveLocalizedText(activeThread?.preview ?? "") ||
+      t("tabs.newConversation");
   const popOutWindowTitle =
     popOutInit?.kind === "thread"
       ? activeThread?.title?.trim() ||
         resolveLocalizedText(activeThread?.preview?.trim() ?? "") ||
         t("tabs.newConversation")
-      : popOutInit?.kind === "subthread"
-        ? `${t("subthread.label")} · ${popOutInit.subthreadID?.slice(0, 8) ?? ""}`
-        : t("tabs.newConversation");
+      : t("tabs.newConversation");
   useEffect(() => {
-    if (!poppedOutMode) return;
-    // The renderer owns the loaded page title. This runs after the shared
-    // index.html title and again when either hydrated data or locale changes,
-    // avoiding races with an independent main-process title lookup.
+    if (!poppedOutMode) {
+      return;
+    }
     document.title = `wuu · ${popOutWindowTitle}`;
   }, [poppedOutMode, popOutWindowTitle]);
   const currentHour = useCurrentHour();
-  const greetingContext: GreetingContext = resolveGreetingContext({
-    activeThread,
-    participants,
-    activeContextKind: state.activeContext?.kind,
-    activeProjectName: activeProject?.name,
-  });
+  const greetingContext: GreetingContext =
+    state.activeContext?.kind === "project"
+      ? {
+          kind: "project",
+          projectName: activeProject?.name ?? t("greeting.projectFallback"),
+        }
+      : { kind: "wuu" };
   const emptyThreadTitle = greetingFor(currentHour, greetingContext);
   const [pendingNewThreadTurn, setPendingNewThreadTurn] = useState<{
     sessionTabID: string;
@@ -1847,8 +1708,7 @@ export function App(): JSX.Element {
     : [];
   const emptyConversation =
     !showingSkillsCatalog &&
-    !showingTaskBoard &&
-    kanbanViewMode === "message" &&
+    !kanbanBoardVisible &&
     !activePendingNewThreadTurn &&
     turns.length === 0 &&
     activeContextCompositionEntries.length === 0;
@@ -1878,7 +1738,6 @@ export function App(): JSX.Element {
     !emptyConversation &&
     !splitConversation &&
     !showingSkillsCatalog &&
-    !showingTaskBoard &&
     !rightPanelGlobalized;
 
   useEffect(() => {
@@ -2089,36 +1948,6 @@ export function App(): JSX.Element {
   const handleCachedPaneOpenAgent = useStableCallback((agent: Agent) => {
     void selectChildAgent(agent);
   });
-  const handleCachedPaneOpenSubthread = useStableCallback(
-    (
-      thread: Thread,
-      item: ThreadItem,
-      ownerID?: string,
-      existingSubthreadID?: string,
-    ) => {
-      openConversationSubthread(
-        thread,
-        item,
-        ownerID,
-        existingSubthreadID,
-      );
-    },
-  );
-  const handleCachedPaneReact = useStableCallback(
-    (thread: Thread, item: ThreadItem, reaction: string) => {
-      // Reactions address a message by its seq; skip items that never got one
-      // (e.g. a not-yet-persisted live snapshot). The chip lands on the bubble
-      // via the message/mark notification the RPC triggers, so no optimistic
-      // patch is needed here.
-      const seq = item.seq;
-      if (typeof seq !== "number" || seq < 0) {
-        return;
-      }
-      void window.wuu.reactToMessage(thread.id, seq, reaction).catch((error) => {
-        console.error("react to message failed", error);
-      });
-    },
-  );
   const handleCachedPaneOpenFileDiff = useStableCallback(
     (thread: Thread, selection: TurnFileDiffSelection) => {
       openTurnFileDiffPanel(thread.id, selection);
@@ -2201,47 +2030,13 @@ export function App(): JSX.Element {
     for (const [projectID, threads] of Object.entries(
       sidebarProjectThreadsByProjectID,
     )) {
-      // DM conversations live under the agent roster and group threads
-      // under 群聊, never under the project tree — even when their cwd
-      // happens to match a project root (group threads inherit the
-      // runtime root as cwd). Both are hidden from the 对话 scratch
-      // group already (scratchThreadSummaries) and from every project's
-      // thread list here. Pinned ones continue to surface under 置顶
-      // because that list reads from sidebarThreadSummaries directly,
-      // bypassing this filter.
-      next[projectID] = summarizeThreadsForSidebar(
-        threads.filter(
-          (thread) => !isDMThread(thread) && !isGroupThread(thread),
-        ),
-      );
+      next[projectID] = summarizeThreadsForSidebar(threads);
     }
     return next;
   }, [sidebarProjectThreadsByProjectID]);
-  // Aggregate participant IDs that are currently busy. Resident DM running
-  // state is the baseline; active chat read receipts add participants that
-  // are explicitly marked `seen: in_progress` for the visible message. Running
-  // child agents dispatched inside some thread still do NOT light their
-  // dispatcher's dot (ISSUE-12). See computeBusyParticipantIDs for the full
-  // rationale. Named participants not in the set render as online. This drives
-  // the sidebar roster, chat-style message avatars, and — via the
-  // overlayMemberBusy pass below — the group-thread rows' running spinner.
-  const busyParticipantIDs = useMemo(
-    () =>
-      computeBusyParticipantIDs({
-        threads: state.threads,
-        marks: activeThreadMarks,
-      }),
-    [activeThreadMarks, state.threads],
-  );
-  // Server-sent members[].busy is a pull-time snapshot that is never pushed
-  // on busy flips; rewrite it from the live busy set so group rows spin
-  // exactly while a member's turn is running (see overlayMemberBusy).
   const sidebarThreadSummaries = useMemo(
-    () =>
-      summarizeThreadsForSidebar(sidebarThreads).map((thread) =>
-        overlayMemberBusy(thread, busyParticipantIDs),
-      ),
-    [busyParticipantIDs, sidebarThreads],
+    () => summarizeThreadsForSidebar(sidebarThreads),
+    [sidebarThreads],
   );
   const sidebarPinnedThreads = useMemo(
     () => pinnedThreadSummaries(sidebarThreadSummaries),
@@ -2250,14 +2045,6 @@ export function App(): JSX.Element {
   const sidebarScratchThreads = useMemo(
     () => scratchThreadSummaries(sidebarThreadSummaries, state.projects),
     [sidebarThreadSummaries, state.projects],
-  );
-  // Group threads (chat-style-threads-design.md §3) live in the 群聊
-  // section. groupThreadSummaries applies the shared pin/archive
-  // semantics: pinned groups move under 置顶 (no duplicate here) and
-  // archived groups leave the sidebar entirely.
-  const sidebarGroupThreads = useMemo(
-    () => groupThreadSummaries(sidebarThreadSummaries),
-    [sidebarThreadSummaries],
   );
   // The scratch pseudo project lives at the top of the sidebar tree. It is
   // a synthetic DesktopProject (id = SCRATCH_PSEUDO_PROJECT_ID) whose
@@ -2346,7 +2133,6 @@ export function App(): JSX.Element {
         isThreadUnread(
           thread,
           state.lastViewedTurnByThreadID[thread.id],
-          state.lastViewedMessageSeqByThreadID[thread.id],
         )
       ) {
         ids.add(thread.id);
@@ -2358,7 +2144,6 @@ export function App(): JSX.Element {
     state.secondaryThread,
     state.threads,
     state.lastViewedTurnByThreadID,
-    state.lastViewedMessageSeqByThreadID,
   ]);
   useEffect(() => {
     const api = window.wuu as Partial<typeof window.wuu>;
@@ -2386,74 +2171,6 @@ export function App(): JSX.Element {
     }
     return Array.from(names);
   }, [state.thread, state.secondaryThread, state.threads]);
-  // Chat read receipts + reactions render participant ids; resolve them to
-  // names for the ring/chip hovers. chatReaderCount is only the FALLBACK
-  // ring denominator (full named roster); the actual denominator is derived
-  // per thread via chatReaderCountForThread — a 2-member group reads x/2,
-  // a DM reads x/1 — so sub-group rings can reach 100%.
-  const resolveParticipantName = useMemo(() => {
-    const byID = new Map<string, string>();
-    for (const participant of participants) {
-      if (participant.id) {
-        byID.set(participant.id, participant.name?.trim() || participant.id);
-      }
-    }
-    // The human has no roster row (rosters list only named agents), but its
-    // emoji reactions are attributed to the stable "human" identity by
-    // message/react; resolve it to "你" so the reaction chip hover reads right.
-    return (id: string): string =>
-      byID.get(id) ?? (id === "human" ? t("subthread.you") : id);
-  }, [participants]);
-  const chatReaderCount = participants.length;
-  // The active thread's dm_participant_id (when set) drives the highlight
-  // in the agent roster. When the active thread is a DM the matching
-  // participant row renders as active; for non-DM threads the highlight
-  // collapses so no row is highlighted.
-  const activeDMParticipantID = useMemo(() => {
-    const id = state.thread?.dm_participant_id;
-    return typeof id === "string" && id.length > 0 ? id : undefined;
-  }, [state.thread?.dm_participant_id]);
-  // Per-participant DM lookup so the roster row can drive a context menu
-  // (pin/unpin DM, edit profile) without the sidebar having to refetch.
-  // Walk the participant list explicitly so the sidebar knows which
-  // participants have a DM thread even if state.threads hasn't been
-  // refreshed yet (the picker in AppState.ts picks the latest non-archived
-  // match for the given id). Values are summarized so the sidebar only
-  // sees the cheap ThreadSummary shape it already expects.
-  const dmThreadByParticipantID = useMemo(() => {
-    const map = new Map<string, ThreadSummary>();
-    for (const participant of participants) {
-      const dmThread = findDMThread(state.threads, participant.id);
-      if (dmThread) {
-        map.set(participant.id, dmThread as unknown as ThreadSummary);
-      }
-    }
-    return map;
-  }, [participants, state.threads]);
-  // Participants whose DM thread holds an actual chat message the user has
-  // not yet seen (message-seq based — a turn that settles without sending
-  // a message never flags the row). Mirrors the `.has-unread` treatment
-  // used by thread rows so the roster row gives the same visual cue
-  // without re-implementing the helper.
-  const unreadDMParticipantIDs = useMemo(() => {
-    const ids = new Set<string>();
-    for (const [participantID, thread] of dmThreadByParticipantID) {
-      if (
-        isThreadUnread(
-          thread,
-          state.lastViewedTurnByThreadID[thread.id],
-          state.lastViewedMessageSeqByThreadID[thread.id],
-        )
-      ) {
-        ids.add(participantID);
-      }
-    }
-    return ids;
-  }, [
-    dmThreadByParticipantID,
-    state.lastViewedTurnByThreadID,
-    state.lastViewedMessageSeqByThreadID,
-  ]);
   const sideThreadPanelVisible = Boolean(activeThreadID && sideThread.entry?.open);
   // The environment panel floats inside the conversation pane, so it can
   // coexist with the docked workspace right panel. Only the globalized
@@ -2464,7 +2181,6 @@ export function App(): JSX.Element {
     !poppedOutMode &&
     !previewingLaunch &&
     !rightPanelGlobalized &&
-    !openSubthreadPanel &&
     !participantPanel &&
     !sideThreadPanelVisible,
   );
@@ -2475,25 +2191,22 @@ export function App(): JSX.Element {
         !environmentPanelDismissed &&
         !emptyConversation));
   const environmentPanelVisible = environmentPanelTargetVisible;
-  const subthreadPanelVisible = Boolean(openSubthreadPanel);
   const participantPanelVisible = Boolean(participantPanel);
   const environmentPanelMotionState: EnvironmentPanelMotionState =
     environmentPanelVisible ? "open" : "closing";
   const sessionTabsVisible = Boolean(
     state.initialized && !previewingLaunch && !poppedOutMode,
   );
-  const sidebarVisible = !poppedOutMode;
 
   useEffect(() => {
     if (
       sideThread.entry?.open &&
-      (environmentPanelOpen || openSubthreadPanel || participantPanel)
+      (environmentPanelOpen || participantPanel)
     ) {
       sideThread.close();
     }
   }, [
     environmentPanelOpen,
-    openSubthreadPanel,
     participantPanel,
     sideThread.close,
     sideThread.entry?.open,
@@ -2509,14 +2222,11 @@ export function App(): JSX.Element {
     sidebarAnimating ? " sidebar-animating" : ""
   }${rightPanelAnimating ? " right-panel-animating" : ""}${resizingSidebar ? " resizing-sidebar" : ""}${
     resizingRightPanel ? " resizing-right-panel" : ""
-  }${rightPanelOpen ? " right-panel-open" : ""}${rightPanelGlobalized && rightPanelOpen ? " right-panel-globalized" : ""}${resizingSplit ? " resizing-split" : ""}${
-    resizingThreadPanel ? " resizing-thread-panel" : ""
-  }`;
+  }${rightPanelOpen ? " right-panel-open" : ""}${rightPanelGlobalized && rightPanelOpen ? " right-panel-globalized" : ""}${resizingSplit ? " resizing-split" : ""}`;
   const shellStyle = {
     "--sidebar-width": `${effectiveSidebarWidth}px`,
     "--sidebar-open-width": `${sidebarWidth}px`,
     "--workspace-right-panel-width": `${clampedWorkspaceRightPanelWidth}px`,
-    "--thread-panel-width": `${clampedThreadPanelWidth}px`,
     "--side-thread-width": `${sideThread.width}px`,
     "--conversation-split-left": `${splitLeftPercent}%`,
     "--environment-panel-width": ENVIRONMENT_PANEL_WIDTH_CSS,
@@ -2560,58 +2270,6 @@ export function App(): JSX.Element {
     }
   }, [environmentPanelMenu, environmentPanelVisible]);
 
-  // Thread/Task is a group-chat workflow. DMs remain one-to-one and never load
-  // or expose group subthreads.
-  useEffect(() => {
-    if (!activeThreadID || !activeThreadIsGroup) {
-      setChatSubthreads(null);
-      return;
-    }
-    const listSub = window.wuu?.listConversationSubthreads;
-    if (typeof listSub !== "function") {
-      setChatSubthreads(null);
-      return;
-    }
-    setChatSubthreads(null);
-    let cancelled = false;
-    const threadID = activeThreadID;
-    void (async () => {
-      try {
-        const result = await listSub(threadID);
-        if (cancelled) {
-          return;
-        }
-        const byAnchor = new Map<string, ConversationSubthread>();
-        for (const sub of result.subthreads ?? []) {
-          if (sub.anchor_item_id) {
-            byAnchor.set(sub.anchor_item_id, sub);
-          }
-          if (sub.parent_seq) {
-            byAnchor.set(`seq:${sub.parent_seq}`, sub);
-          }
-        }
-        setChatSubthreads({ threadID, byAnchor });
-      } catch {
-        if (!cancelled) {
-          setChatSubthreads(null);
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    activeThreadID,
-    activeThreadIsGroup,
-    activeThreadTurnCount,
-    chatSubthreadsNonce,
-  ]);
-
-  const activeChatSubthreadsByAnchor =
-    chatSubthreads && chatSubthreads.threadID === activeThreadID
-      ? chatSubthreads.byAnchor
-      : undefined;
-
   const handleCloseFilePreview = useCallback((): void => {
     setRightPanelFilePath(undefined);
     setEnvironmentPanelMenu(null);
@@ -2645,7 +2303,6 @@ export function App(): JSX.Element {
       setEnvironmentPanelOpen(false);
       setEnvironmentPanelDismissed(true);
       setEnvironmentPanelMenu(null);
-      setOpenSubthreadPanel(undefined);
       setParticipantPanel(undefined);
       sideThread.open();
     }
@@ -2677,31 +2334,16 @@ export function App(): JSX.Element {
         setPrompt={setPrompt}
         files={composerFiles}
         images={composerImages}
-        // Chat-style threads keep normal pending sends as bubbles, but surface
-        // interrupted held work here so the user can explicitly continue,
-        // edit, or remove it. Work threads always keep the queue UI.
-        queuedMessages={
-          activeThreadIsChatStyle
-            ? queuedMessages.filter((message) => message.held)
-            : queuedMessages
-        }
+        queuedMessages={queuedMessages}
         guideMessages={guideMessages}
         running={
-          activeThreadIsChatStyle
-            ? viewContextSwitchPending
-            : (!activeThreadReadOnly && activeThreadIsRunning) ||
-              viewContextSwitchPending
+          (!activeThreadReadOnly && activeThreadIsRunning) ||
+          viewContextSwitchPending
         }
-        ultraEnabled={
-          ENABLE_COLLABORATION && Boolean(state.initialized?.ultra)
-        }
-        onToggleUltra={
-          ENABLE_COLLABORATION
-            ? (enabled) => {
-                void updateUltraMode(enabled).catch(() => undefined);
-              }
-            : undefined
-        }
+        ultraEnabled={Boolean(state.initialized?.ultra)}
+        onToggleUltra={(enabled) => {
+          void updateUltraMode(enabled).catch(() => undefined);
+        }}
         runtimeControlsDisabled={
           (!activeThreadReadOnly && activeThreadIsRunning) ||
           viewContextSwitchPending
@@ -2729,11 +2371,7 @@ export function App(): JSX.Element {
         activeContext={state.activeContext}
         activeProject={activeProject}
         compactDisabledReason={
-          !activeThread
-            ? t("app.openConversationFirst")
-            : activeThreadIsGroup
-              ? t("app.groupCompactionUnsupported")
-              : undefined
+          !activeThread ? t("app.openConversationFirst") : undefined
         }
         sideThreadDisabledReason={
           !activeThread ? t("app.sendMessageFirst") : undefined
@@ -2811,32 +2449,8 @@ export function App(): JSX.Element {
         onClearGoal={clearCurrentGoal}
         queryHistorySessionID={activeThread?.id}
         queryHistory={queryTextsForThread(activeThread)}
-        participants={participants}
-        chatFocusValue={
-          activeThread && (isDMThread(activeThread) || isGroupThread(activeThread))
-            ? chatFocusValueForThread(
-                activeThread,
-                chatFocusOverrides,
-                state.projects,
-              )
-            : undefined
-        }
-        onSelectChatFocus={(value) => {
-          const threadID = activeThread?.id;
-          if (!threadID) {
-            return;
-          }
-          setChatFocusOverrides((current) => ({
-            ...current,
-            [threadID]: value,
-          }));
-        }}
-        groupMembers={
-          activeThreadIsGroup ? (activeThread?.members ?? []) : undefined
-        }
-        onOpenGroupInfo={openEnvironmentPanel}
         onConvertToTask={
-          turns.length > 0 && activeThreadID
+          collaborationActive && turns.length > 0 && activeThreadID
             ? handleConvertToTask
             : undefined
         }
@@ -2849,7 +2463,7 @@ export function App(): JSX.Element {
   // ---------------------------------------------------------------------------
   async function handleConvertToTask(): Promise<void> {
     const threadId = activeThreadID;
-    if (!threadId) return;
+    if (!threadId || !collaborationActive) return;
     setCrystallizeOpen(true);
     setCrystallizePending(true);
     setCrystallizeResult(undefined);
@@ -2865,41 +2479,6 @@ export function App(): JSX.Element {
       console.error("kanban crystallize failed", error);
     } finally {
       setCrystallizePending(false);
-    }
-  }
-
-  // Lift the open reply subthread (cth) into its own window. threadID is the
-  // PARENT group thread (the cth's home, needed for runtime routing); the new
-  // window renders the cth via the SAME ConversationSubthreadPanel + composer
-  // the in-window split uses. On success the in-window panel closes so the cth
-  // lives in exactly one place.
-  async function popOutSubthread(
-    threadID: string,
-    subthreadID: string,
-    context: RuntimeContext,
-  ): Promise<void> {
-    if (poppingOutSubthreadIDsRef.current.has(subthreadID)) {
-      return;
-    }
-    poppingOutSubthreadIDsRef.current.add(subthreadID);
-    try {
-      await window.wuu.popOutSession({
-        kind: "subthread",
-        threadID,
-        subthreadID,
-        context,
-      });
-      setOpenSubthreadPanel((current) =>
-        current?.subthread?.id === subthreadID ? undefined : current,
-      );
-    } catch (error) {
-      setState((current) => ({
-        ...current,
-        status:
-          error instanceof Error ? error.message : t("window.openDetachedFailed"),
-      }));
-    } finally {
-      poppingOutSubthreadIDsRef.current.delete(subthreadID);
     }
   }
 
@@ -3107,8 +2686,6 @@ export function App(): JSX.Element {
       setSplitComposerDrafts(initialSplitComposerDrafts()),
     nextDraftSessionTab,
     selectThread,
-    
-    poppingOutTabIDsRef,
     beginViewSwitch,
     finishViewSwitch,
     cancelViewSwitch,
@@ -3173,8 +2750,6 @@ export function App(): JSX.Element {
   const {
     toggleThreadPinned,
     renameThread,
-    removeThreadMemberByID,
-    addThreadMemberByID,
     archiveThread,
     unarchiveThread,
     deleteThread,
@@ -3229,10 +2804,7 @@ export function App(): JSX.Element {
     dismissInstructionFilesEntry,
     openInstructions,
     openContextComposition,
-    openParticipantDM,
-    createGroupThread,
-    openTaskBoardTab,
-    openTaskFromBoard,
+    openCollaborationIntake,
     openMemorySettings,
   } = createCollaborationActions({
     getAppState: () => appStateRef.current,
@@ -3246,13 +2818,20 @@ export function App(): JSX.Element {
     
     cancelViewSwitch,
     activateThread,
-    selectThread,
-    selectSessionTab,
     setContextCompositionEntries,
     setInstructionFilesEntries,
     scheduleStreamScroll,
-    openingDMParticipantIDRef,
-    openConversationSubthreadByID,
+    openingCollaborationRef,
+    getCollaborationThreadID: () =>
+      appStateRef.current.threads.reduce<Thread | undefined>(
+        (latest, thread) =>
+          thread.source === "collaboration" &&
+          (!latest || thread.updated_at > latest.updated_at)
+            ? thread
+            : latest,
+        undefined,
+      )?.id,
+    setCollaborationThreadID,
     closeProjectMenus,
     setSettingsMemoryFocusID,
     setSettingsInitialPage,
@@ -3347,22 +2926,7 @@ export function App(): JSX.Element {
     setPrompt("");
     setComposerImages([]);
     setComposerFiles([]);
-    // DM threads intentionally share this exact path: a resident named
-    // agent's DM is a normal multi-turn thread (turn/start), not a
-    // spawn-per-message shell. See docs/plans/2026-07-03-resident-named-agents.md §7.1.
-    //
-    // Chat send semantics (issue #10):
-    // - Group threads never queue. The server records every group send as a
-    //   completed turn with no provider call (and rejects turn/queue for
-    //   groups outright), so a busy-looking state must not divert the
-    //   message into the queue path — send straight away.
-    // - DM threads still reuse turn/queue's reliable delivery while the
-    //   resident is mid-turn, but the pending message renders as a chat
-    //   bubble in ChatThreadView instead of the composer queue strip.
-    if (
-      isStateActiveThreadRunning(currentState) &&
-      !(targetThread && isGroupThread(targetThread))
-    ) {
+    if (isStateActiveThreadRunning(currentState)) {
       const queued = await queueComposerMessage(message, targetThread);
       if (!queued) {
         setPrompt(message.text);
@@ -3404,13 +2968,6 @@ export function App(): JSX.Element {
       setState((current) => ({
         ...current,
         status: localizedText("app.childTaskReadOnly"),
-      }));
-      return;
-    }
-    if (isGroupThread(targetThread)) {
-      setState((current) => ({
-        ...current,
-        status: localizedText("app.groupNoCompactContext"),
       }));
       return;
     }
@@ -3610,12 +3167,7 @@ export function App(): JSX.Element {
       !currentState.initialized ||
       targetThread?.read_only ||
       viewSwitchPending ||
-      // Group threads accept concurrent sends: each turn/start lands a
-      // completed chat turn server-side, so a transient running state
-      // (a send round-trip still in flight) must not block the next
-      // message (issue #10).
-      (isStateActiveThreadRunning(currentState) &&
-        !(targetThread && isGroupThread(targetThread)))
+      isStateActiveThreadRunning(currentState)
     ) {
       return false;
     }
@@ -3719,11 +3271,6 @@ export function App(): JSX.Element {
         images,
         files,
         thread.permission_mode || currentState.initialized.permissions?.mode,
-        mentionedParticipantIDsFromText(text, participants),
-        // Only defined when the chat-focus chip changed this session and
-        // differs from the thread's last-known focus_workspace; plain
-        // sends carry nothing extra.
-        focusWorkspaceSendValue(thread, chatFocusOverrides[thread.id]),
       );
       setState((current) =>
         updateThreadByID(
@@ -3818,9 +3365,7 @@ export function App(): JSX.Element {
     ) {
       return;
     }
-    // Group threads never queue — every send lands as a completed chat
-    // turn server-side (issue #10); see sendPrompt for the full rationale.
-    if (isThreadRunning(targetThread) && !isGroupThread(targetThread)) {
+    if (isThreadRunning(targetThread)) {
       const queued = await queueComposerMessage(message, targetThread);
       if (queued) {
         setSplitComposerDrafts((current) => ({
@@ -3867,7 +3412,7 @@ export function App(): JSX.Element {
       !currentState.activeContext ||
       !currentState.initialized ||
       viewSwitchPending ||
-      (isThreadRunning(targetThread) && !isGroupThread(targetThread))
+      isThreadRunning(targetThread)
     ) {
       return false;
     }
@@ -3920,11 +3465,6 @@ export function App(): JSX.Element {
         images,
         files,
         targetThread.permission_mode || currentState.initialized.permissions?.mode,
-        mentionedParticipantIDsFromText(text, participants),
-        focusWorkspaceSendValue(
-          targetThread,
-          chatFocusOverrides[targetThread.id],
-        ),
       );
       setState((current) =>
         updateThreadByID(
@@ -4001,7 +3541,7 @@ export function App(): JSX.Element {
       !currentState.activeContext ||
       !currentState.initialized ||
       viewSwitchPending ||
-      (isThreadRunning(targetThread) && !isGroupThread(targetThread))
+      isThreadRunning(targetThread)
     ) {
       return false;
     }
@@ -4055,11 +3595,6 @@ export function App(): JSX.Element {
         images,
         files,
         targetThread.permission_mode || currentState.initialized.permissions?.mode,
-        mentionedParticipantIDsFromText(text, participants),
-        focusWorkspaceSendValue(
-          targetThread,
-          chatFocusOverrides[targetThread.id],
-        ),
       );
       setState((current) =>
         updateThreadByID(
@@ -4205,8 +3740,8 @@ export function App(): JSX.Element {
       {archiveTipNode}
       <ImagePreviewProvider>
         <div ref={appShellRef} className={shellClassName} style={shellStyle}>
-      {sidebarVisible ? (
-        <>
+          {!poppedOutMode ? (
+            <>
           <div
             ref={sidebarHoverZoneRef}
             className="sidebar-hover-zone"
@@ -4218,13 +3753,7 @@ export function App(): JSX.Element {
             state={state}
             sidebarProjects={sidebarProjects}
             pinnedThreads={sidebarPinnedThreads}
-            groupThreads={sidebarGroupThreads}
             activeThreadID={activeThreadID}
-            activeDMParticipantID={activeDMParticipantID}
-            dmThreadByParticipantID={dmThreadByParticipantID}
-            unreadDMParticipantIDs={unreadDMParticipantIDs}
-            participants={participants}
-            busyParticipantIDs={busyParticipantIDs}
             pendingThreadID={visiblePendingThreadID}
             pendingProjectID={visiblePendingProjectID}
             collapsedSidebarSectionIDs={collapsedSidebarSectionIDs}
@@ -4238,11 +3767,17 @@ export function App(): JSX.Element {
               debugControlsVisible && ENABLE_CONVERSATION_FIXTURES
             }
             sectionOrder={sidebarSectionOrder}
+            collaborationActive={collaborationActive}
             onStartNewThread={() => {
               revealConversationFromFocusedWorkspace();
               startNewThreadWithComposerFocus();
             }}
             onOpenSkillsTab={openSkillsTab}
+            onOpenCollaboration={() => {
+              revealConversationFromFocusedWorkspace();
+              setKanbanViewMode("message");
+              void openCollaborationIntake();
+            }}
             onToggleConversationSearch={toggleConversationSearch}
             onSeedConversationFixture={seedConversationFixture}
             onSeedAgentTreeDemo={seedAgentTreeDemo}
@@ -4251,18 +3786,6 @@ export function App(): JSX.Element {
               revealConversationFromFocusedWorkspace();
               void activateThread(id);
             }}
-            onSelectParticipant={(participant) => {
-              revealConversationFromFocusedWorkspace();
-              void openParticipantDM(participant);
-            }}
-            onSaveParticipant={handleParticipantDialogSave}
-            providers={state.initialized?.providers}
-            onCreateGroupThread={(title) => {
-              revealConversationFromFocusedWorkspace();
-              void createGroupThread(title);
-            }}
-            onImportParticipants={importParticipantTemplate}
-            onExportParticipants={exportParticipantTemplate}
             onTogglePinned={(thread) => void toggleThreadPinned(thread)}
             onArchiveThread={(thread) => {
               const archivedTitle =
@@ -4321,9 +3844,6 @@ export function App(): JSX.Element {
               onKeyDown={handleSidebarSeparatorKey}
             />
           )}
-        </>
-      ) : null}
-
       <ConversationSearchOverlay
         state={conversationSearch}
         results={conversationSearchResults}
@@ -4340,13 +3860,13 @@ export function App(): JSX.Element {
         onSelectIndex={setConversationSearchSelectedIndex}
         onSelectResult={selectConversationSearchResult}
       />
+            </>
+          ) : null}
 
       <main
         inert={rightPanelOpen && rightPanelGlobalized}
         className={`conversation-pane${environmentPanelVisible ? " environment-panel-visible" : ""}${
           environmentPanelReserved || participantPanelVisible ? " environment-panel-reserved" : ""
-        }${
-          subthreadPanelVisible ? " subthread-panel-visible" : ""
         }${
           sideThreadPanelVisible ? " side-thread-panel-visible" : ""
         }${
@@ -4358,25 +3878,24 @@ export function App(): JSX.Element {
       >
         <header className="titlebar">
           <div className="title-block">
-            {sidebarVisible ? (
-              <button
-                className="icon-button side-panel-toggle-button sidebar-toggle-button"
-                type="button"
-                aria-label={t(
-                  sidebarCollapsed
-                    ? "app.expandLeftSidebar"
-                    : "app.collapseLeftSidebar",
-                )}
-                aria-pressed={!sidebarCollapsed}
-                onClick={toggleSidebar}
-              >
-                <SidePanelToggleIcon side="left" open={!sidebarCollapsed} />
-              </button>
-            ) : null}
+            {poppedOutMode ? null : (
+            <button
+              className="icon-button side-panel-toggle-button sidebar-toggle-button"
+              type="button"
+              aria-label={t(
+                sidebarCollapsed
+                  ? "app.expandLeftSidebar"
+                  : "app.collapseLeftSidebar",
+              )}
+              aria-pressed={!sidebarCollapsed}
+              onClick={toggleSidebar}
+            >
+              <SidePanelToggleIcon side="left" open={!sidebarCollapsed} />
+            </button>
+            )}
             <ConversationTitleContent
               state={state}
               sessionTabsVisible={sessionTabsVisible}
-              busyParticipantIDs={busyParticipantIDs}
               pendingSwitchThreadID={visiblePendingThreadID}
               pendingComposerMessagesByThread={pendingComposerMessagesByThread}
               activeTitle={activeTitle}
@@ -4388,6 +3907,9 @@ export function App(): JSX.Element {
               onReorderSessionTabs={reorderSessionTabs}
             />
           </div>
+          {collaborationActive ? (
+            <KanbanViewToggle mode={kanbanViewMode} onChange={setKanbanViewMode} />
+          ) : null}
           <ConversationTitleActions
             state={state}
             debugControlsVisible={debugControlsVisible}
@@ -4426,17 +3948,8 @@ export function App(): JSX.Element {
             onCloseRunDebug={() => setRunDebugOpen(false)}
             chipGalleryOpen={chipGalleryOpen}
             onCloseChipGallery={() => setChipGalleryOpen(false)}
-            poppedOutMode={poppedOutMode}
-            activeThread={activeThread}
-            onOpenTaskBoard={openTaskBoardTab}
-            viewMode={kanbanViewMode}
-            onToggleViewMode={() =>
-              setKanbanViewMode((mode) => (mode === "message" ? "board" : "message"))
-            }
-            boardToggleRef={boardToggleRef}
             environmentToggleRef={environmentToggleRef}
             environmentPanelVisible={environmentPanelVisible}
-            activeThreadIsGroup={activeThreadIsGroup}
             onToggleEnvironmentPanel={toggleEnvironmentPanel}
             rightPanelOpen={rightPanelOpen}
             onToggleRightPanel={toggleRightPanel}
@@ -4490,49 +4003,6 @@ export function App(): JSX.Element {
               current === id ? undefined : current,
             )
           }
-          participants={participants}
-          onAddThreadMember={(threadID, participantID) =>
-            addThreadMemberByID(threadID, participantID)
-          }
-          onRemoveThreadMember={(threadID, participantID) =>
-            removeThreadMemberByID(threadID, participantID)
-          }
-          openSubthreadPanel={openSubthreadPanel}
-          onCloseSubthreadPanel={() => setOpenSubthreadPanel(undefined)}
-          onResolveSubthread={resolveOpenConversationSubthread}
-          onEscalateSubthread={escalateOpenConversationSubthread}
-          onReactSubthread={reactToOpenConversationSubthreadMessage}
-          poppedOutMode={poppedOutMode}
-          activeContext={state.activeContext}
-          onPopOutSubthread={(threadID, subthreadID, context) =>
-            void popOutSubthread(threadID, subthreadID, context)
-          }
-          subthreadComposer={{
-            draft: subthreadComposerDraft,
-            setDraft: setSubthreadComposerDraft,
-            initialized: sessionRuntime,
-            projects: state.projects,
-            activeContext: state.activeContext,
-            activeProject,
-            codexModels,
-            codexRuntimeRef,
-            runtimeMenuRef,
-            accessMenuRef: subthreadAccessMenuRef,
-            participants,
-            onPasteAttachmentFiles: (files) =>
-              void attachSubthreadComposerAttachmentFiles(files),
-            onRemoveFile: removeSubthreadComposerFile,
-            onRemoveImage: removeSubthreadComposerImage,
-            onSend: () => void sendOpenConversationSubthreadMessage(),
-          }}
-          resolveParticipantName={resolveParticipantName}
-          busyParticipantIDs={busyParticipantIDs}
-          chatReaderCount={chatReaderCount}
-          debugControlsVisible={debugControlsVisible}
-          clampedThreadPanelWidth={clampedThreadPanelWidth}
-          onThreadPanelResizeStart={startThreadPanelResize}
-          onThreadPanelReset={resetThreadPanelWidth}
-          onThreadPanelSeparatorKey={handleThreadPanelSeparatorKey}
           participantPanel={participantPanel}
           onCloseParticipantPanel={() => setParticipantPanel(undefined)}
           onSaveParticipant={handleParticipantSave}
@@ -4579,7 +4049,7 @@ export function App(): JSX.Element {
           <div
             className={`scroll-region${emptyConversation ? " empty-scroll-region" : ""}${
               splitConversation ? " split-scroll-region" : ""
-            }${showingSkillsCatalog ? " skills-scroll-region" : ""}${showingTaskBoard ? " task-board-scroll-region" : ""}${kanbanViewMode === "board" ? " kanban-board-scroll-region" : ""}`}
+            }${showingSkillsCatalog ? " skills-scroll-region" : ""}${kanbanBoardVisible ? " kanban-board-scroll-region" : ""}`}
             onScroll={(event) => handleConversationScroll(event.currentTarget)}
             ref={conversationScrollRef}
           >
@@ -4589,17 +4059,7 @@ export function App(): JSX.Element {
                 activeContext={state.activeContext}
                 extensionInventory={state.initialized?.extension_inventory}
               />
-            ) : boardSessionTab ? (
-              <TaskBoardView
-                threadID={boardSessionTab.threadID}
-                title={sessionTabLabel(boardSessionTab, state)}
-                refreshToken={boardRefreshTick}
-                resolveParticipantName={resolveParticipantName}
-                onOpenTask={(subthreadID) =>
-                  void openTaskFromBoard(boardSessionTab.threadID, subthreadID)
-                }
-              />
-            ) : kanbanViewMode === "board" && activeThreadID ? (
+            ) : kanbanBoardVisible && activeThreadID ? (
               <KanbanBoardView
                 sessionId={activeThreadID}
                 refreshToken={boardRefreshTick}
@@ -4712,18 +4172,9 @@ export function App(): JSX.Element {
                 onForkMessage={handleCachedPaneForkMessage}
                 onOpenFile={openWorkspaceFileForThread}
                 onOpenAgent={handleCachedPaneOpenAgent}
-                onOpenSubthread={handleCachedPaneOpenSubthread}
-                onReact={handleCachedPaneReact}
                 onEditMessage={handleCachedPaneEditMessage}
                 onCancelEditMessage={handleCachedPaneCancelEditMessage}
                 onSubmitEditMessage={handleCachedPaneSubmitEditMessage}
-                busyParticipantIDs={busyParticipantIDs}
-                activeThreadMarks={activeThreadMarks}
-                resolveParticipantName={resolveParticipantName}
-                chatReaderCount={chatReaderCount}
-                subthreadsByAnchor={activeChatSubthreadsByAnchor}
-                subthreadsThreadID={activeThreadID}
-                pendingChatMessagesByThread={pendingComposerMessagesByThread}
                 turnStreamStatus={state.turnStreamStatus}
                 onOpenFileDiff={handleCachedPaneOpenFileDiff}
                 onOpenTurnRuns={handleOpenTurnRuns}
@@ -4890,16 +4341,7 @@ export function App(): JSX.Element {
           </div>
         </FloatingMenuPortal>
       ) : null}
-      {crystallizeOpen && activeThreadID ? (
-        <CrystallizeOrb
-          sourceRef={
-            conversationScrollRef as unknown as RefObject<HTMLElement | null>
-          }
-          targetRef={boardToggleRef}
-          pulsing={crystallizePending}
-        />
-      ) : null}
-      {activeThreadID ? (
+      {collaborationActive && activeThreadID ? (
         <KanbanCrystallizeDialog
           threadId={activeThreadID}
           isOpen={crystallizeOpen}

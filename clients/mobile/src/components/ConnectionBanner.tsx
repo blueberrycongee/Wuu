@@ -7,7 +7,7 @@ import { Image, StyleSheet, Text, View } from "react-native";
 import type { ConnectionPhase } from "../lib/store";
 import { usePalette } from "../theme";
 
-import EYES from "../../assets/reactions/eyes.png";
+import EYES from "../../assets/art/eyes.png";
 
 export function ConnectionBanner({
   phase,

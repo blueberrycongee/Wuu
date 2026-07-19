@@ -249,10 +249,20 @@ function KanbanCard({
   const target = latestRun ? participants.get(latestRun.target_id) : undefined;
 
   return (
-    <button
+    <div
       className={`kanban-card kanban-card-${task.status}`}
-      type="button"
+      role="button"
+      tabIndex={0}
       onClick={onClick}
+      onKeyDown={(event) => {
+        if (
+          event.target === event.currentTarget &&
+          (event.key === "Enter" || event.key === " ")
+        ) {
+          event.preventDefault();
+          onClick();
+        }
+      }}
       aria-label={t("kanban.card.label", { title: task.title })}
     >
       <div className="kanban-card-header">
@@ -287,7 +297,7 @@ function KanbanCard({
         ) : null}
       </div>
       <KanbanCardActions task={task} onRefresh={onRefresh} />
-    </button>
+    </div>
   );
 }
 

@@ -296,7 +296,7 @@ func (s *Server) dispatchKanbanRun(ctx context.Context, hostThreadID, taskID, ta
 	if p.Kind != participant.KindNamed {
 		return fail(fmt.Errorf("participant %q is not a named agent", targetID))
 	}
-	if s.residentDraining(targetID) || s.participantIsBusy(targetID) {
+	if s.participantIsBusy(targetID) {
 		return fail(fmt.Errorf("participant %q is busy; wait for it to finish", firstNonEmpty(p.Name, targetID)))
 	}
 
@@ -335,7 +335,7 @@ func (s *Server) dispatchKanbanRun(ctx context.Context, hostThreadID, taskID, ta
 		return fail(err)
 	}
 
-	th, err := s.ensureResidentThread(hostThreadID)
+	th, err := s.ensureThreadLoaded(hostThreadID)
 	if err != nil {
 		return fail(err)
 	}
@@ -350,16 +350,15 @@ func (s *Server) dispatchKanbanRun(ctx context.Context, hostThreadID, taskID, ta
 		return fail(fmt.Errorf("participant %q is busy running another task", firstNonEmpty(p.Name, targetID)))
 	}
 	spawnReq := agentcontrol.SpawnRequest{
-		Type:             resolveParticipantSubagentType("", p),
-		TaskName:         p.Name,
-		ParticipantID:    targetID,
-		AgentProfile:     p.Name,
-		Description:      firstNonEmpty(p.Tagline, task.Title),
-		Prompt:           prompt,
-		ParentID:         hostThreadID,
-		ParentPath:       agentthread.RootPath,
-		SpeechCapability: false,
-		Synchronous:      false,
+		Type:          resolveParticipantSubagentType("", p),
+		TaskName:      p.Name,
+		ParticipantID: targetID,
+		AgentProfile:  p.Name,
+		Description:   firstNonEmpty(p.Tagline, task.Title),
+		Prompt:        prompt,
+		ParentID:      hostThreadID,
+		ParentPath:    agentthread.RootPath,
+		Synchronous:   false,
 	}
 	if manifest.NormalizedPermissionTier() == participant.PermissionTierUnrestricted {
 		// Non-nil empty slice: clear the file-scope whitelist for this run.
@@ -508,7 +507,7 @@ func (s *Server) handleKanbanCrystallize(ctx context.Context, req Request) error
 	if threadID == "" || sessionID == "" {
 		return s.writeResponse(req.ID, nil, errors.New("thread_id and session_id are required"))
 	}
-	th, err := s.ensureResidentThread(threadID)
+	th, err := s.ensureThreadLoaded(threadID)
 	if err != nil {
 		return s.writeResponse(req.ID, nil, err)
 	}

@@ -230,7 +230,6 @@ const api: WuuDesktopApi = {
     ipcRenderer.invoke("wuu:thread-start", params),
   resumeThread: (sessionId?: string) =>
     ipcRenderer.invoke("wuu:thread-resume", sessionId),
-  startParticipant: (params) => ipcRenderer.invoke("wuu:participant-start", params),
   forkThread: (
     threadId: string,
     turnId?: string,
@@ -334,31 +333,6 @@ const api: WuuDesktopApi = {
     ipcRenderer.invoke("wuu:memory-overview", params),
   sendMemoryChat: (params) => ipcRenderer.invoke("wuu:memory-chat", params),
   readMemoryRaw: (params) => ipcRenderer.invoke("wuu:memory-read", params),
-  listConversationSubthreads: (threadId: string) =>
-    ipcRenderer.invoke("wuu:thread-list-sub", threadId),
-  openConversationSubthread: (threadId: string, options) =>
-    ipcRenderer.invoke("wuu:thread-open-sub", threadId, options),
-  resolveConversationSubthread: (threadId: string, subthreadId: string, resolved: boolean) =>
-    ipcRenderer.invoke("wuu:thread-resolve-sub", threadId, subthreadId, resolved),
-  escalateConversationSubthread: (threadId: string, subthreadId: string, options) =>
-    ipcRenderer.invoke("wuu:thread-escalate-sub", threadId, subthreadId, options),
-  postSubthreadMessage: (
-    threadId: string,
-    subthreadId: string,
-    text: string,
-    images?: import("../shared/protocol").InputImage[],
-    files?: import("../shared/protocol").InputFile[],
-  ): Promise<import("../shared/protocol").MessagePostSubthreadResult> =>
-    ipcRenderer.invoke(
-      "wuu:message-post-subthread",
-      threadId,
-      subthreadId,
-      text,
-      images,
-      files,
-    ),
-  taskEvents: (threadId: string, subthreadId: string) =>
-    ipcRenderer.invoke("wuu:thread-task-events", threadId, subthreadId),
   listThreads: (cwd?: string) => ipcRenderer.invoke("wuu:thread-list", cwd),
   listArchivedThreads: () =>
     ipcRenderer.invoke("wuu:thread-list-archived"),
@@ -371,20 +345,6 @@ const api: WuuDesktopApi = {
     ipcRenderer.invoke("wuu:thread-preview", threadId, limit),
   pinThread: (threadId: string, pinned: boolean) =>
     ipcRenderer.invoke("wuu:thread-pin", threadId, pinned),
-  addThreadMember: (threadId: string, participantId: string) =>
-    ipcRenderer.invoke("wuu:thread-members-add", threadId, participantId),
-  removeThreadMember: (threadId: string, participantId: string) =>
-    ipcRenderer.invoke("wuu:thread-members-remove", threadId, participantId),
-  getThreadMarks: (
-    threadId: string,
-  ): Promise<import("../shared/protocol").ThreadMarksResult> =>
-    ipcRenderer.invoke("wuu:thread-marks", threadId),
-  reactToMessage: (
-    threadId: string,
-    seq: number,
-    reaction: string,
-  ): Promise<import("../shared/protocol").MessageReactResult> =>
-    ipcRenderer.invoke("wuu:message-react", threadId, seq, reaction),
   archiveThread: (threadId: string, archived: boolean) =>
     ipcRenderer.invoke("wuu:thread-archive", threadId, archived),
   deleteThread: (threadId: string) =>
@@ -399,8 +359,8 @@ const api: WuuDesktopApi = {
     ipcRenderer.invoke("wuu:file-show-in-folder", path),
   openExternal: (url: string) =>
     ipcRenderer.invoke("wuu:open-external", url),
-  startTurn: (threadId: string, prompt: string, images, files, permissionMode, mentions, focusWorkspace) =>
-    ipcRenderer.invoke("wuu:turn-start", threadId, prompt, images, files, permissionMode, mentions, focusWorkspace),
+  startTurn: (threadId: string, prompt: string, images, files, permissionMode) =>
+    ipcRenderer.invoke("wuu:turn-start", threadId, prompt, images, files, permissionMode),
   queueTurn: (threadId: string, prompt: string, images, clientId, files, permissionMode) =>
     ipcRenderer.invoke("wuu:turn-queue", threadId, prompt, images, clientId, files, permissionMode),
   updateQueuedTurn: (threadId: string, queueId: string, prompt: string, images, files) =>

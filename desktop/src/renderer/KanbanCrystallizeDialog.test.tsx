@@ -66,8 +66,8 @@ function createResult(subtasks: KanbanCrystallizeResult["subtasks"]): KanbanCrys
 }
 
 const participants: ParticipantProfile[] = [
-  { id: "prt-ada", kind: "resident", name: "Ada" },
-  { id: "prt-bob", kind: "resident", name: "Bob" },
+  { id: "prt-ada", kind: "named", name: "Ada" },
+  { id: "prt-bob", kind: "named", name: "Bob" },
 ];
 
 describe("KanbanCrystallizeDialog", () => {

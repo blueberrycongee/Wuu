@@ -11,8 +11,7 @@ import (
 )
 
 // Kanban store: persistence for the kanban-OS domain (agent-neutral tasks,
-// dispatch runs, produced artifacts). Timestamps are UnixMillis, matching the
-// task_attempts/task_events tables.
+// dispatch runs, produced artifacts). Timestamps use Unix milliseconds.
 
 func newKanbanID(prefix string) string { return prefix + NewID() }
 

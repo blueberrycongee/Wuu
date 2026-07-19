@@ -129,7 +129,7 @@ describe("KanbanBoardView", () => {
         {
           id: "prt-ada",
           name: "Ada",
-          kind: "resident",
+          kind: "named",
           avatar_image: undefined,
         },
       ],
@@ -153,7 +153,7 @@ describe("KanbanBoardView", () => {
     const onOpenSourceThread = vi.fn();
     const { container } = await mountBoard({ onOpenSourceThread });
     act(() => {
-      container.querySelector<HTMLButtonElement>(".kanban-card")!.click();
+      container.querySelector<HTMLElement>(".kanban-card")!.click();
     });
     expect(container.querySelector(".kanban-drawer")).not.toBeNull();
     expect(container.textContent).toContain("This is the brief");
@@ -161,6 +161,23 @@ describe("KanbanBoardView", () => {
     expect(linkButton).not.toBeNull();
     act(() => (linkButton! as HTMLElement).click());
     expect(onOpenSourceThread).toHaveBeenCalledWith("thread-1");
+  });
+
+  it("opens a card from the keyboard without nesting action buttons", async () => {
+    installStubs([task("draft", { id: "draft-1", title: "Keyboard card" })]);
+    const { container } = await mountBoard();
+    const card = container.querySelector<HTMLElement>(".kanban-card")!;
+
+    expect(card.tagName).toBe("DIV");
+    expect(card.getAttribute("role")).toBe("button");
+    expect(card.querySelector("button")).not.toBeNull();
+    await act(async () => {
+      card.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(container.querySelector(".kanban-drawer")).not.toBeNull();
   });
 
   it("shows loading state initially", async () => {
