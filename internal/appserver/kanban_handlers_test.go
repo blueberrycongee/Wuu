@@ -114,3 +114,24 @@ func TestKanbanStandingInstructionsPrompt(t *testing.T) {
 		}
 	}
 }
+
+func TestKanbanAutoDispatchEligible(t *testing.T) {
+	tasks := []kanban.Task{
+		{ID: "kt-root", Status: kanban.TaskStatusReady},                                   // container: has children
+		{ID: "kt-a", ParentID: "kt-root", Status: kanban.TaskStatusReady, SortIndex: 1},   // eligible
+		{ID: "kt-b", ParentID: "kt-root", Status: kanban.TaskStatusRunning, SortIndex: 2}, // not ready
+		{ID: "kt-draft", Status: kanban.TaskStatusDraft},                                  // not ready
+		{ID: "kt-c", ParentID: "kt-draft", Status: kanban.TaskStatusReady},                // parent still draft
+		{ID: "kt-solo", Status: kanban.TaskStatusReady, SortIndex: 3},                     // eligible root leaf
+		{ID: "kt-orphan", ParentID: "kt-missing", Status: kanban.TaskStatusReady},         // parent unknown
+	}
+	eligible := kanbanAutoDispatchEligible(tasks)
+	var ids []string
+	for _, task := range eligible {
+		ids = append(ids, task.ID)
+	}
+	want := []string{"kt-a", "kt-solo"}
+	if strings.Join(ids, ",") != strings.Join(want, ",") {
+		t.Fatalf("eligible = %v, want %v", ids, want)
+	}
+}

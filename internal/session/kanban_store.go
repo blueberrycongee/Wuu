@@ -111,6 +111,31 @@ WHERE session_id = ? AND parent_id = ? ORDER BY sort_index, created_at`, session
 	return out, rows.Err()
 }
 
+// ListAllKanbanTasks lists every task in a session regardless of nesting,
+// ordered by sort_index then creation — the auto-dispatch scan order.
+func ListAllKanbanTasks(sessDir, sessionID string) ([]kanban.Task, error) {
+	db, err := openStore(sessDir)
+	if err != nil {
+		return nil, err
+	}
+	defer db.Close()
+	rows, err := db.Query(`SELECT `+kanbanTaskColumns+` FROM kanban_tasks
+WHERE session_id = ? ORDER BY sort_index, created_at`, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []kanban.Task{}
+	for rows.Next() {
+		t, err := scanKanbanTask(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, t)
+	}
+	return out, rows.Err()
+}
+
 // TransitionKanbanTaskStatus moves a task through the legal status graph.
 func TransitionKanbanTaskStatus(sessDir, taskID, to string) (kanban.Task, error) {
 	db, err := openStore(sessDir)
@@ -151,7 +176,7 @@ func scanKanbanRun(row interface{ Scan(...any) error }) (kanban.Run, error) {
 	var r kanban.Run
 	var createdMS, startedMS, finishedMS int64
 	err := row.Scan(&r.ID, &r.TaskID, &r.SessionID, &r.Kind, &r.TargetID, &r.ThreadID,
-		&r.Status, &r.Summary, &r.ErrorMessage, &r.CreatedBy, &createdMS, &startedMS, &finishedMS)
+		&r.HostThreadID, &r.Status, &r.Summary, &r.ErrorMessage, &r.CreatedBy, &createdMS, &startedMS, &finishedMS)
 	if err != nil {
 		return kanban.Run{}, err
 	}
@@ -161,7 +186,7 @@ func scanKanbanRun(row interface{ Scan(...any) error }) (kanban.Run, error) {
 	return r, nil
 }
 
-const kanbanRunColumns = `id, task_id, session_id, kind, target_id, thread_id, status, summary, error_message, created_by, created_at, started_at, finished_at`
+const kanbanRunColumns = `id, task_id, session_id, kind, target_id, thread_id, host_thread_id, status, summary, error_message, created_by, created_at, started_at, finished_at`
 
 // CreateKanbanRun is the dispatch action: it binds a task to a target
 // participant as a queued run and moves the task to running in one
@@ -233,10 +258,10 @@ func CreateKanbanRun(sessDir string, run kanban.Run) (kanban.Run, error) {
 	run.CreatedAt = now
 	_, err = tx.Exec(`
 INSERT INTO kanban_runs (
- id, task_id, session_id, kind, target_id, thread_id, status, summary,
+ id, task_id, session_id, kind, target_id, thread_id, host_thread_id, status, summary,
  error_message, created_by, created_at, started_at, finished_at
-) VALUES (?, ?, ?, ?, ?, '', ?, '', '', ?, ?, 0, 0)`,
-		run.ID, run.TaskID, run.SessionID, run.Kind, run.TargetID, run.Status,
+) VALUES (?, ?, ?, ?, ?, '', ?, ?, '', '', ?, ?, 0, 0)`,
+		run.ID, run.TaskID, run.SessionID, run.Kind, run.TargetID, run.HostThreadID, run.Status,
 		run.CreatedBy, now.UnixMilli())
 	if err != nil {
 		if strings.Contains(err.Error(), "idx_kanban_runs_active_target") {

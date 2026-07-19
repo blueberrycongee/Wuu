@@ -952,6 +952,8 @@ func (s *Server) handleLine(ctx context.Context, raw []byte) error {
 		return s.handleKanbanListArtifacts(req)
 	case MethodKanbanCrystallize:
 		return s.handleKanbanCrystallize(ctx, req)
+	case MethodKanbanAutoDispatch:
+		return s.handleKanbanAutoDispatch(ctx, req)
 	case MethodParticipantGetManifest:
 		return s.handleParticipantGetManifest(req)
 	case MethodParticipantSaveManifest:

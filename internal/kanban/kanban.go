@@ -78,8 +78,9 @@ type Task struct {
 }
 
 // Run is one execution attempt binding a task to a target participant.
-// ThreadID is the execution site (spawned on start). Kind distinguishes
-// execution from second-eyes review.
+// ThreadID is the execution site (spawned on start). HostThreadID is the
+// conversation thread that owns the spawned execution (needed to redispatch
+// autopilot follow-ups). Kind distinguishes execution from second-eyes review.
 type Run struct {
 	ID           string
 	TaskID       string
@@ -87,6 +88,7 @@ type Run struct {
 	Kind         string
 	TargetID     string
 	ThreadID     string
+	HostThreadID string
 	Status       string
 	Summary      string
 	ErrorMessage string
@@ -115,7 +117,7 @@ type Artifact struct {
 // cancellation are explicit transitions, never side effects of runs.
 var taskTransitions = map[string][]string{
 	TaskStatusDraft:     {TaskStatusReady, TaskStatusCancelled},
-	TaskStatusReady:     {TaskStatusRunning, TaskStatusCancelled},
+	TaskStatusReady:     {TaskStatusRunning, TaskStatusReview, TaskStatusCancelled},
 	TaskStatusRunning:   {TaskStatusReview, TaskStatusReady, TaskStatusCancelled},
 	TaskStatusReview:    {TaskStatusDone, TaskStatusRunning, TaskStatusCancelled},
 	TaskStatusDone:      {},

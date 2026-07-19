@@ -1189,6 +1189,7 @@ func migrateSchema(db *sql.DB) error {
 			kind          TEXT NOT NULL,
 			target_id     TEXT NOT NULL,
 			thread_id     TEXT NOT NULL DEFAULT '',
+			host_thread_id TEXT NOT NULL DEFAULT '',
 			status        TEXT NOT NULL,
 			summary       TEXT NOT NULL DEFAULT '',
 			error_message TEXT NOT NULL DEFAULT '',

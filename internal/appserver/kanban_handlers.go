@@ -743,6 +743,179 @@ func (s *Server) handleParticipantSaveManifest(req Request) error {
 	return s.writeResponse(req.ID, wire, nil)
 }
 
+// ---- auto dispatch ----
+
+// kanbanAutoDispatchActor marks runs created by the auto-dispatcher, so the
+// completion hook can drain the next ready task only for autopilot batches —
+// manual dispatches never cascade.
+const kanbanAutoDispatchActor = "auto"
+
+type KanbanAutoDispatchParams struct {
+	SessionID string `json:"session_id"`
+	ThreadID  string `json:"thread_id"`
+	TargetID  string `json:"target_id,omitempty"`
+}
+
+type kanbanAutoDispatchSkippedWire struct {
+	TaskID string `json:"task_id"`
+	Reason string `json:"reason"`
+}
+
+type kanbanAutoDispatchResultWire struct {
+	Dispatched []kanbanRunWire                 `json:"dispatched"`
+	Skipped    []kanbanAutoDispatchSkippedWire `json:"skipped"`
+}
+
+// resolveDefaultDispatchTarget names the autopilot's fallback owner: Andy
+// (the seeded generalist), else the first active named agent.
+func (s *Server) resolveDefaultDispatchTarget() (string, error) {
+	roster, err := session.ListParticipants(s.rt.SessionDir, participant.KindNamed)
+	if err != nil {
+		return "", err
+	}
+	for _, p := range roster {
+		if strings.EqualFold(strings.TrimSpace(p.Name), defaultSeedParticipantName) {
+			return p.ID, nil
+		}
+	}
+	for _, p := range roster {
+		return p.ID, nil
+	}
+	return "", errors.New("no named agent available; create one first")
+}
+
+// kanbanAutoDispatchEligible filters a session's full task list to
+// dispatchable leaves, preserving scan order (sort_index, created_at). A task
+// is eligible when it is ready, has no children (parents are containers), and
+// its parent is past the draft stage.
+func kanbanAutoDispatchEligible(tasks []kanban.Task) []kanban.Task {
+	childrenByParent := map[string]int{}
+	byID := map[string]kanban.Task{}
+	for _, t := range tasks {
+		byID[t.ID] = t
+		if t.ParentID != "" {
+			childrenByParent[t.ParentID]++
+		}
+	}
+	var out []kanban.Task
+	for _, t := range tasks {
+		if t.Status != kanban.TaskStatusReady || childrenByParent[t.ID] > 0 {
+			continue
+		}
+		if t.ParentID != "" {
+			parent, ok := byID[t.ParentID]
+			if !ok || parent.Status == kanban.TaskStatusDraft || parent.Status == kanban.TaskStatusCancelled {
+				continue
+			}
+		}
+		out = append(out, t)
+	}
+	return out
+}
+
+// autoDispatchKanbanTasks drains the session's eligible tasks toward one
+// target, serially: the busy lock admits one run, the rest are reported as
+// skipped and drained later by the autopilot completion hook.
+func (s *Server) autoDispatchKanbanTasks(ctx context.Context, sessionID, hostThreadID, targetID string) (kanbanAutoDispatchResultWire, error) {
+	tasks, err := session.ListAllKanbanTasks(s.rt.SessionDir, sessionID)
+	if err != nil {
+		return kanbanAutoDispatchResultWire{}, err
+	}
+	eligible := kanbanAutoDispatchEligible(tasks)
+	result := kanbanAutoDispatchResultWire{
+		Dispatched: []kanbanRunWire{},
+		Skipped:    []kanbanAutoDispatchSkippedWire{},
+	}
+	busy := false
+	for _, task := range eligible {
+		if busy {
+			result.Skipped = append(result.Skipped, kanbanAutoDispatchSkippedWire{TaskID: task.ID, Reason: "target busy; drains after the active run"})
+			continue
+		}
+		run, err := s.dispatchKanbanRun(ctx, hostThreadID, task.ID, targetID, kanban.RunKindExecute, kanbanAutoDispatchActor)
+		if err != nil {
+			if errors.Is(err, kanban.ErrTargetBusy) {
+				busy = true
+				result.Skipped = append(result.Skipped, kanbanAutoDispatchSkippedWire{TaskID: task.ID, Reason: "target busy; drains after the active run"})
+				continue
+			}
+			result.Skipped = append(result.Skipped, kanbanAutoDispatchSkippedWire{TaskID: task.ID, Reason: err.Error()})
+			continue
+		}
+		busy = true
+		result.Dispatched = append(result.Dispatched, kanbanRunToWire(run))
+	}
+	return result, nil
+}
+
+func (s *Server) handleKanbanAutoDispatch(ctx context.Context, req Request) error {
+	var params KanbanAutoDispatchParams
+	if err := decodeParams(req.Params, &params); err != nil {
+		return s.writeResponse(req.ID, nil, err)
+	}
+	sessionID := strings.TrimSpace(params.SessionID)
+	hostThreadID := strings.TrimSpace(params.ThreadID)
+	if sessionID == "" || hostThreadID == "" {
+		return s.writeResponse(req.ID, nil, errors.New("session_id and thread_id are required"))
+	}
+	targetID := strings.TrimSpace(params.TargetID)
+	if targetID == "" {
+		var err error
+		targetID, err = s.resolveDefaultDispatchTarget()
+		if err != nil {
+			return s.writeResponse(req.ID, nil, err)
+		}
+	}
+	result, err := s.autoDispatchKanbanTasks(ctx, sessionID, hostThreadID, targetID)
+	if err != nil {
+		return s.writeResponse(req.ID, nil, err)
+	}
+	return s.writeResponse(req.ID, result, nil)
+}
+
+// maybeAutoDispatchNextKanbanRun is the autopilot drain: after an auto-batch
+// run reaches a terminal state, offer the session's remaining ready tasks to
+// the same target. Errors only log — the board already reflects the finished
+// run, and any successful follow-up dispatch emits its own kanban/updated.
+func (s *Server) maybeAutoDispatchNextKanbanRun(run kanban.Run) {
+	if run.CreatedBy != kanbanAutoDispatchActor || strings.TrimSpace(run.HostThreadID) == "" {
+		return
+	}
+	if _, err := s.autoDispatchKanbanTasks(context.Background(), run.SessionID, run.HostThreadID, run.TargetID); err != nil {
+		providers.DebugLogf("auto-dispatch drain for session %s: %v", run.SessionID, err)
+	}
+}
+
+// rollupKanbanParent parks a container parent in human review once every
+// child has reached review or done.
+func (s *Server) rollupKanbanParent(taskID string) {
+	task, err := session.GetKanbanTask(s.rt.SessionDir, taskID)
+	if err != nil || task.ParentID == "" {
+		return
+	}
+	siblings, err := session.ListKanbanTasks(s.rt.SessionDir, task.SessionID, task.ParentID)
+	if err != nil || len(siblings) == 0 {
+		return
+	}
+	for _, sibling := range siblings {
+		if sibling.Status != kanban.TaskStatusReview && sibling.Status != kanban.TaskStatusDone {
+			return
+		}
+	}
+	parent, err := session.GetKanbanTask(s.rt.SessionDir, task.ParentID)
+	if err != nil {
+		return
+	}
+	if parent.Status != kanban.TaskStatusReady && parent.Status != kanban.TaskStatusRunning {
+		return
+	}
+	if _, err := session.TransitionKanbanTaskStatus(s.rt.SessionDir, parent.ID, kanban.TaskStatusReview); err != nil {
+		providers.DebugLogf("rollup kanban parent %s to review: %v", parent.ID, err)
+		return
+	}
+	s.notifyKanbanUpdated(parent.SessionID, parent.ID)
+}
+
 // completeKanbanRunForAgent folds a spawned execution's terminal outcome back
 // into its kanban run, collects produced artifacts, and notifies the board.
 // It no-ops for participant runs that are not kanban executions.
@@ -768,11 +941,14 @@ func (s *Server) completeKanbanRunForAgent(participantID, agentID string, status
 		errorMessage = summary
 	}
 	s.collectKanbanRunArtifacts(participantID, run)
-	if _, err := session.CompleteKanbanRun(s.rt.SessionDir, run.ID, runStatus, summary, errorMessage); err != nil {
+	completedRun, err := session.CompleteKanbanRun(s.rt.SessionDir, run.ID, runStatus, summary, errorMessage)
+	if err != nil {
 		providers.DebugLogf("complete kanban run %s for agent %s: %v", run.ID, agentID, err)
 		return
 	}
 	s.notifyKanbanUpdated(run.SessionID, run.TaskID)
+	s.rollupKanbanParent(run.TaskID)
+	s.maybeAutoDispatchNextKanbanRun(completedRun)
 }
 
 // collectKanbanRunArtifacts attributes every file the run left in its output
