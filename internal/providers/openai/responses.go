@@ -689,7 +689,7 @@ func (c *Client) doSingleResponsesRequest(
 			StatusCode:      resp.StatusCode,
 			Body:            body,
 			RetryAfter:      providers.ParseRetryAfter(resp),
-			ContextOverflow: providers.DetectContextOverflow(body),
+			ContextOverflow: providers.DetectContextOverflowForRequest(resp.StatusCode, body),
 		}
 		lease.FailError(err)
 		return nil, nil, err
