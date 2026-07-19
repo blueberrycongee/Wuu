@@ -62,6 +62,17 @@ import type {
   ParticipantSaveResult,
   ParticipantStartParams,
   ParticipantStartResult,
+  ParticipantGetManifestParams,
+  ParticipantSaveManifestParams,
+  ParticipantManifest,
+  KanbanTask,
+  KanbanCreateTaskParams,
+  KanbanTransitionTaskParams,
+  KanbanDispatchRunParams,
+  KanbanRun,
+  KanbanArtifact,
+  KanbanCrystallizeParams,
+  KanbanCrystallizeResult,
   RemoteControlSnapshot,
   RemoteControlStatus,
   ServerEvent,
@@ -1575,6 +1586,51 @@ app.whenReady().then(async () => {
     appServerRequest<ParticipantRetireResult>(event, "participant/retire", {
       participant_id: participantId,
     }),
+  );
+  ipcMain.handle(
+    "wuu:participant-get-manifest",
+    (event, params: ParticipantGetManifestParams) =>
+      appServerRequest<ParticipantManifest>(event, "participant/get-manifest", params),
+  );
+  ipcMain.handle(
+    "wuu:participant-save-manifest",
+    (event, params: ParticipantSaveManifestParams) =>
+      appServerRequest<ParticipantManifest>(event, "participant/save-manifest", params),
+  );
+  ipcMain.handle(
+    "wuu:kanban-list-tasks",
+    (event, params: { session_id: string; parent_id?: string }) =>
+      appServerRequest<KanbanTask[]>(event, "kanban/list-tasks", params),
+  );
+  ipcMain.handle(
+    "wuu:kanban-create-task",
+    (event, params: KanbanCreateTaskParams) =>
+      appServerRequest<KanbanTask>(event, "kanban/create-task", params),
+  );
+  ipcMain.handle(
+    "wuu:kanban-transition-task",
+    (event, params: KanbanTransitionTaskParams) =>
+      appServerRequest<KanbanTask>(event, "kanban/transition-task", params),
+  );
+  ipcMain.handle(
+    "wuu:kanban-dispatch-run",
+    (event, params: KanbanDispatchRunParams) =>
+      appServerRequest<KanbanRun>(event, "kanban/dispatch-run", params),
+  );
+  ipcMain.handle(
+    "wuu:kanban-list-runs",
+    (event, params: { task_id: string }) =>
+      appServerRequest<KanbanRun[]>(event, "kanban/list-runs", params),
+  );
+  ipcMain.handle(
+    "wuu:kanban-list-artifacts",
+    (event, params: { task_id: string }) =>
+      appServerRequest<KanbanArtifact[]>(event, "kanban/list-artifacts", params),
+  );
+  ipcMain.handle(
+    "wuu:kanban-crystallize",
+    (event, params: KanbanCrystallizeParams) =>
+      appServerRequest<KanbanCrystallizeResult>(event, "kanban/crystallize", params),
   );
   // 记忆面板 RPC（memory-redesign.md §8.2）。participant_id 只在
   // participant scope 下附带，避免后端 DisallowUnknownFields 之外的

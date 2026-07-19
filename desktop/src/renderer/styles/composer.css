@@ -1485,6 +1485,18 @@
     box-shadow var(--motion-base) var(--ease-out);
 }
 
+.composer-convert-task-button {
+  background: transparent;
+  color: var(--ink-muted);
+  border: 1px solid var(--hairline);
+}
+
+.composer-convert-task-button:hover {
+  background: var(--surface-2);
+  color: var(--info);
+  border-color: var(--info);
+}
+
 /* Send and stop share the utility-button footprint so the primary action
  * stays clear without overpowering the composer or shifting between states. */
 .composer-send-button,

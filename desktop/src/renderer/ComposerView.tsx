@@ -8,6 +8,7 @@ import {
   FolderOpen,
   FolderX,
   Send,
+  Sparkles,
   Square,
   X
 } from "lucide-react";
@@ -183,7 +184,8 @@ export function Composer({
   placeholder,
   textOnly = false,
   slashCommandsOverride,
-  onResetSideThread
+  onResetSideThread,
+  onConvertToTask,
 }: {
   variant?: ComposerVariant;
   mainConversation?: boolean;
@@ -295,6 +297,8 @@ export function Composer({
   slashCommandsOverride?: ComposerSlashCommand[];
   // Reset the side thread this composer is embedded in.
   onResetSideThread?: () => void;
+  // Convert the current conversation to a kanban task (main conversation only).
+  onConvertToTask?: () => void;
 }): JSX.Element {
   const { locale, t } = useI18n();
   const statusText = composerStatusText(status);
@@ -1203,6 +1207,17 @@ export function Composer({
                       {statusText}
                     </span>
                   </span>
+                ) : null}
+                {onConvertToTask ? (
+                  <button
+                    className="composer-action-button composer-convert-task-button"
+                    type="button"
+                    aria-label={t("composer.convertToTask")}
+                    title={t("composer.convertToTask")}
+                    onClick={onConvertToTask}
+                  >
+                    <Sparkles size={16} aria-hidden="true" />
+                  </button>
                 ) : null}
                 <button
                   className={`composer-action-button ${showComposerStop ? "composer-stop-button" : "composer-send-button"}`}

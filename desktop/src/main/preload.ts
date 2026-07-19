@@ -312,6 +312,24 @@ const api: WuuDesktopApi = {
     ipcRenderer.invoke("wuu:participant-reset", participantId, scope),
   retireParticipant: (participantId) =>
     ipcRenderer.invoke("wuu:participant-retire", participantId),
+  kanbanListTasks: (sessionId, parentId) =>
+    ipcRenderer.invoke("wuu:kanban-list-tasks", { session_id: sessionId, parent_id: parentId }),
+  kanbanCreateTask: (params) =>
+    ipcRenderer.invoke("wuu:kanban-create-task", params),
+  kanbanTransitionTask: (taskId, status) =>
+    ipcRenderer.invoke("wuu:kanban-transition-task", { task_id: taskId, status }),
+  kanbanDispatchRun: (params) =>
+    ipcRenderer.invoke("wuu:kanban-dispatch-run", params),
+  kanbanListRuns: (taskId) =>
+    ipcRenderer.invoke("wuu:kanban-list-runs", { task_id: taskId }),
+  kanbanListArtifacts: (taskId) =>
+    ipcRenderer.invoke("wuu:kanban-list-artifacts", { task_id: taskId }),
+  kanbanCrystallize: (params) =>
+    ipcRenderer.invoke("wuu:kanban-crystallize", params),
+  participantGetManifest: (participantId) =>
+    ipcRenderer.invoke("wuu:participant-get-manifest", { participant_id: participantId }),
+  participantSaveManifest: (params) =>
+    ipcRenderer.invoke("wuu:participant-save-manifest", params),
   getMemoryOverview: (params) =>
     ipcRenderer.invoke("wuu:memory-overview", params),
   sendMemoryChat: (params) => ipcRenderer.invoke("wuu:memory-chat", params),

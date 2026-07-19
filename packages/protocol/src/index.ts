@@ -1052,6 +1052,146 @@ export type ParticipantUpdatedNotification = {
 };
 
 // ---------------------------------------------------------------------------
+// Kanban board (multi-agent task board). Wire contract fixed by the
+// feat/kanban-os backend; methods are forwarded through the app-server bridge
+// with the exact JSON-RPC names and snake_case params below.
+
+export type KanbanTaskStatus =
+  | "draft"
+  | "ready"
+  | "running"
+  | "review"
+  | "done"
+  | "cancelled";
+
+export type KanbanRunStatus =
+  | "queued"
+  | "running"
+  | "succeeded"
+  | "failed"
+  | "interrupted";
+
+export type KanbanRunKind = "execute" | "review";
+
+export type KanbanTask = {
+  id: string;
+  session_id: string;
+  parent_id?: string;
+  title: string;
+  brief?: string;
+  status: KanbanTaskStatus;
+  source_thread_id?: string;
+  created_by?: string;
+  sort_index: number;
+  latest_run_id?: string;
+  created_at: number;
+  updated_at: number;
+  latest_run?: KanbanRun;
+};
+
+export type KanbanRun = {
+  id: string;
+  task_id: string;
+  session_id: string;
+  kind: KanbanRunKind;
+  target_id: string;
+  thread_id?: string;
+  status: KanbanRunStatus;
+  summary?: string;
+  error_message?: string;
+  created_by?: string;
+  created_at: number;
+  started_at?: number;
+  finished_at?: number;
+};
+
+export type KanbanArtifact = {
+  id: string;
+  run_id: string;
+  task_id: string;
+  path: string;
+  display_name?: string;
+  media_type?: string;
+  size_bytes: number;
+  created_at: number;
+};
+
+export type KanbanListTasksParams = {
+  session_id: string;
+  parent_id?: string;
+};
+
+export type KanbanCreateTaskParams = {
+  session_id: string;
+  title: string;
+  brief?: string;
+  parent_id?: string;
+  source_thread_id?: string;
+  status?: KanbanTaskStatus;
+  created_by?: string;
+  sort_index?: number;
+};
+
+export type KanbanTransitionTaskParams = {
+  task_id: string;
+  status: KanbanTaskStatus;
+};
+
+export type KanbanDispatchRunParams = {
+  thread_id: string;
+  task_id: string;
+  target_id: string;
+  kind?: KanbanRunKind;
+  created_by?: string;
+};
+
+export type KanbanListRunsParams = {
+  task_id: string;
+};
+
+export type KanbanListArtifactsParams = {
+  task_id: string;
+};
+
+export type KanbanCrystallizeParams = {
+  thread_id: string;
+  session_id: string;
+  created_by?: string;
+};
+
+export type KanbanCrystallizeSubtask = KanbanTask & {
+  suggested_target_id?: string;
+  suggested_target_name?: string;
+};
+
+export type KanbanCrystallizeResult = {
+  task: KanbanTask;
+  subtasks: KanbanCrystallizeSubtask[];
+};
+
+export type KanbanUpdatedNotification = {
+  session_id?: string;
+  task_id?: string;
+};
+
+export type ParticipantManifest = {
+  skills: string[];
+  permission_tier: "workspace" | "unrestricted";
+  prompt_overlay: string;
+};
+
+export type ParticipantGetManifestParams = {
+  participant_id: string;
+};
+
+export type ParticipantSaveManifestParams = {
+  participant_id: string;
+  skills?: string[];
+  permission_tier?: "workspace" | "unrestricted";
+  prompt_overlay?: string;
+};
+
+// ---------------------------------------------------------------------------
 // Memory panel (设置 → 记忆). Wire contract fixed ahead of implementation by
 // docs/plans/2026-07-04-memory-redesign.md §8.2. The three RPCs are served
 // by the M2 memory-panel backend; a backend without M2 rejects them with an
@@ -2315,6 +2455,30 @@ export type WuuDesktopApi = {
     scope: "restart" | "session" | "full"
   ) => Promise<ParticipantResetResult>;
   retireParticipant: (participantId: string) => Promise<ParticipantRetireResult>;
+  // Kanban board (multi-agent task board).
+  kanbanListTasks: (
+    sessionId: string,
+    parentId?: string,
+  ) => Promise<KanbanTask[]>;
+  kanbanCreateTask: (
+    params: KanbanCreateTaskParams,
+  ) => Promise<KanbanTask>;
+  kanbanTransitionTask: (
+    taskId: string,
+    status: KanbanTaskStatus,
+  ) => Promise<KanbanTask>;
+  kanbanDispatchRun: (
+    params: KanbanDispatchRunParams,
+  ) => Promise<KanbanRun>;
+  kanbanListRuns: (taskId: string) => Promise<KanbanRun[]>;
+  kanbanListArtifacts: (taskId: string) => Promise<KanbanArtifact[]>;
+  kanbanCrystallize: (
+    params: KanbanCrystallizeParams,
+  ) => Promise<KanbanCrystallizeResult>;
+  participantGetManifest: (participantId: string) => Promise<ParticipantManifest>;
+  participantSaveManifest: (
+    params: ParticipantSaveManifestParams,
+  ) => Promise<ParticipantManifest>;
   // 记忆面板（设置 → 记忆）。契约见 memory-redesign.md §8.2；后端 M2
   // 未落地时三个方法都会以 unknown method 错误拒绝，面板渲染占位态。
   getMemoryOverview: (params: MemoryOverviewParams) => Promise<MemoryOverviewResult>;

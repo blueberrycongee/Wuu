@@ -2,6 +2,7 @@
 
 import {
   type CSSProperties,
+  type RefObject,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -175,13 +176,16 @@ import { deriveActiveSessionHints } from "./activeSessionHint";
 import { pullRequestUnavailableReason } from "./RuntimeHelpers";
 import type { SettingsPage } from "./SettingsView";
 import { ArchiveTip } from "./ArchiveTip";
-import type { ComposerGoalSummary } from "../shared/protocol";
+import type { ComposerGoalSummary, KanbanCrystallizeResult } from "../shared/protocol";
 import { useSettingsRuntimeState } from "./SettingsRuntimeState";
 import { SidePanelToggleIcon } from "./SidePanelToggleIcon";
 import { JumpToLatestPill } from "./JumpToLatestPill";
 import { ENABLE_COLLABORATION } from "./FeatureFlags";
 import { SkillsCatalog } from "./SkillsCatalog";
 import { TaskBoardView } from "./TaskBoardView";
+import { KanbanBoardView } from "./KanbanBoardView";
+import { KanbanCrystallizeDialog } from "./KanbanCrystallizeDialog";
+import { CrystallizeOrb } from "./CrystallizeOrb";
 import { runDebugPhaseForState } from "./RunDebugPanel";
 import { useThreadBrowserPreview } from "./ThreadBrowserPreview";
 import { useBrowserVisibility } from "./BrowserVisibility";
@@ -652,6 +656,15 @@ export function App(): JSX.Element {
   // reloads on this tick (its thread may not be the active thread, so the
   // chatSubthreadsNonce path alone would miss it).
   const [boardRefreshTick, setBoardRefreshTick] = useState(0);
+  // In-page kanban board view toggle (message | board). Session-local only.
+  const [kanbanViewMode, setKanbanViewMode] = useState<"message" | "board">("message");
+  // Crystallize flow state.
+  const [crystallizeOpen, setCrystallizeOpen] = useState(false);
+  const [crystallizePending, setCrystallizePending] = useState(false);
+  const [crystallizeResult, setCrystallizeResult] = useState<
+    KanbanCrystallizeResult | undefined
+  >(undefined);
+  const boardToggleRef = useRef<HTMLButtonElement | null>(null);
   const {
     participants,
     setParticipants,
@@ -1546,6 +1559,17 @@ export function App(): JSX.Element {
           setBoardRefreshTick((tick) => tick + 1);
         }
       }
+      // Kanban board changes for this session should refresh the mounted board.
+      if (
+        event.kind === "notification" &&
+        event.message.method === "kanban/updated"
+      ) {
+        const note = event.message.params as { session_id?: string } | undefined;
+        const activeID = activeThreadIDForState(appStateRef.current);
+        if (!note?.session_id || note.session_id === activeID) {
+          setBoardRefreshTick((tick) => tick + 1);
+        }
+      }
       // Workspace-scoped events (project sessions/files/terminals) stay bound
       // to the active context, but global-collaboration threads (DM/group) run
       // under whichever app-server client started them and must pass through so
@@ -1824,6 +1848,7 @@ export function App(): JSX.Element {
   const emptyConversation =
     !showingSkillsCatalog &&
     !showingTaskBoard &&
+    kanbanViewMode === "message" &&
     !activePendingNewThreadTurn &&
     turns.length === 0 &&
     activeContextCompositionEntries.length === 0;
@@ -2810,8 +2835,37 @@ export function App(): JSX.Element {
           activeThreadIsGroup ? (activeThread?.members ?? []) : undefined
         }
         onOpenGroupInfo={openEnvironmentPanel}
+        onConvertToTask={
+          turns.length > 0 && activeThreadID
+            ? handleConvertToTask
+            : undefined
+        }
       />
     );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Kanban "convert conversation to task" flow.
+  // ---------------------------------------------------------------------------
+  async function handleConvertToTask(): Promise<void> {
+    const threadId = activeThreadID;
+    if (!threadId) return;
+    setCrystallizeOpen(true);
+    setCrystallizePending(true);
+    setCrystallizeResult(undefined);
+    setKanbanViewMode("board");
+    try {
+      const result = await window.wuu.kanbanCrystallize({
+        thread_id: threadId,
+        session_id: threadId,
+      });
+      setCrystallizeResult(result);
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error("kanban crystallize failed", error);
+    } finally {
+      setCrystallizePending(false);
+    }
   }
 
   // Lift the open reply subthread (cth) into its own window. threadID is the
@@ -4375,6 +4429,11 @@ export function App(): JSX.Element {
             poppedOutMode={poppedOutMode}
             activeThread={activeThread}
             onOpenTaskBoard={openTaskBoardTab}
+            viewMode={kanbanViewMode}
+            onToggleViewMode={() =>
+              setKanbanViewMode((mode) => (mode === "message" ? "board" : "message"))
+            }
+            boardToggleRef={boardToggleRef}
             environmentToggleRef={environmentToggleRef}
             environmentPanelVisible={environmentPanelVisible}
             activeThreadIsGroup={activeThreadIsGroup}
@@ -4520,7 +4579,7 @@ export function App(): JSX.Element {
           <div
             className={`scroll-region${emptyConversation ? " empty-scroll-region" : ""}${
               splitConversation ? " split-scroll-region" : ""
-            }${showingSkillsCatalog ? " skills-scroll-region" : ""}${showingTaskBoard ? " task-board-scroll-region" : ""}`}
+            }${showingSkillsCatalog ? " skills-scroll-region" : ""}${showingTaskBoard ? " task-board-scroll-region" : ""}${kanbanViewMode === "board" ? " kanban-board-scroll-region" : ""}`}
             onScroll={(event) => handleConversationScroll(event.currentTarget)}
             ref={conversationScrollRef}
           >
@@ -4539,6 +4598,12 @@ export function App(): JSX.Element {
                 onOpenTask={(subthreadID) =>
                   void openTaskFromBoard(boardSessionTab.threadID, subthreadID)
                 }
+              />
+            ) : kanbanViewMode === "board" && activeThreadID ? (
+              <KanbanBoardView
+                sessionId={activeThreadID}
+                refreshToken={boardRefreshTick}
+                onOpenSourceThread={(threadId) => void activateThread(threadId)}
               />
             ) : (
               <>
@@ -4824,6 +4889,33 @@ export function App(): JSX.Element {
             />
           </div>
         </FloatingMenuPortal>
+      ) : null}
+      {crystallizeOpen && activeThreadID ? (
+        <CrystallizeOrb
+          sourceRef={
+            conversationScrollRef as unknown as RefObject<HTMLElement | null>
+          }
+          targetRef={boardToggleRef}
+          pulsing={crystallizePending}
+        />
+      ) : null}
+      {activeThreadID ? (
+        <KanbanCrystallizeDialog
+          threadId={activeThreadID}
+          isOpen={crystallizeOpen}
+          pending={crystallizePending}
+          result={crystallizeResult}
+          participants={participants}
+          onClose={() => {
+            setCrystallizeOpen(false);
+            setCrystallizeResult(undefined);
+          }}
+          onSwitchToBoard={() => {
+            setCrystallizeOpen(false);
+            setCrystallizeResult(undefined);
+            setKanbanViewMode("board");
+          }}
+        />
       ) : null}
       </div>
     </ImagePreviewProvider>

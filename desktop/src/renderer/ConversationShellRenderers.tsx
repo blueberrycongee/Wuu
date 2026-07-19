@@ -11,7 +11,9 @@ import {
   Bug,
   Grid3X3,
   Info,
+  KanbanSquare,
   ListChecks,
+  MessagesSquare,
   Terminal,
 } from "lucide-react";
 import type {
@@ -434,6 +436,9 @@ export type ConversationTitleActionsProps = {
   poppedOutMode: boolean;
   activeThread?: Thread;
   onOpenTaskBoard: (thread: Thread) => void;
+  viewMode: "message" | "board";
+  onToggleViewMode: () => void;
+  boardToggleRef: RefObject<HTMLButtonElement | null>;
   environmentToggleRef: RefObject<HTMLButtonElement | null>;
   environmentPanelVisible: boolean;
   activeThreadIsGroup: boolean;
@@ -470,6 +475,9 @@ export function ConversationTitleActions({
   poppedOutMode,
   activeThread,
   onOpenTaskBoard,
+  viewMode,
+  onToggleViewMode,
+  boardToggleRef,
   environmentToggleRef,
   environmentPanelVisible,
   activeThreadIsGroup,
@@ -582,6 +590,35 @@ export function ConversationTitleActions({
             >
               <ListChecks className="icon-lg" size={18} viewBox="2 2 20 20" />
             </button>
+          ) : null}
+          {activeThread ? (
+            <div className="kanban-view-toggle" role="group" aria-label={t("shell.boardShortcut")}>
+              <button
+                ref={boardToggleRef}
+                className={`icon-button kanban-view-toggle-button${viewMode === "board" ? " active" : ""}`}
+                type="button"
+                aria-label={t("shell.viewBoard")}
+                title={t("shell.viewBoard")}
+                aria-pressed={viewMode === "board"}
+                onClick={() => {
+                  if (viewMode !== "board") onToggleViewMode();
+                }}
+              >
+                <KanbanSquare className="icon-lg" size={18} />
+              </button>
+              <button
+                className={`icon-button kanban-view-toggle-button${viewMode === "message" ? " active" : ""}`}
+                type="button"
+                aria-label={t("shell.viewMessages")}
+                title={t("shell.viewMessages")}
+                aria-pressed={viewMode === "message"}
+                onClick={() => {
+                  if (viewMode !== "message") onToggleViewMode();
+                }}
+              >
+                <MessagesSquare className="icon-lg" size={18} />
+              </button>
+            </div>
           ) : null}
           <button
             ref={environmentToggleRef}

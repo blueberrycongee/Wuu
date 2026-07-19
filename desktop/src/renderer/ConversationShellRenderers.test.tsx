@@ -147,6 +147,9 @@ describe("ConversationTitleActions icon sizing", () => {
           onToggleEnvironmentPanel={() => {}}
           rightPanelOpen={false}
           onToggleRightPanel={() => {}}
+          viewMode="message"
+          onToggleViewMode={() => {}}
+          boardToggleRef={{ current: null }}
         />,
       );
     });
@@ -220,6 +223,9 @@ describe("ConversationTitleActions icon sizing", () => {
             onToggleEnvironmentPanel={() => {}}
             rightPanelOpen={false}
             onToggleRightPanel={() => {}}
+            viewMode="message"
+            onToggleViewMode={() => {}}
+            boardToggleRef={{ current: null }}
           />,
         );
       });
