@@ -1501,28 +1501,39 @@ function SettingsGeneralPage({
   const [gitAttributionBusy, setGitAttributionBusy] = useState(false);
   const [gitAttributionError, setGitAttributionError] = useState("");
   const [generalError, setGeneralError] = useState("");
-  const [generalSaved, setGeneralSaved] = useState(false);
 
   useEffect(() => {
     setAppendSystemPromptDraft(generalSettings?.append_system_prompt ?? "");
     setMemoryDisabledDraft(generalSettings?.memory_disabled ?? false);
     setMCPEnabledDraft({ ...configuredMCPEnabled });
     setGeneralError("");
-    setGeneralSaved(false);
   }, [generalSettings?.append_system_prompt, generalSettings?.memory_disabled, configuredMCPKey]);
 
-  async function submitGeneral(event: ReactFormEvent<HTMLFormElement>): Promise<void> {
-    event.preventDefault();
+  // Instant-apply, same model as the MCP toggles below: the textarea
+  // commits on blur, the memory switch persists immediately, and only
+  // failures speak — inline at the foot of the section.
+  async function commitAppendSystemPrompt(): Promise<void> {
+    const next = appendSystemPromptDraft.trim();
+    if (next === (generalSettings?.append_system_prompt ?? "")) {
+      return;
+    }
     setGeneralError("");
-    setGeneralSaved(false);
     try {
-      await onGeneralSave({
-        append_system_prompt: appendSystemPromptDraft.trim(),
-        memory_disable: memoryDisabledDraft,
-      });
-      setGeneralSaved(true);
-    } catch (saveError) {
-      setGeneralError(saveError instanceof Error ? saveError.message : t("settings.saveFailed"));
+      await onGeneralSave({ append_system_prompt: next });
+    } catch (error) {
+      setGeneralError(error instanceof Error ? error.message : t("settings.saveFailed"));
+    }
+  }
+
+  async function toggleMemoryDisabled(): Promise<void> {
+    const next = !memoryDisabledDraft;
+    setMemoryDisabledDraft(next);
+    setGeneralError("");
+    try {
+      await onGeneralSave({ memory_disable: next });
+    } catch (error) {
+      setMemoryDisabledDraft(!next);
+      setGeneralError(error instanceof Error ? error.message : t("settings.saveFailed"));
     }
   }
 
@@ -1693,7 +1704,7 @@ function SettingsGeneralPage({
       </SettingsSection>
 
       <SettingsSection title={t("settings.behavior")} testID="settings-general">
-        <form className="settings-card" onSubmit={submitGeneral}>
+        <SettingsCard>
           <SettingsRow
             title={t("settings.additionalPrompt")}
             description={t("settings.additionalPromptDescription")}
@@ -1706,8 +1717,8 @@ function SettingsGeneralPage({
               rows={5}
               onChange={(event) => {
                 setAppendSystemPromptDraft(event.target.value);
-                setGeneralSaved(false);
               }}
+              onBlur={() => void commitAppendSystemPrompt()}
               disabled={running || !initialized}
             />
           </SettingsRow>
@@ -1721,10 +1732,7 @@ function SettingsGeneralPage({
               role="switch"
               aria-checked={!memoryDisabledDraft}
               disabled={running || !initialized}
-              onClick={() => {
-                setMemoryDisabledDraft((value) => !value);
-                setGeneralSaved(false);
-              }}
+              onClick={() => void toggleMemoryDisabled()}
             >
               <span className="settings-switch-thumb" aria-hidden="true" />
               <span className="sr-only">{memoryDisabledDraft ? t("settings.enableMemory") : t("settings.disableMemory")}</span>
@@ -1754,18 +1762,12 @@ function SettingsGeneralPage({
               </small>
             ) : null}
           </SettingsRow>
-        <div className="settings-row settings-row-footer">
-            {generalError ? <div className="settings-error">{generalError}</div> : null}
-            {generalSaved && !generalError ? <div className="settings-saved">{t("settings.saved")}</div> : null}
-            <button
-              className="settings-button settings-button-primary"
-              type="submit"
-              disabled={running || !initialized}
-            >
-              {t("settings.save")}
-            </button>
-          </div>
-        </form>
+          {generalError ? (
+            <div className="settings-row settings-row-footer">
+              <div className="settings-error">{generalError}</div>
+            </div>
+          ) : null}
+        </SettingsCard>
       </SettingsSection>
 
       <SettingsSection title={t("settings.mcpServers")} testID="settings-mcp">

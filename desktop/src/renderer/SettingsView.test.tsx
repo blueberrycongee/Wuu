@@ -720,14 +720,25 @@ describe("SettingsView general settings", () => {
     await act(async () => {
       setInputValue(textarea!, "默认用中文回答。");
     });
+    // The prompt commits on blur, sending only its own field.
+    await act(async () => {
+      textarea!.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
+      await Promise.resolve();
+    });
+    expect(onGeneralSave).toHaveBeenCalledWith({
+      append_system_prompt: "默认用中文回答。",
+    });
 
+    // The memory switch saves immediately, optimistic with rollback on failure.
     const memorySwitch = Array.from(container.querySelectorAll("button[role=\"switch\"]")).find((button) =>
       button.textContent?.includes("关闭记忆"),
     ) as HTMLButtonElement | undefined;
     expect(memorySwitch).not.toBeUndefined();
     await act(async () => {
       memorySwitch?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
     });
+    expect(onGeneralSave).toHaveBeenCalledWith({ memory_disable: true });
 
     // MCP toggles now save immediately on switch, sending only the toggle map.
     const docsSwitch = container.querySelector("[data-testid=\"settings-mcp-enabled-docs\"]") as HTMLButtonElement | null;
@@ -743,19 +754,12 @@ describe("SettingsView general settings", () => {
       },
     });
 
-    const submitButton = Array.from(container.querySelectorAll("button")).find((button) =>
-      button.textContent?.includes("保存"),
-    ) as HTMLButtonElement | undefined;
-    expect(submitButton?.disabled).toBe(false);
-    await act(async () => {
-      submitButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-      await Promise.resolve();
-    });
-
-    expect(onGeneralSave).toHaveBeenCalledWith({
-      append_system_prompt: "默认用中文回答。",
-      memory_disable: true,
-    });
+    // Instant-apply: no draft form, no Save button on the page.
+    expect(
+      Array.from(container.querySelectorAll("button")).some((button) =>
+        button.textContent?.includes("保存"),
+      ),
+    ).toBe(false);
   });
 
   it("renders Codex Pets controls and saves pet selection", async () => {
