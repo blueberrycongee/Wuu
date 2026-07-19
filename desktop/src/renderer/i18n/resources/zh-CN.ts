@@ -1709,6 +1709,8 @@ export const zhCN = {
   "settings.messageFontSizeSampleIntro": "先看一下 README 的目录约定，再读一个相邻页面的 CSS——把改动控制在同一套既有规范里。",
   "settings.messageFontSizeSampleScope": "- 改动只落在 `desktop/src/renderer`，不动 Go 核心",
   "settings.messageFontSizeSampleTests": "- 顺手跑一下单元测试，免得新代码悄悄破坏既有流程",
+  "settings.messageFontSizeSampleUser2": "测试过了，把结果同步一下。",
+  "settings.messageFontSizeSampleReply2": "已同步：12 个用例全部通过，没有回归。过程区的分组逻辑也一并收敛了。",
   "chipGallery.title": "Chip 图鉴",
   "chipGallery.descriptionPrefix": "Turn-level 用户通知 Chip 的设计系统图鉴。所有变体由",
   "chipGallery.descriptionSuffix": "统一渲染，与对话流中看到的一致。点击背景关闭。",

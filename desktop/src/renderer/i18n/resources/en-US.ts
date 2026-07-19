@@ -1711,6 +1711,8 @@ export const enUS = {
   "settings.messageFontSizeSampleIntro": "Review the README directory conventions, then read the CSS for a nearby page so the change stays within the existing system.",
   "settings.messageFontSizeSampleScope": "- Keep changes inside `desktop/src/renderer`; leave the Go core untouched",
   "settings.messageFontSizeSampleTests": "- Run the unit tests so the new code does not quietly break an existing flow",
+  "settings.messageFontSizeSampleUser2": "Tests passed — share the result.",
+  "settings.messageFontSizeSampleReply2": "Synced: all 12 cases pass with no regressions, and the process-pane grouping now follows the same rules.",
   "chipGallery.title": "Chip gallery",
   "chipGallery.descriptionPrefix": "A design-system gallery of turn-level notification Chips. Every variant is rendered through",
   "chipGallery.descriptionSuffix": "so it matches the conversation flow. Click the backdrop to close.",
