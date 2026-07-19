@@ -1725,7 +1725,7 @@ function SettingsGeneralPage({
           <SettingsRow title={t("settings.language")}>
             <LanguagePreferenceControl />
           </SettingsRow>
-          <SettingsRow title={t("settings.theme")}>
+          <SettingsRow title={t("settings.theme")} block>
             <ThemePreferenceControl />
           </SettingsRow>
           <SettingsRow title={t("settings.messageFontSize")} block>
@@ -1734,63 +1734,66 @@ function SettingsGeneralPage({
           <SettingsRow
             title={t("settings.codexPet")}
             description={t("settings.petSource", { path: codexPets?.home ?? "~/.wuu/pets" })}
-            block
           >
-            <div className="settings-codex-pets-controls">
-              <button
-                className="settings-switch"
-                type="button"
-                role="switch"
-                aria-checked={codexPetEnabled}
-                data-testid="settings-codex-pet-enabled"
-                disabled={codexPetsLoading || codexPetBusy || codexPetOptions.length === 0}
-                onClick={() => void updateCodexPets({ enabled: !codexPetEnabled })}
-              >
-                <span className="settings-switch-thumb" aria-hidden="true" />
-                <span className="sr-only">{codexPetEnabled ? t("settings.disablePet") : t("settings.enablePet")}</span>
-              </button>
-              <select
-                className="settings-select settings-codex-pet-select"
-                aria-label={t("settings.selectPet")}
-                data-testid="settings-codex-pet-select"
+            {codexPetOptions.length > 0 ? (
+              <SelectMenu
+                className="settings-codex-pet-select"
+                triggerClassName="settings-select-trigger"
+                ariaLabel={t("settings.selectPet")}
+                dataTestid="settings-codex-pet-select"
                 value={codexPetSelectedID}
-                disabled={codexPetsLoading || codexPetBusy || codexPetOptions.length === 0}
-                onChange={(event) => void updateCodexPets({ selected_id: event.currentTarget.value })}
-              >
-                {codexPetOptions.length === 0 ? (
-                  <option value="">{t("settings.noLocalPets")}</option>
-                ) : (
-                  codexPetOptions.map((pet) => (
-                    <option key={pet.id} value={pet.id}>
-                      {pet.display_name}
-                    </option>
-                  ))
-                )}
-              </select>
-              <button
-                className="settings-button settings-icon-button"
-                type="button"
-                title={t("settings.refreshPets")}
-                aria-label={t("settings.refreshPets")}
-                disabled={codexPetsLoading || codexPetBusy}
-                onClick={() => void refreshCodexPets()}
-              >
-                <RefreshCw size={15} aria-hidden="true" />
-              </button>
-            </div>
-            {codexPetsLoading ? <small className="settings-muted-line">{t("settings.loadingPets")}</small> : null}
-            {!codexPetsLoading && codexPetOptions.length === 0 ? (
-              <small className="settings-muted-line">
-                {t("settings.petInstallHint")}
-              </small>
-            ) : null}
-            {codexPets?.errors.length ? (
-              <small className="settings-muted-line settings-error">
-                {codexPets.errors[0]}
-              </small>
-            ) : null}
-            {codexPetStatus ? <small className="settings-muted-line settings-error">{codexPetStatus}</small> : null}
+                disabled={codexPetsLoading || codexPetBusy || !codexPetEnabled}
+                onChange={(next) => void updateCodexPets({ selected_id: next })}
+                options={codexPetOptions.map((pet) => ({
+                  value: pet.id,
+                  label: pet.display_name
+                }))}
+              />
+            ) : (
+              <span className="settings-inline-flag">{t("settings.noLocalPets")}</span>
+            )}
+            <button
+              className="settings-button settings-icon-button"
+              type="button"
+              title={t("settings.refreshPets")}
+              aria-label={t("settings.refreshPets")}
+              disabled={codexPetsLoading || codexPetBusy}
+              onClick={() => void refreshCodexPets()}
+            >
+              <RefreshCw size={15} aria-hidden="true" />
+            </button>
+            <button
+              className="settings-switch"
+              type="button"
+              role="switch"
+              aria-checked={codexPetEnabled}
+              data-testid="settings-codex-pet-enabled"
+              disabled={codexPetsLoading || codexPetBusy || codexPetOptions.length === 0}
+              onClick={() => void updateCodexPets({ enabled: !codexPetEnabled })}
+            >
+              <span className="settings-switch-thumb" aria-hidden="true" />
+              <span className="sr-only">{codexPetEnabled ? t("settings.disablePet") : t("settings.enablePet")}</span>
+            </button>
           </SettingsRow>
+          {codexPetsLoading ||
+          (!codexPetsLoading && codexPetOptions.length === 0) ||
+          codexPets?.errors.length ||
+          codexPetStatus ? (
+            <div className="settings-row settings-row-block">
+              {codexPetsLoading ? <small className="settings-muted-line">{t("settings.loadingPets")}</small> : null}
+              {!codexPetsLoading && codexPetOptions.length === 0 ? (
+                <small className="settings-muted-line">
+                  {t("settings.petInstallHint")}
+                </small>
+              ) : null}
+              {codexPets?.errors.length ? (
+                <small className="settings-muted-line settings-error">
+                  {codexPets.errors[0]}
+                </small>
+              ) : null}
+              {codexPetStatus ? <small className="settings-muted-line settings-error">{codexPetStatus}</small> : null}
+            </div>
+          ) : null}
         </SettingsCard>
       </SettingsSection>
 

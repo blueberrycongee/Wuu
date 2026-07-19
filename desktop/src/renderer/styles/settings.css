@@ -870,6 +870,129 @@
   border-style: solid;
 }
 
+/* --- Theme picker ------------------------------------------------------------
+ * Visual radio cards, same selection language as the provider tiles: a
+ * resting hairline, a strong border on the active card instead of a fill.
+ * Each preview is a tiny window mockup of the theme — "system" splits
+ * light/dark — so previews use fixed local colors, never theme tokens.
+ * ----------------------------------------------------------------------------- */
+
+.settings-theme-options {
+  display: flex;
+  gap: 8px;
+}
+
+.settings-theme-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  background: transparent;
+  padding: 0;
+}
+
+.settings-theme-preview {
+  display: block;
+  overflow: hidden;
+  width: 120px;
+  height: 76px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  transition:
+    border-color var(--motion-fast) var(--menu-enter-easing),
+    box-shadow var(--motion-fast) var(--menu-enter-easing);
+}
+
+.settings-theme-card:hover .settings-theme-preview {
+  border-color: var(--hairline-strong);
+}
+
+.settings-theme-card.active .settings-theme-preview {
+  border-color: var(--gray-800);
+  box-shadow: inset 0 0 0 1px var(--gray-800);
+}
+
+.settings-theme-card-label {
+  color: var(--ink-soft);
+  font-size: var(--font-sm);
+}
+
+.settings-theme-card.active .settings-theme-card-label {
+  color: var(--ink);
+  font-weight: var(--weight-medium);
+}
+
+.settings-theme-preview-window {
+  display: flex;
+  width: 100%;
+  height: 100%;
+}
+
+.settings-theme-preview-sidebar {
+  flex: 0 0 26%;
+}
+
+.settings-theme-preview-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+}
+
+.settings-theme-preview-line {
+  display: block;
+  width: 100%;
+  height: 4px;
+  border-radius: 2px;
+}
+
+.settings-theme-preview-line-title {
+  width: 60%;
+  height: 5px;
+}
+
+.settings-theme-preview-line-short {
+  width: 45%;
+}
+
+.settings-theme-preview-light .settings-theme-preview-window {
+  background: #ffffff;
+}
+
+.settings-theme-preview-light .settings-theme-preview-sidebar {
+  background: #f7f7f5;
+}
+
+.settings-theme-preview-light .settings-theme-preview-line {
+  background: #e5e5e1;
+}
+
+.settings-theme-preview-dark .settings-theme-preview-window {
+  background: #1d2024;
+}
+
+.settings-theme-preview-dark .settings-theme-preview-sidebar {
+  background: #141618;
+}
+
+.settings-theme-preview-dark .settings-theme-preview-line {
+  background: #3a4046;
+}
+
+.settings-theme-preview-system .settings-theme-preview-window {
+  background: linear-gradient(to right, #ffffff 50%, #1d2024 50%);
+}
+
+.settings-theme-preview-system .settings-theme-preview-sidebar {
+  background: linear-gradient(to right, #f7f7f5 50%, #141618 50%);
+}
+
+.settings-theme-preview-system .settings-theme-preview-line {
+  background: linear-gradient(to right, #e5e5e1 50%, #3a4046 50%);
+}
+
 /* --- MCP list + extensions + pets ------------------------------------------------ */
 
 .settings-mcp-list {
@@ -907,18 +1030,9 @@
   padding: 8px 0;
 }
 
-.settings-codex-pets-controls {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  min-width: 0;
-}
-
 .settings-codex-pet-select {
-  flex: 1;
+  max-width: 200px;
   min-width: 0;
-  max-width: 280px;
 }
 
 /* --- Usage page ------------------------------------------------------------------ */

@@ -795,7 +795,7 @@ describe("SettingsView general settings", () => {
       initialPage: "general",
       initialized: baseInitialized(),
       codexPets: emptyCodexPetsSnapshot({
-        enabled: false,
+        enabled: true,
         selected_id: "alpha",
         pets: [
           {
@@ -821,7 +821,6 @@ describe("SettingsView general settings", () => {
 
     expect(rootText()).toContain("Codex Pet");
     expect(rootText()).toContain("Alpha Pet");
-    expect(rootText()).toContain("Beta Pet");
 
     const petSwitch = container.querySelector("[data-testid=\"settings-codex-pet-enabled\"]") as HTMLButtonElement | null;
     expect(petSwitch).not.toBeNull();
@@ -829,13 +828,21 @@ describe("SettingsView general settings", () => {
       petSwitch?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
       await Promise.resolve();
     });
-    expect(onCodexPetsUpdate).toHaveBeenCalledWith({ enabled: true });
+    expect(onCodexPetsUpdate).toHaveBeenCalledWith({ enabled: false });
 
-    const select = container.querySelector("[data-testid=\"settings-codex-pet-select\"]") as HTMLSelectElement | null;
-    expect(select).not.toBeNull();
+    // The pet picker is the shared SelectMenu, not a native select.
+    const petSelect = container.querySelector("[data-testid=\"settings-codex-pet-select\"]") as HTMLButtonElement | null;
+    expect(petSelect).not.toBeNull();
+    expect(petSelect?.tagName).toBe("BUTTON");
     await act(async () => {
-      select!.value = "beta";
-      select?.dispatchEvent(new Event("change", { bubbles: true }));
+      petSelect?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    const betaOption = Array.from(
+      document.querySelectorAll<HTMLButtonElement>(".select-menu-panel .select-menu-item"),
+    ).find((item) => item.getAttribute("data-value") === "beta");
+    expect(betaOption?.textContent).toContain("Beta Pet");
+    await act(async () => {
+      betaOption?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
       await Promise.resolve();
     });
     expect(onCodexPetsUpdate).toHaveBeenCalledWith({ selected_id: "beta" });
