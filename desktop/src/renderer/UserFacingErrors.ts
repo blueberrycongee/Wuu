@@ -68,6 +68,21 @@ function httpTitle(code: string): string {
   return key ? `${code} ${t(key)}` : code;
 }
 
+// Context-window overflow phrasings observed across providers. Shared by
+// the category classifier and the title resolver so live structured errors
+// and rebuilt message-only errors land on the same display.
+function hasContextOverflowPhrasing(lower: string): boolean {
+  return (
+    lower.includes("context_length_exceeded") ||
+    lower.includes("context window") ||
+    lower.includes("maximum context length") ||
+    lower.includes("prompt is too long") ||
+    lower.includes("input is too long") ||
+    lower.includes("exceeded model token limit") ||
+    (lower.includes("message size") && lower.includes("exceeds limit"))
+  );
+}
+
 function structuredStatusFact(structured: TurnError | undefined): string | undefined {
   const statusCode = structured?.status_code;
   if (typeof statusCode !== "number" || !Number.isFinite(statusCode) || statusCode <= 0) {
@@ -139,11 +154,7 @@ function extractSpecificDisplay(
       if (isResponseCompletedMissingMessage(lower)) {
         return { title: t("error.responseIncomplete") };
       }
-      if (
-        lower.includes("context_length_exceeded") ||
-        lower.includes("context window") ||
-        lower.includes("maximum context length")
-      ) {
+      if (hasContextOverflowPhrasing(lower)) {
         return { title: t("error.contextExceeded") };
       }
       if (lower.includes("too many tokens")) return { title: t("error.tokenLimitExceeded") };
@@ -227,12 +238,17 @@ export function userFacingErrorForMessage(
     ? extractSpecificDisplay(structuredCode, category)
     : {};
   const statusFact = structuredStatusFact(structured);
+  // Context-overflow phrasing is an identity, not a keyword guess: like the
+  // embedded HTTP status it survives history rebuilds, so it shares the top
+  // precedence instead of losing to the transport status fact.
+  const overflowTitle = hasContextOverflowPhrasing(message.toLowerCase()) ? t("error.contextExceeded") : undefined;
   const traceableFailureTitle = statusFact
     ? `${t("error.requestFailedTitle")} · ${statusFact}`
     : category === "provider" && structuredCode && !specific.title && !specificFromCode.title
       ? `${t("error.requestFailedTitle")} · ${structuredCode}`
       : undefined;
   const title =
+    overflowTitle ||
     traceableFailureTitle ||
     specific.title ||
     specificFromCode.title ||
@@ -417,9 +433,7 @@ function isNetworkOrUpstreamError(message: string): boolean {
 function isProviderBusinessError(message: string): boolean {
   return (
     isResponseCompletedMissingMessage(message) ||
-    message.includes("context_length_exceeded") ||
-    message.includes("context window") ||
-    message.includes("maximum context length") ||
+    hasContextOverflowPhrasing(message) ||
     message.includes("too many tokens") ||
     message.includes("empty response") ||
     message.includes("empty answer") ||
