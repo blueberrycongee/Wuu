@@ -498,7 +498,7 @@ describe("SettingsView provider configuration", () => {
 });
 
 describe("SettingsView advanced settings", () => {
-  it("renders and saves BYOK context and compaction controls", async () => {
+  it("renders compaction controls and saves each field on commit", async () => {
     installBuildInfoStub({
       core: undefined,
       desktop: { version: "0.0.0-test", date: "1970-01-01T00:00:00Z" },
@@ -532,6 +532,12 @@ describe("SettingsView advanced settings", () => {
     expect(rootText()).toContain("当前服务上下文上限");
     expect(rootText()).toContain("来自当前通道输入上限");
     expect(rootText()).toContain("400,000");
+    // Instant-apply: no draft form, no Save button.
+    expect(
+      Array.from(container.querySelectorAll("button")).some((button) =>
+        button.textContent?.includes("保存"),
+      ),
+    ).toBe(false);
 
     const inputs = Array.from(container.querySelectorAll("input"));
     expect(inputs.length).toBeGreaterThanOrEqual(6);
@@ -539,36 +545,65 @@ describe("SettingsView advanced settings", () => {
     expect((temperature as HTMLInputElement).value).toBe("");
     // The placeholder carries the automatic-value meaning instead of the row description.
     expect((temperature as HTMLInputElement).placeholder).toBe("自动");
+
+    const commit = async (input: Element) => {
+      await act(async () => {
+        input.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
+        await Promise.resolve();
+      });
+    };
+
     await act(async () => {
       setInputValue(compactThreshold, "50");
-      setInputValue(compactKeepRecent, "20000");
-      setInputValue(providerContextWindow, "512000");
-      setInputValue(maxContextTokens, "256000");
-      setInputValue(maxSteps, "12");
-      setInputValue(temperature, "0.4");
-    });
-
-    const submitButton = Array.from(container.querySelectorAll("button")).find((button) =>
-      button.textContent?.includes("保存"),
-    ) as HTMLButtonElement | undefined;
-    expect(submitButton?.disabled).toBe(false);
-    await act(async () => {
-      submitButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      compactThreshold.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
       await Promise.resolve();
     });
+    expect(onAdvancedSave).toHaveBeenLastCalledWith({ compact_threshold_pct: 0.5 });
 
-    expect(onAdvancedSave).toHaveBeenCalledWith({
-      disable_auto_compact: false,
-      compact_threshold_pct: 0.5,
-      compact_keep_recent_tokens: 20000,
-      provider_context_window: 512000,
-      max_context_tokens: 256000,
-      max_steps: 12,
-      temperature: 0.4,
+    await act(async () => {
+      setInputValue(compactKeepRecent, "30000");
     });
+    await commit(compactKeepRecent);
+    expect(onAdvancedSave).toHaveBeenLastCalledWith({ compact_keep_recent_tokens: 30000 });
+
+    await act(async () => {
+      setInputValue(providerContextWindow, "512000");
+    });
+    await commit(providerContextWindow);
+    expect(onAdvancedSave).toHaveBeenLastCalledWith({ provider_context_window: 512000 });
+
+    await act(async () => {
+      setInputValue(maxContextTokens, "256000");
+    });
+    await commit(maxContextTokens);
+    expect(onAdvancedSave).toHaveBeenLastCalledWith({ max_context_tokens: 256000 });
+
+    await act(async () => {
+      setInputValue(maxSteps, "12");
+    });
+    await commit(maxSteps);
+    expect(onAdvancedSave).toHaveBeenLastCalledWith({ max_steps: 12 });
+
+    await act(async () => {
+      setInputValue(temperature, "0.4");
+    });
+    await commit(temperature);
+    expect(onAdvancedSave).toHaveBeenLastCalledWith({ temperature: 0.4 });
+
+    // Blurring an untouched field does not round-trip the same value.
+    const callsBefore = onAdvancedSave.mock.calls.length;
+    await commit(temperature);
+    expect(onAdvancedSave.mock.calls.length).toBe(callsBefore);
+
+    const switchButton = container.querySelector(".settings-switch") as HTMLButtonElement;
+    await act(async () => {
+      switchButton.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+    expect(onAdvancedSave).toHaveBeenLastCalledWith({ disable_auto_compact: true });
   });
 
-  it("saves blank temperature as Auto", async () => {
+  it("saves cleared temperature as Auto on commit", async () => {
     installBuildInfoStub({
       core: undefined,
       desktop: { version: "0.0.0-test", date: "1970-01-01T00:00:00Z" },
@@ -592,19 +627,20 @@ describe("SettingsView advanced settings", () => {
       await Promise.resolve();
     });
 
-    const submitButton = Array.from(container.querySelectorAll("button")).find((button) =>
-      button.textContent?.includes("保存"),
-    ) as HTMLButtonElement | undefined;
+    const temperature = Array.from(container.querySelectorAll("input")).at(-1) as HTMLInputElement;
     await act(async () => {
-      submitButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      setInputValue(temperature, "0.4");
+      temperature.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
       await Promise.resolve();
     });
+    expect(onAdvancedSave).toHaveBeenLastCalledWith({ temperature: 0.4 });
 
-    expect(onAdvancedSave).toHaveBeenCalledWith(
-      expect.objectContaining({
-        temperature: 0,
-      }),
-    );
+    await act(async () => {
+      setInputValue(temperature, "");
+      temperature.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
+      await Promise.resolve();
+    });
+    expect(onAdvancedSave).toHaveBeenLastCalledWith({ temperature: 0 });
   });
 });
 

@@ -212,9 +212,12 @@ export function SettingsView({
   const [maxStepsDraft, setMaxStepsDraft] = useState("0");
   const [temperatureDraft, setTemperatureDraft] = useState("");
   const [advancedError, setAdvancedError] = useState("");
-  const [advancedSaved, setAdvancedSaved] = useState(false);
   const [copyState, setCopyState] = useState<CopyState>("idle");
   const settingsScrollRef = useRef<HTMLDivElement>(null);
+  // Last persisted draft of each numeric advanced field, recorded when
+  // initialized state syncs in and after every successful commit. Blurring
+  // an untouched field is a no-op instead of a redundant IPC round-trip.
+  const advancedCommittedRef = useRef<Record<string, string>>({});
 
   useEffect(() => {
     setActivePage(availableSettingsPage(initialPage));
@@ -286,15 +289,23 @@ export function SettingsView({
 
   useEffect(() => {
     const advanced = initialized?.advanced_settings;
+    const synced = {
+      compactThreshold: formatPercentDraft(advanced?.compact_threshold_pct),
+      compactKeepRecent: formatOptionalNumberDraft(advanced?.compact_keep_recent_tokens),
+      providerContextWindow: formatOptionalNumberDraft(advanced?.provider_context_window),
+      maxContextTokens: formatOptionalNumberDraft(advanced?.max_context_tokens),
+      maxSteps: String(advanced?.max_steps ?? 0),
+      temperature: formatTemperatureDraft(advanced?.temperature)
+    };
     setAutoCompactDraft(!(advanced?.disable_auto_compact ?? false));
-    setCompactThresholdDraft(formatPercentDraft(advanced?.compact_threshold_pct));
-    setCompactKeepRecentDraft(formatOptionalNumberDraft(advanced?.compact_keep_recent_tokens));
-    setProviderContextWindowDraft(formatOptionalNumberDraft(advanced?.provider_context_window));
-    setMaxContextTokensDraft(formatOptionalNumberDraft(advanced?.max_context_tokens));
-    setMaxStepsDraft(String(advanced?.max_steps ?? 0));
-    setTemperatureDraft(formatTemperatureDraft(advanced?.temperature));
+    setCompactThresholdDraft(synced.compactThreshold);
+    setCompactKeepRecentDraft(synced.compactKeepRecent);
+    setProviderContextWindowDraft(synced.providerContextWindow);
+    setMaxContextTokensDraft(synced.maxContextTokens);
+    setMaxStepsDraft(synced.maxSteps);
+    setTemperatureDraft(synced.temperature);
+    advancedCommittedRef.current = synced;
     setAdvancedError("");
-    setAdvancedSaved(false);
   }, [initialized?.advanced_settings, initialized?.provider, initialized?.model]);
 
   function changeProvider(provider: string): void {
@@ -496,28 +507,88 @@ export function SettingsView({
     }
   }
 
-  async function submitAdvanced(event: ReactFormEvent<HTMLFormElement>): Promise<void> {
-    event.preventDefault();
+  // Instant-apply: the switch persists immediately (rolling back on
+  // failure); numeric drafts persist on blur/Enter after per-field
+  // validation. No Save button, no "saved" confirmation — the control
+  // staying put is the confirmation, consistent with the MCP toggles.
+  function toggleAutoCompact(): void {
+    const next = !autoCompactDraft;
+    setAutoCompactDraft(next);
     setAdvancedError("");
-    setAdvancedSaved(false);
-    const update = parseAdvancedSettingsDraft({
-      autoCompact: autoCompactDraft,
+    void onAdvancedSave({ disable_auto_compact: !next }).catch((saveError: unknown) => {
+      setAutoCompactDraft(!next);
+      setAdvancedError(saveError instanceof Error ? saveError.message : t("settings.saveFailed"));
+    });
+  }
+
+  async function commitAdvancedField(field: AdvancedNumericField): Promise<void> {
+    const drafts: Record<AdvancedNumericField, string> = {
       compactThreshold: compactThresholdDraft,
       compactKeepRecent: compactKeepRecentDraft,
       providerContextWindow: providerContextWindowDraft,
       maxContextTokens: maxContextTokensDraft,
       maxSteps: maxStepsDraft,
-      temperature: temperatureDraft,
-    }, t);
-    if (update.error) {
-      setAdvancedError(update.error);
+      temperature: temperatureDraft
+    };
+    const draft = drafts[field];
+    if (advancedCommittedRef.current[field] === draft) {
       return;
     }
+    let update: RuntimeAdvancedSettingsUpdate | undefined;
+    let validationError = "";
+    switch (field) {
+      case "compactThreshold": {
+        const parsed = parseOptionalNumber(draft, t("settings.compactThreshold"), t);
+        if (parsed.error) {
+          validationError = parsed.error;
+        } else if (parsed.value >= 100) {
+          validationError = t("validation.compactThreshold");
+        } else {
+          update = { compact_threshold_pct: parsed.value > 0 ? parsed.value / 100 : 0 };
+        }
+        break;
+      }
+      case "compactKeepRecent": {
+        const parsed = parseOptionalInteger(draft, t("settings.keepRecentContext"), t);
+        if (parsed.error) validationError = parsed.error;
+        else update = { compact_keep_recent_tokens: parsed.value };
+        break;
+      }
+      case "providerContextWindow": {
+        const parsed = parseOptionalInteger(draft, t("settings.providerContextLimit"), t);
+        if (parsed.error) validationError = parsed.error;
+        else update = { provider_context_window: parsed.value };
+        break;
+      }
+      case "maxContextTokens": {
+        const parsed = parseOptionalInteger(draft, t("settings.unknownModelLimit"), t);
+        if (parsed.error) validationError = parsed.error;
+        else update = { max_context_tokens: parsed.value };
+        break;
+      }
+      case "maxSteps": {
+        const parsed = parseOptionalInteger(draft, t("settings.maxSteps"), t);
+        if (parsed.error) validationError = parsed.error;
+        else update = { max_steps: parsed.value };
+        break;
+      }
+      case "temperature": {
+        const parsed = parseTemperatureDraft(draft, t);
+        if (parsed.error) validationError = parsed.error;
+        else update = { temperature: parsed.value };
+        break;
+      }
+    }
+    if (validationError || !update) {
+      setAdvancedError(validationError);
+      return;
+    }
+    setAdvancedError("");
     try {
-      await onAdvancedSave(update.settings);
-      setAdvancedSaved(true);
+      await onAdvancedSave(update);
+      advancedCommittedRef.current[field] = draft;
     } catch (saveError) {
-      setAdvancedError(saveError instanceof Error ? saveError.message : t("provider.saveFailed"));
+      setAdvancedError(saveError instanceof Error ? saveError.message : t("settings.saveFailed"));
     }
   }
 
@@ -756,36 +827,14 @@ export function SettingsView({
                 maxSteps={maxStepsDraft}
                 temperature={temperatureDraft}
                 error={advancedError}
-                saved={advancedSaved}
-                onAutoCompactToggle={() => {
-                  setAutoCompactDraft((value) => !value);
-                  setAdvancedSaved(false);
-                }}
-                onCompactThresholdChange={(value) => {
-                  setCompactThresholdDraft(value);
-                  setAdvancedSaved(false);
-                }}
-                onCompactKeepRecentChange={(value) => {
-                  setCompactKeepRecentDraft(value);
-                  setAdvancedSaved(false);
-                }}
-                onProviderContextWindowChange={(value) => {
-                  setProviderContextWindowDraft(value);
-                  setAdvancedSaved(false);
-                }}
-                onMaxContextTokensChange={(value) => {
-                  setMaxContextTokensDraft(value);
-                  setAdvancedSaved(false);
-                }}
-                onMaxStepsChange={(value) => {
-                  setMaxStepsDraft(value);
-                  setAdvancedSaved(false);
-                }}
-                onTemperatureChange={(value) => {
-                  setTemperatureDraft(value);
-                  setAdvancedSaved(false);
-                }}
-                onSubmit={submitAdvanced}
+                onAutoCompactToggle={toggleAutoCompact}
+                onCompactThresholdChange={setCompactThresholdDraft}
+                onCompactKeepRecentChange={setCompactKeepRecentDraft}
+                onProviderContextWindowChange={setProviderContextWindowDraft}
+                onMaxContextTokensChange={setMaxContextTokensDraft}
+                onMaxStepsChange={setMaxStepsDraft}
+                onTemperatureChange={setTemperatureDraft}
+                onCommitField={commitAdvancedField}
               />
             ) : activePage === "general" ? (
               <SettingsGeneralPage
@@ -1205,6 +1254,14 @@ function SettingsProvidersPage({
 /*  Advanced page                                                              */
 /* -------------------------------------------------------------------------- */
 
+type AdvancedNumericField =
+  | "compactThreshold"
+  | "compactKeepRecent"
+  | "providerContextWindow"
+  | "maxContextTokens"
+  | "maxSteps"
+  | "temperature";
+
 function SettingsAdvancedPage({
   initialized,
   running,
@@ -1218,7 +1275,6 @@ function SettingsAdvancedPage({
   maxSteps,
   temperature,
   error,
-  saved,
   onAutoCompactToggle,
   onCompactThresholdChange,
   onCompactKeepRecentChange,
@@ -1226,7 +1282,7 @@ function SettingsAdvancedPage({
   onMaxContextTokensChange,
   onMaxStepsChange,
   onTemperatureChange,
-  onSubmit
+  onCommitField
 }: {
   initialized: InitializeResult | undefined;
   running: boolean;
@@ -1240,7 +1296,6 @@ function SettingsAdvancedPage({
   maxSteps: string;
   temperature: string;
   error: string;
-  saved: boolean;
   onAutoCompactToggle: () => void;
   onCompactThresholdChange: (value: string) => void;
   onCompactKeepRecentChange: (value: string) => void;
@@ -1248,12 +1303,23 @@ function SettingsAdvancedPage({
   onMaxContextTokensChange: (value: string) => void;
   onMaxStepsChange: (value: string) => void;
   onTemperatureChange: (value: string) => void;
-  onSubmit: (event: ReactFormEvent<HTMLFormElement>) => Promise<void>;
+  onCommitField: (field: AdvancedNumericField) => void;
 }): JSX.Element {
   const { t } = useI18n();
+  // Enter and blur both commit through onCommitField; the ref-guard inside
+  // makes the blur that follows Enter a no-op, so there is one effective
+  // commit per edit.
+  const commitOnEnter =
+    (field: AdvancedNumericField) =>
+    (event: ReactKeyboardEvent<HTMLInputElement>): void => {
+      if (event.key === "Enter") {
+        onCommitField(field);
+        event.currentTarget.blur();
+      }
+    };
   return (
     <SettingsSection testID="settings-advanced">
-      <form className="settings-card" onSubmit={onSubmit}>
+      <div className="settings-card">
         <SettingsRow
           title={t("settings.autoCompact")}
           description={t("settings.autoCompactDescription")}
@@ -1280,6 +1346,8 @@ function SettingsAdvancedPage({
             inputMode="numeric"
             placeholder={t("settings.automatic")}
             onChange={(event) => onCompactThresholdChange(event.target.value)}
+            onBlur={() => onCommitField("compactThreshold")}
+            onKeyDown={commitOnEnter("compactThreshold")}
             disabled={running || !initialized}
           />
         </SettingsRow>
@@ -1293,6 +1361,8 @@ function SettingsAdvancedPage({
             inputMode="numeric"
             placeholder="20,000"
             onChange={(event) => onCompactKeepRecentChange(event.target.value)}
+            onBlur={() => onCommitField("compactKeepRecent")}
+            onKeyDown={commitOnEnter("compactKeepRecent")}
             disabled={running || !initialized}
           />
         </SettingsRow>
@@ -1308,6 +1378,8 @@ function SettingsAdvancedPage({
             inputMode="numeric"
             placeholder={t("settings.detectAutomatically")}
             onChange={(event) => onProviderContextWindowChange(event.target.value)}
+            onBlur={() => onCommitField("providerContextWindow")}
+            onKeyDown={commitOnEnter("providerContextWindow")}
             disabled={running || !initialized}
           />
         </SettingsRow>
@@ -1321,6 +1393,8 @@ function SettingsAdvancedPage({
             inputMode="numeric"
             placeholder={t("settings.automatic")}
             onChange={(event) => onMaxContextTokensChange(event.target.value)}
+            onBlur={() => onCommitField("maxContextTokens")}
+            onKeyDown={commitOnEnter("maxContextTokens")}
             disabled={running || !initialized}
           />
         </SettingsRow>
@@ -1333,6 +1407,8 @@ function SettingsAdvancedPage({
             value={maxSteps}
             inputMode="numeric"
             onChange={(event) => onMaxStepsChange(event.target.value)}
+            onBlur={() => onCommitField("maxSteps")}
+            onKeyDown={commitOnEnter("maxSteps")}
             disabled={running || !initialized}
           />
         </SettingsRow>
@@ -1343,21 +1419,17 @@ function SettingsAdvancedPage({
             inputMode="decimal"
             placeholder={t("settings.automatic")}
             onChange={(event) => onTemperatureChange(event.target.value)}
+            onBlur={() => onCommitField("temperature")}
+            onKeyDown={commitOnEnter("temperature")}
             disabled={running || !initialized}
           />
         </SettingsRow>
-        <div className="settings-row settings-row-footer">
-          {error ? <div className="settings-error">{error}</div> : null}
-          {saved && !error ? <div className="settings-saved">{t("settings.saved")}</div> : null}
-          <button
-            className="settings-button settings-button-primary"
-            type="submit"
-            disabled={running || !initialized}
-          >
-            {t("settings.save")}
-          </button>
-        </div>
-      </form>
+        {error ? (
+          <div className="settings-row settings-row-footer">
+            <div className="settings-error">{error}</div>
+          </div>
+        ) : null}
+      </div>
     </SettingsSection>
   );
 }
@@ -2322,16 +2394,6 @@ function formatCompactUsageNumber(value: number, locale: string): string {
 /*  Helpers (kept at module scope, no behavior change)                         */
 /* -------------------------------------------------------------------------- */
 
-type AdvancedDraft = {
-  autoCompact: boolean;
-  compactThreshold: string;
-  compactKeepRecent: string;
-  providerContextWindow: string;
-  maxContextTokens: string;
-  maxSteps: string;
-  temperature: string;
-};
-
 type Translate = ReturnType<typeof useI18n>["t"];
 
 function settingsPageTitle(page: SettingsPage, t: Translate): string {
@@ -2358,47 +2420,6 @@ function stableBoolRecordSignature(record: Record<string, boolean>): string {
     .sort((a, b) => a.localeCompare(b))
     .map((key) => `${key}:${record[key] ? "1" : "0"}`)
     .join("|");
-}
-
-function parseAdvancedSettingsDraft(draft: AdvancedDraft, t: Translate): { settings: RuntimeAdvancedSettingsUpdate; error?: string } {
-  const compactPercent = parseOptionalNumber(draft.compactThreshold, t("settings.compactThreshold"), t);
-  if (compactPercent.error) {
-    return { settings: {}, error: compactPercent.error };
-  }
-  if (compactPercent.value < 0 || compactPercent.value >= 100) {
-    return { settings: {}, error: t("validation.compactThreshold") };
-  }
-  const compactKeepRecent = parseOptionalInteger(draft.compactKeepRecent, t("settings.keepRecentContext"), t);
-  if (compactKeepRecent.error) {
-    return { settings: {}, error: compactKeepRecent.error };
-  }
-  const providerContextWindow = parseOptionalInteger(draft.providerContextWindow, t("settings.providerContextLimit"), t);
-  if (providerContextWindow.error) {
-    return { settings: {}, error: providerContextWindow.error };
-  }
-  const maxContextTokens = parseOptionalInteger(draft.maxContextTokens, t("settings.unknownModelLimit"), t);
-  if (maxContextTokens.error) {
-    return { settings: {}, error: maxContextTokens.error };
-  }
-  const maxSteps = parseOptionalInteger(draft.maxSteps, t("settings.maxSteps"), t);
-  if (maxSteps.error) {
-    return { settings: {}, error: maxSteps.error };
-  }
-  const temperature = parseTemperatureDraft(draft.temperature, t);
-  if (temperature.error) {
-    return { settings: {}, error: temperature.error };
-  }
-  return {
-    settings: {
-      disable_auto_compact: !draft.autoCompact,
-      compact_threshold_pct: compactPercent.value > 0 ? compactPercent.value / 100 : 0,
-      compact_keep_recent_tokens: compactKeepRecent.value,
-      provider_context_window: providerContextWindow.value,
-      max_context_tokens: maxContextTokens.value,
-      max_steps: maxSteps.value,
-      temperature: temperature.value,
-    },
-  };
 }
 
 function parseOptionalInteger(raw: string, label: string, t: Translate): { value: number; error?: string } {
