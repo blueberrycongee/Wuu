@@ -19,10 +19,12 @@ import (
 	"github.com/blueberrycongee/wuu/internal/agentcontrol"
 	"github.com/blueberrycongee/wuu/internal/agentthread"
 	"github.com/blueberrycongee/wuu/internal/kanban"
+	"github.com/blueberrycongee/wuu/internal/memdir"
 	"github.com/blueberrycongee/wuu/internal/participant"
 	"github.com/blueberrycongee/wuu/internal/providers"
 	"github.com/blueberrycongee/wuu/internal/session"
 	"github.com/blueberrycongee/wuu/internal/subagent"
+	"github.com/blueberrycongee/wuu/internal/workspaces"
 )
 
 // ---- wire shapes ----
@@ -361,6 +363,12 @@ func (s *Server) dispatchKanbanRun(ctx context.Context, hostThreadID, taskID, ta
 	if manifest.NormalizedPermissionTier() == participant.PermissionTierUnrestricted {
 		// Non-nil empty slice: clear the file-scope whitelist for this run.
 		spawnReq.FileScopeRoots = []string{}
+	} else {
+		// Tier workspace: the host thread's working roots plus the whole wuu
+		// home, so the run can write its own output dir and read prior runs'
+		// artifacts under the participant homes.
+		spawnReq.FileScopeRoots = workspaces.BoundaryRoots(
+			th.CWD, s.rt.WuuHome, memdir.ParticipantMemdir(s.rt.WuuHome, targetID))
 	}
 	if modelOverride != "" {
 		spawnReq.ModelOverride = modelOverride
