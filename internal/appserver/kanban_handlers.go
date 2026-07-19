@@ -8,6 +8,7 @@ package appserver
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"mime"
@@ -458,6 +459,200 @@ func kanbanStandingInstructionsPrompt(overlay string, skills []string) string {
 		b.WriteString("\n\n")
 	}
 	return b.String()
+}
+
+// ---- crystallize ----
+
+// KanbanCrystallizeParams converts one intake conversation into draft tasks.
+type KanbanCrystallizeParams struct {
+	ThreadID  string `json:"thread_id"`
+	SessionID string `json:"session_id"`
+	CreatedBy string `json:"created_by,omitempty"`
+}
+
+type kanbanCrystallizedSubtask struct {
+	Title           string `json:"title"`
+	Brief           string `json:"brief"`
+	SuggestedTarget string `json:"suggested_target"`
+}
+
+type kanbanCrystallizedPlan struct {
+	Title    string                      `json:"title"`
+	Brief    string                      `json:"brief"`
+	Subtasks []kanbanCrystallizedSubtask `json:"subtasks"`
+}
+
+type kanbanCrystallizeSubtaskWire struct {
+	kanbanTaskWire
+	SuggestedTargetID   string `json:"suggested_target_id,omitempty"`
+	SuggestedTargetName string `json:"suggested_target_name,omitempty"`
+}
+
+type kanbanCrystallizeResultWire struct {
+	Task     kanbanTaskWire                 `json:"task"`
+	Subtasks []kanbanCrystallizeSubtaskWire `json:"subtasks"`
+}
+
+// handleKanbanCrystallize is the phase transition out of conversation: a
+// synchronous distiller worker reads the transcript and produces a settled
+// brief plus an optional decomposition, which lands as draft tasks for the
+// human checkpoint. Nothing here is dispatched — confirmation and dispatch
+// are separate, explicit calls.
+func (s *Server) handleKanbanCrystallize(ctx context.Context, req Request) error {
+	var params KanbanCrystallizeParams
+	if err := decodeParams(req.Params, &params); err != nil {
+		return s.writeResponse(req.ID, nil, err)
+	}
+	threadID := strings.TrimSpace(params.ThreadID)
+	sessionID := strings.TrimSpace(params.SessionID)
+	if threadID == "" || sessionID == "" {
+		return s.writeResponse(req.ID, nil, errors.New("thread_id and session_id are required"))
+	}
+	th, err := s.ensureResidentThread(threadID)
+	if err != nil {
+		return s.writeResponse(req.ID, nil, err)
+	}
+	th.mu.Lock()
+	transcript := kanbanTranscript(cloneHistory(th.History))
+	th.mu.Unlock()
+	if transcript == "" {
+		return s.writeResponse(req.ID, nil, errors.New("conversation is empty; nothing to crystallize"))
+	}
+
+	roster, err := session.ListParticipants(s.rt.SessionDir, participant.KindNamed)
+	if err != nil {
+		return s.writeResponse(req.ID, nil, err)
+	}
+	threadRuntime, err := s.ensureThreadRuntimeAfterAdmission(th)
+	if err != nil {
+		return s.writeResponse(req.ID, nil, err)
+	}
+	if threadRuntime == nil || threadRuntime.AgentControl == nil {
+		return s.writeResponse(req.ID, nil, errors.New("kanban crystallize requires agent control"))
+	}
+	spawned, err := threadRuntime.AgentControl.Spawn(ctx, agentcontrol.SpawnRequest{
+		Type:        agentcontrol.DefaultSubagentType,
+		TaskName:    "kanban-crystallize",
+		Description: "Distill a conversation into a settled task brief",
+		Prompt:      kanbanCrystallizePrompt(transcript, roster),
+		ParentID:    threadID,
+		ParentPath:  agentthread.RootPath,
+		Synchronous: true,
+	})
+	if err != nil {
+		return s.writeResponse(req.ID, nil, err)
+	}
+	plan, err := parseKanbanCrystallizedPlan(spawned.Result)
+	if err != nil {
+		return s.writeResponse(req.ID, nil, fmt.Errorf("distillation did not produce a usable plan: %w", err))
+	}
+
+	createdBy := strings.TrimSpace(params.CreatedBy)
+	parent, err := session.CreateKanbanTask(s.rt.SessionDir, kanban.Task{
+		SessionID: sessionID, Title: plan.Title, Brief: plan.Brief,
+		Status: kanban.TaskStatusDraft, SourceThreadID: threadID, CreatedBy: createdBy,
+	})
+	if err != nil {
+		return s.writeResponse(req.ID, nil, err)
+	}
+	targetIDByName := map[string]string{}
+	for _, p := range roster {
+		targetIDByName[strings.ToLower(strings.TrimSpace(p.Name))] = p.ID
+	}
+	result := kanbanCrystallizeResultWire{Task: kanbanTaskToWire(parent)}
+	for i, sub := range plan.Subtasks {
+		if strings.TrimSpace(sub.Title) == "" {
+			continue
+		}
+		child, err := session.CreateKanbanTask(s.rt.SessionDir, kanban.Task{
+			SessionID: sessionID, ParentID: parent.ID, Title: sub.Title, Brief: sub.Brief,
+			Status: kanban.TaskStatusDraft, SourceThreadID: threadID, CreatedBy: createdBy,
+			SortIndex: i + 1,
+		})
+		if err != nil {
+			return s.writeResponse(req.ID, nil, err)
+		}
+		w := kanbanCrystallizeSubtaskWire{kanbanTaskWire: kanbanTaskToWire(child)}
+		if name := strings.TrimSpace(sub.SuggestedTarget); name != "" {
+			w.SuggestedTargetName = name
+			w.SuggestedTargetID = targetIDByName[strings.ToLower(name)]
+		}
+		result.Subtasks = append(result.Subtasks, w)
+	}
+	s.notifyKanbanUpdated(sessionID, parent.ID)
+	return s.writeResponse(req.ID, result, nil)
+}
+
+// kanbanTranscript flattens conversation history for the distiller, keeping
+// the tail (where convergence lives) and marking any front truncation.
+func kanbanTranscript(history []providers.ChatMessage) string {
+	const (
+		perMessageCap = 2000
+		totalCap      = 60000
+	)
+	var parts []string
+	for _, msg := range history {
+		role := strings.TrimSpace(msg.Role)
+		if role == "" || role == "system" {
+			continue
+		}
+		content := strings.TrimSpace(msg.Content)
+		if content == "" {
+			continue
+		}
+		if len([]rune(content)) > perMessageCap {
+			content = string([]rune(content)[:perMessageCap]) + " …"
+		}
+		parts = append(parts, role+": "+content)
+	}
+	for len(parts) > 0 && len(strings.Join(parts, "\n\n")) > totalCap {
+		parts = parts[1:]
+	}
+	return strings.Join(parts, "\n\n")
+}
+
+// kanbanCrystallizePrompt instructs the distiller. The brief it produces is
+// the authority executors will read; the conversation itself stays behind as
+// a lazy reference, so the brief must stand on its own.
+func kanbanCrystallizePrompt(transcript string, roster []participant.Participant) string {
+	var b strings.Builder
+	b.WriteString("You distill a conversation into task records for a kanban board.\n\n")
+	b.WriteString("Read the transcript and produce ONLY a JSON object (no prose, no fences):\n")
+	b.WriteString(`{"title": "short task title", "brief": "markdown brief", "subtasks": [{"title": "...", "brief": "...", "suggested_target": "agent name"}]}`)
+	b.WriteString("\n\nThe brief is the ONLY context the executing agent is guaranteed to read.\n")
+	b.WriteString("It must stand alone: the settled goal, the done criteria, every hard\n")
+	b.WriteString("constraint, and alternatives that were rejected (with why), each in one\n")
+	b.WriteString("line. Drop the meandering, the dead ends, and anything superseded.\n\n")
+	b.WriteString("Split into subtasks only when the work naturally parcels out to separate\n")
+	b.WriteString("deliverables; otherwise return an empty subtasks array.\n")
+	if len(roster) > 0 {
+		b.WriteString("\nNamed agents available for suggested_target (use exact names, only when a\n")
+		b.WriteString("subtask clearly fits one):\n")
+		for _, p := range roster {
+			fmt.Fprintf(&b, "- %s (%s)\n", strings.TrimSpace(p.Name), strings.TrimSpace(p.Tagline))
+		}
+	}
+	b.WriteString("\n## Transcript\n\n")
+	b.WriteString(transcript)
+	return b.String()
+}
+
+// parseKanbanCrystallizedPlan extracts the JSON plan from the distiller's
+// result, tolerating surrounding prose.
+func parseKanbanCrystallizedPlan(result string) (kanbanCrystallizedPlan, error) {
+	start := strings.Index(result, "{")
+	end := strings.LastIndex(result, "}")
+	if start < 0 || end <= start {
+		return kanbanCrystallizedPlan{}, errors.New("no JSON object in distiller output")
+	}
+	var plan kanbanCrystallizedPlan
+	if err := json.Unmarshal([]byte(result[start:end+1]), &plan); err != nil {
+		return kanbanCrystallizedPlan{}, fmt.Errorf("parse distiller JSON: %w", err)
+	}
+	if strings.TrimSpace(plan.Title) == "" {
+		return kanbanCrystallizedPlan{}, errors.New("distiller returned an empty title")
+	}
+	return plan, nil
 }
 
 // ---- participant manifest ----
