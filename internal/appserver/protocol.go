@@ -1706,6 +1706,7 @@ type Thread struct {
 	UpdatedAt        time.Time           `json:"updated_at"`
 	Turns            []Turn              `json:"turns"`
 	ChildAgents      []Agent             `json:"child_agents,omitempty"`
+	BackgroundWait   bool                `json:"background_waiting"`
 	BrowserState     *ThreadBrowserState `json:"browser_state,omitempty"`
 }
 

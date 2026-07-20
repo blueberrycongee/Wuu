@@ -7,7 +7,7 @@ import {
   useRef,
   useState
 } from "react";
-import { ChevronDown, ChevronUp, Paperclip, Send } from "lucide-react";
+import { ChevronDown, ChevronUp, Plus, Send } from "lucide-react";
 import type { InputFile, InputImage, ThreadItem, Turn } from "../shared/protocol";
 import { agentHandoffDisplayItem } from "./AgentHandoff";
 import {
@@ -66,6 +66,7 @@ export function ThreadItemView({
   onCancelEditMessage,
   onSubmitEditMessage,
   onOpenAgent,
+  editSummaryCard,
 }: {
   turnID: string;
   turnStatus: Turn["status"];
@@ -91,6 +92,7 @@ export function ThreadItemView({
     files: InputFile[],
   ) => void;
   onOpenAgent?: (agentID: string) => void;
+  editSummaryCard?: JSX.Element;
 }): JSX.Element | null {
   const { t } = useI18n();
   switch (item.type) {
@@ -179,7 +181,7 @@ export function ThreadItemView({
       const copyable = streaming || agentText.trim() !== "";
       const isProcessText = item.phase === "commentary";
       const actionsVisible =
-        (turnStatus === "completed" || turnStatus === "interrupted") &&
+        turnStatus === "completed" &&
         item.id === actionableAgentMessageID &&
         copyable &&
         !isProcessText;
@@ -208,6 +210,7 @@ export function ThreadItemView({
               onStreamFrame={onStreamFrame}
             />
           </div>
+          {editSummaryCard}
           {actionsVisible ? (
             <AgentMessageActions
               getText={() => streamFieldValue(turnID, item, "text")}
@@ -510,13 +513,13 @@ function UserMessageInlineEditor({
       <div className="user-message-edit-toolbar">
         <button
           type="button"
-          className="user-message-edit-attach-button"
+          className="composer-tool-button user-message-edit-attach-button"
           aria-label={t("composer.addAttachment")}
           title={t("message.addImageOrPdf")}
           disabled={submitting}
           onClick={() => fileInputRef.current?.click()}
         >
-          <Paperclip aria-hidden="true" />
+          <Plus aria-hidden="true" />
         </button>
         <div className="user-message-edit-spacer" />
         <div className="user-message-edit-actions">
@@ -529,7 +532,7 @@ function UserMessageInlineEditor({
             {t("common.cancel")}
           </button>
           <button
-            className="user-message-edit-button primary"
+            className="composer-action-button composer-send-button"
             type="button"
             aria-label={t("composer.send")}
             title={t("composer.send")}

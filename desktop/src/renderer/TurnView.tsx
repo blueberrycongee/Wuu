@@ -17,6 +17,8 @@ import type { TurnFileDiffSelection } from "./TurnFileDiffTypes";
 import { TurnEventNotice, StreamReconnectNotice } from "./TurnNotice";
 import { turnEventForTurn } from "./TurnEvents";
 import type { TurnStreamStatus } from "./AppState";
+import { isAutomaticBackgroundContinuationTurn } from "./BackgroundContinuation";
+import { useI18n } from "./i18n";
 import {
   latestAgentMessageItemID,
   messageFlowAgentMessageItemID,
@@ -44,6 +46,8 @@ export function TurnView({
   onOpenRuns,
   streamStatus,
   isLatestTurn,
+  backgroundWaiting = false,
+  suppressAnswerActions = false,
 }: {
   turn: Turn;
   cwd?: string;
@@ -67,11 +71,29 @@ export function TurnView({
   onOpenRuns?: () => void;
   streamStatus?: TurnStreamStatus;
   isLatestTurn?: boolean;
+  backgroundWaiting?: boolean;
+  suppressAnswerActions?: boolean;
 }): JSX.Element {
   const actionableAgentMessageID =
-    turn.status === "completed" || turn.status === "interrupted"
+    turn.status === "completed" && !suppressAnswerActions
       ? messageFlowAgentMessageItemID(turn)
       : undefined;
+  const automaticBackgroundContinuation =
+    isAutomaticBackgroundContinuationTurn(turn);
+  // The edit summary card should sit inside the actionable answer message
+  // (between its text and its action bar) when that message actually renders
+  // an action bar. Otherwise it falls back to its turn-level slot below the
+  // assistant shell.
+  const actionableAnswerItem = actionableAgentMessageID
+    ? turn.items.find(
+        (item) =>
+          item.id === actionableAgentMessageID &&
+          item.type === "agent_message" &&
+          item.phase !== "commentary" &&
+          item.text?.trim(),
+      )
+    : undefined;
+  const runActionAttachedToMessage = actionableAnswerItem != null;
 
   function renderThreadItem(
     item: ThreadItem,
@@ -105,6 +127,16 @@ export function TurnView({
         onCancelEditMessage={onCancelEditMessage}
         onSubmitEditMessage={onSubmitEditMessage}
         onOpenAgent={onOpenAgent}
+        editSummaryCard={
+          runActionAttachedToMessage && item.id === actionableAgentMessageID ? (
+            <TurnEditSummaryCard
+              turn={turn}
+              cwd={cwd}
+              onOpenFile={onOpenFile}
+              onOpenFileDiff={onOpenFileDiff}
+            />
+          ) : undefined
+        }
       />
     );
   }
@@ -120,17 +152,8 @@ export function TurnView({
     rawAssistantDisplay,
   );
   const hasTurnRuns =
-    turn.status !== "in_progress" && turn.items.some(isCommandToolCall);
-  const runActionAttachedToMessage = Boolean(
-    actionableAgentMessageID &&
-      turn.items.some(
-        (item) =>
-          item.id === actionableAgentMessageID &&
-          item.type === "agent_message" &&
-          item.phase !== "commentary" &&
-          item.text?.trim(),
-      ),
-  );
+    (turn.status === "completed" || turn.status === "failed") &&
+    turn.items.some(isCommandToolCall);
   // `buildAssistantTurnDisplay` already classifies "turn completed but
   // only commentary, no `final_answer`" and surfaces it as
   // `missingReplyMessage`. Forward that to the event pipeline so the
@@ -145,7 +168,9 @@ export function TurnView({
 
   return (
     <section
-      className="turn"
+      className={`turn${automaticBackgroundContinuation ? " background-continuation-turn" : ""}${
+        backgroundWaiting ? " background-continuation-waiting" : ""
+      }`}
       id={turnAnchorID(turn.id)}
       data-turn-id={turn.id}
       data-turn-status={turn.status}
@@ -164,21 +189,40 @@ export function TurnView({
           onOpenRuns={onOpenRuns}
           onCollapseComplete={onCollapseComplete}
           onOpenAgent={onOpenAgent}
+          automaticBackgroundContinuation={automaticBackgroundContinuation}
         />
       ) : null}
+      {backgroundWaiting ? <BackgroundContinuationWait /> : null}
       {hasTurnRuns && onOpenRuns && !runActionAttachedToMessage ? (
         <TurnRunActions onOpenRuns={onOpenRuns} />
       ) : null}
-      <TurnEditSummaryCard
-        turn={turn}
-        cwd={cwd}
-        onOpenFile={onOpenFile}
-        onOpenFileDiff={onOpenFileDiff}
-      />
+      {!runActionAttachedToMessage ? (
+        <TurnEditSummaryCard
+          turn={turn}
+          cwd={cwd}
+          onOpenFile={onOpenFile}
+          onOpenFileDiff={onOpenFileDiff}
+        />
+      ) : null}
       {isLatestTurn && turn.status === "in_progress" && streamStatus?.liveProgress ? (
         <StreamReconnectNotice text={streamStatus.text} />
       ) : null}
       {event ? <TurnEventNotice event={event} /> : null}
     </section>
+  );
+}
+
+function BackgroundContinuationWait(): JSX.Element {
+  const { t } = useI18n();
+  return (
+    <div className="background-continuation-wait" role="status">
+      <span className="process-surface-row is-live-gray">
+        <span className="process-surface-summary-line">
+          <span className="process-surface-segment">
+            {t("turn.waitingForBackground")}
+          </span>
+        </span>
+      </span>
+    </div>
   );
 }

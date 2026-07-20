@@ -111,6 +111,7 @@ export function Composer({
   queuedMessages,
   guideMessages,
   running,
+  backgroundWaiting = false,
   ultraEnabled = false,
   runtimeControlsDisabled = running,
   status,
@@ -160,6 +161,8 @@ export function Composer({
   onToggleUltra,
   onEditGuideMessage,
   onSend,
+  onSteer,
+  onQueue,
   onInterrupt,
   goalSummary,
   onEditGoal,
@@ -190,6 +193,7 @@ export function Composer({
   queuedMessages: QueuedComposerMessage[];
   guideMessages: QueuedComposerMessage[];
   running: boolean;
+  backgroundWaiting?: boolean;
   ultraEnabled?: boolean;
   runtimeControlsDisabled?: boolean;
   status: string;
@@ -245,6 +249,8 @@ export function Composer({
   onToggleUltra?: (enabled: boolean) => void;
   onEditGuideMessage: (id: string) => void;
   onSend: () => void;
+  onSteer?: () => void;
+  onQueue?: () => void;
   onInterrupt: () => void;
   goalSummary?: ComposerGoalSummary | null;
   onEditGoal?: (nextText: string) => void | Promise<void>;
@@ -292,7 +298,7 @@ export function Composer({
   // match that (queuing "排队发送" rather than interrupting). This keeps the
   // stop affordance for the common "watching a turn, empty input" case while
   // never blocking a queued follow-up the user has clearly typed.
-  const showComposerStop = running && !hasDraft;
+  const showComposerStop = (running || backgroundWaiting) && !hasDraft;
   const composerSendLabel = running ? t("composer.queueSend") : t("composer.send");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const composerShellRef = useRef<HTMLDivElement>(null);
@@ -527,7 +533,7 @@ export function Composer({
     focusComposerSoon();
   }
 
-  function submitComposer(): void {
+  function submitComposerWith(onSubmit: () => void): void {
     resetQueryHistoryNavigation();
     const actionCommand = slashDraft
       ? exactActionSlashCommand(slashCommands, slashDraft)
@@ -536,8 +542,12 @@ export function Composer({
       applySlashCommand(actionCommand, slashDraft);
       return;
     }
-    onSend();
+    onSubmit();
     focusComposerSoon();
+  }
+
+  function submitComposer(): void {
+    submitComposerWith(onSend);
   }
 
   function updateVisiblePrompt(value: string): void {
@@ -718,9 +728,23 @@ export function Composer({
     if (handleQueryHistoryKeyDown(event)) {
       return;
     }
+    if (
+      event.key === "Tab" &&
+      !event.shiftKey &&
+      !event.metaKey &&
+      !event.ctrlKey &&
+      !event.altKey &&
+      running &&
+      hasDraft &&
+      onQueue
+    ) {
+      event.preventDefault();
+      submitComposerWith(onQueue);
+      return;
+    }
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
-      submitComposer();
+      submitComposerWith(running && hasDraft && onSteer ? onSteer : onSend);
     }
   }
 

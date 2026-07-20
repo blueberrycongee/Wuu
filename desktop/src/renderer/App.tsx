@@ -177,6 +177,7 @@ import {
   statusMessageForError,
 } from "./UserFacingErrors";
 import { scrollToUserMessage, TurnView } from "./TurnView";
+import { backgroundContinuationState } from "./BackgroundContinuation";
 import { ConversationTurnRail } from "./ConversationTurnRail";
 import {
   WorkspaceRightPanel,
@@ -2074,6 +2075,10 @@ export function App(): JSX.Element {
   );
   const activeThreadReadOnly = Boolean(activeThread?.read_only);
   const activeThreadIsRunning = isStateActiveThreadRunning(state);
+  const activeThreadBackgroundWaiting =
+    backgroundContinuationState(activeThread).waiting;
+  const activeThreadTurnRunning =
+    activeThreadIsRunning && !activeThreadBackgroundWaiting;
   const anyThreadIsRunning = isAnyThreadRunning(state) || viewContextSwitchPending;
   const runningThreadKey = useMemo(() => {
     const running = new Set<string>();
@@ -2197,6 +2202,7 @@ export function App(): JSX.Element {
   const sessionTabsVisible = Boolean(
     state.initialized && !previewingLaunch && !poppedOutMode,
   );
+  const sidebarVisible = !poppedOutMode;
 
   useEffect(() => {
     if (
@@ -2342,8 +2348,11 @@ export function App(): JSX.Element {
         queuedMessages={queuedMessages}
         guideMessages={guideMessages}
         running={
-          (!activeThreadReadOnly && activeThreadIsRunning) ||
+          (!activeThreadReadOnly && activeThreadTurnRunning) ||
           viewContextSwitchPending
+        }
+        backgroundWaiting={
+          !activeThreadReadOnly && activeThreadBackgroundWaiting
         }
         ultraEnabled={Boolean(state.initialized?.ultra)}
         onToggleUltra={(enabled) => {
@@ -2446,6 +2455,16 @@ export function App(): JSX.Element {
         onEditQueuedMessage={(id) => void editQueuedMessage(id)}
         onEditGuideMessage={(id) => void editGuideMessage(id)}
         onSend={() => void sendPrompt()}
+        onSteer={
+          activeThreadIsRunning && activeThread
+            ? () => void sendPrompt("steer")
+            : undefined
+        }
+        onQueue={
+          activeThreadIsRunning && activeThread
+            ? () => void sendPrompt("queue")
+            : undefined
+        }
         onInterrupt={() => void interrupt()}
         goalSummary={goalSummary}
         onEditGoal={editGoalText}
@@ -2901,7 +2920,7 @@ export function App(): JSX.Element {
     worktreeForkNonGitReason: t("app.worktreeRequiresGit"),
   });
 
-  async function sendPrompt(): Promise<void> {
+  async function sendPrompt(runningAction: "queue" | "steer" = "queue"): Promise<void> {
     if (viewSwitchPending) {
       return;
     }
@@ -2932,8 +2951,10 @@ export function App(): JSX.Element {
     setComposerImages([]);
     setComposerFiles([]);
     if (isStateActiveThreadRunning(currentState)) {
-      const queued = await queueComposerMessage(message, targetThread);
-      if (!queued) {
+      const sent = runningAction === "steer"
+        ? await steerComposerMessage(message, targetThread)
+        : await queueComposerMessage(message, targetThread);
+      if (!sent) {
         setPrompt(message.text);
         setComposerImages(message.images);
         setComposerFiles(message.files);
@@ -3143,6 +3164,53 @@ export function App(): JSX.Element {
         ...current,
         status:
           error instanceof Error ? error.message : t("app.queueFailed"),
+      }));
+      return false;
+    }
+  }
+
+  async function steerComposerMessage(
+    message: QueuedComposerMessage,
+    targetThread = activeThreadForState(appStateRef.current),
+  ): Promise<boolean> {
+    const currentState = appStateRef.current;
+    const text = message.text.trim();
+    const files = inputFilesFromComposer(message.files);
+    const turnID = targetThread ? activeTurnIDForThread(targetThread) : undefined;
+    if (
+      (!text && message.images.length === 0 && files.length === 0) ||
+      !targetThread ||
+      targetThread.read_only ||
+      !turnID ||
+      !currentState.activeContext ||
+      !currentState.initialized ||
+      viewSwitchPending
+    ) {
+      return false;
+    }
+    try {
+      const encodedImages = await awaitComposerImages(message.images);
+      await window.wuu.steerTurn(
+        targetThread.id,
+        turnID,
+        text,
+        inputImagesFromComposer(encodedImages),
+        message.id,
+        files,
+      );
+      updateThreadPendingComposerMessages(targetThread.id, (previous) => ({
+        ...previous,
+        guides: [
+          ...previous.guides,
+          { ...message, images: encodedImages, origin: "steer" },
+        ],
+      }));
+      return true;
+    } catch (error) {
+      setState((current) => ({
+        ...current,
+        status:
+          error instanceof Error ? error.message : t("composer.guideFailed"),
       }));
       return false;
     }
@@ -3883,21 +3951,23 @@ export function App(): JSX.Element {
       >
         <header className="titlebar">
           <div className="title-block">
-            {poppedOutMode ? null : (
-            <button
-              className="icon-button side-panel-toggle-button sidebar-toggle-button"
-              type="button"
-              aria-label={t(
-                sidebarCollapsed
-                  ? "app.expandLeftSidebar"
-                  : "app.collapseLeftSidebar",
-              )}
-              aria-pressed={!sidebarCollapsed}
-              onClick={toggleSidebar}
-            >
-              <SidePanelToggleIcon side="left" open={!sidebarCollapsed} />
-            </button>
-            )}
+            {sidebarVisible ? (
+              <button
+                className="icon-button side-panel-toggle-button sidebar-toggle-button"
+                type="button"
+                aria-label={t(
+                  sidebarCollapsed
+                    ? "app.expandLeftSidebar"
+                    : "app.collapseLeftSidebar",
+                )}
+                aria-pressed={!sidebarCollapsed}
+                onClick={toggleSidebar}
+                onPointerEnter={scheduleSidebarDrawerOpen}
+                onPointerLeave={cancelSidebarDrawerOpen}
+              >
+                <SidePanelToggleIcon side="left" open={!sidebarCollapsed} />
+              </button>
+            ) : null}
             <ConversationTitleContent
               state={state}
               sessionTabsVisible={sessionTabsVisible}
