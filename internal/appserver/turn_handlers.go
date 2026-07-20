@@ -1467,8 +1467,8 @@ func (s *Server) handleTurnInterrupt(req Request) error {
 	}
 	th.mu.Lock()
 	cancel := th.cancel
+	threadRuntime := th.execRuntime
 	if cancel == nil {
-		threadRuntime := th.execRuntime
 		hasAgentWork := threadRuntimeHasOutstandingAgentWork(threadRuntime)
 		if hasAgentWork {
 			th.workerTreeFrozen = true
@@ -1522,6 +1522,9 @@ func (s *Server) handleTurnInterrupt(req Request) error {
 	// user-initiated turn lifts the freeze with a whole-tree snapshot.
 	if control != nil {
 		control.FreezeWorkerTree()
+	}
+	if err := s.stopResumeProcessesForThread(threadID, threadRuntime); err != nil {
+		return s.writeResponse(req.ID, nil, err)
 	}
 	if err := s.writeResponse(req.ID, OKResult{OK: true}, nil); err != nil {
 		return err

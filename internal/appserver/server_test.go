@@ -3670,6 +3670,84 @@ func TestServerInterruptIdleBackgroundWaitStopsResumeProcessButKeepsDetached(t *
 	}
 }
 
+func TestServerInterruptActiveTurnStopsResumeProcessButKeepsDetached(t *testing.T) {
+	client := newBlockingStreamClient("done")
+	rt := newTestRuntime(t, &fakeClient{})
+	rt.StreamRunner.Client = client
+	attachTestProcessManager(t, rt)
+	out := &lockedBuffer{}
+	srv := New(rt, out)
+	if err := srv.handleLine(context.Background(), []byte(`{"id":"start","method":"thread/start"}`)); err != nil {
+		t.Fatalf("thread/start: %v", err)
+	}
+	threadID := remarshal[ThreadStartResult](t, responseByID(t, parseOutput(t, out.String()), "start")["result"]).Thread.ID
+	manager := srv.processManagerForThread(threadID)
+	if manager == nil {
+		t.Fatal("thread process manager is nil")
+	}
+	resume, err := manager.Start(context.Background(), process.StartOptions{
+		Command:        "sleep 30",
+		OwnerKind:      process.OwnerMainAgent,
+		OwnerID:        threadID,
+		Lifecycle:      process.LifecycleManaged,
+		CompletionMode: process.CompletionModeResume,
+	})
+	if err != nil {
+		t.Fatalf("start resume process: %v", err)
+	}
+	detached, err := manager.Start(context.Background(), process.StartOptions{
+		Command:        "sleep 30",
+		OwnerKind:      process.OwnerMainAgent,
+		OwnerID:        threadID,
+		Lifecycle:      process.LifecycleManaged,
+		CompletionMode: process.CompletionModeDetached,
+	})
+	if err != nil {
+		t.Fatalf("start detached process: %v", err)
+	}
+	defer func() { _, _ = manager.Stop(detached.ID) }()
+
+	startTurn := fmt.Sprintf(`{"id":"turn","method":"turn/start","params":{"thread_id":%q,"prompt":"follow up while background work runs"}}`, threadID)
+	if err := srv.handleLine(context.Background(), []byte(startTurn)); err != nil {
+		t.Fatalf("turn/start: %v", err)
+	}
+	<-client.started
+
+	interrupt := fmt.Sprintf(`{"id":"stop","method":"turn/interrupt","params":{"thread_id":%q}}`, threadID)
+	if err := srv.handleLine(context.Background(), []byte(interrupt)); err != nil {
+		t.Fatalf("turn/interrupt: %v", err)
+	}
+	if got := responseByID(t, parseOutput(t, out.String()), "stop")["error"]; got != nil {
+		t.Fatalf("turn/interrupt returned error: %+v", got)
+	}
+	waitForMethod(t, out, NotificationTurnError)
+
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		stopped, getErr := manager.Get(resume.ID)
+		if getErr != nil {
+			t.Fatalf("get resume process: %v", getErr)
+		}
+		if stopped.Status == process.StatusStopped || stopped.Status == process.StatusFailed {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("resume process status = %q, want terminal", stopped.Status)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if threadHasOutstandingProcessCompletion(threadID, nil, manager) {
+		t.Fatal("stopped resume process should not leave an automatic continuation outstanding")
+	}
+	stillRunning, err := manager.Get(detached.ID)
+	if err != nil {
+		t.Fatalf("get detached process: %v", err)
+	}
+	if stillRunning.Status != process.StatusRunning {
+		t.Fatalf("detached process status = %q, want running", stillRunning.Status)
+	}
+}
+
 func TestServerThreadStartEphemeralDoesNotPersistSession(t *testing.T) {
 	rt := newTestRuntime(t, &fakeClient{})
 	out := &lockedBuffer{}
