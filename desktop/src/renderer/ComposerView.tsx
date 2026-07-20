@@ -17,6 +17,7 @@ import {
   type MouseEvent as ReactMouseEvent,
   type Ref,
   type RefObject,
+  type ReactNode,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -101,6 +102,7 @@ export { permissionModeFromSummary, permissionModeHasAdvancedOverrides } from ".
 export function Composer({
   variant = "dock",
   mainConversation = false,
+  topAccessory,
   containerRef,
   prompt,
   setPrompt,
@@ -179,6 +181,7 @@ export function Composer({
 }: {
   variant?: ComposerVariant;
   mainConversation?: boolean;
+  topAccessory?: ReactNode;
   containerRef?: Ref<HTMLElement>;
   prompt: string;
   setPrompt: (value: string) => void;
@@ -741,6 +744,7 @@ export function Composer({
 
   const content = (
     <div className={`composer-stack${isComposerExpanded ? " is-expanded" : ""}`}>
+      {topAccessory ? <div className="composer-top-accessory">{topAccessory}</div> : null}
       <div className="composer-shell" ref={composerShellRef}>
         {slashMenuOpen ? (
           <div className="slash-command-menu" id={slashMenuID} role="listbox" aria-label={t("composer.slashCommands")}>

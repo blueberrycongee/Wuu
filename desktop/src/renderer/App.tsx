@@ -2329,6 +2329,11 @@ export function App(): JSX.Element {
       <Composer
         variant={variant}
         mainConversation
+        topAccessory={
+          collaborationActive ? (
+            <KanbanViewToggle mode={kanbanViewMode} onChange={setKanbanViewMode} />
+          ) : undefined
+        }
         containerRef={variant === "dock" ? dockComposerRef : undefined}
         prompt={prompt}
         setPrompt={setPrompt}
@@ -3907,9 +3912,6 @@ export function App(): JSX.Element {
               onReorderSessionTabs={reorderSessionTabs}
             />
           </div>
-          {collaborationActive ? (
-            <KanbanViewToggle mode={kanbanViewMode} onChange={setKanbanViewMode} />
-          ) : null}
           <ConversationTitleActions
             state={state}
             debugControlsVisible={debugControlsVisible}

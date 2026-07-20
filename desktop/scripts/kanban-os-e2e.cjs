@@ -69,15 +69,27 @@ async function run() {
     () => {
       const tabs = Array.from(document.querySelectorAll('.kanban-view-toggle [role="tab"]'));
       if (tabs.length !== 2) return null;
+      const toggle = tabs[0].closest(".kanban-view-toggle");
+      const titleActionButtons = Array.from(
+        document.querySelectorAll(".titlebar .title-actions > button"),
+      );
       return {
         labels: tabs.map((tab) => tab.textContent?.trim()),
         selected: tabs.map((tab) => tab.getAttribute("aria-selected")),
+        inComposer: Boolean(toggle?.closest(".composer-top-accessory")),
+        inTitlebar: Boolean(toggle?.closest(".titlebar")),
+        titleActionsVisible: titleActionButtons.every(
+          (button) => button.getBoundingClientRect().width > 0,
+        ),
       };
     },
     5000,
   );
   assert.deepEqual(collaboration.labels, ["消息", "看板"]);
   assert.deepEqual(collaboration.selected, ["true", "false"]);
+  assert.equal(collaboration.inComposer, true, "The message/board switch should sit beside the composer.");
+  assert.equal(collaboration.inTitlebar, false, "The message/board switch must not consume titlebar space.");
+  assert.equal(collaboration.titleActionsVisible, true, "Titlebar panel buttons should remain visible.");
 
   await evaluate(win, () => {
     const boardTab = document.querySelectorAll('.kanban-view-toggle [role="tab"]')[1];
