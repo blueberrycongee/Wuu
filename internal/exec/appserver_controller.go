@@ -147,9 +147,9 @@ func (c *localAppServerController) ReadRun(ctx context.Context, runID string) (a
 	return result, err
 }
 
-func (c *localAppServerController) InterruptRun(ctx context.Context, runID string) (appserver.Run, error) {
+func (c *localAppServerController) InterruptRun(ctx context.Context, runID, reason string) (appserver.Run, error) {
 	var result appserver.RunInterruptResult
-	err := c.client.Call(ctx, appserver.MethodRunInterrupt, appserver.RunInterruptParams{RunID: strings.TrimSpace(runID)}, &result)
+	err := c.client.Call(ctx, appserver.MethodRunInterrupt, appserver.RunInterruptParams{RunID: strings.TrimSpace(runID), Reason: strings.TrimSpace(reason)}, &result)
 	return result.Run, err
 }
 

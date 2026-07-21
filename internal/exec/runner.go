@@ -175,7 +175,7 @@ func Run(ctx context.Context, opts Options) (runErr error) {
 		if err != nil {
 			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 				if state.runID != "" {
-					_ = interruptRunBestEffort(runController, state.runID)
+					_ = interruptRunBestEffort(runController, state.runID, "timeout")
 				} else {
 					_ = interruptBestEffort(controller, state.threadID)
 				}
@@ -185,7 +185,7 @@ func Run(ctx context.Context, opts Options) (runErr error) {
 			}
 			if errors.Is(ctx.Err(), context.Canceled) {
 				if state.runID != "" {
-					_ = interruptRunBestEffort(runController, state.runID)
+					_ = interruptRunBestEffort(runController, state.runID, "interrupted")
 				} else {
 					_ = interruptBestEffort(controller, state.threadID)
 				}
@@ -508,7 +508,15 @@ func handleNotification(opts Options, notification Notification, state *runState
 		case "completed":
 			state.status = "completed"
 			return true, nil
-		case "interrupted", "timed_out", "cancelled":
+		case "timed_out":
+			state.status = "timeout"
+			errText := "execution run timed out"
+			if params.Run.Error != nil && params.Run.Error.Message != "" {
+				errText = params.Run.Error.Message
+			}
+			emitResult(opts, *state, "timeout", errText)
+			return false, WithExitCode(ExitTimeout, errors.New(errText))
+		case "interrupted", "cancelled":
 			state.status = "interrupted"
 			errText := "execution run interrupted"
 			if params.Run.Error != nil && params.Run.Error.Message != "" {
@@ -518,8 +526,8 @@ func handleNotification(opts Options, notification Notification, state *runState
 			return false, WithExitCode(ExitInterrupted, errors.New(errText))
 		case "failed":
 			status := "failed"
-			exitCode := ExitTurnFailed
-			if state.permissionDenied {
+			exitCode := exitCodeForRunError(params.Run.Error, state.permissionDenied)
+			if exitCode == ExitPermissionDenied {
 				status = "permission_denied"
 				exitCode = ExitPermissionDenied
 			}
@@ -978,6 +986,21 @@ func exitCodeForTurnError(params appserver.TurnErrorNotification, permissionDeni
 	return ExitTurnFailed
 }
 
+func exitCodeForRunError(runErr *execution.Error, permissionDenied bool) int {
+	if runErr == nil {
+		if permissionDenied {
+			return ExitPermissionDenied
+		}
+		return ExitTurnFailed
+	}
+	if strings.EqualFold(strings.TrimSpace(runErr.Code), "permission_denied") || strings.EqualFold(strings.TrimSpace(runErr.Category), "permission_denied") {
+		permissionDenied = true
+	}
+	return exitCodeForTurnError(appserver.TurnErrorNotification{
+		Error: runErr.Message, Code: runErr.Code, Category: runErr.Category,
+	}, permissionDenied)
+}
+
 func isProviderModelFailure(text string) bool {
 	text = strings.ToLower(text)
 	for _, marker := range []string{
@@ -1208,13 +1231,13 @@ func interruptBestEffort(controller Controller, threadID string) error {
 	return controller.Interrupt(ctx, threadID)
 }
 
-func interruptRunBestEffort(controller RunController, runID string) error {
+func interruptRunBestEffort(controller RunController, runID, reason string) error {
 	if controller == nil || strings.TrimSpace(runID) == "" {
 		return nil
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	_, err := controller.InterruptRun(ctx, runID)
+	_, err := controller.InterruptRun(ctx, runID, reason)
 	return err
 }
 

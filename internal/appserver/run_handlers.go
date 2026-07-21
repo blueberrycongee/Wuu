@@ -16,10 +16,11 @@ import (
 )
 
 type runTracker struct {
-	id        string
-	threadID  string
-	validator *structuredoutput.Validator
-	retries   int
+	id              string
+	threadID        string
+	validator       *structuredoutput.Validator
+	retries         int
+	interruptStatus execution.Status
 }
 
 func (s *Server) handleRunStart(ctx context.Context, req Request) error {
@@ -215,12 +216,23 @@ func (s *Server) handleRunInterrupt(ctx context.Context, req Request) error {
 	if !view.Attached {
 		return s.writeRunError(req.ID, "run_not_attached", fmt.Errorf("run %q is not attached to this app-server", runID))
 	}
+	interruptStatus := execution.StatusInterrupted
+	if strings.EqualFold(strings.TrimSpace(params.Reason), "timeout") {
+		interruptStatus = execution.StatusTimedOut
+	}
 	turnActive, err := s.interruptThreadExecution(view.Run.ThreadID)
 	if err != nil {
 		return s.writeRunError(req.ID, "internal_error", err)
 	}
+	s.setExecutionRunInterruptStatus(runID, interruptStatus)
 	if !turnActive {
-		view.Run = s.failAndDetachExecutionRun(runID, execution.StatusInterrupted, "interrupted", "cancelled", errors.New("execution run interrupted"))
+		status := interruptStatus
+		code, category, message := "interrupted", "cancelled", "execution run interrupted"
+		if strings.EqualFold(strings.TrimSpace(params.Reason), "timeout") {
+			status = execution.StatusTimedOut
+			code, category, message = "timeout", "timeout", "execution run timed out"
+		}
+		view.Run = s.failAndDetachExecutionRun(runID, status, code, category, errors.New(message))
 	}
 	return s.writeResponse(req.ID, RunInterruptResult{Run: view.Run}, nil)
 }
@@ -323,6 +335,23 @@ func (s *Server) executionRunSchemaOutcome(runID, content string) (retryPrompt s
 	}
 }
 
+func (s *Server) setExecutionRunInterruptStatus(runID string, status execution.Status) {
+	s.runMu.Lock()
+	defer s.runMu.Unlock()
+	if tracker := s.runs[strings.TrimSpace(runID)]; tracker != nil {
+		tracker.interruptStatus = status
+	}
+}
+
+func (s *Server) executionRunInterruptStatus(runID string) execution.Status {
+	s.runMu.Lock()
+	defer s.runMu.Unlock()
+	if tracker := s.runs[strings.TrimSpace(runID)]; tracker != nil && tracker.interruptStatus != "" {
+		return tracker.interruptStatus
+	}
+	return execution.StatusInterrupted
+}
+
 func (s *Server) attachExecutionTurn(runID, threadID, turnID string, at time.Time) error {
 	if strings.TrimSpace(runID) == "" {
 		return nil
@@ -343,7 +372,7 @@ func (s *Server) settleExecutionRunTurn(runID, turnID, tracePath string, turn Tu
 	if turnErr != nil {
 		status := execution.StatusFailed
 		if turn.Status == TurnStatusInterrupted || errors.Is(turnErr, context.Canceled) {
-			status = execution.StatusInterrupted
+			status = s.executionRunInterruptStatus(runID)
 		}
 		result.ExitCode = executionExitCode(status)
 		runError := execution.Error{Code: "turn_failed", Category: "unknown", Message: turnErr.Error()}

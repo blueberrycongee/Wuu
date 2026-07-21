@@ -19,6 +19,7 @@ import (
 	"github.com/blueberrycongee/wuu/internal/config"
 	wuucontext "github.com/blueberrycongee/wuu/internal/context"
 	"github.com/blueberrycongee/wuu/internal/contextbudget"
+	"github.com/blueberrycongee/wuu/internal/execution"
 	"github.com/blueberrycongee/wuu/internal/goalruntime"
 	"github.com/blueberrycongee/wuu/internal/imageproc"
 	"github.com/blueberrycongee/wuu/internal/insight"
@@ -2139,7 +2140,8 @@ func (s *Server) runTurnWithRequestContext(ctx context.Context, th *threadState,
 	if executionRetryPrompt != "" {
 		if retryErr := s.startExecutionSchemaRetry(context.Background(), th, turnRuntime, executionRetryPrompt); retryErr != nil {
 			providers.DebugLogf("start structured-output retry for run %q: %v", turnRuntime.ExecutionRunID, retryErr)
-			_, _, _ = s.settleExecutionRunTurn(turnRuntime.ExecutionRunID, turnID, tracePath, turn, structured, retryErr, false, time.Now())
+			failedRun := s.failAndDetachExecutionRun(turnRuntime.ExecutionRunID, execution.StatusFailed, "structured_output_retry_failed", "internal", retryErr)
+			notify(NotificationRunUpdated, RunUpdatedNotification{Run: failedRun})
 		}
 		return
 	}

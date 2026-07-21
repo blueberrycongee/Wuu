@@ -115,7 +115,7 @@ type Controller interface {
 type RunController interface {
 	StartRun(context.Context, appserver.RunStartParams) (appserver.Run, error)
 	ReadRun(context.Context, string) (appserver.RunView, error)
-	InterruptRun(context.Context, string) (appserver.Run, error)
+	InterruptRun(context.Context, string, string) (appserver.Run, error)
 }
 
 type Attachments struct {

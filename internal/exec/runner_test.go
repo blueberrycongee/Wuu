@@ -46,12 +46,17 @@ type initializeErrorController struct {
 
 type fakeRunController struct {
 	*fakeController
-	startedParams appserver.RunStartParams
-	run           appserver.Run
+	startedParams   appserver.RunStartParams
+	run             appserver.Run
+	block           bool
+	interruptReason string
 }
 
 func (c *fakeRunController) StartRun(_ context.Context, params appserver.RunStartParams) (appserver.Run, error) {
 	c.startedParams = params
+	if c.block {
+		return c.run, nil
+	}
 	c.fakeController.events = []Notification{
 		notification(appserver.NotificationAgentMessageDelta, appserver.AgentMessageDeltaNotification{ThreadID: "thread-1", TurnID: "turn-1", Delta: "run answer"}),
 		notification(appserver.NotificationTurnCompleted, appserver.TurnCompletedNotification{ThreadID: "thread-1", Turn: appserver.Turn{ID: "turn-1"}, Content: "run answer", TracePath: "/run-trace"}),
@@ -64,7 +69,8 @@ func (c *fakeRunController) ReadRun(context.Context, string) (appserver.RunView,
 	return appserver.RunView{Run: c.run, Attached: true}, nil
 }
 
-func (c *fakeRunController) InterruptRun(context.Context, string) (appserver.Run, error) {
+func (c *fakeRunController) InterruptRun(_ context.Context, _ string, reason string) (appserver.Run, error) {
+	c.interruptReason = reason
 	c.run.Status = execution.StatusInterrupted
 	return c.run, nil
 }
@@ -697,6 +703,40 @@ func TestRunTurnErrorPrefersStructuredCategoryOverMessage(t *testing.T) {
 				t.Fatalf("ExitCode = %d, want %d: %v", ExitCode(err), tc.want, err)
 			}
 		})
+	}
+}
+
+func TestRunErrorPreservesStableExitClassification(t *testing.T) {
+	tests := []struct {
+		category string
+		want     int
+	}{
+		{category: "provider", want: ExitProviderModelError},
+		{category: "local", want: ExitToolFailed},
+		{category: "permission_denied", want: ExitPermissionDenied},
+	}
+	for _, tc := range tests {
+		if got := exitCodeForRunError(&execution.Error{Category: tc.category, Message: "failed"}, false); got != tc.want {
+			t.Fatalf("category %q exit code = %d, want %d", tc.category, got, tc.want)
+		}
+	}
+}
+
+func TestRunControllerTimeoutSendsTimeoutReason(t *testing.T) {
+	controller := &fakeRunController{
+		fakeController: newFakeController(),
+		run:            appserver.Run{ID: "run-timeout", Status: execution.StatusRunning, ThreadID: "thread-1"},
+		block:          true,
+	}
+	err := Run(context.Background(), Options{
+		Prompt: "do work", JSON: true, Timeout: 20 * time.Millisecond,
+		Stdout: &bytes.Buffer{}, Controller: controller,
+	})
+	if ExitCode(err) != ExitTimeout {
+		t.Fatalf("ExitCode = %d, err=%v", ExitCode(err), err)
+	}
+	if controller.interruptReason != "timeout" {
+		t.Fatalf("interrupt reason = %q", controller.interruptReason)
 	}
 }
 

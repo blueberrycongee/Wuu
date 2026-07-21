@@ -1430,7 +1430,8 @@ type RunListResult struct {
 }
 
 type RunInterruptParams struct {
-	RunID string `json:"run_id"`
+	RunID  string `json:"run_id"`
+	Reason string `json:"reason,omitempty"`
 }
 
 type RunInterruptResult struct {

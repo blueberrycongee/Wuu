@@ -144,10 +144,21 @@ func runExecutionRuns(args []string) error {
 	workdir := fs.String("workdir", "", "workspace directory")
 	status := fs.String("status", "", "filter by status")
 	limit := fs.Int("limit", 50, "maximum number of runs")
-	if err := fs.Parse(args); err != nil {
+	readID := ""
+	parseArgs := args
+	if len(args) > 0 && args[0] == "read" {
+		if len(args) < 2 {
+			return errors.New("usage: wuu runs read RUN_ID [flags]")
+		}
+		readID = args[1]
+		parseArgs = args[2:]
+	}
+	if err := fs.Parse(parseArgs); err != nil {
 		return err
 	}
-	if fs.NArg() > 2 || (fs.NArg() > 0 && fs.Arg(0) != "read") || (fs.NArg() == 1) {
+	if readID == "" && fs.NArg() == 2 && fs.Arg(0) == "read" {
+		readID = fs.Arg(1)
+	} else if fs.NArg() != 0 {
 		return errors.New("usage: wuu runs [read RUN_ID] [flags]")
 	}
 	home, err := statepath.Home("")
@@ -158,8 +169,8 @@ func runExecutionRuns(args []string) error {
 	if err != nil {
 		return err
 	}
-	if fs.NArg() == 2 {
-		return runExecutionRead(store, fs.Arg(1), *jsonOutput)
+	if readID != "" {
+		return runExecutionRead(store, readID, *jsonOutput)
 	}
 	var workspaceRoot string
 	if !*allWorkspaces {
