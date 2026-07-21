@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/blueberrycongee/wuu/internal/appserver"
+	"github.com/blueberrycongee/wuu/internal/execution"
 	"github.com/blueberrycongee/wuu/internal/providers"
 )
 
@@ -41,6 +42,31 @@ type fakeController struct {
 type initializeErrorController struct {
 	*fakeController
 	err error
+}
+
+type fakeRunController struct {
+	*fakeController
+	startedParams appserver.RunStartParams
+	run           appserver.Run
+}
+
+func (c *fakeRunController) StartRun(_ context.Context, params appserver.RunStartParams) (appserver.Run, error) {
+	c.startedParams = params
+	c.fakeController.events = []Notification{
+		notification(appserver.NotificationAgentMessageDelta, appserver.AgentMessageDeltaNotification{ThreadID: "thread-1", TurnID: "turn-1", Delta: "run answer"}),
+		notification(appserver.NotificationTurnCompleted, appserver.TurnCompletedNotification{ThreadID: "thread-1", Turn: appserver.Turn{ID: "turn-1"}, Content: "run answer", TracePath: "/run-trace"}),
+		notification(appserver.NotificationRunUpdated, appserver.RunUpdatedNotification{Run: appserver.Run{ID: "run-1", Status: execution.StatusCompleted, ThreadID: "thread-1", Result: &execution.Result{FinalTurnID: "turn-1", TracePath: "/run-trace"}}}),
+	}
+	return c.run, nil
+}
+
+func (c *fakeRunController) ReadRun(context.Context, string) (appserver.RunView, error) {
+	return appserver.RunView{Run: c.run, Attached: true}, nil
+}
+
+func (c *fakeRunController) InterruptRun(context.Context, string) (appserver.Run, error) {
+	c.run.Status = execution.StatusInterrupted
+	return c.run, nil
 }
 
 func (c *initializeErrorController) Initialize(context.Context) (appserver.InitializeResult, error) {
@@ -134,6 +160,28 @@ func (f *fakeController) Notifications() <-chan Notification {
 		ch <- ev
 	}
 	return ch
+}
+
+func TestRunUsesRunControllerForPlainExec(t *testing.T) {
+	base := newFakeController()
+	controller := &fakeRunController{
+		fakeController: base,
+		run:            appserver.Run{ID: "run-1", Status: execution.StatusRunning, ThreadID: "thread-1", Turns: []execution.TurnRef{{TurnID: "turn-1", ThreadID: "thread-1"}}},
+	}
+	var stdout, stderr bytes.Buffer
+	err := Run(context.Background(), Options{Prompt: "reply", JSON: true, Stdout: &stdout, Stderr: &stderr, Controller: controller})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if base.startCount != 0 {
+		t.Fatalf("legacy StartTurn count = %d", base.startCount)
+	}
+	if controller.startedParams.Request.Mode != execution.ModeStart || controller.startedParams.Prompt != "reply" {
+		t.Fatalf("Run start params = %+v", controller.startedParams)
+	}
+	if !strings.Contains(stdout.String(), `"status":"completed"`) || !strings.Contains(stdout.String(), `"final_message":"run answer"`) {
+		t.Fatalf("Run JSON output = %s", stdout.String())
+	}
 }
 
 func TestRunDefaultStdoutOnlyFinalMessage(t *testing.T) {
