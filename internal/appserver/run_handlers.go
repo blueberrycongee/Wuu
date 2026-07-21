@@ -11,13 +11,15 @@ import (
 	"github.com/blueberrycongee/wuu/internal/execution"
 	"github.com/blueberrycongee/wuu/internal/providers"
 	"github.com/blueberrycongee/wuu/internal/runtime"
+	"github.com/blueberrycongee/wuu/internal/structuredoutput"
 	"github.com/blueberrycongee/wuu/internal/version"
 )
 
 type runTracker struct {
-	id           string
-	threadID     string
-	outputSchema json.RawMessage
+	id        string
+	threadID  string
+	validator *structuredoutput.Validator
+	retries   int
 }
 
 func (s *Server) handleRunStart(ctx context.Context, req Request) error {
@@ -50,6 +52,10 @@ func (s *Server) handleRunStart(ctx context.Context, req Request) error {
 	if isManualCompactPrompt(params.Prompt) {
 		return s.writeRunError(req.ID, "invalid_params", errors.New("execution runs do not accept compact commands"))
 	}
+	validator, err := structuredoutput.New(params.OutputSchema)
+	if err != nil {
+		return s.writeRunError(req.ID, "invalid_params", err)
+	}
 	th, err := s.ensureThreadLoaded(params.ThreadID)
 	if err != nil {
 		return s.writeRunError(req.ID, "thread_not_found", err)
@@ -58,7 +64,11 @@ func (s *Server) handleRunStart(ctx context.Context, req Request) error {
 	if err != nil {
 		return s.writeRunError(req.ID, "invalid_params", err)
 	}
-	userMsg, err := userMessageFromPrompt(params.Prompt, images, files, s.rt.ExperimentalHelpMe)
+	prompt := params.Prompt
+	if validator != nil {
+		prompt = validator.InitialPrompt(prompt)
+	}
+	userMsg, err := userMessageFromPrompt(prompt, images, files, s.rt.ExperimentalHelpMe)
 	if err != nil {
 		return s.writeRunError(req.ID, "invalid_params", err)
 	}
@@ -118,7 +128,7 @@ func (s *Server) handleRunStart(ctx context.Context, req Request) error {
 		_, _ = s.runStore.Fail(ctx, run.ID, execution.StatusFailed, execution.Result{}, execution.Error{Code: "manifest_update_failed", Category: "internal", Message: err.Error()}, time.Now().UTC())
 		return s.writeRunError(req.ID, "internal_error", errors.Join(err, persistErr))
 	}
-	s.registerExecutionRun(run, params.OutputSchema)
+	s.registerExecutionRun(run, validator)
 
 	launch, accepted := s.reserveBackground(func() {
 		s.runTurn(started.ctx, th, threadRuntime, started.turnID, started.runtime, started.history)
@@ -275,10 +285,10 @@ func (s *Server) executionFactsForThread(th *threadState, threadRuntime *runtime
 	}, ephemeral
 }
 
-func (s *Server) registerExecutionRun(run execution.Run, outputSchema json.RawMessage) {
+func (s *Server) registerExecutionRun(run execution.Run, validator *structuredoutput.Validator) {
 	s.runMu.Lock()
 	defer s.runMu.Unlock()
-	tracker := &runTracker{id: run.ID, threadID: run.ThreadID, outputSchema: append(json.RawMessage(nil), outputSchema...)}
+	tracker := &runTracker{id: run.ID, threadID: run.ThreadID, validator: validator}
 	s.runs[run.ID] = tracker
 	s.activeRunByThread[run.ThreadID] = run.ID
 }
@@ -294,6 +304,23 @@ func (s *Server) activeExecutionRunID(threadID string) string {
 	s.runMu.Lock()
 	defer s.runMu.Unlock()
 	return s.activeRunByThread[strings.TrimSpace(threadID)]
+}
+
+func (s *Server) executionRunSchemaOutcome(runID, content string) (retryPrompt string, retry bool, validationErr error) {
+	s.runMu.Lock()
+	defer s.runMu.Unlock()
+	tracker := s.runs[runID]
+	if tracker == nil || tracker.validator == nil {
+		return "", false, nil
+	}
+	if err := tracker.validator.Validate(content); err == nil {
+		return "", false, nil
+	} else if tracker.retries < structuredoutput.MaxRetries {
+		tracker.retries++
+		return tracker.validator.RetryPrompt(content, err), true, nil
+	} else {
+		return "", false, err
+	}
 }
 
 func (s *Server) attachExecutionTurn(runID, threadID, turnID string, at time.Time) error {
@@ -350,6 +377,44 @@ func (s *Server) executionRunAwaitsContinuation(threadID string, threadRuntime *
 		return true
 	}
 	return ok && goal.CanAutoContinue()
+}
+
+func (s *Server) startExecutionSchemaRetry(ctx context.Context, th *threadState, snapshot turnRuntimeSnapshot, prompt string) error {
+	if th == nil || strings.TrimSpace(snapshot.ExecutionRunID) == "" {
+		return errors.New("structured-output retry requires an attached execution run")
+	}
+	userMsg, err := userMessageFromPrompt(prompt, nil, nil, s.rt.ExperimentalHelpMe)
+	if err != nil {
+		return err
+	}
+	var threadRuntime *runtime.ThreadRuntime
+	started, ok, err := s.startThreadUserTurnWithAdmission(ctx, th, userMsg, snapshot, true, turnReadOnlyIgnore,
+		turnAdmissionHooks{afterLease: func(admitted *threadState, _ *providers.ChatMessage) error {
+			var runtimeErr error
+			threadRuntime, runtimeErr = s.ensureThreadRuntimeAfterAdmission(admitted)
+			return runtimeErr
+		}},
+	)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return fmt.Errorf("thread %q is busy during structured-output retry", th.ID)
+	}
+	if err := s.attachExecutionTurn(started.runtime.ExecutionRunID, th.ID, started.turnID, started.admittedAt); err != nil {
+		return errors.Join(err, s.abortStartedThreadTurnDurably(th, started, err))
+	}
+	if err := s.writeNotification(NotificationTurnStarted, TurnStartedNotification{ThreadID: th.ID, Turn: started.turn}); err != nil {
+		return errors.Join(err, s.abortStartedThreadTurnDurably(th, started, err))
+	}
+	launch, accepted := s.reserveBackground(func() {
+		s.runTurn(started.ctx, th, threadRuntime, started.turnID, started.runtime, started.history)
+	})
+	if !accepted {
+		return errors.Join(errServerClosed, s.abortStartedThreadTurnDurably(th, started, errServerClosed))
+	}
+	launch.Commit()
+	return nil
 }
 
 func (s *Server) detachExecutionRun(runID string) {

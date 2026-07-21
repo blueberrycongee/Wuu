@@ -11,6 +11,7 @@ import (
 	"github.com/blueberrycongee/wuu/internal/hooks"
 	"github.com/blueberrycongee/wuu/internal/providers"
 	"github.com/blueberrycongee/wuu/internal/session"
+	"github.com/blueberrycongee/wuu/internal/structuredoutput"
 )
 
 func TestRunStartSettlesManifestBeforeRunRead(t *testing.T) {
@@ -101,5 +102,28 @@ func TestRunStartSettlesManifestBeforeRunRead(t *testing.T) {
 	listResult := remarshal[RunListResult](t, responseByID(t, parseOutput(t, out.String()), "list")["result"])
 	if len(listResult.Runs) != 1 || listResult.Runs[0].ID != run.ID {
 		t.Fatalf("run/list result = %+v", listResult)
+	}
+}
+
+func TestExecutionRunSchemaOutcomeRetriesWithinOneRun(t *testing.T) {
+	srv := &Server{runs: make(map[string]*runTracker), activeRunByThread: make(map[string]string)}
+	validator, err := structuredoutput.New(json.RawMessage(`{"type":"object","required":["ok"]}`))
+	if err != nil {
+		t.Fatalf("New validator: %v", err)
+	}
+	srv.registerExecutionRun(execution.Run{ID: "run-schema", ThreadID: "thread-schema"}, validator)
+
+	for attempt := 0; attempt < structuredoutput.MaxRetries; attempt++ {
+		prompt, retry, validationErr := srv.executionRunSchemaOutcome("run-schema", `{"wrong":true}`)
+		if !retry || validationErr != nil || prompt == "" {
+			t.Fatalf("attempt %d outcome = prompt %q, retry %v, error %v", attempt, prompt, retry, validationErr)
+		}
+	}
+	_, retry, validationErr := srv.executionRunSchemaOutcome("run-schema", `{"wrong":true}`)
+	if retry || validationErr == nil {
+		t.Fatalf("exhausted outcome = retry %v, error %v", retry, validationErr)
+	}
+	if _, retry, validationErr := srv.executionRunSchemaOutcome("run-schema", `{"ok":true}`); retry || validationErr != nil {
+		t.Fatalf("valid outcome = retry %v, error %v", retry, validationErr)
 	}
 }

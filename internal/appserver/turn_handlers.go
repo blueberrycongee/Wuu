@@ -2063,11 +2063,21 @@ func (s *Server) runTurnWithRequestContext(ctx context.Context, th *threadState,
 	// before successor ordering on this server without making an immediate user
 	// turn spuriously fail as busy.
 	awaitingAutoContinuation := err == nil && threadRuntimeAwaitsAutoContinuation(th.ID, threadRuntime)
+	executionRetryPrompt := ""
+	executionRunError := err
 	var runUpdate Run
 	hasRunUpdate := false
 	if runID := strings.TrimSpace(turnRuntime.ExecutionRunID); runID != "" {
 		awaitingAutoContinuation = err == nil && s.executionRunAwaitsContinuation(th.ID, threadRuntime)
-		settled, _, settleErr := s.settleExecutionRunTurn(runID, turnID, tracePath, turn, structured, err, awaitingAutoContinuation, now)
+		if err == nil && turn.Status == TurnStatusCompleted {
+			if retryPrompt, retry, validationErr := s.executionRunSchemaOutcome(runID, res.Content); retry {
+				executionRetryPrompt = retryPrompt
+				awaitingAutoContinuation = true
+			} else if validationErr != nil {
+				executionRunError = validationErr
+			}
+		}
+		settled, _, settleErr := s.settleExecutionRunTurn(runID, turnID, tracePath, turn, structured, executionRunError, awaitingAutoContinuation, now)
 		if settleErr != nil {
 			providers.DebugLogf("settle execution run %q turn %q: %v", runID, turnID, settleErr)
 		} else {
@@ -2124,6 +2134,13 @@ func (s *Server) runTurnWithRequestContext(ctx context.Context, th *threadState,
 	if err != nil {
 		s.kickAgentCompletionDrain(th.ID)
 		s.kickQueuedTurnDrain(th.ID)
+		return
+	}
+	if executionRetryPrompt != "" {
+		if retryErr := s.startExecutionSchemaRetry(context.Background(), th, turnRuntime, executionRetryPrompt); retryErr != nil {
+			providers.DebugLogf("start structured-output retry for run %q: %v", turnRuntime.ExecutionRunID, retryErr)
+			_, _, _ = s.settleExecutionRunTurn(turnRuntime.ExecutionRunID, turnID, tracePath, turn, structured, retryErr, false, time.Now())
+		}
 		return
 	}
 	if !turnRuntime.CompactOnly {
