@@ -212,6 +212,29 @@ func (s *Store) AttachTurn(ctx context.Context, runID, threadID, turnID string, 
 	})
 }
 
+// Resolve records the effective runtime and workspace selected under Turn
+// admission. It is allowed only before the first canonical Turn is attached.
+func (s *Store) Resolve(ctx context.Context, runID string, runtime RuntimeManifest, workspace WorkspaceRef, at time.Time) (Run, error) {
+	runtime = normalizeRuntime(runtime)
+	workspace = normalizeWorkspace(workspace)
+	if runtime.Resolved.Provider == "" || runtime.Resolved.Model == "" || runtime.ProtocolVersion == "" {
+		return Run{}, errors.New("resolved execution runtime is incomplete")
+	}
+	if workspace.Root == "" {
+		return Run{}, errors.New("resolved execution workspace root is required")
+	}
+	at = normalizedTime(at)
+	return s.update(ctx, runID, func(run *Run) error {
+		if run.Status != StatusAccepted || len(run.Turns) != 0 {
+			return stateConflict(run.ID, run.Status, "resolve runtime")
+		}
+		run.Runtime = runtime
+		run.Workspace = workspace
+		run.UpdatedAt = at
+		return nil
+	})
+}
+
 func (s *Store) FinishTurn(ctx context.Context, runID, turnID string, terminal TurnTerminal) (Run, error) {
 	runID = strings.TrimSpace(runID)
 	turnID = strings.TrimSpace(turnID)
