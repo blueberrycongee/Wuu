@@ -3,13 +3,18 @@ package appserver
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/blueberrycongee/wuu/internal/agent"
 	"github.com/blueberrycongee/wuu/internal/execution"
+	"github.com/blueberrycongee/wuu/internal/goalruntime"
 	"github.com/blueberrycongee/wuu/internal/hooks"
 	"github.com/blueberrycongee/wuu/internal/providers"
+	"github.com/blueberrycongee/wuu/internal/runtime"
 	"github.com/blueberrycongee/wuu/internal/session"
 	"github.com/blueberrycongee/wuu/internal/structuredoutput"
 )
@@ -126,4 +131,158 @@ func TestExecutionRunSchemaOutcomeRetriesWithinOneRun(t *testing.T) {
 	if _, retry, validationErr := srv.executionRunSchemaOutcome("run-schema", `{"ok":true}`); retry || validationErr != nil {
 		t.Fatalf("valid outcome = retry %v, error %v", retry, validationErr)
 	}
+}
+
+func TestExecutionRunDefersSchemaValidationUntilContinuationSettles(t *testing.T) {
+	rt := newTestRuntime(t, &fakeClient{})
+	srv := New(rt, &lockedBuffer{})
+	defer srv.Close()
+	validator, err := structuredoutput.New(json.RawMessage(`{"type":"object","required":["ok"]}`))
+	if err != nil {
+		t.Fatalf("New validator: %v", err)
+	}
+	const threadID = "thread-schema-continuation"
+	srv.registerExecutionRun(execution.Run{ID: "run-schema-continuation", ThreadID: threadID}, validator)
+	goalRuntime := goalruntime.NewRuntime(goalruntime.NewStore(filepath.Join(t.TempDir(), "goal.json")))
+	srv.threads[threadID] = &threadState{ID: threadID, execRuntime: &runtime.ThreadRuntime{GoalRuntime: goalRuntime}}
+	if _, err := goalRuntime.Create(goalruntime.Spec{ThreadID: threadID, GoalID: "goal-schema", Objective: "finish the structured task"}); err != nil {
+		t.Fatalf("Create goal: %v", err)
+	}
+
+	awaiting, retryPrompt, validationErr := srv.executionRunSuccessfulTurnOutcome("run-schema-continuation", threadID, nil, `{"wrong":true}`)
+	if !awaiting || retryPrompt != "" || validationErr != nil {
+		t.Fatalf("active goal outcome = awaiting %v, prompt %q, error %v", awaiting, retryPrompt, validationErr)
+	}
+	if retries := srv.runs["run-schema-continuation"].retries; retries != 0 {
+		t.Fatalf("schema retries while continuation pending = %d", retries)
+	}
+
+	if err := goalRuntime.Store().Clear(); err != nil {
+		t.Fatalf("Clear goal: %v", err)
+	}
+	awaiting, retryPrompt, validationErr = srv.executionRunSuccessfulTurnOutcome("run-schema-continuation", threadID, nil, `{"wrong":true}`)
+	if !awaiting || retryPrompt == "" || validationErr != nil {
+		t.Fatalf("final invalid outcome = awaiting %v, prompt %q, error %v", awaiting, retryPrompt, validationErr)
+	}
+}
+
+func TestExecutionRunGoalReadFailureBecomesSettlementError(t *testing.T) {
+	rt := newTestRuntime(t, &fakeClient{})
+	srv := New(rt, &lockedBuffer{})
+	defer srv.Close()
+	const threadID = "thread-corrupt-goal"
+	goalPath := filepath.Join(t.TempDir(), "goal.json")
+	if err := os.MkdirAll(filepath.Dir(goalPath), 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(goalPath, []byte("{not-json\n"), 0o644); err != nil {
+		t.Fatalf("Write corrupt goal: %v", err)
+	}
+	goalRuntime := goalruntime.NewRuntime(goalruntime.NewStore(goalPath))
+	srv.threads[threadID] = &threadState{ID: threadID, execRuntime: &runtime.ThreadRuntime{GoalRuntime: goalRuntime}}
+	run := createEphemeralExecutionRun(t, srv, threadID)
+	if _, err := srv.runStore.AttachTurn(context.Background(), run.ID, threadID, "turn-goal-error", time.Now().UTC()); err != nil {
+		t.Fatalf("AttachTurn: %v", err)
+	}
+	srv.registerExecutionRun(run, nil)
+
+	awaiting, retryPrompt, err := srv.executionRunSuccessfulTurnOutcome(run.ID, threadID, nil, `{"ok":true}`)
+	if err == nil || awaiting || retryPrompt != "" {
+		t.Fatalf("corrupt goal outcome = awaiting %v, prompt %q, error %v", awaiting, retryPrompt, err)
+	}
+	settled, terminal, settleErr := srv.settleExecutionRunTurn(run.ID, "turn-goal-error", "/trace/goal-error.jsonl", Turn{ID: "turn-goal-error", Status: TurnStatusCompleted}, nil, err, false, time.Now().UTC())
+	if settleErr != nil {
+		t.Fatalf("settleExecutionRunTurn: %v", settleErr)
+	}
+	if !terminal || settled.Status != execution.StatusFailed || srv.executionRunAttached(run.ID) {
+		t.Fatalf("goal read failure settlement = terminal %v, run %+v, attached %v", terminal, settled, srv.executionRunAttached(run.ID))
+	}
+}
+
+func TestFailAndDetachExecutionRunReturnsExistingTerminalRun(t *testing.T) {
+	rt := newTestRuntime(t, &fakeClient{})
+	srv := New(rt, &lockedBuffer{})
+	defer srv.Close()
+	run := createEphemeralExecutionRun(t, srv, "thread-terminal-race")
+	if _, err := srv.runStore.AttachTurn(context.Background(), run.ID, run.ThreadID, "turn-terminal-race", time.Now().UTC()); err != nil {
+		t.Fatalf("AttachTurn: %v", err)
+	}
+	srv.registerExecutionRun(run, nil)
+	completed, err := srv.runStore.Complete(context.Background(), run.ID, execution.Result{FinalTurnID: "turn-terminal-race"}, time.Now().UTC())
+	if err != nil {
+		t.Fatalf("Complete: %v", err)
+	}
+
+	got, err := srv.failAndDetachExecutionRun(run.ID, execution.StatusInterrupted, "interrupted", "cancelled", context.Canceled)
+	if err != nil {
+		t.Fatalf("failAndDetachExecutionRun: %v", err)
+	}
+	if got.ID != completed.ID || got.Status != execution.StatusCompleted {
+		t.Fatalf("race result = %+v, want completed Run %+v", got, completed)
+	}
+	if srv.executionRunAttached(run.ID) {
+		t.Fatal("terminal Run remained attached")
+	}
+}
+
+func TestRunInterruptRecordsTimeoutBeforeCancellingTurn(t *testing.T) {
+	rt := newTestRuntime(t, &fakeClient{})
+	out := &lockedBuffer{}
+	srv := New(rt, out)
+	defer srv.Close()
+	run := createEphemeralExecutionRun(t, srv, "thread-timeout-order")
+	if _, err := srv.runStore.AttachTurn(context.Background(), run.ID, run.ThreadID, "turn-timeout-order", time.Now().UTC()); err != nil {
+		t.Fatalf("AttachTurn: %v", err)
+	}
+	srv.registerExecutionRun(run, nil)
+	th := newThreadState(run.ThreadID, []providers.ChatMessage{{Role: "system", Content: "system"}}, rt.ProviderName, rt.Model, rt.RootDir, false, time.Now().UTC())
+	observed := execution.Status("")
+	th.cancel = func() { observed = srv.executionRunInterruptStatus(run.ID) }
+	th.currentExecutionRunID = run.ID
+	srv.threads[run.ThreadID] = th
+
+	req := Request{ID: json.RawMessage(`"interrupt"`), Method: MethodRunInterrupt, Params: mustJSON(RunInterruptParams{RunID: run.ID, Reason: "timeout"})}
+	if err := srv.handleRunInterrupt(context.Background(), req); err != nil {
+		t.Fatalf("run/interrupt: %v", err)
+	}
+	if observed != execution.StatusTimedOut {
+		t.Fatalf("interrupt status observed by cancel = %q, want %q", observed, execution.StatusTimedOut)
+	}
+}
+
+func TestRunInterruptDoesNotCancelSuccessorRun(t *testing.T) {
+	rt := newTestRuntime(t, &fakeClient{})
+	srv := New(rt, &lockedBuffer{})
+	defer srv.Close()
+	const threadID = "thread-successor-run"
+	th := newThreadState(threadID, []providers.ChatMessage{{Role: "system", Content: "system"}}, rt.ProviderName, rt.Model, rt.RootDir, false, time.Now().UTC())
+	cancelled := false
+	th.cancel = func() { cancelled = true }
+	th.currentExecutionRunID = "run-successor"
+	srv.threads[threadID] = th
+
+	turnActive, err := srv.interruptThreadExecution(threadID, "run-original")
+	if !errors.Is(err, errExecutionRunChanged) || turnActive {
+		t.Fatalf("interrupt successor = active %v, error %v", turnActive, err)
+	}
+	if cancelled {
+		t.Fatal("stale interrupt cancelled the successor Run")
+	}
+}
+
+func createEphemeralExecutionRun(t *testing.T, srv *Server, threadID string) execution.Run {
+	t.Helper()
+	run, err := srv.runStore.Create(context.Background(), execution.CreateParams{
+		RuntimeID: "test-runtime", Ephemeral: true, ThreadID: threadID,
+		Request: execution.Request{Mode: execution.ModeStart, HasPrompt: true},
+		Runtime: execution.RuntimeManifest{
+			ProtocolVersion: "wuu-app-server/v0.1",
+			Resolved:        execution.Selection{Provider: "fake-provider", Model: "fake-model"},
+		},
+		Workspace: execution.WorkspaceRef{Root: srv.rt.RootDir},
+	})
+	if err != nil {
+		t.Fatalf("Create execution Run: %v", err)
+	}
+	return run
 }

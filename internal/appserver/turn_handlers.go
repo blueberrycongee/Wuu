@@ -334,6 +334,7 @@ func (s *Server) startThreadCompactTurn(ctx context.Context, req Request, th *th
 	th.cancel = cancel
 	turn := th.startCompactTurnLocked(turnID, displayMsg, now)
 	turnRuntime := turnRuntimeSnapshotLocked(th)
+	th.currentExecutionRunID = turnRuntime.ExecutionRunID
 	turnRuntime.ForceCompact = true
 	turnRuntime.CompactOnly = true
 	turnRuntime.HistoryBaselineSeq = th.historyHeadSeq
@@ -1261,7 +1262,7 @@ func (s *Server) handleTurnInterrupt(req Request) error {
 		return s.writeResponse(req.ID, nil, err)
 	}
 	threadID := strings.TrimSpace(params.ThreadID)
-	_, err := s.interruptThreadExecution(threadID)
+	_, err := s.interruptThreadExecution(threadID, "")
 	return s.writeResponse(req.ID, OKResult{OK: err == nil}, err)
 }
 
@@ -1269,7 +1270,7 @@ func (s *Server) handleTurnInterrupt(req Request) error {
 // and run/interrupt. The bool reports whether an active Turn will perform the
 // terminal settlement; false means the caller interrupted only between-turn
 // background work.
-func (s *Server) interruptThreadExecution(threadID string) (bool, error) {
+func (s *Server) interruptThreadExecution(threadID, expectedRunID string) (bool, error) {
 	th := s.thread(threadID)
 	if th == nil {
 		return false, fmt.Errorf("thread %q not found", threadID)
@@ -1277,6 +1278,11 @@ func (s *Server) interruptThreadExecution(threadID string) (bool, error) {
 	th.mu.Lock()
 	cancel := th.cancel
 	threadRuntime := th.execRuntime
+	if cancel != nil && strings.TrimSpace(expectedRunID) != "" && th.currentExecutionRunID != strings.TrimSpace(expectedRunID) {
+		currentRunID := th.currentExecutionRunID
+		th.mu.Unlock()
+		return false, fmt.Errorf("%w: expected %q, current %q", errExecutionRunChanged, expectedRunID, currentRunID)
+	}
 	if cancel == nil {
 		hasAgentWork := threadRuntimeHasOutstandingAgentWork(threadRuntime)
 		if hasAgentWork {
@@ -2069,14 +2075,8 @@ func (s *Server) runTurnWithRequestContext(ctx context.Context, th *threadState,
 	var runUpdate Run
 	hasRunUpdate := false
 	if runID := strings.TrimSpace(turnRuntime.ExecutionRunID); runID != "" {
-		awaitingAutoContinuation = err == nil && s.executionRunAwaitsContinuation(th.ID, threadRuntime)
 		if err == nil && turn.Status == TurnStatusCompleted {
-			if retryPrompt, retry, validationErr := s.executionRunSchemaOutcome(runID, res.Content); retry {
-				executionRetryPrompt = retryPrompt
-				awaitingAutoContinuation = true
-			} else if validationErr != nil {
-				executionRunError = validationErr
-			}
+			awaitingAutoContinuation, executionRetryPrompt, executionRunError = s.executionRunSuccessfulTurnOutcome(runID, th.ID, threadRuntime, res.Content)
 		}
 		settled, _, settleErr := s.settleExecutionRunTurn(runID, turnID, tracePath, turn, structured, executionRunError, awaitingAutoContinuation, now)
 		if settleErr != nil {
@@ -2140,8 +2140,12 @@ func (s *Server) runTurnWithRequestContext(ctx context.Context, th *threadState,
 	if executionRetryPrompt != "" {
 		if retryErr := s.startExecutionSchemaRetry(context.Background(), th, turnRuntime, executionRetryPrompt); retryErr != nil {
 			providers.DebugLogf("start structured-output retry for run %q: %v", turnRuntime.ExecutionRunID, retryErr)
-			failedRun := s.failAndDetachExecutionRun(turnRuntime.ExecutionRunID, execution.StatusFailed, "structured_output_retry_failed", "internal", retryErr)
-			notify(NotificationRunUpdated, RunUpdatedNotification{Run: failedRun})
+			failedRun, settleErr := s.failAndDetachExecutionRun(turnRuntime.ExecutionRunID, execution.StatusFailed, "structured_output_retry_failed", "internal", retryErr)
+			if settleErr != nil {
+				providers.DebugLogf("settle structured-output retry failure for run %q: %v", turnRuntime.ExecutionRunID, settleErr)
+			} else {
+				notify(NotificationRunUpdated, RunUpdatedNotification{Run: failedRun})
+			}
 		}
 		return
 	}
@@ -2771,6 +2775,7 @@ func (s *Server) startThreadUserTurnWithAdmission(ctx context.Context, th *threa
 	turnRuntime.Ultra = snapshot.Ultra
 	turnRuntime.AutomationRunID = snapshot.AutomationRunID
 	turnRuntime.ExecutionRunID = snapshot.ExecutionRunID
+	th.currentExecutionRunID = turnRuntime.ExecutionRunID
 	turnRuntime.RequestContext = cloneContextSegments(snapshot.RequestContext)
 	th.mu.Unlock()
 
@@ -3549,6 +3554,7 @@ func (s *Server) startGoalContinuationTurn(ctx context.Context, threadID string)
 	turnRuntime := turnRuntimeSnapshotLocked(th)
 	turnRuntime.HistoryBaselineSeq = th.historyHeadSeq
 	turnRuntime.ExecutionRunID = s.activeExecutionRunID(threadID)
+	th.currentExecutionRunID = turnRuntime.ExecutionRunID
 	th.mu.Unlock()
 	if err := s.attachExecutionTurn(turnRuntime.ExecutionRunID, threadID, turnID, now); err != nil {
 		abortStartedThreadTurn(th, startedThreadTurn{ctx: turnCtx, cancel: cancel, turnID: turnID, turn: turn, runtime: turnRuntime, history: history}, err)

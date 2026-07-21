@@ -129,7 +129,13 @@ func (s *Store) Get(ctx context.Context, id string) (Run, error) {
 		return Run{}, err
 	}
 	defer db.Close()
-	return loadRun(ctx, db, id)
+	var run Run
+	err = withReadSnapshot(ctx, db, func(q queryer) error {
+		var loadErr error
+		run, loadErr = loadRun(ctx, q, id)
+		return loadErr
+	})
+	return run, err
 }
 
 func (s *Store) List(ctx context.Context, opts ListOptions) ([]Run, error) {
@@ -153,7 +159,12 @@ func (s *Store) List(ctx context.Context, opts ListOptions) ([]Run, error) {
 		return nil, err
 	}
 	defer db.Close()
-	durable, err := listDurableRuns(ctx, db, opts)
+	var durable []Run
+	err = withReadSnapshot(ctx, db, func(q queryer) error {
+		var listErr error
+		durable, listErr = listDurableRuns(ctx, q, opts)
+		return listErr
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -431,6 +442,21 @@ type queryer interface {
 	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
 }
 
+func withReadSnapshot(ctx context.Context, db *sql.DB, read func(queryer) error) error {
+	tx, err := db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return fmt.Errorf("begin execution read snapshot: %w", err)
+	}
+	defer tx.Rollback()
+	if err := read(tx); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit execution read snapshot: %w", err)
+	}
+	return nil
+}
+
 func loadRun(ctx context.Context, q queryer, id string) (Run, error) {
 	var run Run
 	var requestJSON, runtimeJSON, resultJSON, errorJSON string
@@ -506,7 +532,7 @@ FROM execution_run_turns WHERE run_id = ? ORDER BY ordinal`, runID)
 	return turns, nil
 }
 
-func listDurableRuns(ctx context.Context, db *sql.DB, opts ListOptions) ([]Run, error) {
+func listDurableRuns(ctx context.Context, q queryer, opts ListOptions) ([]Run, error) {
 	clauses := []string{"1 = 1"}
 	args := make([]any, 0, 5)
 	if opts.WorkspaceID != "" {
@@ -526,7 +552,7 @@ func listDurableRuns(ctx context.Context, db *sql.DB, opts ListOptions) ([]Run, 
 		args = append(args, opts.Status)
 	}
 	args = append(args, opts.Limit)
-	rows, err := db.QueryContext(ctx, `
+	rows, err := q.QueryContext(ctx, `
 SELECT id FROM execution_runs
 WHERE `+strings.Join(clauses, " AND ")+`
 ORDER BY updated_at DESC, id DESC LIMIT ?`, args...)
@@ -547,7 +573,7 @@ ORDER BY updated_at DESC, id DESC LIMIT ?`, args...)
 	}
 	runs := make([]Run, 0, len(ids))
 	for _, id := range ids {
-		run, err := loadRun(ctx, db, id)
+		run, err := loadRun(ctx, q, id)
 		if err != nil {
 			return nil, err
 		}

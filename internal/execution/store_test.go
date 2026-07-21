@@ -229,6 +229,62 @@ func TestStoreValidatesCanonicalRequest(t *testing.T) {
 	}
 }
 
+func TestStoreReadSnapshotDoesNotMixRunAndTurnVersions(t *testing.T) {
+	ctx := context.Background()
+	store := newTestStore(t)
+	run, err := store.Create(ctx, testCreateParams(ModeStart, "", "thread-snapshot"))
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	db, err := session.OpenStore(store.sessDir)
+	if err != nil {
+		t.Fatalf("OpenStore: %v", err)
+	}
+	defer db.Close()
+
+	err = withReadSnapshot(ctx, db, func(q queryer) error {
+		var status Status
+		if err := q.QueryRowContext(ctx, `SELECT status FROM execution_runs WHERE id = ?`, run.ID).Scan(&status); err != nil {
+			return err
+		}
+		if status != StatusAccepted {
+			t.Fatalf("initial snapshot status = %q", status)
+		}
+		writer, err := NewStore(store.sessDir)
+		if err != nil {
+			return err
+		}
+		if _, err := writer.AttachTurn(ctx, run.ID, run.ThreadID, "turn-snapshot", time.Now().UTC()); err != nil {
+			return err
+		}
+		snapshot, err := loadRun(ctx, q, run.ID)
+		if err != nil {
+			return err
+		}
+		if snapshot.Status != StatusAccepted || len(snapshot.Turns) != 0 {
+			t.Fatalf("mixed read snapshot = %+v", snapshot)
+		}
+		listed, err := listDurableRuns(ctx, q, ListOptions{Status: StatusAccepted, Limit: 10})
+		if err != nil {
+			return err
+		}
+		if len(listed) != 1 || listed[0].ID != run.ID || listed[0].Status != StatusAccepted || len(listed[0].Turns) != 0 {
+			t.Fatalf("mixed list snapshot = %+v", listed)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("withReadSnapshot: %v", err)
+	}
+	latest, err := store.Get(ctx, run.ID)
+	if err != nil {
+		t.Fatalf("Get latest: %v", err)
+	}
+	if latest.Status != StatusRunning || len(latest.Turns) != 1 {
+		t.Fatalf("latest run = %+v", latest)
+	}
+}
+
 func newTestStore(t *testing.T) *Store {
 	t.Helper()
 	store, err := NewStore(filepath.Join(t.TempDir(), "sessions"))

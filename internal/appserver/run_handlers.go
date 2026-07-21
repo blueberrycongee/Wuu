@@ -136,24 +136,24 @@ func (s *Server) handleRunStart(ctx context.Context, req Request) error {
 	})
 	if !accepted {
 		persistErr := s.abortStartedThreadTurnDurably(th, started, errServerClosed)
-		s.failAndDetachExecutionRun(run.ID, execution.StatusInterrupted, "server_closed", "cancelled", errServerClosed)
+		_, _ = s.failAndDetachExecutionRun(run.ID, execution.StatusInterrupted, "server_closed", "cancelled", errServerClosed)
 		return s.writeRunError(req.ID, "server_closed", errors.Join(errServerClosed, persistErr))
 	}
 	defer launch.Cancel()
 
 	if err := s.writeResponse(req.ID, RunStartResult{Run: run}, nil); err != nil {
 		persistErr := s.abortStartedThreadTurnDurably(th, started, err)
-		s.failAndDetachExecutionRun(run.ID, execution.StatusInterrupted, "response_failed", "protocol", err)
+		_, _ = s.failAndDetachExecutionRun(run.ID, execution.StatusInterrupted, "response_failed", "protocol", err)
 		return errors.Join(err, persistErr)
 	}
 	if err := s.writeNotification(NotificationRunStarted, RunStartedNotification{Run: run}); err != nil {
 		persistErr := s.abortStartedThreadTurnDurably(th, started, err)
-		s.failAndDetachExecutionRun(run.ID, execution.StatusInterrupted, "notification_failed", "protocol", err)
+		_, _ = s.failAndDetachExecutionRun(run.ID, execution.StatusInterrupted, "notification_failed", "protocol", err)
 		return errors.Join(err, persistErr)
 	}
 	if err := s.writeNotification(NotificationTurnStarted, TurnStartedNotification{ThreadID: params.ThreadID, Turn: started.turn}); err != nil {
 		persistErr := s.abortStartedThreadTurnDurably(th, started, err)
-		s.failAndDetachExecutionRun(run.ID, execution.StatusInterrupted, "notification_failed", "protocol", err)
+		_, _ = s.failAndDetachExecutionRun(run.ID, execution.StatusInterrupted, "notification_failed", "protocol", err)
 		return errors.Join(err, persistErr)
 	}
 	launch.Commit()
@@ -220,11 +220,24 @@ func (s *Server) handleRunInterrupt(ctx context.Context, req Request) error {
 	if strings.EqualFold(strings.TrimSpace(params.Reason), "timeout") {
 		interruptStatus = execution.StatusTimedOut
 	}
-	turnActive, err := s.interruptThreadExecution(view.Run.ThreadID)
+	// Record the caller's reason before cancellation. A fast provider can settle
+	// the Turn synchronously with cancel, so writing this afterward races the
+	// terminal Run update and can misclassify a timeout as a generic interrupt.
+	s.setExecutionRunInterruptStatus(runID, interruptStatus)
+	turnActive, err := s.interruptThreadExecution(view.Run.ThreadID, runID)
 	if err != nil {
+		if errors.Is(err, errExecutionRunChanged) {
+			latest, readErr := s.readExecutionRun(ctx, runID)
+			if readErr == nil && latest.Run.Status.Terminal() {
+				return s.writeResponse(req.ID, RunInterruptResult{Run: latest.Run}, nil)
+			}
+			if readErr != nil {
+				return s.writeRunError(req.ID, "internal_error", readErr)
+			}
+			return s.writeRunError(req.ID, "run_not_attached", err)
+		}
 		return s.writeRunError(req.ID, "internal_error", err)
 	}
-	s.setExecutionRunInterruptStatus(runID, interruptStatus)
 	if !turnActive {
 		status := interruptStatus
 		code, category, message := "interrupted", "cancelled", "execution run interrupted"
@@ -232,7 +245,10 @@ func (s *Server) handleRunInterrupt(ctx context.Context, req Request) error {
 			status = execution.StatusTimedOut
 			code, category, message = "timeout", "timeout", "execution run timed out"
 		}
-		view.Run = s.failAndDetachExecutionRun(runID, status, code, category, errors.New(message))
+		view.Run, err = s.failAndDetachExecutionRun(runID, status, code, category, errors.New(message))
+		if err != nil {
+			return s.writeRunError(req.ID, "internal_error", err)
+		}
 	}
 	return s.writeResponse(req.ID, RunInterruptResult{Run: view.Run}, nil)
 }
@@ -396,16 +412,30 @@ func (s *Server) settleExecutionRunTurn(runID, turnID, tracePath string, turn Tu
 	return run, terminal, nil
 }
 
-func (s *Server) executionRunAwaitsContinuation(threadID string, threadRuntime *runtime.ThreadRuntime) bool {
+func (s *Server) executionRunAwaitsContinuation(threadID string, threadRuntime *runtime.ThreadRuntime) (bool, error) {
 	if threadRuntimeAwaitsAutoContinuation(threadID, threadRuntime) {
-		return true
+		return true, nil
 	}
 	goal, ok, err := s.currentRuntimeGoal(threadID)
 	if err != nil {
-		providers.DebugLogf("inspect execution run goal continuation for thread %q: %v", threadID, err)
-		return true
+		return false, fmt.Errorf("inspect execution run goal continuation for thread %q: %w", threadID, err)
 	}
-	return ok && goal.CanAutoContinue()
+	return ok && goal.CanAutoContinue(), nil
+}
+
+func (s *Server) executionRunSuccessfulTurnOutcome(runID, threadID string, threadRuntime *runtime.ThreadRuntime, content string) (awaitingContinuation bool, retryPrompt string, validationErr error) {
+	awaitingContinuation, err := s.executionRunAwaitsContinuation(threadID, threadRuntime)
+	if err != nil {
+		return false, "", err
+	}
+	if awaitingContinuation {
+		return true, "", nil
+	}
+	prompt, retry, err := s.executionRunSchemaOutcome(runID, content)
+	if retry {
+		return true, prompt, nil
+	}
+	return false, "", err
 }
 
 func (s *Server) startExecutionSchemaRetry(ctx context.Context, th *threadState, snapshot turnRuntimeSnapshot, prompt string) error {
@@ -456,18 +486,22 @@ func (s *Server) detachExecutionRun(runID string) {
 	}
 }
 
-func (s *Server) failAndDetachExecutionRun(runID string, status execution.Status, code, category string, cause error) execution.Run {
+func (s *Server) failAndDetachExecutionRun(runID string, status execution.Status, code, category string, cause error) (execution.Run, error) {
 	message := "execution run failed"
 	if cause != nil {
 		message = cause.Error()
 	}
 	run, err := s.runStore.Fail(context.Background(), runID, status, execution.Result{ExitCode: executionExitCode(status)}, execution.Error{Code: code, Category: category, Message: message}, time.Now().UTC())
 	if err != nil {
-		providers.DebugLogf("settle execution run %q: %v", runID, err)
+		current, readErr := s.runStore.Get(context.Background(), runID)
+		if readErr != nil || !current.Status.Terminal() {
+			return execution.Run{}, fmt.Errorf("settle execution run %q: %w", runID, err)
+		}
+		run = current
 	}
 	s.detachExecutionRun(runID)
 	s.kickQueuedTurnDrain(run.ThreadID)
-	return run
+	return run, nil
 }
 
 func executionExitCode(status execution.Status) int {
@@ -491,7 +525,7 @@ func (s *Server) interruptAttachedRunsOnClose() {
 	}
 	s.runMu.Unlock()
 	for _, id := range ids {
-		s.failAndDetachExecutionRun(id, execution.StatusInterrupted, "server_closed", "cancelled", errServerClosed)
+		_, _ = s.failAndDetachExecutionRun(id, execution.StatusInterrupted, "server_closed", "cancelled", errServerClosed)
 	}
 }
 
