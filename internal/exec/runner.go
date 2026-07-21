@@ -517,13 +517,19 @@ func handleNotification(opts Options, notification Notification, state *runState
 			emitResult(opts, *state, "interrupted", errText)
 			return false, WithExitCode(ExitInterrupted, errors.New(errText))
 		case "failed":
-			state.status = "failed"
+			status := "failed"
+			exitCode := ExitTurnFailed
+			if state.permissionDenied {
+				status = "permission_denied"
+				exitCode = ExitPermissionDenied
+			}
+			state.status = status
 			errText := "execution run failed"
 			if params.Run.Error != nil && params.Run.Error.Message != "" {
 				errText = params.Run.Error.Message
 			}
-			emitResult(opts, *state, "failed", errText)
-			return false, WithExitCode(ExitTurnFailed, errors.New(errText))
+			emitResult(opts, *state, status, errText)
+			return false, WithExitCode(exitCode, errors.New(errText))
 		}
 	case appserver.NotificationTurnError:
 		var params appserver.TurnErrorNotification
