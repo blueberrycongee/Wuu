@@ -396,6 +396,9 @@ func TestServerInitializeAndConfigRead(t *testing.T) {
 	if !initResult.Ultra || initResult.MaxParallel != config.DefaultAgentMaxParallel {
 		t.Fatalf("initialize missing Ultra runtime state: %+v", initResult)
 	}
+	if initResult.RuntimeHost.Kind != string(runtime.HostLocal) || initResult.RuntimeHost.InstanceID != "" {
+		t.Fatalf("initialize missing default local host: %+v", initResult.RuntimeHost)
+	}
 	configMsg := responseByID(t, msgs, "2")
 	configResult := remarshal[ConfigReadResult](t, configMsg["result"])
 	if configResult.ConfigPath == "" || configResult.SessionDir == "" {
@@ -403,6 +406,21 @@ func TestServerInitializeAndConfigRead(t *testing.T) {
 	}
 	if !configResult.Ultra || configResult.MaxParallel != config.DefaultAgentMaxParallel {
 		t.Fatalf("config/read missing Ultra runtime state: %+v", configResult)
+	}
+}
+
+func TestServerInitializeReportsCloudRuntimeHost(t *testing.T) {
+	rt := newTestRuntime(t, &fakeClient{})
+	rt.Host = runtime.Host{Kind: runtime.HostCloud, InstanceID: "run-123"}
+	out := &lockedBuffer{}
+	srv := New(rt, out)
+
+	if err := srv.handleLine(context.Background(), []byte(`{"id":"1","method":"initialize"}`)); err != nil {
+		t.Fatalf("initialize: %v", err)
+	}
+	result := remarshal[InitializeResult](t, responseByID(t, parseOutput(t, out.String()), "1")["result"])
+	if result.RuntimeHost.Kind != "cloud" || result.RuntimeHost.InstanceID != "run-123" {
+		t.Fatalf("unexpected runtime host: %+v", result.RuntimeHost)
 	}
 }
 

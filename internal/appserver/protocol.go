@@ -206,6 +206,14 @@ type CoreBuildInfo struct {
 	Dirty   bool   `json:"dirty,omitempty"`
 }
 
+// RuntimeHostSummary identifies the process behind this app-server connection.
+// Product identities such as organization, seat, and agent definition remain
+// control-plane concerns and are intentionally not part of this core contract.
+type RuntimeHostSummary struct {
+	Kind       string `json:"kind"`
+	InstanceID string `json:"instance_id,omitempty"`
+}
+
 type InitializeResult struct {
 	Status             string                     `json:"status"`
 	Issues             []RuntimeIssue             `json:"issues,omitempty"`
@@ -218,6 +226,7 @@ type InitializeResult struct {
 	Variant            string                     `json:"variant,omitempty"`
 	Ultra              bool                       `json:"ultra"`
 	MaxParallel        int                        `json:"max_parallel"`
+	RuntimeHost        RuntimeHostSummary         `json:"runtime_host"`
 	WorkspaceRoot      string                     `json:"workspace_root"`
 	Permissions        PermissionSummary          `json:"permissions"`
 	ExtensionTrust     ExtensionTrustSummary      `json:"extension_trust"`

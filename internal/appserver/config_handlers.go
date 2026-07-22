@@ -33,6 +33,7 @@ import (
 func (s *Server) handleInitialize(req Request) error {
 	s.pinLegacyRuntimeSelections()
 	core := version.Info()
+	runtimeHost := s.rt.HostInfo()
 	modelProfile, toolSurface := s.currentModelSurfaceSummaries()
 	status := "ready"
 	issues := make([]RuntimeIssue, 0, len(s.rt.ReadinessIssues))
@@ -51,12 +52,16 @@ func (s *Server) handleInitialize(req Request) error {
 			Date:    core.Date,
 			Dirty:   core.Dirty,
 		},
-		Provider:           s.rt.ProviderName,
-		Model:              s.rt.Model,
-		Effort:             s.currentDisplayEffort(),
-		Variant:            s.currentVariant(),
-		Ultra:              s.rt.UltraMode(),
-		MaxParallel:        s.rt.MaxParallel(),
+		Provider:    s.rt.ProviderName,
+		Model:       s.rt.Model,
+		Effort:      s.currentDisplayEffort(),
+		Variant:     s.currentVariant(),
+		Ultra:       s.rt.UltraMode(),
+		MaxParallel: s.rt.MaxParallel(),
+		RuntimeHost: RuntimeHostSummary{
+			Kind:       string(runtimeHost.Kind),
+			InstanceID: runtimeHost.InstanceID,
+		},
 		WorkspaceRoot:      s.rt.RootDir,
 		Permissions:        s.currentPermissionSummary(),
 		ExtensionTrust:     s.currentExtensionTrustSummary(),
