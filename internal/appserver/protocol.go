@@ -214,6 +214,28 @@ type RuntimeHostSummary struct {
 	InstanceID string `json:"instance_id,omitempty"`
 }
 
+// InitializeParams describes the client attached to the UI-neutral core.
+// Capabilities are opt-in: an omitted capability must never cause the core to
+// send a request that the client cannot handle.
+type InitializeParams struct {
+	ProtocolVersion string             `json:"protocol_version,omitempty"`
+	Client          ClientInfo         `json:"client,omitempty"`
+	Capabilities    ClientCapabilities `json:"capabilities,omitempty"`
+}
+
+type ClientInfo struct {
+	Name    string `json:"name,omitempty"`
+	Version string `json:"version,omitempty"`
+}
+
+type ClientCapabilities struct {
+	ReverseRPC ReverseRPCCapabilities `json:"reverse_rpc,omitempty"`
+}
+
+type ReverseRPCCapabilities struct {
+	Methods []string `json:"methods,omitempty"`
+}
+
 type InitializeResult struct {
 	Status             string                     `json:"status"`
 	Issues             []RuntimeIssue             `json:"issues,omitempty"`

@@ -424,6 +424,36 @@ func TestServerInitializeReportsCloudRuntimeHost(t *testing.T) {
 	}
 }
 
+func TestServerInitializeNegotiatesBrowserClient(t *testing.T) {
+	rt := newTestRuntime(t, &fakeClient{})
+	out := &lockedBuffer{}
+	srv := New(rt, out)
+	request := `{"id":"1","method":"initialize","params":{"protocol_version":"wuu-app-server/v0.1","capabilities":{"reverse_rpc":{"methods":["browser/cdp","browser/screenshot","browser/open_tab","browser/close_tab","browser/set_visibility","browser/list_tabs"]}}}}`
+
+	if err := srv.handleLine(context.Background(), []byte(request)); err != nil {
+		t.Fatalf("initialize: %v", err)
+	}
+	result := remarshal[InitializeResult](t, responseByID(t, parseOutput(t, out.String()), "1")["result"])
+	if !result.Features.Browser {
+		t.Fatalf("browser feature not negotiated: %+v", result.Features)
+	}
+}
+
+func TestServerInitializeRejectsIncompatibleProtocol(t *testing.T) {
+	rt := newTestRuntime(t, &fakeClient{})
+	out := &lockedBuffer{}
+	srv := New(rt, out)
+
+	if err := srv.handleLine(context.Background(), []byte(`{"id":"1","method":"initialize","params":{"protocol_version":"wuu-app-server/v9"}}`)); err != nil {
+		t.Fatalf("initialize write: %v", err)
+	}
+	response := responseByID(t, parseOutput(t, out.String()), "1")
+	errorPayload := remarshal[ResponseError](t, response["error"])
+	if !strings.Contains(errorPayload.Message, "unsupported protocol version") {
+		t.Fatalf("unexpected initialize error: %+v", errorPayload)
+	}
+}
+
 func TestServerInitializeReportsCredentialSetupWithoutExiting(t *testing.T) {
 	rt := newTestRuntime(t, &fakeClient{})
 	rt.ReadinessIssues = []runtime.ReadinessIssue{{Code: "credential_missing", Provider: "fake-provider", Message: "missing credential"}}

@@ -74,9 +74,42 @@ siblings like `config/read`, `config/model/update`, `config/general/update`,
 
 `initialize`
 
-Returns provider, model, workspace, tool policy, permission summary, extension
-trust summary, protocol version, and the effective `ultra` and `max_parallel`
-values.
+The client may identify itself, require an exact protocol version, and advertise
+the server-initiated methods it can handle:
+
+```json
+{
+  "id": "1",
+  "method": "initialize",
+  "params": {
+    "protocol_version": "wuu-app-server/v0.1",
+    "client": {"name": "wuu-desktop", "version": "0.10.1"},
+    "capabilities": {
+      "reverse_rpc": {
+        "methods": [
+          "browser/cdp",
+          "browser/screenshot",
+          "browser/open_tab",
+          "browser/close_tab",
+          "browser/set_visibility",
+          "browser/list_tabs"
+        ]
+      }
+    }
+  }
+}
+```
+
+Capabilities are opt-in. When `params` or `reverse_rpc.methods` is omitted, the
+core does not send server-initiated requests to that client. A supplied protocol
+version must match exactly; an incompatible client fails during initialization
+instead of failing later in a turn.
+
+The result returns provider, model, workspace, permission and extension trust
+summaries, the effective `ultra` and `max_parallel` values, and `runtime_host`.
+`runtime_host.kind` is `local` or `cloud`; a cloud process also reports the
+control-plane-supplied `instance_id`. Organization, seat, agent definition,
+quota, and sandbox details remain outside the core protocol.
 
 `config/read`
 
