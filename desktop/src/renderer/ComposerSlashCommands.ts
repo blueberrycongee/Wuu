@@ -68,11 +68,8 @@ export function parseComposerSlashDraft(value: string): ComposerSlashDraft | und
   };
 }
 
-export function isComposerTextComposing<T extends Element>(
-  event: ReactKeyboardEvent<T>,
-  compositionActive: boolean,
-): boolean {
-  return compositionActive || event.nativeEvent.isComposing;
+export function isComposerTextComposing<T extends Element>(event: ReactKeyboardEvent<T>): boolean {
+  return event.nativeEvent.isComposing;
 }
 
 export function buildComposerSlashCommands({

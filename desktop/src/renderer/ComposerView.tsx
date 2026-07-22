@@ -312,7 +312,6 @@ export function Composer({
   const showComposerStop = running && (forceStopWhileRunning || !hasDraft);
   const composerSendLabel = running ? t("composer.queueSend") : t("composer.send");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const compositionActiveRef = useRef(false);
   const composerShellRef = useRef<HTMLDivElement>(null);
   const composerFrameRef = useRef<HTMLDivElement>(null);
   const collapsedComposerFrameHeightRef = useRef<number | null>(null);
@@ -773,7 +772,7 @@ export function Composer({
     if (readOnly) {
       return;
     }
-    if (isComposerTextComposing(event, compositionActiveRef.current)) {
+    if (isComposerTextComposing(event)) {
       if (event.key === "Enter" && !event.shiftKey) {
         submitAfterCompositionRef.current = true;
       }
@@ -1021,23 +1020,17 @@ export function Composer({
               }}
               onPaste={handleComposerPaste}
               onBlur={() => {
-                compositionActiveRef.current = false;
-                submitAfterCompositionRef.current = false;
                 if (slashMenuOpen) {
                   setSlashDismissedValue(prompt);
                 }
               }}
-              onCompositionStart={() => {
-                compositionActiveRef.current = true;
-              }}
+              onKeyDown={handleComposerKeyDown}
               onCompositionEnd={() => {
-                compositionActiveRef.current = false;
                 if (submitAfterCompositionRef.current) {
                   submitAfterCompositionRef.current = false;
                   setCompositionSubmitRequest((request) => request + 1);
                 }
               }}
-              onKeyDown={handleComposerKeyDown}
               onContextMenu={handleComposerContextMenu}
             />
             <button

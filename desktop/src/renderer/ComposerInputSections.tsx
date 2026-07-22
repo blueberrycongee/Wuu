@@ -127,7 +127,6 @@ export function SplitPaneComposer({
 }): JSX.Element {
   const { t } = useI18n();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const compositionActiveRef = useRef(false);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
   const submitAfterCompositionRef = useRef(false);
   const [dropActive, setDropActive] = useState(false);
@@ -227,7 +226,7 @@ export function SplitPaneComposer({
     if (readOnly) {
       return;
     }
-    if (isComposerTextComposing(event, compositionActiveRef.current)) {
+    if (isComposerTextComposing(event)) {
       if (event.key === "Enter" && !event.shiftKey) {
         submitAfterCompositionRef.current = true;
       }
@@ -287,21 +286,13 @@ export function SplitPaneComposer({
             event.preventDefault();
             onPasteAttachmentFiles(pasted);
           }}
-          onCompositionStart={() => {
-            compositionActiveRef.current = true;
-          }}
+          onKeyDown={handleKeyDown}
           onCompositionEnd={() => {
-            compositionActiveRef.current = false;
             if (submitAfterCompositionRef.current) {
               submitAfterCompositionRef.current = false;
               setCompositionSubmitRequest((request) => request + 1);
             }
           }}
-          onBlur={() => {
-            compositionActiveRef.current = false;
-            submitAfterCompositionRef.current = false;
-          }}
-          onKeyDown={handleKeyDown}
         />
         <div className="split-composer-bar">
           <button
