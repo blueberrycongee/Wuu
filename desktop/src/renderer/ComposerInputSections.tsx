@@ -127,6 +127,7 @@ export function SplitPaneComposer({
 }): JSX.Element {
   const { t } = useI18n();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const compositionActiveRef = useRef(false);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
   const [dropActive, setDropActive] = useState(false);
   const hasAttachments = images.length > 0 || files.length > 0;
@@ -214,7 +215,7 @@ export function SplitPaneComposer({
   }
 
   function handleKeyDown(event: ReactKeyboardEvent<HTMLTextAreaElement>): void {
-    if (readOnly || isComposerTextComposing(event)) {
+    if (readOnly || isComposerTextComposing(event, compositionActiveRef.current)) {
       return;
     }
     if (handleQueryHistoryKeyDown(event)) {
@@ -270,6 +271,15 @@ export function SplitPaneComposer({
             }
             event.preventDefault();
             onPasteAttachmentFiles(pasted);
+          }}
+          onCompositionStart={() => {
+            compositionActiveRef.current = true;
+          }}
+          onCompositionEnd={() => {
+            compositionActiveRef.current = false;
+          }}
+          onBlur={() => {
+            compositionActiveRef.current = false;
           }}
           onKeyDown={handleKeyDown}
         />

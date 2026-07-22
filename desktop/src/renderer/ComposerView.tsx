@@ -312,6 +312,7 @@ export function Composer({
   const showComposerStop = running && (forceStopWhileRunning || !hasDraft);
   const composerSendLabel = running ? t("composer.queueSend") : t("composer.send");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const compositionActiveRef = useRef(false);
   const composerShellRef = useRef<HTMLDivElement>(null);
   const composerFrameRef = useRef<HTMLDivElement>(null);
   const collapsedComposerFrameHeightRef = useRef<number | null>(null);
@@ -761,7 +762,7 @@ export function Composer({
     if (readOnly) {
       return;
     }
-    if (isComposerTextComposing(event)) {
+    if (isComposerTextComposing(event, compositionActiveRef.current)) {
       return;
     }
     if (slashMenuOpen) {
@@ -1006,9 +1007,16 @@ export function Composer({
               }}
               onPaste={handleComposerPaste}
               onBlur={() => {
+                compositionActiveRef.current = false;
                 if (slashMenuOpen) {
                   setSlashDismissedValue(prompt);
                 }
+              }}
+              onCompositionStart={() => {
+                compositionActiveRef.current = true;
+              }}
+              onCompositionEnd={() => {
+                compositionActiveRef.current = false;
               }}
               onKeyDown={handleComposerKeyDown}
               onContextMenu={handleComposerContextMenu}

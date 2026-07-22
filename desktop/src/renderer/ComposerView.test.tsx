@@ -488,6 +488,33 @@ describe("Composer send control", () => {
     expect(onSend).not.toHaveBeenCalled();
   });
 
+  it("does not send between composition lifecycle events when Chromium reports stale flags", () => {
+    const onSend = vi.fn();
+    renderComposer({ prompt: "正在输入", onSend });
+    const textarea = container.querySelector<HTMLTextAreaElement>("textarea");
+    const enter = new KeyboardEvent("keydown", {
+      key: "Enter",
+      keyCode: 229,
+      bubbles: true,
+      cancelable: true,
+    });
+
+    act(() => {
+      textarea?.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+      textarea?.dispatchEvent(enter);
+    });
+
+    expect(enter.defaultPrevented).toBe(false);
+    expect(onSend).not.toHaveBeenCalled();
+
+    act(() => {
+      textarea?.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true }));
+      textarea?.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", keyCode: 229, bubbles: true }));
+    });
+
+    expect(onSend).toHaveBeenCalledTimes(1);
+  });
+
   it("steers with Enter and queues with Tab while a turn is running", () => {
     const onSend = vi.fn();
     const onSteer = vi.fn();
