@@ -3,6 +3,7 @@ package appserver
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -33,6 +34,22 @@ func TestCallClientRequiresNegotiatedMethod(t *testing.T) {
 	select {
 	case unexpected := <-writer.messages:
 		t.Fatalf("unnegotiated request reached client: %s", unexpected)
+	default:
+	}
+}
+
+func TestCallClientRejectsClosedServer(t *testing.T) {
+	writer := &messageWriter{messages: make(chan []byte, 1)}
+	srv := New(newTestRuntime(t, &fakeClient{}), writer)
+	srv.setClientMethods([]string{MethodBrowserListTabs})
+	srv.Close()
+
+	if _, err := srv.callClient(context.Background(), MethodBrowserListTabs, BrowserListTabsParams{}); !errors.Is(err, errServerClosed) {
+		t.Fatalf("callClient error = %v, want server closed", err)
+	}
+	select {
+	case unexpected := <-writer.messages:
+		t.Fatalf("closed server wrote reverse request: %s", unexpected)
 	default:
 	}
 }

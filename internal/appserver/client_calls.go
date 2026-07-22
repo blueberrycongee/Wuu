@@ -42,6 +42,10 @@ func (s *Server) callClient(ctx context.Context, method string, params any) (jso
 	}
 
 	s.clientCallMu.Lock()
+	if s.closed.Load() {
+		s.clientCallMu.Unlock()
+		return nil, fmt.Errorf("%s unavailable: %w", method, errServerClosed)
+	}
 	s.clientCallSeq++
 	id := "srv-" + strconv.FormatUint(s.clientCallSeq, 10)
 	ch := make(chan clientResponse, 1)
