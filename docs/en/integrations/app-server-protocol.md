@@ -11,6 +11,24 @@ than building separate agent loops.
 
 The current app-server transport is newline-delimited JSON over stdio.
 
+A cloud control plane starts the same core binary with an explicit process
+identity and config:
+
+```bash
+WUU_HOME=/state/wuu wuu app-server \
+  --host cloud \
+  --instance-id run_123 \
+  --workspace-id workspace_123 \
+  --workdir /workspace \
+  --config /run/wuu/config.json
+```
+
+Cloud mode requires `--instance-id`, `--workspace-id`, and `--config`. It never
+creates a local starter config from ambient host state. The sandbox or container
+boundary, transport authentication, organization membership, secrets injection,
+and quota enforcement belong to the host control plane; they are not implemented
+by `app-server`.
+
 Requests have this shape:
 
 ```json
