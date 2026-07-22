@@ -26,6 +26,12 @@ func TestResolveHostRequiresCloudInstanceID(t *testing.T) {
 	}
 }
 
+func TestResolveHostRejectsLocalInstanceID(t *testing.T) {
+	if _, err := ResolveHost(Host{Kind: HostLocal, InstanceID: "run-123"}); err == nil {
+		t.Fatal("expected local instance id error")
+	}
+}
+
 func TestResolveHostRejectsUnknownKind(t *testing.T) {
 	if _, err := ResolveHost(Host{Kind: "desktop"}); err == nil {
 		t.Fatal("expected unsupported host error")

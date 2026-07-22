@@ -643,6 +643,7 @@ func TestResolveAppServerHostValidatesCloudLaunch(t *testing.T) {
 		wantErr     string
 	}{
 		{name: "local defaults", kind: "local"},
+		{name: "local instance rejected", kind: "local", instanceID: "run-123", wantErr: "instance id"},
 		{name: "cloud ready", kind: "cloud", instanceID: "run-123", workspaceID: "workspace-123", configFile: "/run/wuu/config.json"},
 		{name: "cloud instance required", kind: "cloud", workspaceID: "workspace-123", configFile: "/run/wuu/config.json", wantErr: "instance id"},
 		{name: "cloud workspace required", kind: "cloud", instanceID: "run-123", configFile: "/run/wuu/config.json", wantErr: "--workspace-id"},

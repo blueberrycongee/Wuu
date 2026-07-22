@@ -31,6 +31,9 @@ func ResolveHost(host Host) (Host, error) {
 	}
 	switch host.Kind {
 	case HostLocal:
+		if host.InstanceID != "" {
+			return Host{}, fmt.Errorf("local host does not accept an instance id")
+		}
 		return host, nil
 	case HostCloud:
 		if host.InstanceID == "" {
