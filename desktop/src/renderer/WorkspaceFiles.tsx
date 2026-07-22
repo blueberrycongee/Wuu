@@ -2,6 +2,7 @@ import { preparePresortedFileTreeInput } from "@pierre/trees";
 import { FileTree, useFileTree } from "@pierre/trees/react";
 import { AlertCircle, FileText, FolderOpen, FolderX } from "lucide-react";
 import { type CSSProperties, Suspense, lazy, memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type {
   RuntimeContext,
   WorkspaceDirectoryListResult,
@@ -14,6 +15,7 @@ import { RichContent } from "./RichContent";
 import type { WorkspaceMonacoViewState } from "./WorkspaceMonacoEditor";
 import { desktopApiErrorMessage } from "./WorkspaceReviewHelpers";
 import { translateCurrent, useI18n } from "./i18n";
+import { desktopPlatform } from "./platform";
 
 // monaco-editor is several MB of JS; a static import here would drag it into
 // the eager startup chunk. Load it only when a code editor actually mounts.
@@ -65,12 +67,14 @@ export function WorkspaceFileTree({
   activeContext,
   open,
   selectedFilePath,
-  onOpenFile
+  onOpenFile,
+  onAddToTask,
 }: {
   activeContext?: RuntimeContext;
   open: boolean;
   selectedFilePath?: string;
   onOpenFile: (path: string) => void;
+  onAddToTask?: (path: string) => void;
 }): JSX.Element {
   const { locale, t } = useI18n();
   const [directories, setDirectories] = useState<Record<string, WorkspaceDirectoryListResult>>({});
@@ -129,6 +133,7 @@ export function WorkspaceFileTree({
         workspaceRoot={rootDirectory.root}
         selectedFilePath={selectedWorkspaceFilePath}
         onOpenFile={onOpenFile}
+        onAddToTask={onAddToTask}
         onLoadDirectory={(path) => {
           if (directories[path] || loadingDirectoriesRef.current.has(path)) return;
           loadingDirectoriesRef.current.add(path);
@@ -143,11 +148,12 @@ export function WorkspaceFileTree({
   );
 }
 
-const WorkspaceFileTreeView = memo(function WorkspaceFileTreeView({ directories, workspaceRoot, selectedFilePath, onOpenFile, onLoadDirectory }: {
+const WorkspaceFileTreeView = memo(function WorkspaceFileTreeView({ directories, workspaceRoot, selectedFilePath, onOpenFile, onAddToTask, onLoadDirectory }: {
   directories: Record<string, WorkspaceDirectoryListResult>;
   workspaceRoot: string;
   selectedFilePath?: string;
   onOpenFile: (path: string) => void;
+  onAddToTask?: (path: string) => void;
   onLoadDirectory: (path: string) => void;
 }): JSX.Element {
   const { locale, t } = useI18n();
@@ -270,7 +276,14 @@ const WorkspaceFileTreeView = memo(function WorkspaceFileTreeView({ directories,
       <FileTree
         model={model}
         style={WORKSPACE_FILE_TREE_STYLE}
-        renderContextMenu={(item, context) => (
+        renderContextMenu={(item, context) => desktopPlatform() === "darwin" ? (
+          <MacWorkspaceTreeContextMenu
+            absolutePath={absoluteWorkspacePath(workspaceRoot, item.path)}
+            relativePath={item.path}
+            onAddToTask={onAddToTask}
+            onClose={() => context.close()}
+          />
+        ) : (
           <WorkspaceTreeContextMenu
             entry={{ ...item, path: absoluteWorkspacePath(workspaceRoot, item.path) }}
             workspaceRoot={workspaceRoot}
@@ -283,6 +296,28 @@ const WorkspaceFileTreeView = memo(function WorkspaceFileTreeView({ directories,
     </div>
   );
 });
+
+function MacWorkspaceTreeContextMenu({
+  absolutePath,
+  relativePath,
+  onAddToTask,
+  onClose,
+}: {
+  absolutePath: string;
+  relativePath: string;
+  onAddToTask?: (path: string) => void;
+  onClose: () => void;
+}): null {
+  const openedRef = useRef(false);
+  useEffect(() => {
+    if (openedRef.current) return;
+    openedRef.current = true;
+    void window.wuu.showWorkspaceItemMenu(absolutePath).then((result) => {
+      if (result.action === "add_to_task") onAddToTask?.(relativePath);
+    }).finally(onClose);
+  }, [absolutePath, onAddToTask, onClose, relativePath]);
+  return null;
+}
 
 function WorkspaceTreeContextMenu({
   entry,
@@ -397,7 +432,11 @@ function WorkspaceTreeContextMenu({
     );
   };
 
-  return (
+  // Pierre Trees renders this component in a slot below its custom element.
+  // Portal to the document so the tree's strict containment, clipping, and
+  // compositor transform cannot change the fixed-position coordinate system
+  // or hide the menu outside the tree panel.
+  return createPortal(
     <div
       ref={ref}
       className="workspace-tree-context-menu"
@@ -437,7 +476,8 @@ function WorkspaceTreeContextMenu({
       >
         {t("workspace.files.revealInFileManager")}
       </button>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

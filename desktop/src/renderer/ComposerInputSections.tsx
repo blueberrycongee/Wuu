@@ -8,7 +8,7 @@ import {
   Square,
   X
 } from "lucide-react";
-import { type DragEvent as ReactDragEvent, type KeyboardEvent as ReactKeyboardEvent, useRef, useState } from "react";
+import { type DragEvent as ReactDragEvent, type KeyboardEvent as ReactKeyboardEvent, useEffect, useRef, useState } from "react";
 import { useImagePreview } from "./ImagePreview";
 import { isComposerTextComposing } from "./ComposerSlashCommands";
 import {
@@ -129,7 +129,9 @@ export function SplitPaneComposer({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const compositionActiveRef = useRef(false);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
+  const submitAfterCompositionRef = useRef(false);
   const [dropActive, setDropActive] = useState(false);
+  const [compositionSubmitRequest, setCompositionSubmitRequest] = useState(0);
   const hasAttachments = images.length > 0 || files.length > 0;
   const hasDraft = prompt.trim().length > 0 || hasAttachments;
   // Match the dock composer: the button is a stop control only while running
@@ -147,6 +149,13 @@ export function SplitPaneComposer({
     setPrompt,
     textareaRef
   });
+
+  useEffect(() => {
+    if (compositionSubmitRequest === 0) {
+      return;
+    }
+    submitComposer();
+  }, [compositionSubmitRequest]);
 
   function focusComposerSoon(): void {
     window.requestAnimationFrame(() => textareaRef.current?.focus());
@@ -215,7 +224,13 @@ export function SplitPaneComposer({
   }
 
   function handleKeyDown(event: ReactKeyboardEvent<HTMLTextAreaElement>): void {
-    if (readOnly || isComposerTextComposing(event, compositionActiveRef.current)) {
+    if (readOnly) {
+      return;
+    }
+    if (isComposerTextComposing(event, compositionActiveRef.current)) {
+      if (event.key === "Enter" && !event.shiftKey) {
+        submitAfterCompositionRef.current = true;
+      }
       return;
     }
     if (handleQueryHistoryKeyDown(event)) {
@@ -277,9 +292,14 @@ export function SplitPaneComposer({
           }}
           onCompositionEnd={() => {
             compositionActiveRef.current = false;
+            if (submitAfterCompositionRef.current) {
+              submitAfterCompositionRef.current = false;
+              setCompositionSubmitRequest((request) => request + 1);
+            }
           }}
           onBlur={() => {
             compositionActiveRef.current = false;
+            submitAfterCompositionRef.current = false;
           }}
           onKeyDown={handleKeyDown}
         />

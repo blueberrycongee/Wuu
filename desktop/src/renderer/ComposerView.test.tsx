@@ -469,9 +469,9 @@ describe("Composer send control", () => {
     expect(onSend).toHaveBeenCalledTimes(1);
   });
 
-  it("does not send while an IME composition is active", () => {
+  it("sends after Enter finishes an active IME composition", async () => {
     const onSend = vi.fn();
-    renderComposer({ prompt: "正在输入", onSend });
+    renderStatefulComposer({ initialPrompt: "正在", onSend });
     const textarea = container.querySelector<HTMLTextAreaElement>("textarea");
     const event = new KeyboardEvent("keydown", {
       key: "Enter",
@@ -486,9 +486,39 @@ describe("Composer send control", () => {
 
     expect(event.defaultPrevented).toBe(false);
     expect(onSend).not.toHaveBeenCalled();
+
+    await act(async () => {
+      setTextareaValue(textarea as HTMLTextAreaElement, "正在输入");
+      textarea?.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true }));
+    });
+
+    expect(onSend).toHaveBeenCalledOnce();
+    expect(onSend).toHaveBeenCalledWith("正在输入");
   });
 
-  it("does not send between composition lifecycle events when Chromium reports stale flags", () => {
+  it("sends from the split composer after Enter finishes IME composition", async () => {
+    const onSend = vi.fn();
+    renderSplitPaneComposer({ prompt: "继续修改", onSend });
+    const textarea = container.querySelector<HTMLTextAreaElement>("textarea");
+
+    act(() => {
+      textarea?.dispatchEvent(new KeyboardEvent("keydown", {
+        key: "Enter",
+        isComposing: true,
+        bubbles: true,
+        cancelable: true,
+      }));
+    });
+    expect(onSend).not.toHaveBeenCalled();
+
+    await act(async () => {
+      textarea?.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true }));
+    });
+
+    expect(onSend).toHaveBeenCalledOnce();
+  });
+
+  it("waits for compositionend when Chromium reports stale composition flags", async () => {
     const onSend = vi.fn();
     renderComposer({ prompt: "正在输入", onSend });
     const textarea = container.querySelector<HTMLTextAreaElement>("textarea");
@@ -499,7 +529,7 @@ describe("Composer send control", () => {
       cancelable: true,
     });
 
-    act(() => {
+    await act(async () => {
       textarea?.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
       textarea?.dispatchEvent(enter);
     });
@@ -507,9 +537,8 @@ describe("Composer send control", () => {
     expect(enter.defaultPrevented).toBe(false);
     expect(onSend).not.toHaveBeenCalled();
 
-    act(() => {
+    await act(async () => {
       textarea?.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true }));
-      textarea?.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", keyCode: 229, bubbles: true }));
     });
 
     expect(onSend).toHaveBeenCalledTimes(1);
