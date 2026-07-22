@@ -3,6 +3,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Turn } from "../shared/protocol";
 import { I18nProvider, setActiveLocale } from "./i18n";
+import { ComposerGoalStrip } from "./ComposerGoalStrip";
 import { WorkspaceDocumentTurnDock } from "./WorkspaceDocumentTurnDock";
 
 function turn(
@@ -158,5 +159,55 @@ describe("WorkspaceDocumentTurnDock", () => {
 
     expect(container.querySelector('[data-testid="composer"]')).not.toBeNull();
     expect(container.querySelector('[data-testid="workspace-document-turn-drawer"]')).toBeNull();
+  });
+
+  it("stacks an active conversation goal between the document result and composer", () => {
+    act(() => {
+      root.render(
+        <I18nProvider>
+          <WorkspaceDocumentTurnDock turns={[turn("turn-with-goal")]}>
+            <ComposerGoalStrip
+              summary={{
+                id: "goal-document-focus",
+                thread_id: "thread-a",
+                text: "Finish the plan while editing the document",
+                status: "running",
+                can_pause: true,
+                can_clear: true,
+              }}
+              onEdit={() => {}}
+              onPause={() => {}}
+              onResume={() => {}}
+              onClear={() => {}}
+            />
+          </WorkspaceDocumentTurnDock>
+        </I18nProvider>,
+      );
+    });
+
+    const resultDrawer = container.querySelector(
+      '[data-testid="workspace-document-turn-drawer"]',
+    );
+    const goalDrawer = container.querySelector(".composer-goal-strip");
+    const composerLayer = goalDrawer?.closest(".workspace-document-turn-composer");
+
+    expect(resultDrawer).not.toBeNull();
+    expect(goalDrawer?.textContent).toContain("Finish the plan while editing the document");
+    expect(resultDrawer?.nextElementSibling).toBe(composerLayer);
+
+    act(() => {
+      goalDrawer
+        ?.querySelector<HTMLButtonElement>('button[aria-label="Expand goal"]')
+        ?.click();
+    });
+
+    expect(goalDrawer?.querySelector(".composer-goal-strip-full-text")?.textContent).toBe(
+      "Finish the plan while editing the document",
+    );
+    expect(
+      resultDrawer?.querySelector(".workspace-document-turn-summary")?.getAttribute(
+        "aria-expanded",
+      ),
+    ).toBe("false");
   });
 });

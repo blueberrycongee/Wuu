@@ -611,6 +611,8 @@ export const zhCN = {
   "goal.clearFailed": "清除目标失败",
   "goal.updateFailed": "更新目标失败",
   "goal.emptyText": "目标文本不能为空",
+  "goal.expand": "展开目标",
+  "goal.collapse": "收起目标",
   "goal.viewDetails": "查看目标详情",
   "goal.details": "目标详情",
   "goal.actions": "目标操作",

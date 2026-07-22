@@ -884,65 +884,66 @@ export function Composer({
             )}
           </div>
         ) : null}
-        {onToggleUltra ? (
-          <>
-            <button
-              className={`composer-ultra-button${ultraEnabled ? " is-active" : ""}`}
-              type="button"
-              aria-label={ultraEnabled ? t("composer.disableUltraMode") : t("composer.enableUltraMode")}
-              aria-pressed={ultraEnabled}
-              title={ultraEnabled ? t("composer.disableUltra") : t("composer.enableUltra")}
-              onClick={() => onToggleUltra(!ultraEnabled)}
-            >
-              <span className="composer-ultra-notch" aria-hidden="true" />
-              <span className="composer-ultra-impact" aria-hidden="true" />
-            </button>
-            {ultraAnimationCycle > 0 ? (
-              <span
-                className={`composer-ultra-energy${ultraEnabled ? " turning-on" : " turning-off"}`}
-                key={ultraAnimationCycle}
-                aria-hidden="true"
-              />
-            ) : null}
-          </>
-        ) : null}
-        <div
-          className={`composer-frame${ultraEnabled ? " is-ultra" : ""}${dropActive ? " composer-frame-drop-active" : ""}`}
-          ref={composerFrameRef}
-          onDragOver={handleComposerDragOver}
-          onDragLeave={handleComposerDragLeave}
-          onDrop={handleComposerDrop}
-        >
-          {goalSummary || guideMessages.length > 0 || queuedMessages.length > 0 ? (
+        <ComposerGoalStrip
+          summary={goalSummary ?? null}
+          disabled={readOnly}
+          onEdit={(nextText) => {
+            if (onEditGoal) {
+              return onEditGoal(nextText);
+            }
+            return undefined;
+          }}
+          onPause={() => {
+            if (onPauseGoal) {
+              return onPauseGoal();
+            }
+            return undefined;
+          }}
+          onResume={() => {
+            if (onResumeGoal) {
+              return onResumeGoal();
+            }
+            return undefined;
+          }}
+          onClear={() => {
+            if (onClearGoal) {
+              return onClearGoal();
+            }
+            return undefined;
+          }}
+        />
+        <div className="composer-frame-shell">
+          {onToggleUltra ? (
+            <>
+              <button
+                className={`composer-ultra-button${ultraEnabled ? " is-active" : ""}`}
+                type="button"
+                aria-label={ultraEnabled ? t("composer.disableUltraMode") : t("composer.enableUltraMode")}
+                aria-pressed={ultraEnabled}
+                title={ultraEnabled ? t("composer.disableUltra") : t("composer.enableUltra")}
+                onClick={() => onToggleUltra(!ultraEnabled)}
+              >
+                <span className="composer-ultra-notch" aria-hidden="true" />
+                <span className="composer-ultra-impact" aria-hidden="true" />
+              </button>
+              {ultraAnimationCycle > 0 ? (
+                <span
+                  className={`composer-ultra-energy${ultraEnabled ? " turning-on" : " turning-off"}`}
+                  key={ultraAnimationCycle}
+                  aria-hidden="true"
+                />
+              ) : null}
+            </>
+          ) : null}
+          <div
+            className={`composer-frame${ultraEnabled ? " is-ultra" : ""}${dropActive ? " composer-frame-drop-active" : ""}`}
+            ref={composerFrameRef}
+            onDragOver={handleComposerDragOver}
+            onDragLeave={handleComposerDragLeave}
+            onDrop={handleComposerDrop}
+          >
+          {guideMessages.length > 0 || queuedMessages.length > 0 ? (
             <div className="composer-input-header">
-              <ComposerGoalStrip
-                summary={goalSummary ?? null}
-                disabled={readOnly}
-                onEdit={(nextText) => {
-                  if (onEditGoal) {
-                    return onEditGoal(nextText);
-                  }
-                  return undefined;
-                }}
-                onPause={() => {
-                  if (onPauseGoal) {
-                    return onPauseGoal();
-                  }
-                  return undefined;
-                }}
-                onResume={() => {
-                  if (onResumeGoal) {
-                    return onResumeGoal();
-                  }
-                  return undefined;
-                }}
-                onClear={() => {
-                  if (onClearGoal) {
-                    return onClearGoal();
-                  }
-                  return undefined;
-                }}
-              />
               <ComposerQueueStrip
                 guideMessages={guideMessages}
                 queuedMessages={queuedMessages}
@@ -1179,6 +1180,7 @@ export function Composer({
                 </button>
               </div>
             </div>
+          </div>
           </div>
         </div>
       </div>

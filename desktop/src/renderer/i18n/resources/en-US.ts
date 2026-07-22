@@ -613,6 +613,8 @@ export const enUS = {
   "goal.clearFailed": "Failed to clear goal",
   "goal.updateFailed": "Failed to update goal",
   "goal.emptyText": "Goal text cannot be empty",
+  "goal.expand": "Expand goal",
+  "goal.collapse": "Collapse goal",
   "goal.viewDetails": "View goal details",
   "goal.details": "Goal details",
   "goal.actions": "Goal actions",

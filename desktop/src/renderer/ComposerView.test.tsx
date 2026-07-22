@@ -681,7 +681,11 @@ describe("Composer send control", () => {
     const actionButton = container.querySelector<HTMLButtonElement>(
       "button[aria-label=\"目标操作\"]",
     );
+    const editButton = container.querySelector<HTMLButtonElement>(
+      "button[aria-label=\"编辑目标\"]",
+    );
     expect(actionButton?.disabled).toBe(false);
+    expect(editButton?.disabled).toBe(false);
 
     const openGoalMenu = (): void => {
       act(() => {
@@ -698,9 +702,7 @@ describe("Composer send control", () => {
       ).find((button) => button.textContent === label);
 
     openGoalMenu();
-    const editButton = goalMenuItem("编辑目标");
     expect(goalMenuItem("暂停目标")?.disabled).toBe(false);
-    expect(editButton?.disabled).toBe(false);
     expect(goalMenuItem("清除目标")?.disabled).toBe(false);
 
     act(() => {
@@ -1674,7 +1676,7 @@ function foldedPromptButton(title: string): HTMLButtonElement | undefined {
 }
 
 describe("Composer queue strip", () => {
-  it("groups goal and queued messages in one aligned input header", () => {
+  it("keeps the goal drawer outside the queued-message input header", () => {
     renderComposer({
       running: true,
       goalSummary: activeGoalSummary(),
@@ -1686,14 +1688,21 @@ describe("Composer queue strip", () => {
     const header = container.querySelector(".composer-input-header");
     const goal = container.querySelector(".composer-goal-strip");
     const queue = container.querySelector(".composer-queue-list");
+    const shell = container.querySelector(".composer-shell");
+    const frameShell = container.querySelector(".composer-frame-shell");
+    const frame = container.querySelector(".composer-frame");
     const actions = Array.from(
       container.querySelectorAll(".composer-goal-strip-action, .composer-queue-action"),
     );
 
     expect(header).not.toBeNull();
-    expect(header?.children).toHaveLength(2);
-    expect(header?.contains(goal ?? null)).toBe(true);
+    expect(header?.children).toHaveLength(1);
+    expect(header?.contains(goal ?? null)).toBe(false);
     expect(header?.contains(queue ?? null)).toBe(true);
+    expect(goal?.parentElement).toBe(shell);
+    expect(frameShell?.parentElement).toBe(shell);
+    expect(frame?.parentElement).toBe(frameShell);
+    expect(goal?.nextElementSibling).toBe(frameShell);
     expect(actions.length).toBeGreaterThan(0);
     expect(
       actions.every((action) => action.classList.contains("composer-input-header-action")),
@@ -2189,7 +2198,10 @@ describe("Composer expand button", () => {
       /\.composer-stack\.is-expanded\s+\.composer\s*\{[^}]*display:\s*flex[^}]*flex-direction:\s*column/,
     );
     expect(composerCSS).toMatch(
-      /\.composer-stack\.is-expanded\s+\.composer-frame\s*\{[^}]*margin-bottom:\s*calc\(var\(--composer-expanded-offset,\s*var\(--composer-expanded-delta\)\) \* -1\)[^}]*transform:\s*translateY\(calc\(var\(--composer-expanded-offset,\s*var\(--composer-expanded-delta\)\) \* -1\)\)/,
+      /\.composer-stack\.is-expanded\s+\.composer-frame-shell\s*\{[^}]*margin-bottom:\s*calc\(var\(--composer-expanded-offset,\s*var\(--composer-expanded-delta\)\) \* -1\)[^}]*transform:\s*translateY\(calc\(var\(--composer-expanded-offset,\s*var\(--composer-expanded-delta\)\) \* -1\)\)/,
+    );
+    expect(composerCSS).toMatch(
+      /\.composer-stack\.is-expanded\s+\.composer-goal-strip\s*\{[^}]*transform:\s*translateY\(calc\(var\(--composer-expanded-offset,\s*var\(--composer-expanded-delta\)\) \* -1\)\)/,
     );
     expect(composerCSS).toMatch(
       /\.composer-stack\.is-expanded\s+\.composer\s*\{[^}]*min-height:\s*var\(--composer-expanded-min-height\)/,
