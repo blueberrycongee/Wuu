@@ -1,10 +1,13 @@
-import { act } from "react";
+import { act, useContext, useEffect, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Turn } from "../shared/protocol";
 import { I18nProvider, setActiveLocale } from "./i18n";
 import { ComposerGoalStrip } from "./ComposerGoalStrip";
-import { WorkspaceDocumentTurnDock } from "./WorkspaceDocumentTurnDock";
+import {
+  WorkspaceDocumentDrawerContext,
+  WorkspaceDocumentTurnDock,
+} from "./WorkspaceDocumentTurnDock";
 
 function turn(
   id: string,
@@ -26,6 +29,31 @@ function turn(
       },
     ],
   };
+}
+
+function CoordinatedAccessoryProbe(): JSX.Element {
+  const documentDrawer = useContext(WorkspaceDocumentDrawerContext);
+  const [expanded, setExpanded] = useState(false);
+
+  useEffect(() => {
+    if (documentDrawer?.documentResultExpanded) {
+      setExpanded(false);
+    }
+  }, [documentDrawer?.documentResultExpanded]);
+
+  return (
+    <button
+      type="button"
+      data-testid="coordinated-accessory"
+      aria-expanded={expanded}
+      onClick={() => {
+        setExpanded(true);
+        documentDrawer?.collapseDocumentResult();
+      }}
+    >
+      Accessory
+    </button>
+  );
 }
 
 describe("WorkspaceDocumentTurnDock", () => {
@@ -145,6 +173,37 @@ describe("WorkspaceDocumentTurnDock", () => {
         .querySelector(".workspace-document-turn-summary")
         ?.getAttribute("aria-expanded"),
     ).toBe("false");
+  });
+
+  it("coordinates document result expansion with composer accessory drawers", () => {
+    act(() => {
+      root.render(
+        <I18nProvider>
+          <WorkspaceDocumentTurnDock turns={[turn("turn-coordinated")]}>
+            <CoordinatedAccessoryProbe />
+          </WorkspaceDocumentTurnDock>
+        </I18nProvider>,
+      );
+    });
+
+    const resultToggle = container.querySelector<HTMLButtonElement>(
+      ".workspace-document-turn-summary",
+    );
+    const accessory = container.querySelector<HTMLButtonElement>(
+      '[data-testid="coordinated-accessory"]',
+    );
+
+    act(() => resultToggle?.click());
+    expect(resultToggle?.getAttribute("aria-expanded")).toBe("true");
+    expect(accessory?.getAttribute("aria-expanded")).toBe("false");
+
+    act(() => accessory?.click());
+    expect(resultToggle?.getAttribute("aria-expanded")).toBe("false");
+    expect(accessory?.getAttribute("aria-expanded")).toBe("true");
+
+    act(() => resultToggle?.click());
+    expect(resultToggle?.getAttribute("aria-expanded")).toBe("true");
+    expect(accessory?.getAttribute("aria-expanded")).toBe("false");
   });
 
   it("keeps the Composer clean when the thread has no user turn", () => {

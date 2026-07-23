@@ -457,6 +457,7 @@
   .composer-stack,
   .composer,
   .composer-goal-strip,
+  .composer-pending-drawer,
   .composer textarea,
   .composer-expand-button {
     transition: none;
@@ -496,7 +497,8 @@
   transform: translateY(calc(var(--composer-expanded-offset, var(--composer-expanded-delta)) * -1));
 }
 
-.composer-stack.is-expanded .composer-goal-strip {
+.composer-stack.is-expanded .composer-goal-strip,
+.composer-stack.is-expanded .composer-pending-drawer {
   transform: translateY(calc(var(--composer-expanded-offset, var(--composer-expanded-delta)) * -1));
 }
 
@@ -680,7 +682,7 @@
 
 .composer-queue-row {
   display: grid;
-  grid-template-columns: 18px minmax(0, 1fr) auto;
+  grid-template-columns: 18px 42px minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
   min-height: var(--composer-input-header-row-height, 36px);
@@ -701,7 +703,6 @@
   border-radius: var(--radius-xs);
 }
 
-                                                                             
 .composer-queue-row.guide .composer-queue-preview {
   color: var(--turn-warning-text, var(--warning));
 }
@@ -713,6 +714,21 @@
   font-variant-numeric: tabular-nums;
   text-align: center;
   user-select: none;
+}
+
+.composer-queue-kind {
+  overflow: hidden;
+  color: var(--ink-muted);
+  font-size: 10px;
+  font-weight: var(--weight-medium);
+  letter-spacing: 0.02em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.composer-queue-row.guide .composer-queue-kind {
+  color: var(--turn-warning-text, var(--warning));
 }
 
 .composer-queue-preview {
@@ -758,7 +774,7 @@
   }
 }
 
-.composer-goal-strip {
+.composer-accessory-drawer {
   position: relative;
   z-index: 0;
   width: calc(100% - 24px);
@@ -789,8 +805,12 @@
     transform var(--motion-fast) var(--ease-out);
 }
 
-.composer-goal-strip.expanded {
+.composer-accessory-drawer.expanded {
   max-height: min(34vh, 280px);
+}
+
+.composer-pending-drawer.is-held {
+  border-color: color-mix(in srgb, var(--warning) 24%, transparent);
 }
 
 .composer-goal-strip-summary {
@@ -802,6 +822,67 @@
   gap: 8px;
   align-items: center;
   padding: 0 8px 8px;
+}
+
+.composer-pending-summary {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  min-height: 40px;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  padding: 0 8px 8px;
+}
+
+.composer-pending-icon {
+  display: grid;
+  width: 18px;
+  height: 18px;
+  place-items: center;
+  color: var(--ink-muted);
+}
+
+.composer-pending-drawer.is-held .composer-pending-icon,
+.composer-pending-drawer.is-held .composer-pending-title {
+  color: var(--turn-warning-text, var(--warning));
+}
+
+.composer-pending-main {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.composer-pending-title {
+  flex: 0 0 auto;
+  color: var(--ink-muted);
+  font-size: 11px;
+  font-weight: var(--weight-medium);
+  line-height: var(--line-ui);
+  white-space: nowrap;
+}
+
+.composer-pending-preview {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composer-pending-details {
+  max-height: calc(min(34vh, 280px) - 40px);
+  margin-top: -8px;
+  padding: 4px 8px 16px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.composer-pending-details .composer-held-notice {
+  padding: 8px;
+  border-bottom: 1px solid var(--ink-overlay-6);
 }
 
 .composer-goal-strip-icon {

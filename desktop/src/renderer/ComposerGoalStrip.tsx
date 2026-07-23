@@ -34,6 +34,8 @@ type GoalInfoRow = { label: string; value: string };
 export function ComposerGoalStrip({
   summary,
   disabled,
+  expanded: controlledExpanded,
+  onExpandedChange,
   onEdit,
   onPause,
   onResume,
@@ -41,6 +43,8 @@ export function ComposerGoalStrip({
 }: {
   summary: ComposerGoalSummary | null;
   disabled?: boolean;
+  expanded?: boolean;
+  onExpandedChange?: (expanded: boolean) => void;
   onEdit: (nextText: string) => void | Promise<void>;
   onPause: () => void | Promise<void>;
   onResume: () => void | Promise<void>;
@@ -53,7 +57,8 @@ export function ComposerGoalStrip({
     useState<ConfirmableGoalAction | null>(null);
   const [busy, setBusy] = useState<GoalBusyAction | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [expanded, setExpanded] = useState(false);
+  const [internalExpanded, setInternalExpanded] = useState(false);
+  const expanded = controlledExpanded ?? internalExpanded;
   const [actionsOpen, setActionsOpen] = useState(false);
   const [, setElapsedTick] = useState(0);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
@@ -79,7 +84,7 @@ export function ComposerGoalStrip({
     setConfirmingAction(null);
     setBusy(null);
     setError(null);
-    setExpanded(false);
+    setInternalExpanded(false);
     setActionsOpen(false);
     clearConfirmTimer();
   }, [summary?.id]);
@@ -145,6 +150,13 @@ export function ComposerGoalStrip({
   function resetConfirmation(): void {
     setConfirmingAction(null);
     clearConfirmTimer();
+  }
+
+  function setExpanded(next: boolean): void {
+    if (controlledExpanded === undefined) {
+      setInternalExpanded(next);
+    }
+    onExpandedChange?.(next);
   }
 
   function closePopovers(): void {
@@ -250,7 +262,7 @@ export function ComposerGoalStrip({
   return (
     <>
       <section
-        className={`composer-goal-strip${expanded ? " expanded" : ""}`}
+        className={`composer-goal-strip composer-accessory-drawer${expanded ? " expanded" : ""}`}
         role="status"
         aria-live="polite"
       >
@@ -348,7 +360,7 @@ export function ComposerGoalStrip({
               title={t(expanded ? "goal.collapse" : "goal.expand")}
               onClick={() => {
                 setActionsOpen(false);
-                setExpanded((current) => !current);
+                setExpanded(!expanded);
               }}
             >
               {expanded ? (
