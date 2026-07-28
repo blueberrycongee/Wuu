@@ -2133,7 +2133,9 @@
   white-space: nowrap;
 }
 
-.slash-command-title {
+/* Every row leads with the command the user has to type. Only the summary
+   beside it shrinks, so the name identifying the row stays readable. */
+.slash-command-name {
   flex: 0 0 auto;
   max-width: 100%;
   min-width: 0;
@@ -2145,9 +2147,7 @@
   white-space: nowrap;
 }
 
-/* Skill rows pair the command name with its description. Only the description
-   shrinks, so the command name that identifies the row stays readable. */
-.slash-command-description {
+.slash-command-summary {
   flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
