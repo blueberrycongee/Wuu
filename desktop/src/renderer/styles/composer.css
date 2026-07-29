@@ -2140,9 +2140,9 @@
   max-width: 100%;
   min-width: 0;
   overflow: hidden;
-  color: var(--ink-muted);
+  color: var(--ink);
   font-size: var(--font-ui);
-  font-weight: 400;
+  font-weight: var(--weight-medium);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -2151,8 +2151,9 @@
   flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
-  color: var(--ink-tertiary);
-  font-size: var(--font-xs);
+  color: var(--ink-muted);
+  font-size: var(--font-ui);
+  font-weight: 400;
   text-overflow: ellipsis;
   white-space: nowrap;
 }

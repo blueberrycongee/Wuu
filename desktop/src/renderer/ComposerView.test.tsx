@@ -1482,6 +1482,17 @@ describe("Composer send control", () => {
     expect(composerCSS).toMatch(/\.slash-command-name\s*{[^}]*flex:\s*0 0 auto;/s);
   });
 
+  it("shares the plus menu typography contract for slash command rows", () => {
+    // The command name and summary use the same title/description roles as the
+    // plus menu so the two surfaces read as one consistent menu system.
+    expect(composerCSS).toMatch(/\.slash-command-name\s*{[^}]*color:\s*var\(--ink\);/s);
+    expect(composerCSS).toMatch(/\.slash-command-name\s*{[^}]*font-size:\s*var\(--font-ui\);/s);
+    expect(composerCSS).toMatch(/\.slash-command-name\s*{[^}]*font-weight:\s*var\(--weight-medium\);/s);
+    expect(composerCSS).toMatch(/\.slash-command-summary\s*{[^}]*color:\s*var\(--ink-muted\);/s);
+    expect(composerCSS).toMatch(/\.slash-command-summary\s*{[^}]*font-size:\s*var\(--font-ui\);/s);
+    expect(composerCSS).toMatch(/\.slash-command-summary\s*{[^}]*font-weight:\s*400;/s);
+  });
+
   it("sends an exact slash command with arguments on Enter", () => {
     const onSend = vi.fn();
     renderComposer({
