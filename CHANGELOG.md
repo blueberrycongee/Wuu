@@ -10,6 +10,15 @@ Versioning rules are documented in [the release guide](docs/en/project/release.m
 
 ### Changed
 
+- Background command records now carry the conversation that owns them and the
+  app-server generation that started them, so a later thread-delete or
+  subagent-close cascade has a durable owner to key off instead of scanning
+  thread state after the fact. The owning conversation is taken from host state
+  rather than a model argument. No behavior change yet; `lifecycle` still parses
+  and round-trips. First step of the background command lifecycle work.
+
+### Changed
+
 - Slash command rows now lead with the command to type (`/review`) and carry a
   short summary beside it, so built-in commands and skills read the same way.
 

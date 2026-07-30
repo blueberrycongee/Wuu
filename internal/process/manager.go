@@ -62,10 +62,25 @@ const (
 )
 
 type Process struct {
-	Action                string         `json:"action,omitempty"`
-	ID                    string         `json:"id"`
-	OwnerKind             OwnerKind      `json:"owner_kind"`
-	OwnerID               string         `json:"owner_id"`
+	Action    string    `json:"action,omitempty"`
+	ID        string    `json:"id"`
+	OwnerKind OwnerKind `json:"owner_kind"`
+	OwnerID   string    `json:"owner_id"`
+	// RootThreadID is the conversation that owns this command. It is stamped
+	// at start from host state, never derived afterwards: once a thread or
+	// subagent is gone there is nothing left to scan to recover the owner, and
+	// thread-delete cascade, isolation, and UI routing all key off this field.
+	RootThreadID string `json:"root_thread_id,omitempty"`
+	// HostGenerationID identifies the app-server process that started this
+	// command. A record carrying a different generation than the running host
+	// cannot be controlled by it — no stdin, no PTY, no exit watcher — so the
+	// field is what lets startup tell "still ours" from "left over". Records
+	// written before this field existed have it empty, which reads the same as
+	// a foreign generation.
+	HostGenerationID string `json:"host_generation_id,omitempty"`
+	// Deprecated: Lifecycle is being retired with the managed process class.
+	// It still parses and round-trips so existing registry records keep
+	// loading; new behavior must not branch on it.
 	Lifecycle             Lifecycle      `json:"lifecycle"`
 	CompletionMode        CompletionMode `json:"completion_mode,omitempty"`
 	Status                Status         `json:"status"`
@@ -96,11 +111,15 @@ type Process struct {
 }
 
 type StartOptions struct {
-	Command               string
-	CommandPrefix         string
-	CWD                   string
-	OwnerKind             OwnerKind
-	OwnerID               string
+	Command       string
+	CommandPrefix string
+	CWD           string
+	OwnerKind     OwnerKind
+	OwnerID       string
+	// RootThreadID is host-supplied. Callers pass the conversation the command
+	// belongs to; it is not a model-declared argument.
+	RootThreadID string
+	// Deprecated: see Process.Lifecycle.
 	Lifecycle             Lifecycle
 	CompletionMode        CompletionMode
 	TTY                   bool
@@ -142,14 +161,46 @@ type OutputSnapshot struct {
 }
 
 type Manager struct {
-	rootDir     string
-	registryDir string
-	logDir      string
-	mu          sync.Mutex
-	subMu       sync.Mutex
-	handles     map[string]*processHandle
-	subscribers []chan<- Event
-	recheckWake chan struct{}
+	rootDir string
+	// hostGenerationID is minted once per Manager and stamped on every command
+	// it starts. It is the identity that survives into the registry, so a later
+	// host can tell its own live records from a previous host's leftovers.
+	hostGenerationID string
+	registryDir      string
+	logDir           string
+	mu               sync.Mutex
+	subMu            sync.Mutex
+	handles          map[string]*processHandle
+	subscribers      []chan<- Event
+	recheckWake      chan struct{}
+}
+
+// newHostGenerationID mints an identifier for one app-server lifetime. Time
+// alone would collide across a fast restart, so it is paired with random bytes.
+func newHostGenerationID() string {
+	buf := make([]byte, 8)
+	if _, err := rand.Read(buf); err != nil {
+		return fmt.Sprintf("host-%d", time.Now().UnixNano())
+	}
+	return fmt.Sprintf("host-%d-%s", time.Now().UnixNano(), hex.EncodeToString(buf))
+}
+
+// HostGenerationID returns the identity of the currently running host.
+func (m *Manager) HostGenerationID() string {
+	if m == nil {
+		return ""
+	}
+	return m.hostGenerationID
+}
+
+// StartedByCurrentHost reports whether this record was created by the running
+// host. Records from an earlier generation — including pre-upgrade records with
+// no generation at all — cannot be controlled by it.
+func (m *Manager) StartedByCurrentHost(p Process) bool {
+	if m == nil {
+		return false
+	}
+	return p.HostGenerationID != "" && p.HostGenerationID == m.hostGenerationID
 }
 
 type processHandle struct {
@@ -187,11 +238,12 @@ func NewManager(rootDir string, runtimeDirs ...string) (*Manager, error) {
 		return nil, err
 	}
 	m := &Manager{
-		rootDir:     abs,
-		registryDir: filepath.Join(runtimeDir, "processes"),
-		logDir:      filepath.Join(runtimeDir, "logs"),
-		handles:     make(map[string]*processHandle),
-		recheckWake: make(chan struct{}, 1),
+		rootDir:          abs,
+		hostGenerationID: newHostGenerationID(),
+		registryDir:      filepath.Join(runtimeDir, "processes"),
+		logDir:           filepath.Join(runtimeDir, "logs"),
+		handles:          make(map[string]*processHandle),
+		recheckWake:      make(chan struct{}, 1),
 	}
 	if err := os.MkdirAll(m.registryDir, 0o755); err != nil {
 		return nil, err
@@ -261,7 +313,7 @@ func (m *Manager) Start(ctx context.Context, opt StartOptions) (*Process, error)
 		opt.TTY = false
 	}
 	id := "proc-" + randomHex(4)
-	p := &Process{ID: id, OwnerKind: opt.OwnerKind, OwnerID: opt.OwnerID, Lifecycle: opt.Lifecycle, CompletionMode: opt.CompletionMode, Status: StatusStarting, Command: opt.Command, CWD: cwd, TTY: opt.TTY, LogPath: filepath.Join(m.logDir, id+".log"), StartedAt: time.Now(), UpdatedAt: time.Now(), ExitCode: -1, RecheckMinutes: opt.RecheckMinutes}
+	p := &Process{ID: id, OwnerKind: opt.OwnerKind, OwnerID: opt.OwnerID, RootThreadID: strings.TrimSpace(opt.RootThreadID), HostGenerationID: m.hostGenerationID, Lifecycle: opt.Lifecycle, CompletionMode: opt.CompletionMode, Status: StatusStarting, Command: opt.Command, CWD: cwd, TTY: opt.TTY, LogPath: filepath.Join(m.logDir, id+".log"), StartedAt: time.Now(), UpdatedAt: time.Now(), ExitCode: -1, RecheckMinutes: opt.RecheckMinutes}
 	if opt.RecheckMinutes > 0 {
 		p.NextRecheckAt = p.StartedAt.Add(time.Duration(opt.RecheckMinutes) * time.Minute)
 	}

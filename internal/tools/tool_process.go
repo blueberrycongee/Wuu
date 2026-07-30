@@ -39,6 +39,19 @@ func defaultProcessOwnerKind(env *Env, ownerKind string) string {
 	return string(proc.OwnerMainAgent)
 }
 
+// processRootThreadID resolves the conversation a background command belongs
+// to. It is deliberately host-derived rather than a model argument: the record
+// is what a later thread-delete or subagent-close cascade keys off, so the
+// model must not be able to point it elsewhere or leave it blank. Subagents
+// inherit the root conversation's SessionID from their controller, so the same
+// lookup is correct for main-agent and subagent commands alike.
+func processRootThreadID(env *Env) string {
+	if env == nil {
+		return ""
+	}
+	return strings.TrimSpace(env.SessionID)
+}
+
 func defaultProcessOwnerID(env *Env) string {
 	if env == nil {
 		return "main"
