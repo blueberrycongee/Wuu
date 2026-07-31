@@ -37,6 +37,7 @@ func newTestManager(t *testing.T) *Manager {
 // thread or subagent is gone there is nothing left to scan to recover it.
 func TestStartPersistsOwnerAndHostGeneration(t *testing.T) {
 	m := newTestManager(t)
+	t.Cleanup(func() { _ = m.CleanupSession() })
 
 	p, err := m.Start(context.Background(), StartOptions{
 		Command:      "true",
@@ -64,7 +65,7 @@ func TestStartPersistsOwnerAndHostGeneration(t *testing.T) {
 	}
 }
 
-func TestHostGenerationIDIsUniquePerManager(t *testing.T) {
+func TestTopLevelManagersHaveDistinctHostGenerations(t *testing.T) {
 	first := newTestManager(t)
 	second := newTestManager(t)
 
@@ -79,25 +80,18 @@ func TestHostGenerationIDIsUniquePerManager(t *testing.T) {
 	}
 }
 
-// A record only belongs to the running host when the generation matches
-// exactly. Pre-upgrade records carry no generation and must read as foreign,
-// since this host has no stdin, PTY, or exit watcher for them either.
-func TestStartedByCurrentHostRejectsForeignAndLegacyRecords(t *testing.T) {
-	m := newTestManager(t)
-
-	p, err := m.Start(context.Background(), StartOptions{Command: "true", OwnerKind: OwnerMainAgent, OwnerID: "main", RootThreadID: "thread-1"})
+func TestThreadLocalManagersShareTopLevelHostGeneration(t *testing.T) {
+	runtimeRoot := filepath.Join(t.TempDir(), "runtime")
+	workspace, err := NewManager(t.TempDir(), runtimeRoot)
 	if err != nil {
-		t.Fatalf("Start: %v", err)
+		t.Fatalf("NewManager: %v", err)
 	}
-	if !m.StartedByCurrentHost(*p) {
-		t.Fatal("a command this host started must read as owned by it")
+	thread, err := NewManagerWithHostGeneration(t.TempDir(), workspace.HostGenerationID(), runtimeRoot)
+	if err != nil {
+		t.Fatalf("NewManagerWithHostGeneration: %v", err)
 	}
-
-	if m.StartedByCurrentHost(Process{HostGenerationID: "host-from-a-previous-run"}) {
-		t.Fatal("a record from another host generation must not read as ours")
-	}
-	if m.StartedByCurrentHost(Process{}) {
-		t.Fatal("a pre-upgrade record without a generation must not read as ours")
+	if workspace.HostGenerationID() != thread.HostGenerationID() {
+		t.Fatalf("thread-local manager generation = %q, want workspace generation %q", thread.HostGenerationID(), workspace.HostGenerationID())
 	}
 }
 
@@ -132,8 +126,5 @@ func TestLegacyRecordWithoutNewFieldsStillLoads(t *testing.T) {
 	}
 	if found.Lifecycle != LifecycleManaged {
 		t.Fatalf("deprecated lifecycle must round-trip, got %q", found.Lifecycle)
-	}
-	if m.StartedByCurrentHost(*found) {
-		t.Fatal("legacy record must not be claimed by the running host")
 	}
 }

@@ -68,15 +68,13 @@ type Process struct {
 	OwnerID   string    `json:"owner_id"`
 	// RootThreadID is the conversation that owns this command. It is stamped
 	// at start from host state, never derived afterwards: once a thread or
-	// subagent is gone there is nothing left to scan to recover the owner, and
-	// thread-delete cascade, isolation, and UI routing all key off this field.
+	// subagent is gone there is nothing left to scan to recover the owner. This
+	// step only persists the association; lifecycle cleanup is not implemented.
 	RootThreadID string `json:"root_thread_id,omitempty"`
-	// HostGenerationID identifies the app-server process that started this
-	// command. A record carrying a different generation than the running host
-	// cannot be controlled by it — no stdin, no PTY, no exit watcher — so the
-	// field is what lets startup tell "still ours" from "left over". Records
-	// written before this field existed have it empty, which reads the same as
-	// a foreign generation.
+	// HostGenerationID identifies the top-level app-server host lifetime that
+	// started this command. It is durable record identity, not proof that the
+	// running process still has an in-memory control handle. Records written
+	// before this field existed have it empty.
 	HostGenerationID string `json:"host_generation_id,omitempty"`
 	// Deprecated: Lifecycle is being retired with the managed process class.
 	// It still parses and round-trips so existing registry records keep
@@ -162,9 +160,9 @@ type OutputSnapshot struct {
 
 type Manager struct {
 	rootDir string
-	// hostGenerationID is minted once per Manager and stamped on every command
-	// it starts. It is the identity that survives into the registry, so a later
-	// host can tell its own live records from a previous host's leftovers.
+	// hostGenerationID is shared by Managers belonging to one top-level
+	// app-server lifetime and stamped on every command they start. The handles
+	// map, not this label, is the authority for live in-memory control.
 	hostGenerationID string
 	registryDir      string
 	logDir           string
@@ -185,22 +183,13 @@ func newHostGenerationID() string {
 	return fmt.Sprintf("host-%d-%s", time.Now().UnixNano(), hex.EncodeToString(buf))
 }
 
-// HostGenerationID returns the identity of the currently running host.
+// HostGenerationID returns the durable identity label for this manager's host
+// lifetime. Matching this value does not establish live controllability.
 func (m *Manager) HostGenerationID() string {
 	if m == nil {
 		return ""
 	}
 	return m.hostGenerationID
-}
-
-// StartedByCurrentHost reports whether this record was created by the running
-// host. Records from an earlier generation — including pre-upgrade records with
-// no generation at all — cannot be controlled by it.
-func (m *Manager) StartedByCurrentHost(p Process) bool {
-	if m == nil {
-		return false
-	}
-	return p.HostGenerationID != "" && p.HostGenerationID == m.hostGenerationID
 }
 
 type processHandle struct {
@@ -211,8 +200,20 @@ type processHandle struct {
 }
 
 func NewManager(rootDir string, runtimeDirs ...string) (*Manager, error) {
+	return NewManagerWithHostGeneration(rootDir, newHostGenerationID(), runtimeDirs...)
+}
+
+// NewManagerWithHostGeneration creates a manager using an existing top-level
+// host lifetime label. Runtime sessions use this for thread-local managers so
+// records from one app-server host share durable identity; standalone callers
+// should use NewManager, which mints its own label for compatibility.
+func NewManagerWithHostGeneration(rootDir, hostGenerationID string, runtimeDirs ...string) (*Manager, error) {
 	if strings.TrimSpace(rootDir) == "" {
 		return nil, errors.New("root directory is required")
+	}
+	hostGenerationID = strings.TrimSpace(hostGenerationID)
+	if hostGenerationID == "" {
+		return nil, errors.New("host generation id is required")
 	}
 	abs, err := filepath.Abs(rootDir)
 	if err != nil {
@@ -239,7 +240,7 @@ func NewManager(rootDir string, runtimeDirs ...string) (*Manager, error) {
 	}
 	m := &Manager{
 		rootDir:          abs,
-		hostGenerationID: newHostGenerationID(),
+		hostGenerationID: hostGenerationID,
 		registryDir:      filepath.Join(runtimeDir, "processes"),
 		logDir:           filepath.Join(runtimeDir, "logs"),
 		handles:          make(map[string]*processHandle),
@@ -276,6 +277,9 @@ func (m *Manager) SetRootDir(rootDir string) {
 	m.mu.Unlock()
 }
 
+// Start is the low-level manager launch path. Model-facing command tools must
+// bind a SessionID before using it; internal callers may use it for legitimate
+// non-thread work and provide RootThreadID when they own that association.
 func (m *Manager) Start(ctx context.Context, opt StartOptions) (*Process, error) {
 	if strings.TrimSpace(opt.Command) == "" {
 		return nil, errors.New("command is required")
