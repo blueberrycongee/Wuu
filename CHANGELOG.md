@@ -8,6 +8,19 @@ Versioning rules are documented in [the release guide](docs/en/project/release.m
 
 ## [Unreleased]
 
+### Fixed
+
+- A background command left behind by a crashed app-server no longer sits at
+  `running` forever. An app-server that boots as the sole live host now retires
+  records no live host can own as `lost`, records why, and terminates the
+  leftover process tree on a best-effort basis after verifying the recorded
+  process identity. The sweep runs only while exclusive app-server presence is
+  held, so a peer that is still alive keeps its own running commands. `lost` is
+  deliberately not `stopped`: this host never observed how the command ended,
+  and a successful cleanup afterwards does not tell it. The desktop shows these
+  runs distinctly instead of leaving them pending, and no longer offers a
+  terminal for a process that is gone.
+
 ## [0.15.0] - 2026-08-05
 
 ### Added

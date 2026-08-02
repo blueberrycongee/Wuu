@@ -1174,7 +1174,11 @@ export type ManagedProcessStatus =
   | "running"
   | "stopping"
   | "stopped"
-  | "failed";
+  | "failed"
+  // The app-server cannot account for this command: it belongs to an earlier
+  // host lifetime, so nothing here observed how it ended. Distinct from
+  // "stopped", which asserts an exit this host actually saw.
+  | "lost";
 
 export type ManagedProcessSummary = {
   id: string;
@@ -1192,6 +1196,11 @@ export type ManagedProcessSummary = {
   exit_code?: number;
   last_error?: string;
   input_available?: boolean;
+  // Set with status "lost": why the record became unaccountable, and what the
+  // current host managed to do about the leftover process tree. Cleanup
+  // succeeding does not turn the record back into a normal stop.
+  loss_reason?: string;
+  recovery_cleanup?: string;
 };
 
 export type ManagedProcessListResult = {

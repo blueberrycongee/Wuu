@@ -60,7 +60,38 @@ const (
 	StatusStopping Status = "stopping"
 	StatusStopped  Status = "stopped"
 	StatusFailed   Status = "failed"
+	// StatusLost marks a record this host cannot account for. It is not a
+	// terminal cause: the command may have exited cleanly, been killed, or
+	// still be running detached. Claiming "stopped" would assert an exit this
+	// host never observed, so the uncertainty is recorded instead.
+	StatusLost Status = "lost"
+
+	// LossHostRestarted is the ordinary case: the record belongs to an earlier
+	// app-server lifetime, so its stdin, PTY, and exit watcher are gone.
+	LossHostRestarted LossReason = "host_restarted"
+	// LossIdentityMismatch means the recorded PID now belongs to something
+	// else. Signalling it would hit an unrelated process.
+	LossIdentityMismatch LossReason = "identity_mismatch"
+
+	// RecoveryNotNeeded means nothing was running to clean up.
+	RecoveryNotNeeded RecoveryCleanup = "not_needed"
+	// RecoveryNotFound means the recorded process was already gone.
+	RecoveryNotFound RecoveryCleanup = "not_found"
+	// RecoveryTerminated means this host killed the leftover process tree.
+	RecoveryTerminated RecoveryCleanup = "terminated"
+	// RecoveryFailed means cleanup was attempted and did not succeed. The
+	// record stays lost; it must not be dressed up as a normal stop.
+	RecoveryFailed RecoveryCleanup = "failed"
 )
+
+// LossReason explains why a record became unaccountable.
+type LossReason string
+
+// RecoveryCleanup records what startup managed to do about a lost record's
+// process tree. It is deliberately separate from the loss reason: succeeding at
+// cleanup does not retroactively tell this host how the command originally
+// ended.
+type RecoveryCleanup string
 
 type Process struct {
 	Action    string    `json:"action,omitempty"`
@@ -77,6 +108,13 @@ type Process struct {
 	// running process still has an in-memory control handle. Records written
 	// before this field existed have it empty.
 	HostGenerationID string `json:"host_generation_id,omitempty"`
+	// LossReason is set with StatusLost and explains why the record became
+	// unaccountable. RecoveryCleanup separately records what this host managed
+	// to do about the leftover process tree; a successful cleanup never
+	// rewrites the status into a normal stop, because that would claim an exit
+	// nobody observed.
+	LossReason      LossReason      `json:"loss_reason,omitempty"`
+	RecoveryCleanup RecoveryCleanup `json:"recovery_cleanup,omitempty"`
 	// Deprecated: Lifecycle is being retired with the managed process class.
 	// It still parses and round-trips so existing registry records keep
 	// loading; new behavior must not branch on it.
@@ -1090,7 +1128,109 @@ const persistedProcessWatchInterval = 250 * time.Millisecond
 // resumePersistedManagedProcesses restores exit observation for managed
 // processes that outlived the manager which started them. PTY/stdin handles
 // cannot be reconstructed, but terminal state and completion delivery can.
+// reconcileForeignHostRecords retires records this host cannot account for.
+//
+// Until now only managed records were revisited at startup, so a session
+// command left behind by a crashed app-server sat at "running" forever: the
+// process was unreachable and the row never settled. Any non-terminal record
+// from another host generation is now marked lost, and its process tree is
+// cleaned up on a best-effort basis after an identity check.
+//
+// Records from this host's own generation are left alone. They belong to a
+// sibling manager in the same app-server, which still holds their handles.
+//
+// Managed records are also left alone here. The existing resume path
+// deliberately re-adopts and re-observes them across a restart; retiring that
+// re-adoption is a separate step of the lifecycle work, and killing them now
+// would break a contract that is still in force.
+func (m *Manager) reconcileForeignHostRecords() error {
+	processes, err := m.List()
+	if err != nil {
+		return err
+	}
+	for _, p := range processes {
+		if p.Lifecycle == LifecycleManaged || !isLiveStatus(p.Status) || p.HostGenerationID == m.hostGenerationID {
+			continue
+		}
+		if _, err := m.markRecordLost(p.ID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// terminateLeftoverProcessTree stops a process group left behind by an earlier
+// host. It asks politely first and escalates, because nothing in this process
+// is waiting on the group to observe a graceful exit.
+// Falling back to the pid when no group was recorded would signal whatever
+// group happens to carry that id — possibly Wuu's own — so a record without a
+// usable group is reported as un-cleanable instead.
+func terminateLeftoverProcessTree(p *Process) error {
+	tree := ProcessTreeFromID(p.PGID)
+	if err := tree.Terminate(); err != nil {
+		return err
+	}
+	if !processExists(p.PID) {
+		return nil
+	}
+	return tree.Kill()
+}
+
+// markRecordLost settles one unaccountable record. Cleanup is attempted only
+// when the recorded PID still names the same process; otherwise the signal
+// would land on whatever reused that PID.
+func (m *Manager) markRecordLost(id string) (*Process, error) {
+	m.mu.Lock()
+	p, err := m.load(id)
+	if err != nil {
+		m.mu.Unlock()
+		return nil, err
+	}
+	if !isLiveStatus(p.Status) {
+		m.mu.Unlock()
+		return p, nil
+	}
+
+	p.Status = StatusLost
+	p.LossReason = LossHostRestarted
+	matched, matchErr := processMatchesRecord(p)
+	switch {
+	case matchErr != nil:
+		// The identity could not be established, so the PID is not safe to
+		// signal even if something is still running under it.
+		p.LossReason = LossIdentityMismatch
+		p.RecoveryCleanup = RecoveryNotNeeded
+		p.LastError = fmt.Sprintf("left over from an earlier app-server; identity could not be verified: %v", matchErr)
+	case !matched:
+		p.RecoveryCleanup = RecoveryNotFound
+		p.LastError = "left over from an earlier app-server; the recorded process was already gone"
+	default:
+		if err := terminateLeftoverProcessTree(p); err != nil {
+			p.RecoveryCleanup = RecoveryFailed
+			p.LastError = fmt.Sprintf("left over from an earlier app-server; cleanup failed: %v", err)
+		} else {
+			p.RecoveryCleanup = RecoveryTerminated
+			p.LastError = "left over from an earlier app-server; this host terminated the leftover process tree"
+		}
+	}
+
+	// Deliberately no TerminalCause and no ExitCode: this host never observed
+	// how the command ended, and cleaning up afterwards does not tell it.
+	p.StoppedAt = time.Now()
+	p.UpdatedAt = p.StoppedAt
+	if err := m.save(p); err != nil {
+		m.mu.Unlock()
+		return p, err
+	}
+	m.mu.Unlock()
+	m.publish(Event{Type: EventCleanedUp, Process: *p})
+	return p, nil
+}
+
 func (m *Manager) resumePersistedManagedProcesses() error {
+	if err := m.reconcileForeignHostRecords(); err != nil {
+		return err
+	}
 	processes, err := m.List()
 	if err != nil {
 		return err

@@ -405,6 +405,30 @@ describe("WorkspaceTerminalPanel", () => {
     expect(terminalInstances).toHaveLength(0);
   });
 
+  // A lost record belongs to an app-server that is gone. Treating it as live
+  // would offer the user a terminal with no process behind it.
+  it("does not list managed processes the app-server can no longer account for", async () => {
+    listManagedProcesses.mockResolvedValue({
+      processes: [
+        {
+          ...runningProcess,
+          status: "lost",
+          loss_reason: "host_restarted",
+          recovery_cleanup: "terminated",
+          stopped_at: "2026-07-18T08:01:00Z",
+        },
+      ],
+    });
+
+    await render(
+      <WorkspaceTerminalPanel activeContext={worktreeContext} thread={threadWithLiveRun} />,
+    );
+
+    await vi.waitFor(() => expect(listManagedProcesses).toHaveBeenCalledWith("thread-1"));
+    expect(container.querySelector(".workspace-terminal-navigation")?.textContent).not.toContain("npm run dev");
+    expect(terminalInstances).toHaveLength(0);
+  });
+
   it("resizes the terminal list from the separator", async () => {
     await render(<WorkspaceTerminalPanel activeContext={worktreeContext} />);
     const separator = container.querySelector<HTMLElement>('[role="separator"]');

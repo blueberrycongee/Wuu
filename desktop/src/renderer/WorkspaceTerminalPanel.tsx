@@ -1,7 +1,7 @@
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal as XtermTerminal, type ITerminalOptions, type ITheme } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
-import { CheckCircle2, Clock3, Plus, Square, SquareTerminal, Terminal, X, XCircle } from "lucide-react";
+import { CheckCircle2, Clock3, HelpCircle, Plus, Square, SquareTerminal, Terminal, X, XCircle } from "lucide-react";
 import {
   type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
@@ -547,6 +547,11 @@ function RunStatusIcon({
 }): JSX.Element {
   if (process ? process.status === "failed" : run.status === "failed") {
     return <XCircle className="icon failed" />;
+  }
+  // A lost record outlived the app-server that started it, so nothing here saw
+  // how it ended. It is neither live nor a confirmed completion.
+  if (process?.status === "lost") {
+    return <HelpCircle className="icon lost" />;
   }
   if (run.execution === "managed" && (!process || isManagedProcessLive(process))) {
     return <Clock3 className="icon live" />;
