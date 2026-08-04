@@ -89,7 +89,14 @@ func threadWorktreeInfo(path, baseHEAD, baseRepo string) *WorktreeInfo {
 
 func (th *threadState) startTurnLocked(turnID string, userMsg providers.ChatMessage, now time.Time) Turn {
 	th.currentTurn = turnID
-	th.currentTurnKind = TurnKindUser
+	turnKind := TurnKindUser
+	displayKind := TurnKind("")
+	continuation := userMsg.Hidden && userMsg.Name == turnContinuationMessageName
+	if continuation {
+		turnKind = TurnKindContinuation
+		displayKind = TurnKindContinuation
+	}
+	th.currentTurnKind = turnKind
 	th.currentTurnResumed = false
 	th.running = true
 	th.runningProviderName = th.ModelProvider
@@ -101,12 +108,16 @@ func (th *threadState) startTurnLocked(turnID string, userMsg providers.ChatMess
 	th.activeReasoningItemID = ""
 	th.toolItems = make(map[string]string)
 
-	userItem := chatMessageItem(th.nextItemIDLocked(turnID), userMsg)
+	var items []ThreadItem
+	if !continuation {
+		items = []ThreadItem{chatMessageItem(th.nextItemIDLocked(turnID), userMsg)}
+	}
 	turn := Turn{
 		ID:            turnID,
+		Kind:          displayKind,
 		ModelProvider: th.ModelProvider,
 		Model:         th.Model,
-		Items:         []ThreadItem{userItem},
+		Items:         items,
 		ItemsView:     TurnItemsViewFull,
 		Status:        TurnStatusInProgress,
 		StartedAt:     &now,

@@ -46,10 +46,15 @@ export function turnEventForTurn(
   hasAssistantOutput: boolean,
   hasMissingReply: boolean = false,
 ): TurnEventDisplay | undefined {
-  // A manual stop is an expected user action. Preserve any generated output,
-  // but do not add a redundant turn-level divider after the user just clicked
-  // the stop control.
-  if (turn.status === "interrupted") {
+  // User cancellations are resumable pauses. The composer owns that state;
+  // rendering a terminal system notice here would split one logical response.
+  // Preserve a non-cancellation structured error if an interrupted turn also
+  // carries a real provider or local failure.
+  const interruptionError = turn.error?.message.trim();
+  if (
+    turn.status === "interrupted" &&
+    (!interruptionError || isCancellationMessage(interruptionError.toLowerCase()))
+  ) {
     return undefined;
   }
   // Soft outcome: turn completed but only produced commentary, no
@@ -79,7 +84,7 @@ export function turnEventForTurn(
       // accurate user-facing label while keeping diagnostics internal.
       // The legacy string fallback in userFacingErrorForMessage still
       // works for older app-servers that only send the message.
-      : turn.status === "failed"
+      : turn.status === "failed" || (turn.status === "interrupted" && turn.error)
         ? userFacingErrorForMessage(turn.error, "turn")
         : undefined;
   if (!baseDisplay) {

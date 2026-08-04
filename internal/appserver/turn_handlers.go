@@ -56,6 +56,30 @@ type agentCompletionTurn struct {
 	snapshot  *subagent.SubAgentSnapshot
 }
 
+const turnContinuationMessageName = "wuu_turn_continuation"
+
+func interruptedTurnContinuationMessage() providers.ChatMessage {
+	return providers.ChatMessage{
+		Role:    "user",
+		Name:    turnContinuationMessageName,
+		Hidden:  true,
+		Content: "<system-reminder>\n[TURN_CONTINUATION]\nThe user resumed the previous interrupted turn. Continue the same task from the preserved partial response and tool state. Do not restart or repeat completed work unless verification requires it.\n</system-reminder>",
+	}
+}
+
+func validateTurnContinuationLocked(th *threadState) error {
+	if th.running {
+		return errors.New("thread already has a running turn")
+	}
+	if len(th.Turns) == 0 || th.Turns[len(th.Turns)-1].Status != TurnStatusInterrupted {
+		return errors.New("latest turn is not interrupted")
+	}
+	if th.workerTreeFrozen || strings.TrimSpace(th.ParentID) != "" || strings.TrimSpace(th.AgentPath) != "" {
+		return errors.New("subagent turn continuation is not supported")
+	}
+	return nil
+}
+
 type startedThreadTurn struct {
 	ctx        context.Context
 	cancel     context.CancelFunc
@@ -143,8 +167,11 @@ func (s *Server) handleTurnStart(ctx context.Context, req Request) error {
 	if err != nil {
 		return s.writeResponse(req.ID, nil, err)
 	}
-	if params.Prompt == "" && len(images) == 0 && len(files) == 0 {
+	if !params.Continuation && params.Prompt == "" && len(images) == 0 && len(files) == 0 {
 		return s.writeResponse(req.ID, nil, errors.New("prompt or attachment is required"))
+	}
+	if params.Continuation && (params.Prompt != "" || len(images) != 0 || len(files) != 0) {
+		return s.writeResponse(req.ID, nil, errors.New("continuation does not accept prompt or attachments"))
 	}
 	th, err := s.ensureThreadLoaded(params.ThreadID)
 	if err != nil {
@@ -160,9 +187,20 @@ func (s *Server) handleTurnStart(ctx context.Context, req Request) error {
 		}
 		return s.startThreadCompactTurn(ctx, req, th, params.Prompt)
 	}
-	userMsg, err := userMessageFromPrompt(params.Prompt, images, files, s.rt.ExperimentalHelpMe)
-	if err != nil {
-		return s.writeResponse(req.ID, nil, err)
+	var userMsg providers.ChatMessage
+	if params.Continuation {
+		th.mu.Lock()
+		continuationErr := validateTurnContinuationLocked(th)
+		th.mu.Unlock()
+		if continuationErr != nil {
+			return s.writeResponse(req.ID, nil, continuationErr)
+		}
+		userMsg = interruptedTurnContinuationMessage()
+	} else {
+		userMsg, err = userMessageFromPrompt(params.Prompt, images, files, s.rt.ExperimentalHelpMe)
+		if err != nil {
+			return s.writeResponse(req.ID, nil, err)
+		}
 	}
 	snapshot := turnRuntimeSnapshot{}.withPermissions(permissions)
 	snapshot.PermissionExplicit = params.PermissionMode != nil
@@ -180,6 +218,14 @@ func (s *Server) handleTurnStart(ctx context.Context, req Request) error {
 		true,
 		turnReadOnlyIgnore,
 		turnAdmissionHooks{afterLease: func(admitted *threadState, _ *providers.ChatMessage) error {
+			if params.Continuation {
+				admitted.mu.Lock()
+				continuationErr := validateTurnContinuationLocked(admitted)
+				admitted.mu.Unlock()
+				if continuationErr != nil {
+					return continuationErr
+				}
+			}
 			var err error
 			threadRuntime, err = s.ensureThreadRuntimeAfterAdmission(admitted)
 			if err != nil {

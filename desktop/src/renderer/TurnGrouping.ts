@@ -4,6 +4,7 @@ import {
   agentHandoffChipDisplayItems,
   isAgentHandoffItem,
 } from "./AgentHandoff";
+import { isContinuationTurn } from "./TurnContinuation";
 
 /**
  * Subagent orchestration produces several real turns for what reads as one
@@ -235,6 +236,10 @@ export function groupConversationTurns(
     const turnFacts = facts[index];
     if (turnFacts.isAgentWake) {
       joinsPrevious[index] = true;
+      continue;
+    }
+    if (isContinuationTurn(turns[index])) {
+      joinsPrevious[index] = index > 0 && turns[index - 1].status === "interrupted";
       continue;
     }
     if (!turnFacts.hasRealUserMessage) {

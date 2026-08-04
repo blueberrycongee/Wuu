@@ -1538,6 +1538,7 @@ type MemoryReadResult struct {
 type TurnStartParams struct {
 	ThreadID       string           `json:"thread_id"`
 	Prompt         string           `json:"prompt"`
+	Continuation   bool             `json:"continuation,omitempty"`
 	Images         []TurnStartImage `json:"images,omitempty"`
 	Files          []TurnStartFile  `json:"files,omitempty"`
 	PermissionMode *string          `json:"permission_mode,omitempty"`
@@ -1872,9 +1873,10 @@ const (
 type TurnKind string
 
 const (
-	TurnKindUser     TurnKind = "user"
-	TurnKindInternal TurnKind = "internal"
-	TurnKindCompact  TurnKind = "compact"
+	TurnKindUser         TurnKind = "user"
+	TurnKindContinuation TurnKind = "continuation"
+	TurnKindInternal     TurnKind = "internal"
+	TurnKindCompact      TurnKind = "compact"
 )
 
 type TurnItemsView string

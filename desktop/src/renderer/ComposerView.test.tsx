@@ -87,6 +87,7 @@ function renderComposer(props: {
   mainConversation?: boolean;
   prompt?: string;
   running?: boolean;
+  paused?: boolean;
   ultraEnabled?: boolean;
   onToggleUltra?: (enabled: boolean) => void;
   queuedMessages?: QueuedComposerMessage[];
@@ -97,6 +98,7 @@ function renderComposer(props: {
   initialized?: InitializeResult;
   readOnly?: boolean;
   onInterrupt?: () => void;
+  onResume?: () => void;
   onSend?: (promptOverride?: string) => void;
   onSteer?: (promptOverride?: string) => void;
   onQueue?: () => void;
@@ -144,6 +146,7 @@ function renderComposer(props: {
           queuedMessages={props.queuedMessages ?? []}
           guideMessages={props.guideMessages ?? []}
           running={props.running ?? false}
+          paused={props.paused}
           ultraEnabled={props.ultraEnabled}
           onToggleUltra={props.onToggleUltra}
           runtimeControlsDisabled={props.runtimeControlsDisabled}
@@ -195,6 +198,7 @@ function renderComposer(props: {
           onSteer={props.onSteer}
           onQueue={props.onQueue}
           onInterrupt={props.onInterrupt ?? (() => {})}
+          onResume={props.onResume}
           goalSummary={props.goalSummary}
           onEditGoal={props.onEditGoal}
           onPauseGoal={props.onPauseGoal}
@@ -694,7 +698,7 @@ describe("Composer send control", () => {
     expect(
       container.querySelectorAll(".composer-action-button.composer-stop-button"),
     ).toHaveLength(0);
-    expect(container.querySelector("button[aria-label=\"停止\"]")).toBeNull();
+    expect(container.querySelector("button[aria-label=\"暂停\"]")).toBeNull();
 
     const sendButton = container.querySelector<HTMLButtonElement>(
       "button[aria-label=\"发送引导\"]",
@@ -727,7 +731,7 @@ describe("Composer send control", () => {
     expect(container.querySelector("button[aria-label=\"发送\"]")).toBeNull();
     expect(container.querySelector("button[aria-label=\"排队发送\"]")).toBeNull();
 
-    const stopButton = container.querySelector<HTMLButtonElement>("button[aria-label=\"停止\"]");
+    const stopButton = container.querySelector<HTMLButtonElement>("button[aria-label=\"暂停\"]");
     expect(stopButton).not.toBeNull();
 
     act(() => {
@@ -736,6 +740,23 @@ describe("Composer send control", () => {
 
     expect(onInterrupt).toHaveBeenCalledTimes(1);
     expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it("offers one-click continuation after an interrupted turn", () => {
+    const onResume = vi.fn();
+    renderComposer({ paused: true, onResume });
+
+    const resumeButton = container.querySelector<HTMLButtonElement>(
+      "button[aria-label=\"继续\"]",
+    );
+    expect(resumeButton).not.toBeNull();
+    expect(resumeButton?.disabled).toBe(false);
+
+    act(() => {
+      resumeButton?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    });
+
+    expect(onResume).toHaveBeenCalledTimes(1);
   });
 
   it("keeps active goal controls enabled while a request is running", async () => {
@@ -2387,7 +2408,7 @@ describe("Composer expand button", () => {
       /\.composer-bar\s*\{[^}]*height:\s*40px[^}]*padding:\s*0\s+8px\s+4px\s+calc\(var\(--composer-text-start\)\s*-\s*var\(--composer-control-icon-inset\)\)/,
     );
     expect(composerCSS).toMatch(
-      /\.composer-send-button,\s*\n\.composer-stop-button\s*\{[^}]*width:\s*28px[^}]*height:\s*28px/,
+      /\.composer-send-button,\s*\n\.composer-stop-button,\s*\n\.composer-resume-button\s*\{[^}]*width:\s*28px[^}]*height:\s*28px/,
     );
     expect(composerCSS).toMatch(
       /\.composer-send-button\s+svg\s*\{[^}]*width:\s*14px[^}]*height:\s*14px/,

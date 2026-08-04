@@ -7,6 +7,7 @@ import {
   ListTodo,
   Paperclip,
   PencilLine,
+  Play,
   Send,
   Square,
   X
@@ -119,7 +120,9 @@ export function SplitPaneComposer({
   onRemoveFile,
   onRemoveImage,
   onSend,
-  onInterrupt
+  onInterrupt,
+  paused = false,
+  onResume,
 }: {
   prompt: string;
   setPrompt: (value: string) => void;
@@ -136,6 +139,8 @@ export function SplitPaneComposer({
   onRemoveImage: (id: string) => void;
   onSend: () => void;
   onInterrupt: () => void;
+  paused?: boolean;
+  onResume?: () => void;
 }): JSX.Element {
   const { t } = useI18n();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -147,6 +152,7 @@ export function SplitPaneComposer({
   // with an empty input. Once there is a draft, it flips to send (queuing
   // mid-turn) so a typed follow-up is never blocked by the stop state.
   const showStop = running && !hasDraft;
+  const showResume = paused && !running && !hasDraft && Boolean(onResume);
   const sendLabel = running ? t("composer.queueSend") : t("composer.send");
   const statusText = composerStatusText(status);
   const statusIsLiveProgress = composerStatusIsLiveProgress(statusLiveProgress);
@@ -314,10 +320,20 @@ export function SplitPaneComposer({
               className="composer-action-button composer-stop-button"
               type="button"
               onClick={onInterrupt}
-              aria-label={t("composer.stop")}
-              title={t("composer.stop")}
+              aria-label={t("composer.pause")}
+              title={t("composer.pause")}
             >
               <Square aria-hidden="true" />
+            </button>
+          ) : showResume ? (
+            <button
+              className="composer-action-button composer-resume-button"
+              type="button"
+              onClick={onResume}
+              aria-label={t("composer.resume")}
+              title={t("composer.resume")}
+            >
+              <Play aria-hidden="true" />
             </button>
           ) : (
             <button

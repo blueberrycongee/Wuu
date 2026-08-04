@@ -395,7 +395,7 @@ describe("userFacingErrorForMessage", () => {
 });
 
 describe("TurnEvents", () => {
-  it("does not render an event for a manual interruption", () => {
+  it("suppresses the old stop event for a resumable interruption", () => {
     const turn: Turn = {
       id: "turn-1",
       items: [],
@@ -406,6 +406,24 @@ describe("TurnEvents", () => {
     const event = turnEventForTurn(turn, false);
 
     expect(event).toBeUndefined();
+  });
+
+  it("preserves a real failure attached to an interrupted turn", () => {
+    const turn: Turn = {
+      id: "turn-1",
+      items: [],
+      items_view: "full",
+      status: "interrupted",
+      error: {
+        message: "connection reset by peer",
+        category: "network",
+      },
+    };
+
+    const event = turnEventForTurn(turn, true);
+
+    expect(event?.kind).toBe("network_lost");
+    expect(event?.source).toBe("turn");
   });
 
   it("adds preserved-output detail once for partial Responses stream failures", () => {

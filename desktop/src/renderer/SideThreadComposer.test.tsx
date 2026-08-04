@@ -101,7 +101,7 @@ describe("SideThreadComposer", () => {
     expect(textarea.disabled).toBe(false);
     expect(textarea.value).toBe("keep this");
     const stop = container.querySelector(
-      '.composer-action-button[aria-label="停止"]',
+      '.composer-action-button[aria-label="暂停"]',
     ) as HTMLButtonElement;
     expect(stop).toBeTruthy();
     act(() => stop.click());

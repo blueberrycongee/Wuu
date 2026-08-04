@@ -1996,6 +1996,15 @@ app.whenReady().then(async () => {
       }),
   );
   ipcMain.handle(
+    "wuu:turn-resume",
+    (event, threadId: string) =>
+      appServerRequest<{ turn: Turn }>(event, "turn/start", {
+        thread_id: threadId,
+        prompt: "",
+        continuation: true,
+      }),
+  );
+  ipcMain.handle(
     "wuu:turn-queue",
     (
       event,

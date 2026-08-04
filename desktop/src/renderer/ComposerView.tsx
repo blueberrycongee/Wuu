@@ -6,6 +6,7 @@ import {
   Folder,
   FolderOpen,
   FolderX,
+  Play,
   Send,
   Square,
   X
@@ -175,6 +176,8 @@ export function Composer({
   onSteer,
   onQueue,
   onInterrupt,
+  paused = false,
+  onResume,
   goalSummary,
   onEditGoal,
   onPauseGoal,
@@ -268,6 +271,8 @@ export function Composer({
   onSteer?: (promptOverride?: string) => void;
   onQueue?: () => void;
   onInterrupt: () => void;
+  paused?: boolean;
+  onResume?: () => void;
   goalSummary?: ComposerGoalSummary | null;
   onEditGoal?: (nextText: string) => void | Promise<void>;
   onPauseGoal?: () => void | Promise<void>;
@@ -345,6 +350,8 @@ export function Composer({
   const voiceSendPendingRef = useRef(false);
   const showComposerStopAction =
     showComposerStop && !voiceRecording && !voiceSendPending;
+  const showComposerResumeAction =
+    paused && !running && !hasDraft && !voiceRecording && !voiceSendPending && Boolean(onResume);
   const voiceActionLabel =
     (voiceRecording || voiceSendPending) && running && onSteer
       ? t("composer.steerSend")
@@ -1254,17 +1261,17 @@ export function Composer({
                   />
                 ) : null}
                 <button
-                  className={`composer-action-button ${showComposerStopAction ? "composer-stop-button" : "composer-send-button"}`}
+                  className={`composer-action-button ${showComposerStopAction ? "composer-stop-button" : showComposerResumeAction ? "composer-resume-button" : "composer-send-button"}`}
                   type="button"
-                  onClick={showComposerStopAction ? onInterrupt : submitComposer}
-                  aria-label={showComposerStopAction ? t("composer.stop") : voiceActionLabel}
-                  title={showComposerStopAction ? t("composer.stop") : voiceActionLabel}
+                  onClick={showComposerStopAction ? onInterrupt : showComposerResumeAction ? onResume : submitComposer}
+                  aria-label={showComposerStopAction ? t("composer.pause") : showComposerResumeAction ? t("composer.resume") : voiceActionLabel}
+                  title={showComposerStopAction ? t("composer.pause") : showComposerResumeAction ? t("composer.resume") : voiceActionLabel}
                   disabled={
-                    !showComposerStopAction &&
+                    !showComposerStopAction && !showComposerResumeAction &&
                     (voiceSendPending || sendDisabled || readOnly || (!voiceRecording && !hasDraft))
                   }
                 >
-                  {showComposerStopAction ? <Square aria-hidden="true" /> : <Send aria-hidden="true" />}
+                  {showComposerStopAction ? <Square aria-hidden="true" /> : showComposerResumeAction ? <Play aria-hidden="true" /> : <Send aria-hidden="true" />}
                 </button>
               </div>
             </div>

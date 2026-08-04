@@ -210,6 +210,16 @@ describe("groupConversationTurns", () => {
     ];
     expect(groupIDs(turns)).toEqual([["t1"], ["tc", "t3"]]);
   });
+
+  it("merges a continuation turn into the interrupted response", () => {
+    const interrupted = makeTurn("t1", [userItem("u1"), answerItem("partial")], "interrupted");
+    const continuation: Turn = {
+      ...makeTurn("t2", [answerItem("continued")], "in_progress"),
+      kind: "continuation",
+    };
+
+    expect(groupIDs([interrupted, continuation])).toEqual([["t1", "t2"]]);
+  });
 });
 
 describe("groupConversationTurns — spawning interjections", () => {

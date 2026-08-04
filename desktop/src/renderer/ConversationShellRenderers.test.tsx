@@ -82,6 +82,7 @@ describe("ConversationSplitPaneRenderer file routing", () => {
           onRemoveImage={() => {}}
           onSend={() => {}}
           onInterrupt={() => {}}
+          onResume={() => {}}
           onForkMessage={() => {}}
           onOpenFile={onOpenFile}
           onOpenAgent={() => {}}

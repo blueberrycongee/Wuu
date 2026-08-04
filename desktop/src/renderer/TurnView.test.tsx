@@ -236,7 +236,7 @@ describe("TurnView", () => {
     expect(view.textContent).toContain("思考过程");
   });
 
-  it("preserves partial output without a notice after a manual interruption", () => {
+  it("keeps partial output without a stop notice after a resumable pause", () => {
     const view = render(
       makeTurn("interrupted", [
         makeCommentary("partial progress"),

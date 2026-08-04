@@ -211,6 +211,7 @@ import {
   statusMessageForError,
 } from "./UserFacingErrors";
 import { scrollToUserMessage, TurnView } from "./TurnView";
+import { canResumeInterruptedTurn } from "./TurnContinuation";
 import { ConversationTurnRail } from "./ConversationTurnRail";
 import {
   WorkspaceRightPanel,
@@ -2212,6 +2213,7 @@ export function App(): JSX.Element {
   );
   const activeThreadReadOnly = Boolean(activeThread?.read_only);
   const activeThreadIsRunning = isStateActiveThreadRunning(state);
+  const activeThreadCanResume = canResumeInterruptedTurn(activeThread);
   // Orchestration wait (threadAwaitingBackgroundAgents): the composer keeps
   // the steer affordance and a live status so the parked merged block reads
   // exactly like an in-progress turn (A/B parity).
@@ -2510,6 +2512,7 @@ export function App(): JSX.Element {
           (!activeThreadReadOnly && activeThreadIsRunning) ||
           viewContextSwitchPending
         }
+        paused={activeThreadCanResume}
         ultraEnabled={ENABLE_ULTRA_MODE && Boolean(state.initialized?.ultra)}
         onToggleUltra={
           ENABLE_ULTRA_MODE
@@ -2629,6 +2632,7 @@ export function App(): JSX.Element {
             : undefined
         }
         onInterrupt={() => void interrupt()}
+        onResume={() => void resume()}
         goalSummary={goalSummary}
         onEditGoal={editGoalText}
         onPauseGoal={pauseCurrentGoal}
@@ -3190,6 +3194,8 @@ export function App(): JSX.Element {
     selectPermissionMode,
     interrupt,
     interruptPane,
+    resume,
+    resumePane,
   } = createRuntimeSettingsActions({
     getAppState: () => appStateRef.current,
     setAppState: setState,
@@ -4822,6 +4828,7 @@ export function App(): JSX.Element {
                     onRemoveImage={removeSplitComposerImage}
                     onSend={(pane) => void sendPromptForPane(pane)}
                     onInterrupt={(pane) => void interruptPane(pane)}
+                    onResume={(pane) => void resumePane(pane)}
                     onForkMessage={(thread, turnID, itemID) =>
                       void forkThreadFromMessage(thread, turnID, itemID)
                     }
