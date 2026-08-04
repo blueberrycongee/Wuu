@@ -400,6 +400,15 @@ func (s *Server) settleOnBoot() {
 	if s == nil || s.rt == nil {
 		return
 	}
+	// Only the boot owner reaches this, and it still holds exclusive app-server
+	// presence. That is what makes retiring another host's command records
+	// safe: a differing host generation alone would also match a peer that is
+	// still alive and still owns its processes.
+	if s.rt.ProcessManager != nil {
+		if err := s.rt.ProcessManager.ReconcileAbandonedRecords(); err != nil {
+			providers.DebugLogf("settleOnBoot (abandoned command records): %v", err)
+		}
+	}
 	now := time.Now().UTC()
 	if s.rt.InferenceJournalRuntime != nil {
 		recoveries, recoverErr := s.rt.InferenceJournalRuntime.ReconcileOrphans(now)

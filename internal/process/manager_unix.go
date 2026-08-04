@@ -82,3 +82,14 @@ func processExists(pid int) bool {
 	err := syscall.Kill(pid, 0)
 	return err == nil || errors.Is(err, syscall.EPERM)
 }
+
+// processGroupExists reports whether any process remains in the group. Probing
+// the group rather than the leader matters when the leader exits first and
+// leaves descendants behind: the tree is still alive and still needs killing.
+func processGroupExists(pgid int) bool {
+	if pgid <= 1 {
+		return false
+	}
+	err := syscall.Kill(-pgid, 0)
+	return err == nil || errors.Is(err, syscall.EPERM)
+}

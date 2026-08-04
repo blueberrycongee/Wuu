@@ -1128,22 +1128,33 @@ const persistedProcessWatchInterval = 250 * time.Millisecond
 // resumePersistedManagedProcesses restores exit observation for managed
 // processes that outlived the manager which started them. PTY/stdin handles
 // cannot be reconstructed, but terminal state and completion delivery can.
-// reconcileForeignHostRecords retires records this host cannot account for.
+// ReconcileAbandonedRecords retires command records no live host can still own,
+// and best-effort cleans up their process trees.
 //
-// Until now only managed records were revisited at startup, so a session
-// command left behind by a crashed app-server sat at "running" forever: the
-// process was unreachable and the row never settled. Any non-terminal record
-// from another host generation is now marked lost, and its process tree is
-// cleaned up on a best-effort basis after an identity check.
+// It is destructive and MUST only be called by an app-server that has proven it
+// is the sole live host — in practice from the boot-owner section while the
+// exclusive app-server presence lock is held. A differing host generation is a
+// fencing label, not a liveness lease: Wuu supports a successor app-server
+// starting while an earlier host is still alive, and in that case the earlier
+// host's session commands are legitimately still owned. Deciding from the
+// generation alone would kill them. Exclusive presence is what proves nobody
+// else can own these records; the generation only says which ones are not ours.
 //
-// Records from this host's own generation are left alone. They belong to a
+// Records from this host's own generation are left alone: they belong to a
 // sibling manager in the same app-server, which still holds their handles.
 //
-// Managed records are also left alone here. The existing resume path
-// deliberately re-adopts and re-observes them across a restart; retiring that
-// re-adoption is a separate step of the lifecycle work, and killing them now
-// would break a contract that is still in force.
-func (m *Manager) reconcileForeignHostRecords() error {
+// Managed records are also left alone. The existing resume path deliberately
+// re-adopts and re-observes them across a restart; retiring that re-adoption is
+// a separate step of the lifecycle work.
+//
+// A per-record failure is reported and skipped rather than aborting the sweep:
+// one unreadable or unkillable leftover must not stop the remaining records
+// from settling, nor block the managed re-adoption that runs after it. Only a
+// failure to enumerate the registry at all is returned.
+func (m *Manager) ReconcileAbandonedRecords() error {
+	if m == nil {
+		return nil
+	}
 	processes, err := m.List()
 	if err != nil {
 		return err
@@ -1153,7 +1164,7 @@ func (m *Manager) reconcileForeignHostRecords() error {
 			continue
 		}
 		if _, err := m.markRecordLost(p.ID); err != nil {
-			return err
+			log.Printf("wuu: could not retire abandoned command record %s: %v", p.ID, err)
 		}
 	}
 	return nil
@@ -1162,24 +1173,95 @@ func (m *Manager) reconcileForeignHostRecords() error {
 // terminateLeftoverProcessTree stops a process group left behind by an earlier
 // host. It asks politely first and escalates, because nothing in this process
 // is waiting on the group to observe a graceful exit.
+// leftoverProcessGroupPollInterval paces the group-liveness probe while waiting
+// for a signalled tree to drain.
+const leftoverProcessGroupPollInterval = 25 * time.Millisecond
+
+// terminateLeftoverProcessTree stops a tree left behind by an earlier host,
+// mirroring CommandHandle.Stop: terminate, allow a grace period, force-kill,
+// and only then report failure.
+//
+// Liveness is probed on the whole group rather than the recorded leader. A
+// leader that exits while descendants keep running would otherwise look like a
+// clean stop and leave the rest of the tree alive.
+//
 // Falling back to the pid when no group was recorded would signal whatever
 // group happens to carry that id — possibly Wuu's own — so a record without a
-// usable group is reported as un-cleanable instead.
-func terminateLeftoverProcessTree(p *Process) error {
-	tree := ProcessTreeFromID(p.PGID)
-	if err := tree.Terminate(); err != nil {
-		return err
+// usable group is reported as un-cleanable by ProcessTree's own guard.
+func terminateLeftoverProcessTree(pgid int, grace time.Duration) error {
+	if grace <= 0 {
+		grace = DefaultStopGracePeriod
 	}
-	if !processExists(p.PID) {
-		return nil
+	tree := ProcessTreeFromID(pgid)
+	terminateErr := tree.Terminate()
+	if terminateErr != nil {
+		return terminateErr
 	}
-	return tree.Kill()
+	drained := waitForProcessGroupExit(tree.ID(), grace)
+	killErr := tree.Kill()
+	if !drained && !waitForProcessGroupExit(tree.ID(), grace) {
+		return errors.Join(killErr, fmt.Errorf("process group %d did not stop after force-kill", tree.ID()))
+	}
+	return killErr
 }
 
-// markRecordLost settles one unaccountable record. Cleanup is attempted only
-// when the recorded PID still names the same process; otherwise the signal
-// would land on whatever reused that PID.
+func waitForProcessGroupExit(pgid int, timeout time.Duration) bool {
+	deadline := time.Now().Add(timeout)
+	for {
+		if !processGroupExists(pgid) {
+			return true
+		}
+		if !time.Now().Before(deadline) {
+			return false
+		}
+		time.Sleep(leftoverProcessGroupPollInterval)
+	}
+}
+
+// markRecordLost settles one unaccountable record.
+//
+// Identity inspection and signalling happen outside m.mu: both make OS calls,
+// and the force-kill path can block for the full grace period. Holding the
+// manager lock across that would stall every other manager operation for the
+// duration of startup recovery. The record is re-read and re-checked under the
+// lock afterwards, so a record that settled meanwhile is left alone.
 func (m *Manager) markRecordLost(id string) (*Process, error) {
+	m.mu.Lock()
+	snapshot, err := m.load(id)
+	if err != nil {
+		m.mu.Unlock()
+		return nil, err
+	}
+	if !isLiveStatus(snapshot.Status) {
+		m.mu.Unlock()
+		return snapshot, nil
+	}
+	probe := *snapshot
+	m.mu.Unlock()
+
+	reason := LossHostRestarted
+	cleanup := RecoveryNotNeeded
+	detail := ""
+	matched, matchErr := processMatchesRecord(&probe)
+	switch {
+	case matchErr != nil:
+		// The identity could not be established, so the pid is not safe to
+		// signal even if something is still running under it.
+		reason = LossIdentityMismatch
+		detail = fmt.Sprintf("left over from an earlier app-server; identity could not be verified: %v", matchErr)
+	case !matched:
+		cleanup = RecoveryNotFound
+		detail = "left over from an earlier app-server; the recorded process was already gone"
+	default:
+		if err := terminateLeftoverProcessTree(probe.PGID, DefaultStopGracePeriod); err != nil {
+			cleanup = RecoveryFailed
+			detail = fmt.Sprintf("left over from an earlier app-server; cleanup failed: %v", err)
+		} else {
+			cleanup = RecoveryTerminated
+			detail = "left over from an earlier app-server; this host terminated the leftover process tree"
+		}
+	}
+
 	m.mu.Lock()
 	p, err := m.load(id)
 	if err != nil {
@@ -1187,33 +1269,15 @@ func (m *Manager) markRecordLost(id string) (*Process, error) {
 		return nil, err
 	}
 	if !isLiveStatus(p.Status) {
+		// Something settled the record while the signals were in flight; that
+		// outcome was observed and this one was not, so it wins.
 		m.mu.Unlock()
 		return p, nil
 	}
-
 	p.Status = StatusLost
-	p.LossReason = LossHostRestarted
-	matched, matchErr := processMatchesRecord(p)
-	switch {
-	case matchErr != nil:
-		// The identity could not be established, so the PID is not safe to
-		// signal even if something is still running under it.
-		p.LossReason = LossIdentityMismatch
-		p.RecoveryCleanup = RecoveryNotNeeded
-		p.LastError = fmt.Sprintf("left over from an earlier app-server; identity could not be verified: %v", matchErr)
-	case !matched:
-		p.RecoveryCleanup = RecoveryNotFound
-		p.LastError = "left over from an earlier app-server; the recorded process was already gone"
-	default:
-		if err := terminateLeftoverProcessTree(p); err != nil {
-			p.RecoveryCleanup = RecoveryFailed
-			p.LastError = fmt.Sprintf("left over from an earlier app-server; cleanup failed: %v", err)
-		} else {
-			p.RecoveryCleanup = RecoveryTerminated
-			p.LastError = "left over from an earlier app-server; this host terminated the leftover process tree"
-		}
-	}
-
+	p.LossReason = reason
+	p.RecoveryCleanup = cleanup
+	p.LastError = detail
 	// Deliberately no TerminalCause and no ExitCode: this host never observed
 	// how the command ended, and cleaning up afterwards does not tell it.
 	p.StoppedAt = time.Now()
@@ -1222,15 +1286,13 @@ func (m *Manager) markRecordLost(id string) (*Process, error) {
 		m.mu.Unlock()
 		return p, err
 	}
+	settled := *p
 	m.mu.Unlock()
-	m.publish(Event{Type: EventCleanedUp, Process: *p})
-	return p, nil
+	m.publish(Event{Type: EventCleanedUp, Process: settled})
+	return &settled, nil
 }
 
 func (m *Manager) resumePersistedManagedProcesses() error {
-	if err := m.reconcileForeignHostRecords(); err != nil {
-		return err
-	}
 	processes, err := m.List()
 	if err != nil {
 		return err

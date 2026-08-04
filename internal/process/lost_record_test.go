@@ -64,6 +64,11 @@ func TestStartupRetiresLeftoverSessionRecordAsLost(t *testing.T) {
 		t.Fatalf("NewManager: %v", err)
 	}
 	t.Cleanup(func() { _ = m.CleanupSession() })
+	// Construction must not touch other hosts' records; reconciliation is an
+	// explicit call the boot owner makes under exclusive presence.
+	if err := m.ReconcileAbandonedRecords(); err != nil {
+		t.Fatalf("ReconcileAbandonedRecords: %v", err)
+	}
 
 	got := recordByID(t, m, "leftover-1")
 	if got.Status != StatusLost {
@@ -108,6 +113,9 @@ func TestStartupLeavesSameHostGenerationRecordsAlone(t *testing.T) {
 		t.Fatalf("NewManagerWithHostGeneration: %v", err)
 	}
 	t.Cleanup(func() { _ = sibling.CleanupSession() })
+	if err := sibling.ReconcileAbandonedRecords(); err != nil {
+		t.Fatalf("ReconcileAbandonedRecords: %v", err)
+	}
 
 	if got := recordByID(t, sibling, "sibling-1"); got.Status != StatusRunning {
 		t.Fatalf("Status = %q, want running: a sibling manager in the same host must not retire it", got.Status)
@@ -136,6 +144,11 @@ func TestStartupDoesNotRetireLeftoverManagedRecords(t *testing.T) {
 		t.Fatalf("NewManager: %v", err)
 	}
 	t.Cleanup(func() { _ = m.CleanupSession() })
+	// Construction must not touch other hosts' records; reconciliation is an
+	// explicit call the boot owner makes under exclusive presence.
+	if err := m.ReconcileAbandonedRecords(); err != nil {
+		t.Fatalf("ReconcileAbandonedRecords: %v", err)
+	}
 
 	if got := recordByID(t, m, "managed-1"); got.Status == StatusLost {
 		t.Fatalf("managed records are still re-adopted at startup; got %+v", got)
@@ -154,10 +167,11 @@ func TestStartupTerminatesVerifiedLeftoverProcessTree(t *testing.T) {
 		t.Skipf("cannot start helper process: %v", err)
 	}
 	pid := cmd.Process.Pid
-	t.Cleanup(func() {
-		_ = cmd.Process.Kill()
-		_, _ = cmd.Process.Wait()
-	})
+	// Reap the helper as it exits. A real leftover is re-parented to init and
+	// reaped there; an unreaped child would linger as a zombie, which still
+	// answers a group-liveness probe and would look like failed cleanup.
+	go func() { _ = cmd.Wait() }()
+	t.Cleanup(func() { _ = killProcessGroup(ProcessTreeForPID(pid).ID()) })
 
 	identity, _, _, err := readProcessIdentity(pid)
 	if err != nil {
@@ -183,6 +197,11 @@ func TestStartupTerminatesVerifiedLeftoverProcessTree(t *testing.T) {
 		t.Fatalf("NewManager: %v", err)
 	}
 	t.Cleanup(func() { _ = m.CleanupSession() })
+	// Construction must not touch other hosts' records; reconciliation is an
+	// explicit call the boot owner makes under exclusive presence.
+	if err := m.ReconcileAbandonedRecords(); err != nil {
+		t.Fatalf("ReconcileAbandonedRecords: %v", err)
+	}
 
 	got := recordByID(t, m, "leftover-live")
 	if got.Status != StatusLost {
@@ -195,5 +214,136 @@ func TestStartupTerminatesVerifiedLeftoverProcessTree(t *testing.T) {
 	// ended, so the record stays lost rather than becoming a normal stop.
 	if got.LossReason != LossHostRestarted {
 		t.Fatalf("LossReason = %q, want host_restarted", got.LossReason)
+	}
+}
+
+// Constructing a manager must never retire another host's records. Wuu allows a
+// successor app-server to start while an earlier host is still alive, so the
+// decision needs proof of exclusive ownership that only the boot owner has.
+func TestNewManagerDoesNotRetireForeignRecords(t *testing.T) {
+	runtimeDir := filepath.Join(t.TempDir(), "runtime")
+	writeLeftoverRecord(t, filepath.Join(runtimeDir, "processes"), Process{
+		ID:               "peer-owned",
+		OwnerKind:        OwnerMainAgent,
+		OwnerID:          "main",
+		HostGenerationID: "host-still-alive-elsewhere",
+		Lifecycle:        LifecycleSession,
+		Status:           StatusRunning,
+		PID:              -1,
+		Command:          "sleep 600",
+		CWD:              t.TempDir(),
+		StartedAt:        time.Now(),
+	})
+
+	m, err := NewManager(t.TempDir(), runtimeDir)
+	if err != nil {
+		t.Fatalf("NewManager: %v", err)
+	}
+	t.Cleanup(func() { _ = m.CleanupSession() })
+
+	if got := recordByID(t, m, "peer-owned"); got.Status != StatusRunning {
+		t.Fatalf("Status = %q, want running: construction must not judge another host's records", got.Status)
+	}
+}
+
+// A leader that exits while a descendant keeps running must not read as a
+// clean stop. Probing only the recorded pid would report success and leave the
+// rest of the tree alive.
+func TestLeftoverCleanupKillsDescendantsAfterLeaderExits(t *testing.T) {
+	runtimeDir := filepath.Join(t.TempDir(), "runtime")
+	// The leader exits immediately; the grandchild outlives it inside the same
+	// process group.
+	cmd := exec.Command("sh", "-c", "sleep 600 & exit 0")
+	PrepareCommand(cmd)
+	if err := cmd.Start(); err != nil {
+		t.Skipf("cannot start helper process: %v", err)
+	}
+	pid := cmd.Process.Pid
+	pgid := ProcessTreeForPID(pid).ID()
+	identity, _, _, err := readProcessIdentity(pid)
+	if err != nil {
+		t.Skipf("process identity unavailable on this platform: %v", err)
+	}
+	_ = cmd.Wait()
+	t.Cleanup(func() { _ = killProcessGroup(pgid) })
+
+	if !processGroupExists(pgid) {
+		t.Skip("descendant did not outlive its leader on this platform")
+	}
+	writeLeftoverRecord(t, filepath.Join(runtimeDir, "processes"), Process{
+		ID:               "leftover-descendant",
+		OwnerKind:        OwnerMainAgent,
+		OwnerID:          "main",
+		HostGenerationID: "host-from-a-previous-run",
+		Lifecycle:        LifecycleSession,
+		Status:           StatusRunning,
+		PID:              pid,
+		PGID:             pgid,
+		ProcessStartTime: identity,
+		Command:          "sh -c 'sleep 600 & exit 0'",
+		CWD:              t.TempDir(),
+		StartedAt:        time.Now().Add(-time.Hour),
+	})
+
+	if err := terminateLeftoverProcessTree(pgid, 2*time.Second); err != nil {
+		t.Fatalf("terminateLeftoverProcessTree: %v", err)
+	}
+	if processGroupExists(pgid) {
+		t.Fatal("descendant survived cleanup: the leader's exit was mistaken for the tree stopping")
+	}
+}
+
+// The sweep must settle every abandoned record, not stop at the first one.
+// Reconciliation is also no longer part of manager construction, so a failure
+// here cannot block the managed re-adoption that runs there.
+func TestReconcileSettlesEveryAbandonedRecord(t *testing.T) {
+	runtimeDir := filepath.Join(t.TempDir(), "runtime")
+	registryDir := filepath.Join(runtimeDir, "processes")
+	for _, id := range []string{"leftover-a", "leftover-b", "leftover-c"} {
+		writeLeftoverRecord(t, registryDir, Process{
+			ID:               id,
+			OwnerKind:        OwnerMainAgent,
+			OwnerID:          "main",
+			HostGenerationID: "host-from-a-previous-run",
+			Lifecycle:        LifecycleSession,
+			Status:           StatusRunning,
+			PID:              -1,
+			Command:          "sleep 600",
+			CWD:              t.TempDir(),
+			StartedAt:        time.Now().Add(-time.Hour),
+		})
+	}
+
+	m, err := NewManager(t.TempDir(), runtimeDir)
+	if err != nil {
+		t.Fatalf("NewManager: %v", err)
+	}
+	t.Cleanup(func() { _ = m.CleanupSession() })
+	if err := m.ReconcileAbandonedRecords(); err != nil {
+		t.Fatalf("ReconcileAbandonedRecords: %v", err)
+	}
+
+	for _, id := range []string{"leftover-a", "leftover-b", "leftover-c"} {
+		if got := recordByID(t, m, id); got.Status != StatusLost {
+			t.Fatalf("record %s status = %q, want lost: the sweep stopped early", id, got.Status)
+		}
+	}
+}
+
+// Failing to enumerate the registry at all is different from one bad record:
+// the sweep cannot know what it skipped, so it reports the failure.
+func TestReconcileReportsRegistryEnumerationFailure(t *testing.T) {
+	runtimeDir := filepath.Join(t.TempDir(), "runtime")
+	m, err := NewManager(t.TempDir(), runtimeDir)
+	if err != nil {
+		t.Fatalf("NewManager: %v", err)
+	}
+	t.Cleanup(func() { _ = m.CleanupSession() })
+
+	if err := os.WriteFile(filepath.Join(runtimeDir, "processes", "corrupt.json"), []byte("{not json"), 0o644); err != nil {
+		t.Fatalf("write corrupt record: %v", err)
+	}
+	if err := m.ReconcileAbandonedRecords(); err == nil {
+		t.Fatal("ReconcileAbandonedRecords() = nil, want an error when the registry cannot be read")
 	}
 }

@@ -58,6 +58,13 @@ func killProcessGroup(pid int) error {
 	return taskkillTree(pid, true)
 }
 
+// processGroupExists reports whether the tree is still alive. Windows has no
+// process group to probe; taskkill /T walks descendants from the root, so the
+// root's liveness is the tree's liveness for signalling purposes.
+func processGroupExists(pgid int) bool {
+	return processExists(pgid)
+}
+
 func taskkillTree(pid int, force bool) error {
 	if pid <= 1 {
 		return nil
