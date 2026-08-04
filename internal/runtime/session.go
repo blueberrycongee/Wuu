@@ -992,6 +992,11 @@ func (s *Session) NewThreadRuntimeForRootModel(sessionID, rootDir string, select
 	shadow.StreamRunner.ProviderName = resolvedName
 	shadow.StreamRunner.Model = model
 	shadow.StreamRunner.APIModel = apiModel
+	// The cloned runner inherits the workspace model's media admission
+	// policy. The thread pins a different model, so re-derive the policy
+	// from the thread model's own capabilities; otherwise a text-only model
+	// keeps the base model's policy and unsupported images reach the wire.
+	shadow.StreamRunner.MediaInput = mediaInputPolicyFromCapabilities(roles.Main.Capabilities)
 	shadow.StreamRunner.Effort = selection.LegacyEffort
 	shadow.StreamRunner.Variant = selection.Variant
 	shadow.StreamRunner.ProviderOptions = modelvariant.CloneOptions(selection.ProviderOptions)

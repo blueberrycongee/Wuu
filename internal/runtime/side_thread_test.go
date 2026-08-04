@@ -2,12 +2,14 @@ package runtime
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/blueberrycongee/wuu/internal/agent"
+	"github.com/blueberrycongee/wuu/internal/config"
 	"github.com/blueberrycongee/wuu/internal/providers"
 	"github.com/blueberrycongee/wuu/internal/tools"
 )
@@ -122,6 +124,71 @@ func TestNewSideThreadRunnerFallsBackWhenModelUnresolvable(t *testing.T) {
 	}
 	if runner.Model != "workspace-model" {
 		t.Fatalf("fallback runner model = %q, want workspace-model", runner.Model)
+	}
+}
+
+// A side chat pinned to a different model must not inherit the workspace
+// model's media admission policy: a text-only model keeps the base policy and
+// unsupported images reach the wire (observed as a provider 400 on
+// deepseek-v4-flash after a mid-turn image steer).
+func TestNewSideThreadRunnerReDerivesMediaInputForPinnedModel(t *testing.T) {
+	root := t.TempDir()
+	configPath := filepath.Join(root, "config.json")
+	cfg := config.Config{
+		DefaultProvider: "deepseek",
+		Providers: map[string]config.ProviderConfig{
+			"deepseek": {
+				Type:    "openai-compatible",
+				BaseURL: "https://api.deepseek.com",
+				APIKey:  "test-key",
+				Model:   "deepseek-v4-flash",
+				Models: map[string]config.ProviderModelConfig{
+					"deepseek-v4-flash": {
+						Name:   "DeepSeek V4 Flash",
+						Family: "deepseek",
+					},
+				},
+			},
+		},
+	}
+	raw, err := json.Marshal(cfg)
+	if err != nil {
+		t.Fatalf("marshal config: %v", err)
+	}
+	if err := os.WriteFile(configPath, raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// The workspace runner's policy admits images (base model supports them
+	// or is unknown). The pinned deepseek model is catalog-known text-only,
+	// so the side runner must re-derive a rejecting policy.
+	base := &agent.StreamRunner{
+		Client: providers.AdaptStreamClient(&staticClient{}),
+		Model:  "workspace-model",
+		MediaInput: providers.MediaInputPolicy{
+			Image: true, File: true, ImageKnown: true, FileKnown: true,
+		},
+	}
+	s := &Session{
+		StreamRunner:   base,
+		ConfigLoadMode: ConfigLoadFile,
+		ConfigPath:     configPath,
+		RootDir:        root,
+	}
+
+	runner, err := s.NewSideThreadRunner("side-media", "", ThreadModelSelection{
+		Provider: "deepseek",
+		Model:    "deepseek-v4-flash",
+	})
+	if err != nil {
+		t.Fatalf("NewSideThreadRunner: %v", err)
+	}
+	if runner.Model != "deepseek-v4-flash" {
+		t.Fatalf("pinned runner model = %q, want deepseek-v4-flash", runner.Model)
+	}
+	want := providers.MediaInputPolicy{ImageKnown: true, FileKnown: true}
+	if runner.MediaInput != want {
+		t.Fatalf("pinned runner media input = %+v, want %+v (text-only model must reject images)", runner.MediaInput, want)
 	}
 }
 

@@ -9,6 +9,7 @@ import (
 	"github.com/blueberrycongee/wuu/internal/config"
 	"github.com/blueberrycongee/wuu/internal/hooks"
 	"github.com/blueberrycongee/wuu/internal/modelcatalog"
+	"github.com/blueberrycongee/wuu/internal/modelroles"
 	"github.com/blueberrycongee/wuu/internal/modelvariant"
 	"github.com/blueberrycongee/wuu/internal/providerfactory"
 	"github.com/blueberrycongee/wuu/internal/providers"
@@ -156,6 +157,12 @@ func (s *Session) newSideThreadBaseRunner(selected ThreadModelSelection) *agent.
 	runner.ProviderName = resolvedName
 	runner.Model = model
 	runner.APIModel = apiModel
+	// The cloned runner inherits the workspace model's media admission
+	// policy; re-derive it for the pinned model so unsupported images do
+	// not inherit a permissive base-model policy (same trap as
+	// NewThreadRuntimeForRootModel's shadow path).
+	capabilities, _ := modelroles.BuildFacts(resolvedName, providerCfg, model)
+	runner.MediaInput = mediaInputPolicyFromCapabilities(capabilities)
 	runner.Effort = selection.LegacyEffort
 	runner.Variant = selection.Variant
 	runner.ProviderOptions = modelvariant.CloneOptions(selection.ProviderOptions)
