@@ -15,6 +15,7 @@ import type {
   Agent,
   ChannelRoom,
   DesktopProject,
+  ExtensionPackageUpdateParams,
   InitializeResult,
   InputFile,
   InputImage,
@@ -2971,6 +2972,23 @@ export function App(): JSX.Element {
     });
   }
 
+  async function updateExtensionPackage(
+    update: ExtensionPackageUpdateParams,
+  ): Promise<void> {
+    const result = await window.wuu.updateExtensionPackage(update);
+    setState((current) =>
+      current.initialized
+        ? {
+            ...current,
+            initialized: {
+              ...current.initialized,
+              extension_inventory: result.extension_inventory,
+            },
+          }
+        : current,
+    );
+  }
+
   async function sendSkillsAssistantPrompt(query: string): Promise<void> {
     const currentState = appStateRef.current;
     const context = currentState.activeContext;
@@ -4615,6 +4633,7 @@ export function App(): JSX.Element {
                 activeContext={state.activeContext}
                 extensionInventory={state.initialized?.extension_inventory}
                 onTrySkill={trySkillFromCatalog}
+                onUpdateExtensionPackage={updateExtensionPackage}
               />
             ) : showingAutomationsCatalog ? (
               <AutomationsCatalog

@@ -21,6 +21,7 @@ import (
 	"github.com/blueberrycongee/wuu/internal/config"
 	"github.com/blueberrycongee/wuu/internal/credentialstore"
 	"github.com/blueberrycongee/wuu/internal/execution"
+	"github.com/blueberrycongee/wuu/internal/extensions"
 	"github.com/blueberrycongee/wuu/internal/mcp"
 	"github.com/blueberrycongee/wuu/internal/modelcatalog"
 	"github.com/blueberrycongee/wuu/internal/participant"
@@ -160,6 +161,8 @@ type Server struct {
 
 	settingsUsageMu           sync.Mutex
 	settingsUsageCache        *settingsUsageCacheEntry
+	extensionPolicyMu         sync.RWMutex
+	extensionSettings         *extensions.Settings
 	channelAgentInsightsMu    sync.Mutex
 	channelAgentInsightsCache *channelAgentInsightsCacheEntry
 
@@ -791,6 +794,8 @@ func (s *Server) handleLine(ctx context.Context, raw []byte) error {
 		return s.handleConfigAdvancedUpdate(req)
 	case MethodConfigGeneralUpdate:
 		return s.handleConfigGeneralUpdate(req)
+	case MethodExtensionPackageUpdate:
+		return s.handleExtensionPackageUpdate(req)
 	case MethodConfigCodexModels:
 		// Model discovery performs an external Codex request. Keep it off the
 		// serial stdio dispatch loop so unrelated local mutations, especially a

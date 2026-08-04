@@ -1491,6 +1491,47 @@ func UpdateGeneralSettings(configPath string, update GeneralSettingsUpdate) erro
 	return securefs.WriteFileAtomic(configPath, append(out, '\n'))
 }
 
+// UpdateExtensionSettings persists user-owned extension grants and package
+// decisions without rewriting unrelated configuration fields. Callers must
+// load and mutate the effective settings before invoking this function.
+func UpdateExtensionSettings(configPath string, settings extensions.Settings) error {
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return err
+	}
+	var raw map[string]any
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	encoded, err := json.Marshal(settings)
+	if err != nil {
+		return fmt.Errorf("marshal extension settings: %w", err)
+	}
+	var extensionRaw map[string]any
+	if err := json.Unmarshal(encoded, &extensionRaw); err != nil {
+		return fmt.Errorf("decode extension settings: %w", err)
+	}
+	if len(extensionRaw) == 0 {
+		delete(raw, "extensions")
+	} else {
+		raw["extensions"] = extensionRaw
+	}
+
+	out, err := json.MarshalIndent(raw, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal config: %w", err)
+	}
+	var cfg Config
+	if err := json.Unmarshal(out, &cfg); err != nil {
+		return err
+	}
+	applyDefaults(&cfg)
+	if err := cfg.Validate(); err != nil {
+		return err
+	}
+	return securefs.WriteFileAtomic(configPath, append(out, '\n'))
+}
+
 func setOptionalString(target map[string]any, key string, value *string) {
 	if value == nil {
 		return

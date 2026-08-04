@@ -26,6 +26,7 @@ const (
 	MethodConfigModelUpdate    = "config/model/update"
 	MethodConfigAdvancedUpdate = "config/advanced/update"
 	MethodConfigGeneralUpdate  = "config/general/update"
+	MethodExtensionPackageUpdate = "extension/package/update"
 	MethodConfigCodexModels    = "config/codex/models"
 	MethodConfigCatalogRefresh = "config/model-catalog/refresh"
 	MethodConfigProviderRemove = "config/provider/remove"
@@ -517,6 +518,49 @@ const (
 	ExtensionStateChanged  ExtensionState = "changed"
 )
 
+type ExtensionApprovalState string
+
+const (
+	ExtensionApprovalOfficial ExtensionApprovalState = "official"
+	ExtensionApprovalPending  ExtensionApprovalState = "pending"
+	ExtensionApprovalGranted  ExtensionApprovalState = "granted"
+	ExtensionApprovalChanged  ExtensionApprovalState = "changed"
+	ExtensionApprovalRejected ExtensionApprovalState = "rejected"
+)
+
+type ExtensionRuntimeState string
+
+const (
+	ExtensionRuntimeInactive ExtensionRuntimeState = "inactive"
+	ExtensionRuntimeStarting ExtensionRuntimeState = "starting"
+	ExtensionRuntimeActive   ExtensionRuntimeState = "active"
+	ExtensionRuntimeFailed   ExtensionRuntimeState = "failed"
+	ExtensionRuntimeStopping ExtensionRuntimeState = "stopping"
+	ExtensionRuntimeStopped  ExtensionRuntimeState = "stopped"
+)
+
+type ExtensionCommandKind string
+
+const (
+	ExtensionCommandPromptTemplate ExtensionCommandKind = "prompt_template"
+	ExtensionCommandRuntimeAction  ExtensionCommandKind = "runtime_action"
+)
+
+type ExtensionCommandDescriptor struct {
+	ID          string               `json:"id"`
+	Title       string               `json:"title"`
+	Description string               `json:"description,omitempty"`
+	Kind        ExtensionCommandKind `json:"kind"`
+	Template    string               `json:"template,omitempty"`
+	Contexts    []string             `json:"contexts,omitempty"`
+	Aliases     []string             `json:"aliases,omitempty"`
+	Keywords    []string             `json:"keywords,omitempty"`
+}
+
+type ExtensionContributions struct {
+	Commands []ExtensionCommandDescriptor `json:"commands,omitempty"`
+}
+
 type ExtensionInventoryRecord struct {
 	ID                   string                `json:"id"`
 	Name                 string                `json:"name"`
@@ -529,6 +573,31 @@ type ExtensionInventoryRecord struct {
 	GrantScope           extensions.GrantScope `json:"grant_scope,omitempty"`
 	RequestedPermissions []string              `json:"requested_permissions,omitempty"`
 	UnsupportedFields    []string              `json:"unsupported_fields,omitempty"`
+	ParentID             string                 `json:"parent_id,omitempty"`
+	ApprovalState        ExtensionApprovalState `json:"approval_state,omitempty"`
+	RuntimeState         ExtensionRuntimeState  `json:"runtime_state,omitempty"`
+	Enabled              *bool                  `json:"enabled,omitempty"`
+	Contributions        *ExtensionContributions `json:"contributions,omitempty"`
+}
+
+type ExtensionPackageAction string
+
+const (
+	ExtensionPackageGrant   ExtensionPackageAction = "grant"
+	ExtensionPackageReject  ExtensionPackageAction = "reject"
+	ExtensionPackageRevoke  ExtensionPackageAction = "revoke"
+	ExtensionPackageEnable  ExtensionPackageAction = "enable"
+	ExtensionPackageDisable ExtensionPackageAction = "disable"
+)
+
+type ExtensionPackageUpdateParams struct {
+	ID          string                 `json:"id"`
+	Fingerprint string                 `json:"fingerprint,omitempty"`
+	Action      ExtensionPackageAction `json:"action"`
+}
+
+type ExtensionPackageUpdateResult struct {
+	ExtensionInventory []ExtensionInventoryRecord `json:"extension_inventory"`
 }
 
 type ConfigModelUpdateParams struct {

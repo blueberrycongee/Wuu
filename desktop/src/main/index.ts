@@ -33,6 +33,8 @@ import type {
   ConfigCodexModelsResult,
   ConfigModelCatalogRefreshResult,
   ConfigModelUpdateResult,
+  ExtensionPackageUpdateParams,
+  ExtensionPackageUpdateResult,
   GitCommitParams,
   GitPullRequestParams,
   BuildInfoResult,
@@ -1388,6 +1390,15 @@ app.whenReady().then(async () => {
         event,
         "config/general/update",
         settings ?? {},
+      ),
+  );
+  ipcMain.handle(
+    "wuu:extension-package-update",
+    (event, params: ExtensionPackageUpdateParams) =>
+      appServerRequest<ExtensionPackageUpdateResult>(
+        event,
+        "extension/package/update",
+        params,
       ),
   );
   ipcMain.handle(
