@@ -8,6 +8,31 @@ Versioning rules are documented in [the release guide](docs/en/project/release.m
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-08-05
+
+### Added
+
+- Added a local plugin package platform with desktop and CLI workflows for
+  installing, reviewing, approving, updating, and removing packages.
+- Added plugin-provided runtime tools, persisted plugin settings, approved
+  desktop modules, and replaceable renderer surfaces.
+
+### Changed
+
+- Made plugin activation and updates atomic and fingerprint-gated, so failed or
+  unapproved package generations cannot replace the active runtime.
+- Enforced filesystem and process boundaries for plugin and shell execution.
+- Simplified agent memory storage by removing legacy compatibility paths.
+
+### Fixed
+
+- Kept document drawer transitions, queued messages, and subagent wait status
+  accurate during long-running work.
+- Reduced repeated workspace permission scans and isolated expensive long-turn
+  rendering to improve desktop responsiveness.
+- Prevented failed runtime registrations and stale plugin policy from surviving
+  package updates or removal.
+
 ## [0.14.0] - 2026-08-05
 
 ### Added
