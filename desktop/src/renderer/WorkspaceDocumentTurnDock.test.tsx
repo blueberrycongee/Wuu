@@ -134,12 +134,27 @@ describe("WorkspaceDocumentTurnDock", () => {
     render([turn("turn-1")], "thread-a", "好的 做完");
 
     const summary = container.querySelector(".workspace-document-turn-summary");
-    const waitingQuery = summary?.querySelector(
+    let waitingQuery = summary?.querySelector(
       ".workspace-document-turn-waiting-query",
     );
     expect(waitingQuery?.textContent).toBe("好的 做完");
     expect(waitingQuery?.getAttribute("role")).toBe("status");
     expect(waitingQuery?.children).toHaveLength(0);
+
+    act(() => (summary as HTMLButtonElement | null)?.click());
+
+    waitingQuery = summary?.querySelector(
+      ".workspace-document-turn-waiting-query",
+    );
+    expect(waitingQuery).toBeNull();
+    expect(container.querySelector(".workspace-document-turn-details")?.textContent).toContain(
+      "I am tightening that section now.",
+    );
+
+    act(() => (summary as HTMLButtonElement | null)?.click());
+    expect(
+      summary?.querySelector(".workspace-document-turn-waiting-query")?.textContent,
+    ).toBe("好的 做完");
   });
 
   it("appears and expands automatically when final text starts", () => {

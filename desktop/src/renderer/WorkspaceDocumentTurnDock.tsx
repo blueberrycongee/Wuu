@@ -109,7 +109,7 @@ export function WorkspaceDocumentTurnDock({
             aria-label={toggleLabel}
             onClick={() => setExpanded((current) => !current)}
           >
-            {waitingQuery ? (
+            {waitingQuery && !expanded ? (
               <span
                 className="workspace-document-turn-waiting-query"
                 role="status"
