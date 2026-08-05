@@ -127,6 +127,9 @@ import type {
   PopOutSessionParams,
   PluginPackageInstallResult,
   PluginPackageRemoveResult,
+  PluginDesktopModuleLoadResult,
+  PluginDesktopModuleReadParams,
+  PluginDesktopModuleReadResult,
   WorkspaceFileSaveParams,
   CodexPetHint,
   SideThreadOpenResult,
@@ -179,6 +182,11 @@ import {
   registerRenderableFileProtocol,
   registerRenderableFileScheme,
 } from "./renderableFileProtocol";
+import {
+  cachePluginDesktopModule,
+  registerPluginModuleProtocol,
+  registerPluginModuleScheme,
+} from "./pluginModuleProtocol";
 import { TerminalSessionManager } from "./terminalSessions";
 import { WorkspaceFileService } from "./workspaceFiles";
 import {
@@ -220,6 +228,7 @@ const DARK_WINDOW_BACKGROUND = "#1d2024";
 // so the overlay buttons center on the same strip the renderer draws.
 const WINDOWS_TITLEBAR_OVERLAY_HEIGHT = 48;
 registerRenderableFileScheme();
+registerPluginModuleScheme();
 
 let mainWindow: BrowserWindow | null = null;
 const windowRegistry: WindowRegistry = createWindowRegistry();
@@ -986,6 +995,7 @@ app.whenReady().then(async () => {
   await removeLegacyDesktopCliLink().catch(() => false);
   projectManager.load();
   registerRenderableFileProtocol();
+  registerPluginModuleProtocol();
   // Sort permission/download traffic on the shared browser partition by
   // webContents ownership: only agent-driven views are denied sensitive
   // capabilities, the user's own <webview> on the same partition is untouched.
@@ -1424,6 +1434,17 @@ app.whenReady().then(async () => {
   });
   ipcMain.handle("wuu:plugin-package-remove", (event, id: string) =>
     appServerRequest<PluginPackageRemoveResult>(event, "plugin/package/remove", { id }),
+  );
+  ipcMain.handle(
+    "wuu:plugin-desktop-module-load",
+    async (event, params: PluginDesktopModuleReadParams): Promise<PluginDesktopModuleLoadResult> => {
+      const module = await appServerRequest<PluginDesktopModuleReadResult>(
+        event,
+        "plugin/desktop-module/read",
+        params,
+      );
+      return cachePluginDesktopModule(module);
+    },
   );
   ipcMain.handle(
     "wuu:config-provider-remove",

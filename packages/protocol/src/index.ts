@@ -423,6 +423,13 @@ export interface PluginDesktopModuleReadResult {
   source: string;
 }
 
+export interface PluginDesktopModuleLoadResult {
+  id: string;
+  fingerprint: string;
+  digest: string;
+  url: string;
+}
+
 export type ConfigModelUpdateResult = {
   provider: string;
   model: string;
@@ -2353,6 +2360,9 @@ export type WuuDesktopApi = {
   refreshExtensionCatalog: () => Promise<ExtensionCatalogRefreshResult>;
   installPluginPackage: () => Promise<PluginPackageInstallResult | undefined>;
   removePluginPackage: (id: string) => Promise<PluginPackageRemoveResult>;
+  loadPluginDesktopModule: (
+    params: PluginDesktopModuleReadParams,
+  ) => Promise<PluginDesktopModuleLoadResult>;
   listMCPServers: () => Promise<MCPListResult>;
   connectMCPServer: (name: string) => Promise<MCPServerActionResult>;
   disconnectMCPServer: (name: string) => Promise<MCPServerActionResult>;
