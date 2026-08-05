@@ -24,9 +24,50 @@ afterEach(() => {
   container.remove();
   delete (globalThis as { wuu?: WuuDesktopApi }).wuu;
   delete (window as { wuu?: WuuDesktopApi }).wuu;
+  vi.restoreAllMocks();
 });
 
 describe("SkillsCatalog", () => {
+  it("keeps local install available with an empty catalog and treats picker cancellation as a no-op", async () => {
+    installSkillList([]);
+    const onInstallPluginPackage = vi.fn().mockResolvedValue(undefined);
+
+    await act(async () => {
+      root = createRoot(container);
+      root.render(
+        <SkillsCatalog onInstallPluginPackage={onInstallPluginPackage} />,
+      );
+    });
+
+    expect(container.textContent).toContain("安装本地插件");
+    await act(async () => {
+      buttonByText("安装本地插件")?.click();
+    });
+
+    expect(onInstallPluginPackage).toHaveBeenCalledOnce();
+    expect(container.querySelector(".skills-catalog-error")).toBeNull();
+    expect(container.textContent).toContain("当前运行时未发现 Skills");
+  });
+
+  it("shows install errors in the catalog", async () => {
+    installSkillList([]);
+    const onInstallPluginPackage = vi
+      .fn()
+      .mockRejectedValue(new Error("Package manifest is invalid"));
+
+    await act(async () => {
+      root = createRoot(container);
+      root.render(
+        <SkillsCatalog onInstallPluginPackage={onInstallPluginPackage} />,
+      );
+    });
+    await act(async () => {
+      buttonByText("安装本地插件")?.click();
+    });
+
+    expect(container.textContent).toContain("Package manifest is invalid");
+  });
+
   it("refreshes the complete extension catalog through the parent runtime", async () => {
     installSkillList([]);
     const refreshedSkills: SkillSummary[] = [{
@@ -215,6 +256,76 @@ describe("SkillsCatalog", () => {
     });
   });
 
+  it("renders Remove only for user-installed plugins and removes by plugin ID after confirmation", async () => {
+    installSkillList([]);
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const onRemovePluginPackage = vi.fn().mockResolvedValue({
+      id: "community-tools",
+      removed: true,
+      extension_inventory: [],
+      skills: [
+        {
+          name: "remaining-skill",
+          description: "Still installed",
+          source: "user",
+          user_invocable: true,
+          disable_model_invoke: false,
+        },
+      ],
+    });
+    const extensionInventory = [
+      {
+        id: "plugin:user:community-tools",
+        name: "community-tools",
+        kind: "plugin",
+        provenance: {
+          kind: "plugin",
+          source: "user",
+          scope: "user",
+          plugin_id: "community-tools",
+          official: false,
+        },
+        state: "pending",
+        approval_state: "pending",
+      },
+      {
+        id: "plugin:user:official-tools",
+        name: "official-tools",
+        kind: "plugin",
+        provenance: {
+          kind: "plugin",
+          source: "wuu",
+          scope: "user",
+          plugin_id: "official-tools",
+          official: true,
+        },
+        state: "read_only",
+        approval_state: "official",
+      },
+    ] as ExtensionInventoryRecord[];
+
+    await act(async () => {
+      root = createRoot(container);
+      root.render(
+        <SkillsCatalog
+          extensionInventory={extensionInventory}
+          onRemovePluginPackage={onRemovePluginPackage}
+        />,
+      );
+    });
+
+    expect(buttonsByText("移除")).toHaveLength(1);
+    await act(async () => {
+      buttonByText("移除")?.click();
+    });
+
+    expect(confirm).toHaveBeenCalledWith(
+      "确定移除用户插件 community-tools？Wuu 中已安装的插件文件将被删除。",
+    );
+    expect(onRemovePluginPackage).toHaveBeenCalledWith("community-tools");
+    expect(container.textContent).toContain("remaining-skill");
+  });
+
   it("surfaces changed fingerprints and runtime failures", async () => {
     installSkillList([]);
     const extensionInventory = [
@@ -363,6 +474,12 @@ function skillButton(name: string): HTMLButtonElement | undefined {
 
 function buttonByText(text: string): HTMLButtonElement | undefined {
   return Array.from(document.querySelectorAll<HTMLButtonElement>("button")).find(
+    (button) => button.textContent === text,
+  );
+}
+
+function buttonsByText(text: string): HTMLButtonElement[] {
+  return Array.from(document.querySelectorAll<HTMLButtonElement>("button")).filter(
     (button) => button.textContent === text,
   );
 }

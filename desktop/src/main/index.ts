@@ -125,6 +125,8 @@ import type {
   Turn,
   PopOutInitResult,
   PopOutSessionParams,
+  PluginPackageInstallResult,
+  PluginPackageRemoveResult,
   WorkspaceFileSaveParams,
   CodexPetHint,
   SideThreadOpenResult,
@@ -1404,6 +1406,24 @@ app.whenReady().then(async () => {
   );
   ipcMain.handle("wuu:extension-catalog-refresh", (event) =>
     appServerRequest<ExtensionCatalogRefreshResult>(event, "extension/catalog/refresh"),
+  );
+  ipcMain.handle("wuu:plugin-package-install", async (event) => {
+    const context = runtimeContextForEvent(event);
+    const packagePath = await showProjectDirectoryDialog({
+      properties: ["openFile", "openDirectory"],
+      filters: [{ name: "Wuu Plugin Package", extensions: ["zip"] }],
+    });
+    if (!packagePath) {
+      return undefined;
+    }
+    return appServerClientPool.requestInContext<PluginPackageInstallResult>(
+      context,
+      "plugin/package/install",
+      { path: packagePath },
+    );
+  });
+  ipcMain.handle("wuu:plugin-package-remove", (event, id: string) =>
+    appServerRequest<PluginPackageRemoveResult>(event, "plugin/package/remove", { id }),
   );
   ipcMain.handle(
     "wuu:config-provider-remove",

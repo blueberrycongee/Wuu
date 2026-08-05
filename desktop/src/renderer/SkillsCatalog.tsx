@@ -1,5 +1,6 @@
 import {
   ChevronRight,
+  PackagePlus,
   RefreshCw,
   Wrench,
 } from "lucide-react";
@@ -9,6 +10,8 @@ import type {
   ExtensionInventoryRecord,
   ExtensionPackageAction,
   ExtensionPackageUpdateParams,
+  PluginPackageInstallResult,
+  PluginPackageRemoveResult,
   RuntimeContext,
   SkillSummary,
 } from "../shared/protocol";
@@ -54,12 +57,20 @@ export function SkillsCatalog({
   onTrySkill,
   onRefreshCatalog,
   onUpdateExtensionPackage,
+  onInstallPluginPackage,
+  onRemovePluginPackage,
 }: {
   activeContext?: RuntimeContext;
   extensionInventory?: ExtensionInventoryRecord[];
   onTrySkill?: (skill: SkillSummary) => void;
   onRefreshCatalog?: () => Promise<SkillSummary[] | undefined>;
-  onUpdateExtensionPackage?: (update: ExtensionPackageUpdateParams) => Promise<void>;
+  onUpdateExtensionPackage?: (
+    update: ExtensionPackageUpdateParams,
+  ) => Promise<void>;
+  onInstallPluginPackage?: () => Promise<PluginPackageInstallResult | undefined>;
+  onRemovePluginPackage?: (
+    id: string,
+  ) => Promise<PluginPackageRemoveResult | undefined>;
 }): JSX.Element {
   const { locale, t } = useI18n();
   const [state, setState] = useState<LoadState>(initialLoadState);
@@ -196,6 +207,62 @@ export function SkillsCatalog({
     }
   }
 
+  async function installPluginPackage(): Promise<void> {
+    if (!onInstallPluginPackage || packageMutation) {
+      return;
+    }
+    const requestedContextKey = contextKey;
+    setPackageMutation("install");
+    setPackageMutationError("");
+    try {
+      const result = await onInstallPluginPackage();
+      if (!result || contextKeyRef.current !== requestedContextKey) {
+        return;
+      }
+      setState({ loading: false, error: "", skills: result.skills });
+    } catch (error) {
+      if (contextKeyRef.current === requestedContextKey) {
+        setPackageMutationError(
+          error instanceof Error
+            ? error.message
+            : translateCurrent("skills.pluginInstallFailed"),
+        );
+      }
+    } finally {
+      setPackageMutation("");
+    }
+  }
+
+  async function removePluginPackage(record: ExtensionInventoryRecord): Promise<void> {
+    const pluginID = record.provenance.plugin_id;
+    if (!onRemovePluginPackage || !pluginID || packageMutation) {
+      return;
+    }
+    if (!window.confirm(t("skills.pluginRemoveConfirm", { name: record.name }))) {
+      return;
+    }
+    const requestedContextKey = contextKey;
+    setPackageMutation(`${record.id}:remove`);
+    setPackageMutationError("");
+    try {
+      const result = await onRemovePluginPackage(pluginID);
+      if (!result || contextKeyRef.current !== requestedContextKey) {
+        return;
+      }
+      setState({ loading: false, error: "", skills: result.skills });
+    } catch (error) {
+      if (contextKeyRef.current === requestedContextKey) {
+        setPackageMutationError(
+          error instanceof Error
+            ? error.message
+            : translateCurrent("skills.pluginRemoveFailed"),
+        );
+      }
+    } finally {
+      setPackageMutation("");
+    }
+  }
+
   return (
     <section className="skills-catalog" aria-label={t("skills.catalogLabel")}>
       <header className="catalog-page-header">
@@ -209,6 +276,19 @@ export function SkillsCatalog({
             placeholder={t("skills.searchPlaceholder")}
             onValueChange={setFilter}
           />
+          <button
+            className="secondary-button catalog-install"
+            type="button"
+            disabled={Boolean(packageMutation)}
+            onClick={() => void installPluginPackage()}
+          >
+            <PackagePlus className="icon" aria-hidden="true" />
+            <span>
+              {packageMutation === "install"
+                ? t("skills.pluginInstalling")
+                : t("skills.pluginInstall")}
+            </span>
+          </button>
           <button
             className="icon-button catalog-refresh"
             type="button"
@@ -246,7 +326,9 @@ export function SkillsCatalog({
         />
       ) : null}
 
-      {packageMutationError ? <div className="skills-catalog-error">{packageMutationError}</div> : null}
+      {packageMutationError ? (
+        <div className="skills-catalog-error">{packageMutationError}</div>
+      ) : null}
 
       {plugins.length > 0 ? (
         <CatalogSection title={t("skills.sectionPlugins")}>
@@ -257,64 +339,103 @@ export function SkillsCatalog({
               const secondaryAction = extensionPackageSecondaryAction(managed);
               const mutating = packageMutation.startsWith(`${record.id}:`);
               const grantUnavailable = primaryAction === "grant" && !record.fingerprint;
+              const removable = isRemovableUserPlugin(record);
               return (
-              <article key={record.id} className="skill-row extension-package-row">
-                <SkillArtwork
-                  name={record.name}
-                  official={record.provenance.official === true}
-                  kind="plugin"
-                />
-                <span className="skill-row-copy">
-                  <span className="skill-row-titlebar">
-                    <h2>{record.name}</h2>
-                    {record.provenance.official ? (
-                      <span className="skill-row-tag" title={t("skills.officialPluginTitle")}>
-                        {t("skills.official")}
-                      </span>
-                    ) : null}
-                    <span className={`skill-row-tag skill-row-tag-neutral extension-status extension-status-${extensionPackageTone(managed)}`}>
-                      {extensionPackageStatusLabel(managed, t)}
-                    </span>
-                  </span>
-                  {record.description ? <p>{record.description}</p> : null}
-                  <span className="extension-package-meta">
-                    {managed.version ? <span>v{managed.version}</span> : null}
-                    <span>{t("skills.pluginScope", { scope: record.provenance.scope })}</span>
-                    <span>{extensionContributionSummary(managed, t)}</span>
-                  </span>
-                  <span className="extension-package-permissions">
-                    <strong>{t("skills.pluginPermissions")}</strong>
-                    {(record.requested_permissions ?? []).length > 0
-                      ? record.requested_permissions?.map((permission) => <code key={permission}>{permission}</code>)
-                      : <span>{t("skills.pluginNoPermissions")}</span>}
-                  </span>
-                  {managed.runtime_state === "failed" && managed.last_error ? (
-                    <span className="extension-package-error">{managed.last_error}</span>
-                  ) : null}
-                </span>
-                {onUpdateExtensionPackage ? (
-                  <span className="extension-package-actions">
-                    <button
-                      type="button"
-                      className="secondary-button"
-                      disabled={Boolean(packageMutation) || grantUnavailable}
-                      onClick={() => void updateExtensionPackage(record, primaryAction)}
-                    >
-                      {mutating ? t("skills.pluginUpdating") : extensionPackageActionLabel(managed, primaryAction, t)}
-                    </button>
-                    {secondaryAction ? (
-                      <button
-                        type="button"
-                        className="text-button"
-                        disabled={Boolean(packageMutation)}
-                        onClick={() => void updateExtensionPackage(record, secondaryAction)}
+                <article key={record.id} className="skill-row extension-package-row">
+                  <SkillArtwork
+                    name={record.name}
+                    official={record.provenance.official === true}
+                    kind="plugin"
+                  />
+                  <span className="skill-row-copy">
+                    <span className="skill-row-titlebar">
+                      <h2>{record.name}</h2>
+                      {record.provenance.official ? (
+                        <span
+                          className="skill-row-tag"
+                          title={t("skills.officialPluginTitle")}
+                        >
+                          {t("skills.official")}
+                        </span>
+                      ) : null}
+                      <span
+                        className={`skill-row-tag skill-row-tag-neutral extension-status extension-status-${extensionPackageTone(managed)}`}
                       >
-                        {extensionPackageActionLabel(managed, secondaryAction, t)}
-                      </button>
+                        {extensionPackageStatusLabel(managed, t)}
+                      </span>
+                    </span>
+                    {record.description ? <p>{record.description}</p> : null}
+                    <span className="extension-package-meta">
+                      {managed.version ? <span>v{managed.version}</span> : null}
+                      <span>
+                        {t("skills.pluginScope", { scope: record.provenance.scope })}
+                      </span>
+                      <span>{extensionContributionSummary(managed, t)}</span>
+                    </span>
+                    <span className="extension-package-permissions">
+                      <strong>{t("skills.pluginPermissions")}</strong>
+                      {(record.requested_permissions ?? []).length > 0 ? (
+                        record.requested_permissions?.map((permission) => (
+                          <code key={permission}>{permission}</code>
+                        ))
+                      ) : (
+                        <span>{t("skills.pluginNoPermissions")}</span>
+                      )}
+                    </span>
+                    {managed.runtime_state === "failed" && managed.last_error ? (
+                      <span className="extension-package-error">{managed.last_error}</span>
                     ) : null}
                   </span>
-                ) : null}
-              </article>
+                  {onUpdateExtensionPackage ||
+                  (onRemovePluginPackage && removable) ? (
+                    <span className="extension-package-actions">
+                      {onUpdateExtensionPackage ? (
+                        <>
+                          <button
+                            type="button"
+                            className="secondary-button"
+                            disabled={Boolean(packageMutation) || grantUnavailable}
+                            onClick={() =>
+                              void updateExtensionPackage(record, primaryAction)
+                            }
+                          >
+                            {mutating && packageMutation !== `${record.id}:remove`
+                              ? t("skills.pluginUpdating")
+                              : extensionPackageActionLabel(managed, primaryAction, t)}
+                          </button>
+                          {secondaryAction ? (
+                            <button
+                              type="button"
+                              className="text-button"
+                              disabled={Boolean(packageMutation)}
+                              onClick={() =>
+                                void updateExtensionPackage(record, secondaryAction)
+                              }
+                            >
+                              {extensionPackageActionLabel(
+                                managed,
+                                secondaryAction,
+                                t,
+                              )}
+                            </button>
+                          ) : null}
+                        </>
+                      ) : null}
+                      {onRemovePluginPackage && removable ? (
+                        <button
+                          type="button"
+                          className="text-button extension-package-remove"
+                          disabled={Boolean(packageMutation)}
+                          onClick={() => void removePluginPackage(record)}
+                        >
+                          {packageMutation === `${record.id}:remove`
+                            ? t("skills.pluginRemoving")
+                            : t("skills.pluginRemove")}
+                        </button>
+                      ) : null}
+                    </span>
+                  ) : null}
+                </article>
               );
             })}
           </div>
@@ -329,6 +450,14 @@ export function SkillsCatalog({
         </div>
       ) : null}
     </section>
+  );
+}
+
+function isRemovableUserPlugin(record: ExtensionInventoryRecord): boolean {
+  return (
+    record.provenance.official !== true &&
+    record.provenance.scope === "user" &&
+    Boolean(record.provenance.plugin_id)
   );
 }
 

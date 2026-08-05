@@ -266,6 +266,9 @@ const api: WuuDesktopApi = {
     ipcRenderer.invoke("wuu:extension-package-update", params),
   refreshExtensionCatalog: () =>
     ipcRenderer.invoke("wuu:extension-catalog-refresh"),
+  installPluginPackage: () => ipcRenderer.invoke("wuu:plugin-package-install"),
+  removePluginPackage: (id: string) =>
+    ipcRenderer.invoke("wuu:plugin-package-remove", id),
   listSkills: () => ipcRenderer.invoke("wuu:skill-list"),
   readSkillContent: (params) => ipcRenderer.invoke("wuu:skill-content", params),
   listAutomations: () => ipcRenderer.invoke("wuu:automation-list"),

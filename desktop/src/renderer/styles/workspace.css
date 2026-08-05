@@ -2671,6 +2671,20 @@ html.resizing-workspace-terminal-split * {
   border-radius: 12px;
 }
 
+.catalog-install {
+  display: inline-flex;
+  min-height: 44px;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 7px;
+  white-space: nowrap;
+}
+
+.catalog-install .icon {
+  width: 17px;
+  height: 17px;
+}
+
 .skills-catalog-error {
   border-radius: var(--radius-sm);
   background: var(--danger-soft);
@@ -2741,6 +2755,10 @@ html.resizing-workspace-terminal-split * {
 .extension-package-actions button {
   min-height: 30px;
   white-space: nowrap;
+}
+
+.extension-package-remove {
+  color: var(--danger);
 }
 
 .extension-package-meta,

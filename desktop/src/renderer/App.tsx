@@ -20,6 +20,8 @@ import type {
   InputFile,
   InputImage,
   PopOutInitResult,
+  PluginPackageInstallResult,
+  PluginPackageRemoveResult,
   RuntimeContext,
   ServerEvent,
   SkillSummary,
@@ -2998,6 +3000,32 @@ export function App(): JSX.Element {
     return result.skills;
   }
 
+  async function installPluginPackage(): Promise<PluginPackageInstallResult | undefined> {
+    const context = appStateRef.current.activeContext;
+    const result = await window.wuu.installPluginPackage();
+    if (!result || !sameRuntimeContext(appStateRef.current.activeContext, context)) {
+      return undefined;
+    }
+    setState((current) =>
+      withExtensionInventoryForContext(current, context, result.extension_inventory),
+    );
+    return result;
+  }
+
+  async function removePluginPackage(
+    id: string,
+  ): Promise<PluginPackageRemoveResult | undefined> {
+    const context = appStateRef.current.activeContext;
+    const result = await window.wuu.removePluginPackage(id);
+    if (!sameRuntimeContext(appStateRef.current.activeContext, context)) {
+      return undefined;
+    }
+    setState((current) =>
+      withExtensionInventoryForContext(current, context, result.extension_inventory),
+    );
+    return result;
+  }
+
   async function sendSkillsAssistantPrompt(query: string): Promise<void> {
     const currentState = appStateRef.current;
     const context = currentState.activeContext;
@@ -4644,6 +4672,8 @@ export function App(): JSX.Element {
                 onTrySkill={trySkillFromCatalog}
                 onRefreshCatalog={refreshExtensionCatalog}
                 onUpdateExtensionPackage={updateExtensionPackage}
+                onInstallPluginPackage={installPluginPackage}
+                onRemovePluginPackage={removePluginPackage}
               />
             ) : showingAutomationsCatalog ? (
               <AutomationsCatalog

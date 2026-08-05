@@ -329,6 +329,38 @@ export type ExtensionCatalogRefreshResult = {
   skills: SkillSummary[];
 };
 
+export type PluginPackageSourceKind = "directory" | "zip";
+
+export type PluginPackageMetadata = {
+  id: string;
+  name?: string;
+  version?: string;
+  description?: string;
+  source_kind: PluginPackageSourceKind;
+  archive_root?: string;
+  manifest_path: string;
+  file_count: number;
+  unpacked_size: number;
+  fingerprint: string;
+  requested_permissions?: string[];
+  effective_permissions?: string[];
+  unsupported_fields?: string[];
+};
+
+export type PluginPackageInstallResult = {
+  package: PluginPackageMetadata;
+  replaced: boolean;
+  extension_inventory: ExtensionInventoryRecord[];
+  skills: SkillSummary[];
+};
+
+export type PluginPackageRemoveResult = {
+  id: string;
+  removed: boolean;
+  extension_inventory: ExtensionInventoryRecord[];
+  skills: SkillSummary[];
+};
+
 export type ConfigModelUpdateResult = {
   provider: string;
   model: string;
@@ -2257,6 +2289,8 @@ export type WuuDesktopApi = {
     params: ExtensionPackageUpdateParams
   ) => Promise<ExtensionPackageUpdateResult>;
   refreshExtensionCatalog: () => Promise<ExtensionCatalogRefreshResult>;
+  installPluginPackage: () => Promise<PluginPackageInstallResult | undefined>;
+  removePluginPackage: (id: string) => Promise<PluginPackageRemoveResult>;
   listMCPServers: () => Promise<MCPListResult>;
   connectMCPServer: (name: string) => Promise<MCPServerActionResult>;
   disconnectMCPServer: (name: string) => Promise<MCPServerActionResult>;
