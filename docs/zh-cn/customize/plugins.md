@@ -101,10 +101,24 @@ export async function activate(api) {
 | `app.shell` | 替换或包装整个 React 应用界面 |
 | `app.sidebar` | 替换或包装左侧导航 |
 | `conversation.composer` | 替换或包装主输入区 |
+| `conversation.timeline` | 替换或包装一组对话消息和 Agent 运行时间线 |
+| `view.settings` | 替换或包装设置界面 |
+| `view.catalog` | 替换或包装 Skills、插件和 Automations 目录 |
 
 `app.shell` context 提供 `openSettings`、`startNewThread`、`openSkills`、
 `openAutomations` 和 `toggleSidebar` 等动作。Composer context 还提供当前文本、运行状态、
 `setPrompt`、`send` 和 `interrupt`。
+
+仓库中的 [`examples/plugins/deep-ui`](../../../examples/plugins/deep-ui/) 是一个可以直接安装
+的自包含示例。它用 wrapper 保留所有宿主 fallback，并同时演示声明式主题。
+
+## 声明式主题
+
+无需执行桌面代码也可以在 `contributes.themes` 中声明主题。获批且启用的插件主题会出现在
+“设置 → 外观”；禁用插件或切回系统、浅色、深色主题时，Wuu 会移除该插件设置的全部
+Token。可用 Token 由 Manifest 白名单控制，包括 `--wuu-paper`、`--wuu-ink`、
+`--wuu-ink-soft`、`--wuu-hairline`、`--wuu-surface-muted`、`--wuu-accent`、
+`--wuu-accent-press` 和公开的 `--hljs-*` 语法色。
 
 ## 加载与安全
 

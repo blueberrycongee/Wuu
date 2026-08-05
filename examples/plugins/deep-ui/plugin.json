@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "id": "deep-ui-example",
+  "name": "Deep UI Example",
+  "version": "1.0.0",
+  "description": "Demonstrates declarative themes and replaceable Wuu desktop surfaces.",
+  "desktop": {
+    "entry": "desktop.js"
+  },
+  "contributes": {
+    "themes": [
+      {
+        "id": "violet-night",
+        "name": "Violet Night",
+        "base": "dark",
+        "tokens": {
+          "--wuu-paper": "#15131d",
+          "--wuu-ink": "#f5f1ff",
+          "--wuu-ink-soft": "#afa7c2",
+          "--wuu-hairline": "#332d42",
+          "--wuu-surface-muted": "#201c2a",
+          "--wuu-accent": "#9b7cff",
+          "--wuu-accent-press": "#8664f5"
+        },
+        "syntax": {
+          "--hljs-keyword": "#ff79c6",
+          "--hljs-function": "#8be9fd",
+          "--hljs-string": "#f1fa8c",
+          "--hljs-number": "#bd93f9",
+          "--hljs-comment": "#777188"
+        }
+      }
+    ]
+  }
+}

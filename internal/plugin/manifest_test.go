@@ -236,3 +236,16 @@ func TestLoadManifestRejectsUnsafeDesktopAndThemeContributions(t *testing.T) {
 		}
 	})
 }
+
+func TestDeepUIExampleManifestLoads(t *testing.T) {
+	manifest, err := LoadManifest(filepath.Join("..", "..", "examples", "plugins", "deep-ui", ManifestFilename), "user")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if manifest.ID != "deep-ui-example" || manifest.Desktop == nil {
+		t.Fatalf("example manifest = %+v", manifest.Manifest)
+	}
+	if len(manifest.Themes) != 1 || manifest.Themes[0].ID != "violet-night" {
+		t.Fatalf("example themes = %+v", manifest.Themes)
+	}
+}
