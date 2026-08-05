@@ -113,13 +113,52 @@ hook 和本地 skill 不执行原生代码，其中仍可能包含提示词注�
 应把已配对手机视为拥有主机会话同等工作区权限的远程控制器。设备丢失或不再可信时，
 请撤销其权限。
 
+## 插件包
+
+Wuu 插件从 `~/.wuu/plugins`、项目的 `.wuu/plugins` 和官方内置包发现。发现是惰性的：
+已发现的包只是一份清单（manifest），在被激活之前不会执行任何代码。
+
+激活由策略门控：
+
+- 社区包只有在用户批准与其完全一致的包指纹后才会运行。指纹覆盖清单、可执行参数、
+  hook 与命令定义、prompt 资产和 skill 目录树；任何变化都会停止激活并要求重新审批。
+  批准、拒绝、禁用决策都是用户私有的，项目或共享配置无法设置。
+- 官方内置包凭出处（随 Wuu 发布）获得信任，而不是凭清单文本。复用官方 id 的用户包或
+  项目包无法遮蔽它。
+
+权限来自封闭目录（`process.spawn`、`session.read`、`session.write`、`tools.define`、
+`tools.intercept`、`shell.env`、`network.connect`、`commands.execute`、`files.read`、
+`files.write`、`accessibility.read`、`accessibility.control`、`screen.capture`、
+`app.activate`、`input.synthesize`）。目录外的权限名直接校验失败。宿主根据包声明的
+能力面独立推导所需权限（运行时进程需要 `process.spawn`，MCP server 需要
+`process.spawn` 和/或 `network.connect`，prompt hook 需要 `session.read` +
+`session.write`），激活要求批准集覆盖完整推导集。
+
+插件运行时进程通过 stdio 使用类型化 JSON 协议（`wuu-plugin-v1`）通信。宿主独立地把
+每个协议 hook 映射到所需权限：`chat.message` 需要 `session.read`，`chat.request` 需要
+`session.read` + `session.write`，`tool.definition` 需要 `tools.define`，
+`tool.execute.*` 需要 `tools.intercept`，`shell.env` 需要 `shell.env`。插件声明了
+未获批权限的 hook 会在初始化时被剥离，并作为诊断信息展示给用户；`session.start` 和
+`session.stop` 只携带生命周期元数据，永远可用。插件进程只获得最小化的文档化环境
+（PATH、HOME、临时目录、locale）——**不会**继承 Wuu 进程的环境变量，环境中的
+API key 不会泄漏给插件。
+
+撤销或变更批准后，插件进程会被关闭、其全部贡献被移除；被撤销插件注册的任何拦截点
+都不会继续生效。
+
+与本文其余部分相同的残余风险规则依然适用：获批插件是以当前 OS 用户身份运行的原生
+代码。环境过滤和 hook 剥离防止的是误操作和未授权能力，它们不是操作系统级沙箱。
+只批准你信任其代码的插件；对附带 `.wuu/plugins` 的项目，要像对待附带脚本的项目一样
+谨慎。
+
 ## 安全使用检查清单
 
 1. 为新仓库启用工具前，检查其中的指令、设置、hooks、skills 和 MCP 配置。
-2. 检查代码时使用 `read_only`；处理恶意代码时使用真正的操作系统级沙箱。
-3. 把提供商地址和凭据环境变量名保存在用户配置中。
-4. 私下完成远程设备配对；relay 跨越不可信网络时使用 `wss://`。
-5. 发布改动前检查 diff 和命令输出。
-6. 按照 [SECURITY.md](../../../SECURITY.md) 的说明私下报告边界绕过问题。
+2. 批准插件前检查其请求的权限；包内容发生变化时需要重新审批。
+3. 检查代码时使用 `read_only`；处理恶意代码时使用真正的操作系统级沙箱。
+4. 把提供商地址和凭据环境变量名保存在用户配置中。
+5. 私下完成远程设备配对；relay 跨越不可信网络时使用 `wss://`。
+6. 发布改动前检查 diff 和命令输出。
+7. 按照 [SECURITY.md](../../../SECURITY.md) 的说明私下报告边界绕过问题。
 
 [English version](../../en/reference/security-model.md)
