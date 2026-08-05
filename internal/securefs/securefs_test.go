@@ -1,6 +1,7 @@
 package securefs
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -254,6 +255,69 @@ func TestTightenRecursive_HandlesMissingRoot(t *testing.T) {
 	missing := filepath.Join(t.TempDir(), "does-not-exist")
 	if err := TightenRecursive(missing); err == nil {
 		t.Fatalf("expected error on missing root, got nil")
+	}
+}
+
+func TestTightenHomeOnce_MarksSuccessfulMigrationAndSkipsLaterWalks(t *testing.T) {
+	skipIfNotUnix(t)
+	root := t.TempDir()
+	legacy := filepath.Join(root, "legacy.json")
+	if err := os.WriteFile(legacy, []byte("legacy"), 0o600); err != nil {
+		t.Fatalf("write legacy: %v", err)
+	}
+	if err := os.Chmod(legacy, 0o644); err != nil {
+		t.Fatalf("widen legacy: %v", err)
+	}
+
+	if err := TightenHomeOnce(root); err != nil {
+		t.Fatalf("first migration: %v", err)
+	}
+	legacyInfo, err := os.Stat(legacy)
+	if err != nil {
+		t.Fatalf("stat legacy: %v", err)
+	}
+	if got := legacyInfo.Mode().Perm(); got != FileMode {
+		t.Fatalf("legacy mode = %s, want %s", ModeString(got), ModeString(FileMode))
+	}
+	marker := filepath.Join(root, permissionMigrationMarker)
+	markerInfo, err := os.Stat(marker)
+	if err != nil {
+		t.Fatalf("stat marker: %v", err)
+	}
+	if got := markerInfo.Mode().Perm(); got != FileMode {
+		t.Fatalf("marker mode = %s, want %s", ModeString(got), ModeString(FileMode))
+	}
+
+	// A path created outside securefs after the migration is deliberately not
+	// rescanned. Production writes use securefs helpers plus umask 0o077; this
+	// assertion proves later startup cost does not grow with session history.
+	later := filepath.Join(root, "later.json")
+	if err := os.WriteFile(later, []byte("later"), 0o600); err != nil {
+		t.Fatalf("write later: %v", err)
+	}
+	if err := os.Chmod(later, 0o644); err != nil {
+		t.Fatalf("widen later: %v", err)
+	}
+	if err := TightenHomeOnce(root); err != nil {
+		t.Fatalf("second migration: %v", err)
+	}
+	laterInfo, err := os.Stat(later)
+	if err != nil {
+		t.Fatalf("stat later: %v", err)
+	}
+	if got := laterInfo.Mode().Perm(); got != 0o644 {
+		t.Fatalf("second call rescanned home: later mode = %s, want 0644", ModeString(got))
+	}
+}
+
+func TestTightenHomeOnce_DoesNotMarkFailedMigration(t *testing.T) {
+	skipIfNotUnix(t)
+	root := filepath.Join(t.TempDir(), "missing")
+	if err := TightenHomeOnce(root); err == nil {
+		t.Fatal("expected missing-home migration error")
+	}
+	if _, err := os.Stat(filepath.Join(root, permissionMigrationMarker)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("failed migration left marker: %v", err)
 	}
 }
 

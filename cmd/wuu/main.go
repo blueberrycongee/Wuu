@@ -49,13 +49,13 @@ func run(args []string) error {
 		return nil
 	}
 
-	// Tighten permissions on the wuu home before any other command runs.
-	// Pre-launch installs left credential-bearing files at 0o644 / 0o755;
-	// this normalizes them at every daemon startup. Best-effort: a
-	// failure here never blocks startup — securefs helpers will write new
-	// files at the correct mode regardless of how old files are set.
+	// Pre-launch installs left credential-bearing files at 0o644 / 0o755.
+	// Normalize them once, then rely on securefs writers and the process umask
+	// for new paths. Rewalking a large session home on every command makes even
+	// `wuu version` take seconds. Best-effort: a failed migration never blocks
+	// startup and remains unmarked so a later launch retries it.
 	if home, err := statepath.Home(""); err == nil {
-		if err := securefs.TightenRecursive(home); err != nil {
+		if err := securefs.TightenHomeOnce(home); err != nil {
 			fmt.Fprintf(os.Stderr, "wuu: tighten %s: %v\n", home, err)
 		}
 	}

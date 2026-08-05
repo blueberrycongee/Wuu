@@ -8,7 +8,7 @@
 // The Go stdlib applies the mode argument to OpenFile / MkdirAll, so we
 // don't need a build-tag dance or syscall imports — the wrapper just
 // picks the right flag set and forwards the call. The single point of
-// contact also makes TightenRecursive (startup migration) straightforward.
+// contact also makes the one-time startup permission migration straightforward.
 //
 // No backwards compatibility is offered. Wuu is pre-launch, so the
 // previous 0o644 / 0o755 defaults are simply wrong; nothing should
@@ -170,7 +170,7 @@ func PreCreateFile(path string) error {
 //
 // This exists because pre-launch installs left 0o644 / 0o755 files in
 // place. Future installs land at the right mode via the helpers above;
-// existing files get normalized at daemon startup.
+// existing files get normalized by a one-time startup migration.
 func TightenRecursive(root string) (retErr error) {
 	info, err := os.Stat(root)
 	if err != nil {
@@ -215,6 +215,41 @@ func TightenRecursive(root string) (retErr error) {
 		}
 	}
 	return retErr
+}
+
+const permissionMigrationMarker = ".permissions-v1"
+
+// TightenHomeOnce runs the legacy permission migration at most once for a Wuu
+// home. A successful walk writes an owner-only marker; later processes perform
+// one stat instead of walking every session artifact on every CLI invocation.
+//
+// New sensitive paths remain safe after migration because securefs creation
+// helpers and the process umask enforce owner-only modes at write time. If the
+// walk or marker write fails, no completion marker is left and the next launch
+// retries the migration.
+func TightenHomeOnce(root string) error {
+	marker := filepath.Join(root, permissionMigrationMarker)
+	if info, err := os.Stat(marker); err == nil {
+		if info.IsDir() {
+			return fmt.Errorf("securefs: permission migration marker %s is a directory", marker)
+		}
+		if info.Mode().Perm() != FileMode {
+			if err := os.Chmod(marker, FileMode); err != nil {
+				return fmt.Errorf("securefs: chmod permission migration marker: %w", err)
+			}
+		}
+		return nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("securefs: stat permission migration marker: %w", err)
+	}
+
+	if err := TightenRecursive(root); err != nil {
+		return err
+	}
+	if err := WriteFileAtomic(marker, []byte("completed\n")); err != nil {
+		return fmt.Errorf("securefs: write permission migration marker: %w", err)
+	}
+	return nil
 }
 
 func tightenOne(path string, info os.FileInfo) error {
