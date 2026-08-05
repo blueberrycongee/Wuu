@@ -57,7 +57,18 @@ func (s *PluginScope) Dispose() error {
 
 // RegisterInScope contributes a value to a typed registry within this scope.
 // Returns a Disposer that can withdraw this single contribution.
+//
+// Safety-kernel enforcement: registrations targeting host-owned seams
+// (host.plugin.*, host.safe_mode, etc.) are rejected. Plugins may only
+// contribute to public seams defined in the SeamCatalog.
 func RegisterInScope(scope *PluginScope, kind EffectKind, key string, value any, dependsOn map[string]DependencyRule, priority int) (Disposer, error) {
+	// P0 safety-kernel guard: reject any registration that targets a
+	// host-owned safety-kernel seam. The key is the seam or registration
+	// name (e.g. "host.plugin.install" or "agent.tool.my-tool").
+	if IsSafetyKernelSeam(key) {
+		return nil, fmt.Errorf("plugin scope: %q is a host-owned safety-kernel seam and cannot be contributed to by plugins", key)
+	}
+
 	reg := scope.Registries.RegistryFor(kind)
 	if reg == nil {
 		return nil, fmt.Errorf("plugin scope: unknown effect kind %s", kind)

@@ -166,6 +166,17 @@ func (c *SeamCatalog) Get(name string) (Seam, bool) {
 	return seam, ok
 }
 
+// IsPluginAccessible reports whether a seam may be contributed to by plugins.
+// Safety-kernel seams are never accessible to plugins. Unknown seams (not in
+// the catalog) are also rejected.
+func (c *SeamCatalog) IsPluginAccessible(name string) bool {
+	if IsSafetyKernelSeam(name) {
+		return false
+	}
+	_, ok := c.seams[name]
+	return ok
+}
+
 // Names returns all registered seam names in sorted order.
 func (c *SeamCatalog) Names() []string {
 	names := make([]string, 0, len(c.seams))

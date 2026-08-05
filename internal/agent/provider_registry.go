@@ -8,70 +8,57 @@ import (
 	"github.com/blueberrycongee/wuu/internal/providers"
 )
 
-// ModelProviderFactory creates a provider client for a given model.
-// Plugins register factories to add support for new model providers
-// without modifying the Wuu source.
 type ModelProviderFactory interface {
-	// ProviderKey returns a unique identifier for this provider
-	// (e.g. "openai", "anthropic", "custom-llm").
 	ProviderKey() string
-
-	// SupportsModel reports whether this factory can serve the given model.
 	SupportsModel(model string) bool
-
-	// CreateClient creates a new provider client for the given model.
-	// The caller is responsible for closing the client.
 	CreateClient(ctx context.Context, model string, opts ModelProviderOptions) (providers.Client, error)
-
-	// Priority determines resolution order when multiple factories
-	// support the same model. Higher values win.
 	Priority() int
 }
 
-// ModelProviderOptions carries configuration for provider client creation.
 type ModelProviderOptions struct {
-	// APIKey is the authentication key, if required.
-	APIKey string
-	// BaseURL overrides the provider's default endpoint.
+	APIKey  string
 	BaseURL string
-	// Extra is provider-specific configuration.
-	Extra map[string]any
+	Extra   map[string]any
 }
 
-// ModelProviderRegistry manages registered model provider factories.
-// It resolves which factory handles a given model and creates clients.
+// ModelProviderRegistry manages registered model provider factories
+// with plugin ownership tracking for generation-scoped cleanup.
 type ModelProviderRegistry struct {
 	mu        sync.RWMutex
 	factories map[string]ModelProviderFactory
+	owners    map[string]string // key → pluginID
 	order     []string
 }
 
-// NewModelProviderRegistry creates an empty provider registry.
 func NewModelProviderRegistry() *ModelProviderRegistry {
 	return &ModelProviderRegistry{
 		factories: make(map[string]ModelProviderFactory),
+		owners:    make(map[string]string),
 	}
 }
 
-// Register adds a provider factory. If a factory with the same key
-// exists, it is replaced.
 func (r *ModelProviderRegistry) Register(f ModelProviderFactory) {
+	r.RegisterWithOwner(f, "")
+}
+
+func (r *ModelProviderRegistry) RegisterWithOwner(f ModelProviderFactory, pluginID string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-
 	key := f.ProviderKey()
 	if _, exists := r.factories[key]; !exists {
 		r.order = append(r.order, key)
 	}
 	r.factories[key] = f
+	if pluginID != "" {
+		r.owners[key] = pluginID
+	}
 }
 
-// Unregister removes a provider factory by key.
 func (r *ModelProviderRegistry) Unregister(key string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-
 	delete(r.factories, key)
+	delete(r.owners, key)
 	for i, k := range r.order {
 		if k == key {
 			r.order = append(r.order[:i], r.order[i+1:]...)
@@ -80,22 +67,40 @@ func (r *ModelProviderRegistry) Unregister(key string) {
 	}
 }
 
-// Resolve finds the highest-priority factory that supports the given model.
-// Returns nil if no factory supports the model.
-func (r *ModelProviderRegistry) Resolve(model string) ModelProviderFactory {
-	r.mu.RLock()
-	factories := make([]ModelProviderFactory, 0, len(r.order))
-	for _, key := range r.order {
-		if factory, ok := r.factories[key]; ok {
-			factories = append(factories, factory)
+func (r *ModelProviderRegistry) RemoveByPlugin(pluginID string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var toRemove []string
+	for key, owner := range r.owners {
+		if owner == pluginID {
+			toRemove = append(toRemove, key)
 		}
 	}
-	r.mu.RUnlock()
+	for _, key := range toRemove {
+		delete(r.factories, key)
+		delete(r.owners, key)
+	}
+	filtered := make([]string, 0, len(r.order))
+	for _, key := range r.order {
+		if _, ok := r.factories[key]; ok {
+			filtered = append(filtered, key)
+		}
+	}
+	r.order = filtered
+}
+
+func (r *ModelProviderRegistry) Resolve(model string) ModelProviderFactory {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 
 	var best ModelProviderFactory
 	bestPriority := -1
 
-	for _, f := range factories {
+	for _, key := range r.order {
+		f, ok := r.factories[key]
+		if !ok {
+			continue
+		}
 		if f.SupportsModel(model) {
 			pri := f.Priority()
 			if pri > bestPriority {
@@ -107,7 +112,6 @@ func (r *ModelProviderRegistry) Resolve(model string) ModelProviderFactory {
 	return best
 }
 
-// CreateClient resolves the appropriate factory and creates a client.
 func (r *ModelProviderRegistry) CreateClient(ctx context.Context, model string, opts ModelProviderOptions) (providers.Client, error) {
 	factory := r.Resolve(model)
 	if factory == nil {
@@ -116,10 +120,8 @@ func (r *ModelProviderRegistry) CreateClient(ctx context.Context, model string, 
 	return factory.CreateClient(ctx, model, opts)
 }
 
-// Count returns the number of registered factories.
 func (r *ModelProviderRegistry) Count() int {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-
 	return len(r.factories)
 }

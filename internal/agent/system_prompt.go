@@ -35,10 +35,14 @@ type SystemPromptProvider interface {
 }
 
 // SystemPromptAssembler collects sections from registered providers and
-// builds the complete system prompt. It is safe for concurrent use.
+// builds the complete system prompt. It tracks plugin ownership so that
+// deactivating a plugin generation atomically withdraws all its sections.
+//
+// It is safe for concurrent use.
 type SystemPromptAssembler struct {
 	mu        sync.RWMutex
 	providers map[string]SystemPromptProvider // keyed by provider key
+	owners    map[string]string               // key → pluginID
 	order     []string                        // insertion order
 }
 
@@ -46,12 +50,20 @@ type SystemPromptAssembler struct {
 func NewSystemPromptAssembler() *SystemPromptAssembler {
 	return &SystemPromptAssembler{
 		providers: make(map[string]SystemPromptProvider),
+		owners:    make(map[string]string),
 	}
 }
 
 // Add registers a system prompt provider. If a provider with the same
 // key already exists, it is replaced.
 func (a *SystemPromptAssembler) Add(p SystemPromptProvider) {
+	a.AddWithOwner(p, "")
+}
+
+// AddWithOwner registers a system prompt provider and records which
+// plugin owns it. When the plugin is deactivated, RemoveByPlugin
+// atomically withdraws all sections registered by that plugin.
+func (a *SystemPromptAssembler) AddWithOwner(p SystemPromptProvider, pluginID string) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	key := p.SystemPromptKey()
@@ -59,6 +71,9 @@ func (a *SystemPromptAssembler) Add(p SystemPromptProvider) {
 		a.order = append(a.order, key)
 	}
 	a.providers[key] = p
+	if pluginID != "" {
+		a.owners[key] = pluginID
+	}
 }
 
 // Remove unregisters a provider by its key.
@@ -66,6 +81,7 @@ func (a *SystemPromptAssembler) Remove(key string) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	delete(a.providers, key)
+	delete(a.owners, key)
 	for i, k := range a.order {
 		if k == key {
 			a.order = append(a.order[:i], a.order[i+1:]...)
@@ -74,11 +90,37 @@ func (a *SystemPromptAssembler) Remove(key string) {
 	}
 }
 
+// RemoveByPlugin withdraws all sections registered by the given plugin.
+// Used by the generation lifecycle to atomically clean up on deactivation.
+func (a *SystemPromptAssembler) RemoveByPlugin(pluginID string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	var toRemove []string
+	for key, owner := range a.owners {
+		if owner == pluginID {
+			toRemove = append(toRemove, key)
+		}
+	}
+	for _, key := range toRemove {
+		delete(a.providers, key)
+		delete(a.owners, key)
+	}
+	// Rebuild order slice excluding removed keys.
+	filtered := make([]string, 0, len(a.order))
+	for _, key := range a.order {
+		if _, ok := a.providers[key]; ok {
+			filtered = append(filtered, key)
+		}
+	}
+	a.order = filtered
+}
+
 // Clear removes all providers.
 func (a *SystemPromptAssembler) Clear() {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.providers = make(map[string]SystemPromptProvider)
+	a.owners = make(map[string]string)
 	a.order = nil
 }
 
@@ -168,9 +210,9 @@ type simplePromptProvider struct {
 	priority int
 }
 
-func (p *simplePromptProvider) SystemPromptKey() string           { return p.key }
+func (p *simplePromptProvider) SystemPromptKey() string             { return p.key }
 func (p *simplePromptProvider) SystemPromptSection() (string, bool) { return p.text, true }
-func (p *simplePromptProvider) SystemPromptPriority() int          { return p.priority }
+func (p *simplePromptProvider) SystemPromptPriority() int           { return p.priority }
 
 // NewStaticPromptSection creates a simple static system prompt section provider.
 func NewStaticPromptSection(key, text string, priority int) SystemPromptProvider {

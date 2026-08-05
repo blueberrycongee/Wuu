@@ -209,3 +209,34 @@ func TestNewGenerationIDUniqueness(t *testing.T) {
 		ids[id] = true
 	}
 }
+
+func TestRegisterInScopeSafetyKernelRejected(t *testing.T) {
+	p := Plugin{
+		Manifest: Manifest{ID: "test-plugin", Version: "1.0.0"},
+	}
+	scope := NewPluginScope(p)
+
+	// Safety-kernel seams must be rejected.
+	safetySeams := []string{
+		"host.plugin.install",
+		"host.plugin.approval",
+		"host.safe_mode",
+		"host.crash_recovery",
+		"host.permission.final",
+		"host.window.lifecycle",
+		"host.escape.settings",
+	}
+
+	for _, seam := range safetySeams {
+		_, err := RegisterInScope(scope, EffectTool, seam, "test-value", nil, 0)
+		if err == nil {
+			t.Errorf("expected safety-kernel rejection for %q, got nil", seam)
+		}
+	}
+
+	// Public seams should be accepted.
+	_, err := RegisterInScope(scope, EffectTool, "agent.tool.my-custom-tool", "test-value", nil, 0)
+	if err != nil {
+		t.Errorf("unexpected error for public seam: %v", err)
+	}
+}

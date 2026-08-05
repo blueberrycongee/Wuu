@@ -15,53 +15,49 @@ import (
 // priority provider wins. This matches the decision seam semantics
 // from the capability contract.
 type CompactionProvider interface {
-	// CompactionKey returns a unique identifier for this strategy.
 	CompactionKey() string
-
-	// Compact summarizes the conversation history. It receives the
-	// current model and full message history and returns the compacted
-	// history. Returning unchanged history signals "no-op".
 	Compact(ctx context.Context, model string, messages []providers.ChatMessage) ([]providers.ChatMessage, error)
-
-	// CompactionPriority determines which strategy wins when multiple
-	// are registered. Higher values take precedence.
 	CompactionPriority() int
 }
 
-// CompactionRegistry manages registered compaction strategies and
-// resolves the active strategy for a run.
+// CompactionRegistry manages registered compaction strategies with
+// plugin ownership tracking for generation-scoped cleanup.
 type CompactionRegistry struct {
 	mu        sync.RWMutex
 	providers map[string]CompactionProvider
+	owners    map[string]string // key → pluginID
 	order     []string
 }
 
-// NewCompactionRegistry creates an empty compaction registry.
 func NewCompactionRegistry() *CompactionRegistry {
 	return &CompactionRegistry{
 		providers: make(map[string]CompactionProvider),
+		owners:    make(map[string]string),
 	}
 }
 
-// Register adds a compaction provider. If a provider with the same key
-// exists, it is replaced.
 func (r *CompactionRegistry) Register(p CompactionProvider) {
+	r.RegisterWithOwner(p, "")
+}
+
+func (r *CompactionRegistry) RegisterWithOwner(p CompactionProvider, pluginID string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-
 	key := p.CompactionKey()
 	if _, exists := r.providers[key]; !exists {
 		r.order = append(r.order, key)
 	}
 	r.providers[key] = p
+	if pluginID != "" {
+		r.owners[key] = pluginID
+	}
 }
 
-// Unregister removes a compaction provider by key.
 func (r *CompactionRegistry) Unregister(key string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-
 	delete(r.providers, key)
+	delete(r.owners, key)
 	for i, k := range r.order {
 		if k == key {
 			r.order = append(r.order[:i], r.order[i+1:]...)
@@ -70,23 +66,40 @@ func (r *CompactionRegistry) Unregister(key string) {
 	}
 }
 
-// Resolve returns the highest-priority compaction provider, or nil if
-// none are registered. When fallback is non-nil and no provider is
-// registered, fallback is returned.
-func (r *CompactionRegistry) Resolve(fallback CompactionProvider) CompactionProvider {
-	r.mu.RLock()
-	providers := make([]CompactionProvider, 0, len(r.order))
-	for _, key := range r.order {
-		if provider, ok := r.providers[key]; ok {
-			providers = append(providers, provider)
+func (r *CompactionRegistry) RemoveByPlugin(pluginID string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var toRemove []string
+	for key, owner := range r.owners {
+		if owner == pluginID {
+			toRemove = append(toRemove, key)
 		}
 	}
-	r.mu.RUnlock()
+	for _, key := range toRemove {
+		delete(r.providers, key)
+		delete(r.owners, key)
+	}
+	filtered := make([]string, 0, len(r.order))
+	for _, key := range r.order {
+		if _, ok := r.providers[key]; ok {
+			filtered = append(filtered, key)
+		}
+	}
+	r.order = filtered
+}
+
+func (r *CompactionRegistry) Resolve(fallback CompactionProvider) CompactionProvider {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 
 	var best CompactionProvider
 	bestPriority := -1
 
-	for _, p := range providers {
+	for _, key := range r.order {
+		p, ok := r.providers[key]
+		if !ok {
+			continue
+		}
 		pri := p.CompactionPriority()
 		if pri > bestPriority {
 			best = p
@@ -100,10 +113,8 @@ func (r *CompactionRegistry) Resolve(fallback CompactionProvider) CompactionProv
 	return fallback
 }
 
-// Count returns the number of registered strategies.
 func (r *CompactionRegistry) Count() int {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-
 	return len(r.providers)
 }
