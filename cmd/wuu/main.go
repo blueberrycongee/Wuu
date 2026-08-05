@@ -89,6 +89,8 @@ func run(args []string) error {
 		return runSession(args[1:])
 	case "skills":
 		return runSkills(args[1:])
+	case "plugin":
+		return runPlugin(args[1:])
 	case "session-show":
 		return runSessionShow(args[1:])
 	case "debug":
@@ -2328,6 +2330,7 @@ Usage:
   wuu -r|--resume THREAD_ID [flags] [prompt...]  shortcut: exec -r
   wuu session list|show|trace|search|archive|delete|export [flags]
   wuu skills lint [--json] PATH...
+  wuu plugin inspect|install|list|remove [flags]
   wuu debug app-server initialize [flags]
   wuu debug app-server send [flags] METHOD [JSON]
   wuu debug channel e2e (--sandbox|--sandbox-name NAME) [flags]
