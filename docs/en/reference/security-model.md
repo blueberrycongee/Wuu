@@ -142,13 +142,64 @@ be able to enroll or act as that device.
 Treat a paired phone as a remote controller with the same workspace authority
 as the host session. Revoke devices that are lost or no longer trusted.
 
+## Plugin packages
+
+Wuu plugins are discovered from `~/.wuu/plugins`, a project's `.wuu/plugins`,
+and officially bundled packages. Discovery is inert: a discovered package is
+only a manifest and never executes until it is activated.
+
+Activation is gated by policy:
+
+- Community packages run only after the user approves the exact package
+  fingerprint. The fingerprint covers the manifest, executable arguments, hook
+  and command definitions, prompt assets, and skill trees; any change stops
+  activation and requires re-approval. Rejection, disable, and grant decisions
+  are user-owned and cannot be set by project or shared configuration.
+- Official bundled packages are trusted by provenance (shipped with Wuu), never
+  by manifest text. A user or project package that reuses an official id cannot
+  shadow it.
+
+Permissions come from a closed catalog (`process.spawn`, `session.read`,
+`session.write`, `tools.define`, `tools.intercept`, `shell.env`,
+`network.connect`, `commands.execute`, `files.read`, `files.write`,
+`accessibility.read`, `accessibility.control`, `screen.capture`, `app.activate`,
+`input.synthesize`). Unknown permission names fail validation. The host derives
+the permissions a package requires from its declared surfaces (a runtime
+process needs `process.spawn`, an MCP server needs `process.spawn` and/or
+`network.connect`, a prompt hook needs `session.read` + `session.write`), and
+activation requires the grant to cover the full derived set.
+
+Plugin runtime processes speak a typed JSON protocol (`wuu-plugin-v1`) over
+stdio. The host independently maps each protocol hook to the permissions it
+requires: `chat.message` needs `session.read`, `chat.request` needs
+`session.read` + `session.write`, `tool.definition` needs `tools.define`,
+`tool.execute.*` needs `tools.intercept`, and `shell.env` needs `shell.env`.
+Hooks the plugin declares without the granted permissions are stripped at
+initialize and surfaced to the user as diagnostics; `session.start` and
+`session.stop` carry lifecycle metadata only and are always available. Plugin
+processes receive a minimal documented environment (PATH, HOME, temp dirs,
+locale) — they do **not** inherit the Wuu process's environment, so ambient API
+keys do not leak into plugins.
+
+Revoking or changing a grant closes the plugin's process and removes all of
+its contributions; nothing registered by a revoked plugin keeps intercepting
+traffic.
+
+The same residual-risk rule as the rest of this document applies: a granted
+plugin is native code running as the current OS user. Environment filtering
+and hook stripping prevent accidents and unapproved capabilities; they are not
+an operating-system sandbox. Approve only plugins whose code you trust, and
+treat a project that ships `.wuu/plugins` like a project that ships scripts.
+
 ## Safe use checklist
 
 1. Review a new repository's instructions, settings, hooks, skills, and MCP
    configuration before enabling tools.
-2. Use `read_only` for inspection and a real OS sandbox for hostile code.
-3. Keep provider endpoints and credential environment names in the user config.
-4. Pair remote devices in private and use `wss://` for relays across untrusted
+2. Review a plugin's requested permissions before approving it; re-approval is
+   required whenever the package changes.
+3. Use `read_only` for inspection and a real OS sandbox for hostile code.
+4. Keep provider endpoints and credential environment names in the user config.
+5. Pair remote devices in private and use `wss://` for relays across untrusted
    networks.
-5. Review diffs and command output before publishing them.
-6. Report boundary bypasses privately using [SECURITY.md](../../../SECURITY.md).
+6. Review diffs and command output before publishing them.
+7. Report boundary bypasses privately using [SECURITY.md](../../../SECURITY.md).
