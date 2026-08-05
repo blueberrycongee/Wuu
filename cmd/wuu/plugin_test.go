@@ -5,6 +5,11 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/blueberrycongee/wuu/internal/config"
+	"github.com/blueberrycongee/wuu/internal/extensions"
+	pluginpkg "github.com/blueberrycongee/wuu/internal/plugin"
+	"github.com/blueberrycongee/wuu/internal/statepath"
 )
 
 func TestPluginCLIInstallListInspectAndRemove(t *testing.T) {
@@ -71,5 +76,59 @@ func TestPluginCLIInstallListInspectAndRemove(t *testing.T) {
 func TestPluginCLIRejectsUnknownSubcommand(t *testing.T) {
 	if err := run([]string{"plugin", "unknown"}); err == nil {
 		t.Fatal("unknown plugin subcommand unexpectedly succeeded")
+	}
+}
+
+func TestPluginCLIPolicyActionsUseExactFingerprint(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("WUU_HOME", home)
+	configPath, err := statepath.ConfigPath("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := json.Marshal(config.Default())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(configPath, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	source := t.TempDir()
+	if err := os.WriteFile(filepath.Join(source, "plugin.json"), []byte(`{"id":"policy-demo"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pluginpkg.InstallPackage(home, source); err != nil {
+		t.Fatal(err)
+	}
+
+	var approved pluginPackageOutput
+	output := captureStdout(t, func() {
+		if err := run([]string{"plugin", "approve", "--json", "policy-demo"}); err != nil {
+			t.Fatalf("plugin approve: %v", err)
+		}
+	})
+	if err := json.Unmarshal([]byte(output), &approved); err != nil {
+		t.Fatal(err)
+	}
+	loaded, _, err := config.LoadFrom("", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	grant, ok := loaded.Extensions.FindGrant(approved.SubjectID, approved.Fingerprint)
+	if !ok || grant.Scope != extensions.GrantScopeUser {
+		t.Fatalf("grant = %+v, %v", grant, ok)
+	}
+
+	_ = captureStdout(t, func() {
+		if err := run([]string{"plugin", "disable", "policy-demo"}); err != nil {
+			t.Fatalf("plugin disable: %v", err)
+		}
+	})
+	loaded, _, err = config.LoadFrom("", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Extensions == nil || !loaded.Extensions.IsDisabled(approved.SubjectID) {
+		t.Fatalf("plugin was not disabled: %+v", loaded.Extensions)
 	}
 }

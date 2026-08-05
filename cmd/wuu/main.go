@@ -2330,7 +2330,7 @@ Usage:
   wuu -r|--resume THREAD_ID [flags] [prompt...]  shortcut: exec -r
   wuu session list|show|trace|search|archive|delete|export [flags]
   wuu skills lint [--json] PATH...
-  wuu plugin inspect|install|list|remove [flags]
+  wuu plugin inspect|install|list|approve|reject|enable|disable|remove [flags]
   wuu debug app-server initialize [flags]
   wuu debug app-server send [flags] METHOD [JSON]
   wuu debug channel e2e (--sandbox|--sandbox-name NAME) [flags]

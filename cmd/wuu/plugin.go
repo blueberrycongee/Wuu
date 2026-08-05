@@ -9,8 +9,11 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
+	"github.com/blueberrycongee/wuu/internal/config"
 	wuuexec "github.com/blueberrycongee/wuu/internal/exec"
+	"github.com/blueberrycongee/wuu/internal/extensions"
 	pluginpkg "github.com/blueberrycongee/wuu/internal/plugin"
 	"github.com/blueberrycongee/wuu/internal/statepath"
 )
@@ -36,11 +39,12 @@ type pluginPackageOutput struct {
 	Replaced             bool     `json:"replaced,omitempty"`
 	ApprovalRequired     bool     `json:"approval_required,omitempty"`
 	Removed              bool     `json:"removed,omitempty"`
+	PolicyAction         string   `json:"policy_action,omitempty"`
 }
 
 func runPlugin(args []string) error {
 	if len(args) == 0 {
-		return pluginCLIError(errors.New("plugin subcommand is required (available: inspect, install, list, remove)"))
+		return pluginCLIError(errors.New("plugin subcommand is required (available: inspect, install, list, approve, reject, enable, disable, remove)"))
 	}
 	switch args[0] {
 	case "inspect":
@@ -49,10 +53,12 @@ func runPlugin(args []string) error {
 		return runPluginInstall(args[1:])
 	case "list":
 		return runPluginList(args[1:])
+	case "approve", "reject", "enable", "disable":
+		return runPluginPolicy(args[0], args[1:])
 	case "remove", "uninstall":
 		return runPluginRemove(args[1:])
 	default:
-		return pluginCLIError(fmt.Errorf("unknown plugin subcommand %q (available: inspect, install, list, remove)", args[0]))
+		return pluginCLIError(fmt.Errorf("unknown plugin subcommand %q (available: inspect, install, list, approve, reject, enable, disable, remove)", args[0]))
 	}
 }
 
@@ -175,6 +181,89 @@ func runPluginRemove(args []string) error {
 		message = "Removed plugin package"
 	}
 	return printPluginPackageOutput(output, *jsonOutput, message)
+}
+
+func runPluginPolicy(action string, args []string) error {
+	fs, jsonOutput := pluginFlagSet("plugin " + action)
+	workdir := fs.String("workdir", "", "workspace directory for a project plugin")
+	if err := fs.Parse(args); err != nil {
+		return pluginCLIError(err)
+	}
+	id, err := requiredPluginArgument(fs, "plugin "+action+" requires one discovered plugin id")
+	if err != nil {
+		return err
+	}
+	item, err := discoverPluginForPolicy(id, *workdir)
+	if err != nil {
+		return pluginCLIError(err)
+	}
+	if item.Official {
+		return pluginCLIError(fmt.Errorf("official bundled plugin %q does not use user policy actions", item.ID))
+	}
+	configPath, err := statepath.ConfigPath("")
+	if err != nil {
+		return fmt.Errorf("resolve user config: %w", err)
+	}
+	_, err = config.UpdateExtensionSettings(configPath, func(settings *extensions.Settings) error {
+		switch action {
+		case "approve":
+			scope := extensions.GrantScopeUser
+			if item.Source == "project" {
+				scope = extensions.GrantScopeProject
+			}
+			return settings.RecordGrant(extensions.Grant{
+				SubjectID:   item.SubjectID,
+				Fingerprint: item.Fingerprint,
+				Scope:       scope,
+				Permissions: append([]string(nil), item.EffectivePermissions...),
+				ApprovedAt:  time.Now().UTC(),
+			})
+		case "reject":
+			return settings.RecordRejection(item.SubjectID, item.Fingerprint)
+		case "enable":
+			settings.SetDisabled(item.SubjectID, false)
+			return nil
+		case "disable":
+			settings.SetDisabled(item.SubjectID, true)
+			return nil
+		default:
+			return fmt.Errorf("unsupported plugin policy action %q", action)
+		}
+	})
+	if err != nil {
+		return fmt.Errorf("persist plugin policy in %s: %w", configPath, err)
+	}
+	output := pluginPackageOutput{
+		ID:                   item.ID,
+		Name:                 item.Name,
+		Version:              item.Version,
+		Fingerprint:          item.Fingerprint,
+		SubjectID:            item.SubjectID,
+		Source:               item.Source,
+		EffectivePermissions: append([]string(nil), item.EffectivePermissions...),
+		PolicyAction:         action,
+	}
+	return printPluginPackageOutput(output, *jsonOutput, "Updated plugin policy")
+}
+
+func discoverPluginForPolicy(id, workdir string) (pluginpkg.Plugin, error) {
+	home, err := statepath.Home("")
+	if err != nil {
+		return pluginpkg.Plugin{}, fmt.Errorf("resolve Wuu home: %w", err)
+	}
+	root := strings.TrimSpace(workdir)
+	if root != "" {
+		root, err = filepath.Abs(root)
+		if err != nil {
+			return pluginpkg.Plugin{}, fmt.Errorf("resolve workspace: %w", err)
+		}
+	}
+	for _, item := range pluginpkg.Discover(root, home) {
+		if item.ID == id {
+			return item, nil
+		}
+	}
+	return pluginpkg.Plugin{}, fmt.Errorf("plugin %q was not found", id)
 }
 
 func pluginFlagSet(name string) (*flag.FlagSet, *bool) {
