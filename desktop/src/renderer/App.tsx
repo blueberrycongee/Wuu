@@ -220,7 +220,11 @@ import type { WorkspaceTerminalRunRequest } from "./WorkspaceTerminalPanel";
 import { useWorkspaceToolState } from "./WorkspaceToolState";
 import type { WorkspaceViewTab } from "./WorkspaceViewTabs";
 import { ImagePreviewProvider } from "./ImagePreview";
-import { useDesktopPluginRuntime } from "./plugins/DesktopPluginRuntime";
+import {
+  desktopPluginHost,
+  useDesktopPluginRuntime,
+} from "./plugins/DesktopPluginRuntime";
+import { PluginSurface } from "./plugins";
 import { WINDOW_RESIZING_CLASS } from "./WindowResizeState";
 import { useComposerDraftState } from "./ComposerDraftState";
 import { useComposerPendingState } from "./ComposerPendingState";
@@ -4207,6 +4211,30 @@ export function App(): JSX.Element {
       {checkoutErrorTipNode}
       {modelCatalogTipNode}
       <ImagePreviewProvider>
+        <PluginSurface
+          host={desktopPluginHost}
+          id="app.shell"
+          context={{
+            version: 1,
+            initialized: Boolean(state.initialized),
+            poppedOutMode,
+            workspaceRoot: state.initialized?.workspace_root,
+            activeThreadId: activeThreadID,
+            actions: {
+              openSettings: () => {
+                setSettingsInitialPage("providers");
+                setSettingsOpen(true);
+              },
+              startNewThread: () => {
+                revealConversationFromFocusedWorkspace();
+                startNewThreadWithComposerFocus();
+              },
+              openSkills: openSkillsTab,
+              openAutomations: openAutomationsTab,
+              toggleSidebar,
+            },
+          }}
+          fallback={
         <div ref={appShellRef} className={shellClassName} style={shellStyle}>
           {!poppedOutMode ? (
             <>
@@ -4238,6 +4266,26 @@ export function App(): JSX.Element {
               </button>
             </div>
           ) : null}
+          <PluginSurface
+            host={desktopPluginHost}
+            id="app.sidebar"
+            context={{
+              version: 1,
+              activeThreadId: activeThreadID,
+              activeProjectId: state.activeProjectId,
+              collapsed: sidebarDrawerMode,
+              actions: {
+                openSettings: () => {
+                  setSettingsInitialPage("providers");
+                  setSettingsOpen(true);
+                },
+                startNewThread: startNewThreadWithComposerFocus,
+                openSkills: openSkillsTab,
+                openAutomations: openAutomationsTab,
+                toggleSidebar,
+              },
+            }}
+            fallback={
           <AppSidebar
             state={state}
             sidebarProjects={sidebarProjects}
@@ -4347,6 +4395,8 @@ export function App(): JSX.Element {
               setSettingsInitialPage("providers");
               setSettingsOpen(true);
             }}
+          />
+            }
           />
 
           {sidebarDrawerMode ? null : (
@@ -5011,6 +5061,8 @@ export function App(): JSX.Element {
         </FloatingMenuPortal>
       ) : null}
       </div>
+          }
+        />
     </ImagePreviewProvider>
     </>
   );
