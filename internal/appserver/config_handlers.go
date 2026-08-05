@@ -391,6 +391,33 @@ func (s *Server) currentExtensionInventory() []ExtensionInventoryRecord {
 				Keywords:    append([]string(nil), command.Keywords...),
 			})
 		}
+		sort.Slice(commands, func(i, j int) bool { return commands[i].ID < commands[j].ID })
+		themes := make([]ExtensionThemeDescriptor, 0, len(item.Themes))
+		for _, theme := range item.Themes {
+			themes = append(themes, ExtensionThemeDescriptor{
+				ID:     theme.ID,
+				Name:   theme.Name,
+				Base:   theme.Base,
+				Tokens: cloneStringMap(theme.Tokens),
+				Syntax: cloneStringMap(theme.Syntax),
+			})
+		}
+		sort.Slice(themes, func(i, j int) bool { return themes[i].ID < themes[j].ID })
+		settingIDs := sortedMapKeys(item.Settings)
+		settings := make([]ExtensionSettingDescriptor, 0, len(settingIDs))
+		for _, id := range settingIDs {
+			definition := item.Settings[id]
+			settings = append(settings, ExtensionSettingDescriptor{
+				ID:          id,
+				Type:        ExtensionSettingType(definition.Type),
+				Title:       definition.Title,
+				Description: definition.Description,
+				Default:     definition.Default,
+				Enum:        append([]string(nil), definition.Enum...),
+				Scope:       ExtensionSettingScope(definition.Scope),
+				Apply:       ExtensionSettingApplyMode(definition.Apply),
+			})
+		}
 		packageRecord := ExtensionInventoryRecord{
 			ID:          item.SubjectID,
 			Name:        item.ID,
@@ -414,8 +441,11 @@ func (s *Server) currentExtensionInventory() []ExtensionInventoryRecord {
 			RuntimeState:         runtimeState,
 			Enabled:              &enabled,
 		}
-		if len(commands) > 0 {
-			packageRecord.Contributions = &ExtensionContributions{Commands: commands}
+		if item.Desktop != nil {
+			packageRecord.Desktop = &ExtensionDesktopDescriptor{Entry: item.Desktop.Entry}
+		}
+		if len(commands) > 0 || len(themes) > 0 || len(settings) > 0 {
+			packageRecord.Contributions = &ExtensionContributions{Commands: commands, Themes: themes, Settings: settings}
 		}
 		if pending, ok := pendingUpdatesByID[item.ID]; ok && item.Source == "user" {
 			packageRecord.PendingUpdate = &ExtensionPendingUpdate{
@@ -673,6 +703,17 @@ func cloneSortedStrings(values []string) []string {
 	sort.Strings(out)
 	if len(out) == 0 {
 		return nil
+	}
+	return out
+}
+
+func cloneStringMap(values map[string]string) map[string]string {
+	if len(values) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(values))
+	for key, value := range values {
+		out[key] = value
 	}
 	return out
 }

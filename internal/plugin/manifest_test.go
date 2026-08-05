@@ -1,6 +1,7 @@
 package plugin
 
 import (
+	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -146,4 +147,92 @@ func TestLoadManifestRejectsCommunityOfficialNativeHelper(t *testing.T) {
 	if !got.Official || len(got.OfficialNativeHelper) == 0 {
 		t.Fatalf("official provenance/helper not preserved: %+v", got)
 	}
+}
+
+func TestLoadManifestNormalizesDesktopThemeAndSettingsContributions(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "dist", "desktop.mjs"), "export function activate() {}")
+	path := filepath.Join(root, ManifestFilename)
+	writeFile(t, path, `{
+  "schemaVersion": 1,
+  "id": "productivity",
+  "desktop": {"entry": "dist/desktop.mjs"},
+  "contributes": {
+    "themes": [{
+      "id": "focused",
+      "name": "Focused",
+      "base": "dark",
+      "tokens": {"--wuu-paper": "#101214", "--wuu-ink": "#f4f5f6"},
+      "syntax": {"--hljs-keyword": "#ff8bd1"}
+    }],
+    "settings": {
+      "enabled": {"type":"boolean","title":"Enabled","default":true,"scope":"user","apply":"live"},
+      "mode": {"type":"enum","title":"Mode","default":"quiet","enum":["quiet","active"],"scope":"workspace","apply":"restart"},
+      "label": {"type":"string","title":"Label","default":"work","scope":"user","apply":"live"},
+      "limit": {"type":"number","title":"Limit","default":3,"scope":"workspace","apply":"live"}
+    }
+  }
+}`)
+
+	got, err := LoadManifest(path, "user")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.SchemaVersion != 1 || got.Desktop == nil || got.Desktop.Entry != "dist/desktop.mjs" {
+		t.Fatalf("manifest contribution metadata = %+v", got.Manifest)
+	}
+	if len(got.Themes) != 1 || got.Themes[0].Tokens["--wuu-paper"] != "#101214" {
+		t.Fatalf("themes = %+v", got.Themes)
+	}
+	if len(got.Settings) != 4 || got.Settings["productivity.mode"].Scope != SettingScopeWorkspace {
+		t.Fatalf("settings = %+v", got.Settings)
+	}
+}
+
+func TestLoadManifestRejectsAmbiguousContributionJSON(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		want string
+	}{
+		{name: "duplicate top-level field", body: `{"id":"one","id":"two"}`, want: "duplicate"},
+		{name: "both schema aliases", body: `{"schemaVersion":1,"schema_version":1,"id":"demo"}`, want: "both schemaVersion"},
+		{name: "duplicate contribution field", body: `{"id":"demo","contributes":{"themes":[],"themes":[]}}`, want: "duplicate"},
+		{name: "unknown contribution", body: `{"id":"demo","contributes":{"styles":[]}}`, want: "unknown field"},
+		{name: "trailing value", body: `{"id":"demo"} {"id":"other"}`, want: "invalid character"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), ManifestFilename)
+			writeFile(t, path, test.body)
+			if _, err := LoadManifest(path, "user"); err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("LoadManifest error = %v, want %q", err, test.want)
+			}
+		})
+	}
+}
+
+func TestLoadManifestRejectsUnsafeDesktopAndThemeContributions(t *testing.T) {
+	t.Run("desktop symlink", func(t *testing.T) {
+		root := t.TempDir()
+		target := filepath.Join(root, "target.mjs")
+		writeFile(t, target, "export {}")
+		link := filepath.Join(root, "desktop.mjs")
+		if err := os.Symlink(target, link); err != nil {
+			t.Fatal(err)
+		}
+		path := filepath.Join(root, ManifestFilename)
+		writeFile(t, path, `{"id":"demo","desktop":{"entry":"desktop.mjs"}}`)
+		if _, err := LoadManifest(path, "user"); err == nil || !strings.Contains(err.Error(), "symbolic link") {
+			t.Fatalf("LoadManifest error = %v, want symlink rejection", err)
+		}
+	})
+
+	t.Run("unpublished theme token", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), ManifestFilename)
+		writeFile(t, path, `{"id":"demo","contributes":{"themes":[{"id":"bad","name":"Bad","base":"dark","tokens":{"--arbitrary-global":"red"}}]}}`)
+		if _, err := LoadManifest(path, "user"); err == nil || !strings.Contains(err.Error(), "unsupported semantic token") {
+			t.Fatalf("LoadManifest error = %v, want token rejection", err)
+		}
+	})
 }

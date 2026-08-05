@@ -33,10 +33,18 @@ func TestExtensionPackageUpdateGrantsExactFingerprintAndDisablesImmediately(t *t
 		t.Fatal(err)
 	}
 	rt.Plugins = []pluginpkg.Plugin{{
-		Manifest: pluginpkg.Manifest{ID: "prompt-kit", Commands: []pluginpkg.ResolvedCommand{{
-			CommandSpec: pluginpkg.CommandSpec{ID: "draft", Title: "Draft", Kind: pluginpkg.CommandKindPromptTemplate, Prompt: "Draft ${input}"},
-			PublicID:    "prompt-kit.draft",
-		}}},
+		Manifest: pluginpkg.Manifest{
+			ID:      "prompt-kit",
+			Desktop: &pluginpkg.DesktopSpec{Entry: "dist/desktop.mjs"},
+			Commands: []pluginpkg.ResolvedCommand{{
+				CommandSpec: pluginpkg.CommandSpec{ID: "draft", Title: "Draft", Kind: pluginpkg.CommandKindPromptTemplate, Prompt: "Draft ${input}"},
+				PublicID:    "prompt-kit.draft",
+			}},
+			Themes: []pluginpkg.ThemeSpec{{ID: "focused", Name: "Focused", Base: "dark", Tokens: map[string]string{"--wuu-paper": "#101214"}}},
+			Settings: map[string]pluginpkg.SettingDefinition{
+				"prompt-kit.enabled": {Type: pluginpkg.SettingTypeBoolean, Title: "Enabled", Default: true, Scope: pluginpkg.SettingScopeUser, Apply: pluginpkg.SettingApplyLive},
+			},
+		},
 		Source: "project", SubjectID: "plugin:project:prompt-kit", Fingerprint: "sha256:prompt-kit",
 		EffectivePermissions: []string{extensions.PermCommandsExecute},
 	}}
@@ -55,6 +63,15 @@ func TestExtensionPackageUpdateGrantsExactFingerprintAndDisablesImmediately(t *t
 	}
 	if len(record.Contributions.Commands) != 1 || record.Contributions.Commands[0].ID != "draft" || record.Contributions.Commands[0].Template != "Draft ${input}" {
 		t.Fatalf("command contributions = %+v", record.Contributions)
+	}
+	if record.Desktop == nil || record.Desktop.Entry != "dist/desktop.mjs" {
+		t.Fatalf("desktop contribution = %+v", record.Desktop)
+	}
+	if len(record.Contributions.Themes) != 1 || record.Contributions.Themes[0].Tokens["--wuu-paper"] != "#101214" {
+		t.Fatalf("theme contributions = %+v", record.Contributions)
+	}
+	if len(record.Contributions.Settings) != 1 || record.Contributions.Settings[0].ID != "prompt-kit.enabled" || record.Contributions.Settings[0].Default != true {
+		t.Fatalf("setting contributions = %+v", record.Contributions)
 	}
 	data, err := os.ReadFile(filepath.Join(wuuHome, "config.json"))
 	if err != nil {

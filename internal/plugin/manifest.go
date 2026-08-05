@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -22,11 +23,15 @@ const (
 	ManifestFilename       = "plugin.json"
 	CodexManifestFilename  = ".codex-plugin/plugin.json"
 	ClaudeManifestFilename = ".claude-plugin/plugin.json"
+	manifestSchemaVersion  = 1
 )
 
 // maxPromptFileSize limits prompt_template files to 1 MiB. Larger files are
 // rejected during discovery so a package cannot load unbounded host memory.
 const maxPromptFileSize = 1 << 20
+
+// maxDesktopEntrySize bounds the browser module read by a Desktop shell.
+const maxDesktopEntrySize = 10 << 20
 
 // CommandKind enumerates the supported command contribution kinds.
 type CommandKind string
@@ -70,6 +75,7 @@ type ResolvedCommand struct {
 }
 
 type Manifest struct {
+	SchemaVersion        int                               `json:"schema_version"`
 	ID                   string                            `json:"id"`
 	Name                 string                            `json:"name,omitempty"`
 	Description          string                            `json:"description,omitempty"`
@@ -88,6 +94,9 @@ type Manifest struct {
 	MCPPaths             []string                          `json:"-"`
 	Commands             []ResolvedCommand                 `json:"commands,omitempty"`
 	CommandPaths         []string                          `json:"-"`
+	Desktop              *DesktopSpec                      `json:"desktop,omitempty"`
+	Themes               []ThemeSpec                       `json:"themes,omitempty"`
+	Settings             map[string]SettingDefinition      `json:"settings,omitempty"`
 	Interface            json.RawMessage                   `json:"interface,omitempty"`
 	Platforms            []string                          `json:"platforms,omitempty"`
 	RequestedPermissions []string                          `json:"requested_permissions,omitempty"`
@@ -95,6 +104,55 @@ type Manifest struct {
 	OfficialNativeHelper json.RawMessage                   `json:"official_native_helper,omitempty"`
 	MinimumWuuVersion    string                            `json:"minimum_wuu_version,omitempty"`
 	UnsupportedFields    []string                          `json:"unsupported_fields,omitempty"`
+}
+
+// DesktopSpec identifies the package-relative browser module for Desktop
+// contributions. Entry is intentionally never an absolute package path.
+type DesktopSpec struct {
+	Entry string `json:"entry"`
+}
+
+type ThemeSpec struct {
+	ID     string            `json:"id"`
+	Name   string            `json:"name"`
+	Base   string            `json:"base"`
+	Tokens map[string]string `json:"tokens"`
+	Syntax map[string]string `json:"syntax,omitempty"`
+}
+
+type SettingType string
+
+const (
+	SettingTypeBoolean SettingType = "boolean"
+	SettingTypeString  SettingType = "string"
+	SettingTypeNumber  SettingType = "number"
+	SettingTypeEnum    SettingType = "enum"
+)
+
+type SettingScope string
+
+const (
+	SettingScopeUser      SettingScope = "user"
+	SettingScopeWorkspace SettingScope = "workspace"
+)
+
+type SettingApplyMode string
+
+const (
+	SettingApplyLive    SettingApplyMode = "live"
+	SettingApplyRestart SettingApplyMode = "restart"
+)
+
+// SettingDefinition is a validated generated-control definition. Settings are
+// stored in Manifest.Settings under their plugin-qualified public ids.
+type SettingDefinition struct {
+	Type        SettingType      `json:"type"`
+	Title       string           `json:"title"`
+	Description string           `json:"description,omitempty"`
+	Default     any              `json:"default"`
+	Enum        []string         `json:"enum,omitempty"`
+	Scope       SettingScope     `json:"scope"`
+	Apply       SettingApplyMode `json:"apply"`
 }
 
 // RuntimeSpec declares a long-lived external plugin process. Installing or
@@ -114,6 +172,8 @@ type LoadOptions struct {
 }
 
 type rawManifest struct {
+	SchemaVersion          json.RawMessage `json:"schemaVersion"`
+	SchemaVersionAlias     json.RawMessage `json:"schema_version"`
 	ID                     string          `json:"id"`
 	Name                   string          `json:"name"`
 	Description            string          `json:"description"`
@@ -130,6 +190,7 @@ type rawManifest struct {
 	MCPServersAlias        json.RawMessage `json:"mcp_servers"`
 	Commands               json.RawMessage `json:"commands"`
 	Contributes            rawContributes  `json:"contributes"`
+	Desktop                json.RawMessage `json:"desktop"`
 	Interface              json.RawMessage `json:"interface"`
 	Platforms              []string        `json:"platforms"`
 	RequestedPermissions   []string        `json:"requestedPermissions"`
@@ -144,13 +205,16 @@ type rawManifest struct {
 
 type rawContributes struct {
 	Commands json.RawMessage `json:"commands"`
+	Themes   json.RawMessage `json:"themes"`
+	Settings json.RawMessage `json:"settings"`
 }
 
 var supportedManifestFields = map[string]struct{}{
+	"schemaVersion": {}, "schema_version": {},
 	"id": {}, "name": {}, "description": {}, "version": {}, "author": {},
 	"homepage": {}, "repository": {}, "license": {}, "keywords": {},
 	"skills": {}, "runtime": {}, "hooks": {}, "mcpServers": {}, "mcp_servers": {},
-	"contributes": {}, "interface": {}, "platforms": {},
+	"contributes": {}, "desktop": {}, "interface": {}, "platforms": {},
 	"requestedPermissions": {}, "requested_permissions": {},
 	"activityKinds": {}, "activity_kinds": {},
 	"officialNativeHelper": {}, "official_native_helper": {},
@@ -194,9 +258,18 @@ func normalizeManifest(data []byte, root string, official bool) (Manifest, error
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return Manifest{}, err
 	}
-	var fields map[string]json.RawMessage
-	if err := json.Unmarshal(data, &fields); err != nil {
+	fields, err := decodeJSONObject("plugin manifest", data)
+	if err != nil {
 		return Manifest{}, err
+	}
+	schemaVersion, err := normalizeSchemaVersion(raw.SchemaVersion, raw.SchemaVersionAlias)
+	if err != nil {
+		return Manifest{}, err
+	}
+	if contributes, ok := fields["contributes"]; ok {
+		if err := validateObjectFields("contributes", contributes, "commands", "themes", "settings"); err != nil {
+			return Manifest{}, err
+		}
 	}
 
 	id := strings.TrimSpace(raw.ID)
@@ -227,6 +300,18 @@ func normalizeManifest(data []byte, root string, official bool) (Manifest, error
 	if err != nil {
 		return Manifest{}, err
 	}
+	desktop, err := normalizeDesktop(root, raw.Desktop)
+	if err != nil {
+		return Manifest{}, err
+	}
+	themes, err := normalizeThemes(raw.Contributes.Themes)
+	if err != nil {
+		return Manifest{}, err
+	}
+	settings, err := normalizeSettings(id, raw.Contributes.Settings)
+	if err != nil {
+		return Manifest{}, err
+	}
 	helper := firstRaw(raw.OfficialNativeHelper, raw.OfficialHelperAlias)
 	if hasDeclaredValue(helper) && !official {
 		return Manifest{}, fmt.Errorf("official_native_helper is reserved for official bundled plugins")
@@ -246,6 +331,7 @@ func normalizeManifest(data []byte, root string, official bool) (Manifest, error
 	sort.Strings(unsupported)
 
 	return Manifest{
+		SchemaVersion:        schemaVersion,
 		ID:                   id,
 		Name:                 strings.TrimSpace(raw.Name),
 		Description:          strings.TrimSpace(raw.Description),
@@ -264,6 +350,9 @@ func normalizeManifest(data []byte, root string, official bool) (Manifest, error
 		MCPPaths:             mcpPaths,
 		Commands:             commands,
 		CommandPaths:         commandPaths,
+		Desktop:              desktop,
+		Themes:               themes,
+		Settings:             settings,
 		Interface:            cloneRaw(raw.Interface),
 		Platforms:            normalizeStrings(raw.Platforms),
 		RequestedPermissions: requested,
@@ -272,6 +361,391 @@ func normalizeManifest(data []byte, root string, official bool) (Manifest, error
 		MinimumWuuVersion:    firstString(raw.MinimumWuuVersion, raw.MinimumWuuVersionAlias),
 		UnsupportedFields:    unsupported,
 	}, nil
+}
+
+func normalizeSchemaVersion(primary, alias json.RawMessage) (int, error) {
+	primary = bytes.TrimSpace(primary)
+	alias = bytes.TrimSpace(alias)
+	if len(primary) > 0 && len(alias) > 0 {
+		return 0, errors.New("plugin manifest must not declare both schemaVersion and schema_version")
+	}
+	value := primary
+	if len(value) == 0 {
+		value = alias
+	}
+	if len(value) == 0 {
+		return manifestSchemaVersion, nil
+	}
+	if !bytes.Equal(value, []byte("1")) {
+		return 0, fmt.Errorf("unsupported plugin schema version %s (supported: %d)", value, manifestSchemaVersion)
+	}
+	return manifestSchemaVersion, nil
+}
+
+func normalizeDesktop(root string, raw json.RawMessage) (*DesktopSpec, error) {
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null")) {
+		return nil, nil
+	}
+	if err := validateObjectFields("desktop", trimmed, "entry"); err != nil {
+		return nil, err
+	}
+	var spec DesktopSpec
+	if err := json.Unmarshal(trimmed, &spec); err != nil {
+		return nil, fmt.Errorf("desktop: %w", err)
+	}
+	if strings.Contains(spec.Entry, `\`) {
+		return nil, fmt.Errorf("desktop.entry path %q must use package-relative slash separators", spec.Entry)
+	}
+	entry, err := normalizePluginPath(root, "desktop.entry", spec.Entry)
+	if err != nil {
+		return nil, err
+	}
+	switch strings.ToLower(filepath.Ext(entry)) {
+	case ".js", ".mjs":
+	default:
+		return nil, fmt.Errorf("desktop.entry %q must be a JavaScript module (.js or .mjs)", spec.Entry)
+	}
+	entryPath := filepath.Join(root, entry)
+	linkInfo, err := os.Lstat(entryPath)
+	if err != nil {
+		return nil, fmt.Errorf("desktop.entry %s: %w", entry, err)
+	}
+	if linkInfo.Mode()&os.ModeSymlink != 0 {
+		return nil, fmt.Errorf("desktop.entry %s must not be a symbolic link", entry)
+	}
+	info, err := os.Stat(entryPath)
+	if err != nil {
+		return nil, fmt.Errorf("desktop.entry %s: %w", entry, err)
+	}
+	if !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("desktop.entry %s must be a regular file", entry)
+	}
+	if info.Size() > maxDesktopEntrySize {
+		return nil, fmt.Errorf("desktop.entry %s exceeds %d bytes", entry, maxDesktopEntrySize)
+	}
+	return &DesktopSpec{Entry: entry}, nil
+}
+
+var allowedThemeTokens = map[string]struct{}{
+	"--wuu-paper": {}, "--wuu-ink": {}, "--wuu-ink-soft": {},
+	"--wuu-hairline": {}, "--wuu-surface-muted": {},
+	"--wuu-accent": {}, "--wuu-accent-press": {},
+}
+
+var allowedSyntaxTokens = map[string]struct{}{
+	"--hljs-keyword": {}, "--hljs-function": {}, "--hljs-string": {},
+	"--hljs-number": {}, "--hljs-comment": {}, "--hljs-tag": {},
+	"--hljs-literal": {}, "--hljs-meta": {},
+}
+
+func normalizeThemes(raw json.RawMessage) ([]ThemeSpec, error) {
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null")) {
+		return nil, nil
+	}
+	var rawThemes []json.RawMessage
+	if err := json.Unmarshal(trimmed, &rawThemes); err != nil {
+		return nil, fmt.Errorf("contributes.themes must be an array: %w", err)
+	}
+	themes := make([]ThemeSpec, 0, len(rawThemes))
+	seen := make(map[string]struct{}, len(rawThemes))
+	for index, rawTheme := range rawThemes {
+		field := fmt.Sprintf("contributes.themes[%d]", index)
+		if err := validateObjectFields(field, rawTheme, "id", "name", "base", "tokens", "syntax"); err != nil {
+			return nil, err
+		}
+		var theme ThemeSpec
+		if err := json.Unmarshal(rawTheme, &theme); err != nil {
+			return nil, fmt.Errorf("%s: %w", field, err)
+		}
+		theme.ID = strings.TrimSpace(theme.ID)
+		theme.Name = strings.TrimSpace(theme.Name)
+		theme.Base = strings.TrimSpace(theme.Base)
+		if !validCommandID(theme.ID) {
+			return nil, fmt.Errorf("%s has invalid plugin-local id %q", field, theme.ID)
+		}
+		if _, ok := seen[theme.ID]; ok {
+			return nil, fmt.Errorf("contributes.themes: duplicate id %q", theme.ID)
+		}
+		seen[theme.ID] = struct{}{}
+		if theme.Name == "" {
+			return nil, fmt.Errorf("%s requires name", field)
+		}
+		if theme.Base != "light" && theme.Base != "dark" {
+			return nil, fmt.Errorf("%s base must be light or dark", field)
+		}
+		var err error
+		theme.Tokens, err = normalizeTokenMap(field+".tokens", theme.Tokens, allowedThemeTokens, true)
+		if err != nil {
+			return nil, err
+		}
+		theme.Syntax, err = normalizeTokenMap(field+".syntax", theme.Syntax, allowedSyntaxTokens, false)
+		if err != nil {
+			return nil, err
+		}
+		themes = append(themes, theme)
+	}
+	sort.Slice(themes, func(i, j int) bool { return themes[i].ID < themes[j].ID })
+	return themes, nil
+}
+
+func normalizeTokenMap(field string, values map[string]string, allowed map[string]struct{}, required bool) (map[string]string, error) {
+	if len(values) == 0 {
+		if required {
+			return nil, fmt.Errorf("%s must be a non-empty semantic token map", field)
+		}
+		return nil, nil
+	}
+	out := make(map[string]string, len(values))
+	for key, value := range values {
+		key = strings.TrimSpace(key)
+		if _, ok := allowed[key]; !ok {
+			return nil, fmt.Errorf("%s contains unsupported semantic token %q", field, key)
+		}
+		value = strings.TrimSpace(value)
+		if value == "" {
+			return nil, fmt.Errorf("%s.%s must be a non-empty string", field, key)
+		}
+		out[key] = value
+	}
+	return out, nil
+}
+
+type rawSettingDefinition struct {
+	Type        SettingType      `json:"type"`
+	Title       string           `json:"title"`
+	Description string           `json:"description"`
+	Default     json.RawMessage  `json:"default"`
+	Enum        []string         `json:"enum"`
+	Scope       SettingScope     `json:"scope"`
+	Apply       SettingApplyMode `json:"apply"`
+}
+
+func normalizeSettings(pluginID string, raw json.RawMessage) (map[string]SettingDefinition, error) {
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null")) {
+		return nil, nil
+	}
+	entries, err := decodeJSONObject("contributes.settings", trimmed)
+	if err != nil {
+		return nil, err
+	}
+	settings := make(map[string]SettingDefinition, len(entries))
+	for localID, rawDefinition := range entries {
+		if !validSettingID(localID) {
+			return nil, fmt.Errorf("contributes.settings contains invalid plugin-local id %q", localID)
+		}
+		field := "contributes.settings." + localID
+		if err := validateObjectFields(field, rawDefinition, "type", "title", "description", "default", "enum", "scope", "apply"); err != nil {
+			return nil, err
+		}
+		var rawSetting rawSettingDefinition
+		if err := json.Unmarshal(rawDefinition, &rawSetting); err != nil {
+			return nil, fmt.Errorf("%s: %w", field, err)
+		}
+		definition, err := normalizeSettingDefinition(field, rawSetting)
+		if err != nil {
+			return nil, err
+		}
+		settings[pluginID+"."+localID] = definition
+	}
+	if len(settings) == 0 {
+		return nil, nil
+	}
+	return settings, nil
+}
+
+func normalizeSettingDefinition(field string, raw rawSettingDefinition) (SettingDefinition, error) {
+	raw.Title = strings.TrimSpace(raw.Title)
+	raw.Description = strings.TrimSpace(raw.Description)
+	if raw.Title == "" {
+		return SettingDefinition{}, fmt.Errorf("%s requires title", field)
+	}
+	switch raw.Type {
+	case SettingTypeBoolean, SettingTypeString, SettingTypeNumber, SettingTypeEnum:
+	default:
+		return SettingDefinition{}, fmt.Errorf("%s has unsupported type %q", field, raw.Type)
+	}
+	if raw.Scope != SettingScopeUser && raw.Scope != SettingScopeWorkspace {
+		return SettingDefinition{}, fmt.Errorf("%s scope must be user or workspace", field)
+	}
+	if raw.Apply != SettingApplyLive && raw.Apply != SettingApplyRestart {
+		return SettingDefinition{}, fmt.Errorf("%s apply must be live or restart", field)
+	}
+	defaultValue, err := decodeJSONDefault(raw.Default)
+	if err != nil {
+		return SettingDefinition{}, fmt.Errorf("%s default: %w", field, err)
+	}
+	switch raw.Type {
+	case SettingTypeBoolean:
+		if _, ok := defaultValue.(bool); !ok {
+			return SettingDefinition{}, fmt.Errorf("%s default must be boolean", field)
+		}
+	case SettingTypeString:
+		if _, ok := defaultValue.(string); !ok {
+			return SettingDefinition{}, fmt.Errorf("%s default must be string", field)
+		}
+	case SettingTypeNumber:
+		if _, ok := defaultValue.(json.Number); !ok {
+			return SettingDefinition{}, fmt.Errorf("%s default must be number", field)
+		}
+	case SettingTypeEnum:
+		value, ok := defaultValue.(string)
+		if !ok {
+			return SettingDefinition{}, fmt.Errorf("%s default must be a string enum value", field)
+		}
+		choices, err := normalizeEnumChoices(field+".enum", raw.Enum)
+		if err != nil {
+			return SettingDefinition{}, err
+		}
+		raw.Enum = choices
+		if !containsString(choices, value) {
+			return SettingDefinition{}, fmt.Errorf("%s default %q is not an enum choice", field, value)
+		}
+	}
+	if raw.Type != SettingTypeEnum && len(raw.Enum) > 0 {
+		return SettingDefinition{}, fmt.Errorf("%s enum choices require type enum", field)
+	}
+	return SettingDefinition{
+		Type: raw.Type, Title: raw.Title, Description: raw.Description, Default: defaultValue,
+		Enum: raw.Enum, Scope: raw.Scope, Apply: raw.Apply,
+	}, nil
+}
+
+func decodeJSONDefault(raw json.RawMessage) (any, error) {
+	if len(bytes.TrimSpace(raw)) == 0 {
+		return nil, errors.New("is required")
+	}
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.UseNumber()
+	var value any
+	if err := decoder.Decode(&value); err != nil {
+		return nil, err
+	}
+	if err := ensureJSONEOF(decoder); err != nil {
+		return nil, err
+	}
+	if number, ok := value.(json.Number); ok {
+		if _, err := number.Float64(); err != nil {
+			return nil, errors.New("must be a finite JSON number")
+		}
+	}
+	if value == nil {
+		return nil, errors.New("must match the setting type")
+	}
+	return value, nil
+}
+
+func normalizeEnumChoices(field string, values []string) ([]string, error) {
+	if len(values) == 0 {
+		return nil, fmt.Errorf("%s must contain at least one choice", field)
+	}
+	out := make([]string, 0, len(values))
+	seen := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			return nil, fmt.Errorf("%s contains an empty choice", field)
+		}
+		if _, ok := seen[value]; ok {
+			return nil, fmt.Errorf("%s contains duplicate choice %q", field, value)
+		}
+		seen[value] = struct{}{}
+		out = append(out, value)
+	}
+	return out, nil
+}
+
+func validSettingID(value string) bool {
+	if value == "" || len(value) > 128 {
+		return false
+	}
+	for _, segment := range strings.Split(value, ".") {
+		if !validCommandID(segment) {
+			return false
+		}
+	}
+	return true
+}
+
+func validateObjectFields(field string, raw json.RawMessage, allowed ...string) error {
+	trimmed := bytes.TrimSpace(raw)
+	if bytes.Equal(trimmed, []byte("null")) {
+		return nil
+	}
+	fields, err := decodeJSONObject(field, trimmed)
+	if err != nil {
+		return err
+	}
+	allowedSet := make(map[string]struct{}, len(allowed))
+	for _, name := range allowed {
+		allowedSet[name] = struct{}{}
+	}
+	for name := range fields {
+		if _, ok := allowedSet[name]; !ok {
+			return fmt.Errorf("%s contains unknown field %q", field, name)
+		}
+	}
+	return nil
+}
+
+func decodeJSONObject(field string, raw json.RawMessage) (map[string]json.RawMessage, error) {
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	token, err := decoder.Token()
+	if err != nil {
+		return nil, fmt.Errorf("%s must be an object: %w", field, err)
+	}
+	delim, ok := token.(json.Delim)
+	if !ok || delim != '{' {
+		return nil, fmt.Errorf("%s must be an object", field)
+	}
+	out := make(map[string]json.RawMessage)
+	for decoder.More() {
+		token, err := decoder.Token()
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", field, err)
+		}
+		name, ok := token.(string)
+		if !ok {
+			return nil, fmt.Errorf("%s contains an invalid field name", field)
+		}
+		if _, exists := out[name]; exists {
+			return nil, fmt.Errorf("%s contains duplicate id or field %q", field, name)
+		}
+		var value json.RawMessage
+		if err := decoder.Decode(&value); err != nil {
+			return nil, fmt.Errorf("%s.%s: %w", field, name, err)
+		}
+		out[name] = value
+	}
+	if _, err := decoder.Token(); err != nil {
+		return nil, fmt.Errorf("%s: %w", field, err)
+	}
+	if err := ensureJSONEOF(decoder); err != nil {
+		return nil, fmt.Errorf("%s: %w", field, err)
+	}
+	return out, nil
+}
+
+func ensureJSONEOF(decoder *json.Decoder) error {
+	var extra any
+	if err := decoder.Decode(&extra); err != io.EOF {
+		if err == nil {
+			return errors.New("must contain one JSON value")
+		}
+		return err
+	}
+	return nil
+}
+
+func containsString(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }
 
 func normalizeRuntime(root string, raw json.RawMessage) (*RuntimeSpec, string, error) {

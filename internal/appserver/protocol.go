@@ -561,8 +561,56 @@ type ExtensionCommandDescriptor struct {
 	Keywords    []string             `json:"keywords,omitempty"`
 }
 
+type ExtensionDesktopDescriptor struct {
+	Entry string `json:"entry"`
+}
+
+type ExtensionThemeDescriptor struct {
+	ID     string            `json:"id"`
+	Name   string            `json:"name"`
+	Base   string            `json:"base"`
+	Tokens map[string]string `json:"tokens"`
+	Syntax map[string]string `json:"syntax,omitempty"`
+}
+
+type ExtensionSettingType string
+
+const (
+	ExtensionSettingBoolean ExtensionSettingType = "boolean"
+	ExtensionSettingString  ExtensionSettingType = "string"
+	ExtensionSettingNumber  ExtensionSettingType = "number"
+	ExtensionSettingEnum    ExtensionSettingType = "enum"
+)
+
+type ExtensionSettingScope string
+
+const (
+	ExtensionSettingUser      ExtensionSettingScope = "user"
+	ExtensionSettingWorkspace ExtensionSettingScope = "workspace"
+)
+
+type ExtensionSettingApplyMode string
+
+const (
+	ExtensionSettingLive    ExtensionSettingApplyMode = "live"
+	ExtensionSettingRestart ExtensionSettingApplyMode = "restart"
+)
+
+type ExtensionSettingDescriptor struct {
+	ID          string                    `json:"id"`
+	Type        ExtensionSettingType      `json:"type"`
+	Title       string                    `json:"title"`
+	Description string                    `json:"description,omitempty"`
+	Default     any                       `json:"default"`
+	Enum        []string                  `json:"enum,omitempty"`
+	Scope       ExtensionSettingScope     `json:"scope"`
+	Apply       ExtensionSettingApplyMode `json:"apply"`
+}
+
 type ExtensionContributions struct {
 	Commands []ExtensionCommandDescriptor `json:"commands,omitempty"`
+	Themes   []ExtensionThemeDescriptor   `json:"themes,omitempty"`
+	Settings []ExtensionSettingDescriptor `json:"settings,omitempty"`
 }
 
 type ExtensionPendingUpdate struct {
@@ -574,23 +622,24 @@ type ExtensionPendingUpdate struct {
 }
 
 type ExtensionInventoryRecord struct {
-	ID                   string                  `json:"id"`
-	Name                 string                  `json:"name"`
-	Description          string                  `json:"description,omitempty"`
-	Kind                 extensions.Kind         `json:"kind"`
-	Provenance           extensions.Provenance   `json:"provenance"`
-	State                ExtensionState          `json:"state"`
-	Executable           bool                    `json:"executable,omitempty"`
-	Fingerprint          string                  `json:"fingerprint,omitempty"`
-	GrantScope           extensions.GrantScope   `json:"grant_scope,omitempty"`
-	RequestedPermissions []string                `json:"requested_permissions,omitempty"`
-	UnsupportedFields    []string                `json:"unsupported_fields,omitempty"`
-	ParentID             string                  `json:"parent_id,omitempty"`
-	ApprovalState        ExtensionApprovalState  `json:"approval_state,omitempty"`
-	RuntimeState         ExtensionRuntimeState   `json:"runtime_state,omitempty"`
-	Enabled              *bool                   `json:"enabled,omitempty"`
-	Contributions        *ExtensionContributions `json:"contributions,omitempty"`
-	PendingUpdate        *ExtensionPendingUpdate `json:"pending_update,omitempty"`
+	ID                   string                      `json:"id"`
+	Name                 string                      `json:"name"`
+	Description          string                      `json:"description,omitempty"`
+	Kind                 extensions.Kind             `json:"kind"`
+	Provenance           extensions.Provenance       `json:"provenance"`
+	State                ExtensionState              `json:"state"`
+	Executable           bool                        `json:"executable,omitempty"`
+	Fingerprint          string                      `json:"fingerprint,omitempty"`
+	GrantScope           extensions.GrantScope       `json:"grant_scope,omitempty"`
+	RequestedPermissions []string                    `json:"requested_permissions,omitempty"`
+	UnsupportedFields    []string                    `json:"unsupported_fields,omitempty"`
+	ParentID             string                      `json:"parent_id,omitempty"`
+	ApprovalState        ExtensionApprovalState      `json:"approval_state,omitempty"`
+	RuntimeState         ExtensionRuntimeState       `json:"runtime_state,omitempty"`
+	Enabled              *bool                       `json:"enabled,omitempty"`
+	Desktop              *ExtensionDesktopDescriptor `json:"desktop,omitempty"`
+	Contributions        *ExtensionContributions     `json:"contributions,omitempty"`
+	PendingUpdate        *ExtensionPendingUpdate     `json:"pending_update,omitempty"`
 }
 
 type ExtensionPackageAction string

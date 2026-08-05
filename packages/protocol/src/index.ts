@@ -280,8 +280,37 @@ export type ExtensionCommandDescriptor = {
   keywords?: string[];
 };
 
+export interface ExtensionDesktopDescriptor {
+  entry: string;
+}
+
+export interface ExtensionThemeDescriptor {
+  id: string;
+  name: string;
+  base: "light" | "dark";
+  tokens: Record<string, string>;
+  syntax?: Record<string, string>;
+}
+
+export type ExtensionSettingType = "boolean" | "string" | "number" | "enum";
+export type ExtensionSettingScope = "user" | "workspace";
+export type ExtensionSettingApplyMode = "live" | "restart";
+
+export interface ExtensionSettingDescriptor {
+  id: string;
+  type: ExtensionSettingType;
+  title: string;
+  description?: string;
+  default: boolean | string | number;
+  enum?: string[];
+  scope: ExtensionSettingScope;
+  apply: ExtensionSettingApplyMode;
+}
+
 export type ExtensionContributions = {
   commands?: ExtensionCommandDescriptor[];
+  themes?: ExtensionThemeDescriptor[];
+  settings?: ExtensionSettingDescriptor[];
 };
 
 export type ExtensionPendingUpdate = {
@@ -317,6 +346,7 @@ export type ExtensionInventoryRecord = {
   approval_state?: ExtensionApprovalState;
   runtime_state?: ExtensionRuntimeState;
   enabled?: boolean;
+  desktop?: ExtensionDesktopDescriptor;
   contributions?: ExtensionContributions;
   pending_update?: ExtensionPendingUpdate;
 };
