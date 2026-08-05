@@ -2473,6 +2473,28 @@ export function App(): JSX.Element {
     });
     const streamStatus = activeThreadStreamStatus;
     return (
+      <PluginSurface
+        host={desktopPluginHost}
+        id="conversation.composer"
+        context={{
+          version: 1,
+          variant,
+          prompt,
+          running: activeThreadIsRunning,
+          readOnly: activeThreadReadOnly,
+          activeThreadId: activeThread?.id,
+          actions: {
+            setPrompt,
+            send: (value?: string) => void sendPrompt("queue", value),
+            interrupt: () => void interrupt(),
+            startNewThread: startNewThreadWithComposerFocus,
+            openSettings: () => {
+              setSettingsInitialPage("providers");
+              setSettingsOpen(true);
+            },
+          },
+        }}
+        fallback={
       <Composer
         variant={variant}
         mainConversation
@@ -2614,6 +2636,8 @@ export function App(): JSX.Element {
         onClearGoal={clearCurrentGoal}
         queryHistorySessionID={activeThread?.id}
         queryHistory={queryTextsForThread(activeThread)}
+      />
+        }
       />
     );
   }
