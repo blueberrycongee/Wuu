@@ -17,6 +17,7 @@ ships its own private core and does not depend on a separately installed CLI.
 - [App-server protocol](integrations/app-server-protocol.md) — build another shell
   around the core.
 - [Security model](reference/security-model.md) — understand trust and data boundaries.
+- [Desktop UI plugins](reference/desktop-plugins.md) — add themes and replace or wrap major UI surfaces.
 - [Development guide](project/development.md) — build and test the project.
 
 ## Files are the durable result
