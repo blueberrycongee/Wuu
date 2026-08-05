@@ -18,13 +18,10 @@ import (
 const workspaceStateArchiveDirName = ".archived"
 
 // workspaceMemoryDirNames are the state-dir subdirectories that hold
-// memory-class data: "memory" is the per-workspace project memory
-// (internal/sessionmemory), "memory-store" is the legacy workspace
-// memstore layer. Both fall under self-consistency invariant 3 (memory is
+// memory-class data. They fall under self-consistency invariant 3 (memory is
 // archived, never hard-deleted).
 var workspaceMemoryDirNames = map[string]bool{
-	"memory":       true,
-	"memory-store": true,
+	"memory": true,
 }
 
 // handleWorkspaceStateCleanup reclaims the local state of a workspace the

@@ -17,7 +17,6 @@ func seedWorkspaceStateDir(t *testing.T, stateDir string) {
 		filepath.Join("sessions", "thread-1", "goal_runtime.json"): "{}\n",
 		filepath.Join("goals", "goal-1", "state.json"):             "{}\n",
 		filepath.Join("memory", "MEMORY.md"):                       "# project memory\n",
-		filepath.Join("memory-store", "entries.jsonl"):             "{}\n",
 	}
 	for rel, content := range seed {
 		path := filepath.Join(stateDir, rel)
@@ -76,10 +75,6 @@ func TestServerWorkspaceStateCleanupArchivesMemoryAndDeletesRest(t *testing.T) {
 	if data, err := os.ReadFile(archivedMemory); err != nil || string(data) != "# project memory\n" {
 		t.Fatalf("archived project memory missing: err=%v data=%q", err, data)
 	}
-	archivedStore := filepath.Join(stateDir, workspaceStateArchiveDirName, "memory-store", "entries.jsonl")
-	if _, err := os.Stat(archivedStore); err != nil {
-		t.Fatalf("archived memory-store missing: %v", err)
-	}
 }
 
 func TestServerWorkspaceStateCleanupIsRepeatableAndKeepsArchives(t *testing.T) {
@@ -133,8 +128,7 @@ func TestServerWorkspaceStateCleanupIsRepeatableAndKeepsArchives(t *testing.T) {
 	}
 	memoryArchives := 0
 	for _, entry := range archiveEntries {
-		// Counts "memory" plus timestamp-suffixed "memory-<UTC>" archives,
-		// excluding the separately archived "memory-store" directory.
+		// Counts "memory" plus timestamp-suffixed "memory-<UTC>" archives.
 		if entry.Name() == "memory" || strings.HasPrefix(entry.Name(), "memory-2") {
 			memoryArchives++
 		}

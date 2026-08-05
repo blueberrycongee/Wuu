@@ -12,7 +12,8 @@ func writeTopic(t *testing.T, dir, file, name, description, body string) {
 	if err := EnsureDir(dir); err != nil {
 		t.Fatalf("ensure %s: %v", dir, err)
 	}
-	if err := writeTopicFile(dir, file, name, description, "lesson", body); err != nil {
+	content := "---\nname: " + name + "\ndescription: " + description + "\ntype: lesson\n---\n\n" + body + "\n"
+	if err := os.WriteFile(filepath.Join(dir, file), []byte(content), 0o644); err != nil {
 		t.Fatalf("write topic %s: %v", file, err)
 	}
 	if err := appendIndexLines(dir, []string{indexLine(name, file, description)}); err != nil {

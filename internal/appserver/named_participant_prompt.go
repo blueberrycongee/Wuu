@@ -75,12 +75,5 @@ func (s *Server) readParticipantMemory(p participant.Participant) (string, error
 	if err != nil {
 		return "", fmt.Errorf("read participant memory: %w", err)
 	}
-	if strings.TrimSpace(snapshot.Content) != "" {
-		return snapshot.Content, nil
-	}
-	legacy, err := memdir.ReadIndex(workspace)
-	if err != nil {
-		return "", fmt.Errorf("read participant memory: %w", err)
-	}
-	return legacy.Content, nil
+	return snapshot.Content, nil
 }

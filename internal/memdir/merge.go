@@ -204,3 +204,63 @@ func parseTopicFrontmatter(content string) (name, description string) {
 	}
 	return name, description
 }
+
+func appendIndexLines(dir string, lines []string) error {
+	if len(lines) == 0 {
+		return nil
+	}
+	path := filepath.Join(dir, EntrypointName)
+	existing := ""
+	if raw, err := os.ReadFile(path); err == nil {
+		existing = string(raw)
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("read %s: %w", EntrypointName, err)
+	}
+	out := strings.TrimRight(existing, "\n")
+	added := false
+	for _, line := range lines {
+		if strings.Contains(existing, line) {
+			continue
+		}
+		if out != "" {
+			out += "\n"
+		}
+		out += line
+		added = true
+	}
+	if !added {
+		return nil
+	}
+	if err := os.WriteFile(path, []byte(out+"\n"), 0o644); err != nil {
+		return fmt.Errorf("write %s: %w", EntrypointName, err)
+	}
+	return nil
+}
+
+func indexLine(title, file, hook string) string {
+	line := fmt.Sprintf("- [%s](%s)", title, file)
+	if hook != "" {
+		line += " — " + hook
+	}
+	return truncateRunes(line, 150)
+}
+
+func uniqueTopicName(base string, used map[string]struct{}) string {
+	name := base
+	for i := 2; ; i++ {
+		if _, taken := used[strings.ToLower(name+".md")]; !taken {
+			break
+		}
+		name = fmt.Sprintf("%s-%d", base, i)
+	}
+	used[strings.ToLower(name+".md")] = struct{}{}
+	return name
+}
+
+func truncateRunes(s string, max int) string {
+	runes := []rune(s)
+	if len(runes) <= max {
+		return s
+	}
+	return strings.TrimSpace(string(runes[:max-1])) + "…"
+}
