@@ -199,7 +199,11 @@ export function SkillsCatalog({
     setPackageMutation(`${record.id}:${action}`);
     setPackageMutationError("");
     try {
-      await onUpdateExtensionPackage({ id: record.id, fingerprint: record.fingerprint, action });
+      const fingerprint =
+        action === "promote_update" || action === "reject_update"
+          ? record.pending_update?.fingerprint
+          : record.fingerprint;
+      await onUpdateExtensionPackage({ id: record.id, fingerprint, action });
     } catch (error) {
       setPackageMutationError(error instanceof Error ? error.message : translateCurrent("skills.pluginUpdateFailed"));
     } finally {
@@ -338,7 +342,11 @@ export function SkillsCatalog({
               const primaryAction = extensionPackagePrimaryAction(managed);
               const secondaryAction = extensionPackageSecondaryAction(managed);
               const mutating = packageMutation.startsWith(`${record.id}:`);
-              const grantUnavailable = primaryAction === "grant" && !record.fingerprint;
+              const grantUnavailable =
+                (primaryAction === "grant" || primaryAction === "promote_update") &&
+                !(primaryAction === "promote_update"
+                  ? record.pending_update?.fingerprint
+                  : record.fingerprint);
               const removable = isRemovableUserPlugin(record);
               return (
                 <article key={record.id} className="skill-row extension-package-row">
@@ -371,6 +379,13 @@ export function SkillsCatalog({
                         {t("skills.pluginScope", { scope: record.provenance.scope })}
                       </span>
                       <span>{extensionContributionSummary(managed, t)}</span>
+                      {record.pending_update ? (
+                        <span>
+                          {t("skills.pluginUpdateReady", {
+                            version: record.pending_update.version ?? "",
+                          })}
+                        </span>
+                      ) : null}
                     </span>
                     <span className="extension-package-permissions">
                       <strong>{t("skills.pluginPermissions")}</strong>
@@ -469,6 +484,9 @@ function extensionPackageApproval(record: ManagedExtensionPackage): NonNullable<
 }
 
 function extensionPackagePrimaryAction(record: ManagedExtensionPackage): ExtensionPackageAction {
+  if (record.pending_update) {
+    return "promote_update";
+  }
   const approval = extensionPackageApproval(record);
   if (approval === "pending" || approval === "changed" || approval === "rejected") {
     return "grant";
@@ -477,6 +495,9 @@ function extensionPackagePrimaryAction(record: ManagedExtensionPackage): Extensi
 }
 
 function extensionPackageSecondaryAction(record: ManagedExtensionPackage): ExtensionPackageAction | undefined {
+  if (record.pending_update) {
+    return "reject_update";
+  }
   const approval = extensionPackageApproval(record);
   if (approval === "pending" || approval === "changed") {
     return "reject";
@@ -488,6 +509,9 @@ function extensionPackageSecondaryAction(record: ManagedExtensionPackage): Exten
 }
 
 function extensionPackageTone(record: ManagedExtensionPackage): "good" | "warning" | "danger" | "muted" {
+  if (record.pending_update) {
+    return "warning";
+  }
   if (record.runtime_state === "failed" || extensionPackageApproval(record) === "changed") {
     return "danger";
   }
@@ -501,6 +525,7 @@ function extensionPackageTone(record: ManagedExtensionPackage): "good" | "warnin
 }
 
 function extensionPackageStatusLabel(record: ManagedExtensionPackage, t: ReturnType<typeof useI18n>["t"]): string {
+  if (record.pending_update) return t("skills.pluginStatusUpdatePending");
   if (record.runtime_state === "failed") return t("skills.pluginStatusFailed");
   if (record.runtime_state === "starting") return t("skills.pluginStatusStarting");
   if (record.runtime_state === "active") return t("skills.pluginStatusActive");
@@ -524,6 +549,8 @@ function extensionPackageActionLabel(
   if (action === "reject") return t("skills.pluginReject");
   if (action === "revoke") return t("skills.pluginRevoke");
   if (action === "enable") return t("skills.pluginEnable");
+  if (action === "promote_update") return t("skills.pluginPromoteUpdate");
+  if (action === "reject_update") return t("skills.pluginRejectUpdate");
   return t("skills.pluginDisable");
 }
 

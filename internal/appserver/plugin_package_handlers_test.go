@@ -4,12 +4,15 @@ import (
 	"archive/zip"
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/blueberrycongee/wuu/internal/extensions"
+	pluginpkg "github.com/blueberrycongee/wuu/internal/plugin"
 	"github.com/blueberrycongee/wuu/internal/statepath"
 )
 
@@ -83,6 +86,102 @@ func TestPluginPackageInstallDirectoryIsPendingAndDoesNotActivate(t *testing.T) 
 		if skill.Name == "pending-skill" {
 			t.Fatalf("unapproved plugin skill was activated: %+v", skill)
 		}
+	}
+}
+
+func TestPluginPackageUpdateWaitsForExactApprovalBeforePromotion(t *testing.T) {
+	rt := newTestRuntime(t, &fakeClient{})
+	rt.WuuHome = retryingTempDir(t)
+	configPath, err := statepath.ConfigPath(rt.HomeDir)
+	if err != nil {
+		t.Fatalf("resolve config path: %v", err)
+	}
+	writePluginPackageFile(t, configPath, `{
+  "default_provider": "fake-provider",
+  "providers": {"fake-provider": {"type": "openai-compatible", "base_url": "https://example.test/v1", "model": "fake-model"}}
+}`)
+
+	versionOne := writeManagedPluginPackage(t, "update-demo", "1.0.0", "first generation")
+	out := &lockedBuffer{}
+	srv := New(rt, out)
+	callPluginPackageRPC(t, srv, "install-v1", MethodPluginPackageInstall, PluginPackageInstallParams{Path: versionOne})
+	installResponse := responseByID(t, parseOutput(t, out.String()), "install-v1")
+	installed := remarshal[PluginPackageInstallResult](t, installResponse["result"])
+	installedRecord := pluginPackageRecord(t, installed.ExtensionInventory, "update-demo")
+	callPluginPackageRPC(t, srv, "grant-v1", MethodExtensionPackageUpdate, ExtensionPackageUpdateParams{
+		ID: installedRecord.ID, Fingerprint: installedRecord.Fingerprint, Action: ExtensionPackageGrant,
+	})
+	if response := responseByID(t, parseOutput(t, out.String()), "grant-v1"); response["error"] != nil {
+		t.Fatalf("grant v1 response = %+v", response)
+	}
+
+	versionTwo := writeManagedPluginPackage(t, "update-demo", "2.0.0", "second generation")
+	callPluginPackageRPC(t, srv, "stage-v2", MethodPluginPackageInstall, PluginPackageInstallParams{Path: versionTwo})
+	stageResponse := responseByID(t, parseOutput(t, out.String()), "stage-v2")
+	if stageResponse["error"] != nil {
+		t.Fatalf("stage v2 response = %+v", stageResponse)
+	}
+	staged := remarshal[PluginPackageInstallResult](t, stageResponse["result"])
+	if !staged.Pending || staged.Replaced || staged.ActiveFingerprint != installed.Package.Fingerprint {
+		t.Fatalf("staged result = %+v", staged)
+	}
+	stagedRecord := pluginPackageRecord(t, staged.ExtensionInventory, "update-demo")
+	if stagedRecord.PendingUpdate == nil || stagedRecord.PendingUpdate.Version != "2.0.0" || stagedRecord.PendingUpdate.Fingerprint != staged.Package.Fingerprint {
+		t.Fatalf("staged inventory record = %+v", stagedRecord)
+	}
+	if len(rt.Plugins) != 1 || rt.Plugins[0].Version != "1.0.0" || len(rt.ActivePlugins) != 1 || rt.ActivePlugins[0].Version != "1.0.0" {
+		t.Fatalf("active generation changed before approval: plugins=%+v active=%+v", rt.Plugins, rt.ActivePlugins)
+	}
+
+	callPluginPackageRPC(t, srv, "stale-promote", MethodExtensionPackageUpdate, ExtensionPackageUpdateParams{
+		ID: stagedRecord.ID, Fingerprint: installed.Package.Fingerprint, Action: ExtensionPackagePromoteUpdate,
+	})
+	if response := responseByID(t, parseOutput(t, out.String()), "stale-promote"); response["error"] == nil {
+		t.Fatalf("stale promotion response = %+v", response)
+	}
+	if len(rt.ActivePlugins) != 1 || rt.ActivePlugins[0].Version != "1.0.0" {
+		t.Fatalf("stale approval changed active generation: %+v", rt.ActivePlugins)
+	}
+
+	callPluginPackageRPC(t, srv, "promote-v2", MethodExtensionPackageUpdate, ExtensionPackageUpdateParams{
+		ID: stagedRecord.ID, Fingerprint: staged.Package.Fingerprint, Action: ExtensionPackagePromoteUpdate,
+	})
+	promoteResponse := responseByID(t, parseOutput(t, out.String()), "promote-v2")
+	if promoteResponse["error"] != nil {
+		t.Fatalf("promote v2 response = %+v", promoteResponse)
+	}
+	promoted := remarshal[ExtensionPackageUpdateResult](t, promoteResponse["result"])
+	promotedRecord := pluginPackageRecord(t, promoted.ExtensionInventory, "update-demo")
+	if promotedRecord.PendingUpdate != nil || promotedRecord.Fingerprint != staged.Package.Fingerprint {
+		t.Fatalf("promoted inventory record = %+v", promotedRecord)
+	}
+	if len(rt.ActivePlugins) != 1 || rt.ActivePlugins[0].Version != "2.0.0" {
+		t.Fatalf("approved generation was not activated: %+v", rt.ActivePlugins)
+	}
+	if rt.ExtensionSettings == nil {
+		t.Fatal("approved update settings were not applied")
+	}
+	grant, ok := rt.ExtensionSettings.FindGrant(stagedRecord.ID, staged.Package.Fingerprint)
+	if !ok || grant.Fingerprint != staged.Package.Fingerprint {
+		t.Fatalf("approved update grant = %+v, %v", grant, ok)
+	}
+
+	versionThree := writeManagedPluginPackage(t, "update-demo", "3.0.0", "third generation")
+	callPluginPackageRPC(t, srv, "stage-v3", MethodPluginPackageInstall, PluginPackageInstallParams{Path: versionThree})
+	stageThreeResponse := responseByID(t, parseOutput(t, out.String()), "stage-v3")
+	stageThree := remarshal[PluginPackageInstallResult](t, stageThreeResponse["result"])
+	callPluginPackageRPC(t, srv, "reject-v3", MethodExtensionPackageUpdate, ExtensionPackageUpdateParams{
+		ID: stagedRecord.ID, Fingerprint: stageThree.Package.Fingerprint, Action: ExtensionPackageRejectUpdate,
+	})
+	rejectResponse := responseByID(t, parseOutput(t, out.String()), "reject-v3")
+	if rejectResponse["error"] != nil {
+		t.Fatalf("reject v3 response = %+v", rejectResponse)
+	}
+	if len(rt.ActivePlugins) != 1 || rt.ActivePlugins[0].Version != "2.0.0" {
+		t.Fatalf("rejection changed active generation: %+v", rt.ActivePlugins)
+	}
+	if _, err := pluginpkg.ReadPendingUpdate(rt.WuuHome, "update-demo"); !errors.Is(err, pluginpkg.ErrPendingUpdateNotFound) {
+		t.Fatalf("pending update after rejection = %v", err)
 	}
 }
 
@@ -252,6 +351,22 @@ func writePluginPackageFile(t *testing.T, path, contents string) {
 	if err := os.WriteFile(path, []byte(contents), 0o755); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func writeManagedPluginPackage(t *testing.T, id, version, contents string) string {
+	t.Helper()
+	source := t.TempDir()
+	writePluginPackageFile(t, filepath.Join(source, "plugin.json"), fmt.Sprintf(`{"id":%q,"version":%q,"skills":["skills"]}`, id, version))
+	writePluginPackageFile(t, filepath.Join(source, "skills", "managed-skill", "SKILL.md"), fmt.Sprintf(`---
+name: managed-skill
+description: Verifies managed plugin generations.
+---
+
+# Managed skill
+
+%s
+`, contents))
+	return source
 }
 
 func writePluginPackageZip(t *testing.T, path string, entries map[string]string) {

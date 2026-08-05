@@ -565,6 +565,14 @@ type ExtensionContributions struct {
 	Commands []ExtensionCommandDescriptor `json:"commands,omitempty"`
 }
 
+type ExtensionPendingUpdate struct {
+	Version              string   `json:"version,omitempty"`
+	Fingerprint          string   `json:"fingerprint"`
+	ActiveFingerprint    string   `json:"active_fingerprint"`
+	RequestedPermissions []string `json:"requested_permissions,omitempty"`
+	EffectivePermissions []string `json:"effective_permissions,omitempty"`
+}
+
 type ExtensionInventoryRecord struct {
 	ID                   string                  `json:"id"`
 	Name                 string                  `json:"name"`
@@ -582,16 +590,19 @@ type ExtensionInventoryRecord struct {
 	RuntimeState         ExtensionRuntimeState   `json:"runtime_state,omitempty"`
 	Enabled              *bool                   `json:"enabled,omitempty"`
 	Contributions        *ExtensionContributions `json:"contributions,omitempty"`
+	PendingUpdate        *ExtensionPendingUpdate `json:"pending_update,omitempty"`
 }
 
 type ExtensionPackageAction string
 
 const (
-	ExtensionPackageGrant   ExtensionPackageAction = "grant"
-	ExtensionPackageReject  ExtensionPackageAction = "reject"
-	ExtensionPackageRevoke  ExtensionPackageAction = "revoke"
-	ExtensionPackageEnable  ExtensionPackageAction = "enable"
-	ExtensionPackageDisable ExtensionPackageAction = "disable"
+	ExtensionPackageGrant         ExtensionPackageAction = "grant"
+	ExtensionPackageReject        ExtensionPackageAction = "reject"
+	ExtensionPackageRevoke        ExtensionPackageAction = "revoke"
+	ExtensionPackageEnable        ExtensionPackageAction = "enable"
+	ExtensionPackageDisable       ExtensionPackageAction = "disable"
+	ExtensionPackagePromoteUpdate ExtensionPackageAction = "promote_update"
+	ExtensionPackageRejectUpdate  ExtensionPackageAction = "reject_update"
 )
 
 type ExtensionPackageUpdateParams struct {
@@ -647,6 +658,8 @@ type PluginPackageInstallParams struct {
 type PluginPackageInstallResult struct {
 	Package            PluginPackageMetadata      `json:"package"`
 	Replaced           bool                       `json:"replaced"`
+	Pending            bool                       `json:"pending"`
+	ActiveFingerprint  string                     `json:"active_fingerprint,omitempty"`
 	ExtensionInventory []ExtensionInventoryRecord `json:"extension_inventory"`
 	Skills             []SkillSummary             `json:"skills"`
 }

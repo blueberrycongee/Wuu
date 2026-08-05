@@ -324,6 +324,12 @@ func (s *Server) currentExtensionInventory() []ExtensionInventoryRecord {
 	for _, item := range s.rt.ActivePlugins {
 		activePluginSubjects[item.SubjectID] = struct{}{}
 	}
+	pendingUpdatesByID := map[string]pluginpkg.PendingUpdate{}
+	if pendingUpdates, err := pluginpkg.ListPendingUpdates(s.rt.WuuHome); err == nil {
+		for _, pending := range pendingUpdates {
+			pendingUpdatesByID[pending.Package.ID] = pending
+		}
+	}
 
 	records := make([]ExtensionInventoryRecord, 0, len(s.rt.Skills)+len(s.rt.Plugins))
 	for _, skill := range s.rt.Skills {
@@ -410,6 +416,15 @@ func (s *Server) currentExtensionInventory() []ExtensionInventoryRecord {
 		}
 		if len(commands) > 0 {
 			packageRecord.Contributions = &ExtensionContributions{Commands: commands}
+		}
+		if pending, ok := pendingUpdatesByID[item.ID]; ok && item.Source == "user" {
+			packageRecord.PendingUpdate = &ExtensionPendingUpdate{
+				Version:              pending.Package.Version,
+				Fingerprint:          pending.Package.Fingerprint,
+				ActiveFingerprint:    pending.ActiveFingerprint,
+				RequestedPermissions: cloneSortedStrings(pending.Package.RequestedPermissions),
+				EffectivePermissions: cloneSortedStrings(pending.Package.EffectivePermissions),
+			}
 		}
 		records = append(records, packageRecord)
 
@@ -722,6 +737,9 @@ func (s *Server) handleExtensionPackageUpdate(req Request) error {
 	}
 	if selected == nil {
 		return s.writeResponse(req.ID, nil, fmt.Errorf("extension package %q was not found", params.ID))
+	}
+	if params.Action == ExtensionPackagePromoteUpdate || params.Action == ExtensionPackageRejectUpdate {
+		return s.handlePendingPluginUpdate(req, params, *selected)
 	}
 	providedFingerprint := strings.TrimSpace(params.Fingerprint)
 	if providedFingerprint != "" && providedFingerprint != selected.Fingerprint {

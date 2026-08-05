@@ -284,6 +284,14 @@ export type ExtensionContributions = {
   commands?: ExtensionCommandDescriptor[];
 };
 
+export type ExtensionPendingUpdate = {
+  version?: string;
+  fingerprint: string;
+  active_fingerprint: string;
+  requested_permissions?: string[];
+  effective_permissions?: string[];
+};
+
 export type ExtensionProvenance = {
   kind: ExtensionKind;
   source: string;
@@ -310,9 +318,17 @@ export type ExtensionInventoryRecord = {
   runtime_state?: ExtensionRuntimeState;
   enabled?: boolean;
   contributions?: ExtensionContributions;
+  pending_update?: ExtensionPendingUpdate;
 };
 
-export type ExtensionPackageAction = "grant" | "reject" | "revoke" | "enable" | "disable";
+export type ExtensionPackageAction =
+  | "grant"
+  | "reject"
+  | "revoke"
+  | "enable"
+  | "disable"
+  | "promote_update"
+  | "reject_update";
 
 export type ExtensionPackageUpdateParams = {
   id: string;
@@ -350,6 +366,8 @@ export type PluginPackageMetadata = {
 export type PluginPackageInstallResult = {
   package: PluginPackageMetadata;
   replaced: boolean;
+  pending: boolean;
+  active_fingerprint?: string;
   extension_inventory: ExtensionInventoryRecord[];
   skills: SkillSummary[];
 };

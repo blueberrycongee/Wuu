@@ -326,6 +326,64 @@ describe("SkillsCatalog", () => {
     expect(container.textContent).toContain("remaining-skill");
   });
 
+  it("requires an exact decision for a staged plugin update", async () => {
+    installSkillList([]);
+    const onUpdateExtensionPackage = vi.fn().mockResolvedValue(undefined);
+    const extensionInventory = [
+      {
+        id: "plugin:user:update-demo",
+        name: "update-demo",
+        kind: "plugin",
+        provenance: {
+          kind: "plugin",
+          source: "user",
+          scope: "user",
+          plugin_id: "update-demo",
+        },
+        state: "granted",
+        fingerprint: "sha256:active",
+        approval_state: "granted",
+        runtime_state: "active",
+        enabled: true,
+        pending_update: {
+          version: "2.0.0",
+          fingerprint: "sha256:pending",
+          active_fingerprint: "sha256:active",
+        },
+      },
+    ] as ExtensionInventoryRecord[];
+
+    await act(async () => {
+      root = createRoot(container);
+      root.render(
+        <SkillsCatalog
+          extensionInventory={extensionInventory}
+          onUpdateExtensionPackage={onUpdateExtensionPackage}
+        />,
+      );
+    });
+
+    expect(container.textContent).toContain("更新待授权");
+    expect(container.textContent).toContain("版本 2.0.0 已就绪");
+    await act(async () => {
+      buttonByText("授权并更新")?.click();
+    });
+    expect(onUpdateExtensionPackage).toHaveBeenLastCalledWith({
+      id: "plugin:user:update-demo",
+      fingerprint: "sha256:pending",
+      action: "promote_update",
+    });
+
+    await act(async () => {
+      buttonByText("拒绝更新")?.click();
+    });
+    expect(onUpdateExtensionPackage).toHaveBeenLastCalledWith({
+      id: "plugin:user:update-demo",
+      fingerprint: "sha256:pending",
+      action: "reject_update",
+    });
+  });
+
   it("surfaces changed fingerprints and runtime failures", async () => {
     installSkillList([]);
     const extensionInventory = [
