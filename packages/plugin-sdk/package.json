@@ -1,0 +1,22 @@
+{
+  "name": "@wuu/plugin-sdk",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "description": "Wuu Plugin SDK — types and helpers for building Wuu plugins",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "@wuu/protocol": "workspace:*"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}
