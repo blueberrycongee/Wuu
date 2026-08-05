@@ -73,7 +73,7 @@
   font-weight: var(--conversation-message-font-weight);
   /*
    * Turn-to-turn separation is the single deliberate boundary value.
-   * The outer conversation grid contributes zero row gap, so this 32px band
+   * The outer conversation grid contributes zero row gap, so this 48px band
    * is the complete visible boundary. It stays larger than the 24px
    * bubble→hairline gap and contains the 6px + 24px hover action row. The hover action
    * bars paint INTO this band as overlays (see the containment note
@@ -90,7 +90,7 @@
  * content-visibility:auto implies paint containment, which clips any
  * descendant painted outside the turn's border box — exactly where the
  * hover action overlays go (user actions above the bubble, agent
- * actions below the answer, both inside the 32px boundary band). Lift
+ * actions below the answer, both inside the 48px boundary band). Lift
  * the containment precisely when those overlays can be visible: while
  * the turn is hovered or holds focus. Off-screen turns keep the
  * rendering shortcut.
@@ -202,10 +202,10 @@
   /*
    * User query → assistant reply is separated by whitespace alone — no
    * hairline. Turn-to-turn separation already owns the single visible
-   * boundary (the 32px --conversation-turn-boundary-gap band on .turn), so a
+   * boundary (the 48px --conversation-turn-boundary-gap band on .turn), so a
    * full-width rule inside a turn duplicated that meaning while splitting one
    * Q&A pair in two. The gap holds at 24px (--conversation-user-rule-gap),
-   * tighter than the 32px turn boundary: tight within a group, loose between.
+   * tighter than the 48px turn boundary: tight within a group, loose between.
    */
   margin-top: calc(
     var(--conversation-user-rule-gap) - var(--conversation-turn-item-gap) -

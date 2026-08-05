@@ -54,7 +54,7 @@
   /* Outer message-flow rhythm. Structural containers must consume these
      landmarks instead of adding their own anonymous gaps on top. */
   --conversation-flow-top-gap: 36px;
-  --conversation-turn-boundary-gap: 32px;
+  --conversation-turn-boundary-gap: 48px;
   --conversation-turn-item-gap: 8px;
   --conversation-composer-clearance: 12px;
 }
@@ -134,7 +134,7 @@
    * process cluster -> final answer, final answer -> action row.
    * `--conversation-user-rule-gap` keeps its name for the query -> reply
    * gap (there is no longer a hairline rule; the 24px band stays under the
-   * 32px turn boundary so a Q&A pair reads as one group).
+   * 48px turn boundary so a Q&A pair reads as one group).
    */
   --conversation-user-rule-gap: 24px;
   --conversation-user-message-trailing-gap: 8px;

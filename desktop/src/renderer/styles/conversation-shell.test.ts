@@ -69,7 +69,7 @@ describe("conversation shell message typography tokens", () => {
     const root = cssRuleBody(":root");
 
     expect(root).toMatch(/--conversation-flow-top-gap:\s*36px;/);
-    expect(root).toMatch(/--conversation-turn-boundary-gap:\s*32px;/);
+    expect(root).toMatch(/--conversation-turn-boundary-gap:\s*48px;/);
     expect(root).toMatch(/--conversation-turn-item-gap:\s*8px;/);
     expect(root).toMatch(/--conversation-composer-clearance:\s*12px;/);
   });

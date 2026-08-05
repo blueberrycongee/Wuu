@@ -1287,14 +1287,14 @@ describe("AssistantTurnShell — turn divider styles", () => {
     const shellRule = cssRule(".turn > .assistant-turn-shell");
     // The full-width hairline that used to split every Q&A pair is gone —
     // turn-to-turn separation already owns the single visible boundary
-    // (the 32px --conversation-turn-boundary-gap band on .turn).
+    // (the 48px --conversation-turn-boundary-gap band on .turn).
     expect(shellRule).not.toContain("border-top");
     expect(shellRule).not.toContain("var(--wuu-hairline)");
     // Separation survives as whitespace: the shell still carries the
     // query -> reply gap so the reply doesn't collide with the query.
     expect(shellRule).toContain("var(--conversation-user-rule-gap)");
     // And it must not have collapsed onto the old rule-process padding,
-    // which would have pushed the pair's gap past the 32px turn boundary.
+    // which would have pushed the pair's gap past the 48px turn boundary.
     expect(shellRule).not.toContain("padding-top");
   });
 
