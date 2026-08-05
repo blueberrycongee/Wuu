@@ -15,7 +15,6 @@ import {
   MessageSquarePlus,
   MessagesSquare,
   Pin,
-  Plug,
   Plus,
   Search,
   Settings,
@@ -57,6 +56,7 @@ import type { ConversationFixtureKind } from "./ConversationFixtures";
 import { SCRATCH_PSEUDO_PROJECT_ID } from "./AppState";
 import { PinnedThreadList, ProjectGroup } from "./ThreadSidebar";
 import { SidebarSection, SidebarSectionDragHandleContext } from "./SidebarSection";
+import { PluginBlocksIcon } from "./PluginBlocksIcon";
 import { useI18n } from "./i18n";
 
 /**
@@ -583,7 +583,7 @@ export function AppSidebar({
             onClick={onOpenSkillsTab}
             disabled={!hasRuntimeContext}
           >
-            <Plug className="icon-lg" />
+            <PluginBlocksIcon className="icon-lg" />
             <span>{t("skills.sectionSkills")}</span>
           </button>
           {debugFixturesVisible ? (

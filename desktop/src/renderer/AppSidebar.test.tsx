@@ -490,11 +490,11 @@ describe("AppSidebar 协作 section", () => {
     expect(agentsNav).not.toBeNull();
     expect(agentsNav?.getAttribute("aria-current")).toBe("page");
     expect(container.querySelector(".sidebar-collab-list")?.textContent).not.toContain("Agents");
-    expect(
-      Array.from(container.querySelectorAll<HTMLElement>(".nav-item")).some(
-        (item) => item.textContent === "插件",
-      ),
-    ).toBe(true);
+    const pluginsNav = Array.from(
+      container.querySelectorAll<HTMLElement>(".nav-item"),
+    ).find((item) => item.textContent === "插件");
+    expect(pluginsNav).not.toBeNull();
+    expect(pluginsNav?.querySelector('[data-icon="plugin-blocks"]')).not.toBeNull();
 
     act(() => agentsNav?.click());
     expect(opened).toBe("agents");
