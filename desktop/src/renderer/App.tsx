@@ -4170,6 +4170,18 @@ export function App(): JSX.Element {
         {archiveTipNode}
         {checkoutErrorTipNode}
         {modelCatalogTipNode}
+        <PluginSurface
+          host={desktopPluginHost}
+          id="view.settings"
+          context={{
+            version: 1,
+            page: settingsInitialPage,
+            actions: {
+              close: () => setSettingsOpen(false),
+              toggleSidebar,
+            },
+          }}
+          fallback={
         <SettingsShellRenderer
           initialized={sessionRuntime}
           initialPage={settingsInitialPage}
@@ -4224,6 +4236,8 @@ export function App(): JSX.Element {
           archivedRooms={archivedChannelRooms}
           onUnarchiveThread={(thread) => void unarchiveThread(thread)}
           onUnarchiveRoom={unarchiveChannelRoom}
+        />
+          }
         />
       </>
     );
@@ -4740,6 +4754,15 @@ export function App(): JSX.Element {
           >
             <div ref={scrollContentRef} className="scroll-region-content">
               {showingSkillsCatalog ? (
+              <PluginSurface
+                host={desktopPluginHost}
+                id="view.catalog"
+                context={{
+                  version: 1,
+                  kind: "skills",
+                  actions: { refresh: refreshExtensionCatalog, install: installPluginPackage },
+                }}
+                fallback={
               <SkillsCatalog
                 activeContext={state.activeContext}
                 extensionInventory={state.initialized?.extension_inventory}
@@ -4749,10 +4772,19 @@ export function App(): JSX.Element {
                 onInstallPluginPackage={installPluginPackage}
                 onRemovePluginPackage={removePluginPackage}
               />
+                }
+              />
             ) : showingAutomationsCatalog ? (
+              <PluginSurface
+                host={desktopPluginHost}
+                id="view.catalog"
+                context={{ version: 1, kind: "automations" }}
+                fallback={
               <AutomationsCatalog
                 projects={state.projects}
                 onDetailPaneLayoutChange={setAutomationDetailPaneLayout}
+              />
+                }
               />
             ) : (
               <>
