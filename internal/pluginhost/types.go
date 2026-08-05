@@ -134,9 +134,13 @@ const (
 
 // Status is a user-safe snapshot of one plugin runtime.
 type Status struct {
-	ID        string    `json:"id"`
-	State     State     `json:"state"`
-	Hooks     []Hook    `json:"hooks,omitempty"`
-	Error     string    `json:"error,omitempty"`
-	StartedAt time.Time `json:"started_at,omitempty"`
+	ID    string `json:"id"`
+	State State  `json:"state"`
+	Hooks []Hook `json:"hooks,omitempty"`
+	// StrippedHooks are hooks the plugin declared at initialize but that were
+	// removed because the granted permission set does not cover them. They are
+	// diagnostics for the user, not active interception points.
+	StrippedHooks []Hook    `json:"stripped_hooks,omitempty"`
+	Error         string    `json:"error,omitempty"`
+	StartedAt     time.Time `json:"started_at,omitempty"`
 }

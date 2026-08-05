@@ -4,6 +4,8 @@
 
 **剩余缺口（收窄后）**：wuu-plugin-v1 协议 hook（pluginhost 8 hook）尚未映射到目录权限——runtime 插件只要 `process.spawn` 获批，initialize 时就能注册 chat.request/shell.env 等全部协议 hook，与目录里的 session.write/tools.intercept/shell.env 权限脱钩。下文执行点一节即为补这一层；「目录」一节已被代码取代，仅保留映射表。
 
+**v3（2026-08-05）：注册剥离已实现**（秦始皇）。`pluginhost/policy.go` 落地映射表与 `FilterHooksByGrantedPermissions`；`ProcessConfig.GrantedPermissions` 传入已获批集合，initialize 后按表剥离，被剥 hook 记入 `Status.StrippedHooks`（协议状态对用户可见）；runtime 侧 `pluginGrantedPermissions` resolver（official→全目录显式授予、community→grant.Permissions、缺 grant→nil fail closed）接进 session 启动与 ApplyExtensionPolicy reconcile 两条路径。测试：policy 纯函数映射/过滤、进程级剥离（部分授权/零授权）、resolver 三层语义、既有调用点签名迁移。Host.Run 按 client.Hooks() 匹配，剥离即天然不再触达（执行即构造）。**仍欠**：载荷裁剪纵深（无 session.write 时 chat.request output 丢弃）——当前语义是「无权即整个 hook 不注册」，裁剪只在将来引入「观测版 chat.request」时才需要。
+
 ---
 
 原 v1 草案（保留作推导记录）：

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -22,6 +23,7 @@ import (
 	"github.com/blueberrycongee/wuu/internal/capability"
 	"github.com/blueberrycongee/wuu/internal/config"
 	wuucontext "github.com/blueberrycongee/wuu/internal/context"
+	"github.com/blueberrycongee/wuu/internal/extensions"
 	"github.com/blueberrycongee/wuu/internal/goalruntime"
 	"github.com/blueberrycongee/wuu/internal/hooks"
 	"github.com/blueberrycongee/wuu/internal/mcp"
@@ -385,7 +387,7 @@ func NewSession(opts Options) (*Session, error) {
 
 	discoveredPlugins := discoverPlugins(rootDir, wuuHome)
 	activePlugins := activatedPlugins(cfg, discoveredPlugins)
-	pluginHost := startPluginHost(activePlugins, rootDir, wuuHome)
+	pluginHost := startPluginHost(activePlugins, rootDir, wuuHome, pluginGrantedPermissions(cfg))
 	hookDispatcher := buildHookDispatcher(cfg, activePlugins, providers.Client(client), toolModeModel, workspaceJournal)
 	discoveredSkills := discoverSkills(rootDir, opts.HomeDir, wuuHome, activePlugins)
 
@@ -1800,6 +1802,16 @@ func discoverPlugins(rootDir, wuuHome string) []pluginpkg.Plugin {
 	return pluginpkg.Discover(rootDir, wuuHome)
 }
 
+// DiscoverPlugins returns a fresh package inventory from disk. Discovery is
+// deliberately separate from activation so callers can compare the exact
+// current fingerprint before recording a policy decision.
+func (s *Session) DiscoverPlugins() []pluginpkg.Plugin {
+	if s == nil {
+		return nil
+	}
+	return discoverPlugins(s.RootDir, s.WuuHome)
+}
+
 // activatedPlugins separates inert discovery from executable activation.
 // Community packages require an exact user-owned grant; official bundled
 // packages are trusted by provenance. Either tier may be explicitly disabled.
@@ -1826,6 +1838,28 @@ func activatedPlugins(cfg config.Config, discovered []pluginpkg.Plugin) []plugin
 	return out
 }
 
+// pluginGrantedPermissions resolves the exact permission set a plugin process
+// may use. Official bundled packages are trusted by provenance and receive the
+// complete closed catalog explicitly; community packages receive exactly what
+// the user-approved grant recorded. Anything else resolves to nil, which the
+// plugin host treats as fail closed.
+func pluginGrantedPermissions(cfg config.Config) GrantedPermissionsResolver {
+	settings := cfg.Extensions
+	return func(item pluginpkg.Plugin) []string {
+		if item.Official {
+			return extensions.CatalogPermissions()
+		}
+		if settings == nil {
+			return nil
+		}
+		grant, ok := settings.FindGrant(item.SubjectID, item.Fingerprint)
+		if !ok {
+			return nil
+		}
+		return grant.Permissions
+	}
+}
+
 func permissionSetContains(granted, required []string) bool {
 	if len(required) == 0 {
 		return true
@@ -1845,22 +1879,26 @@ func permissionSetContains(granted, required []string) bool {
 // ApplyExtensionPolicy refreshes all package-owned execution surfaces after a
 // grant, rejection, revoke, enable, or disable decision. Callers must ensure no
 // turn is running while the surface graph is replaced.
-func (s *Session) ApplyExtensionPolicy(cfg config.Config) error {
+func (s *Session) ApplyExtensionPolicy(cfg config.Config, discovered []pluginpkg.Plugin) error {
 	if s == nil {
 		return errors.New("runtime is not initialized")
 	}
-	active := activatedPlugins(cfg, s.Plugins)
-	if s.PluginHost != nil {
-		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-		_ = s.PluginHost.Close(ctx)
-		cancel()
+	active := activatedPlugins(cfg, discovered)
+	mcpChanged := !reflect.DeepEqual(
+		mcpServersFromConfigAndPlugins(cfg, s.ActivePlugins),
+		mcpServersFromConfigAndPlugins(cfg, active),
+	)
+	if s.PluginHost == nil {
+		s.PluginHost = pluginhost.New()
 	}
-	if s.Toolkit != nil {
+	if err := reconcilePluginHost(s.PluginHost, s.ActivePlugins, active, s.RootDir, s.WuuHome, pluginGrantedPermissions(cfg)); err != nil {
+		return err
+	}
+	if mcpChanged && s.Toolkit != nil {
 		if manager := s.Toolkit.MCPManager(); manager != nil {
 			_ = manager.Close()
 		}
 	}
-	s.PluginHost = startPluginHost(active, s.RootDir, s.WuuHome)
 	if s.StreamRunner != nil {
 		inner := s.StreamRunner.Tools
 		if previous, ok := inner.(*pluginToolExecutor); ok {
@@ -1876,8 +1914,9 @@ func (s *Session) ApplyExtensionPolicy(cfg config.Config) error {
 		s.HookDispatcher.Replace(nextHooks)
 	}
 	s.Skills = discoverSkills(s.RootDir, s.HomeDir, s.WuuHome, active)
+	s.Plugins = append([]pluginpkg.Plugin(nil), discovered...)
 	s.ActivePlugins = active
-	if s.Toolkit != nil {
+	if mcpChanged && s.Toolkit != nil {
 		connectMCPServers(cfg, active, s.Toolkit)
 	}
 	s.RefreshSystemPrompt(s.ProviderName, s.Model)
@@ -2027,7 +2066,12 @@ func skillDirChain(root, leaf string) []string {
 
 func connectMCPServers(cfg config.Config, plugins []pluginpkg.Plugin, toolkit *tools.Toolkit) {
 	servers := mcpServersFromConfigAndPlugins(cfg, plugins)
-	if toolkit == nil || len(servers) == 0 {
+	if toolkit == nil {
+		return
+	}
+	if len(servers) == 0 {
+		toolkit.SetMCPActivityBindings(nil)
+		toolkit.SetMCPManager(nil)
 		return
 	}
 	toolkit.SetMCPActivityBindings(mcpActivityBindingsFromPlugins(plugins))

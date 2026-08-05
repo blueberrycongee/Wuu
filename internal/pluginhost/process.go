@@ -26,6 +26,9 @@ const (
 	// plugin response cannot grow unbounded in memory. The limit applies to
 	// one line including its trailing newline.
 	maxResponseLineSize = 4 << 20 // 4 MiB
+	// maxPluginStderrSize keeps diagnostics useful without retaining an
+	// unbounded log for every long-lived plugin process.
+	maxPluginStderrSize = 128 << 10 // 128 KiB
 )
 
 type ProcessConfig struct {
@@ -37,6 +40,10 @@ type ProcessConfig struct {
 	ProjectRoot string
 	WuuHome     string
 	Timeout     time.Duration
+	// GrantedPermissions is the exact permission set the user approved for this
+	// plugin. Protocol hooks whose required permissions are not covered are
+	// stripped at initialize (fail closed).
+	GrantedPermissions []string
 }
 
 type rpcRequest struct {
@@ -128,9 +135,11 @@ func Start(ctx context.Context, config ProcessConfig) (*ProcessClient, error) {
 		}
 		seen[hook] = struct{}{}
 	}
+	kept, stripped := FilterHooksByGrantedPermissions(initialized.Hooks, config.GrantedPermissions)
 	client.mu.Lock()
 	client.status.State = StateActive
-	client.status.Hooks = append([]Hook(nil), initialized.Hooks...)
+	client.status.Hooks = append([]Hook(nil), kept...)
+	client.status.StrippedHooks = append([]Hook(nil), stripped...)
 	client.status.StartedAt = time.Now().UTC()
 	client.mu.Unlock()
 	return client, nil
@@ -356,17 +365,27 @@ var baselineEnvKeys = func() []string {
 
 type lockedBuffer struct {
 	mu sync.Mutex
-	b  bytes.Buffer
+	b  []byte
 }
 
 func (b *lockedBuffer) Write(p []byte) (int, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	return b.b.Write(p)
+	written := len(p)
+	if len(p) >= maxPluginStderrSize {
+		b.b = append(b.b[:0], p[len(p)-maxPluginStderrSize:]...)
+		return written, nil
+	}
+	b.b = append(b.b, p...)
+	if overflow := len(b.b) - maxPluginStderrSize; overflow > 0 {
+		copy(b.b, b.b[overflow:])
+		b.b = b.b[:maxPluginStderrSize]
+	}
+	return written, nil
 }
 
 func (b *lockedBuffer) String() string {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	return b.b.String()
+	return string(b.b)
 }

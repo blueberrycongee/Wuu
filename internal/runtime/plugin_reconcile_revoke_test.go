@@ -23,7 +23,7 @@ func TestReconcilePluginHostClosesRevokedPluginClient(t *testing.T) {
 		{Manifest: pluginpkg.Manifest{ID: "kept", Runtime: &pluginpkg.RuntimeSpec{Command: "x"}}, Fingerprint: "fp-b"},
 	}
 
-	if err := reconcilePluginHost(host, previous, next, t.TempDir(), t.TempDir()); err != nil {
+	if err := reconcilePluginHost(host, previous, next, t.TempDir(), t.TempDir(), nil); err != nil {
 		t.Fatalf("reconcile: %v", err)
 	}
 	if !revoked.closed {

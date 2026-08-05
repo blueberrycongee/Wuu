@@ -76,6 +76,17 @@ func IsKnownPermission(name string) bool {
 	return ok
 }
 
+// CatalogPermissions returns every permission in the closed catalog, sorted.
+// It exists so officially trusted (bundled provenance) packages can be granted
+// the complete set explicitly rather than through a special-case bypass.
+func CatalogPermissions() []string {
+	out := make([]string, 0, len(knownPermissions))
+	for permission := range knownPermissions {
+		out = append(out, permission)
+	}
+	return normalizedStrings(out)
+}
+
 // ValidatePermissions returns an error if any non-empty permission is not in
 // the closed catalog.
 func ValidatePermissions(permissions []string) error {

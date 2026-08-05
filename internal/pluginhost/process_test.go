@@ -23,11 +23,12 @@ func TestProcessClientLifecycleAndInvoke(t *testing.T) {
 		ID:          "test-plugin",
 		Command:     os.Args[0],
 		Args:        []string{"-test.run=TestProcessClientLifecycleAndInvoke"},
-		Env:         map[string]string{"WUU_PLUGINHOST_HELPER": "1"},
-		PluginRoot:  root,
-		ProjectRoot: filepath.Dir(root),
-		WuuHome:     t.TempDir(),
-		Timeout:     2 * time.Second,
+		Env:                map[string]string{"WUU_PLUGINHOST_HELPER": "1"},
+		PluginRoot:         root,
+		ProjectRoot:        filepath.Dir(root),
+		WuuHome:            t.TempDir(),
+		Timeout:            2 * time.Second,
+		GrantedPermissions: []string{"session.read"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -264,6 +265,22 @@ func TestProcessOversizeResponse(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "exceeds") {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestLockedBufferKeepsBoundedStderrSuffix(t *testing.T) {
+	var buffer lockedBuffer
+	prefix := strings.Repeat("a", maxPluginStderrSize)
+	suffix := strings.Repeat("b", maxPluginStderrSize/2)
+	if written, err := buffer.Write([]byte(prefix + suffix)); err != nil || written != len(prefix)+len(suffix) {
+		t.Fatalf("Write() = %d, %v", written, err)
+	}
+	value := buffer.String()
+	if len(value) != maxPluginStderrSize {
+		t.Fatalf("stderr buffer size = %d", len(value))
+	}
+	if !strings.HasSuffix(value, suffix) {
+		t.Fatal("stderr buffer did not retain the newest output")
 	}
 }
 
