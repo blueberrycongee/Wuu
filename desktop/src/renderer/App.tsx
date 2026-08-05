@@ -220,6 +220,7 @@ import type { WorkspaceTerminalRunRequest } from "./WorkspaceTerminalPanel";
 import { useWorkspaceToolState } from "./WorkspaceToolState";
 import type { WorkspaceViewTab } from "./WorkspaceViewTabs";
 import { ImagePreviewProvider } from "./ImagePreview";
+import { useDesktopPluginRuntime } from "./plugins/DesktopPluginRuntime";
 import { WINDOW_RESIZING_CLASS } from "./WindowResizeState";
 import { useComposerDraftState } from "./ComposerDraftState";
 import { useComposerPendingState } from "./ComposerPendingState";
@@ -352,6 +353,7 @@ export function App(): JSX.Element {
   const [popOutInit] = useState<PopOutInitResult | null>(() => readPopOutInit());
   const poppedOutMode = Boolean(popOutInit?.kind && popOutInit.context);
   const [state, setState] = useState<AppState>(initialState);
+  useDesktopPluginRuntime(state.initialized?.extension_inventory);
   const [goalSummary, setGoalSummary] = useState<ComposerGoalSummary | null>(
     null
   );
