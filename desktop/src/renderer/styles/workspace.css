@@ -1084,6 +1084,7 @@ html.resizing-workspace-file-split * {
   width: 100%;
   height: 32px;
   grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 10px;
   align-items: center;
   margin-left: auto;
   justify-items: end;
