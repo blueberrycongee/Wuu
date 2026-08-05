@@ -1,0 +1,663 @@
+import type * as React from "react";
+
+export const PLUGIN_SLOT_IDS = [
+  "sidebar.primary",
+  "sidebar.footer",
+  "workspace.header",
+  "conversation.header",
+  "conversation.message.before",
+  "conversation.message.after",
+  "composer.above",
+  "composer.toolbar",
+  "settings.plugin",
+] as const;
+
+export type PluginSlotId = (typeof PLUGIN_SLOT_IDS)[number];
+
+export interface Disposable {
+  dispose(): void;
+}
+
+export type PluginSlotRenderContext = Readonly<Record<string, unknown>>;
+
+export interface PluginSlotRegistration {
+  id: string;
+  order?: number;
+  render(context: PluginSlotRenderContext): React.ReactNode;
+}
+
+export interface PluginCommandRegistration {
+  id: string;
+  title: string;
+  order?: number;
+  execute(input?: unknown): unknown | Promise<unknown>;
+}
+
+export interface PluginStyleRegistration {
+  id: string;
+  css: string;
+  order?: number;
+}
+
+export interface PluginLocaleRegistration {
+  id: string;
+  locale: string;
+  entries: Readonly<Record<string, string>>;
+  order?: number;
+}
+
+export interface PluginGenerationApi {
+  /** The React runtime owned by the Wuu renderer. Plugin bundles should use this object. */
+  readonly react: typeof React;
+  readonly pluginId: string;
+  readonly generation: string;
+  registerSlot(slotId: PluginSlotId, contribution: PluginSlotRegistration): Disposable;
+  registerCommand(command: PluginCommandRegistration): Disposable;
+  registerStyle(style: PluginStyleRegistration): Disposable;
+  registerLocale(locale: PluginLocaleRegistration): Disposable;
+  registerCleanup(cleanup: () => void): Disposable;
+}
+
+export interface ActivatePluginGenerationOptions {
+  pluginId: string;
+  generation: string;
+  register(api: PluginGenerationApi): void | Promise<void>;
+}
+
+export interface RegisteredPluginSlotContribution extends PluginSlotRegistration {
+  readonly pluginId: string;
+  readonly generation: string;
+}
+
+export interface RegisteredPluginCommand extends PluginCommandRegistration {
+  readonly pluginId: string;
+  readonly generation: string;
+}
+
+export type PluginDiagnosticKind = "activation" | "cleanup" | "render";
+
+export interface PluginGenerationDiagnostic {
+  readonly pluginId: string;
+  readonly generation: string;
+  readonly kind: PluginDiagnosticKind;
+  readonly message: string;
+  readonly cause: unknown;
+  readonly slotId?: PluginSlotId;
+  readonly contributionId?: string;
+}
+
+export interface PluginHostOptions {
+  /** Inject the renderer's existing React runtime; the host never supplies another copy. */
+  react: typeof React;
+  styleContainer?: HTMLElement | (() => HTMLElement | null);
+}
+
+interface OrderedRecord {
+  readonly pluginId: string;
+  readonly generation: string;
+  readonly id: string;
+  readonly order: number;
+  removed: boolean;
+}
+
+interface SlotRecord extends OrderedRecord {
+  readonly slotId: PluginSlotId;
+  readonly render: PluginSlotRegistration["render"];
+}
+
+interface CommandRecord extends OrderedRecord {
+  readonly title: string;
+  readonly execute: PluginCommandRegistration["execute"];
+}
+
+interface StyleRecord extends OrderedRecord {
+  readonly css: string;
+  element?: HTMLStyleElement;
+}
+
+interface LocaleRecord extends OrderedRecord {
+  readonly locale: string;
+  readonly entries: Readonly<Record<string, string>>;
+}
+
+interface GenerationState {
+  readonly pluginId: string;
+  readonly generation: string;
+  readonly slots: SlotRecord[];
+  readonly commands: CommandRecord[];
+  readonly styles: StyleRecord[];
+  readonly locales: LocaleRecord[];
+  readonly registrationKeys: Set<string>;
+  readonly teardown: Disposable[];
+  acceptingRegistrations: boolean;
+  active: boolean;
+  disposed: boolean;
+}
+
+interface PendingActivation {
+  readonly state: GenerationState;
+  cancelled: boolean;
+}
+
+const EMPTY_SLOT_SNAPSHOT: readonly RegisteredPluginSlotContribution[] = Object.freeze([]);
+const EMPTY_COMMAND_SNAPSHOT: readonly RegisteredPluginCommand[] = Object.freeze([]);
+const EMPTY_LOCALE_SNAPSHOT: Readonly<Record<string, string>> = Object.freeze({});
+
+export class PluginGenerationSupersededError extends Error {
+  constructor(pluginId: string, generation: string) {
+    super(`Plugin generation ${pluginId}@${generation} was superseded before activation`);
+    this.name = "PluginGenerationSupersededError";
+  }
+}
+
+/**
+ * Owns renderer plugin registrations and swaps one active generation per plugin.
+ * This lifecycle boundary provides cleanup and startup recovery, not strong isolation.
+ */
+export class PluginHost {
+  readonly react: typeof React;
+
+  private readonly styleContainer?: PluginHostOptions["styleContainer"];
+  private readonly activeGenerations = new Map<string, GenerationState>();
+  private readonly pendingActivations = new Map<string, PendingActivation>();
+  private readonly slotSnapshots = new Map<PluginSlotId, readonly RegisteredPluginSlotContribution[]>();
+  private readonly slotListeners = new Map<PluginSlotId, Set<() => void>>();
+  private readonly listeners = new Set<() => void>();
+  private readonly localeSnapshots = new Map<string, Readonly<Record<string, string>>>();
+  private readonly diagnostics = new Map<string, PluginGenerationDiagnostic[]>();
+  private commandSnapshot: readonly RegisteredPluginCommand[] = EMPTY_COMMAND_SNAPSHOT;
+
+  constructor(options: PluginHostOptions) {
+    this.react = options.react;
+    this.styleContainer = options.styleContainer;
+  }
+
+  async activateGeneration(options: ActivatePluginGenerationOptions): Promise<Disposable> {
+    const pluginId = requireNonEmpty(options.pluginId, "plugin id");
+    const generation = requireNonEmpty(options.generation, "plugin generation");
+    const state = createGenerationState(pluginId, generation);
+    const pending: PendingActivation = { state, cancelled: false };
+
+    const previousPending = this.pendingActivations.get(pluginId);
+    if (previousPending) {
+      previousPending.cancelled = true;
+    }
+    this.pendingActivations.set(pluginId, pending);
+
+    try {
+      await options.register(this.createGenerationApi(state));
+    } catch (error: unknown) {
+      state.acceptingRegistrations = false;
+      if (this.pendingActivations.get(pluginId) === pending) {
+        this.pendingActivations.delete(pluginId);
+      }
+      this.addDiagnostic({
+        pluginId,
+        generation,
+        kind: "activation",
+        message: `Plugin generation registration failed: ${errorMessage(error)}`,
+        cause: error,
+      });
+      this.disposeGeneration(state);
+      throw error;
+    }
+
+    state.acceptingRegistrations = false;
+    if (pending.cancelled || this.pendingActivations.get(pluginId) !== pending) {
+      this.disposeGeneration(state);
+      throw new PluginGenerationSupersededError(pluginId, generation);
+    }
+
+    this.pendingActivations.delete(pluginId);
+    const previous = this.activeGenerations.get(pluginId);
+    this.activeGenerations.set(pluginId, state);
+    state.active = true;
+    if (previous) {
+      previous.active = false;
+      this.disposeGeneration(previous);
+    }
+    this.refreshPublicState();
+
+    return createDisposable(() => {
+      if (this.activeGenerations.get(pluginId) === state) {
+        this.unload(pluginId);
+      }
+    });
+  }
+
+  disable(pluginId: string): void {
+    this.unload(pluginId);
+  }
+
+  unload(pluginId: string): void {
+    const normalizedPluginId = requireNonEmpty(pluginId, "plugin id");
+    const pending = this.pendingActivations.get(normalizedPluginId);
+    if (pending) {
+      pending.cancelled = true;
+      this.pendingActivations.delete(normalizedPluginId);
+    }
+
+    const active = this.activeGenerations.get(normalizedPluginId);
+    if (!active) {
+      return;
+    }
+    this.activeGenerations.delete(normalizedPluginId);
+    active.active = false;
+    this.disposeGeneration(active);
+    this.refreshPublicState();
+  }
+
+  getSlotSnapshot(slotId: PluginSlotId): readonly RegisteredPluginSlotContribution[] {
+    return this.slotSnapshots.get(slotId) ?? EMPTY_SLOT_SNAPSHOT;
+  }
+
+  subscribeSlot(slotId: PluginSlotId, listener: () => void): () => void {
+    let listeners = this.slotListeners.get(slotId);
+    if (!listeners) {
+      listeners = new Set();
+      this.slotListeners.set(slotId, listeners);
+    }
+    listeners.add(listener);
+    return () => {
+      listeners?.delete(listener);
+    };
+  }
+
+  getCommands(): readonly RegisteredPluginCommand[] {
+    return this.commandSnapshot;
+  }
+
+  getLocaleEntries(locale: string): Readonly<Record<string, string>> {
+    return this.localeSnapshots.get(locale) ?? EMPTY_LOCALE_SNAPSHOT;
+  }
+
+  subscribe(listener: () => void): () => void {
+    this.listeners.add(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
+  }
+
+  getGenerationDiagnostics(pluginId: string, generation: string): readonly PluginGenerationDiagnostic[] {
+    return this.diagnostics.get(diagnosticKey(pluginId, generation)) ?? [];
+  }
+
+  recordRenderFailure(
+    contribution: RegisteredPluginSlotContribution,
+    slotId: PluginSlotId,
+    error: unknown,
+  ): void {
+    this.addDiagnostic({
+      pluginId: contribution.pluginId,
+      generation: contribution.generation,
+      kind: "render",
+      message: `Plugin slot contribution ${contribution.id} failed to render: ${errorMessage(error)}`,
+      cause: error,
+      slotId,
+      contributionId: contribution.id,
+    });
+  }
+
+  private createGenerationApi(state: GenerationState): PluginGenerationApi {
+    return Object.freeze({
+      react: this.react,
+      pluginId: state.pluginId,
+      generation: state.generation,
+      registerSlot: (slotId: PluginSlotId, contribution: PluginSlotRegistration) => {
+        this.assertAccepting(state);
+        const id = this.claimRegistrationId(state, `slot:${slotId}`, contribution.id);
+        const record: SlotRecord = {
+          pluginId: state.pluginId,
+          generation: state.generation,
+          id,
+          order: normalizeOrder(contribution.order),
+          slotId,
+          render: contribution.render,
+          removed: false,
+        };
+        state.slots.push(record);
+        return this.ownRecord(state, record);
+      },
+      registerCommand: (command: PluginCommandRegistration) => {
+        this.assertAccepting(state);
+        const id = this.claimRegistrationId(state, "command", command.id);
+        const record: CommandRecord = {
+          pluginId: state.pluginId,
+          generation: state.generation,
+          id,
+          order: normalizeOrder(command.order),
+          title: requireNonEmpty(command.title, "command title"),
+          execute: command.execute,
+          removed: false,
+        };
+        state.commands.push(record);
+        return this.ownRecord(state, record);
+      },
+      registerStyle: (style: PluginStyleRegistration) => {
+        this.assertAccepting(state);
+        const id = this.claimRegistrationId(state, "style", style.id);
+        const record: StyleRecord = {
+          pluginId: state.pluginId,
+          generation: state.generation,
+          id,
+          order: normalizeOrder(style.order),
+          css: style.css,
+          removed: false,
+        };
+        state.styles.push(record);
+        return this.ownRecord(state, record, () => record.element?.remove());
+      },
+      registerLocale: (locale: PluginLocaleRegistration) => {
+        this.assertAccepting(state);
+        const normalizedLocale = requireNonEmpty(locale.locale, "locale");
+        const id = this.claimRegistrationId(state, `locale:${normalizedLocale}`, locale.id);
+        const record: LocaleRecord = {
+          pluginId: state.pluginId,
+          generation: state.generation,
+          id,
+          order: normalizeOrder(locale.order),
+          locale: normalizedLocale,
+          entries: Object.freeze({ ...locale.entries }),
+          removed: false,
+        };
+        state.locales.push(record);
+        return this.ownRecord(state, record);
+      },
+      registerCleanup: (cleanup: () => void) => {
+        this.assertAccepting(state);
+        const disposable = createDisposable(() => {
+          try {
+            cleanup();
+          } catch (error: unknown) {
+            this.addDiagnostic({
+              pluginId: state.pluginId,
+              generation: state.generation,
+              kind: "cleanup",
+              message: `Plugin cleanup failed: ${errorMessage(error)}`,
+              cause: error,
+            });
+          }
+        });
+        state.teardown.push(disposable);
+        return disposable;
+      },
+    });
+  }
+
+  private ownRecord(
+    state: GenerationState,
+    record: OrderedRecord,
+    remove?: () => void,
+  ): Disposable {
+    const disposable = createDisposable(() => {
+      record.removed = true;
+      remove?.();
+      if (state.active) {
+        this.refreshPublicState();
+      }
+    });
+    state.teardown.push(disposable);
+    return disposable;
+  }
+
+  private assertAccepting(state: GenerationState): void {
+    if (!state.acceptingRegistrations) {
+      throw new Error(`Plugin generation ${state.pluginId}@${state.generation} is no longer registering`);
+    }
+  }
+
+  private claimRegistrationId(state: GenerationState, kind: string, value: string): string {
+    const id = requireNonEmpty(value, `${kind} registration id`);
+    const key = `${kind}:${id}`;
+    if (state.registrationKeys.has(key)) {
+      throw new Error(`Duplicate plugin ${kind} registration id: ${id}`);
+    }
+    state.registrationKeys.add(key);
+    return id;
+  }
+
+  private disposeGeneration(state: GenerationState): void {
+    if (state.disposed) {
+      return;
+    }
+    state.disposed = true;
+    state.acceptingRegistrations = false;
+    for (const disposable of [...state.teardown].reverse()) {
+      disposable.dispose();
+    }
+  }
+
+  private refreshPublicState(): void {
+    let changed = false;
+    const slotRecords = new Map<PluginSlotId, SlotRecord[]>();
+    const commands: CommandRecord[] = [];
+    const locales: LocaleRecord[] = [];
+    const styles: StyleRecord[] = [];
+
+    for (const state of this.activeGenerations.values()) {
+      for (const record of state.slots) {
+        if (!record.removed) {
+          const records = slotRecords.get(record.slotId) ?? [];
+          records.push(record);
+          slotRecords.set(record.slotId, records);
+        }
+      }
+      commands.push(...state.commands.filter((record) => !record.removed));
+      locales.push(...state.locales.filter((record) => !record.removed));
+      styles.push(...state.styles.filter((record) => !record.removed));
+    }
+
+    for (const slotId of PLUGIN_SLOT_IDS) {
+      const next = Object.freeze((slotRecords.get(slotId) ?? [])
+        .sort(compareOrdered)
+        .map(toPublicSlotContribution));
+      const previous = this.slotSnapshots.get(slotId) ?? EMPTY_SLOT_SNAPSHOT;
+      if (!sameContributions(previous, next)) {
+        this.slotSnapshots.set(slotId, next);
+        changed = true;
+        for (const listener of this.slotListeners.get(slotId) ?? []) {
+          listener();
+        }
+      }
+    }
+
+    const nextCommands = Object.freeze(commands.sort(compareOrdered).map(toPublicCommand));
+    if (!sameContributions(this.commandSnapshot, nextCommands)) {
+      this.commandSnapshot = nextCommands;
+      changed = true;
+    }
+
+    if (this.refreshLocales(locales)) {
+      changed = true;
+    }
+    this.refreshStyles(styles);
+
+    if (changed) {
+      this.notifyListeners();
+    }
+  }
+
+  private refreshLocales(records: LocaleRecord[]): boolean {
+    const grouped = new Map<string, LocaleRecord[]>();
+    for (const record of records) {
+      const localeRecords = grouped.get(record.locale) ?? [];
+      localeRecords.push(record);
+      grouped.set(record.locale, localeRecords);
+    }
+
+    let changed = false;
+    const allLocales = new Set([...this.localeSnapshots.keys(), ...grouped.keys()]);
+    for (const locale of allLocales) {
+      const merged: Record<string, string> = {};
+      for (const record of (grouped.get(locale) ?? []).sort(compareOrdered)) {
+        for (const key of Object.keys(record.entries).sort(compareText)) {
+          merged[key] = record.entries[key];
+        }
+      }
+      const next = Object.freeze(merged);
+      const previous = this.localeSnapshots.get(locale) ?? EMPTY_LOCALE_SNAPSHOT;
+      if (!sameStringRecord(previous, next)) {
+        changed = true;
+        if (Object.keys(next).length === 0) {
+          this.localeSnapshots.delete(locale);
+        } else {
+          this.localeSnapshots.set(locale, next);
+        }
+      }
+    }
+    return changed;
+  }
+
+  private refreshStyles(records: StyleRecord[]): void {
+    const container = this.resolveStyleContainer();
+    if (!container) {
+      return;
+    }
+    for (const record of records.sort(compareOrdered)) {
+      let element = record.element;
+      if (!element) {
+        element = container.ownerDocument.createElement("style");
+        element.dataset.wuuPluginId = record.pluginId;
+        element.dataset.wuuPluginGeneration = record.generation;
+        element.dataset.wuuPluginStyle = record.id;
+        element.textContent = record.css;
+        record.element = element;
+      }
+      container.appendChild(element);
+    }
+  }
+
+  private resolveStyleContainer(): HTMLElement | null {
+    if (typeof this.styleContainer === "function") {
+      return this.styleContainer();
+    }
+    if (this.styleContainer) {
+      return this.styleContainer;
+    }
+    return typeof document === "undefined" ? null : document.head;
+  }
+
+  private addDiagnostic(diagnostic: PluginGenerationDiagnostic): void {
+    const key = diagnosticKey(diagnostic.pluginId, diagnostic.generation);
+    const diagnostics = this.diagnostics.get(key) ?? [];
+    diagnostics.push(Object.freeze(diagnostic));
+    this.diagnostics.set(key, diagnostics);
+    this.notifyListeners();
+  }
+
+  private notifyListeners(): void {
+    for (const listener of this.listeners) {
+      listener();
+    }
+  }
+}
+
+function createGenerationState(pluginId: string, generation: string): GenerationState {
+  return {
+    pluginId,
+    generation,
+    slots: [],
+    commands: [],
+    styles: [],
+    locales: [],
+    registrationKeys: new Set(),
+    teardown: [],
+    acceptingRegistrations: true,
+    active: false,
+    disposed: false,
+  };
+}
+
+function toPublicSlotContribution(record: SlotRecord): RegisteredPluginSlotContribution {
+  return Object.freeze({
+    pluginId: record.pluginId,
+    generation: record.generation,
+    id: record.id,
+    order: record.order,
+    render: record.render,
+  });
+}
+
+function toPublicCommand(record: CommandRecord): RegisteredPluginCommand {
+  return Object.freeze({
+    pluginId: record.pluginId,
+    generation: record.generation,
+    id: record.id,
+    title: record.title,
+    order: record.order,
+    execute: record.execute,
+  });
+}
+
+function compareOrdered(left: OrderedRecord, right: OrderedRecord): number {
+  return left.order - right.order
+    || compareText(left.pluginId, right.pluginId)
+    || compareText(left.id, right.id);
+}
+
+function compareText(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
+function normalizeOrder(order: number | undefined): number {
+  if (order === undefined) {
+    return 0;
+  }
+  if (!Number.isFinite(order)) {
+    throw new Error("Plugin registration order must be a finite number");
+  }
+  return order;
+}
+
+function requireNonEmpty(value: string, label: string): string {
+  const normalized = value.trim();
+  if (!normalized) {
+    throw new Error(`Plugin ${label} must not be empty`);
+  }
+  return normalized;
+}
+
+function sameContributions(
+  previous: readonly { pluginId: string; generation: string; id: string; order?: number }[],
+  next: readonly { pluginId: string; generation: string; id: string; order?: number }[],
+): boolean {
+  return previous.length === next.length && previous.every((item, index) => {
+    const candidate = next[index];
+    return candidate !== undefined
+      && item.pluginId === candidate.pluginId
+      && item.generation === candidate.generation
+      && item.id === candidate.id
+      && item.order === candidate.order;
+  });
+}
+
+function sameStringRecord(
+  previous: Readonly<Record<string, string>>,
+  next: Readonly<Record<string, string>>,
+): boolean {
+  const previousKeys = Object.keys(previous);
+  const nextKeys = Object.keys(next);
+  return previousKeys.length === nextKeys.length
+    && previousKeys.every((key) => previous[key] === next[key]);
+}
+
+function diagnosticKey(pluginId: string, generation: string): string {
+  return `${pluginId}\u0000${generation}`;
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function createDisposable(dispose: () => void): Disposable {
+  let disposed = false;
+  return Object.freeze({
+    dispose: () => {
+      if (disposed) {
+        return;
+      }
+      disposed = true;
+      dispose();
+    },
+  });
+}
