@@ -448,12 +448,6 @@
   color: var(--text-secondary);
 }
 
-.channel-agent-model svg {
-  width: 11px;
-  height: 11px;
-  flex: 0 0 auto;
-}
-
 .channel-agent-status-swatch {
   width: 7px;
   height: 7px;

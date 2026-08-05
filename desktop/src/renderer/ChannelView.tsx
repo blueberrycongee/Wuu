@@ -107,7 +107,7 @@ function AgentAvatar({ name, avatarKey, avatarImage, status, statusText, model, 
       <span className={`channel-agent-status-dot ${status}`} aria-hidden="true" />
       <span className="channel-agent-status-card" role="tooltip">
         <span><i className={`channel-agent-status-swatch ${status}`} />{statusText}</span>
-        {model ? <span className="channel-agent-model"><Bot aria-hidden="true" />{modelLabel}: {model}</span> : null}
+        {model ? <span className="channel-agent-model">{model}</span> : null}
       </span>
     </span>
   );

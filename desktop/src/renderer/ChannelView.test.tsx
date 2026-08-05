@@ -243,8 +243,9 @@ describe("ChannelView", () => {
 
     const cards = Array.from(container.querySelectorAll<HTMLElement>(".channel-agent-status-card"));
     expect(cards).toHaveLength(2);
-    expect(cards[0].querySelector(".channel-agent-model")?.textContent).toBe("模型: claude-opus-4-1");
-    expect(cards[1].querySelector(".channel-agent-model")?.textContent).toBe("模型: gpt-5.3-codex");
+    expect(cards[0].querySelector(".channel-agent-model")?.textContent).toBe("claude-opus-4-1");
+    expect(cards[1].querySelector(".channel-agent-model")?.textContent).toBe("gpt-5.3-codex");
+    expect(cards[0].querySelector(".channel-agent-model svg")).toBeNull();
     expect(container.querySelector('[aria-label="Alpha: 处理中, 模型: claude-opus-4-1"]')).not.toBeNull();
   });
 
