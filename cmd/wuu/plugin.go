@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -40,17 +41,21 @@ type pluginPackageOutput struct {
 	ApprovalRequired     bool     `json:"approval_required,omitempty"`
 	Removed              bool     `json:"removed,omitempty"`
 	PolicyAction         string   `json:"policy_action,omitempty"`
+	Pending              bool     `json:"pending,omitempty"`
+	ActiveFingerprint    string   `json:"active_fingerprint,omitempty"`
 }
 
 func runPlugin(args []string) error {
 	if len(args) == 0 {
-		return pluginCLIError(errors.New("plugin subcommand is required (available: inspect, install, list, approve, reject, enable, disable, remove)"))
+		return pluginCLIError(errors.New("plugin subcommand is required (available: inspect, install, update, list, approve, reject, enable, disable, remove)"))
 	}
 	switch args[0] {
 	case "inspect":
 		return runPluginInspect(args[1:])
 	case "install":
 		return runPluginInstall(args[1:])
+	case "update":
+		return runPluginUpdate(args[1:])
 	case "list":
 		return runPluginList(args[1:])
 	case "approve", "reject", "enable", "disable":
@@ -58,7 +63,7 @@ func runPlugin(args []string) error {
 	case "remove", "uninstall":
 		return runPluginRemove(args[1:])
 	default:
-		return pluginCLIError(fmt.Errorf("unknown plugin subcommand %q (available: inspect, install, list, approve, reject, enable, disable, remove)", args[0]))
+		return pluginCLIError(fmt.Errorf("unknown plugin subcommand %q (available: inspect, install, update, list, approve, reject, enable, disable, remove)", args[0]))
 	}
 }
 
@@ -91,6 +96,24 @@ func runPluginInstall(args []string) error {
 	if err != nil {
 		return fmt.Errorf("resolve Wuu home: %w", err)
 	}
+	inspection, err := pluginpkg.InspectPackage(source)
+	if err != nil {
+		return pluginCLIError(err)
+	}
+	if _, statErr := os.Lstat(filepath.Join(home, "plugins", inspection.ID)); statErr == nil {
+		pending, err := pluginpkg.StagePackageUpdate(home, source)
+		if err != nil {
+			return pluginCLIError(err)
+		}
+		output := packageInspectionOutput(pending.Package)
+		output.Destination = pending.Path
+		output.Pending = true
+		output.ActiveFingerprint = pending.ActiveFingerprint
+		output.ApprovalRequired = true
+		return printPluginPackageOutput(output, *jsonOutput, "Staged plugin update; the installed generation remains active until approval")
+	} else if !os.IsNotExist(statErr) {
+		return pluginCLIError(fmt.Errorf("inspect installed plugin %q: %w", inspection.ID, statErr))
+	}
 	result, err := pluginpkg.InstallPackage(home, source)
 	if err != nil {
 		return pluginCLIError(err)
@@ -100,6 +123,38 @@ func runPluginInstall(args []string) error {
 	output.Replaced = result.Replaced
 	output.ApprovalRequired = true
 	return printPluginPackageOutput(output, *jsonOutput, "Installed plugin package; approval is required before code activation")
+}
+
+func runPluginUpdate(args []string) error {
+	fs, jsonOutput := pluginFlagSet("plugin update")
+	if err := fs.Parse(args); err != nil {
+		return pluginCLIError(err)
+	}
+	if fs.NArg() != 2 || strings.TrimSpace(fs.Arg(0)) == "" || strings.TrimSpace(fs.Arg(1)) == "" {
+		return pluginCLIError(errors.New("plugin update requires an installed plugin id and one local directory or .zip path"))
+	}
+	id, source := strings.TrimSpace(fs.Arg(0)), strings.TrimSpace(fs.Arg(1))
+	inspection, err := pluginpkg.InspectPackage(source)
+	if err != nil {
+		return pluginCLIError(err)
+	}
+	if inspection.ID != id {
+		return pluginCLIError(fmt.Errorf("plugin update id %q does not match package id %q", id, inspection.ID))
+	}
+	home, err := statepath.Home("")
+	if err != nil {
+		return fmt.Errorf("resolve Wuu home: %w", err)
+	}
+	pending, err := pluginpkg.StagePackageUpdate(home, source)
+	if err != nil {
+		return pluginCLIError(err)
+	}
+	output := packageInspectionOutput(pending.Package)
+	output.Destination = pending.Path
+	output.Pending = true
+	output.ActiveFingerprint = pending.ActiveFingerprint
+	output.ApprovalRequired = true
+	return printPluginPackageOutput(output, *jsonOutput, "Staged plugin update; approve it to replace the installed generation")
 }
 
 func runPluginList(args []string) error {
@@ -123,9 +178,17 @@ func runPluginList(args []string) error {
 		}
 	}
 	plugins := pluginpkg.Discover(root, home)
+	pendingByID := map[string]pluginpkg.PendingUpdate{}
+	if pending, err := pluginpkg.ListPendingUpdates(home); err != nil {
+		return pluginCLIError(err)
+	} else {
+		for _, update := range pending {
+			pendingByID[update.Package.ID] = update
+		}
+	}
 	output := make([]pluginPackageOutput, 0, len(plugins))
 	for _, item := range plugins {
-		output = append(output, pluginPackageOutput{
+		record := pluginPackageOutput{
 			ID:                   item.ID,
 			Name:                 item.Name,
 			Version:              item.Version,
@@ -138,7 +201,12 @@ func runPluginList(args []string) error {
 			RequestedPermissions: append([]string(nil), item.RequestedPermissions...),
 			EffectivePermissions: append([]string(nil), item.EffectivePermissions...),
 			UnsupportedFields:    append([]string(nil), item.UnsupportedFields...),
-		})
+		}
+		if pending, ok := pendingByID[item.ID]; ok && item.Source == "user" {
+			record.Pending = true
+			record.ActiveFingerprint = pending.ActiveFingerprint
+		}
+		output = append(output, record)
 	}
 	if *jsonOutput {
 		return printPluginJSON(output)
@@ -153,7 +221,11 @@ func runPluginList(args []string) error {
 		if version != "" {
 			version = " " + version
 		}
-		fmt.Printf("%s%s\t%s\t%s\n", item.ID, version, item.Source, item.Root)
+		pending := ""
+		if item.Pending {
+			pending = "\tpending update"
+		}
+		fmt.Printf("%s%s\t%s\t%s%s\n", item.ID, version, item.Source, item.Root, pending)
 	}
 	return nil
 }
@@ -171,9 +243,34 @@ func runPluginRemove(args []string) error {
 	if err != nil {
 		return fmt.Errorf("resolve Wuu home: %w", err)
 	}
+	pending, pendingErr := pluginpkg.ReadPendingUpdate(home, id)
+	if pendingErr != nil && !errors.Is(pendingErr, pluginpkg.ErrPendingUpdateNotFound) {
+		return pluginCLIError(pendingErr)
+	}
 	result, err := pluginpkg.UninstallPackage(home, id)
 	if err != nil {
 		return pluginCLIError(err)
+	}
+	if result.Removed && pendingErr == nil {
+		if err := pluginpkg.RemovePendingUpdate(home, id, pending.Package.Fingerprint); err != nil {
+			return pluginCLIError(fmt.Errorf("plugin was removed, but its pending update could not be cleared: %w", err))
+		}
+	}
+	if result.Removed {
+		configPath, err := statepath.ConfigPath("")
+		if err != nil {
+			return fmt.Errorf("resolve user config: %w", err)
+		}
+		if _, statErr := os.Stat(configPath); statErr == nil {
+			if _, err := config.UpdateExtensionSettings(configPath, func(settings *extensions.Settings) error {
+				settings.Revoke(extensions.SubjectID("user", id))
+				return nil
+			}); err != nil {
+				return fmt.Errorf("plugin was removed, but its policy could not be cleared: %w", err)
+			}
+		} else if !os.IsNotExist(statErr) {
+			return fmt.Errorf("plugin was removed, but its policy could not be inspected: %w", statErr)
+		}
 	}
 	output := pluginPackageOutput{ID: result.ID, Destination: result.Destination, Removed: result.Removed}
 	message := "Plugin package was not installed"
@@ -199,6 +296,34 @@ func runPluginPolicy(action string, args []string) error {
 	}
 	if item.Official {
 		return pluginCLIError(fmt.Errorf("official bundled plugin %q does not use user policy actions", item.ID))
+	}
+	if (action == "approve" || action == "reject") && item.Source == "user" {
+		home, err := statepath.Home("")
+		if err != nil {
+			return fmt.Errorf("resolve Wuu home: %w", err)
+		}
+		pending, pendingErr := pluginpkg.ReadPendingUpdate(home, item.ID)
+		switch {
+		case pendingErr == nil && action == "reject":
+			if err := pluginpkg.RejectPendingUpdate(home, item.ID, pending.Package.Fingerprint); err != nil {
+				return pluginCLIError(err)
+			}
+			output := packageInspectionOutput(pending.Package)
+			output.Pending = true
+			output.ActiveFingerprint = pending.ActiveFingerprint
+			output.PolicyAction = "reject_update"
+			return printPluginPackageOutput(output, *jsonOutput, "Rejected pending plugin update; the installed generation remains active")
+		case pendingErr == nil && action == "approve":
+			if _, err := pluginpkg.PromotePendingUpdate(home, item.ID, pending.Package.Fingerprint); err != nil {
+				return pluginCLIError(err)
+			}
+			item, err = discoverPluginForPolicy(id, *workdir)
+			if err != nil {
+				return pluginCLIError(fmt.Errorf("plugin update was promoted but could not be rediscovered: %w", err))
+			}
+		case pendingErr != nil && !errors.Is(pendingErr, pluginpkg.ErrPendingUpdateNotFound):
+			return pluginCLIError(pendingErr)
+		}
 	}
 	configPath, err := statepath.ConfigPath("")
 	if err != nil {
