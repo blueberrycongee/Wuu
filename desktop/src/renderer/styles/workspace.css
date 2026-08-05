@@ -1083,11 +1083,56 @@ html.resizing-workspace-file-split * {
   display: grid;
   width: 100%;
   height: 32px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
   margin-left: auto;
   justify-items: end;
   padding: 0 12px 0 0;
   color: inherit;
   background: transparent;
+}
+
+.workspace-document-turn-waiting-query {
+  min-width: 0;
+  margin-left: 18px;
+  overflow: hidden;
+  justify-self: start;
+  background: linear-gradient(
+    100deg,
+    var(--ink-muted) 15%,
+    var(--ink) 42%,
+    var(--ink-muted) 68%
+  );
+  background-size: 240% 100%;
+  background-clip: text;
+  color: transparent;
+  font-size: var(--font-ui);
+  font-weight: var(--weight-medium);
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  animation: workspace-document-waiting-query-shimmer 2.4s ease-in-out infinite;
+}
+
+@keyframes workspace-document-waiting-query-shimmer {
+  0%,
+  100% {
+    background-position: 100% 50%;
+    opacity: 0.62;
+  }
+
+  50% {
+    background-position: 0 50%;
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workspace-document-turn-waiting-query {
+    background: none;
+    color: var(--ink-muted);
+    animation: none;
+  }
 }
 
 .workspace-document-turn-summary svg {

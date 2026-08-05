@@ -68,6 +68,7 @@ import {
 } from "./SideThreadPanel";
 import { SideThreadComposer } from "./SideThreadComposer";
 import { ConversationForkDialog } from "./ConversationForkDialog";
+import { firstUserMessageText } from "./TurnViewHelpers";
 import type { TurnFileDiffSelection } from "./TurnFileDiffTypes";
 import {
   AppSidebar,
@@ -4936,6 +4937,11 @@ export function App(): JSX.Element {
                     key={activeThreadID ?? state.activeSessionTabID}
                     cwd={activeThread?.cwd ?? state.activeContext?.cwd}
                     onOpenFile={openWorkspaceFile}
+                    waitingQuery={
+                      activeThreadIsRunning
+                        ? firstUserMessageText(activeTurnForThread(activeThread))
+                        : undefined
+                    }
                     turns={
                       activePendingNewThreadTurn
                         ? [...turns, activePendingNewThreadTurn]

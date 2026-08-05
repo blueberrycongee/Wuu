@@ -72,11 +72,11 @@ describe("WorkspaceDocumentTurnDock", () => {
     container.remove();
   });
 
-  function render(turns: Turn[], key = "thread-a"): void {
+  function render(turns: Turn[], key = "thread-a", waitingQuery?: string): void {
     act(() => {
       root.render(
         <I18nProvider>
-          <WorkspaceDocumentTurnDock key={key} turns={turns}>
+          <WorkspaceDocumentTurnDock key={key} turns={turns} waitingQuery={waitingQuery}>
             <div data-testid="composer">Composer</div>
           </WorkspaceDocumentTurnDock>
         </I18nProvider>,
@@ -128,6 +128,18 @@ describe("WorkspaceDocumentTurnDock", () => {
       "I am tightening that section now.",
     );
     expect(container.querySelector('[data-testid="composer"]')).not.toBeNull();
+  });
+
+  it("renders the waiting query inside the exposed result drawer summary", () => {
+    render([turn("turn-1")], "thread-a", "好的 做完");
+
+    const summary = container.querySelector(".workspace-document-turn-summary");
+    const waitingQuery = summary?.querySelector(
+      ".workspace-document-turn-waiting-query",
+    );
+    expect(waitingQuery?.textContent).toBe("好的 做完");
+    expect(waitingQuery?.getAttribute("role")).toBe("status");
+    expect(waitingQuery?.children).toHaveLength(0);
   });
 
   it("appears and expands automatically when final text starts", () => {

@@ -10,6 +10,7 @@ interface WorkspaceDocumentTurnDockProps {
   cwd?: string;
   onOpenFile?: (path: string) => void;
   turns: Turn[];
+  waitingQuery?: string;
 }
 
 export const WorkspaceDocumentDrawerContext = createContext<{
@@ -48,6 +49,7 @@ export function WorkspaceDocumentTurnDock({
   cwd,
   onOpenFile,
   turns,
+  waitingQuery,
 }: WorkspaceDocumentTurnDockProps): JSX.Element {
   const { t } = useI18n();
   const turn = useMemo(() => latestResultTurn(turns), [turns]);
@@ -107,6 +109,15 @@ export function WorkspaceDocumentTurnDock({
             aria-label={toggleLabel}
             onClick={() => setExpanded((current) => !current)}
           >
+            {waitingQuery ? (
+              <span
+                className="workspace-document-turn-waiting-query"
+                role="status"
+                aria-live="polite"
+              >
+                {waitingQuery}
+              </span>
+            ) : null}
             {expanded ? <ChevronDown size={15} /> : <ChevronUp size={15} />}
           </button>
           {expanded ? (
