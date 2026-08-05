@@ -1553,7 +1553,7 @@ export const enUS = {
   "skills.pluginInstall": "Install local plugin",
   "skills.pluginInstalling": "Installing…",
   "skills.pluginInstallFailed": "Could not install the plugin",
-  "skills.sectionSkills": "Skills",
+  "skills.sectionSkills": "Plugins",
   "skills.sectionOfficial": "Official skills",
   "skills.sectionPersonal": "Your skills",
   "skills.officialSkillTitle": "Official skill bundled with Wuu",

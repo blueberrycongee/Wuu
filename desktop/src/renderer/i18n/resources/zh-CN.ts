@@ -1551,7 +1551,7 @@ export const zhCN = {
   "skills.pluginInstall": "安装本地插件",
   "skills.pluginInstalling": "正在安装…",
   "skills.pluginInstallFailed": "无法安装插件",
-  "skills.sectionSkills": "技能",
+  "skills.sectionSkills": "插件",
   "skills.sectionOfficial": "官方技能",
   "skills.sectionPersonal": "你的技能",
   "skills.officialSkillTitle": "随 Wuu 内置分发的官方技能",

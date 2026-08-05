@@ -15,11 +15,11 @@ import {
   MessageSquarePlus,
   MessagesSquare,
   Pin,
+  Plug,
   Plus,
   Search,
   Settings,
   UsersRound,
-  Wrench,
 } from "lucide-react";
 import {
   type CSSProperties,
@@ -583,7 +583,7 @@ export function AppSidebar({
             onClick={onOpenSkillsTab}
             disabled={!hasRuntimeContext}
           >
-            <Wrench className="icon-lg" />
+            <Plug className="icon-lg" />
             <span>{t("skills.sectionSkills")}</span>
           </button>
           {debugFixturesVisible ? (

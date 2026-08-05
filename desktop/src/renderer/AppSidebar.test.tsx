@@ -474,7 +474,7 @@ describe("AppSidebar 协作 section", () => {
     expect(container.querySelector(".sidebar-collab-list")?.textContent).not.toContain("任务");
   });
 
-  it("offers Agents as a top-level nav item next to 自动化 and 技能", () => {
+  it("offers Agents as a top-level nav item next to 自动化 and 插件", () => {
     let opened = "";
     renderSidebar({
       groupChatEnabled: true,
@@ -490,6 +490,11 @@ describe("AppSidebar 协作 section", () => {
     expect(agentsNav).not.toBeNull();
     expect(agentsNav?.getAttribute("aria-current")).toBe("page");
     expect(container.querySelector(".sidebar-collab-list")?.textContent).not.toContain("Agents");
+    expect(
+      Array.from(container.querySelectorAll<HTMLElement>(".nav-item")).some(
+        (item) => item.textContent === "插件",
+      ),
+    ).toBe(true);
 
     act(() => agentsNav?.click());
     expect(opened).toBe("agents");
