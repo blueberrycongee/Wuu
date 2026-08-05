@@ -1,6 +1,8 @@
 package appserver
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -15,6 +17,69 @@ import (
 	"github.com/blueberrycongee/wuu/internal/session"
 	"github.com/blueberrycongee/wuu/internal/statepath"
 )
+
+func (s *Server) handlePluginDesktopModuleRead(req Request) error {
+	var params PluginDesktopModuleReadParams
+	if err := decodeParams(req.Params, &params); err != nil {
+		return s.writeResponse(req.ID, nil, err)
+	}
+	params.ID = strings.TrimSpace(params.ID)
+	params.Fingerprint = strings.TrimSpace(params.Fingerprint)
+	if params.ID == "" || params.Fingerprint == "" {
+		return s.writeResponse(req.ID, nil, errors.New("plugin id and fingerprint are required"))
+	}
+
+	var selected *pluginpkg.Plugin
+	for index := range s.rt.Plugins {
+		if s.rt.Plugins[index].SubjectID == params.ID {
+			selected = &s.rt.Plugins[index]
+			break
+		}
+	}
+	if selected == nil {
+		return s.writeResponse(req.ID, nil, fmt.Errorf("plugin %q is not available in this workspace", params.ID))
+	}
+	fresh, err := pluginpkg.LoadManifestWithOptions(selected.ManifestPath, pluginpkg.LoadOptions{
+		Source:      selected.Source,
+		Official:    selected.Official,
+		WorkspaceID: selected.WorkspaceID,
+	})
+	if err != nil {
+		return s.writeResponse(req.ID, nil, fmt.Errorf("reload desktop plugin %q: %w", params.ID, err))
+	}
+	if fresh.SubjectID != params.ID || fresh.Fingerprint != params.Fingerprint {
+		return s.writeResponse(req.ID, nil, errors.New("desktop plugin changed; refresh inventory before loading it"))
+	}
+
+	settings := extensions.Settings{}
+	if s.rt.ExtensionSettings != nil {
+		settings = *s.rt.ExtensionSettings
+	} else if cfg := s.currentExtensionConfig(); cfg.Extensions != nil {
+		settings = *cfg.Extensions
+	}
+	approval, state, _, enabled := pluginPackageInventoryState(settings, fresh)
+	approved := approval == ExtensionApprovalGranted || approval == ExtensionApprovalOfficial
+	active := state == ExtensionStateGranted || state == ExtensionStateActive
+	if !enabled || !approved || !active {
+		return s.writeResponse(req.ID, nil, errors.New("desktop plugin is not approved and enabled"))
+	}
+	if fresh.Desktop == nil {
+		return s.writeResponse(req.ID, nil, errors.New("plugin does not declare a desktop entry"))
+	}
+	source, err := os.ReadFile(filepath.Join(fresh.Root, filepath.FromSlash(fresh.Desktop.Entry)))
+	if err != nil {
+		return s.writeResponse(req.ID, nil, fmt.Errorf("read desktop plugin entry: %w", err))
+	}
+	digest := sha256.Sum256(source)
+	return s.writeResponse(req.ID, PluginDesktopModuleReadResult{
+		ID:          fresh.SubjectID,
+		Fingerprint: fresh.Fingerprint,
+		Entry:       fresh.Desktop.Entry,
+		MediaType:   "text/javascript",
+		Digest:      hex.EncodeToString(digest[:]),
+		Source:      string(source),
+	}, nil)
+}
 
 func (s *Server) handlePluginPackageInspect(req Request) error {
 	var params PluginPackageInspectParams

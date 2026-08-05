@@ -46,6 +46,87 @@ func TestPluginPackageInspectZipWithoutRuntime(t *testing.T) {
 	}
 }
 
+func TestPluginDesktopModuleReadRequiresExactApprovedGeneration(t *testing.T) {
+	rt := newTestRuntime(t, &fakeClient{})
+	root := t.TempDir()
+	manifestPath := filepath.Join(root, "plugin.json")
+	entryPath := filepath.Join(root, "dist", "desktop.js")
+	writePluginPackageFile(t, manifestPath, `{
+  "schemaVersion": 1,
+  "id": "desktop-demo",
+  "desktop": {"entry": "dist/desktop.js"}
+}`)
+	writePluginPackageFile(t, entryPath, `export function activate(api) { api.registerCleanup(() => {}); }`)
+	item, err := pluginpkg.LoadManifest(manifestPath, "user")
+	if err != nil {
+		t.Fatalf("load plugin manifest: %v", err)
+	}
+	rt.Plugins = []pluginpkg.Plugin{item}
+	if rt.ExtensionSettings == nil {
+		rt.ExtensionSettings = &extensions.Settings{}
+	}
+	if err := rt.ExtensionSettings.RecordGrant(extensions.Grant{
+		SubjectID: item.SubjectID, Fingerprint: item.Fingerprint, Permissions: item.EffectivePermissions,
+	}); err != nil {
+		t.Fatalf("grant plugin: %v", err)
+	}
+
+	out := &lockedBuffer{}
+	srv := New(rt, out)
+	callPluginPackageRPC(t, srv, "read", MethodPluginDesktopModuleRead, PluginDesktopModuleReadParams{
+		ID: item.SubjectID, Fingerprint: item.Fingerprint,
+	})
+	response := responseByID(t, parseOutput(t, out.String()), "read")
+	if response["error"] != nil {
+		t.Fatalf("read response = %+v", response)
+	}
+	result := remarshal[PluginDesktopModuleReadResult](t, response["result"])
+	if result.ID != item.SubjectID || result.Fingerprint != item.Fingerprint || result.Entry != "dist/desktop.js" {
+		t.Fatalf("module identity = %+v", result)
+	}
+	if !strings.Contains(result.Source, "activate") || result.Digest == "" || result.MediaType != "text/javascript" {
+		t.Fatalf("module payload = %+v", result)
+	}
+
+	writePluginPackageFile(t, entryPath, `export function activate() { throw new Error("changed"); }`)
+	callPluginPackageRPC(t, srv, "changed", MethodPluginDesktopModuleRead, PluginDesktopModuleReadParams{
+		ID: item.SubjectID, Fingerprint: item.Fingerprint,
+	})
+	changed := responseByID(t, parseOutput(t, out.String()), "changed")
+	if changed["error"] == nil || !strings.Contains(fmt.Sprint(changed["error"]), "changed") {
+		t.Fatalf("changed response = %+v", changed)
+	}
+}
+
+func TestPluginDesktopModuleReadRejectsDisabledPlugin(t *testing.T) {
+	rt := newTestRuntime(t, &fakeClient{})
+	root := t.TempDir()
+	manifestPath := filepath.Join(root, "plugin.json")
+	writePluginPackageFile(t, manifestPath, `{"id":"disabled-desktop","desktop":{"entry":"desktop.js"}}`)
+	writePluginPackageFile(t, filepath.Join(root, "desktop.js"), `export const activate = () => {};`)
+	item, err := pluginpkg.LoadManifest(manifestPath, "user")
+	if err != nil {
+		t.Fatalf("load plugin manifest: %v", err)
+	}
+	settings := &extensions.Settings{}
+	if err := settings.RecordGrant(extensions.Grant{SubjectID: item.SubjectID, Fingerprint: item.Fingerprint}); err != nil {
+		t.Fatalf("grant plugin: %v", err)
+	}
+	settings.SetDisabled(item.SubjectID, true)
+	rt.ExtensionSettings = settings
+	rt.Plugins = []pluginpkg.Plugin{item}
+
+	out := &lockedBuffer{}
+	srv := New(rt, out)
+	callPluginPackageRPC(t, srv, "disabled", MethodPluginDesktopModuleRead, PluginDesktopModuleReadParams{
+		ID: item.SubjectID, Fingerprint: item.Fingerprint,
+	})
+	response := responseByID(t, parseOutput(t, out.String()), "disabled")
+	if response["error"] == nil || !strings.Contains(fmt.Sprint(response["error"]), "not approved and enabled") {
+		t.Fatalf("disabled response = %+v", response)
+	}
+}
+
 func TestPluginPackageInstallDirectoryIsPendingAndDoesNotActivate(t *testing.T) {
 	rt := newTestRuntime(t, &fakeClient{})
 	rt.WuuHome = retryingTempDir(t)

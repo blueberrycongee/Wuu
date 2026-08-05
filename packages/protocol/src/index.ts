@@ -409,6 +409,20 @@ export type PluginPackageRemoveResult = {
   skills: SkillSummary[];
 };
 
+export interface PluginDesktopModuleReadParams {
+  id: string;
+  fingerprint: string;
+}
+
+export interface PluginDesktopModuleReadResult {
+  id: string;
+  fingerprint: string;
+  entry: string;
+  media_type: "text/javascript";
+  digest: string;
+  source: string;
+}
+
 export type ConfigModelUpdateResult = {
   provider: string;
   model: string;

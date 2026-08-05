@@ -31,6 +31,7 @@ const (
 	MethodPluginPackageInspect    = "plugin/package/inspect"
 	MethodPluginPackageInstall    = "plugin/package/install"
 	MethodPluginPackageRemove     = "plugin/package/remove"
+	MethodPluginDesktopModuleRead = "plugin/desktop-module/read"
 	MethodConfigCodexModels       = "config/codex/models"
 	MethodConfigCatalogRefresh    = "config/model-catalog/refresh"
 	MethodConfigProviderRemove    = "config/provider/remove"
@@ -722,6 +723,20 @@ type PluginPackageRemoveResult struct {
 	Removed            bool                       `json:"removed"`
 	ExtensionInventory []ExtensionInventoryRecord `json:"extension_inventory"`
 	Skills             []SkillSummary             `json:"skills"`
+}
+
+type PluginDesktopModuleReadParams struct {
+	ID          string `json:"id"`
+	Fingerprint string `json:"fingerprint"`
+}
+
+type PluginDesktopModuleReadResult struct {
+	ID          string `json:"id"`
+	Fingerprint string `json:"fingerprint"`
+	Entry       string `json:"entry"`
+	MediaType   string `json:"media_type"`
+	Digest      string `json:"digest"`
+	Source      string `json:"source"`
 }
 
 type ConfigModelUpdateParams struct {
