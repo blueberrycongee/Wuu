@@ -42,6 +42,7 @@
           "pages": [
             "zh-cn/customize/skills.md",
             "zh-cn/customize/skill-authoring.md",
+            "zh-cn/customize/hooks.md",
             "zh-cn/customize/memory.md",
             "zh-cn/reference/permissions.md",
             "zh-cn/reference/configuration.md"
