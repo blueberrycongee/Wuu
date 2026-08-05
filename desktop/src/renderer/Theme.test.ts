@@ -1,7 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ThemePreference } from "../shared/protocol";
+import type { ExtensionInventoryRecord, ThemePreference } from "../shared/protocol";
 import {
+  applyExtensionTheme,
   applyThemePreference,
+  availableExtensionThemes,
+  clearExtensionTheme,
   currentAppliedTheme,
   observeAppliedTheme,
   resolveThemePreference,
@@ -42,8 +45,57 @@ function stubMatchMedia(initialMatches: boolean): {
 }
 
 afterEach(() => {
+  clearExtensionTheme();
   vi.unstubAllGlobals();
   delete document.documentElement.dataset.theme;
+});
+
+describe("extension themes", () => {
+  const inventory: ExtensionInventoryRecord[] = [
+    {
+      id: "calm-ui",
+      name: "Calm UI",
+      kind: "plugin",
+      provenance: { kind: "plugin", source: "local", scope: "user" },
+      state: "active",
+      enabled: true,
+      contributions: {
+        themes: [
+          {
+            id: "violet",
+            name: "Violet",
+            base: "dark",
+            tokens: { "--wuu-accent": "#7659ff" },
+            syntax: { "--hljs-keyword": "#ff79c6" },
+          },
+        ],
+      },
+    },
+  ];
+
+  it("lists active plugin themes and applies their declared tokens", () => {
+    const [theme] = availableExtensionThemes(inventory);
+    expect(theme?.key).toBe("calm-ui:violet");
+    applyExtensionTheme(theme!);
+
+    expect(document.documentElement.dataset.theme).toBe("dark");
+    expect(document.documentElement.style.getPropertyValue("--wuu-accent")).toBe("#7659ff");
+    expect(document.documentElement.style.getPropertyValue("--hljs-keyword")).toBe("#ff79c6");
+  });
+
+  it("removes extension tokens when returning to a built-in theme", () => {
+    const [theme] = availableExtensionThemes(inventory);
+    applyExtensionTheme(theme!);
+    applyThemePreference("light");
+
+    expect(document.documentElement.dataset.theme).toBe("light");
+    expect(document.documentElement.style.getPropertyValue("--wuu-accent")).toBe("");
+    expect(window.localStorage.getItem("wuu.extension-theme")).toBeNull();
+  });
+
+  it("does not offer disabled plugin themes", () => {
+    expect(availableExtensionThemes([{ ...inventory[0]!, enabled: false }])).toEqual([]);
+  });
 });
 
 describe("resolveThemePreference", () => {

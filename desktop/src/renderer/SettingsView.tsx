@@ -1936,7 +1936,7 @@ function SettingsGeneralPage({
             <LanguagePreferenceControl />
           </SettingsRow>
           <SettingsRow title={t("settings.theme")} block>
-            <ThemePreferenceControl />
+            <ThemePreferenceControl extensionInventory={initialized?.extension_inventory} />
           </SettingsRow>
           <SettingsRow title={t("settings.messageFontSize")} block>
             <MessageFlowFontSizeControl />

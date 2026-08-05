@@ -1,4 +1,8 @@
-import type { ThemePreference } from "../shared/protocol";
+import type {
+  ExtensionInventoryRecord,
+  ExtensionThemeDescriptor,
+  ThemePreference,
+} from "../shared/protocol";
 
 /**
  * Renderer-side theme controller.
@@ -19,6 +23,14 @@ import type { ThemePreference } from "../shared/protocol";
 const DARK_SCHEME_QUERY = "(prefers-color-scheme: dark)";
 
 let systemListenerCleanup: (() => void) | undefined;
+const EXTENSION_THEME_KEY = "wuu.extension-theme";
+const appliedExtensionTokens = new Set<string>();
+
+export type AvailableExtensionTheme = ExtensionThemeDescriptor & {
+  key: string;
+  pluginId: string;
+  pluginName: string;
+};
 
 export type AppliedTheme = "light" | "dark";
 
@@ -66,6 +78,7 @@ export function observeAppliedTheme(
  * changes live until a different preference is applied.
  */
 export function applyThemePreference(preference: ThemePreference): void {
+  clearExtensionTheme();
   systemListenerCleanup?.();
   systemListenerCleanup = undefined;
 
@@ -83,6 +96,70 @@ export function applyThemePreference(preference: ThemePreference): void {
   };
   query.addEventListener("change", onChange);
   systemListenerCleanup = () => query.removeEventListener("change", onChange);
+}
+
+export function availableExtensionThemes(
+  inventory: readonly ExtensionInventoryRecord[] | undefined,
+): AvailableExtensionTheme[] {
+  return (inventory ?? []).flatMap((plugin) => {
+    if (
+      plugin.kind !== "plugin" ||
+      plugin.enabled === false ||
+      (plugin.state !== "granted" && plugin.state !== "active")
+    ) {
+      return [];
+    }
+    return (plugin.contributions?.themes ?? []).map((theme) => ({
+      ...theme,
+      key: `${plugin.id}:${theme.id}`,
+      pluginId: plugin.id,
+      pluginName: plugin.name,
+    }));
+  });
+}
+
+export function selectedExtensionThemeKey(): string {
+  return window.localStorage?.getItem(EXTENSION_THEME_KEY) ?? "";
+}
+
+export function applyExtensionTheme(theme: AvailableExtensionTheme): void {
+  systemListenerCleanup?.();
+  systemListenerCleanup = undefined;
+  clearExtensionThemeTokens();
+  document.documentElement.dataset.theme = theme.base;
+  for (const [token, value] of Object.entries({ ...theme.tokens, ...theme.syntax })) {
+    document.documentElement.style.setProperty(token, value);
+    appliedExtensionTokens.add(token);
+  }
+  window.localStorage?.setItem(EXTENSION_THEME_KEY, theme.key);
+}
+
+export function clearExtensionTheme(): void {
+  clearExtensionThemeTokens();
+  window.localStorage?.removeItem(EXTENSION_THEME_KEY);
+}
+
+export function syncExtensionTheme(
+  inventory: readonly ExtensionInventoryRecord[] | undefined,
+): void {
+  const selected = selectedExtensionThemeKey();
+  if (!selected) {
+    clearExtensionThemeTokens();
+    return;
+  }
+  const theme = availableExtensionThemes(inventory).find((candidate) => candidate.key === selected);
+  if (theme) {
+    applyExtensionTheme(theme);
+    return;
+  }
+  clearExtensionTheme();
+}
+
+function clearExtensionThemeTokens(): void {
+  for (const token of appliedExtensionTokens) {
+    document.documentElement.style.removeProperty(token);
+  }
+  appliedExtensionTokens.clear();
 }
 
 /**

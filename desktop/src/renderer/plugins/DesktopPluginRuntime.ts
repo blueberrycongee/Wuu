@@ -2,6 +2,7 @@ import * as React from "react";
 import { useEffect } from "react";
 
 import type { ExtensionInventoryRecord } from "../../shared/protocol";
+import { syncExtensionTheme } from "../Theme";
 import { PluginHost, type PluginGenerationApi } from "./PluginHost";
 
 interface DesktopPluginModule {
@@ -78,11 +79,15 @@ export function useDesktopPluginRuntime(
   inventory: readonly ExtensionInventoryRecord[] | undefined,
 ): void {
   useEffect(() => {
+    syncExtensionTheme(inventory);
+    const syncThemeFromOtherWindow = (): void => syncExtensionTheme(inventory);
+    window.addEventListener("storage", syncThemeFromOtherWindow);
     void desktopPluginRuntime.sync(inventory ?? []).then((failures) => {
       for (const failure of failures) {
         console.error(`Desktop plugin ${failure.pluginId} failed to activate`, failure.error);
       }
     });
+    return () => window.removeEventListener("storage", syncThemeFromOtherWindow);
   }, [inventory]);
 }
 

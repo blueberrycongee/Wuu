@@ -1,6 +1,11 @@
 import { useEffect, useState } from "react";
-import type { ThemePreference } from "../shared/protocol";
-import { applyThemePreference } from "./Theme";
+import type { ExtensionInventoryRecord, ThemePreference } from "../shared/protocol";
+import {
+  applyExtensionTheme,
+  applyThemePreference,
+  availableExtensionThemes,
+  selectedExtensionThemeKey,
+} from "./Theme";
 import { useI18n } from "./i18n";
 
 function ThemePreviewWindow({ theme }: { theme: ThemePreference }): JSX.Element {
@@ -22,7 +27,11 @@ function ThemePreviewWindow({ theme }: { theme: ThemePreference }): JSX.Element 
  * directly, and applies the choice to <html data-theme> immediately so
  * the user sees the switch without a save step.
  */
-export function ThemePreferenceControl(): JSX.Element {
+export function ThemePreferenceControl({
+  extensionInventory,
+}: {
+  extensionInventory?: readonly ExtensionInventoryRecord[];
+} = {}): JSX.Element {
   const { t } = useI18n();
   const themeOptions: Array<{ value: ThemePreference; label: string }> = [
     { value: "system", label: t("common.system") },
@@ -32,6 +41,8 @@ export function ThemePreferenceControl(): JSX.Element {
   const [preference, setPreference] = useState<ThemePreference>(
     () => window.wuu?.initialThemePreference ?? "system",
   );
+  const [extensionThemeKey, setExtensionThemeKey] = useState(selectedExtensionThemeKey);
+  const extensionThemes = availableExtensionThemes(extensionInventory);
 
   useEffect(() => {
     let cancelled = false;
@@ -61,12 +72,22 @@ export function ThemePreferenceControl(): JSX.Element {
   );
 
   function choose(next: ThemePreference): void {
+    setExtensionThemeKey("");
     setPreference(next);
     applyThemePreference(next);
     void window.wuu?.setThemePreference?.(next).catch(() => {
       // Persistence failure leaves the applied theme for this window;
       // the next launch falls back to the stored preference.
     });
+  }
+
+  function chooseExtensionTheme(key: string): void {
+    const theme = extensionThemes.find((candidate) => candidate.key === key);
+    if (!theme) {
+      return;
+    }
+    setExtensionThemeKey(key);
+    applyExtensionTheme(theme);
   }
 
   return (
@@ -76,8 +97,8 @@ export function ThemePreferenceControl(): JSX.Element {
           key={option.value}
           type="button"
           role="radio"
-          aria-checked={preference === option.value}
-          className={`settings-theme-card${preference === option.value ? " active" : ""}`}
+          aria-checked={!extensionThemeKey && preference === option.value}
+          className={`settings-theme-card${!extensionThemeKey && preference === option.value ? " active" : ""}`}
           data-testid={`settings-theme-${option.value}`}
           onClick={() => choose(option.value)}
         >
@@ -85,6 +106,26 @@ export function ThemePreferenceControl(): JSX.Element {
             <ThemePreviewWindow theme={option.value} />
           </span>
           <span className="settings-theme-card-label">{option.label}</span>
+        </button>
+      ))}
+      {extensionThemes.map((theme) => (
+        <button
+          key={theme.key}
+          type="button"
+          role="radio"
+          aria-checked={extensionThemeKey === theme.key}
+          className={`settings-theme-card${extensionThemeKey === theme.key ? " active" : ""}`}
+          data-testid={`settings-theme-extension-${theme.key}`}
+          onClick={() => chooseExtensionTheme(theme.key)}
+        >
+          <span
+            className={`settings-theme-preview settings-theme-preview-${theme.base}`}
+            aria-hidden="true"
+          >
+            <ThemePreviewWindow theme={theme.base} />
+          </span>
+          <span className="settings-theme-card-label">{theme.name}</span>
+          <span className="settings-theme-card-label">{theme.pluginName}</span>
         </button>
       ))}
     </div>
