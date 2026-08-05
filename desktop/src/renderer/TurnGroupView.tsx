@@ -69,7 +69,7 @@ export type TurnGroupViewProps = {
 };
 
 export function TurnGroupView(props: TurnGroupViewProps): JSX.Element {
-  const { turns, awaiting, interrupted } = props;
+  const { turns, awaiting, interrupted, isLatestTurn } = props;
   const first = turns[0];
   const timelinePending = turnsHavePendingSubagents(turns);
   // A single-turn group with no live orchestration renders through the
@@ -79,7 +79,16 @@ export function TurnGroupView(props: TurnGroupViewProps): JSX.Element {
   // history may no longer contain the original spawn_agent item, but the
   // conversation must not expose a completed block while the side panel still
   // reports work in flight.
-  const orchestrationLive = Boolean(awaiting) || (timelinePending && !interrupted);
+  // Timeline state keeps historical wait rows reconstructable, but it is not
+  // proof that an old group is still the thread's active work. Only the group
+  // containing the latest turn may own live presentation (shimmer, timer and
+  // suppressed action bar). This prevents an unmatched historical spawn from
+  // animating alongside the current orchestration while completion wakes are
+  // delayed or absent from that older group.
+  const orchestrationLive =
+    Boolean(isLatestTurn) &&
+    !interrupted &&
+    (Boolean(awaiting) || timelinePending);
   const orchestrationInterrupted = Boolean(interrupted);
   if (turns.length === 1 && !orchestrationLive && !orchestrationInterrupted && first) {
     const turn = first;
@@ -140,7 +149,7 @@ function MergedTurnGroupView({
   const subagentProgress = subagentProgressForTurns(turns);
   const waitingTail = (() => {
     if (interrupted || subagentProgress.total === 0) return undefined;
-    if (awaiting && subagentProgress.remaining > 0) {
+    if (subagentProgress.remaining > 0) {
       return {
         label:
           subagentProgress.finished > 0
@@ -153,7 +162,7 @@ function MergedTurnGroupView({
               }),
         // The row remains visible while a completion wake is being processed,
         // but the active shimmer belongs to the parent turn's newer work.
-        live: !anyMemberInProgress,
+        live: Boolean(awaiting) && !anyMemberInProgress,
       };
     }
     // Keep the synthetic row for the lifetime of the active parent turn. A

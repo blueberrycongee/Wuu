@@ -119,12 +119,14 @@ function mountGroup(
   awaiting = false,
   onOpenRuns?: (turnID: string) => void,
   interrupted = false,
+  isLatestTurn = true,
 ): void {
   render(
     <TurnGroupView
       turns={turns}
       awaiting={awaiting}
       interrupted={interrupted}
+      isLatestTurn={isLatestTurn}
       onStreamFrame={() => {}}
       onOpenRuns={onOpenRuns}
     />,
@@ -227,6 +229,54 @@ describe("TurnGroupView — merged orchestration group", () => {
 });
 
 describe("TurnGroupView — awaiting between turns", () => {
+  it("only animates the latest pending orchestration", () => {
+    const historicalTurns = [
+      makeTurn("historical-parent", [
+        userItem("并行检查"),
+        spawnItem("historical-a"),
+        spawnItem("historical-b"),
+        spawnItem("historical-c"),
+        answerItem("等待三个子任务。"),
+      ]),
+      makeTurn("historical-follow-up", [answerItem("继续处理。")]),
+    ];
+    const latestTurns = [
+      makeTurn("latest-parent", [
+        userItem("最后检查"),
+        spawnItem("latest-review"),
+        answerItem("等待最后一个子任务。"),
+      ]),
+    ];
+
+    render(
+      <>
+        <TurnGroupView
+          turns={historicalTurns}
+          isLatestTurn={false}
+          onStreamFrame={() => {}}
+        />
+        <TurnGroupView
+          turns={latestTurns}
+          awaiting
+          isLatestTurn
+          onStreamFrame={() => {}}
+        />
+      </>,
+    );
+
+    const waitStatuses = Array.from(
+      container.querySelectorAll<HTMLElement>(".turn-subagent-wait-status"),
+    );
+    expect(waitStatuses).toHaveLength(2);
+    expect(waitStatuses[0]?.textContent).toContain("仍在等待 3 个 subagent");
+    expect(waitStatuses[0]?.classList.contains("is-live-gray")).toBe(false);
+    expect(waitStatuses[1]?.textContent).toContain("仍在等待 1 个 subagent");
+    expect(waitStatuses[1]?.classList.contains("is-live-gray")).toBe(true);
+    expect(
+      container.querySelectorAll(".turn-subagent-wait-status.is-live-gray"),
+    ).toHaveLength(1);
+  });
+
   it("keeps a spawn turn live while its background agents run", () => {
     const turns = [
       makeTurn(
