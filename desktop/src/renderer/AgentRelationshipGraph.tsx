@@ -139,7 +139,10 @@ function AgentPreviewCard({ agent, insight, inheritedProvider, inheritedModel, o
     <aside className="channel-agent-preview-card" data-testid="channel-agent-preview-card" aria-live="polite" onPointerEnter={onPointerEnter} onPointerLeave={onPointerLeave}>
       <header className="channel-agent-preview-header">
         <div className="channel-agent-preview-avatar"><AgentAvatarMark avatarKey={agent.avatar_key || "abstract-1"} avatarImage={agent.avatar_image} /></div>
-        <span className="channel-agent-preview-activity">{status === "thinking" ? t("channels.agentStatus.thinking") : relativeActivity(insight?.last_active_at, locale, t)}</span>
+        <div className="channel-agent-preview-identity">
+          <strong className="channel-agent-preview-name">{agent.name}</strong>
+          <span className="channel-agent-preview-activity">{status === "thinking" ? t("channels.agentStatus.thinking") : relativeActivity(insight?.last_active_at, locale, t)}</span>
+        </div>
         <span className={`channel-agent-preview-dot ${status}`} role="img" aria-label={t(`channels.agentStatus.${status}`)} />
       </header>
       <p className="channel-agent-preview-model" title={`${provider} · ${model}`}>

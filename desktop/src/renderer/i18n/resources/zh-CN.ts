@@ -141,7 +141,7 @@ export const zhCN = {
   "channels.agentPreviewFiles": "文件",
   "channels.agentPreviewTokens": "Tokens",
   "channels.agentPreviewWindow": "近 {count} 天",
-  "channels.agentPreviewNoChanges": "近 7 天暂无代码变更",
+  "channels.agentPreviewNoChanges": "暂无代码变更",
   "channels.agentPreviewLoading": "正在加载 Agent 活动快照",
   "channels.agentPreviewNoActivity": "暂无活动记录",
   "channels.agentPreviewJustNow": "刚刚活跃",

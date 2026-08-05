@@ -143,7 +143,7 @@ export const enUS = {
   "channels.agentPreviewFiles": "files",
   "channels.agentPreviewTokens": "tokens",
   "channels.agentPreviewWindow": "Last {count} days",
-  "channels.agentPreviewNoChanges": "No code changes in the last 7 days",
+  "channels.agentPreviewNoChanges": "No code changes",
   "channels.agentPreviewLoading": "Loading agent activity snapshot",
   "channels.agentPreviewNoActivity": "No activity recorded",
   "channels.agentPreviewJustNow": "Active just now",

@@ -163,6 +163,18 @@ describe("AgentRelationshipGraph", () => {
             languages: [{ name: "TypeScript", lines: 480, share: 1 }],
             attribution_partial: true,
           },
+          "agent-2": {
+            agent_id: "agent-2",
+            window_days: 7,
+            files_changed: 0,
+            additions: 0,
+            deletions: 0,
+            input_tokens: 0,
+            output_tokens: 0,
+            workspace: "wuu",
+            languages: [],
+            attribution_partial: false,
+          },
         }}
         inheritedProvider="openai"
         inheritedModel="gpt-5.2"
@@ -181,7 +193,7 @@ describe("AgentRelationshipGraph", () => {
     });
     const card = container.querySelector<HTMLElement>('[data-testid="channel-agent-preview-card"]')!;
     expect(card).not.toBeNull();
-    expect(card.textContent).not.toContain("Galileo");
+    expect(card.textContent).toContain("Galileo");
     expect(card.textContent).toContain("gpt-5.2");
     expect(card.textContent).toContain("TypeScript");
     expect(card.textContent).toContain("386");
@@ -189,5 +201,15 @@ describe("AgentRelationshipGraph", () => {
     expect(container.querySelectorAll(".channel-agent-graph-links .is-active").length).toBeGreaterThan(0);
     act(() => node.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
     expect(onSelectAgent).toHaveBeenCalledWith(agents[0]);
+
+    const idleNode = container.querySelector<SVGGElement>('[aria-label="Qin"]')!;
+    act(() => {
+      idleNode.dispatchEvent(pointerEvent("pointerover", 0, 0));
+      vi.advanceTimersByTime(140);
+    });
+    expect(card.textContent).toContain("Qin");
+    expect(card.textContent).toContain("近 7 天");
+    expect(card.textContent).toContain("暂无代码变更");
+    expect(card.textContent?.match(/近 7 天/g)).toHaveLength(1);
   });
 });
