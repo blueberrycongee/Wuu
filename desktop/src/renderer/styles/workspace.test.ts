@@ -222,7 +222,9 @@ describe("workspace document turn glass", () => {
     expect(summary).toMatch(/background:\s*transparent;/);
     expect(summary).toMatch(/grid-template-columns:\s*minmax\(0, 1fr\) 28px;/);
     expect(summary).toMatch(/column-gap:\s*12px;/);
+    expect(cssRuleBody(".workspace-document-turn-waiting-query")).toMatch(/grid-column:\s*1;/);
     expect(cssRuleBody(".workspace-document-turn-waiting-query")).toMatch(/width:\s*100%;/);
+    expect(cssRuleBody(".workspace-document-turn-summary svg")).toMatch(/grid-column:\s*2;/);
     expect(cssRuleBody(".workspace-document-turn-summary svg")).toMatch(/justify-self:\s*center;/);
     expect(details).toMatch(/background:\s*transparent;/);
     expect(composerFrame).toMatch(/0 18px 54px rgba\(20, 24, 28, 0\.14\)/);
