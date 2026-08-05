@@ -3295,11 +3295,11 @@ describe("AppState English localization", () => {
       code: 0,
       message: "",
     });
-    expect(sessionTabLabel(skills, initialState)).toBe("Skills");
+    expect(sessionTabLabel(skills, initialState)).toBe("Extensions");
     expect(resolveLocalizedText(exited.status)).toBe("wuu core exited");
 
     setActiveLocale("zh-CN");
-    expect(sessionTabLabel(skills, initialState)).toBe("技能");
+    expect(sessionTabLabel(skills, initialState)).toBe("扩展");
     expect(resolveLocalizedText(exited.status)).toBe("wuu core 已退出");
   });
 
