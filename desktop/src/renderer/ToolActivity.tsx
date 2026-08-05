@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import type { ThreadItem } from "../shared/protocol";
 import { LightweightStreamingText } from "./LightweightStreamingText";
 import {
@@ -65,16 +65,29 @@ export function ToolActivityTimeline({
       data-pending-count={Math.max(0, items.length - visibleCount)}
     >
       {items.slice(0, visibleCount).map((item) => (
-        <div
-          className="activity-timeline-item"
+        <ToolActivityTimelineItem
+          item={item}
           key={item.id}
-        >
-          <ToolActivityRow items={[item]} streaming={streaming} />
-        </div>
+          streaming={streaming && item.status === "in_progress"}
+        />
       ))}
     </div>
   );
 }
+
+const ToolActivityTimelineItem = memo(function ToolActivityTimelineItem({
+  item,
+  streaming,
+}: {
+  item: ThreadItem;
+  streaming: boolean;
+}): JSX.Element {
+  return (
+    <div className="activity-timeline-item">
+      <ToolActivityRow items={[item]} streaming={streaming} />
+    </div>
+  );
+});
 
 // A single tool activity row is now one line of plain prose plus, when
 // there is an error, a single indented error line below it. We no longer

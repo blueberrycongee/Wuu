@@ -1,4 +1,5 @@
 import {
+  memo,
   type ChangeEvent as ReactChangeEvent,
   type ClipboardEvent as ReactClipboardEvent,
   type DragEvent as ReactDragEvent,
@@ -47,7 +48,7 @@ import {
 } from "./UserFacingErrors";
 import { useI18n } from "./i18n";
 
-export function ThreadItemView({
+export const ThreadItemView = memo(function ThreadItemView({
   turnID,
   turnStatus,
   item,
@@ -250,7 +251,7 @@ export function ThreadItemView({
     default:
       return null;
   }
-}
+});
 
 function UserMessageBubble({
   text,
