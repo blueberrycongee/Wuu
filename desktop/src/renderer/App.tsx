@@ -631,10 +631,10 @@ export function App(): JSX.Element {
   const [focusedWorkspaceContext, setFocusedWorkspaceContext] =
     useState<RuntimeContext | undefined>(undefined);
   useEffect(() => {
-    if (!rightPanelGlobalized) {
+    if (!rightPanelOpen) {
       setFocusedWorkspaceContext(undefined);
     }
-  }, [rightPanelGlobalized]);
+  }, [rightPanelOpen]);
   // Manual focus is user intent; automatic focus is derived independently
   // from current layout capacity above. Closing the workspace clears only the
   // manual request, while resizing can freely enter/leave automatic focus.
@@ -993,10 +993,7 @@ export function App(): JSX.Element {
     () => workspacePanelContext(state.activeContext, state.thread),
     [state.activeContext, state.thread],
   );
-  const workspaceContext =
-    rightPanelGlobalized && focusedWorkspaceContext
-      ? focusedWorkspaceContext
-      : conversationWorkspaceContext;
+  const workspaceContext = focusedWorkspaceContext ?? conversationWorkspaceContext;
   const activeWorkspaceViewTab = workspaceActiveViewTabID
     ? workspaceViewTabs.find((tab) => tab.id === workspaceActiveViewTabID)
     : undefined;
@@ -2107,7 +2104,7 @@ export function App(): JSX.Element {
   });
   const openAgentMemoryDirectory = useStableCallback((path: string): void => {
     setFocusedWorkspaceContext({ kind: "no_project", cwd: path });
-    setRightPanelManualGlobalized(true);
+    setRightPanelManualGlobalized(false);
     openWorkspaceTool("files");
   });
   const openWorkspaceFileForThread = useStableCallback((thread: Thread, path: string): void => {
