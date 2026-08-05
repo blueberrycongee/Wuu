@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"sync"
 
 	"github.com/blueberrycongee/wuu/internal/providers"
 )
@@ -30,6 +31,7 @@ type CompactionProvider interface {
 // CompactionRegistry manages registered compaction strategies and
 // resolves the active strategy for a run.
 type CompactionRegistry struct {
+	mu        sync.RWMutex
 	providers map[string]CompactionProvider
 	order     []string
 }
@@ -44,6 +46,9 @@ func NewCompactionRegistry() *CompactionRegistry {
 // Register adds a compaction provider. If a provider with the same key
 // exists, it is replaced.
 func (r *CompactionRegistry) Register(p CompactionProvider) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	key := p.CompactionKey()
 	if _, exists := r.providers[key]; !exists {
 		r.order = append(r.order, key)
@@ -53,6 +58,9 @@ func (r *CompactionRegistry) Register(p CompactionProvider) {
 
 // Unregister removes a compaction provider by key.
 func (r *CompactionRegistry) Unregister(key string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	delete(r.providers, key)
 	for i, k := range r.order {
 		if k == key {
@@ -66,14 +74,19 @@ func (r *CompactionRegistry) Unregister(key string) {
 // none are registered. When fallback is non-nil and no provider is
 // registered, fallback is returned.
 func (r *CompactionRegistry) Resolve(fallback CompactionProvider) CompactionProvider {
+	r.mu.RLock()
+	providers := make([]CompactionProvider, 0, len(r.order))
+	for _, key := range r.order {
+		if provider, ok := r.providers[key]; ok {
+			providers = append(providers, provider)
+		}
+	}
+	r.mu.RUnlock()
+
 	var best CompactionProvider
 	bestPriority := -1
 
-	for _, key := range r.order {
-		p, ok := r.providers[key]
-		if !ok {
-			continue
-		}
+	for _, p := range providers {
 		pri := p.CompactionPriority()
 		if pri > bestPriority {
 			best = p
@@ -89,5 +102,8 @@ func (r *CompactionRegistry) Resolve(fallback CompactionProvider) CompactionProv
 
 // Count returns the number of registered strategies.
 func (r *CompactionRegistry) Count() int {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
 	return len(r.providers)
 }

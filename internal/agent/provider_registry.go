@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"github.com/blueberrycongee/wuu/internal/providers"
 )
@@ -40,6 +41,7 @@ type ModelProviderOptions struct {
 // ModelProviderRegistry manages registered model provider factories.
 // It resolves which factory handles a given model and creates clients.
 type ModelProviderRegistry struct {
+	mu        sync.RWMutex
 	factories map[string]ModelProviderFactory
 	order     []string
 }
@@ -54,6 +56,9 @@ func NewModelProviderRegistry() *ModelProviderRegistry {
 // Register adds a provider factory. If a factory with the same key
 // exists, it is replaced.
 func (r *ModelProviderRegistry) Register(f ModelProviderFactory) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	key := f.ProviderKey()
 	if _, exists := r.factories[key]; !exists {
 		r.order = append(r.order, key)
@@ -63,6 +68,9 @@ func (r *ModelProviderRegistry) Register(f ModelProviderFactory) {
 
 // Unregister removes a provider factory by key.
 func (r *ModelProviderRegistry) Unregister(key string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	delete(r.factories, key)
 	for i, k := range r.order {
 		if k == key {
@@ -75,14 +83,19 @@ func (r *ModelProviderRegistry) Unregister(key string) {
 // Resolve finds the highest-priority factory that supports the given model.
 // Returns nil if no factory supports the model.
 func (r *ModelProviderRegistry) Resolve(model string) ModelProviderFactory {
+	r.mu.RLock()
+	factories := make([]ModelProviderFactory, 0, len(r.order))
+	for _, key := range r.order {
+		if factory, ok := r.factories[key]; ok {
+			factories = append(factories, factory)
+		}
+	}
+	r.mu.RUnlock()
+
 	var best ModelProviderFactory
 	bestPriority := -1
 
-	for _, key := range r.order {
-		f, ok := r.factories[key]
-		if !ok {
-			continue
-		}
+	for _, f := range factories {
 		if f.SupportsModel(model) {
 			pri := f.Priority()
 			if pri > bestPriority {
@@ -105,5 +118,8 @@ func (r *ModelProviderRegistry) CreateClient(ctx context.Context, model string, 
 
 // Count returns the number of registered factories.
 func (r *ModelProviderRegistry) Count() int {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
 	return len(r.factories)
 }
