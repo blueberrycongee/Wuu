@@ -118,6 +118,9 @@ func (h *Host) ToolDefinitions() []providers.ToolDefinition {
 	definitions := make([]providers.ToolDefinition, 0, len(h.toolOrder))
 	for _, name := range h.toolOrder {
 		tool := h.tools[name]
+		if tool.client.Status().State != StateActive {
+			continue
+		}
 		definitions = append(definitions, providers.ToolDefinition{
 			Name:        name,
 			Description: tool.Registration.Description,
@@ -135,7 +138,7 @@ func (h *Host) Tool(name string) (RegisteredTool, bool) {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	tool, ok := h.tools[name]
-	if !ok {
+	if !ok || tool.client.Status().State != StateActive {
 		return RegisteredTool{}, false
 	}
 	tool.Registration = cloneToolRegistration(tool.Registration)

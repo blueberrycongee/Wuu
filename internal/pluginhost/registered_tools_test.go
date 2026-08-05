@@ -29,7 +29,7 @@ func (c *registeredToolTestClient) ExecuteTool(_ context.Context, params ToolExe
 
 func TestHostRegistersNamespacedToolsAndExecutesStructuredResult(t *testing.T) {
 	client := &registeredToolTestClient{
-		fakeClient: fakeClient{id: "acme.lookup"},
+		fakeClient: fakeClient{id: "acme.lookup", status: Status{State: StateActive}},
 		tools: []ToolRegistration{{
 			ID:          "search",
 			Description: "Search local plugin data",
@@ -83,7 +83,7 @@ func TestHostRegistersNamespacedToolsAndExecutesStructuredResult(t *testing.T) {
 
 func TestHostRejectsInvalidToolRegistrationAndExecutionErrors(t *testing.T) {
 	invalid := &registeredToolTestClient{
-		fakeClient: fakeClient{id: "invalid"},
+		fakeClient: fakeClient{id: "invalid", status: Status{State: StateActive}},
 		tools: []ToolRegistration{{
 			ID:          "bad id",
 			Description: "Invalid",
@@ -95,7 +95,7 @@ func TestHostRejectsInvalidToolRegistrationAndExecutionErrors(t *testing.T) {
 	}
 
 	failing := &registeredToolTestClient{
-		fakeClient: fakeClient{id: "failing"},
+		fakeClient: fakeClient{id: "failing", status: Status{State: StateActive}},
 		tools: []ToolRegistration{{
 			ID:          "run",
 			Description: "Fail intentionally",
@@ -108,6 +108,57 @@ func TestHostRejectsInvalidToolRegistrationAndExecutionErrors(t *testing.T) {
 	_, err := host.ExecuteTool(context.Background(), name, ToolExecuteInput{Arguments: json.RawMessage(`{}`)})
 	if err == nil || !strings.Contains(err.Error(), `plugin "failing"`) || !strings.Contains(err.Error(), "boom") {
 		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestHostStopsAdvertisingToolsFromFailedClient(t *testing.T) {
+	client := &registeredToolTestClient{
+		fakeClient: fakeClient{id: "unstable", status: Status{State: StateActive}},
+		tools: []ToolRegistration{{
+			ID:          "lookup",
+			Description: "Look up data",
+			InputSchema: map[string]any{"type": "object"},
+		}},
+	}
+	host := New(client)
+	name := host.ToolDefinitions()[0].Name
+	client.status.State = StateFailed
+	client.status.Error = "process stopped"
+
+	if definitions := host.ToolDefinitions(); len(definitions) != 0 {
+		t.Fatalf("failed client definitions = %+v", definitions)
+	}
+	if host.SupportsTool(name) {
+		t.Fatalf("failed client still supports %q", name)
+	}
+	if _, err := host.ExecuteTool(context.Background(), name, ToolExecuteInput{}); err == nil {
+		t.Fatal("failed client tool execution unexpectedly succeeded")
+	}
+}
+
+func TestProcessClientFailureClearsRuntimeRegistrations(t *testing.T) {
+	client := &ProcessClient{
+		status: Status{State: StateActive, Hooks: []Hook{HookToolExecuteBefore}},
+		tools: []ToolRegistration{{
+			ID:          "lookup",
+			Description: "Look up data",
+			InputSchema: map[string]any{"type": "object"},
+		}},
+	}
+	client.fail(errors.New("invalid response id"))
+
+	status := client.Status()
+	if status.State != StateFailed || status.Error != "invalid response id" || len(status.Hooks) != 0 {
+		t.Fatalf("status = %+v", status)
+	}
+	if len(client.Tools()) != 0 {
+		t.Fatalf("failed process tools = %+v", client.Tools())
+	}
+	client.stopMu.Lock()
+	stopped := client.stopped
+	client.stopMu.Unlock()
+	if !stopped {
+		t.Fatal("failed process was not stopped")
 	}
 }
 

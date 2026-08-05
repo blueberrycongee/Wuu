@@ -181,7 +181,7 @@ func (c *ProcessClient) Invoke(ctx context.Context, params InvokeParams) (Invoke
 	defer cancel()
 	var result InvokeResult
 	if err := c.call(callCtx, "hook.invoke", params, &result); err != nil {
-		c.setFailure(err)
+		c.fail(err)
 		return InvokeResult{}, err
 	}
 	return result, nil
@@ -192,13 +192,13 @@ func (c *ProcessClient) ExecuteTool(ctx context.Context, params ToolExecuteParam
 	defer cancel()
 	var result ToolExecuteResult
 	if err := c.call(callCtx, "tool.execute", params, &result); err != nil {
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			c.setFailure(err)
-		}
+		c.fail(err)
 		return ToolExecuteResult{}, err
 	}
 	if err := result.Result.Validate(); err != nil {
-		return ToolExecuteResult{}, fmt.Errorf("validate tool result: %w", err)
+		protocolErr := fmt.Errorf("validate tool result: %w", err)
+		c.fail(protocolErr)
+		return ToolExecuteResult{}, protocolErr
 	}
 	result.Result = result.Result.Clone()
 	return result, nil
@@ -332,6 +332,13 @@ func (c *ProcessClient) setFailure(err error) {
 	defer c.mu.Unlock()
 	c.status.State = StateFailed
 	c.status.Error = err.Error()
+	c.status.Hooks = nil
+	c.tools = nil
+}
+
+func (c *ProcessClient) fail(err error) {
+	_ = c.stopProcess()
+	c.setFailure(err)
 }
 
 func (c *ProcessClient) stderrSuffix() string {
