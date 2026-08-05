@@ -5,7 +5,10 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/blueberrycongee/wuu/internal/config"
+	"github.com/blueberrycongee/wuu/internal/extensions"
 	pluginpkg "github.com/blueberrycongee/wuu/internal/plugin"
+	"github.com/blueberrycongee/wuu/internal/statepath"
 )
 
 func (s *Server) handlePluginPackageInspect(req Request) error {
@@ -59,6 +62,18 @@ func (s *Server) handlePluginPackageRemove(req Request) error {
 	removed, err := pluginpkg.UninstallPackage(s.rt.WuuHome, params.ID)
 	if err != nil {
 		return s.writeResponse(req.ID, nil, fmt.Errorf("remove plugin package: %w", err))
+	}
+	if removed.Removed {
+		configPath, err := statepath.ConfigPath(s.rt.HomeDir)
+		if err != nil {
+			return s.writeResponse(req.ID, nil, fmt.Errorf("plugin %q was removed, but its policy path could not be resolved: %w", removed.ID, err))
+		}
+		if _, err := config.UpdateExtensionSettings(configPath, func(settings *extensions.Settings) error {
+			settings.Revoke(extensions.SubjectID("user", removed.ID))
+			return nil
+		}); err != nil {
+			return s.writeResponse(req.ID, nil, fmt.Errorf("plugin %q was removed, but its policy could not be cleared: %w", removed.ID, err))
+		}
 	}
 	inventory, skills, err := s.refreshPluginPackages()
 	if err != nil {

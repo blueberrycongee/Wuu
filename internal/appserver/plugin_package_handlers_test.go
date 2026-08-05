@@ -8,6 +8,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/blueberrycongee/wuu/internal/extensions"
+	"github.com/blueberrycongee/wuu/internal/statepath"
 )
 
 func TestPluginPackageInspectZipWithoutRuntime(t *testing.T) {
@@ -86,8 +89,23 @@ func TestPluginPackageInstallDirectoryIsPendingAndDoesNotActivate(t *testing.T) 
 func TestPluginPackageRemoveRefreshesInventory(t *testing.T) {
 	rt := newTestRuntime(t, &fakeClient{})
 	rt.WuuHome = retryingTempDir(t)
+	configPath, err := statepath.ConfigPath(rt.HomeDir)
+	if err != nil {
+		t.Fatalf("resolve config path: %v", err)
+	}
+	writePluginPackageFile(t, configPath, `{
+  "default_provider": "fake-provider",
+  "providers": {"fake-provider": {"type": "openai-compatible", "base_url": "https://example.test/v1", "model": "fake-model"}}
+}`)
 	source := t.TempDir()
-	writePluginPackageFile(t, filepath.Join(source, "plugin.json"), `{"id":"remove-demo"}`)
+	writePluginPackageFile(t, filepath.Join(source, "plugin.json"), `{"id":"remove-demo","skills":["skills"]}`)
+	writePluginPackageFile(t, filepath.Join(source, "skills", "remove-skill", "SKILL.md"), `---
+name: remove-skill
+description: Verifies plugin package removal.
+---
+
+# Remove skill
+`)
 
 	out := &lockedBuffer{}
 	srv := New(rt, out)
@@ -95,6 +113,25 @@ func TestPluginPackageRemoveRefreshesInventory(t *testing.T) {
 	installResponse := responseByID(t, parseOutput(t, out.String()), "install")
 	if installResponse["error"] != nil {
 		t.Fatalf("install response = %+v", installResponse)
+	}
+	installed := remarshal[PluginPackageInstallResult](t, installResponse["result"])
+	installedRecord := pluginPackageRecord(t, installed.ExtensionInventory, "remove-demo")
+	callPluginPackageRPC(t, srv, "grant", MethodExtensionPackageUpdate, ExtensionPackageUpdateParams{
+		ID: installedRecord.ID, Fingerprint: installedRecord.Fingerprint, Action: ExtensionPackageGrant,
+	})
+	grantResponse := responseByID(t, parseOutput(t, out.String()), "grant")
+	if grantResponse["error"] != nil {
+		t.Fatalf("grant response = %+v", grantResponse)
+	}
+	if len(rt.ActivePlugins) != 1 || rt.ActivePlugins[0].ID != "remove-demo" {
+		t.Fatalf("active plugins before removal = %+v", rt.ActivePlugins)
+	}
+	foundSkill := false
+	for _, skill := range rt.Skills {
+		foundSkill = foundSkill || skill.Name == "remove-skill"
+	}
+	if !foundSkill {
+		t.Fatalf("approved plugin skill was not activated: %+v", rt.Skills)
 	}
 
 	callPluginPackageRPC(t, srv, "remove", MethodPluginPackageRemove, PluginPackageRemoveParams{ID: "remove-demo"})
@@ -113,6 +150,19 @@ func TestPluginPackageRemoveRefreshesInventory(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(rt.WuuHome, "plugins", "remove-demo")); !os.IsNotExist(err) {
 		t.Fatalf("removed plugin still exists: %v", err)
+	}
+	if len(rt.ActivePlugins) != 0 {
+		t.Fatalf("removed plugin remains active: %+v", rt.ActivePlugins)
+	}
+	for _, skill := range rt.Skills {
+		if skill.Name == "remove-skill" {
+			t.Fatalf("removed plugin skill remains active: %+v", skill)
+		}
+	}
+	if rt.ExtensionSettings != nil {
+		if _, ok := rt.ExtensionSettings.Grants[extensions.SubjectID("user", "remove-demo")]; ok {
+			t.Fatalf("removed plugin grant remains persisted: %+v", rt.ExtensionSettings.Grants)
+		}
 	}
 }
 
