@@ -17,3 +17,7 @@
 ### 结论
 
 除上述一项外全仓绿，包括 83d351c9 的协议 hook 权限执行对所有下游包（runtime/agent/tools/harness/appserver）无回归。
+
+### 桌面侧定向验证
+
+`vitest run` PluginCommandRegistry/SkillsCatalog/ComposerSlashCommands/AppState 四文件：**158/158 全过**（含 Andy 在途 UI 改动）。
