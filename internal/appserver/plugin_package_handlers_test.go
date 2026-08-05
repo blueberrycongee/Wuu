@@ -9,10 +9,14 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
+	"github.com/blueberrycongee/wuu/internal/config"
 	"github.com/blueberrycongee/wuu/internal/extensions"
 	pluginpkg "github.com/blueberrycongee/wuu/internal/plugin"
+	"github.com/blueberrycongee/wuu/internal/session"
 	"github.com/blueberrycongee/wuu/internal/statepath"
 )
 
@@ -182,6 +186,239 @@ func TestPluginPackageUpdateWaitsForExactApprovalBeforePromotion(t *testing.T) {
 	}
 	if _, err := pluginpkg.ReadPendingUpdate(rt.WuuHome, "update-demo"); !errors.Is(err, pluginpkg.ErrPendingUpdateNotFound) {
 		t.Fatalf("pending update after rejection = %v", err)
+	}
+}
+
+func TestPluginPackageUpdateActivationFailureKeepsInstalledAndPendingGenerations(t *testing.T) {
+	rt := newTestRuntime(t, &fakeClient{})
+	rt.WuuHome = retryingTempDir(t)
+	configPath, err := statepath.ConfigPath(rt.HomeDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writePluginPackageFile(t, configPath, `{
+  "default_provider": "fake-provider",
+  "providers": {"fake-provider": {"type": "openai-compatible", "base_url": "https://example.test/v1", "model": "fake-model"}}
+}`)
+
+	versionOne := writeManagedPluginPackage(t, "activation-failure", "1.0.0", "working generation")
+	out := &lockedBuffer{}
+	srv := New(rt, out)
+	callPluginPackageRPC(t, srv, "install", MethodPluginPackageInstall, PluginPackageInstallParams{Path: versionOne})
+	installed := remarshal[PluginPackageInstallResult](t, responseByID(t, parseOutput(t, out.String()), "install")["result"])
+	installedRecord := pluginPackageRecord(t, installed.ExtensionInventory, "activation-failure")
+	callPluginPackageRPC(t, srv, "grant", MethodExtensionPackageUpdate, ExtensionPackageUpdateParams{
+		ID: installedRecord.ID, Fingerprint: installedRecord.Fingerprint, Action: ExtensionPackageGrant,
+	})
+	if response := responseByID(t, parseOutput(t, out.String()), "grant"); response["error"] != nil {
+		t.Fatalf("grant response = %+v", response)
+	}
+
+	versionTwo := t.TempDir()
+	writePluginPackageFile(t, filepath.Join(versionTwo, "plugin.json"), `{
+  "id": "activation-failure",
+  "version": "2.0.0",
+  "runtime": {"protocol":"wuu-plugin-v1","command":"/definitely/not/a/wuu-plugin"}
+}`)
+	callPluginPackageRPC(t, srv, "stage", MethodPluginPackageInstall, PluginPackageInstallParams{Path: versionTwo})
+	staged := remarshal[PluginPackageInstallResult](t, responseByID(t, parseOutput(t, out.String()), "stage")["result"])
+	callPluginPackageRPC(t, srv, "promote", MethodExtensionPackageUpdate, ExtensionPackageUpdateParams{
+		ID: installedRecord.ID, Fingerprint: staged.Package.Fingerprint, Action: ExtensionPackagePromoteUpdate,
+	})
+	if message := responseErrorMessage(t, responseByID(t, parseOutput(t, out.String()), "promote")); !strings.Contains(message, "activate pending plugin update") {
+		t.Fatalf("activation error = %q", message)
+	}
+
+	active, err := pluginpkg.InspectPackage(filepath.Join(rt.WuuHome, "plugins", "activation-failure"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if active.Version != "1.0.0" || active.Fingerprint != installed.Package.Fingerprint {
+		t.Fatalf("installed generation changed: %+v", active)
+	}
+	pending, err := pluginpkg.ReadPendingUpdate(rt.WuuHome, "activation-failure")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pending.Package.Version != "2.0.0" || pending.Package.Fingerprint != staged.Package.Fingerprint {
+		t.Fatalf("pending generation changed: %+v", pending.Package)
+	}
+	if len(rt.ActivePlugins) != 1 || rt.ActivePlugins[0].Version != "1.0.0" {
+		t.Fatalf("live generation changed: %+v", rt.ActivePlugins)
+	}
+	grant, ok := rt.ExtensionSettings.Grants[installedRecord.ID]
+	if !ok || grant.Fingerprint != installed.Package.Fingerprint {
+		t.Fatalf("approval was not rolled back: %+v", rt.ExtensionSettings.Grants)
+	}
+	cfg, _, err := config.LoadPath(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	durableGrant, ok := cfg.Extensions.Grants[installedRecord.ID]
+	if !ok || durableGrant.Fingerprint != installed.Package.Fingerprint {
+		t.Fatalf("durable approval was not rolled back: %+v", cfg.Extensions.Grants)
+	}
+}
+
+func TestPluginGenerationMutationExcludesActiveAndNewThreadWork(t *testing.T) {
+	rt := newTestRuntime(t, &fakeClient{})
+	rt.WuuHome = retryingTempDir(t)
+	active := &threadState{ID: "active", admissionReserved: true}
+	srv := &Server{rt: rt, threads: map[string]*threadState{"active": active}}
+
+	if _, err := srv.beginPluginGenerationMutation("change"); err == nil {
+		t.Fatal("mutation unexpectedly admitted while a thread reservation was active")
+	}
+	if srv.pluginGenerationMutation.Load() {
+		t.Fatal("failed mutation left admission closed")
+	}
+
+	active.admissionReserved = false
+	release, err := srv.beginPluginGenerationMutation("change")
+	if err != nil {
+		t.Fatal(err)
+	}
+	newThread := &threadState{ID: "new"}
+	newThread.mu.Lock()
+	acquired, err := srv.tryAcquireThreadExecutionLeaseLocked(newThread)
+	newThread.mu.Unlock()
+	if err != nil {
+		release()
+		t.Fatal(err)
+	}
+	if acquired {
+		release()
+		t.Fatal("new turn admitted during plugin generation mutation")
+	}
+	release()
+
+	newThread.mu.Lock()
+	acquired, err = srv.tryAcquireThreadExecutionLeaseLocked(newThread)
+	if acquired {
+		newThread.releaseThreadExecutionLeaseLocked()
+	}
+	newThread.mu.Unlock()
+	if err != nil || !acquired {
+		t.Fatalf("turn admission did not reopen: acquired=%v err=%v", acquired, err)
+	}
+}
+
+func TestPluginGenerationMutationIsBlockedByAnotherAppServerExecution(t *testing.T) {
+	rt := newTestRuntime(t, &fakeClient{})
+	rt.WuuHome = retryingTempDir(t)
+	executingServer := &Server{rt: rt, threads: map[string]*threadState{}}
+	mutatingServer := &Server{rt: rt, threads: map[string]*threadState{}}
+	thread := &threadState{ID: "other-server-turn"}
+
+	thread.mu.Lock()
+	acquired, err := executingServer.tryAcquireThreadExecutionLeaseLocked(thread)
+	thread.mu.Unlock()
+	if err != nil || !acquired {
+		t.Fatalf("acquire execution generation: acquired=%v err=%v", acquired, err)
+	}
+	thread.mu.Lock()
+	thread.running = true
+	thread.releaseThreadExecutionLeaseLocked()
+	thread.mu.Unlock()
+	if _, err := mutatingServer.beginPluginGenerationMutation("change"); err == nil {
+		t.Fatal("mutation unexpectedly crossed another app-server's active turn generation")
+	}
+
+	thread.mu.Lock()
+	thread.running = false
+	thread.maybeReleasePluginGenerationExecutionLeaseLocked()
+	thread.mu.Unlock()
+	release, err := mutatingServer.beginPluginGenerationMutation("change")
+	if err != nil {
+		t.Fatalf("mutation remained blocked after execution release: %v", err)
+	}
+	release()
+}
+
+func TestConcurrentPluginGenerationAdmissionsRefreshOnce(t *testing.T) {
+	rt := newTestRuntime(t, &fakeClient{})
+	rt.WuuHome = retryingTempDir(t)
+	mutation, acquired, err := session.TryAcquirePluginGenerationMutationLease(rt.WuuHome)
+	if err != nil || !acquired {
+		t.Fatalf("acquire mutation generation: acquired=%v err=%v", acquired, err)
+	}
+	if _, err := mutation.Advance(); err != nil {
+		t.Fatal(err)
+	}
+	if err := mutation.Release(); err != nil {
+		t.Fatal(err)
+	}
+
+	started := make(chan struct{}, 2)
+	allowRefresh := make(chan struct{})
+	var calls atomic.Int32
+	srv := &Server{
+		rt:      rt,
+		threads: map[string]*threadState{},
+		refreshExtensionsForTest: func(config.Config) error {
+			calls.Add(1)
+			started <- struct{}{}
+			<-allowRefresh
+			return nil
+		},
+	}
+	type admissionResult struct {
+		acquired bool
+		err      error
+	}
+	results := make(chan admissionResult, 2)
+	admit := func(id string) {
+		thread := &threadState{ID: id}
+		thread.mu.Lock()
+		ok, err := srv.tryAcquireThreadExecutionLeaseLocked(thread)
+		if ok {
+			thread.releaseThreadExecutionLeaseLocked()
+		}
+		thread.mu.Unlock()
+		results <- admissionResult{acquired: ok, err: err}
+	}
+	go admit("first")
+	go admit("second")
+	<-started
+	time.Sleep(50 * time.Millisecond)
+	close(allowRefresh)
+	for range 2 {
+		result := <-results
+		if result.err != nil || !result.acquired {
+			t.Fatalf("admission failed: acquired=%v err=%v", result.acquired, result.err)
+		}
+	}
+	if got := calls.Load(); got != 1 {
+		t.Fatalf("generation refresh calls = %d, want 1", got)
+	}
+}
+
+func TestServerStartupRefreshesGenerationAdvancedAfterRuntimeConstruction(t *testing.T) {
+	rt := newTestRuntime(t, &fakeClient{})
+	rt.WuuHome = retryingTempDir(t)
+	oldHost := rt.PluginHost
+	mutation, acquired, err := session.TryAcquirePluginGenerationMutationLease(rt.WuuHome)
+	if err != nil || !acquired {
+		t.Fatalf("acquire mutation generation: acquired=%v err=%v", acquired, err)
+	}
+	epoch, err := mutation.Advance()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := mutation.Release(); err != nil {
+		t.Fatal(err)
+	}
+
+	srv := New(rt, &lockedBuffer{})
+	defer srv.Close()
+	if srv.startupErr != nil {
+		t.Fatalf("server startup: %v", srv.startupErr)
+	}
+	if got := srv.pluginGenerationEpoch.Load(); got != epoch {
+		t.Fatalf("server generation epoch = %d, want %d", got, epoch)
+	}
+	if rt.PluginHost == oldHost {
+		t.Fatal("server accepted the stale runtime plugin generation")
 	}
 }
 

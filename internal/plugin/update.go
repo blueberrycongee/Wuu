@@ -115,9 +115,6 @@ func StagePackageUpdate(wuuHome, source string) (PendingUpdate, error) {
 	inspection := inspectionFromStaged(item, destinationPackagePath(destination), kind)
 	inspection.SourcePath = destinationPackagePath(destination)
 	inspection.ArchiveRoot = filepath.ToSlash(archiveRoot)
-	if archiveRoot != "" {
-		inspection.ManifestPath = filepath.ToSlash(filepath.Join(archiveRoot, item.manifestRel))
-	}
 	metadata := pendingUpdateMetadata{
 		Package:           inspection,
 		ActiveFingerprint: active.Fingerprint,
@@ -251,9 +248,10 @@ func PromotePendingUpdate(wuuHome, id, fingerprint string) (InstallResult, error
 		}
 		return InstallResult{}, fmt.Errorf("promote pending plugin update %s: %w", id, installErr)
 	}
-	if err := os.RemoveAll(promotionPath); err != nil {
-		return result, fmt.Errorf("remove promoted plugin update %s: %w", id, err)
-	}
+	// Installation is the commit point. Cleanup is best-effort because returning
+	// an error after InstallPackage succeeds would make callers roll back their
+	// live generation even though the new package is already durable on disk.
+	_ = os.RemoveAll(promotionPath)
 	return result, nil
 }
 

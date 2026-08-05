@@ -27,6 +27,12 @@ func TestStageAndRejectPackageUpdateKeepInstalledGeneration(t *testing.T) {
 	if pending.Package.ID != "update-demo" || pending.Package.SourceKind != PackageSourceZip || pending.Package.ArchiveRoot != "update-demo" {
 		t.Fatalf("pending = %+v", pending)
 	}
+	if pending.Package.ManifestPath != "plugin.json" {
+		t.Fatalf("pending manifest path = %q, want package-relative plugin.json", pending.Package.ManifestPath)
+	}
+	if _, err := os.Stat(filepath.Join(pending.Package.SourcePath, filepath.FromSlash(pending.Package.ManifestPath))); err != nil {
+		t.Fatalf("pending manifest is not addressable from package root: %v", err)
+	}
 	if pending.ActiveFingerprint != installed.Plugin.Fingerprint || pending.Package.Fingerprint == installed.Plugin.Fingerprint {
 		t.Fatalf("pending fingerprints = active %q candidate %q, installed %q", pending.ActiveFingerprint, pending.Package.Fingerprint, installed.Plugin.Fingerprint)
 	}

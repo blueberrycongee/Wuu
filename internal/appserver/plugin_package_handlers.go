@@ -11,6 +11,8 @@ import (
 	"github.com/blueberrycongee/wuu/internal/config"
 	"github.com/blueberrycongee/wuu/internal/extensions"
 	pluginpkg "github.com/blueberrycongee/wuu/internal/plugin"
+	"github.com/blueberrycongee/wuu/internal/providers"
+	"github.com/blueberrycongee/wuu/internal/session"
 	"github.com/blueberrycongee/wuu/internal/statepath"
 )
 
@@ -33,9 +35,11 @@ func (s *Server) handlePluginPackageInstall(req Request) error {
 	if err := decodeParams(req.Params, &params); err != nil {
 		return s.writeResponse(req.ID, nil, err)
 	}
-	if err := s.requireIdlePluginPackageRuntime("install"); err != nil {
+	releaseMutation, err := s.beginPluginGenerationMutation("install")
+	if err != nil {
 		return s.writeResponse(req.ID, nil, err)
 	}
+	defer releaseMutation()
 
 	inspected, err := pluginpkg.InspectPackage(params.Path)
 	if err != nil {
@@ -80,9 +84,11 @@ func (s *Server) handlePluginPackageRemove(req Request) error {
 	if err := decodeParams(req.Params, &params); err != nil {
 		return s.writeResponse(req.ID, nil, err)
 	}
-	if err := s.requireIdlePluginPackageRuntime("remove"); err != nil {
+	releaseMutation, err := s.beginPluginGenerationMutation("remove")
+	if err != nil {
 		return s.writeResponse(req.ID, nil, err)
 	}
+	defer releaseMutation()
 
 	pending, pendingErr := pluginpkg.ReadPendingUpdate(s.rt.WuuHome, params.ID)
 	if pendingErr != nil && !errors.Is(pendingErr, pluginpkg.ErrPendingUpdateNotFound) {
@@ -141,52 +147,141 @@ func (s *Server) handlePendingPluginUpdate(req Request, params ExtensionPackageU
 		}
 		return s.writeResponse(req.ID, ExtensionPackageUpdateResult{ExtensionInventory: s.currentExtensionInventory()}, nil)
 	}
-	if _, err := pluginpkg.PromotePendingUpdate(s.rt.WuuHome, selected.ID, params.Fingerprint); err != nil {
-		return s.writeResponse(req.ID, nil, fmt.Errorf("promote pending plugin update: %w", err))
-	}
-
 	configPath, err := statepath.ConfigPath(s.rt.HomeDir)
 	if err != nil {
-		return s.writeResponse(req.ID, nil, fmt.Errorf("plugin update was promoted, but its policy path could not be resolved: %w", err))
+		return s.writeResponse(req.ID, nil, fmt.Errorf("resolve plugin update policy path: %w", err))
+	}
+	previousSettings := cloneExtensionSettings(s.rt.ExtensionSettings)
+	preparedSettings := cloneExtensionSettings(s.rt.ExtensionSettings)
+	scope := extensions.GrantScopeUser
+	if prior, ok := preparedSettings.Grants[selected.SubjectID]; ok && prior.Scope != "" {
+		scope = prior.Scope
+	}
+	grant := extensions.Grant{
+		SubjectID:   selected.SubjectID,
+		Fingerprint: pending.Package.Fingerprint,
+		Scope:       scope,
+		Permissions: append([]string(nil), pending.Package.EffectivePermissions...),
+		ApprovedAt:  time.Now().UTC(),
+	}
+	if err := preparedSettings.RecordGrant(grant); err != nil {
+		return s.writeResponse(req.ID, nil, fmt.Errorf("prepare plugin update approval: %w", err))
 	}
 	settings, err := config.UpdateExtensionSettings(configPath, func(settings *extensions.Settings) error {
-		scope := extensions.GrantScopeUser
-		if prior, ok := settings.Grants[selected.SubjectID]; ok && prior.Scope != "" {
-			scope = prior.Scope
-		}
-		return settings.RecordGrant(extensions.Grant{
-			SubjectID:   selected.SubjectID,
-			Fingerprint: pending.Package.Fingerprint,
-			Scope:       scope,
-			Permissions: append([]string(nil), pending.Package.EffectivePermissions...),
-			ApprovedAt:  time.Now().UTC(),
-		})
+		return settings.RecordGrant(grant)
 	})
 	if err != nil {
-		_ = s.rt.RefreshExtensions(s.currentExtensionConfig())
-		s.resetThreadRuntimesForGeneralSettings("")
-		return s.writeResponse(req.ID, nil, fmt.Errorf("plugin update was promoted, but its approval could not be persisted: %w", err))
+		return s.writeResponse(req.ID, nil, fmt.Errorf("persist plugin update approval before activation: %w", err))
+	}
+	restorePreviousApproval := func() error {
+		rolledBack, rollbackErr := config.UpdateExtensionSettings(configPath, func(settings *extensions.Settings) error {
+			*settings = cloneExtensionSettings(&previousSettings)
+			return nil
+		})
+		if rollbackErr == nil {
+			s.rt.SetExtensionSettings(&rolledBack)
+		}
+		return rollbackErr
 	}
 	cfg := s.currentExtensionConfig()
-	cfg.Extensions = &settings
-	if err := s.rt.RefreshExtensions(cfg); err != nil {
-		return s.writeResponse(req.ID, nil, fmt.Errorf("plugin update was approved, but extension refresh failed: %w", err))
+	cfg.Extensions = &preparedSettings
+	candidate, err := s.rt.PreflightPluginUpdate(cfg, selected.ID, params.Fingerprint, filepath.Join(pending.Path, "package"), pending.Package.ManifestPath)
+	if err != nil {
+		if rollbackErr := restorePreviousApproval(); rollbackErr != nil {
+			return s.writeResponse(req.ID, nil, fmt.Errorf("activate pending plugin update: %w (restore previous plugin approval: %v)", err, rollbackErr))
+		}
+		return s.writeResponse(req.ID, nil, fmt.Errorf("activate pending plugin update: %w", err))
 	}
+	if err := s.rt.ActivatePluginGeneration(candidate, func() error {
+		_, promoteErr := pluginpkg.PromotePendingUpdate(s.rt.WuuHome, selected.ID, params.Fingerprint)
+		if promoteErr != nil {
+			return fmt.Errorf("promote pending plugin update: %w", promoteErr)
+		}
+		return nil
+	}); err != nil {
+		if rollbackErr := restorePreviousApproval(); rollbackErr != nil {
+			return s.writeResponse(req.ID, nil, fmt.Errorf("%w (restore previous plugin approval: %v)", err, rollbackErr))
+		}
+		return s.writeResponse(req.ID, nil, err)
+	}
+	s.rt.SetExtensionSettings(&settings)
 	s.resetThreadRuntimesForGeneralSettings("")
 	return s.writeResponse(req.ID, ExtensionPackageUpdateResult{ExtensionInventory: s.currentExtensionInventory()}, nil)
 }
 
-func (s *Server) requireIdlePluginPackageRuntime(action string) error {
+func cloneExtensionSettings(current *extensions.Settings) extensions.Settings {
+	clone := extensions.Settings{
+		Grants:   map[string]extensions.Grant{},
+		Disabled: map[string]bool{},
+		Rejected: map[string]extensions.PolicyDecision{},
+	}
+	if current == nil {
+		return clone
+	}
+	for key, grant := range current.Grants {
+		grant.Permissions = append([]string(nil), grant.Permissions...)
+		clone.Grants[key] = grant
+	}
+	for key, disabled := range current.Disabled {
+		clone.Disabled[key] = disabled
+	}
+	for key, decision := range current.Rejected {
+		clone.Rejected[key] = decision
+	}
+	return clone
+}
+
+func (s *Server) beginPluginGenerationMutation(action string) (func(), error) {
 	if s == nil || s.rt == nil {
-		return errors.New("runtime is not initialized")
+		return func() {}, errors.New("runtime is not initialized")
 	}
 	if strings.TrimSpace(s.rt.WuuHome) == "" {
-		return errors.New("runtime Wuu home is not configured")
+		return func() {}, errors.New("runtime Wuu home is not configured")
 	}
-	if s.hasRunningThread() {
-		return fmt.Errorf("cannot %s a plugin package while a turn is running", action)
+	if !s.pluginGenerationMutation.CompareAndSwap(false, true) {
+		return func() {}, fmt.Errorf("cannot %s plugin packages while another plugin change is running", action)
 	}
-	return nil
+	releaseLocal := func() { s.pluginGenerationMutation.Store(false) }
+
+	s.mu.Lock()
+	threads := make([]*threadState, 0, len(s.threads))
+	for _, th := range s.threads {
+		threads = append(threads, th)
+	}
+	s.mu.Unlock()
+	for _, th := range threads {
+		if th == nil {
+			continue
+		}
+		th.mu.Lock()
+		busy := th.running || th.executionLease != nil || th.admissionReserved || th.runtimeSelectionMutation ||
+			(th.execRuntime != nil && threadRuntimeHasOutstandingWork(th.ID, th.execRuntime))
+		th.mu.Unlock()
+		if busy {
+			releaseLocal()
+			return func() {}, fmt.Errorf("cannot %s plugin packages while a turn is running or background work remains on thread %q", action, th.ID)
+		}
+	}
+	lease, acquired, err := session.TryAcquirePluginGenerationMutationLease(s.rt.WuuHome)
+	if err != nil {
+		releaseLocal()
+		return func() {}, fmt.Errorf("acquire plugin generation mutation lease: %w", err)
+	}
+	if !acquired {
+		releaseLocal()
+		return func() {}, fmt.Errorf("cannot %s plugin packages while another app-server is running a turn or background work", action)
+	}
+	if _, err := lease.Advance(); err != nil {
+		_ = lease.Release()
+		releaseLocal()
+		return func() {}, fmt.Errorf("advance plugin generation: %w", err)
+	}
+	return func() {
+		if err := lease.Release(); err != nil {
+			providers.DebugLogf("release plugin generation mutation lease: %v", err)
+		}
+		releaseLocal()
+	}, nil
 }
 
 func (s *Server) refreshPluginPackages() ([]ExtensionInventoryRecord, []SkillSummary, error) {

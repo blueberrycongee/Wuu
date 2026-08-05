@@ -234,9 +234,9 @@ func UninstallPackage(wuuHome, id string) (UninstallResult, error) {
 		return result, fmt.Errorf("remove plugin %s from discovery: %w", id, err)
 	}
 	result.Removed = true
-	if err := os.RemoveAll(tombstone); err != nil {
-		return result, fmt.Errorf("delete uninstalled plugin %s files: %w", id, err)
-	}
+	// Renaming out of the discovery root is the commit point. Cleanup is
+	// best-effort so callers always refresh the live generation after removal.
+	_ = os.RemoveAll(tombstone)
 	return result, nil
 }
 

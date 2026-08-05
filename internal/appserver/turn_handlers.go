@@ -831,7 +831,8 @@ func (s *Server) ensureThreadRuntime(th *threadState) (*runtime.ThreadRuntime, e
 	var detached detachedThreadRuntime
 	if existing != nil && !running {
 		selectionMismatch := !s.threadRuntimeMatchesSelectionLocked(th, existing)
-		if th.pendingRuntimeReset || selectionMismatch {
+		pluginGenerationMismatch := th.runtimePluginEpoch != s.pluginGenerationEpoch.Load()
+		if th.pendingRuntimeReset || selectionMismatch || pluginGenerationMismatch {
 			if !threadRuntimeHasOutstandingWork(th.ID, existing) {
 				detached = detachThreadRuntimeLocked(th)
 				existing = nil
@@ -926,6 +927,7 @@ func (s *Server) ensureThreadRuntime(th *threadState) (*runtime.ThreadRuntime, e
 	if th.execRuntime == nil {
 		th.execRuntime = threadRuntime
 		th.runtimeSubscription = sub
+		th.runtimePluginEpoch = s.pluginGenerationEpoch.Load()
 		th.mu.Unlock()
 		if threadRuntime.AgentControl != nil {
 			threadRuntime.AgentControl.StartWorkerTerminalRecovery()
@@ -1115,6 +1117,7 @@ func releaseThreadRuntime(th *threadState) {
 	}
 	th.mu.Lock()
 	detached := detachThreadRuntimeLocked(th)
+	th.maybeReleasePluginGenerationExecutionLeaseLocked()
 	th.mu.Unlock()
 	releaseDetachedThreadRuntime(detached)
 }
@@ -1134,6 +1137,7 @@ func detachThreadRuntimeLocked(th *threadState) detachedThreadRuntime {
 	}
 	th.execRuntime = nil
 	th.runtimeSubscription = nil
+	th.runtimePluginEpoch = 0
 	th.pendingRuntimeReset = false
 	return detached
 }

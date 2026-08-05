@@ -766,9 +766,11 @@ func (s *Server) handleExtensionPackageUpdate(req Request) error {
 	if s.rt == nil {
 		return s.writeResponse(req.ID, nil, errors.New("runtime is not initialized"))
 	}
-	if s.hasRunningThread() {
-		return s.writeResponse(req.ID, nil, errors.New("cannot change extension packages while a turn is running"))
+	releaseMutation, err := s.beginPluginGenerationMutation("change")
+	if err != nil {
+		return s.writeResponse(req.ID, nil, err)
 	}
+	defer releaseMutation()
 	var selected *pluginpkg.Plugin
 	for index := range s.rt.Plugins {
 		if s.rt.Plugins[index].SubjectID == strings.TrimSpace(params.ID) {
@@ -836,9 +838,11 @@ func (s *Server) handleExtensionCatalogRefresh(req Request) error {
 	if s.rt == nil {
 		return s.writeResponse(req.ID, nil, errors.New("runtime is not initialized"))
 	}
-	if s.hasRunningThread() {
-		return s.writeResponse(req.ID, nil, errors.New("cannot refresh extensions while a turn is running"))
+	releaseMutation, err := s.beginPluginGenerationMutation("refresh")
+	if err != nil {
+		return s.writeResponse(req.ID, nil, err)
 	}
+	defer releaseMutation()
 	if err := s.rt.RefreshExtensions(s.currentExtensionConfig()); err != nil {
 		return s.writeResponse(req.ID, nil, err)
 	}

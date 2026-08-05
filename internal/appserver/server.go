@@ -89,6 +89,9 @@ type threadState struct {
 	runningModel           string
 	cancel                 context.CancelFunc
 	executionLease         *session.ThreadExecutionLease
+	pluginExecutionLease   *session.PluginGenerationLease
+	pluginLeaseReleaseLoop bool
+	runtimePluginEpoch     uint64
 	admissionReserved      bool
 	pendingSteers          []providers.ChatMessage
 	steerWake              chan struct{}
@@ -238,6 +241,10 @@ type Server struct {
 	backgroundWG                 sync.WaitGroup
 	closeOnce                    sync.Once
 	closed                       atomic.Bool
+	pluginGenerationMutation     atomic.Bool
+	pluginGenerationEpoch        atomic.Uint64
+	pluginGenerationRefreshMu    sync.Mutex
+	refreshExtensionsForTest     func(config.Config) error
 	presenceLease                *session.AppServerPresenceLease
 	startupErr                   error
 
@@ -291,6 +298,30 @@ func NewWithCredentialStore(rt *runtime.Session, out io.Writer, store credential
 		}
 		if catalogHome != "" {
 			s.modelCatalogCachePath = filepath.Join(catalogHome, "modelcatalog.json")
+		}
+	}
+	if rt != nil && strings.TrimSpace(rt.WuuHome) != "" {
+		lease, acquired, err := session.TryAcquirePluginGenerationExecutionLease(rt.WuuHome)
+		if err != nil {
+			s.startupErr = fmt.Errorf("acquire initial plugin generation: %w", err)
+			return s
+		}
+		if !acquired {
+			s.startupErr = errors.New("plugin packages are being changed by another app-server")
+			return s
+		}
+		epoch := lease.Epoch()
+		if epoch != rt.InitialPluginGenerationEpoch() {
+			if err := s.refreshExtensions(s.currentExtensionConfig()); err != nil {
+				_ = lease.Release()
+				s.startupErr = fmt.Errorf("refresh initial plugin generation %d: %w", epoch, err)
+				return s
+			}
+		}
+		s.pluginGenerationEpoch.Store(epoch)
+		if err := lease.Release(); err != nil {
+			s.startupErr = fmt.Errorf("release initial plugin generation: %w", err)
+			return s
 		}
 	}
 	if s.modelCatalogCachePath != "" {

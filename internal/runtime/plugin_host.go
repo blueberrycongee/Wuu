@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	pluginpkg "github.com/blueberrycongee/wuu/internal/plugin"
@@ -9,14 +10,25 @@ import (
 	"github.com/blueberrycongee/wuu/internal/providers"
 )
 
+type pluginClientStarter func(context.Context, pluginhost.ProcessConfig) (pluginhost.Client, error)
+
+func startPluginClient(ctx context.Context, cfg pluginhost.ProcessConfig) (pluginhost.Client, error) {
+	return pluginhost.Start(ctx, cfg)
+}
+
 func startPluginHost(plugins []pluginpkg.Plugin, projectRoot, wuuHome string) *pluginhost.Host {
+	host, _ := buildPluginHost(plugins, projectRoot, wuuHome, nil, startPluginClient)
+	return host
+}
+
+func buildPluginHost(plugins []pluginpkg.Plugin, projectRoot, wuuHome string, required map[string]bool, start pluginClientStarter) (*pluginhost.Host, error) {
 	host := pluginhost.New()
 	for _, item := range plugins {
 		if item.Runtime == nil {
 			continue
 		}
 		timeout := time.Duration(item.Runtime.Timeout) * time.Second
-		client, err := pluginhost.Start(context.Background(), pluginhost.ProcessConfig{
+		client, err := start(context.Background(), pluginhost.ProcessConfig{
 			ID:          item.ID,
 			Command:     item.Runtime.Command,
 			Args:        item.Runtime.Args,
@@ -28,11 +40,25 @@ func startPluginHost(plugins []pluginpkg.Plugin, projectRoot, wuuHome string) *p
 		})
 		if err != nil {
 			host.Add(pluginhost.Failed(item.ID, err))
+			if required[item.ID] {
+				ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+				closeErr := host.Close(ctx)
+				cancel()
+				return nil, pluginActivationError(item.ID, err, closeErr)
+			}
 			continue
 		}
 		host.Add(client)
 	}
-	return host
+	return host, nil
+}
+
+func pluginActivationError(id string, startErr, closeErr error) error {
+	err := fmt.Errorf("activate plugin %q: %w", id, startErr)
+	if closeErr != nil {
+		return fmt.Errorf("%w (close candidate generation: %v)", err, closeErr)
+	}
+	return err
 }
 
 func pluginRequestInterceptor(host *pluginhost.Host, provider, threadID, cwd string) func(context.Context, *providers.ChatRequest) error {

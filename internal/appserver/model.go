@@ -363,6 +363,7 @@ func (th *threadState) releaseTurnExecutionLocked(turnID string) {
 	th.activeSteerDocument = nil
 	th.activeSteerContextSet = false
 	th.steerDocumentOverrides = nil
+	th.maybeReleasePluginGenerationExecutionLeaseLocked()
 }
 
 func applyTokenUsageToTurn(turn *Turn, usage providers.TokenUsage, contextTokens int, model string) {

@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -142,6 +143,7 @@ type Session struct {
 	// per-turn message stream, never in this cached prefix.
 	SessionDate string
 	WuuHome     string
+	pluginEpoch uint64
 	Permissions config.ResolvedPermissions
 	// PermissionModeExplicit reports that Permissions carries an explicit
 	// process-scoped override (see Options.PermissionModeExplicit): it beats
@@ -161,6 +163,8 @@ type Session struct {
 	AutomationManager           *automation.Manager
 	ReadinessIssues             []ReadinessIssue
 	InferenceJournalRuntime     *session.InferenceJournalRuntime
+	pluginGenerationMu          sync.Mutex
+	pluginGeneration            *PluginGeneration
 }
 
 // UltraMode returns the session-level delegation mode using an atomic read so
@@ -322,6 +326,19 @@ func NewSession(opts Options) (*Session, error) {
 	if err != nil {
 		return nil, fmt.Errorf("resolve wuu home: %w", err)
 	}
+	startupPluginLease, acquired, err := session.TryAcquirePluginGenerationExecutionLease(wuuHome)
+	if err != nil {
+		return nil, fmt.Errorf("acquire initial plugin generation: %w", err)
+	}
+	if !acquired {
+		return nil, errors.New("plugin packages are being changed by another app-server")
+	}
+	defer func() {
+		if err := startupPluginLease.Release(); err != nil {
+			providers.DebugLogf("release initial plugin generation: %v", err)
+		}
+	}()
+	initialPluginGenerationEpoch := startupPluginLease.Epoch()
 	workspaceID := strings.TrimSpace(opts.WorkspaceID)
 	workspaceStateDir, err := resolveWorkspaceStateDir(wuuHome, workspaceID, rootDir)
 	if err != nil {
@@ -720,6 +737,7 @@ func NewSession(opts Options) (*Session, error) {
 		UserSystemPrompt:            userSystemPrompt,
 		SessionDate:                 sessionDate,
 		WuuHome:                     wuuHome,
+		pluginEpoch:                 initialPluginGenerationEpoch,
 		Permissions:                 permissions,
 		PermissionModeExplicit:      opts.PermissionModeExplicit,
 		maxParallel:                 cfg.Agent.MaxParallelValue(),
@@ -736,12 +754,35 @@ func NewSession(opts Options) (*Session, error) {
 		InferenceJournalRuntime:     journalRuntime,
 		AutomationManager:           automationManager,
 	}
+	initialHooks := hooks.NewDispatcher(nil)
+	initialHooks.Replace(hookDispatcher)
+	runtimeSession.pluginGeneration = &PluginGeneration{
+		settings:   cfg,
+		plugins:    append([]pluginpkg.Plugin(nil), discoveredPlugins...),
+		active:     append([]pluginpkg.Plugin(nil), activePlugins...),
+		host:       pluginHost,
+		hooks:      initialHooks,
+		skills:     append([]skills.Skill(nil), discoveredSkills...),
+		mcpBinding: mcpActivityBindingsFromPlugins(activePlugins),
+	}
+	if toolkit != nil {
+		runtimeSession.pluginGeneration.mcp = toolkit.MCPManager()
+	}
 	// The legacy/root control remains dormant until SetSessionID binds its real
 	// artifact directories. Per-thread controls created by NewThreadRuntime are
 	// likewise started only after app-server installs their terminal finalizer.
 	runtimeSession.SetUltraMode(cfg.Agent.UltraMode)
 	journalOwned = false
 	return runtimeSession, nil
+}
+
+// InitialPluginGenerationEpoch is the generation observed while NewSession
+// held a shared execution lease across plugin discovery and process startup.
+func (s *Session) InitialPluginGenerationEpoch() uint64 {
+	if s == nil {
+		return 0
+	}
+	return s.pluginEpoch
 }
 
 func inferenceJournalWorkspaceScope(workspaceID, rootDir string) string {
@@ -1630,11 +1671,17 @@ func (s *Session) Cleanup() (process.CleanupResult, error) {
 		cleanupErr = errors.Join(cleanupErr, shutdownAndCleanupAgentControl(s.AgentControl))
 		s.AgentControl = nil
 	}
-	if s.Toolkit != nil {
+	s.pluginGenerationMu.Lock()
+	if s.pluginGeneration != nil {
+		cleanupErr = errors.Join(cleanupErr, s.pluginGeneration.close())
+		s.pluginGeneration = nil
+		s.PluginHost = nil
+	} else if s.Toolkit != nil {
 		if manager := s.Toolkit.MCPManager(); manager != nil {
 			cleanupErr = errors.Join(cleanupErr, manager.Close())
 		}
 	}
+	s.pluginGenerationMu.Unlock()
 	if s.InferenceJournalRuntime != nil {
 		cleanupErr = errors.Join(cleanupErr, s.InferenceJournalRuntime.Close())
 		s.InferenceJournalRuntime = nil
@@ -1847,6 +1894,20 @@ func permissionSetContains(granted, required []string) bool {
 	return true
 }
 
+// SetExtensionSettings keeps the live policy and generation rollback snapshot
+// aligned after a durable settings transaction.
+func (s *Session) SetExtensionSettings(settings *extensions.Settings) {
+	if s == nil {
+		return
+	}
+	s.pluginGenerationMu.Lock()
+	defer s.pluginGenerationMu.Unlock()
+	s.ExtensionSettings = settings
+	if s.pluginGeneration != nil {
+		s.pluginGeneration.settings.Extensions = settings
+	}
+}
+
 // ApplyExtensionPolicy refreshes all package-owned execution surfaces after a
 // grant, rejection, revoke, enable, or disable decision. Callers must ensure no
 // turn is running while the surface graph is replaced.
@@ -1854,40 +1915,11 @@ func (s *Session) ApplyExtensionPolicy(cfg config.Config) error {
 	if s == nil {
 		return errors.New("runtime is not initialized")
 	}
-	s.ExtensionSettings = cfg.Extensions
-	active := activatedPlugins(cfg, s.Plugins)
-	if s.PluginHost != nil {
-		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-		_ = s.PluginHost.Close(ctx)
-		cancel()
+	candidate, err := s.buildPluginGeneration(cfg, s.Plugins, nil, nil, startPluginClient)
+	if err != nil {
+		return err
 	}
-	if s.Toolkit != nil {
-		if manager := s.Toolkit.MCPManager(); manager != nil {
-			_ = manager.Close()
-		}
-	}
-	s.PluginHost = startPluginHost(active, s.RootDir, s.WuuHome)
-	if s.StreamRunner != nil {
-		inner := s.StreamRunner.Tools
-		if previous, ok := inner.(*pluginToolExecutor); ok {
-			inner = previous.inner
-		}
-		s.StreamRunner.Tools = newPluginToolExecutor(inner, s.PluginHost, "", s.RootDir)
-		s.StreamRunner.BeforeRequest = pluginRequestInterceptor(s.PluginHost, s.ProviderName, "", s.RootDir)
-	}
-	nextHooks := buildHookDispatcher(cfg, active, s.TitleClient, s.Model, nil)
-	if s.HookDispatcher == nil {
-		s.HookDispatcher = nextHooks
-	} else {
-		s.HookDispatcher.Replace(nextHooks)
-	}
-	s.Skills = discoverSkills(s.RootDir, s.HomeDir, s.WuuHome, active)
-	s.ActivePlugins = active
-	if s.Toolkit != nil {
-		connectMCPServers(cfg, active, s.Toolkit)
-	}
-	s.RefreshSystemPrompt(s.ProviderName, s.Model)
-	return nil
+	return s.ActivatePluginGeneration(candidate, nil)
 }
 
 // RefreshExtensions rediscovers package manifests before rebuilding the active
@@ -1896,8 +1928,11 @@ func (s *Session) RefreshExtensions(cfg config.Config) error {
 	if s == nil {
 		return errors.New("runtime is not initialized")
 	}
-	s.Plugins = discoverPlugins(s.RootDir, s.WuuHome)
-	return s.ApplyExtensionPolicy(cfg)
+	candidate, err := s.PreflightExtensions(cfg)
+	if err != nil {
+		return err
+	}
+	return s.ActivatePluginGeneration(candidate, nil)
 }
 
 func discoverSkills(rootDir, homeDir, wuuHome string, plugins []pluginpkg.Plugin) []skills.Skill {
@@ -2042,14 +2077,30 @@ func skillDirChain(root, leaf string) []string {
 }
 
 func connectMCPServers(cfg config.Config, plugins []pluginpkg.Plugin, toolkit *tools.Toolkit) {
-	servers := mcpServersFromConfigAndPlugins(cfg, plugins)
-	if toolkit == nil || len(servers) == 0 {
+	if toolkit == nil {
 		return
 	}
 	toolkit.SetMCPActivityBindings(mcpActivityBindingsFromPlugins(plugins))
+	manager, _ := startMCPManager(cfg, plugins, nil)
+	toolkit.SetMCPManager(manager)
+}
+
+func startMCPManager(cfg config.Config, plugins []pluginpkg.Plugin, requiredPlugins map[string]bool) (*mcp.Manager, error) {
+	servers := mcpServersFromConfigAndPlugins(cfg, plugins)
+	if len(servers) == 0 {
+		return nil, nil
+	}
 	mcpMgr := mcp.NewManager()
-	toolkit.SetMCPManager(mcpMgr)
 	serverConfigs := make(map[string]mcp.ServerConfig, len(servers))
+	requiredServers := make(map[string]bool)
+	for _, item := range plugins {
+		if !requiredPlugins[item.ID] {
+			continue
+		}
+		for name := range item.MCPServers {
+			requiredServers[PluginMCPServerName(item.ID, name)] = true
+		}
+	}
 	for name, mcpCfg := range servers {
 		serverConfigs[name] = mcp.ServerConfig{
 			Name:          name,
@@ -2065,9 +2116,21 @@ func connectMCPServers(cfg config.Config, plugins []pluginpkg.Plugin, toolkit *t
 		}
 	}
 	mcpMgr.Configure(serverConfigs)
+	for name, serverCfg := range serverConfigs {
+		if !requiredServers[name] || !serverCfg.IsEnabled() {
+			continue
+		}
+		if err := mcpMgr.Add(context.Background(), serverCfg); err != nil {
+			_ = mcpMgr.Close()
+			return nil, fmt.Errorf("start required MCP server %q: %w", name, err)
+		}
+	}
 	go func() {
 		ctx := context.Background()
 		for name, serverCfg := range serverConfigs {
+			if requiredServers[name] {
+				continue
+			}
 			if !serverCfg.IsEnabled() {
 				providers.DebugLogf("mcp server %q disabled", name)
 				continue
@@ -2079,6 +2142,7 @@ func connectMCPServers(cfg config.Config, plugins []pluginpkg.Plugin, toolkit *t
 			}
 		}
 	}()
+	return mcpMgr, nil
 }
 
 func mcpActivityBindingsFromPlugins(plugins []pluginpkg.Plugin) map[string]tools.MCPActivityBinding {

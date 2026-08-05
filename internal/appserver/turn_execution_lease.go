@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/blueberrycongee/wuu/internal/config"
 	"github.com/blueberrycongee/wuu/internal/providers"
 	"github.com/blueberrycongee/wuu/internal/session"
 )
@@ -18,9 +19,22 @@ var errAgentCompletionAlreadyDelivered = errors.New("agent completion is already
 // without hot-spinning against the lease while it is live.
 const threadExecutionLeaseRetryDelay = 200 * time.Millisecond
 
+func (s *Server) refreshExtensions(cfg config.Config) error {
+	if s != nil && s.refreshExtensionsForTest != nil {
+		return s.refreshExtensionsForTest(cfg)
+	}
+	if s == nil || s.rt == nil {
+		return errors.New("runtime is not initialized")
+	}
+	return s.rt.RefreshExtensions(cfg)
+}
+
 func (s *Server) tryAcquireThreadExecutionLeaseLocked(th *threadState) (bool, error) {
 	if th == nil {
 		return false, errors.New("thread is required")
+	}
+	if s != nil && s.pluginGenerationMutation.Load() {
+		return false, nil
 	}
 	if th.admissionReserved || th.executionLease != nil || th.runtimeSelectionMutation {
 		// The same server may be between durable admission and startTurnLocked,
@@ -28,21 +42,52 @@ func (s *Server) tryAcquireThreadExecutionLeaseLocked(th *threadState) (bool, er
 		// local reservation. Treat it exactly like an external owner.
 		return false, nil
 	}
+	newPluginLease := false
+	if th.pluginExecutionLease == nil && s != nil && s.rt != nil && strings.TrimSpace(s.rt.WuuHome) != "" {
+		lease, acquired, err := session.TryAcquirePluginGenerationExecutionLease(s.rt.WuuHome)
+		if err != nil {
+			return false, fmt.Errorf("acquire plugin generation execution lease: %w", err)
+		}
+		if !acquired {
+			return false, nil
+		}
+		s.pluginGenerationRefreshMu.Lock()
+		if epoch := lease.Epoch(); epoch != s.pluginGenerationEpoch.Load() {
+			if err := s.refreshExtensions(s.currentExtensionConfig()); err != nil {
+				s.pluginGenerationRefreshMu.Unlock()
+				_ = lease.Release()
+				return false, fmt.Errorf("refresh plugin generation %d: %w", epoch, err)
+			}
+			s.pluginGenerationEpoch.Store(epoch)
+		}
+		s.pluginGenerationRefreshMu.Unlock()
+		th.pluginExecutionLease = lease
+		newPluginLease = true
+	}
 	th.admissionReserved = true
 	if !th.PersistHistory {
 		return true, nil
 	}
 	if s == nil || s.rt == nil || strings.TrimSpace(s.rt.SessionDir) == "" {
 		th.admissionReserved = false
+		if newPluginLease {
+			th.releasePluginGenerationExecutionLeaseLocked()
+		}
 		return false, errors.New("session directory is required for durable thread execution")
 	}
 	lease, acquired, err := session.TryAcquireThreadExecutionLease(s.rt.SessionDir, th.ID)
 	if err != nil {
 		th.admissionReserved = false
+		if newPluginLease {
+			th.releasePluginGenerationExecutionLeaseLocked()
+		}
 		return false, fmt.Errorf("acquire execution lease for thread %q: %w", th.ID, err)
 	}
 	if !acquired {
 		th.admissionReserved = false
+		if newPluginLease {
+			th.releasePluginGenerationExecutionLeaseLocked()
+		}
 		return false, nil
 	}
 	th.executionLease = lease
@@ -146,12 +191,62 @@ func (th *threadState) releaseThreadExecutionLeaseLocked() {
 	}
 	th.admissionReserved = false
 	if th.executionLease == nil {
+		th.maybeReleasePluginGenerationExecutionLeaseLocked()
 		return
 	}
 	lease := th.executionLease
 	th.executionLease = nil
 	if err := lease.Release(); err != nil {
 		providers.DebugLogf("release execution lease for thread %q: %v", th.ID, err)
+	}
+	th.maybeReleasePluginGenerationExecutionLeaseLocked()
+}
+
+func (th *threadState) maybeReleasePluginGenerationExecutionLeaseLocked() {
+	if th == nil || th.pluginExecutionLease == nil || th.running {
+		return
+	}
+	if th.execRuntime != nil && threadRuntimeHasOutstandingWork(th.ID, th.execRuntime) {
+		th.schedulePluginGenerationLeaseReleaseLocked()
+		return
+	}
+	th.releasePluginGenerationExecutionLeaseLocked()
+}
+
+func (th *threadState) schedulePluginGenerationLeaseReleaseLocked() {
+	if th == nil || th.pluginLeaseReleaseLoop {
+		return
+	}
+	th.pluginLeaseReleaseLoop = true
+	go func() {
+		ticker := time.NewTicker(threadExecutionLeaseRetryDelay)
+		defer ticker.Stop()
+		for range ticker.C {
+			th.mu.Lock()
+			if th.pluginExecutionLease == nil {
+				th.pluginLeaseReleaseLoop = false
+				th.mu.Unlock()
+				return
+			}
+			if !th.running && (th.execRuntime == nil || !threadRuntimeHasOutstandingWork(th.ID, th.execRuntime)) {
+				th.releasePluginGenerationExecutionLeaseLocked()
+				th.pluginLeaseReleaseLoop = false
+				th.mu.Unlock()
+				return
+			}
+			th.mu.Unlock()
+		}
+	}()
+}
+
+func (th *threadState) releasePluginGenerationExecutionLeaseLocked() {
+	if th == nil || th.pluginExecutionLease == nil {
+		return
+	}
+	lease := th.pluginExecutionLease
+	th.pluginExecutionLease = nil
+	if err := lease.Release(); err != nil {
+		providers.DebugLogf("release plugin generation execution lease for thread %q: %v", th.ID, err)
 	}
 }
 
