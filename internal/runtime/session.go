@@ -1878,10 +1878,18 @@ func permissionSetContains(granted, required []string) bool {
 
 // ApplyExtensionPolicy refreshes all package-owned execution surfaces after a
 // grant, rejection, revoke, enable, or disable decision. Callers must ensure no
-// turn is running while the surface graph is replaced.
-func (s *Session) ApplyExtensionPolicy(cfg config.Config, discovered []pluginpkg.Plugin) error {
+// turn is running while the surface graph is replaced. Callers that already
+// hold a fresh discovery snapshot may pass it; when omitted, the runtime
+// rediscovers from disk so both call conventions stay correct.
+func (s *Session) ApplyExtensionPolicy(cfg config.Config, discoveredOpt ...[]pluginpkg.Plugin) error {
 	if s == nil {
 		return errors.New("runtime is not initialized")
+	}
+	var discovered []pluginpkg.Plugin
+	if len(discoveredOpt) > 0 && discoveredOpt[0] != nil {
+		discovered = discoveredOpt[0]
+	} else {
+		discovered = s.DiscoverPlugins()
 	}
 	active := activatedPlugins(cfg, discovered)
 	mcpChanged := !reflect.DeepEqual(
