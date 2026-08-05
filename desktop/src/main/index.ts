@@ -33,6 +33,7 @@ import type {
   ConfigCodexModelsResult,
   ConfigModelCatalogRefreshResult,
   ConfigModelUpdateResult,
+  ExtensionCatalogRefreshResult,
   ExtensionPackageUpdateParams,
   ExtensionPackageUpdateResult,
   GitCommitParams,
@@ -1400,6 +1401,9 @@ app.whenReady().then(async () => {
         "extension/package/update",
         params,
       ),
+  );
+  ipcMain.handle("wuu:extension-catalog-refresh", (event) =>
+    appServerRequest<ExtensionCatalogRefreshResult>(event, "extension/catalog/refresh"),
   );
   ipcMain.handle(
     "wuu:config-provider-remove",

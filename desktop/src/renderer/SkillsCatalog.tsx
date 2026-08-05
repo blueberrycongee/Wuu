@@ -3,7 +3,7 @@ import {
   RefreshCw,
   Wrench,
 } from "lucide-react";
-import { useEffect, useId, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import type {
   AppLocale,
   ExtensionInventoryRecord,
@@ -52,11 +52,13 @@ export function SkillsCatalog({
   activeContext,
   extensionInventory = [],
   onTrySkill,
+  onRefreshCatalog,
   onUpdateExtensionPackage,
 }: {
   activeContext?: RuntimeContext;
   extensionInventory?: ExtensionInventoryRecord[];
   onTrySkill?: (skill: SkillSummary) => void;
+  onRefreshCatalog?: () => Promise<SkillSummary[] | undefined>;
   onUpdateExtensionPackage?: (update: ExtensionPackageUpdateParams) => Promise<void>;
 }): JSX.Element {
   const { locale, t } = useI18n();
@@ -66,6 +68,8 @@ export function SkillsCatalog({
   const [packageMutation, setPackageMutation] = useState("");
   const [packageMutationError, setPackageMutationError] = useState("");
   const contextKey = activeContext ? runtimeContextKey(activeContext) : "";
+  const contextKeyRef = useRef(contextKey);
+  contextKeyRef.current = contextKey;
 
   useEffect(() => {
     let cancelled = false;
@@ -150,15 +154,24 @@ export function SkillsCatalog({
   }, [filter, locale, plugins]);
 
   async function refreshSkills(): Promise<void> {
+    const requestedContextKey = contextKey;
     setState((current) => ({ ...current, loading: true, error: "" }));
     try {
-      const [skillsResult] = await Promise.all([window.wuu.listSkills()]);
+      const skills = onRefreshCatalog
+        ? await onRefreshCatalog()
+        : (await window.wuu.listSkills()).skills;
+      if (!skills || contextKeyRef.current !== requestedContextKey) {
+        return;
+      }
       setState({
         loading: false,
         error: "",
-        skills: skillsResult.skills,
+        skills,
       });
     } catch (error) {
+      if (contextKeyRef.current !== requestedContextKey) {
+        return;
+      }
       setState({
         loading: false,
         error:

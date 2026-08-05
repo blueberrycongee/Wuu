@@ -22,6 +22,7 @@ import type {
   PopOutInitResult,
   RuntimeContext,
   ServerEvent,
+  SkillSummary,
   Thread,
   ThreadItem,
   Turn,
@@ -134,6 +135,7 @@ import {
   updateThreadByID,
   upsertThread,
   upsertTurn,
+  withExtensionInventoryForContext,
   withLoadedRuntimeSessionTab,
   workspacePanelContext,
   type AppState,
@@ -2975,18 +2977,19 @@ export function App(): JSX.Element {
   async function updateExtensionPackage(
     update: ExtensionPackageUpdateParams,
   ): Promise<void> {
+    const context = appStateRef.current.activeContext;
     const result = await window.wuu.updateExtensionPackage(update);
-    setState((current) =>
-      current.initialized
-        ? {
-            ...current,
-            initialized: {
-              ...current.initialized,
-              extension_inventory: result.extension_inventory,
-            },
-          }
-        : current,
-    );
+    setState((current) => withExtensionInventoryForContext(current, context, result.extension_inventory));
+  }
+
+  async function refreshExtensionCatalog(): Promise<SkillSummary[] | undefined> {
+    const context = appStateRef.current.activeContext;
+    const result = await window.wuu.refreshExtensionCatalog();
+    if (!sameRuntimeContext(appStateRef.current.activeContext, context)) {
+      return undefined;
+    }
+    setState((current) => withExtensionInventoryForContext(current, context, result.extension_inventory));
+    return result.skills;
   }
 
   async function sendSkillsAssistantPrompt(query: string): Promise<void> {
@@ -4633,6 +4636,7 @@ export function App(): JSX.Element {
                 activeContext={state.activeContext}
                 extensionInventory={state.initialized?.extension_inventory}
                 onTrySkill={trySkillFromCatalog}
+                onRefreshCatalog={refreshExtensionCatalog}
                 onUpdateExtensionPackage={updateExtensionPackage}
               />
             ) : showingAutomationsCatalog ? (

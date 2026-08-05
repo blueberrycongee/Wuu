@@ -324,6 +324,11 @@ export type ExtensionPackageUpdateResult = {
   extension_inventory: ExtensionInventoryRecord[];
 };
 
+export type ExtensionCatalogRefreshResult = {
+  extension_inventory: ExtensionInventoryRecord[];
+  skills: SkillSummary[];
+};
+
 export type ConfigModelUpdateResult = {
   provider: string;
   model: string;
@@ -2249,6 +2254,7 @@ export type WuuDesktopApi = {
   updateExtensionPackage: (
     params: ExtensionPackageUpdateParams
   ) => Promise<ExtensionPackageUpdateResult>;
+  refreshExtensionCatalog: () => Promise<ExtensionCatalogRefreshResult>;
   listMCPServers: () => Promise<MCPListResult>;
   connectMCPServer: (name: string) => Promise<MCPServerActionResult>;
   disconnectMCPServer: (name: string) => Promise<MCPServerActionResult>;

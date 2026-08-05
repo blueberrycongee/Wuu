@@ -53,7 +53,7 @@ func TestExtensionPackageUpdateGrantsExactFingerprintAndDisablesImmediately(t *t
 	if record.ApprovalState != ExtensionApprovalGranted || record.RuntimeState != ExtensionRuntimeActive || record.Enabled == nil || !*record.Enabled {
 		t.Fatalf("granted package record = %+v", record)
 	}
-	if len(record.Contributions.Commands) != 1 || record.Contributions.Commands[0].Template != "Draft ${input}" {
+	if len(record.Contributions.Commands) != 1 || record.Contributions.Commands[0].ID != "draft" || record.Contributions.Commands[0].Template != "Draft ${input}" {
 		t.Fatalf("command contributions = %+v", record.Contributions)
 	}
 	data, err := os.ReadFile(filepath.Join(wuuHome, "config.json"))
@@ -102,6 +102,31 @@ func TestExtensionPackageUpdateRejectsStaleFingerprint(t *testing.T) {
 	response := responseByID(t, parseOutput(t, out.String()), "stale")
 	if response["error"] == nil {
 		t.Fatalf("stale fingerprint unexpectedly succeeded: %+v", response)
+	}
+}
+
+func TestExtensionCatalogRefreshRediscoversPackages(t *testing.T) {
+	rt := newTestRuntime(t, &fakeClient{})
+	root := t.TempDir()
+	rt.RootDir = root
+	rt.WuuHome = filepath.Join(root, "wuu-home")
+	manifestPath := filepath.Join(root, ".wuu", "plugins", "fresh", pluginpkg.ManifestFilename)
+	if err := os.MkdirAll(filepath.Dir(manifestPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(manifestPath, []byte(`{"id":"fresh","name":"Fresh plugin"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	out := &lockedBuffer{}
+	srv := New(rt, out)
+	if err := srv.handleLine(context.Background(), []byte(`{"id":"refresh","method":"extension/catalog/refresh"}`)); err != nil {
+		t.Fatalf("refresh extension catalog: %v", err)
+	}
+	result := remarshal[ExtensionCatalogRefreshResult](t, responseByID(t, parseOutput(t, out.String()), "refresh")["result"])
+	record := findExtensionRecord(t, result.ExtensionInventory, "plugin:project:fresh")
+	if record.Name != "fresh" || record.ApprovalState != ExtensionApprovalPending {
+		t.Fatalf("refreshed package record = %+v", record)
 	}
 }
 

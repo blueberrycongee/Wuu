@@ -27,6 +27,29 @@ afterEach(() => {
 });
 
 describe("SkillsCatalog", () => {
+  it("refreshes the complete extension catalog through the parent runtime", async () => {
+    installSkillList([]);
+    const refreshedSkills: SkillSummary[] = [{
+      name: "fresh-skill",
+      description: "Discovered after refresh",
+      source: "plugin:fresh",
+      user_invocable: true,
+      disable_model_invoke: false,
+    }];
+    const onRefreshCatalog = vi.fn().mockResolvedValue(refreshedSkills);
+
+    await act(async () => {
+      root = createRoot(container);
+      root.render(<SkillsCatalog onRefreshCatalog={onRefreshCatalog} />);
+    });
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>(".catalog-refresh")?.click();
+    });
+
+    expect(onRefreshCatalog).toHaveBeenCalledOnce();
+    expect(container.textContent).toContain("fresh-skill");
+  });
+
   it("separates official and personal skills and gives each a complete artwork", async () => {
     installSkillList([
       {

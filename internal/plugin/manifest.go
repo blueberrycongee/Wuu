@@ -148,7 +148,7 @@ type rawContributes struct {
 var supportedManifestFields = map[string]struct{}{
 	"id": {}, "name": {}, "description": {}, "version": {}, "author": {},
 	"homepage": {}, "repository": {}, "license": {}, "keywords": {},
-	"skills": {}, "runtime": {}, "hooks": {}, "mcpServers": {}, "mcp_servers": {}, "commands": {},
+	"skills": {}, "runtime": {}, "hooks": {}, "mcpServers": {}, "mcp_servers": {},
 	"contributes": {}, "interface": {}, "platforms": {},
 	"requestedPermissions": {}, "requested_permissions": {},
 	"activityKinds": {}, "activity_kinds": {},

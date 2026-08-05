@@ -22,6 +22,7 @@ import (
 	"github.com/blueberrycongee/wuu/internal/capability"
 	"github.com/blueberrycongee/wuu/internal/config"
 	wuucontext "github.com/blueberrycongee/wuu/internal/context"
+	"github.com/blueberrycongee/wuu/internal/extensions"
 	"github.com/blueberrycongee/wuu/internal/goalruntime"
 	"github.com/blueberrycongee/wuu/internal/hooks"
 	"github.com/blueberrycongee/wuu/internal/mcp"
@@ -96,24 +97,25 @@ const (
 // stream runner. UI surfaces should depend on this instead of reassembling the
 // pieces themselves.
 type Session struct {
-	ProviderName   string
-	Model          string
-	RootDir        string
-	Host           Host
-	WorkspaceID    string
-	StateDir       string
-	ConfigPath     string
-	HomeDir        string
-	ConfigLoadMode ConfigLoadMode
-	SessionDir     string
-	StreamRunner   *agent.StreamRunner
-	TitleClient    providers.Client
-	HookDispatcher *hooks.Dispatcher
-	Skills         []skills.Skill
-	Plugins        []pluginpkg.Plugin
-	ActivePlugins  []pluginpkg.Plugin
-	PluginHost     *pluginhost.Host
-	Memory         []memory.File
+	ProviderName      string
+	Model             string
+	RootDir           string
+	Host              Host
+	WorkspaceID       string
+	StateDir          string
+	ConfigPath        string
+	HomeDir           string
+	ConfigLoadMode    ConfigLoadMode
+	SessionDir        string
+	StreamRunner      *agent.StreamRunner
+	TitleClient       providers.Client
+	HookDispatcher    *hooks.Dispatcher
+	Skills            []skills.Skill
+	Plugins           []pluginpkg.Plugin
+	ActivePlugins     []pluginpkg.Plugin
+	ExtensionSettings *extensions.Settings
+	PluginHost        *pluginhost.Host
+	Memory            []memory.File
 	// MemdirEnabled reports whether the file-directory memory (user
 	// notebook teaching + index injection and file-scope whitelist) is
 	// active for this session. False when Memory.Disable is set.
@@ -207,6 +209,7 @@ func (s *Session) cloneForThreadModel() *Session {
 		Skills:                      s.Skills,
 		Plugins:                     s.Plugins,
 		ActivePlugins:               s.ActivePlugins,
+		ExtensionSettings:           s.ExtensionSettings,
 		PluginHost:                  s.PluginHost,
 		Memory:                      s.Memory,
 		MemdirEnabled:               s.MemdirEnabled,
@@ -697,6 +700,7 @@ func NewSession(opts Options) (*Session, error) {
 		Skills:                      discoveredSkills,
 		Plugins:                     discoveredPlugins,
 		ActivePlugins:               activePlugins,
+		ExtensionSettings:           cfg.Extensions,
 		PluginHost:                  pluginHost,
 		Memory:                      memoryFiles,
 		MemdirEnabled:               memdirEnabled,
@@ -1849,6 +1853,7 @@ func (s *Session) ApplyExtensionPolicy(cfg config.Config) error {
 	if s == nil {
 		return errors.New("runtime is not initialized")
 	}
+	s.ExtensionSettings = cfg.Extensions
 	active := activatedPlugins(cfg, s.Plugins)
 	if s.PluginHost != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
@@ -1882,6 +1887,16 @@ func (s *Session) ApplyExtensionPolicy(cfg config.Config) error {
 	}
 	s.RefreshSystemPrompt(s.ProviderName, s.Model)
 	return nil
+}
+
+// RefreshExtensions rediscovers package manifests before rebuilding the active
+// extension surfaces. It is used by the catalog's explicit Refresh action.
+func (s *Session) RefreshExtensions(cfg config.Config) error {
+	if s == nil {
+		return errors.New("runtime is not initialized")
+	}
+	s.Plugins = discoverPlugins(s.RootDir, s.WuuHome)
+	return s.ApplyExtensionPolicy(cfg)
 }
 
 func discoverSkills(rootDir, homeDir, wuuHome string, plugins []pluginpkg.Plugin) []skills.Skill {

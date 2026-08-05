@@ -21,40 +21,41 @@ import (
 const (
 	ProtocolVersion = "wuu-app-server/v0.1"
 
-	MethodInitialize             = "initialize"
-	MethodConfigRead             = "config/read"
-	MethodConfigModelUpdate      = "config/model/update"
-	MethodConfigAdvancedUpdate   = "config/advanced/update"
-	MethodConfigGeneralUpdate    = "config/general/update"
-	MethodExtensionPackageUpdate = "extension/package/update"
-	MethodConfigCodexModels      = "config/codex/models"
-	MethodConfigCatalogRefresh   = "config/model-catalog/refresh"
-	MethodConfigProviderRemove   = "config/provider/remove"
-	MethodSkillList              = "skill/list"
-	MethodChannelBootstrap       = "channel/bootstrap"
-	MethodChannelAgentList       = "channel/agent/list"
-	MethodChannelAgentInsights   = "channel/agent/insights"
-	MethodChannelAgentCreate     = "channel/agent/create"
-	MethodChannelAgentUpdate     = "channel/agent/update"
-	MethodChannelAgentDelete     = "channel/agent/delete"
-	MethodChannelAgentStart      = "channel/agent/start"
-	MethodChannelAgentReset      = "channel/agent/reset"
-	MethodChannelRoomList        = "channel/room/list"
-	MethodChannelRoomCreate      = "channel/room/create"
-	MethodChannelRoomUpdate      = "channel/room/update"
-	MethodChannelRoomDelete      = "channel/room/delete"
-	MethodChannelRoomRead        = "channel/room/read"
-	MethodChannelMessageList     = "channel/message/list"
-	MethodChannelMessageSend     = "channel/message/send"
-	MethodChannelTaskCreate      = "channel/task/create"
-	MethodChannelTaskUpdate      = "channel/task/update"
-	MethodChannelMentionStatus   = "channel/human-mention/status"
-	MethodChannelMentionAck      = "channel/human-mention/ack"
-	MethodAutomationList         = "automation/list"
-	MethodAutomationRuns         = "automation/run/list"
-	MethodAutomationCreate       = "automation/create"
-	MethodAutomationUpdate       = "automation/update"
-	MethodAutomationRemove       = "automation/remove"
+	MethodInitialize              = "initialize"
+	MethodConfigRead              = "config/read"
+	MethodConfigModelUpdate       = "config/model/update"
+	MethodConfigAdvancedUpdate    = "config/advanced/update"
+	MethodConfigGeneralUpdate     = "config/general/update"
+	MethodExtensionCatalogRefresh = "extension/catalog/refresh"
+	MethodExtensionPackageUpdate  = "extension/package/update"
+	MethodConfigCodexModels       = "config/codex/models"
+	MethodConfigCatalogRefresh    = "config/model-catalog/refresh"
+	MethodConfigProviderRemove    = "config/provider/remove"
+	MethodSkillList               = "skill/list"
+	MethodChannelBootstrap        = "channel/bootstrap"
+	MethodChannelAgentList        = "channel/agent/list"
+	MethodChannelAgentInsights    = "channel/agent/insights"
+	MethodChannelAgentCreate      = "channel/agent/create"
+	MethodChannelAgentUpdate      = "channel/agent/update"
+	MethodChannelAgentDelete      = "channel/agent/delete"
+	MethodChannelAgentStart       = "channel/agent/start"
+	MethodChannelAgentReset       = "channel/agent/reset"
+	MethodChannelRoomList         = "channel/room/list"
+	MethodChannelRoomCreate       = "channel/room/create"
+	MethodChannelRoomUpdate       = "channel/room/update"
+	MethodChannelRoomDelete       = "channel/room/delete"
+	MethodChannelRoomRead         = "channel/room/read"
+	MethodChannelMessageList      = "channel/message/list"
+	MethodChannelMessageSend      = "channel/message/send"
+	MethodChannelTaskCreate       = "channel/task/create"
+	MethodChannelTaskUpdate       = "channel/task/update"
+	MethodChannelMentionStatus    = "channel/human-mention/status"
+	MethodChannelMentionAck       = "channel/human-mention/ack"
+	MethodAutomationList          = "automation/list"
+	MethodAutomationRuns          = "automation/run/list"
+	MethodAutomationCreate        = "automation/create"
+	MethodAutomationUpdate        = "automation/update"
+	MethodAutomationRemove        = "automation/remove"
 	// MethodGoalActiveSummary returns the lightweight composer-banner view
 	// of the most-recently-updated non-terminal goal in the requested thread
 	// scope. The mutation methods are user-owned controls for the active
@@ -598,6 +599,11 @@ type ExtensionPackageUpdateParams struct {
 
 type ExtensionPackageUpdateResult struct {
 	ExtensionInventory []ExtensionInventoryRecord `json:"extension_inventory"`
+}
+
+type ExtensionCatalogRefreshResult struct {
+	ExtensionInventory []ExtensionInventoryRecord `json:"extension_inventory"`
+	Skills             []SkillSummary             `json:"skills"`
 }
 
 type ConfigModelUpdateParams struct {

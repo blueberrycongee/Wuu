@@ -113,7 +113,7 @@ func TestLoadManifestReportsUnsupportedFields(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadManifest: %v", err)
 	}
-	want := []string{"bundledContentVariant"}
+	want := []string{"bundledContentVariant", "commands"}
 	if !reflect.DeepEqual(got.UnsupportedFields, want) {
 		t.Fatalf("UnsupportedFields = %#v, want %#v", got.UnsupportedFields, want)
 	}

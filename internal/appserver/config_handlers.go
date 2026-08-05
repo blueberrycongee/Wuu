@@ -307,12 +307,9 @@ func (s *Server) currentExtensionInventory() []ExtensionInventoryRecord {
 	if cfg.Extensions != nil {
 		grants = *cfg.Extensions
 	}
-	s.extensionPolicyMu.RLock()
-	if s.extensionSettings != nil {
-		grants = *s.extensionSettings
+	if s.rt.ExtensionSettings != nil {
+		grants = *s.rt.ExtensionSettings
 	}
-	s.extensionPolicyMu.RUnlock()
-
 	pluginsByID := make(map[string]struct {
 		scope    string
 		official bool
@@ -378,7 +375,7 @@ func (s *Server) currentExtensionInventory() []ExtensionInventoryRecord {
 				template = command.ResolvedPrompt.Text
 			}
 			commands = append(commands, ExtensionCommandDescriptor{
-				ID:          command.PublicID,
+				ID:          command.ID,
 				Title:       command.Title,
 				Description: command.Description,
 				Kind:        ExtensionCommandKind(command.Kind),
@@ -737,56 +734,60 @@ func (s *Server) handleExtensionPackageUpdate(req Request) error {
 		return s.writeResponse(req.ID, nil, errors.New("official bundled packages cannot be granted or rejected"))
 	}
 
-	cfg := s.currentExtensionConfig()
-	settings := extensions.Settings{}
-	if cfg.Extensions != nil {
-		settings = *cfg.Extensions
-	}
-	s.extensionPolicyMu.RLock()
-	if s.extensionSettings != nil {
-		settings = *s.extensionSettings
-	}
-	s.extensionPolicyMu.RUnlock()
-	var err error
-	switch params.Action {
-	case ExtensionPackageGrant:
-		err = settings.RecordGrant(extensions.Grant{
-			SubjectID:   selected.SubjectID,
-			Fingerprint: selected.Fingerprint,
-			Scope:       extensions.GrantScopeProject,
-			Permissions: append([]string(nil), selected.EffectivePermissions...),
-			ApprovedAt:  time.Now().UTC(),
-		})
-	case ExtensionPackageReject:
-		err = settings.RecordRejection(selected.SubjectID, selected.Fingerprint)
-	case ExtensionPackageRevoke:
-		settings.Revoke(selected.SubjectID)
-	case ExtensionPackageEnable:
-		settings.SetDisabled(selected.SubjectID, false)
-	case ExtensionPackageDisable:
-		settings.SetDisabled(selected.SubjectID, true)
-	default:
-		err = fmt.Errorf("unsupported extension package action %q", params.Action)
-	}
-	if err != nil {
-		return s.writeResponse(req.ID, nil, err)
-	}
 	userConfigPath, err := statepath.ConfigPath(s.rt.HomeDir)
 	if err != nil {
 		return s.writeResponse(req.ID, nil, fmt.Errorf("resolve user config: %w", err))
 	}
-	if err := config.UpdateExtensionSettings(userConfigPath, settings); err != nil {
+	settings, err := config.UpdateExtensionSettings(userConfigPath, func(settings *extensions.Settings) error {
+		switch params.Action {
+		case ExtensionPackageGrant:
+			return settings.RecordGrant(extensions.Grant{
+				SubjectID:   selected.SubjectID,
+				Fingerprint: selected.Fingerprint,
+				Scope:       extensions.GrantScopeProject,
+				Permissions: append([]string(nil), selected.EffectivePermissions...),
+				ApprovedAt:  time.Now().UTC(),
+			})
+		case ExtensionPackageReject:
+			return settings.RecordRejection(selected.SubjectID, selected.Fingerprint)
+		case ExtensionPackageRevoke:
+			settings.Revoke(selected.SubjectID)
+		case ExtensionPackageEnable:
+			settings.SetDisabled(selected.SubjectID, false)
+		case ExtensionPackageDisable:
+			settings.SetDisabled(selected.SubjectID, true)
+		default:
+			return fmt.Errorf("unsupported extension package action %q", params.Action)
+		}
+		return nil
+	})
+	if err != nil {
 		return s.writeResponse(req.ID, nil, fmt.Errorf("persist extension policy: %w", err))
 	}
+	cfg := s.currentExtensionConfig()
 	cfg.Extensions = &settings
 	if err := s.rt.ApplyExtensionPolicy(cfg); err != nil {
 		return s.writeResponse(req.ID, nil, err)
 	}
 	s.resetThreadRuntimesForGeneralSettings("")
-	s.extensionPolicyMu.Lock()
-	s.extensionSettings = &settings
-	s.extensionPolicyMu.Unlock()
 	return s.writeResponse(req.ID, ExtensionPackageUpdateResult{ExtensionInventory: s.currentExtensionInventory()}, nil)
+}
+
+func (s *Server) handleExtensionCatalogRefresh(req Request) error {
+	if s.rt == nil {
+		return s.writeResponse(req.ID, nil, errors.New("runtime is not initialized"))
+	}
+	if s.hasRunningThread() {
+		return s.writeResponse(req.ID, nil, errors.New("cannot refresh extensions while a turn is running"))
+	}
+	if err := s.rt.RefreshExtensions(s.currentExtensionConfig()); err != nil {
+		return s.writeResponse(req.ID, nil, err)
+	}
+	s.resetThreadRuntimesForGeneralSettings("")
+	return s.writeResponse(req.ID, ExtensionCatalogRefreshResult{
+		ExtensionInventory: s.currentExtensionInventory(),
+		Skills:             skillSummaries(s.rt.Skills),
+	}, nil)
 }
 
 func (s *Server) handleConfigAdvancedUpdate(req Request) error {
