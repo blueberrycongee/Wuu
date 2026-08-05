@@ -22,11 +22,15 @@
 
 1. **控制 #7 只到包级，未到 hook 级**。当前 `permissionSetContains(grant.Permissions, item.EffectivePermissions)` 是整包激活门；没有「hook → 所需权限」的独立映射（threat-model「Permission behavior」节要求 runtime host independently maps each surface to required permissions）。后果：一个获批插件自动获得全部 8 个 hook 的完整能力，包括 `chat.request` 全量会话读写与 `shell.env` 注入。
 2. **观测 hook 载荷未最小化**。chat.* 观测路径仍给完整消息正文，没有 metadata-only 降级（threat-model：observation hooks receive immutable or minimized payloads）。
-3. **控制 #4 缺测试**：bundled provenance 不可被 user/project 同 id 遮蔽——有 project>user 优先级测试，但无「user/project 包试图 shadow bundled id」的对抗测试。
-4. **控制 #8 缺测试**：插件身份由宿主连接绑定、调用方自报 id 无权威——未见 spoofing fixture。
-5. **控制 #10 缺测试**：disable/revoke 后 stale registration 清理（命令/MCP/hook 残留）未见专项 fixture（reconcilePluginHost 存在但无对抗用例）。
+
+## 已补对抗测试并验证通过（本轮新增）
+
+- 控制 #4：`internal/plugin/shadowing_test.go`——project/user 包以同 id 声明恶意 runtime 试图遮蔽 bundled cua-mac，两条用例均证明 provenance 获胜（PASS）。
+- 控制 #10：`TestReconcilePluginHostClosesRevokedPluginClient`——grant 撤销后 client 被 Close 且从 host 注销，存留插件不受影响（PASS）。
+- 控制 #3：`TestReconcilePluginHostRestartsClientWhenFingerprintChanges`——指纹变化不复用旧 client，关闭并换新（PASS）。
+- 控制 #8：核实为**结构性满足，无需 fixture**——线上协议 `rpcResponse` 没有 id 字段，插件身份由宿主持有的 `ProcessConfig.ID` 与独占管道绑定，调用方自报 id 在协议上不存在入口；initialize 的未知/重复 hook 已有拒绝测试。
 
 ## 建议
 
 - 缺口 1+2 是架构层（hook 权限目录 + 载荷裁剪），建议纳入 Andy 总架构下一阶段 manifest 设计，权限目录候选：`session.read`（chat.message/chat.request 正文）、`session.write`（chat.request 改写）、`tools.intercept`（tool.*）、`shell.env`。未声明即剥离注册或降级载荷。
-- 缺口 3+4+5 是纯测试补网，不碰实现，我申领（等房间确认后动手；若测出实 bug 另行上报）。
+- 缺口 3+4+5 已闭环：#4/#10/#3 补网通过，#8 结构性满足。安全轨对抗 fixture 验证策略的存量部分完成，后续随 hook 级权限落地补「未声明权限注册敏感 hook 被拒/载荷被裁剪」用例。
