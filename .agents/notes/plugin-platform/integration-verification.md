@@ -11,6 +11,11 @@
 
 修复后纯 HEAD `go build ./...` 通过；pluginhost/runtime/extensions/plugin 四包在纯 HEAD 全绿。config 的 settings_layer 失败仍是 Andy 在途重写（见下）。
 
+## 2026-08-06 桌面侧纯 HEAD 验证（HEAD 47919ab6，隔离 worktree /tmp/wuu-desk-check）
+
+- `tsc --noEmit`：干净通过（protocol 经 vite 相对路径引用，worktree 内即 HEAD 版本，纯度成立；node_modules 用 APFS clonefile 复制）。
+- vitest：HEAD 提交态中四个目标文件仅 `SkillsCatalog.test.tsx` 存在（7/7 过）。`PluginCommandRegistry/ComposerSlashCommands/AppState` 三个测试文件不在 HEAD 也不在当前工作区——属 Andy 在途重构（turn 6 的 158 测试部分跑在其后被改名/移除的工作区文件上），等其提交后复验。
+
 建议（流程）：feature 提交前从干净 checkout 跑 `go build ./...`；或按调用方+被调方原子切片提交。
 
 ## 2026-08-05 全仓 Go 测试（HEAD 83d351c9 + Andy 在途未提交改动）
