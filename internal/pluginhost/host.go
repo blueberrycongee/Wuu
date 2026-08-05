@@ -48,6 +48,33 @@ func (h *Host) Add(client Client) {
 	h.clients = append(h.clients, client)
 }
 
+// Clients returns the current ordered client snapshot. The clients remain
+// owned by the host; callers may use the snapshot to prepare a replacement but
+// must not close reused clients.
+func (h *Host) Clients() []Client {
+	if h == nil {
+		return nil
+	}
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return append([]Client(nil), h.clients...)
+}
+
+// Replace atomically publishes an ordered client set and returns the previous
+// set without closing it. This lets the runtime prepare all newly required
+// clients first, publish once, and then dispose only clients that were not
+// reused by the new generation.
+func (h *Host) Replace(clients []Client) []Client {
+	if h == nil {
+		return nil
+	}
+	h.mu.Lock()
+	previous := append([]Client(nil), h.clients...)
+	h.clients = append([]Client(nil), clients...)
+	h.mu.Unlock()
+	return previous
+}
+
 // Run applies every plugin registered for hook to output. Output must be a
 // non-nil pointer so each successful transform can become the next input.
 func (h *Host) Run(ctx context.Context, hook Hook, input, output any) error {
