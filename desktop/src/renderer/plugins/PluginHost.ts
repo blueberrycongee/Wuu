@@ -1,5 +1,14 @@
 import type * as React from "react";
 
+import type {
+  CSSSnippet,
+  LayoutContribution,
+  RendererDefinition,
+  StatusItemDefinition,
+  ThemeTokens,
+  ViewTypeDefinition,
+} from "../../shared/workbench";
+
 export const PLUGIN_SLOT_IDS = [
   "sidebar.primary",
   "sidebar.footer",
@@ -84,6 +93,21 @@ export interface PluginGenerationApi {
   registerStyle(style: PluginStyleRegistration): Disposable;
   registerLocale(locale: PluginLocaleRegistration): Disposable;
   registerCleanup(cleanup: () => void): Disposable;
+
+  // Phase C — Workbench API
+
+  /** Register a view type that the host can open in any pane. */
+  registerViewType(definition: ViewTypeDefinition): Disposable;
+  /** Contribute a layout node to the workbench tree. */
+  registerLayoutContribution(contribution: LayoutContribution): Disposable;
+  /** Register a custom content renderer (message, tool result, document, file). */
+  registerRenderer(definition: RendererDefinition): Disposable;
+  /** Apply theme token overrides for a specific theme. */
+  registerThemeTokens(tokens: ThemeTokens): Disposable;
+  /** Inject a CSS snippet scoped to this plugin. */
+  registerCSSSnippet(snippet: CSSSnippet): Disposable;
+  /** Register a status bar item. */
+  registerStatusItem(item: StatusItemDefinition): Disposable;
 }
 
 export interface ActivatePluginGenerationOptions {
@@ -160,6 +184,33 @@ interface LocaleRecord extends OrderedRecord {
   readonly entries: Readonly<Record<string, string>>;
 }
 
+// Phase C — Workbench record types
+
+interface ViewTypeRecord extends OrderedRecord {
+  readonly definition: ViewTypeDefinition;
+}
+
+interface LayoutRecord extends OrderedRecord {
+  readonly contribution: LayoutContribution;
+}
+
+interface RendererRecord extends OrderedRecord {
+  readonly definition: RendererDefinition;
+}
+
+interface ThemeTokenRecord extends OrderedRecord {
+  readonly tokens: ThemeTokens;
+}
+
+interface CSSSnippetRecord extends OrderedRecord {
+  readonly snippet: CSSSnippet;
+  element?: HTMLStyleElement;
+}
+
+interface StatusItemRecord extends OrderedRecord {
+  readonly item: StatusItemDefinition;
+}
+
 interface GenerationState {
   readonly pluginId: string;
   readonly generation: string;
@@ -168,6 +219,13 @@ interface GenerationState {
   readonly commands: CommandRecord[];
   readonly styles: StyleRecord[];
   readonly locales: LocaleRecord[];
+  // Phase C — Workbench
+  readonly views: ViewTypeRecord[];
+  readonly layouts: LayoutRecord[];
+  readonly renderers: RendererRecord[];
+  readonly themeTokens: ThemeTokenRecord[];
+  readonly cssSnippets: CSSSnippetRecord[];
+  readonly statusItems: StatusItemRecord[];
   readonly registrationKeys: Set<string>;
   readonly teardown: Disposable[];
   acceptingRegistrations: boolean;
@@ -458,6 +516,75 @@ export class PluginHost {
         state.teardown.push(disposable);
         return disposable;
       },
+
+      // Phase C — Workbench registration stubs (full wiring in follow-up)
+
+      registerViewType: (definition: ViewTypeDefinition) => {
+        this.assertAccepting(state);
+        const id = this.claimRegistrationId(state, "view", definition.id);
+        const record: ViewTypeRecord = {
+          pluginId: state.pluginId, generation: state.generation, id,
+          order: 0, removed: false, definition: { ...definition, id },
+        };
+        state.views.push(record);
+        return this.ownRecord(state, record);
+      },
+
+      registerLayoutContribution: (contribution: LayoutContribution) => {
+        this.assertAccepting(state);
+        const id = this.claimRegistrationId(state, "layout", contribution.id);
+        const record: LayoutRecord = {
+          pluginId: state.pluginId, generation: state.generation, id,
+          order: 0, removed: false, contribution,
+        };
+        state.layouts.push(record);
+        return this.ownRecord(state, record);
+      },
+
+      registerRenderer: (definition: RendererDefinition) => {
+        this.assertAccepting(state);
+        const id = this.claimRegistrationId(state, "renderer", definition.id);
+        const record: RendererRecord = {
+          pluginId: state.pluginId, generation: state.generation, id,
+          order: definition.priority ?? 0, removed: false,
+          definition: { ...definition, priority: definition.priority ?? 0 },
+        };
+        state.renderers.push(record);
+        return this.ownRecord(state, record);
+      },
+
+      registerThemeTokens: (tokens: ThemeTokens) => {
+        this.assertAccepting(state);
+        const id = this.claimRegistrationId(state, "theme", `theme:${tokens.theme}`);
+        const record: ThemeTokenRecord = {
+          pluginId: state.pluginId, generation: state.generation, id,
+          order: 0, removed: false, tokens,
+        };
+        state.themeTokens.push(record);
+        return this.ownRecord(state, record);
+      },
+
+      registerCSSSnippet: (snippet: CSSSnippet) => {
+        this.assertAccepting(state);
+        const id = this.claimRegistrationId(state, "css", snippet.id);
+        const record: CSSSnippetRecord = {
+          pluginId: state.pluginId, generation: state.generation, id,
+          order: snippet.priority ?? 0, removed: false, snippet,
+        };
+        state.cssSnippets.push(record);
+        return this.ownRecord(state, record, () => record.element?.remove());
+      },
+
+      registerStatusItem: (item: StatusItemDefinition) => {
+        this.assertAccepting(state);
+        const id = this.claimRegistrationId(state, "status", item.id);
+        const record: StatusItemRecord = {
+          pluginId: state.pluginId, generation: state.generation, id,
+          order: item.priority ?? 0, removed: false, item,
+        };
+        state.statusItems.push(record);
+        return this.ownRecord(state, record);
+      },
     });
   }
 
@@ -660,6 +787,12 @@ function createGenerationState(pluginId: string, generation: string): Generation
     commands: [],
     styles: [],
     locales: [],
+    views: [],
+    layouts: [],
+    renderers: [],
+    themeTokens: [],
+    cssSnippets: [],
+    statusItems: [],
     registrationKeys: new Set(),
     teardown: [],
     acceptingRegistrations: true,
