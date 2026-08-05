@@ -148,36 +148,29 @@ function MergedTurnGroupView({
   const live = anyMemberInProgress || Boolean(awaiting);
   const subagentProgress = subagentProgressForTurns(turns);
   const waitingTail = (() => {
-    if (interrupted || subagentProgress.total === 0) return undefined;
-    if (subagentProgress.remaining > 0) {
-      return {
-        label:
-          subagentProgress.finished > 0
-            ? translateCurrent("process.subagentsProgress", {
-                finished: subagentProgress.finished,
-                remaining: subagentProgress.remaining,
-              })
-            : translateCurrent("process.subagentsWaiting", {
-                remaining: subagentProgress.remaining,
-              }),
-        // The row remains visible while a completion wake is being processed,
-        // but the active shimmer belongs to the parent turn's newer work.
-        live: Boolean(awaiting) && !anyMemberInProgress,
-      };
+    // This synthetic activity exists only to explain an otherwise idle gap.
+    // Once the parent resumes a turn, its live prose or tool call is the current
+    // activity and the wait tail would become a redundant second status.
+    if (
+      interrupted ||
+      !awaiting ||
+      anyMemberInProgress ||
+      subagentProgress.remaining === 0
+    ) {
+      return undefined;
     }
-    // Keep the synthetic row for the lifetime of the active parent turn. A
-    // final child can finish after the model has already produced commentary;
-    // like a real tool call, the settled row must not disappear merely because
-    // newer assistant text exists.
-    if (subagentProgress.remaining === 0 && live) {
-      return {
-        label: translateCurrent("process.subagentsFinished", {
-          count: subagentProgress.finished,
-        }),
-        live: false,
-      };
-    }
-    return undefined;
+    return {
+      label:
+        subagentProgress.finished > 0
+          ? translateCurrent("process.subagentsProgress", {
+              finished: subagentProgress.finished,
+              remaining: subagentProgress.remaining,
+            })
+          : translateCurrent("process.subagentsWaiting", {
+              remaining: subagentProgress.remaining,
+            }),
+      live: true,
+    };
   })();
   const closed = !live && !interrupted && last.status === "completed";
   // Only the group's final answer carries the action bar; intermediate
