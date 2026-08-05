@@ -1,5 +1,6 @@
 export {
   PLUGIN_SLOT_IDS,
+  PLUGIN_SURFACE_IDS,
   PluginGenerationSupersededError,
   PluginHost,
   type ActivatePluginGenerationOptions,
@@ -13,7 +14,12 @@ export {
   type PluginSlotRegistration,
   type PluginSlotRenderContext,
   type PluginStyleRegistration,
+  type PluginSurfaceId,
+  type PluginSurfaceMode,
+  type PluginSurfaceRegistration,
   type RegisteredPluginCommand,
   type RegisteredPluginSlotContribution,
+  type RegisteredPluginSurfaceContribution,
 } from "./PluginHost";
 export { PluginSlot, type PluginSlotProps } from "./PluginSlot";
+export { PluginSurface, type PluginSurfaceProps } from "./PluginSurface";

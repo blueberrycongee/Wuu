@@ -14,6 +14,24 @@ export const PLUGIN_SLOT_IDS = [
 
 export type PluginSlotId = (typeof PLUGIN_SLOT_IDS)[number];
 
+export const PLUGIN_SURFACE_IDS = [
+  "app.shell",
+  "app.sidebar",
+  "app.main",
+  "app.auxiliary",
+  "app.status",
+  "view.launch",
+  "view.conversation",
+  "view.workspace",
+  "view.catalog",
+  "view.settings",
+  "conversation.timeline",
+  "conversation.message",
+  "conversation.composer",
+] as const;
+
+export type PluginSurfaceId = (typeof PLUGIN_SURFACE_IDS)[number];
+
 export interface Disposable {
   dispose(): void;
 }
@@ -24,6 +42,15 @@ export interface PluginSlotRegistration {
   id: string;
   order?: number;
   render(context: PluginSlotRenderContext): React.ReactNode;
+}
+
+export type PluginSurfaceMode = "replace" | "wrap";
+
+export interface PluginSurfaceRegistration {
+  id: string;
+  mode: PluginSurfaceMode;
+  order?: number;
+  render(context: PluginSlotRenderContext, fallback: React.ReactNode): React.ReactNode;
 }
 
 export interface PluginCommandRegistration {
@@ -52,6 +79,7 @@ export interface PluginGenerationApi {
   readonly pluginId: string;
   readonly generation: string;
   registerSlot(slotId: PluginSlotId, contribution: PluginSlotRegistration): Disposable;
+  registerSurface(surfaceId: PluginSurfaceId, contribution: PluginSurfaceRegistration): Disposable;
   registerCommand(command: PluginCommandRegistration): Disposable;
   registerStyle(style: PluginStyleRegistration): Disposable;
   registerLocale(locale: PluginLocaleRegistration): Disposable;
@@ -65,6 +93,11 @@ export interface ActivatePluginGenerationOptions {
 }
 
 export interface RegisteredPluginSlotContribution extends PluginSlotRegistration {
+  readonly pluginId: string;
+  readonly generation: string;
+}
+
+export interface RegisteredPluginSurfaceContribution extends PluginSurfaceRegistration {
   readonly pluginId: string;
   readonly generation: string;
 }
@@ -83,6 +116,7 @@ export interface PluginGenerationDiagnostic {
   readonly message: string;
   readonly cause: unknown;
   readonly slotId?: PluginSlotId;
+  readonly surfaceId?: PluginSurfaceId;
   readonly contributionId?: string;
 }
 
@@ -105,6 +139,12 @@ interface SlotRecord extends OrderedRecord {
   readonly render: PluginSlotRegistration["render"];
 }
 
+interface SurfaceRecord extends OrderedRecord {
+  readonly surfaceId: PluginSurfaceId;
+  readonly mode: PluginSurfaceMode;
+  readonly render: PluginSurfaceRegistration["render"];
+}
+
 interface CommandRecord extends OrderedRecord {
   readonly title: string;
   readonly execute: PluginCommandRegistration["execute"];
@@ -124,6 +164,7 @@ interface GenerationState {
   readonly pluginId: string;
   readonly generation: string;
   readonly slots: SlotRecord[];
+  readonly surfaces: SurfaceRecord[];
   readonly commands: CommandRecord[];
   readonly styles: StyleRecord[];
   readonly locales: LocaleRecord[];
@@ -140,6 +181,7 @@ interface PendingActivation {
 }
 
 const EMPTY_SLOT_SNAPSHOT: readonly RegisteredPluginSlotContribution[] = Object.freeze([]);
+const EMPTY_SURFACE_SNAPSHOT: readonly RegisteredPluginSurfaceContribution[] = Object.freeze([]);
 const EMPTY_COMMAND_SNAPSHOT: readonly RegisteredPluginCommand[] = Object.freeze([]);
 const EMPTY_LOCALE_SNAPSHOT: Readonly<Record<string, string>> = Object.freeze({});
 
@@ -162,6 +204,8 @@ export class PluginHost {
   private readonly pendingActivations = new Map<string, PendingActivation>();
   private readonly slotSnapshots = new Map<PluginSlotId, readonly RegisteredPluginSlotContribution[]>();
   private readonly slotListeners = new Map<PluginSlotId, Set<() => void>>();
+  private readonly surfaceSnapshots = new Map<PluginSurfaceId, readonly RegisteredPluginSurfaceContribution[]>();
+  private readonly surfaceListeners = new Map<PluginSurfaceId, Set<() => void>>();
   private readonly listeners = new Set<() => void>();
   private readonly localeSnapshots = new Map<string, Readonly<Record<string, string>>>();
   private readonly diagnostics = new Map<string, PluginGenerationDiagnostic[]>();
@@ -263,6 +307,22 @@ export class PluginHost {
     };
   }
 
+  getSurfaceSnapshot(surfaceId: PluginSurfaceId): readonly RegisteredPluginSurfaceContribution[] {
+    return this.surfaceSnapshots.get(surfaceId) ?? EMPTY_SURFACE_SNAPSHOT;
+  }
+
+  subscribeSurface(surfaceId: PluginSurfaceId, listener: () => void): () => void {
+    let listeners = this.surfaceListeners.get(surfaceId);
+    if (!listeners) {
+      listeners = new Set();
+      this.surfaceListeners.set(surfaceId, listeners);
+    }
+    listeners.add(listener);
+    return () => {
+      listeners?.delete(listener);
+    };
+  }
+
   getCommands(): readonly RegisteredPluginCommand[] {
     return this.commandSnapshot;
   }
@@ -283,17 +343,18 @@ export class PluginHost {
   }
 
   recordRenderFailure(
-    contribution: RegisteredPluginSlotContribution,
-    slotId: PluginSlotId,
+    contribution: RegisteredPluginSlotContribution | RegisteredPluginSurfaceContribution,
+    location: { slotId: PluginSlotId } | { surfaceId: PluginSurfaceId },
     error: unknown,
   ): void {
+    const kind = "slotId" in location ? "slot" : "surface";
     this.addDiagnostic({
       pluginId: contribution.pluginId,
       generation: contribution.generation,
       kind: "render",
-      message: `Plugin slot contribution ${contribution.id} failed to render: ${errorMessage(error)}`,
+      message: `Plugin ${kind} contribution ${contribution.id} failed to render: ${errorMessage(error)}`,
       cause: error,
-      slotId,
+      ...location,
       contributionId: contribution.id,
     });
   }
@@ -316,6 +377,22 @@ export class PluginHost {
           removed: false,
         };
         state.slots.push(record);
+        return this.ownRecord(state, record);
+      },
+      registerSurface: (surfaceId: PluginSurfaceId, contribution: PluginSurfaceRegistration) => {
+        this.assertAccepting(state);
+        const id = this.claimRegistrationId(state, `surface:${surfaceId}`, contribution.id);
+        const record: SurfaceRecord = {
+          pluginId: state.pluginId,
+          generation: state.generation,
+          id,
+          order: normalizeOrder(contribution.order),
+          surfaceId,
+          mode: normalizeSurfaceMode(contribution.mode),
+          render: contribution.render,
+          removed: false,
+        };
+        state.surfaces.push(record);
         return this.ownRecord(state, record);
       },
       registerCommand: (command: PluginCommandRegistration) => {
@@ -430,6 +507,7 @@ export class PluginHost {
   private refreshPublicState(): void {
     let changed = false;
     const slotRecords = new Map<PluginSlotId, SlotRecord[]>();
+    const surfaceRecords = new Map<PluginSurfaceId, SurfaceRecord[]>();
     const commands: CommandRecord[] = [];
     const locales: LocaleRecord[] = [];
     const styles: StyleRecord[] = [];
@@ -440,6 +518,13 @@ export class PluginHost {
           const records = slotRecords.get(record.slotId) ?? [];
           records.push(record);
           slotRecords.set(record.slotId, records);
+        }
+      }
+      for (const record of state.surfaces) {
+        if (!record.removed) {
+          const records = surfaceRecords.get(record.surfaceId) ?? [];
+          records.push(record);
+          surfaceRecords.set(record.surfaceId, records);
         }
       }
       commands.push(...state.commands.filter((record) => !record.removed));
@@ -456,6 +541,20 @@ export class PluginHost {
         this.slotSnapshots.set(slotId, next);
         changed = true;
         for (const listener of this.slotListeners.get(slotId) ?? []) {
+          listener();
+        }
+      }
+    }
+
+    for (const surfaceId of PLUGIN_SURFACE_IDS) {
+      const next = Object.freeze((surfaceRecords.get(surfaceId) ?? [])
+        .sort(compareOrdered)
+        .map(toPublicSurfaceContribution));
+      const previous = this.surfaceSnapshots.get(surfaceId) ?? EMPTY_SURFACE_SNAPSHOT;
+      if (!sameContributions(previous, next)) {
+        this.surfaceSnapshots.set(surfaceId, next);
+        changed = true;
+        for (const listener of this.surfaceListeners.get(surfaceId) ?? []) {
           listener();
         }
       }
@@ -557,6 +656,7 @@ function createGenerationState(pluginId: string, generation: string): Generation
     pluginId,
     generation,
     slots: [],
+    surfaces: [],
     commands: [],
     styles: [],
     locales: [],
@@ -574,6 +674,17 @@ function toPublicSlotContribution(record: SlotRecord): RegisteredPluginSlotContr
     generation: record.generation,
     id: record.id,
     order: record.order,
+    render: record.render,
+  });
+}
+
+function toPublicSurfaceContribution(record: SurfaceRecord): RegisteredPluginSurfaceContribution {
+  return Object.freeze({
+    pluginId: record.pluginId,
+    generation: record.generation,
+    id: record.id,
+    order: record.order,
+    mode: record.mode,
     render: record.render,
   });
 }
@@ -607,6 +718,13 @@ function normalizeOrder(order: number | undefined): number {
     throw new Error("Plugin registration order must be a finite number");
   }
   return order;
+}
+
+function normalizeSurfaceMode(mode: PluginSurfaceMode): PluginSurfaceMode {
+  if (mode !== "replace" && mode !== "wrap") {
+    throw new Error(`Unsupported plugin surface mode: ${String(mode)}`);
+  }
+  return mode;
 }
 
 function requireNonEmpty(value: string, label: string): string {

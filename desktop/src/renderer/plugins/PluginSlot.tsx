@@ -43,7 +43,7 @@ class ContributionBoundary extends Component<ContributionBoundaryProps, Contribu
 
   componentDidCatch(error: unknown, _errorInfo: ErrorInfo): void {
     const { contribution, host, slotId } = this.props;
-    host.recordRenderFailure(contribution, slotId, error);
+    host.recordRenderFailure(contribution, { slotId }, error);
   }
 
   render(): ReactNode {
