@@ -56,15 +56,19 @@ type rpcError struct {
 }
 
 type ProcessClient struct {
-	config  ProcessConfig
-	cmd     *exec.Cmd
-	stdin   io.WriteCloser
-	scanner *bufio.Scanner
-	seq     atomic.Uint64
-	callMu  sync.Mutex
-	mu      sync.RWMutex
-	status  Status
-	stderr  lockedBuffer
+	config   ProcessConfig
+	cmd      *exec.Cmd
+	stdin    io.WriteCloser
+	scanner  *bufio.Scanner
+	seq      atomic.Uint64
+	callGate chan struct{}
+	mu       sync.RWMutex
+	status   Status
+	tools    []ToolRegistration
+	stderr   lockedBuffer
+	stopMu   sync.Mutex
+	stopped  bool
+	stopErr  error
 }
 
 func Start(ctx context.Context, config ProcessConfig) (*ProcessClient, error) {
@@ -89,10 +93,11 @@ func Start(ctx context.Context, config ProcessConfig) (*ProcessClient, error) {
 		return nil, fmt.Errorf("plugin %q stdin: %w", config.ID, err)
 	}
 	client := &ProcessClient{
-		config: config,
-		cmd:    cmd,
-		stdin:  stdin,
-		status: Status{ID: config.ID, State: StateStarting},
+		config:   config,
+		cmd:      cmd,
+		stdin:    stdin,
+		status:   Status{ID: config.ID, State: StateStarting},
+		callGate: make(chan struct{}, 1),
 	}
 	scanner := bufio.NewScanner(stdout)
 	scanner.Buffer(make([]byte, 0, 4096), maxResponseLineSize)
@@ -128,9 +133,18 @@ func Start(ctx context.Context, config ProcessConfig) (*ProcessClient, error) {
 		}
 		seen[hook] = struct{}{}
 	}
+	if err := validateToolRegistrations(initialized.Tools); err != nil {
+		_ = client.stopProcess()
+		client.setFailure(err)
+		return nil, fmt.Errorf("initialize plugin %q: invalid tool registrations: %w", config.ID, err)
+	}
 	client.mu.Lock()
 	client.status.State = StateActive
 	client.status.Hooks = append([]Hook(nil), initialized.Hooks...)
+	client.tools = make([]ToolRegistration, len(initialized.Tools))
+	for index, registration := range initialized.Tools {
+		client.tools[index] = cloneToolRegistration(registration)
+	}
 	client.status.StartedAt = time.Now().UTC()
 	client.mu.Unlock()
 	return client, nil
@@ -142,6 +156,16 @@ func (c *ProcessClient) Hooks() []Hook {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return append([]Hook(nil), c.status.Hooks...)
+}
+
+func (c *ProcessClient) Tools() []ToolRegistration {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	tools := make([]ToolRegistration, len(c.tools))
+	for index, registration := range c.tools {
+		tools[index] = cloneToolRegistration(registration)
+	}
+	return tools
 }
 
 func (c *ProcessClient) Status() Status {
@@ -163,6 +187,23 @@ func (c *ProcessClient) Invoke(ctx context.Context, params InvokeParams) (Invoke
 	return result, nil
 }
 
+func (c *ProcessClient) ExecuteTool(ctx context.Context, params ToolExecuteParams) (ToolExecuteResult, error) {
+	callCtx, cancel := context.WithTimeout(ctx, c.config.Timeout)
+	defer cancel()
+	var result ToolExecuteResult
+	if err := c.call(callCtx, "tool.execute", params, &result); err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			c.setFailure(err)
+		}
+		return ToolExecuteResult{}, err
+	}
+	if err := result.Result.Validate(); err != nil {
+		return ToolExecuteResult{}, fmt.Errorf("validate tool result: %w", err)
+	}
+	result.Result = result.Result.Clone()
+	return result, nil
+}
+
 func (c *ProcessClient) Close(ctx context.Context) error {
 	if c == nil {
 		return nil
@@ -173,13 +214,30 @@ func (c *ProcessClient) Close(ctx context.Context) error {
 	err := c.stopProcess()
 	c.mu.Lock()
 	c.status.State = StateStopped
+	c.tools = nil
 	c.mu.Unlock()
 	return err
 }
 
 func (c *ProcessClient) call(ctx context.Context, method string, params, result any) error {
-	c.callMu.Lock()
-	defer c.callMu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	select {
+	case c.callGate <- struct{}{}:
+		defer func() { <-c.callGate }()
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	c.stopMu.Lock()
+	stopped := c.stopped
+	c.stopMu.Unlock()
+	if stopped {
+		return errors.New("plugin process is not running")
+	}
 	if c.cmd == nil || c.cmd.Process == nil {
 		return errors.New("plugin process is not running")
 	}
@@ -248,16 +306,25 @@ func (c *ProcessClient) call(ctx context.Context, method string, params, result 
 }
 
 func (c *ProcessClient) stopProcess() error {
-	if c == nil || c.cmd == nil || c.cmd.Process == nil {
+	if c == nil {
+		return nil
+	}
+	c.stopMu.Lock()
+	defer c.stopMu.Unlock()
+	if c.stopped {
+		return c.stopErr
+	}
+	c.stopped = true
+	if c.cmd == nil || c.cmd.Process == nil {
 		return nil
 	}
 	_ = c.stdin.Close()
 	_ = c.cmd.Process.Kill()
 	err := c.cmd.Wait()
 	if err != nil && !strings.Contains(err.Error(), "signal: killed") {
-		return err
+		c.stopErr = err
 	}
-	return nil
+	return c.stopErr
 }
 
 func (c *ProcessClient) setFailure(err error) {

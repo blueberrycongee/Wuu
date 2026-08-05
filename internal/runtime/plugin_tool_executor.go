@@ -30,7 +30,12 @@ func newPluginToolExecutor(inner agent.ToolExecutor, host *pluginhost.Host, thre
 }
 
 func (e *pluginToolExecutor) Definitions() []providers.ToolDefinition {
-	return e.inner.Definitions()
+	inner := e.inner.Definitions()
+	plugin := e.host.ToolDefinitions()
+	definitions := make([]providers.ToolDefinition, 0, len(inner)+len(plugin))
+	definitions = append(definitions, inner...)
+	definitions = append(definitions, plugin...)
+	return definitions
 }
 
 func (e *pluginToolExecutor) Execute(ctx context.Context, call providers.ToolCall) (string, error) {
@@ -55,7 +60,9 @@ func (e *pluginToolExecutor) ExecuteResult(ctx context.Context, call providers.T
 
 	var result toolresult.Result
 	var executeErr error
-	if rich, ok := e.inner.(agent.RichToolExecutor); ok {
+	if e.host.SupportsTool(call.Name) {
+		result, executeErr = e.host.ExecuteTool(ctx, call.Name, input)
+	} else if rich, ok := e.inner.(agent.RichToolExecutor); ok {
 		result, executeErr = rich.ExecuteResult(ctx, call)
 	} else {
 		var text string
@@ -105,11 +112,27 @@ func (e *pluginToolExecutor) toolInput(ctx context.Context, call providers.ToolC
 }
 
 func (e *pluginToolExecutor) SupportsTool(name string) bool {
+	if e.host.SupportsTool(name) {
+		return true
+	}
 	provider, ok := e.inner.(agent.ToolSupportProvider)
 	return ok && provider.SupportsTool(name)
 }
 
 func (e *pluginToolExecutor) ToolMetadata(call providers.ToolCall) (agent.ToolMetadata, bool) {
+	if tool, ok := e.host.Tool(call.Name); ok {
+		if tool.Registration.Activity == nil {
+			return agent.ToolMetadata{}, false
+		}
+		activity := tool.Registration.Activity
+		return agent.ToolMetadata{
+			ReadOnly:        activity.ReadOnly,
+			ConcurrencySafe: activity.ConcurrencySafe,
+			Destructive:     activity.Destructive,
+			Risk:            activity.Risk,
+			Reason:          activity.Reason,
+		}, true
+	}
 	provider, ok := e.inner.(agent.ToolMetadataProvider)
 	if !ok {
 		return agent.ToolMetadata{}, false
@@ -118,6 +141,12 @@ func (e *pluginToolExecutor) ToolMetadata(call providers.ToolCall) (agent.ToolMe
 }
 
 func (e *pluginToolExecutor) ToolDisplay(call providers.ToolCall) (providers.ToolCallDisplay, bool) {
+	if tool, ok := e.host.Tool(call.Name); ok {
+		if tool.Registration.Display == nil {
+			return providers.ToolCallDisplay{}, false
+		}
+		return *tool.Registration.Display, true
+	}
 	provider, ok := e.inner.(agent.ToolDisplayProvider)
 	if !ok {
 		return providers.ToolCallDisplay{}, false

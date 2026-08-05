@@ -2,11 +2,24 @@ package pluginhost
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/blueberrycongee/wuu/internal/providers"
 	"github.com/blueberrycongee/wuu/internal/toolresult"
 )
+
+const (
+	maxToolRegistrations  = 64
+	maxToolDescriptionLen = 16 * 1024
+	maxToolSchemaLen      = 128 * 1024
+	maxToolMetadataLen    = 1024
+)
+
+var localToolIDPattern = regexp.MustCompile(`^[a-zA-Z0-9_-]{1,64}$`)
 
 // Hook identifies a typed interception point exposed by the Wuu runtime.
 type Hook string
@@ -48,9 +61,115 @@ type InitializeParams struct {
 	WuuHome         string `json:"wuu_home"`
 }
 
-// InitializeResult declares the interception points implemented by a plugin.
+// InitializeResult declares the interception points and tools implemented by a
+// plugin. Tool IDs are local to the declaring plugin; Wuu assigns the public
+// model-visible names during registration.
 type InitializeResult struct {
-	Hooks []Hook `json:"hooks"`
+	Hooks []Hook             `json:"hooks"`
+	Tools []ToolRegistration `json:"tools,omitempty"`
+}
+
+// ToolRegistration is one model-visible tool owned by a plugin process.
+type ToolRegistration struct {
+	ID          string                     `json:"id"`
+	Description string                     `json:"description"`
+	InputSchema map[string]any             `json:"input_schema"`
+	Activity    *ToolActivityMetadata      `json:"activity,omitempty"`
+	Display     *providers.ToolCallDisplay `json:"display,omitempty"`
+}
+
+// ToolActivityMetadata controls scheduling and activity classification for a
+// registered tool. It is host metadata and is not included in provider tool
+// definitions.
+type ToolActivityMetadata struct {
+	ReadOnly        bool   `json:"read_only,omitempty"`
+	ConcurrencySafe bool   `json:"concurrency_safe,omitempty"`
+	Destructive     bool   `json:"destructive,omitempty"`
+	Risk            string `json:"risk,omitempty"`
+	Reason          string `json:"reason,omitempty"`
+}
+
+// ToolExecuteParams carries a registered tool call over the plugin protocol.
+// ToolID is the plugin-local registration ID; Tool in the embedded input is
+// the public model-visible name.
+type ToolExecuteParams struct {
+	ToolExecuteInput
+	ToolID string `json:"tool_id"`
+}
+
+// ToolExecuteResult is the structured result returned by tool.execute.
+type ToolExecuteResult struct {
+	Result toolresult.Result `json:"result"`
+}
+
+func validateToolRegistrations(tools []ToolRegistration) error {
+	if len(tools) > maxToolRegistrations {
+		return fmt.Errorf("declares %d tools, limit is %d", len(tools), maxToolRegistrations)
+	}
+	seen := make(map[string]struct{}, len(tools))
+	for index, tool := range tools {
+		prefix := fmt.Sprintf("tool[%d]", index)
+		if !localToolIDPattern.MatchString(tool.ID) {
+			return fmt.Errorf("%s id %q must match ^[a-zA-Z0-9_-]{1,64}$", prefix, tool.ID)
+		}
+		if _, ok := seen[tool.ID]; ok {
+			return fmt.Errorf("duplicate tool id %q", tool.ID)
+		}
+		seen[tool.ID] = struct{}{}
+		description := strings.TrimSpace(tool.Description)
+		if description == "" {
+			return fmt.Errorf("%s description is required", prefix)
+		}
+		if len(tool.Description) > maxToolDescriptionLen {
+			return fmt.Errorf("%s description exceeds %d bytes", prefix, maxToolDescriptionLen)
+		}
+		if tool.InputSchema == nil {
+			return fmt.Errorf("%s input_schema is required", prefix)
+		}
+		raw, err := json.Marshal(tool.InputSchema)
+		if err != nil {
+			return fmt.Errorf("%s input_schema is not valid JSON: %w", prefix, err)
+		}
+		if len(raw) > maxToolSchemaLen {
+			return fmt.Errorf("%s input_schema exceeds %d bytes", prefix, maxToolSchemaLen)
+		}
+		if schemaType, ok := tool.InputSchema["type"]; !ok || schemaType != "object" {
+			return fmt.Errorf("%s input_schema type must be %q", prefix, "object")
+		}
+		if tool.Activity != nil {
+			if err := validateBoundedMetadata("activity.risk", tool.Activity.Risk); err != nil {
+				return fmt.Errorf("%s: %w", prefix, err)
+			}
+			if err := validateBoundedMetadata("activity.reason", tool.Activity.Reason); err != nil {
+				return fmt.Errorf("%s: %w", prefix, err)
+			}
+		}
+		if tool.Display != nil {
+			if strings.TrimSpace(tool.Display.Kind) == "" && strings.TrimSpace(tool.Display.Text) == "" && strings.TrimSpace(tool.Display.Capability) == "" {
+				return fmt.Errorf("%s display metadata is empty", prefix)
+			}
+			for field, value := range map[string]string{
+				"display.kind":       tool.Display.Kind,
+				"display.text":       tool.Display.Text,
+				"display.capability": tool.Display.Capability,
+			} {
+				if err := validateBoundedMetadata(field, value); err != nil {
+					return fmt.Errorf("%s: %w", prefix, err)
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func validateBoundedMetadata(field, value string) error {
+	if len(value) > maxToolMetadataLen {
+		return fmt.Errorf("%s exceeds %d bytes", field, maxToolMetadataLen)
+	}
+	if strings.ContainsRune(value, '\x00') {
+		return errors.New(field + " contains a NUL byte")
+	}
+	return nil
 }
 
 // InvokeParams carries one interception through the external plugin protocol.

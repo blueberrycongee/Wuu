@@ -2,10 +2,16 @@ package pluginhost
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
+	"unicode"
+
+	"github.com/blueberrycongee/wuu/internal/providers"
+	"github.com/blueberrycongee/wuu/internal/toolresult"
 )
 
 // Client is one initialized plugin runtime. Implementations may host plugins
@@ -18,15 +24,37 @@ type Client interface {
 	Close(context.Context) error
 }
 
+// ToolClient extends a plugin client with its initialized tool registrations
+// and the typed execution method for those tools.
+type ToolClient interface {
+	Client
+	Tools() []ToolRegistration
+	ExecuteTool(context.Context, ToolExecuteParams) (ToolExecuteResult, error)
+}
+
+// RegisteredTool is the host-owned public view of a plugin tool registration.
+type RegisteredTool struct {
+	PublicName   string
+	PluginID     string
+	Registration ToolRegistration
+	client       ToolClient
+}
+
 // Host invokes plugins in discovery order. A hook receives the output from the
-// previous plugin, matching OpenCode's deterministic transform semantics.
+// previous plugin, preserving one deterministic Wuu transform chain.
 type Host struct {
-	mu      sync.RWMutex
-	clients []Client
+	mu        sync.RWMutex
+	clients   []Client
+	tools     map[string]RegisteredTool
+	toolOrder []string
 }
 
 func New(clients ...Client) *Host {
-	return &Host{clients: append([]Client(nil), clients...)}
+	host := &Host{tools: make(map[string]RegisteredTool)}
+	for _, client := range clients {
+		host.addLocked(client)
+	}
+	return host
 }
 
 // Failed preserves a plugin load failure in the runtime inventory without
@@ -45,7 +73,99 @@ func (h *Host) Add(client Client) {
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	h.addLocked(client)
+}
+
+func (h *Host) addLocked(client Client) {
+	if client == nil {
+		return
+	}
 	h.clients = append(h.clients, client)
+	toolClient, ok := client.(ToolClient)
+	if !ok {
+		return
+	}
+	registrations := toolClient.Tools()
+	if validateToolRegistrations(registrations) != nil {
+		// Process clients reject invalid declarations before activation. Keeping
+		// this guard makes in-process clients fail closed without affecting other
+		// initialized plugins.
+		return
+	}
+	if h.tools == nil {
+		h.tools = make(map[string]RegisteredTool)
+	}
+	for _, registration := range registrations {
+		publicName := h.availablePublicToolName(client.ID(), registration.ID)
+		h.tools[publicName] = RegisteredTool{
+			PublicName:   publicName,
+			PluginID:     client.ID(),
+			Registration: cloneToolRegistration(registration),
+			client:       toolClient,
+		}
+		h.toolOrder = append(h.toolOrder, publicName)
+	}
+}
+
+// ToolDefinitions returns plugin tools in deterministic client and declaration
+// order, ready to append to the executor definition surface sent to providers.
+func (h *Host) ToolDefinitions() []providers.ToolDefinition {
+	if h == nil {
+		return nil
+	}
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	definitions := make([]providers.ToolDefinition, 0, len(h.toolOrder))
+	for _, name := range h.toolOrder {
+		tool := h.tools[name]
+		definitions = append(definitions, providers.ToolDefinition{
+			Name:        name,
+			Description: tool.Registration.Description,
+			InputSchema: cloneSchema(tool.Registration.InputSchema),
+		})
+	}
+	return definitions
+}
+
+// Tool returns a copy of the registration behind a public tool name.
+func (h *Host) Tool(name string) (RegisteredTool, bool) {
+	if h == nil {
+		return RegisteredTool{}, false
+	}
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	tool, ok := h.tools[name]
+	if !ok {
+		return RegisteredTool{}, false
+	}
+	tool.Registration = cloneToolRegistration(tool.Registration)
+	return tool, true
+}
+
+func (h *Host) SupportsTool(name string) bool {
+	_, ok := h.Tool(name)
+	return ok
+}
+
+// ExecuteTool routes a public tool call to its owning plugin and validates the
+// structured result before returning it to the runtime.
+func (h *Host) ExecuteTool(ctx context.Context, name string, input ToolExecuteInput) (toolresult.Result, error) {
+	tool, ok := h.Tool(name)
+	if !ok {
+		return toolresult.Result{}, fmt.Errorf("plugin tool %q is not registered", name)
+	}
+	input.Tool = name
+	response, err := tool.client.ExecuteTool(ctx, ToolExecuteParams{
+		ToolExecuteInput: input,
+		ToolID:           tool.Registration.ID,
+	})
+	if err != nil {
+		return toolresult.Result{}, fmt.Errorf("plugin %q tool %q: %w", tool.PluginID, name, err)
+	}
+	if err := response.Result.Validate(); err != nil {
+		return toolresult.Result{}, fmt.Errorf("plugin %q tool %q returned invalid result: %w", tool.PluginID, name, err)
+	}
+	return response.Result.Clone(), nil
 }
 
 // Run applies every plugin registered for hook to output. Output must be a
@@ -131,6 +251,8 @@ func (h *Host) Close(ctx context.Context) error {
 	h.mu.Lock()
 	clients := append([]Client(nil), h.clients...)
 	h.clients = nil
+	h.tools = nil
+	h.toolOrder = nil
 	h.mu.Unlock()
 
 	var firstErr error
@@ -140,6 +262,75 @@ func (h *Host) Close(ctx context.Context) error {
 		}
 	}
 	return firstErr
+}
+
+func (h *Host) availablePublicToolName(pluginID, localID string) string {
+	for attempt := 0; ; attempt++ {
+		name := publicToolName(pluginID, localID, attempt)
+		if _, exists := h.tools[name]; !exists {
+			return name
+		}
+	}
+}
+
+func publicToolName(pluginID, localID string, attempt int) string {
+	pluginPart := toolNamePart(pluginID)
+	localPart := toolNamePart(localID)
+	seed := fmt.Sprintf("%s\x00%s\x00%d", pluginID, localID, attempt)
+	digest := fmt.Sprintf("%x", sha256.Sum256([]byte(seed)))[:16]
+	return "plugin_" + pluginPart + "_" + localPart + "_" + digest
+}
+
+func toolNamePart(value string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(strings.TrimSpace(value)) {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			if r <= unicode.MaxASCII {
+				b.WriteRune(r)
+			} else {
+				b.WriteByte('_')
+			}
+		} else {
+			b.WriteByte('_')
+		}
+		if b.Len() >= 19 {
+			break
+		}
+	}
+	part := strings.Trim(b.String(), "_")
+	if part == "" {
+		return "unnamed"
+	}
+	return part
+}
+
+func cloneToolRegistration(registration ToolRegistration) ToolRegistration {
+	clone := registration
+	clone.InputSchema = cloneSchema(registration.InputSchema)
+	if registration.Activity != nil {
+		activity := *registration.Activity
+		clone.Activity = &activity
+	}
+	if registration.Display != nil {
+		display := *registration.Display
+		clone.Display = &display
+	}
+	return clone
+}
+
+func cloneSchema(schema map[string]any) map[string]any {
+	if schema == nil {
+		return nil
+	}
+	raw, err := json.Marshal(schema)
+	if err != nil {
+		return nil
+	}
+	var clone map[string]any
+	if err := json.Unmarshal(raw, &clone); err != nil {
+		return nil
+	}
+	return clone
 }
 
 func hasHook(hooks []Hook, target Hook) bool {
