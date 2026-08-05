@@ -795,6 +795,12 @@ func (s *Server) handleLine(ctx context.Context, raw []byte) error {
 		return s.handleExtensionCatalogRefresh(req)
 	case MethodExtensionPackageUpdate:
 		return s.handleExtensionPackageUpdate(req)
+	case MethodPluginPackageInspect:
+		return s.handlePluginPackageInspect(req)
+	case MethodPluginPackageInstall:
+		return s.handlePluginPackageInstall(req)
+	case MethodPluginPackageRemove:
+		return s.handlePluginPackageRemove(req)
 	case MethodConfigCodexModels:
 		// Model discovery performs an external Codex request. Keep it off the
 		// serial stdio dispatch loop so unrelated local mutations, especially a

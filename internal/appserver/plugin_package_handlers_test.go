@@ -1,0 +1,229 @@
+package appserver
+
+import (
+	"archive/zip"
+	"context"
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+func TestPluginPackageInspectZipWithoutRuntime(t *testing.T) {
+	archive := filepath.Join(t.TempDir(), "inspect.zip")
+	writePluginPackageZip(t, archive, map[string]string{
+		"inspect-demo/plugin.json": `{"id":"inspect-demo","name":"Inspect Demo","version":"1.2.3"}`,
+		"inspect-demo/README.md":   "hello",
+	})
+
+	out := &lockedBuffer{}
+	srv := &Server{out: out}
+	callPluginPackageRPC(t, srv, "inspect", MethodPluginPackageInspect, PluginPackageInspectParams{Path: archive})
+	response := responseByID(t, parseOutput(t, out.String()), "inspect")
+	if response["error"] != nil {
+		t.Fatalf("inspect response = %+v", response)
+	}
+	result := remarshal[PluginPackageInspectResult](t, response["result"])
+	if result.Package.ID != "inspect-demo" || result.Package.Name != "Inspect Demo" || result.Package.Version != "1.2.3" {
+		t.Fatalf("package metadata = %+v", result.Package)
+	}
+	if result.Package.SourceKind != PluginPackageSourceZip || result.Package.ArchiveRoot != "inspect-demo" || result.Package.ManifestPath != "inspect-demo/plugin.json" {
+		t.Fatalf("package source metadata = %+v", result.Package)
+	}
+	if result.Package.FileCount != 2 || result.Package.Fingerprint == "" {
+		t.Fatalf("package inspection stats = %+v", result.Package)
+	}
+}
+
+func TestPluginPackageInstallDirectoryIsPendingAndDoesNotActivate(t *testing.T) {
+	rt := newTestRuntime(t, &fakeClient{})
+	rt.WuuHome = retryingTempDir(t)
+	source := t.TempDir()
+	marker := filepath.Join(source, "executed")
+	writePluginPackageFile(t, filepath.Join(source, "plugin.json"), `{
+  "id": "pending-demo",
+  "name": "Pending Demo",
+  "version": "2.0.0",
+  "skills": ["skills"],
+  "runtime": {"protocol":"wuu-plugin-v1","command":"bin/plugin"}
+}`)
+	writePluginPackageFile(t, filepath.Join(source, "skills", "pending-skill", "SKILL.md"), "pending skill")
+	writePluginPackageFile(t, filepath.Join(source, "bin", "plugin"), "#!/bin/sh\ntouch "+marker+"\n")
+
+	out := &lockedBuffer{}
+	srv := New(rt, out)
+	callPluginPackageRPC(t, srv, "install", MethodPluginPackageInstall, PluginPackageInstallParams{Path: source})
+	response := responseByID(t, parseOutput(t, out.String()), "install")
+	if response["error"] != nil {
+		t.Fatalf("install response = %+v", response)
+	}
+	result := remarshal[PluginPackageInstallResult](t, response["result"])
+	if result.Package.ID != "pending-demo" || result.Package.SourceKind != PluginPackageSourceDirectory || result.Replaced {
+		t.Fatalf("install result = %+v", result)
+	}
+	record := pluginPackageRecord(t, result.ExtensionInventory, "pending-demo")
+	if record.ApprovalState != ExtensionApprovalPending || record.State != ExtensionStatePending || record.RuntimeState != ExtensionRuntimeInactive {
+		t.Fatalf("pending inventory record = %+v", record)
+	}
+	if len(rt.ActivePlugins) != 0 {
+		t.Fatalf("active plugins = %+v, want no unapproved plugin", rt.ActivePlugins)
+	}
+	if _, err := os.Stat(marker); !os.IsNotExist(err) {
+		t.Fatalf("plugin runtime executed during install: %v", err)
+	}
+	installedManifest := filepath.Join(rt.WuuHome, "plugins", "pending-demo", "plugin.json")
+	if _, err := os.Stat(installedManifest); err != nil {
+		t.Fatalf("installed manifest under Wuu home: %v", err)
+	}
+	for _, skill := range result.Skills {
+		if skill.Name == "pending-skill" {
+			t.Fatalf("unapproved plugin skill was activated: %+v", skill)
+		}
+	}
+}
+
+func TestPluginPackageRemoveRefreshesInventory(t *testing.T) {
+	rt := newTestRuntime(t, &fakeClient{})
+	rt.WuuHome = retryingTempDir(t)
+	source := t.TempDir()
+	writePluginPackageFile(t, filepath.Join(source, "plugin.json"), `{"id":"remove-demo"}`)
+
+	out := &lockedBuffer{}
+	srv := New(rt, out)
+	callPluginPackageRPC(t, srv, "install", MethodPluginPackageInstall, PluginPackageInstallParams{Path: source})
+	installResponse := responseByID(t, parseOutput(t, out.String()), "install")
+	if installResponse["error"] != nil {
+		t.Fatalf("install response = %+v", installResponse)
+	}
+
+	callPluginPackageRPC(t, srv, "remove", MethodPluginPackageRemove, PluginPackageRemoveParams{ID: "remove-demo"})
+	response := responseByID(t, parseOutput(t, out.String()), "remove")
+	if response["error"] != nil {
+		t.Fatalf("remove response = %+v", response)
+	}
+	result := remarshal[PluginPackageRemoveResult](t, response["result"])
+	if result.ID != "remove-demo" || !result.Removed {
+		t.Fatalf("remove result = %+v", result)
+	}
+	for _, record := range result.ExtensionInventory {
+		if record.Provenance.PluginID == "remove-demo" {
+			t.Fatalf("removed plugin remains in inventory: %+v", record)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(rt.WuuHome, "plugins", "remove-demo")); !os.IsNotExist(err) {
+		t.Fatalf("removed plugin still exists: %v", err)
+	}
+}
+
+func TestPluginPackageHandlersRejectInvalidPathAndID(t *testing.T) {
+	rt := newTestRuntime(t, &fakeClient{})
+	rt.WuuHome = retryingTempDir(t)
+	out := &lockedBuffer{}
+	srv := New(rt, out)
+
+	callPluginPackageRPC(t, srv, "bad-path", MethodPluginPackageInstall, PluginPackageInstallParams{Path: filepath.Join(t.TempDir(), "missing")})
+	callPluginPackageRPC(t, srv, "bad-id", MethodPluginPackageRemove, PluginPackageRemoveParams{ID: "../outside"})
+	messages := parseOutput(t, out.String())
+	pathError := responseErrorMessage(t, responseByID(t, messages, "bad-path"))
+	if !strings.Contains(pathError, "install plugin package") || !strings.Contains(pathError, "missing") {
+		t.Fatalf("invalid path error = %q", pathError)
+	}
+	idError := responseErrorMessage(t, responseByID(t, messages, "bad-id"))
+	if !strings.Contains(idError, "remove plugin package") || !strings.Contains(idError, "portable path component") {
+		t.Fatalf("invalid id error = %q", idError)
+	}
+	if _, err := os.Stat(filepath.Join(rt.WuuHome, "plugins")); !os.IsNotExist(err) {
+		t.Fatalf("invalid requests mutated plugin directory: %v", err)
+	}
+}
+
+func TestPluginPackageMutationsRejectRunningTurn(t *testing.T) {
+	rt := newTestRuntime(t, &fakeClient{})
+	rt.WuuHome = retryingTempDir(t)
+	source := t.TempDir()
+	writePluginPackageFile(t, filepath.Join(source, "plugin.json"), `{"id":"busy-demo"}`)
+	out := &lockedBuffer{}
+	srv := New(rt, out)
+	thread := &threadState{ID: "busy", running: true}
+	srv.mu.Lock()
+	srv.threads[thread.ID] = thread
+	srv.mu.Unlock()
+
+	callPluginPackageRPC(t, srv, "install-busy", MethodPluginPackageInstall, PluginPackageInstallParams{Path: source})
+	callPluginPackageRPC(t, srv, "remove-busy", MethodPluginPackageRemove, PluginPackageRemoveParams{ID: "busy-demo"})
+	messages := parseOutput(t, out.String())
+	for _, id := range []string{"install-busy", "remove-busy"} {
+		message := responseErrorMessage(t, responseByID(t, messages, id))
+		if !strings.Contains(message, "while a turn is running") {
+			t.Fatalf("%s error = %q", id, message)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(rt.WuuHome, "plugins", "busy-demo")); !os.IsNotExist(err) {
+		t.Fatalf("running-turn rejection mutated package: %v", err)
+	}
+}
+
+func callPluginPackageRPC(t *testing.T, srv *Server, id, method string, params any) {
+	t.Helper()
+	raw, err := json.Marshal(map[string]any{"id": id, "method": method, "params": params})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := srv.handleLine(context.Background(), raw); err != nil {
+		t.Fatalf("call %s: %v", method, err)
+	}
+}
+
+func pluginPackageRecord(t *testing.T, records []ExtensionInventoryRecord, pluginID string) ExtensionInventoryRecord {
+	t.Helper()
+	for _, record := range records {
+		if record.Provenance.PluginID == pluginID && record.Kind == "plugin" {
+			return record
+		}
+	}
+	t.Fatalf("plugin %q not found in inventory: %+v", pluginID, records)
+	return ExtensionInventoryRecord{}
+}
+
+func responseErrorMessage(t *testing.T, response map[string]any) string {
+	t.Helper()
+	if response["error"] == nil {
+		t.Fatalf("response unexpectedly succeeded: %+v", response)
+	}
+	return remarshal[ResponseError](t, response["error"]).Message
+}
+
+func writePluginPackageFile(t *testing.T, path, contents string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(contents), 0o755); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func writePluginPackageZip(t *testing.T, path string, entries map[string]string) {
+	t.Helper()
+	file, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writer := zip.NewWriter(file)
+	for name, contents := range entries {
+		part, err := writer.Create(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := part.Write([]byte(contents)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+}

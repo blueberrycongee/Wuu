@@ -28,6 +28,9 @@ const (
 	MethodConfigGeneralUpdate     = "config/general/update"
 	MethodExtensionCatalogRefresh = "extension/catalog/refresh"
 	MethodExtensionPackageUpdate  = "extension/package/update"
+	MethodPluginPackageInspect    = "plugin/package/inspect"
+	MethodPluginPackageInstall    = "plugin/package/install"
+	MethodPluginPackageRemove     = "plugin/package/remove"
 	MethodConfigCodexModels       = "config/codex/models"
 	MethodConfigCatalogRefresh    = "config/model-catalog/refresh"
 	MethodConfigProviderRemove    = "config/provider/remove"
@@ -602,6 +605,59 @@ type ExtensionPackageUpdateResult struct {
 }
 
 type ExtensionCatalogRefreshResult struct {
+	ExtensionInventory []ExtensionInventoryRecord `json:"extension_inventory"`
+	Skills             []SkillSummary             `json:"skills"`
+}
+
+type PluginPackageSourceKind string
+
+const (
+	PluginPackageSourceDirectory PluginPackageSourceKind = "directory"
+	PluginPackageSourceZip       PluginPackageSourceKind = "zip"
+)
+
+type PluginPackageMetadata struct {
+	ID                   string                  `json:"id"`
+	Name                 string                  `json:"name,omitempty"`
+	Version              string                  `json:"version,omitempty"`
+	Description          string                  `json:"description,omitempty"`
+	SourceKind           PluginPackageSourceKind `json:"source_kind"`
+	ArchiveRoot          string                  `json:"archive_root,omitempty"`
+	ManifestPath         string                  `json:"manifest_path"`
+	FileCount            int                     `json:"file_count"`
+	UnpackedSize         int64                   `json:"unpacked_size"`
+	Fingerprint          string                  `json:"fingerprint"`
+	RequestedPermissions []string                `json:"requested_permissions,omitempty"`
+	EffectivePermissions []string                `json:"effective_permissions,omitempty"`
+	UnsupportedFields    []string                `json:"unsupported_fields,omitempty"`
+}
+
+type PluginPackageInspectParams struct {
+	Path string `json:"path"`
+}
+
+type PluginPackageInspectResult struct {
+	Package PluginPackageMetadata `json:"package"`
+}
+
+type PluginPackageInstallParams struct {
+	Path string `json:"path"`
+}
+
+type PluginPackageInstallResult struct {
+	Package            PluginPackageMetadata      `json:"package"`
+	Replaced           bool                       `json:"replaced"`
+	ExtensionInventory []ExtensionInventoryRecord `json:"extension_inventory"`
+	Skills             []SkillSummary             `json:"skills"`
+}
+
+type PluginPackageRemoveParams struct {
+	ID string `json:"id"`
+}
+
+type PluginPackageRemoveResult struct {
+	ID                 string                     `json:"id"`
+	Removed            bool                       `json:"removed"`
 	ExtensionInventory []ExtensionInventoryRecord `json:"extension_inventory"`
 	Skills             []SkillSummary             `json:"skills"`
 }
