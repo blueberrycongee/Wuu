@@ -1,6 +1,13 @@
 import type { SVGProps } from "react";
 
-/** Three connectable blocks for the Plugins navigation entry. */
+/**
+ * Stacked building blocks (积木) for the Plugins navigation entry: a wide
+ * base brick with a narrower brick on top, studs marking the connection
+ * points. Drawn as one silhouette path — at the 18px sidebar size separate
+ * brick outlines read as noise, while a single stepped outline with studs
+ * stays crisp. Symmetric about x=12, ink spans 3..21 like its lucide
+ * neighbours.
+ */
 export function PluginBlocksIcon(props: SVGProps<SVGSVGElement>): JSX.Element {
   return (
     <svg
@@ -14,9 +21,7 @@ export function PluginBlocksIcon(props: SVGProps<SVGSVGElement>): JSX.Element {
       data-icon="plugin-blocks"
       {...props}
     >
-      <path d="M3 7.5h2.5v-1a1.5 1.5 0 0 1 3 0v1H13v6H3z" />
-      <path d="M9 15h2.5v-1a1.5 1.5 0 0 1 3 0v1H19v6H9z" />
-      <path d="M16 3h5v9.5h-5V10h-1a1.5 1.5 0 0 1 0-3h1z" />
+      <path d="M3 21h18v-8h-.75v-2h-2.5v2H17V6h-1.5V4h-2.5v2H11V4H8.5v2H7v7h-.75v-2h-2.5v2H3v8z" />
     </svg>
   );
 }

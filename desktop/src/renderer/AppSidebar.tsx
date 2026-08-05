@@ -8,7 +8,6 @@ import {
   Folder,
   FolderOpen,
   FolderPlus,
-  Hash,
   LayoutGrid,
   List as ListIcon,
   MessageSquare,
@@ -57,6 +56,7 @@ import { SCRATCH_PSEUDO_PROJECT_ID } from "./AppState";
 import { PinnedThreadList, ProjectGroup } from "./ThreadSidebar";
 import { SidebarSection, SidebarSectionDragHandleContext } from "./SidebarSection";
 import { PluginBlocksIcon } from "./PluginBlocksIcon";
+import { CollabNodesIcon } from "./CollabNodesIcon";
 import { useI18n } from "./i18n";
 
 /**
@@ -699,8 +699,8 @@ export function AppSidebar({
                   <SidebarSection
                     expanded={!collabCollapsed}
                     iconKind="collab"
-                    CollapsedIcon={Hash}
-                    ExpandedIcon={Hash}
+                    CollapsedIcon={CollabNodesIcon}
+                    ExpandedIcon={CollabNodesIcon}
                     label={t("sidebar.collaboration")}
                     ariaLabel={t(collabCollapsed ? "sidebar.expandSection" : "sidebar.collapseSection", { section: t("sidebar.collaboration") })}
                     title={t(collabCollapsed ? "sidebar.expandSection" : "sidebar.collapseSection", { section: t("sidebar.collaboration") })}

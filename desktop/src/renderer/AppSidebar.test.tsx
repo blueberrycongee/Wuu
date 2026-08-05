@@ -510,6 +510,7 @@ describe("AppSidebar 协作 section", () => {
     const header = container.querySelector<HTMLElement>(
       ".collab-section .sidebar-section-row",
     );
+    expect(header?.querySelector('[data-icon="collab-nodes"]')).not.toBeNull();
     expect(header?.classList.contains("has-unread")).toBe(true);
     // Collapsed body keeps room rows unmounted, so no badge leaks out.
     expect(container.querySelector(".channel-room-unread")).toBeNull();
