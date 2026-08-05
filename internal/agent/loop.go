@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"sort"
 	"strings"
 
 	"github.com/blueberrycongee/wuu/internal/compact"
@@ -81,6 +82,18 @@ func RunToolLoop(
 	}
 	if strings.TrimSpace(cfg.Model) == "" {
 		return LoopResult{}, errors.New("agent: model is required")
+	}
+
+	// Resolve the effective compaction strategy. When CompactionRegistry
+	// is set, the highest-priority registered provider wins. Falls back
+	// to cfg.Compact for backward compatibility.
+	effectiveCompact := cfg.Compact
+	if cfg.CompactionRegistry != nil {
+		if resolved := cfg.CompactionRegistry.Resolve(nil); resolved != nil {
+			effectiveCompact = func(ctx context.Context, messages []providers.ChatMessage) ([]providers.ChatMessage, error) {
+				return resolved.Compact(ctx, cfg.Model, messages)
+			}
+		}
 	}
 	ctx, workflow, ownsWorkflow := providers.EnsureInferenceWorkflow(ctx, cfg.InferenceWorkloadProfile)
 	if ownsWorkflow {
@@ -215,7 +228,7 @@ func RunToolLoop(
 	// proactive attempts on failure/no-op; forced passes (user-requested
 	// /compact) bypass the gate and never suppress the proactive path.
 	runCompactPass := func(reason CompactReason, force bool) {
-		if cfg.Compact == nil {
+		if effectiveCompact == nil {
 			return
 		}
 		if !force && (proactiveSuppressed || threshold <= 0 || usage.EstimateCurrent() < threshold || !canProactivelyCompact(messages, cfg)) {
@@ -228,7 +241,7 @@ func RunToolLoop(
 			cfg.OnCompactStart(reason)
 		}
 		compactCtx, lineage := providers.BeginInferenceOperationLineage(ctx, lastAgentOperationID)
-		compacted, cerr := cfg.Compact(compactCtx, messages)
+		compacted, cerr := effectiveCompact(compactCtx, messages)
 		switch {
 		case cerr != nil:
 			if !force {
@@ -401,6 +414,20 @@ func RunToolLoop(
 				return loopResultSnapshot(messages, startLen, historyRewritten, totalIn, totalOut, totalCacheCreation, totalCacheRead), err
 			}
 		}
+		// Pluggable transform chain: multi-plugin request transforms
+		// registered via the capability contract. Executes after the
+		// legacy BeforeRequest so existing callers are unaffected.
+		if cfg.RequestTransforms != nil && cfg.RequestTransforms.Count() > 0 {
+			req.Messages = providers.CloneChatMessages(req.Messages)
+			forceBefore := strings.TrimSpace(req.ForceToolName)
+			forceAvailableBefore := requestHasTool(req.Tools, forceBefore)
+			if err := cfg.RequestTransforms.Apply(ctx, &req, nil); err != nil {
+				return loopResultSnapshot(messages, startLen, historyRewritten, totalIn, totalOut, totalCacheCreation, totalCacheRead), fmt.Errorf("transform model request (chain): %w", err)
+			}
+			if err := validateTransformedRequest(req, forceBefore, forceAvailableBefore); err != nil {
+				return loopResultSnapshot(messages, startLen, historyRewritten, totalIn, totalOut, totalCacheCreation, totalCacheRead), err
+			}
+		}
 		cacheHint := buildCacheHint(req.Messages)
 		applyPromptCacheKeyOverride(&cacheHint, cfg.PromptCacheKey)
 		req.CacheHint = cacheHint
@@ -436,7 +463,7 @@ func RunToolLoop(
 			// CompactFn carries whatever client/model knowledge it
 			// needs. This is the reactive backstop for the case
 			// where our proactive estimate undercounted.
-			if cfg.Compact != nil && providers.IsContextOverflow(err) && !overflowCompacted {
+			if effectiveCompact != nil && providers.IsContextOverflow(err) && !overflowCompacted {
 				overflowCompacted = true // gate first; never retry twice
 				usageBefore := usage.Breakdown()
 				before := usageBefore.Total()
@@ -445,7 +472,7 @@ func RunToolLoop(
 					cfg.OnCompactStart(CompactReasonOverflow)
 				}
 				compactCtx, lineage := providers.BeginInferenceOperationLineage(ctx, req.Operation.ID)
-				if compacted, cerr := cfg.Compact(compactCtx, messages); cerr == nil {
+				if compacted, cerr := effectiveCompact(compactCtx, messages); cerr == nil {
 					if compactChanged(messages, compacted) {
 						if compactOperationID := lineage.LastOperationID(); compactOperationID != "" && compactOperationID != req.Operation.ID {
 							nextOperationParentID = compactOperationID
@@ -1115,39 +1142,59 @@ func partitionToolCalls(executor ToolExecutor, calls []providers.ToolCall) []too
 // a single batch. Prevents N parallel tools x 50K each from bloating the prompt.
 const maxAggregateResultChars = 200_000
 
-// enforceAggregateResultBudget trims tool messages in-place so their
-// total content stays within the aggregate budget. Trims the largest
-// results first to minimize information loss.
+// enforceAggregateResultBudget trims tool messages in-place so their total
+// content stays within the aggregate budget. It trims the largest results
+// first and assigns each replacement its final byte length up front. The
+// marker must count against that length; repeatedly appending an unbudgeted
+// marker can otherwise leave total unchanged and spin forever.
 func enforceAggregateResultBudget(msgs []providers.ChatMessage) {
 	total := 0
-	for _, m := range msgs {
+	type toolResult struct {
+		index  int
+		length int
+	}
+	results := make([]toolResult, 0, len(msgs))
+	for i, m := range msgs {
 		if m.Role == "tool" {
 			total += len(m.Content)
+			results = append(results, toolResult{index: i, length: len(m.Content)})
 		}
 	}
 	if total <= maxAggregateResultChars {
 		return
 	}
-	// Trim the longest tool results first.
-	for total > maxAggregateResultChars {
-		maxIdx, maxLen := -1, 0
-		for i, m := range msgs {
-			if m.Role == "tool" && len(m.Content) > maxLen {
-				maxIdx = i
-				maxLen = len(m.Content)
-			}
-		}
-		if maxIdx < 0 || maxLen <= 200 {
+	sort.SliceStable(results, func(i, j int) bool {
+		return results[i].length > results[j].length
+	})
+	for _, result := range results {
+		if total <= maxAggregateResultChars {
 			break
 		}
+		original := msgs[result.index].Content
 		excess := total - maxAggregateResultChars
-		newLen := maxLen - excess
-		if newLen < 200 {
-			newLen = 200
+		targetLen := len(original) - excess
+		if targetLen < 0 {
+			targetLen = 0
 		}
-		msgs[maxIdx].Content = msgs[maxIdx].Content[:newLen] +
-			fmt.Sprintf("\n[trimmed: original %d chars, aggregate budget %d]", maxLen, maxAggregateResultChars)
-		total = total - maxLen + len(msgs[maxIdx].Content)
+		marker := fmt.Sprintf(
+			"\n[trimmed: original %d chars, aggregate budget %d]",
+			len(original),
+			maxAggregateResultChars,
+		)
+		var replacement string
+		switch {
+		case targetLen == 0:
+			replacement = ""
+		case targetLen <= len(marker):
+			// An unusually large batch can leave less room than the marker itself.
+			// A bounded partial marker is preferable to exceeding the hard budget.
+			replacement = marker[:targetLen]
+		default:
+			prefixLen := targetLen - len(marker)
+			replacement = original[:prefixLen] + marker
+		}
+		msgs[result.index].Content = replacement
+		total = total - len(original) + len(replacement)
 	}
 }
 

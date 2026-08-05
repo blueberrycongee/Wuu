@@ -280,7 +280,18 @@ type LoopConfig struct {
 	// request and before cache telemetry or provider serialization. Plugin hosts
 	// use it to transform messages, model parameters, and tool definitions.
 	// Returning an error aborts the current model round.
+	//
+	// Prefer RequestTransforms for new code; it supports multi-plugin chains.
 	BeforeRequest func(context.Context, *providers.ChatRequest) error
+	// RequestTransforms is the pluggable request transform chain. When set,
+	// all registered transforms execute in priority order after BeforeRequest
+	// (if any). This replaces ad-hoc single-callback transforms with a
+	// registry-based chain that supports dependency ordering and priority.
+	RequestTransforms *RequestTransformChain
+	// CompactionRegistry, when set, resolves the active compaction strategy
+	// for this run. The highest-priority registered provider wins. When nil,
+	// the legacy Compact field is used.
+	CompactionRegistry *CompactionRegistry
 	// SystemPromptSections is metadata for the stable system prompt in the
 	// live history. It is emitted as telemetry only and never sent to providers.
 	SystemPromptSections []SystemPromptSectionInfo
