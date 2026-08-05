@@ -36,6 +36,8 @@ import type { TurnStreamStatus } from "./AppState";
 import type { SubagentChipDisplay } from "./AgentHandoff";
 import { translateCurrent } from "./i18n";
 import { AnimatedProcessText } from "./ProcessTextMotion";
+import { desktopPluginHost } from "./plugins/DesktopPluginRuntime";
+import { PluginSurface } from "./plugins";
 
 export type TurnGroupViewProps = {
   /** One orchestration group (TurnGrouping). Length 1 for ordinary turns. */
@@ -69,6 +71,29 @@ export type TurnGroupViewProps = {
 };
 
 export function TurnGroupView(props: TurnGroupViewProps): JSX.Element {
+  return (
+    <PluginSurface
+      host={desktopPluginHost}
+      id="conversation.timeline"
+      context={{
+        version: 1,
+        turns: props.turns,
+        awaiting: Boolean(props.awaiting),
+        interrupted: Boolean(props.interrupted),
+        cwd: props.cwd,
+        actions: {
+          openFile: props.onOpenFile,
+          openAgent: props.onOpenAgent,
+          forkMessage: props.onForkMessage,
+          editMessage: props.onEditMessage,
+        },
+      }}
+      fallback={<TurnGroupContent {...props} />}
+    />
+  );
+}
+
+function TurnGroupContent(props: TurnGroupViewProps): JSX.Element {
   const { turns, awaiting, interrupted, isLatestTurn } = props;
   const first = turns[0];
   const timelinePending = turnsHavePendingSubagents(turns);
