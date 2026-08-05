@@ -90,20 +90,24 @@ async function squareAvatarImageFromFile(file: File): Promise<string> {
   }
 }
 
-function AgentAvatar({ name, avatarKey, avatarImage, status, statusText, compact = false }: {
+function AgentAvatar({ name, avatarKey, avatarImage, status, statusText, model, modelLabel, compact = false }: {
   name: string;
   avatarKey: string;
   avatarImage?: string;
   status: AgentActivityStatus;
   statusText: string;
+  model?: string;
+  modelLabel: string;
   compact?: boolean;
 }): JSX.Element {
+  const accessibleDescription = model ? `${name}: ${statusText}, ${modelLabel}: ${model}` : `${name}: ${statusText}`;
   return (
-    <span className={`channel-agent-avatar${compact ? " compact" : ""}`} tabIndex={0} aria-label={`${name}: ${statusText}`}>
+    <span className={`channel-agent-avatar${compact ? " compact" : ""}`} tabIndex={0} aria-label={accessibleDescription}>
       <AgentAvatarMark avatarKey={avatarKey} avatarImage={avatarImage} />
       <span className={`channel-agent-status-dot ${status}`} aria-hidden="true" />
       <span className="channel-agent-status-card" role="tooltip">
         <span><i className={`channel-agent-status-swatch ${status}`} />{statusText}</span>
+        {model ? <span className="channel-agent-model"><Bot aria-hidden="true" />{modelLabel}: {model}</span> : null}
       </span>
     </span>
   );
@@ -1437,7 +1441,7 @@ export function ChannelView({ initialized, section = "rooms", archivedRoomIDs = 
                 ) : !grouped ? (() => {
                   const agent = agents.find((candidate) => candidate.id === message.author_id);
                   const status = activityFor(agent);
-                  return <AgentAvatar name={author} avatarKey={agent?.avatar_key ?? "abstract-1"} avatarImage={agent?.avatar_image} status={status} statusText={activityText(status)} />;
+                  return <AgentAvatar name={author} avatarKey={agent?.avatar_key ?? "abstract-1"} avatarImage={agent?.avatar_image} status={status} statusText={activityText(status)} model={agent?.model_override || initialized?.model} modelLabel={t("channels.model")} />;
                 })() : null}
                 <div className={`channel-message-content${threadReplies.length ? " has-thread-digest" : ""}`}>
                   <div className="channel-message-meta">
@@ -1546,7 +1550,7 @@ export function ChannelView({ initialized, section = "rooms", archivedRoomIDs = 
                     ) : !grouped ? (() => {
                       const agent = agents.find((candidate) => candidate.id === message.author_id);
                       const status = activityFor(agent);
-                      return <AgentAvatar name={author} avatarKey={agent?.avatar_key ?? "abstract-1"} avatarImage={agent?.avatar_image} status={status} statusText={activityText(status)} />;
+                      return <AgentAvatar name={author} avatarKey={agent?.avatar_key ?? "abstract-1"} avatarImage={agent?.avatar_image} status={status} statusText={activityText(status)} model={agent?.model_override || initialized?.model} modelLabel={t("channels.model")} />;
                     })() : null}
                     <div className="channel-message-content">
                       <div className="channel-message-meta">
@@ -1676,7 +1680,7 @@ export function ChannelView({ initialized, section = "rooms", archivedRoomIDs = 
               return (
                 <div className={`channel-directory-row channel-agent-directory-row${selectedAgentID === agent.id ? " selected" : ""}`} key={agent.id}>
                   <button className="channel-directory-avatar" type="button" aria-label={t("channels.viewAgent", { name: agent.name })} onClick={() => selectAgentDetails(agent)}>
-                    <AgentAvatar name={agent.name} avatarKey={agent.avatar_key} avatarImage={agent.avatar_image} status={status} statusText={activityText(status)} />
+                    <AgentAvatar name={agent.name} avatarKey={agent.avatar_key} avatarImage={agent.avatar_image} status={status} statusText={activityText(status)} model={agent.model_override || initialized?.model} modelLabel={t("channels.model")} />
                   </button>
                   <button className="channel-directory-identity channel-agent-directory-identity" type="button" aria-current={selectedAgentID === agent.id ? "page" : undefined} onClick={() => selectAgentDetails(agent)}>
                     <span><strong>{agent.name}</strong><small>{model} · {t("channels.agentRoomCount", { count: roomCount })}</small></span>

@@ -221,6 +221,33 @@ describe("ChannelView", () => {
     expect(formatChannelUnreadCount(100)).toBe("99+");
   });
 
+  it("shows each agent's effective model in the avatar status card", async () => {
+    const modelAgents = [
+      agents[0],
+      { ...agents[1], provider_override: "openai", model_override: "gpt-5.3-codex" },
+    ];
+    const api = createApi();
+    api.bootstrapChannels = vi.fn(async () => ({ agents: modelAgents, rooms }));
+    api.listNamedAgents = vi.fn(async () => ({ agents: modelAgents }));
+    Object.defineProperty(window, "wuu", { configurable: true, value: api });
+    const initialized = {
+      protocol_version: "1",
+      provider: "anthropic",
+      model: "claude-opus-4-1",
+      workspace_root: "/workspace",
+    } as InitializeResult;
+
+    root = createRoot(container);
+    act(() => root?.render(<ChannelView section="agents" initialized={initialized} />));
+    await settle();
+
+    const cards = Array.from(container.querySelectorAll<HTMLElement>(".channel-agent-status-card"));
+    expect(cards).toHaveLength(2);
+    expect(cards[0].querySelector(".channel-agent-model")?.textContent).toBe("模型: claude-opus-4-1");
+    expect(cards[1].querySelector(".channel-agent-model")?.textContent).toBe("模型: gpt-5.3-codex");
+    expect(container.querySelector('[aria-label="Alpha: 处理中, 模型: claude-opus-4-1"]')).not.toBeNull();
+  });
+
   it("honors controlled room selection without an in-canvas room list", async () => {
     const api = createApi();
     Object.defineProperty(window, "wuu", { configurable: true, value: api });
