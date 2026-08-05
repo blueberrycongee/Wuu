@@ -208,9 +208,11 @@ func TestIsAgentNotificationDetectsNamedAndLegacyHandoffs(t *testing.T) {
 		{name: "named", msgName: AgentNotificationMessageName, content: "anything", want: true},
 		{name: "raw notification", content: rawNotification, want: true},
 		{name: "inter-agent envelope", content: envelope, want: true},
+		{name: "plain inter-agent message envelope", content: `{"author":"/root/review_plugin_platform","recipient":"/root","content":"continue with the desktop loader","trigger_turn":false}`, want: true},
 		{name: "envelope with overlap sibling (named)", msgName: AgentNotificationMessageName, content: `{"author":"/root/worker","recipient":"/root","content":` + strconv.Quote(rawNotification) + `,"trigger_turn":true,"changed_file_overlap":["changed_file_overlap: foo.go touched by /root/a, /root/b"]}`, want: true},
 		{name: "envelope with overlap sibling (unnamed)", content: `{"author":"/root/worker","recipient":"/root","content":` + strconv.Quote(rawNotification) + `,"trigger_turn":true,"changed_file_overlap":["changed_file_overlap: foo.go touched by /root/a, /root/b"]}`, want: true},
 		{name: "normal user json", content: `{"content":"plain user text"}`, want: false},
+		{name: "normal user json with unrelated author", content: `{"author":"customer","recipient":"support","content":"plain user text"}`, want: false},
 		{name: "normal user text", content: "please inspect this", want: false},
 	}
 

@@ -479,6 +479,20 @@ func TestThreadPreviewSkipsAgentNotificationEnvelope(t *testing.T) {
 	}
 }
 
+func TestThreadPreviewSkipsUnnamedInterAgentMessageEnvelope(t *testing.T) {
+	preview := threadPreview([]providers.ChatMessage{
+		{
+			Role:    "user",
+			Content: `{"author":"/root/review_plugin_platform","recipient":"/root","content":"continue with the desktop loader","trigger_turn":false}`,
+		},
+		{Role: "user", Content: "完成插件平台"},
+	})
+
+	if preview != "完成插件平台" {
+		t.Fatalf("preview = %q, want visible user request", preview)
+	}
+}
+
 func TestTurnsFromHistorySkipsHiddenMessages(t *testing.T) {
 	now := time.Unix(0, 0).UTC()
 	turns := turnsFromHistory("thread", []providers.ChatMessage{

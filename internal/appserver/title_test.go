@@ -300,6 +300,18 @@ func TestFirstUserMessageForTitle_RequiresExactlyOneUser(t *testing.T) {
 			want: "real prompt",
 			ok:   true,
 		},
+		{
+			name: "unnamed inter-agent message does not count as user prompt",
+			history: []providers.ChatMessage{
+				{
+					Role:    "user",
+					Content: `{"author":"/root/review_plugin_platform","recipient":"/root","content":"continue with the desktop loader","trigger_turn":false}`,
+				},
+				{Role: "user", Content: "real prompt"},
+			},
+			want: "real prompt",
+			ok:   true,
+		},
 	}
 	for _, tc := range cases {
 		got, ok := firstUserMessageForTitle(tc.history, false)

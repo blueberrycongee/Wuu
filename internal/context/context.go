@@ -410,12 +410,15 @@ func IsAgentNotification(name, content string) bool {
 		return true
 	}
 	var envelope struct {
-		Content string `json:"content"`
+		Author    string `json:"author"`
+		Recipient string `json:"recipient"`
+		Content   string `json:"content"`
 	}
 	if err := json.Unmarshal([]byte(trimmed), &envelope); err != nil {
 		return false
 	}
-	return isSubagentNotificationContent(envelope.Content)
+	return isSubagentNotificationContent(envelope.Content) ||
+		(isAgentPath(envelope.Author) && isAgentPath(envelope.Recipient))
 }
 
 // IsProcessNotification reports whether the message is an internal
@@ -444,6 +447,11 @@ func isSubagentNotificationContent(content string) bool {
 	trimmed := strings.TrimSpace(content)
 	return strings.HasPrefix(trimmed, "<subagent_notification>") &&
 		strings.HasSuffix(trimmed, "</subagent_notification>")
+}
+
+func isAgentPath(path string) bool {
+	path = strings.TrimSpace(path)
+	return path == "/root" || strings.HasPrefix(path, "/root/")
 }
 
 // ── git helpers ────────────────────────────────────────────────────
