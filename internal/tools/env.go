@@ -207,6 +207,10 @@ type Env struct {
 	// (such as the agent's own runtime metadata directory) without
 	// re-deriving the boundary state.
 	AllowMutations bool
+	// boundaryConfigured distinguishes an explicitly installed read-only
+	// boundary from a lightweight Env literal used by internal callers and
+	// tests. The historical zero-value Env behaves as the standard boundary.
+	boundaryConfigured bool
 
 	// Optional dependencies — nil means the feature is unavailable.
 	// Tools check for nil and return a clear error rather than panic.

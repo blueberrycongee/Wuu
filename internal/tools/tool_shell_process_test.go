@@ -11,6 +11,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/blueberrycongee/wuu/internal/processsandbox"
 )
 
 func TestExecuteShellCommandCancellationStopsProcessTree(t *testing.T) {
@@ -102,6 +104,13 @@ while :; do sleep 1; done
 	mgr, err := (&Env{RootDir: root}).ProcessManager()
 	if err != nil {
 		t.Fatalf("process manager: %v", err)
+	}
+	promoted, err := mgr.Get(got.result.PromotedProcessID)
+	if err != nil {
+		t.Fatalf("get promoted process: %v", err)
+	}
+	if processsandbox.Supported() && promoted.SandboxMode != processsandbox.ModeWorkspaceWrite {
+		t.Fatalf("promoted sandbox mode = %q, want workspace-write", promoted.SandboxMode)
 	}
 	if _, err := mgr.Stop(got.result.PromotedProcessID); err != nil {
 		t.Fatalf("stop promoted process: %v", err)

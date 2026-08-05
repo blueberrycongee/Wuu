@@ -18,6 +18,7 @@ import (
 
 	"github.com/blueberrycongee/wuu/internal/channels"
 	proc "github.com/blueberrycongee/wuu/internal/process"
+	"github.com/blueberrycongee/wuu/internal/processsandbox"
 	"github.com/blueberrycongee/wuu/internal/shellpath"
 	"github.com/blueberrycongee/wuu/internal/stringutil"
 )
@@ -72,6 +73,7 @@ type shellExecutionResult struct {
 	WorkspaceRevision   string                  `json:"workspace_revision"`
 	StdoutTailTruncated bool                    `json:"stdout_tail_truncated"`
 	StderrTailTruncated bool                    `json:"stderr_tail_truncated"`
+	Sandbox             *shellSandboxResult     `json:"sandbox,omitempty"`
 	PromotedProcessID   string                  `json:"promoted_process_id,omitempty"`
 	FullLogRef          string                  `json:"full_log_ref,omitempty"`
 	FullLogBytes        int                     `json:"full_log_bytes,omitempty"`
@@ -81,6 +83,12 @@ type shellExecutionResult struct {
 	Verification        *bashVerificationResult `json:"verification,omitempty"`
 	redactedStdout      string
 	redactedStderr      string
+}
+
+type shellSandboxResult struct {
+	Mode        processsandbox.Mode `json:"mode"`
+	Enforcement string              `json:"enforcement"`
+	Denied      bool                `json:"denied"`
 }
 
 type shellLogSections struct {
@@ -139,6 +147,17 @@ func buildShellLog(shellResult shellExecutionResult) (string, shellLogSections) 
 	return b.String(), sections
 }
 
+func replaceCommandEnv(env []string, name, value string) []string {
+	prefix := name + "="
+	result := make([]string, 0, len(env)+1)
+	for _, entry := range env {
+		if !strings.HasPrefix(entry, prefix) {
+			result = append(result, entry)
+		}
+	}
+	return append(result, prefix+value)
+}
+
 func executeShellCommandWithCWD(ctx context.Context, env *Env, command string, timeoutSeconds int, cwd string) (shellExecutionResult, error) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -184,6 +203,18 @@ func executeShellCommandInDir(ctx context.Context, env *Env, command string, tim
 	cmd := exec.Command(shell.Path, shell.CommandArgs(executedCommand)...)
 	cmd.Dir = workDir
 	cmd.Env = shellpath.CommandEnv(shellCommandEnvForTool(os.Environ(), env))
+	sandboxPolicy, sandboxTempDir, err := env.processSandboxPolicy(ctx)
+	if err != nil {
+		return shellExecutionResult{}, fmt.Errorf("prepare filesystem process sandbox: %w", err)
+	}
+	if sandboxTempDir != "" {
+		cmd.Env = replaceCommandEnv(cmd.Env, "TMPDIR", sandboxTempDir)
+	}
+	if sandboxPolicy != nil {
+		if err := processsandbox.Apply(cmd, *sandboxPolicy); err != nil {
+			return shellExecutionResult{}, fmt.Errorf("prepare filesystem process sandbox: %w", err)
+		}
+	}
 
 	var stdout synchronizedBuffer
 	var stderr synchronizedBuffer
@@ -242,6 +273,12 @@ func executeShellCommandInDir(ctx context.Context, env *Env, command string, tim
 				OwnerID:        defaultProcessOwnerID(env),
 				StartedAt:      startedAt,
 				RecheckMinutes: defaultPromotedRecheckMinutes,
+				SandboxMode: func() processsandbox.Mode {
+					if sandboxPolicy == nil {
+						return ""
+					}
+					return sandboxPolicy.Mode
+				}(),
 			})
 			if adoptErr == nil {
 				promotedID = adopted.ID
@@ -276,6 +313,9 @@ func executeShellCommandInDir(ctx context.Context, env *Env, command string, tim
 
 	stdoutText := stdout.String()
 	stderrText := stderr.String()
+	if sandboxPolicy != nil && processsandbox.IsRunnerFailure(exitCode, stdoutText+stderrText) {
+		return shellExecutionResult{}, fmt.Errorf("filesystem process sandbox runner failed; command did not run: %w", processsandbox.ErrUnavailable)
+	}
 	redactedStdout := env.RedactToolOutput(stdoutText)
 	redactedStderr := env.RedactToolOutput(stderrText)
 	redactedCommand := env.RedactToolOutput(command)
@@ -287,6 +327,17 @@ func executeShellCommandInDir(ctx context.Context, env *Env, command string, tim
 	timedOut := interrupted && errors.Is(runCtx.Err(), context.DeadlineExceeded)
 
 	nextSuggestions := shellNextSuggestions(exitCode, timedOut, classification)
+	var sandboxResult *shellSandboxResult
+	if sandboxPolicy != nil {
+		denied := processsandbox.IsDenied(exitCode, stdoutText+stderrText)
+		sandboxResult = &shellSandboxResult{Mode: sandboxPolicy.Mode, Enforcement: "full", Denied: denied}
+		if denied {
+			nextSuggestions = []string{
+				"the filesystem process sandbox blocked a file write outside the current boundary; do not retry the same access through another command",
+				"use a path inside a registered workspace, ask the user to add the required directory as a workspace, or explain that the user must explicitly switch the session to unconfined mode",
+			}
+		}
+	}
 	if promotedID != "" {
 		nextSuggestions = []string{
 			"the command exceeded its timeout and keeps running as background process " + promotedID + " with its output so far attached; do NOT rerun the same command — its completion will start a new turn automatically",
@@ -310,6 +361,7 @@ func executeShellCommandInDir(ctx context.Context, env *Env, command string, tim
 		WorkspaceRevision:   workspaceRevision(ctx, env.RevisionRoot(ctx)),
 		StdoutTailTruncated: stdoutTailTruncated,
 		StderrTailTruncated: stderrTailTruncated,
+		Sandbox:             sandboxResult,
 		PromotedProcessID:   promotedID,
 		NextSuggestions:     nextSuggestions,
 		redactedStdout:      redactedStdout,

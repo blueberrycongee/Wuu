@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -118,6 +119,7 @@ func (t *BashTool) Definition() providers.ToolDefinition {
 	return providers.ToolDefinition{
 		Name: "bash",
 		Description: "Run bash operations in the workspace. Use for terminal work: tests, lint, builds, git, package managers, scripts, docker, and managed background processes.\n\n" +
+			"Commands may run under the session's filesystem process sandbox. A failed result with sandbox.denied=true means the OS blocked a file write outside the current boundary; do not retry the same access through another command. Wuu does not offer per-call escalation or approval cards: use a registered workspace path, ask the user to add the required directory as a workspace, or explain that the user must explicitly switch the session to unconfined mode.\n\n" +
 			"Prefer dedicated file/search/edit tools for reading, searching, or changing files. Default action=run is non-interactive and returns exit_code, duration_ms, workspace_revision, output tails, and full_log_ref when available; verification commands add verification metadata. If a run command hits its timeout it keeps running as a managed background process instead of being killed, with its output so far attached. action=start_background uses an interactive pseudo-terminal by default so long-lived commands can be taken over from a terminal UI; set tty=false only for log-only automation that must run without terminal semantics. Use action=write_background to send input and action=read_background to read output. Use the background actions for long-lived processes as well. cwd defaults to the workspace root. Shell state does not persist between run calls.\n\n" +
 			"Wake-ups always come to you — polling is never the only way to learn an outcome: a naturally exiting background process starts a new turn with its status and output tail, and a process started with recheck_minutes additionally wakes you with a progress snapshot on that schedule (the schedule is cancelled automatically on completion). Observation on demand: read_background without wait_ms is a non-blocking snapshot and is always fine; with wait_ms it becomes a bounded event-driven wait that returns early when new output arrives or the process exits (at most one return per call). Rules for waits: do not wait on a process you just launched this turn when its result gates your next step — run that work with action=run instead; if a wait times out with the process still running, do not immediately wait again on the same process — continue other work or end the turn; never chain waits just to keep a turn open. For long silent tasks (downloads, backups), set recheck_minutes on start_background or later via action=update_background so progress finds you on a schedule.",
 		InputSchema: map[string]any{
@@ -425,7 +427,15 @@ func (t *BashTool) executeStartBackground(ctx context.Context, args bashArgs) (s
 	if args.TTY != nil {
 		tty = *args.TTY
 	}
-	p, startErr := m.Start(context.WithoutCancel(ctx), proc.StartOptions{Command: args.Command, CommandPrefix: commandPrefix, CWD: args.CWD, OwnerKind: proc.OwnerKind(args.OwnerKind), OwnerID: args.OwnerID, RootThreadID: rootThreadID, Lifecycle: proc.Lifecycle(args.Lifecycle), CompletionMode: proc.CompletionMode(args.CompletionMode), TTY: tty, AllowOutsideWorkspace: t.env.BypassToolHardProtections(), RecheckMinutes: args.RecheckMinutes})
+	sandboxPolicy, sandboxTempDir, err := t.env.processSandboxPolicy(ctx)
+	if err != nil {
+		return "", fmt.Errorf("prepare filesystem process sandbox: %w", err)
+	}
+	commandEnv := shellCommandEnvForTool(os.Environ(), t.env)
+	if sandboxTempDir != "" {
+		commandEnv = replaceCommandEnv(commandEnv, "TMPDIR", sandboxTempDir)
+	}
+	p, startErr := m.Start(context.WithoutCancel(ctx), proc.StartOptions{Command: args.Command, CommandPrefix: commandPrefix, CWD: args.CWD, OwnerKind: proc.OwnerKind(args.OwnerKind), OwnerID: args.OwnerID, RootThreadID: rootThreadID, Lifecycle: proc.Lifecycle(args.Lifecycle), CompletionMode: proc.CompletionMode(args.CompletionMode), TTY: tty, AllowOutsideWorkspace: t.env.BypassToolHardProtections(), RecheckMinutes: args.RecheckMinutes, SandboxPolicy: sandboxPolicy, Env: commandEnv})
 	response := startProcessResponse{}
 	if p != nil {
 		response.Process = redactProcess(t.env, *p)

@@ -115,9 +115,11 @@ func New(rootDir string) (*Toolkit, error) {
 	}
 
 	env := &Env{
-		RootDir:           abs,
-		StateDir:          stateDir,
-		ToolSearchEnabled: true,
+		RootDir:            abs,
+		StateDir:           stateDir,
+		AllowMutations:     true,
+		boundaryConfigured: true,
+		ToolSearchEnabled:  true,
 	}
 	t := &Toolkit{
 		env:               env,
@@ -160,6 +162,8 @@ func (t *Toolkit) CloneForRoot(rootDir string) (*Toolkit, error) {
 		RootDir:                     abs,
 		StateDir:                    t.env.StateDir,
 		Unconfined:                  t.env.Unconfined,
+		AllowMutations:              t.env.AllowMutations,
+		boundaryConfigured:          t.env.boundaryConfigured,
 		SessionID:                   t.env.SessionID,
 		SessionDir:                  t.env.SessionDir,
 		GoalRuntime:                 t.env.GoalRuntime,
@@ -467,6 +471,7 @@ func (t *Toolkit) SetBoundary(boundary WorkspaceBoundary) {
 	if t.env != nil {
 		t.env.Unconfined = !boundary.Enforce
 		t.env.AllowMutations = boundary.AllowMutations
+		t.env.boundaryConfigured = true
 	}
 }
 

@@ -19,6 +19,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/blueberrycongee/wuu/internal/processsandbox"
 	"github.com/blueberrycongee/wuu/internal/securefs"
 	"github.com/blueberrycongee/wuu/internal/shellpath"
 	"github.com/blueberrycongee/wuu/internal/statepath"
@@ -79,24 +80,27 @@ type Process struct {
 	// Deprecated: Lifecycle is being retired with the managed process class.
 	// It still parses and round-trips so existing registry records keep
 	// loading; new behavior must not branch on it.
-	Lifecycle             Lifecycle      `json:"lifecycle"`
-	CompletionMode        CompletionMode `json:"completion_mode,omitempty"`
-	Status                Status         `json:"status"`
-	PID                   int            `json:"pid"`
-	PGID                  int            `json:"pgid"`
-	ProcessStartTime      string         `json:"process_start_time,omitempty"`
-	TTY                   bool           `json:"tty,omitempty"`
-	LogPath               string         `json:"log_path"`
-	Command               string         `json:"command"`
-	CWD                   string         `json:"cwd"`
-	StartedAt             time.Time      `json:"started_at"`
-	UpdatedAt             time.Time      `json:"updated_at"`
-	StoppedAt             time.Time      `json:"stopped_at,omitempty"`
-	ExitCode              int            `json:"exit_code,omitempty"`
-	LastError             string         `json:"last_error,omitempty"`
-	TerminalCause         EventCause     `json:"terminal_cause,omitempty"`
-	CompletionDeliveredAt time.Time      `json:"completion_delivered_at,omitempty"`
-	CompletionConsumedBy  string         `json:"completion_consumed_by,omitempty"`
+	Lifecycle             Lifecycle           `json:"lifecycle"`
+	CompletionMode        CompletionMode      `json:"completion_mode,omitempty"`
+	Status                Status              `json:"status"`
+	PID                   int                 `json:"pid"`
+	PGID                  int                 `json:"pgid"`
+	ProcessStartTime      string              `json:"process_start_time,omitempty"`
+	TTY                   bool                `json:"tty,omitempty"`
+	LogPath               string              `json:"log_path"`
+	Command               string              `json:"command"`
+	CWD                   string              `json:"cwd"`
+	StartedAt             time.Time           `json:"started_at"`
+	UpdatedAt             time.Time           `json:"updated_at"`
+	StoppedAt             time.Time           `json:"stopped_at,omitempty"`
+	ExitCode              int                 `json:"exit_code,omitempty"`
+	LastError             string              `json:"last_error,omitempty"`
+	SandboxMode           processsandbox.Mode `json:"sandbox_mode,omitempty"`
+	SandboxDenied         bool                `json:"sandbox_denied,omitempty"`
+	SandboxRunnerFailed   bool                `json:"sandbox_runner_failed,omitempty"`
+	TerminalCause         EventCause          `json:"terminal_cause,omitempty"`
+	CompletionDeliveredAt time.Time           `json:"completion_delivered_at,omitempty"`
+	CompletionConsumedBy  string              `json:"completion_consumed_by,omitempty"`
 	// RecheckMinutes is the model-declared progress recheck interval. Zero
 	// disables scheduled rechecks. NextRecheckAt is the persisted deadline of
 	// the next scheduled wake; PendingRecheckAt marks a fired recheck that has
@@ -123,6 +127,13 @@ type StartOptions struct {
 	TTY                   bool
 	AllowOutsideWorkspace bool
 	RecheckMinutes        int
+	// Env overrides the inherited environment when non-nil. Callers use this
+	// to pin sandboxed jobs to their private writable temporary directory.
+	Env []string
+	// SandboxPolicy confines this process and every descendant to the caller's
+	// preselected filesystem boundary. Nil preserves the platform's existing
+	// unsandboxed behavior (including explicit unconfined mode).
+	SandboxPolicy *processsandbox.Policy
 }
 
 type Event struct {
@@ -318,6 +329,9 @@ func (m *Manager) Start(ctx context.Context, opt StartOptions) (*Process, error)
 	}
 	id := "proc-" + randomHex(4)
 	p := &Process{ID: id, OwnerKind: opt.OwnerKind, OwnerID: opt.OwnerID, RootThreadID: strings.TrimSpace(opt.RootThreadID), HostGenerationID: m.hostGenerationID, Lifecycle: opt.Lifecycle, CompletionMode: opt.CompletionMode, Status: StatusStarting, Command: opt.Command, CWD: cwd, TTY: opt.TTY, LogPath: filepath.Join(m.logDir, id+".log"), StartedAt: time.Now(), UpdatedAt: time.Now(), ExitCode: -1, RecheckMinutes: opt.RecheckMinutes}
+	if opt.SandboxPolicy != nil {
+		p.SandboxMode = opt.SandboxPolicy.Mode
+	}
 	if opt.RecheckMinutes > 0 {
 		p.NextRecheckAt = p.StartedAt.Add(time.Duration(opt.RecheckMinutes) * time.Minute)
 	}
@@ -343,7 +357,7 @@ func (m *Manager) Start(ctx context.Context, opt StartOptions) (*Process, error)
 		m.publish(Event{Type: EventFailed, Process: *p})
 		return p, err
 	}
-	cmd, err := managedCommand(opt.Command, cwd, opt.CommandPrefix)
+	cmd, err := managedCommand(opt.Command, cwd, opt.CommandPrefix, opt.Env)
 	if err != nil {
 		_ = logf.Close()
 		p.Status = StatusFailed
@@ -352,6 +366,17 @@ func (m *Manager) Start(ctx context.Context, opt StartOptions) (*Process, error)
 		_ = m.save(p)
 		m.publish(Event{Type: EventFailed, Process: *p})
 		return p, err
+	}
+	if opt.SandboxPolicy != nil {
+		if err := processsandbox.Apply(cmd, *opt.SandboxPolicy); err != nil {
+			_ = logf.Close()
+			p.Status = StatusFailed
+			p.LastError = err.Error()
+			p.UpdatedAt = time.Now()
+			_ = m.save(p)
+			m.publish(Event{Type: EventFailed, Process: *p})
+			return p, fmt.Errorf("prepare filesystem process sandbox: %w", err)
+		}
 	}
 	if opt.TTY {
 		cmd.Env = terminalCommandEnv(cmd.Env)
@@ -487,7 +512,7 @@ func resolveStartCWD(rootDir, cwd string, allowOutsideWorkspace bool) (string, e
 	return evaluated, nil
 }
 
-func managedCommand(command, cwd, commandPrefix string) (*exec.Cmd, error) {
+func managedCommand(command, cwd, commandPrefix string, envs ...[]string) (*exec.Cmd, error) {
 	shell, err := shellpath.LoginBash()
 	if err != nil {
 		return nil, err
@@ -498,7 +523,14 @@ func managedCommand(command, cwd, commandPrefix string) (*exec.Cmd, error) {
 	}
 	cmd := exec.Command(shell.Path, shell.CommandArgs(command)...)
 	cmd.Dir = cwd
-	cmd.Env = shellpath.CommandEnv(os.Environ())
+	var env []string
+	if len(envs) > 0 {
+		env = envs[0]
+	}
+	if env == nil {
+		env = os.Environ()
+	}
+	cmd.Env = shellpath.CommandEnv(env)
 	return cmd, nil
 }
 
@@ -566,6 +598,15 @@ func (m *Manager) finishWait(id string, cmd *exec.Cmd, err error) {
 	}
 	if cmd.ProcessState != nil {
 		p.ExitCode = cmd.ProcessState.ExitCode()
+	}
+	if p.SandboxMode != "" {
+		if output, _, _, _, _, readErr := readLogWindow(p.LogPath, 8*1024, nil); readErr == nil {
+			p.SandboxRunnerFailed = processsandbox.IsRunnerFailure(p.ExitCode, output)
+			p.SandboxDenied = !p.SandboxRunnerFailed && processsandbox.IsDenied(p.ExitCode, output)
+			if p.SandboxRunnerFailed {
+				p.LastError = "filesystem process sandbox runner failed; command did not run"
+			}
+		}
 	}
 	p.StoppedAt = time.Now()
 	p.UpdatedAt = time.Now()
@@ -1393,6 +1434,7 @@ type AdoptOptions struct {
 	// caller asked for a bounded run and the bound was wrong — so a default
 	// reminder schedule replaces the kill safety net the timeout used to be.
 	RecheckMinutes int
+	SandboxMode    processsandbox.Mode
 }
 
 // Adopt registers a command started through StartCommand — whose output is
@@ -1449,6 +1491,7 @@ func (m *Manager) Adopt(id string, cmd *exec.Cmd, handle *CommandHandle, logf *o
 		StartedAt:      startedAt,
 		UpdatedAt:      now,
 		ExitCode:       -1,
+		SandboxMode:    opt.SandboxMode,
 	}
 	if opt.RecheckMinutes > 0 {
 		p.RecheckMinutes = opt.RecheckMinutes
