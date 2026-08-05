@@ -1083,8 +1083,8 @@ html.resizing-workspace-file-split * {
   display: grid;
   width: 100%;
   height: 32px;
-  grid-template-columns: minmax(0, 1fr) auto;
-  column-gap: 10px;
+  grid-template-columns: minmax(0, 1fr) 28px;
+  column-gap: 12px;
   align-items: center;
   margin-left: auto;
   justify-items: end;
@@ -1094,6 +1094,7 @@ html.resizing-workspace-file-split * {
 }
 
 .workspace-document-turn-waiting-query {
+  width: 100%;
   min-width: 0;
   margin-left: 18px;
   overflow: hidden;
@@ -1137,6 +1138,7 @@ html.resizing-workspace-file-split * {
 }
 
 .workspace-document-turn-summary svg {
+  justify-self: center;
   color: var(--text-secondary);
 }
 
