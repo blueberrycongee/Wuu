@@ -1,6 +1,14 @@
 # Hook 级权限目录设计（安全轨交付，供总架构收敛）
 
-状态：草案 v1。前置：threat-model.md「Permission behavior」节；security-audit.md 缺口 1+2。
+状态：**v2（2026-08-05 更新）**。Andy 已落地封闭目录（internal/extensions/permissions.go，15 权限+别名+fail closed+surface 推导 union），命名与本草案 v1 略有出入（session.write≈session.transform、tools.define/tools.intercept 拆分），语义等价，以代码为准；我补了 permissions_test.go 覆盖。包级激活门采用「grant ⊇ 全量 union，all-or-nothing」，v1 合理，优于降级运行（简单且 fail closed）。
+
+**剩余缺口（收窄后）**：wuu-plugin-v1 协议 hook（pluginhost 8 hook）尚未映射到目录权限——runtime 插件只要 `process.spawn` 获批，initialize 时就能注册 chat.request/shell.env 等全部协议 hook，与目录里的 session.write/tools.intercept/shell.env 权限脱钩。下文执行点一节即为补这一层；「目录」一节已被代码取代，仅保留映射表。
+
+---
+
+原 v1 草案（保留作推导记录）：
+
+前置：threat-model.md「Permission behavior」节；security-audit.md 缺口 1+2。
 
 ## 原则
 
@@ -24,23 +32,23 @@
 
 无需权限：`session.start`、`session.stop`（payload 仅 id/时间/metadata，需在类型上保证无正文字段）。
 
-## hook → 所需权限映射（host 侧常量）
+## 协议 hook → 目录权限映射（host 侧常量，用已落地目录名）
 
 ```go
-var hookRequiredPermission = map[Hook]string{
-    HookChatMessage:       "session.read",
-    HookChatRequest:       "session.transform",
-    HookToolDefinition:    "tools.transform",
-    HookToolExecuteBefore: "tools.transform",
-    HookToolExecuteAfter:  "tools.observe",
-    HookShellEnv:          "shell.env",
-    // session.start/stop: 无条目 = 免费
+var protocolHookRequiredPermissions = map[Hook][]string{
+    HookChatMessage:       {"session.read"},
+    HookChatRequest:       {"session.read", "session.write"},
+    HookToolDefinition:    {"tools.define"},
+    HookToolExecuteBefore: {"tools.intercept"},
+    HookToolExecuteAfter:  {"tools.intercept"},
+    HookShellEnv:          {"shell.env"},
+    // session.start/stop: 无条目 = 免费（payload 类型上保证无正文）
 }
 ```
 
 ## 执行点（两处，纵深防御）
 
-1. **注册剥离（主）**：`Start` 时把已获批权限集合传入 `ProcessConfig`（或包裹为 Policy），initialize 返回的 hook 清单按映射过滤；被剥 hook 记入 `Status.Diagnostics`（用户可见「该插件请求了未获批能力」），插件继续以子集运行。协议违规（未知 hook 名、重复）维持 fail closed。
+1. **注册剥离（主）**：`Start` 时把已获批权限集合传入 `ProcessConfig`（或包裹为 Policy），initialize 返回的协议 hook 清单按上表映射过滤；被剥 hook 记入 `Status.Diagnostics`（用户可见「该插件请求了未获批能力」），插件继续以子集运行。协议违规（未知 hook 名、重复）维持 fail closed。注意与包级门的关系：包级 all-or-nothing 管「能不能跑」，这里管「跑起来后协议面给多大」——获批集合=grant.Permissions，映射查表决定每个协议 hook 是否放行。
 2. **载荷裁剪（纵深）**：`Host.Run` 按 hook 策略在调用前裁输入、调用后裁输出——例如无 `session.transform` 时 chat.request 的 output 被整体丢弃（等效只读）；`chat.message` input 恒为不可变拷贝。裁剪逻辑集中在 pluginhost，调用点（runtime/plugin_host.go、plugin_tool_executor.go）不感知权限，避免每个新调用点都要记得安全。
 
 ## 与现有件的关系
