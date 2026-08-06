@@ -189,25 +189,6 @@ export function AssistantTurnShell({
   );
 }
 
-function SubagentStatusRow({
-  display,
-}: {
-  display?: TurnEntry["subagentStatus"];
-}): JSX.Element {
-  return (
-    <div
-      className={`turn-subagent-status process-surface-row${
-        display?.outcome === "failed" ? " turn-subagent-status-failed" : ""
-      }`}
-      role="status"
-    >
-      <AnimatedProcessText
-        text={display?.label ?? translate("process.waitingForSubagents")}
-      />
-    </div>
-  );
-}
-
 function TurnProcessFold({
   turn,
   entries,
@@ -483,9 +464,6 @@ function EntryRenderer({
   onOpenRuns?: () => void;
 }): JSX.Element | null {
   const { item, kind, streaming } = entry;
-  if (kind === "subagent_status") {
-    return <SubagentStatusRow display={entry.subagentStatus} />;
-  }
   if (kind === "activity" || kind === "process_group") {
     return (
       <ProcessSurface

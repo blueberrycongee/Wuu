@@ -6,7 +6,6 @@ import type {
   ThreadItem,
   Turn,
 } from "../shared/protocol";
-import { isAgentHandoffItem } from "./AgentHandoff";
 import { buildAssistantTurnDisplay } from "./AssistantTurnDisplay";
 import { useAssistantTurnPresentation } from "./AssistantTurnPresentation";
 import { AssistantTurnShell } from "./AssistantTurnShell";
@@ -160,9 +159,7 @@ function TurnContent({
     );
   }
 
-  const userItems = turn.items.filter(
-    (item) => item.type === "user_message" && !isAgentHandoffItem(item),
-  );
+  const userItems = turn.items.filter((item) => item.type === "user_message");
   const rawAssistantDisplay = buildAssistantTurnDisplay(
     turn,
     actionableAgentMessageID,

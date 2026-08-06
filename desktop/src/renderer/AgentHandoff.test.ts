@@ -5,6 +5,7 @@ import {
   agentHandoffChipDisplayItems,
   agentHandoffDisplay,
   agentHandoffDisplayItem,
+  agentHandoffUserMessageDisplay,
   isAgentHandoffItem,
   isAgentHandoffText,
 } from "./AgentHandoff";
@@ -27,6 +28,18 @@ function handoffText(status = "completed"): string {
 }
 
 describe("agentHandoffDisplay", () => {
+  it("formats the wake notification as a concise user message", () => {
+    expect(agentHandoffUserMessageDisplay({ text: handoffText() })?.label).toBe(
+      "explore_current_directory更新了状态",
+    );
+    expect(
+      agentHandoffUserMessageDisplay({
+        name: AGENT_NOTIFICATION_NAME,
+        text: "malformed",
+      })?.label,
+    ).toBe("subagent 更新了状态");
+  });
+
   it("renders completed subagent handoffs as a system event", () => {
     expect(agentHandoffDisplay(handoffText())?.label).toBe(
       "subagent 完成了任务"

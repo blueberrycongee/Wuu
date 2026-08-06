@@ -120,6 +120,35 @@ export function agentHandoffDisplayItem(
   return agentHandoffDisplay(item.text);
 }
 
+/**
+ * User-facing text for the synthetic user message that wakes the parent agent.
+ * The full notification remains in `item.text` for the model; the conversation
+ * only exposes the concise cause of the new turn.
+ */
+export function agentHandoffUserMessageDisplay(
+  item: HandoffItem | undefined,
+): AgentHandoffDisplay | undefined {
+  if (!item || !isAgentHandoffItem(item)) {
+    return undefined;
+  }
+  const payloads = parseAgentHandoffPayloads(item.text);
+  if (payloads.length === 1) {
+    return {
+      label: translateCurrent("agent.handoff.message.updated", {
+        name: handoffName(payloads[0]),
+      }),
+    };
+  }
+  if (payloads.length > 1) {
+    return {
+      label: translateCurrent("agent.handoff.message.updatedMany", {
+        count: payloads.length,
+      }),
+    };
+  }
+  return { label: translateCurrent("agent.handoff.message.updatedGeneric") };
+}
+
 export function agentHandoffChipDisplayItems(
   item: HandoffItem | undefined,
 ): SubagentChipDisplay[] {

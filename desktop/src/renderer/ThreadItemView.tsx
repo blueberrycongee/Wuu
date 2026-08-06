@@ -10,8 +10,7 @@ import {
 } from "react";
 import { ChevronDown, ChevronUp, Plus, Send } from "lucide-react";
 import type { InputFile, InputImage, ThreadItem, Turn } from "../shared/protocol";
-import { agentHandoffChipDisplayItems, isAgentHandoffItem } from "./AgentHandoff";
-import { SubagentChipList } from "./SubagentChip";
+import { agentHandoffUserMessageDisplay, isAgentHandoffItem } from "./AgentHandoff";
 import {
   clipboardAttachmentFiles,
   composerFileFromFile,
@@ -38,6 +37,7 @@ import { StreamingMarkdown } from "./StreamingMarkdown";
 import { streamTextKey, streamTextStore } from "./StreamText";
 import { streamFieldValue } from "./ThreadItemText";
 import { ToolActivityRow } from "./ToolActivity";
+import { showToast } from "./Toast";
 import {
   ContextCompactionNotice,
   TurnNotice,
@@ -102,32 +102,28 @@ export const ThreadItemView = memo(function ThreadItemView({
       if (isProcessNotificationItem(item)) {
         return null;
       }
-      // Item-aware gate: the name field is the reliable wire signal. Even
-      // when the payload text is malformed, the item-level helper short-
-      // circuits to a generic chip rather than letting raw JSON slip into
-      // the chat bubble.
-      const handoffChips = isAgentHandoffItem(item)
-        ? agentHandoffChipDisplayItems(item)
-        : [];
-      if (handoffChips.length > 0) {
-        return <SubagentChipList displays={handoffChips} />;
-      }
-      if (isInternalUserNotificationItem(item)) {
+      const agentHandoff = isAgentHandoffItem(item);
+      const displayText = agentHandoff
+        ? (agentHandoffUserMessageDisplay(item)?.label ?? t("agent.handoff.message.updatedGeneric"))
+        : text;
+      if (!agentHandoff && isInternalUserNotificationItem(item)) {
         return null;
       }
-      const copyable = text.trim() !== "";
+      const copyable = displayText.trim() !== "";
       const editable = Boolean(
-        onEditMessage &&
+        !agentHandoff &&
+          onEditMessage &&
           (copyable || (item.images?.length ?? 0) > 0 || (item.files?.length ?? 0) > 0),
       );
+      const editActionVisible = Boolean(onEditMessage && (agentHandoff || editable));
       return (
         <div
-          className={`user-message-block${copyable || editable ? " user-message-block-with-actions" : ""}`}
+          className={`user-message-block${copyable || editActionVisible ? " user-message-block-with-actions" : ""}`}
           id={userMessageAnchorID(turnID, item.id)}
           data-user-message-id={item.id}
           data-turn-id={turnID}
         >
-          {editing ? (
+          {editing && !agentHandoff ? (
             <UserMessageInlineEditor
               item={item}
               initialText={text}
@@ -139,28 +135,37 @@ export const ThreadItemView = memo(function ThreadItemView({
             />
           ) : (
             <UserMessageBubble
-              text={text}
+              text={displayText}
               images={item.images ?? []}
               files={item.files ?? []}
               cwd={cwd}
               onOpenFile={onOpenFile}
             />
           )}
-          {!editing && (copyable || editable) ? (
+          {!editing && (copyable || editActionVisible) ? (
             <div
               className="message-actions user-message-actions"
               aria-label={t("message.userActions")}
             >
               {copyable ? (
                 <MessageCopyButton
-                  getText={() => text}
+                  getText={() => displayText}
                   className="message-action-button"
                   iconSize={15}
                 />
               ) : null}
-              {editable && onEditMessage ? (
+              {editActionVisible && onEditMessage ? (
                 <MessageEditButton
-                  onEdit={() => onEditMessage(turnID, item)}
+                  onEdit={() => {
+                    if (agentHandoff) {
+                      showToast({
+                        message: t("agent.handoff.message.readOnly"),
+                        dedupeKey: "subagent-message-read-only",
+                      });
+                      return;
+                    }
+                    onEditMessage(turnID, item);
+                  }}
                   className="message-action-button"
                   iconSize={15}
                 />

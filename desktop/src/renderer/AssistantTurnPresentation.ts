@@ -141,11 +141,7 @@ function displayContentSignature(
 
 function entryContentSignature(entry: TurnEntry): string {
   const items = entry.items ?? [entry.item];
-  return [
-    items.map(itemContentSignature).join(","),
-    entry.subagentStatus?.label ?? "",
-    entry.subagentStatus?.outcome ?? "",
-  ].join(":");
+  return items.map(itemContentSignature).join(",");
 }
 
 function itemContentSignature(item: ThreadItem): string {

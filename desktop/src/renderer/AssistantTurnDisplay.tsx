@@ -1,10 +1,5 @@
 import { type JSX } from "react";
 import type { ThreadItem, Turn } from "../shared/protocol";
-import {
-  agentHandoffChipDisplayItems,
-  isAgentHandoffItem,
-  type SubagentChipDisplay,
-} from "./AgentHandoff";
 import { streamFieldValue } from "./ThreadItemText";
 import { readableToolActivityCommand } from "./ToolActivityHelpers";
 import { isCancellationMessage } from "./UserFacingErrors";
@@ -40,8 +35,6 @@ export type TurnEntry = {
   streaming: boolean;
   kind: TurnEntryKind;
   count?: number;
-  /** A subagent wake notification rendered as a wait-tool-style timeline row. */
-  subagentStatus?: SubagentChipDisplay;
 };
 
 export type TurnEntryKind =
@@ -49,8 +42,7 @@ export type TurnEntryKind =
   | "answer"
   | "activity"
   | "process"
-  | "process_group"
-  | "subagent_status";
+  | "process_group";
 
 export type AssistantTurnDisplay = {
   entries: TurnEntry[];
@@ -129,23 +121,6 @@ export function buildAssistantTurnDisplay(
     if (seenItemIDs.has(item.id)) continue;
     seenItemIDs.add(item.id);
     if (item.type === "user_message") {
-      const chips = isAgentHandoffItem(item)
-        ? agentHandoffChipDisplayItems(item)
-        : [];
-      if (chips.length > 0) {
-        sawAssistantWork = true;
-        for (let chipIndex = 0; chipIndex < chips.length; chipIndex += 1) {
-          entries.push({
-            key: `${item.id}-subagent-status-${chipIndex}`,
-            item,
-            position: "process",
-            settled: true,
-            streaming: false,
-            kind: "subagent_status",
-            subagentStatus: chips[chipIndex],
-          });
-        }
-      }
       continue;
     }
 

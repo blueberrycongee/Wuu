@@ -72,14 +72,8 @@ function build(turn: Turn) {
   return display;
 }
 
-function statusLabels(display: ReturnType<typeof build>): string[] {
-  return display.entries.flatMap((entry) =>
-    entry.subagentStatus ? [entry.subagentStatus.label] : [],
-  );
-}
-
-describe("buildAssistantTurnDisplay subagent timeline", () => {
-  it("keeps every notification in chronological entry order", () => {
+describe("buildAssistantTurnDisplay subagent notifications", () => {
+  it("leaves notifications to the user-message renderer", () => {
     const display = build(
       makeTurn("completed", [
         makeNotification("ok_agent_two"),
@@ -88,61 +82,35 @@ describe("buildAssistantTurnDisplay subagent timeline", () => {
         makeCommentary("已确认"),
       ]),
     );
-    expect(statusLabels(display)).toEqual([
-      "ok_agent_two 完成了",
-      "ok_agent_one 完成了",
-    ]);
     expect(display.entries.map((entry) => entry.kind)).toEqual([
-      "subagent_status",
       "commentary",
-      "subagent_status",
       "commentary",
     ]);
-    expect(display.entries[0].subagentStatus?.label).toBe(
-      "ok_agent_two 完成了",
-    );
   });
 
-  it("keeps status rows regardless of the surrounding entry kinds", () => {
+  it("does not duplicate notifications beside tool activity", () => {
     const display = build(
       makeTurn("completed", [makeToolCall(), makeNotification("lint")]),
     );
-    expect(statusLabels(display)).toEqual(["lint 完成了"]);
-    expect(display.entries.map((entry) => entry.kind)).toEqual([
-      "activity",
-      "subagent_status",
-    ]);
+    expect(display.entries.map((entry) => entry.kind)).toEqual(["activity"]);
   });
 
-  it("places a notification after the preceding reasoning entry", () => {
+  it("does not duplicate notifications beside reasoning", () => {
     const display = build(
       makeTurn("completed", [makeReasoning(), makeNotification("lint")]),
     );
-    expect(statusLabels(display)).toEqual(["lint 完成了"]);
-    expect(display.entries).toHaveLength(2);
+    expect(display.entries).toHaveLength(1);
     expect(display.entries[0].item.type).toBe("reasoning");
-    expect(display.entries[1].kind).toBe("subagent_status");
   });
 
-  it("returns timeline rows for a notification-only turn", () => {
-    const display = build(
-      makeTurn("completed", [makeNotification("one"), makeNotification("two")]),
-    );
-    expect(display.entries.map((entry) => entry.kind)).toEqual([
-      "subagent_status",
-      "subagent_status",
-    ]);
-    expect(statusLabels(display)).toHaveLength(2);
-  });
-
-  it("preserves failed outcomes as structured data", () => {
-    const display = build(
-      makeTurn("completed", [makeNotification("lint", "failed")]),
-    );
-    expect(display.entries[0]?.subagentStatus).toEqual({
-      label: "lint 失败了",
-      outcome: "failed",
-    });
+  it("does not create an assistant display for a notification-only completed turn", () => {
+    expect(
+      buildAssistantTurnDisplay(
+        makeTurn("completed", [makeNotification("one"), makeNotification("two")]),
+        undefined,
+        stubRenderer,
+      ),
+    ).toBeUndefined();
   });
 
   it("ignores user messages that are not agent handoffs", () => {
@@ -157,6 +125,6 @@ describe("buildAssistantTurnDisplay subagent timeline", () => {
         makeCommentary("回复"),
       ]),
     );
-    expect(statusLabels(display)).toEqual([]);
+    expect(display.entries.map((entry) => entry.kind)).toEqual(["commentary"]);
   });
 });

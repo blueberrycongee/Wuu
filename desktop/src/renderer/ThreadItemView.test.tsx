@@ -1,9 +1,10 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ThreadItem, Turn } from "../shared/protocol";
 import { streamTextKey, streamTextStore } from "./StreamText";
 import { ThreadItemView } from "./ThreadItemView";
+import { clearToasts, ToastViewport } from "./Toast";
 
 let container: HTMLDivElement | undefined;
 let root: Root | undefined;
@@ -33,12 +34,14 @@ function render({
   actionableAgentMessageID,
   latestAgentMessageID,
   streaming,
+  onEditMessage,
 }: {
   item: ThreadItem;
   turnStatus: Turn["status"];
   actionableAgentMessageID?: string;
   latestAgentMessageID?: string;
   streaming: boolean;
+  onEditMessage?: (turnID: string, item: ThreadItem) => void;
 }): void {
   if (!container) {
     container = document.createElement("div");
@@ -47,15 +50,19 @@ function render({
   }
   act(() => {
     root!.render(
-      <ThreadItemView
-        turnID="turn-1"
-        turnStatus={turnStatus}
-        item={item}
-        streaming={streaming}
-        actionableAgentMessageID={actionableAgentMessageID}
-        latestAgentMessageID={latestAgentMessageID}
-        onStreamFrame={() => {}}
-      />,
+      <>
+        <ThreadItemView
+          turnID="turn-1"
+          turnStatus={turnStatus}
+          item={item}
+          streaming={streaming}
+          actionableAgentMessageID={actionableAgentMessageID}
+          latestAgentMessageID={latestAgentMessageID}
+          onStreamFrame={() => {}}
+          onEditMessage={onEditMessage}
+        />
+        <ToastViewport />
+      </>,
     );
   });
 }
@@ -74,6 +81,8 @@ afterEach(() => {
   });
   container?.remove();
   streamTextStore.clearItem("turn-1", "final-1");
+  clearToasts();
+  vi.restoreAllMocks();
   root = undefined;
   container = undefined;
 });
@@ -294,25 +303,35 @@ describe("ThreadItemView", () => {
     expect(streamTextStore.has(key)).toBe(false);
   });
 
-  it("renders a subagent completion handoff as an inline chip", () => {
+  it("renders a subagent update as a read-only user message", () => {
+    const onEditMessage = vi.fn();
     render({
       item: {
         id: "handoff-1",
         type: "user_message",
         text: JSON.stringify({
           content: `<subagent_notification>\n${JSON.stringify({
-            status: { status: "completed" },
+            status: { task_name: "太阳", status: "completed" },
           })}\n</subagent_notification>`,
           trigger_turn: true,
         }),
       },
       turnStatus: "completed",
       streaming: false,
+      onEditMessage,
     });
 
-    const chip = container?.querySelector(".subagent-chip");
-    expect(chip).not.toBeNull();
-    expect(chip?.textContent).toBe("subagent 完成了");
+    expect(container?.querySelector(".subagent-chip")).toBeNull();
+    expect(container?.querySelector(".user-message")?.textContent).toBe("太阳更新了状态");
+    const actions = container?.querySelectorAll<HTMLButtonElement>(".user-message-actions button");
+    expect(actions).toHaveLength(2);
+
+    act(() => {
+      actions?.[1]?.click();
+    });
+
+    expect(onEditMessage).not.toHaveBeenCalled();
+    expect(container?.textContent).toContain("这条消息由 subagent 自动生成，无法编辑");
   });
 
 });

@@ -2,6 +2,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ThreadItem, Turn } from "../shared/protocol";
+import { AGENT_NOTIFICATION_NAME } from "./AgentHandoff";
 import { ASSISTANT_TURN_PRESENTATION_STABILIZE_MS } from "./AssistantTurnPresentation";
 import { PROCESS_NOTIFICATION_NAME } from "./InternalUserNotification";
 import { desktopPluginHost } from "./plugins/DesktopPluginRuntime";
@@ -164,6 +165,28 @@ describe("TurnView", () => {
     expect(view.textContent).not.toContain("proc-legacy");
     expect(view.textContent).toContain("真正的用户消息");
     expect(view.querySelectorAll(".user-message-block")).toHaveLength(1);
+  });
+
+  it("renders a subagent wake notification through the existing user-message flow", () => {
+    const view = render(
+      makeTurn("completed", [
+        {
+          id: "subagent-update",
+          type: "user_message",
+          name: AGENT_NOTIFICATION_NAME,
+          text: JSON.stringify({
+            content: `<subagent_notification>\n${JSON.stringify({
+              status: { task_name: "太阳", status: "completed" },
+            })}\n</subagent_notification>`,
+            trigger_turn: true,
+          }),
+        },
+      ]),
+    );
+
+    expect(view.querySelectorAll(".user-message-block")).toHaveLength(1);
+    expect(view.querySelector(".user-message")?.textContent).toBe("太阳更新了状态");
+    expect(view.querySelector(".turn-subagent-status")).toBeNull();
   });
 
   it("keeps completed turn outputs visible after the turn is no longer latest", () => {
