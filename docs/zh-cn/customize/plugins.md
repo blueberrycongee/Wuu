@@ -100,14 +100,27 @@ export async function activate(api) {
 | --- | --- |
 | `app.shell` | 替换或包装整个 React 应用界面 |
 | `app.sidebar` | 替换或包装左侧导航 |
+| `app.main` | 替换或包装主内容区 |
+| `app.auxiliary` | 替换或包装辅助 Workspace 区域 |
+| `app.status` | 添加应用状态区域 |
+| `view.launch` | 替换或包装启动与 Runtime 加载界面 |
+| `view.conversation` | 替换或包装当前对话界面 |
+| `view.workspace` | 替换或包装 Workspace 侧面板 |
 | `conversation.composer` | 替换或包装主输入区 |
 | `conversation.timeline` | 替换或包装一组对话消息和 Agent 运行时间线 |
+| `conversation.message` | 替换或包装一条脱敏后的对话消息边界 |
 | `view.settings` | 替换或包装设置界面 |
 | `view.catalog` | 替换或包装 Skills、插件和 Automations 目录 |
 
 `app.shell` context 提供 `openSettings`、`startNewThread`、`openSkills`、
 `openAutomations` 和 `toggleSidebar` 等动作。Composer context 还提供当前文本、运行状态、
 `setPrompt`、`send` 和 `interrupt`。
+
+需要在原生 UI 中增加内容而不是替换边界时，使用 `registerSlot`。当前生产 Slot 包括
+`sidebar.primary`、`sidebar.footer`、`workspace.header`、`conversation.header`、
+`conversation.message.before`、`conversation.message.after`、`composer.above`、
+`composer.toolbar` 和 `settings.plugin`。Slot context 只包含冻结的摘要字段，不包含宿主私有
+记录；Slot 会与原生 UI 和语义 Presenter 一起组合。
 
 ## 语义 Presenter
 

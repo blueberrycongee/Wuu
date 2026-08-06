@@ -59,14 +59,27 @@ disabled, removed, or upgraded.
 | --- | --- |
 | `app.shell` | Entire React application shell |
 | `app.sidebar` | Left navigation |
+| `app.main` | Main content region |
+| `app.auxiliary` | Auxiliary workspace region |
+| `app.status` | Additive application status region |
+| `view.launch` | Launch and runtime-loading view |
+| `view.conversation` | Active conversation view |
+| `view.workspace` | Workspace side-panel view |
 | `conversation.composer` | Main prompt composer |
 | `conversation.timeline` | One conversation turn/orchestration group |
+| `conversation.message` | One sanitized conversation message boundary |
 | `view.settings` | Settings shell |
 | `view.catalog` | Skills, plugins, and Automations catalogs |
 
 Contexts expose versioned, limited state and host actions. For example, the shell exposes navigation
 actions, while the composer exposes its prompt, running/read-only state, `setPrompt`, `send`, and
 `interrupt`. Do not depend on private Wuu class names as a compatibility contract.
+
+Additive contributions use `registerSlot`. Current production slots are `sidebar.primary`,
+`sidebar.footer`, `workspace.header`, `conversation.header`, `conversation.message.before`,
+`conversation.message.after`, `composer.above`, `composer.toolbar`, and `settings.plugin`. Slot
+contexts contain only frozen summary fields; they do not contain private host records. Slots compose
+with native UI and semantic presenters rather than replacing their ownership boundary.
 
 ## Semantic presenters
 
