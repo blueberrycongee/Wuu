@@ -68,6 +68,55 @@ Contexts expose versioned, limited state and host actions. For example, the shel
 actions, while the composer exposes its prompt, running/read-only state, `setPrompt`, `send`, and
 `interrupt`. Do not depend on private Wuu class names as a compatibility contract.
 
+## Semantic presenters
+
+Use `registerPresenter` when a plugin needs to replace a product concept rather than a broad layout
+region. Wuu supplies a frozen, versioned snapshot, the native fallback, and a host object containing
+only the actions available at that render boundary.
+
+```js
+export async function activate(api) {
+  api.registerPresenter({
+    id: "assistant-card",
+    target: "conversation.item",
+    key: "assistant-message",
+    mode: "wrap",
+    render({ snapshot, host, fallback }) {
+      const copy = host.actions.includes("conversation.item.copy")
+        ? api.react.createElement("button", {
+            onClick: () => host.invoke("conversation.item.copy"),
+          }, "Copy")
+        : null;
+      return api.react.createElement("article", null, fallback, copy);
+    },
+  });
+}
+```
+
+Built-in targets are:
+
+| Presenter target | Stable match key |
+| --- | --- |
+| `conversation.item` | Item kind such as `assistant-message`, `reasoning`, or `attachment` |
+| `conversation.process` | Process kind |
+| `conversation.tool-activity` | Stable Tool capability, before any execution-name rewrite |
+| `conversation.composer` | None |
+| `header.conversation`, `header.workspace` | None |
+| `navigation.primary` | None |
+| `app.status` | None |
+| `content.preview` | Exact MIME type |
+| `settings` | None |
+
+The public SDK defines each V1 snapshot and its dotted Action IDs. An Action is usable only when it
+appears in `host.actions`; unsupported or invalid input is rejected by Wuu. Plugins never receive
+private thread items, protocol messages, the host React tree, or arbitrary callbacks.
+
+`mode: "replace"` owns the complete semantic boundary. `mode: "wrap"` composes around the current
+result. Presenters are generation-scoped: candidate activation is atomic, failed activation keeps the
+previous generation, render failure falls back locally, and disable, upgrade, or unload disposes every
+registration. `registerToolActivityPresenter` remains available as the compatible Tool-specific
+adapter.
+
 ## Declarative themes
 
 Themes do not require desktop code. Add them under `contributes.themes` in `plugin.json`. Themes from
@@ -80,6 +129,10 @@ Only allowlisted semantic tokens are accepted: `--wuu-paper`, `--wuu-ink`, `--wu
 
 See the installable [`examples/plugins/deep-ui`](../../../examples/plugins/deep-ui/) package for a
 theme and wrappers covering all current surfaces.
+
+The [`examples/plugins/developer-loop`](../../../examples/plugins/developer-loop/) package is the
+public-SDK acceptance example for multi-surface presenters, host actions, generation replacement,
+failure recovery, disposal, and unload.
 
 ## Loading and trust
 

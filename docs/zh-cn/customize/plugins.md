@@ -109,8 +109,57 @@ export async function activate(api) {
 `openAutomations` 和 `toggleSidebar` 等动作。Composer context 还提供当前文本、运行状态、
 `setPrompt`、`send` 和 `interrupt`。
 
+## 语义 Presenter
+
+需要替换具体产品概念，而不是宽泛布局区域时，应使用 `registerPresenter`。Wuu 会传入冻结、
+带版本且经过脱敏的 snapshot、原生 fallback，以及只包含当前边界可用动作的 host：
+
+```js
+export async function activate(api) {
+  api.registerPresenter({
+    id: "assistant-card",
+    target: "conversation.item",
+    key: "assistant-message",
+    mode: "wrap",
+    render({ host, fallback }) {
+      const copy = host.actions.includes("conversation.item.copy")
+        ? api.react.createElement("button", {
+            onClick: () => host.invoke("conversation.item.copy"),
+          }, "复制")
+        : null;
+      return api.react.createElement("article", null, fallback, copy);
+    },
+  });
+}
+```
+
+当前内置 target：
+
+| Presenter target | 稳定匹配 key |
+| --- | --- |
+| `conversation.item` | `assistant-message`、`reasoning`、`attachment` 等条目类型 |
+| `conversation.process` | Process 类型 |
+| `conversation.tool-activity` | Tool 的稳定 capability，而不是改写后的执行名称 |
+| `conversation.composer` | 无 |
+| `header.conversation`、`header.workspace` | 无 |
+| `navigation.primary` | 无 |
+| `app.status` | 无 |
+| `content.preview` | 完整 MIME 类型 |
+| `settings` | 无 |
+
+公开 SDK 定义了每种 V1 snapshot 和点分隔 Action ID。只有出现在 `host.actions` 中的 Action
+才能调用；Wuu 会拒绝不支持的动作和非法输入。插件不会拿到私有 ThreadItem、协议消息、宿主
+React 树或任意回调。
+
+`mode: "replace"` 接管完整语义边界；`mode: "wrap"` 包装当前结果。Presenter 属于一个
+generation：候选激活是原子的，激活失败保留旧 generation，渲染失败只回退当前边界，禁用、
+升级或卸载会清除全部注册。`registerToolActivityPresenter` 继续作为兼容的 Tool 专用入口。
+
 仓库中的 [`examples/plugins/deep-ui`](../../../examples/plugins/deep-ui/) 是一个可以直接安装
 的自包含示例。它用 wrapper 保留所有宿主 fallback，并同时演示声明式主题。
+
+[`examples/plugins/developer-loop`](../../../examples/plugins/developer-loop/) 是只依赖公开 SDK
+的跨 Surface 验收示例，覆盖 Host Actions、generation 替换、失败恢复、disposal 和卸载。
 
 ## 声明式主题
 
