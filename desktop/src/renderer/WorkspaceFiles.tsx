@@ -16,6 +16,7 @@ import type { WorkspaceMonacoViewState } from "./WorkspaceMonacoEditor";
 import { desktopApiErrorMessage } from "./WorkspaceReviewHelpers";
 import { translateCurrent, useI18n } from "./i18n";
 import { desktopPlatform } from "./platform";
+import { FilePreviewPresentation } from "./plugins/FilePreviewPresentation";
 
 // monaco-editor is several MB of JS; a static import here would drag it into
 // the eager startup chunk. Load it only when a code editor actually mounts.
@@ -604,6 +605,7 @@ export function WorkspaceFilePreview({
   const [draftText, setDraftText] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
+  const [presenterReloadKey, setPresenterReloadKey] = useState(0);
   const editorViewStateRef = useRef<WorkspaceMonacoViewState | null>(null);
   const loadedFileKeyRef = useRef<string | undefined>(undefined);
   const markdownHostRef = useRef<HTMLDivElement>(null);
@@ -654,7 +656,7 @@ export function WorkspaceFilePreview({
     return () => {
       cancelled = true;
     };
-  }, [activeContext?.cwd, selectedWorkspaceFilePath, locale, refreshKey]);
+  }, [activeContext?.cwd, selectedWorkspaceFilePath, locale, presenterReloadKey, refreshKey]);
 
   const isMarkdown = Boolean(file && isMarkdownPath(file.path));
   const isMarkdownReadingMode = isMarkdown && !selection;
@@ -710,94 +712,88 @@ export function WorkspaceFilePreview({
     );
   }
 
-  if (loading) {
-    return (
+  const fallback = loading ? (
       <div className="workspace-main-empty">
         <FileText size={36} />
         <strong>{t("workspace.files.opening")}</strong>
         <span>{selectedWorkspaceFilePath}</span>
       </div>
-    );
-  }
-
-  if (error) {
-    return (
+    ) : error ? (
       <div className="workspace-main-empty">
         <AlertCircle size={36} />
         <strong>{t("workspace.files.openFailedTitle")}</strong>
         <span>{error}</span>
       </div>
-    );
-  }
-
-  if (!file) {
-    return (
+    ) : !file ? (
       <div className="workspace-main-empty">
         <FileText size={36} />
         <strong>{t("workspace.files.noContent")}</strong>
         <span>{selectedWorkspaceFilePath}</span>
       </div>
-    );
-  }
-
-  if (file.renderable_url) {
-    if (file.renderable_kind === "pdf") {
-      return (
+    ) : file.renderable_url ? (
+      file.renderable_kind === "pdf" ? (
         <article className="workspace-file-preview readonly">
           <Suspense fallback={<div className="workspace-file-pdf-preview" />}>
             <WorkspacePdfPreview url={file.renderable_url} title={file.path} />
           </Suspense>
         </article>
-      );
-    }
-    return (
+      ) : (
       <article className="workspace-file-preview readonly">
         <div className="workspace-file-image-preview">
           <img src={file.renderable_url} alt={file.path} />
         </div>
       </article>
-    );
-  }
-
-  if (file.binary) {
-    return (
+      )
+    ) : file.binary ? (
       <div className="workspace-main-empty">
         <FileText size={36} />
         <strong>{t("workspace.files.cannotPreview")}</strong>
         <span>{t("workspace.files.binary", { path: file.path })}</span>
       </div>
+    ) : (
+      <article className="workspace-file-preview readonly">
+        <div className={`workspace-file-editor-scroll ${isMarkdownReadingMode ? "markdown-reading" : "code"}`}>
+          {isMarkdownReadingMode ? (
+            <div className="workspace-markdown-reading" ref={markdownHostRef}>
+              <RichContent
+                text={draftText}
+                cwd={activeContext.cwd}
+                onOpenFile={onOpenFile}
+                allowRawHtml
+              />
+            </div>
+          ) : active ? (
+            <Suspense fallback={null}>
+              <WorkspaceMonacoEditor
+                initialViewState={editorViewStateRef.current}
+                path={file.path}
+                resourceID={editorResourceID ?? `${activeContext.cwd}:${file.path}`}
+                selection={selection}
+                text={draftText}
+                readOnly
+                onViewStateChange={(viewState) => {
+                  editorViewStateRef.current = viewState;
+                }}
+              />
+            </Suspense>
+          ) : null}
+        </div>
+      </article>
     );
-  }
-
   return (
-    <article className="workspace-file-preview readonly">
-      <div className={`workspace-file-editor-scroll ${isMarkdownReadingMode ? "markdown-reading" : "code"}`}>
-        {isMarkdownReadingMode ? (
-          <div className="workspace-markdown-reading" ref={markdownHostRef}>
-            <RichContent
-              text={draftText}
-              cwd={activeContext.cwd}
-              onOpenFile={onOpenFile}
-              allowRawHtml
-            />
-          </div>
-        ) : active ? (
-          <Suspense fallback={null}>
-            <WorkspaceMonacoEditor
-              initialViewState={editorViewStateRef.current}
-              path={file.path}
-              resourceID={editorResourceID ?? `${activeContext.cwd}:${file.path}`}
-              selection={selection}
-              text={draftText}
-              readOnly
-              onViewStateChange={(viewState) => {
-                editorViewStateRef.current = viewState;
-              }}
-            />
-          </Suspense>
-        ) : null}
-      </div>
-    </article>
+    <FilePreviewPresentation
+      workspaceRoot={activeContext.cwd}
+      workspaceRelativePath={selectedWorkspaceFilePath}
+      file={file}
+      text={draftText}
+      selection={selection}
+      loading={loading}
+      error={error}
+      fallback={fallback}
+      open={onOpenFile}
+      reveal={(path) => window.wuu.revealWorkspaceItem(`${activeContext.cwd}/${path}`)}
+      reload={() => setPresenterReloadKey((value) => value + 1)}
+    />
   );
 }
 
