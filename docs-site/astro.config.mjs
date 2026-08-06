@@ -54,6 +54,7 @@ export default defineConfig({
       routeMiddleware: "./src/route-data.ts",
       components: {
         Head: "./src/components/Head.astro",
+        Search: "./src/components/EmptySearch.astro",
       },
       social: [
         {
