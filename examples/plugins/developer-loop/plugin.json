@@ -11,5 +11,62 @@
   },
   "desktop": {
     "entry": "dist/renderer.js"
+  },
+  "contributes": {
+    "themes": [
+      {
+        "id": "developer-focus",
+        "name": "Developer Focus",
+        "base": "dark",
+        "tokens": {
+          "--wuu-paper": "#111827",
+          "--wuu-ink": "#f9fafb",
+          "--wuu-ink-soft": "#9ca3af",
+          "--wuu-hairline": "#374151",
+          "--wuu-surface-muted": "#1f2937",
+          "--wuu-accent": "#60a5fa",
+          "--wuu-accent-press": "#3b82f6"
+        },
+        "syntax": {
+          "--hljs-keyword": "#c084fc",
+          "--hljs-function": "#67e8f9",
+          "--hljs-string": "#86efac",
+          "--hljs-number": "#fbbf24",
+          "--hljs-comment": "#9ca3af"
+        }
+      }
+    ],
+    "settings": {
+      "enabled": {
+        "type": "boolean",
+        "title": "Enable counter",
+        "description": "Allow the acceptance view to update its stored counter.",
+        "default": true,
+        "scope": "user",
+        "apply": "live"
+      },
+      "label": {
+        "type": "string",
+        "title": "Counter label",
+        "default": "Accepted runs",
+        "scope": "workspace",
+        "apply": "live"
+      },
+      "step": {
+        "type": "number",
+        "title": "Counter step",
+        "default": 1,
+        "scope": "workspace",
+        "apply": "live"
+      },
+      "density": {
+        "type": "enum",
+        "title": "View density",
+        "default": "comfortable",
+        "enum": ["compact", "comfortable"],
+        "scope": "user",
+        "apply": "live"
+      }
+    }
   }
 }
