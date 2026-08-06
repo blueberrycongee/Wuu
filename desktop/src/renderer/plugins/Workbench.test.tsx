@@ -26,6 +26,21 @@ describe("WorkbenchController", () => {
     document.documentElement.removeAttribute("data-theme");
   });
 
+  it("updates service handles without publishing an unchanged snapshot", () => {
+    const host = new PluginHost({ react: React });
+    const controller = new WorkbenchController(host);
+    const listener = vi.fn();
+    const unsubscribe = controller.subscribe(listener);
+    const services = { openSettings: vi.fn() };
+
+    controller.updateServices(services);
+
+    expect(controller.services).toBe(services);
+    expect(listener).not.toHaveBeenCalled();
+    unsubscribe();
+    controller.dispose();
+  });
+
   it("maps views to every workbench pane and persists only durable state", async () => {
     const host = new PluginHost({ react: React });
     await host.activateGeneration({

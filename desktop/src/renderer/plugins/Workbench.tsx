@@ -89,7 +89,6 @@ export class WorkbenchController {
 
   updateServices(services: WorkbenchServices): void {
     this.services = services;
-    this.publish();
   }
 
   dispose(): void {
