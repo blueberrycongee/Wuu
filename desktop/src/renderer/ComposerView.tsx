@@ -81,6 +81,7 @@ import { composerStatusIsLiveProgress, composerStatusText } from "./ComposerType
 import type { WorkspacePanelView } from "./WorkspacePanels";
 import { ComposerTokenGauge } from "./ComposerTokenGauge";
 import { ComposerContextMeter } from "./ComposerContextMeter";
+import { ComposerPresentation } from "./plugins/ComposerPresentation";
 import { ComposerVoiceInput, type ComposerVoiceInputHandle } from "./ComposerVoiceInput";
 import { ENABLE_VOICE_INPUT } from "./FeatureFlags";
 import type { TurnContextUsage } from "./AppState";
@@ -1365,7 +1366,7 @@ export function Composer({
       ) : null}
     </div>
   );
-  return variant === "hero" ? (
+  const nativeComposer = variant === "hero" ? (
     <div
       className={className}
       data-main-conversation-composer={mainConversation ? variant : undefined}
@@ -1380,6 +1381,39 @@ export function Composer({
     >
       {content}
     </footer>
+  );
+  const availableSubmissionModes = running
+    ? ([...(onSteer ? ["steer" as const] : []), ...(onQueue ? ["queue" as const] : [])])
+    : (["send" as const]);
+  const activeSubmissionMode = running && onSteer ? "steer" : running && onQueue ? "queue" : "send";
+  return (
+    <ComposerPresentation
+      enabled={mainConversation}
+      fallback={nativeComposer}
+      draftText={prompt}
+      files={files}
+      images={images}
+      queuedMessages={queuedMessages}
+      pendingMessages={guideMessages}
+      running={running}
+      readOnly={readOnly}
+      sendDisabled={sendDisabled}
+      variant={variant}
+      threadId={queryHistorySessionID}
+      initialized={initialized}
+      contextUsage={contextUsage}
+      goalSummary={goalSummary}
+      disabledReason={readOnly || sendDisabled ? statusText || undefined : undefined}
+      activeSubmissionMode={activeSubmissionMode}
+      availableSubmissionModes={availableSubmissionModes}
+      attachmentInputRef={attachmentInputRef}
+      attachmentsEnabled={!textOnly}
+      onSetDraft={setPrompt}
+      onRemoveFile={onRemoveFile}
+      onRemoveImage={onRemoveImage}
+      onSubmit={submitDraft}
+      onStop={onInterrupt}
+    />
   );
 }
 
