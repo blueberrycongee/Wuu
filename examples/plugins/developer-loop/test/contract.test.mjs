@@ -220,9 +220,9 @@ const headerOutput = renderPresenter("header.conversation", {
 assert.equal(headerOutput.props["data-active-tab"], "tab-1");
 assert.equal(headerOutput.children[1], fallback);
 assert.deepEqual(invokedActions, [
-  ["conversation.composer.submit", { threadId: "thread-1" }],
-  ["navigation.activate-node", { nodeId: "thread-1" }],
-  ["status.activate-item", { itemId: "ready" }],
+  ["conversation.composer.submit", undefined],
+  ["navigation.activate-node", { id: "thread-1" }],
+  ["status.activate-item", { id: "ready" }],
 ]);
 assert.equal(await renderer.invokePresentationAction(presentationHost, "unsupported.action"), undefined);
 
