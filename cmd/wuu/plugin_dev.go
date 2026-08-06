@@ -380,7 +380,7 @@ func runPluginTest(args []string) error {
 }
 
 func testPluginPackage(source string, timeout time.Duration) []pluginDiagnostic {
-	diagnostics := make([]pluginDiagnostic, 0, 3)
+	diagnostics := make([]pluginDiagnostic, 0, 6)
 	prepared, cleanup, err := preparePluginSource(source)
 	if err != nil {
 		return append(diagnostics, pluginDiagnostic{Level: "fail", Check: "package.prepare", Message: err.Error()})
@@ -411,7 +411,31 @@ func testPluginPackage(source string, timeout time.Duration) []pluginDiagnostic 
 		return append(diagnostics, pluginDiagnostic{Level: "fail", Check: "runtime.initialize", Message: err.Error()})
 	}
 	defer client.Close(context.Background())
-	return append(diagnostics, pluginDiagnostic{Level: "pass", Check: "runtime.initialize", Message: "runtime completed the executable v1 initialization contract"})
+	diagnostics = append(diagnostics, pluginDiagnostic{Level: "pass", Check: "runtime.initialize", Message: "runtime completed executable initialization"})
+	protocolVersion := client.ProtocolVersion()
+	if protocolVersion != pluginhost.ProtocolVersion && protocolVersion != pluginhost.CapabilityProtocolVersion {
+		return append(diagnostics, pluginDiagnostic{Level: "fail", Check: "runtime.protocol", Message: fmt.Sprintf("unsupported negotiated protocol version %d", protocolVersion)})
+	}
+	diagnostics = append(diagnostics, pluginDiagnostic{Level: "pass", Check: "runtime.protocol", Message: fmt.Sprintf("negotiated protocol v%d", protocolVersion)})
+
+	capabilities := client.Capabilities()
+	for _, descriptor := range capabilities {
+		if err := pluginhost.ValidateCapabilityDescriptor(descriptor); err != nil {
+			return append(diagnostics, pluginDiagnostic{Level: "fail", Check: "runtime.capabilities", Message: err.Error()})
+		}
+	}
+	diagnostics = append(diagnostics, pluginDiagnostic{Level: "pass", Check: "runtime.capabilities", Message: fmt.Sprintf("validated %d capability descriptor(s)", len(capabilities))})
+
+	tools := client.Tools()
+	toolIDs := make([]string, 0, len(tools))
+	for _, tool := range tools {
+		toolIDs = append(toolIDs, tool.ID)
+	}
+	message := fmt.Sprintf("validated %d tool registration(s)", len(tools))
+	if len(toolIDs) > 0 {
+		message += ": " + strings.Join(toolIDs, ", ")
+	}
+	return append(diagnostics, pluginDiagnostic{Level: "pass", Check: "runtime.tools", Message: message})
 }
 
 func runPluginPack(args []string) error {
@@ -735,8 +759,7 @@ func validatePluginName(name string) error {
 }
 
 func pluginScaffoldSources(pluginType string) map[string]string {
-	runtime := `import { createInterface } from "node:readline";
-import type { RuntimePlugin, RuntimeRequest, RuntimeResponse } from "@wuu/plugin-sdk";
+	runtime := `import { runJSONLRuntime, type RuntimePlugin } from "@wuu/plugin-sdk";
 
 const plugin: RuntimePlugin = {
   initialize(_params) {
@@ -744,22 +767,9 @@ const plugin: RuntimePlugin = {
   },
 };
 
-const lines = createInterface({ input: process.stdin, terminal: false });
-lines.on("line", async (line) => {
-  let response: RuntimeResponse;
-  try {
-    const request = JSON.parse(line) as RuntimeRequest;
-    if (request.method === "initialize") {
-      response = { id: request.id, result: await plugin.initialize(request.params) };
-    } else if (request.method === "shutdown") {
-      response = { id: request.id, result: null };
-    } else {
-      response = { id: request.id, error: { message: ` + "`unknown method ${request.method}`" + ` } };
-    }
-  } catch (error) {
-    response = { id: "invalid", error: { message: error instanceof Error ? error.message : String(error) } };
-  }
-  process.stdout.write(JSON.stringify(response) + "\n");
+runJSONLRuntime(plugin, { input: process.stdin, output: process.stdout }).catch((error: unknown) => {
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exitCode = 1;
 });
 `
 	desktop := `import type { PluginGenerationApi } from "@wuu/plugin-sdk";

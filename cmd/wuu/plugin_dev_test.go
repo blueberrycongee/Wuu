@@ -88,13 +88,23 @@ func TestPluginTestRunsExecutableRuntimeContract(t *testing.T) {
 	writePluginDevTestFile(t, filepath.Join(dir, "runtime.js"), `
 import readline from "node:readline";
 const lines = readline.createInterface({input: process.stdin});
-lines.on("line", line => { const request = JSON.parse(line); process.stdout.write(JSON.stringify({id: request.id, result: request.method === "initialize" ? {hooks: []} : null}) + "\n"); });
+lines.on("line", line => { const request = JSON.parse(line); process.stdout.write(JSON.stringify({id: request.id, result: request.method === "initialize" ? {hooks: [], protocol_version: 2, capabilities: [{id: "agent.request.transform", kind: "transform", version: 1}], tools: [{id: "echo", description: "Echo input", input_schema: {type: "object"}}]} : null}) + "\n"); });
 `)
 	diagnostics := testPluginPackage(dir, 5*time.Second)
+	checks := make(map[string]pluginDiagnostic, len(diagnostics))
 	for _, diagnostic := range diagnostics {
+		checks[diagnostic.Check] = diagnostic
 		if diagnostic.Level == "fail" {
 			t.Fatalf("runtime contract failed: %+v", diagnostics)
 		}
+	}
+	for _, check := range []string{"runtime.initialize", "runtime.protocol", "runtime.capabilities", "runtime.tools"} {
+		if checks[check].Level != "pass" {
+			t.Fatalf("missing acceptance check %s: %+v", check, diagnostics)
+		}
+	}
+	if !strings.Contains(checks["runtime.capabilities"].Message, "1 capability") || !strings.Contains(checks["runtime.tools"].Message, "echo") {
+		t.Fatalf("descriptor and tool details were not reported: %+v", diagnostics)
 	}
 	writePluginDevTestFile(t, filepath.Join(dir, "runtime.js"), `process.stdout.write("not-json\n")`)
 	diagnostics = testPluginPackage(dir, 5*time.Second)

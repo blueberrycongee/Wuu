@@ -1,22 +1,31 @@
-import { createInterface } from "node:readline";
-import type { RuntimePlugin, RuntimeRequest, RuntimeResponse } from "@wuu/plugin-sdk";
+import {
+  REQUEST_TRANSFORM_CAPABILITY,
+  runJSONLRuntime,
+  type RuntimePlugin,
+} from "@wuu/plugin-sdk";
 
 const plugin: RuntimePlugin = {
   initialize() {
-    return { hooks: [] };
+    return {
+      hooks: [],
+      protocol_version: 2,
+      capabilities: [{ id: REQUEST_TRANSFORM_CAPABILITY, kind: "transform", version: 1 }],
+      tools: [{
+        id: "developer-loop-echo",
+        description: "Return a short confirmation for developer-loop checks.",
+        input_schema: { type: "object", properties: {} },
+      }],
+    };
+  },
+  invokeCapability({ output }) {
+    return { output };
+  },
+  executeTool() {
+    return { result: { content: [{ type: "text", text: "developer-loop tool ok" }] } };
   },
 };
 
-const lines = createInterface({ input: process.stdin, terminal: false });
-lines.on("line", async (line) => {
-  const request = JSON.parse(line) as RuntimeRequest;
-  let response: RuntimeResponse;
-  if (request.method === "initialize") {
-    response = { id: request.id, result: await plugin.initialize(request.params) };
-  } else if (request.method === "shutdown") {
-    response = { id: request.id, result: null };
-  } else {
-    response = { id: request.id, error: { message: `unknown method ${request.method}` } };
-  }
-  process.stdout.write(`${JSON.stringify(response)}\n`);
+runJSONLRuntime(plugin, { input: process.stdin, output: process.stdout }).catch((error: unknown) => {
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exitCode = 1;
 });

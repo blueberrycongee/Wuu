@@ -10,7 +10,8 @@ wuu plugin test .
 wuu plugin dev --watch=false .
 ```
 
-`plugin test` executes the runtime initialization contract. `plugin dev` builds and validates the
+`plugin test` starts the executable runtime and checks protocol negotiation, the v2 capability
+descriptor, and the executable tool registration. `plugin dev` builds and validates the
 package before atomically publishing an isolated development generation. A failed refresh leaves
 the previous development generation intact. Live app-server refresh is not claimed by this
 example; restart or use the shell's supported refresh path to consume the published generation.

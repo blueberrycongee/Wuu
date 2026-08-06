@@ -9,12 +9,13 @@
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
+    "test": "npm run build && node dist/index.test.js",
     "prepack": "npm run build"
   },
   "devDependencies": {
     "typescript": "^5.0.0"
   },
-  "files": ["dist"],
+  "files": ["dist/index.js", "dist/index.d.ts"],
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {

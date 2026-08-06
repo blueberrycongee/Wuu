@@ -164,32 +164,329 @@ export interface HostReact {
 // Executable runtime contract
 // ---------------------------------------------------------------------------
 
+export const RUNTIME_PROTOCOL_V1 = 1 as const;
+export const CAPABILITY_PROTOCOL_V2 = 2 as const;
+export const REQUEST_TRANSFORM_CAPABILITY = "agent.request.transform" as const;
+
+export type RuntimeHook =
+  | "session.start"
+  | "session.stop"
+  | "chat.message"
+  | "chat.request"
+  | "tool.definition"
+  | "tool.execute.before"
+  | "tool.execute.after"
+  | "shell.env";
+
+export type CapabilityKind = "observe" | "transform" | "guard" | "around" | "decision";
+
+export interface CapabilityDescriptor {
+  id: string;
+  kind: CapabilityKind;
+  version: number;
+  priority?: number;
+  depends_on?: string[];
+  conflicts?: string[];
+}
+
+export const HOST_SERVICE_METHODS = [
+  "host.storage.get",
+  "host.storage.set",
+  "host.storage.delete",
+  "host.storage.keys",
+  "host.settings.get",
+  "host.settings.list",
+  "host.subagent.spawn",
+  "host.subagent.status",
+  "host.session.info",
+  "host.workspace.root",
+  "host.workspace.list",
+  "host.diagnostics.log",
+] as const;
+
+export type HostServiceMethod = (typeof HOST_SERVICE_METHODS)[number];
+
+export interface HostServiceDescriptor {
+  id: HostServiceMethod | (string & {});
+  required?: boolean;
+}
+
 export interface RuntimeInitializeParams {
   protocol_version: number;
   plugin_id: string;
   plugin_root: string;
   project_root: string;
   wuu_home: string;
+  capability_protocol_version?: number;
+  supported_host_services?: HostServiceMethod[];
 }
 
 export interface RuntimeInitializeResult {
-  hooks: string[];
-  tools?: ReadonlyArray<Record<string, unknown>>;
+  hooks: RuntimeHook[];
+  tools?: ToolRegistration[];
+  protocol_version?: 1 | 2;
+  capabilities?: CapabilityDescriptor[];
+  required_host_services?: HostServiceDescriptor[];
 }
+
+export interface JSONSchemaObject {
+  type: "object";
+  properties?: Readonly<Record<string, unknown>>;
+  required?: string[];
+  additionalProperties?: boolean;
+  [key: string]: unknown;
+}
+
+export interface ToolActivityMetadata {
+  read_only?: boolean;
+  concurrency_safe?: boolean;
+  destructive?: boolean;
+  risk?: string;
+  reason?: string;
+}
+
+export interface ToolDisplayMetadata {
+  kind?: string;
+  text?: string;
+  capability?: string;
+}
+
+export interface ToolRegistration {
+  id: string;
+  description: string;
+  input_schema: JSONSchemaObject;
+  activity?: ToolActivityMetadata;
+  display?: ToolDisplayMetadata;
+}
+
+export interface CapabilityInvokeParams<TInput = unknown, TOutput = unknown> {
+  capability: string;
+  input: TInput;
+  output: TOutput;
+}
+
+export interface CapabilityInvokeResult<TOutput = unknown> {
+  output: TOutput;
+}
+
+export interface HookInvokeParams<TInput = unknown, TOutput = unknown> {
+  hook: RuntimeHook;
+  input: TInput;
+  output: TOutput;
+}
+
+export interface HookInvokeResult<TOutput = unknown> {
+  output: TOutput;
+}
+
+export interface RequestTransformInput {
+  session_id?: string;
+  thread_id?: string;
+  cwd?: string;
+  provider?: string;
+  step_index: number;
+}
+
+export interface RequestTransformOutput<TRequest = Readonly<Record<string, unknown>>> {
+  request: TRequest;
+}
+
+export interface ToolExecuteParams<TArguments = unknown> {
+  tool_id: string;
+  session_id?: string;
+  thread_id?: string;
+  cwd: string;
+  step_index?: number;
+  call_id: string;
+  tool: string;
+  arguments: TArguments;
+}
+
+export type ToolContentType = "text" | "image" | "audio" | "file" | "resource" | "resource_link";
+
+export interface ToolContentPart {
+  type: ToolContentType;
+  text?: string;
+  data?: string;
+  mime_type?: string;
+  uri?: string;
+  name?: string;
+  resource?: unknown;
+}
+
+export interface ToolResult {
+  content?: ToolContentPart[];
+  structured_content?: unknown;
+  meta?: unknown;
+  is_error?: boolean;
+  activity?: {
+    id: string;
+    kind: string;
+    state?: string;
+    thread_id?: string;
+    preview_uri?: string;
+  };
+}
+
+export interface ToolExecuteResult {
+  result: ToolResult;
+}
+
+export interface HostServiceContracts {
+  "host.storage.get": { params: { key: string }; result: { value: string | null } };
+  "host.storage.set": { params: { key: string; value: string }; result: null };
+  "host.storage.delete": { params: { key: string }; result: null };
+  "host.storage.keys": { params: Record<string, never>; result: { keys: string[] } };
+  "host.settings.get": { params: { key: string }; result: { value: unknown } };
+  "host.settings.list": { params: Record<string, never>; result: { entries: Record<string, unknown> } };
+  "host.subagent.spawn": {
+    params: { name: string; description: string; prompt: string; model?: string };
+    result: { agent_id: string };
+  };
+  "host.subagent.status": {
+    params: { agent_id: string };
+    result: { agent_id: string; status: "running" | "completed" | "failed" | "cancelled"; result?: string };
+  };
+  "host.session.info": { params: Record<string, never>; result: { session_id: string; thread_id?: string; cwd: string; model: string } };
+  "host.workspace.root": { params: Record<string, never>; result: { root: string } };
+  "host.workspace.list": {
+    params: Record<string, never>;
+    result: { workspaces: Array<{ id: string; root: string; name?: string }> };
+  };
+  "host.diagnostics.log": { params: Readonly<Record<string, unknown>>; result: unknown };
+}
+
+export type HostServiceCall<M extends HostServiceMethod = HostServiceMethod> = M extends HostServiceMethod
+  ? { id: string; method: M; params?: HostServiceContracts[M]["params"] }
+  : never;
+
+export interface HostServiceError {
+  code: string;
+  message: string;
+}
+
+export type HostServiceResponse<M extends HostServiceMethod = HostServiceMethod> =
+  | { id: string; result?: HostServiceContracts[M]["result"]; error?: never }
+  | { id: string; result?: never; error: HostServiceError };
+
+export type HostServiceRequest<M extends HostServiceMethod = HostServiceMethod> = HostServiceCall<M>;
+export type HostServiceResult<M extends HostServiceMethod = HostServiceMethod> = HostServiceResponse<M>;
 
 export interface RuntimePlugin {
   initialize(params: RuntimeInitializeParams): RuntimeInitializeResult | Promise<RuntimeInitializeResult>;
+  invokeCapability?(params: CapabilityInvokeParams): CapabilityInvokeResult | Promise<CapabilityInvokeResult>;
+  invokeHook?(params: HookInvokeParams): HookInvokeResult | Promise<HookInvokeResult>;
+  executeTool?(params: ToolExecuteParams): ToolExecuteResult | Promise<ToolExecuteResult>;
+  shutdown?(): void | Promise<void>;
 }
 
-export interface RuntimeRequest {
+export interface RuntimeInitializeRequest {
   id: string;
-  method: string;
+  method: "initialize";
   params: RuntimeInitializeParams;
 }
 
+export interface RuntimeCapabilityRequest {
+  id: string;
+  method: "capability.invoke";
+  params: CapabilityInvokeParams;
+}
+
+export interface RuntimeHookRequest {
+  id: string;
+  method: "hook.invoke";
+  params: HookInvokeParams;
+}
+
+export interface RuntimeToolRequest {
+  id: string;
+  method: "tool.execute";
+  params: ToolExecuteParams;
+}
+
+export interface RuntimeShutdownRequest {
+  id: string;
+  method: "shutdown";
+  params?: undefined;
+}
+
+export type RuntimeRequest =
+  | RuntimeInitializeRequest
+  | RuntimeCapabilityRequest
+  | RuntimeHookRequest
+  | RuntimeToolRequest
+  | RuntimeShutdownRequest;
+
 export type RuntimeResponse =
-  | { id: string; result: RuntimeInitializeResult | null }
+  | { id: string; result: RuntimeInitializeResult | CapabilityInvokeResult | HookInvokeResult | ToolExecuteResult | null }
   | { id: string; error: { message: string } };
+
+export async function handleRuntimeRequest(plugin: RuntimePlugin, request: RuntimeRequest): Promise<RuntimeResponse> {
+  try {
+    switch (request.method) {
+      case "initialize":
+        return { id: request.id, result: await plugin.initialize(request.params) };
+      case "capability.invoke":
+        if (!plugin.invokeCapability) throw new Error("capability.invoke is not implemented");
+        return { id: request.id, result: await plugin.invokeCapability(request.params) };
+      case "hook.invoke":
+        if (!plugin.invokeHook) throw new Error("hook.invoke is not implemented");
+        return { id: request.id, result: await plugin.invokeHook(request.params) };
+      case "tool.execute":
+        if (!plugin.executeTool) throw new Error("tool.execute is not implemented");
+        return { id: request.id, result: await plugin.executeTool(request.params) };
+      case "shutdown":
+        await plugin.shutdown?.();
+        return { id: request.id, result: null };
+    }
+  } catch (error) {
+    return { id: request.id, error: { message: error instanceof Error ? error.message : String(error) } };
+  }
+}
+
+export interface JSONLInput extends AsyncIterable<Uint8Array | string> {}
+export interface JSONLOutput { write(chunk: string): unknown }
+
+/** Runs a plugin over Wuu's one-request/one-response JSON-lines transport. */
+export async function runJSONLRuntime(
+  plugin: RuntimePlugin,
+  streams: { input: JSONLInput; output: JSONLOutput },
+): Promise<void> {
+  const decoder = new TextDecoder();
+  let buffered = "";
+  for await (const chunk of streams.input) {
+    buffered += typeof chunk === "string" ? chunk : decoder.decode(chunk, { stream: true });
+    const lines = buffered.split("\n");
+    buffered = lines.pop() ?? "";
+    for (const line of lines) {
+      await writeRuntimeLine(plugin, line, streams.output);
+    }
+  }
+  buffered += decoder.decode();
+  if (buffered.trim() !== "") await writeRuntimeLine(plugin, buffered, streams.output);
+}
+
+async function writeRuntimeLine(plugin: RuntimePlugin, line: string, output: JSONLOutput): Promise<void> {
+  if (line.trim() === "") return;
+  let response: RuntimeResponse;
+  try {
+    const parsed: unknown = JSON.parse(line);
+    if (!isRuntimeRequest(parsed)) throw new Error("invalid runtime request");
+    response = await handleRuntimeRequest(plugin, parsed);
+  } catch (error) {
+    response = { id: "invalid", error: { message: error instanceof Error ? error.message : String(error) } };
+  }
+  output.write(`${JSON.stringify(response)}\n`);
+}
+
+function isRuntimeRequest(value: unknown): value is RuntimeRequest {
+  if (typeof value !== "object" || value === null) return false;
+  const request = value as { id?: unknown; method?: unknown; params?: unknown };
+  if (typeof request.id !== "string" || typeof request.method !== "string") return false;
+  if (request.method === "shutdown") return true;
+  return ["initialize", "capability.invoke", "hook.invoke", "tool.execute"].includes(request.method)
+    && typeof request.params === "object" && request.params !== null;
+}
 
 export interface Disposable {
   dispose(): void;
