@@ -522,12 +522,12 @@ func runPluginDevMode(args []string) error {
 		printDevDiagnostic(diagnostic)
 	}
 	if *watch {
-		fmt.Printf("  watching:   yes (poll interval %s)\n", pollInterval.String())
+		fmt.Printf("  watching:   yes (fsnotify; poll fallback interval %s)\n", pollInterval.String())
 		fmt.Printf("  Save source files to refresh the isolated development generation.\n")
 	}
 
 	if *watch {
-		watchDevDir(wuuHome, dir, strings.TrimSpace(*packageManager), *pollInterval)
+		watchDevDirFS(wuuHome, dir, strings.TrimSpace(*packageManager), *pollInterval)
 	}
 
 	return nil
