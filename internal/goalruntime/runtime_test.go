@@ -137,6 +137,11 @@ func TestRuntimeAccountingAndBlockerPersistence(t *testing.T) {
 		if err != nil {
 			t.Fatalf("RecordBlocker %d: %v", i, err)
 		}
+		if i < RequiredBlockerTurns-1 {
+			if _, err := runtime.AccountUsage(UsageDelta{Turns: 1}, now.Add(time.Duration(i)*time.Minute)); err != nil {
+				t.Fatalf("AccountUsage %d: %v", i, err)
+			}
+		}
 	}
 	if !blocked || goal.Status != StatusBlocked {
 		t.Fatalf("expected blocker threshold to block, got blocked=%v goal=%+v", blocked, goal)
@@ -169,6 +174,25 @@ func TestRuntimeAccountActiveUsageSkipsMissingAndInactiveGoal(t *testing.T) {
 	}
 	if goal.TokensUsed != 0 || goal.Status != StatusPaused {
 		t.Fatalf("paused goal changed unexpectedly: %+v", goal)
+	}
+}
+
+func TestAccountGoalUsageIncludesTerminalTurn(t *testing.T) {
+	now := time.Date(2026, 6, 25, 10, 0, 0, 0, time.UTC)
+	runtime := newTestRuntime(t)
+	goal, err := runtime.Create(Spec{ThreadID: "thread-1", GoalID: "goal-1", Objective: "ship"})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if _, err := runtime.Complete(now.Add(time.Minute)); err != nil {
+		t.Fatalf("Complete: %v", err)
+	}
+	goal, err = runtime.AccountGoalUsage(goal.GoalID, UsageDelta{Turns: 1, Tokens: 42}, now.Add(2*time.Minute))
+	if err != nil {
+		t.Fatalf("AccountGoalUsage: %v", err)
+	}
+	if goal.Status != StatusComplete || goal.GoalTurns != 1 || goal.TokensUsed != 42 {
+		t.Fatalf("terminal turn usage was not retained: %+v", goal)
 	}
 }
 

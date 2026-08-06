@@ -81,7 +81,7 @@ func TestAccountUsageRecordsTokensWithoutStopping(t *testing.T) {
 	if goal.Status != StatusActive {
 		t.Fatalf("Status after first usage = %s", goal.Status)
 	}
-	if goal.TokensUsed != 4 || goal.TimeUsedSeconds != 1 || goal.GoalTurns != 1 {
+	if goal.TokensUsed != 4 || goal.TimeUsedSeconds != 1 || goal.GoalTurns != 1 || goal.ContinuationRunTurns != 1 {
 		t.Fatalf("unexpected usage after first account: %+v", goal)
 	}
 	goal, err = goal.AccountUsage(UsageDelta{Tokens: 6, Elapsed: 2 * time.Second, Turns: 1}, now.Add(2*time.Minute))
@@ -91,8 +91,23 @@ func TestAccountUsageRecordsTokensWithoutStopping(t *testing.T) {
 	if goal.Status != StatusActive {
 		t.Fatalf("Status after token accounting = %s, want active", goal.Status)
 	}
-	if goal.TokensUsed != 10 || goal.TimeUsedSeconds != 3 || goal.GoalTurns != 2 {
+	if goal.TokensUsed != 10 || goal.TimeUsedSeconds != 3 || goal.GoalTurns != 2 || goal.ContinuationRunTurns != 2 {
 		t.Fatalf("unexpected usage after second account: %+v", goal)
+	}
+	goal.ContinuationRunTurns = MaxContinuationRunTurns
+	if !goal.ContinuationRunLimitReached() {
+		t.Fatal("continuation run limit should be reached")
+	}
+	goal, err = goal.SetStatus(ActorSystem, StatusPaused, now.Add(3*time.Minute))
+	if err != nil {
+		t.Fatalf("pause at continuation limit: %v", err)
+	}
+	goal, err = goal.SetStatus(ActorUser, StatusActive, now.Add(4*time.Minute))
+	if err != nil {
+		t.Fatalf("resume after continuation limit: %v", err)
+	}
+	if goal.ContinuationRunTurns != 0 || goal.GoalTurns != 2 || goal.TokensUsed != 10 {
+		t.Fatalf("resume should reset only the bounded run window: %+v", goal)
 	}
 }
 
@@ -141,12 +156,24 @@ func TestRecordBlockerRequiresConsecutiveSameBlocker(t *testing.T) {
 	if blocked || goal.Status != StatusActive || goal.BlockerAudit.ConsecutiveTurns != 1 {
 		t.Fatalf("first blocker should not block: blocked=%v goal=%+v", blocked, goal)
 	}
+	goal, blocked, err = goal.RecordBlocker("Needs credentials", now.Add(90*time.Second))
+	if err != nil || blocked || goal.BlockerAudit.ConsecutiveTurns != 1 {
+		t.Fatalf("same-turn blocker must count once: blocked=%v goal=%+v err=%v", blocked, goal, err)
+	}
+	goal, err = goal.AccountUsage(UsageDelta{Turns: 1}, now.Add(2*time.Minute))
+	if err != nil {
+		t.Fatalf("account first blocker turn: %v", err)
+	}
 	goal, blocked, err = goal.RecordBlocker("different API access", now.Add(2*time.Minute))
 	if err != nil {
 		t.Fatalf("RecordBlocker different: %v", err)
 	}
 	if blocked || goal.BlockerAudit.ConsecutiveTurns != 1 {
 		t.Fatalf("different blocker should reset audit: blocked=%v audit=%+v", blocked, goal.BlockerAudit)
+	}
+	goal, err = goal.AccountUsage(UsageDelta{Turns: 1}, now.Add(3*time.Minute))
+	if err != nil {
+		t.Fatalf("account reset blocker turn: %v", err)
 	}
 	goal, blocked, err = goal.RecordBlocker("  Different   API ACCESS  ", now.Add(3*time.Minute))
 	if err != nil {
@@ -155,12 +182,39 @@ func TestRecordBlockerRequiresConsecutiveSameBlocker(t *testing.T) {
 	if blocked || goal.BlockerAudit.ConsecutiveTurns != 2 {
 		t.Fatalf("second same blocker should not block: blocked=%v audit=%+v", blocked, goal.BlockerAudit)
 	}
+	goal, err = goal.AccountUsage(UsageDelta{Turns: 1}, now.Add(4*time.Minute))
+	if err != nil {
+		t.Fatalf("account second matching blocker turn: %v", err)
+	}
 	goal, blocked, err = goal.RecordBlocker("different api access", now.Add(4*time.Minute))
 	if err != nil {
 		t.Fatalf("RecordBlocker same third: %v", err)
 	}
 	if !blocked || goal.Status != StatusBlocked || goal.BlockerAudit.ConsecutiveTurns != RequiredBlockerTurns {
 		t.Fatalf("third same blocker should block: blocked=%v goal=%+v", blocked, goal)
+	}
+}
+
+func TestAccountUsageResetsBlockerAuditWhenTurnMakesProgress(t *testing.T) {
+	now := time.Date(2026, 6, 25, 10, 0, 0, 0, time.UTC)
+	goal, err := NewGoal(Spec{ThreadID: "thread-1", GoalID: "goal-1", Objective: "ship"}, now)
+	if err != nil {
+		t.Fatalf("NewGoal: %v", err)
+	}
+	goal, _, err = goal.RecordBlocker("needs credentials", now.Add(time.Minute))
+	if err != nil {
+		t.Fatalf("RecordBlocker: %v", err)
+	}
+	goal, err = goal.AccountUsage(UsageDelta{Turns: 1}, now.Add(2*time.Minute))
+	if err != nil {
+		t.Fatalf("account reported turn: %v", err)
+	}
+	goal, err = goal.AccountUsage(UsageDelta{Turns: 1}, now.Add(3*time.Minute))
+	if err != nil {
+		t.Fatalf("account progress turn: %v", err)
+	}
+	if goal.BlockerAudit.ConsecutiveTurns != 0 {
+		t.Fatalf("progress turn should reset blocker audit: %+v", goal.BlockerAudit)
 	}
 }
 

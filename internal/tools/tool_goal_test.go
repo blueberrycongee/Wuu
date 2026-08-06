@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/blueberrycongee/wuu/internal/goalruntime"
 	"github.com/blueberrycongee/wuu/internal/providers"
@@ -95,9 +96,17 @@ func TestGoalToolsLifecycle(t *testing.T) {
 		t.Fatalf("unexpected replacement goal: %+v", replacement)
 	}
 
-	blockRaw, err := NewGoalTool(env).Execute(context.Background(), `{"action":"update","status":"blocked"}`)
-	if err != nil {
-		t.Fatalf("blocked goal update: %v", err)
+	var blockRaw string
+	for i := 0; i < goalruntime.RequiredBlockerTurns; i++ {
+		blockRaw, err = NewGoalTool(env).Execute(context.Background(), `{"action":"update","status":"blocked","reason":"waiting for credentials"}`)
+		if err != nil {
+			t.Fatalf("blocked goal update %d: %v", i, err)
+		}
+		if i < goalruntime.RequiredBlockerTurns-1 {
+			if _, _, err := env.GoalRuntime.AccountActiveUsage(goalruntime.UsageDelta{Turns: 1}, time.Now()); err != nil {
+				t.Fatalf("account blocker turn %d: %v", i, err)
+			}
+		}
 	}
 	var blocked struct {
 		Goal goalruntime.Goal `json:"goal"`
@@ -138,7 +147,7 @@ func TestGetGoalWithoutRuntimeGoal(t *testing.T) {
 	}
 }
 
-func TestUpdateGoalBlocksDirectly(t *testing.T) {
+func TestUpdateGoalRequiresThreeDistinctBlockerTurns(t *testing.T) {
 	env := &Env{
 		RootDir:     t.TempDir(),
 		StateDir:    filepath.Join(t.TempDir(), "state"),
@@ -152,15 +161,33 @@ func TestUpdateGoalBlocksDirectly(t *testing.T) {
 	var updated struct {
 		Goal goalruntime.Goal `json:"goal"`
 	}
-	raw, err := NewGoalTool(env).Execute(context.Background(), `{"action":"update","status":"blocked"}`)
+	if _, err := NewGoalTool(env).Execute(context.Background(), `{"action":"update","status":"blocked"}`); err == nil || !strings.Contains(err.Error(), "requires reason") {
+		t.Fatalf("blocked update without reason should fail clearly: %v", err)
+	}
+	raw, err := NewGoalTool(env).Execute(context.Background(), `{"action":"update","status":"blocked","reason":"needs credentials"}`)
 	if err != nil {
 		t.Fatalf("goal update blocker: %v", err)
 	}
 	if err := json.Unmarshal([]byte(raw), &updated); err != nil {
 		t.Fatalf("parse goal update: %v\n%s", err, raw)
 	}
-	if updated.Goal.Status != goalruntime.StatusBlocked {
-		t.Fatalf("runtime goal should block directly: %+v", updated.Goal)
+	if updated.Goal.Status != goalruntime.StatusActive || updated.Goal.BlockerAudit.ConsecutiveTurns != 1 {
+		t.Fatalf("first blocker report should keep goal active: %+v", updated.Goal)
+	}
+	for i := 1; i < goalruntime.RequiredBlockerTurns; i++ {
+		if _, _, err := env.GoalRuntime.AccountActiveUsage(goalruntime.UsageDelta{Turns: 1}, time.Now()); err != nil {
+			t.Fatalf("account blocker turn %d: %v", i, err)
+		}
+		raw, err = NewGoalTool(env).Execute(context.Background(), `{"action":"update","status":"blocked","reason":"needs credentials"}`)
+		if err != nil {
+			t.Fatalf("goal update blocker %d: %v", i, err)
+		}
+	}
+	if err := json.Unmarshal([]byte(raw), &updated); err != nil {
+		t.Fatalf("parse final goal update: %v\n%s", err, raw)
+	}
+	if updated.Goal.Status != goalruntime.StatusBlocked || updated.Goal.BlockerAudit.ConsecutiveTurns != goalruntime.RequiredBlockerTurns {
+		t.Fatalf("third consecutive blocker report should block: %+v", updated.Goal)
 	}
 }
 
@@ -174,8 +201,15 @@ func TestGoalUpdateBlockedCannotBeMarkedCompleteDirectly(t *testing.T) {
 	if _, err := NewGoalTool(env).Execute(context.Background(), `{"action":"create","objective":"Recover after blocker"}`); err != nil {
 		t.Fatalf("goal create: %v", err)
 	}
-	if _, err := NewGoalTool(env).Execute(context.Background(), `{"action":"update","status":"blocked"}`); err != nil {
-		t.Fatalf("goal update blocked: %v", err)
+	for i := 0; i < goalruntime.RequiredBlockerTurns; i++ {
+		if _, err := NewGoalTool(env).Execute(context.Background(), `{"action":"update","status":"blocked","reason":"needs credentials"}`); err != nil {
+			t.Fatalf("goal update blocked %d: %v", i, err)
+		}
+		if i < goalruntime.RequiredBlockerTurns-1 {
+			if _, _, err := env.GoalRuntime.AccountActiveUsage(goalruntime.UsageDelta{Turns: 1}, time.Now()); err != nil {
+				t.Fatalf("account blocker turn %d: %v", i, err)
+			}
+		}
 	}
 
 	_, err := NewGoalTool(env).Execute(context.Background(), `{"action":"update","status":"complete"}`)
@@ -208,13 +242,13 @@ func TestGoalToolDescriptionsDefineDurableBoundary(t *testing.T) {
 			t.Fatalf("goal description missing %q: %q", want, desc)
 		}
 	}
-	assertToolSchemaOmits(t, def, "goal_id", "task", "trigger_type", "trigger_source", "next_steps", "goal_dir", "token_budget", "kind", "message", "summary", "final_artifact", "step", "reason")
+	assertToolSchemaOmits(t, def, "goal_id", "task", "trigger_type", "trigger_source", "next_steps", "goal_dir", "token_budget", "kind", "message", "summary", "final_artifact", "step")
 
 	props, ok := def.InputSchema["properties"].(map[string]any)
 	if !ok {
 		t.Fatalf("goal schema properties have unexpected type %T", def.InputSchema["properties"])
 	}
-	for _, want := range []string{"action", "objective", "status"} {
+	for _, want := range []string{"action", "objective", "status", "reason"} {
 		if _, ok := props[want]; !ok {
 			t.Fatalf("goal schema should expose %q", want)
 		}

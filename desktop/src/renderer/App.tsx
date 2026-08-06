@@ -63,6 +63,10 @@ import { ConversationSearchOverlay } from "./ConversationSearchOverlay";
 import { useConversationScrollState } from "./ConversationScrollState";
 import { useConversationSearch } from "./ConversationSearchState";
 import {
+  goalSummaryForActiveThread,
+  requireGoalMutationSuccess,
+} from "./GoalSummaryState";
+import {
   SideThreadPanel,
   type SideThreadPanelHandle,
 } from "./SideThreadPanel";
@@ -1222,53 +1226,61 @@ export function App(): JSX.Element {
     },
     [activeThreadID],
   );
+  const activeGoalSummary = goalSummaryForActiveThread(
+    goalSummary,
+    activeThreadID,
+  );
   const editGoalText = useCallback(
     async (nextText: string) => {
-      if (!goalSummary) {
+      if (!activeGoalSummary) {
         return;
       }
-      const threadID = goalSummary.thread_id ?? activeThreadID;
+      const threadID = activeGoalSummary.thread_id;
       if (!threadID) {
         return;
       }
-      await window.wuu.updateGoalText(goalSummary.id, nextText, threadID);
+      const result = await window.wuu.updateGoalText(activeGoalSummary.id, nextText, threadID);
+      requireGoalMutationSuccess(result, "edit");
       await refreshGoalSummary(threadID);
     },
-    [activeThreadID, goalSummary, refreshGoalSummary],
+    [activeGoalSummary, refreshGoalSummary],
   );
   const pauseCurrentGoal = useCallback(async () => {
-    if (!goalSummary) {
+    if (!activeGoalSummary) {
       return;
     }
-    const threadID = goalSummary.thread_id ?? activeThreadID;
+    const threadID = activeGoalSummary.thread_id;
     if (!threadID) {
       return;
     }
-    await window.wuu.pauseGoal(goalSummary.id, threadID);
+    const result = await window.wuu.pauseGoal(activeGoalSummary.id, threadID);
+    requireGoalMutationSuccess(result, "pause");
     await refreshGoalSummary(threadID);
-  }, [activeThreadID, goalSummary, refreshGoalSummary]);
+  }, [activeGoalSummary, refreshGoalSummary]);
   const resumeCurrentGoal = useCallback(async () => {
-    if (!goalSummary) {
+    if (!activeGoalSummary) {
       return;
     }
-    const threadID = goalSummary.thread_id ?? activeThreadID;
+    const threadID = activeGoalSummary.thread_id;
     if (!threadID) {
       return;
     }
-    await window.wuu.resumeGoal(goalSummary.id, threadID);
+    const result = await window.wuu.resumeGoal(activeGoalSummary.id, threadID);
+    requireGoalMutationSuccess(result, "resume");
     await refreshGoalSummary(threadID);
-  }, [activeThreadID, goalSummary, refreshGoalSummary]);
+  }, [activeGoalSummary, refreshGoalSummary]);
   const clearCurrentGoal = useCallback(async () => {
-    if (!goalSummary) {
+    if (!activeGoalSummary) {
       return;
     }
-    const threadID = goalSummary.thread_id ?? activeThreadID;
+    const threadID = activeGoalSummary.thread_id;
     if (!threadID) {
       return;
     }
-    await window.wuu.clearGoal(goalSummary.id, threadID);
+    const result = await window.wuu.clearGoal(activeGoalSummary.id, threadID);
+    requireGoalMutationSuccess(result, "clear");
     await refreshGoalSummary(threadID);
-  }, [activeThreadID, goalSummary, refreshGoalSummary]);
+  }, [activeGoalSummary, refreshGoalSummary]);
   const {
     conversationSearch,
     conversationSearchResults,
@@ -2633,7 +2645,7 @@ export function App(): JSX.Element {
         }
         onInterrupt={() => void interrupt()}
         onResume={() => void resume()}
-        goalSummary={goalSummary}
+        goalSummary={activeGoalSummary}
         onEditGoal={editGoalText}
         onPauseGoal={pauseCurrentGoal}
         onResumeGoal={resumeCurrentGoal}

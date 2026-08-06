@@ -2,7 +2,9 @@ package goalruntime
 
 import (
 	"errors"
+	"fmt"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -122,6 +124,25 @@ func (r *Runtime) AccountActiveUsage(delta UsageDelta, now time.Time) (Goal, boo
 		return Goal{}, false, nil
 	}
 	return goal, accounted, err
+}
+
+// AccountGoalUsage attributes a turn that was admitted under goalID even when
+// the model made that goal terminal before the turn settled. This prevents a
+// successful completion from disappearing from the final usage totals.
+func (r *Runtime) AccountGoalUsage(goalID string, delta UsageDelta, now time.Time) (Goal, error) {
+	if r == nil || r.store == nil {
+		return Goal{}, errors.New("goal runtime store is required")
+	}
+	goalID = strings.TrimSpace(goalID)
+	if goalID == "" {
+		return Goal{}, errors.New("goal id is required")
+	}
+	return r.store.Update(func(goal Goal) (Goal, error) {
+		if goal.GoalID != goalID {
+			return Goal{}, fmt.Errorf("goal %q is no longer current", goalID)
+		}
+		return goal.AccountUsage(delta, now)
+	})
 }
 
 func (r *Runtime) RecordBlocker(message string, now time.Time) (Goal, bool, error) {

@@ -44,7 +44,7 @@ func (s *Server) handleGoalPause(req Request) error {
 	if !params.ConfirmUserApproved {
 		return s.writeResponse(req.ID, nil, fmt.Errorf("goal pause requires confirm_user_approved=true"))
 	}
-	_, runtime, err := s.runtimeGoalForControl(params.GoalID, params.ThreadID)
+	runtimeGoal, runtime, err := s.runtimeGoalForControl(params.GoalID, params.ThreadID)
 	if err != nil {
 		return s.writeResponse(req.ID, nil, err)
 	}
@@ -53,6 +53,14 @@ func (s *Server) handleGoalPause(req Request) error {
 	}
 	if _, err := runtime.SetUserStatus(goalruntime.StatusPaused, time.Now().UTC()); err != nil {
 		return s.writeResponse(req.ID, nil, err)
+	}
+	// Pausing a goal is an execution control, not only a persisted label. Once
+	// the state is paused, cancel any already-admitted turn so it cannot keep
+	// producing provider output or mutations under the old active goal.
+	if s.thread(runtimeGoal.ThreadID) != nil {
+		if _, err := s.interruptThreadExecution(runtimeGoal.ThreadID, ""); err != nil {
+			return s.writeResponse(req.ID, nil, fmt.Errorf("interrupt paused goal turn: %w", err))
+		}
 	}
 	return s.writeResponse(req.ID, GoalPauseResult{OK: true}, nil)
 }
@@ -91,7 +99,7 @@ func (s *Server) handleGoalClear(req Request) error {
 	if !params.ConfirmUserApproved {
 		return s.writeResponse(req.ID, nil, fmt.Errorf("goal clear requires confirm_user_approved=true"))
 	}
-	_, runtime, err := s.runtimeGoalForControl(params.GoalID, params.ThreadID)
+	runtimeGoal, runtime, err := s.runtimeGoalForControl(params.GoalID, params.ThreadID)
 	if err != nil {
 		return s.writeResponse(req.ID, nil, err)
 	}
@@ -100,6 +108,14 @@ func (s *Server) handleGoalClear(req Request) error {
 	}
 	if err := runtime.Clear(); err != nil {
 		return s.writeResponse(req.ID, nil, err)
+	}
+	// Clearing removes the continuation state first, then interrupts any turn
+	// already admitted from it. Terminal settlement cannot recreate or resume
+	// the cleared goal.
+	if s.thread(runtimeGoal.ThreadID) != nil {
+		if _, err := s.interruptThreadExecution(runtimeGoal.ThreadID, ""); err != nil {
+			return s.writeResponse(req.ID, nil, fmt.Errorf("interrupt cleared goal turn: %w", err))
+		}
 	}
 	return s.writeResponse(req.ID, GoalClearResult{OK: true}, nil)
 }
