@@ -5,6 +5,7 @@ import type { ThreadItem, Turn } from "../shared/protocol";
 import { streamTextKey, streamTextStore } from "./StreamText";
 import { ThreadItemView } from "./ThreadItemView";
 import { clearToasts, ToastViewport } from "./Toast";
+import { desktopPluginHost } from "./plugins/DesktopPluginRuntime";
 
 let container: HTMLDivElement | undefined;
 let root: Root | undefined;
@@ -82,12 +83,40 @@ afterEach(() => {
   container?.remove();
   streamTextStore.clearItem("turn-1", "final-1");
   clearToasts();
+  desktopPluginHost.unload("thread-item-production-test");
   vi.restoreAllMocks();
   root = undefined;
   container = undefined;
 });
 
 describe("ThreadItemView", () => {
+  it("uses a conversation item presenter for the complete production item root", async () => {
+    await desktopPluginHost.activateGeneration({
+      pluginId: "thread-item-production-test",
+      generation: "gen-1",
+      register: (api) => {
+        api.registerPresenter({
+          id: "assistant-root",
+          target: "conversation.item",
+          key: "assistant-message",
+          render: ({ snapshot }) => (
+            <section data-production-presenter>
+              {(snapshot as { text?: string }).text}
+            </section>
+          ),
+        });
+      },
+    });
+    render({
+      item: makeFinalAnswer("completed"),
+      turnStatus: "completed",
+      streaming: false,
+    });
+
+    expect(container?.querySelector("[data-production-presenter]")?.textContent).toBe("Final answer text.");
+    expect(container?.querySelector(".agent-block")).toBeNull();
+  });
+
   it("shows short user messages in full without a collapse control", () => {
     render({
       item: makeUserMessage("Short query."),

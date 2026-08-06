@@ -47,28 +47,9 @@ import {
   userFacingErrorForMessage,
 } from "./UserFacingErrors";
 import { useI18n } from "./i18n";
+import { ConversationItemPresentation } from "./plugins/ConversationItemPresentation";
 
-export const ThreadItemView = memo(function ThreadItemView({
-  turnID,
-  turnStatus,
-  item,
-  cwd,
-  onOpenFile,
-  streaming,
-  pendingCompanionReasoning,
-  actionableAgentMessageID,
-  latestAgentMessageID,
-  onStreamFrame,
-  onForkMessage,
-  onOpenRuns,
-  onEditMessage,
-  editing,
-  editSubmitting,
-  onCancelEditMessage,
-  onSubmitEditMessage,
-  onOpenAgent,
-  editSummaryCard,
-}: {
+interface ThreadItemViewProps {
   turnID: string;
   turnStatus: Turn["status"];
   item: ThreadItem;
@@ -94,7 +75,58 @@ export const ThreadItemView = memo(function ThreadItemView({
   ) => void;
   onOpenAgent?: (agentID: string) => void;
   editSummaryCard?: JSX.Element;
-}): JSX.Element | null {
+}
+
+export const ThreadItemView = memo(function ThreadItemView(props: ThreadItemViewProps): JSX.Element | null {
+  const { item, onEditMessage, turnID, editing } = props;
+  const { t } = useI18n();
+  if (item.type === "tool_call" || item.type === "collab_agent_tool_call") {
+    return <BuiltInThreadItemView {...props} />;
+  }
+  if (item.type === "user_message" && (isProcessNotificationItem(item) || isInternalUserNotificationItem(item))) {
+    return <BuiltInThreadItemView {...props} />;
+  }
+  const agentHandoff = item.type === "user_message" && isAgentHandoffItem(item);
+  const text = agentHandoff
+    ? (agentHandoffUserMessageDisplay(item)?.label ?? t("agent.handoff.message.updatedGeneric"))
+    : item.type === "error" ? undefined : item.text ?? item.reason;
+  const editable = item.type === "user_message"
+    && !agentHandoff
+    && !editing
+    && onEditMessage !== undefined
+    && ((item.text?.trim().length ?? 0) > 0 || (item.images?.length ?? 0) > 0 || (item.files?.length ?? 0) > 0);
+  const fallback = <BuiltInThreadItemView {...props} />;
+  return (
+    <ConversationItemPresentation
+      item={item}
+      text={text}
+      fallback={fallback}
+      onEdit={editable ? () => onEditMessage(turnID, item) : undefined}
+    />
+  );
+});
+
+function BuiltInThreadItemView({
+  turnID,
+  turnStatus,
+  item,
+  cwd,
+  onOpenFile,
+  streaming,
+  pendingCompanionReasoning,
+  actionableAgentMessageID,
+  latestAgentMessageID,
+  onStreamFrame,
+  onForkMessage,
+  onOpenRuns,
+  onEditMessage,
+  editing,
+  editSubmitting,
+  onCancelEditMessage,
+  onSubmitEditMessage,
+  onOpenAgent,
+  editSummaryCard,
+}: ThreadItemViewProps): JSX.Element | null {
   const { t } = useI18n();
   switch (item.type) {
     case "user_message": {
@@ -256,7 +288,7 @@ export const ThreadItemView = memo(function ThreadItemView({
     default:
       return null;
   }
-});
+}
 
 function UserMessageBubble({
   text,
