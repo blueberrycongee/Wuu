@@ -98,21 +98,21 @@ function pendingSpawnTurn(): Turn {
 }
 
 describe("ConversationTurnList", () => {
-  it("routes a single pending spawn turn through the orchestration renderer", () => {
+  it("renders a settled spawn tool call as an ordinary turn", () => {
     const turn = pendingSpawnTurn();
     render(
       <ConversationTurnList
         threadID="thread-1"
         turns={[turn]}
-        renderTurn={() => <div data-testid="ordinary-turn" />}
-        renderTurnGroup={(turns) => (
-          <div data-testid="orchestration-turn">{turns[0]?.id}</div>
+        renderTurn={(renderedTurn) => (
+          <div data-testid="ordinary-turn">{renderedTurn.id}</div>
         )}
       />,
     );
 
-    expect(container.querySelector('[data-testid="orchestration-turn"]')).not.toBeNull();
-    expect(container.querySelector('[data-testid="ordinary-turn"]')).toBeNull();
+    expect(container.querySelector('[data-testid="ordinary-turn"]')?.textContent).toBe(
+      turn.id,
+    );
   });
 
   it("keeps an ordinary single turn on the ordinary renderer", () => {
@@ -122,12 +122,10 @@ describe("ConversationTurnList", () => {
         threadID="thread-1"
         turns={[turn]}
         renderTurn={() => <div data-testid="ordinary-turn" />}
-        renderTurnGroup={() => <div data-testid="orchestration-turn" />}
       />,
     );
 
     expect(container.querySelector('[data-testid="ordinary-turn"]')).not.toBeNull();
-    expect(container.querySelector('[data-testid="orchestration-turn"]')).toBeNull();
   });
 
   it("renders all turns fully below the collapse threshold", () => {

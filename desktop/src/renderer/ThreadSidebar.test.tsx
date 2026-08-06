@@ -319,7 +319,7 @@ describe("ProjectList", () => {
     expect(container.textContent).not.toContain("Wrong duplicate");
   });
 
-  it("shows a running spinner while a direct child agent is still active", () => {
+  it("keeps the parent thread settled while a direct child agent runs", () => {
     const [thread] = summarizeThreadsForSidebar([
       makeProjectThread("group-1", "/repo/wuu", "Group work", [], {
         child_agents: [
@@ -352,11 +352,11 @@ describe("ProjectList", () => {
     });
 
     const row = container.querySelector(".thread-row");
-    expect(row?.classList.contains("running")).toBe(true);
-    expect(row?.querySelector(".thread-row-spinner")).not.toBeNull();
+    expect(row?.classList.contains("running")).toBe(false);
+    expect(row?.querySelector(".thread-row-spinner")).toBeNull();
     expect(
       row?.querySelector(".thread-row-main")?.getAttribute("aria-label"),
-    ).toContain("响应中");
+    ).not.toContain("响应中");
   });
 
   it("renders thread actions and status in English", () => {

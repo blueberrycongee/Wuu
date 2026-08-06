@@ -9507,6 +9507,26 @@ func TestServerQueuesAgentCompletionWhileRootTurnIsRunning(t *testing.T) {
 	}
 	waitForMethod(t, out, NotificationAgentMailbox)
 
+	deadline := time.Now().Add(time.Second)
+	for {
+		rootThread.mu.Lock()
+		pendingSteers := len(rootThread.pendingSteers)
+		rootThread.mu.Unlock()
+		srv.mu.Lock()
+		pendingCompletionTurns := len(srv.pendingAgentCompletionTurns[threadID])
+		srv.mu.Unlock()
+		if pendingSteers != 0 {
+			t.Fatalf("agent completion must not steer the active parent turn, got %d pending steer(s)", pendingSteers)
+		}
+		if pendingCompletionTurns == 1 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("expected one queued agent completion turn, got %d", pendingCompletionTurns)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
 	close(mainClient.release)
 	waitForTurnCompletedCountForThread(t, out, threadID, 2)
 

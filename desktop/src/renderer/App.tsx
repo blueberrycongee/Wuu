@@ -89,7 +89,6 @@ import {
   latestContextUsageForThread,
   activeTurnIDForThread,
   activeTurnTokenSpeedSnapshot,
-  threadAwaitingBackgroundAgents,
   flushPendingStreamingTokenSamples,
   recordPendingStreamingTokenSample,
   type PendingStreamingTokenSamples,
@@ -109,6 +108,7 @@ import {
   initialState,
   isAnyThreadRunning,
   isStateActiveThreadRunning,
+  isThreadExecuting,
   isThreadRunning,
   isThreadUnread,
   latestPlanUpdateForThread,
@@ -2213,18 +2213,13 @@ export function App(): JSX.Element {
   );
   const activeThreadReadOnly = Boolean(activeThread?.read_only);
   const activeThreadIsRunning = isStateActiveThreadRunning(state);
-  // Orchestration wait (threadAwaitingBackgroundAgents): the composer keeps
-  // the steer affordance and a live status so the parked merged block reads
-  // exactly like an in-progress turn (A/B parity).
-  const activeThreadAwaitingAgents = threadAwaitingBackgroundAgents(activeThread);
-  const activeThreadCanSteer =
-    Boolean(activeTurnIDForThread(activeThread)) || activeThreadAwaitingAgents;
+  const activeThreadCanSteer = Boolean(activeTurnIDForThread(activeThread));
   const activeThreadStreamStatus = turnStreamStatusForThread(state, activeThread);
   const anyThreadIsRunning = isAnyThreadRunning(state) || viewContextSwitchPending;
   const runningThreadKey = useMemo(() => {
     const running = new Set<string>();
     for (const thread of [state.thread, state.secondaryThread, ...state.threads]) {
-      if (thread?.cwd && isThreadRunning(thread)) {
+      if (thread?.cwd && isThreadExecuting(thread)) {
         running.add(`${thread.id}\0${thread.cwd}`);
       }
     }
@@ -2311,7 +2306,7 @@ export function App(): JSX.Element {
     const names = new Set<string>();
     for (const thread of [state.thread, state.secondaryThread, ...state.threads]) {
       const provider = thread?.model_provider.trim();
-      if (provider && isThreadRunning(thread)) {
+      if (provider && isThreadExecuting(thread)) {
         names.add(provider);
       }
     }
@@ -2532,15 +2527,12 @@ export function App(): JSX.Element {
             ? activeThreadIsRunning
               ? t("app.childTaskRunning")
               : t("app.childTaskReadOnly")
-            : streamStatus?.text ??
-              (activeThreadAwaitingAgents
-                ? t("composer.subagentsRunning")
-                : state.status)
+            : streamStatus?.text ?? state.status
         }
         statusLiveProgress={
           activeThreadReadOnly
             ? false
-            : streamStatus?.liveProgress ?? activeThreadAwaitingAgents
+            : streamStatus?.liveProgress ?? false
         }
         readOnly={activeThreadReadOnly}
         initialized={visibleConversationRuntime}

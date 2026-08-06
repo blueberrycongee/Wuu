@@ -277,7 +277,9 @@ receives the whole-tree status snapshot, including completed results and
 cancelled workers' partial results and resume hints. This does not automatically
 restart every worker; the root can resume selected workers with `send_message`.
 Natural turn completion still allows asynchronous workers to finish and wake
-their parent, while thread/session close remains the true termination path.
+their parent, while thread/session close remains the true termination path. A
+terminal child delivery never steers an active parent turn. It is durably queued
+and starts a separate automatic completion turn after the active turn ends.
 
 ## Notifications Used By Text Clients
 

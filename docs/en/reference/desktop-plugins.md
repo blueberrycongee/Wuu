@@ -60,7 +60,7 @@ disabled, removed, or upgraded.
 | `app.shell` | Entire React application shell |
 | `app.sidebar` | Left navigation |
 | `conversation.composer` | Main prompt composer |
-| `conversation.timeline` | One conversation turn/orchestration group |
+| `conversation.timeline` | One conversation turn |
 | `view.settings` | Settings shell |
 | `view.catalog` | Skills, plugins, and Automations catalogs |
 

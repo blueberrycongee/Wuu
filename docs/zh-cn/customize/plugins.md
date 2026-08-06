@@ -101,7 +101,7 @@ export async function activate(api) {
 | `app.shell` | 替换或包装整个 React 应用界面 |
 | `app.sidebar` | 替换或包装左侧导航 |
 | `conversation.composer` | 替换或包装主输入区 |
-| `conversation.timeline` | 替换或包装一组对话消息和 Agent 运行时间线 |
+| `conversation.timeline` | 替换或包装一个真实对话 turn |
 | `view.settings` | 替换或包装设置界面 |
 | `view.catalog` | 替换或包装 Skills、插件和 Automations 目录 |
 
