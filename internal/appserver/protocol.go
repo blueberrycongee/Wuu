@@ -170,18 +170,25 @@ const (
 	// per second; the renderer is expected to derive t/s from the deltas.
 	NotificationTurnUsage = "turn/usage"
 
-	NotificationItemStarted         = "item/started"
-	NotificationItemCompleted       = "item/completed"
-	NotificationAgentMessageDelta   = "item/agentMessage/delta"
-	NotificationAgentMessageReplace = "item/agentMessage/replace"
-	NotificationReasoningDelta      = "item/reasoning/delta"
-	NotificationReasoningReplace    = "item/reasoning/replace"
-	NotificationToolCallDelta       = "item/toolCall/delta"
-	NotificationToolCallOutput      = "item/toolCall/outputDelta"
-	NotificationAgentUpdated        = "agent/updated"
-	NotificationAgentMailbox        = "agent/mailbox"
-	NotificationMCPStatusUpdated    = "mcp/status/updated"
+	NotificationItemStarted            = "item/started"
+	NotificationItemCompleted          = "item/completed"
+	NotificationAgentMessageDelta      = "item/agentMessage/delta"
+	NotificationAgentMessageReplace    = "item/agentMessage/replace"
+	NotificationReasoningDelta         = "item/reasoning/delta"
+	NotificationReasoningReplace       = "item/reasoning/replace"
+	NotificationToolCallDelta          = "item/toolCall/delta"
+	NotificationToolCallOutput         = "item/toolCall/outputDelta"
+	NotificationAgentUpdated           = "agent/updated"
+	NotificationAgentMailbox           = "agent/mailbox"
+	NotificationMCPStatusUpdated       = "mcp/status/updated"
+	NotificationPluginInventoryChanged = "plugin/inventory/changed"
 )
+
+type PluginInventoryChangedNotification struct {
+	Epoch              uint64                     `json:"epoch"`
+	ExtensionInventory []ExtensionInventoryRecord `json:"extension_inventory"`
+	Skills             []SkillSummary             `json:"skills"`
+}
 
 type Request struct {
 	ID     json.RawMessage `json:"id,omitempty"`

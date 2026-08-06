@@ -1851,8 +1851,9 @@ func discoverPlugins(rootDir, wuuHome string) []pluginpkg.Plugin {
 }
 
 // activatedPlugins separates inert discovery from executable activation.
-// Community packages require an exact user-owned grant; official bundled
-// packages are trusted by provenance. Either tier may be explicitly disabled.
+// Community packages require an exact user-owned grant. Official bundled
+// packages and authenticated local development generations are trusted by
+// provenance. Every tier may still be explicitly disabled.
 func activatedPlugins(cfg config.Config, discovered []pluginpkg.Plugin) []pluginpkg.Plugin {
 	settings := cfg.Extensions
 	out := make([]pluginpkg.Plugin, 0, len(discovered))
@@ -1860,7 +1861,7 @@ func activatedPlugins(cfg config.Config, discovered []pluginpkg.Plugin) []plugin
 		if settings != nil && settings.IsDisabled(item.SubjectID) {
 			continue
 		}
-		if item.Official {
+		if item.Official || item.AuthorizedDev {
 			out = append(out, item)
 			continue
 		}

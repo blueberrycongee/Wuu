@@ -566,6 +566,12 @@ func (s *Server) currentExtensionConfig() config.Config {
 
 func pluginPackageInventoryState(settings extensions.Settings, item pluginpkg.Plugin) (ExtensionApprovalState, ExtensionState, extensions.GrantScope, bool) {
 	enabled := !settings.IsDisabled(item.SubjectID)
+	if item.AuthorizedDev {
+		if !enabled {
+			return ExtensionApprovalGranted, ExtensionStateRejected, "", false
+		}
+		return ExtensionApprovalGranted, ExtensionStateActive, "", true
+	}
 	if item.Official {
 		if !enabled {
 			return ExtensionApprovalOfficial, ExtensionStateRejected, "", false

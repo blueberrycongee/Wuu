@@ -390,6 +390,7 @@ func NewWithCredentialStore(rt *runtime.Session, out io.Writer, store credential
 	if s.channelService != nil {
 		s.startBackground(s.restoreNamedAgentWakes)
 	}
+	s.startPluginGenerationWatch()
 	return s
 }
 

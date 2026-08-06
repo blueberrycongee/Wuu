@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/blueberrycongee/wuu/internal/session"
 )
 
 func TestPluginCreateProducesDistinctStandaloneTemplates(t *testing.T) {
@@ -119,11 +121,26 @@ func TestDevRefreshIsAtomicAndSeparateFromNormalInstall(t *testing.T) {
 	writePluginDevTestFile(t, filepath.Join(dir, "package.json"), `{"scripts":{"build":"custom-build"}}`)
 	writePluginDevTestFile(t, filepath.Join(dir, "src.js"), "export const value = 'old';")
 	writePluginDevTestFile(t, filepath.Join(dir, "node_modules", "dev-only", "index.js"), "not packaged")
+	devAuthorizationDir := filepath.Join(home, "dev", "plugins")
+	if err := os.MkdirAll(devAuthorizationDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := authorizeDevDirectory(devAuthorizationDir, "dev-test", dir); err != nil {
+		t.Fatal(err)
+	}
+	initialLease, acquired, err := session.TryAcquirePluginGenerationExecutionLease(home)
+	if err != nil || !acquired {
+		t.Fatalf("acquire initial generation: %v, %v", acquired, err)
+	}
+	initialEpoch := initialLease.Epoch()
+	if err := initialLease.Release(); err != nil {
+		t.Fatal(err)
+	}
 	manager := writePluginDevTestManager(t, `mkdir -p dist; cp src.js dist/index.js`)
 	if diagnostic, err := refreshDevGeneration(home, dir, manager); err != nil || diagnostic.Level != "pass" {
 		t.Fatalf("first refresh = %+v, %v", diagnostic, err)
 	}
-	devArtifact := filepath.Join(home, "dev", "runtime", "plugins", "dev-test", "dist", "index.js")
+	devArtifact := filepath.Join(home, "dev", "generations", "dev-test", "package", "dist", "index.js")
 	before, err := os.ReadFile(devArtifact)
 	if err != nil {
 		t.Fatal(err)
@@ -131,8 +148,26 @@ func TestDevRefreshIsAtomicAndSeparateFromNormalInstall(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(home, "plugins", "dev-test")); !os.IsNotExist(err) {
 		t.Fatalf("dev generation leaked into normal installs: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(home, "dev", "runtime", "plugins", "dev-test", "node_modules")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(home, "dev", "generations", "dev-test", "package", "node_modules")); !os.IsNotExist(err) {
 		t.Fatalf("development dependencies leaked into generation: %v", err)
+	}
+	execution, acquired, err := session.TryAcquirePluginGenerationExecutionLease(home)
+	if err != nil || !acquired {
+		t.Fatalf("acquire execution generation: %v, %v", acquired, err)
+	}
+	if execution.Epoch() != initialEpoch+1 {
+		t.Fatalf("published generation epoch = %d, want %d", execution.Epoch(), initialEpoch+1)
+	}
+	writePluginDevTestFile(t, filepath.Join(dir, "src.js"), "export const value = 'blocked';")
+	if diagnostic, err := refreshDevGeneration(home, dir, manager); err == nil || diagnostic.Check != "dev.mutation" {
+		t.Fatalf("refresh while execution owns generation = %+v, %v", diagnostic, err)
+	}
+	if err := execution.Release(); err != nil {
+		t.Fatal(err)
+	}
+	blocked, err := os.ReadFile(devArtifact)
+	if err != nil || string(blocked) != string(before) {
+		t.Fatalf("execution-blocked refresh replaced generation: %q, %v", blocked, err)
 	}
 	failingManager := writePluginDevTestManager(t, `exit 7`)
 	if diagnostic, err := refreshDevGeneration(home, dir, failingManager); err == nil || diagnostic.Level != "fail" {

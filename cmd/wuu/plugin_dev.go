@@ -18,6 +18,7 @@ import (
 
 	pluginpkg "github.com/blueberrycongee/wuu/internal/plugin"
 	"github.com/blueberrycongee/wuu/internal/pluginhost"
+	"github.com/blueberrycongee/wuu/internal/session"
 	"github.com/blueberrycongee/wuu/internal/statepath"
 )
 
@@ -449,12 +450,7 @@ func runPluginPack(args []string) error {
 }
 
 // DevAuthorization records a one-time dev directory grant.
-type DevAuthorization struct {
-	PluginID  string    `json:"plugin_id"`
-	Directory string    `json:"directory"`
-	Token     string    `json:"token,omitempty"`
-	CreatedAt time.Time `json:"created_at"`
-}
+type DevAuthorization = pluginpkg.DevAuthorization
 
 func runPluginDevMode(args []string) error {
 	fs := flag.NewFlagSet("plugin dev", flag.ContinueOnError)
@@ -600,12 +596,28 @@ func refreshDevGeneration(wuuHome, dir, packageManager string) (pluginDiagnostic
 	if err != nil {
 		return pluginDiagnostic{Level: "fail", Check: "dev.validate", Message: err.Error()}, fmt.Errorf("dev validation failed; previous generation preserved: %w", err)
 	}
-	devRuntimeHome := filepath.Join(wuuHome, "dev", "runtime")
-	result, err := pluginpkg.InstallPackage(devRuntimeHome, prepared)
+	authorization, err := pluginpkg.ReadDevAuthorization(wuuHome, inspection.ID)
+	if err != nil {
+		return pluginDiagnostic{Level: "fail", Check: "dev.authorization", Message: err.Error()}, fmt.Errorf("dev authorization failed; previous generation preserved: %w", err)
+	}
+	lease, acquired, err := session.TryAcquirePluginGenerationMutationLease(wuuHome)
+	if err != nil {
+		return pluginDiagnostic{Level: "fail", Check: "dev.mutation", Message: err.Error()}, fmt.Errorf("dev generation mutation failed; previous generation preserved: %w", err)
+	}
+	if !acquired {
+		err := errors.New("plugin executions currently own the active generation")
+		return pluginDiagnostic{Level: "fail", Check: "dev.mutation", Message: err.Error()}, fmt.Errorf("dev generation refresh refused; previous generation preserved: %w", err)
+	}
+	defer lease.Release()
+	epoch, err := lease.Advance()
+	if err != nil {
+		return pluginDiagnostic{Level: "fail", Check: "dev.mutation", Message: err.Error()}, fmt.Errorf("dev generation epoch advance failed; previous generation preserved: %w", err)
+	}
+	published, err := pluginpkg.PublishDevGeneration(wuuHome, dir, prepared, authorization)
 	if err != nil {
 		return pluginDiagnostic{Level: "fail", Check: "dev.refresh", Message: err.Error()}, fmt.Errorf("dev generation refresh failed; previous generation preserved: %w", err)
 	}
-	return pluginDiagnostic{Level: "pass", Check: "dev.refresh", Message: fmt.Sprintf("published generation %s at %s", inspection.Fingerprint, result.Destination)}, nil
+	return pluginDiagnostic{Level: "pass", Check: "dev.refresh", Message: fmt.Sprintf("published generation %s at epoch %d from %s", published.Fingerprint, epoch, published.Root)}, nil
 }
 
 func preparePluginSource(source string) (string, func(), error) {

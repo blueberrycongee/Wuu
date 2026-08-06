@@ -350,7 +350,7 @@ func (s *Server) beginPluginGenerationMutation(action string) (func(), error) {
 }
 
 func (s *Server) refreshPluginPackages() ([]ExtensionInventoryRecord, []SkillSummary, error) {
-	if err := s.rt.RefreshExtensions(s.currentExtensionConfig()); err != nil {
+	if err := s.refreshExtensions(s.currentExtensionConfig()); err != nil {
 		return nil, nil, err
 	}
 	s.resetThreadRuntimesForGeneralSettings("")

@@ -15,6 +15,7 @@ type Plugin struct {
 	Root                 string
 	ManifestPath         string
 	Official             bool
+	AuthorizedDev        bool
 	WorkspaceID          string
 	SubjectID            string
 	Fingerprint          string
@@ -29,12 +30,18 @@ func DiscoverWithOptions(projectRoot, wuuHome string, options DiscoverOptions) [
 	bundledPlugins := discoverBundled(wuuHome, options)
 	userPlugins := scanPluginRoots(userPluginRoots(wuuHome), "user", "")
 	projectPlugins := scanPluginRoots(projectPluginRoots(projectRoot), "project", workspacePolicyID(projectRoot))
+	devPlugins := discoverAuthorizedDev(wuuHome)
 
-	byID := make(map[string]Plugin, len(bundledPlugins)+len(userPlugins)+len(projectPlugins))
+	byID := make(map[string]Plugin, len(bundledPlugins)+len(userPlugins)+len(projectPlugins)+len(devPlugins))
 	for _, item := range userPlugins {
 		byID[item.ID] = item
 	}
 	for _, item := range projectPlugins {
+		byID[item.ID] = item
+	}
+	// A development generation wins normal user/project collisions only after
+	// its package and authorization receipt have both been verified.
+	for _, item := range devPlugins {
 		byID[item.ID] = item
 	}
 	// Official bundled plugins are trusted by provenance, not by id. They win
