@@ -316,11 +316,24 @@ export function Composer({
   // the shell's render cost directly on the input event.
   const [prompt, setLocalPrompt] = useState(committedPrompt);
   const [lastCommittedPrompt, setLastCommittedPrompt] = useState(committedPrompt);
+  const optimisticPromptQueueRef = useRef<string[]>([]);
   if (committedPrompt !== lastCommittedPrompt) {
     setLastCommittedPrompt(committedPrompt);
-    setLocalPrompt(committedPrompt);
+    const optimisticPromptIndex = optimisticPromptQueueRef.current.lastIndexOf(committedPrompt);
+    if (optimisticPromptIndex >= 0) {
+      // Parent draft updates run in a transition, so an earlier value can be
+      // committed after the textarea has already accepted more keystrokes.
+      // Re-applying that stale echo changes the controlled DOM value and makes
+      // Chromium terminate an active CJK composition. Acknowledge echoes
+      // without replacing the newer local value.
+      optimisticPromptQueueRef.current.splice(0, optimisticPromptIndex + 1);
+    } else {
+      optimisticPromptQueueRef.current.length = 0;
+      setLocalPrompt(committedPrompt);
+    }
   }
   function setPrompt(value: string): void {
+    optimisticPromptQueueRef.current.length = 0;
     setLocalPrompt(value);
     commitPrompt(value);
   }
@@ -641,6 +654,7 @@ export function Composer({
     setSlashDismissedValue("");
     const nextPrompt = hasCollapsedPromptBlocks ? `${collapsedPromptPrefix}${value}` : value;
     setLocalPrompt(nextPrompt);
+    optimisticPromptQueueRef.current.push(nextPrompt);
     startTransition(() => commitPrompt(nextPrompt));
   }
 

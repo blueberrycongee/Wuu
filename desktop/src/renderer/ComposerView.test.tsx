@@ -318,6 +318,7 @@ function dispatchDrag(
 function renderStatefulComposer(props: {
   initialPrompt?: string;
   onSend?: (prompt: string) => void;
+  onCommitPrompt?: (prompt: string, commit: (prompt: string) => void) => void;
   showUltraToggle?: boolean;
   activeContext?: RuntimeContext;
   readOnly?: boolean;
@@ -333,11 +334,18 @@ function renderStatefulComposer(props: {
   function Harness(): JSX.Element {
     const [prompt, setPrompt] = useState(props.initialPrompt ?? "");
     const [ultraEnabled, setUltraEnabled] = useState(false);
+    const commitPrompt = (nextPrompt: string): void => {
+      if (props.onCommitPrompt) {
+        props.onCommitPrompt(nextPrompt, setPrompt);
+        return;
+      }
+      setPrompt(nextPrompt);
+    };
     return (
       <ImagePreviewProvider>
         <Composer
           prompt={prompt}
-          setPrompt={setPrompt}
+          setPrompt={commitPrompt}
           files={[]}
           images={[]}
           queuedMessages={[]}
@@ -560,6 +568,41 @@ describe("Composer send control", () => {
     });
     expect(commitPrompt).toHaveBeenCalledWith("刚刚输入的内容");
     expect(onSend).toHaveBeenCalledWith("刚刚输入的内容");
+  });
+
+  it("does not replace active IME text with a delayed parent draft echo", () => {
+    const pendingCommits: Array<() => void> = [];
+    renderStatefulComposer({
+      onCommitPrompt: (prompt, commit) => {
+        pendingCommits.push(() => commit(prompt));
+      },
+    });
+    const textarea = container.querySelector<HTMLTextAreaElement>("textarea");
+    if (!textarea) throw new Error("composer textarea not rendered");
+
+    act(() => {
+      textarea.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+      setTextareaValue(textarea, "y");
+      setTextareaValue(textarea, "yi");
+    });
+    expect(pendingCommits).toHaveLength(2);
+    expect(textarea.value).toBe("yi");
+
+    act(() => {
+      pendingCommits[0]?.();
+    });
+    expect(textarea.value).toBe("yi");
+
+    act(() => {
+      setTextareaValue(textarea, "yib");
+      textarea.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true }));
+    });
+    expect(textarea.value).toBe("yib");
+
+    act(() => {
+      pendingCommits[1]?.();
+    });
+    expect(textarea.value).toBe("yib");
   });
 
   it("does not send when Enter confirms an active IME composition", async () => {
