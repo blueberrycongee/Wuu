@@ -38,6 +38,9 @@ type HostConfig struct {
 	WuuHome string
 	// Timeout for individual operations.
 	Timeout int // seconds, defaults to 30
+	// AllowFailures disables Close's default test failure. It is intended only
+	// for tests of the contract-test host itself that assert a failing check.
+	AllowFailures bool
 }
 
 // Host is a standalone plugin contract test host. It starts an external
@@ -72,9 +75,9 @@ func NewHost(t *testing.T, config HostConfig) *Host {
 	return h
 }
 
-// Close shuts down the plugin process and prints the diagnostic summary.
-// It does NOT automatically fail the test for recorded failures — callers
-// should explicitly check diagnostics or use AssertNoDiagnosticsAbove.
+// Close shuts down the plugin process and fails the test if any check recorded
+// a fail diagnostic. This prevents a forgotten final assertion from producing
+// a false-positive contract test.
 func (h *Host) Close() {
 	if h.closed {
 		return
@@ -97,6 +100,14 @@ func (h *Host) Close() {
 		}
 	}
 	h.t.Logf("── Contract test summary ── %d pass, %d fail, %d skip", pass, fail, skip)
+	if fail > 0 && !h.config.AllowFailures {
+		h.t.Errorf("plugin contract recorded %d failing diagnostic(s)", fail)
+	}
+}
+
+// Diagnostics returns a snapshot of all recorded checks.
+func (h *Host) Diagnostics() []Diagnostic {
+	return append([]Diagnostic(nil), h.diags...)
 }
 
 func (h *Host) record(level, check, message string, detail ...string) {

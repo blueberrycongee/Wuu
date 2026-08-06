@@ -34,7 +34,7 @@ func TestHostManifestChecks(t *testing.T) {
 func TestHostManifestMissing(t *testing.T) {
 	dir := t.TempDir()
 
-	host := NewHost(t, HostConfig{PluginDir: dir})
+	host := NewHost(t, HostConfig{PluginDir: dir, AllowFailures: true})
 	defer host.Close()
 
 	host.AssertManifestExists()
@@ -59,7 +59,7 @@ func TestHostManifestMissingField(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	host := NewHost(t, HostConfig{PluginDir: dir})
+	host := NewHost(t, HostConfig{PluginDir: dir, AllowFailures: true})
 	defer host.Close()
 
 	host.AssertManifestValid() // default required: id, schema_version, version
@@ -77,7 +77,7 @@ func TestHostManifestMissingField(t *testing.T) {
 
 func TestHostCapabilityDescriptorValidation(t *testing.T) {
 	dir := t.TempDir()
-	host := NewHost(t, HostConfig{PluginDir: dir})
+	host := NewHost(t, HostConfig{PluginDir: dir, AllowFailures: true})
 	defer host.Close()
 
 	valid := pluginhost.CapabilityDescriptor{
@@ -93,7 +93,7 @@ func TestHostCapabilityDescriptorValidation(t *testing.T) {
 
 func TestHostServiceValidation(t *testing.T) {
 	dir := t.TempDir()
-	host := NewHost(t, HostConfig{PluginDir: dir})
+	host := NewHost(t, HostConfig{PluginDir: dir, AllowFailures: true})
 	defer host.Close()
 
 	host.AssertHostServiceSupported(pluginhost.HostServiceStorageGet)
@@ -103,7 +103,7 @@ func TestHostServiceValidation(t *testing.T) {
 
 func TestHostAssertNoError(t *testing.T) {
 	dir := t.TempDir()
-	host := NewHost(t, HostConfig{PluginDir: dir})
+	host := NewHost(t, HostConfig{PluginDir: dir, AllowFailures: true})
 	defer host.Close()
 
 	host.AssertNoError(nil, "should-pass")

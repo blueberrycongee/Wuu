@@ -133,7 +133,7 @@ export interface LocaleDefinition {
 
 export interface PluginGenerationApi {
   /** Host-owned React runtime. Executable desktop bundles must use this instance. */
-  readonly react: unknown;
+  readonly react: HostReact;
   readonly pluginId: string;
   readonly generation: string;
   registerSlot(slotId: string, contribution: SlotRegistration): Disposable;
@@ -149,6 +149,47 @@ export interface PluginGenerationApi {
   registerCSSSnippet(snippet: CSSSnippet): Disposable;
   registerStatusItem(item: StatusItemDefinition): Disposable;
 }
+
+/** Minimal type for the host-owned React instance; plugins never bundle React. */
+export interface HostReact {
+  readonly Fragment: unknown;
+  createElement(
+    type: string | ((props: Readonly<Record<string, unknown>>) => unknown),
+    props: Readonly<Record<string, unknown>> | null,
+    ...children: unknown[]
+  ): unknown;
+}
+
+// ---------------------------------------------------------------------------
+// Executable runtime contract
+// ---------------------------------------------------------------------------
+
+export interface RuntimeInitializeParams {
+  protocol_version: number;
+  plugin_id: string;
+  plugin_root: string;
+  project_root: string;
+  wuu_home: string;
+}
+
+export interface RuntimeInitializeResult {
+  hooks: string[];
+  tools?: ReadonlyArray<Record<string, unknown>>;
+}
+
+export interface RuntimePlugin {
+  initialize(params: RuntimeInitializeParams): RuntimeInitializeResult | Promise<RuntimeInitializeResult>;
+}
+
+export interface RuntimeRequest {
+  id: string;
+  method: string;
+  params: RuntimeInitializeParams;
+}
+
+export type RuntimeResponse =
+  | { id: string; result: RuntimeInitializeResult | null }
+  | { id: string; error: { message: string } };
 
 export interface Disposable {
   dispose(): void;
