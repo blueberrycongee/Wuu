@@ -179,13 +179,20 @@ type HostServiceHandler interface {
 	HandleHostService(ctx context.Context, method HostServiceMethod, params json.RawMessage) (json.RawMessage, error)
 }
 
+// HostServiceLifecycle is implemented by generation-owned dispatchers that
+// must stop accepting calls when their plugin process closes.
+type HostServiceLifecycle interface {
+	CloseHostServices()
+}
+
 // ---------------------------------------------------------------------------
 // Host service parameter/result types
 // ---------------------------------------------------------------------------
 
 // StorageGetParams is the input for host.storage.get.
 type StorageGetParams struct {
-	Key string `json:"key"`
+	Scope string `json:"scope"`
+	Key   string `json:"key"`
 }
 
 // StorageGetResult is the output of host.storage.get.
@@ -195,13 +202,20 @@ type StorageGetResult struct {
 
 // StorageSetParams is the input for host.storage.set.
 type StorageSetParams struct {
+	Scope string `json:"scope"`
 	Key   string `json:"key"`
 	Value string `json:"value"`
 }
 
 // StorageDeleteParams is the input for host.storage.delete.
 type StorageDeleteParams struct {
-	Key string `json:"key"`
+	Scope string `json:"scope"`
+	Key   string `json:"key"`
+}
+
+// StorageKeysParams is the input for host.storage.keys.
+type StorageKeysParams struct {
+	Scope string `json:"scope"`
 }
 
 // StorageKeysResult is the output of host.storage.keys.

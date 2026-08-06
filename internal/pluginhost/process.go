@@ -78,6 +78,7 @@ type ProcessClient struct {
 	stopMu       sync.Mutex
 	stopped      bool
 	stopErr      error
+	serviceClose sync.Once
 }
 
 func Start(ctx context.Context, config ProcessConfig) (*ProcessClient, error) {
@@ -567,6 +568,11 @@ func (c *ProcessClient) stopProcess() error {
 	if c == nil {
 		return nil
 	}
+	c.serviceClose.Do(func() {
+		if lifecycle, ok := c.config.HostServiceHandler.(HostServiceLifecycle); ok {
+			lifecycle.CloseHostServices()
+		}
+	})
 	c.stopMu.Lock()
 	defer c.stopMu.Unlock()
 	if c.stopped {

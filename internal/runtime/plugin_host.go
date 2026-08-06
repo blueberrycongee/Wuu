@@ -34,14 +34,15 @@ func buildPluginHost(plugins []pluginpkg.Plugin, projectRoot, wuuHome string, re
 		}
 		timeout := time.Duration(item.Runtime.Timeout) * time.Second
 		client, err := start(context.Background(), pluginhost.ProcessConfig{
-			ID:          item.ID,
-			Command:     item.Runtime.Command,
-			Args:        item.Runtime.Args,
-			Env:         item.Runtime.Env,
-			PluginRoot:  item.Root,
-			ProjectRoot: projectRoot,
-			WuuHome:     wuuHome,
-			Timeout:     timeout,
+			ID:                 item.ID,
+			Command:            item.Runtime.Command,
+			Args:               item.Runtime.Args,
+			Env:                item.Runtime.Env,
+			PluginRoot:         item.Root,
+			ProjectRoot:        projectRoot,
+			WuuHome:            wuuHome,
+			Timeout:            timeout,
+			HostServiceHandler: newPluginHostServices(item, projectRoot, wuuHome),
 		})
 		if err != nil {
 			host.Add(pluginhost.Failed(item.ID, err))

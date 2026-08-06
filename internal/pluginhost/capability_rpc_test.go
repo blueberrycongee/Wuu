@@ -267,19 +267,23 @@ func TestHostServiceError(t *testing.T) {
 
 func TestStorageParams(t *testing.T) {
 	// Verify storage param types are well-formed.
-	getParams := StorageGetParams{Key: "my-key"}
-	if getParams.Key != "my-key" {
-		t.Errorf("unexpected key: %s", getParams.Key)
+	getParams := StorageGetParams{Scope: "workspace", Key: "my-key"}
+	if getParams.Scope != "workspace" || getParams.Key != "my-key" {
+		t.Errorf("unexpected get params: %+v", getParams)
 	}
 
-	setParams := StorageSetParams{Key: "k", Value: "v"}
-	if setParams.Key != "k" || setParams.Value != "v" {
+	setParams := StorageSetParams{Scope: "user", Key: "k", Value: "v"}
+	if setParams.Scope != "user" || setParams.Key != "k" || setParams.Value != "v" {
 		t.Error("storage set params mismatch")
 	}
 
-	deleteParams := StorageDeleteParams{Key: "k"}
-	if deleteParams.Key != "k" {
+	deleteParams := StorageDeleteParams{Scope: "workspace", Key: "k"}
+	if deleteParams.Scope != "workspace" || deleteParams.Key != "k" {
 		t.Error("storage delete params mismatch")
+	}
+	keysParams := StorageKeysParams{Scope: "user"}
+	if keysParams.Scope != "user" {
+		t.Error("storage keys scope mismatch")
 	}
 
 	result := StorageGetResult{Value: nil}
