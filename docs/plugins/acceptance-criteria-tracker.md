@@ -7,17 +7,17 @@ This tracker measures working product paths, not type declarations or planned AP
 | # | Acceptance criterion | State | Current evidence and remaining work |
 |---|---|---|---|
 | 1 | Install, approve, enable, disable, and remove from a local directory | Complete | The package lifecycle and CLI cover directory/zip install, exact-fingerprint approval, enable/disable, pending update, and removal. |
-| 2 | Rebuild and reload after a save in development mode | Not complete | The watcher detects changes, but the product path still needs build, validation, atomic generation replacement, failure preservation, and diagnostics. |
-| 3 | Register a Tool and wrap its execution policy | Partial | External Tools execute through the runtime host. The public guard/around/after capability chain is not yet connected to external capability registration. |
-| 4 | Contribute a system prompt or context section | Partial | Core registries exist, but an external plugin cannot yet register and execute these providers through the process protocol. |
-| 5 | Replace compaction or register a model Provider | Partial | Core registries exist and are concurrency-safe. External capability negotiation and generation-scoped registration are not connected. |
-| 6 | Add a persistent custom workbench view | Partial | Generation-scoped view snapshots now publish and unload atomically. View instances, host actions, layout placement, and durable state still need product integration. |
-| 7 | Change workbench layout and the complete theme language | Partial | Declarative color/syntax themes work. Layout contributions and the wider typography, spacing, density, border, elevation, motion, and content token contract are not complete. |
-| 8 | Read and write plugin settings and namespaced storage | Partial | Stores and protocol types exist. The runtime and Desktop host APIs still need production dispatch, workspace scoping, validation, and change delivery. |
-| 9 | Preserve a recoverable host after update, activation failure, or render failure | Partial | Core pending-update rollback and current Surface error boundaries work. Workbench views and development reload still need the same fallback and escape-path coverage. |
-| 10 | Build without importing Wuu private source or private React state | Partial | A public SDK exists, but generated projects still need a standalone install/build path and a typed host-owned React contract. |
-| 11 | Pass public SDK contract tests | Not complete | The current contract helper does not start the configured runtime in its normal path and can report failed checks without failing the test. |
-| 12 | Continue working across compatible Wuu minor releases | Not complete | Compatibility anchors exist, but no previous-minor/current-minor contract matrix proves them. |
+| 2 | Rebuild and reload after a save in development mode | Complete | `wuu plugin dev` runs the package build, validates a candidate, publishes an atomic generation, waits for active generation leases, and preserves the previous generation on build or activation failure. CLI tests cover the normal, blocked, and failed refresh paths. |
+| 3 | Register a Tool and wrap its execution policy | Complete | External Tools are model-visible and execute through `pluginToolExecutor`. The compatible `tool.execute.before` and `tool.execute.after` public hooks can reject execution, transform arguments, and wrap results; runtime tests cover success, transformation, plugin failure, and cleanup. |
+| 4 | Contribute a system prompt or context section | Complete | Protocol v2 exposes `agent.system_prompt.section`; candidate activation evaluates it before swap, live streams consume the generation registry, and failed candidates preserve the active prompt. The public SDK and standalone example register the typed contract. |
+| 5 | Replace compaction or register a model Provider | Complete | Protocol v2 `agent.compaction` is connected to the live stream and cloned threads through a generation-owned registry. Output tool-call history is validated before it reaches a Provider, and activation, use, failure, swap, and cleanup are tested. |
+| 6 | Add a persistent custom workbench view | Complete | Desktop consumes generation-scoped view and layout registrations with host actions and durable layout state. The standalone renderer is executed in its contract test, reads settings, restores namespaced state, writes updates, and disposes every registration. |
+| 7 | Change workbench layout and the complete theme language | Complete | Layout and theme selection work, and the acceptance theme augments its selected declarative theme with color, typography, spacing, density, radius, border, elevation, motion, syntax, and content tokens. Host CSS maps every family into established Desktop primitives, while Workbench and CSS contract tests cover activation, host consumption, generation replacement, and unload. |
+| 8 | Read and write plugin settings and namespaced storage | Complete | Core-owned user/workspace stores are exposed through typed app-server APIs, Workbench host actions, and bidirectional runtime host services. Ownership, generation, type, scope, key, entry, and value limits are enforced; declarative Settings renders boolean, string, number, and enum controls. |
+| 9 | Preserve a recoverable host after update, activation failure, or render failure | Complete | Pending package updates do not execute before approval, failed candidate generations keep the old generation, development reload preserves the previous package, and Desktop error boundaries retain disable and Settings escape paths. Generation swap and close tests prove old registrations and host services unload. |
+| 10 | Build without importing Wuu private source or private React state | Complete | `@wuu/plugin-sdk` publishes the runtime and host-owned React contracts. The standalone example uses the public package version, builds against an `npm pack` artifact, contains no repository-relative dependency, and does not bundle React. |
+| 11 | Pass public SDK contract tests | Complete | `wuu plugin test` starts the configured executable runtime, negotiates protocol v2, validates capabilities and Tools, and exits non-zero on failed checks. The standalone example additionally executes its built renderer through activation, host use, storage recovery, and generation disposal. |
+| 12 | Continue working across compatible Wuu minor releases | Not complete | Protocol and manifest compatibility anchors exist, but no previous-minor/current-minor SDK and host matrix proves the release promise yet. |
 
 ## Completion rules
 
@@ -30,8 +30,6 @@ This tracker measures working product paths, not type declarations or planned AP
 
 ## Implementation lanes
 
-1. Connect capability negotiation and generation-scoped external registrations to the live Agent runtime.
-2. Consume workbench view, layout, renderer, theme, command, settings, storage, locale, and status registrations in Desktop.
-3. Make `create`, `build`, `test`, and `dev` a runnable standalone development loop.
-4. Add a standalone acceptance plugin and a compatibility test matrix.
-5. Run real Desktop install, restart, upgrade, failed activation, failed render, disable, and removal verification before marking the platform complete.
+1. Add a previous-minor/current-minor public SDK and host compatibility matrix.
+2. Keep the standalone acceptance plugin in release checks for runtime and renderer contracts.
+3. Run a real Desktop install, restart, upgrade, failed activation, failed render, disable, and removal smoke test before each release.
