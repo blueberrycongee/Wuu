@@ -186,9 +186,10 @@ Token。
 `--wuu-paper`、`--wuu-ink`、`--wuu-accent` 与 `--hljs-*` 等名称继续兼容，并在应用时映射到
 当前语义 Token；新主题应优先使用 `--wuu-color-*`、`--wuu-font-*` 等当前名称。
 
-共享宿主 Dialog 已带有稳定的 `data-wuu-component`、`data-wuu-layer` 和 `data-wuu-state`
-属性；其他弹层会在迁移到统一 Layer Host 时采用同一契约。可信代码插件需要补充 CSS 时，
-应只使用这些公开属性和 Token，不应依赖私有 class 名或 DOM 层级。
+常用的宿主 Dialog、菜单、Popover、Tooltip、Notice 和浮动导航现已统一渲染到受保护的
+Layer Host，并带有稳定的 `data-wuu-component`、`data-wuu-layer` 和 `data-wuu-state` 属性。
+拖拽预览、PDF ShadowRoot 内容和插件 View pane 仍是专用渲染边界，不属于外观浮层。可信代码
+插件需要补充 CSS 时，应只使用这些公开属性和 Token，不应依赖私有 class 名或 DOM 层级。
 
 ## 加载与安全
 

@@ -6,6 +6,7 @@ import { streamTextKey, streamTextStore } from "./StreamText";
 import { ThreadItemView } from "./ThreadItemView";
 import { clearToasts, ToastViewport } from "./Toast";
 import { desktopPluginHost } from "./plugins/DesktopPluginRuntime";
+import { WuuUIRoot } from "./ui/layers/UILayerHost";
 
 let container: HTMLDivElement | undefined;
 let root: Root | undefined;
@@ -51,7 +52,7 @@ function render({
   }
   act(() => {
     root!.render(
-      <>
+      <WuuUIRoot>
         <ThreadItemView
           turnID="turn-1"
           turnStatus={turnStatus}
@@ -63,7 +64,7 @@ function render({
           onEditMessage={onEditMessage}
         />
         <ToastViewport />
-      </>,
+      </WuuUIRoot>,
     );
   });
 }

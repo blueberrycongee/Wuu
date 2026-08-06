@@ -2,7 +2,6 @@ import { preparePresortedFileTreeInput } from "@pierre/trees";
 import { FileTree, useFileTree } from "@pierre/trees/react";
 import { AlertCircle, FileText, FolderOpen, FolderX } from "lucide-react";
 import { type CSSProperties, Suspense, lazy, memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import type {
   RuntimeContext,
   WorkspaceDirectoryListResult,
@@ -17,6 +16,7 @@ import { desktopApiErrorMessage } from "./WorkspaceReviewHelpers";
 import { translateCurrent, useI18n } from "./i18n";
 import { desktopPlatform } from "./platform";
 import { FilePreviewPresentation } from "./plugins/FilePreviewPresentation";
+import { UILayerPortal } from "./ui/layers/UILayerHost";
 
 // monaco-editor is several MB of JS; a static import here would drag it into
 // the eager startup chunk. Load it only when a code editor actually mounts.
@@ -445,51 +445,55 @@ function WorkspaceTreeContextMenu({
   };
 
   // Pierre Trees renders this component in a slot below its custom element.
-  // Portal to the document so the tree's strict containment, clipping, and
+  // Portal to the host layer so the tree's strict containment, clipping, and
   // compositor transform cannot change the fixed-position coordinate system
   // or hide the menu outside the tree panel.
-  return createPortal(
-    <div
-      ref={ref}
-      className="workspace-tree-context-menu"
-      role="menu"
-      style={{ left: position.x, top: position.y }}
-      onContextMenu={(event) => event.preventDefault()}
-    >
-      <button
-        type="button"
-        role="menuitem"
-        className="workspace-tree-context-menu-item"
-        onClick={copyToClipboard(absolutePath)}
+  return (
+    <UILayerPortal layer="menu">
+      <div
+        ref={ref}
+        className="workspace-tree-context-menu"
+        data-wuu-component="menu"
+        data-wuu-layer="menu"
+        data-wuu-state="open"
+        role="menu"
+        style={{ left: position.x, top: position.y }}
+        onContextMenu={(event) => event.preventDefault()}
       >
-        {t("workspace.files.copyPath")}
-      </button>
-      <button
-        type="button"
-        role="menuitem"
-        className="workspace-tree-context-menu-item"
-        onClick={copyToClipboard(relativePath)}
-      >
-        {t("workspace.files.copyRelativePath")}
-      </button>
-      <button
-        type="button"
-        role="menuitem"
-        className="workspace-tree-context-menu-item"
-        onClick={copyToClipboard(entry.name)}
-      >
-        {t("workspace.files.copyFileName")}
-      </button>
-      <button
-        type="button"
-        role="menuitem"
-        className="workspace-tree-context-menu-item"
-        onClick={revealInFolder}
-      >
-        {t("workspace.files.revealInFileManager")}
-      </button>
-    </div>,
-    document.body,
+        <button
+          type="button"
+          role="menuitem"
+          className="workspace-tree-context-menu-item"
+          onClick={copyToClipboard(absolutePath)}
+        >
+          {t("workspace.files.copyPath")}
+        </button>
+        <button
+          type="button"
+          role="menuitem"
+          className="workspace-tree-context-menu-item"
+          onClick={copyToClipboard(relativePath)}
+        >
+          {t("workspace.files.copyRelativePath")}
+        </button>
+        <button
+          type="button"
+          role="menuitem"
+          className="workspace-tree-context-menu-item"
+          onClick={copyToClipboard(entry.name)}
+        >
+          {t("workspace.files.copyFileName")}
+        </button>
+        <button
+          type="button"
+          role="menuitem"
+          className="workspace-tree-context-menu-item"
+          onClick={revealInFolder}
+        >
+          {t("workspace.files.revealInFileManager")}
+        </button>
+      </div>
+    </UILayerPortal>
   );
 }
 

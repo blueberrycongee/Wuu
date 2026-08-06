@@ -4,7 +4,6 @@ import {
   useEffect,
   useState,
 } from "react";
-import { createPortal } from "react-dom";
 import { observeAutoFollowResizeTargets } from "./AutoFollowScroll";
 import { dockComposerVisualHeight } from "./ConversationScrollState";
 import {
@@ -12,6 +11,7 @@ import {
   isWindowResizing,
 } from "./WindowResizeState";
 import { useI18n } from "./i18n";
+import { UILayerPortal } from "./ui/layers/UILayerHost";
 
 /**
  * Self-contained "scroll to bottom" pill. It watches the same container it
@@ -307,19 +307,23 @@ export function JumpToLatestPill({
   if (!bottomAnchor || !position) {
     return null;
   }
-  return createPortal(
-    <button
-      type="button"
-      className="jump-to-latest-pill jump-to-latest-pill-anchored"
-      aria-label={accessibleLabel}
-      style={{
-        left: `${position.left}px`,
-        bottom: `${position.bottom}px`,
-      }}
-      onClick={scrollToBottom}
-    >
-      {pillBody}
-    </button>,
-    document.body,
+  return (
+    <UILayerPortal layer="navigation">
+      <button
+        type="button"
+        className="jump-to-latest-pill jump-to-latest-pill-anchored"
+        data-wuu-component="jump-to-latest"
+        data-wuu-layer="navigation"
+        data-wuu-state="visible"
+        aria-label={accessibleLabel}
+        style={{
+          left: `${position.left}px`,
+          bottom: `${position.bottom}px`,
+        }}
+        onClick={scrollToBottom}
+      >
+        {pillBody}
+      </button>
+    </UILayerPortal>
   );
 }

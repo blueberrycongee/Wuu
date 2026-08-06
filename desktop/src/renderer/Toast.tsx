@@ -2,6 +2,7 @@ import { CircleAlert } from "lucide-react";
 import { useSyncExternalStore } from "react";
 import { useI18n } from "./i18n";
 import { TopNotice } from "./TopNotice";
+import { UILayerPortal } from "./ui/layers/UILayerHost";
 
 const TOAST_DEDUPE_WINDOW_MS = 30_000;
 const MAX_QUEUED_TOASTS = 4;
@@ -122,13 +123,15 @@ export function ToastViewport(): JSX.Element | null {
   if (!toast) return null;
 
   return (
-    <TopNotice
-      key={toast.id}
-      message={toast.message}
-      icon={toast.tone === "error" ? CircleAlert : undefined}
-      isError={toast.tone === "error"}
-      dismissAriaLabel={t("common.closeNotice")}
-      onDismiss={() => dismissToast(toast.id)}
-    />
+    <UILayerPortal layer="notice">
+      <TopNotice
+        key={toast.id}
+        message={toast.message}
+        icon={toast.tone === "error" ? CircleAlert : undefined}
+        isError={toast.tone === "error"}
+        dismissAriaLabel={t("common.closeNotice")}
+        onDismiss={() => dismissToast(toast.id)}
+      />
+    </UILayerPortal>
   );
 }

@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import type { ThreadItem } from "../shared/protocol";
 import { useI18n } from "./i18n";
 import { TruncatedText } from "./TruncatedText";
+import { UILayerPortal } from "./ui/layers/UILayerHost";
 
 function useTriggerPosition() {
   const [rect, setRect] = useState<DOMRect | null>(null);
@@ -388,32 +388,36 @@ export function ToolDiffPreview({
     >
       {children}
       {preview.active &&
-        createPortal(
-          <span
-            className="tool-diff-preview-card"
-            role="region"
-            style={cardStyle}
-            aria-label={t("toolDiff.previewNamed", {
-              name: diff.path ? diff.path : t("toolDiff.file"),
-            })}
-            onMouseEnter={preview.keepOpen}
-            onMouseLeave={handleLeave}
-          >
-            <span className="tool-diff-preview-header">
-              <span className="tool-diff-preview-title">
-                {diff.path ? diff.path : t("toolDiff.preview")}
-              </span>
-              {diff.truncated ? (
-                <span className="tool-diff-preview-truncated">
-                  {t("toolDiff.truncated")}
+        (
+          <UILayerPortal layer="popover">
+            <span
+              className="tool-diff-preview-card"
+              data-wuu-component="popover"
+              data-wuu-layer="popover"
+              data-wuu-state="open"
+              role="region"
+              style={cardStyle}
+              aria-label={t("toolDiff.previewNamed", {
+                name: diff.path ? diff.path : t("toolDiff.file"),
+              })}
+              onMouseEnter={preview.keepOpen}
+              onMouseLeave={handleLeave}
+            >
+              <span className="tool-diff-preview-header">
+                <span className="tool-diff-preview-title">
+                  {diff.path ? diff.path : t("toolDiff.preview")}
                 </span>
-              ) : null}
+                {diff.truncated ? (
+                  <span className="tool-diff-preview-truncated">
+                    {t("toolDiff.truncated")}
+                  </span>
+                ) : null}
+              </span>
+              <span className="tool-diff-preview-body">
+                <ToolDiffContent diff={diff} />
+              </span>
             </span>
-            <span className="tool-diff-preview-body">
-              <ToolDiffContent diff={diff} />
-            </span>
-          </span>,
-          document.body,
+          </UILayerPortal>
         )}
     </span>
   );

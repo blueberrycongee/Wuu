@@ -197,6 +197,7 @@ import {
 } from "./FeatureFlags";
 import { ArchiveTip } from "./ArchiveTip";
 import { TopNotice } from "./TopNotice";
+import { UILayerPortal } from "./ui/layers/UILayerHost";
 import { showErrorToast } from "./Toast";
 import { CircleAlert, RefreshCw } from "lucide-react";
 import type {
@@ -4243,35 +4244,41 @@ export function App(): JSX.Element {
   }
 
   const archiveTipNode = archiveTip ? (
-    <ArchiveTip
-      threadTitle={archiveTip.threadTitle}
-      errorMessage={archiveTip.errorMessage}
-      onViewArchive={() => {
-        dismissArchiveTip();
-        openArchiveSettings();
-      }}
-      onDismiss={dismissArchiveTip}
-    />
+    <UILayerPortal layer="notice">
+      <ArchiveTip
+        threadTitle={archiveTip.threadTitle}
+        errorMessage={archiveTip.errorMessage}
+        onViewArchive={() => {
+          dismissArchiveTip();
+          openArchiveSettings();
+        }}
+        onDismiss={dismissArchiveTip}
+      />
+    </UILayerPortal>
   ) : null;
 
   const checkoutErrorTipNode = checkoutErrorTip ? (
-    <TopNotice
-      message={checkoutErrorTip}
-      icon={CircleAlert}
-      onDismiss={dismissCheckoutErrorTip}
-      isError
-      dismissAriaLabel={t("common.closeNotice")}
-    />
+    <UILayerPortal layer="notice">
+      <TopNotice
+        message={checkoutErrorTip}
+        icon={CircleAlert}
+        onDismiss={dismissCheckoutErrorTip}
+        isError
+        dismissAriaLabel={t("common.closeNotice")}
+      />
+    </UILayerPortal>
   ) : null;
 
   const modelCatalogTipNode = modelCatalogTip ? (
-    <TopNotice
-      message={modelCatalogTip.message}
-      icon={modelCatalogTip.isError ? CircleAlert : RefreshCw}
-      onDismiss={dismissModelCatalogTip}
-      isError={modelCatalogTip.isError}
-      dismissAriaLabel={t("common.closeNotice")}
-    />
+    <UILayerPortal layer="notice">
+      <TopNotice
+        message={modelCatalogTip.message}
+        icon={modelCatalogTip.isError ? CircleAlert : RefreshCw}
+        onDismiss={dismissModelCatalogTip}
+        isError={modelCatalogTip.isError}
+        dismissAriaLabel={t("common.closeNotice")}
+      />
+    </UILayerPortal>
   ) : null;
 
   if (settingsOpen) {

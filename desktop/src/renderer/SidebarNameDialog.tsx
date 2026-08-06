@@ -10,7 +10,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { createPortal } from "react-dom";
+import { UILayerPortal } from "./ui/layers/UILayerHost";
 
 export interface SidebarNameDialogProps {
   open: boolean;
@@ -131,64 +131,70 @@ export function SidebarNameDialog({
     onTitleChange(event.currentTarget.value);
   }
 
-  return createPortal(
-    <div
-      className={`app-modal-backdrop conversation-search-overlay sidebar-name-dialog-overlay${variant === "drawer" ? " sidebar-name-dialog-overlay-drawer" : ""}${closing ? " closing" : ""}${backgrounded ? " backgrounded" : ""}`}
-      onPointerDown={handleOverlayPointerDown}
-    >
-      <form
-        className={`conversation-search-dialog sidebar-name-dialog${variant === "drawer" ? " sidebar-name-dialog-drawer" : ""}${closing ? " closing" : ""}${backgrounded ? " backgrounded" : ""}${dialogClassName ? ` ${dialogClassName}` : ""}`}
-        role="dialog"
-        aria-modal={backgrounded ? undefined : "true"}
-        aria-hidden={backgrounded || undefined}
-        aria-labelledby={dialogTitleId}
-        onAnimationEnd={handleDrawerAnimationEnd}
-        onSubmit={(event) => {
-          event.preventDefault();
-          onSubmit();
-        }}
+  return (
+    <UILayerPortal layer="dialog">
+      <div
+        className={`app-modal-backdrop conversation-search-overlay sidebar-name-dialog-overlay${variant === "drawer" ? " sidebar-name-dialog-overlay-drawer" : ""}${closing ? " closing" : ""}${backgrounded ? " backgrounded" : ""}`}
+        data-wuu-component="modal-backdrop"
+        data-wuu-layer="dialog"
+        data-wuu-state={closing ? "closing" : "open"}
+        onPointerDown={handleOverlayPointerDown}
       >
-        <div className="sidebar-name-dialog-header">
-          <span className="sidebar-name-dialog-icon" aria-hidden="true">
-            <Icon className="icon-lg" />
-          </span>
-          <h2 id={dialogTitleId} className="sidebar-name-dialog-title">
-            {dialogTitle}
-          </h2>
-        </div>
-        {content ?? <label className="sidebar-name-dialog-field">
-          <span className="sidebar-name-dialog-label">{fieldLabel}</span>
-          <input
-            className="sidebar-name-dialog-input"
-            value={title}
-            aria-label={fieldAriaLabel}
-            placeholder={placeholder}
-            autoFocus
-            onChange={handleInputChange}
-            onFocus={(event) => event.currentTarget.select()}
-          />
-        </label>}
-        {!hideActions ? <div className="sidebar-name-dialog-actions">
-          {destructiveAction ? (
-            <button className="sidebar-name-dialog-destructive" type="button" disabled={destructiveAction.disabled} onClick={destructiveAction.onClick}>
-              {destructiveAction.label}
+        <form
+          className={`conversation-search-dialog sidebar-name-dialog${variant === "drawer" ? " sidebar-name-dialog-drawer" : ""}${closing ? " closing" : ""}${backgrounded ? " backgrounded" : ""}${dialogClassName ? ` ${dialogClassName}` : ""}`}
+          data-wuu-component="dialog"
+          data-wuu-state={closing ? "closing" : "open"}
+          role="dialog"
+          aria-modal={backgrounded ? undefined : "true"}
+          aria-hidden={backgrounded || undefined}
+          aria-labelledby={dialogTitleId}
+          onAnimationEnd={handleDrawerAnimationEnd}
+          onSubmit={(event) => {
+            event.preventDefault();
+            onSubmit();
+          }}
+        >
+          <div className="sidebar-name-dialog-header">
+            <span className="sidebar-name-dialog-icon" aria-hidden="true">
+              <Icon className="icon-lg" />
+            </span>
+            <h2 id={dialogTitleId} className="sidebar-name-dialog-title">
+              {dialogTitle}
+            </h2>
+          </div>
+          {content ?? <label className="sidebar-name-dialog-field">
+            <span className="sidebar-name-dialog-label">{fieldLabel}</span>
+            <input
+              className="sidebar-name-dialog-input"
+              value={title}
+              aria-label={fieldAriaLabel}
+              placeholder={placeholder}
+              autoFocus
+              onChange={handleInputChange}
+              onFocus={(event) => event.currentTarget.select()}
+            />
+          </label>}
+          {!hideActions ? <div className="sidebar-name-dialog-actions">
+            {destructiveAction ? (
+              <button className="sidebar-name-dialog-destructive" type="button" disabled={destructiveAction.disabled} onClick={destructiveAction.onClick}>
+                {destructiveAction.label}
+              </button>
+            ) : null}
+            {secondaryAction ? (
+              <button className="sidebar-name-dialog-secondary" type="button" disabled={secondaryAction.disabled} onClick={secondaryAction.onClick}>
+                {secondaryAction.label}
+              </button>
+            ) : null}
+            {destructiveAction || secondaryAction ? <span className="sidebar-name-dialog-action-spacer" aria-hidden="true" /> : null}
+            <button type="button" onClick={requestClose}>
+              {cancelLabel}
             </button>
-          ) : null}
-          {secondaryAction ? (
-            <button className="sidebar-name-dialog-secondary" type="button" disabled={secondaryAction.disabled} onClick={secondaryAction.onClick}>
-              {secondaryAction.label}
+            <button type="submit" disabled={submitDisabled ?? title.trim().length === 0}>
+              {submitLabel}
             </button>
-          ) : null}
-          {destructiveAction || secondaryAction ? <span className="sidebar-name-dialog-action-spacer" aria-hidden="true" /> : null}
-          <button type="button" onClick={requestClose}>
-            {cancelLabel}
-          </button>
-          <button type="submit" disabled={submitDisabled ?? title.trim().length === 0}>
-            {submitLabel}
-          </button>
-        </div> : null}
-      </form>
-    </div>,
-    document.body,
+          </div> : null}
+        </form>
+      </div>
+    </UILayerPortal>
   );
 }

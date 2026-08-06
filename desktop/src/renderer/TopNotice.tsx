@@ -46,6 +46,10 @@ export function TopNotice({
   return (
     <div
       className={`archive-tip${isError ? " is-error" : ""}${leaving ? " leaving" : ""}`}
+      data-wuu-component="notice"
+      data-wuu-layer="notice"
+      data-wuu-state={leaving ? "closing" : "open"}
+      data-wuu-variant={isError ? "error" : "default"}
       role={isError ? "alert" : "status"}
       aria-live={isError ? "assertive" : "polite"}
     >

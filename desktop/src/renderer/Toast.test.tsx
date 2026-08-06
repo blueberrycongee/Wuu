@@ -8,6 +8,7 @@ import {
   ToastViewport,
   toastErrorMessage,
 } from "./Toast";
+import { WuuUIRoot } from "./ui/layers/UILayerHost";
 
 let container: HTMLDivElement;
 let root: Root | null = null;
@@ -19,7 +20,11 @@ beforeEach(() => {
   document.body.appendChild(container);
   act(() => {
     root = createRoot(container);
-    root.render(<ToastViewport />);
+    root.render(
+      <WuuUIRoot>
+        <ToastViewport />
+      </WuuUIRoot>,
+    );
   });
 });
 
@@ -49,6 +54,10 @@ describe("ToastViewport", () => {
     const notice = container.querySelector('[role="alert"]');
     expect(notice?.textContent).toContain("save failed");
     expect(notice?.classList.contains("archive-tip")).toBe(true);
+    expect((notice as HTMLElement | null)?.dataset.wuuComponent).toBe("notice");
+    expect((notice as HTMLElement | null)?.dataset.wuuLayer).toBe("notice");
+    expect((notice as HTMLElement | null)?.dataset.wuuState).toBe("open");
+    expect(notice?.closest('[data-wuu-layer-host="true"]')).not.toBeNull();
   });
 
   it("queues distinct notices and suppresses repeated failures", () => {

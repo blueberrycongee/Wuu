@@ -16,7 +16,6 @@ import {
   useRef,
   useState,
 } from "react";
-import { createPortal } from "react-dom";
 import type { ComposerGoalSummary } from "../shared/protocol";
 import {
   FloatingMenuPortal,
@@ -406,64 +405,63 @@ export function ComposerGoalStrip({
         ) : null}
       </section>
       {editing
-        ? createPortal(
-            <Modal
-              ariaLabel={t("goal.edit")}
-              icon={<Target className="icon-lg" />}
-              title={t("goal.edit")}
-              onClose={handleCancelEdit}
-              closeDisabled={busy === "edit"}
-              panelClassName="composer-goal-edit-dialog"
-              asForm
-              onSubmit={() => void handleSubmitEdit()}
-              footer={
-                <>
-                  <button
-                    className="secondary-button"
-                    type="button"
-                    disabled={busy === "edit"}
-                    onClick={handleCancelEdit}
-                  >
-                    {t("common.cancel")}
-                  </button>
-                  <button
-                    className="primary-button composer-goal-edit-save"
-                    type="submit"
-                    disabled={busy === "edit"}
-                  >
-                    {busy === "edit" ? (
-                      <Loader2
-                        className="icon-sm composer-goal-strip-spin"
-                        aria-hidden="true"
-                      />
-                    ) : null}
-                    <span>{busy === "edit" ? t("common.saving") : t("common.save")}</span>
-                  </button>
-                </>
-              }
-            >
-              <label className="composer-goal-edit-field">
-                <span>{t("goal.content")}</span>
-                <textarea
-                  ref={inputRef}
-                  className="composer-goal-edit-textarea"
-                  value={draft}
-                  spellCheck={false}
+        ? (
+          <Modal
+            ariaLabel={t("goal.edit")}
+            icon={<Target className="icon-lg" />}
+            title={t("goal.edit")}
+            onClose={handleCancelEdit}
+            closeDisabled={busy === "edit"}
+            panelClassName="composer-goal-edit-dialog"
+            asForm
+            onSubmit={() => void handleSubmitEdit()}
+            footer={
+              <>
+                <button
+                  className="secondary-button"
+                  type="button"
                   disabled={busy === "edit"}
-                  rows={10}
-                  onChange={(event) => setDraft(event.target.value)}
-                  onKeyDown={handleEditKeyDown}
-                  aria-label={t("goal.content")}
-                />
-              </label>
-              {error ? (
-                <div className="environment-dialog-error" role="alert">
-                  {error}
-                </div>
-              ) : null}
-            </Modal>,
-            document.body,
-          )
+                  onClick={handleCancelEdit}
+                >
+                  {t("common.cancel")}
+                </button>
+                <button
+                  className="primary-button composer-goal-edit-save"
+                  type="submit"
+                  disabled={busy === "edit"}
+                >
+                  {busy === "edit" ? (
+                    <Loader2
+                      className="icon-sm composer-goal-strip-spin"
+                      aria-hidden="true"
+                    />
+                  ) : null}
+                  <span>{busy === "edit" ? t("common.saving") : t("common.save")}</span>
+                </button>
+              </>
+            }
+          >
+            <label className="composer-goal-edit-field">
+              <span>{t("goal.content")}</span>
+              <textarea
+                ref={inputRef}
+                className="composer-goal-edit-textarea"
+                value={draft}
+                spellCheck={false}
+                disabled={busy === "edit"}
+                rows={10}
+                onChange={(event) => setDraft(event.target.value)}
+                onKeyDown={handleEditKeyDown}
+                aria-label={t("goal.content")}
+              />
+            </label>
+            {error ? (
+              <div className="environment-dialog-error" role="alert">
+                {error}
+              </div>
+            ) : null}
+          </Modal>
+        )
         : null}
     </>
   );

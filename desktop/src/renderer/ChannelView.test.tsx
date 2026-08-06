@@ -7,6 +7,7 @@ import { graphDensityScale } from "./AgentRelationshipGraph";
 import { groupAvatarRowSizes } from "./ChannelGroupAvatar";
 import { ChannelView, formatChannelUnreadCount } from "./ChannelView";
 import { clearToasts, ToastViewport } from "./Toast";
+import { WuuUIRoot } from "./ui/layers/UILayerHost";
 
 let container: HTMLDivElement;
 let root: Root | null = null;
@@ -1207,7 +1208,12 @@ describe("ChannelView", () => {
     });
     Object.defineProperty(window, "wuu", { configurable: true, value: api });
     root = createRoot(container);
-    act(() => root?.render(<><ChannelView section="agents" /><ToastViewport /></>));
+    act(() => root?.render(
+      <WuuUIRoot>
+        <ChannelView section="agents" />
+        <ToastViewport />
+      </WuuUIRoot>,
+    ));
     await settle();
 
     act(() => container.querySelector<HTMLButtonElement>("button.channel-directory-avatar")?.click());

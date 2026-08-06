@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { Tooltip, TOOLTIP_MAX_CONTENT_LENGTH, tooltipContent } from "./Tooltip";
+import { WuuUIRoot } from "./ui/layers/UILayerHost";
 
 const tooltipCSS = readFileSync(
   resolve(process.cwd(), "src/renderer/styles/tooltip.css"),
@@ -35,11 +36,13 @@ function renderTooltip(
   props: Partial<React.ComponentProps<typeof Tooltip>> = {},
 ): HTMLSpanElement {
   act(() => {
-    root = createRoot(container);
-    root!.render(
-      <Tooltip content={props.content ?? "提示文案"} {...props}>
-        {props.children ?? <button type="button">触发</button>}
-      </Tooltip>,
+    root ??= createRoot(container);
+    root.render(
+      <WuuUIRoot>
+        <Tooltip content={props.content ?? "提示文案"} {...props}>
+          {props.children ?? <button type="button">触发</button>}
+        </Tooltip>
+      </WuuUIRoot>,
     );
   });
   const trigger = container.querySelector(".tooltip-trigger");
@@ -72,7 +75,7 @@ function tooltipLayer(): HTMLElement | null {
 }
 
 describe("Tooltip", () => {
-  it("opens after the hover delay and renders content in a body portal", () => {
+  it("opens after the hover delay in the protected tooltip layer", () => {
     const trigger = renderTooltip();
     expect(tooltipLayer()).toBeNull();
     pointerOver(trigger);
@@ -87,7 +90,11 @@ describe("Tooltip", () => {
     expect(layer).not.toBeNull();
     expect(layer?.textContent).toBe("提示文案");
     expect(layer?.getAttribute("role")).toBe("tooltip");
-    // Portaled to body, not inside the trigger wrapper.
+    expect(layer?.dataset.wuuComponent).toBe("tooltip");
+    expect(layer?.dataset.wuuLayer).toBe("tooltip");
+    expect(layer?.dataset.wuuState).toBe("open");
+    expect(layer?.closest('[data-wuu-layer-host="true"]')).not.toBeNull();
+    // Portaled to the protected host, not inside the trigger wrapper.
     expect(trigger.contains(layer)).toBe(false);
   });
 

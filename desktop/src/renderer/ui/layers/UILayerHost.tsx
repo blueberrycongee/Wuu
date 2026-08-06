@@ -4,6 +4,7 @@ import {
   useContext,
   useState,
 } from "react";
+import { createPortal } from "react-dom";
 
 const UILayerHostContext = createContext<HTMLElement | null>(null);
 
@@ -37,4 +38,26 @@ export function WuuUIRoot({ children }: WuuUIRootProps): JSX.Element {
  */
 export function useUILayerHost(): HTMLElement {
   return useContext(UILayerHostContext) ?? document.body;
+}
+
+export type UILayerKind =
+  | "dialog"
+  | "menu"
+  | "popover"
+  | "tooltip"
+  | "notice"
+  | "navigation";
+
+export interface UILayerPortalProps {
+  children: ReactNode;
+  layer: UILayerKind;
+}
+
+/**
+ * Portal primitive for host-owned floating UI. The rendered component owns
+ * its semantic data attributes so this helper never adds a layout wrapper.
+ */
+export function UILayerPortal({ children, layer }: UILayerPortalProps): ReactNode {
+  const layerHost = useUILayerHost();
+  return createPortal(children, layerHost, `wuu-layer:${layer}`);
 }

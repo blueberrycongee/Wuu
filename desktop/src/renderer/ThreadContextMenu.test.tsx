@@ -2,6 +2,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ThreadContextMenu } from "./ThreadContextMenu";
+import { WuuUIRoot } from "./ui/layers/UILayerHost";
 
 let root: Root | undefined;
 let container: HTMLDivElement | undefined;
@@ -29,12 +30,14 @@ describe("ThreadContextMenu", () => {
     act(() => {
       root = createRoot(container!);
       root.render(
-        <ThreadContextMenu
-          x={950}
-          y={700}
-          items={[{ label: "归档", onSelect: () => {} }]}
-          onClose={() => {}}
-        />,
+        <WuuUIRoot>
+          <ThreadContextMenu
+            x={950}
+            y={700}
+            items={[{ label: "归档", onSelect: () => {} }]}
+            onClose={() => {}}
+          />
+        </WuuUIRoot>,
       );
     });
 
@@ -43,5 +46,9 @@ describe("ThreadContextMenu", () => {
     expect(menu?.style.top).toBe("500px");
     expect(menu?.dataset.origin).toBe("bottom-right");
     expect(menu?.style.visibility).toBe("");
+    expect(menu?.dataset.wuuComponent).toBe("menu");
+    expect(menu?.dataset.wuuLayer).toBe("menu");
+    expect(menu?.dataset.wuuState).toBe("open");
+    expect(menu?.closest('[data-wuu-layer-host="true"]')).not.toBeNull();
   });
 });

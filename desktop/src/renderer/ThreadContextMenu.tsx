@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { placeContextMenu, type ContextMenuLayout } from "./ContextMenuPlacement";
+import { UILayerPortal } from "./ui/layers/UILayerHost";
 
 /**
  * ThreadContextMenu is a lightweight right-click menu for thread rows in the
@@ -79,48 +79,52 @@ export function ThreadContextMenu({
     };
   }, [onClose]);
 
-  return createPortal(
-    <div
-      ref={menuRef}
-      role="menu"
-      className="thread-row-context-menu"
-      data-origin={layout?.origin ?? "top-left"}
-      style={
-        layout
-          ? { left: layout.left, top: layout.top }
-          : { left: x, top: y, visibility: "hidden" }
-      }
-      data-testid="thread-row-context-menu"
-    >
-      {items.map((item, idx) => {
-        if ("separator" in item) {
-          return (
-            <div
-              key={`sep-${idx}`}
-              role="separator"
-              className="thread-row-context-menu-separator"
-            />
-          );
+  return (
+    <UILayerPortal layer="menu">
+      <div
+        ref={menuRef}
+        role="menu"
+        className="thread-row-context-menu"
+        data-wuu-component="menu"
+        data-wuu-layer="menu"
+        data-wuu-state="open"
+        data-origin={layout?.origin ?? "top-left"}
+        style={
+          layout
+            ? { left: layout.left, top: layout.top }
+            : { left: x, top: y, visibility: "hidden" }
         }
-        return (
-          <button
-            key={`item-${idx}-${item.label}`}
-            role="menuitem"
-            type="button"
-            className="thread-row-context-menu-item"
-            disabled={item.disabled}
-            onClick={() => {
-              if (item.disabled) return;
-              void item.onSelect();
-              onClose();
-            }}
-          >
-            <span>{item.label}</span>
-          </button>
-        );
-      })}
-    </div>,
-    document.body,
+        data-testid="thread-row-context-menu"
+      >
+        {items.map((item, idx) => {
+          if ("separator" in item) {
+            return (
+              <div
+                key={`sep-${idx}`}
+                role="separator"
+                className="thread-row-context-menu-separator"
+              />
+            );
+          }
+          return (
+            <button
+              key={`item-${idx}-${item.label}`}
+              role="menuitem"
+              type="button"
+              className="thread-row-context-menu-item"
+              disabled={item.disabled}
+              onClick={() => {
+                if (item.disabled) return;
+                void item.onSelect();
+                onClose();
+              }}
+            >
+              <span>{item.label}</span>
+            </button>
+          );
+        })}
+      </div>
+    </UILayerPortal>
   );
 }
 

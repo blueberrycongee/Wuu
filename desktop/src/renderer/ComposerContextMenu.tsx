@@ -1,7 +1,7 @@
 import { type RefObject, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { placeContextMenu, type ContextMenuLayout } from "./ContextMenuPlacement";
 import { useI18n } from "./i18n";
+import { UILayerPortal } from "./ui/layers/UILayerHost";
 
 export { placeContextMenu } from "./ContextMenuPlacement";
 
@@ -286,35 +286,39 @@ export function ComposerContextMenu({
     { label: t("contextMenu.delete"), run: runDelete, itemDisabled: !canMutate }
   ];
 
-  return createPortal(
-    <div
-      ref={ref}
-      className="composer-textarea-context-menu"
-      role="menu"
-      data-origin={layout?.origin ?? "top-left"}
-      style={
-        layout
-          ? { left: layout.left, top: layout.top }
-          : // First render: not yet measured. Park at the cursor but
-            // invisible — the layout effect above replaces this before
-            // the browser ever paints.
-            { left: x, top: y, visibility: "hidden" }
-      }
-      onContextMenu={(event) => event.preventDefault()}
-    >
-      {items.map((item) => (
-        <button
-          key={item.label}
-          type="button"
-          role="menuitem"
-          className="composer-textarea-context-menu-item"
-          onClick={item.run}
-          disabled={item.itemDisabled}
-        >
-          <span>{item.label}</span>
-        </button>
-      ))}
-    </div>,
-    document.body
+  return (
+    <UILayerPortal layer="menu">
+      <div
+        ref={ref}
+        className="composer-textarea-context-menu"
+        data-wuu-component="menu"
+        data-wuu-layer="menu"
+        data-wuu-state="open"
+        role="menu"
+        data-origin={layout?.origin ?? "top-left"}
+        style={
+          layout
+            ? { left: layout.left, top: layout.top }
+            : // First render: not yet measured. Park at the cursor but
+              // invisible — the layout effect above replaces this before
+              // the browser ever paints.
+              { left: x, top: y, visibility: "hidden" }
+        }
+        onContextMenu={(event) => event.preventDefault()}
+      >
+        {items.map((item) => (
+          <button
+            key={item.label}
+            type="button"
+            role="menuitem"
+            className="composer-textarea-context-menu-item"
+            onClick={item.run}
+            disabled={item.itemDisabled}
+          >
+            <span>{item.label}</span>
+          </button>
+        ))}
+      </div>
+    </UILayerPortal>
   );
 }

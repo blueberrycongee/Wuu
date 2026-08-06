@@ -143,10 +143,12 @@ width, and `--wuu-syntax-*` syntax colors. Early names such as `--wuu-paper`, `-
 `--wuu-accent`, and `--hljs-*` remain compatible and map to the current semantic contract. New themes
 should prefer the current `--wuu-color-*` and `--wuu-font-*` names.
 
-Shared host dialogs expose stable `data-wuu-component`, `data-wuu-layer`, and `data-wuu-state`
-attributes; other overlays adopt the same contract as they move into the common Layer Host. Trusted
-code plugins that need supplemental CSS should target only these published attributes and tokens,
-not private class names or DOM structure.
+Common host dialogs, menus, popovers, tooltips, notices, and floating navigation now render through
+the protected Layer Host and expose stable `data-wuu-component`, `data-wuu-layer`, and
+`data-wuu-state` attributes. Drag previews, PDF ShadowRoot content, and plugin View pane mounts remain
+specialized rendering boundaries rather than appearance layers. Trusted code plugins that need
+supplemental CSS should target only the published attributes and tokens, not private class names or
+DOM structure.
 
 See the installable [`examples/plugins/deep-ui`](../../../examples/plugins/deep-ui/) package for a
 theme and wrappers covering all current surfaces.

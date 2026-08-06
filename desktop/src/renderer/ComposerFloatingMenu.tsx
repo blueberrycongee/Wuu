@@ -6,12 +6,12 @@ import {
   useRef,
   useState
 } from "react";
-import { createPortal } from "react-dom";
 import type {
   FloatingMenuAlign,
   FloatingMenuOwner,
   FloatingMenuPlacement
 } from "./ComposerTypes";
+import { UILayerPortal } from "./ui/layers/UILayerHost";
 
 export function isInsideFloatingMenu(target: Node, owner: FloatingMenuOwner): boolean {
   const element = target instanceof Element ? target : target.parentElement;
@@ -221,21 +221,24 @@ export function FloatingMenuPortal({
     width
   ]);
 
-  return createPortal(
-    <div
-      ref={layerRef}
-      className={`floating-menu-layer floating-menu-${resolvedPlacement}`}
-      data-floating-menu-owner={owner}
-      style={style}
-      // The host app has a window-level pointerdown listener that closes
-      // menus when a click is outside their trigger.  Portal content is
-      // physically under document.body, so keep its pointerdown inside the
-      // floating layer; otherwise the host can unmount the menu before the
-      // button receives its click event.
-      onPointerDown={(event) => event.stopPropagation()}
-    >
-      {children}
-    </div>,
-    document.body
+  return (
+    <UILayerPortal layer="menu">
+      <div
+        ref={layerRef}
+        className={`floating-menu-layer floating-menu-${resolvedPlacement}`}
+        data-wuu-component="menu"
+        data-wuu-layer="menu"
+        data-wuu-state="open"
+        data-floating-menu-owner={owner}
+        style={style}
+        // The host app has a window-level pointerdown listener that closes
+        // menus when a click is outside their trigger. Keep pointerdown
+        // inside the floating layer so the button receives its click before
+        // the host can unmount the menu.
+        onPointerDown={(event) => event.stopPropagation()}
+      >
+        {children}
+      </div>
+    </UILayerPortal>
   );
 }

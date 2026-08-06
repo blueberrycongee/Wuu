@@ -35,7 +35,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { createPortal } from "react-dom";
+import { UILayerPortal } from "./ui/layers/UILayerHost";
 
 export const TOOLTIP_MAX_CONTENT_LENGTH = 120;
 export const TOOLTIP_OPEN_DELAY_MS = 400;
@@ -243,16 +243,20 @@ export function Tooltip({
         {children}
       </span>
       {open && content
-        ? createPortal(
-            <div
-              ref={layerRef}
-              className="tooltip-layer"
-              role="tooltip"
-              style={position ?? { visibility: "hidden" }}
-            >
-              {tooltipContent(content)}
-            </div>,
-            document.body,
+        ? (
+            <UILayerPortal layer="tooltip">
+              <div
+                ref={layerRef}
+                className="tooltip-layer"
+                data-wuu-component="tooltip"
+                data-wuu-layer="tooltip"
+                data-wuu-state="open"
+                role="tooltip"
+                style={position ?? { visibility: "hidden" }}
+              >
+                {tooltipContent(content)}
+              </div>
+            </UILayerPortal>
           )
         : null}
     </>
