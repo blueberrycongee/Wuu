@@ -1,6 +1,6 @@
-.PHONY: setup dev check repository-check version-check eval-check check-go check-desktop check-clients test test-go \
+.PHONY: setup dev docs-dev check repository-check version-check eval-check check-go check-desktop check-clients check-docs test test-go \
 	test-desktop test-clients test-native build build-go build-desktop \
-	build-clients build-macos ci install vet clean release-check \
+	build-clients build-docs build-macos ci install vet clean release-check \
 	print-version tag-release version-check release-prepare
 
 VERSION_FILE := VERSION
@@ -20,9 +20,13 @@ setup:
 	npm ci --prefix clients/core
 	npm ci --prefix clients/mobile
 	npm ci --prefix packages/protocol
+	npm install --prefix docs-site --no-audit --no-fund
 
 dev:
 	cd desktop && npm run dev
+
+docs-dev:
+	npm --prefix docs-site run dev
 
 check: repository-check check-go check-desktop check-clients
 
@@ -47,6 +51,9 @@ check-clients:
 	npm --prefix packages/protocol run typecheck
 	npm --prefix clients/core run typecheck
 	npm --prefix clients/mobile run typecheck
+
+check-docs:
+	npm --prefix docs-site run check
 
 test: test-go test-desktop test-clients
 
@@ -73,6 +80,9 @@ build-desktop:
 
 build-clients: check-clients
 	npm --prefix clients/mobile run export:web
+
+build-docs:
+	npm --prefix docs-site run build
 
 build-macos:
 	npm --prefix desktop run pack:mac

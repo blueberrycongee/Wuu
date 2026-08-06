@@ -1,0 +1,20 @@
+{
+  "name": "wuu-docs",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "prepare-content": "node scripts/prepare-content.mjs",
+    "dev": "npm run prepare-content && astro dev",
+    "build": "npm run prepare-content && astro build",
+    "check": "npm run prepare-content && astro check"
+  },
+  "dependencies": {
+    "@astrojs/starlight": "0.41.7",
+    "astro": "7.1.6",
+    "sharp": "0.35.3"
+  },
+  "devDependencies": {
+    "@astrojs/check": "0.9.6",
+    "typescript": "5.9.3"
+  }
+}

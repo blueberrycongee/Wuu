@@ -1,0 +1,16 @@
+---
+const destination = `${import.meta.env.BASE_URL.replace(/\/$/, "")}/zh-cn/`
+---
+
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="refresh" content={`0; url=${destination}`} />
+    <meta name="robots" content="noindex" />
+    <title>wuu 文档</title>
+  </head>
+  <body>
+    <a href={destination}>前往 wuu 文档</a>
+  </body>
+</html>

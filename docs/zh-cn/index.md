@@ -33,7 +33,7 @@ wuu 的桌面应用适合交互式工作；`wuu exec` 适合终端、脚本、CI
 - **控制本地权限：**[权限模式](reference/permissions.md)和[安全模型](reference/security-model.md)。
 - **接入脚本和 CI：**[用 `wuu exec` 做自动化](automation/exec.md)和
   [JSONL 事件](../en/automation/jsonl-events.md)（英文）。
-- **遇到问题：**从[故障排查](help/troubleshooting.md)开始。
+- **遇到问题：** 从[故障排查](help/troubleshooting.md)开始。
 
 ## 工作区是成果的来源
 

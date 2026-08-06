@@ -48,5 +48,20 @@ the link label should make that fallback clear.
 - Prefer one task-oriented page over a large feature inventory.
 
 The manifest is intentionally small and renderer-neutral. It defines the
-content contract without binding the repository to Astro, MDX, or a hosted
-documentation service.
+content contract without making the Markdown source depend on a renderer.
+
+## Preview and publishing
+
+The site renderer lives in `docs-site/` and uses Astro Starlight. It prepares
+only the pages listed in `site.json`, so plans and internal notes are never
+published accidentally.
+
+```bash
+npm install --prefix docs-site
+make docs-dev
+make build-docs
+```
+
+Pushes to `main` that change `docs/` or `docs-site/` are built and deployed by
+GitHub Actions to GitHub Pages. Pull requests run the same build without
+deploying.

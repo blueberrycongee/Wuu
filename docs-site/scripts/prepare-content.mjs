@@ -1,0 +1,79 @@
+import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises"
+import path from "node:path"
+import { fileURLToPath } from "node:url"
+
+const siteRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
+const repositoryRoot = path.resolve(siteRoot, "..")
+const docsRoot = path.join(repositoryRoot, "docs")
+const outputRoot = path.join(siteRoot, "generated-content/docs")
+const manifest = JSON.parse(await readFile(path.join(docsRoot, "site.json"), "utf8"))
+
+const pages = [
+  ...new Set(
+    Object.values(manifest.locales).flatMap((locale) =>
+      locale.navigation.flatMap((group) => group.pages),
+    ),
+  ),
+]
+const publishedPages = new Set(pages)
+
+const routeFromPage = (page) => page.replace(/\.md$/, "").replace(/\/index$/, "")
+
+function rewriteMarkdownLinks(markdown, page) {
+  const withPageLinks = markdown.replace(/\]\(([^)\s]+?\.md)(#[^)]+)?\)/g, (match, href, fragment = "") => {
+    if (/^[a-z][a-z\d+.-]*:/i.test(href)) return match
+
+    const target = path.posix.normalize(path.posix.join(path.posix.dirname(page), href))
+    if (target.startsWith("../")) {
+      const repositoryPath = path.posix.normalize(path.posix.join("docs", target))
+      return `](https://github.com/blueberrycongee/wuu/blob/main/${repositoryPath}${fragment})`
+    }
+    if (!publishedPages.has(target)) {
+      throw new Error(`Published page ${page} links to unpublished documentation: ${target}`)
+    }
+
+    const relative = path.posix.relative(routeFromPage(page), routeFromPage(target)) || "."
+    return `](${relative}/${fragment})`
+  })
+
+  return withPageLinks.replace(/\]\((\.\.\/[^)\s]+)\)/g, (match, href) => {
+    const target = path.posix.normalize(path.posix.join(path.posix.dirname(page), href))
+    if (!target.startsWith("../")) return match
+
+    const repositoryPath = path.posix.normalize(path.posix.join("docs", target))
+    const view = href.endsWith("/") ? "tree" : "blob"
+    return `](https://github.com/blueberrycongee/wuu/${view}/main/${repositoryPath})`
+  })
+}
+
+await rm(outputRoot, { recursive: true, force: true })
+
+for (const page of pages) {
+  const source = path.resolve(docsRoot, page)
+  if (!source.startsWith(`${docsRoot}${path.sep}`)) {
+    throw new Error(`Documentation path escapes docs/: ${page}`)
+  }
+
+  const markdown = await readFile(source, "utf8")
+  const titleMatch = markdown.match(/^#\s+(.+)$/m)
+  if (!titleMatch) {
+    throw new Error(`Published page has no level-one title: ${page}`)
+  }
+
+  const destination = path.join(outputRoot, page)
+  await mkdir(path.dirname(destination), { recursive: true })
+  const body = rewriteMarkdownLinks(markdown.replace(/^#\s+.+(?:\r?\n)+/, ""), page)
+  await writeFile(destination, `---\ntitle: ${JSON.stringify(titleMatch[1])}\n---\n\n${body}`)
+}
+
+const assetDirectories = ["zh-cn/assets", "en/assets"]
+for (const directory of assetDirectories) {
+  const source = path.join(docsRoot, directory)
+  try {
+    await cp(source, path.join(outputRoot, directory), { recursive: true })
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error
+  }
+}
+
+console.log(`Prepared ${pages.length} documentation pages from docs/site.json`)

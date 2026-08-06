@@ -51,7 +51,7 @@ xattr -dr com.apple.quarantine /Applications/wuu.app && open /Applications/wuu.a
 2. Add a local project folder.
 3. Start a conversation.
 
-See the [user guide](docs/en/getting-started/index.md) for provider setup, permissions, attachments, and sessions.
+See the [user guide](https://blueberrycongee.github.io/wuu/en/getting-started/) for provider setup, permissions, attachments, and sessions.
 
 ## CLI
 
@@ -79,7 +79,7 @@ Read the [security model](docs/en/reference/security-model.md) before using wuu 
 
 ## Project
 
-- [Documentation](docs/en/index.md)
+- [Documentation](https://blueberrycongee.github.io/wuu/en/)
 - [Roadmap](ROADMAP.md)
 - [Changelog](CHANGELOG.md)
 - [Public evaluations](evals/)

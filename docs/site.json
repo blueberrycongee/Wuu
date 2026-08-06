@@ -44,6 +44,7 @@
             "zh-cn/customize/skill-authoring.md",
             "zh-cn/customize/hooks.md",
             "zh-cn/customize/memory.md",
+            "zh-cn/customize/plugins.md",
             "zh-cn/reference/permissions.md",
             "zh-cn/reference/configuration.md"
           ]
@@ -103,6 +104,7 @@
           "title": "Reference",
           "pages": [
             "en/reference/security-model.md",
+            "en/reference/desktop-plugins.md",
             "en/project/development.md",
             "en/project/release.md"
           ]

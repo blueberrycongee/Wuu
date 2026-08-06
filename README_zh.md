@@ -78,7 +78,7 @@ wuu exec review --uncommitted
 
 ## 项目
 
-- [文档](docs/zh-cn/index.md)
+- [文档](https://blueberrycongee.github.io/wuu/zh-cn/)
 - [路线图](ROADMAP_zh.md)
 - [更新记录](CHANGELOG.md)
 - [公开评测](evals/)

@@ -27,6 +27,11 @@ desktop/native/cua-mac/.build/
 # electron-vite writes a timestamp marker when it re-syncs node_modules;
 # keep it out of git.
 desktop/.node_modules.synced
+/docs-site/generated-content/
+/docs-site/.generated/
+/docs-site/src/content/docs/
+/docs-site/.astro/
+/docs-site/dist/
 
 # ============================================================
 # Local runtime state (per-machine)
@@ -84,6 +89,7 @@ CLAUDE.md
 
 # MCP plugin caches
 .playwright-mcp/
+.playwright-cli/
 
 # ============================================================
 # Test / coverage artifacts
