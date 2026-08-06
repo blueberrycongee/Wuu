@@ -130,15 +130,12 @@ func builtInToolDisplay(call providers.ToolCall) providers.ToolCallDisplay {
 			return toolDisplay("skill", "加载技能")
 		}
 		return toolDisplay("skill", "加载技能 "+displayTruncate(skill, 70))
-	case "goal":
-		switch displayString(args, "action") {
-		case "create":
-			return toolDisplay("goal", "启动 Goal "+displayTarget(displayString(args, "objective"), ""))
-		case "update":
-			return toolDisplay("goal", "更新 Goal "+displayTarget(displayString(args, "status"), ""))
-		default:
-			return toolDisplay("goal", "查看 Goal")
-		}
+	case "get_goal":
+		return toolDisplay("goal", "查看 Goal")
+	case "create_goal":
+		return toolDisplay("goal", "启动 Goal "+displayTarget(displayString(args, "objective"), ""))
+	case "update_goal":
+		return toolDisplay("goal", "更新 Goal "+displayTarget(displayString(args, "status"), ""))
 	case "list_agent_profiles":
 		return toolDisplay("agent", "查看长期 Agent")
 	case "create_agent_profile":

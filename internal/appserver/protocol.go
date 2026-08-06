@@ -64,6 +64,9 @@ const (
 	MethodAutomationCreate        = "automation/create"
 	MethodAutomationUpdate        = "automation/update"
 	MethodAutomationRemove        = "automation/remove"
+	MethodThreadGoalSet           = "thread/goal/set"
+	MethodThreadGoalGet           = "thread/goal/get"
+	MethodThreadGoalClear         = "thread/goal/clear"
 	// MethodGoalActiveSummary returns the lightweight composer-banner view
 	// of the most-recently-updated non-terminal goal in the requested thread
 	// scope. The mutation methods are user-owned controls for the active
@@ -154,6 +157,8 @@ const (
 	NotificationThreadStarted          = "thread/started"
 	NotificationThreadResumed          = "thread/resumed"
 	NotificationThreadUpdated          = "thread/updated"
+	NotificationThreadGoalUpdated      = "thread/goal/updated"
+	NotificationThreadGoalCleared      = "thread/goal/cleared"
 	NotificationTurnStarted            = "turn/started"
 	NotificationTurnQueued             = "turn/queued"
 	NotificationTurnDequeued           = "turn/dequeued"
@@ -974,6 +979,44 @@ type SkillListResult struct {
 	Skills []SkillSummary `json:"skills"`
 }
 
+// ThreadGoal is the public, thread-scoped Goal contract shared by app-server
+// clients and model tools. Wuu intentionally omits token budget fields.
+type ThreadGoal struct {
+	ThreadID        string `json:"thread_id"`
+	Objective       string `json:"objective"`
+	Status          string `json:"status"`
+	TokensUsed      int    `json:"tokens_used"`
+	TimeUsedSeconds int64  `json:"time_used_seconds"`
+	CreatedAt       int64  `json:"created_at"`
+	UpdatedAt       int64  `json:"updated_at"`
+}
+
+type ThreadGoalSetParams struct {
+	ThreadID  string  `json:"thread_id"`
+	Objective *string `json:"objective,omitempty"`
+	Status    *string `json:"status,omitempty"`
+}
+
+type ThreadGoalSetResult struct {
+	Goal ThreadGoal `json:"goal"`
+}
+
+type ThreadGoalGetParams struct {
+	ThreadID string `json:"thread_id"`
+}
+
+type ThreadGoalGetResult struct {
+	Goal *ThreadGoal `json:"goal"`
+}
+
+type ThreadGoalClearParams struct {
+	ThreadID string `json:"thread_id"`
+}
+
+type ThreadGoalClearResult struct {
+	Cleared bool `json:"cleared"`
+}
+
 // GoalActiveSummary is the composer-banner view of the most recently
 // updated non-terminal goal in one thread/session orchestration scope.
 // The handler filters terminal statuses
@@ -1763,6 +1806,16 @@ type ThreadResumedNotification struct {
 
 type ThreadUpdatedNotification struct {
 	Thread Thread `json:"thread"`
+}
+
+type ThreadGoalUpdatedNotification struct {
+	ThreadID string     `json:"thread_id"`
+	TurnID   string     `json:"turn_id,omitempty"`
+	Goal     ThreadGoal `json:"goal"`
+}
+
+type ThreadGoalClearedNotification struct {
+	ThreadID string `json:"thread_id"`
 }
 
 // ThreadRegenerateTitleParams is the input for the `thread/regenerate-title`

@@ -107,7 +107,7 @@ export function activate(api: PluginGenerationApi): void {
     defaultView: VIEW_ID,
   });
   api.registerThemeTokens({
-    theme: "developer-focus-complete",
+    theme: "developer-focus",
     base: "dark",
     tokens: {
       "--wuu-color-canvas": "#111827",

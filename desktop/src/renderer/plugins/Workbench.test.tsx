@@ -207,6 +207,8 @@ describe("WorkbenchController", () => {
     controller.setAvailablePluginIds(new Set(["user:reload"]));
     const instanceId = await controller.openView("reload.view", { pane: "main" });
     expect(document.documentElement.style.getPropertyValue("--wuu-plugin-accent")).toBe("one");
+    expect(document.documentElement.style.getPropertyValue("--wuu-font-family-ui")).toBe("one-ui");
+    expect(document.documentElement.style.getPropertyValue("--wuu-syntax-keyword")).toBe("one-keyword");
     expect(controller.getRenderer("document", "text/demo")?.generation).toBe("one");
     expect(host.getStatusItems().map((item) => item.label)).toEqual(["one"]);
 
@@ -218,12 +220,15 @@ describe("WorkbenchController", () => {
     expect(controller.getSnapshot().views.find((view) => view.id === instanceId)?.generation).toBe("two");
     expect(controller.getRenderer("document", "text/demo")?.generation).toBe("two");
     expect(document.documentElement.style.getPropertyValue("--wuu-plugin-accent")).toBe("two");
+    expect(document.documentElement.style.getPropertyValue("--wuu-font-family-ui")).toBe("two-ui");
     expect(host.getStatusItems().map((item) => item.label)).toEqual(["two"]);
 
     host.unload("user:reload");
     expect(controller.getSnapshot().views).toEqual([]);
     expect(controller.getRenderer("document", "text/demo")).toBeUndefined();
     expect(document.documentElement.style.getPropertyValue("--wuu-plugin-accent")).toBe("");
+    expect(document.documentElement.style.getPropertyValue("--wuu-font-family-ui")).toBe("");
+    expect(document.documentElement.style.getPropertyValue("--wuu-syntax-keyword")).toBe("");
     expect(host.getStatusItems()).toEqual([]);
     controller.dispose();
   });
@@ -385,7 +390,11 @@ function registerGeneration(api: PluginGenerationApi, label: string): void {
   api.registerThemeTokens({
     theme: "dark",
     base: "dark",
-    tokens: { "--wuu-plugin-accent": label },
+    tokens: {
+      "--wuu-plugin-accent": label,
+      "--wuu-font-family-ui": `${label}-ui`,
+    },
+    syntax: { "--wuu-syntax-keyword": `${label}-keyword` },
   });
   api.registerStatusItem({ id: "reload.status", label });
 }

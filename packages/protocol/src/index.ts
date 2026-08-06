@@ -2064,6 +2064,30 @@ export type ComposerGoalSummary = {
   can_clear?: boolean;
 };
 
+export type ThreadGoalStatus = "active" | "paused" | "blocked" | "complete";
+
+// Public thread-scoped Goal contract. Wuu intentionally has no token-budget
+// or usage-limit states; timestamps are Unix seconds like the app-server API.
+export type ThreadGoal = {
+  thread_id: string;
+  objective: string;
+  status: ThreadGoalStatus;
+  tokens_used: number;
+  time_used_seconds: number;
+  created_at: number;
+  updated_at: number;
+};
+
+export type ThreadGoalUpdatedNotification = {
+  thread_id: string;
+  turn_id?: string;
+  goal: ThreadGoal;
+};
+
+export type ThreadGoalClearedNotification = {
+  thread_id: string;
+};
+
 // Appearance preference for the desktop shell. "system" follows the OS
 // light/dark setting via prefers-color-scheme.
 // Continuous px value the user picks on the message-stream font-size

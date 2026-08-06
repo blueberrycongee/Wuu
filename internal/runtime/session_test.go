@@ -3366,7 +3366,7 @@ func TestWorkerDeferredToolCatalogPromptForToolkit(t *testing.T) {
 	if catalog == "" {
 		t.Fatal("worker deferred tool catalog must not be empty when tool search is enabled")
 	}
-	for _, want := range []string{"session_memory", "thread_get", "goal", "cron"} {
+	for _, want := range []string{"session_memory", "thread_get", "get_goal", "create_goal", "update_goal", "cron"} {
 		if !strings.Contains(catalog, want) {
 			t.Errorf("worker catalog must list deferred executor tool %s:\n%s", want, catalog)
 		}

@@ -5078,8 +5078,17 @@ func TestServerAutoContinuesActiveGoalWhenThreadIsIdle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CurrentGoal: %v", err)
 	}
-	if goal.TokensUsed != 5 || goal.GoalTurns != 1 || goal.Status != goalruntime.StatusComplete {
+	if goal.TokensUsed != 10 || goal.GoalTurns != 2 || goal.Status != goalruntime.StatusComplete {
 		t.Fatalf("unexpected goal after continuation: %+v", goal)
+	}
+	goalUpdates := notificationsByMethod(parseOutput(t, out.String()), NotificationThreadGoalUpdated)
+	if len(goalUpdates) == 0 {
+		t.Fatalf("missing %s notification", NotificationThreadGoalUpdated)
+	}
+	lastGoalUpdate := remarshal[ThreadGoalUpdatedNotification](t, goalUpdates[len(goalUpdates)-1]["params"])
+	if lastGoalUpdate.ThreadID != threadID || lastGoalUpdate.TurnID == "" ||
+		lastGoalUpdate.Goal.Status != string(goalruntime.StatusComplete) || lastGoalUpdate.Goal.TokensUsed != 10 {
+		t.Fatalf("unexpected terminal Goal notification: %+v", lastGoalUpdate)
 	}
 }
 
@@ -5183,10 +5192,10 @@ func goalContinuationContentForTest(messages []providers.ChatMessage) string {
 	return ""
 }
 
-func TestGoalContinuationContextTrimsLongObjective(t *testing.T) {
-	head := strings.Repeat("a", goalContinuationObjectiveHeadBytes*3)
-	tail := strings.Repeat("z", goalContinuationObjectiveTailBytes*3)
-	objective := head + "MIDDLE_SHOULD_NOT_BE_INLINE" + tail
+func TestGoalContinuationContextKeepsFullObjectiveAsUserData(t *testing.T) {
+	head := strings.Repeat("a", 1500)
+	tail := strings.Repeat("z", 1500)
+	objective := head + "MIDDLE_MUST_REMAIN_INLINE" + tail
 
 	segments := goalContinuationContextSegments(goalruntime.Goal{
 		Objective: objective,
@@ -5214,21 +5223,15 @@ func TestGoalContinuationContextTrimsLongObjective(t *testing.T) {
 	if !msg.Hidden || !wuucontext.IsSystemReminder(msg.Name, msg.Content) {
 		t.Fatalf("unexpected continuation message metadata: %+v", msg)
 	}
-	if strings.Contains(msg.Content, "MIDDLE_SHOULD_NOT_BE_INLINE") {
-		t.Fatalf("long objective should be trimmed from continuation context:\n%s", msg.Content)
-	}
 	for _, want := range []string{
-		strings.Repeat("a", 64),
-		strings.Repeat("z", 64),
-		"[objective trimmed; call goal with action=get for the full objective]",
-		"call goal with action=get if the missing details matter",
+		objective,
+		"objective below is user-provided data",
+		"Keep the full objective intact",
+		"Call update_goal with status \"complete\"",
 	} {
 		if !strings.Contains(msg.Content, want) {
 			t.Fatalf("continuation message missing %q:\n%s", want, msg.Content)
 		}
-	}
-	if len(msg.Content) >= len(objective) {
-		t.Fatalf("continuation content should be shorter than full objective: content=%d objective=%d", len(msg.Content), len(objective))
 	}
 }
 
@@ -5444,7 +5447,7 @@ func goalCompletionMessageForTest(messages []providers.ChatMessage, agentID stri
 	return ""
 }
 
-func TestServerTurnErrorStopsActiveGoal(t *testing.T) {
+func TestServerTurnErrorLeavesGoalActiveWithoutAutoRetry(t *testing.T) {
 	tests := []struct {
 		name       string
 		err        error
@@ -5452,20 +5455,20 @@ func TestServerTurnErrorStopsActiveGoal(t *testing.T) {
 		wantReason string
 	}{
 		{
-			name:       "provider error blocks goal",
+			name:       "provider error leaves goal active",
 			err:        fmt.Errorf("provider failed"),
-			wantStatus: goalruntime.StatusBlocked,
-			wantReason: "blocked",
+			wantStatus: goalruntime.StatusActive,
+			wantReason: "",
 		},
 		{
-			name: "context overflow blocks goal",
+			name: "context overflow leaves goal active",
 			err: &providers.HTTPError{
 				StatusCode:      http.StatusBadRequest,
 				Body:            "context_length_exceeded",
 				ContextOverflow: true,
 			},
-			wantStatus: goalruntime.StatusBlocked,
-			wantReason: "blocked",
+			wantStatus: goalruntime.StatusActive,
+			wantReason: "",
 		},
 	}
 
@@ -5507,6 +5510,90 @@ func TestServerTurnErrorStopsActiveGoal(t *testing.T) {
 			if got := fakeClientRequestCount(client); got != requestsAtError {
 				t.Fatalf("provider request count grew after turn error: before=%d after=%d", requestsAtError, got)
 			}
+		})
+	}
+}
+
+func TestThreadGoalPauseAndClearInterruptInFlightGoalTurn(t *testing.T) {
+	tests := []struct {
+		name   string
+		method string
+		params func(string) map[string]any
+		assert func(*testing.T, *goalruntime.Runtime)
+	}{
+		{
+			name:   "pause",
+			method: MethodThreadGoalSet,
+			params: func(threadID string) map[string]any {
+				return map[string]any{"thread_id": threadID, "status": "paused"}
+			},
+			assert: func(t *testing.T, goalRuntime *goalruntime.Runtime) {
+				goal, err := goalRuntime.CurrentGoal()
+				if err != nil || goal.Status != goalruntime.StatusPaused {
+					t.Fatalf("paused Goal = %+v, err=%v", goal, err)
+				}
+			},
+		},
+		{
+			name:   "clear",
+			method: MethodThreadGoalClear,
+			params: func(threadID string) map[string]any {
+				return map[string]any{"thread_id": threadID}
+			},
+			assert: func(t *testing.T, goalRuntime *goalruntime.Runtime) {
+				if _, err := goalRuntime.CurrentGoal(); !errors.Is(err, os.ErrNotExist) {
+					t.Fatalf("cleared Goal should be missing, err=%v", err)
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client := newBlockingStreamClient("")
+			rt := newTestRuntime(t, &fakeClient{})
+			rt.StreamRunner.Client = client
+			out := &lockedBuffer{}
+			srv := New(rt, out)
+			if err := srv.handleLine(context.Background(), []byte(`{"id":"thread","method":"thread/start"}`)); err != nil {
+				t.Fatalf("thread/start: %v", err)
+			}
+			threadID := remarshal[ThreadStartResult](t, responseByID(t, parseOutput(t, out.String()), "thread")["result"]).Thread.ID
+			threadRuntime, err := srv.ensureThreadRuntime(srv.thread(threadID))
+			if err != nil {
+				t.Fatalf("ensureThreadRuntime: %v", err)
+			}
+			if _, err := threadRuntime.GoalRuntime.Create(goalruntime.Spec{ThreadID: threadID, GoalID: "goal-interrupt", Objective: "interrupt this Goal turn"}); err != nil {
+				t.Fatalf("create Goal: %v", err)
+			}
+			turnRequest, err := json.Marshal(map[string]any{
+				"id": "turn", "method": MethodTurnStart,
+				"params": TurnStartParams{ThreadID: threadID, Prompt: "continue Goal"},
+			})
+			if err != nil {
+				t.Fatalf("marshal turn request: %v", err)
+			}
+			if err := srv.handleLine(context.Background(), turnRequest); err != nil {
+				t.Fatalf("turn/start: %v", err)
+			}
+			select {
+			case <-client.started:
+			case <-time.After(2 * time.Second):
+				t.Fatal("Goal turn did not start")
+			}
+
+			request, err := json.Marshal(map[string]any{"id": "control", "method": tt.method, "params": tt.params(threadID)})
+			if err != nil {
+				t.Fatalf("marshal control request: %v", err)
+			}
+			if err := srv.handleLine(context.Background(), request); err != nil {
+				t.Fatalf("%s: %v", tt.method, err)
+			}
+			if responseByID(t, parseOutput(t, out.String()), "control")["error"] != nil {
+				t.Fatalf("Goal control failed: %+v", responseByID(t, parseOutput(t, out.String()), "control"))
+			}
+			waitForMethod(t, out, NotificationTurnError)
+			tt.assert(t, threadRuntime.GoalRuntime)
 		})
 	}
 }

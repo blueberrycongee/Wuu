@@ -124,6 +124,27 @@ func (r *Runtime) AccountActiveUsage(delta UsageDelta, now time.Time) (Goal, boo
 	return goal, accounted, err
 }
 
+// AccountUsageForGoal attributes a completed turn to the Goal that owned the
+// turn when it started, even when that Goal became complete or blocked during
+// the turn. A replacement Goal never inherits usage from its predecessor.
+func (r *Runtime) AccountUsageForGoal(goalID string, delta UsageDelta, now time.Time) (Goal, bool, error) {
+	if r == nil || r.store == nil {
+		return Goal{}, false, errors.New("goal runtime store is required")
+	}
+	var accounted bool
+	goal, err := r.store.Update(func(goal Goal) (Goal, error) {
+		if goal.GoalID != goalID {
+			return goal, nil
+		}
+		accounted = true
+		return goal.AccountUsage(delta, now)
+	})
+	if errors.Is(err, os.ErrNotExist) {
+		return Goal{}, false, nil
+	}
+	return goal, accounted, err
+}
+
 func (r *Runtime) RecordBlocker(message string, now time.Time) (Goal, bool, error) {
 	if r == nil || r.store == nil {
 		return Goal{}, false, errors.New("goal runtime store is required")
