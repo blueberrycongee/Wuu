@@ -12,6 +12,7 @@ import {
   type ToolActivityProcessSegment,
 } from "./ToolActivityHelpers";
 import { ToolActivityTimeline } from "./ToolActivity";
+import { ToolActivityPresenter } from "./plugins/ToolActivityPresenter";
 import {
   AUTO_FOLLOW_NESTED_SCROLL_ATTR,
   useAutoFollowScrollContainer,
@@ -237,7 +238,7 @@ export function ProcessSurface({
       </div>
     ) : null;
 
-  return (
+  const fallback = (
     <div className={className}>
       <details
         className={`process-surface-fold${hasDetails ? " has-details" : " no-details"}${
@@ -288,6 +289,12 @@ export function ProcessSurface({
         ) : null}
       </details>
     </div>
+  );
+  return (
+    <ToolActivityPresenter
+      item={toolItems.length === 1 && !hasReasoning ? toolItems[0] : undefined}
+      fallback={fallback}
+    />
   );
 }
 

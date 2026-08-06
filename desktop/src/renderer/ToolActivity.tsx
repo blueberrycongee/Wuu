@@ -5,6 +5,7 @@ import {
   buildToolActivitySections,
   summarizeToolActivity,
 } from "./ToolActivityHelpers";
+import { ToolActivityPresenter } from "./plugins/ToolActivityPresenter";
 export type { JsonRecord } from "./ToolActivityHelpers";
 export {
   isRecord,
@@ -82,10 +83,13 @@ const ToolActivityTimelineItem = memo(function ToolActivityTimelineItem({
   item: ThreadItem;
   streaming: boolean;
 }): JSX.Element {
-  return (
+  const fallback = (
     <div className="activity-timeline-item">
       <ToolActivityRow items={[item]} streaming={streaming} />
     </div>
+  );
+  return (
+    <ToolActivityPresenter item={item} fallback={fallback} />
   );
 });
 

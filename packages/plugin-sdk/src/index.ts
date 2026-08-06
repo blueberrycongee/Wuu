@@ -49,6 +49,58 @@ export interface OpenViewOptions {
   reveal?: boolean;
 }
 
+export type ToolActivityStatus = "running" | "completed" | "failed";
+
+export interface ToolActivityResultContentPart {
+  readonly type: string;
+  readonly text?: string;
+  readonly data?: string;
+  readonly mimeType?: string;
+  readonly uri?: string;
+  readonly name?: string;
+  readonly resource?: unknown;
+}
+
+export interface ToolActivityStructuredResult {
+  readonly content?: readonly ToolActivityResultContentPart[];
+  readonly structuredContent?: unknown;
+  readonly metadata?: unknown;
+  readonly isError?: boolean;
+  readonly activity?: Readonly<{
+    id: string;
+    kind: string;
+    state?: string;
+    threadId?: string;
+    previewUri?: string;
+  }>;
+}
+
+/** Host-owned immutable view of a tool call. It intentionally excludes thread internals. */
+export interface ToolActivitySnapshot {
+  readonly id: string;
+  readonly toolName: string;
+  readonly capability?: string;
+  readonly kind?: string;
+  readonly status: ToolActivityStatus;
+  readonly argumentsText?: string;
+  readonly resultText?: string;
+  readonly structuredResult?: ToolActivityStructuredResult;
+  readonly error?: string;
+}
+
+export interface ToolActivityPresenterProps {
+  readonly activity: ToolActivitySnapshot;
+  readonly host: ViewHostAPI;
+  readonly fallback: unknown;
+}
+
+export interface ToolActivityPresenterDefinition {
+  readonly id: string;
+  /** Exact stable dispatch identity, such as a tool display capability. */
+  readonly key: string;
+  readonly render: (props: ToolActivityPresenterProps) => unknown;
+}
+
 export interface LayoutContribution {
   id: string;
   parentId: string;
@@ -148,6 +200,7 @@ export interface PluginGenerationApi {
   registerThemeTokens(tokens: ThemeTokens): Disposable;
   registerCSSSnippet(snippet: CSSSnippet): Disposable;
   registerStatusItem(item: StatusItemDefinition): Disposable;
+  registerToolActivityPresenter(definition: ToolActivityPresenterDefinition): Disposable;
 }
 
 /** Minimal type for the host-owned React instance; plugins never bundle React. */

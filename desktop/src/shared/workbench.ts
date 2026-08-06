@@ -80,6 +80,56 @@ export interface OpenViewOptions {
   context?: Readonly<Record<string, unknown>>;
 }
 
+export type ToolActivityStatus = "running" | "completed" | "failed";
+
+export interface ToolActivityResultContentPart {
+  readonly type: string;
+  readonly text?: string;
+  readonly data?: string;
+  readonly mimeType?: string;
+  readonly uri?: string;
+  readonly name?: string;
+  readonly resource?: unknown;
+}
+
+export interface ToolActivityStructuredResult {
+  readonly content?: readonly ToolActivityResultContentPart[];
+  readonly structuredContent?: unknown;
+  readonly metadata?: unknown;
+  readonly isError?: boolean;
+  readonly activity?: Readonly<{
+    id: string;
+    kind: string;
+    state?: string;
+    threadId?: string;
+    previewUri?: string;
+  }>;
+}
+
+export interface ToolActivitySnapshot {
+  readonly id: string;
+  readonly toolName: string;
+  readonly capability?: string;
+  readonly kind?: string;
+  readonly status: ToolActivityStatus;
+  readonly argumentsText?: string;
+  readonly resultText?: string;
+  readonly structuredResult?: ToolActivityStructuredResult;
+  readonly error?: string;
+}
+
+export interface ToolActivityPresenterProps {
+  readonly activity: ToolActivitySnapshot;
+  readonly host: ViewHostAPI;
+  readonly fallback: React.ReactNode;
+}
+
+export interface ToolActivityPresenterDefinition {
+  readonly id: string;
+  readonly key: string;
+  readonly render: React.ComponentType<ToolActivityPresenterProps>;
+}
+
 /** Current on-disk workbench state schema. */
 export const WORKBENCH_LAYOUT_STATE_VERSION = 1 as const;
 

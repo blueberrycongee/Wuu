@@ -22,6 +22,7 @@ for (const registration of [
   "registerStatusItem",
   "registerLocale",
   "registerSlot",
+  "registerToolActivityPresenter",
 ]) {
   assert.match(source, new RegExp(`api\\.${registration}\\(`), `missing ${registration}`);
 }
@@ -80,6 +81,7 @@ const api = {
   registerStatusItem: register("status"),
   registerLocale: register("locales"),
   registerSlot: (_slot, contribution) => register("slots")(contribution),
+  registerToolActivityPresenter: register("toolActivityPresenters"),
 };
 
 renderer.activate(api);
@@ -92,9 +94,29 @@ for (const [kind, expected] of Object.entries({
   status: 1,
   locales: 2,
   slots: 1,
+  toolActivityPresenters: 1,
 })) {
   assert.equal(registrations.get(kind)?.length, expected, `${kind} did not activate`);
 }
+
+const presenter = registrations.get("toolActivityPresenters")[0];
+assert.equal(presenter.key, "developer-loop.tool.echo");
+const presented = presenter.render({
+  activity: {
+    id: "call-1",
+    toolName: "developer-loop-echo",
+    capability: presenter.key,
+    status: "completed",
+    argumentsText: "{}",
+    resultText: "developer-loop tool ok",
+  },
+  host: {},
+  fallback: createElement("span", null, "native"),
+});
+assert.equal(presented.type, "section");
+assert.equal(presented.props["data-developer-loop-tool"], "completed");
+assert.equal(presented.props["data-tool-id"], "call-1");
+assert.equal(presented.children[1].children[0], "developer-loop tool ok");
 
 const storedWrites = [];
 const host = {

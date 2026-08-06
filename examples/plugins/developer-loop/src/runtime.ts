@@ -21,6 +21,7 @@ const plugin: RuntimePlugin = {
         id: "developer-loop-echo",
         description: "Return a short confirmation for developer-loop checks.",
         input_schema: { type: "object", properties: {} },
+        display: { capability: "developer-loop.tool.echo", kind: "acceptance" },
       }],
     };
   },

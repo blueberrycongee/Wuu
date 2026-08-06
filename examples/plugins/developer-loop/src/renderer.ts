@@ -90,6 +90,19 @@ function acceptanceView(api: PluginGenerationApi, props: Readonly<Record<string,
 }
 
 export function activate(api: PluginGenerationApi): void {
+  api.registerToolActivityPresenter({
+    id: "developer-loop-echo",
+    key: "developer-loop.tool.echo",
+    render({ activity, fallback }) {
+      return api.react.createElement(
+        "section",
+        { "data-developer-loop-tool": activity.status, "data-tool-id": activity.id },
+        api.react.createElement("strong", null, "Developer loop"),
+        api.react.createElement("span", null, activity.resultText ?? activity.argumentsText ?? "Running"),
+        activity.error ? api.react.createElement("span", { role: "alert" }, activity.error) : fallback,
+      );
+    },
+  });
   api.registerViewType({
     id: VIEW_ID,
     title: "Acceptance Counter",

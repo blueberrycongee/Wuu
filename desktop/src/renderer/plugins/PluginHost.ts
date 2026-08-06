@@ -6,6 +6,7 @@ import type {
   RendererDefinition,
   StatusItemDefinition,
   ThemeTokens,
+  ToolActivityPresenterDefinition,
   ViewTypeDefinition,
 } from "../../shared/workbench";
 
@@ -108,6 +109,7 @@ export interface PluginGenerationApi {
   registerCSSSnippet(snippet: CSSSnippet): Disposable;
   /** Register a status bar item. */
   registerStatusItem(item: StatusItemDefinition): Disposable;
+  registerToolActivityPresenter(definition: ToolActivityPresenterDefinition): Disposable;
 }
 
 export interface ActivatePluginGenerationOptions {
@@ -160,6 +162,11 @@ export interface RegisteredStatusItem extends StatusItemDefinition {
   readonly pluginId: string;
   readonly generation: string;
   readonly order: number;
+}
+
+export interface RegisteredToolActivityPresenter extends ToolActivityPresenterDefinition {
+  readonly pluginId: string;
+  readonly generation: string;
 }
 
 export type PluginDiagnosticKind = "activation" | "cleanup" | "render";
@@ -242,6 +249,11 @@ interface StatusItemRecord extends OrderedRecord {
   readonly item: StatusItemDefinition;
 }
 
+interface ToolActivityPresenterRecord extends OrderedRecord {
+  readonly key: string;
+  readonly render: ToolActivityPresenterDefinition["render"];
+}
+
 interface GenerationState {
   readonly pluginId: string;
   readonly generation: string;
@@ -257,6 +269,7 @@ interface GenerationState {
   readonly themeTokens: ThemeTokenRecord[];
   readonly cssSnippets: CSSSnippetRecord[];
   readonly statusItems: StatusItemRecord[];
+  readonly toolActivityPresenters: ToolActivityPresenterRecord[];
   readonly registrationKeys: Set<string>;
   readonly teardown: Disposable[];
   acceptingRegistrations: boolean;
@@ -277,6 +290,7 @@ const EMPTY_LAYOUT_SNAPSHOT: readonly RegisteredLayoutContribution[] = Object.fr
 const EMPTY_RENDERER_SNAPSHOT: readonly RegisteredRenderer[] = Object.freeze([]);
 const EMPTY_THEME_TOKEN_SNAPSHOT: readonly RegisteredThemeTokens[] = Object.freeze([]);
 const EMPTY_STATUS_ITEM_SNAPSHOT: readonly RegisteredStatusItem[] = Object.freeze([]);
+const EMPTY_TOOL_ACTIVITY_PRESENTER_SNAPSHOT: readonly RegisteredToolActivityPresenter[] = Object.freeze([]);
 const EMPTY_LOCALE_SNAPSHOT: Readonly<Record<string, string>> = Object.freeze({});
 
 export class PluginGenerationSupersededError extends Error {
@@ -309,6 +323,7 @@ export class PluginHost {
   private rendererSnapshot: readonly RegisteredRenderer[] = EMPTY_RENDERER_SNAPSHOT;
   private themeTokenSnapshot: readonly RegisteredThemeTokens[] = EMPTY_THEME_TOKEN_SNAPSHOT;
   private statusItemSnapshot: readonly RegisteredStatusItem[] = EMPTY_STATUS_ITEM_SNAPSHOT;
+  private toolActivityPresenterSnapshot: readonly RegisteredToolActivityPresenter[] = EMPTY_TOOL_ACTIVITY_PRESENTER_SNAPSHOT;
 
   constructor(options: PluginHostOptions) {
     this.react = options.react;
@@ -329,6 +344,8 @@ export class PluginHost {
 
     try {
       await options.register(this.createGenerationApi(state));
+      state.acceptingRegistrations = false;
+      this.assertToolActivityPresenterOwnership(state);
     } catch (error: unknown) {
       state.acceptingRegistrations = false;
       if (this.pendingActivations.get(pluginId) === pending) {
@@ -345,7 +362,6 @@ export class PluginHost {
       throw error;
     }
 
-    state.acceptingRegistrations = false;
     if (pending.cancelled || this.pendingActivations.get(pluginId) !== pending) {
       this.disposeGeneration(state);
       throw new PluginGenerationSupersededError(pluginId, generation);
@@ -450,6 +466,14 @@ export class PluginHost {
 
   getStatusItems(): readonly RegisteredStatusItem[] {
     return this.statusItemSnapshot;
+  }
+
+  getToolActivityPresenters(): readonly RegisteredToolActivityPresenter[] {
+    return this.toolActivityPresenterSnapshot;
+  }
+
+  getToolActivityPresenter(key: string): RegisteredToolActivityPresenter | undefined {
+    return this.toolActivityPresenterSnapshot.find((presenter) => presenter.key === key);
   }
 
   getLocaleEntries(locale: string): Readonly<Record<string, string>> {
@@ -650,6 +674,25 @@ export class PluginHost {
         state.statusItems.push(record);
         return this.ownRecord(state, record);
       },
+
+      registerToolActivityPresenter: (definition: ToolActivityPresenterDefinition) => {
+        this.assertAccepting(state);
+        const id = this.claimExactRegistrationId(state, "tool activity presenter", definition.id);
+        const key = requireExactNonEmpty(definition.key, "tool activity presenter key");
+        if (typeof definition.render !== "function") {
+          throw new Error("Plugin tool activity presenter render must be a function");
+        }
+        if (state.toolActivityPresenters.some((record) => !record.removed && record.key === key)) {
+          throw new Error(`Duplicate plugin tool activity presenter key: ${key}`);
+        }
+        this.assertToolActivityPresenterKeyAvailable(state.pluginId, key);
+        const record: ToolActivityPresenterRecord = {
+          pluginId: state.pluginId, generation: state.generation, id, key,
+          order: 0, removed: false, render: definition.render,
+        };
+        state.toolActivityPresenters.push(record);
+        return this.ownRecord(state, record);
+      },
     });
   }
 
@@ -685,6 +728,37 @@ export class PluginHost {
     return id;
   }
 
+  private claimExactRegistrationId(state: GenerationState, kind: string, value: string): string {
+    const id = requireExactNonEmpty(value, `${kind} registration id`);
+    const key = `${kind}:${id}`;
+    if (state.registrationKeys.has(key)) {
+      throw new Error(`Duplicate plugin ${kind} registration id: ${id}`);
+    }
+    state.registrationKeys.add(key);
+    return id;
+  }
+
+  private assertToolActivityPresenterKeyAvailable(pluginId: string, key: string): void {
+    for (const state of this.activeGenerations.values()) {
+      if (state.pluginId !== pluginId && state.toolActivityPresenters.some((record) => !record.removed && record.key === key)) {
+        throw new Error(`Tool activity presenter key is already owned by another plugin: ${key}`);
+      }
+    }
+    for (const pending of this.pendingActivations.values()) {
+      const state = pending.state;
+      if (!pending.cancelled && state.pluginId !== pluginId
+        && state.toolActivityPresenters.some((record) => !record.removed && record.key === key)) {
+        throw new Error(`Tool activity presenter key is already owned by another plugin: ${key}`);
+      }
+    }
+  }
+
+  private assertToolActivityPresenterOwnership(state: GenerationState): void {
+    for (const presenter of state.toolActivityPresenters) {
+      if (!presenter.removed) this.assertToolActivityPresenterKeyAvailable(state.pluginId, presenter.key);
+    }
+  }
+
   private disposeGeneration(state: GenerationState): void {
     if (state.disposed) {
       return;
@@ -709,6 +783,7 @@ export class PluginHost {
     const themeTokens: ThemeTokenRecord[] = [];
     const cssSnippets: CSSSnippetRecord[] = [];
     const statusItems: StatusItemRecord[] = [];
+    const toolActivityPresenters: ToolActivityPresenterRecord[] = [];
 
     for (const state of this.activeGenerations.values()) {
       for (const record of state.slots) {
@@ -734,6 +809,7 @@ export class PluginHost {
       themeTokens.push(...state.themeTokens.filter((record) => !record.removed));
       cssSnippets.push(...state.cssSnippets.filter((record) => !record.removed));
       statusItems.push(...state.statusItems.filter((record) => !record.removed));
+      toolActivityPresenters.push(...state.toolActivityPresenters.filter((record) => !record.removed));
     }
 
     for (const slotId of PLUGIN_SLOT_IDS) {
@@ -797,6 +873,12 @@ export class PluginHost {
     const nextStatusItems = Object.freeze(statusItems.sort(compareOrdered).map(toPublicStatusItem));
     if (!sameContributions(this.statusItemSnapshot, nextStatusItems)) {
       this.statusItemSnapshot = nextStatusItems;
+      changed = true;
+    }
+
+    const nextToolActivityPresenters = Object.freeze(toolActivityPresenters.map(toPublicToolActivityPresenter));
+    if (!sameContributions(this.toolActivityPresenterSnapshot, nextToolActivityPresenters)) {
+      this.toolActivityPresenterSnapshot = nextToolActivityPresenters;
       changed = true;
     }
 
@@ -920,6 +1002,7 @@ function createGenerationState(pluginId: string, generation: string): Generation
     themeTokens: [],
     cssSnippets: [],
     statusItems: [],
+    toolActivityPresenters: [],
     registrationKeys: new Set(),
     teardown: [],
     acceptingRegistrations: true,
@@ -1014,6 +1097,16 @@ function toPublicStatusItem(record: StatusItemRecord): RegisteredStatusItem {
   });
 }
 
+function toPublicToolActivityPresenter(record: ToolActivityPresenterRecord): RegisteredToolActivityPresenter {
+  return Object.freeze({
+    pluginId: record.pluginId,
+    generation: record.generation,
+    id: record.id,
+    key: record.key,
+    render: record.render,
+  });
+}
+
 function compareOrdered(left: OrderedRecord, right: OrderedRecord): number {
   return left.order - right.order
     || compareText(left.pluginId, right.pluginId)
@@ -1047,6 +1140,13 @@ function requireNonEmpty(value: string, label: string): string {
     throw new Error(`Plugin ${label} must not be empty`);
   }
   return normalized;
+}
+
+function requireExactNonEmpty(value: string, label: string): string {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throw new Error(`Plugin ${label} must not be empty`);
+  }
+  return value;
 }
 
 function sameContributions(

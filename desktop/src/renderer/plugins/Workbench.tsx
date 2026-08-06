@@ -175,7 +175,9 @@ export class WorkbenchController {
         definition.pluginId === view.pluginId && definition.generation === view.generation);
       const rendererActive = this.host.getRenderers().some((definition) =>
         definition.pluginId === view.pluginId && definition.generation === view.generation);
-      if (!active && !rendererActive) throw new Error("Plugin host context is no longer active");
+      const presenterActive = this.host.getToolActivityPresenters().some((definition) =>
+        definition.pluginId === view.pluginId && definition.generation === view.generation);
+      if (!active && !rendererActive && !presenterActive) throw new Error("Plugin host context is no longer active");
     };
     return Object.freeze({
       getStorage: async (key: string, scope: "user" | "workspace" = "workspace") => { requireActive(); return this.getPluginStorage(view.pluginId, view.generation, key, scope); },

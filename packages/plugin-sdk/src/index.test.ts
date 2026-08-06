@@ -4,7 +4,24 @@ import {
   handleRuntimeRequest,
   runJSONLRuntime,
   type RuntimePlugin,
+  type ToolActivityPresenterDefinition,
+  type ToolActivitySnapshot,
 } from "./index.js";
+
+const snapshot: ToolActivitySnapshot = Object.freeze({
+  id: "call",
+  toolName: "echo",
+  status: "running",
+  argumentsText: '{"partial":',
+});
+const presenter: ToolActivityPresenterDefinition = {
+  id: "echo",
+  key: "tool.echo",
+  render: ({ activity, fallback }) => activity.id === "call" ? activity.argumentsText : fallback,
+};
+if (presenter.render({ activity: snapshot, host: {} as never, fallback: "native" }) !== '{"partial":') {
+  throw new Error("tool activity presenter contract failed");
+}
 
 const plugin: RuntimePlugin = {
   initialize(params) {

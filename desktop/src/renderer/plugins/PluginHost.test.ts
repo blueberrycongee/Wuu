@@ -276,6 +276,111 @@ describe("PluginHost", () => {
     expect(document.head.querySelector("style[data-wuu-plugin-css-snippet]")).toBeNull();
     expect(notifications).toHaveLength(2);
   });
+
+  it("validates keyed tool activity presenters and rejects another plugin's active key", async () => {
+    const host = new PluginHost({ react: React });
+    for (const definition of [
+      { id: "", key: "tool.echo", render: () => null },
+      { id: "echo", key: "", render: () => null },
+      { id: "echo", key: "tool.echo", render: null },
+    ]) {
+      await expect(host.activateGeneration({
+        pluginId: `invalid-${definition.id || definition.key}`,
+        generation: "one",
+        register(api) { api.registerToolActivityPresenter(definition as never); },
+      })).rejects.toThrow();
+    }
+
+    await host.activateGeneration({
+      pluginId: "owner",
+      generation: "one",
+      register(api) {
+        api.registerToolActivityPresenter({ id: "echo", key: "tool.echo", render: () => null });
+      },
+    });
+    await expect(host.activateGeneration({
+      pluginId: "candidate",
+      generation: "one",
+      register(api) {
+        api.registerToolActivityPresenter({ id: "other", key: "tool.echo", render: () => null });
+      },
+    })).rejects.toThrow("already owned by another plugin");
+    expect(host.getToolActivityPresenter("tool.echo")?.pluginId).toBe("owner");
+  });
+
+  it("keeps candidates private, swaps replacements atomically, and preserves the active presenter on failure", async () => {
+    const host = new PluginHost({ react: React });
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const activation = host.activateGeneration({
+      pluginId: "owner",
+      generation: "one",
+      async register(api) {
+        api.registerToolActivityPresenter({ id: "echo", key: "tool.echo", render: () => "one" });
+        await gate;
+      },
+    });
+    expect(host.getToolActivityPresenters()).toEqual([]);
+    await expect(host.activateGeneration({
+      pluginId: "other",
+      generation: "one",
+      register(api) {
+        api.registerToolActivityPresenter({ id: "echo", key: "tool.echo", render: () => "other" });
+      },
+    })).rejects.toThrow("already owned by another plugin");
+    release();
+    await activation;
+    expect(host.getToolActivityPresenter("tool.echo")?.generation).toBe("one");
+
+    await host.activateGeneration({
+      pluginId: "owner",
+      generation: "two",
+      register(api) {
+        api.registerToolActivityPresenter({ id: "echo", key: "tool.echo", render: () => "two" });
+      },
+    });
+    expect(host.getToolActivityPresenter("tool.echo")?.generation).toBe("two");
+
+    await expect(host.activateGeneration({
+      pluginId: "owner",
+      generation: "broken",
+      register(api) {
+        api.registerToolActivityPresenter({ id: "echo", key: "tool.echo", render: () => "broken" });
+        throw new Error("stop");
+      },
+    })).rejects.toThrow("stop");
+    expect(host.getToolActivityPresenter("tool.echo")?.generation).toBe("two");
+  });
+
+  it("updates subscribers for presenter disposal and unload", async () => {
+    const host = new PluginHost({ react: React });
+    const notifications: number[] = [];
+    let registration!: Disposable;
+    host.subscribe(() => notifications.push(notifications.length));
+    await host.activateGeneration({
+      pluginId: "owner",
+      generation: "one",
+      register(api) {
+        registration = api.registerToolActivityPresenter({ id: "echo", key: "tool.echo", render: () => null });
+      },
+    });
+    const published = host.getToolActivityPresenters();
+    expect(Object.isFrozen(published)).toBe(true);
+    expect(Object.isFrozen(published[0])).toBe(true);
+    registration.dispose();
+    expect(host.getToolActivityPresenters()).toEqual([]);
+    expect(notifications).toHaveLength(2);
+
+    await host.activateGeneration({
+      pluginId: "owner",
+      generation: "two",
+      register(api) {
+        api.registerToolActivityPresenter({ id: "echo", key: "tool.echo", render: () => null });
+      },
+    });
+    host.unload("owner");
+    expect(host.getToolActivityPresenter("tool.echo")).toBeUndefined();
+  });
 });
 
 function contribution(id: string, order = 0) {

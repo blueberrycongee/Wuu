@@ -11,6 +11,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { ProcessSurface } from "./ProcessSurface";
 import type { ThreadItem } from "../shared/protocol";
+import { desktopPluginHost } from "./plugins/DesktopPluginRuntime";
 
 beforeAll(() => {
   // jsdom does not lay out real heights. Stub getBoundingClientRect so
@@ -109,9 +110,54 @@ function setProcessFoldOpen(
 
 afterEach(() => {
   unmount();
+  desktopPluginHost.unload("test:tool-activity-presenter");
 });
 
 describe("ProcessSurface", () => {
+  it("lets a matching presenter replace the complete single-tool surface root", async () => {
+    await desktopPluginHost.activateGeneration({
+      pluginId: "test:tool-activity-presenter",
+      generation: "one",
+      register(api) {
+        api.registerToolActivityPresenter({
+          id: "read",
+          key: "activity.read",
+          render: ({ activity }) => (
+            <section data-tool-presenter-root>{activity.toolName}</section>
+          ),
+        });
+      },
+    });
+    const item = makeReadFile("tool-1", "a.ts");
+    item.display = { capability: "activity.read" };
+    const { container } = render({ processItems: [item], streaming: false });
+
+    expect(container.querySelector("section[data-tool-presenter-root]")?.textContent).toBe("read_file");
+    expect(container.querySelector(".process-surface")).toBeNull();
+  });
+
+  it("dispatches matching presenter rows in an expanded multi-tool timeline", async () => {
+    await desktopPluginHost.activateGeneration({
+      pluginId: "test:tool-activity-presenter",
+      generation: "one",
+      register(api) {
+        api.registerToolActivityPresenter({
+          id: "read",
+          key: "activity.read",
+          render: ({ activity }) => <div data-timeline-presenter={activity.id} />,
+        });
+      },
+    });
+    const presented = makeReadFile("tool-1", "a.ts");
+    presented.display = { capability: "activity.read" };
+    const native = makeReadFile("tool-2", "b.ts");
+    const { container } = render({ processItems: [presented, native], streaming: false });
+    setProcessFoldOpen(container.querySelector("details"), true);
+
+    expect(container.querySelector("[data-timeline-presenter=tool-1]")).toBeTruthy();
+    expect(container.querySelectorAll(".activity-timeline-item")).toHaveLength(1);
+  });
+
   it("keeps the same surface node when items grow from one to many (no unmount)", () => {
     const { container: initialContainer } = render({
       processItems: [makeReadFile("tool-1", "a.ts")],
