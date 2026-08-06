@@ -111,7 +111,7 @@ Built-in targets are:
 | Presenter target | Stable match key |
 | --- | --- |
 | `conversation.item` | Item kind such as `assistant-message`, `reasoning`, or `attachment` |
-| `conversation.process` | Process kind |
+| `conversation.process` | Complete process shape: `reasoning`, `tool-group`, or `mixed` |
 | `conversation.tool-activity` | Stable Tool capability, before any execution-name rewrite |
 | `conversation.composer` | None |
 | `header.conversation`, `header.workspace` | None |

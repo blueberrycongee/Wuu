@@ -111,9 +111,59 @@ function setProcessFoldOpen(
 afterEach(() => {
   unmount();
   desktopPluginHost.unload("test:tool-activity-presenter");
+  desktopPluginHost.unload("test:process-wrapper");
+  desktopPluginHost.unload("test:process-replacement");
 });
 
 describe("ProcessSurface", () => {
+  it("nests the single-tool presenter inside the complete process boundary", async () => {
+    await desktopPluginHost.activateGeneration({
+      pluginId: "test:tool-activity-presenter",
+      generation: "one",
+      register(api) {
+        api.registerToolActivityPresenter({
+          id: "read",
+          key: "activity.read",
+          render: () => <span data-tool-presenter-root>tool</span>,
+        });
+      },
+    });
+    await desktopPluginHost.activateGeneration({
+      pluginId: "test:process-wrapper",
+      generation: "one",
+      register(api) {
+        api.registerPresenter({
+          id: "wrapper",
+          target: "conversation.process",
+          key: "tool-group",
+          mode: "wrap",
+          render: ({ fallback }) => <section data-process-wrapper>{fallback}</section>,
+        });
+      },
+    });
+    const item = makeReadFile("tool-1", "a.ts");
+    item.display = { capability: "activity.read" };
+    const { container } = render({ processItems: [item], streaming: false });
+
+    expect(container.querySelector("[data-process-wrapper] [data-tool-presenter-root]")).not.toBeNull();
+
+    await act(async () => desktopPluginHost.activateGeneration({
+      pluginId: "test:process-replacement",
+      generation: "one",
+      register(api) {
+        api.registerPresenter({
+          id: "replacement",
+          target: "conversation.process",
+          key: "tool-group",
+          render: () => <strong data-process-replacement>process</strong>,
+        });
+      },
+    }));
+
+    expect(container.querySelector("[data-process-wrapper] [data-process-replacement]")?.textContent).toBe("process");
+    expect(container.querySelector("[data-tool-presenter-root]")).toBeNull();
+  });
+
   it("lets a matching presenter replace the complete single-tool surface root", async () => {
     await desktopPluginHost.activateGeneration({
       pluginId: "test:tool-activity-presenter",

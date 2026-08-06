@@ -135,6 +135,33 @@ export interface ConversationItemSnapshotV1 {
   readonly createdAt?: string;
 }
 
+export type ConversationProcessKindV1 = "reasoning" | "tool-group" | "mixed";
+export type ConversationProcessStatusV1 = "running" | "completed" | "failed";
+
+/** One ordered, sanitized entry in the process surface. */
+export interface ConversationProcessItemV1 {
+  readonly id: string;
+  readonly kind: "reasoning" | "tool-activity";
+  readonly status: ConversationProcessStatusV1;
+  /** Reasoning text only. Tool arguments and results are intentionally excluded. */
+  readonly text?: string;
+  readonly toolName?: string;
+  readonly capability?: string;
+  readonly toolKind?: string;
+  readonly error?: string;
+}
+
+/** Public data for the complete reasoning/tool process region of one turn. */
+export interface ConversationProcessSnapshotV1 {
+  readonly contractVersion: 1;
+  readonly kind: ConversationProcessKindV1;
+  readonly status: ConversationProcessStatusV1;
+  readonly streaming: boolean;
+  readonly active: boolean;
+  /** Items preserve host display order and never contain private thread records. */
+  readonly items: readonly ConversationProcessItemV1[];
+}
+
 export interface ComposerQueueSummaryV1 {
   readonly id: string;
   readonly text?: string;

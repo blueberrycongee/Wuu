@@ -151,7 +151,7 @@ export async function activate(api) {
 | Presenter target | 稳定匹配 key |
 | --- | --- |
 | `conversation.item` | `assistant-message`、`reasoning`、`attachment` 等条目类型 |
-| `conversation.process` | Process 类型 |
+| `conversation.process` | 完整 Process 形态：`reasoning`、`tool-group` 或 `mixed` |
 | `conversation.tool-activity` | Tool 的稳定 capability，而不是改写后的执行名称 |
 | `conversation.composer` | 无 |
 | `header.conversation`、`header.workspace` | 无 |

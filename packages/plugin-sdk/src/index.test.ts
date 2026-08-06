@@ -13,6 +13,7 @@ import {
   runJSONLRuntime,
   type ComposerSnapshotV1,
   type ConversationItemSnapshotV1,
+  type ConversationProcessSnapshotV1,
   type FilePreviewSnapshotV1,
   type HeaderSnapshotV1,
   type NavigationSnapshotV1,
@@ -44,6 +45,17 @@ const conversationItem: ConversationItemSnapshotV1 = Object.freeze({
   content: Object.freeze([{ type: "markdown", text: "Done" }] as const),
   attachments: Object.freeze([{ id: "attachment-1", name: "result.png", mimeType: "image/png", width: 640, height: 480 }]),
   toolReferences: Object.freeze([{ id: "call-1", name: "read_file", capability: "workspace.read", status: "completed" }] as const),
+});
+const conversationProcess: ConversationProcessSnapshotV1 = Object.freeze({
+  contractVersion: 1,
+  kind: "mixed",
+  status: "running",
+  streaming: true,
+  active: true,
+  items: Object.freeze([
+    Object.freeze({ id: "reason-1", kind: "reasoning", status: "running", text: "Checking" }),
+    Object.freeze({ id: "tool-1", kind: "tool-activity", status: "completed", toolName: "read_file", capability: "workspace.read" }),
+  ]),
 });
 const composer: ComposerSnapshotV1 = Object.freeze({
   contractVersion: 1,
@@ -87,7 +99,7 @@ const settings: SettingsSnapshotV1 = Object.freeze({
   providers: Object.freeze([{ id: "provider-1", label: "Provider", configured: true }]),
 });
 if (
-  conversationItem.contractVersion !== 1 || composer.contractVersion !== 1 || header.contractVersion !== 1
+  conversationItem.contractVersion !== 1 || conversationProcess.kind !== "mixed" || composer.contractVersion !== 1 || header.contractVersion !== 1
   || navigation.nodes.length !== 2 || status.items.length !== 1 || preview.resourceId !== "resource-1"
   || settings.providers?.[0]?.configured !== true
 ) throw new Error("presentation snapshot V1 contract failed");
