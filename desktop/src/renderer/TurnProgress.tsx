@@ -7,7 +7,6 @@ export function useLiveNow(active: boolean): number {
     if (!active) {
       return;
     }
-    setNow(Date.now());
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
   }, [active]);
