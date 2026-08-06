@@ -80,6 +80,8 @@
 - [x] `internal/plugin/seam.go` — SeamKind, SeamDispatch, SeamCatalog
 - [x] `internal/plugin/registry.go` — Registry, DependencyRule, PluginRegistries
 - [x] `internal/plugin/scope_manager.go` — PluginScope, ScopeManager
-- [ ] Phase B: 在 agent loop 中使用 registries 替换回调点
-- [ ] Phase C: Desktop workbench 开放
-- [ ] Phase D: 本地开发闭环
+- [ ] Phase B: 将外部 capability negotiation 和 generation-scoped registrations 接入真实 Agent loop
+- [ ] Phase C: 将 Desktop workbench registrations 接入 view/layout/renderer/theme 等真实产品路径
+- [ ] Phase D: 让 create/build/test/dev 在独立插件仓中形成可运行闭环
+
+这些阶段只有在公共 SDK 的外部插件能够完成注册、调用、卸载和失败恢复，并有产品路径测试证明时才算完成。仅存在接口、registry 或协议类型不代表该能力已经开放。

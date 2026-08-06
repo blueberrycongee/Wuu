@@ -1,31 +1,37 @@
-# 验收标准追踪 — 2026-08-06 插件可定制化战略
+# Local Plugin Customization Acceptance Tracker
 
-对照策略文档第 248-263 行的 12 条验收标准。
+This tracker measures working product paths, not type declarations or planned APIs. A capability is complete only when a plugin outside Wuu can use the public contract and an automated test proves activation, use, unload, and failure recovery.
 
-| # | 标准 | 状态 | 证据 |
-|---|------|------|------|
-| 1 | 从本地目录安装、批准、启用、禁用和删除 | ✅ | `cmd/wuu/plugin.go`: install/approve/enable/disable/remove |
-| 2 | 开发模式下保存后自动重载 | 🟡 | `cmd/wuu/plugin_dev.go`: dev + poll watch 已实现，fsnotify 待 @秦始皇 |
-| 3 | 注册工具并包装工具策略 | ✅ | `plugin/seam.go`: agent.tool.* seams (register/execute.before/around/after) |
-| 4 | 提供 system prompt/context section | ✅ | `agent/system_prompt.go`: SystemPromptAssembler + SystemPromptProvider |
-| 5 | 替换 compaction 或注册 model Provider | ✅ | `agent/compaction_registry.go` + `agent/provider_registry.go` |
-| 6 | 增加可持久化的自定义 workbench view | 🟡 | `workbench.ts`: ViewTypeDefinition 已定义，renderer 侧 wiring 待 @le |
-| 7 | 改变布局和完整主题语言 | 🟡 | `workbench.ts`: LayoutContribution + ThemeTokens，renderer wiring 待 @le |
-| 8 | 读写插件设置和 namespaced storage | ✅ | `workbench.ts`: PluginStorageAPI + PluginSettingsAPI，capability_rpc.go: host.storage.* |
-| 9 | 升级/失败/渲染错误后保留可恢复宿主 | 🟡 | PluginSlot/Surface ErrorBoundary 已有，recovery 集成待 @秦始皇 |
-| 10 | 不导入 Wuu 私有源码 | ✅ | `packages/plugin-sdk/` 自包含，`first-party-migration-proof.md` 验证 |
-| 11 | 通过公开 SDK 的 contract tests | ✅ | `pluginhost/contracttest/`: 独立 contract test host |
-| 12 | Wuu 小版本升级后按兼容契约工作 | 🟡 | 契约已定义，实际跨版本测试待 @秦始皇 |
+## Current acceptance state
 
-## 状态图例
+| # | Acceptance criterion | State | Current evidence and remaining work |
+|---|---|---|---|
+| 1 | Install, approve, enable, disable, and remove from a local directory | Complete | The package lifecycle and CLI cover directory/zip install, exact-fingerprint approval, enable/disable, pending update, and removal. |
+| 2 | Rebuild and reload after a save in development mode | Not complete | The watcher detects changes, but the product path still needs build, validation, atomic generation replacement, failure preservation, and diagnostics. |
+| 3 | Register a Tool and wrap its execution policy | Partial | External Tools execute through the runtime host. The public guard/around/after capability chain is not yet connected to external capability registration. |
+| 4 | Contribute a system prompt or context section | Partial | Core registries exist, but an external plugin cannot yet register and execute these providers through the process protocol. |
+| 5 | Replace compaction or register a model Provider | Partial | Core registries exist and are concurrency-safe. External capability negotiation and generation-scoped registration are not connected. |
+| 6 | Add a persistent custom workbench view | Partial | Generation-scoped view snapshots now publish and unload atomically. View instances, host actions, layout placement, and durable state still need product integration. |
+| 7 | Change workbench layout and the complete theme language | Partial | Declarative color/syntax themes work. Layout contributions and the wider typography, spacing, density, border, elevation, motion, and content token contract are not complete. |
+| 8 | Read and write plugin settings and namespaced storage | Partial | Stores and protocol types exist. The runtime and Desktop host APIs still need production dispatch, workspace scoping, validation, and change delivery. |
+| 9 | Preserve a recoverable host after update, activation failure, or render failure | Partial | Core pending-update rollback and current Surface error boundaries work. Workbench views and development reload still need the same fallback and escape-path coverage. |
+| 10 | Build without importing Wuu private source or private React state | Partial | A public SDK exists, but generated projects still need a standalone install/build path and a typed host-owned React contract. |
+| 11 | Pass public SDK contract tests | Not complete | The current contract helper does not start the configured runtime in its normal path and can report failed checks without failing the test. |
+| 12 | Continue working across compatible Wuu minor releases | Not complete | Compatibility anchors exist, but no previous-minor/current-minor contract matrix proves them. |
 
-- ✅ 已完成，有代码和测试
-- 🟡 架构已定义，集成/测试待其他 agent 完成
-- ⬜ 未开始
+## Completion rules
 
-## 当前遗留工作
+- A public interface, registry, manifest field, or protocol struct alone counts as **Partial**, never **Complete**.
+- Every executable contribution must be owned by one plugin generation and disappear after disable, uninstall, upgrade, failed activation, or development reload.
+- Every renderer must have a host fallback that preserves Settings, plugin disable, and default UI recovery.
+- Development authorization is directory-specific and must never transfer to a normal downloaded package.
+- The acceptance plugin must build and test outside the Wuu source tree using only the public SDK and documented commands.
+- Marketplace, hosted publishing, remote automatic update, ranking, and remote dependency resolution are not acceptance requirements.
 
-1. **@le**: Desktop renderer wiring (标准 6, 7)
-2. **@秦始皇**: fsnotify dev watch + failure recovery (标准 2, 9, 12)
-3. **@Andy**: 集成审查，交叉 review，补充边界测试
-4. **@梁子**: 已完成 Phase A-D + 深化，待协助其他 agent
+## Implementation lanes
+
+1. Connect capability negotiation and generation-scoped external registrations to the live Agent runtime.
+2. Consume workbench view, layout, renderer, theme, command, settings, storage, locale, and status registrations in Desktop.
+3. Make `create`, `build`, `test`, and `dev` a runnable standalone development loop.
+4. Add a standalone acceptance plugin and a compatibility test matrix.
+5. Run real Desktop install, restart, upgrade, failed activation, failed render, disable, and removal verification before marking the platform complete.
