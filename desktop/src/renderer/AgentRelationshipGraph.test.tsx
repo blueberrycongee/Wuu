@@ -37,6 +37,49 @@ describe("AgentRelationshipGraph", () => {
     vi.restoreAllMocks();
   });
 
+  it("stops the force simulation after it cools", () => {
+    const frames: FrameRequestCallback[] = [];
+    let nextFrameID = 1;
+    vi.mocked(window.requestAnimationFrame).mockImplementation((callback) => {
+      frames.push(callback);
+      return nextFrameID++;
+    });
+
+    const agents = [
+      { id: "agent-1", name: "Andy", avatar_key: "abstract-1" },
+      { id: "agent-2", name: "Le", avatar_key: "abstract-2" },
+    ] as NamedAgent[];
+    const rooms = [{
+      id: "room-1",
+      name: "general",
+      members: agents.map((agent) => ({ member_type: "agent" as const, member_id: agent.id })),
+    }] as ChannelRoom[];
+
+    act(() => root.render(
+      <AgentRelationshipGraph
+        agents={agents}
+        rooms={rooms}
+        onSelectAgent={vi.fn()}
+        ariaLabel="Relationship graph"
+        zoomInLabel="Zoom in"
+        zoomOutLabel="Zoom out"
+        resetViewLabel="Reset"
+      />,
+    ));
+
+    let processedFrames = 0;
+    act(() => {
+      while (frames.length > 0 && processedFrames < 160) {
+        frames.shift()?.(processedFrames * 16.67);
+        processedFrames += 1;
+      }
+    });
+
+    expect(processedFrames).toBeGreaterThan(0);
+    expect(processedFrames).toBeLessThan(160);
+    expect(frames).toHaveLength(0);
+  });
+
   it("keeps the grabbed point under the cursor while dragging", () => {
     const onSelectAgent = vi.fn();
     const agents = [

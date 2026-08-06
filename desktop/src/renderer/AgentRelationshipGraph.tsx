@@ -238,9 +238,11 @@ export function AgentRelationshipGraph({ agents, rooms, insights, inheritedProvi
   }, []);
 
   useEffect(() => {
-    // Obsidian-style force simulation: the loop never stops, it cools toward
-    // a small alpha floor so nodes always stay subject to forces; dragging
-    // re-heats the graph so neighbours react with elastic lag.
+    // Obsidian-style force simulation. Dragging re-heats the graph so
+    // neighbours react with elastic lag, but the animation must stop after it
+    // cools. Keeping this O(nodes²) loop alive forever burns a renderer core
+    // and continuously allocates SVG attribute strings even while the graph is
+    // idle.
     const ALPHA_FLOOR = 0.012;
     const DRAG_ALPHA_TARGET = 0.3;
     const VELOCITY_DECAY = 0.86;
@@ -352,7 +354,9 @@ export function AgentRelationshipGraph({ agents, rooms, insights, inheritedProvi
       if (alpha < ALPHA_FLOOR) alpha = ALPHA_FLOOR;
       step(alpha);
       paint();
-      frameRef.current = window.requestAnimationFrame(tick);
+      if (dragRef.current || alpha > ALPHA_FLOOR) {
+        frameRef.current = window.requestAnimationFrame(tick);
+      }
     };
     restartRef.current = () => {
       alpha = Math.max(alpha, 0.55);
