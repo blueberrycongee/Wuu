@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 	"unicode"
@@ -32,6 +33,21 @@ type ToolClient interface {
 	ExecuteTool(context.Context, ToolExecuteParams) (ToolExecuteResult, error)
 }
 
+// CapabilityClient is a protocol-v2 client with negotiated capability calls.
+type CapabilityClient interface {
+	Client
+	ProtocolVersion() int
+	Capabilities() []CapabilityDescriptor
+	InvokeCapability(context.Context, CapabilityInvokeParams) (CapabilityInvokeResult, error)
+}
+
+// RegisteredCapability is the host-owned view of one negotiated capability.
+type RegisteredCapability struct {
+	PluginID   string
+	Descriptor CapabilityDescriptor
+	client     CapabilityClient
+}
+
 // RegisteredTool is the host-owned public view of a plugin tool registration.
 type RegisteredTool struct {
 	PublicName   string
@@ -43,10 +59,11 @@ type RegisteredTool struct {
 // Host invokes plugins in discovery order. A hook receives the output from the
 // previous plugin, preserving one deterministic Wuu transform chain.
 type Host struct {
-	mu        sync.RWMutex
-	clients   []Client
-	tools     map[string]RegisteredTool
-	toolOrder []string
+	mu           sync.RWMutex
+	clients      []Client
+	tools        map[string]RegisteredTool
+	toolOrder    []string
+	capabilities []RegisteredCapability
 }
 
 func New(clients ...Client) *Host {
@@ -81,6 +98,13 @@ func (h *Host) addLocked(client Client) {
 		return
 	}
 	h.clients = append(h.clients, client)
+	if capabilityClient, ok := client.(CapabilityClient); ok && capabilityClient.ProtocolVersion() >= CapabilityProtocolVersion {
+		for _, descriptor := range capabilityClient.Capabilities() {
+			h.capabilities = append(h.capabilities, RegisteredCapability{
+				PluginID: client.ID(), Descriptor: descriptor, client: capabilityClient,
+			})
+		}
+	}
 	toolClient, ok := client.(ToolClient)
 	if !ok {
 		return
@@ -105,6 +129,83 @@ func (h *Host) addLocked(client Client) {
 		}
 		h.toolOrder = append(h.toolOrder, publicName)
 	}
+}
+
+// ValidateCapabilities verifies generation-wide dependencies and conflicts.
+func (h *Host) ValidateCapabilities() error {
+	if h == nil {
+		return nil
+	}
+	h.mu.RLock()
+	registered := append([]RegisteredCapability(nil), h.capabilities...)
+	h.mu.RUnlock()
+	present := make(map[string]struct{}, len(registered))
+	for _, capability := range registered {
+		present[capability.Descriptor.ID] = struct{}{}
+	}
+	for _, capability := range registered {
+		for _, dependency := range capability.Descriptor.DependsOn {
+			if _, ok := present[dependency]; !ok {
+				return fmt.Errorf("plugin %q capability %q requires missing capability %q", capability.PluginID, capability.Descriptor.ID, dependency)
+			}
+		}
+		for _, conflict := range capability.Descriptor.Conflicts {
+			if _, ok := present[conflict]; ok {
+				return fmt.Errorf("plugin %q capability %q conflicts with capability %q", capability.PluginID, capability.Descriptor.ID, conflict)
+			}
+		}
+	}
+	return nil
+}
+
+// Capabilities returns active negotiated capabilities in deterministic
+// priority order. Ties preserve plugin discovery order.
+func (h *Host) Capabilities(id string) []RegisteredCapability {
+	if h == nil {
+		return nil
+	}
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	var out []RegisteredCapability
+	for _, capability := range h.capabilities {
+		if capability.Descriptor.ID != id || capability.client.Status().State != StateActive {
+			continue
+		}
+		copy := capability
+		copy.Descriptor = cloneCapabilityDescriptors([]CapabilityDescriptor{capability.Descriptor})[0]
+		out = append(out, copy)
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		return out[i].Descriptor.Priority > out[j].Descriptor.Priority
+	})
+	return out
+}
+
+// InvokeCapability invokes one exact plugin registration.
+func (h *Host) InvokeCapability(ctx context.Context, capability RegisteredCapability, input, output any) error {
+	if capability.client == nil || capability.client.Status().State != StateActive {
+		return fmt.Errorf("plugin %q capability %q is not active", capability.PluginID, capability.Descriptor.ID)
+	}
+	inputJSON, err := json.Marshal(input)
+	if err != nil {
+		return fmt.Errorf("marshal capability %q input: %w", capability.Descriptor.ID, err)
+	}
+	outputJSON, err := json.Marshal(output)
+	if err != nil {
+		return fmt.Errorf("marshal capability %q output: %w", capability.Descriptor.ID, err)
+	}
+	result, err := capability.client.InvokeCapability(ctx, CapabilityInvokeParams{
+		Capability: capability.Descriptor.ID,
+		Input:      inputJSON,
+		Output:     outputJSON,
+	})
+	if err != nil {
+		return fmt.Errorf("plugin %q capability %q: %w", capability.PluginID, capability.Descriptor.ID, err)
+	}
+	if err := json.Unmarshal(result.Output, output); err != nil {
+		return fmt.Errorf("plugin %q capability %q returned invalid output: %w", capability.PluginID, capability.Descriptor.ID, err)
+	}
+	return nil
 }
 
 // ToolDefinitions returns plugin tools in deterministic client and declaration
@@ -256,6 +357,7 @@ func (h *Host) Close(ctx context.Context) error {
 	h.clients = nil
 	h.tools = nil
 	h.toolOrder = nil
+	h.capabilities = nil
 	h.mu.Unlock()
 
 	var firstErr error

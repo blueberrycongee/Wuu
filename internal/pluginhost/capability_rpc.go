@@ -2,8 +2,11 @@ package pluginhost
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/blueberrycongee/wuu/internal/providers"
 )
 
 // CapabilityRPC defines the typed, bidirectional extension protocol between
@@ -31,7 +34,24 @@ import (
 const (
 	CapabilityProtocolVersion = 2
 	CapabilityProtocolName    = "wuu-plugin-v2"
+
+	// CapabilityAgentRequestTransform lets a plugin transform the complete,
+	// provider-neutral request immediately before provider validation and send.
+	CapabilityAgentRequestTransform = "agent.request.transform"
 )
+
+// CapabilityNegotiationError marks an initialize response that cannot be
+// activated safely. Runtime generation builders treat this as a hard rejection
+// even when ordinary plugin startup failures are allowed in inventory.
+type CapabilityNegotiationError struct{ Err error }
+
+func (e *CapabilityNegotiationError) Error() string { return e.Err.Error() }
+func (e *CapabilityNegotiationError) Unwrap() error { return e.Err }
+
+func IsCapabilityNegotiationError(err error) bool {
+	var target *CapabilityNegotiationError
+	return errors.As(err, &target)
+}
 
 // CapabilityDescriptor declares one capability a plugin provides.
 // Capabilities are typed, versioned, and ordered by priority.
@@ -254,9 +274,42 @@ type CapabilityInitializeResult struct {
 type CapabilityInitializeParams struct {
 	InitializeParams
 
+	// CapabilityProtocolVersion offers the capability layer independently of
+	// the v1 transport version. Legacy plugins keep seeing protocol_version=1
+	// and ignore this additive field.
+	CapabilityProtocolVersion int `json:"capability_protocol_version,omitempty"`
+
 	// SupportedHostServices lists the host services available to this plugin.
 	// Plugins can use this to decide whether to enable optional features.
 	SupportedHostServices []HostServiceMethod `json:"supported_host_services,omitempty"`
+}
+
+// CapabilityInvokeParams carries one typed capability invocation. Input and
+// output are both present so transform capabilities can build on the value
+// produced by an earlier, higher-priority plugin.
+type CapabilityInvokeParams struct {
+	Capability string          `json:"capability"`
+	Input      json.RawMessage `json:"input"`
+	Output     json.RawMessage `json:"output"`
+}
+
+// CapabilityInvokeResult is the transformed value returned by a plugin.
+type CapabilityInvokeResult struct {
+	Output json.RawMessage `json:"output"`
+}
+
+// RequestTransformInput is immutable context for agent.request.transform.
+type RequestTransformInput struct {
+	SessionID string `json:"session_id,omitempty"`
+	ThreadID  string `json:"thread_id,omitempty"`
+	CWD       string `json:"cwd,omitempty"`
+	Provider  string `json:"provider,omitempty"`
+	StepIndex int    `json:"step_index"`
+}
+
+// RequestTransformOutput is the mutable provider-neutral request contract.
+type RequestTransformOutput struct {
+	Request providers.ChatRequest `json:"request"`
 }
 
 // ---------------------------------------------------------------------------
@@ -291,6 +344,109 @@ func ValidateCapabilityDescriptor(c CapabilityDescriptor) error {
 	if c.Version < 1 {
 		return fmt.Errorf("capability %s: version must be >= 1, got %d", id, c.Version)
 	}
+	if c.ID == CapabilityAgentRequestTransform && (c.Kind != "transform" || c.Version != 1) {
+		return fmt.Errorf("capability %s requires kind %q and version 1", id, "transform")
+	}
+	if err := validateCapabilityRelations(c); err != nil {
+		return err
+	}
+	return nil
+}
+
+func validateCapabilityRelations(c CapabilityDescriptor) error {
+	dependencies := make(map[string]struct{}, len(c.DependsOn))
+	for _, dependency := range c.DependsOn {
+		dependency = strings.TrimSpace(dependency)
+		if dependency == "" || !strings.Contains(dependency, ".") {
+			return fmt.Errorf("capability %s: dependency %q must be a dotted identifier", c.ID, dependency)
+		}
+		if dependency == c.ID {
+			return fmt.Errorf("capability %s cannot depend on itself", c.ID)
+		}
+		if _, exists := dependencies[dependency]; exists {
+			return fmt.Errorf("capability %s: duplicate dependency %q", c.ID, dependency)
+		}
+		dependencies[dependency] = struct{}{}
+	}
+	conflicts := make(map[string]struct{}, len(c.Conflicts))
+	for _, conflict := range c.Conflicts {
+		conflict = strings.TrimSpace(conflict)
+		if conflict == "" || !strings.Contains(conflict, ".") {
+			return fmt.Errorf("capability %s: conflict %q must be a dotted identifier", c.ID, conflict)
+		}
+		if conflict == c.ID {
+			return fmt.Errorf("capability %s cannot conflict with itself", c.ID)
+		}
+		if _, exists := conflicts[conflict]; exists {
+			return fmt.Errorf("capability %s: duplicate conflict %q", c.ID, conflict)
+		}
+		if _, exists := dependencies[conflict]; exists {
+			return fmt.Errorf("capability %s cannot both depend on and conflict with %q", c.ID, conflict)
+		}
+		conflicts[conflict] = struct{}{}
+	}
+	return nil
+}
+
+// ValidateCapabilityNegotiation validates one initialize response against the
+// services actually implemented by the host process.
+func ValidateCapabilityNegotiation(result CapabilityInitializeResult, supported []HostServiceMethod) error {
+	version := result.ProtocolVersion
+	if version == 0 {
+		version = ProtocolVersion
+	}
+	if version < ProtocolVersion || version > CapabilityProtocolVersion {
+		return fmt.Errorf("unsupported negotiated protocol version %d", version)
+	}
+	if version == ProtocolVersion {
+		if len(result.Capabilities) != 0 || len(result.RequiredHostServices) != 0 {
+			return errors.New("protocol v1 cannot declare capabilities or host services")
+		}
+		return nil
+	}
+
+	seenCapabilities := make(map[string]struct{}, len(result.Capabilities))
+	for _, capability := range result.Capabilities {
+		if err := ValidateCapabilityDescriptor(capability); err != nil {
+			return err
+		}
+		if capability.ID != CapabilityAgentRequestTransform {
+			return fmt.Errorf("capability %s is not supported by this host", capability.ID)
+		}
+		if _, exists := seenCapabilities[capability.ID]; exists {
+			return fmt.Errorf("duplicate capability %q", capability.ID)
+		}
+		seenCapabilities[capability.ID] = struct{}{}
+	}
+
+	available := make(map[HostServiceMethod]struct{}, len(supported))
+	for _, service := range supported {
+		if err := ValidateHostServiceMethod(service); err != nil {
+			return fmt.Errorf("host configured invalid service: %w", err)
+		}
+		available[service] = struct{}{}
+	}
+	seenServices := make(map[HostServiceMethod]struct{}, len(result.RequiredHostServices))
+	for _, descriptor := range result.RequiredHostServices {
+		service := HostServiceMethod(strings.TrimSpace(descriptor.ID))
+		if service == "" {
+			return errors.New("host service id is required")
+		}
+		if _, exists := seenServices[service]; exists {
+			return fmt.Errorf("duplicate host service %q", service)
+		}
+		seenServices[service] = struct{}{}
+		_, availableNow := available[service]
+		if err := ValidateHostServiceMethod(service); err != nil {
+			if descriptor.Required {
+				return fmt.Errorf("required host service %q is unsupported", service)
+			}
+			continue
+		}
+		if descriptor.Required && !availableNow {
+			return fmt.Errorf("required host service %q is unavailable", service)
+		}
+	}
 	return nil
 }
 
@@ -319,4 +475,14 @@ func AllHostServices() []HostServiceMethod {
 		HostServiceWorkspaceGetRoot, HostServiceWorkspaceList,
 		HostServiceDiagnosticsLog,
 	}
+}
+
+func cloneCapabilityDescriptors(capabilities []CapabilityDescriptor) []CapabilityDescriptor {
+	cloned := make([]CapabilityDescriptor, len(capabilities))
+	for index, capability := range capabilities {
+		cloned[index] = capability
+		cloned[index].DependsOn = append([]string(nil), capability.DependsOn...)
+		cloned[index].Conflicts = append([]string(nil), capability.Conflicts...)
+	}
+	return cloned
 }

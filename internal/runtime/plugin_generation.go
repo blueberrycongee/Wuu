@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/blueberrycongee/wuu/internal/agent"
 	"github.com/blueberrycongee/wuu/internal/config"
 	"github.com/blueberrycongee/wuu/internal/hooks"
 	"github.com/blueberrycongee/wuu/internal/mcp"
@@ -25,15 +26,16 @@ import (
 // PluginGeneration is a complete, inactive replacement for the plugin-owned
 // surfaces of a Session. It owns every process and private package snapshot.
 type PluginGeneration struct {
-	settings   config.Config
-	plugins    []pluginpkg.Plugin
-	active     []pluginpkg.Plugin
-	host       *pluginhost.Host
-	hooks      *hooks.Dispatcher
-	skills     []skills.Skill
-	mcp        *mcp.Manager
-	mcpBinding map[string]tools.MCPActivityBinding
-	ownedRoots []string
+	settings          config.Config
+	plugins           []pluginpkg.Plugin
+	active            []pluginpkg.Plugin
+	host              *pluginhost.Host
+	hooks             *hooks.Dispatcher
+	skills            []skills.Skill
+	mcp               *mcp.Manager
+	mcpBinding        map[string]tools.MCPActivityBinding
+	requestTransforms *agent.RequestTransformChain
+	ownedRoots        []string
 }
 
 // PreflightExtensions discovers and builds a replacement without changing the
@@ -128,14 +130,15 @@ func (s *Session) buildPluginGeneration(cfg config.Config, discovered []pluginpk
 		return nil, err
 	}
 	generation := &PluginGeneration{
-		settings:   cfg,
-		plugins:    append([]pluginpkg.Plugin(nil), discovered...),
-		active:     append([]pluginpkg.Plugin(nil), active...),
-		host:       host,
-		hooks:      buildHookDispatcher(cfg, active, s.TitleClient, s.Model, nil),
-		skills:     discoverSkills(s.RootDir, s.HomeDir, s.WuuHome, active),
-		mcpBinding: mcpActivityBindingsFromPlugins(active),
-		ownedRoots: append([]string(nil), ownedRoots...),
+		settings:          cfg,
+		plugins:           append([]pluginpkg.Plugin(nil), discovered...),
+		active:            append([]pluginpkg.Plugin(nil), active...),
+		host:              host,
+		hooks:             buildHookDispatcher(cfg, active, s.TitleClient, s.Model, nil),
+		skills:            discoverSkills(s.RootDir, s.HomeDir, s.WuuHome, active),
+		mcpBinding:        mcpActivityBindingsFromPlugins(active),
+		requestTransforms: buildPluginRequestTransforms(host, s.ProviderName, "", s.RootDir),
+		ownedRoots:        append([]string(nil), ownedRoots...),
 	}
 	generation.mcp, err = startMCPManager(cfg, active, required)
 	if err != nil {
@@ -183,14 +186,15 @@ func (s *Session) capturePluginGeneration() *PluginGeneration {
 	hookSnapshot := hooks.NewDispatcher(nil)
 	hookSnapshot.Replace(s.HookDispatcher)
 	return &PluginGeneration{
-		settings:   config.Config{Extensions: s.ExtensionSettings},
-		plugins:    append([]pluginpkg.Plugin(nil), s.Plugins...),
-		active:     append([]pluginpkg.Plugin(nil), s.ActivePlugins...),
-		host:       s.PluginHost,
-		hooks:      hookSnapshot,
-		skills:     append([]skills.Skill(nil), s.Skills...),
-		mcp:        manager,
-		mcpBinding: mcpActivityBindingsFromPlugins(s.ActivePlugins),
+		settings:          config.Config{Extensions: s.ExtensionSettings},
+		plugins:           append([]pluginpkg.Plugin(nil), s.Plugins...),
+		active:            append([]pluginpkg.Plugin(nil), s.ActivePlugins...),
+		host:              s.PluginHost,
+		hooks:             hookSnapshot,
+		skills:            append([]skills.Skill(nil), s.Skills...),
+		mcp:               manager,
+		mcpBinding:        mcpActivityBindingsFromPlugins(s.ActivePlugins),
+		requestTransforms: buildPluginRequestTransforms(s.PluginHost, s.ProviderName, "", s.RootDir),
 	}
 }
 
@@ -208,7 +212,7 @@ func (s *Session) applyPluginGeneration(generation *PluginGeneration) {
 			inner = previous.inner
 		}
 		s.StreamRunner.Tools = newPluginToolExecutor(inner, generation.host, "", s.RootDir)
-		s.StreamRunner.BeforeRequest = pluginRequestInterceptor(generation.host, s.ProviderName, "", s.RootDir)
+		s.StreamRunner.BeforeRequest = pluginRequestInterceptorWithTransforms(generation.host, generation.requestTransforms, s.ProviderName, "", s.RootDir)
 	}
 	if s.HookDispatcher == nil {
 		s.HookDispatcher = generation.hooks
@@ -239,6 +243,7 @@ func (g *PluginGeneration) close() error {
 		cancel()
 		g.host = nil
 	}
+	g.requestTransforms = nil
 	for index := len(g.ownedRoots) - 1; index >= 0; index-- {
 		err = errors.Join(err, os.RemoveAll(g.ownedRoots[index]))
 	}

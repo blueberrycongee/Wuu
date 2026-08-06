@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -15,6 +16,19 @@ type fakeClient struct {
 	invoke   func(InvokeParams) (InvokeResult, error)
 	closed   bool
 	closeLog *[]string
+}
+
+type fakeCapabilityClient struct {
+	*fakeClient
+	capabilities []CapabilityDescriptor
+}
+
+func (f *fakeCapabilityClient) ProtocolVersion() int { return CapabilityProtocolVersion }
+func (f *fakeCapabilityClient) Capabilities() []CapabilityDescriptor {
+	return cloneCapabilityDescriptors(f.capabilities)
+}
+func (f *fakeCapabilityClient) InvokeCapability(context.Context, CapabilityInvokeParams) (CapabilityInvokeResult, error) {
+	return CapabilityInvokeResult{}, nil
 }
 
 func (f *fakeClient) ID() string     { return f.id }
@@ -92,5 +106,31 @@ func TestHostRejectsUnknownHook(t *testing.T) {
 	out := struct{}{}
 	if err := New().Run(context.Background(), Hook("unknown"), nil, &out); err == nil {
 		t.Fatal("expected unknown hook error")
+	}
+}
+
+func TestHostValidatesCapabilityDependenciesAndConflicts(t *testing.T) {
+	client := func(id string, capabilities ...CapabilityDescriptor) *fakeCapabilityClient {
+		return &fakeCapabilityClient{
+			fakeClient:   &fakeClient{id: id, status: Status{ID: id, State: StateActive}},
+			capabilities: capabilities,
+		}
+	}
+
+	missing := New(client("one", CapabilityDescriptor{
+		ID: "agent.capability.one", Kind: "transform", Version: 1, DependsOn: []string{"agent.capability.two"},
+	}))
+	if err := missing.ValidateCapabilities(); err == nil || !strings.Contains(err.Error(), "requires missing") {
+		t.Fatalf("missing dependency error = %v", err)
+	}
+
+	conflict := New(
+		client("one", CapabilityDescriptor{
+			ID: "agent.capability.one", Kind: "transform", Version: 1, Conflicts: []string{"agent.capability.two"},
+		}),
+		client("two", CapabilityDescriptor{ID: "agent.capability.two", Kind: "observe", Version: 1}),
+	)
+	if err := conflict.ValidateCapabilities(); err == nil || !strings.Contains(err.Error(), "conflicts") {
+		t.Fatalf("conflict error = %v", err)
 	}
 }

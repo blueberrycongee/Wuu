@@ -2,9 +2,11 @@ package runtime
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
+	"github.com/blueberrycongee/wuu/internal/agent"
 	pluginpkg "github.com/blueberrycongee/wuu/internal/plugin"
 	"github.com/blueberrycongee/wuu/internal/pluginhost"
 	"github.com/blueberrycongee/wuu/internal/providers"
@@ -17,7 +19,10 @@ func startPluginClient(ctx context.Context, cfg pluginhost.ProcessConfig) (plugi
 }
 
 func startPluginHost(plugins []pluginpkg.Plugin, projectRoot, wuuHome string) *pluginhost.Host {
-	host, _ := buildPluginHost(plugins, projectRoot, wuuHome, nil, startPluginClient)
+	host, err := buildPluginHost(plugins, projectRoot, wuuHome, nil, startPluginClient)
+	if err != nil {
+		return pluginhost.New(pluginhost.Failed("capability-negotiation", err))
+	}
 	return host
 }
 
@@ -40,7 +45,7 @@ func buildPluginHost(plugins []pluginpkg.Plugin, projectRoot, wuuHome string, re
 		})
 		if err != nil {
 			host.Add(pluginhost.Failed(item.ID, err))
-			if required[item.ID] {
+			if required[item.ID] || pluginhost.IsCapabilityNegotiationError(err) {
 				ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 				closeErr := host.Close(ctx)
 				cancel()
@@ -49,6 +54,12 @@ func buildPluginHost(plugins []pluginpkg.Plugin, projectRoot, wuuHome string, re
 			continue
 		}
 		host.Add(client)
+	}
+	if err := host.ValidateCapabilities(); err != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		closeErr := host.Close(ctx)
+		cancel()
+		return nil, errors.Join(err, closeErr)
 	}
 	return host, nil
 }
@@ -62,49 +73,85 @@ func pluginActivationError(id string, startErr, closeErr error) error {
 }
 
 func pluginRequestInterceptor(host *pluginhost.Host, provider, threadID, cwd string) func(context.Context, *providers.ChatRequest) error {
-	if host == nil || !host.HasHook(pluginhost.HookChatRequest) {
+	return pluginRequestInterceptorWithTransforms(host, buildPluginRequestTransforms(host, provider, threadID, cwd), provider, threadID, cwd)
+}
+
+func pluginRequestInterceptorWithTransforms(host *pluginhost.Host, transforms *agent.RequestTransformChain, provider, threadID, cwd string) func(context.Context, *providers.ChatRequest) error {
+	hasLegacyHook := host != nil && host.HasHook(pluginhost.HookChatRequest)
+	if !hasLegacyHook && (transforms == nil || transforms.Count() == 0) {
 		return nil
 	}
 	return func(ctx context.Context, request *providers.ChatRequest) error {
 		if request == nil {
 			return nil
 		}
-		output := pluginhost.ChatRequestOutput{
-			Model:                       request.Model,
-			Messages:                    append([]providers.ChatMessage(nil), request.Messages...),
-			Tools:                       append([]providers.ToolDefinition(nil), request.Tools...),
-			Temperature:                 request.Temperature,
-			MaxTokens:                   request.MaxTokens,
-			Effort:                      request.Effort,
-			NativeDeferredToolDiscovery: request.NativeDeferredToolDiscovery,
-			ForceToolName:               request.ForceToolName,
-		}
-		if request.ProviderOptions != nil {
-			output.ProviderOptions = make(map[string]any, len(request.ProviderOptions))
-			for key, value := range request.ProviderOptions {
-				output.ProviderOptions[key] = value
+		if hasLegacyHook {
+			output := pluginhost.ChatRequestOutput{
+				Model:                       request.Model,
+				Messages:                    append([]providers.ChatMessage(nil), request.Messages...),
+				Tools:                       append([]providers.ToolDefinition(nil), request.Tools...),
+				Temperature:                 request.Temperature,
+				MaxTokens:                   request.MaxTokens,
+				Effort:                      request.Effort,
+				NativeDeferredToolDiscovery: request.NativeDeferredToolDiscovery,
+				ForceToolName:               request.ForceToolName,
 			}
+			if request.ProviderOptions != nil {
+				output.ProviderOptions = make(map[string]any, len(request.ProviderOptions))
+				for key, value := range request.ProviderOptions {
+					output.ProviderOptions[key] = value
+				}
+			}
+			if err := host.Run(ctx, pluginhost.HookChatRequest, pluginhost.ChatRequestInput{
+				SessionID: threadID,
+				ThreadID:  threadID,
+				CWD:       cwd,
+				Provider:  provider,
+				StepIndex: request.StepIndex,
+			}, &output); err != nil {
+				return err
+			}
+			request.Model = output.Model
+			request.Messages = output.Messages
+			request.Tools = output.Tools
+			request.Temperature = output.Temperature
+			request.MaxTokens = output.MaxTokens
+			request.Effort = output.Effort
+			request.ProviderOptions = output.ProviderOptions
+			request.NativeDeferredToolDiscovery = output.NativeDeferredToolDiscovery
+			request.ForceToolName = output.ForceToolName
 		}
-		if err := host.Run(ctx, pluginhost.HookChatRequest, pluginhost.ChatRequestInput{
-			SessionID: threadID,
-			ThreadID:  threadID,
-			CWD:       cwd,
-			Provider:  provider,
-			StepIndex: request.StepIndex,
-		}, &output); err != nil {
-			return err
+		if transforms != nil {
+			return transforms.Apply(ctx, request, nil)
 		}
-		request.Model = output.Model
-		request.Messages = output.Messages
-		request.Tools = output.Tools
-		request.Temperature = output.Temperature
-		request.MaxTokens = output.MaxTokens
-		request.Effort = output.Effort
-		request.ProviderOptions = output.ProviderOptions
-		request.NativeDeferredToolDiscovery = output.NativeDeferredToolDiscovery
-		request.ForceToolName = output.ForceToolName
 		return nil
 	}
+}
+
+func buildPluginRequestTransforms(host *pluginhost.Host, provider, threadID, cwd string) *agent.RequestTransformChain {
+	chain := agent.NewRequestTransformChain()
+	if host == nil {
+		return chain
+	}
+	for _, registered := range host.Capabilities(pluginhost.CapabilityAgentRequestTransform) {
+		capability := registered
+		key := capability.PluginID + ":" + capability.Descriptor.ID
+		chain.AddWithOwner(agent.NewRequestTransform(key, func(ctx context.Context, request *providers.ChatRequest) error {
+			output := pluginhost.RequestTransformOutput{Request: *request}
+			if err := host.InvokeCapability(ctx, capability, pluginhost.RequestTransformInput{
+				SessionID: threadID,
+				ThreadID:  threadID,
+				CWD:       cwd,
+				Provider:  provider,
+				StepIndex: request.StepIndex,
+			}, &output); err != nil {
+				return err
+			}
+			*request = output.Request
+			return nil
+		}, capability.Descriptor.Priority), capability.PluginID)
+	}
+	return chain
 }
 
 // TransformUserMessage runs before app-server or CLI persistence so the user,

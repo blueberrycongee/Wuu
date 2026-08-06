@@ -1,6 +1,7 @@
 package pluginhost
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -160,20 +161,80 @@ func TestCapabilityInitializeResultProtocolVersion(t *testing.T) {
 func TestCapabilityInitializeParams(t *testing.T) {
 	params := CapabilityInitializeParams{
 		InitializeParams: InitializeParams{
-			ProtocolVersion: 2,
+			ProtocolVersion: ProtocolVersion,
 			PluginID:        "test-plugin",
 		},
+		CapabilityProtocolVersion: CapabilityProtocolVersion,
 		SupportedHostServices: []HostServiceMethod{
 			HostServiceStorageGet,
 			HostServiceStorageSet,
 		},
 	}
 
-	if params.ProtocolVersion != 2 {
-		t.Errorf("expected protocol version 2, got %d", params.ProtocolVersion)
+	if params.ProtocolVersion != ProtocolVersion || params.CapabilityProtocolVersion != CapabilityProtocolVersion {
+		t.Errorf("protocol offer = transport %d capability %d", params.ProtocolVersion, params.CapabilityProtocolVersion)
 	}
 	if len(params.SupportedHostServices) != 2 {
 		t.Errorf("expected 2 supported services, got %d", len(params.SupportedHostServices))
+	}
+}
+
+func TestValidateCapabilityNegotiationHostServices(t *testing.T) {
+	base := CapabilityInitializeResult{ProtocolVersion: CapabilityProtocolVersion}
+	base.Capabilities = []CapabilityDescriptor{{ID: CapabilityAgentRequestTransform, Kind: "transform", Version: 1}}
+
+	optional := base
+	optional.RequiredHostServices = []HostServiceDescriptor{{ID: "host.future.optional"}}
+	if err := ValidateCapabilityNegotiation(optional, nil); err != nil {
+		t.Fatalf("optional unsupported service rejected: %v", err)
+	}
+
+	required := base
+	required.RequiredHostServices = []HostServiceDescriptor{{ID: string(HostServiceStorageGet), Required: true}}
+	if err := ValidateCapabilityNegotiation(required, nil); err == nil || !strings.Contains(err.Error(), "unavailable") {
+		t.Fatalf("required unavailable service error = %v", err)
+	}
+	if err := ValidateCapabilityNegotiation(required, []HostServiceMethod{HostServiceStorageGet}); err != nil {
+		t.Fatalf("available required service rejected: %v", err)
+	}
+}
+
+func TestValidateCapabilityNegotiationRejectsUnsupportedAndDuplicateDeclarations(t *testing.T) {
+	tests := []struct {
+		name   string
+		result CapabilityInitializeResult
+		match  string
+	}{
+		{
+			name: "unsupported capability",
+			result: CapabilityInitializeResult{ProtocolVersion: 2, Capabilities: []CapabilityDescriptor{{
+				ID: "agent.future.transform", Kind: "transform", Version: 1,
+			}}},
+			match: "not supported",
+		},
+		{
+			name: "duplicate capability",
+			result: CapabilityInitializeResult{ProtocolVersion: 2, Capabilities: []CapabilityDescriptor{
+				{ID: CapabilityAgentRequestTransform, Kind: "transform", Version: 1},
+				{ID: CapabilityAgentRequestTransform, Kind: "transform", Version: 1},
+			}},
+			match: "duplicate capability",
+		},
+		{
+			name: "v1 declaration",
+			result: CapabilityInitializeResult{ProtocolVersion: 1, Capabilities: []CapabilityDescriptor{{
+				ID: CapabilityAgentRequestTransform, Kind: "transform", Version: 1,
+			}}},
+			match: "protocol v1",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := ValidateCapabilityNegotiation(test.result, nil)
+			if err == nil || !strings.Contains(err.Error(), test.match) {
+				t.Fatalf("error = %v, want %q", err, test.match)
+			}
+		})
 	}
 }
 

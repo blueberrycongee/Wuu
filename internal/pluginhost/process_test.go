@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/blueberrycongee/wuu/internal/providers"
 )
 
 func TestProcessClientLifecycleAndInvoke(t *testing.T) {
@@ -52,6 +54,139 @@ func TestProcessClientLifecycleAndInvoke(t *testing.T) {
 	}
 }
 
+func TestProcessClientNegotiatesAndInvokesCapability(t *testing.T) {
+	if os.Getenv("WUU_PLUGINHOST_CAPABILITY_HELPER") == "1" {
+		runCapabilityHelper()
+		return
+	}
+	root := t.TempDir()
+	client, err := Start(context.Background(), ProcessConfig{
+		ID:          "capability-plugin",
+		Command:     os.Args[0],
+		Args:        []string{"-test.run=TestProcessClientNegotiatesAndInvokesCapability"},
+		Env:         map[string]string{"WUU_PLUGINHOST_CAPABILITY_HELPER": "1"},
+		PluginRoot:  root,
+		ProjectRoot: filepath.Dir(root),
+		WuuHome:     t.TempDir(),
+		Timeout:     2 * time.Second,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close(context.Background())
+	if client.ProtocolVersion() != CapabilityProtocolVersion {
+		t.Fatalf("protocol = %d", client.ProtocolVersion())
+	}
+	capabilities := client.Capabilities()
+	if len(capabilities) != 1 || capabilities[0].ID != CapabilityAgentRequestTransform {
+		t.Fatalf("capabilities = %+v", capabilities)
+	}
+	output, _ := json.Marshal(RequestTransformOutput{Request: providers.ChatRequest{Model: "before"}})
+	result, err := client.InvokeCapability(context.Background(), CapabilityInvokeParams{
+		Capability: CapabilityAgentRequestTransform,
+		Input:      json.RawMessage(`{"provider":"test"}`),
+		Output:     output,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var transformed RequestTransformOutput
+	if err := json.Unmarshal(result.Output, &transformed); err != nil {
+		t.Fatal(err)
+	}
+	if transformed.Request.Model != "after" {
+		t.Fatalf("output = %+v", transformed)
+	}
+}
+
+func runCapabilityHelper() {
+	scanner := bufio.NewScanner(os.Stdin)
+	enc := json.NewEncoder(os.Stdout)
+	for scanner.Scan() {
+		var req struct {
+			ID     string          `json:"id"`
+			Method string          `json:"method"`
+			Params json.RawMessage `json:"params"`
+		}
+		if json.Unmarshal(scanner.Bytes(), &req) != nil {
+			os.Exit(2)
+		}
+		var result any
+		switch req.Method {
+		case "initialize":
+			var params CapabilityInitializeParams
+			_ = json.Unmarshal(req.Params, &params)
+			if params.ProtocolVersion != ProtocolVersion || params.CapabilityProtocolVersion != CapabilityProtocolVersion {
+				os.Exit(3)
+			}
+			result = CapabilityInitializeResult{
+				ProtocolVersion: CapabilityProtocolVersion,
+				Capabilities: []CapabilityDescriptor{{
+					ID: CapabilityAgentRequestTransform, Kind: "transform", Version: 1,
+				}},
+			}
+		case "capability.invoke":
+			var params CapabilityInvokeParams
+			_ = json.Unmarshal(req.Params, &params)
+			if params.Capability != CapabilityAgentRequestTransform {
+				os.Exit(4)
+			}
+			var output RequestTransformOutput
+			_ = json.Unmarshal(params.Output, &output)
+			output.Request.Model = "after"
+			data, _ := json.Marshal(output)
+			result = CapabilityInvokeResult{Output: data}
+		case "shutdown":
+			_ = enc.Encode(map[string]any{"id": req.ID, "result": map[string]any{}})
+			return
+		default:
+			result = map[string]any{}
+		}
+		_ = enc.Encode(map[string]any{"id": req.ID, "result": result})
+	}
+}
+
+func TestProcessClientRejectsUnavailableRequiredHostService(t *testing.T) {
+	if os.Getenv("WUU_PLUGINHOST_REQUIRED_SERVICE_HELPER") == "1" {
+		runRequiredServiceHelper()
+		return
+	}
+	root := t.TempDir()
+	_, err := Start(context.Background(), ProcessConfig{
+		ID:          "required-service-plugin",
+		Command:     os.Args[0],
+		Args:        []string{"-test.run=TestProcessClientRejectsUnavailableRequiredHostService"},
+		Env:         map[string]string{"WUU_PLUGINHOST_REQUIRED_SERVICE_HELPER": "1"},
+		PluginRoot:  root,
+		ProjectRoot: filepath.Dir(root),
+		WuuHome:     t.TempDir(),
+		Timeout:     2 * time.Second,
+	})
+	if err == nil || !IsCapabilityNegotiationError(err) || !strings.Contains(err.Error(), "unavailable") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func runRequiredServiceHelper() {
+	scanner := bufio.NewScanner(os.Stdin)
+	enc := json.NewEncoder(os.Stdout)
+	if !scanner.Scan() {
+		os.Exit(2)
+	}
+	var req struct {
+		ID string `json:"id"`
+	}
+	if json.Unmarshal(scanner.Bytes(), &req) != nil {
+		os.Exit(3)
+	}
+	_ = enc.Encode(map[string]any{"id": req.ID, "result": CapabilityInitializeResult{
+		ProtocolVersion: CapabilityProtocolVersion,
+		RequiredHostServices: []HostServiceDescriptor{{
+			ID: string(HostServiceStorageGet), Required: true,
+		}},
+	}})
+}
+
 func runPluginHelper() {
 	scanner := bufio.NewScanner(os.Stdin)
 	enc := json.NewEncoder(os.Stdout)
@@ -72,6 +207,7 @@ func runPluginHelper() {
 			if params.ProtocolVersion != ProtocolVersion {
 				os.Exit(3)
 			}
+			// A v1 result remains valid while additive v2 fields are ignored.
 			result = InitializeResult{Hooks: []Hook{HookChatMessage}}
 		case "hook.invoke":
 			var params InvokeParams

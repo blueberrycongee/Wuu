@@ -15,9 +15,10 @@ import (
 )
 
 type generationClient struct {
-	id         string
-	closed     bool
-	closeOrder *[]string
+	id           string
+	closed       bool
+	closeOrder   *[]string
+	capabilities []pluginhost.CapabilityDescriptor
 }
 
 func (c *generationClient) ID() string               { return c.id }
@@ -34,6 +35,14 @@ func (c *generationClient) Close(context.Context) error {
 		*c.closeOrder = append(*c.closeOrder, c.id)
 	}
 	return nil
+}
+
+func (c *generationClient) ProtocolVersion() int { return pluginhost.CapabilityProtocolVersion }
+func (c *generationClient) Capabilities() []pluginhost.CapabilityDescriptor {
+	return append([]pluginhost.CapabilityDescriptor(nil), c.capabilities...)
+}
+func (c *generationClient) InvokeCapability(context.Context, pluginhost.CapabilityInvokeParams) (pluginhost.CapabilityInvokeResult, error) {
+	return pluginhost.CapabilityInvokeResult{}, nil
 }
 
 func TestFailedCandidateClosesStartedProcessesAndPreservesOldGeneration(t *testing.T) {
@@ -70,6 +79,35 @@ func TestFailedCandidateClosesStartedProcessesAndPreservesOldGeneration(t *testi
 	}
 	if len(closeOrder) != 2 || closeOrder[0] != "second" || closeOrder[1] != "first" {
 		t.Fatalf("candidate close order = %v, want [second first]", closeOrder)
+	}
+}
+
+func TestCapabilityConflictClosesCandidateAndPreservesOldGeneration(t *testing.T) {
+	oldClient := &generationClient{id: "old"}
+	old := testPluginGeneration("old", oldClient)
+	session := testGenerationSession(old)
+	one := &generationClient{id: "one", capabilities: []pluginhost.CapabilityDescriptor{{
+		ID: "agent.capability.one", Kind: "transform", Version: 1, Conflicts: []string{"agent.capability.two"},
+	}}}
+	two := &generationClient{id: "two", capabilities: []pluginhost.CapabilityDescriptor{{
+		ID: "agent.capability.two", Kind: "observe", Version: 1,
+	}}}
+	_, err := session.buildPluginGeneration(config.Config{}, []pluginpkg.Plugin{
+		testRuntimePlugin("one"), testRuntimePlugin("two"),
+	}, nil, nil, func(_ context.Context, cfg pluginhost.ProcessConfig) (pluginhost.Client, error) {
+		if cfg.ID == "one" {
+			return one, nil
+		}
+		return two, nil
+	})
+	if err == nil || !strings.Contains(err.Error(), "conflicts") {
+		t.Fatalf("error = %v", err)
+	}
+	if !one.closed || !two.closed {
+		t.Fatalf("candidate not closed: one=%v two=%v", one.closed, two.closed)
+	}
+	if oldClient.closed || session.PluginHost != old.host || session.ActivePlugins[0].ID != "old" {
+		t.Fatal("old generation was polluted by rejected capabilities")
 	}
 }
 
@@ -123,6 +161,27 @@ func TestCandidateCommitFailureRollsBackAllLiveSurfaces(t *testing.T) {
 	}
 	if !candidateClient.closed {
 		t.Fatal("rolled-back candidate was not closed")
+	}
+}
+
+func TestClosedGenerationReleasesCapabilityRegistry(t *testing.T) {
+	client := &runtimeCapabilityClient{id: "capability"}
+	host := pluginhost.New(client)
+	generation := &PluginGeneration{
+		host:              host,
+		requestTransforms: buildPluginRequestTransforms(host, "openai", "", "/workspace"),
+	}
+	if generation.requestTransforms.Count() != 1 {
+		t.Fatalf("transform count = %d", generation.requestTransforms.Count())
+	}
+	if err := generation.close(); err != nil {
+		t.Fatal(err)
+	}
+	if generation.host != nil || generation.requestTransforms != nil {
+		t.Fatal("closed generation retained capability state")
+	}
+	if capabilities := host.Capabilities(pluginhost.CapabilityAgentRequestTransform); len(capabilities) != 0 {
+		t.Fatalf("closed host capabilities = %+v", capabilities)
 	}
 }
 

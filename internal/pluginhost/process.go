@@ -37,6 +37,10 @@ type ProcessConfig struct {
 	ProjectRoot string
 	WuuHome     string
 	Timeout     time.Duration
+	// SupportedHostServices must contain only services with a live dispatcher.
+	// An empty slice is intentional: protocol types alone do not make a host
+	// service available to plugins.
+	SupportedHostServices []HostServiceMethod
 }
 
 type rpcRequest struct {
@@ -56,19 +60,21 @@ type rpcError struct {
 }
 
 type ProcessClient struct {
-	config   ProcessConfig
-	cmd      *exec.Cmd
-	stdin    io.WriteCloser
-	scanner  *bufio.Scanner
-	seq      atomic.Uint64
-	callGate chan struct{}
-	mu       sync.RWMutex
-	status   Status
-	tools    []ToolRegistration
-	stderr   lockedBuffer
-	stopMu   sync.Mutex
-	stopped  bool
-	stopErr  error
+	config       ProcessConfig
+	cmd          *exec.Cmd
+	stdin        io.WriteCloser
+	scanner      *bufio.Scanner
+	seq          atomic.Uint64
+	callGate     chan struct{}
+	mu           sync.RWMutex
+	status       Status
+	tools        []ToolRegistration
+	protocol     int
+	capabilities []CapabilityDescriptor
+	stderr       lockedBuffer
+	stopMu       sync.Mutex
+	stopped      bool
+	stopErr      error
 }
 
 func Start(ctx context.Context, config ProcessConfig) (*ProcessClient, error) {
@@ -109,13 +115,17 @@ func Start(ctx context.Context, config ProcessConfig) (*ProcessClient, error) {
 
 	initCtx, cancel := context.WithTimeout(ctx, config.Timeout)
 	defer cancel()
-	var initialized InitializeResult
-	if err := client.call(initCtx, "initialize", InitializeParams{
-		ProtocolVersion: ProtocolVersion,
-		PluginID:        config.ID,
-		PluginRoot:      config.PluginRoot,
-		ProjectRoot:     config.ProjectRoot,
-		WuuHome:         config.WuuHome,
+	var initialized CapabilityInitializeResult
+	if err := client.call(initCtx, "initialize", CapabilityInitializeParams{
+		InitializeParams: InitializeParams{
+			ProtocolVersion: ProtocolVersion,
+			PluginID:        config.ID,
+			PluginRoot:      config.PluginRoot,
+			ProjectRoot:     config.ProjectRoot,
+			WuuHome:         config.WuuHome,
+		},
+		CapabilityProtocolVersion: CapabilityProtocolVersion,
+		SupportedHostServices:     append([]HostServiceMethod(nil), config.SupportedHostServices...),
 	}, &initialized); err != nil {
 		_ = client.stopProcess()
 		client.setFailure(err)
@@ -138,6 +148,12 @@ func Start(ctx context.Context, config ProcessConfig) (*ProcessClient, error) {
 		client.setFailure(err)
 		return nil, fmt.Errorf("initialize plugin %q: invalid tool registrations: %w", config.ID, err)
 	}
+	if err := ValidateCapabilityNegotiation(initialized, config.SupportedHostServices); err != nil {
+		_ = client.stopProcess()
+		negotiationErr := &CapabilityNegotiationError{Err: err}
+		client.setFailure(negotiationErr)
+		return nil, fmt.Errorf("initialize plugin %q: invalid capability negotiation: %w", config.ID, negotiationErr)
+	}
 	client.mu.Lock()
 	client.status.State = StateActive
 	client.status.Hooks = append([]Hook(nil), initialized.Hooks...)
@@ -145,6 +161,11 @@ func Start(ctx context.Context, config ProcessConfig) (*ProcessClient, error) {
 	for index, registration := range initialized.Tools {
 		client.tools[index] = cloneToolRegistration(registration)
 	}
+	client.protocol = initialized.ProtocolVersion
+	if client.protocol == 0 {
+		client.protocol = ProtocolVersion
+	}
+	client.capabilities = cloneCapabilityDescriptors(initialized.Capabilities)
 	client.status.StartedAt = time.Now().UTC()
 	client.mu.Unlock()
 	return client, nil
@@ -166,6 +187,35 @@ func (c *ProcessClient) Tools() []ToolRegistration {
 		tools[index] = cloneToolRegistration(registration)
 	}
 	return tools
+}
+
+func (c *ProcessClient) ProtocolVersion() int {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.protocol
+}
+
+func (c *ProcessClient) Capabilities() []CapabilityDescriptor {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return cloneCapabilityDescriptors(c.capabilities)
+}
+
+func (c *ProcessClient) InvokeCapability(ctx context.Context, params CapabilityInvokeParams) (CapabilityInvokeResult, error) {
+	callCtx, cancel := context.WithTimeout(ctx, c.config.Timeout)
+	defer cancel()
+	var result CapabilityInvokeResult
+	if err := c.call(callCtx, "capability.invoke", params, &result); err != nil {
+		c.fail(err)
+		return CapabilityInvokeResult{}, err
+	}
+	if len(result.Output) == 0 {
+		protocolErr := errors.New("capability returned empty output")
+		c.fail(protocolErr)
+		return CapabilityInvokeResult{}, protocolErr
+	}
+	result.Output = append(json.RawMessage(nil), result.Output...)
+	return result, nil
 }
 
 func (c *ProcessClient) Status() Status {
@@ -215,6 +265,7 @@ func (c *ProcessClient) Close(ctx context.Context) error {
 	c.mu.Lock()
 	c.status.State = StateStopped
 	c.tools = nil
+	c.capabilities = nil
 	c.mu.Unlock()
 	return err
 }
@@ -334,6 +385,7 @@ func (c *ProcessClient) setFailure(err error) {
 	c.status.Error = err.Error()
 	c.status.Hooks = nil
 	c.tools = nil
+	c.capabilities = nil
 }
 
 func (c *ProcessClient) fail(err error) {
