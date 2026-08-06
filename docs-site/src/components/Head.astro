@@ -1,0 +1,51 @@
+---
+import Default from "@astrojs/starlight/components/Head.astro"
+---
+
+<Default><slot /></Default>
+
+<script>
+  const diagrams = new Map<HTMLElement, string>()
+  let renderGeneration = 0
+
+  async function renderMermaidDiagrams() {
+    const nodes = [...document.querySelectorAll<HTMLElement>(".mermaid")]
+    if (nodes.length === 0) return
+
+    const { default: mermaid } = await import("mermaid")
+    for (const node of nodes) {
+      if (!diagrams.has(node)) diagrams.set(node, node.textContent ?? "")
+    }
+
+    renderGeneration += 1
+    mermaid.initialize({
+      startOnLoad: false,
+      securityLevel: "strict",
+      theme: document.documentElement.dataset.theme === "dark" ? "dark" : "neutral",
+      fontFamily: "ui-sans-serif, system-ui, sans-serif",
+      flowchart: { curve: "basis", htmlLabels: false },
+    })
+
+    let index = 0
+    for (const [node, source] of diagrams) {
+      const id = `wuu-mermaid-${renderGeneration}-${index++}`
+      const { svg, bindFunctions } = await mermaid.render(id, source)
+      node.innerHTML = svg
+      node.removeAttribute("data-processed")
+      bindFunctions?.(node)
+    }
+  }
+
+  function startMermaid() {
+    void renderMermaidDiagrams()
+    document
+      .querySelector("starlight-theme-select select")
+      ?.addEventListener("change", () => requestAnimationFrame(() => void renderMermaidDiagrams()))
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", startMermaid, { once: true })
+  } else {
+    startMermaid()
+  }
+</script>

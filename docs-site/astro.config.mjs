@@ -1,7 +1,11 @@
 import { readFileSync } from "node:fs"
 
+import { unified } from "@astrojs/markdown-remark"
 import starlight from "@astrojs/starlight"
 import { defineConfig } from "astro/config"
+import remarkCjkFriendly from "remark-cjk-friendly/parseOnly"
+
+import remarkMermaidBlocks from "./src/remark-mermaid.mjs"
 
 const manifest = JSON.parse(readFileSync(new URL("../docs/site.json", import.meta.url), "utf8"))
 const productionSite = process.env.DOCS_SITE_URL ?? "https://blueberrycongee.github.io"
@@ -34,6 +38,9 @@ const sidebar = Object.entries(manifest.locales).map(([locale, config]) => ({
 export default defineConfig({
   site: productionSite,
   base: configuredBase,
+  markdown: {
+    processor: unified({ remarkPlugins: [remarkCjkFriendly, remarkMermaidBlocks] }),
+  },
   integrations: [
     starlight({
       title: "wuu",
@@ -45,6 +52,9 @@ export default defineConfig({
       },
       sidebar,
       routeMiddleware: "./src/route-data.ts",
+      components: {
+        Head: "./src/components/Head.astro",
+      },
       social: [
         {
           icon: "github",
@@ -64,7 +74,7 @@ export default defineConfig({
       },
       favicon: "/favicon.svg",
       pagination: false,
-      credits: true,
+      credits: false,
     }),
   ],
 })

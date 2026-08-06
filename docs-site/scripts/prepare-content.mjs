@@ -20,29 +20,25 @@ const publishedPages = new Set(pages)
 const routeFromPage = (page) => page.replace(/\.md$/, "").replace(/\/index$/, "")
 
 function rewriteMarkdownLinks(markdown, page) {
-  const withPageLinks = markdown.replace(/\]\(([^)\s]+?\.md)(#[^)]+)?\)/g, (match, href, fragment = "") => {
+  return markdown.replace(/\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g, (match, rawHref) => {
+    const hashIndex = rawHref.indexOf("#")
+    const href = hashIndex === -1 ? rawHref : rawHref.slice(0, hashIndex)
+    const fragment = hashIndex === -1 ? "" : rawHref.slice(hashIndex)
     if (/^[a-z][a-z\d+.-]*:/i.test(href)) return match
 
     const target = path.posix.normalize(path.posix.join(path.posix.dirname(page), href))
     if (target.startsWith("../")) {
       const repositoryPath = path.posix.normalize(path.posix.join("docs", target))
-      return `](https://github.com/blueberrycongee/wuu/blob/main/${repositoryPath}${fragment})`
+      const view = href.endsWith("/") ? "tree" : "blob"
+      return `](https://github.com/blueberrycongee/wuu/${view}/main/${repositoryPath}${fragment})`
     }
+    if (!href.endsWith(".md")) return match
     if (!publishedPages.has(target)) {
       throw new Error(`Published page ${page} links to unpublished documentation: ${target}`)
     }
 
     const relative = path.posix.relative(routeFromPage(page), routeFromPage(target)) || "."
     return `](${relative}/${fragment})`
-  })
-
-  return withPageLinks.replace(/\]\((\.\.\/[^)\s]+)\)/g, (match, href) => {
-    const target = path.posix.normalize(path.posix.join(path.posix.dirname(page), href))
-    if (!target.startsWith("../")) return match
-
-    const repositoryPath = path.posix.normalize(path.posix.join("docs", target))
-    const view = href.endsWith("/") ? "tree" : "blob"
-    return `](https://github.com/blueberrycongee/wuu/${view}/main/${repositoryPath})`
   })
 }
 
