@@ -81,8 +81,8 @@ func (s *Store) Save(goal Goal) error {
 	if strings.TrimSpace(goal.GoalID) == "" {
 		return errors.New("goal_id is required")
 	}
-	if err := ValidateObjective(goal.Objective); err != nil {
-		return err
+	if strings.TrimSpace(goal.Objective) == "" {
+		return errors.New("goal objective is required")
 	}
 	if !IsKnownStatus(goal.Status) {
 		return fmt.Errorf("unknown goal runtime status: %s", goal.Status)
@@ -201,8 +201,8 @@ func validateGoalForSave(goal Goal) error {
 	if strings.TrimSpace(goal.GoalID) == "" {
 		return errors.New("goal_id is required")
 	}
-	if err := ValidateObjective(goal.Objective); err != nil {
-		return err
+	if strings.TrimSpace(goal.Objective) == "" {
+		return errors.New("goal objective is required")
 	}
 	if !IsKnownStatus(goal.Status) {
 		return fmt.Errorf("unknown goal runtime status: %s", goal.Status)

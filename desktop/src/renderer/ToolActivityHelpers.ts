@@ -300,16 +300,6 @@ function readableToolActivityCommandInner(
         default:
           return t("toolActivity.viewGoal");
       }
-    case "get_goal":
-      return t("toolActivity.viewGoal");
-    case "create_goal": {
-      const objective = stringValue(args, "objective");
-      return objective
-        ? t("toolActivity.startGoalTarget", { target: truncateText(objective, 60) })
-        : t("toolActivity.startGoal");
-    }
-    case "update_goal":
-      return t("toolActivity.updateGoal");
     case "cron":
       switch (stringValue(args, "action")) {
         case "add": {

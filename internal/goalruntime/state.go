@@ -10,7 +10,6 @@ import (
 const (
 	SchemaVersion        = "wuu/goal-runtime/v0.1"
 	RequiredBlockerTurns = 3
-	MaxObjectiveChars    = 4000
 )
 
 type Status string
@@ -73,8 +72,8 @@ func NewGoal(spec Spec, now time.Time) (Goal, error) {
 		return Goal{}, errors.New("goal_id is required")
 	}
 	objective := strings.TrimSpace(spec.Objective)
-	if err := ValidateObjective(objective); err != nil {
-		return Goal{}, err
+	if objective == "" {
+		return Goal{}, errors.New("objective is required")
 	}
 	if now.IsZero() {
 		now = time.Now().UTC()
@@ -162,8 +161,8 @@ func (g Goal) Complete(now time.Time) (Goal, error) {
 
 func (g Goal) EditObjective(objective string, now time.Time) (Goal, error) {
 	objective = strings.TrimSpace(objective)
-	if err := ValidateObjective(objective); err != nil {
-		return Goal{}, err
+	if objective == "" {
+		return Goal{}, errors.New("objective is required")
 	}
 	if IsTerminalStatus(g.Status) {
 		return Goal{}, fmt.Errorf("cannot edit terminal goal: %s", g.Status)
@@ -174,16 +173,6 @@ func (g Goal) EditObjective(objective string, now time.Time) (Goal, error) {
 	g.Objective = objective
 	g.UpdatedAt = now.UTC()
 	return g, nil
-}
-
-func ValidateObjective(objective string) error {
-	if strings.TrimSpace(objective) == "" {
-		return errors.New("goal objective must not be empty")
-	}
-	if len([]rune(objective)) > MaxObjectiveChars {
-		return fmt.Errorf("goal objective must be at most %d characters", MaxObjectiveChars)
-	}
-	return nil
 }
 
 func (g Goal) AccountUsage(delta UsageDelta, now time.Time) (Goal, error) {

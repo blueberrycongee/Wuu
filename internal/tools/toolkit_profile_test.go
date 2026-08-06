@@ -117,9 +117,7 @@ func TestActiveProfileKeepsLowFrequencyToolsDeferred(t *testing.T) {
 	for _, name := range []string{
 		"session_memory",
 		"thread_get",
-		"get_goal",
-		"create_goal",
-		"update_goal",
+		"goal",
 		"send_message",
 		"close_agent",
 	} {

@@ -917,12 +917,6 @@ func (s *Server) handleLine(ctx context.Context, raw []byte) error {
 		return s.handleAutomationUpdate(req)
 	case MethodAutomationRemove:
 		return s.handleAutomationRemove(req)
-	case MethodThreadGoalSet:
-		return s.handleThreadGoalSet(req)
-	case MethodThreadGoalGet:
-		return s.handleThreadGoalGet(req)
-	case MethodThreadGoalClear:
-		return s.handleThreadGoalClear(req)
 	case MethodGoalActiveSummary:
 		return s.handleGoalActiveSummary(req)
 	case MethodGoalPause:

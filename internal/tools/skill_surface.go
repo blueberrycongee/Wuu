@@ -82,7 +82,7 @@ func isKnownSurfaceSkillTool(name string) bool {
 		"tool_search", "load_skill",
 		"web_fetch", "web_search",
 		"session_memory",
-		"update_plan", "get_goal", "create_goal", "update_goal",
+		"update_plan", "goal",
 		"cron",
 		"wuu_browser",
 		"list_agent_profiles", "create_agent_profile":

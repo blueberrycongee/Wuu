@@ -30,15 +30,6 @@ func TestNewGoalDefaultsActive(t *testing.T) {
 	}
 }
 
-func TestGoalObjectiveLimitMatchesThreadGoalProtocol(t *testing.T) {
-	if err := ValidateObjective(strings.Repeat("界", MaxObjectiveChars)); err != nil {
-		t.Fatalf("max-length objective rejected: %v", err)
-	}
-	if err := ValidateObjective(strings.Repeat("界", MaxObjectiveChars+1)); err == nil {
-		t.Fatal("oversized objective should be rejected")
-	}
-}
-
 func TestActorStatusOwnership(t *testing.T) {
 	if err := ValidateActorTransition(ActorModel, StatusActive, StatusComplete); err != nil {
 		t.Fatalf("model complete should be allowed: %v", err)
