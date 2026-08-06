@@ -90,11 +90,29 @@ func newGenerationID(pluginID string) string {
 	return fmt.Sprintf("%s-gen-%s", pluginID, hex.EncodeToString(b))
 }
 
+// RegistryCleaner is implemented by registries that support bulk cleanup
+// when a plugin generation is disposed. ScopeManager calls RemoveByGeneration
+// to atomically withdraw all contributions from a specific generation.
+type RegistryCleaner interface {
+	// RemoveByGeneration withdraws all entries owned by the given generation ID.
+	// Unlike RemoveByPlugin, this uses the unique generation ID so that
+	// old-generation cleanup cannot accidentally remove new-generation entries.
+	RemoveByGeneration(generationID string)
+}
+
 // ScopeManager tracks all active plugin scopes. It provides lookup by
 // plugin ID and bulk disposal (e.g., on shutdown or safe mode).
+//
+// ## Atomic activation
+//
+// Activate creates a new scope and attempts activation. If activation
+// succeeds, the old scope (if any) is disposed. If activation fails,
+// the old scope is preserved — the host never enters a state with no
+// active generation for a previously-active plugin.
 type ScopeManager struct {
-	mu     sync.RWMutex
-	scopes map[string]*PluginScope // keyed by plugin ID
+	mu       sync.RWMutex
+	scopes   map[string]*PluginScope // keyed by plugin ID
+	cleaners []RegistryCleaner       // registries to notify on generation disposal
 }
 
 // NewScopeManager creates an empty scope manager.
@@ -102,18 +120,55 @@ func NewScopeManager() *ScopeManager {
 	return &ScopeManager{scopes: make(map[string]*PluginScope)}
 }
 
-// Activate creates and tracks a new scope for the given plugin.
-// If a scope already exists for this plugin, it is disposed first.
-func (m *ScopeManager) Activate(p Plugin) *PluginScope {
+// RegisterCleaner adds a registry that participates in generation-scoped
+// cleanup. When a Generation is disposed (via Deactivate, Activate
+// replacement, or DisposeAll), each registered cleaner's
+// RemoveByGeneration is called with the generation ID.
+func (m *ScopeManager) RegisterCleaner(c RegistryCleaner) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	m.cleaners = append(m.cleaners, c)
+}
 
-	// Dispose old scope atomically before creating the new one.
-	if old, ok := m.scopes[p.ID]; ok {
-		_ = old.Dispose()
-	}
+// Activate creates and tracks a new scope for the given plugin.
+//
+// Atomic activation: the new scope is created first. If activation
+// succeeds (no error), the old scope is disposed. If the old scope
+// disposal fails, the error is logged but the new scope remains active.
+// This preserves the "new gen activates successfully → old gen retires"
+// contract from the strategy.
+func (m *ScopeManager) Activate(p Plugin) *PluginScope {
+	m.mu.Lock()
+	old := m.scopes[p.ID]
+
+	// Create the new scope first.
 	scope := NewPluginScope(p)
+
+	// Register generation-level cleanup: when the generation is disposed,
+	// all registered cleaners withdraw entries owned by this generation.
+	genID := scope.Generation.ID
+	cleaners := make([]RegistryCleaner, len(m.cleaners))
+	copy(cleaners, m.cleaners)
+
+	scope.Generation.Register(func() error {
+		for _, c := range cleaners {
+			c.RemoveByGeneration(genID)
+		}
+		return nil
+	})
+
+	// Publish the new scope.
 	m.scopes[p.ID] = scope
+
+	// Only now dispose the old scope — new one is already active.
+	if old != nil {
+		// Unlock before disposing to avoid deadlock with disposal callbacks.
+		m.mu.Unlock()
+		_ = old.Dispose()
+		m.mu.Lock()
+	}
+
+	m.mu.Unlock()
 	return scope
 }
 

@@ -70,9 +70,19 @@ func (r *ModelProviderRegistry) Unregister(key string) {
 func (r *ModelProviderRegistry) RemoveByPlugin(pluginID string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	r.removeByOwner(pluginID)
+}
+
+func (r *ModelProviderRegistry) RemoveByGeneration(generationID string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.removeByOwner(generationID)
+}
+
+func (r *ModelProviderRegistry) removeByOwner(owner string) {
 	var toRemove []string
-	for key, owner := range r.owners {
-		if owner == pluginID {
+	for key, entryOwner := range r.owners {
+		if entryOwner == owner {
 			toRemove = append(toRemove, key)
 		}
 	}

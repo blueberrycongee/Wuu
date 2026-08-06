@@ -69,9 +69,19 @@ func (r *CompactionRegistry) Unregister(key string) {
 func (r *CompactionRegistry) RemoveByPlugin(pluginID string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	r.removeByOwner(pluginID)
+}
+
+func (r *CompactionRegistry) RemoveByGeneration(generationID string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.removeByOwner(generationID)
+}
+
+func (r *CompactionRegistry) removeByOwner(owner string) {
 	var toRemove []string
-	for key, owner := range r.owners {
-		if owner == pluginID {
+	for key, entryOwner := range r.owners {
+		if entryOwner == owner {
 			toRemove = append(toRemove, key)
 		}
 	}

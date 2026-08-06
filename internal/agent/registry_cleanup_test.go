@@ -135,3 +135,77 @@ func TestRegisterWithOwnerBackwardCompat(t *testing.T) {
 		t.Errorf("expected 1 factory, got %d", pr.Count())
 	}
 }
+
+// TestRemoveByGenerationIsolation verifies that RemoveByGeneration only
+// removes entries from the specified generation, leaving other generations
+// (including newer ones from the same plugin) intact.
+func TestRemoveByGenerationIsolation(t *testing.T) {
+	// Simulate: old gen "p1-gen-old" and new gen "p1-gen-new" from same plugin "p1".
+	a := NewSystemPromptAssembler()
+	a.AddWithOwner(NewStaticPromptSection("p1.section-a", "Section A", 1), "p1-gen-old")
+	a.AddWithOwner(NewStaticPromptSection("p1.section-b", "Section B", 1), "p1-gen-new")
+
+	if a.ProviderCount() != 2 {
+		t.Fatalf("expected 2 providers, got %d", a.ProviderCount())
+	}
+
+	// Remove old generation. Should only remove section-a.
+	a.RemoveByGeneration("p1-gen-old")
+
+	if a.ProviderCount() != 1 {
+		t.Fatalf("expected 1 provider after removing old gen, got %d", a.ProviderCount())
+	}
+
+	_, sections := a.Assemble("")
+	if len(sections) != 1 {
+		t.Fatalf("expected 1 section (p1.section-b), got %d", len(sections))
+	}
+	if sections[0].Key != "p1.section-b" {
+		t.Errorf("new generation section should survive: got %s", sections[0].Key)
+	}
+}
+
+// TestRemoveByGenerationVsPlugin verifies generation-scoped cleanup
+// across all 4 registries.
+func TestRemoveByGenerationAllRegistries(t *testing.T) {
+	genOld := "p1-gen-old-abc"
+	genNew := "p1-gen-new-def"
+
+	// SystemPromptAssembler
+	spa := NewSystemPromptAssembler()
+	spa.AddWithOwner(NewStaticPromptSection("old-sec", "old", 1), genOld)
+	spa.AddWithOwner(NewStaticPromptSection("new-sec", "new", 1), genNew)
+	spa.RemoveByGeneration(genOld)
+	if spa.ProviderCount() != 1 {
+		t.Errorf("SPA: expected 1, got %d", spa.ProviderCount())
+	}
+
+	// RequestTransformChain
+	rtc := NewRequestTransformChain()
+	rtc.AddWithOwner(NewRequestTransform("old-t", func(ctx context.Context, req *providers.ChatRequest) error { return nil }, 1), genOld)
+	rtc.AddWithOwner(NewRequestTransform("new-t", func(ctx context.Context, req *providers.ChatRequest) error { return nil }, 1), genNew)
+	rtc.RemoveByGeneration(genOld)
+	if rtc.Count() != 1 {
+		t.Errorf("RTC: expected 1, got %d", rtc.Count())
+	}
+
+	// CompactionRegistry
+	cr := NewCompactionRegistry()
+	cr.RegisterWithOwner(&mockCompactionProvider{key: "old-comp", priority: 10}, genOld)
+	cr.RegisterWithOwner(&mockCompactionProvider{key: "new-comp", priority: 1}, genNew)
+	cr.RemoveByGeneration(genOld)
+	resolved := cr.Resolve(nil)
+	if resolved.CompactionKey() != "new-comp" {
+		t.Errorf("CR: expected new-comp after old gen removed, got %s", resolved.CompactionKey())
+	}
+
+	// ModelProviderRegistry
+	mpr := NewModelProviderRegistry()
+	mpr.RegisterWithOwner(&mockProviderFactory{key: "old-prov", models: []string{"m"}, priority: 10}, genOld)
+	mpr.RegisterWithOwner(&mockProviderFactory{key: "new-prov", models: []string{"m"}, priority: 1}, genNew)
+	mpr.RemoveByGeneration(genOld)
+	resolved2 := mpr.Resolve("m")
+	if resolved2.ProviderKey() != "new-prov" {
+		t.Errorf("MPR: expected new-prov after old gen removed, got %s", resolved2.ProviderKey())
+	}
+}
