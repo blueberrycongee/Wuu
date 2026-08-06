@@ -43,6 +43,32 @@ Wuu 把配置分成“用户拥有”和“项目补充”两类。核心原则�
 需要团队共同遵守的长期规则应写进仓库的 `AGENTS.md` 或项目文档。个人偏好、跨项目
 经验和自动整理出的记忆则留在用户目录中。
 
+### 记忆整合（Dream）
+
+`memory.dream` 配置后台记忆整合：Wuu 在对话轮次结束后检查已完成会话，把稳定事实
+写入工作区记忆。它默认关闭。
+
+```json
+{
+  "memory": {
+    "dream": {
+      "enabled": true,
+      "interval_days": 7,
+      "provider": "openai",
+      "model": "gpt-4.1"
+    }
+  }
+}
+```
+
+- `enabled`：是否启用，默认 `false`；
+- `interval_days`：距上次运行至少间隔的天数，默认 `1`；
+- `provider` / `model`：可选专用模型，留空使用当前提供商和默认模型。
+
+通过桌面设置修改会立即生效；直接编辑配置文件需要重新启动 Wuu。旧的
+`memory.dream_interval_days` 仍被识别（正数启用、`0` 停用），新配置优先。
+运行机制与限制见[后台记忆整合（Dream）](../customize/dream.md)。
+
 ## 显式信任完整配置
 
 自动化场景可以显式选择完整配置：

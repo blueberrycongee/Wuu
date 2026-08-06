@@ -27,8 +27,8 @@ wuu 的桌面应用适合交互式工作；`wuu exec` 适合终端、脚本、CI
 - **理解复杂任务怎样推进：**[Agent 协作与子代理](desktop/subagents.md)、
   [群聊与 Named Agent 协作](desktop/collaboration.md)和
   [命令与后台任务](reference/agent-command-system.md)。
-- **复用和改造工作方式：**[Skills](customize/skills.md)、[记忆](customize/memory.md)和
-  [桌面 UI 插件](customize/plugins.md)。
+- **复用和改造工作方式：**[Skills](customize/skills.md)、[记忆](customize/memory.md)、
+  [后台记忆整合](customize/dream.md)和[桌面 UI 插件](customize/plugins.md)。
 - **按计划运行：**[Automations](automation/scheduled-tasks.md)。
 - **接入外部工具：**[MCP 服务器](customize/mcp.md)。
 - **控制本地权限：**[权限模式](reference/permissions.md)和[安全模型](reference/security-model.md)。
