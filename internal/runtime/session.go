@@ -45,6 +45,7 @@ import (
 	"github.com/blueberrycongee/wuu/internal/session"
 	"github.com/blueberrycongee/wuu/internal/skills"
 	"github.com/blueberrycongee/wuu/internal/statepath"
+	"github.com/blueberrycongee/wuu/internal/version"
 	"github.com/blueberrycongee/wuu/internal/toolledger"
 	"github.com/blueberrycongee/wuu/internal/tools"
 	"github.com/blueberrycongee/wuu/internal/workspaces"
@@ -1864,15 +1865,25 @@ func discoverPlugins(rootDir, wuuHome string) []pluginpkg.Plugin {
 	return pluginpkg.Discover(rootDir, wuuHome)
 }
 
+// currentWuuVersion resolves the running host version for the
+// minimum_wuu_version compatibility gate. Overridable in tests.
+var currentWuuVersion = func() string { return version.Info().Version }
+
 // activatedPlugins separates inert discovery from executable activation.
 // Community packages require an exact user-owned grant. Official bundled
 // packages and authenticated local development generations are trusted by
-// provenance. Every tier may still be explicitly disabled.
+// provenance. Every tier may still be explicitly disabled, and every tier
+// must satisfy its declared minimum_wuu_version against the running host:
+// the compatibility contract fails closed regardless of trust tier.
 func activatedPlugins(cfg config.Config, discovered []pluginpkg.Plugin) []pluginpkg.Plugin {
 	settings := cfg.Extensions
+	hostVersion := currentWuuVersion()
 	out := make([]pluginpkg.Plugin, 0, len(discovered))
 	for _, item := range discovered {
 		if settings != nil && settings.IsDisabled(item.SubjectID) {
+			continue
+		}
+		if err := pluginpkg.CheckMinimumWuuVersion(item.MinimumWuuVersion, hostVersion); err != nil {
 			continue
 		}
 		if item.Official || item.AuthorizedDev {

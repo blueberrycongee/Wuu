@@ -74,3 +74,55 @@ func TestActivatedPluginsFailClosed(t *testing.T) {
 		t.Fatalf("disabled official package activated: %+v", got)
 	}
 }
+
+func TestActivatedPluginsEnforcesMinimumWuuVersion(t *testing.T) {
+	original := currentWuuVersion
+	t.Cleanup(func() { currentWuuVersion = original })
+	currentWuuVersion = func() string { return "0.15.0" }
+
+	community := pluginpkg.Plugin{
+		Manifest:             pluginpkg.Manifest{ID: "community"},
+		SubjectID:            "project:community",
+		Fingerprint:          "sha256:current",
+		EffectivePermissions: []string{extensions.PermProcessSpawn},
+	}
+	settings := &extensions.Settings{}
+	if err := settings.RecordGrant(extensions.Grant{
+		SubjectID: community.SubjectID, Fingerprint: community.Fingerprint,
+		Scope: extensions.GrantScopeProject, Permissions: community.EffectivePermissions,
+		ApprovedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Config{Extensions: settings}
+
+	compatible := community
+	compatible.MinimumWuuVersion = "0.14.0"
+	if got := activatedPlugins(cfg, []pluginpkg.Plugin{compatible}); len(got) != 1 {
+		t.Fatalf("package below host minor version did not activate: %+v", got)
+	}
+
+	incompatible := community
+	incompatible.MinimumWuuVersion = "0.16.0"
+	if got := activatedPlugins(cfg, []pluginpkg.Plugin{incompatible}); len(got) != 0 {
+		t.Fatalf("package above host version activated: %+v", got)
+	}
+
+	// The gate applies to every trust tier: an official package declaring a
+	// future minimum must not activate either.
+	official := incompatible
+	official.SubjectID = "bundled:official"
+	official.ID = "official"
+	official.Official = true
+	if got := activatedPlugins(config.Config{}, []pluginpkg.Plugin{official}); len(got) != 0 {
+		t.Fatalf("incompatible official package activated: %+v", got)
+	}
+
+	// Dev builds carry a pre-release marker and satisfy constraints at base.
+	currentWuuVersion = func() string { return "v0.15.0-dev" }
+	devCompatible := community
+	devCompatible.MinimumWuuVersion = "0.15.0"
+	if got := activatedPlugins(cfg, []pluginpkg.Plugin{devCompatible}); len(got) != 1 {
+		t.Fatalf("dev host did not satisfy base-version constraint: %+v", got)
+	}
+}

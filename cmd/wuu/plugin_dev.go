@@ -20,6 +20,7 @@ import (
 	"github.com/blueberrycongee/wuu/internal/pluginhost"
 	"github.com/blueberrycongee/wuu/internal/session"
 	"github.com/blueberrycongee/wuu/internal/statepath"
+	"github.com/blueberrycongee/wuu/internal/version"
 )
 
 // runPluginDev dispatches to the plugin developer subcommands.
@@ -175,6 +176,13 @@ func runPluginValidate(args []string) error {
 	defer cleanup()
 	inspection, err := pluginpkg.InspectPackage(prepared)
 	if err != nil {
+		return pluginCLIError(fmt.Errorf("validation failed: %w", err))
+	}
+	manifest, err := pluginpkg.LoadManifest(filepath.Join(prepared, "plugin.json"), "validate")
+	if err != nil {
+		return pluginCLIError(fmt.Errorf("validation failed: %w", err))
+	}
+	if err := pluginpkg.CheckMinimumWuuVersion(manifest.MinimumWuuVersion, version.Info().Version); err != nil {
 		return pluginCLIError(fmt.Errorf("validation failed: %w", err))
 	}
 
@@ -619,6 +627,13 @@ func refreshDevGeneration(wuuHome, dir, packageManager string) (pluginDiagnostic
 	inspection, err := pluginpkg.InspectPackage(prepared)
 	if err != nil {
 		return pluginDiagnostic{Level: "fail", Check: "dev.validate", Message: err.Error()}, fmt.Errorf("dev validation failed; previous generation preserved: %w", err)
+	}
+	manifest, err := pluginpkg.LoadManifest(filepath.Join(prepared, "plugin.json"), "dev")
+	if err != nil {
+		return pluginDiagnostic{Level: "fail", Check: "dev.validate", Message: err.Error()}, fmt.Errorf("dev validation failed; previous generation preserved: %w", err)
+	}
+	if err := pluginpkg.CheckMinimumWuuVersion(manifest.MinimumWuuVersion, version.Info().Version); err != nil {
+		return pluginDiagnostic{Level: "fail", Check: "dev.compat", Message: err.Error()}, fmt.Errorf("dev compatibility check failed; previous generation preserved: %w", err)
 	}
 	authorization, err := pluginpkg.ReadDevAuthorization(wuuHome, inspection.ID)
 	if err != nil {
