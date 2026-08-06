@@ -2847,6 +2847,73 @@ html.resizing-workspace-terminal-split * {
   white-space: nowrap;
 }
 
+.plugin-settings-editor {
+  display: grid;
+  grid-column: 2 / -1;
+  gap: 14px;
+  margin-top: 12px;
+  border-top: 1px solid var(--skills-section-border);
+  padding-top: 14px;
+}
+
+.plugin-setting {
+  display: grid;
+  min-width: 0;
+  gap: 6px;
+}
+
+.plugin-setting-heading,
+.plugin-setting-control,
+.plugin-setting-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.plugin-setting-heading {
+  justify-content: space-between;
+}
+
+.plugin-setting-heading label {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: var(--weight-medium);
+}
+
+.plugin-setting-heading span,
+.plugin-setting-default,
+.plugin-setting-status,
+.plugin-setting p {
+  color: var(--ink-tertiary);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.plugin-setting p {
+  margin: 0;
+}
+
+.plugin-setting input[type="text"],
+.plugin-setting input[type="number"],
+.plugin-setting select {
+  min-width: 180px;
+  min-height: 30px;
+  border: 1px solid var(--skills-section-border);
+  border-radius: var(--radius-sm);
+  padding: 4px 8px;
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.plugin-setting-status.is-error {
+  color: var(--danger);
+}
+
+.plugin-setting-status button {
+  min-height: auto;
+  padding: 0;
+}
+
 .extension-status-good {
   background: var(--success-soft);
   color: var(--success);

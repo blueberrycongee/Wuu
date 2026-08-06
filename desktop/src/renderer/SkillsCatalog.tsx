@@ -18,6 +18,7 @@ import type {
 import { CatalogSearchField } from "./CatalogSearchField";
 import { translateCurrent, useI18n } from "./i18n";
 import { Modal } from "./Modal";
+import { PluginSettingsEditor } from "./PluginSettingsEditor";
 import { RichContent } from "./RichContent";
 
 type LoadState = {
@@ -450,6 +451,7 @@ export function SkillsCatalog({
                       ) : null}
                     </span>
                   ) : null}
+                  <PluginSettingsEditor plugin={record} />
                 </article>
               );
             })}
