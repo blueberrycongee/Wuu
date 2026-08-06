@@ -167,6 +167,8 @@ export interface HostReact {
 export const RUNTIME_PROTOCOL_V1 = 1 as const;
 export const CAPABILITY_PROTOCOL_V2 = 2 as const;
 export const REQUEST_TRANSFORM_CAPABILITY = "agent.request.transform" as const;
+export const SYSTEM_PROMPT_SECTION_CAPABILITY = "agent.system_prompt.section" as const;
+export const COMPACTION_CAPABILITY = "agent.compaction" as const;
 
 export type RuntimeHook =
   | "session.start"
@@ -289,6 +291,28 @@ export interface RequestTransformInput {
 
 export interface RequestTransformOutput<TRequest = Readonly<Record<string, unknown>>> {
   request: TRequest;
+}
+
+export interface SystemPromptSectionInput {
+  cwd: string;
+  provider: string;
+  model: string;
+}
+
+export interface SystemPromptSectionOutput {
+  text: string;
+}
+
+/** Provider-neutral message payload. Preserve unknown fields when compacting. */
+export type CompactionMessage = Readonly<Record<string, unknown>>;
+
+export interface CompactionInput<TMessage extends CompactionMessage = CompactionMessage> {
+  model: string;
+  messages: readonly TMessage[];
+}
+
+export interface CompactionOutput<TMessage extends CompactionMessage = CompactionMessage> {
+  messages: readonly TMessage[];
 }
 
 export interface ToolExecuteParams<TArguments = unknown> {
