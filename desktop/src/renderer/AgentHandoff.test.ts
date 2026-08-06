@@ -54,7 +54,11 @@ describe("agentHandoffDisplay", () => {
       text: handoffText("completed"),
     };
     expect(agentHandoffChipDisplayItems(item)).toEqual([
-      { label: "explore_current_directory 完成了", outcome: "completed" },
+      {
+        label: "explore_current_directory 完成了",
+        outcome: "completed",
+        agentID: "worker-1",
+      },
     ]);
   });
 
@@ -72,8 +76,12 @@ describe("agentHandoffDisplay", () => {
       text: `${JSON.stringify(first)}\n\n${JSON.stringify(second)}`,
     };
     expect(agentHandoffChipDisplayItems(item)).toEqual([
-      { label: "explore_current_directory 完成了", outcome: "completed" },
-      { label: "run_tests 失败了", outcome: "failed" },
+      {
+        label: "explore_current_directory 完成了",
+        outcome: "completed",
+        agentID: "worker-1",
+      },
+      { label: "run_tests 失败了", outcome: "failed", agentID: "worker-1" },
     ]);
   });
 
@@ -92,7 +100,11 @@ describe("agentHandoffDisplay", () => {
         "\n\n<changed_file_overlap>\n  - foo.ts\n</changed_file_overlap>",
     };
     expect(agentHandoffChipDisplayItems(item)).toEqual([
-      { label: "explore_current_directory 完成了", outcome: "completed" },
+      {
+        label: "explore_current_directory 完成了",
+        outcome: "completed",
+        agentID: "worker-1",
+      },
     ]);
   });
 

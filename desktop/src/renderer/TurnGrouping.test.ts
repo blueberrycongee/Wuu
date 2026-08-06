@@ -3,6 +3,7 @@ import type { ThreadItem, Turn } from "../shared/protocol";
 import {
   groupConversationTurns,
   isAgentWakeTurn,
+  subagentProgressForTurns,
   turnsHavePendingSubagents,
   turnHasRealUserMessage,
   turnHasSpawnAgentCall,
@@ -70,6 +71,19 @@ function wakeItemFor(id: string, agentID: string): ThreadItem {
   };
 }
 
+function statusItemFor(
+  id: string,
+  agentID: string,
+  status: "pending" | "running" | "completed" | "failed" | "cancelled",
+): ThreadItem {
+  return {
+    id,
+    type: "user_message",
+    name: "wuu_agent_notification",
+    text: `<subagent_notification>{"status":{"agent_id":"${agentID}","status":"${status}"}}</subagent_notification>`,
+  };
+}
+
 describe("TurnGrouping classification", () => {
   it("keeps a completed parent pending until its child notification arrives", () => {
     const parent = makeTurn("t1", [
@@ -81,6 +95,35 @@ describe("TurnGrouping classification", () => {
 
     const wake = makeTurn("t2", [wakeItemFor("w1", "agent-a")]);
     expect(turnsHavePendingSubagents([parent, wake])).toBe(false);
+  });
+
+  it("only settles the matching agent once on terminal notifications", () => {
+    const parent = makeTurn("t1", [
+      spawnItemFor("s1", "agent-a"),
+      spawnItemFor("s2", "agent-b"),
+      spawnItemFor("s3", "agent-c"),
+    ]);
+    const updates = makeTurn("t2", [
+      statusItemFor("running-a", "agent-a", "running"),
+      statusItemFor("pending-b", "agent-b", "pending"),
+      statusItemFor("unrelated", "agent-other", "completed"),
+    ]);
+    expect(subagentProgressForTurns([parent, updates])).toEqual({
+      total: 3,
+      finished: 0,
+      remaining: 3,
+    });
+
+    const completions = makeTurn("t3", [
+      statusItemFor("completed-a", "agent-a", "completed"),
+      statusItemFor("duplicate-a", "agent-a", "completed"),
+      statusItemFor("failed-b", "agent-b", "failed"),
+    ]);
+    expect(subagentProgressForTurns([parent, updates, completions])).toEqual({
+      total: 3,
+      finished: 2,
+      remaining: 1,
+    });
   });
 
   it("detects a wake turn only when every user item is a handoff", () => {

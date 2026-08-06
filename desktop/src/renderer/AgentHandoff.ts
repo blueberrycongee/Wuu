@@ -17,7 +17,17 @@ export type SubagentChipOutcome =
 export type SubagentChipDisplay = {
   label: string;
   outcome: SubagentChipOutcome;
+  /** Stable worker identity when the notification carried one. Aggregators
+   * use this instead of localized label text so duplicate or unrelated
+   * status updates cannot settle the wrong spawn. */
+  agentID?: string;
 };
+
+export function isTerminalSubagentOutcome(
+  outcome: SubagentChipOutcome,
+): boolean {
+  return outcome === "completed" || outcome === "failed" || outcome === "cancelled";
+}
 
 type AgentHandoffEnvelope = {
   content?: unknown;
@@ -127,9 +137,11 @@ export function agentHandoffChipDisplayItems(
   return payloads.map((payload) => {
     const name = handoffName(payload);
     const outcome = handoffChipOutcome(stringValue(payload.status?.status));
+    const agentID = stringValue(payload.status?.agent_id) || undefined;
     return {
       label: `${name} ${handoffChipStatusLabel(outcome)}`.trim(),
       outcome,
+      agentID,
     };
   });
 }

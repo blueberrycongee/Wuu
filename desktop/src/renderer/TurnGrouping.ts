@@ -3,6 +3,7 @@ import {
   agentHandoffAgentIDs,
   agentHandoffChipDisplayItems,
   isAgentHandoffItem,
+  isTerminalSubagentOutcome,
 } from "./AgentHandoff";
 import { isContinuationTurn } from "./TurnContinuation";
 
@@ -72,26 +73,55 @@ export type SubagentTimelineProgress = {
 };
 
 export function subagentProgressForTurns(turns: Turn[]): SubagentTimelineProgress {
-  let pending = 0;
+  const pendingAgentIDs = new Set<string>();
+  const settledAgentIDs = new Set<string>();
+  let anonymousPending = 0;
   let finished = 0;
   for (const turn of turns) {
     for (const item of turn.items) {
       if (isSpawnAgentItem(item) && spawnResultIsPending(item.result)) {
-        pending += 1;
+        const agentID = spawnResultAgentID(item.result);
+        if (agentID) {
+          pendingAgentIDs.add(agentID);
+        } else {
+          anonymousPending += 1;
+        }
         continue;
       }
       if (item.type === "user_message" && isAgentHandoffItem(item)) {
-        const completionCount = Math.max(
-          1,
-          agentHandoffChipDisplayItems(item).length,
-        );
-        const resolved = Math.min(pending, completionCount);
-        pending -= resolved;
-        finished += resolved;
+        for (const chip of agentHandoffChipDisplayItems(item)) {
+          if (!isTerminalSubagentOutcome(chip.outcome)) {
+            continue;
+          }
+          if (chip.agentID) {
+            if (settledAgentIDs.has(chip.agentID)) {
+              continue;
+            }
+            if (pendingAgentIDs.delete(chip.agentID)) {
+              settledAgentIDs.add(chip.agentID);
+              finished += 1;
+              continue;
+            }
+            // Older spawn results did not always expose an agent id. A
+            // terminal notification with an id may settle one such anonymous
+            // spawn, but it must never consume a differently identified one.
+            if (anonymousPending > 0) {
+              settledAgentIDs.add(chip.agentID);
+              anonymousPending -= 1;
+              finished += 1;
+            }
+            continue;
+          }
+          if (anonymousPending > 0) {
+            anonymousPending -= 1;
+            finished += 1;
+          }
+        }
       }
     }
   }
-  return { total: pending + finished, finished, remaining: pending };
+  const remaining = pendingAgentIDs.size + anonymousPending;
+  return { total: remaining + finished, finished, remaining };
 }
 
 function turnGroupingFacts(turn: Turn): TurnGroupingFacts {

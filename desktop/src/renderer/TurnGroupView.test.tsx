@@ -47,12 +47,15 @@ function userItem(text: string): ThreadItem {
   return { id: nextID("user"), type: "user_message", text };
 }
 
-function wakeItem(agentID: string): ThreadItem {
+function wakeItem(
+  agentID: string,
+  status: "pending" | "running" | "completed" | "failed" | "cancelled" = "completed",
+): ThreadItem {
   return {
     id: nextID("wake"),
     type: "user_message",
     name: "wuu_agent_notification",
-    text: `<subagent_notification>{"status":{"agent_id":"${agentID}","task_name":"${agentID.replace(/^agent-/, "")}","status":"completed"}}</subagent_notification>`,
+    text: `<subagent_notification>{"status":{"agent_id":"${agentID}","task_name":"${agentID.replace(/^agent-/, "")}","status":"${status}"}}</subagent_notification>`,
   };
 }
 
@@ -661,6 +664,32 @@ describe("TurnGroupView — awaiting between turns", () => {
     expect(waitTail().classList.contains("expanded")).toBe(false);
     expect(waitTail().getAttribute("aria-hidden")).toBe("true");
     expect(actionBars()).toHaveLength(1);
+  });
+
+  it("does not finish a spawn batch for running or duplicate updates", async () => {
+    const parent = makeTurn("t1", [
+      spawnItem("first"),
+      spawnItem("second"),
+      spawnItem("third"),
+    ]);
+    const runningUpdate = makeTurn("t2", [wakeItem("agent-first", "running")]);
+    mountGroup([parent, runningUpdate], true);
+
+    const batchRow = container.querySelector<HTMLElement>(".turn-subagent-status");
+    expect(batchRow?.textContent).toBe("已派出 3 个 subagent");
+    expect(waitTail().textContent).toContain("仍在等待 3 个 subagent");
+
+    const completed = makeTurn("t3", [wakeItem("agent-first")]);
+    const duplicate = makeTurn("t4", [wakeItem("agent-first")]);
+    mountGroup([parent, runningUpdate, completed, duplicate], true);
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 160));
+    });
+
+    expect(
+      container.querySelector<HTMLElement>(".turn-subagent-status")?.textContent,
+    ).toContain("1 个 subagent 已结束，仍在等待 2 个");
+    expect(waitTail().textContent).toContain("1 个 subagent 已结束，仍在等待 2 个");
   });
 
   it("creates a new batch row when a later wake dispatches more agents", () => {

@@ -33,7 +33,10 @@ import {
   turnsHavePendingSubagents,
 } from "./TurnGrouping";
 import type { TurnStreamStatus } from "./AppState";
-import type { SubagentChipDisplay } from "./AgentHandoff";
+import {
+  isTerminalSubagentOutcome,
+  type SubagentChipDisplay,
+} from "./AgentHandoff";
 import { translateCurrent } from "./i18n";
 import { AnimatedProcessText } from "./ProcessTextMotion";
 import { desktopPluginHost } from "./plugins/DesktopPluginRuntime";
@@ -444,6 +447,12 @@ function mergeTurnDisplays(turns: Turn[]): AssistantTurnDisplay | undefined {
         continue;
       }
       if (entry.kind === "subagent_status" && entry.subagentStatus) {
+        // Running, queued and generic mailbox updates are not completion
+        // evidence. Keep the spawn batch live until a terminal notification
+        // (completed / failed / cancelled) identifies a worker.
+        if (!isTerminalSubagentOutcome(entry.subagentStatus.outcome)) {
+          continue;
+        }
         const label = entry.subagentStatus.label;
         const unresolvedAgents = spawnBatches.flatMap((batch) =>
           batch.agents.flatMap((agent) =>
@@ -451,9 +460,15 @@ function mergeTurnDisplays(turns: Turn[]): AssistantTurnDisplay | undefined {
           ),
         );
         const matched = unresolvedAgents.find(({ agent }) =>
-          agent.aliases.some((alias) => alias.length > 0 && label.includes(alias)),
+          entry.subagentStatus?.agentID
+            ? agent.aliases.includes(entry.subagentStatus.agentID)
+            : agent.aliases.some((alias) => alias.length > 0 && label.includes(alias)),
         );
-        const resolved = matched ?? (unresolvedAgents.length === 1 ? unresolvedAgents[0] : undefined);
+        const resolved =
+          matched ??
+          (!entry.subagentStatus.agentID && unresolvedAgents.length === 1
+            ? unresolvedAgents[0]
+            : undefined);
         if (resolved) {
           resolved.agent.finished = true;
           resolved.batch.failed ||= entry.subagentStatus.outcome === "failed";
