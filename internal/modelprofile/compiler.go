@@ -368,7 +368,9 @@ func addSessionWorkspaceTool(b *surfaceBuilder) {
 
 func addPlanningTools(b *surfaceBuilder) {
 	b.addVisible("update_plan", capability.CapabilityPlan)
-	b.addDeferred("goal", capability.CapabilityGoal)
+	b.addDeferred("get_goal", capability.CapabilityGoal)
+	b.addDeferred("create_goal", capability.CapabilityGoal)
+	b.addDeferred("update_goal", capability.CapabilityGoal)
 }
 
 func addScheduleTools(b *surfaceBuilder) {

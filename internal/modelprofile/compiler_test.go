@@ -161,7 +161,7 @@ func TestOpenAICodexSurface(t *testing.T) {
 		"send_message", "close_agent",
 		"session_memory",
 		"thread_get",
-		"goal",
+		"get_goal", "create_goal", "update_goal",
 		"cron",
 		"wuu_browser",
 	}

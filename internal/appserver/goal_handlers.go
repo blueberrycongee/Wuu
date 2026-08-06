@@ -10,8 +10,171 @@ import (
 	"time"
 
 	"github.com/blueberrycongee/wuu/internal/goalruntime"
+	"github.com/blueberrycongee/wuu/internal/session"
 	"github.com/blueberrycongee/wuu/internal/statepath"
 )
+
+func (s *Server) handleThreadGoalGet(req Request) error {
+	var params ThreadGoalGetParams
+	if err := decodeParams(req.Params, &params); err != nil {
+		return s.writeResponse(req.ID, nil, err)
+	}
+	goalRuntime, err := s.materializedGoalRuntimeForThread(params.ThreadID)
+	if err != nil {
+		return s.writeResponse(req.ID, nil, err)
+	}
+	goal, err := goalRuntime.CurrentGoal()
+	if errors.Is(err, os.ErrNotExist) {
+		return s.writeResponse(req.ID, ThreadGoalGetResult{}, nil)
+	}
+	if err != nil {
+		return s.writeResponse(req.ID, nil, err)
+	}
+	publicGoal := threadGoalFromRuntime(goal)
+	return s.writeResponse(req.ID, ThreadGoalGetResult{Goal: &publicGoal}, nil)
+}
+
+func (s *Server) handleThreadGoalSet(req Request) error {
+	var params ThreadGoalSetParams
+	if err := decodeParams(req.Params, &params); err != nil {
+		return s.writeResponse(req.ID, nil, err)
+	}
+	if params.Objective == nil && params.Status == nil {
+		return s.writeResponse(req.ID, nil, errors.New("thread goal set requires objective or status"))
+	}
+	goalRuntime, err := s.materializedGoalRuntimeForThread(params.ThreadID)
+	if err != nil {
+		return s.writeResponse(req.ID, nil, err)
+	}
+	now := time.Now().UTC()
+	goal, loadErr := goalRuntime.CurrentGoal()
+	hasGoal := loadErr == nil
+	wasActive := hasGoal && goal.Status == goalruntime.StatusActive
+	if loadErr != nil && !errors.Is(loadErr, os.ErrNotExist) {
+		return s.writeResponse(req.ID, nil, loadErr)
+	}
+
+	if params.Objective != nil {
+		objective := strings.TrimSpace(*params.Objective)
+		if err := goalruntime.ValidateObjective(objective); err != nil {
+			return s.writeResponse(req.ID, nil, err)
+		}
+		if !hasGoal || goalruntime.IsTerminalStatus(goal.Status) {
+			goal, err = goalRuntime.Create(goalruntime.Spec{
+				ThreadID:  strings.TrimSpace(params.ThreadID),
+				GoalID:    "goal-" + session.NewID(),
+				Objective: objective,
+			})
+		} else {
+			goal, err = goalRuntime.EditObjective(objective, now)
+		}
+		if err != nil {
+			return s.writeResponse(req.ID, nil, err)
+		}
+		hasGoal = true
+	}
+
+	if params.Status != nil {
+		if !hasGoal {
+			return s.writeResponse(req.ID, nil, errors.New("thread goal not found"))
+		}
+		status := goalruntime.Status(strings.TrimSpace(*params.Status))
+		if goal.Status != status {
+			switch status {
+			case goalruntime.StatusActive, goalruntime.StatusPaused:
+				goal, err = goalRuntime.SetUserStatus(status, now)
+			case goalruntime.StatusBlocked, goalruntime.StatusComplete:
+				goal, err = goalRuntime.SetSystemStatus(status, now)
+			default:
+				err = fmt.Errorf("invalid thread goal status %q", status)
+			}
+			if err != nil {
+				return s.writeResponse(req.ID, nil, err)
+			}
+		}
+	}
+
+	if wasActive && goal.Status != goalruntime.StatusActive {
+		if _, err := s.interruptThreadExecution(goal.ThreadID, ""); err != nil {
+			return s.writeResponse(req.ID, nil, err)
+		}
+	}
+	publicGoal := threadGoalFromRuntime(goal)
+	if err := s.writeNotification(NotificationThreadGoalUpdated, ThreadGoalUpdatedNotification{
+		ThreadID: goal.ThreadID,
+		Goal:     publicGoal,
+	}); err != nil {
+		return s.writeResponse(req.ID, nil, err)
+	}
+	if err := s.writeResponse(req.ID, ThreadGoalSetResult{Goal: publicGoal}, nil); err != nil {
+		return err
+	}
+	if goal.Status == goalruntime.StatusActive {
+		s.kickGoalContinuation(goal.ThreadID)
+	}
+	return nil
+}
+
+func (s *Server) handleThreadGoalClear(req Request) error {
+	var params ThreadGoalClearParams
+	if err := decodeParams(req.Params, &params); err != nil {
+		return s.writeResponse(req.ID, nil, err)
+	}
+	goalRuntime, err := s.materializedGoalRuntimeForThread(params.ThreadID)
+	if err != nil {
+		return s.writeResponse(req.ID, nil, err)
+	}
+	goal, err := goalRuntime.CurrentGoal()
+	if errors.Is(err, os.ErrNotExist) {
+		return s.writeResponse(req.ID, ThreadGoalClearResult{Cleared: false}, nil)
+	}
+	if err != nil {
+		return s.writeResponse(req.ID, nil, err)
+	}
+	if err := goalRuntime.Clear(); err != nil {
+		return s.writeResponse(req.ID, nil, err)
+	}
+	if goal.Status == goalruntime.StatusActive {
+		if _, err := s.interruptThreadExecution(goal.ThreadID, ""); err != nil {
+			return s.writeResponse(req.ID, nil, err)
+		}
+	}
+	if err := s.writeNotification(NotificationThreadGoalCleared, ThreadGoalClearedNotification{ThreadID: goal.ThreadID}); err != nil {
+		return s.writeResponse(req.ID, nil, err)
+	}
+	return s.writeResponse(req.ID, ThreadGoalClearResult{Cleared: true}, nil)
+}
+
+func (s *Server) materializedGoalRuntimeForThread(threadID string) (*goalruntime.Runtime, error) {
+	threadID = strings.TrimSpace(threadID)
+	if threadID == "" {
+		return nil, errors.New("thread_id is required")
+	}
+	th := s.thread(threadID)
+	if th == nil {
+		return nil, fmt.Errorf("thread %q not found", threadID)
+	}
+	threadRuntime, err := s.ensureThreadRuntime(th)
+	if err != nil {
+		return nil, err
+	}
+	if threadRuntime == nil || threadRuntime.GoalRuntime == nil {
+		return nil, errors.New("thread goal runtime is unavailable")
+	}
+	return threadRuntime.GoalRuntime, nil
+}
+
+func threadGoalFromRuntime(goal goalruntime.Goal) ThreadGoal {
+	return ThreadGoal{
+		ThreadID:        goal.ThreadID,
+		Objective:       goal.Objective,
+		Status:          string(goal.Status),
+		TokensUsed:      goal.TokensUsed,
+		TimeUsedSeconds: goal.TimeUsedSeconds,
+		CreatedAt:       goal.CreatedAt.Unix(),
+		UpdatedAt:       goal.UpdatedAt.Unix(),
+	}
+}
 
 // handleGoalActiveSummary returns the lightweight composer-banner view of
 // the most recently updated non-terminal goal. The renderer only needs id,

@@ -193,7 +193,12 @@ import { ArchiveTip } from "./ArchiveTip";
 import { TopNotice } from "./TopNotice";
 import { showErrorToast } from "./Toast";
 import { CircleAlert, RefreshCw } from "lucide-react";
-import type { ComposerGoalSummary } from "../shared/protocol";
+import type {
+  ComposerGoalSummary,
+  ThreadGoal,
+  ThreadGoalClearedNotification,
+  ThreadGoalUpdatedNotification,
+} from "../shared/protocol";
 import { useSettingsRuntimeState } from "./SettingsRuntimeState";
 import { SidePanelToggleIcon } from "./SidePanelToggleIcon";
 import { JumpToLatestPill } from "./JumpToLatestPill";
@@ -346,6 +351,74 @@ function readPopOutInit(): PopOutInitResult | null {
   }
 }
 
+function composerGoalSummaryFromThreadGoal(goal: ThreadGoal): ComposerGoalSummary | null {
+  if (goal.status === "complete") {
+    return null;
+  }
+  const toISOString = (seconds: number): string | undefined =>
+    Number.isFinite(seconds) && seconds > 0
+      ? new Date(seconds * 1000).toISOString()
+      : undefined;
+  return {
+    id: goal.thread_id,
+    thread_id: goal.thread_id,
+    text: goal.objective,
+    status: goal.status,
+    started_at: toISOString(goal.created_at),
+    updated_at: toISOString(goal.updated_at),
+    tokens_used: goal.tokens_used,
+    time_used_seconds: goal.time_used_seconds,
+    can_pause: goal.status === "active",
+    can_resume: goal.status === "paused" || goal.status === "blocked",
+    can_clear: true,
+    stop_reason:
+      goal.status === "paused" || goal.status === "blocked" ? goal.status : undefined,
+  };
+}
+
+function isThreadGoal(value: unknown): value is ThreadGoal {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const goal = value as Partial<ThreadGoal>;
+  return (
+    typeof goal.thread_id === "string" &&
+    typeof goal.objective === "string" &&
+    (goal.status === "active" ||
+      goal.status === "paused" ||
+      goal.status === "blocked" ||
+      goal.status === "complete") &&
+    typeof goal.tokens_used === "number" &&
+    typeof goal.time_used_seconds === "number" &&
+    typeof goal.created_at === "number" &&
+    typeof goal.updated_at === "number"
+  );
+}
+
+function isThreadGoalUpdatedNotification(
+  value: unknown,
+): value is ThreadGoalUpdatedNotification {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const notification = value as Partial<ThreadGoalUpdatedNotification>;
+  return (
+    typeof notification.thread_id === "string" &&
+    isThreadGoal(notification.goal) &&
+    notification.goal.thread_id === notification.thread_id
+  );
+}
+
+function isThreadGoalClearedNotification(
+  value: unknown,
+): value is ThreadGoalClearedNotification {
+  return (
+    !!value &&
+    typeof value === "object" &&
+    typeof (value as Partial<ThreadGoalClearedNotification>).thread_id === "string"
+  );
+}
+
 type MainComposerFocusRequest = {
   target: ComposerVariant;
   origin: Element | null;
@@ -359,9 +432,9 @@ export function App(): JSX.Element {
   const poppedOutMode = Boolean(popOutInit?.kind && popOutInit.context);
   const [state, setState] = useState<AppState>(initialState);
   useDesktopPluginRuntime(state.initialized?.extension_inventory);
-  const [goalSummary, setGoalSummary] = useState<ComposerGoalSummary | null>(
-    null
-  );
+  const [goalSummariesByThread, setGoalSummariesByThread] = useState<
+    Record<string, ComposerGoalSummary | null>
+  >({});
   const {
     prompt,
     setPrompt,
@@ -1023,6 +1096,9 @@ export function App(): JSX.Element {
       : undefined;
   const activeThread = activeThreadForState(state);
   const activeThreadID = activeThread?.id;
+  const goalSummary = activeThreadID
+    ? goalSummariesByThread[activeThreadID] ?? null
+    : null;
   const activeTabKind = activeSessionTab(state)?.kind;
   const environmentContext = workspacePanelContext(state.activeContext, activeThread);
   const sideThread = useSideThreadController({
@@ -1206,18 +1282,13 @@ export function App(): JSX.Element {
   const refreshGoalSummary = useCallback(
     async (threadID = activeThreadID) => {
       if (!threadID) {
-        setGoalSummary(null);
         return;
       }
       try {
         const summary = await window.wuu.getActiveGoalSummary(threadID);
-        if (activeThreadIDForState(appStateRef.current) === threadID) {
-          setGoalSummary(summary);
-        }
+        setGoalSummariesByThread((current) => ({ ...current, [threadID]: summary }));
       } catch {
-        if (activeThreadIDForState(appStateRef.current) === threadID) {
-          setGoalSummary(null);
-        }
+        setGoalSummariesByThread((current) => ({ ...current, [threadID]: null }));
       }
     },
     [activeThreadID],
@@ -1227,48 +1298,56 @@ export function App(): JSX.Element {
       if (!goalSummary) {
         return;
       }
-      const threadID = goalSummary.thread_id ?? activeThreadID;
-      if (!threadID) {
+      const threadID = goalSummary.thread_id;
+      if (!threadID || threadID !== activeThreadID) {
         return;
       }
-      await window.wuu.updateGoalText(goalSummary.id, nextText, threadID);
-      await refreshGoalSummary(threadID);
+      const result = await window.wuu.updateGoalText(goalSummary.id, nextText, threadID);
+      if (!result.ok) {
+        throw new Error("Goal objective update was rejected");
+      }
     },
-    [activeThreadID, goalSummary, refreshGoalSummary],
+    [activeThreadID, goalSummary],
   );
   const pauseCurrentGoal = useCallback(async () => {
     if (!goalSummary) {
       return;
     }
-    const threadID = goalSummary.thread_id ?? activeThreadID;
-    if (!threadID) {
+    const threadID = goalSummary.thread_id;
+    if (!threadID || threadID !== activeThreadID) {
       return;
     }
-    await window.wuu.pauseGoal(goalSummary.id, threadID);
-    await refreshGoalSummary(threadID);
-  }, [activeThreadID, goalSummary, refreshGoalSummary]);
+    const result = await window.wuu.pauseGoal(goalSummary.id, threadID);
+    if (!result.ok) {
+      throw new Error("Goal pause was rejected");
+    }
+  }, [activeThreadID, goalSummary]);
   const resumeCurrentGoal = useCallback(async () => {
     if (!goalSummary) {
       return;
     }
-    const threadID = goalSummary.thread_id ?? activeThreadID;
-    if (!threadID) {
+    const threadID = goalSummary.thread_id;
+    if (!threadID || threadID !== activeThreadID) {
       return;
     }
-    await window.wuu.resumeGoal(goalSummary.id, threadID);
-    await refreshGoalSummary(threadID);
-  }, [activeThreadID, goalSummary, refreshGoalSummary]);
+    const result = await window.wuu.resumeGoal(goalSummary.id, threadID);
+    if (!result.ok) {
+      throw new Error("Goal resume was rejected");
+    }
+  }, [activeThreadID, goalSummary]);
   const clearCurrentGoal = useCallback(async () => {
     if (!goalSummary) {
       return;
     }
-    const threadID = goalSummary.thread_id ?? activeThreadID;
-    if (!threadID) {
+    const threadID = goalSummary.thread_id;
+    if (!threadID || threadID !== activeThreadID) {
       return;
     }
-    await window.wuu.clearGoal(goalSummary.id, threadID);
-    await refreshGoalSummary(threadID);
-  }, [activeThreadID, goalSummary, refreshGoalSummary]);
+    const result = await window.wuu.clearGoal(goalSummary.id, threadID);
+    if (!result.ok) {
+      throw new Error("Goal clear was rejected");
+    }
+  }, [activeThreadID, goalSummary]);
   const {
     conversationSearch,
     conversationSearchResults,
@@ -1538,22 +1617,30 @@ export function App(): JSX.Element {
         return;
       }
       const method = event.message.method;
-      // Refresh the composer goal banner whenever a turn or thread
-      // lifecycle event lands. The backend filters terminal goals, so
-      // the summary just collapses to null after a clean completion.
-      if (
-        method === "turn/started" ||
-        method === "turn/completed" ||
-        method === "turn/error" ||
-        method === "thread/started" ||
-        method === "thread/resumed" ||
-        method === "thread/updated"
-      ) {
-        void refreshGoalSummary();
+      if (method === "thread/goal/updated") {
+        const notification = event.message.params;
+        if (isThreadGoalUpdatedNotification(notification)) {
+          setGoalSummariesByThread((current) => ({
+            ...current,
+            [notification.thread_id]: composerGoalSummaryFromThreadGoal(
+              notification.goal,
+            ),
+          }));
+        }
+        return;
+      }
+      if (method === "thread/goal/cleared") {
+        const notification = event.message.params;
+        if (isThreadGoalClearedNotification(notification)) {
+          setGoalSummariesByThread((current) => ({
+            ...current,
+            [notification.thread_id]: null,
+          }));
+        }
       }
     });
     return off;
-  }, [refreshGoalSummary]);
+  }, []);
 
   useEffect(() => {
     let mounted = true;

@@ -255,7 +255,9 @@ func (t *Toolkit) rebuildRegistry() {
 		NewThreadGetTool(e),
 		NewSetSessionWorkspaceTool(e),
 		// Goals
-		NewGoalTool(e),
+		NewGetGoalTool(e),
+		NewCreateGoalTool(e),
+		NewUpdateGoalTool(e),
 		// Recurring agent profiles
 		NewListAgentProfilesTool(e),
 		NewCreateAgentProfileTool(e),

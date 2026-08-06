@@ -2,188 +2,174 @@ package tools
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
-	goalrunner "github.com/blueberrycongee/wuu/internal/goal"
 	"github.com/blueberrycongee/wuu/internal/goalruntime"
 	"github.com/blueberrycongee/wuu/internal/providers"
 	"github.com/blueberrycongee/wuu/internal/session"
-	"github.com/blueberrycongee/wuu/internal/statepath"
 )
 
-// GoalTool is the single read/write surface for the thread's one runtime goal.
-// A thread has at most one active goal at a time (goalruntime rejects a second
-// unfinished goal), so the domain is a single instance addressed by action
-// rather than a list of goals. action=get reads the current goal, action=create
-// starts a new one, action=update changes only its status.
-type GoalTool struct{ env *Env }
+// Goal is one thread-scoped durable objective, exposed to the model through
+// three narrow tools instead of one action-dispatch schema.
 
-func NewGoalTool(env *Env) *GoalTool { return &GoalTool{env: env} }
+type GetGoalTool struct{ env *Env }
 
-func (t *GoalTool) Name() string            { return "goal" }
-func (t *GoalTool) IsReadOnly() bool        { return false }
-func (t *GoalTool) IsConcurrencySafe() bool { return false }
+func NewGetGoalTool(env *Env) *GetGoalTool { return &GetGoalTool{env: env} }
 
-func (t *GoalTool) Definition() providers.ToolDefinition {
+func (t *GetGoalTool) Name() string            { return "get_goal" }
+func (t *GetGoalTool) IsReadOnly() bool        { return true }
+func (t *GetGoalTool) IsConcurrencySafe() bool { return true }
+func (t *GetGoalTool) Definition() providers.ToolDefinition {
 	return providers.ToolDefinition{
-		Name: "goal",
-		Description: "Read or change the single runtime goal for this thread. " +
-			"action=get returns the current goal with its status and elapsed usage. " +
-			"action=create starts a new active goal and requires objective; create a goal only when explicitly requested by the user or system/developer instructions, do not infer goals from ordinary tasks, and note that it fails if an unfinished goal exists. " +
-			"action=update changes only the goal status and requires status. " +
-			"Set status=complete only when the objective has actually been achieved and no required work remains. " +
-			"Set status=blocked only when the same blocking condition has repeated for at least three consecutive goal turns and the agent cannot make meaningful progress without user input or an external-state change. " +
+		Name:        t.Name(),
+		Description: "Get the current goal for this thread, including status, token usage, and elapsed-time usage.",
+		InputSchema: emptyGoalToolSchema(),
+	}
+}
+func (t *GetGoalTool) Execute(_ context.Context, argsJSON string) (string, error) {
+	if err := decodeEmptyGoalArgs(argsJSON); err != nil {
+		return "", err
+	}
+	goal, ok, err := currentGoalRuntime(t.env)
+	if err != nil {
+		return "", err
+	}
+	if !ok {
+		return mustJSON(map[string]any{"goal": nil})
+	}
+	return goalToolResult(goal)
+}
+
+type CreateGoalTool struct{ env *Env }
+
+func NewCreateGoalTool(env *Env) *CreateGoalTool { return &CreateGoalTool{env: env} }
+
+func (t *CreateGoalTool) Name() string            { return "create_goal" }
+func (t *CreateGoalTool) IsReadOnly() bool        { return false }
+func (t *CreateGoalTool) IsConcurrencySafe() bool { return false }
+func (t *CreateGoalTool) Definition() providers.ToolDefinition {
+	return providers.ToolDefinition{
+		Name: t.Name(),
+		Description: "Create a goal only when explicitly requested by the user or system/developer instructions; do not infer goals from ordinary tasks. " +
+			"This starts a new active goal when no goal exists or replaces the current goal when it is complete. Fails if an unfinished goal exists; use update_goal only for status.",
+		InputSchema: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"objective": map[string]any{
+					"type":        "string",
+					"description": "Required. The concrete objective to start pursuing. State the outcome, not implementation details.",
+				},
+			},
+			"required":             []string{"objective"},
+			"additionalProperties": false,
+		},
+	}
+}
+func (t *CreateGoalTool) Execute(_ context.Context, argsJSON string) (string, error) {
+	var args struct {
+		Objective string `json:"objective"`
+	}
+	if err := decodeArgs(argsJSON, &args); err != nil {
+		return "", err
+	}
+	objective := strings.TrimSpace(args.Objective)
+	if err := goalruntime.ValidateObjective(objective); err != nil {
+		return "", err
+	}
+	if t == nil || t.env == nil || t.env.GoalRuntime == nil {
+		return "", errors.New("create_goal requires a thread runtime goal store")
+	}
+	threadID := strings.TrimSpace(t.env.SessionID)
+	if threadID == "" {
+		return "", errors.New("thread session_id is required for runtime goal")
+	}
+	goal, err := t.env.GoalRuntime.Create(goalruntime.Spec{
+		ThreadID:  threadID,
+		GoalID:    "goal-" + session.NewID(),
+		Objective: objective,
+	})
+	if err != nil {
+		return "", err
+	}
+	return goalToolResult(goal)
+}
+
+type UpdateGoalTool struct{ env *Env }
+
+func NewUpdateGoalTool(env *Env) *UpdateGoalTool { return &UpdateGoalTool{env: env} }
+
+func (t *UpdateGoalTool) Name() string            { return "update_goal" }
+func (t *UpdateGoalTool) IsReadOnly() bool        { return false }
+func (t *UpdateGoalTool) IsConcurrencySafe() bool { return false }
+func (t *UpdateGoalTool) Definition() providers.ToolDefinition {
+	return providers.ToolDefinition{
+		Name: t.Name(),
+		Description: "Update the existing goal. Use this tool only to mark the goal achieved or genuinely blocked. " +
+			"Set status to complete only when the objective has actually been achieved and no required work remains. " +
+			"Set status to blocked only when the same blocking condition has repeated for at least three consecutive goal turns and the agent cannot make meaningful progress without user input or an external-state change. " +
+			"After a previously blocked goal is resumed, treat the resumed run as a fresh blocked audit. " +
 			"Do not use blocked merely because the work is hard, slow, uncertain, incomplete, or would benefit from clarification. " +
 			"You cannot pause or resume a goal; those status changes are controlled by the user or system.",
 		InputSchema: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
-				"action": map[string]any{
-					"type":        "string",
-					"enum":        []string{"get", "create", "update"},
-					"description": "Required. get reads the current goal; create starts a new goal (requires objective); update changes the goal status (requires status).",
-				},
-				"objective": map[string]any{
-					"type":        "string",
-					"description": "Used by action=create. The concrete objective to start pursuing. State the outcome, not implementation details.",
-				},
 				"status": map[string]any{
 					"type":        "string",
 					"enum":        []string{"complete", "blocked"},
-					"description": "Used by action=update. Set to complete only when the objective is achieved; set to blocked only after the repeated-blocker audit is satisfied.",
+					"description": "Required. Set to complete only when the objective is achieved; set to blocked only after the repeated-blocker audit is satisfied.",
 				},
 			},
-			"required": []string{"action"},
+			"required":             []string{"status"},
+			"additionalProperties": false,
 		},
 	}
 }
-
-func (t *GoalTool) Execute(_ context.Context, argsJSON string) (string, error) {
+func (t *UpdateGoalTool) Execute(_ context.Context, argsJSON string) (string, error) {
 	var args struct {
-		Action    string `json:"action"`
-		Objective string `json:"objective"`
-		Status    string `json:"status"`
+		Status string `json:"status"`
 	}
 	if err := decodeArgs(argsJSON, &args); err != nil {
 		return "", err
 	}
-	switch strings.TrimSpace(args.Action) {
-	case "get":
-		return t.executeGet()
-	case "create":
-		return t.executeCreate(args.Objective)
-	case "update":
-		return t.executeUpdate(args.Status)
-	default:
-		return "", errors.New("goal requires action=get, create, or update")
-	}
-}
-
-func (t *GoalTool) executeGet() (string, error) {
-	result := map[string]any{
-		"goal": nil,
-	}
-	if runtimeGoal, ok, err := currentGoalRuntime(t.env); err != nil {
-		return "", err
-	} else if ok {
-		result["goal"] = runtimeGoal
-	}
-	return mustJSON(result)
-}
-
-func (t *GoalTool) executeCreate(objective string) (string, error) {
-	objective = strings.TrimSpace(objective)
-	if objective == "" {
-		return "", errors.New("goal action=create requires objective")
-	}
-	goalID := "goal-" + session.NewID()
-	if err := validateGoalToolID(goalID); err != nil {
-		return "", err
-	}
-	runtimeGoal, err := t.startRuntimeGoal(goalID, objective)
-	if err != nil {
-		return "", err
-	}
-	return goalRuntimeToolResult(runtimeGoal)
-}
-
-func (t *GoalTool) executeUpdate(statusArg string) (string, error) {
-	status := goalruntime.Status(strings.TrimSpace(statusArg))
-	switch status {
-	case goalruntime.StatusComplete, goalruntime.StatusBlocked:
-	default:
-		return "", errors.New("goal action=update requires status=complete or status=blocked")
+	status := goalruntime.Status(strings.TrimSpace(args.Status))
+	if status != goalruntime.StatusComplete && status != goalruntime.StatusBlocked {
+		return "", errors.New("update_goal requires status=complete or status=blocked")
 	}
 	if _, err := currentActiveRuntimeGoalForTool(t.env); err != nil {
 		return "", err
 	}
-	runtimeGoal, err := t.env.GoalRuntime.SetModelStatus(status, time.Now().UTC())
+	goal, err := t.env.GoalRuntime.SetModelStatus(status, time.Now().UTC())
 	if err != nil {
 		return "", err
 	}
-	return goalRuntimeToolResult(runtimeGoal)
+	return goalToolResult(goal)
 }
 
-func (e *Env) GoalStore(goalID string) (*goalrunner.Store, error) {
-	goalID = strings.TrimSpace(goalID)
-	if err := validateGoalToolID(goalID); err != nil {
-		return nil, err
+func emptyGoalToolSchema() map[string]any {
+	return map[string]any{
+		"type":                 "object",
+		"properties":           map[string]any{},
+		"additionalProperties": false,
 	}
-	stateDir, err := e.OrchestrationStateDir()
-	if err != nil {
-		return nil, err
-	}
-	return goalrunner.NewStore(statepath.GoalDir(stateDir, goalID)), nil
 }
 
-func (e *Env) ResolveGoalStore(goalID, goalDir string) (*goalrunner.Store, goalrunner.State, error) {
-	goalID = strings.TrimSpace(goalID)
-	goalDir = strings.TrimSpace(goalDir)
-	if goalID == "" && goalDir == "" {
-		return nil, goalrunner.State{}, errors.New("goal_id or goal_dir is required")
+func decodeEmptyGoalArgs(argsJSON string) error {
+	if strings.TrimSpace(argsJSON) == "" {
+		return nil
 	}
-	var store *goalrunner.Store
-	var err error
-	if goalDir != "" {
-		store = goalrunner.NewStore(goalDir)
-	} else {
-		store, err = e.GoalStore(goalID)
-		if err != nil {
-			return nil, goalrunner.State{}, err
-		}
+	var args map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
+		return err
 	}
-	state, err := store.LoadState()
-	if err != nil {
-		return nil, goalrunner.State{}, err
+	if len(args) > 0 {
+		return errors.New("get_goal does not accept arguments")
 	}
-	if goalID != "" && state.ID != goalID {
-		return nil, goalrunner.State{}, fmt.Errorf("goal_id %q does not match state id %q", goalID, state.ID)
-	}
-	return store, state, nil
-}
-
-func (t *GoalTool) startRuntimeGoal(goalID, objective string) (goalruntime.Goal, error) {
-	if t == nil || t.env == nil || t.env.GoalRuntime == nil {
-		return goalruntime.Goal{}, errors.New("goal action=create requires a thread runtime goal store")
-	}
-	threadID := strings.TrimSpace(t.env.SessionID)
-	if threadID == "" {
-		return goalruntime.Goal{}, errors.New("thread session_id is required for runtime goal")
-	}
-	goal, err := t.env.GoalRuntime.Create(goalruntime.Spec{
-		ThreadID:  threadID,
-		GoalID:    goalID,
-		Objective: objective,
-	})
-	if err != nil {
-		return goalruntime.Goal{}, err
-	}
-	return goal, nil
+	return nil
 }
 
 func currentActiveRuntimeGoalForTool(env *Env) (goalruntime.Goal, error) {
@@ -195,7 +181,7 @@ func currentActiveRuntimeGoalForTool(env *Env) (goalruntime.Goal, error) {
 		return goalruntime.Goal{}, errors.New("active runtime goal not found")
 	}
 	if goal.Status != goalruntime.StatusActive {
-		return goalruntime.Goal{}, fmt.Errorf("active runtime goal %q is currently %s; ask the user to resume the goal before updating it", goal.GoalID, goal.Status)
+		return goalruntime.Goal{}, fmt.Errorf("active runtime goal is currently %s; ask the user to resume the goal before updating it", goal.Status)
 	}
 	return goal, nil
 }
@@ -214,19 +200,28 @@ func currentGoalRuntime(env *Env) (goalruntime.Goal, bool, error) {
 	return goal, true, nil
 }
 
-func validateGoalToolID(goalID string) error {
-	if strings.TrimSpace(goalID) == "" {
-		return errors.New("goal_id is required")
-	}
-	if goalID == "." || goalID == ".." || filepath.Base(goalID) != goalID || strings.ContainsAny(goalID, `/\`) {
-		return fmt.Errorf("goal_id must be an id, not a path: %q", goalID)
-	}
-	return nil
+// goalToolView is Wuu's public thread Goal contract. GoalID and the persistence
+// schema stay private to the runtime, and Wuu has no token-budget fields.
+type goalToolView struct {
+	ThreadID        string             `json:"thread_id"`
+	Objective       string             `json:"objective"`
+	Status          goalruntime.Status `json:"status"`
+	TokensUsed      int                `json:"tokens_used"`
+	TimeUsedSeconds int64              `json:"time_used_seconds"`
+	CreatedAt       int64              `json:"created_at"`
+	UpdatedAt       int64              `json:"updated_at"`
 }
 
-func goalRuntimeToolResult(goal goalruntime.Goal) (string, error) {
-	result := map[string]any{
-		"goal": goal,
-	}
-	return mustJSON(result)
+func goalToolResult(goal goalruntime.Goal) (string, error) {
+	return mustJSON(map[string]any{
+		"goal": goalToolView{
+			ThreadID:        goal.ThreadID,
+			Objective:       goal.Objective,
+			Status:          goal.Status,
+			TokensUsed:      goal.TokensUsed,
+			TimeUsedSeconds: goal.TimeUsedSeconds,
+			CreatedAt:       goal.CreatedAt.Unix(),
+			UpdatedAt:       goal.UpdatedAt.Unix(),
+		},
+	})
 }

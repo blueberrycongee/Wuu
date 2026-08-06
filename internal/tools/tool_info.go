@@ -211,7 +211,7 @@ func classifyToolKind(name string) ToolKind {
 		return ToolKindSession
 	case "load_skill":
 		return ToolKindSkill
-	case "goal":
+	case "get_goal", "create_goal", "update_goal":
 		return ToolKindGoal
 	case "update_plan":
 		return ToolKindPlan
