@@ -254,6 +254,7 @@ import {
   emptyActivitySessions,
   mergeActivityList,
   reduceActivitySessionEvent,
+  serverEventCarriesActivitySessionUpdate,
 } from "./ActivitySessions";
 import {
   loadPopOutRuntime,
@@ -1682,7 +1683,9 @@ export function App(): JSX.Element {
       if (!mounted) {
         return;
       }
-      setActivitySessions((current) => reduceActivitySessionEvent(current, event));
+      if (serverEventCarriesActivitySessionUpdate(event)) {
+        setActivitySessions((current) => reduceActivitySessionEvent(current, event));
+      }
       // All app-server clients share this event channel. Keep folded workspace
       // snapshots live so expanding a workspace only reveals state; it never
       // needs to wait for a status refresh first.

@@ -4,12 +4,23 @@ export type ActivitySessionsState = {
   byKey: Record<string, ActivitySession>;
 };
 
+type NotificationServerEvent = Extract<ServerEvent, { kind: "notification" }>;
+
 const ACTIVITY_NOTIFICATION_METHODS = new Set([
   "activity/started",
   "activity/updated",
   "activity/control_changed",
   "activity/stopped",
 ]);
+
+export function serverEventCarriesActivitySessionUpdate(
+  event: ServerEvent,
+): event is NotificationServerEvent {
+  return (
+    event.kind === "notification" &&
+    ACTIVITY_NOTIFICATION_METHODS.has(event.message.method)
+  );
+}
 
 export function emptyActivitySessions(): ActivitySessionsState {
   return { byKey: {} };
@@ -19,7 +30,7 @@ export function reduceActivitySessionEvent(
   state: ActivitySessionsState,
   event: ServerEvent,
 ): ActivitySessionsState {
-  if (event.kind !== "notification" || !ACTIVITY_NOTIFICATION_METHODS.has(event.message.method)) {
+  if (!serverEventCarriesActivitySessionUpdate(event)) {
     return state;
   }
   const activity = activityFromUnknown(event.message.params);

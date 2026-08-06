@@ -6,6 +6,7 @@ import {
   emptyActivitySessions,
   mergeActivityList,
   reduceActivitySessionEvent,
+  serverEventCarriesActivitySessionUpdate,
 } from "./ActivitySessions";
 
 function session(overrides: Partial<ActivitySession> = {}): ActivitySession {
@@ -33,6 +34,19 @@ function notification(method: string, activity: ActivitySession): ServerEvent {
 }
 
 describe("ActivitySessions", () => {
+  it("rejects unrelated high-rate events before React state dispatch", () => {
+    expect(
+      serverEventCarriesActivitySessionUpdate(
+        notification("item/agentMessage/delta", session()),
+      ),
+    ).toBe(false);
+    expect(
+      serverEventCarriesActivitySessionUpdate(
+        notification("activity/updated", session()),
+      ),
+    ).toBe(true);
+  });
+
   it("routes activities by workspace and thread", () => {
     let state = emptyActivitySessions();
     state = reduceActivitySessionEvent(state, notification("activity/started", session()));
