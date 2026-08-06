@@ -28,6 +28,27 @@ export interface ViewTypeDefinition {
   render: unknown; // React.ComponentType<ViewRenderProps> — opaque in SDK
 }
 
+export interface ViewRenderProps {
+  host: ViewHostAPI;
+  context: Readonly<Record<string, unknown>>;
+}
+
+export interface ViewHostAPI {
+  getStorage(key: string): Promise<string | null>;
+  setStorage(key: string, value: string): Promise<void>;
+  getSetting(key: string): Promise<unknown>;
+  executeCommand(commandId: string, input?: unknown): Promise<unknown>;
+  openView(viewTypeId: ViewTypeId, options?: OpenViewOptions): Promise<void>;
+  closeView(): Promise<void>;
+}
+
+export interface OpenViewOptions {
+  pane?: ViewPane;
+  context?: Readonly<Record<string, unknown>>;
+  persistence?: ViewPersistence;
+  reveal?: boolean;
+}
+
 export interface LayoutContribution {
   id: string;
   parentId: string;
@@ -111,6 +132,8 @@ export interface LocaleDefinition {
 // ---------------------------------------------------------------------------
 
 export interface PluginGenerationApi {
+  /** Host-owned React runtime. Executable desktop bundles must use this instance. */
+  readonly react: unknown;
   readonly pluginId: string;
   readonly generation: string;
   registerSlot(slotId: string, contribution: SlotRegistration): Disposable;
@@ -119,6 +142,12 @@ export interface PluginGenerationApi {
   registerStyle(style: StyleRegistration): Disposable;
   registerLocale(locale: LocaleRegistration): Disposable;
   registerCleanup(cleanup: () => void): Disposable;
+  registerViewType(definition: ViewTypeDefinition): Disposable;
+  registerLayoutContribution(contribution: LayoutContribution): Disposable;
+  registerRenderer(definition: RendererDefinition): Disposable;
+  registerThemeTokens(tokens: ThemeTokens): Disposable;
+  registerCSSSnippet(snippet: CSSSnippet): Disposable;
+  registerStatusItem(item: StatusItemDefinition): Disposable;
 }
 
 export interface Disposable {

@@ -131,6 +131,37 @@ export interface RegisteredPluginCommand extends PluginCommandRegistration {
   readonly generation: string;
 }
 
+export interface RegisteredViewType extends ViewTypeDefinition {
+  readonly pluginId: string;
+  readonly generation: string;
+  readonly order: number;
+}
+
+export interface RegisteredLayoutContribution extends LayoutContribution {
+  readonly pluginId: string;
+  readonly generation: string;
+  readonly order: number;
+}
+
+export interface RegisteredRenderer extends RendererDefinition {
+  readonly pluginId: string;
+  readonly generation: string;
+  readonly order: number;
+}
+
+export interface RegisteredThemeTokens extends ThemeTokens {
+  readonly pluginId: string;
+  readonly generation: string;
+  readonly id: string;
+  readonly order: number;
+}
+
+export interface RegisteredStatusItem extends StatusItemDefinition {
+  readonly pluginId: string;
+  readonly generation: string;
+  readonly order: number;
+}
+
 export type PluginDiagnosticKind = "activation" | "cleanup" | "render";
 
 export interface PluginGenerationDiagnostic {
@@ -241,6 +272,11 @@ interface PendingActivation {
 const EMPTY_SLOT_SNAPSHOT: readonly RegisteredPluginSlotContribution[] = Object.freeze([]);
 const EMPTY_SURFACE_SNAPSHOT: readonly RegisteredPluginSurfaceContribution[] = Object.freeze([]);
 const EMPTY_COMMAND_SNAPSHOT: readonly RegisteredPluginCommand[] = Object.freeze([]);
+const EMPTY_VIEW_SNAPSHOT: readonly RegisteredViewType[] = Object.freeze([]);
+const EMPTY_LAYOUT_SNAPSHOT: readonly RegisteredLayoutContribution[] = Object.freeze([]);
+const EMPTY_RENDERER_SNAPSHOT: readonly RegisteredRenderer[] = Object.freeze([]);
+const EMPTY_THEME_TOKEN_SNAPSHOT: readonly RegisteredThemeTokens[] = Object.freeze([]);
+const EMPTY_STATUS_ITEM_SNAPSHOT: readonly RegisteredStatusItem[] = Object.freeze([]);
 const EMPTY_LOCALE_SNAPSHOT: Readonly<Record<string, string>> = Object.freeze({});
 
 export class PluginGenerationSupersededError extends Error {
@@ -268,6 +304,11 @@ export class PluginHost {
   private readonly localeSnapshots = new Map<string, Readonly<Record<string, string>>>();
   private readonly diagnostics = new Map<string, PluginGenerationDiagnostic[]>();
   private commandSnapshot: readonly RegisteredPluginCommand[] = EMPTY_COMMAND_SNAPSHOT;
+  private viewSnapshot: readonly RegisteredViewType[] = EMPTY_VIEW_SNAPSHOT;
+  private layoutSnapshot: readonly RegisteredLayoutContribution[] = EMPTY_LAYOUT_SNAPSHOT;
+  private rendererSnapshot: readonly RegisteredRenderer[] = EMPTY_RENDERER_SNAPSHOT;
+  private themeTokenSnapshot: readonly RegisteredThemeTokens[] = EMPTY_THEME_TOKEN_SNAPSHOT;
+  private statusItemSnapshot: readonly RegisteredStatusItem[] = EMPTY_STATUS_ITEM_SNAPSHOT;
 
   constructor(options: PluginHostOptions) {
     this.react = options.react;
@@ -383,6 +424,32 @@ export class PluginHost {
 
   getCommands(): readonly RegisteredPluginCommand[] {
     return this.commandSnapshot;
+  }
+
+  getViewTypes(): readonly RegisteredViewType[] {
+    return this.viewSnapshot;
+  }
+
+  getLayoutContributions(): readonly RegisteredLayoutContribution[] {
+    return this.layoutSnapshot;
+  }
+
+  getRenderers(category?: RendererDefinition["category"]): readonly RegisteredRenderer[] {
+    if (category === undefined) {
+      return this.rendererSnapshot;
+    }
+    return Object.freeze(this.rendererSnapshot.filter((renderer) => renderer.category === category));
+  }
+
+  getThemeTokens(theme?: string): readonly RegisteredThemeTokens[] {
+    if (theme === undefined) {
+      return this.themeTokenSnapshot;
+    }
+    return Object.freeze(this.themeTokenSnapshot.filter((tokens) => tokens.theme === theme));
+  }
+
+  getStatusItems(): readonly RegisteredStatusItem[] {
+    return this.statusItemSnapshot;
   }
 
   getLocaleEntries(locale: string): Readonly<Record<string, string>> {
@@ -517,8 +584,6 @@ export class PluginHost {
         return disposable;
       },
 
-      // Phase C — Workbench registration stubs (full wiring in follow-up)
-
       registerViewType: (definition: ViewTypeDefinition) => {
         this.assertAccepting(state);
         const id = this.claimRegistrationId(state, "view", definition.id);
@@ -638,6 +703,12 @@ export class PluginHost {
     const commands: CommandRecord[] = [];
     const locales: LocaleRecord[] = [];
     const styles: StyleRecord[] = [];
+    const views: ViewTypeRecord[] = [];
+    const layouts: LayoutRecord[] = [];
+    const renderers: RendererRecord[] = [];
+    const themeTokens: ThemeTokenRecord[] = [];
+    const cssSnippets: CSSSnippetRecord[] = [];
+    const statusItems: StatusItemRecord[] = [];
 
     for (const state of this.activeGenerations.values()) {
       for (const record of state.slots) {
@@ -657,6 +728,12 @@ export class PluginHost {
       commands.push(...state.commands.filter((record) => !record.removed));
       locales.push(...state.locales.filter((record) => !record.removed));
       styles.push(...state.styles.filter((record) => !record.removed));
+      views.push(...state.views.filter((record) => !record.removed));
+      layouts.push(...state.layouts.filter((record) => !record.removed));
+      renderers.push(...state.renderers.filter((record) => !record.removed));
+      themeTokens.push(...state.themeTokens.filter((record) => !record.removed));
+      cssSnippets.push(...state.cssSnippets.filter((record) => !record.removed));
+      statusItems.push(...state.statusItems.filter((record) => !record.removed));
     }
 
     for (const slotId of PLUGIN_SLOT_IDS) {
@@ -693,10 +770,41 @@ export class PluginHost {
       changed = true;
     }
 
+    const nextViews = Object.freeze(views.sort(compareOrdered).map(toPublicViewType));
+    if (!sameContributions(this.viewSnapshot, nextViews)) {
+      this.viewSnapshot = nextViews;
+      changed = true;
+    }
+
+    const nextLayouts = Object.freeze(layouts.sort(compareOrdered).map(toPublicLayoutContribution));
+    if (!sameContributions(this.layoutSnapshot, nextLayouts)) {
+      this.layoutSnapshot = nextLayouts;
+      changed = true;
+    }
+
+    const nextRenderers = Object.freeze(renderers.sort(compareOrdered).map(toPublicRenderer));
+    if (!sameContributions(this.rendererSnapshot, nextRenderers)) {
+      this.rendererSnapshot = nextRenderers;
+      changed = true;
+    }
+
+    const nextThemeTokens = Object.freeze(themeTokens.sort(compareOrdered).map(toPublicThemeTokens));
+    if (!sameContributions(this.themeTokenSnapshot, nextThemeTokens)) {
+      this.themeTokenSnapshot = nextThemeTokens;
+      changed = true;
+    }
+
+    const nextStatusItems = Object.freeze(statusItems.sort(compareOrdered).map(toPublicStatusItem));
+    if (!sameContributions(this.statusItemSnapshot, nextStatusItems)) {
+      this.statusItemSnapshot = nextStatusItems;
+      changed = true;
+    }
+
     if (this.refreshLocales(locales)) {
       changed = true;
     }
     this.refreshStyles(styles);
+    this.refreshCSSSnippets(cssSnippets);
 
     if (changed) {
       this.notifyListeners();
@@ -747,6 +855,25 @@ export class PluginHost {
         element.dataset.wuuPluginGeneration = record.generation;
         element.dataset.wuuPluginStyle = record.id;
         element.textContent = record.css;
+        record.element = element;
+      }
+      container.appendChild(element);
+    }
+  }
+
+  private refreshCSSSnippets(records: CSSSnippetRecord[]): void {
+    const container = this.resolveStyleContainer();
+    if (!container) {
+      return;
+    }
+    for (const record of records.sort(compareOrdered)) {
+      let element = record.element;
+      if (!element) {
+        element = container.ownerDocument.createElement("style");
+        element.dataset.wuuPluginId = record.pluginId;
+        element.dataset.wuuPluginGeneration = record.generation;
+        element.dataset.wuuPluginCssSnippet = record.id;
+        element.textContent = record.snippet.css;
         record.element = element;
       }
       container.appendChild(element);
@@ -830,6 +957,60 @@ function toPublicCommand(record: CommandRecord): RegisteredPluginCommand {
     title: record.title,
     order: record.order,
     execute: record.execute,
+  });
+}
+
+function toPublicViewType(record: ViewTypeRecord): RegisteredViewType {
+  return Object.freeze({
+    ...record.definition,
+    pluginId: record.pluginId,
+    generation: record.generation,
+    id: record.id,
+    order: record.order,
+  });
+}
+
+function toPublicLayoutContribution(record: LayoutRecord): RegisteredLayoutContribution {
+  return Object.freeze({
+    ...record.contribution,
+    pluginId: record.pluginId,
+    generation: record.generation,
+    id: record.id,
+    order: record.order,
+  });
+}
+
+function toPublicRenderer(record: RendererRecord): RegisteredRenderer {
+  return Object.freeze({
+    ...record.definition,
+    pluginId: record.pluginId,
+    generation: record.generation,
+    id: record.id,
+    order: record.order,
+  });
+}
+
+function toPublicThemeTokens(record: ThemeTokenRecord): RegisteredThemeTokens {
+  return Object.freeze({
+    ...record.tokens,
+    tokens: Object.freeze({ ...record.tokens.tokens }),
+    syntax: record.tokens.syntax === undefined
+      ? undefined
+      : Object.freeze({ ...record.tokens.syntax }),
+    pluginId: record.pluginId,
+    generation: record.generation,
+    id: record.id,
+    order: record.order,
+  });
+}
+
+function toPublicStatusItem(record: StatusItemRecord): RegisteredStatusItem {
+  return Object.freeze({
+    ...record.item,
+    pluginId: record.pluginId,
+    generation: record.generation,
+    id: record.id,
+    order: record.order,
   });
 }
 

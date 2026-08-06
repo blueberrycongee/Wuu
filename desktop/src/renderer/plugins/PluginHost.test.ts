@@ -217,6 +217,65 @@ describe("PluginHost", () => {
     expect(document.head.querySelector("style[data-wuu-plugin-id=disable-me]")).toBeNull();
     expect(cleanup).toEqual(["disabled"]);
   });
+
+  it("publishes workbench registrations atomically and removes them with their generation", async () => {
+    const host = new PluginHost({ react: React });
+    const notifications: number[] = [];
+    host.subscribe(() => notifications.push(notifications.length + 1));
+
+    await host.activateGeneration({
+      pluginId: "workbench",
+      generation: "one",
+      register(api) {
+        api.registerViewType({
+          id: "dashboard",
+          title: "Dashboard",
+          defaultPane: "main",
+          persistence: "durable",
+          render: () => null,
+        });
+        api.registerLayoutContribution({
+          id: "dashboard-pane",
+          parentId: "root",
+          pane: "main",
+          defaultView: "dashboard",
+        });
+        api.registerRenderer({
+          id: "result",
+          category: "tool-result",
+          match: "application/example",
+          priority: 20,
+          render: () => null,
+        });
+        api.registerThemeTokens({
+          theme: "night",
+          base: "dark",
+          tokens: { "--wuu-paper": "#111" },
+        });
+        api.registerCSSSnippet({ id: "density", css: ":root { --plugin-density: 1; }" });
+        api.registerStatusItem({ id: "ready", label: "Ready", priority: 10 });
+      },
+    });
+
+    expect(host.getViewTypes().map(qualifiedId)).toEqual(["workbench:dashboard"]);
+    expect(host.getLayoutContributions().map(qualifiedId)).toEqual(["workbench:dashboard-pane"]);
+    expect(host.getRenderers("tool-result").map(qualifiedId)).toEqual(["workbench:result"]);
+    expect(host.getThemeTokens("night").map(qualifiedId)).toEqual(["workbench:theme:night"]);
+    expect(host.getStatusItems().map(qualifiedId)).toEqual(["workbench:ready"]);
+    expect(document.head.querySelector("style[data-wuu-plugin-css-snippet=density]")?.textContent)
+      .toContain("--plugin-density");
+    expect(notifications).toHaveLength(1);
+
+    host.disable("workbench");
+
+    expect(host.getViewTypes()).toEqual([]);
+    expect(host.getLayoutContributions()).toEqual([]);
+    expect(host.getRenderers()).toEqual([]);
+    expect(host.getThemeTokens()).toEqual([]);
+    expect(host.getStatusItems()).toEqual([]);
+    expect(document.head.querySelector("style[data-wuu-plugin-css-snippet]")).toBeNull();
+    expect(notifications).toHaveLength(2);
+  });
 });
 
 function contribution(id: string, order = 0) {
