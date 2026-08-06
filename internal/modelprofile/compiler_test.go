@@ -185,12 +185,15 @@ func TestOpenAICodexSurface(t *testing.T) {
 		}
 	}
 
-	// Prompt fragment must call out apply_patch + bash explicitly.
+	// The prompt only routes to the surface-specific primitives; their syntax
+	// and recovery manuals stay in the tool schemas.
 	if !contains(s.SystemFragment, "apply_patch") || !contains(s.SystemFragment, "bash") {
 		t.Fatalf("Codex prompt fragment must reference apply_patch and bash; got: %s", s.SystemFragment)
 	}
-	if !contains(s.SystemFragment, "command.bash") && !contains(s.SystemFragment, "terminal") {
-		t.Fatalf("Codex prompt fragment must mention bash/terminal mental model; got: %s", s.SystemFragment)
+	for _, duplicatedManual := range []string{"*** Begin Patch", "command.bash", "read_file before editing", "boundary_denied"} {
+		if contains(s.SystemFragment, duplicatedManual) {
+			t.Fatalf("Codex prompt fragment must leave %q to tool schemas/results; got: %s", duplicatedManual, s.SystemFragment)
+		}
 	}
 }
 
@@ -276,19 +279,15 @@ func TestAnthropicClaudeSurface(t *testing.T) {
 		}
 	}
 
-	// Prompt fragment must call out read_file / edit_file / write_file +
-	// bash and not advertise run_test or git.
-	if !contains(s.SystemFragment, "read_file") || !contains(s.SystemFragment, "edit_file") {
-		t.Fatalf("Claude prompt must reference read_file + edit_file; got: %s", s.SystemFragment)
+	for _, want := range []string{"edit_file", "write_file", "bash"} {
+		if !contains(s.SystemFragment, want) {
+			t.Fatalf("Claude prompt must route to %s; got: %s", want, s.SystemFragment)
+		}
 	}
-	if !contains(s.SystemFragment, "exact current old_text") || !contains(s.SystemFragment, "intentional complete rewrites") {
-		t.Fatalf("Claude prompt must define current-anchor edits and intentional full rewrites; got: %s", s.SystemFragment)
-	}
-	if contains(s.SystemFragment, "Call read_file first") {
-		t.Fatalf("Claude prompt must not require a prior read for every edit; got: %s", s.SystemFragment)
-	}
-	if !contains(s.SystemFragment, "bash") {
-		t.Fatalf("Claude prompt must reference bash; got: %s", s.SystemFragment)
+	for _, duplicatedManual := range []string{"exact current old_text", "read the relevant range and retry", "boundary_denied"} {
+		if contains(s.SystemFragment, duplicatedManual) {
+			t.Fatalf("Claude prompt must leave %q to tool schemas/results; got: %s", duplicatedManual, s.SystemFragment)
+		}
 	}
 }
 
@@ -319,8 +318,46 @@ func TestGenericSurfaceForOpenAISHapedBYOK(t *testing.T) {
 		if _, has := s.Tools["git"]; has {
 			t.Fatalf("%s/%s: generic surface must not advertise git as a default tool", tt.provider, tt.model)
 		}
-		if !contains(s.SystemFragment, "exact current old_text") || contains(s.SystemFragment, "call read_file first") {
-			t.Fatalf("%s/%s: generic prompt must use current anchors without a mandatory prior read; got: %s", tt.provider, tt.model, s.SystemFragment)
+		for _, want := range []string{"edit_file", "write_file", "bash"} {
+			if !contains(s.SystemFragment, want) {
+				t.Fatalf("%s/%s: generic prompt must route to %s; got: %s", tt.provider, tt.model, want, s.SystemFragment)
+			}
+		}
+		for _, duplicatedManual := range []string{"exact current old_text", "read the relevant range and retry", "boundary_denied"} {
+			if contains(s.SystemFragment, duplicatedManual) {
+				t.Fatalf("%s/%s: generic prompt must leave %q to tool schemas/results; got: %s", tt.provider, tt.model, duplicatedManual, s.SystemFragment)
+			}
+		}
+	}
+}
+
+func TestSystemFragmentsStaySurfaceSpecificAndConcise(t *testing.T) {
+	cases := []struct {
+		provider  string
+		model     string
+		want      []string
+		forbidden []string
+	}{
+		{provider: "openai", model: "gpt-5-codex", want: []string{"apply_patch", "bash"}, forbidden: []string{"edit_file", "write_file"}},
+		{provider: "openai", model: "gpt-5.5", want: []string{"apply_patch", "bash"}, forbidden: []string{"edit_file", "write_file"}},
+		{provider: "anthropic", model: "claude-sonnet-4-5", want: []string{"edit_file", "write_file", "bash"}, forbidden: []string{"apply_patch"}},
+		{provider: "google", model: "gemini-2.5-pro", want: []string{"edit_file", "write_file", "bash"}, forbidden: []string{"apply_patch"}},
+		{provider: "ollama", model: "llama-coder", want: []string{"edit_file", "write_file"}, forbidden: []string{"apply_patch", "bash"}},
+	}
+	for _, tt := range cases {
+		s := DefaultCompiler{}.Compile(Resolve(tt.provider, tt.model), SurfaceMain)
+		for _, want := range tt.want {
+			if !contains(s.SystemFragment, want) {
+				t.Errorf("%s/%s prompt missing surface primitive %q: %s", tt.provider, tt.model, want, s.SystemFragment)
+			}
+		}
+		for _, forbidden := range tt.forbidden {
+			if contains(s.SystemFragment, forbidden) {
+				t.Errorf("%s/%s prompt advertises unavailable primitive %q: %s", tt.provider, tt.model, forbidden, s.SystemFragment)
+			}
+		}
+		if len(s.SystemFragment) > 700 {
+			t.Errorf("%s/%s prompt fragment should remain concise, got %d bytes: %s", tt.provider, tt.model, len(s.SystemFragment), s.SystemFragment)
 		}
 	}
 }

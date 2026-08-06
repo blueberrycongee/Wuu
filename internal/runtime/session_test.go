@@ -703,7 +703,7 @@ func TestNewSessionInjectsMemdir(t *testing.T) {
 	if rt.Toolkit.ActiveSurface().ProfileName == "" {
 		t.Fatal("expected runtime toolkit to install a model surface")
 	}
-	if !strings.Contains(rt.BaseSystemPrompt, "[Tool surface:") || !strings.Contains(rt.BaseSystemPrompt, "Terminal work") {
+	if !strings.Contains(rt.BaseSystemPrompt, "[Tool surface:") || !strings.Contains(rt.BaseSystemPrompt, "workspace boundaries") {
 		t.Fatalf("base system prompt should include compiled tool-surface fragment:\n%s", rt.BaseSystemPrompt)
 	}
 	if !strings.Contains(rt.BaseSystemPrompt, "# Memory directory") {
@@ -1547,7 +1547,7 @@ func TestNewThreadRuntimeWorkerUsesWorkerProfileToolSurface(t *testing.T) {
 		t.Fatal("worker sent no messages")
 	}
 	systemPrompt := req.Messages[0].Content
-	for _, want := range []string{"[Tool surface: anthropic_claude]", "Your file editing primitives are read_file, edit_file, and write_file"} {
+	for _, want := range []string{"[Tool surface: anthropic_claude]", "Use edit_file for targeted changes", "write_file for new files or complete rewrites"} {
 		if !strings.Contains(systemPrompt, want) {
 			t.Fatalf("worker system prompt should use worker profile fragment %q:\n%s", want, systemPrompt)
 		}
@@ -1723,7 +1723,7 @@ func TestNewThreadRuntimeAgentProfileSpawnGetsReadOnlyUserMemory(t *testing.T) {
 	if strings.Contains(systemPrompt, "# Memory directory") {
 		t.Fatalf("worker prompt must use the read-only variant, not the session teaching:\n%s", systemPrompt)
 	}
-	if !strings.Contains(systemPrompt, "[Tool surface:") || !strings.Contains(systemPrompt, "Terminal work") {
+	if !strings.Contains(systemPrompt, "[Tool surface:") || !strings.Contains(systemPrompt, "workspace boundaries") {
 		t.Fatalf("profile worker system prompt missing tool-surface fragment:\n%s", systemPrompt)
 	}
 }
@@ -1981,7 +1981,7 @@ func TestNewSessionUsesCatalogModelAPIIDAndOptions(t *testing.T) {
 	}
 	for _, want := range []string{
 		"[Tool surface: openai_gpt]",
-		"Your editing primitive is apply_patch",
+		"Use apply_patch for file changes and bash for command execution",
 	} {
 		if !strings.Contains(rt.BaseSystemPrompt, want) {
 			t.Fatalf("BaseSystemPrompt missing harness adapter text %q:\n%s", want, rt.BaseSystemPrompt)
@@ -2805,7 +2805,7 @@ func TestSessionRefreshSystemPromptUpdatesRunnerPrompt(t *testing.T) {
 
 	for _, want := range []string{
 		"[Tool surface: openai_codex]",
-		"Your editing primitive is apply_patch",
+		"Use apply_patch for file changes and bash for command execution",
 		"Prefer concise answers.",
 	} {
 		if !strings.Contains(prompt, want) {

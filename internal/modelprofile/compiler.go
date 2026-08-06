@@ -417,65 +417,49 @@ func addGenericEditTools(b *surfaceBuilder) {
 
 // ── Prompt fragments ──────────────────────────────────────────────
 
-// sharedTail is the common closer every profile fragment shares. It teaches
-// the allow/deny authority model and forbids chat-side permission questions
-// that waste turns.
-const sharedTail = `
+// Profile fragments only route the model to the primitives exposed by that
+// surface and carry policy that tool schemas cannot express. Patch grammar,
+// exact-edit recovery, background-process rules, and boundary-error recovery
+// belong to the relevant tool descriptions and results, not here.
+const sharedPromptPolicy = `
 
-Agent authority:
-- Runtime authority decisions are allow/deny only. Inside the reachable boundary, act without an approval step. Do not ask chat-side questions like "should I continue running tests?", "do you want me to commit?", or "may I run the build?" when the user's request already calls for the work.
-- File tools enforce the workspace boundary. If a tool returns error_kind=boundary_denied, explain that the target is outside the reachable roots and ask the user to add that directory as a workspace if the task needs it.`
+Stay within available workspace boundaries and do not try to bypass a denial. When the user's request already calls for an operation, act without asking for extra chat-side approval.`
 
-const bashTerminalGuidance = `
+const shellPromptPolicy = `
 
-Command and process discipline:
-- Use bash for every terminal operation: tests, lint, type checks, builds, git operations, package manager commands, and arbitrary scripts. There is no separate test-runner, git, or background-process tool on this surface; do not invent one.
-- Bash is not a strong path sandbox. Use its configured working directory and do not use absolute paths to route around the workspace boundary.
-- Never use broad staging, sensitive credential paths, destructive git commands, force push, git config mutation, hook-skipping flags, commit amends, or interactive/editor-driven git flows unless the user explicitly requested that exact action.`
+Do not access sensitive credential paths or use broad staging, destructive Git operations, force push, Git configuration changes, hook skipping, commit amendments, or interactive Git flows unless explicitly requested.`
 
 func addOpenAICodexPrompt(b *surfaceBuilder) {
 	b.surface.SystemFragment = strings.TrimSpace(`
 [Tool surface: openai_codex]
-You are running under the OpenAI / Codex harness. Your editing primitive is apply_patch. Use it for every file change — create new files, update existing files, and remove files via *** Add File / *** Update File / *** Delete File blocks inside a single *** Begin Patch / *** End Patch envelope.
-
-All terminal work is unified under the bash tool. The internal capability is command.bash; the runtime applies non-path authority gates to the tool call while bash itself runs from its configured working directory.
-
-Use read_file before editing a file so the patch's context anchors match the on-disk content. Use visible search tools such as grep and glob to find the code you need to change.
-` + bashTerminalGuidance + sharedTail)
+Use apply_patch for file changes and bash for command execution.
+` + shellPromptPolicy + sharedPromptPolicy)
 }
 
 func addOpenAIGPTPrompt(b *surfaceBuilder) {
 	b.surface.SystemFragment = strings.TrimSpace(`
 [Tool surface: openai_gpt]
-You are running under the OpenAI GPT harness. Your editing primitive is apply_patch. Use it for every file change — create new files, update existing files, and remove files via *** Add File / *** Update File / *** Delete File blocks inside a single *** Begin Patch / *** End Patch envelope.
-
-Terminal work is unified under the bash tool.
-` + bashTerminalGuidance + sharedTail)
+Use apply_patch for file changes and bash for command execution.
+` + shellPromptPolicy + sharedPromptPolicy)
 }
 
 func addClaudePrompt(b *surfaceBuilder) {
 	b.surface.SystemFragment = strings.TrimSpace(`
 [Tool surface: anthropic_claude]
-You are running under the Anthropic Claude harness. Your file editing primitives are read_file, edit_file, and write_file. Use edit_file for precise changes with exact current old_text; if it no longer matches, read the relevant range and retry. Use write_file only for new files or intentional complete rewrites.
-
-Terminal work goes through the bash tool.
-` + bashTerminalGuidance + sharedTail)
+Use edit_file for targeted changes, write_file for new files or complete rewrites, and bash for command execution.
+` + shellPromptPolicy + sharedPromptPolicy)
 }
 
 func addGenericPrompt(b *surfaceBuilder, p Profile) {
 	if p.Family == FamilyLocal || !p.Execution.AllowDirectShell {
 		b.surface.SystemFragment = strings.TrimSpace(`
 [Tool surface: generic (no command execution)]
-You are running under a generic BYOK profile. Use edit_file for precise changes with exact current old_text; if it no longer matches, read the relevant range and retry. Use write_file only for new files or intentional complete rewrites.
-
-This profile does not expose command execution. If a task requires command-only work, explain that the active model profile cannot run those operations and recommend switching to a profile that allows command execution.
-` + sharedTail)
+Use edit_file for targeted changes and write_file for new files or complete rewrites.
+` + sharedPromptPolicy)
 		return
 	}
 	b.surface.SystemFragment = strings.TrimSpace(`
 [Tool surface: generic]
-You are running under a generic BYOK profile. Use edit_file for precise changes with exact current old_text; if it no longer matches, read the relevant range and retry. Use write_file only for new files or intentional complete rewrites.
-
-Terminal work goes through the bash tool.
-` + bashTerminalGuidance + sharedTail)
+Use edit_file for targeted changes, write_file for new files or complete rewrites, and bash for command execution.
+` + shellPromptPolicy + sharedPromptPolicy)
 }
