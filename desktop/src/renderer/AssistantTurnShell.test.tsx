@@ -28,7 +28,10 @@ import { createElement, type JSX } from "react";
 import type { ThreadItem, Turn } from "../shared/protocol";
 import { AGENT_NOTIFICATION_NAME } from "./AgentHandoff";
 import { buildAssistantTurnDisplay } from "./AssistantTurnDisplay";
-import { AssistantTurnShell } from "./AssistantTurnShell";
+import {
+  AssistantTurnShell,
+  resetRecoveredTurnStarts,
+} from "./AssistantTurnShell";
 import {
   STREAM_TEXT_NOTIFY_INTERVAL_MS,
   streamTextKey,
@@ -431,6 +434,7 @@ async function withMockResizeObserver(
 
 beforeEach(() => {
   idCounter = 0;
+  resetRecoveredTurnStarts();
 });
 
 afterEach(() => {
@@ -475,6 +479,25 @@ describe("AssistantTurnShell — process fold default state (rule 2 + rule 8)", 
       vi.advanceTimersByTime(2_000);
     });
     expect(container.querySelector(".turn-process-meta")?.textContent).toBe("2s");
+  });
+
+  it("keeps a recovered live timer across a session-tab unmount and remount", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-04T10:00:00Z"));
+    const turn = makeTurn("in_progress", [makeCommentary("still working")]);
+    const first = renderShell(turn);
+
+    act(() => {
+      vi.advanceTimersByTime(2_000);
+      first.root.unmount();
+    });
+    mountedRoots = mountedRoots.filter((root) => root !== first.root);
+    act(() => {
+      vi.advanceTimersByTime(3_000);
+    });
+
+    const restored = renderShell(turn);
+    expect(restored.container.querySelector(".turn-process-meta")?.textContent).toBe("5s");
   });
 
   it("collapses the process fold when a confirmed final_answer starts streaming", () => {

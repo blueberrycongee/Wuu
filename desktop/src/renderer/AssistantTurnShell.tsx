@@ -40,6 +40,29 @@ import { AnimatedProcessText } from "./ProcessTextMotion";
 import type { SubagentChipDisplay } from "./AgentHandoff";
 import { translateCurrent as translate, useI18n } from "./i18n";
 
+const recoveredTurnStartedAt = new Map<string, number>();
+const MAX_RECOVERED_TURN_STARTS = 1_000;
+
+function recoveredTurnStart(turnID: string): number {
+  const existing = recoveredTurnStartedAt.get(turnID);
+  if (existing !== undefined) {
+    return existing;
+  }
+  const startedAt = Date.now();
+  recoveredTurnStartedAt.set(turnID, startedAt);
+  if (recoveredTurnStartedAt.size > MAX_RECOVERED_TURN_STARTS) {
+    const oldestTurnID = recoveredTurnStartedAt.keys().next().value;
+    if (oldestTurnID !== undefined) {
+      recoveredTurnStartedAt.delete(oldestTurnID);
+    }
+  }
+  return startedAt;
+}
+
+export function resetRecoveredTurnStarts(): void {
+  recoveredTurnStartedAt.clear();
+}
+
 export function AssistantTurnShell({
   turn,
   display,
@@ -269,16 +292,20 @@ function TurnProcessFold({
   const completedDuration =
     typeof turn.duration_ms === "number" ? turn.duration_ms : undefined;
   const parsedStartedAt = parseTurnTimestampMs(turn.started_at);
-  // A legacy/recovered in-progress turn can arrive without started_at. Never
-  // present that unknown duration as a frozen "0s"; start a local monotonic
-  // fallback until the next snapshot supplies the persisted timestamp.
-  const fallbackStartedAt = useRef(Date.now()).current;
-  const startedAt = Number.isFinite(parsedStartedAt)
-    ? parsedStartedAt
-    : fallbackStartedAt;
   const liveDuration =
     completedDuration === undefined &&
     turn.status === "in_progress";
+  // A legacy/recovered in-progress turn can arrive without started_at. Keep
+  // one fallback per turn outside the component lifecycle: switching session
+  // tabs unmounts this shell, but must not restart the elapsed timer.
+  const startedAt = Number.isFinite(parsedStartedAt)
+    ? parsedStartedAt
+    : liveDuration
+      ? recoveredTurnStart(turn.id)
+      : Date.now();
+  if (Number.isFinite(parsedStartedAt) || !liveDuration) {
+    recoveredTurnStartedAt.delete(turn.id);
+  }
   const liveNow = useLiveNow(liveDuration);
   const elapsedMs =
     completedDuration ?? (liveDuration ? Math.max(0, liveNow - startedAt) : 0);
