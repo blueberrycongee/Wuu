@@ -416,6 +416,8 @@ export function ComposerQueueStrip({
   return (
     <section
       className={`composer-pending-drawer composer-accessory-drawer${expanded ? " expanded" : ""}${hasHeldMessages ? " is-held" : ""}`}
+      data-wuu-component="composer-pending"
+      data-wuu-state={expanded ? "expanded" : "collapsed"}
     >
       <div className="composer-pending-summary">
         <button

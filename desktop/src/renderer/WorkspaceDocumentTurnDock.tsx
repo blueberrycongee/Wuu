@@ -84,7 +84,7 @@ export function WorkspaceDocumentTurnDock({
   if (!turn || finalAnswers.length === 0) {
     return (
       <WorkspaceDocumentDrawerContext.Provider value={drawerContext}>
-        <div className="workspace-document-turn-dock">{children}</div>
+        <div className="workspace-document-turn-dock" data-wuu-component="workspace-document-turn">{children}</div>
       </WorkspaceDocumentDrawerContext.Provider>
     );
   }
@@ -96,10 +96,11 @@ export function WorkspaceDocumentTurnDock({
 
   return (
     <WorkspaceDocumentDrawerContext.Provider value={drawerContext}>
-      <div className="workspace-document-turn-dock">
+      <div className="workspace-document-turn-dock" data-wuu-component="workspace-document-turn">
         <section
           className={`workspace-document-turn-drawer${expanded ? " expanded" : ""}`}
           data-testid="workspace-document-turn-drawer"
+          data-wuu-state={expanded ? "expanded" : "collapsed"}
         >
           <button
             type="button"

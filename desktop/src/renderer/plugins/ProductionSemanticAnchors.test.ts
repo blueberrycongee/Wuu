@@ -18,6 +18,7 @@ const SEMANTIC_ANCHOR_OWNERS = Object.freeze({
   "automations-catalog": "AutomationsCatalog.tsx",
   "composer": "ComposerView.tsx",
   "composer-input": "ComposerView.tsx",
+  "composer-pending": "ComposerInputSections.tsx",
   "composer-send": "ComposerView.tsx",
   "conversation-pane": "App.tsx",
   "launch-view": "LoadingViews.tsx",
@@ -26,6 +27,7 @@ const SEMANTIC_ANCHOR_OWNERS = Object.freeze({
   "sidebar": "AppSidebar.tsx",
   "skills-catalog": "SkillsCatalog.tsx",
   "turn": "TurnView.tsx",
+  "workspace-document-turn": "WorkspaceDocumentTurnDock.tsx",
   "workspace-panel": "WorkspacePanels.tsx",
 } as const);
 
