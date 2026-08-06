@@ -38,9 +38,9 @@ import Default from "@astrojs/starlight/components/Head.astro"
 
   function startMermaid() {
     void renderMermaidDiagrams()
-    document
-      .querySelector("starlight-theme-select select")
-      ?.addEventListener("change", () => requestAnimationFrame(() => void renderMermaidDiagrams()))
+    document.addEventListener("wuu-theme-change", () =>
+      requestAnimationFrame(() => void renderMermaidDiagrams()),
+    )
   }
 
   if (document.readyState === "loading") {

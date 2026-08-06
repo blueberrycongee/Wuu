@@ -57,6 +57,104 @@ header.header {
   letter-spacing: -0.015em;
 }
 
+wuu-language-menu,
+wuu-theme-menu {
+  position: relative;
+  display: block;
+  color: var(--sl-color-gray-2);
+}
+
+.header-menu-trigger {
+  display: flex;
+  min-height: 2.25rem;
+  align-items: center;
+  gap: 0.4rem;
+  border: 0;
+  border-radius: 0.35rem;
+  background: transparent;
+  padding: 0.4rem 0.5rem;
+  color: inherit;
+  font: inherit;
+  font-size: var(--sl-text-sm);
+  cursor: pointer;
+}
+
+.header-menu-trigger:hover,
+.header-menu-trigger[aria-expanded="true"] {
+  background: var(--sl-color-gray-6);
+  color: var(--sl-color-white);
+}
+
+.header-menu-trigger:focus-visible {
+  outline: 2px solid var(--sl-color-accent);
+  outline-offset: 2px;
+}
+
+:is(wuu-language-menu, wuu-theme-menu) svg {
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.header-menu-caret {
+  transition: transform 140ms ease;
+}
+
+.header-menu-trigger[aria-expanded="true"] .header-menu-caret {
+  transform: rotate(180deg);
+}
+
+.header-menu-panel {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 0.4rem);
+  inset-inline-end: 0;
+  min-width: 9.5rem;
+  border: 1px solid var(--sl-color-gray-5);
+  border-radius: 0.45rem;
+  background: var(--sl-color-bg-nav);
+  padding: 0.3rem;
+  box-shadow: 0 12px 30px rgb(20 24 28 / 12%), 0 2px 6px rgb(20 24 28 / 8%);
+}
+
+.header-menu-panel[hidden] {
+  display: none;
+}
+
+.header-menu-panel :is(a, button) {
+  display: grid;
+  width: 100%;
+  grid-template-columns: 1rem 1fr;
+  align-items: center;
+  gap: 0.45rem;
+  border: 0;
+  border-radius: 0.3rem;
+  background: transparent;
+  padding: 0.48rem 0.55rem;
+  color: var(--sl-color-gray-2);
+  font: inherit;
+  font-size: var(--sl-text-sm);
+  line-height: 1.35;
+  text-align: start;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.header-menu-panel :is(a, button):hover,
+.header-menu-panel :is(a, button):focus-visible,
+.header-menu-panel :is(a, button)[aria-checked="true"] {
+  outline: 0;
+  background: var(--sl-color-gray-6);
+  color: var(--sl-color-white);
+}
+
+.header-menu-check {
+  stroke-width: 2;
+}
+
 .sidebar-pane {
   border-inline-end: 1px solid var(--sl-color-gray-5);
 }
