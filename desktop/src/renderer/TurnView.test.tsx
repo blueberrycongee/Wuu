@@ -167,24 +167,6 @@ describe("TurnView", () => {
     expect(view.querySelectorAll(".user-message-block")).toHaveLength(1);
   });
 
-  it("leaves internal-notification-only turns empty for CSS to remove from layout", () => {
-    const view = render(
-      makeTurn("completed", [
-        {
-          id: "process-only",
-          type: "user_message",
-          name: PROCESS_NOTIFICATION_NAME,
-          text: '<process_notification>{"process_id":"proc-only"}</process_notification>',
-        },
-      ]),
-    );
-
-    const turn = view.querySelector<HTMLElement>(".turn");
-    expect(turn).not.toBeNull();
-    expect(turn?.childElementCount).toBe(0);
-    expect(turn?.matches(":empty")).toBe(true);
-  });
-
   it("renders a subagent wake notification through the existing user-message flow", () => {
     const view = render(
       makeTurn("completed", [

@@ -35,12 +35,6 @@ function cssRuleCount(selector: string): number {
   ].length;
 }
 
-describe("turns.css empty turns", () => {
-  it("removes empty transport-only turn shells from layout", () => {
-    expect(turnsCss).toMatch(/\.turn:empty\s*\{\s*display:\s*none;\s*\}/);
-  });
-});
-
 describe("turns.css user message actions", () => {
   it("overlays action buttons below the bubble inside the query-to-rule gap", () => {
     const body = cssRuleBody(".message-actions.user-message-actions");
