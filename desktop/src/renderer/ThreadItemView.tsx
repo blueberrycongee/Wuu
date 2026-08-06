@@ -48,6 +48,10 @@ import {
 } from "./UserFacingErrors";
 import { useI18n } from "./i18n";
 import { ConversationItemPresentation } from "./plugins/ConversationItemPresentation";
+import {
+  ConversationMessageSurface,
+  type ConversationMessageSurfaceContext,
+} from "./plugins/ConversationMessageSurface";
 
 interface ThreadItemViewProps {
   turnID: string;
@@ -95,7 +99,12 @@ export const ThreadItemView = memo(function ThreadItemView(props: ThreadItemView
     && !editing
     && onEditMessage !== undefined
     && ((item.text?.trim().length ?? 0) > 0 || (item.images?.length ?? 0) > 0 || (item.files?.length ?? 0) > 0);
-  const fallback = <BuiltInThreadItemView {...props} />;
+  const fallback = (
+    <ConversationMessageSurface
+      context={conversationMessageSurfaceContext(props, editable)}
+      fallback={<BuiltInThreadItemView {...props} />}
+    />
+  );
   return (
     <ConversationItemPresentation
       item={item}
@@ -105,6 +114,34 @@ export const ThreadItemView = memo(function ThreadItemView(props: ThreadItemView
     />
   );
 });
+
+function conversationMessageSurfaceContext(
+  { item, turnID, streaming, onEditMessage, onForkMessage }: ThreadItemViewProps,
+  editable: boolean,
+): ConversationMessageSurfaceContext {
+  const kind = item.type === "user_message"
+    ? "user-message"
+    : item.type === "agent_message"
+      ? "assistant-message"
+      : item.type === "reasoning"
+        ? "reasoning"
+        : "notice";
+  const status = item.status === "in_progress" ? "streaming" : item.status;
+  return Object.freeze({
+    version: 1,
+    messageId: item.id,
+    turnId: turnID,
+    kind,
+    status,
+    phase: item.phase,
+    streaming,
+    attachmentCount: (item.images?.length ?? 0) + (item.files?.length ?? 0),
+    actions: Object.freeze({
+      edit: editable && onEditMessage ? () => onEditMessage(turnID, item) : undefined,
+      fork: onForkMessage ? () => onForkMessage(turnID, item.id) : undefined,
+    }),
+  });
+}
 
 function BuiltInThreadItemView({
   turnID,

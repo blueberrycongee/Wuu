@@ -117,6 +117,80 @@ describe("ThreadItemView", () => {
     expect(container?.querySelector(".agent-block")).toBeNull();
   });
 
+  it("uses the legacy message surface as the exact native fallback with a sanitized context", async () => {
+    let received: Readonly<Record<string, unknown>> | undefined;
+    await desktopPluginHost.activateGeneration({
+      pluginId: "thread-item-production-test",
+      generation: "gen-1",
+      register: (api) => {
+        api.registerSurface("conversation.message", {
+          id: "legacy-message",
+          mode: "replace",
+          render: (context) => {
+            received = context;
+            return <section data-legacy-message>{String(context.kind)}</section>;
+          },
+        });
+      },
+    });
+
+    const item = makeFinalAnswer("completed");
+    (item as ThreadItem & { privateValue: string }).privateValue = "must-not-leak";
+    render({ item, turnStatus: "completed", streaming: false });
+
+    expect(container?.querySelector("[data-legacy-message]")?.textContent).toBe("assistant-message");
+    expect(container?.querySelector(".agent-block")).toBeNull();
+    expect(received).toEqual({
+      version: 1,
+      messageId: "final-1",
+      turnId: "turn-1",
+      kind: "assistant-message",
+      status: "completed",
+      phase: "final_answer",
+      streaming: false,
+      attachmentCount: 0,
+      actions: { edit: undefined, fork: undefined },
+    });
+    expect(received).not.toHaveProperty("item");
+    expect(received).not.toHaveProperty("text");
+    expect(received).not.toHaveProperty("privateValue");
+
+    act(() => desktopPluginHost.unload("thread-item-production-test"));
+    expect(container?.querySelector(".agent-block")).not.toBeNull();
+  });
+
+  it("lets the keyed presenter replace the legacy surface and native fallback coherently", async () => {
+    const legacyRender = vi.fn(() => <section data-legacy-message />);
+    await desktopPluginHost.activateGeneration({
+      pluginId: "thread-item-production-test",
+      generation: "gen-1",
+      register: (api) => {
+        api.registerSurface("conversation.message", {
+          id: "legacy-message",
+          mode: "replace",
+          render: legacyRender,
+        });
+        api.registerPresenter({
+          id: "assistant-root",
+          target: "conversation.item",
+          key: "assistant-message",
+          render: () => <section data-keyed-presenter />,
+        });
+      },
+    });
+
+    render({
+      item: makeFinalAnswer("completed"),
+      turnStatus: "completed",
+      streaming: false,
+    });
+
+    expect(container?.querySelector("[data-keyed-presenter]")).not.toBeNull();
+    expect(container?.querySelector("[data-legacy-message]")).toBeNull();
+    expect(container?.querySelector(".agent-block")).toBeNull();
+    expect(legacyRender).not.toHaveBeenCalled();
+  });
+
   it("shows short user messages in full without a collapse control", () => {
     render({
       item: makeUserMessage("Short query."),

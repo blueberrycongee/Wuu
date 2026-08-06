@@ -4582,6 +4582,27 @@ export function App(): JSX.Element {
             </>
           ) : null}
 
+      <PluginSurface
+        host={desktopPluginHost}
+        id="app.main"
+        context={{
+          version: 1,
+          view: previewingLaunch
+            ? "launch"
+            : showingManagementCatalog
+              ? "catalog"
+              : "conversation",
+          initialized: Boolean(state.initialized),
+          activeThreadId: activeThreadID,
+          actions: {
+            startNewThread: startNewThreadWithComposerFocus,
+            openSettings: () => {
+              setSettingsInitialPage("providers");
+              setSettingsOpen(true);
+            },
+          },
+        }}
+        fallback={
       <main
         inert={rightPanelOpen && rightPanelGlobalized}
         className={`conversation-pane${environmentPanelVisible ? " environment-panel-visible" : ""}${
@@ -4897,6 +4918,18 @@ export function App(): JSX.Element {
                 }
               />
             ) : (
+              <PluginSurface
+                host={desktopPluginHost}
+                id="view.conversation"
+                context={{
+                  version: 1,
+                  activeThreadId: activeThreadID,
+                  empty: emptyConversation,
+                  split: splitConversation,
+                  readOnly: activeThreadReadOnly,
+                  actions: { startNewThread: startNewThreadWithComposerFocus },
+                }}
+                fallback={
               <>
                 {!activeThreadReadOnly ? (
                   <QueryHistoryRail
@@ -5014,6 +5047,8 @@ export function App(): JSX.Element {
               />
             )}
               </>
+                }
+              />
             )}
             </div>
             {mainConversationDockVisible ? (
@@ -5025,10 +5060,23 @@ export function App(): JSX.Element {
             ) : null}
           </div>
         ) : (
-          <RuntimeLoading
-            status={resolveLocalizedText(state.status)}
-            pinned={previewingLaunch}
-            onExitPreview={() => setLaunchPreviewPinned(false)}
+          <PluginSurface
+            host={desktopPluginHost}
+            id="view.launch"
+            context={{
+              version: 1,
+              initialized: Boolean(state.initialized),
+              status: resolveLocalizedText(state.status),
+              preview: previewingLaunch,
+              actions: { exitPreview: () => setLaunchPreviewPinned(false) },
+            }}
+            fallback={
+              <RuntimeLoading
+                status={resolveLocalizedText(state.status)}
+                pinned={previewingLaunch}
+                onExitPreview={() => setLaunchPreviewPinned(false)}
+              />
+            }
           />
         )}
 
@@ -5098,7 +5146,24 @@ export function App(): JSX.Element {
           </>
         )}
       </main>
+        }
+      />
 
+      <PluginSurface
+        host={desktopPluginHost}
+        id="app.auxiliary"
+        context={{
+          version: 1,
+          open: rightPanelOpen,
+          activeViewId: workspaceActiveViewTabID,
+          globalized: rightPanelGlobalized,
+          actions: {
+            close: () => setRightPanelOpenWithMotion(false),
+            toggle: toggleRightPanel,
+          },
+        }}
+        fallback={
+      <>
       {!poppedOutMode && (rightPanelOpen || rightPanelAnimating) ? (
         <div
           className="workspace-right-panel-resizer"
@@ -5116,6 +5181,22 @@ export function App(): JSX.Element {
         />
       ) : null}
       {poppedOutMode ? null : (
+        <PluginSurface
+          host={desktopPluginHost}
+          id="view.workspace"
+          context={{
+            version: 1,
+            open: rightPanelOpen,
+            activeViewId: workspaceActiveViewTabID,
+            activeFilePath: activeWorkspaceFile,
+            globalized: rightPanelGlobalized,
+            actions: {
+              close: () => setRightPanelOpenWithMotion(false),
+              openFile: openWorkspaceFile,
+              openTool: openWorkspaceTool,
+            },
+          }}
+          fallback={
         <WorkspaceRightPanel
           open={rightPanelOpen}
           present={rightPanelOpen || rightPanelAnimating}
@@ -5175,7 +5256,12 @@ export function App(): JSX.Element {
             activeThreadIsRunning ? "running" : activeThread?.updated_at
           }
         />
+          }
+        />
       )}
+      </>
+        }
+      />
       {environmentDialog === "commit" ? (
         <CommitChangesDialog
           gitStatus={state.gitStatus}
@@ -5226,6 +5312,17 @@ export function App(): JSX.Element {
           </div>
         </FloatingMenuPortal>
       ) : null}
+      <PluginSurface
+        host={desktopPluginHost}
+        id="app.status"
+        context={{
+          version: 1,
+          initialized: Boolean(state.initialized),
+          running: activeThreadIsRunning,
+          status: resolveLocalizedText(state.status),
+        }}
+        fallback={null}
+      />
       <DesktopWorkbench
         host={desktopPluginHost}
         controller={desktopWorkbenchController}
