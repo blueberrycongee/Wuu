@@ -196,7 +196,11 @@ func (p *pluginCompactionProvider) Compact(ctx context.Context, model string, me
 	}, &output); err != nil {
 		return nil, err
 	}
-	return providers.CloneChatMessages(output.Messages), nil
+	compacted := providers.CloneChatMessages(output.Messages)
+	if err := providers.ValidateToolCallHistory(compacted); err != nil {
+		return nil, fmt.Errorf("plugin compaction returned invalid tool-call history: %w", err)
+	}
+	return compacted, nil
 }
 
 // TransformUserMessage runs before app-server or CLI persistence so the user,

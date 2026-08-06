@@ -273,7 +273,6 @@ func (g *PluginGeneration) close() error {
 		g.host = nil
 	}
 	g.requestTransforms = nil
-	g.requestTransforms = nil
 	for index := len(g.ownedRoots) - 1; index >= 0; index-- {
 		err = errors.Join(err, os.RemoveAll(g.ownedRoots[index]))
 	}
