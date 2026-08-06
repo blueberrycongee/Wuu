@@ -19,6 +19,7 @@ import { Plus, X } from "lucide-react";
 import { type CSSProperties, type MouseEvent as ReactMouseEvent, useRef, useState } from "react";
 import type { Thread } from "../shared/protocol";
 import {
+  isThreadExecuting,
   isThreadRunning,
   isThreadUnread,
   sessionTabLabel,
@@ -191,7 +192,9 @@ export function SessionTabStrip({
                   tab.kind === "thread"
                     ? threadForTab(tabState, tab.threadID)
                     : undefined;
-                const running = isThreadRunning(tabThread);
+                // Keep the session visibly active until all of its child
+                // agents settle, even when the parent turn has completed.
+                const running = isThreadExecuting(tabThread);
                 const pendingSwitch =
                   pendingSwitchThreadID !== undefined &&
                   tab.kind === "thread" &&

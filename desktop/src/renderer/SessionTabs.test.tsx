@@ -405,6 +405,29 @@ describe("SessionTabStrip pending indicators", () => {
     expect(tabs[1]?.classList.contains("has-unread")).toBe(false);
     expect(tabs[1]?.classList.contains("running")).toBe(true);
   });
+
+  it("keeps a thread tab spinning while a child agent is running", () => {
+    const context: RuntimeContext = {
+      kind: "project",
+      project_id: "project-1",
+      cwd: "/tmp/project",
+    };
+    const thread = {
+      ...makeThreadWithTurn("thread-a", "turn-a-1"),
+      child_agents: [{ id: "agent-running", status: "running" }],
+    } as unknown as Thread;
+
+    renderTabs({
+      ...initialState,
+      activeContext: context,
+      thread,
+      activeSessionTabID: threadSessionTabID(thread.id),
+      sessionTabs: [createThreadSessionTab(thread, context)],
+      threads: [thread],
+    });
+
+    expect(container.querySelector(".session-tab")?.classList.contains("running")).toBe(true);
+  });
 });
 
 describe("SessionTabStrip new conversation affordance", () => {

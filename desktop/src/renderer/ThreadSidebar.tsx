@@ -6,7 +6,13 @@ import { copyToClipboard, ThreadContextMenu } from "./ThreadContextMenu";
 import { SidebarSection } from "./SidebarSection";
 import { baseThreadTitle, threadShowsForkMarker } from "./ThreadTitles";
 import { revealInFileManagerLabel } from "./platform";
-import { isThreadRunning, isThreadUnread, threadProjectPath, type ThreadSummary } from "./AppState";
+import {
+  isThreadExecuting,
+  isThreadRunning,
+  isThreadUnread,
+  threadProjectPath,
+  type ThreadSummary,
+} from "./AppState";
 import { resolveLocalizedText, useI18n } from "./i18n";
 
 function threadsForProjectPath(
@@ -522,7 +528,7 @@ function importantThreadVisible(
   return (
     thread.id === activeID ||
     thread.id === pendingThreadID ||
-    isThreadRunning(thread)
+    isThreadExecuting(thread)
   );
 }
 
@@ -533,7 +539,7 @@ function projectThreadUnread(
   lastViewedTurnByThreadID: Record<string, string>,
 ): boolean {
   return (
-    !isThreadRunning(thread) &&
+    !isThreadExecuting(thread) &&
     thread.id !== activeID &&
     thread.id !== pendingThreadID &&
     isThreadUnread(
@@ -618,7 +624,7 @@ function ThreadRows({
     <>
       {threads.map((thread) => {
         const pendingSwitch = pendingThreadID === thread.id;
-        const running = isThreadRunning(thread);
+        const running = isThreadExecuting(thread);
         const title = baseThreadTitle(thread, threads);
         const forkMarker = threadShowsForkMarker(thread, threads);
         const unread =
