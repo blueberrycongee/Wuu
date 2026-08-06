@@ -33,10 +33,11 @@ interface StreamEntry {
 }
 
 const STREAM_FIELD_KEYS = ["text", "arguments", "result"] as const satisfies readonly StreamTextField[];
-// Keep high-rate provider deltas from forcing one React commit and Markdown
-// parse per token. 33ms matches the established desktop streaming floor in
-// thirdparty/hermes-agent while still presenting updates at roughly 30fps.
-export const STREAM_TEXT_NOTIFY_INTERVAL_MS = 33;
+// Keep high-rate provider deltas from forcing one React commit, Markdown parse,
+// layout read, and feather-animation update per token. Ten visual updates per
+// second remain fluid for text while leaving the renderer enough time to handle
+// input and the rest of the desktop during very fast streams.
+export const STREAM_TEXT_NOTIFY_INTERVAL_MS = 100;
 
 /**
  * Append-only text store used by the renderer to coalesce server-streamed

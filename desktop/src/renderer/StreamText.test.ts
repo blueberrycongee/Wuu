@@ -130,7 +130,7 @@ describe("streamTextStore subscriptions", () => {
       raf.flush();
       expect(calls).toEqual(["ab"]);
 
-      now.mockReturnValue(100_040);
+      now.mockReturnValue(100_000 + STREAM_TEXT_NOTIFY_INTERVAL_MS + 7);
       for (let i = 0; i < 100; i += 1) {
         streamTextStore.append(key, "x");
       }
@@ -148,7 +148,7 @@ describe("streamTextStore subscriptions", () => {
     }
   });
 
-  it("enforces a 33ms floor between high-rate subscriber notifications", () => {
+  it("limits high-rate subscriber notifications to ten visual updates per second", () => {
     vi.useFakeTimers();
     const raf = installManualRAF();
     const now = vi.spyOn(performance, "now");

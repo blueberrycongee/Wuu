@@ -15,7 +15,11 @@ import {
   StreamingMarkdown,
   splitIntoStableBlocks,
 } from "./StreamingMarkdown";
-import { streamTextKey, streamTextStore } from "./StreamText";
+import {
+  STREAM_TEXT_NOTIFY_INTERVAL_MS,
+  streamTextKey,
+  streamTextStore,
+} from "./StreamText";
 
 const turnsCSS = readFileSync(
   resolve(process.cwd(), "src/renderer/styles/turns.css"),
@@ -290,7 +294,7 @@ describe("StreamingMarkdown", () => {
     expect(feather?.nextElementSibling?.classList.contains("stream-cursor")).toBe(true);
   });
 
-  it("lets consecutive provider chunks finish their feather entrance together", async () => {
+  it("keeps only the latest feather batch at the throttled render cadence", async () => {
     const key = streamTextKey("turn", "s2", "text");
     streamTextStore.seed(key, "Hello");
     mount({ streamKey: key, initialText: "Hello", isLive: true, phase: "final_answer" });
@@ -299,10 +303,14 @@ describe("StreamingMarkdown", () => {
       streamTextStore.append(key, " world");
       await new Promise((resolve) => setTimeout(resolve, 40));
       streamTextStore.append(key, " again");
-      await new Promise((resolve) => setTimeout(resolve, 40));
+      await new Promise((resolve) =>
+        setTimeout(resolve, STREAM_TEXT_NOTIFY_INTERVAL_MS + 20),
+      );
     });
 
-    expect(document.querySelectorAll(".stream-feather-enter").length).toBeGreaterThan(1);
+    const feathers = document.querySelectorAll(".stream-feather-enter");
+    expect(feathers.length).toBe(1);
+    expect(feathers[0]?.textContent).toContain("again");
   });
 
   it("caps retained feather batches during sustained provider chunks", async () => {
@@ -318,8 +326,8 @@ describe("StreamingMarkdown", () => {
     });
 
     const retained = document.querySelectorAll(".stream-feather-enter").length;
-    expect(retained).toBeGreaterThan(1);
-    expect(retained).toBeLessThanOrEqual(8);
+    expect(retained).toBeGreaterThan(0);
+    expect(retained).toBeLessThanOrEqual(2);
   });
 
   it("does not re-feather existing text when an inline Markdown delimiter closes", async () => {
@@ -330,7 +338,9 @@ describe("StreamingMarkdown", () => {
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 40));
       streamTextStore.append(key, "**");
-      await new Promise((resolve) => setTimeout(resolve, 40));
+      await new Promise((resolve) =>
+        setTimeout(resolve, STREAM_TEXT_NOTIFY_INTERVAL_MS + 20),
+      );
     });
 
     expect(document.querySelector("strong")).not.toBeNull();
