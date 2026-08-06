@@ -6,6 +6,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { ChannelRoom, DesktopProject, InitializeResult } from "../shared/protocol";
 import { AppSidebar } from "./AppSidebar";
+import { desktopPluginHost } from "./plugins/DesktopPluginRuntime";
+import type { NavigationSnapshotV1 } from "../shared/workbench";
 import {
   initialState,
   SCRATCH_PSEUDO_PROJECT_ID,
@@ -26,6 +28,7 @@ beforeEach(() => {
 
 afterEach(() => {
   act(() => root?.unmount());
+  desktopPluginHost.unload("test:app-sidebar-navigation");
   root = null;
   container.remove();
 });
@@ -177,6 +180,40 @@ function renderSidebar({
 }
 
 describe("AppSidebar layout", () => {
+  it("lets a navigation presenter replace the complete production sidebar root", async () => {
+    let snapshot: NavigationSnapshotV1 | undefined;
+    await desktopPluginHost.activateGeneration({
+      pluginId: "test:app-sidebar-navigation",
+      generation: "one",
+      register(api) {
+        api.registerPresenter({
+          id: "sidebar",
+          target: "navigation.primary",
+          render: ({ snapshot: nextSnapshot }) => {
+            snapshot = nextSnapshot as NavigationSnapshotV1;
+            return <main data-custom-sidebar-root>custom</main>;
+          },
+        });
+      },
+    });
+
+    renderSidebar();
+
+    expect(container.querySelector("[data-custom-sidebar-root]")?.textContent).toBe("custom");
+    expect(container.querySelector("aside.sidebar")).toBeNull();
+    expect(snapshot?.nodes.map(({ id }) => id)).toEqual([
+      "command:new-conversation",
+      "command:search-conversations",
+      "command:automations",
+      "command:skills",
+      "section:workspace",
+      `project:${SCRATCH_PSEUDO_PROJECT_ID}`,
+      "project:project-1",
+      "project:project-2",
+      "command:settings",
+    ]);
+  });
+
   it("hides group chat unless the frontend flag is enabled", () => {
     renderSidebar();
 

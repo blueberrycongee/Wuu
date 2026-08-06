@@ -27,6 +27,7 @@ import {
   type RefObject,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -49,7 +50,12 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { ChannelRoom, DesktopProject } from "../shared/protocol";
-import type { AppState, ThreadSummary } from "./AppState";
+import {
+  isThreadRunning,
+  isThreadUnread,
+  type AppState,
+  type ThreadSummary,
+} from "./AppState";
 import { formatChannelUnreadCount } from "./ChannelView";
 import type { ConversationFixtureKind } from "./ConversationFixtures";
 import { SCRATCH_PSEUDO_PROJECT_ID } from "./AppState";
@@ -58,6 +64,10 @@ import { SidebarSection, SidebarSectionDragHandleContext } from "./SidebarSectio
 import { PluginBlocksIcon } from "./PluginBlocksIcon";
 import { CollabNodesIcon } from "./CollabNodesIcon";
 import { useI18n } from "./i18n";
+import {
+  NavigationPresentation,
+  type NavigationSourceNode,
+} from "./plugins/NavigationPresentation";
 
 /**
  * Stable section identity keys for the new sidebar tree.
@@ -522,7 +532,191 @@ export function AppSidebar({
     sectionIDs: string[];
   }>).filter((group) => group.sectionIDs.length > 0);
 
-  return (
+  const navigationNodes = useMemo<readonly NavigationSourceNode[]>(() => {
+    const nodes: NavigationSourceNode[] = [
+      {
+        id: "command:new-conversation",
+        kind: "command",
+        label: t("sidebar.newConversation"),
+        icon: "message-square-plus",
+        disabled: !hasRuntimeContext,
+        onActivate: onStartNewThread,
+      },
+      {
+        id: "command:search-conversations",
+        kind: "command",
+        label: t("sidebar.searchConversations"),
+        icon: "search",
+        active: searchOpen,
+        disabled: !hasRuntimeContext,
+        onActivate: onToggleConversationSearch,
+      },
+    ];
+    if (groupChatEnabled) {
+      nodes.push({
+        id: "command:agents",
+        kind: "command",
+        label: t("channels.agents"),
+        icon: "users",
+        active: activeChannelSection === "agents",
+        disabled: !state.initialized || onOpenChannelAgents === undefined,
+        onActivate: onOpenChannelAgents,
+      });
+    }
+    nodes.push(
+      {
+        id: "command:automations",
+        kind: "command",
+        label: t("automations.title"),
+        icon: "alarm-clock",
+        disabled: !hasRuntimeContext,
+        onActivate: onOpenAutomationsTab,
+      },
+      {
+        id: "command:skills",
+        kind: "command",
+        label: t("skills.sectionSkills"),
+        icon: "plugin-blocks",
+        disabled: !hasRuntimeContext,
+        onActivate: onOpenSkillsTab,
+      },
+    );
+    if (debugFixturesVisible) {
+      const fixtureCommands: Array<[string, string, () => void, boolean]> = [
+        ["fixture-long", t("sidebar.devFixtures.longConversation"), () => onSeedConversationFixture("long"), !fixturesEnabled],
+        ["fixture-rich", t("sidebar.devFixtures.richContent"), () => onSeedConversationFixture("rich"), !fixturesEnabled],
+        ["fixture-running", t("sidebar.devFixtures.running"), () => onSeedConversationFixture("running"), !fixturesEnabled],
+        ["fixture-compact", t("sidebar.devFixtures.compaction"), () => onSeedConversationFixture("compact"), !fixturesEnabled],
+        ["fixture-subtasks", t("sidebar.devFixtures.subtasks"), onSeedAgentTreeDemo, !fixturesEnabled],
+        ["fixture-chips", t("sidebar.devFixtures.chipGallery"), onOpenChipGallery, false],
+      ];
+      for (const [id, label, onActivate, disabled] of fixtureCommands) {
+        nodes.push({ id: `command:${id}`, kind: "command", label, disabled, onActivate });
+      }
+    }
+
+    if (hasPinnedRows) {
+      nodes.push({
+        id: "section:pinned",
+        kind: "section",
+        label: t("sidebar.pinned"),
+        icon: "pin",
+        depth: 0,
+      });
+      for (const thread of pinnedRows) {
+        nodes.push(threadNavigationNode(
+          thread,
+          "section:pinned",
+          activeThreadID,
+          state.lastViewedTurnByThreadID,
+          () => onSelectThread(thread.id),
+          () => onTogglePinned(thread),
+        ));
+      }
+      for (const room of pinnedChannelRooms) {
+        nodes.push(roomNavigationNode(
+          room,
+          "section:pinned",
+          activeChannelRoomID,
+          onSelectChannelRoom,
+          onToggleChannelRoomPinned,
+          true,
+        ));
+      }
+    }
+
+    if (groupChatEnabled) {
+      nodes.push({
+        id: "section:collaboration",
+        kind: "section",
+        label: t("sidebar.collaboration"),
+        icon: "collaboration",
+        depth: 0,
+        unread: collabUnreadTotal > 0,
+      });
+      for (const room of channelRooms) {
+        nodes.push(roomNavigationNode(
+          room,
+          "section:collaboration",
+          activeChannelRoomID,
+          onSelectChannelRoom,
+          onToggleChannelRoomPinned,
+          false,
+        ));
+      }
+    }
+
+    if (sectionOrder.length > 0) {
+      nodes.push({
+        id: "section:workspace",
+        kind: "section",
+        label: t("sidebar.workspace"),
+        depth: 0,
+      });
+      for (const projectID of sectionOrder) {
+        const project = sidebarProjects.find((candidate) => candidate.id === projectID);
+        if (!project) continue;
+        const threads = (projectThreadsByProjectID[projectID] ?? []).filter(
+          (thread) => !thread.pinned,
+        );
+        const isScratch = projectID === SCRATCH_PSEUDO_PROJECT_ID;
+        const projectActive = (isScratch
+          ? sidebarScratchPseudoActive
+          : projectID === (activeProjectID ?? state.activeProjectId)) &&
+          !threads.some((thread) => thread.id === activeThreadID);
+        nodes.push({
+          id: `project:${projectID}`,
+          kind: "project",
+          label: isScratch ? t("sidebar.conversations") : project.name,
+          parentId: "section:workspace",
+          depth: 1,
+          icon: isScratch ? "messages" : "folder",
+          active: projectActive,
+          unread: threads.some((thread) => isThreadUnread(
+            thread,
+            state.lastViewedTurnByThreadID[thread.id],
+          )),
+          running: threads.some((thread) => isThreadRunning(thread)),
+          disabled: onSelectProjectWorkspace === undefined,
+          onActivate: onSelectProjectWorkspace === undefined
+            ? undefined
+            : () => onSelectProjectWorkspace(projectID),
+        });
+        for (const thread of threads) {
+          nodes.push(threadNavigationNode(
+            thread,
+            `project:${projectID}`,
+            activeThreadID,
+            state.lastViewedTurnByThreadID,
+            () => onSelectProjectThread(projectID, thread.id),
+            () => onTogglePinned(thread),
+          ));
+        }
+      }
+    }
+    nodes.push({
+      id: "command:settings",
+      kind: "command",
+      label: t("sidebar.settings"),
+      icon: "settings",
+      disabled: !state.initialized,
+      onActivate: onOpenSettings,
+    });
+    return Object.freeze(nodes);
+  }, [
+    activeChannelRoomID, activeChannelSection, activeProjectID, activeThreadID,
+    channelRooms, collabUnreadTotal, debugFixturesVisible, fixturesEnabled,
+    groupChatEnabled, hasPinnedRows, hasRuntimeContext, onOpenAutomationsTab,
+    onOpenChannelAgents, onOpenChipGallery, onOpenSettings, onOpenSkillsTab,
+    onSeedAgentTreeDemo, onSeedConversationFixture, onSelectChannelRoom,
+    onSelectProjectThread, onSelectProjectWorkspace, onSelectThread,
+    onStartNewThread, onToggleChannelRoomPinned, onToggleConversationSearch,
+    onTogglePinned, pinnedChannelRooms, pinnedRows, projectThreadsByProjectID,
+    searchOpen, sectionOrder, sidebarProjects, sidebarScratchPseudoActive,
+    state.activeProjectId, state.initialized, state.lastViewedTurnByThreadID, t,
+  ]);
+
+  const nativeSidebar = (
     <aside
       className="sidebar"
       onPointerEnter={onPointerEnter}
@@ -886,4 +1080,55 @@ export function AppSidebar({
       </div>
     </aside>
   );
+  return (
+    <NavigationPresentation nodes={navigationNodes} fallback={nativeSidebar} />
+  );
+}
+
+function threadNavigationNode(
+  thread: ThreadSummary,
+  parentId: string,
+  activeThreadID: string | undefined,
+  lastViewedTurnByThreadID: Readonly<Record<string, string>>,
+  onActivate: () => void,
+  onTogglePinned: () => void,
+): NavigationSourceNode {
+  return {
+    id: `thread:${thread.id}`,
+    kind: "thread",
+    label: thread.title?.trim() || thread.preview?.trim() || thread.id,
+    parentId,
+    depth: 2,
+    active: thread.id === activeThreadID,
+    pinned: Boolean(thread.pinned),
+    unread: isThreadUnread(thread, lastViewedTurnByThreadID[thread.id]),
+    running: isThreadRunning(thread),
+    onActivate,
+    onTogglePinned,
+  };
+}
+
+function roomNavigationNode(
+  room: ChannelRoom,
+  parentId: string,
+  activeRoomID: string | undefined,
+  onSelect: ((roomID: string) => void) | undefined,
+  onTogglePinned: ((room: ChannelRoom) => void) | undefined,
+  pinned: boolean,
+): NavigationSourceNode {
+  return {
+    id: `room:${room.id}`,
+    kind: "room",
+    label: room.name,
+    parentId,
+    depth: 2,
+    active: room.id === activeRoomID,
+    pinned,
+    unread: (room.unread_count ?? 0) > 0,
+    disabled: onSelect === undefined,
+    onActivate: onSelect === undefined ? undefined : () => onSelect(room.id),
+    onTogglePinned: onTogglePinned === undefined
+      ? undefined
+      : () => onTogglePinned(room),
+  };
 }
