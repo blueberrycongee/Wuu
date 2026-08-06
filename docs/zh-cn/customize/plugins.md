@@ -1,7 +1,7 @@
 # 用插件定制桌面界面
 
-Wuu 的桌面代码插件可以注册全局样式，并替换或包装宿主提供的 UI Surface。插件能够
-改变整个应用框架、侧边栏和输入区，同时继续调用 Wuu 提供的会话与导航动作。
+Wuu 的桌面代码插件可以注册全局样式，并替换或包装宿主提供的稳定 UI Surface。插件能够
+形成统一视觉体系并进行有边界的结构调整，同时继续调用 Wuu 提供的会话与导航动作。
 
 桌面代码插件与普通主题不同：它是在 Wuu Renderer 中运行的受信任代码。启用前应检查
 来源和权限。插件管理、审批、安全模式、崩溃恢复和原生窗口生命周期始终由 Wuu
@@ -121,6 +121,32 @@ export async function activate(api) {
 `conversation.message.before`、`conversation.message.after`、`composer.above`、
 `composer.toolbar` 和 `settings.plugin`。Slot context 只包含冻结的摘要字段，不包含宿主私有
 记录；Slot 会与原生 UI 和语义 Presenter 一起组合。
+
+## View 落位，而不是任意布局树
+
+插件可以注册 View，并请求宿主首次把它放到一个稳定区域：`main`、`sidebar` 或
+`auxiliary`。
+
+```js
+api.registerViewType({
+  id: "my-plugin.dashboard",
+  title: "Dashboard",
+  persistence: "durable",
+  render: Dashboard,
+});
+
+api.registerViewPlacement({
+  id: "dashboard-default",
+  view: "my-plugin.dashboard",
+  region: "auxiliary",
+  priority: 10,
+});
+```
+
+`priority` 只在区域尚无用户选择时决定首次激活哪个 View；用户后续的切换和关闭优先，并会
+持久化。落位 API 不暴露宿主 DOM、任意父节点、分割树、面板尺寸、受保护 Chrome、插件管理
+或恢复界面。旧 `registerLayoutContribution` 仅作为兼容适配器保留；其中 `parentId`、`size`
+和 `minSize` 从未真正控制布局树，当前也不会使用。新插件应使用 `registerViewPlacement`。
 
 ## 语义 Presenter
 

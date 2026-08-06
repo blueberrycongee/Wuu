@@ -2,7 +2,7 @@
  * Workbench API — Phase C
  *
  * Stable contract for desktop workbench customization. Plugins use these
- * types to contribute views, layouts, renderers, theme tokens, CSS
+ * types to contribute views, placements, renderers, theme tokens, CSS
  * snippets, settings, and namespaced storage without importing Wuu
  * private source.
  *
@@ -43,6 +43,10 @@ export type ViewPane =
   | "overlay"
   | "tab"
   | "pane";
+
+/** Stable host-owned regions available for declarative default placement. */
+export const VIEW_PLACEMENT_REGIONS = ["main", "sidebar", "auxiliary"] as const;
+export type ViewPlacementRegion = (typeof VIEW_PLACEMENT_REGIONS)[number];
 
 /** Persistence policy for a view instance. */
 export type ViewPersistence = "session" | "durable";
@@ -517,27 +521,37 @@ export interface WorkbenchLayoutState {
 }
 
 // ---------------------------------------------------------------------------
-// Layout
+// View placement
 // ---------------------------------------------------------------------------
 
 /**
- * A plugin's contribution to the workbench layout tree. The host merges
- * layout contributions into the user's persisted layout state. Plugins
- * declare where they want panes or splits; the host resolves conflicts
- * and preserves user overrides.
+ * Requests that one registered View be opened in a stable host-owned region.
+ * This does not grant control over the shell's DOM, split tree, dimensions,
+ * protected chrome, or recovery UI. User dismissal and activation win over
+ * plugin defaults.
+ */
+export interface ViewPlacementContribution {
+  /** Stable placement identifier. */
+  id: string;
+  /** View type registered by the same plugin. */
+  view: ViewTypeId;
+  /** Host-owned region where the View should initially appear. */
+  region: ViewPlacementRegion;
+  /** Higher priority becomes the initial active View when a region is empty. */
+  priority?: number;
+}
+
+/**
+ * @deprecated Use ViewPlacementContribution. These historical fields never
+ * created an arbitrary layout tree; the compatibility adapter only uses
+ * id, pane, and defaultView.
  */
 export interface LayoutContribution {
-  /** Stable layout node identifier. */
   id: string;
-  /** Parent node id, or "root" for top-level. */
   parentId: string;
-  /** Pane type for this node. */
   pane: ViewPane;
-  /** Preferred size ratio (0-1) relative to sibling nodes. */
   size?: number;
-  /** Minimum size in pixels. */
   minSize?: number;
-  /** View type to open in this pane by default. */
   defaultView?: ViewTypeId;
 }
 

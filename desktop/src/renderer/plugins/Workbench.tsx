@@ -246,23 +246,24 @@ export class WorkbenchController {
       }];
     });
 
-    for (const layout of this.host.getLayoutContributions()) {
-      if (!layout.defaultView) continue;
-      const layoutId = `${layout.pluginId}:${layout.id}`;
-      const definition = definitions.get(viewTypeKey(layout.pluginId, layout.defaultView));
+    for (const placement of this.host.getViewPlacements()) {
+      const placementId = `${placement.pluginId}:${placement.id}`;
+      const definition = definitions.get(viewTypeKey(placement.pluginId, placement.view));
       if (!definition
         || (this.availablePluginIds && !this.availablePluginIds.has(definition.pluginId))
-        || this.state.dismissedLayoutIds.includes(layoutId)) continue;
-      if (views.some((view) => view.sourceLayoutId === layoutId)) continue;
+        || this.state.dismissedLayoutIds.includes(placementId)) continue;
+      if (views.some((view) => view.sourceLayoutId === placementId)) continue;
       views = [...views, {
-        id: `layout:${layoutId}`,
+        id: `placement:${placementId}`,
         pluginId: definition.pluginId,
         generation: definition.generation,
         viewTypeId: definition.id,
-        pane: layout.pane,
+        pane: placement.pane,
         persistence: definition.persistence ?? "session",
         context: Object.freeze({}),
-        sourceLayoutId: layoutId,
+        // Kept under the legacy on-disk field until the persisted workbench
+        // schema gets its own versioned migration.
+        sourceLayoutId: placementId,
       }];
     }
 

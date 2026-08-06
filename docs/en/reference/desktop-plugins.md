@@ -1,8 +1,8 @@
 # Customize the desktop UI with plugins
 
 Trusted desktop-code plugins can register global styles and replace or wrap stable UI surfaces.
-This supports substantial layout changes without relying on DOM monkey patches or private React
-state.
+This supports coherent visual systems and bounded structural changes without relying on DOM monkey
+patches or private React state.
 
 Wuu always retains plugin management, approval, safe mode, crash recovery, and the native window
 lifecycle. Every surface has a built-in fallback; a plugin render error records a diagnostic and
@@ -80,6 +80,34 @@ Additive contributions use `registerSlot`. Current production slots are `sidebar
 `conversation.message.after`, `composer.above`, `composer.toolbar`, and `settings.plugin`. Slot
 contexts contain only frozen summary fields; they do not contain private host records. Slots compose
 with native UI and semantic presenters rather than replacing their ownership boundary.
+
+## View placements, not arbitrary layouts
+
+A plugin can register a View and request its initial placement in one stable host-owned region:
+`main`, `sidebar`, or `auxiliary`.
+
+```js
+api.registerViewType({
+  id: "my-plugin.dashboard",
+  title: "Dashboard",
+  persistence: "durable",
+  render: Dashboard,
+});
+
+api.registerViewPlacement({
+  id: "dashboard-default",
+  view: "my-plugin.dashboard",
+  region: "auxiliary",
+  priority: 10,
+});
+```
+
+`priority` only resolves the initial active View when a region has no user choice. User activation
+and dismissal win and are persisted. Placement does not expose the shell DOM, arbitrary parent
+nodes, split-tree construction, panel dimensions, protected chrome, plugin management, or recovery
+UI. The old `registerLayoutContribution` method remains as a compatibility adapter; its
+`parentId`, `size`, and `minSize` fields were never implemented as layout-tree controls and are not
+used. New plugins should use `registerViewPlacement`.
 
 ## Semantic presenters
 

@@ -271,13 +271,10 @@ export function activate(api: PluginGenerationApi): void {
     persistence: "durable",
     render: (props: Readonly<Record<string, unknown>>) => acceptanceView(api, props),
   });
-  api.registerLayoutContribution({
+  api.registerViewPlacement({
     id: "acceptance-tools",
-    parentId: "root",
-    pane: "auxiliary",
-    size: 320,
-    minSize: 240,
-    defaultView: VIEW_ID,
+    region: "auxiliary",
+    view: VIEW_ID,
   });
   api.registerThemeTokens({
     theme: "developer-focus",

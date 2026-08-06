@@ -33,6 +33,9 @@ export {
 export type ViewTypeId = string;
 /** Where a view instance appears. */
 export type ViewPane = "main" | "sidebar" | "auxiliary" | "overlay" | "tab" | "pane";
+/** Stable host-owned regions available for declarative default placement. */
+export const VIEW_PLACEMENT_REGIONS = ["main", "sidebar", "auxiliary"] as const;
+export type ViewPlacementRegion = (typeof VIEW_PLACEMENT_REGIONS)[number];
 export type ViewPersistence = "session" | "durable";
 
 export interface ViewTypeDefinition {
@@ -117,6 +120,21 @@ export interface ToolActivityPresenterDefinition {
   readonly render: (props: ToolActivityPresenterProps) => unknown;
 }
 
+/**
+ * Requests that one registered View be opened in a stable host-owned region.
+ * The host retains its shell, dimensions, protected chrome, and recovery UI.
+ */
+export interface ViewPlacementContribution {
+  id: string;
+  view: ViewTypeId;
+  region: ViewPlacementRegion;
+  priority?: number;
+}
+
+/**
+ * @deprecated Use ViewPlacementContribution. Only id, pane, and defaultView
+ * are consumed by the compatibility adapter.
+ */
 export interface LayoutContribution {
   id: string;
   parentId: string;
@@ -211,6 +229,8 @@ export interface PluginGenerationApi {
   registerLocale(locale: LocaleRegistration): Disposable;
   registerCleanup(cleanup: () => void): Disposable;
   registerViewType(definition: ViewTypeDefinition): Disposable;
+  registerViewPlacement(contribution: ViewPlacementContribution): Disposable;
+  /** @deprecated Use registerViewPlacement. */
   registerLayoutContribution(contribution: LayoutContribution): Disposable;
   registerRenderer(definition: RendererDefinition): Disposable;
   registerThemeTokens(tokens: ThemeTokens): Disposable;

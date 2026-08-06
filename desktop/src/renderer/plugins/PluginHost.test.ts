@@ -236,11 +236,10 @@ describe("PluginHost", () => {
           persistence: "durable",
           render: () => null,
         });
-        api.registerLayoutContribution({
+        api.registerViewPlacement({
           id: "dashboard-pane",
-          parentId: "root",
-          pane: "main",
-          defaultView: "dashboard",
+          region: "main",
+          view: "dashboard",
         });
         api.registerRenderer({
           id: "result",
@@ -260,7 +259,7 @@ describe("PluginHost", () => {
     });
 
     expect(host.getViewTypes().map(qualifiedId)).toEqual(["workbench:dashboard"]);
-    expect(host.getLayoutContributions().map(qualifiedId)).toEqual(["workbench:dashboard-pane"]);
+    expect(host.getViewPlacements().map(qualifiedId)).toEqual(["workbench:dashboard-pane"]);
     expect(host.getRenderers("tool-result").map(qualifiedId)).toEqual(["workbench:result"]);
     expect(host.getThemeTokens("night").map(qualifiedId)).toEqual(["workbench:theme:night"]);
     expect(host.getStatusItems().map(qualifiedId)).toEqual(["workbench:ready"]);
@@ -271,12 +270,98 @@ describe("PluginHost", () => {
     host.disable("workbench");
 
     expect(host.getViewTypes()).toEqual([]);
-    expect(host.getLayoutContributions()).toEqual([]);
+    expect(host.getViewPlacements()).toEqual([]);
     expect(host.getRenderers()).toEqual([]);
     expect(host.getThemeTokens()).toEqual([]);
     expect(host.getStatusItems()).toEqual([]);
     expect(document.head.querySelector("style[data-wuu-plugin-css-snippet]")).toBeNull();
     expect(notifications).toHaveLength(2);
+  });
+
+  it("normalizes legacy layout registrations without advertising a layout tree", async () => {
+    const host = new PluginHost({ react: React });
+
+    await host.activateGeneration({
+      pluginId: "legacy-layout",
+      generation: "one",
+      register(api) {
+        api.registerLayoutContribution({
+          id: "legacy-dashboard",
+          parentId: "invented-split",
+          pane: "auxiliary",
+          size: 0.4,
+          minSize: 240,
+          defaultView: "views.dashboard",
+        });
+      },
+    });
+
+    const [placement] = host.getViewPlacements();
+    expect(placement).toMatchObject({
+      id: "legacy-dashboard",
+      pluginId: "legacy-layout",
+      view: "views.dashboard",
+      pane: "auxiliary",
+      legacy: true,
+    });
+    expect(placement).not.toHaveProperty("parentId");
+    expect(placement).not.toHaveProperty("size");
+    expect(placement).not.toHaveProperty("minSize");
+  });
+
+  it("validates stable placement regions and orders defaults by priority", async () => {
+    const host = new PluginHost({ react: React });
+
+    await host.activateGeneration({
+      pluginId: "placements",
+      generation: "one",
+      register(api) {
+        api.registerViewType({ id: "views.high", title: "High", render: () => null });
+        api.registerViewType({ id: "views.low", title: "Low", render: () => null });
+        api.registerViewPlacement({
+          id: "high",
+          view: "views.high",
+          region: "main",
+          priority: 20,
+        });
+        api.registerViewPlacement({
+          id: "low",
+          view: "views.low",
+          region: "main",
+          priority: 10,
+        });
+      },
+    });
+
+    expect(host.getViewPlacements().map((placement) => placement.id)).toEqual(["low", "high"]);
+    expect(host.getViewPlacements().every((placement) => placement.legacy === false)).toBe(true);
+
+    await expect(host.activateGeneration({
+      pluginId: "invalid-placement",
+      generation: "one",
+      register(api) {
+        api.registerViewType({ id: "views.overlay", title: "Overlay", render: () => null });
+        api.registerViewPlacement({
+          id: "overlay",
+          view: "views.overlay",
+          region: "overlay" as never,
+        });
+      },
+    })).rejects.toThrow("Unsupported plugin View placement region: overlay");
+
+    await expect(host.activateGeneration({
+      pluginId: "missing-placement-view",
+      generation: "one",
+      register(api) {
+        api.registerViewPlacement({
+          id: "missing",
+          view: "views.missing",
+          region: "main",
+        });
+      },
+    })).rejects.toThrow(
+      "Plugin View placement missing references an unregistered View: views.missing",
+    );
   });
 
   it("rejects unpublished global theme tokens during candidate activation", async () => {

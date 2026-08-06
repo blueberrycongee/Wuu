@@ -1,7 +1,7 @@
 # Developer Loop Example
 
 This independently buildable plugin uses only the published `@wuu/plugin-sdk` package. It keeps the
-SDK v2 request transform and tool while contributing a durable workbench view, layout, complete
+SDK v2 request transform and tool while contributing a durable workbench View placement, complete
 theme token sample, scoped CSS, command, status item, locales, and the conversation-header slot.
 The view uses the React instance owned by the host; React is neither a dependency nor part of the
 bundle. It reads all four setting kinds and restores its counter from plugin-namespaced storage.

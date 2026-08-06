@@ -11,6 +11,7 @@ import {
   REQUEST_TRANSFORM_CAPABILITY,
   SETTINGS_ACTIONS,
   STATUS_ACTIONS,
+  VIEW_PLACEMENT_REGIONS,
   handleRuntimeRequest,
   runJSONLRuntime,
   type ComposerSnapshotV1,
@@ -25,6 +26,7 @@ import {
   type StatusSnapshotV1,
   type ToolActivityPresenterDefinition,
   type ToolActivitySnapshot,
+  type ViewPlacementContribution,
 } from "./index.js";
 
 if (!PRESENTATION_TARGETS.includes("conversation.tool-activity") || !PRESENTATION_TARGETS.includes("settings")) {
@@ -33,6 +35,16 @@ if (!PRESENTATION_TARGETS.includes("conversation.tool-activity") || !PRESENTATIO
 if (!PUBLIC_THEME_TOKEN_NAMES.includes("--wuu-color-canvas") || !PUBLIC_SYNTAX_TOKEN_NAMES.includes("--wuu-syntax-keyword")) {
   throw new Error("theme token contract failed");
 }
+if (VIEW_PLACEMENT_REGIONS.join(",") !== "main,sidebar,auxiliary") {
+  throw new Error("View placement region contract failed");
+}
+const viewPlacement: ViewPlacementContribution = {
+  id: "dashboard",
+  view: "views.dashboard",
+  region: "auxiliary",
+  priority: 10,
+};
+if (viewPlacement.region !== "auxiliary") throw new Error("View placement contract failed");
 const genericPresenter: PresenterDefinition = {
   id: "preview",
   target: "content.preview",

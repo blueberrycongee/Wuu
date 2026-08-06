@@ -10,8 +10,11 @@ import type {
   StatusItemDefinition,
   ThemeTokens,
   ToolActivityPresenterDefinition,
+  ViewPane,
+  ViewPlacementContribution,
   ViewTypeDefinition,
 } from "../../shared/workbench";
+import { VIEW_PLACEMENT_REGIONS } from "../../shared/workbench";
 import {
   isPublicSyntaxTokenName,
   isPublicThemeTokenName,
@@ -106,7 +109,9 @@ export interface PluginGenerationApi {
 
   /** Register a view type that the host can open in any pane. */
   registerViewType(definition: ViewTypeDefinition): Disposable;
-  /** Contribute a layout node to the workbench tree. */
+  /** Request a default View placement in a stable host-owned region. */
+  registerViewPlacement(contribution: ViewPlacementContribution): Disposable;
+  /** @deprecated Use registerViewPlacement. */
   registerLayoutContribution(contribution: LayoutContribution): Disposable;
   /** Register a custom content renderer (message, tool result, document, file). */
   registerRenderer(definition: RendererDefinition): Disposable;
@@ -147,10 +152,14 @@ export interface RegisteredViewType extends ViewTypeDefinition {
   readonly order: number;
 }
 
-export interface RegisteredLayoutContribution extends LayoutContribution {
+export interface RegisteredViewPlacement {
   readonly pluginId: string;
   readonly generation: string;
   readonly order: number;
+  readonly id: string;
+  readonly view: string;
+  readonly pane: ViewPane;
+  readonly legacy: boolean;
 }
 
 export interface RegisteredRenderer extends RendererDefinition {
@@ -244,8 +253,10 @@ interface ViewTypeRecord extends OrderedRecord {
   readonly definition: ViewTypeDefinition;
 }
 
-interface LayoutRecord extends OrderedRecord {
-  readonly contribution: LayoutContribution;
+interface ViewPlacementRecord extends OrderedRecord {
+  readonly view: string;
+  readonly pane: ViewPane;
+  readonly legacy: boolean;
 }
 
 interface RendererRecord extends OrderedRecord {
@@ -283,7 +294,7 @@ interface GenerationState {
   readonly locales: LocaleRecord[];
   // Phase C — Workbench
   readonly views: ViewTypeRecord[];
-  readonly layouts: LayoutRecord[];
+  readonly viewPlacements: ViewPlacementRecord[];
   readonly renderers: RendererRecord[];
   readonly themeTokens: ThemeTokenRecord[];
   readonly cssSnippets: CSSSnippetRecord[];
@@ -305,7 +316,7 @@ const EMPTY_SLOT_SNAPSHOT: readonly RegisteredPluginSlotContribution[] = Object.
 const EMPTY_SURFACE_SNAPSHOT: readonly RegisteredPluginSurfaceContribution[] = Object.freeze([]);
 const EMPTY_COMMAND_SNAPSHOT: readonly RegisteredPluginCommand[] = Object.freeze([]);
 const EMPTY_VIEW_SNAPSHOT: readonly RegisteredViewType[] = Object.freeze([]);
-const EMPTY_LAYOUT_SNAPSHOT: readonly RegisteredLayoutContribution[] = Object.freeze([]);
+const EMPTY_VIEW_PLACEMENT_SNAPSHOT: readonly RegisteredViewPlacement[] = Object.freeze([]);
 const EMPTY_RENDERER_SNAPSHOT: readonly RegisteredRenderer[] = Object.freeze([]);
 const EMPTY_THEME_TOKEN_SNAPSHOT: readonly RegisteredThemeTokens[] = Object.freeze([]);
 const EMPTY_STATUS_ITEM_SNAPSHOT: readonly RegisteredStatusItem[] = Object.freeze([]);
@@ -340,7 +351,7 @@ export class PluginHost {
   private readonly presenterQuerySnapshots = new Map<string, readonly RegisteredPresenter[]>();
   private commandSnapshot: readonly RegisteredPluginCommand[] = EMPTY_COMMAND_SNAPSHOT;
   private viewSnapshot: readonly RegisteredViewType[] = EMPTY_VIEW_SNAPSHOT;
-  private layoutSnapshot: readonly RegisteredLayoutContribution[] = EMPTY_LAYOUT_SNAPSHOT;
+  private viewPlacementSnapshot: readonly RegisteredViewPlacement[] = EMPTY_VIEW_PLACEMENT_SNAPSHOT;
   private rendererSnapshot: readonly RegisteredRenderer[] = EMPTY_RENDERER_SNAPSHOT;
   private themeTokenSnapshot: readonly RegisteredThemeTokens[] = EMPTY_THEME_TOKEN_SNAPSHOT;
   private statusItemSnapshot: readonly RegisteredStatusItem[] = EMPTY_STATUS_ITEM_SNAPSHOT;
@@ -367,6 +378,7 @@ export class PluginHost {
     try {
       await options.register(this.createGenerationApi(state));
       state.acceptingRegistrations = false;
+      this.assertViewPlacementTargets(state);
       this.assertToolActivityPresenterOwnership(state);
     } catch (error: unknown) {
       state.acceptingRegistrations = false;
@@ -468,8 +480,8 @@ export class PluginHost {
     return this.viewSnapshot;
   }
 
-  getLayoutContributions(): readonly RegisteredLayoutContribution[] {
-    return this.layoutSnapshot;
+  getViewPlacements(): readonly RegisteredViewPlacement[] {
+    return this.viewPlacementSnapshot;
   }
 
   getRenderers(category?: RendererDefinition["category"]): readonly RegisteredRenderer[] {
@@ -556,6 +568,33 @@ export class PluginHost {
   }
 
   private createGenerationApi(state: GenerationState): PluginGenerationApi {
+    const registerViewPlacement = (
+      contribution: {
+        id: string;
+        view: string;
+        pane: ViewPane;
+        priority?: number;
+        legacy: boolean;
+      },
+    ): Disposable => {
+      this.assertAccepting(state);
+      const id = this.claimRegistrationId(state, "view-placement", contribution.id);
+      const record: ViewPlacementRecord = {
+        pluginId: state.pluginId,
+        generation: state.generation,
+        id,
+        order: normalizeOrder(contribution.priority),
+        removed: false,
+        view: contribution.legacy
+          ? contribution.view.trim()
+          : requireNonEmpty(contribution.view, "view placement view id"),
+        pane: contribution.pane,
+        legacy: contribution.legacy,
+      };
+      state.viewPlacements.push(record);
+      return this.ownRecord(state, record);
+    };
+
     return Object.freeze({
       react: this.react,
       pluginId: state.pluginId,
@@ -666,15 +705,26 @@ export class PluginHost {
         return this.ownRecord(state, record);
       },
 
+      registerViewPlacement: (contribution: ViewPlacementContribution) => {
+        const region = normalizeViewPlacementRegion(contribution.region);
+        return registerViewPlacement({
+          id: contribution.id,
+          view: contribution.view,
+          pane: region,
+          priority: contribution.priority,
+          legacy: false,
+        });
+      },
+
       registerLayoutContribution: (contribution: LayoutContribution) => {
-        this.assertAccepting(state);
-        const id = this.claimRegistrationId(state, "layout", contribution.id);
-        const record: LayoutRecord = {
-          pluginId: state.pluginId, generation: state.generation, id,
-          order: 0, removed: false, contribution,
-        };
-        state.layouts.push(record);
-        return this.ownRecord(state, record);
+        return registerViewPlacement({
+          id: contribution.id,
+          view: typeof contribution.defaultView === "string"
+            ? contribution.defaultView
+            : "",
+          pane: normalizeViewPane(contribution.pane),
+          legacy: true,
+        });
       },
 
       registerRenderer: (definition: RendererDefinition) => {
@@ -831,6 +881,17 @@ export class PluginHost {
     }
   }
 
+  private assertViewPlacementTargets(state: GenerationState): void {
+    for (const placement of state.viewPlacements) {
+      if (placement.removed || placement.legacy) continue;
+      if (!state.views.some((view) => !view.removed && view.id === placement.view)) {
+        throw new Error(
+          `Plugin View placement ${placement.id} references an unregistered View: ${placement.view}`,
+        );
+      }
+    }
+  }
+
   private disposeGeneration(state: GenerationState): void {
     if (state.disposed) {
       return;
@@ -850,7 +911,7 @@ export class PluginHost {
     const locales: LocaleRecord[] = [];
     const styles: StyleRecord[] = [];
     const views: ViewTypeRecord[] = [];
-    const layouts: LayoutRecord[] = [];
+    const viewPlacements: ViewPlacementRecord[] = [];
     const renderers: RendererRecord[] = [];
     const themeTokens: ThemeTokenRecord[] = [];
     const cssSnippets: CSSSnippetRecord[] = [];
@@ -876,7 +937,7 @@ export class PluginHost {
       locales.push(...state.locales.filter((record) => !record.removed));
       styles.push(...state.styles.filter((record) => !record.removed));
       views.push(...state.views.filter((record) => !record.removed));
-      layouts.push(...state.layouts.filter((record) => !record.removed));
+      viewPlacements.push(...state.viewPlacements.filter((record) => !record.removed));
       renderers.push(...state.renderers.filter((record) => !record.removed));
       themeTokens.push(...state.themeTokens.filter((record) => !record.removed));
       cssSnippets.push(...state.cssSnippets.filter((record) => !record.removed));
@@ -924,9 +985,11 @@ export class PluginHost {
       changed = true;
     }
 
-    const nextLayouts = Object.freeze(layouts.sort(compareOrdered).map(toPublicLayoutContribution));
-    if (!sameContributions(this.layoutSnapshot, nextLayouts)) {
-      this.layoutSnapshot = nextLayouts;
+    const nextViewPlacements = Object.freeze(
+      viewPlacements.sort(compareOrdered).map(toPublicViewPlacement),
+    );
+    if (!sameContributions(this.viewPlacementSnapshot, nextViewPlacements)) {
+      this.viewPlacementSnapshot = nextViewPlacements;
       changed = true;
     }
 
@@ -1084,7 +1147,7 @@ function createGenerationState(pluginId: string, generation: string): Generation
     styles: [],
     locales: [],
     views: [],
-    layouts: [],
+    viewPlacements: [],
     renderers: [],
     themeTokens: [],
     cssSnippets: [],
@@ -1140,13 +1203,15 @@ function toPublicViewType(record: ViewTypeRecord): RegisteredViewType {
   });
 }
 
-function toPublicLayoutContribution(record: LayoutRecord): RegisteredLayoutContribution {
+function toPublicViewPlacement(record: ViewPlacementRecord): RegisteredViewPlacement {
   return Object.freeze({
-    ...record.contribution,
     pluginId: record.pluginId,
     generation: record.generation,
     id: record.id,
     order: record.order,
+    view: record.view,
+    pane: record.pane,
+    legacy: record.legacy,
   });
 }
 
@@ -1216,6 +1281,22 @@ function normalizeOrder(order: number | undefined): number {
     throw new Error("Plugin registration order must be a finite number");
   }
   return order;
+}
+
+function normalizeViewPlacementRegion(region: unknown): ViewPlacementContribution["region"] {
+  if (typeof region !== "string"
+    || !(VIEW_PLACEMENT_REGIONS as readonly string[]).includes(region)) {
+    throw new Error(`Unsupported plugin View placement region: ${String(region)}`);
+  }
+  return region as ViewPlacementContribution["region"];
+}
+
+function normalizeViewPane(pane: unknown): ViewPane {
+  if (pane !== "main" && pane !== "sidebar" && pane !== "auxiliary"
+    && pane !== "overlay" && pane !== "tab" && pane !== "pane") {
+    throw new Error(`Unsupported legacy plugin View pane: ${String(pane)}`);
+  }
+  return pane;
 }
 
 function normalizeSurfaceMode(mode: PluginSurfaceMode): PluginSurfaceMode {

@@ -15,7 +15,7 @@ assert.doesNotMatch(output, /react(?:-dom)?["'/]|node_modules\/react/);
 
 for (const registration of [
   "registerViewType",
-  "registerLayoutContribution",
+  "registerViewPlacement",
   "registerThemeTokens",
   "registerCSSSnippet",
   "registerCommand",
@@ -75,6 +75,8 @@ const api = {
   generation: "acceptance-generation",
   react: { Fragment: Symbol("Fragment"), createElement },
   registerViewType: register("views"),
+  registerViewPlacement: register("viewPlacements"),
+  // Kept in the stub so old bundles can still be exercised by this host.
   registerLayoutContribution: register("layouts"),
   registerThemeTokens: register("themes"),
   registerCSSSnippet: register("css"),
@@ -103,7 +105,7 @@ const activateGeneration = (activate) => {
 const unloadGeneration = activateGeneration(renderer.activate);
 for (const [kind, expected] of Object.entries({
   views: 1,
-  layouts: 1,
+  viewPlacements: 1,
   themes: 1,
   css: 1,
   commands: 1,
