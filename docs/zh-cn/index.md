@@ -24,7 +24,8 @@ wuu 的桌面应用适合交互式工作；`wuu exec` 适合终端、脚本、CI
 - **管理项目和会话：**[工作区与项目](desktop/workspaces.md)、
   [会话与分支](desktop/conversations.md)。
 - **检查 Agent 的成果：**[文件、改动、终端与浏览器](desktop/workspace-tools.md)。
-- **理解复杂任务怎样推进：**[Agent 协作与子代理](desktop/subagents.md)和
+- **理解复杂任务怎样推进：**[Agent 协作与子代理](desktop/subagents.md)、
+  [群聊与 Named Agent 协作](desktop/collaboration.md)和
   [命令与后台任务](reference/agent-command-system.md)。
 - **复用和改造工作方式：**[Skills](customize/skills.md)、[记忆](customize/memory.md)和
   [桌面 UI 插件](customize/plugins.md)。

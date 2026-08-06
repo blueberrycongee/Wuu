@@ -98,3 +98,6 @@ flowchart LR
 
 如果你想理解子代理可能启动的命令如何被托管，继续阅读
 [命令与后台任务](../reference/agent-command-system.md)。
+
+Named Agent 群聊是另一种协作方式：有名字、有持久记忆的 Agent 在频道中与人长期讨论。
+详见[群聊与 Named Agent 协作](collaboration.md)。

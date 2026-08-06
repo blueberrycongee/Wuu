@@ -32,6 +32,7 @@
           "title": "Wuu 怎样工作",
           "pages": [
             "zh-cn/desktop/subagents.md",
+            "zh-cn/desktop/collaboration.md",
             "zh-cn/reference/agent-command-system.md",
             "zh-cn/reference/cli-commands.md",
             "zh-cn/reference/security-model.md"
@@ -44,7 +45,9 @@
             "zh-cn/customize/skill-authoring.md",
             "zh-cn/customize/hooks.md",
             "zh-cn/customize/memory.md",
+            "zh-cn/customize/dream.md",
             "zh-cn/customize/plugins.md",
+            "zh-cn/customize/plugin-authoring.md",
             "zh-cn/reference/permissions.md",
             "zh-cn/reference/configuration.md"
           ]
