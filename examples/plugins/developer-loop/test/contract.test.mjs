@@ -22,6 +22,7 @@ for (const registration of [
   "registerStatusItem",
   "registerLocale",
   "registerSlot",
+  "registerPresenter",
   "registerToolActivityPresenter",
 ]) {
   assert.match(source, new RegExp(`api\\.${registration}\\(`), `missing ${registration}`);
@@ -72,7 +73,7 @@ const createElement = (type, props, ...children) => ({ type, props: props ?? {},
 const api = {
   pluginId: manifest.id,
   generation: "acceptance-generation",
-  react: { createElement },
+  react: { Fragment: Symbol("Fragment"), createElement },
   registerViewType: register("views"),
   registerLayoutContribution: register("layouts"),
   registerThemeTokens: register("themes"),
@@ -81,10 +82,25 @@ const api = {
   registerStatusItem: register("status"),
   registerLocale: register("locales"),
   registerSlot: (_slot, contribution) => register("slots")(contribution),
+  registerPresenter: register("presenters"),
   registerToolActivityPresenter: register("toolActivityPresenters"),
 };
 
-renderer.activate(api);
+const activateGeneration = (activate) => {
+  const generationStart = disposables.length;
+  try {
+    activate(api);
+  } catch (error) {
+    for (const disposable of disposables.splice(generationStart).reverse()) disposable.dispose();
+    throw error;
+  }
+  const owned = disposables.slice(generationStart);
+  return () => {
+    for (const disposable of owned.reverse()) disposable.dispose();
+  };
+};
+
+const unloadGeneration = activateGeneration(renderer.activate);
 for (const [kind, expected] of Object.entries({
   views: 1,
   layouts: 1,
@@ -94,6 +110,7 @@ for (const [kind, expected] of Object.entries({
   status: 1,
   locales: 2,
   slots: 1,
+  presenters: 6,
   toolActivityPresenters: 1,
 })) {
   assert.equal(registrations.get(kind)?.length, expected, `${kind} did not activate`);
@@ -117,6 +134,97 @@ assert.equal(presented.type, "section");
 assert.equal(presented.props["data-developer-loop-tool"], "completed");
 assert.equal(presented.props["data-tool-id"], "call-1");
 assert.equal(presented.children[1].children[0], "developer-loop tool ok");
+
+const presenterByTarget = new Map(registrations.get("presenters").map((definition) => [definition.target, definition]));
+assert.deepEqual(
+  registrations.get("presenters").map(({ target, key, mode }) => ({ target, key, mode })),
+  [
+    { target: "conversation.item", key: "assistant-message", mode: "wrap" },
+    { target: "conversation.composer", key: undefined, mode: "wrap" },
+    { target: "navigation.primary", key: undefined, mode: "replace" },
+    { target: "content.preview", key: "text/markdown", mode: "wrap" },
+    { target: "app.status", key: undefined, mode: "replace" },
+    { target: "header.conversation", key: undefined, mode: "wrap" },
+  ],
+);
+
+const invokedActions = [];
+const presentationHost = {
+  actions: ["conversation.composer.submit", "navigation.activate-node", "status.activate-item"],
+  invoke: async (action, input) => {
+    invokedActions.push([action, input]);
+    return { accepted: true };
+  },
+};
+const fallback = createElement("span", { "data-native-fallback": "" }, "native");
+const renderPresenter = (target, snapshot, key) => {
+  const definition = presenterByTarget.get(target);
+  assert.equal(definition.key, key);
+  return definition.render({ contractVersion: 1, target, key, snapshot, host: presentationHost, fallback });
+};
+
+const itemOutput = renderPresenter("conversation.item", {
+  contractVersion: 1,
+  id: "message-1",
+  kind: "assistant-message",
+  status: "completed",
+  text: "Accepted answer",
+}, "assistant-message");
+assert.equal(itemOutput.props["data-item-id"], "message-1");
+assert.equal(itemOutput.props["data-item-status"], "completed");
+assert.equal(itemOutput.children[1], fallback);
+
+const composerOutput = renderPresenter("conversation.composer", {
+  contractVersion: 1,
+  threadId: "thread-1",
+  draftText: "Ship it",
+  activeSubmissionMode: "send",
+  running: false,
+});
+assert.equal(composerOutput.props["data-thread-id"], "thread-1");
+assert.equal(composerOutput.children[0], fallback);
+await composerOutput.children[1].props.onClick();
+
+const navigationOutput = renderPresenter("navigation.primary", {
+  contractVersion: 1,
+  activeNodeId: "thread-1",
+  nodes: [{ id: "thread-1", kind: "thread", label: "Acceptance thread", active: true }],
+});
+assert.equal(navigationOutput.props["data-node-count"], "1");
+await navigationOutput.children[0].props.onClick();
+
+const previewOutput = renderPresenter("content.preview", {
+  contractVersion: 1,
+  resourceId: "resource-1",
+  workspaceRelativePath: "acceptance.md",
+  contentType: "text/markdown",
+  text: "# Accepted",
+  readOnly: true,
+}, "text/markdown");
+assert.equal(previewOutput.props["data-content-type"], "text/markdown");
+assert.equal(previewOutput.children[2], fallback);
+
+const statusOutput = renderPresenter("app.status", {
+  contractVersion: 1,
+  items: [{ id: "ready", label: "Ready", kind: "success", actionId: "open" }],
+});
+assert.equal(statusOutput.children[0].props["data-status-kind"], "success");
+await statusOutput.children[0].props.onClick();
+
+const headerOutput = renderPresenter("header.conversation", {
+  contractVersion: 1,
+  scope: "conversation",
+  title: "Acceptance conversation",
+  activeTabId: "tab-1",
+});
+assert.equal(headerOutput.props["data-active-tab"], "tab-1");
+assert.equal(headerOutput.children[1], fallback);
+assert.deepEqual(invokedActions, [
+  ["conversation.composer.submit", { threadId: "thread-1" }],
+  ["navigation.activate-node", { nodeId: "thread-1" }],
+  ["status.activate-item", { itemId: "ready" }],
+]);
+assert.equal(await renderer.invokePresentationAction(presentationHost, "unsupported.action"), undefined);
 
 const storedWrites = [];
 const host = {
@@ -146,7 +254,19 @@ await button.props.onClick();
 assert.deepEqual(storedWrites, [["counter", "7"]]);
 assert.equal(nodes.get("[data-counter-value]").textContent, "7");
 
-for (const disposable of disposables.reverse()) disposable.dispose();
+const countsBeforeFailure = new Map([...registrations].map(([kind, values]) => [kind, values.length]));
+assert.throws(
+  () => activateGeneration((failedApi) => {
+    failedApi.registerPresenter({ id: "failed", target: "app.status", render: () => null });
+    throw new Error("candidate activation failed");
+  }),
+  /candidate activation failed/,
+);
+for (const [kind, values] of registrations) {
+  assert.equal(values.length, countsBeforeFailure.get(kind), `${kind} changed after failed generation rollback`);
+}
+
+unloadGeneration();
 for (const [kind, values] of registrations) {
   assert.equal(values.length, 0, `${kind} leaked after generation disposal`);
 }

@@ -1,4 +1,14 @@
-import type { PluginGenerationApi, ViewHostAPI } from "@wuu/plugin-sdk";
+import type {
+  ComposerSnapshotV1,
+  ConversationItemSnapshotV1,
+  FilePreviewSnapshotV1,
+  HeaderSnapshotV1,
+  NavigationSnapshotV1,
+  PluginGenerationApi,
+  PresentationHost,
+  StatusSnapshotV1,
+  ViewHostAPI,
+} from "@wuu/plugin-sdk";
 
 const VIEW_ID = "acceptance-counter";
 const COMMAND_ID = "open-acceptance-counter";
@@ -17,6 +27,155 @@ interface AcceptanceSettings {
   label: string;
   step: number;
   density: string;
+}
+
+export async function invokePresentationAction(
+  host: PresentationHost,
+  action: string,
+  input?: unknown,
+): Promise<unknown> {
+  if (!host.actions.includes(action)) return undefined;
+  return host.invoke(action, input);
+}
+
+function registerAcceptancePresenters(api: PluginGenerationApi): void {
+  api.registerPresenter({
+    id: "assistant-message",
+    target: "conversation.item",
+    key: "assistant-message",
+    mode: "wrap",
+    render({ snapshot, fallback }) {
+      const item = snapshot as ConversationItemSnapshotV1;
+      return api.react.createElement(
+        "article",
+        {
+          "data-developer-loop-presenter": "conversation-item",
+          "data-item-id": item.id,
+          "data-item-kind": item.kind,
+          "data-item-status": item.status ?? "unknown",
+        },
+        api.react.createElement("p", null, item.text ?? item.content?.[0]?.text ?? "Empty assistant message"),
+        fallback,
+      );
+    },
+  });
+  api.registerPresenter({
+    id: "composer",
+    target: "conversation.composer",
+    mode: "wrap",
+    render({ snapshot, host, fallback }) {
+      const composer = snapshot as ComposerSnapshotV1;
+      return api.react.createElement(
+        "section",
+        {
+          "data-developer-loop-presenter": "composer",
+          "data-thread-id": composer.threadId ?? "none",
+          "data-submission-mode": composer.activeSubmissionMode ?? "send",
+        },
+        fallback,
+        api.react.createElement(
+          "button",
+          {
+            type: "button",
+            "data-composer-submit": "",
+            disabled: composer.readOnly === true || composer.running === true,
+            onClick: () => invokePresentationAction(host, "conversation.composer.submit", { threadId: composer.threadId }),
+          },
+          composer.running ? "Running" : "Submit",
+        ),
+      );
+    },
+  });
+  api.registerPresenter({
+    id: "primary-navigation",
+    target: "navigation.primary",
+    mode: "replace",
+    render({ snapshot, host }) {
+      const navigation = snapshot as NavigationSnapshotV1;
+      return api.react.createElement(
+        "nav",
+        {
+          "data-developer-loop-presenter": "navigation",
+          "data-active-node": navigation.activeNodeId ?? "none",
+          "data-node-count": String(navigation.nodes.length),
+        },
+        ...navigation.nodes.map((node) => api.react.createElement(
+          "button",
+          {
+            type: "button",
+            key: node.id,
+            "data-navigation-node": node.id,
+            disabled: node.disabled === true,
+            onClick: () => invokePresentationAction(host, "navigation.activate-node", { nodeId: node.id }),
+          },
+          node.label,
+        )),
+      );
+    },
+  });
+  api.registerPresenter({
+    id: "markdown-preview",
+    target: "content.preview",
+    key: "text/markdown",
+    mode: "wrap",
+    render({ snapshot, fallback }) {
+      const preview = snapshot as FilePreviewSnapshotV1;
+      return api.react.createElement(
+        "section",
+        {
+          "data-developer-loop-presenter": "content-preview",
+          "data-resource-id": preview.resourceId,
+          "data-content-type": preview.contentType ?? "unknown",
+          "data-read-only": String(preview.readOnly === true),
+        },
+        api.react.createElement("code", null, preview.workspaceRelativePath),
+        api.react.createElement("pre", null, preview.text ?? ""),
+        fallback,
+      );
+    },
+  });
+  api.registerPresenter({
+    id: "application-status",
+    target: "app.status",
+    mode: "replace",
+    render({ snapshot, host }) {
+      const status = snapshot as StatusSnapshotV1;
+      return api.react.createElement(
+        "aside",
+        { "data-developer-loop-presenter": "app-status", "data-status-count": String(status.items.length) },
+        ...status.items.map((item) => api.react.createElement(
+          "button",
+          {
+            type: "button",
+            key: item.id,
+            "data-status-item": item.id,
+            "data-status-kind": item.kind ?? "info",
+            disabled: item.disabled === true,
+            onClick: () => invokePresentationAction(host, "status.activate-item", { itemId: item.id }),
+          },
+          item.label,
+        )),
+      );
+    },
+  });
+  api.registerPresenter({
+    id: "conversation-header",
+    target: "header.conversation",
+    mode: "wrap",
+    render({ snapshot, fallback }) {
+      const header = snapshot as HeaderSnapshotV1;
+      return api.react.createElement(
+        "header",
+        {
+          "data-developer-loop-presenter": "conversation-header",
+          "data-header-scope": header.scope,
+          "data-active-tab": header.activeTabId ?? "none",
+        },
+        api.react.createElement("strong", null, header.title ?? "Conversation"),
+        fallback,
+      );
+    },
+  });
 }
 
 function acceptanceView(api: PluginGenerationApi, props: Readonly<Record<string, unknown>>): unknown {
@@ -90,6 +249,7 @@ function acceptanceView(api: PluginGenerationApi, props: Readonly<Record<string,
 }
 
 export function activate(api: PluginGenerationApi): void {
+  registerAcceptancePresenters(api);
   api.registerToolActivityPresenter({
     id: "developer-loop-echo",
     key: "developer-loop.tool.echo",
