@@ -167,7 +167,7 @@ describe("TurnView", () => {
     expect(view.querySelectorAll(".user-message-block")).toHaveLength(1);
   });
 
-  it("renders a subagent wake notification through the existing user-message flow", () => {
+  it("keeps subagent wake notifications hidden while the presentation is disabled", () => {
     const view = render(
       makeTurn("completed", [
         {
@@ -184,8 +184,8 @@ describe("TurnView", () => {
       ]),
     );
 
-    expect(view.querySelectorAll(".user-message-block")).toHaveLength(1);
-    expect(view.querySelector(".user-message")?.textContent).toBe("太阳更新了状态");
+    expect(view.querySelectorAll(".user-message-block")).toHaveLength(0);
+    expect(view.textContent).not.toContain("太阳更新了状态");
     expect(view.querySelector(".turn-subagent-status")).toBeNull();
   });
 

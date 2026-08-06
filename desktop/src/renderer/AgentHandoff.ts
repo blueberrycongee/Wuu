@@ -4,6 +4,11 @@ export type AgentHandoffDisplay = {
   label: string;
 };
 
+// Keep the finished presentation path dormant while its product details are
+// being refined. Subagent notifications still wake the parent agent and stay
+// in the transcript; only their renderer is disabled.
+export const SHOW_SUBAGENT_UPDATE_MESSAGES = false;
+
 // Structured outcome so chip aggregation never has to re-derive meaning
 // from localized label text.
 export type SubagentChipOutcome =
