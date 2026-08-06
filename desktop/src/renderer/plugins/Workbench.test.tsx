@@ -121,6 +121,75 @@ describe("WorkbenchController", () => {
     controller.dispose();
   });
 
+  it("keeps colliding view IDs bound to their plugin across layouts, persistence, and reloads", async () => {
+    const host = new PluginHost({ react: React });
+    await host.activateGeneration({
+      pluginId: "user:alpha",
+      generation: "one",
+      register: (api) => registerCollidingGeneration(api, "alpha", "one"),
+    });
+    await host.activateGeneration({
+      pluginId: "user:beta",
+      generation: "one",
+      register: (api) => registerCollidingGeneration(api, "beta", "one"),
+    });
+    const availablePlugins = new Set(["user:alpha", "user:beta"]);
+    const controller = new WorkbenchController(host);
+    controller.setAvailablePluginIds(availablePlugins);
+
+    expect(controller.getSnapshot().views).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: "layout:user:alpha:default-shared",
+        pluginId: "user:alpha",
+        generation: "one",
+      }),
+      expect.objectContaining({
+        id: "layout:user:beta:default-shared",
+        pluginId: "user:beta",
+        generation: "one",
+      }),
+    ]));
+    await expect(controller.openView("shared.view")).rejects.toThrow("view type is ambiguous");
+
+    const alphaLauncherId = await controller.openView("alpha.launcher");
+    const alphaLauncher = controller.getSnapshot().views.find((view) => view.id === alphaLauncherId);
+    expect(alphaLauncher).toBeDefined();
+    if (!alphaLauncher) return;
+    const alphaHost = controller.createViewHostAPI(alphaLauncher);
+    await alphaHost.openView("shared.view", { pane: "main" });
+    await alphaHost.openView("beta.unique", { pane: "pane" });
+    expect(controller.getSnapshot().views).toEqual(expect.arrayContaining([
+      expect.objectContaining({ viewTypeId: "shared.view", pluginId: "user:alpha", pane: "main" }),
+      expect.objectContaining({ viewTypeId: "beta.unique", pluginId: "user:beta", pane: "pane" }),
+    ]));
+
+    const restored = new WorkbenchController(host);
+    restored.setAvailablePluginIds(availablePlugins);
+    expect(restored.getSnapshot().views.filter((view) => view.viewTypeId === "shared.view")).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ pluginId: "user:alpha", generation: "one" }),
+        expect.objectContaining({ pluginId: "user:beta", generation: "one" }),
+      ]),
+    );
+
+    await host.activateGeneration({
+      pluginId: "user:alpha",
+      generation: "two",
+      register: (api) => registerCollidingGeneration(api, "alpha", "two"),
+    });
+    const reloadedSharedViews = restored.getSnapshot().views.filter((view) =>
+      view.viewTypeId === "shared.view");
+    expect(new Set(reloadedSharedViews
+      .filter((view) => view.pluginId === "user:alpha")
+      .map((view) => view.generation))).toEqual(new Set(["two"]));
+    expect(new Set(reloadedSharedViews
+      .filter((view) => view.pluginId === "user:beta")
+      .map((view) => view.generation))).toEqual(new Set(["one"]));
+
+    controller.dispose();
+    restored.dispose();
+  });
+
   it("reconciles generation resources without retaining stale views, renderers, tokens, or status", async () => {
     const host = new PluginHost({ react: React });
     await host.activateGeneration({
@@ -201,6 +270,29 @@ describe("DesktopWorkbench product path", () => {
     await act(async () => host.unload("user:product"));
     expect(container.querySelector(".conversation-pane")?.textContent).not.toContain("Plugin product view");
     expect(document.body.textContent).not.toContain("Plugin ready");
+  });
+
+  it("renders colliding layout view IDs with each plugin's own definition", async () => {
+    const host = new PluginHost({ react: React });
+    await host.activateGeneration({
+      pluginId: "user:alpha",
+      generation: "one",
+      register: (api) => registerCollidingGeneration(api, "alpha", "one"),
+    });
+    await host.activateGeneration({
+      pluginId: "user:beta",
+      generation: "one",
+      register: (api) => registerCollidingGeneration(api, "beta", "one"),
+    });
+
+    await act(async () => root.render(
+      <DesktopWorkbench
+        host={host}
+        inventory={[inventoryPlugin("user:alpha"), inventoryPlugin("user:beta")]}
+      />,
+    ));
+    expect(container.querySelector(".sidebar")?.textContent).toContain("alpha");
+    expect(container.querySelector(".conversation-pane")?.textContent).toContain("beta");
   });
 
   it("keeps settings, disable, and built-in UI escape actions available after a render failure", async () => {
@@ -290,6 +382,38 @@ function registerGeneration(api: PluginGenerationApi, label: string): void {
     tokens: { "--wuu-plugin-accent": label },
   });
   api.registerStatusItem({ id: "reload.status", label });
+}
+
+function registerCollidingGeneration(
+  api: PluginGenerationApi,
+  label: "alpha" | "beta",
+  generation: string,
+): void {
+  api.registerViewType({
+    id: "shared.view",
+    title: `${label} ${generation}`,
+    persistence: "durable",
+    render: () => <div>{label}</div>,
+  });
+  api.registerViewType({
+    id: `${label}.launcher`,
+    title: `${label} launcher`,
+    render: () => null,
+  });
+  if (label === "beta") {
+    api.registerViewType({
+      id: "beta.unique",
+      title: "Beta unique",
+      persistence: "durable",
+      render: () => null,
+    });
+  }
+  api.registerLayoutContribution({
+    id: "default-shared",
+    parentId: "root",
+    pane: label === "alpha" ? "sidebar" : "auxiliary",
+    defaultView: "shared.view",
+  });
 }
 
 function inventoryPlugin(id: string): ExtensionInventoryRecord {

@@ -106,7 +106,15 @@ export class WorkbenchController {
   }
 
   async openView(viewTypeId: string, options: OpenViewOptions = {}): Promise<string> {
-    const definition = this.findViewType(viewTypeId);
+    return this.openResolvedView(viewTypeId, options);
+  }
+
+  private openResolvedView(
+    viewTypeId: string,
+    options: OpenViewOptions,
+    preferredPluginId?: string,
+  ): string {
+    const definition = this.findViewType(viewTypeId, preferredPluginId);
     if (!definition) {
       throw new Error(`Plugin view type is not available: ${viewTypeId}`);
     }
@@ -168,7 +176,7 @@ export class WorkbenchController {
       executeCommand: async (commandId: string, input?: unknown) =>
         this.executeCommand(view.pluginId, commandId, input),
       openView: async (viewTypeId: string, options?: OpenViewOptions) => {
-        await this.openView(viewTypeId, options);
+        this.openResolvedView(viewTypeId, options ?? {}, view.pluginId);
       },
       closeView: async () => this.closeView(view.id),
     });
@@ -188,14 +196,15 @@ export class WorkbenchController {
   }
 
   private reconcileHost(): void {
-    const definitions = new Map(this.host.getViewTypes().map((view) => [view.id, view]));
+    const definitions = new Map(
+      this.host.getViewTypes().map((view) => [viewTypeKey(view.pluginId, view.id), view]),
+    );
     let views = this.state.views.flatMap((view): WorkbenchViewState[] => {
       if (this.availablePluginIds && !this.availablePluginIds.has(view.pluginId)) return [];
-      const definition = definitions.get(view.viewTypeId);
+      const definition = definitions.get(viewTypeKey(view.pluginId, view.viewTypeId));
       if (!definition) return [view];
       return [{
         ...view,
-        pluginId: definition.pluginId,
         generation: definition.generation,
         persistence: definition.persistence ?? view.persistence,
       }];
@@ -204,7 +213,7 @@ export class WorkbenchController {
     for (const layout of this.host.getLayoutContributions()) {
       if (!layout.defaultView) continue;
       const layoutId = `${layout.pluginId}:${layout.id}`;
-      const definition = definitions.get(layout.defaultView);
+      const definition = definitions.get(viewTypeKey(layout.pluginId, layout.defaultView));
       if (!definition
         || (this.availablePluginIds && !this.availablePluginIds.has(definition.pluginId))
         || this.state.dismissedLayoutIds.includes(layoutId)) continue;
@@ -261,10 +270,13 @@ export class WorkbenchController {
   }
 
   private createSnapshot(): WorkbenchSnapshot {
-    const registeredIds = new Set(this.host.getViewTypes().map((view) => view.id));
+    const registeredViews = new Set(
+      this.host.getViewTypes().map((view) => viewGenerationKey(view.pluginId, view.id, view.generation)),
+    );
     return Object.freeze({
       ...this.state,
-      views: Object.freeze(this.state.views.filter((view) => registeredIds.has(view.viewTypeId))),
+      views: Object.freeze(this.state.views.filter((view) =>
+        registeredViews.has(viewGenerationKey(view.pluginId, view.viewTypeId, view.generation)))),
       viewTypes: this.host.getViewTypes(),
       renderers: this.host.getRenderers(),
     });
@@ -288,8 +300,15 @@ export class WorkbenchController {
     }
   }
 
-  private findViewType(viewTypeId: string): RegisteredViewType | undefined {
+  private findViewType(
+    viewTypeId: string,
+    preferredPluginId?: string,
+  ): RegisteredViewType | undefined {
     const matches = this.host.getViewTypes().filter((view) => view.id === viewTypeId);
+    const preferred = preferredPluginId
+      ? matches.find((view) => view.pluginId === preferredPluginId)
+      : undefined;
+    if (preferred) return preferred;
     if (matches.length > 1) throw new Error(`Plugin view type is ambiguous: ${viewTypeId}`);
     return matches[0];
   }
@@ -355,7 +374,9 @@ export function DesktopWorkbench({
     const target = resolvePaneTarget(pane);
     if (!active || !target) return [];
     const definition = snapshot.viewTypes.find((view) =>
-      view.id === active.viewTypeId && view.generation === active.generation);
+      view.pluginId === active.pluginId
+      && view.id === active.viewTypeId
+      && view.generation === active.generation);
     if (!definition) return [];
     return [createPortal(
       <WorkbenchView
@@ -420,7 +441,8 @@ function WorkbenchView({ controller, definition, view, siblingViews }: Workbench
               aria-selected={sibling.id === view.id}
               onClick={() => controller.activateView(sibling.id)}
             >
-              {controller.getSnapshot().viewTypes.find((item) => item.id === sibling.viewTypeId)?.title
+              {controller.getSnapshot().viewTypes.find((item) =>
+                item.pluginId === sibling.pluginId && item.id === sibling.viewTypeId)?.title
                 ?? sibling.viewTypeId}
             </button>
           ))}
@@ -604,6 +626,14 @@ function freezeContext(context: Readonly<Record<string, unknown>> | undefined): 
 
 function pluginStorageKey(pluginId: string, key: string): string {
   return `${PLUGIN_STORAGE_PREFIX}:${encodeURIComponent(pluginId)}:${encodeURIComponent(key)}`;
+}
+
+function viewTypeKey(pluginId: string, viewTypeId: string): string {
+  return `${pluginId}\u0000${viewTypeId}`;
+}
+
+function viewGenerationKey(pluginId: string, viewTypeId: string, generation: string): string {
+  return `${viewTypeKey(pluginId, viewTypeId)}\u0000${generation}`;
 }
 
 function requireStorageKey(key: string): void {
