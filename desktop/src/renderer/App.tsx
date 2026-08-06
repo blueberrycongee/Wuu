@@ -226,9 +226,10 @@ import type { WorkspaceViewTab } from "./WorkspaceViewTabs";
 import { ImagePreviewProvider } from "./ImagePreview";
 import {
   desktopPluginHost,
+  desktopWorkbenchController,
   useDesktopPluginRuntime,
 } from "./plugins/DesktopPluginRuntime";
-import { PluginSurface } from "./plugins";
+import { DesktopWorkbench, PluginSurface } from "./plugins";
 import { WINDOW_RESIZING_CLASS } from "./WindowResizeState";
 import { useComposerDraftState } from "./ComposerDraftState";
 import { useComposerPendingState } from "./ComposerPendingState";
@@ -5128,6 +5129,23 @@ export function App(): JSX.Element {
           </div>
         </FloatingMenuPortal>
       ) : null}
+      <DesktopWorkbench
+        host={desktopPluginHost}
+        controller={desktopWorkbenchController}
+        inventory={state.initialized?.extension_inventory}
+        services={{
+          openSettings: () => {
+            setSettingsInitialPage("providers");
+            setSettingsOpen(true);
+          },
+          disablePlugin: async (pluginId) => {
+            await updateExtensionPackage({ id: pluginId, action: "disable" });
+          },
+          reportError: (pluginId, generation, error) => {
+            console.error(`Plugin view ${pluginId}@${generation} failed to render`, error);
+          },
+        }}
+      />
       </div>
           }
         />

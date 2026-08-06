@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import type { ExtensionInventoryRecord } from "../../shared/protocol";
 import { syncExtensionTheme } from "../Theme";
 import { PluginHost, type PluginGenerationApi } from "./PluginHost";
+import { WorkbenchController } from "./Workbench";
 
 interface DesktopPluginModule {
   activate(api: PluginGenerationApi): void | Promise<void>;
@@ -18,6 +19,7 @@ export interface DesktopPluginFailure {
 }
 
 export const desktopPluginHost = new PluginHost({ react: React });
+export const desktopWorkbenchController = new WorkbenchController(desktopPluginHost);
 
 export class DesktopPluginRuntime {
   private readonly activeGenerations = new Map<string, string>();

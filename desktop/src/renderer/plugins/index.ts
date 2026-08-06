@@ -23,3 +23,13 @@ export {
 } from "./PluginHost";
 export { PluginSlot, type PluginSlotProps } from "./PluginSlot";
 export { PluginSurface, type PluginSurfaceProps } from "./PluginSurface";
+export {
+  DesktopWorkbench,
+  PluginErrorBoundary,
+  WorkbenchContentRenderer,
+  WorkbenchController,
+  type DesktopWorkbenchProps,
+  type WorkbenchContentRendererProps,
+  type WorkbenchServices,
+  type WorkbenchSnapshot,
+} from "./Workbench";

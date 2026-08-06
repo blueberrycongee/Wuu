@@ -80,6 +80,29 @@ export interface OpenViewOptions {
   context?: Readonly<Record<string, unknown>>;
 }
 
+/** Current on-disk workbench state schema. */
+export const WORKBENCH_LAYOUT_STATE_VERSION = 1 as const;
+
+/** A host-owned view instance. Plugins never receive the mutable instance. */
+export interface WorkbenchViewState {
+  id: string;
+  pluginId: string;
+  generation: string;
+  viewTypeId: ViewTypeId;
+  pane: ViewPane;
+  persistence: ViewPersistence;
+  context: Readonly<Record<string, unknown>>;
+  sourceLayoutId?: string;
+}
+
+/** Versioned, shell-independent state persisted by the desktop workbench. */
+export interface WorkbenchLayoutState {
+  version: typeof WORKBENCH_LAYOUT_STATE_VERSION;
+  views: readonly WorkbenchViewState[];
+  activeViewByPane: Readonly<Partial<Record<ViewPane, string>>>;
+  dismissedLayoutIds: readonly string[];
+}
+
 // ---------------------------------------------------------------------------
 // Layout
 // ---------------------------------------------------------------------------

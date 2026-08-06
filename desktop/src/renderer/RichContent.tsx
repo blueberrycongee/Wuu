@@ -1,4 +1,4 @@
-import { Children, cloneElement, isValidElement, memo, useEffect, useId, useMemo, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
+import { Children, cloneElement, isValidElement, memo, useEffect, useId, useMemo, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { FileText, Github, Globe2, Mail } from "lucide-react";
 import ReactMarkdown, { defaultUrlTransform, type Components, type UrlTransform } from "react-markdown";
 import rehypeRaw from "rehype-raw";
@@ -15,6 +15,8 @@ import { MessageCopyButton } from "./MessageActions";
 import { useI18n } from "./i18n";
 import { Tooltip } from "./Tooltip";
 import { currentAppliedTheme, observeAppliedTheme, type AppliedTheme } from "./Theme";
+import { desktopWorkbenchController } from "./plugins/DesktopPluginRuntime";
+import { WorkbenchContentRenderer } from "./plugins/Workbench";
 
 type RichContentProps = {
   text?: string;
@@ -158,7 +160,11 @@ export const RichContent = memo(function RichContent({
   onOpenFile,
   allowRawHtml = false
 }: RichContentProps): JSX.Element {
-  return (
+  useSyncExternalStore(
+    desktopWorkbenchController.subscribe,
+    desktopWorkbenchController.getSnapshot,
+  );
+  const fallback = (
     <div className="rich-content">
       <MarkdownContent
         text={text}
@@ -167,6 +173,16 @@ export const RichContent = memo(function RichContent({
         allowRawHtml={allowRawHtml}
       />
     </div>
+  );
+  return (
+    <WorkbenchContentRenderer
+      controller={desktopWorkbenchController}
+      category="message"
+      contentType="text/markdown"
+      content={text}
+      metadata={{ cwd, allowRawHtml }}
+      fallback={fallback}
+    />
   );
 });
 

@@ -1,0 +1,100 @@
+.plugin-workbench-view {
+  position: absolute;
+  inset: 0;
+  z-index: 125;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  color: var(--text-primary);
+  background: var(--surface-primary, var(--background));
+}
+
+.plugin-workbench-view-overlay {
+  position: fixed;
+  z-index: 10000;
+  margin: auto;
+  width: min(920px, calc(100vw - 48px));
+  height: min(720px, calc(100vh - 48px));
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg, 12px);
+  box-shadow: var(--shadow-lg, 0 18px 60px rgba(0, 0, 0, 0.24));
+}
+
+.plugin-workbench-view-auxiliary {
+  left: auto;
+  width: min(420px, 45%);
+  border-left: 1px solid var(--border-subtle);
+}
+
+.plugin-workbench-view-header {
+  display: flex;
+  min-height: 38px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 8px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.plugin-workbench-view-header [role="tablist"] {
+  display: flex;
+  min-width: 0;
+  gap: 4px;
+  overflow-x: auto;
+}
+
+.plugin-workbench-view-header button,
+.plugin-workbench-status button,
+.plugin-workbench-error button {
+  border: 0;
+  border-radius: 6px;
+  padding: 5px 8px;
+  color: inherit;
+  background: transparent;
+}
+
+.plugin-workbench-view-header button:hover,
+.plugin-workbench-status button:hover,
+.plugin-workbench-error button:hover {
+  background: var(--surface-hover, rgba(127, 127, 127, 0.14));
+}
+
+.plugin-workbench-view-header [aria-selected="true"] {
+  background: var(--surface-selected, rgba(127, 127, 127, 0.18));
+}
+
+.plugin-workbench-view > :last-child:not(.plugin-workbench-view-header) {
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+}
+
+.plugin-workbench-error {
+  display: grid;
+  place-content: center;
+  gap: 12px;
+  padding: 24px;
+  text-align: center;
+}
+
+.plugin-workbench-error > div {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+}
+
+.plugin-workbench-status {
+  position: fixed;
+  right: 12px;
+  bottom: 8px;
+  z-index: 124;
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  color: var(--text-secondary);
+  background: var(--surface-primary, var(--background));
+  box-shadow: var(--shadow-sm, 0 2px 10px rgba(0, 0, 0, 0.12));
+}
