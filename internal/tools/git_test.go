@@ -19,6 +19,21 @@ import (
 
 func setupGitRepo(t *testing.T) (*Toolkit, string) {
 	t.Helper()
+	// Strip inherited wuu git-wrapper shim dirs from PATH. Agent shells (and
+	// any process spawned from one, like `go test` run inside wuu) carry the
+	// attribution wrapper first on PATH, and the structured git tool resolves
+	// "git" through this process's PATH. The shim appends the co-author
+	// trailer unconditionally, which breaks the attribution-disabled
+	// assertions below.
+	pathEntries := strings.Split(os.Getenv("PATH"), string(os.PathListSeparator))
+	kept := pathEntries[:0]
+	for _, entry := range pathEntries {
+		if strings.Contains(entry, "git-wrapper") {
+			continue
+		}
+		kept = append(kept, entry)
+	}
+	t.Setenv("PATH", strings.Join(kept, string(os.PathListSeparator)))
 	root := t.TempDir()
 	for _, c := range []string{
 		"git init -q",
