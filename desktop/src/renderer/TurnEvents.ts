@@ -46,10 +46,10 @@ export function turnEventForTurn(
   hasAssistantOutput: boolean,
   hasMissingReply: boolean = false,
 ): TurnEventDisplay | undefined {
-  // User cancellations are resumable pauses. The composer owns that state;
-  // rendering a terminal system notice here would split one logical response.
-  // Preserve a non-cancellation structured error if an interrupted turn also
-  // carries a real provider or local failure.
+  // A manual stop is an expected user action. Preserve any generated output,
+  // but do not add a redundant turn-level divider after the user just clicked
+  // the stop control. Preserve a non-cancellation structured error if an
+  // interrupted turn also carries a real provider or local failure.
   const interruptionError = turn.error?.message.trim();
   if (
     turn.status === "interrupted" &&

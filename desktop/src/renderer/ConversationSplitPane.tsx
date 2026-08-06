@@ -6,7 +6,6 @@ import type {
   ThreadItem,
 } from "../shared/protocol";
 import { SplitPaneComposer } from "./ComposerView";
-import { canResumeInterruptedTurn } from "./TurnContinuation";
 import {
   isThreadRunning,
   type ComposerDraftState,
@@ -41,7 +40,6 @@ export function ConversationSplitPane({
   onRemoveImage,
   onSend,
   onInterrupt,
-  onResume,
   onForkMessage,
   onOpenFile,
   onOpenAgent,
@@ -72,7 +70,6 @@ export function ConversationSplitPane({
   onRemoveImage: (id: string) => void;
   onSend: () => void;
   onInterrupt: () => void;
-  onResume: () => void;
   onForkMessage: (turnID: string, itemID: string) => void;
   onOpenFile?: (path: string) => void;
   onOpenAgent?: (agentID: string) => void;
@@ -187,7 +184,6 @@ export function ConversationSplitPane({
         files={draft.files}
         images={draft.images}
         running={(!paneReadOnly && paneRunning) || viewSwitchPending}
-        paused={canResumeInterruptedTurn(thread)}
         readOnly={paneReadOnly}
         status={paneStatus}
         statusLiveProgress={
@@ -198,7 +194,6 @@ export function ConversationSplitPane({
         onRemoveImage={onRemoveImage}
         onSend={onSend}
         onInterrupt={onInterrupt}
-        onResume={onResume}
         queryHistorySessionID={thread.id}
         queryHistory={queryHistory}
       />

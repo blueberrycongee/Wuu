@@ -1219,7 +1219,7 @@ export type ManagedProcessWriteResult = ManagedProcessActionResult & {
 
 export type ThreadStatus = "idle" | "in_progress";
 export type TurnStatus = "in_progress" | "completed" | "failed" | "interrupted";
-export type TurnKind = "user" | "continuation" | "internal" | "compact";
+export type TurnKind = "user" | "internal" | "compact";
 export type TurnItemsView = "full";
 export type ThreadItemType =
   | "user_message"
@@ -2518,7 +2518,6 @@ export type WuuDesktopApi = {
     permissionMode?: string,
     activeDocument?: ActiveDocumentContext,
   ) => Promise<{ turn: Turn }>;
-  resumeTurn: (threadId: string) => Promise<{ turn: Turn }>;
   queueTurn: (
     threadId: string,
     prompt: string,

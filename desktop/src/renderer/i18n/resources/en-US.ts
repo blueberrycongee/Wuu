@@ -748,7 +748,6 @@ export const enUS = {
   "composer.subagentsRunning": "Subagents running",
   "composer.stop": "Stop",
   "composer.pause": "Pause",
-  "composer.resume": "Continue",
   "composer.readOnly": "Subtask conversation is read-only",
   "composer.followupChanges": "Request follow-up changes",
   "composer.addDescription": "Add a description",

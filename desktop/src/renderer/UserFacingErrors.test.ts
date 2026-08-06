@@ -395,7 +395,7 @@ describe("userFacingErrorForMessage", () => {
 });
 
 describe("TurnEvents", () => {
-  it("suppresses the old stop event for a resumable interruption", () => {
+  it("does not render an event for a manual interruption", () => {
     const turn: Turn = {
       id: "turn-1",
       items: [],

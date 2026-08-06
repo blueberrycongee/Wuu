@@ -73,7 +73,6 @@ export type ConversationSplitPaneRendererProps = {
   onRemoveImage: (pane: ConversationPaneID, id: string) => void;
   onSend: (pane: ConversationPaneID) => void;
   onInterrupt: (pane: ConversationPaneID) => void;
-  onResume: (pane: ConversationPaneID) => void;
   onForkMessage: (thread: Thread, turnID: string, itemID: string) => void;
   onOpenFile?: (thread: Thread, path: string) => void;
   onOpenAgent: (agent: Agent) => void;
@@ -115,7 +114,6 @@ export function ConversationSplitPaneRenderer({
   onRemoveImage,
   onSend,
   onInterrupt,
-  onResume,
   onForkMessage,
   onOpenFile,
   onOpenAgent,
@@ -155,7 +153,6 @@ export function ConversationSplitPaneRenderer({
       onRemoveImage={(id) => onRemoveImage(pane, id)}
       onSend={() => onSend(pane)}
       onInterrupt={() => onInterrupt(pane)}
-      onResume={() => onResume(pane)}
       onForkMessage={(turnID, itemID) => onForkMessage(thread, turnID, itemID)}
       onOpenFile={(path) => onOpenFile?.(thread, path)}
       onOpenAgent={(agentID) => {

@@ -746,7 +746,6 @@ export const zhCN = {
   "composer.subagentsRunning": "subagent 运行中",
   "composer.stop": "停止",
   "composer.pause": "暂停",
-  "composer.resume": "继续",
   "composer.readOnly": "子任务会话只读",
   "composer.followupChanges": "要求后续变更",
   "composer.addDescription": "添加描述",

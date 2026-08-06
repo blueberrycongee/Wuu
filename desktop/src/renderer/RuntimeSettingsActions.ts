@@ -8,7 +8,6 @@ import type {
 import {
   activeThreadForState,
   threadForPane,
-  upsertTurn,
   updateThreadByID,
   type AppState,
   type ConversationPaneID,
@@ -69,8 +68,6 @@ export type RuntimeSettingsActions = {
   selectPermissionMode: (mode: PermissionMode) => Promise<void>;
   interrupt: () => Promise<void>;
   interruptPane: (pane: ConversationPaneID) => Promise<void>;
-  resume: () => Promise<void>;
-  resumePane: (pane: ConversationPaneID) => Promise<void>;
 };
 
 type RuntimeSelectionUpdate = {
@@ -562,29 +559,6 @@ export function createRuntimeSettingsActions(
     await window.wuu.interruptTurn(thread.id);
   }
 
-  async function resumeThread(thread: Thread | undefined): Promise<void> {
-    if (!thread) {
-      return;
-    }
-    const result = await window.wuu.resumeTurn(thread.id);
-    deps.setAppState((current) =>
-      updateThreadByID(
-        current,
-        thread.id,
-        (currentThread) => upsertTurn(currentThread, result.turn),
-        { running: true },
-      ),
-    );
-  }
-
-  async function resume(): Promise<void> {
-    await resumeThread(activeThreadForState(deps.getAppState()));
-  }
-
-  async function resumePane(pane: ConversationPaneID): Promise<void> {
-    await resumeThread(threadForPane(deps.getAppState(), pane));
-  }
-
   return {
     updateRuntimeSettings,
     updateUltraMode,
@@ -598,7 +572,5 @@ export function createRuntimeSettingsActions(
     selectPermissionMode,
     interrupt,
     interruptPane,
-    resume,
-    resumePane,
   };
 }

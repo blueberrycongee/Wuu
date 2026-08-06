@@ -1823,8 +1823,7 @@
 /* Send and stop share the utility-button footprint so the primary action
  * stays clear without overpowering the composer or shifting between states. */
 .composer-send-button,
-.composer-stop-button,
-.composer-resume-button {
+.composer-stop-button {
   width: 28px;
   height: 28px;
 }
@@ -1832,21 +1831,6 @@
 .composer-send-button {
   background: var(--wuu-accent);
   color: #fff;
-}
-
-.composer-resume-button {
-  background: var(--wuu-accent);
-  color: #fff;
-}
-
-.composer-resume-button:hover {
-  background: var(--wuu-accent-press);
-}
-
-.composer-resume-button svg {
-  width: 13px;
-  height: 13px;
-  fill: currentColor;
 }
 
 .composer-send-button svg {
