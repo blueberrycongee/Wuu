@@ -7,6 +7,7 @@ import type {
   GitStatusResult,
   InitializeResult,
   PlanUpdate,
+  PluginInventoryChangedNotification,
   RuntimeContext,
   ServerEvent,
   Thread,
@@ -578,6 +579,18 @@ function reduceNotification(
 ): AppState {
   const params = notification.params as Record<string, unknown> | undefined;
   switch (notification.method) {
+    case "plugin/inventory/changed": {
+      if (!state.initialized || !isPluginInventoryChangedNotification(params)) {
+        return state;
+      }
+      return {
+        ...state,
+        initialized: {
+          ...state.initialized,
+          extension_inventory: params.extension_inventory,
+        },
+      };
+    }
     case "thread/started":
     case "thread/resumed": {
       const thread = threadFromRecord(recordValue(params, "thread"));
@@ -781,6 +794,22 @@ function reduceNotification(
     default:
       return state;
   }
+}
+
+function isPluginInventoryChangedNotification(
+  value: unknown,
+): value is PluginInventoryChangedNotification {
+  if (!isRecord(value) || typeof value.epoch !== "number" || !Array.isArray(value.extension_inventory)) {
+    return false;
+  }
+  return value.extension_inventory.every((item) =>
+    isRecord(item)
+    && typeof item.id === "string"
+    && typeof item.name === "string"
+    && typeof item.kind === "string"
+    && typeof item.state === "string"
+    && isRecord(item.provenance),
+  );
 }
 
 function setTurnStreamStatus(

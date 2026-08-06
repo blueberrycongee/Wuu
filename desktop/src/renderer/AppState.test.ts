@@ -3568,4 +3568,46 @@ describe("extension inventory context", () => {
     expect(withExtensionInventoryForContext(state, projectA, nextInventory)).toBe(state);
     expect(withExtensionInventoryForContext(state, projectB, nextInventory).initialized?.extension_inventory).toEqual(nextInventory);
   });
+
+  it("applies a live plugin generation inventory notification", () => {
+    const state = {
+      ...initialState,
+      activeContext: projectB,
+      initialized: { extension_inventory: oldInventory },
+    } as AppState;
+
+    const next = reduceServerEvent(state, {
+      kind: "notification",
+      workdir: projectB.cwd,
+      message: {
+        method: "plugin/inventory/changed",
+        params: {
+          epoch: 2,
+          extension_inventory: nextInventory,
+          skills: [],
+        },
+      },
+    });
+
+    expect(next.initialized?.extension_inventory).toEqual(nextInventory);
+  });
+
+  it("ignores malformed live plugin inventory notifications", () => {
+    const state = {
+      ...initialState,
+      activeContext: projectB,
+      initialized: { extension_inventory: oldInventory },
+    } as AppState;
+
+    const next = reduceServerEvent(state, {
+      kind: "notification",
+      workdir: projectB.cwd,
+      message: {
+        method: "plugin/inventory/changed",
+        params: { epoch: 2, extension_inventory: [{ id: "incomplete" }] },
+      },
+    });
+
+    expect(next).toBe(state);
+  });
 });

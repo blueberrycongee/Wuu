@@ -375,6 +375,13 @@ export type ExtensionCatalogRefreshResult = {
   skills: SkillSummary[];
 };
 
+/** Published after the core atomically activates a new plugin generation. */
+export type PluginInventoryChangedNotification = {
+  epoch: number;
+  extension_inventory: ExtensionInventoryRecord[];
+  skills: SkillSummary[];
+};
+
 export type PluginPackageSourceKind = "directory" | "zip";
 
 export type PluginPackageMetadata = {
