@@ -63,6 +63,19 @@ type UninstallResult struct {
 	Removed     bool
 }
 
+// PackToZip creates a distributable .zip from a validated plugin directory.
+// It validates the source directory first, then archives it. The zip is
+// suitable for distribution and installation via wuu plugin install.
+func PackToZip(sourceDir, zipPath string) error {
+	if _, err := InspectPackage(sourceDir); err != nil {
+		return fmt.Errorf("pack: validate plugin: %w", err)
+	}
+	if err := zipDirectory(sourceDir, zipPath); err != nil {
+		return fmt.Errorf("pack: create zip: %w", err)
+	}
+	return nil
+}
+
 type packageTreeStats struct {
 	files int
 	bytes int64
@@ -646,4 +659,67 @@ func inspectionFromStaged(item stagedPackage, source string, kind PackageSourceK
 func pathContains(parent, child string) bool {
 	rel, err := filepath.Rel(parent, child)
 	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && !filepath.IsAbs(rel)
+}
+
+// zipDirectory creates a zip file containing the directory tree at source.
+func zipDirectory(source, dest string) error {
+	file, err := os.Create(dest)
+	if err != nil {
+		return fmt.Errorf("create zip file: %w", err)
+	}
+	defer file.Close()
+
+	writer := zip.NewWriter(file)
+	defer writer.Close()
+
+	absSource, err := filepath.Abs(source)
+	if err != nil {
+		return fmt.Errorf("resolve source path: %w", err)
+	}
+
+	return filepath.WalkDir(absSource, func(path string, d os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if d.IsDir() {
+			return nil
+		}
+
+		rel, err := filepath.Rel(absSource, path)
+		if err != nil {
+			return fmt.Errorf("resolve relative path for %s: %w", path, err)
+		}
+
+		// Skip hidden files and directories (but keep dirs for traversal).
+		if strings.HasPrefix(filepath.Base(rel), ".") {
+			return nil
+		}
+
+		info, err := d.Info()
+		if err != nil {
+			return fmt.Errorf("get file info for %s: %w", rel, err)
+		}
+		header, err := zip.FileInfoHeader(info)
+		if err != nil {
+			return fmt.Errorf("create zip header for %s: %w", rel, err)
+		}
+		header.Name = filepath.ToSlash(rel)
+		header.Method = zip.Deflate
+
+		entry, err := writer.CreateHeader(header)
+		if err != nil {
+			return fmt.Errorf("create zip entry for %s: %w", rel, err)
+		}
+
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return fmt.Errorf("read file %s: %w", rel, err)
+		}
+
+		if _, err := entry.Write(data); err != nil {
+			return fmt.Errorf("write zip entry %s: %w", rel, err)
+		}
+
+		return nil
+	})
 }

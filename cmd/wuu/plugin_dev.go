@@ -208,13 +208,13 @@ func runPluginPack(args []string) error {
 		outPath = fmt.Sprintf("%s-%s.zip", inspection.ID, inspection.Version)
 	}
 
-	result, err := pluginpkg.InstallPackage(source, outPath)
-	if err != nil {
+	// Create zip from the validated plugin directory.
+	if err := pluginpkg.PackToZip(source, outPath); err != nil {
 		return pluginCLIError(fmt.Errorf("pack: %w", err))
 	}
 
-	fmt.Printf("Packed %s v%s → %s\n", result.Package.ID, result.Package.Version, outPath)
-	fmt.Printf("  fingerprint: %s\n", result.Package.Fingerprint)
+	fmt.Printf("Packed %s v%s → %s\n", inspection.ID, inspection.Version, outPath)
+	fmt.Printf("  fingerprint: %s\n", inspection.Fingerprint)
 	return nil
 }
 
@@ -422,7 +422,7 @@ func pluginScaffoldPackageJSON(name string) string {
 			"typecheck": "tsc --noEmit",
 		},
 		"devDependencies": map[string]string{
-			"typescript":       "^5.0.0",
+			"typescript":      "^5.0.0",
 			"@wuu/plugin-sdk": "workspace:*",
 		},
 	}, "", "  ")
