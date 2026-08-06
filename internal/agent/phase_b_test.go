@@ -327,7 +327,7 @@ type mockCompactionProvider struct {
 	priority int
 }
 
-func (m *mockCompactionProvider) CompactionKey() string { return m.key }
+func (m *mockCompactionProvider) CompactionKey() string   { return m.key }
 func (m *mockCompactionProvider) CompactionPriority() int { return m.priority }
 func (m *mockCompactionProvider) Compact(ctx context.Context, model string, messages []providers.ChatMessage) ([]providers.ChatMessage, error) {
 	return messages, nil
@@ -340,7 +340,7 @@ type mockProviderFactory struct {
 }
 
 func (m *mockProviderFactory) ProviderKey() string { return m.key }
-func (m *mockProviderFactory) Priority() int        { return m.priority }
+func (m *mockProviderFactory) Priority() int       { return m.priority }
 func (m *mockProviderFactory) SupportsModel(model string) bool {
 	for _, m := range m.models {
 		if m == model {

@@ -43,11 +43,11 @@ type HostConfig struct {
 // Host is a standalone plugin contract test host. It starts an external
 // plugin process and provides assertion helpers for verifying API contracts.
 type Host struct {
-	t       *testing.T
-	config  HostConfig
-	client  pluginhost.Client
-	diags   []Diagnostic
-	closed  bool
+	t      *testing.T
+	config HostConfig
+	client pluginhost.Client
+	diags  []Diagnostic
+	closed bool
 }
 
 // Diagnostic records a contract check result.

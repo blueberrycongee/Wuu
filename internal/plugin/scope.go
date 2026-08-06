@@ -54,10 +54,10 @@ type Generation struct {
 	// CreatedAt records when the generation was created.
 	CreatedAt time.Time
 
-	mu       sync.Mutex
-	disposed bool
+	mu        sync.Mutex
+	disposed  bool
 	disposers []func() error
-	errs     []error
+	errs      []error
 }
 
 // NewGeneration creates a generation bound to a specific plugin activation.

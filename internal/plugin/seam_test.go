@@ -6,14 +6,14 @@ import (
 
 func TestSeamDispatchValidate(t *testing.T) {
 	tests := []struct {
-		name    string
+		name     string
 		dispatch SeamDispatch
-		wantErr bool
+		wantErr  bool
 	}{
 		{
-			name:    "empty kind",
+			name:     "empty kind",
 			dispatch: SeamDispatch{},
-			wantErr: true,
+			wantErr:  true,
 		},
 		{
 			name: "valid observe",
@@ -212,7 +212,7 @@ func TestIsSafetyKernelSeam(t *testing.T) {
 
 func TestSeamKindString(t *testing.T) {
 	tests := map[SeamKind]string{
-		SeamObserve:  "observe",
+		SeamObserve:   "observe",
 		SeamTransform: "transform",
 		SeamGuard:     "guard",
 		SeamAround:    "around",

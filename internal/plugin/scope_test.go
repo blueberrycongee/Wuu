@@ -135,8 +135,8 @@ func TestGenerationFingerprint(t *testing.T) {
 
 func TestEffectKindClassification(t *testing.T) {
 	tests := []struct {
-		kind     EffectKind
-		isAgent  bool
+		kind      EffectKind
+		isAgent   bool
 		isDesktop bool
 	}{
 		{EffectTool, true, false},

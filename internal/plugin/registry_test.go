@@ -61,10 +61,10 @@ func TestRegistryRequiredDependency(t *testing.T) {
 
 	// Register an entry that requires it.
 	_, err := reg.Register("derived", RegistryEntry[string]{
-		Value:    "derived",
-		PluginID: "p1",
+		Value:      "derived",
+		PluginID:   "p1",
 		Generation: gen,
-		DependsOn: map[string]DependencyRule{"base": DepRequired},
+		DependsOn:  map[string]DependencyRule{"base": DepRequired},
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -76,10 +76,10 @@ func TestRegistryRequiredDependencyMissing(t *testing.T) {
 	gen := NewGeneration("gen-1", "p1", "1.0.0", "fp1")
 
 	_, err := reg.Register("derived", RegistryEntry[string]{
-		Value:    "derived",
-		PluginID: "p1",
+		Value:      "derived",
+		PluginID:   "p1",
 		Generation: gen,
-		DependsOn: map[string]DependencyRule{"base": DepRequired},
+		DependsOn:  map[string]DependencyRule{"base": DepRequired},
 	})
 	if err == nil {
 		t.Fatal("expected error for missing required dependency")
@@ -92,10 +92,10 @@ func TestRegistryOptionalDependency(t *testing.T) {
 
 	// Optional dependency can be missing.
 	_, err := reg.Register("derived", RegistryEntry[string]{
-		Value:    "derived",
-		PluginID: "p1",
+		Value:      "derived",
+		PluginID:   "p1",
 		Generation: gen,
-		DependsOn: map[string]DependencyRule{"base": DepOptional},
+		DependsOn:  map[string]DependencyRule{"base": DepOptional},
 	})
 	if err != nil {
 		t.Fatalf("unexpected error for optional missing: %v", err)
@@ -104,10 +104,10 @@ func TestRegistryOptionalDependency(t *testing.T) {
 	// And it can be present.
 	reg.Register("base", RegistryEntry[string]{Value: "base", PluginID: "p1", Generation: gen})
 	_, err = reg.Register("derived2", RegistryEntry[string]{
-		Value:    "derived2",
-		PluginID: "p1",
+		Value:      "derived2",
+		PluginID:   "p1",
 		Generation: gen,
-		DependsOn: map[string]DependencyRule{"base": DepOptional},
+		DependsOn:  map[string]DependencyRule{"base": DepOptional},
 	})
 	if err != nil {
 		t.Fatalf("unexpected error for optional present: %v", err)
@@ -121,10 +121,10 @@ func TestRegistryConflictDependency(t *testing.T) {
 	reg.Register("compactor-a", RegistryEntry[string]{Value: "a", PluginID: "p1", Generation: gen})
 
 	_, err := reg.Register("compactor-b", RegistryEntry[string]{
-		Value:    "b",
-		PluginID: "p1",
+		Value:      "b",
+		PluginID:   "p1",
 		Generation: gen,
-		DependsOn: map[string]DependencyRule{"compactor-a": DepConflicts},
+		DependsOn:  map[string]DependencyRule{"compactor-a": DepConflicts},
 	})
 	if err == nil {
 		t.Fatal("expected conflict error")
@@ -290,10 +290,10 @@ func TestValidateDependencies(t *testing.T) {
 		t.Fatalf("unexpected register error: %v", err)
 	}
 	_, err = reg.Register("derived", RegistryEntry[string]{
-		Value:    "derived",
-		PluginID: "p1",
+		Value:      "derived",
+		PluginID:   "p1",
 		Generation: gen,
-		DependsOn: map[string]DependencyRule{"base": DepRequired},
+		DependsOn:  map[string]DependencyRule{"base": DepRequired},
 	})
 	if err != nil {
 		t.Fatalf("unexpected register error: %v", err)
@@ -314,10 +314,10 @@ func TestValidateDependenciesMissingAfterDispose(t *testing.T) {
 		t.Fatalf("unexpected register error: %v", err)
 	}
 	_, err = reg.Register("derived", RegistryEntry[string]{
-		Value:    "derived",
-		PluginID: "p2",
+		Value:      "derived",
+		PluginID:   "p2",
 		Generation: gen2,
-		DependsOn: map[string]DependencyRule{"base": DepRequired},
+		DependsOn:  map[string]DependencyRule{"base": DepRequired},
 	})
 	if err != nil {
 		t.Fatalf("unexpected register error: %v", err)

@@ -265,11 +265,11 @@ type CapabilityInitializeParams struct {
 
 // allowedCapabilityKinds is the closed set of valid capability dispatch kinds.
 var allowedCapabilityKinds = map[string]bool{
-	"observe":  true,
+	"observe":   true,
 	"transform": true,
-	"guard":    true,
-	"around":   true,
-	"decision": true,
+	"guard":     true,
+	"around":    true,
+	"decision":  true,
 }
 
 // ValidateCapabilityDescriptor checks that a capability descriptor is well-formed.
