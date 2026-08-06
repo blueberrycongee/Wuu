@@ -16,6 +16,7 @@ import (
 	wuuexec "github.com/blueberrycongee/wuu/internal/exec"
 	"github.com/blueberrycongee/wuu/internal/extensions"
 	pluginpkg "github.com/blueberrycongee/wuu/internal/plugin"
+	"github.com/blueberrycongee/wuu/internal/session"
 	"github.com/blueberrycongee/wuu/internal/statepath"
 )
 
@@ -102,6 +103,11 @@ func runPluginInstall(args []string) error {
 	if err != nil {
 		return pluginCLIError(err)
 	}
+	releaseMutation, err := beginPluginCLIMutation(home, "install")
+	if err != nil {
+		return pluginCLIError(err)
+	}
+	defer releaseMutation()
 	if _, statErr := os.Lstat(filepath.Join(home, "plugins", inspection.ID)); statErr == nil {
 		pending, err := pluginpkg.StagePackageUpdate(home, source)
 		if err != nil {
@@ -147,6 +153,11 @@ func runPluginUpdate(args []string) error {
 	if err != nil {
 		return fmt.Errorf("resolve Wuu home: %w", err)
 	}
+	releaseMutation, err := beginPluginCLIMutation(home, "update")
+	if err != nil {
+		return pluginCLIError(err)
+	}
+	defer releaseMutation()
 	pending, err := pluginpkg.StagePackageUpdate(home, source)
 	if err != nil {
 		return pluginCLIError(err)
@@ -245,6 +256,11 @@ func runPluginRemove(args []string) error {
 	if err != nil {
 		return fmt.Errorf("resolve Wuu home: %w", err)
 	}
+	releaseMutation, err := beginPluginCLIMutation(home, "remove")
+	if err != nil {
+		return pluginCLIError(err)
+	}
+	defer releaseMutation()
 	pending, pendingErr := pluginpkg.ReadPendingUpdate(home, id)
 	if pendingErr != nil && !errors.Is(pendingErr, pluginpkg.ErrPendingUpdateNotFound) {
 		return pluginCLIError(pendingErr)
@@ -292,6 +308,15 @@ func runPluginPolicy(action string, args []string) error {
 	if err != nil {
 		return err
 	}
+	home, err := statepath.Home("")
+	if err != nil {
+		return fmt.Errorf("resolve Wuu home: %w", err)
+	}
+	releaseMutation, err := beginPluginCLIMutation(home, action)
+	if err != nil {
+		return pluginCLIError(err)
+	}
+	defer releaseMutation()
 	item, err := discoverPluginForPolicy(id, *workdir)
 	if err != nil {
 		return pluginCLIError(err)
@@ -300,10 +325,6 @@ func runPluginPolicy(action string, args []string) error {
 		return pluginCLIError(fmt.Errorf("official bundled plugin %q does not use user policy actions", item.ID))
 	}
 	if (action == "approve" || action == "reject") && item.Source == "user" {
-		home, err := statepath.Home("")
-		if err != nil {
-			return fmt.Errorf("resolve Wuu home: %w", err)
-		}
 		pending, pendingErr := pluginpkg.ReadPendingUpdate(home, item.ID)
 		switch {
 		case pendingErr == nil && action == "reject":
@@ -371,6 +392,21 @@ func runPluginPolicy(action string, args []string) error {
 		PolicyAction:         action,
 	}
 	return printPluginPackageOutput(output, *jsonOutput, "Updated plugin policy")
+}
+
+func beginPluginCLIMutation(wuuHome, action string) (func(), error) {
+	lease, acquired, err := session.TryAcquirePluginGenerationMutationLease(wuuHome)
+	if err != nil {
+		return nil, fmt.Errorf("begin plugin %s mutation: %w", action, err)
+	}
+	if !acquired {
+		return nil, fmt.Errorf("plugin %s refused because executions currently own the active generation", action)
+	}
+	if _, err := lease.Advance(); err != nil {
+		_ = lease.Release()
+		return nil, fmt.Errorf("advance plugin %s generation: %w", action, err)
+	}
+	return func() { _ = lease.Release() }, nil
 }
 
 func discoverPluginForPolicy(id, workdir string) (pluginpkg.Plugin, error) {

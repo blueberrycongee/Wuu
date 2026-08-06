@@ -10,8 +10,51 @@ import (
 	"github.com/blueberrycongee/wuu/internal/config"
 	"github.com/blueberrycongee/wuu/internal/extensions"
 	pluginpkg "github.com/blueberrycongee/wuu/internal/plugin"
+	"github.com/blueberrycongee/wuu/internal/session"
 	"github.com/blueberrycongee/wuu/internal/statepath"
 )
+
+func TestPluginCLIMutationsAdvanceSharedGeneration(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("WUU_HOME", home)
+	configData, err := json.Marshal(config.Default())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, "config.json"), configData, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	source := t.TempDir()
+	if err := os.WriteFile(filepath.Join(source, "plugin.json"), []byte(`{"id":"live-demo","name":"Live Demo","version":"1.0.0"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	commands := [][]string{
+		{"plugin", "install", source},
+		{"plugin", "approve", "live-demo"},
+		{"plugin", "enable", "live-demo"},
+		{"plugin", "disable", "live-demo"},
+		{"plugin", "remove", "live-demo"},
+	}
+	for index, command := range commands {
+		captureStdout(t, func() {
+			if err := run(command); err != nil {
+				t.Fatalf("run %v: %v", command, err)
+			}
+		})
+		lease, acquired, err := session.TryAcquirePluginGenerationExecutionLease(home)
+		if err != nil || !acquired {
+			t.Fatalf("read generation after %v: acquired=%v err=%v", command, acquired, err)
+		}
+		if got, want := lease.Epoch(), uint64(index+1); got != want {
+			_ = lease.Release()
+			t.Fatalf("generation after %v = %d, want %d", command, got, want)
+		}
+		if err := lease.Release(); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
 
 func TestPluginCLIInstallListInspectAndRemove(t *testing.T) {
 	home := t.TempDir()
