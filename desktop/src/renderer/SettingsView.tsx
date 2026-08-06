@@ -748,7 +748,7 @@ export function SettingsView({
   ]), [t]);
 
   const nativeSettings = (
-    <div ref={effectiveShellRef} className={shellClassName} style={shellStyle}>
+    <div ref={effectiveShellRef} className={shellClassName} style={shellStyle} data-wuu-component="settings-shell">
       <div
         ref={sidebarHoverZoneRef}
         className="sidebar-hover-zone"

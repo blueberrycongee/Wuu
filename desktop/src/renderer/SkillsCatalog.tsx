@@ -269,7 +269,7 @@ export function SkillsCatalog({
   }
 
   return (
-    <section className="skills-catalog" aria-label={t("skills.catalogLabel")}>
+    <section className="skills-catalog" aria-label={t("skills.catalogLabel")} data-wuu-component="skills-catalog">
       <header className="catalog-page-header">
         <div className="catalog-page-title">
           <strong>{t("skills.title")}</strong>

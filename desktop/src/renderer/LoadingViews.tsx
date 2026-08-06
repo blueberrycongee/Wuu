@@ -13,7 +13,7 @@ export function RuntimeLoading({
   const { t } = useI18n();
   const isStarting = pinned || status === "connecting" || status === "opening";
   return (
-    <div className="project-empty-pane">
+    <div className="project-empty-pane" data-wuu-component="launch-view">
       {isStarting ? (
         <div className="wuu-launch" role="status" aria-label={pinned ? t("loading.launchPreview") : t("loading.starting")}>
           <div className="wuu-launch-glass" aria-hidden="true">

@@ -4336,7 +4336,7 @@ export function App(): JSX.Element {
             },
           }}
           fallback={
-        <div ref={appShellRef} className={shellClassName} style={shellStyle}>
+        <div ref={appShellRef} className={shellClassName} style={shellStyle} data-wuu-component="app-shell">
           {!poppedOutMode ? (
             <>
           <div
@@ -4558,6 +4558,7 @@ export function App(): JSX.Element {
         fallback={
       <main
         inert={rightPanelOpen && rightPanelGlobalized}
+        data-wuu-component="conversation-pane"
         className={`conversation-pane${environmentPanelVisible ? " environment-panel-visible" : ""}${
           environmentPanelReserved ? " environment-panel-reserved" : ""
         }${

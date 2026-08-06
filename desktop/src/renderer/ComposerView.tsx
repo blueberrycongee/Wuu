@@ -959,7 +959,7 @@ export function Composer({
   }
 
   const content = (
-    <div className={`composer-stack${isComposerExpanded ? " is-expanded" : ""}`}>
+    <div className={`composer-stack${isComposerExpanded ? " is-expanded" : ""}`} data-wuu-component="composer">
       {topAccessory ? <div className="composer-top-accessory">{topAccessory}</div> : null}
       <PluginSlot host={pluginHost} id="composer.above" context={pluginSlotContext} />
       <div className="composer-shell" ref={composerShellRef}>
@@ -1139,6 +1139,7 @@ export function Composer({
             ) : null}
             <textarea
               ref={textareaRef}
+              data-wuu-component="composer-input"
               value={visiblePromptValue}
               placeholder={composerPlaceholder}
               maxLength={maxLength}
@@ -1353,6 +1354,8 @@ export function Composer({
                 ) : null}
                 <button
                   className={`composer-action-button ${showComposerStopAction ? "composer-stop-button" : "composer-send-button"}`}
+                  data-wuu-component="composer-send"
+                  data-wuu-state={showComposerStopAction ? "stop" : "send"}
                   type="button"
                   onClick={showComposerStopAction ? onInterrupt : submitComposer}
                   aria-label={showComposerStopAction ? t("composer.pause") : voiceActionLabel}

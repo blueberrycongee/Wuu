@@ -348,6 +348,7 @@ export function AutomationsCatalog({
     <section
       ref={catalogRef}
       className={`automations-catalog${detailOpen ? " detail-open" : ""}${resizingDetail ? " resizing-detail" : ""}`}
+      data-wuu-component="automations-catalog"
       aria-label={t("automations.title")}
       style={{ "--automation-detail-pane-width": `${detailWidth}px` } as CSSProperties}
     >

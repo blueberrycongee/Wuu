@@ -226,6 +226,8 @@ function BuiltInThreadItemView({
       return (
         <div
           className={`user-message-block${copyable || editActionVisible ? " user-message-block-with-actions" : ""}`}
+          data-wuu-component="message"
+          data-wuu-variant="user"
           id={userMessageAnchorID(turnID, item.id)}
           data-user-message-id={item.id}
           data-turn-id={turnID}
@@ -303,6 +305,8 @@ function BuiltInThreadItemView({
       // dead space under text that had nothing to offer yet.
       return (
         <article
+          data-wuu-component="message"
+          data-wuu-variant="agent"
           className={`agent-block${
             actionsVisible
               ? ` agent-block-with-action-slot agent-actions-available${actionsPersistent ? " agent-actions-persistent" : " agent-actions-overlay"}`

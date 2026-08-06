@@ -731,6 +731,7 @@ export function AppSidebar({
   const nativeSidebar = (
     <aside
       className="sidebar"
+      data-wuu-component="sidebar"
       onPointerEnter={onPointerEnter}
       onPointerLeave={onPointerLeave}
     >

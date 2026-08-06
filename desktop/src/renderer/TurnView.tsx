@@ -184,6 +184,7 @@ function TurnContent({
   return (
     <section
       className="turn"
+      data-wuu-component="turn"
       id={turnAnchorID(turn.id)}
       data-turn-id={turn.id}
       data-turn-status={turn.status}
