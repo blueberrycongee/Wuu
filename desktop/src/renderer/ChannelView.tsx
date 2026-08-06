@@ -1350,6 +1350,8 @@ export function ChannelView({ initialized, section = "rooms", archivedRoomIDs = 
     <section
       className={`channel-view channel-mode-${section}${listCollapsed && section === "agents" ? " channel-list-collapsed" : ""}${resizingSplit ? " resizing-channel-split" : ""}`}
       aria-label={t("channels.title")}
+      data-wuu-component="channel-view"
+      data-wuu-variant={section}
       style={section === "agents" ? { gridTemplateColumns: `${listCollapsed ? CHANNEL_SPLIT_COLLAPSED_WIDTH : splitWidth}px minmax(0, 1fr)` } : undefined}
     >
       {section === "rooms" ? <div

@@ -1038,7 +1038,7 @@ function UserTerminalPane({
   }
 
   return (
-    <div className="workspace-terminal-panel" hidden={!active}>
+    <div className="workspace-terminal-panel" hidden={!active} data-wuu-component="workspace-terminal">
       <div className="workspace-terminal-screen" onMouseDown={() => terminalRef.current?.focus()}>
         <div className="workspace-terminal-host" ref={containerRef} />
       </div>

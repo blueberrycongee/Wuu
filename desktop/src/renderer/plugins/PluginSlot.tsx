@@ -77,7 +77,15 @@ export function PluginSlot({ host, id, context = EMPTY_CONTEXT }: PluginSlotProp
         slotId: id,
         contribution,
       },
-      createElement(ContributionContent, { contribution, context }),
+      <div
+        className="plugin-contribution-root"
+        data-wuu-component="plugin-contribution"
+        data-wuu-plugin={contribution.pluginId}
+        data-wuu-slot={id}
+        data-wuu-contribution={contribution.id}
+      >
+        <ContributionContent contribution={contribution} context={context} />
+      </div>,
     )),
   );
 }

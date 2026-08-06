@@ -330,6 +330,16 @@
   color: inherit;
 }
 
+/* Every plugin contribution (slot or surface) renders inside this
+ * host-owned boundary carrying the public data-wuu-* coordinates, so a
+ * theme plugin's CSS snippets can address plugin UI by plugin, slot, or
+ * surface id without depending on the plugin's private class names.
+ * display:contents keeps the boundary out of the box tree: wrapping a
+ * contribution never changes its layout. */
+.plugin-contribution-root {
+  display: contents;
+}
+
 @keyframes menu-enter {
   from {
     opacity: 0;

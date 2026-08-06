@@ -133,6 +133,8 @@ export function EnvironmentPanel({
       ref={panelRef}
       aria-label={t(planUpdate ? "environment.progressAndInfo" : "environment.info")}
       aria-hidden={motionState === "closing" ? true : undefined}
+      data-wuu-component="environment-panel"
+      data-wuu-state={motionState}
     >
       <div className="environment-panel-header floating">
         <div className="environment-panel-actions">

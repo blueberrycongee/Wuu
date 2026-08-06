@@ -80,7 +80,15 @@ function renderContribution(
       contribution,
       fallback,
     },
-    createElement(SurfaceContent, { context, contribution, fallback }),
+    <div
+      className="plugin-contribution-root"
+      data-wuu-component="plugin-contribution"
+      data-wuu-plugin={contribution.pluginId}
+      data-wuu-surface={surfaceId}
+      data-wuu-contribution={contribution.id}
+    >
+      <SurfaceContent context={context} contribution={contribution} fallback={fallback} />
+    </div>,
   );
 }
 

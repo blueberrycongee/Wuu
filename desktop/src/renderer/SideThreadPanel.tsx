@@ -116,6 +116,7 @@ export const SideThreadPanel = forwardRef<SideThreadPanelHandle, SideThreadPanel
         className="side-thread-panel"
         data-main-thread-id={mainThreadId}
         data-streaming={entry.streaming ? "true" : "false"}
+        data-wuu-component="side-thread"
         aria-label={t("sideThread.title")}
       >
         <button

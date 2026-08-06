@@ -324,6 +324,7 @@ export function WorkspaceReviewPanel({
         resizingSplit ? " resizing-split" : ""
       }`}
       aria-label={t("workspaceReview.reviewChanges")}
+      data-wuu-component="workspace-review"
       ref={panelRef}
       style={panelStyle}
     >

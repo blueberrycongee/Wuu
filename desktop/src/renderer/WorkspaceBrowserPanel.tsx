@@ -342,7 +342,7 @@ export function WorkspaceBrowserPanel({
   const isLoading = status === "loading";
 
   return (
-    <div className="workspace-browser-panel">
+    <div className="workspace-browser-panel" data-wuu-component="workspace-browser">
       <div className="workspace-browser-toolbar">
         <button
           className="icon-button workspace-browser-nav"

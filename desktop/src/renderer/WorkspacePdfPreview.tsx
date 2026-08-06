@@ -43,6 +43,7 @@ export function WorkspacePdfPreview({
       ref={hostRef}
       className="workspace-file-pdf-preview"
       data-workspace-pdf-preview
+      data-wuu-component="workspace-pdf-preview"
     >
       {shadowRoot
         ? createPortal(

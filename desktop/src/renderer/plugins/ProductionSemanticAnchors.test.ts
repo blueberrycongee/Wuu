@@ -16,19 +16,26 @@ const RENDERER_ROOT = resolve(process.cwd(), "src/renderer");
 const SEMANTIC_ANCHOR_OWNERS = Object.freeze({
   "app-shell": "App.tsx",
   "automations-catalog": "AutomationsCatalog.tsx",
+  "channel-view": "ChannelView.tsx",
   "composer": "ComposerView.tsx",
   "composer-input": "ComposerView.tsx",
   "composer-pending": "ComposerInputSections.tsx",
   "composer-send": "ComposerView.tsx",
   "conversation-pane": "App.tsx",
+  "environment-panel": "EnvironmentPanel.tsx",
   "launch-view": "LoadingViews.tsx",
   "message": "ThreadItemView.tsx",
   "settings-shell": "SettingsView.tsx",
   "sidebar": "AppSidebar.tsx",
+  "side-thread": "SideThreadPanel.tsx",
   "skills-catalog": "SkillsCatalog.tsx",
   "turn": "TurnView.tsx",
+  "workspace-browser": "WorkspaceBrowserPanel.tsx",
   "workspace-document-turn": "WorkspaceDocumentTurnDock.tsx",
   "workspace-panel": "WorkspacePanels.tsx",
+  "workspace-pdf-preview": "WorkspacePdfPreview.tsx",
+  "workspace-review": "WorkspaceReviewPanels.tsx",
+  "workspace-terminal": "WorkspaceTerminalPanel.tsx",
 } as const);
 
 describe("production semantic anchors", () => {
@@ -48,5 +55,21 @@ describe("production semantic anchors", () => {
     );
     expect(source).toContain('data-wuu-variant="user"');
     expect(source).toContain('data-wuu-variant="agent"');
+  });
+
+  it("wraps every plugin contribution in the public coordinate boundary", () => {
+    // Multi-plugin coexistence depends on this wrapper: it is what lets a
+    // theme plugin's CSS snippets address a capability plugin's UI (by
+    // plugin, slot, or surface id) without private class names.
+    const slot = readFileSync(resolve(RENDERER_ROOT, "plugins/PluginSlot.tsx"), "utf8");
+    expect(slot).toContain('data-wuu-component="plugin-contribution"');
+    expect(slot).toContain('data-wuu-plugin={contribution.pluginId}');
+    expect(slot).toContain('data-wuu-slot={id}');
+    const surface = readFileSync(
+      resolve(RENDERER_ROOT, "plugins/PluginSurface.tsx"),
+      "utf8",
+    );
+    expect(surface).toContain('data-wuu-component="plugin-contribution"');
+    expect(surface).toContain('data-wuu-surface={surfaceId}');
   });
 });
