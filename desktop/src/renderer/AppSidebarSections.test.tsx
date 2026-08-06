@@ -48,6 +48,14 @@ describe("reconcileSidebarSectionOrder", () => {
       reconcileSidebarSectionOrder(["project-2", "project-1"], ["project-1", "project-2"]),
     ).toEqual([SCRATCH_PSEUDO_PROJECT_ID, "project-2", "project-1"]);
   });
+
+  it("preserves the stored reference when reconciliation makes no changes", () => {
+    const stored = [SCRATCH_PSEUDO_PROJECT_ID, "project-1", "project-2"];
+
+    expect(
+      reconcileSidebarSectionOrder(stored, ["project-1", "project-2"]),
+    ).toBe(stored);
+  });
 });
 
 describe("reorderSidebarSections", () => {

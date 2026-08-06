@@ -191,6 +191,13 @@ export function reconcileSidebarSectionOrder(
   if (!out.includes(SCRATCH_PSEUDO_PROJECT_ID)) {
     out.unshift(SCRATCH_PSEUDO_PROJECT_ID);
   }
+  if (
+    stored &&
+    stored.length === out.length &&
+    stored.every((key, index) => key === out[index])
+  ) {
+    return stored;
+  }
   return out;
 }
 
