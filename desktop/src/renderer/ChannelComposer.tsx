@@ -1,8 +1,9 @@
-import { forwardRef, type KeyboardEvent, useCallback, useImperativeHandle, useMemo, useRef, useState } from "react";
+import { forwardRef, type KeyboardEvent, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import type { NamedAgent } from "../shared/protocol";
 import { AgentAvatarMark } from "./AgentAvatarMark";
 import type { ComposerFile, ComposerImage } from "./ComposerMessages";
 import { Composer, type CodexModelLoadState } from "./ComposerView";
+import { FloatingMenuPortal } from "./ComposerFloatingMenu";
 import { useI18n } from "./i18n";
 
 const EMPTY_MODEL_STATE: CodexModelLoadState = {
@@ -76,6 +77,15 @@ export const ChannelComposer = forwardRef<ChannelComposerHandle, {
   const menuRef = useRef<HTMLDivElement>(null);
   const accessMenuRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLDivElement>(null);
+  // The mention picker is portaled to the protected layer host (fixed,
+  // viewport coordinates), so it anchors to the composer dock's rendered
+  // box instead of sitting inside the relatively-positioned composer root.
+  const mentionAnchorRef = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    mentionAnchorRef.current =
+      composerRef.current?.querySelector<HTMLElement>(".composer-stack") ??
+      composerRef.current;
+  });
   const [mentionRange, setMentionRange] = useState<MentionRange | null>(null);
   const [selectedMentionIndex, setSelectedMentionIndex] = useState(0);
   const matchingAgents = useMemo(() => {
@@ -148,31 +158,42 @@ export const ChannelComposer = forwardRef<ChannelComposerHandle, {
       onKeyDownCapture={handleKeyDownCapture}
     >
       {mentionRange ? (
-        <div className="channel-mention-menu" role="listbox" aria-label={t("channels.mentionPicker")}>
-          {matchingAgents.length > 0 ? matchingAgents.map((agent, index) => (
-            <button
-              className={index === selectedMentionIndex ? "selected" : ""}
-              type="button"
-              role="option"
-              aria-label={agent.name}
-              aria-selected={index === selectedMentionIndex}
-              key={agent.id}
-              onMouseEnter={() => setSelectedMentionIndex(index)}
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={(event) => {
-                event.stopPropagation();
-                insertMention(agent.name, mentionRange);
-              }}
-            >
-              <AgentAvatarMark avatarKey={agent.avatar_key} avatarImage={agent.avatar_image} />
-              <span className="channel-mention-name">{agent.name}</span>
-              <span className="channel-mention-meta" aria-hidden="true">
-                {agent.model_override ? <span className="channel-mention-model">{agent.model_override}</span> : null}
-                <kbd className="channel-mention-key">↵</kbd>
-              </span>
-            </button>
-          )) : <span className="channel-mention-menu-empty">{t("channels.noMatchingAgents")}</span>}
-        </div>
+        <FloatingMenuPortal
+          anchorRef={mentionAnchorRef}
+          owner="channel-mention"
+          placement="above"
+          align="left"
+          // The picker used to overlap the composer top edge by 4px; keep
+          // that tuck instead of the shared 8px gap.
+          offset={-4}
+          width={320}
+        >
+          <div className="channel-mention-menu" role="listbox" aria-label={t("channels.mentionPicker")}>
+            {matchingAgents.length > 0 ? matchingAgents.map((agent, index) => (
+              <button
+                className={index === selectedMentionIndex ? "selected" : ""}
+                type="button"
+                role="option"
+                aria-label={agent.name}
+                aria-selected={index === selectedMentionIndex}
+                key={agent.id}
+                onMouseEnter={() => setSelectedMentionIndex(index)}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  insertMention(agent.name, mentionRange);
+                }}
+              >
+                <AgentAvatarMark avatarKey={agent.avatar_key} avatarImage={agent.avatar_image} />
+                <span className="channel-mention-name">{agent.name}</span>
+                <span className="channel-mention-meta" aria-hidden="true">
+                  {agent.model_override ? <span className="channel-mention-model">{agent.model_override}</span> : null}
+                  <kbd className="channel-mention-key">↵</kbd>
+                </span>
+              </button>
+            )) : <span className="channel-mention-menu-empty">{t("channels.noMatchingAgents")}</span>}
+          </div>
+        </FloatingMenuPortal>
       ) : null}
       <Composer
         variant="dock"

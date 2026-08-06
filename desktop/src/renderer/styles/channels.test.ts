@@ -290,8 +290,9 @@ describe("channel mentions", () => {
 
     expect(author).toMatch(/cursor:\s*pointer/);
     expect(authorHover).toMatch(/color:\s*var\(--info\)/);
-    expect(mentionMenu).toMatch(/max-height:\s*240px/);
+    expect(mentionMenu).toMatch(/max-height:\s*min\(240px, var\(--floating-menu-available-height/);
     expect(mentionMenu).toMatch(/overflow-y:\s*auto/);
+    expect(mentionMenu).not.toMatch(/position:\s*absolute/);
     expect(mentionMenu).toMatch(/min-width:\s*min\(220px/);
     expect(mentionMenu).toMatch(/max-width:\s*min\(320px/);
     expect(mentionMenu).toMatch(/gap:\s*1px/);

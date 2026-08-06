@@ -528,25 +528,25 @@ describe("ChannelView", () => {
 
     const textarea = container.querySelector<HTMLTextAreaElement>(".channel-conversation-footer textarea");
     act(() => setInputValue(textarea!, "@"));
-    expect(Array.from(container.querySelectorAll(".channel-mention-name")).map((name) => name.textContent)).toEqual(["Alpha", "Beta"]);
-    expect(container.querySelector(".channel-mention-model")?.textContent).toBe("gpt-5.3-codex");
-    expect(container.querySelector(".channel-mention-menu button.selected .channel-mention-key")?.textContent).toBe("↵");
+    expect(Array.from(document.querySelectorAll(".channel-mention-name")).map((name) => name.textContent)).toEqual(["Alpha", "Beta"]);
+    expect(document.querySelector(".channel-mention-model")?.textContent).toBe("gpt-5.3-codex");
+    expect(document.querySelector(".channel-mention-menu button.selected .channel-mention-key")?.textContent).toBe("↵");
     act(() => {
       textarea?.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
       textarea?.dispatchEvent(new KeyboardEvent("keyup", { key: "ArrowDown", bubbles: true }));
     });
-    expect(container.querySelector(".channel-mention-menu button.selected .channel-mention-name")?.textContent).toBe("Beta");
+    expect(document.querySelector(".channel-mention-menu button.selected .channel-mention-name")?.textContent).toBe("Beta");
     act(() => {
       textarea?.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true }));
       textarea?.dispatchEvent(new KeyboardEvent("keyup", { key: "ArrowUp", bubbles: true }));
     });
-    expect(container.querySelector(".channel-mention-menu button.selected .channel-mention-name")?.textContent).toBe("Alpha");
+    expect(document.querySelector(".channel-mention-menu button.selected .channel-mention-name")?.textContent).toBe("Alpha");
 
     act(() => setInputValue(textarea!, "@Be"));
-    expect(Array.from(container.querySelectorAll(".channel-mention-name")).map((name) => name.textContent)).toEqual(["Beta"]);
+    expect(Array.from(document.querySelectorAll(".channel-mention-name")).map((name) => name.textContent)).toEqual(["Beta"]);
     act(() => textarea?.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
     expect(textarea?.value).toBe("@Beta ");
-    expect(container.querySelector(".channel-mention-menu")).toBeNull();
+    expect(document.querySelector(".channel-mention-menu")).toBeNull();
   });
 
   it("loads rooms, selects a room, and sends a human message", async () => {

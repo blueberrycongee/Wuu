@@ -923,14 +923,12 @@
 }
 
 .channel-mention-menu {
-  position: absolute;
-  z-index: 30;
-  bottom: calc(100% - 4px);
-  left: max(var(--channel-horizontal-gutter), calc((100% - var(--channel-content-max-width)) / 2));
+  /* Positioned by the floating-menu layer (fixed, viewport coordinates);
+     the panel itself only sizes to its content within viewport guards. */
   width: max-content;
-  min-width: min(220px, calc(100% - var(--channel-horizontal-gutter) - var(--channel-horizontal-gutter)));
-  max-width: min(320px, calc(100% - var(--channel-horizontal-gutter) - var(--channel-horizontal-gutter)));
-  max-height: 240px;
+  min-width: min(220px, calc(100vw - 32px));
+  max-width: min(320px, calc(100vw - 32px));
+  max-height: min(240px, var(--floating-menu-available-height, 240px));
   display: grid;
   overflow-y: auto;
   gap: 1px;

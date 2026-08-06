@@ -17,6 +17,19 @@ const COMMON_LAYER_OWNERS = Object.freeze({
   "WorkspaceFiles.tsx": { layer: "menu" },
 } as const);
 
+const FLOATING_MENU_OWNERS = Object.freeze([
+  "App.tsx",
+  "ChannelComposer.tsx",
+  "ComposerContextMeter.tsx",
+  "ComposerGoalStrip.tsx",
+  "ComposerRuntimeMenus.tsx",
+  "ComposerTokenGauge.tsx",
+  "ComposerView.tsx",
+  "MinuteClockPicker.tsx",
+  "QueryHistoryPopover.tsx",
+  "SelectMenu.tsx",
+]);
+
 const INTENTIONAL_DIRECT_PORTAL_OWNERS = Object.freeze([
   "Modal.tsx",
   "WorkspacePanels.tsx",
@@ -55,6 +68,16 @@ describe("production UI layer ownership", () => {
       expect(semanticSource, `${semanticOwner} semantic layer`).toContain(
         `data-wuu-layer="${contract.layer}"`,
       );
+    }
+  });
+
+  it("routes anchored floating menus through the shared floating-menu portal", () => {
+    for (const owner of FLOATING_MENU_OWNERS) {
+      const source = readFileSync(resolve(RENDERER_ROOT, owner), "utf8");
+      expect(source, `${owner} floating menu portal`).toContain(
+        "FloatingMenuPortal",
+      );
+      expect(source, `${owner} direct portal`).not.toContain("createPortal");
     }
   });
 

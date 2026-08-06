@@ -35,6 +35,7 @@ import {
   streamTextStore,
   type StreamTextField,
 } from "./StreamText";
+import { estimateStreamingOutputTokens } from "./TurnTelemetryStore";
 import { statusMessageForError } from "./UserFacingErrors";
 import {
   formatCurrentDate,
@@ -393,7 +394,7 @@ function handleStreamingNotification(
     case "turn/event":
       return "skip";
     case "turn/usage":
-      return "state";
+      return "skip";
     case "item/started":
     case "item/completed":
       if (!notificationTargetsKnownThread(params, state)) {
@@ -3166,20 +3167,6 @@ function withRetainedTurnTelemetry<T>(
   }
   next[turnID] = value;
   return next;
-}
-
-function estimateStreamingOutputTokens(text: string): number {
-  let ascii = 0;
-  let nonAscii = 0;
-  for (const char of text) {
-    const codePoint = char.codePointAt(0) ?? 0;
-    if (codePoint <= 0x7f) {
-      ascii += 1;
-    } else {
-      nonAscii += 1;
-    }
-  }
-  return ascii / 4 + nonAscii / 1.7;
 }
 
 function activeTurnTokenSpeed(state: AppState, turnID?: string): number {

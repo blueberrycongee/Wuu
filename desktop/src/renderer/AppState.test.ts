@@ -836,6 +836,24 @@ describe("worktree thread context matching", () => {
 });
 
 describe("AppState token usage", () => {
+  it("routes live usage telemetry around the App reducer", () => {
+    const handling = handleStreamingNotification({
+      kind: "notification",
+      workdir: "/repo",
+      message: {
+        method: "turn/usage",
+        params: {
+          thread_id: "thread-1",
+          turn_id: "turn-1",
+          input_tokens: 100,
+          output_tokens: 20,
+        },
+      },
+    }, initialState);
+
+    expect(handling).toBe("skip");
+  });
+
   it("initializes token usage state before the first usage update", () => {
     expect(initialState.turnTokenUsage).toEqual({});
     expect(initialState.turnRequestContext).toEqual({});

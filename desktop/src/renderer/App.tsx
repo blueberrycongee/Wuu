@@ -3,7 +3,6 @@
 import {
   type CSSProperties,
   type RefObject,
-  startTransition,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -93,10 +92,6 @@ import {
   activeTurnForThread,
   latestContextUsageForThread,
   activeTurnIDForThread,
-  activeTurnTokenSpeedSnapshot,
-  flushPendingStreamingTokenSamples,
-  recordPendingStreamingTokenSample,
-  type PendingStreamingTokenSamples,
   bindActiveSessionTabToThread,
   cloneSessionTabDraft,
   composerSubmissionDetail,
@@ -248,6 +243,7 @@ import {
   useSidebarProjectState,
 } from "./SidebarProjectState";
 import { useViewSwitchState } from "./ViewSwitchState";
+import { turnTelemetryStore } from "./TurnTelemetryStore";
 import {
   activitiesForThread,
   clearActivitiesForWorkdir,
@@ -308,10 +304,6 @@ const QUERY_HISTORY_RAIL_MAX_BARS = 20;
 // Keep only the active conversation pane mounted. Hidden panes used to retain
 // full TurnView DOM trees, making long sessions heavier after each tab switch.
 const CACHED_THREAD_PANE_LIMIT = 1;
-// The live token-speed gauge is supporting telemetry, not an input-critical
-// surface. Updating it more often forces the 5k-line App component to render
-// while users type, so publish estimates at a human-readable 1 Hz cadence.
-const STREAMING_TOKEN_SAMPLE_FLUSH_MS = 1_000;
 type EnvironmentDialog = "commit" | "pull-request" | null;
 const RENDERER_ENV = (
   import.meta as ImportMeta & {
@@ -338,20 +330,6 @@ function useStableCallback<T extends (...args: any[]) => any>(callback: T): T {
     ((...args: Parameters<T>): ReturnType<T> => callbackRef.current(...args)) as T,
     [],
   );
-}
-
-function serverEventCarriesModelOutputDelta(event: ServerEvent): boolean {
-  if (event.kind !== "notification") {
-    return false;
-  }
-  switch (event.message.method) {
-    case "item/agentMessage/delta":
-    case "item/reasoning/delta":
-    case "item/toolCall/delta":
-      return true;
-    default:
-      return false;
-  }
 }
 
 function readPopOutInit(): PopOutInitResult | null {
@@ -1661,28 +1639,14 @@ export function App(): JSX.Element {
 
   useEffect(() => {
     let mounted = true;
-    // Deltas arrive at tens per second; a setState per delta would re-render
-    // the whole App tree just to advance the token-speed gauge. Accumulate
-    // the estimates here and publish them as a low-priority background update.
-    const pendingTokenSamples: PendingStreamingTokenSamples = new Map();
-    let tokenSampleFlushTimer: number | undefined;
-    const flushTokenSamples = () => {
-      tokenSampleFlushTimer = undefined;
-      if (!mounted || pendingTokenSamples.size === 0) {
-        return;
-      }
-      const batch = new Map(pendingTokenSamples);
-      pendingTokenSamples.clear();
-      startTransition(() => {
-        setState((current) =>
-          flushPendingStreamingTokenSamples(current, batch, Date.now()),
-        );
-      });
-    };
     const off = window.wuu.onServerEvent((event) => {
       if (!mounted) {
         return;
       }
+      // Token speed and live context telemetry are high-rate supporting UI.
+      // Keep them outside App state so provider events cannot re-render the
+      // full desktop tree merely to advance the composer meters.
+      turnTelemetryStore.ingest(event);
       if (serverEventCarriesActivitySessionUpdate(event)) {
         setActivitySessions((current) => reduceActivitySessionEvent(current, event));
       }
@@ -1703,20 +1667,6 @@ export function App(): JSX.Element {
         // passes before the DOM contains the new text.
         if (handling === "stream-state") {
           scheduleStreamScroll();
-        }
-        if (
-          event.kind === "notification" &&
-          serverEventCarriesModelOutputDelta(event) &&
-          recordPendingStreamingTokenSample(
-            pendingTokenSamples,
-            event.message.params as Record<string, unknown> | undefined,
-          ) &&
-          tokenSampleFlushTimer === undefined
-        ) {
-          tokenSampleFlushTimer = window.setTimeout(
-            flushTokenSamples,
-            STREAMING_TOKEN_SAMPLE_FLUSH_MS,
-          );
         }
       }
       if (handling === "stream") {
@@ -1770,10 +1720,6 @@ export function App(): JSX.Element {
     return () => {
       mounted = false;
       off();
-      if (tokenSampleFlushTimer !== undefined) {
-        window.clearTimeout(tokenSampleFlushTimer);
-        tokenSampleFlushTimer = undefined;
-      }
       if (gitRefreshTimerRef.current !== undefined) {
         window.clearTimeout(gitRefreshTimerRef.current);
         gitRefreshTimerRef.current = undefined;
@@ -2566,10 +2512,9 @@ export function App(): JSX.Element {
   }
 
   function renderComposer(variant: ComposerVariant): JSX.Element {
-    const tokenSpeed = activeTurnTokenSpeedSnapshot(
-      state,
-      activeThread ? activeTurnIDForThread(activeThread) : undefined,
-    );
+    const telemetryTurnID = activeThread
+      ? activeTurnIDForThread(activeThread)
+      : undefined;
     // Drives the composer context meter. Existing threads use the latest
     // known usage; a brand-new session falls back to the current runtime
     // window so the meter can render at 0% before the first turn.
@@ -2639,9 +2584,7 @@ export function App(): JSX.Element {
           (!activeThreadReadOnly && activeThreadIsRunning) ||
           viewContextSwitchPending
         }
-        tokensPerSecond={tokenSpeed.tokensPerSecond}
-        tokenSpeedSampledAt={tokenSpeed.sampledAt}
-        tokenSpeedSource={tokenSpeed.source}
+        telemetryTurnID={telemetryTurnID}
         contextUsage={contextUsage}
         status={
           activeThreadReadOnly
