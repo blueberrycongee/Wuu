@@ -72,7 +72,7 @@ export default defineConfig({
       expressiveCode: {
         themes: ["github-light", "github-dark"],
       },
-      favicon: "/favicon.svg",
+      favicon: "/favicon.png",
       pagination: false,
       credits: false,
     }),
