@@ -4,6 +4,11 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ExtensionInventoryRecord } from "../../shared/protocol";
+import {
+  STATUS_ACTIONS,
+  type PresentationHost,
+  type StatusSnapshotV1,
+} from "../../shared/workbench";
 import { RichContent } from "../RichContent";
 import { desktopPluginHost } from "./DesktopPluginRuntime";
 import { DesktopWorkbench, WorkbenchController } from "./Workbench";
@@ -281,6 +286,117 @@ describe("DesktopWorkbench product path", () => {
     await act(async () => host.unload("user:product"));
     expect(container.querySelector(".conversation-pane")?.textContent).not.toContain("Plugin product view");
     expect(document.body.textContent).not.toContain("Plugin ready");
+  });
+
+  it("replaces the complete status root with a sanitized immutable snapshot and controlled actions", async () => {
+    const host = new PluginHost({ react: React });
+    const execute = vi.fn();
+    let presentedSnapshot: StatusSnapshotV1 | undefined;
+    let presentationHost: PresentationHost | undefined;
+    await host.activateGeneration({
+      pluginId: "user:status-presenter",
+      generation: "one",
+      register(api) {
+        api.registerPresenter({
+          id: "status",
+          target: "app.status",
+          render({ snapshot, host: presenterHost }) {
+            presentedSnapshot = snapshot as StatusSnapshotV1;
+            presentationHost = presenterHost;
+            return <section data-status-replacement>Wuu status</section>;
+          },
+        });
+      },
+    });
+
+    await act(async () => root.render(<DesktopWorkbench host={host} />));
+    expect(document.body.querySelector("[data-status-replacement]")?.parentElement).toBe(document.body);
+    expect(document.body.querySelector(".plugin-workbench-status")).toBeNull();
+
+    await act(async () => host.activateGeneration({
+      pluginId: "user:status-source",
+      generation: "one",
+      register(api) {
+        api.registerCommand({ id: "status.open", title: "Open", execute });
+        api.registerStatusItem({
+          id: "runtime",
+          label: "Wuu running",
+          icon: "pulse",
+          tooltip: "Private tooltip",
+          command: "status.open",
+          priority: 12,
+        });
+      },
+    }));
+
+    expect(presentedSnapshot?.contractVersion).toBe(1);
+    expect(presentedSnapshot?.items).toHaveLength(1);
+    const item = presentedSnapshot?.items[0];
+    expect(item).toEqual({
+      id: JSON.stringify(["user:status-source", "runtime"]),
+      label: "Wuu running",
+      icon: "pulse",
+      busy: false,
+      disabled: false,
+      actionId: STATUS_ACTIONS.activateItem,
+    });
+    expect(Object.isFrozen(presentedSnapshot)).toBe(true);
+    expect(Object.isFrozen(presentedSnapshot?.items)).toBe(true);
+    expect(Object.isFrozen(item)).toBe(true);
+    expect(Object.keys(item ?? {})).not.toEqual(expect.arrayContaining([
+      "pluginId", "generation", "command", "tooltip", "priority", "order",
+    ]));
+
+    await expect(presentationHost?.invoke(STATUS_ACTIONS.activateItem, { id: item?.id })).resolves.toBeUndefined();
+    expect(execute).toHaveBeenCalledOnce();
+    await expect(presentationHost?.invoke(STATUS_ACTIONS.activateItem, {})).rejects.toThrow("valid item id");
+    await expect(presentationHost?.invoke(STATUS_ACTIONS.activateItem, { id: "missing" })).rejects.toThrow("not available");
+    expect(execute).toHaveBeenCalledOnce();
+
+    await act(async () => host.unload("user:status-source"));
+    expect(presentedSnapshot?.items).toEqual([]);
+  });
+
+  it("keeps native additive status behavior through live registration, presenter failure, and unload", async () => {
+    const host = new PluginHost({ react: React });
+    const execute = vi.fn();
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    await act(async () => root.render(<DesktopWorkbench host={host} />));
+    expect(document.body.querySelector(".plugin-workbench-status")).toBeNull();
+
+    await act(async () => host.activateGeneration({
+      pluginId: "user:native-status",
+      generation: "one",
+      register(api) {
+        api.registerCommand({ id: "status.run", title: "Run", execute });
+        api.registerStatusItem({ id: "ready", label: "Wuu ready", icon: "check", tooltip: "Ready", command: "status.run" });
+        api.registerStatusItem({ id: "passive", label: "Wuu idle" });
+      },
+    }));
+    const nativeRoot = document.body.querySelector(".plugin-workbench-status");
+    expect(nativeRoot?.getAttribute("role")).toBe("status");
+    expect(nativeRoot?.textContent).toBe("Wuu idlecheckWuu ready");
+    const readyButton = [...(nativeRoot?.querySelectorAll<HTMLButtonElement>("button") ?? [])]
+      .find((button) => button.textContent === "checkWuu ready");
+    expect(readyButton?.title).toBe("Ready");
+    act(() => readyButton?.click());
+    expect(execute).toHaveBeenCalledOnce();
+
+    await act(async () => host.activateGeneration({
+      pluginId: "user:broken-status",
+      generation: "one",
+      register(api) {
+        api.registerPresenter({ id: "broken", target: "app.status", render: () => { throw new Error("status failed"); } });
+      },
+    }));
+    expect(document.body.querySelector(".plugin-workbench-status")?.textContent).toBe("Wuu idlecheckWuu ready");
+    expect(host.getGenerationDiagnostics("user:broken-status", "one")).toHaveLength(1);
+
+    await act(async () => host.unload("user:broken-status"));
+    expect(document.body.querySelector(".plugin-workbench-status")?.textContent).toBe("Wuu idlecheckWuu ready");
+    await act(async () => host.unload("user:native-status"));
+    expect(document.body.querySelector(".plugin-workbench-status")).toBeNull();
+    consoleError.mockRestore();
   });
 
   it("renders colliding layout view IDs with each plugin's own definition", async () => {

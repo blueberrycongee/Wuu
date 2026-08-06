@@ -3,10 +3,12 @@ import { createPortal } from "react-dom";
 
 import type { ExtensionInventoryRecord } from "../../shared/protocol";
 import {
+  STATUS_ACTIONS,
   WORKBENCH_LAYOUT_STATE_VERSION,
   type OpenViewOptions,
   type PresentationHost,
   type RendererCategory,
+  type StatusSnapshotV1,
   type ViewHostAPI,
   type ViewPane,
   type WorkbenchLayoutState,
@@ -17,6 +19,7 @@ import type {
   RegisteredRenderer,
   RegisteredViewType,
 } from "./PluginHost";
+import { PluginPresentation } from "./PluginPresentation";
 
 const LAYOUT_STORAGE_KEY = "wuu.plugin-workbench.layout.v1";
 const MAX_STORAGE_VALUE_LENGTH = 1_048_576;
@@ -423,32 +426,86 @@ export function DesktopWorkbench({
     )];
   });
 
-  const statusItems = host.getStatusItems();
-  if (statusItems.length > 0) {
-    portals.push(createPortal(
-      <div className="plugin-workbench-status" role="status">
-        {statusItems.map((item) => (
-          <button
-            key={`${item.pluginId}:${item.id}`}
-            type="button"
-            title={item.tooltip}
-            onClick={() => {
-              if (!item.command) return;
-              const command = host.getCommands().find((candidate) =>
-                candidate.pluginId === item.pluginId && candidate.id === item.command);
-              void command?.execute();
-            }}
-          >
-            {item.icon ? <span aria-hidden="true">{item.icon}</span> : null}
-            {item.label}
-          </button>
-        ))}
-      </div>,
-      document.body,
-      "plugin-workbench-status",
-    ));
-  }
+  portals.push(createPortal(
+    <StatusPresentation host={host} controller={controller} />,
+    document.body,
+    "plugin-workbench-status",
+  ));
   return <>{portals}</>;
+}
+
+interface StatusPresentationProps {
+  host: PluginHost;
+  controller: WorkbenchController;
+}
+
+function StatusPresentation({ host, controller }: StatusPresentationProps): React.ReactNode {
+  const statusItems = host.getStatusItems();
+  const snapshot: StatusSnapshotV1 = Object.freeze({
+    contractVersion: 1,
+    items: Object.freeze(statusItems.map((item) => Object.freeze({
+      id: statusItemId(item.pluginId, item.id),
+      label: item.label,
+      icon: item.icon,
+      busy: false,
+      disabled: false,
+      actionId: item.command ? STATUS_ACTIONS.activateItem : undefined,
+    }))),
+  });
+  const fallback = statusItems.length === 0 ? null : (
+    <div className="plugin-workbench-status" role="status">
+      {statusItems.map((item) => (
+        <button
+          key={`${item.pluginId}:${item.id}`}
+          type="button"
+          title={item.tooltip}
+          onClick={() => {
+            if (!item.command) return;
+            const command = host.getCommands().find((candidate) =>
+              candidate.pluginId === item.pluginId && candidate.id === item.command);
+            void command?.execute();
+          }}
+        >
+          {item.icon ? <span aria-hidden="true">{item.icon}</span> : null}
+          {item.label}
+        </button>
+      ))}
+    </div>
+  );
+
+  return (
+    <PluginPresentation
+      host={host}
+      controller={controller}
+      target="app.status"
+      snapshot={snapshot}
+      fallback={fallback}
+      actions={[STATUS_ACTIONS.activateItem]}
+      dispatchAction={async (action, input) => {
+        if (action !== STATUS_ACTIONS.activateItem) throw new Error(`Unsupported status action: ${action}`);
+        const id = statusActionItemId(input);
+        const item = host.getStatusItems().find((candidate) => statusItemId(candidate.pluginId, candidate.id) === id);
+        if (!item?.command) throw new Error(`Status item is not available: ${id}`);
+        const command = host.getCommands().find((candidate) =>
+          candidate.pluginId === item.pluginId
+          && candidate.generation === item.generation
+          && candidate.id === item.command);
+        if (!command) throw new Error(`Status item command is not available: ${id}`);
+        return command.execute();
+      }}
+    />
+  );
+}
+
+function statusItemId(pluginId: string, itemId: string): string {
+  return JSON.stringify([pluginId, itemId]);
+}
+
+function statusActionItemId(input: unknown): string {
+  if (!isRecord(input) || typeof input.id !== "string" || input.id.length === 0) {
+    throw new Error("Status item action requires a valid item id");
+  }
+  return input.id;
 }
 
 interface WorkbenchViewProps {
