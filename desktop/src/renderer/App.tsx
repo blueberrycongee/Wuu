@@ -192,6 +192,7 @@ import type { SettingsPage } from "./SettingsView";
 import {
   ENABLE_GROUP_CHAT,
   ENABLE_MANAGEMENT_ASSISTANT,
+  ENABLE_SUBAGENT_CAPSULE,
   ENABLE_ULTRA_MODE,
 } from "./FeatureFlags";
 import { ArchiveTip } from "./ArchiveTip";
@@ -2574,7 +2575,9 @@ export function App(): JSX.Element {
         state.initialized?.advanced_settings?.context_window_tokens,
     });
     const streamStatus = activeThreadStreamStatus;
-    const activeSubagents = runningSubagents(activeThread?.child_agents);
+    const activeSubagents = ENABLE_SUBAGENT_CAPSULE
+      ? runningSubagents(activeThread?.child_agents)
+      : [];
     return (
       <PluginSurface
         host={desktopPluginHost}

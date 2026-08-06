@@ -24,6 +24,17 @@ describe("frontend feature flags", () => {
     expect(featureFlags.ENABLE_ULTRA_MODE).toBe(true);
   });
 
+  it("keeps the subagent capsule hidden unless explicitly enabled", async () => {
+    vi.stubEnv("VITE_ENABLE_SUBAGENT_CAPSULE", "false");
+    let featureFlags = await import("./FeatureFlags");
+    expect(featureFlags.ENABLE_SUBAGENT_CAPSULE).toBe(false);
+
+    vi.resetModules();
+    vi.stubEnv("VITE_ENABLE_SUBAGENT_CAPSULE", "true");
+    featureFlags = await import("./FeatureFlags");
+    expect(featureFlags.ENABLE_SUBAGENT_CAPSULE).toBe(true);
+  });
+
   it("keeps released collaboration enabled regardless of the legacy build flag", async () => {
     vi.stubEnv("VITE_ENABLE_GROUP_CHAT", "false");
     let featureFlags = await import("./FeatureFlags");
