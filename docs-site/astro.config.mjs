@@ -63,9 +63,6 @@ export default defineConfig({
           href: "https://github.com/blueberrycongee/wuu",
         },
       ],
-      editLink: {
-        baseUrl: "https://github.com/blueberrycongee/wuu/edit/main/docs/",
-      },
       customCss: ["./src/styles/custom.css"],
       markdown: {
         processedDirs: ["./generated-content/docs"],

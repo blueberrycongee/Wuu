@@ -11,12 +11,4 @@ export const onRequest = defineRouteMiddleware((context) => {
     route.sidebar = localeSidebar.entries
     route.hasSidebar = localeSidebar.entries.length > 0
   }
-
-  const sourcePath = route.entry.filePath?.split("generated-content/docs/").at(-1)
-  if (sourcePath) {
-    route.editUrl = new URL(
-      sourcePath,
-      "https://github.com/blueberrycongee/wuu/edit/main/docs/",
-    )
-  }
 })

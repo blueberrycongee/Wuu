@@ -70,20 +70,28 @@ header.header {
 }
 
 #starlight__sidebar summary {
-  color: var(--sl-color-gray-3);
-  font-size: 0.72rem;
+  padding-inline: 0.5rem;
+  color: var(--sl-color-white);
+  font-size: 0.88rem;
   font-weight: 650;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
+  letter-spacing: 0;
+}
+
+#starlight__sidebar ul ul li {
+  margin-inline-start: 0;
+  border-inline-start: 0;
+  padding-inline-start: 0;
 }
 
 #starlight__sidebar .top-level a {
   margin-block: 0.08rem;
-  border-inline-start: 2px solid transparent;
-  border-radius: 0;
+  border: 0;
+  border-radius: 0.3rem;
+  padding-inline: 0.5rem;
   padding-block: 0.38rem;
   color: var(--sl-color-gray-2);
   font-size: 0.88rem;
+  font-weight: 400;
   line-height: 1.35;
 }
 
@@ -93,10 +101,9 @@ header.header {
 }
 
 #starlight__sidebar a[aria-current="page"] {
-  border-inline-start-color: var(--sl-color-accent);
   background: var(--sl-color-gray-6);
   color: var(--sl-color-white);
-  font-weight: 600;
+  font-weight: 400;
 }
 
 .right-sidebar {
