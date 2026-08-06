@@ -87,6 +87,17 @@
 }
 
 /*
+ * Internal transport notifications can occupy a server turn without producing
+ * a visible message. React leaves the turn section mounted so plugin message
+ * slots may still contribute UI, but when every presenter resolves to null the
+ * section is genuinely empty. Do not let content-visibility reserve its 260px
+ * fallback height (plus the turn boundary) for that empty shell.
+ */
+.turn:empty {
+  display: none;
+}
+
+/*
  * content-visibility:auto implies paint containment, which clips any
  * descendant painted outside the turn's border box — exactly where the
  * hover action overlays go (user actions above the bubble, agent
