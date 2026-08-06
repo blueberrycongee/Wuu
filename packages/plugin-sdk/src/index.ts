@@ -9,6 +9,22 @@
  * @module
  */
 
+import type {
+  PublicSyntaxTokenName,
+  PublicThemeTokenName,
+} from "./theme-contract.generated.js";
+
+export {
+  LEGACY_THEME_TOKEN_ALIASES,
+  PUBLIC_SYNTAX_TOKEN_NAMES,
+  PUBLIC_THEME_TOKEN_NAMES,
+  canonicalThemeTokenName,
+  isPublicSyntaxTokenName,
+  isPublicThemeTokenName,
+  type PublicSyntaxTokenName,
+  type PublicThemeTokenName,
+} from "./theme-contract.generated.js";
+
 // ---------------------------------------------------------------------------
 // Core workbench types
 // ---------------------------------------------------------------------------
@@ -123,8 +139,8 @@ export interface RendererDefinition {
 export interface ThemeTokens {
   theme: string;
   base: string;
-  tokens: Record<string, string>;
-  syntax?: Record<string, string>;
+  tokens: Readonly<Partial<Record<PublicThemeTokenName, string>>>;
+  syntax?: Readonly<Partial<Record<PublicSyntaxTokenName, string>>>;
 }
 
 export interface CSSSnippet {
@@ -986,4 +1002,3 @@ export function createManifest(options: {
     description: options.description ?? `A Wuu plugin: ${options.id}`,
   };
 }
-

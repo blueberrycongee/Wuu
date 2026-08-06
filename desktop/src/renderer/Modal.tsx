@@ -10,6 +10,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { useI18n } from "./i18n";
+import { useUILayerHost } from "./ui/layers/UILayerHost";
 
 /**
  * Shared chrome for the application's environment-style dialogs
@@ -60,6 +61,7 @@ export function Modal({
   children,
 }: ModalProps): JSX.Element | null {
   const { t } = useI18n();
+  const layerHost = useUILayerHost();
   const panelRef = useRef<HTMLElement | null>(null);
   const dismissible = typeof onClose === "function" && !closeDisabled;
 
@@ -171,6 +173,9 @@ export function Modal({
   const content = (
     <div
       className={backdropClass}
+      data-wuu-component="modal-backdrop"
+      data-wuu-layer="modal"
+      data-wuu-state={closeDisabled ? "locked" : "open"}
       onClick={handleBackdropClick}
       role="presentation"
     >
@@ -178,6 +183,9 @@ export function Modal({
         <form
           ref={setPanelRef}
           className={panelClass}
+          data-wuu-component="dialog"
+          data-wuu-dismissible={onClose ? "true" : "false"}
+          data-wuu-state={closeDisabled ? "locked" : "open"}
           role="dialog"
           aria-modal="true"
           aria-label={ariaLabel}
@@ -194,6 +202,9 @@ export function Modal({
         <div
           ref={setPanelRef}
           className={panelClass}
+          data-wuu-component="dialog"
+          data-wuu-dismissible={onClose ? "true" : "false"}
+          data-wuu-state={closeDisabled ? "locked" : "open"}
           role="dialog"
           aria-modal="true"
           aria-label={ariaLabel}
@@ -206,5 +217,5 @@ export function Modal({
     </div>
   );
 
-  return createPortal(content, document.body);
+  return createPortal(content, layerHost);
 }

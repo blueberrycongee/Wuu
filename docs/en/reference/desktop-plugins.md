@@ -136,9 +136,17 @@ Themes do not require desktop code. Add them under `contributes.themes` in `plug
 enabled plugins appear under **Settings → Appearance** and are removed cleanly when disabled or when
 the user returns to a built-in theme.
 
-Only allowlisted semantic tokens are accepted: `--wuu-paper`, `--wuu-ink`, `--wuu-ink-soft`,
-`--wuu-hairline`, `--wuu-surface-muted`, `--wuu-accent`, `--wuu-accent-press`, and the published
-`--hljs-*` syntax tokens.
+[`config/desktop-theme-contract.json`](../../../config/desktop-theme-contract.json) is the single
+registry for public tokens and generates the manifest, SDK, and Desktop validators. Stable families
+cover semantic colors, typography, spacing, density, radius, borders, elevation, motion, content
+width, and `--wuu-syntax-*` syntax colors. Early names such as `--wuu-paper`, `--wuu-ink`,
+`--wuu-accent`, and `--hljs-*` remain compatible and map to the current semantic contract. New themes
+should prefer the current `--wuu-color-*` and `--wuu-font-*` names.
+
+Shared host dialogs expose stable `data-wuu-component`, `data-wuu-layer`, and `data-wuu-state`
+attributes; other overlays adopt the same contract as they move into the common Layer Host. Trusted
+code plugins that need supplemental CSS should target only these published attributes and tokens,
+not private class names or DOM structure.
 
 See the installable [`examples/plugins/deep-ui`](../../../examples/plugins/deep-ui/) package for a
 theme and wrappers covering all current surfaces.

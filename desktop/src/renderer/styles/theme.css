@@ -37,22 +37,22 @@
   --gray-900: #f2f3f4;
 
   /* --- Ink scale: light text on dark paper --- */
-  --ink-strong: var(--gray-900);
-  --ink: var(--gray-800);
-  --ink-soft: var(--gray-650);
+  --ink-strong: var(--wuu-color-text, var(--gray-900));
+  --ink: var(--wuu-color-text, var(--gray-800));
+  --ink-soft: var(--wuu-color-text-muted, var(--gray-650));
   --ink-tertiary: var(--gray-600);
   --ink-muted: var(--gray-500);
   --ink-faint: var(--gray-400);
 
   /* --- Paper & surfaces: elevation gets lighter, not darker --- */
-  --paper: var(--gray-0);
-  --surface-1: var(--gray-50);
-  --surface-2: var(--gray-100);
-  --surface-3: var(--gray-150);
+  --paper: var(--wuu-color-canvas, var(--gray-0));
+  --surface-1: var(--wuu-color-surface, var(--gray-50));
+  --surface-2: var(--wuu-color-surface-muted, var(--gray-100));
+  --surface-3: var(--wuu-color-surface-elevated, var(--gray-150));
   --surface-4: var(--gray-200);
 
-  --hairline: var(--gray-250);
-  --hairline-strong: var(--gray-350);
+  --hairline: var(--wuu-color-border-subtle, var(--gray-250));
+  --hairline-strong: var(--wuu-color-border-strong, var(--gray-350));
   --rule: var(--gray-300);
 
   /* Ink overlays flip to white-based veils. */
@@ -61,29 +61,31 @@
   --ink-overlay-8: rgba(220, 228, 235, 0.09);
   --ink-overlay-12: rgba(220, 228, 235, 0.13);
   --ink-overlay-18: rgba(220, 228, 235, 0.2);
-  --modal-backdrop-bg: rgba(0, 0, 0, 0.5);
+  --modal-backdrop-bg: var(--wuu-color-overlay-backdrop, rgba(0, 0, 0, 0.5));
 
   --shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.35);
-  --shadow-card: 0 2px 8px rgba(0, 0, 0, 0.4);
-  --shadow-pop: 0 14px 34px rgba(0, 0, 0, 0.55),
-                0 2px 8px rgba(0, 0, 0, 0.4);
+  --shadow-card: var(--wuu-elevation-panel, 0 2px 8px rgba(0, 0, 0, 0.4));
+  --shadow-pop: var(
+    --wuu-elevation-overlay,
+    0 14px 34px rgba(0, 0, 0, 0.55), 0 2px 8px rgba(0, 0, 0, 0.4)
+  );
 
   /* --- Status colors: brighter hues, deep soft backgrounds --- */
-  --success: #4cc38a;
+  --success: var(--wuu-color-success, #4cc38a);
   --success-soft: #152a1e;
-  --warning: #d9a84e;
+  --warning: var(--wuu-color-warning, #d9a84e);
   --warning-soft: #2b2211;
   --warning-border: #4a3b1c;
-  --danger: #f0705f;
+  --danger: var(--wuu-color-danger, #f0705f);
   --danger-soft: #341c18;
   --danger-border: #562f29;
-  --info: #58a6ff;
+  --info: var(--wuu-color-info, #58a6ff);
   --accent-warm: #ff7a3d;
 
   /* Brand vermillion lifts a step to hold against the dark ground.
      --sidebar-accent inherits var(--wuu-accent) from base. */
-  --wuu-accent: #ff5a26;
-  --wuu-accent-press: #ff6d3f;
+  --wuu-accent: var(--wuu-color-accent, #ff5a26);
+  --wuu-accent-press: var(--wuu-color-accent-pressed, #ff6d3f);
 
   --menu-bg: rgba(30, 33, 37, 0.98);
   --menu-hover: #2b2f34;
@@ -203,7 +205,7 @@
   --composer-permission-mode-danger-border: rgba(240, 112, 95, 0.3);
   --composer-permission-mode-danger-bg: #341c18;
   --composer-menu-note-warning-strong: #e2a04a;
-  --composer-context-meter-focus-outline: rgba(160, 168, 175, 0.55);
+  --composer-context-meter-focus-outline: var(--wuu-color-focus, rgba(160, 168, 175, 0.55));
   --composer-context-meter-tooltip-divider: rgba(228, 232, 235, 0.1);
   --chat-user-message-bg: #26282b;
 

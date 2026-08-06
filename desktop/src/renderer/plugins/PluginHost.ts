@@ -12,6 +12,10 @@ import type {
   ToolActivityPresenterDefinition,
   ViewTypeDefinition,
 } from "../../shared/workbench";
+import {
+  isPublicSyntaxTokenName,
+  isPublicThemeTokenName,
+} from "../../shared/themeContract.generated";
 
 export const PLUGIN_SLOT_IDS = [
   "sidebar.primary",
@@ -687,6 +691,7 @@ export class PluginHost {
 
       registerThemeTokens: (tokens: ThemeTokens) => {
         this.assertAccepting(state);
+        validateThemeTokens(tokens);
         const id = this.claimRegistrationId(state, "theme", `theme:${tokens.theme}`);
         const record: ThemeTokenRecord = {
           pluginId: state.pluginId, generation: state.generation, id,
@@ -1241,6 +1246,30 @@ function requireExactNonEmpty(value: string, label: string): string {
     throw new Error(`Plugin ${label} must not be empty`);
   }
   return value;
+}
+
+function validateThemeTokens(contribution: ThemeTokens): void {
+  requireNonEmpty(contribution.theme, "theme id");
+  if (contribution.base !== "light" && contribution.base !== "dark") {
+    throw new Error(`Plugin theme base must be light or dark: ${String(contribution.base)}`);
+  }
+  const tokens = Object.entries(contribution.tokens);
+  const syntax = Object.entries(contribution.syntax ?? {});
+  if (tokens.length === 0 && syntax.length === 0) {
+    throw new Error("Plugin theme token contribution must not be empty");
+  }
+  for (const [name, value] of tokens) {
+    if (!isPublicThemeTokenName(name)) {
+      throw new Error(`Unsupported plugin theme token: ${name}`);
+    }
+    requireExactNonEmpty(value, `theme token ${name}`);
+  }
+  for (const [name, value] of syntax) {
+    if (!isPublicSyntaxTokenName(name)) {
+      throw new Error(`Unsupported plugin syntax token: ${name}`);
+    }
+    requireExactNonEmpty(value, `syntax token ${name}`);
+  }
 }
 
 function sameContributions(

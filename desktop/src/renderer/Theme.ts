@@ -3,6 +3,11 @@ import type {
   ExtensionThemeDescriptor,
   ThemePreference,
 } from "../shared/protocol";
+import {
+  canonicalThemeTokenName,
+  isPublicSyntaxTokenName,
+  isPublicThemeTokenName,
+} from "../shared/themeContract.generated";
 
 /**
  * Renderer-side theme controller.
@@ -127,7 +132,19 @@ export function applyExtensionTheme(theme: AvailableExtensionTheme): void {
   systemListenerCleanup = undefined;
   clearExtensionThemeTokens();
   document.documentElement.dataset.theme = theme.base;
-  for (const [token, value] of Object.entries({ ...theme.tokens, ...theme.syntax })) {
+  const explicitTokens = new Set(Object.keys(theme.tokens));
+  for (const [token, value] of Object.entries(theme.tokens)) {
+    if (!isPublicThemeTokenName(token)) continue;
+    document.documentElement.style.setProperty(token, value);
+    appliedExtensionTokens.add(token);
+    const canonical = canonicalThemeTokenName(token);
+    if (canonical !== token && !explicitTokens.has(canonical)) {
+      document.documentElement.style.setProperty(canonical, value);
+      appliedExtensionTokens.add(canonical);
+    }
+  }
+  for (const [token, value] of Object.entries(theme.syntax ?? {})) {
+    if (!isPublicSyntaxTokenName(token)) continue;
     document.documentElement.style.setProperty(token, value);
     appliedExtensionTokens.add(token);
   }

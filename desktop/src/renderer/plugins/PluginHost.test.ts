@@ -279,6 +279,24 @@ describe("PluginHost", () => {
     expect(notifications).toHaveLength(2);
   });
 
+  it("rejects unpublished global theme tokens during candidate activation", async () => {
+    const host = new PluginHost({ react: React });
+
+    await expect(host.activateGeneration({
+      pluginId: "unsafe-theme",
+      generation: "one",
+      register(api) {
+        api.registerThemeTokens({
+          theme: "dark",
+          base: "dark",
+          tokens: { "--wuu-private-component-color": "red" } as never,
+        });
+      },
+    })).rejects.toThrow("Unsupported plugin theme token");
+
+    expect(host.getThemeTokens()).toEqual([]);
+  });
+
   it("validates keyed tool activity presenters and rejects another plugin's active key", async () => {
     const host = new PluginHost({ react: React });
     for (const definition of [

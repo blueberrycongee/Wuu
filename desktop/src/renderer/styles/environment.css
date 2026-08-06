@@ -1196,10 +1196,10 @@
   width: min(var(--environment-dialog-max-width), 100%);
   max-height: 100%;
   gap: 14px;
-  border: 1px solid var(--surface-4);
-  border-radius: var(--radius-lg);
+  border: var(--wuu-border-strong, 1px solid var(--surface-4));
+  border-radius: var(--wuu-radius-overlay, var(--radius-lg));
   background: var(--paper);
-  box-shadow: 0 24px 70px var(--env-shadow-dark-024);
+  box-shadow: var(--wuu-elevation-overlay, 0 24px 70px var(--env-shadow-dark-024));
   overflow: auto;
   padding: 20px;
   animation: menu-enter var(--menu-enter-duration) var(--menu-enter-easing) both;

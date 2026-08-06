@@ -14,6 +14,11 @@ import {
   type WorkbenchLayoutState,
   type WorkbenchViewState,
 } from "../../shared/workbench";
+import {
+  canonicalThemeTokenName,
+  isPublicSyntaxTokenName,
+  isPublicThemeTokenName,
+} from "../../shared/themeContract.generated";
 import type {
   PluginHost,
   RegisteredRenderer,
@@ -24,7 +29,6 @@ import { PluginPresentation } from "./PluginPresentation";
 const LAYOUT_STORAGE_KEY = "wuu.plugin-workbench.layout.v1";
 const MAX_STORAGE_VALUE_LENGTH = 1_048_576;
 const STORAGE_KEY_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
-const THEME_TOKEN_PATTERN = /^--wuu-[a-z0-9-]+$/;
 const EMPTY_WORKBENCH_SERVICES: WorkbenchServices = Object.freeze({});
 
 interface StorageLike {
@@ -282,8 +286,19 @@ export class WorkbenchController {
     this.appliedThemeTokens.clear();
     const theme = document.documentElement.dataset.theme ?? "light";
     for (const contribution of this.host.getThemeTokens(theme)) {
-      for (const [token, value] of Object.entries({ ...contribution.tokens, ...contribution.syntax })) {
-        if (!THEME_TOKEN_PATTERN.test(token)) continue;
+      const explicitTokens = new Set(Object.keys(contribution.tokens));
+      for (const [token, value] of Object.entries(contribution.tokens)) {
+        if (!isPublicThemeTokenName(token)) continue;
+        document.documentElement.style.setProperty(token, value);
+        this.appliedThemeTokens.add(token);
+        const canonical = canonicalThemeTokenName(token);
+        if (canonical !== token && !explicitTokens.has(canonical)) {
+          document.documentElement.style.setProperty(canonical, value);
+          this.appliedThemeTokens.add(canonical);
+        }
+      }
+      for (const [token, value] of Object.entries(contribution.syntax ?? {})) {
+        if (!isPublicSyntaxTokenName(token)) continue;
         document.documentElement.style.setProperty(token, value);
         this.appliedThemeTokens.add(token);
       }

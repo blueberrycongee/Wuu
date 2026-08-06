@@ -178,9 +178,17 @@ generation：候选激活是原子的，激活失败保留旧 generation，渲�
 
 无需执行桌面代码也可以在 `contributes.themes` 中声明主题。获批且启用的插件主题会出现在
 “设置 → 外观”；禁用插件或切回系统、浅色、深色主题时，Wuu 会移除该插件设置的全部
-Token。可用 Token 由 Manifest 白名单控制，包括 `--wuu-paper`、`--wuu-ink`、
-`--wuu-ink-soft`、`--wuu-hairline`、`--wuu-surface-muted`、`--wuu-accent`、
-`--wuu-accent-press` 和公开的 `--hljs-*` 语法色。
+Token。
+
+公开 Token 由 [`config/desktop-theme-contract.json`](../../../config/desktop-theme-contract.json)
+统一定义，并生成 Manifest、公开 SDK 和 Desktop 校验代码。稳定类别包括语义颜色、字体、
+间距、密度、圆角、边框、层级阴影、动效、内容宽度和 `--wuu-syntax-*` 语法色。早期的
+`--wuu-paper`、`--wuu-ink`、`--wuu-accent` 与 `--hljs-*` 等名称继续兼容，并在应用时映射到
+当前语义 Token；新主题应优先使用 `--wuu-color-*`、`--wuu-font-*` 等当前名称。
+
+共享宿主 Dialog 已带有稳定的 `data-wuu-component`、`data-wuu-layer` 和 `data-wuu-state`
+属性；其他弹层会在迁移到统一 Layer Host 时采用同一契约。可信代码插件需要补充 CSS 时，
+应只使用这些公开属性和 Token，不应依赖私有 class 名或 DOM 层级。
 
 ## 加载与安全
 
@@ -191,4 +199,3 @@ Renderer 不会读取插件的绝对路径。Wuu 在每次加载前都会由 app
 
 普通声明式主题只能修改公开的语义 Token。`registerStyle` 可以使用任意 CSS，因此只提供给
 受信任的桌面代码插件。依赖 Wuu 私有 class 名可以用于本地实验，但不属于兼容性承诺。
-

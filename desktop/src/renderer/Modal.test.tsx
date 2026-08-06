@@ -15,6 +15,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, createElement, type ReactElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { Modal } from "./Modal";
+import { WuuUIRoot } from "./ui/layers/UILayerHost";
 
 let container: HTMLDivElement | null = null;
 let root: Root | null = null;
@@ -58,6 +59,26 @@ describe("Modal", () => {
     expect(dialog?.getAttribute("role")).toBe("dialog");
     expect(dialog?.getAttribute("aria-modal")).toBe("true");
     expect(dialog?.getAttribute("aria-label")).toBe("测试弹窗");
+    expect(backdrop?.getAttribute("data-wuu-layer")).toBe("modal");
+    expect(dialog?.getAttribute("data-wuu-component")).toBe("dialog");
+  });
+
+  it("portals into the protected UI layer host when one is available", () => {
+    mount(
+      createElement(
+        WuuUIRoot,
+        null,
+        createElement(Modal, {
+          ariaLabel: "layer host test",
+          icon: createElement("span", null, "i"),
+          title: "t",
+          onClose: () => undefined,
+        }),
+      ),
+    );
+
+    const layerHost = document.querySelector('[data-wuu-layer-host="true"]');
+    expect(layerHost?.querySelector('[data-wuu-component="dialog"]')).toBeTruthy();
   });
 
   it("renders the icon, title, and optional subtitle", () => {

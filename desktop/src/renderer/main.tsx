@@ -8,6 +8,7 @@ import { applyThemePreference, startThemePreferenceSync } from "./Theme";
 import "./styles.css";
 import { I18nProvider } from "./i18n";
 import { ToastViewport } from "./Toast";
+import { WuuUIRoot } from "./ui/layers/UILayerHost";
 
 // The preload script already stamped data-theme for the first paint;
 // re-applying here takes over the "system" media-query subscription for
@@ -48,9 +49,15 @@ const ignoreStrayFileDrop = (event: DragEvent): void => {
 window.addEventListener("dragover", ignoreStrayFileDrop);
 window.addEventListener("drop", ignoreStrayFileDrop);
 
-ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
+const rendererRoot = document.getElementById("root") as HTMLElement;
+rendererRoot.dataset.wuuUiRoot = "true";
+rendererRoot.dataset.wuuComponent = "ui-root";
+
+ReactDOM.createRoot(rendererRoot).render(
   <I18nProvider>
-    <App />
-    <ToastViewport />
+    <WuuUIRoot>
+      <App />
+      <ToastViewport />
+    </WuuUIRoot>
   </I18nProvider>,
 );

@@ -427,18 +427,6 @@ func normalizeDesktop(root string, raw json.RawMessage) (*DesktopSpec, error) {
 	return &DesktopSpec{Entry: entry}, nil
 }
 
-var allowedThemeTokens = map[string]struct{}{
-	"--wuu-paper": {}, "--wuu-ink": {}, "--wuu-ink-soft": {},
-	"--wuu-hairline": {}, "--wuu-surface-muted": {},
-	"--wuu-accent": {}, "--wuu-accent-press": {},
-}
-
-var allowedSyntaxTokens = map[string]struct{}{
-	"--hljs-keyword": {}, "--hljs-function": {}, "--hljs-string": {},
-	"--hljs-number": {}, "--hljs-comment": {}, "--hljs-tag": {},
-	"--hljs-literal": {}, "--hljs-meta": {},
-}
-
 func normalizeThemes(raw json.RawMessage) ([]ThemeSpec, error) {
 	trimmed := bytes.TrimSpace(raw)
 	if len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null")) {

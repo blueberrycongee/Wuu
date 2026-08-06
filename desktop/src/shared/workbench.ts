@@ -12,6 +12,21 @@
  */
 
 import type * as React from "react";
+import type {
+  PublicSyntaxTokenName,
+  PublicThemeTokenName,
+} from "./themeContract.generated";
+
+export {
+  LEGACY_THEME_TOKEN_ALIASES,
+  PUBLIC_SYNTAX_TOKEN_NAMES,
+  PUBLIC_THEME_TOKEN_NAMES,
+  canonicalThemeTokenName,
+  isPublicSyntaxTokenName,
+  isPublicThemeTokenName,
+  type PublicSyntaxTokenName,
+  type PublicThemeTokenName,
+} from "./themeContract.generated";
 
 // ---------------------------------------------------------------------------
 // View
@@ -596,9 +611,9 @@ export interface ThemeTokens {
   /** Base theme to inherit from ("light" or "dark"). */
   base: string;
   /** CSS custom property overrides: "--wuu-color-bg": "#1a1a2e". */
-  tokens: Record<string, string>;
+  tokens: Readonly<Partial<Record<PublicThemeTokenName, string>>>;
   /** Syntax highlighting overrides. */
-  syntax?: Record<string, string>;
+  syntax?: Readonly<Partial<Record<PublicSyntaxTokenName, string>>>;
 }
 
 /**

@@ -6,6 +6,8 @@ import {
   HEADER_ACTIONS,
   NAVIGATION_ACTIONS,
   PRESENTATION_TARGETS,
+  PUBLIC_SYNTAX_TOKEN_NAMES,
+  PUBLIC_THEME_TOKEN_NAMES,
   REQUEST_TRANSFORM_CAPABILITY,
   SETTINGS_ACTIONS,
   STATUS_ACTIONS,
@@ -27,6 +29,9 @@ import {
 
 if (!PRESENTATION_TARGETS.includes("conversation.tool-activity") || !PRESENTATION_TARGETS.includes("settings")) {
   throw new Error("presentation target contract failed");
+}
+if (!PUBLIC_THEME_TOKEN_NAMES.includes("--wuu-color-canvas") || !PUBLIC_SYNTAX_TOKEN_NAMES.includes("--wuu-syntax-keyword")) {
+  throw new Error("theme token contract failed");
 }
 const genericPresenter: PresenterDefinition = {
   id: "preview",

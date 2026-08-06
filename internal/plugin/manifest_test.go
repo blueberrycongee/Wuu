@@ -162,8 +162,8 @@ func TestLoadManifestNormalizesDesktopThemeAndSettingsContributions(t *testing.T
       "id": "focused",
       "name": "Focused",
       "base": "dark",
-      "tokens": {"--wuu-paper": "#101214", "--wuu-ink": "#f4f5f6"},
-      "syntax": {"--hljs-keyword": "#ff8bd1"}
+      "tokens": {"--wuu-paper": "#101214", "--wuu-ink": "#f4f5f6", "--wuu-font-family-ui": "system-ui"},
+      "syntax": {"--hljs-keyword": "#ff8bd1", "--wuu-syntax-string": "#86efac"}
     }],
     "settings": {
       "enabled": {"type":"boolean","title":"Enabled","default":true,"scope":"user","apply":"live"},
@@ -183,6 +183,9 @@ func TestLoadManifestNormalizesDesktopThemeAndSettingsContributions(t *testing.T
 	}
 	if len(got.Themes) != 1 || got.Themes[0].Tokens["--wuu-paper"] != "#101214" {
 		t.Fatalf("themes = %+v", got.Themes)
+	}
+	if got.Themes[0].Tokens["--wuu-font-family-ui"] != "system-ui" || got.Themes[0].Syntax["--wuu-syntax-string"] != "#86efac" {
+		t.Fatalf("modern theme contract = %+v", got.Themes[0])
 	}
 	if len(got.Settings) != 4 || got.Settings["productivity.mode"].Scope != SettingScopeWorkspace {
 		t.Fatalf("settings = %+v", got.Settings)

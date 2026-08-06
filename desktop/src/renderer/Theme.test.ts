@@ -80,6 +80,7 @@ describe("extension themes", () => {
 
     expect(document.documentElement.dataset.theme).toBe("dark");
     expect(document.documentElement.style.getPropertyValue("--wuu-accent")).toBe("#7659ff");
+    expect(document.documentElement.style.getPropertyValue("--wuu-color-accent")).toBe("#7659ff");
     expect(document.documentElement.style.getPropertyValue("--hljs-keyword")).toBe("#ff79c6");
   });
 
@@ -90,6 +91,7 @@ describe("extension themes", () => {
 
     expect(document.documentElement.dataset.theme).toBe("light");
     expect(document.documentElement.style.getPropertyValue("--wuu-accent")).toBe("");
+    expect(document.documentElement.style.getPropertyValue("--wuu-color-accent")).toBe("");
     expect(window.localStorage.getItem("wuu.extension-theme")).toBeNull();
   });
 

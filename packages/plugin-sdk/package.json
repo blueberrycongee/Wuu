@@ -15,7 +15,12 @@
   "devDependencies": {
     "typescript": "^5.0.0"
   },
-  "files": ["dist/index.js", "dist/index.d.ts"],
+  "files": [
+    "dist/index.js",
+    "dist/index.d.ts",
+    "dist/theme-contract.generated.js",
+    "dist/theme-contract.generated.d.ts"
+  ],
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {

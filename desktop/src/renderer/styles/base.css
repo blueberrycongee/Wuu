@@ -63,19 +63,19 @@
 
   --ink-strong: var(--wuu-color-text, var(--gray-900));
   --ink: var(--wuu-color-text, var(--gray-800));
-  --ink-soft: var(--gray-650);
+  --ink-soft: var(--wuu-color-text-muted, var(--gray-650));
   --ink-tertiary: var(--gray-600);
   --ink-muted: var(--gray-500);
   --ink-faint: var(--gray-400);
 
   --paper: var(--wuu-color-canvas, var(--gray-0));
-  --surface-1: var(--gray-50);
-  --surface-2: var(--gray-100);
-  --surface-3: var(--gray-150);
+  --surface-1: var(--wuu-color-surface, var(--gray-50));
+  --surface-2: var(--wuu-color-surface-muted, var(--gray-100));
+  --surface-3: var(--wuu-color-surface-elevated, var(--gray-150));
   --surface-4: var(--gray-200);
 
-  --hairline: var(--gray-250);
-  --hairline-strong: var(--gray-350);
+  --hairline: var(--wuu-color-border-subtle, var(--gray-250));
+  --hairline-strong: var(--wuu-color-border-strong, var(--gray-350));
   --hairline-soft: var(--ink-overlay-6);
   /* In-flow horizontal rules inside the conversation (turn progress
      rule, system-event divider). One token so they read as the same
@@ -94,23 +94,25 @@
 
   /* Shared backdrop for standard modal surfaces. Immersive viewers can keep
      their own treatment, but dialogs and command palettes use this one layer. */
-  --modal-backdrop-bg: rgba(38, 42, 46, 0.24);
+  --modal-backdrop-bg: var(--wuu-color-overlay-backdrop, rgba(38, 42, 46, 0.24));
 
   --shadow-soft: 0 1px 2px rgba(20, 24, 28, 0.06);
   --shadow-card: var(--wuu-elevation-panel, 0 2px 8px var(--ink-overlay-6));
-  --shadow-pop: 0 14px 34px rgba(20, 24, 28, 0.12),
-                0 2px 8px rgba(20, 24, 28, 0.08);
+  --shadow-pop: var(
+    --wuu-elevation-overlay,
+    0 14px 34px rgba(20, 24, 28, 0.12), 0 2px 8px rgba(20, 24, 28, 0.08)
+  );
 
                                                                           
-  --success: #1f9d55;
+  --success: var(--wuu-color-success, #1f9d55);
   --success-soft: #eaf4e8;
-  --warning: #8a5b10;
+  --warning: var(--wuu-color-warning, #8a5b10);
   --warning-soft: #fff3dc;
   --warning-border: #f3dfb7;
-  --danger: #b42318;
+  --danger: var(--wuu-color-danger, #b42318);
   --danger-soft: #fff0ef;
   --danger-border: #f1c2bf;
-  --info: #0969da;
+  --info: var(--wuu-color-info, #0969da);
   --accent-warm: #ef5b18;
 
                                                                   
@@ -120,8 +122,8 @@
   --wuu-ink-soft: var(--ink-soft);
   --wuu-hairline: var(--hairline);
   --wuu-surface-muted: var(--surface-1);
-  --wuu-accent: #ff3d00;
-  --wuu-accent-press: #e53600;                                                       
+  --wuu-accent: var(--wuu-color-accent, #ff3d00);
+  --wuu-accent-press: var(--wuu-color-accent-pressed, #e53600);
   --sidebar-accent: var(--wuu-accent);
 
                                                                      
@@ -131,12 +133,12 @@
                                                                         
   --radius-xs: 4px;                                                  
   --radius-sm: var(--wuu-radius-control, 8px);
-  --radius-md: 12px;                                       
+  --radius-md: var(--wuu-radius-panel, 12px);
   --radius-lg: 16px;                                  
   --radius-pill: 999px;                                                
 
                                                                   
-  --menu-radius: var(--radius-md);
+  --menu-radius: var(--wuu-radius-overlay, var(--radius-md));
 
                                                                      
                  
@@ -154,8 +156,12 @@
 
   --font-xs: 11px;
   --font-sm: 12px;
-  --font-ui: var(--wuu-font-size-body, 13px);
+  --font-ui: var(--wuu-font-size-ui, var(--wuu-font-size-body, 13px));
   --font-body: var(--wuu-font-size-body, 14px);
+  --font-mono: var(
+    --wuu-font-family-mono,
+    ui-monospace, "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace
+  );
   --font-content: 14px;
   --font-title: 15px;
   --font-heading: 18px;
@@ -164,7 +170,7 @@
   --weight-semibold: 600;
   --weight-bold: 700;
   --line-ui: 1.35;
-  --line-body: 1.55;
+  --line-body: var(--wuu-line-height-body, 1.55);
   --line-meta: 1.6;
   --menu-bg: rgba(255, 255, 255, 0.98);
   --menu-border: var(--ink-overlay-12);
@@ -181,7 +187,7 @@
    * prefers-reduced-motion zeroes the ladder globally (see media query after
    * this :root block); token-driven motion needs no per-component handling. */
   --motion-fast: var(--wuu-motion-duration-fast, 120ms);
-  --motion-base: 180ms;
+  --motion-base: var(--wuu-motion-duration-normal, 180ms);
   --motion-slow: 280ms;
   --motion-slower: 440ms;
   --motion-spin: 900ms;
