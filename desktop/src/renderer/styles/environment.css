@@ -406,6 +406,49 @@
  * Each row mirrors the regular row geometry, with its own status pill on
  * the right and hover-revealed pin / archive actions.
  */
+/* Background commands sit above the subagent group: both answer "what is this
+   conversation doing right now", and this one is the shorter list. */
+.environment-background-section {
+  display: grid;
+  gap: 3px;
+  margin-top: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--ink-overlay-6);
+}
+
+.environment-section-label {
+  padding: 0 8px 2px;
+  color: var(--ink-muted);
+  font-size: var(--font-xs);
+  letter-spacing: 0.03em;
+}
+
+/* Icon, command, elapsed. The command takes the slack and truncates; the
+   elapsed time keeps its natural width so rows stay comparable. */
+.environment-background-row {
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  column-gap: 7px;
+}
+
+/* `.environment-row > span` styles the trailing meta cell of a normal row.
+   The command is this row's label, so it takes the label role back: left
+   aligned, full-strength ink, and monospace because it is a shell command. */
+.environment-row > .environment-background-command {
+  overflow: hidden;
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-weight: 400;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.environment-row > .environment-background-status {
+  color: var(--ink-tertiary);
+  font-size: var(--font-xs);
+  white-space: nowrap;
+}
+
 .environment-subagent-group {
   display: grid;
   gap: 3px;

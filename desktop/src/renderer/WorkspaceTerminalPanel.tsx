@@ -18,6 +18,13 @@ import type {
   TerminalSessionEvent,
   Thread,
 } from "../shared/protocol";
+import {
+  isManagedProcessLive,
+  liveManagedProcessList,
+  managedProcessResourceID,
+  preferManagedProcess,
+  useLiveManagedProcesses,
+} from "./LiveManagedProcesses";
 import { currentAppliedTheme, observeAppliedTheme, type AppliedTheme } from "./Theme";
 import {
   agentRunGroupsForThread,
@@ -152,7 +159,15 @@ function terminalExitText(event: Extract<TerminalSessionEvent, { type: "exit" }>
   });
 }
 
-export type WorkspaceTerminalRunRequest = AgentRunLocator & { requestID: number };
+export type WorkspaceTerminalRunRequest = AgentRunLocator & {
+  requestID: number;
+  /**
+   * Selects a live background process directly. Those runs are derived from
+   * the process inventory rather than the transcript, so they have no turn to
+   * look up; the environment panel hands the process id straight through.
+   */
+  processID?: string;
+};
 
 export function WorkspaceTerminalPanel({
   activeContext,
@@ -174,14 +189,12 @@ export function WorkspaceTerminalPanel({
   );
   const [userTerminals, setUserTerminals] = useState<UserTerminalResource[]>([]);
   const nextUserTerminalOrdinalRef = useRef(1);
-  const [managedProcesses, setManagedProcesses] = useState<Record<string, ManagedProcessSummary>>({});
+  const { processes: managedProcesses, applyProcessChange } = useLiveManagedProcesses(thread?.id);
   const [navigationWidth, setNavigationWidth] = useState(readStoredTerminalNavigationWidth);
   const [resizingNavigation, setResizingNavigation] = useState(false);
   const navigationResizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
   const runs = useMemo(
-    () => Object.values(managedProcesses)
-      .filter(isManagedProcessLive)
-      .sort((left, right) => Date.parse(right.updated_at) - Date.parse(left.updated_at))
+    () => liveManagedProcessList(managedProcesses)
       .map((process) => managedRunFromProcess(thread?.id ?? process.owner_id, process)),
     [managedProcesses, thread?.id],
   );
@@ -190,19 +203,7 @@ export function WorkspaceTerminalPanel({
   const standaloneAgentRun = Boolean(
     selectedRun && userTerminals.length === 0 && runs.length === 0,
   );
-  const handleManagedProcessChange = useCallback((next: ManagedProcessSummary) => {
-    setManagedProcesses((current) => {
-      if (!isManagedProcessLive(next)) {
-        const updated = { ...current };
-        delete updated[next.id];
-        return updated;
-      }
-      return {
-        ...current,
-        [next.id]: preferManagedProcess(current[next.id], next),
-      };
-    });
-  }, []);
+  const handleManagedProcessChange = applyProcessChange;
   const handleUserTerminalStateChange = useCallback((id: string, state: WorkspaceTerminalState) => {
     setUserTerminals((current) => current.map((terminal) => (
       terminal.id === id && terminal.state !== state ? { ...terminal, state } : terminal
@@ -214,45 +215,6 @@ export function WorkspaceTerminalPanel({
     )));
   }, []);
 
-  useEffect(() => {
-    const threadID = thread?.id;
-    if (!threadID) {
-      setManagedProcesses({});
-      return undefined;
-    }
-    let disposed = false;
-    let refreshTimer: number | undefined;
-    const activeThreadID = threadID;
-
-    async function refresh(): Promise<void> {
-      try {
-        const result = await window.wuu.listManagedProcesses(activeThreadID);
-        if (disposed) {
-          return;
-        }
-        const incoming = result.processes.filter(isManagedProcessLive);
-        setManagedProcesses((current) => {
-          return Object.fromEntries(incoming.map((process) => [
-            process.id,
-            preferManagedProcess(current[process.id], process),
-          ]));
-        });
-        refreshTimer = window.setTimeout(() => void refresh(), 1500);
-      } catch {
-        if (!disposed) {
-          refreshTimer = window.setTimeout(() => void refresh(), 3000);
-        }
-      }
-    }
-
-    void refresh();
-    return () => {
-      disposed = true;
-      if (refreshTimer !== undefined) {
-        window.clearTimeout(refreshTimer);
-      }
-    };
-  }, [thread?.id]);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -288,11 +250,22 @@ export function WorkspaceTerminalPanel({
     if (!requestedRun) {
       return;
     }
+    if (requestedRun.processID) {
+      setSelectedResourceID(managedProcessResourceID(requestedRun.processID));
+      return;
+    }
     const next = selectAgentRun(groups, requestedRun);
     if (next) {
       setSelectedResourceID(next.toolCallID);
     }
-  }, [groups, requestedRun?.requestID, requestedRun?.threadID, requestedRun?.turnID, requestedRun?.toolCallID]);
+  }, [
+    groups,
+    requestedRun?.requestID,
+    requestedRun?.threadID,
+    requestedRun?.turnID,
+    requestedRun?.toolCallID,
+    requestedRun?.processID,
+  ]);
 
   useEffect(() => {
     if (userTerminals.some((terminal) => terminal.id === selectedResourceID) || selectedRun) {
@@ -557,22 +530,7 @@ function RunStatusIcon({
   return <Clock3 className="icon" />;
 }
 
-function isManagedProcessLive(process: ManagedProcessSummary): boolean {
-  return process.status === "starting" || process.status === "running" || process.status === "stopping";
-}
 
-function preferManagedProcess(
-  current: ManagedProcessSummary | undefined,
-  next: ManagedProcessSummary,
-): ManagedProcessSummary {
-  if (!current) {
-    return next;
-  }
-  if (!isManagedProcessLive(current) && isManagedProcessLive(next)) {
-    return current;
-  }
-  return Date.parse(next.updated_at) < Date.parse(current.updated_at) ? current : next;
-}
 
 function AgentTerminalPane({
   run,

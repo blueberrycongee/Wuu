@@ -12,6 +12,7 @@ import {
   Pin,
   Plus,
   Search,
+  SquareTerminal,
   X
 } from "lucide-react";
 import { type FormEvent as ReactFormEvent, type RefObject, useEffect, useState } from "react";
@@ -19,6 +20,7 @@ import type {
   Agent,
   GitStatusResult,
   InitializeResult,
+  ManagedProcessSummary,
   PlanUpdate,
   WorkspaceFileReadResult
 } from "../shared/protocol";
@@ -52,6 +54,8 @@ export function EnvironmentPanel({
   onOpenPullRequest,
   rightPanelFilePath,
   onCloseFilePreview,
+  backgroundProcesses = [],
+  onOpenBackgroundProcess,
   subagentSessions,
   archiveConfirmSubagentID,
   onSelectSubagent,
@@ -92,6 +96,14 @@ export function EnvironmentPanel({
    * undefined or empty the "子任务" section is hidden entirely so the panel
    * stays quiet for sessions that never spawned one.
    */
+  /**
+   * Background commands the active conversation can still control. Only live
+   * processes belong here: a settled command has nothing to take over, and the
+   * turn's own record already covers reading its output afterwards.
+   */
+  backgroundProcesses?: ManagedProcessSummary[];
+  /** Opens the terminal workspace with this process selected. */
+  onOpenBackgroundProcess?: (processID: string) => void;
   subagentSessions?: SubagentRowSummary[];
   /**
    * ID of the subagent currently sitting in the "press again to confirm"
@@ -208,6 +220,13 @@ export function EnvironmentPanel({
           </button>
         </Tooltip>
 
+        {backgroundProcesses.length > 0 && onOpenBackgroundProcess ? (
+          <EnvironmentBackgroundProcesses
+            processes={backgroundProcesses}
+            onOpen={onOpenBackgroundProcess}
+          />
+        ) : null}
+
         {subagentSessions && subagentSessions.length > 0 ? (
           <EnvironmentSubagents
             agents={subagentSessions}
@@ -229,6 +248,72 @@ export function EnvironmentPanel({
       ) : null}
     </aside>
   );
+}
+
+/**
+ * EnvironmentBackgroundProcesses lists the background commands still running
+ * for this conversation, so a long-lived one can be reached without hunting
+ * through the transcript for the turn that started it.
+ *
+ * It is an entrance to the terminal workspace, not a second place to read
+ * output: a row hands its process to that workspace and nothing more. Ordinary
+ * short commands never appear, because they are no longer live by the time the
+ * user looks.
+ */
+function EnvironmentBackgroundProcesses({
+  processes,
+  onOpen,
+}: {
+  processes: ManagedProcessSummary[];
+  onOpen: (processID: string) => void;
+}): JSX.Element {
+  const { t } = useI18n();
+  return (
+    <section
+      className="environment-background-section"
+      aria-label={t("environment.backgroundProcesses")}
+    >
+      <div className="environment-section-label">{t("environment.backgroundProcesses")}</div>
+      {processes.map((process) => (
+        <button
+          className="environment-row environment-background-row"
+          data-process-id={process.id}
+          key={process.id}
+          type="button"
+          onClick={() => onOpen(process.id)}
+        >
+          <SquareTerminal className="icon" />
+          <span className="environment-background-command">{process.command}</span>
+          <span className="environment-background-status">
+            {backgroundProcessStatusText(process, t)}
+          </span>
+        </button>
+      ))}
+    </section>
+  );
+}
+
+/**
+ * Describes a running command by how long it has been alive. A start time is
+ * more useful than the raw status here: everything in this list is running, so
+ * the status alone would say the same thing on every row.
+ */
+function backgroundProcessStatusText(
+  process: ManagedProcessSummary,
+  t: ReturnType<typeof useI18n>["t"],
+): string {
+  const startedAt = Date.parse(process.started_at);
+  if (Number.isNaN(startedAt)) {
+    return t("environment.backgroundRunning");
+  }
+  const minutes = Math.floor((Date.now() - startedAt) / 60000);
+  if (minutes < 1) {
+    return t("environment.backgroundRunning");
+  }
+  if (minutes < 60) {
+    return t("environment.backgroundRunningMinutes", { count: minutes });
+  }
+  return t("environment.backgroundRunningHours", { count: Math.floor(minutes / 60) });
 }
 
 /**

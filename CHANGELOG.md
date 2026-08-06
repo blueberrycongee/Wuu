@@ -8,6 +8,14 @@ Versioning rules are documented in [the release guide](docs/en/project/release.m
 
 ## [Unreleased]
 
+### Added
+
+- Added a background section to the environment panel listing the commands the
+  current conversation can still reach, with how long each has been running.
+  Selecting one opens it in the terminal workspace. Reaching a long-lived
+  command no longer means finding the turn that started it, and settled
+  commands stay out of the way since their turn already records their output.
+
 ## [0.15.0] - 2026-08-05
 
 ### Added

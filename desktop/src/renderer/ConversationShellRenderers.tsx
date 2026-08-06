@@ -469,6 +469,7 @@ export type ConversationSidePanelsProps = {
   activeThread?: Thread;
   archiveConfirmSubagentID?: string;
   onSelectChildAgent: (agent: Agent) => void;
+  onOpenBackgroundProcess: (processID: string) => void;
   onToggleSubagentPinned: (agent: Agent) => void;
   onArchiveSubagent: (agent: Agent) => void;
   onClearSubagentArchiveConfirm: (id: string) => void;
@@ -498,6 +499,7 @@ export function ConversationSidePanels({
   activeThread,
   archiveConfirmSubagentID,
   onSelectChildAgent,
+  onOpenBackgroundProcess,
   onToggleSubagentPinned,
   onArchiveSubagent,
   onClearSubagentArchiveConfirm,
@@ -525,6 +527,7 @@ export function ConversationSidePanels({
         onOpenPullRequest={onOpenPullRequest}
         rightPanelFilePath={rightPanelFilePath}
         onCloseFilePreview={onCloseFilePreview}
+        onOpenBackgroundProcess={onOpenBackgroundProcess}
         subagentSessions={activeThread?.child_agents}
         archiveConfirmSubagentID={archiveConfirmSubagentID}
         onSelectSubagent={(agent) => onSelectChildAgent(agent as Agent)}

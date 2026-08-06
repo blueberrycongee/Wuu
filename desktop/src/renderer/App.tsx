@@ -2095,6 +2095,22 @@ export function App(): JSX.Element {
     }));
     openWorkspaceTool("terminal");
   });
+  // Opening a live background process from the environment panel is the same
+  // navigation as the turn action bar, addressed by process instead of turn:
+  // the process has no transcript turn to look up once it outlives one.
+  const handleOpenBackgroundProcess = useStableCallback((processID: string): void => {
+    const threadID = activeThreadIDForState(appStateRef.current);
+    if (!threadID) {
+      return;
+    }
+    setTerminalRunRequest((current) => ({
+      threadID,
+      turnID: "",
+      processID,
+      requestID: (current?.requestID ?? 0) + 1,
+    }));
+    openWorkspaceTool("terminal");
+  });
   const openWorkspaceFile = useStableCallback((path: string): void => {
     // Stamp the same derived context the workspace panel's file tree/preview
     // are rooted at (workspacePanelContext), not the raw activeContext — for
@@ -4699,6 +4715,7 @@ export function App(): JSX.Element {
           onCloseFilePreview={handleCloseFilePreview}
           activeThread={activeThread}
           archiveConfirmSubagentID={archiveConfirmSubagentID}
+          onOpenBackgroundProcess={handleOpenBackgroundProcess}
           onSelectChildAgent={(agent) => void selectChildAgent(agent)}
           onToggleSubagentPinned={(agent) =>
             void toggleSubagentPinned(agent)

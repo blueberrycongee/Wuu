@@ -1,6 +1,10 @@
-import { useEffect, useRef, type RefObject } from "react";
+import { useEffect, useMemo, useRef, type RefObject } from "react";
 import type { Agent, PlanUpdate } from "../shared/protocol";
-import type { AppState } from "./AppState";
+import { activeThreadForState, type AppState } from "./AppState";
+import {
+  liveManagedProcessList,
+  useLiveManagedProcesses,
+} from "./LiveManagedProcesses";
 import {
   EnvironmentPanel,
   type EnvironmentPanelMenu,
@@ -79,6 +83,7 @@ export function EnvironmentSideStack({
   onOpenReview,
   onOpenCommit,
   onOpenPullRequest,
+  onOpenBackgroundProcess,
   subagentSessions,
   archiveConfirmSubagentID,
   onSelectSubagent,
@@ -116,6 +121,7 @@ export function EnvironmentSideStack({
    * section is hidden, matching the user intent that no row appears unless
    * the main session actually has subagents.
    */
+  onOpenBackgroundProcess?: (processID: string) => void;
   subagentSessions?: SubagentRowSummary[];
   /**
    * ID of the subagent currently in "press again to confirm" archive
@@ -129,6 +135,12 @@ export function EnvironmentSideStack({
   onClearSubagentArchiveConfirm?: (agentID: string) => void;
 }): JSX.Element | null {
   const stackRef = useRef<HTMLDivElement>(null);
+  const activeThreadID = activeThreadForState(state)?.id;
+  const { processes: liveProcesses } = useLiveManagedProcesses(activeThreadID);
+  const backgroundProcesses = useMemo(
+    () => liveManagedProcessList(liveProcesses),
+    [liveProcesses],
+  );
   const shouldRender = (visible || mounted) && Boolean(state.initialized);
   useEnvironmentPanelScale(stackRef, shouldRender);
 
@@ -159,6 +171,8 @@ export function EnvironmentSideStack({
         onOpenReview={onOpenReview}
         onOpenCommit={onOpenCommit}
         onOpenPullRequest={onOpenPullRequest}
+        backgroundProcesses={backgroundProcesses}
+        onOpenBackgroundProcess={onOpenBackgroundProcess}
         subagentSessions={subagentSessions}
         archiveConfirmSubagentID={archiveConfirmSubagentID}
         onSelectSubagent={onSelectSubagent}

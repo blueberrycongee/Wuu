@@ -2,14 +2,15 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { act, createRef } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { InitializeResult } from "../shared/protocol";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { InitializeResult, ManagedProcessSummary, WuuDesktopApi } from "../shared/protocol";
 import { initialState, type AppState } from "./AppState";
 import { environmentPanelScaleForWidth } from "./EnvironmentPanelScale";
 import {
   EnvironmentSideStack,
   type SubagentRowSummary,
 } from "./EnvironmentSideStack";
+import { resetLiveManagedProcessStores } from "./LiveManagedProcesses";
 import { agentStatusLabel } from "./ThreadAgents";
 import { translateCurrent } from "./i18n";
 import { hoverTooltipText, unhoverTooltip } from "./tooltipTestUtils";
@@ -59,6 +60,7 @@ function initialized(): InitializeResult {
 function renderStack(
   stateOverrides: Partial<AppState> = {},
   subagentSessions?: SubagentRowSummary[],
+  onOpenBackgroundProcess: (processID: string) => void = () => {},
 ): void {
   const state: AppState = {
     ...initialState,
@@ -86,6 +88,7 @@ function renderStack(
         onOpenReview={() => {}}
         onOpenCommit={() => {}}
         onOpenPullRequest={() => {}}
+        onOpenBackgroundProcess={onOpenBackgroundProcess}
         subagentSessions={subagentSessions}
       />,
     );
@@ -191,4 +194,81 @@ describe("EnvironmentSideStack", () => {
       translateCurrent("environment.earlierSubtasksHidden", { count: 2 }),
     );
   });
+});
+
+describe("environment background processes", () => {
+  function installProcesses(processes: ManagedProcessSummary[]): void {
+    (globalThis as { wuu?: Partial<WuuDesktopApi> }).wuu = {
+      listManagedProcesses: vi.fn().mockResolvedValue({ processes }),
+    };
+  }
+
+  function liveProcess(overrides: Partial<ManagedProcessSummary> = {}): ManagedProcessSummary {
+    return {
+      id: "proc-1",
+      owner_kind: "main_agent",
+      owner_id: "thread-1",
+      lifecycle: "managed",
+      status: "running",
+      pid: 100,
+      command: "gh pr checks --watch",
+      cwd: "/repo",
+      started_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      ...overrides,
+    };
+  }
+
+  afterEach(() => {
+    resetLiveManagedProcessStores();
+    delete (globalThis as { wuu?: WuuDesktopApi }).wuu;
+  });
+
+  async function settle(): Promise<void> {
+    for (let i = 0; i < 5; i++) {
+      await act(async () => {
+        await Promise.resolve();
+      });
+    }
+  }
+
+  it("lists background commands the conversation can still reach", async () => {
+    installProcesses([liveProcess()]);
+    renderStack({ thread: { id: "thread-1", turns: [] } as never });
+    await settle();
+
+    const row = container.querySelector<HTMLButtonElement>(
+      '.environment-background-row[data-process-id="proc-1"]',
+    );
+    expect(row?.textContent).toContain("gh pr checks --watch");
+  });
+
+  it("hands the selected process to the terminal workspace", async () => {
+    const onOpen = vi.fn();
+    installProcesses([liveProcess()]);
+    renderStack({ thread: { id: "thread-1", turns: [] } as never }, undefined, onOpen);
+    await settle();
+
+    const row = container.querySelector<HTMLButtonElement>(
+      '.environment-background-row[data-process-id="proc-1"]',
+    );
+    act(() => {
+      row?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    });
+    expect(onOpen).toHaveBeenCalledWith("proc-1");
+  });
+
+  // A settled command has nothing to take over, and the turn's own record
+  // already covers reading its output afterwards.
+  it("omits commands that are no longer running", async () => {
+    installProcesses([
+      liveProcess({ id: "done", status: "stopped" }),
+      liveProcess({ id: "gone", status: "failed" }),
+    ]);
+    renderStack({ thread: { id: "thread-1", turns: [] } as never });
+    await settle();
+
+    expect(container.querySelector(".environment-background-section")).toBeNull();
+  });
+
 });
