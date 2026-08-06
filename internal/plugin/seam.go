@@ -251,9 +251,15 @@ var StandardAgentSeams = []Seam{
 		},
 	},
 	{
-		Name: "agent.continuation.policy",
+		Name: "agent.turn.continuation",
 		Dispatch: SeamDispatch{
 			Kind: SeamDecision, ShortCircuit: true, ErrorPolicy: ErrorPolicyPropagate,
+		},
+	},
+	{
+		Name: "agent.turn.completed",
+		Dispatch: SeamDispatch{
+			Kind: SeamObserve, Concurrent: true, ErrorPolicy: ErrorPolicyIgnore,
 		},
 	},
 	{
