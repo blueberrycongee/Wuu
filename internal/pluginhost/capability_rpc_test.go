@@ -62,6 +62,16 @@ func TestValidateCapabilityDescriptor(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name:    "system prompt requires transform v1",
+			desc:    CapabilityDescriptor{ID: CapabilityAgentSystemPromptSection, Kind: "observe", Version: 1},
+			wantErr: true,
+		},
+		{
+			name:    "compaction requires decision v1",
+			desc:    CapabilityDescriptor{ID: CapabilityAgentCompaction, Kind: "decision", Version: 2},
+			wantErr: true,
+		},
+		{
 			name: "with dependencies",
 			desc: CapabilityDescriptor{
 				ID: "agent.tool.custom", Kind: "transform", Version: 1,
@@ -181,7 +191,11 @@ func TestCapabilityInitializeParams(t *testing.T) {
 
 func TestValidateCapabilityNegotiationHostServices(t *testing.T) {
 	base := CapabilityInitializeResult{ProtocolVersion: CapabilityProtocolVersion}
-	base.Capabilities = []CapabilityDescriptor{{ID: CapabilityAgentRequestTransform, Kind: "transform", Version: 1}}
+	base.Capabilities = []CapabilityDescriptor{
+		{ID: CapabilityAgentRequestTransform, Kind: "transform", Version: 1},
+		{ID: CapabilityAgentSystemPromptSection, Kind: "transform", Version: 1},
+		{ID: CapabilityAgentCompaction, Kind: "decision", Version: 1},
+	}
 
 	optional := base
 	optional.RequiredHostServices = []HostServiceDescriptor{{ID: "host.future.optional"}}

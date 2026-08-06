@@ -38,6 +38,11 @@ const (
 	// CapabilityAgentRequestTransform lets a plugin transform the complete,
 	// provider-neutral request immediately before provider validation and send.
 	CapabilityAgentRequestTransform = "agent.request.transform"
+	// CapabilityAgentSystemPromptSection contributes a generation-stable section
+	// evaluated before that plugin generation can become active.
+	CapabilityAgentSystemPromptSection = "agent.system_prompt.section"
+	// CapabilityAgentCompaction selects a plugin-owned conversation compactor.
+	CapabilityAgentCompaction = "agent.compaction"
 )
 
 // CapabilityNegotiationError marks an initialize response that cannot be
@@ -312,6 +317,30 @@ type RequestTransformOutput struct {
 	Request providers.ChatRequest `json:"request"`
 }
 
+// SystemPromptSectionInput is immutable session context for the v1
+// agent.system_prompt.section contract.
+type SystemPromptSectionInput struct {
+	CWD      string `json:"cwd"`
+	Provider string `json:"provider"`
+	Model    string `json:"model"`
+}
+
+// SystemPromptSectionOutput is one generation-stable prompt section.
+type SystemPromptSectionOutput struct {
+	Text string `json:"text"`
+}
+
+// CompactionInput is immutable request context for the v1 agent.compaction contract.
+type CompactionInput struct {
+	Model    string                  `json:"model"`
+	Messages []providers.ChatMessage `json:"messages"`
+}
+
+// CompactionOutput is the replacement transcript returned by a compactor.
+type CompactionOutput struct {
+	Messages []providers.ChatMessage `json:"messages"`
+}
+
 // ---------------------------------------------------------------------------
 // Validation
 // ---------------------------------------------------------------------------
@@ -344,8 +373,17 @@ func ValidateCapabilityDescriptor(c CapabilityDescriptor) error {
 	if c.Version < 1 {
 		return fmt.Errorf("capability %s: version must be >= 1, got %d", id, c.Version)
 	}
-	if c.ID == CapabilityAgentRequestTransform && (c.Kind != "transform" || c.Version != 1) {
-		return fmt.Errorf("capability %s requires kind %q and version 1", id, "transform")
+	requiredKind := ""
+	switch c.ID {
+	case CapabilityAgentRequestTransform:
+		requiredKind = "transform"
+	case CapabilityAgentSystemPromptSection:
+		requiredKind = "transform"
+	case CapabilityAgentCompaction:
+		requiredKind = "decision"
+	}
+	if requiredKind != "" && (c.Kind != requiredKind || c.Version != 1) {
+		return fmt.Errorf("capability %s requires kind %q and version 1", id, requiredKind)
 	}
 	if err := validateCapabilityRelations(c); err != nil {
 		return err
@@ -410,7 +448,9 @@ func ValidateCapabilityNegotiation(result CapabilityInitializeResult, supported 
 		if err := ValidateCapabilityDescriptor(capability); err != nil {
 			return err
 		}
-		if capability.ID != CapabilityAgentRequestTransform {
+		switch capability.ID {
+		case CapabilityAgentRequestTransform, CapabilityAgentSystemPromptSection, CapabilityAgentCompaction:
+		default:
 			return fmt.Errorf("capability %s is not supported by this host", capability.ID)
 		}
 		if _, exists := seenCapabilities[capability.ID]; exists {

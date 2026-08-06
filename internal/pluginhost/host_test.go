@@ -21,13 +21,17 @@ type fakeClient struct {
 type fakeCapabilityClient struct {
 	*fakeClient
 	capabilities []CapabilityDescriptor
+	invoke       func(CapabilityInvokeParams) (CapabilityInvokeResult, error)
 }
 
 func (f *fakeCapabilityClient) ProtocolVersion() int { return CapabilityProtocolVersion }
 func (f *fakeCapabilityClient) Capabilities() []CapabilityDescriptor {
 	return cloneCapabilityDescriptors(f.capabilities)
 }
-func (f *fakeCapabilityClient) InvokeCapability(context.Context, CapabilityInvokeParams) (CapabilityInvokeResult, error) {
+func (f *fakeCapabilityClient) InvokeCapability(_ context.Context, params CapabilityInvokeParams) (CapabilityInvokeResult, error) {
+	if f.invoke != nil {
+		return f.invoke(params)
+	}
 	return CapabilityInvokeResult{}, nil
 }
 
@@ -67,6 +71,23 @@ func TestHostRunChainsTypedOutputInDiscoveryOrder(t *testing.T) {
 	}
 	if got.Value != "start-one-two" {
 		t.Fatalf("output = %q", got.Value)
+	}
+}
+
+func TestInvokeCapabilityRejectsUnknownOutputFields(t *testing.T) {
+	client := &fakeCapabilityClient{
+		fakeClient:   &fakeClient{id: "strict", status: Status{ID: "strict", State: StateActive}},
+		capabilities: []CapabilityDescriptor{{ID: CapabilityAgentSystemPromptSection, Kind: "transform", Version: 1}},
+		invoke: func(CapabilityInvokeParams) (CapabilityInvokeResult, error) {
+			return CapabilityInvokeResult{Output: json.RawMessage(`{"text":"ok","extra":true}`)}, nil
+		},
+	}
+	host := New(client)
+	registered := host.Capabilities(CapabilityAgentSystemPromptSection)
+	var output SystemPromptSectionOutput
+	err := host.InvokeCapability(context.Background(), registered[0], SystemPromptSectionInput{}, &output)
+	if err == nil || !strings.Contains(err.Error(), "unknown field") {
+		t.Fatalf("error = %v, want strict typed output rejection", err)
 	}
 }
 

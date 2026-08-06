@@ -128,3 +128,13 @@ func (r *CompactionRegistry) Count() int {
 	defer r.mu.RUnlock()
 	return len(r.providers)
 }
+
+// Clear atomically withdraws every compaction provider. Generation teardown
+// uses this so cloned runners stop retaining a closed plugin runtime.
+func (r *CompactionRegistry) Clear() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.providers = make(map[string]CompactionProvider)
+	r.owners = make(map[string]string)
+	r.order = nil
+}

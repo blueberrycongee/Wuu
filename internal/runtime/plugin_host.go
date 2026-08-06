@@ -154,6 +154,51 @@ func buildPluginRequestTransforms(host *pluginhost.Host, provider, threadID, cwd
 	return chain
 }
 
+func buildPluginAgentCapabilities(ctx context.Context, host *pluginhost.Host, provider, model, cwd string) (*agent.SystemPromptAssembler, *agent.CompactionRegistry, error) {
+	prompts := agent.NewSystemPromptAssembler()
+	compactions := agent.NewCompactionRegistry()
+	if host == nil {
+		return prompts, compactions, nil
+	}
+	for _, registered := range host.Capabilities(pluginhost.CapabilityAgentSystemPromptSection) {
+		output := pluginhost.SystemPromptSectionOutput{}
+		if err := host.InvokeCapability(ctx, registered, pluginhost.SystemPromptSectionInput{
+			CWD: cwd, Provider: provider, Model: model,
+		}, &output); err != nil {
+			return nil, nil, err
+		}
+		key := registered.PluginID + ":" + registered.Descriptor.ID
+		prompts.AddWithOwner(agent.NewStaticPromptSection(key, output.Text, registered.Descriptor.Priority), registered.PluginID)
+	}
+	for _, registered := range host.Capabilities(pluginhost.CapabilityAgentCompaction) {
+		capability := registered
+		key := capability.PluginID + ":" + capability.Descriptor.ID
+		compactions.RegisterWithOwner(&pluginCompactionProvider{
+			key: key, priority: capability.Descriptor.Priority, host: host, capability: capability,
+		}, capability.PluginID)
+	}
+	return prompts, compactions, nil
+}
+
+type pluginCompactionProvider struct {
+	key        string
+	priority   int
+	host       *pluginhost.Host
+	capability pluginhost.RegisteredCapability
+}
+
+func (p *pluginCompactionProvider) CompactionKey() string   { return p.key }
+func (p *pluginCompactionProvider) CompactionPriority() int { return p.priority }
+func (p *pluginCompactionProvider) Compact(ctx context.Context, model string, messages []providers.ChatMessage) ([]providers.ChatMessage, error) {
+	output := pluginhost.CompactionOutput{}
+	if err := p.host.InvokeCapability(ctx, p.capability, pluginhost.CompactionInput{
+		Model: model, Messages: providers.CloneChatMessages(messages),
+	}, &output); err != nil {
+		return nil, err
+	}
+	return providers.CloneChatMessages(output.Messages), nil
+}
+
 // TransformUserMessage runs before app-server or CLI persistence so the user,
 // UI history, durable history, and model all observe the same plugin output.
 func (s *Session) TransformUserMessage(ctx context.Context, threadID, cwd string, message providers.ChatMessage) (providers.ChatMessage, error) {

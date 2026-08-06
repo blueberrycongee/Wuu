@@ -35,6 +35,8 @@ type PluginGeneration struct {
 	mcp               *mcp.Manager
 	mcpBinding        map[string]tools.MCPActivityBinding
 	requestTransforms *agent.RequestTransformChain
+	systemPrompts     *agent.SystemPromptAssembler
+	compactions       *agent.CompactionRegistry
 	ownedRoots        []string
 }
 
@@ -129,6 +131,16 @@ func (s *Session) buildPluginGeneration(cfg config.Config, discovered []pluginpk
 		}
 		return nil, err
 	}
+	systemPrompts, compactions, err := buildPluginAgentCapabilities(context.Background(), host, s.ProviderName, s.Model, s.RootDir)
+	if err != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		closeErr := host.Close(ctx)
+		cancel()
+		for _, root := range ownedRoots {
+			_ = os.RemoveAll(root)
+		}
+		return nil, errors.Join(err, closeErr)
+	}
 	generation := &PluginGeneration{
 		settings:          cfg,
 		plugins:           append([]pluginpkg.Plugin(nil), discovered...),
@@ -138,6 +150,8 @@ func (s *Session) buildPluginGeneration(cfg config.Config, discovered []pluginpk
 		skills:            discoverSkills(s.RootDir, s.HomeDir, s.WuuHome, active),
 		mcpBinding:        mcpActivityBindingsFromPlugins(active),
 		requestTransforms: buildPluginRequestTransforms(host, s.ProviderName, "", s.RootDir),
+		systemPrompts:     systemPrompts,
+		compactions:       compactions,
 		ownedRoots:        append([]string(nil), ownedRoots...),
 	}
 	generation.mcp, err = startMCPManager(cfg, active, required)
@@ -185,7 +199,7 @@ func (s *Session) capturePluginGeneration() *PluginGeneration {
 	}
 	hookSnapshot := hooks.NewDispatcher(nil)
 	hookSnapshot.Replace(s.HookDispatcher)
-	return &PluginGeneration{
+	generation := &PluginGeneration{
 		settings:          config.Config{Extensions: s.ExtensionSettings},
 		plugins:           append([]pluginpkg.Plugin(nil), s.Plugins...),
 		active:            append([]pluginpkg.Plugin(nil), s.ActivePlugins...),
@@ -195,7 +209,12 @@ func (s *Session) capturePluginGeneration() *PluginGeneration {
 		mcp:               manager,
 		mcpBinding:        mcpActivityBindingsFromPlugins(s.ActivePlugins),
 		requestTransforms: buildPluginRequestTransforms(s.PluginHost, s.ProviderName, "", s.RootDir),
+		systemPrompts:     s.systemPrompts,
 	}
+	if s.StreamRunner != nil {
+		generation.compactions = s.StreamRunner.CompactionRegistry
+	}
+	return generation
 }
 
 func (s *Session) applyPluginGeneration(generation *PluginGeneration) {
@@ -206,6 +225,7 @@ func (s *Session) applyPluginGeneration(generation *PluginGeneration) {
 	s.ActivePlugins = append([]pluginpkg.Plugin(nil), generation.active...)
 	s.ExtensionSettings = generation.settings.Extensions
 	s.PluginHost = generation.host
+	s.systemPrompts = generation.systemPrompts
 	if s.StreamRunner != nil {
 		inner := s.StreamRunner.Tools
 		if previous, ok := inner.(*pluginToolExecutor); ok {
@@ -213,6 +233,7 @@ func (s *Session) applyPluginGeneration(generation *PluginGeneration) {
 		}
 		s.StreamRunner.Tools = newPluginToolExecutor(inner, generation.host, "", s.RootDir)
 		s.StreamRunner.BeforeRequest = pluginRequestInterceptorWithTransforms(generation.host, generation.requestTransforms, s.ProviderName, "", s.RootDir)
+		s.StreamRunner.CompactionRegistry = generation.compactions
 	}
 	if s.HookDispatcher == nil {
 		s.HookDispatcher = generation.hooks
@@ -237,12 +258,21 @@ func (g *PluginGeneration) close() error {
 		err = errors.Join(err, g.mcp.Close())
 		g.mcp = nil
 	}
+	if g.systemPrompts != nil {
+		g.systemPrompts.Clear()
+		g.systemPrompts = nil
+	}
+	if g.compactions != nil {
+		g.compactions.Clear()
+		g.compactions = nil
+	}
 	if g.host != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		err = errors.Join(err, g.host.Close(ctx))
 		cancel()
 		g.host = nil
 	}
+	g.requestTransforms = nil
 	g.requestTransforms = nil
 	for index := len(g.ownedRoots) - 1; index >= 0; index-- {
 		err = errors.Join(err, os.RemoveAll(g.ownedRoots[index]))

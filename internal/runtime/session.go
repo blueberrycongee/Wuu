@@ -116,6 +116,7 @@ type Session struct {
 	ActivePlugins     []pluginpkg.Plugin
 	ExtensionSettings *extensions.Settings
 	PluginHost        *pluginhost.Host
+	systemPrompts     *agent.SystemPromptAssembler
 	Memory            []memory.File
 	// MemdirEnabled reports whether the file-directory memory (user
 	// notebook teaching + index injection and file-scope whitelist) is
@@ -215,6 +216,7 @@ func (s *Session) cloneForThreadModel() *Session {
 		ActivePlugins:               s.ActivePlugins,
 		ExtensionSettings:           s.ExtensionSettings,
 		PluginHost:                  s.PluginHost,
+		systemPrompts:               s.systemPrompts,
 		Memory:                      s.Memory,
 		MemdirEnabled:               s.MemdirEnabled,
 		DreamIntervalDays:           s.DreamIntervalDays,
@@ -406,6 +408,13 @@ func NewSession(opts Options) (*Session, error) {
 	discoveredPlugins := discoverPlugins(rootDir, wuuHome)
 	activePlugins := activatedPlugins(cfg, discoveredPlugins)
 	pluginHost := startPluginHost(activePlugins, rootDir, wuuHome)
+	systemPrompts, compactions, capabilityErr := buildPluginAgentCapabilities(context.Background(), pluginHost, resolvedName, providerCfg.Model, rootDir)
+	if capabilityErr != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		closeErr := pluginHost.Close(ctx)
+		cancel()
+		return nil, errors.Join(capabilityErr, closeErr)
+	}
 	hookDispatcher := buildHookDispatcher(cfg, activePlugins, providers.Client(client), toolModeModel, workspaceJournal)
 	discoveredSkills := discoverSkills(rootDir, opts.HomeDir, wuuHome, activePlugins)
 
@@ -506,8 +515,8 @@ func NewSession(opts Options) (*Session, error) {
 	}
 	mainSurface.DeferredToolCatalog = deferredToolCatalogPrompt
 	baseSystemPromptResult := buildBaseSystemPromptResult(rootDir, sessionDate, config.DefaultSystemPrompt(), userSystemPrompt, resolvedName, toolModeModel, mainSurface, memoryFiles, memdirTeaching, memdirIndex, discoveredSkills)
-	baseSystemPrompt := baseSystemPromptResult.Content
-	baseSystemPromptSections := agentPromptSections(baseSystemPromptResult.Sections)
+	baseSystemPrompt, pluginPromptSections := assemblePluginSystemPrompt(baseSystemPromptResult.Content, systemPrompts)
+	baseSystemPromptSections := append(agentPromptSections(baseSystemPromptResult.Sections), pluginPromptSections...)
 
 	if toolkit != nil {
 		if err := agentcontrol.EnsureSharedDir(workspaceStateDir); err != nil {
@@ -663,6 +672,7 @@ func NewSession(opts Options) (*Session, error) {
 		APIModel:                    modelcatalog.APIModel(ruleProviderCfg, providerCfg.Model),
 		SystemPrompt:                baseSystemPrompt,
 		SystemPromptSections:        baseSystemPromptSections,
+		CompactionRegistry:          compactions,
 		MaxSteps:                    cfg.Agent.MaxSteps,
 		Temperature:                 cfg.Agent.Temperature,
 		MediaInput:                  mediaInputPolicyFromCapabilities(mainRole.Capabilities),
@@ -712,6 +722,7 @@ func NewSession(opts Options) (*Session, error) {
 		ActivePlugins:               activePlugins,
 		ExtensionSettings:           cfg.Extensions,
 		PluginHost:                  pluginHost,
+		systemPrompts:               systemPrompts,
 		Memory:                      memoryFiles,
 		MemdirEnabled:               memdirEnabled,
 		DreamIntervalDays:           dreamIntervalDays,
@@ -750,13 +761,15 @@ func NewSession(opts Options) (*Session, error) {
 	initialHooks := hooks.NewDispatcher(nil)
 	initialHooks.Replace(hookDispatcher)
 	runtimeSession.pluginGeneration = &PluginGeneration{
-		settings:   cfg,
-		plugins:    append([]pluginpkg.Plugin(nil), discoveredPlugins...),
-		active:     append([]pluginpkg.Plugin(nil), activePlugins...),
-		host:       pluginHost,
-		hooks:      initialHooks,
-		skills:     append([]skills.Skill(nil), discoveredSkills...),
-		mcpBinding: mcpActivityBindingsFromPlugins(activePlugins),
+		settings:      cfg,
+		plugins:       append([]pluginpkg.Plugin(nil), discoveredPlugins...),
+		active:        append([]pluginpkg.Plugin(nil), activePlugins...),
+		host:          pluginHost,
+		hooks:         initialHooks,
+		skills:        append([]skills.Skill(nil), discoveredSkills...),
+		mcpBinding:    mcpActivityBindingsFromPlugins(activePlugins),
+		systemPrompts: systemPrompts,
+		compactions:   compactions,
 	}
 	if toolkit != nil {
 		runtimeSession.pluginGeneration.mcp = toolkit.MCPManager()
@@ -1422,6 +1435,7 @@ func cloneStreamRunnerForThread(base *agent.StreamRunner, toolExecutor agent.Too
 		InferenceOperationKind:      base.InferenceOperationKind,
 		InferenceWorkloadProfile:    base.InferenceWorkloadProfile,
 		InferenceJournal:            base.InferenceJournal,
+		CompactionRegistry:          base.CompactionRegistry,
 	}
 }
 
@@ -2348,13 +2362,28 @@ func (s *Session) RefreshSystemPrompt(providerName, model string) string {
 		memdirIndex,
 		s.Skills,
 	)
-	baseSystemPrompt := baseSystemPromptResult.Content
+	baseSystemPrompt, pluginSections := assemblePluginSystemPrompt(baseSystemPromptResult.Content, s.systemPrompts)
 	s.BaseSystemPrompt = baseSystemPrompt
 	s.BaseSystemPromptSections = baseSystemPromptResult.Sections
 	if s.StreamRunner != nil {
-		s.StreamRunner.UpdateSystemPromptWithSections(baseSystemPrompt, agentPromptSections(baseSystemPromptResult.Sections))
+		sections := append(agentPromptSections(baseSystemPromptResult.Sections), pluginSections...)
+		s.StreamRunner.UpdateSystemPromptWithSections(baseSystemPrompt, sections)
 	}
 	return baseSystemPrompt
+}
+
+func assemblePluginSystemPrompt(base string, assembler *agent.SystemPromptAssembler) (string, []agent.SystemPromptSectionInfo) {
+	if assembler == nil {
+		return base, nil
+	}
+	pluginText, sections := assembler.Assemble("")
+	if strings.TrimSpace(pluginText) == "" {
+		return base, sections
+	}
+	if strings.TrimSpace(base) == "" {
+		return pluginText, sections
+	}
+	return base + "\n\n" + pluginText, sections
 }
 
 // ApplyGeneralConfig refreshes user-owned prompt and memory settings on the

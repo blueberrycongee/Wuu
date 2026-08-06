@@ -2,15 +2,18 @@ package runtime
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/blueberrycongee/wuu/internal/agent"
 	"github.com/blueberrycongee/wuu/internal/config"
 	"github.com/blueberrycongee/wuu/internal/hooks"
 	pluginpkg "github.com/blueberrycongee/wuu/internal/plugin"
 	"github.com/blueberrycongee/wuu/internal/pluginhost"
+	"github.com/blueberrycongee/wuu/internal/providers"
 	"github.com/blueberrycongee/wuu/internal/session"
 )
 
@@ -19,6 +22,8 @@ type generationClient struct {
 	closed       bool
 	closeOrder   *[]string
 	capabilities []pluginhost.CapabilityDescriptor
+	invoke       func(pluginhost.CapabilityInvokeParams) (pluginhost.CapabilityInvokeResult, error)
+	invoked      int
 }
 
 func (c *generationClient) ID() string               { return c.id }
@@ -41,8 +46,123 @@ func (c *generationClient) ProtocolVersion() int { return pluginhost.CapabilityP
 func (c *generationClient) Capabilities() []pluginhost.CapabilityDescriptor {
 	return append([]pluginhost.CapabilityDescriptor(nil), c.capabilities...)
 }
-func (c *generationClient) InvokeCapability(context.Context, pluginhost.CapabilityInvokeParams) (pluginhost.CapabilityInvokeResult, error) {
+func (c *generationClient) InvokeCapability(_ context.Context, params pluginhost.CapabilityInvokeParams) (pluginhost.CapabilityInvokeResult, error) {
+	c.invoked++
+	if c.invoke != nil {
+		return c.invoke(params)
+	}
 	return pluginhost.CapabilityInvokeResult{}, nil
+}
+
+type generationCompactionProvider struct{ key string }
+
+func (p *generationCompactionProvider) CompactionKey() string   { return p.key }
+func (p *generationCompactionProvider) CompactionPriority() int { return 1 }
+func (p *generationCompactionProvider) Compact(_ context.Context, _ string, messages []providers.ChatMessage) ([]providers.ChatMessage, error) {
+	return messages, nil
+}
+
+func promptGenerationClient(id, text string, priority int) *generationClient {
+	return &generationClient{
+		id: id,
+		capabilities: []pluginhost.CapabilityDescriptor{{
+			ID: pluginhost.CapabilityAgentSystemPromptSection, Kind: "transform", Version: 1, Priority: priority,
+		}},
+		invoke: func(params pluginhost.CapabilityInvokeParams) (pluginhost.CapabilityInvokeResult, error) {
+			var input pluginhost.SystemPromptSectionInput
+			if err := json.Unmarshal(params.Input, &input); err != nil {
+				return pluginhost.CapabilityInvokeResult{}, err
+			}
+			if input.Provider == "" || input.Model == "" || input.CWD == "" {
+				return pluginhost.CapabilityInvokeResult{}, errors.New("missing typed prompt input")
+			}
+			data, err := json.Marshal(pluginhost.SystemPromptSectionOutput{Text: text})
+			return pluginhost.CapabilityInvokeResult{Output: data}, err
+		},
+	}
+}
+
+func TestPluginSystemPromptSectionsEvaluateBeforeActivationInPriorityOrder(t *testing.T) {
+	high := promptGenerationClient("high", "high section", 20)
+	low := promptGenerationClient("low", "low section", 5)
+	session := &Session{ProviderName: "openai", Model: "model", RootDir: "/workspace"}
+	generation, err := session.buildPluginGeneration(config.Config{}, []pluginpkg.Plugin{
+		testRuntimePlugin("low"), testRuntimePlugin("high"),
+	}, nil, nil, func(_ context.Context, cfg pluginhost.ProcessConfig) (pluginhost.Client, error) {
+		if cfg.ID == "high" {
+			return high, nil
+		}
+		return low, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer generation.close()
+	prompt, _ := generation.systemPrompts.Assemble("")
+	if high.invoked != 1 || low.invoked != 1 || prompt != "high section\n\nlow section" {
+		t.Fatalf("invocations high=%d low=%d prompt=%q", high.invoked, low.invoked, prompt)
+	}
+}
+
+func TestPluginSystemPromptFailureRejectsCandidateAndPreservesOldGeneration(t *testing.T) {
+	oldClient := &generationClient{id: "old"}
+	old := testPluginGeneration("old", oldClient)
+	session := testGenerationSession(old)
+	broken := promptGenerationClient("broken", "", 1)
+	broken.invoke = func(pluginhost.CapabilityInvokeParams) (pluginhost.CapabilityInvokeResult, error) {
+		return pluginhost.CapabilityInvokeResult{}, errors.New("prompt failed")
+	}
+	_, err := session.buildPluginGeneration(config.Config{}, []pluginpkg.Plugin{testRuntimePlugin("broken")}, nil, nil, func(context.Context, pluginhost.ProcessConfig) (pluginhost.Client, error) {
+		return broken, nil
+	})
+	if err == nil || !strings.Contains(err.Error(), "prompt failed") {
+		t.Fatalf("error = %v", err)
+	}
+	if !broken.closed || oldClient.closed || session.PluginHost != old.host {
+		t.Fatalf("candidate closed=%v old closed=%v host preserved=%v", broken.closed, oldClient.closed, session.PluginHost == old.host)
+	}
+}
+
+func TestPluginCompactionInvokesHighestPriorityAndGenerationCleanupReachesClones(t *testing.T) {
+	makeClient := func(id, marker string, priority int) *generationClient {
+		return &generationClient{
+			id: id,
+			capabilities: []pluginhost.CapabilityDescriptor{{
+				ID: pluginhost.CapabilityAgentCompaction, Kind: "decision", Version: 1, Priority: priority,
+			}},
+			invoke: func(params pluginhost.CapabilityInvokeParams) (pluginhost.CapabilityInvokeResult, error) {
+				var input pluginhost.CompactionInput
+				if err := json.Unmarshal(params.Input, &input); err != nil {
+					return pluginhost.CapabilityInvokeResult{}, err
+				}
+				data, err := json.Marshal(pluginhost.CompactionOutput{Messages: []providers.ChatMessage{{Role: "system", Content: marker + ":" + input.Model}}})
+				return pluginhost.CapabilityInvokeResult{Output: data}, err
+			},
+		}
+	}
+	high := makeClient("high", "high", 20)
+	low := makeClient("low", "low", 5)
+	host := pluginhost.New(low, high)
+	_, registry, err := buildPluginAgentCapabilities(context.Background(), host, "openai", "model", "/workspace")
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := &agent.StreamRunner{CompactionRegistry: registry}
+	clone := cloneStreamRunnerForThread(base, nil)
+	messages, err := clone.CompactionRegistry.Resolve(nil).Compact(context.Background(), "runtime-model", []providers.ChatMessage{{Role: "user", Content: "history"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if high.invoked != 1 || low.invoked != 0 || messages[0].Content != "high:runtime-model" {
+		t.Fatalf("high=%d low=%d messages=%+v", high.invoked, low.invoked, messages)
+	}
+	generation := &PluginGeneration{host: host, hooks: hooks.NewDispatcher(nil), compactions: registry}
+	if err := generation.close(); err != nil {
+		t.Fatal(err)
+	}
+	if clone.CompactionRegistry.Count() != 0 || clone.CompactionRegistry.Resolve(nil) != nil {
+		t.Fatal("cloned runner retained compaction from closed generation")
+	}
 }
 
 func TestFailedCandidateClosesStartedProcessesAndPreservesOldGeneration(t *testing.T) {
@@ -114,9 +234,20 @@ func TestCapabilityConflictClosesCandidateAndPreservesOldGeneration(t *testing.T
 func TestSuccessfulCandidateSwapsThenClosesOldGeneration(t *testing.T) {
 	oldClient := &generationClient{id: "old"}
 	old := testPluginGeneration("old", oldClient)
+	old.systemPrompts = agent.NewSystemPromptAssembler()
+	old.systemPrompts.Add(agent.NewStaticPromptSection("old", "old section", 1))
+	old.compactions = agent.NewCompactionRegistry()
+	old.compactions.Register(&generationCompactionProvider{key: "old"})
 	session := testGenerationSession(old)
+	session.systemPrompts = old.systemPrompts
+	session.StreamRunner = &agent.StreamRunner{CompactionRegistry: old.compactions}
+	threadClone := cloneStreamRunnerForThread(session.StreamRunner, nil)
 	candidateClient := &generationClient{id: "candidate"}
 	candidate := testPluginGeneration("candidate", candidateClient)
+	candidate.systemPrompts = agent.NewSystemPromptAssembler()
+	candidate.systemPrompts.Add(agent.NewStaticPromptSection("candidate", "candidate section", 1))
+	candidate.compactions = agent.NewCompactionRegistry()
+	candidate.compactions.Register(&generationCompactionProvider{key: "candidate"})
 
 	if err := session.ActivatePluginGeneration(candidate, nil); err != nil {
 		t.Fatal(err)
@@ -129,6 +260,12 @@ func TestSuccessfulCandidateSwapsThenClosesOldGeneration(t *testing.T) {
 	}
 	if candidateClient.closed {
 		t.Fatal("active candidate was closed")
+	}
+	if old.systemPrompts != nil || old.compactions != nil || threadClone.CompactionRegistry.Count() != 0 {
+		t.Fatal("old generation capability state survived the swap")
+	}
+	if session.StreamRunner.CompactionRegistry != candidate.compactions || !strings.Contains(session.StreamRunner.SystemPrompt, "candidate section") {
+		t.Fatal("candidate capability state was not installed atomically")
 	}
 }
 

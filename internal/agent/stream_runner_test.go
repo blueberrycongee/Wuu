@@ -32,6 +32,35 @@ type mockStreamClient struct {
 	chatCallCount int
 }
 
+type streamCompactionProvider struct{ calls int }
+
+func (p *streamCompactionProvider) CompactionKey() string   { return "stream-test" }
+func (p *streamCompactionProvider) CompactionPriority() int { return 10 }
+func (p *streamCompactionProvider) Compact(_ context.Context, _ string, _ []providers.ChatMessage) ([]providers.ChatMessage, error) {
+	p.calls++
+	return []providers.ChatMessage{{Role: "system", Content: "compacted by registry"}}, nil
+}
+
+func TestStreamRunnerUsesCompactionRegistry(t *testing.T) {
+	provider := &streamCompactionProvider{}
+	registry := NewCompactionRegistry()
+	registry.Register(provider)
+	runner := &StreamRunner{
+		Client:              &mockStreamClient{},
+		Model:               "test-model",
+		CompactionRegistry:  registry,
+		ForceInitialCompact: true,
+		CompactOnly:         true,
+	}
+	result, err := runner.RunWithCallback(context.Background(), []providers.ChatMessage{{Role: "user", Content: "old"}}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if provider.calls != 1 || !result.HistoryRewritten {
+		t.Fatalf("calls = %d history_rewritten = %v", provider.calls, result.HistoryRewritten)
+	}
+}
+
 func (m *mockStreamClient) Chat(_ context.Context, req providers.ChatRequest) (providers.ChatResponse, error) {
 	m.requests = append(m.requests, req)
 	if req.Attempt.Valid() {

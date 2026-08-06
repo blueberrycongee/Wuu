@@ -1,11 +1,13 @@
 package pluginhost
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"sort"
 	"strings"
 	"sync"
@@ -202,7 +204,16 @@ func (h *Host) InvokeCapability(ctx context.Context, capability RegisteredCapabi
 	if err != nil {
 		return fmt.Errorf("plugin %q capability %q: %w", capability.PluginID, capability.Descriptor.ID, err)
 	}
-	if err := json.Unmarshal(result.Output, output); err != nil {
+	decoder := json.NewDecoder(bytes.NewReader(result.Output))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(output); err != nil {
+		return fmt.Errorf("plugin %q capability %q returned invalid output: %w", capability.PluginID, capability.Descriptor.ID, err)
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		if err == nil {
+			err = errors.New("multiple JSON values")
+		}
 		return fmt.Errorf("plugin %q capability %q returned invalid output: %w", capability.PluginID, capability.Descriptor.ID, err)
 	}
 	return nil

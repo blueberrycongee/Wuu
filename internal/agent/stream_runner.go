@@ -38,8 +38,10 @@ type StreamRunner struct {
 	// SystemPromptSections mirrors SystemPrompt as metadata only, allowing
 	// request telemetry to explain the stable prompt without exposing text.
 	SystemPromptSections []SystemPromptSectionInfo
-	MaxSteps             int
-	Temperature          float64
+	// CompactionRegistry resolves a generation-owned compactor for each run.
+	CompactionRegistry *CompactionRegistry
+	MaxSteps           int
+	Temperature        float64
 	// MediaInput is the admission policy for user-supplied media, resolved
 	// from the session's model capabilities. Zero value means fully
 	// unprobed (auto), preserving legacy pass-through behavior.
@@ -324,6 +326,7 @@ func (r *StreamRunner) RunWithCallback(ctx context.Context, history []providers.
 				KeepRecentTokens:    r.CompactKeepRecentTokens,
 			}, r.ProviderOptions)
 		},
+		CompactionRegistry: r.CompactionRegistry,
 		// Forward each tool result through the streaming callback so
 		// clients can render tool output live (the loop itself only
 		// records the tool message into the history).
