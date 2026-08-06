@@ -52,7 +52,9 @@ import { ViewSwitchLoading } from "./LoadingViews";
 import type { TurnFileDiffSelection } from "./TurnFileDiffTypes";
 import { useI18n } from "./i18n";
 import { HeaderPresentation, immutableHeaderSnapshot } from "./plugins/HeaderPresentation";
+import { desktopPluginHost } from "./plugins/DesktopPluginRuntime";
 import type { PluginHost } from "./plugins/PluginHost";
+import { PluginSlot } from "./plugins/PluginSlot";
 import type { WorkbenchController } from "./plugins/Workbench";
 
 type RunDebugPanelProps = ComponentProps<typeof RunDebugPanel>;
@@ -317,14 +319,26 @@ export function ConversationTitleContent({
     dirty: tabs?.some((tab) => tab.dirty) || undefined,
   });
   return (
-    <HeaderPresentation
-      snapshot={snapshot}
-      fallback={fallback}
-      onSelectTab={sessionTabsVisible ? onSelectSessionTab : undefined}
-      onCloseTab={sessionTabsVisible ? onCloseSessionTab : undefined}
-      host={pluginHost}
-      controller={workbenchController}
-    />
+    <>
+      <PluginSlot
+        host={pluginHost ?? desktopPluginHost}
+        id="conversation.header"
+        context={Object.freeze({
+          scope: "conversation",
+          hasSessionTabs: sessionTabsVisible,
+          tabCount: tabs?.length ?? 0,
+          busy: snapshot.busy ?? false,
+        })}
+      />
+      <HeaderPresentation
+        snapshot={snapshot}
+        fallback={fallback}
+        onSelectTab={sessionTabsVisible ? onSelectSessionTab : undefined}
+        onCloseTab={sessionTabsVisible ? onCloseSessionTab : undefined}
+        host={pluginHost}
+        controller={workbenchController}
+      />
+    </>
   );
 }
 

@@ -82,6 +82,9 @@ import { TruncatedText } from "./TruncatedText";
 import { SubagentModelAliases } from "./SubagentModelAliases";
 import { VoiceInputSettingsSection } from "./VoiceInputSettingsSection";
 import { SettingsPresentation } from "./plugins/SettingsPresentation";
+import { desktopPluginHost } from "./plugins/DesktopPluginRuntime";
+import type { PluginHost } from "./plugins/PluginHost";
+import { PluginSlot } from "./plugins/PluginSlot";
 import type { SettingsPageSummaryV1 } from "../shared/workbench";
 
 export type SettingsPage =
@@ -145,6 +148,7 @@ export function SettingsView({
   sidebarAnimating,
   onToggleSidebar,
   sidebarMotionMs,
+  pluginHost = desktopPluginHost,
 }: {
   initialized?: InitializeResult;
   initialPage?: SettingsPage;
@@ -183,6 +187,7 @@ export function SettingsView({
   sidebarAnimating: boolean;
   onToggleSidebar: () => void;
   sidebarMotionMs: number;
+  pluginHost?: PluginHost;
 }): JSX.Element {
   const { t } = useI18n();
   const providers = initialized?.providers ?? [];
@@ -994,19 +999,32 @@ export function SettingsView({
     </div>
   );
   return (
-    <SettingsPresentation
-      initialized={initialized}
-      activePageId={activePage}
-      availablePages={availablePages}
-      runningProviderNames={runningProviderNames}
-      busy={running || usageLoading || mcpLoading || codexPetsLoading || Boolean(mcpBusyServer)}
-      hasError={Boolean(error || advancedError || usageError || mcpError || codexPetsError)}
-      fallback={nativeSettings}
-      onOpenPage={(pageId) => setActivePage(pageId as SettingsPage)}
-      onAdvancedSave={onAdvancedSave}
-      onGeneralSave={onGeneralSave}
-      onRefresh={onRefreshModelCatalog}
-    />
+    <>
+      <PluginSlot
+        host={pluginHost}
+        id="settings.plugin"
+        context={Object.freeze({
+          activePage,
+          initialized: Boolean(initialized),
+          busy: running || usageLoading || mcpLoading || codexPetsLoading || Boolean(mcpBusyServer),
+          hasError: Boolean(error || advancedError || usageError || mcpError || codexPetsError),
+          pluginCount: initialized?.extension_inventory?.filter((extension) => extension.kind === "plugin").length ?? 0,
+        })}
+      />
+      <SettingsPresentation
+        initialized={initialized}
+        activePageId={activePage}
+        availablePages={availablePages}
+        runningProviderNames={runningProviderNames}
+        busy={running || usageLoading || mcpLoading || codexPetsLoading || Boolean(mcpBusyServer)}
+        hasError={Boolean(error || advancedError || usageError || mcpError || codexPetsError)}
+        fallback={nativeSettings}
+        onOpenPage={(pageId) => setActivePage(pageId as SettingsPage)}
+        onAdvancedSave={onAdvancedSave}
+        onGeneralSave={onGeneralSave}
+        onRefresh={onRefreshModelCatalog}
+      />
+    </>
   );
 }
 

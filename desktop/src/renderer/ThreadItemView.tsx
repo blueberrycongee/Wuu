@@ -52,6 +52,9 @@ import {
   ConversationMessageSurface,
   type ConversationMessageSurfaceContext,
 } from "./plugins/ConversationMessageSurface";
+import { desktopPluginHost } from "./plugins/DesktopPluginRuntime";
+import type { PluginHost } from "./plugins/PluginHost";
+import { PluginSlot } from "./plugins/PluginSlot";
 
 interface ThreadItemViewProps {
   turnID: string;
@@ -79,16 +82,31 @@ interface ThreadItemViewProps {
   ) => void;
   onOpenAgent?: (agentID: string) => void;
   editSummaryCard?: JSX.Element;
+  pluginHost?: PluginHost;
 }
 
 export const ThreadItemView = memo(function ThreadItemView(props: ThreadItemViewProps): JSX.Element | null {
   const { item, onEditMessage, turnID, editing } = props;
   const { t } = useI18n();
+  const pluginSlotContext = Object.freeze({
+    kind: item.type,
+    turnStatus: props.turnStatus,
+    streaming: props.streaming,
+    editing: Boolean(editing),
+  });
   if (item.type === "tool_call" || item.type === "collab_agent_tool_call") {
-    return <BuiltInThreadItemView {...props} />;
+    return (
+      <PluginMessageSlots host={props.pluginHost} context={pluginSlotContext}>
+        <BuiltInThreadItemView {...props} />
+      </PluginMessageSlots>
+    );
   }
   if (item.type === "user_message" && (isProcessNotificationItem(item) || isInternalUserNotificationItem(item))) {
-    return <BuiltInThreadItemView {...props} />;
+    return (
+      <PluginMessageSlots host={props.pluginHost} context={pluginSlotContext}>
+        <BuiltInThreadItemView {...props} />
+      </PluginMessageSlots>
+    );
   }
   const agentHandoff = item.type === "user_message" && isAgentHandoffItem(item);
   const text = agentHandoff
@@ -106,12 +124,14 @@ export const ThreadItemView = memo(function ThreadItemView(props: ThreadItemView
     />
   );
   return (
-    <ConversationItemPresentation
-      item={item}
-      text={text}
-      fallback={fallback}
-      onEdit={editable ? () => onEditMessage(turnID, item) : undefined}
-    />
+    <PluginMessageSlots host={props.pluginHost} context={pluginSlotContext}>
+      <ConversationItemPresentation
+        item={item}
+        text={text}
+        fallback={fallback}
+        onEdit={editable ? () => onEditMessage(turnID, item) : undefined}
+      />
+    </PluginMessageSlots>
   );
 });
 
@@ -141,6 +161,24 @@ function conversationMessageSurfaceContext(
       fork: onForkMessage ? () => onForkMessage(turnID, item.id) : undefined,
     }),
   });
+}
+
+function PluginMessageSlots({
+  host = desktopPluginHost,
+  context,
+  children,
+}: {
+  host?: PluginHost;
+  context: Readonly<Record<string, unknown>>;
+  children: JSX.Element;
+}): JSX.Element {
+  return (
+    <>
+      <PluginSlot host={host} id="conversation.message.before" context={context} />
+      {children}
+      <PluginSlot host={host} id="conversation.message.after" context={context} />
+    </>
+  );
 }
 
 function BuiltInThreadItemView({

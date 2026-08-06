@@ -90,6 +90,44 @@ afterEach(() => {
 });
 
 describe("ThreadItemView", () => {
+  it("mounts sanitized frozen context before and after each conversation message", async () => {
+    const contexts: Array<Readonly<Record<string, unknown>>> = [];
+    await desktopPluginHost.activateGeneration({
+      pluginId: "thread-item-production-test",
+      generation: "one",
+      register(api) {
+        for (const slotId of ["conversation.message.before", "conversation.message.after"] as const) {
+          api.registerSlot(slotId, {
+            id: slotId,
+            render(context) {
+              contexts.push(context);
+              return <span data-testid={slotId}>{slotId}</span>;
+            },
+          });
+        }
+      },
+    });
+
+    render({
+      item: makeFinalAnswer("completed"),
+      turnStatus: "completed",
+      streaming: false,
+    });
+
+    expect(container?.querySelector('[data-testid="conversation.message.before"]')).not.toBeNull();
+    expect(container?.querySelector('[data-testid="conversation.message.after"]')).not.toBeNull();
+    expect(contexts).toHaveLength(2);
+    expect(contexts[0]).toEqual({
+      kind: "agent_message",
+      turnStatus: "completed",
+      streaming: false,
+      editing: false,
+    });
+    expect(Object.isFrozen(contexts[0])).toBe(true);
+    expect(contexts[0]).not.toHaveProperty("item");
+    expect(contexts[0]).not.toHaveProperty("text");
+  });
+
   it("uses a conversation item presenter for the complete production item root", async () => {
     await desktopPluginHost.activateGeneration({
       pluginId: "thread-item-production-test",

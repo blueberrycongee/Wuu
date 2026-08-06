@@ -61,6 +61,9 @@ import { ComposerContextMenu } from "./ComposerContextMenu";
 import { ComposerAttachmentStrip, ComposerQueueStrip } from "./ComposerInputSections";
 import { ComposerGoalStrip } from "./ComposerGoalStrip";
 import { WorkspaceDocumentDrawerContext } from "./WorkspaceDocumentTurnDock";
+import { desktopPluginHost } from "./plugins/DesktopPluginRuntime";
+import type { PluginHost } from "./plugins/PluginHost";
+import { PluginSlot } from "./plugins/PluginSlot";
 import {
   AccessMenu,
   ComposerPlusButton,
@@ -199,6 +202,7 @@ export function Composer({
   slashCommandsEnabled = true,
   slashCommandsOverride,
   onResetSideThread,
+  pluginHost = desktopPluginHost,
 }: {
   variant?: ComposerVariant;
   mainConversation?: boolean;
@@ -313,6 +317,7 @@ export function Composer({
   slashCommandsOverride?: ComposerSlashCommand[];
   // Reset the side thread this composer is embedded in.
   onResetSideThread?: () => void;
+  pluginHost?: PluginHost;
 }): JSX.Element {
   const { locale, t } = useI18n();
   // Keep the controlled textarea on a small, synchronous state path. The
@@ -367,6 +372,14 @@ export function Composer({
   }`;
   const hasAttachments = images.length > 0 || files.length > 0;
   const hasDraft = prompt.trim().length > 0 || hasAttachments;
+  const pluginSlotContext = Object.freeze({
+    variant,
+    mainConversation,
+    running,
+    readOnly: Boolean(readOnly),
+    hasDraft,
+    attachmentCount: files.length + images.length,
+  });
   // The action button is a stop control ONLY while a turn runs AND the input
   // is empty. The moment there is something to send, it flips back to a send
   // button. Its submit action below deliberately follows the same steer/queue
@@ -947,6 +960,7 @@ export function Composer({
   const content = (
     <div className={`composer-stack${isComposerExpanded ? " is-expanded" : ""}`}>
       {topAccessory ? <div className="composer-top-accessory">{topAccessory}</div> : null}
+      <PluginSlot host={pluginHost} id="composer.above" context={pluginSlotContext} />
       <div className="composer-shell" ref={composerShellRef}>
         {slashMenuOpen ? (
           <FloatingMenuPortal
@@ -1281,6 +1295,7 @@ export function Composer({
                     ) : null}
                   </div>
                 ) : null}
+                <PluginSlot host={pluginHost} id="composer.toolbar" context={pluginSlotContext} />
               </div>
               <div className="composer-bar-right">
                 {hideRuntimeControls ? null : (

@@ -65,7 +65,9 @@ import { translateCurrent, useI18n } from "./i18n";
 import { Tooltip } from "./Tooltip";
 import type { TranslationKey } from "./i18n/resources/zh-CN";
 import { HeaderPresentation, immutableHeaderSnapshot } from "./plugins/HeaderPresentation";
+import { desktopPluginHost } from "./plugins/DesktopPluginRuntime";
 import type { PluginHost } from "./plugins/PluginHost";
+import { PluginSlot } from "./plugins/PluginSlot";
 import type { WorkbenchController } from "./plugins/Workbench";
 
 export type WorkspacePanelView = "files" | "review" | "terminal" | "browser";
@@ -545,6 +547,16 @@ export function WorkspaceRightPanel({
       inert={!open}
     >
       <div className="workspace-panel-tabbar">
+        <PluginSlot
+          host={pluginHost ?? desktopPluginHost}
+          id="workspace.header"
+          context={Object.freeze({
+            scope: "workspace",
+            open,
+            globalized,
+            activeViewKind: activeTab?.kind,
+          })}
+        />
         <HeaderPresentation
           snapshot={headerSnapshot}
           host={pluginHost}

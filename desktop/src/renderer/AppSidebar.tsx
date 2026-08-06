@@ -68,6 +68,9 @@ import {
   NavigationPresentation,
   type NavigationSourceNode,
 } from "./plugins/NavigationPresentation";
+import { desktopPluginHost } from "./plugins/DesktopPluginRuntime";
+import type { PluginHost } from "./plugins/PluginHost";
+import { PluginSlot } from "./plugins/PluginSlot";
 
 /**
  * Stable section identity keys for the new sidebar tree.
@@ -385,6 +388,7 @@ export function AppSidebar({
   onPointerEnter,
   onPointerLeave,
   onOpenSettings,
+  pluginHost = desktopPluginHost,
 }: {
   state: AppState;
   // The sidebar renders scratch conversations through the same ProjectList
@@ -458,6 +462,7 @@ export function AppSidebar({
   onPointerEnter?: () => void;
   onPointerLeave?: (event: ReactPointerEvent<HTMLElement>) => void;
   onOpenSettings: () => void;
+  pluginHost?: PluginHost;
 }): JSX.Element {
   const { t } = useI18n();
   const hasRuntimeContext = Boolean(state.activeContext);
@@ -1066,7 +1071,21 @@ export function AppSidebar({
             </DndContext>
           ) : null}
         </div>
+        <PluginSlot
+          host={pluginHost}
+          id="sidebar.primary"
+          context={Object.freeze({
+            initialized: Boolean(state.initialized),
+            hasActiveThread: activeThreadID !== undefined,
+            projectCount: sidebarProjects.length,
+          })}
+        />
         <div className="sidebar-settings">
+          <PluginSlot
+            host={pluginHost}
+            id="sidebar.footer"
+            context={Object.freeze({ initialized: Boolean(state.initialized) })}
+          />
           <button
             className="sidebar-settings-button"
             type="button"
