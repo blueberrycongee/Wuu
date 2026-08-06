@@ -55,6 +55,19 @@
   --settings-heatmap-level-2: #7aaae0;
   --settings-heatmap-level-3: #3d74cc;
   --settings-heatmap-level-4: #1a4fa8;
+  /* Theme preview swatches render miniature copies of each theme, so
+     their values are content: they must not follow the active theme. */
+  --settings-preview-light-canvas: #ffffff;
+  --settings-preview-light-sidebar: #f7f7f5;
+  --settings-preview-light-line: #e5e5e1;
+  --settings-preview-dark-canvas: #1d2024;
+  --settings-preview-dark-sidebar: #141618;
+  --settings-preview-dark-line: #3a4046;
+  /* Sanctioned data-viz accent for the skill usage bar. */
+  --settings-usage-accent: #e8a23a;
+  /* The remote-control QR keeps a white quiet zone so phones can scan
+     it in dark theme too. */
+  --settings-remote-qr-quiet-zone: #ffffff;
 }
 
 /* --- Shell grid (shared with the main app shell) ------------------------- */
@@ -1010,40 +1023,40 @@
 }
 
 .settings-theme-preview-window-light {
-  background: #ffffff;
+  background: var(--settings-preview-light-canvas);
 }
 
 .settings-theme-preview-window-light .settings-theme-preview-sidebar {
-  background: #f7f7f5;
+  background: var(--settings-preview-light-sidebar);
 }
 
 .settings-theme-preview-window-light .settings-theme-preview-line {
-  background: #e5e5e1;
+  background: var(--settings-preview-light-line);
 }
 
 .settings-theme-preview-window-dark {
-  background: #1d2024;
+  background: var(--settings-preview-dark-canvas);
 }
 
 .settings-theme-preview-window-dark .settings-theme-preview-sidebar {
-  background: #141618;
+  background: var(--settings-preview-dark-sidebar);
 }
 
 .settings-theme-preview-window-dark .settings-theme-preview-line {
-  background: #3a4046;
+  background: var(--settings-preview-dark-line);
 }
 
 .settings-theme-preview-window-system {
-  background: linear-gradient(90deg, #ffffff 0 50%, #1d2024 50% 100%);
+  background: linear-gradient(90deg, var(--settings-preview-light-canvas) 0 50%, var(--settings-preview-dark-canvas) 50% 100%);
 }
 
 .settings-theme-preview-window-system .settings-theme-preview-sidebar {
-  background: #f7f7f5;
+  background: var(--settings-preview-light-sidebar);
 }
 
 .settings-theme-preview-window-system .settings-theme-preview-line {
   /* The body starts after the 26% sidebar, so 32.5% is the window midpoint. */
-  background: linear-gradient(90deg, #e5e5e1 0 32.5%, #3a4046 32.5% 100%);
+  background: linear-gradient(90deg, var(--settings-preview-light-line) 0 32.5%, var(--settings-preview-dark-line) 32.5% 100%);
 }
 
 /* --- MCP list + extensions + pets ------------------------------------------------ */
@@ -1559,7 +1572,7 @@
 .settings-skill-usage-bar span {
   display: block;
   height: 100%;
-  background: #e8a23a;
+  background: var(--settings-usage-accent);
   transition: width 180ms ease;
 }
 
@@ -2409,7 +2422,7 @@
   height: 220px;
   overflow: hidden;
   border-radius: var(--radius-sm);
-  background: #fff;
+  background: var(--settings-remote-qr-quiet-zone);
 }
 
 .settings-remote-qr svg {

@@ -24,6 +24,7 @@
     { "name": "--wuu-color-warning", "category": "color" },
     { "name": "--wuu-color-danger", "category": "color" },
     { "name": "--wuu-color-info", "category": "color" },
+    { "name": "--wuu-color-on-accent", "category": "color" },
     { "name": "--wuu-font-family-ui", "category": "typography" },
     { "name": "--wuu-font-family-mono", "category": "typography" },
     { "name": "--wuu-font-size-ui", "category": "typography" },

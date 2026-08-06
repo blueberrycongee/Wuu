@@ -26,6 +26,7 @@ var allowedThemeTokens = map[string]struct{}{
 	"--wuu-color-warning":          {},
 	"--wuu-color-danger":           {},
 	"--wuu-color-info":             {},
+	"--wuu-color-on-accent":        {},
 	"--wuu-font-family-ui":         {},
 	"--wuu-font-family-mono":       {},
 	"--wuu-font-size-ui":           {},

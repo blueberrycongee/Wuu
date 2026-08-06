@@ -25,16 +25,7 @@ import { describe, expect, it } from "vitest";
 const COLOR_LITERAL =
   /#[0-9a-fA-F]{3,8}\b|(?:rgba?|hsla?)\([^)]*\)|\b(?:white|black)\b(?![-\w])/g;
 
-const BASELINE: Readonly<Record<string, number>> = {
-  "base.css": 1,
-  "channels.css": 9,
-  "composer.css": 24,
-  "settings.css": 13,
-  "sidebar.css": 9,
-  "turns.css": 1,
-  "workspace-pdf-preview.css": 2,
-  "workspace.css": 8,
-};
+const BASELINE: Readonly<Record<string, number>> = {};
 
 function stripComments(source: string): string {
   return source.replace(/\/\*[\s\S]*?\*\//g, "");

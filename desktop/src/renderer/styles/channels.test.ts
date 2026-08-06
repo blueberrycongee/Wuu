@@ -289,7 +289,7 @@ describe("channel mentions", () => {
     const mentionSelected = ruleFor(".channel-mention-menu button.selected");
 
     expect(author).toMatch(/cursor:\s*pointer/);
-    expect(authorHover).toMatch(/color:\s*#2563eb/);
+    expect(authorHover).toMatch(/color:\s*var\(--info\)/);
     expect(mentionMenu).toMatch(/max-height:\s*240px/);
     expect(mentionMenu).toMatch(/overflow-y:\s*auto/);
     expect(mentionMenu).toMatch(/min-width:\s*min\(220px/);

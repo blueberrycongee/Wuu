@@ -24,6 +24,7 @@ export const PUBLIC_THEME_TOKEN_NAMES = [
   "--wuu-color-warning",
   "--wuu-color-danger",
   "--wuu-color-info",
+  "--wuu-color-on-accent",
   "--wuu-font-family-ui",
   "--wuu-font-family-mono",
   "--wuu-font-size-ui",

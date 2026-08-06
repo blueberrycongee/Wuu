@@ -6,6 +6,9 @@
   min-height: 0;
   color: var(--ink);
   color-scheme: light dark;
+  /* A PDF page is content: it keeps paper-white regardless of theme. */
+  --pdf-page-bg: #ffffff;
+  --pdf-page-shadow: 0 8px 24px rgba(17, 24, 39, 0.1);
 }
 
 * {
@@ -98,8 +101,8 @@
 .pdfViewer .page {
   margin: 0 auto 18px;
   border: 1px solid var(--surface-3);
-  background-color: #fff;
-  box-shadow: 0 8px 24px rgba(17, 24, 39, 0.1);
+  background-color: var(--pdf-page-bg);
+  box-shadow: var(--pdf-page-shadow);
 }
 
 .workspace-pdf-status {

@@ -113,7 +113,9 @@
   --danger-soft: #fff0ef;
   --danger-border: #f1c2bf;
   --info: var(--wuu-color-info, #0969da);
+  --ink-on-accent: var(--wuu-color-on-accent, #ffffff);
   --accent-warm: #ef5b18;
+  --selection-bg: rgba(64, 133, 216, 0.3);
 
                                                                   
                                                                       
@@ -324,7 +326,7 @@
 
 /* Text selection stays stable instead of following the theme accent. */
 ::selection {
-  background: rgba(64, 133, 216, 0.3);
+  background: var(--selection-bg);
   color: inherit;
 }
 

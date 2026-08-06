@@ -4722,7 +4722,7 @@ button.turn-sources-pill:focus-visible {
   border-radius: 10px;
   background: var(--bg-elevated, var(--paper));
   border: 1px solid var(--border, var(--turn-sources-pill-border-fallback));
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.22);
+  box-shadow: var(--shadow-pop);
 }
 
 .turn-source-overflow-item {

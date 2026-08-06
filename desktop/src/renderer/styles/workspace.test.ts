@@ -227,7 +227,7 @@ describe("workspace document turn glass", () => {
     expect(cssRuleBody(".workspace-document-turn-summary svg")).toMatch(/grid-column:\s*2;/);
     expect(cssRuleBody(".workspace-document-turn-summary svg")).toMatch(/justify-self:\s*center;/);
     expect(details).toMatch(/background:\s*transparent;/);
-    expect(composerFrame).toMatch(/0 18px 54px rgba\(20, 24, 28, 0\.14\)/);
+    expect(composerFrame).toMatch(/box-shadow:\s*var\(--shadow-pop\)/);
     expect(workspaceCss).not.toContain(
       ".workspace-document-composer .document-composer-wrap .composer-frame",
     );
@@ -354,7 +354,7 @@ describe("workspace file preview layout", () => {
       /\.workspace-pdf-container\s*\{[^}]*background:\s*var\(--paper\);/s,
     );
     expect(workspacePdfCss).toMatch(
-      /\.pdfViewer \.page\s*\{[^}]*background-color:\s*#fff;/s,
+      /\.pdfViewer \.page\s*\{[^}]*background-color:\s*var\(--pdf-page-bg\);/s,
     );
   });
 
