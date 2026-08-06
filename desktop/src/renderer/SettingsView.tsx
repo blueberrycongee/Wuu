@@ -81,6 +81,8 @@ import { Tooltip } from "./Tooltip";
 import { TruncatedText } from "./TruncatedText";
 import { SubagentModelAliases } from "./SubagentModelAliases";
 import { VoiceInputSettingsSection } from "./VoiceInputSettingsSection";
+import { SettingsPresentation } from "./plugins/SettingsPresentation";
+import type { SettingsPageSummaryV1 } from "../shared/workbench";
 
 export type SettingsPage =
   | "providers"
@@ -728,8 +730,19 @@ export function SettingsView({
   }${sidebarAnimating ? " sidebar-animating" : ""}`;
 
   const pageTitle = settingsPageTitle(activePage, t);
+  const availablePages = useMemo<readonly SettingsPageSummaryV1[]>(() => Object.freeze([
+    Object.freeze({ id: "providers", label: settingsPageTitle("providers", t) }),
+    Object.freeze({ id: "memory", label: settingsPageTitle("memory", t) }),
+    Object.freeze({ id: "advanced", label: settingsPageTitle("advanced", t) }),
+    Object.freeze({ id: "general", label: settingsPageTitle("general", t) }),
+    ...(ENABLE_REMOTE_CONTROL
+      ? [Object.freeze({ id: "remote", label: settingsPageTitle("remote", t) })]
+      : []),
+    Object.freeze({ id: "usage", label: settingsPageTitle("usage", t) }),
+    Object.freeze({ id: "archive", label: settingsPageTitle("archive", t) }),
+  ]), [t]);
 
-  return (
+  const nativeSettings = (
     <div ref={effectiveShellRef} className={shellClassName} style={shellStyle}>
       <div
         ref={sidebarHoverZoneRef}
@@ -979,6 +992,21 @@ export function SettingsView({
         </div>
       </main>
     </div>
+  );
+  return (
+    <SettingsPresentation
+      initialized={initialized}
+      activePageId={activePage}
+      availablePages={availablePages}
+      runningProviderNames={runningProviderNames}
+      busy={running || usageLoading || mcpLoading || codexPetsLoading || Boolean(mcpBusyServer)}
+      hasError={Boolean(error || advancedError || usageError || mcpError || codexPetsError)}
+      fallback={nativeSettings}
+      onOpenPage={(pageId) => setActivePage(pageId as SettingsPage)}
+      onAdvancedSave={onAdvancedSave}
+      onGeneralSave={onGeneralSave}
+      onRefresh={onRefreshModelCatalog}
+    />
   );
 }
 
