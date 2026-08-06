@@ -580,6 +580,295 @@ export type BuiltInPresentationTarget = (typeof PRESENTATION_TARGETS)[number];
 export type PresentationTarget = BuiltInPresentationTarget | (string & {});
 export type PresentationMode = "replace" | "wrap";
 
+/** Sanitized attachment metadata. The opaque id is resolved only through host actions. */
+export interface AttachmentDescriptorV1 {
+  readonly id: string;
+  readonly name: string;
+  readonly mimeType?: string;
+  readonly sizeBytes?: number;
+  readonly width?: number;
+  readonly height?: number;
+}
+
+export interface ConversationContentV1 {
+  readonly type: "plain-text" | "markdown" | "code";
+  readonly text: string;
+  readonly language?: string;
+}
+
+export interface ConversationToolReferenceV1 {
+  readonly id: string;
+  readonly name?: string;
+  readonly capability?: string;
+  readonly status?: "pending" | ToolActivityStatus | "cancelled";
+}
+
+export interface ConversationProcessReferenceV1 {
+  readonly id: string;
+  readonly label?: string;
+  readonly phase?: string;
+  readonly status?: "pending" | "running" | "completed" | "failed" | "cancelled";
+}
+
+/** Public conversation item data, independent of renderer and thread storage types. */
+export interface ConversationItemSnapshotV1 {
+  readonly contractVersion: 1;
+  readonly id: string;
+  readonly kind: "user-message" | "assistant-message" | "reasoning" | "notice" | "attachment" | "tool-reference" | "process-reference";
+  readonly status?: "pending" | "streaming" | "completed" | "failed" | "cancelled";
+  readonly phase?: string;
+  readonly text?: string;
+  readonly contentType?: "plain-text" | "markdown" | "code";
+  readonly content?: readonly ConversationContentV1[];
+  readonly attachments?: readonly AttachmentDescriptorV1[];
+  readonly toolReferences?: readonly ConversationToolReferenceV1[];
+  readonly processReferences?: readonly ConversationProcessReferenceV1[];
+  readonly createdAt?: string;
+}
+
+export interface ComposerQueueSummaryV1 {
+  readonly id: string;
+  readonly text?: string;
+  readonly attachmentCount?: number;
+  readonly status?: "queued" | "pending";
+}
+
+export interface ModelSummaryV1 {
+  readonly id: string;
+  readonly label: string;
+  readonly providerId?: string;
+  readonly contextWindowTokens?: number;
+}
+
+export interface RuntimeSummaryV1 {
+  readonly id: string;
+  readonly label: string;
+  readonly status?: "available" | "unavailable" | "starting" | "running" | "error";
+}
+
+export interface PermissionSummaryV1 {
+  readonly id: string;
+  readonly label: string;
+  readonly description?: string;
+}
+
+export interface ContextUsageSummaryV1 {
+  readonly usedTokens?: number;
+  readonly limitTokens?: number;
+  readonly percent?: number;
+}
+
+export interface GoalSummaryV1 {
+  readonly id?: string;
+  readonly title?: string;
+  readonly status?: "active" | "complete" | "blocked";
+}
+
+export type ComposerSubmissionModeV1 = "send" | "queue" | "steer";
+
+export interface ComposerSnapshotV1 {
+  readonly contractVersion: 1;
+  readonly draftText?: string;
+  readonly attachments?: readonly AttachmentDescriptorV1[];
+  readonly queued?: readonly ComposerQueueSummaryV1[];
+  readonly pending?: readonly ComposerQueueSummaryV1[];
+  readonly running?: boolean;
+  readonly readOnly?: boolean;
+  readonly threadId?: string;
+  readonly variant?: string;
+  readonly availableSubmissionModes?: readonly ComposerSubmissionModeV1[];
+  readonly activeSubmissionMode?: ComposerSubmissionModeV1;
+  readonly model?: ModelSummaryV1;
+  readonly runtime?: RuntimeSummaryV1;
+  readonly permission?: PermissionSummaryV1;
+  readonly contextUsage?: ContextUsageSummaryV1;
+  readonly goal?: GoalSummaryV1;
+  readonly disabledReason?: string;
+}
+
+export interface HeaderTabDescriptorV1 {
+  readonly id: string;
+  readonly title: string;
+  readonly subtitle?: string;
+  readonly kind?: string;
+  readonly busy?: boolean;
+  readonly dirty?: boolean;
+  readonly disabled?: boolean;
+}
+
+export interface HeaderSnapshotV1 {
+  readonly contractVersion: 1;
+  readonly scope: "conversation" | "workspace";
+  readonly title?: string;
+  readonly subtitle?: string;
+  readonly tabs?: readonly HeaderTabDescriptorV1[];
+  readonly activeTabId?: string;
+  readonly busy?: boolean;
+  readonly dirty?: boolean;
+  readonly canNavigateBack?: boolean;
+  readonly canNavigateForward?: boolean;
+}
+
+export interface NavigationNodeV1 {
+  readonly id: string;
+  readonly kind: "section" | "project" | "thread" | "room" | "command";
+  readonly label: string;
+  readonly parentId?: string;
+  readonly depth?: number;
+  readonly description?: string;
+  readonly icon?: string;
+  readonly active?: boolean;
+  readonly pinned?: boolean;
+  readonly unread?: boolean;
+  readonly running?: boolean;
+  readonly disabled?: boolean;
+}
+
+export interface NavigationSnapshotV1 {
+  readonly contractVersion: 1;
+  /** Nodes are in host display order; parentId and depth describe hierarchy. */
+  readonly nodes: readonly NavigationNodeV1[];
+  readonly activeNodeId?: string;
+}
+
+export interface StatusItemV1 {
+  readonly id: string;
+  readonly label: string;
+  readonly kind?: "info" | "progress" | "success" | "warning" | "error";
+  readonly detail?: string;
+  readonly icon?: string;
+  readonly progress?: number;
+  readonly busy?: boolean;
+  readonly disabled?: boolean;
+  readonly actionId?: string;
+}
+
+export interface StatusSnapshotV1 {
+  readonly contractVersion: 1;
+  readonly items: readonly StatusItemV1[];
+}
+
+export interface FileSelectionDescriptorV1 {
+  readonly startOffset?: number;
+  readonly endOffset?: number;
+  readonly startLine?: number;
+  readonly startColumn?: number;
+  readonly endLine?: number;
+  readonly endColumn?: number;
+}
+
+/** File data safe for presentation; it never contains filesystem or window handles. */
+export interface FilePreviewSnapshotV1 {
+  readonly contractVersion: 1;
+  readonly resourceId: string;
+  readonly workspaceRelativePath: string;
+  readonly contentType?: string;
+  readonly text?: string;
+  readonly safeHostUrl?: string;
+  readonly sizeBytes?: number;
+  readonly binary?: boolean;
+  readonly readOnly?: boolean;
+  readonly dirty?: boolean;
+  readonly loading?: boolean;
+  readonly error?: string;
+  readonly selection?: FileSelectionDescriptorV1;
+}
+
+export interface SettingsPageSummaryV1 {
+  readonly id: string;
+  readonly label: string;
+  readonly description?: string;
+  readonly disabled?: boolean;
+}
+
+export interface SettingsPluginSummaryV1 {
+  readonly id: string;
+  readonly name: string;
+  readonly version?: string;
+  readonly enabled?: boolean;
+  readonly status?: string;
+}
+
+export interface SettingsRuntimeSummaryV1 {
+  readonly id: string;
+  readonly label: string;
+  readonly version?: string;
+  readonly status?: string;
+}
+
+export interface SettingsProviderSummaryV1 {
+  readonly id: string;
+  readonly label: string;
+  readonly configured?: boolean;
+  readonly status?: string;
+}
+
+/** Sanitized settings navigation and service summaries; provider credentials are excluded. */
+export interface SettingsSnapshotV1 {
+  readonly contractVersion: 1;
+  readonly activePageId?: string;
+  readonly availablePages?: readonly SettingsPageSummaryV1[];
+  readonly plugins?: readonly SettingsPluginSummaryV1[];
+  readonly runtimes?: readonly SettingsRuntimeSummaryV1[];
+  readonly providers?: readonly SettingsProviderSummaryV1[];
+  readonly busy?: boolean;
+  readonly error?: string;
+}
+
+export const CONVERSATION_ITEM_ACTIONS = {
+  copy: "conversation.item.copy",
+  edit: "conversation.item.edit",
+  retry: "conversation.item.retry",
+  openAttachment: "conversation.item.open-attachment",
+  openTool: "conversation.item.open-tool",
+  cancelProcess: "conversation.item.cancel-process",
+} as const;
+export type ConversationItemActionId = (typeof CONVERSATION_ITEM_ACTIONS)[keyof typeof CONVERSATION_ITEM_ACTIONS];
+
+export const COMPOSER_ACTIONS = {
+  setDraft: "conversation.composer.set-draft",
+  addAttachment: "conversation.composer.add-attachment",
+  removeAttachment: "conversation.composer.remove-attachment",
+  setSubmissionMode: "conversation.composer.set-submission-mode",
+  submit: "conversation.composer.submit",
+  stop: "conversation.composer.stop",
+} as const;
+export type ComposerActionId = (typeof COMPOSER_ACTIONS)[keyof typeof COMPOSER_ACTIONS];
+
+export const HEADER_ACTIONS = {
+  selectTab: "header.select-tab",
+  closeTab: "header.close-tab",
+  navigateBack: "header.navigate-back",
+  navigateForward: "header.navigate-forward",
+} as const;
+export type HeaderActionId = (typeof HEADER_ACTIONS)[keyof typeof HEADER_ACTIONS];
+
+export const NAVIGATION_ACTIONS = {
+  activateNode: "navigation.activate-node",
+  pinNode: "navigation.pin-node",
+  unpinNode: "navigation.unpin-node",
+} as const;
+export type NavigationActionId = (typeof NAVIGATION_ACTIONS)[keyof typeof NAVIGATION_ACTIONS];
+
+export const STATUS_ACTIONS = { activateItem: "status.activate-item" } as const;
+export type StatusActionId = (typeof STATUS_ACTIONS)[keyof typeof STATUS_ACTIONS];
+
+export const FILE_PREVIEW_ACTIONS = {
+  open: "file-preview.open",
+  reveal: "file-preview.reveal",
+  select: "file-preview.select",
+  save: "file-preview.save",
+  reload: "file-preview.reload",
+} as const;
+export type FilePreviewActionId = (typeof FILE_PREVIEW_ACTIONS)[keyof typeof FILE_PREVIEW_ACTIONS];
+
+export const SETTINGS_ACTIONS = {
+  openPage: "settings.open-page",
+  updateValue: "settings.update-value",
+  refresh: "settings.refresh",
+} as const;
+export type SettingsActionId = (typeof SETTINGS_ACTIONS)[keyof typeof SETTINGS_ACTIONS];
+
 export interface PresentationHost extends ViewHostAPI {
   readonly actions: readonly string[];
   invoke(action: string, input?: unknown): Promise<unknown>;

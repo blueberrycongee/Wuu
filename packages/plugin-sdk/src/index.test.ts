@@ -1,11 +1,25 @@
 import {
   CAPABILITY_PROTOCOL_V2,
+  COMPOSER_ACTIONS,
+  CONVERSATION_ITEM_ACTIONS,
+  FILE_PREVIEW_ACTIONS,
+  HEADER_ACTIONS,
+  NAVIGATION_ACTIONS,
   PRESENTATION_TARGETS,
   REQUEST_TRANSFORM_CAPABILITY,
+  SETTINGS_ACTIONS,
+  STATUS_ACTIONS,
   handleRuntimeRequest,
   runJSONLRuntime,
+  type ComposerSnapshotV1,
+  type ConversationItemSnapshotV1,
+  type FilePreviewSnapshotV1,
+  type HeaderSnapshotV1,
+  type NavigationSnapshotV1,
   type RuntimePlugin,
   type PresenterDefinition,
+  type SettingsSnapshotV1,
+  type StatusSnapshotV1,
   type ToolActivityPresenterDefinition,
   type ToolActivitySnapshot,
 } from "./index.js";
@@ -21,6 +35,73 @@ const genericPresenter: PresenterDefinition = {
   render: ({ contractVersion, fallback }) => contractVersion === 1 ? fallback : null,
 };
 if (genericPresenter.target !== "content.preview") throw new Error("presenter definition contract failed");
+
+const conversationItem: ConversationItemSnapshotV1 = Object.freeze({
+  contractVersion: 1,
+  id: "message-1",
+  kind: "assistant-message",
+  status: "completed",
+  content: Object.freeze([{ type: "markdown", text: "Done" }] as const),
+  attachments: Object.freeze([{ id: "attachment-1", name: "result.png", mimeType: "image/png", width: 640, height: 480 }]),
+  toolReferences: Object.freeze([{ id: "call-1", name: "read_file", capability: "workspace.read", status: "completed" }] as const),
+});
+const composer: ComposerSnapshotV1 = Object.freeze({
+  contractVersion: 1,
+  draftText: "Continue",
+  threadId: "thread-1",
+  availableSubmissionModes: Object.freeze(["send", "queue"] as const),
+  model: Object.freeze({ id: "model-1", label: "Model", providerId: "provider-1" }),
+  contextUsage: Object.freeze({ usedTokens: 100, limitTokens: 1_000, percent: 10 }),
+});
+const header: HeaderSnapshotV1 = Object.freeze({
+  contractVersion: 1,
+  scope: "conversation",
+  title: "Conversation",
+  tabs: Object.freeze([{ id: "thread-1", title: "Conversation" }] as const),
+  activeTabId: "thread-1",
+});
+const navigation: NavigationSnapshotV1 = Object.freeze({
+  contractVersion: 1,
+  nodes: Object.freeze([
+    { id: "workspace", kind: "section", label: "Workspace", depth: 0 },
+    { id: "thread-1", kind: "thread", label: "Conversation", parentId: "workspace", depth: 1, active: true },
+  ] as const),
+  activeNodeId: "thread-1",
+});
+const status: StatusSnapshotV1 = Object.freeze({
+  contractVersion: 1,
+  items: Object.freeze([{ id: "runtime", label: "Running", kind: "progress", busy: true, actionId: STATUS_ACTIONS.activateItem }] as const),
+});
+const preview: FilePreviewSnapshotV1 = Object.freeze({
+  contractVersion: 1,
+  resourceId: "resource-1",
+  workspaceRelativePath: "src/index.ts",
+  contentType: "text/typescript",
+  text: "export {};",
+  selection: Object.freeze({ startLine: 1, startColumn: 1 }),
+});
+const settings: SettingsSnapshotV1 = Object.freeze({
+  contractVersion: 1,
+  activePageId: "providers",
+  availablePages: Object.freeze([{ id: "providers", label: "Providers" }]),
+  providers: Object.freeze([{ id: "provider-1", label: "Provider", configured: true }]),
+});
+if (
+  conversationItem.contractVersion !== 1 || composer.contractVersion !== 1 || header.contractVersion !== 1
+  || navigation.nodes.length !== 2 || status.items.length !== 1 || preview.resourceId !== "resource-1"
+  || settings.providers?.[0]?.configured !== true
+) throw new Error("presentation snapshot V1 contract failed");
+
+const actionIds = [
+  CONVERSATION_ITEM_ACTIONS.copy,
+  COMPOSER_ACTIONS.submit,
+  HEADER_ACTIONS.selectTab,
+  NAVIGATION_ACTIONS.activateNode,
+  STATUS_ACTIONS.activateItem,
+  FILE_PREVIEW_ACTIONS.open,
+  SETTINGS_ACTIONS.openPage,
+];
+if (actionIds.some((action) => !action.includes("."))) throw new Error("presentation action ID contract failed");
 
 const snapshot: ToolActivitySnapshot = Object.freeze({
   id: "call",
