@@ -34,6 +34,7 @@ import {
   initialState,
   isScratchThread,
   isStateActiveThreadRunning,
+  isThreadExecuting,
   isThreadRunning,
   isThreadUnread,
   latestCompletedTurnID,
@@ -55,7 +56,6 @@ import {
   sortThreads,
   summarizeThreadsForSidebar,
   threadBelongsToProject,
-  threadAwaitingBackgroundAgents,
   threadNeedsResumeOnReselect,
   threadProjectPath,
   threadSessionTabID,
@@ -164,14 +164,14 @@ describe("isStateActiveThreadRunning with a background agent", () => {
     };
   }
 
-  it("locks the button while a background agent runs on an otherwise idle thread", () => {
+  it("keeps an otherwise idle parent visually settled while a background agent runs", () => {
     const thread = {
       ...threadWithUserTexts(["kick off a worker"]),
       status: "idle" as const,
       child_agents: [{ id: "agent-running", status: "running" }],
     } as unknown as Thread;
-    expect(isThreadRunning(thread)).toBe(true);
-    expect(isStateActiveThreadRunning(stateWithActiveThread(thread))).toBe(true);
+    expect(isThreadRunning(thread)).toBe(false);
+    expect(isStateActiveThreadRunning(stateWithActiveThread(thread))).toBe(false);
   });
 
   it("unlocks once the background agent reaches a terminal state", () => {
@@ -191,7 +191,7 @@ describe("isStateActiveThreadRunning with a background agent", () => {
       child_agents: [{ id: "agent-running", status: "running" }],
     } as unknown as Thread;
 
-    expect(isStateActiveThreadRunning(stateWithActiveThread(thread))).toBe(true);
+    expect(isStateActiveThreadRunning(stateWithActiveThread(thread))).toBe(false);
     expect(resolveComposerRunningAction("steer", thread)).toBe("queue");
   });
 
@@ -204,32 +204,6 @@ describe("isStateActiveThreadRunning with a background agent", () => {
     };
 
     expect(resolveComposerRunningAction("steer", thread)).toBe("steer");
-  });
-
-  it("reports the orchestration wait only when agents run with no active turn", () => {
-    const settled = {
-      ...threadWithUserTexts(["kick off a worker"]),
-      status: "idle" as const,
-      child_agents: [{ id: "agent-running", status: "running" }],
-    } as unknown as Thread;
-    expect(threadAwaitingBackgroundAgents(settled)).toBe(true);
-
-    const idleThread = threadWithUserTexts(["parent is running"]);
-    const midTurn = {
-      ...idleThread,
-      status: "in_progress" as const,
-      turns: idleThread.turns.map((turn) => ({ ...turn, status: "in_progress" as const })),
-      child_agents: [{ id: "agent-running", status: "running" }],
-    } as unknown as Thread;
-    expect(threadAwaitingBackgroundAgents(midTurn)).toBe(false);
-
-    const done = {
-      ...threadWithUserTexts(["worker finished"]),
-      status: "idle" as const,
-      child_agents: [{ id: "agent-done", status: "completed" }],
-    } as unknown as Thread;
-    expect(threadAwaitingBackgroundAgents(done)).toBe(false);
-    expect(threadAwaitingBackgroundAgents(undefined)).toBe(false);
   });
 });
 
@@ -324,7 +298,8 @@ describe("AppState protocol normalization", () => {
         parent_id: thread.id,
       }),
     ]);
-    expect(isStateActiveThreadRunning(next)).toBe(true);
+    expect(isStateActiveThreadRunning(next)).toBe(false);
+    expect(isThreadExecuting(next.thread)).toBe(true);
   });
 
   it("keeps rendering when an older core starts an empty turn with null items", () => {
@@ -2424,7 +2399,7 @@ describe("AppState sortThreads (sidebar order)", () => {
     ]);
   });
 
-  it("treats a direct running child agent as active sidebar work", () => {
+  it("does not reorder settled threads around background child work", () => {
     const threadWithRunningAgent = makeSortableThread({
       id: "thread-with-agent",
       createdAt: "2026-06-18T00:00:00Z",
@@ -2446,8 +2421,8 @@ describe("AppState sortThreads (sidebar order)", () => {
 
     const sorted = sortThreads([settledRecent, threadWithRunningAgent]);
     expect(sorted.map((thread) => thread.id)).toEqual([
-      "thread-with-agent",
       "thread-settled-recent",
+      "thread-with-agent",
     ]);
     expect(isThreadUnread(threadWithRunningAgent, undefined)).toBe(false);
   });
@@ -2571,7 +2546,7 @@ describe("mergeListedThreads", () => {
 
     expect(merged.child_agents?.[0]?.id).toBe("agent-running");
     expect(merged.child_agents?.[0]?.status).toBe("running");
-    expect(isThreadUnread(merged, undefined)).toBe(false);
+    expect(isThreadUnread(merged, undefined)).toBe(true);
   });
 });
 

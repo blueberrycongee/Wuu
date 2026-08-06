@@ -42,12 +42,6 @@ export type TurnEntry = {
   count?: number;
   /** A subagent wake notification rendered as a wait-tool-style timeline row. */
   subagentStatus?: SubagentChipDisplay;
-  /** Origin turn when entries from several turns are merged into one
-   *  group display (TurnGroupView). Undefined means "the shell's own
-   *  turn" — single-turn displays never set it, so stream-text keys,
-   *  fork targets and turn status all resolve to the owning turn either
-   *  way. */
-  turn?: Turn;
 };
 
 export type TurnEntryKind =
@@ -60,12 +54,6 @@ export type TurnEntryKind =
 
 export type AssistantTurnDisplay = {
   entries: TurnEntry[];
-  /** Every subagent notification collected across the turn. The shell
-   *  surfaces them once in the fold header, next to the elapsed-time
-   *  label: the wake event is the turn's cause, so it lives in the
-   *  turn-level chrome instead of occupying a row of its own in the
-   *  message stream. */
-  subagentChips: SubagentChipDisplay[];
   /** True when the turn has at least one `answer`-position entry. The shell
    *  separately checks that its streamed text is non-empty before starting
    *  the process-to-answer handoff. */
@@ -103,10 +91,6 @@ export function buildAssistantTurnDisplay(
   const isInProgress = turn.status === "in_progress";
   const turnHasReasoning = turn.items.some((item) => item.type === "reasoning");
   let firstTextItemRendered = false;
-  // Turn-level chip collection: every subagent notification in the turn
-  // accumulates here and surfaces once in the fold header (see
-  // AssistantTurnDisplay.subagentChips). Order is chronological.
-  const collectedChips: SubagentChipDisplay[] = [];
 
   function isProcessItemLive(item: ThreadItem): boolean {
     return isInProgress && item.status === "in_progress";
@@ -150,7 +134,6 @@ export function buildAssistantTurnDisplay(
         : [];
       if (chips.length > 0) {
         sawAssistantWork = true;
-        collectedChips.push(...chips);
         for (let chipIndex = 0; chipIndex < chips.length; chipIndex += 1) {
           entries.push({
             key: `${item.id}-subagent-status-${chipIndex}`,
@@ -276,7 +259,6 @@ export function buildAssistantTurnDisplay(
 
   if (
     entries.length === 0 &&
-    collectedChips.length === 0 &&
     !latestProcessPreview &&
     !isInProgress
   ) {
@@ -286,7 +268,6 @@ export function buildAssistantTurnDisplay(
   return {
     entries: groupProcessEntries(entries),
     hasAnswer,
-    subagentChips: collectedChips,
     missingReplyMessage,
     latestProcessPreview,
   };
