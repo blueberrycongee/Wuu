@@ -80,6 +80,10 @@ import {
   type EnvironmentPanelMotionState,
 } from "./EnvironmentPanel";
 import { createEnvironmentActions } from "./EnvironmentActions";
+import {
+  ComposerSubagentStatus,
+  runningSubagents,
+} from "./ComposerSubagentStatus";
 import { useGitActionBusy } from "./GitActionBusy";
 import {
   activePlanUpdateForThread,
@@ -2568,6 +2572,7 @@ export function App(): JSX.Element {
         state.initialized?.advanced_settings?.context_window_tokens,
     });
     const streamStatus = activeThreadStreamStatus;
+    const activeSubagents = runningSubagents(activeThread?.child_agents);
     return (
       <PluginSurface
         host={desktopPluginHost}
@@ -2594,7 +2599,13 @@ export function App(): JSX.Element {
       <Composer
         variant={variant}
         mainConversation
-        topAccessory={undefined}
+        topAccessory={activeSubagents.length > 0 ? (
+          <ComposerSubagentStatus
+            agents={activeSubagents}
+            onSelect={handleCachedPaneOpenAgent}
+            onOpenAll={openEnvironmentPanel}
+          />
+        ) : undefined}
         containerRef={variant === "dock" ? dockComposerRef : undefined}
         prompt={prompt}
         setPrompt={setPrompt}

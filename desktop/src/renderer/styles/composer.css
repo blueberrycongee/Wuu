@@ -90,6 +90,107 @@
   margin-bottom: 8px;
 }
 
+.composer-subagent-capsule {
+  display: inline-flex;
+  height: 30px;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+  margin-right: auto;
+  padding: 3px 10px 3px 6px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-pill);
+  background: var(--surface-1);
+  color: var(--ink-muted);
+  font-size: var(--font-sm);
+  font-weight: var(--weight-medium);
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.composer-subagent-capsule-single {
+  font: inherit;
+  color: var(--ink-muted);
+  cursor: pointer;
+  transition:
+    border-color var(--motion-fast) var(--ease-out),
+    background-color var(--motion-fast) var(--ease-out),
+    color var(--motion-fast) var(--ease-out);
+}
+
+.composer-subagent-capsule-single:hover,
+.composer-subagent-capsule-single:focus-visible {
+  border-color: var(--hairline-strong);
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.composer-subagent-avatars {
+  display: inline-flex;
+  align-items: center;
+  padding-left: 7px;
+}
+
+.composer-subagent-avatar-button,
+.composer-subagent-avatar-frame {
+  position: relative;
+  display: inline-flex;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  margin: 0 0 0 -7px;
+  padding: 0;
+  overflow: hidden;
+  border: 1.5px solid var(--surface-1);
+  border-radius: var(--radius-pill);
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.composer-subagent-avatar-button {
+  cursor: pointer;
+  transition:
+    transform var(--motion-fast) var(--ease-out),
+    box-shadow var(--motion-fast) var(--ease-out);
+}
+
+.composer-subagent-avatar-button:hover,
+.composer-subagent-avatar-button:focus-visible {
+  z-index: 1;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px var(--ink-overlay-12);
+  outline: 0;
+}
+
+.composer-subagent-avatar {
+  display: inline-flex;
+  width: 100%;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: inherit;
+  background: var(--ink-overlay-6);
+}
+
+.composer-subagent-avatar img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.composer-subagent-overflow {
+  background: var(--surface-2);
+  color: var(--ink-muted);
+  font-size: 9px;
+  font-weight: var(--weight-semibold);
+  letter-spacing: -0.03em;
+}
+
 /* Hero (welcome) composer inherits the same dialog width as the dock composer
    so the input box stays the same width whether or not a turn has been sent. */
 
