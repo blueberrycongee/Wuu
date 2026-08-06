@@ -303,7 +303,7 @@ describe("ThreadItemView", () => {
     expect(streamTextStore.has(key)).toBe(false);
   });
 
-  it("keeps the dormant subagent update presentation hidden", () => {
+  it("renders a subagent update as a read-only user message", () => {
     const onEditMessage = vi.fn();
     render({
       item: {
@@ -321,9 +321,17 @@ describe("ThreadItemView", () => {
       onEditMessage,
     });
 
-    expect(container?.querySelector(".user-message-block")).toBeNull();
-    expect(container?.textContent).not.toContain("太阳更新了状态");
+    expect(container?.querySelector(".subagent-chip")).toBeNull();
+    expect(container?.querySelector(".user-message")?.textContent).toBe("太阳更新了状态");
+    const actions = container?.querySelectorAll<HTMLButtonElement>(".user-message-actions button");
+    expect(actions).toHaveLength(2);
+
+    act(() => {
+      actions?.[1]?.click();
+    });
+
     expect(onEditMessage).not.toHaveBeenCalled();
+    expect(container?.textContent).toContain("这条消息由 subagent 自动生成，无法编辑");
   });
 
 });

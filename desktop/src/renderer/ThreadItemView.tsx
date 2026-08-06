@@ -10,11 +10,7 @@ import {
 } from "react";
 import { ChevronDown, ChevronUp, Plus, Send } from "lucide-react";
 import type { InputFile, InputImage, ThreadItem, Turn } from "../shared/protocol";
-import {
-  agentHandoffUserMessageDisplay,
-  isAgentHandoffItem,
-  SHOW_SUBAGENT_UPDATE_MESSAGES,
-} from "./AgentHandoff";
+import { agentHandoffUserMessageDisplay, isAgentHandoffItem } from "./AgentHandoff";
 import {
   clipboardAttachmentFiles,
   composerFileFromFile,
@@ -107,9 +103,6 @@ export const ThreadItemView = memo(function ThreadItemView({
         return null;
       }
       const agentHandoff = isAgentHandoffItem(item);
-      if (agentHandoff && !SHOW_SUBAGENT_UPDATE_MESSAGES) {
-        return null;
-      }
       const displayText = agentHandoff
         ? (agentHandoffUserMessageDisplay(item)?.label ?? t("agent.handoff.message.updatedGeneric"))
         : text;
