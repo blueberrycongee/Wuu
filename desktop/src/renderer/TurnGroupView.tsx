@@ -48,6 +48,9 @@ export type TurnGroupViewProps = {
   /** The thread still has running child agents and this is the last group:
    *  the orchestration is between turns, waiting for a completion wake. */
   awaiting?: boolean;
+  /** Authoritative count from the live child-agent registry. Unlike turn
+   * history, this survives projection/compaction that removes spawn calls. */
+  runningSubagentCount?: number;
   /** The user stopped this orchestration while it was between wake turns. */
   interrupted?: boolean;
   cwd?: string;
@@ -82,6 +85,7 @@ export function TurnGroupView(props: TurnGroupViewProps): JSX.Element {
         version: 1,
         turns: props.turns,
         awaiting: Boolean(props.awaiting),
+        runningSubagentCount: props.runningSubagentCount ?? 0,
         interrupted: Boolean(props.interrupted),
         cwd: props.cwd,
         actions: {
@@ -149,6 +153,7 @@ function TurnGroupContent(props: TurnGroupViewProps): JSX.Element {
 function MergedTurnGroupView({
   turns,
   awaiting,
+  runningSubagentCount,
   interrupted,
   cwd,
   onOpenFile,
@@ -176,17 +181,22 @@ function MergedTurnGroupView({
   const live = anyMemberInProgress || Boolean(awaiting);
   const subagentProgress = subagentProgressForTurns(turns);
   const waitingTail = (() => {
-    if (interrupted || subagentProgress.total === 0) return undefined;
-    if (subagentProgress.remaining > 0) {
+    if (interrupted) return undefined;
+    const remaining =
+      awaiting && typeof runningSubagentCount === "number"
+        ? Math.max(0, runningSubagentCount)
+        : subagentProgress.remaining;
+    if (subagentProgress.total === 0 && remaining === 0) return undefined;
+    if (remaining > 0) {
       return {
         label:
           subagentProgress.finished > 0
             ? translateCurrent("process.subagentsProgress", {
                 finished: subagentProgress.finished,
-                remaining: subagentProgress.remaining,
+                remaining,
               })
             : translateCurrent("process.subagentsWaiting", {
-                remaining: subagentProgress.remaining,
+                remaining,
               }),
         // The row remains visible while a completion wake is being processed,
         // but the active shimmer belongs to the parent turn's newer work.
@@ -197,7 +207,7 @@ function MergedTurnGroupView({
     // final child can finish after the model has already produced commentary;
     // like a real tool call, the settled row must not disappear merely because
     // newer assistant text exists.
-    if (subagentProgress.remaining === 0 && live) {
+    if (remaining === 0 && subagentProgress.total > 0 && live) {
       return {
         label: translateCurrent("process.subagentsFinished", {
           count: subagentProgress.finished,

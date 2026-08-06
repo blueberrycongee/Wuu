@@ -123,11 +123,13 @@ function mountGroup(
   onOpenRuns?: (turnID: string) => void,
   interrupted = false,
   isLatestTurn = true,
+  runningSubagentCount?: number,
 ): void {
   render(
     <TurnGroupView
       turns={turns}
       awaiting={awaiting}
+      runningSubagentCount={runningSubagentCount}
       interrupted={interrupted}
       isLatestTurn={isLatestTurn}
       onStreamFrame={() => {}}
@@ -535,18 +537,20 @@ describe("TurnGroupView — awaiting between turns", () => {
     expect(completedRow?.textContent).toContain("research_a 完成了");
   });
 
-  it("keeps the group live without inventing a bottom status when spawn history is absent", () => {
+  it("keeps an authoritative wait row when spawn history is absent", () => {
     const turns = [
       makeTurn("t1", [userItem("审计项目"), answerItem("我先等待审计结果。")], {
         durationMs: 800,
       }),
     ];
 
-    mountGroup(turns, true);
+    mountGroup(turns, true, undefined, false, true, 2);
 
     expect(section().dataset.turnStatus).toBe("in_progress");
     expect(actionBars()).toHaveLength(0);
     expect(container.querySelector(".turn-subagent-status")).toBeNull();
+    expect(waitTail().classList.contains("expanded")).toBe(true);
+    expect(waitTail().textContent).toContain("仍在等待 2 个 subagent");
   });
 
   it("updates the completed spawn in place while a peer spawn remains live", () => {

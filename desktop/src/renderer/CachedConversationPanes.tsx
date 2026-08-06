@@ -276,6 +276,7 @@ const CachedConversationPane = memo(function CachedConversationPane({
       <ForkWorktreeNotice thread={thread} />
     ) : null;
   const latestTurn = threadTurns[threadTurns.length - 1];
+  const runningChildAgents = thread.child_agents?.filter(agentRunning) ?? [];
   const latestTurnStreamStatus = latestTurn
     ? turnStreamStatus[latestTurn.id]
     : undefined;
@@ -425,19 +426,17 @@ const CachedConversationPane = memo(function CachedConversationPane({
           forcedFullTurnIDs={
             historyMessageEdit ? [historyMessageEdit.turnID] : undefined
           }
-          lastGroupOpen={thread.child_agents?.some(agentRunning) ?? false}
-          runningAgentIDs={thread.child_agents
-            ?.filter(agentRunning)
-            .map((agent) => agent.id)}
+          lastGroupOpen={runningChildAgents.length > 0}
+          runningAgentIDs={runningChildAgents.map((agent) => agent.id)}
           renderTurnGroup={(groupTurns) => {
             const groupLast = groupTurns[groupTurns.length - 1];
             return (
               <PaneTurnGroupView
                 turns={groupTurns}
                 awaiting={
-                  (thread.child_agents?.some(agentRunning) ?? false) &&
-                  latestTurn?.id === groupLast.id
+                  runningChildAgents.length > 0 && latestTurn?.id === groupLast.id
                 }
+                runningSubagentCount={runningChildAgents.length}
                 interrupted={
                   Boolean(thread.orchestration_interrupted) &&
                   latestTurn?.id === groupLast.id
@@ -593,6 +592,7 @@ const PaneTurnView = memo(function PaneTurnView({
 type PaneTurnGroupViewProps = Omit<PaneTurnViewProps, "turn"> & {
   turns: Turn[];
   awaiting?: boolean;
+  runningSubagentCount?: number;
   interrupted?: boolean;
 };
 
@@ -603,6 +603,7 @@ const PaneTurnGroupView = memo(
   function PaneTurnGroupView({
     turns,
     awaiting,
+    runningSubagentCount,
     interrupted,
     cwd,
     latestAgentMessageID,
@@ -625,6 +626,7 @@ const PaneTurnGroupView = memo(
       <TurnGroupView
         turns={turns}
         awaiting={awaiting}
+        runningSubagentCount={runningSubagentCount}
         interrupted={interrupted}
         cwd={cwd}
         onOpenFile={onOpenFile}
@@ -646,6 +648,8 @@ const PaneTurnGroupView = memo(
   },
   (previous, next) =>
     previous.awaiting === next.awaiting &&
+    previous.runningSubagentCount === next.runningSubagentCount &&
+    previous.interrupted === next.interrupted &&
     previous.cwd === next.cwd &&
     previous.latestAgentMessageID === next.latestAgentMessageID &&
     previous.isLatestTurn === next.isLatestTurn &&
