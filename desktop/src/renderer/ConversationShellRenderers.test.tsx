@@ -1,7 +1,9 @@
+import * as React from "react";
 import { act, createRef } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Thread } from "../shared/protocol";
+import type { HeaderSnapshotV1 } from "../shared/workbench";
 import {
   emptyComposerDraft,
   initialState,
@@ -27,8 +29,11 @@ vi.mock("./ConversationSplitPane", () => ({
 
 import {
   ConversationSplitPaneRenderer,
+  ConversationTitleContent,
   ConversationTitleActions,
 } from "./ConversationShellRenderers";
+import { PluginHost } from "./plugins/PluginHost";
+import { WorkbenchController } from "./plugins/Workbench";
 
 let container: HTMLDivElement;
 let root: Root | null = null;
@@ -100,6 +105,45 @@ describe("ConversationSplitPaneRenderer file routing", () => {
     });
 
     expect(onOpenFile).toHaveBeenCalledWith(secondaryThread, "src/App.tsx");
+  });
+});
+
+describe("ConversationTitleContent presentation boundary", () => {
+  it("replaces its native title root with the conversation header presenter", async () => {
+    const pluginHost = new PluginHost({ react: React });
+    const workbenchController = new WorkbenchController(pluginHost);
+    let snapshot: HeaderSnapshotV1 | undefined;
+    await pluginHost.activateGeneration({ pluginId: "conversation-header", generation: "one", register(api) {
+      api.registerPresenter({ id: "conversation", target: "header.conversation", render: (props) => {
+        snapshot = props.snapshot as HeaderSnapshotV1;
+        return <div data-conversation-header>{snapshot.title}</div>;
+      } });
+    } });
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+
+    act(() => root?.render(
+      <ConversationTitleContent
+        state={initialState}
+        crossWorkspaceThreads={[]}
+        sessionTabsVisible={false}
+        pendingComposerMessagesByThread={{}}
+        activeTitle="Conversation"
+        onSelectSessionTab={() => {}}
+        onCloseSessionTab={() => {}}
+        onCloseSessionTabs={() => {}}
+        onPopOutSessionTab={() => {}}
+        onStartNewThread={() => {}}
+        onReorderSessionTabs={() => {}}
+        pluginHost={pluginHost}
+        workbenchController={workbenchController}
+      />,
+    ));
+
+    expect(container.firstElementChild?.hasAttribute("data-conversation-header")).toBe(true);
+    expect(container.querySelector("h1")).toBeNull();
+    expect(snapshot).toEqual({ contractVersion: 1, scope: "conversation", title: "Conversation" });
   });
 });
 

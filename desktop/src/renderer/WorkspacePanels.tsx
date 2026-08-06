@@ -64,6 +64,9 @@ import { useStripEnterReady, useTabExitRetention } from "./TabMotion";
 import { translateCurrent, useI18n } from "./i18n";
 import { Tooltip } from "./Tooltip";
 import type { TranslationKey } from "./i18n/resources/zh-CN";
+import { HeaderPresentation, immutableHeaderSnapshot } from "./plugins/HeaderPresentation";
+import type { PluginHost } from "./plugins/PluginHost";
+import type { WorkbenchController } from "./plugins/Workbench";
 
 export type WorkspacePanelView = "files" | "review" | "terminal" | "browser";
 
@@ -174,6 +177,8 @@ export function WorkspaceRightPanel({
   onBrowserActivityStop,
   focusedComposer,
   fileRefreshKey,
+  pluginHost,
+  workbenchController,
 }: {
   open: boolean;
   present: boolean;
@@ -212,6 +217,8 @@ export function WorkspaceRightPanel({
   onBrowserActivityStop?: () => void;
   focusedComposer?: ReactNode;
   fileRefreshKey?: string;
+  pluginHost?: PluginHost;
+  workbenchController?: WorkbenchController;
 }): JSX.Element {
   const { t } = useI18n();
   const activeTab = activeTabID ? tabs.find((tab) => tab.id === activeTabID) : undefined;
@@ -502,6 +509,28 @@ export function WorkspaceRightPanel({
     onCloseTab(tab.id);
   }
 
+  const headerTabs = tabs.map((tab) => {
+    const busy = (tab.kind === "terminal" && terminalThread?.status === "in_progress") ||
+      (tab.kind === "browser" && browserActivity?.state === "active");
+    return {
+      id: tab.id,
+      title: workspaceViewTabLabel(tab),
+      subtitle: tab.kind === "file" || tab.kind === "diff" ? tab.path : undefined,
+      kind: tab.kind,
+      busy: busy || undefined,
+      dirty: (tab.kind === "file" && dirtyFileTabIDs.has(tab.id)) || undefined,
+    };
+  });
+  const headerSnapshot = immutableHeaderSnapshot({
+    scope: "workspace",
+    title: activeTab ? workspaceViewTabLabel(activeTab) : t("workspace.artifactsAndTools"),
+    subtitle: activeTab?.kind === "file" || activeTab?.kind === "diff" ? activeTab.path : undefined,
+    tabs: headerTabs,
+    activeTabId: activeTabID,
+    busy: headerTabs.some((tab) => tab.busy) || undefined,
+    dirty: headerTabs.some((tab) => tab.dirty) || undefined,
+  });
+
   return (
     <aside
       className={`workspace-right-panel${activeTab ? " detail" : " tools"}${activeTab?.kind === "review" ? " review" : ""}${activeTab?.kind === "diff" ? " diff" : ""}${activeTab?.kind === "files" || activeTab?.kind === "file" ? " files" : ""}${activeTab?.kind === "terminal" ? " terminal" : ""}${focusedComposer && activeTab?.kind === "file" ? " document-focus" : ""}`}
@@ -516,6 +545,17 @@ export function WorkspaceRightPanel({
       inert={!open}
     >
       <div className="workspace-panel-tabbar">
+        <HeaderPresentation
+          snapshot={headerSnapshot}
+          host={pluginHost}
+          controller={workbenchController}
+          onSelectTab={onSelectTab}
+          onCloseTab={(tabId) => {
+            const tab = tabs.find((candidate) => candidate.id === tabId);
+            if (tab) requestCloseTab(tab);
+          }}
+          fallback={(
+            <>
         {globalized ? (
           <span className="workspace-panel-sidebar-hit-hole" aria-hidden="true" />
         ) : null}
@@ -637,6 +677,9 @@ export function WorkspaceRightPanel({
         >
           <X className="icon" />
         </button>
+            </>
+          )}
+        />
       </div>
       {present || bodyPrewarmed || fileTabs.length > 0 ? (
         <>

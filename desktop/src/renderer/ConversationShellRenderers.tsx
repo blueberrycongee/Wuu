@@ -21,7 +21,10 @@ import type {
 } from "../shared/protocol";
 import {
   emptyComposerDraft,
+  isThreadRunning,
   queryTextsForThread,
+  sessionTabLabel,
+  threadForTab,
   turnStreamStatusForThread,
   type AppState,
   type ComposerDraftState,
@@ -48,6 +51,9 @@ import { SidePanelToggleIcon } from "./SidePanelToggleIcon";
 import { ViewSwitchLoading } from "./LoadingViews";
 import type { TurnFileDiffSelection } from "./TurnFileDiffTypes";
 import { useI18n } from "./i18n";
+import { HeaderPresentation, immutableHeaderSnapshot } from "./plugins/HeaderPresentation";
+import type { PluginHost } from "./plugins/PluginHost";
+import type { WorkbenchController } from "./plugins/Workbench";
 
 type RunDebugPanelProps = ComponentProps<typeof RunDebugPanel>;
 type EnvironmentSideStackProps = ComponentProps<typeof EnvironmentSideStack>;
@@ -243,6 +249,8 @@ export type ConversationTitleContentProps = {
   onPopOutSessionTab: (tabID: string) => void;
   onStartNewThread: () => void;
   onReorderSessionTabs: (activeID: string, overID: string) => void;
+  pluginHost?: PluginHost;
+  workbenchController?: WorkbenchController;
 };
 
 export function ConversationTitleContent({
@@ -259,9 +267,10 @@ export function ConversationTitleContent({
   onPopOutSessionTab,
   onStartNewThread,
   onReorderSessionTabs,
+  pluginHost,
+  workbenchController,
 }: ConversationTitleContentProps): JSX.Element {
-  if (sessionTabsVisible) {
-    return (
+  const fallback = sessionTabsVisible ? (
       <SessionTabStrip
         state={state}
         crossWorkspaceThreads={crossWorkspaceThreads}
@@ -276,10 +285,46 @@ export function ConversationTitleContent({
         onNewThread={onStartNewThread}
         onReorder={onReorderSessionTabs}
       />
-    );
-  }
-  return (
+  ) : (
     <h1>{activeTitle}</h1>
+  );
+  const tabState = { ...state, threads: crossWorkspaceThreads };
+  const tabs = sessionTabsVisible
+    ? state.sessionTabs.map((tab) => {
+        const tabThread = tab.kind === "thread" ? threadForTab(tabState, tab.threadID) : undefined;
+        const dirty = "prompt" in tab
+          ? tab.prompt.length > 0 || tab.images.length > 0 || tab.files.length > 0
+          : undefined;
+        return {
+          id: tab.id,
+          title: sessionTabLabel(tab, tabState),
+          kind: tab.kind,
+          busy: isThreadRunning(tabThread) || (
+            pendingSwitchThreadID !== undefined &&
+            tab.kind === "thread" &&
+            pendingSwitchThreadID === tab.threadID
+          ),
+          dirty: dirty || undefined,
+        };
+      })
+    : undefined;
+  const snapshot = immutableHeaderSnapshot({
+    scope: "conversation",
+    title: activeTitle,
+    tabs,
+    activeTabId: sessionTabsVisible ? state.activeSessionTabID || undefined : undefined,
+    busy: tabs?.some((tab) => tab.busy) || undefined,
+    dirty: tabs?.some((tab) => tab.dirty) || undefined,
+  });
+  return (
+    <HeaderPresentation
+      snapshot={snapshot}
+      fallback={fallback}
+      onSelectTab={sessionTabsVisible ? onSelectSessionTab : undefined}
+      onCloseTab={sessionTabsVisible ? onCloseSessionTab : undefined}
+      host={pluginHost}
+      controller={workbenchController}
+    />
   );
 }
 

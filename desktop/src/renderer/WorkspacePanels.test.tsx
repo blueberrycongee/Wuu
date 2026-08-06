@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import * as React from "react";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -19,6 +20,9 @@ import {
   type WorkspaceViewTab,
 } from "./WorkspaceViewTabs";
 import { hoverTooltipText, unhoverTooltip } from "./tooltipTestUtils";
+import type { HeaderSnapshotV1, PresentationHost } from "../shared/workbench";
+import { PluginHost } from "./plugins/PluginHost";
+import { WorkbenchController } from "./plugins/Workbench";
 
 const workspaceCSS = readFileSync(resolve(__dirname, "styles/workspace.css"), "utf-8");
 
@@ -179,6 +183,56 @@ function baseProps(): Parameters<typeof WorkspaceRightPanel>[0] {
 }
 
 describe("WorkspaceRightPanel", () => {
+  it("replaces its owned tabbar boundary with a live workspace header presenter", async () => {
+    const pluginHost = new PluginHost({ react: React });
+    const workbenchController = new WorkbenchController(pluginHost);
+    const snapshots: HeaderSnapshotV1[] = [];
+    let presentationHost: PresentationHost | undefined;
+    await pluginHost.activateGeneration({ pluginId: "workspace-header", generation: "one", register(api) {
+      api.registerPresenter({ id: "workspace", target: "header.workspace", render: (props) => {
+        snapshots.push(props.snapshot as HeaderSnapshotV1);
+        presentationHost = props.host;
+        return <div data-workspace-header>{(props.snapshot as HeaderSnapshotV1).title}</div>;
+      } });
+    } });
+    const context: RuntimeContext = { kind: "project", project_id: "project-1", cwd: "/repo/project" };
+    const tab = workspaceFileViewTab({ context, path: "src/main.ts" });
+    const onSelectTab = vi.fn();
+    const onCloseTab = vi.fn();
+
+    mount(
+      <WorkspaceRightPanel
+        {...baseProps()}
+        tabs={[tab]}
+        activeTabID={tab.id}
+        activeFileTabID={tab.id}
+        workspaceContext={context}
+        onSelectTab={onSelectTab}
+        onCloseTab={onCloseTab}
+        pluginHost={pluginHost}
+        workbenchController={workbenchController}
+      />,
+    );
+
+    const tabbar = container?.querySelector(".workspace-panel-tabbar");
+    expect(tabbar?.firstElementChild?.hasAttribute("data-workspace-header")).toBe(true);
+    expect(tabbar?.querySelector(".workspace-panel-tabs")).toBeNull();
+    expect(snapshots.at(-1)).toMatchObject({
+      contractVersion: 1,
+      scope: "workspace",
+      title: "main.ts",
+      subtitle: "src/main.ts",
+      activeTabId: tab.id,
+      tabs: [{ id: tab.id, title: "main.ts", subtitle: "src/main.ts", kind: "file" }],
+    });
+    expect("context" in (snapshots.at(-1)?.tabs?.[0] ?? {})).toBe(false);
+
+    await act(async () => presentationHost?.invoke("header.select-tab", { tabId: tab.id }));
+    await act(async () => presentationHost?.invoke("header.close-tab", { tabId: tab.id }));
+    expect(onSelectTab).toHaveBeenCalledWith(tab.id);
+    expect(onCloseTab).toHaveBeenCalledWith(tab.id);
+  });
+
   it("places the file-tree drag handle in the search row instead of a separate row", () => {
     expect(workspaceCSS).toMatch(
       /\.workspace-files-tree\s*\{[^}]*position:\s*relative;/s,
