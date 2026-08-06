@@ -1,228 +1,86 @@
-# 用插件定制桌面界面
+# 插件
 
-Wuu 的桌面代码插件可以注册全局样式，并替换或包装宿主提供的稳定 UI Surface。插件能够
-形成统一视觉体系并进行有边界的结构调整，同时继续调用 Wuu 提供的会话与导航动作。
+插件让 Wuu 在保持宿主安全内核的前提下被重新组装：换主题、加设置、扩展 Agent 的
+工具与策略、在桌面界面做有边界的结构贡献。插件平台当前是本地优先的——没有市场或
+中心仓库，插件以目录或 zip 包的形式在本地安装。
 
-桌面代码插件与普通主题不同：它是在 Wuu Renderer 中运行的受信任代码。启用前应检查
-来源和权限。插件管理、审批、安全模式、崩溃恢复和原生窗口生命周期始终由 Wuu
-控制，插件不能替换这些恢复路径。
+插件分三类，信任成本不同：
 
-## 最小包结构
+| 类型 | 做什么 | 是否需要代码 |
+| --- | --- | --- |
+| 声明式主题与设置 | 在 `plugin.json` 中声明，无需执行插件代码 | 否 |
+| Agent 插件 | 注册工具、挂钩工具执行、贡献系统提示、替换压缩策略 | 是，独立进程 |
+| 桌面插件 | 注册样式、替换或包装稳定 UI Surface | 是，Renderer 代码 |
 
-```text
-my-layout/
-├── plugin.json
-└── dist/
-    └── desktop.js
+插件管理、审批、安全模式、崩溃恢复、权限底线和原生窗口生命周期始终由 Wuu 控制，
+插件不能替换这些恢复路径。插件的定位是在 Wuu 设计语言骨架内做有边界的贡献和换肤，
+而不是重做整个软件的外观；想要完全不同外观的开发者应当 fork 仓库。
+
+## 获取与安装
+
+插件作者通常在 GitHub 仓库中维护插件。你可以 clone 仓库、下载目录，或下载发布包
+（zip），然后用桌面端或 CLI 安装：
+
+```bash
+wuu plugin install ./path/to/plugin
+wuu plugin install ./my-plugin-1.0.0.zip
 ```
 
-`plugin.json`：
+桌面端在"技能与插件"中点击**安装本地插件**，选择目录或 zip 包。插件文件安装在
+`~/.wuu/plugins/`（设置 `WUU_HOME` 时在其下），已安装插件的代码每次加载前都会重新
+计算整包 fingerprint 并核对批准状态。
 
-```json
-{
-  "schemaVersion": 1,
-  "id": "my-layout",
-  "name": "My Layout",
-  "version": "1.0.0",
-  "desktop": {
-    "entry": "dist/desktop.js"
-  }
-}
+## 审批与启用
+
+安装后代码不会立即激活。Wuu 显示包的来源、内容和 fingerprint，你检查并批准后插件
+才启用；启用前不会执行任何插件代码。插件包的任何文件变化都会产生新的 fingerprint，
+原来的批准失效，需要重新检查并批准新版本。再次安装同一插件会暂存为待更新状态，
+已安装的版本保持运行直到你批准新包。
+
+常见管理命令：
+
+```bash
+wuu plugin list                       # 查看已安装插件与状态
+wuu plugin approve my-plugin          # 检查后批准
+wuu plugin reject my-plugin
+wuu plugin enable my-plugin
+wuu plugin disable my-plugin
+wuu plugin remove my-plugin
+wuu plugin inspect ./path/to/plugin   # 安装前检查包内容与 fingerprint
 ```
 
-当前桌面入口必须是一个不依赖相对 import 的自包含 ESM 文件，最大 10 MiB。Wuu 会把
-整个插件包纳入 fingerprint；文件变化后，原来的批准会失效，用户需要检查并批准新版本。
+`wuu plugin inspect` 适合在安装前查看包会做什么、请求哪些权限。
 
-## 桌面入口
+## 插件能做什么
 
-入口导出 `activate(api)`。不要打包另一份 React；应使用 `api.react` 提供的宿主 React：
+- **换主题**：获批且启用的插件主题出现在"设置 → 外观"，禁用或切回内置主题时
+  Token 被完整移除。主题只需要 `plugin.json` 声明，不执行代码。
+- **加设置**：插件可以声明自己的设置项（开关、文本、数字、枚举），在设置界面生成
+  控件，按插件命名空间存储，卸载时清除。
+- **扩展 Agent**：Agent 插件以独立进程运行，可以注册模型可见的工具、在工具执行
+  前后挂钩（拦截、改写、包装）、贡献系统提示片段、参与请求改写与摘要压缩。
+- **定制桌面界面**：注册全局样式、在稳定区域放置可持久化的 View、替换或包装语义
+  Presenter（消息、工具活动、导航、设置等）、在固定 Slot 插入内容。渲染失败只回退
+  当前边界，设置、禁用和默认 UI 恢复始终可用。
 
-```js
-export async function activate(api) {
-  const React = api.react;
+## 信任边界
 
-  api.registerStyle({
-    id: "visual-language",
-    css: `
-      :root {
-        --wuu-accent: #7c5cff;
-        --wuu-accent-press: #6847ed;
-      }
-      .app-shell { font-family: Inter, system-ui, sans-serif; }
-    `,
-  });
+- 声明式主题只能修改公开的语义 Token，适合直接安装。
+- Agent 插件的 runtime 进程与 Wuu 拥有相同用户权限；桌面插件可以注册任意 CSS。
+  这两类只安装你信任的来源，启用前检查包内容。
+- 插件包被视为不可信输入：Renderer 不读取插件绝对路径，加载前由 app-server 重算
+  fingerprint、确认批准与启用状态，Electron 主进程再次校验摘要后通过内容寻址的
+  `wuu-plugin:` 协议加载；CSP 不开放 `unsafe-eval`。
+- 插件声明的 Hook 与直接运行第三方本地命令具有相同风险。
 
-  api.registerSurface("app.sidebar", {
-    id: "sidebar-frame",
-    mode: "wrap",
-    render(context, fallback) {
-      return React.createElement(
-        "section",
-        { className: "my-sidebar-frame" },
-        fallback,
-      );
-    },
-  });
+## 当前边界
 
-  api.registerSurface("conversation.composer", {
-    id: "compact-composer",
-    mode: "replace",
-    render(context) {
-      const actions = context.actions;
-      return React.createElement("textarea", {
-        value: String(context.prompt ?? ""),
-        placeholder: "输入消息，按 Enter 发送",
-        onChange: (event) => actions?.setPrompt?.(event.currentTarget.value),
-        onKeyDown: (event) => {
-          if (event.key === "Enter" && !event.shiftKey) {
-            event.preventDefault();
-            actions?.send?.(event.currentTarget.value);
-          }
-        },
-      });
-    },
-  });
-}
-```
+跨 Wuu 小版本继续工作的兼容承诺（开发者不 fork 也能跟上更新）是插件平台当前阶段的
+完成门槛，但尚未验证完成。在这之前，插件可能随 Wuu 升级而需要调整；发布插件时声明
+`minimum_wuu_version` 可以避免不兼容组合被激活。
 
-## Surface 模型
+## 编写插件
 
-每个 Surface 都有 Wuu 内置的 fallback：
-
-- `mode: "replace"`：用插件界面替换 fallback；同一 Surface 中排序最高的替换项生效。
-- `mode: "wrap"`：保留 fallback，并在外层增加布局或行为；多个 wrapper 按稳定顺序组合。
-- 插件抛出渲染错误时，Wuu 记录诊断并显示 fallback，不会让整个界面消失。
-- 插件被禁用、删除或升级时，旧 generation 的组件、CSS、命令和清理函数会一起卸载。
-
-当前已接入真实产品路径的 Surface：
-
-| Surface | 用途 |
-| --- | --- |
-| `app.shell` | 替换或包装整个 React 应用界面 |
-| `app.sidebar` | 替换或包装左侧导航 |
-| `app.main` | 替换或包装主内容区 |
-| `app.auxiliary` | 替换或包装辅助 Workspace 区域 |
-| `app.status` | 添加应用状态区域 |
-| `view.launch` | 替换或包装启动与 Runtime 加载界面 |
-| `view.conversation` | 替换或包装当前对话界面 |
-| `view.workspace` | 替换或包装 Workspace 侧面板 |
-| `conversation.composer` | 替换或包装主输入区 |
-| `conversation.timeline` | 替换或包装一组对话消息和 Agent 运行时间线 |
-| `conversation.message` | 替换或包装一条脱敏后的对话消息边界 |
-| `view.settings` | 替换或包装设置界面 |
-| `view.catalog` | 替换或包装 Skills、插件和 Automations 目录 |
-
-`app.shell` context 提供 `openSettings`、`startNewThread`、`openSkills`、
-`openAutomations` 和 `toggleSidebar` 等动作。Composer context 还提供当前文本、运行状态、
-`setPrompt`、`send` 和 `interrupt`。
-
-需要在原生 UI 中增加内容而不是替换边界时，使用 `registerSlot`。当前生产 Slot 包括
-`sidebar.primary`、`sidebar.footer`、`workspace.header`、`conversation.header`、
-`conversation.message.before`、`conversation.message.after`、`composer.above`、
-`composer.toolbar` 和 `settings.plugin`。Slot context 只包含冻结的摘要字段，不包含宿主私有
-记录；Slot 会与原生 UI 和语义 Presenter 一起组合。
-
-## View 落位，而不是任意布局树
-
-插件可以注册 View，并请求宿主首次把它放到一个稳定区域：`main`、`sidebar` 或
-`auxiliary`。
-
-```js
-api.registerViewType({
-  id: "my-plugin.dashboard",
-  title: "Dashboard",
-  persistence: "durable",
-  render: Dashboard,
-});
-
-api.registerViewPlacement({
-  id: "dashboard-default",
-  view: "my-plugin.dashboard",
-  region: "auxiliary",
-  priority: 10,
-});
-```
-
-`priority` 只在区域尚无用户选择时决定首次激活哪个 View；用户后续的切换和关闭优先，并会
-持久化。落位 API 不暴露宿主 DOM、任意父节点、分割树、面板尺寸、受保护 Chrome、插件管理
-或恢复界面。旧 `registerLayoutContribution` 仅作为兼容适配器保留；其中 `parentId`、`size`
-和 `minSize` 从未真正控制布局树，当前也不会使用。新插件应使用 `registerViewPlacement`。
-
-## 语义 Presenter
-
-需要替换具体产品概念，而不是宽泛布局区域时，应使用 `registerPresenter`。Wuu 会传入冻结、
-带版本且经过脱敏的 snapshot、原生 fallback，以及只包含当前边界可用动作的 host：
-
-```js
-export async function activate(api) {
-  api.registerPresenter({
-    id: "assistant-card",
-    target: "conversation.item",
-    key: "assistant-message",
-    mode: "wrap",
-    render({ host, fallback }) {
-      const copy = host.actions.includes("conversation.item.copy")
-        ? api.react.createElement("button", {
-            onClick: () => host.invoke("conversation.item.copy"),
-          }, "复制")
-        : null;
-      return api.react.createElement("article", null, fallback, copy);
-    },
-  });
-}
-```
-
-当前内置 target：
-
-| Presenter target | 稳定匹配 key |
-| --- | --- |
-| `conversation.item` | `assistant-message`、`reasoning`、`attachment` 等条目类型 |
-| `conversation.process` | 完整 Process 形态：`reasoning`、`tool-group` 或 `mixed` |
-| `conversation.tool-activity` | Tool 的稳定 capability，而不是改写后的执行名称 |
-| `conversation.composer` | 无 |
-| `header.conversation`、`header.workspace` | 无 |
-| `navigation.primary` | 无 |
-| `app.status` | 无 |
-| `content.preview` | 完整 MIME 类型 |
-| `settings` | 无 |
-
-公开 SDK 定义了每种 V1 snapshot 和点分隔 Action ID。只有出现在 `host.actions` 中的 Action
-才能调用；Wuu 会拒绝不支持的动作和非法输入。插件不会拿到私有 ThreadItem、协议消息、宿主
-React 树或任意回调。
-
-`mode: "replace"` 接管完整语义边界；`mode: "wrap"` 包装当前结果。Presenter 属于一个
-generation：候选激活是原子的，激活失败保留旧 generation，渲染失败只回退当前边界，禁用、
-升级或卸载会清除全部注册。`registerToolActivityPresenter` 继续作为兼容的 Tool 专用入口。
-
-仓库中的 [`examples/plugins/deep-ui`](../../../examples/plugins/deep-ui/) 是一个可以直接安装
-的自包含示例。它用 wrapper 保留所有宿主 fallback，并同时演示声明式主题。
-
-[`examples/plugins/developer-loop`](../../../examples/plugins/developer-loop/) 是只依赖公开 SDK
-的跨 Surface 验收示例，覆盖 Host Actions、generation 替换、失败恢复、disposal 和卸载。
-
-## 声明式主题
-
-无需执行桌面代码也可以在 `contributes.themes` 中声明主题。获批且启用的插件主题会出现在
-“设置 → 外观”；禁用插件或切回系统、浅色、深色主题时，Wuu 会移除该插件设置的全部
-Token。
-
-公开 Token 由 [`config/desktop-theme-contract.json`](../../../config/desktop-theme-contract.json)
-统一定义，并生成 Manifest、公开 SDK 和 Desktop 校验代码。稳定类别包括语义颜色、字体、
-间距、密度、圆角、边框、层级阴影、动效、内容宽度和 `--wuu-syntax-*` 语法色。早期的
-`--wuu-paper`、`--wuu-ink`、`--wuu-accent` 与 `--hljs-*` 等名称继续兼容，并在应用时映射到
-当前语义 Token；新主题应优先使用 `--wuu-color-*`、`--wuu-font-*` 等当前名称。
-
-常用的宿主 Dialog、菜单、Popover、Tooltip、Notice 和浮动导航现已统一渲染到受保护的
-Layer Host，并带有稳定的 `data-wuu-component`、`data-wuu-layer` 和 `data-wuu-state` 属性。
-拖拽预览、PDF ShadowRoot 内容和插件 View pane 仍是专用渲染边界，不属于外观浮层。可信代码
-插件需要补充 CSS 时，应只使用这些公开属性和 Token，不应依赖私有 class 名或 DOM 层级。
-
-## 加载与安全
-
-Renderer 不会读取插件的绝对路径。Wuu 在每次加载前都会由 app-server 重新加载 Manifest、
-重算整个包 fingerprint，并确认插件在当前 workspace 中仍获批且启用。Electron 主进程再次
-校验源码摘要，然后通过内容寻址的 `wuu-plugin:` 协议加载模块；CSP 不开放 `unsafe-eval`
-或任意本地脚本。
-
-普通声明式主题只能修改公开的语义 Token。`registerStyle` 可以使用任意 CSS，因此只提供给
-受信任的桌面代码插件。依赖 Wuu 私有 class 名可以用于本地实验，但不属于兼容性承诺。
+要开发自己的插件，阅读[编写插件](plugin-authoring.md)：包结构与 manifest、Agent
+插件与桌面插件的 API、本地开发闭环（`wuu plugin create/build/test/dev/pack`）以及
+仓库中的两个可直接参考的示例。

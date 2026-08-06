@@ -15,7 +15,7 @@ docs/
 ├── zh-cn/                    # Simplified Chinese content
 │   ├── getting-started/      # first successful task
 │   ├── desktop/              # daily desktop workflows
-│   ├── customize/            # skills, memory, and user-owned behavior
+│   ├── customize/            # skills, plugins, memory, and user-owned behavior
 │   ├── help/                 # symptom-led troubleshooting
 │   └── reference/            # permissions, config, and security boundaries
 ├── en/                       # English content

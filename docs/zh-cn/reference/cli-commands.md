@@ -103,6 +103,27 @@ wuu exec review --commit <commit-sha>
 wuu exec review --uncommitted --permission-mode read_only
 ```
 
+## 管理插件
+
+插件以目录或 zip 包的形式本地安装，安装后需要批准才会激活。面向用户的说明见
+[插件](../customize/plugins.md)，开发与打包见[编写插件](../customize/plugin-authoring.md)。
+
+```bash
+wuu plugin list                        # 查看已安装插件与状态
+wuu plugin inspect ./path/to/plugin    # 安装前检查包内容、权限请求与 fingerprint
+wuu plugin install ./plugin-1.0.0.zip  # 安装目录或 zip 包
+wuu plugin update my-plugin            # 更新已安装插件
+wuu plugin approve my-plugin           # 检查后批准
+wuu plugin reject my-plugin
+wuu plugin enable my-plugin
+wuu plugin disable my-plugin
+wuu plugin remove my-plugin
+```
+
+插件开发闭环使用 `create`、`validate`、`build`、`test`、`pack` 和 `dev`：
+`wuu plugin dev .` 授权当前目录为开发目录并热重载；`wuu plugin pack .` 生成可分发的
+zip 包。
+
 ## 版本和兼容入口
 
 ```bash
