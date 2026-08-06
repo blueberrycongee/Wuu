@@ -116,6 +116,7 @@ export function Composer({
   topAccessory,
   containerRef,
   prompt: committedPrompt,
+  promptRevision = 0,
   setPrompt: commitPrompt,
   files,
   images,
@@ -203,6 +204,10 @@ export function Composer({
   topAccessory?: ReactNode;
   containerRef?: Ref<HTMLElement>;
   prompt: string;
+  // Changes only for programmatic clear/restore operations. This lets the
+  // editor accept an external empty string even if App's delayed snapshot was
+  // already empty while the user still had newer local text.
+  promptRevision?: number;
   setPrompt: (value: string) => void;
   files: ComposerFile[];
   images: ComposerImage[];
@@ -316,8 +321,21 @@ export function Composer({
   // the shell's render cost directly on the input event.
   const [prompt, setLocalPrompt] = useState(committedPrompt);
   const [lastCommittedPrompt, setLastCommittedPrompt] = useState(committedPrompt);
+  const [lastPromptRevision, setLastPromptRevision] = useState(promptRevision);
   const optimisticPromptQueueRef = useRef<string[]>([]);
-  if (committedPrompt !== lastCommittedPrompt) {
+  const promptCompositionActiveRef = useRef(false);
+  const pendingProgrammaticPromptRef = useRef<{ value: string } | null>(null);
+  if (promptRevision !== lastPromptRevision) {
+    setLastPromptRevision(promptRevision);
+    setLastCommittedPrompt(committedPrompt);
+    optimisticPromptQueueRef.current.length = 0;
+    if (promptCompositionActiveRef.current) {
+      pendingProgrammaticPromptRef.current = { value: committedPrompt };
+    } else {
+      pendingProgrammaticPromptRef.current = null;
+      setLocalPrompt(committedPrompt);
+    }
+  } else if (committedPrompt !== lastCommittedPrompt) {
     setLastCommittedPrompt(committedPrompt);
     const optimisticPromptIndex = optimisticPromptQueueRef.current.lastIndexOf(committedPrompt);
     if (optimisticPromptIndex >= 0) {
@@ -1118,7 +1136,34 @@ export function Composer({
               }
               aria-expanded={slashMenuOpen || undefined}
               onChange={(event) => {
+                const pendingPrompt = pendingProgrammaticPromptRef.current;
+                if (!promptCompositionActiveRef.current && pendingPrompt !== null) {
+                  // Chromium can emit the composition's final input after
+                  // compositionend. Keep a deferred clear/restore authoritative
+                  // instead of publishing that trailing IME value over it.
+                  pendingProgrammaticPromptRef.current = null;
+                  optimisticPromptQueueRef.current.length = 0;
+                  setLocalPrompt(pendingPrompt.value);
+                  return;
+                }
                 updateVisiblePrompt(event.target.value);
+              }}
+              onCompositionStart={() => {
+                promptCompositionActiveRef.current = true;
+              }}
+              onCompositionEnd={() => {
+                promptCompositionActiveRef.current = false;
+                const pendingPrompt = pendingProgrammaticPromptRef.current;
+                if (pendingPrompt === null) {
+                  return;
+                }
+                optimisticPromptQueueRef.current.length = 0;
+                setLocalPrompt(pendingPrompt.value);
+                queueMicrotask(() => {
+                  if (pendingProgrammaticPromptRef.current === pendingPrompt) {
+                    pendingProgrammaticPromptRef.current = null;
+                  }
+                });
               }}
               onPaste={handleComposerPaste}
               onBlur={() => {

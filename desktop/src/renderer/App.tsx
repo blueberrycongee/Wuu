@@ -446,7 +446,9 @@ export function App(): JSX.Element {
   >({});
   const {
     prompt,
+    promptRevision,
     setPrompt,
+    setPromptFromInput,
     composerImages,
     setComposerImages,
     composerFiles,
@@ -2608,7 +2610,8 @@ export function App(): JSX.Element {
         ) : undefined}
         containerRef={variant === "dock" ? dockComposerRef : undefined}
         prompt={prompt}
-        setPrompt={setPrompt}
+        promptRevision={promptRevision}
+        setPrompt={setPromptFromInput}
         files={composerFiles}
         images={composerImages}
         queuedMessages={queuedMessages}
@@ -3372,7 +3375,7 @@ export function App(): JSX.Element {
     setPendingFork,
     setHistoryMessageEdit,
     
-    getPrompt: () => prompt,
+    getPrompt: () => currentPrimaryComposerDraft().prompt,
     getComposerImages: () => composerImages,
     getComposerFiles: () => composerFiles,
     getSplitComposerDrafts: () => splitComposerDrafts,
@@ -3401,7 +3404,7 @@ export function App(): JSX.Element {
       return;
     }
     const draftMessage = createComposerMessage(
-      promptOverride ?? prompt,
+      promptOverride ?? currentPrimaryComposerDraft().prompt,
       composerImages,
       composerFiles,
     );

@@ -258,7 +258,19 @@ function processFoldOpen(container: HTMLElement): boolean {
   return toggle?.getAttribute("aria-expanded") === "true";
 }
 
+function revealProcessDetails(container: HTMLElement): void {
+  if (container.querySelector(".turn-process-fold-body-inner")) {
+    return;
+  }
+  const toggle = container.querySelector<HTMLElement>(".turn-process-toggle");
+  if (toggle?.getAttribute("aria-expanded") !== "false") {
+    return;
+  }
+  act(() => toggle.click());
+}
+
 function processEntryList(container: HTMLElement): HTMLElement {
+  revealProcessDetails(container);
   const list = container.querySelector(".turn-process-fold-body-inner");
   if (!(list instanceof HTMLElement)) {
     throw new Error("expected process entry list");
@@ -267,14 +279,17 @@ function processEntryList(container: HTMLElement): HTMLElement {
 }
 
 function reasoningFolds(container: HTMLElement): HTMLDetailsElement[] {
+  revealProcessDetails(container);
   return Array.from(container.querySelectorAll("details.turn-reasoning-fold"));
 }
 
 function processSurfaceFolds(container: HTMLElement): HTMLDetailsElement[] {
+  revealProcessDetails(container);
   return Array.from(container.querySelectorAll("details.process-surface-fold"));
 }
 
 function processSurfaceRows(container: HTMLElement): HTMLElement[] {
+  revealProcessDetails(container);
   return Array.from(container.querySelectorAll(".process-surface-row"));
 }
 
@@ -537,6 +552,22 @@ describe("AssistantTurnShell — process fold default state (rule 2 + rule 8)", 
     );
     expect(container.querySelector(".turn-process-meta")).toBeNull();
     expect(container.querySelector(".turn-process-glyph")).toBeNull();
+  });
+
+  it("mounts completed process details only when the user reopens the fold", () => {
+    const turn = makeTurn("completed", [
+      makeCommentary("released process detail"),
+      makeFinalAnswer("done"),
+    ]);
+    const { container } = renderShell(turn);
+
+    expect(container.querySelector(".turn-process-fold-body-inner")).toBeNull();
+
+    const toggle = container.querySelector<HTMLElement>(".turn-process-toggle");
+    act(() => toggle?.click());
+
+    expect(container.querySelector(".turn-process-fold-body-inner")).not.toBeNull();
+    expect(container.textContent).toContain("released process detail");
   });
 
   it("does not collapse the fold for an in-flight unknown-phase agent message (rule 7)", () => {
@@ -1013,7 +1044,7 @@ describe("AssistantTurnShell — reasoning fold (rule 3)", () => {
     ]);
     const { container } = renderShell(turn);
 
-    const groups = container.querySelectorAll(".process-surface-fold");
+    const groups = processSurfaceFolds(container);
     expect(groups).toHaveLength(1);
     expect(groups[0].querySelector(".process-surface-count")?.textContent).toBe(
       "2",

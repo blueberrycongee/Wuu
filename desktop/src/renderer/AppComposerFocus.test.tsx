@@ -1,4 +1,4 @@
-import { act, type ComponentProps } from "react";
+import { act, useEffect, useState, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
@@ -17,6 +17,14 @@ vi.mock("./ComposerView", async (importOriginal) => {
     ...original,
     Composer: (props: ComposerProps): JSX.Element => {
       const variant = props.variant ?? "dock";
+      // Match the real Composer's input-critical local value. App publishes
+      // textarea drafts after an idle window, so a mock that reads only the
+      // parent prop cannot exercise immediate Enter or slash commands.
+      const [prompt, setLocalPrompt] = useState(props.prompt);
+      useEffect(
+        () => setLocalPrompt(props.prompt),
+        [props.prompt, props.promptRevision],
+      );
       const label = props.mainConversation
         ? `main composer ${variant}`
         : "side composer";
@@ -28,17 +36,21 @@ vi.mock("./ComposerView", async (importOriginal) => {
         >
           <textarea
             aria-label={label}
-            value={props.prompt}
-            onChange={(event) => props.setPrompt(event.currentTarget.value)}
+            value={prompt}
+            onChange={(event) => {
+              const value = event.currentTarget.value;
+              setLocalPrompt(value);
+              props.setPrompt(value);
+            }}
             onKeyDown={(event) => {
               if (event.key !== "Enter") return;
               event.preventDefault();
-              if (props.prompt.trim() === "/new") {
+              if (prompt.trim() === "/new") {
                 props.onStartNewThread();
-              } else if (props.prompt.trim() === "/side") {
+              } else if (prompt.trim() === "/side") {
                 props.onOpenSideThread?.();
               } else {
-                props.onSend();
+                props.onSend(prompt);
               }
             }}
           />
@@ -228,6 +240,7 @@ function installWuuApi(
       }),
     ),
     listArchivedThreads: vi.fn().mockResolvedValue({ threads: [] }),
+    listChannelRooms: vi.fn().mockResolvedValue({ rooms: [] }),
     resumeThread: vi.fn().mockResolvedValue({ thread }),
     startThread: vi.fn().mockImplementation(async () => {
       if (options.deferThreadStart) {
@@ -399,6 +412,29 @@ describe("main composer focus continuity", () => {
     await flushAsync();
 
     await waitForMainComposerFocus("hero");
+  });
+
+  it("clears an unpublished local draft when switching to an empty new conversation", async () => {
+    await renderApp(true);
+    const dock = mainComposer("dock");
+    const setter = Object.getOwnPropertyDescriptor(
+      HTMLTextAreaElement.prototype,
+      "value",
+    )?.set;
+    await act(async () => {
+      setter?.call(dock, "draft newer than App");
+      dock.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    expect(dock.value).toBe("draft newer than App");
+
+    const button = container.querySelector<HTMLButtonElement>(
+      'button.session-tab-new[aria-label="新建对话"]',
+    );
+    if (!button) throw new Error("new-tab button not rendered");
+    await act(async () => button.click());
+    await flushAsync();
+
+    expect(mainComposer("hero").value).toBe("");
   });
 
   it("focuses the hero composer from a project's new-conversation button", async () => {

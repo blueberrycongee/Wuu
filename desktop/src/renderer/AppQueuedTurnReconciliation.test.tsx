@@ -1,4 +1,4 @@
-import { act, type ComponentProps } from "react";
+import { act, useEffect, useState, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
@@ -13,8 +13,13 @@ vi.mock("./ComposerView", async (importOriginal) => {
   type ComposerProps = ComponentProps<typeof original.Composer>;
   return {
     ...original,
-    Composer: (props: ComposerProps): JSX.Element => (
-      <div
+    Composer: (props: ComposerProps): JSX.Element => {
+      const [prompt, setLocalPrompt] = useState(props.prompt);
+      useEffect(
+        () => setLocalPrompt(props.prompt),
+        [props.prompt, props.promptRevision],
+      );
+      return <div
         data-testid="composer-probe"
         data-queued-ids={props.queuedMessages
           .map((message) => message.id)
@@ -34,8 +39,12 @@ vi.mock("./ComposerView", async (importOriginal) => {
       >
         <textarea
           aria-label="composer-probe-input"
-          value={props.prompt}
-          onChange={(event) => props.setPrompt(event.currentTarget.value)}
+          value={prompt}
+          onChange={(event) => {
+            const value = event.currentTarget.value;
+            setLocalPrompt(value);
+            props.setPrompt(value);
+          }}
         />
         <button type="button" onClick={() => props.onSend()}>
           send
@@ -56,8 +65,8 @@ vi.mock("./ComposerView", async (importOriginal) => {
             edit queued
           </button>
         ) : null}
-      </div>
-    ),
+      </div>;
+    },
   };
 });
 
@@ -181,6 +190,7 @@ function installWuuApi(options: {
     initialize: vi.fn().mockResolvedValue(initialized()),
     listThreads: vi.fn().mockResolvedValue({ threads: [runningThread()] }),
     listArchivedThreads: vi.fn().mockResolvedValue({ threads: [] }),
+    listChannelRooms: vi.fn().mockResolvedValue({ rooms: [] }),
     resumeThread: vi.fn().mockResolvedValue({ thread: runningThread() }),
     queueTurn: options.queueTurn ?? vi
       .fn()

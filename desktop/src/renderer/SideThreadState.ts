@@ -196,11 +196,19 @@ function mergeHistorySnapshot(
   return updateEntry(store, mainThreadId, (entry) => {
     const mergedSummary = newerSummary(entry.summary, summary);
     const mergedMessages = mergeMessages(messages, entry.messages);
+    const streaming = mergedSummary.status === "running";
+    if (
+      mergedSummary === entry.summary &&
+      sameMessageSequence(mergedMessages, entry.messages) &&
+      streaming === entry.streaming
+    ) {
+      return entry;
+    }
     return {
       ...entry,
       summary: mergedSummary,
       messages: mergedMessages,
-      streaming: mergedSummary.status === "running"
+      streaming
     };
   });
 }
@@ -212,10 +220,14 @@ function mergeSummarySnapshot(
 ): SideThreadStoreState {
   return updateEntry(store, mainThreadId, (entry) => {
     const mergedSummary = newerSummary(entry.summary, summary);
+    const streaming = mergedSummary.status === "running";
+    if (mergedSummary === entry.summary && streaming === entry.streaming) {
+      return entry;
+    }
     return {
       ...entry,
       summary: mergedSummary,
-      streaming: mergedSummary.status === "running"
+      streaming
     };
   });
 }
@@ -224,12 +236,45 @@ function newerSummary(
   current: SideThreadSummary | null,
   incoming: SideThreadSummary
 ): SideThreadSummary {
-  if (current && current.revision !== incoming.revision) {
+  if (!current) {
+    return incoming;
+  }
+  if (current.revision !== incoming.revision) {
     return current.revision > incoming.revision ? current : incoming;
   }
-  return current && Date.parse(current.updated_at) > Date.parse(incoming.updated_at)
-    ? current
-    : incoming;
+  if (current.updated_at !== incoming.updated_at) {
+    const currentUpdatedAt = Date.parse(current.updated_at);
+    const incomingUpdatedAt = Date.parse(incoming.updated_at);
+    if (Number.isFinite(currentUpdatedAt) && Number.isFinite(incomingUpdatedAt)) {
+      return currentUpdatedAt > incomingUpdatedAt ? current : incoming;
+    }
+    return Number.isFinite(currentUpdatedAt) ? current : incoming;
+  }
+  return sameSideThreadSummary(current, incoming) ? current : incoming;
+}
+
+function sameSideThreadSummary(
+  current: SideThreadSummary,
+  incoming: SideThreadSummary
+): boolean {
+  return (
+    current.side_thread_id === incoming.side_thread_id &&
+    current.main_thread_id === incoming.main_thread_id &&
+    current.status === incoming.status &&
+    current.revision === incoming.revision &&
+    current.created_at === incoming.created_at &&
+    current.updated_at === incoming.updated_at &&
+    current.main_task_summary?.running === incoming.main_task_summary?.running &&
+    current.main_task_summary?.last_user_message ===
+      incoming.main_task_summary?.last_user_message
+  );
+}
+
+function sameMessageSequence(
+  left: SideThreadMessage[],
+  right: SideThreadMessage[]
+): boolean {
+  return left.length === right.length && left.every((message, index) => message === right[index]);
 }
 
 function mergeMessages(

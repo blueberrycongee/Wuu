@@ -129,6 +129,43 @@ describe("SideThreadState", () => {
       });
       expect(next.byThread["main-1"]?.summary).toEqual(summary());
     });
+
+    it("preserves store identity when the summary snapshot has not changed", () => {
+      let store = createInitialSideThreadStore();
+      store = reduceSideThreadStore(store, {
+        type: "mergeSummary",
+        mainThreadId: "main-1",
+        summary: summary({ status: "running" })
+      });
+      const entry = store.byThread["main-1"];
+
+      const next = reduceSideThreadStore(store, {
+        type: "mergeSummary",
+        mainThreadId: "main-1",
+        summary: summary({ status: "running" })
+      });
+
+      expect(next).toBe(store);
+      expect(next.byThread["main-1"]).toBe(entry);
+    });
+
+    it("accepts a semantic change when revision and timestamp are tied", () => {
+      let store = createInitialSideThreadStore();
+      store = reduceSideThreadStore(store, {
+        type: "mergeSummary",
+        mainThreadId: "main-1",
+        summary: summary({ status: "running" })
+      });
+
+      const next = reduceSideThreadStore(store, {
+        type: "mergeSummary",
+        mainThreadId: "main-1",
+        summary: summary({ status: "completed" })
+      });
+
+      expect(next.byThread["main-1"]?.summary?.status).toBe("completed");
+      expect(next.byThread["main-1"]?.streaming).toBe(false);
+    });
   });
 
   describe("messages", () => {
@@ -232,6 +269,39 @@ describe("SideThreadState", () => {
         text: "complete answer",
         status: "completed"
       });
+    });
+
+    it("preserves store identity when recovery history has not changed", () => {
+      let store = createInitialSideThreadStore();
+      store = reduceSideThreadStore(store, {
+        type: "mergeHistory",
+        mainThreadId: "main-1",
+        summary: summary({ status: "running" }),
+        messages: [
+          message({
+            id: "assistant-1",
+            role: "assistant",
+            status: "streaming"
+          })
+        ]
+      });
+      const entry = store.byThread["main-1"];
+
+      const next = reduceSideThreadStore(store, {
+        type: "mergeHistory",
+        mainThreadId: "main-1",
+        summary: summary({ status: "running" }),
+        messages: [
+          message({
+            id: "assistant-1",
+            role: "assistant",
+            status: "streaming"
+          })
+        ]
+      });
+
+      expect(next).toBe(store);
+      expect(next.byThread["main-1"]).toBe(entry);
     });
   });
 

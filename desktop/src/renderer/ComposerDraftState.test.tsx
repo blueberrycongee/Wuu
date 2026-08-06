@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ComposerDraftState } from "./AppState";
 import type { ComposerFile, ComposerImage } from "./ComposerMessages";
 import {
+  COMPOSER_PROMPT_IDLE_COMMIT_MS,
   useComposerDraftState,
   type ComposerDraftStateController,
 } from "./ComposerDraftState";
@@ -19,6 +20,7 @@ afterEach(() => {
   mountedRoots = [];
   for (const cleanup of cleanupCallbacks.splice(0)) cleanup();
   document.body.innerHTML = "";
+  vi.useRealTimers();
   vi.restoreAllMocks();
 });
 
@@ -238,6 +240,80 @@ describe("useComposerDraftState", () => {
     expect(snapshot.images[0]).not.toBe(hook.get().composerImages[0]);
     expect(snapshot.files[0]).toEqual(file);
     expect(snapshot.files[0]).not.toBe(hook.get().composerFiles[0]);
+  });
+
+  it("publishes rapid textarea edits to App only after the input becomes idle", async () => {
+    vi.useFakeTimers();
+    const hook = await renderComposerDraftState();
+
+    act(() => {
+      hook.get().setPromptFromInput("a");
+      hook.get().setPromptFromInput("ab");
+      hook.get().setPromptFromInput("abc");
+    });
+
+    expect(hook.get().prompt).toBe("");
+    expect(hook.get().promptRevision).toBe(0);
+    expect(hook.get().currentPrimaryComposerDraft().prompt).toBe("abc");
+
+    await act(async () => {
+      vi.advanceTimersByTime(COMPOSER_PROMPT_IDLE_COMMIT_MS - 1);
+      await flushEffects();
+    });
+    expect(hook.get().prompt).toBe("");
+
+    await act(async () => {
+      vi.advanceTimersByTime(1);
+      await flushEffects();
+    });
+
+    expect(hook.get().prompt).toBe("abc");
+    expect(hook.get().promptRevision).toBe(0);
+  });
+
+  it("does not let a pending input commit overwrite an immediate draft restore", async () => {
+    vi.useFakeTimers();
+    const hook = await renderComposerDraftState();
+
+    act(() => {
+      hook.get().setPromptFromInput("stale local draft");
+      hook.get().setPrompt("restored draft");
+      vi.runAllTimers();
+    });
+
+    expect(hook.get().prompt).toBe("restored draft");
+    expect(hook.get().promptRevision).toBe(1);
+    expect(hook.get().currentPrimaryComposerDraft().prompt).toBe("restored draft");
+  });
+
+  it("signals a programmatic clear even when App still stores an empty prompt", async () => {
+    vi.useFakeTimers();
+    const hook = await renderComposerDraftState();
+
+    act(() => {
+      hook.get().setPromptFromInput("not published yet");
+      hook.get().setPrompt("");
+    });
+
+    expect(hook.get().prompt).toBe("");
+    expect(hook.get().promptRevision).toBe(1);
+    expect(hook.get().currentPrimaryComposerDraft().prompt).toBe("");
+  });
+
+  it("applies functional prompt updates to the latest uncommitted input", async () => {
+    vi.useFakeTimers();
+    const hook = await renderComposerDraftState();
+
+    act(() => {
+      hook.get().setPromptFromInput("latest local draft");
+      hook.get().setPrompt((current) => `${current}!`);
+      vi.runAllTimers();
+    });
+
+    expect(hook.get().prompt).toBe("latest local draft!");
+    expect(hook.get().currentPrimaryComposerDraft().prompt).toBe(
+      "latest local draft!",
+    );
   });
 
 });

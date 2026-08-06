@@ -324,16 +324,22 @@ function renderStatefulComposer(props: {
   readOnly?: boolean;
   textOnly?: boolean;
   onPasteAttachmentFiles?: (files: File[]) => void;
-}): void {
+}): { replacePrompt: (prompt: string) => void } {
   const codexModels: CodexModelLoadState = {
     loading: false,
     error: "",
     models: [],
   };
 
+  let replacePrompt: ((prompt: string) => void) | undefined;
   function Harness(): JSX.Element {
     const [prompt, setPrompt] = useState(props.initialPrompt ?? "");
+    const [promptRevision, setPromptRevision] = useState(0);
     const [ultraEnabled, setUltraEnabled] = useState(false);
+    replacePrompt = (nextPrompt) => {
+      setPrompt(nextPrompt);
+      setPromptRevision((current) => current + 1);
+    };
     const commitPrompt = (nextPrompt: string): void => {
       if (props.onCommitPrompt) {
         props.onCommitPrompt(nextPrompt, setPrompt);
@@ -345,6 +351,7 @@ function renderStatefulComposer(props: {
       <ImagePreviewProvider>
         <Composer
           prompt={prompt}
+          promptRevision={promptRevision}
           setPrompt={commitPrompt}
           files={[]}
           images={[]}
@@ -405,6 +412,11 @@ function renderStatefulComposer(props: {
     root = createRoot(container);
     root.render(<Harness />);
   });
+  return {
+    replacePrompt: (prompt) => {
+      act(() => replacePrompt?.(prompt));
+    },
+  };
 }
 
 async function nextAnimationFrame(): Promise<void> {
@@ -568,6 +580,47 @@ describe("Composer send control", () => {
     });
     expect(commitPrompt).toHaveBeenCalledWith("刚刚输入的内容");
     expect(onSend).toHaveBeenCalledWith("刚刚输入的内容");
+  });
+
+  it("accepts a programmatic clear when the committed text is already empty", () => {
+    const harness = renderStatefulComposer({
+      onCommitPrompt: () => {},
+    });
+    const textarea = container.querySelector<HTMLTextAreaElement>("textarea");
+    if (!textarea) throw new Error("composer textarea not rendered");
+
+    act(() => {
+      setTextareaValue(textarea, "local draft newer than App");
+    });
+    expect(textarea.value).toBe("local draft newer than App");
+
+    harness.replacePrompt("");
+
+    expect(textarea.value).toBe("");
+  });
+
+  it("keeps a deferred programmatic clear after the IME final input", () => {
+    const harness = renderStatefulComposer({
+      onCommitPrompt: () => {},
+    });
+    const textarea = container.querySelector<HTMLTextAreaElement>("textarea");
+    if (!textarea) throw new Error("composer textarea not rendered");
+
+    act(() => {
+      textarea.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+      setTextareaValue(textarea, "yi");
+    });
+    harness.replacePrompt("");
+    expect(textarea.value).toBe("yi");
+
+    act(() => {
+      textarea.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true }));
+      // Chromium may deliver the composition's final input after
+      // compositionend. It must not overwrite the pending clear.
+      setTextareaValue(textarea, "已");
+    });
+
+    expect(textarea.value).toBe("");
   });
 
   it("does not replace active IME text with a delayed parent draft echo", () => {
