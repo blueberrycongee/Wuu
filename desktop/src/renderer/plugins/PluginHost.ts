@@ -3,6 +3,9 @@ import type * as React from "react";
 import type {
   CSSSnippet,
   LayoutContribution,
+  PresentationMode,
+  PresentationTarget,
+  PresenterDefinition,
   RendererDefinition,
   StatusItemDefinition,
   ThemeTokens,
@@ -109,6 +112,7 @@ export interface PluginGenerationApi {
   registerCSSSnippet(snippet: CSSSnippet): Disposable;
   /** Register a status bar item. */
   registerStatusItem(item: StatusItemDefinition): Disposable;
+  registerPresenter(definition: PresenterDefinition): Disposable;
   registerToolActivityPresenter(definition: ToolActivityPresenterDefinition): Disposable;
 }
 
@@ -167,6 +171,14 @@ export interface RegisteredStatusItem extends StatusItemDefinition {
 export interface RegisteredToolActivityPresenter extends ToolActivityPresenterDefinition {
   readonly pluginId: string;
   readonly generation: string;
+}
+
+export interface RegisteredPresenter extends PresenterDefinition {
+  readonly pluginId: string;
+  readonly generation: string;
+  readonly mode: PresentationMode;
+  readonly priority: number;
+  readonly order: number;
 }
 
 export type PluginDiagnosticKind = "activation" | "cleanup" | "render";
@@ -249,9 +261,12 @@ interface StatusItemRecord extends OrderedRecord {
   readonly item: StatusItemDefinition;
 }
 
-interface ToolActivityPresenterRecord extends OrderedRecord {
-  readonly key: string;
-  readonly render: ToolActivityPresenterDefinition["render"];
+interface PresenterRecord extends OrderedRecord {
+  readonly target: PresentationTarget;
+  readonly key?: string;
+  readonly mode: PresentationMode;
+  readonly render: PresenterDefinition["render"];
+  readonly compatibilityRender?: ToolActivityPresenterDefinition["render"];
 }
 
 interface GenerationState {
@@ -269,7 +284,7 @@ interface GenerationState {
   readonly themeTokens: ThemeTokenRecord[];
   readonly cssSnippets: CSSSnippetRecord[];
   readonly statusItems: StatusItemRecord[];
-  readonly toolActivityPresenters: ToolActivityPresenterRecord[];
+  readonly toolActivityPresenters: PresenterRecord[];
   readonly registrationKeys: Set<string>;
   readonly teardown: Disposable[];
   acceptingRegistrations: boolean;
@@ -290,6 +305,7 @@ const EMPTY_LAYOUT_SNAPSHOT: readonly RegisteredLayoutContribution[] = Object.fr
 const EMPTY_RENDERER_SNAPSHOT: readonly RegisteredRenderer[] = Object.freeze([]);
 const EMPTY_THEME_TOKEN_SNAPSHOT: readonly RegisteredThemeTokens[] = Object.freeze([]);
 const EMPTY_STATUS_ITEM_SNAPSHOT: readonly RegisteredStatusItem[] = Object.freeze([]);
+const EMPTY_PRESENTER_SNAPSHOT: readonly RegisteredPresenter[] = Object.freeze([]);
 const EMPTY_TOOL_ACTIVITY_PRESENTER_SNAPSHOT: readonly RegisteredToolActivityPresenter[] = Object.freeze([]);
 const EMPTY_LOCALE_SNAPSHOT: Readonly<Record<string, string>> = Object.freeze({});
 
@@ -317,12 +333,14 @@ export class PluginHost {
   private readonly listeners = new Set<() => void>();
   private readonly localeSnapshots = new Map<string, Readonly<Record<string, string>>>();
   private readonly diagnostics = new Map<string, PluginGenerationDiagnostic[]>();
+  private readonly presenterQuerySnapshots = new Map<string, readonly RegisteredPresenter[]>();
   private commandSnapshot: readonly RegisteredPluginCommand[] = EMPTY_COMMAND_SNAPSHOT;
   private viewSnapshot: readonly RegisteredViewType[] = EMPTY_VIEW_SNAPSHOT;
   private layoutSnapshot: readonly RegisteredLayoutContribution[] = EMPTY_LAYOUT_SNAPSHOT;
   private rendererSnapshot: readonly RegisteredRenderer[] = EMPTY_RENDERER_SNAPSHOT;
   private themeTokenSnapshot: readonly RegisteredThemeTokens[] = EMPTY_THEME_TOKEN_SNAPSHOT;
   private statusItemSnapshot: readonly RegisteredStatusItem[] = EMPTY_STATUS_ITEM_SNAPSHOT;
+  private presenterSnapshot: readonly RegisteredPresenter[] = EMPTY_PRESENTER_SNAPSHOT;
   private toolActivityPresenterSnapshot: readonly RegisteredToolActivityPresenter[] = EMPTY_TOOL_ACTIVITY_PRESENTER_SNAPSHOT;
 
   constructor(options: PluginHostOptions) {
@@ -473,7 +491,21 @@ export class PluginHost {
   }
 
   getToolActivityPresenter(key: string): RegisteredToolActivityPresenter | undefined {
-    return this.toolActivityPresenterSnapshot.find((presenter) => presenter.key === key);
+    return this.getToolActivityPresenters().find((presenter) => presenter.key === key);
+  }
+
+  getPresenters(target: PresentationTarget, key?: string): readonly RegisteredPresenter[] {
+    const query = `${target}\u0000${key ?? ""}\u0000${key === undefined ? "absent" : "present"}`;
+    const cached = this.presenterQuerySnapshots.get(query);
+    if (cached) return cached;
+    const snapshot = Object.freeze(this.presenterSnapshot.filter((presenter) =>
+      presenter.target === target && presenter.key === key));
+    this.presenterQuerySnapshots.set(query, snapshot);
+    return snapshot;
+  }
+
+  isGenerationActive(pluginId: string, generation: string): boolean {
+    return this.activeGenerations.get(pluginId)?.generation === generation;
   }
 
   getLocaleEntries(locale: string): Readonly<Record<string, string>> {
@@ -504,6 +536,17 @@ export class PluginHost {
       message: `Plugin ${kind} contribution ${contribution.id} failed to render: ${errorMessage(error)}`,
       cause: error,
       ...location,
+      contributionId: contribution.id,
+    });
+  }
+
+  recordPresenterFailure(contribution: RegisteredPresenter, error: unknown): void {
+    this.addDiagnostic({
+      pluginId: contribution.pluginId,
+      generation: contribution.generation,
+      kind: "render",
+      message: `Plugin presenter contribution ${contribution.id} failed to render: ${errorMessage(error)}`,
+      cause: error,
       contributionId: contribution.id,
     });
   }
@@ -675,6 +718,21 @@ export class PluginHost {
         return this.ownRecord(state, record);
       },
 
+      registerPresenter: (definition: PresenterDefinition) => {
+        this.assertAccepting(state);
+        const id = this.claimExactRegistrationId(state, "presenter", definition.id);
+        const target = requireExactNonEmpty(definition.target, "presenter target");
+        const key = definition.key === undefined ? undefined : requireExactNonEmpty(definition.key, "presenter key");
+        if (typeof definition.render !== "function") throw new Error("Plugin presenter render must be a function");
+        const record: PresenterRecord = {
+          pluginId: state.pluginId, generation: state.generation, id, target, key,
+          mode: normalizePresentationMode(definition.mode),
+          order: normalizeOrder(definition.priority), removed: false, render: definition.render,
+        };
+        state.toolActivityPresenters.push(record);
+        return this.ownRecord(state, record);
+      },
+
       registerToolActivityPresenter: (definition: ToolActivityPresenterDefinition) => {
         this.assertAccepting(state);
         const id = this.claimExactRegistrationId(state, "tool activity presenter", definition.id);
@@ -686,9 +744,14 @@ export class PluginHost {
           throw new Error(`Duplicate plugin tool activity presenter key: ${key}`);
         }
         this.assertToolActivityPresenterKeyAvailable(state.pluginId, key);
-        const record: ToolActivityPresenterRecord = {
+        const record: PresenterRecord = {
           pluginId: state.pluginId, generation: state.generation, id, key,
-          order: 0, removed: false, render: definition.render,
+          target: "conversation.tool-activity", mode: "replace",
+          order: 0, removed: false,
+          render: (props) => this.react.createElement(definition.render, {
+            activity: props.snapshot as never, host: props.host, fallback: props.fallback,
+          }),
+          compatibilityRender: definition.render,
         };
         state.toolActivityPresenters.push(record);
         return this.ownRecord(state, record);
@@ -740,14 +803,16 @@ export class PluginHost {
 
   private assertToolActivityPresenterKeyAvailable(pluginId: string, key: string): void {
     for (const state of this.activeGenerations.values()) {
-      if (state.pluginId !== pluginId && state.toolActivityPresenters.some((record) => !record.removed && record.key === key)) {
+      if (state.pluginId !== pluginId && state.toolActivityPresenters.some((record) =>
+        !record.removed && record.compatibilityRender !== undefined && record.key === key)) {
         throw new Error(`Tool activity presenter key is already owned by another plugin: ${key}`);
       }
     }
     for (const pending of this.pendingActivations.values()) {
       const state = pending.state;
       if (!pending.cancelled && state.pluginId !== pluginId
-        && state.toolActivityPresenters.some((record) => !record.removed && record.key === key)) {
+        && state.toolActivityPresenters.some((record) =>
+          !record.removed && record.compatibilityRender !== undefined && record.key === key)) {
         throw new Error(`Tool activity presenter key is already owned by another plugin: ${key}`);
       }
     }
@@ -755,7 +820,9 @@ export class PluginHost {
 
   private assertToolActivityPresenterOwnership(state: GenerationState): void {
     for (const presenter of state.toolActivityPresenters) {
-      if (!presenter.removed) this.assertToolActivityPresenterKeyAvailable(state.pluginId, presenter.key);
+      if (!presenter.removed && presenter.compatibilityRender !== undefined && presenter.key !== undefined) {
+        this.assertToolActivityPresenterKeyAvailable(state.pluginId, presenter.key);
+      }
     }
   }
 
@@ -783,7 +850,7 @@ export class PluginHost {
     const themeTokens: ThemeTokenRecord[] = [];
     const cssSnippets: CSSSnippetRecord[] = [];
     const statusItems: StatusItemRecord[] = [];
-    const toolActivityPresenters: ToolActivityPresenterRecord[] = [];
+    const toolActivityPresenters: PresenterRecord[] = [];
 
     for (const state of this.activeGenerations.values()) {
       for (const record of state.slots) {
@@ -876,7 +943,22 @@ export class PluginHost {
       changed = true;
     }
 
-    const nextToolActivityPresenters = Object.freeze(toolActivityPresenters.map(toPublicToolActivityPresenter));
+    const nextPresenters = Object.freeze(toolActivityPresenters.sort(compareOrdered).map(toPublicPresenter));
+    if (!sameContributions(this.presenterSnapshot, nextPresenters)) {
+      this.presenterSnapshot = nextPresenters;
+      this.presenterQuerySnapshots.clear();
+      changed = true;
+    }
+
+    const nextToolActivityPresenters = Object.freeze(toolActivityPresenters
+      .filter((record) => record.compatibilityRender !== undefined && record.key !== undefined)
+      .map((record) => Object.freeze({
+        pluginId: record.pluginId,
+        generation: record.generation,
+        id: record.id,
+        key: record.key!,
+        render: record.compatibilityRender!,
+      })));
     if (!sameContributions(this.toolActivityPresenterSnapshot, nextToolActivityPresenters)) {
       this.toolActivityPresenterSnapshot = nextToolActivityPresenters;
       changed = true;
@@ -1097,12 +1179,16 @@ function toPublicStatusItem(record: StatusItemRecord): RegisteredStatusItem {
   });
 }
 
-function toPublicToolActivityPresenter(record: ToolActivityPresenterRecord): RegisteredToolActivityPresenter {
+function toPublicPresenter(record: PresenterRecord): RegisteredPresenter {
   return Object.freeze({
     pluginId: record.pluginId,
     generation: record.generation,
     id: record.id,
+    target: record.target,
     key: record.key,
+    mode: record.mode,
+    priority: record.order,
+    order: record.order,
     render: record.render,
   });
 }
@@ -1130,6 +1216,14 @@ function normalizeOrder(order: number | undefined): number {
 function normalizeSurfaceMode(mode: PluginSurfaceMode): PluginSurfaceMode {
   if (mode !== "replace" && mode !== "wrap") {
     throw new Error(`Unsupported plugin surface mode: ${String(mode)}`);
+  }
+  return mode;
+}
+
+function normalizePresentationMode(mode: PresentationMode | undefined): PresentationMode {
+  if (mode === undefined) return "replace";
+  if (mode !== "replace" && mode !== "wrap") {
+    throw new Error(`Unsupported presenter mode: ${String(mode)}`);
   }
   return mode;
 }

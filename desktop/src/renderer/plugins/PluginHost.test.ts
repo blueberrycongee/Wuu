@@ -1,6 +1,8 @@
 import * as React from "react";
 import { afterEach, describe, expect, it } from "vitest";
 
+import { PRESENTATION_TARGETS } from "../../shared/workbench";
+
 import {
   PLUGIN_SLOT_IDS,
   PluginHost,
@@ -380,6 +382,44 @@ describe("PluginHost", () => {
     });
     host.unload("owner");
     expect(host.getToolActivityPresenter("tool.echo")).toBeUndefined();
+  });
+
+  it("publishes stable exact-match presenter snapshots in deterministic order", async () => {
+    expect(PRESENTATION_TARGETS).toEqual([
+      "conversation.item", "conversation.process", "conversation.tool-activity",
+      "conversation.composer", "header.conversation", "header.workspace",
+      "navigation.primary", "app.status", "content.preview", "settings",
+    ]);
+    const host = new PluginHost({ react: React });
+    await host.activateGeneration({
+      pluginId: "zeta", generation: "one", register(api) {
+        api.registerPresenter({ id: "high", target: "conversation.item", key: "message", priority: 10, render: () => null });
+        api.registerPresenter({ id: "other-key", target: "conversation.item", key: "other", render: () => null });
+      },
+    });
+    await host.activateGeneration({
+      pluginId: "alpha", generation: "one", register(api) {
+        api.registerPresenter({ id: "low", target: "conversation.item", key: "message", priority: 0, mode: "wrap", render: () => null });
+      },
+    });
+    const snapshot = host.getPresenters("conversation.item", "message");
+    expect(snapshot.map(qualifiedId)).toEqual(["alpha:low", "zeta:high"]);
+    expect(host.getPresenters("conversation.item", "message")).toBe(snapshot);
+    expect(host.getPresenters("conversation.process", "message")).toEqual([]);
+    expect(host.getPresenters("conversation.item")).toEqual([]);
+    expect(Object.isFrozen(snapshot)).toBe(true);
+    expect(Object.isFrozen(snapshot[0])).toBe(true);
+  });
+
+  it("validates generalized presenter registrations", async () => {
+    const host = new PluginHost({ react: React });
+    await expect(host.activateGeneration({ pluginId: "invalid", generation: "one", register(api) {
+      api.registerPresenter({ id: "bad", target: "conversation.item", mode: "append" as never, render: () => null });
+    } })).rejects.toThrow("Unsupported presenter mode");
+    await expect(host.activateGeneration({ pluginId: "invalid", generation: "two", register(api) {
+      api.registerPresenter({ id: "bad", target: " ", render: () => null });
+    } })).rejects.toThrow("target must not be empty");
+    expect(host.getPresenters("conversation.item")).toEqual([]);
   });
 });
 

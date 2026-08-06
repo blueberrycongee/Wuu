@@ -1,10 +1,11 @@
-import { useSyncExternalStore, type ReactNode } from "react";
+import { type ReactNode } from "react";
 
 import type { ThreadItem } from "../../shared/protocol";
 import type { ToolActivitySnapshot, ToolActivityStructuredResult } from "../../shared/workbench";
 import { desktopPluginHost, desktopWorkbenchController } from "./DesktopPluginRuntime";
 import type { PluginHost } from "./PluginHost";
-import { PluginErrorBoundary, type WorkbenchController } from "./Workbench";
+import { PluginPresentation } from "./PluginPresentation";
+import type { WorkbenchController } from "./Workbench";
 
 export interface ToolActivityPresenterProps {
   item?: ThreadItem;
@@ -19,32 +20,17 @@ export function ToolActivityPresenter({
   host = desktopPluginHost,
   controller = desktopWorkbenchController,
 }: ToolActivityPresenterProps): JSX.Element {
-  const presenters = useSyncExternalStore(
-    (listener) => host.subscribe(listener),
-    () => host.getToolActivityPresenters(),
-    () => host.getToolActivityPresenters(),
-  );
   const dispatchKey = item?.display?.capability ?? item?.name;
-  const presenter = dispatchKey === undefined
-    ? undefined
-    : presenters.find((candidate) => candidate.key === dispatchKey);
-  if (!presenter || !item) return <>{fallback}</>;
-
-  const Presenter = presenter.render;
+  if (!item || dispatchKey === undefined) return <>{fallback}</>;
   return (
-    <PluginErrorBoundary
-      pluginId={presenter.pluginId}
-      generation={presenter.generation}
-      services={controller.services}
-      onUseDefault={() => undefined}
+    <PluginPresentation
+      host={host}
+      controller={controller}
+      target="conversation.tool-activity"
+      presentationKey={dispatchKey}
+      snapshot={toToolActivitySnapshot(item)}
       fallback={fallback}
-    >
-      <Presenter
-        activity={toToolActivitySnapshot(item)}
-        host={controller.createRendererHostAPI(presenter.pluginId, presenter.generation)}
-        fallback={fallback}
-      />
-    </PluginErrorBoundary>
+    />
   );
 }
 

@@ -5,6 +5,7 @@ import type { ExtensionInventoryRecord } from "../../shared/protocol";
 import {
   WORKBENCH_LAYOUT_STATE_VERSION,
   type OpenViewOptions,
+  type PresentationHost,
   type RendererCategory,
   type ViewHostAPI,
   type ViewPane,
@@ -171,13 +172,9 @@ export class WorkbenchController {
 
   createViewHostAPI(view: WorkbenchViewState): ViewHostAPI {
     const requireActive = (): void => {
-      const active = this.host.getViewTypes().some((definition) =>
-        definition.pluginId === view.pluginId && definition.generation === view.generation);
-      const rendererActive = this.host.getRenderers().some((definition) =>
-        definition.pluginId === view.pluginId && definition.generation === view.generation);
-      const presenterActive = this.host.getToolActivityPresenters().some((definition) =>
-        definition.pluginId === view.pluginId && definition.generation === view.generation);
-      if (!active && !rendererActive && !presenterActive) throw new Error("Plugin host context is no longer active");
+      if (!this.host.isGenerationActive(view.pluginId, view.generation)) {
+        throw new Error("Plugin host context is no longer active");
+      }
     };
     return Object.freeze({
       getStorage: async (key: string, scope: "user" | "workspace" = "workspace") => { requireActive(); return this.getPluginStorage(view.pluginId, view.generation, key, scope); },
@@ -203,6 +200,28 @@ export class WorkbenchController {
       context: {},
     };
     return this.createViewHostAPI(rendererView);
+  }
+
+  createPresentationHostAPI(
+    pluginId: string,
+    generation: string,
+    actions: readonly string[],
+    dispatcher?: (action: string, input?: unknown) => unknown | Promise<unknown>,
+  ): PresentationHost {
+    const base = this.createRendererHostAPI(pluginId, generation);
+    const advertised = Object.freeze([...new Set(actions)]);
+    return Object.freeze({
+      ...base,
+      actions: advertised,
+      invoke: async (action: string, input?: unknown) => {
+        if (!this.host.isGenerationActive(pluginId, generation)) {
+          throw new Error("Plugin host context is no longer active");
+        }
+        if (!advertised.includes(action)) throw new Error(`Presentation action is not supported: ${action}`);
+        if (!dispatcher) throw new Error("Presentation action dispatcher is unavailable");
+        return dispatcher(action, input);
+      },
+    });
   }
 
   private reconcileHost(): void {

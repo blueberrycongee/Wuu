@@ -80,6 +80,38 @@ export interface OpenViewOptions {
   context?: Readonly<Record<string, unknown>>;
 }
 
+export const PRESENTATION_TARGETS = [
+  "conversation.item", "conversation.process", "conversation.tool-activity",
+  "conversation.composer", "header.conversation", "header.workspace",
+  "navigation.primary", "app.status", "content.preview", "settings",
+] as const;
+export type BuiltInPresentationTarget = (typeof PRESENTATION_TARGETS)[number];
+export type PresentationTarget = BuiltInPresentationTarget | (string & {});
+export type PresentationMode = "replace" | "wrap";
+
+export interface PresentationHost extends ViewHostAPI {
+  readonly actions: readonly string[];
+  invoke(action: string, input?: unknown): Promise<unknown>;
+}
+
+export interface PresenterProps {
+  readonly contractVersion: 1;
+  readonly target: PresentationTarget;
+  readonly key?: string;
+  readonly snapshot: unknown;
+  readonly host: PresentationHost;
+  readonly fallback: React.ReactNode;
+}
+
+export interface PresenterDefinition {
+  readonly id: string;
+  readonly target: PresentationTarget;
+  readonly key?: string;
+  readonly mode?: PresentationMode;
+  readonly priority?: number;
+  readonly render: (props: PresenterProps) => React.ReactNode;
+}
+
 export type ToolActivityStatus = "running" | "completed" | "failed";
 
 export interface ToolActivityResultContentPart {

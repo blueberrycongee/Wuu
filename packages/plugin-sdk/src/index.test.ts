@@ -1,12 +1,26 @@
 import {
   CAPABILITY_PROTOCOL_V2,
+  PRESENTATION_TARGETS,
   REQUEST_TRANSFORM_CAPABILITY,
   handleRuntimeRequest,
   runJSONLRuntime,
   type RuntimePlugin,
+  type PresenterDefinition,
   type ToolActivityPresenterDefinition,
   type ToolActivitySnapshot,
 } from "./index.js";
+
+if (!PRESENTATION_TARGETS.includes("conversation.tool-activity") || !PRESENTATION_TARGETS.includes("settings")) {
+  throw new Error("presentation target contract failed");
+}
+const genericPresenter: PresenterDefinition = {
+  id: "preview",
+  target: "content.preview",
+  mode: "wrap",
+  priority: 10,
+  render: ({ contractVersion, fallback }) => contractVersion === 1 ? fallback : null,
+};
+if (genericPresenter.target !== "content.preview") throw new Error("presenter definition contract failed");
 
 const snapshot: ToolActivitySnapshot = Object.freeze({
   id: "call",

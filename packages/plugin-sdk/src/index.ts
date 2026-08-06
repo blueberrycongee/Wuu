@@ -34,8 +34,8 @@ export interface ViewRenderProps {
 }
 
 export interface ViewHostAPI {
-  getStorage(key: string): Promise<string | null>;
-  setStorage(key: string, value: string): Promise<void>;
+  getStorage(key: string, scope?: "user" | "workspace"): Promise<string | null>;
+  setStorage(key: string, value: string, scope?: "user" | "workspace"): Promise<void>;
   getSetting(key: string): Promise<unknown>;
   executeCommand(commandId: string, input?: unknown): Promise<unknown>;
   openView(viewTypeId: ViewTypeId, options?: OpenViewOptions): Promise<void>;
@@ -200,6 +200,7 @@ export interface PluginGenerationApi {
   registerThemeTokens(tokens: ThemeTokens): Disposable;
   registerCSSSnippet(snippet: CSSSnippet): Disposable;
   registerStatusItem(item: StatusItemDefinition): Disposable;
+  registerPresenter(definition: PresenterDefinition): Disposable;
   registerToolActivityPresenter(definition: ToolActivityPresenterDefinition): Disposable;
 }
 
@@ -567,6 +568,39 @@ function isRuntimeRequest(value: unknown): value is RuntimeRequest {
 
 export interface Disposable {
   dispose(): void;
+}
+
+export const PRESENTATION_TARGETS = [
+  "conversation.item", "conversation.process", "conversation.tool-activity",
+  "conversation.composer", "header.conversation", "header.workspace",
+  "navigation.primary", "app.status", "content.preview", "settings",
+] as const;
+export type BuiltInPresentationTarget = (typeof PRESENTATION_TARGETS)[number];
+/** Built-in targets plus future dotted, namespaced targets. */
+export type PresentationTarget = BuiltInPresentationTarget | (string & {});
+export type PresentationMode = "replace" | "wrap";
+
+export interface PresentationHost extends ViewHostAPI {
+  readonly actions: readonly string[];
+  invoke(action: string, input?: unknown): Promise<unknown>;
+}
+
+export interface PresenterProps {
+  readonly contractVersion: 1;
+  readonly target: PresentationTarget;
+  readonly key?: string;
+  readonly snapshot: unknown;
+  readonly host: PresentationHost;
+  readonly fallback: unknown;
+}
+
+export interface PresenterDefinition {
+  readonly id: string;
+  readonly target: PresentationTarget;
+  readonly key?: string;
+  readonly mode?: PresentationMode;
+  readonly priority?: number;
+  readonly render: (props: PresenterProps) => unknown;
 }
 
 export interface SlotRegistration {
