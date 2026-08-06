@@ -216,14 +216,8 @@ func validateGoalForSave(goal Goal) error {
 	if goal.GoalTurns < 0 {
 		return errors.New("goal goal_turns cannot be negative")
 	}
-	if goal.ContinuationRunTurns < 0 {
-		return errors.New("goal continuation_run_turns cannot be negative")
-	}
 	if goal.BlockerAudit.ConsecutiveTurns < 0 {
 		return errors.New("goal blocker consecutive turns cannot be negative")
-	}
-	if goal.BlockerAudit.LastGoalTurn != nil && *goal.BlockerAudit.LastGoalTurn < 0 {
-		return errors.New("goal blocker last goal turn cannot be negative")
 	}
 	return nil
 }

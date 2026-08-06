@@ -35,9 +35,9 @@ func (t *GoalTool) Definition() providers.ToolDefinition {
 		Description: "Read or change the single runtime goal for this thread. " +
 			"action=get returns the current goal with its status and elapsed usage. " +
 			"action=create starts a new active goal and requires objective; create a goal only when explicitly requested by the user or system/developer instructions, do not infer goals from ordinary tasks, and note that it fails if an unfinished goal exists. " +
-			"action=update changes the goal status and requires status. When status=blocked, reason is required and records one blocker report for the current goal turn; the goal remains active until the same reason is reported across three consecutive goal turns. " +
+			"action=update changes only the goal status and requires status. " +
 			"Set status=complete only when the objective has actually been achieved and no required work remains. " +
-			"Report status=blocked at the end of each turn where the same blocking condition still prevents progress; the runtime, not the model, enforces the three-turn threshold. " +
+			"Set status=blocked only when the same blocking condition has repeated for at least three consecutive goal turns and the agent cannot make meaningful progress without user input or an external-state change. " +
 			"Do not use blocked merely because the work is hard, slow, uncertain, incomplete, or would benefit from clarification. " +
 			"You cannot pause or resume a goal; those status changes are controlled by the user or system.",
 		InputSchema: map[string]any{
@@ -57,10 +57,6 @@ func (t *GoalTool) Definition() providers.ToolDefinition {
 					"enum":        []string{"complete", "blocked"},
 					"description": "Used by action=update. Set to complete only when the objective is achieved; set to blocked only after the repeated-blocker audit is satisfied.",
 				},
-				"reason": map[string]any{
-					"type":        "string",
-					"description": "Required by action=update with status=blocked. Describe the concrete condition preventing further progress; use materially the same reason on consecutive turns while it persists.",
-				},
 			},
 			"required": []string{"action"},
 		},
@@ -72,7 +68,6 @@ func (t *GoalTool) Execute(_ context.Context, argsJSON string) (string, error) {
 		Action    string `json:"action"`
 		Objective string `json:"objective"`
 		Status    string `json:"status"`
-		Reason    string `json:"reason"`
 	}
 	if err := decodeArgs(argsJSON, &args); err != nil {
 		return "", err
@@ -83,7 +78,7 @@ func (t *GoalTool) Execute(_ context.Context, argsJSON string) (string, error) {
 	case "create":
 		return t.executeCreate(args.Objective)
 	case "update":
-		return t.executeUpdate(args.Status, args.Reason)
+		return t.executeUpdate(args.Status)
 	default:
 		return "", errors.New("goal requires action=get, create, or update")
 	}
@@ -117,7 +112,7 @@ func (t *GoalTool) executeCreate(objective string) (string, error) {
 	return goalRuntimeToolResult(runtimeGoal)
 }
 
-func (t *GoalTool) executeUpdate(statusArg, reason string) (string, error) {
+func (t *GoalTool) executeUpdate(statusArg string) (string, error) {
 	status := goalruntime.Status(strings.TrimSpace(statusArg))
 	switch status {
 	case goalruntime.StatusComplete, goalruntime.StatusBlocked:
@@ -126,22 +121,6 @@ func (t *GoalTool) executeUpdate(statusArg, reason string) (string, error) {
 	}
 	if _, err := currentActiveRuntimeGoalForTool(t.env); err != nil {
 		return "", err
-	}
-	if status == goalruntime.StatusBlocked {
-		reason = strings.TrimSpace(reason)
-		if reason == "" {
-			return "", errors.New("goal action=update with status=blocked requires reason")
-		}
-		runtimeGoal, blocked, err := t.env.GoalRuntime.RecordBlocker(reason, time.Now().UTC())
-		if err != nil {
-			return "", err
-		}
-		return mustJSON(map[string]any{
-			"goal":                   runtimeGoal,
-			"blocked":                blocked,
-			"required_blocker_turns": goalruntime.RequiredBlockerTurns,
-			"recorded_blocker_turns": runtimeGoal.BlockerAudit.ConsecutiveTurns,
-		})
 	}
 	runtimeGoal, err := t.env.GoalRuntime.SetModelStatus(status, time.Now().UTC())
 	if err != nil {

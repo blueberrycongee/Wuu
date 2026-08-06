@@ -439,52 +439,6 @@ func TestGoalPauseResumeClearRuntimeGoal(t *testing.T) {
 	}
 }
 
-func TestGoalPauseInterruptsInFlightTurn(t *testing.T) {
-	client := newBlockingStreamClient("must not be emitted after pause")
-	rt := newTestRuntime(t, &fakeClient{})
-	rt.StreamRunner.Client = client
-	rt.StateDir = filepath.Join(rt.RootDir, ".wuu-state")
-	out := &lockedBuffer{}
-	srv := New(rt, out)
-
-	if err := srv.handleLine(context.Background(), []byte(`{"id":"thread","method":"thread/start"}`)); err != nil {
-		t.Fatalf("thread/start: %v", err)
-	}
-	threadID := remarshal[ThreadStartResult](t, responseByID(t, parseOutput(t, out.String()), "thread")["result"]).Thread.ID
-	threadRuntime, err := srv.ensureThreadRuntime(srv.thread(threadID))
-	if err != nil {
-		t.Fatalf("ensureThreadRuntime: %v", err)
-	}
-	if _, err := threadRuntime.GoalRuntime.Create(goalruntime.Spec{ThreadID: threadID, GoalID: "runtime-pause", Objective: "pause me"}); err != nil {
-		t.Fatalf("Create runtime goal: %v", err)
-	}
-	startRaw := `{"id":"turn","method":"turn/start","params":{"thread_id":` + quoteGoalHandlerJSON(threadID) + `,"prompt":"keep working"}}`
-	if err := srv.handleLine(context.Background(), []byte(startRaw)); err != nil {
-		t.Fatalf("turn/start: %v", err)
-	}
-	select {
-	case <-client.started:
-	case <-time.After(5 * time.Second):
-		t.Fatal("provider turn did not start")
-	}
-
-	pauseRaw := `{"id":"pause-live","method":"goal/pause","params":{"thread_id":` + quoteGoalHandlerJSON(threadID) + `,"goal_id":"runtime-pause","confirm_user_approved":true}}`
-	if err := srv.handleLine(context.Background(), []byte(pauseRaw)); err != nil {
-		t.Fatalf("goal/pause: %v", err)
-	}
-	waitForMethod(t, out, NotificationTurnError)
-	paused, err := threadRuntime.GoalRuntime.CurrentGoal()
-	if err != nil {
-		t.Fatalf("CurrentGoal: %v", err)
-	}
-	if paused.Status != goalruntime.StatusPaused {
-		t.Fatalf("goal should remain paused after interrupted turn: %+v", paused)
-	}
-	if strings.Contains(out.String(), "must not be emitted after pause") {
-		t.Fatalf("provider output escaped after goal pause: %s", out.String())
-	}
-}
-
 func TestGoalUpdateTextRequiresConfirmation(t *testing.T) {
 	rt := newTestRuntime(t, &fakeClient{})
 	rt.StateDir = filepath.Join(rt.RootDir, ".wuu-state")

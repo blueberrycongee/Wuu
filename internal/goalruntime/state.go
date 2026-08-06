@@ -8,9 +8,8 @@ import (
 )
 
 const (
-	SchemaVersion           = "wuu/goal-runtime/v0.1"
-	RequiredBlockerTurns    = 3
-	MaxContinuationRunTurns = 25
+	SchemaVersion        = "wuu/goal-runtime/v0.1"
+	RequiredBlockerTurns = 3
 )
 
 type Status string
@@ -31,25 +30,23 @@ const (
 )
 
 type Goal struct {
-	SchemaVersion        string       `json:"schema_version"`
-	ThreadID             string       `json:"thread_id"`
-	GoalID               string       `json:"goal_id"`
-	Objective            string       `json:"objective"`
-	Status               Status       `json:"status"`
-	TokensUsed           int          `json:"tokens_used,omitempty"`
-	TimeUsedSeconds      int64        `json:"time_used_seconds,omitempty"`
-	GoalTurns            int          `json:"goal_turns,omitempty"`
-	ContinuationRunTurns int          `json:"continuation_run_turns,omitempty"`
-	BlockerAudit         BlockerAudit `json:"blocker_audit,omitempty"`
-	CreatedAt            time.Time    `json:"created_at"`
-	UpdatedAt            time.Time    `json:"updated_at"`
+	SchemaVersion   string       `json:"schema_version"`
+	ThreadID        string       `json:"thread_id"`
+	GoalID          string       `json:"goal_id"`
+	Objective       string       `json:"objective"`
+	Status          Status       `json:"status"`
+	TokensUsed      int          `json:"tokens_used,omitempty"`
+	TimeUsedSeconds int64        `json:"time_used_seconds,omitempty"`
+	GoalTurns       int          `json:"goal_turns,omitempty"`
+	BlockerAudit    BlockerAudit `json:"blocker_audit,omitempty"`
+	CreatedAt       time.Time    `json:"created_at"`
+	UpdatedAt       time.Time    `json:"updated_at"`
 }
 
 type BlockerAudit struct {
 	Message          string    `json:"message,omitempty"`
 	Normalized       string    `json:"normalized,omitempty"`
 	ConsecutiveTurns int       `json:"consecutive_turns,omitempty"`
-	LastGoalTurn     *int      `json:"last_goal_turn,omitempty"`
 	UpdatedAt        time.Time `json:"updated_at,omitempty"`
 }
 
@@ -94,10 +91,6 @@ func NewGoal(spec Spec, now time.Time) (Goal, error) {
 
 func (g Goal) CanAutoContinue() bool {
 	return g.Status == StatusActive
-}
-
-func (g Goal) ContinuationRunLimitReached() bool {
-	return g.ContinuationRunTurns >= MaxContinuationRunTurns
 }
 
 func IsKnownStatus(status Status) bool {
@@ -156,11 +149,6 @@ func (g Goal) SetStatus(actor Actor, to Status, now time.Time) (Goal, error) {
 	}
 	g.Status = to
 	g.UpdatedAt = now.UTC()
-	if actor == ActorUser && to == StatusActive {
-		// An explicit resume starts a fresh bounded automatic-run window while
-		// preserving cumulative usage and turn totals.
-		g.ContinuationRunTurns = 0
-	}
 	if to != StatusBlocked {
 		g.BlockerAudit = BlockerAudit{}
 	}
@@ -200,19 +188,9 @@ func (g Goal) AccountUsage(delta UsageDelta, now time.Time) (Goal, error) {
 	if now.IsZero() {
 		now = time.Now().UTC()
 	}
-	if delta.Turns > 0 && g.BlockerAudit.ConsecutiveTurns > 0 {
-		// GoalTurns is the number of completed goal turns. A blocker reported
-		// during the turn being accounted records that current value. If it did
-		// not, this turn made it through without reporting the same blocker and
-		// the consecutive-turn audit must restart.
-		if g.BlockerAudit.LastGoalTurn == nil || *g.BlockerAudit.LastGoalTurn != g.GoalTurns {
-			g.BlockerAudit = BlockerAudit{}
-		}
-	}
 	g.TokensUsed += delta.Tokens
 	g.TimeUsedSeconds += int64(delta.Elapsed / time.Second)
 	g.GoalTurns += delta.Turns
-	g.ContinuationRunTurns += delta.Turns
 	g.UpdatedAt = now.UTC()
 	return g, nil
 }
@@ -229,12 +207,7 @@ func (g Goal) RecordBlocker(message string, now time.Time) (Goal, bool, error) {
 		now = time.Now().UTC()
 	}
 	normalized := normalizeBlocker(message)
-	currentGoalTurn := g.GoalTurns
-	sameTurn := g.BlockerAudit.LastGoalTurn != nil && *g.BlockerAudit.LastGoalTurn == currentGoalTurn
-	consecutiveTurn := g.BlockerAudit.LastGoalTurn != nil && *g.BlockerAudit.LastGoalTurn == currentGoalTurn-1
-	if sameTurn && g.BlockerAudit.Normalized == normalized {
-		// Repeated tool calls in one model turn are still one blocker report.
-	} else if consecutiveTurn && g.BlockerAudit.Normalized == normalized {
+	if g.BlockerAudit.Normalized == normalized {
 		g.BlockerAudit.ConsecutiveTurns++
 	} else {
 		g.BlockerAudit = BlockerAudit{
@@ -243,7 +216,6 @@ func (g Goal) RecordBlocker(message string, now time.Time) (Goal, bool, error) {
 	}
 	g.BlockerAudit.Message = message
 	g.BlockerAudit.Normalized = normalized
-	g.BlockerAudit.LastGoalTurn = &currentGoalTurn
 	g.BlockerAudit.UpdatedAt = now.UTC()
 	g.UpdatedAt = now.UTC()
 	if g.BlockerAudit.ConsecutiveTurns >= RequiredBlockerTurns {
