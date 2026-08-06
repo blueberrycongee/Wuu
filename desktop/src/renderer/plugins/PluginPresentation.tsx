@@ -20,7 +20,11 @@ export interface PluginPresentationProps {
   fallback: ReactNode;
   actions?: readonly string[];
   dispatchAction?: (action: string, input?: unknown) => unknown | Promise<unknown>;
+  /** Keep the host boundary mounted while temporarily bypassing presenters. */
+  enabled?: boolean;
 }
+
+const EMPTY_PRESENTERS: readonly RegisteredPresenter[] = Object.freeze([]);
 
 interface BoundaryProps {
   host: PluginHost;
@@ -82,11 +86,11 @@ function renderContribution(
 }
 
 export function PluginPresentation(props: PluginPresentationProps): ReactNode {
-  const { host, target, presentationKey } = props;
+  const { enabled = true, host, target, presentationKey } = props;
   const subscribe = useCallback((listener: () => void) => host.subscribe(listener), [host]);
   const getSnapshot = useCallback(
-    () => host.getPresenters(target, presentationKey),
-    [host, target, presentationKey],
+    () => enabled ? host.getPresenters(target, presentationKey) : EMPTY_PRESENTERS,
+    [enabled, host, target, presentationKey],
   );
   const presenters = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
   const replacement = presenters.filter((presenter) => presenter.mode === "replace").at(-1);

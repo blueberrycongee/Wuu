@@ -21,18 +21,20 @@ export function ToolActivityPresenter({
   controller = desktopWorkbenchController,
 }: ToolActivityPresenterProps): JSX.Element {
   const dispatchKey = item?.display?.capability ?? item?.name;
-  if (!item || dispatchKey === undefined) return <>{fallback}</>;
   return (
     <PluginPresentation
+      enabled={item !== undefined && dispatchKey !== undefined}
       host={host}
       controller={controller}
       target="conversation.tool-activity"
       presentationKey={dispatchKey}
-      snapshot={toToolActivitySnapshot(item)}
+      snapshot={item === undefined ? EMPTY_TOOL_ACTIVITY_SNAPSHOT : toToolActivitySnapshot(item)}
       fallback={fallback}
     />
   );
 }
+
+const EMPTY_TOOL_ACTIVITY_SNAPSHOT = Object.freeze({});
 
 /** Convert the private thread record into the complete public presenter DTO. */
 export function toToolActivitySnapshot(item: ThreadItem): ToolActivitySnapshot {
