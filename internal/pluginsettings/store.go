@@ -4,6 +4,7 @@
 package pluginsettings
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -135,7 +136,7 @@ func Remove(wuuHome, workspaceRoot, pluginID string, scope Scope) error {
 
 func documentPath(wuuHome, workspaceRoot, pluginID string, scope Scope) (string, string, error) {
 	pluginID = strings.TrimSpace(pluginID)
-	if !safeNamePattern.MatchString(pluginID) {
+	if pluginID == "" || len(pluginID) > 256 {
 		return "", "", fmt.Errorf("invalid plugin id %q", pluginID)
 	}
 	wuuHome = strings.TrimSpace(wuuHome)
@@ -159,7 +160,14 @@ func documentPath(wuuHome, workspaceRoot, pluginID string, scope Scope) (string,
 	default:
 		return "", "", fmt.Errorf("unsupported plugin settings scope %q", scope)
 	}
-	return filepath.Join(storeDir, pluginID+".json"), storeDir, nil
+	return filepath.Join(storeDir, pluginDocumentName(pluginID)), storeDir, nil
+}
+
+func pluginDocumentName(pluginID string) string {
+	if safeNamePattern.MatchString(pluginID) {
+		return pluginID + ".json"
+	}
+	return fmt.Sprintf("sha256-%x.json", sha256.Sum256([]byte(pluginID)))
 }
 
 func readLocked(path, pluginID string) (Document, error) {

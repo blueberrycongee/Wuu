@@ -437,6 +437,28 @@ export interface PluginDesktopModuleLoadResult {
   url: string;
 }
 
+export type PluginValueScope = "user" | "workspace";
+export interface PluginIdentityParams { id: string; fingerprint: string; }
+export interface PluginSettingGetParams extends PluginIdentityParams { key: string; }
+export interface PluginSettingSetParams extends PluginSettingGetParams { value: boolean | string | number; }
+export interface PluginSettingResult {
+  id: string;
+  key: string;
+  scope: PluginValueScope;
+  value: boolean | string | number;
+}
+export interface PluginStorageGetParams extends PluginIdentityParams {
+  scope: PluginValueScope;
+  key: string;
+}
+export interface PluginStorageSetParams extends PluginStorageGetParams { value: string; }
+export interface PluginStorageResult {
+  id: string;
+  scope: PluginValueScope;
+  key: string;
+  value: string | null;
+}
+
 export type ConfigModelUpdateResult = {
   provider: string;
   model: string;
@@ -2370,6 +2392,10 @@ export type WuuDesktopApi = {
   loadPluginDesktopModule: (
     params: PluginDesktopModuleReadParams,
   ) => Promise<PluginDesktopModuleLoadResult>;
+  getPluginSetting: (params: PluginSettingGetParams) => Promise<PluginSettingResult>;
+  setPluginSetting: (params: PluginSettingSetParams) => Promise<PluginSettingResult>;
+  getPluginStorage: (params: PluginStorageGetParams) => Promise<PluginStorageResult>;
+  setPluginStorage: (params: PluginStorageSetParams) => Promise<PluginStorageResult>;
   listMCPServers: () => Promise<MCPListResult>;
   connectMCPServer: (name: string) => Promise<MCPServerActionResult>;
   disconnectMCPServer: (name: string) => Promise<MCPServerActionResult>;

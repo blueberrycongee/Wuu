@@ -271,6 +271,10 @@ const api: WuuDesktopApi = {
     ipcRenderer.invoke("wuu:plugin-package-remove", id),
   loadPluginDesktopModule: (params) =>
     ipcRenderer.invoke("wuu:plugin-desktop-module-load", params),
+  getPluginSetting: (params) => ipcRenderer.invoke("wuu:plugin-setting-get", params),
+  setPluginSetting: (params) => ipcRenderer.invoke("wuu:plugin-setting-set", params),
+  getPluginStorage: (params) => ipcRenderer.invoke("wuu:plugin-storage-get", params),
+  setPluginStorage: (params) => ipcRenderer.invoke("wuu:plugin-storage-set", params),
   listSkills: () => ipcRenderer.invoke("wuu:skill-list"),
   readSkillContent: (params) => ipcRenderer.invoke("wuu:skill-content", params),
   listAutomations: () => ipcRenderer.invoke("wuu:automation-list"),

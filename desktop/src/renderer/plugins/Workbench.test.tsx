@@ -68,7 +68,10 @@ describe("WorkbenchController", () => {
 
   it("exposes controlled commands, settings, and plugin-namespaced storage", async () => {
     const execute = vi.fn((input?: unknown) => ({ accepted: input }));
-    const getSetting = vi.fn((_pluginId: string, key: string) => key === "density" ? "compact" : null);
+    const getSetting = vi.fn((_pluginId: string, _generation: string, key: string) => key === "density" ? "compact" : null);
+    const stored = new Map<string, string>();
+    const getStorage = vi.fn(async (pluginId: string, _generation: string, key: string, scope: string) => stored.get(`${pluginId}:${scope}:${key}`) ?? null);
+    const setStorage = vi.fn(async (pluginId: string, _generation: string, key: string, value: string, scope: string) => { stored.set(`${pluginId}:${scope}:${key}`, value); });
     const host = new PluginHost({ react: React });
     await host.activateGeneration({
       pluginId: "user:actions",
@@ -92,7 +95,7 @@ describe("WorkbenchController", () => {
         });
       },
     });
-    const controller = new WorkbenchController(host, { getSetting });
+    const controller = new WorkbenchController(host, { getSetting, getStorage, setStorage });
     const instanceId = await controller.openView("actions.view");
     const view = controller.getSnapshot().views.find((candidate) => candidate.id === instanceId);
     expect(view).toBeDefined();
@@ -102,6 +105,7 @@ describe("WorkbenchController", () => {
     await api.setStorage("panel.mode", "focused");
     expect(await api.getStorage("panel.mode")).toBe("focused");
     expect(await api.getSetting("density")).toBe("compact");
+    expect(getStorage).toHaveBeenCalledWith("user:actions", "one", "panel.mode", "workspace");
     expect(await api.executeCommand("actions.run", 7)).toEqual({ accepted: 7 });
     expect(execute).toHaveBeenCalledWith(7);
     expect(controller.getRenderer("document", "text/plain")?.id).toBe("actions.high");
@@ -118,6 +122,8 @@ describe("WorkbenchController", () => {
     const other = controller.getSnapshot().views.find((candidate) => candidate.id === otherId);
     expect(other).toBeDefined();
     if (other) expect(await controller.createViewHostAPI(other).getStorage("panel.mode")).toBeNull();
+    host.unload("user:actions");
+    await expect(api.getSetting("density")).rejects.toThrow("no longer active");
     controller.dispose();
   });
 

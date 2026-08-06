@@ -18,7 +18,6 @@ import type {
 } from "./PluginHost";
 
 const LAYOUT_STORAGE_KEY = "wuu.plugin-workbench.layout.v1";
-const PLUGIN_STORAGE_PREFIX = "wuu.plugin-workbench.storage.v1";
 const MAX_STORAGE_VALUE_LENGTH = 1_048_576;
 const STORAGE_KEY_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const THEME_TOKEN_PATTERN = /^--wuu-[a-z0-9-]+$/;
@@ -31,7 +30,9 @@ interface StorageLike {
 }
 
 export interface WorkbenchServices {
-  getSetting?(pluginId: string, key: string): unknown | Promise<unknown>;
+  getSetting?(pluginId: string, generation: string, key: string): unknown | Promise<unknown>;
+  getStorage?(pluginId: string, generation: string, key: string, scope: "user" | "workspace"): Promise<string | null>;
+  setStorage?(pluginId: string, generation: string, key: string, value: string, scope: "user" | "workspace"): Promise<void>;
   openSettings?(): void;
   disablePlugin?(pluginId: string): void | Promise<void>;
   reportError?(pluginId: string, generation: string, error: unknown): void;
@@ -169,24 +170,31 @@ export class WorkbenchController {
   }
 
   createViewHostAPI(view: WorkbenchViewState): ViewHostAPI {
+    const requireActive = (): void => {
+      const active = this.host.getViewTypes().some((definition) =>
+        definition.pluginId === view.pluginId && definition.generation === view.generation);
+      const rendererActive = this.host.getRenderers().some((definition) =>
+        definition.pluginId === view.pluginId && definition.generation === view.generation);
+      if (!active && !rendererActive) throw new Error("Plugin host context is no longer active");
+    };
     return Object.freeze({
-      getStorage: async (key: string) => this.getPluginStorage(view.pluginId, key),
-      setStorage: async (key: string, value: string) => this.setPluginStorage(view.pluginId, key, value),
-      getSetting: async (key: string) => this.getPluginSetting(view.pluginId, key),
-      executeCommand: async (commandId: string, input?: unknown) =>
-        this.executeCommand(view.pluginId, commandId, input),
+      getStorage: async (key: string, scope: "user" | "workspace" = "workspace") => { requireActive(); return this.getPluginStorage(view.pluginId, view.generation, key, scope); },
+      setStorage: async (key: string, value: string, scope: "user" | "workspace" = "workspace") => { requireActive(); return this.setPluginStorage(view.pluginId, view.generation, key, value, scope); },
+      getSetting: async (key: string) => { requireActive(); return this.getPluginSetting(view.pluginId, view.generation, key); },
+      executeCommand: async (commandId: string, input?: unknown) => { requireActive(); return this.executeCommand(view.pluginId, commandId, input); },
       openView: async (viewTypeId: string, options?: OpenViewOptions) => {
+        requireActive();
         this.openResolvedView(viewTypeId, options ?? {}, view.pluginId);
       },
-      closeView: async () => this.closeView(view.id),
+      closeView: async () => { requireActive(); this.closeView(view.id); },
     });
   }
 
-  createRendererHostAPI(pluginId: string): ViewHostAPI {
+  createRendererHostAPI(pluginId: string, generation: string): ViewHostAPI {
     const rendererView: WorkbenchViewState = {
       id: `renderer:${pluginId}`,
       pluginId,
-      generation: "renderer",
+      generation,
       viewTypeId: "renderer",
       pane: "pane",
       persistence: "session",
@@ -321,22 +329,25 @@ export class WorkbenchController {
     return command.execute(input);
   }
 
-  private async getPluginSetting(pluginId: string, key: string): Promise<unknown> {
+  private async getPluginSetting(pluginId: string, generation: string, key: string): Promise<unknown> {
     requireStorageKey(key);
-    return this.services.getSetting?.(pluginId, key) ?? null;
+    if (!this.services.getSetting) throw new Error("Plugin settings service is unavailable");
+    return this.services.getSetting(pluginId, generation, key);
   }
 
-  private getPluginStorage(pluginId: string, key: string): string | null {
+  private async getPluginStorage(pluginId: string, generation: string, key: string, scope: "user" | "workspace"): Promise<string | null> {
     requireStorageKey(key);
-    return this.storage.getItem(pluginStorageKey(pluginId, key));
+    if (!this.services.getStorage) throw new Error("Plugin storage service is unavailable");
+    return this.services.getStorage(pluginId, generation, key, scope);
   }
 
-  private setPluginStorage(pluginId: string, key: string, value: string): void {
+  private async setPluginStorage(pluginId: string, generation: string, key: string, value: string, scope: "user" | "workspace"): Promise<void> {
     requireStorageKey(key);
     if (typeof value !== "string" || value.length > MAX_STORAGE_VALUE_LENGTH) {
       throw new Error("Plugin storage value exceeds the supported limit");
     }
-    this.storage.setItem(pluginStorageKey(pluginId, key), value);
+    if (!this.services.setStorage) throw new Error("Plugin storage service is unavailable");
+    await this.services.setStorage(pluginId, generation, key, value, scope);
   }
 }
 
@@ -485,7 +496,7 @@ export function WorkbenchContentRenderer(props: WorkbenchContentRendererProps): 
       <Renderer
         content={props.content}
         metadata={props.metadata ?? {}}
-        host={props.controller.createRendererHostAPI(renderer.pluginId)}
+        host={props.controller.createRendererHostAPI(renderer.pluginId, renderer.generation)}
       />
     </PluginErrorBoundary>
   );
@@ -622,10 +633,6 @@ function freezeLayoutState(state: WorkbenchLayoutState): WorkbenchLayoutState {
 
 function freezeContext(context: Readonly<Record<string, unknown>> | undefined): Readonly<Record<string, unknown>> {
   return Object.freeze({ ...(context ?? {}) });
-}
-
-function pluginStorageKey(pluginId: string, key: string): string {
-  return `${PLUGIN_STORAGE_PREFIX}:${encodeURIComponent(pluginId)}:${encodeURIComponent(key)}`;
 }
 
 function viewTypeKey(pluginId: string, viewTypeId: string): string {

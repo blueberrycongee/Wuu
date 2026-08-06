@@ -62,9 +62,9 @@ export interface ViewRenderProps {
 /** Controlled API surface the host exposes to view components. */
 export interface ViewHostAPI {
   /** Read plugin-scoped namespaced storage. */
-  getStorage(key: string): Promise<string | null>;
+  getStorage(key: string, scope?: "user" | "workspace"): Promise<string | null>;
   /** Write plugin-scoped namespaced storage. */
-  setStorage(key: string, value: string): Promise<void>;
+  setStorage(key: string, value: string, scope?: "user" | "workspace"): Promise<void>;
   /** Read a plugin setting value. */
   getSetting(key: string): Promise<unknown>;
   /** Execute a registered command. */

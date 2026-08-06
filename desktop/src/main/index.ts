@@ -130,6 +130,12 @@ import type {
   PluginDesktopModuleLoadResult,
   PluginDesktopModuleReadParams,
   PluginDesktopModuleReadResult,
+  PluginSettingGetParams,
+  PluginSettingSetParams,
+  PluginSettingResult,
+  PluginStorageGetParams,
+  PluginStorageSetParams,
+  PluginStorageResult,
   WorkspaceFileSaveParams,
   CodexPetHint,
   SideThreadOpenResult,
@@ -1446,6 +1452,14 @@ app.whenReady().then(async () => {
       return cachePluginDesktopModule(module);
     },
   );
+  ipcMain.handle("wuu:plugin-setting-get", (event, params: PluginSettingGetParams) =>
+    appServerRequest<PluginSettingResult>(event, "plugin/setting/get", params));
+  ipcMain.handle("wuu:plugin-setting-set", (event, params: PluginSettingSetParams) =>
+    appServerRequest<PluginSettingResult>(event, "plugin/setting/set", params));
+  ipcMain.handle("wuu:plugin-storage-get", (event, params: PluginStorageGetParams) =>
+    appServerRequest<PluginStorageResult>(event, "plugin/storage/get", params));
+  ipcMain.handle("wuu:plugin-storage-set", (event, params: PluginStorageSetParams) =>
+    appServerRequest<PluginStorageResult>(event, "plugin/storage/set", params));
   ipcMain.handle(
     "wuu:config-provider-remove",
     (

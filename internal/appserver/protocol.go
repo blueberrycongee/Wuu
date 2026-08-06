@@ -32,6 +32,10 @@ const (
 	MethodPluginPackageInstall    = "plugin/package/install"
 	MethodPluginPackageRemove     = "plugin/package/remove"
 	MethodPluginDesktopModuleRead = "plugin/desktop-module/read"
+	MethodPluginSettingGet        = "plugin/setting/get"
+	MethodPluginSettingSet        = "plugin/setting/set"
+	MethodPluginStorageGet        = "plugin/storage/get"
+	MethodPluginStorageSet        = "plugin/storage/set"
 	MethodConfigCodexModels       = "config/codex/models"
 	MethodConfigCatalogRefresh    = "config/model-catalog/refresh"
 	MethodConfigProviderRemove    = "config/provider/remove"
@@ -744,6 +748,55 @@ type PluginDesktopModuleReadResult struct {
 	MediaType   string `json:"media_type"`
 	Digest      string `json:"digest"`
 	Source      string `json:"source"`
+}
+
+type PluginValueScope string
+
+const (
+	PluginValueScopeUser      PluginValueScope = "user"
+	PluginValueScopeWorkspace PluginValueScope = "workspace"
+)
+
+type PluginSettingGetParams struct {
+	ID          string `json:"id"`
+	Fingerprint string `json:"fingerprint"`
+	Key         string `json:"key"`
+}
+
+type PluginSettingSetParams struct {
+	ID          string          `json:"id"`
+	Fingerprint string          `json:"fingerprint"`
+	Key         string          `json:"key"`
+	Value       json.RawMessage `json:"value"`
+}
+
+type PluginSettingResult struct {
+	ID    string           `json:"id"`
+	Key   string           `json:"key"`
+	Scope PluginValueScope `json:"scope"`
+	Value json.RawMessage  `json:"value"`
+}
+
+type PluginStorageGetParams struct {
+	ID          string           `json:"id"`
+	Fingerprint string           `json:"fingerprint"`
+	Scope       PluginValueScope `json:"scope"`
+	Key         string           `json:"key"`
+}
+
+type PluginStorageSetParams struct {
+	ID          string           `json:"id"`
+	Fingerprint string           `json:"fingerprint"`
+	Scope       PluginValueScope `json:"scope"`
+	Key         string           `json:"key"`
+	Value       string           `json:"value"`
+}
+
+type PluginStorageResult struct {
+	ID    string           `json:"id"`
+	Scope PluginValueScope `json:"scope"`
+	Key   string           `json:"key"`
+	Value *string          `json:"value"`
 }
 
 type ConfigModelUpdateParams struct {

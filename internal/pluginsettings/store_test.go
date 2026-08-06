@@ -165,3 +165,42 @@ func TestReadRejectsMismatchedOrUnsupportedDocuments(t *testing.T) {
 		t.Fatal("unsupported document unexpectedly loaded")
 	}
 }
+
+func TestStateStorageIsolatesPluginsScopesAndWorkspaces(t *testing.T) {
+	home := t.TempDir()
+	workspaceA, workspaceB := t.TempDir(), t.TempDir()
+	if _, err := UpdateState(home, workspaceA, "alpha", ScopeWorkspace, func(values map[string]string) error {
+		values["panel.mode"] = "focused"
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct {
+		workspace, plugin string
+		scope             Scope
+	}{
+		{workspaceA, "beta", ScopeWorkspace},
+		{workspaceB, "alpha", ScopeWorkspace},
+		{workspaceA, "alpha", ScopeUser},
+	} {
+		document, err := ReadState(home, test.workspace, test.plugin, test.scope)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(document.Values) != 0 {
+			t.Fatalf("state leaked to %+v: %+v", test, document.Values)
+		}
+	}
+}
+
+func TestStateStorageRejectsInvalidKeysAndOversizeValues(t *testing.T) {
+	home := t.TempDir()
+	for name, update := range map[string]func(map[string]string){
+		"key":   func(values map[string]string) { values["../escape"] = "bad" },
+		"value": func(values map[string]string) { values["valid"] = string(make([]byte, MaxStateValueBytes+1)) },
+	} {
+		if _, err := UpdateState(home, "", "alpha", ScopeUser, func(values map[string]string) error { update(values); return nil }); err == nil {
+			t.Fatalf("%s limit unexpectedly accepted", name)
+		}
+	}
+}

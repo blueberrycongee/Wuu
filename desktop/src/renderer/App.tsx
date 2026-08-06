@@ -5122,6 +5122,18 @@ export function App(): JSX.Element {
         controller={desktopWorkbenchController}
         inventory={state.initialized?.extension_inventory}
         services={{
+          getSetting: async (pluginId, generation, key) => {
+            if (!window.wuu?.getPluginSetting) throw new Error("Plugin settings service is unavailable");
+            return (await window.wuu.getPluginSetting({ id: pluginId, fingerprint: generation, key })).value;
+          },
+          getStorage: async (pluginId, generation, key, scope) => {
+            if (!window.wuu?.getPluginStorage) throw new Error("Plugin storage service is unavailable");
+            return (await window.wuu.getPluginStorage({ id: pluginId, fingerprint: generation, key, scope })).value;
+          },
+          setStorage: async (pluginId, generation, key, value, scope) => {
+            if (!window.wuu?.setPluginStorage) throw new Error("Plugin storage service is unavailable");
+            await window.wuu.setPluginStorage({ id: pluginId, fingerprint: generation, key, value, scope });
+          },
           openSettings: () => {
             setSettingsInitialPage("providers");
             setSettingsOpen(true);
