@@ -82,8 +82,7 @@ import type {
 } from "./ComposerTypes";
 import { composerStatusIsLiveProgress, composerStatusText } from "./ComposerTypes";
 import type { WorkspacePanelView } from "./WorkspacePanels";
-import { ComposerTokenGauge } from "./ComposerTokenGauge";
-import { ComposerContextMeter } from "./ComposerContextMeter";
+import { ComposerRuntimeMeters } from "./ComposerRuntimeMeters";
 import { ComposerPresentation } from "./plugins/ComposerPresentation";
 import { ComposerVoiceInput, type ComposerVoiceInputHandle } from "./ComposerVoiceInput";
 import { ENABLE_VOICE_INPUT } from "./FeatureFlags";
@@ -186,7 +185,8 @@ export function Composer({
   onPauseGoal,
   onResumeGoal,
   onClearGoal,
-  tokensPerSecond,
+  telemetryTurnID,
+  tokensPerSecond = 0,
   tokenSpeedSampledAt,
   tokenSpeedSource,
   contextUsage,
@@ -284,7 +284,8 @@ export function Composer({
   onPauseGoal?: () => void | Promise<void>;
   onResumeGoal?: () => void | Promise<void>;
   onClearGoal?: () => void | Promise<void>;
-  tokensPerSecond: number;
+  telemetryTurnID?: string;
+  tokensPerSecond?: number;
   tokenSpeedSampledAt?: number;
   tokenSpeedSource?: "real" | "estimated" | "none";
   // contextUsage drives the model-adjacent context meter. When the active
@@ -1300,13 +1301,14 @@ export function Composer({
               <div className="composer-bar-right">
                 {hideRuntimeControls ? null : (
                   <>
-                    <ComposerTokenGauge
+                    <ComposerRuntimeMeters
                       running={running}
-                      tokensPerSecond={tokensPerSecond}
-                      sampledAt={tokenSpeedSampledAt}
-                      source={tokenSpeedSource}
+                      turnID={telemetryTurnID}
+                      fallbackTokensPerSecond={tokensPerSecond}
+                      fallbackSampledAt={tokenSpeedSampledAt}
+                      fallbackSource={tokenSpeedSource}
+                      fallbackContextUsage={contextUsage}
                     />
-                    <ComposerContextMeter usage={contextUsage ?? undefined} />
                     {initialized ? (
                       <RuntimePicker
                         variant={variant}
