@@ -1853,6 +1853,13 @@
   gap: var(--conversation-process-detail-gap);
 }
 
+/* Older live renderer instances can retain the removed synthetic wait tail
+   across HMR. Keep that legacy-only row hidden; real subagent state remains
+   available in the spawn activity and environment panel. */
+.turn-subagent-wait-tail {
+  display: none;
+}
+
 .turn-process-entry {
   position: static;
   display: block;

@@ -146,8 +146,10 @@ export function agentHandoffChipDisplayItems(
   });
 }
 
-// Agent identities reported by a wake notification. An unparseable envelope
-// yields [] rather than guessing which independent worker produced it.
+// Agent identities a wake notification reports on. TurnGrouping uses these
+// to attribute a wake to the orchestration that spawned the agent; an
+// unparseable envelope yields [] and the caller treats the wake as
+// unattributable rather than guessing.
 export function agentHandoffAgentIDs(item: HandoffItem | undefined): string[] {
   if (!item || !isAgentHandoffItem(item)) {
     return [];

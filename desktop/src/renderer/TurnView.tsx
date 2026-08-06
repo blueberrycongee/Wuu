@@ -23,12 +23,27 @@ import {
   turnAnchorID,
   turnHasAssistantOutput,
 } from "./TurnViewHelpers";
-import { desktopPluginHost } from "./plugins/DesktopPluginRuntime";
-import { PluginSurface } from "./plugins";
 
 export { latestAgentMessageItemID, scrollToUserMessage };
 
-export type TurnViewProps = {
+export function TurnView({
+  turn,
+  cwd,
+  onOpenFile,
+  onOpenAgent,
+  latestAgentMessageID,
+  onStreamFrame,
+  onForkMessage,
+  onEditMessage,
+  editingMessage,
+  onCancelEditMessage,
+  onSubmitEditMessage,
+  onCollapseComplete,
+  onOpenFileDiff,
+  onOpenRuns,
+  streamStatus,
+  isLatestTurn,
+}: {
   turn: Turn;
   cwd?: string;
   onOpenFile?: (path: string) => void;
@@ -51,50 +66,7 @@ export type TurnViewProps = {
   onOpenRuns?: () => void;
   streamStatus?: TurnStreamStatus;
   isLatestTurn?: boolean;
-};
-
-export function TurnView(props: TurnViewProps): JSX.Element {
-  return (
-    <PluginSurface
-      host={desktopPluginHost}
-      id="conversation.timeline"
-      context={{
-        version: 1,
-        turns: [props.turn],
-        awaiting: false,
-        runningSubagentCount: 0,
-        interrupted: props.turn.status === "interrupted",
-        cwd: props.cwd,
-        actions: {
-          openFile: props.onOpenFile,
-          openAgent: props.onOpenAgent,
-          forkMessage: props.onForkMessage,
-          editMessage: props.onEditMessage,
-        },
-      }}
-      fallback={<TurnContent {...props} />}
-    />
-  );
-}
-
-function TurnContent({
-  turn,
-  cwd,
-  onOpenFile,
-  onOpenAgent,
-  latestAgentMessageID,
-  onStreamFrame,
-  onForkMessage,
-  onEditMessage,
-  editingMessage,
-  onCancelEditMessage,
-  onSubmitEditMessage,
-  onCollapseComplete,
-  onOpenFileDiff,
-  onOpenRuns,
-  streamStatus,
-  isLatestTurn,
-}: TurnViewProps): JSX.Element {
+}): JSX.Element {
   const actionableAgentMessageID =
     turn.status === "completed"
       ? messageFlowAgentMessageItemID(turn)

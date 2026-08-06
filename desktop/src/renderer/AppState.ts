@@ -2541,15 +2541,7 @@ function isThreadRunning(
 ): boolean {
   return Boolean(
     thread?.status === "in_progress" ||
-    thread?.turns?.some((turn) => turn.status === "in_progress"),
-  );
-}
-
-function isThreadExecuting(
-  thread: ThreadRunningCandidate | undefined,
-): boolean {
-  return Boolean(
-    isThreadRunning(thread) ||
+    thread?.turns?.some((turn) => turn.status === "in_progress") ||
     thread?.child_agents?.some(agentRunning),
   );
 }
@@ -2634,6 +2626,22 @@ function resolveComposerRunningAction(
     : "queue";
 }
 
+// The orchestration wait: no turn holds the thread but background child
+// agents are still running, so the conversation renders as one live merged
+// block (TurnGrouping) parked between turns. Callers use this to keep the
+// composer reading like an in-progress turn — steer stays offered, and
+// resolveComposerRunningAction degrades it to queue, which starts
+// immediately (nothing runs) and lands inside the orchestration group.
+export function threadAwaitingBackgroundAgents(
+  thread: Thread | undefined,
+): boolean {
+  return Boolean(
+    thread &&
+      !activeTurnIDForThread(thread) &&
+      thread.child_agents?.some(agentRunning),
+  );
+}
+
 function activeTurnForThread(thread: Thread | undefined): Turn | undefined {
   if (!thread) {
     return undefined;
@@ -2662,9 +2670,9 @@ function isStateActiveThreadRunning(state: AppState): boolean {
 function isAnyThreadRunning(state: AppState): boolean {
   return Boolean(
     state.running ||
-    isThreadExecuting(state.thread) ||
-    isThreadExecuting(state.secondaryThread) ||
-    state.threads.some(isThreadExecuting),
+    isThreadRunning(state.thread) ||
+    isThreadRunning(state.secondaryThread) ||
+    state.threads.some(isThreadRunning),
   );
 }
 
@@ -3390,7 +3398,6 @@ export {
   initialState,
   isAnyThreadRunning,
   isStateActiveThreadRunning,
-  isThreadExecuting,
   isThreadRunning,
   isThreadUnread,
   latestCompletedTurnID,

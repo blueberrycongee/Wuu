@@ -746,6 +746,40 @@ func (th *threadState) steerWaitInterrupt() <-chan struct{} {
 	return th.steerWake
 }
 
+func (s *Server) steerAgentCompletion(threadID, resultID string, msg providers.ChatMessage) bool {
+	if s == nil || s.closed.Load() {
+		return false
+	}
+	threadID = strings.TrimSpace(threadID)
+	if threadID == "" || !chatMessageHasUserPayload(msg) {
+		return false
+	}
+	th := s.thread(threadID)
+	if th == nil || !canResumeAgentCompletionThread(th) {
+		return false
+	}
+	th.mu.Lock()
+	defer th.mu.Unlock()
+	if !th.running || th.currentTurn == "" || th.currentTurnKind == TurnKindCompact {
+		return false
+	}
+	clientID := agentCompletionClientIDForResult(resultID)
+	if clientID != "" {
+		for _, existing := range th.pendingSteers {
+			if existing.ClientID == clientID {
+				return true
+			}
+		}
+	}
+	if strings.TrimSpace(msg.Role) == "" {
+		msg.Role = "user"
+	}
+	msg.Steered = true
+	msg.ClientID = clientID
+	th.pendingSteers = append(th.pendingSteers, msg)
+	return true
+}
+
 func (s *Server) handleTurnUnsteer(req Request) error {
 	var params TurnUnsteerParams
 	if err := decodeParams(req.Params, &params); err != nil {
@@ -991,6 +1025,9 @@ func (s *Server) replayPendingAgentCompletions(threadID string, threadRuntime *r
 		msg := threadRuntime.AgentControl.AgentCompletionChatMessage(completion.Snapshot, agentthread.RootPath)
 		consumer, _ := threadRuntime.AgentControl.AgentResultDeliveryConsumer(completion.ResultID)
 		if consumer != "" {
+			continue
+		}
+		if s.steerAgentCompletion(threadID, completion.ResultID, msg) {
 			continue
 		}
 		s.enqueueAgentCompletionTurn(
@@ -1973,6 +2010,11 @@ func (s *Server) runTurnWithRequestContext(ctx context.Context, th *threadState,
 		th.resetSteerWakeLocked()
 		th.mu.Unlock()
 		notifyBatch(batch)
+		for _, steer := range steers {
+			if ids := agentCompletionResultIDs(steer.ClientID); len(ids) > 0 {
+				turnRuntime.AgentCompletionResultIDs = append(turnRuntime.AgentCompletionResultIDs, ids...)
+			}
+		}
 		if len(steers) > 0 {
 			messages = append(messages, steers...)
 		}
@@ -2177,7 +2219,12 @@ func (s *Server) runTurnWithRequestContext(ctx context.Context, th *threadState,
 	th.interrupting = false
 	unconsumedSteers := th.drainPendingSteersLocked()
 	if len(unconsumedSteers) > 0 {
-		s.prependQueuedUserTurns(th.ID, queuedTurnsFromSteers(unconsumedSteers))
+		if threadRuntime != nil && threadRuntime.AgentControl != nil {
+			unconsumedSteers = filterConsumedAgentCompletionSteers(unconsumedSteers, threadRuntime.AgentControl)
+		}
+		if len(unconsumedSteers) > 0 {
+			s.prependQueuedUserTurns(th.ID, queuedTurnsFromSteers(unconsumedSteers))
+		}
 	}
 	completionClaimFailed := len(turnRuntime.AgentCompletionResultIDs) > 0
 	if err == nil && completionAnswerReady && persistErr == nil && threadRuntime != nil && threadRuntime.AgentControl != nil {
@@ -3876,6 +3923,14 @@ func agentCompletionClientID(turns []agentCompletionTurn) string {
 	return agentCompletionClientIDPrefix + strings.Join(ids, ",")
 }
 
+func agentCompletionClientIDForResult(resultID string) string {
+	resultID = strings.TrimSpace(resultID)
+	if resultID == "" {
+		return ""
+	}
+	return agentCompletionClientIDPrefix + resultID
+}
+
 func agentCompletionResultIDs(clientID string) []string {
 	clientID = strings.TrimSpace(clientID)
 	if !strings.HasPrefix(clientID, agentCompletionClientIDPrefix) {
@@ -4066,6 +4121,32 @@ func queuedTurnsFromSteers(msgs []providers.ChatMessage) []queuedTurn {
 			snapshot.AgentCompletionResultIDs = ids
 		}
 		out = append(out, queuedTurn{id: id, msg: msg, snapshot: snapshot})
+	}
+	return out
+}
+
+func filterConsumedAgentCompletionSteers(steers []providers.ChatMessage, control *agentcontrol.AgentControl) []providers.ChatMessage {
+	if len(steers) == 0 || control == nil {
+		return steers
+	}
+	out := make([]providers.ChatMessage, 0, len(steers))
+	for _, steer := range steers {
+		ids := agentCompletionResultIDs(steer.ClientID)
+		if len(ids) == 0 {
+			out = append(out, steer)
+			continue
+		}
+		consumed := false
+		for _, id := range ids {
+			consumer, _ := control.AgentResultDeliveryConsumer(id)
+			if consumer != "" {
+				consumed = true
+				break
+			}
+		}
+		if !consumed {
+			out = append(out, steer)
+		}
 	}
 	return out
 }

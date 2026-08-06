@@ -3,6 +3,7 @@
 import {
   type CSSProperties,
   type RefObject,
+  startTransition,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -89,6 +90,7 @@ import {
   latestContextUsageForThread,
   activeTurnIDForThread,
   activeTurnTokenSpeedSnapshot,
+  threadAwaitingBackgroundAgents,
   flushPendingStreamingTokenSamples,
   recordPendingStreamingTokenSample,
   type PendingStreamingTokenSamples,
@@ -108,7 +110,6 @@ import {
   initialState,
   isAnyThreadRunning,
   isStateActiveThreadRunning,
-  isThreadExecuting,
   isThreadRunning,
   isThreadUnread,
   latestPlanUpdateForThread,
@@ -157,6 +158,7 @@ import {
   writeChannelRoomPreferences,
   type ChannelRoomPreferences,
 } from "./ChannelRoomPreferences";
+import { sameChannelRooms } from "./ChannelRoomState";
 import {
   RIGHT_PANEL_MOTION_MS,
   SIDEBAR_DRAWER_EXIT_MS,
@@ -300,6 +302,10 @@ const QUERY_HISTORY_RAIL_MAX_BARS = 20;
 // Keep only the active conversation pane mounted. Hidden panes used to retain
 // full TurnView DOM trees, making long sessions heavier after each tab switch.
 const CACHED_THREAD_PANE_LIMIT = 1;
+// The live token-speed gauge is supporting telemetry, not an input-critical
+// surface. Updating it more often forces the 5k-line App component to render
+// while users type, so publish estimates at a human-readable 1 Hz cadence.
+const STREAMING_TOKEN_SAMPLE_FLUSH_MS = 1_000;
 type EnvironmentDialog = "commit" | "pull-request" | null;
 const RENDERER_ENV = (
   import.meta as ImportMeta & {
@@ -656,7 +662,10 @@ export function App(): JSX.Element {
       try {
         const result = await window.wuu!.listChannelRooms();
         if (active) {
-          setChannelRooms(result.rooms ?? []);
+          const rooms = result.rooms ?? [];
+          setChannelRooms((current) =>
+            sameChannelRooms(current, rooms) ? current : rooms,
+          );
           setChannelRoomsLoaded(true);
         }
       } catch (reason) {
@@ -1646,7 +1655,7 @@ export function App(): JSX.Element {
     let mounted = true;
     // Deltas arrive at tens per second; a setState per delta would re-render
     // the whole App tree just to advance the token-speed gauge. Accumulate
-    // the estimates here and fold them into state at most every 250ms.
+    // the estimates here and publish them as a low-priority background update.
     const pendingTokenSamples: PendingStreamingTokenSamples = new Map();
     let tokenSampleFlushTimer: number | undefined;
     const flushTokenSamples = () => {
@@ -1656,9 +1665,11 @@ export function App(): JSX.Element {
       }
       const batch = new Map(pendingTokenSamples);
       pendingTokenSamples.clear();
-      setState((current) =>
-        flushPendingStreamingTokenSamples(current, batch, Date.now()),
-      );
+      startTransition(() => {
+        setState((current) =>
+          flushPendingStreamingTokenSamples(current, batch, Date.now()),
+        );
+      });
     };
     const off = window.wuu.onServerEvent((event) => {
       if (!mounted) {
@@ -1692,7 +1703,10 @@ export function App(): JSX.Element {
           ) &&
           tokenSampleFlushTimer === undefined
         ) {
-          tokenSampleFlushTimer = window.setTimeout(flushTokenSamples, 250);
+          tokenSampleFlushTimer = window.setTimeout(
+            flushTokenSamples,
+            STREAMING_TOKEN_SAMPLE_FLUSH_MS,
+          );
         }
       }
       if (handling === "stream") {
@@ -2300,13 +2314,15 @@ export function App(): JSX.Element {
   );
   const activeThreadReadOnly = Boolean(activeThread?.read_only);
   const activeThreadIsRunning = isStateActiveThreadRunning(state);
-  const activeThreadCanSteer = Boolean(activeTurnIDForThread(activeThread));
+  const activeThreadAwaitingAgents = threadAwaitingBackgroundAgents(activeThread);
+  const activeThreadCanSteer =
+    Boolean(activeTurnIDForThread(activeThread)) || activeThreadAwaitingAgents;
   const activeThreadStreamStatus = turnStreamStatusForThread(state, activeThread);
   const anyThreadIsRunning = isAnyThreadRunning(state) || viewContextSwitchPending;
   const runningThreadKey = useMemo(() => {
     const running = new Set<string>();
     for (const thread of [state.thread, state.secondaryThread, ...state.threads]) {
-      if (thread?.cwd && isThreadExecuting(thread)) {
+      if (thread?.cwd && isThreadRunning(thread)) {
         running.add(`${thread.id}\0${thread.cwd}`);
       }
     }
@@ -2393,7 +2409,7 @@ export function App(): JSX.Element {
     const names = new Set<string>();
     for (const thread of [state.thread, state.secondaryThread, ...state.threads]) {
       const provider = thread?.model_provider.trim();
-      if (provider && isThreadExecuting(thread)) {
+      if (provider && isThreadRunning(thread)) {
         names.add(provider);
       }
     }
@@ -2614,12 +2630,15 @@ export function App(): JSX.Element {
             ? activeThreadIsRunning
               ? t("app.childTaskRunning")
               : t("app.childTaskReadOnly")
-            : streamStatus?.text ?? state.status
+            : streamStatus?.text ??
+              (activeThreadAwaitingAgents
+                ? t("composer.subagentsRunning")
+                : state.status)
         }
         statusLiveProgress={
           activeThreadReadOnly
             ? false
-            : streamStatus?.liveProgress ?? false
+            : streamStatus?.liveProgress ?? activeThreadAwaitingAgents
         }
         readOnly={activeThreadReadOnly}
         initialized={visibleConversationRuntime}

@@ -165,7 +165,9 @@ func (s *Server) finalizeAgentTerminalWithCompleter(threadID string, control *ag
 			msg := control.AgentCompletionChatMessage(n.Snapshot, agentthread.RootPath)
 			consumer, _ := control.AgentResultDeliveryConsumer(resultID)
 			if consumer == "" {
-				s.enqueueAgentCompletionTurn(threadID, n.Snapshot.ID, resultID, msg, &n.Snapshot)
+				if !s.steerAgentCompletion(threadID, resultID, msg) {
+					s.enqueueAgentCompletionTurn(threadID, n.Snapshot.ID, resultID, msg, &n.Snapshot)
+				}
 			}
 		}
 	}

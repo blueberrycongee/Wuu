@@ -37,6 +37,7 @@ import {
   useAutoFollowScrollContainer,
 } from "./AutoFollowScroll";
 import { AnimatedProcessText } from "./ProcessTextMotion";
+import type { SubagentChipDisplay } from "./AgentHandoff";
 import { translateCurrent as translate, useI18n } from "./i18n";
 
 const recoveredTurnStartedAt = new Map<string, number>();
@@ -74,6 +75,7 @@ export function AssistantTurnShell({
   onForkMessage,
   onOpenRuns,
   onCollapseComplete,
+  subagentWaiting,
 }: {
   turn: Turn;
   display: AssistantTurnDisplay;
@@ -86,6 +88,8 @@ export function AssistantTurnShell({
   onForkMessage?: (turnID: string, itemID: string) => void;
   onOpenRuns?: () => void;
   onCollapseComplete?: () => void;
+  /** Render background orchestration like one synchronous wait tool call. */
+  subagentWaiting?: boolean;
 }): JSX.Element {
   const processEntries = display.entries.filter(
     (entry) => entry.position === "process",
@@ -123,14 +127,32 @@ export function AssistantTurnShell({
   const hasProcess =
     processEntries.length > 0 ||
     Boolean(display.latestProcessPreview) ||
+    display.subagentChips.length > 0 ||
     turn.status === "in_progress";
   const hasAnswer = answerEntries.length > 0;
   const answerHandoffRequested = answerEntries.some(
     (entry) =>
       entry.item.type === "agent_message" &&
-      streamFieldValue(turn.id, entry.item, "text").trim().length > 0,
+      streamFieldValue(entry.turn?.id ?? turn.id, entry.item, "text").trim().length > 0,
   );
   const processCollapseRequested = answerHandoffRequested;
+  const latestProcessEntry = processEntries.at(-1);
+  const latestPendingSubagentEntry = subagentWaiting
+    ? processEntries.findLast(
+        (entry) =>
+          entry.kind === "subagent_status" && entry.subagentStatus?.outcome === "updated",
+      )
+    : undefined;
+  // The synthetic subagent wait row participates in the same latest-item
+  // rule as real tool calls and reasoning. Once newer process work appears,
+  // the wait is still unresolved but no longer the operation currently in
+  // focus, so its sweep must yield to that newer row.
+  const liveSubagentStatusKey =
+    latestPendingSubagentEntry &&
+    latestPendingSubagentEntry.key === latestProcessEntry?.key
+      ? latestPendingSubagentEntry.key
+      : undefined;
+
   const className = [
     "assistant-turn-shell",
     hasProcess ? "has-process" : "",
@@ -151,6 +173,7 @@ export function AssistantTurnShell({
     onForkMessage,
     onOpenRuns,
     onCollapseComplete,
+    liveSubagentStatusKey,
   };
 
   return (
@@ -158,6 +181,7 @@ export function AssistantTurnShell({
       {hasProcess ? (
         <TurnProcessFold
           entries={processEntries}
+          processActive={!liveSubagentStatusKey}
           collapseRequested={processCollapseRequested}
           latestPreview={
             answerHandoffRequested ? undefined : display.latestProcessPreview
@@ -191,15 +215,18 @@ export function AssistantTurnShell({
 
 function SubagentStatusRow({
   display,
+  live,
 }: {
-  display?: TurnEntry["subagentStatus"];
+  display?: SubagentChipDisplay;
+  live: boolean;
 }): JSX.Element {
   return (
     <div
       className={`turn-subagent-status process-surface-row${
-        display?.outcome === "failed" ? " turn-subagent-status-failed" : ""
-      }`}
+        live ? " is-live-gray" : ""
+      }${display?.outcome === "failed" ? " turn-subagent-status-failed" : ""}`}
       role="status"
+      aria-live={live ? "polite" : undefined}
     >
       <AnimatedProcessText
         text={display?.label ?? translate("process.waitingForSubagents")}
@@ -211,6 +238,8 @@ function SubagentStatusRow({
 function TurnProcessFold({
   turn,
   entries,
+  processActive,
+  liveSubagentStatusKey,
   collapseRequested,
   latestPreview,
   sources,
@@ -227,6 +256,8 @@ function TurnProcessFold({
 }: {
   turn: Turn;
   entries: TurnEntry[];
+  processActive: boolean;
+  liveSubagentStatusKey?: string;
   collapseRequested: boolean;
   latestPreview?: TurnProcessPreview;
   sources: ReturnType<typeof collectTurnSources>;
@@ -340,7 +371,7 @@ function TurnProcessFold({
   const visiblePreview = expanded ? undefined : latestPreview;
   const hasPreview = Boolean(visiblePreview);
   const activeGrayEntryKey =
-    turn.status === "in_progress"
+    processActive && turn.status === "in_progress"
       ? latestActiveGrayProcessEntryKey(entries)
       : undefined;
 
@@ -357,13 +388,13 @@ function TurnProcessFold({
       {hasPreview ? (
         <span
           className={`turn-process-preview turn-process-preview-${visiblePreview?.kind ?? "process"}${
-            turn.status === "in_progress" ? " is-live" : ""
+            processActive && turn.status === "in_progress" ? " is-live" : ""
           }`}
         >
           <span className="turn-process-live-dot" aria-hidden />
           <LightweightStreamingText
             text={visiblePreview?.text ?? ""}
-            live={turn.status === "in_progress"}
+            live={processActive && turn.status === "in_progress"}
             className="turn-process-preview-text"
           />
         </span>
@@ -422,6 +453,7 @@ return (
                     key={entry.key}
                     entry={entry}
                     activeGray={entry.key === activeGrayEntryKey}
+                    liveSubagentStatusKey={liveSubagentStatusKey}
                     turn={turn}
                     cwd={cwd}
                     onOpenFile={onOpenFile}
@@ -460,6 +492,7 @@ function isGrayProcessEntry(entry: TurnEntry): boolean {
 function EntryRenderer({
   entry,
   activeGray,
+  liveSubagentStatusKey,
   turn,
   cwd,
   onOpenFile,
@@ -472,6 +505,7 @@ function EntryRenderer({
 }: {
   entry: TurnEntry;
   activeGray?: boolean;
+  liveSubagentStatusKey?: string;
   turn: Turn;
   cwd?: string;
   onOpenFile?: (path: string) => void;
@@ -483,8 +517,17 @@ function EntryRenderer({
   onOpenRuns?: () => void;
 }): JSX.Element | null {
   const { item, kind, streaming } = entry;
+  // Entries merged from other turns (group display) render against their
+  // own origin turn: stream-text store keys, fork targets and turn status
+  // all belong to the turn the item was produced in, not the shell's.
+  const originTurn = entry.turn ?? turn;
   if (kind === "subagent_status") {
-    return <SubagentStatusRow display={entry.subagentStatus} />;
+    return (
+      <SubagentStatusRow
+        display={entry.subagentStatus}
+        live={entry.key === liveSubagentStatusKey}
+      />
+    );
   }
   if (kind === "activity" || kind === "process_group") {
     return (
@@ -494,8 +537,8 @@ function EntryRenderer({
         active={activeGray}
         renderReasoningItem={(processItem, isStreaming) => (
           <ThreadItemView
-            turnID={turn.id}
-            turnStatus={turn.status}
+            turnID={originTurn.id}
+            turnStatus={originTurn.status}
             item={processItem}
             cwd={cwd}
             onOpenFile={onOpenFile}
@@ -519,8 +562,8 @@ function EntryRenderer({
         item={item}
         streaming={streaming}
         activeGray={activeGray}
-        turnID={turn.id}
-        turnStatus={turn.status}
+        turnID={originTurn.id}
+        turnStatus={originTurn.status}
         cwd={cwd}
         onOpenFile={onOpenFile}
         onOpenAgent={onOpenAgent}
@@ -531,8 +574,8 @@ function EntryRenderer({
   if (item.type === "agent_message") {
     return (
       <ThreadItemView
-        turnID={turn.id}
-        turnStatus={turn.status}
+        turnID={originTurn.id}
+        turnStatus={originTurn.status}
         item={item}
         cwd={cwd}
         onOpenFile={onOpenFile}

@@ -4,7 +4,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ThreadItem, Turn } from "../shared/protocol";
 import { ASSISTANT_TURN_PRESENTATION_STABILIZE_MS } from "./AssistantTurnPresentation";
 import { PROCESS_NOTIFICATION_NAME } from "./InternalUserNotification";
-import { desktopPluginHost } from "./plugins/DesktopPluginRuntime";
 import { TurnView } from "./TurnView";
 
 let root: Root | undefined;
@@ -105,30 +104,6 @@ afterEach(() => {
 });
 
 describe("TurnView", () => {
-  it("keeps the conversation timeline plugin surface on each real turn", async () => {
-    await desktopPluginHost.activateGeneration({
-      pluginId: "test:turn-timeline",
-      generation: "one",
-      register(api) {
-        api.registerSurface("conversation.timeline", {
-          id: "turn-replacement",
-          mode: "replace",
-          render(context) {
-            const turns = context.turns as Turn[];
-            return <div data-testid="plugin-turn">{turns[0]?.id}</div>;
-          },
-        });
-      },
-    });
-
-    const view = render(makeTurn("completed"));
-    expect(view.querySelector('[data-testid="plugin-turn"]')?.textContent).toBe(
-      "turn-1",
-    );
-
-    await act(async () => desktopPluginHost.unload("test:turn-timeline"));
-  });
-
   it("marks the turn root with the live status used by scroll-stable CSS", () => {
     const view = render(makeTurn("in_progress"));
 
