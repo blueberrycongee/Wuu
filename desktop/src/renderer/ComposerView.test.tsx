@@ -101,7 +101,7 @@ function renderComposer(props: {
   onResume?: () => void;
   onSend?: (promptOverride?: string) => void;
   onSteer?: (promptOverride?: string) => void;
-  onQueue?: () => void;
+  onQueue?: (promptOverride?: string) => void;
   onStartNewThread?: () => void;
   onOpenContextComposition?: () => void;
   onOpenSideThread?: () => void;
@@ -538,6 +538,32 @@ describe("Composer send control", () => {
 
     expect(event.defaultPrevented).toBe(true);
     expect(onSend).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps typing responsive while the parent draft update is pending", () => {
+    const commitPrompt = vi.fn();
+    const onSend = vi.fn();
+    renderComposer({ prompt: "", setPrompt: commitPrompt, onSend });
+    const textarea = container.querySelector<HTMLTextAreaElement>("textarea");
+    if (!textarea) throw new Error("composer textarea not rendered");
+
+    act(() => {
+      setTextareaValue(textarea, "刚刚输入的内容");
+    });
+
+    // The parent in this harness deliberately never feeds the new value back.
+    // Composer must still paint the keystroke immediately and submit that
+    // local value rather than waiting for the expensive App render to commit.
+    expect(textarea.value).toBe("刚刚输入的内容");
+    act(() => {
+      textarea.dispatchEvent(new KeyboardEvent("keydown", {
+        key: "Enter",
+        bubbles: true,
+        cancelable: true,
+      }));
+    });
+    expect(commitPrompt).toHaveBeenCalledWith("刚刚输入的内容");
+    expect(onSend).toHaveBeenCalledWith("刚刚输入的内容");
   });
 
   it("does not send when Enter confirms an active IME composition", async () => {

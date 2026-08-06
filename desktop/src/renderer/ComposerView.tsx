@@ -19,6 +19,7 @@ import {
   type Ref,
   type RefObject,
   type ReactNode,
+  startTransition,
   useContext,
   useEffect,
   useLayoutEffect,
@@ -115,8 +116,8 @@ export function Composer({
   mainConversation = false,
   topAccessory,
   containerRef,
-  prompt,
-  setPrompt,
+  prompt: committedPrompt,
+  setPrompt: commitPrompt,
   files,
   images,
   queuedMessages,
@@ -269,7 +270,7 @@ export function Composer({
   onEditGuideMessage: (id: string) => void;
   onSend: (promptOverride?: string) => void;
   onSteer?: (promptOverride?: string) => void;
-  onQueue?: () => void;
+  onQueue?: (promptOverride?: string) => void;
   onInterrupt: () => void;
   paused?: boolean;
   onResume?: () => void;
@@ -313,6 +314,21 @@ export function Composer({
   onResetSideThread?: () => void;
 }): JSX.Element {
   const { locale, t } = useI18n();
+  // Keep the controlled textarea on a small, synchronous state path. The
+  // canonical draft still lives above Composer, but updating it makes App
+  // recalculate the whole desktop shell. Marking that propagation as a
+  // transition lets React yield to subsequent keystrokes instead of putting
+  // the shell's render cost directly on the input event.
+  const [prompt, setLocalPrompt] = useState(committedPrompt);
+  const [lastCommittedPrompt, setLastCommittedPrompt] = useState(committedPrompt);
+  if (committedPrompt !== lastCommittedPrompt) {
+    setLastCommittedPrompt(committedPrompt);
+    setLocalPrompt(committedPrompt);
+  }
+  function setPrompt(value: string): void {
+    setLocalPrompt(value);
+    commitPrompt(value);
+  }
   const statusText = composerStatusText(status);
   const statusIsLiveProgress = composerStatusIsLiveProgress(statusLiveProgress);
   const className = `composer-wrap ${
@@ -584,7 +600,10 @@ export function Composer({
     focusComposerSoon();
   }
 
-  function submitComposerWith(onSubmit: () => void): void {
+  function submitComposerWith(
+    onSubmit: (promptOverride?: string) => void,
+    promptOverride = prompt,
+  ): void {
     resetQueryHistoryNavigation();
     const actionCommand = slashDraft
       ? exactActionSlashCommand(slashCommands, slashDraft)
@@ -593,7 +612,7 @@ export function Composer({
       applySlashCommand(actionCommand, slashDraft);
       return;
     }
-    onSubmit();
+    onSubmit(promptOverride);
     focusComposerSoon();
   }
 
@@ -617,7 +636,7 @@ export function Composer({
       const finalPrompt = await voiceInputRef.current?.stop();
       if (!finalPrompt?.trim()) return;
       const sendFinalPrompt = running && onSteer ? onSteer : onSend;
-      submitComposerWith(() => sendFinalPrompt(finalPrompt));
+      submitComposerWith(() => sendFinalPrompt(finalPrompt), finalPrompt);
     } finally {
       voiceSendPendingRef.current = false;
       setVoiceSendPending(false);
@@ -627,7 +646,9 @@ export function Composer({
   function updateVisiblePrompt(value: string): void {
     resetQueryHistoryNavigation();
     setSlashDismissedValue("");
-    setPrompt(hasCollapsedPromptBlocks ? `${collapsedPromptPrefix}${value}` : value);
+    const nextPrompt = hasCollapsedPromptBlocks ? `${collapsedPromptPrefix}${value}` : value;
+    setLocalPrompt(nextPrompt);
+    startTransition(() => commitPrompt(nextPrompt));
   }
 
   function handleComposerPaste(event: ReactClipboardEvent<HTMLTextAreaElement>): void {

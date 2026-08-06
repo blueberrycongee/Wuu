@@ -2628,7 +2628,7 @@ export function App(): JSX.Element {
         }
         onQueue={
           activeThreadIsRunning && activeThread
-            ? () => void sendPrompt("queue")
+            ? (promptOverride) => void sendPrompt("queue", promptOverride)
             : undefined
         }
         onInterrupt={() => void interrupt()}
