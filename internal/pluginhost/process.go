@@ -37,9 +37,11 @@ type ProcessConfig struct {
 	ProjectRoot string
 	WuuHome     string
 	Timeout     time.Duration
-	// SupportedHostServices must contain only services with a live dispatcher.
-	// An empty slice is intentional: protocol types alone do not make a host
-	// service available to plugins.
+	// HostServiceHandler is the live dispatcher for Plugin -> Host calls.
+	HostServiceHandler HostServiceHandler
+	// SupportedHostServices is an optional assertion about HostServiceHandler's
+	// declaration. When set it must match exactly; names alone never enable a
+	// service. The handler declaration is what is advertised on the wire.
 	SupportedHostServices []HostServiceMethod
 }
 
@@ -71,6 +73,7 @@ type ProcessClient struct {
 	tools        []ToolRegistration
 	protocol     int
 	capabilities []CapabilityDescriptor
+	negotiated   map[HostServiceMethod]struct{}
 	stderr       lockedBuffer
 	stopMu       sync.Mutex
 	stopped      bool
@@ -86,6 +89,11 @@ func Start(ctx context.Context, config ProcessConfig) (*ProcessClient, error) {
 	if config.Timeout <= 0 {
 		config.Timeout = 30 * time.Second
 	}
+	supported, err := configuredHostServices(config)
+	if err != nil {
+		return nil, fmt.Errorf("plugin %q host services: %w", config.ID, err)
+	}
+	config.SupportedHostServices = supported
 
 	cmd := exec.Command(config.Command, config.Args...)
 	cmd.Dir = config.PluginRoot
@@ -166,6 +174,7 @@ func Start(ctx context.Context, config ProcessConfig) (*ProcessClient, error) {
 		client.protocol = ProtocolVersion
 	}
 	client.capabilities = cloneCapabilityDescriptors(initialized.Capabilities)
+	client.negotiated = negotiatedHostServices(initialized.RequiredHostServices, config.SupportedHostServices)
 	client.status.StartedAt = time.Now().UTC()
 	client.mu.Unlock()
 	return client, nil
@@ -302,40 +311,31 @@ func (c *ProcessClient) call(ctx context.Context, method string, params, result 
 		return fmt.Errorf("write request: %w", err)
 	}
 
-	type readResult struct {
-		line []byte
-		err  error
-	}
-	readCh := make(chan readResult, 1)
-	go func() {
-		if c.scanner.Scan() {
-			line := c.scanner.Bytes()
-			// Copy the token: the scanner reuses its buffer across calls.
-			buf := make([]byte, len(line))
-			copy(buf, line)
-			readCh <- readResult{line: buf, err: nil}
-			return
+	for {
+		read, err := c.readLine(ctx)
+		if err != nil {
+			return err
 		}
-		readErr := c.scanner.Err()
-		if readErr == nil {
-			readErr = io.EOF
+		kind, call, response, err := decodePluginMessage(read)
+		if err != nil {
+			if call.ID != "" {
+				if writeErr := c.writeHostServiceResult(HostServiceResult{
+					ID: call.ID,
+					Error: &HostServiceError{
+						Code:    "invalid_request",
+						Message: err.Error(),
+					},
+				}); writeErr != nil {
+					return errors.Join(err, writeErr)
+				}
+			}
+			return err
 		}
-		if errors.Is(readErr, bufio.ErrTooLong) {
-			readErr = fmt.Errorf("plugin response line exceeds %d bytes", maxResponseLineSize)
-		}
-		readCh <- readResult{err: readErr}
-	}()
-	select {
-	case <-ctx.Done():
-		_ = c.stopProcess()
-		return ctx.Err()
-	case read := <-readCh:
-		if read.err != nil {
-			return fmt.Errorf("read response: %w%s", read.err, c.stderrSuffix())
-		}
-		var response rpcResponse
-		if err := json.Unmarshal(bytes.TrimSpace(read.line), &response); err != nil {
-			return fmt.Errorf("decode response: %w", err)
+		if kind == pluginMessageHostCall {
+			if err := c.dispatchHostService(ctx, call); err != nil {
+				return err
+			}
+			continue
 		}
 		if response.ID != id {
 			return fmt.Errorf("response id %q does not match request %q", response.ID, id)
@@ -354,6 +354,213 @@ func (c *ProcessClient) call(ctx context.Context, method string, params, result 
 		}
 		return nil
 	}
+}
+
+type pluginMessageKind int
+
+const (
+	pluginMessageResponse pluginMessageKind = iota
+	pluginMessageHostCall
+)
+
+func configuredHostServices(config ProcessConfig) ([]HostServiceMethod, error) {
+	if config.HostServiceHandler == nil {
+		if len(config.SupportedHostServices) != 0 {
+			return nil, errors.New("supported services require a live handler")
+		}
+		return nil, nil
+	}
+	declared := append([]HostServiceMethod(nil), config.HostServiceHandler.SupportedHostServices()...)
+	if err := validateHostServiceSet(declared); err != nil {
+		return nil, fmt.Errorf("handler declaration: %w", err)
+	}
+	if config.SupportedHostServices != nil {
+		if err := validateHostServiceSet(config.SupportedHostServices); err != nil {
+			return nil, fmt.Errorf("supported services assertion: %w", err)
+		}
+		if !sameHostServiceSet(declared, config.SupportedHostServices) {
+			return nil, errors.New("supported services do not match handler declaration")
+		}
+	}
+	return declared, nil
+}
+
+func validateHostServiceSet(services []HostServiceMethod) error {
+	seen := make(map[HostServiceMethod]struct{}, len(services))
+	for _, service := range services {
+		if err := ValidateHostServiceMethod(service); err != nil {
+			return err
+		}
+		if _, ok := seen[service]; ok {
+			return fmt.Errorf("duplicate host service %q", service)
+		}
+		seen[service] = struct{}{}
+	}
+	return nil
+}
+
+func sameHostServiceSet(left, right []HostServiceMethod) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	set := make(map[HostServiceMethod]struct{}, len(left))
+	for _, service := range left {
+		set[service] = struct{}{}
+	}
+	for _, service := range right {
+		if _, ok := set[service]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
+func negotiatedHostServices(required []HostServiceDescriptor, supported []HostServiceMethod) map[HostServiceMethod]struct{} {
+	available := make(map[HostServiceMethod]struct{}, len(supported))
+	for _, service := range supported {
+		available[service] = struct{}{}
+	}
+	negotiated := make(map[HostServiceMethod]struct{}, len(required))
+	for _, descriptor := range required {
+		service := HostServiceMethod(strings.TrimSpace(descriptor.ID))
+		if _, ok := available[service]; ok {
+			negotiated[service] = struct{}{}
+		}
+	}
+	return negotiated
+}
+
+func (c *ProcessClient) readLine(ctx context.Context) ([]byte, error) {
+	type readResult struct {
+		line []byte
+		err  error
+	}
+	readCh := make(chan readResult, 1)
+	go func() {
+		if c.scanner.Scan() {
+			readCh <- readResult{line: bytes.Clone(c.scanner.Bytes())}
+			return
+		}
+		err := c.scanner.Err()
+		if err == nil {
+			err = io.EOF
+		}
+		if errors.Is(err, bufio.ErrTooLong) {
+			err = fmt.Errorf("plugin response line exceeds %d bytes", maxResponseLineSize)
+		}
+		readCh <- readResult{err: err}
+	}()
+	select {
+	case <-ctx.Done():
+		_ = c.stopProcess()
+		return nil, ctx.Err()
+	case read := <-readCh:
+		if read.err != nil {
+			return nil, fmt.Errorf("read response: %w%s", read.err, c.stderrSuffix())
+		}
+		return read.line, nil
+	}
+}
+
+func decodePluginMessage(line []byte) (pluginMessageKind, HostServiceCall, rpcResponse, error) {
+	var envelope struct {
+		ID     json.RawMessage `json:"id"`
+		Method json.RawMessage `json:"method"`
+		Params json.RawMessage `json:"params"`
+		Result json.RawMessage `json:"result"`
+		Error  json.RawMessage `json:"error"`
+	}
+	if err := json.Unmarshal(bytes.TrimSpace(line), &envelope); err != nil {
+		return 0, HostServiceCall{}, rpcResponse{}, fmt.Errorf("decode plugin message: %w", err)
+	}
+	var id string
+	if len(envelope.ID) == 0 || json.Unmarshal(envelope.ID, &id) != nil || strings.TrimSpace(id) == "" {
+		return 0, HostServiceCall{}, rpcResponse{}, errors.New("plugin message id must be a non-empty string")
+	}
+	if len(envelope.Method) != 0 {
+		var method HostServiceMethod
+		if json.Unmarshal(envelope.Method, &method) != nil || strings.TrimSpace(string(method)) == "" {
+			return 0, HostServiceCall{ID: id}, rpcResponse{}, errors.New("host service method must be a non-empty string")
+		}
+		call := HostServiceCall{ID: id, Method: method}
+		params := bytes.TrimSpace(envelope.Params)
+		if len(params) == 0 || !json.Valid(params) || params[0] != '{' {
+			return 0, call, rpcResponse{}, errors.New("host service params must be a JSON object")
+		}
+		if len(envelope.Result) != 0 || len(envelope.Error) != 0 {
+			return 0, call, rpcResponse{}, errors.New("host service request cannot contain result or error")
+		}
+		call.Params = bytes.Clone(params)
+		return pluginMessageHostCall, call, rpcResponse{}, nil
+	}
+	if len(envelope.Params) != 0 {
+		return 0, HostServiceCall{}, rpcResponse{}, errors.New("plugin response cannot contain params")
+	}
+	if (len(envelope.Result) == 0) == (len(envelope.Error) == 0) {
+		return 0, HostServiceCall{}, rpcResponse{}, errors.New("plugin response must contain exactly one of result or error")
+	}
+	var response rpcResponse
+	if err := json.Unmarshal(line, &response); err != nil {
+		return 0, HostServiceCall{}, rpcResponse{}, fmt.Errorf("decode response: %w", err)
+	}
+	return pluginMessageResponse, HostServiceCall{}, response, nil
+}
+
+func (c *ProcessClient) dispatchHostService(ctx context.Context, call HostServiceCall) error {
+	if ValidateHostServiceMethod(call.Method) != nil {
+		return c.rejectHostService(call.ID, "method_not_found", fmt.Sprintf("unknown host service %q", call.Method))
+	}
+	c.mu.RLock()
+	_, negotiated := c.negotiated[call.Method]
+	c.mu.RUnlock()
+	if !negotiated {
+		return c.rejectHostService(call.ID, "service_not_negotiated", fmt.Sprintf("host service %q was not negotiated", call.Method))
+	}
+	result, err := c.config.HostServiceHandler.HandleHostService(ctx, call.Method, bytes.Clone(call.Params))
+	response := HostServiceResult{ID: call.ID}
+	if err != nil {
+		var serviceErr *HostServiceError
+		if errors.As(err, &serviceErr) && serviceErr != nil {
+			response.Error = &HostServiceError{Code: strings.TrimSpace(serviceErr.Code), Message: strings.TrimSpace(serviceErr.Message)}
+		} else {
+			response.Error = &HostServiceError{Code: "handler_error", Message: strings.TrimSpace(err.Error())}
+		}
+		if response.Error.Code == "" {
+			response.Error.Code = "handler_error"
+		}
+		if response.Error.Message == "" {
+			response.Error.Message = "host service handler failed"
+		}
+	} else {
+		if len(result) == 0 || !json.Valid(result) {
+			response.Error = &HostServiceError{Code: "invalid_handler_result", Message: "host service handler returned invalid JSON"}
+		} else {
+			response.Result = bytes.Clone(result)
+		}
+	}
+	return c.writeHostServiceResult(response)
+}
+
+func (c *ProcessClient) rejectHostService(id, code, message string) error {
+	if err := c.writeHostServiceResult(HostServiceResult{ID: id, Error: &HostServiceError{Code: code, Message: message}}); err != nil {
+		return err
+	}
+	return errors.New(message)
+}
+
+func (c *ProcessClient) writeHostServiceResult(response HostServiceResult) error {
+	payload, err := json.Marshal(response)
+	if err != nil {
+		return fmt.Errorf("encode host service result: %w", err)
+	}
+	if len(payload)+1 > maxResponseLineSize {
+		return fmt.Errorf("host service result line exceeds %d bytes", maxResponseLineSize)
+	}
+	payload = append(payload, '\n')
+	if _, err := c.stdin.Write(payload); err != nil {
+		return fmt.Errorf("write host service result: %w", err)
+	}
+	return nil
 }
 
 func (c *ProcessClient) stopProcess() error {

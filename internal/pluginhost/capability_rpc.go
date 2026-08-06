@@ -1,6 +1,7 @@
 package pluginhost
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -160,6 +161,22 @@ type HostServiceError struct {
 
 	// Message is a human-readable description.
 	Message string `json:"message"`
+}
+
+func (e *HostServiceError) Error() string {
+	if e == nil {
+		return ""
+	}
+	return e.Message
+}
+
+// HostServiceHandler dispatches the host services that are live for one
+// plugin process. SupportedHostServices is both the dispatcher's declaration
+// and the source of the services advertised during initialization.
+// HandleHostService must return promptly when ctx is canceled.
+type HostServiceHandler interface {
+	SupportedHostServices() []HostServiceMethod
+	HandleHostService(ctx context.Context, method HostServiceMethod, params json.RawMessage) (json.RawMessage, error)
 }
 
 // ---------------------------------------------------------------------------
