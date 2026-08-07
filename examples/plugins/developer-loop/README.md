@@ -8,6 +8,11 @@ knowing this plugin exists. It uses the React instance owned by the host; React 
 dependency nor part of the bundle. It reads all four setting kinds and restores its counter from
 plugin-namespaced storage.
 
+Its presenter registrations are deliberately layout-neutral: they observe versioned snapshots and
+retain the native fallback instead of replacing navigation, titlebars, messages, or status chrome.
+The example can therefore stay enabled while testing another appearance plugin without changing
+the product layout.
+
 Run the complete developer loop from this directory:
 
 ```sh

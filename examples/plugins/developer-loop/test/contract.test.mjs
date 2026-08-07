@@ -155,9 +155,9 @@ assert.deepEqual(
   [
     { target: "conversation.item", key: "assistant-message", mode: "wrap" },
     { target: "conversation.composer", key: undefined, mode: "wrap" },
-    { target: "navigation.primary", key: undefined, mode: "replace" },
+    { target: "navigation.primary", key: undefined, mode: "wrap" },
     { target: "content.preview", key: "text/markdown", mode: "wrap" },
-    { target: "app.status", key: undefined, mode: "replace" },
+    { target: "app.status", key: undefined, mode: "wrap" },
     { target: "header.conversation", key: undefined, mode: "wrap" },
   ],
 );
@@ -184,9 +184,9 @@ const itemOutput = renderPresenter("conversation.item", {
   status: "completed",
   text: "Accepted answer",
 }, "assistant-message");
-assert.equal(itemOutput.props["data-item-id"], "message-1");
-assert.equal(itemOutput.props["data-item-status"], "completed");
-assert.equal(itemOutput.children[1], fallback);
+assert.equal(itemOutput.children[0], fallback);
+assert.equal(itemOutput.children[1].props["data-item-id"], "message-1");
+assert.equal(itemOutput.children[1].props["data-item-status"], "completed");
 
 const composerOutput = renderPresenter("conversation.composer", {
   contractVersion: 1,
@@ -195,17 +195,16 @@ const composerOutput = renderPresenter("conversation.composer", {
   activeSubmissionMode: "send",
   running: false,
 });
-assert.equal(composerOutput.props["data-thread-id"], "thread-1");
 assert.equal(composerOutput.children[0], fallback);
-await composerOutput.children[1].props.onClick();
+assert.equal(composerOutput.children[1].props["data-thread-id"], "thread-1");
 
 const navigationOutput = renderPresenter("navigation.primary", {
   contractVersion: 1,
   activeNodeId: "thread-1",
   nodes: [{ id: "thread-1", kind: "thread", label: "Acceptance thread", active: true }],
 });
-assert.equal(navigationOutput.props["data-node-count"], "1");
-await navigationOutput.children[0].props.onClick();
+assert.equal(navigationOutput.children[0], fallback);
+assert.equal(navigationOutput.children[1].props["data-node-count"], "1");
 
 const previewOutput = renderPresenter("content.preview", {
   contractVersion: 1,
@@ -215,15 +214,15 @@ const previewOutput = renderPresenter("content.preview", {
   text: "# Accepted",
   readOnly: true,
 }, "text/markdown");
-assert.equal(previewOutput.props["data-content-type"], "text/markdown");
-assert.equal(previewOutput.children[2], fallback);
+assert.equal(previewOutput.children[0], fallback);
+assert.equal(previewOutput.children[1].props["data-content-type"], "text/markdown");
 
 const statusOutput = renderPresenter("app.status", {
   contractVersion: 1,
   items: [{ id: "ready", label: "Ready", kind: "success", actionId: "open" }],
 });
-assert.equal(statusOutput.children[0].props["data-status-kind"], "success");
-await statusOutput.children[0].props.onClick();
+assert.equal(statusOutput.children[0], fallback);
+assert.equal(statusOutput.children[1].props["data-status-count"], "1");
 
 const headerOutput = renderPresenter("header.conversation", {
   contractVersion: 1,
@@ -231,8 +230,11 @@ const headerOutput = renderPresenter("header.conversation", {
   title: "Acceptance conversation",
   activeTabId: "tab-1",
 });
-assert.equal(headerOutput.props["data-active-tab"], "tab-1");
-assert.equal(headerOutput.children[1], fallback);
+assert.equal(headerOutput.children[0], fallback);
+assert.equal(headerOutput.children[1].props["data-active-tab"], "tab-1");
+await renderer.invokePresentationAction(presentationHost, "conversation.composer.submit");
+await renderer.invokePresentationAction(presentationHost, "navigation.activate-node", { id: "thread-1" });
+await renderer.invokePresentationAction(presentationHost, "status.activate-item", { id: "ready" });
 assert.deepEqual(invokedActions, [
   ["conversation.composer.submit", undefined],
   ["navigation.activate-node", { id: "thread-1" }],

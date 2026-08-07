@@ -46,71 +46,38 @@ function registerAcceptancePresenters(api: PluginGenerationApi): void {
     mode: "wrap",
     render({ snapshot, fallback }) {
       const item = snapshot as ConversationItemSnapshotV1;
-      return api.react.createElement(
-        "article",
-        {
+      return observedFallback(api, fallback, {
           "data-developer-loop-presenter": "conversation-item",
           "data-item-id": item.id,
           "data-item-kind": item.kind,
           "data-item-status": item.status ?? "unknown",
-        },
-        api.react.createElement("p", null, item.text ?? item.content?.[0]?.text ?? "Empty assistant message"),
-        fallback,
-      );
+      });
     },
   });
   api.registerPresenter({
     id: "composer",
     target: "conversation.composer",
     mode: "wrap",
-    render({ snapshot, host, fallback }) {
+    render({ snapshot, fallback }) {
       const composer = snapshot as ComposerSnapshotV1;
-      return api.react.createElement(
-        "section",
-        {
+      return observedFallback(api, fallback, {
           "data-developer-loop-presenter": "composer",
           "data-thread-id": composer.threadId ?? "none",
           "data-submission-mode": composer.activeSubmissionMode ?? "send",
-        },
-        fallback,
-        api.react.createElement(
-          "button",
-          {
-            type: "button",
-            "data-composer-submit": "",
-            disabled: composer.readOnly === true || composer.running === true,
-            onClick: () => invokePresentationAction(host, "conversation.composer.submit"),
-          },
-          composer.running ? "Running" : "Submit",
-        ),
-      );
+      });
     },
   });
   api.registerPresenter({
     id: "primary-navigation",
     target: "navigation.primary",
-    mode: "replace",
-    render({ snapshot, host }) {
+    mode: "wrap",
+    render({ snapshot, fallback }) {
       const navigation = snapshot as NavigationSnapshotV1;
-      return api.react.createElement(
-        "nav",
-        {
+      return observedFallback(api, fallback, {
           "data-developer-loop-presenter": "navigation",
           "data-active-node": navigation.activeNodeId ?? "none",
           "data-node-count": String(navigation.nodes.length),
-        },
-        ...navigation.nodes.map((node) => api.react.createElement(
-          "button",
-          {
-            type: "button",
-            key: node.id,
-            "data-navigation-node": node.id,
-            disabled: node.disabled === true,
-            onClick: () => invokePresentationAction(host, "navigation.activate-node", { id: node.id }),
-          },
-          node.label,
-        )),
-      );
+      });
     },
   });
   api.registerPresenter({
@@ -120,42 +87,24 @@ function registerAcceptancePresenters(api: PluginGenerationApi): void {
     mode: "wrap",
     render({ snapshot, fallback }) {
       const preview = snapshot as FilePreviewSnapshotV1;
-      return api.react.createElement(
-        "section",
-        {
+      return observedFallback(api, fallback, {
           "data-developer-loop-presenter": "content-preview",
           "data-resource-id": preview.resourceId,
           "data-content-type": preview.contentType ?? "unknown",
           "data-read-only": String(preview.readOnly === true),
-        },
-        api.react.createElement("code", null, preview.workspaceRelativePath),
-        api.react.createElement("pre", null, preview.text ?? ""),
-        fallback,
-      );
+      });
     },
   });
   api.registerPresenter({
     id: "application-status",
     target: "app.status",
-    mode: "replace",
-    render({ snapshot, host }) {
+    mode: "wrap",
+    render({ snapshot, fallback }) {
       const status = snapshot as StatusSnapshotV1;
-      return api.react.createElement(
-        "aside",
-        { "data-developer-loop-presenter": "app-status", "data-status-count": String(status.items.length) },
-        ...status.items.map((item) => api.react.createElement(
-          "button",
-          {
-            type: "button",
-            key: item.id,
-            "data-status-item": item.id,
-            "data-status-kind": item.kind ?? "info",
-            disabled: item.disabled === true,
-            onClick: () => invokePresentationAction(host, "status.activate-item", { id: item.id }),
-          },
-          item.label,
-        )),
-      );
+      return observedFallback(api, fallback, {
+        "data-developer-loop-presenter": "app-status",
+        "data-status-count": String(status.items.length),
+      });
     },
   });
   api.registerPresenter({
@@ -164,18 +113,26 @@ function registerAcceptancePresenters(api: PluginGenerationApi): void {
     mode: "wrap",
     render({ snapshot, fallback }) {
       const header = snapshot as HeaderSnapshotV1;
-      return api.react.createElement(
-        "header",
-        {
+      return observedFallback(api, fallback, {
           "data-developer-loop-presenter": "conversation-header",
           "data-header-scope": header.scope,
           "data-active-tab": header.activeTabId ?? "none",
-        },
-        api.react.createElement("strong", null, header.title ?? "Conversation"),
-        fallback,
-      );
+      });
     },
   });
+}
+
+function observedFallback(
+  api: PluginGenerationApi,
+  fallback: unknown,
+  attributes: Readonly<Record<string, string>>,
+): unknown {
+  return api.react.createElement(
+    api.react.Fragment as (props: Readonly<Record<string, unknown>>) => unknown,
+    null,
+    fallback,
+    api.react.createElement("span", { ...attributes, hidden: true, "aria-hidden": true }),
+  );
 }
 
 function acceptanceView(api: PluginGenerationApi, props: Readonly<Record<string, unknown>>): unknown {
