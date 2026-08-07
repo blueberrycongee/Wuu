@@ -1,6 +1,8 @@
-// Package pluginapi implements the public JSON-lines runtime used by Wuu
-// plugin helper processes. It intentionally contains no imports from Wuu's
-// internal Agent, app-server, or Desktop implementations.
+// Package pluginapi implements the public multiplexed JSON-lines runtime used
+// by Wuu plugin helper processes. Host requests and plugin-initiated host
+// service calls share one full-duplex channel and may be in flight at the same
+// time. The package intentionally contains no imports from Wuu's internal
+// Agent, app-server, or Desktop implementations.
 package pluginapi
 
 import (
@@ -12,6 +14,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"sync"
 	"sync/atomic"
 )
 
@@ -113,13 +116,24 @@ type Handler struct {
 }
 
 type Client struct {
-	scanner *bufio.Scanner
-	output  io.Writer
-	seq     atomic.Uint64
-	init    InitializeParams
+	output    io.Writer
+	seq       atomic.Uint64
+	initMu    sync.RWMutex
+	init      InitializeParams
+	writeMu   sync.Mutex
+	pendingMu sync.Mutex
+	pending   map[string]chan rpcResponse
+	done      chan struct{}
+	doneOnce  sync.Once
+	errMu     sync.Mutex
+	readErr   error
 }
 
-func (c *Client) InitializeParams() InitializeParams { return c.init }
+func (c *Client) InitializeParams() InitializeParams {
+	c.initMu.RLock()
+	defer c.initMu.RUnlock()
+	return c.init
+}
 
 func (c *Client) CallHost(ctx context.Context, method string, params, result any) error {
 	if err := ctx.Err(); err != nil {
@@ -130,32 +144,77 @@ func (c *Client) CallHost(ctx context.Context, method string, params, result any
 	if err != nil {
 		return err
 	}
-	if err := writeJSONLine(c.output, rpcRequest{ID: id, Method: strings.TrimSpace(method), Params: rawParams}); err != nil {
+	responseCh := make(chan rpcResponse, 1)
+	c.pendingMu.Lock()
+	c.pending[id] = responseCh
+	c.pendingMu.Unlock()
+	defer c.removePending(id)
+	if err := c.write(rpcRequest{ID: id, Method: strings.TrimSpace(method), Params: rawParams}); err != nil {
 		return err
 	}
-	if !c.scanner.Scan() {
-		if err := c.scanner.Err(); err != nil {
-			return err
+	select {
+	case response := <-responseCh:
+		if response.Error != nil {
+			return errors.New(strings.TrimSpace(response.Error.Message))
 		}
+		if result == nil {
+			return nil
+		}
+		if len(response.Result) == 0 {
+			return errors.New("host service response is missing result")
+		}
+		return json.Unmarshal(response.Result, result)
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-c.done:
+		return c.transportError()
+	}
+}
+
+func newClient(output io.Writer) *Client {
+	return &Client{output: output, pending: make(map[string]chan rpcResponse), done: make(chan struct{})}
+}
+
+func (c *Client) write(value any) error {
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
+	return writeJSONLine(c.output, value)
+}
+
+func (c *Client) removePending(id string) {
+	c.pendingMu.Lock()
+	delete(c.pending, id)
+	c.pendingMu.Unlock()
+}
+
+func (c *Client) routeResponse(response rpcResponse) {
+	c.pendingMu.Lock()
+	responseCh := c.pending[response.ID]
+	c.pendingMu.Unlock()
+	if responseCh != nil {
+		responseCh <- response
+	}
+}
+
+func (c *Client) closeTransport(err error) {
+	c.errMu.Lock()
+	if c.readErr == nil {
+		if err == nil {
+			err = io.EOF
+		}
+		c.readErr = err
+	}
+	c.errMu.Unlock()
+	c.doneOnce.Do(func() { close(c.done) })
+}
+
+func (c *Client) transportError() error {
+	c.errMu.Lock()
+	defer c.errMu.Unlock()
+	if c.readErr == nil {
 		return io.EOF
 	}
-	var response rpcResponse
-	if err := json.Unmarshal(c.scanner.Bytes(), &response); err != nil {
-		return fmt.Errorf("decode host service response: %w", err)
-	}
-	if response.ID != id {
-		return fmt.Errorf("host service response id %q does not match %q", response.ID, id)
-	}
-	if response.Error != nil {
-		return errors.New(strings.TrimSpace(response.Error.Message))
-	}
-	if result == nil {
-		return nil
-	}
-	if len(response.Result) == 0 {
-		return errors.New("host service response is missing result")
-	}
-	return json.Unmarshal(response.Result, result)
+	return c.readErr
 }
 
 type rpcRequest struct {
@@ -182,28 +241,98 @@ func Serve(ctx context.Context, handler Handler) error {
 func ServeIO(ctx context.Context, input io.Reader, output io.Writer, handler Handler) error {
 	scanner := bufio.NewScanner(input)
 	scanner.Buffer(make([]byte, 64*1024), 4<<20)
-	client := &Client{scanner: scanner, output: output}
+	client := newClient(output)
+	requests := make(chan rpcRequest)
+	workerDone := make(chan error, 1)
+	go func() {
+		for request := range requests {
+			result, stop, err := dispatch(ctx, client, handler, request)
+			response := rpcResponse{ID: request.ID, Result: result}
+			if err != nil {
+				response = rpcResponse{ID: request.ID, Error: &rpcError{Message: err.Error()}}
+			}
+			if writeErr := client.write(response); writeErr != nil {
+				workerDone <- writeErr
+				return
+			}
+			if stop {
+				workerDone <- nil
+				return
+			}
+		}
+		workerDone <- nil
+	}()
+
 	for scanner.Scan() {
 		if err := ctx.Err(); err != nil {
+			client.closeTransport(err)
+			close(requests)
 			return err
 		}
-		var request rpcRequest
-		if err := json.Unmarshal(scanner.Bytes(), &request); err != nil {
-			return fmt.Errorf("decode host request: %w", err)
-		}
-		result, stop, err := dispatch(ctx, client, handler, request)
+		kind, request, response, err := decodeMessage(scanner.Bytes())
 		if err != nil {
-			if writeErr := writeJSONLine(output, rpcResponse{ID: request.ID, Error: &rpcError{Message: err.Error()}}); writeErr != nil {
-				return writeErr
-			}
-		} else if err := writeJSONLine(output, rpcResponse{ID: request.ID, Result: result}); err != nil {
+			client.closeTransport(err)
+			close(requests)
 			return err
 		}
-		if stop {
-			return nil
+		if kind == messageResponse {
+			client.routeResponse(response)
+			continue
+		}
+		select {
+		case requests <- request:
+		case err := <-workerDone:
+			client.closeTransport(err)
+			return err
+		case <-ctx.Done():
+			client.closeTransport(ctx.Err())
+			return ctx.Err()
 		}
 	}
-	return scanner.Err()
+	readErr := scanner.Err()
+	client.closeTransport(readErr)
+	close(requests)
+	workerErr := <-workerDone
+	if readErr != nil {
+		return readErr
+	}
+	return workerErr
+}
+
+type messageKind int
+
+const (
+	messageRequest messageKind = iota
+	messageResponse
+)
+
+func decodeMessage(line []byte) (messageKind, rpcRequest, rpcResponse, error) {
+	var envelope struct {
+		ID     string          `json:"id"`
+		Method string          `json:"method"`
+		Params json.RawMessage `json:"params"`
+		Result json.RawMessage `json:"result"`
+		Error  *rpcError       `json:"error"`
+	}
+	if err := json.Unmarshal(line, &envelope); err != nil {
+		return 0, rpcRequest{}, rpcResponse{}, fmt.Errorf("decode runtime message: %w", err)
+	}
+	if strings.TrimSpace(envelope.ID) == "" {
+		return 0, rpcRequest{}, rpcResponse{}, errors.New("runtime message id is required")
+	}
+	if strings.TrimSpace(envelope.Method) != "" {
+		if len(envelope.Result) != 0 || envelope.Error != nil {
+			return 0, rpcRequest{}, rpcResponse{}, errors.New("host request cannot contain result or error")
+		}
+		return messageRequest, rpcRequest{ID: envelope.ID, Method: envelope.Method, Params: envelope.Params}, rpcResponse{}, nil
+	}
+	if len(envelope.Params) != 0 {
+		return 0, rpcRequest{}, rpcResponse{}, errors.New("host response cannot contain params")
+	}
+	if (len(envelope.Result) == 0) == (envelope.Error == nil) {
+		return 0, rpcRequest{}, rpcResponse{}, errors.New("host response must contain exactly one of result or error")
+	}
+	return messageResponse, rpcRequest{}, rpcResponse{ID: envelope.ID, Result: envelope.Result, Error: envelope.Error}, nil
 }
 
 func dispatch(ctx context.Context, client *Client, handler Handler, request rpcRequest) (json.RawMessage, bool, error) {
@@ -213,7 +342,9 @@ func dispatch(ctx context.Context, client *Client, handler Handler, request rpcR
 		if err := json.Unmarshal(request.Params, &params); err != nil {
 			return nil, false, err
 		}
+		client.initMu.Lock()
 		client.init = params
+		client.initMu.Unlock()
 		if handler.Initialize != nil {
 			if err := handler.Initialize(ctx, client, params); err != nil {
 				return nil, false, err

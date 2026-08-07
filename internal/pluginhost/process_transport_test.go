@@ -52,6 +52,36 @@ func TestProcessHostServiceTransport(t *testing.T) {
 		}
 	})
 
+	t.Run("background call succeeds after invocation returns", func(t *testing.T) {
+		called := make(chan struct{})
+		handler := testHostServiceHandler{
+			services: []HostServiceMethod{HostServiceStorageGet},
+			handle: func(_ context.Context, method HostServiceMethod, params json.RawMessage) (json.RawMessage, error) {
+				if method != HostServiceStorageGet {
+					t.Fatalf("call = %s %s", method, params)
+				}
+				if string(params) == `{"key":"color"}` {
+					return json.RawMessage(`{"value":"blue"}`), nil
+				}
+				if string(params) != `{"key":"background"}` {
+					t.Fatalf("params = %s", params)
+				}
+				close(called)
+				return json.RawMessage(`{"value":"awake"}`), nil
+			},
+		}
+		client := startTransportClient(t, "background", 2*time.Second, handler)
+		defer client.Close(context.Background())
+		if _, err := client.Invoke(context.Background(), InvokeParams{Hook: HookChatMessage, Input: json.RawMessage(`{}`), Output: json.RawMessage(`{}`)}); err != nil {
+			t.Fatal(err)
+		}
+		select {
+		case <-called:
+		case <-time.After(time.Second):
+			t.Fatal("plugin did not call host after invocation returned")
+		}
+	})
+
 	t.Run("handler error is returned to plugin", func(t *testing.T) {
 		handler := testHostServiceHandler{
 			services: []HostServiceMethod{HostServiceStorageGet},
@@ -238,6 +268,24 @@ func runHostServiceTransportHelper(scenario string) {
 	switch scenario {
 	case "success":
 		_ = enc.Encode(rpcResponse{ID: invoke.ID, Result: mustRaw(InvokeResult{Output: hostResult.Result})})
+	case "background":
+		_ = enc.Encode(rpcResponse{ID: invoke.ID, Result: mustRaw(InvokeResult{Output: json.RawMessage(`{}`)})})
+		_ = enc.Encode(HostServiceCall{ID: "background-1", Method: HostServiceStorageGet, Params: json.RawMessage(`{"key":"background"}`)})
+		if !scanner.Scan() {
+			os.Exit(12)
+		}
+		var backgroundResult HostServiceResult
+		if json.Unmarshal(scanner.Bytes(), &backgroundResult) != nil || backgroundResult.ID != "background-1" || string(backgroundResult.Result) != `{"value":"awake"}` {
+			os.Exit(13)
+		}
+		if !scanner.Scan() {
+			os.Exit(14)
+		}
+		var shutdown rpcRequest
+		if json.Unmarshal(scanner.Bytes(), &shutdown) != nil || shutdown.Method != "shutdown" {
+			os.Exit(15)
+		}
+		_ = enc.Encode(rpcResponse{ID: shutdown.ID, Result: json.RawMessage(`{}`)})
 	case "handler-error":
 		_ = enc.Encode(rpcResponse{ID: invoke.ID, Result: mustRaw(InvokeResult{Output: mustRaw(map[string]string{"code": hostResult.Error.Code})})})
 	case "undeclared":

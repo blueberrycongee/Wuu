@@ -62,23 +62,30 @@ type rpcError struct {
 }
 
 type ProcessClient struct {
-	config       ProcessConfig
-	cmd          *exec.Cmd
-	stdin        io.WriteCloser
-	scanner      *bufio.Scanner
-	seq          atomic.Uint64
-	callGate     chan struct{}
-	mu           sync.RWMutex
-	status       Status
-	tools        []ToolRegistration
-	protocol     int
-	capabilities []CapabilityDescriptor
-	negotiated   map[HostServiceMethod]struct{}
-	stderr       lockedBuffer
-	stopMu       sync.Mutex
-	stopped      bool
-	stopErr      error
-	serviceClose sync.Once
+	config        ProcessConfig
+	cmd           *exec.Cmd
+	stdin         io.WriteCloser
+	scanner       *bufio.Scanner
+	seq           atomic.Uint64
+	writeMu       sync.Mutex
+	pendingMu     sync.Mutex
+	pending       map[string]chan rpcResponse
+	readerDone    chan struct{}
+	readerErrMu   sync.Mutex
+	readerErr     error
+	processCtx    context.Context
+	processCancel context.CancelFunc
+	mu            sync.RWMutex
+	status        Status
+	tools         []ToolRegistration
+	protocol      int
+	capabilities  []CapabilityDescriptor
+	negotiated    map[HostServiceMethod]struct{}
+	stderr        lockedBuffer
+	stopMu        sync.Mutex
+	stopped       bool
+	stopErr       error
+	serviceClose  sync.Once
 }
 
 func Start(ctx context.Context, config ProcessConfig) (*ProcessClient, error) {
@@ -108,12 +115,14 @@ func Start(ctx context.Context, config ProcessConfig) (*ProcessClient, error) {
 		return nil, fmt.Errorf("plugin %q stdin: %w", config.ID, err)
 	}
 	client := &ProcessClient{
-		config:   config,
-		cmd:      cmd,
-		stdin:    stdin,
-		status:   Status{ID: config.ID, State: StateStarting},
-		callGate: make(chan struct{}, 1),
+		config:     config,
+		cmd:        cmd,
+		stdin:      stdin,
+		status:     Status{ID: config.ID, State: StateStarting},
+		pending:    make(map[string]chan rpcResponse),
+		readerDone: make(chan struct{}),
 	}
+	client.processCtx, client.processCancel = context.WithCancel(context.Background())
 	scanner := bufio.NewScanner(stdout)
 	scanner.Buffer(make([]byte, 0, 4096), maxResponseLineSize)
 	client.scanner = scanner
@@ -121,6 +130,7 @@ func Start(ctx context.Context, config ProcessConfig) (*ProcessClient, error) {
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("start plugin %q: %w", config.ID, err)
 	}
+	go client.readLoop()
 
 	initCtx, cancel := context.WithTimeout(ctx, config.Timeout)
 	defer cancel()
@@ -284,15 +294,6 @@ func (c *ProcessClient) call(ctx context.Context, method string, params, result 
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	select {
-	case c.callGate <- struct{}{}:
-		defer func() { <-c.callGate }()
-	case <-ctx.Done():
-		return ctx.Err()
-	}
-	if err := ctx.Err(); err != nil {
-		return err
-	}
 	c.stopMu.Lock()
 	stopped := c.stopped
 	c.stopMu.Unlock()
@@ -307,40 +308,17 @@ func (c *ProcessClient) call(ctx context.Context, method string, params, result 
 	if err != nil {
 		return err
 	}
-	payload = append(payload, '\n')
-	if _, err := c.stdin.Write(payload); err != nil {
+	responseCh := make(chan rpcResponse, 1)
+	c.pendingMu.Lock()
+	c.pending[id] = responseCh
+	c.pendingMu.Unlock()
+	defer c.removePending(id)
+	if err := c.writeLine(payload); err != nil {
 		return fmt.Errorf("write request: %w", err)
 	}
 
-	for {
-		read, err := c.readLine(ctx)
-		if err != nil {
-			return err
-		}
-		kind, call, response, err := decodePluginMessage(read)
-		if err != nil {
-			if call.ID != "" {
-				if writeErr := c.writeHostServiceResult(HostServiceResult{
-					ID: call.ID,
-					Error: &HostServiceError{
-						Code:    "invalid_request",
-						Message: err.Error(),
-					},
-				}); writeErr != nil {
-					return errors.Join(err, writeErr)
-				}
-			}
-			return err
-		}
-		if kind == pluginMessageHostCall {
-			if err := c.dispatchHostService(ctx, call); err != nil {
-				return err
-			}
-			continue
-		}
-		if response.ID != id {
-			return fmt.Errorf("response id %q does not match request %q", response.ID, id)
-		}
+	select {
+	case response := <-responseCh:
 		if response.Error != nil {
 			return errors.New(strings.TrimSpace(response.Error.Message))
 		}
@@ -354,7 +332,89 @@ func (c *ProcessClient) call(ctx context.Context, method string, params, result 
 			return fmt.Errorf("decode result: %w", err)
 		}
 		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-c.readerDone:
+		return c.readFailure()
 	}
+}
+
+func (c *ProcessClient) readLoop() {
+	defer close(c.readerDone)
+	for c.scanner.Scan() {
+		line := bytes.Clone(c.scanner.Bytes())
+		kind, call, response, err := decodePluginMessage(line)
+		if err != nil {
+			if call.ID != "" {
+				err = errors.Join(err, c.writeHostServiceResult(HostServiceResult{
+					ID:    call.ID,
+					Error: &HostServiceError{Code: "invalid_request", Message: err.Error()},
+				}))
+			}
+			c.setReadFailure(err)
+			return
+		}
+		if kind == pluginMessageHostCall {
+			go func() {
+				if err := c.dispatchHostService(c.processCtx, call); err != nil {
+					c.setReadFailure(err)
+					_ = c.stopProcess()
+				}
+			}()
+			continue
+		}
+		c.pendingMu.Lock()
+		responseCh := c.pending[response.ID]
+		c.pendingMu.Unlock()
+		if responseCh != nil {
+			responseCh <- response
+		}
+	}
+	err := c.scanner.Err()
+	if err == nil {
+		err = io.EOF
+	}
+	if errors.Is(err, bufio.ErrTooLong) {
+		err = fmt.Errorf("plugin response line exceeds %d bytes", maxResponseLineSize)
+	}
+	c.setReadFailure(fmt.Errorf("read response: %w%s", err, c.stderrSuffix()))
+}
+
+func (c *ProcessClient) removePending(id string) {
+	c.pendingMu.Lock()
+	delete(c.pending, id)
+	c.pendingMu.Unlock()
+}
+
+func (c *ProcessClient) setReadFailure(err error) {
+	if err == nil {
+		return
+	}
+	c.readerErrMu.Lock()
+	if c.readerErr == nil {
+		c.readerErr = err
+	}
+	c.readerErrMu.Unlock()
+}
+
+func (c *ProcessClient) readFailure() error {
+	c.readerErrMu.Lock()
+	err := c.readerErr
+	c.readerErrMu.Unlock()
+	if err == nil {
+		return errors.New("plugin process transport closed")
+	}
+	return err
+}
+
+func (c *ProcessClient) writeLine(payload []byte) error {
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
+	payload = append(payload, '\n')
+	if _, err := c.stdin.Write(payload); err != nil {
+		return err
+	}
+	return nil
 }
 
 type pluginMessageKind int
@@ -429,38 +489,6 @@ func negotiatedHostServices(required []HostServiceDescriptor, supported []HostSe
 		}
 	}
 	return negotiated
-}
-
-func (c *ProcessClient) readLine(ctx context.Context) ([]byte, error) {
-	type readResult struct {
-		line []byte
-		err  error
-	}
-	readCh := make(chan readResult, 1)
-	go func() {
-		if c.scanner.Scan() {
-			readCh <- readResult{line: bytes.Clone(c.scanner.Bytes())}
-			return
-		}
-		err := c.scanner.Err()
-		if err == nil {
-			err = io.EOF
-		}
-		if errors.Is(err, bufio.ErrTooLong) {
-			err = fmt.Errorf("plugin response line exceeds %d bytes", maxResponseLineSize)
-		}
-		readCh <- readResult{err: err}
-	}()
-	select {
-	case <-ctx.Done():
-		_ = c.stopProcess()
-		return nil, ctx.Err()
-	case read := <-readCh:
-		if read.err != nil {
-			return nil, fmt.Errorf("read response: %w%s", read.err, c.stderrSuffix())
-		}
-		return read.line, nil
-	}
 }
 
 func decodePluginMessage(line []byte) (pluginMessageKind, HostServiceCall, rpcResponse, error) {
@@ -557,8 +585,7 @@ func (c *ProcessClient) writeHostServiceResult(response HostServiceResult) error
 	if len(payload)+1 > maxResponseLineSize {
 		return fmt.Errorf("host service result line exceeds %d bytes", maxResponseLineSize)
 	}
-	payload = append(payload, '\n')
-	if _, err := c.stdin.Write(payload); err != nil {
+	if err := c.writeLine(payload); err != nil {
 		return fmt.Errorf("write host service result: %w", err)
 	}
 	return nil
@@ -579,6 +606,9 @@ func (c *ProcessClient) stopProcess() error {
 		return c.stopErr
 	}
 	c.stopped = true
+	if c.processCancel != nil {
+		c.processCancel()
+	}
 	if c.cmd == nil || c.cmd.Process == nil {
 		return nil
 	}
