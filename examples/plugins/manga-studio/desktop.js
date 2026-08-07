@@ -370,6 +370,16 @@ export function activate(api) {
         border: 18px double rgb(23 19 15 / .09);
         border-radius: 50%;
       }
+      .manga-conversation .conversation-width,
+      .manga-conversation .turn,
+      .manga-conversation .assistant-turn-shell {
+        width: 100%;
+        min-width: 0;
+      }
+      .manga-conversation .conversation-width > .turn,
+      .manga-conversation .turn {
+        grid-column: 1 / -1 !important;
+      }
       .manga-launch::before { background: var(--manga-yellow); color: var(--manga-ink); }
       .manga-settings::before { background: var(--manga-cyan); color: var(--manga-ink); }
       .manga-catalog::before { background: var(--manga-pink); }
@@ -418,7 +428,10 @@ export function activate(api) {
 
       .manga-native-message {
         position: relative;
+        flex: 0 0 auto;
         width: min(88%, 820px);
+        max-width: 100%;
+        min-width: 0;
         margin: 12px 0;
         padding: 24px 22px 16px;
         color: var(--manga-ink);
@@ -472,6 +485,8 @@ export function activate(api) {
 
       .manga-native-process {
         position: relative;
+        width: 100%;
+        min-width: 0;
         margin: 14px 0;
         border: 3px solid var(--manga-ink);
         background: repeating-linear-gradient(-45deg, var(--manga-paper) 0 9px, #f7f1df 9px 11px);
@@ -529,6 +544,21 @@ export function activate(api) {
         color: var(--manga-paper);
         background: var(--manga-ink);
         border-bottom: 4px solid var(--manga-pink);
+      }
+      .manga-shell [data-wuu-component="conversation-pane"] > header {
+        color: var(--manga-paper);
+        background: var(--manga-ink);
+        border-bottom: 4px solid var(--manga-pink);
+      }
+      .manga-shell [data-wuu-component="conversation-pane"] > header button {
+        color: var(--manga-paper);
+        background: #332d26;
+        border: 1px solid var(--manga-paper) !important;
+        box-shadow: 2px 2px 0 var(--manga-pink);
+      }
+      .manga-shell [data-wuu-component="conversation-pane"] > header button:disabled {
+        opacity: .42;
+        box-shadow: none;
       }
       .manga-native-tabs { display: flex; min-width: 0; flex: 1; gap: 5px; overflow-x: auto; }
       .manga-native-tab { display: flex; background: #332d26; border: 1px solid var(--manga-paper); }
