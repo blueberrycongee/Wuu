@@ -314,6 +314,10 @@ describe("SkillsCatalog", () => {
       );
     });
 
+    expect(buttonsByText("移除")).toHaveLength(0);
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>('[aria-label="community-tools 的更多操作"]')?.click();
+    });
     expect(buttonsByText("移除")).toHaveLength(1);
     await act(async () => {
       buttonByText("移除")?.click();
@@ -374,6 +378,9 @@ describe("SkillsCatalog", () => {
       action: "promote_update",
     });
 
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>('[aria-label="update-demo 的更多操作"]')?.click();
+    });
     await act(async () => {
       buttonByText("拒绝更新")?.click();
     });

@@ -1597,6 +1597,7 @@ export const enUS = {
   "skills.pluginUpdating": "Updating…",
   "skills.pluginUpdateFailed": "Could not update plugin state",
   "skills.pluginRemove": "Remove",
+  "skills.pluginMoreActions": "More actions for {name}",
   "skills.pluginRemoving": "Removing…",
   "skills.pluginRemoveConfirm": "Remove the user plugin {name}? Its installed files will be deleted from Wuu.",
   "skills.pluginRemoveFailed": "Could not remove the plugin",

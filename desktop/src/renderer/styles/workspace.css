@@ -2788,23 +2788,37 @@ html.resizing-workspace-terminal-split * {
   min-height: 112px;
   grid-template-columns: 36px minmax(0, 1fr) auto;
   align-items: start;
-  padding-block: 14px;
+  column-gap: 14px;
+  border-bottom: 1px solid var(--skills-section-border);
+  padding: 16px 12px;
+}
+
+.extension-package-row:last-child {
+  border-bottom: 0;
 }
 
 .extension-package-actions {
-  display: grid;
-  min-width: 116px;
-  justify-items: stretch;
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: flex-end;
   gap: 6px;
 }
 
 .extension-package-actions button {
-  min-height: 30px;
+  min-height: 32px;
   white-space: nowrap;
 }
 
-.extension-package-remove {
-  color: var(--danger);
+.extension-package-primary-action {
+  min-width: 84px;
+}
+
+.extension-package-more {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 auto;
+  border-radius: var(--radius-sm);
 }
 
 .extension-package-meta,
@@ -3291,9 +3305,9 @@ html.resizing-workspace-terminal-split * {
 
   .extension-package-actions {
     grid-column: 2;
-    width: 100%;
+    width: auto;
     min-width: 0;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    justify-self: start;
   }
 
   .skill-artwork {

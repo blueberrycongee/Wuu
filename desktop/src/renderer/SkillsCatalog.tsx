@@ -1,5 +1,6 @@
 import {
   ChevronRight,
+  MoreHorizontal,
   PackagePlus,
   RefreshCw,
   Wrench,
@@ -20,6 +21,7 @@ import { translateCurrent, useI18n } from "./i18n";
 import { Modal } from "./Modal";
 import { PluginSettingsEditor } from "./PluginSettingsEditor";
 import { RichContent } from "./RichContent";
+import { ThreadContextMenu, type ThreadContextMenuItem } from "./ThreadContextMenu";
 
 type LoadState = {
   loading: boolean;
@@ -79,6 +81,11 @@ export function SkillsCatalog({
   const [previewSkill, setPreviewSkill] = useState<SkillSummary | null>(null);
   const [packageMutation, setPackageMutation] = useState("");
   const [packageMutationError, setPackageMutationError] = useState("");
+  const [packageActionMenu, setPackageActionMenu] = useState<{
+    record: ExtensionInventoryRecord;
+    x: number;
+    y: number;
+  } | null>(null);
   const contextKey = activeContext ? runtimeContextKey(activeContext) : "";
   const contextKeyRef = useRef(contextKey);
   contextKeyRef.current = contextKey;
@@ -268,6 +275,30 @@ export function SkillsCatalog({
     }
   }
 
+  function extensionPackageMenuItems(record: ExtensionInventoryRecord): ThreadContextMenuItem[] {
+    const managed = record as ManagedExtensionPackage;
+    const secondaryAction = extensionPackageSecondaryAction(managed);
+    const items: ThreadContextMenuItem[] = [];
+    if (onUpdateExtensionPackage && secondaryAction) {
+      items.push({
+        label: extensionPackageActionLabel(managed, secondaryAction, t),
+        disabled: Boolean(packageMutation),
+        onSelect: () => updateExtensionPackage(record, secondaryAction),
+      });
+    }
+    if (onRemovePluginPackage && isRemovableUserPlugin(record)) {
+      if (items.length > 0) items.push({ separator: true });
+      items.push({
+        label: packageMutation === `${record.id}:remove`
+          ? t("skills.pluginRemoving")
+          : t("skills.pluginRemove"),
+        disabled: Boolean(packageMutation),
+        onSelect: () => removePluginPackage(record),
+      });
+    }
+    return items;
+  }
+
   return (
     <section className="skills-catalog" aria-label={t("skills.catalogLabel")} data-wuu-component="skills-catalog">
       <header className="catalog-page-header">
@@ -349,6 +380,10 @@ export function SkillsCatalog({
                   ? record.pending_update?.fingerprint
                   : record.fingerprint);
               const removable = isRemovableUserPlugin(record);
+              const hasOverflowActions = Boolean(
+                (onUpdateExtensionPackage && secondaryAction) ||
+                (onRemovePluginPackage && removable),
+              );
               return (
                 <article key={record.id} className="skill-row extension-package-row">
                   <SkillArtwork
@@ -406,47 +441,37 @@ export function SkillsCatalog({
                   (onRemovePluginPackage && removable) ? (
                     <span className="extension-package-actions">
                       {onUpdateExtensionPackage ? (
-                        <>
-                          <button
-                            type="button"
-                            className="secondary-button"
-                            disabled={Boolean(packageMutation) || grantUnavailable}
-                            onClick={() =>
-                              void updateExtensionPackage(record, primaryAction)
-                            }
-                          >
-                            {mutating && packageMutation !== `${record.id}:remove`
-                              ? t("skills.pluginUpdating")
-                              : extensionPackageActionLabel(managed, primaryAction, t)}
-                          </button>
-                          {secondaryAction ? (
-                            <button
-                              type="button"
-                              className="text-button"
-                              disabled={Boolean(packageMutation)}
-                              onClick={() =>
-                                void updateExtensionPackage(record, secondaryAction)
-                              }
-                            >
-                              {extensionPackageActionLabel(
-                                managed,
-                                secondaryAction,
-                                t,
-                              )}
-                            </button>
-                          ) : null}
-                        </>
-                      ) : null}
-                      {onRemovePluginPackage && removable ? (
                         <button
                           type="button"
-                          className="text-button extension-package-remove"
-                          disabled={Boolean(packageMutation)}
-                          onClick={() => void removePluginPackage(record)}
+                          className="secondary-button extension-package-primary-action"
+                          disabled={Boolean(packageMutation) || grantUnavailable}
+                          onClick={() =>
+                            void updateExtensionPackage(record, primaryAction)
+                          }
                         >
-                          {packageMutation === `${record.id}:remove`
-                            ? t("skills.pluginRemoving")
-                            : t("skills.pluginRemove")}
+                          {mutating && packageMutation !== `${record.id}:remove`
+                            ? t("skills.pluginUpdating")
+                            : extensionPackageActionLabel(managed, primaryAction, t)}
+                        </button>
+                      ) : null}
+                      {hasOverflowActions ? (
+                        <button
+                          type="button"
+                          className="icon-button extension-package-more"
+                          aria-label={t("skills.pluginMoreActions", { name: record.name })}
+                          aria-haspopup="menu"
+                          aria-expanded={packageActionMenu?.record.id === record.id}
+                          disabled={Boolean(packageMutation)}
+                          onClick={(event) => {
+                            const bounds = event.currentTarget.getBoundingClientRect();
+                            setPackageActionMenu({
+                              record,
+                              x: bounds.right,
+                              y: bounds.bottom + 4,
+                            });
+                          }}
+                        >
+                          <MoreHorizontal className="icon" aria-hidden="true" />
                         </button>
                       ) : null}
                     </span>
@@ -465,6 +490,15 @@ export function SkillsCatalog({
           <strong>{t("skills.empty")}</strong>
           <span>{filter.trim() ? t("skills.noMatches") : t("skills.noneInRuntime")}</span>
         </div>
+      ) : null}
+
+      {packageActionMenu ? (
+        <ThreadContextMenu
+          x={packageActionMenu.x}
+          y={packageActionMenu.y}
+          items={extensionPackageMenuItems(packageActionMenu.record)}
+          onClose={() => setPackageActionMenu(null)}
+        />
       ) : null}
     </section>
   );

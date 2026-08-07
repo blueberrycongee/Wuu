@@ -1595,6 +1595,7 @@ export const zhCN = {
   "skills.pluginUpdating": "处理中…",
   "skills.pluginUpdateFailed": "无法更新插件状态",
   "skills.pluginRemove": "移除",
+  "skills.pluginMoreActions": "{name} 的更多操作",
   "skills.pluginRemoving": "正在移除…",
   "skills.pluginRemoveConfirm": "确定移除用户插件 {name}？Wuu 中已安装的插件文件将被删除。",
   "skills.pluginRemoveFailed": "无法移除插件",
