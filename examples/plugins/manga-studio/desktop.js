@@ -487,16 +487,24 @@ export function activate(api) {
     `,
   });
 
+  function renderMangaSurface(_context, fallback) {
+    return React.createElement(
+      "div",
+      { className: "manga-shell" },
+      fallback,
+    );
+  }
+
   api.registerSurface("app.shell", {
     id: "manga-shell",
     mode: "wrap",
-    render(_context, fallback) {
-      return React.createElement(
-        "main",
-        { className: "manga-shell" },
-        fallback,
-      );
-    },
+    render: renderMangaSurface,
+  });
+
+  api.registerSurface("view.settings", {
+    id: "manga-settings",
+    mode: "wrap",
+    render: renderMangaSurface,
   });
 
 }

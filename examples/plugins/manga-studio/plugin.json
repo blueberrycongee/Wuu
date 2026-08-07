@@ -9,7 +9,8 @@
   },
   "contributes": {
     "surfaces": [
-      { "id": "manga-shell", "target": "app.shell", "mode": "wrap" }
+      { "id": "manga-shell", "target": "app.shell", "mode": "wrap" },
+      { "id": "manga-settings", "target": "view.settings", "mode": "wrap" }
     ],
     "themes": [
       {

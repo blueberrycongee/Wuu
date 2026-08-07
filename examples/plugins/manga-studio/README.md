@@ -1,8 +1,8 @@
 # Manga Studio
 
 Manga Studio turns the Wuu desktop into a high-contrast comic workspace using only public plugin
-contracts. It combines a declarative theme with generation-scoped CSS, one layout-neutral app-shell
-scope, and Wuu's published `data-wuu-*` styling coordinates.
+contracts. It combines a declarative theme with generation-scoped CSS, layout-neutral app and
+Settings scopes, and Wuu's published `data-wuu-*` styling coordinates.
 
 ## Try it
 
