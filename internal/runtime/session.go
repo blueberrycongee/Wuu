@@ -458,6 +458,7 @@ func NewSession(opts Options) (*Session, error) {
 			return nil, newErr
 		}
 		kit.SetStateDir(workspaceStateDir)
+		kit.SetWorkspaceID(workspaceID)
 		kit.SetAutomationManager(automationManager)
 		kit.SetProcessManager(processMgr)
 		kit.SetSkills(discoveredSkills)

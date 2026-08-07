@@ -372,6 +372,7 @@ func TestNonAutostartNamedAgentWakeLoadsExistingPersistedSession(t *testing.T) {
 	server.mu.Unlock()
 	releaseDetachedThreadRuntime(detachedThreadRuntime{runtime: thread.execRuntime})
 	thread.execRuntime = nil
+	rt.Model = "new-global-model"
 
 	server.channelService.SetWakeSink(nil)
 	room := createAppserverTestRoom(t, server.channelService, credential.Agent)
@@ -386,6 +387,13 @@ func TestNonAutostartNamedAgentWakeLoadsExistingPersistedSession(t *testing.T) {
 	loaded := server.thread(thread.ID)
 	if loaded == nil || loaded.NamedAgentID != credential.Agent.ID || loaded.Source != namedAgentSessionSource+credential.Agent.ID {
 		t.Fatalf("loaded persisted non-autostart thread = %#v", loaded)
+	}
+	if loaded.Model != "new-global-model" {
+		t.Fatalf("loaded named agent model = %q, want current global model", loaded.Model)
+	}
+	metadata, found, err := session.Find(rt.SessionDir, thread.ID)
+	if err != nil || !found || metadata.Model != "new-global-model" {
+		t.Fatalf("persisted named agent model = %q, found %v, err %v", metadata.Model, found, err)
 	}
 }
 

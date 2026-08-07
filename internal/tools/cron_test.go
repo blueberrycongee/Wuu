@@ -54,6 +54,28 @@ func TestScheduleCronTool_DefaultsToSessionOnly(t *testing.T) {
 	}
 }
 
+func TestScheduleCronTool_BindsTaskToWorkspace(t *testing.T) {
+	rootDir := t.TempDir()
+	stateDir := filepath.Join(rootDir, "state")
+	env := newCronToolTestEnv(rootDir, stateDir, "thread-1")
+	env.WorkspaceID = "workspace-1"
+	tool := NewCronTool(env)
+
+	if _, err := tool.Execute(context.Background(), `{"action":"add","cron":"*/5 * * * *","prompt":"check workspace"}`); err != nil {
+		t.Fatalf("Execute error: %v", err)
+	}
+	tasks, err := cron.NewSessionTaskStore(stateDir).List()
+	if err != nil {
+		t.Fatalf("session store list: %v", err)
+	}
+	if len(tasks) != 1 {
+		t.Fatalf("expected 1 session task, got %d", len(tasks))
+	}
+	if tasks[0].WorkspaceID != "workspace-1" || tasks[0].WorkspacePath != rootDir {
+		t.Fatalf("workspace = %q, %q", tasks[0].WorkspaceID, tasks[0].WorkspacePath)
+	}
+}
+
 func TestScheduleCronTool_DurablePersistsToDisk(t *testing.T) {
 	dir := t.TempDir()
 	stateDir := filepath.Join(dir, "state")

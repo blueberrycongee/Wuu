@@ -202,8 +202,9 @@ func (s *webEvidenceState) snapshot() []webEvidenceEntry {
 // construction time. It replaces the old approach of making every
 // handler a method on *Toolkit.
 type Env struct {
-	RootDir  string
-	StateDir string
+	RootDir     string
+	WorkspaceID string
+	StateDir    string
 	// Unconfined is the explicit escape hatch for lifting path confinement.
 	// Default false means file tools stay inside FileScopeRoots/RootDir.
 	Unconfined bool

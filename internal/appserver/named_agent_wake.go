@@ -88,19 +88,24 @@ func (s *Server) ensureNamedAgentThreadLocked(agent channels.NamedAgent) (*threa
 		th.Source = namedAgentSessionSource + agent.ID
 		th.CWD = filepath.Dir(agent.MemoryDir)
 		if needsNamedAgentRuntime {
-			selection := runtime.ThreadModelSelection{
-				Provider: th.ModelProvider, Model: th.Model, Variant: th.ModelVariant,
-				Effort: th.ModelEffort, PermissionMode: th.PermissionMode,
-			}
+			selection := s.currentSessionRuntimeSelection()
 			selection.Provider, selection.Model, selection.Effort = namedAgentModelSelection(
 				selection.Provider, selection.Model, selection.Effort, agent,
 			)
-			threadRuntime, err := s.newNamedAgentRuntime(threadID, agent, selection)
+			threadRuntime, err := s.newNamedAgentRuntime(threadID, agent, runtime.ThreadModelSelection{
+				Provider: selection.Provider, Model: selection.Model, Variant: selection.Variant,
+				Effort: selection.Effort, PermissionMode: selection.PermissionMode,
+			})
 			if err != nil {
+				return nil, err
+			}
+			if _, err := session.SetRuntimeSelection(s.rt.SessionDir, threadID, selection); err != nil {
+				releaseDetachedThreadRuntime(detachedThreadRuntime{runtime: threadRuntime})
 				return nil, err
 			}
 			staleRuntime := th.execRuntime
 			th.execRuntime = threadRuntime
+			applyThreadRuntimeSelection(th, selection)
 			if len(th.History) > 0 && strings.EqualFold(strings.TrimSpace(th.History[0].Role), "system") {
 				th.History[0].Content = threadRuntime.StreamRunner.SystemPrompt
 			}
@@ -139,6 +144,11 @@ func (s *Server) ensureNamedAgentThreadLocked(agent channels.NamedAgent) (*threa
 			releaseDetachedThreadRuntime(detachedThreadRuntime{runtime: threadRuntime})
 			return nil, err
 		}
+		if _, err := session.SetRuntimeSelection(s.rt.SessionDir, threadID, selection); err != nil {
+			releaseDetachedThreadRuntime(detachedThreadRuntime{runtime: threadRuntime})
+			return nil, err
+		}
+		applyThreadRuntimeSelection(th, selection)
 	} else {
 		if _, err := session.CreateWithMetadata(s.rt.SessionDir, threadID, agentHome); err != nil {
 			releaseDetachedThreadRuntime(detachedThreadRuntime{runtime: threadRuntime})
