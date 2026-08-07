@@ -14,9 +14,9 @@ import (
 func seedWorkspaceStateDir(t *testing.T, stateDir string) {
 	t.Helper()
 	seed := map[string]string{
-		filepath.Join("sessions", "thread-1", "goal_runtime.json"): "{}\n",
-		filepath.Join("goals", "goal-1", "state.json"):             "{}\n",
-		filepath.Join("memory", "MEMORY.md"):                       "# project memory\n",
+		filepath.Join("sessions", "thread-1", "runtime.json"):      "{}\n",
+		filepath.Join("plugin-storage", "plugin.example.json"):     "{}\n",
+		filepath.Join("memory", "MEMORY.md"):                       "# legacy plugin data\n",
 	}
 	for rel, content := range seed {
 		path := filepath.Join(stateDir, rel)
@@ -32,7 +32,7 @@ func seedWorkspaceStateDir(t *testing.T, stateDir string) {
 	}
 }
 
-func TestServerWorkspaceStateCleanupArchivesMemoryAndDeletesRest(t *testing.T) {
+func TestServerWorkspaceStateCleanupArchivesExtensionDataAndDeletesCoreState(t *testing.T) {
 	rt := newTestRuntime(t, &fakeClient{})
 	out := &lockedBuffer{}
 	srv := New(rt, out)
@@ -60,7 +60,7 @@ func TestServerWorkspaceStateCleanupArchivesMemoryAndDeletesRest(t *testing.T) {
 		t.Fatalf("workspace/state/cleanup: %v", err)
 	}
 	result := remarshal[WorkspaceStateCleanupResult](t, responseByID(t, parseOutput(t, out.String()), "1")["result"])
-	if !result.Removed || !result.MemoryArchived || result.StateDir != stateDir {
+	if !result.Removed || !result.DataArchived || result.StateDir != stateDir {
 		t.Fatalf("unexpected cleanup result: %+v", result)
 	}
 
@@ -71,9 +71,12 @@ func TestServerWorkspaceStateCleanupArchivesMemoryAndDeletesRest(t *testing.T) {
 	if len(entries) != 1 || entries[0].Name() != workspaceStateArchiveDirName {
 		t.Fatalf("state dir should only keep %s, got %v", workspaceStateArchiveDirName, entries)
 	}
-	archivedMemory := filepath.Join(stateDir, workspaceStateArchiveDirName, "memory", "MEMORY.md")
-	if data, err := os.ReadFile(archivedMemory); err != nil || string(data) != "# project memory\n" {
-		t.Fatalf("archived project memory missing: err=%v data=%q", err, data)
+	archivedLegacy := filepath.Join(stateDir, workspaceStateArchiveDirName, "memory", "MEMORY.md")
+	if data, err := os.ReadFile(archivedLegacy); err != nil || string(data) != "# legacy plugin data\n" {
+		t.Fatalf("archived legacy plugin data missing: err=%v data=%q", err, data)
+	}
+	if _, err := os.Stat(filepath.Join(stateDir, workspaceStateArchiveDirName, "plugin-storage", "plugin.example.json")); err != nil {
+		t.Fatalf("plugin storage was not archived: %v", err)
 	}
 }
 
@@ -108,33 +111,33 @@ func TestServerWorkspaceStateCleanupIsRepeatableAndKeepsArchives(t *testing.T) {
 	}
 
 	// A missing state dir is not an error — nothing to clean.
-	if result := cleanup("1"); result.Removed || result.MemoryArchived {
+	if result := cleanup("1"); result.Removed || result.DataArchived {
 		t.Fatalf("missing state dir should be a no-op, got %+v", result)
 	}
 
-	// First real cleanup archives memory; the second (after the project was
+	// First real cleanup archives extension data; the second (after the project was
 	// re-added and used again) must keep the earlier archive.
 	seedWorkspaceStateDir(t, stateDir)
-	if result := cleanup("2"); !result.Removed || !result.MemoryArchived {
-		t.Fatalf("first cleanup should archive memory, got %+v", result)
+	if result := cleanup("2"); !result.Removed || !result.DataArchived {
+		t.Fatalf("first cleanup should archive extension data, got %+v", result)
 	}
 	seedWorkspaceStateDir(t, stateDir)
-	if result := cleanup("3"); !result.Removed || !result.MemoryArchived {
-		t.Fatalf("second cleanup should archive memory again, got %+v", result)
+	if result := cleanup("3"); !result.Removed || !result.DataArchived {
+		t.Fatalf("second cleanup should archive extension data again, got %+v", result)
 	}
 	archiveEntries, err := os.ReadDir(filepath.Join(stateDir, workspaceStateArchiveDirName))
 	if err != nil {
 		t.Fatalf("read archive dir: %v", err)
 	}
-	memoryArchives := 0
+	legacyArchives := 0
 	for _, entry := range archiveEntries {
-		// Counts "memory" plus timestamp-suffixed "memory-<UTC>" archives.
+		// Counts one legacy directory plus timestamp-suffixed snapshots.
 		if entry.Name() == "memory" || strings.HasPrefix(entry.Name(), "memory-2") {
-			memoryArchives++
+			legacyArchives++
 		}
 	}
-	if memoryArchives < 2 {
-		t.Fatalf("both memory archives should survive, got entries %v", archiveEntries)
+	if legacyArchives < 2 {
+		t.Fatalf("both durable archives should survive, got entries %v", archiveEntries)
 	}
 }
 

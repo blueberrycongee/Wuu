@@ -1622,7 +1622,7 @@ func TestToolkit_AgentTeamTelemetryRecordsResultActions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListTasks: %v", err)
 	}
-	if len(tasks) != 1 || tasks[0].GoalID != "" || tasks[0].GoalDir != "" {
+	if len(tasks) != 1 {
 		t.Fatalf("spawn_agent should ignore legacy goal binding fields, got harness task: %+v", tasks)
 	}
 	for _, name := range subagentManagementTools {

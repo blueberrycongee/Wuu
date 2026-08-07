@@ -1,5 +1,5 @@
-// Package memory discovers and loads project / user memory files so they can
-// be injected into the system prompt at session start.
+// Package instructions discovers project and user instruction files for the
+// session system prompt.
 //
 // The default path stays Wuu-native and cache-friendly:
 //
@@ -12,10 +12,10 @@
 //
 // Project root detection walks up from the workspace root looking for marker
 // directories (.git, .hg, .jj, .svn).
-// Memory files are only collected between the project root and the
+// Instruction files are only collected between the project root and the
 // workspace root, never above the project root. If no marker is found,
 // only the workspace root itself contributes.
-package memory
+package instructions
 
 import (
 	"hash/fnv"
@@ -26,7 +26,7 @@ import (
 	"strings"
 )
 
-// File holds one loaded memory file.
+// File holds one loaded instruction file.
 type File struct {
 	Path    string // absolute path on disk
 	Content string // raw file contents
@@ -34,7 +34,7 @@ type File struct {
 	Name    string // base name (AGENTS.md, CLAUDE.md, ...)
 }
 
-// Options configures memory discovery. Use DefaultOptions() to get
+// Options configures instruction discovery. Use DefaultOptions() to get
 // sensible defaults; callers can override individual fields to extend
 // or customize the behavior.
 type Options struct {
@@ -48,7 +48,7 @@ type Options struct {
 	ProjectRootMarkers []string
 
 	// UserDirs are absolute or home-relative directories scanned for
-	// user-level memory files (no hierarchy walk). Empty entries and
+	// user-level instruction files (no hierarchy walk). Empty entries and
 	// missing directories are silently skipped. Defaults cover Wuu's
 	// unified user home plus the legacy ~/.config/wuu directory. Callers
 	// that need WUU_HOME-aware absolute paths (see statepath.UserInstructionDirs)
@@ -56,24 +56,24 @@ type Options struct {
 	// home-relative form.
 	UserDirs []string
 
-	// Enables import of legacy markdown memory layouts from Claude-style
+	// Enables import of legacy markdown instruction layouts from Claude-style
 	// rules, local files, and auto-memory. It defaults to false; callers
 	// should enable it only for explicit migration.
-	IncludeLegacyMemory *bool
+	IncludeLegacyInstructions *bool
 }
 
 // DefaultOptions returns the recommended configuration.
 func DefaultOptions() Options {
 	return Options{
-		Filenames:           []string{"AGENTS.md", "AGENTS.override.md", "CLAUDE.md"},
-		ProjectRootMarkers:  []string{".git", ".hg", ".jj", ".svn"},
-		UserDirs:            []string{"~/.wuu", "~/.config/wuu"},
-		IncludeLegacyMemory: boolPtr(false),
+		Filenames:                 []string{"AGENTS.md", "AGENTS.override.md", "CLAUDE.md"},
+		ProjectRootMarkers:        []string{".git", ".hg", ".jj", ".svn"},
+		UserDirs:                  []string{"~/.wuu", "~/.config/wuu"},
+		IncludeLegacyInstructions: boolPtr(false),
 	}
 }
 
 // Discover scans both the configured user directories and the project
-// hierarchy (bounded by project root markers) for memory files. Files
+// hierarchy (bounded by project root markers) for instruction files. Files
 // are returned in priority order:
 //
 //  1. User-level files (one per UserDirs entry x Filenames)
@@ -93,10 +93,10 @@ func Discover(rootDir, homeDir string, opts Options) []File {
 	if opts.UserDirs == nil {
 		opts.UserDirs = DefaultOptions().UserDirs
 	}
-	if opts.IncludeLegacyMemory == nil {
-		opts.IncludeLegacyMemory = DefaultOptions().IncludeLegacyMemory
+	if opts.IncludeLegacyInstructions == nil {
+		opts.IncludeLegacyInstructions = DefaultOptions().IncludeLegacyInstructions
 	}
-	includeLegacyMemory := opts.IncludeLegacyMemory != nil && *opts.IncludeLegacyMemory
+	includeLegacyInstructions := opts.IncludeLegacyInstructions != nil && *opts.IncludeLegacyInstructions
 
 	var out []File
 	seen := make(map[string]struct{})
@@ -129,7 +129,7 @@ func Discover(rootDir, homeDir string, opts Options) []File {
 			continue
 		}
 		addInstructionFiles(dir, opts.Filenames, "user", add)
-		if includeLegacyMemory {
+		if includeLegacyInstructions {
 			addRulesDir(filepath.Join(dir, "rules"), "user", add)
 		}
 	}
@@ -145,7 +145,7 @@ func Discover(rootDir, homeDir string, opts Options) []File {
 			dirs := walkBetween(projectRoot, absRoot)
 			for _, dir := range dirs {
 				addInstructionFiles(dir, opts.Filenames, "project", add)
-				if includeLegacyMemory {
+				if includeLegacyInstructions {
 					add(filepath.Join(dir, ".claude", "CLAUDE.md"), "project")
 					addRulesDir(filepath.Join(dir, ".claude", "rules"), "project", add)
 					add(filepath.Join(dir, "CLAUDE.local.md"), "local")
@@ -154,8 +154,8 @@ func Discover(rootDir, homeDir string, opts Options) []File {
 		}
 	}
 
-	if includeLegacyMemory && absRoot != "" {
-		for _, path := range claudeCodeAutoMemoryPaths(absRoot, projectRoot, homeDir) {
+	if includeLegacyInstructions && absRoot != "" {
+		for _, path := range claudeCodeLegacyInstructionPaths(absRoot, projectRoot, homeDir) {
 			add(path, "claude_auto")
 		}
 	}
@@ -211,7 +211,7 @@ func addRulesDir(dir, source string, add func(path, source string)) {
 	}
 }
 
-func claudeCodeAutoMemoryPaths(absRoot, projectRoot, homeDir string) []string {
+func claudeCodeLegacyInstructionPaths(absRoot, projectRoot, homeDir string) []string {
 	if override := strings.TrimSpace(os.Getenv("CLAUDE_COWORK_MEMORY_PATH_OVERRIDE")); override != "" {
 		return []string{filepath.Join(override, "MEMORY.md")}
 	}

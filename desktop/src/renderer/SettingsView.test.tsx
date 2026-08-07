@@ -794,7 +794,6 @@ describe("SettingsView general settings", () => {
         general_settings: {
           append_system_prompt: "",
           git_attribution_enabled: true,
-          memory_disabled: false,
           mcp_server_enabled: {},
         },
       }),
@@ -823,7 +822,7 @@ describe("SettingsView general settings", () => {
     });
   });
 
-  it("renders and saves prompt, memory, and MCP toggles", async () => {
+  it("renders and saves prompt and MCP toggles", async () => {
     installBuildInfoStub({
       core: undefined,
       desktop: { version: "0.0.0-test", date: "1970-01-01T00:00:00Z" },
@@ -834,7 +833,6 @@ describe("SettingsView general settings", () => {
       initialized: baseInitialized({
         general_settings: {
           append_system_prompt: "Keep answers compact.",
-          memory_disabled: false,
           mcp_server_enabled: {
             docs: true,
             search: false,
@@ -849,7 +847,6 @@ describe("SettingsView general settings", () => {
     expect(container.querySelector("[data-testid=\"settings-general\"]")).not.toBeNull();
     expect(container.querySelector("[data-testid=\"settings-voice-input\"]")).toBeNull();
     expect(rootText()).toContain("附加系统提示");
-    expect(rootText()).toContain("记忆");
     expect(rootText()).toContain("docs");
     expect(rootText()).toContain("search");
 
@@ -866,17 +863,6 @@ describe("SettingsView general settings", () => {
     expect(onGeneralSave).toHaveBeenCalledWith({
       append_system_prompt: "默认用中文回答。",
     });
-
-    // The memory switch saves immediately, optimistic with rollback on failure.
-    const memorySwitch = Array.from(container.querySelectorAll("button[role=\"switch\"]")).find((button) =>
-      button.textContent?.includes("关闭记忆"),
-    ) as HTMLButtonElement | undefined;
-    expect(memorySwitch).not.toBeUndefined();
-    await act(async () => {
-      memorySwitch?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-      await Promise.resolve();
-    });
-    expect(onGeneralSave).toHaveBeenCalledWith({ memory_disable: true });
 
     // MCP toggles now save immediately on switch, sending only the toggle map.
     const docsSwitch = container.querySelector("[data-testid=\"settings-mcp-enabled-docs\"]") as HTMLButtonElement | null;

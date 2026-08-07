@@ -25,9 +25,9 @@ import (
 	wuucontext "github.com/blueberrycongee/wuu/internal/context"
 	"github.com/blueberrycongee/wuu/internal/extensions"
 	"github.com/blueberrycongee/wuu/internal/hooks"
+	"github.com/blueberrycongee/wuu/internal/instructions"
 	"github.com/blueberrycongee/wuu/internal/mcp"
 	"github.com/blueberrycongee/wuu/internal/memdir"
-	"github.com/blueberrycongee/wuu/internal/memory"
 	"github.com/blueberrycongee/wuu/internal/modelbudget"
 	"github.com/blueberrycongee/wuu/internal/modelcatalog"
 	"github.com/blueberrycongee/wuu/internal/modelprofile"
@@ -118,7 +118,7 @@ type Session struct {
 	PluginHost               *pluginhost.Host
 	PluginSessionRouter      *PluginSessionRouter
 	systemPrompts            *agent.SystemPromptAssembler
-	Memory                   []memory.File
+	InstructionFiles         []instructions.File
 	AgentControl             *agentcontrol.AgentControl
 	ProcessManager           *process.Manager
 	Toolkit                  *tools.Toolkit
@@ -208,7 +208,7 @@ func (s *Session) cloneForThreadModel() *Session {
 		PluginHost:                  s.PluginHost,
 		PluginSessionRouter:         s.PluginSessionRouter,
 		systemPrompts:               s.systemPrompts,
-		Memory:                      s.Memory,
+		InstructionFiles:            s.InstructionFiles,
 		AgentControl:                s.AgentControl,
 		ProcessManager:              s.ProcessManager,
 		Toolkit:                     s.Toolkit,
@@ -447,7 +447,7 @@ func NewSession(opts Options) (*Session, error) {
 		connectMCPServers(cfg, activePlugins, toolkit)
 	}
 
-	memoryFiles := discoverMemory(rootDir, opts.HomeDir, cfg.Memory)
+	instructionFiles := discoverInstructions(rootDir, opts.HomeDir, cfg.Instructions)
 	// Freeze the environment date once at session start. Every system-prompt
 	// build in this session (base, worker, per-thread rebuild) reuses this
 	// frozen value so the cached system prefix does not drift when threads
@@ -468,7 +468,7 @@ func NewSession(opts Options) (*Session, error) {
 		return nil, err
 	}
 	mainSurface.DeferredToolCatalog = deferredToolCatalogPrompt
-	baseSystemPromptResult := buildBaseSystemPromptResult(rootDir, sessionDate, config.DefaultSystemPrompt(), userSystemPrompt, resolvedName, toolModeModel, mainSurface, memoryFiles, "", "", discoveredSkills)
+	baseSystemPromptResult := buildBaseSystemPromptResult(rootDir, sessionDate, config.DefaultSystemPrompt(), userSystemPrompt, resolvedName, toolModeModel, mainSurface, instructionFiles, "", "", discoveredSkills)
 	baseSystemPrompt, pluginPromptSections := assemblePluginSystemPrompt(baseSystemPromptResult.Content, systemPrompts)
 	baseSystemPromptSections := append(agentPromptSections(baseSystemPromptResult.Sections), pluginPromptSections...)
 
@@ -497,7 +497,7 @@ func NewSession(opts Options) (*Session, error) {
 			return nil, catErr
 		}
 		workerToolSurface.DeferredToolCatalog = workerDeferredCatalog
-		workerBaseSystemPrompt := buildBaseSystemPromptContent(rootDir, sessionDate, config.WorkerSystemPrompt(), userSystemPrompt, workerToolProviderName, workerToolModeModel, workerToolSurface, memoryFiles, "", "", discoveredSkills)
+		workerBaseSystemPrompt := buildBaseSystemPromptContent(rootDir, sessionDate, config.WorkerSystemPrompt(), userSystemPrompt, workerToolProviderName, workerToolModeModel, workerToolSurface, instructionFiles, "", "", discoveredSkills)
 		var werr error
 		workerClient, werr = providerfactory.BuildStreamClient(roleSelections.Worker.RuleProviderConfig, roleSelections.Worker.Provider)
 		if werr != nil {
@@ -529,15 +529,15 @@ func NewSession(opts Options) (*Session, error) {
 			HistoryDir:                     "",
 			WorkerSysPrompt:                workerBaseSystemPrompt,
 			WorkerPrompt: func(workerRoot string, wt agentcontrol.WorkerType, meta agentthread.Metadata, isolation agentcontrol.IsolationMode) (string, error) {
-				return buildWorkerBasePrompt(workerRoot, sessionDate, userSystemPrompt, workerToolProviderName, workerToolModeModel, workerToolSurface, memoryFiles, discoveredSkills), nil
+				return buildWorkerBasePrompt(workerRoot, sessionDate, userSystemPrompt, workerToolProviderName, workerToolModeModel, workerToolSurface, instructionFiles, discoveredSkills), nil
 			},
 			WorkerFactory: func(workerRoot string, wt agentcontrol.WorkerType, meta agentthread.Metadata) (agent.ToolExecutor, error) {
 				wkit, werr := toolkit.CloneForRoot(workerRoot)
 				if werr != nil {
 					return nil, werr
 				}
-				// Reset the inherited file-scope whitelist: a worker gets the
-				// standard boundary roots, but not the user notebook extra.
+				// Reset the inherited file-scope whitelist to the standard
+				// workspace, registered-project, and temporary roots.
 				wkit.SetFileScopeRoots(workspaces.BoundaryRoots(workerRoot, wuuHome))
 				workerStateDir := workspaceStateDir
 				if workerRoot != rootDir {
@@ -658,7 +658,7 @@ func NewSession(opts Options) (*Session, error) {
 		PluginHost:                  pluginHost,
 		PluginSessionRouter:         pluginTurnRouter,
 		systemPrompts:               systemPrompts,
-		Memory:                      memoryFiles,
+		InstructionFiles:            instructionFiles,
 		AgentControl:                agentControl,
 		ProcessManager:              processMgr,
 		Toolkit:                     toolkit,
@@ -974,7 +974,7 @@ func (s *Session) NewThreadRuntimeForRootModel(sessionID, rootDir string, select
 	promptResult := buildBaseSystemPromptResult(
 		threadRoot, shadow.SessionDate, config.DefaultSystemPrompt(), shadow.UserSystemPrompt,
 		resolvedName, apiModel, activeSurfaceWithDeferredToolCatalog(shadow.Toolkit, shadow.DeferredToolCatalogPrompt),
-		shadow.Memory, "", "", shadow.Skills,
+		shadow.InstructionFiles, "", "", shadow.Skills,
 	)
 	shadow.BaseSystemPrompt = promptResult.Content
 	shadow.BaseSystemPromptSections = promptResult.Sections
@@ -987,8 +987,8 @@ func (s *Session) NewThreadRuntimeForRootModel(sessionID, rootDir string, select
 	return threadRuntime, nil
 }
 
-// ConfigureNamedAgentThreadRuntime replaces the ordinary user-memory prompt
-// and file scope on a thread runtime with one named agent's durable identity.
+// ConfigureNamedAgentThreadRuntime adds one collaboration named agent's
+// durable identity prompt and notebook scope to a thread runtime.
 func (s *Session) ConfigureNamedAgentThreadRuntime(threadRuntime *ThreadRuntime, rootDir, memoryDir, orientation string) error {
 	if s == nil || threadRuntime == nil || threadRuntime.StreamRunner == nil {
 		return errors.New("named agent thread runtime is required")
@@ -1001,7 +1001,7 @@ func (s *Session) ConfigureNamedAgentThreadRuntime(threadRuntime *ThreadRuntime,
 	if err := memdir.EnsureDir(memoryDir); err != nil {
 		return fmt.Errorf("ensure named agent memory: %w", err)
 	}
-	teaching := memdir.SessionTeaching(memoryDir)
+	teaching := memdir.IdentityTeaching(memoryDir)
 	index := ""
 	if snap, err := memdir.ReadIndex(memoryDir); err == nil {
 		index = snap.Content
@@ -1187,7 +1187,7 @@ func (s *Session) NewThreadRuntimeForRoot(sessionID, rootDir string) (*ThreadRun
 				workerToolProviderName,
 				workerToolModeModel,
 				workerToolSurface,
-				s.Memory,
+				s.InstructionFiles,
 				s.Skills,
 			)
 			control, controlErr := agentcontrol.New(agentcontrol.Config{
@@ -1211,7 +1211,7 @@ func (s *Session) NewThreadRuntimeForRoot(sessionID, rootDir string) (*ThreadRun
 				HarnessDir:                     filepath.Join(artifactDir, "harness"),
 				WorkerSysPrompt:                workerBaseSystemPrompt,
 				WorkerPrompt: func(workerRoot string, wt agentcontrol.WorkerType, meta agentthread.Metadata, isolation agentcontrol.IsolationMode) (string, error) {
-					return buildWorkerBasePrompt(workerRoot, s.SessionDate, s.UserSystemPrompt, workerToolProviderName, workerToolModeModel, workerToolSurface, s.Memory, s.Skills), nil
+					return buildWorkerBasePrompt(workerRoot, s.SessionDate, s.UserSystemPrompt, workerToolProviderName, workerToolModeModel, workerToolSurface, s.InstructionFiles, s.Skills), nil
 				},
 				WorkerFactory: func(workerRoot string, wt agentcontrol.WorkerType, meta agentthread.Metadata) (agent.ToolExecutor, error) {
 					workerKit, err := kit.CloneForRoot(workerRoot)
@@ -2172,29 +2172,26 @@ func BoundaryForMode(mode string) tools.WorkspaceBoundary {
 	}
 }
 
-func discoverMemory(rootDir, homeDir string, cfg config.MemoryConfig) []memory.File {
-	if cfg.Disable {
-		return nil
-	}
-	memOpts := memory.DefaultOptions()
+func discoverInstructions(rootDir, homeDir string, cfg config.InstructionFilesConfig) []instructions.File {
+	instructionOptions := instructions.DefaultOptions()
 	if len(cfg.Filenames) > 0 {
-		memOpts.Filenames = cfg.Filenames
+		instructionOptions.Filenames = cfg.Filenames
 	}
 	if len(cfg.ProjectRootMarkers) > 0 {
-		memOpts.ProjectRootMarkers = cfg.ProjectRootMarkers
+		instructionOptions.ProjectRootMarkers = cfg.ProjectRootMarkers
 	}
 	if len(cfg.UserDirs) > 0 {
-		memOpts.UserDirs = cfg.UserDirs
+		instructionOptions.UserDirs = cfg.UserDirs
 	} else if dirs := statepath.UserInstructionDirs(homeDir); len(dirs) > 0 {
 		// Resolve the canonical user instruction dirs (unified wuu home +
 		// legacy ~/.config/wuu) through statepath so WUU_HOME relocates the
 		// user AGENTS.md scan along with the rest of the directory.
-		memOpts.UserDirs = dirs
+		instructionOptions.UserDirs = dirs
 	}
-	if cfg.IncludeLegacyMemory != nil {
-		memOpts.IncludeLegacyMemory = cfg.IncludeLegacyMemory
+	if cfg.IncludeLegacyInstructions != nil {
+		instructionOptions.IncludeLegacyInstructions = cfg.IncludeLegacyInstructions
 	}
-	return memory.Discover(rootDir, homeDir, memOpts)
+	return instructions.Discover(rootDir, homeDir, instructionOptions)
 }
 
 // buildWorkerBasePrompt assembles a worker subagent's base system prompt.
@@ -2203,8 +2200,8 @@ func discoverMemory(rootDir, homeDir string, cfg config.MemoryConfig) []memory.F
 // fresh here because worker/thread creation is a prompt-prefix creation
 // moment under the cache red lines — while the notebook directory stays
 // outside the worker's writable file scope.
-func buildWorkerBasePrompt(rootDir, sessionDate, userPrompt, providerName, model string, toolSurface capability.Surface, memoryFiles []memory.File, discoveredSkills []skills.Skill) string {
-	return buildBaseSystemPromptContent(rootDir, sessionDate, config.WorkerSystemPrompt(), userPrompt, providerName, model, toolSurface, memoryFiles, "", "", discoveredSkills)
+func buildWorkerBasePrompt(rootDir, sessionDate, userPrompt, providerName, model string, toolSurface capability.Surface, instructionFiles []instructions.File, discoveredSkills []skills.Skill) string {
+	return buildBaseSystemPromptContent(rootDir, sessionDate, config.WorkerSystemPrompt(), userPrompt, providerName, model, toolSurface, instructionFiles, "", "", discoveredSkills)
 }
 
 func (s *Session) RefreshSystemPrompt(providerName, model string) string {
@@ -2219,7 +2216,7 @@ func (s *Session) RefreshSystemPrompt(providerName, model string) string {
 		providerName,
 		model,
 		activeSurfaceWithDeferredToolCatalog(s.Toolkit, s.DeferredToolCatalogPrompt),
-		s.Memory,
+		s.InstructionFiles,
 		"",
 		"",
 		s.Skills,
@@ -2258,7 +2255,7 @@ func (s *Session) ApplyGeneralConfig(cfg config.Config, homeDir string) string {
 		homeDir = os.Getenv("HOME")
 	}
 	s.UserSystemPrompt = cfg.Agent.UserSystemPrompt()
-	s.Memory = discoverMemory(s.RootDir, homeDir, cfg.Memory)
+	s.InstructionFiles = discoverInstructions(s.RootDir, homeDir, cfg.Instructions)
 	if s.Toolkit != nil {
 		s.Toolkit.SetGitAttributionEnabled(cfg.Agent.GitAttributionEnabledValue())
 		s.Toolkit.SetFileScopeRoots(workspaces.BoundaryRoots(s.Toolkit.RootDir(), s.WuuHome))
@@ -2273,15 +2270,15 @@ func (s *Session) ApplyGeneralConfig(cfg config.Config, homeDir string) string {
 // buildBaseSystemPrompt keeps the frozen-date-agnostic signature used by tests
 // and standalone callers; it passes an empty sessionDate so the environment
 // section falls back to the current date.
-func buildBaseSystemPrompt(rootDir, basePrompt, userPrompt, providerName, model string, toolSurface capability.Surface, memoryFiles []memory.File, memdirTeaching, memdirIndex string, discoveredSkills []skills.Skill) string {
-	return buildBaseSystemPromptContent(rootDir, "", basePrompt, userPrompt, providerName, model, toolSurface, memoryFiles, memdirTeaching, memdirIndex, discoveredSkills)
+func buildBaseSystemPrompt(rootDir, basePrompt, userPrompt, providerName, model string, toolSurface capability.Surface, instructionFiles []instructions.File, memdirTeaching, memdirIndex string, discoveredSkills []skills.Skill) string {
+	return buildBaseSystemPromptContent(rootDir, "", basePrompt, userPrompt, providerName, model, toolSurface, instructionFiles, memdirTeaching, memdirIndex, discoveredSkills)
 }
 
-func buildBaseSystemPromptContent(rootDir, sessionDate, basePrompt, userPrompt, providerName, model string, toolSurface capability.Surface, memoryFiles []memory.File, memdirTeaching, memdirIndex string, discoveredSkills []skills.Skill) string {
-	return buildBaseSystemPromptResult(rootDir, sessionDate, basePrompt, userPrompt, providerName, model, toolSurface, memoryFiles, memdirTeaching, memdirIndex, discoveredSkills).Content
+func buildBaseSystemPromptContent(rootDir, sessionDate, basePrompt, userPrompt, providerName, model string, toolSurface capability.Surface, instructionFiles []instructions.File, memdirTeaching, memdirIndex string, discoveredSkills []skills.Skill) string {
+	return buildBaseSystemPromptResult(rootDir, sessionDate, basePrompt, userPrompt, providerName, model, toolSurface, instructionFiles, memdirTeaching, memdirIndex, discoveredSkills).Content
 }
 
-func buildBaseSystemPromptResult(rootDir, sessionDate, basePrompt, userPrompt, providerName, model string, toolSurface capability.Surface, memoryFiles []memory.File, memdirTeaching, memdirIndex string, discoveredSkills []skills.Skill) prompt.BuildResult {
+func buildBaseSystemPromptResult(rootDir, sessionDate, basePrompt, userPrompt, providerName, model string, toolSurface capability.Surface, instructionFiles []instructions.File, memdirTeaching, memdirIndex string, discoveredSkills []skills.Skill) prompt.BuildResult {
 	var pb prompt.Builder
 	pb.AddSection("base", basePrompt, true)
 	pb.AddSection("tool_surface", toolSurface.SystemFragment, true)
@@ -2292,7 +2289,7 @@ func buildBaseSystemPromptResult(rootDir, sessionDate, basePrompt, userPrompt, p
 	if strings.TrimSpace(userPrompt) != "" {
 		pb.AddSection("user_custom_prompt", "# User Custom Instructions\n\nFollow these user-defined instructions unless they conflict with wuu's built-in behavior, safety, or tool-use discipline above.\n\n"+userPrompt, true)
 	}
-	pb.AddMemory(memoryFiles)
+	pb.AddInstructions(instructionFiles)
 	if strings.TrimSpace(memdirTeaching) != "" {
 		pb.AddMemdir(memdirTeaching, memdirIndex)
 	}

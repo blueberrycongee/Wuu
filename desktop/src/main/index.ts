@@ -1147,7 +1147,7 @@ app.whenReady().then(async () => {
       return appServerClientPool.request<{
         state_dir: string;
         removed: boolean;
-        memory_archived: boolean;
+        data_archived: boolean;
       }>("workspace/state/cleanup", {
         workspace_id: projectId,
       });

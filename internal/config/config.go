@@ -94,7 +94,7 @@ type Config struct {
 	Providers       map[string]ProviderConfig `json:"providers"`
 	Agent           AgentConfig               `json:"agent"`
 	Hooks           map[string][]HookEntry    `json:"hooks,omitempty"`
-	Memory          MemoryConfig              `json:"memory,omitempty"`
+	Instructions    InstructionFilesConfig    `json:"instructions,omitempty"`
 	// MCPServers maps server name to connection config. When present, wuu
 	// connects to each server at startup (in the background) and exposes
 	// its tools to the agent.
@@ -110,31 +110,19 @@ type Config struct {
 	Extensions *extensions.Settings `json:"extensions,omitempty"`
 }
 
-// MemoryConfig overrides the defaults for memory file discovery. All fields
-// are optional; empty values fall back to memory.DefaultOptions().
-type MemoryConfig struct {
+// InstructionFilesConfig overrides project and user instruction discovery.
+// All fields are optional; empty values use the instruction defaults.
+type InstructionFilesConfig struct {
 	// Filenames to look for in priority order.
 	Filenames []string `json:"filenames,omitempty"`
 	// ProjectRootMarkers stop the upward walk through ancestors.
 	// Default: [".git", ".hg", ".jj", ".svn"].
 	ProjectRootMarkers []string `json:"project_root_markers,omitempty"`
-	// UserDirs are scanned for user-level memory. Tilde-expanded.
+	// UserDirs are scanned for user-level instruction files. Tilde-expanded.
 	UserDirs []string `json:"user_dirs,omitempty"`
-	// IncludeLegacyMemory imports Claude-style rules, local files, and
-	// auto-memory paths. It is off by default and intended for explicit
-	// migration, not normal request context.
-	IncludeLegacyMemory *bool `json:"include_legacy_memory,omitempty"`
-	// Disable turns off durable memory discovery and user-notebook injection.
-	Disable bool `json:"disable,omitempty"`
-	// NudgeInterval is retained for compatibility with configs written by the
-	// retired profile-memory reviewer. Current runtimes ignore it.
-	NudgeInterval *int `json:"nudge_interval,omitempty"`
-	// MemoryCharLimit is retained for compatibility with the retired indexed
-	// memory store. Current notebook memory does not apply this limit.
-	MemoryCharLimit int `json:"memory_char_limit,omitempty"`
-	// UserCharLimit is retained for compatibility with the retired indexed
-	// memory store. Current notebook memory does not apply this limit.
-	UserCharLimit int `json:"user_char_limit,omitempty"`
+	// IncludeLegacyInstructions imports Claude-style rule and auto-memory paths.
+	// It is off by default and exists only for explicit migration.
+	IncludeLegacyInstructions *bool `json:"include_legacy_instructions,omitempty"`
 }
 
 // ProviderConfig configures one model gateway.
@@ -349,7 +337,6 @@ type ModelRolesConfig struct {
 	Review   ModelRoleConfig `json:"review,omitempty"`
 	Compact  ModelRoleConfig `json:"compact,omitempty"`
 	Title    ModelRoleConfig `json:"title,omitempty"`
-	Memory   ModelRoleConfig `json:"memory,omitempty"`
 	Worker   ModelRoleConfig `json:"worker,omitempty"`
 	Fallback ModelRoleConfig `json:"fallback,omitempty"`
 }
@@ -382,7 +369,6 @@ type AdvancedRuntimeUpdate struct {
 type GeneralSettingsUpdate struct {
 	AppendSystemPrompt    *string
 	GitAttributionEnabled *bool
-	MemoryDisable         *bool
 	MCPEnabledToggles     map[string]*bool // server name → enabled; nil = skip
 }
 
@@ -399,7 +385,7 @@ func (a AgentConfig) GitAttributionEnabledValue() bool {
 // files are overlays in this order:
 // .wuu.json (or wuu.json), .wuu/settings.json, then
 // .wuu/settings.local.json. Project overlays cannot define provider
-// connections or credential sources, expand memory discovery outside the
+// connections or credential sources, expand instruction discovery outside the
 // workspace, or loosen the user's permission mode. This prevents a repository
 // from choosing where user credentials are sent merely by being opened.
 //
@@ -543,18 +529,61 @@ func stripLegacyPermissionKeys(data []byte) []byte {
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return data
 	}
-	agent, _ := raw["agent"].(map[string]any)
-	if agent == nil {
-		return data
+	if agent, _ := raw["agent"].(map[string]any); agent != nil {
+		for _, key := range []string{
+			"tool_policy",
+			"permission_rules",
+			"permission_profile",
+			"approval_policy",
+			"approvals_reviewer",
+		} {
+			delete(agent, key)
+		}
+		if roles, _ := agent["model_roles"].(map[string]any); roles != nil {
+			// The Memory plugin now selects ordinary private-session model aliases;
+			// the retired core-only role is accepted but discarded on migration.
+			for key := range roles {
+				if strings.EqualFold(key, "memory") {
+					delete(roles, key)
+				}
+			}
+		}
 	}
-	for _, key := range []string{
-		"tool_policy",
-		"permission_rules",
-		"permission_profile",
-		"approval_policy",
-		"approvals_reviewer",
-	} {
-		delete(agent, key)
+	// Project instruction discovery used to be stored under "memory". Translate
+	// only supported discovery fields at the load boundary; retired product
+	// settings never enter runtime state.
+	legacyKey := ""
+	var legacy map[string]any
+	for key, value := range raw {
+		if strings.EqualFold(key, "memory") {
+			legacyKey = key
+			legacy, _ = value.(map[string]any)
+			break
+		}
+	}
+	if legacy != nil {
+		hasInstructions := false
+		for key := range raw {
+			if strings.EqualFold(key, "instructions") {
+				hasInstructions = true
+				break
+			}
+		}
+		if !hasInstructions {
+			migrated := make(map[string]any)
+			for _, key := range []string{"filenames", "project_root_markers", "user_dirs"} {
+				if value, ok := legacy[key]; ok {
+					migrated[key] = value
+				}
+			}
+			if value, ok := legacy["include_legacy_memory"]; ok {
+				migrated["include_legacy_instructions"] = value
+			}
+			if len(migrated) > 0 {
+				raw["instructions"] = migrated
+			}
+		}
+		delete(raw, legacyKey)
 	}
 	out, err := json.Marshal(raw)
 	if err != nil {
@@ -734,7 +763,6 @@ func validateModelRolesConfig(c Config) error {
 		"review":   c.Agent.ModelRoles.Review,
 		"compact":  c.Agent.ModelRoles.Compact,
 		"title":    c.Agent.ModelRoles.Title,
-		"memory":   c.Agent.ModelRoles.Memory,
 		"worker":   c.Agent.ModelRoles.Worker,
 		"fallback": c.Agent.ModelRoles.Fallback,
 	}
@@ -1314,22 +1342,6 @@ func UpdateGeneralSettings(configPath string, update GeneralSettingsUpdate) erro
 		}
 		if len(agent) == 0 {
 			delete(raw, "agent")
-		}
-	}
-
-	if update.MemoryDisable != nil {
-		memory, _ := raw["memory"].(map[string]any)
-		if memory == nil {
-			memory = make(map[string]any)
-			raw["memory"] = memory
-		}
-		if *update.MemoryDisable {
-			memory["disable"] = true
-		} else {
-			delete(memory, "disable")
-		}
-		if len(memory) == 0 {
-			delete(raw, "memory")
 		}
 	}
 

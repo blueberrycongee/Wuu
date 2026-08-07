@@ -69,7 +69,7 @@ type TraceReplaySummary struct {
 	ToolNames                   []string                     `json:"tool_names,omitempty"`
 	ToolSummary                 *ToolReplaySummary           `json:"tool_summary,omitempty"`
 	ModelProfileRecommendations []ModelProfileRecommendation `json:"model_profile_recommendations,omitempty"`
-	GoalAttention               []GoalAttentionObservation   `json:"goal_attention,omitempty"`
+	Attention                   []AttentionObservation       `json:"attention,omitempty"`
 	HarnessTaskIDs              []string                     `json:"harness_task_ids,omitempty"`
 	HarnessReportIDs            []string                     `json:"harness_report_ids,omitempty"`
 	Validation                  *ValidationReplaySummary     `json:"validation,omitempty"`
@@ -215,8 +215,8 @@ func TraceEvents(result Result, createdAt time.Time) []TraceEvent {
 	if len(obs.ToolRecords) > 0 {
 		events = append(events, TraceEvent{Type: "tool_records", TaskID: taskID, CreatedAt: createdAt, Data: obs.ToolRecords})
 	}
-	if len(obs.GoalAttention) > 0 {
-		events = append(events, TraceEvent{Type: "goal_attention", TaskID: taskID, CreatedAt: createdAt, Data: obs.GoalAttention})
+	if len(obs.Attention) > 0 {
+		events = append(events, TraceEvent{Type: "attention", TaskID: taskID, CreatedAt: createdAt, Data: obs.Attention})
 	}
 	if len(obs.HarnessTasks) > 0 {
 		events = append(events, TraceEvent{Type: "harness_tasks", TaskID: taskID, CreatedAt: createdAt, Data: obs.HarnessTasks})
@@ -278,7 +278,7 @@ func BuildValidationSummary(result Result) *ValidationReplaySummary {
 		},
 	}
 	if result.Observability != nil {
-		summary.GoalAttention = append(summary.GoalAttention, result.Observability.GoalAttention...)
+		summary.Attention = append(summary.Attention, result.Observability.Attention...)
 		for _, record := range result.Observability.ToolRecords {
 			summary.addValidationToolObservation(record)
 		}
@@ -388,12 +388,12 @@ func replayTraceEvent(summary *TraceReplaySummary, eventType string, data json.R
 			return err
 		}
 		summary.ToolInventory = append(summary.ToolInventory, inventory...)
-	case "goal_attention":
-		var attention []GoalAttentionObservation
+	case "attention":
+		var attention []AttentionObservation
 		if err := json.Unmarshal(data, &attention); err != nil {
 			return err
 		}
-		summary.GoalAttention = append(summary.GoalAttention, attention...)
+		summary.Attention = append(summary.Attention, attention...)
 	case "harness_tasks":
 		var tasks []HarnessTaskObservation
 		if err := json.Unmarshal(data, &tasks); err != nil {
@@ -614,7 +614,7 @@ func (summary *TraceReplaySummary) finalizeValidationSummary() {
 		missing = appendPrefixedTraceStrings(missing, "missing_tool_sequence", summary.Task.MissingToolSeq)
 		missing = appendPrefixedTraceStrings(missing, "missing_error", summary.Task.MissingErrors)
 	}
-	missing = appendPrefixedTraceStrings(missing, "attention_issue", GoalAttentionValidationIssues(summary.GoalAttention))
+	missing = appendPrefixedTraceStrings(missing, "attention_issue", AttentionValidationIssues(summary.Attention))
 	var failures []string
 	for _, item := range evidence {
 		if item.Passed {
@@ -695,17 +695,17 @@ func validationNextActions(validation *ValidationReplaySummary) []string {
 	}
 }
 
-func GoalAttentionValidationIssues(items []GoalAttentionObservation) []string {
+func AttentionValidationIssues(items []AttentionObservation) []string {
 	var issues []string
 	for _, item := range items {
-		issues = appendUniqueTraceString(issues, goalAttentionIssueLabel(item))
+		issues = appendUniqueTraceString(issues, attentionIssueLabel(item))
 	}
 	sort.Strings(issues)
 	return issues
 }
 
-func goalAttentionIssueLabel(item GoalAttentionObservation) string {
-	parts := []string{firstNonEmptyTraceString(item.Source, "goal")}
+func attentionIssueLabel(item AttentionObservation) string {
+	parts := []string{firstNonEmptyTraceString(item.Source, "runtime")}
 	if id := strings.TrimSpace(item.ID); id != "" {
 		parts = append(parts, id)
 	}

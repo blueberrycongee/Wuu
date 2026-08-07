@@ -11,23 +11,25 @@ import (
 	"github.com/blueberrycongee/wuu/internal/statepath"
 )
 
-// workspaceStateArchiveDirName is the folder inside a workspace state
-// directory that receives archived (never hard-deleted) memory data during
-// a state cleanup. It is skipped by the deletion sweep so repeated cleanups
-// keep earlier archives intact.
+// workspaceStateArchiveDirName receives durable extension data that is not
+// owned by the core runtime. It is skipped by repeated cleanup sweeps.
 const workspaceStateArchiveDirName = ".archived"
 
-// workspaceMemoryDirNames are the state-dir subdirectories that hold
-// memory-class data. They fall under self-consistency invariant 3 (memory is
-// archived, never hard-deleted).
-var workspaceMemoryDirNames = map[string]bool{
-	"memory": true,
+// workspaceCoreTransientDirNames are directories whose complete lifecycle is
+// owned by the reusable runtime. Unknown top-level directories are archived:
+// this preserves current and future plugin data without teaching cleanup any
+// product-specific directory names.
+var workspaceCoreTransientDirNames = map[string]bool{
+	"runtime":   true,
+	"sessions":  true,
+	"shared":    true,
+	"worktrees": true,
 }
 
 // handleWorkspaceStateCleanup reclaims the local state of a workspace the
 // user has removed from the desktop sidebar: everything under the workspace
-// state directory is deleted except the memory directories, which move into
-// .archived/. The serving instance refuses to clean its own active
+// state directory is deleted except durable extension directories, which move
+// into .archived/. The serving instance refuses to clean its own active
 // workspace; the desktop only issues this call for removed projects, whose
 // state dirs are addressed by stable id (or path for legacy path-keyed
 // dirs) rather than by the caller's runtime context.
@@ -62,11 +64,9 @@ func (s *Server) handleWorkspaceStateCleanup(req Request) error {
 	return s.writeResponse(req.ID, result, nil)
 }
 
-// cleanupWorkspaceStateDir deletes every entry of a workspace state
-// directory except the archive folder itself and the memory directories,
-// which are moved into .archived/ (invariant 3: memory-class data is
-// archived, never hard-deleted). A missing state directory is not an
-// error — there is simply nothing to clean.
+// cleanupWorkspaceStateDir deletes core-owned transient directories and loose
+// runtime files. Other top-level directories are extension-owned or legacy
+// durable data and are archived. A missing state directory is a no-op.
 func cleanupWorkspaceStateDir(stateDir string) (WorkspaceStateCleanupResult, error) {
 	result := WorkspaceStateCleanupResult{StateDir: stateDir}
 	entries, err := os.ReadDir(stateDir)
@@ -83,11 +83,11 @@ func cleanupWorkspaceStateDir(stateDir string) (WorkspaceStateCleanupResult, err
 			continue
 		}
 		path := filepath.Join(stateDir, name)
-		if entry.IsDir() && workspaceMemoryDirNames[name] {
-			if err := archiveWorkspaceMemoryDir(archiveRoot, path, name); err != nil {
+		if entry.IsDir() && !workspaceCoreTransientDirNames[name] {
+			if err := archiveWorkspaceDataDir(archiveRoot, path, name); err != nil {
 				return result, err
 			}
-			result.MemoryArchived = true
+			result.DataArchived = true
 			continue
 		}
 		if err := os.RemoveAll(path); err != nil {
@@ -98,7 +98,7 @@ func cleanupWorkspaceStateDir(stateDir string) (WorkspaceStateCleanupResult, err
 	return result, nil
 }
 
-func archiveWorkspaceMemoryDir(archiveRoot, path, name string) error {
+func archiveWorkspaceDataDir(archiveRoot, path, name string) error {
 	if err := os.MkdirAll(archiveRoot, 0o755); err != nil {
 		return fmt.Errorf("create archive dir: %w", err)
 	}

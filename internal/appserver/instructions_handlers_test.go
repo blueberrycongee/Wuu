@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/blueberrycongee/wuu/internal/memory"
+	"github.com/blueberrycongee/wuu/internal/instructions"
 	"github.com/blueberrycongee/wuu/internal/runtime"
 )
 
@@ -31,7 +31,7 @@ func TestHandleInstructionsList(t *testing.T) {
 	srv := &Server{
 		out: &buf,
 		rt: &runtime.Session{
-			Memory: []memory.File{
+			InstructionFiles: []instructions.File{
 				{Path: "/home/u/.config/wuu/AGENTS.md", Name: "AGENTS.md", Source: "user", Content: "global rules"},
 				{Path: "/repo/AGENTS.md", Name: "AGENTS.md", Source: "project", Content: "project rules here"},
 			},

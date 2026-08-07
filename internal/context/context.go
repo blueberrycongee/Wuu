@@ -361,7 +361,7 @@ func EnvironmentBlock(env EnvInfo) Block {
 }
 
 // FormatSystemReminder formats environment info and optional extra
-// context sections (memory, skills) into a <system-reminder> block
+// context sections (instruction files, skills) into a <system-reminder> block
 // suitable for injection into a user message.
 func FormatSystemReminder(env EnvInfo, sections ...string) string {
 	blocks := []Block{EnvironmentBlock(env)}

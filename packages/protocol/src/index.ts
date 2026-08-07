@@ -203,7 +203,6 @@ export type AdvancedSettingsSummary = {
 export type GeneralSettingsSummary = {
   append_system_prompt: string;
   git_attribution_enabled?: boolean;
-  memory_disabled: boolean;
   mcp_server_enabled: Record<string, boolean>;
 };
 
@@ -616,7 +615,6 @@ export type ModelBehaviorSummary = {
     review?: boolean;
     compact?: boolean;
     title?: boolean;
-    memory?: boolean;
     worker?: boolean;
     fallback?: boolean;
   };
@@ -931,7 +929,6 @@ export type ConfigAdvancedUpdateResult = {
 export type RuntimeGeneralSettingsUpdate = {
   append_system_prompt?: string;
   git_attribution_enabled?: boolean;
-  memory_disable?: boolean;
   mcp_enabled_toggles?: Record<string, boolean>;
 };
 
@@ -1641,7 +1638,7 @@ export type ContextSegmentCountSummary = {
 export type InstructionFileScope = "global" | "project";
 
 // InstructionFile mirrors appserver.InstructionFile: one AGENTS.md / CLAUDE.md
-// style file that memory.Discover loaded into the base system prompt.
+// style file discovered and loaded into the base system prompt.
 export type InstructionFile = {
   path: string;
   name: string;
@@ -2206,14 +2203,13 @@ export type WuuDesktopApi = {
   selectProject: (projectId: string) => Promise<ProjectListResult>;
   removeProject: (projectId: string) => Promise<ProjectListResult>;
   // Opt-in second step after removeProject: reclaim the removed workspace's
-  // local state directory. Non-memory state (session artifacts, goals,
-  // worktrees, runtime files) is deleted; memory directories are archived
-  // into `.archived/` inside the state dir, never hard-deleted. Mirrors the
+  // local state directory. Core transient state is deleted; plugin-owned and
+  // unknown durable directories are archived into `.archived/`. Mirrors the
   // `workspace/state/cleanup` RPC.
   cleanupProjectState: (
     projectId: string,
     projectPath: string,
-  ) => Promise<{ state_dir: string; removed: boolean; memory_archived: boolean }>;
+  ) => Promise<{ state_dir: string; removed: boolean; data_archived: boolean }>;
   relocateProject: (projectId: string) => Promise<ProjectListResult>;
   selectNoProject: (fresh?: boolean, cwd?: string) => Promise<ProjectListResult>;
   gitStatus: (root?: string) => Promise<GitStatusResult>;

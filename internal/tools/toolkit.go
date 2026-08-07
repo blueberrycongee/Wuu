@@ -272,7 +272,6 @@ func (t *Toolkit) rebuildRegistry() {
 		NewWebFetchTool(e),
 		// Skills
 		NewLoadSkillTool(e),
-		// Durable session/workspace memory
 		// Session/thread lookup (used after right-click "copy ID" on the
 		// desktop session tree — agents receive a thread ID and resolve it
 		// back to the full conversation via this tool).
@@ -283,7 +282,6 @@ func (t *Toolkit) rebuildRegistry() {
 		NewCreateAgentProfileTool(e),
 		// Planning
 		NewUpdatePlanTool(e),
-		// Agent orchestration
 		// Embedded browser automation (default-disabled in New(); enabled per
 		// session by SetBrowserEnabled off WUU_ENABLE_BROWSER).
 		NewBrowserTool(e),

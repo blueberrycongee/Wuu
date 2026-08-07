@@ -148,8 +148,8 @@ RPC。
 | 产品 | 如何由公共链路组合 | 插件应拥有 | 不应留在核心的产品接口 |
 | --- | --- | --- | --- |
 | Cron | Timer → 创建或复用用户可见 Session → 投递 Prompt；注册管理 Tool 和 View | Cron 表达、任务和运行记录、补跑策略、提示、Tool、Timer 与完整界面 | `automation/create`、`AutomationRunID` 和 Turn 中的自动化分支 |
-| memory | 注册提示与文件 Tool → 在合适时机读写文件；管理 View 可调用 Agent 修改文件 | 文件格式、发现/注入策略、概览与修改提示、审计和设置界面 | `memory/overview`、`memory/chat`、`memory/read` 和核心配置字段 |
-| dream | Cron + memory → 插件私有 Session → 整理后写回 memory | 候选选择、整合提示、失败退避、结果状态和管理界面 | `sessionDreamScheduler` 和 StreamRunner 的产品专用 AfterTurn Hook |
+| Memory | 注册提示与文件 Tool → 在合适时机读写文件；管理 View 可调用 Agent 修改文件 | 用户、工作区和会话记忆格式，读写 Tool、安全策略、概览与修改提示、审计和设置界面 | `memory/overview`、`memory/chat`、`session_memory` 核心 Tool 和核心配置字段 |
+| Dream | Timer + Memory → 插件私有 Session → 整理后通过 Memory Tool 写回 | 候选选择、整合提示、失败退避、结果状态和管理界面 | `sessionDreamScheduler` 和 StreamRunner 的产品专用 AfterTurn Hook |
 | Goal | Turn 完成事件 → 检查目标状态 → 向同一主 Session 投递生成的 query | 目标状态机、预算、提示、Tool、存储和界面 | `agent.turn.continuation` 及 Goal 专用的 probe/prepare 调度 |
 | Subagent | 创建私有子 Session → fresh/fork 上下文 → 投递任务 → 完成后向父 Session 回投生成的 query | `spawn_agent` 等 Tool、任务命名、worker 策略、提示、报告和界面 | `host.child_session.request` 的 spawn/send/close/list/await/report 产品动作 |
 
@@ -182,10 +182,10 @@ RPC。
 
 如果答案不成立，应继续把逻辑留在插件内部，或重新寻找更底层、更高复用的能力边界。
 
-### 当前实现中不妥当的边界
+### 一方高级功能的迁移结果
 
-当前代码已经证明插件可以承载 Tool、提示、状态和 Desktop 贡献，但“代码位于 plugins 目录”不等于
-完成纵向插件化。下面几处是明确的过渡实现，不能固化成公共生态合同：
+下面按真实分发中的高级功能记录已经完成的纵向切片。验收依据是业务状态、Prompt、Tool、后台
+链路和 Desktop 展示都由插件拥有，而不只是把代码移动到 `plugins/`：
 
 1. **Goal 已迁移到公共 Session 链路。** Goal 的状态机、存储、Tool、提示和 UI 均由插件拥有；
    插件观察 `agent.turn.completed` 后通过 `host.session.send` 向同一 Session 投递只读 query。
@@ -208,14 +208,18 @@ RPC。
    运行记录、Prompt、`cron` Tool 和完整桌面 View；触发时只调用 `host.session.create/send`，并通过
    通用 Turn lifecycle 收敛运行状态。核心的 Automation RPC、Manager、scheduler、Turn 特判、
    原生页面、IPC 与 Tool 展示特判已经删除；generation shutdown 会先停止插件后台 Timer。
-7. **用户 Memory 已迁移到公共插件链路。** 一方插件拥有用户笔记本格式、安全过滤、文件 Tool、
-   系统提示、概览/管理私有 Session 和完整桌面 View；核心不再读取用户 `MEMORY.md`，也不再提供
-   `memory/overview`、`memory/chat`、`memory/read`、原生页面、IPC 或 `/memory` 产品特判。命名 Agent
-   身份笔记本和工作区/会话记忆仍属于后续协作与 Memory 切片，不能据此扩张成 `host.memory.*`。
+7. **Memory 已完整迁移到公共插件链路。** 一方插件拥有用户笔记本、工作区 `project_memory`、
+   会话 `summary/checkpoint/notes` 的文件布局、安全过滤、`memory_*`/`session_memory` Tool、系统提示、
+   概览/管理私有 Session 和完整桌面 View。核心不再读取用户 `MEMORY.md`，不再自动注入会话记忆，
+   也不再提供 Memory RPC、原生页面、IPC、核心 Tool/capability、启停配置或专用模型角色。宿主只把
+   已解析的 `workspace_state_dir` 作为通用初始化上下文交给插件，并继续拥有普通 Session/Turn
+   持久化。旧 `memory` 指令发现配置只在加载边界迁移为产品中立的 `instructions` 配置。
+   普通核心文件 Tool 也不再放行用户 Memory 或整个 `WUU_HOME`；命名 Agent 的身份笔记本属于
+   暂不迁移的协作域，只在该 Agent 的显式文件范围内开放，不能据此扩张成 `host.memory.*`。
 8. **Dream 已迁移到公共 Session 链路。** 一方插件观察标准 Turn 完成事件，用插件存储维护候选、
    Timer、间隔、失败退避和运行状态，再通过 `host.session.create/send` 创建 fork 私有 Session；Prompt
-   和设置 View 也由插件拥有。核心 `sessionDreamScheduler`、Dream 状态/锁、AfterTurn Hook、配置字段
-   和原生设置已经删除。
+   和设置 View 也由插件拥有，并让该 Session 通过 Memory 插件提供的 `session_memory` Tool 写回。
+   核心 `sessionDreamScheduler`、Dream 状态/锁、AfterTurn Hook、配置字段和原生设置已经删除。
 
 ### 改造顺序与完成标准
 
@@ -229,11 +233,11 @@ RPC。
    提示、状态、桌面状态条和父 Session 回投由插件拥有。继续删除只服务旧核心 Subagent 展示的
    遗留产品分支，不改变公共合同。
 4. HelpMe 全链路已删除；Plan 仍通过核心 Tool/状态链运行。
-5. Cron 已完成“插件 Timer → 用户可见 Session”的纵向切片；用户 Memory 已完成“Prompt + Tool +
-   私有 Session + View”纵向切片，继续迁移工作区/会话记忆，最后用 Dream 验证
-   “Timer + memory + 插件私有 Session”的组合，不为三者增加产品专用宿主服务。
-6. 每完成一项迁移就验证插件禁用、升级和卸载后不再唤醒、不残留 UI/订阅/租约；最后删除旧协议、
-   死代码和只为旧边界存在的测试。
+5. Cron、Memory 和 Dream 已分别完成“插件 Timer → 用户可见 Session”、“Prompt + Tool + 私有
+   Session + View”和“Timer + Memory Tool + 插件私有 Session”的纵向切片，三者没有产品专用
+   宿主服务。
+6. 每项迁移都必须验证插件禁用、升级和卸载后不再唤醒、不残留 UI、Prompt、Tool、订阅或后台
+   generation；核心删除旧协议、死代码和只为旧边界存在的测试。
 
 插件链路的验收不是接口存在，而是：在核心搜索不到 Cron、Memory、Dream、Goal、Subagent 的产品
 调度分支时，这五个一方插件仍能仅通过公开合同保持现有体验；外部插件在相同权限和生命周期下也

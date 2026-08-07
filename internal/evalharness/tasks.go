@@ -108,7 +108,7 @@ type Observability struct {
 	ContextRequests    []ContextRequestObservation `json:"context_requests,omitempty"`
 	ToolInventory      []ToolInventoryObservation  `json:"tool_inventory,omitempty"`
 	ToolRecords        []ToolObservation           `json:"tool_records,omitempty"`
-	GoalAttention      []GoalAttentionObservation  `json:"goal_attention,omitempty"`
+	Attention          []AttentionObservation      `json:"attention,omitempty"`
 	HarnessTasks       []HarnessTaskObservation    `json:"harness_tasks,omitempty"`
 	HarnessReports     []HarnessReportObservation  `json:"harness_reports,omitempty"`
 	Warnings           []string                    `json:"warnings,omitempty"`
@@ -239,7 +239,7 @@ type PatchRiskObservation struct {
 	ReviewHint     string         `json:"review_hint,omitempty"`
 }
 
-type GoalAttentionObservation struct {
+type AttentionObservation struct {
 	Source  string `json:"source"`
 	ID      string `json:"id,omitempty"`
 	Status  string `json:"status,omitempty"`
@@ -253,8 +253,6 @@ type HarnessTaskObservation struct {
 	Path          string   `json:"path,omitempty"`
 	Name          string   `json:"name,omitempty"`
 	Role          string   `json:"role,omitempty"`
-	GoalID        string   `json:"goal_id,omitempty"`
-	GoalDir       string   `json:"goal_dir,omitempty"`
 	Status        string   `json:"status"`
 	ReportPath    string   `json:"report_path,omitempty"`
 	ArtifactPaths []string `json:"artifact_paths,omitempty"`

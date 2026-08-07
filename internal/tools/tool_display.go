@@ -140,14 +140,6 @@ func builtInToolDisplay(call providers.ToolCall) providers.ToolCallDisplay {
 		return toolDisplay("agent", "创建长期 Agent "+displayTruncate(profile, 70))
 	case "update_plan":
 		return toolDisplay("plan", "更新计划")
-	case "spawn_agent":
-		return toolDisplay("agent", "启动子任务 "+displayTarget(displayString(args, "name", "description"), ""))
-	case "send_message":
-		return toolDisplay("agent", "发送给子任务 "+displayTarget(displayString(args, "target", "task_name"), ""))
-	case "close_agent":
-		return toolDisplay("agent", "关闭子任务 "+displayTarget(displayString(args, "target", "task_name"), ""))
-	case "agent_report":
-		return toolDisplay("agent", "读取子任务报告 "+displayTarget(displayString(args, "target", "task_name"), ""))
 	default:
 		return providers.ToolCallDisplay{
 			Kind: displayKindForTool(name),

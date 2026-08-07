@@ -2604,7 +2604,7 @@ func TestSessionRefreshSystemPromptUpdatesRunnerPrompt(t *testing.T) {
 	}
 }
 
-func TestDiscoverMemoryHonorsLegacyOptIn(t *testing.T) {
+func TestDiscoverInstructionsHonorsLegacyOptIn(t *testing.T) {
 	home := t.TempDir()
 	root := filepath.Join(home, "repo")
 	if err := os.MkdirAll(filepath.Join(root, ".git"), 0o755); err != nil {
@@ -2617,18 +2617,18 @@ func TestDiscoverMemoryHonorsLegacyOptIn(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if files := discoverMemory(root, home, config.MemoryConfig{}); len(files) != 0 {
-		t.Fatalf("default runtime memory discovery should skip legacy files, got %+v", files)
+	if files := discoverInstructions(root, home, config.InstructionFilesConfig{}); len(files) != 0 {
+		t.Fatalf("default runtime instruction discovery should skip legacy files, got %+v", files)
 	}
 
 	includeLegacy := true
-	files := discoverMemory(root, home, config.MemoryConfig{IncludeLegacyMemory: &includeLegacy})
+	files := discoverInstructions(root, home, config.InstructionFilesConfig{IncludeLegacyInstructions: &includeLegacy})
 	if len(files) != 1 || files[0].Content != "legacy project rule" {
 		t.Fatalf("legacy opt-in did not load legacy file: %+v", files)
 	}
 }
 
-func TestDiscoverMemoryKeepsUserGlobalMemoryAndIgnoresProjectRedirect(t *testing.T) {
+func TestDiscoverInstructionsKeepsUserGlobalFilesAndIgnoresProjectRedirect(t *testing.T) {
 	home := t.TempDir()
 	wuuHome := filepath.Join(home, ".wuu")
 	root := filepath.Join(home, "repo")
@@ -2659,7 +2659,7 @@ func TestDiscoverMemoryKeepsUserGlobalMemoryAndIgnoresProjectRedirect(t *testing
 				Model:     "trusted-model",
 			},
 		},
-		Memory: config.MemoryConfig{
+		Instructions: config.InstructionFilesConfig{
 			Filenames: []string{"GLOBAL.md"},
 			UserDirs:  []string{wuuHome},
 		},
@@ -2686,13 +2686,13 @@ func TestDiscoverMemoryKeepsUserGlobalMemoryAndIgnoresProjectRedirect(t *testing
 	if err != nil {
 		t.Fatalf("LoadFrom: %v", err)
 	}
-	files := discoverMemory(root, home, cfg.Memory)
+	files := discoverInstructions(root, home, cfg.Instructions)
 	if len(files) != 1 || files[0].Content != "trusted global memory" || files[0].Path != filepath.Join(wuuHome, "GLOBAL.md") {
 		t.Fatalf("unexpected memory files: %+v", files)
 	}
 	for _, file := range files {
 		if strings.Contains(file.Content, "must not be loaded") || strings.Contains(file.Path, ".ssh") {
-			t.Fatalf("project redirected global memory discovery: %+v", files)
+			t.Fatalf("project redirected global instruction discovery: %+v", files)
 		}
 	}
 }

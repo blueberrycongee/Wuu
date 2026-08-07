@@ -1,13 +1,12 @@
-// Package memdir implements the file-directory long-term memory layout
-// defined by docs/plans/2026-07-04-memory-redesign.md.
+// Package memdir implements collaboration named-agent identity notebooks.
 //
 // A memory notebook is a plain directory: MEMORY.md is an INDEX (one line
 // per memory: `- [Title](topic.md) — one-line hook`) and each memory lives
 // in its own topic markdown file with a small frontmatter header. Only the
 // index is ever injected into model context; writing memories happens
 // through the ordinary file tools, guided by the teaching text built here.
-// There are exactly two notebook kinds: the user notebook (one per wuu
-// home) and one identity notebook per named agent.
+// The general user, project, and session memory product is owned by the
+// bundled Memory plugin; this package only serves named-agent identity state.
 package memdir
 
 import (
@@ -31,27 +30,6 @@ const (
 	// security scan (threat patterns or invisible unicode).
 	removedLineNotice = "[memory line removed: security]"
 )
-
-// UserMemdir returns the user notebook directory (~/.wuu/memory).
-func UserMemdir(wuuHome string) string {
-	home := strings.TrimSpace(wuuHome)
-	if home == "" {
-		return ""
-	}
-	return filepath.Join(home, "memory")
-}
-
-// ParticipantMemdir returns the identity notebook directory for one named
-// agent (~/.wuu/participants/<id>/memory). An empty participant id has
-// no notebook and yields "".
-func ParticipantMemdir(wuuHome, participantID string) string {
-	home := strings.TrimSpace(wuuHome)
-	id := strings.TrimSpace(participantID)
-	if home == "" || id == "" {
-		return ""
-	}
-	return filepath.Join(home, "participants", id, "memory")
-}
 
 // EnsureDir creates a notebook directory (with parents) if missing. The
 // harness calls this before teaching the model that the directory "already

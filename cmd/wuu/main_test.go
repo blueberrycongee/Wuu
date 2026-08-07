@@ -1327,7 +1327,7 @@ func TestRunEvalReplayTraceTextPrintsPolicyBlocks(t *testing.T) {
 				ArgumentsSHA256: strings.Repeat("e", 64),
 				Success:         false,
 			}},
-			GoalAttention: []evalharness.GoalAttentionObservation{{
+			Attention: []evalharness.AttentionObservation{{
 				Source:  "harness_report",
 				ID:      "report-1",
 				Status:  "partial",
@@ -1348,8 +1348,8 @@ func TestRunEvalReplayTraceTextPrintsPolicyBlocks(t *testing.T) {
 	if !strings.Contains(output, "policy_blocks: bash:deny:boundary_denied:call_id=call-process") {
 		t.Fatalf("replay text output missing policy blocks:\n%s", output)
 	}
-	if !strings.Contains(output, "goal_attention: harness_report:id=report-1:status=partial:path=/tmp/wuu/harness/report-1.md:message=tests failed") {
-		t.Fatalf("replay text output missing goal attention:\n%s", output)
+	if !strings.Contains(output, "attention: harness_report:id=report-1:status=partial:path=/tmp/wuu/harness/report-1.md:message=tests failed") {
+		t.Fatalf("replay text output missing attention:\n%s", output)
 	}
 	if !strings.Contains(output, "forbidden_tools: deprecated_tool") {
 		t.Fatalf("replay text output missing forbidden tools:\n%s", output)
@@ -1376,7 +1376,7 @@ func TestApplyEvalAttentionIssuesFailsResult(t *testing.T) {
 		TaskID:  "task-1",
 		Success: true,
 		Observability: &evalharness.Observability{
-			GoalAttention: []evalharness.GoalAttentionObservation{{
+			Attention: []evalharness.AttentionObservation{{
 				Source:  "harness_report",
 				ID:      "report-1",
 				Status:  "partial",
@@ -1388,7 +1388,7 @@ func TestApplyEvalAttentionIssuesFailsResult(t *testing.T) {
 	applyEvalAttentionIssues(&result)
 
 	if result.Success {
-		t.Fatalf("goal/harness attention should fail eval result: %+v", result)
+		t.Fatalf("harness attention should fail eval result: %+v", result)
 	}
 }
 

@@ -20,7 +20,6 @@ export type FloatingMenuOwner =
   | "composer-context-meter"
   | "composer-token-gauge"
   | "composer-focus"
-  | "composer-goal"
   | "composer-plus"
   | "composer-slash"
   | "codex-runtime"

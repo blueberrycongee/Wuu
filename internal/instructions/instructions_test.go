@@ -1,4 +1,4 @@
-package memory
+package instructions
 
 import (
 	"os"
@@ -16,7 +16,7 @@ func testOpts(userDirs []string) Options {
 
 func legacyTestOpts(userDirs []string) Options {
 	o := testOpts(userDirs)
-	o.IncludeLegacyMemory = boolPtr(true)
+	o.IncludeLegacyInstructions = boolPtr(true)
 	return o
 }
 
@@ -411,8 +411,8 @@ func TestDiscover_DefaultOptionsAreWuuNative(t *testing.T) {
 	if opts.Filenames[0] != "AGENTS.md" {
 		t.Errorf("expected AGENTS.md as highest-priority filename, got %q", opts.Filenames[0])
 	}
-	if opts.IncludeLegacyMemory == nil || *opts.IncludeLegacyMemory {
-		t.Errorf("legacy memory import should be opt-in by default, got %v", opts.IncludeLegacyMemory)
+	if opts.IncludeLegacyInstructions == nil || *opts.IncludeLegacyInstructions {
+		t.Errorf("legacy instruction import should be opt-in by default, got %v", opts.IncludeLegacyInstructions)
 	}
 }
 

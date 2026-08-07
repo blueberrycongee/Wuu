@@ -37,8 +37,8 @@ export const ENABLE_VOICE_INPUT =
   import.meta.env.VITE_ENABLE_VOICE_INPUT === "true";
 
 /**
- * The Skills and Automations management assistants are an early
- * surface-assistant experiment. Keep them out of release builds until their
+ * The Skills management assistant is an early surface-assistant experiment.
+ * Keep it out of release builds until its
  * ephemeral-session and correction UX have been validated through dogfooding.
  *
  * Use `VITE_ENABLE_MANAGEMENT_ASSISTANT=true npm run dev` for internal testing.

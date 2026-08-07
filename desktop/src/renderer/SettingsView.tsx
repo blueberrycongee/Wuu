@@ -1747,7 +1747,6 @@ function SettingsGeneralPage({
   const configuredMCPEnabled = generalSettings?.mcp_server_enabled ?? {};
   const configuredMCPKey = stableBoolRecordSignature(configuredMCPEnabled);
   const [appendSystemPromptDraft, setAppendSystemPromptDraft] = useState(generalSettings?.append_system_prompt ?? "");
-  const [memoryDisabledDraft, setMemoryDisabledDraft] = useState(generalSettings?.memory_disabled ?? false);
   const [mcpEnabledDraft, setMCPEnabledDraft] = useState<Record<string, boolean>>(() => ({ ...configuredMCPEnabled }));
   const [mcpToggleBusy, setMCPToggleBusy] = useState("");
   const [mcpToggleError, setMCPToggleError] = useState("");
@@ -1761,14 +1760,12 @@ function SettingsGeneralPage({
 
   useEffect(() => {
     setAppendSystemPromptDraft(generalSettings?.append_system_prompt ?? "");
-    setMemoryDisabledDraft(generalSettings?.memory_disabled ?? false);
     setMCPEnabledDraft({ ...configuredMCPEnabled });
     setGeneralError("");
-  }, [generalSettings?.append_system_prompt, generalSettings?.memory_disabled, configuredMCPKey]);
+  }, [generalSettings?.append_system_prompt, configuredMCPKey]);
 
   // Instant-apply, same model as the MCP toggles below: the textarea
-  // commits on blur, the memory switch persists immediately, and only
-  // failures speak — inline at the foot of the section.
+  // commits on blur and only failures speak inline at the foot of the section.
   async function commitAppendSystemPrompt(): Promise<void> {
     const next = appendSystemPromptDraft.trim();
     if (next === (generalSettings?.append_system_prompt ?? "")) {
@@ -1778,18 +1775,6 @@ function SettingsGeneralPage({
     try {
       await onGeneralSave({ append_system_prompt: next });
     } catch (error) {
-      setGeneralError(error instanceof Error ? error.message : t("settings.saveFailed"));
-    }
-  }
-
-  async function toggleMemoryDisabled(): Promise<void> {
-    const next = !memoryDisabledDraft;
-    setMemoryDisabledDraft(next);
-    setGeneralError("");
-    try {
-      await onGeneralSave({ memory_disable: next });
-    } catch (error) {
-      setMemoryDisabledDraft(!next);
       setGeneralError(error instanceof Error ? error.message : t("settings.saveFailed"));
     }
   }
@@ -1989,22 +1974,6 @@ function SettingsGeneralPage({
               onBlur={() => void commitAppendSystemPrompt()}
               disabled={running || !initialized}
             />
-          </SettingsRow>
-          <SettingsRow
-            title={t("settings.memory")}
-            description={t("settings.memoryDescription")}
-          >
-            <button
-              className="settings-switch"
-              type="button"
-              role="switch"
-              aria-checked={!memoryDisabledDraft}
-              disabled={running || !initialized}
-              onClick={() => void toggleMemoryDisabled()}
-            >
-              <span className="settings-switch-thumb" aria-hidden="true" />
-              <span className="sr-only">{memoryDisabledDraft ? t("settings.enableMemory") : t("settings.disableMemory")}</span>
-            </button>
           </SettingsRow>
           <SettingsRow
             title={t("settings.gitAttribution")}

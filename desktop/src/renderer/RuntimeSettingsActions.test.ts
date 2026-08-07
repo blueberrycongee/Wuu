@@ -47,7 +47,6 @@ function initialized(overrides: Partial<InitializeResult> = {}): InitializeResul
     },
     general_settings: {
       append_system_prompt: "",
-      memory_disabled: false,
       mcp_server_enabled: {},
     },
     ...overrides,
@@ -111,7 +110,6 @@ function installWuuApi(): {
   const updateGeneralSettings = vi.fn().mockResolvedValue({
     general_settings: {
       append_system_prompt: "Stay concise.",
-      memory_disabled: true,
       mcp_server_enabled: { local: false },
     },
   });
@@ -572,7 +570,6 @@ describe("createRuntimeSettingsActions", () => {
     await harness.actions.updateGeneralSettings({
       append_system_prompt: "Stay concise.",
       git_attribution_enabled: false,
-      memory_disable: true,
     });
 
     expect(api.updateAdvancedSettings).toHaveBeenCalledWith({
@@ -582,14 +579,11 @@ describe("createRuntimeSettingsActions", () => {
     expect(api.updateGeneralSettings).toHaveBeenCalledWith({
       append_system_prompt: "Stay concise.",
       git_attribution_enabled: false,
-      memory_disable: true,
     });
     expect(harness.getAppState().initialized?.advanced_settings?.max_steps).toBe(
       20,
     );
-    expect(harness.getAppState().initialized?.general_settings?.memory_disabled).toBe(
-      true,
-    );
+	expect(harness.getAppState().initialized?.general_settings?.append_system_prompt).toBe("Stay concise.");
 
     const blocked = buildActions({ viewContextSwitchPending: true });
     await blocked.actions.updateAdvancedSettings({ max_steps: 30 });

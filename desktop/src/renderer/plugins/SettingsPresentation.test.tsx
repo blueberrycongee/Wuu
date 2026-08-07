@@ -96,8 +96,8 @@ describe("SettingsPresentation", () => {
     await expect(presenterHost?.invoke(SETTINGS_ACTIONS.openPage, { pageId: "private" })).rejects.toThrow("unavailable");
     await act(async () => presenterHost?.invoke(SETTINGS_ACTIONS.updateValue, { key: SETTINGS_UPDATE_KEYS.maxSteps, value: 12 }));
     expect(onAdvancedSave).toHaveBeenCalledWith({ max_steps: 12 });
-    await act(async () => presenterHost?.invoke(SETTINGS_ACTIONS.updateValue, { key: SETTINGS_UPDATE_KEYS.memoryEnabled, value: false }));
-    expect(onGeneralSave).toHaveBeenCalledWith({ memory_disable: true });
+	await act(async () => presenterHost?.invoke(SETTINGS_ACTIONS.updateValue, { key: SETTINGS_UPDATE_KEYS.gitAttributionEnabled, value: false }));
+	expect(onGeneralSave).toHaveBeenCalledWith({ git_attribution_enabled: false });
     await expect(presenterHost?.invoke(SETTINGS_ACTIONS.updateValue, { key: SETTINGS_UPDATE_KEYS.temperature, value: "secret" })).rejects.toThrow("between 0 and 2");
     await act(async () => presenterHost?.invoke(SETTINGS_ACTIONS.refresh, { scope: "model-catalog" }));
     expect(onRefresh).toHaveBeenCalledOnce();
@@ -173,7 +173,6 @@ function initializedWithSecrets(): InitializeResult {
     }],
     general_settings: {
       append_system_prompt: "sk-private",
-      memory_disabled: false,
       mcp_server_enabled: {},
     },
   };

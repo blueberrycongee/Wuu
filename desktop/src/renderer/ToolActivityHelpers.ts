@@ -255,60 +255,6 @@ function readableToolActivityCommandInner(
       return path
         ? t("toolActivity.updateTarget", { target: formatPathTarget(path, t("toolActivity.file")) })
         : t("toolActivity.updateFiles");
-    case "spawn_agent": {
-      const task =
-        stringValue(args, "name") ??
-        stringValue(args, "description") ??
-        stringValue(args, "prompt");
-      return task
-        ? t("toolActivity.startSubtaskTarget", { target: truncateText(task, 70) })
-        : t("toolActivity.startSubtask");
-    }
-    case "followup_task": {
-      const task = stringValue(args, "target") ?? stringValue(args, "message");
-      return task
-        ? t("toolActivity.followupSubtaskTarget", { target: truncateText(task, 70) })
-        : t("toolActivity.followupSubtask");
-    }
-    case "send_message": {
-      const task = stringValue(args, "target") ?? stringValue(args, "message");
-      return task
-        ? t("toolActivity.messageSubtaskTarget", { target: truncateText(task, 70) })
-        : t("toolActivity.messageSubtask");
-    }
-    case "wait_agent":
-      return t("toolActivity.waitForSubtask");
-    case "await_agents":
-      return t("toolActivity.waitForSubtask");
-    case "close_agent":
-      return t("toolActivity.closeSubtask");
-    case "list_agents":
-      return t("toolActivity.viewSubtasks");
-    case "agent_report":
-      return t("toolActivity.readSubtaskReport");
-    case "goal":
-      switch (stringValue(args, "action")) {
-        case "create": {
-          const objective = stringValue(args, "objective");
-          return objective
-            ? t("toolActivity.startGoalTarget", { target: truncateText(objective, 60) })
-            : t("toolActivity.startGoal");
-        }
-        case "update":
-          return t("toolActivity.updateGoal");
-        default:
-          return t("toolActivity.viewGoal");
-      }
-    case "get_goal":
-      return t("toolActivity.viewGoal");
-    case "create_goal": {
-      const objective = stringValue(args, "objective");
-      return objective
-        ? t("toolActivity.startGoalTarget", { target: truncateText(objective, 60) })
-        : t("toolActivity.startGoal");
-    }
-    case "update_goal":
-      return t("toolActivity.updateGoal");
     case "browser":
       return readableBrowserLabel(args);
     default:

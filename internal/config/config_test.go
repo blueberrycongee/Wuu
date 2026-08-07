@@ -365,7 +365,7 @@ func TestConfig_ModelRolesRejectUnknownProvider(t *testing.T) {
 	}
 }
 
-func TestMemoryConfigLegacyIndexedMemoryFieldsRemainLoadable(t *testing.T) {
+func TestRetiredMemoryProductFieldsAreIgnoredAtLoadBoundary(t *testing.T) {
 	cfg, err := decodeConfig([]byte(`{
   "memory": {
     "nudge_interval": 3,
@@ -376,9 +376,9 @@ func TestMemoryConfigLegacyIndexedMemoryFieldsRemainLoadable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("decodeConfig: %v", err)
 	}
-	if cfg.Memory.NudgeInterval == nil || *cfg.Memory.NudgeInterval != 3 ||
-		cfg.Memory.MemoryCharLimit != 2200 || cfg.Memory.UserCharLimit != 1375 {
-		t.Fatalf("legacy memory fields were not preserved: %+v", cfg.Memory)
+	if len(cfg.Instructions.Filenames) != 0 || len(cfg.Instructions.ProjectRootMarkers) != 0 ||
+		len(cfg.Instructions.UserDirs) != 0 || cfg.Instructions.IncludeLegacyInstructions != nil {
+		t.Fatalf("retired memory product fields entered runtime state: %+v", cfg.Instructions)
 	}
 }
 
@@ -1724,7 +1724,7 @@ func TestRuntimeUpdatesPersistUltraAtomicallyAndPreserveNil(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reload combined update: %v", err)
 	}
-	if !cfg.Agent.UltraMode || cfg.Agent.MaxParallel != 2 || cfg.Providers["main"].Model != "new-model" || !cfg.Memory.Disable {
+	if !cfg.Agent.UltraMode || cfg.Agent.MaxParallel != 2 || cfg.Providers["main"].Model != "new-model" {
 		t.Fatalf("combined update was not persisted: %+v", cfg)
 	}
 
@@ -1747,7 +1747,7 @@ func TestRuntimeUpdatesPersistUltraAtomicallyAndPreserveNil(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reload Ultra-only update: %v", err)
 	}
-	if cfg.Agent.UltraMode || cfg.Agent.MaxParallel != 2 || cfg.Providers["main"].Model != "next-model" || !cfg.Memory.Disable {
+	if cfg.Agent.UltraMode || cfg.Agent.MaxParallel != 2 || cfg.Providers["main"].Model != "next-model" {
 		t.Fatalf("Ultra-only update changed unrelated config: %+v", cfg)
 	}
 	raw, err := os.ReadFile(path)

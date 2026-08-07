@@ -516,13 +516,6 @@ func (e *Env) ResolvePath(input string) (string, error) {
 	if e.BypassToolHardProtections() {
 		return resolved, nil
 	}
-	// Agent's own runtime metadata (statepath.Home) is allowed when the
-	// boundary permits mutations. Read-only mode keeps the gate; tools
-	// that go through this path without AllowMutations still see a denial
-	// for paths under the agent's runtime directory.
-	if e.AllowMutations && isAgentRuntimeMetadataPath(resolved) {
-		return resolved, nil
-	}
 	if len(e.FileScopeRoots) > 0 {
 		for _, root := range e.FileScopeRoots {
 			if pathWithinRoot(root, resolved) {
@@ -892,25 +885,4 @@ func (e *Env) ProcessSkillBody(ctx context.Context, skill skills.Skill, argument
 		Shell:            skill.Shell,
 		AllowInlineShell: false,
 	})
-}
-
-// OrchestrationStateDir returns the state root for user-visible orchestration
-// artifacts. Interactive turns bind tools to a SessionID, so their Goals live
-// with that conversation. Headless or workspace-level tools without a SessionID
-// keep using workspace state.
-func (e *Env) OrchestrationStateDir() (string, error) {
-	if e == nil {
-		return "", fmt.Errorf("tool environment is required")
-	}
-	if sessionID := strings.TrimSpace(e.SessionID); sessionID != "" {
-		if sessionDir := strings.TrimSpace(e.SessionDir); sessionDir != "" {
-			return sessionDir, nil
-		}
-		stateDir, err := e.WorkspaceStateDir()
-		if err != nil {
-			return "", err
-		}
-		return statepath.SessionArtifactDir(stateDir, sessionID), nil
-	}
-	return e.WorkspaceStateDir()
 }

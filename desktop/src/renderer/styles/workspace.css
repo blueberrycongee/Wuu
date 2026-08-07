@@ -1063,13 +1063,6 @@ html.resizing-workspace-file-split * {
   box-shadow: 0 -8px 28px color-mix(in srgb, var(--ink) 10%, transparent);
 }
 
-.workspace-document-turn-dock:has(
-    .composer-goal-strip + .composer-pending-drawer
-  )
-  .workspace-document-turn-drawer {
-  width: calc(100% - 72px);
-}
-
 .workspace-document-turn-summary {
   position: relative;
   z-index: 1;

@@ -915,8 +915,8 @@ Respond with a markdown summary only. Do not include an analysis block, hidden r
 
 Cover these sections:
 
-## Goal
-- Current user goal and success criteria
+## Task objective
+- Current user objective and success criteria
 
 ## Constraints & Preferences
 - User instructions, project rules, style constraints, and important non-goals

@@ -204,7 +204,6 @@ func compileOpenAICodex(b *surfaceBuilder, p Profile) {
 	addBashFirstTools(b, p)
 	addWebTools(b)
 	addBrowserTools(b)
-	addMemoryTools(b)
 	addSessionTools(b)
 	addPlanningTools(b)
 	addSkillTools(b)
@@ -219,7 +218,6 @@ func compileOpenAIGPT(b *surfaceBuilder, p Profile) {
 	addBashFirstTools(b, p)
 	addWebTools(b)
 	addBrowserTools(b)
-	addMemoryTools(b)
 	addSessionTools(b)
 	addPlanningTools(b)
 	addSkillTools(b)
@@ -234,7 +232,6 @@ func compileAnthropicClaude(b *surfaceBuilder, p Profile) {
 	addBashFirstTools(b, p)
 	addWebTools(b)
 	addBrowserTools(b)
-	addMemoryTools(b)
 	addSessionTools(b)
 	addPlanningTools(b)
 	addSkillTools(b)
@@ -249,7 +246,6 @@ func compileGeneric(b *surfaceBuilder, p Profile) {
 	addBashFirstTools(b, p)
 	addWebTools(b)
 	addBrowserTools(b)
-	addMemoryTools(b)
 	addSessionTools(b)
 	addPlanningTools(b)
 	addSkillTools(b)
@@ -294,11 +290,6 @@ func addWebTools(b *surfaceBuilder) {
 // exposes it AND the toolkit enables it.
 func addBrowserTools(b *surfaceBuilder) {
 	b.addDeferred("wuu_browser", capability.CapabilityBrowser)
-}
-
-func addMemoryTools(b *surfaceBuilder) {
-	// Durable notebook memory uses file tools; the retired indexed-memory
-	// tools are no longer registered or projected onto model surfaces.
 }
 
 func addSessionTools(b *surfaceBuilder) {

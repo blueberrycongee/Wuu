@@ -795,7 +795,7 @@ func TestServerInitializeExposesModelRoles(t *testing.T) {
 	}
 
 	result := remarshal[InitializeResult](t, responseByID(t, parseOutput(t, out.String()), "1")["result"])
-	if len(result.ModelRoles) != 7 {
+	if len(result.ModelRoles) != 6 {
 		t.Fatalf("expected all role summaries, got %+v", result.ModelRoles)
 	}
 	title := modelRoleByName(t, result.ModelRoles, "title")
@@ -2159,7 +2159,7 @@ func TestServerConfigGeneralUpdatePersistsAndRefreshesRuntime(t *testing.T) {
 	srv := New(rt, out)
 	srv.threads[th.ID] = th
 
-	req := `{"id":"1","method":"config/general/update","params":{"append_system_prompt":"默认用中文回答。","git_attribution_enabled":false,"memory_disable":true,"mcp_enabled_toggles":{"docs":false,"search":true}}}`
+	req := `{"id":"1","method":"config/general/update","params":{"append_system_prompt":"默认用中文回答。","git_attribution_enabled":false,"mcp_enabled_toggles":{"docs":false,"search":true}}}`
 	if err := srv.handleLine(context.Background(), []byte(req)); err != nil {
 		t.Fatalf("config/general/update: %v", err)
 	}
@@ -2168,7 +2168,6 @@ func TestServerConfigGeneralUpdatePersistsAndRefreshesRuntime(t *testing.T) {
 	result := remarshal[ConfigGeneralUpdateResult](t, responseByID(t, msgs, "1")["result"])
 	if result.GeneralSettings.AppendSystemPrompt != "默认用中文回答。" ||
 		result.GeneralSettings.GitAttributionEnabled ||
-		!result.GeneralSettings.MemoryDisabled ||
 		result.GeneralSettings.MCPServerEnabled["docs"] ||
 		!result.GeneralSettings.MCPServerEnabled["search"] {
 		t.Fatalf("unexpected general settings result: %+v", result.GeneralSettings)
@@ -2179,8 +2178,7 @@ func TestServerConfigGeneralUpdatePersistsAndRefreshesRuntime(t *testing.T) {
 	}
 	if cfg.Agent.AppendSystemPrompt != "默认用中文回答。" ||
 		cfg.Agent.GitAttributionEnabled == nil ||
-		*cfg.Agent.GitAttributionEnabled ||
-		!cfg.Memory.Disable {
+		*cfg.Agent.GitAttributionEnabled {
 		t.Fatalf("config general settings not persisted: %+v", cfg)
 	}
 	if cfg.MCPServers["docs"].Enabled == nil || *cfg.MCPServers["docs"].Enabled {

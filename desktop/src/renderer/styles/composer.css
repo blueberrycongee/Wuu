@@ -4,7 +4,6 @@
   --composer-frame-shadow: 0 8px 24px rgba(20, 24, 28, 0.06);
   --composer-image-attachment-button-shadow: 0 2px 8px rgba(20, 24, 28, 0.12);
   --composer-file-attachment-button-hover-bg: #eceee9;
-  --composer-goal-strip-danger-hover-bg: rgba(220, 80, 80, 0.12);
   --composer-collapsed-prompt-card-shadow: 0 1px 2px rgba(20, 24, 28, 0.05);
   --composer-textarea-placeholder: #a0a3a5;
   --composer-textarea-disabled: #6d7471;
@@ -574,7 +573,6 @@
 @media (prefers-reduced-motion: reduce) {
   .composer-stack,
   .composer,
-  .composer-goal-strip,
   .composer-pending-drawer,
   .composer textarea,
   .composer-expand-button {
@@ -615,7 +613,6 @@
   transform: translateY(calc(var(--composer-expanded-offset, var(--composer-expanded-delta)) * -1));
 }
 
-.composer-stack.is-expanded .composer-goal-strip,
 .composer-stack.is-expanded .composer-pending-drawer {
   transform: translateY(calc(var(--composer-expanded-offset, var(--composer-expanded-delta)) * -1));
 }
@@ -911,17 +908,6 @@
   border-color: color-mix(in srgb, var(--warning) 24%, transparent);
 }
 
-.composer-goal-strip-summary {
-  position: relative;
-  z-index: 1;
-  display: grid;
-  min-height: 40px;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px;
-  align-items: center;
-  padding: 0 8px 8px;
-}
-
 .composer-pending-summary {
   position: relative;
   z-index: 1;
@@ -993,216 +979,6 @@
   overscroll-behavior: contain;
 }
 
-.composer-goal-strip-icon {
-  display: grid;
-  width: 18px;
-  height: 18px;
-  flex: 0 0 auto;
-  place-items: center;
-  color: var(--ink-muted);
-}
-
-.composer-goal-strip-main {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: 8px;
-}
-
-.composer-goal-strip-text {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.composer-goal-strip-state {
-  flex: 0 0 auto;
-  color: var(--ink-muted);
-  font-size: 11px;
-  font-weight: var(--weight-medium);
-  line-height: var(--line-ui);
-  white-space: nowrap;
-}
-
-.composer-goal-strip-actions {
-  justify-self: end;
-}
-
-.composer-goal-strip-control-anchor {
-  position: relative;
-  display: inline-flex;
-}
-
-.composer-goal-strip-action:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.composer-goal-strip-menu {
-  position: absolute;
-  top: calc(100% + 4px);
-  right: 0;
-  z-index: 8;
-  border: 1px solid var(--menu-border);
-  border-radius: var(--menu-radius);
-  background: var(--menu-bg);
-  box-shadow: var(--menu-shadow);
-  backdrop-filter: blur(16px);
-  animation: menu-enter var(--menu-enter-duration) var(--menu-enter-easing) both;
-}
-
-.floating-menu-layer > .composer-goal-strip-menu {
-  position: static;
-  inset: auto;
-  max-width: calc(100vw - 16px);
-}
-
-.composer-goal-strip-details {
-  display: grid;
-  max-height: calc(min(34vh, 280px) - 40px);
-  gap: 14px;
-  margin-top: -8px;
-  padding: 10px 16px 24px;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-}
-
-.composer-goal-strip-full-text {
-  min-width: 0;
-  margin: 0;
-  color: var(--ink);
-  font-size: 14px;
-  line-height: 1.55;
-  overflow-wrap: anywhere;
-  white-space: pre-wrap;
-}
-
-.composer-goal-strip-info-list {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 8px 18px;
-  margin: 0;
-  padding-top: 10px;
-  border-top: 1px solid var(--ink-overlay-6);
-}
-
-.composer-goal-strip-info-row {
-  display: grid;
-  grid-template-columns: max-content minmax(0, 1fr);
-  gap: 8px;
-  align-items: start;
-  font-size: var(--font-sm);
-  line-height: var(--line-meta);
-}
-
-.composer-goal-strip-info-row dt {
-  color: var(--ink-muted);
-}
-
-.composer-goal-strip-info-row dd {
-  min-width: 0;
-  margin: 0;
-  overflow-wrap: anywhere;
-}
-
-.composer-goal-strip-menu {
-  display: grid;
-  width: 168px;
-  padding: 5px;
-}
-
-.composer-goal-strip-menu-item {
-  display: grid;
-  width: 100%;
-  min-height: 32px;
-  grid-template-columns: 18px minmax(0, 1fr);
-  gap: 8px;
-  align-items: center;
-  padding: 0 9px;
-  border: 0;
-  border-radius: var(--radius-xs);
-  background: transparent;
-  color: var(--ink);
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
-.composer-goal-strip-menu-item:hover,
-.composer-goal-strip-menu-item:focus-visible {
-  background: var(--ink-overlay-8);
-  outline: none;
-}
-
-.composer-goal-strip-menu-item.danger {
-  color: var(--danger);
-}
-
-.composer-goal-strip-menu-item.danger:hover,
-.composer-goal-strip-menu-item.danger:focus-visible {
-  background: var(--composer-goal-strip-danger-hover-bg);
-}
-
-.composer-goal-strip-error {
-  min-width: 0;
-  font-size: 12px;
-  color: var(--danger);
-  overflow-wrap: anywhere;
-}
-
-.composer-goal-strip-spin {
-  animation: wuu-spin var(--motion-spin) linear infinite;
-}
-
-.composer-goal-edit-dialog {
-  --environment-dialog-max-width: 680px;
-  gap: 12px;
-}
-
-.composer-goal-edit-field {
-  display: grid;
-  gap: 7px;
-  color: var(--ink-tertiary);
-  font-size: var(--font-sm);
-  font-weight: var(--weight-semibold);
-}
-
-.composer-goal-edit-textarea {
-  width: 100%;
-  min-height: 220px;
-  max-height: min(52dvh, 520px);
-  resize: vertical;
-  border: 1px solid var(--env-field-border);
-  border-radius: var(--radius-sm);
-  background: var(--paper);
-  color: var(--ink);
-  font: inherit;
-  font-size: var(--font-ui);
-  line-height: 1.55;
-  padding: 12px 14px;
-  outline: none;
-}
-
-.composer-goal-edit-textarea:focus {
-  border-color: var(--info);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--info) 18%, transparent);
-}
-
-.composer-goal-edit-save {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  min-width: 76px;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .composer-goal-strip-spin {
-    animation: none;
-  }
-}
-
 .composer textarea {
   display: block;
   width: 100%;
@@ -1254,13 +1030,6 @@
 
 .document-composer-wrap .composer-stack {
   --composer-collapsed-min-height: 80px;
-}
-
-/* Goal and pending drawers can appear together in both the main conversation
-   and document mode. Step the complete goal drawer inward so the pair reads
-   as one ordered stack instead of two same-size cards colliding. */
-.composer-goal-strip:has(+ .composer-pending-drawer) {
-  width: calc(100% - 48px);
 }
 
 .document-composer-wrap .composer-frame-shell {

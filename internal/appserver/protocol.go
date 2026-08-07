@@ -930,7 +930,6 @@ type ConfigAdvancedUpdateResult struct {
 type ConfigGeneralUpdateParams struct {
 	AppendSystemPrompt    *string          `json:"append_system_prompt,omitempty"`
 	GitAttributionEnabled *bool            `json:"git_attribution_enabled,omitempty"`
-	MemoryDisable         *bool            `json:"memory_disable,omitempty"`
 	MCPEnabledToggles     map[string]*bool `json:"mcp_enabled_toggles,omitempty"`
 }
 
@@ -941,7 +940,6 @@ type ConfigGeneralUpdateResult struct {
 type GeneralSettingsSummary struct {
 	AppendSystemPrompt    string          `json:"append_system_prompt"`
 	GitAttributionEnabled bool            `json:"git_attribution_enabled"`
-	MemoryDisabled        bool            `json:"memory_disabled"`
 	MCPServerEnabled      map[string]bool `json:"mcp_server_enabled"`
 }
 
@@ -1427,11 +1425,10 @@ type ThreadDeleteResult struct {
 // WorkspaceStateCleanupParams is the input for the `workspace/state/cleanup`
 // method: after the user removes a project from the sidebar, the desktop can
 // offer a second, opt-in step that reclaims the removed workspace's local
-// state directory (session artifacts, goals, worktrees, runtime files).
-// Memory is never hard-deleted (self-consistency invariant 3): the memory
-// directories are moved into a `.archived/` folder inside the same state
-// directory instead. workspace_id (the desktop's stable project id) is
-// preferred; workspace_path is the fallback for path-keyed state dirs.
+// state directory. Core-owned transient state is deleted; plugin-owned and
+// unrecognized durable directories are moved into `.archived/` instead.
+// workspace_id (the desktop's stable project id) is preferred;
+// workspace_path is the fallback for path-keyed state dirs.
 type WorkspaceStateCleanupParams struct {
 	WorkspaceID   string `json:"workspace_id,omitempty"`
 	WorkspacePath string `json:"workspace_path,omitempty"`
@@ -1439,12 +1436,12 @@ type WorkspaceStateCleanupParams struct {
 
 type WorkspaceStateCleanupResult struct {
 	StateDir string `json:"state_dir"`
-	// Removed reports whether a state directory existed and its
-	// non-memory contents were deleted.
+	// Removed reports whether a state directory existed and its transient
+	// contents were deleted.
 	Removed bool `json:"removed"`
-	// MemoryArchived reports whether at least one memory directory was
-	// moved into .archived/ instead of being deleted.
-	MemoryArchived bool `json:"memory_archived"`
+	// DataArchived reports whether at least one extension-owned or unrecognized
+	// durable directory was moved into .archived/ instead of being deleted.
+	DataArchived bool `json:"data_archived"`
 }
 
 type TextPolishParams struct {
