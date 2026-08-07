@@ -24,7 +24,7 @@ describe("settings shell titlebar", () => {
 
   it("keeps its collapse toggle clear of the OS window controls", () => {
     expect(cssRule(".settings-shell.sidebar-collapsed .settings-titlebar")).toMatch(
-      /padding-left:\s*max\(24px, var\(--window-controls-inset-left\)\);/,
+      /padding-left:\s*max\(24px, calc\(var\(--window-controls-inset-left\) \+ 10px\)\);/,
     );
   });
 });

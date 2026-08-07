@@ -248,6 +248,9 @@ describe("AppSidebar layout", () => {
     // The ease itself now lives in base.css as a shared motion token;
     // sidebar.css only consumes it.
     expect(sidebarCSS).toContain("var(--sidebar-motion-ease)");
+    expect(sidebarCSS).toMatch(
+      /\.sidebar-collapsed \.titlebar\s*\{[^}]*padding-left:\s*max\(24px, calc\(var\(--window-controls-inset-left\) \+ 10px\)\);/,
+    );
     expect(sidebarCSS).toContain(
       ".sidebar-collapsed.sidebar-drawer-open .sidebar",
     );

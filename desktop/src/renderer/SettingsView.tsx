@@ -845,6 +845,7 @@ export function SettingsView({
           <button
             type="button"
             className="icon-button side-panel-toggle-button sidebar-toggle-button settings-sidebar-toggle"
+            data-wuu-component="sidebar-toggle"
             aria-label={sidebarCollapsed ? t("settings.expandSidebar") : t("settings.collapseSidebar")}
             aria-pressed={!sidebarCollapsed}
             onClick={onToggleSidebar}

@@ -258,7 +258,7 @@
  * edge. Keep the toggle clear of the macOS traffic lights, matching the
  * main conversation titlebar reservation. */
 .settings-shell.sidebar-collapsed .settings-titlebar {
-  padding-left: max(24px, var(--window-controls-inset-left));
+  padding-left: max(24px, calc(var(--window-controls-inset-left) + 10px));
 }
 
 /* The toggle lives inside the titlebar drag strip as its first flex item;

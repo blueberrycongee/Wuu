@@ -270,7 +270,13 @@ export function activate(api) {
         background: var(--manga-ink);
         border-bottom: 4px solid var(--manga-pink);
       }
-      .manga-shell [data-wuu-component="conversation-pane"] > header button {
+      .manga-shell [data-wuu-component="conversation-pane"] > header button:not([data-wuu-component="sidebar-toggle"]) {
+        color: var(--manga-paper);
+        background: #332d26;
+        border: 1px solid var(--manga-paper) !important;
+        box-shadow: 2px 2px 0 var(--manga-pink);
+      }
+      .manga-shell [data-wuu-component="sidebar-toggle"] {
         color: var(--manga-paper);
         background: #332d26;
         border: 1px solid var(--manga-paper) !important;

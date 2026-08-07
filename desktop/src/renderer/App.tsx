@@ -4154,6 +4154,7 @@ export function App(): JSX.Element {
             <div className="globalized-sidebar-toggle-region">
               <button
                 className="icon-button side-panel-toggle-button sidebar-toggle-button globalized-sidebar-toggle"
+                data-wuu-component="sidebar-toggle"
                 type="button"
                 aria-label={t(
                   sidebarDrawerVisible
@@ -4392,6 +4393,7 @@ export function App(): JSX.Element {
                 {sidebarVisible ? (
                   <button
                     className="icon-button side-panel-toggle-button sidebar-toggle-button"
+                    data-wuu-component="sidebar-toggle"
                     type="button"
                     aria-label={t(
                       sidebarCollapsed
@@ -4462,6 +4464,7 @@ export function App(): JSX.Element {
             {sidebarVisible ? (
               <button
                 className="icon-button side-panel-toggle-button sidebar-toggle-button"
+                data-wuu-component="sidebar-toggle"
                 type="button"
                 aria-label={t(
                   sidebarCollapsed

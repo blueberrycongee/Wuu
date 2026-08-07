@@ -106,7 +106,7 @@
 }
 
 .app-shell.popped-out-shell .titlebar {
-  padding-left: max(24px, var(--window-controls-inset-left));
+  padding-left: max(24px, calc(var(--window-controls-inset-left) + 10px));
 }
 
 /* Right-panel "globalized" focus mode: the panel takes the stage as a
@@ -176,7 +176,9 @@
    * box. The titlebar's 1px bottom border leaves 47px for centered content;
    * using 9px here moves the replacement down one physical pixel on Retina. */
   top: calc((48px - 1px - 30px) / 2);
-  left: max(8px, var(--window-controls-inset-left));
+  /* The OS inset is a hard exclusion zone. Wuu owns an additional fixed
+   * gutter so decorated theme controls never visually merge with it. */
+  left: max(8px, calc(var(--window-controls-inset-left) + 10px));
   z-index: 150;
   width: 34px;
   height: 34px;
@@ -206,7 +208,7 @@
  * the tabbar's buttons opt out via the `.workspace-panel-tabbar button`
  * rule in workspace.css. */
 .app-shell.right-panel-globalized .workspace-panel-tabbar {
-  padding-left: max(8px, var(--window-controls-inset-left));
+  padding-left: max(8px, calc(var(--window-controls-inset-left) + 10px));
   -webkit-app-region: drag;
 }
 
@@ -676,7 +678,10 @@
 }
 
 .sidebar-collapsed .titlebar {
-  padding-left: max(24px, var(--window-controls-inset-left));
+  /* Keep a product-owned visual gutter after the macOS traffic-light
+   * exclusion zone. Themes may decorate the first control, but they cannot
+   * shrink this window-chrome boundary. */
+  padding-left: max(24px, calc(var(--window-controls-inset-left) + 10px));
 }
 
 .traffic-spacer {

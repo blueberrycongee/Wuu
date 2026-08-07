@@ -33,6 +33,7 @@ const SEMANTIC_ANCHOR_OWNERS = Object.freeze({
   "session-tab-close": "SessionTabs.tsx",
   "session-tab-main": "SessionTabs.tsx",
   "sidebar": "AppSidebar.tsx",
+  "sidebar-toggle": "App.tsx",
   "side-thread": "SideThreadPanel.tsx",
   "skills-catalog": "SkillsCatalog.tsx",
   "turn": "TurnView.tsx",
@@ -79,6 +80,13 @@ describe("production semantic anchors", () => {
     expect(source).toContain("data-wuu-sidebar-mode=");
     expect(source).toContain('sidebarDrawerVisible ? "drawer"');
     expect(source).toContain('sidebarDrawerMode ? "collapsed" : "docked"');
+  });
+
+  it("publishes the sidebar toggle anchor in every app and settings titlebar", () => {
+    const appSource = readFileSync(resolve(RENDERER_ROOT, "App.tsx"), "utf8");
+    const settingsSource = readFileSync(resolve(RENDERER_ROOT, "SettingsView.tsx"), "utf8");
+    expect(appSource.match(/data-wuu-component="sidebar-toggle"/g)).toHaveLength(3);
+    expect(settingsSource.match(/data-wuu-component="sidebar-toggle"/g)).toHaveLength(1);
   });
 
   it("wraps every plugin contribution in the public coordinate boundary", () => {

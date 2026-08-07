@@ -128,7 +128,7 @@ describe("globalized right panel chrome", () => {
       ".app-shell.right-panel-globalized .workspace-panel-tabbar",
     );
     expect(tabbar).toMatch(
-      /padding-left:\s*max\(8px, var\(--window-controls-inset-left\)\);/,
+      /padding-left:\s*max\(8px, calc\(var\(--window-controls-inset-left\) \+ 10px\)\);/,
     );
     const hitHole = cssRule(".workspace-panel-sidebar-hit-hole");
     expect(hitHole).toMatch(/flex:\s*0 0 38px;/);
