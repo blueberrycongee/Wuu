@@ -325,11 +325,15 @@ func TestPluginPackageUpdateActivationFailureKeepsInstalledAndPendingGenerations
 	}
 
 	versionTwo := t.TempDir()
-	writePluginPackageFile(t, filepath.Join(versionTwo, "plugin.json"), `{
+	testExecutable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	writePluginPackageFile(t, filepath.Join(versionTwo, "plugin.json"), fmt.Sprintf(`{
   "id": "activation-failure",
   "version": "2.0.0",
-  "runtime": {"protocol":"wuu-plugin-v1","command":"/definitely/not/a/wuu-plugin"}
-}`)
+  "runtime": {"protocol":"wuu-plugin-v1","command":%q,"args":["-test.run=^$"]}
+}`, testExecutable))
 	callPluginPackageRPC(t, srv, "stage", MethodPluginPackageInstall, PluginPackageInstallParams{Path: versionTwo})
 	staged := remarshal[PluginPackageInstallResult](t, responseByID(t, parseOutput(t, out.String()), "stage")["result"])
 	callPluginPackageRPC(t, srv, "promote", MethodExtensionPackageUpdate, ExtensionPackageUpdateParams{

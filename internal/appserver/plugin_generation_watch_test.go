@@ -56,6 +56,67 @@ func TestRunningServerObservesPluginGenerationAndRetriesFailedRefresh(t *testing
 	})
 }
 
+func TestPluginGenerationMutationWaitsForSameServerRefresh(t *testing.T) {
+	rt := newTestRuntime(t, &fakeClient{})
+	rt.WuuHome = retryingTempDir(t)
+	refreshStarted := make(chan struct{})
+	allowRefresh := make(chan struct{})
+	srv := &Server{
+		rt:      rt,
+		out:     &lockedBuffer{},
+		threads: map[string]*threadState{},
+		refreshExtensionsForTest: func(config.Config) error {
+			close(refreshStarted)
+			<-allowRefresh
+			return nil
+		},
+	}
+	advancePluginGenerationWatchTestEpoch(t, rt.WuuHome)
+
+	refreshDone := make(chan error, 1)
+	go func() { refreshDone <- srv.refreshPluginGenerationIfChanged() }()
+	select {
+	case <-refreshStarted:
+	case <-time.After(3 * time.Second):
+		close(allowRefresh)
+		t.Fatal("timed out waiting for generation refresh to start")
+	}
+
+	type mutationResult struct {
+		release func()
+		err     error
+	}
+	mutationDone := make(chan mutationResult, 1)
+	go func() {
+		release, err := srv.beginPluginGenerationMutation("change")
+		mutationDone <- mutationResult{release: release, err: err}
+	}()
+	waitPluginGenerationWatchTest(t, srv.pluginGenerationMutation.Load)
+	select {
+	case result := <-mutationDone:
+		close(allowRefresh)
+		if result.release != nil {
+			result.release()
+		}
+		t.Fatalf("mutation returned during same-server refresh: %v", result.err)
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	close(allowRefresh)
+	if err := <-refreshDone; err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case result := <-mutationDone:
+		if result.err != nil {
+			t.Fatalf("mutation failed after refresh: %v", result.err)
+		}
+		result.release()
+	case <-time.After(3 * time.Second):
+		t.Fatal("mutation remained blocked after refresh")
+	}
+}
+
 func advancePluginGenerationWatchTestEpoch(t *testing.T, wuuHome string) uint64 {
 	t.Helper()
 	deadline := time.Now().Add(3 * time.Second)

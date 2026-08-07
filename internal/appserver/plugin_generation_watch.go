@@ -29,6 +29,10 @@ func (s *Server) refreshPluginGenerationIfChanged() error {
 	if s == nil || s.rt == nil || s.rt.WuuHome == "" || s.closed.Load() {
 		return nil
 	}
+	observedEpoch, err := session.ReadPluginGenerationEpoch(s.rt.WuuHome)
+	if err != nil || observedEpoch == s.pluginGenerationEpoch.Load() {
+		return err
+	}
 	lease, acquired, err := session.TryAcquirePluginGenerationExecutionLease(s.rt.WuuHome)
 	if err != nil || !acquired {
 		return err
@@ -46,6 +50,11 @@ func (s *Server) refreshPluginGenerationIfChanged() error {
 	}
 	inventory, skills, err := s.refreshPluginPackages()
 	if err != nil {
+		return err
+	}
+	// The refresh mutex still serializes local mutations while the shared lease
+	// is dropped and the observed epoch is published.
+	if err := lease.Release(); err != nil {
 		return err
 	}
 	s.pluginGenerationEpoch.Store(epoch)

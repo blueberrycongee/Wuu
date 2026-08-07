@@ -33,6 +33,27 @@ func TryAcquirePluginGenerationMutationLease(wuuHome string) (*PluginGenerationL
 	return tryAcquirePluginGenerationLease(wuuHome, true)
 }
 
+// ReadPluginGenerationEpoch reads the lightweight change signal without
+// taking an execution lease. Watchers use it to avoid briefly blocking every
+// package mutation while polling an unchanged generation. A concurrent write
+// or transient read error is harmless to watchers: they retry on the next
+// observation before acquiring the shared execution lease for refresh.
+func ReadPluginGenerationEpoch(wuuHome string) (uint64, error) {
+	wuuHome = strings.TrimSpace(wuuHome)
+	if wuuHome == "" {
+		return 0, errors.New("Wuu home is required")
+	}
+	file, err := os.Open(filepath.Join(wuuHome, pluginGenerationLeaseFile))
+	if os.IsNotExist(err) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, fmt.Errorf("open plugin generation epoch: %w", err)
+	}
+	defer file.Close()
+	return readPluginGenerationEpoch(file)
+}
+
 func tryAcquirePluginGenerationLease(wuuHome string, exclusive bool) (*PluginGenerationLease, bool, error) {
 	wuuHome = strings.TrimSpace(wuuHome)
 	if wuuHome == "" {

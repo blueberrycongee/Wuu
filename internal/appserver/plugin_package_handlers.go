@@ -311,7 +311,7 @@ func (s *Server) beginPluginGenerationMutation(action string) (func(), error) {
 	if !s.pluginGenerationMutation.CompareAndSwap(false, true) {
 		return func() {}, fmt.Errorf("cannot %s plugin packages while another plugin change is running", action)
 	}
-	releaseLocal := func() { s.pluginGenerationMutation.Store(false) }
+	releaseAdmission := func() { s.pluginGenerationMutation.Store(false) }
 
 	s.mu.Lock()
 	threads := make([]*threadState, 0, len(s.threads))
@@ -328,9 +328,19 @@ func (s *Server) beginPluginGenerationMutation(action string) (func(), error) {
 			(th.execRuntime != nil && threadRuntimeHasOutstandingWork(th.ID, th.execRuntime))
 		th.mu.Unlock()
 		if busy {
-			releaseLocal()
+			releaseAdmission()
 			return func() {}, fmt.Errorf("cannot %s plugin packages while a turn is running or background work remains on thread %q", action, th.ID)
 		}
+	}
+
+	// New turn admission is closed before taking this mutex, so any admission
+	// already holding a thread lock can finish its refresh first. Mutations then
+	// share the same serialization boundary as the watcher for their complete
+	// disk and runtime transaction.
+	s.pluginGenerationRefreshMu.Lock()
+	releaseLocal := func() {
+		s.pluginGenerationRefreshMu.Unlock()
+		releaseAdmission()
 	}
 	lease, acquired, err := session.TryAcquirePluginGenerationMutationLease(s.rt.WuuHome)
 	if err != nil {
@@ -341,7 +351,8 @@ func (s *Server) beginPluginGenerationMutation(action string) (func(), error) {
 		releaseLocal()
 		return func() {}, fmt.Errorf("cannot %s plugin packages while another app-server is running a turn or background work", action)
 	}
-	if _, err := lease.Advance(); err != nil {
+	epoch, err := lease.Advance()
+	if err != nil {
 		_ = lease.Release()
 		releaseLocal()
 		return func() {}, fmt.Errorf("advance plugin generation: %w", err)
@@ -350,6 +361,10 @@ func (s *Server) beginPluginGenerationMutation(action string) (func(), error) {
 		if err := lease.Release(); err != nil {
 			providers.DebugLogf("release plugin generation mutation lease: %v", err)
 		}
+		// This server performed the complete serialized transaction and already
+		// has its final runtime state, including rollback on failure. Peers still
+		// observe the advanced epoch and refresh independently.
+		s.pluginGenerationEpoch.Store(epoch)
 		releaseLocal()
 	}, nil
 }

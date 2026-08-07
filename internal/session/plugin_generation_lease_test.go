@@ -58,3 +58,24 @@ func TestPluginGenerationLeaseExcludesMutationFromExecutions(t *testing.T) {
 		t.Fatalf("persisted epoch = %d, want 1", next.Epoch())
 	}
 }
+
+func TestReadPluginGenerationEpochDoesNotTakeExecutionLease(t *testing.T) {
+	home := t.TempDir()
+	if epoch, err := ReadPluginGenerationEpoch(home); err != nil || epoch != 0 {
+		t.Fatalf("initial epoch = %d, err = %v", epoch, err)
+	}
+
+	mutation, acquired, err := TryAcquirePluginGenerationMutationLease(home)
+	if err != nil || !acquired {
+		t.Fatalf("acquire mutation: acquired=%v err=%v", acquired, err)
+	}
+	defer mutation.Release()
+	epoch, err := mutation.Advance()
+	if err != nil {
+		t.Fatal(err)
+	}
+	observed, err := ReadPluginGenerationEpoch(home)
+	if err != nil || observed != epoch {
+		t.Fatalf("observed epoch = %d, want %d, err = %v", observed, epoch, err)
+	}
+}
