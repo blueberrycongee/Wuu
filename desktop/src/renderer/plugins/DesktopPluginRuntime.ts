@@ -77,7 +77,7 @@ export class DesktopPluginRuntime {
         await this.host.activateGeneration({
           pluginId: plugin.id,
           generation: fingerprint,
-          contributions: (plugin.contributions ?? {}) as PluginContributionDeclarations,
+          contributions: desktopContributionDeclarations(plugin),
           register: async (api) => {
             const module = requireDesktopPluginModule(await this.loadModule(loaded.url));
             await module.activate(api);
@@ -92,6 +92,21 @@ export class DesktopPluginRuntime {
     }
     return failures;
   }
+}
+
+function desktopContributionDeclarations(
+  plugin: ExtensionInventoryRecord,
+): PluginContributionDeclarations {
+  const declarations = (plugin.contributions ?? {}) as PluginContributionDeclarations;
+  return {
+    ...declarations,
+    // Inventory omits empty manifest arrays. Desktop-loaded code still has a
+    // manifest contract, so absence means no executable contribution was
+    // declared rather than opting out of declaration enforcement.
+    slots: declarations.slots ?? [],
+    surfaces: declarations.surfaces ?? [],
+    presenters: declarations.presenters ?? [],
+  };
 }
 
 export const desktopPluginRuntime = new DesktopPluginRuntime(desktopPluginHost);
