@@ -441,7 +441,9 @@ export function activate(api) {
         color: white;
         background: var(--manga-pink);
         border: 2px solid var(--manga-ink) !important;
-        box-shadow: 2px 2px 0 var(--manga-ink);
+        /* The host owns this compact control's footprint inside a clipped
+           rounded frame, so keep decorative ink inside the button box. */
+        box-shadow: inset 0 0 0 1px rgb(255 253 242 / .58);
       }
       .manga-shell [data-wuu-component="conversation-pane"] > .titlebar {
         color: var(--manga-paper);
