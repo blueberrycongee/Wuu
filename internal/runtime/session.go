@@ -93,7 +93,7 @@ const (
 )
 
 // Session owns one initialized local agent runtime: provider client, tool
-// executor, hooks, MCP, skills, memory, coordinator, process manager, and the
+// executor, hooks, MCP, skills, execution control, process manager, and the
 // stream runner. UI surfaces should depend on this instead of reassembling the
 // pieces themselves.
 type Session struct {
@@ -532,15 +532,11 @@ func NewSession(opts Options) (*Session, error) {
 				wkit.SetProcessManager(processMgr)
 				wkit.SetSkills(discoveredSkills)
 				wkit.SetAgentControl(agentControl)
-				if meta.Ultra {
-					wkit.ConfigureWorkerSurfaceForProviderModel(workerToolProviderName, workerToolModeModel, true)
-				} else {
-					wkit.ConfigureSurfaceForProviderModel(workerToolProviderName, workerToolModeModel, false)
-				}
+				wkit.ConfigureSurfaceForProviderModel(workerToolProviderName, workerToolModeModel, false)
 				wkit.SetToolSearchEnabled(workerToolSearchEnabled)
 				wkit.SetNativeDeferredToolDiscovery(workerNativeDeferredDiscovery)
 				wkit.SetAgentIdentity(meta.ID, meta.Path)
-				applyWorkerToolFilter(wkit, wt, meta.Ultra)
+				applyWorkerToolFilter(wkit, wt)
 				return wkit, nil
 			},
 			WorkerWakeAuthority: workerWakeAuthority(toolkit),
@@ -1081,8 +1077,8 @@ func (s *Session) NewThreadRuntimeForRoot(sessionID, rootDir string) (*ThreadRun
 		}
 	}
 	artifactDir := statepath.SessionArtifactDir(stateDir, id)
-	// The embedded-browser tab registry is durable per-thread state, spawned at
-	// the same point as the goal runtime and reclaimed with the thread's artifact
+	// The embedded-browser tab registry is durable per-thread state, created with
+	// the thread runtime and reclaimed with the thread's artifact
 	// directory on delete. Recovery after a core restart is driven by the desktop
 	// host's tab_not_found signal (the tool rebuilds by URL), and by the tabs-list
 	// reconciliation against the live host set.
@@ -1201,14 +1197,9 @@ func (s *Session) NewThreadRuntimeForRoot(sessionID, rootDir string) (*ThreadRun
 						return nil, err
 					}
 					// Reset the inherited file-scope whitelist: a worker gets
-					// the standard boundary roots, but not the user notebook
-					// extra.
+					// the standard workspace boundary roots.
 					workerKit.SetFileScopeRoots(workspaces.BoundaryRoots(workerRoot, wuuHome))
-					if meta.Ultra {
-						workerKit.ConfigureWorkerSurfaceForProviderModel(workerToolProviderName, workerToolModeModel, true)
-					} else {
-						workerKit.ConfigureSurfaceForProviderModel(workerToolProviderName, workerToolModeModel, false)
-					}
+					workerKit.ConfigureSurfaceForProviderModel(workerToolProviderName, workerToolModeModel, false)
 					workerStateDir := stateDir
 					if !sameRuntimeRoot(workerRoot, threadRoot) {
 						if home, err := statepath.Home(""); err == nil {
@@ -1226,7 +1217,7 @@ func (s *Session) NewThreadRuntimeForRoot(sessionID, rootDir string) (*ThreadRun
 					workerKit.SetToolSearchEnabled(workerToolSearchEnabled)
 					workerKit.SetNativeDeferredToolDiscovery(workerNativeDeferredDiscovery)
 					workerKit.SetAgentIdentity(meta.ID, meta.Path)
-					applyWorkerToolFilter(workerKit, wt, meta.Ultra)
+					applyWorkerToolFilter(workerKit, wt)
 					return workerKit, nil
 				},
 				WorkerWakeAuthority: workerWakeAuthority(kit),
@@ -1421,13 +1412,13 @@ func mediaInputPolicyFromCapabilities(caps modelroles.Capabilities) providers.Me
 	}
 }
 
-func applyWorkerToolFilter(kit *tools.Toolkit, wt agentcontrol.WorkerType, ultra bool) {
+func applyWorkerToolFilter(kit *tools.Toolkit, wt agentcontrol.WorkerType) {
 	if kit == nil {
 		return
 	}
 	fullNames := kit.SurfaceToolNames()
 
-	allowed := agentcontrol.FilterToolsForWorker(wt, fullNames, ultra)
+	allowed := agentcontrol.FilterToolsForWorker(wt, fullNames)
 	allowedSet := make(map[string]struct{}, len(allowed))
 	for _, name := range allowed {
 		allowedSet[name] = struct{}{}

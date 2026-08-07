@@ -49,7 +49,7 @@ var builtinWorkerTypes = map[string]WorkerType{
 		AllowedTools:     nil,
 		OneShot:          false,
 		DefaultIsolation: IsolationInplace,
-		ContextScope:     "Self-contained task prompt plus repository memory and skills.",
+		ContextScope:     "Self-contained task prompt plus repository instructions and skills.",
 		OutputSchema:     "Final message is the deliverable: outcome, what was done, what changed, blockers, and verifiable evidence. agent_report is an optional structured handoff on top.",
 		SuccessCriteria: []string{
 			"Task scope is completed or clearly blocked.",
@@ -136,10 +136,8 @@ var defaultWorkerBlockedTools = map[string]struct{}{
 }
 
 // FilterToolsForWorker returns the subset of fullList that this worker
-// type is allowed to call. ultraMode is optional so existing default-mode
-// callers retain byte-for-byte behavior without supplying a new argument.
-func FilterToolsForWorker(wt WorkerType, fullList []string, ultraMode ...bool) []string {
-	ultra := len(ultraMode) > 0 && ultraMode[0]
+// type is allowed to call.
+func FilterToolsForWorker(wt WorkerType, fullList []string) []string {
 	out := make([]string, 0, len(fullList))
 	allowSet := map[string]struct{}{}
 	for _, t := range wt.AllowedTools {
@@ -150,10 +148,8 @@ func FilterToolsForWorker(wt WorkerType, fullList []string, ultraMode ...bool) [
 		denySet[t] = struct{}{}
 	}
 	for _, name := range fullList {
-		if !ultra {
-			if _, blocked := defaultWorkerBlockedTools[name]; blocked {
-				continue
-			}
+		if _, blocked := defaultWorkerBlockedTools[name]; blocked {
+			continue
 		}
 		if _, denied := denySet[name]; denied {
 			continue

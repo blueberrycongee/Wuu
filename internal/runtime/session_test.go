@@ -3056,7 +3056,7 @@ func TestApplyWorkerToolFilter_HidesRecursiveAgentControls(t *testing.T) {
 		t.Fatalf("agent type: %v", err)
 	}
 
-	applyWorkerToolFilter(kit, wt, false)
+	applyWorkerToolFilter(kit, wt)
 
 	defs := map[string]bool{}
 	for _, def := range kit.Definitions() {
@@ -3086,7 +3086,7 @@ func TestApplyWorkerToolFilter_RestrictedWorkerKeepsBashFirstSurface(t *testing.
 		AllowedTools: []string{"read_file", "grep", "glob", "bash", "agent_report"},
 	}
 
-	applyWorkerToolFilter(kit, wt, false)
+	applyWorkerToolFilter(kit, wt)
 
 	defs := map[string]bool{}
 	for _, def := range kit.Definitions() {

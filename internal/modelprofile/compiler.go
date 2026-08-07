@@ -50,8 +50,6 @@ type SurfaceKind int
 const (
 	// SurfaceWorker is a pure child executor surface.
 	SurfaceWorker SurfaceKind = iota
-	// SurfaceUltraWorker is a child executor with an expanded built-in surface.
-	SurfaceUltraWorker
 	// SurfaceMain is the ordinary project main-session surface.
 	SurfaceMain
 	// SurfaceNamedAgent is a persistent group-chat agent. It keeps the complete

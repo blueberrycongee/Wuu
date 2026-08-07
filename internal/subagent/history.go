@@ -41,7 +41,6 @@ type historyRecord struct {
 	ModelAlias         string                  `json:"model_alias,omitempty"`
 	ModelAliasFallback bool                    `json:"model_alias_fallback,omitempty"`
 	Runtime            *workerRuntimeRecord    `json:"runtime,omitempty"`
-	Ultra              bool                    `json:"ultra,omitempty"`
 	Prompt             string                  `json:"prompt"`
 	Result             string                  `json:"result,omitempty"`
 	Error              string                  `json:"error,omitempty"`
@@ -133,7 +132,6 @@ type PersistedRun struct {
 	ModelAlias         string
 	ModelAliasFallback bool
 	Runtime            *WorkerRuntime
-	Ultra              bool
 	Prompt             string
 	Result             string
 	Error              string
@@ -171,7 +169,6 @@ func LoadPersistedRun(path string) (PersistedRun, error) {
 		ModelAlias:         rec.ModelAlias,
 		ModelAliasFallback: rec.ModelAliasFallback,
 		Runtime:            workerRuntimeFromRecord(rec.Runtime),
-		Ultra:              rec.Ultra,
 		Prompt:             rec.Prompt,
 		Result:             rec.Result,
 		Error:              rec.Error,
@@ -252,7 +249,6 @@ func persistHistory(sa *SubAgent) error {
 		ModelAlias:         sa.modelAlias,
 		ModelAliasFallback: sa.modelAliasFallback,
 		Runtime:            workerRuntimeRecordFromRuntime(sa.runtime),
-		Ultra:              sa.ultra,
 		Prompt:             sa.prompt,
 		Result:             sa.Result,
 		Messages:           providers.CloneChatMessages(sa.history),

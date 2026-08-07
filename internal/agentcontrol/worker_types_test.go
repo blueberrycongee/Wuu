@@ -102,7 +102,7 @@ func TestFilterToolsForWorker_BlocksRecursiveAgentControls(t *testing.T) {
 		"grep", "glob", "spawn_agent", "send_message",
 		"close_agent", "agent_report",
 	}
-	filtered := FilterToolsForWorker(wt, full, false)
+	filtered := FilterToolsForWorker(wt, full)
 	allowed := map[string]bool{}
 	for _, n := range filtered {
 		allowed[n] = true
@@ -125,7 +125,7 @@ func TestFilterToolsForWorker_DisallowedToolsRespected(t *testing.T) {
 		DisallowedTools: []string{"write_file", "edit_file", "apply_patch"},
 	}
 	full := []string{"read_file", "write_file", "edit_file", "apply_patch", "bash", "agent_report"}
-	filtered := FilterToolsForWorker(wt, full, false)
+	filtered := FilterToolsForWorker(wt, full)
 	allowed := map[string]bool{}
 	for _, n := range filtered {
 		allowed[n] = true
@@ -142,31 +142,13 @@ func TestFilterToolsForWorker_DisallowedToolsRespected(t *testing.T) {
 	}
 }
 
-func TestFilterToolsForWorker_UltraUnlocksOrchestration(t *testing.T) {
-	wt, err := LookupWorkerType(DefaultSubagentType)
-	if err != nil {
-		t.Fatal(err)
-	}
-	full := []string{"read_file", "spawn_agent", "send_message", "close_agent", "agent_report"}
-	filtered := FilterToolsForWorker(wt, full, true)
-	allowed := map[string]bool{}
-	for _, name := range filtered {
-		allowed[name] = true
-	}
-	for _, expected := range []string{"read_file", "spawn_agent", "send_message", "close_agent", "agent_report"} {
-		if !allowed[expected] {
-			t.Errorf("Ultra worker missing %s: %v", expected, filtered)
-		}
-	}
-}
-
 func TestFilterToolsForWorker_AllowlistRespected(t *testing.T) {
 	wt := WorkerType{
 		Name:         "readonly",
 		AllowedTools: []string{"read_file", "grep", "glob", "bash", "agent_report"},
 	}
 	full := []string{"read_file", "write_file", "edit_file", "apply_patch", "bash", "grep", "glob", "agent_report"}
-	filtered := FilterToolsForWorker(wt, full, false)
+	filtered := FilterToolsForWorker(wt, full)
 	allowed := map[string]bool{}
 	for _, n := range filtered {
 		allowed[n] = true
