@@ -2784,7 +2784,7 @@ html.resizing-workspace-terminal-split * {
   grid-template-columns: minmax(0, 1fr);
 }
 
-.extension-package-row {
+.skill-row.extension-package-row {
   min-height: 112px;
   grid-template-columns: 36px minmax(0, 1fr) auto;
   align-items: start;
@@ -2793,15 +2793,15 @@ html.resizing-workspace-terminal-split * {
   padding: 16px 12px;
 }
 
-.extension-package-row:last-child {
+.skill-row.extension-package-row:last-child {
   border-bottom: 0;
 }
 
 .extension-package-actions {
-  display: flex;
+  display: grid;
   min-width: 0;
+  grid-template-columns: 96px 32px;
   align-items: center;
-  justify-content: flex-end;
   gap: 6px;
 }
 
@@ -2810,14 +2810,24 @@ html.resizing-workspace-terminal-split * {
   white-space: nowrap;
 }
 
-.extension-package-primary-action {
-  min-width: 84px;
+.extension-package-primary-action,
+.extension-package-primary-placeholder {
+  display: block;
+  width: 96px;
+}
+
+.extension-package-primary-placeholder {
+  height: 32px;
+}
+
+.extension-package-more,
+.extension-package-more-placeholder {
+  display: block;
+  width: 32px;
+  height: 32px;
 }
 
 .extension-package-more {
-  width: 32px;
-  height: 32px;
-  flex: 0 0 auto;
   border-radius: var(--radius-sm);
 }
 
@@ -3296,7 +3306,7 @@ html.resizing-workspace-terminal-split * {
     padding: 9px 6px;
   }
 
-  .extension-package-row {
+  .skill-row.extension-package-row {
     min-height: 112px;
     grid-template-columns: 36px minmax(0, 1fr);
     align-items: start;

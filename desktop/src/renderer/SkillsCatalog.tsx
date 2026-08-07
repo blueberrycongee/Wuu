@@ -451,9 +451,11 @@ export function SkillsCatalog({
                         >
                           {mutating && packageMutation !== `${record.id}:remove`
                             ? t("skills.pluginUpdating")
-                            : extensionPackageActionLabel(managed, primaryAction, t)}
+                          : extensionPackageActionLabel(managed, primaryAction, t)}
                         </button>
-                      ) : null}
+                      ) : (
+                        <span className="extension-package-primary-placeholder" aria-hidden="true" />
+                      )}
                       {hasOverflowActions ? (
                         <button
                           type="button"
@@ -473,7 +475,9 @@ export function SkillsCatalog({
                         >
                           <MoreHorizontal className="icon" aria-hidden="true" />
                         </button>
-                      ) : null}
+                      ) : (
+                        <span className="extension-package-more-placeholder" aria-hidden="true" />
+                      )}
                     </span>
                   ) : null}
                   <PluginSettingsEditor plugin={record} />
