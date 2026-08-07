@@ -2,7 +2,7 @@
 
 ## 概述
 
-本文档定义 Wuu 插件平台的公共 capability contract。它是阶段 A 交付物：scope/effect/dispose 模型、typed seam 语义、registries 和 dependency 规则，以及 host-owned safety kernel 边界。
+本文档定义 Wuu 插件平台的公共 capability contract。当前实现以 capability RPC 作为唯一的生产 seam 模型，由能力描述符携带调度语义，并保留 host-owned safety kernel 边界。
 
 ## Generation 模型
 
@@ -26,18 +26,14 @@
 | `around` | 包装实际执行 | 否 | 否 | 超时、重试、度量、沙箱 |
 | `decision` | 返回类型化决策控制流程 | 是 | 否 | turn 继续、compaction 触发、subagent 路由 |
 
-## Registries
+## Capability RPC
 
-每个 EffectKind 对应一个 typed Registry：
-
-- `Registry[any]` — 类型擦除的通用注册表
-- `Register(key, entry)` — 注册贡献并校验依赖约束
-- `Get/List/Keys` — 查询活跃条目
-- `DepRequired/DepOptional/DepConflicts` — 依赖规则
+插件在初始化响应中声明 `CapabilityDescriptor`。宿主校验能力 id、kind、版本、依赖与冲突，
+再由 `PluginGeneration` 原子发布；同一能力的多个贡献按优先级和发现顺序稳定调度。
 
 ## Safety Kernel (不可开放)
 
-以下能力始终由 Wuu host 控制，**永不**通过 registry 或 seam 暴露给插件：
+以下能力始终由 Wuu host 控制，**永不**通过 capability RPC 暴露给插件：
 
 1. **插件检查、批准、启用、禁用、升级和删除** (`host.plugin.*`)
 2. **Safe mode、崩溃恢复和紧急重启** (`host.safe_mode`, `host.crash_recovery`)
@@ -48,39 +44,20 @@
 
 安全内核之外的产品能力，应优先使用公开扩展路径。如果一项功能只能通过修改 Agent loop 实现，应先判断缺少的是哪一个公共能力，而不是直接增加产品专用分支。
 
-## 标准 Seam 列表
+## 当前生产能力
 
-### Agent Runtime Seams
-- `agent.tool.register` (transform)
-- `agent.tool.execute.before` (guard)
-- `agent.tool.execute.around` (around)
-- `agent.tool.execute.after` (transform)
-- `agent.system_prompt.section` (transform)
-- `agent.context.inject` (transform)
 - `agent.request.transform` (transform)
-- `agent.response.transform` (transform)
+- `agent.system_prompt.section` (transform)
 - `agent.compaction` (decision)
-- `agent.provider.register` (transform)
-- `agent.continuation.policy` (decision)
-- `agent.subagent.provider` (decision)
-- `agent.permission.policy` (guard)
-- `agent.session.lifecycle` (observe)
-
-### Desktop Workbench Seams
-- `desktop.view.register` (transform)
-- `desktop.layout.apply` (transform)
-- `desktop.theme.register` (transform)
-- `desktop.renderer.register` (transform)
-- `desktop.command.register` (transform)
-- `desktop.surface.register` (transform)
+- `agent.turn.continuation` (decision)
+- `agent.turn.completed` (observe)
+- `plugin.client.request` (decision)
 
 ## 实施状态
 
-- [x] `internal/plugin/scope.go` — Generation, EffectKind 模型
-- [x] `internal/plugin/seam.go` — SeamKind, SeamDispatch, SeamCatalog
-- [x] `internal/plugin/registry.go` — Registry, DependencyRule, PluginRegistries
-- [x] `internal/plugin/scope_manager.go` — PluginScope, ScopeManager
-- [ ] Phase B: 将外部 capability negotiation 和 generation-scoped registrations 接入真实 Agent loop
+- [x] `internal/pluginhost/capability_rpc.go` — capability negotiation、SeamKind、ErrorPolicy 与 safety-kernel 校验
+- [x] `internal/runtime/plugin_generation.go` — 生产 generation 的原子发布与撤销
+- [x] 真实 Agent 链路通过 capability RPC 注册、排序和调用插件贡献
 - [ ] Phase C: 将 Desktop workbench registrations 接入 view/layout/renderer/theme 等真实产品路径
 - [ ] Phase D: 让 create/build/test/dev 在独立插件仓中形成可运行闭环
 

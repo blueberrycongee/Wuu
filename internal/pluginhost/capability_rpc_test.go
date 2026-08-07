@@ -22,6 +22,11 @@ func TestValidateCapabilityDescriptor(t *testing.T) {
 			wantErr: true,
 		},
 		{
+			name:    "host-only capability",
+			desc:    CapabilityDescriptor{ID: "host.plugin.install", Kind: SeamDecision, Version: 1},
+			wantErr: true,
+		},
+		{
 			name:    "empty kind",
 			desc:    CapabilityDescriptor{ID: "agent.tool.execute", Version: 1},
 			wantErr: true,

@@ -56,6 +56,47 @@ const (
 	CapabilityPluginClientRequest = "plugin.client.request"
 )
 
+// SeamKind classifies how the host dispatches one plugin capability. The
+// capability RPC is the single production seam model: descriptors declare the
+// kind, and the host owns ordering, short-circuiting, and error handling.
+type SeamKind string
+
+const (
+	SeamObserve   SeamKind = "observe"
+	SeamTransform SeamKind = "transform"
+	SeamGuard     SeamKind = "guard"
+	SeamAround    SeamKind = "around"
+	SeamDecision  SeamKind = "decision"
+)
+
+// ErrorPolicy defines how capability dispatch handles a plugin error.
+type ErrorPolicy string
+
+const (
+	ErrorPolicyPropagate ErrorPolicy = "propagate"
+	ErrorPolicyIsolate   ErrorPolicy = "isolate"
+	ErrorPolicyIgnore    ErrorPolicy = "ignore"
+)
+
+// HostOnlyCapabilities are safety-kernel extension points owned exclusively
+// by the host. Plugins cannot declare them during capability negotiation.
+var HostOnlyCapabilities = map[string]struct{}{
+	"host.plugin.install":      {},
+	"host.plugin.approval":     {},
+	"host.plugin.enable":       {},
+	"host.plugin.disable":      {},
+	"host.plugin.upgrade":      {},
+	"host.plugin.delete":       {},
+	"host.safe_mode":           {},
+	"host.crash_recovery":      {},
+	"host.permission.final":    {},
+	"host.window.lifecycle":    {},
+	"host.appserver.lifecycle": {},
+	"host.generation.isolate":  {},
+	"host.escape.settings":     {},
+	"host.escape.default_ui":   {},
+}
+
 // CapabilityNegotiationError marks an initialize response that cannot be
 // activated safely. Runtime generation builders treat this as a hard rejection
 // even when ordinary plugin startup failures are allowed in inventory.
@@ -76,7 +117,7 @@ type CapabilityDescriptor struct {
 	ID string `json:"id"`
 
 	// Kind classifies the dispatch semantics (observe/transform/guard/around/decision).
-	Kind string `json:"kind"`
+	Kind SeamKind `json:"kind"`
 
 	// Version is the capability contract version. Breaking changes increment
 	// the major version.
@@ -434,12 +475,12 @@ type CompactionOutput struct {
 // ---------------------------------------------------------------------------
 
 // allowedCapabilityKinds is the closed set of valid capability dispatch kinds.
-var allowedCapabilityKinds = map[string]bool{
-	"observe":   true,
-	"transform": true,
-	"guard":     true,
-	"around":    true,
-	"decision":  true,
+var allowedCapabilityKinds = map[SeamKind]bool{
+	SeamObserve:   true,
+	SeamTransform: true,
+	SeamGuard:     true,
+	SeamAround:    true,
+	SeamDecision:  true,
 }
 
 // ValidateCapabilityDescriptor checks that a capability descriptor is well-formed.
@@ -451,7 +492,10 @@ func ValidateCapabilityDescriptor(c CapabilityDescriptor) error {
 	if !strings.Contains(id, ".") {
 		return fmt.Errorf("capability id %q must be a dotted identifier", id)
 	}
-	kind := strings.TrimSpace(c.Kind)
+	if _, hostOnly := HostOnlyCapabilities[id]; hostOnly {
+		return fmt.Errorf("capability %s is owned exclusively by the host", id)
+	}
+	kind := SeamKind(strings.TrimSpace(string(c.Kind)))
 	if kind == "" {
 		return fmt.Errorf("capability %s: kind is required", id)
 	}
@@ -461,20 +505,20 @@ func ValidateCapabilityDescriptor(c CapabilityDescriptor) error {
 	if c.Version < 1 {
 		return fmt.Errorf("capability %s: version must be >= 1, got %d", id, c.Version)
 	}
-	requiredKind := ""
+	var requiredKind SeamKind
 	switch c.ID {
 	case CapabilityAgentRequestTransform:
-		requiredKind = "transform"
+		requiredKind = SeamTransform
 	case CapabilityAgentSystemPromptSection:
-		requiredKind = "transform"
+		requiredKind = SeamTransform
 	case CapabilityAgentCompaction:
-		requiredKind = "decision"
+		requiredKind = SeamDecision
 	case CapabilityAgentContinuation:
-		requiredKind = "decision"
+		requiredKind = SeamDecision
 	case CapabilityAgentTurnCompleted:
-		requiredKind = "observe"
+		requiredKind = SeamObserve
 	case CapabilityPluginClientRequest:
-		requiredKind = "decision"
+		requiredKind = SeamDecision
 	}
 	if requiredKind != "" && (c.Kind != requiredKind || c.Version != 1) {
 		return fmt.Errorf("capability %s requires kind %q and version 1", id, requiredKind)
