@@ -323,8 +323,8 @@ func TestMangaStudioExampleUsesLayoutSafeDeclarativeUI(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(manifest.Surfaces) != 1 || manifest.Surfaces[0].Target != "app.shell" {
-		t.Fatalf("manga surfaces = %+v, want only app.shell", manifest.Surfaces)
+	if len(manifest.Surfaces) != 2 || manifest.Surfaces[0].Target != "app.shell" || manifest.Surfaces[1].Target != "view.settings" {
+		t.Fatalf("manga surfaces = %+v, want app.shell and view.settings", manifest.Surfaces)
 	}
 	wraps, replacements := 0, 0
 	for _, presenter := range manifest.Presenters {

@@ -9339,7 +9339,7 @@ func TestTurnsFromHistoryRestoresToolCallItems(t *testing.T) {
 	}
 }
 
-func TestTurnsFromHistoryRestoresCollabAgentToolItems(t *testing.T) {
+func TestTurnsFromHistoryRestoresPluginToolsAsOrdinaryToolItems(t *testing.T) {
 	history := []providers.ChatMessage{
 		{Role: "user", Content: "delegate"},
 		{
@@ -9362,8 +9362,8 @@ func TestTurnsFromHistoryRestoresCollabAgentToolItems(t *testing.T) {
 		t.Fatalf("unexpected turns: %+v", turns)
 	}
 	item := turns[0].Items[1]
-	if item.Type != ThreadItemCollabAgentTool || item.Name != "spawn_agent" || item.Result == "" {
-		t.Fatalf("unexpected collab agent item: %+v", item)
+	if item.Type != ThreadItemToolCall || item.Name != "spawn_agent" || item.Result == "" {
+		t.Fatalf("unexpected plugin tool item: %+v", item)
 	}
 }
 
