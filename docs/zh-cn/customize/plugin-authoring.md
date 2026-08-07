@@ -19,9 +19,10 @@ Wuu 插件平台当前是本地优先的：没有市场、没有中心仓库。�
 | Agent 插件 | 独立 runtime 进程（Node 等） | 是 |
 | 桌面插件 | Wuu Renderer（ESM 模块） | 是 |
 
-插件不能重做整个软件的外观。Wuu 是开源软件：想要完全不同外观的开发者应当 fork
-仓库并自己承担合并成本，而不是让插件与宿主的每个版本互相锁定。Surface 替换等
-高信任能力是面向可信插件的 escape hatch，区域集合冻结，不再扩张。
+插件可以形成覆盖整个产品的强视觉语言，但通过公开 Token、UI Kit 和粗粒度语义边界实现，
+而不是接管私有 DOM。窗口安全区、导航结构、Tab、滚动、溢出、键盘与恢复路径由宿主管理。
+Surface 替换等高信任能力是复杂结构定制的 escape hatch，不是普通控件的默认入口。
+整体设计与接口选择原则见[插件系统架构](plugin-system.md)。
 
 ## 包结构与 manifest
 
@@ -334,6 +335,10 @@ wuu plugin dev .                     # 开发期修改
 公开 SDK 的跨 Surface 验收示例，覆盖 Agent runtime（request transform、工具注册）、
 Host Actions、generation 替换、失败恢复、disposal 和卸载，并演示完整开发闭环
 （install → build → test → dev → pack）。
+
+[`examples/plugins/manga-studio`](../../../examples/plugins/manga-studio/) 是强风格外观压力
+测试：它同时覆盖应用壳与设置页，验证主题 Token、UI Kit、语义锚点和宿主布局所有权，
+不应被当作 Wuu 默认视觉规范。
 
 ## 版本兼容
 
