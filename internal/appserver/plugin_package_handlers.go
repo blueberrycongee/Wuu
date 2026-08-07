@@ -50,6 +50,11 @@ func (s *Server) handlePluginDesktopModuleRead(req Request) error {
 	if fresh.SubjectID != params.ID || fresh.Fingerprint != params.Fingerprint {
 		return s.writeResponse(req.ID, nil, errors.New("desktop plugin changed; refresh inventory before loading it"))
 	}
+	// Development authorization is established by the receipt-backed discovery
+	// path, not by plugin.json. Preserve that verified state across the required
+	// fresh manifest read so inventory and desktop module loading apply the same
+	// trust decision.
+	fresh.AuthorizedDev = selected.AuthorizedDev
 
 	settings := extensions.Settings{}
 	if s.rt.ExtensionSettings != nil {

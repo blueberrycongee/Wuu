@@ -98,6 +98,35 @@ func TestPluginDesktopModuleReadRequiresExactApprovedGeneration(t *testing.T) {
 	}
 }
 
+func TestPluginDesktopModuleReadPreservesDevelopmentAuthorization(t *testing.T) {
+	rt := newTestRuntime(t, &fakeClient{})
+	root := t.TempDir()
+	manifestPath := filepath.Join(root, "plugin.json")
+	writePluginPackageFile(t, manifestPath, `{"id":"dev-desktop","desktop":{"entry":"desktop.js"}}`)
+	writePluginPackageFile(t, filepath.Join(root, "desktop.js"), `export const activate = () => {};`)
+	item, err := pluginpkg.LoadManifest(manifestPath, "dev")
+	if err != nil {
+		t.Fatalf("load plugin manifest: %v", err)
+	}
+	item.AuthorizedDev = true
+	rt.ExtensionSettings = &extensions.Settings{}
+	rt.Plugins = []pluginpkg.Plugin{item}
+
+	out := &lockedBuffer{}
+	srv := New(rt, out)
+	callPluginPackageRPC(t, srv, "dev", MethodPluginDesktopModuleRead, PluginDesktopModuleReadParams{
+		ID: item.SubjectID, Fingerprint: item.Fingerprint,
+	})
+	response := responseByID(t, parseOutput(t, out.String()), "dev")
+	if response["error"] != nil {
+		t.Fatalf("development desktop module response = %+v", response)
+	}
+	result := remarshal[PluginDesktopModuleReadResult](t, response["result"])
+	if result.ID != item.SubjectID || !strings.Contains(result.Source, "activate") {
+		t.Fatalf("development desktop module = %+v", result)
+	}
+}
+
 func TestPluginDesktopModuleReadRejectsDisabledPlugin(t *testing.T) {
 	rt := newTestRuntime(t, &fakeClient{})
 	root := t.TempDir()
