@@ -380,13 +380,6 @@ export function activate(api) {
       .manga-shell [data-wuu-component="turn"] {
         width: 100%;
         min-width: 0;
-        padding: 18px 18px 12px;
-        border: 3px solid var(--manga-ink);
-        background: rgb(255 253 242 / .92);
-        box-shadow: 7px 7px 0 var(--manga-ink);
-      }
-      .manga-shell [data-wuu-component="turn"]:nth-of-type(even) {
-        box-shadow: 7px 7px 0 var(--manga-cyan);
       }
       .manga-shell [data-wuu-component="message"] {
         position: relative;
