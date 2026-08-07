@@ -2685,7 +2685,7 @@ html.resizing-workspace-terminal-split * {
   gap: 11px;
   border: 1px solid var(--hairline);
   border-radius: 14px;
-  background: var(--surface-1);
+  background: var(--wuu-control-field-background, var(--surface-1));
   color: var(--ink-muted);
   padding: 0 14px;
 }
@@ -3352,7 +3352,7 @@ html.resizing-workspace-terminal-split * {
 }
 
 .skill-row-button:hover {
-  background: var(--ink-overlay-6);
+  background: var(--wuu-control-secondary-background, var(--ink-overlay-6));
 }
 
 .skill-row-button:hover .skill-row-chevron,

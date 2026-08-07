@@ -30,6 +30,8 @@
           "--wuu-color-focus": "#ff3f7f",
           "--wuu-color-danger": "#d51f5e",
           "--wuu-control-secondary-background": "#ffd83d",
+          "--wuu-control-field-background": "#fffdf2",
+          "--wuu-control-icon-background": "#ffd83d",
           "--wuu-badge-neutral-background": "#39c7d4",
           "--wuu-inline-code-background": "#ffd83d",
           "--wuu-font-family-ui": "Avenir Next Condensed, Arial Narrow, Arial, PingFang SC, sans-serif",

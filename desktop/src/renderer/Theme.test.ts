@@ -9,6 +9,7 @@ import {
   observeAppliedTheme,
   resolveThemePreference,
   startThemePreferenceSync,
+  syncExtensionTheme,
 } from "./Theme";
 
 type MediaListener = (event: { matches: boolean }) => void;
@@ -56,7 +57,12 @@ describe("extension themes", () => {
       id: "calm-ui",
       name: "Calm UI",
       kind: "plugin",
-      provenance: { kind: "plugin", source: "local", scope: "user" },
+      provenance: {
+        kind: "plugin",
+        source: "local",
+        scope: "user",
+        plugin_id: "calm-ui",
+      },
       state: "active",
       enabled: true,
       contributions: {
@@ -97,6 +103,18 @@ describe("extension themes", () => {
 
   it("does not offer disabled plugin themes", () => {
     expect(availableExtensionThemes([{ ...inventory[0]!, enabled: false }])).toEqual([]);
+  });
+
+  it("uses the stable manifest plugin ID and migrates an older subject-scoped key", () => {
+    const subjectInventory = [{ ...inventory[0]!, id: "plugin:dev:calm-ui" }];
+    const [theme] = availableExtensionThemes(subjectInventory);
+    expect(theme?.key).toBe("calm-ui:violet");
+    expect(theme?.legacyKeys).toEqual(["plugin:dev:calm-ui:violet"]);
+
+    window.localStorage.setItem("wuu.extension-theme", "plugin:dev:calm-ui:violet");
+    syncExtensionTheme(subjectInventory);
+    expect(window.localStorage.getItem("wuu.extension-theme")).toBe("calm-ui:violet");
+    expect(document.documentElement.style.getPropertyValue("--wuu-accent")).toBe("#7659ff");
   });
 });
 

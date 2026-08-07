@@ -28,6 +28,8 @@ var allowedThemeTokens = map[string]struct{}{
 	"--wuu-color-info":                    {},
 	"--wuu-color-on-accent":               {},
 	"--wuu-control-secondary-background":  {},
+	"--wuu-control-field-background":      {},
+	"--wuu-control-icon-background":       {},
 	"--wuu-badge-neutral-background":      {},
 	"--wuu-inline-code-background":        {},
 	"--wuu-font-family-ui":                {},

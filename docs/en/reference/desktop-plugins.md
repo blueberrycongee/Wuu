@@ -234,6 +234,8 @@ should prefer the current `--wuu-color-*` and `--wuu-font-*` names.
 
 Shared neutral UI uses coarse semantic tokens so an appearance plugin does not need private DOM
 selectors: `--wuu-control-secondary-background` styles secondary actions,
+`--wuu-control-field-background` styles text fields and selects,
+`--wuu-control-icon-background` styles compact icon tiles,
 `--wuu-badge-neutral-background` styles neutral status and permission badges, and
 `--wuu-inline-code-background` styles Markdown inline code. Their text and font continue to inherit
 the corresponding public color and typography tokens. Compact controls keep host-owned border widths

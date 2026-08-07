@@ -33,6 +33,7 @@ const appliedExtensionTokens = new Set<string>();
 
 export type AvailableExtensionTheme = ExtensionThemeDescriptor & {
   key: string;
+  legacyKeys: string[];
   pluginId: string;
   pluginName: string;
 };
@@ -114,12 +115,18 @@ export function availableExtensionThemes(
     ) {
       return [];
     }
-    return (plugin.contributions?.themes ?? []).map((theme) => ({
-      ...theme,
-      key: `${plugin.id}:${theme.id}`,
-      pluginId: plugin.id,
-      pluginName: plugin.name,
-    }));
+    const pluginId = plugin.provenance.plugin_id?.trim() || plugin.id;
+    return (plugin.contributions?.themes ?? []).map((theme) => {
+      const key = `${pluginId}:${theme.id}`;
+      const legacyKey = `${plugin.id}:${theme.id}`;
+      return {
+        ...theme,
+        key,
+        legacyKeys: legacyKey === key ? [] : [legacyKey],
+        pluginId,
+        pluginName: plugin.name,
+      };
+    });
   });
 }
 
@@ -164,7 +171,9 @@ export function syncExtensionTheme(
     clearExtensionThemeTokens();
     return;
   }
-  const theme = availableExtensionThemes(inventory).find((candidate) => candidate.key === selected);
+  const theme = availableExtensionThemes(inventory).find(
+    (candidate) => candidate.key === selected || candidate.legacyKeys.includes(selected),
+  );
   if (theme) {
     applyExtensionTheme(theme);
     return;

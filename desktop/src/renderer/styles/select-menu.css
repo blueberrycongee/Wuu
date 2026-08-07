@@ -207,12 +207,12 @@
   height: 32px;
   padding: 0 12px;
   border-color: transparent;
-  background: var(--surface-1);
+  background: var(--wuu-control-field-background, var(--surface-1));
   font-weight: 400;
 }
 
 .select-menu-trigger.settings-select-trigger:hover:not(:disabled) {
-  background: var(--surface-2);
+  background: var(--wuu-control-field-background, var(--surface-2));
   border-color: transparent;
 }
 

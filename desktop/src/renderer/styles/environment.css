@@ -1219,7 +1219,7 @@
   height: 34px;
   place-items: center;
   border-radius: var(--radius-sm);
-  background: var(--surface-2);
+  background: var(--wuu-control-icon-background, var(--surface-2));
   color: var(--ink);
 }
 
@@ -1913,7 +1913,7 @@
   width: 40px;
   height: 40px;
   border-radius: var(--radius-sm);
-  background: var(--surface-2);
+  background: var(--wuu-control-icon-background, var(--surface-2));
   color: var(--ink);
   flex-shrink: 0;
 }
@@ -1959,7 +1959,7 @@
   min-height: 46px;
   justify-content: center;
   border: 0;
-  background: var(--surface-2);
+  background: var(--wuu-control-secondary-background, var(--surface-2));
 }
 
 @media (max-width: 720px) {

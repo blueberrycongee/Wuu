@@ -26,6 +26,8 @@
     { "name": "--wuu-color-info", "category": "color" },
     { "name": "--wuu-color-on-accent", "category": "color" },
     { "name": "--wuu-control-secondary-background", "category": "color" },
+    { "name": "--wuu-control-field-background", "category": "color" },
+    { "name": "--wuu-control-icon-background", "category": "color" },
     { "name": "--wuu-badge-neutral-background", "category": "color" },
     { "name": "--wuu-inline-code-background", "category": "color" },
     { "name": "--wuu-font-family-ui", "category": "typography" },
