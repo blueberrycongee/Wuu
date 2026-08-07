@@ -217,7 +217,6 @@ func (s *Server) sendPluginSession(ctx context.Context, pluginID string, params 
 		msg.Name = strings.TrimSpace(params.Presentation.Name)
 	}
 	snapshot := turnRuntimeSnapshot{}.withPermissions(normalizeTurnPermissions(s.rt.Permissions))
-	snapshot.Ultra = s.rt.UltraMode()
 	snapshot.RequestContext = requestContext
 	snapshot.PluginTurn = &pluginTurnReference{PluginID: pluginID, RequestID: params.RequestID}
 

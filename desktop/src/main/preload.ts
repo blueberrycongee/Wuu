@@ -252,8 +252,6 @@ const api: WuuDesktopApi = {
       permissionMode,
       threadId,
     ),
-  updateUltraMode: (enabled: boolean) =>
-    ipcRenderer.invoke("wuu:config-ultra-update", enabled),
   removeProvider: (
     provider: string,
     options?: { fallbackProvider?: string; fallbackModel?: string },

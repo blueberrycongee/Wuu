@@ -13,17 +13,6 @@ describe("frontend feature flags", () => {
     expect(ENABLE_REMOTE_CONTROL).toBe(true);
   });
 
-  it("keeps Ultra mode disabled unless explicitly enabled", async () => {
-    vi.stubEnv("VITE_ENABLE_ULTRA_MODE", "false");
-    let featureFlags = await import("./FeatureFlags");
-    expect(featureFlags.ENABLE_ULTRA_MODE).toBe(false);
-
-    vi.resetModules();
-    vi.stubEnv("VITE_ENABLE_ULTRA_MODE", "true");
-    featureFlags = await import("./FeatureFlags");
-    expect(featureFlags.ENABLE_ULTRA_MODE).toBe(true);
-  });
-
   it("keeps released collaboration enabled regardless of the legacy build flag", async () => {
     vi.stubEnv("VITE_ENABLE_GROUP_CHAT", "false");
     let featureFlags = await import("./FeatureFlags");

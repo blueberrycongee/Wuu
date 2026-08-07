@@ -11,6 +11,7 @@
   "contributes": {
     "slots": [
       { "id": "subagent-status", "target": "composer.above", "order": 30, "title": "Subagent status" },
+      { "id": "subagent-ultra", "target": "composer.toolbar", "order": 30, "title": "Proactive delegation" },
       { "id": "subagent-settings", "target": "settings.plugin", "order": 30, "title": "Subagent settings" }
     ]
   },

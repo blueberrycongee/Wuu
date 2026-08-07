@@ -3,12 +3,15 @@ package subagent_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/blueberrycongee/wuu/internal/pluginhost"
+	"github.com/blueberrycongee/wuu/internal/providers"
 	pluginapi "github.com/blueberrycongee/wuu/packages/plugin-go"
 	"github.com/blueberrycongee/wuu/plugins/subagent"
 )
@@ -23,43 +26,105 @@ func TestSubagentPluginProcessHelper(t *testing.T) {
 	os.Exit(0)
 }
 
-func TestSubagentPluginComposesSessionServicesAcrossProcess(t *testing.T) {
-	services := &sessionTestServices{}
-	client, err := pluginhost.Start(context.Background(), pluginhost.ProcessConfig{ID: "subagent", Command: os.Args[0], Args: []string{"-test.run=^TestSubagentPluginProcessHelper$"}, Env: map[string]string{"WUU_SUBAGENT_PLUGIN_TEST_HELPER": "1"}, Timeout: 5 * time.Second, HostServiceHandler: services, SupportedHostServices: services.SupportedHostServices()})
+func TestProactiveDelegationNegotiatesAcrossRealProcessProtocol(t *testing.T) {
+	services := &subagentTestHostServices{values: map[string]string{}}
+	client, err := pluginhost.Start(context.Background(), pluginhost.ProcessConfig{
+		ID:                    "subagent",
+		Command:               os.Args[0],
+		Args:                  []string{"-test.run=^TestSubagentPluginProcessHelper$"},
+		Env:                   map[string]string{"WUU_SUBAGENT_PLUGIN_TEST_HELPER": "1"},
+		Timeout:               5 * time.Second,
+		HostServiceHandler:    services,
+		SupportedHostServices: services.SupportedHostServices(),
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = client.Close(context.Background()) })
-	result, err := client.ExecuteTool(context.Background(), pluginhost.ToolExecuteParams{ToolID: "spawn_agent", ToolExecuteInput: pluginhost.ToolExecuteInput{SessionID: "parent", Arguments: json.RawMessage(`{"description":"review parser","prompt":"inspect it","run_in_background":true}`)}})
-	if err != nil || len(result.Result.Content) != 1 {
-		t.Fatalf("result=%+v err=%v", result, err)
+
+	host := pluginhost.New(client)
+	clientCapability := onlySubagentCapability(t, host, pluginhost.CapabilityPluginClientRequest)
+	var update struct {
+		Result struct {
+			Enabled bool `json:"enabled"`
+		} `json:"result"`
 	}
-	services.mu.Lock()
-	calls := append([]pluginhost.HostServiceMethod(nil), services.calls...)
-	services.mu.Unlock()
-	if len(calls) != 6 || calls[0] != pluginhost.HostServiceSessionCreate || calls[3] != pluginhost.HostServiceSessionSend {
-		t.Fatalf("calls=%v", calls)
+	if err := host.InvokeCapability(context.Background(), clientCapability, map[string]any{
+		"method": "ultra.update",
+		"input":  map[string]bool{"enabled": true},
+	}, &update); err != nil {
+		t.Fatal(err)
+	}
+	if !update.Result.Enabled {
+		t.Fatal("proactive delegation setting was not enabled")
+	}
+
+	requestCapability := onlySubagentCapability(t, host, pluginhost.CapabilityAgentRequestTransform)
+	output := pluginhost.RequestTransformOutput{Request: providers.ChatRequest{
+		Model:    "test-model",
+		Messages: []providers.ChatMessage{{Role: "user", Content: "work"}},
+	}}
+	if err := host.InvokeCapability(context.Background(), requestCapability, pluginhost.RequestTransformInput{
+		SessionID: "thread-1",
+		ThreadID:  "thread-1",
+	}, &output); err != nil {
+		t.Fatal(err)
+	}
+	if len(output.Request.Messages) != 2 || output.Request.Messages[0].Role != "system" || !strings.Contains(output.Request.Messages[0].Content, "Proactive delegation is enabled") {
+		t.Fatalf("transformed messages = %+v", output.Request.Messages)
+	}
+	if output.Request.Messages[1].Role != "user" || output.Request.Messages[1].Content != "work" {
+		t.Fatalf("original request was not preserved: %+v", output.Request.Messages)
 	}
 }
 
-type sessionTestServices struct {
-	mu    sync.Mutex
-	calls []pluginhost.HostServiceMethod
+func onlySubagentCapability(t *testing.T, host *pluginhost.Host, id string) pluginhost.RegisteredCapability {
+	t.Helper()
+	capabilities := host.Capabilities(id)
+	if len(capabilities) != 1 {
+		t.Fatalf("capabilities %q = %+v", id, capabilities)
+	}
+	return capabilities[0]
 }
 
-func (s *sessionTestServices) SupportedHostServices() []pluginhost.HostServiceMethod {
-	return []pluginhost.HostServiceMethod{pluginhost.HostServiceSessionCreate, pluginhost.HostServiceSessionSend, pluginhost.HostServiceSessionList, pluginhost.HostServiceSessionCancel, pluginhost.HostServiceStorageGet, pluginhost.HostServiceStorageSet}
+type subagentTestHostServices struct {
+	mu     sync.Mutex
+	values map[string]string
 }
-func (s *sessionTestServices) HandleHostService(_ context.Context, method pluginhost.HostServiceMethod, _ json.RawMessage) (json.RawMessage, error) {
+
+func (s *subagentTestHostServices) SupportedHostServices() []pluginhost.HostServiceMethod {
+	return []pluginhost.HostServiceMethod{
+		pluginhost.HostServiceSessionCreate,
+		pluginhost.HostServiceSessionSend,
+		pluginhost.HostServiceSessionList,
+		pluginhost.HostServiceSessionCancel,
+		pluginhost.HostServiceStorageGet,
+		pluginhost.HostServiceStorageSet,
+	}
+}
+
+func (s *subagentTestHostServices) HandleHostService(_ context.Context, method pluginhost.HostServiceMethod, raw json.RawMessage) (json.RawMessage, error) {
 	s.mu.Lock()
-	s.calls = append(s.calls, method)
-	s.mu.Unlock()
+	defer s.mu.Unlock()
 	switch method {
-	case pluginhost.HostServiceSessionCreate:
-		return json.RawMessage(`{"session_id":"child-1","created":true}`), nil
-	case pluginhost.HostServiceSessionSend:
-		return json.RawMessage(`{"state":"running","session_id":"child-1","turn_id":"turn-1"}`), nil
-	default:
+	case pluginhost.HostServiceStorageGet:
+		var params pluginhost.StorageGetParams
+		if err := json.Unmarshal(raw, &params); err != nil {
+			return nil, err
+		}
+		value, ok := s.values[params.Key]
+		if !ok {
+			return json.Marshal(pluginhost.StorageGetResult{})
+		}
+		return json.Marshal(pluginhost.StorageGetResult{Value: &value})
+	case pluginhost.HostServiceStorageSet:
+		var params pluginhost.StorageSetParams
+		if err := json.Unmarshal(raw, &params); err != nil {
+			return nil, err
+		}
+		s.values[params.Key] = params.Value
 		return json.RawMessage(`{}`), nil
+	default:
+		return nil, errors.New("unexpected host service invocation")
 	}
 }

@@ -233,8 +233,5 @@ func applyConfigOverrides(cfg *config.Config, opts Options) error {
 	if strings.TrimSpace(opts.PermissionMode) != "" {
 		cfg.Agent.PermissionMode = config.NormalizePermissionMode(opts.PermissionMode)
 	}
-	if opts.Ultra {
-		cfg.Agent.UltraMode = true
-	}
 	return nil
 }

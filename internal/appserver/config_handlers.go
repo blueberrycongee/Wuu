@@ -66,7 +66,6 @@ func (s *Server) handleInitialize(req Request) error {
 		Model:       s.rt.Model,
 		Effort:      s.currentDisplayEffort(),
 		Variant:     s.currentVariant(),
-		Ultra:       s.rt.UltraMode(),
 		MaxParallel: s.rt.MaxParallel(),
 		RuntimeHost: RuntimeHostSummary{
 			Kind:       string(runtimeHost.Kind),
@@ -94,7 +93,6 @@ func (s *Server) handleConfigRead(req Request) error {
 		Model:              s.rt.Model,
 		Effort:             s.currentDisplayEffort(),
 		Variant:            s.currentVariant(),
-		Ultra:              s.rt.UltraMode(),
 		MaxParallel:        s.rt.MaxParallel(),
 		ConfigPath:         s.rt.ConfigPath,
 		WorkspaceRoot:      s.rt.RootDir,
@@ -1033,13 +1031,6 @@ func (s *Server) handleConfigModelUpdate(req Request) error {
 	if err := decodeParams(req.Params, &params); err != nil {
 		return s.writeResponse(req.ID, nil, err)
 	}
-	if isUltraOnlyModelUpdate(params) {
-		if err := config.UpdateAgentUltraMode(s.rt.ConfigPath, params.Ultra); err != nil {
-			return s.writeResponse(req.ID, nil, err)
-		}
-		s.rt.SetUltraMode(*params.Ultra)
-		return s.writeResponse(req.ID, s.currentConfigModelUpdateResult(), nil)
-	}
 	providerName := strings.TrimSpace(params.Provider)
 	model := strings.TrimSpace(params.Model)
 	threadID := strings.TrimSpace(params.ThreadID)
@@ -1311,17 +1302,13 @@ func (s *Server) handleConfigModelUpdate(req Request) error {
 		}
 	}
 	if creatingProvider {
-		err = config.CreateProviderRuntime(s.rt.ConfigPath, resolvedName, &providerTypeValue, model, params.BaseURL, apiKeyForConfig, authTokenForConfig, effortForConfig, variantForConfig, params.PermissionMode, params.Ultra)
+		err = config.CreateProviderRuntime(s.rt.ConfigPath, resolvedName, &providerTypeValue, model, params.BaseURL, apiKeyForConfig, authTokenForConfig, effortForConfig, variantForConfig, params.PermissionMode)
 	} else {
-		err = config.UpdateProviderRuntime(s.rt.ConfigPath, resolvedName, model, params.BaseURL, apiKeyForConfig, authTokenForConfig, effortForConfig, variantForConfig, params.PermissionMode, params.Ultra)
+		err = config.UpdateProviderRuntime(s.rt.ConfigPath, resolvedName, model, params.BaseURL, apiKeyForConfig, authTokenForConfig, effortForConfig, variantForConfig, params.PermissionMode)
 	}
 	if err != nil {
 		return s.writeResponse(req.ID, nil, err)
 	}
-	if params.Ultra != nil {
-		s.rt.SetUltraMode(*params.Ultra)
-	}
-
 	previousRuntimeProvider := s.rt.ProviderName
 	if explicitSelection {
 		s.rt.ProviderName = resolvedName
@@ -1462,7 +1449,6 @@ func (s *Server) handleConfigModelUpdate(req Request) error {
 		Model:            model,
 		Effort:           effort,
 		Variant:          selection.Variant,
-		Ultra:            s.rt.UltraMode(),
 		MaxParallel:      s.rt.MaxParallel(),
 		Permissions:      s.currentPermissionSummary(),
 		ExtensionTrust:   s.currentExtensionTrustSummary(),
@@ -1472,20 +1458,6 @@ func (s *Server) handleConfigModelUpdate(req Request) error {
 		Providers:        s.providerSummaries(),
 		AdvancedSettings: s.currentAdvancedSettingsSummary(),
 	}, nil)
-}
-
-func isUltraOnlyModelUpdate(params ConfigModelUpdateParams) bool {
-	return params.Ultra != nil &&
-		strings.TrimSpace(params.Provider) == "" &&
-		strings.TrimSpace(params.Model) == "" &&
-		params.Effort == nil &&
-		params.Variant == nil &&
-		params.PermissionMode == nil &&
-		params.BaseURL == nil &&
-		params.APIKey == nil &&
-		params.AuthToken == nil &&
-		params.Type == nil &&
-		!params.CreateProvider
 }
 
 func providerClientConfigChanged(previous, next config.ProviderConfig) bool {
@@ -1515,7 +1487,6 @@ func (s *Server) currentConfigModelUpdateResult() ConfigModelUpdateResult {
 		Model:            s.rt.Model,
 		Effort:           s.currentDisplayEffort(),
 		Variant:          s.currentVariant(),
-		Ultra:            s.rt.UltraMode(),
 		MaxParallel:      s.rt.MaxParallel(),
 		Permissions:      s.currentPermissionSummary(),
 		ExtensionTrust:   s.currentExtensionTrustSummary(),
@@ -2541,9 +2512,8 @@ func normalizedCodexEfforts(values []string) []string {
 	out := make([]string, 0, len(values))
 	for _, value := range values {
 		value = strings.TrimSpace(value)
-		// Codex uses Ultra as a client-side orchestration mode and downgrades it
-		// to max before making the model request. Wuu does not expose that mode
-		// through the reasoning-effort picker, where sending it verbatim is a 400.
+		// The catalog can expose non-standard effort names that the provider API
+		// rejects when sent verbatim. Do not advertise those as request variants.
 		if value == "" || strings.EqualFold(value, "ultra") || seen[value] {
 			continue
 		}

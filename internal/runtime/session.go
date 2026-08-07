@@ -11,7 +11,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"charm.land/catwalk/pkg/catwalk"
@@ -144,7 +143,6 @@ type Session struct {
 	// process-scoped override (see Options.PermissionModeExplicit): it beats
 	// thread pins and session metadata and is never persisted into sessions.
 	PermissionModeExplicit      bool
-	ultraMode                   atomic.Bool
 	maxParallel                 int
 	ExperimentalCoordinatorMode bool
 	ToolLoadingPreference       config.ToolLoadingMode
@@ -158,20 +156,6 @@ type Session struct {
 	pluginGeneration            *PluginGeneration
 }
 
-// UltraMode returns the session-level delegation mode using an atomic read so
-// config updates can race safely with turn admission.
-func (s *Session) UltraMode() bool {
-	return s != nil && s.ultraMode.Load()
-}
-
-// SetUltraMode updates the session-level delegation mode. Individual turns
-// snapshot this value separately; this setter only changes future snapshots.
-func (s *Session) SetUltraMode(enabled bool) {
-	if s != nil {
-		s.ultraMode.Store(enabled)
-	}
-}
-
 // MaxParallel returns the worker concurrency configured for this session.
 func (s *Session) MaxParallel() int {
 	if s == nil || s.maxParallel <= 0 {
@@ -181,8 +165,8 @@ func (s *Session) MaxParallel() int {
 }
 
 // cloneForThreadModel copies the shared, immutable session dependencies used
-// to build a thread runtime without copying ultraMode's atomic noCopy marker.
-// Thread-specific mutable dependencies are replaced by the caller below.
+// to build a thread runtime. Thread-specific mutable dependencies are replaced
+// by the caller below.
 func (s *Session) cloneForThreadModel() *Session {
 	if s == nil {
 		return nil
@@ -234,7 +218,6 @@ func (s *Session) cloneForThreadModel() *Session {
 		ReadinessIssues:             s.ReadinessIssues,
 		InferenceJournalRuntime:     s.InferenceJournalRuntime,
 	}
-	clone.ultraMode.Store(s.ultraMode.Load())
 	return clone
 }
 
@@ -704,7 +687,6 @@ func NewSession(opts Options) (*Session, error) {
 	// The legacy/root control remains dormant until SetSessionID binds its real
 	// artifact directories. Per-thread controls created by NewThreadRuntime are
 	// likewise started only after app-server installs their terminal finalizer.
-	runtimeSession.SetUltraMode(cfg.Agent.UltraMode)
 	journalOwned = false
 	return runtimeSession, nil
 }

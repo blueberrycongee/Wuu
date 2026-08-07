@@ -130,7 +130,6 @@ export function Composer({
   running,
   sendDisabled = false,
   forceStopWhileRunning = false,
-  ultraEnabled = false,
   runtimeControlsDisabled = running,
   status,
   statusLiveProgress,
@@ -175,7 +174,6 @@ export function Composer({
   onRemoveGuideMessage,
   onGuideQueuedMessage,
   onEditQueuedMessage,
-  onToggleUltra,
   onEditGuideMessage,
   onSend,
   onSteer,
@@ -217,7 +215,6 @@ export function Composer({
   running: boolean;
   sendDisabled?: boolean;
   forceStopWhileRunning?: boolean;
-  ultraEnabled?: boolean;
   runtimeControlsDisabled?: boolean;
   status: string;
   statusLiveProgress?: boolean;
@@ -267,7 +264,6 @@ export function Composer({
   onRemoveGuideMessage: (id: string) => void;
   onGuideQueuedMessage: (id: string) => void;
   onEditQueuedMessage: (id: string) => void;
-  onToggleUltra?: (enabled: boolean) => void;
   onEditGuideMessage: (id: string) => void;
   onSend: (promptOverride?: string) => void;
   onSteer?: (promptOverride?: string) => void;
@@ -408,8 +404,6 @@ export function Composer({
       : composerSendLabel;
   const [expandedDrawer, setExpandedDrawer] = useState<ExpandedComposerDrawer>(null);
   const [dropActive, setDropActive] = useState(false);
-  const [ultraAnimationCycle, setUltraAnimationCycle] = useState(0);
-  const previousUltraEnabledRef = useRef(ultraEnabled);
   const [collapsedPromptBlocks, setCollapsedPromptBlocks] = useState<CollapsedComposerPromptBlock[]>([]);
   const [selectedSlashIndex, setSelectedSlashIndex] = useState(0);
   const [slashDismissedValue, setSlashDismissedValue] = useState("");
@@ -455,13 +449,6 @@ export function Composer({
     }
   }
 
-  useEffect(() => {
-    if (previousUltraEnabledRef.current === ultraEnabled) {
-      return;
-    }
-    previousUltraEnabledRef.current = ultraEnabled;
-    setUltraAnimationCycle((cycle) => cycle + 1);
-  }, [ultraEnabled]);
   const [slashSkills, setSlashSkills] = useState<SkillSummary[]>([]);
   const [composerContextMenu, setComposerContextMenu] = useState<{
     x: number;
@@ -1050,30 +1037,8 @@ export function Composer({
           onEditQueuedMessage={onEditQueuedMessage}
         />
         <div className="composer-frame-shell">
-          {onToggleUltra ? (
-            <>
-              <button
-                className={`composer-ultra-button${ultraEnabled ? " is-active" : ""}`}
-                type="button"
-                aria-label={ultraEnabled ? t("composer.disableUltraMode") : t("composer.enableUltraMode")}
-                aria-pressed={ultraEnabled}
-                title={ultraEnabled ? t("composer.disableUltra") : t("composer.enableUltra")}
-                onClick={() => onToggleUltra(!ultraEnabled)}
-              >
-                <span className="composer-ultra-notch" aria-hidden="true" />
-                <span className="composer-ultra-impact" aria-hidden="true" />
-              </button>
-              {ultraAnimationCycle > 0 ? (
-                <span
-                  className={`composer-ultra-energy${ultraEnabled ? " turning-on" : " turning-off"}`}
-                  key={ultraAnimationCycle}
-                  aria-hidden="true"
-                />
-              ) : null}
-            </>
-          ) : null}
           <div
-            className={`composer-frame${ultraEnabled ? " is-ultra" : ""}${dropActive ? " composer-frame-drop-active" : ""}`}
+            className={`composer-frame${dropActive ? " composer-frame-drop-active" : ""}`}
             data-wuu-component="composer-frame"
             ref={composerFrameRef}
             onDragOver={handleComposerDragOver}

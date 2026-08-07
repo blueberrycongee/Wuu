@@ -87,9 +87,7 @@ export type InitializeResult = {
   model: string;
   effort?: string;
   variant?: string;
-  ultra?: boolean;
-  // Effective anonymous-worker execution capacity after applying the
-  // default (docs/app-server-protocol.md, Ultra Mode Configuration).
+  // Effective anonymous-worker execution capacity.
   max_parallel?: number;
   runtime_host?: RuntimeHostSummary;
   workspace_root: string;
@@ -511,7 +509,6 @@ export type ConfigModelUpdateResult = {
   model: string;
   effort?: string;
   variant?: string;
-  ultra: boolean;
   // Readback of the effective anonymous-worker capacity, mirroring
   // InitializeResult.max_parallel.
   max_parallel: number;
@@ -2279,7 +2276,6 @@ export type WuuDesktopApi = {
     permissionMode?: string,
     threadId?: string
   ) => Promise<ConfigModelUpdateResult>;
-  updateUltraMode: (enabled: boolean) => Promise<ConfigModelUpdateResult>;
   removeProvider: (
     provider: string,
     options?: { fallbackProvider?: string; fallbackModel?: string }

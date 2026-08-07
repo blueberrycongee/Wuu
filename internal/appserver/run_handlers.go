@@ -97,7 +97,6 @@ func (s *Server) handleRunStart(ctx context.Context, req Request) error {
 
 	snapshot := turnRuntimeSnapshot{}.withPermissions(permissions)
 	snapshot.PermissionExplicit = params.PermissionMode != nil
-	snapshot.Ultra = s.rt.UltraMode()
 	snapshot.ExecutionRunID = run.ID
 	var threadRuntime *runtime.ThreadRuntime
 	started, ok, admissionErr := s.startThreadUserTurnWithAdmission(
@@ -276,7 +275,7 @@ func (s *Server) executionFactsForThread(th *threadState, threadRuntime *runtime
 	core := version.Info()
 	return workspace, execution.RuntimeManifest{
 		Resolved: selection, ProtocolVersion: ProtocolVersion, CoreVersion: core.Version, CoreCommit: core.Commit,
-		Ultra: snapshot.Ultra, MaxParallel: s.rt.MaxParallel(),
+		MaxParallel: s.rt.MaxParallel(),
 	}, ephemeral
 }
 

@@ -87,7 +87,6 @@ type Options struct {
 	Effort            string
 	Variant           string
 	PermissionMode    string
-	Ultra             bool
 	NoTools           bool
 	JSON              bool
 	Ephemeral         bool

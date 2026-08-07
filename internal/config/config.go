@@ -242,9 +242,6 @@ type AgentConfig struct {
 	// MaxParallel limits concurrently executing anonymous workers. Queued
 	// workers do not count toward the limit. Zero selects the default.
 	MaxParallel int `json:"max_parallel,omitempty"`
-	// UltraMode enables proactive multi-agent delegation for top-level turns.
-	// The runtime snapshots this value at the turn boundary.
-	UltraMode bool `json:"ultra_mode,omitempty"`
 	// Temperature overrides model/provider sampling when greater than zero.
 	// Zero means Auto: omit the request field and let the provider or model
 	// compatibility layer choose.
@@ -1060,13 +1057,13 @@ func UpdateProviderModel(configPath, providerName, newModel string) error {
 // UpdateProviderSelection changes the default provider and the selected
 // provider's model in the config file at configPath.
 func UpdateProviderSelection(configPath, providerName, newModel string) error {
-	return updateProviderSelection(configPath, providerName, newModel, nil, nil, nil, nil, nil, nil, nil, false, nil)
+	return updateProviderSelection(configPath, providerName, newModel, nil, nil, nil, nil, nil, nil, false, nil)
 }
 
 // UpdateProviderRuntime changes the default provider and editable connection
 // fields for that provider. A nil apiKey keeps the existing key configuration.
-func UpdateProviderRuntime(configPath, providerName, newModel string, baseURL, apiKey, authToken, effort, variant, permissionMode *string, ultraMode *bool) error {
-	return updateProviderSelection(configPath, providerName, newModel, baseURL, apiKey, authToken, effort, variant, permissionMode, ultraMode, false, nil)
+func UpdateProviderRuntime(configPath, providerName, newModel string, baseURL, apiKey, authToken, effort, variant, permissionMode *string) error {
+	return updateProviderSelection(configPath, providerName, newModel, baseURL, apiKey, authToken, effort, variant, permissionMode, false, nil)
 }
 
 // CreateProviderRuntime creates a new provider with the requested type
@@ -1074,35 +1071,8 @@ func UpdateProviderRuntime(configPath, providerName, newModel string, baseURL, a
 // editable runtime fields. A nil or empty providerType defaults to
 // "openai-compatible". The caller is responsible for whitelisting allowed
 // type values before invocation; this function writes the type verbatim.
-func CreateProviderRuntime(configPath, providerName string, providerType *string, newModel string, baseURL, apiKey, authToken, effort, variant, permissionMode *string, ultraMode *bool) error {
-	return updateProviderSelection(configPath, providerName, newModel, baseURL, apiKey, authToken, effort, variant, permissionMode, ultraMode, true, providerType)
-}
-
-// UpdateAgentUltraMode atomically persists an Ultra-only runtime update while
-// preserving provider selection and every unrelated config field.
-func UpdateAgentUltraMode(configPath string, ultraMode *bool) error {
-	if ultraMode == nil {
-		return nil
-	}
-	data, err := os.ReadFile(configPath)
-	if err != nil {
-		return fmt.Errorf("read config: %w", err)
-	}
-	var raw map[string]any
-	if err := json.Unmarshal(data, &raw); err != nil {
-		return fmt.Errorf("parse config: %w", err)
-	}
-	agent, _ := raw["agent"].(map[string]any)
-	if agent == nil {
-		agent = make(map[string]any)
-		raw["agent"] = agent
-	}
-	setOptionalBool(agent, "ultra_mode", ultraMode)
-	out, err := json.MarshalIndent(raw, "", "  ")
-	if err != nil {
-		return fmt.Errorf("marshal config: %w", err)
-	}
-	return securefs.WriteFileAtomic(configPath, append(out, '\n'))
+func CreateProviderRuntime(configPath, providerName string, providerType *string, newModel string, baseURL, apiKey, authToken, effort, variant, permissionMode *string) error {
+	return updateProviderSelection(configPath, providerName, newModel, baseURL, apiKey, authToken, effort, variant, permissionMode, true, providerType)
 }
 
 // RemoveProvider deletes a configured provider from the config file and,
@@ -1486,7 +1456,7 @@ func setOptionalBool(target map[string]any, key string, value *bool) {
 	target[key] = true
 }
 
-func updateProviderSelection(configPath, providerName, newModel string, baseURL, apiKey, authToken, effort, variant, permissionMode *string, ultraMode *bool, createProvider bool, providerType *string) error {
+func updateProviderSelection(configPath, providerName, newModel string, baseURL, apiKey, authToken, effort, variant, permissionMode *string, createProvider bool, providerType *string) error {
 	data, err := os.ReadFile(configPath)
 	if err != nil {
 		return fmt.Errorf("read config: %w", err)
@@ -1599,15 +1569,6 @@ func updateProviderSelection(configPath, providerName, newModel string, baseURL,
 		delete(agent, "tool_policy")
 		delete(agent, "permission_rules")
 	}
-	if ultraMode != nil {
-		agent, _ := raw["agent"].(map[string]any)
-		if agent == nil {
-			agent = make(map[string]any)
-			raw["agent"] = agent
-		}
-		setOptionalBool(agent, "ultra_mode", ultraMode)
-	}
-
 	out, err := json.MarshalIndent(raw, "", "  ")
 	if err != nil {
 		return fmt.Errorf("marshal config: %w", err)

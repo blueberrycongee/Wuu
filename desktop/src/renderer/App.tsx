@@ -183,7 +183,6 @@ import type { SettingsPage } from "./SettingsView";
 import {
   ENABLE_GROUP_CHAT,
   ENABLE_MANAGEMENT_ASSISTANT,
-  ENABLE_ULTRA_MODE,
 } from "./FeatureFlags";
 import { ArchiveTip } from "./ArchiveTip";
 import { TopNotice } from "./TopNotice";
@@ -2354,14 +2353,6 @@ export function App(): JSX.Element {
           (!activeThreadReadOnly && activeThreadIsRunning) ||
           viewContextSwitchPending
         }
-        ultraEnabled={ENABLE_ULTRA_MODE && Boolean(state.initialized?.ultra)}
-        onToggleUltra={
-          ENABLE_ULTRA_MODE
-            ? (enabled) => {
-                void updateUltraMode(enabled).catch(() => undefined);
-              }
-            : undefined
-        }
         runtimeControlsDisabled={
           (!activeThreadReadOnly && activeThreadIsRunning) ||
           viewContextSwitchPending
@@ -3008,7 +2999,6 @@ export function App(): JSX.Element {
 
   const {
     updateRuntimeSettings,
-    updateUltraMode,
     updateAdvancedSettings,
     updateGeneralSettings,
     removeProvider,

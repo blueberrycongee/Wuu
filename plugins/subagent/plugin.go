@@ -15,10 +15,12 @@ import (
 
 const (
 	capabilityPrompt    = "agent.system_prompt.section"
+	capabilityRequest   = "agent.request.transform"
 	capabilityClient    = "plugin.client.request"
 	capabilityLifecycle = "agent.turn.lifecycle"
 	hostStorageGet      = "host.storage.get"
 	hostStorageSet      = "host.storage.set"
+	ultraStorageKey     = "ultra.enabled"
 )
 
 var taskNameCleaner = regexp.MustCompile(`[^a-z0-9_]+`)
@@ -41,6 +43,7 @@ func Handler() pluginapi.Handler {
 			},
 			Capabilities: []pluginapi.Capability{
 				{ID: capabilityPrompt, Kind: "transform", Version: 1},
+				{ID: capabilityRequest, Kind: "transform", Version: 1, Priority: 20},
 				{ID: capabilityClient, Kind: "decision", Version: 1},
 				{ID: capabilityLifecycle, Kind: "observe", Version: 1, ErrorPolicy: "isolate"},
 			},
@@ -182,6 +185,8 @@ func invokeCapability(ctx context.Context, host pluginapi.Host, call pluginapi.C
 	switch call.Capability {
 	case capabilityPrompt:
 		return json.Marshal(map[string]string{"text": promptSection})
+	case capabilityRequest:
+		return transformRequest(ctx, host, call.Output)
 	case capabilityClient:
 		var request struct {
 			Method string          `json:"method"`
@@ -190,20 +195,39 @@ func invokeCapability(ctx context.Context, host pluginapi.Host, call pluginapi.C
 		if err := json.Unmarshal(call.Input, &request); err != nil {
 			return nil, err
 		}
-		if request.Method != "status.list" {
-			return nil, fmt.Errorf("unknown client method %q", request.Method)
-		}
-		var params pluginapi.SessionListParams
-		if len(request.Input) != 0 {
-			if err := json.Unmarshal(request.Input, &params); err != nil {
+		switch request.Method {
+		case "status.list":
+			var params pluginapi.SessionListParams
+			if len(request.Input) != 0 {
+				if err := json.Unmarshal(request.Input, &params); err != nil {
+					return nil, err
+				}
+			}
+			var result pluginapi.SessionListResult
+			if err := host.CallHost(ctx, pluginapi.HostServiceSessionList, params, &result); err != nil {
 				return nil, err
 			}
+			return json.Marshal(map[string]any{"result": result})
+		case "ultra.get":
+			enabled, err := loadUltraEnabled(ctx, host)
+			if err != nil {
+				return nil, err
+			}
+			return json.Marshal(map[string]any{"result": map[string]bool{"enabled": enabled}})
+		case "ultra.update":
+			var input struct {
+				Enabled bool `json:"enabled"`
+			}
+			if err := json.Unmarshal(request.Input, &input); err != nil {
+				return nil, err
+			}
+			if err := saveUltraEnabled(ctx, host, input.Enabled); err != nil {
+				return nil, err
+			}
+			return json.Marshal(map[string]any{"result": map[string]bool{"enabled": input.Enabled}})
+		default:
+			return nil, fmt.Errorf("unknown client method %q", request.Method)
 		}
-		var result pluginapi.SessionListResult
-		if err := host.CallHost(ctx, pluginapi.HostServiceSessionList, params, &result); err != nil {
-			return nil, err
-		}
-		return json.Marshal(map[string]any{"result": result})
 	case capabilityLifecycle:
 		var input pluginapi.TurnLifecycleInput
 		if err := json.Unmarshal(call.Input, &input); err != nil {
@@ -240,6 +264,45 @@ func invokeCapability(ctx context.Context, host pluginapi.Host, call pluginapi.C
 	default:
 		return nil, fmt.Errorf("unknown capability %q", call.Capability)
 	}
+}
+
+func transformRequest(ctx context.Context, host pluginapi.Host, output json.RawMessage) (json.RawMessage, error) {
+	enabled, err := loadUltraEnabled(ctx, host)
+	if err != nil || !enabled {
+		return output, err
+	}
+	var envelope map[string]any
+	if err := json.Unmarshal(output, &envelope); err != nil {
+		return nil, err
+	}
+	request, ok := envelope["request"].(map[string]any)
+	if !ok {
+		return nil, errors.New("subagent request transform requires request output")
+	}
+	messages, ok := request["Messages"].([]any)
+	if !ok {
+		return nil, errors.New("subagent request transform requires provider-neutral messages")
+	}
+	request["Messages"] = append([]any{map[string]any{"Role": "system", "Content": ultraPrompt}}, messages...)
+	return json.Marshal(envelope)
+}
+
+func loadUltraEnabled(ctx context.Context, host pluginapi.Host) (bool, error) {
+	var result struct {
+		Value *string `json:"value"`
+	}
+	if err := host.CallHost(ctx, hostStorageGet, map[string]any{"scope": "workspace", "key": ultraStorageKey}, &result); err != nil {
+		return false, err
+	}
+	return result.Value != nil && *result.Value == "true", nil
+}
+
+func saveUltraEnabled(ctx context.Context, host pluginapi.Host, enabled bool) error {
+	value := "false"
+	if enabled {
+		value = "true"
+	}
+	return host.CallHost(ctx, hostStorageSet, map[string]any{"scope": "workspace", "key": ultraStorageKey, "value": value}, &struct{}{})
 }
 
 func resolveTask(ctx context.Context, host pluginapi.Host, parentID, target string) (taskRecord, error) {
@@ -366,3 +429,7 @@ A completed subagent task does not mean the overall task is complete. Integrate 
 The main agent owns the user conversation, final synthesis, and decision about whether delegation is worth the overhead. Keep tightly coupled, trivial, or critical-path work local. Delegate bounded independent research, verification, or disjoint implementation when separate context or parallel execution materially improves the result.
 
 Fresh task prompts must be self-contained. Fork prompts may rely on inherited context but still need a concrete directive and scope. Child completion is delivered as a read-only query bubble; do not poll while work is running.`
+
+const ultraPrompt = `# Proactive delegation
+
+Proactive delegation is enabled by the Subagent plugin. For deep or wide tasks, keep the blocking critical-path step local and delegate independent research, verification, or disjoint implementation to bounded child sessions. Child sessions may form their own task tree when that materially improves speed or context isolation. Do not duplicate work. Child results arrive automatically; use send_message or close_agent only when new information or changed scope requires intervention.`

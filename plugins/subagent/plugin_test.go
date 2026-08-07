@@ -21,6 +21,28 @@ type lifecycleHost struct {
 	record taskRecord
 }
 
+type ultraHost struct {
+	captureHost
+	value *string
+}
+
+func (h *ultraHost) CallHost(ctx context.Context, method string, params, result any) error {
+	switch method {
+	case hostStorageGet:
+		return decodeInto(map[string]any{"value": h.value}, result)
+	case hostStorageSet:
+		var input struct {
+			Value string `json:"value"`
+		}
+		raw, _ := json.Marshal(params)
+		_ = json.Unmarshal(raw, &input)
+		h.value = &input.Value
+		return nil
+	default:
+		return h.captureHost.CallHost(ctx, method, params, result)
+	}
+}
+
 func (h *lifecycleHost) CallHost(ctx context.Context, method string, params, result any) error {
 	if method == hostStorageGet {
 		encoded, _ := json.Marshal(h.record)
@@ -112,4 +134,45 @@ func TestTerminalLifecycleDeliversFinalOutputToParentSession(t *testing.T) {
 	if !strings.Contains(fmt.Sprint(inputValue["prompt"]), "parser is correct") {
 		t.Fatalf("delivery prompt = %+v", inputValue)
 	}
+}
+
+func TestProactiveDelegationSettingOwnsPromptTransform(t *testing.T) {
+	host := &ultraHost{}
+	handler := Handler()
+	requestOutput := json.RawMessage(`{"request":{"Model":"model","Messages":[{"Role":"user","Content":"work"}]}}`)
+
+	disabled, err := handler.InvokeCapability(context.Background(), host, pluginapi.CapabilityCall{Capability: capabilityRequest, Output: requestOutput})
+	if err != nil || string(disabled) != string(requestOutput) {
+		t.Fatalf("disabled transform = %s, err=%v", disabled, err)
+	}
+	updateInput := json.RawMessage(`{"method":"ultra.update","input":{"enabled":true}}`)
+	if _, err := handler.InvokeCapability(context.Background(), host, pluginapi.CapabilityCall{Capability: capabilityClient, Input: updateInput}); err != nil {
+		t.Fatal(err)
+	}
+	enabled, err := handler.InvokeCapability(context.Background(), host, pluginapi.CapabilityCall{Capability: capabilityRequest, Output: requestOutput})
+	if err != nil || !strings.Contains(string(enabled), "Proactive delegation is enabled") {
+		t.Fatalf("enabled transform = %s, err=%v", enabled, err)
+	}
+	var transformed struct {
+		Request struct {
+			Messages []struct {
+				Role    string
+				Content string
+			}
+		} `json:"request"`
+	}
+	if err := json.Unmarshal(enabled, &transformed); err != nil {
+		t.Fatal(err)
+	}
+	if len(transformed.Request.Messages) != 2 || transformed.Request.Messages[0].Role != "system" || transformed.Request.Messages[1].Role != "user" {
+		t.Fatalf("transformed messages = %+v", transformed.Request.Messages)
+	}
+}
+
+func decodeInto(value any, result any) error {
+	raw, err := json.Marshal(value)
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal(raw, result)
 }

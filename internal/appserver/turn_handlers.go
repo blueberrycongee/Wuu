@@ -106,16 +106,10 @@ type turnRuntimeSnapshot struct {
 	HistoryBaselineSeq       int
 	AgentCompletionResultIDs []string
 	ProcessCompletionIDs     []string
-	// Ultra is the turn's effective Ultra value. User turns snapshot the
-	// session setting at admission; synthetic completion turns reuse the
-	// completing worker's inherited value instead of re-reading a session
-	// value that may have changed while the orchestration tree ran. Rides
-	// the snapshot so queueing and wakeups keep the admitted value.
-	Ultra          bool
-	ExecutionRunID string
-	PluginTurn     *pluginTurnReference
-	RequestContext []agent.ContextSegment
-	ActiveDocument *ActiveDocument
+	ExecutionRunID           string
+	PluginTurn               *pluginTurnReference
+	RequestContext           []agent.ContextSegment
+	ActiveDocument           *ActiveDocument
 }
 
 type activeDocumentOverride struct {
@@ -165,9 +159,6 @@ func (s *Server) handleTurnStart(ctx context.Context, req Request) error {
 	snapshot := turnRuntimeSnapshot{}.withPermissions(permissions)
 	snapshot.PermissionExplicit = params.PermissionMode != nil
 	snapshot.ForceCompact = isManualCompactPrompt(params.Prompt)
-	// The user turn snapshots the session-level Ultra setting once, at
-	// admission. Mid-turn changes affect only the next user turn.
-	snapshot.Ultra = s.rt.UltraMode()
 	snapshot.RequestContext = activeDocumentRequestContext(params.ActiveDocument)
 	var threadRuntime *runtime.ThreadRuntime
 	started, ok, err := s.startThreadUserTurnWithAdmission(
@@ -1844,23 +1835,6 @@ func (s *Server) runTurnWithRequestContext(ctx context.Context, th *threadState,
 	}
 	turnPermissions := turnRuntime.permissions()
 	turnRuntime = turnRuntime.withPermissions(turnPermissions)
-	// Publish the turn's effective Ultra value to the orchestration control
-	// before the loop can execute spawn_agent, and inject the root policy as
-	// request-only context. Workers snapshot this value at spawn, so the
-	// whole subtree stays on the admitted capability.
-	if threadRuntime != nil && threadRuntime.AgentControl != nil {
-		threadRuntime.AgentControl.SetTurnUltra(turnRuntime.Ultra)
-	} else if s.rt != nil && s.rt.AgentControl != nil {
-		s.rt.AgentControl.SetTurnUltra(turnRuntime.Ultra)
-	}
-	if turnRuntime.Ultra {
-		requestContext = append(append([]agent.ContextSegment(nil), requestContext...), agent.RequestOnlyContextBlockSegment([]wuucontext.Block{{
-			Kind:    wuucontext.BlockToolPolicy,
-			Title:   "Ultra mode",
-			Source:  "ultra",
-			Content: agentcontrol.UltraRootPolicy(s.rt.MaxParallel()),
-		}}))
-	}
 	// Assigned unconditionally every turn: the runner is per-thread and
 	// long-lived, so a /compact turn must not leave the force flag armed
 	// for the turns that follow it.
@@ -2950,7 +2924,6 @@ func (s *Server) startThreadUserTurnWithAdmission(ctx context.Context, th *threa
 		turnRuntime.AgentCompletionResultIDs = append(turnRuntime.AgentCompletionResultIDs, th.frozenTreeResultIDs...)
 		th.frozenTreeResultIDs = nil
 	}
-	turnRuntime.Ultra = snapshot.Ultra
 	turnRuntime.ExecutionRunID = snapshot.ExecutionRunID
 	turnRuntime.PluginTurn = clonePluginTurnReference(snapshot.PluginTurn)
 	th.currentExecutionRunID = turnRuntime.ExecutionRunID
@@ -3347,22 +3320,11 @@ func (s *Server) startSyntheticTurn(ctx context.Context, threadID string, userMs
 		}
 	}
 
-	// A synthetic completion turn belongs to the orchestration tree that
-	// produced it: reuse the completing worker's inherited Ultra value
-	// instead of the current session setting (turn boundary and inheritance,
-	// docs/en/integrations/app-server-protocol.md).
-	completionUltra := false
-	for _, turn := range pending {
-		if turn.snapshot != nil && turn.snapshot.Ultra {
-			completionUltra = true
-			break
-		}
-	}
 	started, ok, err := s.startThreadUserTurnWithAdmission(
 		ctx,
 		th,
 		userMsg,
-		turnRuntimeSnapshot{AgentCompletionResultIDs: completionResultIDs, ProcessCompletionIDs: processCompletionIDs, Ultra: completionUltra, ExecutionRunID: s.activeExecutionRunID(threadID)},
+		turnRuntimeSnapshot{AgentCompletionResultIDs: completionResultIDs, ProcessCompletionIDs: processCompletionIDs, ExecutionRunID: s.activeExecutionRunID(threadID)},
 		false,
 		turnReadOnlySkip,
 		turnAdmissionHooks{

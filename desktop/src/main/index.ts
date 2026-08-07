@@ -1385,11 +1385,6 @@ app.whenReady().then(async () => {
           : { permission_mode: permissionMode }),
       }),
   );
-  ipcMain.handle("wuu:config-ultra-update", (event, enabled: boolean) =>
-    appServerRequest<ConfigModelUpdateResult>(event, "config/model/update", {
-      ultra: enabled,
-    }),
-  );
   ipcMain.handle(
     "wuu:config-advanced-update",
     (event, settings: RuntimeAdvancedSettingsUpdate) =>

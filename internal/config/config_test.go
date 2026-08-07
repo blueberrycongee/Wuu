@@ -126,9 +126,6 @@ func TestLoadFrom_Defaults(t *testing.T) {
 	if cfg.Agent.MaxParallel != DefaultAgentMaxParallel {
 		t.Fatalf("expected default max_parallel %d, got %d", DefaultAgentMaxParallel, cfg.Agent.MaxParallel)
 	}
-	if cfg.Agent.UltraMode {
-		t.Fatal("expected ultra_mode to be disabled by default")
-	}
 	if cfg.Agent.SystemPrompt != "" {
 		t.Fatalf("expected config system_prompt to remain user-owned, got %q", cfg.Agent.SystemPrompt)
 	}
@@ -143,7 +140,7 @@ func TestLoadFrom_Defaults(t *testing.T) {
 	}
 }
 
-func TestLoadProjectConfigParsesUltraModeAndMaxParallel(t *testing.T) {
+func TestLoadProjectConfigParsesMaxParallel(t *testing.T) {
 	workdir := t.TempDir()
 	configPath := filepath.Join(workdir, ".wuu.json")
 	jsonData := `{
@@ -155,10 +152,7 @@ func TestLoadProjectConfigParsesUltraModeAndMaxParallel(t *testing.T) {
       "model": "gpt-4.1"
     }
   },
-  "agent": {
-    "ultra_mode": true,
-    "max_parallel": 3
-  }
+  "agent": {"max_parallel": 3}
 }`
 	if err := os.WriteFile(configPath, []byte(jsonData), 0o644); err != nil {
 		t.Fatalf("write config: %v", err)
@@ -167,7 +161,7 @@ func TestLoadProjectConfigParsesUltraModeAndMaxParallel(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadProjectConfig: %v", err)
 	}
-	if !cfg.Agent.UltraMode || cfg.Agent.MaxParallel != 3 || cfg.Agent.MaxParallelValue() != 3 {
+	if cfg.Agent.MaxParallel != 3 || cfg.Agent.MaxParallelValue() != 3 {
 		t.Fatalf("unexpected agent config: %+v", cfg.Agent)
 	}
 }
@@ -1669,7 +1663,7 @@ func TestUpdateProviderRuntimePersistsConnectionFields(t *testing.T) {
 
 	baseURL := "https://custom.example.com/v1"
 	apiKey := "sk-custom"
-	if err := UpdateProviderRuntime(path, "next", "custom-model", &baseURL, &apiKey, nil, nil, nil, nil, nil); err != nil {
+	if err := UpdateProviderRuntime(path, "next", "custom-model", &baseURL, &apiKey, nil, nil, nil, nil); err != nil {
 		t.Fatalf("UpdateProviderRuntime: %v", err)
 	}
 
@@ -1690,75 +1684,6 @@ func TestUpdateProviderRuntimePersistsConnectionFields(t *testing.T) {
 	old, _, _ := cfg.ResolveProvider("old")
 	if old.Model != "old-model" || old.BaseURL != "https://old.example.com" {
 		t.Fatalf("old provider changed: %+v", old)
-	}
-}
-
-func TestRuntimeUpdatesPersistUltraAtomicallyAndPreserveNil(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, ".wuu.json")
-	orig := `{
-  "default_provider": "main",
-  "providers": {
-    "main": {
-      "type": "openai-compatible",
-      "base_url": "https://example.com/v1",
-      "model": "old-model"
-    }
-  },
-  "agent": {
-    "max_parallel": 2
-  },
-  "memory": {
-    "disable": true
-  }
-}`
-	if err := os.WriteFile(path, []byte(orig), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	enabled := true
-	if err := UpdateProviderRuntime(path, "main", "new-model", nil, nil, nil, nil, nil, nil, &enabled); err != nil {
-		t.Fatalf("combined runtime update: %v", err)
-	}
-	cfg, _, err := LoadProjectConfig(dir)
-	if err != nil {
-		t.Fatalf("reload combined update: %v", err)
-	}
-	if !cfg.Agent.UltraMode || cfg.Agent.MaxParallel != 2 || cfg.Providers["main"].Model != "new-model" {
-		t.Fatalf("combined update was not persisted: %+v", cfg)
-	}
-
-	if err := UpdateProviderRuntime(path, "main", "next-model", nil, nil, nil, nil, nil, nil, nil); err != nil {
-		t.Fatalf("nil Ultra update: %v", err)
-	}
-	cfg, _, err = LoadProjectConfig(dir)
-	if err != nil {
-		t.Fatalf("reload nil update: %v", err)
-	}
-	if !cfg.Agent.UltraMode || cfg.Providers["main"].Model != "next-model" {
-		t.Fatalf("nil Ultra update did not preserve mode: %+v", cfg)
-	}
-
-	disabled := false
-	if err := UpdateAgentUltraMode(path, &disabled); err != nil {
-		t.Fatalf("Ultra-only update: %v", err)
-	}
-	cfg, _, err = LoadProjectConfig(dir)
-	if err != nil {
-		t.Fatalf("reload Ultra-only update: %v", err)
-	}
-	if cfg.Agent.UltraMode || cfg.Agent.MaxParallel != 2 || cfg.Providers["main"].Model != "next-model" {
-		t.Fatalf("Ultra-only update changed unrelated config: %+v", cfg)
-	}
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("read updated config: %v", err)
-	}
-	if strings.Contains(string(raw), "ultra_mode") {
-		t.Fatalf("disabled Ultra should use the default omission: %s", raw)
-	}
-	if !strings.Contains(string(raw), `"memory": {`) {
-		t.Fatalf("unrelated config was not preserved: %s", raw)
 	}
 }
 
@@ -1787,7 +1712,7 @@ func TestUpdateProviderRuntimePersistsPermissionMode(t *testing.T) {
 	}
 
 	mode := PermissionModeUnconfined
-	if err := UpdateProviderRuntime(path, "old", "old-model", nil, nil, nil, nil, nil, &mode, nil); err != nil {
+	if err := UpdateProviderRuntime(path, "old", "old-model", nil, nil, nil, nil, nil, &mode); err != nil {
 		t.Fatalf("UpdateProviderRuntime: %v", err)
 	}
 
@@ -1830,7 +1755,7 @@ func TestCreateProviderRuntimePersistsNewProvider(t *testing.T) {
 
 	baseURL := "https://custom.example.com/v1"
 	apiKey := "sk-custom"
-	if err := CreateProviderRuntime(path, "custom-1", nil, "custom-model", &baseURL, &apiKey, nil, nil, nil, nil, nil); err != nil {
+	if err := CreateProviderRuntime(path, "custom-1", nil, "custom-model", &baseURL, &apiKey, nil, nil, nil, nil); err != nil {
 		t.Fatalf("CreateProviderRuntime: %v", err)
 	}
 

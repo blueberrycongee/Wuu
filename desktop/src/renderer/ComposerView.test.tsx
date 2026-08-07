@@ -88,8 +88,6 @@ function renderComposer(props: {
   mainConversation?: boolean;
   prompt?: string;
   running?: boolean;
-  ultraEnabled?: boolean;
-  onToggleUltra?: (enabled: boolean) => void;
   queuedMessages?: QueuedComposerMessage[];
   guideMessages?: QueuedComposerMessage[];
   status?: string;
@@ -148,8 +146,6 @@ function renderComposer(props: {
           queuedMessages={props.queuedMessages ?? []}
           guideMessages={props.guideMessages ?? []}
           running={props.running ?? false}
-          ultraEnabled={props.ultraEnabled}
-          onToggleUltra={props.onToggleUltra}
           runtimeControlsDisabled={props.runtimeControlsDisabled}
           status={props.status ?? "ready"}
           statusLiveProgress={props.statusLiveProgress}
@@ -319,7 +315,6 @@ function renderStatefulComposer(props: {
   initialPrompt?: string;
   onSend?: (prompt: string) => void;
   onCommitPrompt?: (prompt: string, commit: (prompt: string) => void) => void;
-  showUltraToggle?: boolean;
   activeContext?: RuntimeContext;
   readOnly?: boolean;
   textOnly?: boolean;
@@ -335,7 +330,6 @@ function renderStatefulComposer(props: {
   function Harness(): JSX.Element {
     const [prompt, setPrompt] = useState(props.initialPrompt ?? "");
     const [promptRevision, setPromptRevision] = useState(0);
-    const [ultraEnabled, setUltraEnabled] = useState(false);
     replacePrompt = (nextPrompt) => {
       setPrompt(nextPrompt);
       setPromptRevision((current) => current + 1);
@@ -358,8 +352,6 @@ function renderStatefulComposer(props: {
           queuedMessages={[]}
           guideMessages={[]}
           running={false}
-          ultraEnabled={ultraEnabled}
-          onToggleUltra={props.showUltraToggle ? setUltraEnabled : undefined}
           status="ready"
           readOnly={props.readOnly ?? false}
           textOnly={props.textOnly}
@@ -1158,61 +1150,6 @@ describe("Composer send control", () => {
     expect(shell?.contains(frame)).toBe(true);
     expect(frame?.contains(composer)).toBe(true);
     expect(frame?.querySelector(".composer-context-bar")).toBeNull();
-  });
-
-  it("renders controlled Ultra state and preserves the existing treatment", () => {
-    renderStatefulComposer({
-      initialPrompt: "keep this draft",
-      showUltraToggle: true,
-    });
-
-    const button = container.querySelector<HTMLButtonElement>(".composer-ultra-button");
-    const frame = container.querySelector(".composer-frame");
-
-    expect(button?.querySelector(".composer-ultra-notch")).not.toBeNull();
-    expect(button?.getAttribute("aria-label")).toBe("开启 Ultra 多 agent 模式");
-    expect(button?.getAttribute("aria-pressed")).toBe("false");
-    expect(frame?.classList.contains("is-ultra")).toBe(false);
-
-    act(() => button?.click());
-
-    expect(button?.getAttribute("aria-pressed")).toBe("true");
-    expect(button?.getAttribute("aria-label")).toBe("关闭 Ultra 多 agent 模式");
-    expect(frame?.classList.contains("is-ultra")).toBe(true);
-    expect(container.querySelector(".composer-ultra-energy.turning-on")).not.toBeNull();
-    expect(
-      container.querySelector<HTMLTextAreaElement>("textarea")?.value,
-    ).toBe("keep this draft");
-
-    act(() => button?.click());
-
-    expect(button?.getAttribute("aria-pressed")).toBe("false");
-    expect(frame?.classList.contains("is-ultra")).toBe(false);
-    expect(container.querySelector(".composer-ultra-energy.turning-off")).not.toBeNull();
-  });
-
-  it("hides the global Ultra control when the host does not provide it", () => {
-    renderComposer({ variant: "dock" });
-
-    expect(container.querySelector(".composer-ultra-button")).toBeNull();
-  });
-
-  it("keeps the Ultra control available while a turn is running", () => {
-    const onToggleUltra = vi.fn();
-    renderComposer({
-      variant: "dock",
-      running: true,
-      ultraEnabled: false,
-      onToggleUltra,
-    });
-
-    const button = container.querySelector<HTMLButtonElement>(
-      ".composer-ultra-button",
-    );
-    expect(button?.disabled).toBe(false);
-
-    act(() => button?.click());
-    expect(onToggleUltra).toHaveBeenCalledWith(true);
   });
 
   it("renders the slash command menu through the same floating panel as the plus menu", () => {

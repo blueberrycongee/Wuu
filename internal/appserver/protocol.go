@@ -247,7 +247,6 @@ type InitializeResult struct {
 	Model              string                       `json:"model"`
 	Effort             string                       `json:"effort,omitempty"`
 	Variant            string                       `json:"variant,omitempty"`
-	Ultra              bool                         `json:"ultra"`
 	MaxParallel        int                          `json:"max_parallel"`
 	RuntimeHost        RuntimeHostSummary           `json:"runtime_host"`
 	WorkspaceRoot      string                       `json:"workspace_root"`
@@ -364,7 +363,6 @@ type ConfigReadResult struct {
 	Model              string                       `json:"model"`
 	Effort             string                       `json:"effort,omitempty"`
 	Variant            string                       `json:"variant,omitempty"`
-	Ultra              bool                         `json:"ultra"`
 	MaxParallel        int                          `json:"max_parallel"`
 	ConfigPath         string                       `json:"config_path"`
 	WorkspaceRoot      string                       `json:"workspace_root"`
@@ -838,7 +836,6 @@ type ConfigModelUpdateParams struct {
 	Model          string  `json:"model"`
 	Effort         *string `json:"effort,omitempty"`
 	Variant        *string `json:"variant,omitempty"`
-	Ultra          *bool   `json:"ultra,omitempty"`
 	PermissionMode *string `json:"permission_mode,omitempty"`
 	BaseURL        *string `json:"base_url,omitempty"`
 	APIKey         *string `json:"api_key,omitempty"`
@@ -856,7 +853,6 @@ type ConfigModelUpdateResult struct {
 	Model            string                  `json:"model"`
 	Effort           string                  `json:"effort,omitempty"`
 	Variant          string                  `json:"variant,omitempty"`
-	Ultra            bool                    `json:"ultra"`
 	MaxParallel      int                     `json:"max_parallel"`
 	Permissions      PermissionSummary       `json:"permissions"`
 	ExtensionTrust   ExtensionTrustSummary   `json:"extension_trust"`

@@ -240,7 +240,7 @@ func runStartParams(opts Options, threadID string, input TurnInput, outputSchema
 			PermissionMode: strings.TrimSpace(opts.PermissionMode),
 		},
 		AgentProfile: strings.TrimSpace(opts.AgentProfile), MaxTurns: opts.MaxTurns,
-		TimeoutMS: opts.Timeout.Milliseconds(), Ultra: opts.Ultra, NoTools: opts.NoTools,
+		TimeoutMS: opts.Timeout.Milliseconds(), NoTools: opts.NoTools,
 		HasPrompt: input.Prompt != "", ImageCount: len(input.Images), FileCount: len(input.Files),
 		StructuredOutput: outputSchema != nil,
 	}
@@ -492,7 +492,6 @@ func emitSessionConfigured(opts Options, result appserver.InitializeResult) {
 			"model":            result.Model,
 			"effort":           result.Effort,
 			"variant":          result.Variant,
-			"ultra":            result.Ultra,
 			"max_parallel":     result.MaxParallel,
 			"workspace_root":   result.WorkspaceRoot,
 			"permissions":      result.Permissions,
