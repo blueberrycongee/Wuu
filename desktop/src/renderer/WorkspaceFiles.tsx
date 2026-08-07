@@ -39,16 +39,16 @@ const WORKSPACE_FILE_TREE_ITEM_HEIGHT = 24;
 
 const WORKSPACE_TREE_CSS = `
   :host {
-    --trees-fg-override: var(--ink);
-    --trees-fg-muted-override: var(--ink-muted);
-    --trees-bg-override: transparent;
-    --trees-bg-muted-override: var(--surface-2);
-    --trees-search-bg-override: transparent;
-    --trees-selected-fg-override: var(--ink-strong);
-    --trees-selected-bg-override: var(--surface-3);
-    --trees-selected-focused-border-color-override: transparent;
-    --trees-border-color-override: transparent;
-    --trees-font-family-override: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --trees-fg-override: var(--wuu-workspace-file-tree-color, var(--ink));
+    --trees-fg-muted-override: var(--wuu-workspace-file-tree-muted-color, var(--ink-muted));
+    --trees-bg-override: var(--wuu-workspace-file-tree-background, transparent);
+    --trees-bg-muted-override: var(--wuu-workspace-file-tree-muted-background, var(--surface-2));
+    --trees-search-bg-override: var(--wuu-workspace-file-tree-search-background, transparent);
+    --trees-selected-fg-override: var(--wuu-workspace-file-tree-selected-color, var(--ink-strong));
+    --trees-selected-bg-override: var(--wuu-workspace-file-tree-selected-background, var(--surface-3));
+    --trees-selected-focused-border-color-override: var(--wuu-workspace-file-tree-selected-border, transparent);
+    --trees-border-color-override: var(--wuu-workspace-file-tree-border-color, transparent);
+    --trees-font-family-override: var(--wuu-workspace-file-tree-font-family, Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
     --trees-font-size-override: var(--font-sm);
     --trees-item-margin-x-override: 5px;
     --trees-padding-inline-override: 0px;
@@ -64,7 +64,10 @@ const WORKSPACE_TREE_CSS = `
   [data-file-tree-search-input] {
     min-width: 0;
     margin-inline-end: 40px;
-    border-color: var(--hairline-strong);
+    border: var(--wuu-workspace-file-tree-search-border, 1px solid var(--hairline-strong));
+    border-radius: var(--wuu-workspace-file-tree-search-radius, var(--radius-sm));
+    background: var(--wuu-workspace-file-tree-search-background, transparent);
+    color: var(--wuu-workspace-file-tree-color, var(--ink));
   }
 
   [data-file-tree-search-input]:focus-visible,
@@ -256,7 +259,6 @@ const WorkspaceFileTreeView = memo(function WorkspaceFileTreeView({ directories,
         // light-DOM column on the input itself instead of overlapping it.
         search.style.marginInlineEnd = "40px";
         search.style.minWidth = "0";
-        search.style.borderColor = "var(--hairline-strong)";
         search.style.outline = "none";
       }
       const options = host.shadowRoot?.querySelector<HTMLButtonElement>("[data-type='context-menu-trigger']");
@@ -568,8 +570,11 @@ export function WorkspacePanelEmpty({
   return (
     <div
       className={className ? `workspace-panel-empty ${className}` : "workspace-panel-empty"}
+      data-wuu-component="workspace-empty-state"
     >
-      <div className="workspace-panel-empty-icon">{icon ?? <FolderOpen size={24} />}</div>
+      <div className="workspace-panel-empty-icon" data-wuu-component="workspace-empty-icon">
+        {icon ?? <FolderOpen size={24} />}
+      </div>
       <strong>{title}</strong>
       <span>{description}</span>
     </div>

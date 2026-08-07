@@ -48,9 +48,14 @@ type UserTerminalResource = {
   state: WorkspaceTerminalState;
 };
 
-function workspaceTerminalTheme(theme: AppliedTheme): ITheme {
-  if (theme === "dark") {
-    return {
+function workspaceTerminalStyle(host: HTMLElement | undefined, name: string, fallback: string): string {
+  const value = host ? window.getComputedStyle(host).getPropertyValue(name).trim() : "";
+  return value || fallback;
+}
+
+function workspaceTerminalTheme(theme: AppliedTheme, host?: HTMLElement): ITheme {
+  const defaults: ITheme = theme === "dark"
+    ? {
       background: "#1d2024",
       black: "#141618",
       blue: "#58a6ff",
@@ -60,38 +65,50 @@ function workspaceTerminalTheme(theme: AppliedTheme): ITheme {
       red: "#f0705f",
       selectionBackground: "#3a4046",
       yellow: "#d9a84e",
+    }
+    : {
+      background: "#ffffff",
+      black: "#24292f",
+      blue: "#2f98ff",
+      cursor: "#202427",
+      foreground: "#1f2328",
+      green: "#1f9d46",
+      red: "#b42318",
+      selectionBackground: "#d7e9ff",
+      yellow: "#ffc21a",
     };
-  }
   return {
-    background: "#ffffff",
-    black: "#24292f",
-    blue: "#2f98ff",
-    cursor: "#202427",
-    foreground: "#1f2328",
-    green: "#1f9d46",
-    red: "#b42318",
-    selectionBackground: "#d7e9ff",
-    yellow: "#ffc21a",
+    background: workspaceTerminalStyle(host, "--wuu-workspace-terminal-background", defaults.background ?? "#ffffff"),
+    black: workspaceTerminalStyle(host, "--wuu-workspace-terminal-black", defaults.black ?? "#24292f"),
+    blue: workspaceTerminalStyle(host, "--wuu-workspace-terminal-blue", defaults.blue ?? "#2f98ff"),
+    cursor: workspaceTerminalStyle(host, "--wuu-workspace-terminal-cursor", defaults.cursor ?? "#202427"),
+    foreground: workspaceTerminalStyle(host, "--wuu-workspace-terminal-foreground", defaults.foreground ?? "#1f2328"),
+    green: workspaceTerminalStyle(host, "--wuu-workspace-terminal-green", defaults.green ?? "#1f9d46"),
+    red: workspaceTerminalStyle(host, "--wuu-workspace-terminal-red", defaults.red ?? "#b42318"),
+    selectionBackground: workspaceTerminalStyle(host, "--wuu-workspace-terminal-selection", defaults.selectionBackground ?? "#d7e9ff"),
+    yellow: workspaceTerminalStyle(host, "--wuu-workspace-terminal-yellow", defaults.yellow ?? "#ffc21a"),
   };
 }
 
 function workspaceTerminalOptions({
   interactive,
   readOnly = false,
+  host,
 }: {
   interactive: boolean;
   readOnly?: boolean;
+  host?: HTMLElement;
 }): ITerminalOptions {
   return {
     allowTransparency: false,
     convertEol: !interactive,
     cursorBlink: interactive,
     disableStdin: readOnly,
-    fontFamily: '"SFMono-Regular", Consolas, "Liberation Mono", monospace',
+    fontFamily: workspaceTerminalStyle(host, "--wuu-workspace-terminal-font-family", '"SFMono-Regular", Consolas, "Liberation Mono", monospace'),
     fontSize: 12,
     lineHeight: 1.45,
     scrollback: 10000,
-    theme: workspaceTerminalTheme(currentAppliedTheme()),
+    theme: workspaceTerminalTheme(currentAppliedTheme(), host),
   };
 }
 
@@ -364,9 +381,15 @@ export function WorkspaceTerminalPanel({
   return (
     <div
       className={`workspace-terminal-workspace${resizingNavigation ? " resizing" : ""}${standaloneAgentRun ? " standalone-agent-run" : ""}`}
+      data-wuu-component="workspace-terminal-layout"
+      data-wuu-state={standaloneAgentRun ? "standalone" : "split"}
       style={{ "--workspace-terminal-navigation-width": `${navigationWidth}px` } as CSSProperties}
     >
-      <nav className="workspace-terminal-navigation" aria-label={t("workspace.terminal.resources")}>
+      <nav
+        className="workspace-terminal-navigation"
+        data-wuu-component="workspace-terminal-navigation"
+        aria-label={t("workspace.terminal.resources")}
+      >
         <button
           className="workspace-terminal-new"
           type="button"
@@ -382,6 +405,8 @@ export function WorkspaceTerminalPanel({
             return (
               <div
                 className={`workspace-terminal-resource-item${index === 0 ? " first" : ""}${selectedResourceID === terminal.id ? " active" : ""}`}
+                data-wuu-component="workspace-terminal-item"
+                data-wuu-active={selectedResourceID === terminal.id}
                 key={terminal.id}
               >
                 <button
@@ -416,6 +441,8 @@ export function WorkspaceTerminalPanel({
             return (
               <button
                 className={`workspace-terminal-resource workspace-terminal-run${userTerminals.length === 0 ? " first" : ""}${selected ? " active" : ""}`}
+                data-wuu-component="workspace-terminal-item"
+                data-wuu-active={selected}
                 type="button"
                 key={run.toolCallID}
                 onClick={() => setSelectedResourceID(run.toolCallID)}
@@ -445,7 +472,7 @@ export function WorkspaceTerminalPanel({
         onKeyDown={handleNavigationResizeKeyDown}
         onPointerDown={startNavigationResize}
       />
-      <div className="workspace-terminal-content">
+      <div className="workspace-terminal-content" data-wuu-component="workspace-terminal-content">
         {userTerminals.map((terminal) => (
           <UserTerminalPane
             active={selectedResourceID === terminal.id}
@@ -628,13 +655,14 @@ function AgentTerminalPane({
     const terminal = new XtermTerminal(workspaceTerminalOptions({
       interactive: run.execution === "managed" && run.tty,
       readOnly: true,
+      host: container,
     }));
     const fitAddon = new FitAddon();
     terminal.loadAddon(fitAddon);
     terminal.open(container);
     terminalRef.current = terminal;
     const stopObservingTheme = observeAppliedTheme((theme) => {
-      terminal.options.theme = workspaceTerminalTheme(theme);
+      terminal.options.theme = workspaceTerminalTheme(theme, container);
     });
 
     function updateProcess(next: ManagedProcessSummary): void {
@@ -803,7 +831,11 @@ function AgentTerminalPane({
         </div>
       </header>
       {terminalError ? <div className="workspace-agent-terminal-error">{terminalError}</div> : null}
-      <div className="workspace-terminal-screen" onMouseDown={() => terminalRef.current?.focus()}>
+      <div
+        className="workspace-terminal-screen"
+        data-wuu-component="workspace-terminal-screen"
+        onMouseDown={() => terminalRef.current?.focus()}
+      >
         <div className="workspace-terminal-host" ref={containerRef} />
       </div>
     </article>
@@ -892,14 +924,14 @@ function UserTerminalPane({
     setTerminalState("starting");
     pendingTerminalEventsRef.current.clear();
 
-    const terminal = new XtermTerminal(workspaceTerminalOptions({ interactive: true }));
+    const terminal = new XtermTerminal(workspaceTerminalOptions({ interactive: true, host: container }));
     const fitAddon = new FitAddon();
     terminal.loadAddon(fitAddon);
     terminal.open(container);
     terminal.focus();
     terminalRef.current = terminal;
     const stopObservingTheme = observeAppliedTheme((theme) => {
-      terminal.options.theme = workspaceTerminalTheme(theme);
+      terminal.options.theme = workspaceTerminalTheme(theme, container);
     });
 
     function fitAndResize(): void {
@@ -1039,7 +1071,11 @@ function UserTerminalPane({
 
   return (
     <div className="workspace-terminal-panel" hidden={!active} data-wuu-component="workspace-terminal">
-      <div className="workspace-terminal-screen" onMouseDown={() => terminalRef.current?.focus()}>
+      <div
+        className="workspace-terminal-screen"
+        data-wuu-component="workspace-terminal-screen"
+        onMouseDown={() => terminalRef.current?.focus()}
+      >
         <div className="workspace-terminal-host" ref={containerRef} />
       </div>
       {terminalState === "exited" || terminalState === "error" ? (

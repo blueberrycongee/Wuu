@@ -141,6 +141,144 @@ export function activate(api) {
         background: var(--manga-ink);
         border-bottom: 4px solid var(--manga-pink);
       }
+      body:has(.manga-shell) [data-wuu-component="workspace-files"] {
+        color: var(--manga-ink);
+        background-color: var(--manga-paper);
+        background-image: radial-gradient(circle at 1px 1px, rgb(23 19 15 / .09) 1px, transparent 1.2px);
+        background-size: 13px 13px;
+      }
+      body:has(.manga-shell) [data-wuu-component="workspace-file-content"] {
+        background: rgb(255 253 242 / .9);
+      }
+      body:has(.manga-shell) [data-wuu-component="workspace-file-tree"] {
+        --wuu-workspace-file-tree-color: var(--manga-ink);
+        --wuu-workspace-file-tree-muted-color: rgb(23 19 15 / .62);
+        --wuu-workspace-file-tree-background: transparent;
+        --wuu-workspace-file-tree-muted-background: rgb(255 216 61 / .2);
+        --wuu-workspace-file-tree-search-background: white;
+        --wuu-workspace-file-tree-selected-color: var(--manga-ink);
+        --wuu-workspace-file-tree-selected-background: var(--manga-yellow);
+        --wuu-workspace-file-tree-selected-border: var(--manga-ink);
+        --wuu-workspace-file-tree-border-color: var(--manga-ink);
+        --wuu-workspace-file-tree-font-family: var(--wuu-font-family-ui, "Avenir Next Condensed", Arial, sans-serif);
+        --wuu-workspace-file-tree-search-border: 2px solid var(--manga-ink);
+        --wuu-workspace-file-tree-search-radius: 3px;
+        background-color: rgb(241 234 216 / .82);
+        background-image: radial-gradient(circle at 1px 1px, rgb(23 19 15 / .1) 1px, transparent 1.2px);
+        background-size: 13px 13px;
+        border-left: 3px solid var(--manga-ink);
+      }
+      body:has(.manga-shell) [data-wuu-component="workspace-empty-icon"] {
+        color: var(--manga-ink);
+        background: var(--manga-yellow);
+        border: 2px solid var(--manga-ink);
+        border-radius: 3px;
+        box-shadow: 3px 3px 0 var(--manga-cyan);
+      }
+      body:has(.manga-shell) [data-wuu-component="workspace-empty-state"] strong {
+        color: var(--manga-ink);
+        font-weight: 900;
+      }
+      body:has(.manga-shell) [data-wuu-component="workspace-review"] {
+        color: var(--manga-ink);
+        background-color: var(--manga-paper);
+        background-image: radial-gradient(circle at 1px 1px, rgb(23 19 15 / .09) 1px, transparent 1.2px);
+        background-size: 13px 13px;
+      }
+      body:has(.manga-shell) [data-wuu-component="workspace-review-navigation"] {
+        background: rgb(241 234 216 / .86);
+        border-left: 3px solid var(--manga-ink);
+      }
+      body:has(.manga-shell) [data-wuu-component="workspace-review-search"] {
+        background: white;
+        border: 2px solid var(--manga-ink);
+        border-radius: 3px;
+      }
+      body:has(.manga-shell) [data-wuu-component="workspace-review-item"] {
+        color: var(--manga-ink);
+        border-bottom: 1px solid rgb(23 19 15 / .14);
+      }
+      body:has(.manga-shell) [data-wuu-component="workspace-review-item"]:hover {
+        background: rgb(57 199 212 / .28);
+      }
+      body:has(.manga-shell) [data-wuu-component="workspace-review-item"][data-wuu-active="true"] {
+        background: var(--manga-yellow);
+        box-shadow: inset 4px 0 0 var(--manga-pink);
+      }
+      body:has(.manga-shell) [data-wuu-component="workspace-review-content"] {
+        background: rgb(255 253 242 / .94);
+      }
+      body:has(.manga-shell) [data-wuu-component="workspace-review-content-header"] {
+        background: var(--manga-yellow);
+        border-bottom: 3px solid var(--manga-ink);
+      }
+      body:has(.manga-shell) [data-wuu-component="workspace-terminal-layout"] {
+        --wuu-workspace-terminal-background: var(--manga-ink);
+        --wuu-workspace-terminal-foreground: var(--manga-paper);
+        --wuu-workspace-terminal-black: #050403;
+        --wuu-workspace-terminal-blue: var(--manga-cyan);
+        --wuu-workspace-terminal-cursor: var(--manga-pink);
+        --wuu-workspace-terminal-green: var(--manga-cyan);
+        --wuu-workspace-terminal-red: var(--manga-pink);
+        --wuu-workspace-terminal-selection: rgb(255 216 61 / .3);
+        --wuu-workspace-terminal-yellow: var(--manga-yellow);
+        --wuu-workspace-terminal-font-family: var(--wuu-font-family-mono, "SFMono-Regular", Consolas, monospace);
+        background: var(--manga-ink);
+      }
+      body:has(.manga-shell) [data-wuu-component="workspace-terminal-navigation"] {
+        color: var(--manga-ink);
+        background-color: var(--manga-paper-deep);
+        background-image: radial-gradient(circle at 1px 1px, rgb(23 19 15 / .1) 1px, transparent 1.2px);
+        background-size: 13px 13px;
+        border-right: 3px solid var(--manga-ink);
+      }
+      body:has(.manga-shell) [data-wuu-component="workspace-terminal-item"] {
+        color: var(--manga-ink);
+        border-bottom: 1px solid rgb(23 19 15 / .16);
+      }
+      body:has(.manga-shell) [data-wuu-component="workspace-terminal-item"][data-wuu-active="true"] {
+        background: var(--manga-yellow);
+        box-shadow: inset 4px 0 0 var(--manga-pink);
+      }
+      body:has(.manga-shell) [data-wuu-component="workspace-terminal-content"],
+      body:has(.manga-shell) [data-wuu-component="workspace-terminal-screen"] {
+        background: var(--manga-ink);
+      }
+      body:has(.manga-shell) [data-wuu-component="workspace-browser"] {
+        color: var(--manga-ink);
+        background: var(--manga-paper);
+      }
+      body:has(.manga-shell) [data-wuu-component="workspace-browser-toolbar"] {
+        background: var(--manga-paper-deep);
+        border-bottom: 3px solid var(--manga-ink);
+      }
+      body:has(.manga-shell) [data-wuu-component="workspace-browser-toolbar"] > button {
+        color: var(--manga-ink);
+        border: 2px solid var(--manga-ink);
+        background: var(--manga-yellow);
+        box-shadow: 2px 2px 0 var(--manga-cyan);
+      }
+      body:has(.manga-shell) [data-wuu-component="workspace-browser-address"] {
+        color: var(--manga-ink);
+        background: white;
+        border: 2px solid var(--manga-ink);
+        border-radius: 3px;
+      }
+      body:has(.manga-shell) [data-wuu-component="workspace-browser-content"] {
+        background-color: var(--manga-paper);
+        background-image: radial-gradient(circle at 1px 1px, rgb(23 19 15 / .09) 1px, transparent 1.2px);
+        background-size: 13px 13px;
+      }
+      body:has(.manga-shell) [data-wuu-component="workspace-browser-content"] > [data-wuu-component="workspace-empty-state"] {
+        background-color: transparent;
+        background-image: radial-gradient(circle at 1px 1px, rgb(23 19 15 / .09) 1px, transparent 1.2px);
+        background-size: 13px 13px;
+      }
+      body:has(.manga-shell) [data-wuu-component="workspace-browser-statusbar"] {
+        color: var(--manga-paper);
+        background: var(--manga-ink);
+        border-top: 3px solid var(--manga-pink);
+      }
       body:has(.manga-shell) [data-wuu-component="workspace-tool-picker"] {
         gap: 16px;
         padding: 18px;

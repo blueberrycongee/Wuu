@@ -22,5 +22,6 @@ the plugin to unload every frame, presenter, style, and decorative element at on
 - heavy black panel borders and offset print shadows;
 - cyan, yellow, and magenta spot colors;
 - semantic styling across navigation, conversations, settings, catalogs, and workspace panels;
+- public coordinates for all four workspace tools, plus Shadow DOM and xterm style bridges;
 - semantic panel treatment for messages, reasoning, and Tool activity;
 - reduced-motion support and preserved host fallbacks.

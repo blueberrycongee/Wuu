@@ -38,12 +38,31 @@ const SEMANTIC_ANCHOR_OWNERS = Object.freeze({
   "skills-catalog": "SkillsCatalog.tsx",
   "turn": "TurnView.tsx",
   "workspace-browser": "WorkspaceBrowserPanel.tsx",
+  "workspace-browser-address": "WorkspaceBrowserPanel.tsx",
+  "workspace-browser-content": "WorkspaceBrowserPanel.tsx",
+  "workspace-browser-statusbar": "WorkspaceBrowserPanel.tsx",
+  "workspace-browser-toolbar": "WorkspaceBrowserPanel.tsx",
   "workspace-document-turn": "WorkspaceDocumentTurnDock.tsx",
+  "workspace-empty-icon": "WorkspaceFiles.tsx",
+  "workspace-empty-state": "WorkspaceFiles.tsx",
+  "workspace-file-content": "WorkspacePanels.tsx",
+  "workspace-file-tree": "WorkspacePanels.tsx",
+  "workspace-files": "WorkspacePanels.tsx",
   "workspace-panel": "WorkspacePanels.tsx",
   "workspace-panel-header": "WorkspacePanels.tsx",
   "workspace-pdf-preview": "WorkspacePdfPreview.tsx",
   "workspace-review": "WorkspaceReviewPanels.tsx",
+  "workspace-review-content": "WorkspaceReviewPanels.tsx",
+  "workspace-review-content-header": "WorkspaceReviewPanels.tsx",
+  "workspace-review-item": "WorkspaceReviewPanels.tsx",
+  "workspace-review-navigation": "WorkspaceReviewPanels.tsx",
+  "workspace-review-search": "WorkspaceReviewPanels.tsx",
   "workspace-terminal": "WorkspaceTerminalPanel.tsx",
+  "workspace-terminal-content": "WorkspaceTerminalPanel.tsx",
+  "workspace-terminal-item": "WorkspaceTerminalPanel.tsx",
+  "workspace-terminal-layout": "WorkspaceTerminalPanel.tsx",
+  "workspace-terminal-navigation": "WorkspaceTerminalPanel.tsx",
+  "workspace-terminal-screen": "WorkspaceTerminalPanel.tsx",
   "workspace-tool": "WorkspacePanels.tsx",
   "workspace-tool-picker": "WorkspacePanels.tsx",
 } as const);
@@ -87,6 +106,39 @@ describe("production semantic anchors", () => {
     const settingsSource = readFileSync(resolve(RENDERER_ROOT, "SettingsView.tsx"), "utf8");
     expect(appSource.match(/data-wuu-component="sidebar-toggle"/g)).toHaveLength(3);
     expect(settingsSource.match(/data-wuu-component="sidebar-toggle"/g)).toHaveLength(1);
+  });
+
+  it("publishes the active workspace panel view", () => {
+    const source = readFileSync(resolve(RENDERER_ROOT, "WorkspacePanels.tsx"), "utf8");
+    expect(source).toContain('data-wuu-view={activeTab?.kind ?? "picker"}');
+  });
+
+  it("bridges public workspace file-tree variables into its shadow DOM", () => {
+    const source = readFileSync(resolve(RENDERER_ROOT, "WorkspaceFiles.tsx"), "utf8");
+    for (const variable of [
+      "--wuu-workspace-file-tree-color",
+      "--wuu-workspace-file-tree-background",
+      "--wuu-workspace-file-tree-selected-background",
+      "--wuu-workspace-file-tree-font-family",
+      "--wuu-workspace-file-tree-search-background",
+      "--wuu-workspace-file-tree-search-border",
+      "--wuu-workspace-file-tree-search-radius",
+    ]) {
+      expect(source, `${variable} shadow DOM bridge`).toContain(variable);
+    }
+  });
+
+  it("bridges public workspace terminal variables into xterm", () => {
+    const source = readFileSync(resolve(RENDERER_ROOT, "WorkspaceTerminalPanel.tsx"), "utf8");
+    for (const variable of [
+      "--wuu-workspace-terminal-background",
+      "--wuu-workspace-terminal-foreground",
+      "--wuu-workspace-terminal-cursor",
+      "--wuu-workspace-terminal-selection",
+      "--wuu-workspace-terminal-font-family",
+    ]) {
+      expect(source, `${variable} xterm bridge`).toContain(variable);
+    }
   });
 
   it("wraps every plugin contribution in the public coordinate boundary", () => {

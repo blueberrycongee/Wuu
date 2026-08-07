@@ -325,6 +325,7 @@ export function WorkspaceReviewPanel({
       }`}
       aria-label={t("workspaceReview.reviewChanges")}
       data-wuu-component="workspace-review"
+      data-wuu-state={selectedFile ? "detail" : "navigation"}
       ref={panelRef}
       style={panelStyle}
     >
@@ -387,9 +388,10 @@ function WorkspaceReviewDiffPeekPanel({
   return (
     <section
       className="workspace-review-diff-panel workspace-diff-detail"
+      data-wuu-component="workspace-review-content"
       aria-label={t("workspaceReview.codeDiffFor", { path: file.path })}
     >
-      <div className="workspace-diff-detail-header">
+      <div className="workspace-diff-detail-header" data-wuu-component="workspace-review-content-header">
         <div>
           <strong>{gitChangeFilePathLabel(file)}</strong>
           <WorkspaceDiffFileMeta file={file} prefix={branch ?? t("workspaceReview.currentBranch")} />
@@ -752,7 +754,11 @@ function GitChangeTreePanel({
   const forceExpanded = query.trim().length > 0;
   const totals = summarizeGitChangeFiles(files);
   return (
-    <aside className="workspace-diff-tree" aria-label={t("workspaceReview.changeFileTree")}>
+    <aside
+      className="workspace-diff-tree"
+      data-wuu-component="workspace-review-navigation"
+      aria-label={t("workspaceReview.changeFileTree")}
+    >
       <div className="workspace-diff-tree-header">
         <div>
           <strong>{t("workspaceReview.files")}</strong>
@@ -777,7 +783,7 @@ function GitChangeTreePanel({
           </span>
         </div>
       </div>
-      <label className="workspace-diff-search">
+      <label className="workspace-diff-search" data-wuu-component="workspace-review-search">
         <Search className="icon" />
         <input
           value={query}
@@ -838,6 +844,8 @@ function GitChangeTreeNodeView({
       <div className="workspace-diff-tree-node">
         <button
           className="workspace-diff-tree-row directory"
+          data-wuu-component="workspace-review-item"
+          data-wuu-kind="directory"
           type="button"
           style={indentation}
           aria-expanded={expanded}
@@ -873,6 +881,9 @@ function GitChangeTreeNodeView({
   return (
     <button
       className={`workspace-diff-tree-row file${selected ? " active" : ""}`}
+      data-wuu-component="workspace-review-item"
+      data-wuu-kind="file"
+      data-wuu-active={selected}
       type="button"
       style={indentation}
       aria-pressed={selected}

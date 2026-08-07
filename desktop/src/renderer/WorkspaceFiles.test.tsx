@@ -235,7 +235,7 @@ describe("WorkspaceFileTree", () => {
       /\[data-file-tree-search-container\]\s*\{[^}]*box-sizing:\s*border-box;[^}]*width:\s*100%;[^}]*margin-inline:\s*0;[^}]*padding-inline:\s*8px;/s,
     );
     expect(unsafeStyle?.textContent).toMatch(
-      /\[data-file-tree-search-input\]\s*\{[^}]*min-width:\s*0;[^}]*margin-inline-end:\s*40px;[^}]*border-color:\s*var\(--hairline-strong\);/s,
+      /\[data-file-tree-search-input\]\s*\{[^}]*min-width:\s*0;[^}]*margin-inline-end:\s*40px;[^}]*border:\s*var\(--wuu-workspace-file-tree-search-border,\s*1px solid var\(--hairline-strong\)\);[^}]*border-radius:\s*var\(--wuu-workspace-file-tree-search-radius,\s*var\(--radius-sm\)\);/s,
     );
     expect(unsafeStyle?.textContent).toMatch(
       /\[data-file-tree-search-input\]:focus-visible,[\s\S]*\[data-file-tree-search-input\]\[data-file-tree-search-input-fake-focus="true"\]\s*\{[^}]*outline:\s*none;/,
@@ -245,7 +245,7 @@ describe("WorkspaceFileTree", () => {
     );
     expect(search?.style.marginInlineEnd).toBe("40px");
     expect(search?.style.minWidth).toBe("0");
-    expect(search?.style.borderColor).toBe("var(--hairline-strong)");
+    expect(search?.style.borderColor).toBe("");
     expect(search?.style.outline).toBe("none");
   });
 

@@ -342,8 +342,12 @@ export function WorkspaceBrowserPanel({
   const isLoading = status === "loading";
 
   return (
-    <div className="workspace-browser-panel" data-wuu-component="workspace-browser">
-      <div className="workspace-browser-toolbar">
+    <div
+      className="workspace-browser-panel"
+      data-wuu-component="workspace-browser"
+      data-wuu-state={status}
+    >
+      <div className="workspace-browser-toolbar" data-wuu-component="workspace-browser-toolbar">
         <button
           className="icon-button workspace-browser-nav"
           type="button"
@@ -375,6 +379,7 @@ export function WorkspaceBrowserPanel({
         </button>
         <form
           className="workspace-browser-url-form"
+          data-wuu-component="workspace-browser-address"
           role="search"
           onSubmit={handleSubmit}
         >
@@ -406,7 +411,7 @@ export function WorkspaceBrowserPanel({
           <Search className="icon" />
         </button>
       </div>
-      <div className="workspace-browser-frame">
+      <div className="workspace-browser-frame" data-wuu-component="workspace-browser-content">
         <div
           ref={containerRef}
           className="workspace-browser-host"
@@ -443,7 +448,11 @@ export function WorkspaceBrowserPanel({
           </div>
         ) : null}
       </div>
-      <div className="workspace-browser-statusbar" aria-live="polite">
+      <div
+        className="workspace-browser-statusbar"
+        data-wuu-component="workspace-browser-statusbar"
+        aria-live="polite"
+      >
         {showWebview && hostHint ? (
           <span className="workspace-browser-host-hint">{hostHint}</span>
         ) : null}

@@ -537,6 +537,7 @@ export function WorkspaceRightPanel({
     <aside
       className={`workspace-right-panel${activeTab ? " detail" : " tools"}${activeTab?.kind === "review" ? " review" : ""}${activeTab?.kind === "diff" ? " diff" : ""}${activeTab?.kind === "files" || activeTab?.kind === "file" ? " files" : ""}${activeTab?.kind === "terminal" ? " terminal" : ""}${focusedComposer && activeTab?.kind === "file" ? " document-focus" : ""}`}
       data-wuu-component="workspace-panel"
+      data-wuu-view={activeTab?.kind ?? "picker"}
       data-sheet={
         sheetPhase === "exiting"
           ? "parked"
@@ -699,6 +700,7 @@ export function WorkspaceRightPanel({
           <div className={`workspace-panel-body${activeTab ? "" : " picker"}`}>
             <div
               className={`workspace-files-split${resizingFileSplit ? " resizing" : ""}${fileTreeVisible ? "" : " tree-hidden"}${draggingFileTree ? " tree-dragging" : ""}`}
+              data-wuu-component="workspace-files"
               data-tree-drop-side={fileTreeDropSide}
               data-tree-side={fileTreeSide}
               hidden={activeTab?.kind !== "files" && activeTab?.kind !== "file"}
@@ -707,7 +709,11 @@ export function WorkspaceRightPanel({
               onDragOver={handleFileTreeDockDragOver}
               onDrop={dropFileTree}
             >
-              <section className="workspace-files-content" aria-label={t("workspace.fileContent")}>
+              <section
+                className="workspace-files-content"
+                data-wuu-component="workspace-file-content"
+                aria-label={t("workspace.fileContent")}
+              >
                 <div className="workspace-files-content-body">
                   {fileTabs.map((tab) => (
                     <WorkspaceFileResource
@@ -753,6 +759,7 @@ export function WorkspaceRightPanel({
               />
               <section
                 className="workspace-files-tree"
+                data-wuu-component="workspace-file-tree"
                 aria-label={t("workspace.fileTree")}
                 hidden={!fileTreeVisible}
                 ref={fileTreeRef}
