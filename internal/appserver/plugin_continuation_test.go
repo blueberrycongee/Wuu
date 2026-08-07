@@ -3,6 +3,7 @@ package appserver
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
@@ -12,6 +13,9 @@ import (
 
 type continuationTestRuntime struct {
 	id          string
+	capability  string
+	invokeErr   error
+	invoked     int
 	output      pluginhost.AgentContinuationOutput
 	prepareOnly bool
 	calls       []pluginhost.AgentContinuationInput
@@ -28,9 +32,22 @@ func (c *continuationTestRuntime) Invoke(context.Context, pluginhost.InvokeParam
 func (c *continuationTestRuntime) Close(context.Context) error { return nil }
 func (c *continuationTestRuntime) ProtocolVersion() int        { return pluginhost.CapabilityProtocolVersion }
 func (c *continuationTestRuntime) Capabilities() []pluginhost.CapabilityDescriptor {
-	return []pluginhost.CapabilityDescriptor{{ID: pluginhost.CapabilityAgentContinuation, Kind: "decision", Version: 1}}
+	id := c.capability
+	kind := pluginhost.SeamObserve
+	if id == "" {
+		id = pluginhost.CapabilityAgentContinuation
+		kind = pluginhost.SeamDecision
+	}
+	return []pluginhost.CapabilityDescriptor{{ID: id, Kind: kind, Version: 1}}
 }
 func (c *continuationTestRuntime) InvokeCapability(_ context.Context, params pluginhost.CapabilityInvokeParams) (pluginhost.CapabilityInvokeResult, error) {
+	c.invoked++
+	if c.invokeErr != nil {
+		return pluginhost.CapabilityInvokeResult{}, c.invokeErr
+	}
+	if c.capability == pluginhost.CapabilityAgentTurnCompleted {
+		return pluginhost.CapabilityInvokeResult{Output: json.RawMessage(`{}`)}, nil
+	}
 	var input pluginhost.AgentContinuationInput
 	if err := json.Unmarshal(params.Input, &input); err != nil {
 		return pluginhost.CapabilityInvokeResult{}, err
@@ -42,6 +59,19 @@ func (c *continuationTestRuntime) InvokeCapability(_ context.Context, params plu
 	}
 	output, err := json.Marshal(decision)
 	return pluginhost.CapabilityInvokeResult{Output: output}, err
+}
+
+func TestTurnCompletedObserverDefaultsToIsolate(t *testing.T) {
+	srv, _, _ := newPluginStateTestServer(t)
+	broken := &continuationTestRuntime{id: "broken-observer", capability: pluginhost.CapabilityAgentTurnCompleted, invokeErr: errors.New("observer boom")}
+	next := &continuationTestRuntime{id: "next-observer", capability: pluginhost.CapabilityAgentTurnCompleted}
+	srv.rt.PluginHost = pluginhost.New(broken, next)
+	if err := srv.notifyPluginTurnCompleted(context.Background(), pluginhost.AgentTurnCompletedInput{ThreadID: "thread-1"}); err != nil {
+		t.Fatalf("isolated observer failed turn completion: %v", err)
+	}
+	if broken.invoked != 1 || next.invoked != 1 {
+		t.Fatalf("observer calls: broken=%d next=%d", broken.invoked, next.invoked)
+	}
 }
 
 func TestPluginContinuationProbesAndPreparesRequestOnlyContext(t *testing.T) {

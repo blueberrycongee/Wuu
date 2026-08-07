@@ -286,10 +286,12 @@ export type RuntimeHook =
   | "shell.env";
 
 export type CapabilityKind = "observe" | "transform" | "guard" | "around" | "decision";
+export type CapabilityErrorPolicy = "propagate" | "isolate" | "ignore";
 
 export interface CapabilityDescriptor {
   id: string;
   kind: CapabilityKind;
+  error_policy?: CapabilityErrorPolicy;
   version: number;
   priority?: number;
   depends_on?: string[];

@@ -18,10 +18,13 @@ type runtimePluginClient struct {
 }
 
 type runtimeCapabilityClient struct {
-	id      string
-	input   pluginhost.RequestTransformInput
-	mutate  func(*pluginhost.RequestTransformOutput)
-	invoked int
+	id       string
+	input    pluginhost.RequestTransformInput
+	mutate   func(*pluginhost.RequestTransformOutput)
+	err      error
+	policy   pluginhost.ErrorPolicy
+	priority int
+	invoked  int
 }
 
 func (c *runtimeCapabilityClient) ID() string               { return c.id }
@@ -36,11 +39,14 @@ func (c *runtimeCapabilityClient) Invoke(context.Context, pluginhost.InvokeParam
 func (c *runtimeCapabilityClient) ProtocolVersion() int { return pluginhost.CapabilityProtocolVersion }
 func (c *runtimeCapabilityClient) Capabilities() []pluginhost.CapabilityDescriptor {
 	return []pluginhost.CapabilityDescriptor{{
-		ID: pluginhost.CapabilityAgentRequestTransform, Kind: "transform", Version: 1, Priority: 7,
+		ID: pluginhost.CapabilityAgentRequestTransform, Kind: "transform", ErrorPolicy: c.policy, Version: 1, Priority: c.priority,
 	}}
 }
 func (c *runtimeCapabilityClient) InvokeCapability(_ context.Context, params pluginhost.CapabilityInvokeParams) (pluginhost.CapabilityInvokeResult, error) {
 	c.invoked++
+	if c.err != nil {
+		return pluginhost.CapabilityInvokeResult{}, c.err
+	}
 	if err := json.Unmarshal(params.Input, &c.input); err != nil {
 		return pluginhost.CapabilityInvokeResult{}, err
 	}
@@ -106,7 +112,7 @@ func TestPluginRequestInterceptorCarriesThreadContextAndTransformsRequest(t *tes
 }
 
 func TestPluginCapabilityUsesRequestTransformRegistry(t *testing.T) {
-	client := &runtimeCapabilityClient{id: "capability", mutate: func(output *pluginhost.RequestTransformOutput) {
+	client := &runtimeCapabilityClient{id: "capability", priority: 7, mutate: func(output *pluginhost.RequestTransformOutput) {
 		output.Request.Model = "capability-model"
 	}}
 	intercept := pluginRequestInterceptor(pluginhost.New(client), "openai", "thread-2", "/workspace")
@@ -122,8 +128,37 @@ func TestPluginCapabilityUsesRequestTransformRegistry(t *testing.T) {
 	}
 }
 
+func TestPluginRequestTransformErrorPolicy(t *testing.T) {
+	for _, policy := range []pluginhost.ErrorPolicy{pluginhost.ErrorPolicyPropagate, pluginhost.ErrorPolicyIsolate} {
+		t.Run(string(policy), func(t *testing.T) {
+			broken := &runtimeCapabilityClient{id: "broken", priority: 10, policy: policy, err: errors.New("transform boom")}
+			next := &runtimeCapabilityClient{id: "next", priority: 5, mutate: func(output *pluginhost.RequestTransformOutput) {
+				output.Request.Model = "next-model"
+			}}
+			intercept := pluginRequestInterceptor(pluginhost.New(broken, next), "openai", "thread", "/workspace")
+			request := providers.ChatRequest{Model: "original", Messages: []providers.ChatMessage{{Role: "user", Content: "hello"}}}
+			err := intercept(context.Background(), &request)
+			if policy == pluginhost.ErrorPolicyPropagate {
+				if err == nil || !strings.Contains(err.Error(), "transform boom") {
+					t.Fatalf("propagate error = %v", err)
+				}
+				if next.invoked != 0 {
+					t.Fatalf("next transform invoked %d times after propagated failure", next.invoked)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("isolated transform failed the request: %v", err)
+			}
+			if next.invoked != 1 || request.Model != "next-model" {
+				t.Fatalf("isolated chain did not continue: invoked=%d request=%+v", next.invoked, request)
+			}
+		})
+	}
+}
+
 func TestPluginCapabilityCannotBreakToolCallResultOrdering(t *testing.T) {
-	client := &runtimeCapabilityClient{id: "unsafe", mutate: func(output *pluginhost.RequestTransformOutput) {
+	client := &runtimeCapabilityClient{id: "unsafe", priority: 7, mutate: func(output *pluginhost.RequestTransformOutput) {
 		last := len(output.Request.Messages) - 1
 		output.Request.Messages[last-1], output.Request.Messages[last] = output.Request.Messages[last], output.Request.Messages[last-1]
 	}}

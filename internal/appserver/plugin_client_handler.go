@@ -58,7 +58,9 @@ func (s *Server) handlePluginClientRequest(ctx context.Context, req Request) err
 		Method: method,
 		Input:  append(json.RawMessage(nil), params.Input...),
 	}, &output); err != nil {
-		return s.writeResponse(req.ID, nil, err)
+		if policyErr := s.rt.PluginHost.HandleCapabilityError(capability, err); policyErr != nil {
+			return s.writeResponse(req.ID, nil, policyErr)
+		}
 	}
 	if len(output.Result) > maxPluginClientPayloadBytes {
 		return s.writeResponse(req.ID, nil, errors.New("plugin client result exceeds 1048576 bytes"))

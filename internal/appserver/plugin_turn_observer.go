@@ -15,7 +15,10 @@ func (s *Server) notifyPluginTurnCompleted(ctx context.Context, input pluginhost
 	for _, capability := range s.rt.PluginHost.Capabilities(pluginhost.CapabilityAgentTurnCompleted) {
 		var output pluginhost.AgentTurnCompletedOutput
 		if err := s.rt.PluginHost.InvokeCapability(ctx, capability, input, &output); err != nil {
-			return err
+			if policyErr := s.rt.PluginHost.HandleCapabilityError(capability, err); policyErr != nil {
+				return policyErr
+			}
+			continue
 		}
 	}
 	return nil

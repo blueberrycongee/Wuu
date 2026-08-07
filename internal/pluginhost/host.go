@@ -235,6 +235,28 @@ func (h *Host) InvokeCapability(ctx context.Context, capability RegisteredCapabi
 	return nil
 }
 
+// HandleCapabilityError applies the negotiated descriptor policy to one
+// capability failure. A nil return means the caller must skip this
+// contribution and continue dispatch with its previous value.
+func (h *Host) HandleCapabilityError(capability RegisteredCapability, err error) error {
+	if err == nil {
+		return nil
+	}
+	return handlePluginError(capability.PluginID, capability.Descriptor.ID, EffectiveErrorPolicy(capability.Descriptor), err)
+}
+
+func handlePluginError(pluginID, contribution string, policy ErrorPolicy, err error) error {
+	switch policy {
+	case ErrorPolicyIsolate:
+		providers.DebugLogf("plugin %q contribution %q isolated after failure: %v", pluginID, contribution, err)
+		return nil
+	case ErrorPolicyIgnore:
+		return nil
+	default:
+		return err
+	}
+}
+
 // ToolDefinitions returns plugin tools in deterministic client and declaration
 // order, ready to append to the executor definition surface sent to providers.
 func (h *Host) ToolDefinitions() []providers.ToolDefinition {

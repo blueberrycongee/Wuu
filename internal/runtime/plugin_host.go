@@ -146,7 +146,7 @@ func buildPluginRequestTransforms(host *pluginhost.Host, provider, threadID, cwd
 				Provider:  provider,
 				StepIndex: request.StepIndex,
 			}, &output); err != nil {
-				return err
+				return host.HandleCapabilityError(capability, err)
 			}
 			*request = output.Request
 			return nil
@@ -166,7 +166,10 @@ func buildPluginAgentCapabilities(ctx context.Context, host *pluginhost.Host, pr
 		if err := host.InvokeCapability(ctx, registered, pluginhost.SystemPromptSectionInput{
 			CWD: cwd, Provider: provider, Model: model,
 		}, &output); err != nil {
-			return nil, nil, err
+			if policyErr := host.HandleCapabilityError(registered, err); policyErr != nil {
+				return nil, nil, policyErr
+			}
+			continue
 		}
 		key := registered.PluginID + ":" + registered.Descriptor.ID
 		prompts.AddWithOwner(agent.NewStaticPromptSection(key, output.Text, registered.Descriptor.Priority), registered.PluginID)
@@ -195,7 +198,10 @@ func (p *pluginCompactionProvider) Compact(ctx context.Context, model string, me
 	if err := p.host.InvokeCapability(ctx, p.capability, pluginhost.CompactionInput{
 		Model: model, Messages: providers.CloneChatMessages(messages),
 	}, &output); err != nil {
-		return nil, err
+		if policyErr := p.host.HandleCapabilityError(p.capability, err); policyErr != nil {
+			return nil, policyErr
+		}
+		return providers.CloneChatMessages(messages), nil
 	}
 	compacted := providers.CloneChatMessages(output.Messages)
 	if err := providers.ValidateToolCallHistory(compacted); err != nil {

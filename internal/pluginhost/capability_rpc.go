@@ -119,6 +119,11 @@ type CapabilityDescriptor struct {
 	// Kind classifies the dispatch semantics (observe/transform/guard/around/decision).
 	Kind SeamKind `json:"kind"`
 
+	// ErrorPolicy controls whether one plugin failure stops dispatch. Omitted
+	// values default to propagate, except turn-completed observers which default
+	// to isolate so telemetry cannot break a settled turn.
+	ErrorPolicy ErrorPolicy `json:"error_policy,omitempty"`
+
 	// Version is the capability contract version. Breaking changes increment
 	// the major version.
 	Version int `json:"version"`
@@ -502,6 +507,19 @@ func ValidateCapabilityDescriptor(c CapabilityDescriptor) error {
 	if !allowedCapabilityKinds[kind] {
 		return fmt.Errorf("capability %s: unknown kind %q (valid: observe, transform, guard, around, decision)", id, kind)
 	}
+	if kind == SeamGuard || kind == SeamAround {
+		return fmt.Errorf("capability %s: kind %q is not implemented by this host", id, kind)
+	}
+	policy := EffectiveErrorPolicy(c)
+	if policy != ErrorPolicyPropagate && policy != ErrorPolicyIsolate && policy != ErrorPolicyIgnore {
+		return fmt.Errorf("capability %s: unknown error policy %q (valid: propagate, isolate, ignore)", id, policy)
+	}
+	if kind == SeamObserve && policy == ErrorPolicyPropagate {
+		return fmt.Errorf("capability %s: observe capabilities require error policy isolate or ignore", id)
+	}
+	if kind != SeamObserve && policy == ErrorPolicyIgnore {
+		return fmt.Errorf("capability %s: error policy ignore is only valid for observe capabilities", id)
+	}
 	if c.Version < 1 {
 		return fmt.Errorf("capability %s: version must be >= 1, got %d", id, c.Version)
 	}
@@ -527,6 +545,18 @@ func ValidateCapabilityDescriptor(c CapabilityDescriptor) error {
 		return err
 	}
 	return nil
+}
+
+// EffectiveErrorPolicy resolves descriptor defaults without mutating the
+// negotiated contract stored by the host.
+func EffectiveErrorPolicy(c CapabilityDescriptor) ErrorPolicy {
+	if c.ErrorPolicy != "" {
+		return c.ErrorPolicy
+	}
+	if c.ID == CapabilityAgentTurnCompleted {
+		return ErrorPolicyIsolate
+	}
+	return ErrorPolicyPropagate
 }
 
 func validateCapabilityRelations(c CapabilityDescriptor) error {

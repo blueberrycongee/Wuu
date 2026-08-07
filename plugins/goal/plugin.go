@@ -32,7 +32,7 @@ func Handler() pluginapi.Handler {
 			Capabilities: []pluginapi.Capability{
 				{ID: capabilityClientRequest, Kind: "decision", Version: 1},
 				{ID: capabilityContinuation, Kind: "decision", Version: 1},
-				{ID: capabilityTurnCompleted, Kind: "observe", Version: 1},
+				{ID: capabilityTurnCompleted, Kind: "observe", ErrorPolicy: "isolate", Version: 1},
 			},
 			RequiredHostServices: []pluginapi.HostService{
 				{ID: "host.storage.get", Required: true},

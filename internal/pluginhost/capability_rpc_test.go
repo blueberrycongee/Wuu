@@ -43,7 +43,7 @@ func TestValidateCapabilityDescriptor(t *testing.T) {
 		},
 		{
 			name:    "valid observe",
-			desc:    CapabilityDescriptor{ID: "agent.session.lifecycle", Kind: "observe", Version: 1},
+			desc:    CapabilityDescriptor{ID: "agent.session.lifecycle", Kind: "observe", ErrorPolicy: ErrorPolicyIsolate, Version: 1},
 			wantErr: false,
 		},
 		{
@@ -52,14 +52,14 @@ func TestValidateCapabilityDescriptor(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:    "valid guard",
+			name:    "guard is not implemented",
 			desc:    CapabilityDescriptor{ID: "agent.permission.policy", Kind: "guard", Version: 1},
-			wantErr: false,
+			wantErr: true,
 		},
 		{
-			name:    "valid around",
+			name:    "around is not implemented",
 			desc:    CapabilityDescriptor{ID: "agent.tool.execute.around", Kind: "around", Version: 1},
-			wantErr: false,
+			wantErr: true,
 		},
 		{
 			name:    "valid decision",
@@ -75,6 +75,21 @@ func TestValidateCapabilityDescriptor(t *testing.T) {
 			name:    "compaction requires decision v1",
 			desc:    CapabilityDescriptor{ID: CapabilityAgentCompaction, Kind: "decision", Version: 2},
 			wantErr: true,
+		},
+		{
+			name:    "observe cannot propagate",
+			desc:    CapabilityDescriptor{ID: "agent.observe.custom", Kind: SeamObserve, ErrorPolicy: ErrorPolicyPropagate, Version: 1},
+			wantErr: true,
+		},
+		{
+			name:    "ignore only valid for observe",
+			desc:    CapabilityDescriptor{ID: "agent.transform.custom", Kind: SeamTransform, ErrorPolicy: ErrorPolicyIgnore, Version: 1},
+			wantErr: true,
+		},
+		{
+			name:    "turn completed defaults to isolate",
+			desc:    CapabilityDescriptor{ID: CapabilityAgentTurnCompleted, Kind: SeamObserve, Version: 1},
+			wantErr: false,
 		},
 		{
 			name: "with dependencies",

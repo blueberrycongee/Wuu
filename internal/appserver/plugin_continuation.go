@@ -37,7 +37,10 @@ func (s *Server) pluginContinuation(ctx context.Context, threadID, phase string)
 			ThreadID: threadID,
 			Phase:    phase,
 		}, &output); err != nil {
-			return false, nil, nil, fmt.Errorf("plugin %q continuation %s: %w", capability.PluginID, phase, err)
+			if policyErr := s.rt.PluginHost.HandleCapabilityError(capability, err); policyErr != nil {
+				return false, nil, nil, fmt.Errorf("plugin %q continuation %s: %w", capability.PluginID, phase, policyErr)
+			}
+			continue
 		}
 		if !output.Continue {
 			continue

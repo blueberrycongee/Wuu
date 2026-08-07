@@ -28,10 +28,11 @@ type InitializeParams struct {
 }
 
 type Capability struct {
-	ID       string `json:"id"`
-	Kind     string `json:"kind"`
-	Version  int    `json:"version"`
-	Priority int    `json:"priority,omitempty"`
+	ID          string `json:"id"`
+	Kind        string `json:"kind"`
+	ErrorPolicy string `json:"error_policy,omitempty"`
+	Version     int    `json:"version"`
+	Priority    int    `json:"priority,omitempty"`
 }
 
 type HostService struct {
