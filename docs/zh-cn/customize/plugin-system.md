@@ -27,8 +27,11 @@ Surface 或 Agent 能力。
 
 Wuu 的长期目标不是在现有 Agent runtime 外围增加一层插件 API，而是主动把核心收敛成一个
 很小的通用循环：向模型发出请求，接收回复，执行 Tool，把结果追加回上下文，然后继续或结束。
-Provider 协议不变量、取消、执行租约、持久化完整性、最终权限边界和崩溃恢复仍由宿主保证；
-memory、dream、自动化、协作等高级产品不应继续作为循环里的产品分支。
+Plan 是这个执行循环的标准状态和模型可见控制面，继续留在核心；它不负责跨 Turn 自动续跑、
+定时唤醒或长期目标管理。Provider 协议不变量、取消、执行租约、持久化完整性、最终权限边界和
+崩溃恢复也仍由宿主保证；memory、dream、Cron、Goal、Subagent 等高级产品不应继续作为循环里的
+产品分支。HelpMe 直接从产品与代码中删除，不迁移成插件；协作比这些能力更高层，暂不纳入本轮
+剥离范围。
 
 这些高级产品应成为一方插件，而且与第三方插件使用同一套公开能力。插件拥有自己的业务模型、
 提示、Tool、状态、后台策略和完整界面；Wuu 自己提供的插件只是生态的第一批实现，不是可以调用
@@ -39,6 +42,78 @@ memory、dream、自动化、协作等高级产品不应继续作为循环里的
 以及通过对话让 Agent 修改记忆。迁移后，这些交互、提示和数据格式属于 memory 插件；宿主只
 负责设置页入口、View 生命周期、模型与执行安全、持久化原语和恢复路径。产品可以保持丰富，
 核心不需要知道“记忆概览”是什么。
+
+### 不是工作流 API，而是少量可组合链路
+
+Cron、Memory、Dream、Goal 和 Subagent 看起来是五套产品，实际都可以落在同一个闭环：
+
+```text
+注册 Tool / Prompt / View
+        ↓
+观察 Session / Turn 事件或插件自己的 Timer
+        ↓
+创建、选择或复用 Session
+        ↓
+向 Session 投递模型输入
+        ↓
+宿主排队并执行普通 Turn
+        ↓
+插件观察结果，更新自己的状态和界面，必要时再次投递
+```
+
+这里的 Session 指一个可持续投递 Turn 的对话执行单元，当前代码内部主要称为 Thread。公开合同
+最终采用哪个名字可以随 SDK 版本确定，但不能同时保留两套语义重复的执行系统。
+
+插件平台需要的不是 `cron.run`、`goal.continue` 或 `subagent.spawn`，而是四组横向能力：
+
+| 公共能力 | 最小职责 |
+| --- | --- |
+| 注册贡献 | 注册模型可见 Tool、提示与请求上下文、命令、设置、View 和产品入口 |
+| Session 操作 | 创建、投递、取消以及列出当前插件拥有的 Session |
+| 生命周期事件 | 观察 Session 创建/关闭以及 Turn 排队、开始、完成、失败和取消 |
+| 状态与资源 | 命名空间存储、受控文件/进程/workspace，以及插件 runtime 自己维护的 Timer 和业务状态机 |
+
+创建 Session 时需要少量通用属性：`owner`、`visibility`、可选 `parent`、上下文来源
+`fresh | fork(parent)`、workspace 隔离方式，以及模型/Tool/Profile 选择。`visibility=user` 的
+Session 出现在普通会话列表、搜索和历史中；`visibility=plugin` 的 Session 不出现在这些产品入口，
+只能由所有者插件管理，但仍由宿主持久化、恢复和审计。Dream 和 Subagent 可以使用插件私有
+Session，Cron 可以创建或复用用户可见 Session。
+
+Timer、Cron 表达式、错过触发后的补跑策略和运行记录属于 Cron 插件。插件进程存活时可以自行
+计时，重启后依据持久状态重新计算；除非以后明确承诺“Wuu 未运行时也能唤醒”，否则不应先在
+宿主建设一个 Cron 产品或万能 scheduler。若未来确实需要操作系统级唤醒，也应作为产品中立的
+插件进程唤醒能力单独设计。
+
+### 唤醒主 Agent 与“生成的 query”
+
+Goal 自动续跑和 Subagent 完成回投共享一条尤其重要的公共链路：它们都会向已有主 Session 投递
+一次新输入，从而唤醒主 Agent。Cron 向用户可见 Session 投递时也可复用同一语义。前端可以把
+这次投递渲染成 query 气泡，让用户理解为什么 Agent 又开始工作，但不能把它记录成用户亲自发送
+的消息。
+
+因此通用投递必须区分三件事：
+
+- **模型输入**：真正送给 Agent 的 Prompt 或结构化上下文；
+- **展示摘要**：前端 query 气泡里的简短说明，可以与完整模型输入不同；
+- **来源**：用户、宿主或具体插件，以及稳定的 cause/request id。
+
+概念上的合同类似：
+
+```text
+session.send({
+  session,
+  input,
+  presentation: { kind: generated_query, text, name },
+  cause,
+  request_id
+})
+```
+
+`generated_query` 是只读、可审计的系统生成输入：视觉上可以复用用户 query 气泡，数据上必须保留
+插件来源，不能伪造用户作者。宿主负责幂等、持久化、执行租约、排队、取消和恢复，并保证真实
+用户工作优先；插件只决定何时投递、模型看什么以及用户看到什么。Subagent 的完成通知可以把完整
+交接内容作为模型输入，只把“子任务 A 已更新”显示在气泡里；Goal 可以把目标继续提示作为模型
+输入，只显示“Goal 持续推进中”。这不需要两条产品专用唤醒链路。
 
 ### 从产品需求提炼公共能力，而不是公开产品内部
 
@@ -53,22 +128,23 @@ memory、dream、自动化、协作等高级产品不应继续作为循环里的
    Agent loop 回调或内部存储结构。
 
 “通用”不等于预先建设一套万能框架。真实迁移尚未触达的 scheduler、后台任务或资源 API 不应
-凭想象加入 SDK；但一旦多个产品确实需要“定时唤醒”“运行一次受约束的模型任务”“请求创建或
-继续一个会话”“订阅宿主生命周期事件”，就应把它们设计成产品中立的能力，而不是分别为每个
-产品保留一套 app-server RPC。
+凭想象加入 SDK；目前已经由多个产品证明需要的是“创建/复用 Session”“向 Session 投递输入并
+选择展示方式”“订阅生命周期事件”。它们应成为产品中立的能力，而不是分别保留一套 app-server
+RPC。
 
 当前代码给出了几个明确的迁移方向：
 
-| 产品 | 插件应拥有 | 可能需要的通用宿主原语 | 不应留在核心的产品接口 |
+| 产品 | 如何由公共链路组合 | 插件应拥有 | 不应留在核心的产品接口 |
 | --- | --- | --- | --- |
-| 自动化 | 任务模型、Cron 表达、运行记录、管理 View、提示和触发策略 | 持久唤醒、请求创建或继续 Turn、运行状态事件 | `automation/create`、`AutomationRunID` 和 Turn 中的自动化分支 |
-| 协作 | Room、成员、消息、Inbox、held draft、任务语义、协作 Tool 和完整页面 | 产品中立的会话/后台执行、事件订阅、入口与 Tab 生命周期 | `channel/*` 协议、Named Agent 产品分支和宿主里的协作状态 |
-| memory | 笔记本格式、发现与注入策略、概览/对话提示、审计 View 和设置 | 插件存储或受控资源、请求上下文贡献、受约束模型任务 | `memory/overview`、`memory/chat`、`memory/read` 和核心配置字段 |
-| dream | 触发条件、候选选择、整合提示、失败退避和结果状态 | 会话完成事件、持久调度、后台模型任务、generation 取消 | `sessionDreamScheduler` 和 StreamRunner 的产品专用 AfterTurn Hook |
+| Cron | Timer → 创建或复用用户可见 Session → 投递 Prompt；注册管理 Tool 和 View | Cron 表达、任务和运行记录、补跑策略、提示、Tool、Timer 与完整界面 | `automation/create`、`AutomationRunID` 和 Turn 中的自动化分支 |
+| memory | 注册提示与文件 Tool → 在合适时机读写文件；管理 View 可调用 Agent 修改文件 | 文件格式、发现/注入策略、概览与修改提示、审计和设置界面 | `memory/overview`、`memory/chat`、`memory/read` 和核心配置字段 |
+| dream | Cron + memory → 插件私有 Session → 整理后写回 memory | 候选选择、整合提示、失败退避、结果状态和管理界面 | `sessionDreamScheduler` 和 StreamRunner 的产品专用 AfterTurn Hook |
+| Goal | Turn 完成事件 → 检查目标状态 → 向同一主 Session 投递生成的 query | 目标状态机、预算、提示、Tool、存储和界面 | `agent.turn.continuation` 及 Goal 专用的 probe/prepare 调度 |
+| Subagent | 创建私有子 Session → fresh/fork 上下文 → 投递任务 → 完成后向父 Session 回投生成的 query | `spawn_agent` 等 Tool、任务命名、worker 策略、提示、报告和界面 | `host.child_session.request` 的 spawn/send/close/list/await/report 产品动作 |
 
-表中的“可能需要”不是已经承诺的 API 清单。每一项都必须在纵向迁移到达真实调用点后再定合同。
-例如 memory 概览和修改都可以先作为同一插件 Desktop 到 runtime 的不透明方法；如果 runtime
-确实不能安全复用宿主模型，再提炼通用的受约束推理任务，而不是新增一个 memory 专用模型入口。
+表中是目标能力模型，不是已经完成的 SDK 承诺。字段和方法必须在纵向迁移到达真实调用点后再定
+版本化合同。例如 memory 概览和修改不需要宿主“受约束模型任务”：它可以创建或复用一个 Session
+并发送 Prompt。只有这条公共链路确实无法保护宿主不变量时，才继续提炼更底层能力。
 
 ### 最小核心与公共能力的边界
 
@@ -77,14 +153,14 @@ memory、dream、自动化、协作等高级产品不应继续作为循环里的
 
 - Provider 消息顺序、Tool call/result 配对、流式响应和上下文窗口等协议正确性；
 - Thread/Turn 的持久化、排队、执行租约、取消和崩溃后恢复；
+- Plan Tool、当前 Turn 的计划状态和标准事件/展示；Plan 不拥有跨 Turn 调度；
 - Tool 执行、最终权限判定、工作区边界和用户审批；
 - 插件安装、批准、generation 原子替换、错误隔离、安全模式和默认 UI 逃生路径；
 - 原生窗口、系统安全区以及宿主拥有的导航、Tab、滚动、溢出和无障碍。
 
 其他能力默认属于插件。宿主公开的是少量可组合原语：模型可见 Tool、系统提示与请求上下文、
-请求变换、压缩决策、生命周期事件、generation 绑定的 runtime 调用与事件、命名空间设置和存储，
-以及由真实迁移证明必要的调度、会话和后台执行能力。公共原语应组合出多个产品，而不是一项
-原语对应一个 Wuu 功能。
+请求变换、压缩决策、Session 创建与投递、生命周期事件、generation 绑定的 runtime 调用与事件、
+命名空间设置和存储。公共原语应组合出多个产品，而不是一项原语对应一个 Wuu 功能。
 
 每次新增插件接口都应通过四个问题：
 
@@ -94,6 +170,51 @@ memory、dream、自动化、协作等高级产品不应继续作为循环里的
 4. 禁用插件后，核心是否仍是一个可用的通用 Agent，而不是留下半个产品状态或循环分支？
 
 如果答案不成立，应继续把逻辑留在插件内部，或重新寻找更底层、更高复用的能力边界。
+
+### 当前实现中不妥当的边界
+
+当前代码已经证明插件可以承载 Tool、提示、状态和 Desktop 贡献，但“代码位于 plugins 目录”不等于
+完成纵向插件化。下面几处是明确的过渡实现，不能固化成公共生态合同：
+
+1. **Goal 的专用 continuation seam。** Goal 的状态机、存储、Tool 和 UI 已在插件中，但
+   `agent.turn.continuation` 仍要求宿主按 `probe/prepare` 两阶段询问插件，并在 Turn 主链路里
+   处理 Goal 式续跑。它应迁移为 `turn.completed → session.send(same session)`；现有只读 query
+   展示能力应进入通用投递的 `presentation`，随后删除 continuation capability 和宿主轮询。
+2. **Subagent 目前是外壳迁移。** Tool、提示和 UI 已在插件中，但 `host.child_session.request`
+   仍由宿主按 `spawn/send/close/list/await/report` switch，并通过 `internal/agentcontrol` 和
+   `internal/subagent` 理解 actor path、worker type、报告和完成回投。这些可靠执行实现不应粗暴
+   删除，而应降成通用 Session、父子关系、上下文 fork、租约、恢复和 workspace 隔离；产品词汇
+   留在插件。
+3. **当前 `host.turn.submit` 方向正确但还不完整。** 它已经复用普通 durable Turn、队列、
+   租约和恢复，并允许创建新 Thread；但当前创建路径默认进入普通用户可见会话，投递被构造成
+   普通 user message，尚未完整表达 owner、visibility、parent、fresh/fork、workspace 隔离、
+   生成 query 展示和非用户来源。它应演进成通用 Session create/send 合同，而不是再并列新增
+   Goal 或 Subagent RPC。
+4. **HelpMe 仍有残留。** Subagent 插件仍注册 `helpme`，宿主还有被注释掉的 HelpMe 专用重写代码。
+   产品决定是完整删除 Tool、Schema、Prompt、状态、测试、文档和死代码，不保留兼容入口，也不把
+   它重命名成另一种插件工作流。
+5. **Plan 的旧迁移设想已经作废。** Plan 留在最小核心链路。插件仍可观察标准计划状态或在自己的
+   View 中展示它，但不替换核心 `update_plan` 语义，也不把 Plan 扩张成 Goal。
+
+### 改造顺序与完成标准
+
+改造应复用已有可靠执行能力，先换公共边界，再删除专用入口：
+
+1. 以现有 Turn submission 为基础定义通用 Session create/send/lifecycle；补齐 owner、visibility、
+   parent、fresh/fork、workspace、来源、展示摘要和 request id，统一用户工作优先及幂等规则。
+2. 先迁移 Goal：在 Turn 完成事件后由插件主动向同一 Session 投递，验证生成 query、连续唤醒、
+   排队、暂停/完成、崩溃恢复和禁用插件；随后删除 `agent.turn.continuation`。
+3. 再迁移 Subagent：让插件用公共 API 创建和管理私有子 Session；把现有并发、持久化、取消、恢复、
+   结果交付和 worktree 代码收敛为通用引擎；随后删除 `host.child_session.request` 和核心产品分支。
+4. 删除 HelpMe 全链路，确认 Plan 仍通过核心 Tool/状态链运行。
+5. 用 Cron 完成“插件 Timer → 用户可见 Session”的纵向切片，再迁移 memory，最后用 Dream 验证
+   “Timer + memory + 插件私有 Session”的组合，不为三者增加产品专用宿主服务。
+6. 每完成一项迁移就验证插件禁用、升级和卸载后不再唤醒、不残留 UI/订阅/租约；最后删除旧协议、
+   死代码和只为旧边界存在的测试。
+
+插件链路的验收不是接口存在，而是：在核心搜索不到 Cron、Memory、Dream、Goal、Subagent 的产品
+调度分支时，这五个一方插件仍能仅通过公开合同保持现有体验；外部插件在相同权限和生命周期下也
+能组合出同类能力。
 
 ## 一个插件包，四类贡献
 
@@ -257,9 +378,10 @@ React 组件可以在 generation 激活后订阅宿主事件，组件卸载或 g
 
 ## 一方插件与第三方插件同构
 
-Goal、Subagent 等一方能力已经通过插件 generation、runtime 和桌面贡献运行。未来协作、memory、
-dream、自动化等高级功能也应优先评估为一方插件，而不是继续向 Agent loop 和应用壳增加产品
-专用分支。
+Goal、Subagent 的 Tool、提示和桌面贡献已经通过插件 generation 运行，但执行链路仍分别依赖
+continuation 和 child-session 专用宿主接口，因此只能算迁移中的纵向切片，不能当作“一方/三方
+同构”已经完成的证明。Cron、memory、dream 应按本文的公共 Session 链路继续迁移；协作暂不纳入
+当前改造范围，不应为了它预建接口。
 
 判断标准是：如果一项一方功能只能修改私有循环或私有 UI 才能实现，应先确认缺少哪一个通用
 能力；只有真实需求证明公共合同不足时才扩展宿主。Wuu 自己的插件是生态的第一批使用者，不是
@@ -292,7 +414,8 @@ dream、自动化等高级功能也应优先评估为一方插件，而不是继
 - 部分 Presenter 的 `replace` 快照和 Action 还不足以无损重建完整原生语义，优先使用 `wrap`；
 - 画布、终端、Webview、PDF ShadowRoot 和专用预览仍是明确的主题边界；
 - Marketplace、远程自动更新、排名、依赖解析和签名分发不属于当前本地优先平台；
-- memory、dream、自动化、协作等功能尚未全部迁移为一方插件。
+- Goal、Subagent 尚未去除专用宿主执行 seam；Cron、memory、dream 尚未完成一方插件迁移；
+- HelpMe 尚有代码残留，目标是删除而不是迁移；Plan 明确保留在核心链路。
 
 这些边界不是鼓励为未来预留抽象。新能力应由真实插件案例驱动，先确定责任属于宿主、功能插件
 还是外观插件，再选择最窄的公开合同。

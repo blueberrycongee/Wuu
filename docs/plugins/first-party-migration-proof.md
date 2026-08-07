@@ -1,9 +1,9 @@
 # First-Party Migration Proof — Phase B
 
-This document demonstrates that the public capability contract established in
-Phases A-D is sufficient for real first-party Wuu features. It shows how three
-existing features would be implemented through the public seam instead of direct
-`internal/agent` modification.
+This document audits whether the public plugin contract is sufficient for real
+first-party Wuu features. A feature is not proven migrated merely because its
+Tool, prompt, or UI moved under `plugins/`; its complete product workflow must run
+without a product-specific host seam.
 
 ## Principle
 
@@ -32,32 +32,76 @@ func GuardFilePathAccess(ctx context.Context, input ToolExecuteInput) (ToolExecu
 
 **Why this works**: The `agent.tool.execute.before` seam is a guard — it short-circuits on rejection. The permission policy plugin registers at high priority and blocks unauthorized access before any other guard runs.
 
-## Example 2: Plan Mode as a System Prompt Section
+## Boundary Example 2: Plan Stays in the Core Loop
 
-**Current implementation**: Plan mode logic is embedded in prompt assembly within `internal/prompt/`.
+Plan is the standard execution state of the main Agent loop. `update_plan`, the
+current task's plan state, lifecycle events, and standard presentation remain in
+the core. Plan must not grow into cross-Turn scheduling, automatic continuation,
+or a durable Goal system.
 
-**Public seam migration**:
+Plugins may observe or present the standard plan state where a future public
+contract permits it, but they do not replace its core semantics. The earlier
+proposal to prove Plan migration with an `agent.system_prompt.section` was the
+wrong boundary: moving one prompt paragraph would not migrate the actual plan
+state or Tool lifecycle.
+
+## Example 3: Goal Uses Generic Session Delivery
+
+**Current implementation**: Goal owns its state machine, storage, Tool, prompt,
+and Desktop contribution, but depends on `agent.turn.continuation`. The host
+polls it with `probe/prepare`, starts an internal Turn, and adds a read-only query
+item such as “Goal 持续推进中”.
+
+**Target public composition**:
 
 ```go
-// seam: agent.system_prompt.section (transform)
-// key: "wuu.plan-mode"
-// priority: 50
-
-type PlanModePromptProvider struct{}
-
-func (p *PlanModePromptProvider) SystemPromptKey() string { return "wuu.plan-mode" }
-func (p *PlanModePromptProvider) SystemPromptPriority() int { return 50 }
-func (p *PlanModePromptProvider) SystemPromptSection() (string, bool) {
-    return `## Planning mode
-When plan mode is active, you MUST create a plan using update_plan before
-making any file changes. Break work into discrete steps and mark each step's
-status as pending, in_progress, or completed.`, true
-}
+// Observe the settled Turn, check plugin-owned goal state, then submit another
+// ordinary Turn to the same Session.
+session.Send(SessionSendRequest{
+    SessionID: parent,
+    Input: continuationPrompt(goal),
+    Presentation: GeneratedQuery("Goal 持续推进中"),
+    Cause: "plugin.goal.continue",
+    RequestID: stableAttemptID,
+})
 ```
 
-**Why this works**: The `SystemPromptAssembler` collects sections from all providers. Plan mode becomes a section provider registered at priority 50, inserted between the host base prompt and lower-priority plugin sections.
+The host owns idempotency, durable queue admission, execution leases, user-work
+priority, cancellation, and recovery. The plugin owns the decision to continue
+and the two forms of content: full model input and concise user presentation.
+After this path is proven, `agent.turn.continuation` and its host polling are
+deleted.
 
-## Example 3: Compaction Strategy
+## Example 4: Subagent Uses Private Child Sessions
+
+**Current implementation**: The plugin owns the model-visible Tools, prompting,
+and UI, while `host.child_session.request` still switches over
+`spawn/send/close/list/await/report` and the core still understands Subagent
+product vocabulary. This is a facade extraction, not a complete vertical
+migration.
+
+**Target public composition**:
+
+```go
+child := session.Create(SessionCreateRequest{
+    Owner: "plugin.subagent",
+    Visibility: PluginPrivate,
+    Parent: parent,
+    Context: FreshOrForkParent,
+    Workspace: SharedOrWorktree,
+})
+session.Send(child.ID, taskPrompt)
+// On child terminal event, wake the parent through the same generated-query
+// delivery used by Goal.
+session.Send(parent, completionPayload, GeneratedQuery("子任务已更新"))
+```
+
+The existing concurrency, persistence, cancellation, recovery, and worktree
+code remains valuable, but must become a product-neutral Session/resource
+engine. Task names, worker types, `spawn_agent`, reporting format, and completion
+prompting belong to the plugin. HelpMe is deleted rather than migrated.
+
+## Example 5: Compaction Strategy
 
 **Current implementation**: `compact.CompactWithBudgetAndOptions` is called directly from `Runner.RunWithUsage`.
 
@@ -81,12 +125,19 @@ func (p *SummaryCompactionProvider) Compact(ctx context.Context, model string, m
 
 ## Verification
 
-All three examples use only:
-- `internal/agent` public interfaces (SystemPromptProvider, CompactionProvider, RequestTransformProvider)
-- `internal/plugin` scope/registry types (Generation, Registry, PluginScope)
-- Standard seam names from `internal/plugin/seam.go`
+The plugin examples should ultimately use only:
 
-They do NOT import:
-- `internal/agent` unexported types
-- `internal/prompt` internals
-- Private React state or internal class names
+- the versioned public plugin SDK;
+- documented capability and host-service contracts;
+- generation-owned Tool, prompt, event, storage, Session, and Desktop contributions.
+
+They must not import or require:
+
+- any `internal/agent`, `internal/agentcontrol`, or `internal/subagent` package;
+- private app-server RPCs or product-specific host action switches;
+- private React state or internal class names.
+
+Goal is complete only after the continuation seam is gone. Subagent is complete
+only after the child-session action switch and core product branches are gone.
+Until then, these are migration targets rather than proof that the current public
+contract is already sufficient.

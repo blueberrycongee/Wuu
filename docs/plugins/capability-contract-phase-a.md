@@ -24,7 +24,7 @@
 | `transform` | 按稳定顺序变换输入/输出 | 否 | 否 | 消息预处理、工具结果增强 |
 | `guard` | 增加约束或拒绝，后续插件不能静默放宽 | 是 | 否 | 权限策略、路径限制 |
 | `around` | 包装实际执行 | 否 | 否 | 超时、重试、度量、沙箱 |
-| `decision` | 返回类型化决策控制流程 | 是 | 否 | turn 继续、compaction 触发、subagent 路由 |
+| `decision` | 返回类型化决策控制流程 | 是 | 否 | compaction 策略选择 |
 
 ## Capability RPC
 
@@ -52,6 +52,19 @@
 - `agent.turn.continuation` (decision)
 - `agent.turn.completed` (observe)
 - `plugin.client.request` (decision)
+
+“当前生产能力”只描述代码事实，不表示每一项都应成为长期公共合同。其中
+`agent.turn.continuation` 是 Goal 迁移过程中形成的产品专用过渡 seam：宿主按
+`probe/prepare` 轮询插件并为它启动内部 Turn。目标架构不保留这条能力，而是由插件观察
+Turn 生命周期后，主动通过通用 Session 投递唤醒同一个 Agent。
+
+Goal 与 Subagent 共同证明通用投递还必须把模型输入、前端展示摘要和来源分开。前端可以把一次
+插件投递显示成只读 query 气泡，但持久数据必须标记为插件生成，不能伪造用户作者。通用 Session
+合同还需要 owner、`user | plugin` 可见性、父子关系、fresh/fork 上下文和 workspace 隔离；这些
+字段进入稳定 SDK 后，才能淘汰 `agent.turn.continuation` 和 `host.child_session.request`。
+
+Plan 不属于这一迁移。`update_plan`、计划状态和标准展示留在核心 Agent 链路；Plan 不承担跨 Turn
+自动续跑。HelpMe 直接删除，不形成 capability 或兼容层。
 
 ## 实施状态
 
