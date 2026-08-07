@@ -1072,40 +1072,38 @@ export function SettingsView({
                 error={usageError}
               />
             )}
+            <PluginSlot
+              host={pluginHost}
+              id="settings.plugin"
+              context={Object.freeze({
+                activePage,
+                initialized: Boolean(initialized),
+                busy: running || usageLoading || mcpLoading || codexPetsLoading || Boolean(mcpBusyServer),
+                hasError: Boolean(error || advancedError || usageError || mcpError || codexPetsError),
+                pluginCount: initialized?.extension_inventory?.filter((extension) => extension.kind === "plugin").length ?? 0,
+                modelAliases: initialized?.model_aliases ?? {},
+                onSaveModelAliases: (modelAliases: RuntimeAdvancedSettingsUpdate["model_aliases"]) => onAdvancedSave({ model_aliases: modelAliases }),
+              })}
+            />
           </div>
         </div>
       </main>
     </div>
   );
   return (
-    <>
-      <PluginSlot
-        host={pluginHost}
-        id="settings.plugin"
-        context={Object.freeze({
-          activePage,
-          initialized: Boolean(initialized),
-          busy: running || usageLoading || mcpLoading || codexPetsLoading || Boolean(mcpBusyServer),
-          hasError: Boolean(error || advancedError || usageError || mcpError || codexPetsError),
-          pluginCount: initialized?.extension_inventory?.filter((extension) => extension.kind === "plugin").length ?? 0,
-          modelAliases: initialized?.model_aliases ?? {},
-          onSaveModelAliases: (modelAliases: RuntimeAdvancedSettingsUpdate["model_aliases"]) => onAdvancedSave({ model_aliases: modelAliases }),
-        })}
-      />
-      <SettingsPresentation
-        initialized={initialized}
-        activePageId={activePage}
-        availablePages={availablePages}
-        runningProviderNames={runningProviderNames}
-        busy={running || usageLoading || mcpLoading || codexPetsLoading || Boolean(mcpBusyServer)}
-        hasError={Boolean(error || advancedError || usageError || mcpError || codexPetsError)}
-        fallback={nativeSettings}
-        onOpenPage={(pageId) => setActivePage(pageId as SettingsPage)}
-        onAdvancedSave={onAdvancedSave}
-        onGeneralSave={onGeneralSave}
-        onRefresh={onRefreshModelCatalog}
-      />
-    </>
+    <SettingsPresentation
+      initialized={initialized}
+      activePageId={activePage}
+      availablePages={availablePages}
+      runningProviderNames={runningProviderNames}
+      busy={running || usageLoading || mcpLoading || codexPetsLoading || Boolean(mcpBusyServer)}
+      hasError={Boolean(error || advancedError || usageError || mcpError || codexPetsError)}
+      fallback={nativeSettings}
+      onOpenPage={(pageId) => setActivePage(pageId as SettingsPage)}
+      onAdvancedSave={onAdvancedSave}
+      onGeneralSave={onGeneralSave}
+      onRefresh={onRefreshModelCatalog}
+    />
   );
 }
 
