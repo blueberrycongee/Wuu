@@ -114,6 +114,34 @@ UI. The old `registerLayoutContribution` method remains as a compatibility adapt
 `parentId`, `size`, and `minSize` fields were never implemented as layout-tree controls and are not
 used. New plugins should use `registerViewPlacement`.
 
+## Host-owned discovery entries
+
+A registered View does not need to draw its own navigation or tabs. Declare where users should
+discover it in `plugin.json`:
+
+```json
+{
+  "contributes": {
+    "navigation": [
+      { "id": "dashboard", "view": "product.dashboard", "title": "Dashboard" }
+    ],
+    "workspaceTools": [
+      { "id": "inspector", "view": "product.inspector", "title": "Inspector" }
+    ],
+    "settingsPages": [
+      { "id": "advanced", "view": "product.advanced", "title": "Advanced" }
+    ]
+  }
+}
+```
+
+`navigation` appears in the scrolling plugin group in the left sidebar, `workspaceTools` appears
+in the right-panel tool picker and opens as a native workspace tab, and `settingsPages` appears in
+the Plugins group in Settings. Wuu owns selection, close behavior, persistence, and overflow. Each
+entry must reference a View registered by the same plugin. Standard `contributes.settings` entries
+automatically receive a host-rendered Settings page; use a custom settings View only for content
+that cannot be expressed by the standard schema.
+
 ## Semantic presenters
 
 Use `registerPresenter` when a plugin needs to replace a product concept rather than a broad layout
@@ -182,6 +210,17 @@ the protected Layer Host and expose stable `data-wuu-component`, `data-wuu-layer
 specialized rendering boundaries rather than appearance layers. Trusted code plugins that need
 supplemental CSS should target only the published attributes and tokens, not private class names or
 DOM structure.
+
+Message controls expose one host-owned `message-actions` group anchor. Action bars distinguish
+`data-wuu-placement="persistent" | "overlay"`.
+Themes may tune their rhythm with `--wuu-message-actions-block-gap`,
+`--wuu-message-actions-overlay-gap`, `--wuu-message-actions-control-gap`,
+`--wuu-message-actions-inline-offset`, `--wuu-message-action-size`, and
+`--wuu-message-action-radius`. Wuu retains ownership of keyboard order, hit targets, responsive
+overflow, and the two placement semantics. Style its direct buttons as one control family instead
+of targeting individual action identities. The user-query surface is separately exposed as
+`message-bubble` with variant `user`; its visual properties use the matching
+`--wuu-message-user-*` tokens.
 
 See the installable [`examples/plugins/deep-ui`](../../../examples/plugins/deep-ui/) package for a
 theme and wrappers covering all current surfaces.

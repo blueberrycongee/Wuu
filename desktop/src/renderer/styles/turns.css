@@ -270,12 +270,14 @@
                                                               
                                                        
                             
-  --user-message-background: var(--user-message-bg-color);
+  --user-message-background: var(--wuu-message-user-background, var(--user-message-bg-color));
   background: var(--user-message-background);
-  color: var(--ink);
+  border: var(--wuu-message-user-border, 0);
+  box-shadow: var(--wuu-message-user-shadow, none);
+  color: var(--wuu-message-user-color, var(--ink));
   /* A small tail corner (bottom-right) marks the outgoing bubble as
      the user's own, echoing the mascot's speech-bubble language. */
-  border-radius: 16px 16px 4px 16px;
+  border-radius: var(--wuu-message-user-radius, 16px 16px 4px 16px);
 }
 
 .user-message-block {
@@ -1261,7 +1263,8 @@
   display: flex;
   min-height: var(--conversation-message-action-size);
   align-items: center;
-  gap: 6px;
+  gap: var(--wuu-message-actions-control-gap, 6px);
+  margin-inline-start: var(--wuu-message-actions-inline-offset, 0px);
   color: var(--ink-muted);
   line-height: var(--conversation-control-line-height);
   opacity: 0;
@@ -1290,7 +1293,7 @@
   align-items: center;
   justify-content: center;
   border: 0;
-  border-radius: var(--radius-sm);
+  border-radius: var(--wuu-message-action-radius, var(--radius-sm));
   background: transparent;
   box-shadow: none;
   color: var(--ink-muted);

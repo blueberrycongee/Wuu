@@ -254,6 +254,8 @@ function BuiltInThreadItemView({
           {!editing && (copyable || editActionVisible) ? (
             <div
               className="message-actions user-message-actions"
+              data-wuu-component="message-actions"
+              data-wuu-placement="overlay"
               aria-label={t("message.userActions")}
             >
               {copyable ? (
@@ -327,6 +329,7 @@ function BuiltInThreadItemView({
           {actionsVisible ? (
             <AgentMessageActions
               getText={() => streamFieldValue(turnID, item, "text")}
+              placement={actionsPersistent ? "persistent" : "overlay"}
               onFork={
                 onForkMessage ? () => onForkMessage(turnID, item.id) : undefined
               }
@@ -399,6 +402,8 @@ function UserMessageBubble({
           ? ` user-message-long-card ${expanded ? "expanded" : "collapsed"}`
           : ""
       }`}
+      data-wuu-component="message-bubble"
+      data-wuu-variant="user"
     >
       {images.length ? <MessageImageGrid images={images} /> : null}
       {files.length ? <MessageFileList files={files} /> : null}

@@ -404,6 +404,8 @@ describe("ThreadItemView", () => {
 
     const visibleActions = actionBar();
     expect(visibleActions.getAttribute("aria-label")).toBe("助手消息操作");
+    expect(visibleActions.dataset.wuuComponent).toBe("message-actions");
+    expect(visibleActions.dataset.wuuPlacement).toBe("persistent");
     expect(visibleActions.querySelectorAll("button")).toHaveLength(4);
     const block = container?.querySelector(".agent-block");
     expect(block?.classList.contains("agent-actions-persistent")).toBe(true);
@@ -419,7 +421,7 @@ describe("ThreadItemView", () => {
       streaming: false,
     });
 
-    actionBar();
+    expect(actionBar().dataset.wuuPlacement).toBe("overlay");
     const block = container?.querySelector(".agent-block");
     expect(block?.classList.contains("agent-actions-overlay")).toBe(true);
     expect(block?.classList.contains("agent-actions-persistent")).toBe(false);
@@ -467,6 +469,7 @@ describe("ThreadItemView", () => {
     expect(container?.querySelector(".user-message")?.textContent).toBe("太阳更新了状态");
     const actions = container?.querySelectorAll<HTMLButtonElement>(".user-message-actions button");
     expect(actions).toHaveLength(2);
+    expect(container?.querySelector<HTMLElement>(".user-message-actions")?.dataset.wuuPlacement).toBe("overlay");
 
     act(() => {
       actions?.[1]?.click();

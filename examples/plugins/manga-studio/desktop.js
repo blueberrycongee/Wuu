@@ -123,6 +123,43 @@ export function activate(api) {
         background-image: radial-gradient(circle at 1px 1px, rgb(23 19 15 / .08) 1px, transparent 1.2px);
         background-size: 13px 13px;
       }
+      .manga-shell [data-wuu-component="conversation-pane"] {
+        --wuu-message-actions-block-gap: 14px;
+        --wuu-message-actions-overlay-gap: 8px;
+        --wuu-message-actions-control-gap: 8px;
+        --wuu-message-actions-inline-offset: 2px;
+        --wuu-message-action-size: 28px;
+        --wuu-message-action-radius: 3px;
+        --wuu-message-user-background: var(--manga-yellow);
+        --wuu-message-user-border: 2px solid var(--manga-ink);
+        --wuu-message-user-color: var(--manga-ink);
+        --wuu-message-user-radius: 3px;
+        --wuu-message-user-shadow: 4px 4px 0 var(--manga-pink);
+      }
+      .manga-shell [data-wuu-component="plugin-navigation"] {
+        border-block: 2px solid var(--manga-ink);
+        background: rgb(67 229 237 / .16);
+      }
+      .manga-shell [data-wuu-component="plugin-navigation-item"][aria-current="page"] {
+        color: var(--manga-ink);
+        background: var(--manga-cyan);
+        box-shadow: inset 5px 0 0 var(--manga-pink);
+      }
+      .manga-shell [data-wuu-component="settings-navigation-item"][aria-current="page"] {
+        color: var(--manga-ink);
+        background: var(--manga-yellow);
+        border: 2px solid var(--manga-ink);
+        box-shadow: 3px 3px 0 var(--manga-pink);
+      }
+      .manga-shell [data-wuu-component="settings-card"],
+      .manga-shell [data-wuu-component="plugin-settings"] {
+        border: 2px solid var(--manga-ink);
+        background: var(--manga-paper);
+        box-shadow: 4px 4px 0 var(--manga-cyan);
+      }
+      .manga-shell [data-wuu-component="settings-row"] + [data-wuu-component="settings-row"] {
+        border-top: 2px solid var(--manga-ink);
+      }
       .manga-shell [data-wuu-component="workspace-panel"],
       .manga-shell [data-wuu-component="workspace-review"],
       .manga-shell [data-wuu-component="workspace-terminal"],
@@ -369,15 +406,31 @@ export function activate(api) {
         position: relative;
         min-width: 0;
       }
-      .manga-shell [data-wuu-component="message"][data-wuu-variant="user"] {
+      .manga-shell [data-wuu-component="message-bubble"][data-wuu-variant="user"] {
         padding: 10px 12px;
-        border: 2px solid var(--manga-ink);
-        background: var(--manga-yellow);
-        box-shadow: 4px 4px 0 var(--manga-pink);
       }
       .manga-shell [data-wuu-component="message"][data-wuu-variant="agent"] {
         padding-left: 14px;
         border-left: 5px solid var(--manga-ink);
+      }
+      .manga-shell [data-wuu-component="message-actions"][data-wuu-placement="overlay"] {
+        z-index: 2;
+        padding: 5px 6px;
+        background: var(--manga-paper);
+        border: 2px solid var(--manga-ink);
+        box-shadow: 3px 3px 0 var(--manga-cyan);
+      }
+      .manga-shell [data-wuu-component="message-actions"] > button {
+        color: var(--manga-ink);
+        background: var(--manga-yellow);
+        border: 2px solid var(--manga-ink) !important;
+        box-shadow: 2px 2px 0 var(--manga-pink);
+      }
+      .manga-shell [data-wuu-component="message-actions"] > button:hover,
+      .manga-shell [data-wuu-component="message-actions"] > button[aria-pressed="true"] {
+        color: var(--manga-ink);
+        background: var(--manga-cyan);
+        box-shadow: 2px 2px 0 var(--manga-pink);
       }
       .manga-shell [data-wuu-component="composer"] {
         border: 0;

@@ -233,6 +233,14 @@ export async function activate(api) {
   父节点、分割树或面板尺寸。旧 `registerLayoutContribution` 仅作兼容保留，其
   `parentId`、`size`、`minSize` 字段从未真正控制布局树，新插件应使用
   `registerViewPlacement`。
+- View 的入口由 manifest 声明，插件不自己绘制导航和 Tab：
+  - `contributes.navigation` 出现在左侧栏可滚动的插件分组；
+  - `contributes.workspaceTools` 出现在右侧工具选择器，并以原生工作区 Tab 打开；
+  - `contributes.settingsPages` 出现在设置页的插件分组。
+  每项使用 `{ id, view, title, description?, icon?, order? }`，且必须引用同一插件通过
+  `registerViewType` 注册的 View。选中、关闭、持久化和溢出由 Wuu 管理。普通
+  `contributes.settings` 会自动获得宿主渲染的设置页，只有标准 schema 表达不了的内容
+  才使用自定义设置 View。
 - `registerPresenter`：替换具体产品概念而不是宽泛区域。目标包括
   `conversation.item`、`conversation.process`、`conversation.tool-activity`、
   `conversation.composer`、`header.conversation`、`header.workspace`、
@@ -254,6 +262,14 @@ snippets 而不是新增主题 Token：`app-shell`、`sidebar`、`conversation-p
 `settings-shell`、`skills-catalog`、`automations-catalog`、`workspace-panel`、
 `launch-view`、`turn`、`message`（区分 `data-wuu-variant="user" | "agent"`）、
 `composer`、`composer-input`、`composer-send`（区分 `data-wuu-state="send" | "stop"`）。
+消息操作区只公开宿主管理的 `message-actions` 组锚点，通过
+`data-wuu-placement="persistent" | "overlay"` 区分常驻与悬浮。主题可使用
+`--wuu-message-actions-block-gap`、`--wuu-message-actions-overlay-gap`、
+`--wuu-message-actions-control-gap`、`--wuu-message-actions-inline-offset`、
+`--wuu-message-action-size` 和 `--wuu-message-action-radius` 调整节奏；键盘顺序、点击区域、
+响应式收纳和两种布局语义仍由宿主负责。插件应把直接子按钮作为同一控件族统一处理，
+不按 copy/like/edit 动作建立私有样式。user query 的实际气泡表面另有
+`message-bubble` + `user` 变体，并由 `--wuu-message-user-*` Token 控制视觉属性。
 这份清单由 `desktop/src/renderer/plugins/ProductionSemanticAnchors.test.ts` 强制约束；
 锚点改名属于破坏性变更。
 

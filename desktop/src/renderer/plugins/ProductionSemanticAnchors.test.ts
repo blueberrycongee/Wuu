@@ -28,6 +28,17 @@ const SEMANTIC_ANCHOR_OWNERS = Object.freeze({
   "environment-panel": "EnvironmentPanel.tsx",
   "launch-view": "LoadingViews.tsx",
   "message": "ThreadItemView.tsx",
+  "message-actions": "MessageActions.tsx",
+  "message-bubble": "ThreadItemView.tsx",
+  "plugin-navigation": "AppSidebar.tsx",
+  "plugin-navigation-item": "AppSidebar.tsx",
+  "plugin-settings": "PluginSettingsEditor.tsx",
+  "settings-card": "SettingsView.tsx",
+  "settings-navigation": "SettingsView.tsx",
+  "settings-navigation-item": "SettingsView.tsx",
+  "settings-page": "SettingsView.tsx",
+  "settings-row": "SettingsView.tsx",
+  "settings-section": "SettingsView.tsx",
   "settings-shell": "SettingsView.tsx",
   "session-tab": "SessionTabs.tsx",
   "session-tab-close": "SessionTabs.tsx",
@@ -84,6 +95,43 @@ describe("production semantic anchors", () => {
     );
     expect(source).toContain('data-wuu-variant="user"');
     expect(source).toContain('data-wuu-variant="agent"');
+  });
+
+  it("publishes message action placement and host-owned rhythm tokens", () => {
+    const actions = readFileSync(resolve(RENDERER_ROOT, "MessageActions.tsx"), "utf8");
+    expect(actions).toContain("data-wuu-placement={placement}");
+    const themeContract = readFileSync(
+      resolve(process.cwd(), "../config/desktop-theme-contract.json"),
+      "utf8",
+    );
+    for (const token of [
+      "--wuu-message-actions-block-gap",
+      "--wuu-message-actions-overlay-gap",
+      "--wuu-message-actions-control-gap",
+      "--wuu-message-actions-inline-offset",
+      "--wuu-message-action-size",
+      "--wuu-message-action-radius",
+    ]) {
+      expect(themeContract).toContain(`"name": "${token}"`);
+    }
+  });
+
+  it("publishes the user bubble as one visual surface", () => {
+    const source = readFileSync(resolve(RENDERER_ROOT, "ThreadItemView.tsx"), "utf8");
+    expect(source).toContain('data-wuu-component="message-bubble"');
+    const themeContract = readFileSync(
+      resolve(process.cwd(), "../config/desktop-theme-contract.json"),
+      "utf8",
+    );
+    for (const token of [
+      "--wuu-message-user-background",
+      "--wuu-message-user-border",
+      "--wuu-message-user-color",
+      "--wuu-message-user-radius",
+      "--wuu-message-user-shadow",
+    ]) {
+      expect(themeContract).toContain(`"name": "${token}"`);
+    }
   });
 
   it("keeps the environment panel anchor on its default and file-preview variants", () => {

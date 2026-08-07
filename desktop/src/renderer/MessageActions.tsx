@@ -9,10 +9,12 @@ export function AgentMessageActions({
   getText,
   onFork,
   onOpenRuns,
+  placement,
 }: {
   getText: () => string;
   onFork?: () => void;
   onOpenRuns?: () => void;
+  placement: "overlay" | "persistent";
 }): JSX.Element {
   const { t } = useI18n();
   const [feedback, setFeedback] = useState<"liked" | "disliked" | null>(null);
@@ -51,7 +53,12 @@ export function AgentMessageActions({
   }
 
   return (
-    <div className="message-actions agent-message-actions" aria-label={t("message.assistantActions")}>
+    <div
+      className="message-actions agent-message-actions"
+      data-wuu-component="message-actions"
+      data-wuu-placement={placement}
+      aria-label={t("message.assistantActions")}
+    >
       <MessageCopyButton getText={getText} className="message-action-button" iconSize={15} />
       {onOpenRuns ? <TurnRunButton onOpenRuns={onOpenRuns} /> : null}
       <button
@@ -96,7 +103,14 @@ export function AgentMessageActions({
           </span>
         ) : null}
       </button>
-      <button className="message-action-button" type="button" aria-label={t("message.fork")} title={t("message.fork")} disabled={!onFork} onClick={onFork}>
+      <button
+        className="message-action-button"
+        type="button"
+        aria-label={t("message.fork")}
+        title={t("message.fork")}
+        disabled={!onFork}
+        onClick={onFork}
+      >
         <GitFork className="icon" />
       </button>
     </div>
