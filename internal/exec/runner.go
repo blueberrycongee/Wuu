@@ -523,7 +523,7 @@ func emitTurnStarted(opts Options, threadID string, turn appserver.Turn) {
 
 func emitItemStarted(opts Options, params appserver.ItemStartedNotification, state *runState) {
 	switch params.Item.Type {
-	case appserver.ThreadItemToolCall, appserver.ThreadItemCollabAgentTool:
+	case appserver.ThreadItemToolCall:
 		safeItem := params.Item
 		safeItem.Arguments = tools.RedactToolOutput(safeItem.Arguments)
 		emitJSON(opts, map[string]any{"type": "tool_started", "thread_id": params.ThreadID, "turn_id": params.TurnID, "item_id": safeItem.ID, "name": safeItem.Name, "arguments": safeItem.Arguments})
@@ -539,7 +539,7 @@ func emitItemStarted(opts Options, params appserver.ItemStartedNotification, sta
 
 func emitItemCompleted(opts Options, params appserver.ItemCompletedNotification, state *runState) {
 	switch params.Item.Type {
-	case appserver.ThreadItemToolCall, appserver.ThreadItemCollabAgentTool:
+	case appserver.ThreadItemToolCall:
 		item := params.Item
 		if item.Result == "" {
 			item.Result = state.toolOutput(item.ID)

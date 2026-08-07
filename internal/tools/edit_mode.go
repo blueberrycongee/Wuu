@@ -45,8 +45,7 @@ func (t *Toolkit) ConfigureSurfaceForProviderModel(providerName, model string, f
 }
 
 // ConfigureWorkerSurfaceForProviderModel installs either the ordinary worker
-// surface or the Ultra worker surface. Both keep agent_report; only the Ultra
-// surface receives the expanded built-in capabilities.
+// surface or the expanded Ultra worker surface.
 func (t *Toolkit) ConfigureWorkerSurfaceForProviderModel(providerName, model string, ultraMode bool) {
 	kind := modelprofile.SurfaceWorker
 	if ultraMode {

@@ -1919,7 +1919,6 @@ const (
 	ThreadItemAgentMessage      ThreadItemType = "agent_message"
 	ThreadItemReasoning         ThreadItemType = "reasoning"
 	ThreadItemToolCall          ThreadItemType = "tool_call"
-	ThreadItemCollabAgentTool   ThreadItemType = "collab_agent_tool_call"
 	ThreadItemContextCompaction ThreadItemType = "context_compaction"
 	ThreadItemError             ThreadItemType = "error"
 )

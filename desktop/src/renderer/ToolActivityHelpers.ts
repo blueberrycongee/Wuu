@@ -1226,7 +1226,7 @@ export type TurnSource = {
 export function collectTurnSources(items: ThreadItem[]): TurnSource[] {
   const byHost = new Map<string, TurnSource>();
   for (const item of items) {
-    if (item.type !== "tool_call" && item.type !== "collab_agent_tool_call") {
+    if (item.type !== "tool_call") {
       continue;
     }
     const name = (item.name ?? "").trim();

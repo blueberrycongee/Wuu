@@ -92,7 +92,7 @@ export const ThreadItemView = memo(function ThreadItemView(props: ThreadItemView
     streaming: props.streaming,
     editing: Boolean(editing),
   });
-  if (item.type === "tool_call" || item.type === "collab_agent_tool_call") {
+  if (item.type === "tool_call") {
     return (
       <PluginMessageSlots host={props.pluginHost} context={pluginSlotContext}>
         <BuiltInThreadItemView {...props} />
@@ -335,8 +335,6 @@ function BuiltInThreadItemView({
         </article>
       );
     case "tool_call":
-      return <ToolActivityRow items={[item]} />;
-    case "collab_agent_tool_call":
       return <ToolActivityRow items={[item]} />;
     case "context_compaction":
       return (

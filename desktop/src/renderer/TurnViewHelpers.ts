@@ -386,7 +386,7 @@ export function turnProgressContent(
 
   const runningTool = turn.items.find(
     (item) =>
-      (item.type === "tool_call" || item.type === "collab_agent_tool_call") &&
+      item.type === "tool_call" &&
       (item.status ?? "in_progress") === "in_progress",
   );
   if (runningTool) {
@@ -438,10 +438,7 @@ export function turnProgressContent(
       detail: waitingDetail(elapsedMs, t("turn.organizingAnswer")),
     };
   }
-  if (
-    latestItem.type === "tool_call" ||
-    latestItem.type === "collab_agent_tool_call"
-  ) {
+  if (latestItem.type === "tool_call") {
     return {
       label: messageFlowStatusLabel({
         done: false,
@@ -546,7 +543,6 @@ export function messageFlowAgentMessageItemID(
     if (
       item.type === "reasoning" ||
       item.type === "tool_call" ||
-      item.type === "collab_agent_tool_call" ||
       item.type === "context_compaction"
     ) {
       return "process";

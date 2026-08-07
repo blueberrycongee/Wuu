@@ -2,7 +2,6 @@ import {
   Archive,
   ChevronRight,
   Clock,
-  CornerDownRight,
   FileText,
   Folder,
   FolderOpen,
@@ -378,7 +377,6 @@ export function AppSidebar({
   onCreateChannelRoom,
   onToggleConversationSearch,
   onSeedConversationFixture,
-  onSeedAgentTreeDemo,
   onOpenChipGallery,
   onSelectThread,
   onTogglePinned,
@@ -446,7 +444,6 @@ export function AppSidebar({
   onCreateChannelRoom?: () => void;
   onToggleConversationSearch: () => void;
   onSeedConversationFixture: (kind: ConversationFixtureKind) => void;
-  onSeedAgentTreeDemo: () => void;
   onOpenChipGallery: () => void;
   onSelectThread: (id: string) => void;
   onTogglePinned: (thread: ThreadSummary) => void;
@@ -621,7 +618,6 @@ export function AppSidebar({
         ["fixture-rich", t("sidebar.devFixtures.richContent"), () => onSeedConversationFixture("rich"), !fixturesEnabled],
         ["fixture-running", t("sidebar.devFixtures.running"), () => onSeedConversationFixture("running"), !fixturesEnabled],
         ["fixture-compact", t("sidebar.devFixtures.compaction"), () => onSeedConversationFixture("compact"), !fixturesEnabled],
-        ["fixture-subtasks", t("sidebar.devFixtures.subtasks"), onSeedAgentTreeDemo, !fixturesEnabled],
         ["fixture-chips", t("sidebar.devFixtures.chipGallery"), onOpenChipGallery, false],
       ];
       for (const [id, label, onActivate, disabled] of fixtureCommands) {
@@ -764,7 +760,7 @@ export function AppSidebar({
     channelRooms, collabUnreadTotal, debugFixturesVisible, fixturesEnabled,
     groupChatEnabled, hasPinnedRows, hasRuntimeContext,
     onOpenChannelAgents, onOpenChipGallery, onOpenSettings, onOpenSkillsTab,
-    onSeedAgentTreeDemo, onSeedConversationFixture, onSelectChannelRoom,
+    onSeedConversationFixture, onSelectChannelRoom,
     onSelectProjectThread, onSelectProjectWorkspace, onSelectThread,
     onStartNewThread, onToggleChannelRoomPinned, onToggleConversationSearch,
     onTogglePinned, pinnedChannelRooms, pinnedRows, projectThreadsByProjectID,
@@ -864,14 +860,6 @@ export function AppSidebar({
               >
                 <Archive className="icon" />
                 <span>{t("sidebar.devFixtures.compaction")}</span>
-              </button>
-              <button
-                className="nav-item dev-fixture-button"
-                onClick={onSeedAgentTreeDemo}
-                disabled={!fixturesEnabled}
-              >
-                <CornerDownRight className="icon" />
-                <span>{t("sidebar.devFixtures.subtasks")}</span>
               </button>
               <button
                 className="nav-item dev-fixture-button"

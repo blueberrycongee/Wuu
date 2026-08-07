@@ -157,7 +157,6 @@ function renderSidebar({
         onOpenChannels={() => {}}
         onToggleConversationSearch={() => {}}
         onSeedConversationFixture={() => {}}
-        onSeedAgentTreeDemo={() => {}}
         onOpenChipGallery={() => {}}
         onSelectThread={() => {}}
         onTogglePinned={() => {}}

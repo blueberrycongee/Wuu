@@ -3,6 +3,7 @@ package dream
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -82,3 +83,52 @@ func TestDreamUsesForkedPrivateSession(t *testing.T) {
 }
 
 func quoted(value string) string { raw, _ := json.Marshal(value); return string(raw) }
+
+func TestDreamShutdownStopsTimerAndNextGenerationRestoresState(t *testing.T) {
+	now := time.Date(2026, 8, 8, 0, 0, 0, 0, time.UTC)
+	host := &fakeHost{}
+	first := &controller{now: func() time.Time { return now }, tick: time.Hour}
+	if err := first.start(context.Background(), host); err != nil {
+		t.Fatal(err)
+	}
+	first.mu.Lock()
+	first.state.Settings = settings{Enabled: true, IntervalDays: 9, MinSessions: 3}
+	first.state.Candidates["parent"] = now.Format(time.RFC3339Nano)
+	first.mu.Unlock()
+	if err := first.save(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := first.shutdown(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-first.done:
+	default:
+		t.Fatal("dream timer loop remained active after shutdown")
+	}
+
+	second := &controller{now: func() time.Time { return now }, tick: time.Hour}
+	if err := second.start(context.Background(), host); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = second.shutdown(context.Background()) })
+	restored := second.snapshot()
+	if restored.Settings.IntervalDays != 9 || restored.Candidates["parent"] == "" {
+		t.Fatalf("restored dream state = %+v", restored)
+	}
+}
+
+func TestDreamCannotWriteMemoryWithoutTheMemoryPlugin(t *testing.T) {
+	definition := Handler().Definition
+	if len(definition.Tools) != 0 {
+		t.Fatalf("dream must not expose a direct memory write tool: %+v", definition.Tools)
+	}
+	for _, service := range definition.RequiredHostServices {
+		if strings.Contains(service.ID, "file") || strings.Contains(service.ID, "memory") {
+			t.Fatalf("dream must not receive a host memory or file write service: %+v", service)
+		}
+	}
+	if !strings.Contains(dreamPrompt(), "Use session_memory") {
+		t.Fatal("dream prompt must delegate all durable write-back to the Memory plugin tool")
+	}
+}

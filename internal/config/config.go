@@ -279,8 +279,9 @@ type AgentConfig struct {
 	// preserving the main model as the default. Empty role entries inherit the
 	// active provider/model/effort/variant selected above.
 	ModelRoles ModelRolesConfig `json:"model_roles,omitempty"`
-	// ModelAliases are stable labels that skills can pass as spawn_agent.model
-	// values. Each alias must explicitly name a configured provider and model;
+	// ModelAliases are stable labels that session-creating plugins and other
+	// runtime clients can pass when selecting a model. Each alias must explicitly
+	// name a configured provider and model;
 	// unlike model_roles entries, aliases never inherit from the active main
 	// selection. Project layers cannot define aliases.
 	ModelAliases map[string]ModelRoleConfig `json:"model_aliases,omitempty"`
@@ -920,23 +921,15 @@ func Default() Config {
 }
 
 // DefaultSystemPrompt returns wuu's built-in base behavior prompt for the
-// main agent. It combines the universal base sections with the main-only
-// orchestration path-selection map. It is not serialized into config files;
-// user config is appended separately.
+// main agent. It is not serialized into config files; user config is appended
+// separately.
 func DefaultSystemPrompt() string {
 	return prompts.System() + "\n\n" + prompts.SystemMain()
 }
 
-// WorkerSystemPrompt returns the system prompt used to seed spawned
-// subagents. It contains only the universal base sections; the main-only
-// orchestration map is excluded because orchestration belongs to the brain:
-// spawn_agent and the subagent management suite (send_message,
-// close_agent) are compiled out of worker surfaces entirely
-// (internal/modelprofile/compiler.go). Of the
-// other tools the map mentions, update_plan stays visible on worker surfaces
-// and goal stays deferred behind tool_search — their
-// worker-facing guidance lives in the tool descriptions and the worker's
-// deferred-tool catalog, not in the orchestration map.
+// WorkerSystemPrompt returns the universal base prompt used by host-managed
+// executor workers. Product-specific delegation guidance is contributed by
+// plugins instead of being embedded here.
 func WorkerSystemPrompt() string {
 	return prompts.System()
 }

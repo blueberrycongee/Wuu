@@ -72,10 +72,7 @@ type ProcessSurfaceProps = {
   ) => JSX.Element | null;
 };
 
-const TOOL_ACTIVITY_ITEM_TYPES = new Set<string>([
-  "tool_call",
-  "collab_agent_tool_call",
-]);
+const TOOL_ACTIVITY_ITEM_TYPES = new Set<string>(["tool_call"]);
 
 // Mixed activity becomes harder to scan than a sentence once a group reaches
 // this size. Same-kind groups keep their more useful count summary.

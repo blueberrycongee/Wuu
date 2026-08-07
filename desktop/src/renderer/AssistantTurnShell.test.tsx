@@ -150,7 +150,7 @@ function makeToolCall(name = "lookup"): ThreadItem {
 function makeAgentToolCall(): ThreadItem {
   return {
     id: nextID("collab-tool"),
-    type: "collab_agent_tool_call",
+    type: "tool_call",
     status: "completed",
     name: "spawn_agent",
     arguments: JSON.stringify({ name: "reviewer", prompt: "Review authentication" }),

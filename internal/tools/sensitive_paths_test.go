@@ -194,7 +194,7 @@ func TestReadFile_AllowsNamedAgentIdentityNotebookInExplicitScope(t *testing.T) 
 	}
 }
 
-func TestReadFile_BlocksNonMemoryAgentRuntimeInStandardMode(t *testing.T) {
+func TestReadFile_BlocksRuntimeFilesOutsideExplicitScopeInStandardMode(t *testing.T) {
 	wuuHome := filepath.Join(t.TempDir(), ".wuu")
 	t.Setenv("WUU_HOME", wuuHome)
 	target := filepath.Join(wuuHome, "auth.json")
@@ -218,8 +218,8 @@ func TestReadFile_BlocksNonMemoryAgentRuntimeInStandardMode(t *testing.T) {
 	if err == nil {
 		t.Fatal("read_file should reject non-memory agent runtime metadata")
 	}
-	if !strings.Contains(err.Error(), "wuu credential file") {
-		t.Fatalf("expected credential-floor rejection, got: %v", err)
+	if !strings.Contains(err.Error(), "escapes workspace") {
+		t.Fatalf("expected workspace-boundary rejection, got: %v", err)
 	}
 	if strings.Contains(result, "secret-value") || strings.Contains(err.Error(), "secret-value") {
 		t.Fatalf("read_file leaked auth content: result=%q err=%v", result, err)
@@ -293,9 +293,10 @@ func TestWuuCredentialFilesFloorAcrossModes(t *testing.T) {
 			if err == nil {
 				t.Fatalf("write_file should reject wuu credential file in %s mode", tc.name)
 			}
-			// Read-only mode refuses earlier at the mutation gate; mutating
-			// modes must refuse with the credential-floor reason.
-			if tc.name != "read_only" && !strings.Contains(err.Error(), "wuu credential file") {
+			// Standard mode refuses the out-of-workspace path first and
+			// read-only mode refuses at the mutation gate. Unconfined mode
+			// reaches the host credential floor directly.
+			if tc.name == "unconfined" && !strings.Contains(err.Error(), "wuu credential file") {
 				t.Fatalf("expected credential-floor rejection in %s mode, got: %v", tc.name, err)
 			}
 			data, readErr := os.ReadFile(target)

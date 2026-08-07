@@ -3058,7 +3058,6 @@ export function App(): JSX.Element {
   });
 
   const {
-    seedAgentTreeDemo,
     seedConversationFixture,
     seedPlanPanelDebug,
     activateConversationPane,
@@ -4205,7 +4204,6 @@ export function App(): JSX.Element {
             onCreateChannelRoom={openNewChannelRoom}
             onToggleConversationSearch={toggleConversationSearch}
             onSeedConversationFixture={seedConversationFixture}
-            onSeedAgentTreeDemo={seedAgentTreeDemo}
             onOpenChipGallery={() => setChipGalleryOpen(true)}
             onSelectThread={(id) => {
               revealConversationFromFocusedWorkspace();

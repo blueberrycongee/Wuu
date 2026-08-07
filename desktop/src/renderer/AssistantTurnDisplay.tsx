@@ -110,7 +110,7 @@ export function buildAssistantTurnDisplay(
       // surfaced inline alongside commentary).
       return "commentary";
     }
-    if (item.type === "tool_call" || item.type === "collab_agent_tool_call") {
+    if (item.type === "tool_call") {
       return "activity";
     }
     return "process";
@@ -162,13 +162,12 @@ export function buildAssistantTurnDisplay(
       continue;
     }
 
-    if (item.type === "tool_call" || item.type === "collab_agent_tool_call") {
+    if (item.type === "tool_call") {
       const group: ThreadItem[] = [item];
       let nextIndex = index + 1;
       while (
         nextIndex < turn.items.length &&
-        (turn.items[nextIndex].type === "tool_call" ||
-          turn.items[nextIndex].type === "collab_agent_tool_call")
+        turn.items[nextIndex].type === "tool_call"
       ) {
         group.push(turn.items[nextIndex]);
         nextIndex++;
@@ -359,7 +358,7 @@ function processPreviewForItem(
       : undefined;
   }
 
-  if (item.type === "tool_call" || item.type === "collab_agent_tool_call") {
+  if (item.type === "tool_call") {
     const text = compactProcessPreview(readableToolActivityCommand(item));
     return text ? { text, kind: "activity" } : undefined;
   }

@@ -124,7 +124,7 @@ func TestAgentProfileToolsHideLegacyWorkflowMetadata(t *testing.T) {
 	}
 }
 
-func TestAgentProfileToolDescriptionsAreGeneralDelegationProfiles(t *testing.T) {
+func TestAgentProfileToolDescriptionsDescribePersistentCollaborationRoles(t *testing.T) {
 	root := t.TempDir()
 	kit, err := New(root)
 	if err != nil {
@@ -143,7 +143,7 @@ func TestAgentProfileToolDescriptionsAreGeneralDelegationProfiles(t *testing.T) 
 		if desc == "" {
 			t.Fatalf("%s definition missing", name)
 		}
-		for _, want := range []string{"subagent", "recurring", "saved memory"} {
+		for _, want := range []string{"persistent collaboration", "saved identity notes"} {
 			if !strings.Contains(desc, want) {
 				t.Fatalf("%s description missing %q: %q", name, want, desc)
 			}

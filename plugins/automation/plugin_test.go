@@ -131,3 +131,39 @@ func TestAutomationHeartbeatReusesExistingSession(t *testing.T) {
 		}
 	}
 }
+
+func TestAutomationShutdownStopsTimerAndNextGenerationRestoresDurableState(t *testing.T) {
+	now := time.Date(2026, 8, 8, 9, 0, 0, 0, time.UTC)
+	host := &testHost{}
+	first := &controller{now: func() time.Time { return now }, tick: time.Hour}
+	if err := first.start(context.Background(), host); err != nil {
+		t.Fatal(err)
+	}
+	task, err := first.add(context.Background(), mutationInput{
+		Title: "Persisted review", Prompt: "Review durable state", Schedule: "0 10 * * *", Timezone: "UTC",
+		Mode: "new_thread", Recurring: boolPointer(true), Durable: boolPointer(true),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := first.shutdown(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-first.done:
+	default:
+		t.Fatal("automation timer loop remained active after shutdown")
+	}
+
+	second := &controller{now: func() time.Time { return now }, tick: time.Hour}
+	if err := second.start(context.Background(), host); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = second.shutdown(context.Background()) })
+	second.mu.Lock()
+	restored, ok := second.tasks[task.ID]
+	second.mu.Unlock()
+	if !ok || restored.Prompt != task.Prompt || !restored.Durable {
+		t.Fatalf("restored task = %+v, present=%v", restored, ok)
+	}
+}

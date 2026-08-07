@@ -78,7 +78,6 @@ function conversationItemKind(item: ThreadItem): ConversationItemKindV1 | undefi
     case "error": return "notice";
     // Tool records have their own conversation.tool-activity presentation boundary.
     case "tool_call":
-    case "collab_agent_tool_call":
     default: return undefined;
   }
 }

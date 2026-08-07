@@ -562,28 +562,4 @@ describe("collectTurnSources", () => {
     ]);
   });
 
-  it("treats collab_agent_tool_call web_search items the same as tool_call", () => {
-    expect(
-      collectTurnSources([
-        {
-          id: "ws-collab",
-          type: "collab_agent_tool_call",
-          name: "web_search",
-          status: "completed",
-          result: JSON.stringify({
-            results: [
-              { url: "https://collab.example/x", title: "Collab result" },
-            ],
-          }),
-        } satisfies ThreadItem,
-      ]),
-    ).toEqual([
-      {
-        url: "https://collab.example/x",
-        host: "collab.example",
-        title: "Collab result",
-        origin: "web_search",
-      },
-    ]);
-  });
 });

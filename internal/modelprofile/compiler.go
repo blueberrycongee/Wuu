@@ -42,10 +42,9 @@ const (
 	ProfileGeneric ProfileKey = "generic"
 )
 
-// SurfaceKind identifies which runtime role a tool surface is compiled for.
-// It is a closed set so the compiler can key decisions off one
-// role dimension. Optional plugin tools are appended after this built-in
-// surface is compiled and enforce their own execution scopes.
+// SurfaceKind identifies which runtime role a built-in tool surface is
+// compiled for. Optional plugin tools are appended after this surface and
+// enforce their own execution scopes.
 type SurfaceKind int
 
 const (
@@ -68,12 +67,8 @@ func (k SurfaceKind) includesChat() bool {
 	return k == SurfaceNamedAgent
 }
 
-// Compiler compiles a model profile into a tool surface. Compile is given a
-// SurfaceKind so it can decide whether the surface should advertise, hide, or
-// omit orchestration tools (the spawn_agent suite) and
-// worker-only handoff tools such as agent_report. The
-// surface is therefore consistent with the runtime boundary instead of being
-// filtered downstream.
+// Compiler compiles a model profile into a built-in tool surface. Plugin-owned
+// product tools are not part of this compiler.
 type Compiler interface {
 	Compile(p Profile, kind SurfaceKind) capability.Surface
 }
@@ -82,10 +77,8 @@ type Compiler interface {
 // stateless: callers should keep a single instance and reuse it.
 type DefaultCompiler struct{}
 
-// Compile implements Compiler. The SurfaceKind controls the orchestration
-// boundary. Named agents get the full main-agent contract plus chat. Ordinary
-// workers are pure executors and keep only agent_report; Ultra workers get task
-// orchestration plus agent_report.
+// Compile implements Compiler. Named agents add collaboration chat tools;
+// workers receive only the built-in executor surface selected by their role.
 func (DefaultCompiler) Compile(p Profile, kind SurfaceKind) capability.Surface {
 	key := ResolveProfileKey(p)
 	b := newBuilder(p, key)
