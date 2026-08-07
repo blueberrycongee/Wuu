@@ -101,8 +101,9 @@ my-plugin/
 
 宿主的常用中性界面通过少量粗粒度语义 Token 统一换肤，无需依赖私有 DOM：
 `--wuu-control-secondary-background` 控制次级操作，`--wuu-badge-neutral-background` 控制
-中性状态与权限徽标，`--wuu-inline-code-background` 控制 Markdown 行内代码。文字、边框、
-圆角和字体继续继承对应的公共颜色、边框、圆角与字体 Token。
+中性状态与权限徽标，`--wuu-inline-code-background` 控制 Markdown 行内代码。文字和字体继续
+继承对应的公共颜色与字体 Token；紧凑控件的边框宽度由宿主持有，避免面板级强边框改变其盒模型
+或破坏文字换行。
 
 ### 设置
 

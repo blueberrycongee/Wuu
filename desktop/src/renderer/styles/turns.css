@@ -2701,8 +2701,8 @@
                                                               
                                                                 
                                                               
-  border: var(--wuu-border-subtle, 0);
-  border-radius: var(--wuu-radius-control, var(--radius-xs));
+  border: 0;
+  border-radius: var(--radius-xs);
   background: var(--wuu-inline-code-background, var(--surface-chip));
   color: var(--wuu-color-text, var(--ink));
   font-family: var(--wuu-font-family-mono, "SFMono-Regular", Consolas, monospace);

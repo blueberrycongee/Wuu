@@ -92,6 +92,16 @@ describe("turns.css rich links", () => {
   });
 });
 
+describe("turns.css inline code", () => {
+  it("allows a themed background without inheriting panel border geometry", () => {
+    const inlineCode = cssRuleBody(".rich-content :not(pre) > code");
+
+    expect(inlineCode).toMatch(/background:\s*var\(--wuu-inline-code-background,/);
+    expect(inlineCode).toMatch(/border:\s*0;/);
+    expect(inlineCode).not.toContain("--wuu-border-subtle");
+  });
+});
+
 describe("turns.css rich tables", () => {
   it("does not tint message table rows on hover", () => {
     expect(turnsCss).not.toMatch(/\.rich-table-wrap\s+tbody\s+tr:hover/);

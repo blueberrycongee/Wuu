@@ -161,38 +161,6 @@ export function useAppDebugState({
     onHideDebugControls();
   }, [debugControlsVisible, onHideDebugControls]);
 
-  useEffect(() => {
-    if (!debugControlsVisible) {
-      return;
-    }
-
-    const handleKeyDown = (event: KeyboardEvent): void => {
-      if (
-        event.key.toLowerCase() !== "g" ||
-        event.metaKey ||
-        event.ctrlKey ||
-        event.altKey
-      ) {
-        return;
-      }
-      const target = event.target;
-      if (
-        target instanceof HTMLElement &&
-        (target.isContentEditable ||
-          target.tagName === "INPUT" ||
-          target.tagName === "TEXTAREA" ||
-          target.tagName === "SELECT")
-      ) {
-        return;
-      }
-      event.preventDefault();
-      setConversationGridVisible((visible) => !visible);
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [debugControlsVisible]);
-
   return {
     debugControlsEnabled,
     setDebugControlsEnabled,

@@ -306,8 +306,8 @@ describe("workspace markdown reading prose", () => {
     expect(inlineCode).toMatch(
       /background:\s*var\(--wuu-inline-code-background,\s*var\(--surface-chip\)\);/,
     );
-    expect(inlineCode).toMatch(/border:\s*var\(--wuu-border-subtle,\s*0\);/);
-    expect(inlineCode).toMatch(/border-radius:\s*var\(--wuu-radius-control,\s*4px\);/);
+    expect(inlineCode).toMatch(/border:\s*0;/);
+    expect(inlineCode).toMatch(/border-radius:\s*4px;/);
     expect(workspaceCss).not.toMatch(/\.workspace-markdown-reading\s+code\s*\{/);
   });
 

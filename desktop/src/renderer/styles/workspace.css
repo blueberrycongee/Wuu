@@ -2849,7 +2849,7 @@ html.resizing-workspace-terminal-split * {
 }
 
 .extension-package-permissions code {
-  border: var(--wuu-border-subtle, 1px solid var(--skills-section-border));
+  border: 1px solid var(--wuu-color-border-subtle, var(--skills-section-border));
   border-radius: var(--radius-pill);
   padding: 1px 7px;
   background: var(--wuu-badge-neutral-background, var(--skill-artwork-neutral-bg));
@@ -3213,7 +3213,6 @@ html.resizing-workspace-terminal-split * {
 }
 
 .skill-row-tag-neutral {
-  border: var(--wuu-border-subtle, 0);
   background: var(--wuu-badge-neutral-background, var(--skill-artwork-neutral-bg));
   color: var(--wuu-color-text-muted, var(--skill-artwork-neutral-fg));
 }
@@ -3662,8 +3661,8 @@ html.resizing-workspace-terminal-split * {
 /* Inline code: keep this selector more specific than the shared message-flow
    rule and exclude fenced code, which owns its surface through .rich-code. */
 .workspace-markdown-reading .rich-content :not(pre) > code {
-  border: var(--wuu-border-subtle, 0);
-  border-radius: var(--wuu-radius-control, 4px);
+  border: 0;
+  border-radius: 4px;
   background: var(--wuu-inline-code-background, var(--surface-chip));
   color: var(--wuu-color-text, var(--ink));
   font-family: var(--wuu-font-family-mono, var(--font-mono, "SFMono-Regular", Consolas, "Liberation Mono", monospace));

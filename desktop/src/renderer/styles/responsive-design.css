@@ -181,7 +181,6 @@
 .primary-button,
 .secondary-button {
   height: 36px;
-  border: var(--wuu-border-subtle, 0);
   border-radius: var(--radius-sm);
   font-weight: var(--weight-semibold);
   padding: 0 14px;
