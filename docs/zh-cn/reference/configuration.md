@@ -23,51 +23,27 @@ Wuu 把配置分成“用户拥有”和“项目补充”两类。核心原则�
 
 - `default_provider`
 - `providers`
-- `memory`
+- `instructions`（旧版 `memory` 指令发现字段也按这一边界处理）
 - `agent.model_roles`
 - `agent.model_aliases`
 - `agent.permission_mode`
 
-这些字段分别控制默认提供商、端点与凭据来源、全局记忆发现、后台角色的模型路由，
+这些字段分别控制默认提供商、端点与凭据来源、工作区外指令发现、后台角色的模型路由，
 可供 Agent 显式选择的稳定模型别名，以及 Wuu 的本地权限边界。字段名按 JSON 的大小写匹配规则处理，所以换成
 `Providers`、`Memory` 或 `Permission_Mode` 也不会绕过限制。
 
 其他项目行为仍会正常叠加，例如 `agent.append_system_prompt`。项目配置必须符合完整
 配置结构；未知字段会直接报错，避免拼写错误被静默忽略。
 
-## 全局记忆与项目规则
+## 指令、Memory 与 Dream
 
-全局记忆本来就位于工作区外，默认保存在用户控制的 Wuu 主目录中。项目不能重定向
-它的发现目录，但这不会关闭全局记忆，也不会阻止 Wuu 正常读取和更新它。
+需要团队共同遵守的长期规则应写进仓库的 `AGENTS.md` 或项目文档。`instructions`
+只控制核心的通用指令文件发现，因此项目不能把它重定向到工作区外。旧版顶层 `memory`
+只在读取边界迁移其中的指令发现字段，不再配置或启停任何核心记忆产品。
 
-需要团队共同遵守的长期规则应写进仓库的 `AGENTS.md` 或项目文档。个人偏好、跨项目
-经验和自动整理出的记忆则留在用户目录中。
-
-### 记忆整合（Dream）
-
-`memory.dream` 配置后台记忆整合：Wuu 在对话轮次结束后检查已完成会话，把稳定事实
-写入工作区记忆。它默认关闭。
-
-```json
-{
-  "memory": {
-    "dream": {
-      "enabled": true,
-      "interval_days": 7,
-      "provider": "openai",
-      "model": "gpt-4.1"
-    }
-  }
-}
-```
-
-- `enabled`：是否启用，默认 `false`；
-- `interval_days`：距上次运行至少间隔的天数，默认 `1`；
-- `provider` / `model`：可选专用模型，留空使用当前提供商和默认模型。
-
-通过桌面设置修改会立即生效；直接编辑配置文件需要重新启动 Wuu。旧的
-`memory.dream_interval_days` 仍被识别（正数启用、`0` 停用），新配置优先。
-运行机制与限制见[后台记忆整合（Dream）](../customize/dream.md)。
+用户、工作区和会话记忆由一方 [Memory 插件](../customize/memory.md)管理；后台整理由
+[Dream 插件](../customize/dream.md)管理。两者的设置保存在插件自己的命名空间中，不写入
+核心配置。禁用插件会同时移除相应 Prompt、Tool、后台 Timer 和界面。
 
 ## 显式信任完整配置
 
@@ -77,7 +53,7 @@ Wuu 把配置分成“用户拥有”和“项目补充”两类。核心原则�
 - `wuu exec --ignore-user-config`：忽略用户配置，读取并信任项目 `.wuu.json`
   （或 `wuu.json`）及两个项目 settings 层。
 
-这两种方式会接受文件中的提供商端点、凭据环境变量名、记忆路径、hooks 和 MCP
+这两种方式会接受文件中的提供商端点、凭据环境变量名、指令路径、hooks 和 MCP
 服务器，因此只应对自己控制的文件使用。普通桌面和 CLI 启动不会通过空 `HOME`
 等隐式条件获得这项信任。
 
@@ -112,7 +88,7 @@ spawn，因此不经过 spawn 排队闸门；整合开始时，实际运行数�
 如果旧项目把提供商放在 `.wuu.json` 中：
 
 1. 运行 `wuu init` 创建用户配置。
-2. 把 `default_provider`、`providers`、`memory`、`agent.model_roles`、
+2. 把 `default_provider`、`providers`、`instructions`、`agent.model_roles`、
    `agent.model_aliases` 和 `agent.permission_mode` 移到用户配置。
 3. 在项目文件中保留真正属于仓库的提示词和其他项目行为。
 

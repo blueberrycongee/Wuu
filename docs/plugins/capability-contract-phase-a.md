@@ -73,6 +73,6 @@ Plan 不属于这一迁移。`update_plan`、计划状态和标准展示留在�
 - [x] `internal/runtime/plugin_generation.go` — 生产 generation 的原子发布与撤销
 - [x] 真实 Agent 链路通过 capability RPC 注册、排序和调用插件贡献
 - [x] Phase C: Desktop workbench registrations 已接入真实 View、Slot、导航、设置和 Style 产品路径；五个 bundled 一方插件的真实 `desktop.js` 生命周期测试覆盖 generation 原子激活、替换、禁用与完整撤回
-- [ ] Phase D: 让 create/build/test/dev 在独立插件仓中形成可运行闭环
+- [x] Phase D: `wuu plugin create/validate/build/test/pack/dev` 已形成独立插件仓闭环；脚手架只依赖公开 `@wuu/plugin-sdk`，runtime 契约测试启动真实子进程，dev generation 在构建或激活失败时保留上一代
 
 这些阶段只有在公共 SDK 的外部插件能够完成注册、调用、卸载和失败恢复，并有产品路径测试证明时才算完成。仅存在接口、registry 或协议类型不代表该能力已经开放。

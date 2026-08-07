@@ -63,7 +63,7 @@ provider:
 - user messages and conversation history;
 - system prompts and applicable instruction files;
 - file contents, search results, diffs, command output, and tool errors;
-- configured user and workspace memory;
+- memory selected by an enabled Memory plugin;
 - images or other attachments the user adds;
 - MCP or hook output returned to the agent.
 
@@ -77,7 +77,7 @@ the provider it replaces.
 
 The user config at `~/.wuu/config.json` (or `WUU_HOME/config.json`) is the
 trusted base. Normal startup filters project attempts to replace provider
-destinations, credential environment names, outside-workspace memory paths,
+destinations, credential environment names, outside-workspace instruction paths,
 model roles, or the permission mode. `wuu exec --config` and
 `--ignore-user-config` explicitly trust the selected project configuration and
 are intended for controlled automation.
@@ -109,7 +109,7 @@ native code.
 - Remote identity and enrolled-device data live in `~/.wuu/remote.json`; phone
   credentials use `~/.wuu/phone.json`. These files are also owner-only and
   should be backed up and shared as secrets.
-- Sessions, logs, tool results, memory, and workspace state live under
+- Sessions, logs, tool results, plugin-owned memory, and workspace state live under
   `~/.wuu`. They can contain source code and conversation content even when
   common credential patterns have been redacted.
 

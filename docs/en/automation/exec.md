@@ -205,7 +205,7 @@ resolved from `--workdir` when it is set, otherwise from the current directory.
 `--ignore-user-config` skips the user config and explicitly trusts the first
 project config (`.wuu.json`, then `wuu.json`) plus its project settings layers.
 Both options are intended for controlled automation: a trusted file may choose
-provider endpoints, credential environment variables, memory paths, hooks, and
+provider endpoints, credential environment variables, instruction paths, hooks, and
 MCP servers. `--env KEY=VALUE` is repeatable and applies only to the current
 run. `--max-turns` caps the
 model/tool loop for the current user turn.
@@ -221,16 +221,15 @@ deep-merges project sources in this order: `.wuu.json` (or `wuu.json`),
 `.wuu/settings.json`, and `.wuu/settings.local.json`. Objects merge recursively;
 scalars and arrays replace.
 
-Normal startup ignores `default_provider`, `providers`, `memory`,
+Normal startup ignores `default_provider`, `providers`, `instructions` (and the
+legacy `memory` alias for instruction discovery),
 `agent.model_roles`, `agent.model_aliases`, and `agent.permission_mode` from
 every project source, with a stderr warning. Those settings stay user-owned
 because they control where credentials and model context are sent, which stable
 model routes agents can select, which files outside the workspace become model
-context, and how much local authority the agent receives. This
-does not disable Wuu's global memory: user-configured memory under `~/.wuu` or
-`WUU_HOME` remains readable and writable. It only stops the repository from
-redirecting that discovery to arbitrary paths. Set `WUU_DEBUG` to log which
-safe project layers were applied.
+context, and how much local authority the agent receives. Memory is supplied by
+the Memory plugin and is not loaded from core configuration. Set `WUU_DEBUG` to
+log which safe project layers were applied.
 
 After layering, `wuu exec` also reads a Claude Code project-level
 `<workdir>/.mcp.json` if present and merges its **approved** servers into

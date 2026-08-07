@@ -154,7 +154,7 @@ Use `wuu session archive` to hide a session from normal lists and
   does not mean the model runs locally.
 - API keys should come from the desktop provider settings or environment
   variables. Do not commit keys to a repository.
-- Normal startup keeps provider endpoints, credentials, memory paths, and
+- Normal startup keeps provider endpoints, credentials, instruction paths, and
   permission mode under user control; project config cannot silently replace
   them.
 - User config, sessions, logs, and other state live under `~/.wuu` by default.

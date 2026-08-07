@@ -1,6 +1,6 @@
 # Wuu base system prompt design
 
-This document explains the built-in base prompt in `prompts/system.md`. The base prompt is only the first section of the full runtime prompt; `internal/runtime/session.go` still appends harness adapter, tool surface, user custom prompt, memory, skills, and workflows after it.
+This document explains the built-in base prompt in `prompts/system.md`. The base prompt is only the first section of the full runtime prompt; the runtime still appends the harness adapter, tool surface, user custom prompt, instructions, and skills, while plugins contribute optional product prompts.
 
 ## Principle
 
@@ -28,6 +28,6 @@ Generic guidance belongs in the base prompt only when evaluation shows a durable
 
 ## Runtime-generated context
 
-`internal/runtime/session.go` appends the active tool surface, deferred-tool catalog, environment, user instructions, memory, and skills. Plugins append their own generation-stable prompt sections. These values are session- or profile-specific and must not be copied into the stable base prompt.
+`internal/runtime/session.go` appends the active tool surface, deferred-tool catalog, environment, user instructions, and skills. Plugins append their own generation-stable prompt sections and may apply request-time transforms for dynamic settings. These values are session- or profile-specific and must not be copied into the stable base prompt.
 
 Tool manuals, background-process rules, patch syntax, authority failures, and boundary recovery belong to their tool descriptions or results. Removing them from the base prompt does not remove those contracts from the model's active context.
