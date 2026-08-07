@@ -47,15 +47,14 @@ export function activate(api) {
       .manga-shell ::-webkit-scrollbar { width: 10px; height: 10px; }
       .manga-shell ::-webkit-scrollbar-track { background: var(--manga-paper-deep); border-left: 1px solid var(--manga-ink); }
       .manga-shell ::-webkit-scrollbar-thumb { background: var(--manga-ink); border: 2px solid var(--manga-paper-deep); }
-      .manga-shell [role="dialog"],
-      .manga-shell [role="menu"],
-      .manga-shell [role="listbox"] {
+      body:has(.manga-shell) [role="dialog"],
+      body:has(.manga-shell) [role="menu"],
+      body:has(.manga-shell) [role="listbox"] {
         border: 2px solid var(--manga-ink) !important;
         border-radius: 3px !important;
         box-shadow: 6px 6px 0 var(--manga-ink) !important;
       }
       body:has(.manga-shell) [data-wuu-component="dialog"],
-      body:has(.manga-shell) [data-wuu-component="menu"],
       body:has(.manga-shell) [data-wuu-layer="popover"],
       body:has(.manga-shell) [data-wuu-layer="listbox"] {
         border: 2px solid var(--manga-ink) !important;
