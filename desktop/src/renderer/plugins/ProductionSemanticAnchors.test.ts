@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const RENDERER_ROOT = resolve(process.cwd(), "src/renderer");
+const SHARED_ROOT = resolve(process.cwd(), "src/shared");
 
 /**
  * Published semantic anchors for plugin CSS snippets and supplemental
@@ -131,6 +132,24 @@ describe("production semantic anchors", () => {
       "--wuu-message-user-shadow",
     ]) {
       expect(themeContract).toContain(`"name": "${token}"`);
+    }
+  });
+
+  it("keeps the coarse plugin UI Kit anchors stable", () => {
+    const source = readFileSync(resolve(SHARED_ROOT, "workbench.ts"), "utf8");
+    for (const anchor of [
+      "plugin-ui-page",
+      "plugin-ui-panel",
+      "plugin-ui-card",
+      "plugin-ui-section",
+      "plugin-ui-stack",
+      "plugin-ui-row",
+      "plugin-ui-button",
+      "plugin-ui-field",
+      "plugin-ui-input",
+      "plugin-ui-empty-state",
+    ]) {
+      expect(source, `${anchor} UI Kit anchor`).toContain(`\"${anchor}\"`);
     }
   });
 

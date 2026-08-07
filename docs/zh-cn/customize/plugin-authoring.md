@@ -241,6 +241,11 @@ export async function activate(api) {
   `registerViewType` 注册的 View。选中、关闭、持久化和溢出由 Wuu 管理。普通
   `contributes.settings` 会自动获得宿主渲染的设置页，只有标准 schema 表达不了的内容
   才使用自定义设置 View。
+- `api.ui`：宿主提供的小型 UI Kit，包括 `Page`、`Panel`、`Card`、`Section`、
+  `Stack`、`Row`、`Button`、`TextInput` 和 `EmptyState`。普通插件页面优先使用这些组件，
+  因而会自动继承当前外观插件的颜色、字体、边框、圆角、阴影和密度。它不是页面 DSL：
+  复杂 View 仍可使用任意 React，画布、终端和专用预览可以保留自己的主题边界；但插件不应
+  覆盖 UI Kit 的内部 class，也不应重新接管宿主的页面边距和公共控件节奏。
 - `registerPresenter`：替换具体产品概念而不是宽泛区域。目标包括
   `conversation.item`、`conversation.process`、`conversation.tool-activity`、
   `conversation.composer`、`header.conversation`、`header.workspace`、
@@ -270,6 +275,10 @@ snippets 而不是新增主题 Token：`app-shell`、`sidebar`、`conversation-p
 响应式收纳和两种布局语义仍由宿主负责。插件应把直接子按钮作为同一控件族统一处理，
 不按 copy/like/edit 动作建立私有样式。user query 的实际气泡表面另有
 `message-bubble` + `user` 变体，并由 `--wuu-message-user-*` Token 控制视觉属性。
+插件 UI Kit 公开 `plugin-ui-page`、`plugin-ui-panel`、`plugin-ui-card`、
+`plugin-ui-section`、`plugin-ui-stack`、`plugin-ui-row`、`plugin-ui-button`、
+`plugin-ui-field`、`plugin-ui-input` 和 `plugin-ui-empty-state`；外观插件应优先改公开
+Token，确需结构化装饰时再按这些粗粒度语义处理。
 这份清单由 `desktop/src/renderer/plugins/ProductionSemanticAnchors.test.ts` 强制约束；
 锚点改名属于破坏性变更。
 

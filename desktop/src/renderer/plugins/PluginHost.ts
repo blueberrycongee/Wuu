@@ -3,6 +3,7 @@ import type * as React from "react";
 import type {
   CSSSnippet,
   LayoutContribution,
+  PluginUIKit,
   PresentationMode,
   PresentationTarget,
   PresenterDefinition,
@@ -14,7 +15,7 @@ import type {
   ViewPlacementContribution,
   ViewTypeDefinition,
 } from "../../shared/workbench";
-import { VIEW_PLACEMENT_REGIONS } from "../../shared/workbench";
+import { createPluginUIKit, VIEW_PLACEMENT_REGIONS } from "../../shared/workbench";
 import {
   isPublicSyntaxTokenName,
   isPublicThemeTokenName,
@@ -119,6 +120,8 @@ export interface PluginLocaleRegistration {
 export interface PluginGenerationApi {
   /** The React runtime owned by the Wuu renderer. Plugin bundles should use this object. */
   readonly react: typeof React;
+  /** Host-owned primitives that inherit the active Wuu theme and layout rhythm. */
+  readonly ui: PluginUIKit;
   readonly pluginId: string;
   readonly generation: string;
   invokeRuntime(method: string, input?: unknown): Promise<unknown>;
@@ -391,6 +394,7 @@ export class PluginGenerationSupersededError extends Error {
  */
 export class PluginHost {
   readonly react: typeof React;
+  readonly ui: PluginUIKit;
 
   private readonly styleContainer?: PluginHostOptions["styleContainer"];
   private readonly runtimeInvoker?: PluginHostOptions["invokeRuntime"];
@@ -420,6 +424,7 @@ export class PluginHost {
 
   constructor(options: PluginHostOptions) {
     this.react = options.react;
+    this.ui = createPluginUIKit(options.react);
     this.styleContainer = options.styleContainer;
     this.runtimeInvoker = options.invokeRuntime;
   }
@@ -703,6 +708,7 @@ export class PluginHost {
 
     return Object.freeze({
       react: this.react,
+      ui: this.ui,
       pluginId: state.pluginId,
       generation: state.generation,
       invokeRuntime: async (method: string, input?: unknown) => {

@@ -17,7 +17,6 @@ for (const registration of [
   "registerViewType",
   "registerViewPlacement",
   "registerThemeTokens",
-  "registerCSSSnippet",
   "registerCommand",
   "registerStatusItem",
   "registerLocale",
@@ -78,12 +77,22 @@ const api = {
   pluginId: manifest.id,
   generation: "acceptance-generation",
   react: { Fragment: Symbol("Fragment"), createElement },
+  ui: {
+    Page: "section",
+    Panel: "section",
+    Card: "article",
+    Section: "section",
+    Stack: "div",
+    Row: "div",
+    Button: "button",
+    TextInput: "input",
+    EmptyState: "section",
+  },
   registerViewType: register("views"),
   registerViewPlacement: register("viewPlacements"),
   // Kept in the stub so old bundles can still be exercised by this host.
   registerLayoutContribution: register("layouts"),
   registerThemeTokens: register("themes"),
-  registerCSSSnippet: register("css"),
   registerCommand: register("commands"),
   registerStatusItem: register("status"),
   registerLocale: register("locales"),
@@ -111,7 +120,6 @@ for (const [kind, expected] of Object.entries({
   views: 1,
   viewPlacements: 1,
   themes: 1,
-  css: 1,
   commands: 1,
   status: 1,
   locales: 2,
@@ -254,8 +262,18 @@ view.props.ref(root);
 await new Promise((resolve) => setTimeout(resolve, 0));
 assert.equal(nodes.get("[data-counter-value]").textContent, "4");
 assert.equal(nodes.get("[data-counter-label]").textContent, "Verified");
-assert.equal(root.dataset.density, "compact");
-const button = view.children.find((child) => child?.type === "button");
+assert.equal(root.dataset.wuuDensity, "compact");
+const findElement = (node, predicate) => {
+  if (!node || typeof node !== "object") return undefined;
+  if (predicate(node)) return node;
+  for (const child of node.children ?? []) {
+    const found = findElement(child, predicate);
+    if (found) return found;
+  }
+  return undefined;
+};
+const button = findElement(view, (node) => node.props?.["data-counter-button"] === "");
+assert.ok(button);
 await button.props.onClick();
 assert.deepEqual(storedWrites, [["counter", "7"]]);
 assert.equal(nodes.get("[data-counter-value]").textContent, "7");

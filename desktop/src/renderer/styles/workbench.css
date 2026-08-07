@@ -70,6 +70,200 @@
   overflow: auto;
 }
 
+.plugin-view-content {
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow: auto;
+  color: var(--wuu-color-text, var(--ink));
+  background: var(--wuu-color-canvas, var(--paper));
+}
+
+/* Public Plugin UI Kit. The host owns layout rhythm and interaction states;
+ * appearance plugins style the coarse data-wuu-component boundaries or the
+ * public tokens instead of chasing each feature plugin's private DOM. */
+.plugin-ui-page {
+  width: min(100%, var(--wuu-content-max-width, 1088px));
+  min-width: 0;
+  margin: 0 auto;
+  padding: calc(var(--wuu-space-unit, 4px) * 6 * var(--wuu-space-density, 1));
+  color: var(--wuu-color-text, var(--ink));
+  font-family: var(--wuu-font-family-ui, inherit);
+  font-size: var(--wuu-font-size-body, var(--font-body));
+  line-height: var(--wuu-line-height-body, var(--line-body));
+}
+
+.plugin-ui-page[data-wuu-density="compact"] {
+  padding: calc(var(--wuu-space-unit, 4px) * 3 * var(--wuu-space-density, 1));
+}
+
+.plugin-ui-panel,
+.plugin-ui-card {
+  min-width: 0;
+  border: var(--wuu-border-subtle, 1px solid var(--wuu-color-border-subtle, var(--hairline)));
+  border-radius: var(--wuu-radius-panel, var(--radius-md));
+  background: var(--wuu-color-surface, var(--surface-1));
+}
+
+.plugin-ui-panel {
+  padding: calc(var(--wuu-space-unit, 4px) * 5 * var(--wuu-space-density, 1));
+}
+
+.plugin-ui-card {
+  padding: calc(var(--wuu-space-unit, 4px) * 4 * var(--wuu-space-density, 1));
+  box-shadow: var(--wuu-elevation-panel, none);
+}
+
+.plugin-ui-section {
+  display: grid;
+  min-width: 0;
+  gap: calc(var(--wuu-space-unit, 4px) * 3 * var(--wuu-space-density, 1));
+}
+
+.plugin-ui-section-header {
+  display: grid;
+  gap: calc(var(--wuu-space-unit, 4px) * var(--wuu-space-density, 1));
+}
+
+.plugin-ui-section-header h2,
+.plugin-ui-section-header p,
+.plugin-ui-empty-state p {
+  margin: 0;
+}
+
+.plugin-ui-section-header h2 {
+  color: var(--wuu-color-text, var(--ink));
+  font-size: var(--font-heading);
+  font-weight: var(--weight-semibold);
+  line-height: var(--line-ui);
+}
+
+.plugin-ui-section-header p,
+.plugin-ui-field-description,
+.plugin-ui-empty-state p {
+  color: var(--wuu-color-text-muted, var(--ink-soft));
+}
+
+.plugin-ui-stack {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: calc(var(--wuu-space-unit, 4px) * 3 * var(--wuu-space-density, 1));
+}
+
+.plugin-ui-stack[data-wuu-gap="small"] {
+  gap: calc(var(--wuu-space-unit, 4px) * 2 * var(--wuu-space-density, 1));
+}
+
+.plugin-ui-stack[data-wuu-gap="large"] {
+  gap: calc(var(--wuu-space-unit, 4px) * 6 * var(--wuu-space-density, 1));
+}
+
+.plugin-ui-row {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: calc(var(--wuu-space-unit, 4px) * 2 * var(--wuu-space-density, 1));
+}
+
+.plugin-ui-button {
+  min-height: 32px;
+  border: var(--wuu-border-subtle, 1px solid var(--wuu-color-border-subtle, var(--hairline)));
+  border-radius: var(--wuu-radius-control, var(--radius-sm));
+  padding: 0 calc(var(--wuu-space-unit, 4px) * 3 * var(--wuu-space-density, 1));
+  color: var(--wuu-color-text, var(--ink));
+  background: var(--wuu-color-surface-muted, var(--surface-2));
+  cursor: pointer;
+  font: inherit;
+  font-weight: var(--weight-medium);
+  transition:
+    background-color var(--wuu-motion-duration-fast, var(--motion-fast)) var(--wuu-motion-easing-standard, var(--ease-out)),
+    border-color var(--wuu-motion-duration-fast, var(--motion-fast)) var(--wuu-motion-easing-standard, var(--ease-out));
+}
+
+.plugin-ui-button[data-wuu-variant="primary"] {
+  border-color: var(--wuu-color-accent, var(--wuu-accent));
+  color: var(--wuu-color-on-accent, var(--ink-on-accent));
+  background: var(--wuu-color-accent, var(--wuu-accent));
+}
+
+.plugin-ui-button[data-wuu-variant="ghost"] {
+  border-color: transparent;
+  background: transparent;
+}
+
+.plugin-ui-button[data-wuu-variant="danger"] {
+  border-color: var(--wuu-color-danger, var(--danger));
+  color: var(--wuu-color-danger, var(--danger));
+  background: transparent;
+}
+
+.plugin-ui-button:not(:disabled):hover {
+  border-color: var(--wuu-color-border-strong, var(--hairline-strong));
+  background: var(--wuu-color-surface-elevated, var(--surface-3));
+}
+
+.plugin-ui-button[data-wuu-variant="primary"]:not(:disabled):hover {
+  border-color: var(--wuu-color-accent-pressed, var(--wuu-accent-press));
+  background: var(--wuu-color-accent-pressed, var(--wuu-accent-press));
+}
+
+.plugin-ui-button:disabled {
+  cursor: default;
+  opacity: 0.48;
+}
+
+.plugin-ui-button:focus-visible,
+.plugin-ui-input:focus-visible {
+  outline: 2px solid var(--wuu-color-focus, var(--focus-ring));
+  outline-offset: 2px;
+}
+
+.plugin-ui-field {
+  display: grid;
+  min-width: 0;
+  gap: calc(var(--wuu-space-unit, 4px) * var(--wuu-space-density, 1));
+}
+
+.plugin-ui-field-label {
+  color: var(--wuu-color-text, var(--ink));
+  font-weight: var(--weight-medium);
+}
+
+.plugin-ui-field-description {
+  font-size: var(--font-sm);
+}
+
+.plugin-ui-input {
+  width: 100%;
+  min-width: 0;
+  height: 34px;
+  border: var(--wuu-border-subtle, 1px solid var(--wuu-color-border-subtle, var(--hairline)));
+  border-radius: var(--wuu-radius-control, var(--radius-sm));
+  padding: 0 calc(var(--wuu-space-unit, 4px) * 2.5 * var(--wuu-space-density, 1));
+  color: var(--wuu-color-text, var(--ink));
+  background: var(--wuu-color-canvas, var(--paper));
+  font: inherit;
+}
+
+.plugin-ui-empty-state {
+  display: grid;
+  min-height: 180px;
+  place-content: center;
+  justify-items: center;
+  gap: calc(var(--wuu-space-unit, 4px) * 2 * var(--wuu-space-density, 1));
+  padding: calc(var(--wuu-space-unit, 4px) * 6 * var(--wuu-space-density, 1));
+  text-align: center;
+}
+
+.plugin-ui-empty-state-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: calc(var(--wuu-space-unit, 4px) * 2 * var(--wuu-space-density, 1));
+}
+
 .plugin-workbench-error {
   display: grid;
   place-content: center;

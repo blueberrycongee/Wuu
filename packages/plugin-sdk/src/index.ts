@@ -61,6 +61,59 @@ export interface ViewHostAPI {
   closeView(): Promise<void>;
 }
 
+export interface PluginUIContainerProps {
+  readonly children?: unknown;
+  readonly className?: string;
+  readonly [property: string]: unknown;
+}
+
+export interface PluginUISectionProps extends PluginUIContainerProps {
+  readonly title?: unknown;
+  readonly description?: unknown;
+}
+
+export interface PluginUIStackProps extends PluginUIContainerProps {
+  readonly gap?: "small" | "medium" | "large";
+}
+
+export interface PluginUIButtonProps extends PluginUIContainerProps {
+  readonly variant?: "primary" | "secondary" | "ghost" | "danger";
+  readonly type?: "button" | "submit" | "reset";
+  readonly disabled?: boolean;
+  readonly onClick?: (event: unknown) => void;
+}
+
+export interface PluginUITextInputProps extends PluginUIContainerProps {
+  readonly label: unknown;
+  readonly description?: unknown;
+  readonly value?: string | number;
+  readonly defaultValue?: string | number;
+  readonly placeholder?: string;
+  readonly disabled?: boolean;
+  readonly onChange?: (event: unknown) => void;
+}
+
+export interface PluginUIEmptyStateProps extends PluginUIContainerProps {
+  readonly title: unknown;
+  readonly description?: unknown;
+  readonly actions?: unknown;
+}
+
+export type HostUIComponent<Props> = (props: Props) => unknown;
+
+/** Stable host-owned primitives for plugin views. */
+export interface PluginUIKit {
+  readonly Page: HostUIComponent<PluginUIContainerProps>;
+  readonly Panel: HostUIComponent<PluginUIContainerProps>;
+  readonly Card: HostUIComponent<PluginUIContainerProps>;
+  readonly Section: HostUIComponent<PluginUISectionProps>;
+  readonly Stack: HostUIComponent<PluginUIStackProps>;
+  readonly Row: HostUIComponent<PluginUIContainerProps>;
+  readonly Button: HostUIComponent<PluginUIButtonProps>;
+  readonly TextInput: HostUIComponent<PluginUITextInputProps>;
+  readonly EmptyState: HostUIComponent<PluginUIEmptyStateProps>;
+}
+
 export interface OpenViewOptions {
   pane?: ViewPane;
   context?: Readonly<Record<string, unknown>>;
@@ -220,6 +273,8 @@ export interface LocaleDefinition {
 export interface PluginGenerationApi {
   /** Host-owned React runtime. Executable desktop bundles must use this instance. */
   readonly react: HostReact;
+  /** Host-owned primitives that inherit the active Wuu theme and spacing rhythm. */
+  readonly ui: PluginUIKit;
   readonly pluginId: string;
   readonly generation: string;
   /** Invoke one method owned by this plugin's active runtime generation. */

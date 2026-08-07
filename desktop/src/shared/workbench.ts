@@ -94,6 +94,150 @@ export interface ViewHostAPI {
   closeView(): Promise<void>;
 }
 
+// ---------------------------------------------------------------------------
+// Plugin UI Kit
+// ---------------------------------------------------------------------------
+
+export interface PluginUIContainerProps extends React.HTMLAttributes<HTMLElement> {
+  children?: React.ReactNode;
+}
+
+export interface PluginUISectionProps extends Omit<PluginUIContainerProps, "title"> {
+  title?: React.ReactNode;
+  description?: React.ReactNode;
+}
+
+export interface PluginUIStackProps extends React.HTMLAttributes<HTMLDivElement> {
+  children?: React.ReactNode;
+  gap?: "small" | "medium" | "large";
+}
+
+export interface PluginUIButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+  variant?: "primary" | "secondary" | "ghost" | "danger";
+}
+
+export interface PluginUITextInputProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, "children"> {
+  label: React.ReactNode;
+  description?: React.ReactNode;
+}
+
+export interface PluginUIEmptyStateProps extends Omit<React.HTMLAttributes<HTMLElement>, "title"> {
+  title: React.ReactNode;
+  description?: React.ReactNode;
+  actions?: React.ReactNode;
+}
+
+/**
+ * Small host-owned component set for plugin views. These components own the
+ * common visual rhythm while plugins retain full freedom inside their view.
+ */
+export interface PluginUIKit {
+  readonly Page: React.ComponentType<PluginUIContainerProps>;
+  readonly Panel: React.ComponentType<PluginUIContainerProps>;
+  readonly Card: React.ComponentType<PluginUIContainerProps>;
+  readonly Section: React.ComponentType<PluginUISectionProps>;
+  readonly Stack: React.ComponentType<PluginUIStackProps>;
+  readonly Row: React.ComponentType<PluginUIContainerProps>;
+  readonly Button: React.ComponentType<PluginUIButtonProps>;
+  readonly TextInput: React.ComponentType<PluginUITextInputProps>;
+  readonly EmptyState: React.ComponentType<PluginUIEmptyStateProps>;
+}
+
+export function createPluginUIKit(react: typeof React): PluginUIKit {
+  const container = (
+    tag: "section" | "article" | "div",
+    name: string,
+  ): React.ComponentType<PluginUIContainerProps> => function PluginUIContainer({
+    className,
+    children,
+    ...props
+  }: PluginUIContainerProps): React.ReactNode {
+    return react.createElement(tag, {
+      ...props,
+      className: joinPluginUIClass(name, className),
+      "data-wuu-component": name,
+    }, children);
+  };
+
+  const Page = container("section", "plugin-ui-page");
+  const Panel = container("section", "plugin-ui-panel");
+  const Card = container("article", "plugin-ui-card");
+  const Row = container("div", "plugin-ui-row");
+
+  function Section({
+    className,
+    title,
+    description,
+    children,
+    ...props
+  }: PluginUISectionProps): React.ReactNode {
+    return react.createElement("section", {
+      ...props,
+      className: joinPluginUIClass("plugin-ui-section", className),
+      "data-wuu-component": "plugin-ui-section",
+    },
+    title !== undefined || description !== undefined
+      ? react.createElement("header", { className: "plugin-ui-section-header" },
+        title !== undefined ? react.createElement("h2", null, title) : null,
+        description !== undefined ? react.createElement("p", null, description) : null,
+      )
+      : null,
+    children);
+  }
+
+  function Stack({ className, gap = "medium", children, ...props }: PluginUIStackProps): React.ReactNode {
+    return react.createElement("div", {
+      ...props,
+      className: joinPluginUIClass("plugin-ui-stack", className),
+      "data-wuu-component": "plugin-ui-stack",
+      "data-wuu-gap": gap,
+    }, children);
+  }
+
+  function Button({ className, variant = "secondary", type = "button", children, ...props }: PluginUIButtonProps): React.ReactNode {
+    return react.createElement("button", {
+      ...props,
+      type,
+      className: joinPluginUIClass("plugin-ui-button", className),
+      "data-wuu-component": "plugin-ui-button",
+      "data-wuu-variant": variant,
+    }, children);
+  }
+
+  function TextInput({ className, label, description, ...props }: PluginUITextInputProps): React.ReactNode {
+    return react.createElement("label", {
+      className: "plugin-ui-field",
+      "data-wuu-component": "plugin-ui-field",
+    },
+    react.createElement("span", { className: "plugin-ui-field-label" }, label),
+    description !== undefined
+      ? react.createElement("span", { className: "plugin-ui-field-description" }, description)
+      : null,
+    react.createElement("input", {
+      ...props,
+      className: joinPluginUIClass("plugin-ui-input", className),
+      "data-wuu-component": "plugin-ui-input",
+    }));
+  }
+
+  function EmptyState({ className, title, description, actions, ...props }: PluginUIEmptyStateProps): React.ReactNode {
+    return react.createElement("section", {
+      ...props,
+      className: joinPluginUIClass("plugin-ui-empty-state", className),
+      "data-wuu-component": "plugin-ui-empty-state",
+    },
+    react.createElement("strong", null, title),
+    description !== undefined ? react.createElement("p", null, description) : null,
+    actions !== undefined ? react.createElement("div", { className: "plugin-ui-empty-state-actions" }, actions) : null);
+  }
+
+  return Object.freeze({ Page, Panel, Card, Section, Stack, Row, Button, TextInput, EmptyState });
+}
+
+function joinPluginUIClass(base: string, className?: string): string {
+  return className ? `${base} ${className}` : base;
+}
+
 export interface OpenViewOptions {
   pane?: ViewPane;
   context?: Readonly<Record<string, unknown>>;

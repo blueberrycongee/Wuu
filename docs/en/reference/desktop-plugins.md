@@ -142,6 +142,34 @@ entry must reference a View registered by the same plugin. Standard `contributes
 automatically receive a host-rendered Settings page; use a custom settings View only for content
 that cannot be expressed by the standard schema.
 
+## Host-owned UI Kit
+
+Custom Views receive `api.ui`, a deliberately small set of host-owned React components:
+`Page`, `Panel`, `Card`, `Section`, `Stack`, `Row`, `Button`, `TextInput`, and `EmptyState`.
+They preserve Wuu's spacing and interaction behavior while inheriting the active appearance theme.
+
+```js
+const { Button, Card, Page, Section, Stack } = api.ui;
+
+function Dashboard() {
+  return api.react.createElement(Page, null,
+    api.react.createElement(Section, { title: "Dashboard" },
+      api.react.createElement(Card, null,
+        api.react.createElement(Stack, null,
+          "Ready",
+          api.react.createElement(Button, { variant: "primary" }, "Run"),
+        ),
+      ),
+    ),
+  );
+}
+```
+
+Use these components for ordinary product UI so appearance plugins also affect Views added by
+other plugins. They are not a page DSL: complex Views may still render arbitrary React, and
+specialized canvases, terminals, and previews remain explicit theme boundaries. The UI Kit owns
+common layout rhythm; plugins should not override its internal class names.
+
 ## Semantic presenters
 
 Use `registerPresenter` when a plugin needs to replace a product concept rather than a broad layout
@@ -221,6 +249,11 @@ overflow, and the two placement semantics. Style its direct buttons as one contr
 of targeting individual action identities. The user-query surface is separately exposed as
 `message-bubble` with variant `user`; its visual properties use the matching
 `--wuu-message-user-*` tokens.
+
+The UI Kit exposes coarse anchors for `plugin-ui-page`, `plugin-ui-panel`, `plugin-ui-card`,
+`plugin-ui-section`, `plugin-ui-stack`, `plugin-ui-row`, `plugin-ui-button`, `plugin-ui-field`,
+`plugin-ui-input`, and `plugin-ui-empty-state`. Appearance plugins should prefer public tokens and
+use these boundaries only when a structural treatment is necessary.
 
 See the installable [`examples/plugins/deep-ui`](../../../examples/plugins/deep-ui/) package for a
 theme and wrappers covering all current surfaces.

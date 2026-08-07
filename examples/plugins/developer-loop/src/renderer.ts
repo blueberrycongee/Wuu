@@ -180,6 +180,7 @@ function registerAcceptancePresenters(api: PluginGenerationApi): void {
 
 function acceptanceView(api: PluginGenerationApi, props: Readonly<Record<string, unknown>>): unknown {
   const host = (props as unknown as { host: ViewHostAPI }).host;
+  const { Button, Card, Page, Row, Section, Stack } = api.ui;
   activeViewHost = host;
   let count = 0;
   let settings: AcceptanceSettings = {
@@ -196,7 +197,7 @@ function acceptanceView(api: PluginGenerationApi, props: Readonly<Record<string,
     if (value) value.textContent = String(count);
     if (label) label.textContent = settings.label;
     if (button) button.disabled = !settings.enabled;
-    if (root.dataset) root.dataset.density = settings.density;
+    if (root.dataset) root.dataset.wuuDensity = settings.density;
   };
 
   const restore = async (root: ViewElement): Promise<void> => {
@@ -220,30 +221,48 @@ function acceptanceView(api: PluginGenerationApi, props: Readonly<Record<string,
 
   let root: ViewElement | null = null;
   return api.react.createElement(
-    "section",
+    Page,
     {
-      className: "developer-loop-card",
       ref: (node: ViewElement | null) => {
         root = node;
         if (node) void restore(node);
       },
     },
-    api.react.createElement("p", { className: "developer-loop-eyebrow" }, "SDK v2 acceptance"),
-    api.react.createElement("h2", { "data-counter-label": "" }, settings.label),
-    api.react.createElement("strong", { "data-counter-value": "" }, "0"),
     api.react.createElement(
-      "button",
-      {
-        type: "button",
-        "data-counter-button": "",
-        onClick: async () => {
-          if (!settings.enabled) return;
-          count += settings.step;
-          await host.setStorage(STORAGE_KEY, String(count));
-          if (root) update(root);
-        },
+      Stack,
+      { gap: "large" },
+      api.react.createElement(Section, {
+        title: api.react.createElement("span", { "data-counter-label": "" }, settings.label),
+        description: "The same host-owned view can appear in navigation, Settings, or the right panel.",
       },
-      "Increment and save",
+      api.react.createElement(
+        Card,
+        null,
+        api.react.createElement(
+          Stack,
+          null,
+          api.react.createElement("span", null, "SDK v2 acceptance"),
+          api.react.createElement("strong", { "data-counter-value": "" }, "0"),
+          api.react.createElement(
+            Row,
+            null,
+            api.react.createElement(
+              Button,
+              {
+                variant: "primary",
+                "data-counter-button": "",
+                onClick: async () => {
+                  if (!settings.enabled) return;
+                  count += settings.step;
+                  await host.setStorage(STORAGE_KEY, String(count));
+                  if (root) update(root);
+                },
+              },
+              "Increment and save",
+            ),
+          ),
+        ),
+      )),
     ),
   );
 }
@@ -299,21 +318,6 @@ export function activate(api: PluginGenerationApi): void {
       "--wuu-syntax-string": "#86efac",
       "--wuu-syntax-comment": "#9ca3af",
     },
-  });
-  api.registerCSSSnippet({
-    id: "acceptance-counter-card",
-    priority: 10,
-    css: `.developer-loop-card {
-  max-width: var(--wuu-content-max-width, 72rem);
-  padding: calc(var(--wuu-space-unit, 4px) * 4);
-  color: var(--wuu-color-text, inherit);
-  border: var(--wuu-border-subtle, 1px solid currentColor);
-  border-radius: var(--wuu-radius-control, 8px);
-  box-shadow: var(--wuu-elevation-panel, none);
-  font-family: var(--wuu-font-family-ui, sans-serif);
-}
-.developer-loop-card[data-density="compact"] { padding: calc(var(--wuu-space-unit, 4px) * 2); }
-.developer-loop-eyebrow { color: var(--wuu-ink-soft, currentColor); }`,
   });
   api.registerCommand({
     id: COMMAND_ID,
