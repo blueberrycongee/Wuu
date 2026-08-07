@@ -461,8 +461,6 @@ func TestQueuedSpawnFailureAcknowledgesBeforeReleasingExecutionLease(t *testing.
 		t.Fatal("contender registered a worker for an already-settled failed launch")
 	}
 }
-
-
 func TestQueuedSpawnDefersToDurableTerminalEvidence(t *testing.T) {
 	rootDir := t.TempDir()
 	harnessDir := filepath.Join(rootDir, "harness")

@@ -35,7 +35,7 @@ func TestGeneralPurposePromptIsProductNeutral(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, product := range []string{"agent_report", "helpme", "spawn_agent", "subagent", "goal"} {
+	for _, product := range []string{"agent_report", "required_report", "spawn_agent", "subagent", "goal"} {
 		if strings.Contains(wt.SystemPrompt, product) {
 			t.Fatalf("core general-purpose prompt must not carry product term %q:\n%s", product, wt.SystemPrompt)
 		}
@@ -66,16 +66,16 @@ func TestBuiltinWorkerTypes_ExactRoster(t *testing.T) {
 	}
 }
 
-func TestHelpMeRecoveryWorkerTypeIsInternal(t *testing.T) {
-	if _, err := LookupWorkerType(HelpMeRecoveryWorkerType); err != nil {
-		t.Fatalf("internal lookup must keep HelpMe recovery available: %v", err)
+func TestRequiresReportWorkerTypeIsInternal(t *testing.T) {
+	if _, err := LookupWorkerType(requiresReportWorkerType); err != nil {
+		t.Fatalf("internal lookup must keep requires-report worker available: %v", err)
 	}
-	if _, err := LookupPublicWorkerType(HelpMeRecoveryWorkerType); err == nil {
-		t.Fatal("public lookup must reject HelpMe recovery")
+	if _, err := LookupPublicWorkerType(requiresReportWorkerType); err == nil {
+		t.Fatal("public lookup must reject requires-report worker")
 	}
 	for _, name := range AvailableWorkerTypeNames() {
-		if name == HelpMeRecoveryWorkerType {
-			t.Fatalf("public roster exposed internal HelpMe recovery: %v", AvailableWorkerTypeNames())
+		if name == requiresReportWorkerType {
+			t.Fatalf("public roster exposed internal requires-report worker: %v", AvailableWorkerTypeNames())
 		}
 	}
 }
@@ -99,7 +99,7 @@ func TestFilterToolsForWorker_BlocksRecursiveAgentControls(t *testing.T) {
 	wt, _ := LookupWorkerType(DefaultSubagentType)
 	full := []string{
 		"read_file", "write_file", "edit_file", "bash",
-		"grep", "glob", "spawn_agent", "helpme", "send_message",
+		"grep", "glob", "spawn_agent", "send_message",
 		"close_agent", "agent_report",
 	}
 	filtered := FilterToolsForWorker(wt, full, false)
@@ -112,7 +112,7 @@ func TestFilterToolsForWorker_BlocksRecursiveAgentControls(t *testing.T) {
 			t.Errorf("general-purpose agent missing %s", expected)
 		}
 	}
-	for _, blocked := range []string{"spawn_agent", "helpme", "send_message", "close_agent"} {
+	for _, blocked := range []string{"spawn_agent", "send_message", "close_agent"} {
 		if allowed[blocked] {
 			t.Errorf("general-purpose agent should not receive recursive control tool %s", blocked)
 		}
@@ -142,12 +142,12 @@ func TestFilterToolsForWorker_DisallowedToolsRespected(t *testing.T) {
 	}
 }
 
-func TestFilterToolsForWorker_UltraUnlocksOrchestrationButNotHelpme(t *testing.T) {
+func TestFilterToolsForWorker_UltraUnlocksOrchestration(t *testing.T) {
 	wt, err := LookupWorkerType(DefaultSubagentType)
 	if err != nil {
 		t.Fatal(err)
 	}
-	full := []string{"read_file", "spawn_agent", "send_message", "close_agent", "helpme", "agent_report"}
+	full := []string{"read_file", "spawn_agent", "send_message", "close_agent", "agent_report"}
 	filtered := FilterToolsForWorker(wt, full, true)
 	allowed := map[string]bool{}
 	for _, name := range filtered {
@@ -157,9 +157,6 @@ func TestFilterToolsForWorker_UltraUnlocksOrchestrationButNotHelpme(t *testing.T
 		if !allowed[expected] {
 			t.Errorf("Ultra worker missing %s: %v", expected, filtered)
 		}
-	}
-	if allowed["helpme"] {
-		t.Errorf("Ultra worker must not receive helpme: %v", filtered)
 	}
 }
 

@@ -209,14 +209,14 @@ describe("isStateActiveThreadRunning with a background agent", () => {
 
 function handoffText(): string {
   return JSON.stringify({
-    author: "/root/helpme_recovery",
+    author: "/root/recovery_worker",
     recipient: "/root",
     content: `<subagent_notification>\n${JSON.stringify({
-      agent_path: "/root/helpme_recovery",
+      agent_path: "/root/recovery_worker",
       status: {
         type: "agent_result",
         agent_id: "worker-1",
-        task_name: "helpme_recovery",
+        task_name: "recovery_worker",
         status: "completed"
       }
     })}\n</subagent_notification>`,

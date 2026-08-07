@@ -41,16 +41,6 @@ func TestSubagentPluginCallsNeutralHostAcrossProcess(t *testing.T) {
 	if err != nil || services.got.Action != "send" || services.got.ActorID != "parent" || len(result.Result.Content) != 1 {
 		t.Fatalf("result=%+v request=%+v err=%v", result, services.got, err)
 	}
-	_, err = client.ExecuteTool(context.Background(), pluginhost.ToolExecuteParams{
-		ToolID: "helpme", ToolExecuteInput: pluginhost.ToolExecuteInput{ActorID: "parent", ActorPath: "/root", Arguments: json.RawMessage(`{"original_goal":"fix it","reason":"repeated failures","ask":"find the root cause","failed_attempts":[],"constraints":[],"evidence":[]}`)},
-	})
-	if err != nil || services.got.Action != "spawn" || services.got.ActorPath != "/root" {
-		t.Fatalf("helpme request=%+v err=%v", services.got, err)
-	}
-	var helpmeInput map[string]any
-	if err := json.Unmarshal(services.got.Input, &helpmeInput); err != nil || helpmeInput["type"] != "general-purpose" {
-		t.Fatalf("helpme input=%+v err=%v", helpmeInput, err)
-	}
 }
 
 type childSessionTestServices struct {

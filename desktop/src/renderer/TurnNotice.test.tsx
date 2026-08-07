@@ -189,23 +189,6 @@ describe("ContextCompactionNotice", () => {
     );
   });
 
-  it("labels HelpMe compaction as merged recovery result", async () => {
-    const host = mount(
-      <ContextCompactionNotice
-        status="completed"
-        reason="helpme"
-        text="✦ HelpMe recovered and compacted history: 42 → 2 messages (was ~90k tokens)"
-      />,
-    );
-
-    expect(host.querySelector(".turn-event-title")?.textContent).toBe(
-      "已合并求助结果",
-    );
-    expect(await hoverTooltipText(host.querySelector("aside"))).toContain(
-      "HelpMe 恢复结果",
-    );
-  });
-
   it("does not present failed proactive compaction as a successful compact", async () => {
     const failedCompactText =
       "Context compaction failed; continuing without compacting history.";

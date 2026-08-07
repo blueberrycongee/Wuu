@@ -70,9 +70,9 @@ describe("ChipGalleryPanel", () => {
     const host = mount({ open: true, onClose: () => {} });
 
     const entries = host.querySelectorAll(".chip-gallery-entry");
-    // 13 entries: missing reply + 4 context compaction
+    // 12 entries: missing reply + 3 context compaction
     // + 4 provider/network + 2 auth + 2 tool/internal.
-    expect(entries.length).toBe(13);
+    expect(entries.length).toBe(12);
 
     // Manual interruptions are intentionally silent and are not chip variants.
     expect(host.textContent).not.toContain("已停止");

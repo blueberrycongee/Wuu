@@ -566,12 +566,6 @@ func TestCompile_MainOnlyTools(t *testing.T) {
 	}
 	for _, tt := range cases {
 		mainSurface := DefaultCompiler{}.Compile(Resolve(tt.provider, tt.model), SurfaceMain)
-		if mainSurface.Tools["helpme"] != capability.CapabilityTaskSpawn {
-			t.Errorf("%s/%s main-agent direct helpme capability = %s, want %s", tt.provider, tt.model, mainSurface.Tools["helpme"], capability.CapabilityTaskSpawn)
-		}
-		if _, ok := mainSurface.DeferredTools["helpme"]; ok {
-			t.Errorf("%s/%s main-agent surface must not defer helpme", tt.provider, tt.model)
-		}
 		workerSurface := DefaultCompiler{}.Compile(Resolve(tt.provider, tt.model), SurfaceWorker)
 		for _, surface := range []capability.Surface{mainSurface, workerSurface} {
 			for _, tools := range []map[string]capability.Capability{surface.Tools, surface.DeferredTools, surface.HiddenTools} {
@@ -580,11 +574,8 @@ func TestCompile_MainOnlyTools(t *testing.T) {
 				}
 			}
 		}
-		if _, ok := workerSurface.DeferredTools["helpme"]; ok {
-			t.Errorf("%s/%s worker surface must NOT include helpme", tt.provider, tt.model)
-		}
 		// Workers are pure executors: no spawning, no subagent management.
-		for _, orchestration := range []string{"spawn_agent", "helpme", "send_message", "close_agent", "followup_task", "await_agents", "list_agents"} {
+		for _, orchestration := range []string{"spawn_agent", "send_message", "close_agent", "followup_task", "await_agents", "list_agents"} {
 			if _, ok := workerSurface.Tools[orchestration]; ok {
 				t.Errorf("%s/%s worker surface must NOT directly include %s", tt.provider, tt.model, orchestration)
 			}
@@ -672,7 +663,7 @@ func TestSurfaceKindWorkflowToolsAreHidden(t *testing.T) {
 			}
 		}
 
-		for _, tool := range []string{"spawn_agent", "helpme"} {
+		for _, tool := range []string{"spawn_agent"} {
 			if _, ok := worker.Tools[tool]; ok {
 				t.Errorf("%s/%s: worker surface must NOT expose %s", tt.provider, tt.model, tool)
 			}
@@ -707,9 +698,6 @@ func TestUltraWorkerSurfaceCombinesOrchestrationAndReportWithoutHelpme(t *testin
 		if _, ok := surface.DeferredTools[name]; !ok {
 			t.Errorf("Ultra worker surface missing deferred tool %s", name)
 		}
-	}
-	if _, ok := surface.Tools["helpme"]; ok {
-		t.Error("Ultra worker surface must not expose helpme")
 	}
 }
 */

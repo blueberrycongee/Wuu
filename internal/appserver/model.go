@@ -1464,7 +1464,7 @@ func isToolResultMessage(msg providers.ChatMessage) bool {
 
 func threadItemTypeForTool(name string) ThreadItemType {
 	switch strings.TrimSpace(name) {
-	case "spawn_agent", "helpme", "send_message", "close_agent", "agent_report":
+	case "spawn_agent", "send_message", "close_agent", "agent_report":
 		return ThreadItemCollabAgentTool
 	default:
 		return ThreadItemToolCall

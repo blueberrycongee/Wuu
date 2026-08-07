@@ -517,7 +517,6 @@ func TestActiveProfileExposesSpawnAgentAndDefersManagementTools(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	kit.SetHelpMeEnabled(true)
 	kit.SetActiveProfile(modelprofile.Resolve("openai", "gpt-5-codex"), true)
 	registered := kit.registry.All()
 	registered = append(registered, &stubTool{
@@ -540,26 +539,14 @@ func TestActiveProfileExposesSpawnAgentAndDefersManagementTools(t *testing.T) {
 	if !containsProfileDef(defs, "spawn_agent") {
 		t.Fatalf("spawn_agent should be visible by default, got %v", sortedProfileDefNames(defs))
 	}
-	if !containsProfileDef(defs, "helpme") {
-		t.Fatalf("helpme should be visible by default, got %v", sortedProfileDefNames(defs))
-	}
 	if info, ok := kit.ToolInfo("spawn_agent"); !ok {
 		t.Fatalf("ToolInfo(%q) not found", "spawn_agent")
 	} else if info.Exposure != ToolExposureDirect {
 		t.Fatalf("spawn_agent exposure = %s, want %s", info.Exposure, ToolExposureDirect)
 	}
-	if info, ok := kit.ToolInfo("helpme"); !ok {
-		t.Fatalf("ToolInfo(%q) not found", "helpme")
-	} else if info.Exposure != ToolExposureDirect {
-		t.Fatalf("helpme exposure = %s, want %s", info.Exposure, ToolExposureDirect)
-	}
 	_, err = kit.Execute(context.Background(), providers.ToolCall{Name: "spawn_agent", Arguments: `{}`})
 	if err == nil || strings.Contains(err.Error(), "deferred") || strings.Contains(err.Error(), "active model surface") {
 		t.Fatalf("visible spawn_agent should reach tool validation, got %v", err)
-	}
-	_, err = kit.Execute(context.Background(), providers.ToolCall{Name: "helpme", Arguments: `{}`})
-	if err == nil || strings.Contains(err.Error(), "deferred") || strings.Contains(err.Error(), "active model surface") {
-		t.Fatalf("visible helpme should reach runtime validation, got %v", err)
 	}
 
 	for _, name := range subagentManagementTools {
@@ -609,7 +596,7 @@ func TestActiveProfileExposesSpawnAgentAndDefersManagementTools(t *testing.T) {
 		}
 	}
 
-	if discovered := kit.activateToolBundlesAfterSuccess("helpme"); len(discovered) != 0 {
+	if discovered := kit.activateToolBundlesAfterSuccess("unknown_plugin_tool"); len(discovered) != 0 {
 		t.Fatalf("fallback activation should not attach native discovered tools: %+v", discovered)
 	}
 	defs = kit.Definitions()
@@ -710,7 +697,6 @@ func TestActiveProfileExposesTaskEntrypointsDirectly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	kit.SetHelpMeEnabled(true)
 	kit.SetActiveProfile(modelprofile.Resolve("compatible", "generic-coder"), true)
 
 	var found *providers.ToolDefinition
@@ -727,24 +713,8 @@ func TestActiveProfileExposesTaskEntrypointsDirectly(t *testing.T) {
 	if !found.CacheStable {
 		t.Fatalf("direct spawn_agent should stay inside the cache-stable prefix: %+v", *found)
 	}
-	var helpmeFound *providers.ToolDefinition
-	for i := range defs {
-		if defs[i].Name == "helpme" {
-			helpmeFound = &defs[i]
-			break
-		}
-	}
-	if helpmeFound == nil {
-		t.Fatalf("main agent surface should receive helpme in the default tool list: %v", sortedProfileDefNames(defs))
-	}
-	if !helpmeFound.CacheStable {
-		t.Fatalf("direct helpme should stay inside the cache-stable prefix: %+v", *helpmeFound)
-	}
 	if _, err := kit.Execute(context.Background(), providers.ToolCall{Name: "spawn_agent", Arguments: `{}`}); err == nil || strings.Contains(err.Error(), "deferred") || strings.Contains(err.Error(), "active model surface") {
 		t.Fatalf("main agent surface should call spawn_agent directly, got %v", err)
-	}
-	if _, err := kit.Execute(context.Background(), providers.ToolCall{Name: "helpme", Arguments: `{}`}); err == nil || strings.Contains(err.Error(), "deferred") || strings.Contains(err.Error(), "active model surface") {
-		t.Fatalf("main agent surface should call helpme directly, got %v", err)
 	}
 	for _, name := range subagentManagementTools {
 		if containsProfileDef(defs, name) {

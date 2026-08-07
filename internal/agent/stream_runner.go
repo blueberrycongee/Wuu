@@ -534,7 +534,7 @@ func (r *StreamRunner) prepareUsageTracker(history []providers.ChatMessage) (*Us
 	}
 	// Length-shrink safety net: if the tracked history got shorter than the
 	// baseline expects, the baseline is stale and is rebuilt from scratch
-	// below. Out-of-loop compaction (HelpMe) drives invalidation explicitly via
+	// below. Out-of-loop history replacement drives invalidation explicitly via
 	// ResetConversationUsage rather than relying on this heuristic, because a
 	// compaction can replace history with a summary that is byte-smaller but not
 	// necessarily message-count-smaller.
@@ -683,7 +683,7 @@ func canRebaseUsageAfterTail(history []providers.ChatMessage, anchor int, usage 
 // in-loop compaction (loop.go), but targets the runner-level baseline shared
 // across turns.
 //
-// It exists for out-of-loop history rewrites — notably the HelpMe joint
+// It exists for out-of-loop history rewrites
 // compact, which replaces the parent thread's history from a completion wakeup
 // without ever passing through the loop's own compaction path. Without this
 // explicit invalidation the runner keeps the pre-compaction (inflated) ground
@@ -1163,8 +1163,6 @@ func formatCompactNotice(info CompactInfo) string {
 	switch info.Reason {
 	case CompactReasonOverflow:
 		verb = "Recovered from context overflow — compacted"
-	case CompactReasonHelpMe:
-		verb = "HelpMe recovered and compacted"
 	case CompactReasonManual:
 		verb = "Manually compacted"
 	}

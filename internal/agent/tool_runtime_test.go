@@ -316,7 +316,7 @@ func TestTurnToolRuntimeAttachesDiscoveredToolsToToolResult(t *testing.T) {
 }
 
 func TestTurnToolRuntimeDoesNotTreatProductToolsAsBarriers(t *testing.T) {
-	// Barrier semantics were product-owned (helpme/await_agents) and moved to
+	// Barrier semantics were product-owned (product barriers) and moved to
 	// the first-party delegation plugin. Core must not special-case those
 	// names: a batch containing them executes every call normally.
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
@@ -329,7 +329,7 @@ func TestTurnToolRuntimeDoesNotTreatProductToolsAsBarriers(t *testing.T) {
 
 	msgs, _ := runtime.ExecuteFinalCalls(ctx, []providers.ToolCall{
 		{ID: "call_write", Name: "run_shell"},
-		{ID: "call_helpme", Name: "helpme"},
+		{ID: "call_barrier", Name: "barrier_tool"},
 	}, func(call providers.ToolCall, _ string) {
 		seen = append(seen, call)
 	}, func(info ToolBatchRejectionInfo) {
@@ -342,10 +342,10 @@ func TestTurnToolRuntimeDoesNotTreatProductToolsAsBarriers(t *testing.T) {
 	if len(rejections) != 0 {
 		t.Fatalf("core must not reject a batch for product tool names, got %+v", rejections)
 	}
-	if len(msgs) != 2 || msgs[0].ToolCallID != "call_write" || msgs[1].ToolCallID != "call_helpme" {
+	if len(msgs) != 2 || msgs[0].ToolCallID != "call_write" || msgs[1].ToolCallID != "call_barrier" {
 		t.Fatalf("expected one result per call, got %+v", msgs)
 	}
-	if len(seen) != 2 || seen[0].ID != "call_write" || seen[1].ID != "call_helpme" {
+	if len(seen) != 2 || seen[0].ID != "call_write" || seen[1].ID != "call_barrier" {
 		t.Fatalf("OnToolResult should see executed calls in order, got %+v", seen)
 	}
 }
@@ -357,12 +357,12 @@ func TestTurnToolRuntimeExecutesProductNamedToolWhenCalledAlone(t *testing.T) {
 	tools := &runtimeTestTools{}
 	runtime := NewTurnToolRuntime(ToolRuntimeConfig{Executor: tools})
 
-	msgs, _ := runtime.ExecuteFinalCalls(ctx, []providers.ToolCall{{ID: "call_helpme", Name: "helpme"}}, nil)
+	msgs, _ := runtime.ExecuteFinalCalls(ctx, []providers.ToolCall{{ID: "call_barrier", Name: "barrier_tool"}}, nil)
 
-	if calls := tools.recordedCalls(); len(calls) != 1 || calls[0].ID != "call_helpme" {
+	if calls := tools.recordedCalls(); len(calls) != 1 || calls[0].ID != "call_barrier" {
 		t.Fatalf("single product-named tool should execute normally, got %+v", calls)
 	}
-	if len(msgs) != 1 || !strings.Contains(msgs[0].Content, "call_helpme") {
+	if len(msgs) != 1 || !strings.Contains(msgs[0].Content, "call_barrier") {
 		t.Fatalf("unexpected single tool result: %+v", msgs)
 	}
 }
@@ -592,7 +592,7 @@ func TestTurnToolRuntimeDurablySettlesBeforeReturningResult(t *testing.T) {
 type historyAwareRuntimeTools struct{}
 
 func (historyAwareRuntimeTools) Definitions() []providers.ToolDefinition {
-	return []providers.ToolDefinition{{Name: "helpme"}}
+	return []providers.ToolDefinition{{Name: "barrier_tool"}}
 }
 
 func (historyAwareRuntimeTools) Execute(ctx context.Context, _ providers.ToolCall) (string, error) {
@@ -607,7 +607,7 @@ func (historyAwareRuntimeTools) ToolMetadata(_ providers.ToolCall) (ToolMetadata
 }
 
 func TestTurnToolRuntimeFinalOnlyToolUsesFinalHistoryContext(t *testing.T) {
-	call := providers.ToolCall{ID: "call-helpme", Name: "helpme", Arguments: `{}`}
+	call := providers.ToolCall{ID: "call-barrier", Name: "barrier_tool", Arguments: `{}`}
 	runtime := NewTurnToolRuntime(ToolRuntimeConfig{
 		Executor:   historyAwareRuntimeTools{},
 		RunContext: context.Background(),

@@ -31,7 +31,7 @@ func TestFinalize_EligibilityExactNameOnly(t *testing.T) {
 		{"apply_patch", false},
 		{"edit_file", false},
 		{"write_file", false},
-		{"helpme", false},
+		{"", false},
 		{"load_skill", false},
 		{"BASH", false},
 		{" grep", false},

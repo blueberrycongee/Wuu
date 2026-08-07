@@ -127,18 +127,6 @@ function galleryEntries(): GalleryEntry[] {
     ),
   },
   {
-    label: translateCurrent("chipGallery.helpme"),
-    kind: "context_helpme · gray",
-    description: translateCurrent("chipGallery.helpmeDescription"),
-    render: () => (
-      <ContextCompactionNotice
-        status="completed"
-        reason="helpme"
-        text="✦ HelpMe recovered and compacted history: 42 → 2 messages (was ~90k tokens)"
-      />
-    ),
-  },
-  {
     label: translateCurrent("chipGallery.compactionFailed"),
     kind: "context_compaction_failed · gray",
     description: translateCurrent("chipGallery.compactionFailedDescription"),

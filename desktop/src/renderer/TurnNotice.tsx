@@ -157,9 +157,6 @@ function contextCompactionTitle(
   if (isUnchangedCompactNotice(normalized)) {
     return t("compaction.notNeeded");
   }
-  if (isHelpMeCompact(reason, normalized)) {
-    return t("compaction.helpmeComplete");
-  }
   if (isManualCompact(reason, normalized)) {
     return t("compaction.manualComplete");
   }
@@ -183,9 +180,6 @@ function contextCompactionDetail(
   }
   if (isUnchangedCompactNotice(normalized)) {
     return t("compaction.notNeededDetail");
-  }
-  if (isHelpMeCompact(reason, normalized)) {
-    return t("compaction.helpmeDetail");
   }
   if (/^Compacted history$/i.test(normalized)) {
     return t("compaction.completeDetail");
@@ -218,13 +212,9 @@ function isManualCompact(reason: string | undefined, text: string): boolean {
   );
 }
 
-function isHelpMeCompact(reason: string | undefined, text: string): boolean {
-  return reason === "helpme" || /^HelpMe recovered and compacted history\b/i.test(text);
-}
-
 function parseContextCompactionNotice(text: string): string | undefined {
   const match = text.match(
-    /^(Recovered from context overflow\s+[—-]\s+compacted|HelpMe recovered and compacted|Manually compacted|Compacted)\s+history:\s*(\d+)\s*(?:→|->)\s*(\d+)\s+messages(?:\s+\(was\s+~?([^)]+)\))?$/i,
+    /^(Recovered from context overflow\s+[—-]\s+compacted|Manually compacted|Compacted)\s+history:\s*(\d+)\s*(?:→|->)\s*(\d+)\s+messages(?:\s+\(was\s+~?([^)]+)\))?$/i,
   );
   if (!match) {
     return undefined;

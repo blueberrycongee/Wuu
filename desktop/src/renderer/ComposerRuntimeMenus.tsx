@@ -19,7 +19,6 @@ import {
   GitCompare,
   GitPullRequest,
   Hammer,
-  LifeBuoy,
   MessageSquarePlus,
   Paperclip,
   PieChart,
@@ -725,8 +724,6 @@ export function SlashCommandIcon({ command }: { command: ComposerSlashCommand })
       return <Bug className="icon" />;
     case "fix":
       return <Hammer className="icon" />;
-    case "helpme":
-      return <LifeBuoy className="icon" />;
     case "test":
       return <FlaskConical className="icon" />;
     case "explain":

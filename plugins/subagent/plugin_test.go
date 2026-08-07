@@ -27,7 +27,7 @@ func (h *captureHost) CallHost(_ context.Context, method string, params, result 
 
 func TestHandlerOwnsSubagentToolsAndPrompt(t *testing.T) {
 	handler := Handler()
-	if len(handler.Definition.Tools) != 5 {
+	if len(handler.Definition.Tools) != 4 {
 		t.Fatalf("tools = %+v", handler.Definition.Tools)
 	}
 	if len(handler.Definition.RequiredHostServices) != 1 || handler.Definition.RequiredHostServices[0].ID != hostChildSession {

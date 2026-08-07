@@ -1141,7 +1141,6 @@ func TestDefaultSystemPromptLeavesToolManualsToActiveSurface(t *testing.T) {
 		"tool_search",
 		"update_plan",
 		"spawn_agent",
-		"helpme",
 		"inception",
 		"apply_patch",
 		"web_search",

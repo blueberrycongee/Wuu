@@ -3393,7 +3393,7 @@ func TestWorkerDeferredToolCatalogPromptForToolkit(t *testing.T) {
 			t.Errorf("worker catalog must list deferred executor tool %s:\n%s", want, catalog)
 		}
 	}
-	for _, orchestration := range []string{"spawn_agent", "helpme", "send_message", "followup_task", "await_agents", "close_agent", "list_agents"} {
+	for _, orchestration := range []string{"spawn_agent", "send_message", "followup_task", "await_agents", "close_agent", "list_agents"} {
 		if strings.Contains(catalog, orchestration) {
 			t.Errorf("worker catalog must not list orchestration tool %s:\n%s", orchestration, catalog)
 		}

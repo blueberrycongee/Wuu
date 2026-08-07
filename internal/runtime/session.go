@@ -2614,9 +2614,7 @@ func workerDeferredToolCatalogPromptForToolkit(kit *tools.Toolkit, providerName,
 // The main agent's surface is installed through
 // internal/tools/edit_mode.go::ConfigureSurfaceForProviderModel on
 // the toolkit itself. Worker surfaces intentionally omit the
-// main-agent-only helpme recovery tool; the runtime still enforces
-// the same boundary via DisallowedTools and the helpme tool's
-// Execute path check.
+// main-agent orchestration tools.
 func compiledSurfaceForProviderModel(providerName, model string) capability.Surface {
 	return modelprofile.DefaultCompiler{}.Compile(modelprofile.Resolve(providerName, model), modelprofile.SurfaceWorker)
 }

@@ -70,7 +70,7 @@ func (k SurfaceKind) includesChat() bool {
 
 // Compiler compiles a model profile into a tool surface. Compile is given a
 // SurfaceKind so it can decide whether the surface should advertise, hide, or
-// omit orchestration and recovery tools (the spawn_agent suite, helpme) and
+// omit orchestration tools (the spawn_agent suite) and
 // worker-only handoff tools such as agent_report. The
 // surface is therefore consistent with the runtime boundary instead of being
 // filtered downstream.

@@ -192,9 +192,8 @@ RPC。
    generation 绑定的 owner、`user | plugin` 可见性、parent、`fresh | fork` 和幂等 request id，
    投递则分离模型输入与 query 气泡摘要，并持久化真实插件来源、cause 和只读属性。Provider 仍按
    普通 user role 执行，私有 Session 不进入普通列表与搜索，真实用户排队工作优先于插件唤醒。
-4. **HelpMe 仍有残留。** Subagent 插件仍注册 `helpme`，宿主还有被注释掉的 HelpMe 专用重写代码。
-   产品决定是完整删除 Tool、Schema、Prompt、状态、测试、文档和死代码，不保留兼容入口，也不把
-   它重命名成另一种插件工作流。
+4. **HelpMe 已完整删除。** Tool、Schema、Prompt、内部 worker type、历史重写/压缩特判、桌面文案、
+   测试和死代码均已移除；没有保留兼容入口，也没有把它重命名成另一种插件工作流。
 5. **Plan 的旧迁移设想已经作废。** Plan 留在最小核心链路。插件仍可观察标准计划状态或在自己的
    View 中展示它，但不替换核心 `update_plan` 语义，也不把 Plan 扩张成 Goal。
 
@@ -208,7 +207,7 @@ RPC。
    排队、暂停/完成、崩溃恢复和禁用插件；随后删除 `agent.turn.continuation`。
 3. 再迁移 Subagent：让插件用公共 API 创建和管理私有子 Session；把现有并发、持久化、取消、恢复、
    结果交付和 worktree 代码收敛为通用引擎；随后删除 `host.child_session.request` 和核心产品分支。
-4. 删除 HelpMe 全链路，确认 Plan 仍通过核心 Tool/状态链运行。
+4. HelpMe 全链路已删除；Plan 仍通过核心 Tool/状态链运行。
 5. 用 Cron 完成“插件 Timer → 用户可见 Session”的纵向切片，再迁移 memory，最后用 Dream 验证
    “Timer + memory + 插件私有 Session”的组合，不为三者增加产品专用宿主服务。
 6. 每完成一项迁移就验证插件禁用、升级和卸载后不再唤醒、不残留 UI/订阅/租约；最后删除旧协议、
@@ -417,7 +416,7 @@ continuation 和 child-session 专用宿主接口，因此只能算迁移中的�
 - 画布、终端、Webview、PDF ShadowRoot 和专用预览仍是明确的主题边界；
 - Marketplace、远程自动更新、排名、依赖解析和签名分发不属于当前本地优先平台；
 - Goal、Subagent 尚未去除专用宿主执行 seam；Cron、memory、dream 尚未完成一方插件迁移；
-- HelpMe 尚有代码残留，目标是删除而不是迁移；Plan 明确保留在核心链路。
+- HelpMe 已从代码和产品中删除；Plan 明确保留在核心链路。
 
 这些边界不是鼓励为未来预留抽象。新能力应由真实插件案例驱动，先确定责任属于宿主、功能插件
 还是外观插件，再选择最窄的公开合同。

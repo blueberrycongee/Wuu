@@ -72,12 +72,6 @@ type Step interface {
 // summarization they need; the loop is intentionally agnostic.
 type CompactFn func(ctx context.Context, messages []providers.ChatMessage) ([]providers.ChatMessage, error)
 
-// PostToolRewriteFn can replace the live history after a complete assistant
-// tool-call turn has been recorded. The hook runs only after the assistant
-// tool_calls and every matching tool result are present in history, so provider
-// tool-call/result ordering is never rewritten mid-flight.
-type PostToolRewriteFn func(ctx context.Context, messages []providers.ChatMessage, toolMessages []providers.ChatMessage) ([]providers.ChatMessage, bool, error)
-
 // CompactReason classifies why the loop ran a compact pass.
 type CompactReason string
 
@@ -89,9 +83,7 @@ const (
 	// context-overflow error and the loop ran compact reactively as
 	// the recovery path.
 	CompactReasonOverflow CompactReason = "overflow"
-	// CompactReasonHelpMe means a recovery tool produced a validated
 	// replacement context after its tool result was recorded.
-	CompactReasonHelpMe CompactReason = "helpme"
 	// CompactReasonManual means the user explicitly requested a compact
 	// pass (the /compact slash command); it runs before the first model
 	// request of the turn regardless of the fill-rate threshold.
@@ -316,11 +308,6 @@ type LoopConfig struct {
 	// OnToolResultDetail receives the lossless canonical result. New callers
 	// should prefer it; OnToolResult remains as a compatibility projection.
 	OnToolResultDetail func(call providers.ToolCall, result toolresult.Result)
-	// PostToolRewrite, when set, may replace live history after all
-	// tool results for a model step have been appended. This is for
-	// checkpoint/compact style tools that intentionally rewrite the
-	// next model-visible context.
-	PostToolRewrite PostToolRewriteFn
 	// OnCompactStart is invoked immediately before a potentially slow compact
 	// pass begins so interactive clients can render real progress.
 	OnCompactStart func(reason CompactReason)

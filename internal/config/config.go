@@ -978,7 +978,7 @@ func DefaultSystemPrompt() string {
 // WorkerSystemPrompt returns the system prompt used to seed spawned
 // subagents. It contains only the universal base sections; the main-only
 // orchestration map is excluded because orchestration belongs to the brain:
-// spawn_agent, helpme, and the subagent management suite (send_message,
+// spawn_agent and the subagent management suite (send_message,
 // close_agent) are compiled out of worker surfaces entirely
 // (internal/modelprofile/compiler.go). Of the
 // other tools the map mentions, update_plan stays visible on worker surfaces

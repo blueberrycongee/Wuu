@@ -3195,7 +3195,7 @@ func TestRequiresReportWorkerGetsOneClosingNudge(t *testing.T) {
 	defer unsubscribe()
 
 	res, err := c.Spawn(context.Background(), SpawnRequest{
-		Type:        HelpMeRecoveryWorkerType,
+		Type:        requiresReportWorkerType,
 		TaskName:    "review_diff",
 		Description: "review the diff",
 		Prompt:      "review this diff",
