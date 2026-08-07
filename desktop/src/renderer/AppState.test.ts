@@ -207,23 +207,6 @@ describe("isStateActiveThreadRunning with a background agent", () => {
   });
 });
 
-function handoffText(): string {
-  return JSON.stringify({
-    author: "/root/recovery_worker",
-    recipient: "/root",
-    content: `<subagent_notification>\n${JSON.stringify({
-      agent_path: "/root/recovery_worker",
-      status: {
-        type: "agent_result",
-        agent_id: "worker-1",
-        task_name: "recovery_worker",
-        status: "completed"
-      }
-    })}\n</subagent_notification>`,
-    trigger_turn: true
-  });
-}
-
 function processNotificationText(): string {
   return '<process_notification>{"process_id":"proc-1","status":"completed"}</process_notification>';
 }
@@ -256,52 +239,6 @@ function threadWithUserTexts(texts: string[]): Thread {
 }
 
 describe("AppState protocol normalization", () => {
-  it("seeds a running child from a completed spawn item before agent updates arrive", () => {
-    const thread = threadWithUserTexts(["delegate"]);
-    const next = reduceServerEvent(
-      {
-        ...initialState,
-        activeContext: { kind: "no_project", cwd: "/repo" },
-        thread,
-        threads: [thread],
-      },
-      {
-        kind: "notification",
-        workdir: "/repo",
-        message: {
-          method: "item/completed",
-          params: {
-            thread_id: thread.id,
-            turn_id: "turn-1",
-            item: {
-              id: "spawn-1",
-              type: "collab_agent_tool_call",
-              name: "spawn_agent",
-              status: "completed",
-              result: JSON.stringify({
-                agent_id: "worker-1",
-                task_name: "review_auth",
-                agent_path: "/root/review_auth",
-                status: "running",
-              }),
-            },
-          },
-        },
-      },
-    );
-
-    expect(next.thread?.child_agents).toEqual([
-      expect.objectContaining({
-        id: "worker-1",
-        task_name: "review_auth",
-        status: "running",
-        parent_id: thread.id,
-      }),
-    ]);
-    expect(isStateActiveThreadRunning(next)).toBe(false);
-    expect(isThreadExecuting(next.thread)).toBe(true);
-  });
-
   it("keeps rendering when an older core starts an empty turn with null items", () => {
     const thread = threadWithUserTexts(["continue"]);
     const next = reduceServerEvent(
@@ -453,10 +390,13 @@ describe("AppState server requests", () => {
 });
 
 describe("queryTextsForThread", () => {
-  it("skips internal agent handoff messages", () => {
-    const thread = threadWithUserTexts([handoffText(), "真正的用户问题"]);
+  it("keeps generated query summaries in the visible query history", () => {
+    const thread = threadWithUserTexts(["子任务已更新", "真正的用户问题"]);
+    thread.turns[0].items[0].read_only = true;
+    thread.turns[0].items[0].origin = "plugin";
+    thread.turns[0].items[0].presentation_kind = "query_bubble";
 
-    expect(queryTextsForThread(thread)).toEqual(["真正的用户问题"]);
+    expect(queryTextsForThread(thread)).toEqual(["子任务已更新", "真正的用户问题"]);
   });
 
   it("skips named and legacy process notifications", () => {

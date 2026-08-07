@@ -1,5 +1,5 @@
 import type { MutableRefObject, SetStateAction } from "react";
-import type { Agent, Thread } from "../shared/protocol";
+import type { Thread } from "../shared/protocol";
 import {
   activeThreadIDForState,
   draftSessionTabForContext,
@@ -22,10 +22,6 @@ export type ThreadMutationActionsDeps = {
   getAppState: () => AppState;
   setAppState: SetAppState;
   getActiveThreadID: () => string | undefined;
-  getArchiveConfirmSubagentID: () => string | undefined;
-  setArchiveConfirmSubagentID: (
-    update: SetStateAction<string | undefined>,
-  ) => void;
   localDemoThreadsRef: MutableRefObject<Map<string, Thread>>;
   nextDraftSessionTab: (context: NonNullable<AppState["activeContext"]>) => SessionTab;
   clearPrimaryComposerDraft: () => void;
@@ -42,8 +38,6 @@ export type ThreadMutationActions = {
   archiveThread: (thread: ThreadSummary) => Promise<ThreadArchiveOutcome>;
   unarchiveThread: (thread: Pick<ThreadSummary, "id">) => Promise<void>;
   deleteThread: (thread: ThreadSummary) => Promise<void>;
-  toggleSubagentPinned: (agent: Agent) => Promise<void>;
-  archiveSubagent: (agent: Agent) => Promise<void>;
 };
 
 export type ThreadArchiveOutcome =
@@ -60,26 +54,6 @@ function archiveThreadFailureMessage(error: unknown): string {
     return translateCurrent("thread.archive.running");
   }
   return desktopApiErrorMessage(error, translateCurrent("thread.archive.failed"));
-}
-
-function patchChildAgentInThread(
-  thread: Thread | undefined,
-  agentID: string,
-  patch: Partial<Agent>,
-): Thread | undefined {
-  if (!thread || !thread.child_agents) {
-    return thread;
-  }
-  const index = thread.child_agents.findIndex((agent) => agent.id === agentID);
-  if (index === -1) {
-    return thread;
-  }
-  return {
-    ...thread,
-    child_agents: thread.child_agents.map((agent, i) =>
-      i === index ? { ...agent, ...patch } : agent,
-    ),
-  };
 }
 
 export function createThreadMutationActions(
@@ -430,77 +404,11 @@ export function createThreadMutationActions(
     };
   }
 
-  async function toggleSubagentPinned(agent: Agent): Promise<void> {
-    if (!deps.getAppState().activeContext) {
-      return;
-    }
-    deps.setArchiveConfirmSubagentID(undefined);
-    try {
-      const result = await window.wuu.pinThread(agent.id, !agent.pinned);
-      deps.setAppState((current) => ({
-        ...current,
-        thread: patchChildAgentInThread(current.thread, agent.id, {
-          pinned: result.thread.pinned,
-        }),
-        secondaryThread: patchChildAgentInThread(
-          current.secondaryThread,
-          agent.id,
-          { pinned: result.thread.pinned },
-        ),
-        threads: current.threads.map((thread) =>
-          patchChildAgentInThread(thread, agent.id, {
-            pinned: result.thread.pinned,
-          }) ?? thread,
-        ),
-        status: current.status === "ready" ? "ready" : current.status,
-      }));
-    } catch (error) {
-      setStatus(
-        error instanceof Error
-          ? error.message
-          : translateCurrent("thread.subagentPin.failed"),
-      );
-    }
-  }
-
-  async function archiveSubagent(agent: Agent): Promise<void> {
-    if (deps.getArchiveConfirmSubagentID() !== agent.id) {
-      deps.setArchiveConfirmSubagentID(agent.id);
-      return;
-    }
-    deps.setArchiveConfirmSubagentID(undefined);
-    try {
-      await window.wuu.archiveThread(agent.id, true);
-      deps.setAppState((current) => ({
-        ...current,
-        thread: patchChildAgentInThread(current.thread, agent.id, {
-          archived: true,
-        }),
-        secondaryThread: patchChildAgentInThread(
-          current.secondaryThread,
-          agent.id,
-          { archived: true },
-        ),
-        threads: current.threads.map((thread) =>
-          patchChildAgentInThread(thread, agent.id, { archived: true }) ??
-            thread,
-        ),
-        status: current.status === "ready" ? "ready" : current.status,
-      }));
-    } catch (error) {
-      setStatus(
-        error instanceof Error ? error.message : translateCurrent("thread.subagentArchive.failed"),
-      );
-    }
-  }
-
   return {
     toggleThreadPinned,
     renameThread,
     archiveThread,
     unarchiveThread,
     deleteThread,
-    toggleSubagentPinned,
-    archiveSubagent,
   };
 }

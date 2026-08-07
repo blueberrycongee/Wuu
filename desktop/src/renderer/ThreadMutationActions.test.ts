@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { Agent, RuntimeContext, Thread } from "../shared/protocol";
+import type { RuntimeContext, Thread } from "../shared/protocol";
 import {
   createDraftSessionTab,
   createThreadSessionTab,
@@ -92,18 +92,13 @@ function installWuuApi(baseThread: Thread): {
 function buildActions({
   initial,
   activeThreadID,
-  
-  archiveConfirmSubagentID,
   localDemoThreads = new Map<string, Thread>(),
 }: {
   initial: AppState;
   activeThreadID?: string;
-  
-  archiveConfirmSubagentID?: string;
   localDemoThreads?: Map<string, Thread>;
 }) {
   let appState = initial;
-  let confirmSubagentID = archiveConfirmSubagentID;
   const localDemoThreadsRef = { current: localDemoThreads };
   const clearPrimaryComposerDraft = vi.fn();
   const resetSplitComposerDrafts = vi.fn();
@@ -117,11 +112,6 @@ function buildActions({
       appState = typeof update === "function" ? update(appState) : update;
     },
     getActiveThreadID: () => activeThreadID,
-    getArchiveConfirmSubagentID: () => confirmSubagentID,
-    setArchiveConfirmSubagentID: (update) => {
-      confirmSubagentID =
-        typeof update === "function" ? update(confirmSubagentID) : update;
-    },
     localDemoThreadsRef,
     nextDraftSessionTab: (context) =>
       createDraftSessionTab("draft:fallback", context),
@@ -136,7 +126,6 @@ function buildActions({
   return {
     actions,
     getAppState: () => appState,
-    
     clearPrimaryComposerDraft,
     resetSplitComposerDrafts,
     updateCachedSidebarThread,
@@ -266,7 +255,7 @@ describe("createThreadMutationActions", () => {
     const child = {
       id: "agent-interrupted",
       status: "failed",
-    } as Agent;
+    };
     const base = { ...thread(), child_agents: [child] };
     const api = installWuuApi(base);
     const harness = buildActions({
@@ -388,28 +377,5 @@ describe("createThreadMutationActions", () => {
     expect(api.deleteThread).toHaveBeenCalledWith(base.id);
     expect(harness.removeCachedSidebarThread).toHaveBeenCalledWith(base.id);
     expect(harness.getAppState().threads).toHaveLength(0);
-  });
-
-  it("patches subagent pin state into every cached parent thread", async () => {
-    const context = projectContext();
-    const agent = { id: "agent-1", status: "idle", pinned: false } as Agent;
-    const parent = { ...thread("parent"), child_agents: [agent] };
-    installWuuApi({ ...thread("agent-1"), pinned: true });
-    const harness = buildActions({
-      initial: {
-        ...initialState,
-        activeContext: context,
-        thread: parent,
-        threads: [parent],
-        status: "ready",
-      },
-    });
-
-    await harness.actions.toggleSubagentPinned(agent);
-
-    expect(harness.getAppState().thread?.child_agents?.[0]?.pinned).toBe(true);
-    expect(harness.getAppState().threads[0]?.child_agents?.[0]?.pinned).toBe(
-      true,
-    );
   });
 });

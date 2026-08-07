@@ -230,8 +230,9 @@ RPC。
 2. 先迁移 Goal：在 Turn 完成事件后由插件主动向同一 Session 投递，验证生成 query、连续唤醒、
    排队、暂停/完成、崩溃恢复和禁用插件；随后删除 `agent.turn.continuation`。
 3. Subagent 已使用公共 API 创建和管理私有子 Session；`host.child_session.request` 已删除，任务
-   提示、状态、桌面状态条和父 Session 回投由插件拥有。继续删除只服务旧核心 Subagent 展示的
-   遗留产品分支，不改变公共合同。
+   提示、状态、桌面状态条和父 Session 回投由插件拥有。宿主不再识别 `spawn_agent` Tool 名、解析
+   `<subagent_notification>`、生成专用 Tool item 或维护原生子任务面板；插件生成的回投只依赖通用
+   `display_content/origin/cause/read_only` query 元数据，不改变公共合同。
 4. HelpMe 全链路已删除；Plan 仍通过核心 Tool/状态链运行。
 5. Cron、Memory 和 Dream 已分别完成“插件 Timer → 用户可见 Session”、“Prompt + Tool + 私有
    Session + View”和“Timer + Memory Tool + 插件私有 Session”的纵向切片，三者没有产品专用

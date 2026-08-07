@@ -164,13 +164,11 @@ export function buildAssistantTurnDisplay(
 
     if (item.type === "tool_call" || item.type === "collab_agent_tool_call") {
       const group: ThreadItem[] = [item];
-      const spawnBatch = item.name === "spawn_agent";
       let nextIndex = index + 1;
       while (
         nextIndex < turn.items.length &&
         (turn.items[nextIndex].type === "tool_call" ||
-          turn.items[nextIndex].type === "collab_agent_tool_call") &&
-        (turn.items[nextIndex].name === "spawn_agent") === spawnBatch
+          turn.items[nextIndex].type === "collab_agent_tool_call")
       ) {
         group.push(turn.items[nextIndex]);
         nextIndex++;
@@ -320,12 +318,6 @@ function isProcessGroupCandidate(entry: TurnEntry): boolean {
     return false;
   }
   if (entry.kind === "activity") {
-    // A background subagent keeps one stable tool-call row so later wake
-    // notifications can settle that exact row in place. Folding it into an
-    // adjacent operation batch would erase the identity needed for pairing.
-    if (entry.item.name === "spawn_agent") {
-      return false;
-    }
     return true;
   }
   return entry.item.type === "reasoning";

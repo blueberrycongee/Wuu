@@ -447,36 +447,29 @@ describe("ThreadItemView", () => {
     expect(streamTextStore.has(key)).toBe(false);
   });
 
-  it("renders a subagent update as a read-only user message", () => {
+  it("renders a plugin-generated query as a read-only user message", () => {
     const onEditMessage = vi.fn();
     render({
       item: {
-        id: "handoff-1",
+        id: "plugin-query-1",
         type: "user_message",
-        text: JSON.stringify({
-          content: `<subagent_notification>\n${JSON.stringify({
-            status: { task_name: "太阳", status: "completed" },
-          })}\n</subagent_notification>`,
-          trigger_turn: true,
-        }),
+        text: "子任务 太阳 已更新",
+        read_only: true,
+        origin: "plugin",
+        origin_id: "subagent",
+        cause: "subagent.completion",
+        presentation_kind: "query_bubble",
       },
       turnStatus: "completed",
       streaming: false,
       onEditMessage,
     });
 
-    expect(container?.querySelector(".subagent-chip")).toBeNull();
-    expect(container?.querySelector(".user-message")?.textContent).toBe("太阳更新了状态");
+    expect(container?.querySelector(".user-message")?.textContent).toBe("子任务 太阳 已更新");
     const actions = container?.querySelectorAll<HTMLButtonElement>(".user-message-actions button");
-    expect(actions).toHaveLength(2);
+    expect(actions).toHaveLength(1);
     expect(container?.querySelector<HTMLElement>(".user-message-actions")?.dataset.wuuPlacement).toBe("overlay");
-
-    act(() => {
-      actions?.[1]?.click();
-    });
-
     expect(onEditMessage).not.toHaveBeenCalled();
-    expect(container?.textContent).toContain("这条消息由 subagent 自动生成，无法编辑");
   });
 
 });

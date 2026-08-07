@@ -505,12 +505,6 @@ export type ConversationSidePanelsProps = {
   onOpenPullRequest: () => void;
   rightPanelFilePath?: string;
   onCloseFilePreview: () => void;
-  activeThread?: Thread;
-  archiveConfirmSubagentID?: string;
-  onSelectChildAgent: (agent: Agent) => void;
-  onToggleSubagentPinned: (agent: Agent) => void;
-  onArchiveSubagent: (agent: Agent) => void;
-  onClearSubagentArchiveConfirm: (id: string) => void;
   viewContextSwitchPending: boolean;
 };
 
@@ -534,12 +528,6 @@ export function ConversationSidePanels({
   onOpenPullRequest,
   rightPanelFilePath,
   onCloseFilePreview,
-  activeThread,
-  archiveConfirmSubagentID,
-  onSelectChildAgent,
-  onToggleSubagentPinned,
-  onArchiveSubagent,
-  onClearSubagentArchiveConfirm,
   viewContextSwitchPending,
 }: ConversationSidePanelsProps): JSX.Element {
   return (
@@ -564,14 +552,6 @@ export function ConversationSidePanels({
         onOpenPullRequest={onOpenPullRequest}
         rightPanelFilePath={rightPanelFilePath}
         onCloseFilePreview={onCloseFilePreview}
-        subagentSessions={activeThread?.child_agents}
-        archiveConfirmSubagentID={archiveConfirmSubagentID}
-        onSelectSubagent={(agent) => onSelectChildAgent(agent as Agent)}
-        onToggleSubagentPinned={(agent) =>
-          onToggleSubagentPinned(agent as Agent)
-        }
-        onArchiveSubagent={(agent) => onArchiveSubagent(agent as Agent)}
-        onClearSubagentArchiveConfirm={onClearSubagentArchiveConfirm}
       />
 
       {viewContextSwitchPending ? <ViewSwitchLoading /> : null}

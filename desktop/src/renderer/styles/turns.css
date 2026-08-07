@@ -585,38 +585,6 @@
   opacity: 0.45;
 }
 
-.agent-handoff-divider {
-  width: min(760px, 88%);
-  max-width: min(760px, 88%);
-  margin: 2px auto 18px;
-}
-
-.subagent-chip {
-  white-space: nowrap;
-}
-
-.subagent-chip-failed {
-  color: var(--danger);
-}
-
-.subagent-chip-list {
-  display: inline-flex;
-  align-items: baseline;
-  flex-wrap: nowrap;
-  /* Same quiet register as the turn meta rows (用时, 查看思考过程) the
-     list rides on: chips are footnotes, not buttons. Self-styled so the
-     register holds on every host (turn header, user message bubble). */
-  color: var(--conversation-process-control-color, var(--process-control-color-fallback));
-  font-size: var(--conversation-process-font-size);
-  font-weight: var(--conversation-process-font-weight);
-  line-height: var(--conversation-process-line-height);
-}
-
-.subagent-chip-separator {
-  padding: 0 6px;
-  color: var(--ink-tertiary);
-}
-
 .message-copy-button {
   --message-copy-rest-transform: translate3d(0, 2px, 0) scale(0.98);
   --message-copy-visible-transform: translate3d(0, 0, 0) scale(1);
@@ -1942,22 +1910,6 @@
   gap: 0;
 }
 
-/*
- * Collab tool-call rows prefix the activity line with the acting
- * subagent's identity chip (see ParticipantChip / environment.css).
- * Baseline alignment keeps the chip name level with the summary prose.
- */
-.collab-agent-activity {
-  display: flex;
-  min-width: 0;
-  align-items: baseline;
-  gap: 8px;
-}
-
-.collab-agent-activity .participant-chip-name {
-  color: var(--ink-soft);
-}
-
 .activity-row {
                                                                   
                                                                   
@@ -2550,7 +2502,7 @@
    * The grid track must shrink with the parent — default `none` sizes
    * each track to the widest item's max-content, so a list item with a
    * long unbreakable token (`internal/appserver/turn_handlers.go:2452`,
-   * `<subagent_notification>`, etc.) pushes the whole list past the
+   * structured payloads, etc.) pushes the whole list past the
    * surrounding bubble / turn-process card. `minmax(0, 1fr)` lets the
    * track go down to 0 and up to the available 1fr, and `min-width: 0`
    * lets the grid container itself shrink inside the flex column it

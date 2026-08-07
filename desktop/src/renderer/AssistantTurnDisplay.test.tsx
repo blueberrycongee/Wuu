@@ -1,7 +1,6 @@
 import { createElement } from "react";
 import { describe, expect, it } from "vitest";
 import type { ThreadItem, Turn } from "../shared/protocol";
-import { AGENT_NOTIFICATION_NAME } from "./AgentHandoff";
 import { buildAssistantTurnDisplay } from "./AssistantTurnDisplay";
 
 let idCounter = 0;
@@ -44,21 +43,15 @@ function makeToolCall(): ThreadItem {
   };
 }
 
-function makeNotification(taskName: string, status = "completed"): ThreadItem {
+function makeGeneratedQuery(text: string): ThreadItem {
   return {
-    id: nextID("notification"),
+    id: nextID("generated-query"),
     type: "user_message",
-    name: AGENT_NOTIFICATION_NAME,
     status: "completed",
-    text: JSON.stringify({
-      author: `/root/${taskName}`,
-      recipient: "/root",
-      content: `<subagent_notification>\n${JSON.stringify({
-        agent_path: `/root/${taskName}`,
-        status: { task_name: taskName, status },
-      })}\n</subagent_notification>`,
-      trigger_turn: true,
-    }),
+    text,
+    read_only: true,
+    origin: "plugin",
+    presentation_kind: "query_bubble",
   };
 }
 
@@ -72,13 +65,13 @@ function build(turn: Turn) {
   return display;
 }
 
-describe("buildAssistantTurnDisplay subagent notifications", () => {
-  it("leaves notifications to the user-message renderer", () => {
+describe("buildAssistantTurnDisplay generated queries", () => {
+  it("leaves generated queries to the user-message renderer", () => {
     const display = build(
       makeTurn("completed", [
-        makeNotification("ok_agent_two"),
+        makeGeneratedQuery("后台结果二已更新"),
         makeCommentary("子代理 1: ok\n子代理 2: ok"),
-        makeNotification("ok_agent_one"),
+        makeGeneratedQuery("后台结果一已更新"),
         makeCommentary("已确认"),
       ]),
     );
@@ -88,32 +81,32 @@ describe("buildAssistantTurnDisplay subagent notifications", () => {
     ]);
   });
 
-  it("does not duplicate notifications beside tool activity", () => {
+  it("does not duplicate generated queries beside tool activity", () => {
     const display = build(
-      makeTurn("completed", [makeToolCall(), makeNotification("lint")]),
+      makeTurn("completed", [makeToolCall(), makeGeneratedQuery("检查已完成")]),
     );
     expect(display.entries.map((entry) => entry.kind)).toEqual(["activity"]);
   });
 
-  it("does not duplicate notifications beside reasoning", () => {
+  it("does not duplicate generated queries beside reasoning", () => {
     const display = build(
-      makeTurn("completed", [makeReasoning(), makeNotification("lint")]),
+      makeTurn("completed", [makeReasoning(), makeGeneratedQuery("检查已完成")]),
     );
     expect(display.entries).toHaveLength(1);
     expect(display.entries[0].item.type).toBe("reasoning");
   });
 
-  it("does not create an assistant display for a notification-only completed turn", () => {
+  it("does not create an assistant display for a generated-query-only turn", () => {
     expect(
       buildAssistantTurnDisplay(
-        makeTurn("completed", [makeNotification("one"), makeNotification("two")]),
+        makeTurn("completed", [makeGeneratedQuery("一"), makeGeneratedQuery("二")]),
         undefined,
         stubRenderer,
       ),
     ).toBeUndefined();
   });
 
-  it("ignores user messages that are not agent handoffs", () => {
+  it("ignores ordinary user messages too", () => {
     const display = build(
       makeTurn("completed", [
         {

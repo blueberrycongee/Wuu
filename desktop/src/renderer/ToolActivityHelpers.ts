@@ -356,15 +356,6 @@ function toolActivitySectionKey(item: ThreadItem): string {
       return "change";
     case "bash":
       return "command";
-    case "spawn_agent":
-    case "send_message":
-    case "followup_task":
-    case "wait_agent":
-    case "await_agents":
-    case "close_agent":
-    case "list_agents":
-    case "agent_report":
-      return "agent";
     case "update_plan":
       return "plan";
     case "browser":
@@ -1077,7 +1068,6 @@ export function summarizeToolActivity(items: ThreadItem[]): ToolActivitySummary 
   let searchCount = 0;
   let listCount = 0;
   let commandCount = 0;
-  let agentCount = 0;
   let additions = 0;
   let deletions = 0;
   let running = false;
@@ -1137,15 +1127,6 @@ export function summarizeToolActivity(items: ThreadItem[]): ToolActivitySummary 
       primaryKind = diff.newFile ? "create" : "edit";
       continue;
     }
-    if (
-      name === "spawn_agent" ||
-      name === "fork_agent" ||
-      name === "send_message"
-    ) {
-      primaryKind = primaryKind === "unknown" ? "agent" : primaryKind;
-      agentCount++;
-      continue;
-    }
     unknownTools.add(name);
   }
 
@@ -1194,9 +1175,6 @@ export function summarizeToolActivity(items: ThreadItem[]): ToolActivitySummary 
   }
   if (commandCount > 0) {
     parts.push(t(commandCount === 1 ? "toolActivity.commandCountOne" : "toolActivity.commandCount", { count: commandCount }));
-  }
-  if (agentCount > 0) {
-    parts.push(t(agentCount === 1 ? "toolActivity.startedSubtaskCountOne" : "toolActivity.startedSubtaskCount", { count: agentCount }));
   }
   if (parts.length === 0 && unknownTools.size > 0) {
     const names = Array.from(unknownTools).slice(0, 2).join(t("toolActivity.compactSeparator"));

@@ -720,14 +720,6 @@ export function App(): JSX.Element {
   const dismissModelCatalogTip = useCallback(() => {
     setModelCatalogTip(null);
   }, []);
-  // Mirrors `archiveConfirmSubagentID` (legacy confirm state) for the
-  // info-panel subagent rows. The state lives in App rather than the panel
-  // so the "press again to confirm" survives the panel being toggled off
-  // and on, and so a single archive button click in either surface is
-  // consistent.
-  const [archiveConfirmSubagentID, setArchiveConfirmSubagentID] = useState<
-    string | undefined
-  >(undefined);
   // When the user clicks "分叉" on a non-latest user message, the fork
   // picker dialog asks whether to stay local or fork into a new worktree.
   // Holding the source thread snapshot in state lets the dialog callback
@@ -2974,15 +2966,10 @@ export function App(): JSX.Element {
     archiveThread,
     unarchiveThread,
     deleteThread,
-    toggleSubagentPinned,
-    archiveSubagent,
   } = createThreadMutationActions({
     getAppState: () => appStateRef.current,
     setAppState: setState,
     getActiveThreadID: () => activeThreadID,
-    getArchiveConfirmSubagentID: () => archiveConfirmSubagentID,
-    
-    setArchiveConfirmSubagentID,
     localDemoThreadsRef,
     nextDraftSessionTab,
     clearPrimaryComposerDraft: () =>
@@ -4552,18 +4539,6 @@ export function App(): JSX.Element {
           onOpenPullRequest={() => openEnvironmentDialog("pull-request")}
           rightPanelFilePath={rightPanelFilePath}
           onCloseFilePreview={handleCloseFilePreview}
-          activeThread={activeThread}
-          archiveConfirmSubagentID={archiveConfirmSubagentID}
-          onSelectChildAgent={(agent) => void selectChildAgent(agent)}
-          onToggleSubagentPinned={(agent) =>
-            void toggleSubagentPinned(agent)
-          }
-          onArchiveSubagent={(agent) => void archiveSubagent(agent)}
-          onClearSubagentArchiveConfirm={(id) =>
-            setArchiveConfirmSubagentID((current) =>
-              current === id ? undefined : current,
-            )
-          }
           viewContextSwitchPending={viewContextSwitchPending}
         />
 

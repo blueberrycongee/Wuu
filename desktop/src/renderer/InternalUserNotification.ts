@@ -1,5 +1,3 @@
-import { isAgentHandoffItem } from "./AgentHandoff";
-
 export const PROCESS_NOTIFICATION_NAME = "wuu_process_notification";
 
 type InternalUserNotificationItem = {
@@ -30,5 +28,5 @@ export function isProcessNotificationItem(
 export function isInternalUserNotificationItem(
   item: InternalUserNotificationItem | undefined,
 ): boolean {
-  return isAgentHandoffItem(item) || isProcessNotificationItem(item);
+  return isProcessNotificationItem(item);
 }

@@ -91,7 +91,7 @@
   /*
    * Last-resort wrapping for unbreakable inline tokens (file paths like
    * `internal/appserver/turn_handlers.go:2452`, JSON-ish snippets such as
-   * `<subagent_notification>`, code identifiers, long URLs). Without this
+   * structured payloads, code identifiers, long URLs). Without this
    * pair the bubble's text paints past its rounded right edge — the
    * descendants all sit on min-width:0 chains that would let the bubble
    * itself shrink, but `overflow-wrap: normal` (the default) still refuses

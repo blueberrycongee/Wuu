@@ -681,15 +681,7 @@ function reduceNotification(
       const next = updateThreadByID(state, threadID, (thread) =>
         upsertTurnItem(thread, turnID, item),
       );
-      if (notification.method !== "item/completed") {
-        return next;
-      }
-      const spawned = runningAgentFromSpawnResult(threadID, item);
-      return spawned
-        ? updateThreadByID(next, threadID, (thread) =>
-            upsertThreadChildAgent(thread, spawned),
-          )
-        : next;
+      return next;
     }
     case "item/agentMessage/delta":
       return applyDelta(state, params, "text");
@@ -2364,9 +2356,7 @@ function queryTextForUserItem(item: ThreadItem): string | undefined {
   if (item.type !== "user_message") {
     return undefined;
   }
-  // Gate first on the item-level signal so corrupted payload text
-  // (combined envelopes with \n\n joins, <changed_file_overlap> tails)
-  // never reaches the text trim/return path.
+  // Process notifications are internal runtime events, not query bubbles.
   if (isInternalUserNotificationItem(item)) {
     return undefined;
   }
@@ -2905,34 +2895,6 @@ function isDirectChildAgent(threadID: string, agent: Agent): boolean {
     return true;
   }
   return agentPathDepth(agent.agent_path) === 2;
-}
-
-function runningAgentFromSpawnResult(
-  threadID: string | undefined,
-  item: ThreadItem,
-): Agent | undefined {
-  if (!threadID || item.name !== "spawn_agent" || !item.result) {
-    return undefined;
-  }
-  try {
-    const result = JSON.parse(item.result) as Record<string, unknown>;
-    const id = typeof result.agent_id === "string" ? result.agent_id.trim() : "";
-    const status = typeof result.status === "string" ? result.status.trim() : "";
-    if (!id || !agentRunning({ status })) {
-      return undefined;
-    }
-    return {
-      id,
-      status,
-      parent_id: threadID,
-      task_name:
-        typeof result.task_name === "string" ? result.task_name : undefined,
-      agent_path:
-        typeof result.agent_path === "string" ? result.agent_path : undefined,
-    };
-  } catch {
-    return undefined;
-  }
 }
 
 function agentPathDepth(path: string | undefined): number {

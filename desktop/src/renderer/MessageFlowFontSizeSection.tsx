@@ -45,8 +45,8 @@ function formatSize(size: number): string {
  * Stamp --conversation-message-font-size on <html> from the chosen px
  * value. The inline style on the document element wins over the
  * `:root` declaration in conversation-shell.css so the change cascades
- * through every message-flow surface (turns.css, chat.css,
- * participants.css, and the settings-page preview). Mirrors the
+ * through every message-flow surface (turns.css, chat.css, and the
+ * settings-page preview). Mirrors the
  * applyThemePreference shape — caller-friendly side-effect helper.
  */
 export function applyMessageFlowFontSize(size: MessageFlowFontSize): void {

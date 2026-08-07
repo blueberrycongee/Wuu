@@ -10,7 +10,6 @@ import {
 } from "react";
 import { ChevronDown, ChevronUp, Plus, Send } from "lucide-react";
 import type { InputFile, InputImage, ThreadItem, Turn } from "../shared/protocol";
-import { agentHandoffUserMessageDisplay, isAgentHandoffItem } from "./AgentHandoff";
 import {
   clipboardAttachmentFiles,
   composerFileFromFile,
@@ -37,7 +36,6 @@ import { StreamingMarkdown } from "./StreamingMarkdown";
 import { streamTextKey, streamTextStore } from "./StreamText";
 import { streamFieldValue } from "./ThreadItemText";
 import { ToolActivityRow } from "./ToolActivity";
-import { showToast } from "./Toast";
 import {
   ContextCompactionNotice,
   TurnNotice,
@@ -108,13 +106,10 @@ export const ThreadItemView = memo(function ThreadItemView(props: ThreadItemView
       </PluginMessageSlots>
     );
   }
-  const agentHandoff = item.type === "user_message" && isAgentHandoffItem(item);
-  const text = agentHandoff
-    ? (agentHandoffUserMessageDisplay(item)?.label ?? t("agent.handoff.message.updatedGeneric"))
-    : item.type === "error" ? undefined : item.text ?? item.reason;
+  const text = item.type === "error" ? undefined : item.text ?? item.reason;
   const editable = item.type === "user_message"
-    && !agentHandoff
     && !editing
+    && !item.read_only
     && onEditMessage !== undefined
     && ((item.text?.trim().length ?? 0) > 0 || (item.images?.length ?? 0) > 0 || (item.files?.length ?? 0) > 0);
   const fallback = (
@@ -209,20 +204,17 @@ function BuiltInThreadItemView({
       if (isProcessNotificationItem(item)) {
         return null;
       }
-      const agentHandoff = isAgentHandoffItem(item);
-      const displayText = agentHandoff
-        ? (agentHandoffUserMessageDisplay(item)?.label ?? t("agent.handoff.message.updatedGeneric"))
-        : text;
-      if (!agentHandoff && isInternalUserNotificationItem(item)) {
+      const displayText = text;
+      if (isInternalUserNotificationItem(item)) {
         return null;
       }
       const copyable = displayText.trim() !== "";
       const editable = Boolean(
-        !agentHandoff && !item.read_only &&
+        !item.read_only &&
           onEditMessage &&
           (copyable || (item.images?.length ?? 0) > 0 || (item.files?.length ?? 0) > 0),
       );
-      const editActionVisible = Boolean(onEditMessage && (agentHandoff || editable));
+      const editActionVisible = editable;
       return (
         <div
           className={`user-message-block${copyable || editActionVisible ? " user-message-block-with-actions" : ""}`}
@@ -232,7 +224,7 @@ function BuiltInThreadItemView({
           data-user-message-id={item.id}
           data-turn-id={turnID}
         >
-          {editing && !agentHandoff ? (
+          {editing ? (
             <UserMessageInlineEditor
               item={item}
               initialText={text}
@@ -267,16 +259,7 @@ function BuiltInThreadItemView({
               ) : null}
               {editActionVisible && onEditMessage ? (
                 <MessageEditButton
-                  onEdit={() => {
-                    if (agentHandoff) {
-                      showToast({
-                        message: t("agent.handoff.message.readOnly"),
-                        dedupeKey: "subagent-message-read-only",
-                      });
-                      return;
-                    }
-                    onEditMessage(turnID, item);
-                  }}
+                  onEdit={() => onEditMessage(turnID, item)}
                   className="message-action-button"
                   iconSize={15}
                 />

@@ -1344,7 +1344,7 @@ export type Agent = {
   started_at?: string;
   completed_at?: string | null;
   // Pinned and Archived mirror the underlying session metadata for the
-  // sub-agent's own session so the info panel can offer pin/archive
+  // child execution's own session so shells can offer generic session actions
   // actions without an extra round-trip.
   pinned?: boolean;
   archived?: boolean;
@@ -1827,6 +1827,12 @@ export type ThreadItem = {
   files?: InputFile[];
   name?: string;
   read_only?: boolean;
+  // Generated queries keep the normal user-message shape while preserving
+  // their trusted source and plugin-selected presentation separately.
+  origin?: string;
+  origin_id?: string;
+  cause?: string;
+  presentation_kind?: string;
   arguments?: string;
   display?: ToolCallDisplay;
   result?: string;

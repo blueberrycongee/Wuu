@@ -61,7 +61,6 @@ export function TurnView(props: TurnViewProps): JSX.Element {
         version: 1,
         turns: [props.turn],
         awaiting: false,
-        runningSubagentCount: 0,
         interrupted: props.turn.status === "interrupted",
         cwd: props.cwd,
         actions: {
