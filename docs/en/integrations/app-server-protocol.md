@@ -70,10 +70,6 @@ shutdown
 
 It must not call `StreamRunner.RunWithCallback` directly for the target path.
 
-`wuu exec --ultra` is an explicit, non-persistent enable override for this
-lifecycle. In `--json` mode, the first `session_configured` JSONL event reports
-the effective `ultra` and `max_parallel` values returned by `initialize`.
-
 ## Core Methods
 
 This is the common subset the text entrypoint exercises end-to-end. The full
@@ -81,7 +77,7 @@ method table lives in `internal/appserver/protocol.go` (every method constant in
 the `Method*` block at the top of that file is a valid JSON-RPC method, with
 siblings like `config/read`, `config/model/update`, `config/general/update`,
 `config/advanced/update`, `config/codex/models`, `config/provider/remove`,
-`skill/list`, runtime `goal/*` controls and active summary, the rest of the
+`skill/list`, the rest of the
 `thread/*` methods (`thread/list`, `thread/search`, `thread/pin`,
 `thread/archive`, `thread/edit-message`, `thread/context-composition`,
 `thread/regenerate-title`, `thread/rename`), all the `turn/*` methods
@@ -124,7 +120,7 @@ version must match exactly; an incompatible client fails during initialization
 instead of failing later in a turn.
 
 The result returns provider, model, workspace, permission and extension trust
-summaries, the effective `ultra` and `max_parallel` values, and `runtime_host`.
+summaries, the effective `max_parallel` value, and `runtime_host`.
 `runtime_host.kind` is `local` or `cloud`; a cloud process also reports the
 control-plane-supplied `instance_id`. Organization, seat, agent definition,
 quota, and sandbox details remain outside the core protocol.
@@ -132,7 +128,7 @@ quota, and sandbox details remain outside the core protocol.
 `config/read`
 
 Returns the current runtime configuration summary. Its result includes
-`ultra` and `max_parallel`.
+`max_parallel`.
 
 `config/model/update`
 
@@ -154,9 +150,8 @@ execution lease. Model and permission mode are immutable for the admitted
 turn; after it settles, the user may update that thread and the defaults for
 future threads. Existing non-target threads retain their persisted selections.
 
-The method also accepts an optional `ultra` field and returns the effective
-workspace-level `ultra` and `max_parallel` values. Provider connection fields
-such as `base_url`, `api_key`, and `auth_token` are always workspace provider
+The method returns the effective workspace-level `max_parallel` value. Provider
+connection fields such as `base_url`, `api_key`, and `auth_token` are always workspace provider
 configuration, never thread-scoped selection; a targeted request carrying only
 connection fields is processed as a workspace connection update and is allowed
 while the target thread runs.
@@ -205,48 +200,16 @@ Interrupts an active Run. `wuu exec` uses this for Ctrl+C and timeout cleanup.
 
 Requests a clean app-server shutdown.
 
-## Ultra Mode Configuration
+## Anonymous Worker Capacity
 
-Ultra mode is configured by `agent.ultra_mode`; it defaults to `false`.
-`agent.max_parallel` controls anonymous-worker execution capacity, uses `5`
-when omitted or set to zero, and is unchanged by Ultra mode. See the
-[configuration model](../../zh-cn/reference/configuration.md) for the persistent fields.
+`agent.max_parallel` is the host-owned execution capacity for anonymous workers.
+It uses `5` when omitted or set to zero. `InitializeResult`, `ConfigReadResult`,
+and `ConfigModelUpdateResult` report the effective `max_parallel` value.
 
-The `ultra` member of `ConfigModelUpdateParams` is optional:
-
-```json
-{"id":"2","method":"config/model/update","params":{"ultra":true}}
-```
-
-An Ultra-only request is valid. A request may also combine `ultra` with a
-provider/model update; both changes are persisted by one atomic configuration
-write. Omitting `ultra` preserves the current mode. `InitializeResult`,
-`ConfigReadResult`, and `ConfigModelUpdateResult` all include these readback
-fields:
-
-| Field | Type | Meaning |
-| --- | --- | --- |
-| `ultra` | boolean | Current session-level Ultra setting. |
-| `max_parallel` | integer | Effective anonymous-worker execution capacity after applying the default. |
-
-### Turn boundary and inheritance
-
-Ultra is immutable within an admitted top-level turn. A user turn snapshots
-the session setting when it starts. Synthetic completion turns reuse the
-effective snapshot associated with the running turn whose worker result caused
-the completion; they do not switch an in-flight orchestration tree to a newer
-session value.
-
-Each worker snapshots its parent's effective value when spawned. That value is
-stored with the worker and remains fixed across its lifetime, follow-up
-resumption, queued execution, and descendants. Changing Ultra while a turn is
-running updates session configuration and shell state only. It affects the next
-user-initiated top-level turn, not the current turn or any already-spawned
-subtree.
-
-When Ultra is absent or `false`, no Ultra tool-policy block is injected and the
-default worker orchestration restrictions remain in place. Clients that omit
-the optional update field therefore keep pre-Ultra behavior.
+Proactive delegation is not an app-server mode. It is supplied by the Subagent
+plugin through namespaced storage, an `agent.request.transform`, and a Desktop
+composer contribution. Consequently the core protocol has no `ultra` request or
+result field, and `wuu exec` has no `--ultra` switch.
 
 ## Anonymous Worker Lifecycle States
 
@@ -500,7 +463,5 @@ Changes to method names, notification names, field names, stdout/stderr
 behavior, or exit code meaning are product-level compatibility changes. Treat
 them as public API once automation depends on them.
 
-The Ultra additions are additive: `ConfigModelUpdateParams.ultra` is optional,
-and existing clients that omit it do not change the mode. The readback fields
-are additive result members; clients should continue to tolerate unknown result
-fields.
+Clients should tolerate unknown result fields so compatible protocol additions
+do not require lockstep shell releases.

@@ -81,15 +81,13 @@ Wuu 把配置分成“用户拥有”和“项目补充”两类。核心原则�
 服务器，因此只应对自己控制的文件使用。普通桌面和 CLI 启动不会通过空 `HOME`
 等隐式条件获得这项信任。
 
-## Ultra 主动多 Agent 模式
+## 匿名 Worker 并发与主动委派
 
-Ultra 是独立于模型和思考强度的会话开关。它打开主动委派政策，并允许匿名 worker
-继续编排自己的子任务；关闭时保留原有的主 Agent 和 worker 行为。
+核心只保存通用执行容量：
 
 ```json
 {
   "agent": {
-    "ultra_mode": true,
     "max_parallel": 5
   }
 }
@@ -97,37 +95,17 @@ Ultra 是独立于模型和思考强度的会话开关。它打开主动委派�
 
 | 字段 | 填写方式 | 默认值 | 语义 |
 | --- | --- | --- | --- |
-| `agent.ultra_mode` | `true` / `false` | `false` | 开启主动多 Agent 模式。省略或设为 `false` 时不注入 Ultra 政策，也不解锁默认 worker 的递归编排能力。 |
-| `agent.max_parallel` | 非负整数；`0` 等同省略 | `5` | 控制可同时执行的匿名 worker 数量。Ultra 不会提高这个值；超出的异步 spawn 进入 `queued`。 |
+| `agent.max_parallel` | 非负整数；`0` 等同省略 | `5` | 控制可同时执行的匿名 worker 数量；超出的异步执行进入 `queued`。 |
 
 `queued` 和 `waiting_children` 状态都不占执行槽。子结果唤醒父 worker 做整合不是新
 spawn，因此不经过 spawn 排队闸门；整合开始时，实际运行数可能短暂高于
-`max_parallel`。负数配置无效。
+`max_parallel`。负数配置无效。`initialize`、`config/read`、`config/model/update` 和
+`wuu exec --json` 的 `session_configured` 事件都会回读实际生效的 `max_parallel`。
 
-### Turn 边界与继承
-
-- 顶层 turn 启动时，core 会把会话当前的 Ultra 值快照为该 turn 的生效值。
-- worker 在 spawn 时继承父方的生效值。该值随 worker 一起保存，在其整个生命周期、
-  后续复活和继续派生的子树中保持不变。
-- 子 Agent 完成后触发的合成 completion turn 使用对应运行中的 turn 快照，不重新读取
-  一个可能已变化的会话值。
-- turn 运行中切换 Ultra 只更新会话配置和界面状态，不改变当前 turn、已经 spawn 的
-  worker 或它们的后代。下一次用户发起的顶层 turn 才读取新值。
-
-这样可以避免一棵正在运行的子树在中途被改变能力。默认配置没有
-`agent.ultra_mode` 时，快照始终为 `false`，行为与启用 Ultra 前一致。
-
-### App-server 与 CLI
-
-[`config/model/update`](../../en/integrations/app-server-protocol.md#ultra-mode-configuration) 的请求可以带可选
-字段 `ultra`。省略该字段会保留当前值；`{"ultra": true}` 或
-`{"ultra": false}` 可以单独更新模式，也可以与模型更新一起原子写入配置。
-`initialize`、`config/read` 和 `config/model/update` 的结果都会回读 `ultra` 与
-`max_parallel`。
-
-`wuu exec --ultra` 为当前 exec 运行显式开启 Ultra，不写回配置。配合 `--json` 时，
-首个 `session_configured` JSONL 事件会回读实际生效的 `ultra` 和 `max_parallel`。
-未传 `--ultra` 时，exec 保留配置中的值。
+主动委派不是核心配置或 app-server 模式。它由 Subagent 插件在自己的命名空间存储中保存开关，
+通过请求变换为后续模型请求加入委派 Prompt，并在 Composer 工具栏提供 A+ 控件。核心没有
+`agent.ultra_mode`、Turn 快照、`ultra` 协议字段或 `wuu exec --ultra`；禁用 Subagent 插件会同时
+移除委派 Tool、Prompt、状态和界面入口。
 
 ## 从旧项目配置迁移
 

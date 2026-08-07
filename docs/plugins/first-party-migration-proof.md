@@ -101,6 +101,12 @@ and returns final output only to the submitting plugin's lifecycle observer.
 Task names, worker prompts, `spawn_agent`, status presentation, and completion
 prompting belong to the plugin. HelpMe is deleted rather than migrated.
 
+Proactive delegation is also plugin-owned. The Subagent runtime stores its
+setting through namespaced storage and contributes a dynamic
+`agent.request.transform`; its Desktop module contributes the composer control.
+The core has no Ultra config field, turn snapshot, policy injection, CLI/API
+switch, IPC state, or native Composer treatment.
+
 ## Example 5: Compaction Strategy
 
 **Current implementation**: `compact.CompactWithBudgetAndOptions` is called directly from `Runner.RunWithUsage`.
@@ -125,7 +131,7 @@ func (p *SummaryCompactionProvider) Compact(ctx context.Context, model string, m
 
 ## Verification
 
-The plugin examples should ultimately use only:
+The five distributed first-party plugins now use only:
 
 - the versioned public plugin SDK;
 - documented capability and host-service contracts;
@@ -137,7 +143,18 @@ They must not import or require:
 - private app-server RPCs or product-specific host action switches;
 - private React state or internal class names.
 
-Goal is complete only after the continuation seam is gone. Subagent is complete
-only after the child-session action switch and core product branches are gone.
-Until then, these are migration targets rather than proof that the current public
-contract is already sufficient.
+The current proof matrix is:
+
+| Plugin | Runtime proof | Desktop proof | Shutdown and recovery proof |
+| --- | --- | --- | --- |
+| Goal | Tool, prompt, storage, settled-Turn observation and generated-query delivery use public contracts | Real bundled module registers its View, Slot and settings entry | Disable removes contributions; a new generation restores plugin-owned state |
+| Subagent | Tool, private Session lifecycle, completion delivery and proactive request transform use public contracts, including a real subprocess protocol test | Real bundled module registers status, settings and composer-toolbar contributions | Disable removes contributions; generation ownership isolates registrations and storage |
+| Automation | Cron parser, Timer, records, prompt and Session delivery live in the plugin | Real bundled module owns navigation, View and settings | Shutdown joins the Timer loop; a new generation restores namespaced state |
+| Memory | User/workspace/session files, Tools, prompt and management Session live in the plugin | Real bundled module owns navigation, View and settings | Disable removes prompt, Tools and UI; workspace state is recovered through plugin storage/files |
+| Dream | Candidate selection, Timer, retry state, prompt and private Session live in the plugin | Real bundled module owns navigation, View and settings | Shutdown joins the Timer loop; a new generation restores state; writes require the Memory plugin Tool |
+
+`FirstPartyPluginLifecycle.test.ts` executes all five real bundled Desktop modules
+through the production `WorkbenchController`/`PluginHost` path. It verifies atomic
+generation activation and replacement, and that disabling a plugin removes every
+View, Slot, navigation item, settings entry, locale, and style contribution.
+Ordinary Agent sessions remain usable when any or all of these plugins are absent.

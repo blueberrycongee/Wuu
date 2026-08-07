@@ -151,9 +151,9 @@ RPC。
 | Memory | 注册提示与文件 Tool → 在合适时机读写文件；管理 View 可调用 Agent 修改文件 | 用户、工作区和会话记忆格式，读写 Tool、安全策略、概览与修改提示、审计和设置界面 | `memory/overview`、`memory/chat`、`session_memory` 核心 Tool 和核心配置字段 |
 | Dream | Timer + Memory → 插件私有 Session → 整理后通过 Memory Tool 写回 | 候选选择、整合提示、失败退避、结果状态和管理界面 | `sessionDreamScheduler` 和 StreamRunner 的产品专用 AfterTurn Hook |
 | Goal | Turn 完成事件 → 检查目标状态 → 向同一主 Session 投递生成的 query | 目标状态机、预算、提示、Tool、存储和界面 | `agent.turn.continuation` 及 Goal 专用的 probe/prepare 调度 |
-| Subagent | 创建私有子 Session → fresh/fork 上下文 → 投递任务 → 完成后向父 Session 回投生成的 query | `spawn_agent` 等 Tool、任务命名、worker 策略、提示、报告和界面 | `host.child_session.request` 的 spawn/send/close/list/await/report 产品动作 |
+| Subagent | 创建私有子 Session → fresh/fork 上下文 → 投递任务 → 完成后向父 Session 回投生成的 query | `spawn_agent` 等 Tool、任务命名、worker 策略、主动委派设置与请求 Prompt、报告和界面 | `host.child_session.request` 的 spawn/send/close/list/await/report 产品动作，以及核心 Ultra 配置、Turn 快照、CLI/API 与 Composer 控件 |
 
-表中是目标能力模型，不是已经完成的 SDK 承诺。字段和方法必须在纵向迁移到达真实调用点后再定
+表中说明公共能力模型；五个一方迁移的当前完成情况见下文。字段和方法仍必须在真实调用点形成
 版本化合同。例如 memory 概览和修改不需要宿主“受约束模型任务”：它可以创建或复用一个 Session
 并发送 Prompt。只有这条公共链路确实无法保护宿主不变量时，才继续提炼更底层能力。
 
@@ -196,6 +196,10 @@ RPC。
    都是产品中立的 Session 合同；`host.child_session.request` 及其
    `spawn/send/close/list/await/report` switch 已删除。现有 `agentcontrol` 的租约和恢复代码仍可服务
    核心内部执行，但不再是 Subagent 插件的公开或私有调用入口。
+   主动委派同样属于 Subagent 插件：插件用命名空间 storage 保存开关，通过
+   `agent.request.transform` 为下一次 provider-neutral 请求加入插件 Prompt，并在
+   `composer.toolbar` 注册自己的 A+ 控件。核心不再保存 `agent.ultra_mode`，不再做 Turn 快照或
+   注入委派政策，也不再暴露 Ultra app-server/CLI/IPC/原生 Composer 状态。
 3. **通用 Session create/send 已取代 `host.turn.submit`。** 创建与投递是两个独立调用；创建持久化
    generation 绑定的 owner、`user | plugin` 可见性、parent、`fresh | fork` 和幂等 request id，
    投递则分离模型输入与 query 气泡摘要，并持久化真实插件来源、cause 和只读属性。Provider 仍按
@@ -220,6 +224,10 @@ RPC。
    Timer、间隔、失败退避和运行状态，再通过 `host.session.create/send` 创建 fork 私有 Session；Prompt
    和设置 View 也由插件拥有，并让该 Session 通过 Memory 插件提供的 `session_memory` Tool 写回。
    核心 `sessionDreamScheduler`、Dream 状态/锁、AfterTurn Hook、配置字段和原生设置已经删除。
+9. **Desktop 生命周期已由真实一方模块证明。** Goal、Subagent、Automation、Memory、Dream 的
+   bundled `desktop.js` 直接运行在 `WorkbenchController`/`PluginHost` 产品路径；View、Slot、导航、
+   设置入口、Locale 和 Style 随 generation 原子激活与替换，禁用后全部撤回。测试不使用伪造的
+   注册清单来代替模块执行。
 
 ### 改造顺序与完成标准
 
@@ -406,11 +414,10 @@ React 组件可以在 generation 激活后订阅宿主事件，组件卸载或 g
 
 ## 一方插件与第三方插件同构
 
-Goal、Subagent 已经通过与第三方插件相同的 generation 和公共 Session 服务运行：前者观察 Turn
-终态并向主 Session 投递普通 query，后者创建插件私有 Session 并在完成后向父 Session 交付结果。
-两者的专用 continuation 与 child-session 宿主接口已经删除，是当前“一方/三方同构”的纵向证明。
-Cron 也已通过同一公共 Session 链路迁移；memory、dream 继续按该边界迁移。协作暂不纳入当前
-改造范围，不应为了它预建接口。
+Goal、Subagent、Automation、Memory、Dream 已经通过与第三方插件相同的 generation、capability
+和公共 Session 服务运行。它们各自拥有 Prompt、Tool、状态、后台策略和 Desktop 贡献，专用宿主
+执行 seam 与原生产品外壳已经删除，是当前“一方/三方同构”的纵向证明。协作暂不纳入当前改造
+范围，不应为了它预建接口。
 
 判断标准是：如果一项一方功能只能修改私有循环或私有 UI 才能实现，应先确认缺少哪一个通用
 能力；只有真实需求证明公共合同不足时才扩展宿主。Wuu 自己的插件是生态的第一批使用者，不是
@@ -443,7 +450,7 @@ Cron 也已通过同一公共 Session 链路迁移；memory、dream 继续按该
 - 部分 Presenter 的 `replace` 快照和 Action 还不足以无损重建完整原生语义，优先使用 `wrap`；
 - 画布、终端、Webview、PDF ShadowRoot 和专用预览仍是明确的主题边界；
 - Marketplace、远程自动更新、排名、依赖解析和签名分发不属于当前本地优先平台；
-- Goal、Subagent、Cron、用户 Memory 和 Dream 已去除专用宿主执行 seam；工作区/会话 memory 尚未完成迁移；
+- Goal、Subagent、Automation、用户/工作区/会话 Memory 和 Dream 已完成纵向迁移，并去除专用宿主执行 seam；
 - HelpMe 已从代码和产品中删除；Plan 明确保留在核心链路。
 
 这些边界不是鼓励为未来预留抽象。新能力应由真实插件案例驱动，先确定责任属于宿主、功能插件

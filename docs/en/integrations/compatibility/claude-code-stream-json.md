@@ -62,7 +62,7 @@ Every payload also has a `type` string. Fields listed are exactly the map keys p
 
 | Event `type` | Emit site | Fields |
 |---|---|---|
-| `session_configured` | `emitSessionConfigured` | `protocol_version`, `provider`, `model`, `effort`, `variant`, `ultra`, `max_parallel`, `workspace_root`, `permissions` |
+| `session_configured` | `emitSessionConfigured` | `protocol_version`, `provider`, `model`, `effort`, `variant`, `max_parallel`, `workspace_root`, `permissions` |
 | `thread_started` / `thread_resumed` / `thread_forked` | `runner.go:455-461` (`emitThreadEvent`); which one chosen at `runner.go:100-107` | `thread_id`, `model`, `provider`, `cwd` |
 | `turn_started` | `runner.go:463-469` | `thread_id`, `turn_id` |
 | `agent_message_delta` | `runner.go:298` | `thread_id`, `turn_id`, `delta` (token-level text; also accumulated into `finalMessage`, `runner.go:297`) |
@@ -313,7 +313,7 @@ Legend: **=** direct map · **~** needs transform/synthesis · **wuu∅** wuu ha
 | `slash_commands[]`, `agents[]`, `skills[]`, `plugins[]`, `mcp_servers[]` | none at init | wuu∅ |
 | `apiKeySource`, `betas`, `claude_code_version`, `output_style`, `fast_mode_state` | none | wuu∅ (cc-specific) |
 | `session_id`, `uuid` | `thread_id` / none | ~ / wuu∅ |
-| — | `session_configured.provider`, `effort`, `variant`, `ultra`, `max_parallel`, `protocol_version` | cc∅ |
+| — | `session_configured.provider`, `effort`, `variant`, `max_parallel`, `protocol_version` | cc∅ |
 
 ### 3.3 Streaming content
 

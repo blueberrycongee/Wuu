@@ -76,7 +76,6 @@ Emitted after `initialize` succeeds.
   "protocol_version": "wuu-app-server/v0.1",
   "provider": "openai",
   "model": "gpt-5",
-  "ultra": false,
   "max_parallel": 5,
   "workspace_root": "/repo",
   "permissions": {}
