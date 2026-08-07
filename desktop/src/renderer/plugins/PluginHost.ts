@@ -406,7 +406,7 @@ export class PluginHost {
   private readonly surfaceListeners = new Map<PluginSurfaceId, Set<() => void>>();
   private readonly listeners = new Set<() => void>();
   private readonly localeSnapshots = new Map<string, Readonly<Record<string, string>>>();
-  private readonly diagnostics = new Map<string, PluginGenerationDiagnostic[]>();
+  private readonly diagnostics = new Map<string, readonly PluginGenerationDiagnostic[]>();
   private readonly presenterQuerySnapshots = new Map<string, readonly RegisteredPresenter[]>();
   private conflictPreferences: Readonly<Record<string, string>> = Object.freeze({});
   private conflictSnapshot: readonly PluginContributionConflict[] = Object.freeze([]);
@@ -471,6 +471,9 @@ export class PluginHost {
 
     this.pendingActivations.delete(pluginId);
     const previous = this.activeGenerations.get(pluginId);
+    if (this.diagnostics.delete(diagnosticKey(pluginId, generation))) {
+      this.notifyListeners();
+    }
     this.activeGenerations.set(pluginId, state);
     state.active = true;
     if (previous) {
@@ -726,7 +729,7 @@ export class PluginHost {
         });
       },
       onHostEvent: (handler: (event: unknown) => void) => {
-        this.assertAccepting(state);
+        this.assertUsable(state);
         state.hostEventHandlers.add(handler);
         const disposable = createDisposable(() => state.hostEventHandlers.delete(handler));
         state.teardown.push(disposable);
@@ -975,6 +978,12 @@ export class PluginHost {
   private assertAccepting(state: GenerationState): void {
     if (!state.acceptingRegistrations) {
       throw new Error(`Plugin generation ${state.pluginId}@${state.generation} is no longer registering`);
+    }
+  }
+
+  private assertUsable(state: GenerationState): void {
+    if (state.disposed || (!state.acceptingRegistrations && !state.active)) {
+      throw new Error(`Plugin generation ${state.pluginId}@${state.generation} is no longer active`);
     }
   }
 
@@ -1375,8 +1384,14 @@ export class PluginHost {
   private addDiagnostic(diagnostic: PluginGenerationDiagnostic): void {
     const key = diagnosticKey(diagnostic.pluginId, diagnostic.generation);
     const diagnostics = this.diagnostics.get(key) ?? [];
-    diagnostics.push(Object.freeze(diagnostic));
-    this.diagnostics.set(key, diagnostics);
+    if (diagnostics.some((existing) =>
+      existing.kind === diagnostic.kind && existing.message === diagnostic.message)) {
+      return;
+    }
+    this.diagnostics.set(key, Object.freeze([
+      ...diagnostics,
+      Object.freeze(diagnostic),
+    ]));
     this.notifyListeners();
   }
 

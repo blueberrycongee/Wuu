@@ -684,21 +684,48 @@ describe("PluginHost", () => {
   it("delivers host events only to the active generation", async () => {
     const host = new PluginHost({ react: React });
     const received: unknown[] = [];
+    let firstApi: PluginGenerationApi | undefined;
     await host.activateGeneration({
       pluginId: "event-owner",
       generation: "one",
-      register(api) { api.onHostEvent((event) => received.push(event)); },
+      register(api) { firstApi = api; },
     });
+    const subscription = firstApi?.onHostEvent((event) => received.push(event));
     host.publishHostEvent({ kind: "notification", method: "turn/completed" });
     expect(received).toEqual([{ kind: "notification", method: "turn/completed" }]);
+
+    subscription?.dispose();
+    host.publishHostEvent({ kind: "notification", method: "turn/ignored" });
+    expect(received).toHaveLength(1);
 
     await host.activateGeneration({
       pluginId: "event-owner",
       generation: "two",
       register() {},
     });
+    expect(() => firstApi?.onHostEvent(() => {})).toThrow("no longer active");
     host.publishHostEvent({ kind: "notification", method: "turn/started" });
     expect(received).toHaveLength(1);
+  });
+
+  it("deduplicates repeated diagnostics and clears them after a successful reactivation", async () => {
+    const host = new PluginHost({ react: React });
+    await host.activateGeneration({
+      pluginId: "recoverable",
+      generation: "one",
+      register(api) { api.registerSlot("composer.above", contribution("status")); },
+    });
+    const contributionRecord = host.getSlotSnapshot("composer.above")[0];
+    host.recordRenderFailure(contributionRecord, { slotId: "composer.above" }, new Error("render boom"));
+    host.recordRenderFailure(contributionRecord, { slotId: "composer.above" }, new Error("render boom"));
+    expect(host.getGenerationDiagnostics("recoverable", "one")).toHaveLength(1);
+
+    await host.activateGeneration({
+      pluginId: "recoverable",
+      generation: "one",
+      register(api) { api.registerSlot("composer.above", contribution("status")); },
+    });
+    expect(host.getGenerationDiagnostics("recoverable", "one")).toEqual([]);
   });
 });
 
