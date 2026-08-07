@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/blueberrycongee/wuu/internal/compact"
 	wuucontext "github.com/blueberrycongee/wuu/internal/context"
 	"github.com/blueberrycongee/wuu/internal/providers"
 )
@@ -307,7 +306,7 @@ func TestPrefixExperiment_HelpMeBreaksOnceThenResumesAcrossTurn(t *testing.T) {
 			results: map[string]string{"helpme_1": helpMeResult},
 		}
 		cfg.BeforeRequestContext = stableContext()
-		cfg.PostToolRewrite = compact.RewriteHistoryFromHelpMeToolMessagesWithContext
+		cfg.PostToolRewrite = rewriteFromRecoveryEnvelopeForTest
 	})
 	sim.runTurn("ask 2", &fakeStep{results: toolRoundSteps("call_2")}, func(cfg *LoopConfig) {
 		cfg.Tools = experimentTools()

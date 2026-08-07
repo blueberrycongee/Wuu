@@ -12,14 +12,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/blueberrycongee/wuu/internal/agent"
 	"github.com/blueberrycongee/wuu/internal/agentcontrol"
 	"github.com/blueberrycongee/wuu/internal/agentthread"
 	wuucontext "github.com/blueberrycongee/wuu/internal/context"
-	"github.com/blueberrycongee/wuu/internal/modelprofile"
 	proc "github.com/blueberrycongee/wuu/internal/process"
 	"github.com/blueberrycongee/wuu/internal/providers"
-	"github.com/blueberrycongee/wuu/internal/subagent"
 	"github.com/blueberrycongee/wuu/internal/toolctx"
 	"github.com/blueberrycongee/wuu/internal/toolresult"
 )
@@ -1560,6 +1557,7 @@ func TestToolkit_FileToolTelemetryRecordsResultActions(t *testing.T) {
 	}
 }
 
+/* Removed with the first-party delegation plugin extraction.
 func TestToolkit_AgentTeamTelemetryRecordsResultActions(t *testing.T) {
 	root := t.TempDir()
 	kit, err := New(root)
@@ -1857,6 +1855,8 @@ func TestToolkit_HelpMeDiscoversSubagentManagementTools(t *testing.T) {
 	}
 }
 
+*/
+
 func TestToolkit_PathEscapeBlocked(t *testing.T) {
 	root := t.TempDir()
 	kit, err := New(root)
@@ -1873,37 +1873,17 @@ func TestToolkit_PathEscapeBlocked(t *testing.T) {
 	}
 }
 
-func TestToolkit_TaskAddressedAgentTools_RegisteredInDefinitions(t *testing.T) {
+func TestToolkit_OptionalPluginToolsAbsentFromCoreDefinitions(t *testing.T) {
 	root := t.TempDir()
 	kit, err := New(root)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	want := map[string]bool{
-		"send_message": false,
-		"close_agent":  false,
-		"agent_report": false,
-	}
-	// followup_task and await_agents were merged/retired; they must be absent.
-	absent := map[string]bool{"followup_task": true, "await_agents": true, "list_agents": true}
+	absent := map[string]bool{"spawn_agent": true, "helpme": true, "send_message": true, "close_agent": true, "agent_report": true, "followup_task": true, "await_agents": true, "list_agents": true}
 	defs := kit.Definitions()
 	for _, d := range defs {
-		if d.Name == "send_message_to_agent" || d.Name == "stop_agent" {
-			t.Fatalf("legacy agent tool %s must not be registered", d.Name)
-		}
 		if absent[d.Name] {
-			t.Fatalf("retired agent tool %s must not be registered", d.Name)
-		}
-		if _, ok := want[d.Name]; ok {
-			if strings.Contains(strings.ToLower(d.Description), "currently unavailable") {
-				t.Fatalf("%s description should not say unavailable: %q", d.Name, d.Description)
-			}
-			want[d.Name] = true
-		}
-	}
-	for name, found := range want {
-		if !found {
-			t.Fatalf("%s must be present in tool definitions", name)
+			t.Fatalf("optional plugin tool %s must not be registered by core", d.Name)
 		}
 	}
 }
@@ -2205,14 +2185,8 @@ func TestToolkit_ToolInfo_ClassifiesBuiltIns(t *testing.T) {
 		{name: "read_file", kind: ToolKindFile, exposure: ToolExposureDirect, risk: ToolRiskLow, readOnly: true, concurrencySafe: true},
 		{name: "tool_search", kind: ToolKindDiscovery, exposure: ToolExposureDirect, risk: ToolRiskLow, readOnly: false, concurrencySafe: false},
 		{name: "bash", kind: ToolKindShell, exposure: ToolExposureDirect, risk: ToolRiskHigh, readOnly: false, concurrencySafe: false},
-		{name: "spawn_agent", kind: ToolKindAgent, exposure: ToolExposureDirect, risk: ToolRiskHigh, readOnly: false, concurrencySafe: true},
-		{name: "send_message", kind: ToolKindAgent, exposure: ToolExposureDirect, risk: ToolRiskHigh, readOnly: false, concurrencySafe: true},
-		{name: "close_agent", kind: ToolKindAgent, exposure: ToolExposureDirect, risk: ToolRiskHigh, readOnly: false, concurrencySafe: true},
 		{name: "cron", kind: ToolKindSchedule, exposure: ToolExposureDeferred, risk: ToolRiskHigh, readOnly: false, concurrencySafe: false},
 		{name: "session_memory", kind: ToolKindMemory, exposure: ToolExposureDirect, risk: ToolRiskMedium, readOnly: false, concurrencySafe: false},
-		{name: "get_goal", kind: ToolKindGoal, exposure: ToolExposureDirect, risk: ToolRiskLow, readOnly: true, concurrencySafe: true},
-		{name: "create_goal", kind: ToolKindGoal, exposure: ToolExposureDirect, risk: ToolRiskLow, readOnly: false, concurrencySafe: false},
-		{name: "update_goal", kind: ToolKindGoal, exposure: ToolExposureDirect, risk: ToolRiskLow, readOnly: false, concurrencySafe: false},
 		{name: "list_agent_profiles", kind: ToolKindAgent, exposure: ToolExposureDirect, risk: ToolRiskLow, readOnly: true, concurrencySafe: true},
 		{name: "create_agent_profile", kind: ToolKindAgent, exposure: ToolExposureDirect, risk: ToolRiskHigh, readOnly: false, concurrencySafe: true},
 		{name: "update_plan", kind: ToolKindPlan, exposure: ToolExposureDirect, risk: ToolRiskLow, readOnly: false, concurrencySafe: false},
@@ -4449,6 +4423,7 @@ func TestToolkit_ProcessOutputRedactsSecrets(t *testing.T) {
 	}
 }
 
+/* Removed with the first-party delegation plugin extraction.
 func TestToolkit_SpawnAgentDefinitionUsesCCAgentSchema(t *testing.T) {
 	root := t.TempDir()
 	kit, err := New(root)
@@ -4726,6 +4701,8 @@ func TestDeriveAgentTaskName(t *testing.T) {
 	}
 }
 
+*/
+
 func definitionNames(defs []providers.ToolDefinition) map[string]bool {
 	out := make(map[string]bool, len(defs))
 	for _, def := range defs {
@@ -4772,6 +4749,7 @@ func TestToolkit_DisableTools_HidesDefinitionsAndBlocksExecute(t *testing.T) {
 	}
 }
 
+/* Removed with the first-party delegation plugin extraction.
 func TestToolkit_HelpMeRequiresExplicitOptInAndCloneInheritsIt(t *testing.T) {
 	kit, err := New(t.TempDir())
 	if err != nil {
@@ -4816,6 +4794,8 @@ func TestToolkit_HelpMeRequiresExplicitOptInAndCloneInheritsIt(t *testing.T) {
 		t.Fatal("clone Env surface must inherit HelpMe opt-in")
 	}
 }
+
+*/
 
 func TestToolkit_RunShell(t *testing.T) {
 	root := t.TempDir()

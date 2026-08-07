@@ -23,32 +23,40 @@ var productionPluginHostServices = []pluginhost.HostServiceMethod{
 	pluginhost.HostServiceStorageKeys,
 	pluginhost.HostServiceSettingsGet,
 	pluginhost.HostServiceSettingsList,
+	pluginhost.HostServiceChildSessionRequest,
 }
+
+type childSessionRequestHandler func(context.Context, pluginhost.ChildSessionRequestParams) (json.RawMessage, error)
 
 // pluginHostServices is bound to exactly one installed plugin generation. It
 // never accepts a caller-supplied plugin ID or filesystem path: ownership and
 // roots are captured from the validated plugin inventory at activation time.
 type pluginHostServices struct {
-	mu          sync.RWMutex
-	active      bool
-	pluginID    string
-	subjectID   string
-	fingerprint string
-	projectRoot string
-	wuuHome     string
-	settings    map[string]pluginpkg.SettingDefinition
+	mu                  sync.RWMutex
+	active              bool
+	pluginID            string
+	subjectID           string
+	fingerprint         string
+	projectRoot         string
+	wuuHome             string
+	settings            map[string]pluginpkg.SettingDefinition
+	childSessionRequest childSessionRequestHandler
 }
 
-func newPluginHostServices(item pluginpkg.Plugin, projectRoot, wuuHome string) *pluginHostServices {
+func newPluginHostServices(item pluginpkg.Plugin, projectRoot, wuuHome string, childSession ...childSessionRequestHandler) *pluginHostServices {
 	settings := make(map[string]pluginpkg.SettingDefinition, len(item.Settings))
 	for key, definition := range item.Settings {
 		settings[key] = definition
 	}
-	return &pluginHostServices{
+	services := &pluginHostServices{
 		active: true, pluginID: item.ID, subjectID: strings.TrimSpace(item.SubjectID),
 		fingerprint: item.Fingerprint, projectRoot: projectRoot, wuuHome: wuuHome,
 		settings: settings,
 	}
+	if len(childSession) != 0 {
+		services.childSessionRequest = childSession[0]
+	}
+	return services
 }
 
 func (s *pluginHostServices) SupportedHostServices() []pluginhost.HostServiceMethod {
@@ -78,6 +86,15 @@ func (s *pluginHostServices) HandleHostService(ctx context.Context, method plugi
 	}
 
 	switch method {
+	case pluginhost.HostServiceChildSessionRequest:
+		if s.childSessionRequest == nil {
+			return nil, serviceError("service_unavailable", "child-session service is unavailable")
+		}
+		var params pluginhost.ChildSessionRequestParams
+		if err := decodeServiceParams(raw, &params); err != nil {
+			return nil, err
+		}
+		return s.childSessionRequest(ctx, params)
 	case pluginhost.HostServiceSettingsGet:
 		return s.settingsGet(raw)
 	case pluginhost.HostServiceSettingsList:

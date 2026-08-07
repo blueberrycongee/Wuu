@@ -19,7 +19,6 @@ import (
 	"github.com/blueberrycongee/wuu/internal/automation"
 	"github.com/blueberrycongee/wuu/internal/capability"
 	"github.com/blueberrycongee/wuu/internal/channels"
-	"github.com/blueberrycongee/wuu/internal/goalruntime"
 	"github.com/blueberrycongee/wuu/internal/mcp"
 	"github.com/blueberrycongee/wuu/internal/modelprofile"
 	proc "github.com/blueberrycongee/wuu/internal/process"
@@ -31,7 +30,6 @@ import (
 )
 
 const (
-	helpMeToolName             = "helpme"
 	browserToolName            = "wuu_browser"
 	defaultShellTimeoutSeconds = 300
 	maxShellTimeoutSeconds     = 3600
@@ -57,12 +55,8 @@ type Toolkit struct {
 	disabledTools           map[string]struct{}
 	exposureMu              sync.RWMutex
 	loadedDeferredTools     map[string]struct{}
-	availableToolBundles    map[string]struct{}
 	toolSearchEnabled       bool
-	experimentalToolBundles bool
 	nativeDeferredDiscovery bool
-	discoveryMu             sync.Mutex
-	discoveredToolsByCall   map[string][]providers.LoadableToolDefinition
 	boundary                WorkspaceBoundary
 	// mcpManager, when set, exposes MCP server tools alongside built-in
 	// tools. MCP tools are appended after built-ins to preserve prompt
@@ -91,6 +85,15 @@ type Toolkit struct {
 	// the authoritative source for which tool names are direct,
 	// deferred, or hidden under the current profile.
 	activeSurface capability.Surface
+}
+
+// ExecutionActor exposes the generic identity bound to this tool surface so
+// external plugin tools can preserve parent/child execution relationships.
+func (t *Toolkit) ExecutionActor() (string, string) {
+	if t == nil || t.env == nil {
+		return "", ""
+	}
+	return strings.TrimSpace(t.env.AgentID), currentExecutionPath(t.env)
 }
 
 // New creates a tool executor rooted in a workspace.
@@ -123,7 +126,7 @@ func New(rootDir string) (*Toolkit, error) {
 	}
 	t := &Toolkit{
 		env:               env,
-		disabledTools:     map[string]struct{}{helpMeToolName: {}, browserToolName: {}},
+		disabledTools:     map[string]struct{}{browserToolName: {}},
 		toolSearchEnabled: true,
 		boundary:          StandardBoundary(),
 	}
@@ -166,7 +169,6 @@ func (t *Toolkit) CloneForRoot(rootDir string) (*Toolkit, error) {
 		boundaryConfigured:          t.env.boundaryConfigured,
 		SessionID:                   t.env.SessionID,
 		SessionDir:                  t.env.SessionDir,
-		GoalRuntime:                 t.env.GoalRuntime,
 		AgentID:                     t.env.AgentID,
 		AgentPath:                   t.env.AgentPath,
 		ToolSearchEnabled:           t.env.ToolSearchEnabled,
@@ -198,7 +200,6 @@ func (t *Toolkit) CloneForRoot(rootDir string) (*Toolkit, error) {
 	}
 	t.exposureMu.RLock()
 	clone.toolSearchEnabled = t.toolSearchEnabled
-	clone.experimentalToolBundles = t.experimentalToolBundles
 	clone.nativeDeferredDiscovery = t.nativeDeferredDiscovery
 	t.exposureMu.RUnlock()
 	t.activeProfileMu.RLock()
@@ -254,21 +255,12 @@ func (t *Toolkit) rebuildRegistry() {
 		// back to the full conversation via this tool).
 		NewThreadGetTool(e),
 		NewSetSessionWorkspaceTool(e),
-		// Goals
-		NewGetGoalTool(e),
-		NewCreateGoalTool(e),
-		NewUpdateGoalTool(e),
 		// Recurring agent profiles
 		NewListAgentProfilesTool(e),
 		NewCreateAgentProfileTool(e),
 		// Planning
 		NewUpdatePlanTool(e),
 		// Agent orchestration
-		NewSpawnAgentTool(e),
-		NewHelpMeTool(e),
-		NewSendAgentMessageTool(e),
-		NewCloseAgentTool(e),
-		NewAgentReportTool(e),
 		// Cron scheduling
 		NewCronTool(e),
 		// Embedded browser automation (default-disabled in New(); enabled per
@@ -351,14 +343,16 @@ func (t *Toolkit) ToolSearchEnabled() bool {
 	return t.toolSearchEnabled
 }
 
-func (t *Toolkit) SetExperimentalDeferredToolBundles(enabled bool) {
+func (t *Toolkit) nativeDeferredToolDiscoveryEnabled() bool {
 	if t == nil {
-		return
+		return false
 	}
-	t.exposureMu.Lock()
-	t.experimentalToolBundles = enabled
-	t.exposureMu.Unlock()
+	t.exposureMu.RLock()
+	defer t.exposureMu.RUnlock()
+	return t.nativeDeferredDiscovery
 }
+
+func (t *Toolkit) toolSearchCanLoadDeferredTool(string) bool { return true }
 
 // SetProcessManager attaches the process manager.
 func (t *Toolkit) SetProcessManager(m *proc.Manager) {
@@ -409,19 +403,6 @@ func (t *Toolkit) SessionDir() string {
 		return ""
 	}
 	return t.env.SessionDir
-}
-
-// SetGoalRuntime attaches the thread-scoped active Goal runtime.
-func (t *Toolkit) SetGoalRuntime(runtime *goalruntime.Runtime) {
-	t.env.GoalRuntime = runtime
-}
-
-// GoalRuntime returns the thread-scoped active Goal runtime, if any.
-func (t *Toolkit) GoalRuntime() *goalruntime.Runtime {
-	if t == nil || t.env == nil {
-		return nil
-	}
-	return t.env.GoalRuntime
 }
 
 // SetAgentIdentity sets the current agent identity for relative agent-path
@@ -527,22 +508,6 @@ func (t *Toolkit) EnableTools(names ...string) {
 	}
 }
 
-// SetHelpMeEnabled controls the experimental HelpMe recovery entrypoint. New
-// toolkits keep it disabled; runtime configuration must opt in explicitly.
-func (t *Toolkit) SetHelpMeEnabled(enabled bool) {
-	if t == nil {
-		return
-	}
-	if enabled {
-		t.EnableTools(helpMeToolName)
-	} else {
-		t.DisableTools(helpMeToolName)
-	}
-	t.activeProfileMu.Lock()
-	t.publishActiveSurfaceLocked()
-	t.activeProfileMu.Unlock()
-}
-
 // SetBrowserBridge attaches the desktop transport for the embedded browser
 // backend. Nil leaves the tool dependency-less so it returns a clear
 // execute-time error instead of panicking.
@@ -563,9 +528,8 @@ func (t *Toolkit) SetBrowserTabs(store BrowserTabStore) {
 }
 
 // SetBrowserEnabled gates the embedded browser tool. New toolkits keep it
-// disabled; the runtime opts in per session (WUU_ENABLE_BROWSER). Mirrors
-// SetHelpMeEnabled: toggle disabledTools then republish the surface so the
-// deferred catalog reflects availability.
+// disabled; the runtime opts in per session (WUU_ENABLE_BROWSER). It toggles
+// disabledTools then republishes the surface so the catalog reflects availability.
 func (t *Toolkit) SetBrowserEnabled(enabled bool) {
 	if t == nil {
 		return
@@ -624,12 +588,10 @@ func (t *Toolkit) isToolDisabled(name string) bool {
 func (t *Toolkit) Definitions() []providers.ToolDefinition {
 	t.refreshMCPToolSnapshot(false)
 	all := t.registry.Definitions()
-	t.refreshStateActivatedToolBundles()
 	surface := t.activeCompiledSurface()
 	hasSurface := surface.ProfileName != ""
 	stable := make([]providers.ToolDefinition, 0, len(all))
 	dynamic := make([]providers.ToolDefinition, 0)
-	tail := make([]providers.ToolDefinition, 0, len(subagentManagementTools))
 	nativeDeferred := t.nativeDeferredToolDiscoveryEnabled()
 	for _, d := range all {
 		if t.isToolDisabled(d.Name) {
@@ -651,14 +613,10 @@ func (t *Toolkit) Definitions() []providers.ToolDefinition {
 			if nativeDeferred {
 				d.DeferLoading = true
 			}
-			if isSubagentManagementTool(d.Name) {
-				tail = append(tail, d)
-				continue
-			}
 			dynamic = append(dynamic, d)
 		}
 	}
-	out := make([]providers.ToolDefinition, 0, len(stable)+len(dynamic)+len(tail))
+	out := make([]providers.ToolDefinition, 0, len(stable)+len(dynamic))
 	out = append(out, stable...)
 	out = append(out, dynamic...)
 	// Append direct MCP tools after built-ins to preserve prompt cache stability.
@@ -677,7 +635,6 @@ func (t *Toolkit) Definitions() []providers.ToolDefinition {
 			out = append(out, d)
 		}
 	}
-	out = append(out, tail...)
 	return out
 }
 
@@ -893,9 +850,8 @@ func (t *Toolkit) exposedSurfaceLocked() capability.Surface {
 // publishActiveSurfaceLocked is the single write path for env.ActiveSurface.
 // Routing every update through it guarantees that surface consumers outside
 // the toolkit (skill filtering, prompt assembly, surface snapshots) never see
-// tools that Definitions() hides and Execute() rejects — e.g. the gated
-// helpme tool while it is disabled. Callers must hold activeProfileMu for
-// writing.
+// tools that Definitions() hides and Execute() rejects. Callers must hold
+// activeProfileMu for writing.
 func (t *Toolkit) publishActiveSurfaceLocked() {
 	if t.env == nil {
 		return

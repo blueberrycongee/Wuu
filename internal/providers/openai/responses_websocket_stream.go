@@ -1203,7 +1203,7 @@ func isRefreshableResponsesInputItem(item responsesInputItem) bool {
 		return false
 	}
 	text := strings.TrimSpace(responsesInputItemText(item))
-	return wuucontext.IsSystemReminder("", text) || wuucontext.IsGoalContinuation("", text)
+	return wuucontext.IsSystemReminder("", text)
 }
 
 func responsesInputItemText(item responsesInputItem) string {

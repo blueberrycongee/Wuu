@@ -111,7 +111,6 @@ type toolSearchMatch struct {
 }
 
 func (t *Toolkit) searchDeferredTools(query string, limit int) []toolSearchMatch {
-	t.refreshStateActivatedToolBundles()
 	if names, ok := toolSearchSelectNames(query); ok {
 		return t.selectDeferredTools(names, limit)
 	}
@@ -126,9 +125,6 @@ func (t *Toolkit) searchDeferredTools(query string, limit int) []toolSearchMatch
 			continue
 		}
 		if t.toolExposure(tool.Name()) != ToolExposureDeferred {
-			continue
-		}
-		if !t.toolSearchCanLoadDeferredTool(tool.Name()) {
 			continue
 		}
 		def := tool.Definition()
@@ -163,7 +159,6 @@ func (t *Toolkit) searchDeferredTools(query string, limit int) []toolSearchMatch
 }
 
 func (t *Toolkit) selectDeferredTools(names []string, limit int) []toolSearchMatch {
-	t.refreshStateActivatedToolBundles()
 	if len(names) == 0 || limit <= 0 {
 		return nil
 	}
@@ -174,9 +169,6 @@ func (t *Toolkit) selectDeferredTools(names []string, limit int) []toolSearchMat
 			continue
 		}
 		if t.toolExposure(tool.Name()) != ToolExposureDeferred {
-			continue
-		}
-		if !t.toolSearchCanLoadDeferredTool(tool.Name()) {
 			continue
 		}
 		toolsByName[tool.Name()] = tool
@@ -207,13 +199,6 @@ func (t *Toolkit) selectDeferredTools(names []string, limit int) []toolSearchMat
 		}
 	}
 	return matches
-}
-
-func (t *Toolkit) toolSearchCanLoadDeferredTool(name string) bool {
-	if isSubagentManagementTool(name) && t.experimentalDeferredToolBundlesEnabled() {
-		return t.isToolBundleAvailable(subagentManagementBundle) || t.isDeferredToolLoaded(name)
-	}
-	return true
 }
 
 func toolSearchSelectNames(query string) ([]string, bool) {

@@ -203,8 +203,8 @@ type Server struct {
 	drainingQueuedTurns map[string]bool
 	heldUserWorkMu      sync.Mutex
 
-	goalContinuationMu       sync.Mutex
-	drainingGoalContinuation map[string]bool
+	pluginContinuationMu       sync.Mutex
+	drainingPluginContinuation map[string]bool
 
 	rewriteChatHistoryForTest           func(string, string, []providers.ChatMessage) error
 	afterLifecycleHistoryAppendForTest  func(threadID string)
@@ -279,7 +279,7 @@ func NewWithCredentialStore(rt *runtime.Session, out io.Writer, store credential
 		drainingAgentCompletionTurns: make(map[string]bool),
 		pendingQueuedTurns:           make(map[string][]queuedTurn),
 		drainingQueuedTurns:          make(map[string]bool),
-		drainingGoalContinuation:     make(map[string]bool),
+		drainingPluginContinuation:   make(map[string]bool),
 		codexModelCache:              make(map[string]map[string]config.ProviderModelConfig),
 		memoryOverviewCache:          make(map[string]memoryOverviewCacheEntry),
 		inferenceMaintenanceStop:     make(chan struct{}),
@@ -637,9 +637,9 @@ func (s *Server) Close() {
 		clear(s.pendingAgentCompletionTurns)
 		clear(s.drainingAgentCompletionTurns)
 		s.agentCompletionMu.Unlock()
-		s.goalContinuationMu.Lock()
-		clear(s.drainingGoalContinuation)
-		s.goalContinuationMu.Unlock()
+		s.pluginContinuationMu.Lock()
+		clear(s.drainingPluginContinuation)
+		s.pluginContinuationMu.Unlock()
 		s.waitForOwnedShutdown(threads, controls)
 		s.interruptAttachedRunsOnClose()
 		for _, th := range threads {
@@ -843,6 +843,8 @@ func (s *Server) handleLine(ctx context.Context, raw []byte) error {
 		return s.handlePluginStorageGet(req)
 	case MethodPluginStorageSet:
 		return s.handlePluginStorageSet(req)
+	case MethodPluginClientRequest:
+		return s.handlePluginClientRequest(ctx, req)
 	case MethodConfigCodexModels:
 		// Model discovery performs an external Codex request. Keep it off the
 		// serial stdio dispatch loop so unrelated local mutations, especially a
@@ -917,22 +919,6 @@ func (s *Server) handleLine(ctx context.Context, raw []byte) error {
 		return s.handleAutomationUpdate(req)
 	case MethodAutomationRemove:
 		return s.handleAutomationRemove(req)
-	case MethodThreadGoalSet:
-		return s.handleThreadGoalSet(req)
-	case MethodThreadGoalGet:
-		return s.handleThreadGoalGet(req)
-	case MethodThreadGoalClear:
-		return s.handleThreadGoalClear(req)
-	case MethodGoalActiveSummary:
-		return s.handleGoalActiveSummary(req)
-	case MethodGoalPause:
-		return s.handleGoalPause(req)
-	case MethodGoalResume:
-		return s.handleGoalResume(req)
-	case MethodGoalClear:
-		return s.handleGoalClear(req)
-	case MethodGoalUpdateText:
-		return s.handleGoalUpdateText(req)
 	case MethodThreadStart:
 		return s.handleThreadStart(req)
 	case MethodThreadResume:

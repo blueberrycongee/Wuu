@@ -1,4 +1,4 @@
-const { chmodSync, mkdirSync, readFileSync, rmSync } = require("node:fs");
+const { chmodSync, mkdirSync, readFileSync, readdirSync, rmSync } = require("node:fs");
 const { join, resolve } = require("node:path");
 const { spawnSync } = require("node:child_process");
 
@@ -74,6 +74,22 @@ function main() {
       GOARCH: target.goarch,
     },
   });
+
+  for (const command of readdirSync(join(repoRoot, "cmd"), { withFileTypes: true })) {
+    if (!command.isDirectory() || !/^wuu-.+-plugin$/.test(command.name)) continue;
+    const binaryName = target.platform === "win32" ? `${command.name}.exe` : command.name;
+    const pluginPath = join(outDir, binaryName);
+    run("go", ["build", "-ldflags", "-s -w", "-o", pluginPath, `./cmd/${command.name}`], {
+      cwd: repoRoot,
+      env: {
+        ...process.env,
+        CGO_ENABLED: "0",
+        GOOS: target.goos,
+        GOARCH: target.goarch,
+      },
+    });
+    if (target.platform !== "win32") chmodSync(pluginPath, 0o755);
+  }
 
   if (target.platform !== "win32") {
     chmodSync(outPath, 0o755);

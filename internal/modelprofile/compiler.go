@@ -44,40 +44,21 @@ const (
 
 // SurfaceKind identifies which runtime role a tool surface is compiled for.
 // It is a closed set so the compiler can key decisions off one
-// role dimension. Ultra workers are kept distinct from main agents because they
-// combine task orchestration with the worker-only agent_report handoff and never
-// receive helpme.
+// role dimension. Optional plugin tools are appended after this built-in
+// surface is compiled and enforce their own execution scopes.
 type SurfaceKind int
 
 const (
-	// SurfaceWorker is a pure executor subagent surface: no task
-	// orchestration or recovery tools, only the agent_report handoff.
+	// SurfaceWorker is a pure child executor surface.
 	SurfaceWorker SurfaceKind = iota
-	// SurfaceUltraWorker is an orchestrating subagent surface. It keeps the
-	// worker-only agent_report handoff, adds the task orchestration suite, and
-	// deliberately omits the main-agent-only helpme recovery tool.
+	// SurfaceUltraWorker is a child executor with an expanded built-in surface.
 	SurfaceUltraWorker
-	// SurfaceMain is the ordinary project main-agent brain surface: it
-	// carries the task-orchestration suite plus helpme.
+	// SurfaceMain is the ordinary project main-session surface.
 	SurfaceMain
 	// SurfaceNamedAgent is a persistent group-chat agent. It keeps the complete
 	// main-agent surface and adds the group-chat tools.
 	SurfaceNamedAgent
 )
-
-// orchestrates reports whether a surface kind gets the task orchestration
-// suite. Main and Ultra workers orchestrate; ordinary workers do not.
-func (k SurfaceKind) orchestrates() bool {
-	return k != SurfaceWorker
-}
-
-func (k SurfaceKind) isWorker() bool {
-	return k == SurfaceWorker || k == SurfaceUltraWorker
-}
-
-func (k SurfaceKind) includesHelpme() bool {
-	return k == SurfaceMain || k == SurfaceNamedAgent
-}
 
 func (k SurfaceKind) includesSessionWorkspace() bool {
 	return k == SurfaceMain || k == SurfaceNamedAgent
@@ -118,17 +99,8 @@ func (DefaultCompiler) Compile(p Profile, kind SurfaceKind) capability.Surface {
 	default:
 		compileGeneric(b, p)
 	}
-	if kind.orchestrates() {
-		addTaskTools(b)
-	}
-	if kind.includesHelpme() {
-		addHelpmeTool(b)
-	}
 	if kind.includesSessionWorkspace() {
 		addSessionWorkspaceTool(b)
-	}
-	if kind.isWorker() {
-		addWorkerReportTool(b)
 	}
 	if kind.includesChat() {
 		addChatTools(b)
@@ -328,30 +300,6 @@ func addBrowserTools(b *surfaceBuilder) {
 	b.addDeferred("wuu_browser", capability.CapabilityBrowser)
 }
 
-// addTaskTools registers the orchestration suite: spawn_agent as a visible
-// tool plus the deferred subagent management tools. Main, named, and Ultra
-// worker surfaces receive it; ordinary worker surfaces omit it. Runtime
-// defense-in-depth remains in internal/agentcontrol/worker_types.go.
-func addTaskTools(b *surfaceBuilder) {
-	b.addVisible("spawn_agent", capability.CapabilityTaskSpawn)
-	b.addDeferred("send_message", capability.CapabilityTaskCommunicate)
-	b.addDeferred("close_agent", capability.CapabilityTaskManage)
-}
-
-// addHelpmeTool registers the main-agent-only HelpMe recovery tool. It
-// is called from DefaultCompiler.Compile only when forMainAgent is true;
-// worker surfaces intentionally omit helpme so the model never sees a
-// recovery tool it cannot use. Runtime defense-in-depth (DisallowedTools
-// in internal/agentcontrol/worker_types.go and the path check in
-// HelpMeTool.Execute) is unchanged.
-func addHelpmeTool(b *surfaceBuilder) {
-	b.addVisible("helpme", capability.CapabilityTaskSpawn)
-}
-
-func addWorkerReportTool(b *surfaceBuilder) {
-	b.addVisible("agent_report", capability.CapabilityTaskManage)
-}
-
 func addMemoryTools(b *surfaceBuilder) {
 	b.addDeferred("session_memory", capability.CapabilityMemorySession)
 	// Durable notebook memory uses file tools; the retired indexed-memory
@@ -368,9 +316,6 @@ func addSessionWorkspaceTool(b *surfaceBuilder) {
 
 func addPlanningTools(b *surfaceBuilder) {
 	b.addVisible("update_plan", capability.CapabilityPlan)
-	b.addDeferred("get_goal", capability.CapabilityGoal)
-	b.addDeferred("create_goal", capability.CapabilityGoal)
-	b.addDeferred("update_goal", capability.CapabilityGoal)
 }
 
 func addScheduleTools(b *surfaceBuilder) {

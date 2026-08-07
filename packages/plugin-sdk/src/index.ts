@@ -222,6 +222,10 @@ export interface PluginGenerationApi {
   readonly react: HostReact;
   readonly pluginId: string;
   readonly generation: string;
+  /** Invoke one method owned by this plugin's active runtime generation. */
+  invokeRuntime(method: string, input?: unknown): Promise<unknown>;
+  /** Observe host lifecycle events; disposal is bound to this generation. */
+  onHostEvent(handler: (event: unknown) => void): Disposable;
   registerSlot(slotId: string, contribution: SlotRegistration): Disposable;
   registerSurface(surfaceId: string, contribution: SurfaceRegistration): Disposable;
   registerCommand(command: CommandRegistration): Disposable;
@@ -243,6 +247,16 @@ export interface PluginGenerationApi {
 /** Minimal type for the host-owned React instance; plugins never bundle React. */
 export interface HostReact {
   readonly Fragment: unknown;
+  useState<T>(initial: T | (() => T)): [T, (next: T | ((current: T) => T)) => void];
+  useEffect(effect: () => void | (() => void), dependencies?: readonly unknown[]): void;
+  useMemo<T>(factory: () => T, dependencies: readonly unknown[]): T;
+  useCallback<T>(callback: T, dependencies: readonly unknown[]): T;
+  useRef<T>(initial: T): { current: T };
+  useSyncExternalStore<T>(
+    subscribe: (notify: () => void) => () => void,
+    getSnapshot: () => T,
+    getServerSnapshot?: () => T,
+  ): T;
   createElement(
     type: string | ((props: Readonly<Record<string, unknown>>) => unknown),
     props: Readonly<Record<string, unknown>> | null,
@@ -259,6 +273,7 @@ export const CAPABILITY_PROTOCOL_V2 = 2 as const;
 export const REQUEST_TRANSFORM_CAPABILITY = "agent.request.transform" as const;
 export const SYSTEM_PROMPT_SECTION_CAPABILITY = "agent.system_prompt.section" as const;
 export const COMPACTION_CAPABILITY = "agent.compaction" as const;
+export const PLUGIN_CLIENT_REQUEST_CAPABILITY = "plugin.client.request" as const;
 
 export type RuntimeHook =
   | "session.start"
@@ -288,8 +303,7 @@ export const HOST_SERVICE_METHODS = [
   "host.storage.keys",
   "host.settings.get",
   "host.settings.list",
-  "host.subagent.spawn",
-  "host.subagent.status",
+  "host.child_session.request",
   "host.session.info",
   "host.workspace.root",
   "host.workspace.list",
@@ -347,6 +361,7 @@ export interface ToolRegistration {
   id: string;
   description: string;
   input_schema: JSONSchemaObject;
+  execution_scopes?: Array<"root" | "child">;
   activity?: ToolActivityMetadata;
   display?: ToolDisplayMetadata;
 }
@@ -409,6 +424,8 @@ export interface ToolExecuteParams<TArguments = unknown> {
   tool_id: string;
   session_id?: string;
   thread_id?: string;
+  actor_id?: string;
+  actor_path?: string;
   cwd: string;
   step_index?: number;
   call_id: string;
@@ -453,13 +470,9 @@ export interface HostServiceContracts {
   "host.storage.keys": { params: Record<string, never>; result: { keys: string[] } };
   "host.settings.get": { params: { key: string }; result: { value: unknown } };
   "host.settings.list": { params: Record<string, never>; result: { entries: Record<string, unknown> } };
-  "host.subagent.spawn": {
-    params: { name: string; description: string; prompt: string; model?: string };
-    result: { agent_id: string };
-  };
-  "host.subagent.status": {
-    params: { agent_id: string };
-    result: { agent_id: string; status: "running" | "completed" | "failed" | "cancelled"; result?: string };
+  "host.child_session.request": {
+    params: { action: string; actor_id?: string; actor_path?: string; input?: unknown };
+    result: unknown;
   };
   "host.session.info": { params: Record<string, never>; result: { session_id: string; thread_id?: string; cwd: string; model: string } };
   "host.workspace.root": { params: Record<string, never>; result: { root: string } };
@@ -721,12 +734,6 @@ export interface ContextUsageSummaryV1 {
   readonly percent?: number;
 }
 
-export interface GoalSummaryV1 {
-  readonly id?: string;
-  readonly title?: string;
-  readonly status?: "active" | "complete" | "blocked";
-}
-
 export type ComposerSubmissionModeV1 = "send" | "queue" | "steer";
 
 export interface ComposerSnapshotV1 {
@@ -745,7 +752,6 @@ export interface ComposerSnapshotV1 {
   readonly runtime?: RuntimeSummaryV1;
   readonly permission?: PermissionSummaryV1;
   readonly contextUsage?: ContextUsageSummaryV1;
-  readonly goal?: GoalSummaryV1;
   readonly disabledReason?: string;
 }
 

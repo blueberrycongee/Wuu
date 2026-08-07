@@ -213,12 +213,6 @@ export interface ContextUsageSummaryV1 {
   readonly percent?: number;
 }
 
-export interface GoalSummaryV1 {
-  readonly id?: string;
-  readonly title?: string;
-  readonly status?: "active" | "complete" | "blocked";
-}
-
 export type ComposerSubmissionModeV1 = "send" | "queue" | "steer";
 
 export interface ComposerSnapshotV1 {
@@ -237,7 +231,6 @@ export interface ComposerSnapshotV1 {
   readonly runtime?: RuntimeSummaryV1;
   readonly permission?: PermissionSummaryV1;
   readonly contextUsage?: ContextUsageSummaryV1;
-  readonly goal?: GoalSummaryV1;
   readonly disabledReason?: string;
 }
 

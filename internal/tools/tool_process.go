@@ -33,7 +33,7 @@ func defaultProcessOwnerKind(env *Env, ownerKind string) string {
 	if ownerKind != "" {
 		return ownerKind
 	}
-	if currentAgentPath(env) != agentthread.RootPath {
+	if currentExecutionPath(env) != agentthread.RootPath {
 		return string(proc.OwnerSubagent)
 	}
 	return string(proc.OwnerMainAgent)

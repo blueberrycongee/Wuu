@@ -179,7 +179,6 @@ func (t *Toolkit) executeKnownToolResultWithRepeatPolicy(ctx context.Context, ca
 	resultBudgeted := false
 	var projectionDiag *ProjectionDiagnostics
 	if err == nil {
-		t.recordDiscoveredToolsForCall(call, t.activateToolBundlesAfterSuccess(call.Name))
 		// Tool-specific stable projection runs once here, before the result is
 		// stored. Results without an applicable projector still cross the generic
 		// settlement boundary, which now preserves rich media and metadata.

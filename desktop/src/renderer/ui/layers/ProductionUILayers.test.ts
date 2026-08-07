@@ -21,7 +21,6 @@ const FLOATING_MENU_OWNERS = Object.freeze([
   "App.tsx",
   "ChannelComposer.tsx",
   "ComposerContextMeter.tsx",
-  "ComposerGoalStrip.tsx",
   "ComposerRuntimeMenus.tsx",
   "ComposerTokenGauge.tsx",
   "ComposerView.tsx",
@@ -90,11 +89,4 @@ describe("production UI layer ownership", () => {
     expect(owners).toEqual([...INTENTIONAL_DIRECT_PORTAL_OWNERS].sort());
   });
 
-  it("does not wrap the shared Modal in a second body portal", () => {
-    const source = readFileSync(
-      resolve(RENDERER_ROOT, "ComposerGoalStrip.tsx"),
-      "utf8",
-    );
-    expect(source).not.toContain("createPortal");
-  });
 });

@@ -4,8 +4,6 @@ import (
 	"encoding/json"
 	"strings"
 	"unicode/utf8"
-
-	"github.com/blueberrycongee/wuu/internal/agentthread"
 )
 
 const (
@@ -30,7 +28,6 @@ const (
 	ToolKindMemory    ToolKind = "memory"
 	ToolKindSession   ToolKind = "session"
 	ToolKindSkill     ToolKind = "skill"
-	ToolKindGoal      ToolKind = "goal"
 	ToolKindPlan      ToolKind = "plan"
 	ToolKindAgent     ToolKind = "agent"
 	ToolKindProcess   ToolKind = "process"
@@ -211,11 +208,9 @@ func classifyToolKind(name string) ToolKind {
 		return ToolKindSession
 	case "load_skill":
 		return ToolKindSkill
-	case "get_goal", "create_goal", "update_goal":
-		return ToolKindGoal
 	case "update_plan":
 		return ToolKindPlan
-	case "spawn_agent", "helpme", "send_message", "close_agent", "agent_report", "list_agent_profiles", "create_agent_profile":
+	case "list_agent_profiles", "create_agent_profile":
 		return ToolKindAgent
 	case "cron":
 		return ToolKindSchedule
@@ -244,9 +239,6 @@ func isDeferredByDefault(name string) bool {
 }
 
 func (t *Toolkit) shouldDeferByDefault(name string) bool {
-	if name == "agent_report" && t != nil && t.env != nil && strings.TrimSpace(t.env.AgentID) != "" && currentAgentPath(t.env) != agentthread.RootPath {
-		return false
-	}
 	if isDeferredByDefault(name) {
 		return true
 	}

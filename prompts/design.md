@@ -24,10 +24,10 @@ Generic guidance belongs in the base prompt only when evaluation shows a durable
 - The desktop's clickable file-reference format.
 - Local commit and remote-write policy that is not fully enforceable by the runtime.
 
-`prompts/system_main.md` separately keeps the main agent's completion boundary for delegated work: a completed subagent task still requires integration and verification before the overall task is complete. Per-message participant context carries its own result-card handling instructions, so they are not repeated here. Spawned workers receive the base prompt without this section.
+`prompts/system_main.md` is reserved for universally available main-session guidance. Optional product behavior and completion boundaries are contributed by the plugin that owns them.
 
 ## Runtime-generated context
 
-`internal/runtime/session.go` appends the active tool surface, deferred-tool catalog, subagent type roster, environment, user instructions, memory, and skills. These values are session- or profile-specific and must not be copied into the stable base prompt.
+`internal/runtime/session.go` appends the active tool surface, deferred-tool catalog, environment, user instructions, memory, and skills. Plugins append their own generation-stable prompt sections. These values are session- or profile-specific and must not be copied into the stable base prompt.
 
-Tool manuals, background-process rules, patch syntax, subagent parameters, authority failures, and boundary recovery belong to their tool descriptions or results. Removing them from the base prompt does not remove those contracts from the model's active context.
+Tool manuals, background-process rules, patch syntax, authority failures, and boundary recovery belong to their tool descriptions or results. Removing them from the base prompt does not remove those contracts from the model's active context.

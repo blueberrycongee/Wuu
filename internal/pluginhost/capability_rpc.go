@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/blueberrycongee/wuu/internal/providers"
 )
@@ -44,6 +45,15 @@ const (
 	CapabilityAgentSystemPromptSection = "agent.system_prompt.section"
 	// CapabilityAgentCompaction selects a plugin-owned conversation compactor.
 	CapabilityAgentCompaction = "agent.compaction"
+	// CapabilityAgentContinuation lets a plugin request another host-owned turn
+	// and provide request-only context for that turn.
+	CapabilityAgentContinuation = "agent.turn.continuation"
+	// CapabilityAgentTurnCompleted observes a settled model turn after history
+	// and usage have been persisted. It cannot alter host turn control flow.
+	CapabilityAgentTurnCompleted = "agent.turn.completed"
+	// CapabilityPluginClientRequest handles a generation-bound opaque request
+	// from a Wuu client. Method names and payload schemas belong to the plugin.
+	CapabilityPluginClientRequest = "plugin.client.request"
 )
 
 // CapabilityNegotiationError marks an initialize response that cannot be
@@ -115,9 +125,9 @@ const (
 	HostServiceSettingsGet  HostServiceMethod = "host.settings.get"
 	HostServiceSettingsList HostServiceMethod = "host.settings.list"
 
-	// Sub-agent
-	HostServiceSubagentSpawn  HostServiceMethod = "host.subagent.spawn"
-	HostServiceSubagentStatus HostServiceMethod = "host.subagent.status"
+	// Child sessions. Product-specific orchestration semantics remain in the
+	// calling plugin; the host only exposes a neutral request dispatcher.
+	HostServiceChildSessionRequest HostServiceMethod = "host.child_session.request"
 
 	// Session
 	HostServiceSessionGetInfo HostServiceMethod = "host.session.info"
@@ -129,6 +139,13 @@ const (
 	// Diagnostics
 	HostServiceDiagnosticsLog HostServiceMethod = "host.diagnostics.log"
 )
+
+type ChildSessionRequestParams struct {
+	Action    string          `json:"action"`
+	ActorID   string          `json:"actor_id,omitempty"`
+	ActorPath string          `json:"actor_path,omitempty"`
+	Input     json.RawMessage `json:"input,omitempty"`
+}
 
 // HostServiceCall is a Plugin → Host RPC call.
 type HostServiceCall struct {
@@ -153,6 +170,66 @@ type HostServiceResult struct {
 	// Error is non-nil when the call failed.
 	Error *HostServiceError `json:"error,omitempty"`
 }
+
+// PluginClientRequestInput is a product-neutral client-to-plugin envelope.
+type PluginClientRequestInput struct {
+	Method string          `json:"method"`
+	Input  json.RawMessage `json:"input,omitempty"`
+}
+
+// PluginClientRequestOutput carries one plugin-owned JSON result.
+type PluginClientRequestOutput struct {
+	Result json.RawMessage `json:"result,omitempty"`
+}
+
+const (
+	ContinuationPhaseProbe   = "probe"
+	ContinuationPhasePrepare = "prepare"
+)
+
+// AgentContinuationInput asks a plugin whether it owns pending continuation
+// work for one thread. Prepare is called only after the host holds the thread's
+// execution lease and must revalidate the earlier probe.
+type AgentContinuationInput struct {
+	ThreadID string `json:"thread_id"`
+	Phase    string `json:"phase"`
+}
+
+// AgentContinuationBlock is request-only model context owned by the plugin.
+type AgentContinuationBlock struct {
+	Kind    string `json:"kind"`
+	Title   string `json:"title,omitempty"`
+	Source  string `json:"source,omitempty"`
+	Content string `json:"content"`
+}
+
+// AgentContinuationOutput requests a turn and, during prepare, supplies the
+// context that explains the plugin-owned work to the model.
+type AgentContinuationOutput struct {
+	Continue bool                      `json:"continue"`
+	Blocks   []AgentContinuationBlock  `json:"blocks,omitempty"`
+	Display  *AgentContinuationDisplay `json:"display,omitempty"`
+}
+
+// AgentContinuationDisplay is an optional read-only user-query presentation
+// for the requested turn. The host renders it but never adds it to model context.
+type AgentContinuationDisplay struct {
+	Text string `json:"text"`
+	Name string `json:"name,omitempty"`
+}
+
+// AgentTurnCompletedInput is a product-neutral settled-turn observation.
+type AgentTurnCompletedInput struct {
+	ThreadID     string    `json:"thread_id"`
+	TurnID       string    `json:"turn_id"`
+	StartedAt    time.Time `json:"started_at"`
+	CompletedAt  time.Time `json:"completed_at"`
+	Succeeded    bool      `json:"succeeded"`
+	InputTokens  int       `json:"input_tokens"`
+	OutputTokens int       `json:"output_tokens"`
+}
+
+type AgentTurnCompletedOutput struct{}
 
 // HostServiceError describes a host service call failure.
 type HostServiceError struct {
@@ -236,26 +313,6 @@ type SettingsGetResult struct {
 // SettingsListResult is the output of host.settings.list.
 type SettingsListResult struct {
 	Entries map[string]json.RawMessage `json:"entries"`
-}
-
-// SubagentSpawnParams is the input for host.subagent.spawn.
-type SubagentSpawnParams struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	Prompt      string `json:"prompt"`
-	Model       string `json:"model,omitempty"`
-}
-
-// SubagentSpawnResult is the output of host.subagent.spawn.
-type SubagentSpawnResult struct {
-	AgentID string `json:"agent_id"`
-}
-
-// SubagentStatusResult is the output of host.subagent.status.
-type SubagentStatusResult struct {
-	AgentID string `json:"agent_id"`
-	Status  string `json:"status"` // "running", "completed", "failed", "cancelled"
-	Result  string `json:"result,omitempty"`
 }
 
 // SessionInfoResult is the output of host.session.info.
@@ -412,6 +469,12 @@ func ValidateCapabilityDescriptor(c CapabilityDescriptor) error {
 		requiredKind = "transform"
 	case CapabilityAgentCompaction:
 		requiredKind = "decision"
+	case CapabilityAgentContinuation:
+		requiredKind = "decision"
+	case CapabilityAgentTurnCompleted:
+		requiredKind = "observe"
+	case CapabilityPluginClientRequest:
+		requiredKind = "decision"
 	}
 	if requiredKind != "" && (c.Kind != requiredKind || c.Version != 1) {
 		return fmt.Errorf("capability %s requires kind %q and version 1", id, requiredKind)
@@ -480,7 +543,7 @@ func ValidateCapabilityNegotiation(result CapabilityInitializeResult, supported 
 			return err
 		}
 		switch capability.ID {
-		case CapabilityAgentRequestTransform, CapabilityAgentSystemPromptSection, CapabilityAgentCompaction:
+		case CapabilityAgentRequestTransform, CapabilityAgentSystemPromptSection, CapabilityAgentCompaction, CapabilityAgentContinuation, CapabilityAgentTurnCompleted, CapabilityPluginClientRequest:
 		default:
 			return fmt.Errorf("capability %s is not supported by this host", capability.ID)
 		}
@@ -526,7 +589,7 @@ func ValidateHostServiceMethod(m HostServiceMethod) error {
 	switch m {
 	case HostServiceStorageGet, HostServiceStorageSet, HostServiceStorageDelete, HostServiceStorageKeys,
 		HostServiceSettingsGet, HostServiceSettingsList,
-		HostServiceSubagentSpawn, HostServiceSubagentStatus,
+		HostServiceChildSessionRequest,
 		HostServiceSessionGetInfo,
 		HostServiceWorkspaceGetRoot, HostServiceWorkspaceList,
 		HostServiceDiagnosticsLog:
@@ -541,7 +604,7 @@ func AllHostServices() []HostServiceMethod {
 	return []HostServiceMethod{
 		HostServiceStorageGet, HostServiceStorageSet, HostServiceStorageDelete, HostServiceStorageKeys,
 		HostServiceSettingsGet, HostServiceSettingsList,
-		HostServiceSubagentSpawn, HostServiceSubagentStatus,
+		HostServiceChildSessionRequest,
 		HostServiceSessionGetInfo,
 		HostServiceWorkspaceGetRoot, HostServiceWorkspaceList,
 		HostServiceDiagnosticsLog,

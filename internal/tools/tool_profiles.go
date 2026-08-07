@@ -68,13 +68,13 @@ func (t *CreateAgentProfileTool) Definition() providers.ToolDefinition {
 	return providers.ToolDefinition{
 		Name: "create_agent_profile",
 		Description: "Create or update a named Agent Profile with saved memory for recurring subagent roles. " +
-			"Use only when the role is likely to recur or the user or agent policy asks for saved profile memory; use spawn_agent without agent_profile for one-off workers.",
+			"Use only when the role is likely to recur or the user or agent policy asks for saved profile memory.",
 		InputSchema: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"name": map[string]any{
 					"type":        "string",
-					"description": "Stable profile name to pass later as spawn_agent.agent_profile.",
+					"description": "Stable profile name accepted by compatible delegation plugins.",
 				},
 				"role": map[string]any{
 					"type":        "string",
@@ -121,7 +121,7 @@ func (t *CreateAgentProfileTool) Execute(ctx context.Context, argsJSON string) (
 		"profile": agentProfileToolViewFromSummary(profile),
 		"created": created,
 		"next_steps": []string{
-			"Use spawn_agent with agent_profile set to this profile name when this recurring role should perform work.",
+			"Pass this profile name to a compatible delegation plugin when this recurring role should perform work.",
 			"Use a temporary worker without agent_profile for one-off tasks that should not reuse or write profile memory.",
 		},
 	})

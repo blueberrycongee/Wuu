@@ -64,9 +64,8 @@ const (
 	CapabilitySessionLookup    Capability = "session.lookup"
 	CapabilitySessionWorkspace Capability = "session.workspace"
 
-	// Plan / Goal / skills.
+	// Plan / skills.
 	CapabilityPlan  Capability = "plan"
-	CapabilityGoal  Capability = "goal"
 	CapabilitySkill Capability = "skill"
 
 	// Schedule.
@@ -115,7 +114,6 @@ func All() []Capability {
 		CapabilitySessionLookup,
 		CapabilitySessionWorkspace,
 		CapabilityPlan,
-		CapabilityGoal,
 		CapabilitySkill,
 		CapabilitySchedule,
 		CapabilityChat,

@@ -41,9 +41,6 @@ func TestServerThreadDeleteRemovesSessionAndArtifacts(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(artifactDir, "workers"), 0o755); err != nil {
 		t.Fatalf("seed artifact dir: %v", err)
 	}
-	if err := os.WriteFile(statepath.ThreadGoalRuntimePath(stateDir, threadID), []byte("{}\n"), 0o644); err != nil {
-		t.Fatalf("seed goal runtime: %v", err)
-	}
 
 	deletePayload, err := json.Marshal(map[string]any{
 		"id":     "2",

@@ -11,24 +11,14 @@ var system string
 //go:embed system_main.md
 var systemMain string
 
-// System returns the wuu base system prompt sections that apply to both
-// the main agent and spawned subagents: identity, tone, workspace rules,
-// map vs territory reasoning, task discipline, validation, tool use,
-// final-answer shape, and anti-patterns.
+// System returns the base prompt shared by every agent session. Optional
+// products contribute their own prompt sections through capabilities.
 func System() string {
 	return strings.TrimSpace(system)
 }
 
-// SystemMain returns the main-agent-only path-selection map. Orchestration
-// belongs to the brain: spawn_agent, helpme, and the subagent management
-// suite are compiled out of worker surfaces, so this section must not be
-// embedded in a subagent's system prompt. Of the other tools it mentions,
-// update_plan stays visible to workers, goal stays deferred behind tool_search
-// on the worker surface, and read_memory/write_memory are retired everywhere
-// (memory redesign).
-// config.DefaultSystemPrompt() joins System() and SystemMain() for the
-// main agent; config.WorkerSystemPrompt() returns only System() for
-// spawned subagents.
+// SystemMain returns universal main-session guidance. Optional product
+// guidance must not be embedded here; it is supplied by the owning plugin.
 func SystemMain() string {
 	return strings.TrimSpace(systemMain)
 }

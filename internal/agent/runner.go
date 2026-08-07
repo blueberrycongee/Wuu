@@ -168,7 +168,6 @@ func (r *Runner) RunWithUsage(ctx context.Context, prompt string, onUsage func(i
 		ProviderOptions:             r.ProviderOptions,
 		SystemPromptSections:        cloneSystemPromptSections(r.SystemPromptSections),
 		OnUsage:                     onUsage,
-		PostToolRewrite:             compact.RewriteHistoryFromHelpMeToolMessagesWithContext,
 		Compact: func(ctx context.Context, messages []providers.ChatMessage) ([]providers.ChatMessage, error) {
 			return compact.CompactWithBudgetAndOptions(ctx, messages, r.Client, r.Model, compact.Budget{
 				ContextTokens:       maxCtx,

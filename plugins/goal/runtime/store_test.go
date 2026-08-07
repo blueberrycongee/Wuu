@@ -7,8 +7,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/blueberrycongee/wuu/internal/statepath"
 )
 
 func TestStoreCreateLoadAndRejectUnfinishedReplacement(t *testing.T) {
@@ -94,14 +92,6 @@ func TestStoreUpdateAndClear(t *testing.T) {
 	}
 	if _, err := store.Load(); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("Load after clear err = %v, want os.ErrNotExist", err)
-	}
-}
-
-func TestThreadGoalRuntimePath(t *testing.T) {
-	got := statepath.ThreadGoalRuntimePath("/tmp/wuu-state", "thread-1")
-	want := filepath.Join("/tmp/wuu-state", "sessions", "thread-1", "goal_runtime.json")
-	if got != want {
-		t.Fatalf("ThreadGoalRuntimePath = %q, want %q", got, want)
 	}
 }
 

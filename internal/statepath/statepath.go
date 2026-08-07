@@ -245,14 +245,9 @@ func SessionArtifactDir(workspaceStateDir, sessionID string) string {
 	return filepath.Join(workspaceStateDir, "sessions", sessionID)
 }
 
-// ThreadGoalRuntimePath returns the thread-scoped Goal runtime state file.
-func ThreadGoalRuntimePath(workspaceStateDir, sessionID string) string {
-	return filepath.Join(SessionArtifactDir(workspaceStateDir, sessionID), "goal_runtime.json")
-}
-
 // ThreadBrowserTabsPath returns the thread-scoped embedded-browser tab registry
-// file. It sits beside the goal runtime file under the session artifact
-// directory, so it is reclaimed together with the thread on delete.
+// file. It lives under the session artifact directory, so it is reclaimed
+// together with the thread on delete.
 func ThreadBrowserTabsPath(workspaceStateDir, sessionID string) string {
 	return filepath.Join(SessionArtifactDir(workspaceStateDir, sessionID), "browser_tabs.json")
 }

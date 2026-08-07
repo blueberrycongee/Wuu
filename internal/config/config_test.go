@@ -135,12 +135,6 @@ func TestLoadFrom_Defaults(t *testing.T) {
 	if cfg.Agent.ToolLoadingPreference() != ToolLoadingAuto {
 		t.Fatalf("expected default tool_loading auto, got %q", cfg.Agent.ToolLoadingPreference())
 	}
-	if cfg.Agent.ExperimentalDeferredToolBundles {
-		t.Fatal("expected native deferred bundle activation to be experimental and off by default")
-	}
-	if cfg.Agent.ExperimentalHelpMe {
-		t.Fatal("expected HelpMe to be experimental and off by default")
-	}
 	if cfg.Agent.ProfileName() != DefaultAgentName {
 		t.Fatalf("expected default agent name %q, got %q", DefaultAgentName, cfg.Agent.ProfileName())
 	}
@@ -230,8 +224,7 @@ func TestLoadFrom_ToolLoadingConfig(t *testing.T) {
     }
   },
   "agent": {
-    "tool_loading": "flat",
-    "experimental_deferred_tool_bundles": true
+    "tool_loading": "flat"
   }
 }`
 
@@ -245,9 +238,6 @@ func TestLoadFrom_ToolLoadingConfig(t *testing.T) {
 	}
 	if cfg.Agent.ToolLoadingPreference() != ToolLoadingFlat {
 		t.Fatalf("expected explicit flat tool loading, got %q", cfg.Agent.ToolLoadingPreference())
-	}
-	if !cfg.Agent.ExperimentalDeferredToolBundles {
-		t.Fatal("expected experimental deferred bundle flag to parse")
 	}
 }
 
@@ -1162,28 +1152,6 @@ func TestDefaultSystemPromptLeavesToolManualsToActiveSurface(t *testing.T) {
 	}
 }
 
-func TestDefaultSystemPrompt_GoalWorkflowAgentClosure(t *testing.T) {
-	prompt := DefaultSystemPrompt()
-	for _, want := range []string{
-		"completed subagent task does not mean the overall task is complete",
-		"integrate the result and verify the overall work",
-	} {
-		if !strings.Contains(prompt, want) {
-			t.Fatalf("default system prompt missing subagent completion boundary %q: %q", want, prompt)
-		}
-	}
-	for _, bad := range []string{
-		"record_workflow_team",
-		"spawn each worker with the workflow goal_id and goal_dir",
-		"phase(...)",
-		"spawnBatch([...])",
-	} {
-		if strings.Contains(prompt, bad) {
-			t.Fatalf("default system prompt should keep workflow execution details out of the core prompt %q: %q", bad, prompt)
-		}
-	}
-}
-
 func TestDefaultSystemPrompt_FinalAnswerReferences(t *testing.T) {
 	prompt := DefaultSystemPrompt()
 	for _, want := range []string{
@@ -1193,23 +1161,6 @@ func TestDefaultSystemPrompt_FinalAnswerReferences(t *testing.T) {
 	} {
 		if !strings.Contains(prompt, want) {
 			t.Fatalf("default system prompt must include final-answer reference guidance %q: %q", want, prompt)
-		}
-	}
-}
-
-func TestDefaultSystemPrompt_MainCoordination(t *testing.T) {
-	prompt := DefaultSystemPrompt()
-	for _, want := range []string{
-		"completed subagent task does not mean the overall task is complete",
-		"integrate the result and verify the overall work",
-	} {
-		if !strings.Contains(prompt, want) {
-			t.Fatalf("default system prompt must include main-agent coordination guidance %q: %q", want, prompt)
-		}
-	}
-	for _, duplicatedTerm := range []string{"hidden context", "result card", "conversation participant"} {
-		if strings.Contains(prompt, duplicatedTerm) {
-			t.Fatalf("default system prompt should leave per-message result-card guidance out %q: %q", duplicatedTerm, prompt)
 		}
 	}
 }
@@ -1462,35 +1413,6 @@ func TestConfig_ExperimentalCoordinatorMode(t *testing.T) {
 	}
 	if !cfg.Agent.ExperimentalCoordinatorMode {
 		t.Fatal("expected ExperimentalCoordinatorMode=true")
-	}
-}
-
-func TestConfig_ExperimentalHelpMe(t *testing.T) {
-	workdir := t.TempDir()
-	configPath := filepath.Join(workdir, ".wuu.json")
-	jsonData := `{
-  "default_provider": "main",
-  "providers": {
-    "main": {
-      "type": "openai-compatible",
-      "base_url": "https://x",
-      "api_key": "k",
-      "model": "test"
-    }
-  },
-  "agent": {
-    "experimental_helpme": true
-  }
-}`
-	if err := os.WriteFile(configPath, []byte(jsonData), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	cfg, _, err := LoadProjectConfig(workdir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !cfg.Agent.ExperimentalHelpMe {
-		t.Fatal("expected ExperimentalHelpMe=true")
 	}
 }
 

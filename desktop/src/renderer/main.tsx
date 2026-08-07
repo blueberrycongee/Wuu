@@ -53,6 +53,14 @@ const rendererRoot = document.getElementById("root") as HTMLElement;
 rendererRoot.dataset.wuuUiRoot = "true";
 rendererRoot.dataset.wuuComponent = "ui-root";
 
+const originalConsoleError = console.error;
+console.error = (...args: unknown[]): void => {
+  originalConsoleError(...args);
+  if (args.some((arg) => typeof arg === "string" && arg.includes("Maximum update depth exceeded"))) {
+    originalConsoleError("[update-depth-stack]", new Error().stack);
+  }
+};
+
 ReactDOM.createRoot(rendererRoot).render(
   <I18nProvider>
     <WuuUIRoot>

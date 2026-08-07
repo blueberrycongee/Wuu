@@ -315,7 +315,10 @@ func TestTurnToolRuntimeAttachesDiscoveredToolsToToolResult(t *testing.T) {
 	}
 }
 
-func TestTurnToolRuntimeRejectsBarrierToolBatchBeforeExecutingSiblings(t *testing.T) {
+func TestTurnToolRuntimeDoesNotTreatProductToolsAsBarriers(t *testing.T) {
+	// Barrier semantics were product-owned (helpme/await_agents) and moved to
+	// the first-party delegation plugin. Core must not special-case those
+	// names: a batch containing them executes every call normally.
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
@@ -333,31 +336,21 @@ func TestTurnToolRuntimeRejectsBarrierToolBatchBeforeExecutingSiblings(t *testin
 		rejections = append(rejections, info)
 	})
 
-	if calls := tools.recordedCalls(); len(calls) != 0 {
-		t.Fatalf("barrier preflight must reject before executing siblings, got calls %+v", calls)
+	if calls := tools.recordedCalls(); len(calls) != 2 {
+		t.Fatalf("batch without a registered barrier tool must execute every call, got calls %+v", calls)
 	}
-	if len(msgs) != 2 {
-		t.Fatalf("expected paired results for every tool call, got %+v", msgs)
+	if len(rejections) != 0 {
+		t.Fatalf("core must not reject a batch for product tool names, got %+v", rejections)
 	}
-	if msgs[0].ToolCallID != "call_write" || !strings.Contains(msgs[0].Content, "not executed because a barrier tool was called") {
-		t.Fatalf("unexpected sibling rejection result: %+v", msgs[0])
-	}
-	if msgs[1].ToolCallID != "call_helpme" || !strings.Contains(msgs[1].Content, "helpme must be called alone") {
-		t.Fatalf("unexpected barrier rejection result: %+v", msgs[1])
+	if len(msgs) != 2 || msgs[0].ToolCallID != "call_write" || msgs[1].ToolCallID != "call_helpme" {
+		t.Fatalf("expected one result per call, got %+v", msgs)
 	}
 	if len(seen) != 2 || seen[0].ID != "call_write" || seen[1].ID != "call_helpme" {
-		t.Fatalf("OnToolResult should receive synthetic results in order, got %+v", seen)
-	}
-	if len(rejections) != 1 ||
-		rejections[0].BarrierTool != "helpme" ||
-		rejections[0].ToolCallCount != 2 ||
-		len(rejections[0].SiblingTools) != 1 ||
-		rejections[0].SiblingTools[0] != "run_shell" {
-		t.Fatalf("unexpected barrier rejection metadata: %+v", rejections)
+		t.Fatalf("OnToolResult should see executed calls in order, got %+v", seen)
 	}
 }
 
-func TestTurnToolRuntimeExecutesBarrierToolWhenCalledAlone(t *testing.T) {
+func TestTurnToolRuntimeExecutesProductNamedToolWhenCalledAlone(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
@@ -367,10 +360,10 @@ func TestTurnToolRuntimeExecutesBarrierToolWhenCalledAlone(t *testing.T) {
 	msgs, _ := runtime.ExecuteFinalCalls(ctx, []providers.ToolCall{{ID: "call_helpme", Name: "helpme"}}, nil)
 
 	if calls := tools.recordedCalls(); len(calls) != 1 || calls[0].ID != "call_helpme" {
-		t.Fatalf("single barrier tool should execute normally, got %+v", calls)
+		t.Fatalf("single product-named tool should execute normally, got %+v", calls)
 	}
 	if len(msgs) != 1 || !strings.Contains(msgs[0].Content, "call_helpme") {
-		t.Fatalf("unexpected single barrier result: %+v", msgs)
+		t.Fatalf("unexpected single tool result: %+v", msgs)
 	}
 }
 

@@ -91,6 +91,21 @@ func TestInvokeCapabilityRejectsUnknownOutputFields(t *testing.T) {
 	}
 }
 
+func TestCapabilitySelectsExactActivePluginOwner(t *testing.T) {
+	capability := CapabilityDescriptor{ID: CapabilityPluginClientRequest, Kind: "decision", Version: 1}
+	host := New(
+		&fakeCapabilityClient{fakeClient: &fakeClient{id: "one", status: Status{ID: "one", State: StateActive}}, capabilities: []CapabilityDescriptor{capability}},
+		&fakeCapabilityClient{fakeClient: &fakeClient{id: "two", status: Status{ID: "two", State: StateActive}}, capabilities: []CapabilityDescriptor{capability}},
+	)
+	got, ok := host.Capability("two", CapabilityPluginClientRequest)
+	if !ok || got.PluginID != "two" {
+		t.Fatalf("capability = %+v, ok = %v", got, ok)
+	}
+	if _, ok := host.Capability("missing", CapabilityPluginClientRequest); ok {
+		t.Fatal("missing plugin unexpectedly resolved a capability")
+	}
+}
+
 func TestHostRunStopsOnPluginFailure(t *testing.T) {
 	secondCalled := false
 	host := New(

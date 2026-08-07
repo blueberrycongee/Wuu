@@ -1139,25 +1139,6 @@ func projectPersistedHistory(threadID string, history []persistedMessage, now ti
 		current.Items = append(current.Items, item)
 		recordOrigin(current.ID, item, historyIndex, complete)
 	}
-	startSyntheticTurn := func() {
-		turnID := fmt.Sprintf("%s-turn-%04d", threadID, len(turns)+1)
-		itemIndex = 0
-		toolItems = make(map[string]int)
-		toolBatches = make(map[string]*projectedToolBatch)
-		turn := Turn{
-			ID:        turnID,
-			Items:     []ThreadItem{},
-			ItemsView: TurnItemsViewFull,
-			Status:    TurnStatusCompleted,
-		}
-		for _, item := range pendingCompactions {
-			item.ID = nextItemID(turnID)
-			turn.Items = append(turn.Items, item)
-		}
-		pendingCompactions = nil
-		turns = append(turns, turn)
-		current = &turns[len(turns)-1]
-	}
 	for historyIndex, rec := range history {
 		if rec.Hidden {
 			continue
@@ -1242,9 +1223,6 @@ func projectPersistedHistory(threadID string, history []persistedMessage, now ti
 			current = &turns[len(turns)-1]
 			recordOrigin(turnID, userItem, historyIndex, true)
 			continue
-		}
-		if current == nil && msg.Role == "assistant" && pendingCompactionsContainReason(pendingCompactions, compact.HelpMeToolName) {
-			startSyntheticTurn()
 		}
 		if current == nil {
 			continue
@@ -1538,8 +1516,7 @@ func isThreadTitleUserMessage(msg providers.ChatMessage) bool {
 	content := chatMessageDisplayContent(msg)
 	return !wuucontext.IsSystemReminder(msg.Name, content) &&
 		!wuucontext.IsAgentNotification(msg.Name, content) &&
-		!wuucontext.IsProcessNotification(msg.Name, content) &&
-		!wuucontext.IsGoalContinuation(msg.Name, content)
+		!wuucontext.IsProcessNotification(msg.Name, content)
 }
 
 func chatMessageDisplayContent(msg providers.ChatMessage) string {

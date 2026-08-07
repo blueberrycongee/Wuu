@@ -101,21 +101,6 @@ export function buildComposerSlashCommands({
   const needsWorkspace = activeContext ? undefined : t("slash.selectWorkspaceFirst");
   const needsIdleThread = running ? t("slash.taskRunning") : undefined;
   const fastTarget = runtimeFastModelTarget(initialized);
-  const helpMeCommands: ComposerSlashCommand[] = initialized?.features?.helpme
-    ? [
-        {
-          id: "helpme",
-          name: "helpme",
-          title: t("slash.helpme.title"),
-          description: t("slash.helpme.description"),
-          tag: "Agent",
-          kind: "prompt",
-          aliases: ["rescue", "handoff"],
-          keywords: ["stuck", "retry", "rescue", "求助", "卡住", "魂穿", "交接"],
-          disabledReason: needsRuntime
-        }
-      ]
-    : [];
   const commands: ComposerSlashCommand[] = [
     {
       id: "review",
@@ -150,7 +135,6 @@ export function buildComposerSlashCommands({
       keywords: ["bug", "issue", "修复", "改掉", "问题"],
       disabledReason: needsRuntime
     },
-    ...helpMeCommands,
     {
       id: "test",
       name: "test",

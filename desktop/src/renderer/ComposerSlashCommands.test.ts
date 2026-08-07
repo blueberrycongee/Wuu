@@ -12,7 +12,7 @@ import { setActiveLocale } from "./i18n";
 
 afterEach(() => setActiveLocale("zh-CN"));
 
-function initialized(model: string, models: string[], helpMe = false): InitializeResult {
+function initialized(model: string, models: string[]): InitializeResult {
   return {
     protocol_version: "1",
     workspace_root: "/repo",
@@ -20,7 +20,7 @@ function initialized(model: string, models: string[], helpMe = false): Initializ
     model,
     effort: "",
     variant: "",
-    features: { helpme: helpMe },
+    features: {},
     providers: [
       {
         name: "openai",
@@ -284,20 +284,18 @@ describe("composer slash commands", () => {
   it("keeps task slash commands as command text", () => {
     const commands = buildComposerSlashCommands({
       activeContext: { kind: "project", project_id: "repo", cwd: "/repo" },
-      initialized: initialized("gpt-5.5", ["gpt-5.5"], true),
+      initialized: initialized("gpt-5.5", ["gpt-5.5"]),
       running: false
     });
 
     const debug = filterComposerSlashCommands(commands, "debug")[0];
     const fix = filterComposerSlashCommands(commands, "fix")[0];
-    const helpme = filterComposerSlashCommands(commands, "helpme")[0];
     const commit = filterComposerSlashCommands(commands, "commit")[0];
     const pr = filterComposerSlashCommands(commands, "pr")[0];
 
     expect(debug?.kind).toBe("prompt");
     expect(composerSlashPrompt(debug!, "login failure")).toBe("/debug login failure");
     expect(composerSlashPrompt(fix!, "")).toBe("/fix ");
-    expect(composerSlashPrompt(helpme!, "still stuck")).toBe("/helpme still stuck");
     expect(composerSlashPrompt(commit!, "")).toBe("/commit ");
     expect(composerSlashPrompt(pr!, "draft")).toBe("/pr draft");
   });
@@ -382,21 +380,4 @@ describe("composer slash commands", () => {
     expect(filterComposerSlashCommands(commands, "runtime")).toEqual([]);
   });
 
-  it("hides /helpme unless the runtime feature is enabled", () => {
-    const activeContext = { kind: "project", project_id: "repo", cwd: "/repo" } as const;
-    const disabled = buildComposerSlashCommands({
-      activeContext,
-      initialized: initialized("gpt-5.5", ["gpt-5.5"]),
-      running: false
-    });
-    const enabled = buildComposerSlashCommands({
-      activeContext,
-      initialized: initialized("gpt-5.5", ["gpt-5.5"], true),
-      running: false
-    });
-
-    expect(filterComposerSlashCommands(disabled, "helpme")).toEqual([]);
-    expect(filterComposerSlashCommands(disabled, "rescue")).toEqual([]);
-    expect(filterComposerSlashCommands(enabled, "helpme").map((command) => command.name)).toEqual(["helpme"]);
-  });
 });

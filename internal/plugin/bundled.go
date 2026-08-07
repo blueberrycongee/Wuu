@@ -112,6 +112,10 @@ func resolveOfficialHelper(item *Plugin, lookupEnv func(string) (string, bool)) 
 	}
 	command := resolveHelperCommand(spec, lookupEnv)
 	placeholder := "@wuu/official-helper:" + strings.TrimSpace(spec.ID)
+	runtimePlaceholder := "@wuu-official-helper:" + strings.TrimSpace(spec.ID)
+	if item.Runtime != nil && strings.TrimSpace(item.Runtime.Command) == runtimePlaceholder {
+		item.Runtime.Command = command
+	}
 	for name, server := range item.MCPServers {
 		if strings.TrimSpace(server.Command) == placeholder {
 			server.Command = command

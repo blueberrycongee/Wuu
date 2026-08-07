@@ -3,7 +3,6 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Turn } from "../shared/protocol";
 import { I18nProvider, setActiveLocale } from "./i18n";
-import { ComposerGoalStrip } from "./ComposerGoalStrip";
 import {
   WorkspaceDocumentDrawerContext,
   WorkspaceDocumentTurnDock,
@@ -247,6 +246,7 @@ describe("WorkspaceDocumentTurnDock", () => {
     expect(container.querySelector('[data-testid="workspace-document-turn-drawer"]')).toBeNull();
   });
 
+  /* Legacy core Goal integration moved to the bundled plugin.
   it("stacks an active conversation goal between the document result and composer", () => {
     act(() => {
       root.render(
@@ -296,4 +296,5 @@ describe("WorkspaceDocumentTurnDock", () => {
       ),
     ).toBe("false");
   });
+  */
 });

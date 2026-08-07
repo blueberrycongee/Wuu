@@ -156,13 +156,6 @@ type AgentControl struct {
 	reportSettleMu  sync.Mutex
 	reportUnsettled map[string]struct{}
 
-	// helpMeRecoveryMu guards helpMeRecoveries, the per-helper HelpMe
-	// recovery state registered at helpme spawn time and consumed once by
-	// the await-side history rewrite. Entries are lazily rehydrated from
-	// the session harness directory for cross-restart awaits.
-	helpMeRecoveryMu sync.Mutex
-	helpMeRecoveries map[string]HelpMeRecovery
-
 	participantBindingMu sync.Mutex
 	participantBindings  map[string]string
 
@@ -2975,12 +2968,6 @@ func (c *AgentControl) rollbackQueuedTerminalReliably(prepared preparedSpawn, in
 
 func (c *AgentControl) rollbackPreparedSpawnAdmission(prepared preparedSpawn, canYield func() bool) error {
 	rollback := prepared.AdmissionRollback
-	if rollback == nil && prepared.WorkerType.Name == HelpMeRecoveryWorkerType {
-		// Queue payloads survive the process-local hook closure. HelpMe recovery
-		// is the built-in durable admission today, so restart compensation can
-		// reconstruct rollback from the stable worker ID.
-		rollback = func() error { return c.RemoveHelpMeRecovery(prepared.WorkerID) }
-	}
 	return c.rollbackSpawnAdmissionReliably(prepared.WorkerID, rollback, canYield)
 }
 
@@ -5308,6 +5295,7 @@ func composeWorkerSystemPrompt(base string, wt WorkerType, workerRoot string, is
 		b.WriteString("read-only operations are safe, but any file you modify is visible to the orchestrator and other workers immediately. ")
 	}
 	b.WriteString("All file paths in your tools resolve relative to this directory. ")
+	b.WriteString("Treat command execution as non-interactive when the active tool surface exposes it. Never rely on editors, pagers, password prompts, or confirmation dialogs. If command execution is unavailable under the active tool surface, report skipped command-based verification instead of inventing another path. Profile-specific tool-surface guidance tells you which command capability exists and how to use it. ")
 	if ultraMode {
 		b.WriteString("\n\n")
 		b.WriteString(UltraWorkerPolicy())

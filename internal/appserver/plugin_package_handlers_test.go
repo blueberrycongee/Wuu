@@ -157,7 +157,7 @@ func TestPluginPackageInstallDirectoryIsPendingAndDoesNotActivate(t *testing.T) 
 	if record.ApprovalState != ExtensionApprovalPending || record.State != ExtensionStatePending || record.RuntimeState != ExtensionRuntimeInactive {
 		t.Fatalf("pending inventory record = %+v", record)
 	}
-	if len(rt.ActivePlugins) != 0 {
+	if activePluginVersion(rt.ActivePlugins, "pending-demo") != "" {
 		t.Fatalf("active plugins = %+v, want no unapproved plugin", rt.ActivePlugins)
 	}
 	if _, err := os.Stat(marker); !os.IsNotExist(err) {
@@ -214,7 +214,7 @@ func TestPluginPackageUpdateWaitsForExactApprovalBeforePromotion(t *testing.T) {
 	if stagedRecord.PendingUpdate == nil || stagedRecord.PendingUpdate.Version != "2.0.0" || stagedRecord.PendingUpdate.Fingerprint != staged.Package.Fingerprint {
 		t.Fatalf("staged inventory record = %+v", stagedRecord)
 	}
-	if len(rt.Plugins) != 1 || rt.Plugins[0].Version != "1.0.0" || len(rt.ActivePlugins) != 1 || rt.ActivePlugins[0].Version != "1.0.0" {
+	if activePluginVersion(rt.Plugins, "update-demo") != "1.0.0" || activePluginVersion(rt.ActivePlugins, "update-demo") != "1.0.0" {
 		t.Fatalf("active generation changed before approval: plugins=%+v active=%+v", rt.Plugins, rt.ActivePlugins)
 	}
 
@@ -224,7 +224,7 @@ func TestPluginPackageUpdateWaitsForExactApprovalBeforePromotion(t *testing.T) {
 	if response := responseByID(t, parseOutput(t, out.String()), "stale-promote"); response["error"] == nil {
 		t.Fatalf("stale promotion response = %+v", response)
 	}
-	if len(rt.ActivePlugins) != 1 || rt.ActivePlugins[0].Version != "1.0.0" {
+	if activePluginVersion(rt.ActivePlugins, "update-demo") != "1.0.0" {
 		t.Fatalf("stale approval changed active generation: %+v", rt.ActivePlugins)
 	}
 
@@ -240,7 +240,7 @@ func TestPluginPackageUpdateWaitsForExactApprovalBeforePromotion(t *testing.T) {
 	if promotedRecord.PendingUpdate != nil || promotedRecord.Fingerprint != staged.Package.Fingerprint {
 		t.Fatalf("promoted inventory record = %+v", promotedRecord)
 	}
-	if len(rt.ActivePlugins) != 1 || rt.ActivePlugins[0].Version != "2.0.0" {
+	if activePluginVersion(rt.ActivePlugins, "update-demo") != "2.0.0" {
 		t.Fatalf("approved generation was not activated: %+v", rt.ActivePlugins)
 	}
 	if rt.ExtensionSettings == nil {
@@ -262,7 +262,7 @@ func TestPluginPackageUpdateWaitsForExactApprovalBeforePromotion(t *testing.T) {
 	if rejectResponse["error"] != nil {
 		t.Fatalf("reject v3 response = %+v", rejectResponse)
 	}
-	if len(rt.ActivePlugins) != 1 || rt.ActivePlugins[0].Version != "2.0.0" {
+	if activePluginVersion(rt.ActivePlugins, "update-demo") != "2.0.0" {
 		t.Fatalf("rejection changed active generation: %+v", rt.ActivePlugins)
 	}
 	if _, err := pluginpkg.ReadPendingUpdate(rt.WuuHome, "update-demo"); !errors.Is(err, pluginpkg.ErrPendingUpdateNotFound) {
@@ -324,7 +324,7 @@ func TestPluginPackageUpdateActivationFailureKeepsInstalledAndPendingGenerations
 	if pending.Package.Version != "2.0.0" || pending.Package.Fingerprint != staged.Package.Fingerprint {
 		t.Fatalf("pending generation changed: %+v", pending.Package)
 	}
-	if len(rt.ActivePlugins) != 1 || rt.ActivePlugins[0].Version != "1.0.0" {
+	if activePluginVersion(rt.ActivePlugins, "activation-failure") != "1.0.0" {
 		t.Fatalf("live generation changed: %+v", rt.ActivePlugins)
 	}
 	grant, ok := rt.ExtensionSettings.Grants[installedRecord.ID]
@@ -540,7 +540,11 @@ description: Verifies plugin package removal.
 	if grantResponse["error"] != nil {
 		t.Fatalf("grant response = %+v", grantResponse)
 	}
-	if len(rt.ActivePlugins) != 1 || rt.ActivePlugins[0].ID != "remove-demo" {
+	foundPlugin := false
+	for _, active := range rt.ActivePlugins {
+		foundPlugin = foundPlugin || active.ID == "remove-demo"
+	}
+	if !foundPlugin {
 		t.Fatalf("active plugins before removal = %+v", rt.ActivePlugins)
 	}
 	foundSkill := false
@@ -568,7 +572,7 @@ description: Verifies plugin package removal.
 	if _, err := os.Stat(filepath.Join(rt.WuuHome, "plugins", "remove-demo")); !os.IsNotExist(err) {
 		t.Fatalf("removed plugin still exists: %v", err)
 	}
-	if len(rt.ActivePlugins) != 0 {
+	if activePluginVersion(rt.ActivePlugins, "remove-demo") != "" {
 		t.Fatalf("removed plugin remains active: %+v", rt.ActivePlugins)
 	}
 	for _, skill := range rt.Skills {
@@ -651,6 +655,15 @@ func pluginPackageRecord(t *testing.T, records []ExtensionInventoryRecord, plugi
 	}
 	t.Fatalf("plugin %q not found in inventory: %+v", pluginID, records)
 	return ExtensionInventoryRecord{}
+}
+
+func activePluginVersion(plugins []pluginpkg.Plugin, id string) string {
+	for _, plugin := range plugins {
+		if plugin.ID == id {
+			return plugin.Version
+		}
+	}
+	return ""
 }
 
 func responseErrorMessage(t *testing.T, response map[string]any) string {

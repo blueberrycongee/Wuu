@@ -21,61 +21,50 @@ import (
 const (
 	ProtocolVersion = "wuu-app-server/v0.1"
 
-	MethodInitialize              = "initialize"
-	MethodConfigRead              = "config/read"
-	MethodConfigModelUpdate       = "config/model/update"
-	MethodConfigAdvancedUpdate    = "config/advanced/update"
-	MethodConfigGeneralUpdate     = "config/general/update"
-	MethodExtensionCatalogRefresh = "extension/catalog/refresh"
-	MethodExtensionPackageUpdate  = "extension/package/update"
-	MethodPluginPackageInspect    = "plugin/package/inspect"
-	MethodPluginPackageInstall    = "plugin/package/install"
-	MethodPluginPackageRemove     = "plugin/package/remove"
-	MethodPluginDesktopModuleRead = "plugin/desktop-module/read"
-	MethodPluginSettingGet        = "plugin/setting/get"
-	MethodPluginSettingSet        = "plugin/setting/set"
-	MethodPluginStorageGet        = "plugin/storage/get"
-	MethodPluginStorageSet        = "plugin/storage/set"
-	MethodConfigCodexModels       = "config/codex/models"
-	MethodConfigCatalogRefresh    = "config/model-catalog/refresh"
-	MethodConfigProviderRemove    = "config/provider/remove"
-	MethodSkillList               = "skill/list"
-	MethodChannelBootstrap        = "channel/bootstrap"
-	MethodChannelAgentList        = "channel/agent/list"
-	MethodChannelAgentInsights    = "channel/agent/insights"
-	MethodChannelAgentCreate      = "channel/agent/create"
-	MethodChannelAgentUpdate      = "channel/agent/update"
-	MethodChannelAgentDelete      = "channel/agent/delete"
-	MethodChannelAgentStart       = "channel/agent/start"
-	MethodChannelAgentReset       = "channel/agent/reset"
-	MethodChannelRoomList         = "channel/room/list"
-	MethodChannelRoomCreate       = "channel/room/create"
-	MethodChannelRoomUpdate       = "channel/room/update"
-	MethodChannelRoomDelete       = "channel/room/delete"
-	MethodChannelRoomRead         = "channel/room/read"
-	MethodChannelMessageList      = "channel/message/list"
-	MethodChannelMessageSend      = "channel/message/send"
-	MethodChannelTaskCreate       = "channel/task/create"
-	MethodChannelTaskUpdate       = "channel/task/update"
-	MethodChannelMentionStatus    = "channel/human-mention/status"
-	MethodChannelMentionAck       = "channel/human-mention/ack"
-	MethodAutomationList          = "automation/list"
-	MethodAutomationRuns          = "automation/run/list"
-	MethodAutomationCreate        = "automation/create"
-	MethodAutomationUpdate        = "automation/update"
-	MethodAutomationRemove        = "automation/remove"
-	MethodThreadGoalSet           = "thread/goal/set"
-	MethodThreadGoalGet           = "thread/goal/get"
-	MethodThreadGoalClear         = "thread/goal/clear"
-	// MethodGoalActiveSummary returns the lightweight composer-banner view
-	// of the most-recently-updated non-terminal goal in the requested thread
-	// scope. The mutation methods are user-owned controls for the active
-	// runtime Goal; full workflow/agent detail stays on the agent tool loop.
-	MethodGoalActiveSummary        = "goal/active-summary"
-	MethodGoalPause                = "goal/pause"
-	MethodGoalResume               = "goal/resume"
-	MethodGoalClear                = "goal/clear"
-	MethodGoalUpdateText           = "goal/update-text"
+	MethodInitialize               = "initialize"
+	MethodConfigRead               = "config/read"
+	MethodConfigModelUpdate        = "config/model/update"
+	MethodConfigAdvancedUpdate     = "config/advanced/update"
+	MethodConfigGeneralUpdate      = "config/general/update"
+	MethodExtensionCatalogRefresh  = "extension/catalog/refresh"
+	MethodExtensionPackageUpdate   = "extension/package/update"
+	MethodPluginPackageInspect     = "plugin/package/inspect"
+	MethodPluginPackageInstall     = "plugin/package/install"
+	MethodPluginPackageRemove      = "plugin/package/remove"
+	MethodPluginDesktopModuleRead  = "plugin/desktop-module/read"
+	MethodPluginSettingGet         = "plugin/setting/get"
+	MethodPluginSettingSet         = "plugin/setting/set"
+	MethodPluginStorageGet         = "plugin/storage/get"
+	MethodPluginStorageSet         = "plugin/storage/set"
+	MethodPluginClientRequest      = "plugin/client/request"
+	MethodConfigCodexModels        = "config/codex/models"
+	MethodConfigCatalogRefresh     = "config/model-catalog/refresh"
+	MethodConfigProviderRemove     = "config/provider/remove"
+	MethodSkillList                = "skill/list"
+	MethodChannelBootstrap         = "channel/bootstrap"
+	MethodChannelAgentList         = "channel/agent/list"
+	MethodChannelAgentInsights     = "channel/agent/insights"
+	MethodChannelAgentCreate       = "channel/agent/create"
+	MethodChannelAgentUpdate       = "channel/agent/update"
+	MethodChannelAgentDelete       = "channel/agent/delete"
+	MethodChannelAgentStart        = "channel/agent/start"
+	MethodChannelAgentReset        = "channel/agent/reset"
+	MethodChannelRoomList          = "channel/room/list"
+	MethodChannelRoomCreate        = "channel/room/create"
+	MethodChannelRoomUpdate        = "channel/room/update"
+	MethodChannelRoomDelete        = "channel/room/delete"
+	MethodChannelRoomRead          = "channel/room/read"
+	MethodChannelMessageList       = "channel/message/list"
+	MethodChannelMessageSend       = "channel/message/send"
+	MethodChannelTaskCreate        = "channel/task/create"
+	MethodChannelTaskUpdate        = "channel/task/update"
+	MethodChannelMentionStatus     = "channel/human-mention/status"
+	MethodChannelMentionAck        = "channel/human-mention/ack"
+	MethodAutomationList           = "automation/list"
+	MethodAutomationRuns           = "automation/run/list"
+	MethodAutomationCreate         = "automation/create"
+	MethodAutomationUpdate         = "automation/update"
+	MethodAutomationRemove         = "automation/remove"
 	MethodThreadStart              = "thread/start"
 	MethodThreadResume             = "thread/resume"
 	MethodThreadFork               = "thread/fork"
@@ -157,8 +146,6 @@ const (
 	NotificationThreadStarted          = "thread/started"
 	NotificationThreadResumed          = "thread/resumed"
 	NotificationThreadUpdated          = "thread/updated"
-	NotificationThreadGoalUpdated      = "thread/goal/updated"
-	NotificationThreadGoalCleared      = "thread/goal/cleared"
 	NotificationTurnStarted            = "turn/started"
 	NotificationTurnQueued             = "turn/queued"
 	NotificationTurnDequeued           = "turn/dequeued"
@@ -289,7 +276,6 @@ type InitializeResult struct {
 }
 
 type FeatureFlags struct {
-	HelpMe bool `json:"helpme"`
 	// Browser advertises that this client can host the embedded browser
 	// backend (hidden WebContentsView + CDP bridge). Mirrored by
 	// desktop/src/shared/protocol.ts. Filled by config_handlers.handleInitialize.
@@ -977,126 +963,6 @@ type SkillSummary struct {
 
 type SkillListResult struct {
 	Skills []SkillSummary `json:"skills"`
-}
-
-// ThreadGoal is the public, thread-scoped Goal contract shared by app-server
-// clients and model tools. Wuu intentionally omits token budget fields.
-type ThreadGoal struct {
-	ThreadID        string `json:"thread_id"`
-	Objective       string `json:"objective"`
-	Status          string `json:"status"`
-	TokensUsed      int    `json:"tokens_used"`
-	TimeUsedSeconds int64  `json:"time_used_seconds"`
-	CreatedAt       int64  `json:"created_at"`
-	UpdatedAt       int64  `json:"updated_at"`
-}
-
-type ThreadGoalSetParams struct {
-	ThreadID  string  `json:"thread_id"`
-	Objective *string `json:"objective,omitempty"`
-	Status    *string `json:"status,omitempty"`
-}
-
-type ThreadGoalSetResult struct {
-	Goal ThreadGoal `json:"goal"`
-}
-
-type ThreadGoalGetParams struct {
-	ThreadID string `json:"thread_id"`
-}
-
-type ThreadGoalGetResult struct {
-	Goal *ThreadGoal `json:"goal"`
-}
-
-type ThreadGoalClearParams struct {
-	ThreadID string `json:"thread_id"`
-}
-
-type ThreadGoalClearResult struct {
-	Cleared bool `json:"cleared"`
-}
-
-// GoalActiveSummary is the composer-banner view of the most recently
-// updated non-terminal goal in one thread/session orchestration scope.
-// The handler filters terminal statuses
-// so the renderer can treat a nil summary as "no active goal" without
-// re-checking status.
-// Text is the first line of goal.Goal. The renderer owns visual ellipsis
-// so editing a long first line never persists a server-side truncation.
-// StartedAt and UpdatedAt remain available as goal metadata. TimeUsedSeconds
-// contains completed execution, while RunningSince identifies the current
-// in-flight slice; together they exclude time spent paused, blocked, or idle.
-// The summary intentionally omits task / step / approvals to keep the composer
-// surface quiet.
-type GoalActiveSummary struct {
-	ID                      string `json:"id"`
-	ThreadID                string `json:"thread_id,omitempty"`
-	Text                    string `json:"text"`
-	Status                  string `json:"status"`
-	Step                    string `json:"step,omitempty"`
-	StartedAt               string `json:"started_at,omitempty"`
-	UpdatedAt               string `json:"updated_at,omitempty"`
-	RunningSince            string `json:"running_since,omitempty"`
-	StopReason              string `json:"stop_reason,omitempty"`
-	RecentProgress          string `json:"recent_progress,omitempty"`
-	TokensUsed              int    `json:"tokens_used,omitempty"`
-	TimeUsedSeconds         int64  `json:"time_used_seconds,omitempty"`
-	GoalTurns               int    `json:"goal_turns,omitempty"`
-	Blocker                 string `json:"blocker,omitempty"`
-	BlockerConsecutiveTurns int    `json:"blocker_consecutive_turns,omitempty"`
-	CanPause                bool   `json:"can_pause,omitempty"`
-	CanResume               bool   `json:"can_resume,omitempty"`
-	CanClear                bool   `json:"can_clear,omitempty"`
-}
-
-type GoalActiveSummaryParams struct {
-	ThreadID string `json:"thread_id,omitempty"`
-}
-
-type GoalActiveSummaryResult struct {
-	Summary *GoalActiveSummary `json:"summary,omitempty"`
-}
-
-type GoalPauseParams struct {
-	GoalID              string `json:"goal_id"`
-	ThreadID            string `json:"thread_id,omitempty"`
-	ConfirmUserApproved bool   `json:"confirm_user_approved,omitempty"`
-}
-
-type GoalResumeParams struct {
-	GoalID              string `json:"goal_id"`
-	ThreadID            string `json:"thread_id,omitempty"`
-	ConfirmUserApproved bool   `json:"confirm_user_approved,omitempty"`
-}
-
-type GoalClearParams struct {
-	GoalID              string `json:"goal_id"`
-	ThreadID            string `json:"thread_id,omitempty"`
-	ConfirmUserApproved bool   `json:"confirm_user_approved,omitempty"`
-}
-
-type GoalUpdateTextParams struct {
-	GoalID              string `json:"goal_id"`
-	ThreadID            string `json:"thread_id,omitempty"`
-	Text                string `json:"text"`
-	ConfirmUserApproved bool   `json:"confirm_user_approved,omitempty"`
-}
-
-type GoalPauseResult struct {
-	OK bool `json:"ok"`
-}
-
-type GoalResumeResult struct {
-	OK bool `json:"ok"`
-}
-
-type GoalClearResult struct {
-	OK bool `json:"ok"`
-}
-
-type GoalUpdateTextResult struct {
-	OK bool `json:"ok"`
 }
 
 type ManagedProcessSummary struct {
@@ -1808,16 +1674,6 @@ type ThreadUpdatedNotification struct {
 	Thread Thread `json:"thread"`
 }
 
-type ThreadGoalUpdatedNotification struct {
-	ThreadID string     `json:"thread_id"`
-	TurnID   string     `json:"turn_id,omitempty"`
-	Goal     ThreadGoal `json:"goal"`
-}
-
-type ThreadGoalClearedNotification struct {
-	ThreadID string `json:"thread_id"`
-}
-
 // ThreadRegenerateTitleParams is the input for the `thread/regenerate-title`
 // JSON-RPC method. The desktop uses this to manually re-run the title
 // pipeline for an existing thread (e.g. after the user changes provider)
@@ -2186,6 +2042,7 @@ type ThreadItem struct {
 	Images       []ThreadItemImage          `json:"images,omitempty"`
 	Files        []ThreadItemFile           `json:"files,omitempty"`
 	Name         string                     `json:"name,omitempty"`
+	ReadOnly     bool                       `json:"read_only,omitempty"`
 	Arguments    string                     `json:"arguments,omitempty"`
 	Display      *providers.ToolCallDisplay `json:"display,omitempty"`
 	Result       string                     `json:"result,omitempty"`

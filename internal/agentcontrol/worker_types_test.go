@@ -13,8 +13,8 @@ func TestLookupWorkerType_GeneralPurpose(t *testing.T) {
 	if wt.Name != DefaultSubagentType {
 		t.Errorf("got name %q, want %s", wt.Name, DefaultSubagentType)
 	}
-	if wt.SystemPrompt == "" {
-		t.Error("general-purpose agent has empty SystemPrompt")
+	if wt.SystemPrompt != "" {
+		t.Errorf("core general-purpose SystemPrompt must stay empty; the bundled Subagent plugin owns the prompt, got %q", wt.SystemPrompt)
 	}
 }
 
@@ -28,17 +28,16 @@ func TestLookupWorkerType_DefaultsToGeneralPurpose(t *testing.T) {
 	}
 }
 
-func TestGeneralPurposePromptUsesAgentReportNotParsedFinalFormat(t *testing.T) {
+func TestGeneralPurposePromptIsProductNeutral(t *testing.T) {
+	// The worker prompt and agent_report handoff guidance now belong to the
+	// bundled Subagent plugin; the core worker type must stay product-neutral.
 	wt, err := LookupWorkerType(DefaultSubagentType)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(wt.SystemPrompt, "call agent_report") {
-		t.Fatalf("general-purpose prompt should require agent_report:\n%s", wt.SystemPrompt)
-	}
-	for _, bad := range []string{"exact structure", "orchestrator parses", "VERDICT"} {
-		if strings.Contains(wt.SystemPrompt, bad) {
-			t.Fatalf("general-purpose prompt should not require parsed final format %q:\n%s", bad, wt.SystemPrompt)
+	for _, product := range []string{"agent_report", "helpme", "spawn_agent", "subagent", "goal"} {
+		if strings.Contains(wt.SystemPrompt, product) {
+			t.Fatalf("core general-purpose prompt must not carry product term %q:\n%s", product, wt.SystemPrompt)
 		}
 	}
 }

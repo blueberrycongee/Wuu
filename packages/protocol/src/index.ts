@@ -114,7 +114,6 @@ export type InitializeResult = {
 };
 
 export type FeatureFlags = {
-  helpme: boolean;
   // Advertises that this client can host the embedded browser backend
   // (hidden WebContentsView + CDP bridge). Mirrors appserver.FeatureFlags.
   browser?: boolean;
@@ -458,6 +457,11 @@ export interface PluginStorageResult {
   key: string;
   value: string | null;
 }
+export interface PluginClientRequestParams extends PluginIdentityParams {
+  method: string;
+  input?: unknown;
+}
+export interface PluginClientRequestResult { result?: unknown; }
 
 export type ConfigModelUpdateResult = {
   provider: string;
@@ -1298,8 +1302,8 @@ export type ToolResult = {
   activity?: ToolResultActivityRef;
 };
 
-// ParticipantSummary is the wire identity attached to named subagent activity
-// for display attribution.
+// ParticipantSummary is the wire identity attached to named participant
+// activity for display attribution.
 export type ParticipantSummary = {
   id: string;
   name: string;
@@ -1900,6 +1904,7 @@ export type ThreadItem = {
   images?: InputImage[];
   files?: InputFile[];
   name?: string;
+  read_only?: boolean;
   arguments?: string;
   display?: ToolCallDisplay;
   result?: string;
@@ -2038,54 +2043,6 @@ export type SettingsUsageResponse = {
   model_breakdowns: ModelUsage[];
   skill_usage: SkillUsage[];
   days: SettingsUsageDay[];
-};
-
-// ComposerGoalSummary is the composer-banner view of the current thread goal.
-// The backend owns runtime status, control availability, completed usage, and
-// the current in-flight start time. The renderer only advances that live slice.
-export type ComposerGoalSummary = {
-  id: string;
-  thread_id?: string;
-  text: string;
-  status: string;
-  step?: string;
-  started_at?: string;
-  updated_at?: string;
-  running_since?: string;
-  stop_reason?: string;
-  recent_progress?: string;
-  tokens_used?: number;
-  time_used_seconds?: number;
-  goal_turns?: number;
-  blocker?: string;
-  blocker_consecutive_turns?: number;
-  can_pause?: boolean;
-  can_resume?: boolean;
-  can_clear?: boolean;
-};
-
-export type ThreadGoalStatus = "active" | "paused" | "blocked" | "complete";
-
-// Public thread-scoped Goal contract. Wuu intentionally has no token-budget
-// or usage-limit states; timestamps are Unix seconds like the app-server API.
-export type ThreadGoal = {
-  thread_id: string;
-  objective: string;
-  status: ThreadGoalStatus;
-  tokens_used: number;
-  time_used_seconds: number;
-  created_at: number;
-  updated_at: number;
-};
-
-export type ThreadGoalUpdatedNotification = {
-  thread_id: string;
-  turn_id?: string;
-  goal: ThreadGoal;
-};
-
-export type ThreadGoalClearedNotification = {
-  thread_id: string;
 };
 
 // Appearance preference for the desktop shell. "system" follows the OS
@@ -2420,6 +2377,7 @@ export type WuuDesktopApi = {
   setPluginSetting: (params: PluginSettingSetParams) => Promise<PluginSettingResult>;
   getPluginStorage: (params: PluginStorageGetParams) => Promise<PluginStorageResult>;
   setPluginStorage: (params: PluginStorageSetParams) => Promise<PluginStorageResult>;
+  requestPluginRuntime: (params: PluginClientRequestParams) => Promise<PluginClientRequestResult>;
   listMCPServers: () => Promise<MCPListResult>;
   connectMCPServer: (name: string) => Promise<MCPServerActionResult>;
   disconnectMCPServer: (name: string) => Promise<MCPServerActionResult>;
@@ -2629,18 +2587,6 @@ export type WuuDesktopApi = {
   // can't escalate arbitrary schemes via this channel.
   openExternal: (url: string) => Promise<void>;
   getSettingsUsage: () => Promise<SettingsUsageResponse>;
-  // Composer goal banner surface. The renderer only needs a lightweight
-  // summary plus explicit runtime controls; the full GoalSnapshot and
-  // workflow/agent run detail stay on the agent tool loop.
-  getActiveGoalSummary: (threadId?: string) => Promise<ComposerGoalSummary | null>;
-  pauseGoal: (goalId: string, threadId?: string) => Promise<{ ok: boolean }>;
-  resumeGoal: (goalId: string, threadId?: string) => Promise<{ ok: boolean }>;
-  clearGoal: (goalId: string, threadId?: string) => Promise<{ ok: boolean }>;
-  updateGoalText: (
-    goalId: string,
-    text: string,
-    threadId?: string
-  ) => Promise<{ ok: boolean }>;
   /**
    * Pop-out session IPC (Plan §2.2 `wuu:pop-out-session`). Renderer
    * sends either a thread tab or a draft tab plus its runtime context.

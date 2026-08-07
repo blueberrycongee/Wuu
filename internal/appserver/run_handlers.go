@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/blueberrycongee/wuu/internal/execution"
+	"github.com/blueberrycongee/wuu/internal/pluginhost"
 	"github.com/blueberrycongee/wuu/internal/providers"
 	"github.com/blueberrycongee/wuu/internal/runtime"
 	"github.com/blueberrycongee/wuu/internal/structuredoutput"
@@ -69,7 +70,7 @@ func (s *Server) handleRunStart(ctx context.Context, req Request) error {
 	if validator != nil {
 		prompt = validator.InitialPrompt(prompt)
 	}
-	userMsg, err := userMessageFromPrompt(prompt, images, files, s.rt.ExperimentalHelpMe)
+	userMsg, err := userMessageFromPrompt(prompt, images, files)
 	if err != nil {
 		return s.writeRunError(req.ID, "invalid_params", err)
 	}
@@ -383,11 +384,11 @@ func (s *Server) executionRunAwaitsContinuation(threadID string, threadRuntime *
 	if threadRuntimeAwaitsAutoContinuation(threadID, threadRuntime) {
 		return true, nil
 	}
-	goal, ok, err := s.currentRuntimeGoal(threadID)
+	continuing, _, _, err := s.pluginContinuation(context.Background(), threadID, pluginhost.ContinuationPhaseProbe)
 	if err != nil {
-		return false, fmt.Errorf("inspect execution run goal continuation for thread %q: %w", threadID, err)
+		return false, fmt.Errorf("inspect execution run plugin continuation for thread %q: %w", threadID, err)
 	}
-	return ok && goal.CanAutoContinue(), nil
+	return continuing, nil
 }
 
 func (s *Server) executionRunSuccessfulTurnOutcome(runID, threadID string, threadRuntime *runtime.ThreadRuntime, content string) (awaitingContinuation bool, retryPrompt string, validationErr error) {
@@ -409,7 +410,7 @@ func (s *Server) startExecutionSchemaRetry(ctx context.Context, th *threadState,
 	if th == nil || strings.TrimSpace(snapshot.ExecutionRunID) == "" {
 		return errors.New("structured-output retry requires an attached execution run")
 	}
-	userMsg, err := userMessageFromPrompt(prompt, nil, nil, s.rt.ExperimentalHelpMe)
+	userMsg, err := userMessageFromPrompt(prompt, nil, nil)
 	if err != nil {
 		return err
 	}

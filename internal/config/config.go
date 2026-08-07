@@ -387,13 +387,6 @@ type AgentConfig struct {
 	// should use tool_loading. true now means auto, not Wuu progressive
 	// loading, which no longer exists.
 	ToolSearch *bool `json:"tool_search,omitempty"`
-	// ExperimentalDeferredToolBundles enables the provider-native bundle
-	// activation path where successful tools can attach follow-on schemas.
-	// It is off by default; the main path is tool_search or flat tools.
-	ExperimentalDeferredToolBundles bool `json:"experimental_deferred_tool_bundles,omitempty"`
-	// ExperimentalHelpMe exposes the unfinished HelpMe recovery flow. Keep it
-	// disabled by default until its user-facing contract is ready to ship.
-	ExperimentalHelpMe bool `json:"experimental_helpme,omitempty"`
 	// ExperimentalCoordinatorMode exposes the old coordinator slash mode
 	// for local experimentation. Disabled by default because the mode's
 	// user-facing contract is still unclear: the main agent loses some

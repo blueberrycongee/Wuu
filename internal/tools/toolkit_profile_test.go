@@ -70,12 +70,11 @@ func TestSetActiveProfileCompilesAndExposesBashForAllStandardProfiles(t *testing
 	}
 }
 
-func TestActiveProfileKeepsLowFrequencyToolsDeferred(t *testing.T) {
+func TestActiveProfileKeepsCoreLowFrequencyToolsDeferred(t *testing.T) {
 	kit, err := New(t.TempDir())
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	kit.SetHelpMeEnabled(true)
 	kit.SetActiveProfile(modelprofile.Resolve("openai", "gpt-5-codex"), true)
 
 	defs := kit.Definitions()
@@ -87,8 +86,6 @@ func TestActiveProfileKeepsLowFrequencyToolsDeferred(t *testing.T) {
 		"web_fetch",
 		"bash",
 		"apply_patch",
-		"spawn_agent",
-		"helpme",
 		"tool_search",
 		"load_skill",
 	} {
@@ -99,12 +96,6 @@ func TestActiveProfileKeepsLowFrequencyToolsDeferred(t *testing.T) {
 	if _, ok := kit.ToolInfo("inception"); ok {
 		t.Fatal("retired tool must not be registered")
 	}
-	if info, ok := kit.ToolInfo("helpme"); !ok {
-		t.Fatalf("ToolInfo(%q) not found", "helpme")
-	} else if info.Exposure != ToolExposureDirect {
-		t.Fatalf("helpme exposure = %s, want %s", info.Exposure, ToolExposureDirect)
-	}
-
 	// The orphaned `checkpoint` tool (registered but never bucketed into any
 	// profile surface) was retired entirely; only its absence matters now.
 	if _, ok := kit.ToolInfo("checkpoint"); ok {
@@ -117,11 +108,6 @@ func TestActiveProfileKeepsLowFrequencyToolsDeferred(t *testing.T) {
 	for _, name := range []string{
 		"session_memory",
 		"thread_get",
-		"get_goal",
-		"create_goal",
-		"update_goal",
-		"send_message",
-		"close_agent",
 	} {
 		if containsProfileDef(defs, name) {
 			t.Fatalf("low-frequency tool %s should stay deferred, got %v", name, sortedProfileDefNames(defs))
@@ -150,13 +136,6 @@ func TestActiveProfileKeepsLowFrequencyToolsDeferred(t *testing.T) {
 		if info.Exposure != ToolExposureHidden {
 			t.Fatalf("main-agent %s exposure = %s, want %s (named-only)", name, info.Exposure, ToolExposureHidden)
 		}
-	}
-	info, ok := kit.ToolInfo("agent_report")
-	if !ok {
-		t.Fatalf("ToolInfo(%q) not found", "agent_report")
-	}
-	if info.Exposure != ToolExposureHidden {
-		t.Fatalf("main-agent agent_report exposure = %s, want %s", info.Exposure, ToolExposureHidden)
 	}
 }
 
@@ -532,6 +511,7 @@ func TestActiveProfileBlocksHiddenToolExecution(t *testing.T) {
 	}
 }
 
+/* Removed with the first-party delegation plugin extraction.
 func TestActiveProfileExposesSpawnAgentAndDefersManagementTools(t *testing.T) {
 	kit, err := New(t.TempDir())
 	if err != nil {
@@ -722,6 +702,9 @@ func TestFallbackSubagentNextStepsTellModelToUseToolSearch(t *testing.T) {
 	}
 }
 
+*/
+
+/* Removed with the first-party delegation plugin extraction.
 func TestActiveProfileExposesTaskEntrypointsDirectly(t *testing.T) {
 	kit, err := New(t.TempDir())
 	if err != nil {
@@ -802,6 +785,8 @@ func TestActiveProfileFlatToolSurfaceHidesToolSearchAndExposesDeferredTools(t *t
 		t.Fatalf("flat surface should block tool_search execution, got %v", err)
 	}
 }
+
+*/
 
 func TestSetActiveProfileClaudeExposesEditAndWriteHidesApplyPatch(t *testing.T) {
 	kit, err := New(t.TempDir())

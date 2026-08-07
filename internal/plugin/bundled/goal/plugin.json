@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "id": "goal",
+  "name": "Goal",
+  "version": "0.1.0",
+  "description": "Thread-scoped durable objectives and automatic continuation.",
+  "author": {
+    "name": "Wuu"
+  },
+  "runtime": {
+    "protocol": "wuu-plugin-v1",
+    "command": "@wuu-official-helper:goal",
+    "timeout": 15
+  },
+  "desktop": {
+    "entry": "desktop.js"
+  },
+  "officialNativeHelper": {
+    "id": "goal",
+    "environment": "WUU_GOAL_PLUGIN_HELPER",
+    "executable": "wuu-goal-plugin"
+  },
+  "interface": {
+    "displayName": "Goal",
+    "shortDescription": "Durable objectives that continue across turns.",
+    "developerName": "Wuu",
+    "category": "Productivity",
+    "capabilities": ["Write"]
+  },
+  "minimumWuuVersion": "0.1.0"
+}

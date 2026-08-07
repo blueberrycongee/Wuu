@@ -8,7 +8,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/blueberrycongee/wuu/internal/compact"
 	wuucontext "github.com/blueberrycongee/wuu/internal/context"
 	"github.com/blueberrycongee/wuu/internal/providers"
 	"github.com/blueberrycongee/wuu/internal/toolctx"
@@ -496,12 +495,7 @@ func barrierToolBatchRejectionResult(call providers.ToolCall, barrierName string
 }
 
 func isBarrierTool(name string) bool {
-	switch strings.ToLower(strings.TrimSpace(name)) {
-	case compact.HelpMeToolName, compact.AwaitAgentsToolName:
-		return true
-	default:
-		return false
-	}
+	return false
 }
 
 // TakeRequestContextSegments returns request-only context produced by tool

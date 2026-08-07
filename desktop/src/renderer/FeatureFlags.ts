@@ -21,15 +21,6 @@ export const ENABLE_ULTRA_MODE =
   import.meta.env.VITE_ENABLE_ULTRA_MODE === "true";
 
 /**
- * The running-subagent capsule is implemented for the next desktop release,
- * but stays out of the current frontend until that interaction ships.
- *
- * Use `VITE_ENABLE_SUBAGENT_CAPSULE=true npm run dev` for internal testing.
- */
-export const ENABLE_SUBAGENT_CAPSULE =
-  import.meta.env.VITE_ENABLE_SUBAGENT_CAPSULE === "true";
-
-/**
  * Collaboration is a standard desktop capability from v0.14.0 onward. Keep a
  * named constant while the renderer still shares gated component boundaries,
  * but do not let build-time environment drift hide the released product.

@@ -97,7 +97,7 @@ func TestHostServiceValidation(t *testing.T) {
 	defer host.Close()
 
 	host.AssertHostServiceSupported(pluginhost.HostServiceStorageGet)
-	host.AssertHostServiceSupported(pluginhost.HostServiceSubagentSpawn)
+	host.AssertHostServiceSupported(pluginhost.HostServiceChildSessionRequest)
 	host.AssertHostServiceSupported("host.unknown.service")
 }
 

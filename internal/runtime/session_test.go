@@ -2084,7 +2084,7 @@ func TestNewSessionAutoUsesNativeDeferredForFirstPartyOpenAIResponses(t *testing
 	if rt.StreamRunner == nil || !rt.StreamRunner.NativeDeferredToolDiscovery {
 		t.Fatal("first-party OpenAI Responses runner should forward native deferred loading to provider requests")
 	}
-	if def, ok := sessionToolDefByName(rt.Toolkit.Definitions(), "send_message"); !ok || !def.DeferLoading {
+	if def, ok := sessionToolDefByName(rt.Toolkit.Definitions(), "session_memory"); !ok || !def.DeferLoading {
 		t.Fatalf("first-party OpenAI Responses should declare deferred tools as native-deferred, got %+v", rt.Toolkit.Definitions())
 	}
 }
@@ -2178,7 +2178,7 @@ func TestNewSessionAutoFallsBackToFlatForUnsupportedFirstPartyOpenAIResponsesMod
 	if _, ok := sessionToolDefByName(defs, "tool_search"); ok {
 		t.Fatalf("flat fallback must not expose tool_search, got %+v", defs)
 	}
-	if _, ok := sessionToolDefByName(defs, "send_message"); !ok {
+	if _, ok := sessionToolDefByName(defs, "session_memory"); !ok {
 		t.Fatalf("flat fallback must declare formerly deferred tools directly, got %+v", defs)
 	}
 	for _, block := range rt.Toolkit.ContextBlocks() {
@@ -2229,8 +2229,11 @@ func TestNewSessionAutoFlattensCompatibleOpenAIResponses(t *testing.T) {
 	if _, ok := sessionToolDefByName(defs, "tool_search"); ok {
 		t.Fatalf("compatible OpenAI Responses flat mode should hide tool_search, got %+v", defs)
 	}
-	if def, ok := sessionToolDefByName(defs, "send_message"); !ok || def.DeferLoading {
-		t.Fatalf("compatible OpenAI Responses flat mode should expose send_message directly, got %+v", defs)
+	if def, ok := sessionToolDefByName(defs, "session_memory"); !ok || def.DeferLoading {
+		t.Fatalf("compatible OpenAI Responses flat mode should expose session_memory directly, got %+v", defs)
+	}
+	if _, ok := sessionToolDefByName(defs, "send_message"); ok {
+		t.Fatalf("compatible OpenAI Responses flat mode must not expose plugin-owned send_message in the core toolkit, got %+v", defs)
 	}
 }
 
@@ -2439,8 +2442,11 @@ func TestNewSessionTreatsRetiredWuuToolSearchConfigAsAuto(t *testing.T) {
 	if _, ok := sessionToolDefByName(defs, "tool_search"); ok {
 		t.Fatalf("retired mode must not expose tool_search, got %+v", defs)
 	}
-	if _, ok := sessionToolDefByName(defs, "send_message"); !ok {
+	if _, ok := sessionToolDefByName(defs, "session_memory"); !ok {
 		t.Fatalf("retired mode should declare formerly deferred tools directly, got %+v", defs)
+	}
+	if _, ok := sessionToolDefByName(defs, "send_message"); ok {
+		t.Fatalf("retired mode must not expose plugin-owned send_message in the core toolkit, got %+v", defs)
 	}
 }
 
@@ -2473,13 +2479,8 @@ func TestNewSessionFlattensToolSurfaceWhenToolLoadingFlat(t *testing.T) {
 	for _, def := range rt.Toolkit.Definitions() {
 		defs[def.Name] = true
 	}
-	for _, name := range []string{"tool_search", "send_message"} {
-		if name == "tool_search" && defs[name] {
-			t.Fatalf("flat surface should hide tool_search: %+v", defs)
-		}
-		if name == "send_message" && !defs[name] {
-			t.Fatalf("flat surface should expose deferred tool %s: %+v", name, defs)
-		}
+	if defs["tool_search"] {
+		t.Fatalf("flat surface should hide tool_search: %+v", defs)
 	}
 	if strings.Contains(rt.BaseSystemPrompt, "# Tool Discovery") {
 		t.Fatalf("flat surface should not include tool_search guidance:\n%s", rt.BaseSystemPrompt)
@@ -3192,6 +3193,8 @@ func TestBuildBaseSystemPromptLocalNoShellDoesNotTeachTerminalPaths(t *testing.T
 // split between prompts.System() (invariants shared with workers) and
 // prompts.SystemMain() (the small coordination contract used only by the main
 // agent). Tool-specific manuals belong to the active tool surface instead.
+// Subagent product guidance was extracted into the bundled Subagent plugin,
+// so neither core prompt may carry it.
 func TestBuildBaseSystemPrompt_WorkerExcludesMainOnlyCoordination(t *testing.T) {
 	surface := compiledSurfaceForProviderModel("openai", "gpt-5")
 
@@ -3214,28 +3217,24 @@ func TestBuildBaseSystemPrompt_WorkerExcludesMainOnlyCoordination(t *testing.T) 
 		nil, "", "", nil,
 	)
 
-	for _, want := range []string{
+	// Subagent results guidance moved to plugins/subagent; core prompts must
+	// remain product-neutral.
+	for _, banned := range []string{
 		"# Subagent results",
 		"completed subagent task does not mean the overall task is complete",
 		"integrate the result and verify the overall work",
 	} {
-		if !strings.Contains(mainPrompt, want) {
-			t.Fatalf("main agent prompt must contain %q; got prompt:\n%s", want, mainPrompt)
+		if strings.Contains(mainPrompt, banned) {
+			t.Fatalf("main agent prompt must not contain extracted Subagent guidance %q; got prompt:\n%s", banned, mainPrompt)
+		}
+		if strings.Contains(workerPrompt, banned) {
+			t.Fatalf("worker prompt must not contain extracted Subagent guidance %q; got prompt:\n%s", banned, workerPrompt)
 		}
 	}
 	// start_workflow is part of the legacy workflow suite and must not be
 	// taught to ordinary project main agents.
 	if strings.Contains(mainPrompt, "- start_workflow:") {
 		t.Fatalf("project main prompt (no workflow capability) must not contain the start_workflow path bullet; got prompt:\n%s", mainPrompt)
-	}
-	for _, banned := range []string{
-		"# Subagent results",
-		"completed subagent task does not mean the overall task is complete",
-		"integrate the result and verify the overall work",
-	} {
-		if strings.Contains(workerPrompt, banned) {
-			t.Fatalf("worker prompt must not contain main-only guidance %q; got prompt:\n%s", banned, workerPrompt)
-		}
 	}
 
 }
@@ -3304,7 +3303,7 @@ func TestApplyWorkerToolFilter_HidesRecursiveAgentControls(t *testing.T) {
 	for _, def := range kit.Definitions() {
 		defs[def.Name] = true
 	}
-	for _, allowed := range []string{"read_file", "apply_patch", "bash", "update_plan", "agent_report"} {
+	for _, allowed := range []string{"read_file", "apply_patch", "bash", "update_plan"} {
 		if !defs[allowed] {
 			t.Fatalf("subagent toolkit should keep %s", allowed)
 		}
@@ -3334,7 +3333,7 @@ func TestApplyWorkerToolFilter_RestrictedWorkerKeepsBashFirstSurface(t *testing.
 	for _, def := range kit.Definitions() {
 		defs[def.Name] = true
 	}
-	for _, allowed := range []string{"read_file", "grep", "glob", "bash", "agent_report"} {
+	for _, allowed := range []string{"read_file", "grep", "glob", "bash"} {
 		if !defs[allowed] {
 			t.Fatalf("restricted worker toolkit should keep %s; defs=%v", allowed, defs)
 		}
@@ -3359,14 +3358,14 @@ func TestWorkerDeferredToolCatalogPromptForToolkit(t *testing.T) {
 	// produce a worker-scoped catalog from it.
 	kit.ConfigureSurfaceForProviderModel("openai", "gpt-5-codex", true)
 
-	catalog, err := workerDeferredToolCatalogPromptForToolkit(kit, "openai", "gpt-5-codex", true, false)
+	catalog, err := workerDeferredToolCatalogPromptForToolkit(kit, "openai", "gpt-5-codex", true)
 	if err != nil {
 		t.Fatalf("workerDeferredToolCatalogPromptForToolkit: %v", err)
 	}
 	if catalog == "" {
 		t.Fatal("worker deferred tool catalog must not be empty when tool search is enabled")
 	}
-	for _, want := range []string{"session_memory", "thread_get", "get_goal", "create_goal", "update_goal", "cron"} {
+	for _, want := range []string{"session_memory", "thread_get", "cron"} {
 		if !strings.Contains(catalog, want) {
 			t.Errorf("worker catalog must list deferred executor tool %s:\n%s", want, catalog)
 		}
@@ -3377,12 +3376,7 @@ func TestWorkerDeferredToolCatalogPromptForToolkit(t *testing.T) {
 		}
 	}
 
-	// The helper must not disturb the source toolkit's main surface.
-	if _, ok := kit.ActiveSurface().Tools["spawn_agent"]; !ok {
-		t.Error("source toolkit must keep its main-agent surface after catalog generation")
-	}
-
-	disabled, err := workerDeferredToolCatalogPromptForToolkit(kit, "openai", "gpt-5-codex", false, false)
+	disabled, err := workerDeferredToolCatalogPromptForToolkit(kit, "openai", "gpt-5-codex", false)
 	if err != nil {
 		t.Fatalf("workerDeferredToolCatalogPromptForToolkit (tool search off): %v", err)
 	}
@@ -3507,20 +3501,6 @@ func TestNewThreadRuntimeCreatesIsolatedMutableRuntime(t *testing.T) {
 	}
 	if first.AgentControl.SessionID() != "thread-a" || second.AgentControl.SessionID() != "thread-b" {
 		t.Fatalf("unexpected agent control sessions: first=%q second=%q", first.AgentControl.SessionID(), second.AgentControl.SessionID())
-	}
-	if first.GoalRuntime == nil || second.GoalRuntime == nil {
-		t.Fatal("thread runtimes must include goal runtime")
-	}
-	if first.Toolkit.GoalRuntime() != first.GoalRuntime || second.Toolkit.GoalRuntime() != second.GoalRuntime {
-		t.Fatal("thread toolkits must be attached to their thread goal runtime")
-	}
-	if first.GoalRuntime == second.GoalRuntime {
-		t.Fatal("thread runtimes must not share goal runtime instances")
-	}
-	firstGoalPath := statepath.ThreadGoalRuntimePath(rt.StateDir, "thread-a")
-	secondGoalPath := statepath.ThreadGoalRuntimePath(rt.StateDir, "thread-b")
-	if first.GoalRuntime.Store().Path() != firstGoalPath || second.GoalRuntime.Store().Path() != secondGoalPath {
-		t.Fatalf("unexpected goal runtime paths: first=%q second=%q", first.GoalRuntime.Store().Path(), second.GoalRuntime.Store().Path())
 	}
 }
 

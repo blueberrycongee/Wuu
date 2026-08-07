@@ -195,7 +195,7 @@ func runRuntimeHostServiceHelper() {
 		os.Exit(3)
 	}
 	var params pluginhost.CapabilityInitializeParams
-	if json.Unmarshal(initialize.Params, &params) != nil || len(params.SupportedHostServices) != 6 {
+	if json.Unmarshal(initialize.Params, &params) != nil || len(params.SupportedHostServices) != 7 {
 		os.Exit(4)
 	}
 	initResult := pluginhost.CapabilityInitializeResult{

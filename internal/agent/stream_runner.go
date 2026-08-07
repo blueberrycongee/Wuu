@@ -358,7 +358,6 @@ func (r *StreamRunner) RunWithCallback(ctx context.Context, history []providers.
 				})
 			}
 		},
-		PostToolRewrite: compact.RewriteHistoryFromHelpMeToolMessagesWithContext,
 		OnCompactStart: func(reason CompactReason) {
 			if effectiveOnEvent == nil {
 				return

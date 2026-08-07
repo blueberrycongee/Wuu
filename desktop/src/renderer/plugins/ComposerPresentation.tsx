@@ -1,5 +1,5 @@
 import type { ReactNode, RefObject } from "react";
-import type { ComposerGoalSummary, InitializeResult } from "../../shared/protocol";
+import type { InitializeResult } from "../../shared/protocol";
 import { COMPOSER_ACTIONS, type AttachmentDescriptorV1, type ComposerSnapshotV1, type ComposerSubmissionModeV1 } from "../../shared/workbench";
 import type { TurnContextUsage } from "../AppState";
 import type { ComposerFile, ComposerImage, QueuedComposerMessage } from "../ComposerMessages";
@@ -16,7 +16,7 @@ interface ComposerPresentationProps {
   queuedMessages: readonly QueuedComposerMessage[]; pendingMessages: readonly QueuedComposerMessage[];
   running: boolean; readOnly: boolean; sendDisabled: boolean; variant: ComposerVariant;
   threadId?: string; initialized?: InitializeResult; contextUsage?: TurnContextUsage | null;
-  goalSummary?: ComposerGoalSummary | null; disabledReason?: string;
+  disabledReason?: string;
   activeSubmissionMode: ComposerSubmissionModeV1; availableSubmissionModes: readonly ComposerSubmissionModeV1[];
   attachmentInputRef: RefObject<HTMLInputElement | null>; attachmentsEnabled: boolean;
   onSetDraft: (value: string) => void; onRemoveFile: (id: string) => void; onRemoveImage: (id: string) => void;
@@ -67,7 +67,7 @@ export function ComposerPresentation(props: ComposerPresentationProps): JSX.Elem
 
 type SnapshotInput = Pick<ComposerPresentationProps, "draftText" | "files" | "images" | "queuedMessages" |
   "pendingMessages" | "running" | "readOnly" | "variant" | "threadId" | "initialized" |
-  "contextUsage" | "goalSummary" | "disabledReason" | "activeSubmissionMode" | "availableSubmissionModes">;
+  "contextUsage" | "disabledReason" | "activeSubmissionMode" | "availableSubmissionModes">;
 
 export function buildComposerSnapshot(input: SnapshotInput): ComposerSnapshotV1 {
   const permissionMode = permissionModeFromSummary(input.initialized?.permissions);
@@ -92,8 +92,6 @@ export function buildComposerSnapshot(input: SnapshotInput): ComposerSnapshotV1 
     ...(input.contextUsage == null ? {} : { contextUsage: Object.freeze({ usedTokens: input.contextUsage.used,
       limitTokens: input.contextUsage.window,
       ...(input.contextUsage.window > 0 ? { percent: input.contextUsage.used / input.contextUsage.window * 100 } : {}) }) }),
-    ...(input.goalSummary == null ? {} : { goal: Object.freeze({ id: input.goalSummary.id, title: input.goalSummary.text,
-      ...(composerGoalStatus(input.goalSummary.status) === undefined ? {} : { status: composerGoalStatus(input.goalSummary.status) }) }) }),
     ...(input.disabledReason === undefined ? {} : { disabledReason: input.disabledReason }),
   });
 }
@@ -104,8 +102,5 @@ function attachmentDescriptor(id: string, name: string, mimeType: string): Attac
 function queueSummaries(messages: readonly QueuedComposerMessage[], status: "queued" | "pending") {
   return Object.freeze(messages.map((message) => Object.freeze({ id: message.id, text: message.text,
     attachmentCount: message.files.length + message.images.length, status })));
-}
-function composerGoalStatus(status: string): "active" | "complete" | "blocked" | undefined {
-  return status === "active" || status === "complete" || status === "blocked" ? status : undefined;
 }
 function requireNoInput(input: unknown): void { if (input !== undefined) throw new Error("Composer action does not accept input"); }

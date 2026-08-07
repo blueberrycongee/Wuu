@@ -921,8 +921,7 @@ func isTransientModelContextMessage(msg providers.ChatMessage) bool {
 	}
 	name := strings.TrimSpace(msg.Name)
 	switch name {
-	case wuucontext.TaskContractMessageName,
-		wuucontext.GoalContinuationMessageName:
+	case wuucontext.TaskContractMessageName:
 		return true
 	}
 	if wuucontext.IsSystemReminder(name, "") {
@@ -934,8 +933,7 @@ func isTransientModelContextMessage(msg providers.ChatMessage) bool {
 	if !msg.Hidden {
 		return false
 	}
-	return wuucontext.IsSystemReminder("", msg.Content) ||
-		wuucontext.IsGoalContinuation("", msg.Content)
+	return wuucontext.IsSystemReminder("", msg.Content)
 }
 
 func isLegacyHookContextMessage(msg providers.ChatMessage) bool {

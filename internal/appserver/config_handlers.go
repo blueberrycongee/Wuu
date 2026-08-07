@@ -83,7 +83,7 @@ func (s *Server) handleInitialize(req Request) error {
 		Providers:          s.providerSummaries(),
 		AdvancedSettings:   s.currentAdvancedSettingsSummary(),
 		GeneralSettings:    s.currentGeneralSettingsSummary(),
-		Features:           FeatureFlags{HelpMe: s.rt.ExperimentalHelpMe, Browser: s.supportsBrowserClient()},
+		Features:           FeatureFlags{Browser: s.supportsBrowserClient()},
 	}, nil)
 }
 

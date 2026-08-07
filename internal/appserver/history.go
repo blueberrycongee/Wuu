@@ -573,7 +573,7 @@ func shouldPersistMessage(msg providers.ChatMessage) bool {
 		return true
 	case "system":
 		content := strings.TrimSpace(msg.Content)
-		return strings.HasPrefix(content, compact.ConversationSummaryPrefix) || compact.IsHelpMeJointCompactContent(content)
+		return strings.HasPrefix(content, compact.ConversationSummaryPrefix)
 	default:
 		return false
 	}

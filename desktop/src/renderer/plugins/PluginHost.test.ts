@@ -524,6 +524,57 @@ describe("PluginHost", () => {
     } })).rejects.toThrow("target must not be empty");
     expect(host.getPresenters("conversation.item")).toEqual([]);
   });
+
+  it("binds runtime requests to the active plugin generation", async () => {
+    const requests: unknown[] = [];
+    const host = new PluginHost({
+      react: React,
+      invokeRuntime: async (request) => {
+        requests.push(request);
+        return { ok: true };
+      },
+    });
+    let firstApi: Parameters<Parameters<typeof host.activateGeneration>[0]["register"]>[0] | undefined;
+    await host.activateGeneration({
+      pluginId: "runtime-owner",
+      generation: "one",
+      register(api) { firstApi = api; },
+    });
+    await expect(firstApi?.invokeRuntime("summary.get", { threadId: "thread-1" })).resolves.toEqual({ ok: true });
+    expect(requests).toEqual([{
+      pluginId: "runtime-owner",
+      generation: "one",
+      method: "summary.get",
+      input: { threadId: "thread-1" },
+    }]);
+
+    await host.activateGeneration({
+      pluginId: "runtime-owner",
+      generation: "two",
+      register() {},
+    });
+    await expect(firstApi?.invokeRuntime("summary.get")).rejects.toThrow("no longer active");
+  });
+
+  it("delivers host events only to the active generation", async () => {
+    const host = new PluginHost({ react: React });
+    const received: unknown[] = [];
+    await host.activateGeneration({
+      pluginId: "event-owner",
+      generation: "one",
+      register(api) { api.onHostEvent((event) => received.push(event)); },
+    });
+    host.publishHostEvent({ kind: "notification", method: "turn/completed" });
+    expect(received).toEqual([{ kind: "notification", method: "turn/completed" }]);
+
+    await host.activateGeneration({
+      pluginId: "event-owner",
+      generation: "two",
+      register() {},
+    });
+    host.publishHostEvent({ kind: "notification", method: "turn/started" });
+    expect(received).toHaveLength(1);
+  });
 });
 
 function contribution(id: string, order = 0) {

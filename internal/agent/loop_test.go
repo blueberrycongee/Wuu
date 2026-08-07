@@ -642,18 +642,18 @@ func TestRunToolLoop_CompactIgnoresRequestOnlyContext(t *testing.T) {
 		{Role: "assistant", Content: "old answer"},
 		{Role: "user", Content: "latest request"},
 	}
-	goalBlock := wuucontext.Block{
-		Kind:    wuucontext.BlockGoalContinuation,
-		Title:   "Active goal continuation",
-		Source:  "runtime.goal_continuation",
-		Content: "Objective: new continuation objective",
+	pluginBlock := wuucontext.Block{
+		Kind:    wuucontext.BlockKind("PLUGIN_CONTINUATION"),
+		Title:   "Plugin continuation",
+		Source:  "plugin.test",
+		Content: "Opaque continuation context",
 	}
 	var compactInput []providers.ChatMessage
 
 	res, err := RunToolLoop(context.Background(), history, LoopConfig{
 		Model: "m",
 		BeforeRequestContext: func() []ContextSegment {
-			return RequestOnlyContextBlocks([]wuucontext.Block{goalBlock})
+			return RequestOnlyContextBlocks([]wuucontext.Block{pluginBlock})
 		},
 		Compact: func(_ context.Context, messages []providers.ChatMessage) ([]providers.ChatMessage, error) {
 			compactInput = providers.CloneChatMessages(messages)
@@ -670,17 +670,17 @@ func TestRunToolLoop_CompactIgnoresRequestOnlyContext(t *testing.T) {
 	if res.Content != "ok" {
 		t.Fatalf("unexpected content %q", res.Content)
 	}
-	if got := countMessagesContaining(step.calls[0].Messages, "new continuation objective"); got != 1 {
-		t.Fatalf("first request should include request-only goal context once, got %d in %+v", got, step.calls[0].Messages)
+	if got := countMessagesContaining(step.calls[0].Messages, "Opaque continuation context"); got != 1 {
+		t.Fatalf("first request should include request-only plugin context once, got %d in %+v", got, step.calls[0].Messages)
 	}
-	if got := countMessagesContaining(compactInput, "new continuation objective"); got != 0 {
-		t.Fatalf("compact input must not include request-only goal context, got %d in %+v", got, compactInput)
+	if got := countMessagesContaining(compactInput, "Opaque continuation context"); got != 0 {
+		t.Fatalf("compact input must not include request-only plugin context, got %d in %+v", got, compactInput)
 	}
-	if got := countMessagesContaining(step.calls[1].Messages, "new continuation objective"); got != 1 {
-		t.Fatalf("retry request should re-add request-only goal context once, got %d in %+v", got, step.calls[1].Messages)
+	if got := countMessagesContaining(step.calls[1].Messages, "Opaque continuation context"); got != 1 {
+		t.Fatalf("retry request should re-add request-only plugin context once, got %d in %+v", got, step.calls[1].Messages)
 	}
-	if got := countMessagesContaining(res.NewMessages, "new continuation objective"); got != 0 {
-		t.Fatalf("request-only goal context must not enter returned history, got %d in %+v", got, res.NewMessages)
+	if got := countMessagesContaining(res.NewMessages, "Opaque continuation context"); got != 0 {
+		t.Fatalf("request-only plugin context must not enter returned history, got %d in %+v", got, res.NewMessages)
 	}
 }
 
@@ -836,6 +836,111 @@ func TestRequestContextInfoReadsNativeToolSearchToolsShape(t *testing.T) {
 	}
 }
 
+// rewriteFromRecoveryEnvelopeForTest replicates the recovery-handoff rewrite
+// contract that the first-party delegation plugin now owns: a helpme tool
+// result carrying a history_rewrite envelope replaces the live history with
+// the bounded joint-compact system message, preserving the original system
+// prefix, previously discovered tools, and any unanswered visible user
+// suffix. The loop-level tests use it to keep the generic PostToolRewrite
+// seam covered without depending on the deleted product implementation.
+func rewriteFromRecoveryEnvelopeForTest(_ context.Context, messages []providers.ChatMessage, toolMessages []providers.ChatMessage) ([]providers.ChatMessage, bool, error) {
+	const (
+		recoveryCarrierTool      = "helpme"
+		recoveryRewriteKind      = "helpme_joint_compact"
+		recoveryCompactTitle     = "[HelpMe joint compact]"
+		recoveryPreviousSummary  = "\n\n## Previous compact summary before recovery\n"
+	)
+	content := ""
+	for _, msg := range toolMessages {
+		if strings.TrimSpace(msg.Name) != recoveryCarrierTool {
+			continue
+		}
+		if !strings.Contains(msg.Content, `"history_rewrite"`) {
+			continue
+		}
+		var envelope struct {
+			HistoryRewrite *struct {
+				Kind    string `json:"kind"`
+				Content string `json:"content"`
+			} `json:"history_rewrite"`
+		}
+		if err := json.Unmarshal([]byte(msg.Content), &envelope); err != nil {
+			return nil, false, fmt.Errorf("parse recovery rewrite envelope: %w", err)
+		}
+		if envelope.HistoryRewrite == nil || strings.TrimSpace(envelope.HistoryRewrite.Kind) != recoveryRewriteKind {
+			continue
+		}
+		content = strings.TrimSpace(envelope.HistoryRewrite.Content)
+		break
+	}
+	if content == "" {
+		return nil, false, nil
+	}
+	systemPrefix, previousSummary, previousSummaryDiscoveredTools, conversation := splitLeadingTestSystemMessages(messages)
+	if previousSummary != "" {
+		content = content + recoveryPreviousSummary + previousSummary
+	}
+	discovered := providers.MergeLoadableToolDefinitions(
+		previousSummaryDiscoveredTools,
+		providers.DiscoveredToolsFromMessages(conversation),
+	)
+	rewritten := providers.CloneChatMessages(systemPrefix)
+	rewritten = append(rewritten, providers.ChatMessage{
+		Role:            "system",
+		Content:         recoveryCompactTitle + "\n" + content,
+		DiscoveredTools: discovered,
+	})
+	rewritten = append(rewritten, unansweredVisibleUserSuffixForTest(conversation)...)
+	return rewritten, true, nil
+}
+
+func splitLeadingTestSystemMessages(messages []providers.ChatMessage) ([]providers.ChatMessage, string, []providers.LoadableToolDefinition, []providers.ChatMessage) {
+	i := 0
+	systemPrefix := make([]providers.ChatMessage, 0)
+	previousSummary := ""
+	var previousSummaryDiscoveredTools []providers.LoadableToolDefinition
+	for i < len(messages) && strings.EqualFold(messages[i].Role, "system") {
+		msg := messages[i]
+		if compact.IsConversationSummaryContent(msg.Content) {
+			previousSummary = strings.TrimSpace(msg.Content)
+			previousSummaryDiscoveredTools = providers.MergeLoadableToolDefinitions(previousSummaryDiscoveredTools, msg.DiscoveredTools)
+			i++
+			continue
+		}
+		systemPrefix = append(systemPrefix, msg)
+		i++
+	}
+	return systemPrefix, previousSummary, previousSummaryDiscoveredTools, messages[i:]
+}
+
+func unansweredVisibleUserSuffixForTest(messages []providers.ChatMessage) []providers.ChatMessage {
+	start := 0
+	for i, msg := range messages {
+		if isVisibleAssistantTextReplyForTest(msg) {
+			start = i + 1
+		}
+	}
+	var out []providers.ChatMessage
+	for _, msg := range messages[start:] {
+		if isVisibleExternalUserMessageForTest(msg) {
+			out = append(out, providers.CloneChatMessage(msg))
+		}
+	}
+	return out
+}
+
+func isVisibleAssistantTextReplyForTest(msg providers.ChatMessage) bool {
+	return strings.EqualFold(strings.TrimSpace(msg.Role), "assistant") &&
+		!msg.Hidden &&
+		strings.TrimSpace(msg.Content) != ""
+}
+
+func isVisibleExternalUserMessageForTest(msg providers.ChatMessage) bool {
+	return strings.EqualFold(strings.TrimSpace(msg.Role), "user") &&
+		!msg.Hidden &&
+		!compact.IsInternalContextMessage(msg)
+}
+
 func TestRunToolLoop_CompactRewritePromotesSummaryIntoCacheHint(t *testing.T) {
 	step := &fakeStep{results: []StepResult{
 		{ToolCalls: []providers.ToolCall{{ID: "c1", Name: "t", Arguments: `{}`}}, Usage: &providers.TokenUsage{InputTokens: 1300}},
@@ -902,7 +1007,7 @@ func TestRunToolLoop_PostToolRewriteAfterHelpMeKeepsValidHistory(t *testing.T) {
 	cfg := LoopConfig{
 		Model:           "m",
 		Tools:           &fakeLoopTools{defs: []providers.ToolDefinition{{Name: "helpme"}}, results: map[string]string{"helpme_1": helpMeResult}},
-		PostToolRewrite: compact.RewriteHistoryFromHelpMeToolMessagesWithContext,
+		PostToolRewrite: rewriteFromRecoveryEnvelopeForTest,
 	}
 	var infos []CompactInfo
 	cfg.OnCompact = func(info CompactInfo) {
@@ -928,7 +1033,7 @@ func TestRunToolLoop_PostToolRewriteAfterHelpMeKeepsValidHistory(t *testing.T) {
 	if got := len(res.NewMessages); got != 4 {
 		t.Fatalf("expected system prompt, HelpMe compact, preserved unanswered ask, and final answer, got %d: %+v", got, res.NewMessages)
 	}
-	if res.NewMessages[1].Role != "system" || !strings.Contains(res.NewMessages[1].Content, compact.HelpMeJointCompactPrefix) {
+	if res.NewMessages[1].Role != "system" || !strings.Contains(res.NewMessages[1].Content, "[HelpMe joint compact]") {
 		t.Fatalf("expected HelpMe compact system message, got %+v", res.NewMessages[1])
 	}
 	// "please recover" never got a visible assistant reply, so the rewrite
@@ -967,7 +1072,7 @@ func TestRunToolLoop_StaleContextRewriteCallCannotRewriteHistory(t *testing.T) {
 	res, err := RunToolLoop(context.Background(), []providers.ChatMessage{userMsg("keep this history")}, LoopConfig{
 		Model:           "m",
 		Tools:           tools,
-		PostToolRewrite: compact.RewriteHistoryFromHelpMeToolMessagesWithContext,
+		PostToolRewrite: rewriteFromRecoveryEnvelopeForTest,
 	}, step)
 	if err != nil {
 		t.Fatal(err)
@@ -1009,7 +1114,7 @@ func TestRunToolLoop_ProactiveCompactThenHelpMeRewrite(t *testing.T) {
 		MaxContextTokens: 1000,
 		DefaultMaxTokens: 100,
 		UsageTracker:     tracker,
-		PostToolRewrite:  compact.RewriteHistoryFromHelpMeToolMessagesWithContext,
+		PostToolRewrite:  rewriteFromRecoveryEnvelopeForTest,
 		OnCompactAttempt: func(info CompactAttemptInfo) { attempts = append(attempts, info) },
 	}
 
@@ -1053,7 +1158,7 @@ func TestRunToolLoop_ManualCompactThenHelpMeRewrite(t *testing.T) {
 		Compact: func(_ context.Context, _ []providers.ChatMessage) ([]providers.ChatMessage, error) {
 			return []providers.ChatMessage{{Role: "system", Content: compact.BuildSummaryContent("manual summary")}, userMsg("please recover")}, nil
 		},
-		PostToolRewrite:  compact.RewriteHistoryFromHelpMeToolMessagesWithContext,
+		PostToolRewrite:  rewriteFromRecoveryEnvelopeForTest,
 		OnCompactAttempt: func(info CompactAttemptInfo) { attempts = append(attempts, info) },
 	}, step)
 	if err != nil {
@@ -1105,7 +1210,7 @@ func TestRunToolLoop_HelpMeThenOverflowCompactPreservesDiscoveredTools(t *testin
 				DiscoveredTools: providers.CloneLoadableToolDefinitions(discovered),
 			}}, nil
 		},
-		PostToolRewrite:  compact.RewriteHistoryFromHelpMeToolMessagesWithContext,
+		PostToolRewrite:  rewriteFromRecoveryEnvelopeForTest,
 		OnCompactAttempt: func(info CompactAttemptInfo) { attempts = append(attempts, info) },
 	}
 
@@ -2583,12 +2688,6 @@ func TestRunToolLoop_FiltersStaleInternalContextWithoutTaskContract(t *testing.T
 			Content: "hidden task contract should not echo",
 			Hidden:  true,
 		},
-		{
-			Role:    "user",
-			Name:    wuucontext.GoalContinuationMessageName,
-			Content: "<goal_continuation>hidden goal should not echo</goal_continuation>",
-			Hidden:  true,
-		},
 		userMsg("second request"),
 	}
 
@@ -2615,8 +2714,7 @@ func TestRunToolLoop_FiltersStaleInternalContextWithoutTaskContract(t *testing.T
 	}
 	for _, msg := range msgs[:len(msgs)-1] {
 		if msg.Name == wuucontext.SystemReminderMessageName ||
-			msg.Name == wuucontext.TaskContractMessageName ||
-			msg.Name == wuucontext.GoalContinuationMessageName {
+			msg.Name == wuucontext.TaskContractMessageName {
 			t.Fatalf("stale model context should not remain in request history: %+v", msgs)
 		}
 	}

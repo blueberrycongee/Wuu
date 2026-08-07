@@ -10,7 +10,6 @@ func (t *Toolkit) ValidateActiveToolSurfaceForProvider(target providers.ToolSurf
 }
 
 func (t *Toolkit) providerSurfaceDefinitionsForValidation() []providers.ToolDefinition {
-	t.refreshStateActivatedToolBundles()
 	surface := t.activeCompiledSurface()
 	defs := make([]providers.ToolDefinition, 0)
 	seen := map[string]struct{}{}

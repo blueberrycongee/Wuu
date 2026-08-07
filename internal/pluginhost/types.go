@@ -71,11 +71,12 @@ type InitializeResult struct {
 
 // ToolRegistration is one model-visible tool owned by a plugin process.
 type ToolRegistration struct {
-	ID          string                     `json:"id"`
-	Description string                     `json:"description"`
-	InputSchema map[string]any             `json:"input_schema"`
-	Activity    *ToolActivityMetadata      `json:"activity,omitempty"`
-	Display     *providers.ToolCallDisplay `json:"display,omitempty"`
+	ID              string                     `json:"id"`
+	Description     string                     `json:"description"`
+	InputSchema     map[string]any             `json:"input_schema"`
+	ExecutionScopes []string                   `json:"execution_scopes,omitempty"`
+	Activity        *ToolActivityMetadata      `json:"activity,omitempty"`
+	Display         *providers.ToolCallDisplay `json:"display,omitempty"`
 }
 
 // ToolActivityMetadata controls scheduling and activity classification for a
@@ -135,6 +136,17 @@ func validateToolRegistrations(tools []ToolRegistration) error {
 		}
 		if schemaType, ok := tool.InputSchema["type"]; !ok || schemaType != "object" {
 			return fmt.Errorf("%s input_schema type must be %q", prefix, "object")
+		}
+		scopes := make(map[string]struct{}, len(tool.ExecutionScopes))
+		for _, scope := range tool.ExecutionScopes {
+			scope = strings.TrimSpace(scope)
+			if scope != "root" && scope != "child" {
+				return fmt.Errorf("%s execution scope %q must be root or child", prefix, scope)
+			}
+			if _, duplicate := scopes[scope]; duplicate {
+				return fmt.Errorf("%s repeats execution scope %q", prefix, scope)
+			}
+			scopes[scope] = struct{}{}
 		}
 		if tool.Activity != nil {
 			if err := validateBoundedMetadata("activity.risk", tool.Activity.Risk); err != nil {
@@ -226,6 +238,8 @@ type ChatMessageOutput struct {
 type ToolExecuteInput struct {
 	SessionID string          `json:"session_id,omitempty"`
 	ThreadID  string          `json:"thread_id,omitempty"`
+	ActorID   string          `json:"actor_id,omitempty"`
+	ActorPath string          `json:"actor_path,omitempty"`
 	CWD       string          `json:"cwd"`
 	StepIndex int             `json:"step_index,omitempty"`
 	CallID    string          `json:"call_id"`

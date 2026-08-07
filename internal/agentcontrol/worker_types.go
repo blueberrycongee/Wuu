@@ -46,38 +46,6 @@ const DefaultSubagentType = "general-purpose"
 // rewrite is built from the helper's structured agent_report handoff.
 const HelpMeRecoveryWorkerType = "helpme_recovery"
 
-const generalPurposeSystemPrompt = `You are a general-purpose sub-agent. Given the caller's prompt, use the available tools to complete the task. Complete the task fully; do not gold-plate, but do not leave it half-done.
-
-Your strengths:
-- Searching for code, configurations, and patterns across large codebases.
-- Analyzing multiple files to understand system architecture.
-- Investigating complex questions that require exploring many files.
-- Performing multi-step implementation and verification tasks.
-
-Guidelines:
-- For file searches, search broadly when you do not know where something lives. Use read_file when you know the specific file path.
-- For analysis, start broad and narrow down. Use multiple search strategies if the first one does not yield results.
-- Be thorough: check multiple locations, consider different naming conventions, and look for related files.
-- Never create files unless they are necessary for the task. Prefer editing existing files to creating new files.
-- Never proactively create documentation files. Only create documentation when explicitly requested.
-
-Rules:
-- Make only the changes described in your task prompt. Do not refactor surrounding code.
-- Verify your work when applicable using the capabilities exposed in this session.
-- Be honest: if you encounter a problem you can't fix, report it clearly instead of papering over it.
-- Treat command execution as non-interactive when the active tool surface exposes it. Never rely on editors, pagers, password prompts, or confirmation dialogs.
-- If command execution is unavailable under the active tool surface, report skipped command-based verification instead of inventing another path. Profile-specific tool-surface guidance tells you which command capability exists and how to use it.
-
-Output format:
-Your final message IS the deliverable the parent receives. State the outcome, what you did, what changed (concrete files and paths), anything left undone or blocked, and a verifiable handle (path, command, ID) for every load-bearing claim.
-You may additionally call agent_report to file a structured handoff packet; it is optional and never a substitute for a clear final message. Use agent_report.artifacts only for existing handoff files such as logs, screenshots, or test output that should be imported into Wuu-managed session storage; put source files in changed_files or evidence instead, and do not create project-local report files just to satisfy a handoff.
-
-Response style:
-- Report like an engineer, not a salesperson. No fluff, no hedging, no vague optimism.
-- If something is broken, say it's broken and show the error.
-- If something is unverified, say it's unverified and say why (e.g., "tests not run because the project has no test suite").
-- Do not add pleasantries, summaries of the task description, or meta-commentary about your own process.`
-
 var builtinWorkerTypes = map[string]WorkerType{
 	DefaultSubagentType: {
 		Name:             DefaultSubagentType,
@@ -92,7 +60,7 @@ var builtinWorkerTypes = map[string]WorkerType{
 			"Task scope is completed or clearly blocked.",
 			"Changed files and verification are reported with evidence.",
 		},
-		SystemPrompt: generalPurposeSystemPrompt,
+		SystemPrompt: "",
 	},
 	HelpMeRecoveryWorkerType: {
 		Name:             HelpMeRecoveryWorkerType,
@@ -107,14 +75,14 @@ var builtinWorkerTypes = map[string]WorkerType{
 			"Recovery ask is completed or clearly blocked.",
 			"Changed files and verification are reported with evidence.",
 		},
-		SystemPrompt:   generalPurposeSystemPrompt + "\n" + reportClosingRule,
+		SystemPrompt:   "",
 		RequiresReport: true,
 	},
 	"worker": {
 		Name:         "worker",
 		Role:         "Worker",
 		Description:  "Implement a scoped code change in an isolated worktree when edits are required.",
-		SystemPrompt: workerSystemPrompt,
+		SystemPrompt: "",
 		AllowedTools: nil,
 		ContextScope: "Concrete task brief, plan step, allowed write set, current worktree status, and verification command.",
 		OutputSchema: "Implementation report with changed files, commands run, blockers, risks, and evidence.",
@@ -127,21 +95,6 @@ var builtinWorkerTypes = map[string]WorkerType{
 		DefaultIsolation: IsolationWorktree,
 	},
 }
-
-const workerSystemPrompt = `You are the Worker sub-agent. Implement only the assigned change. Preserve unrelated user work and verify locally before reporting.
-
-Rules:
-- Stay inside the assigned scope.
-- Preserve unrelated user work.
-- Report blockers with exact evidence.
-- Your final message is the deliverable: outcome, what changed, and a verifiable handle for every claim.
-`
-
-// reportClosingRule is appended to requires_report worker prompts. The
-// obligation is phrased as a property of the close ("you will be asked"),
-// not a memory test: if the worker finishes without filing, the runtime
-// issues one closing turn pinned to agent_report.
-const reportClosingRule = "- Close with agent_report: your structured handoff is required and will be requested at close if missing.\n"
 
 // AvailableWorkerTypes returns user-selectable built-in worker roles sorted by
 // name. Internal worker types remain available to trusted runtime paths through

@@ -7,21 +7,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"path/filepath"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
-	"github.com/blueberrycongee/wuu/internal/agent"
-	"github.com/blueberrycongee/wuu/internal/agentcontrol"
-	"github.com/blueberrycongee/wuu/internal/agentthread"
-	"github.com/blueberrycongee/wuu/internal/compact"
-	"github.com/blueberrycongee/wuu/internal/goalruntime"
-	"github.com/blueberrycongee/wuu/internal/harness"
+	"github.com/blueberrycongee/wuu/internal/pluginhost"
 	"github.com/blueberrycongee/wuu/internal/providers"
-	"github.com/blueberrycongee/wuu/internal/runtime"
 	"github.com/blueberrycongee/wuu/internal/session"
 )
 
@@ -197,6 +189,7 @@ func TestServerAppliesCrossProcessThreadExecutionReset(t *testing.T) {
 func TestServerThreadExecutionLeaseGuardsAllTurnEntrypoints(t *testing.T) {
 	client := &fakeClient{response: providers.ChatResponse{Content: "must not run"}}
 	rt := newTestRuntime(t, client)
+	rt.PluginHost = pluginhost.New(&continuationTestRuntime{id: "lease-continuation", output: pluginhost.AgentContinuationOutput{Continue: true}})
 	sess, err := session.CreateWithMetadata(rt.SessionDir, "lease-entrypoints", rt.RootDir)
 	if err != nil {
 		t.Fatalf("create session: %v", err)
@@ -207,17 +200,6 @@ func TestServerThreadExecutionLeaseGuardsAllTurnEntrypoints(t *testing.T) {
 	th, err := srv.ensureThreadLoaded(sess.ID)
 	if err != nil {
 		t.Fatalf("load thread: %v", err)
-	}
-	threadRuntime, err := srv.ensureThreadRuntime(th)
-	if err != nil {
-		t.Fatalf("ensure thread runtime: %v", err)
-	}
-	if _, err := threadRuntime.GoalRuntime.Create(goalruntime.Spec{
-		ThreadID:  sess.ID,
-		GoalID:    "lease-entrypoint-goal",
-		Objective: "do not execute without ownership",
-	}); err != nil {
-		t.Fatalf("create goal: %v", err)
 	}
 
 	external, acquired, err := session.TryAcquireThreadExecutionLease(rt.SessionDir, sess.ID)
@@ -249,7 +231,7 @@ func TestServerThreadExecutionLeaseGuardsAllTurnEntrypoints(t *testing.T) {
 		t.Fatalf("expected compact cross-server busy error, got %+v", compactResponse)
 	}
 
-	started, err := srv.startGoalContinuationTurn(context.Background(), sess.ID)
+	started, err := srv.startPluginContinuationTurn(context.Background(), sess.ID)
 	if !errors.Is(err, errThreadExecutionBusy) {
 		t.Fatalf("goal continuation ownership error = %v, want execution busy", err)
 	}
@@ -257,13 +239,6 @@ func TestServerThreadExecutionLeaseGuardsAllTurnEntrypoints(t *testing.T) {
 		t.Fatal("goal continuation started without the thread lease")
 	}
 	assertFakeClientRequestCount(t, client, 0)
-	goal, err := threadRuntime.GoalRuntime.CurrentGoal()
-	if err != nil {
-		t.Fatalf("load goal after blocked continuation: %v", err)
-	}
-	if goal.GoalTurns != 0 || goal.TokensUsed != 0 {
-		t.Fatalf("blocked continuation consumed goal budget: %+v", goal)
-	}
 	records, err := session.LoadHistoryRecords(rt.SessionDir, sess.ID, true)
 	if err != nil {
 		t.Fatalf("load blocked-entrypoint history: %v", err)
@@ -469,173 +444,6 @@ func TestServerDestructiveThreadMutationsRespectExternalExecutionLease(t *testin
 	})
 }
 
-func TestServerHelpMeCompletionRewriteWaitsForExecutionLease(t *testing.T) {
-	mainClient := &fakeClient{response: providers.ChatResponse{Content: "recovered root result"}}
-	rt := newTestRuntime(t, mainClient)
-	sess, err := session.CreateWithMetadata(rt.SessionDir, "lease-helpme-rewrite", rt.RootDir)
-	if err != nil {
-		t.Fatalf("create session: %v", err)
-	}
-	if err := appendChatMessages(rt.SessionDir, sess.ID, []providers.ChatMessage{
-		{Role: "user", Content: "polluted parent prompt"},
-		{Role: "assistant", Content: "polluted parent result"},
-	}); err != nil {
-		t.Fatalf("persist parent history: %v", err)
-	}
-
-	workerClient := newBlockingStreamClient("helper recovered the task")
-	t.Cleanup(func() {
-		select {
-		case <-workerClient.release:
-		default:
-			close(workerClient.release)
-		}
-	})
-	artifactDir := filepath.Join(rt.RootDir, ".wuu-test", sess.ID)
-	control, err := agentcontrol.New(agentcontrol.Config{
-		Client:       workerClient,
-		DefaultModel: rt.Model,
-		ParentRepo:   rt.RootDir,
-		WorktreeRoot: filepath.Join(artifactDir, "worktrees"),
-		SessionID:    sess.ID,
-		HistoryDir:   filepath.Join(artifactDir, "workers"),
-		ThreadDir:    filepath.Join(artifactDir, "threads"),
-		HarnessDir:   filepath.Join(artifactDir, "harness"),
-		WorkerFactory: func(string, agentcontrol.WorkerType, agentthread.Metadata) (agent.ToolExecutor, error) {
-			return noopToolExecutor{}, nil
-		},
-	})
-	if err != nil {
-		t.Fatalf("create agent control: %v", err)
-	}
-	t.Cleanup(control.Close)
-
-	out := &lockedBuffer{}
-	srv := New(rt, out)
-	t.Cleanup(srv.Close)
-	var failRewrite atomic.Bool
-	failRewrite.Store(true)
-	rewriteAttempted := make(chan struct{}, 1)
-	srv.rewriteChatHistoryForTest = func(sessDir, threadID string, history []providers.ChatMessage) error {
-		shouldFail := failRewrite.Load()
-		select {
-		case rewriteAttempted <- struct{}{}:
-		default:
-		}
-		if shouldFail {
-			return errors.New("injected helpme history rewrite failure")
-		}
-		return rewriteChatHistory(sessDir, threadID, history)
-	}
-	th, err := srv.ensureThreadLoaded(sess.ID)
-	if err != nil {
-		t.Fatalf("load root thread: %v", err)
-	}
-	threadRuntime := &runtime.ThreadRuntime{StreamRunner: rt.StreamRunner, AgentControl: control}
-	th.mu.Lock()
-	th.execRuntime = threadRuntime
-	th.mu.Unlock()
-	th.runtimeSubscription = srv.subscribeThreadRuntime(sess.ID, threadRuntime)
-
-	external := acquireExternalThreadLease(t, rt.SessionDir, sess.ID)
-	t.Cleanup(func() { _ = external.Release() })
-	spawned, err := control.Spawn(context.Background(), agentcontrol.SpawnRequest{
-		Type:        agentcontrol.HelpMeRecoveryWorkerType,
-		TaskName:    "helpme_recovery_execution_lease",
-		Description: "recover parent context",
-		Prompt:      "inspect the parent failure",
-		Synchronous: false,
-	})
-	if err != nil {
-		t.Fatalf("spawn helpme recovery: %v", err)
-	}
-	select {
-	case <-workerClient.started:
-	case <-time.After(2 * time.Second):
-		t.Fatal("helpme worker did not start")
-	}
-	if err := control.RegisterHelpMeRecovery(agentcontrol.HelpMeRecovery{
-		HelperID:   spawned.AgentID,
-		ParentPath: agentthread.RootPath,
-		Brief: agentcontrol.HelpMeRecoveryBrief{
-			OriginalGoal: "repair the parent task",
-			Ask:          "continue from clean evidence",
-			Reason:       "the parent context was polluted",
-		},
-	}); err != nil {
-		t.Fatalf("register helpme recovery: %v", err)
-	}
-	if _, err := control.HarnessStore().SubmitReport(harness.Report{
-		TaskID:    spawned.AgentID,
-		RunID:     spawned.AgentID + "-run-1",
-		AgentID:   spawned.AgentID,
-		AgentPath: spawned.AgentPath,
-		Kind:      harness.ReportKindStructured,
-		Outcome:   "completed",
-		Summary:   "the helper found a clean continuation path",
-	}); err != nil {
-		t.Fatalf("submit structured helpme report: %v", err)
-	}
-	close(workerClient.release)
-	waitForMethod(t, out, NotificationAgentMailbox)
-	time.Sleep(threadExecutionLeaseRetryDelay + 100*time.Millisecond)
-
-	recovery, ok := control.HelpMeRecoveryForHelper(spawned.AgentID)
-	if !ok {
-		t.Fatal("registered helpme recovery disappeared")
-	}
-	if recovery.Applied {
-		t.Fatal("losing app-server consumed helpme rewrite before acquiring execution lease")
-	}
-	select {
-	case <-rewriteAttempted:
-		t.Fatal("helpme persistence ran before execution ownership")
-	default:
-	}
-	assertFakeClientRequestCount(t, mainClient, 0)
-	assertNoHelpMeCompactPersisted(t, rt.SessionDir, sess.ID)
-
-	if err := external.Release(); err != nil {
-		t.Fatalf("release external execution lease: %v", err)
-	}
-	select {
-	case <-rewriteAttempted:
-	case <-time.After(2 * time.Second):
-		t.Fatal("helpme rewrite was not attempted after lease release")
-	}
-	recovery, ok = control.HelpMeRecoveryForHelper(spawned.AgentID)
-	if !ok || recovery.Applied {
-		t.Fatalf("failed durable rewrite consumed one-shot recovery: ok=%t recovery=%+v", ok, recovery)
-	}
-	assertFakeClientRequestCount(t, mainClient, 0)
-	assertNoHelpMeCompactPersisted(t, rt.SessionDir, sess.ID)
-	failRewrite.Store(false)
-	waitForTurnCompletedForThread(t, out, sess.ID)
-	recovery, ok = control.HelpMeRecoveryForHelper(spawned.AgentID)
-	if !ok || !recovery.Applied {
-		snapshot := control.Manager().Get(spawned.AgentID).Snapshot()
-		report, reportOK := control.AgentReportDetailsForTask(spawned.AgentID)
-		t.Fatalf("winning app-server did not consume helpme rewrite: ok=%t recovery=%+v snapshot=%+v report_ok=%t report=%+v", ok, recovery, snapshot, reportOK, report)
-	}
-	assertFakeClientRequestCount(t, mainClient, 1)
-	persisted, err := loadChatMessages(rt.SessionDir, sess.ID)
-	if err != nil {
-		t.Fatalf("load rewritten history: %v", err)
-	}
-	var sawCompact bool
-	for _, msg := range persisted {
-		if compact.IsHelpMeJointCompactContent(msg.Content) {
-			sawCompact = true
-		}
-		if msg.Content == "polluted parent prompt" || msg.Content == "polluted parent result" {
-			t.Fatalf("helpme rewrite retained polluted history: %+v", persisted)
-		}
-	}
-	if !sawCompact {
-		t.Fatalf("helpme compact was not persisted under the execution lease: %+v", persisted)
-	}
-}
-
 func TestServerThreadExecutionLeaseRollsBackPrelaunchFailures(t *testing.T) {
 	t.Run("response write", func(t *testing.T) {
 		client := &fakeClient{response: providers.ChatResponse{Content: "must not run"}}
@@ -764,19 +572,6 @@ func assertCrossServerBusyResponse(t *testing.T, out *lockedBuffer, id string) {
 	response := responseByID(t, parseOutput(t, out.String()), id)
 	if response["error"] == nil || !strings.Contains(fmt.Sprint(response["error"]), "another app-server") {
 		t.Fatalf("expected cross-server busy error, got %+v", response)
-	}
-}
-
-func assertNoHelpMeCompactPersisted(t *testing.T, sessDir, threadID string) {
-	t.Helper()
-	persisted, err := loadChatMessages(sessDir, threadID)
-	if err != nil {
-		t.Fatalf("load history before lease release: %v", err)
-	}
-	for _, msg := range persisted {
-		if compact.IsHelpMeJointCompactContent(msg.Content) {
-			t.Fatalf("helpme compact was persisted without execution ownership: %+v", persisted)
-		}
 	}
 }
 

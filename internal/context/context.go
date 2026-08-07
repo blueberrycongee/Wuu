@@ -53,12 +53,6 @@ const AgentNotificationMessageName = "wuu_agent_notification"
 // user intent.
 const ProcessNotificationMessageName = "wuu_process_notification"
 
-// GoalContinuationMessageName marks legacy hidden active-goal continuation
-// prompts. New app-server goal continuations use typed GOAL_CONTINUATION
-// request-only context blocks, but older persisted histories can still carry
-// this message name.
-const GoalContinuationMessageName = "wuu_goal_continuation"
-
 // EnvInfo holds a lightweight environment snapshot. CWD and Date are stable
 // session prompt inputs; optional git fields are volatile and are not collected
 // by default.
@@ -75,7 +69,6 @@ const (
 	BlockSystemContract    BlockKind = "SYSTEM_CONTRACT"
 	BlockProjectRules      BlockKind = "PROJECT_RULES"
 	BlockTaskState         BlockKind = "TASK_STATE"
-	BlockGoalContinuation  BlockKind = "GOAL_CONTINUATION"
 	BlockActiveFiles       BlockKind = "ACTIVE_FILES"
 	BlockTestFailures      BlockKind = "TEST_FAILURES"
 	BlockPlanReminder      BlockKind = "PLAN_REMINDER"
@@ -430,17 +423,6 @@ func IsProcessNotification(name, content string) bool {
 	trimmed := strings.TrimSpace(content)
 	return strings.HasPrefix(trimmed, "<process_notification>") &&
 		strings.HasSuffix(trimmed, "</process_notification>")
-}
-
-// IsGoalContinuation reports whether the message is an internal active-goal
-// continuation prompt.
-func IsGoalContinuation(name, content string) bool {
-	if strings.TrimSpace(name) == GoalContinuationMessageName {
-		return true
-	}
-	trimmed := strings.TrimSpace(content)
-	return strings.HasPrefix(trimmed, "<goal_continuation>") &&
-		strings.HasSuffix(trimmed, "</goal_continuation>")
 }
 
 func isSubagentNotificationContent(content string) bool {

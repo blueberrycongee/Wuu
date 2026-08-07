@@ -88,7 +88,7 @@ describe("ComposerPresentation", () => {
         advanced_settings: { context_window_tokens: 1000, max_steps: 100, max_context_tokens: 1000,
           temperature: 0, disable_auto_compact: false } },
       contextUsage: { turnID: "turn-1", used: 250, window: 1000, inputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0 },
-      goalSummary: { id: "goal-1", text: "Ship", status: "active" }, disabledReason: "wait",
+      disabledReason: "wait",
       activeSubmissionMode: "steer", availableSubmissionModes: ["steer", "queue"],
     });
     expect(snapshot).toMatchObject({ contractVersion: 1, draftText: "review", threadId: "thread-1",
@@ -98,7 +98,7 @@ describe("ComposerPresentation", () => {
       pending: [{ id: "p1", attachmentCount: 1, status: "pending" }],
       model: { id: "model", providerId: "provider", contextWindowTokens: 1000 },
       runtime: { id: "runtime-1", status: "running" }, permission: { id: "read_only" },
-      contextUsage: { usedTokens: 250, limitTokens: 1000, percent: 25 }, goal: { id: "goal-1", title: "Ship", status: "active" },
+      contextUsage: { usedTokens: 250, limitTokens: 1000, percent: 25 },
       disabledReason: "wait",
     });
     expect(JSON.stringify(snapshot)).not.toContain("secret-bytes");
@@ -109,7 +109,6 @@ describe("ComposerPresentation", () => {
     expect(minimal).not.toHaveProperty("threadId");
     expect(minimal).not.toHaveProperty("model");
     expect(minimal).not.toHaveProperty("runtime");
-    expect(minimal).not.toHaveProperty("goal");
     expect(minimal).not.toHaveProperty("disabledReason");
   });
 });

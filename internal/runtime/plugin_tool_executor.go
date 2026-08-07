@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/blueberrycongee/wuu/internal/agent"
+	"github.com/blueberrycongee/wuu/internal/agentthread"
 	"github.com/blueberrycongee/wuu/internal/pluginhost"
 	"github.com/blueberrycongee/wuu/internal/providers"
 	"github.com/blueberrycongee/wuu/internal/toolctx"
@@ -31,7 +32,13 @@ func newPluginToolExecutor(inner agent.ToolExecutor, host *pluginhost.Host, thre
 
 func (e *pluginToolExecutor) Definitions() []providers.ToolDefinition {
 	inner := e.inner.Definitions()
-	plugin := e.host.ToolDefinitions()
+	registered := e.host.ToolDefinitions()
+	plugin := make([]providers.ToolDefinition, 0, len(registered))
+	for _, definition := range registered {
+		if e.pluginToolAllowed(definition.Name) {
+			plugin = append(plugin, definition)
+		}
+	}
 	definitions := make([]providers.ToolDefinition, 0, len(inner)+len(plugin))
 	definitions = append(definitions, inner...)
 	definitions = append(definitions, plugin...)
@@ -60,6 +67,9 @@ func (e *pluginToolExecutor) ExecuteResult(ctx context.Context, call providers.T
 
 	var result toolresult.Result
 	var executeErr error
+	if e.host.SupportsTool(call.Name) && !e.pluginToolAllowed(call.Name) {
+		return toolresult.Result{}, toolerrors.New("tool_unavailable", fmt.Sprintf("plugin tool %q is unavailable in this execution scope", call.Name))
+	}
 	if e.host.SupportsTool(call.Name) {
 		result, executeErr = e.host.ExecuteTool(ctx, call.Name, input)
 	} else if rich, ok := e.inner.(agent.RichToolExecutor); ok {
@@ -100,9 +110,15 @@ func (e *pluginToolExecutor) toolInput(ctx context.Context, call providers.ToolC
 		)
 	}
 	stepIndex, _ := toolctx.StepIndex(ctx)
+	actorID, actorPath := "", ""
+	if provider, ok := e.inner.(interface{ ExecutionActor() (string, string) }); ok {
+		actorID, actorPath = provider.ExecutionActor()
+	}
 	return pluginhost.ToolExecuteInput{
 		SessionID: e.threadID,
 		ThreadID:  e.threadID,
+		ActorID:   actorID,
+		ActorPath: actorPath,
 		CWD:       e.cwd,
 		StepIndex: stepIndex,
 		CallID:    call.ID,
@@ -113,10 +129,31 @@ func (e *pluginToolExecutor) toolInput(ctx context.Context, call providers.ToolC
 
 func (e *pluginToolExecutor) SupportsTool(name string) bool {
 	if e.host.SupportsTool(name) {
-		return true
+		return e.pluginToolAllowed(name)
 	}
 	provider, ok := e.inner.(agent.ToolSupportProvider)
 	return ok && provider.SupportsTool(name)
+}
+
+func (e *pluginToolExecutor) pluginToolAllowed(name string) bool {
+	tool, ok := e.host.Tool(name)
+	if !ok || len(tool.Registration.ExecutionScopes) == 0 {
+		return ok
+	}
+	actorPath := ""
+	if provider, ok := e.inner.(interface{ ExecutionActor() (string, string) }); ok {
+		_, actorPath = provider.ExecutionActor()
+	}
+	scope := "child"
+	if strings.TrimSpace(actorPath) == "" || strings.TrimSpace(actorPath) == agentthread.RootPath {
+		scope = "root"
+	}
+	for _, allowed := range tool.Registration.ExecutionScopes {
+		if strings.TrimSpace(allowed) == scope {
+			return true
+		}
+	}
+	return false
 }
 
 func (e *pluginToolExecutor) ToolMetadata(call providers.ToolCall) (agent.ToolMetadata, bool) {

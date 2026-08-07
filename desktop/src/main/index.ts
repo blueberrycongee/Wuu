@@ -27,8 +27,6 @@ import {
   isLanguagePreference,
 } from "../shared/protocol";
 import type {
-  ComposerGoalSummary,
-  ThreadGoal,
   ConfigAdvancedUpdateResult,
   ConfigGeneralUpdateResult,
   ConfigCodexModelsResult,
@@ -137,6 +135,8 @@ import type {
   PluginStorageGetParams,
   PluginStorageSetParams,
   PluginStorageResult,
+  PluginClientRequestParams,
+  PluginClientRequestResult,
   WorkspaceFileSaveParams,
   CodexPetHint,
   SideThreadOpenResult,
@@ -975,31 +975,6 @@ async function directorySize(path: string): Promise<number> {
   return total;
 }
 
-function composerGoalSummaryFromThreadGoal(goal: ThreadGoal | null | undefined): ComposerGoalSummary | null {
-  if (!goal || goal.status === "complete") {
-    return null;
-  }
-  const toISOString = (seconds: number): string | undefined =>
-    Number.isFinite(seconds) && seconds > 0
-      ? new Date(seconds * 1000).toISOString()
-      : undefined;
-  return {
-    id: goal.thread_id,
-    thread_id: goal.thread_id,
-    text: goal.objective,
-    status: goal.status,
-    started_at: toISOString(goal.created_at),
-    updated_at: toISOString(goal.updated_at),
-    tokens_used: goal.tokens_used,
-    time_used_seconds: goal.time_used_seconds,
-    can_pause: goal.status === "active",
-    can_resume: goal.status === "paused" || goal.status === "blocked",
-    can_clear: true,
-    stop_reason:
-      goal.status === "paused" || goal.status === "blocked" ? goal.status : undefined,
-  };
-}
-
 app.whenReady().then(async () => {
   setMainLocale(resolveMainLocale(getLanguagePreference(), app.getLocale()));
   installProductionAppShellGuards({
@@ -1486,6 +1461,8 @@ app.whenReady().then(async () => {
     appServerRequest<PluginStorageResult>(event, "plugin/storage/get", params));
   ipcMain.handle("wuu:plugin-storage-set", (event, params: PluginStorageSetParams) =>
     appServerRequest<PluginStorageResult>(event, "plugin/storage/set", params));
+  ipcMain.handle("wuu:plugin-runtime-request", (event, params: PluginClientRequestParams) =>
+    appServerRequest<PluginClientRequestResult>(event, "plugin/client/request", params));
   ipcMain.handle(
     "wuu:config-provider-remove",
     (
@@ -2166,58 +2143,6 @@ app.whenReady().then(async () => {
       return { ok: true };
     },
   );
-  // Composer goal banner surface. The renderer only needs a lightweight
-  // summary plus explicit runtime controls; the full GoalSnapshot and
-  // workflow/agent run detail stay on the agent tool loop.
-  ipcMain.handle("wuu:goal-active-summary", async (event, threadID?: string) => {
-    const result = await appServerRequest<{
-      goal?: ThreadGoal | null;
-    }>(event, "thread/goal/get", { thread_id: threadID });
-    return composerGoalSummaryFromThreadGoal(result.goal);
-  });
-  ipcMain.handle("wuu:goal-pause", async (event, goalID: string, threadID?: string) => {
-    if (!threadID || goalID !== threadID) {
-      return { ok: false };
-    }
-    const result = await appServerRequest<{ goal: ThreadGoal }>(event, "thread/goal/set", {
-      thread_id: threadID,
-      status: "paused",
-    });
-    return { ok: result.goal.status === "paused" };
-  });
-  ipcMain.handle("wuu:goal-resume", async (event, goalID: string, threadID?: string) => {
-    if (!threadID || goalID !== threadID) {
-      return { ok: false };
-    }
-    const result = await appServerRequest<{ goal: ThreadGoal }>(event, "thread/goal/set", {
-      thread_id: threadID,
-      status: "active",
-    });
-    return { ok: result.goal.status === "active" };
-  });
-  ipcMain.handle("wuu:goal-clear", async (event, goalID: string, threadID?: string) => {
-    if (!threadID || goalID !== threadID) {
-      return { ok: false };
-    }
-    const result = await appServerRequest<{ cleared: boolean }>(event, "thread/goal/clear", {
-      thread_id: threadID,
-    });
-    return { ok: result.cleared };
-  });
-  ipcMain.handle(
-    "wuu:goal-update-text",
-    async (event, goalID: string, text: string, threadID?: string) => {
-      if (!threadID || goalID !== threadID) {
-        return { ok: false };
-      }
-      const result = await appServerRequest<{ goal: ThreadGoal }>(event, "thread/goal/set", {
-        thread_id: threadID,
-        objective: text,
-      });
-      return { ok: result.goal.objective === text.trim() };
-    },
-  );
-
   syncNativeThemeSource();
   createWindow();
 

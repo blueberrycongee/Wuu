@@ -18,6 +18,8 @@ import {
   type Ref,
   type RefObject,
   type ReactNode,
+  forwardRef,
+  memo,
   startTransition,
   useContext,
   useEffect,
@@ -59,7 +61,6 @@ import {
 import { FloatingMenuPortal } from "./ComposerFloatingMenu";
 import { ComposerContextMenu } from "./ComposerContextMenu";
 import { ComposerAttachmentStrip, ComposerQueueStrip } from "./ComposerInputSections";
-import { ComposerGoalStrip } from "./ComposerGoalStrip";
 import { WorkspaceDocumentDrawerContext } from "./WorkspaceDocumentTurnDock";
 import { desktopPluginHost } from "./plugins/DesktopPluginRuntime";
 import type { PluginHost } from "./plugins/PluginHost";
@@ -87,14 +88,15 @@ import { ComposerPresentation } from "./plugins/ComposerPresentation";
 import { ComposerVoiceInput, type ComposerVoiceInputHandle } from "./ComposerVoiceInput";
 import { ENABLE_VOICE_INPUT } from "./FeatureFlags";
 import type { TurnContextUsage } from "./AppState";
-import type { ComposerGoalSummary } from "../shared/protocol";
+
+const MemoizedComposerPluginSlot = memo(PluginSlot);
 
 type CollapsedComposerPromptBlock = {
   id: string;
   text: string;
 };
 
-type ExpandedComposerDrawer = "goal" | "pending" | null;
+type ExpandedComposerDrawer = "pending" | null;
 
 const COLLAPSIBLE_COMPOSER_PROMPT_LINE_THRESHOLD = 14;
 const COLLAPSIBLE_COMPOSER_PROMPT_CHAR_THRESHOLD = 1200;
@@ -180,11 +182,6 @@ export function Composer({
   onSteer,
   onQueue,
   onInterrupt,
-  goalSummary,
-  onEditGoal,
-  onPauseGoal,
-  onResumeGoal,
-  onClearGoal,
   telemetryTurnID,
   tokensPerSecond = 0,
   tokenSpeedSampledAt,
@@ -279,11 +276,6 @@ export function Composer({
   onSteer?: (promptOverride?: string) => void;
   onQueue?: (promptOverride?: string) => void;
   onInterrupt: () => void;
-  goalSummary?: ComposerGoalSummary | null;
-  onEditGoal?: (nextText: string) => void | Promise<void>;
-  onPauseGoal?: () => void | Promise<void>;
-  onResumeGoal?: () => void | Promise<void>;
-  onClearGoal?: () => void | Promise<void>;
   telemetryTurnID?: string;
   tokensPerSecond?: number;
   tokenSpeedSampledAt?: number;
@@ -330,18 +322,11 @@ export function Composer({
   const [lastCommittedPrompt, setLastCommittedPrompt] = useState(committedPrompt);
   const [lastPromptRevision, setLastPromptRevision] = useState(promptRevision);
   const optimisticPromptQueueRef = useRef<string[]>([]);
-  const promptCompositionActiveRef = useRef(false);
-  const pendingProgrammaticPromptRef = useRef<{ value: string } | null>(null);
   if (promptRevision !== lastPromptRevision) {
     setLastPromptRevision(promptRevision);
     setLastCommittedPrompt(committedPrompt);
     optimisticPromptQueueRef.current.length = 0;
-    if (promptCompositionActiveRef.current) {
-      pendingProgrammaticPromptRef.current = { value: committedPrompt };
-    } else {
-      pendingProgrammaticPromptRef.current = null;
-      setLocalPrompt(committedPrompt);
-    }
+    setLocalPrompt(committedPrompt);
   } else if (committedPrompt !== lastCommittedPrompt) {
     setLastCommittedPrompt(committedPrompt);
     const optimisticPromptIndex = optimisticPromptQueueRef.current.lastIndexOf(committedPrompt);
@@ -373,14 +358,27 @@ export function Composer({
   }`;
   const hasAttachments = images.length > 0 || files.length > 0;
   const hasDraft = prompt.trim().length > 0 || hasAttachments;
-  const pluginSlotContext = Object.freeze({
+  const pluginTranslate = useMemo(() => t, [locale]);
+  const pluginSlotContext = useMemo(() => Object.freeze({
+    threadId: queryHistorySessionID,
+    translate: pluginTranslate,
     variant,
     mainConversation,
     running,
     readOnly: Boolean(readOnly),
     hasDraft,
     attachmentCount: files.length + images.length,
-  });
+  }), [
+    files.length,
+    hasDraft,
+    images.length,
+    mainConversation,
+    queryHistorySessionID,
+    readOnly,
+    running,
+    pluginTranslate,
+    variant,
+  ]);
   // The action button is a stop control ONLY while a turn runs AND the input
   // is empty. The moment there is something to send, it flips back to a send
   // button. Its submit action below deliberately follows the same steer/queue
@@ -448,11 +446,10 @@ export function Composer({
 
   useEffect(() => {
     setExpandedDrawer((current) => {
-      if (current === "goal" && !goalSummary) return null;
       if (current === "pending" && !hasPendingMessages) return null;
       return current;
     });
-  }, [goalSummary, hasPendingMessages]);
+  }, [hasPendingMessages]);
 
   function setComposerDrawer(next: ExpandedComposerDrawer): void {
     setExpandedDrawer(next);
@@ -592,7 +589,6 @@ export function Composer({
     frame.style.setProperty("--composer-expanded-offset", `${offset}px`);
   }, [
     files.length,
-    goalSummary?.id,
     guideMessages.length,
     images.length,
     isComposerExpanded,
@@ -644,11 +640,14 @@ export function Composer({
     promptOverride = prompt,
   ): void {
     resetQueryHistoryNavigation();
-    const actionCommand = slashDraft
-      ? exactActionSlashCommand(slashCommands, slashDraft)
+    const submitSlashDraft = slashCommandsEnabled && !(textOnly && !slashCommandsOverride)
+      ? parseComposerSlashDraft(promptOverride)
+      : undefined;
+    const actionCommand = submitSlashDraft
+      ? exactActionSlashCommand(slashCommands, submitSlashDraft)
       : undefined;
     if (actionCommand) {
-      applySlashCommand(actionCommand, slashDraft);
+      applySlashCommand(actionCommand, submitSlashDraft);
       return;
     }
     onSubmit(promptOverride);
@@ -663,8 +662,12 @@ export function Composer({
     submitDraft();
   }
 
-  function submitDraft(): void {
-    submitComposerWith(running && hasDraft && onSteer ? onSteer : onSend);
+  function submitDraft(promptOverride = prompt): void {
+    const submittingHasDraft = promptOverride.trim().length > 0 || hasAttachments;
+    submitComposerWith(
+      running && submittingHasDraft && onSteer ? onSteer : onSend,
+      promptOverride,
+    );
   }
 
   async function stopVoiceAndSubmit(): Promise<void> {
@@ -920,6 +923,10 @@ export function Composer({
     if (handleQueryHistoryKeyDown(event)) {
       return;
     }
+    const currentPrompt = hasCollapsedPromptBlocks
+      ? `${collapsedPromptPrefix}${event.currentTarget.value}`
+      : event.currentTarget.value;
+    const currentHasDraft = currentPrompt.trim().length > 0 || hasAttachments;
     if (
       event.key === "Tab" &&
       !event.shiftKey &&
@@ -927,16 +934,20 @@ export function Composer({
       !event.ctrlKey &&
       !event.altKey &&
       running &&
-      hasDraft &&
+      currentHasDraft &&
       onQueue
     ) {
       event.preventDefault();
-      submitComposerWith(onQueue);
+      submitComposerWith(onQueue, currentPrompt);
       return;
     }
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
-      submitDraft();
+      if (voiceRecording) {
+        submitComposer();
+      } else {
+        submitDraft(currentPrompt);
+      }
     }
   }
 
@@ -961,7 +972,7 @@ export function Composer({
   const content = (
     <div className={`composer-stack${isComposerExpanded ? " is-expanded" : ""}`} data-wuu-component="composer">
       {topAccessory ? <div className="composer-top-accessory">{topAccessory}</div> : null}
-      <PluginSlot host={pluginHost} id="composer.above" context={pluginSlotContext} />
+      <MemoizedComposerPluginSlot host={pluginHost} id="composer.above" context={pluginSlotContext} />
       <div className="composer-shell" ref={composerShellRef}>
         {slashMenuOpen ? (
           <FloatingMenuPortal
@@ -1033,36 +1044,6 @@ export function Composer({
             </div>
           </FloatingMenuPortal>
         ) : null}
-        <ComposerGoalStrip
-          summary={goalSummary ?? null}
-          disabled={readOnly}
-          expanded={expandedDrawer === "goal"}
-          onExpandedChange={(expanded) => setComposerDrawer(expanded ? "goal" : null)}
-          onEdit={(nextText) => {
-            if (onEditGoal) {
-              return onEditGoal(nextText);
-            }
-            return undefined;
-          }}
-          onPause={() => {
-            if (onPauseGoal) {
-              return onPauseGoal();
-            }
-            return undefined;
-          }}
-          onResume={() => {
-            if (onResumeGoal) {
-              return onResumeGoal();
-            }
-            return undefined;
-          }}
-          onClear={() => {
-            if (onClearGoal) {
-              return onClearGoal();
-            }
-            return undefined;
-          }}
-        />
         <ComposerQueueStrip
           guideMessages={guideMessages}
           queuedMessages={queuedMessages}
@@ -1137,55 +1118,25 @@ export function Composer({
                 ))}
               </div>
             ) : null}
-            <textarea
+            <ComposerTextarea
               ref={textareaRef}
-              data-wuu-component="composer-input"
               value={visiblePromptValue}
+              valueRevision={promptRevision}
               placeholder={composerPlaceholder}
               maxLength={maxLength}
               disabled={readOnly}
-              aria-readonly={readOnly}
-              aria-controls={slashMenuOpen ? slashMenuID : undefined}
-              aria-activedescendant={
+              ariaControls={slashMenuOpen ? slashMenuID : undefined}
+              ariaActiveDescendant={
                 selectedSlashCommand
                   ? `${slashMenuID}-${selectedSlashCommand.id}`
                   : undefined
               }
-              aria-expanded={slashMenuOpen || undefined}
-              onChange={(event) => {
-                const pendingPrompt = pendingProgrammaticPromptRef.current;
-                if (!promptCompositionActiveRef.current && pendingPrompt !== null) {
-                  // Chromium can emit the composition's final input after
-                  // compositionend. Keep a deferred clear/restore authoritative
-                  // instead of publishing that trailing IME value over it.
-                  pendingProgrammaticPromptRef.current = null;
-                  optimisticPromptQueueRef.current.length = 0;
-                  setLocalPrompt(pendingPrompt.value);
-                  return;
-                }
-                updateVisiblePrompt(event.target.value);
-              }}
-              onCompositionStart={() => {
-                promptCompositionActiveRef.current = true;
-              }}
-              onCompositionEnd={() => {
-                promptCompositionActiveRef.current = false;
-                const pendingPrompt = pendingProgrammaticPromptRef.current;
-                if (pendingPrompt === null) {
-                  return;
-                }
-                optimisticPromptQueueRef.current.length = 0;
-                setLocalPrompt(pendingPrompt.value);
-                queueMicrotask(() => {
-                  if (pendingProgrammaticPromptRef.current === pendingPrompt) {
-                    pendingProgrammaticPromptRef.current = null;
-                  }
-                });
-              }}
+              ariaExpanded={slashMenuOpen || undefined}
+              onValueChange={updateVisiblePrompt}
               onPaste={handleComposerPaste}
-              onBlur={() => {
+              onBlurValue={(value) => {
                 if (slashMenuOpen) {
-                  setSlashDismissedValue(prompt);
+                  setSlashDismissedValue(value);
                 }
               }}
               onKeyDown={handleComposerKeyDown}
@@ -1297,7 +1248,7 @@ export function Composer({
                     ) : null}
                   </div>
                 ) : null}
-                <PluginSlot host={pluginHost} id="composer.toolbar" context={pluginSlotContext} />
+                <MemoizedComposerPluginSlot host={pluginHost} id="composer.toolbar" context={pluginSlotContext} />
               </div>
               <div className="composer-bar-right">
                 {hideRuntimeControls ? null : (
@@ -1422,7 +1373,6 @@ export function Composer({
       threadId={queryHistorySessionID}
       initialized={initialized}
       contextUsage={contextUsage}
-      goalSummary={goalSummary}
       disabledReason={readOnly || sendDisabled ? statusText || undefined : undefined}
       activeSubmissionMode={activeSubmissionMode}
       availableSubmissionModes={availableSubmissionModes}
@@ -1436,6 +1386,122 @@ export function Composer({
     />
   );
 }
+
+type ComposerTextareaProps = {
+  value: string;
+  valueRevision: number;
+  placeholder: string;
+  maxLength?: number;
+  disabled: boolean;
+  ariaControls?: string;
+  ariaActiveDescendant?: string;
+  ariaExpanded?: boolean;
+  onValueChange: (value: string) => void;
+  onBlurValue: (value: string) => void;
+  onPaste: (event: ReactClipboardEvent<HTMLTextAreaElement>) => void;
+  onKeyDown: (event: ReactKeyboardEvent<HTMLTextAreaElement>) => void;
+  onContextMenu: (event: ReactMouseEvent<HTMLTextAreaElement>) => void;
+};
+
+// Keep the browser's input-critical value below the rest of Composer. The
+// textarea paints synchronously, while slash menus, plugin presenters, meters,
+// and the surrounding chrome update in an interruptible transition.
+const ComposerTextarea = forwardRef<HTMLTextAreaElement, ComposerTextareaProps>(
+  function ComposerTextarea({
+    value: committedValue,
+    valueRevision,
+    placeholder,
+    maxLength,
+    disabled,
+    ariaControls,
+    ariaActiveDescendant,
+    ariaExpanded,
+    onValueChange,
+    onBlurValue,
+    onPaste,
+    onKeyDown,
+    onContextMenu,
+  }, ref): JSX.Element {
+    const [value, setValue] = useState(committedValue);
+    const [lastCommittedValue, setLastCommittedValue] = useState(committedValue);
+    const [lastValueRevision, setLastValueRevision] = useState(valueRevision);
+    const optimisticValueQueueRef = useRef<string[]>([]);
+    const compositionActiveRef = useRef(false);
+    const pendingProgrammaticValueRef = useRef<{ value: string } | null>(null);
+
+    if (valueRevision !== lastValueRevision) {
+      setLastValueRevision(valueRevision);
+      setLastCommittedValue(committedValue);
+      optimisticValueQueueRef.current.length = 0;
+      if (compositionActiveRef.current) {
+        pendingProgrammaticValueRef.current = { value: committedValue };
+      } else {
+        pendingProgrammaticValueRef.current = null;
+        setValue(committedValue);
+      }
+    } else if (committedValue !== lastCommittedValue) {
+      setLastCommittedValue(committedValue);
+      const optimisticValueIndex = optimisticValueQueueRef.current.lastIndexOf(committedValue);
+      if (optimisticValueIndex >= 0) {
+        optimisticValueQueueRef.current.splice(0, optimisticValueIndex + 1);
+      } else if (compositionActiveRef.current) {
+        pendingProgrammaticValueRef.current = { value: committedValue };
+      } else {
+        optimisticValueQueueRef.current.length = 0;
+        setValue(committedValue);
+      }
+    }
+
+    return (
+      <textarea
+        ref={ref}
+        data-wuu-component="composer-input"
+        value={value}
+        placeholder={placeholder}
+        maxLength={maxLength}
+        disabled={disabled}
+        aria-readonly={disabled}
+        aria-controls={ariaControls}
+        aria-activedescendant={ariaActiveDescendant}
+        aria-expanded={ariaExpanded}
+        onChange={(event) => {
+          const pendingValue = pendingProgrammaticValueRef.current;
+          if (!compositionActiveRef.current && pendingValue !== null) {
+            pendingProgrammaticValueRef.current = null;
+            optimisticValueQueueRef.current.length = 0;
+            setValue(pendingValue.value);
+            return;
+          }
+          const nextValue = event.target.value;
+          setValue(nextValue);
+          optimisticValueQueueRef.current.push(nextValue);
+          startTransition(() => onValueChange(nextValue));
+        }}
+        onCompositionStart={() => {
+          compositionActiveRef.current = true;
+        }}
+        onCompositionEnd={() => {
+          compositionActiveRef.current = false;
+          const pendingValue = pendingProgrammaticValueRef.current;
+          if (pendingValue === null) {
+            return;
+          }
+          optimisticValueQueueRef.current.length = 0;
+          setValue(pendingValue.value);
+          queueMicrotask(() => {
+            if (pendingProgrammaticValueRef.current === pendingValue) {
+              pendingProgrammaticValueRef.current = null;
+            }
+          });
+        }}
+        onPaste={onPaste}
+        onBlur={() => onBlurValue(value)}
+        onKeyDown={onKeyDown}
+        onContextMenu={onContextMenu}
+      />
+    );
+  },
+);
 
 function CollapsedComposerPromptCard({
   text,

@@ -14,6 +14,20 @@ import (
 	"github.com/blueberrycongee/wuu/internal/statepath"
 )
 
+// userPluginByID returns the installed user plugin with the given ID.
+// Bundled first-party plugins (goal, subagent) are discovered alongside
+// user plugins, so tests must not assume the list has exactly one entry.
+func userPluginByID(t *testing.T, home, id string) pluginpkg.Plugin {
+	t.Helper()
+	for _, item := range pluginpkg.Discover("", home) {
+		if item.ID == id && item.Source == "user" {
+			return item
+		}
+	}
+	t.Fatalf("user plugin %q not found in %v", id, pluginpkg.Discover("", home))
+	return pluginpkg.Plugin{}
+}
+
 func TestPluginCLIMutationsAdvanceSharedGeneration(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("WUU_HOME", home)
@@ -99,8 +113,18 @@ func TestPluginCLIInstallListInspectAndRemove(t *testing.T) {
 	if err := json.Unmarshal([]byte(listOutput), &listed); err != nil {
 		t.Fatalf("decode list output: %v\n%s", err, listOutput)
 	}
-	if len(listed) != 1 || listed[0].ID != "cli-demo" || listed[0].Source != "user" {
+	if len(listed) == 0 {
 		t.Fatalf("list output = %+v", listed)
+	}
+	var demo *pluginPackageOutput
+	for i := range listed {
+		if listed[i].ID == "cli-demo" && listed[i].Source == "user" {
+			demo = &listed[i]
+			break
+		}
+	}
+	if demo == nil {
+		t.Fatalf("cli-demo not found in list output = %+v", listed)
 	}
 
 	removeOutput := captureStdout(t, func() {
@@ -202,7 +226,7 @@ func TestPluginCLIStagesAndDecidesUpdatesWithoutReplacingEarly(t *testing.T) {
 	if err := run([]string{"plugin", "approve", "update-cli"}); err != nil {
 		t.Fatalf("approve v1: %v", err)
 	}
-	activeBefore := pluginpkg.Discover("", home)[0]
+	activeBefore := userPluginByID(t, home, "update-cli")
 
 	if err := os.WriteFile(manifestPath, []byte(`{"id":"update-cli","version":"2.0.0"}`), 0o644); err != nil {
 		t.Fatal(err)
@@ -219,7 +243,7 @@ func TestPluginCLIStagesAndDecidesUpdatesWithoutReplacingEarly(t *testing.T) {
 	if !staged.Pending || !staged.ApprovalRequired || staged.ActiveFingerprint != activeBefore.Fingerprint {
 		t.Fatalf("staged update = %+v", staged)
 	}
-	activeWhilePending := pluginpkg.Discover("", home)[0]
+	activeWhilePending := userPluginByID(t, home, "update-cli")
 	if activeWhilePending.Version != "1.0.0" || activeWhilePending.Fingerprint != activeBefore.Fingerprint {
 		t.Fatalf("active plugin changed while update was pending: %+v", activeWhilePending)
 	}
@@ -233,7 +257,14 @@ func TestPluginCLIStagesAndDecidesUpdatesWithoutReplacingEarly(t *testing.T) {
 	if err := json.Unmarshal([]byte(listOutput), &listed); err != nil {
 		t.Fatal(err)
 	}
-	if len(listed) != 1 || !listed[0].Pending {
+	var pending *pluginPackageOutput
+	for i := range listed {
+		if listed[i].Pending {
+			pending = &listed[i]
+			break
+		}
+	}
+	if pending == nil {
 		t.Fatalf("pending list = %+v", listed)
 	}
 
@@ -243,7 +274,7 @@ func TestPluginCLIStagesAndDecidesUpdatesWithoutReplacingEarly(t *testing.T) {
 	if _, err := pluginpkg.ReadPendingUpdate(home, "update-cli"); !errors.Is(err, pluginpkg.ErrPendingUpdateNotFound) {
 		t.Fatalf("pending update after rejection = %v", err)
 	}
-	if pluginpkg.Discover("", home)[0].Version != "1.0.0" {
+	if userPluginByID(t, home, "update-cli").Version != "1.0.0" {
 		t.Fatal("rejected update replaced the installed generation")
 	}
 
@@ -253,7 +284,7 @@ func TestPluginCLIStagesAndDecidesUpdatesWithoutReplacingEarly(t *testing.T) {
 	if err := run([]string{"plugin", "approve", "update-cli"}); err != nil {
 		t.Fatalf("approve v2: %v", err)
 	}
-	promoted := pluginpkg.Discover("", home)[0]
+	promoted := userPluginByID(t, home, "update-cli")
 	if promoted.Version != "2.0.0" || promoted.Fingerprint != staged.Fingerprint {
 		t.Fatalf("promoted plugin = %+v, staged = %+v", promoted, staged)
 	}

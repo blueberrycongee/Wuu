@@ -79,7 +79,6 @@ import { LanguagePreferenceControl } from "./LanguagePreferenceSection";
 import { formatCurrentNumber, useI18n } from "./i18n";
 import { Tooltip } from "./Tooltip";
 import { TruncatedText } from "./TruncatedText";
-import { SubagentModelAliases } from "./SubagentModelAliases";
 import { VoiceInputSettingsSection } from "./VoiceInputSettingsSection";
 import { SettingsPresentation } from "./plugins/SettingsPresentation";
 import { desktopPluginHost } from "./plugins/DesktopPluginRuntime";
@@ -908,12 +907,6 @@ export function SettingsView({
               />
             ) : activePage === "advanced" ? (
               <>
-                <SubagentModelAliases
-                  aliases={initialized?.model_aliases}
-                  providers={providers}
-                  disabled={running || !initialized}
-                  onSave={onAdvancedSave}
-                />
                 <SettingsAdvancedPage
                   initialized={initialized}
                   running={running}
@@ -1009,6 +1002,8 @@ export function SettingsView({
           busy: running || usageLoading || mcpLoading || codexPetsLoading || Boolean(mcpBusyServer),
           hasError: Boolean(error || advancedError || usageError || mcpError || codexPetsError),
           pluginCount: initialized?.extension_inventory?.filter((extension) => extension.kind === "plugin").length ?? 0,
+          modelAliases: initialized?.model_aliases ?? {},
+          onSaveModelAliases: (modelAliases: RuntimeAdvancedSettingsUpdate["model_aliases"]) => onAdvancedSave({ model_aliases: modelAliases }),
         })}
       />
       <SettingsPresentation

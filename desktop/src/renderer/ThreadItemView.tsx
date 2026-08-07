@@ -218,7 +218,7 @@ function BuiltInThreadItemView({
       }
       const copyable = displayText.trim() !== "";
       const editable = Boolean(
-        !agentHandoff &&
+        !agentHandoff && !item.read_only &&
           onEditMessage &&
           (copyable || (item.images?.length ?? 0) > 0 || (item.files?.length ?? 0) > 0),
       );

@@ -4,17 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"os"
-	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/blueberrycongee/wuu/internal/agent"
 	"github.com/blueberrycongee/wuu/internal/execution"
-	"github.com/blueberrycongee/wuu/internal/goalruntime"
 	"github.com/blueberrycongee/wuu/internal/hooks"
+	"github.com/blueberrycongee/wuu/internal/pluginhost"
 	"github.com/blueberrycongee/wuu/internal/providers"
-	"github.com/blueberrycongee/wuu/internal/runtime"
 	"github.com/blueberrycongee/wuu/internal/session"
 	"github.com/blueberrycongee/wuu/internal/structuredoutput"
 )
@@ -120,6 +117,8 @@ func TestExecutionRunSchemaOutcomeRetriesWithinOneRun(t *testing.T) {
 
 func TestExecutionRunDefersSchemaValidationUntilContinuationSettles(t *testing.T) {
 	rt := newTestRuntime(t, &fakeClient{})
+	continuation := &continuationTestRuntime{id: "execution-continuation", output: pluginhost.AgentContinuationOutput{Continue: true}}
+	rt.PluginHost = pluginhost.New(continuation)
 	srv := New(rt, &lockedBuffer{})
 	defer srv.Close()
 	validator, err := structuredoutput.New(json.RawMessage(`{"type":"object","required":["ok"]}`))
@@ -128,11 +127,6 @@ func TestExecutionRunDefersSchemaValidationUntilContinuationSettles(t *testing.T
 	}
 	const threadID = "thread-schema-continuation"
 	srv.registerExecutionRun(execution.Run{ID: "run-schema-continuation", ThreadID: threadID}, validator)
-	goalRuntime := goalruntime.NewRuntime(goalruntime.NewStore(filepath.Join(t.TempDir(), "goal.json")))
-	srv.threads[threadID] = &threadState{ID: threadID, execRuntime: &runtime.ThreadRuntime{GoalRuntime: goalRuntime}}
-	if _, err := goalRuntime.Create(goalruntime.Spec{ThreadID: threadID, GoalID: "goal-schema", Objective: "finish the structured task"}); err != nil {
-		t.Fatalf("Create goal: %v", err)
-	}
 
 	awaiting, retryPrompt, validationErr := srv.executionRunSuccessfulTurnOutcome("run-schema-continuation", threadID, nil, `{"wrong":true}`)
 	if !awaiting || retryPrompt != "" || validationErr != nil {
@@ -142,45 +136,10 @@ func TestExecutionRunDefersSchemaValidationUntilContinuationSettles(t *testing.T
 		t.Fatalf("schema retries while continuation pending = %d", retries)
 	}
 
-	if err := goalRuntime.Store().Clear(); err != nil {
-		t.Fatalf("Clear goal: %v", err)
-	}
+	continuation.output = pluginhost.AgentContinuationOutput{}
 	awaiting, retryPrompt, validationErr = srv.executionRunSuccessfulTurnOutcome("run-schema-continuation", threadID, nil, `{"wrong":true}`)
 	if !awaiting || retryPrompt == "" || validationErr != nil {
 		t.Fatalf("final invalid outcome = awaiting %v, prompt %q, error %v", awaiting, retryPrompt, validationErr)
-	}
-}
-
-func TestExecutionRunGoalReadFailureBecomesSettlementError(t *testing.T) {
-	rt := newTestRuntime(t, &fakeClient{})
-	srv := New(rt, &lockedBuffer{})
-	defer srv.Close()
-	const threadID = "thread-corrupt-goal"
-	goalPath := filepath.Join(t.TempDir(), "goal.json")
-	if err := os.MkdirAll(filepath.Dir(goalPath), 0o755); err != nil {
-		t.Fatalf("MkdirAll: %v", err)
-	}
-	if err := os.WriteFile(goalPath, []byte("{not-json\n"), 0o644); err != nil {
-		t.Fatalf("Write corrupt goal: %v", err)
-	}
-	goalRuntime := goalruntime.NewRuntime(goalruntime.NewStore(goalPath))
-	srv.threads[threadID] = &threadState{ID: threadID, execRuntime: &runtime.ThreadRuntime{GoalRuntime: goalRuntime}}
-	run := createEphemeralExecutionRun(t, srv, threadID)
-	if _, err := srv.runStore.AttachTurn(context.Background(), run.ID, threadID, "turn-goal-error", time.Now().UTC()); err != nil {
-		t.Fatalf("AttachTurn: %v", err)
-	}
-	srv.registerExecutionRun(run, nil)
-
-	awaiting, retryPrompt, err := srv.executionRunSuccessfulTurnOutcome(run.ID, threadID, nil, `{"ok":true}`)
-	if err == nil || awaiting || retryPrompt != "" {
-		t.Fatalf("corrupt goal outcome = awaiting %v, prompt %q, error %v", awaiting, retryPrompt, err)
-	}
-	settled, terminal, settleErr := srv.settleExecutionRunTurn(run.ID, "turn-goal-error", "/trace/goal-error.jsonl", Turn{ID: "turn-goal-error", Status: TurnStatusCompleted}, nil, err, false, time.Now().UTC())
-	if settleErr != nil {
-		t.Fatalf("settleExecutionRunTurn: %v", settleErr)
-	}
-	if !terminal || settled.Status != execution.StatusFailed || srv.executionRunAttached(run.ID) {
-		t.Fatalf("goal read failure settlement = terminal %v, run %+v, attached %v", terminal, settled, srv.executionRunAttached(run.ID))
 	}
 }
 

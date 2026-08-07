@@ -41,7 +41,7 @@ func (s *Server) ExecuteAutomation(ctx context.Context, task automation.Task, ru
 		return automation.ExecutionResult{}, err
 	}
 
-	msg, err := userMessageFromPrompt(prompt, nil, nil, s.rt.ExperimentalHelpMe)
+	msg, err := userMessageFromPrompt(prompt, nil, nil)
 	if err != nil {
 		return automation.ExecutionResult{}, err
 	}

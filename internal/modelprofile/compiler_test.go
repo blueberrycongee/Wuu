@@ -149,7 +149,6 @@ func TestOpenAICodexSurface(t *testing.T) {
 		"grep", "glob",
 		"web_search", "web_fetch",
 		"bash", "apply_patch",
-		"spawn_agent", "helpme",
 		"update_plan", "load_skill", "tool_search",
 	}
 	for _, name := range mustVisible {
@@ -158,10 +157,8 @@ func TestOpenAICodexSurface(t *testing.T) {
 		}
 	}
 	mustDeferred := []string{
-		"send_message", "close_agent",
 		"session_memory",
 		"thread_get",
-		"get_goal", "create_goal", "update_goal",
 		"cron",
 		"wuu_browser",
 	}
@@ -176,7 +173,7 @@ func TestOpenAICodexSurface(t *testing.T) {
 
 	// Workflow / agent-profile tools are named-agent-only: an ordinary main
 	// surface must neither advertise nor defer them.
-	for _, name := range workflowToolNames() {
+	for _, name := range []string{"list_workflows", "load_workflow", "save_workflow", "list_agent_profiles", "create_agent_profile", "start_workflow", "run_workflow", "create_workflow", "workflow_control", "workflow_status"} {
 		if _, ok := s.Tools[name]; ok {
 			t.Fatalf("Codex MAIN surface must NOT advertise named-only workflow tool %s", name)
 		}
@@ -266,14 +263,13 @@ func TestAnthropicClaudeSurface(t *testing.T) {
 	for _, name := range []string{
 		"read_file", "list_files", "grep", "glob",
 		"web_search", "web_fetch",
-		"spawn_agent",
 		"update_plan", "load_skill", "tool_search",
 	} {
 		if _, ok := s.Tools[name]; !ok {
 			t.Fatalf("Claude surface must include %s, got tools=%v", name, sortedKeys(s.Tools))
 		}
 	}
-	for _, name := range []string{"session_memory", "send_message", "close_agent", "wuu_browser"} {
+	for _, name := range []string{"session_memory", "wuu_browser"} {
 		if _, ok := s.DeferredTools[name]; !ok {
 			t.Fatalf("Claude surface must defer %s, got deferred=%v", name, sortedKeys(s.DeferredTools))
 		}
@@ -557,6 +553,7 @@ func sortedKeys(m map[string]capability.Capability) []string {
 // spawn_agent and the subagent management suite exist only on main-agent
 // surfaces; worker surfaces are pure executors whose sole task tool is
 // agent_report.
+/* Removed with the first-party Goal and delegation plugin extraction.
 func TestCompile_MainOnlyTools(t *testing.T) {
 	cases := []struct {
 		provider string
@@ -715,3 +712,4 @@ func TestUltraWorkerSurfaceCombinesOrchestrationAndReportWithoutHelpme(t *testin
 		t.Error("Ultra worker surface must not expose helpme")
 	}
 }
+*/

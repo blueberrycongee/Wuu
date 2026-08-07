@@ -120,7 +120,7 @@ func (s *Server) filterCachedThreadCandidates(candidates []cachedThreadCandidate
 		if s.hasQueuedAgentCompletionWork(candidate.id) {
 			continue
 		}
-		if s.hasGoalContinuationWork(candidate.id) {
+		if s.hasPluginContinuationWork(candidate.id) {
 			continue
 		}
 		out = append(out, candidate)
@@ -128,14 +128,14 @@ func (s *Server) filterCachedThreadCandidates(candidates []cachedThreadCandidate
 	return out
 }
 
-func (s *Server) hasGoalContinuationWork(threadID string) bool {
+func (s *Server) hasPluginContinuationWork(threadID string) bool {
 	threadID = strings.TrimSpace(threadID)
 	if s == nil || threadID == "" {
 		return false
 	}
-	s.goalContinuationMu.Lock()
-	defer s.goalContinuationMu.Unlock()
-	return s.drainingGoalContinuation[threadID]
+	s.pluginContinuationMu.Lock()
+	defer s.pluginContinuationMu.Unlock()
+	return s.drainingPluginContinuation[threadID]
 }
 
 func candidateAccessTime(candidate cachedThreadCandidate) time.Time {

@@ -7,12 +7,11 @@ import (
 )
 
 type slashCommandTemplate struct {
-	Name               string
-	Aliases            []string
-	Execution          slashCommandExecution
-	Prompt             string
-	PromptNoArg        string
-	ExperimentalHelpMe bool
+	Name        string
+	Aliases     []string
+	Execution   slashCommandExecution
+	Prompt      string
+	PromptNoArg string
 }
 
 type slashCommandExecution string
@@ -40,14 +39,6 @@ var lightweightSlashCommandTemplates = []slashCommandTemplate{
 		Execution:   slashCommandExecutionInlinePrompt,
 		Prompt:      "Fix this issue:\n\n{{args}}\n\nInspect the relevant code first, keep the change scoped, and verify the behavior.",
 		PromptNoArg: "Fix the current issue. Inspect the relevant code first, keep the change scoped, and verify the behavior.",
-	},
-	{
-		Name:               "helpme",
-		Aliases:            []string{"rescue", "handoff"},
-		Execution:          slashCommandExecutionInlinePrompt,
-		Prompt:             "Start a HelpMe recovery for this task:\n\n{{args}}\n\nCall the helpme tool with the original goal, your current understanding, failed or low-confidence attempts, preserved constraints, and concrete evidence. Pass failed_attempts, constraints, and evidence as arrays of short strings; use [] for any empty list. HelpMe starts a fresh general-purpose helper in the background and returns its agent_id/agent_path quickly. The helper resumes you with its result when it finishes; when a structured HelpMe report is available, its completion replaces polluted context with a bounded recovery summary built from the report/result paths and the saved main_trace_path. Never paste or merge raw parent/helper transcripts. Do not continue trying to solve only from the current polluted context.",
-		PromptNoArg:        "Start a HelpMe recovery for the current task. Call the helpme tool with the original goal, your current understanding, failed or low-confidence attempts, preserved constraints, and concrete evidence. Pass failed_attempts, constraints, and evidence as arrays of short strings; use [] for any empty list. HelpMe starts a fresh general-purpose helper in the background and returns its agent_id/agent_path quickly. The helper resumes you with its result when it finishes; when a structured HelpMe report is available, its completion replaces polluted context with a bounded recovery summary built from the report/result paths and the saved main_trace_path. Never paste or merge raw parent/helper transcripts. Do not continue trying to solve only from the current polluted context.",
-		ExperimentalHelpMe: true,
 	},
 	{
 		Name:        "test",
@@ -103,7 +94,7 @@ func isManualCompactPrompt(prompt string) bool {
 	}
 }
 
-func renderLightweightSlashCommandPrompt(prompt string, helpMeEnabled bool) (string, string, bool) {
+func renderLightweightSlashCommandPrompt(prompt string) (string, string, bool) {
 	display := strings.TrimSpace(prompt)
 	if !strings.HasPrefix(display, "/") || strings.HasPrefix(display, "//") {
 		return prompt, "", false
@@ -112,7 +103,7 @@ func renderLightweightSlashCommandPrompt(prompt string, helpMeEnabled bool) (str
 	if !ok {
 		return prompt, "", false
 	}
-	template, ok := findLightweightSlashCommandTemplate(command, helpMeEnabled)
+	template, ok := findLightweightSlashCommandTemplate(command)
 	if !ok {
 		return prompt, "", false
 	}
@@ -124,22 +115,6 @@ func renderLightweightSlashCommandPrompt(prompt string, helpMeEnabled bool) (str
 		return prompt, "", false
 	}
 	return rendered, display, true
-}
-
-func disabledExperimentalSlashCommand(prompt string, helpMeEnabled bool) bool {
-	if helpMeEnabled {
-		return false
-	}
-	display := strings.TrimSpace(prompt)
-	if !strings.HasPrefix(display, "/") || strings.HasPrefix(display, "//") {
-		return false
-	}
-	command, _, ok := splitSlashCommand(display)
-	if !ok {
-		return false
-	}
-	template, ok := findLightweightSlashCommandTemplate(command, true)
-	return ok && template.ExperimentalHelpMe
 }
 
 func splitSlashCommand(value string) (string, string, bool) {
@@ -168,11 +143,8 @@ func splitSlashCommand(value string) (string, string, bool) {
 	return name, args, true
 }
 
-func findLightweightSlashCommandTemplate(name string, helpMeEnabled bool) (slashCommandTemplate, bool) {
+func findLightweightSlashCommandTemplate(name string) (slashCommandTemplate, bool) {
 	for _, template := range lightweightSlashCommandTemplates {
-		if template.ExperimentalHelpMe && !helpMeEnabled {
-			continue
-		}
 		if template.Name == name {
 			return template, true
 		}

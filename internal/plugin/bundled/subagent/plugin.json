@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "id": "subagent",
+  "name": "Subagent",
+  "description": "Delegated child tasks and multi-agent coordination.",
+  "version": "0.1.0",
+  "author": { "name": "Wuu" },
+  "minimumWuuVersion": "0.1.0",
+  "runtime": { "protocol": "wuu-plugin-v1", "command": "@wuu-official-helper:subagent", "timeout": 30 },
+  "desktop": { "entry": "desktop.js" },
+  "interface": { "displayName": "Subagent", "shortDescription": "Delegate bounded work to child tasks.", "developerName": "Wuu", "category": "Productivity", "capabilities": ["Write"] },
+  "officialNativeHelper": { "id": "subagent", "environment": "WUU_SUBAGENT_PLUGIN_HELPER", "executable": "wuu-subagent-plugin" }
+}

@@ -39,7 +39,14 @@ func TestStageAndRejectPackageUpdateKeepInstalledGeneration(t *testing.T) {
 	assertInstalledUpdateContent(t, home, "update-demo", "installed")
 
 	discovered := Discover("", home)
-	if len(discovered) != 1 || discovered[0].ID != "update-demo" || discovered[0].Version != "1.0.0" {
+	installedGeneration := -1
+	for index := range discovered {
+		if discovered[index].ID == "update-demo" {
+			installedGeneration = index
+			break
+		}
+	}
+	if installedGeneration < 0 || discovered[installedGeneration].Version != "1.0.0" {
 		t.Fatalf("discovered plugins while update is pending = %+v", discovered)
 	}
 	listed, err := ListPendingUpdates(home)

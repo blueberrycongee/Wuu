@@ -18,7 +18,19 @@ export interface DesktopPluginFailure {
   error: unknown;
 }
 
-export const desktopPluginHost = new PluginHost({ react: React });
+export const desktopPluginHost = new PluginHost({
+  react: React,
+  invokeRuntime: async ({ pluginId, generation, method, input }) => {
+    const response = await window.wuu?.requestPluginRuntime?.({
+      id: pluginId,
+      fingerprint: generation,
+      method,
+      input,
+    });
+    if (!response) throw new Error("Plugin runtime requests are unavailable");
+    return response.result;
+  },
+});
 export const desktopWorkbenchController = new WorkbenchController(desktopPluginHost);
 
 export class DesktopPluginRuntime {
@@ -80,6 +92,9 @@ export const desktopPluginRuntime = new DesktopPluginRuntime(desktopPluginHost);
 export function useDesktopPluginRuntime(
   inventory: readonly ExtensionInventoryRecord[] | undefined,
 ): void {
+  useEffect(() => window.wuu?.onServerEvent?.((event) => {
+    desktopPluginHost.publishHostEvent(event);
+  }), []);
   useEffect(() => {
     syncExtensionTheme(inventory);
     const syncThemeFromOtherWindow = (): void => syncExtensionTheme(inventory);

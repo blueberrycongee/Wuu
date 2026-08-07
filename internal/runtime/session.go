@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -24,7 +25,6 @@ import (
 	"github.com/blueberrycongee/wuu/internal/config"
 	wuucontext "github.com/blueberrycongee/wuu/internal/context"
 	"github.com/blueberrycongee/wuu/internal/extensions"
-	"github.com/blueberrycongee/wuu/internal/goalruntime"
 	"github.com/blueberrycongee/wuu/internal/hooks"
 	"github.com/blueberrycongee/wuu/internal/mcp"
 	"github.com/blueberrycongee/wuu/internal/memdir"
@@ -45,9 +45,9 @@ import (
 	"github.com/blueberrycongee/wuu/internal/session"
 	"github.com/blueberrycongee/wuu/internal/skills"
 	"github.com/blueberrycongee/wuu/internal/statepath"
-	"github.com/blueberrycongee/wuu/internal/version"
 	"github.com/blueberrycongee/wuu/internal/toolledger"
 	"github.com/blueberrycongee/wuu/internal/tools"
+	"github.com/blueberrycongee/wuu/internal/version"
 	"github.com/blueberrycongee/wuu/internal/workspaces"
 )
 
@@ -153,14 +153,11 @@ type Session struct {
 	PermissionModeExplicit      bool
 	ultraMode                   atomic.Bool
 	maxParallel                 int
-	CoordinatorPreamble         string
 	ExperimentalCoordinatorMode bool
 	ToolLoadingPreference       config.ToolLoadingMode
 	ToolLoadingMode             config.ToolLoadingMode
 	ToolSearchEnabled           bool
 	NativeDeferredToolDiscovery bool
-	ExperimentalDeferredBundles bool
-	ExperimentalHelpMe          bool
 	DeferredToolCatalogPrompt   string
 	AutomationManager           *automation.Manager
 	ReadinessIssues             []ReadinessIssue
@@ -239,14 +236,11 @@ func (s *Session) cloneForThreadModel() *Session {
 		Permissions:                 s.Permissions,
 		PermissionModeExplicit:      s.PermissionModeExplicit,
 		maxParallel:                 s.maxParallel,
-		CoordinatorPreamble:         s.CoordinatorPreamble,
 		ExperimentalCoordinatorMode: s.ExperimentalCoordinatorMode,
 		ToolLoadingPreference:       s.ToolLoadingPreference,
 		ToolLoadingMode:             s.ToolLoadingMode,
 		ToolSearchEnabled:           s.ToolSearchEnabled,
 		NativeDeferredToolDiscovery: s.NativeDeferredToolDiscovery,
-		ExperimentalDeferredBundles: s.ExperimentalDeferredBundles,
-		ExperimentalHelpMe:          s.ExperimentalHelpMe,
 		DeferredToolCatalogPrompt:   s.DeferredToolCatalogPrompt,
 		AutomationManager:           s.AutomationManager,
 		ReadinessIssues:             s.ReadinessIssues,
@@ -270,7 +264,6 @@ type ThreadRuntime struct {
 	Toolkit           *tools.Toolkit
 	AgentControl      *agentcontrol.AgentControl
 	ProcessManager    *process.Manager
-	GoalRuntime       *goalruntime.Runtime
 	ActivityRegistry  *activity.Registry
 	ModelBudget       modelbudget.Budget
 	WorkerModelBudget modelbudget.Budget
@@ -408,7 +401,10 @@ func NewSession(opts Options) (*Session, error) {
 
 	discoveredPlugins := discoverPlugins(rootDir, wuuHome)
 	activePlugins := activatedPlugins(cfg, discoveredPlugins)
-	pluginHost := startPluginHost(activePlugins, rootDir, wuuHome)
+	var agentControl *agentcontrol.AgentControl
+	pluginHost := startPluginHost(activePlugins, rootDir, wuuHome, func(ctx context.Context, request pluginhost.ChildSessionRequestParams) (json.RawMessage, error) {
+		return dispatchChildSessionRequest(agentControl, ctx, request)
+	})
 	systemPrompts, compactions, capabilityErr := buildPluginAgentCapabilities(context.Background(), pluginHost, resolvedName, providerCfg.Model, rootDir)
 	if capabilityErr != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
@@ -456,7 +452,6 @@ func NewSession(opts Options) (*Session, error) {
 	var toolkit *tools.Toolkit
 	toolLoadingPreference := cfg.Agent.ToolLoadingPreference()
 	toolLoadingMode, toolSearchEnabled, nativeDeferredDiscovery := resolveToolLoadingModeForProvider(toolLoadingPreference, ruleProviderCfg, toolModeModel, mainRole.ProviderOptions)
-	experimentalDeferredBundles := cfg.Agent.ExperimentalDeferredToolBundles
 	if !opts.NoTools {
 		kit, newErr := tools.New(rootDir)
 		if newErr != nil {
@@ -468,10 +463,8 @@ func NewSession(opts Options) (*Session, error) {
 		kit.SetSkills(discoveredSkills)
 		ConfigureToolkitPermissions(kit, permissions)
 		kit.ConfigureSurfaceForProviderModel(ruleProviderName, toolModeModel, true)
-		kit.SetHelpMeEnabled(cfg.Agent.ExperimentalHelpMe)
 		kit.SetBrowserEnabled(browserEnabledFromEnv())
 		kit.SetToolSearchEnabled(toolSearchEnabled)
-		kit.SetExperimentalDeferredToolBundles(experimentalDeferredBundles)
 		kit.SetNativeDeferredToolDiscovery(nativeDeferredDiscovery)
 		kit.SetGitAttributionEnabled(cfg.Agent.GitAttributionEnabledValue())
 		kit.SetActivityRegistry(activityRegistry)
@@ -525,8 +518,6 @@ func NewSession(opts Options) (*Session, error) {
 		}
 	}
 
-	var agentControl *agentcontrol.AgentControl
-	var coordinatorPreamble string
 	var workerClient providers.StreamClient
 	workerModelBudget := ResolveModelBudget(
 		roleSelections.Worker.Model,
@@ -541,7 +532,7 @@ func NewSession(opts Options) (*Session, error) {
 		// Fill the worker deferred-tool catalog the same way mainSurface is
 		// filled above (consistency-repair #13: this was left empty while the
 		// worker prompt taught catalog lookups through tool_search).
-		workerDeferredCatalog, catErr := workerDeferredToolCatalogPromptForToolkit(toolkit, workerToolProviderName, workerToolModeModel, workerToolSearchEnabled, experimentalDeferredBundles)
+		workerDeferredCatalog, catErr := workerDeferredToolCatalogPromptForToolkit(toolkit, workerToolProviderName, workerToolModeModel, workerToolSearchEnabled)
 		if catErr != nil {
 			return nil, catErr
 		}
@@ -604,7 +595,6 @@ func NewSession(opts Options) (*Session, error) {
 					wkit.ConfigureSurfaceForProviderModel(workerToolProviderName, workerToolModeModel, false)
 				}
 				wkit.SetToolSearchEnabled(workerToolSearchEnabled)
-				wkit.SetExperimentalDeferredToolBundles(experimentalDeferredBundles)
 				wkit.SetNativeDeferredToolDiscovery(workerNativeDeferredDiscovery)
 				wkit.SetAgentIdentity(meta.ID, meta.Path)
 				applyWorkerToolFilter(wkit, wt, meta.Ultra)
@@ -621,7 +611,6 @@ func NewSession(opts Options) (*Session, error) {
 		if cerr == nil {
 			agentControl = c
 			toolkit.SetAgentControl(agentControl)
-			coordinatorPreamble = agentcontrol.SystemPromptPreamble()
 		}
 	}
 
@@ -746,14 +735,11 @@ func NewSession(opts Options) (*Session, error) {
 		Permissions:                 permissions,
 		PermissionModeExplicit:      opts.PermissionModeExplicit,
 		maxParallel:                 cfg.Agent.MaxParallelValue(),
-		CoordinatorPreamble:         coordinatorPreamble,
 		ExperimentalCoordinatorMode: cfg.Agent.ExperimentalCoordinatorMode,
 		ToolLoadingPreference:       toolLoadingPreference,
 		ToolLoadingMode:             toolLoadingMode,
 		ToolSearchEnabled:           toolSearchEnabled,
 		NativeDeferredToolDiscovery: nativeDeferredDiscovery,
-		ExperimentalDeferredBundles: experimentalDeferredBundles,
-		ExperimentalHelpMe:          cfg.Agent.ExperimentalHelpMe,
 		DeferredToolCatalogPrompt:   deferredToolCatalogPrompt,
 		ReadinessIssues:             readinessIssues,
 		InferenceJournalRuntime:     journalRuntime,
@@ -1181,7 +1167,6 @@ func (s *Session) NewThreadRuntimeForRoot(sessionID, rootDir string) (*ThreadRun
 		}
 	}
 	artifactDir := statepath.SessionArtifactDir(stateDir, id)
-	goalRuntime := goalruntime.NewRuntime(goalruntime.NewStore(statepath.ThreadGoalRuntimePath(stateDir, id)))
 	// The embedded-browser tab registry is durable per-thread state, spawned at
 	// the same point as the goal runtime and reclaimed with the thread's artifact
 	// directory on delete. Recovery after a core restart is driven by the desktop
@@ -1221,7 +1206,6 @@ func (s *Session) NewThreadRuntimeForRoot(sessionID, rootDir string) (*ThreadRun
 		ConfigureToolkitPermissions(kit, s.Permissions)
 		kit.SetSessionID(id)
 		kit.SetSessionDir(artifactDir)
-		kit.SetGoalRuntime(goalRuntime)
 		kit.SetBrowserTabs(browserTabs)
 		kit.SetImageInputSupported(s.ModelRoles.Main.Capabilities.ImageInput)
 		kit.SetAgentIdentity(id, agentthread.RootPath)
@@ -1262,7 +1246,7 @@ func (s *Session) NewThreadRuntimeForRoot(sessionID, rootDir string) (*ThreadRun
 			workerToolSurface := compiledSurfaceForProviderModel(workerToolProviderName, workerToolModeModel)
 			// Fill the worker deferred-tool catalog like the session build
 			// path does (consistency-repair #13).
-			workerDeferredCatalog, catErr := workerDeferredToolCatalogPromptForToolkit(kit, workerToolProviderName, workerToolModeModel, workerToolSearchEnabled, s.ExperimentalDeferredBundles)
+			workerDeferredCatalog, catErr := workerDeferredToolCatalogPromptForToolkit(kit, workerToolProviderName, workerToolModeModel, workerToolSearchEnabled)
 			if catErr != nil {
 				return nil, catErr
 			}
@@ -1333,7 +1317,6 @@ func (s *Session) NewThreadRuntimeForRoot(sessionID, rootDir string) (*ThreadRun
 					workerKit.SetSessionID(id)
 					workerKit.SetSessionDir(artifactDir)
 					workerKit.SetToolSearchEnabled(workerToolSearchEnabled)
-					workerKit.SetExperimentalDeferredToolBundles(s.ExperimentalDeferredBundles)
 					workerKit.SetNativeDeferredToolDiscovery(workerNativeDeferredDiscovery)
 					workerKit.SetAgentIdentity(meta.ID, meta.Path)
 					applyWorkerToolFilter(workerKit, wt, meta.Ultra)
@@ -1380,7 +1363,6 @@ func (s *Session) NewThreadRuntimeForRoot(sessionID, rootDir string) (*ThreadRun
 		Toolkit:           kit,
 		AgentControl:      agentControl,
 		ProcessManager:    threadProcessManager,
-		GoalRuntime:       goalRuntime,
 		ActivityRegistry:  s.ActivityRegistry,
 		ModelBudget:       s.ModelBudget,
 		WorkerModelBudget: s.WorkerModelBudget,
@@ -2476,15 +2458,6 @@ func buildBaseSystemPromptResult(rootDir, sessionDate, basePrompt, userPrompt, p
 	if _, ok := toolSurface.Tools["tool_search"]; ok {
 		pb.AddSection("deferred_tool_catalog", toolSurface.DeferredToolCatalog, true)
 	}
-	// The spawn_agent worker-type roster is session-static (compile-time
-	// constant) but must not live in the spawn_agent tool schema, where a future
-	// dynamic change would churn the cached tool-schema prefix. Mirror the
-	// deferred_tool_catalog pattern: emit it as a static system-prompt section
-	// only for surfaces that actually expose spawn_agent, so the tool schema
-	// stays generic and stable.
-	if _, ok := toolSurface.Tools["spawn_agent"]; ok {
-		pb.AddSection("subagent_types", subagentTypesSystemSection(), true)
-	}
 	pb.AddSection("environment", environmentSystemPromptSection(rootDir, sessionDate), true)
 	if strings.TrimSpace(userPrompt) != "" {
 		pb.AddSection("user_custom_prompt", "# User Custom Instructions\n\nFollow these user-defined instructions unless they conflict with wuu's built-in behavior, safety, or tool-use discipline above.\n\n"+userPrompt, true)
@@ -2497,26 +2470,6 @@ func buildBaseSystemPromptResult(rootDir, sessionDate, basePrompt, userPrompt, p
 		pb.AddSkills(tools.FilterSkillsForSurface(discoveredSkills, toolSurface))
 	}
 	return pb.BuildWithInfo()
-}
-
-// subagentTypesSystemSection renders the static Subagent Types roster injected
-// into the base system prompt for spawn_agent-capable surfaces. It replaces the
-// worker-type list that used to be baked into the spawn_agent tool description,
-// keeping that dynamic list out of the cached tool-schema prefix while staying
-// cache-stable itself (built from the compile-time worker registry).
-func subagentTypesSystemSection() string {
-	types := agentcontrol.AvailableWorkerTypes()
-	if len(types) == 0 {
-		return ""
-	}
-	var b strings.Builder
-	b.WriteString("# Subagent Types\n\n")
-	b.WriteString("These are the spawn_agent subagent_type values available this session. ")
-	b.WriteString("Set subagent_type to launch a fresh specialized agent; omit it to fork yourself with full conversation context.\n\n")
-	for _, wt := range types {
-		fmt.Fprintf(&b, "- %s: %s\n", wt.Name, wt.Description)
-	}
-	return strings.TrimRight(b.String(), "\n")
 }
 
 // environmentSystemPromptSection renders the static "# Environment" system
@@ -2587,7 +2540,7 @@ func deferredToolCatalogPromptForToolkit(kit *tools.Toolkit) (string, error) {
 // session toolkit configured with the worker-compiled surface, so entries are
 // filtered by the worker's own exposure buckets (no orchestration suite,
 // worker tool-search setting).
-func workerDeferredToolCatalogPromptForToolkit(kit *tools.Toolkit, providerName, model string, toolSearchEnabled, experimentalDeferredBundles bool) (string, error) {
+func workerDeferredToolCatalogPromptForToolkit(kit *tools.Toolkit, providerName, model string, toolSearchEnabled bool) (string, error) {
 	if kit == nil {
 		return "", nil
 	}
@@ -2597,7 +2550,6 @@ func workerDeferredToolCatalogPromptForToolkit(kit *tools.Toolkit, providerName,
 	}
 	wkit.ConfigureSurfaceForProviderModel(providerName, model, false)
 	wkit.SetToolSearchEnabled(toolSearchEnabled)
-	wkit.SetExperimentalDeferredToolBundles(experimentalDeferredBundles)
 	return wkit.DeferredToolCatalogSystemSection()
 }
 

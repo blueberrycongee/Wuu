@@ -98,6 +98,8 @@ export interface PluginGenerationApi {
   readonly react: typeof React;
   readonly pluginId: string;
   readonly generation: string;
+  invokeRuntime(method: string, input?: unknown): Promise<unknown>;
+  onHostEvent(handler: (event: unknown) => void): Disposable;
   registerSlot(slotId: PluginSlotId, contribution: PluginSlotRegistration): Disposable;
   registerSurface(surfaceId: PluginSurfaceId, contribution: PluginSurfaceRegistration): Disposable;
   registerCommand(command: PluginCommandRegistration): Disposable;
@@ -211,6 +213,12 @@ export interface PluginHostOptions {
   /** Inject the renderer's existing React runtime; the host never supplies another copy. */
   react: typeof React;
   styleContainer?: HTMLElement | (() => HTMLElement | null);
+  invokeRuntime?: (request: Readonly<{
+    pluginId: string;
+    generation: string;
+    method: string;
+    input?: unknown;
+  }>) => Promise<unknown>;
 }
 
 interface OrderedRecord {
@@ -301,6 +309,7 @@ interface GenerationState {
   readonly statusItems: StatusItemRecord[];
   readonly toolActivityPresenters: PresenterRecord[];
   readonly registrationKeys: Set<string>;
+  readonly hostEventHandlers: Set<(event: unknown) => void>;
   readonly teardown: Disposable[];
   acceptingRegistrations: boolean;
   active: boolean;
@@ -339,6 +348,7 @@ export class PluginHost {
   readonly react: typeof React;
 
   private readonly styleContainer?: PluginHostOptions["styleContainer"];
+  private readonly runtimeInvoker?: PluginHostOptions["invokeRuntime"];
   private readonly activeGenerations = new Map<string, GenerationState>();
   private readonly pendingActivations = new Map<string, PendingActivation>();
   private readonly slotSnapshots = new Map<PluginSlotId, readonly RegisteredPluginSlotContribution[]>();
@@ -361,6 +371,7 @@ export class PluginHost {
   constructor(options: PluginHostOptions) {
     this.react = options.react;
     this.styleContainer = options.styleContainer;
+    this.runtimeInvoker = options.invokeRuntime;
   }
 
   async activateGeneration(options: ActivatePluginGenerationOptions): Promise<Disposable> {
@@ -567,6 +578,24 @@ export class PluginHost {
     });
   }
 
+  publishHostEvent(event: unknown): void {
+    for (const state of this.activeGenerations.values()) {
+      for (const handler of state.hostEventHandlers) {
+        try {
+          handler(event);
+        } catch (error: unknown) {
+          this.addDiagnostic({
+            pluginId: state.pluginId,
+            generation: state.generation,
+            kind: "render",
+            message: `Plugin host event handler failed: ${errorMessage(error)}`,
+            cause: error,
+          });
+        }
+      }
+    }
+  }
+
   private createGenerationApi(state: GenerationState): PluginGenerationApi {
     const registerViewPlacement = (
       contribution: {
@@ -599,6 +628,27 @@ export class PluginHost {
       react: this.react,
       pluginId: state.pluginId,
       generation: state.generation,
+      invokeRuntime: async (method: string, input?: unknown) => {
+        if (!this.runtimeInvoker) {
+          throw new Error("Plugin runtime requests are unavailable");
+        }
+        if (this.activeGenerations.get(state.pluginId) !== state || state.disposed) {
+          throw new Error("Plugin generation is no longer active");
+        }
+        return this.runtimeInvoker({
+          pluginId: state.pluginId,
+          generation: state.generation,
+          method: requireNonEmpty(method, "plugin runtime method"),
+          input,
+        });
+      },
+      onHostEvent: (handler: (event: unknown) => void) => {
+        this.assertAccepting(state);
+        state.hostEventHandlers.add(handler);
+        const disposable = createDisposable(() => state.hostEventHandlers.delete(handler));
+        state.teardown.push(disposable);
+        return disposable;
+      },
       registerSlot: (slotId: PluginSlotId, contribution: PluginSlotRegistration) => {
         this.assertAccepting(state);
         const id = this.claimRegistrationId(state, `slot:${slotId}`, contribution.id);
@@ -1154,6 +1204,7 @@ function createGenerationState(pluginId: string, generation: string): Generation
     statusItems: [],
     toolActivityPresenters: [],
     registrationKeys: new Set(),
+    hostEventHandlers: new Set(),
     teardown: [],
     acceptingRegistrations: true,
     active: false,

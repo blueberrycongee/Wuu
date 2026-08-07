@@ -79,10 +79,6 @@ import {
   type EnvironmentPanelMotionState,
 } from "./EnvironmentPanel";
 import { createEnvironmentActions } from "./EnvironmentActions";
-import {
-  ComposerSubagentStatus,
-  runningSubagents,
-} from "./ComposerSubagentStatus";
 import { useGitActionBusy } from "./GitActionBusy";
 import {
   activePlanUpdateForThread,
@@ -187,7 +183,6 @@ import type { SettingsPage } from "./SettingsView";
 import {
   ENABLE_GROUP_CHAT,
   ENABLE_MANAGEMENT_ASSISTANT,
-  ENABLE_SUBAGENT_CAPSULE,
   ENABLE_ULTRA_MODE,
 } from "./FeatureFlags";
 import { ArchiveTip } from "./ArchiveTip";
@@ -196,10 +191,6 @@ import { UILayerPortal } from "./ui/layers/UILayerHost";
 import { showErrorToast } from "./Toast";
 import { CircleAlert, RefreshCw } from "lucide-react";
 import type {
-  ComposerGoalSummary,
-  ThreadGoal,
-  ThreadGoalClearedNotification,
-  ThreadGoalUpdatedNotification,
 } from "../shared/protocol";
 import { useSettingsRuntimeState } from "./SettingsRuntimeState";
 import { SidePanelToggleIcon } from "./SidePanelToggleIcon";
@@ -341,74 +332,6 @@ function readPopOutInit(): PopOutInitResult | null {
   }
 }
 
-function composerGoalSummaryFromThreadGoal(goal: ThreadGoal): ComposerGoalSummary | null {
-  if (goal.status === "complete") {
-    return null;
-  }
-  const toISOString = (seconds: number): string | undefined =>
-    Number.isFinite(seconds) && seconds > 0
-      ? new Date(seconds * 1000).toISOString()
-      : undefined;
-  return {
-    id: goal.thread_id,
-    thread_id: goal.thread_id,
-    text: goal.objective,
-    status: goal.status,
-    started_at: toISOString(goal.created_at),
-    updated_at: toISOString(goal.updated_at),
-    tokens_used: goal.tokens_used,
-    time_used_seconds: goal.time_used_seconds,
-    can_pause: goal.status === "active",
-    can_resume: goal.status === "paused" || goal.status === "blocked",
-    can_clear: true,
-    stop_reason:
-      goal.status === "paused" || goal.status === "blocked" ? goal.status : undefined,
-  };
-}
-
-function isThreadGoal(value: unknown): value is ThreadGoal {
-  if (!value || typeof value !== "object") {
-    return false;
-  }
-  const goal = value as Partial<ThreadGoal>;
-  return (
-    typeof goal.thread_id === "string" &&
-    typeof goal.objective === "string" &&
-    (goal.status === "active" ||
-      goal.status === "paused" ||
-      goal.status === "blocked" ||
-      goal.status === "complete") &&
-    typeof goal.tokens_used === "number" &&
-    typeof goal.time_used_seconds === "number" &&
-    typeof goal.created_at === "number" &&
-    typeof goal.updated_at === "number"
-  );
-}
-
-function isThreadGoalUpdatedNotification(
-  value: unknown,
-): value is ThreadGoalUpdatedNotification {
-  if (!value || typeof value !== "object") {
-    return false;
-  }
-  const notification = value as Partial<ThreadGoalUpdatedNotification>;
-  return (
-    typeof notification.thread_id === "string" &&
-    isThreadGoal(notification.goal) &&
-    notification.goal.thread_id === notification.thread_id
-  );
-}
-
-function isThreadGoalClearedNotification(
-  value: unknown,
-): value is ThreadGoalClearedNotification {
-  return (
-    !!value &&
-    typeof value === "object" &&
-    typeof (value as Partial<ThreadGoalClearedNotification>).thread_id === "string"
-  );
-}
-
 type MainComposerFocusRequest = {
   target: ComposerVariant;
   origin: Element | null;
@@ -422,9 +345,6 @@ export function App(): JSX.Element {
   const poppedOutMode = Boolean(popOutInit?.kind && popOutInit.context);
   const [state, setState] = useState<AppState>(initialState);
   useDesktopPluginRuntime(state.initialized?.extension_inventory);
-  const [goalSummariesByThread, setGoalSummariesByThread] = useState<
-    Record<string, ComposerGoalSummary | null>
-  >({});
   const {
     prompt,
     promptRevision,
@@ -1091,9 +1011,6 @@ export function App(): JSX.Element {
       : undefined;
   const activeThread = activeThreadForState(state);
   const activeThreadID = activeThread?.id;
-  const goalSummary = activeThreadID
-    ? goalSummariesByThread[activeThreadID] ?? null
-    : null;
   const activeTabKind = activeSessionTab(state)?.kind;
   const environmentContext = workspacePanelContext(state.activeContext, activeThread);
   const sideThread = useSideThreadController({
@@ -1274,75 +1191,6 @@ export function App(): JSX.Element {
     state.secondaryThread,
     state.threads,
   ]);
-  const refreshGoalSummary = useCallback(
-    async (threadID = activeThreadID) => {
-      if (!threadID) {
-        return;
-      }
-      try {
-        const summary = await window.wuu.getActiveGoalSummary(threadID);
-        setGoalSummariesByThread((current) => ({ ...current, [threadID]: summary }));
-      } catch {
-        setGoalSummariesByThread((current) => ({ ...current, [threadID]: null }));
-      }
-    },
-    [activeThreadID],
-  );
-  const editGoalText = useCallback(
-    async (nextText: string) => {
-      if (!goalSummary) {
-        return;
-      }
-      const threadID = goalSummary.thread_id;
-      if (!threadID || threadID !== activeThreadID) {
-        return;
-      }
-      const result = await window.wuu.updateGoalText(goalSummary.id, nextText, threadID);
-      if (!result.ok) {
-        throw new Error("Goal objective update was rejected");
-      }
-    },
-    [activeThreadID, goalSummary],
-  );
-  const pauseCurrentGoal = useCallback(async () => {
-    if (!goalSummary) {
-      return;
-    }
-    const threadID = goalSummary.thread_id;
-    if (!threadID || threadID !== activeThreadID) {
-      return;
-    }
-    const result = await window.wuu.pauseGoal(goalSummary.id, threadID);
-    if (!result.ok) {
-      throw new Error("Goal pause was rejected");
-    }
-  }, [activeThreadID, goalSummary]);
-  const resumeCurrentGoal = useCallback(async () => {
-    if (!goalSummary) {
-      return;
-    }
-    const threadID = goalSummary.thread_id;
-    if (!threadID || threadID !== activeThreadID) {
-      return;
-    }
-    const result = await window.wuu.resumeGoal(goalSummary.id, threadID);
-    if (!result.ok) {
-      throw new Error("Goal resume was rejected");
-    }
-  }, [activeThreadID, goalSummary]);
-  const clearCurrentGoal = useCallback(async () => {
-    if (!goalSummary) {
-      return;
-    }
-    const threadID = goalSummary.thread_id;
-    if (!threadID || threadID !== activeThreadID) {
-      return;
-    }
-    const result = await window.wuu.clearGoal(goalSummary.id, threadID);
-    if (!result.ok) {
-      throw new Error("Goal clear was rejected");
-    }
-  }, [activeThreadID, goalSummary]);
   const {
     conversationSearch,
     conversationSearchResults,
@@ -1600,41 +1448,6 @@ export function App(): JSX.Element {
       document.removeEventListener("pointerdown", markUserInteraction, true);
       document.removeEventListener("keydown", markUserInteraction, true);
     };
-  }, []);
-
-  useEffect(() => {
-    void refreshGoalSummary();
-  }, [refreshGoalSummary]);
-
-  useEffect(() => {
-    const off = window.wuu.onServerEvent((event) => {
-      if (event.kind !== "notification") {
-        return;
-      }
-      const method = event.message.method;
-      if (method === "thread/goal/updated") {
-        const notification = event.message.params;
-        if (isThreadGoalUpdatedNotification(notification)) {
-          setGoalSummariesByThread((current) => ({
-            ...current,
-            [notification.thread_id]: composerGoalSummaryFromThreadGoal(
-              notification.goal,
-            ),
-          }));
-        }
-        return;
-      }
-      if (method === "thread/goal/cleared") {
-        const notification = event.message.params;
-        if (isThreadGoalClearedNotification(notification)) {
-          setGoalSummariesByThread((current) => ({
-            ...current,
-            [notification.thread_id]: null,
-          }));
-        }
-      }
-    });
-    return off;
   }, []);
 
   useEffect(() => {
@@ -2524,9 +2337,6 @@ export function App(): JSX.Element {
         state.initialized?.advanced_settings?.context_window_tokens,
     });
     const streamStatus = activeThreadStreamStatus;
-    const activeSubagents = ENABLE_SUBAGENT_CAPSULE
-      ? runningSubagents(activeThread?.child_agents)
-      : [];
     return (
       <PluginSurface
         host={desktopPluginHost}
@@ -2553,13 +2363,6 @@ export function App(): JSX.Element {
       <Composer
         variant={variant}
         mainConversation
-        topAccessory={activeSubagents.length > 0 ? (
-          <ComposerSubagentStatus
-            agents={activeSubagents}
-            onSelect={handleCachedPaneOpenAgent}
-            onOpenAll={openEnvironmentPanel}
-          />
-        ) : undefined}
         containerRef={variant === "dock" ? dockComposerRef : undefined}
         prompt={prompt}
         promptRevision={promptRevision}
@@ -2686,11 +2489,6 @@ export function App(): JSX.Element {
             : undefined
         }
         onInterrupt={() => void interrupt()}
-        goalSummary={goalSummary}
-        onEditGoal={editGoalText}
-        onPauseGoal={pauseCurrentGoal}
-        onResumeGoal={resumeCurrentGoal}
-        onClearGoal={clearCurrentGoal}
         queryHistorySessionID={activeThread?.id}
         queryHistory={queryTextsForThread(activeThread)}
       />

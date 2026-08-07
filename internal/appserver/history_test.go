@@ -49,14 +49,14 @@ func TestChatHistoryRoundTripKeepsRichToolResult(t *testing.T) {
 	}
 }
 
-func TestRewriteChatHistoryKeepsHelpMeJointCompact(t *testing.T) {
+func TestRewriteChatHistoryKeepsCompactSummary(t *testing.T) {
 	sessDir := t.TempDir()
-	sess, err := sessionstore.CreateWithMetadata(sessDir, "helpme-compact", t.TempDir())
+	sess, err := sessionstore.CreateWithMetadata(sessDir, "compact-summary", t.TempDir())
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}
 	history := []providers.ChatMessage{
-		{Role: "system", Content: compact.HelpMeJointCompactPrefix + "\nRecovered task state"},
+		{Role: "system", Content: compact.BuildSummaryContent("Recovered task state")},
 		{Role: "assistant", Content: "continued"},
 	}
 	if err := rewriteChatHistory(sessDir, sess.ID, history); err != nil {
@@ -67,9 +67,9 @@ func TestRewriteChatHistoryKeepsHelpMeJointCompact(t *testing.T) {
 		t.Fatalf("load history: %v", err)
 	}
 	if len(loaded) != 2 {
-		t.Fatalf("expected HelpMe compact and assistant to persist, got %+v", loaded)
+		t.Fatalf("expected summary and assistant to persist, got %+v", loaded)
 	}
-	if loaded[0].Role != "system" || !compact.IsHelpMeJointCompactContent(loaded[0].Content) || !strings.Contains(loaded[0].Content, "Recovered task state") {
-		t.Fatalf("expected persisted HelpMe compact system message, got %+v", loaded[0])
+	if loaded[0].Role != "system" || !compact.IsConversationSummaryContent(loaded[0].Content) || !strings.Contains(loaded[0].Content, "Recovered task state") {
+		t.Fatalf("expected persisted summary system message, got %+v", loaded[0])
 	}
 }

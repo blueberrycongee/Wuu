@@ -1,0 +1,33 @@
+package plugin
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
+
+func TestBundledSubagentResolvesIndependentRuntimeHelper(t *testing.T) {
+	helper := filepath.Join(t.TempDir(), "wuu-subagent-plugin")
+	if err := os.WriteFile(helper, []byte("helper"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	plugins := discoverBundled(t.TempDir(), DiscoverOptions{
+		GOOS: "darwin",
+		LookupEnv: func(key string) (string, bool) {
+			if key == "WUU_SUBAGENT_PLUGIN_HELPER" {
+				return helper, true
+			}
+			return "", false
+		},
+	})
+	for _, item := range plugins {
+		if item.ID != "subagent" {
+			continue
+		}
+		if item.Runtime == nil || item.Runtime.Command != helper || item.Runtime.Protocol != "wuu-plugin-v1" {
+			t.Fatalf("subagent runtime = %+v", item.Runtime)
+		}
+		return
+	}
+	t.Fatal("bundled subagent plugin was not discovered")
+}

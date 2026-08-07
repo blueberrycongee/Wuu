@@ -275,6 +275,7 @@ const api: WuuDesktopApi = {
   setPluginSetting: (params) => ipcRenderer.invoke("wuu:plugin-setting-set", params),
   getPluginStorage: (params) => ipcRenderer.invoke("wuu:plugin-storage-get", params),
   setPluginStorage: (params) => ipcRenderer.invoke("wuu:plugin-storage-set", params),
+  requestPluginRuntime: (params) => ipcRenderer.invoke("wuu:plugin-runtime-request", params),
   listSkills: () => ipcRenderer.invoke("wuu:skill-list"),
   readSkillContent: (params) => ipcRenderer.invoke("wuu:skill-content", params),
   listAutomations: () => ipcRenderer.invoke("wuu:automation-list"),
@@ -492,16 +493,6 @@ const api: WuuDesktopApi = {
     ipcRenderer.invoke("wuu:respond-server-request", id, result),
   rejectServerRequest: (id: string, message: string) =>
     ipcRenderer.invoke("wuu:reject-server-request", id, message),
-  getActiveGoalSummary: (threadId?: string) =>
-    ipcRenderer.invoke("wuu:goal-active-summary", threadId),
-  pauseGoal: (goalId: string, threadId?: string) =>
-    ipcRenderer.invoke("wuu:goal-pause", goalId, threadId),
-  resumeGoal: (goalId: string, threadId?: string) =>
-    ipcRenderer.invoke("wuu:goal-resume", goalId, threadId),
-  clearGoal: (goalId: string, threadId?: string) =>
-    ipcRenderer.invoke("wuu:goal-clear", goalId, threadId),
-  updateGoalText: (goalId: string, text: string, threadId?: string) =>
-    ipcRenderer.invoke("wuu:goal-update-text", goalId, text, threadId),
   onServerEvent: (handler: (event: ServerEvent) => void) => {
     const listener = (
       _event: Electron.IpcRendererEvent,

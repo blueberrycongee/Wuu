@@ -183,6 +183,22 @@ func (h *Host) Capabilities(id string) []RegisteredCapability {
 	return out
 }
 
+// Capability returns one active capability owned by the exact plugin.
+func (h *Host) Capability(pluginID, id string) (RegisteredCapability, bool) {
+	if h == nil {
+		return RegisteredCapability{}, false
+	}
+	pluginID, id = strings.TrimSpace(pluginID), strings.TrimSpace(id)
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	for _, capability := range h.capabilities {
+		if capability.PluginID == pluginID && capability.Descriptor.ID == id && capability.client.Status().State == StateActive {
+			return capability, true
+		}
+	}
+	return RegisteredCapability{}, false
+}
+
 // InvokeCapability invokes one exact plugin registration.
 func (h *Host) InvokeCapability(ctx context.Context, capability RegisteredCapability, input, output any) error {
 	if capability.client == nil || capability.client.Status().State != StateActive {
@@ -423,6 +439,7 @@ func toolNamePart(value string) string {
 func cloneToolRegistration(registration ToolRegistration) ToolRegistration {
 	clone := registration
 	clone.InputSchema = cloneSchema(registration.InputSchema)
+	clone.ExecutionScopes = append([]string(nil), registration.ExecutionScopes...)
 	if registration.Activity != nil {
 		activity := *registration.Activity
 		clone.Activity = &activity

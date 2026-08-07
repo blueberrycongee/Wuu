@@ -12,15 +12,22 @@ import (
 	"time"
 
 	"github.com/blueberrycongee/wuu/internal/agentcontrol"
+	"github.com/blueberrycongee/wuu/internal/agentthread"
 	"github.com/blueberrycongee/wuu/internal/automation"
 	"github.com/blueberrycongee/wuu/internal/capability"
 	"github.com/blueberrycongee/wuu/internal/channels"
-	"github.com/blueberrycongee/wuu/internal/goalruntime"
 	proc "github.com/blueberrycongee/wuu/internal/process"
 	"github.com/blueberrycongee/wuu/internal/skills"
 	"github.com/blueberrycongee/wuu/internal/statepath"
 	"github.com/blueberrycongee/wuu/internal/toolctx"
 )
+
+func currentExecutionPath(env *Env) string {
+	if env == nil || strings.TrimSpace(env.AgentPath) == "" {
+		return agentthread.RootPath
+	}
+	return strings.TrimSpace(env.AgentPath)
+}
 
 // ReadFileEntry tracks file content known to the session for read deduplication
 // and active-file context freshness.
@@ -224,7 +231,6 @@ type Env struct {
 	// ("off"/"shadow"/"active"); empty resolves to active (on by default). The
 	// WUU_TOOL_RESULT_PROJECTION environment variable overrides it.
 	ToolResultProjectionMode string
-	GoalRuntime              *goalruntime.Runtime
 	AgentID                  string
 	AgentPath                string
 	// ToolSearchEnabled means deferred tools are loaded through the
