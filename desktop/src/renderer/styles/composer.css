@@ -166,7 +166,7 @@
   padding: 0;
   border: 0;
   /*
-   * Quiet icon button, unified with the goal / 排队消息 row actions
+   * Quiet icon button, unified with the queued-message row actions
    * (.composer-input-header-action): transparent by default, revealing an
    * --ink-overlay-8 hover fill, 28x28 with a 14px glyph. Right-aligned to
    * the header rows' inline padding (right:8px) and matched in size so the
