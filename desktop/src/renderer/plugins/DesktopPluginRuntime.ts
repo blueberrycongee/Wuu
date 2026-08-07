@@ -48,6 +48,8 @@ export class DesktopPluginRuntime {
 
   async sync(inventory: readonly ExtensionInventoryRecord[]): Promise<readonly DesktopPluginFailure[]> {
     const epoch = ++this.syncEpoch;
+    const preferences = await window.wuu?.getPluginConflictPreferences?.();
+    if (preferences) this.host.setConflictPreferences(preferences);
     const desired = new Map(
       inventory
         .filter(isLoadableDesktopPlugin)

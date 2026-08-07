@@ -130,8 +130,10 @@ import type {
   PluginDesktopModuleReadParams,
   PluginDesktopModuleReadResult,
   PluginSettingGetParams,
+  PluginIdentityParams,
   PluginSettingSetParams,
   PluginSettingResult,
+  PluginDiagnosticsResult,
   PluginStorageGetParams,
   PluginStorageSetParams,
   PluginStorageResult,
@@ -167,12 +169,14 @@ import {
   getMessageFlowFontSize,
   getThemePreference,
   getLanguagePreference,
+  getPluginConflictPreferences,
   getVoiceInputSettings,
   getChannelRoomPreferences,
   setCodexPetSettings,
   setMessageFlowFontSize,
   setThemePreference,
   setLanguagePreference,
+  setPluginConflictPreference,
   setVoiceInputSettings,
   setChannelRoomPreferences,
   type MessageFlowFontSize,
@@ -1457,6 +1461,8 @@ app.whenReady().then(async () => {
     appServerRequest<PluginSettingResult>(event, "plugin/setting/get", params));
   ipcMain.handle("wuu:plugin-setting-set", (event, params: PluginSettingSetParams) =>
     appServerRequest<PluginSettingResult>(event, "plugin/setting/set", params));
+  ipcMain.handle("wuu:plugin-diagnostics-list", (event, params: PluginIdentityParams) =>
+    appServerRequest<PluginDiagnosticsResult>(event, "plugin/diagnostics/list", params));
   ipcMain.handle("wuu:plugin-storage-get", (event, params: PluginStorageGetParams) =>
     appServerRequest<PluginStorageResult>(event, "plugin/storage/get", params));
   ipcMain.handle("wuu:plugin-storage-set", (event, params: PluginStorageSetParams) =>
@@ -1744,6 +1750,9 @@ app.whenReady().then(async () => {
   });
   ipcMain.handle("wuu:theme-preference-get", () => getThemePreference());
   ipcMain.handle("wuu:language-preference-get", () => getLanguagePreference());
+  ipcMain.handle("wuu:plugin-conflict-preferences-get", () => getPluginConflictPreferences());
+  ipcMain.handle("wuu:plugin-conflict-preference-set", (_event, key: string, pluginId: string) =>
+    setPluginConflictPreference(String(key), String(pluginId)));
   ipcMain.on("wuu:voice-input-settings-get-sync", (event) => {
     event.returnValue = getVoiceInputSettings();
   });

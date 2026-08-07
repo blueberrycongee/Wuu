@@ -34,6 +34,7 @@ const (
 	MethodPluginDesktopModuleRead  = "plugin/desktop-module/read"
 	MethodPluginSettingGet         = "plugin/setting/get"
 	MethodPluginSettingSet         = "plugin/setting/set"
+	MethodPluginDiagnosticsList    = "plugin/diagnostics/list"
 	MethodPluginStorageGet         = "plugin/storage/get"
 	MethodPluginStorageSet         = "plugin/storage/set"
 	MethodPluginClientRequest      = "plugin/client/request"
@@ -792,6 +793,21 @@ type PluginSettingResult struct {
 	Key   string           `json:"key"`
 	Scope PluginValueScope `json:"scope"`
 	Value json.RawMessage  `json:"value"`
+}
+
+type PluginDiagnosticsParams struct {
+	ID          string `json:"id"`
+	Fingerprint string `json:"fingerprint"`
+}
+
+type PluginContributionDiagnostic struct {
+	Contribution string `json:"contribution"`
+	Message      string `json:"message"`
+}
+
+type PluginDiagnosticsResult struct {
+	ID          string                         `json:"id"`
+	Diagnostics []PluginContributionDiagnostic `json:"diagnostics"`
 }
 
 type PluginStorageGetParams struct {

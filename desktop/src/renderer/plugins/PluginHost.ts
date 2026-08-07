@@ -203,6 +203,22 @@ export interface RegisteredPresenter extends PresenterDefinition {
   readonly order: number;
 }
 
+export interface PluginConflictCandidate {
+  readonly pluginId: string;
+  readonly generation: string;
+  readonly contributionId: string;
+  readonly title?: string;
+}
+
+export interface PluginContributionConflict {
+  readonly key: string;
+  readonly kind: "surface" | "presenter";
+  readonly target: string;
+  readonly presentationKey?: string;
+  readonly candidates: readonly PluginConflictCandidate[];
+  readonly winnerPluginId: string;
+}
+
 export type PluginDiagnosticKind = "activation" | "cleanup" | "render";
 
 export interface PluginGenerationDiagnostic {
@@ -244,6 +260,7 @@ interface SlotRecord extends OrderedRecord {
 interface SurfaceRecord extends OrderedRecord {
   readonly surfaceId: PluginSurfaceId;
   readonly mode: PluginSurfaceMode;
+  readonly title?: string;
   readonly render: PluginSurfaceRegistration["render"];
 }
 
@@ -295,6 +312,7 @@ interface PresenterRecord extends OrderedRecord {
   readonly target: PresentationTarget;
   readonly key?: string;
   readonly mode: PresentationMode;
+  readonly title?: string;
   readonly render: PresenterDefinition["render"];
   readonly compatibilityRender?: ToolActivityPresenterDefinition["render"];
 }
@@ -340,6 +358,7 @@ const EMPTY_STATUS_ITEM_SNAPSHOT: readonly RegisteredStatusItem[] = Object.freez
 const EMPTY_PRESENTER_SNAPSHOT: readonly RegisteredPresenter[] = Object.freeze([]);
 const EMPTY_TOOL_ACTIVITY_PRESENTER_SNAPSHOT: readonly RegisteredToolActivityPresenter[] = Object.freeze([]);
 const EMPTY_LOCALE_SNAPSHOT: Readonly<Record<string, string>> = Object.freeze({});
+const EMPTY_DIAGNOSTIC_SNAPSHOT: readonly PluginGenerationDiagnostic[] = Object.freeze([]);
 
 export class PluginGenerationSupersededError extends Error {
   constructor(pluginId: string, generation: string) {
@@ -367,6 +386,8 @@ export class PluginHost {
   private readonly localeSnapshots = new Map<string, Readonly<Record<string, string>>>();
   private readonly diagnostics = new Map<string, PluginGenerationDiagnostic[]>();
   private readonly presenterQuerySnapshots = new Map<string, readonly RegisteredPresenter[]>();
+  private conflictPreferences: Readonly<Record<string, string>> = Object.freeze({});
+  private conflictSnapshot: readonly PluginContributionConflict[] = Object.freeze([]);
   private commandSnapshot: readonly RegisteredPluginCommand[] = EMPTY_COMMAND_SNAPSHOT;
   private viewSnapshot: readonly RegisteredViewType[] = EMPTY_VIEW_SNAPSHOT;
   private viewPlacementSnapshot: readonly RegisteredViewPlacement[] = EMPTY_VIEW_PLACEMENT_SNAPSHOT;
@@ -556,7 +577,20 @@ export class PluginHost {
   }
 
   getGenerationDiagnostics(pluginId: string, generation: string): readonly PluginGenerationDiagnostic[] {
-    return this.diagnostics.get(diagnosticKey(pluginId, generation)) ?? [];
+    return this.diagnostics.get(diagnosticKey(pluginId, generation)) ?? EMPTY_DIAGNOSTIC_SNAPSHOT;
+  }
+
+  getConflicts(): readonly PluginContributionConflict[] {
+    return this.conflictSnapshot;
+  }
+
+  setConflictPreferences(preferences: Readonly<Record<string, string>>): void {
+    this.conflictPreferences = Object.freeze({ ...preferences });
+    this.refreshPublicState();
+  }
+
+  setConflictPreference(key: string, pluginId: string): void {
+    this.setConflictPreferences({ ...this.conflictPreferences, [key]: pluginId });
   }
 
   recordRenderFailure(
@@ -688,6 +722,7 @@ export class PluginHost {
           order,
           surfaceId,
           mode,
+          title: declaredContributionTitle(state, "surface", id),
           render: contribution.render,
           removed: false,
         };
@@ -848,7 +883,8 @@ export class PluginHost {
         this.assertDeclaredContribution(state, "presenter", { id, target, mode, priority: order });
         const record: PresenterRecord = {
           pluginId: state.pluginId, generation: state.generation, id, target, key,
-          mode, order, removed: false, render: definition.render,
+          mode, order, title: declaredContributionTitle(state, "presenter", id),
+          removed: false, render: definition.render,
         };
         state.toolActivityPresenters.push(record);
         return this.ownRecord(state, record);
@@ -1015,6 +1051,7 @@ export class PluginHost {
 
   private refreshPublicState(): void {
     let changed = false;
+    const conflicts: PluginContributionConflict[] = [];
     const slotRecords = new Map<PluginSlotId, SlotRecord[]>();
     const surfaceRecords = new Map<PluginSurfaceId, SurfaceRecord[]>();
     const commands: CommandRecord[] = [];
@@ -1070,9 +1107,15 @@ export class PluginHost {
     }
 
     for (const surfaceId of PLUGIN_SURFACE_IDS) {
-      const next = Object.freeze((surfaceRecords.get(surfaceId) ?? [])
-        .sort(compareOrdered)
-        .map(toPublicSurfaceContribution));
+      const resolved = resolveReplaceConflict(
+        "surface",
+        surfaceId,
+        undefined,
+        (surfaceRecords.get(surfaceId) ?? []).sort(compareOrdered),
+        this.conflictPreferences,
+      );
+      if (resolved.conflict) conflicts.push(resolved.conflict);
+      const next = Object.freeze(resolved.records.map(toPublicSurfaceContribution));
       const previous = this.surfaceSnapshots.get(surfaceId) ?? EMPTY_SURFACE_SNAPSHOT;
       if (!sameContributions(previous, next)) {
         this.surfaceSnapshots.set(surfaceId, next);
@@ -1121,7 +1164,12 @@ export class PluginHost {
       changed = true;
     }
 
-    const nextPresenters = Object.freeze(toolActivityPresenters.sort(compareOrdered).map(toPublicPresenter));
+    const resolvedPresenters = resolvePresenterConflicts(
+      toolActivityPresenters.sort(compareOrdered),
+      this.conflictPreferences,
+    );
+    conflicts.push(...resolvedPresenters.conflicts);
+    const nextPresenters = Object.freeze(resolvedPresenters.records.map(toPublicPresenter));
     if (!sameContributions(this.presenterSnapshot, nextPresenters)) {
       this.presenterSnapshot = nextPresenters;
       this.presenterQuerySnapshots.clear();
@@ -1139,6 +1187,12 @@ export class PluginHost {
       })));
     if (!sameContributions(this.toolActivityPresenterSnapshot, nextToolActivityPresenters)) {
       this.toolActivityPresenterSnapshot = nextToolActivityPresenters;
+      changed = true;
+    }
+
+    const nextConflicts = Object.freeze(conflicts.map((conflict) => Object.freeze(conflict)));
+    if (JSON.stringify(this.conflictSnapshot) !== JSON.stringify(nextConflicts)) {
+      this.conflictSnapshot = nextConflicts;
       changed = true;
     }
 
@@ -1377,6 +1431,98 @@ function toPublicPresenter(record: PresenterRecord): RegisteredPresenter {
     order: record.order,
     render: record.render,
   });
+}
+
+function declaredContributionTitle(
+  state: GenerationState,
+  kind: "surface" | "presenter",
+  id: string,
+): string | undefined {
+  const declarations = kind === "surface"
+    ? state.declaredContributions?.surfaces
+    : state.declaredContributions?.presenters;
+  return declarations?.find((declaration) => declaration.id === id)?.title;
+}
+
+function conflictPreferenceKey(
+  kind: "surface" | "presenter",
+  target: string,
+  presentationKey?: string,
+): string {
+  return kind === "surface"
+    ? `surface:${target}`
+    : `presenter:${target}:${presentationKey ?? ""}`;
+}
+
+function resolveReplaceConflict<T extends OrderedRecord & { mode: "replace" | "wrap"; title?: string }>(
+  kind: "surface" | "presenter",
+  target: string,
+  presentationKey: string | undefined,
+  records: T[],
+  preferences: Readonly<Record<string, string>>,
+): { records: T[]; conflict?: PluginContributionConflict } {
+  const replacements = records.filter((record) => record.mode === "replace");
+  if (replacements.length < 2) return { records };
+  const key = conflictPreferenceKey(kind, target, presentationKey);
+  const preferredPluginId = preferences[key];
+  let winner = replacements.at(-1)!;
+  if (preferredPluginId) {
+    for (let index = replacements.length - 1; index >= 0; index--) {
+      if (replacements[index].pluginId === preferredPluginId) {
+        winner = replacements[index];
+        break;
+      }
+    }
+  }
+  const resolved = records.filter((record) => record !== winner);
+  resolved.push(winner);
+  return {
+    records: resolved,
+    conflict: {
+      key,
+      kind,
+      target,
+      ...(presentationKey === undefined ? {} : { presentationKey }),
+      candidates: Object.freeze(replacements.map((record) => Object.freeze({
+        pluginId: record.pluginId,
+        generation: record.generation,
+        contributionId: record.id,
+        ...(record.title ? { title: record.title } : {}),
+      }))),
+      winnerPluginId: winner.pluginId,
+    },
+  };
+}
+
+function resolvePresenterConflicts(
+  records: PresenterRecord[],
+  preferences: Readonly<Record<string, string>>,
+): { records: PresenterRecord[]; conflicts: PluginContributionConflict[] } {
+  const groups = new Map<string, PresenterRecord[]>();
+  for (const record of records) {
+    const key = `${record.target}\u0000${record.key ?? ""}\u0000${record.key === undefined ? "absent" : "present"}`;
+    const group = groups.get(key) ?? [];
+    group.push(record);
+    groups.set(key, group);
+  }
+  let resolved = [...records];
+  const conflicts: PluginContributionConflict[] = [];
+  for (const group of groups.values()) {
+    const first = group[0];
+    const result = resolveReplaceConflict(
+      "presenter",
+      first.target,
+      first.key,
+      group,
+      preferences,
+    );
+    if (!result.conflict) continue;
+    conflicts.push(result.conflict);
+    const winner = result.records.at(-1)!;
+    resolved = resolved.filter((record) => record !== winner);
+    resolved.push(winner);
+  }
+  return { records: resolved, conflicts };
 }
 
 function compareOrdered(left: OrderedRecord, right: OrderedRecord): number {

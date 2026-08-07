@@ -346,6 +346,8 @@ export type ExtensionPendingUpdate = {
   effective_permissions?: string[];
 };
 
+export type PluginConflictPreferences = Record<string, string>;
+
 export type ExtensionProvenance = {
   kind: ExtensionKind;
   source: string;
@@ -471,6 +473,14 @@ export interface PluginSettingResult {
   key: string;
   scope: PluginValueScope;
   value: boolean | string | number;
+}
+export interface PluginContributionDiagnostic {
+  contribution: string;
+  message: string;
+}
+export interface PluginDiagnosticsResult {
+  id: string;
+  diagnostics: PluginContributionDiagnostic[];
 }
 export interface PluginStorageGetParams extends PluginIdentityParams {
   scope: PluginValueScope;
@@ -2401,6 +2411,7 @@ export type WuuDesktopApi = {
   ) => Promise<PluginDesktopModuleLoadResult>;
   getPluginSetting: (params: PluginSettingGetParams) => Promise<PluginSettingResult>;
   setPluginSetting: (params: PluginSettingSetParams) => Promise<PluginSettingResult>;
+  getPluginDiagnostics: (params: PluginIdentityParams) => Promise<PluginDiagnosticsResult>;
   getPluginStorage: (params: PluginStorageGetParams) => Promise<PluginStorageResult>;
   setPluginStorage: (params: PluginStorageSetParams) => Promise<PluginStorageResult>;
   requestPluginRuntime: (params: PluginClientRequestParams) => Promise<PluginClientRequestResult>;
@@ -2477,6 +2488,11 @@ export type WuuDesktopApi = {
   setThemePreference: (
     theme: ThemePreference,
   ) => Promise<{ ok: boolean; theme: ThemePreference }>;
+  getPluginConflictPreferences: () => Promise<PluginConflictPreferences>;
+  setPluginConflictPreference: (
+    key: string,
+    pluginId: string,
+  ) => Promise<PluginConflictPreferences>;
   initialLanguagePreference?: LanguagePreference;
   initialSystemLocale?: string;
   getLanguagePreference: () => Promise<LanguagePreference>;

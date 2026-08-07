@@ -7,6 +7,7 @@ import type {
   WuuDesktopApi,
 } from "../shared/protocol";
 import { PluginSettingsEditor } from "./PluginSettingsEditor";
+import { desktopPluginHost } from "./plugins/DesktopPluginRuntime";
 
 let container: HTMLDivElement;
 let root: Root | null = null;
@@ -23,6 +24,8 @@ afterEach(() => {
   delete (globalThis as { wuu?: WuuDesktopApi }).wuu;
   delete (window as { wuu?: WuuDesktopApi }).wuu;
   vi.restoreAllMocks();
+  desktopPluginHost.unload("alpha-conflict");
+  desktopPluginHost.unload("zeta-conflict");
 });
 
 describe("PluginSettingsEditor", () => {
@@ -122,6 +125,64 @@ describe("PluginSettingsEditor", () => {
 
     await act(async () => root?.render(<PluginSettingsEditor plugin={{ ...pluginRecord(), enabled: false }} />));
     expect(container.querySelector(".plugin-settings-editor")).toBeNull();
+  });
+
+  it("shows replace conflicts and persists a different winner", async () => {
+    const setPluginConflictPreference = vi.fn(async (key: string, pluginId: string) => ({ [key]: pluginId }));
+    installAPI({ setPluginConflictPreference });
+    for (const pluginId of ["alpha-conflict", "zeta-conflict"]) {
+      await desktopPluginHost.activateGeneration({
+        pluginId,
+        generation: "sha256:generation-1",
+        register(api) {
+          api.registerSurface("app.main", {
+            id: `${pluginId}-main`, mode: "replace", render: (_context, fallback) => fallback,
+          });
+        },
+      });
+    }
+
+    await renderEditor({ ...pluginRecord(), id: "alpha-conflict", contributions: {} });
+    const select = container.querySelector<HTMLSelectElement>("[data-conflict-key='surface:app.main'] select")!;
+    expect(select.value).toBe("zeta-conflict");
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")?.set;
+      setter?.call(select, "alpha-conflict");
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    expect(setPluginConflictPreference).toHaveBeenCalledWith("surface:app.main", "alpha-conflict");
+    expect(desktopPluginHost.getSurfaceSnapshot("app.main").at(-1)?.pluginId).toBe("alpha-conflict");
+  });
+
+  it("shows isolated contribution diagnostics", async () => {
+    installAPI();
+    await desktopPluginHost.activateGeneration({
+      pluginId: "alpha-conflict",
+      generation: "sha256:generation-1",
+      register(api) {
+        api.registerSurface("app.main", {
+          id: "broken-main", mode: "wrap", render: (_context, fallback) => fallback,
+        });
+      },
+    });
+    const contribution = desktopPluginHost.getSurfaceSnapshot("app.main")[0];
+    desktopPluginHost.recordRenderFailure(contribution, { surfaceId: "app.main" }, new Error("render boom"));
+
+    await renderEditor({ ...pluginRecord(), id: "alpha-conflict", contributions: {} });
+    expect(container.textContent).toContain("插件贡献已被隔离");
+    expect(container.textContent).toContain("render boom");
+  });
+
+  it("loads isolated runtime capability diagnostics", async () => {
+    installAPI({
+      getPluginDiagnostics: vi.fn(async ({ id }) => ({
+        id,
+        diagnostics: [{ contribution: "agent.request.transform", message: "transform boom" }],
+      })),
+    });
+    await renderEditor({ ...pluginRecord(), contributions: {} });
+    expect(container.textContent).toContain("agent.request.transform");
+    expect(container.textContent).toContain("transform boom");
   });
 });
 

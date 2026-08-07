@@ -9,6 +9,7 @@ import {
   getCodexPetSize,
   getMainWindowBounds,
   getMessageFlowFontSize,
+  getPluginConflictPreferences,
   getThemePreference,
   getVoiceInputSettings,
   getLanguagePreference,
@@ -17,6 +18,7 @@ import {
   setChannelRoomPreferences,
   setMainWindowBounds,
   setMessageFlowFontSize,
+  setPluginConflictPreference,
   setThemePreference,
   setVoiceInputSettings,
   setLanguagePreference,
@@ -129,6 +131,18 @@ describe("desktopSettings", () => {
     expect(getThemePreference(file)).toBe("light");
     setThemePreference("system", file);
     expect(getThemePreference(file)).toBe("system");
+  });
+
+  it("round-trips plugin conflict winners without replacing other settings", () => {
+    setThemePreference("dark", file);
+    expect(getPluginConflictPreferences(file)).toEqual({});
+    setPluginConflictPreference("surface:app.main", "alpha", file);
+    setPluginConflictPreference("presenter:conversation.item:", "beta", file);
+    expect(getPluginConflictPreferences(file)).toEqual({
+      "surface:app.main": "alpha",
+      "presenter:conversation.item:": "beta",
+    });
+    expect(getThemePreference(file)).toBe("dark");
   });
 
   it("rejects unknown theme values on read", async () => {

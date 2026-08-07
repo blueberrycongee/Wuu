@@ -71,6 +71,66 @@ describe("PluginHost", () => {
       .toEqual(["alpha:alpha-style", "zeta:z-style"]);
   });
 
+  it("records replace conflicts, preserves the default winner, and applies a user preference", async () => {
+    const host = new PluginHost({ react: React });
+    for (const pluginId of ["alpha", "zeta"]) {
+      await host.activateGeneration({
+        pluginId,
+        generation: "one",
+        register(api) {
+          api.registerSurface("app.main", {
+            id: `${pluginId}-main`,
+            mode: "replace",
+            render: (_context, fallback) => fallback,
+          });
+        },
+      });
+    }
+
+    expect(host.getSurfaceSnapshot("app.main").at(-1)?.pluginId).toBe("zeta");
+    expect(host.getConflicts()).toEqual([
+      expect.objectContaining({
+        key: "surface:app.main",
+        kind: "surface",
+        target: "app.main",
+        winnerPluginId: "zeta",
+      }),
+    ]);
+
+    host.setConflictPreference("surface:app.main", "alpha");
+    expect(host.getSurfaceSnapshot("app.main").at(-1)?.pluginId).toBe("alpha");
+    expect(host.getConflicts()[0]?.winnerPluginId).toBe("alpha");
+  });
+
+  it("arbitrates presenter replacements per target and key without treating wrappers as conflicts", async () => {
+    const host = new PluginHost({ react: React });
+    for (const pluginId of ["alpha", "zeta"]) {
+      await host.activateGeneration({
+        pluginId,
+        generation: "one",
+        register(api) {
+          api.registerPresenter({
+            id: `${pluginId}-replace`, target: "conversation.item", key: "message",
+            mode: "replace", priority: pluginId === "zeta" ? 10 : 0, render: () => null,
+          });
+          api.registerPresenter({
+            id: `${pluginId}-wrap`, target: "conversation.item", key: "message",
+            mode: "wrap", render: ({ fallback }) => fallback,
+          });
+        },
+      });
+    }
+
+    const conflict = host.getConflicts().find((item) => item.kind === "presenter");
+    expect(conflict).toEqual(expect.objectContaining({
+      key: "presenter:conversation.item:message",
+      winnerPluginId: "zeta",
+    }));
+    expect(conflict?.candidates).toHaveLength(2);
+    host.setConflictPreference("presenter:conversation.item:message", "alpha");
+    expect(host.getPresenters("conversation.item", "message").filter((item) => item.mode === "replace").at(-1)?.pluginId).toBe("alpha");
+  });
+
   it("replaces a generation and makes stale generation handles harmless", async () => {
     const host = new PluginHost({ react: React });
     const cleanup: string[] = [];

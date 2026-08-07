@@ -17,6 +17,7 @@ import {
   type ChannelRoomPreferences,
   type MessageFlowFontSize,
   type LanguagePreference,
+  type PluginConflictPreferences,
   type ThemePreference,
   type VoiceInputSettings,
 } from "../shared/protocol";
@@ -65,6 +66,7 @@ export type DesktopSettings = {
   // windowState.loadMainWindowBounds) so an unplugged display is treated as
   // "no saved bounds" rather than "open off-screen".
   main_window_bounds?: WindowBounds;
+  plugin_conflict_preferences?: PluginConflictPreferences;
 };
 
 const THEME_PREFERENCES: readonly ThemePreference[] = ["system", "light", "dark"];
@@ -161,6 +163,19 @@ export function readDesktopSettings(filePath: string = desktopSettingsPath()): D
         };
       }
     }
+    if (
+      typeof record.plugin_conflict_preferences === "object" &&
+      record.plugin_conflict_preferences !== null &&
+      !Array.isArray(record.plugin_conflict_preferences)
+    ) {
+      const preferences: PluginConflictPreferences = {};
+      for (const [key, value] of Object.entries(record.plugin_conflict_preferences)) {
+        if (key.trim() && typeof value === "string" && value.trim()) {
+          preferences[key] = value.trim();
+        }
+      }
+      settings.plugin_conflict_preferences = preferences;
+    }
     return settings;
   } catch {
     // Missing or corrupted file → defaults.
@@ -194,6 +209,29 @@ export function getLanguagePreference(filePath?: string): LanguagePreference {
 export function setLanguagePreference(language: LanguagePreference, filePath?: string): void {
   const settings = readDesktopSettings(filePath);
   writeDesktopSettings({ ...settings, language }, filePath);
+}
+
+export function getPluginConflictPreferences(filePath?: string): PluginConflictPreferences {
+  return readDesktopSettings(filePath).plugin_conflict_preferences ?? {};
+}
+
+export function setPluginConflictPreference(
+  key: string,
+  pluginId: string,
+  filePath?: string,
+): PluginConflictPreferences {
+  const normalizedKey = key.trim();
+  const normalizedPluginId = pluginId.trim();
+  if (!normalizedKey || !normalizedPluginId) {
+    throw new Error("Plugin conflict preference requires a key and plugin id");
+  }
+  const settings = readDesktopSettings(filePath);
+  const preferences = {
+    ...(settings.plugin_conflict_preferences ?? {}),
+    [normalizedKey]: normalizedPluginId,
+  };
+  writeDesktopSettings({ ...settings, plugin_conflict_preferences: preferences }, filePath);
+  return preferences;
 }
 
 export function getVoiceInputSettings(filePath?: string): VoiceInputSettings {

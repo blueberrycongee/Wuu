@@ -273,6 +273,7 @@ const api: WuuDesktopApi = {
     ipcRenderer.invoke("wuu:plugin-desktop-module-load", params),
   getPluginSetting: (params) => ipcRenderer.invoke("wuu:plugin-setting-get", params),
   setPluginSetting: (params) => ipcRenderer.invoke("wuu:plugin-setting-set", params),
+  getPluginDiagnostics: (params) => ipcRenderer.invoke("wuu:plugin-diagnostics-list", params),
   getPluginStorage: (params) => ipcRenderer.invoke("wuu:plugin-storage-get", params),
   setPluginStorage: (params) => ipcRenderer.invoke("wuu:plugin-storage-set", params),
   requestPluginRuntime: (params) => ipcRenderer.invoke("wuu:plugin-runtime-request", params),
@@ -379,6 +380,9 @@ const api: WuuDesktopApi = {
   initialChannelRoomPreferences,
   initialSystemLocale: Intl.DateTimeFormat().resolvedOptions().locale,
   getLanguagePreference: () => ipcRenderer.invoke("wuu:language-preference-get"),
+  getPluginConflictPreferences: () => ipcRenderer.invoke("wuu:plugin-conflict-preferences-get"),
+  setPluginConflictPreference: (key: string, pluginId: string) =>
+    ipcRenderer.invoke("wuu:plugin-conflict-preference-set", key, pluginId),
   setLanguagePreference: (language: LanguagePreference) =>
     ipcRenderer.invoke("wuu:language-preference-set", language),
   onLanguagePreferenceChange: (handler: (language: LanguagePreference) => void) => {

@@ -59,6 +59,26 @@ func (s *Server) handlePluginSettingSet(req Request) error {
 	return s.writeResponse(req.ID, PluginSettingResult{ID: plugin.SubjectID, Key: key, Scope: scope, Value: document.Values[key]}, nil)
 }
 
+func (s *Server) handlePluginDiagnosticsList(req Request) error {
+	var params PluginDiagnosticsParams
+	if err := decodeParams(req.Params, &params); err != nil {
+		return s.writeResponse(req.ID, nil, err)
+	}
+	plugin, err := s.requireActiveDesktopPlugin(params.ID, params.Fingerprint)
+	if err != nil {
+		return s.writeResponse(req.ID, nil, err)
+	}
+	diagnostics := s.rt.PluginHost.ContributionDiagnostics(plugin.ID)
+	result := make([]PluginContributionDiagnostic, 0, len(diagnostics))
+	for _, diagnostic := range diagnostics {
+		result = append(result, PluginContributionDiagnostic{
+			Contribution: diagnostic.Contribution,
+			Message:      diagnostic.Message,
+		})
+	}
+	return s.writeResponse(req.ID, PluginDiagnosticsResult{ID: plugin.SubjectID, Diagnostics: result}, nil)
+}
+
 func (s *Server) handlePluginStorageGet(req Request) error {
 	var params PluginStorageGetParams
 	if err := decodeParams(req.Params, &params); err != nil {

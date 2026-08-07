@@ -1,11 +1,15 @@
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useState, useSyncExternalStore } from "react";
 import type {
   ExtensionInventoryRecord,
+  PluginContributionDiagnostic,
   ExtensionSettingDescriptor,
 } from "../shared/protocol";
 import { useI18n } from "./i18n";
+import { desktopPluginHost } from "./plugins/DesktopPluginRuntime";
+import type { PluginContributionConflict, PluginGenerationDiagnostic } from "./plugins/PluginHost";
 
 type SettingValue = boolean | string | number;
+const EMPTY_DIAGNOSTICS: readonly PluginGenerationDiagnostic[] = Object.freeze([]);
 
 export function PluginSettingsEditor({
   plugin,
@@ -15,13 +19,53 @@ export function PluginSettingsEditor({
   const settings = plugin.contributions?.settings ?? [];
   const approved = plugin.approval_state === "official" || plugin.approval_state === "granted";
   const fingerprint = plugin.fingerprint;
+  const conflicts = useSyncExternalStore(
+    (listener) => desktopPluginHost.subscribe(listener),
+    () => desktopPluginHost.getConflicts(),
+    () => desktopPluginHost.getConflicts(),
+  ).filter((conflict) => conflict.candidates.some((candidate) => candidate.pluginId === plugin.id));
+  const rendererDiagnostics = useSyncExternalStore(
+    (listener) => desktopPluginHost.subscribe(listener),
+    () => fingerprint ? desktopPluginHost.getGenerationDiagnostics(plugin.id, fingerprint) : EMPTY_DIAGNOSTICS,
+    () => EMPTY_DIAGNOSTICS,
+  ).filter((diagnostic) => diagnostic.kind === "render");
+  const [runtimeDiagnostics, setRuntimeDiagnostics] = useState<readonly PluginContributionDiagnostic[]>([]);
+  const [runtimeDiagnosticError, setRuntimeDiagnosticError] = useState("");
 
-  if (!approved || plugin.enabled === false || !fingerprint || settings.length === 0) {
+  useEffect(() => {
+    let cancelled = false;
+    if (!fingerprint || !window.wuu.getPluginDiagnostics) return;
+    setRuntimeDiagnosticError("");
+    void window.wuu.getPluginDiagnostics({ id: plugin.id, fingerprint }).then((result) => {
+      if (!cancelled) setRuntimeDiagnostics(result.diagnostics);
+    }).catch((loadError: unknown) => {
+      if (!cancelled) setRuntimeDiagnosticError(errorMessage(loadError, "无法读取插件诊断"));
+    });
+    return () => { cancelled = true; };
+  }, [fingerprint, plugin.id]);
+
+  if (!approved || plugin.enabled === false || !fingerprint || (settings.length === 0 && conflicts.length === 0 && rendererDiagnostics.length === 0 && runtimeDiagnostics.length === 0 && !runtimeDiagnosticError)) {
     return null;
   }
 
   return (
     <section className="plugin-settings-editor" aria-label={`${plugin.name} settings`}>
+      {conflicts.map((conflict) => (
+        <PluginConflictControl key={conflict.key} conflict={conflict} />
+      ))}
+      {runtimeDiagnostics.map((diagnostic) => (
+        <div className="plugin-contribution-warning" role="status" key={`runtime:${diagnostic.contribution}`}>
+          <strong>插件贡献已被隔离</strong>
+          <span>{diagnostic.contribution}：{diagnostic.message}</span>
+        </div>
+      ))}
+      {runtimeDiagnosticError ? <div className="plugin-contribution-warning" role="alert">{runtimeDiagnosticError}</div> : null}
+      {rendererDiagnostics.map((diagnostic, index) => (
+        <div className="plugin-contribution-warning" role="status" key={`${diagnostic.message}:${index}`}>
+          <strong>插件贡献已被隔离</strong>
+          <span>{diagnostic.message}</span>
+        </div>
+      ))}
       {settings.map((setting) => (
         <PluginSettingControl
           key={setting.id}
@@ -31,6 +75,52 @@ export function PluginSettingsEditor({
         />
       ))}
     </section>
+  );
+}
+
+function PluginConflictControl({ conflict }: { conflict: PluginContributionConflict }): JSX.Element {
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const candidates = Array.from(new Map(
+    conflict.candidates.map((candidate) => [candidate.pluginId, candidate] as const),
+  ).values());
+
+  async function choose(pluginId: string): Promise<void> {
+    if (saving || pluginId === conflict.winnerPluginId) return;
+    setSaving(true);
+    setError("");
+    try {
+      const preferences = await window.wuu.setPluginConflictPreference(conflict.key, pluginId);
+      desktopPluginHost.setConflictPreferences(preferences);
+    } catch (saveError) {
+      setError(errorMessage(saveError, "无法保存插件冲突选择"));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="plugin-contribution-conflict" data-conflict-key={conflict.key}>
+      <div>
+        <strong>插件贡献冲突</strong>
+        <span>{conflict.kind === "surface" ? "界面区域" : "内容呈现"}：{conflict.target}</span>
+      </div>
+      <label>
+        使用
+        <select
+          value={conflict.winnerPluginId}
+          disabled={saving}
+          onChange={(event) => void choose(event.currentTarget.value)}
+        >
+          {candidates.map((candidate) => (
+            <option value={candidate.pluginId} key={candidate.pluginId}>
+              {candidate.title ? `${candidate.title} (${candidate.pluginId})` : candidate.pluginId}
+            </option>
+          ))}
+        </select>
+      </label>
+      {error ? <span role="alert">{error}</span> : null}
+    </div>
   );
 }
 

@@ -1,7 +1,9 @@
 package appserver
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -9,6 +11,7 @@ import (
 
 	"github.com/blueberrycongee/wuu/internal/extensions"
 	pluginpkg "github.com/blueberrycongee/wuu/internal/plugin"
+	"github.com/blueberrycongee/wuu/internal/pluginhost"
 )
 
 func TestPluginSettingsValidateOwnershipTypeScopeAndGeneration(t *testing.T) {
@@ -39,6 +42,24 @@ func TestPluginSettingsValidateOwnershipTypeScopeAndGeneration(t *testing.T) {
 		if response["error"] == nil {
 			t.Fatalf("%s unexpectedly succeeded: %+v", id, response)
 		}
+	}
+}
+
+func TestPluginDiagnosticsExposeIsolatedCapabilityFailures(t *testing.T) {
+	srv, item, out := newPluginStateTestServer(t)
+	broken := &continuationTestRuntime{
+		id: item.ID, capability: pluginhost.CapabilityAgentTurnCompleted, invokeErr: errors.New("observer boom"),
+	}
+	srv.rt.PluginHost = pluginhost.New(broken)
+	if err := srv.notifyPluginTurnCompleted(context.Background(), pluginhost.AgentTurnCompletedInput{}); err != nil {
+		t.Fatal(err)
+	}
+	callPluginPackageRPC(t, srv, "diagnostics", MethodPluginDiagnosticsList, PluginDiagnosticsParams{
+		ID: item.SubjectID, Fingerprint: item.Fingerprint,
+	})
+	result := remarshal[PluginDiagnosticsResult](t, responseByID(t, parseOutput(t, out.String()), "diagnostics")["result"])
+	if result.ID != item.SubjectID || len(result.Diagnostics) != 1 || result.Diagnostics[0].Contribution != pluginhost.CapabilityAgentTurnCompleted || !strings.Contains(result.Diagnostics[0].Message, "observer boom") {
+		t.Fatalf("diagnostics result = %+v", result)
 	}
 }
 

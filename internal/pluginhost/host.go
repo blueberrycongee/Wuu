@@ -66,10 +66,16 @@ type Host struct {
 	tools        map[string]RegisteredTool
 	toolOrder    []string
 	capabilities []RegisteredCapability
+	diagnostics  map[string]map[string]string
+}
+
+type ContributionDiagnostic struct {
+	Contribution string `json:"contribution"`
+	Message      string `json:"message"`
 }
 
 func New(clients ...Client) *Host {
-	host := &Host{tools: make(map[string]RegisteredTool)}
+	host := &Host{tools: make(map[string]RegisteredTool), diagnostics: make(map[string]map[string]string)}
 	for _, client := range clients {
 		host.addLocked(client)
 	}
@@ -242,19 +248,46 @@ func (h *Host) HandleCapabilityError(capability RegisteredCapability, err error)
 	if err == nil {
 		return nil
 	}
-	return handlePluginError(capability.PluginID, capability.Descriptor.ID, EffectiveErrorPolicy(capability.Descriptor), err)
-}
-
-func handlePluginError(pluginID, contribution string, policy ErrorPolicy, err error) error {
-	switch policy {
+	switch EffectiveErrorPolicy(capability.Descriptor) {
 	case ErrorPolicyIsolate:
-		providers.DebugLogf("plugin %q contribution %q isolated after failure: %v", pluginID, contribution, err)
+		h.recordDiagnostic(capability.PluginID, capability.Descriptor.ID, err.Error())
+		providers.DebugLogf("plugin %q contribution %q isolated after failure: %v", capability.PluginID, capability.Descriptor.ID, err)
 		return nil
 	case ErrorPolicyIgnore:
 		return nil
 	default:
 		return err
 	}
+}
+
+func (h *Host) recordDiagnostic(pluginID, contribution, message string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	byContribution := h.diagnostics[pluginID]
+	if byContribution == nil {
+		byContribution = make(map[string]string)
+		h.diagnostics[pluginID] = byContribution
+	}
+	byContribution[contribution] = message
+}
+
+func (h *Host) ContributionDiagnostics(pluginID string) []ContributionDiagnostic {
+	if h == nil {
+		return nil
+	}
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	byContribution := h.diagnostics[strings.TrimSpace(pluginID)]
+	contributions := make([]string, 0, len(byContribution))
+	for contribution := range byContribution {
+		contributions = append(contributions, contribution)
+	}
+	sort.Strings(contributions)
+	out := make([]ContributionDiagnostic, 0, len(contributions))
+	for _, contribution := range contributions {
+		out = append(out, ContributionDiagnostic{Contribution: contribution, Message: byContribution[contribution]})
+	}
+	return out
 }
 
 // ToolDefinitions returns plugin tools in deterministic client and declaration

@@ -135,7 +135,8 @@ func TestPluginRequestTransformErrorPolicy(t *testing.T) {
 			next := &runtimeCapabilityClient{id: "next", priority: 5, mutate: func(output *pluginhost.RequestTransformOutput) {
 				output.Request.Model = "next-model"
 			}}
-			intercept := pluginRequestInterceptor(pluginhost.New(broken, next), "openai", "thread", "/workspace")
+			host := pluginhost.New(broken, next)
+			intercept := pluginRequestInterceptor(host, "openai", "thread", "/workspace")
 			request := providers.ChatRequest{Model: "original", Messages: []providers.ChatMessage{{Role: "user", Content: "hello"}}}
 			err := intercept(context.Background(), &request)
 			if policy == pluginhost.ErrorPolicyPropagate {
@@ -152,6 +153,10 @@ func TestPluginRequestTransformErrorPolicy(t *testing.T) {
 			}
 			if next.invoked != 1 || request.Model != "next-model" {
 				t.Fatalf("isolated chain did not continue: invoked=%d request=%+v", next.invoked, request)
+			}
+			diagnostics := host.ContributionDiagnostics("broken")
+			if len(diagnostics) != 1 || diagnostics[0].Contribution != pluginhost.CapabilityAgentRequestTransform || !strings.Contains(diagnostics[0].Message, "transform boom") {
+				t.Fatalf("isolated diagnostics = %+v", diagnostics)
 			}
 		})
 	}
