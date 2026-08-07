@@ -27,6 +27,9 @@ func TestBundledGoalResolvesIndependentRuntimeHelper(t *testing.T) {
 		if item.Runtime == nil || item.Runtime.Command != helper || item.Runtime.Protocol != "wuu-plugin-v1" {
 			t.Fatalf("goal runtime = %+v", item.Runtime)
 		}
+		if len(item.Slots) != 1 || item.Slots[0].ID != "goal-strip" || item.Slots[0].Target != "composer.above" {
+			t.Fatalf("goal slots = %+v", item.Slots)
+		}
 		return
 	}
 	t.Fatal("bundled goal plugin was not discovered")

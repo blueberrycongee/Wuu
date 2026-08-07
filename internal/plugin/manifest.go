@@ -97,6 +97,9 @@ type Manifest struct {
 	Desktop              *DesktopSpec                      `json:"desktop,omitempty"`
 	Themes               []ThemeSpec                       `json:"themes,omitempty"`
 	Settings             map[string]SettingDefinition      `json:"settings,omitempty"`
+	Slots                []SlotContributionSpec            `json:"slots,omitempty"`
+	Surfaces             []SurfaceContributionSpec         `json:"surfaces,omitempty"`
+	Presenters           []PresenterContributionSpec       `json:"presenters,omitempty"`
 	Interface            json.RawMessage                   `json:"interface,omitempty"`
 	Platforms            []string                          `json:"platforms,omitempty"`
 	RequestedPermissions []string                          `json:"requested_permissions,omitempty"`
@@ -118,6 +121,36 @@ type ThemeSpec struct {
 	Base   string            `json:"base"`
 	Tokens map[string]string `json:"tokens"`
 	Syntax map[string]string `json:"syntax,omitempty"`
+}
+
+type ContributionMode string
+
+const (
+	ContributionModeReplace ContributionMode = "replace"
+	ContributionModeWrap    ContributionMode = "wrap"
+)
+
+type SlotContributionSpec struct {
+	ID     string `json:"id"`
+	Target string `json:"target"`
+	Order  int    `json:"order,omitempty"`
+	Title  string `json:"title,omitempty"`
+}
+
+type SurfaceContributionSpec struct {
+	ID     string           `json:"id"`
+	Target string           `json:"target"`
+	Mode   ContributionMode `json:"mode"`
+	Order  int              `json:"order,omitempty"`
+	Title  string           `json:"title,omitempty"`
+}
+
+type PresenterContributionSpec struct {
+	ID       string           `json:"id"`
+	Target   string           `json:"target"`
+	Mode     ContributionMode `json:"mode"`
+	Priority int              `json:"priority,omitempty"`
+	Title    string           `json:"title,omitempty"`
 }
 
 type SettingType string
@@ -204,9 +237,12 @@ type rawManifest struct {
 }
 
 type rawContributes struct {
-	Commands json.RawMessage `json:"commands"`
-	Themes   json.RawMessage `json:"themes"`
-	Settings json.RawMessage `json:"settings"`
+	Commands   json.RawMessage `json:"commands"`
+	Themes     json.RawMessage `json:"themes"`
+	Settings   json.RawMessage `json:"settings"`
+	Slots      json.RawMessage `json:"slots"`
+	Surfaces   json.RawMessage `json:"surfaces"`
+	Presenters json.RawMessage `json:"presenters"`
 }
 
 var supportedManifestFields = map[string]struct{}{
@@ -267,7 +303,7 @@ func normalizeManifest(data []byte, root string, official bool) (Manifest, error
 		return Manifest{}, err
 	}
 	if contributes, ok := fields["contributes"]; ok {
-		if err := validateObjectFields("contributes", contributes, "commands", "themes", "settings"); err != nil {
+		if err := validateObjectFields("contributes", contributes, "commands", "themes", "settings", "slots", "surfaces", "presenters"); err != nil {
 			return Manifest{}, err
 		}
 	}
@@ -312,6 +348,10 @@ func normalizeManifest(data []byte, root string, official bool) (Manifest, error
 	if err != nil {
 		return Manifest{}, err
 	}
+	slots, surfaces, presenters, err := normalizeUIContributions(raw.Contributes)
+	if err != nil {
+		return Manifest{}, err
+	}
 	helper := firstRaw(raw.OfficialNativeHelper, raw.OfficialHelperAlias)
 	if hasDeclaredValue(helper) && !official {
 		return Manifest{}, fmt.Errorf("official_native_helper is reserved for official bundled plugins")
@@ -353,6 +393,9 @@ func normalizeManifest(data []byte, root string, official bool) (Manifest, error
 		Desktop:              desktop,
 		Themes:               themes,
 		Settings:             settings,
+		Slots:                slots,
+		Surfaces:             surfaces,
+		Presenters:           presenters,
 		Interface:            cloneRaw(raw.Interface),
 		Platforms:            normalizeStrings(raw.Platforms),
 		RequestedPermissions: requested,
@@ -476,6 +519,153 @@ func normalizeThemes(raw json.RawMessage) ([]ThemeSpec, error) {
 	}
 	sort.Slice(themes, func(i, j int) bool { return themes[i].ID < themes[j].ID })
 	return themes, nil
+}
+
+var knownSlotTargets = map[string]struct{}{
+	"sidebar.primary": {}, "sidebar.footer": {}, "workspace.header": {}, "conversation.header": {},
+	"conversation.message.before": {}, "conversation.message.after": {}, "composer.above": {},
+	"composer.toolbar": {}, "settings.plugin": {},
+}
+
+var knownSurfaceTargets = map[string]struct{}{
+	"app.shell": {}, "app.sidebar": {}, "app.main": {}, "app.auxiliary": {}, "app.status": {},
+	"view.launch": {}, "view.conversation": {}, "view.workspace": {}, "view.catalog": {},
+	"view.settings": {}, "conversation.timeline": {}, "conversation.message": {},
+	"conversation.composer": {},
+}
+
+var knownPresenterTargets = map[string]struct{}{
+	"conversation.item": {}, "conversation.process": {}, "conversation.tool-activity": {},
+	"conversation.composer": {}, "header.conversation": {}, "header.workspace": {},
+	"navigation.primary": {}, "app.status": {}, "content.preview": {}, "settings": {},
+}
+
+func normalizeUIContributions(raw rawContributes) ([]SlotContributionSpec, []SurfaceContributionSpec, []PresenterContributionSpec, error) {
+	seen := make(map[string]string)
+	slots, err := normalizeSlots(raw.Slots, seen)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	surfaces, err := normalizeSurfaces(raw.Surfaces, seen)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	presenters, err := normalizePresenters(raw.Presenters, seen)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	return slots, surfaces, presenters, nil
+}
+
+func normalizeSlots(raw json.RawMessage, seen map[string]string) ([]SlotContributionSpec, error) {
+	items, err := decodeContributionArray("contributes.slots", raw)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]SlotContributionSpec, 0, len(items))
+	for index, item := range items {
+		field := fmt.Sprintf("contributes.slots[%d]", index)
+		if err := validateObjectFields(field, item, "id", "target", "order", "title"); err != nil {
+			return nil, err
+		}
+		var spec SlotContributionSpec
+		if err := json.Unmarshal(item, &spec); err != nil {
+			return nil, fmt.Errorf("%s: %w", field, err)
+		}
+		if err := normalizeContributionIdentity(field, &spec.ID, &spec.Target, &spec.Title, knownSlotTargets, seen); err != nil {
+			return nil, err
+		}
+		out = append(out, spec)
+	}
+	return out, nil
+}
+
+func normalizeSurfaces(raw json.RawMessage, seen map[string]string) ([]SurfaceContributionSpec, error) {
+	items, err := decodeContributionArray("contributes.surfaces", raw)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]SurfaceContributionSpec, 0, len(items))
+	for index, item := range items {
+		field := fmt.Sprintf("contributes.surfaces[%d]", index)
+		if err := validateObjectFields(field, item, "id", "target", "mode", "order", "title"); err != nil {
+			return nil, err
+		}
+		var spec SurfaceContributionSpec
+		if err := json.Unmarshal(item, &spec); err != nil {
+			return nil, fmt.Errorf("%s: %w", field, err)
+		}
+		if err := normalizeContributionIdentity(field, &spec.ID, &spec.Target, &spec.Title, knownSurfaceTargets, seen); err != nil {
+			return nil, err
+		}
+		if err := validateContributionMode(field, spec.Mode); err != nil {
+			return nil, err
+		}
+		out = append(out, spec)
+	}
+	return out, nil
+}
+
+func normalizePresenters(raw json.RawMessage, seen map[string]string) ([]PresenterContributionSpec, error) {
+	items, err := decodeContributionArray("contributes.presenters", raw)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]PresenterContributionSpec, 0, len(items))
+	for index, item := range items {
+		field := fmt.Sprintf("contributes.presenters[%d]", index)
+		if err := validateObjectFields(field, item, "id", "target", "mode", "priority", "title"); err != nil {
+			return nil, err
+		}
+		var spec PresenterContributionSpec
+		if err := json.Unmarshal(item, &spec); err != nil {
+			return nil, fmt.Errorf("%s: %w", field, err)
+		}
+		if err := normalizeContributionIdentity(field, &spec.ID, &spec.Target, &spec.Title, knownPresenterTargets, seen); err != nil {
+			return nil, err
+		}
+		if err := validateContributionMode(field, spec.Mode); err != nil {
+			return nil, err
+		}
+		out = append(out, spec)
+	}
+	return out, nil
+}
+
+func decodeContributionArray(field string, raw json.RawMessage) ([]json.RawMessage, error) {
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null")) {
+		return nil, nil
+	}
+	var items []json.RawMessage
+	if err := json.Unmarshal(trimmed, &items); err != nil {
+		return nil, fmt.Errorf("%s must be an array: %w", field, err)
+	}
+	return items, nil
+}
+
+func normalizeContributionIdentity(field string, id, target, title *string, knownTargets map[string]struct{}, seen map[string]string) error {
+	*id = strings.TrimSpace(*id)
+	*target = strings.TrimSpace(*target)
+	*title = strings.TrimSpace(*title)
+	if *id == "" {
+		return fmt.Errorf("%s requires id", field)
+	}
+	if previous, ok := seen[*id]; ok {
+		return fmt.Errorf("%s has duplicate plugin-local id %q already declared by %s", field, *id, previous)
+	}
+	if _, ok := knownTargets[*target]; !ok {
+		return fmt.Errorf("%s has unknown target %q", field, *target)
+	}
+	seen[*id] = field
+	return nil
+}
+
+func validateContributionMode(field string, mode ContributionMode) error {
+	if mode != ContributionModeReplace && mode != ContributionModeWrap {
+		return fmt.Errorf("%s mode must be replace or wrap", field)
+	}
+	return nil
 }
 
 func normalizeTokenMap(field string, values map[string]string, allowed map[string]struct{}, required bool) (map[string]string, error) {

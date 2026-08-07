@@ -418,6 +418,24 @@ func (s *Server) currentExtensionInventory() []ExtensionInventoryRecord {
 				Apply:       ExtensionSettingApplyMode(definition.Apply),
 			})
 		}
+		slots := make([]ExtensionSlotContributionDescriptor, 0, len(item.Slots))
+		for _, contribution := range item.Slots {
+			slots = append(slots, ExtensionSlotContributionDescriptor{
+				ID: contribution.ID, Target: contribution.Target, Order: contribution.Order, Title: contribution.Title,
+			})
+		}
+		surfaces := make([]ExtensionSurfaceContributionDescriptor, 0, len(item.Surfaces))
+		for _, contribution := range item.Surfaces {
+			surfaces = append(surfaces, ExtensionSurfaceContributionDescriptor{
+				ID: contribution.ID, Target: contribution.Target, Mode: string(contribution.Mode), Order: contribution.Order, Title: contribution.Title,
+			})
+		}
+		presenters := make([]ExtensionPresenterContributionDescriptor, 0, len(item.Presenters))
+		for _, contribution := range item.Presenters {
+			presenters = append(presenters, ExtensionPresenterContributionDescriptor{
+				ID: contribution.ID, Target: contribution.Target, Mode: string(contribution.Mode), Priority: contribution.Priority, Title: contribution.Title,
+			})
+		}
 		packageRecord := ExtensionInventoryRecord{
 			ID:          item.SubjectID,
 			Name:        item.ID,
@@ -444,8 +462,11 @@ func (s *Server) currentExtensionInventory() []ExtensionInventoryRecord {
 		if item.Desktop != nil {
 			packageRecord.Desktop = &ExtensionDesktopDescriptor{Entry: item.Desktop.Entry}
 		}
-		if len(commands) > 0 || len(themes) > 0 || len(settings) > 0 {
-			packageRecord.Contributions = &ExtensionContributions{Commands: commands, Themes: themes, Settings: settings}
+		if len(commands) > 0 || len(themes) > 0 || len(settings) > 0 || len(slots) > 0 || len(surfaces) > 0 || len(presenters) > 0 {
+			packageRecord.Contributions = &ExtensionContributions{
+				Commands: commands, Themes: themes, Settings: settings,
+				Slots: slots, Surfaces: surfaces, Presenters: presenters,
+			}
 		}
 		if pending, ok := pendingUpdatesByID[item.ID]; ok && item.Source == "user" {
 			packageRecord.PendingUpdate = &ExtensionPendingUpdate{

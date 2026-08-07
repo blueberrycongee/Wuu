@@ -27,6 +27,9 @@ func TestBundledSubagentResolvesIndependentRuntimeHelper(t *testing.T) {
 		if item.Runtime == nil || item.Runtime.Command != helper || item.Runtime.Protocol != "wuu-plugin-v1" {
 			t.Fatalf("subagent runtime = %+v", item.Runtime)
 		}
+		if len(item.Slots) != 2 || item.Slots[0].ID != "subagent-status" || item.Slots[1].ID != "subagent-settings" {
+			t.Fatalf("subagent slots = %+v", item.Slots)
+		}
 		return
 	}
 	t.Fatal("bundled subagent plugin was not discovered")

@@ -3,7 +3,11 @@ import { useEffect } from "react";
 
 import type { ExtensionInventoryRecord } from "../../shared/protocol";
 import { syncExtensionTheme } from "../Theme";
-import { PluginHost, type PluginGenerationApi } from "./PluginHost";
+import {
+  PluginHost,
+  type PluginContributionDeclarations,
+  type PluginGenerationApi,
+} from "./PluginHost";
 import { WorkbenchController } from "./Workbench";
 
 interface DesktopPluginModule {
@@ -71,6 +75,7 @@ export class DesktopPluginRuntime {
         await this.host.activateGeneration({
           pluginId: plugin.id,
           generation: fingerprint,
+          contributions: (plugin.contributions ?? {}) as PluginContributionDeclarations,
           register: async (api) => {
             const module = requireDesktopPluginModule(await this.loadModule(loaded.url));
             await module.activate(api);

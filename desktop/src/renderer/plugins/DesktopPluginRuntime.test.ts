@@ -54,6 +54,28 @@ describe("DesktopPluginRuntime", () => {
       expect.objectContaining({ pluginId: "user:demo", fingerprint: "fingerprint-one" }),
     ]);
   });
+
+  it("enforces manifest declarations for desktop UI registrations", async () => {
+    installDesktopModuleLoader(vi.fn(async ({ id, fingerprint }) => ({
+      id,
+      fingerprint,
+      digest: "c".repeat(64),
+      url: "wuu-plugin://module/" + "c".repeat(64) + ".js",
+    })));
+    const runtime = new DesktopPluginRuntime(
+      new PluginHost({ react: React }),
+      async () => ({
+        activate: (api: { registerSlot(target: string, contribution: { id: string; render(): null }): unknown }) => {
+          api.registerSlot("composer.above", { id: "undeclared", render: () => null });
+        },
+      }),
+    );
+
+    const failures = await runtime.sync([inventoryPlugin()]);
+    expect(failures[0]?.error).toEqual(expect.objectContaining({
+      message: expect.stringContaining("is not declared in the manifest"),
+    }));
+  });
 });
 
 function inventoryPlugin(): ExtensionInventoryRecord {

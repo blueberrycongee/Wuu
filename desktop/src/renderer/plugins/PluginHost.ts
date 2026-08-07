@@ -73,6 +73,12 @@ export interface PluginSurfaceRegistration {
   render(context: PluginSlotRenderContext, fallback: React.ReactNode): React.ReactNode;
 }
 
+export interface PluginContributionDeclarations {
+  readonly slots?: readonly Readonly<{ id: string; target: PluginSlotId; order?: number; title?: string }>[];
+  readonly surfaces?: readonly Readonly<{ id: string; target: PluginSurfaceId; mode: PluginSurfaceMode; order?: number; title?: string }>[];
+  readonly presenters?: readonly Readonly<{ id: string; target: PresentationTarget; mode: PresentationMode; priority?: number; title?: string }>[];
+}
+
 export interface PluginCommandRegistration {
   id: string;
   title: string;
@@ -130,6 +136,7 @@ export interface PluginGenerationApi {
 export interface ActivatePluginGenerationOptions {
   pluginId: string;
   generation: string;
+  contributions?: PluginContributionDeclarations;
   register(api: PluginGenerationApi): void | Promise<void>;
 }
 
@@ -295,6 +302,7 @@ interface PresenterRecord extends OrderedRecord {
 interface GenerationState {
   readonly pluginId: string;
   readonly generation: string;
+  readonly declaredContributions?: PluginContributionDeclarations;
   readonly slots: SlotRecord[];
   readonly surfaces: SurfaceRecord[];
   readonly commands: CommandRecord[];
@@ -377,7 +385,7 @@ export class PluginHost {
   async activateGeneration(options: ActivatePluginGenerationOptions): Promise<Disposable> {
     const pluginId = requireNonEmpty(options.pluginId, "plugin id");
     const generation = requireNonEmpty(options.generation, "plugin generation");
-    const state = createGenerationState(pluginId, generation);
+    const state = createGenerationState(pluginId, generation, options.contributions);
     const pending: PendingActivation = { state, cancelled: false };
 
     const previousPending = this.pendingActivations.get(pluginId);
@@ -389,6 +397,7 @@ export class PluginHost {
     try {
       await options.register(this.createGenerationApi(state));
       state.acceptingRegistrations = false;
+      this.assertDeclaredContributionsRegistered(state);
       this.assertViewPlacementTargets(state);
       this.assertToolActivityPresenterOwnership(state);
     } catch (error: unknown) {
@@ -652,11 +661,13 @@ export class PluginHost {
       registerSlot: (slotId: PluginSlotId, contribution: PluginSlotRegistration) => {
         this.assertAccepting(state);
         const id = this.claimRegistrationId(state, `slot:${slotId}`, contribution.id);
+        const order = normalizeOrder(contribution.order);
+        this.assertDeclaredContribution(state, "slot", { id, target: slotId, order });
         const record: SlotRecord = {
           pluginId: state.pluginId,
           generation: state.generation,
           id,
-          order: normalizeOrder(contribution.order),
+          order,
           slotId,
           render: contribution.render,
           removed: false,
@@ -667,13 +678,16 @@ export class PluginHost {
       registerSurface: (surfaceId: PluginSurfaceId, contribution: PluginSurfaceRegistration) => {
         this.assertAccepting(state);
         const id = this.claimRegistrationId(state, `surface:${surfaceId}`, contribution.id);
+        const order = normalizeOrder(contribution.order);
+        const mode = normalizeSurfaceMode(contribution.mode);
+        this.assertDeclaredContribution(state, "surface", { id, target: surfaceId, mode, order });
         const record: SurfaceRecord = {
           pluginId: state.pluginId,
           generation: state.generation,
           id,
-          order: normalizeOrder(contribution.order),
+          order,
           surfaceId,
-          mode: normalizeSurfaceMode(contribution.mode),
+          mode,
           render: contribution.render,
           removed: false,
         };
@@ -829,10 +843,12 @@ export class PluginHost {
         const target = requireExactNonEmpty(definition.target, "presenter target");
         const key = definition.key === undefined ? undefined : requireExactNonEmpty(definition.key, "presenter key");
         if (typeof definition.render !== "function") throw new Error("Plugin presenter render must be a function");
+        const mode = normalizePresentationMode(definition.mode);
+        const order = normalizeOrder(definition.priority);
+        this.assertDeclaredContribution(state, "presenter", { id, target, mode, priority: order });
         const record: PresenterRecord = {
           pluginId: state.pluginId, generation: state.generation, id, target, key,
-          mode: normalizePresentationMode(definition.mode),
-          order: normalizeOrder(definition.priority), removed: false, render: definition.render,
+          mode, order, removed: false, render: definition.render,
         };
         state.toolActivityPresenters.push(record);
         return this.ownRecord(state, record);
@@ -927,6 +943,50 @@ export class PluginHost {
     for (const presenter of state.toolActivityPresenters) {
       if (!presenter.removed && presenter.compatibilityRender !== undefined && presenter.key !== undefined) {
         this.assertToolActivityPresenterKeyAvailable(state.pluginId, presenter.key);
+      }
+    }
+  }
+
+  private assertDeclaredContribution(
+    state: GenerationState,
+    kind: "slot" | "surface" | "presenter",
+    actual: Readonly<{ id: string; target: string; mode?: string; order?: number; priority?: number }>,
+  ): void {
+    const declarations = state.declaredContributions;
+    if (!declarations) return;
+    const declared = kind === "slot" ? declarations.slots
+      : kind === "surface" ? declarations.surfaces
+      : declarations.presenters;
+    const match = declared?.find((candidate) => candidate.id === actual.id);
+    if (!match) {
+      throw new Error(`Plugin ${kind} registration ${actual.id} is not declared in the manifest`);
+    }
+    const declaredOrder = "priority" in match
+      ? normalizeOrder(match.priority)
+      : normalizeOrder("order" in match ? match.order : undefined);
+    const actualOrder = actual.priority ?? actual.order ?? 0;
+    const declaredMode = "mode" in match ? match.mode : undefined;
+    if (match.target !== actual.target || declaredMode !== actual.mode || declaredOrder !== actualOrder) {
+      throw new Error(`Plugin ${kind} registration ${actual.id} does not match its manifest declaration`);
+    }
+  }
+
+  private assertDeclaredContributionsRegistered(state: GenerationState): void {
+    const declarations = state.declaredContributions;
+    if (!declarations) return;
+    for (const declaration of declarations.slots ?? []) {
+      if (!state.slots.some((record) => !record.removed && record.id === declaration.id)) {
+        throw new Error(`Manifest slot contribution ${declaration.id} was not registered during activation`);
+      }
+    }
+    for (const declaration of declarations.surfaces ?? []) {
+      if (!state.surfaces.some((record) => !record.removed && record.id === declaration.id)) {
+        throw new Error(`Manifest surface contribution ${declaration.id} was not registered during activation`);
+      }
+    }
+    for (const declaration of declarations.presenters ?? []) {
+      if (!state.toolActivityPresenters.some((record) => !record.removed && record.id === declaration.id)) {
+        throw new Error(`Manifest presenter contribution ${declaration.id} was not registered during activation`);
       }
     }
   }
@@ -1187,10 +1247,15 @@ export class PluginHost {
   }
 }
 
-function createGenerationState(pluginId: string, generation: string): GenerationState {
+function createGenerationState(
+  pluginId: string,
+  generation: string,
+  declaredContributions?: PluginContributionDeclarations,
+): GenerationState {
   return {
     pluginId,
     generation,
+    declaredContributions,
     slots: [],
     surfaces: [],
     commands: [],

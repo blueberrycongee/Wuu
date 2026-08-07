@@ -611,9 +611,35 @@ type ExtensionSettingDescriptor struct {
 }
 
 type ExtensionContributions struct {
-	Commands []ExtensionCommandDescriptor `json:"commands,omitempty"`
-	Themes   []ExtensionThemeDescriptor   `json:"themes,omitempty"`
-	Settings []ExtensionSettingDescriptor `json:"settings,omitempty"`
+	Commands   []ExtensionCommandDescriptor               `json:"commands,omitempty"`
+	Themes     []ExtensionThemeDescriptor                 `json:"themes,omitempty"`
+	Settings   []ExtensionSettingDescriptor               `json:"settings,omitempty"`
+	Slots      []ExtensionSlotContributionDescriptor      `json:"slots,omitempty"`
+	Surfaces   []ExtensionSurfaceContributionDescriptor   `json:"surfaces,omitempty"`
+	Presenters []ExtensionPresenterContributionDescriptor `json:"presenters,omitempty"`
+}
+
+type ExtensionSlotContributionDescriptor struct {
+	ID     string `json:"id"`
+	Target string `json:"target"`
+	Order  int    `json:"order,omitempty"`
+	Title  string `json:"title,omitempty"`
+}
+
+type ExtensionSurfaceContributionDescriptor struct {
+	ID     string `json:"id"`
+	Target string `json:"target"`
+	Mode   string `json:"mode"`
+	Order  int    `json:"order,omitempty"`
+	Title  string `json:"title,omitempty"`
+}
+
+type ExtensionPresenterContributionDescriptor struct {
+	ID       string `json:"id"`
+	Target   string `json:"target"`
+	Mode     string `json:"mode"`
+	Priority int    `json:"priority,omitempty"`
+	Title    string `json:"title,omitempty"`
 }
 
 type ExtensionPendingUpdate struct {

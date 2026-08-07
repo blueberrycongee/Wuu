@@ -310,7 +310,33 @@ export type ExtensionContributions = {
   commands?: ExtensionCommandDescriptor[];
   themes?: ExtensionThemeDescriptor[];
   settings?: ExtensionSettingDescriptor[];
+  slots?: ExtensionSlotContributionDescriptor[];
+  surfaces?: ExtensionSurfaceContributionDescriptor[];
+  presenters?: ExtensionPresenterContributionDescriptor[];
 };
+
+export interface ExtensionSlotContributionDescriptor {
+  id: string;
+  target: string;
+  order?: number;
+  title?: string;
+}
+
+export interface ExtensionSurfaceContributionDescriptor {
+  id: string;
+  target: string;
+  mode: "replace" | "wrap";
+  order?: number;
+  title?: string;
+}
+
+export interface ExtensionPresenterContributionDescriptor {
+  id: string;
+  target: string;
+  mode: "replace" | "wrap";
+  priority?: number;
+  title?: string;
+}
 
 export type ExtensionPendingUpdate = {
   version?: string;

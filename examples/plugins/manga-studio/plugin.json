@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "id": "manga-studio",
+  "name": "Manga Studio",
+  "version": "1.0.0",
+  "description": "Turns the Wuu desktop into a bold black-and-white manga workspace.",
+  "desktop": {
+    "entry": "desktop.js"
+  },
+  "contributes": {
+    "surfaces": [
+      { "id": "manga-shell", "target": "app.shell", "mode": "wrap" },
+      { "id": "manga-app-sidebar", "target": "app.sidebar", "mode": "wrap" },
+      { "id": "manga-app-main", "target": "app.main", "mode": "wrap" },
+      { "id": "manga-app-auxiliary", "target": "app.auxiliary", "mode": "wrap" },
+      { "id": "manga-app-status", "target": "app.status", "mode": "wrap" },
+      { "id": "manga-view-launch", "target": "view.launch", "mode": "wrap" },
+      { "id": "manga-view-conversation", "target": "view.conversation", "mode": "wrap" },
+      { "id": "manga-view-workspace", "target": "view.workspace", "mode": "wrap" },
+      { "id": "manga-view-settings", "target": "view.settings", "mode": "wrap" },
+      { "id": "manga-view-catalog", "target": "view.catalog", "mode": "wrap" },
+      { "id": "manga-conversation-timeline", "target": "conversation.timeline", "mode": "wrap" },
+      { "id": "manga-conversation-message", "target": "conversation.message", "mode": "wrap" },
+      { "id": "manga-conversation-composer", "target": "conversation.composer", "mode": "wrap" }
+    ],
+    "presenters": [
+      { "id": "manga-presenter-conversation-item", "target": "conversation.item", "mode": "wrap" },
+      { "id": "manga-presenter-conversation-process", "target": "conversation.process", "mode": "wrap" },
+      { "id": "manga-presenter-conversation-composer", "target": "conversation.composer", "mode": "wrap" },
+      { "id": "manga-presenter-header-conversation", "target": "header.conversation", "mode": "wrap" },
+      { "id": "manga-presenter-header-workspace", "target": "header.workspace", "mode": "wrap" },
+      { "id": "manga-presenter-navigation-primary", "target": "navigation.primary", "mode": "wrap" },
+      { "id": "manga-presenter-app-status", "target": "app.status", "mode": "wrap" },
+      { "id": "manga-presenter-content-preview", "target": "content.preview", "mode": "wrap" },
+      { "id": "manga-presenter-settings", "target": "settings", "mode": "wrap" },
+      { "id": "manga-native-conversation-item", "target": "conversation.item", "mode": "replace", "priority": 100 },
+      { "id": "manga-native-process", "target": "conversation.process", "mode": "replace", "priority": 100 },
+      { "id": "manga-native-composer", "target": "conversation.composer", "mode": "replace", "priority": 100 },
+      { "id": "manga-native-header-conversation", "target": "header.conversation", "mode": "replace", "priority": 100 },
+      { "id": "manga-native-header-workspace", "target": "header.workspace", "mode": "replace", "priority": 100 },
+      { "id": "manga-native-navigation", "target": "navigation.primary", "mode": "replace", "priority": 100 }
+    ],
+    "themes": [
+      {
+        "id": "manga-paper",
+        "name": "Manga Paper",
+        "base": "light",
+        "tokens": {
+          "--wuu-color-canvas": "#fffdf2",
+          "--wuu-color-text": "#17130f",
+          "--wuu-font-family-ui": "Avenir Next Condensed, Arial Narrow, Arial, PingFang SC, sans-serif",
+          "--wuu-font-size-body": "14px",
+          "--wuu-space-density": "1",
+          "--wuu-space-unit": "4px",
+          "--wuu-radius-control": "3px",
+          "--wuu-border-subtle": "2px solid #17130f",
+          "--wuu-elevation-panel": "5px 5px 0 #17130f",
+          "--wuu-motion-duration-fast": "90ms",
+          "--wuu-motion-easing-standard": "cubic-bezier(0.2, 0.9, 0.2, 1.15)",
+          "--wuu-content-max-width": "76rem"
+        },
+        "syntax": {
+          "--wuu-syntax-keyword": "#d51f5e",
+          "--wuu-syntax-function": "#007f89",
+          "--wuu-syntax-string": "#805b00",
+          "--wuu-syntax-comment": "#7d7469"
+        }
+      }
+    ]
+  }
+}

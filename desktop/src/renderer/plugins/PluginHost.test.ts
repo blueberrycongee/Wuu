@@ -382,6 +382,32 @@ describe("PluginHost", () => {
     expect(host.getThemeTokens()).toEqual([]);
   });
 
+  it("rejects UI registrations that are missing from the manifest declarations", async () => {
+    const host = new PluginHost({ react: React });
+
+    await expect(host.activateGeneration({
+      pluginId: "undeclared",
+      generation: "one",
+      contributions: { slots: [] },
+      register(api) {
+        api.registerSlot("composer.above", contribution("status"));
+      },
+    })).rejects.toThrow("slot registration status is not declared");
+  });
+
+  it("rejects manifest UI contributions that activation does not register", async () => {
+    const host = new PluginHost({ react: React });
+
+    await expect(host.activateGeneration({
+      pluginId: "missing-registration",
+      generation: "one",
+      contributions: {
+        surfaces: [{ id: "frame", target: "app.main", mode: "wrap" }],
+      },
+      register() {},
+    })).rejects.toThrow("Manifest surface contribution frame was not registered");
+  });
+
   it("validates keyed tool activity presenters and rejects another plugin's active key", async () => {
     const host = new PluginHost({ react: React });
     for (const definition of [

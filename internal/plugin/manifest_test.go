@@ -215,6 +215,54 @@ func TestLoadManifestRejectsAmbiguousContributionJSON(t *testing.T) {
 	}
 }
 
+func TestLoadManifestNormalizesDeclarativeUIContributions(t *testing.T) {
+	path := filepath.Join(t.TempDir(), ManifestFilename)
+	writeFile(t, path, `{
+  "id":"ui-demo",
+  "contributes":{
+    "slots":[{"id":"toolbar","target":"composer.toolbar","order":4,"title":"Toolbar"}],
+    "surfaces":[{"id":"main-frame","target":"app.main","mode":"wrap","order":2}],
+    "presenters":[{"id":"message","target":"conversation.item","mode":"replace","priority":8}]
+  }
+}`)
+	manifest, err := LoadManifest(path, "user")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(manifest.Slots) != 1 || manifest.Slots[0].Target != "composer.toolbar" || manifest.Slots[0].Order != 4 {
+		t.Fatalf("slots = %+v", manifest.Slots)
+	}
+	if len(manifest.Surfaces) != 1 || manifest.Surfaces[0].Mode != ContributionModeWrap {
+		t.Fatalf("surfaces = %+v", manifest.Surfaces)
+	}
+	if len(manifest.Presenters) != 1 || manifest.Presenters[0].Priority != 8 {
+		t.Fatalf("presenters = %+v", manifest.Presenters)
+	}
+}
+
+func TestLoadManifestRejectsInvalidDeclarativeUIContributions(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		want string
+	}{
+		{name: "unknown slot target", body: `{"id":"demo","contributes":{"slots":[{"id":"one","target":"unknown"}]}}`, want: "unknown target"},
+		{name: "invalid surface mode", body: `{"id":"demo","contributes":{"surfaces":[{"id":"one","target":"app.main","mode":"append"}]}}`, want: "replace or wrap"},
+		{name: "unknown presenter target", body: `{"id":"demo","contributes":{"presenters":[{"id":"one","target":"custom","mode":"wrap"}]}}`, want: "unknown target"},
+		{name: "duplicate id across kinds", body: `{"id":"demo","contributes":{"slots":[{"id":"same","target":"composer.above"}],"surfaces":[{"id":"same","target":"app.main","mode":"wrap"}]}}`, want: "duplicate plugin-local id"},
+		{name: "unknown item field", body: `{"id":"demo","contributes":{"slots":[{"id":"one","target":"composer.above","priority":1}]}}`, want: "unknown field"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), ManifestFilename)
+			writeFile(t, path, test.body)
+			if _, err := LoadManifest(path, "user"); err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("LoadManifest error = %v, want %q", err, test.want)
+			}
+		})
+	}
+}
+
 func TestLoadManifestRejectsUnsafeDesktopAndThemeContributions(t *testing.T) {
 	t.Run("desktop symlink", func(t *testing.T) {
 		root := t.TempDir()
@@ -250,5 +298,33 @@ func TestDeepUIExampleManifestLoads(t *testing.T) {
 	}
 	if len(manifest.Themes) != 1 || manifest.Themes[0].ID != "violet-night" {
 		t.Fatalf("example themes = %+v", manifest.Themes)
+	}
+	if len(manifest.Surfaces) != 5 {
+		t.Fatalf("example surfaces = %+v", manifest.Surfaces)
+	}
+}
+
+func TestMangaStudioFixtureManifestCoversDeclarativeUISchema(t *testing.T) {
+	manifest, err := LoadManifest(filepath.Join("..", "..", "examples", "plugins", "manga-studio", ManifestFilename), "user")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(manifest.Surfaces) != 13 {
+		t.Fatalf("manga surfaces = %d, want 13", len(manifest.Surfaces))
+	}
+	wraps, replacements := 0, 0
+	for _, presenter := range manifest.Presenters {
+		switch presenter.Mode {
+		case ContributionModeWrap:
+			wraps++
+		case ContributionModeReplace:
+			replacements++
+		}
+	}
+	if wraps != 9 || replacements != 6 {
+		t.Fatalf("manga presenters: wrap=%d replace=%d, want 9 and 6", wraps, replacements)
+	}
+	if len(manifest.Themes) != 1 || manifest.Themes[0].Tokens["--wuu-color-canvas"] == "" {
+		t.Fatalf("manga theme = %+v", manifest.Themes)
 	}
 }

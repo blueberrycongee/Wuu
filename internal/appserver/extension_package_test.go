@@ -44,6 +44,9 @@ func TestExtensionPackageUpdateGrantsExactFingerprintAndDisablesImmediately(t *t
 			Settings: map[string]pluginpkg.SettingDefinition{
 				"prompt-kit.enabled": {Type: pluginpkg.SettingTypeBoolean, Title: "Enabled", Default: true, Scope: pluginpkg.SettingScopeUser, Apply: pluginpkg.SettingApplyLive},
 			},
+			Slots:      []pluginpkg.SlotContributionSpec{{ID: "toolbar", Target: "composer.toolbar", Order: 4}},
+			Surfaces:   []pluginpkg.SurfaceContributionSpec{{ID: "main", Target: "app.main", Mode: pluginpkg.ContributionModeWrap}},
+			Presenters: []pluginpkg.PresenterContributionSpec{{ID: "message", Target: "conversation.item", Mode: pluginpkg.ContributionModeReplace, Priority: 8}},
 		},
 		Source: "project", SubjectID: "plugin:project:prompt-kit", Fingerprint: "sha256:prompt-kit",
 		EffectivePermissions: []string{extensions.PermCommandsExecute},
@@ -72,6 +75,11 @@ func TestExtensionPackageUpdateGrantsExactFingerprintAndDisablesImmediately(t *t
 	}
 	if len(record.Contributions.Settings) != 1 || record.Contributions.Settings[0].ID != "prompt-kit.enabled" || record.Contributions.Settings[0].Default != true {
 		t.Fatalf("setting contributions = %+v", record.Contributions)
+	}
+	if len(record.Contributions.Slots) != 1 || record.Contributions.Slots[0].Target != "composer.toolbar" ||
+		len(record.Contributions.Surfaces) != 1 || record.Contributions.Surfaces[0].Mode != "wrap" ||
+		len(record.Contributions.Presenters) != 1 || record.Contributions.Presenters[0].Priority != 8 {
+		t.Fatalf("UI contributions = %+v", record.Contributions)
 	}
 	data, err := os.ReadFile(filepath.Join(wuuHome, "config.json"))
 	if err != nil {
