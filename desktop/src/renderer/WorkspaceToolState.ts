@@ -1,11 +1,13 @@
 import type { RuntimeContext } from "../shared/protocol";
 import type { WorkspacePanelView } from "./WorkspacePanels";
 import type { TurnFileDiffSelection } from "./TurnFileDiffTypes";
+import type { RegisteredPluginViewEntry } from "./plugins/PluginHost";
 import {
   useWorkspaceViewTabs,
   workspaceDiffViewTab,
   workspaceFileViewTab,
   workspaceToolViewTab,
+  workspacePluginViewTab,
   type WorkspaceViewTab,
 } from "./WorkspaceViewTabs";
 
@@ -24,6 +26,7 @@ export function useWorkspaceToolState({
   ensureWorkspaceToolTab: (view: WorkspacePanelView) => void;
   activateWorkspaceTool: (view: WorkspacePanelView) => void;
   openWorkspaceTool: (view: WorkspacePanelView) => void;
+  openWorkspacePluginTool: (entry: RegisteredPluginViewEntry) => void;
   openWorkspaceDiffTab: (input: { threadID: string; path: string; selection: TurnFileDiffSelection }) => void;
   openWorkspaceFileTab: (input: { context: RuntimeContext; path: string }) => void;
   showWorkspaceToolPicker: () => void;
@@ -56,6 +59,11 @@ export function useWorkspaceToolState({
 
   function openWorkspaceTool(view: WorkspacePanelView): void {
     activateWorkspaceTool(view);
+    setRightPanelOpenWithMotion(true);
+  }
+
+  function openWorkspacePluginTool(entry: RegisteredPluginViewEntry): void {
+    openTab(workspacePluginViewTab(entry));
     setRightPanelOpenWithMotion(true);
   }
 
@@ -115,6 +123,7 @@ export function useWorkspaceToolState({
     ensureWorkspaceToolTab,
     activateWorkspaceTool,
     openWorkspaceTool,
+    openWorkspacePluginTool,
     openWorkspaceDiffTab,
     openWorkspaceFileTab,
     showWorkspaceToolPicker,

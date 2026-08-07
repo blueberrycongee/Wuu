@@ -8,6 +8,7 @@ import {
   useEffect,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -35,6 +36,7 @@ import {
   PanelLeftOpen,
   PanelRightOpen,
   Plus,
+  Puzzle,
   ShieldCheck,
   Terminal,
   X,
@@ -66,9 +68,10 @@ import { Tooltip } from "./Tooltip";
 import type { TranslationKey } from "./i18n/resources/zh-CN";
 import { HeaderPresentation, immutableHeaderSnapshot } from "./plugins/HeaderPresentation";
 import { desktopPluginHost } from "./plugins/DesktopPluginRuntime";
-import type { PluginHost } from "./plugins/PluginHost";
+import type { PluginHost, RegisteredPluginViewEntry } from "./plugins/PluginHost";
 import { PluginSlot } from "./plugins/PluginSlot";
 import type { WorkbenchController } from "./plugins/Workbench";
+import { PluginViewContent } from "./plugins/Workbench";
 
 export type WorkspacePanelView = "files" | "review" | "terminal" | "browser";
 
@@ -163,6 +166,7 @@ export function WorkspaceRightPanel({
   selectedFilePath,
   onSelectTab,
   onOpenTool,
+  onOpenPluginTool = () => undefined,
   onShowTools,
   onCloseTab,
   onDirtyFileTabsChange,
@@ -201,6 +205,7 @@ export function WorkspaceRightPanel({
   selectedFilePath?: string;
   onSelectTab: (id: string) => void;
   onOpenTool: (view: WorkspacePanelView) => void;
+  onOpenPluginTool?: (entry: RegisteredPluginViewEntry) => void;
   onShowTools: () => void;
   onCloseTab: (id: string) => void;
   onDirtyFileTabsChange?: (dirty: boolean) => void;
@@ -223,6 +228,12 @@ export function WorkspaceRightPanel({
   workbenchController?: WorkbenchController;
 }): JSX.Element {
   const { t } = useI18n();
+  const effectivePluginHost = pluginHost ?? desktopPluginHost;
+  const pluginTools = useSyncExternalStore(
+    (listener) => effectivePluginHost.subscribe(listener),
+    () => effectivePluginHost.getWorkspaceTools(),
+    () => effectivePluginHost.getWorkspaceTools(),
+  );
   const activeTab = activeTabID ? tabs.find((tab) => tab.id === activeTabID) : undefined;
   const fileTabs = tabs.filter((tab): tab is WorkspaceFileViewTab => tab.kind === "file");
   const visibleTabs = tabs;
@@ -824,7 +835,12 @@ export function WorkspaceRightPanel({
                 key={activeTab?.id ?? "picker"}
               >
                 {!activeTab ? (
-                  <WorkspaceToolPicker tabs={tabs} onSelectTool={onOpenTool} />
+                  <WorkspaceToolPicker
+                    tabs={tabs}
+                    pluginTools={pluginTools}
+                    onSelectTool={onOpenTool}
+                    onSelectPluginTool={onOpenPluginTool}
+                  />
                 ) : activeTab.kind === "diff" ? (
                   <TurnFileDiffPanel
                     selection={activeTab.selection}
@@ -849,6 +865,13 @@ export function WorkspaceRightPanel({
                     onActivityTakeover={onBrowserActivityTakeover}
                     onActivityRelease={onBrowserActivityRelease}
                     onActivityStop={onBrowserActivityStop}
+                  />
+                ) : activeTab.kind === "plugin" && workbenchController ? (
+                  <PluginViewContent
+                    controller={workbenchController}
+                    pluginId={activeTab.pluginId}
+                    viewTypeId={activeTab.viewTypeId}
+                    context={Object.freeze({ region: "workspace", tabId: activeTab.id })}
                   />
                 ) : null}
               </div>
@@ -1015,10 +1038,14 @@ function WorkspaceViewTabPreview({
 
 function WorkspaceToolPicker({
   tabs,
-  onSelectTool
+  pluginTools,
+  onSelectTool,
+  onSelectPluginTool,
 }: {
   tabs: WorkspaceViewTab[];
+  pluginTools: readonly RegisteredPluginViewEntry[];
   onSelectTool: (view: WorkspacePanelView) => void;
+  onSelectPluginTool: (entry: RegisteredPluginViewEntry) => void;
 }): JSX.Element {
   const { t } = useI18n();
   return (
@@ -1043,6 +1070,27 @@ function WorkspaceToolPicker({
           </span>
         </button>
       ))}
+      {pluginTools.map((item) => {
+        const tabID = `plugin:${item.pluginId}:${item.id}`;
+        return (
+          <button
+            key={tabID}
+            className={`workspace-tool-menu-item${tabs.some((tab) => tab.id === tabID) ? " active" : ""}`}
+            data-wuu-component="workspace-tool"
+            data-wuu-plugin={item.pluginId}
+            type="button"
+            onClick={() => onSelectPluginTool(item)}
+          >
+            <span className="workspace-tool-menu-icon" aria-hidden="true">
+              <Puzzle className="icon-xl" />
+            </span>
+            <span className="workspace-tool-menu-copy">
+              <strong>{item.title}</strong>
+              {item.description ? <span>{item.description}</span> : null}
+            </span>
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -1115,12 +1163,13 @@ function workspaceToolFor(view: WorkspacePanelView): (typeof WORKSPACE_TOOL_ITEM
 }
 
 function workspaceViewTabLabel(tab: WorkspaceViewTab): string {
-  return tab.kind === "diff" || tab.kind === "file"
+  return tab.kind === "diff" || tab.kind === "file" || tab.kind === "plugin"
     ? tab.title
     : translateCurrent(workspaceToolFor(tab.kind).titleKey);
 }
 
 function workspaceViewTabTooltip(tab: WorkspaceViewTab): string {
+  if (tab.kind === "plugin") return tab.title;
   return tab.kind === "diff" || tab.kind === "file"
     ? tab.path
     : translateCurrent(workspaceToolFor(tab.kind).titleKey);
@@ -1132,6 +1181,9 @@ function WorkspaceViewTabIcon({ tab, className }: { tab: WorkspaceViewTab; class
   }
   if (tab.kind === "file") {
     return <FileText className={className} />;
+  }
+  if (tab.kind === "plugin") {
+    return <Puzzle className={className} />;
   }
   return <WorkspaceToolIcon view={tab.kind} className={className} />;
 }

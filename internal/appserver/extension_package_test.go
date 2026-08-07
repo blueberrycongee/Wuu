@@ -47,6 +47,11 @@ func TestExtensionPackageUpdateGrantsExactFingerprintAndDisablesImmediately(t *t
 			Slots:      []pluginpkg.SlotContributionSpec{{ID: "toolbar", Target: "composer.toolbar", Order: 4}},
 			Surfaces:   []pluginpkg.SurfaceContributionSpec{{ID: "main", Target: "app.main", Mode: pluginpkg.ContributionModeWrap}},
 			Presenters: []pluginpkg.PresenterContributionSpec{{ID: "message", Target: "conversation.item", Mode: pluginpkg.ContributionModeReplace, Priority: 8}},
+			Navigation: []pluginpkg.ViewEntryContributionSpec{{ID: "dashboard", View: "dashboard", Title: "Dashboard"}},
+			WorkspaceTools: []pluginpkg.ViewEntryContributionSpec{{
+				ID: "inspector", View: "inspector", Title: "Inspector", Description: "Inspect workspace",
+			}},
+			SettingsPages: []pluginpkg.ViewEntryContributionSpec{{ID: "advanced", View: "advanced", Title: "Advanced"}},
 		},
 		Source: "project", SubjectID: "plugin:project:prompt-kit", Fingerprint: "sha256:prompt-kit",
 		EffectivePermissions: []string{extensions.PermCommandsExecute},
@@ -78,7 +83,10 @@ func TestExtensionPackageUpdateGrantsExactFingerprintAndDisablesImmediately(t *t
 	}
 	if len(record.Contributions.Slots) != 1 || record.Contributions.Slots[0].Target != "composer.toolbar" ||
 		len(record.Contributions.Surfaces) != 1 || record.Contributions.Surfaces[0].Mode != "wrap" ||
-		len(record.Contributions.Presenters) != 1 || record.Contributions.Presenters[0].Priority != 8 {
+		len(record.Contributions.Presenters) != 1 || record.Contributions.Presenters[0].Priority != 8 ||
+		len(record.Contributions.Navigation) != 1 || record.Contributions.Navigation[0].View != "dashboard" ||
+		len(record.Contributions.WorkspaceTools) != 1 || record.Contributions.WorkspaceTools[0].Description != "Inspect workspace" ||
+		len(record.Contributions.SettingsPages) != 1 || record.Contributions.SettingsPages[0].View != "advanced" {
 		t.Fatalf("UI contributions = %+v", record.Contributions)
 	}
 	data, err := os.ReadFile(filepath.Join(wuuHome, "config.json"))

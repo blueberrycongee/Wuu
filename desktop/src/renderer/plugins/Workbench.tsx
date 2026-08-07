@@ -117,6 +117,10 @@ export class WorkbenchController {
     return this.openResolvedView(viewTypeId, options);
   }
 
+  async openPluginView(pluginId: string, viewTypeId: string, options: OpenViewOptions = {}): Promise<string> {
+    return this.openResolvedView(viewTypeId, options, pluginId);
+  }
+
   private openResolvedView(
     viewTypeId: string,
     options: OpenViewOptions,
@@ -127,13 +131,21 @@ export class WorkbenchController {
       throw new Error(`Plugin view type is not available: ${viewTypeId}`);
     }
     const pane = options.pane ?? definition.defaultPane ?? "main";
+    if (options.reveal !== false) {
+      const existing = this.state.views.find((view) =>
+        view.pluginId === definition.pluginId && view.viewTypeId === definition.id && view.pane === pane);
+      if (existing) {
+        this.activateView(existing.id);
+        return existing.id;
+      }
+    }
     const instance: WorkbenchViewState = Object.freeze({
       id: `${definition.pluginId}:${definition.id}:${this.nextInstance++}`,
       pluginId: definition.pluginId,
       generation: definition.generation,
       viewTypeId: definition.id,
       pane,
-      persistence: definition.persistence ?? "session",
+      persistence: options.persistence ?? definition.persistence ?? "session",
       context: freezeContext(options.context),
     });
     this.replaceState({
@@ -168,6 +180,14 @@ export class WorkbenchController {
     this.replaceState({
       ...this.state,
       activeViewByPane: { ...this.state.activeViewByPane, [view.pane]: view.id },
+    });
+  }
+
+  deactivatePane(pane: ViewPane): void {
+    if (this.state.activeViewByPane[pane] === HIDDEN_PANE_VIEW_ID) return;
+    this.replaceState({
+      ...this.state,
+      activeViewByPane: { ...this.state.activeViewByPane, [pane]: HIDDEN_PANE_VIEW_ID },
     });
   }
 
@@ -269,6 +289,7 @@ export class WorkbenchController {
     const activeViewByPane = { ...this.state.activeViewByPane };
     for (const pane of viewPanes) {
       const active = activeViewByPane[pane];
+      if (active === HIDDEN_PANE_VIEW_ID) continue;
       if (!active || !views.some((view) => view.id === active)) {
         activeViewByPane[pane] = [...views].reverse().find((view) => view.pane === pane)?.id;
       }
@@ -420,6 +441,7 @@ export function DesktopWorkbench({
     const views = snapshot.views.filter((view) => view.pane === pane);
     if (views.length === 0) return [];
     const activeId = snapshot.activeViewByPane[pane] ?? views[views.length - 1]?.id;
+    if (activeId === HIDDEN_PANE_VIEW_ID) return [];
     const active = views.find((view) => view.id === activeId) ?? views[views.length - 1];
     const target = resolvePaneTarget(pane);
     if (!active || !target) return [];
@@ -565,6 +587,53 @@ function WorkbenchView({ controller, definition, view, siblingViews }: Workbench
   );
 }
 
+export function PluginViewContent({
+  controller,
+  pluginId,
+  viewTypeId,
+  context = Object.freeze({}),
+}: {
+  controller: WorkbenchController;
+  pluginId: string;
+  viewTypeId: string;
+  context?: Readonly<Record<string, unknown>>;
+}): JSX.Element {
+  const snapshot = React.useSyncExternalStore(controller.subscribe, controller.getSnapshot);
+  const definition = snapshot.viewTypes.find((view) =>
+    view.pluginId === pluginId && view.id === viewTypeId);
+  const view = React.useMemo<WorkbenchViewState | undefined>(() => definition ? Object.freeze({
+    id: `embedded:${pluginId}:${viewTypeId}`,
+    pluginId,
+    generation: definition.generation,
+    viewTypeId,
+    pane: "pane",
+    persistence: "session",
+    context: freezeContext(context),
+  }) : undefined, [context, definition, pluginId, viewTypeId]);
+  const host = React.useMemo(() => view ? controller.createViewHostAPI(view) : undefined, [controller, view]);
+  if (!definition || !host || !view) {
+    return <div className="plugin-workbench-error" role="status">Plugin view is unavailable.</div>;
+  }
+  const View = definition.render;
+  return (
+    <div
+      className="plugin-view-content"
+      data-wuu-component="plugin-view-content"
+      data-wuu-plugin={pluginId}
+      data-wuu-view={viewTypeId}
+    >
+      <PluginErrorBoundary
+        pluginId={pluginId}
+        generation={definition.generation}
+        services={controller.services}
+        onUseDefault={() => undefined}
+      >
+        <View host={host} context={view.context} />
+      </PluginErrorBoundary>
+    </div>
+  );
+}
+
 export interface WorkbenchContentRendererProps {
   controller: WorkbenchController;
   category: RendererCategory;
@@ -636,6 +705,7 @@ export class PluginErrorBoundary extends React.Component<PluginErrorBoundaryProp
 }
 
 const viewPanes: readonly ViewPane[] = ["main", "sidebar", "auxiliary", "tab", "pane", "overlay"];
+const HIDDEN_PANE_VIEW_ID = "__wuu_hidden_pane__";
 
 function resolvePaneTarget(pane: ViewPane): Element | null {
   if (pane === "overlay") return document.body;

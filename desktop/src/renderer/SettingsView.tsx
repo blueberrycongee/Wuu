@@ -33,7 +33,8 @@ import {
   useLayoutEffect,
   useMemo,
   useRef,
-  useState
+  useState,
+  useSyncExternalStore
 } from "react";
 import { SidePanelToggleIcon } from "./SidePanelToggleIcon";
 import { useSidebarDrawerState } from "./SidebarDrawerState";
@@ -42,6 +43,7 @@ import { SelectMenu } from "./SelectMenu";
 import type {
   CodexPetsSnapshot,
   DesktopBuildInfo,
+  ExtensionInventoryRecord,
   InitializeResult,
   MCPAuthStartResult,
   MCPServerStatus,
@@ -81,9 +83,14 @@ import { Tooltip } from "./Tooltip";
 import { TruncatedText } from "./TruncatedText";
 import { VoiceInputSettingsSection } from "./VoiceInputSettingsSection";
 import { SettingsPresentation } from "./plugins/SettingsPresentation";
-import { desktopPluginHost } from "./plugins/DesktopPluginRuntime";
+import {
+  desktopPluginHost,
+  desktopWorkbenchController,
+} from "./plugins/DesktopPluginRuntime";
 import type { PluginHost } from "./plugins/PluginHost";
+import { PluginViewContent, type WorkbenchController } from "./plugins/Workbench";
 import { PluginSlot } from "./plugins/PluginSlot";
+import { PluginSettingsEditor } from "./PluginSettingsEditor";
 import type { SettingsPageSummaryV1 } from "../shared/workbench";
 
 export type SettingsPage =
@@ -93,7 +100,9 @@ export type SettingsPage =
   | "advanced"
   | "usage"
   | "remote"
-  | "archive";
+  | "archive"
+  | `plugin-settings:${string}`
+  | `plugin-view:${string}:${string}`;
 
 type CopyState = "idle" | "copying" | "copied";
 
@@ -148,6 +157,7 @@ export function SettingsView({
   onToggleSidebar,
   sidebarMotionMs,
   pluginHost = desktopPluginHost,
+  workbenchController = desktopWorkbenchController,
 }: {
   initialized?: InitializeResult;
   initialPage?: SettingsPage;
@@ -187,6 +197,7 @@ export function SettingsView({
   onToggleSidebar: () => void;
   sidebarMotionMs: number;
   pluginHost?: PluginHost;
+  workbenchController?: WorkbenchController;
 }): JSX.Element {
   const { t } = useI18n();
   const providers = initialized?.providers ?? [];
@@ -210,6 +221,21 @@ export function SettingsView({
   const [activePage, setActivePage] = useState<SettingsPage>(() =>
     availableSettingsPage(initialPage),
   );
+  const customPluginSettingsPages = useSyncExternalStore(
+    (listener) => pluginHost.subscribe(listener),
+    () => pluginHost.getSettingsPages(),
+    () => pluginHost.getSettingsPages(),
+  );
+  const pluginSettingsRecords = useMemo(
+    () => (initialized?.extension_inventory ?? []).filter(isConfigurablePlugin),
+    [initialized?.extension_inventory],
+  );
+  const activePluginSettingsRecord = activePage.startsWith("plugin-settings:")
+    ? pluginSettingsRecords.find((plugin) => pluginSettingsPageId(plugin.id) === activePage)
+    : undefined;
+  const activeCustomPluginPage = activePage.startsWith("plugin-view:")
+    ? customPluginSettingsPages.find((entry) => pluginViewSettingsPageId(entry.pluginId, entry.id) === activePage)
+    : undefined;
   const [mcpServers, setMCPServers] = useState<MCPServerStatus[]>([]);
   const [mcpLoading, setMCPLoading] = useState(false);
   const [mcpError, setMCPError] = useState("");
@@ -733,7 +759,9 @@ export function SettingsView({
       : ""
   }${sidebarAnimating ? " sidebar-animating" : ""}`;
 
-  const pageTitle = settingsPageTitle(activePage, t);
+  const pageTitle = activePluginSettingsRecord?.name
+    ?? activeCustomPluginPage?.title
+    ?? settingsPageTitle(activePage, t);
   const availablePages = useMemo<readonly SettingsPageSummaryV1[]>(() => Object.freeze([
     Object.freeze({ id: "providers", label: settingsPageTitle("providers", t) }),
     Object.freeze({ id: "memory", label: settingsPageTitle("memory", t) }),
@@ -744,7 +772,15 @@ export function SettingsView({
       : []),
     Object.freeze({ id: "usage", label: settingsPageTitle("usage", t) }),
     Object.freeze({ id: "archive", label: settingsPageTitle("archive", t) }),
-  ]), [t]);
+    ...pluginSettingsRecords.map((plugin) => Object.freeze({
+      id: pluginSettingsPageId(plugin.id),
+      label: plugin.name,
+    })),
+    ...customPluginSettingsPages.map((entry) => Object.freeze({
+      id: pluginViewSettingsPageId(entry.pluginId, entry.id),
+      label: entry.title,
+    })),
+  ]), [customPluginSettingsPages, pluginSettingsRecords, t]);
 
   const nativeSettings = (
     <div ref={effectiveShellRef} className={shellClassName} style={shellStyle} data-wuu-component="settings-shell">
@@ -782,7 +818,11 @@ export function SettingsView({
             <ArrowLeft className="icon" />
             <span>{t("settings.backToApp")}</span>
           </button>
-          <nav className="settings-nav" aria-label={t("settings.navigation")}>
+          <nav
+            className="settings-nav"
+            data-wuu-component="settings-navigation"
+            aria-label={t("settings.navigation")}
+          >
             <div className="settings-nav-group">
               <div className="settings-nav-group-label">{t("settings.groupModel")}</div>
               <SettingsNavItem icon={<KeyRound className="icon-lg" />} active={activePage === "providers"} onClick={() => setActivePage("providers")}>
@@ -815,6 +855,40 @@ export function SettingsView({
                 {t("settings.archive")}
               </SettingsNavItem>
             </div>
+            {pluginSettingsRecords.length > 0 || customPluginSettingsPages.length > 0 ? (
+              <div
+                className="settings-nav-group"
+                data-wuu-component="plugin-settings-navigation"
+              >
+                <div className="settings-nav-group-label">{t("skills.sectionPlugins")}</div>
+                {pluginSettingsRecords.map((plugin) => {
+                  const pageId = pluginSettingsPageId(plugin.id);
+                  return (
+                    <SettingsNavItem
+                      key={pageId}
+                      icon={<Plug className="icon-lg" />}
+                      active={activePage === pageId}
+                      onClick={() => setActivePage(pageId)}
+                    >
+                      {plugin.name}
+                    </SettingsNavItem>
+                  );
+                })}
+                {customPluginSettingsPages.map((entry) => {
+                  const pageId = pluginViewSettingsPageId(entry.pluginId, entry.id);
+                  return (
+                    <SettingsNavItem
+                      key={pageId}
+                      icon={<PlugZap className="icon-lg" />}
+                      active={activePage === pageId}
+                      onClick={() => setActivePage(pageId)}
+                    >
+                      {entry.title}
+                    </SettingsNavItem>
+                  );
+                })}
+              </div>
+            ) : null}
           </nav>
         </div>
       </aside>
@@ -860,6 +934,8 @@ export function SettingsView({
         <div ref={settingsScrollRef} className="settings-scroll">
           <div
             className={`settings-page${activePage === "archive" ? " settings-page-archive" : ""}`}
+            data-wuu-component="settings-page"
+            data-wuu-page={activePage}
             key={activePage}
           >
             {activePage === "memory" ? null : (
@@ -868,7 +944,16 @@ export function SettingsView({
               </header>
             )}
   
-            {activePage === "providers" ? (
+            {activePluginSettingsRecord ? (
+              <PluginSettingsEditor plugin={activePluginSettingsRecord} variant="page" />
+            ) : activeCustomPluginPage ? (
+              <PluginViewContent
+                controller={workbenchController}
+                pluginId={activeCustomPluginPage.pluginId}
+                viewTypeId={activeCustomPluginPage.view}
+                context={Object.freeze({ surface: "settings" })}
+              />
+            ) : activePage === "providers" ? (
               <SettingsProvidersPage
                 providers={providers}
                 providerLabels={providerLabels}
@@ -1042,6 +1127,7 @@ function SettingsNavItem({
   return (
     <button
       className={`settings-nav-item${active ? " active" : ""}`}
+      data-wuu-component="settings-navigation-item"
       type="button"
       aria-current={active ? "page" : undefined}
       onClick={onClick}
@@ -1066,7 +1152,11 @@ function SettingsSection({
   children: ReactNode;
 }): JSX.Element {
   return (
-    <section className="settings-section" {...(testID ? { "data-testid": testID } : {})}>
+    <section
+      className="settings-section"
+      data-wuu-component="settings-section"
+      {...(testID ? { "data-testid": testID } : {})}
+    >
       {title || description ? (
         <header className="settings-section-header">
           {title ? <h2 className="settings-section-title">{title}</h2> : null}
@@ -1079,7 +1169,7 @@ function SettingsSection({
 }
 
 function SettingsCard({ children }: { children: ReactNode }): JSX.Element {
-  return <div className="settings-card">{children}</div>;
+  return <div className="settings-card" data-wuu-component="settings-card">{children}</div>;
 }
 
 function SettingsRow({
@@ -1094,7 +1184,10 @@ function SettingsRow({
   block?: boolean;
 }): JSX.Element {
   return (
-    <div className={`settings-row${block ? " settings-row-block" : ""}`}>
+    <div
+      className={`settings-row${block ? " settings-row-block" : ""}`}
+      data-wuu-component="settings-row"
+    >
       <div className="settings-row-label">
         <span className="settings-row-label-title">{title}</span>
         {description ? <span className="settings-row-label-description">{description}</span> : null}
@@ -2990,7 +3083,31 @@ function settingsPageTitle(page: SettingsPage, t: Translate): string {
       return t("settings.remote");
     case "archive":
       return t("settings.archive");
+    default:
+      return t("skills.sectionPlugins");
   }
+}
+
+function isConfigurablePlugin(
+  extension: ExtensionInventoryRecord,
+): boolean {
+  const approved = extension.approval_state === "official"
+    || extension.approval_state === "granted";
+  return extension.kind === "plugin"
+    && approved
+    && extension.enabled !== false
+    && (extension.contributions?.settings?.length ?? 0) > 0;
+}
+
+function pluginSettingsPageId(pluginId: string): `plugin-settings:${string}` {
+  return `plugin-settings:${pluginId}`;
+}
+
+function pluginViewSettingsPageId(
+  pluginId: string,
+  entryId: string,
+): `plugin-view:${string}:${string}` {
+  return `plugin-view:${pluginId}:${entryId}`;
 }
 
 function stableBoolRecordSignature(record: Record<string, boolean>): string {

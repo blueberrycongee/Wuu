@@ -85,6 +85,31 @@ describe("WorkbenchController", () => {
     restored.dispose();
   });
 
+  it("reveals an existing plugin View and can hide its pane without destroying state", async () => {
+    const host = new PluginHost({ react: React });
+    await host.activateGeneration({
+      pluginId: "product",
+      generation: "one",
+      register(api) {
+        api.registerViewType({ id: "dashboard", title: "Dashboard", render: () => null });
+      },
+    });
+    const controller = new WorkbenchController(host);
+
+    const first = await controller.openPluginView("product", "dashboard", { pane: "main" });
+    const revealed = await controller.openPluginView("product", "dashboard", { pane: "main" });
+    expect(revealed).toBe(first);
+    expect(controller.getSnapshot().views).toHaveLength(1);
+
+    controller.deactivatePane("main");
+    expect(controller.getSnapshot().views).toHaveLength(1);
+    expect(controller.getSnapshot().activeViewByPane.main).not.toBe(first);
+
+    expect(await controller.openPluginView("product", "dashboard", { pane: "main" })).toBe(first);
+    expect(controller.getSnapshot().activeViewByPane.main).toBe(first);
+    controller.dispose();
+  });
+
   it("uses placement priority only for the initial default and preserves user dismissal", async () => {
     const host = new PluginHost({ react: React });
     await host.activateGeneration({

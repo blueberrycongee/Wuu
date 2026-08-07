@@ -100,6 +100,9 @@ type Manifest struct {
 	Slots                []SlotContributionSpec            `json:"slots,omitempty"`
 	Surfaces             []SurfaceContributionSpec         `json:"surfaces,omitempty"`
 	Presenters           []PresenterContributionSpec       `json:"presenters,omitempty"`
+	Navigation           []ViewEntryContributionSpec       `json:"navigation,omitempty"`
+	WorkspaceTools       []ViewEntryContributionSpec       `json:"workspace_tools,omitempty"`
+	SettingsPages        []ViewEntryContributionSpec       `json:"settings_pages,omitempty"`
 	Interface            json.RawMessage                   `json:"interface,omitempty"`
 	Platforms            []string                          `json:"platforms,omitempty"`
 	RequestedPermissions []string                          `json:"requested_permissions,omitempty"`
@@ -151,6 +154,18 @@ type PresenterContributionSpec struct {
 	Mode     ContributionMode `json:"mode"`
 	Priority int              `json:"priority,omitempty"`
 	Title    string           `json:"title,omitempty"`
+}
+
+// ViewEntryContributionSpec exposes one registered desktop View through a
+// host-owned discovery surface. The plugin owns the View content; Wuu owns
+// navigation, tabs, overflow, lifecycle, and the surrounding chrome.
+type ViewEntryContributionSpec struct {
+	ID          string `json:"id"`
+	View        string `json:"view"`
+	Title       string `json:"title"`
+	Description string `json:"description,omitempty"`
+	Icon        string `json:"icon,omitempty"`
+	Order       int    `json:"order,omitempty"`
 }
 
 type SettingType string
@@ -237,12 +252,15 @@ type rawManifest struct {
 }
 
 type rawContributes struct {
-	Commands   json.RawMessage `json:"commands"`
-	Themes     json.RawMessage `json:"themes"`
-	Settings   json.RawMessage `json:"settings"`
-	Slots      json.RawMessage `json:"slots"`
-	Surfaces   json.RawMessage `json:"surfaces"`
-	Presenters json.RawMessage `json:"presenters"`
+	Commands       json.RawMessage `json:"commands"`
+	Themes         json.RawMessage `json:"themes"`
+	Settings       json.RawMessage `json:"settings"`
+	Slots          json.RawMessage `json:"slots"`
+	Surfaces       json.RawMessage `json:"surfaces"`
+	Presenters     json.RawMessage `json:"presenters"`
+	Navigation     json.RawMessage `json:"navigation"`
+	WorkspaceTools json.RawMessage `json:"workspaceTools"`
+	SettingsPages  json.RawMessage `json:"settingsPages"`
 }
 
 var supportedManifestFields = map[string]struct{}{
@@ -303,7 +321,7 @@ func normalizeManifest(data []byte, root string, official bool) (Manifest, error
 		return Manifest{}, err
 	}
 	if contributes, ok := fields["contributes"]; ok {
-		if err := validateObjectFields("contributes", contributes, "commands", "themes", "settings", "slots", "surfaces", "presenters"); err != nil {
+		if err := validateObjectFields("contributes", contributes, "commands", "themes", "settings", "slots", "surfaces", "presenters", "navigation", "workspaceTools", "settingsPages"); err != nil {
 			return Manifest{}, err
 		}
 	}
@@ -348,7 +366,7 @@ func normalizeManifest(data []byte, root string, official bool) (Manifest, error
 	if err != nil {
 		return Manifest{}, err
 	}
-	slots, surfaces, presenters, err := normalizeUIContributions(raw.Contributes)
+	ui, err := normalizeUIContributions(raw.Contributes)
 	if err != nil {
 		return Manifest{}, err
 	}
@@ -393,9 +411,12 @@ func normalizeManifest(data []byte, root string, official bool) (Manifest, error
 		Desktop:              desktop,
 		Themes:               themes,
 		Settings:             settings,
-		Slots:                slots,
-		Surfaces:             surfaces,
-		Presenters:           presenters,
+		Slots:                ui.slots,
+		Surfaces:             ui.surfaces,
+		Presenters:           ui.presenters,
+		Navigation:           ui.navigation,
+		WorkspaceTools:       ui.workspaceTools,
+		SettingsPages:        ui.settingsPages,
 		Interface:            cloneRaw(raw.Interface),
 		Platforms:            normalizeStrings(raw.Platforms),
 		RequestedPermissions: requested,
@@ -540,21 +561,83 @@ var knownPresenterTargets = map[string]struct{}{
 	"navigation.primary": {}, "app.status": {}, "content.preview": {}, "settings": {},
 }
 
-func normalizeUIContributions(raw rawContributes) ([]SlotContributionSpec, []SurfaceContributionSpec, []PresenterContributionSpec, error) {
+type normalizedUIContributions struct {
+	slots          []SlotContributionSpec
+	surfaces       []SurfaceContributionSpec
+	presenters     []PresenterContributionSpec
+	navigation     []ViewEntryContributionSpec
+	workspaceTools []ViewEntryContributionSpec
+	settingsPages  []ViewEntryContributionSpec
+}
+
+func normalizeUIContributions(raw rawContributes) (normalizedUIContributions, error) {
 	seen := make(map[string]string)
 	slots, err := normalizeSlots(raw.Slots, seen)
 	if err != nil {
-		return nil, nil, nil, err
+		return normalizedUIContributions{}, err
 	}
 	surfaces, err := normalizeSurfaces(raw.Surfaces, seen)
 	if err != nil {
-		return nil, nil, nil, err
+		return normalizedUIContributions{}, err
 	}
 	presenters, err := normalizePresenters(raw.Presenters, seen)
 	if err != nil {
-		return nil, nil, nil, err
+		return normalizedUIContributions{}, err
 	}
-	return slots, surfaces, presenters, nil
+	navigation, err := normalizeViewEntries("contributes.navigation", raw.Navigation, seen)
+	if err != nil {
+		return normalizedUIContributions{}, err
+	}
+	workspaceTools, err := normalizeViewEntries("contributes.workspaceTools", raw.WorkspaceTools, seen)
+	if err != nil {
+		return normalizedUIContributions{}, err
+	}
+	settingsPages, err := normalizeViewEntries("contributes.settingsPages", raw.SettingsPages, seen)
+	if err != nil {
+		return normalizedUIContributions{}, err
+	}
+	return normalizedUIContributions{
+		slots: slots, surfaces: surfaces, presenters: presenters,
+		navigation: navigation, workspaceTools: workspaceTools, settingsPages: settingsPages,
+	}, nil
+}
+
+func normalizeViewEntries(field string, raw json.RawMessage, seen map[string]string) ([]ViewEntryContributionSpec, error) {
+	items, err := decodeContributionArray(field, raw)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ViewEntryContributionSpec, 0, len(items))
+	for index, item := range items {
+		itemField := fmt.Sprintf("%s[%d]", field, index)
+		if err := validateObjectFields(itemField, item, "id", "view", "title", "description", "icon", "order"); err != nil {
+			return nil, err
+		}
+		var spec ViewEntryContributionSpec
+		if err := json.Unmarshal(item, &spec); err != nil {
+			return nil, fmt.Errorf("%s: %w", itemField, err)
+		}
+		spec.ID = strings.TrimSpace(spec.ID)
+		spec.View = strings.TrimSpace(spec.View)
+		spec.Title = strings.TrimSpace(spec.Title)
+		spec.Description = strings.TrimSpace(spec.Description)
+		spec.Icon = strings.TrimSpace(spec.Icon)
+		if spec.ID == "" {
+			return nil, fmt.Errorf("%s requires id", itemField)
+		}
+		if previous, ok := seen[spec.ID]; ok {
+			return nil, fmt.Errorf("%s has duplicate plugin-local id %q already declared by %s", itemField, spec.ID, previous)
+		}
+		if spec.View == "" {
+			return nil, fmt.Errorf("%s requires view", itemField)
+		}
+		if spec.Title == "" {
+			return nil, fmt.Errorf("%s requires title", itemField)
+		}
+		seen[spec.ID] = itemField
+		out = append(out, spec)
+	}
+	return out, nil
 }
 
 func normalizeSlots(raw json.RawMessage, seen map[string]string) ([]SlotContributionSpec, error) {

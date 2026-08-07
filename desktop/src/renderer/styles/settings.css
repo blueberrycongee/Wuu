@@ -162,9 +162,13 @@
 
 .settings-nav {
   display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
   flex-direction: column;
   gap: 20px;
+  overflow-y: auto;
   margin-top: 12px;
+  padding-bottom: 12px;
 }
 
 .settings-nav-group {

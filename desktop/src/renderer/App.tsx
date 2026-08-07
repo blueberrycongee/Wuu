@@ -592,6 +592,7 @@ export function App(): JSX.Element {
     workspaceActiveViewTabID,
     workspaceActiveFileTabID,
     openWorkspaceTool,
+    openWorkspacePluginTool,
     openWorkspaceDiffTab,
     openWorkspaceFileTab,
     showWorkspaceToolPicker,
@@ -666,6 +667,7 @@ export function App(): JSX.Element {
     workspaceRightPanelDockableWithoutSidebar,
   ]);
   const revealConversationFromFocusedWorkspace = useCallback((): void => {
+    desktopWorkbenchController.deactivatePane("main");
     if (!rightPanelGlobalized) {
       return;
     }
@@ -4973,6 +4975,7 @@ export function App(): JSX.Element {
           selectedFilePath={activeWorkspaceFile}
           onSelectTab={focusWorkspaceViewTab}
           onOpenTool={openWorkspaceTool}
+          onOpenPluginTool={openWorkspacePluginTool}
           onShowTools={showWorkspaceToolPicker}
           onCloseTab={closeWorkspaceViewTab}
           onDirtyFileTabsChange={rememberWorkspaceDirtyFiles}
@@ -5016,6 +5019,8 @@ export function App(): JSX.Element {
           fileRefreshKey={
             activeThreadIsRunning ? "running" : activeThread?.updated_at
           }
+          pluginHost={desktopPluginHost}
+          workbenchController={desktopWorkbenchController}
         />
           }
         />

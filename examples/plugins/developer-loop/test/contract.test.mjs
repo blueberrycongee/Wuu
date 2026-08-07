@@ -54,6 +54,10 @@ for (const type of ["boolean", "string", "number", "enum"]) {
   );
 }
 
+for (const location of ["navigation", "workspaceTools", "settingsPages"]) {
+  assert.equal(manifest.contributes[location]?.[0]?.view, "acceptance-counter");
+}
+
 const registrations = new Map();
 const disposables = [];
 const register = (kind) => (value) => {

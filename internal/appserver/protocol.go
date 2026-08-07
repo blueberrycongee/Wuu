@@ -612,12 +612,24 @@ type ExtensionSettingDescriptor struct {
 }
 
 type ExtensionContributions struct {
-	Commands   []ExtensionCommandDescriptor               `json:"commands,omitempty"`
-	Themes     []ExtensionThemeDescriptor                 `json:"themes,omitempty"`
-	Settings   []ExtensionSettingDescriptor               `json:"settings,omitempty"`
-	Slots      []ExtensionSlotContributionDescriptor      `json:"slots,omitempty"`
-	Surfaces   []ExtensionSurfaceContributionDescriptor   `json:"surfaces,omitempty"`
-	Presenters []ExtensionPresenterContributionDescriptor `json:"presenters,omitempty"`
+	Commands       []ExtensionCommandDescriptor               `json:"commands,omitempty"`
+	Themes         []ExtensionThemeDescriptor                 `json:"themes,omitempty"`
+	Settings       []ExtensionSettingDescriptor               `json:"settings,omitempty"`
+	Slots          []ExtensionSlotContributionDescriptor      `json:"slots,omitempty"`
+	Surfaces       []ExtensionSurfaceContributionDescriptor   `json:"surfaces,omitempty"`
+	Presenters     []ExtensionPresenterContributionDescriptor `json:"presenters,omitempty"`
+	Navigation     []ExtensionViewEntryDescriptor             `json:"navigation,omitempty"`
+	WorkspaceTools []ExtensionViewEntryDescriptor             `json:"workspace_tools,omitempty"`
+	SettingsPages  []ExtensionViewEntryDescriptor             `json:"settings_pages,omitempty"`
+}
+
+type ExtensionViewEntryDescriptor struct {
+	ID          string `json:"id"`
+	View        string `json:"view"`
+	Title       string `json:"title"`
+	Description string `json:"description,omitempty"`
+	Icon        string `json:"icon,omitempty"`
+	Order       int    `json:"order,omitempty"`
 }
 
 type ExtensionSlotContributionDescriptor struct {

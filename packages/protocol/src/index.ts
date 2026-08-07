@@ -313,7 +313,19 @@ export type ExtensionContributions = {
   slots?: ExtensionSlotContributionDescriptor[];
   surfaces?: ExtensionSurfaceContributionDescriptor[];
   presenters?: ExtensionPresenterContributionDescriptor[];
+  navigation?: ExtensionViewEntryDescriptor[];
+  workspace_tools?: ExtensionViewEntryDescriptor[];
+  settings_pages?: ExtensionViewEntryDescriptor[];
 };
+
+export interface ExtensionViewEntryDescriptor {
+  id: string;
+  view: string;
+  title: string;
+  description?: string;
+  icon?: string;
+  order?: number;
+}
 
 export interface ExtensionSlotContributionDescriptor {
   id: string;

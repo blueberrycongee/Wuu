@@ -30,6 +30,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react";
 import {
   closestCenter,
@@ -68,8 +69,12 @@ import {
   NavigationPresentation,
   type NavigationSourceNode,
 } from "./plugins/NavigationPresentation";
-import { desktopPluginHost } from "./plugins/DesktopPluginRuntime";
+import {
+  desktopPluginHost,
+  desktopWorkbenchController,
+} from "./plugins/DesktopPluginRuntime";
 import type { PluginHost } from "./plugins/PluginHost";
+import type { WorkbenchController } from "./plugins/Workbench";
 import { PluginSlot } from "./plugins/PluginSlot";
 
 /**
@@ -396,6 +401,7 @@ export function AppSidebar({
   onPointerLeave,
   onOpenSettings,
   pluginHost = desktopPluginHost,
+  workbenchController = desktopWorkbenchController,
 }: {
   state: AppState;
   // The sidebar renders scratch conversations through the same ProjectList
@@ -470,6 +476,7 @@ export function AppSidebar({
   onPointerLeave?: (event: ReactPointerEvent<HTMLElement>) => void;
   onOpenSettings: () => void;
   pluginHost?: PluginHost;
+  workbenchController?: WorkbenchController;
 }): JSX.Element {
   const { t } = useI18n();
   const hasRuntimeContext = Boolean(state.activeContext);
@@ -479,6 +486,30 @@ export function AppSidebar({
   // Active state is passed into ProjectList so the row highlights even though
   // it has no DesktopProject entry in state.projects.
   const sidebarScratchPseudoActive = state.activeContext?.kind === "no_project";
+  const pluginNavigationEntries = useSyncExternalStore(
+    (listener) => pluginHost.subscribe(listener),
+    () => pluginHost.getNavigationEntries(),
+    () => pluginHost.getNavigationEntries(),
+  );
+  const workbenchSnapshot = useSyncExternalStore(
+    workbenchController.subscribe,
+    workbenchController.getSnapshot,
+    workbenchController.getSnapshot,
+  );
+  const activePluginMainView = workbenchSnapshot.views.find(
+    (view) => view.id === workbenchSnapshot.activeViewByPane.main,
+  );
+  const activateNative = useCallback((action: () => void): void => {
+    workbenchController.deactivatePane("main");
+    action();
+  }, [workbenchController]);
+  const openPluginNavigation = useCallback((pluginId: string, viewTypeId: string): void => {
+    void workbenchController.openPluginView(pluginId, viewTypeId, {
+      pane: "main",
+      persistence: "durable",
+      reveal: true,
+    });
+  }, [workbenchController]);
 
   // Drag-and-drop reorder wiring for the reorderable sections. The 6px
   // activation distance lets plain clicks on the header (collapse toggle)
@@ -552,7 +583,7 @@ export function AppSidebar({
         label: t("sidebar.newConversation"),
         icon: "message-square-plus",
         disabled: !hasRuntimeContext,
-        onActivate: onStartNewThread,
+        onActivate: () => activateNative(onStartNewThread),
       },
       {
         id: "command:search-conversations",
@@ -561,7 +592,7 @@ export function AppSidebar({
         icon: "search",
         active: searchOpen,
         disabled: !hasRuntimeContext,
-        onActivate: onToggleConversationSearch,
+        onActivate: () => activateNative(onToggleConversationSearch),
       },
     ];
     if (groupChatEnabled) {
@@ -572,7 +603,9 @@ export function AppSidebar({
         icon: "users",
         active: activeChannelSection === "agents",
         disabled: !state.initialized || onOpenChannelAgents === undefined,
-        onActivate: onOpenChannelAgents,
+        onActivate: onOpenChannelAgents
+          ? () => activateNative(onOpenChannelAgents)
+          : undefined,
       });
     }
     nodes.push(
@@ -582,7 +615,7 @@ export function AppSidebar({
         label: t("automations.title"),
         icon: "alarm-clock",
         disabled: !hasRuntimeContext,
-        onActivate: onOpenAutomationsTab,
+        onActivate: () => activateNative(onOpenAutomationsTab),
       },
       {
         id: "command:skills",
@@ -590,7 +623,7 @@ export function AppSidebar({
         label: t("skills.sectionSkills"),
         icon: "plugin-blocks",
         disabled: !hasRuntimeContext,
-        onActivate: onOpenSkillsTab,
+        onActivate: () => activateNative(onOpenSkillsTab),
       },
     );
     if (debugFixturesVisible) {
@@ -706,17 +739,39 @@ export function AppSidebar({
         }
       }
     }
+    if (pluginNavigationEntries.length > 0) {
+      nodes.push({
+        id: "section:plugins",
+        kind: "section",
+        label: t("skills.sectionPlugins"),
+        icon: "plugin-blocks",
+        depth: 0,
+      });
+      for (const entry of pluginNavigationEntries) {
+        nodes.push({
+          id: `plugin:${entry.pluginId}:${entry.id}`,
+          kind: "command",
+          parentId: "section:plugins",
+          depth: 1,
+          label: entry.title,
+          icon: entry.icon || "plugin-blocks",
+          active: activePluginMainView?.pluginId === entry.pluginId
+            && activePluginMainView.viewTypeId === entry.view,
+          onActivate: () => openPluginNavigation(entry.pluginId, entry.view),
+        });
+      }
+    }
     nodes.push({
       id: "command:settings",
       kind: "command",
       label: t("sidebar.settings"),
       icon: "settings",
       disabled: !state.initialized,
-      onActivate: onOpenSettings,
+      onActivate: () => activateNative(onOpenSettings),
     });
     return Object.freeze(nodes);
   }, [
-    activeChannelRoomID, activeChannelSection, activeProjectID, activeThreadID,
+    activateNative, activeChannelRoomID, activeChannelSection, activeProjectID, activeThreadID,
     channelRooms, collabUnreadTotal, debugFixturesVisible, fixturesEnabled,
     groupChatEnabled, hasPinnedRows, hasRuntimeContext, onOpenAutomationsTab,
     onOpenChannelAgents, onOpenChipGallery, onOpenSettings, onOpenSkillsTab,
@@ -725,6 +780,7 @@ export function AppSidebar({
     onStartNewThread, onToggleChannelRoomPinned, onToggleConversationSearch,
     onTogglePinned, pinnedChannelRooms, pinnedRows, projectThreadsByProjectID,
     searchOpen, sectionOrder, sidebarProjects, sidebarScratchPseudoActive,
+    activePluginMainView, openPluginNavigation, pluginNavigationEntries,
     state.activeProjectId, state.initialized, state.lastViewedTurnByThreadID, t,
   ]);
 
@@ -748,7 +804,7 @@ export function AppSidebar({
         <nav className="primary-nav" aria-label={t("sidebar.mainNavigation")}>
           <button
             className="nav-item"
-            onClick={onStartNewThread}
+            onClick={() => activateNative(onStartNewThread)}
             disabled={!hasRuntimeContext}
           >
             <MessageSquarePlus className="icon-lg" />
@@ -759,7 +815,7 @@ export function AppSidebar({
             type="button"
             aria-haspopup="dialog"
             aria-expanded={searchOpen}
-            onClick={onToggleConversationSearch}
+            onClick={() => activateNative(onToggleConversationSearch)}
             disabled={!hasRuntimeContext}
           >
             <Search className="icon-lg" />
@@ -770,7 +826,7 @@ export function AppSidebar({
               className="nav-item"
               type="button"
               aria-current={activeChannelSection === "agents" ? "page" : undefined}
-              onClick={onOpenChannelAgents}
+              onClick={() => onOpenChannelAgents && activateNative(onOpenChannelAgents)}
               disabled={!state.initialized}
             >
               <UsersRound className="icon-lg" />
@@ -779,7 +835,7 @@ export function AppSidebar({
           ) : null}
           <button
             className="nav-item"
-            onClick={onOpenAutomationsTab}
+            onClick={() => activateNative(onOpenAutomationsTab)}
             disabled={!hasRuntimeContext}
           >
             <AlarmClock className="icon-lg" />
@@ -787,7 +843,7 @@ export function AppSidebar({
           </button>
           <button
             className="nav-item"
-            onClick={onOpenSkillsTab}
+            onClick={() => activateNative(onOpenSkillsTab)}
             disabled={!hasRuntimeContext}
           >
             <PluginBlocksIcon className="icon-lg" />
@@ -848,6 +904,38 @@ export function AppSidebar({
         </nav>
 
         <div className="sidebar-main scrollbar-hidden">
+          {pluginNavigationEntries.length > 0 ? (
+            <section
+              className="sidebar-functional-group plugin-navigation-group"
+              aria-label={t("skills.sectionPlugins")}
+              data-wuu-component="plugin-navigation"
+            >
+              <div className="sidebar-functional-heading">
+                <span className="sidebar-functional-heading-label">{t("skills.sectionPlugins")}</span>
+              </div>
+              <div className="sidebar-functional-group-body">
+                {pluginNavigationEntries.map((entry) => {
+                  const active = activePluginMainView?.pluginId === entry.pluginId
+                    && activePluginMainView.viewTypeId === entry.view;
+                  return (
+                    <button
+                      key={`${entry.pluginId}:${entry.id}`}
+                      type="button"
+                      className={`nav-item plugin-navigation-item${active ? " active" : ""}`}
+                      data-wuu-component="plugin-navigation-item"
+                      data-wuu-plugin={entry.pluginId}
+                      aria-current={active ? "page" : undefined}
+                      title={entry.description || entry.title}
+                      onClick={() => openPluginNavigation(entry.pluginId, entry.view)}
+                    >
+                      <PluginBlocksIcon className="icon-lg" />
+                      <span>{entry.title}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+          ) : null}
           {hasPinnedRows ? (
             <section
               className="sidebar-functional-group pinned-functional-group"
@@ -1098,7 +1186,7 @@ export function AppSidebar({
             className="sidebar-settings-button"
             type="button"
             disabled={!state.initialized}
-            onClick={onOpenSettings}
+            onClick={() => activateNative(onOpenSettings)}
           >
             <Settings className="icon-lg" />
             <span>{t("sidebar.settings")}</span>

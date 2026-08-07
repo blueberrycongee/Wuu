@@ -38,7 +38,16 @@ export type WorkspaceFileViewTab = {
   anchor?: string;
 };
 
-export type WorkspaceViewTab = WorkspaceToolViewTab | WorkspaceDiffViewTab | WorkspaceFileViewTab;
+export type WorkspacePluginViewTab = {
+  kind: "plugin";
+  id: string;
+  pluginId: string;
+  viewTypeId: string;
+  title: string;
+  icon?: string;
+};
+
+export type WorkspaceViewTab = WorkspaceToolViewTab | WorkspaceDiffViewTab | WorkspaceFileViewTab | WorkspacePluginViewTab;
 
 export type WorkspaceViewTabsState = {
   tabs: WorkspaceViewTab[];
@@ -62,6 +71,23 @@ export const initialWorkspaceViewTabsState: WorkspaceViewTabsState = {
 
 export function workspaceToolViewTab(kind: WorkspacePanelView): WorkspaceToolViewTab {
   return { kind, id: kind };
+}
+
+export function workspacePluginViewTab(entry: {
+  id: string;
+  pluginId: string;
+  view: string;
+  title: string;
+  icon?: string;
+}): WorkspacePluginViewTab {
+  return {
+    kind: "plugin",
+    id: `plugin:${entry.pluginId}:${entry.id}`,
+    pluginId: entry.pluginId,
+    viewTypeId: entry.view,
+    title: entry.title,
+    ...(entry.icon ? { icon: entry.icon } : {}),
+  };
 }
 
 export function workspaceDiffViewTabID(threadID: string, path: string, artifactID?: string): string {

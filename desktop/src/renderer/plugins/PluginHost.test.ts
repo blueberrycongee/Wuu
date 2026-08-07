@@ -424,6 +424,45 @@ describe("PluginHost", () => {
     );
   });
 
+  it("publishes manifest View entries only after their View is registered", async () => {
+    const host = new PluginHost({ react: React });
+    await host.activateGeneration({
+      pluginId: "workbench-product",
+      generation: "one",
+      contributions: {
+        navigation: [{ id: "nav", view: "dashboard", title: "Dashboard", order: 20 }],
+        workspace_tools: [{ id: "tool", view: "dashboard", title: "Inspector", order: 10 }],
+        settings_pages: [{ id: "settings", view: "dashboard", title: "Advanced", order: 30 }],
+      },
+      register(api) {
+        api.registerViewType({ id: "dashboard", title: "Dashboard", render: () => null });
+        api.registerPresenter({
+          id: "legacy-presenter",
+          target: "app.status",
+          mode: "wrap",
+          render: ({ fallback }) => fallback,
+        });
+      },
+    });
+
+    expect(host.getNavigationEntries()).toEqual([
+      expect.objectContaining({ pluginId: "workbench-product", id: "nav", view: "dashboard" }),
+    ]);
+    expect(host.getWorkspaceTools()[0]).toMatchObject({ id: "tool", title: "Inspector" });
+    expect(host.getSettingsPages()[0]).toMatchObject({ id: "settings", title: "Advanced" });
+
+    await expect(host.activateGeneration({
+      pluginId: "missing-entry-view",
+      generation: "one",
+      contributions: {
+        navigation: [{ id: "missing", view: "not-registered", title: "Missing" }],
+      },
+      register() {},
+    })).rejects.toThrow(
+      "Manifest View entry missing references an unregistered View: not-registered",
+    );
+  });
+
   it("rejects unpublished global theme tokens during candidate activation", async () => {
     const host = new PluginHost({ react: React });
 

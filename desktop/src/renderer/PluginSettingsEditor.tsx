@@ -13,8 +13,10 @@ const EMPTY_DIAGNOSTICS: readonly PluginGenerationDiagnostic[] = Object.freeze([
 
 export function PluginSettingsEditor({
   plugin,
+  variant = "card",
 }: {
   plugin: ExtensionInventoryRecord;
+  variant?: "card" | "page";
 }): JSX.Element | null {
   const settings = plugin.contributions?.settings ?? [];
   const approved = plugin.approval_state === "official" || plugin.approval_state === "granted";
@@ -49,7 +51,12 @@ export function PluginSettingsEditor({
   }
 
   return (
-    <section className="plugin-settings-editor" aria-label={`${plugin.name} settings`}>
+    <section
+      className={`plugin-settings-editor plugin-settings-editor-${variant}`}
+      data-wuu-component="plugin-settings"
+      data-wuu-plugin={plugin.id}
+      aria-label={`${plugin.name} settings`}
+    >
       {conflicts.map((conflict) => (
         <PluginConflictControl key={conflict.key} conflict={conflict} />
       ))}
@@ -218,13 +225,19 @@ function PluginSettingControl({
   const describedBy = `${descriptionId} ${statusId}`;
 
   return (
-    <div className="plugin-setting" data-setting-key={setting.id}>
-      <div className="plugin-setting-heading">
-        <label htmlFor={controlId}>{setting.title}</label>
-        <span>{t(setting.scope === "workspace" ? "skills.pluginSettingWorkspace" : "skills.pluginSettingUser")}</span>
+    <div
+      className="plugin-setting settings-row settings-row-block"
+      data-wuu-component="settings-row"
+      data-setting-key={setting.id}
+    >
+      <div className="plugin-setting-heading settings-row-label">
+        <label className="settings-row-label-title" htmlFor={controlId}>{setting.title}</label>
+        <span className="settings-row-label-description">
+          {t(setting.scope === "workspace" ? "skills.pluginSettingWorkspace" : "skills.pluginSettingUser")}
+        </span>
       </div>
       {setting.description ? <p id={descriptionId}>{setting.description}</p> : <span id={descriptionId} />}
-      <div className="plugin-setting-control">
+      <div className="plugin-setting-control settings-row-control-block">
         {setting.type === "boolean" ? (
           <input
             id={controlId}

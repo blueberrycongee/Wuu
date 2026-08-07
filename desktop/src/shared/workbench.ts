@@ -97,6 +97,8 @@ export interface ViewHostAPI {
 export interface OpenViewOptions {
   pane?: ViewPane;
   context?: Readonly<Record<string, unknown>>;
+  persistence?: ViewPersistence;
+  reveal?: boolean;
 }
 
 export const PRESENTATION_TARGETS = [

@@ -77,6 +77,23 @@ export interface PluginContributionDeclarations {
   readonly slots?: readonly Readonly<{ id: string; target: PluginSlotId; order?: number; title?: string }>[];
   readonly surfaces?: readonly Readonly<{ id: string; target: PluginSurfaceId; mode: PluginSurfaceMode; order?: number; title?: string }>[];
   readonly presenters?: readonly Readonly<{ id: string; target: PresentationTarget; mode: PresentationMode; priority?: number; title?: string }>[];
+  readonly navigation?: readonly PluginViewEntryDeclaration[];
+  readonly workspace_tools?: readonly PluginViewEntryDeclaration[];
+  readonly settings_pages?: readonly PluginViewEntryDeclaration[];
+}
+
+export interface PluginViewEntryDeclaration {
+  readonly id: string;
+  readonly view: string;
+  readonly title: string;
+  readonly description?: string;
+  readonly icon?: string;
+  readonly order?: number;
+}
+
+export interface RegisteredPluginViewEntry extends PluginViewEntryDeclaration {
+  readonly pluginId: string;
+  readonly generation: string;
 }
 
 export interface PluginCommandRegistration {
@@ -352,6 +369,7 @@ const EMPTY_SURFACE_SNAPSHOT: readonly RegisteredPluginSurfaceContribution[] = O
 const EMPTY_COMMAND_SNAPSHOT: readonly RegisteredPluginCommand[] = Object.freeze([]);
 const EMPTY_VIEW_SNAPSHOT: readonly RegisteredViewType[] = Object.freeze([]);
 const EMPTY_VIEW_PLACEMENT_SNAPSHOT: readonly RegisteredViewPlacement[] = Object.freeze([]);
+const EMPTY_VIEW_ENTRY_SNAPSHOT: readonly RegisteredPluginViewEntry[] = Object.freeze([]);
 const EMPTY_RENDERER_SNAPSHOT: readonly RegisteredRenderer[] = Object.freeze([]);
 const EMPTY_THEME_TOKEN_SNAPSHOT: readonly RegisteredThemeTokens[] = Object.freeze([]);
 const EMPTY_STATUS_ITEM_SNAPSHOT: readonly RegisteredStatusItem[] = Object.freeze([]);
@@ -391,6 +409,9 @@ export class PluginHost {
   private commandSnapshot: readonly RegisteredPluginCommand[] = EMPTY_COMMAND_SNAPSHOT;
   private viewSnapshot: readonly RegisteredViewType[] = EMPTY_VIEW_SNAPSHOT;
   private viewPlacementSnapshot: readonly RegisteredViewPlacement[] = EMPTY_VIEW_PLACEMENT_SNAPSHOT;
+  private navigationSnapshot: readonly RegisteredPluginViewEntry[] = EMPTY_VIEW_ENTRY_SNAPSHOT;
+  private workspaceToolSnapshot: readonly RegisteredPluginViewEntry[] = EMPTY_VIEW_ENTRY_SNAPSHOT;
+  private settingsPageSnapshot: readonly RegisteredPluginViewEntry[] = EMPTY_VIEW_ENTRY_SNAPSHOT;
   private rendererSnapshot: readonly RegisteredRenderer[] = EMPTY_RENDERER_SNAPSHOT;
   private themeTokenSnapshot: readonly RegisteredThemeTokens[] = EMPTY_THEME_TOKEN_SNAPSHOT;
   private statusItemSnapshot: readonly RegisteredStatusItem[] = EMPTY_STATUS_ITEM_SNAPSHOT;
@@ -420,6 +441,7 @@ export class PluginHost {
       state.acceptingRegistrations = false;
       this.assertDeclaredContributionsRegistered(state);
       this.assertViewPlacementTargets(state);
+      this.assertDeclaredViewEntryTargets(state);
       this.assertToolActivityPresenterOwnership(state);
     } catch (error: unknown) {
       state.acceptingRegistrations = false;
@@ -523,6 +545,18 @@ export class PluginHost {
 
   getViewPlacements(): readonly RegisteredViewPlacement[] {
     return this.viewPlacementSnapshot;
+  }
+
+  getNavigationEntries(): readonly RegisteredPluginViewEntry[] {
+    return this.navigationSnapshot;
+  }
+
+  getWorkspaceTools(): readonly RegisteredPluginViewEntry[] {
+    return this.workspaceToolSnapshot;
+  }
+
+  getSettingsPages(): readonly RegisteredPluginViewEntry[] {
+    return this.settingsPageSnapshot;
   }
 
   getRenderers(category?: RendererDefinition["category"]): readonly RegisteredRenderer[] {
@@ -993,7 +1027,8 @@ export class PluginHost {
     const declared = kind === "slot" ? declarations.slots
       : kind === "surface" ? declarations.surfaces
       : declarations.presenters;
-    const match = declared?.find((candidate) => candidate.id === actual.id);
+    if (declared === undefined) return;
+    const match = declared.find((candidate) => candidate.id === actual.id);
     if (!match) {
       throw new Error(`Plugin ${kind} registration ${actual.id} is not declared in the manifest`);
     }
@@ -1038,6 +1073,20 @@ export class PluginHost {
     }
   }
 
+  private assertDeclaredViewEntryTargets(state: GenerationState): void {
+    const declarations = state.declaredContributions;
+    if (!declarations) return;
+    for (const entry of [
+      ...(declarations.navigation ?? []),
+      ...(declarations.workspace_tools ?? []),
+      ...(declarations.settings_pages ?? []),
+    ]) {
+      if (!state.views.some((view) => !view.removed && view.id === entry.view)) {
+        throw new Error(`Manifest View entry ${entry.id} references an unregistered View: ${entry.view}`);
+      }
+    }
+  }
+
   private disposeGeneration(state: GenerationState): void {
     if (state.disposed) {
       return;
@@ -1064,6 +1113,9 @@ export class PluginHost {
     const cssSnippets: CSSSnippetRecord[] = [];
     const statusItems: StatusItemRecord[] = [];
     const toolActivityPresenters: PresenterRecord[] = [];
+    const navigationEntries: RegisteredPluginViewEntry[] = [];
+    const workspaceTools: RegisteredPluginViewEntry[] = [];
+    const settingsPages: RegisteredPluginViewEntry[] = [];
 
     for (const state of this.activeGenerations.values()) {
       for (const record of state.slots) {
@@ -1090,6 +1142,14 @@ export class PluginHost {
       cssSnippets.push(...state.cssSnippets.filter((record) => !record.removed));
       statusItems.push(...state.statusItems.filter((record) => !record.removed));
       toolActivityPresenters.push(...state.toolActivityPresenters.filter((record) => !record.removed));
+      const declaredEntry = (entry: PluginViewEntryDeclaration): RegisteredPluginViewEntry => Object.freeze({
+        ...entry,
+        pluginId: state.pluginId,
+        generation: state.generation,
+      });
+      navigationEntries.push(...(state.declaredContributions?.navigation ?? []).map(declaredEntry));
+      workspaceTools.push(...(state.declaredContributions?.workspace_tools ?? []).map(declaredEntry));
+      settingsPages.push(...(state.declaredContributions?.settings_pages ?? []).map(declaredEntry));
     }
 
     for (const slotId of PLUGIN_SLOT_IDS) {
@@ -1143,6 +1203,26 @@ export class PluginHost {
     );
     if (!sameContributions(this.viewPlacementSnapshot, nextViewPlacements)) {
       this.viewPlacementSnapshot = nextViewPlacements;
+      changed = true;
+    }
+
+    const compareViewEntry = (left: RegisteredPluginViewEntry, right: RegisteredPluginViewEntry): number =>
+      normalizeOrder(left.order) - normalizeOrder(right.order)
+      || compareText(left.pluginId, right.pluginId)
+      || compareText(left.id, right.id);
+    const nextNavigation = Object.freeze(navigationEntries.sort(compareViewEntry));
+    if (!sameContributions(this.navigationSnapshot, nextNavigation)) {
+      this.navigationSnapshot = nextNavigation;
+      changed = true;
+    }
+    const nextWorkspaceTools = Object.freeze(workspaceTools.sort(compareViewEntry));
+    if (!sameContributions(this.workspaceToolSnapshot, nextWorkspaceTools)) {
+      this.workspaceToolSnapshot = nextWorkspaceTools;
+      changed = true;
+    }
+    const nextSettingsPages = Object.freeze(settingsPages.sort(compareViewEntry));
+    if (!sameContributions(this.settingsPageSnapshot, nextSettingsPages)) {
+      this.settingsPageSnapshot = nextSettingsPages;
       changed = true;
     }
 

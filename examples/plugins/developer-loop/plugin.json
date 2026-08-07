@@ -67,6 +67,36 @@
         "scope": "user",
         "apply": "live"
       }
-    }
+    },
+    "navigation": [
+      {
+        "id": "acceptance-navigation",
+        "view": "acceptance-counter",
+        "title": "Developer Loop",
+        "description": "Open the developer-loop acceptance view.",
+        "icon": "check-circle",
+        "order": 100
+      }
+    ],
+    "workspaceTools": [
+      {
+        "id": "acceptance-workspace-tool",
+        "view": "acceptance-counter",
+        "title": "Acceptance",
+        "description": "Show the acceptance counter beside the workspace.",
+        "icon": "check-circle",
+        "order": 100
+      }
+    ],
+    "settingsPages": [
+      {
+        "id": "acceptance-details",
+        "view": "acceptance-counter",
+        "title": "Developer Loop Details",
+        "description": "Inspect the same plugin view inside Settings.",
+        "icon": "check-circle",
+        "order": 110
+      }
+    ]
   }
 }
