@@ -2197,6 +2197,7 @@ html.resizing-workspace-terminal-split * {
   background: var(--paper);
 }
 
+.skills-catalog {
   display: grid;
   grid-template-columns: minmax(0, 1080px);
   justify-content: center;
