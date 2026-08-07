@@ -46,8 +46,6 @@ export function useAppDebugState({
   debugControlsVisible: boolean;
   runDebugOpen: boolean;
   setRunDebugOpen: Dispatch<SetStateAction<boolean>>;
-  conversationGridVisible: boolean;
-  setConversationGridVisible: Dispatch<SetStateAction<boolean>>;
   /**
    * Whether the "Chip 图鉴" dev panel (ChipGalleryPanel) is open. The
    * toggle lives in the sidebar "开发样例" section and the panel
@@ -75,7 +73,6 @@ export function useAppDebugState({
     initialDebugControlsEnabled(enabled, forced)
   );
   const [runDebugOpen, setRunDebugOpen] = useState(false);
-  const [conversationGridVisible, setConversationGridVisible] = useState(false);
   const [chipGalleryOpen, setChipGalleryOpen] = useState(false);
   const [runDebugEvents, setRunDebugEvents] = useState<RunDebugEvent[]>([]);
   const [runDebugCopied, setRunDebugCopied] = useState(false);
@@ -155,7 +152,6 @@ export function useAppDebugState({
     if (debugControlsVisible) {
       return;
     }
-    setConversationGridVisible(false);
     setRunDebugOpen(false);
     setChipGalleryOpen(false);
     onHideDebugControls();
@@ -167,8 +163,6 @@ export function useAppDebugState({
     debugControlsVisible,
     runDebugOpen,
     setRunDebugOpen,
-    conversationGridVisible,
-    setConversationGridVisible,
     chipGalleryOpen,
     setChipGalleryOpen,
     runDebugEvents,

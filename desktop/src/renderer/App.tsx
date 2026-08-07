@@ -762,8 +762,6 @@ export function App(): JSX.Element {
     debugControlsVisible,
     runDebugOpen,
     setRunDebugOpen,
-    conversationGridVisible,
-    setConversationGridVisible,
     chipGalleryOpen,
     setChipGalleryOpen,
     runDebugEvents,
@@ -4371,8 +4369,6 @@ export function App(): JSX.Element {
         }${
           sideThreadPanelVisible ? " side-thread-panel-visible" : ""
         }${sessionTabsVisible ? " session-tabs-visible" : ""}${
-          conversationGridVisible ? " conversation-grid-visible" : ""
-        }${
           showingSkillsCatalog && ENABLE_MANAGEMENT_ASSISTANT
             ? " skills-assistant-visible"
             : ""
@@ -4507,10 +4503,6 @@ export function App(): JSX.Element {
             onPinLaunchPreview={() => setLaunchPreviewPinned(true)}
             enablePlanPanelDebug={ENABLE_PLAN_PANEL_DEBUG}
             onSeedPlanPanelDebug={seedPlanPanelDebug}
-            conversationGridVisible={conversationGridVisible}
-            onToggleConversationGrid={() =>
-              setConversationGridVisible((visible) => !visible)
-            }
             enableRunDebugPanel={ENABLE_RUN_DEBUG_PANEL}
             runDebugRef={runDebugRef}
             runDebugOpen={runDebugOpen}
@@ -4787,7 +4779,6 @@ export function App(): JSX.Element {
                 threadsByID={cachedConversationThreadsByID}
                 activeThreadID={activeThreadID}
                 activeContextCwd={state.activeContext?.cwd}
-                conversationGridVisible={conversationGridVisible}
                 contextCompositionEntries={contextCompositionEntries}
                 instructionFilesEntries={instructionFilesEntries}
                 historyMessageEdit={historyMessageEdit}

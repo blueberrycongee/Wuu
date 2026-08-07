@@ -738,8 +738,7 @@
   color: var(--ink);
 }
 
-.launch-preview-button.active,
-.conversation-grid-button[aria-pressed="true"] {
+.launch-preview-button.active {
   background: var(--surface-4);
   color: var(--ink);
 }

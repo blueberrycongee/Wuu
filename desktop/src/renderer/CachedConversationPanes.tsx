@@ -24,7 +24,6 @@ import type { TurnFileDiffSelection } from "./TurnFileDiffTypes";
 import { latestAgentMessageLocation } from "./TurnViewHelpers";
 import type { HistoryMessageEditState } from "./ConversationHistoryActions";
 
-const CONVERSATION_GRID_COLUMNS = 12;
 const CONVERSATION_LAYOUT_STABLE_FRAMES = 2;
 const CONVERSATION_LAYOUT_SETTLE_TIMEOUT_MS = 120;
 
@@ -40,7 +39,6 @@ export type CachedConversationPanesProps = {
   threadsByID: ReadonlyMap<string, Thread>;
   activeThreadID?: string;
   activeContextCwd?: string;
-  conversationGridVisible: boolean;
   contextCompositionEntries: ContextCompositionEntry[];
   instructionFilesEntries: InstructionFilesEntry[];
   historyMessageEdit?: HistoryMessageEditState;
@@ -72,7 +70,6 @@ export const CachedConversationPanes = memo(function CachedConversationPanes({
   threadsByID,
   activeThreadID,
   activeContextCwd,
-  conversationGridVisible,
   contextCompositionEntries,
   instructionFilesEntries,
   historyMessageEdit,
@@ -103,7 +100,6 @@ export const CachedConversationPanes = memo(function CachedConversationPanes({
             thread={thread}
             isActive={isActive}
             activeContextCwd={activeContextCwd}
-            conversationGridVisible={conversationGridVisible}
             contextCompositionEntries={contextCompositionEntries}
             instructionFilesEntries={instructionFilesEntries}
             historyMessageEdit={
@@ -144,7 +140,6 @@ const CachedConversationPane = memo(function CachedConversationPane({
   thread,
   isActive,
   activeContextCwd,
-  conversationGridVisible,
   contextCompositionEntries,
   instructionFilesEntries,
   historyMessageEdit,
@@ -403,7 +398,6 @@ const CachedConversationPane = memo(function CachedConversationPane({
       ref={paneRef}
     >
       <div className="conversation-width session-flow">
-        {isActive && conversationGridVisible ? <ConversationGridGuides /> : null}
         <ConversationTurnList
           threadID={thread.id}
           turns={threadTurns}
@@ -538,18 +532,3 @@ const PaneTurnView = memo(function PaneTurnView({
     />
   );
 });
-
-function ConversationGridGuides(): JSX.Element {
-  return (
-    <div className="conversation-grid-guides" aria-hidden="true">
-      <div className="conversation-grid-cols">
-        {Array.from({ length: CONVERSATION_GRID_COLUMNS }, (_, index) => (
-          <div className="conversation-grid-col" key={index}>
-            <span>{index + 1}</span>
-          </div>
-        ))}
-      </div>
-      <div className="conversation-grid-rows" />
-    </div>
-  );
-}

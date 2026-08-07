@@ -72,7 +72,6 @@ function renderPane(
     threadIDs: [thread.id],
     threadsByID: new Map([[thread.id, thread]]),
     activeThreadID: thread.id,
-    conversationGridVisible: false,
     contextCompositionEntries: [],
     instructionFilesEntries: [],
     onStreamFrame: () => {},
@@ -191,7 +190,6 @@ describe("CachedConversationPanes session switching", () => {
     roots.push(root);
     const stableProps = {
       threadIDs: [threadA.id, threadB.id],
-      conversationGridVisible: false,
       contextCompositionEntries: [],
       instructionFilesEntries: [],
       onStreamFrame: () => {},
@@ -356,7 +354,6 @@ describe("CachedConversationPanes session switching", () => {
     const stableProps = {
       threadIDs: threads.map((thread) => thread.id),
       threadsByID,
-      conversationGridVisible: false,
       contextCompositionEntries: [],
       instructionFilesEntries: [],
       onStreamFrame: () => {},

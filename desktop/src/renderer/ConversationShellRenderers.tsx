@@ -7,7 +7,6 @@ import type {
 } from "react";
 import {
   Bug,
-  Grid3X3,
   Info,
   ListChecks,
   Terminal,
@@ -350,8 +349,6 @@ export type ConversationTitleActionsProps = {
   onPinLaunchPreview: () => void;
   enablePlanPanelDebug: boolean;
   onSeedPlanPanelDebug: () => void;
-  conversationGridVisible: boolean;
-  onToggleConversationGrid: () => void;
   enableRunDebugPanel: boolean;
   runDebugRef: RefObject<HTMLDivElement | null>;
   runDebugOpen: boolean;
@@ -382,8 +379,6 @@ export function ConversationTitleActions({
   onPinLaunchPreview,
   enablePlanPanelDebug,
   onSeedPlanPanelDebug,
-  conversationGridVisible,
-  onToggleConversationGrid,
   enableRunDebugPanel,
   runDebugRef,
   runDebugOpen,
@@ -428,21 +423,6 @@ export function ConversationTitleActions({
         >
           <ListChecks className="icon" />
           <span>{t("shell.planPanel")}</span>
-        </button>
-      ) : null}
-      {debugControlsVisible ? (
-        <button
-          className={`launch-preview-button conversation-grid-button${conversationGridVisible ? " active" : ""}`}
-          type="button"
-          aria-label={t(
-            conversationGridVisible ? "shell.hideGrid" : "shell.showGrid",
-          )}
-          aria-pressed={conversationGridVisible}
-          title={t("shell.gridShortcut")}
-          onClick={onToggleConversationGrid}
-        >
-          <Grid3X3 className="icon" />
-          <span>{t("shell.grid")}</span>
         </button>
       ) : null}
       {debugControlsVisible && enableRunDebugPanel ? (

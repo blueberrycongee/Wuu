@@ -116,7 +116,6 @@ function paneProps(thread: Thread): ComponentProps<typeof CachedConversationPane
     threadIDs: [thread.id],
     threadsByID: new Map([[thread.id, thread]]),
     activeThreadID: thread.id,
-    conversationGridVisible: false,
     ...stableCallbacks,
     ...stableCollections,
   };

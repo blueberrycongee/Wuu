@@ -163,8 +163,6 @@ describe("ConversationTitleActions icon sizing", () => {
           onPinLaunchPreview={() => {}}
           enablePlanPanelDebug={false}
           onSeedPlanPanelDebug={() => {}}
-          conversationGridVisible={false}
-          onToggleConversationGrid={() => {}}
           enableRunDebugPanel={false}
           runDebugRef={createRef<HTMLDivElement>()}
           runDebugOpen={false}

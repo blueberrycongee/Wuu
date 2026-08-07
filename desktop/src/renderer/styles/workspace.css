@@ -4981,64 +4981,6 @@ html.resizing-workspace-terminal-split * {
   );
 }
 
-.conversation-grid-guides {
-  position: absolute;
-  inset: 0 var(--session-outer-padding-inline);
-  z-index: 40;
-  pointer-events: none;
-}
-
-.conversation-grid-cols {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  grid-template-columns: repeat(var(--wuu-grid-cols), minmax(0, 1fr));
-  column-gap: var(--wuu-grid-gutter);
-  border-right: 1px solid var(--grid-guide-border);
-  border-left: 1px solid var(--grid-guide-border);
-}
-
-.conversation-grid-col {
-  position: relative;
-  background:
-    linear-gradient(var(--grid-guide-fill), var(--grid-guide-fill));
-  box-shadow:
-    inset 1px 0 0 var(--grid-guide-inset),
-    inset -1px 0 0 var(--grid-guide-inset);
-}
-
-.conversation-grid-col span {
-  position: absolute;
-  top: 32px;
-  right: 0;
-  left: 0;
-  color: var(--wuu-accent);
-  font-family: "SFMono-Regular", ui-monospace, "SF Mono", Menlo, monospace;
-  font-size: 10px;
-  font-weight: 600;
-  line-height: 1;
-  text-align: center;
-}
-
-.conversation-grid-rows {
-  position: absolute;
-  top: var(--conversation-flow-top-gap);
-  right: 0;
-  bottom: 0;
-  left: 0;
-  background:
-    repeating-linear-gradient(
-      to bottom,
-      var(--grid-guide-row-major) 0 1px,
-      transparent 1px var(--wuu-grid-leading)
-    ),
-    repeating-linear-gradient(
-      to bottom,
-      var(--grid-guide-row-minor) 0 1px,
-      transparent 1px var(--wuu-grid-baseline)
-    );
-}
-
 .scroll-region:not(.empty-scroll-region):not(.workspace-scroll-region) .conversation-split-width {
   padding: 28px clamp(18px, 3vw, 34px) 34px;
 }
