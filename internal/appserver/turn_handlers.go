@@ -2338,7 +2338,7 @@ func (s *Server) runTurnWithRequestContext(ctx context.Context, th *threadState,
 			RequestID: reference.RequestID, State: lifecycleState, ThreadID: th.ID,
 			TurnID: turnID, QueueID: reference.QueueID, Error: errorText,
 			StartedAt: &startedAt, CompletedAt: &now,
-			InputTokens: res.InputTokens, OutputTokens: res.OutputTokens,
+			InputTokens: res.InputTokens, OutputTokens: res.OutputTokens, FinalOutput: res.Content,
 		}); lifecycleErr != nil {
 			providers.DebugLogf("notify plugin turn terminal for thread %q turn %q: %v", th.ID, turnID, lifecycleErr)
 		}

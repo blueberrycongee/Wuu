@@ -405,9 +405,7 @@ func NewSession(opts Options) (*Session, error) {
 	activePlugins := activatedPlugins(cfg, discoveredPlugins)
 	var agentControl *agentcontrol.AgentControl
 	pluginTurnRouter := NewPluginSessionRouter()
-	pluginHost := startPluginHost(activePlugins, rootDir, wuuHome, pluginTurnRouter, func(ctx context.Context, request pluginhost.ChildSessionRequestParams) (json.RawMessage, error) {
-		return dispatchChildSessionRequest(agentControl, ctx, request)
-	})
+	pluginHost := startPluginHost(activePlugins, rootDir, wuuHome, pluginTurnRouter)
 	systemPrompts, compactions, capabilityErr := buildPluginAgentCapabilities(context.Background(), pluginHost, resolvedName, providerCfg.Model, rootDir)
 	if capabilityErr != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)

@@ -173,14 +173,12 @@ const (
 	HostServiceSettingsGet  HostServiceMethod = "host.settings.get"
 	HostServiceSettingsList HostServiceMethod = "host.settings.list"
 
-	// Child sessions. Product-specific orchestration semantics remain in the
-	// calling plugin; the host only exposes a neutral request dispatcher.
-	HostServiceChildSessionRequest HostServiceMethod = "host.child_session.request"
-
 	// Sessions. Creation and input delivery are separate so ownership,
 	// visibility, provenance, and idempotency remain explicit.
 	HostServiceSessionCreate HostServiceMethod = "host.session.create"
 	HostServiceSessionSend   HostServiceMethod = "host.session.send"
+	HostServiceSessionList   HostServiceMethod = "host.session.list"
+	HostServiceSessionCancel HostServiceMethod = "host.session.cancel"
 
 	// Session
 	HostServiceSessionGetInfo HostServiceMethod = "host.session.info"
@@ -192,13 +190,6 @@ const (
 	// Diagnostics
 	HostServiceDiagnosticsLog HostServiceMethod = "host.diagnostics.log"
 )
-
-type ChildSessionRequestParams struct {
-	Action    string          `json:"action"`
-	ActorID   string          `json:"actor_id,omitempty"`
-	ActorPath string          `json:"actor_path,omitempty"`
-	Input     json.RawMessage `json:"input,omitempty"`
-}
 
 const (
 	MaxSessionSendRequestIDBytes    = 256
@@ -218,9 +209,12 @@ const (
 
 type SessionCreateParams struct {
 	RequestID       string `json:"request_id"`
+	Name            string `json:"name,omitempty"`
 	Visibility      string `json:"visibility"`
 	ParentSessionID string `json:"parent_session_id,omitempty"`
 	ContextSource   string `json:"context_source"`
+	Workspace       string `json:"workspace,omitempty"`
+	ModelAlias      string `json:"model_alias,omitempty"`
 }
 
 type SessionCreateResult struct {
@@ -254,6 +248,33 @@ type SessionSendResult struct {
 	QueueID   string `json:"queue_id,omitempty"`
 }
 
+type SessionListParams struct {
+	ParentSessionID string `json:"parent_session_id,omitempty"`
+}
+
+type SessionSummary struct {
+	SessionID       string `json:"session_id"`
+	Name            string `json:"name,omitempty"`
+	ParentSessionID string `json:"parent_session_id,omitempty"`
+	Visibility      string `json:"visibility"`
+	State           string `json:"state"`
+	CreatedAt       string `json:"created_at,omitempty"`
+	UpdatedAt       string `json:"updated_at,omitempty"`
+}
+
+type SessionListResult struct {
+	Sessions []SessionSummary `json:"sessions"`
+}
+
+type SessionCancelParams struct {
+	SessionID string `json:"session_id"`
+}
+
+type SessionCancelResult struct {
+	SessionID string `json:"session_id"`
+	Cancelled bool   `json:"cancelled"`
+}
+
 const (
 	TurnLifecycleQueued      = "queued"
 	TurnLifecycleRunning     = "running"
@@ -277,6 +298,7 @@ type AgentTurnLifecycleInput struct {
 	CompletedAt  *time.Time `json:"completed_at,omitempty"`
 	InputTokens  int        `json:"input_tokens,omitempty"`
 	OutputTokens int        `json:"output_tokens,omitempty"`
+	FinalOutput  string     `json:"final_output,omitempty"`
 }
 
 type AgentTurnLifecycleOutput struct{}
@@ -738,7 +760,7 @@ func ValidateHostServiceMethod(m HostServiceMethod) error {
 	switch m {
 	case HostServiceStorageGet, HostServiceStorageSet, HostServiceStorageDelete, HostServiceStorageKeys, HostServiceStorageCompareExchange,
 		HostServiceSettingsGet, HostServiceSettingsList,
-		HostServiceChildSessionRequest, HostServiceSessionCreate, HostServiceSessionSend,
+		HostServiceSessionCreate, HostServiceSessionSend, HostServiceSessionList, HostServiceSessionCancel,
 		HostServiceSessionGetInfo,
 		HostServiceWorkspaceGetRoot, HostServiceWorkspaceList,
 		HostServiceDiagnosticsLog:
@@ -753,7 +775,7 @@ func AllHostServices() []HostServiceMethod {
 	return []HostServiceMethod{
 		HostServiceStorageGet, HostServiceStorageSet, HostServiceStorageDelete, HostServiceStorageKeys, HostServiceStorageCompareExchange,
 		HostServiceSettingsGet, HostServiceSettingsList,
-		HostServiceChildSessionRequest, HostServiceSessionCreate, HostServiceSessionSend,
+		HostServiceSessionCreate, HostServiceSessionSend, HostServiceSessionList, HostServiceSessionCancel,
 		HostServiceSessionGetInfo,
 		HostServiceWorkspaceGetRoot, HostServiceWorkspaceList,
 		HostServiceDiagnosticsLog,

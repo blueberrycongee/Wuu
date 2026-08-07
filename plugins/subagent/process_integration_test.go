@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
@@ -22,37 +23,43 @@ func TestSubagentPluginProcessHelper(t *testing.T) {
 	os.Exit(0)
 }
 
-func TestSubagentPluginCallsNeutralHostAcrossProcess(t *testing.T) {
-	services := &childSessionTestServices{}
-	client, err := pluginhost.Start(context.Background(), pluginhost.ProcessConfig{
-		ID: "subagent", Command: os.Args[0], Args: []string{"-test.run=^TestSubagentPluginProcessHelper$"},
-		Env: map[string]string{"WUU_SUBAGENT_PLUGIN_TEST_HELPER": "1"}, Timeout: 5 * time.Second,
-		HostServiceHandler: services, SupportedHostServices: services.SupportedHostServices(),
-	})
+func TestSubagentPluginComposesSessionServicesAcrossProcess(t *testing.T) {
+	services := &sessionTestServices{}
+	client, err := pluginhost.Start(context.Background(), pluginhost.ProcessConfig{ID: "subagent", Command: os.Args[0], Args: []string{"-test.run=^TestSubagentPluginProcessHelper$"}, Env: map[string]string{"WUU_SUBAGENT_PLUGIN_TEST_HELPER": "1"}, Timeout: 5 * time.Second, HostServiceHandler: services, SupportedHostServices: services.SupportedHostServices()})
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = client.Close(context.Background()) })
-	result, err := client.ExecuteTool(context.Background(), pluginhost.ToolExecuteParams{
-		ToolID: "send_message", ToolExecuteInput: pluginhost.ToolExecuteInput{
-			ActorID: "parent", ActorPath: "/root", Arguments: json.RawMessage(`{"target":"child","message":"continue"}`),
-		},
-	})
-	if err != nil || services.got.Action != "send" || services.got.ActorID != "parent" || len(result.Result.Content) != 1 {
-		t.Fatalf("result=%+v request=%+v err=%v", result, services.got, err)
+	result, err := client.ExecuteTool(context.Background(), pluginhost.ToolExecuteParams{ToolID: "spawn_agent", ToolExecuteInput: pluginhost.ToolExecuteInput{SessionID: "parent", Arguments: json.RawMessage(`{"description":"review parser","prompt":"inspect it","run_in_background":true}`)}})
+	if err != nil || len(result.Result.Content) != 1 {
+		t.Fatalf("result=%+v err=%v", result, err)
+	}
+	services.mu.Lock()
+	calls := append([]pluginhost.HostServiceMethod(nil), services.calls...)
+	services.mu.Unlock()
+	if len(calls) != 6 || calls[0] != pluginhost.HostServiceSessionCreate || calls[3] != pluginhost.HostServiceSessionSend {
+		t.Fatalf("calls=%v", calls)
 	}
 }
 
-type childSessionTestServices struct {
-	got pluginhost.ChildSessionRequestParams
+type sessionTestServices struct {
+	mu    sync.Mutex
+	calls []pluginhost.HostServiceMethod
 }
 
-func (s *childSessionTestServices) SupportedHostServices() []pluginhost.HostServiceMethod {
-	return []pluginhost.HostServiceMethod{pluginhost.HostServiceChildSessionRequest}
+func (s *sessionTestServices) SupportedHostServices() []pluginhost.HostServiceMethod {
+	return []pluginhost.HostServiceMethod{pluginhost.HostServiceSessionCreate, pluginhost.HostServiceSessionSend, pluginhost.HostServiceSessionList, pluginhost.HostServiceSessionCancel, pluginhost.HostServiceStorageGet, pluginhost.HostServiceStorageSet}
 }
-func (s *childSessionTestServices) HandleHostService(_ context.Context, method pluginhost.HostServiceMethod, raw json.RawMessage) (json.RawMessage, error) {
-	if err := json.Unmarshal(raw, &s.got); err != nil {
-		return nil, err
+func (s *sessionTestServices) HandleHostService(_ context.Context, method pluginhost.HostServiceMethod, _ json.RawMessage) (json.RawMessage, error) {
+	s.mu.Lock()
+	s.calls = append(s.calls, method)
+	s.mu.Unlock()
+	switch method {
+	case pluginhost.HostServiceSessionCreate:
+		return json.RawMessage(`{"session_id":"child-1","created":true}`), nil
+	case pluginhost.HostServiceSessionSend:
+		return json.RawMessage(`{"state":"running","session_id":"child-1","turn_id":"turn-1"}`), nil
+	default:
+		return json.RawMessage(`{}`), nil
 	}
-	return json.RawMessage(`{"status":"sent"}`), nil
 }

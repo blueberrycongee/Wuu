@@ -75,10 +75,9 @@ been deleted.
 ## Example 4: Subagent Uses Private Child Sessions
 
 **Current implementation**: The plugin owns the model-visible Tools, prompting,
-and UI, while `host.child_session.request` still switches over
-`spawn/send/close/list/await/report` and the core still understands Subagent
-product vocabulary. This is a facade extraction, not a complete vertical
-migration.
+task records, completion delivery, and UI. It composes
+`host.session.create/send/list/cancel`; the former
+`host.child_session.request` action switch has been deleted.
 
 **Target public composition**:
 
@@ -96,9 +95,10 @@ session.Send(child.ID, taskPrompt)
 session.Send(parent, completionPayload, GeneratedQuery("子任务已更新"))
 ```
 
-The existing concurrency, persistence, cancellation, recovery, and worktree
-code remains valuable, but must become a product-neutral Session/resource
-engine. Task names, worker types, `spawn_agent`, reporting format, and completion
+The host stamps generation-bound ownership, hides plugin-private Sessions from
+ordinary history and search, enforces cancellation and worktree boundaries,
+and returns final output only to the submitting plugin's lifecycle observer.
+Task names, worker prompts, `spawn_agent`, status presentation, and completion
 prompting belong to the plugin. HelpMe is deleted rather than migrated.
 
 ## Example 5: Compaction Strategy

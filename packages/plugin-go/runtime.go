@@ -23,6 +23,8 @@ const CapabilityProtocolVersion = 2
 const (
 	HostServiceSessionCreate          = "host.session.create"
 	HostServiceSessionSend            = "host.session.send"
+	HostServiceSessionList            = "host.session.list"
+	HostServiceSessionCancel          = "host.session.cancel"
 	HostServiceStorageCompareExchange = "host.storage.compare_exchange"
 	CapabilityAgentTurnLifecycle      = "agent.turn.lifecycle"
 )
@@ -119,9 +121,12 @@ type TurnContextBlock struct {
 
 type SessionCreateParams struct {
 	RequestID       string `json:"request_id"`
+	Name            string `json:"name,omitempty"`
 	Visibility      string `json:"visibility"`
 	ParentSessionID string `json:"parent_session_id,omitempty"`
 	ContextSource   string `json:"context_source"`
+	Workspace       string `json:"workspace,omitempty"`
+	ModelAlias      string `json:"model_alias,omitempty"`
 }
 
 type SessionCreateResult struct {
@@ -155,6 +160,33 @@ type SessionSendResult struct {
 	QueueID   string `json:"queue_id,omitempty"`
 }
 
+type SessionListParams struct {
+	ParentSessionID string `json:"parent_session_id,omitempty"`
+}
+
+type SessionSummary struct {
+	SessionID       string `json:"session_id"`
+	Name            string `json:"name,omitempty"`
+	ParentSessionID string `json:"parent_session_id,omitempty"`
+	Visibility      string `json:"visibility"`
+	State           string `json:"state"`
+	CreatedAt       string `json:"created_at,omitempty"`
+	UpdatedAt       string `json:"updated_at,omitempty"`
+}
+
+type SessionListResult struct {
+	Sessions []SessionSummary `json:"sessions"`
+}
+
+type SessionCancelParams struct {
+	SessionID string `json:"session_id"`
+}
+
+type SessionCancelResult struct {
+	SessionID string `json:"session_id"`
+	Cancelled bool   `json:"cancelled"`
+}
+
 type TurnLifecycleInput struct {
 	RequestID    string `json:"request_id"`
 	State        string `json:"state"`
@@ -166,6 +198,7 @@ type TurnLifecycleInput struct {
 	CompletedAt  string `json:"completed_at,omitempty"`
 	InputTokens  int    `json:"input_tokens,omitempty"`
 	OutputTokens int    `json:"output_tokens,omitempty"`
+	FinalOutput  string `json:"final_output,omitempty"`
 }
 
 type Host interface {

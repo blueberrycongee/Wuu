@@ -10,10 +10,15 @@ export async function activate(api) {
     .plugin-subagent-settings button { justify-self:start; }
     .plugin-subagent-settings-error { color:var(--wuu-color-danger); font-size:12px; }
   ` });
-  function ChildTaskStatus() {
+  function ChildTaskStatus(props) {
+    const threadId = typeof props.threadId === "string" ? props.threadId : "";
     const [tasks, setTasks] = React.useState([]);
-    const refresh = React.useCallback(() => api.invokeRuntime("status.list", { path_prefix: "/root" })
-      .then((value) => setTasks(Array.isArray(value) ? value : [])).catch(() => setTasks([])), []);
+    const refresh = React.useCallback(() => {
+      if (!threadId) { setTasks([]); return Promise.resolve(); }
+      return api.invokeRuntime("status.list", { parent_session_id: threadId })
+		.then((value) => setTasks(Array.isArray(value?.sessions) ? value.sessions : []))
+		.catch(() => setTasks([]));
+    }, [threadId]);
     React.useEffect(() => { void refresh(); }, [refresh]);
     React.useEffect(() => {
       const subscription = api.onHostEvent((event) => {
@@ -22,11 +27,11 @@ export async function activate(api) {
       });
       return () => subscription.dispose();
     }, [refresh]);
-    const visible = tasks.filter((task) => task && task.status && task.status !== "completed");
-    if (visible.length === 0) return null;
+    const visible = tasks.filter((task) => task && task.state && task.state !== "completed");
+    if (!props.mainConversation || visible.length === 0) return null;
     return h("div", { className: "plugin-subagent-status" }, visible.map((task) => h("span", {
-      className: "plugin-subagent-chip", "data-status": task.status, key: task.id || task.agent_path,
-    }, `${task.task_name || task.description || "Child task"} · ${task.status}`)));
+      className: "plugin-subagent-chip", "data-status": task.state, key: task.session_id,
+    }, `${task.name || "Child task"} · ${task.state}`)));
   }
   function ModelAliases({ context }) {
     const active = context && context.activePage === "advanced";
@@ -50,6 +55,6 @@ export async function activate(api) {
       error ? h("div", { className: "plugin-subagent-settings-error" }, error) : null,
       h("button", { type: "button", disabled: Boolean(context.busy), onClick: save }, "Save aliases"));
   }
-  api.registerSlot("composer.above", { id: "subagent-status", order: 30, render: () => h(ChildTaskStatus) });
+  api.registerSlot("composer.above", { id: "subagent-status", order: 30, render: (context) => h(ChildTaskStatus, context) });
   api.registerSlot("settings.plugin", { id: "subagent-settings", order: 30, render: (context) => h(ModelAliases, { context }) });
 }

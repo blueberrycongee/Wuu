@@ -60,8 +60,9 @@ Goal 迁移过程中曾存在产品专用的 `agent.turn.continuation` seam；�
 Goal 与 Subagent 共同证明通用投递还必须把模型输入、前端展示摘要和来源分开。前端可以把一次
 插件投递显示成只读 query 气泡，但持久数据必须标记为插件生成，不能伪造用户作者。通用 Session
 合同现在持久化 owner、`user | plugin` 可见性、父子关系、fresh/fork 上下文和 workspace 身份，
-并把模型输入、query 气泡摘要、真实来源和 cause 分开。下一步用同一合同迁移 Subagent 后删除
-`host.child_session.request`。
+并把模型输入、query 气泡摘要、真实来源和 cause 分开。Subagent 已使用同一合同完成迁移，旧的
+`host.child_session.request` 已删除；公共 Session 合同同时补齐 owner-scoped list/cancel、worktree
+和最终输出 lifecycle。
 
 Plan 不属于这一迁移。`update_plan`、计划状态和标准展示留在核心 Agent 链路；Plan 不承担跨 Turn
 自动续跑。HelpMe 直接删除，不形成 capability 或兼容层。

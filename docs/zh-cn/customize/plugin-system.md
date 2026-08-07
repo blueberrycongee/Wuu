@@ -183,11 +183,12 @@ RPC。
 1. **Goal 已迁移到公共 Session 链路。** Goal 的状态机、存储、Tool、提示和 UI 均由插件拥有；
    插件观察 `agent.turn.completed` 后通过 `host.session.send` 向同一 Session 投递只读 query。
    `agent.turn.continuation`、`probe/prepare` 两阶段轮询以及 Turn 主链路里的 Goal 续跑分支已经删除。
-2. **Subagent 目前是外壳迁移。** Tool、提示和 UI 已在插件中，但 `host.child_session.request`
-   仍由宿主按 `spawn/send/close/list/await/report` switch，并通过 `internal/agentcontrol` 和
-   `internal/subagent` 理解 actor path、worker type、报告和完成回投。这些可靠执行实现不应粗暴
-   删除，而应降成通用 Session、父子关系、上下文 fork、租约、恢复和 workspace 隔离；产品词汇
-   留在插件。
+2. **Subagent 已迁移到公共 Session 链路。** 插件通过 `host.session.create/send/list/cancel` 创建和
+   管理私有子 Session，用插件存储维护任务名与交付状态，观察 owner-scoped Turn lifecycle 后再向
+   父 Session 回投只读 query。fresh/fork、共享目录/worktree、模型别名、所有权、取消与最终输出
+   都是产品中立的 Session 合同；`host.child_session.request` 及其
+   `spawn/send/close/list/await/report` switch 已删除。现有 `agentcontrol` 的租约和恢复代码仍可服务
+   核心内部执行，但不再是 Subagent 插件的公开或私有调用入口。
 3. **通用 Session create/send 已取代 `host.turn.submit`。** 创建与投递是两个独立调用；创建持久化
    generation 绑定的 owner、`user | plugin` 可见性、parent、`fresh | fork` 和幂等 request id，
    投递则分离模型输入与 query 气泡摘要，并持久化真实插件来源、cause 和只读属性。Provider 仍按
@@ -205,8 +206,9 @@ RPC。
    parent、fresh/fork、workspace、来源、展示摘要和 request id，统一用户工作优先及幂等规则。
 2. 先迁移 Goal：在 Turn 完成事件后由插件主动向同一 Session 投递，验证生成 query、连续唤醒、
    排队、暂停/完成、崩溃恢复和禁用插件；随后删除 `agent.turn.continuation`。
-3. 再迁移 Subagent：让插件用公共 API 创建和管理私有子 Session；把现有并发、持久化、取消、恢复、
-   结果交付和 worktree 代码收敛为通用引擎；随后删除 `host.child_session.request` 和核心产品分支。
+3. Subagent 已使用公共 API 创建和管理私有子 Session；`host.child_session.request` 已删除，任务
+   提示、状态、桌面状态条和父 Session 回投由插件拥有。继续删除只服务旧核心 Subagent 展示的
+   遗留产品分支，不改变公共合同。
 4. HelpMe 全链路已删除；Plan 仍通过核心 Tool/状态链运行。
 5. 用 Cron 完成“插件 Timer → 用户可见 Session”的纵向切片，再迁移 memory，最后用 Dream 验证
    “Timer + memory + 插件私有 Session”的组合，不为三者增加产品专用宿主服务。

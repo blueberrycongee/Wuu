@@ -193,6 +193,13 @@ func CreateWithWorktree(sessDir, id, cwd string, fork ForkMetadata, worktree Wor
 	return createWithMetadataAndWorktree(sessDir, id, cwd, fork, worktree, ManagedMetadata{})
 }
 
+// CreateManagedWithWorktree initializes a plugin-owned session in an isolated
+// workspace while preserving the same ownership and idempotency metadata as
+// every other host.session.create call.
+func CreateManagedWithWorktree(sessDir, id, cwd string, fork ForkMetadata, worktree WorktreeInfo, managed ManagedMetadata) (*Session, error) {
+	return createWithMetadataAndWorktree(sessDir, id, cwd, fork, worktree, managed)
+}
+
 func createWithMetadata(sessDir, id, cwd string, fork ForkMetadata, managed ManagedMetadata) (*Session, error) {
 	return createWithMetadataAndWorktree(sessDir, id, cwd, fork, WorktreeInfo{}, managed)
 }

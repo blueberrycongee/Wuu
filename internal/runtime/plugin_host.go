@@ -18,15 +18,15 @@ func startPluginClient(ctx context.Context, cfg pluginhost.ProcessConfig) (plugi
 	return pluginhost.Start(ctx, cfg)
 }
 
-func startPluginHost(plugins []pluginpkg.Plugin, projectRoot, wuuHome string, turnRouter *PluginSessionRouter, childSession ...childSessionRequestHandler) *pluginhost.Host {
-	host, err := buildPluginHost(plugins, projectRoot, wuuHome, nil, startPluginClient, turnRouter, childSession...)
+func startPluginHost(plugins []pluginpkg.Plugin, projectRoot, wuuHome string, turnRouter *PluginSessionRouter) *pluginhost.Host {
+	host, err := buildPluginHost(plugins, projectRoot, wuuHome, nil, startPluginClient, turnRouter)
 	if err != nil {
 		return pluginhost.New(pluginhost.Failed("capability-negotiation", err))
 	}
 	return host
 }
 
-func buildPluginHost(plugins []pluginpkg.Plugin, projectRoot, wuuHome string, required map[string]bool, start pluginClientStarter, turnRouter *PluginSessionRouter, childSession ...childSessionRequestHandler) (*pluginhost.Host, error) {
+func buildPluginHost(plugins []pluginpkg.Plugin, projectRoot, wuuHome string, required map[string]bool, start pluginClientStarter, turnRouter *PluginSessionRouter) (*pluginhost.Host, error) {
 	host := pluginhost.New()
 	for _, item := range plugins {
 		if item.Runtime == nil {
@@ -42,7 +42,7 @@ func buildPluginHost(plugins []pluginpkg.Plugin, projectRoot, wuuHome string, re
 			ProjectRoot:        projectRoot,
 			WuuHome:            wuuHome,
 			Timeout:            timeout,
-			HostServiceHandler: newPluginHostServices(item, projectRoot, wuuHome, turnRouter, childSession...),
+			HostServiceHandler: newPluginHostServices(item, projectRoot, wuuHome, turnRouter),
 		})
 		if err != nil {
 			host.Add(pluginhost.Failed(item.ID, err))

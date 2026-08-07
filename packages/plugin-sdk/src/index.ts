@@ -360,9 +360,10 @@ export const HOST_SERVICE_METHODS = [
   "host.storage.keys",
   "host.settings.get",
   "host.settings.list",
-  "host.child_session.request",
   "host.session.create",
   "host.session.send",
+  "host.session.list",
+  "host.session.cancel",
   "host.session.info",
   "host.workspace.root",
   "host.workspace.list",
@@ -529,16 +530,15 @@ export interface HostServiceContracts {
   "host.storage.keys": { params: Record<string, never>; result: { keys: string[] } };
   "host.settings.get": { params: { key: string }; result: { value: unknown } };
   "host.settings.list": { params: Record<string, never>; result: { entries: Record<string, unknown> } };
-  "host.child_session.request": {
-    params: { action: string; actor_id?: string; actor_path?: string; input?: unknown };
-    result: unknown;
-  };
   "host.session.create": {
     params: {
       request_id: string;
+      name?: string;
       visibility: "user" | "plugin";
       parent_session_id?: string;
       context_source: "fresh" | "fork";
+      workspace?: "shared" | "worktree";
+      model_alias?: string;
     };
     result: { session_id: string; created: boolean };
   };
@@ -554,6 +554,24 @@ export interface HostServiceContracts {
       cause?: string;
     };
     result: { state: string; session_id: string; turn_id?: string; queue_id?: string };
+  };
+  "host.session.list": {
+    params: { parent_session_id?: string };
+    result: {
+      sessions: Array<{
+        session_id: string;
+        name?: string;
+        parent_session_id?: string;
+        visibility: "user" | "plugin";
+        state: string;
+        created_at?: string;
+        updated_at?: string;
+      }>;
+    };
+  };
+  "host.session.cancel": {
+    params: { session_id: string };
+    result: { session_id: string; cancelled: boolean };
   };
   "host.session.info": { params: Record<string, never>; result: { session_id: string; thread_id?: string; cwd: string; model: string } };
   "host.workspace.root": { params: Record<string, never>; result: { root: string } };

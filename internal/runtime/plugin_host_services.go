@@ -24,30 +24,28 @@ var productionPluginHostServices = []pluginhost.HostServiceMethod{
 	pluginhost.HostServiceStorageCompareExchange,
 	pluginhost.HostServiceSettingsGet,
 	pluginhost.HostServiceSettingsList,
-	pluginhost.HostServiceChildSessionRequest,
 	pluginhost.HostServiceSessionCreate,
 	pluginhost.HostServiceSessionSend,
+	pluginhost.HostServiceSessionList,
+	pluginhost.HostServiceSessionCancel,
 }
-
-type childSessionRequestHandler func(context.Context, pluginhost.ChildSessionRequestParams) (json.RawMessage, error)
 
 // pluginHostServices is bound to exactly one installed plugin generation. It
 // never accepts a caller-supplied plugin ID or filesystem path: ownership and
 // roots are captured from the validated plugin inventory at activation time.
 type pluginHostServices struct {
-	mu                  sync.RWMutex
-	active              bool
-	pluginID            string
-	subjectID           string
-	fingerprint         string
-	projectRoot         string
-	wuuHome             string
-	settings            map[string]pluginpkg.SettingDefinition
-	childSessionRequest childSessionRequestHandler
-	turnRouter          *PluginSessionRouter
+	mu          sync.RWMutex
+	active      bool
+	pluginID    string
+	subjectID   string
+	fingerprint string
+	projectRoot string
+	wuuHome     string
+	settings    map[string]pluginpkg.SettingDefinition
+	turnRouter  *PluginSessionRouter
 }
 
-func newPluginHostServices(item pluginpkg.Plugin, projectRoot, wuuHome string, turnRouter *PluginSessionRouter, childSession ...childSessionRequestHandler) *pluginHostServices {
+func newPluginHostServices(item pluginpkg.Plugin, projectRoot, wuuHome string, turnRouter *PluginSessionRouter) *pluginHostServices {
 	settings := make(map[string]pluginpkg.SettingDefinition, len(item.Settings))
 	for key, definition := range item.Settings {
 		settings[key] = definition
@@ -56,9 +54,6 @@ func newPluginHostServices(item pluginpkg.Plugin, projectRoot, wuuHome string, t
 		active: true, pluginID: item.ID, subjectID: strings.TrimSpace(item.SubjectID),
 		fingerprint: item.Fingerprint, projectRoot: projectRoot, wuuHome: wuuHome,
 		settings: settings, turnRouter: turnRouter,
-	}
-	if len(childSession) != 0 {
-		services.childSessionRequest = childSession[0]
 	}
 	return services
 }
@@ -116,15 +111,32 @@ func (s *pluginHostServices) HandleHostService(ctx context.Context, method plugi
 			return nil, err
 		}
 		return marshalServiceResult(result)
-	case pluginhost.HostServiceChildSessionRequest:
-		if s.childSessionRequest == nil {
-			return nil, serviceError("service_unavailable", "child-session service is unavailable")
+	case pluginhost.HostServiceSessionList:
+		if s.turnRouter == nil {
+			return nil, serviceError("service_unavailable", "session service is unavailable")
 		}
-		var params pluginhost.ChildSessionRequestParams
+		var params pluginhost.SessionListParams
 		if err := decodeServiceParams(raw, &params); err != nil {
 			return nil, err
 		}
-		return s.childSessionRequest(ctx, params)
+		result, err := s.turnRouter.List(ctx, s.pluginID, params)
+		if err != nil {
+			return nil, err
+		}
+		return marshalServiceResult(result)
+	case pluginhost.HostServiceSessionCancel:
+		if s.turnRouter == nil {
+			return nil, serviceError("service_unavailable", "session service is unavailable")
+		}
+		var params pluginhost.SessionCancelParams
+		if err := decodeServiceParams(raw, &params); err != nil {
+			return nil, err
+		}
+		result, err := s.turnRouter.Cancel(ctx, s.pluginID, params)
+		if err != nil {
+			return nil, err
+		}
+		return marshalServiceResult(result)
 	case pluginhost.HostServiceSettingsGet:
 		return s.settingsGet(raw)
 	case pluginhost.HostServiceSettingsList:

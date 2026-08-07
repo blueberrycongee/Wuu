@@ -89,7 +89,7 @@ func TestPluginSessionCreateAndSendPersistProvenanceAndTargetLifecycle(t *testin
 
 	select {
 	case lifecycle := <-owner.calls:
-		if lifecycle.State != pluginhost.TurnLifecycleCompleted || lifecycle.RequestID != "request-1" || lifecycle.ThreadID != result.SessionID || lifecycle.TurnID != result.TurnID {
+		if lifecycle.State != pluginhost.TurnLifecycleCompleted || lifecycle.RequestID != "request-1" || lifecycle.ThreadID != result.SessionID || lifecycle.TurnID != result.TurnID || lifecycle.FinalOutput != "done" {
 			t.Fatalf("lifecycle = %+v", lifecycle)
 		}
 	case <-time.After(3 * time.Second):
@@ -147,6 +147,42 @@ func TestPluginSessionCreateAndSendPersistProvenanceAndTargetLifecycle(t *testin
 	loaded.mu.Unlock()
 	if item.Text != "定时任务已唤醒 Agent" || strings.Contains(item.Text, "internal inspect prompt") || item.Origin != pluginhost.SessionInputPlugin || !item.ReadOnly || item.PresentationKind != pluginhost.SessionPresentationQueryBubble {
 		t.Fatalf("query bubble projection = %+v", item)
+	}
+}
+
+func TestPluginSessionListAndCancelAreOwnerScoped(t *testing.T) {
+	chatStarted := make(chan struct{})
+	release := make(chan struct{})
+	rt := newTestRuntime(t, &fakeClient{response: providersResponse("done"), onChat: func(_ int, _ providers.ChatRequest) { close(chatStarted); <-release }})
+	rt.PluginSessionRouter = runtime.NewPluginSessionRouter()
+	srv := New(rt, &lockedBuffer{})
+	t.Cleanup(func() { close(release); srv.Close() })
+	created, err := rt.PluginSessionRouter.Create(context.Background(), "subagent", pluginhost.SessionCreateParams{RequestID: "owned", Name: "review_parser", Visibility: pluginhost.SessionVisibilityPlugin, ContextSource: pluginhost.SessionContextFresh})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := rt.PluginSessionRouter.Send(context.Background(), "subagent", pluginhost.SessionSendParams{RequestID: "run", SessionID: created.SessionID, Input: pluginhost.SessionInput{Prompt: "work"}}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-chatStarted:
+	case <-time.After(3 * time.Second):
+		t.Fatal("turn did not start")
+	}
+	listed, err := rt.PluginSessionRouter.List(context.Background(), "subagent", pluginhost.SessionListParams{})
+	if err != nil || len(listed.Sessions) != 1 || listed.Sessions[0].SessionID != created.SessionID || listed.Sessions[0].Name != "review_parser" || listed.Sessions[0].State != pluginhost.TurnLifecycleRunning {
+		t.Fatalf("list = %+v, %v", listed, err)
+	}
+	other, err := rt.PluginSessionRouter.List(context.Background(), "other", pluginhost.SessionListParams{})
+	if err != nil || len(other.Sessions) != 0 {
+		t.Fatalf("other list = %+v, %v", other, err)
+	}
+	if _, err := rt.PluginSessionRouter.Cancel(context.Background(), "other", pluginhost.SessionCancelParams{SessionID: created.SessionID}); err == nil {
+		t.Fatal("another plugin cancelled an owned session")
+	}
+	cancelled, err := rt.PluginSessionRouter.Cancel(context.Background(), "subagent", pluginhost.SessionCancelParams{SessionID: created.SessionID})
+	if err != nil || !cancelled.Cancelled {
+		t.Fatalf("cancel = %+v, %v", cancelled, err)
 	}
 }
 

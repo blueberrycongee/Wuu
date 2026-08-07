@@ -49,9 +49,12 @@ func (s *Server) createPluginSession(_ context.Context, pluginID string, params 
 	}
 	pluginID = strings.TrimSpace(pluginID)
 	params.RequestID = strings.TrimSpace(params.RequestID)
+	params.Name = strings.TrimSpace(params.Name)
 	params.Visibility = strings.TrimSpace(params.Visibility)
 	params.ParentSessionID = strings.TrimSpace(params.ParentSessionID)
 	params.ContextSource = strings.TrimSpace(params.ContextSource)
+	params.Workspace = strings.TrimSpace(params.Workspace)
+	params.ModelAlias = strings.TrimSpace(params.ModelAlias)
 	if pluginID == "" {
 		return pluginhost.SessionCreateResult{}, errors.New("plugin owner is required")
 	}
@@ -70,6 +73,15 @@ func (s *Server) createPluginSession(_ context.Context, pluginID string, params 
 	if params.ContextSource == pluginhost.SessionContextFork && params.ParentSessionID == "" {
 		return pluginhost.SessionCreateResult{}, errors.New("parent_session_id is required for fork context")
 	}
+	if params.Workspace == "" {
+		params.Workspace = "shared"
+	}
+	if params.Workspace != "shared" && params.Workspace != "worktree" {
+		return pluginhost.SessionCreateResult{}, errors.New("workspace must be shared or worktree")
+	}
+	if params.Workspace == "worktree" && params.ContextSource != pluginhost.SessionContextFork {
+		return pluginhost.SessionCreateResult{}, errors.New("worktree workspace requires fork context")
+	}
 	owner := "plugin:" + pluginID
 	if existing, ok, err := session.FindManagedByRequest(s.rt.SessionDir, owner, params.RequestID); err != nil {
 		return pluginhost.SessionCreateResult{}, err
@@ -84,6 +96,66 @@ func (s *Server) createPluginSession(_ context.Context, pluginID string, params 
 		return pluginhost.SessionCreateResult{}, err
 	}
 	return pluginhost.SessionCreateResult{SessionID: th.ID, Created: true}, nil
+}
+
+func (s *Server) listPluginSessions(_ context.Context, pluginID string, params pluginhost.SessionListParams) (pluginhost.SessionListResult, error) {
+	pluginID = strings.TrimSpace(pluginID)
+	parentID := strings.TrimSpace(params.ParentSessionID)
+	if pluginID == "" {
+		return pluginhost.SessionListResult{}, errors.New("plugin owner is required")
+	}
+	items, err := session.List(s.rt.SessionDir, 0)
+	if err != nil {
+		return pluginhost.SessionListResult{}, err
+	}
+	owner := "plugin:" + pluginID
+	result := pluginhost.SessionListResult{Sessions: make([]pluginhost.SessionSummary, 0)}
+	for _, item := range items {
+		if item.Owner != owner || (parentID != "" && item.ParentID != parentID) {
+			continue
+		}
+		state := pluginhost.TurnLifecycleCompleted
+		if th := s.thread(item.ID); th != nil {
+			th.mu.Lock()
+			if th.running {
+				state = pluginhost.TurnLifecycleRunning
+			}
+			th.mu.Unlock()
+		}
+		s.queuedTurnMu.Lock()
+		if len(s.pendingQueuedTurns[item.ID]) != 0 {
+			state = pluginhost.TurnLifecycleQueued
+		}
+		s.queuedTurnMu.Unlock()
+		result.Sessions = append(result.Sessions, pluginhost.SessionSummary{SessionID: item.ID, Name: item.Title, ParentSessionID: item.ParentID, Visibility: item.Visibility, State: state, CreatedAt: item.CreatedAt.Format(time.RFC3339Nano), UpdatedAt: item.UpdatedAt.Format(time.RFC3339Nano)})
+	}
+	return result, nil
+}
+
+func (s *Server) cancelPluginSession(_ context.Context, pluginID string, params pluginhost.SessionCancelParams) (pluginhost.SessionCancelResult, error) {
+	pluginID = strings.TrimSpace(pluginID)
+	sessionID := strings.TrimSpace(params.SessionID)
+	if pluginID == "" || sessionID == "" {
+		return pluginhost.SessionCancelResult{}, errors.New("plugin owner and session_id are required")
+	}
+	metadata, ok, err := session.Find(s.rt.SessionDir, sessionID)
+	if err != nil {
+		return pluginhost.SessionCancelResult{}, err
+	}
+	if !ok {
+		return pluginhost.SessionCancelResult{}, session.ErrSessionNotFound
+	}
+	if metadata.Owner != "plugin:"+pluginID {
+		return pluginhost.SessionCancelResult{}, errors.New("plugin does not own the session")
+	}
+	if _, err := s.ensureThreadLoaded(sessionID); err != nil {
+		return pluginhost.SessionCancelResult{}, err
+	}
+	_, err = s.interruptThreadExecution(sessionID, "")
+	if err != nil {
+		return pluginhost.SessionCancelResult{}, err
+	}
+	return pluginhost.SessionCancelResult{SessionID: sessionID, Cancelled: true}, nil
 }
 
 func (s *Server) sendPluginSession(ctx context.Context, pluginID string, params pluginhost.SessionSendParams) (pluginhost.SessionSendResult, error) {
@@ -211,6 +283,7 @@ func (s *Server) createPluginSessionThread(owner string, params pluginhost.Sessi
 	managed := session.ManagedMetadata{Owner: owner, Visibility: params.Visibility, ParentID: params.ParentSessionID, ContextSource: params.ContextSource, CreationRequestID: params.RequestID}
 	var history []providers.ChatMessage
 	var created *session.Session
+	var createdWorktreePath string
 	var err error
 	if params.ContextSource == pluginhost.SessionContextFork {
 		parent, loadErr := s.loadPersistedThreadSnapshot(params.ParentSessionID)
@@ -219,15 +292,53 @@ func (s *Server) createPluginSessionThread(owner string, params pluginhost.Sessi
 		}
 		threadCWD = firstNonEmpty(parent.metadata.CWD, threadCWD)
 		history = cloneHistory(parent.history)
-		created, err = session.CreateManagedForkWithMetadata(s.rt.SessionDir, id, threadCWD, session.ForkMetadata{ForkedFromID: params.ParentSessionID}, managed)
+		fork := session.ForkMetadata{ForkedFromID: params.ParentSessionID}
+		if params.Workspace == "worktree" {
+			manager, managerErr := s.worktreeManager(firstNonEmpty(parent.metadata.CWD, s.rt.RootDir))
+			if managerErr != nil {
+				return nil, managerErr
+			}
+			wt, createErr := manager.Create(id, "plugin", "")
+			if createErr != nil {
+				return nil, createErr
+			}
+			createdWorktreePath = wt.Path
+			threadCWD = wt.Path
+			created, err = session.CreateManagedWithWorktree(s.rt.SessionDir, id, threadCWD, fork, session.WorktreeInfo{Path: wt.Path, BaseHEAD: wt.HEAD, BaseRepo: firstNonEmpty(parent.metadata.CWD, s.rt.RootDir)}, managed)
+			if err != nil {
+				_ = manager.Cleanup(wt)
+			}
+		} else {
+			created, err = session.CreateManagedForkWithMetadata(s.rt.SessionDir, id, threadCWD, fork, managed)
+		}
 	} else {
 		created, err = session.CreateManagedWithMetadata(s.rt.SessionDir, id, threadCWD, managed)
 	}
 	if err != nil {
 		return nil, err
 	}
-	if _, err := session.SetRuntimeSelection(s.rt.SessionDir, id, s.currentSessionRuntimeSelection()); err != nil {
+	selection := s.currentSessionRuntimeSelection()
+	if params.ModelAlias != "" {
+		resolved := s.resolveSubagentModelAlias(params.ModelAlias)
+		if resolved.Err != nil {
+			return nil, resolved.Err
+		}
+		if !resolved.Found {
+			return nil, fmt.Errorf("unknown model alias %q (available: %s)", params.ModelAlias, strings.Join(resolved.ValidAliases, ", "))
+		}
+		selection.Provider = resolved.Runtime.Provider
+		selection.Model = resolved.Runtime.Model
+		selection.Variant = resolved.Runtime.Variant
+		selection.Effort = resolved.Runtime.Effort
+	}
+	if _, err := session.SetRuntimeSelection(s.rt.SessionDir, id, selection); err != nil {
 		return nil, err
+	}
+	if params.Name != "" {
+		if _, err := session.UpdateTitle(s.rt.SessionDir, id, params.Name); err != nil {
+			return nil, err
+		}
+		created.Title = params.Name
 	}
 	source := owner
 	if _, err := session.SetSource(s.rt.SessionDir, id, source); err != nil {
@@ -251,11 +362,17 @@ func (s *Server) createPluginSessionThread(owner string, params pluginhost.Sessi
 		}
 	}
 	th := newThreadState(id, history, s.rt.ProviderName, s.rt.Model, threadCWD, true, time.Now().UTC())
-	applyThreadRuntimeSelection(th, s.currentSessionRuntimeSelection())
+	applyThreadRuntimeSelection(th, selection)
 	th.Source = source
+	th.Title = params.Name
 	th.Owner = owner
 	th.Visibility = params.Visibility
 	th.ParentID = params.ParentSessionID
+	th.WorktreePath = createdWorktreePath
+	if created != nil {
+		th.WorktreeBaseHEAD = created.WorktreeBaseHEAD
+		th.WorktreeBaseRepo = created.WorktreeBaseRepo
+	}
 	th.WorkspaceKind = workspaceKindForCWD(s.rt.WuuHome, threadCWD)
 	if workspaceID != "" {
 		th.WorkspaceKind = WorkspaceKindProject

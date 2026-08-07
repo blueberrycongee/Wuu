@@ -18,10 +18,10 @@ func TestPluginSessionRouterBindsLatestHandlersAndProtectsNewBinding(t *testing.
 	}
 	firstUnbind := router.Bind(create, func(_ context.Context, pluginID string, _ pluginhost.SessionSendParams) (pluginhost.SessionSendResult, error) {
 		return pluginhost.SessionSendResult{SessionID: "first:" + pluginID}, nil
-	})
+	}, nil, nil)
 	secondUnbind := router.Bind(create, func(_ context.Context, pluginID string, _ pluginhost.SessionSendParams) (pluginhost.SessionSendResult, error) {
 		return pluginhost.SessionSendResult{SessionID: "second:" + pluginID}, nil
-	})
+	}, nil, nil)
 	firstUnbind()
 	result, err := router.Send(context.Background(), "owner", pluginhost.SessionSendParams{})
 	if err != nil || result.SessionID != "second:owner" {
@@ -41,7 +41,7 @@ func TestPluginHostSessionSendUsesGenerationBoundOwner(t *testing.T) {
 	}, func(_ context.Context, pluginID string, params pluginhost.SessionSendParams) (pluginhost.SessionSendResult, error) {
 		owner = pluginID
 		return pluginhost.SessionSendResult{State: pluginhost.TurnLifecycleRunning, SessionID: params.SessionID, TurnID: params.RequestID}, nil
-	})
+	}, nil, nil)
 	handler := newPluginHostServices(serviceTestPlugin("alpha", "plugin:user:alpha", "one"), t.TempDir(), t.TempDir(), router)
 	raw, err := handler.HandleHostService(context.Background(), pluginhost.HostServiceSessionSend, json.RawMessage(`{"request_id":"opaque","session_id":"thread-1","input":{"prompt":"work"}}`))
 	if err != nil {
