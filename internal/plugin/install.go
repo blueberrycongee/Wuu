@@ -304,6 +304,9 @@ func inspectPackageTree(root string) (stagedPackage, error) {
 	if err := validateInstallID(item.ID); err != nil {
 		return stagedPackage{}, err
 	}
+	if err := ValidateHostCompatibility(item, defaultCompatibilityOptions()); err != nil {
+		return stagedPackage{}, err
+	}
 	return stagedPackage{root: root, manifestRel: manifestRel, plugin: item, stats: stats}, nil
 }
 

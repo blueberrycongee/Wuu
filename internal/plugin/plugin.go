@@ -27,10 +27,13 @@ func Discover(projectRoot, wuuHome string) []Plugin {
 }
 
 func DiscoverWithOptions(projectRoot, wuuHome string, options DiscoverOptions) []Plugin {
+	compatibility := CompatibilityOptions{
+		GOOS: options.GOOS, WuuVersion: options.WuuVersion, LookPath: options.LookPath,
+	}
 	bundledPlugins := discoverBundled(wuuHome, options)
-	userPlugins := scanPluginRoots(userPluginRoots(wuuHome), "user", "")
-	projectPlugins := scanPluginRoots(projectPluginRoots(projectRoot), "project", workspacePolicyID(projectRoot))
-	devPlugins := discoverAuthorizedDev(wuuHome)
+	userPlugins := filterCompatiblePlugins(scanPluginRoots(userPluginRoots(wuuHome), "user", ""), compatibility)
+	projectPlugins := filterCompatiblePlugins(scanPluginRoots(projectPluginRoots(projectRoot), "project", workspacePolicyID(projectRoot)), compatibility)
+	devPlugins := filterCompatiblePlugins(discoverAuthorizedDev(wuuHome), compatibility)
 
 	byID := make(map[string]Plugin, len(bundledPlugins)+len(userPlugins)+len(projectPlugins)+len(devPlugins))
 	for _, item := range userPlugins {

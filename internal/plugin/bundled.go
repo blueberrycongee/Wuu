@@ -24,12 +24,20 @@ const bundledFingerprintFile = ".fingerprint"
 const EnableCUAMacEnv = "WUU_ENABLE_CUA_MAC"
 
 type DiscoverOptions struct {
-	GOOS      string
-	LookupEnv func(string) (string, bool)
+	GOOS       string
+	WuuVersion string
+	LookPath   func(string) (string, error)
+	LookupEnv  func(string) (string, bool)
 }
 
 func defaultDiscoverOptions() DiscoverOptions {
-	return DiscoverOptions{GOOS: runtime.GOOS, LookupEnv: os.LookupEnv}
+	compatibility := defaultCompatibilityOptions()
+	return DiscoverOptions{
+		GOOS:       compatibility.GOOS,
+		WuuVersion: compatibility.WuuVersion,
+		LookPath:   compatibility.LookPath,
+		LookupEnv:  os.LookupEnv,
+	}
 }
 
 func discoverBundled(wuuHome string, options DiscoverOptions) []Plugin {
@@ -53,10 +61,15 @@ func discoverBundled(wuuHome string, options DiscoverOptions) []Plugin {
 			continue
 		}
 		item, err := loadOfficialPluginDir(filepath.Join(root, entry.Name()))
-		if err != nil || !supportsPlatform(item.Platforms, options.GOOS) || !bundledPluginEnabled(item, options.LookupEnv) {
+		if err != nil {
 			continue
 		}
 		resolveOfficialHelper(&item, options.LookupEnv)
+		if ValidateHostCompatibility(item, CompatibilityOptions{
+			GOOS: options.GOOS, WuuVersion: options.WuuVersion, LookPath: options.LookPath,
+		}) != nil || !bundledPluginEnabled(item, options.LookupEnv) {
+			continue
+		}
 		out = append(out, item)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
