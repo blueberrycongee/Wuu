@@ -175,8 +175,6 @@ function initializedWithSecrets(): InitializeResult {
       append_system_prompt: "sk-private",
       memory_disabled: false,
       mcp_server_enabled: {},
-      dream_enabled: false,
-      dream_interval_days: 7,
     },
   };
 }

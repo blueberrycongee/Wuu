@@ -49,8 +49,6 @@ function initialized(overrides: Partial<InitializeResult> = {}): InitializeResul
       append_system_prompt: "",
       memory_disabled: false,
       mcp_server_enabled: {},
-      dream_enabled: false,
-      dream_interval_days: 7,
     },
     ...overrides,
   };

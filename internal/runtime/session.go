@@ -119,9 +119,6 @@ type Session struct {
 	PluginSessionRouter      *PluginSessionRouter
 	systemPrompts            *agent.SystemPromptAssembler
 	Memory                   []memory.File
-	DreamIntervalDays        int
-	DreamClient              providers.Client
-	DreamModel               string
 	AgentControl             *agentcontrol.AgentControl
 	ProcessManager           *process.Manager
 	Toolkit                  *tools.Toolkit
@@ -212,9 +209,6 @@ func (s *Session) cloneForThreadModel() *Session {
 		PluginSessionRouter:         s.PluginSessionRouter,
 		systemPrompts:               s.systemPrompts,
 		Memory:                      s.Memory,
-		DreamIntervalDays:           s.DreamIntervalDays,
-		DreamClient:                 s.DreamClient,
-		DreamModel:                  s.DreamModel,
 		AgentControl:                s.AgentControl,
 		ProcessManager:              s.ProcessManager,
 		Toolkit:                     s.Toolkit,
@@ -593,41 +587,6 @@ func NewSession(opts Options) (*Session, error) {
 		ruleProviderCfg,
 		cfg.Agent.MaxContextTokens,
 	)
-	dreamIntervalDays := 0
-	var dreamClient providers.Client
-	var dreamModel string
-	if !cfg.Memory.Disable && cfg.Memory.DreamEnabled() {
-		dreamIntervalDays = cfg.Memory.DreamIntervalDaysValue()
-		if dreamIntervalDays <= 0 {
-			dreamIntervalDays = config.DefaultDreamIntervalDays
-		}
-		dreamModel = cfg.Memory.DreamModel()
-		dreamProvider := cfg.Memory.DreamProvider()
-		if dreamProvider != "" {
-			if providerCfg, _, err := cfg.ResolveProvider(dreamProvider); err == nil {
-				if client, err := providerfactory.BuildClient(providerCfg, dreamProvider); err == nil {
-					dreamClient = client
-					if dreamModel == "" {
-						dreamModel = providerCfg.Model
-					}
-				} else {
-					providers.DebugLogf("dream dedicated client for provider %q: %v", dreamProvider, err)
-					dreamIntervalDays = 0
-				}
-			} else {
-				providers.DebugLogf("dream dedicated provider %q: %v", dreamProvider, err)
-				dreamIntervalDays = 0
-			}
-		}
-	}
-	var afterTurnHooks []func(context.Context, *agent.StreamRunner, []providers.ChatMessage, agent.LoopResult)
-	if toolkit != nil {
-		if dreamScheduler := newSessionDreamSchedulerWithSessions(rootDir, workspaceStateDir, sessionDir, workspaceID, func() string { return toolkit.SessionDir() }, dreamIntervalDays, sessionDreamMinSessions, dreamClient, dreamModel); dreamScheduler != nil {
-			afterTurnHooks = append(afterTurnHooks, dreamScheduler.AfterTurn)
-		}
-	}
-	afterTurn := chainAfterTurn(afterTurnHooks...)
-
 	streamRunner := &agent.StreamRunner{
 		Client:                      client,
 		ProviderName:                resolvedName,
@@ -665,7 +624,6 @@ func NewSession(opts Options) (*Session, error) {
 		},
 		BeforeRequestContext:     RuntimeContextInjector(agentControl, agentthread.RootPath, toolkitContextBlockProvider(toolkit)),
 		BeforeRequest:            pluginRequestInterceptor(pluginHost, resolvedName, "", rootDir),
-		AfterTurn:                afterTurn,
 		InferenceOperationKind:   providers.InferenceOperationAgentRound,
 		InferenceWorkloadProfile: providers.InferenceProfileInteractive,
 		InferenceJournal:         workspaceJournal,
@@ -701,9 +659,6 @@ func NewSession(opts Options) (*Session, error) {
 		PluginSessionRouter:         pluginTurnRouter,
 		systemPrompts:               systemPrompts,
 		Memory:                      memoryFiles,
-		DreamIntervalDays:           dreamIntervalDays,
-		DreamClient:                 dreamClient,
-		DreamModel:                  dreamModel,
 		AgentControl:                agentControl,
 		ProcessManager:              processMgr,
 		Toolkit:                     toolkit,
@@ -1325,14 +1280,6 @@ func (s *Session) NewThreadRuntimeForRoot(sessionID, rootDir string) (*ThreadRun
 	runner.InferenceJournal = s.InferenceJournalForOwner(id)
 	runner.BeforeRequestContext = RuntimeContextInjector(agentControl, agentthread.RootPath, toolkitContextBlockProvider(kit))
 	runner.BeforeRequest = pluginRequestInterceptor(s.PluginHost, s.ProviderName, id, threadRoot)
-	var afterTurnHooks []func(context.Context, *agent.StreamRunner, []providers.ChatMessage, agent.LoopResult)
-	if kit != nil {
-		if dreamScheduler := newSessionDreamSchedulerWithSessions(s.RootDir, stateDir, s.SessionDir, s.WorkspaceID, func() string { return artifactDir }, s.DreamIntervalDays, sessionDreamMinSessions, s.DreamClient, s.DreamModel); dreamScheduler != nil {
-			afterTurnHooks = append(afterTurnHooks, dreamScheduler.AfterTurn)
-		}
-	}
-	runner.AfterTurn = chainAfterTurn(afterTurnHooks...)
-
 	return &ThreadRuntime{
 		StreamRunner:      runner,
 		Toolkit:           kit,
@@ -1489,23 +1436,6 @@ func mediaInputPolicyFromCapabilities(caps modelroles.Capabilities) providers.Me
 		File:       caps.FileInput,
 		ImageKnown: caps.ImageInputKnown,
 		FileKnown:  caps.FileInputKnown,
-	}
-}
-
-func chainAfterTurn(hooks ...func(context.Context, *agent.StreamRunner, []providers.ChatMessage, agent.LoopResult)) func(context.Context, *agent.StreamRunner, []providers.ChatMessage, agent.LoopResult) {
-	filtered := make([]func(context.Context, *agent.StreamRunner, []providers.ChatMessage, agent.LoopResult), 0, len(hooks))
-	for _, hook := range hooks {
-		if hook != nil {
-			filtered = append(filtered, hook)
-		}
-	}
-	if len(filtered) == 0 {
-		return nil
-	}
-	return func(ctx context.Context, runner *agent.StreamRunner, history []providers.ChatMessage, result agent.LoopResult) {
-		for _, hook := range filtered {
-			hook(ctx, runner, history, result)
-		}
 	}
 }
 
@@ -2318,7 +2248,7 @@ func assemblePluginSystemPrompt(base string, assembler *agent.SystemPromptAssemb
 	return base + "\n\n" + pluginText, sections
 }
 
-// ApplyGeneralConfig refreshes user-owned prompt and memory settings on the
+// ApplyGeneralConfig refreshes user-owned prompt and instruction settings on the
 // shared session runtime without changing provider or model selection.
 func (s *Session) ApplyGeneralConfig(cfg config.Config, homeDir string) string {
 	if s == nil {
@@ -2329,39 +2259,9 @@ func (s *Session) ApplyGeneralConfig(cfg config.Config, homeDir string) string {
 	}
 	s.UserSystemPrompt = cfg.Agent.UserSystemPrompt()
 	s.Memory = discoverMemory(s.RootDir, homeDir, cfg.Memory)
-	s.DreamIntervalDays = 0
-	s.DreamClient = nil
-	s.DreamModel = ""
-	if !cfg.Memory.Disable && cfg.Memory.DreamEnabled() {
-		s.DreamIntervalDays = cfg.Memory.DreamIntervalDaysValue()
-		if s.DreamIntervalDays <= 0 {
-			s.DreamIntervalDays = config.DefaultDreamIntervalDays
-		}
-		s.DreamModel = cfg.Memory.DreamModel()
-		dreamProvider := cfg.Memory.DreamProvider()
-		if dreamProvider != "" {
-			if providerCfg, _, err := cfg.ResolveProvider(dreamProvider); err == nil {
-				if client, err := providerfactory.BuildClient(providerCfg, dreamProvider); err == nil {
-					s.DreamClient = client
-					if s.DreamModel == "" {
-						s.DreamModel = providerCfg.Model
-					}
-				} else {
-					providers.DebugLogf("dream dedicated client for provider %q: %v", dreamProvider, err)
-					s.DreamIntervalDays = 0
-				}
-			} else {
-				providers.DebugLogf("dream dedicated provider %q: %v", dreamProvider, err)
-				s.DreamIntervalDays = 0
-			}
-		}
-	}
 	if s.Toolkit != nil {
 		s.Toolkit.SetGitAttributionEnabled(cfg.Agent.GitAttributionEnabledValue())
 		s.Toolkit.SetFileScopeRoots(workspaces.BoundaryRoots(s.Toolkit.RootDir(), s.WuuHome))
-	}
-	if s.StreamRunner != nil && s.Toolkit != nil {
-		s.StreamRunner.AfterTurn = sessionDreamAfterTurn(s.RootDir, s.StateDir, s.SessionDir, s.WorkspaceID, func() string { return s.Toolkit.SessionDir() }, s.DreamIntervalDays, sessionDreamMinSessions, s.DreamClient, s.DreamModel)
 	}
 	apiModel := s.Model
 	if s.StreamRunner != nil && strings.TrimSpace(s.StreamRunner.APIModel) != "" {

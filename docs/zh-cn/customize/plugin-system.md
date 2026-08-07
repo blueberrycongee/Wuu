@@ -212,6 +212,10 @@ RPC。
    系统提示、概览/管理私有 Session 和完整桌面 View；核心不再读取用户 `MEMORY.md`，也不再提供
    `memory/overview`、`memory/chat`、`memory/read`、原生页面、IPC 或 `/memory` 产品特判。命名 Agent
    身份笔记本和工作区/会话记忆仍属于后续协作与 Memory 切片，不能据此扩张成 `host.memory.*`。
+8. **Dream 已迁移到公共 Session 链路。** 一方插件观察标准 Turn 完成事件，用插件存储维护候选、
+   Timer、间隔、失败退避和运行状态，再通过 `host.session.create/send` 创建 fork 私有 Session；Prompt
+   和设置 View 也由插件拥有。核心 `sessionDreamScheduler`、Dream 状态/锁、AfterTurn Hook、配置字段
+   和原生设置已经删除。
 
 ### 改造顺序与完成标准
 
@@ -434,7 +438,7 @@ Cron 也已通过同一公共 Session 链路迁移；memory、dream 继续按该
 - 部分 Presenter 的 `replace` 快照和 Action 还不足以无损重建完整原生语义，优先使用 `wrap`；
 - 画布、终端、Webview、PDF ShadowRoot 和专用预览仍是明确的主题边界；
 - Marketplace、远程自动更新、排名、依赖解析和签名分发不属于当前本地优先平台；
-- Goal、Subagent、Cron 和用户 Memory 已去除专用宿主执行 seam；工作区/会话 memory 与 dream 尚未完成迁移；
+- Goal、Subagent、Cron、用户 Memory 和 Dream 已去除专用宿主执行 seam；工作区/会话 memory 尚未完成迁移；
 - HelpMe 已从代码和产品中删除；Plan 明确保留在核心链路。
 
 这些边界不是鼓励为未来预留抽象。新能力应由真实插件案例驱动，先确定责任属于宿主、功能插件

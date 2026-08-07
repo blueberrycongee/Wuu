@@ -27,11 +27,6 @@ const (
 	// agent.max_parallel is omitted or set to zero.
 	DefaultAgentMaxParallel = 5
 
-	// DefaultDreamIntervalDays is the minimum elapsed-time gate for background
-	// consolidation. A dream also requires the runtime's minimum number of
-	// completed sessions, so reaching this interval alone never starts a pass.
-	DefaultDreamIntervalDays = 1
-
 	defaultCodexSubscriptionBaseURL = "https://chatgpt.com/backend-api/codex"
 )
 
@@ -140,62 +135,6 @@ type MemoryConfig struct {
 	// UserCharLimit is retained for compatibility with the retired indexed
 	// memory store. Current notebook memory does not apply this limit.
 	UserCharLimit int `json:"user_char_limit,omitempty"`
-	// DreamIntervalDays is the minimum elapsed-time gate for the background
-	// dream pass. The pass also requires five completed sessions since the last
-	// successful consolidation. nil means the default interval; 0 disables it.
-	//
-	// Deprecated: use Dream.IntervalDays instead. This field is retained so
-	// existing configs keep working.
-	DreamIntervalDays *int `json:"dream_interval_days,omitempty"`
-	// Dream configures the background session-dream memory consolidation pass.
-	Dream *DreamConfig `json:"dream,omitempty"`
-}
-
-// DreamConfig configures the background session-dream memory consolidation
-// pass. It is intentionally scoped: an enable switch, interval, and optional
-// dedicated provider/model. Empty provider/model means the dream uses the
-// currently selected main provider/model.
-type DreamConfig struct {
-	Enabled      bool   `json:"enabled,omitempty"`
-	IntervalDays int    `json:"interval_days,omitempty"`
-	Provider     string `json:"provider,omitempty"`
-	Model        string `json:"model,omitempty"`
-}
-
-func (m MemoryConfig) DreamEnabled() bool {
-	if m.Dream != nil {
-		return m.Dream.Enabled
-	}
-	// Backward compatibility: the legacy dream_interval_days field toggled the
-	// pass by value. A positive interval meant enabled; zero meant disabled.
-	if m.DreamIntervalDays != nil {
-		return *m.DreamIntervalDays > 0
-	}
-	return false
-}
-
-func (m MemoryConfig) DreamIntervalDaysValue() int {
-	if m.Dream != nil && m.Dream.IntervalDays > 0 {
-		return m.Dream.IntervalDays
-	}
-	if m.DreamIntervalDays != nil {
-		return *m.DreamIntervalDays
-	}
-	return DefaultDreamIntervalDays
-}
-
-func (m MemoryConfig) DreamProvider() string {
-	if m.Dream != nil {
-		return strings.TrimSpace(m.Dream.Provider)
-	}
-	return ""
-}
-
-func (m MemoryConfig) DreamModel() string {
-	if m.Dream != nil {
-		return strings.TrimSpace(m.Dream.Model)
-	}
-	return ""
 }
 
 // ProviderConfig configures one model gateway.
@@ -445,10 +384,6 @@ type GeneralSettingsUpdate struct {
 	GitAttributionEnabled *bool
 	MemoryDisable         *bool
 	MCPEnabledToggles     map[string]*bool // server name → enabled; nil = skip
-	DreamEnabled          *bool
-	DreamIntervalDays     *int
-	DreamProvider         *string
-	DreamModel            *string
 }
 
 func (a AgentConfig) GitAttributionEnabledValue() bool {
@@ -780,17 +715,6 @@ func (c Config) Validate() error {
 	}
 	if strings.TrimSpace(string(c.Agent.ToolLoading)) != "" && NormalizeToolLoadingMode(c.Agent.ToolLoading) == "" {
 		return errors.New("agent.tool_loading must be one of auto, flat, or native")
-	}
-	if c.Memory.DreamIntervalDays != nil && *c.Memory.DreamIntervalDays < 0 {
-		return errors.New("memory.dream_interval_days cannot be negative")
-	}
-	if c.Memory.Dream != nil && c.Memory.Dream.IntervalDays < 0 {
-		return errors.New("memory.dream.interval_days cannot be negative")
-	}
-	if c.Memory.Dream != nil && strings.TrimSpace(c.Memory.Dream.Provider) != "" {
-		if _, ok := c.Providers[c.Memory.Dream.Provider]; !ok {
-			return fmt.Errorf("memory.dream.provider %q not found in providers", c.Memory.Dream.Provider)
-		}
 	}
 	if err := validatePermissionConfig(c.Agent); err != nil {
 		return err
@@ -1403,44 +1327,6 @@ func UpdateGeneralSettings(configPath string, update GeneralSettingsUpdate) erro
 			memory["disable"] = true
 		} else {
 			delete(memory, "disable")
-		}
-		if len(memory) == 0 {
-			delete(raw, "memory")
-		}
-	}
-
-	if update.DreamEnabled != nil || update.DreamIntervalDays != nil || update.DreamProvider != nil || update.DreamModel != nil {
-		memory, _ := raw["memory"].(map[string]any)
-		if memory == nil {
-			memory = make(map[string]any)
-			raw["memory"] = memory
-		}
-		dream, _ := memory["dream"].(map[string]any)
-		if dream == nil {
-			dream = make(map[string]any)
-			memory["dream"] = dream
-		}
-		if update.DreamEnabled != nil {
-			dream["enabled"] = *update.DreamEnabled
-		}
-		if update.DreamIntervalDays != nil {
-			if *update.DreamIntervalDays <= 0 {
-				delete(dream, "interval_days")
-			} else {
-				dream["interval_days"] = *update.DreamIntervalDays
-			}
-		}
-		if update.DreamProvider != nil {
-			setOptionalString(dream, "provider", update.DreamProvider)
-		}
-		if update.DreamModel != nil {
-			setOptionalString(dream, "model", update.DreamModel)
-		}
-		// Migrate away from the legacy flat field so the new section is the
-		// single source of truth.
-		delete(memory, "dream_interval_days")
-		if len(dream) == 0 {
-			delete(memory, "dream")
 		}
 		if len(memory) == 0 {
 			delete(raw, "memory")

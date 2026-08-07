@@ -932,10 +932,6 @@ type ConfigGeneralUpdateParams struct {
 	GitAttributionEnabled *bool            `json:"git_attribution_enabled,omitempty"`
 	MemoryDisable         *bool            `json:"memory_disable,omitempty"`
 	MCPEnabledToggles     map[string]*bool `json:"mcp_enabled_toggles,omitempty"`
-	DreamEnabled          *bool            `json:"dream_enabled,omitempty"`
-	DreamIntervalDays     *int             `json:"dream_interval_days,omitempty"`
-	DreamProvider         *string          `json:"dream_provider,omitempty"`
-	DreamModel            *string          `json:"dream_model,omitempty"`
 }
 
 type ConfigGeneralUpdateResult struct {
@@ -947,10 +943,6 @@ type GeneralSettingsSummary struct {
 	GitAttributionEnabled bool            `json:"git_attribution_enabled"`
 	MemoryDisabled        bool            `json:"memory_disabled"`
 	MCPServerEnabled      map[string]bool `json:"mcp_server_enabled"`
-	DreamEnabled          bool            `json:"dream_enabled"`
-	DreamIntervalDays     int             `json:"dream_interval_days"`
-	DreamProvider         string          `json:"dream_provider,omitempty"`
-	DreamModel            string          `json:"dream_model,omitempty"`
 }
 
 type AdvancedSettingsSummary struct {

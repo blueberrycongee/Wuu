@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	wuucontext "github.com/blueberrycongee/wuu/internal/context"
 	"github.com/blueberrycongee/wuu/internal/providers"
@@ -27,11 +26,6 @@ func TestSessionMemoryToolAppendReadAndRequestContextBlocks(t *testing.T) {
 	if !definitionNames(kit.Definitions())[sessionMemoryName] {
 		t.Fatal("session_memory should be registered in Definitions")
 	}
-	dreamTime := time.Date(2026, 6, 12, 10, 0, 0, 0, time.UTC)
-	if err := sessionmemory.RecordDreamCompleted(stateDir, dreamTime); err != nil {
-		t.Fatalf("RecordDreamCompleted: %v", err)
-	}
-
 	statusResp, err := kit.Execute(context.Background(), providers.ToolCall{
 		Name:      sessionMemoryName,
 		Arguments: `{"action":"status"}`,
@@ -41,7 +35,6 @@ func TestSessionMemoryToolAppendReadAndRequestContextBlocks(t *testing.T) {
 	}
 	var status struct {
 		Action string                     `json:"action"`
-		Dream  sessionmemory.DreamState   `json:"dream"`
 		Files  []sessionmemory.FileStatus `json:"files"`
 	}
 	if err := json.Unmarshal([]byte(statusResp), &status); err != nil {
@@ -50,10 +43,6 @@ func TestSessionMemoryToolAppendReadAndRequestContextBlocks(t *testing.T) {
 	if status.Action != sessionMemoryActionStatus || len(status.Files) != 4 {
 		t.Fatalf("unexpected status response: %+v", status)
 	}
-	if status.Dream.LastStatus != sessionmemory.DreamStatusCompleted || !status.Dream.LastRunAt.Equal(dreamTime) {
-		t.Fatalf("unexpected dream status: %+v", status.Dream)
-	}
-
 	appendResp, err := kit.Execute(context.Background(), providers.ToolCall{
 		Name: sessionMemoryName,
 		Arguments: `{
