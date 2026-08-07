@@ -178,3 +178,34 @@ then run disabled-plugin behavior before starting the child-session extraction.
 - Core toolkit registration has been removed for all five Subagent-family tools; stale core tests still assert the old registry and must be rewritten or removed.
 - Core Composer Subagent status is removed; handoff rendering/state, dynamic active-task context, and legacy runtime/persistence remain to migrate.
 - Latest verified gates: Desktop typecheck, affected Go build, Subagent process integration, and `git diff --check`. Full runtime/tools tests currently fail on stale product-owned expectations.
+
+## Completion checkpoint — 2026-08-07
+
+Semantic alignment finished; everything below verified green on the committed tree:
+
+- Removed the tests that only validated the old HelpMe history-rewrite machinery:
+  the two HelpMe queued-spawn tombstone tests, the HelpMe execution-lease
+  test and its helper, `TestRewriteChatHistoryKeepsHelpMeJointCompact` (kept
+  as the generic summary-persistence contract), and the HelpMe-specific
+  loop/prefix tests, which now exercise the generic `PostToolRewrite` seam
+  through a local recovery-envelope stub.
+- Core prompts and worker types are product-neutral: `system_main.md` no
+  longer carries Subagent results guidance, general-purpose `SystemPrompt`
+  is empty, and tests assert neutrality instead of the old agent_report /
+  `# Subagent results` contracts. Capability-neutral command guidance was
+  restored in `composeWorkerSystemPrompt` (it is generic worker content).
+- Barrier-tool rejection no longer special-cases `helpme`; the two tests now
+  assert product tool names are ordinary tools in core.
+- `productionPluginHostServices` count updated to 7 after the child-session
+  service was added; plugin CLI tests filter user plugins instead of
+  assuming the bundled Goal/Subagent plugins are absent; the named-agent
+  thread test no longer expects core `spawn_agent`; the SDK composer
+  snapshot no longer carries the dead `goal` field.
+- Nested child permissions confirmed: `pluginToolAllowed` enforces
+  root/child `ExecutionScopes` by actor path (`spawn`/`send`/`close`/`helpme`
+  root-only, `agent_report` child-only). Helper packaging confirmed by the
+  bundled helper resolution tests.
+- Gates: `go build ./...`, full `go test ./...` (0 failures), Desktop
+  typecheck, Desktop plugin vitest suite (19 files / 83 tests), and
+  `git diff --check` all pass on the committed tree in an isolated worktree.
+  Committed as `c551fcce` and pushed to `main`.
