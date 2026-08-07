@@ -65,6 +65,21 @@ func TestPluginHostServicesStorageIsolationScopesLimitsAndClose(t *testing.T) {
 
 	callService(t, alpha, pluginhost.HostServiceStorageSet, pluginhost.StorageSetParams{Scope: "workspace", Key: "panel.mode", Value: "focused"}, nil)
 	callService(t, alpha, pluginhost.HostServiceStorageSet, pluginhost.StorageSetParams{Scope: "workspace", Key: "second", Value: "two"}, nil)
+	expected, replacement := "two", "three"
+	var swapped pluginhost.StorageCompareExchangeResult
+	callService(t, alpha, pluginhost.HostServiceStorageCompareExchange, pluginhost.StorageCompareExchangeParams{
+		Scope: "workspace", Key: "second", Expected: &expected, Value: &replacement,
+	}, &swapped)
+	if !swapped.Swapped || swapped.Value == nil || *swapped.Value != "three" {
+		t.Fatalf("compare exchange = %+v", swapped)
+	}
+	stale := "two"
+	callService(t, alpha, pluginhost.HostServiceStorageCompareExchange, pluginhost.StorageCompareExchangeParams{
+		Scope: "workspace", Key: "second", Expected: &stale, Value: nil,
+	}, &swapped)
+	if swapped.Swapped || swapped.Value == nil || *swapped.Value != "three" {
+		t.Fatalf("stale compare exchange = %+v", swapped)
+	}
 	var got pluginhost.StorageGetResult
 	callService(t, alpha, pluginhost.HostServiceStorageGet, pluginhost.StorageGetParams{Scope: "workspace", Key: "panel.mode"}, &got)
 	if got.Value == nil || *got.Value != "focused" {
@@ -99,6 +114,49 @@ func TestPluginHostServicesStorageIsolationScopesLimitsAndClose(t *testing.T) {
 	alpha.CloseHostServices()
 	if _, err := alpha.HandleHostService(context.Background(), pluginhost.HostServiceStorageKeys, json.RawMessage(`{"scope":"workspace"}`)); err == nil || !strings.Contains(err.Error(), "no longer active") {
 		t.Fatalf("closed generation call error = %v", err)
+	}
+}
+
+func TestPluginHostStorageCompareExchangeClaimsAcrossGenerationDispatchers(t *testing.T) {
+	home, workspace := t.TempDir(), t.TempDir()
+	item := serviceTestPlugin("alpha", "plugin:user:alpha", "one")
+	left := newPluginHostServices(item, workspace, home, nil)
+	right := newPluginHostServices(item, workspace, home, nil)
+	values := []string{"left", "right"}
+	requests := make([]json.RawMessage, 2)
+	for index := range values {
+		requests[index] = mustJSON(t, pluginhost.StorageCompareExchangeParams{Scope: "workspace", Key: "claim", Value: &values[index]})
+	}
+	results := make(chan pluginhost.StorageCompareExchangeResult, 2)
+	errs := make(chan error, 2)
+	for index, handler := range []*pluginHostServices{left, right} {
+		go func(handler *pluginHostServices, request json.RawMessage) {
+			raw, err := handler.HandleHostService(context.Background(), pluginhost.HostServiceStorageCompareExchange, request)
+			if err != nil {
+				errs <- err
+				return
+			}
+			var result pluginhost.StorageCompareExchangeResult
+			if err := json.Unmarshal(raw, &result); err != nil {
+				errs <- err
+				return
+			}
+			results <- result
+		}(handler, requests[index])
+	}
+	swaps := 0
+	for range 2 {
+		select {
+		case err := <-errs:
+			t.Fatal(err)
+		case result := <-results:
+			if result.Swapped {
+				swaps++
+			}
+		}
+	}
+	if swaps != 1 {
+		t.Fatalf("successful claims = %d, want 1", swaps)
 	}
 }
 
@@ -195,7 +253,7 @@ func runRuntimeHostServiceHelper() {
 		os.Exit(3)
 	}
 	var params pluginhost.CapabilityInitializeParams
-	if json.Unmarshal(initialize.Params, &params) != nil || len(params.SupportedHostServices) != 8 {
+	if json.Unmarshal(initialize.Params, &params) != nil || len(params.SupportedHostServices) != 9 {
 		os.Exit(4)
 	}
 	initResult := pluginhost.CapabilityInitializeResult{

@@ -21,8 +21,9 @@ import (
 const CapabilityProtocolVersion = 2
 
 const (
-	HostServiceTurnSubmit        = "host.turn.submit"
-	CapabilityAgentTurnLifecycle = "agent.turn.lifecycle"
+	HostServiceTurnSubmit             = "host.turn.submit"
+	HostServiceStorageCompareExchange = "host.storage.compare_exchange"
+	CapabilityAgentTurnLifecycle      = "agent.turn.lifecycle"
 )
 
 type InitializeParams struct {

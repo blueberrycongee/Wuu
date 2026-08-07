@@ -21,6 +21,7 @@ var productionPluginHostServices = []pluginhost.HostServiceMethod{
 	pluginhost.HostServiceStorageSet,
 	pluginhost.HostServiceStorageDelete,
 	pluginhost.HostServiceStorageKeys,
+	pluginhost.HostServiceStorageCompareExchange,
 	pluginhost.HostServiceSettingsGet,
 	pluginhost.HostServiceSettingsList,
 	pluginhost.HostServiceChildSessionRequest,
@@ -141,6 +142,12 @@ func (s *pluginHostServices) HandleHostService(ctx context.Context, method plugi
 			return nil, err
 		}
 		return s.storageKeys(params)
+	case pluginhost.HostServiceStorageCompareExchange:
+		var params pluginhost.StorageCompareExchangeParams
+		if err := decodeServiceParams(raw, &params); err != nil {
+			return nil, err
+		}
+		return s.storageCompareExchange(params)
 	default:
 		return nil, serviceError("method_not_found", fmt.Sprintf("host service %q is not implemented", method))
 	}
@@ -294,6 +301,47 @@ func (s *pluginHostServices) storageKeys(params pluginhost.StorageKeysParams) (j
 	}
 	sort.Strings(keys)
 	return marshalServiceResult(pluginhost.StorageKeysResult{Keys: keys})
+}
+
+func (s *pluginHostServices) storageCompareExchange(params pluginhost.StorageCompareExchangeParams) (json.RawMessage, error) {
+	scope, err := storageScope(params.Scope)
+	if err != nil {
+		return nil, err
+	}
+	if err := pluginsettings.ValidateStateKey(params.Key); err != nil {
+		return nil, serviceError("invalid_params", err.Error())
+	}
+	if params.Value != nil && len([]byte(*params.Value)) > pluginsettings.MaxStateValueBytes {
+		return nil, serviceError("limit_exceeded", fmt.Sprintf("plugin storage value exceeds %d bytes", pluginsettings.MaxStateValueBytes))
+	}
+	result := pluginhost.StorageCompareExchangeResult{}
+	_, err = pluginsettings.UpdateState(s.wuuHome, s.projectRoot, s.subjectID, scope, func(values map[string]string) error {
+		current, exists := values[params.Key]
+		matches := params.Expected != nil && exists && current == *params.Expected
+		if params.Expected == nil {
+			matches = !exists
+		}
+		if !matches {
+			if exists {
+				currentCopy := current
+				result.Value = &currentCopy
+			}
+			return nil
+		}
+		result.Swapped = true
+		if params.Value == nil {
+			delete(values, params.Key)
+			return nil
+		}
+		values[params.Key] = *params.Value
+		valueCopy := *params.Value
+		result.Value = &valueCopy
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return marshalServiceResult(result)
 }
 
 func storageScope(value string) (pluginsettings.Scope, error) {

@@ -166,10 +166,11 @@ type HostServiceMethod string
 
 const (
 	// Storage
-	HostServiceStorageGet    HostServiceMethod = "host.storage.get"
-	HostServiceStorageSet    HostServiceMethod = "host.storage.set"
-	HostServiceStorageDelete HostServiceMethod = "host.storage.delete"
-	HostServiceStorageKeys   HostServiceMethod = "host.storage.keys"
+	HostServiceStorageGet             HostServiceMethod = "host.storage.get"
+	HostServiceStorageSet             HostServiceMethod = "host.storage.set"
+	HostServiceStorageDelete          HostServiceMethod = "host.storage.delete"
+	HostServiceStorageKeys            HostServiceMethod = "host.storage.keys"
+	HostServiceStorageCompareExchange HostServiceMethod = "host.storage.compare_exchange"
 
 	// Settings
 	HostServiceSettingsGet  HostServiceMethod = "host.settings.get"
@@ -404,6 +405,21 @@ type StorageKeysParams struct {
 // StorageKeysResult is the output of host.storage.keys.
 type StorageKeysResult struct {
 	Keys []string `json:"keys"`
+}
+
+// StorageCompareExchangeParams atomically replaces one plugin-owned value
+// when its current value exactly matches Expected. Nil represents absence;
+// a nil Value deletes the key after a successful comparison.
+type StorageCompareExchangeParams struct {
+	Scope    string  `json:"scope"`
+	Key      string  `json:"key"`
+	Expected *string `json:"expected"`
+	Value    *string `json:"value"`
+}
+
+type StorageCompareExchangeResult struct {
+	Swapped bool    `json:"swapped"`
+	Value   *string `json:"value"`
 }
 
 // SettingsGetParams is the input for host.settings.get.
@@ -723,7 +739,7 @@ func ValidateCapabilityNegotiation(result CapabilityInitializeResult, supported 
 // ValidateHostServiceMethod checks that a host service method is recognized.
 func ValidateHostServiceMethod(m HostServiceMethod) error {
 	switch m {
-	case HostServiceStorageGet, HostServiceStorageSet, HostServiceStorageDelete, HostServiceStorageKeys,
+	case HostServiceStorageGet, HostServiceStorageSet, HostServiceStorageDelete, HostServiceStorageKeys, HostServiceStorageCompareExchange,
 		HostServiceSettingsGet, HostServiceSettingsList,
 		HostServiceChildSessionRequest, HostServiceTurnSubmit,
 		HostServiceSessionGetInfo,
@@ -738,7 +754,7 @@ func ValidateHostServiceMethod(m HostServiceMethod) error {
 // AllHostServices returns the complete list of supported host services.
 func AllHostServices() []HostServiceMethod {
 	return []HostServiceMethod{
-		HostServiceStorageGet, HostServiceStorageSet, HostServiceStorageDelete, HostServiceStorageKeys,
+		HostServiceStorageGet, HostServiceStorageSet, HostServiceStorageDelete, HostServiceStorageKeys, HostServiceStorageCompareExchange,
 		HostServiceSettingsGet, HostServiceSettingsList,
 		HostServiceChildSessionRequest, HostServiceTurnSubmit,
 		HostServiceSessionGetInfo,
