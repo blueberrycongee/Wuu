@@ -130,7 +130,7 @@ func (t *Toolkit) executeKnownToolResultWithRepeatPolicy(ctx context.Context, ca
 		}
 	}
 
-	if err := t.boundary.Check(info, call); err != nil {
+	if err := t.checkPermission(ctx, info, call); err != nil {
 		decision.Action = ToolPolicyDeny
 		decision.Reason = "workspace boundary"
 		t.recordToolExecution(ctx, call, info, decision, startedAt, revisionBefore, revisionBefore, "", "", "", false, err, nil)

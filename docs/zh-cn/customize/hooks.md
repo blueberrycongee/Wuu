@@ -13,12 +13,18 @@ Hook 会在 Wuu 本机执行命令或调用模型，不是操作系统沙箱。�
 | 事件 | 触发时机 | 主要输入 | 结果怎样处理 |
 | --- | --- | --- | --- |
 | `PreToolUse` | 工具执行前 | 工具名和参数 | 可以放行、阻止或替换工具参数 |
+| `PermissionRequest` | 工具权限判定前 | 工具名和参数 | 可以阻止工具执行 |
 | `PostToolUse` | 工具成功后 | 工具名、参数和结果文本 | 可以向 Agent 补充上下文；不能撤销已经完成的操作 |
 | `PostToolUseFailure` | 工具执行失败后 | 工具名、参数和错误 | 用于记录或通知；Hook 错误不会覆盖原工具错误 |
+| `PreCompact` | 对话压缩前 | 压缩原因 | 可以阻止本次压缩 |
+| `PostCompact` | 对话压缩实现返回后 | 压缩原因和可选错误 | 可以拒绝采用压缩结果 |
+| `UserPromptSubmit` | 用户提示进入模型轮次前 | 提示文本 | 可以阻止本轮执行 |
+| `SubagentStart` | 子代理轮次开始前 | 子代理 ID | 可以阻止子代理轮次 |
+| `SubagentStop` | 子代理轮次结束后 | 子代理 ID | 失败会使该子代理轮次失败 |
+| `SessionStart` | 会话绑定完成后 | 会话 ID | 失败会使会话绑定失败 |
+| `SessionEnd` | 会话资源关闭前 | 会话 ID | 失败会随清理错误返回 |
+| `Stop` | 模型轮次收尾时 | 会话 ID | 可以把本轮标记为失败 |
 | `FileChanged` | Wuu 的文件工具成功写入或编辑文件后 | 文件绝对路径 | 用于记录或触发后续动作；输出目前不会改变 Agent 行为 |
-
-配置层还识别 `UserPromptSubmit`、`SessionStart`、`SessionEnd` 和 `Stop` 这些事件名，
-但当前主运行路径尚未触发它们。不要依赖这些事件执行必要操作。
 
 `FileChanged` 只跟踪经过 Wuu 文件工具完成的写入。命令、外部程序或用户直接修改文件时，
 不保证触发这个事件。
@@ -122,7 +128,9 @@ command Hook 会在标准输入收到以下结构。除了前三个公共字段�
   "tool_response": "...",
   "error": "...",
   "prompt": "...",
-  "file_path": "/path/to/workspace/file.go"
+  "file_path": "/path/to/workspace/file.go",
+  "compact_reason": "proactive",
+  "agent_id": "worker-id"
 }
 ```
 
@@ -130,7 +138,9 @@ command Hook 会在标准输入收到以下结构。除了前三个公共字段�
 - `tool_response` 是成功结果的稳定文本投影，不保证包含富媒体结果的全部内部数据。
 - `error` 只用于工具失败事件。
 - `file_path` 只用于 `FileChanged`。
-- `prompt` 为已识别但尚未接入主运行路径的提示事件预留。
+- `prompt` 只用于 `UserPromptSubmit`。
+- `compact_reason` 用于 `PreCompact` 和 `PostCompact`。
+- `agent_id` 用于 `SubagentStart` 和 `SubagentStop`。
 - 某些运行路径目前可能不填写 `session_id`；不要把非空会话 ID 当作 Hook 正常运行的前提。
 
 ## 输出与退出码

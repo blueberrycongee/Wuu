@@ -123,6 +123,8 @@ type StreamRunner struct {
 	OnRequestContext func(info RequestContextInfo)
 	// OnCompactAttempt receives metadata-only compact attempt diagnostics.
 	OnCompactAttempt func(info CompactAttemptInfo)
+	BeforeCompact    func(context.Context, CompactReason) error
+	AfterCompact     func(context.Context, CompactReason, error) error
 	// OnToolBatchRejected receives metadata-only diagnostics for whole
 	// tool-call batches rejected before any tool executes.
 	OnToolBatchRejected func(info ToolBatchRejectionInfo)
@@ -306,8 +308,10 @@ func (r *StreamRunner) RunWithCallback(ctx context.Context, history []providers.
 				RequestContext: requestContextSummary(info),
 			})
 		},
-		OnUsage:      r.OnUsage,
-		OnTokenUsage: r.OnTokenUsage,
+		OnUsage:       r.OnUsage,
+		OnTokenUsage:  r.OnTokenUsage,
+		BeforeCompact: r.BeforeCompact,
+		AfterCompact:  r.AfterCompact,
 		OnMessage: func(msg providers.ChatMessage) {
 			if effectiveOnEvent == nil || msg.Hidden || isNonDurableHistoryMessage(msg) || isInternalContextHistoryMessage(msg) {
 				return

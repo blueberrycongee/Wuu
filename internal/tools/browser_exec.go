@@ -57,9 +57,10 @@ func (t *Toolkit) executeBrowserToolResult(ctx context.Context, call providers.T
 	// (mutating) while still allowing observe/screenshot/tabs/wait_for, and a
 	// denial must not leave a spurious errored activity behind.
 	info := buildToolInfoForArgs(tool, t.toolExposure(call.Name), call.Arguments)
-	if err := t.boundary.Check(info, call); err != nil {
+	if err := t.checkPermission(ctx, info, call); err != nil {
 		return toolresult.Result{}, err
 	}
+	ctx = markPermissionChecked(ctx)
 
 	action := strings.TrimSpace(decodeActionField(call.Arguments))
 	switch action {

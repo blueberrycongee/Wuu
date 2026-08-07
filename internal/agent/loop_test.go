@@ -845,10 +845,10 @@ func TestRequestContextInfoReadsNativeToolSearchToolsShape(t *testing.T) {
 // seam covered without depending on the deleted product implementation.
 func rewriteFromRecoveryEnvelopeForTest(_ context.Context, messages []providers.ChatMessage, toolMessages []providers.ChatMessage) ([]providers.ChatMessage, bool, error) {
 	const (
-		recoveryCarrierTool      = "helpme"
-		recoveryRewriteKind      = "helpme_joint_compact"
-		recoveryCompactTitle     = "[HelpMe joint compact]"
-		recoveryPreviousSummary  = "\n\n## Previous compact summary before recovery\n"
+		recoveryCarrierTool     = "helpme"
+		recoveryRewriteKind     = "helpme_joint_compact"
+		recoveryCompactTitle    = "[HelpMe joint compact]"
+		recoveryPreviousSummary = "\n\n## Previous compact summary before recovery\n"
 	)
 	content := ""
 	for _, msg := range toolMessages {
@@ -2039,6 +2039,60 @@ func TestRunToolLoop_OverflowCompactFiresOnCompactCallback(t *testing.T) {
 	}
 	if len(infos) != 1 || infos[0].Reason != CompactReasonOverflow {
 		t.Fatalf("expected one overflow OnCompact, got %+v", infos)
+	}
+}
+
+func TestRunToolLoop_CompactLifecycleCallbacksWrapProactiveAndReactive(t *testing.T) {
+	tests := []struct {
+		name   string
+		reason CompactReason
+		step   *fakeStep
+		cfg    LoopConfig
+	}{
+		{
+			name: "proactive", reason: CompactReasonProactive,
+			step: &fakeStep{results: []StepResult{{Content: "ok"}}},
+			cfg: LoopConfig{MaxContextTokens: 1000, DefaultMaxTokens: 100, UsageTracker: func() *UsageTracker {
+				tracker := NewUsageTracker()
+				tracker.RecordResponse(&providers.TokenUsage{InputTokens: 950})
+				return tracker
+			}()},
+		},
+		{
+			name: "reactive", reason: CompactReasonOverflow,
+			step: &fakeStep{results: []StepResult{{}, {Content: "ok"}}, errs: []error{
+				&providers.HTTPError{StatusCode: 400, Body: "context_length_exceeded", ContextOverflow: true}, nil,
+			}},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var events []string
+			tt.cfg.Model = "m"
+			tt.cfg.Compact = func(context.Context, []providers.ChatMessage) ([]providers.ChatMessage, error) {
+				events = append(events, "compact")
+				return []providers.ChatMessage{userMsg("summary")}, nil
+			}
+			tt.cfg.BeforeCompact = func(_ context.Context, reason CompactReason) error {
+				events = append(events, "pre:"+string(reason))
+				return nil
+			}
+			tt.cfg.AfterCompact = func(_ context.Context, reason CompactReason, compactErr error) error {
+				if compactErr != nil {
+					t.Fatalf("compact error passed to post hook: %v", compactErr)
+				}
+				events = append(events, "post:"+string(reason))
+				return nil
+			}
+			_, err := RunToolLoop(context.Background(), []providers.ChatMessage{userMsg("old"), {Role: "assistant", Content: "answer"}, userMsg("new")}, tt.cfg, tt.step)
+			if err != nil {
+				t.Fatalf("RunToolLoop: %v", err)
+			}
+			want := []string{"pre:" + string(tt.reason), "compact", "post:" + string(tt.reason)}
+			if strings.Join(events, ",") != strings.Join(want, ",") {
+				t.Fatalf("lifecycle events = %v, want %v", events, want)
+			}
+		})
 	}
 }
 

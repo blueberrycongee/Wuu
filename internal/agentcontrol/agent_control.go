@@ -273,6 +273,8 @@ type Config struct {
 	MaxParallel       int
 	InferenceJournal  providers.InferenceJournal
 	ToolLedgerFactory func(ownerID string) (*toolledger.Ledger, error)
+	OnSubagentStart   func(context.Context, string) error
+	OnSubagentStop    func(context.Context, string) error
 }
 
 // New constructs an AgentControl. Worktree isolation is only available
@@ -312,6 +314,8 @@ func New(cfg Config) (*AgentControl, error) {
 		DisableAutoCompact:      cfg.DefaultDisableAutoCompact,
 		InferenceJournal:        cfg.InferenceJournal,
 		ToolLedgerFactory:       cfg.ToolLedgerFactory,
+		OnSubagentStart:         cfg.OnSubagentStart,
+		OnSubagentStop:          cfg.OnSubagentStop,
 	})
 	threadRegistry := agentthread.NewRegistry()
 

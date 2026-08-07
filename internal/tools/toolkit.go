@@ -58,6 +58,7 @@ type Toolkit struct {
 	toolSearchEnabled       bool
 	nativeDeferredDiscovery bool
 	boundary                WorkspaceBoundary
+	permissionRequestHook   func(context.Context, *Toolkit, ToolInfo, providers.ToolCall) error
 	// mcpManager, when set, exposes MCP server tools alongside built-in
 	// tools. MCP tools are appended after built-ins to preserve prompt
 	// cache stability (the built-in prefix stays constant).
@@ -85,6 +86,30 @@ type Toolkit struct {
 	// the authoritative source for which tool names are direct,
 	// deferred, or hidden under the current profile.
 	activeSurface capability.Surface
+}
+
+// SetPermissionRequestHook installs the hook invoked immediately before the
+// workspace boundary makes its allow/deny decision.
+func (t *Toolkit) SetPermissionRequestHook(hook func(context.Context, *Toolkit, ToolInfo, providers.ToolCall) error) {
+	t.permissionRequestHook = hook
+}
+
+type permissionCheckedContextKey struct{}
+
+func (t *Toolkit) checkPermission(ctx context.Context, info ToolInfo, call providers.ToolCall) error {
+	if checked, _ := ctx.Value(permissionCheckedContextKey{}).(bool); checked {
+		return nil
+	}
+	if t.permissionRequestHook != nil {
+		if err := t.permissionRequestHook(ctx, t, info, call); err != nil {
+			return err
+		}
+	}
+	return t.boundary.Check(info, call)
+}
+
+func markPermissionChecked(ctx context.Context) context.Context {
+	return context.WithValue(ctx, permissionCheckedContextKey{}, true)
 }
 
 // ExecutionActor exposes the generic identity bound to this tool surface so

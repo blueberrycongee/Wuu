@@ -58,7 +58,9 @@ type Manager struct {
 	// admission: the owner uses this hook to reapply the authority in force
 	// now instead of the one captured at spawn. Running workers are never
 	// touched — a live turn keeps its admitted snapshot until it settles.
-	wakeAuthority func(agent.ToolExecutor)
+	wakeAuthority   func(agent.ToolExecutor)
+	onSubagentStart func(context.Context, string) error
+	onSubagentStop  func(context.Context, string) error
 }
 
 type ManagerOptions struct {
@@ -81,6 +83,8 @@ type ManagerOptions struct {
 	// construction. UpdateDefaults intentionally does not replace it.
 	InferenceJournal  providers.InferenceJournal
 	ToolLedgerFactory func(ownerID string) (*toolledger.Ledger, error)
+	OnSubagentStart   func(context.Context, string) error
+	OnSubagentStop    func(context.Context, string) error
 }
 
 type managerDefaults struct {
@@ -130,6 +134,8 @@ func NewManagerWithOptions(client providers.StreamClient, defaultModel string, o
 		defaultDisableCompact:  opts.DisableAutoCompact,
 		defaultJournal:         opts.InferenceJournal,
 		toolLedgerFactory:      opts.ToolLedgerFactory,
+		onSubagentStart:        opts.OnSubagentStart,
+		onSubagentStop:         opts.OnSubagentStop,
 		agents:                 make(map[string]*SubAgent),
 	}
 }
@@ -580,7 +586,17 @@ func (m *Manager) runTurn(ctx context.Context, cancel context.CancelFunc, sa *Su
 
 	runner.BeforeStep = beforeStep
 	runner.ForceToolFirstStep = sa.takeForceToolNextTurn()
-	res, err := runner.RunWithCallback(ctx, history, onEvent)
+	var res agent.LoopResult
+	var err error
+	if m.onSubagentStart != nil {
+		err = m.onSubagentStart(ctx, sa.ID)
+	}
+	if err == nil {
+		res, err = runner.RunWithCallback(ctx, history, onEvent)
+	}
+	if m.onSubagentStop != nil {
+		err = errors.Join(err, m.onSubagentStop(ctx, sa.ID))
+	}
 	content := res.Content
 	nextHistory := mergeTurnHistory(history, res)
 

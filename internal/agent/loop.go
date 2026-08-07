@@ -240,8 +240,25 @@ func RunToolLoop(
 		if cfg.OnCompactStart != nil {
 			cfg.OnCompactStart(reason)
 		}
+		if cfg.BeforeCompact != nil {
+			if hookErr := cfg.BeforeCompact(ctx, reason); hookErr != nil {
+				if !force {
+					proactiveSuppressed = true
+				}
+				emitCompactAttempt(cfg, compactAttemptWithUsage(CompactAttemptInfo{
+					Reason: reason, Status: CompactAttemptFailed, TokensBefore: before,
+					MessagesBefore: msgsBefore, Error: hookErr.Error(),
+				}, usageBefore))
+				return
+			}
+		}
 		compactCtx, lineage := providers.BeginInferenceOperationLineage(ctx, lastAgentOperationID)
 		compacted, cerr := effectiveCompact(compactCtx, messages)
+		if cfg.AfterCompact != nil {
+			if hookErr := cfg.AfterCompact(ctx, reason, cerr); hookErr != nil {
+				cerr = hookErr
+			}
+		}
 		switch {
 		case cerr != nil:
 			if !force {
@@ -471,8 +488,25 @@ func RunToolLoop(
 				if cfg.OnCompactStart != nil {
 					cfg.OnCompactStart(CompactReasonOverflow)
 				}
-				compactCtx, lineage := providers.BeginInferenceOperationLineage(ctx, req.Operation.ID)
-				if compacted, cerr := effectiveCompact(compactCtx, messages); cerr == nil {
+				var compacted []providers.ChatMessage
+				var cerr error
+				if cfg.BeforeCompact != nil {
+					if hookErr := cfg.BeforeCompact(ctx, CompactReasonOverflow); hookErr != nil {
+						cerr = hookErr
+					}
+				}
+				var lineage *providers.InferenceOperationLineage
+				if cerr == nil {
+					compactCtx, compactLineage := providers.BeginInferenceOperationLineage(ctx, req.Operation.ID)
+					lineage = compactLineage
+					compacted, cerr = effectiveCompact(compactCtx, messages)
+					if cfg.AfterCompact != nil {
+						if hookErr := cfg.AfterCompact(ctx, CompactReasonOverflow, cerr); hookErr != nil {
+							cerr = hookErr
+						}
+					}
+				}
+				if cerr == nil {
 					if compactChanged(messages, compacted) {
 						if compactOperationID := lineage.LastOperationID(); compactOperationID != "" && compactOperationID != req.Operation.ID {
 							nextOperationParentID = compactOperationID

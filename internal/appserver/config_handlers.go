@@ -747,16 +747,7 @@ func hookDispatcherHasAny(dispatcher *hooks.Dispatcher) bool {
 	if dispatcher == nil {
 		return false
 	}
-	for _, event := range []hooks.Event{
-		hooks.PreToolUse,
-		hooks.PostToolUse,
-		hooks.PostToolUseFailure,
-		hooks.UserPromptSubmit,
-		hooks.SessionStart,
-		hooks.SessionEnd,
-		hooks.Stop,
-		hooks.FileChanged,
-	} {
+	for _, event := range hooks.AllEvents() {
 		if dispatcher.HasHooks(event) {
 			return true
 		}

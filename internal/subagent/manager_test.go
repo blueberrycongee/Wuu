@@ -275,6 +275,39 @@ func TestSpawn_HappyPath(t *testing.T) {
 	}
 }
 
+func TestRunTurnDispatchesSubagentLifecycleOnce(t *testing.T) {
+	client := &fakeClient{response: providers.ChatResponse{Content: "done"}}
+	var mu sync.Mutex
+	var events []string
+	mgr := NewManagerWithOptions(client, "fake-model", ManagerOptions{
+		OnSubagentStart: func(_ context.Context, id string) error {
+			mu.Lock()
+			events = append(events, "start:"+id)
+			mu.Unlock()
+			return nil
+		},
+		OnSubagentStop: func(_ context.Context, id string) error {
+			mu.Lock()
+			events = append(events, "stop:"+id)
+			mu.Unlock()
+			return nil
+		},
+	})
+	sa, err := mgr.Spawn(context.Background(), SpawnOptions{Type: "worker", Prompt: "work", Toolkit: fakeToolkit{}})
+	if err != nil {
+		t.Fatalf("Spawn: %v", err)
+	}
+	if _, err := mgr.Wait(context.Background(), sa.ID); err != nil {
+		t.Fatalf("Wait: %v", err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	want := []string{"start:" + sa.ID, "stop:" + sa.ID}
+	if strings.Join(events, ",") != strings.Join(want, ",") {
+		t.Fatalf("lifecycle events = %v, want %v", events, want)
+	}
+}
+
 func TestSpawnStartsWorkflowIndependentFromParentAgent(t *testing.T) {
 	client := &fakeClient{response: providers.ChatResponse{Content: "all done"}}
 	journal := &managerTestJournal{}

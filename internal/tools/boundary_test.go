@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"context"
 	"errors"
 	"path/filepath"
 	"strings"
@@ -57,6 +58,32 @@ func TestBoundaryGuardsAreHardDenyOnly(t *testing.T) {
 	err := b.Check(ToolInfo{Name: "bash", Kind: ToolKindShell}, providers.ToolCall{Name: "bash"})
 	if !errors.Is(err, want) {
 		t.Fatalf("boundary should return guard denial, got %v", err)
+	}
+}
+
+func TestToolkitPermissionRequestHookRunsOnceBeforeBoundary(t *testing.T) {
+	kit, err := New(t.TempDir())
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	kit.SetBoundary(ReadOnlyBoundary())
+	calls := 0
+	kit.SetPermissionRequestHook(func(_ context.Context, active *Toolkit, info ToolInfo, call providers.ToolCall) error {
+		calls++
+		if active != kit {
+			t.Fatal("permission hook received the wrong toolkit")
+		}
+		if info.Name != "write_file" || call.Name != "write_file" {
+			t.Fatalf("unexpected permission payload: info=%+v call=%+v", info, call)
+		}
+		return nil
+	})
+	err = kit.checkPermission(context.Background(), ToolInfo{Name: "write_file", Kind: ToolKindFile}, providers.ToolCall{Name: "write_file"})
+	if err == nil {
+		t.Fatal("read-only boundary should still deny the request")
+	}
+	if calls != 1 {
+		t.Fatalf("permission hook calls = %d, want 1", calls)
 	}
 }
 

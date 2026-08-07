@@ -18,6 +18,7 @@ import (
 	"github.com/blueberrycongee/wuu/internal/config"
 	wuucontext "github.com/blueberrycongee/wuu/internal/context"
 	"github.com/blueberrycongee/wuu/internal/execution"
+	hookspkg "github.com/blueberrycongee/wuu/internal/hooks"
 	"github.com/blueberrycongee/wuu/internal/imageproc"
 	"github.com/blueberrycongee/wuu/internal/insight"
 	"github.com/blueberrycongee/wuu/internal/pluginhost"
@@ -2056,6 +2057,10 @@ func (s *Server) runTurnWithRequestContext(ctx context.Context, th *threadState,
 			Event:    sanitizeStreamEvent(ev),
 		})
 	})
+	if s.rt != nil && s.rt.HookDispatcher != nil {
+		_, stopErr := s.rt.HookDispatcher.Dispatch(ctx, hookspkg.Stop, &hookspkg.Input{SessionID: th.ID, CWD: s.rt.RootDir})
+		err = errors.Join(err, stopErr)
+	}
 	// RunWithCallback has consumed every per-turn callback. Restore the
 	// long-lived runner before the thread can become idle and admit another
 	// turn; the deferred call remains as panic-safe cleanup.
@@ -2793,6 +2798,14 @@ func (s *Server) startThreadUserTurnWithAdmission(ctx context.Context, th *threa
 	if !chatMessageHasUserPayload(userMsg) {
 		abortAdmission()
 		return startedThreadTurn{}, false, nil
+	}
+	if s.rt != nil && s.rt.HookDispatcher != nil {
+		if _, err := s.rt.HookDispatcher.Dispatch(ctx, hookspkg.UserPromptSubmit, &hookspkg.Input{
+			SessionID: threadID, CWD: threadCWD, Prompt: userMsg.Content,
+		}); err != nil {
+			abortAdmission()
+			return startedThreadTurn{}, false, fmt.Errorf("user prompt hook: %w", err)
+		}
 	}
 
 	th.mu.Lock()

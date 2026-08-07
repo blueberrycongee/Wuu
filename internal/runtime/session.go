@@ -469,6 +469,13 @@ func NewSession(opts Options) (*Session, error) {
 		kit.SetNativeDeferredToolDiscovery(nativeDeferredDiscovery)
 		kit.SetGitAttributionEnabled(cfg.Agent.GitAttributionEnabledValue())
 		kit.SetActivityRegistry(activityRegistry)
+		kit.SetPermissionRequestHook(func(ctx context.Context, active *tools.Toolkit, info tools.ToolInfo, call providers.ToolCall) error {
+			_, err := hookDispatcher.Dispatch(ctx, hooks.PermissionRequest, &hooks.Input{
+				SessionID: active.SessionID(), CWD: active.RootDir(), ToolName: call.Name,
+				ToolInput: json.RawMessage(call.Arguments),
+			})
+			return err
+		})
 		var fileScopeExtras []string
 		// User memory is a file-directory notebook injected into the prompt
 		// and written with ordinary file tools inside the boundary roots below.
@@ -602,9 +609,17 @@ func NewSession(opts Options) (*Session, error) {
 				return wkit, nil
 			},
 			WorkerWakeAuthority: workerWakeAuthority(toolkit),
-			ParticipantStore:    sessionParticipantStore{sessDir: statepath.SessionsDir(wuuHome)},
-			MaxParallel:         cfg.Agent.MaxParallelValue(),
-			InferenceJournal:    workspaceJournal,
+			OnSubagentStart: func(ctx context.Context, agentID string) error {
+				_, err := hookDispatcher.Dispatch(ctx, hooks.SubagentStart, &hooks.Input{CWD: rootDir, AgentID: agentID})
+				return err
+			},
+			OnSubagentStop: func(ctx context.Context, agentID string) error {
+				_, err := hookDispatcher.Dispatch(ctx, hooks.SubagentStop, &hooks.Input{CWD: rootDir, AgentID: agentID})
+				return err
+			},
+			ParticipantStore: sessionParticipantStore{sessDir: statepath.SessionsDir(wuuHome)},
+			MaxParallel:      cfg.Agent.MaxParallelValue(),
+			InferenceJournal: workspaceJournal,
 			ToolLedgerFactory: func(ownerID string) (*toolledger.Ledger, error) {
 				return toolledger.New(sessionDir, ownerID)
 			},
@@ -678,12 +693,24 @@ func NewSession(opts Options) (*Session, error) {
 		CompactThresholdPct:         cfg.Agent.CompactThresholdPct,
 		CompactKeepRecentTokens:     cfg.Agent.CompactKeepRecentTokens,
 		DisableAutoCompact:          cfg.Agent.DisableAutoCompact,
-		BeforeRequestContext:        RuntimeContextInjector(agentControl, agentthread.RootPath, toolkitContextBlockProvider(toolkit)),
-		BeforeRequest:               pluginRequestInterceptor(pluginHost, resolvedName, "", rootDir),
-		AfterTurn:                   afterTurn,
-		InferenceOperationKind:      providers.InferenceOperationAgentRound,
-		InferenceWorkloadProfile:    providers.InferenceProfileInteractive,
-		InferenceJournal:            workspaceJournal,
+		BeforeCompact: func(ctx context.Context, reason agent.CompactReason) error {
+			_, err := hookDispatcher.Dispatch(ctx, hooks.PreCompact, &hooks.Input{CWD: rootDir, CompactReason: string(reason)})
+			return err
+		},
+		AfterCompact: func(ctx context.Context, reason agent.CompactReason, compactErr error) error {
+			input := &hooks.Input{CWD: rootDir, CompactReason: string(reason)}
+			if compactErr != nil {
+				input.Error = compactErr.Error()
+			}
+			_, err := hookDispatcher.Dispatch(ctx, hooks.PostCompact, input)
+			return err
+		},
+		BeforeRequestContext:     RuntimeContextInjector(agentControl, agentthread.RootPath, toolkitContextBlockProvider(toolkit)),
+		BeforeRequest:            pluginRequestInterceptor(pluginHost, resolvedName, "", rootDir),
+		AfterTurn:                afterTurn,
+		InferenceOperationKind:   providers.InferenceOperationAgentRound,
+		InferenceWorkloadProfile: providers.InferenceProfileInteractive,
+		InferenceJournal:         workspaceJournal,
 	}
 
 	configLoadMode := opts.ConfigLoadMode
@@ -1324,9 +1351,17 @@ func (s *Session) NewThreadRuntimeForRoot(sessionID, rootDir string) (*ThreadRun
 					return workerKit, nil
 				},
 				WorkerWakeAuthority: workerWakeAuthority(kit),
-				ParticipantStore:    sessionParticipantStore{sessDir: statepath.SessionsDir(wuuHome)},
-				MaxParallel:         s.MaxParallel(),
-				InferenceJournal:    s.InferenceJournalForOwner(id),
+				OnSubagentStart: func(ctx context.Context, agentID string) error {
+					_, err := s.HookDispatcher.Dispatch(ctx, hooks.SubagentStart, &hooks.Input{SessionID: id, CWD: threadRoot, AgentID: agentID})
+					return err
+				},
+				OnSubagentStop: func(ctx context.Context, agentID string) error {
+					_, err := s.HookDispatcher.Dispatch(ctx, hooks.SubagentStop, &hooks.Input{SessionID: id, CWD: threadRoot, AgentID: agentID})
+					return err
+				},
+				ParticipantStore: sessionParticipantStore{sessDir: statepath.SessionsDir(wuuHome)},
+				MaxParallel:      s.MaxParallel(),
+				InferenceJournal: s.InferenceJournalForOwner(id),
 				ToolLedgerFactory: func(ownerID string) (*toolledger.Ledger, error) {
 					return toolledger.New(s.SessionDir, ownerID)
 				},
@@ -1399,6 +1434,8 @@ func cloneStreamRunnerForThread(base *agent.StreamRunner, toolExecutor agent.Too
 		OnEvent:                     base.OnEvent,
 		OnUsage:                     base.OnUsage,
 		OnTokenUsage:                base.OnTokenUsage,
+		BeforeCompact:               base.BeforeCompact,
+		AfterCompact:                base.AfterCompact,
 		ContextWindowOverride:       base.ContextWindowOverride,
 		MaxInputTokens:              base.MaxInputTokens,
 		OutputReserveTokens:         base.OutputReserveTokens,
@@ -1618,6 +1655,11 @@ func (s *Session) SetSessionID(id string) error {
 		s.AgentControl.StartWorkerTerminalRecovery()
 		s.AgentControl.StartQueuedWork()
 	}
+	if s.HookDispatcher != nil {
+		if _, err := s.HookDispatcher.Dispatch(context.Background(), hooks.SessionStart, &hooks.Input{SessionID: id, CWD: s.RootDir}); err != nil {
+			return fmt.Errorf("session start hook: %w", err)
+		}
+	}
 	return nil
 }
 
@@ -1657,6 +1699,14 @@ func (s *Session) Cleanup() (process.CleanupResult, error) {
 		return process.CleanupResult{}, nil
 	}
 	var cleanupErr error
+	if s.HookDispatcher != nil {
+		sessionID := ""
+		if s.Toolkit != nil {
+			sessionID = s.Toolkit.SessionID()
+		}
+		_, hookErr := s.HookDispatcher.Dispatch(context.Background(), hooks.SessionEnd, &hooks.Input{SessionID: sessionID, CWD: s.RootDir})
+		cleanupErr = errors.Join(cleanupErr, hookErr)
+	}
 	if s.AutomationManager != nil {
 		s.AutomationManager.Stop()
 	}

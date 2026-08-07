@@ -4033,6 +4033,82 @@ func TestServerTurnStartRunsAgentLoop(t *testing.T) {
 	}
 }
 
+func TestServerTurnDispatchesPromptAndStopHooksOnce(t *testing.T) {
+	client := &fakeClient{response: providersResponse("done")}
+	rt := newTestRuntime(t, client)
+	logPath := filepath.Join(t.TempDir(), "turn-hooks.log")
+	command := func(event string) string { return fmt.Sprintf("printf '%s\\n' >> %q", event, logPath) }
+	rt.HookDispatcher = hooks.NewDispatcher(hooks.NewRegistry(map[hooks.Event][]hooks.HookConfig{
+		hooks.UserPromptSubmit: {{Command: command("prompt")}},
+		hooks.Stop:             {{Command: command("stop")}},
+	}))
+	out := &lockedBuffer{}
+	srv := New(rt, out)
+	if err := srv.handleLine(context.Background(), []byte(`{"id":"1","method":"thread/start"}`)); err != nil {
+		t.Fatalf("thread/start: %v", err)
+	}
+	threadID := remarshal[ThreadStartResult](t, responseByID(t, parseOutput(t, out.String()), "1")["result"]).Thread.ID
+	payload, err := json.Marshal(map[string]any{
+		"id": "2", "method": MethodTurnStart,
+		"params": TurnStartParams{ThreadID: threadID, Prompt: "hello"},
+	})
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	if err := srv.handleLine(context.Background(), payload); err != nil {
+		t.Fatalf("turn/start: %v", err)
+	}
+	waitForMethod(t, out, NotificationTurnCompleted)
+	raw, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	if got, want := strings.Fields(string(raw)), []string{"prompt", "stop"}; strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("turn hook events = %v, want %v", got, want)
+	}
+}
+
+func TestServerUserPromptHookBlocksBeforeHistory(t *testing.T) {
+	client := &fakeClient{response: providersResponse("should not run")}
+	rt := newTestRuntime(t, client)
+	rt.HookDispatcher = hooks.NewDispatcher(hooks.NewRegistry(map[hooks.Event][]hooks.HookConfig{
+		hooks.UserPromptSubmit: {{Command: "exit 2"}},
+	}))
+	out := &lockedBuffer{}
+	srv := New(rt, out)
+	if err := srv.handleLine(context.Background(), []byte(`{"id":"1","method":"thread/start"}`)); err != nil {
+		t.Fatalf("thread/start: %v", err)
+	}
+	threadID := remarshal[ThreadStartResult](t, responseByID(t, parseOutput(t, out.String()), "1")["result"]).Thread.ID
+	payload, err := json.Marshal(map[string]any{
+		"id": "2", "method": MethodTurnStart,
+		"params": TurnStartParams{ThreadID: threadID, Prompt: "blocked"},
+	})
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	if err := srv.handleLine(context.Background(), payload); err != nil {
+		t.Fatalf("turn/start response: %v", err)
+	}
+	response := responseByID(t, parseOutput(t, out.String()), "2")
+	if response["error"] == nil {
+		t.Fatalf("blocked prompt should return an RPC error: %+v", response)
+	}
+	th := srv.thread(threadID)
+	th.mu.Lock()
+	defer th.mu.Unlock()
+	for _, msg := range th.History {
+		if msg.Role == "user" && msg.Content == "blocked" {
+			t.Fatal("blocked user prompt was appended to history")
+		}
+	}
+	client.mu.Lock()
+	defer client.mu.Unlock()
+	if len(client.requests) != 0 {
+		t.Fatalf("provider requests = %d, want 0", len(client.requests))
+	}
+}
+
 func TestServerThreadContextCompositionReturnsLatestRequest(t *testing.T) {
 	client := &fakeClient{response: providers.ChatResponse{
 		Content: "done",

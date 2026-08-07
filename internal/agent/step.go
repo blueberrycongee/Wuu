@@ -324,6 +324,12 @@ type LoopConfig struct {
 	// OnCompactStart is invoked immediately before a potentially slow compact
 	// pass begins so interactive clients can render real progress.
 	OnCompactStart func(reason CompactReason)
+	// BeforeCompact runs immediately before the compaction implementation.
+	// Returning an error rejects that compact attempt.
+	BeforeCompact func(context.Context, CompactReason) error
+	// AfterCompact runs after the compaction implementation returns and before
+	// a replacement transcript is accepted. Returning an error rejects it.
+	AfterCompact func(context.Context, CompactReason, error) error
 	// OnCompact is invoked once per compact pass (proactive or
 	// reactive). Optional; clients can use it to render a status line.
 	OnCompact func(info CompactInfo)

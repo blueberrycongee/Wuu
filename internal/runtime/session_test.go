@@ -108,6 +108,29 @@ func TestSessionCleanupClosesMCPManager(t *testing.T) {
 	}
 }
 
+func TestSessionLifecycleHooksDispatchOnce(t *testing.T) {
+	logPath := filepath.Join(t.TempDir(), "events.log")
+	command := func(event string) string { return fmt.Sprintf("printf '%s\\n' >> %q", event, logPath) }
+	dispatcher := hooks.NewDispatcher(hooks.NewRegistry(map[hooks.Event][]hooks.HookConfig{
+		hooks.SessionStart: {{Command: command("start")}},
+		hooks.SessionEnd:   {{Command: command("end")}},
+	}))
+	session := &Session{RootDir: t.TempDir(), StateDir: t.TempDir(), HookDispatcher: dispatcher}
+	if err := session.SetSessionID("session-hooks"); err != nil {
+		t.Fatalf("SetSessionID: %v", err)
+	}
+	if _, err := session.Cleanup(); err != nil {
+		t.Fatalf("Cleanup: %v", err)
+	}
+	raw, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	if got, want := strings.Fields(string(raw)), []string{"start", "end"}; strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("lifecycle events = %v, want %v", got, want)
+	}
+}
+
 func TestSessionCleanupPreservesWorktreesWhileTerminalFinalizationIsPending(t *testing.T) {
 	control, worktreePath := newRuntimeCleanupWorktree(t, "pending-terminal-cleanup")
 	// The control's harness path is stable under the repository state root used
