@@ -297,7 +297,6 @@ func addBrowserTools(b *surfaceBuilder) {
 }
 
 func addMemoryTools(b *surfaceBuilder) {
-	b.addDeferred("session_memory", capability.CapabilityMemorySession)
 	// Durable notebook memory uses file tools; the retired indexed-memory
 	// tools are no longer registered or projected onto model surfaces.
 }

@@ -273,7 +273,6 @@ func (t *Toolkit) rebuildRegistry() {
 		// Skills
 		NewLoadSkillTool(e),
 		// Durable session/workspace memory
-		NewSessionMemoryTool(e),
 		// Session/thread lookup (used after right-click "copy ID" on the
 		// desktop session tree — agents receive a thread ID and resolve it
 		// back to the full conversation via this tool).
@@ -1084,9 +1083,7 @@ func isReadOnlyMCPProfileCapability(capName capability.Capability) bool {
 		capability.CapabilitySearchAST,
 		capability.CapabilitySearchSemantic,
 		capability.CapabilityWebFetch,
-		capability.CapabilityWebSearch,
-		capability.CapabilityMemorySession,
-		capability.CapabilityMemoryProject:
+		capability.CapabilityWebSearch:
 		return true
 	default:
 		return false

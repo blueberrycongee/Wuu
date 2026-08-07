@@ -29,14 +29,15 @@ const (
 )
 
 type ProcessConfig struct {
-	ID          string
-	Command     string
-	Args        []string
-	Env         map[string]string
-	PluginRoot  string
-	ProjectRoot string
-	WuuHome     string
-	Timeout     time.Duration
+	ID                string
+	Command           string
+	Args              []string
+	Env               map[string]string
+	PluginRoot        string
+	ProjectRoot       string
+	WuuHome           string
+	WorkspaceStateDir string
+	Timeout           time.Duration
 	// HostServiceHandler is the live dispatcher for Plugin -> Host calls.
 	HostServiceHandler HostServiceHandler
 	// SupportedHostServices is an optional assertion about HostServiceHandler's
@@ -146,11 +147,12 @@ func Start(ctx context.Context, config ProcessConfig) (*ProcessClient, error) {
 	var initialized CapabilityInitializeResult
 	if err := client.call(initCtx, "initialize", CapabilityInitializeParams{
 		InitializeParams: InitializeParams{
-			ProtocolVersion: ProtocolVersion,
-			PluginID:        config.ID,
-			PluginRoot:      config.PluginRoot,
-			ProjectRoot:     config.ProjectRoot,
-			WuuHome:         config.WuuHome,
+			ProtocolVersion:   ProtocolVersion,
+			PluginID:          config.ID,
+			PluginRoot:        config.PluginRoot,
+			ProjectRoot:       config.ProjectRoot,
+			WuuHome:           config.WuuHome,
+			WorkspaceStateDir: config.WorkspaceStateDir,
 		},
 		CapabilityProtocolVersion: CapabilityProtocolVersion,
 		SupportedHostServices:     append([]HostServiceMethod(nil), config.SupportedHostServices...),

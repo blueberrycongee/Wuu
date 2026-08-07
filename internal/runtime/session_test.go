@@ -1874,9 +1874,6 @@ func TestNewSessionAutoUsesNativeDeferredForFirstPartyOpenAIResponses(t *testing
 	if rt.StreamRunner == nil || !rt.StreamRunner.NativeDeferredToolDiscovery {
 		t.Fatal("first-party OpenAI Responses runner should forward native deferred loading to provider requests")
 	}
-	if def, ok := sessionToolDefByName(rt.Toolkit.Definitions(), "session_memory"); !ok || !def.DeferLoading {
-		t.Fatalf("first-party OpenAI Responses should declare deferred tools as native-deferred, got %+v", rt.Toolkit.Definitions())
-	}
 }
 
 func TestReconfigureToolLoadingClearsNativeDiscoveryForCompatibleProvider(t *testing.T) {
@@ -1968,9 +1965,6 @@ func TestNewSessionAutoFallsBackToFlatForUnsupportedFirstPartyOpenAIResponsesMod
 	if _, ok := sessionToolDefByName(defs, "tool_search"); ok {
 		t.Fatalf("flat fallback must not expose tool_search, got %+v", defs)
 	}
-	if _, ok := sessionToolDefByName(defs, "session_memory"); !ok {
-		t.Fatalf("flat fallback must declare formerly deferred tools directly, got %+v", defs)
-	}
 	for _, block := range rt.Toolkit.ContextBlocks() {
 		if block.Kind == wuucontext.BlockAvailableDeferred {
 			t.Fatalf("deferred catalog must not be emitted as request-only context: %+v", block)
@@ -2018,9 +2012,6 @@ func TestNewSessionAutoFlattensCompatibleOpenAIResponses(t *testing.T) {
 	defs := rt.Toolkit.Definitions()
 	if _, ok := sessionToolDefByName(defs, "tool_search"); ok {
 		t.Fatalf("compatible OpenAI Responses flat mode should hide tool_search, got %+v", defs)
-	}
-	if def, ok := sessionToolDefByName(defs, "session_memory"); !ok || def.DeferLoading {
-		t.Fatalf("compatible OpenAI Responses flat mode should expose session_memory directly, got %+v", defs)
 	}
 	if _, ok := sessionToolDefByName(defs, "send_message"); ok {
 		t.Fatalf("compatible OpenAI Responses flat mode must not expose plugin-owned send_message in the core toolkit, got %+v", defs)
@@ -2231,9 +2222,6 @@ func TestNewSessionTreatsRetiredWuuToolSearchConfigAsAuto(t *testing.T) {
 	defs := rt.Toolkit.Definitions()
 	if _, ok := sessionToolDefByName(defs, "tool_search"); ok {
 		t.Fatalf("retired mode must not expose tool_search, got %+v", defs)
-	}
-	if _, ok := sessionToolDefByName(defs, "session_memory"); !ok {
-		t.Fatalf("retired mode should declare formerly deferred tools directly, got %+v", defs)
 	}
 	if _, ok := sessionToolDefByName(defs, "send_message"); ok {
 		t.Fatalf("retired mode must not expose plugin-owned send_message in the core toolkit, got %+v", defs)
@@ -3155,7 +3143,7 @@ func TestWorkerDeferredToolCatalogPromptForToolkit(t *testing.T) {
 	if catalog == "" {
 		t.Fatal("worker deferred tool catalog must not be empty when tool search is enabled")
 	}
-	for _, want := range []string{"session_memory", "thread_get"} {
+	for _, want := range []string{"thread_get"} {
 		if !strings.Contains(catalog, want) {
 			t.Errorf("worker catalog must list deferred executor tool %s:\n%s", want, catalog)
 		}

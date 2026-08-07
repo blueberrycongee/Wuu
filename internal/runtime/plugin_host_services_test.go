@@ -175,7 +175,7 @@ func TestProductionProcessClientNestedSettingsAndStorageCalls(t *testing.T) {
 		Timeout:  3,
 	}
 	var liveHandler pluginhost.HostServiceHandler
-	host, err := buildPluginHost([]pluginpkg.Plugin{item}, workspace, home, map[string]bool{item.ID: true}, func(ctx context.Context, config pluginhost.ProcessConfig) (pluginhost.Client, error) {
+	host, err := buildPluginHost([]pluginpkg.Plugin{item}, workspace, home, "", map[string]bool{item.ID: true}, func(ctx context.Context, config pluginhost.ProcessConfig) (pluginhost.Client, error) {
 		liveHandler = config.HostServiceHandler
 		return startPluginClient(ctx, config)
 	}, NewPluginSessionRouter())
@@ -216,7 +216,7 @@ func TestProductionHostServicesCloseOnGenerationSwap(t *testing.T) {
 		Timeout:  3,
 	}
 	var oldHandler pluginhost.HostServiceHandler
-	oldHost, err := buildPluginHost([]pluginpkg.Plugin{item}, workspace, home, map[string]bool{item.ID: true}, func(ctx context.Context, config pluginhost.ProcessConfig) (pluginhost.Client, error) {
+	oldHost, err := buildPluginHost([]pluginpkg.Plugin{item}, workspace, home, "", map[string]bool{item.ID: true}, func(ctx context.Context, config pluginhost.ProcessConfig) (pluginhost.Client, error) {
 		oldHandler = config.HostServiceHandler
 		return startPluginClient(ctx, config)
 	}, NewPluginSessionRouter())

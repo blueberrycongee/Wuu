@@ -25,10 +25,11 @@ const (
 )
 
 type controller struct {
-	mu       sync.Mutex
-	host     pluginapi.Host
-	notebook string
-	jobs     map[string]*job
+	mu                sync.Mutex
+	host              pluginapi.Host
+	notebook          string
+	workspaceStateDir string
+	jobs              map[string]*job
 }
 
 type job struct {
@@ -70,6 +71,7 @@ func Handler() pluginapi.Handler {
 				{ID: "memory_read", Description: "Read one Markdown file from the user's durable memory notebook. MEMORY.md is the index; topic files contain the actual memories.", InputSchema: objectSchema(map[string]any{"file": stringField("Notebook filename such as MEMORY.md or feedback_testing.md.")}, "file"), Activity: &pluginapi.ToolActivity{ReadOnly: true, ConcurrencySafe: true, Risk: "low"}},
 				{ID: "memory_write", Description: "Create or replace one Markdown file in the user's durable memory notebook. Saving a memory requires updating both its topic file and the MEMORY.md index.", InputSchema: objectSchema(map[string]any{"file": stringField("Notebook Markdown filename."), "content": stringField("Complete replacement Markdown content.")}, "file", "content")},
 				{ID: "memory_delete", Description: "Delete one topic file from the user's durable memory notebook. Also remove its pointer from MEMORY.md. MEMORY.md itself cannot be deleted.", InputSchema: objectSchema(map[string]any{"file": stringField("Topic Markdown filename to delete.")}, "file")},
+				{ID: "session_memory", Description: "Read or update workspace and current-session memory. Use project_memory only for stable workspace facts; summary for compact recoverable task state; checkpoint only for legacy compatibility; notes for session scratch notes.", InputSchema: sessionMemorySchema()},
 			},
 			Capabilities: []pluginapi.Capability{
 				{ID: capabilityPrompt, Kind: "transform", Version: 1},
@@ -101,12 +103,15 @@ func (c *controller) initialize(_ context.Context, host pluginapi.Host, params p
 	c.mu.Lock()
 	c.host = host
 	c.notebook = notebook
+	c.workspaceStateDir = strings.TrimSpace(params.WorkspaceStateDir)
 	c.mu.Unlock()
 	return nil
 }
 
 func (c *controller) executeTool(_ context.Context, _ pluginapi.Host, call pluginapi.ToolCall) (pluginapi.ToolResult, error) {
 	switch call.ToolID {
+	case "session_memory":
+		return c.executeSessionMemory(call)
 	case "memory_list":
 		files, err := c.readNotebook()
 		return jsonResult(map[string]any{"files": files}, err)
@@ -469,6 +474,7 @@ func promptSection(notebook, index string) string {
 	return strings.Join([]string{
 		"# Durable user memory",
 		"The memory plugin owns a persistent notebook at `" + notebook + "`. Use memory_list and memory_read to inspect it, and memory_write/memory_delete to maintain it.",
+		"The plugin also provides session_memory for workspace project_memory and current-session summary, checkpoint, and notes files. Read project_memory on demand; do not copy it into every prompt.",
 		"Save only durable cross-project user preferences, explicit feedback, stable references, and reusable lessons. Never save secrets, raw transcripts, task progress, commit ids, or facts derivable from the current repository.",
 		"Each memory belongs in a topic .md file with frontmatter fields name, description, and type (user | feedback | reference | lesson). MEMORY.md is only a one-line-per-topic index. A save or forget operation must update both the topic file and MEMORY.md.",
 		"If remembered information conflicts with current evidence, trust current evidence.",

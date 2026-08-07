@@ -28,10 +28,11 @@ func TestMemoryPluginProcessHelper(t *testing.T) {
 
 func TestMemoryPluginNegotiatesAcrossRealProcessProtocol(t *testing.T) {
 	home := t.TempDir()
+	workspaceStateDir := t.TempDir()
 	services := &memoryTestHostServices{}
 	client, err := pluginhost.Start(context.Background(), pluginhost.ProcessConfig{
 		ID: "memory", Command: os.Args[0], Args: []string{"-test.run=^TestMemoryPluginProcessHelper$"},
-		Env: map[string]string{"WUU_MEMORY_PLUGIN_TEST_HELPER": "1"}, WuuHome: home, Timeout: 5 * time.Second,
+		Env: map[string]string{"WUU_MEMORY_PLUGIN_TEST_HELPER": "1"}, WuuHome: home, WorkspaceStateDir: workspaceStateDir, Timeout: 5 * time.Second,
 		HostServiceHandler: services, SupportedHostServices: services.SupportedHostServices(),
 	})
 	if err != nil {
@@ -47,6 +48,16 @@ func TestMemoryPluginNegotiatesAcrossRealProcessProtocol(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(home, "memory", "MEMORY.md")); err != nil {
 		t.Fatal(err)
+	}
+
+	sessionWritten, err := client.ExecuteTool(context.Background(), pluginhost.ToolExecuteParams{
+		ToolID: "session_memory", ToolExecuteInput: pluginhost.ToolExecuteInput{SessionID: "thread-1", Arguments: json.RawMessage(`{"action":"replace","target":"summary","content":"process-owned summary"}`)},
+	})
+	if err != nil || len(sessionWritten.Result.Content) != 1 {
+		t.Fatalf("session write = %+v, err = %v", sessionWritten, err)
+	}
+	if content, err := os.ReadFile(filepath.Join(workspaceStateDir, "sessions", "thread-1", "session-memory", "summary.md")); err != nil || string(content) != "process-owned summary\n" {
+		t.Fatalf("session content = %q, err = %v", content, err)
 	}
 
 	promptCapability := onlyMemoryCapability(t, client, pluginhost.CapabilityAgentSystemPromptSection)

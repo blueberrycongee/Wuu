@@ -54,11 +54,12 @@ func IsValidHook(name Hook) bool {
 
 // InitializeParams describes the runtime instance offered to a plugin.
 type InitializeParams struct {
-	ProtocolVersion int    `json:"protocol_version"`
-	PluginID        string `json:"plugin_id"`
-	PluginRoot      string `json:"plugin_root"`
-	ProjectRoot     string `json:"project_root"`
-	WuuHome         string `json:"wuu_home"`
+	ProtocolVersion   int    `json:"protocol_version"`
+	PluginID          string `json:"plugin_id"`
+	PluginRoot        string `json:"plugin_root"`
+	ProjectRoot       string `json:"project_root"`
+	WuuHome           string `json:"wuu_home"`
+	WorkspaceStateDir string `json:"workspace_state_dir,omitempty"`
 }
 
 // InitializeResult declares the interception points and tools implemented by a

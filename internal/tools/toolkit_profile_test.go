@@ -106,7 +106,6 @@ func TestActiveProfileKeepsCoreLowFrequencyToolsDeferred(t *testing.T) {
 	}
 
 	for _, name := range []string{
-		"session_memory",
 		"thread_get",
 	} {
 		if containsProfileDef(defs, name) {

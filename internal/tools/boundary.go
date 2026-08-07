@@ -67,7 +67,7 @@ func mutates(info ToolInfo) bool {
 		return false
 	}
 	switch info.Kind {
-	case ToolKindFile, ToolKindShell, ToolKindTest, ToolKindGit, ToolKindMemory,
+	case ToolKindFile, ToolKindShell, ToolKindTest, ToolKindGit,
 		ToolKindAgent, ToolKindProcess, ToolKindSchedule,
 		ToolKindMCP, ToolKindBrowser:
 		// ToolKindBrowser is mutating unless the specific call classifies

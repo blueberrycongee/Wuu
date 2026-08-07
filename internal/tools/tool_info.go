@@ -25,7 +25,6 @@ const (
 	ToolKindTest      ToolKind = "test"
 	ToolKindGit       ToolKind = "git"
 	ToolKindWeb       ToolKind = "web"
-	ToolKindMemory    ToolKind = "memory"
 	ToolKindSession   ToolKind = "session"
 	ToolKindSkill     ToolKind = "skill"
 	ToolKindPlan      ToolKind = "plan"
@@ -202,8 +201,6 @@ func classifyToolKind(name string) ToolKind {
 		return ToolKindGit
 	case "web_search", "web_fetch":
 		return ToolKindWeb
-	case "session_memory":
-		return ToolKindMemory
 	case "thread_get":
 		return ToolKindSession
 	case "load_skill":

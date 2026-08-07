@@ -55,10 +55,6 @@ const (
 	CapabilityTaskCommunicate Capability = "task.communicate"
 	CapabilityTaskManage      Capability = "task.manage"
 
-	// Memory: session-local scratch and project-level durable memory.
-	CapabilityMemorySession Capability = "memory.session"
-	CapabilityMemoryProject Capability = "memory.project"
-
 	// Session lookup: resolve a copied Wuu thread/session ID to the
 	// persisted conversation record and history.
 	CapabilitySessionLookup    Capability = "session.lookup"
@@ -109,8 +105,6 @@ func All() []Capability {
 		CapabilityTaskSpawn,
 		CapabilityTaskCommunicate,
 		CapabilityTaskManage,
-		CapabilityMemorySession,
-		CapabilityMemoryProject,
 		CapabilitySessionLookup,
 		CapabilitySessionWorkspace,
 		CapabilityPlan,

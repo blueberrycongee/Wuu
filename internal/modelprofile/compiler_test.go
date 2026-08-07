@@ -157,7 +157,6 @@ func TestOpenAICodexSurface(t *testing.T) {
 		}
 	}
 	mustDeferred := []string{
-		"session_memory",
 		"thread_get",
 		"wuu_browser",
 	}
@@ -268,7 +267,7 @@ func TestAnthropicClaudeSurface(t *testing.T) {
 			t.Fatalf("Claude surface must include %s, got tools=%v", name, sortedKeys(s.Tools))
 		}
 	}
-	for _, name := range []string{"session_memory", "wuu_browser"} {
+	for _, name := range []string{"wuu_browser"} {
 		if _, ok := s.DeferredTools[name]; !ok {
 			t.Fatalf("Claude surface must defer %s, got deferred=%v", name, sortedKeys(s.DeferredTools))
 		}

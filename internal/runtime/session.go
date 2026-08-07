@@ -391,7 +391,7 @@ func NewSession(opts Options) (*Session, error) {
 	activePlugins := activatedPlugins(cfg, discoveredPlugins)
 	var agentControl *agentcontrol.AgentControl
 	pluginTurnRouter := NewPluginSessionRouter()
-	pluginHost := startPluginHost(activePlugins, rootDir, wuuHome, pluginTurnRouter)
+	pluginHost := startPluginHost(activePlugins, rootDir, wuuHome, workspaceStateDir, pluginTurnRouter)
 	systemPrompts, compactions, capabilityErr := buildPluginAgentCapabilities(context.Background(), pluginHost, resolvedName, providerCfg.Model, rootDir)
 	if capabilityErr != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)

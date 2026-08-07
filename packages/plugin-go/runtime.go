@@ -36,6 +36,7 @@ type InitializeParams struct {
 	PluginRoot                string   `json:"plugin_root"`
 	ProjectRoot               string   `json:"project_root"`
 	WuuHome                   string   `json:"wuu_home"`
+	WorkspaceStateDir         string   `json:"workspace_state_dir,omitempty"`
 	SupportedHostServices     []string `json:"supported_host_services,omitempty"`
 }
 
