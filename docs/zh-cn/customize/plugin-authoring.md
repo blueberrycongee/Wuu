@@ -270,7 +270,8 @@ Layer Host，并带有稳定的 `data-wuu-component`、`data-wuu-layer` 和 `dat
 
 主要界面区域和控件带有公开的 `data-wuu-component` 锚点，让逐元素微调可以走 CSS
 snippets 而不是新增主题 Token：`app-shell`、`sidebar`、`conversation-pane`、
-`settings-shell`、`skills-catalog`、`automations-catalog`、`workspace-panel`、
+`settings-shell`、`settings-sidebar`、`settings-content`、`settings-page`、
+`skills-catalog`、`automations-catalog`、`workspace-panel`、
 `launch-view`、`turn`、`message`（区分 `data-wuu-variant="user" | "agent"`）、
 `composer`、`composer-input`、`composer-send`（区分 `data-wuu-state="send" | "stop"`）。
 消息操作区只公开宿主管理的 `message-actions` 组锚点，通过

@@ -83,7 +83,10 @@ export function activate(api) {
       /* These data-wuu-* coordinates are the host's published styling API.
          Keep the real Wuu components mounted so Markdown, streaming, actions,
          keyboard behavior, and nested process layouts remain intact. */
-      .manga-shell [data-wuu-component="sidebar"] {
+      .manga-shell :is(
+        [data-wuu-component="sidebar"],
+        [data-wuu-component="settings-sidebar"]
+      ) {
         color: var(--manga-ink);
         background: rgb(255 253 242 / .96);
         border-right: 3px solid var(--manga-ink);
@@ -99,6 +102,7 @@ export function activate(api) {
       .manga-shell [data-wuu-component="conversation-pane"],
       .manga-shell [data-wuu-component="empty-session"],
       .manga-shell [data-wuu-component="settings-shell"],
+      .manga-shell [data-wuu-component="settings-content"],
       .manga-shell [data-wuu-component="launch-view"],
       .manga-shell [data-wuu-component="skills-catalog"] {
         color: var(--manga-ink);

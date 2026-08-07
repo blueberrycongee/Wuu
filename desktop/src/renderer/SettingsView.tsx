@@ -793,6 +793,7 @@ export function SettingsView({
       />
       <aside
         className="settings-sidebar"
+        data-wuu-component="settings-sidebar"
         onPointerEnter={openSidebarDrawer}
         onPointerLeave={(event) =>
           scheduleSidebarDrawerCloseFromPointerLeave(event.nativeEvent)
@@ -907,7 +908,7 @@ export function SettingsView({
           onKeyDown={onSidebarSeparatorKey}
         />
       )}
-      <main className="settings-main">
+      <main className="settings-main" data-wuu-component="settings-content">
         <div className="settings-titlebar">
           {/* The toggle must stay a descendant of the titlebar drag strip:
            * a no-drag element only gets carved out of a drag region when it

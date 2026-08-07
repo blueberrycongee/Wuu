@@ -250,7 +250,7 @@
   isolation: isolate;
   min-width: 0;
   flex-direction: column;
-  border-right: 1px solid var(--sidebar-material-edge);
+  border-right: var(--wuu-border-subtle, 1px solid var(--sidebar-material-edge));
   background: var(--sidebar-material-fill);
   box-shadow:
     inset -1px 0 0 var(--sidebar-material-inner-edge),

@@ -261,6 +261,11 @@ The UI Kit exposes coarse anchors for `plugin-ui-page`, `plugin-ui-panel`, `plug
 `plugin-ui-input`, and `plugin-ui-empty-state`. Appearance plugins should prefer public tokens and
 use these boundaries only when a structural treatment is necessary.
 
+Settings exposes `settings-shell`, `settings-sidebar`, `settings-content`, and `settings-page` as
+coarse layout boundaries. Themes can give the navigation rail and content canvas different material
+treatments without targeting private Settings classes; the shared sidebar divider inherits the
+public `--wuu-border-subtle` token.
+
 See the installable [`examples/plugins/deep-ui`](../../../examples/plugins/deep-ui/) package for a
 theme and wrappers covering all current surfaces.
 
