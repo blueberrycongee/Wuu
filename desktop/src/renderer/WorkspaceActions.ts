@@ -48,7 +48,6 @@ export type WorkspaceActions = {
   dismissInstructionFilesEntry: (id: string) => void;
   openInstructions: () => void;
   openContextComposition: () => void;
-  openMemorySettings: () => void;
 };
 
 function createContextCompositionEntryID(): string {
@@ -199,19 +198,12 @@ export function createWorkspaceActions(
     })();
   }
 
-  function openMemorySettings(): void {
-    deps.closeProjectMenus();
-    deps.setSettingsInitialPage("memory");
-    deps.setSettingsOpen(true);
-  }
-
   return {
     openSkillsTab,
     dismissContextCompositionEntry,
     dismissInstructionFilesEntry,
     openInstructions,
     openContextComposition,
-    openMemorySettings,
   };
 }
 

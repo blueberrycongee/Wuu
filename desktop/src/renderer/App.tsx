@@ -2443,7 +2443,6 @@ export function App(): JSX.Element {
           setSettingsInitialPage("providers");
           setSettingsOpen(true);
         }}
-        onOpenMemorySettings={() => openMemorySettings()}
         onOpenSkillsCatalog={openSkillsTab}
         onSelectProject={(id) => void selectProjectForNewThread(id)}
         onSelectNoProject={() => void useNoProject(false)}
@@ -3052,7 +3051,6 @@ export function App(): JSX.Element {
     dismissInstructionFilesEntry,
     openInstructions,
     openContextComposition,
-    openMemorySettings,
   } = createWorkspaceActions({
     getAppState: () => appStateRef.current,
     setAppState: setState,

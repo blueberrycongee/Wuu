@@ -168,7 +168,6 @@ export function Composer({
   onOpenContextComposition = () => {},
   onCompactContext = () => {},
   onOpenInstructions = () => {},
-  onOpenMemorySettings = () => {},
   onPasteAttachmentFiles,
   onRemoveFile,
   onRemoveImage,
@@ -261,8 +260,6 @@ export function Composer({
   onOpenContextComposition?: () => void;
   onCompactContext?: () => void;
   onOpenInstructions?: () => void;
-  // 打开 设置 → 记忆（/memory 指令）。
-  onOpenMemorySettings?: () => void;
   onPasteAttachmentFiles: (files: File[]) => void;
   onRemoveFile: (id: string) => void;
   onRemoveImage: (id: string) => void;
@@ -861,9 +858,6 @@ export function Composer({
         break;
       case "instructions":
         onOpenInstructions();
-        break;
-      case "open-memory":
-        onOpenMemorySettings();
         break;
       case "model":
         onToggleCodexRuntimeMenu("model");

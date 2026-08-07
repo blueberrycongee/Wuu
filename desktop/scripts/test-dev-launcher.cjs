@@ -129,6 +129,8 @@ assert.match(packageJSON.scripts["dist:mac"], /build:speech-mac/);
 assert.deepEqual(packageJSON.build.extraResources[0].filter, [
   "wuu-core",
   "wuu-core.exe",
+  "wuu-*-plugin",
+  "wuu-*-plugin.exe",
   "wuu-speech-mac",
 ]);
 assert.equal(

@@ -63,14 +63,6 @@ function installBuildInfoStub(info: BuildInfoResult): void {
     openExternal: vi.fn(),
     listCodexPets: vi.fn().mockResolvedValue(emptyCodexPetsSnapshot()),
     updateCodexPetSettings: vi.fn().mockResolvedValue(emptyCodexPetsSnapshot()),
-    getMemoryOverview: vi.fn().mockResolvedValue({
-      essay_md: "",
-      generated_at: "1970-01-01T00:00:00Z",
-      source_mtime: "1970-01-01T00:00:00Z",
-      cached: false,
-    }),
-    sendMemoryChat: vi.fn().mockResolvedValue({ reply_md: "", changed_files: [] }),
-    readMemoryRaw: vi.fn().mockResolvedValue({ index_md: "", files: [] }),
   };
   (globalThis as { wuu?: WuuDesktopApi }).wuu = stub as WuuDesktopApi;
   (window as unknown as GlobalWindow).wuu = stub as WuuDesktopApi;
@@ -1000,7 +992,7 @@ describe("SettingsView general settings", () => {
 });
 
 describe("SettingsView Dream settings", () => {
-  it("keeps the Memory page available and enables Dream with explicit defaults", async () => {
+  it("keeps Dream temporarily available under Advanced with explicit defaults", async () => {
     installBuildInfoStub({
       core: undefined,
       desktop: { version: "0.0.0-test", date: "1970-01-01T00:00:00Z" },
@@ -1008,7 +1000,7 @@ describe("SettingsView Dream settings", () => {
     const onGeneralSave = vi.fn().mockResolvedValue(undefined);
     renderSettings({
       locale: "en-US",
-      initialPage: "memory",
+      initialPage: "advanced",
       initialized: baseInitialized({
         providers: [],
         general_settings: {

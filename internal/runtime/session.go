@@ -98,31 +98,27 @@ const (
 // stream runner. UI surfaces should depend on this instead of reassembling the
 // pieces themselves.
 type Session struct {
-	ProviderName        string
-	Model               string
-	RootDir             string
-	Host                Host
-	WorkspaceID         string
-	StateDir            string
-	ConfigPath          string
-	HomeDir             string
-	ConfigLoadMode      ConfigLoadMode
-	SessionDir          string
-	StreamRunner        *agent.StreamRunner
-	TitleClient         providers.Client
-	HookDispatcher      *hooks.Dispatcher
-	Skills              []skills.Skill
-	Plugins             []pluginpkg.Plugin
-	ActivePlugins       []pluginpkg.Plugin
-	ExtensionSettings   *extensions.Settings
-	PluginHost          *pluginhost.Host
-	PluginSessionRouter *PluginSessionRouter
-	systemPrompts       *agent.SystemPromptAssembler
-	Memory              []memory.File
-	// MemdirEnabled reports whether the file-directory memory (user
-	// notebook teaching + index injection and file-scope whitelist) is
-	// active for this session. False when Memory.Disable is set.
-	MemdirEnabled            bool
+	ProviderName             string
+	Model                    string
+	RootDir                  string
+	Host                     Host
+	WorkspaceID              string
+	StateDir                 string
+	ConfigPath               string
+	HomeDir                  string
+	ConfigLoadMode           ConfigLoadMode
+	SessionDir               string
+	StreamRunner             *agent.StreamRunner
+	TitleClient              providers.Client
+	HookDispatcher           *hooks.Dispatcher
+	Skills                   []skills.Skill
+	Plugins                  []pluginpkg.Plugin
+	ActivePlugins            []pluginpkg.Plugin
+	ExtensionSettings        *extensions.Settings
+	PluginHost               *pluginhost.Host
+	PluginSessionRouter      *PluginSessionRouter
+	systemPrompts            *agent.SystemPromptAssembler
+	Memory                   []memory.File
 	DreamIntervalDays        int
 	DreamClient              providers.Client
 	DreamModel               string
@@ -216,7 +212,6 @@ func (s *Session) cloneForThreadModel() *Session {
 		PluginSessionRouter:         s.PluginSessionRouter,
 		systemPrompts:               s.systemPrompts,
 		Memory:                      s.Memory,
-		MemdirEnabled:               s.MemdirEnabled,
 		DreamIntervalDays:           s.DreamIntervalDays,
 		DreamClient:                 s.DreamClient,
 		DreamModel:                  s.DreamModel,
@@ -418,27 +413,6 @@ func NewSession(opts Options) (*Session, error) {
 		return nil, err
 	}
 	activityRegistry := activity.NewRegistry()
-	// File-directory memory (memory-redesign M1): the user notebook index is
-	// read once here — session creation is one of the two allowed
-	// prompt-prefix change points (contract §4) — and the teaching + index
-	// are injected into the base prompt below. Memory.Disable is the sole
-	// configuration gate for this durable, global per-user memory.
-	memdirEnabled := !cfg.Memory.Disable
-	var memdirTeaching, memdirWorkerTeaching, memdirIndex string
-	if memdirEnabled {
-		userNotebook := memdir.UserMemdir(wuuHome)
-		if err := memdir.EnsureDir(userNotebook); err != nil {
-			providers.DebugLogf("ensure user memory notebook: %v", err)
-		}
-		memdirTeaching = memdir.SessionTeaching(userNotebook)
-		memdirWorkerTeaching = memdir.WorkerTeaching(userNotebook)
-		if snap, err := memdir.ReadIndex(userNotebook); err == nil {
-			memdirIndex = snap.Content
-		} else {
-			providers.DebugLogf("read user memory index: %v", err)
-		}
-	}
-
 	var toolExecutor agent.ToolExecutor
 	var toolkit *tools.Toolkit
 	toolLoadingPreference := cfg.Agent.ToolLoadingPreference()
@@ -466,13 +440,7 @@ func NewSession(opts Options) (*Session, error) {
 			})
 			return err
 		})
-		var fileScopeExtras []string
-		// User memory is a file-directory notebook injected into the prompt
-		// and written with ordinary file tools inside the boundary roots below.
-		if memdirEnabled {
-			fileScopeExtras = append(fileScopeExtras, memdir.UserMemdir(wuuHome))
-		}
-		kit.SetFileScopeRoots(workspaces.BoundaryRoots(kit.RootDir(), wuuHome, fileScopeExtras...))
+		kit.SetFileScopeRoots(workspaces.BoundaryRoots(kit.RootDir(), wuuHome))
 		kit.SetOnFileChanged(func(absPath string) {
 			_, _ = hookDispatcher.Dispatch(context.Background(), hooks.FileChanged, &hooks.Input{
 				CWD:      rootDir,
@@ -506,7 +474,7 @@ func NewSession(opts Options) (*Session, error) {
 		return nil, err
 	}
 	mainSurface.DeferredToolCatalog = deferredToolCatalogPrompt
-	baseSystemPromptResult := buildBaseSystemPromptResult(rootDir, sessionDate, config.DefaultSystemPrompt(), userSystemPrompt, resolvedName, toolModeModel, mainSurface, memoryFiles, memdirTeaching, memdirIndex, discoveredSkills)
+	baseSystemPromptResult := buildBaseSystemPromptResult(rootDir, sessionDate, config.DefaultSystemPrompt(), userSystemPrompt, resolvedName, toolModeModel, mainSurface, memoryFiles, "", "", discoveredSkills)
 	baseSystemPrompt, pluginPromptSections := assemblePluginSystemPrompt(baseSystemPromptResult.Content, systemPrompts)
 	baseSystemPromptSections := append(agentPromptSections(baseSystemPromptResult.Sections), pluginPromptSections...)
 
@@ -535,7 +503,7 @@ func NewSession(opts Options) (*Session, error) {
 			return nil, catErr
 		}
 		workerToolSurface.DeferredToolCatalog = workerDeferredCatalog
-		workerBaseSystemPrompt := buildBaseSystemPromptContent(rootDir, sessionDate, config.WorkerSystemPrompt(), userSystemPrompt, workerToolProviderName, workerToolModeModel, workerToolSurface, memoryFiles, memdirWorkerTeaching, memdirIndex, discoveredSkills)
+		workerBaseSystemPrompt := buildBaseSystemPromptContent(rootDir, sessionDate, config.WorkerSystemPrompt(), userSystemPrompt, workerToolProviderName, workerToolModeModel, workerToolSurface, memoryFiles, "", "", discoveredSkills)
 		var werr error
 		workerClient, werr = providerfactory.BuildStreamClient(roleSelections.Worker.RuleProviderConfig, roleSelections.Worker.Provider)
 		if werr != nil {
@@ -567,7 +535,7 @@ func NewSession(opts Options) (*Session, error) {
 			HistoryDir:                     "",
 			WorkerSysPrompt:                workerBaseSystemPrompt,
 			WorkerPrompt: func(workerRoot string, wt agentcontrol.WorkerType, meta agentthread.Metadata, isolation agentcontrol.IsolationMode) (string, error) {
-				return buildWorkerBasePrompt(workerRoot, sessionDate, wuuHome, userSystemPrompt, workerToolProviderName, workerToolModeModel, workerToolSurface, memoryFiles, memdirEnabled, discoveredSkills), nil
+				return buildWorkerBasePrompt(workerRoot, sessionDate, userSystemPrompt, workerToolProviderName, workerToolModeModel, workerToolSurface, memoryFiles, discoveredSkills), nil
 			},
 			WorkerFactory: func(workerRoot string, wt agentcontrol.WorkerType, meta agentthread.Metadata) (agent.ToolExecutor, error) {
 				wkit, werr := toolkit.CloneForRoot(workerRoot)
@@ -733,7 +701,6 @@ func NewSession(opts Options) (*Session, error) {
 		PluginSessionRouter:         pluginTurnRouter,
 		systemPrompts:               systemPrompts,
 		Memory:                      memoryFiles,
-		MemdirEnabled:               memdirEnabled,
 		DreamIntervalDays:           dreamIntervalDays,
 		DreamClient:                 dreamClient,
 		DreamModel:                  dreamModel,
@@ -1049,18 +1016,10 @@ func (s *Session) NewThreadRuntimeForRootModel(sessionID, rootDir string, select
 	}
 	shadow.WorkerClient = workerClient
 
-	var memdirTeaching, memdirIndex string
-	if shadow.MemdirEnabled {
-		userNotebook := memdir.UserMemdir(shadow.WuuHome)
-		memdirTeaching = memdir.SessionTeaching(userNotebook)
-		if snap, readErr := memdir.ReadIndex(userNotebook); readErr == nil {
-			memdirIndex = snap.Content
-		}
-	}
 	promptResult := buildBaseSystemPromptResult(
 		threadRoot, shadow.SessionDate, config.DefaultSystemPrompt(), shadow.UserSystemPrompt,
 		resolvedName, apiModel, activeSurfaceWithDeferredToolCatalog(shadow.Toolkit, shadow.DeferredToolCatalogPrompt),
-		shadow.Memory, memdirTeaching, memdirIndex, shadow.Skills,
+		shadow.Memory, "", "", shadow.Skills,
 	)
 	shadow.BaseSystemPrompt = promptResult.Content
 	shadow.BaseSystemPromptSections = promptResult.Sections
@@ -1228,12 +1187,9 @@ func (s *Session) NewThreadRuntimeForRoot(sessionID, rootDir string) (*ThreadRun
 		kit.SetImageInputSupported(s.ModelRoles.Main.Capabilities.ImageInput)
 		kit.SetAgentIdentity(id, agentthread.RootPath)
 		fileScopeExtras := []string{artifactDir}
-		if s.MemdirEnabled {
-			fileScopeExtras = append(fileScopeExtras, memdir.UserMemdir(wuuHome))
-		}
 		// Rebase the file-scope whitelist on the thread root (the clone
 		// inherited the parent session's roots): thread root + registered
-		// workspaces + temp + artifact/memory extras.
+		// workspaces + temp + artifact extras.
 		kit.SetFileScopeRoots(workspaces.BoundaryRoots(kit.RootDir(), wuuHome, fileScopeExtras...))
 	}
 
@@ -1269,18 +1225,14 @@ func (s *Session) NewThreadRuntimeForRoot(sessionID, rootDir string) (*ThreadRun
 				return nil, catErr
 			}
 			workerToolSurface.DeferredToolCatalog = workerDeferredCatalog
-			// Thread creation is an allowed prompt-prefix change point, so
-			// the worker base prompt reads the user notebook index fresh.
 			workerBaseSystemPrompt := buildWorkerBasePrompt(
 				threadRoot,
 				s.SessionDate,
-				wuuHome,
 				s.UserSystemPrompt,
 				workerToolProviderName,
 				workerToolModeModel,
 				workerToolSurface,
 				s.Memory,
-				s.MemdirEnabled,
 				s.Skills,
 			)
 			control, controlErr := agentcontrol.New(agentcontrol.Config{
@@ -1304,7 +1256,7 @@ func (s *Session) NewThreadRuntimeForRoot(sessionID, rootDir string) (*ThreadRun
 				HarnessDir:                     filepath.Join(artifactDir, "harness"),
 				WorkerSysPrompt:                workerBaseSystemPrompt,
 				WorkerPrompt: func(workerRoot string, wt agentcontrol.WorkerType, meta agentthread.Metadata, isolation agentcontrol.IsolationMode) (string, error) {
-					return buildWorkerBasePrompt(workerRoot, s.SessionDate, wuuHome, s.UserSystemPrompt, workerToolProviderName, workerToolModeModel, workerToolSurface, s.Memory, s.MemdirEnabled, s.Skills), nil
+					return buildWorkerBasePrompt(workerRoot, s.SessionDate, s.UserSystemPrompt, workerToolProviderName, workerToolModeModel, workerToolSurface, s.Memory, s.Skills), nil
 				},
 				WorkerFactory: func(workerRoot string, wt agentcontrol.WorkerType, meta agentthread.Metadata) (agent.ToolExecutor, error) {
 					workerKit, err := kit.CloneForRoot(workerRoot)
@@ -1369,9 +1321,6 @@ func (s *Session) NewThreadRuntimeForRoot(sessionID, rootDir string) (*ThreadRun
 	runner := cloneStreamRunnerForThread(s.StreamRunner, toolExecutor)
 	runner.ToolLedger = toolLedger
 	runner.SystemPrompt, runner.SystemPromptSections = systemPromptForThreadRoot(runner.SystemPrompt, runner.SystemPromptSections, threadRoot, s.SessionDate)
-	if s.MemdirEnabled {
-		runner.SystemPrompt, runner.SystemPromptSections = systemPromptWithFreshMemdirIndex(runner.SystemPrompt, runner.SystemPromptSections, wuuHome)
-	}
 	runner.PromptCacheKey = strings.TrimSpace(id)
 	runner.InferenceJournal = s.InferenceJournalForOwner(id)
 	runner.BeforeRequestContext = RuntimeContextInjector(agentControl, agentthread.RootPath, toolkitContextBlockProvider(kit))
@@ -1529,32 +1478,6 @@ func updateSectionInfo(sections []agent.SystemPromptSectionInfo, key, content st
 		}
 	}
 	return out
-}
-
-// systemPromptWithFreshMemdirIndex re-reads the user notebook index and
-// splices an up-to-date memdir section into a thread's system prompt.
-// Thread creation is one of the two allowed prompt-prefix change points
-// (memory-redesign §4), so a conversation started today sees memories saved
-// in earlier conversations without restarting the app. Within the thread
-// the section stays frozen.
-func systemPromptWithFreshMemdirIndex(promptText string, sections []agent.SystemPromptSectionInfo, wuuHome string) (string, []agent.SystemPromptSectionInfo) {
-	userNotebook := memdir.UserMemdir(wuuHome)
-	snap, err := memdir.ReadIndex(userNotebook)
-	if err != nil {
-		return promptText, sections
-	}
-	section := prompt.MemdirSection(memdir.SessionTeaching(userNotebook), snap.Content)
-	const marker = "# Memory directory"
-	start := strings.Index(promptText, marker)
-	if start < 0 || section == "" {
-		return promptText, append([]agent.SystemPromptSectionInfo(nil), sections...)
-	}
-	end := len(promptText)
-	if next := strings.Index(promptText[start+len(marker):], "\n\n# "); next >= 0 {
-		end = start + len(marker) + next
-	}
-	updated := promptText[:start] + section + promptText[end:]
-	return updated, updateSectionInfo(sections, "memdir", section)
 }
 
 // mediaInputPolicyFromCapabilities maps resolved model capabilities onto the
@@ -2350,35 +2273,13 @@ func discoverMemory(rootDir, homeDir string, cfg config.MemoryConfig) []memory.F
 // fresh here because worker/thread creation is a prompt-prefix creation
 // moment under the cache red lines — while the notebook directory stays
 // outside the worker's writable file scope.
-func buildWorkerBasePrompt(rootDir, sessionDate, wuuHome, userPrompt, providerName, model string, toolSurface capability.Surface, memoryFiles []memory.File, memdirEnabled bool, discoveredSkills []skills.Skill) string {
-	var teaching, index string
-	if memdirEnabled && strings.TrimSpace(wuuHome) != "" {
-		userNotebook := memdir.UserMemdir(wuuHome)
-		teaching = memdir.WorkerTeaching(userNotebook)
-		if snap, err := memdir.ReadIndex(userNotebook); err == nil {
-			index = snap.Content
-		} else {
-			providers.DebugLogf("read user memory index for worker prompt: %v", err)
-		}
-	}
-	return buildBaseSystemPromptContent(rootDir, sessionDate, config.WorkerSystemPrompt(), userPrompt, providerName, model, toolSurface, memoryFiles, teaching, index, discoveredSkills)
+func buildWorkerBasePrompt(rootDir, sessionDate, userPrompt, providerName, model string, toolSurface capability.Surface, memoryFiles []memory.File, discoveredSkills []skills.Skill) string {
+	return buildBaseSystemPromptContent(rootDir, sessionDate, config.WorkerSystemPrompt(), userPrompt, providerName, model, toolSurface, memoryFiles, "", "", discoveredSkills)
 }
 
 func (s *Session) RefreshSystemPrompt(providerName, model string) string {
 	if s == nil {
 		return ""
-	}
-	// Settings changes rebuild the whole prompt anyway, so the user notebook
-	// index is re-read here (an accepted one-time prompt-cache invalidation).
-	var memdirTeaching, memdirIndex string
-	if s.MemdirEnabled {
-		userNotebook := memdir.UserMemdir(s.WuuHome)
-		memdirTeaching = memdir.SessionTeaching(userNotebook)
-		if snap, err := memdir.ReadIndex(userNotebook); err == nil {
-			memdirIndex = snap.Content
-		} else {
-			providers.DebugLogf("read user memory index: %v", err)
-		}
 	}
 	baseSystemPromptResult := buildBaseSystemPromptResult(
 		s.RootDir,
@@ -2389,8 +2290,8 @@ func (s *Session) RefreshSystemPrompt(providerName, model string) string {
 		model,
 		activeSurfaceWithDeferredToolCatalog(s.Toolkit, s.DeferredToolCatalogPrompt),
 		s.Memory,
-		memdirTeaching,
-		memdirIndex,
+		"",
+		"",
 		s.Skills,
 	)
 	baseSystemPrompt, pluginSections := assemblePluginSystemPrompt(baseSystemPromptResult.Content, s.systemPrompts)
@@ -2428,7 +2329,6 @@ func (s *Session) ApplyGeneralConfig(cfg config.Config, homeDir string) string {
 	}
 	s.UserSystemPrompt = cfg.Agent.UserSystemPrompt()
 	s.Memory = discoverMemory(s.RootDir, homeDir, cfg.Memory)
-	s.MemdirEnabled = !cfg.Memory.Disable
 	s.DreamIntervalDays = 0
 	s.DreamClient = nil
 	s.DreamModel = ""
@@ -2458,15 +2358,7 @@ func (s *Session) ApplyGeneralConfig(cfg config.Config, homeDir string) string {
 	}
 	if s.Toolkit != nil {
 		s.Toolkit.SetGitAttributionEnabled(cfg.Agent.GitAttributionEnabledValue())
-		fileScopeExtras := []string{}
-		if s.MemdirEnabled {
-			userNotebook := memdir.UserMemdir(s.WuuHome)
-			if err := memdir.EnsureDir(userNotebook); err != nil {
-				providers.DebugLogf("ensure user memory notebook: %v", err)
-			}
-			fileScopeExtras = append(fileScopeExtras, userNotebook)
-		}
-		s.Toolkit.SetFileScopeRoots(workspaces.BoundaryRoots(s.Toolkit.RootDir(), s.WuuHome, fileScopeExtras...))
+		s.Toolkit.SetFileScopeRoots(workspaces.BoundaryRoots(s.Toolkit.RootDir(), s.WuuHome))
 	}
 	if s.StreamRunner != nil && s.Toolkit != nil {
 		s.StreamRunner.AfterTurn = sessionDreamAfterTurn(s.RootDir, s.StateDir, s.SessionDir, s.WorkspaceID, func() string { return s.Toolkit.SessionDir() }, s.DreamIntervalDays, sessionDreamMinSessions, s.DreamClient, s.DreamModel)

@@ -19,7 +19,6 @@ export type ComposerSlashCommandAction =
   | "no-project"
   | "context"
   | "instructions"
-  | "open-memory"
   | "compact"
   | "model"
   | "fast"
@@ -192,16 +191,6 @@ export function buildComposerSlashCommands({
       aliases: ["agents"],
       keywords: ["instructions", "agents", "claude", "指令"],
       disabledReason: needsRuntime
-    },
-    {
-      id: "memory",
-      name: "memory",
-      title: t("slash.memory.title"),
-      description: t("slash.memory.description"),
-      tag: t("slash.tag.configuration"),
-      kind: "action",
-      action: "open-memory",
-      keywords: ["memory", "notebook", "记忆", "笔记本"],
     },
     {
       id: "commit",

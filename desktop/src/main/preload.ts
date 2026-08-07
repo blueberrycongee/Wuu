@@ -434,10 +434,6 @@ const api: WuuDesktopApi = {
     ipcRenderer.invoke("wuu:message-flow-font-size-get"),
   setMessageFlowFontSize: (fontSize: MessageFlowFontSize) =>
     ipcRenderer.invoke("wuu:message-flow-font-size-set", fontSize),
-  getMemoryOverview: (params) =>
-    ipcRenderer.invoke("wuu:memory-overview", params),
-  sendMemoryChat: (params) => ipcRenderer.invoke("wuu:memory-chat", params),
-  readMemoryRaw: (params) => ipcRenderer.invoke("wuu:memory-read", params),
   listThreads: (cwd?: string) => ipcRenderer.invoke("wuu:thread-list", cwd),
   listArchivedThreads: () =>
     ipcRenderer.invoke("wuu:thread-list-archived"),

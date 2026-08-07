@@ -208,6 +208,10 @@ RPC。
    运行记录、Prompt、`cron` Tool 和完整桌面 View；触发时只调用 `host.session.create/send`，并通过
    通用 Turn lifecycle 收敛运行状态。核心的 Automation RPC、Manager、scheduler、Turn 特判、
    原生页面、IPC 与 Tool 展示特判已经删除；generation shutdown 会先停止插件后台 Timer。
+7. **用户 Memory 已迁移到公共插件链路。** 一方插件拥有用户笔记本格式、安全过滤、文件 Tool、
+   系统提示、概览/管理私有 Session 和完整桌面 View；核心不再读取用户 `MEMORY.md`，也不再提供
+   `memory/overview`、`memory/chat`、`memory/read`、原生页面、IPC 或 `/memory` 产品特判。命名 Agent
+   身份笔记本和工作区/会话记忆仍属于后续协作与 Memory 切片，不能据此扩张成 `host.memory.*`。
 
 ### 改造顺序与完成标准
 
@@ -221,7 +225,8 @@ RPC。
    提示、状态、桌面状态条和父 Session 回投由插件拥有。继续删除只服务旧核心 Subagent 展示的
    遗留产品分支，不改变公共合同。
 4. HelpMe 全链路已删除；Plan 仍通过核心 Tool/状态链运行。
-5. Cron 已完成“插件 Timer → 用户可见 Session”的纵向切片；继续迁移 memory，最后用 Dream 验证
+5. Cron 已完成“插件 Timer → 用户可见 Session”的纵向切片；用户 Memory 已完成“Prompt + Tool +
+   私有 Session + View”纵向切片，继续迁移工作区/会话记忆，最后用 Dream 验证
    “Timer + memory + 插件私有 Session”的组合，不为三者增加产品专用宿主服务。
 6. 每完成一项迁移就验证插件禁用、升级和卸载后不再唤醒、不残留 UI/订阅/租约；最后删除旧协议、
    死代码和只为旧边界存在的测试。
@@ -429,7 +434,7 @@ Cron 也已通过同一公共 Session 链路迁移；memory、dream 继续按该
 - 部分 Presenter 的 `replace` 快照和 Action 还不足以无损重建完整原生语义，优先使用 `wrap`；
 - 画布、终端、Webview、PDF ShadowRoot 和专用预览仍是明确的主题边界；
 - Marketplace、远程自动更新、排名、依赖解析和签名分发不属于当前本地优先平台；
-- Goal、Subagent、Cron 已去除专用宿主执行 seam；memory、dream 尚未完成一方插件迁移；
+- Goal、Subagent、Cron 和用户 Memory 已去除专用宿主执行 seam；工作区/会话 memory 与 dream 尚未完成迁移；
 - HelpMe 已从代码和产品中删除；Plan 明确保留在核心链路。
 
 这些边界不是鼓励为未来预留抽象。新能力应由真实插件案例驱动，先确定责任属于宿主、功能插件

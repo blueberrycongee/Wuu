@@ -93,12 +93,6 @@ import type {
   ManagedProcessReadParams,
   ManagedProcessReadResult,
   ManagedProcessWriteResult,
-  MemoryChatParams,
-  MemoryChatResult,
-  MemoryOverviewParams,
-  MemoryOverviewResult,
-  MemoryReadParams,
-  MemoryReadResult,
   RemoteControlSnapshot,
   RemoteControlStatus,
   ServerEvent,
@@ -1827,29 +1821,6 @@ app.whenReady().then(async () => {
       setMessageFlowFontSize(next);
       return { ok: true, fontSize: next };
     },
-  );
-  // 记忆面板 RPC（memory-redesign.md §8.2）。participant_id 只在
-  // participant scope 下附带，避免后端 DisallowUnknownFields 之外的
-  // 空字段歧义；user scope 的请求只带 scope。
-  ipcMain.handle("wuu:memory-overview", (event, params: MemoryOverviewParams) =>
-    appServerRequest<MemoryOverviewResult>(event, "memory/overview", {
-      scope: params.scope,
-      ...(params.participant_id ? { participant_id: params.participant_id } : {}),
-      ...(params.force_refresh ? { force_refresh: true } : {}),
-    }),
-  );
-  ipcMain.handle("wuu:memory-chat", (event, params: MemoryChatParams) =>
-    appServerRequest<MemoryChatResult>(event, "memory/chat", {
-      scope: params.scope,
-      message: params.message,
-      ...(params.participant_id ? { participant_id: params.participant_id } : {}),
-    }),
-  );
-  ipcMain.handle("wuu:memory-read", (event, params: MemoryReadParams) =>
-    appServerRequest<MemoryReadResult>(event, "memory/read", {
-      scope: params.scope,
-      ...(params.participant_id ? { participant_id: params.participant_id } : {}),
-    }),
   );
   ipcMain.handle("wuu:thread-list", (event, cwd?: string) =>
     appServerRequest<{ threads: Thread[] }>(

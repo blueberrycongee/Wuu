@@ -239,7 +239,6 @@ export const ChannelComposer = forwardRef<ChannelComposerHandle, {
         onSelectRuntimeEffort={noop}
         onSelectPermissionMode={noop}
         onOpenSettings={noop}
-        onOpenMemorySettings={noop}
         onOpenSkillsCatalog={noop}
         onSelectProject={noop}
         onSelectNoProject={noop}

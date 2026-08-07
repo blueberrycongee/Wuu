@@ -1,5 +1,4 @@
 import {
-  Brain,
   Bug,
   Check,
   ChevronDown,
@@ -752,8 +751,6 @@ export function SlashCommandIcon({ command }: { command: ComposerSlashCommand })
       return <FoldVertical className="icon" />;
     case "instructions":
       return <ScrollText className="icon" />;
-    case "open-memory":
-      return <Brain className="icon" />;
     case "fast":
       return <Zap className="icon" />;
     case "model":

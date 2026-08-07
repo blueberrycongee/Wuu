@@ -228,12 +228,6 @@ type Server struct {
 	participantMu           sync.Mutex
 	participantSummaryCache map[string]participant.Summary
 
-	// memoryOverviewCache memoizes the settings-panel overview essay per
-	// notebook, keyed by (scope, participant_id). Entries are also persisted
-	// under WuuHome so reopening the desktop does not immediately spend
-	// another inference; automatic refreshes are limited to once per 12 hours.
-	memoryOverviewMu             sync.Mutex
-	memoryOverviewCache          map[string]memoryOverviewCacheEntry
 	inferenceMaintenanceStop     chan struct{}
 	inferenceMaintenanceDone     chan struct{}
 	inferenceMaintenanceStopOnce sync.Once
@@ -281,7 +275,6 @@ func NewWithCredentialStore(rt *runtime.Session, out io.Writer, store credential
 		pendingQueuedTurns:           make(map[string][]queuedTurn),
 		drainingQueuedTurns:          make(map[string]bool),
 		codexModelCache:              make(map[string]map[string]config.ProviderModelConfig),
-		memoryOverviewCache:          make(map[string]memoryOverviewCacheEntry),
 		inferenceMaintenanceStop:     make(chan struct{}),
 		channelMaintenanceStop:       make(chan struct{}),
 		sideTurns:                    make(map[string]*sideThreadTurn),
@@ -959,12 +952,6 @@ func (s *Server) handleLine(ctx context.Context, raw []byte) error {
 		return s.handleWorkspaceStateCleanup(req)
 	case MethodThreadRegenerateTitle:
 		return s.handleThreadRegenerateTitle(ctx, req)
-	case MethodMemoryRead:
-		return s.handleMemoryRead(req)
-	case MethodMemoryOverview:
-		return s.handleMemoryOverview(req)
-	case MethodMemoryChat:
-		return s.handleMemoryChat(req)
 	case MethodTextPolish:
 		return s.handleTextPolish(req)
 	case MethodGitCommitMessage:

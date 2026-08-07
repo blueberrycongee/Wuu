@@ -81,41 +81,35 @@ const (
 	MethodThreadRename             = "thread/rename"
 	MethodThreadDelete             = "thread/delete"
 	MethodWorkspaceStateCleanup    = "workspace/state/cleanup"
-	// Memory panel RPCs (设置 → 记忆). Wire contract fixed ahead of
-	// implementation by docs/plans/2026-07-04-memory-redesign.md §8.2 and
-	// mirrored field-for-field by desktop/src/shared/protocol.ts.
-	MethodMemoryOverview   = "memory/overview"
-	MethodMemoryChat       = "memory/chat"
-	MethodMemoryRead       = "memory/read"
-	MethodTextPolish       = "text/polish"
-	MethodGitCommitMessage = "git/commit-message"
-	MethodTurnStart        = "turn/start"
-	MethodTurnQueue        = "turn/queue"
-	MethodTurnUpdateQueued = "turn/update-queued"
-	MethodTurnDequeue      = "turn/dequeue"
-	MethodTurnSteer        = "turn/steer"
-	MethodTurnUnsteer      = "turn/unsteer"
-	MethodTurnInterrupt    = "turn/interrupt"
-	MethodRunStart         = "run/start"
-	MethodRunInterrupt     = "run/interrupt"
-	MethodProcessList      = "process/list"
-	MethodProcessRead      = "process/read"
-	MethodProcessWrite     = "process/write"
-	MethodProcessResize    = "process/resize"
-	MethodProcessStop      = "process/stop"
-	MethodMCPList          = "mcp/list"
-	MethodMCPConnect       = "mcp/connect"
-	MethodMCPDisconnect    = "mcp/disconnect"
-	MethodMCPRefresh       = "mcp/refresh"
-	MethodMCPAuthStart     = "mcp/auth/start"
-	MethodMCPAuthStatus    = "mcp/auth/status"
-	MethodMCPAuthFinish    = "mcp/auth/finish"
-	MethodMCPAuthRemove    = "mcp/auth/remove"
-	MethodActivityList     = "activity/list"
-	MethodActivityTakeover = "activity/takeover"
-	MethodActivityRelease  = "activity/release"
-	MethodActivityStop     = "activity/stop"
-	MethodShutdown         = "shutdown"
+	MethodTextPolish               = "text/polish"
+	MethodGitCommitMessage         = "git/commit-message"
+	MethodTurnStart                = "turn/start"
+	MethodTurnQueue                = "turn/queue"
+	MethodTurnUpdateQueued         = "turn/update-queued"
+	MethodTurnDequeue              = "turn/dequeue"
+	MethodTurnSteer                = "turn/steer"
+	MethodTurnUnsteer              = "turn/unsteer"
+	MethodTurnInterrupt            = "turn/interrupt"
+	MethodRunStart                 = "run/start"
+	MethodRunInterrupt             = "run/interrupt"
+	MethodProcessList              = "process/list"
+	MethodProcessRead              = "process/read"
+	MethodProcessWrite             = "process/write"
+	MethodProcessResize            = "process/resize"
+	MethodProcessStop              = "process/stop"
+	MethodMCPList                  = "mcp/list"
+	MethodMCPConnect               = "mcp/connect"
+	MethodMCPDisconnect            = "mcp/disconnect"
+	MethodMCPRefresh               = "mcp/refresh"
+	MethodMCPAuthStart             = "mcp/auth/start"
+	MethodMCPAuthStatus            = "mcp/auth/status"
+	MethodMCPAuthFinish            = "mcp/auth/finish"
+	MethodMCPAuthRemove            = "mcp/auth/remove"
+	MethodActivityList             = "activity/list"
+	MethodActivityTakeover         = "activity/takeover"
+	MethodActivityRelease          = "activity/release"
+	MethodActivityStop             = "activity/stop"
+	MethodShutdown                 = "shutdown"
 	// MethodSettingsUsage returns the aggregated per-provider/model token
 	// usage snapshot for the desktop settings page. Range filter selects
 	// the time window ("all", "7d", "30d", "90d"); empty defaults to "all".
@@ -1461,41 +1455,6 @@ type WorkspaceStateCleanupResult struct {
 	MemoryArchived bool `json:"memory_archived"`
 }
 
-// Memory panel wire types. Each struct's json tags mirror the Memory* types
-// in desktop/src/shared/protocol.ts field-for-field; changing either side
-// requires changing both (memory-redesign contract §8.2).
-
-// Memory scope values: "user" targets the user notebook (~/.wuu/memory),
-// "participant" targets a named agent's identity notebook
-// (~/.wuu/participants/<id>/memory) and requires participant_id naming an
-// active (non-retired) named participant.
-const (
-	MemoryScopeUser        = "user"
-	MemoryScopeParticipant = "participant"
-)
-
-type MemoryOverviewParams struct {
-	Scope         string `json:"scope"`
-	ParticipantID string `json:"participant_id,omitempty"`
-	ForceRefresh  bool   `json:"force_refresh,omitempty"`
-}
-
-// MemoryOverviewResult carries the structured essay the overview agent
-// generated from the real notebook (one LLM pass). Cached indicates the
-// backend served the notebook's 12-hour cache instead of regenerating.
-type MemoryOverviewResult struct {
-	EssayMD     string `json:"essay_md"`
-	GeneratedAt string `json:"generated_at"`
-	SourceMtime string `json:"source_mtime"`
-	Cached      bool   `json:"cached"`
-}
-
-type MemoryChatParams struct {
-	Scope         string `json:"scope"`
-	ParticipantID string `json:"participant_id,omitempty"`
-	Message       string `json:"message"`
-}
-
 type TextPolishParams struct {
 	Text string `json:"text"`
 }
@@ -1514,42 +1473,6 @@ type GitCommitMessageParams struct {
 
 type GitCommitMessageResult struct {
 	Message string `json:"message"`
-}
-
-// MemoryChangedFile is one real notebook file the manager agent touched.
-// Action is "created", "modified", or "deleted".
-type MemoryChangedFile struct {
-	Path   string `json:"path"`
-	Action string `json:"action"`
-}
-
-type MemoryChatResult struct {
-	ReplyMD      string              `json:"reply_md"`
-	ChangedFiles []MemoryChangedFile `json:"changed_files"`
-}
-
-type MemoryReadParams struct {
-	Scope         string `json:"scope"`
-	ParticipantID string `json:"participant_id,omitempty"`
-}
-
-// MemoryFileInfo describes one topic file in the notebook. Name,
-// Description, and Type mirror the file's frontmatter (canonical types are
-// user | feedback | reference | lesson, but Type stays a plain string so
-// entries written by newer backends still render); Mtime is the file's
-// modification time in RFC 3339.
-type MemoryFileInfo struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	Type        string `json:"type"`
-	Mtime       string `json:"mtime"`
-}
-
-// MemoryReadResult is the raw MEMORY.md index plus the file inventory — no
-// LLM involved; the panel's "查看原文" audit/fallback view.
-type MemoryReadResult struct {
-	IndexMD string           `json:"index_md"`
-	Files   []MemoryFileInfo `json:"files"`
 }
 
 type TurnStartParams struct {

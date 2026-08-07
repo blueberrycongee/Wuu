@@ -26,7 +26,6 @@ import (
 	"github.com/blueberrycongee/wuu/internal/harness"
 	"github.com/blueberrycongee/wuu/internal/hooks"
 	"github.com/blueberrycongee/wuu/internal/mcp"
-	"github.com/blueberrycongee/wuu/internal/memdir"
 	"github.com/blueberrycongee/wuu/internal/modelroles"
 	pluginpkg "github.com/blueberrycongee/wuu/internal/plugin"
 	"github.com/blueberrycongee/wuu/internal/process"
@@ -695,52 +694,6 @@ func TestNewSessionUsesUserStateNotWorkspaceDotWuu(t *testing.T) {
 	}
 }
 
-func TestNewSessionInjectsMemdir(t *testing.T) {
-	root := t.TempDir()
-	home := t.TempDir()
-	t.Setenv("WUU_HOME", filepath.Join(home, "state"))
-	t.Setenv("TEST_WUU_KEY", "abc")
-
-	rt, err := NewSession(Options{
-		RootDir:    root,
-		HomeDir:    home,
-		ConfigPath: filepath.Join(root, ".wuu.json"),
-		Config: config.Config{
-			DefaultProvider: "test",
-			Providers: map[string]config.ProviderConfig{
-				"test": {
-					Type:      "openai-compatible",
-					BaseURL:   "https://example.test/v1",
-					APIKeyEnv: "TEST_WUU_KEY",
-					Model:     "gpt-test",
-				},
-			},
-		},
-	})
-	if err != nil {
-		t.Fatalf("NewSession: %v", err)
-	}
-	if rt.Toolkit == nil {
-		t.Fatal("expected toolkit")
-	}
-	if rt.Toolkit.ActiveSurface().ProfileName == "" {
-		t.Fatal("expected runtime toolkit to install a model surface")
-	}
-	if !strings.Contains(rt.BaseSystemPrompt, "[Tool surface:") || !strings.Contains(rt.BaseSystemPrompt, "workspace boundaries") {
-		t.Fatalf("base system prompt should include compiled tool-surface fragment:\n%s", rt.BaseSystemPrompt)
-	}
-	if !strings.Contains(rt.BaseSystemPrompt, "# Memory directory") {
-		t.Fatalf("default profile should inject the memdir teaching block:\n%s", rt.BaseSystemPrompt)
-	}
-	if !strings.Contains(rt.BaseSystemPrompt, "## MEMORY.md") {
-		t.Fatalf("memdir section should carry the MEMORY.md index slot:\n%s", rt.BaseSystemPrompt)
-	}
-	if strings.Contains(rt.BaseSystemPrompt, "# Runtime Tool Policy") ||
-		strings.Contains(rt.BaseSystemPrompt, "permission_mode:") {
-		t.Fatalf("base system prompt should keep runtime authority state out of the stable prompt:\n%s", rt.BaseSystemPrompt)
-	}
-}
-
 func TestNewSessionKeepsGitContextOutOfBaseSystemPrompt(t *testing.T) {
 	root := t.TempDir()
 	home := t.TempDir()
@@ -847,7 +800,7 @@ func TestNewSessionMemoryDisableDisablesDreamScheduler(t *testing.T) {
 	}
 }
 
-func TestApplyGeneralConfigRefreshesPromptAndMemory(t *testing.T) {
+func TestApplyGeneralConfigRefreshesPromptAndGitAttribution(t *testing.T) {
 	root := t.TempDir()
 	home := t.TempDir()
 	t.Setenv("WUU_HOME", filepath.Join(home, "state"))
@@ -876,24 +829,13 @@ func TestApplyGeneralConfigRefreshesPromptAndMemory(t *testing.T) {
 	if rt.Toolkit == nil {
 		t.Fatal("expected toolkit")
 	}
-	if !rt.MemdirEnabled || !strings.Contains(rt.BaseSystemPrompt, "# Memory directory") {
-		t.Fatal("expected default session to start with memdir enabled")
-	}
-
 	baseConfig.Agent.AppendSystemPrompt = "默认用中文回答。"
 	gitAttributionEnabled := false
 	baseConfig.Agent.GitAttributionEnabled = &gitAttributionEnabled
-	baseConfig.Memory.Disable = true
 	prompt := rt.ApplyGeneralConfig(baseConfig, home)
 
 	if rt.UserSystemPrompt != "默认用中文回答。" || !strings.Contains(prompt, "默认用中文回答。") || !strings.Contains(rt.StreamRunner.SystemPrompt, "默认用中文回答。") {
 		t.Fatalf("user prompt not refreshed: user=%q prompt=%q runner=%q", rt.UserSystemPrompt, prompt, rt.StreamRunner.SystemPrompt)
-	}
-	if rt.MemdirEnabled {
-		t.Fatal("memory.disable should disable memdir")
-	}
-	if strings.Contains(prompt, "# Memory directory") {
-		t.Fatalf("memory.disable should drop the memdir section:\n%s", prompt)
 	}
 	if rt.DreamIntervalDays != 0 {
 		t.Fatalf("DreamIntervalDays = %d, want disabled", rt.DreamIntervalDays)
@@ -1661,143 +1603,6 @@ func TestNewThreadRuntimeLocalWorkerDoesNotTeachTerminalPaths(t *testing.T) {
 	} {
 		if strings.Contains(systemPrompt, banned) {
 			t.Fatalf("local worker prompt must not teach terminal path %q:\n%s", banned, systemPrompt)
-		}
-	}
-}
-
-func TestNewThreadRuntimeAgentProfileSpawnGetsReadOnlyUserMemory(t *testing.T) {
-	root := t.TempDir()
-	home := t.TempDir()
-	wuuHome := filepath.Join(home, "state")
-	agentProfile := "qa workflow"
-	t.Setenv("WUU_HOME", wuuHome)
-	t.Setenv("TEST_WUU_KEY", "abc")
-
-	userNotebook := memdir.UserMemdir(wuuHome)
-	if err := os.MkdirAll(userNotebook, 0o755); err != nil {
-		t.Fatalf("mkdir user notebook: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(userNotebook, "MEMORY.md"), []byte("- [QA gate](qa_gate.md) — QA workflow checks visual regressions before release\n"), 0o644); err != nil {
-		t.Fatalf("seed notebook index: %v", err)
-	}
-
-	rt, err := NewSession(Options{
-		RootDir:    root,
-		HomeDir:    home,
-		ConfigPath: filepath.Join(root, ".wuu.json"),
-		Config: config.Config{
-			DefaultProvider: "test",
-			Providers: map[string]config.ProviderConfig{
-				"test": {
-					Type:      "openai-compatible",
-					BaseURL:   "https://example.test/v1",
-					APIKeyEnv: "TEST_WUU_KEY",
-					Model:     "gpt-test",
-				},
-			},
-		},
-	})
-	if err != nil {
-		t.Fatalf("NewSession: %v", err)
-	}
-	client := &sessionRecordingClient{}
-	rt.WorkerClient = client
-	threadRT, err := rt.NewThreadRuntime("thread-profile")
-	if err != nil {
-		t.Fatalf("NewThreadRuntime: %v", err)
-	}
-	defer func() {
-		threadRT.AgentControl.StopAll()
-		time.Sleep(100 * time.Millisecond)
-	}()
-	res, err := threadRT.AgentControl.Spawn(context.Background(), agentcontrol.SpawnRequest{
-		Type:         agentcontrol.DefaultSubagentType,
-		TaskName:     "qa_check",
-		AgentProfile: agentProfile,
-		Prompt:       "run the QA workflow",
-		Synchronous:  true,
-	})
-	if err != nil {
-		t.Fatalf("Spawn: %v", err)
-	}
-	if res.AgentProfile != agentProfile {
-		t.Fatalf("AgentProfile = %q, want %q", res.AgentProfile, agentProfile)
-	}
-
-	req := client.LastRequest()
-	toolNames := map[string]bool{}
-	for _, def := range req.Tools {
-		toolNames[def.Name] = true
-	}
-	if toolNames["tool_search"] {
-		t.Fatalf("compatible profile worker should not expose tool_search in flat mode: %+v", req.Tools)
-	}
-	if len(req.Messages) == 0 {
-		t.Fatal("profile worker sent no messages")
-	}
-	systemPrompt := req.Messages[0].Content
-	// Workers receive the read-only user-notebook variant: the MEMORY.md index
-	// is injected, and the teaching forbids writing.
-	for _, want := range []string{"# User memory (read-only)", "QA workflow checks visual regressions"} {
-		if !strings.Contains(systemPrompt, want) {
-			t.Fatalf("profile worker system prompt missing %q:\n%s", want, systemPrompt)
-		}
-	}
-	if strings.Contains(systemPrompt, "# Memory directory") {
-		t.Fatalf("worker prompt must use the read-only variant, not the session teaching:\n%s", systemPrompt)
-	}
-	if !strings.Contains(systemPrompt, "[Tool surface:") || !strings.Contains(systemPrompt, "workspace boundaries") {
-		t.Fatalf("profile worker system prompt missing tool-surface fragment:\n%s", systemPrompt)
-	}
-}
-
-func TestNewSessionInjectsUserNotebookIndex(t *testing.T) {
-	root := t.TempDir()
-	home := t.TempDir()
-	wuuHome := filepath.Join(home, "state")
-	agentName := "Mia Agent"
-	t.Setenv("WUU_HOME", wuuHome)
-	t.Setenv("TEST_WUU_KEY", "abc")
-
-	userNotebook := memdir.UserMemdir(wuuHome)
-	if err := os.MkdirAll(userNotebook, 0o755); err != nil {
-		t.Fatalf("mkdir user notebook: %v", err)
-	}
-	index := "- [Reply style](reply_style.md) — User prefers concise Chinese replies\n" +
-		"- [Local refresh](local_refresh.md) — Project uses make install for local CLI refresh\n"
-	if err := os.WriteFile(filepath.Join(userNotebook, "MEMORY.md"), []byte(index), 0o644); err != nil {
-		t.Fatalf("write notebook index: %v", err)
-	}
-
-	rt, err := NewSession(Options{
-		RootDir:    root,
-		HomeDir:    home,
-		ConfigPath: filepath.Join(root, ".wuu.json"),
-		Config: config.Config{
-			DefaultProvider: "test",
-			Providers: map[string]config.ProviderConfig{
-				"test": {
-					Type:      "openai-compatible",
-					BaseURL:   "https://example.test/v1",
-					APIKeyEnv: "TEST_WUU_KEY",
-					Model:     "gpt-test",
-				},
-			},
-			Agent: config.AgentConfig{Name: agentName},
-		},
-	})
-	if err != nil {
-		t.Fatalf("NewSession: %v", err)
-	}
-	// The memdir section injects the user notebook's MEMORY.md index lines.
-	for _, want := range []string{
-		"# Memory directory",
-		"## MEMORY.md",
-		"- [Reply style](reply_style.md) — User prefers concise Chinese replies",
-		"- [Local refresh](local_refresh.md) — Project uses make install for local CLI refresh",
-	} {
-		if !strings.Contains(rt.BaseSystemPrompt, want) {
-			t.Fatalf("BaseSystemPrompt missing %q:\n%s", want, rt.BaseSystemPrompt)
 		}
 	}
 }

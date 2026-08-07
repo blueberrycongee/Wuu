@@ -2,7 +2,6 @@ import {
   ArrowLeft,
   Archive,
   BarChart3,
-  Brain,
   Check,
   Folder,
   Hash,
@@ -73,7 +72,6 @@ export type ArchivedRoomView = {
 };
 import { normalizedVariantForProviderModel, providerModelReasoningMode, providerModelVariantOptions, variantLabel } from "./RuntimeHelpers";
 import { ENABLE_REMOTE_CONTROL, ENABLE_VOICE_INPUT } from "./FeatureFlags";
-import { MemoryPanel } from "./MemoryPanel";
 import { MessageFlowFontSizeControl } from "./MessageFlowFontSizeSection";
 import { SettingsRemotePage } from "./SettingsRemotePage";
 import { ThemePreferenceControl } from "./ThemePreferenceSection";
@@ -96,7 +94,6 @@ import type { SettingsPageSummaryV1 } from "../shared/workbench";
 export type SettingsPage =
   | "providers"
   | "general"
-  | "memory"
   | "advanced"
   | "usage"
   | "remote"
@@ -764,7 +761,6 @@ export function SettingsView({
     ?? settingsPageTitle(activePage, t);
   const availablePages = useMemo<readonly SettingsPageSummaryV1[]>(() => Object.freeze([
     Object.freeze({ id: "providers", label: settingsPageTitle("providers", t) }),
-    Object.freeze({ id: "memory", label: settingsPageTitle("memory", t) }),
     Object.freeze({ id: "advanced", label: settingsPageTitle("advanced", t) }),
     Object.freeze({ id: "general", label: settingsPageTitle("general", t) }),
     ...(ENABLE_REMOTE_CONTROL
@@ -828,9 +824,6 @@ export function SettingsView({
               <div className="settings-nav-group-label">{t("settings.groupModel")}</div>
               <SettingsNavItem icon={<KeyRound className="icon-lg" />} active={activePage === "providers"} onClick={() => setActivePage("providers")}>
                 {t("settings.providers")}
-              </SettingsNavItem>
-              <SettingsNavItem icon={<Brain className="icon-lg" />} active={activePage === "memory"} onClick={() => setActivePage("memory")}>
-                {t("settings.memory")}
               </SettingsNavItem>
               <SettingsNavItem icon={<SlidersHorizontal className="icon-lg" />} active={activePage === "advanced"} onClick={() => setActivePage("advanced")}>
                 {t("settings.advanced")}
@@ -939,11 +932,9 @@ export function SettingsView({
             data-wuu-page={activePage}
             key={activePage}
           >
-            {activePage === "memory" ? null : (
-              <header className="settings-page-header">
-                <h1 className="settings-page-title">{pageTitle}</h1>
-              </header>
-            )}
+            <header className="settings-page-header">
+              <h1 className="settings-page-title">{pageTitle}</h1>
+            </header>
   
             {activePluginSettingsRecord ? (
               <PluginSettingsEditor plugin={activePluginSettingsRecord} variant="page" />
@@ -1021,6 +1012,12 @@ export function SettingsView({
                   onTemperatureChange={setTemperatureDraft}
                   onCommitField={commitAdvancedField}
                 />
+                <MemorySettingsSection
+                  initialized={initialized}
+                  running={running}
+                  providers={providers}
+                  onGeneralSave={onGeneralSave}
+                />
               </>
             ) : activePage === "general" ? (
               <SettingsGeneralPage
@@ -1047,16 +1044,6 @@ export function SettingsView({
                 copyState={copyState}
                 onCopyVersion={copyVersionInfo}
               />
-            ) : activePage === "memory" ? (
-              <>
-                <MemorySettingsSection
-                  initialized={initialized}
-                  running={running}
-                  providers={providers}
-                  onGeneralSave={onGeneralSave}
-                />
-                <MemoryPanel />
-              </>
             ) : activePage === "remote" && ENABLE_REMOTE_CONTROL ? (
               <SettingsRemotePageContainer />
             ) : activePage === "archive" ? (
@@ -3074,8 +3061,6 @@ function settingsPageTitle(page: SettingsPage, t: Translate): string {
       return t("settings.advanced");
     case "general":
       return t("settings.general");
-    case "memory":
-      return t("settings.memory");
     case "usage":
       return t("settings.usage");
     case "remote":
