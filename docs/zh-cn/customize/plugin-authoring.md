@@ -99,6 +99,11 @@ my-plugin/
 `--wuu-paper`、`--wuu-ink`、`--wuu-accent` 与 `--hljs-*` 等名称继续兼容，并在应用时
 映射到当前语义 Token；新主题应优先使用 `--wuu-color-*`、`--wuu-font-*` 等当前名称。
 
+宿主的常用中性界面通过少量粗粒度语义 Token 统一换肤，无需依赖私有 DOM：
+`--wuu-control-secondary-background` 控制次级操作，`--wuu-badge-neutral-background` 控制
+中性状态与权限徽标，`--wuu-inline-code-background` 控制 Markdown 行内代码。文字、边框、
+圆角和字体继续继承对应的公共颜色、边框、圆角与字体 Token。
+
 ### 设置
 
 `contributes.settings` 声明生成式控件，支持 boolean、string、number 和 enum 四种类型。

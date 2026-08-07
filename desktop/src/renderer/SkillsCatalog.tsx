@@ -570,7 +570,7 @@ function extensionPackageStatusLabel(record: ManagedExtensionPackage, t: ReturnT
   if (record.runtime_state === "starting") return t("skills.pluginStatusStarting");
   if (record.runtime_state === "active") return t("skills.pluginStatusActive");
   switch (extensionPackageApproval(record)) {
-    case "official": return t("skills.pluginStatusOfficial");
+    case "official": return record.enabled === false ? t("skills.pluginStatusDisabled") : t("skills.pluginStatusOfficial");
     case "granted": return record.enabled === false ? t("skills.pluginStatusDisabled") : t("skills.pluginStatusGranted");
     case "changed": return t("skills.pluginStatusChanged");
     case "rejected": return t("skills.pluginStatusRejected");

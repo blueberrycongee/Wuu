@@ -15,6 +15,7 @@ const hostCSS = [
   readFileSync(resolve(__dirname, "environment.css"), "utf8"),
   readFileSync(resolve(__dirname, "composer-context-meter.css"), "utf8"),
   readFileSync(resolve(__dirname, "conversation-shell.css"), "utf8"),
+  readFileSync(resolve(__dirname, "responsive-design.css"), "utf8"),
   readFileSync(resolve(__dirname, "turns.css"), "utf8"),
   readFileSync(resolve(__dirname, "theme.css"), "utf8"),
 ].join("\n");

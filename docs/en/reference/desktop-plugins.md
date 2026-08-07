@@ -232,6 +232,12 @@ width, and `--wuu-syntax-*` syntax colors. Early names such as `--wuu-paper`, `-
 `--wuu-accent`, and `--hljs-*` remain compatible and map to the current semantic contract. New themes
 should prefer the current `--wuu-color-*` and `--wuu-font-*` names.
 
+Shared neutral UI uses coarse semantic tokens so an appearance plugin does not need private DOM
+selectors: `--wuu-control-secondary-background` styles secondary actions,
+`--wuu-badge-neutral-background` styles neutral status and permission badges, and
+`--wuu-inline-code-background` styles Markdown inline code. Their text, border, radius, and font
+continue to inherit the corresponding public color, border, radius, and typography tokens.
+
 Common host dialogs, menus, popovers, tooltips, notices, and floating navigation now render through
 the protected Layer Host and expose stable `data-wuu-component`, `data-wuu-layer`, and
 `data-wuu-state` attributes. Drag previews, PDF ShadowRoot content, and plugin View pane mounts remain

@@ -2701,11 +2701,11 @@
                                                               
                                                                 
                                                               
-  border: 0;
-  border-radius: var(--radius-xs);
-  background: var(--surface-chip);
-  color: var(--ink);
-  font-family: "SFMono-Regular", Consolas, monospace;
+  border: var(--wuu-border-subtle, 0);
+  border-radius: var(--wuu-radius-control, var(--radius-xs));
+  background: var(--wuu-inline-code-background, var(--surface-chip));
+  color: var(--wuu-color-text, var(--ink));
+  font-family: var(--wuu-font-family-mono, "SFMono-Regular", Consolas, monospace);
   font-size: 0.92em;
   /*
    * Inherit the parent line-height so the chip's line box matches the
