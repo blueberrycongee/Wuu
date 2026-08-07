@@ -148,19 +148,6 @@ func builtInToolDisplay(call providers.ToolCall) providers.ToolCallDisplay {
 		return toolDisplay("agent", "关闭子任务 "+displayTarget(displayString(args, "target", "task_name"), ""))
 	case "agent_report":
 		return toolDisplay("agent", "读取子任务报告 "+displayTarget(displayString(args, "target", "task_name"), ""))
-	case "cron":
-		switch displayString(args, "action") {
-		case "add":
-			cron := displayString(args, "cron")
-			if cron == "" {
-				return toolDisplay("schedule", "安排定时任务")
-			}
-			return toolDisplay("schedule", "安排定时任务 "+displayTruncate(cron, 60))
-		case "remove":
-			return toolDisplay("schedule", "取消定时任务 "+displayTarget(displayString(args, "id"), ""))
-		default:
-			return toolDisplay("schedule", "查看定时任务")
-		}
 	default:
 		return providers.ToolCallDisplay{
 			Kind: displayKindForTool(name),

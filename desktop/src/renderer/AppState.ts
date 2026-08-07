@@ -108,12 +108,6 @@ type SessionTab =
     }
   | {
       id: string;
-      kind: "automations";
-      context: RuntimeContext;
-      title: string;
-    }
-  | {
-      id: string;
       kind: "channel-room";
       context: RuntimeContext;
       roomID: string;
@@ -1869,15 +1863,6 @@ function createSkillsSessionTab(context: RuntimeContext): SessionTab {
   };
 }
 
-function createAutomationsSessionTab(context: RuntimeContext): SessionTab {
-  return {
-    id: `automations:${runtimeContextKey(context)}`,
-    kind: "automations",
-    context,
-    title: "automations",
-  };
-}
-
 function createChannelRoomSessionTab(
   roomID: string,
   title: string,
@@ -2302,9 +2287,6 @@ function sessionTabLabel(tab: SessionTab, state: AppState): string {
   }
   if (tab.kind === "skills") {
     return t("skills.title");
-  }
-  if (tab.kind === "automations") {
-    return t("automations.title");
   }
   if (tab.kind === "agents") {
     return t("channels.agents");
@@ -3361,7 +3343,6 @@ export {
   conversationSearchThreadMeta,
   channelRoomSessionTabID,
   createAgentsSessionTab,
-  createAutomationsSessionTab,
   createChannelRoomSessionTab,
   createDraftSessionTab,
   createSkillsSessionTab,

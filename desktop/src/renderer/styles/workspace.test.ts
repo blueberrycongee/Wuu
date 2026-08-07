@@ -68,79 +68,6 @@ describe("extension package layout", () => {
   });
 });
 
-describe("automation master-detail layout", () => {
-  it("uses the same content column and narrow-screen inset as the skills catalog", () => {
-    const automationMaster = cssRuleBody(".automations-master");
-    const skillsCatalog = cssRuleBody(".skills-catalog");
-
-    expect(automationMaster).toMatch(/grid-template-columns:\s*minmax\(0,\s*1080px\);/);
-    expect(skillsCatalog).toMatch(/grid-template-columns:\s*minmax\(0,\s*1080px\);/);
-    expect(automationMaster).toMatch(/padding:\s*42px\s+clamp\(32px,\s*6vw,\s*88px\)\s+64px;/);
-    expect(skillsCatalog).toMatch(/padding:\s*42px\s+clamp\(32px,\s*6vw,\s*88px\)\s+64px;/);
-    expect(workspaceCss).toMatch(
-      /@media \(max-width:\s*720px\)[\s\S]*?\.skills-catalog,\s*\n\s*\.automations-master\s*\{[\s\S]*?padding:\s*28px\s+20px\s+40px;/,
-    );
-  });
-
-  it("keeps the detail track and its safe padding inside the available width", () => {
-    expect(cssRuleBody(".automations-catalog.detail-open")).toMatch(
-      /grid-template-columns:\s*minmax\(340px,\s*1fr\)\s+10px\s+var\(--automation-detail-pane-width\);/,
-    );
-    expect(cssRuleBody(".automations-catalog")).toMatch(/width:\s*100%;/);
-    expect(cssRuleBody(".automations-catalog")).toMatch(/min-width:\s*0;/);
-    expect(cssRuleBody(".automations-catalog")).toMatch(/overflow-x:\s*hidden;/);
-    expect(cssRuleBody(".automations-detail")).toMatch(
-      /padding:\s*34px\s+clamp\(20px,\s*3vw,\s*32px\)\s+56px;/,
-    );
-    expect(cssRuleBody(".automation-detail-form .settings-input,\n.automation-detail-form .settings-select-trigger"))
-      .toMatch(/box-sizing:\s*border-box;/);
-    expect(workspaceCss).toMatch(
-      /@container automation-detail \(max-width:\s*460px\)[\s\S]*?\.automation-detail-grid,[\s\S]*?grid-template-columns:\s*1fr;/,
-    );
-    expect(workspaceCss).toMatch(
-      /@container automation-catalog-layout \(max-width:\s*840px\)[\s\S]*?\.automations-catalog\.detail-open[\s\S]*?grid-template-columns:\s*minmax\(0,\s*1fr\);/,
-    );
-    expect(workspaceCss).toMatch(
-      /@container automation-catalog-layout \(max-width:\s*840px\)[\s\S]*?\.automations-catalog\.detail-open \.automations-master,[\s\S]*?display:\s*none;/,
-    );
-  });
-
-  it("anchors the create action to the heading instead of shrinking the search toolbar", () => {
-    expect(cssRuleBody(".automations-heading-row")).toMatch(/justify-content:\s*space-between;/);
-    expect(cssRuleBody(".automations-heading-row .catalog-create")).toMatch(/flex:\s*0\s+0\s+auto;/);
-  });
-
-  it("keeps divider feedback on the resizer's own hit target", () => {
-    const resizer = cssRuleBody(".automations-detail-resizer");
-    const indicator = cssRuleBody(".automations-detail-resizer::before");
-    const scrollContent = cssRuleBody(".automations-scroll-region .scroll-region-content");
-
-    expect(resizer).toMatch(/width:\s*10px;/);
-    expect(resizer).toMatch(/box-sizing:\s*border-box;/);
-    expect(resizer).toMatch(/padding:\s*0;/);
-    expect(indicator).toMatch(/inset:\s*0\s+auto\s+0\s+50%;/);
-    expect(indicator).toMatch(/width:\s*1px;/);
-    expect(scrollContent).toMatch(/min-height:\s*100%;/);
-    expect(scrollContent).toMatch(/container:\s*automation-catalog-layout\s*\/\s*inline-size;/);
-    expect(workspaceCss).toMatch(
-      /\.automations-detail-resizer:hover::before,[\s\S]*?background:\s*var\(--review-resizer-hover-bg\);/,
-    );
-    expect(workspaceCss).not.toContain(".automation-detail-pane-divider");
-  });
-
-  it("stretches the catalog to the scroll region's full height so the divider spans it", () => {
-    const scrollContent = cssRuleBody(".automations-scroll-region .scroll-region-content");
-    const catalog = cssRuleBody(".automations-catalog");
-
-    // The catalog's own min-height: 100% cannot resolve (the wrapper's height
-    // is indefinite), so the wrapper is a flex column and the catalog grows.
-    expect(scrollContent).toMatch(/display:\s*flex;/);
-    expect(scrollContent).toMatch(/flex-direction:\s*column;/);
-    expect(scrollContent).toMatch(/min-height:\s*100%;/);
-    expect(catalog).toMatch(/flex:\s*1\s+0\s+auto;/);
-  });
-});
-
 describe("workspace right panel chrome", () => {
   it("uses a flat artifact rail that expands cleanly in full-panel mode", () => {
     const panel = cssRuleBody(".workspace-right-panel");
@@ -563,20 +490,5 @@ describe("turn file diff panel layout", () => {
     expect(lineContent).toMatch(/white-space:\s*pre-wrap;/);
     expect(lineContent).toMatch(/overflow-wrap:\s*anywhere;/);
     expect(lineContent).toMatch(/word-break:\s*break-word;/);
-  });
-});
-
-describe("automation detail rhythm", () => {
-  it("keeps the task prompt compact and bounds manual resizing", () => {
-    const textarea = cssRuleBody(".automation-detail-form textarea.settings-textarea");
-    expect(textarea).toMatch(/min-height:\s*96px;/);
-    expect(textarea).toMatch(/max-height:\s*220px;/);
-    expect(textarea).toMatch(/resize:\s*vertical;/);
-  });
-
-  it("uses a plain status dot without an outer halo", () => {
-    const status = cssRuleBody(".automation-state");
-    expect(status).toMatch(/background:\s*var\(--success\);/);
-    expect(status).toMatch(/box-shadow:\s*none;/);
   });
 });

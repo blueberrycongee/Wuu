@@ -36,6 +36,30 @@ func TestServeNegotiatesAndInvokesCapability(t *testing.T) {
 	}
 }
 
+func TestServeRunsShutdownCleanupBeforeAcknowledging(t *testing.T) {
+	input := strings.Join([]string{
+		`{"id":"1","method":"initialize","params":{"protocol_version":1,"capability_protocol_version":2,"plugin_id":"test"}}`,
+		`{"id":"2","method":"shutdown"}`,
+	}, "\n") + "\n"
+	var output bytes.Buffer
+	cleaned := false
+	err := ServeIO(context.Background(), strings.NewReader(input), &output, Handler{
+		Shutdown: func(context.Context) error {
+			cleaned = true
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cleaned {
+		t.Fatal("shutdown cleanup was not called")
+	}
+	if lines := strings.Split(strings.TrimSpace(output.String()), "\n"); len(lines) != 2 || !strings.Contains(lines[1], `"id":"2"`) {
+		t.Fatalf("responses = %s", output.String())
+	}
+}
+
 func TestClientCallsHostServiceOnSameChannel(t *testing.T) {
 	requestReader, requestWriter := io.Pipe()
 	defer requestReader.Close()

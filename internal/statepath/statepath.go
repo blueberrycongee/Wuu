@@ -252,21 +252,6 @@ func ThreadBrowserTabsPath(workspaceStateDir, sessionID string) string {
 	return filepath.Join(SessionArtifactDir(workspaceStateDir, sessionID), "browser_tabs.json")
 }
 
-// ScheduledTasksPath returns the workspace-scoped durable scheduled task file.
-func ScheduledTasksPath(workspaceStateDir string) string {
-	return filepath.Join(workspaceStateDir, "scheduled_tasks.json")
-}
-
-// ScheduledTasksLockPath returns the workspace-scoped scheduled task lock file.
-func ScheduledTasksLockPath(workspaceStateDir string) string {
-	return filepath.Join(workspaceStateDir, "scheduled_tasks.lock")
-}
-
-// AutomationRunsPath returns the workspace-scoped automation run history file.
-func AutomationRunsPath(workspaceStateDir string) string {
-	return filepath.Join(workspaceStateDir, "automation_runs.json")
-}
-
 func sanitizeSlug(input string) string {
 	var b strings.Builder
 	lastDash := false

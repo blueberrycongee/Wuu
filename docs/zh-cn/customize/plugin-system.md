@@ -204,6 +204,10 @@ RPC。
    测试和死代码均已移除；没有保留兼容入口，也没有把它重命名成另一种插件工作流。
 5. **Plan 的旧迁移设想已经作废。** Plan 留在最小核心链路。插件仍可观察标准计划状态或在自己的
    View 中展示它，但不替换核心 `update_plan` 语义，也不把 Plan 扩张成 Goal。
+6. **Automation 已迁移到公共 Session 链路。** 一方插件拥有 Cron 表达式、Timer、补跑、任务与
+   运行记录、Prompt、`cron` Tool 和完整桌面 View；触发时只调用 `host.session.create/send`，并通过
+   通用 Turn lifecycle 收敛运行状态。核心的 Automation RPC、Manager、scheduler、Turn 特判、
+   原生页面、IPC 与 Tool 展示特判已经删除；generation shutdown 会先停止插件后台 Timer。
 
 ### 改造顺序与完成标准
 
@@ -217,7 +221,7 @@ RPC。
    提示、状态、桌面状态条和父 Session 回投由插件拥有。继续删除只服务旧核心 Subagent 展示的
    遗留产品分支，不改变公共合同。
 4. HelpMe 全链路已删除；Plan 仍通过核心 Tool/状态链运行。
-5. 用 Cron 完成“插件 Timer → 用户可见 Session”的纵向切片，再迁移 memory，最后用 Dream 验证
+5. Cron 已完成“插件 Timer → 用户可见 Session”的纵向切片；继续迁移 memory，最后用 Dream 验证
    “Timer + memory + 插件私有 Session”的组合，不为三者增加产品专用宿主服务。
 6. 每完成一项迁移就验证插件禁用、升级和卸载后不再唤醒、不残留 UI/订阅/租约；最后删除旧协议、
    死代码和只为旧边界存在的测试。
@@ -391,8 +395,8 @@ React 组件可以在 generation 激活后订阅宿主事件，组件卸载或 g
 Goal、Subagent 已经通过与第三方插件相同的 generation 和公共 Session 服务运行：前者观察 Turn
 终态并向主 Session 投递普通 query，后者创建插件私有 Session 并在完成后向父 Session 交付结果。
 两者的专用 continuation 与 child-session 宿主接口已经删除，是当前“一方/三方同构”的纵向证明。
-Cron、memory、dream 仍应按本文的同一条公共 Session 链路继续迁移；协作暂不纳入当前改造范围，
-不应为了它预建接口。
+Cron 也已通过同一公共 Session 链路迁移；memory、dream 继续按该边界迁移。协作暂不纳入当前
+改造范围，不应为了它预建接口。
 
 判断标准是：如果一项一方功能只能修改私有循环或私有 UI 才能实现，应先确认缺少哪一个通用
 能力；只有真实需求证明公共合同不足时才扩展宿主。Wuu 自己的插件是生态的第一批使用者，不是
@@ -425,7 +429,7 @@ Cron、memory、dream 仍应按本文的同一条公共 Session 链路继续迁�
 - 部分 Presenter 的 `replace` 快照和 Action 还不足以无损重建完整原生语义，优先使用 `wrap`；
 - 画布、终端、Webview、PDF ShadowRoot 和专用预览仍是明确的主题边界；
 - Marketplace、远程自动更新、排名、依赖解析和签名分发不属于当前本地优先平台；
-- Goal、Subagent 已去除专用宿主执行 seam；Cron、memory、dream 尚未完成一方插件迁移；
+- Goal、Subagent、Cron 已去除专用宿主执行 seam；memory、dream 尚未完成一方插件迁移；
 - HelpMe 已从代码和产品中删除；Plan 明确保留在核心链路。
 
 这些边界不是鼓励为未来预留抽象。新能力应由真实插件案例驱动，先确定责任属于宿主、功能插件

@@ -1,0 +1,133 @@
+package automation
+
+import (
+	"context"
+	"encoding/json"
+	"sync"
+	"testing"
+	"time"
+
+	pluginapi "github.com/blueberrycongee/wuu/packages/plugin-go"
+)
+
+type testHost struct {
+	mu      sync.Mutex
+	state   string
+	methods []string
+	sends   []pluginapi.SessionSendParams
+}
+
+func (h *testHost) InitializeParams() pluginapi.InitializeParams { return pluginapi.InitializeParams{} }
+func (h *testHost) CallHost(_ context.Context, method string, params, result any) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.methods = append(h.methods, method)
+	var response any = struct{}{}
+	switch method {
+	case hostStorageGet:
+		if h.state == "" {
+			response = map[string]any{"value": nil}
+		} else {
+			response = map[string]any{"value": h.state}
+		}
+	case hostStorageSet:
+		encoded, _ := json.Marshal(params)
+		var input struct {
+			Value string `json:"value"`
+		}
+		_ = json.Unmarshal(encoded, &input)
+		h.state = input.Value
+	case pluginapi.HostServiceSessionCreate:
+		response = pluginapi.SessionCreateResult{SessionID: "generated-session", Created: true}
+	case pluginapi.HostServiceSessionSend:
+		encoded, _ := json.Marshal(params)
+		var input pluginapi.SessionSendParams
+		_ = json.Unmarshal(encoded, &input)
+		h.sends = append(h.sends, input)
+		response = pluginapi.SessionSendResult{State: "running", SessionID: input.SessionID, TurnID: "turn-one"}
+	}
+	encoded, _ := json.Marshal(response)
+	return json.Unmarshal(encoded, result)
+}
+
+func TestAutomationTimerUsesPublicSessionServicesAndSettlesRun(t *testing.T) {
+	now := time.Date(2026, 8, 8, 9, 0, 0, 0, time.UTC)
+	host := &testHost{}
+	c := &controller{now: func() time.Time { return now }, tick: time.Hour}
+	if err := c.start(context.Background(), host); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = c.shutdown(context.Background()) })
+	task, err := c.add(context.Background(), mutationInput{Title: "Daily review", Prompt: "Review open work", Schedule: "1 9 * * *", Timezone: "UTC", Mode: "new_thread", Recurring: boolPointer(true), Durable: boolPointer(true)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.mu.Lock()
+	due := c.tasks[task.ID]
+	due.NextRunAt = now.Add(-time.Minute)
+	c.tasks[task.ID] = due
+	c.mu.Unlock()
+	c.fireDue(context.Background())
+	host.mu.Lock()
+	sends := append([]pluginapi.SessionSendParams(nil), host.sends...)
+	host.mu.Unlock()
+	if len(sends) != 1 || sends[0].SessionID != "generated-session" || sends[0].Cause != "automation.trigger" || sends[0].Presentation == nil || sends[0].Presentation.Kind != "query_bubble" {
+		t.Fatalf("sends = %+v", sends)
+	}
+	runs := c.snapshotRuns()
+	if len(runs) != 1 || runs[0].Status != "running" {
+		t.Fatalf("runs = %+v", runs)
+	}
+	if err := c.settle(context.Background(), pluginapi.TurnLifecycleInput{RequestID: runs[0].RequestID, State: "completed", ThreadID: "generated-session", TurnID: "turn-one", FinalOutput: "done"}); err != nil {
+		t.Fatal(err)
+	}
+	runs = c.snapshotRuns()
+	if runs[0].Status != "completed" || runs[0].CompletedAt == nil {
+		t.Fatalf("settled run = %+v", runs[0])
+	}
+}
+
+func TestAutomationPartialUpdatePreservesBooleanFields(t *testing.T) {
+	now := time.Date(2026, 8, 8, 9, 0, 0, 0, time.UTC)
+	host := &testHost{}
+	c := &controller{host: host, tasks: map[string]Task{}, now: func() time.Time { return now }}
+	task := Task{ID: "daily", Title: "Daily", Prompt: "Review", Cron: "1 9 * * *", Timezone: "UTC", Mode: "new_thread", Recurring: true, Paused: true, Durable: true, CreatedAt: now}
+	c.tasks[task.ID] = task
+
+	updated, err := c.update(context.Background(), mutationInput{ID: task.ID, Title: "Renamed"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !updated.Recurring || !updated.Paused || !updated.Durable {
+		t.Fatalf("partial update cleared booleans: %+v", updated)
+	}
+
+	updated, err = c.update(context.Background(), mutationInput{ID: task.ID, Paused: boolPointer(false)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.Paused || !updated.Recurring || !updated.Durable {
+		t.Fatalf("explicit false update = %+v", updated)
+	}
+}
+
+func boolPointer(value bool) *bool { return &value }
+
+func TestAutomationHeartbeatReusesExistingSession(t *testing.T) {
+	now := time.Date(2026, 8, 8, 9, 0, 0, 0, time.UTC)
+	host := &testHost{}
+	c := &controller{host: host, tasks: map[string]Task{}, now: func() time.Time { return now }}
+	task := Task{ID: "heartbeat", Title: "Continue", Prompt: "Continue the audit", Cron: "1 9 * * *", Timezone: "UTC", Mode: "thread_heartbeat", HeartbeatThreadID: "parent-session", Recurring: false, NextRunAt: now.Add(-time.Minute)}
+	c.tasks[task.ID] = task
+	c.fireDue(context.Background())
+	host.mu.Lock()
+	defer host.mu.Unlock()
+	if len(host.sends) != 1 || host.sends[0].SessionID != "parent-session" {
+		t.Fatalf("heartbeat sends = %+v", host.sends)
+	}
+	for _, method := range host.methods {
+		if method == pluginapi.HostServiceSessionCreate {
+			t.Fatal("heartbeat created a new session")
+		}
+	}
+}

@@ -209,6 +209,7 @@ type Host interface {
 type Handler struct {
 	Definition       Definition
 	Initialize       func(context.Context, Host, InitializeParams) error
+	Shutdown         func(context.Context) error
 	ExecuteTool      func(context.Context, Host, ToolCall) (ToolResult, error)
 	InvokeCapability func(context.Context, Host, CapabilityCall) (json.RawMessage, error)
 }
@@ -487,6 +488,11 @@ func dispatch(ctx context.Context, client *Client, handler Handler, request rpcR
 			Output json.RawMessage `json:"output"`
 		}{Output: value})
 	case "shutdown":
+		if handler.Shutdown != nil {
+			if err := handler.Shutdown(ctx); err != nil {
+				return nil, false, err
+			}
+		}
 		return json.RawMessage(`{}`), true, nil
 	default:
 		return nil, false, fmt.Errorf("method %q is not supported", request.Method)

@@ -1,5 +1,4 @@
 import {
-  AlarmClock,
   Archive,
   ChevronRight,
   Clock,
@@ -364,7 +363,6 @@ export function AppSidebar({
   debugFixturesVisible,
   sectionOrder,
   onStartNewThread,
-  onOpenAutomationsTab,
   onOpenSkillsTab,
   groupChatEnabled = false,
   channelRooms = [],
@@ -428,7 +426,6 @@ export function AppSidebar({
   // SCRATCH_PSEUDO_PROJECT_ID or a real project id.
   sectionOrder: string[];
   onStartNewThread: () => void;
-  onOpenAutomationsTab: () => void;
   onOpenSkillsTab: () => void;
   groupChatEnabled?: boolean;
   // Unified 协作 section: the room list (with per-room unread counts) is
@@ -610,14 +607,6 @@ export function AppSidebar({
     }
     nodes.push(
       {
-        id: "command:automations",
-        kind: "command",
-        label: t("automations.title"),
-        icon: "alarm-clock",
-        disabled: !hasRuntimeContext,
-        onActivate: () => activateNative(onOpenAutomationsTab),
-      },
-      {
         id: "command:skills",
         kind: "command",
         label: t("skills.sectionSkills"),
@@ -773,7 +762,7 @@ export function AppSidebar({
   }, [
     activateNative, activeChannelRoomID, activeChannelSection, activeProjectID, activeThreadID,
     channelRooms, collabUnreadTotal, debugFixturesVisible, fixturesEnabled,
-    groupChatEnabled, hasPinnedRows, hasRuntimeContext, onOpenAutomationsTab,
+    groupChatEnabled, hasPinnedRows, hasRuntimeContext,
     onOpenChannelAgents, onOpenChipGallery, onOpenSettings, onOpenSkillsTab,
     onSeedAgentTreeDemo, onSeedConversationFixture, onSelectChannelRoom,
     onSelectProjectThread, onSelectProjectWorkspace, onSelectThread,
@@ -833,14 +822,6 @@ export function AppSidebar({
               <span>{t("channels.agents")}</span>
             </button>
           ) : null}
-          <button
-            className="nav-item"
-            onClick={() => activateNative(onOpenAutomationsTab)}
-            disabled={!hasRuntimeContext}
-          >
-            <AlarmClock className="icon-lg" />
-            <span>{t("automations.title")}</span>
-          </button>
           <button
             className="nav-item"
             onClick={() => activateNative(onOpenSkillsTab)}

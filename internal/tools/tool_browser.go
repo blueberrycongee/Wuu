@@ -18,7 +18,7 @@ import (
 )
 
 // BrowserTool is the single model-facing surface for the embedded browser
-// backend. One tool multiplexed by an action enum (matching goal/cron/bash)
+// backend. One tool multiplexed by an action enum (matching bash)
 // drives navigation, DOM observation, input, screenshots, and tab lifecycle
 // against a desktop-hosted hidden WebContentsView reached through env.BrowserBridge.
 //

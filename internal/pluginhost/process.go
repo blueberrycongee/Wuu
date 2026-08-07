@@ -123,6 +123,15 @@ func Start(ctx context.Context, config ProcessConfig) (*ProcessClient, error) {
 		readerDone: make(chan struct{}),
 	}
 	client.processCtx, client.processCancel = context.WithCancel(context.Background())
+	// Initialization is allowed to restore plugin state through services the
+	// host handler explicitly advertises. Once the plugin returns its
+	// definition below, this provisional set is narrowed to the services it
+	// actually declared. Without this short bootstrap window, a stateful plugin
+	// cannot synchronously validate or restore itself before activation.
+	client.negotiated = make(map[HostServiceMethod]struct{}, len(config.SupportedHostServices))
+	for _, method := range config.SupportedHostServices {
+		client.negotiated[method] = struct{}{}
+	}
 	scanner := bufio.NewScanner(stdout)
 	scanner.Buffer(make([]byte, 0, 4096), maxResponseLineSize)
 	client.scanner = scanner

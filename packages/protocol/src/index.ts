@@ -667,51 +667,6 @@ export type SkillContentResult = {
   content: string;
 };
 
-export type AutomationTask = {
-  id: string;
-  title?: string;
-  cron: string;
-  timezone?: string;
-  prompt?: string;
-  mode?: "new_thread" | "thread_heartbeat";
-  creatorThreadId?: string;
-  heartbeatThreadId?: string;
-  workspaceId?: string;
-  workspacePath?: string;
-  metadata?: Record<string, string>;
-  createdAt: number;
-  lastFiredAt?: number;
-  recurring: boolean;
-  paused?: boolean;
-};
-
-export type AutomationListResult = { tasks: AutomationTask[] };
-export type AutomationCreateParams = {
-  title: string;
-  prompt: string;
-  schedule: string;
-  timezone?: string;
-  mode?: "new_thread" | "thread_heartbeat";
-  heartbeat_thread_id?: string;
-  workspace_id?: string;
-  workspace_path?: string;
-  recurring: boolean;
-  paused?: boolean;
-};
-export type AutomationCreateResult = { task: AutomationTask };
-export type AutomationUpdateParams = {
-  id: string;
-  title?: string;
-  prompt?: string;
-  schedule?: string;
-  timezone?: string;
-  mode?: "new_thread" | "thread_heartbeat";
-  heartbeat_thread_id?: string;
-  recurring?: boolean;
-  paused?: boolean;
-};
-export type AutomationUpdateResult = { task: AutomationTask };
-
 export type NamedAgent = {
   id: string;
   name: string;
@@ -2441,10 +2396,6 @@ export type WuuDesktopApi = {
   stopActivity: (threadId: string, activityId: string) => Promise<ActivityActionResult>;
   listSkills: () => Promise<SkillListResult>;
   readSkillContent: (params: SkillContentParams) => Promise<SkillContentResult>;
-  listAutomations: () => Promise<AutomationListResult>;
-  createAutomation: (params: AutomationCreateParams) => Promise<AutomationCreateResult>;
-  updateAutomation: (params: AutomationUpdateParams) => Promise<AutomationUpdateResult>;
-  removeAutomation: (id: string) => Promise<{ ok: boolean }>;
   listNamedAgents: () => Promise<ChannelAgentListResult>;
   getNamedAgentInsights: () => Promise<ChannelAgentInsightsResult>;
   bootstrapChannels: () => Promise<ChannelBootstrapResult>;

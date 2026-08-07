@@ -6,7 +6,6 @@ import (
 
 	"github.com/blueberrycongee/wuu/internal/activity"
 	"github.com/blueberrycongee/wuu/internal/agentcontrol"
-	"github.com/blueberrycongee/wuu/internal/automation"
 	"github.com/blueberrycongee/wuu/internal/capability"
 	"github.com/blueberrycongee/wuu/internal/channels"
 	"github.com/blueberrycongee/wuu/internal/execution"
@@ -61,11 +60,6 @@ const (
 	MethodChannelTaskUpdate        = "channel/task/update"
 	MethodChannelMentionStatus     = "channel/human-mention/status"
 	MethodChannelMentionAck        = "channel/human-mention/ack"
-	MethodAutomationList           = "automation/list"
-	MethodAutomationRuns           = "automation/run/list"
-	MethodAutomationCreate         = "automation/create"
-	MethodAutomationUpdate         = "automation/update"
-	MethodAutomationRemove         = "automation/remove"
 	MethodThreadStart              = "thread/start"
 	MethodThreadResume             = "thread/resume"
 	MethodThreadFork               = "thread/fork"
@@ -1916,51 +1910,6 @@ const (
 	// (typically ~/.wuu/scratch/<date>) and have no registered project.
 	WorkspaceKindScratch WorkspaceKind = "scratch"
 )
-
-type AutomationListResult struct {
-	Tasks []automation.Task `json:"tasks"`
-}
-
-type AutomationRunsResult struct {
-	Runs []automation.Run `json:"runs"`
-}
-
-type AutomationCreateParams struct {
-	Title             string          `json:"title"`
-	Prompt            string          `json:"prompt"`
-	Schedule          string          `json:"schedule"`
-	Timezone          string          `json:"timezone,omitempty"`
-	Mode              automation.Mode `json:"mode,omitempty"`
-	HeartbeatThreadID string          `json:"heartbeat_thread_id,omitempty"`
-	WorkspaceID       string          `json:"workspace_id,omitempty"`
-	WorkspacePath     string          `json:"workspace_path,omitempty"`
-	Recurring         bool            `json:"recurring"`
-	Paused            bool            `json:"paused,omitempty"`
-}
-
-type AutomationCreateResult struct {
-	Task automation.Task `json:"task"`
-}
-
-type AutomationUpdateParams struct {
-	ID                string           `json:"id"`
-	Title             *string          `json:"title,omitempty"`
-	Prompt            *string          `json:"prompt,omitempty"`
-	Schedule          *string          `json:"schedule,omitempty"`
-	Timezone          *string          `json:"timezone,omitempty"`
-	Mode              *automation.Mode `json:"mode,omitempty"`
-	HeartbeatThreadID *string          `json:"heartbeat_thread_id,omitempty"`
-	Recurring         *bool            `json:"recurring,omitempty"`
-	Paused            *bool            `json:"paused,omitempty"`
-}
-
-type AutomationUpdateResult struct {
-	Task automation.Task `json:"task"`
-}
-
-type AutomationRemoveParams struct {
-	ID string `json:"id"`
-}
 
 type Thread struct {
 	ID               string        `json:"id"`

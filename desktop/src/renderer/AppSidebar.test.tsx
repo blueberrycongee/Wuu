@@ -143,7 +143,6 @@ function renderSidebar({
         debugFixturesVisible={false}
         sectionOrder={sectionOrder}
         onStartNewThread={() => {}}
-        onOpenAutomationsTab={() => {}}
         onOpenSkillsTab={() => {}}
         groupChatEnabled={groupChatEnabled}
         channelRooms={channelRooms}
@@ -204,7 +203,6 @@ describe("AppSidebar layout", () => {
     expect(snapshot?.nodes.map(({ id }) => id)).toEqual([
       "command:new-conversation",
       "command:search-conversations",
-      "command:automations",
       "command:skills",
       "section:workspace",
       `project:${SCRATCH_PSEUDO_PROJECT_ID}`,

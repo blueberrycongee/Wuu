@@ -159,7 +159,6 @@ func TestOpenAICodexSurface(t *testing.T) {
 	mustDeferred := []string{
 		"session_memory",
 		"thread_get",
-		"cron",
 		"wuu_browser",
 	}
 	for _, name := range mustDeferred {

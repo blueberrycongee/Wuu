@@ -896,9 +896,9 @@ func TestDefinitionsFilterStaysWithinSurfaceAndAllowsDeferredTools(t *testing.T)
 	}
 	kit.SetActiveProfile(modelprofile.Resolve("anthropic", "claude-sonnet-4-5"), true)
 	loadedDeferred := map[string]struct{}{
-		"cron": {},
+		"thread_get": {},
 	}
-	kit.markDeferredToolsLoaded("cron")
+	kit.markDeferredToolsLoaded("thread_get")
 	surface := kit.ActiveSurface()
 	defs := kit.Definitions()
 	visible := make(map[string]struct{}, len(defs))

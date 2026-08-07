@@ -20,7 +20,6 @@ import (
 	"github.com/blueberrycongee/wuu/internal/agent"
 	"github.com/blueberrycongee/wuu/internal/agentcontrol"
 	"github.com/blueberrycongee/wuu/internal/agentthread"
-	"github.com/blueberrycongee/wuu/internal/automation"
 	"github.com/blueberrycongee/wuu/internal/capability"
 	"github.com/blueberrycongee/wuu/internal/config"
 	wuucontext "github.com/blueberrycongee/wuu/internal/context"
@@ -160,7 +159,6 @@ type Session struct {
 	ToolSearchEnabled           bool
 	NativeDeferredToolDiscovery bool
 	DeferredToolCatalogPrompt   string
-	AutomationManager           *automation.Manager
 	ReadinessIssues             []ReadinessIssue
 	InferenceJournalRuntime     *session.InferenceJournalRuntime
 	pluginGenerationMu          sync.Mutex
@@ -244,7 +242,6 @@ func (s *Session) cloneForThreadModel() *Session {
 		ToolSearchEnabled:           s.ToolSearchEnabled,
 		NativeDeferredToolDiscovery: s.NativeDeferredToolDiscovery,
 		DeferredToolCatalogPrompt:   s.DeferredToolCatalogPrompt,
-		AutomationManager:           s.AutomationManager,
 		ReadinessIssues:             s.ReadinessIssues,
 		InferenceJournalRuntime:     s.InferenceJournalRuntime,
 	}
@@ -421,13 +418,6 @@ func NewSession(opts Options) (*Session, error) {
 		return nil, err
 	}
 	activityRegistry := activity.NewRegistry()
-	automationManager := automation.NewManager(automation.Config{
-		StateDir: workspaceStateDir,
-		OnError: func(err error) {
-			providers.DebugLogf("automation manager: %v", err)
-		},
-	})
-
 	// File-directory memory (memory-redesign M1): the user notebook index is
 	// read once here — session creation is one of the two allowed
 	// prompt-prefix change points (contract §4) — and the teaching + index
@@ -460,7 +450,6 @@ func NewSession(opts Options) (*Session, error) {
 		}
 		kit.SetStateDir(workspaceStateDir)
 		kit.SetWorkspaceID(workspaceID)
-		kit.SetAutomationManager(automationManager)
 		kit.SetProcessManager(processMgr)
 		kit.SetSkills(discoveredSkills)
 		ConfigureToolkitPermissions(kit, permissions)
@@ -773,7 +762,6 @@ func NewSession(opts Options) (*Session, error) {
 		DeferredToolCatalogPrompt:   deferredToolCatalogPrompt,
 		ReadinessIssues:             readinessIssues,
 		InferenceJournalRuntime:     journalRuntime,
-		AutomationManager:           automationManager,
 	}
 	initialHooks := hooks.NewDispatcher(nil)
 	initialHooks.Replace(hookDispatcher)
@@ -1708,9 +1696,6 @@ func (s *Session) Cleanup() (process.CleanupResult, error) {
 		}
 		_, hookErr := s.HookDispatcher.Dispatch(context.Background(), hooks.SessionEnd, &hooks.Input{SessionID: sessionID, CWD: s.RootDir})
 		cleanupErr = errors.Join(cleanupErr, hookErr)
-	}
-	if s.AutomationManager != nil {
-		s.AutomationManager.Stop()
 	}
 	if s.AgentControl != nil {
 		// Terminal intents are the durable recovery authority. Yield local retry

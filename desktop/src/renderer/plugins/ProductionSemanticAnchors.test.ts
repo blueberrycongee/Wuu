@@ -16,7 +16,6 @@ const SHARED_ROOT = resolve(process.cwd(), "src/shared");
  */
 const SEMANTIC_ANCHOR_OWNERS = Object.freeze({
   "app-shell": "App.tsx",
-  "automations-catalog": "AutomationsCatalog.tsx",
   "channel-view": "ChannelView.tsx",
   "composer": "ComposerView.tsx",
   "composer-frame": "ComposerView.tsx",

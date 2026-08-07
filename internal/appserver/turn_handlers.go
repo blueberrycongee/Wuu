@@ -111,12 +111,11 @@ type turnRuntimeSnapshot struct {
 	// completing worker's inherited value instead of re-reading a session
 	// value that may have changed while the orchestration tree ran. Rides
 	// the snapshot so queueing and wakeups keep the admitted value.
-	Ultra           bool
-	AutomationRunID string
-	ExecutionRunID  string
-	PluginTurn      *pluginTurnReference
-	RequestContext  []agent.ContextSegment
-	ActiveDocument  *ActiveDocument
+	Ultra          bool
+	ExecutionRunID string
+	PluginTurn     *pluginTurnReference
+	RequestContext []agent.ContextSegment
+	ActiveDocument *ActiveDocument
 }
 
 type activeDocumentOverride struct {
@@ -582,7 +581,6 @@ func (s *Server) handleTurnDequeue(req Request) error {
 	}
 	if removed {
 		s.notifyPluginTurnDiscarded(threadID, removedTurn, "queued turn was removed")
-		s.failQueuedAutomationRuns([]string{queueID}, "queued automation was removed")
 		_ = s.writeNotification(NotificationTurnDequeued, TurnDequeuedNotification{
 			ThreadID: threadID,
 			QueueID:  queueID,
@@ -1402,13 +1400,8 @@ func (s *Server) interruptThreadExecution(threadID, expectedRunID string) (bool,
 	delete(s.pendingQueuedTurns, threadID)
 	s.queuedTurnMu.Unlock()
 	userQueued := make([]queuedTurn, 0, len(queued))
-	var automationIDs []string
 	var discardedPluginTurns []queuedTurn
 	for _, entry := range queued {
-		if strings.TrimSpace(entry.snapshot.AutomationRunID) != "" {
-			automationIDs = append(automationIDs, entry.id)
-			continue
-		}
 		if entry.snapshot.PluginTurn != nil {
 			discardedPluginTurns = append(discardedPluginTurns, entry)
 			continue
@@ -1430,7 +1423,6 @@ func (s *Server) interruptThreadExecution(threadID, expectedRunID string) (bool,
 	th.workerTreeFrozen = true
 	control := threadAgentControlLocked(th)
 	th.mu.Unlock()
-	s.failQueuedAutomationRuns(automationIDs, "queued automation was interrupted")
 	for _, entry := range discardedPluginTurns {
 		s.notifyPluginTurnDiscarded(threadID, entry, "queued turn was interrupted")
 	}
@@ -1445,7 +1437,7 @@ func (s *Server) interruptThreadExecution(threadID, expectedRunID string) (bool,
 	if err := s.stopResumeProcessesForThread(threadID, threadRuntime); err != nil {
 		return true, err
 	}
-	discardedIDs := append(append([]string(nil), automationIDs...), queuedTurnIDs(discardedPluginTurns)...)
+	discardedIDs := queuedTurnIDs(discardedPluginTurns)
 	s.notifyQueuedTurnsDequeued(threadID, discardedIDs)
 	s.notifyHeldUserTurns(threadID, held)
 	return true, nil
@@ -2288,11 +2280,6 @@ func (s *Server) runTurnWithRequestContext(ctx context.Context, th *threadState,
 			hasRunUpdate = true
 		}
 	}
-	if runID := strings.TrimSpace(turnRuntime.AutomationRunID); runID != "" && s.rt != nil && s.rt.AutomationManager != nil {
-		if completeErr := s.rt.AutomationManager.CompleteRun(runID, th.ID, turnID, err); completeErr != nil {
-			providers.DebugLogf("complete automation run %q: %v", runID, completeErr)
-		}
-	}
 	if err != nil {
 		notify(NotificationTurnError, TurnErrorNotification{
 			ThreadID:   th.ID,
@@ -2683,8 +2670,6 @@ func (s *Server) drainQueuedTurns(threadID string) {
 	th := s.thread(threadID)
 	if th == nil {
 		discardedEntries := s.discardQueuedTurns(threadID)
-		discardedQueueIDs := queuedTurnIDs(discardedEntries)
-		s.failQueuedAutomationRuns(discardedQueueIDs, "automation thread no longer exists")
 		for _, entry := range discardedEntries {
 			s.notifyPluginTurnDiscarded(threadID, entry, "thread no longer exists")
 		}
@@ -2711,11 +2696,6 @@ func (s *Server) drainQueuedTurns(threadID string) {
 				ThreadID: threadID, QueueID: reference.QueueID, Error: err.Error(),
 			}); lifecycleErr != nil {
 				providers.DebugLogf("notify queued plugin turn failure for thread %q: %v", threadID, lifecycleErr)
-			}
-		}
-		if runID := strings.TrimSpace(entry.snapshot.AutomationRunID); runID != "" && s.rt != nil && s.rt.AutomationManager != nil {
-			if completeErr := s.rt.AutomationManager.CompleteRun(runID, threadID, "", err); completeErr != nil {
-				providers.DebugLogf("fail queued automation run %q: %v", runID, completeErr)
 			}
 		}
 	}
@@ -2971,7 +2951,6 @@ func (s *Server) startThreadUserTurnWithAdmission(ctx context.Context, th *threa
 		th.frozenTreeResultIDs = nil
 	}
 	turnRuntime.Ultra = snapshot.Ultra
-	turnRuntime.AutomationRunID = snapshot.AutomationRunID
 	turnRuntime.ExecutionRunID = snapshot.ExecutionRunID
 	turnRuntime.PluginTurn = clonePluginTurnReference(snapshot.PluginTurn)
 	th.currentExecutionRunID = turnRuntime.ExecutionRunID
@@ -3044,12 +3023,6 @@ func (s *Server) startQueuedTurn(ctx context.Context, threadID string, entry que
 	if err != nil || !ok {
 		return ok, err
 	}
-	if runID := strings.TrimSpace(started.runtime.AutomationRunID); runID != "" && s.rt != nil && s.rt.AutomationManager != nil {
-		if err := s.rt.AutomationManager.MarkRunRunning(runID, threadID, started.turnID); err != nil {
-			return false, errors.Join(err, s.abortStartedThreadTurnDurably(th, started, err))
-		}
-	}
-
 	if s.beforeQueuedTurnBackgroundForTest != nil {
 		s.beforeQueuedTurnBackgroundForTest()
 	}
@@ -3236,17 +3209,6 @@ func (s *Server) notifyQueuedTurnsDequeued(threadID string, queueIDs []string) {
 			ThreadID: threadID,
 			QueueID:  queueID,
 		})
-	}
-}
-
-func (s *Server) failQueuedAutomationRuns(queueIDs []string, reason string) {
-	if s == nil || s.rt == nil || s.rt.AutomationManager == nil {
-		return
-	}
-	for _, queueID := range queueIDs {
-		if err := s.rt.AutomationManager.FailRunIfPending(queueID, reason); err != nil {
-			providers.DebugLogf("fail queued automation run %q: %v", queueID, err)
-		}
 	}
 }
 

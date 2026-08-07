@@ -2090,7 +2090,6 @@ func TestToolkit_ToolInfo_ClassifiesBuiltIns(t *testing.T) {
 		{name: "read_file", kind: ToolKindFile, exposure: ToolExposureDirect, risk: ToolRiskLow, readOnly: true, concurrencySafe: true},
 		{name: "tool_search", kind: ToolKindDiscovery, exposure: ToolExposureDirect, risk: ToolRiskLow, readOnly: false, concurrencySafe: false},
 		{name: "bash", kind: ToolKindShell, exposure: ToolExposureDirect, risk: ToolRiskHigh, readOnly: false, concurrencySafe: false},
-		{name: "cron", kind: ToolKindSchedule, exposure: ToolExposureDeferred, risk: ToolRiskHigh, readOnly: false, concurrencySafe: false},
 		{name: "session_memory", kind: ToolKindMemory, exposure: ToolExposureDirect, risk: ToolRiskMedium, readOnly: false, concurrencySafe: false},
 		{name: "list_agent_profiles", kind: ToolKindAgent, exposure: ToolExposureDirect, risk: ToolRiskLow, readOnly: true, concurrencySafe: true},
 		{name: "create_agent_profile", kind: ToolKindAgent, exposure: ToolExposureDirect, risk: ToolRiskHigh, readOnly: false, concurrencySafe: true},
@@ -2664,7 +2663,7 @@ func TestToolkit_DefersLowFrequencyAndLargeMCPToolSetsFromDefinitions(t *testing
 	registered := []Tool{
 		NewReadFileTool(kit.env),
 		NewToolSearchTool(kit),
-		NewCronTool(kit.env),
+		&stubTool{name: "thread_get"},
 	}
 	for _, name := range []string{"mcp_docs_search", "mcp_docs_read", "mcp_docs_write", "mcp_docs_list", "mcp_docs_status"} {
 		registered = append(registered, &stubTool{
@@ -2680,7 +2679,7 @@ func TestToolkit_DefersLowFrequencyAndLargeMCPToolSetsFromDefinitions(t *testing
 			t.Fatalf("%s should be directly exposed", name)
 		}
 	}
-	for _, name := range []string{"cron", "mcp_docs_search", "mcp_docs_read", "mcp_docs_write", "mcp_docs_list", "mcp_docs_status"} {
+	for _, name := range []string{"thread_get", "mcp_docs_search", "mcp_docs_read", "mcp_docs_write", "mcp_docs_list", "mcp_docs_status"} {
 		if defs[name] {
 			t.Fatalf("%s should be deferred from definitions", name)
 		}
@@ -2776,16 +2775,16 @@ func TestToolkit_AppendsLoadedDeferredToolsAfterStableDefinitions(t *testing.T) 
 	}
 	kit.registry = NewRegistry(
 		NewReadFileTool(kit.env),
-		NewCronTool(kit.env),
+		&stubTool{name: "thread_get"},
 		NewToolSearchTool(kit),
 	)
-	kit.markDeferredToolsLoaded("cron")
+	kit.markDeferredToolsLoaded("thread_get")
 
 	defs := kit.Definitions()
 	if len(defs) != 3 {
 		t.Fatalf("expected loaded deferred tool to be appended to definitions, got %+v", defs)
 	}
-	wantNames := []string{"read_file", "tool_search", "cron"}
+	wantNames := []string{"read_file", "tool_search", "thread_get"}
 	for i, want := range wantNames {
 		if defs[i].Name != want {
 			t.Fatalf("definition %d = %q, want %q; all=%+v", i, defs[i].Name, want, defs)
@@ -2797,7 +2796,7 @@ func TestToolkit_AppendsLoadedDeferredToolsAfterStableDefinitions(t *testing.T) 
 	if defs[2].CacheStable {
 		t.Fatalf("loaded deferred tool should not join cache-stable prefix: %+v", defs)
 	}
-	_, err = kit.Execute(context.Background(), providers.ToolCall{Name: "cron", Arguments: `{}`})
+	_, err = kit.Execute(context.Background(), providers.ToolCall{Name: "thread_get", Arguments: `{}`})
 	if err == nil || strings.Contains(err.Error(), "deferred") {
 		t.Fatalf("loaded deferred tool should reach tool validation, got %v", err)
 	}
@@ -2811,12 +2810,12 @@ func TestToolkit_CloneForRootDoesNotInheritLoadedDeferredTools(t *testing.T) {
 	}
 	kit.registry = NewRegistry(
 		NewReadFileTool(kit.env),
-		NewCronTool(kit.env),
+		&stubTool{name: "thread_get"},
 		NewToolSearchTool(kit),
 	)
-	kit.markDeferredToolsLoaded("cron")
+	kit.markDeferredToolsLoaded("thread_get")
 
-	if _, err := kit.Execute(context.Background(), providers.ToolCall{Name: "cron", Arguments: `{}`}); err == nil || strings.Contains(err.Error(), "deferred") {
+	if _, err := kit.Execute(context.Background(), providers.ToolCall{Name: "thread_get", Arguments: `{}`}); err == nil || strings.Contains(err.Error(), "deferred") {
 		t.Fatalf("source loaded deferred tool should reach validation, got %v", err)
 	}
 
@@ -2824,12 +2823,12 @@ func TestToolkit_CloneForRootDoesNotInheritLoadedDeferredTools(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CloneForRoot: %v", err)
 	}
-	_, err = clone.Execute(context.Background(), providers.ToolCall{Name: "cron", Arguments: `{}`})
+	_, err = clone.Execute(context.Background(), providers.ToolCall{Name: "thread_get", Arguments: `{}`})
 	if err == nil || !strings.Contains(err.Error(), "deferred") {
 		t.Fatalf("clone should require its own tool_search load, got %v", err)
 	}
 
-	if definitionNames(clone.Definitions())["cron"] {
+	if definitionNames(clone.Definitions())["thread_get"] {
 		t.Fatal("clone must not expose inherited deferred tool in top-level definitions")
 	}
 }

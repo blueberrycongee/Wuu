@@ -13,7 +13,6 @@ export type ToolActivityKind =
   | "agent"
   | "plan"
   | "interaction"
-  | "schedule"
   | "browser"
   | "skill"
   | "context"
@@ -310,19 +309,6 @@ function readableToolActivityCommandInner(
     }
     case "update_goal":
       return t("toolActivity.updateGoal");
-    case "cron":
-      switch (stringValue(args, "action")) {
-        case "add": {
-          const cron = stringValue(args, "cron");
-          return cron
-            ? t("toolActivity.scheduleTarget", { target: truncateText(cron, 60) })
-            : t("toolActivity.schedule");
-        }
-        case "remove":
-          return t("toolActivity.cancelSchedule");
-        default:
-          return t("toolActivity.viewSchedule");
-      }
     case "browser":
       return readableBrowserLabel(args);
     default:
@@ -375,7 +361,6 @@ function displaySectionKey(kind: string | undefined): string | undefined {
     case "agent":
     case "plan":
     case "interaction":
-    case "schedule":
     case "browser":
     case "skill":
     case "context":
@@ -436,8 +421,6 @@ function toolActivitySectionKey(item: ThreadItem): string {
       return "agent";
     case "update_plan":
       return "plan";
-    case "cron":
-      return "schedule";
     case "browser":
       return "browser";
     case "load_skill":
@@ -473,8 +456,6 @@ function capabilitySectionKey(capability: string | undefined): string | undefine
   switch (normalized) {
     case "plan":
       return "plan";
-    case "schedule":
-      return "schedule";
     case "skill":
       return "skill";
     default:
@@ -552,15 +533,6 @@ function toolActivitySectionFromItems(
         id: key,
         kind: "interaction",
         title: t("toolActivity.waitingForUser"),
-        status: combinedToolStatus(items),
-        commands: toolCommands(items),
-        error: firstToolError(items),
-      };
-    case "schedule":
-      return {
-        id: key,
-        kind: "schedule",
-        title: readableScheduleSummary(items),
         status: combinedToolStatus(items),
         commands: toolCommands(items),
         error: firstToolError(items),
@@ -720,14 +692,6 @@ function toolActivityProcessSegmentFromItems(
         status,
         error,
         text: t("toolActivity.updatePlan"),
-      };
-    case "schedule":
-      return {
-        id: key,
-        kind: "schedule",
-        status,
-        error,
-        text: readableScheduleSummary(items),
       };
     case "browser":
       return {
@@ -929,27 +893,6 @@ function compactSearchTargets(items: ThreadItem[]): string[] {
 
 function compactCommandLabels(items: ThreadItem[]): string[] {
   return uniqueStrings(items.map((item) => readableCommandLabel(item)));
-}
-
-function readableScheduleSummary(items: ThreadItem[]): string {
-  const actions = uniqueStrings(
-    items.map((item) => {
-      const args = parseJSONRecord(item.arguments);
-      switch (stringValue(args, "action")) {
-        case "add":
-          return t("toolActivity.schedule");
-        case "remove":
-          return t("toolActivity.cancelSchedule");
-        case "list":
-          return t("toolActivity.viewSchedule");
-        default:
-          return t("toolActivity.handleSchedule");
-      }
-    }),
-  );
-  return actions.length === 1
-    ? actions[0]
-    : t("toolActivity.handleScheduleCount", { count: items.length });
 }
 
 function compactAgentLabels(items: ThreadItem[]): string[] {
@@ -1158,8 +1101,6 @@ export function readableToolName(name: string | undefined): string {
       return t("toolActivity.learnSkill");
     case "update_plan":
       return t("toolActivity.updatePlan");
-    case "cron":
-      return t("toolActivity.scheduledTask");
     case "browser":
       return t("toolActivity.browser");
     default:

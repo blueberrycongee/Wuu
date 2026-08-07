@@ -384,16 +384,6 @@ func NewWithCredentialStore(rt *runtime.Session, out io.Writer, store credential
 		s.pluginTurnUnbind = rt.PluginSessionRouter.Bind(s.createPluginSession, s.sendPluginSession, s.listPluginSessions, s.cancelPluginSession)
 	}
 	s.startInferenceJournalMaintenance()
-	if rt != nil && rt.AutomationManager != nil {
-		if err := rt.AutomationManager.Start(s); err != nil {
-			if s.pluginTurnUnbind != nil {
-				s.pluginTurnUnbind()
-				s.pluginTurnUnbind = nil
-			}
-			s.startupErr = fmt.Errorf("start automation manager: %w", err)
-			return s
-		}
-	}
 	if s.channelService != nil {
 		s.startBackground(s.restoreNamedAgentWakes)
 	}
@@ -574,9 +564,6 @@ func (s *Server) Close() {
 		if s.pluginTurnUnbind != nil {
 			s.pluginTurnUnbind()
 			s.pluginTurnUnbind = nil
-		}
-		if s.rt != nil && s.rt.AutomationManager != nil {
-			s.rt.AutomationManager.Stop()
 		}
 		s.cancelSideThreads()
 		// Synchronize with startBackground so no new owned goroutine can be
@@ -928,16 +915,6 @@ func (s *Server) handleLine(ctx context.Context, raw []byte) error {
 		return s.handleChannelHumanMentionStatus(ctx, req)
 	case MethodChannelMentionAck:
 		return s.handleChannelHumanMentionAck(ctx, req)
-	case MethodAutomationList:
-		return s.handleAutomationList(req)
-	case MethodAutomationRuns:
-		return s.handleAutomationRuns(req)
-	case MethodAutomationCreate:
-		return s.handleAutomationCreate(req)
-	case MethodAutomationUpdate:
-		return s.handleAutomationUpdate(req)
-	case MethodAutomationRemove:
-		return s.handleAutomationRemove(req)
 	case MethodThreadStart:
 		return s.handleThreadStart(req)
 	case MethodThreadResume:

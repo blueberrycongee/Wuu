@@ -196,10 +196,6 @@ import { useSettingsRuntimeState } from "./SettingsRuntimeState";
 import { SidePanelToggleIcon } from "./SidePanelToggleIcon";
 import { JumpToLatestPill } from "./JumpToLatestPill";
 import { SkillsCatalog } from "./SkillsCatalog";
-import {
-  AutomationsCatalog,
-  type AutomationDetailPaneLayout,
-} from "./AutomationsCatalog";
 import { skillsAssistantPrompt, userVisibleThreads } from "./SkillsAssistant";
 import { runDebugPhaseForState } from "./RunDebugPanel";
 import { useBrowserVisibility } from "./BrowserVisibility";
@@ -416,8 +412,6 @@ export function App(): JSX.Element {
   });
   const [rightPanelManualGlobalized, setRightPanelManualGlobalized] =
     useState(false);
-  const [automationDetailPaneLayout, setAutomationDetailPaneLayout] =
-    useState<AutomationDetailPaneLayout>({ open: false, reservedWidth: 0 });
   const rightPanelAutoGlobalized =
     rightPanelOpen && workspaceRightPanelAutoGlobalized;
   const rightPanelGlobalized =
@@ -1631,12 +1625,7 @@ export function App(): JSX.Element {
     !previewingLaunch &&
     currentSessionTab?.kind === "skills",
   );
-  const showingAutomationsCatalog = Boolean(
-    state.initialized &&
-    !previewingLaunch &&
-    currentSessionTab?.kind === "automations",
-  );
-  const showingManagementCatalog = showingSkillsCatalog || showingAutomationsCatalog;
+  const showingManagementCatalog = showingSkillsCatalog;
   const skillsAssistantThread = skillsAssistantThreadID
     ? state.threads.find((thread) => thread.id === skillsAssistantThreadID)
     : undefined;
@@ -1645,8 +1634,6 @@ export function App(): JSX.Element {
   );
   const activeTitle = showingSkillsCatalog
     ? t("skills.title")
-    : showingAutomationsCatalog
-      ? t("automations.title")
     : currentSessionTab?.kind === "channel-room"
       ? currentSessionTab.title
       : currentSessionTab?.kind === "agents"
@@ -3060,7 +3047,6 @@ export function App(): JSX.Element {
   });
 
   const {
-    openAutomationsTab,
     openSkillsTab,
     dismissContextCompositionEntry,
     dismissInstructionFilesEntry,
@@ -4129,7 +4115,6 @@ export function App(): JSX.Element {
                 startNewThreadWithComposerFocus();
               },
               openSkills: openSkillsTab,
-              openAutomations: openAutomationsTab,
               toggleSidebar,
             },
           }}
@@ -4187,7 +4172,6 @@ export function App(): JSX.Element {
                 },
                 startNewThread: startNewThreadWithComposerFocus,
                 openSkills: openSkillsTab,
-                openAutomations: openAutomationsTab,
                 toggleSidebar,
               },
             }}
@@ -4221,9 +4205,6 @@ export function App(): JSX.Element {
             }}
             onOpenSkillsTab={() => {
               openSkillsTab();
-            }}
-            onOpenAutomationsTab={() => {
-              openAutomationsTab();
             }}
             groupChatEnabled={ENABLE_GROUP_CHAT}
             channelRooms={sidebarChannelRooms}
@@ -4372,16 +4353,7 @@ export function App(): JSX.Element {
           showingSkillsCatalog && ENABLE_MANAGEMENT_ASSISTANT
             ? " skills-assistant-visible"
             : ""
-        }${
-          showingAutomationsCatalog && automationDetailPaneLayout.open
-            ? " automation-detail-pane-open"
-            : ""
         }`}
-        style={showingAutomationsCatalog && automationDetailPaneLayout.open
-          ? {
-              "--automation-detail-reserved-width": `${automationDetailPaneLayout.reservedWidth}px`,
-            } as CSSProperties
-          : undefined}
         ref={conversationPaneRef}
       >
         {ENABLE_GROUP_CHAT && channelsOpen ? (
@@ -4632,9 +4604,7 @@ export function App(): JSX.Element {
           <div
             className={`scroll-region${emptyConversation ? " empty-scroll-region" : ""}${
               splitConversation ? " split-scroll-region" : ""
-            }${showingManagementCatalog ? " skills-scroll-region" : ""}${
-              showingAutomationsCatalog ? " automations-scroll-region" : ""
-            }`}
+            }${showingManagementCatalog ? " skills-scroll-region" : ""}`}
             onScroll={(event) => handleConversationScroll(event.currentTarget)}
             ref={conversationScrollRef}
           >
@@ -4657,18 +4627,6 @@ export function App(): JSX.Element {
                 onUpdateExtensionPackage={updateExtensionPackage}
                 onInstallPluginPackage={installPluginPackage}
                 onRemovePluginPackage={removePluginPackage}
-              />
-                }
-              />
-            ) : showingAutomationsCatalog ? (
-              <PluginSurface
-                host={desktopPluginHost}
-                id="view.catalog"
-                context={{ version: 1, kind: "automations" }}
-                fallback={
-              <AutomationsCatalog
-                projects={state.projects}
-                onDetailPaneLayoutChange={setAutomationDetailPaneLayout}
               />
                 }
               />

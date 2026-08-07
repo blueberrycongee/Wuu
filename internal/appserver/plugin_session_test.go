@@ -80,7 +80,7 @@ func TestPluginSessionCreateAndSendPersistProvenanceAndTargetLifecycle(t *testin
 	result, err := rt.PluginSessionRouter.Send(context.Background(), owner.id, pluginhost.SessionSendParams{
 		RequestID: "request-1", SessionID: created.SessionID,
 		Input:        pluginhost.SessionInput{Prompt: "internal inspect prompt", ContextBlocks: []pluginhost.SessionContextBlock{{Kind: "TRIGGER", Source: "schedule", Content: "fired at 09:00"}}},
-		Presentation: &pluginhost.SessionInputPresentation{Kind: pluginhost.SessionPresentationQueryBubble, Text: "定时任务已唤醒 Agent"}, Cause: "cron:daily",
+		Presentation: &pluginhost.SessionInputPresentation{Kind: pluginhost.SessionPresentationQueryBubble, Text: "后台任务已唤醒 Agent"}, Cause: "schedule:daily",
 	})
 	if err != nil || result.State != pluginhost.TurnLifecycleRunning || result.SessionID == "" || result.TurnID == "" {
 		t.Fatalf("send = %+v, %v", result, err)
@@ -121,7 +121,7 @@ func TestPluginSessionCreateAndSendPersistProvenanceAndTargetLifecycle(t *testin
 			break
 		}
 	}
-	if generated == nil || generated.OriginID != owner.id || generated.Cause != "cron:daily" || generated.DisplayContent != "定时任务已唤醒 Agent" || generated.Content != "internal inspect prompt" || !generated.ReadOnly {
+	if generated == nil || generated.OriginID != owner.id || generated.Cause != "schedule:daily" || generated.DisplayContent != "后台任务已唤醒 Agent" || generated.Content != "internal inspect prompt" || !generated.ReadOnly {
 		t.Fatalf("generated query provenance = %+v", generated)
 	}
 	client.mu.Lock()
@@ -145,7 +145,7 @@ func TestPluginSessionCreateAndSendPersistProvenanceAndTargetLifecycle(t *testin
 	loaded.mu.Lock()
 	item := loaded.Turns[0].Items[0]
 	loaded.mu.Unlock()
-	if item.Text != "定时任务已唤醒 Agent" || strings.Contains(item.Text, "internal inspect prompt") || item.Origin != pluginhost.SessionInputPlugin || !item.ReadOnly || item.PresentationKind != pluginhost.SessionPresentationQueryBubble {
+	if item.Text != "后台任务已唤醒 Agent" || strings.Contains(item.Text, "internal inspect prompt") || item.Origin != pluginhost.SessionInputPlugin || !item.ReadOnly || item.PresentationKind != pluginhost.SessionPresentationQueryBubble {
 		t.Fatalf("query bubble projection = %+v", item)
 	}
 }
