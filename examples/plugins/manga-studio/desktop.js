@@ -432,6 +432,9 @@ export function activate(api) {
         border: 0 !important;
         background: transparent;
       }
+      .manga-shell [data-wuu-component="composer-input"]:focus-visible {
+        outline: 0 !important;
+      }
       .manga-shell [data-wuu-component="composer-toolbar"] {
         border-top: 0;
         background: transparent;
