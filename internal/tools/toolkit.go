@@ -163,6 +163,7 @@ func (t *Toolkit) CloneForRoot(rootDir string) (*Toolkit, error) {
 	// owns independent mutable state, matching the original intent.
 	env := Env{
 		RootDir:                     abs,
+		WorkspaceID:                 t.env.WorkspaceID,
 		StateDir:                    t.env.StateDir,
 		Unconfined:                  t.env.Unconfined,
 		AllowMutations:              t.env.AllowMutations,
@@ -717,6 +718,14 @@ func (t *Toolkit) RootDir() string {
 		return ""
 	}
 	return t.env.RootDir
+}
+
+// SetWorkspaceID binds tools to the stable identity of their workspace.
+func (t *Toolkit) SetWorkspaceID(workspaceID string) {
+	if t == nil || t.env == nil {
+		return
+	}
+	t.env.WorkspaceID = strings.TrimSpace(workspaceID)
 }
 
 // SetFileScopeRoots installs (or clears, with an empty slice) the file-tool

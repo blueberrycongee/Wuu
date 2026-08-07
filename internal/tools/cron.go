@@ -126,6 +126,8 @@ func (t *CronTool) executeAdd(title, cronExpr, timezone, prompt, mode, heartbeat
 		Mode:              automation.Mode(strings.TrimSpace(mode)),
 		CreatorThreadID:   strings.TrimSpace(t.env.SessionID),
 		HeartbeatThreadID: heartbeatThreadID,
+		WorkspaceID:       strings.TrimSpace(t.env.WorkspaceID),
+		WorkspacePath:     strings.TrimSpace(t.env.RootDir),
 		Recurring:         recurring,
 		Durable:           durable,
 	})
