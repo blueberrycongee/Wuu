@@ -158,7 +158,9 @@ context blocks、稳定 cause，以及可选的 `presentation: { kind: "query_bu
 
 `presentation.text` 是前端 query 气泡显示的安全摘要，不是完整内部 Prompt。用户输入和插件唤醒
 统一复用标准 query 气泡；宿主仍在持久记录中区分 `origin=user | host | plugin`，并把插件生成项
-标成只读、可审计。Provider 适配层可以按协议需要将其投影为 `user` role，但不能丢失产品来源。
+标成只读、可审计。Provider 适配层会将它投影为普通 `user` role 来驱动下一回合；这个协议角色
+不等于真人作者身份，也不能覆盖产品记录中的插件来源。插件不应把完整内部 Prompt 复制到展示
+摘要，桌面端也不应自行从模型输入生成气泡内容。
 目标 Session 忙时进入同一条普通 Turn 队列。插件若声明 `agent.turn.lifecycle` observe 能力，
 宿主会把后续 running、completed、failed、interrupted、discarded 状态只发给原提交插件，并带回
 原样的 `request_id`；终态还包含最终模型输出。Cron、重试、错过触发恢复、并发合并和业务状态都必须由插件持有；核心不
