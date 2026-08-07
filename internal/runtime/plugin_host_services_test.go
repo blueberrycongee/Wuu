@@ -23,7 +23,7 @@ func TestPluginHostServicesSettingsOwnershipDefaultsAndFingerprint(t *testing.T)
 	}); err != nil {
 		t.Fatal(err)
 	}
-	handler := newPluginHostServices(item, workspace, home)
+	handler := newPluginHostServices(item, workspace, home, nil)
 
 	getRaw, err := handler.HandleHostService(context.Background(), pluginhost.HostServiceSettingsGet, json.RawMessage(`{"key":"enabled"}`))
 	if err != nil {
@@ -60,8 +60,8 @@ func TestPluginHostServicesSettingsOwnershipDefaultsAndFingerprint(t *testing.T)
 
 func TestPluginHostServicesStorageIsolationScopesLimitsAndClose(t *testing.T) {
 	home, workspace := t.TempDir(), t.TempDir()
-	alpha := newPluginHostServices(serviceTestPlugin("alpha", "plugin:user:alpha", "one"), workspace, home)
-	beta := newPluginHostServices(serviceTestPlugin("beta", "plugin:user:beta", "one"), workspace, home)
+	alpha := newPluginHostServices(serviceTestPlugin("alpha", "plugin:user:alpha", "one"), workspace, home, nil)
+	beta := newPluginHostServices(serviceTestPlugin("beta", "plugin:user:beta", "one"), workspace, home, nil)
 
 	callService(t, alpha, pluginhost.HostServiceStorageSet, pluginhost.StorageSetParams{Scope: "workspace", Key: "panel.mode", Value: "focused"}, nil)
 	callService(t, alpha, pluginhost.HostServiceStorageSet, pluginhost.StorageSetParams{Scope: "workspace", Key: "second", Value: "two"}, nil)
@@ -120,7 +120,7 @@ func TestProductionProcessClientNestedSettingsAndStorageCalls(t *testing.T) {
 	host, err := buildPluginHost([]pluginpkg.Plugin{item}, workspace, home, map[string]bool{item.ID: true}, func(ctx context.Context, config pluginhost.ProcessConfig) (pluginhost.Client, error) {
 		liveHandler = config.HostServiceHandler
 		return startPluginClient(ctx, config)
-	})
+	}, NewPluginTurnRouter())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -161,7 +161,7 @@ func TestProductionHostServicesCloseOnGenerationSwap(t *testing.T) {
 	oldHost, err := buildPluginHost([]pluginpkg.Plugin{item}, workspace, home, map[string]bool{item.ID: true}, func(ctx context.Context, config pluginhost.ProcessConfig) (pluginhost.Client, error) {
 		oldHandler = config.HostServiceHandler
 		return startPluginClient(ctx, config)
-	})
+	}, NewPluginTurnRouter())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -195,7 +195,7 @@ func runRuntimeHostServiceHelper() {
 		os.Exit(3)
 	}
 	var params pluginhost.CapabilityInitializeParams
-	if json.Unmarshal(initialize.Params, &params) != nil || len(params.SupportedHostServices) != 7 {
+	if json.Unmarshal(initialize.Params, &params) != nil || len(params.SupportedHostServices) != 8 {
 		os.Exit(4)
 	}
 	initResult := pluginhost.CapabilityInitializeResult{

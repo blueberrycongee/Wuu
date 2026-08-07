@@ -24,6 +24,7 @@ var productionPluginHostServices = []pluginhost.HostServiceMethod{
 	pluginhost.HostServiceSettingsGet,
 	pluginhost.HostServiceSettingsList,
 	pluginhost.HostServiceChildSessionRequest,
+	pluginhost.HostServiceTurnSubmit,
 }
 
 type childSessionRequestHandler func(context.Context, pluginhost.ChildSessionRequestParams) (json.RawMessage, error)
@@ -41,9 +42,10 @@ type pluginHostServices struct {
 	wuuHome             string
 	settings            map[string]pluginpkg.SettingDefinition
 	childSessionRequest childSessionRequestHandler
+	turnRouter          *PluginTurnRouter
 }
 
-func newPluginHostServices(item pluginpkg.Plugin, projectRoot, wuuHome string, childSession ...childSessionRequestHandler) *pluginHostServices {
+func newPluginHostServices(item pluginpkg.Plugin, projectRoot, wuuHome string, turnRouter *PluginTurnRouter, childSession ...childSessionRequestHandler) *pluginHostServices {
 	settings := make(map[string]pluginpkg.SettingDefinition, len(item.Settings))
 	for key, definition := range item.Settings {
 		settings[key] = definition
@@ -51,7 +53,7 @@ func newPluginHostServices(item pluginpkg.Plugin, projectRoot, wuuHome string, c
 	services := &pluginHostServices{
 		active: true, pluginID: item.ID, subjectID: strings.TrimSpace(item.SubjectID),
 		fingerprint: item.Fingerprint, projectRoot: projectRoot, wuuHome: wuuHome,
-		settings: settings,
+		settings: settings, turnRouter: turnRouter,
 	}
 	if len(childSession) != 0 {
 		services.childSessionRequest = childSession[0]
@@ -86,6 +88,19 @@ func (s *pluginHostServices) HandleHostService(ctx context.Context, method plugi
 	}
 
 	switch method {
+	case pluginhost.HostServiceTurnSubmit:
+		if s.turnRouter == nil {
+			return nil, serviceError("service_unavailable", "turn submission service is unavailable")
+		}
+		var params pluginhost.TurnSubmitParams
+		if err := decodeServiceParams(raw, &params); err != nil {
+			return nil, err
+		}
+		result, err := s.turnRouter.Submit(ctx, s.pluginID, params)
+		if err != nil {
+			return nil, err
+		}
+		return marshalServiceResult(result)
 	case pluginhost.HostServiceChildSessionRequest:
 		if s.childSessionRequest == nil {
 			return nil, serviceError("service_unavailable", "child-session service is unavailable")

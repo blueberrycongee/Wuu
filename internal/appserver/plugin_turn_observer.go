@@ -6,6 +6,21 @@ import (
 	"github.com/blueberrycongee/wuu/internal/pluginhost"
 )
 
+func (s *Server) notifyPluginTurnLifecycle(ctx context.Context, pluginID string, input pluginhost.AgentTurnLifecycleInput) error {
+	if s == nil || s.rt == nil || s.rt.PluginHost == nil {
+		return nil
+	}
+	capability, ok := s.rt.PluginHost.Capability(pluginID, pluginhost.CapabilityAgentTurnLifecycle)
+	if !ok {
+		return nil
+	}
+	var output pluginhost.AgentTurnLifecycleOutput
+	if err := s.rt.PluginHost.InvokeCapability(ctx, capability, input, &output); err != nil {
+		return s.rt.PluginHost.HandleCapabilityError(capability, err)
+	}
+	return nil
+}
+
 // notifyPluginTurnCompleted delivers a settled-turn observation to every
 // active registration. Observers cannot change host scheduling or turn state.
 func (s *Server) notifyPluginTurnCompleted(ctx context.Context, input pluginhost.AgentTurnCompletedInput) error {

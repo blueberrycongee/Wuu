@@ -117,6 +117,7 @@ type Session struct {
 	ActivePlugins     []pluginpkg.Plugin
 	ExtensionSettings *extensions.Settings
 	PluginHost        *pluginhost.Host
+	PluginTurnRouter  *PluginTurnRouter
 	systemPrompts     *agent.SystemPromptAssembler
 	Memory            []memory.File
 	// MemdirEnabled reports whether the file-directory memory (user
@@ -214,6 +215,7 @@ func (s *Session) cloneForThreadModel() *Session {
 		ActivePlugins:               s.ActivePlugins,
 		ExtensionSettings:           s.ExtensionSettings,
 		PluginHost:                  s.PluginHost,
+		PluginTurnRouter:            s.PluginTurnRouter,
 		systemPrompts:               s.systemPrompts,
 		Memory:                      s.Memory,
 		MemdirEnabled:               s.MemdirEnabled,
@@ -402,7 +404,8 @@ func NewSession(opts Options) (*Session, error) {
 	discoveredPlugins := discoverPlugins(rootDir, wuuHome)
 	activePlugins := activatedPlugins(cfg, discoveredPlugins)
 	var agentControl *agentcontrol.AgentControl
-	pluginHost := startPluginHost(activePlugins, rootDir, wuuHome, func(ctx context.Context, request pluginhost.ChildSessionRequestParams) (json.RawMessage, error) {
+	pluginTurnRouter := NewPluginTurnRouter()
+	pluginHost := startPluginHost(activePlugins, rootDir, wuuHome, pluginTurnRouter, func(ctx context.Context, request pluginhost.ChildSessionRequestParams) (json.RawMessage, error) {
 		return dispatchChildSessionRequest(agentControl, ctx, request)
 	})
 	systemPrompts, compactions, capabilityErr := buildPluginAgentCapabilities(context.Background(), pluginHost, resolvedName, providerCfg.Model, rootDir)
@@ -740,6 +743,7 @@ func NewSession(opts Options) (*Session, error) {
 		ActivePlugins:               activePlugins,
 		ExtensionSettings:           cfg.Extensions,
 		PluginHost:                  pluginHost,
+		PluginTurnRouter:            pluginTurnRouter,
 		systemPrompts:               systemPrompts,
 		Memory:                      memoryFiles,
 		MemdirEnabled:               memdirEnabled,

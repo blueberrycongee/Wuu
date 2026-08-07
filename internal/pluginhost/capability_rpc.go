@@ -51,6 +51,10 @@ const (
 	// CapabilityAgentTurnCompleted observes a settled model turn after history
 	// and usage have been persisted. It cannot alter host turn control flow.
 	CapabilityAgentTurnCompleted = "agent.turn.completed"
+	// CapabilityAgentTurnLifecycle receives state changes for ordinary turns
+	// submitted by that same plugin through host.turn.submit. The host never
+	// broadcasts these owner-scoped lifecycle events to other plugins.
+	CapabilityAgentTurnLifecycle = "agent.turn.lifecycle"
 	// CapabilityPluginClientRequest handles a generation-bound opaque request
 	// from a Wuu client. Method names and payload schemas belong to the plugin.
 	CapabilityPluginClientRequest = "plugin.client.request"
@@ -175,6 +179,10 @@ const (
 	// calling plugin; the host only exposes a neutral request dispatcher.
 	HostServiceChildSessionRequest HostServiceMethod = "host.child_session.request"
 
+	// Turns. Plugins submit ordinary durable user turns; scheduling, retries,
+	// and product-specific run semantics remain owned by the calling plugin.
+	HostServiceTurnSubmit HostServiceMethod = "host.turn.submit"
+
 	// Session
 	HostServiceSessionGetInfo HostServiceMethod = "host.session.info"
 
@@ -192,6 +200,58 @@ type ChildSessionRequestParams struct {
 	ActorPath string          `json:"actor_path,omitempty"`
 	Input     json.RawMessage `json:"input,omitempty"`
 }
+
+const (
+	MaxTurnSubmitRequestIDBytes    = 256
+	MaxTurnSubmitContextBlocks     = 16
+	MaxTurnSubmitContextBlockBytes = 64 * 1024
+	MaxTurnSubmitContextTotalBytes = 256 * 1024
+)
+
+// TurnSubmitParams asks the host to admit an ordinary user turn. An empty
+// ThreadID creates a new durable thread in the current runtime workspace.
+// RequestID is opaque plugin-owned correlation data and is never interpreted
+// as an automation/task/run identifier by the host.
+type TurnSubmitParams struct {
+	RequestID     string                   `json:"request_id"`
+	ThreadID      string                   `json:"thread_id,omitempty"`
+	Prompt        string                   `json:"prompt"`
+	ContextBlocks []AgentContinuationBlock `json:"context_blocks,omitempty"`
+}
+
+type TurnSubmitResult struct {
+	State    string `json:"state"`
+	ThreadID string `json:"thread_id"`
+	TurnID   string `json:"turn_id,omitempty"`
+	QueueID  string `json:"queue_id,omitempty"`
+}
+
+const (
+	TurnLifecycleQueued      = "queued"
+	TurnLifecycleRunning     = "running"
+	TurnLifecycleCompleted   = "completed"
+	TurnLifecycleFailed      = "failed"
+	TurnLifecycleInterrupted = "interrupted"
+	TurnLifecycleDiscarded   = "discarded"
+)
+
+// AgentTurnLifecycleInput is delivered only to the plugin that submitted the
+// correlated turn. Initial running/queued state is returned synchronously by
+// host.turn.submit; this event reports later transitions and terminal state.
+type AgentTurnLifecycleInput struct {
+	RequestID    string     `json:"request_id"`
+	State        string     `json:"state"`
+	ThreadID     string     `json:"thread_id"`
+	TurnID       string     `json:"turn_id,omitempty"`
+	QueueID      string     `json:"queue_id,omitempty"`
+	Error        string     `json:"error,omitempty"`
+	StartedAt    *time.Time `json:"started_at,omitempty"`
+	CompletedAt  *time.Time `json:"completed_at,omitempty"`
+	InputTokens  int        `json:"input_tokens,omitempty"`
+	OutputTokens int        `json:"output_tokens,omitempty"`
+}
+
+type AgentTurnLifecycleOutput struct{}
 
 // HostServiceCall is a Plugin → Host RPC call.
 type HostServiceCall struct {
@@ -535,6 +595,8 @@ func ValidateCapabilityDescriptor(c CapabilityDescriptor) error {
 		requiredKind = SeamDecision
 	case CapabilityAgentTurnCompleted:
 		requiredKind = SeamObserve
+	case CapabilityAgentTurnLifecycle:
+		requiredKind = SeamObserve
 	case CapabilityPluginClientRequest:
 		requiredKind = SeamDecision
 	}
@@ -553,7 +615,7 @@ func EffectiveErrorPolicy(c CapabilityDescriptor) ErrorPolicy {
 	if c.ErrorPolicy != "" {
 		return c.ErrorPolicy
 	}
-	if c.ID == CapabilityAgentTurnCompleted {
+	if c.ID == CapabilityAgentTurnCompleted || c.ID == CapabilityAgentTurnLifecycle {
 		return ErrorPolicyIsolate
 	}
 	return ErrorPolicyPropagate
@@ -617,7 +679,7 @@ func ValidateCapabilityNegotiation(result CapabilityInitializeResult, supported 
 			return err
 		}
 		switch capability.ID {
-		case CapabilityAgentRequestTransform, CapabilityAgentSystemPromptSection, CapabilityAgentCompaction, CapabilityAgentContinuation, CapabilityAgentTurnCompleted, CapabilityPluginClientRequest:
+		case CapabilityAgentRequestTransform, CapabilityAgentSystemPromptSection, CapabilityAgentCompaction, CapabilityAgentContinuation, CapabilityAgentTurnCompleted, CapabilityAgentTurnLifecycle, CapabilityPluginClientRequest:
 		default:
 			return fmt.Errorf("capability %s is not supported by this host", capability.ID)
 		}
@@ -663,7 +725,7 @@ func ValidateHostServiceMethod(m HostServiceMethod) error {
 	switch m {
 	case HostServiceStorageGet, HostServiceStorageSet, HostServiceStorageDelete, HostServiceStorageKeys,
 		HostServiceSettingsGet, HostServiceSettingsList,
-		HostServiceChildSessionRequest,
+		HostServiceChildSessionRequest, HostServiceTurnSubmit,
 		HostServiceSessionGetInfo,
 		HostServiceWorkspaceGetRoot, HostServiceWorkspaceList,
 		HostServiceDiagnosticsLog:
@@ -678,7 +740,7 @@ func AllHostServices() []HostServiceMethod {
 	return []HostServiceMethod{
 		HostServiceStorageGet, HostServiceStorageSet, HostServiceStorageDelete, HostServiceStorageKeys,
 		HostServiceSettingsGet, HostServiceSettingsList,
-		HostServiceChildSessionRequest,
+		HostServiceChildSessionRequest, HostServiceTurnSubmit,
 		HostServiceSessionGetInfo,
 		HostServiceWorkspaceGetRoot, HostServiceWorkspaceList,
 		HostServiceDiagnosticsLog,

@@ -20,6 +20,11 @@ import (
 
 const CapabilityProtocolVersion = 2
 
+const (
+	HostServiceTurnSubmit        = "host.turn.submit"
+	CapabilityAgentTurnLifecycle = "agent.turn.lifecycle"
+)
+
 type InitializeParams struct {
 	ProtocolVersion           int      `json:"protocol_version"`
 	CapabilityProtocolVersion int      `json:"capability_protocol_version,omitempty"`
@@ -101,6 +106,40 @@ type CapabilityCall struct {
 	Capability string          `json:"capability"`
 	Input      json.RawMessage `json:"input"`
 	Output     json.RawMessage `json:"output"`
+}
+
+type TurnContextBlock struct {
+	Kind    string `json:"kind"`
+	Title   string `json:"title,omitempty"`
+	Source  string `json:"source,omitempty"`
+	Content string `json:"content"`
+}
+
+type TurnSubmitParams struct {
+	RequestID     string             `json:"request_id"`
+	ThreadID      string             `json:"thread_id,omitempty"`
+	Prompt        string             `json:"prompt"`
+	ContextBlocks []TurnContextBlock `json:"context_blocks,omitempty"`
+}
+
+type TurnSubmitResult struct {
+	State    string `json:"state"`
+	ThreadID string `json:"thread_id"`
+	TurnID   string `json:"turn_id,omitempty"`
+	QueueID  string `json:"queue_id,omitempty"`
+}
+
+type TurnLifecycleInput struct {
+	RequestID    string `json:"request_id"`
+	State        string `json:"state"`
+	ThreadID     string `json:"thread_id"`
+	TurnID       string `json:"turn_id,omitempty"`
+	QueueID      string `json:"queue_id,omitempty"`
+	Error        string `json:"error,omitempty"`
+	StartedAt    string `json:"started_at,omitempty"`
+	CompletedAt  string `json:"completed_at,omitempty"`
+	InputTokens  int    `json:"input_tokens,omitempty"`
+	OutputTokens int    `json:"output_tokens,omitempty"`
 }
 
 type Host interface {

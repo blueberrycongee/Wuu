@@ -114,6 +114,7 @@ type turnRuntimeSnapshot struct {
 	Ultra           bool
 	AutomationRunID string
 	ExecutionRunID  string
+	PluginTurn      *pluginTurnReference
 	RequestContext  []agent.ContextSegment
 	ActiveDocument  *ActiveDocument
 }
@@ -567,11 +568,11 @@ func (s *Server) handleTurnDequeue(req Request) error {
 	if queueID == "" {
 		return s.writeResponse(req.ID, nil, errors.New("queue_id is required"))
 	}
-	removed := s.removeQueuedUserTurn(threadID, queueID)
+	removedTurn, removed := s.removeQueuedUserTurn(threadID, queueID)
 	var held []queuedTurn
 	if !removed {
 		var err error
-		_, held, removed, err = s.removeHeldUserTurn(threadID, queueID)
+		removedTurn, held, removed, err = s.removeHeldUserTurn(threadID, queueID)
 		if err != nil {
 			return s.writeResponse(req.ID, nil, err)
 		}
@@ -580,6 +581,7 @@ func (s *Server) handleTurnDequeue(req Request) error {
 		return err
 	}
 	if removed {
+		s.notifyPluginTurnDiscarded(threadID, removedTurn, "queued turn was removed")
 		s.failQueuedAutomationRuns([]string{queueID}, "queued automation was removed")
 		_ = s.writeNotification(NotificationTurnDequeued, TurnDequeuedNotification{
 			ThreadID: threadID,
@@ -694,7 +696,7 @@ func (s *Server) handleTurnSteer(req Request) error {
 	}
 	steerMsg.ClientID = clientID
 	steerMsg.Steered = true
-	removedQueued := s.removeQueuedUserTurn(params.ThreadID, clientID)
+	removedQueuedTurn, removedQueued := s.removeQueuedUserTurn(params.ThreadID, clientID)
 	th.pendingSteers = append(th.pendingSteers, steerMsg)
 	th.signalSteerWakeLocked()
 	steerDocument := params.ActiveDocument
@@ -708,12 +710,14 @@ func (s *Server) handleTurnSteer(req Request) error {
 	th.applyLatestSteerDocumentOverrideLocked()
 	th.mu.Unlock()
 	if removedQueued {
+		s.notifyPluginTurnDiscarded(params.ThreadID, removedQueuedTurn, "queued turn was converted to steering input")
 		_ = s.writeNotification(NotificationTurnDequeued, TurnDequeuedNotification{
 			ThreadID: params.ThreadID,
 			QueueID:  clientID,
 		})
 	}
 	if isHeld {
+		s.notifyPluginTurnDiscarded(params.ThreadID, removedTurn, "held turn was converted to steering input")
 		s.notifyHeldUserTurns(params.ThreadID, remaining)
 	}
 	return s.writeResponse(req.ID, TurnSteerResult{TurnID: turnID}, nil)
@@ -1399,9 +1403,14 @@ func (s *Server) interruptThreadExecution(threadID, expectedRunID string) (bool,
 	s.queuedTurnMu.Unlock()
 	userQueued := make([]queuedTurn, 0, len(queued))
 	var automationIDs []string
+	var discardedPluginTurns []queuedTurn
 	for _, entry := range queued {
 		if strings.TrimSpace(entry.snapshot.AutomationRunID) != "" {
 			automationIDs = append(automationIDs, entry.id)
+			continue
+		}
+		if entry.snapshot.PluginTurn != nil {
+			discardedPluginTurns = append(discardedPluginTurns, entry)
 			continue
 		}
 		entry.origin = session.HeldUserWorkOriginQueue
@@ -1422,6 +1431,9 @@ func (s *Server) interruptThreadExecution(threadID, expectedRunID string) (bool,
 	control := threadAgentControlLocked(th)
 	th.mu.Unlock()
 	s.failQueuedAutomationRuns(automationIDs, "queued automation was interrupted")
+	for _, entry := range discardedPluginTurns {
+		s.notifyPluginTurnDiscarded(threadID, entry, "queued turn was interrupted")
+	}
 	cancel()
 	// turn/interrupt means "freeze this work", not "leave background workers
 	// running": cancel the whole anonymous-worker tree, clear its queued
@@ -1433,7 +1445,8 @@ func (s *Server) interruptThreadExecution(threadID, expectedRunID string) (bool,
 	if err := s.stopResumeProcessesForThread(threadID, threadRuntime); err != nil {
 		return true, err
 	}
-	s.notifyQueuedTurnsDequeued(threadID, automationIDs)
+	discardedIDs := append(append([]string(nil), automationIDs...), queuedTurnIDs(discardedPluginTurns)...)
+	s.notifyQueuedTurnsDequeued(threadID, discardedIDs)
 	s.notifyHeldUserTurns(threadID, held)
 	return true, nil
 }
@@ -2311,6 +2324,25 @@ func (s *Server) runTurnWithRequestContext(ctx context.Context, th *threadState,
 	if hasRunUpdate {
 		notify(NotificationRunUpdated, RunUpdatedNotification{Run: runUpdate})
 	}
+	if reference := turnRuntime.PluginTurn; reference != nil {
+		lifecycleState := pluginhost.TurnLifecycleCompleted
+		errorText := ""
+		if err != nil {
+			lifecycleState = pluginhost.TurnLifecycleFailed
+			if errors.Is(err, context.Canceled) {
+				lifecycleState = pluginhost.TurnLifecycleInterrupted
+			}
+			errorText = err.Error()
+		}
+		if lifecycleErr := s.notifyPluginTurnLifecycle(context.Background(), reference.PluginID, pluginhost.AgentTurnLifecycleInput{
+			RequestID: reference.RequestID, State: lifecycleState, ThreadID: th.ID,
+			TurnID: turnID, QueueID: reference.QueueID, Error: errorText,
+			StartedAt: &startedAt, CompletedAt: &now,
+			InputTokens: res.InputTokens, OutputTokens: res.OutputTokens,
+		}); lifecycleErr != nil {
+			providers.DebugLogf("notify plugin turn terminal for thread %q turn %q: %v", th.ID, turnID, lifecycleErr)
+		}
+	}
 	if completionClaimFailed {
 		s.scheduleThreadExecutionLeaseRetry(func() {
 			s.replayPendingAgentCompletions(th.ID, threadRuntime)
@@ -2552,20 +2584,22 @@ func (s *Server) enqueueQueuedUserTurn(threadID string, entry queuedTurn) {
 	s.queuedTurnMu.Unlock()
 }
 
-func (s *Server) removeQueuedUserTurn(threadID, queueID string) bool {
+func (s *Server) removeQueuedUserTurn(threadID, queueID string) (queuedTurn, bool) {
 	threadID = strings.TrimSpace(threadID)
 	queueID = strings.TrimSpace(queueID)
 	if threadID == "" || queueID == "" {
-		return false
+		return queuedTurn{}, false
 	}
 	s.queuedTurnMu.Lock()
 	defer s.queuedTurnMu.Unlock()
 	pending := s.pendingQueuedTurns[threadID]
 	next := pending[:0]
-	removed := false
+	var removed queuedTurn
+	found := false
 	for _, entry := range pending {
-		if !removed && entry.id == queueID {
-			removed = true
+		if !found && entry.id == queueID {
+			removed = entry
+			found = true
 			continue
 		}
 		next = append(next, entry)
@@ -2575,7 +2609,7 @@ func (s *Server) removeQueuedUserTurn(threadID, queueID string) bool {
 	} else {
 		s.pendingQueuedTurns[threadID] = next
 	}
-	return removed
+	return removed, found
 }
 
 func (s *Server) replaceQueuedUserTurn(threadID, queueID string, msg providers.ChatMessage) (queuedTurn, bool) {
@@ -2640,14 +2674,21 @@ func (s *Server) drainQueuedTurns(threadID string) {
 		return
 	}
 	if s.closed.Load() {
-		s.discardQueuedUserTurns(threadID)
+		entries := s.discardQueuedTurns(threadID)
+		for _, entry := range entries {
+			s.notifyPluginTurnDiscarded(threadID, entry, "app-server closed before queued turn started")
+		}
 		s.clearQueuedTurnDrain(threadID)
 		return
 	}
 	th := s.thread(threadID)
 	if th == nil {
-		discardedQueueIDs := s.discardQueuedUserTurns(threadID)
+		discardedEntries := s.discardQueuedTurns(threadID)
+		discardedQueueIDs := queuedTurnIDs(discardedEntries)
 		s.failQueuedAutomationRuns(discardedQueueIDs, "automation thread no longer exists")
+		for _, entry := range discardedEntries {
+			s.notifyPluginTurnDiscarded(threadID, entry, "thread no longer exists")
+		}
 		s.clearQueuedTurnDrain(threadID)
 		return
 	}
@@ -2665,6 +2706,14 @@ func (s *Server) drainQueuedTurns(threadID string) {
 	executionBusy := errors.Is(err, errThreadExecutionBusy)
 	if err != nil && !executionBusy {
 		providers.DebugLogf("start queued turn for thread %q: %v", threadID, err)
+		if reference := entry.snapshot.PluginTurn; reference != nil {
+			if lifecycleErr := s.notifyPluginTurnLifecycle(context.Background(), reference.PluginID, pluginhost.AgentTurnLifecycleInput{
+				RequestID: reference.RequestID, State: pluginhost.TurnLifecycleFailed,
+				ThreadID: threadID, QueueID: reference.QueueID, Error: err.Error(),
+			}); lifecycleErr != nil {
+				providers.DebugLogf("notify queued plugin turn failure for thread %q: %v", threadID, lifecycleErr)
+			}
+		}
 		if runID := strings.TrimSpace(entry.snapshot.AutomationRunID); runID != "" && s.rt != nil && s.rt.AutomationManager != nil {
 			if completeErr := s.rt.AutomationManager.CompleteRun(runID, threadID, "", err); completeErr != nil {
 				providers.DebugLogf("fail queued automation run %q: %v", runID, completeErr)
@@ -2925,6 +2974,7 @@ func (s *Server) startThreadUserTurnWithAdmission(ctx context.Context, th *threa
 	turnRuntime.Ultra = snapshot.Ultra
 	turnRuntime.AutomationRunID = snapshot.AutomationRunID
 	turnRuntime.ExecutionRunID = snapshot.ExecutionRunID
+	turnRuntime.PluginTurn = clonePluginTurnReference(snapshot.PluginTurn)
 	th.currentExecutionRunID = turnRuntime.ExecutionRunID
 	turnRuntime.RequestContext = cloneContextSegments(snapshot.RequestContext)
 	th.mu.Unlock()
@@ -3021,6 +3071,15 @@ func (s *Server) startQueuedTurn(ctx context.Context, threadID string, entry que
 		return false, errors.Join(err, s.abortStartedThreadTurnDurably(th, started, err))
 	}
 	launch.Commit()
+	if reference := started.runtime.PluginTurn; reference != nil {
+		if lifecycleErr := s.notifyPluginTurnLifecycle(context.Background(), reference.PluginID, pluginhost.AgentTurnLifecycleInput{
+			RequestID: reference.RequestID, State: pluginhost.TurnLifecycleRunning,
+			ThreadID: threadID, TurnID: started.turnID, QueueID: reference.QueueID,
+			StartedAt: &started.admittedAt,
+		}); lifecycleErr != nil {
+			providers.DebugLogf("notify plugin turn running for thread %q: %v", threadID, lifecycleErr)
+		}
+	}
 	return true, nil
 }
 
@@ -3123,15 +3182,19 @@ func (s *Server) hasQueuedUserWork(threadID string) bool {
 }
 
 func (s *Server) discardQueuedUserTurns(threadID string) []string {
+	return queuedTurnIDs(s.discardQueuedTurns(threadID))
+}
+
+func (s *Server) discardQueuedTurns(threadID string) []queuedTurn {
 	threadID = strings.TrimSpace(threadID)
 	if threadID == "" {
 		return nil
 	}
 	s.queuedTurnMu.Lock()
 	defer s.queuedTurnMu.Unlock()
-	queueIDs := queuedTurnIDs(s.pendingQueuedTurns[threadID])
+	entries := append([]queuedTurn(nil), s.pendingQueuedTurns[threadID]...)
 	delete(s.pendingQueuedTurns, threadID)
-	return queueIDs
+	return entries
 }
 
 func (s *Server) discardQueuedUserWork(threadID string) []string {

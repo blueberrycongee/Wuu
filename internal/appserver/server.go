@@ -205,6 +205,7 @@ type Server struct {
 
 	pluginContinuationMu       sync.Mutex
 	drainingPluginContinuation map[string]bool
+	pluginTurnUnbind           func()
 
 	rewriteChatHistoryForTest           func(string, string, []providers.ChatMessage) error
 	afterLifecycleHistoryAppendForTest  func(threadID string)
@@ -380,9 +381,16 @@ func NewWithCredentialStore(rt *runtime.Session, out io.Writer, store credential
 			s.notifyActivityEvent(event)
 		})
 	}
+	if rt != nil && rt.PluginTurnRouter != nil {
+		s.pluginTurnUnbind = rt.PluginTurnRouter.Bind(s.submitPluginTurn)
+	}
 	s.startInferenceJournalMaintenance()
 	if rt != nil && rt.AutomationManager != nil {
 		if err := rt.AutomationManager.Start(s); err != nil {
+			if s.pluginTurnUnbind != nil {
+				s.pluginTurnUnbind()
+				s.pluginTurnUnbind = nil
+			}
 			s.startupErr = fmt.Errorf("start automation manager: %w", err)
 			return s
 		}
@@ -564,6 +572,10 @@ func (s *Server) Close() {
 	}
 	s.closeOnce.Do(func() {
 		s.closed.Store(true)
+		if s.pluginTurnUnbind != nil {
+			s.pluginTurnUnbind()
+			s.pluginTurnUnbind = nil
+		}
 		if s.rt != nil && s.rt.AutomationManager != nil {
 			s.rt.AutomationManager.Stop()
 		}
@@ -630,9 +642,18 @@ func (s *Server) Close() {
 		s.failPendingClientCalls()
 
 		s.queuedTurnMu.Lock()
+		queuedOnClose := make(map[string][]queuedTurn, len(s.pendingQueuedTurns))
+		for threadID, entries := range s.pendingQueuedTurns {
+			queuedOnClose[threadID] = append([]queuedTurn(nil), entries...)
+		}
 		clear(s.pendingQueuedTurns)
 		clear(s.drainingQueuedTurns)
 		s.queuedTurnMu.Unlock()
+		for threadID, entries := range queuedOnClose {
+			for _, entry := range entries {
+				s.notifyPluginTurnDiscarded(threadID, entry, "app-server closed before queued turn started")
+			}
+		}
 		s.agentCompletionMu.Lock()
 		clear(s.pendingAgentCompletionTurns)
 		clear(s.drainingAgentCompletionTurns)

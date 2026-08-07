@@ -201,7 +201,7 @@ func TestStartPluginHostPreservesRuntimeFailure(t *testing.T) {
 			Command:  "/definitely/not/a/wuu-plugin",
 		}},
 		Root: t.TempDir(),
-	}}, t.TempDir(), t.TempDir())
+	}}, t.TempDir(), t.TempDir(), nil)
 	statuses := host.Statuses()
 	if len(statuses) != 1 || statuses[0].State != pluginhost.StateFailed || !strings.Contains(statuses[0].Error, "start plugin") {
 		t.Fatalf("statuses = %+v", statuses)
