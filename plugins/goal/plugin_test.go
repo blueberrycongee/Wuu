@@ -11,7 +11,10 @@ import (
 	pluginapi "github.com/blueberrycongee/wuu/packages/plugin-go"
 )
 
-type memoryHost struct{ values map[string]string }
+type memoryHost struct {
+	values map[string]string
+	sends  []pluginapi.SessionSendParams
+}
 
 func (h *memoryHost) InitializeParams() pluginapi.InitializeParams {
 	return pluginapi.InitializeParams{PluginID: "goal"}
@@ -40,12 +43,20 @@ func (h *memoryHost) CallHost(_ context.Context, method string, params, result a
 	case "host.storage.delete":
 		delete(h.values, input.Key)
 		return nil
+	case pluginapi.HostServiceSessionSend:
+		var send pluginapi.SessionSendParams
+		if err := json.Unmarshal(raw, &send); err != nil {
+			return err
+		}
+		h.sends = append(h.sends, send)
+		response, _ := json.Marshal(pluginapi.SessionSendResult{State: "queued", SessionID: send.SessionID, QueueID: "queue-1"})
+		return json.Unmarshal(response, result)
 	default:
 		return fmt.Errorf("unexpected method %s", method)
 	}
 }
 
-func TestGoalPluginOwnsToolsStorageAndContinuation(t *testing.T) {
+func TestGoalPluginOwnsToolsStorageAndGeneratedQueryContinuation(t *testing.T) {
 	host := &memoryHost{values: map[string]string{}}
 	handler := Handler()
 	created, err := handler.ExecuteTool(context.Background(), host, pluginapi.ToolCall{
@@ -54,24 +65,27 @@ func TestGoalPluginOwnsToolsStorageAndContinuation(t *testing.T) {
 	if err != nil || len(created.Content) != 1 {
 		t.Fatalf("create = %+v, err = %v", created, err)
 	}
-	prepared, err := handler.InvokeCapability(context.Background(), host, pluginapi.CapabilityCall{
-		Capability: capabilityContinuation,
-		Input:      json.RawMessage(`{"thread_id":"thread-1","phase":"prepare"}`),
+	now := time.Now().UTC()
+	_, err = handler.InvokeCapability(context.Background(), host, pluginapi.CapabilityCall{
+		Capability: capabilityTurnCompleted,
+		Input: json.RawMessage(fmt.Sprintf(`{"thread_id":"thread-1","turn_id":"turn-1","started_at":%q,"completed_at":%q,"succeeded":true}`,
+			now.Add(-time.Second).Format(time.RFC3339Nano), now.Format(time.RFC3339Nano))),
 	})
-	if err != nil || !json.Valid(prepared) || !contains(string(prepared), `"continue":true`, "ship the plugin", `"text":"Goal 持续推进中"`, `"name":"wuu_plugin_continuation"`) {
-		t.Fatalf("prepare = %s, err = %v", prepared, err)
+	if err != nil || len(host.sends) != 1 || host.sends[0].SessionID != "thread-1" || host.sends[0].Input.Prompt == "" || host.sends[0].Presentation == nil || host.sends[0].Presentation.Text != "Goal 持续推进中" {
+		t.Fatalf("generated continuation = %+v, err = %v", host.sends, err)
 	}
 	if _, err := handler.ExecuteTool(context.Background(), host, pluginapi.ToolCall{
 		ToolID: "update_goal", ThreadID: "thread-1", Arguments: json.RawMessage(`{"status":"complete"}`),
 	}); err != nil {
 		t.Fatal(err)
 	}
-	probe, err := handler.InvokeCapability(context.Background(), host, pluginapi.CapabilityCall{
-		Capability: capabilityContinuation,
-		Input:      json.RawMessage(`{"thread_id":"thread-1","phase":"probe"}`),
+	_, err = handler.InvokeCapability(context.Background(), host, pluginapi.CapabilityCall{
+		Capability: capabilityTurnCompleted,
+		Input: json.RawMessage(fmt.Sprintf(`{"thread_id":"thread-1","turn_id":"turn-2","started_at":%q,"completed_at":%q,"succeeded":true}`,
+			now.Format(time.RFC3339Nano), now.Add(time.Second).Format(time.RFC3339Nano))),
 	})
-	if err != nil || string(probe) != `{"continue":false}` {
-		t.Fatalf("completed probe = %s, err = %v", probe, err)
+	if err != nil || len(host.sends) != 1 {
+		t.Fatalf("completed goal sent another continuation: %+v, err = %v", host.sends, err)
 	}
 }
 

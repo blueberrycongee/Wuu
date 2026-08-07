@@ -47,9 +47,7 @@ func TestPluginSettingsValidateOwnershipTypeScopeAndGeneration(t *testing.T) {
 
 func TestPluginDiagnosticsExposeIsolatedCapabilityFailures(t *testing.T) {
 	srv, item, out := newPluginStateTestServer(t)
-	broken := &continuationTestRuntime{
-		id: item.ID, capability: pluginhost.CapabilityAgentTurnCompleted, invokeErr: errors.New("observer boom"),
-	}
+	broken := &isolatedFailureClient{id: item.ID, invokeErr: errors.New("observer boom")}
 	srv.rt.PluginHost = pluginhost.New(broken)
 	if err := srv.notifyPluginTurnCompleted(context.Background(), pluginhost.AgentTurnCompletedInput{}); err != nil {
 		t.Fatal(err)
@@ -61,6 +59,28 @@ func TestPluginDiagnosticsExposeIsolatedCapabilityFailures(t *testing.T) {
 	if result.ID != item.SubjectID || len(result.Diagnostics) != 1 || result.Diagnostics[0].Contribution != pluginhost.CapabilityAgentTurnCompleted || !strings.Contains(result.Diagnostics[0].Message, "observer boom") {
 		t.Fatalf("diagnostics result = %+v", result)
 	}
+}
+
+type isolatedFailureClient struct {
+	id        string
+	invokeErr error
+}
+
+func (c *isolatedFailureClient) ID() string               { return c.id }
+func (c *isolatedFailureClient) Hooks() []pluginhost.Hook { return nil }
+func (c *isolatedFailureClient) Status() pluginhost.Status {
+	return pluginhost.Status{ID: c.id, State: pluginhost.StateActive}
+}
+func (c *isolatedFailureClient) Invoke(context.Context, pluginhost.InvokeParams) (pluginhost.InvokeResult, error) {
+	return pluginhost.InvokeResult{}, nil
+}
+func (c *isolatedFailureClient) Close(context.Context) error { return nil }
+func (c *isolatedFailureClient) ProtocolVersion() int        { return pluginhost.CapabilityProtocolVersion }
+func (c *isolatedFailureClient) Capabilities() []pluginhost.CapabilityDescriptor {
+	return []pluginhost.CapabilityDescriptor{{ID: pluginhost.CapabilityAgentTurnCompleted, Kind: pluginhost.SeamObserve, ErrorPolicy: pluginhost.ErrorPolicyIsolate, Version: 1}}
+}
+func (c *isolatedFailureClient) InvokeCapability(context.Context, pluginhost.CapabilityInvokeParams) (pluginhost.CapabilityInvokeResult, error) {
+	return pluginhost.CapabilityInvokeResult{}, c.invokeErr
 }
 
 func TestPluginStorageIsNamespacedAndScopeIsExplicit(t *testing.T) {

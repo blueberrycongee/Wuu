@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/blueberrycongee/wuu/internal/execution"
-	"github.com/blueberrycongee/wuu/internal/pluginhost"
 	"github.com/blueberrycongee/wuu/internal/providers"
 	"github.com/blueberrycongee/wuu/internal/runtime"
 	"github.com/blueberrycongee/wuu/internal/structuredoutput"
@@ -381,14 +380,7 @@ func (s *Server) settleExecutionRunTurn(runID, turnID, tracePath string, turn Tu
 }
 
 func (s *Server) executionRunAwaitsContinuation(threadID string, threadRuntime *runtime.ThreadRuntime) (bool, error) {
-	if threadRuntimeAwaitsAutoContinuation(threadID, threadRuntime) {
-		return true, nil
-	}
-	continuing, _, _, err := s.pluginContinuation(context.Background(), threadID, pluginhost.ContinuationPhaseProbe)
-	if err != nil {
-		return false, fmt.Errorf("inspect execution run plugin continuation for thread %q: %w", threadID, err)
-	}
-	return continuing, nil
+	return threadRuntimeAwaitsAutoContinuation(threadID, threadRuntime), nil
 }
 
 func (s *Server) executionRunSuccessfulTurnOutcome(runID, threadID string, threadRuntime *runtime.ThreadRuntime, content string) (awaitingContinuation bool, retryPrompt string, validationErr error) {

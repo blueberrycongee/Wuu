@@ -1338,16 +1338,21 @@ func chatMessageItem(id string, msg providers.ChatMessage) ThreadItem {
 	switch msg.Role {
 	case "user":
 		return ThreadItem{
-			ID:       id,
-			Seq:      msg.Seq,
-			SourceID: msg.ClientID,
-			Type:     ThreadItemUserMessage,
-			Status:   ThreadItemStatusCompleted,
-			Role:     "user",
-			Text:     chatMessageDisplayContent(msg),
-			Images:   threadItemImages(msg.Images),
-			Files:    threadItemFiles(msg.Files),
-			Name:     strings.TrimSpace(msg.Name),
+			ID:               id,
+			Seq:              msg.Seq,
+			SourceID:         msg.ClientID,
+			Type:             ThreadItemUserMessage,
+			Status:           ThreadItemStatusCompleted,
+			Role:             "user",
+			Text:             chatMessageDisplayContent(msg),
+			Images:           threadItemImages(msg.Images),
+			Files:            threadItemFiles(msg.Files),
+			Name:             strings.TrimSpace(msg.Name),
+			ReadOnly:         msg.ReadOnly,
+			Origin:           strings.TrimSpace(msg.Origin),
+			OriginID:         strings.TrimSpace(msg.OriginID),
+			Cause:            strings.TrimSpace(msg.Cause),
+			PresentationKind: strings.TrimSpace(msg.PresentationKind),
 		}
 	case "assistant":
 		if strings.TrimSpace(msg.Content) != "" {
@@ -1397,6 +1402,11 @@ func chatMessageFromPersistedMessage(rec persistedMessage) providers.ChatMessage
 		ClientID:             rec.ClientID,
 		Content:              rec.Content,
 		DisplayContent:       rec.DisplayContent,
+		Origin:               rec.Origin,
+		OriginID:             rec.OriginID,
+		Cause:                rec.Cause,
+		PresentationKind:     rec.PresentationKind,
+		ReadOnly:             rec.ReadOnly,
 		Phase:                providers.NormalizeMessagePhase(rec.Phase),
 		Hidden:               rec.Hidden,
 		ProviderItemID:       rec.ProviderItemID,

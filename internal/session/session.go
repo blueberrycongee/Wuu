@@ -34,19 +34,24 @@ var (
 
 // Session represents one conversation session.
 type Session struct {
-	ID             string    `json:"id"`
-	CreatedAt      time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at,omitempty"`
-	Title          string    `json:"title,omitempty"`
-	Summary        string    `json:"summary,omitempty"`
-	Entries        int       `json:"entries"`
-	CWD            string    `json:"cwd,omitempty"`
-	Source         string    `json:"source,omitempty"`
-	Provider       string    `json:"provider,omitempty"`
-	Model          string    `json:"model,omitempty"`
-	Variant        string    `json:"variant,omitempty"`
-	Effort         string    `json:"effort,omitempty"`
-	PermissionMode string    `json:"permission_mode,omitempty"`
+	ID                string    `json:"id"`
+	CreatedAt         time.Time `json:"created_at"`
+	UpdatedAt         time.Time `json:"updated_at,omitempty"`
+	Title             string    `json:"title,omitempty"`
+	Summary           string    `json:"summary,omitempty"`
+	Entries           int       `json:"entries"`
+	CWD               string    `json:"cwd,omitempty"`
+	Source            string    `json:"source,omitempty"`
+	Owner             string    `json:"owner,omitempty"`
+	Visibility        string    `json:"visibility,omitempty"`
+	ParentID          string    `json:"parent_id,omitempty"`
+	ContextSource     string    `json:"context_source,omitempty"`
+	CreationRequestID string    `json:"creation_request_id,omitempty"`
+	Provider          string    `json:"provider,omitempty"`
+	Model             string    `json:"model,omitempty"`
+	Variant           string    `json:"variant,omitempty"`
+	Effort            string    `json:"effort,omitempty"`
+	PermissionMode    string    `json:"permission_mode,omitempty"`
 	// WorkspaceID is the stable, location-independent identity of the workspace
 	// this session belongs to (the desktop's registered-project id). Sessions
 	// of a workspace with an id are listed by that id, so they follow the
@@ -75,6 +80,14 @@ type WorktreeInfo struct {
 	BaseRepo string
 }
 
+type ManagedMetadata struct {
+	Owner             string
+	Visibility        string
+	ParentID          string
+	ContextSource     string
+	CreationRequestID string
+}
+
 // HistoryRecord is the durable session message shape. App-server remains
 // responsible for provider-specific ChatMessage conversion.
 type HistoryRecord struct {
@@ -86,6 +99,11 @@ type HistoryRecord struct {
 	Role                string          `json:"role"`
 	Content             string          `json:"content"`
 	DisplayContent      string          `json:"display_content,omitempty"`
+	Origin              string          `json:"origin,omitempty"`
+	OriginID            string          `json:"origin_id,omitempty"`
+	Cause               string          `json:"cause,omitempty"`
+	PresentationKind    string          `json:"presentation_kind,omitempty"`
+	ReadOnly            bool            `json:"read_only,omitempty"`
 	Phase               string          `json:"phase,omitempty"`
 	ProviderItemID      string          `json:"provider_item_id,omitempty"`
 	ProviderItemModel   string          `json:"provider_item_model,omitempty"`
@@ -154,24 +172,32 @@ func Create(sessDir string, id ...string) (*Session, error) {
 // The workspace identity is bound separately via SetWorkspaceID, so this
 // signature stays stable.
 func CreateWithMetadata(sessDir, id, cwd string) (*Session, error) {
-	return createWithMetadata(sessDir, id, cwd, ForkMetadata{})
+	return createWithMetadata(sessDir, id, cwd, ForkMetadata{}, ManagedMetadata{})
+}
+
+func CreateManagedWithMetadata(sessDir, id, cwd string, managed ManagedMetadata) (*Session, error) {
+	return createWithMetadata(sessDir, id, cwd, ForkMetadata{}, managed)
 }
 
 // CreateForkWithMetadata initializes a forked session with source metadata.
 func CreateForkWithMetadata(sessDir, id, cwd string, fork ForkMetadata) (*Session, error) {
-	return createWithMetadata(sessDir, id, cwd, fork)
+	return createWithMetadata(sessDir, id, cwd, fork, ManagedMetadata{})
+}
+
+func CreateManagedForkWithMetadata(sessDir, id, cwd string, fork ForkMetadata, managed ManagedMetadata) (*Session, error) {
+	return createWithMetadata(sessDir, id, cwd, fork, managed)
 }
 
 // CreateWithWorktree initializes a forked session bound to an isolated git worktree.
 func CreateWithWorktree(sessDir, id, cwd string, fork ForkMetadata, worktree WorktreeInfo) (*Session, error) {
-	return createWithMetadataAndWorktree(sessDir, id, cwd, fork, worktree)
+	return createWithMetadataAndWorktree(sessDir, id, cwd, fork, worktree, ManagedMetadata{})
 }
 
-func createWithMetadata(sessDir, id, cwd string, fork ForkMetadata) (*Session, error) {
-	return createWithMetadataAndWorktree(sessDir, id, cwd, fork, WorktreeInfo{})
+func createWithMetadata(sessDir, id, cwd string, fork ForkMetadata, managed ManagedMetadata) (*Session, error) {
+	return createWithMetadataAndWorktree(sessDir, id, cwd, fork, WorktreeInfo{}, managed)
 }
 
-func createWithMetadataAndWorktree(sessDir, id, cwd string, fork ForkMetadata, worktree WorktreeInfo) (*Session, error) {
+func createWithMetadataAndWorktree(sessDir, id, cwd string, fork ForkMetadata, worktree WorktreeInfo, managed ManagedMetadata) (*Session, error) {
 	db, err := openStore(sessDir)
 	if err != nil {
 		return nil, err
@@ -195,6 +221,9 @@ func createWithMetadataAndWorktree(sessDir, id, cwd string, fork ForkMetadata, w
 		WorktreePath:     normalizeCWD(worktree.Path),
 		WorktreeBaseHEAD: strings.TrimSpace(worktree.BaseHEAD),
 		WorktreeBaseRepo: normalizeCWD(worktree.BaseRepo),
+		Owner:            strings.TrimSpace(managed.Owner), Visibility: strings.TrimSpace(managed.Visibility),
+		ParentID: strings.TrimSpace(managed.ParentID), ContextSource: strings.TrimSpace(managed.ContextSource),
+		CreationRequestID: strings.TrimSpace(managed.CreationRequestID),
 	}
 	storeWriteMu.Lock()
 	defer storeWriteMu.Unlock()
@@ -217,7 +246,7 @@ SELECT id, created_at, updated_at, title, summary, entries, cwd,
        forked_from_id, forked_from_turn_id, forked_from_item_id,
        pinned_at, archived_at,
        worktree_path, worktree_base_head, worktree_base_repo,
-       workspace_id, source,
+       workspace_id, source, owner, visibility, parent_id, context_source, creation_request_id,
 	       provider, model, variant, effort, permission_mode
 FROM sessions`)
 	if err != nil {
@@ -301,6 +330,39 @@ func Find(sessDir, id string) (Session, bool, error) {
 	}
 	defer db.Close()
 	return findSessionDB(db, id)
+}
+
+// FindManagedByRequest returns the session created by one owner for an opaque
+// creation request. The pair is unique, making session.create idempotent
+// across runtime restarts and concurrent retries.
+func FindManagedByRequest(sessDir, owner, requestID string) (Session, bool, error) {
+	owner = strings.TrimSpace(owner)
+	requestID = strings.TrimSpace(requestID)
+	if owner == "" || requestID == "" {
+		return Session{}, false, nil
+	}
+	db, err := openStore(sessDir)
+	if err != nil {
+		return Session{}, false, err
+	}
+	defer db.Close()
+	row := db.QueryRow(`
+SELECT id, created_at, updated_at, title, summary, entries, cwd,
+       forked_from_id, forked_from_turn_id, forked_from_item_id,
+       pinned_at, archived_at,
+       worktree_path, worktree_base_head, worktree_base_repo,
+       workspace_id, source, owner, visibility, parent_id, context_source, creation_request_id,
+       provider, model, variant, effort, permission_mode
+FROM sessions
+WHERE owner = ? AND creation_request_id = ?`, owner, requestID)
+	sess, err := scanSession(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Session{}, false, nil
+	}
+	if err != nil {
+		return Session{}, false, fmt.Errorf("find managed session: %w", err)
+	}
+	return sess, true, nil
 }
 
 // UpdateIndex updates the entries count and summary for a session.
@@ -826,7 +888,12 @@ func migrateSchema(db *sql.DB) error {
 			archived_at TEXT,
 			worktree_path TEXT NOT NULL DEFAULT '',
 			worktree_base_head TEXT NOT NULL DEFAULT '',
-			worktree_base_repo TEXT NOT NULL DEFAULT ''
+			worktree_base_repo TEXT NOT NULL DEFAULT '',
+			owner TEXT NOT NULL DEFAULT '',
+			visibility TEXT NOT NULL DEFAULT '',
+			parent_id TEXT NOT NULL DEFAULT '',
+			context_source TEXT NOT NULL DEFAULT '',
+			creation_request_id TEXT NOT NULL DEFAULT ''
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_sessions_cwd ON sessions(cwd)`,
 		`CREATE INDEX IF NOT EXISTS idx_sessions_updated ON sessions(updated_at, id)`,
@@ -836,6 +903,11 @@ func migrateSchema(db *sql.DB) error {
 				role TEXT NOT NULL,
 				content TEXT NOT NULL DEFAULT '',
 				display_content TEXT NOT NULL DEFAULT '',
+				origin TEXT NOT NULL DEFAULT '',
+				origin_id TEXT NOT NULL DEFAULT '',
+				cause TEXT NOT NULL DEFAULT '',
+				presentation_kind TEXT NOT NULL DEFAULT '',
+				read_only INTEGER NOT NULL DEFAULT 0,
 				phase TEXT NOT NULL DEFAULT '',
 				provider_item_id TEXT NOT NULL DEFAULT '',
 				provider_item_model TEXT NOT NULL DEFAULT '',
@@ -1218,6 +1290,21 @@ WHERE workflow_id = ''`); err != nil {
 	if err := addColumnIfMissing(db, "session_messages", "display_content", "TEXT NOT NULL DEFAULT ''"); err != nil {
 		return err
 	}
+	if err := addColumnIfMissing(db, "session_messages", "origin", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+	if err := addColumnIfMissing(db, "session_messages", "origin_id", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+	if err := addColumnIfMissing(db, "session_messages", "cause", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+	if err := addColumnIfMissing(db, "session_messages", "presentation_kind", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+	if err := addColumnIfMissing(db, "session_messages", "read_only", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return err
+	}
 	if err := addColumnIfMissing(db, "session_messages", "provider_item_id", "TEXT NOT NULL DEFAULT ''"); err != nil {
 		return err
 	}
@@ -1277,6 +1364,14 @@ WHERE workflow_id = ''`); err != nil {
 	}
 	if err := addColumnIfMissing(db, "sessions", "source", "TEXT NOT NULL DEFAULT ''"); err != nil {
 		return err
+	}
+	for _, column := range []string{"owner", "visibility", "parent_id", "context_source", "creation_request_id"} {
+		if err := addColumnIfMissing(db, "sessions", column, "TEXT NOT NULL DEFAULT ''"); err != nil {
+			return err
+		}
+	}
+	if _, err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_sessions_managed_request ON sessions(owner, creation_request_id) WHERE owner <> '' AND creation_request_id <> ''`); err != nil {
+		return fmt.Errorf("migrate managed session request index: %w", err)
 	}
 	if err := addColumnIfMissing(db, "sessions", "provider", "TEXT NOT NULL DEFAULT ''"); err != nil {
 		return err
@@ -1343,9 +1438,9 @@ func insertSessionSQL() string {
 		id, created_at, updated_at, title, summary, entries, cwd,
 		forked_from_id, forked_from_turn_id, forked_from_item_id,
 		pinned_at, archived_at, worktree_path, worktree_base_head, worktree_base_repo,
-		workspace_id, source,
+		workspace_id, source, owner, visibility, parent_id, context_source, creation_request_id,
 		provider, model, variant, effort, permission_mode
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 }
 
 func updateSessionTx(tx *sql.Tx, sess Session) error {
@@ -1354,7 +1449,7 @@ UPDATE sessions
 SET created_at = ?, updated_at = ?, title = ?, summary = ?, entries = ?, cwd = ?,
     forked_from_id = ?, forked_from_turn_id = ?, forked_from_item_id = ?,
     pinned_at = ?, archived_at = ?, worktree_path = ?, worktree_base_head = ?, worktree_base_repo = ?,
-    workspace_id = ?, source = ?,
+    workspace_id = ?, source = ?, owner = ?, visibility = ?, parent_id = ?, context_source = ?, creation_request_id = ?,
 	provider = ?, model = ?, variant = ?, effort = ?, permission_mode = ?
 WHERE id = ?`,
 		timeText(sess.CreatedAt), timeText(sess.UpdatedAt), sess.Title, sess.Summary, sess.Entries, normalizeCWD(sess.CWD),
@@ -1362,6 +1457,7 @@ WHERE id = ?`,
 		nullableTimeText(sess.PinnedAt), nullableTimeText(sess.ArchivedAt),
 		normalizeCWD(sess.WorktreePath), sess.WorktreeBaseHEAD, normalizeCWD(sess.WorktreeBaseRepo),
 		strings.TrimSpace(sess.WorkspaceID), strings.TrimSpace(sess.Source),
+		strings.TrimSpace(sess.Owner), strings.TrimSpace(sess.Visibility), strings.TrimSpace(sess.ParentID), strings.TrimSpace(sess.ContextSource), strings.TrimSpace(sess.CreationRequestID),
 		strings.TrimSpace(sess.Provider), strings.TrimSpace(sess.Model), strings.TrimSpace(sess.Variant),
 		strings.TrimSpace(sess.Effort), strings.TrimSpace(sess.PermissionMode),
 		sess.ID,
@@ -1391,6 +1487,11 @@ func sessionArgs(sess Session) []any {
 		normalizeCWD(sess.WorktreeBaseRepo),
 		strings.TrimSpace(sess.WorkspaceID),
 		strings.TrimSpace(sess.Source),
+		strings.TrimSpace(sess.Owner),
+		strings.TrimSpace(sess.Visibility),
+		strings.TrimSpace(sess.ParentID),
+		strings.TrimSpace(sess.ContextSource),
+		strings.TrimSpace(sess.CreationRequestID),
 		strings.TrimSpace(sess.Provider),
 		strings.TrimSpace(sess.Model),
 		strings.TrimSpace(sess.Variant),
@@ -1405,7 +1506,7 @@ SELECT id, created_at, updated_at, title, summary, entries, cwd,
        forked_from_id, forked_from_turn_id, forked_from_item_id,
        pinned_at, archived_at,
        worktree_path, worktree_base_head, worktree_base_repo,
-       workspace_id, source,
+       workspace_id, source, owner, visibility, parent_id, context_source, creation_request_id,
 	       provider, model, variant, effort, permission_mode
 FROM sessions
 WHERE id = ?`, id)
@@ -1418,7 +1519,7 @@ SELECT id, created_at, updated_at, title, summary, entries, cwd,
        forked_from_id, forked_from_turn_id, forked_from_item_id,
        pinned_at, archived_at,
        worktree_path, worktree_base_head, worktree_base_repo,
-       workspace_id, source,
+       workspace_id, source, owner, visibility, parent_id, context_source, creation_request_id,
 	       provider, model, variant, effort, permission_mode
 FROM sessions
 WHERE id = ?`, id)
@@ -1449,7 +1550,7 @@ func scanSession(scanner interface {
 		&s.ForkedFromID, &s.ForkedFromTurnID, &s.ForkedFromItemID,
 		&pinnedAt, &archivedAt,
 		&s.WorktreePath, &s.WorktreeBaseHEAD, &s.WorktreeBaseRepo,
-		&s.WorkspaceID, &s.Source,
+		&s.WorkspaceID, &s.Source, &s.Owner, &s.Visibility, &s.ParentID, &s.ContextSource, &s.CreationRequestID,
 		&s.Provider, &s.Model, &s.Variant, &s.Effort, &s.PermissionMode,
 	); err != nil {
 		return Session{}, err
@@ -1502,16 +1603,18 @@ func appendHistoryRecordTx(tx *sql.Tx, id string, rec HistoryRecord) (int, error
 func insertHistoryRecordTx(tx *sql.Tx, id string, seq int, rec HistoryRecord) error {
 	_, err := tx.Exec(`
 			INSERT INTO session_messages (
-				session_id, seq, role, content, display_content, phase, provider_item_id, provider_item_model, client_id, hidden, steered, reasoning_content,
+				session_id, seq, role, content, display_content, origin, origin_id, cause, presentation_kind, read_only, phase, provider_item_id, provider_item_model, client_id, hidden, steered, reasoning_content,
 				reasoning_blocks_json, images_json, files_json, tool_calls_json, discovered_tools_json,
 				tool_call_id, tool_invocation_id, tool_result_kind, tool_result_json, finish_reason, stop_reason, truncated, name, at, input_tokens, output_tokens, context_tokens, cache_creation_tokens, cache_read_tokens,
 				provider, model
 			) VALUES (
-				?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+				?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
 				?, ?, ?, ?, ?,
 				?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 			)`,
-		id, seq, strings.ToLower(strings.TrimSpace(rec.Role)), rec.Content, rec.DisplayContent, strings.TrimSpace(rec.Phase), strings.TrimSpace(rec.ProviderItemID), strings.TrimSpace(rec.ProviderItemModel), rec.ClientID, boolInt(rec.Hidden), boolInt(rec.Steered), rec.ReasoningContent,
+		id, seq, strings.ToLower(strings.TrimSpace(rec.Role)), rec.Content, rec.DisplayContent,
+		strings.TrimSpace(rec.Origin), strings.TrimSpace(rec.OriginID), strings.TrimSpace(rec.Cause), strings.TrimSpace(rec.PresentationKind), boolInt(rec.ReadOnly),
+		strings.TrimSpace(rec.Phase), strings.TrimSpace(rec.ProviderItemID), strings.TrimSpace(rec.ProviderItemModel), rec.ClientID, boolInt(rec.Hidden), boolInt(rec.Steered), rec.ReasoningContent,
 		rawJSONText(rec.ReasoningBlocks), rawJSONText(rec.Images), rawJSONText(rec.Files), rawJSONText(rec.ToolCalls), rawJSONText(rec.DiscoveredTools),
 		rec.ToolCallID, rec.ToolInvocationID, rec.ToolResultKind, rawJSONText(rec.ToolResult), rec.FinishReason, rec.StopReason, boolInt(rec.Truncated), rec.Name, nullableValueTimeText(rec.At), rec.InputTokens, rec.OutputTokens, rec.ContextTokens, rec.CacheCreationTokens, rec.CacheReadTokens,
 		strings.TrimSpace(rec.Provider), strings.TrimSpace(rec.Model),
@@ -1556,7 +1659,7 @@ WHERE owner_id = ? AND status = 'settled'
 }
 
 const historyRecordsSelect = `
-	SELECT seq, role, content, display_content, phase, client_id, hidden, steered, reasoning_content,
+	SELECT seq, role, content, display_content, origin, origin_id, cause, presentation_kind, read_only, phase, client_id, hidden, steered, reasoning_content,
 	       provider_item_id, provider_item_model,
 	       reasoning_blocks_json, images_json, files_json, tool_calls_json, discovered_tools_json,
 	       tool_call_id, tool_invocation_id, tool_result_kind, tool_result_json, finish_reason, stop_reason, truncated, name, at, input_tokens, output_tokens, context_tokens, cache_creation_tokens, cache_read_tokens,
@@ -1584,12 +1687,12 @@ func scanHistoryRecords(rows *sql.Rows) ([]HistoryRecord, error) {
 	var records []HistoryRecord
 	for rows.Next() {
 		var rec HistoryRecord
-		var hidden, steered, truncated int
+		var hidden, steered, truncated, readOnly int
 		var reasoningBlocks, images, files, toolCalls, discoveredTools, toolResult string
 		var at sql.NullString
 		if err := rows.Scan(
 			&rec.Seq,
-			&rec.Role, &rec.Content, &rec.DisplayContent, &rec.Phase, &rec.ClientID, &hidden, &steered, &rec.ReasoningContent,
+			&rec.Role, &rec.Content, &rec.DisplayContent, &rec.Origin, &rec.OriginID, &rec.Cause, &rec.PresentationKind, &readOnly, &rec.Phase, &rec.ClientID, &hidden, &steered, &rec.ReasoningContent,
 			&rec.ProviderItemID, &rec.ProviderItemModel,
 			&reasoningBlocks, &images, &files, &toolCalls, &discoveredTools,
 			&rec.ToolCallID, &rec.ToolInvocationID, &rec.ToolResultKind, &toolResult, &rec.FinishReason, &rec.StopReason, &truncated, &rec.Name, &at, &rec.InputTokens, &rec.OutputTokens, &rec.ContextTokens, &rec.CacheCreationTokens, &rec.CacheReadTokens,
@@ -1598,6 +1701,7 @@ func scanHistoryRecords(rows *sql.Rows) ([]HistoryRecord, error) {
 			return nil, fmt.Errorf("scan session history: %w", err)
 		}
 		rec.Hidden = hidden != 0
+		rec.ReadOnly = readOnly != 0
 		rec.Steered = steered != 0
 		rec.Truncated = truncated != 0
 		rec.ReasoningBlocks = rawMessage(reasoningBlocks)

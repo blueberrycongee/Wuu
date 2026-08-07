@@ -2375,7 +2375,6 @@ func (s *Server) runTurnWithRequestContext(ctx context.Context, th *threadState,
 	}
 	s.kickAgentCompletionDrain(th.ID)
 	s.kickQueuedTurnDrain(th.ID)
-	s.kickPluginContinuation(th.ID)
 }
 
 func (s *Server) persistTurnTrace(threadRuntime *runtime.ThreadRuntime, runner *agent.StreamRunner, threadID string, turnRuntime turnRuntimeSnapshot, turn Turn, res agent.LoopResult, runErr error, toolRecordStart int, contextRequests []sessiontrace.RequestContextRecord, providerStates []sessiontrace.ProviderStateRecord, compactAttempts []sessiontrace.CompactRecord, barrierRejectionsArg ...[]sessiontrace.BarrierToolBatchRejectionRecord) (string, error) {
@@ -3143,11 +3142,19 @@ func (s *Server) takeNextQueuedUserTurn(threadID string) (queuedTurn, bool) {
 	if len(pending) == 0 {
 		return queuedTurn{}, false
 	}
-	entry := pending[0]
+	index := 0
+	for candidate := range pending {
+		if pending[candidate].snapshot.PluginTurn == nil {
+			index = candidate
+			break
+		}
+	}
+	entry := pending[index]
 	if len(pending) == 1 {
 		delete(s.pendingQueuedTurns, threadID)
 	} else {
-		s.pendingQueuedTurns[threadID] = append([]queuedTurn(nil), pending[1:]...)
+		next := append([]queuedTurn(nil), pending[:index]...)
+		s.pendingQueuedTurns[threadID] = append(next, pending[index+1:]...)
 	}
 	return entry, true
 }
@@ -3600,197 +3607,6 @@ func (s *Server) hasQueuedAgentCompletionWork(threadID string) bool {
 	s.agentCompletionMu.Lock()
 	defer s.agentCompletionMu.Unlock()
 	return len(s.pendingAgentCompletionTurns[threadID]) > 0 || s.drainingAgentCompletionTurns[threadID]
-}
-
-func (s *Server) kickPluginContinuation(threadID string) {
-	if s == nil || s.closed.Load() {
-		return
-	}
-	threadID = strings.TrimSpace(threadID)
-	if threadID == "" {
-		return
-	}
-	requested, _, _, err := s.pluginContinuation(context.Background(), threadID, pluginhost.ContinuationPhaseProbe)
-	if err != nil {
-		providers.DebugLogf("inspect plugin continuation for thread %q: %v", threadID, err)
-		return
-	}
-	if !requested {
-		return
-	}
-
-	s.pluginContinuationMu.Lock()
-	if s.closed.Load() {
-		s.pluginContinuationMu.Unlock()
-		return
-	}
-	if s.drainingPluginContinuation[threadID] {
-		s.pluginContinuationMu.Unlock()
-		return
-	}
-	if s.drainingPluginContinuation == nil {
-		s.drainingPluginContinuation = make(map[string]bool)
-	}
-	s.drainingPluginContinuation[threadID] = true
-	s.pluginContinuationMu.Unlock()
-
-	_ = s.startBackground(func() { s.drainPluginContinuation(threadID) })
-}
-
-func (s *Server) drainPluginContinuation(threadID string) {
-	if s == nil {
-		return
-	}
-	if s.closed.Load() {
-		s.clearPluginContinuationDrain(threadID)
-		return
-	}
-	started, err := s.startPluginContinuationTurn(context.Background(), threadID)
-	executionBusy := errors.Is(err, errThreadExecutionBusy)
-	if err != nil && !executionBusy {
-		providers.DebugLogf("start plugin continuation turn for thread %q: %v", threadID, err)
-	}
-	s.clearPluginContinuationDrain(threadID)
-	if executionBusy {
-		s.scheduleThreadExecutionLeaseRetry(func() { s.kickPluginContinuation(threadID) })
-		return
-	}
-	if started {
-		return
-	}
-}
-
-func (s *Server) clearPluginContinuationDrain(threadID string) {
-	s.pluginContinuationMu.Lock()
-	defer s.pluginContinuationMu.Unlock()
-	delete(s.drainingPluginContinuation, threadID)
-}
-
-func (s *Server) startPluginContinuationTurn(ctx context.Context, threadID string) (bool, error) {
-	threadID = strings.TrimSpace(threadID)
-	if threadID == "" {
-		return false, errors.New("thread_id is required")
-	}
-	th := s.thread(threadID)
-	if th == nil {
-		return false, fmt.Errorf("thread %q not found", threadID)
-	}
-
-	turnID := session.NewID()
-	turnCtx, cancel := context.WithCancel(ctx)
-	now := time.Now().UTC()
-
-	th.mu.Lock()
-	if th.running || th.ReadOnly {
-		th.mu.Unlock()
-		cancel()
-		return false, nil
-	}
-	if s.hasQueuedUserWork(threadID) || s.hasQueuedAgentCompletionWork(threadID) {
-		th.mu.Unlock()
-		cancel()
-		return false, nil
-	}
-	acquired, err := s.tryAcquireThreadExecutionLeaseLocked(th)
-	if err != nil {
-		th.mu.Unlock()
-		cancel()
-		return false, err
-	}
-	if !acquired {
-		th.mu.Unlock()
-		cancel()
-		return false, threadExecutionBusyError(threadID)
-	}
-	if err := s.refreshDurableThreadHistoryLocked(th); err != nil {
-		th.releaseThreadExecutionLeaseLocked()
-		th.mu.Unlock()
-		cancel()
-		return false, err
-	}
-	th.mu.Unlock()
-
-	releaseAdmission := func() {
-		th.mu.Lock()
-		th.releaseThreadExecutionLeaseLocked()
-		th.mu.Unlock()
-		cancel()
-	}
-
-	// Construct and restore the runtime only from the snapshot protected by the
-	// execution lease. In particular, plan state, usage, CWD, and model settings
-	// must not come from the stale cached copy that lost the prior admission.
-	threadRuntime, err := s.ensureThreadRuntimeAfterAdmission(th)
-	if err != nil {
-		releaseAdmission()
-		return false, err
-	}
-	if threadRuntime == nil || threadRuntimeAwaitsAutoContinuation(threadID, threadRuntime) {
-		releaseAdmission()
-		return false, nil
-	}
-
-	// The plugin and all queue gates may have changed while another app-server
-	// owned the thread. Ask the active plugin generation only after acquiring
-	// ownership, then inject only the opaque request context it returns.
-	requested, continuationContext, continuationDisplay, err := s.pluginContinuation(turnCtx, threadID, pluginhost.ContinuationPhasePrepare)
-	if err != nil {
-		releaseAdmission()
-		return false, err
-	}
-	if !requested {
-		releaseAdmission()
-		return false, nil
-	}
-
-	th.mu.Lock()
-	if s.closed.Load() {
-		th.releaseThreadExecutionLeaseLocked()
-		th.mu.Unlock()
-		cancel()
-		return false, errServerClosed
-	}
-	if th.running || th.ReadOnly || s.hasQueuedUserWork(threadID) || s.hasQueuedAgentCompletionWork(threadID) {
-		th.releaseThreadExecutionLeaseLocked()
-		th.mu.Unlock()
-		cancel()
-		return false, nil
-	}
-	history := cloneHistory(th.History)
-	th.cancel = cancel
-	turn := th.startInternalTurnLocked(turnID, now)
-	if continuationDisplay != nil && strings.TrimSpace(continuationDisplay.Text) != "" {
-		turn.Items = append(turn.Items, ThreadItem{ID: th.nextItemIDLocked(turnID), Type: ThreadItemUserMessage, Status: ThreadItemStatusCompleted, Role: "user", Text: strings.TrimSpace(continuationDisplay.Text), Name: strings.TrimSpace(continuationDisplay.Name), ReadOnly: true})
-		th.replaceTurnLocked(turn)
-	}
-	turnRuntime := turnRuntimeSnapshotLocked(th)
-	turnRuntime.HistoryBaselineSeq = th.historyHeadSeq
-	turnRuntime.ExecutionRunID = s.activeExecutionRunID(threadID)
-	th.currentExecutionRunID = turnRuntime.ExecutionRunID
-	th.mu.Unlock()
-	if err := s.attachExecutionTurn(turnRuntime.ExecutionRunID, threadID, turnID, now); err != nil {
-		abortStartedThreadTurn(th, startedThreadTurn{ctx: turnCtx, cancel: cancel, turnID: turnID, turn: turn, runtime: turnRuntime, history: history}, err)
-		return false, err
-	}
-
-	_ = s.writeNotification(NotificationTurnStarted, TurnStartedNotification{
-		ThreadID: threadID,
-		Turn:     turn,
-	})
-	if !s.startBackground(func() {
-		s.runTurnWithRequestContext(turnCtx, th, threadRuntime, turnID, turnRuntime, history, continuationContext)
-	}) {
-		abortStartedThreadTurn(th, startedThreadTurn{
-			ctx:     turnCtx,
-			cancel:  cancel,
-			turnID:  turnID,
-			turn:    turn,
-			runtime: turnRuntime,
-			history: history,
-		}, errServerClosed)
-		return false, errServerClosed
-	}
-	return true, nil
 }
 
 func combineAgentCompletionMessages(turns []agentCompletionTurn) providers.ChatMessage {

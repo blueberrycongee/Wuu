@@ -21,7 +21,8 @@ import (
 const CapabilityProtocolVersion = 2
 
 const (
-	HostServiceTurnSubmit             = "host.turn.submit"
+	HostServiceSessionCreate          = "host.session.create"
+	HostServiceSessionSend            = "host.session.send"
 	HostServiceStorageCompareExchange = "host.storage.compare_exchange"
 	CapabilityAgentTurnLifecycle      = "agent.turn.lifecycle"
 )
@@ -116,18 +117,42 @@ type TurnContextBlock struct {
 	Content string `json:"content"`
 }
 
-type TurnSubmitParams struct {
-	RequestID     string             `json:"request_id"`
-	ThreadID      string             `json:"thread_id,omitempty"`
+type SessionCreateParams struct {
+	RequestID       string `json:"request_id"`
+	Visibility      string `json:"visibility"`
+	ParentSessionID string `json:"parent_session_id,omitempty"`
+	ContextSource   string `json:"context_source"`
+}
+
+type SessionCreateResult struct {
+	SessionID string `json:"session_id"`
+	Created   bool   `json:"created"`
+}
+
+type SessionInput struct {
 	Prompt        string             `json:"prompt"`
 	ContextBlocks []TurnContextBlock `json:"context_blocks,omitempty"`
 }
 
-type TurnSubmitResult struct {
-	State    string `json:"state"`
-	ThreadID string `json:"thread_id"`
-	TurnID   string `json:"turn_id,omitempty"`
-	QueueID  string `json:"queue_id,omitempty"`
+type SessionInputPresentation struct {
+	Kind string `json:"kind"`
+	Text string `json:"text"`
+	Name string `json:"name,omitempty"`
+}
+
+type SessionSendParams struct {
+	RequestID    string                    `json:"request_id"`
+	SessionID    string                    `json:"session_id"`
+	Input        SessionInput              `json:"input"`
+	Presentation *SessionInputPresentation `json:"presentation,omitempty"`
+	Cause        string                    `json:"cause,omitempty"`
+}
+
+type SessionSendResult struct {
+	State     string `json:"state"`
+	SessionID string `json:"session_id"`
+	TurnID    string `json:"turn_id,omitempty"`
+	QueueID   string `json:"queue_id,omitempty"`
 }
 
 type TurnLifecycleInput struct {

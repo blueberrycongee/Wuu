@@ -120,22 +120,9 @@ func (s *Server) filterCachedThreadCandidates(candidates []cachedThreadCandidate
 		if s.hasQueuedAgentCompletionWork(candidate.id) {
 			continue
 		}
-		if s.hasPluginContinuationWork(candidate.id) {
-			continue
-		}
 		out = append(out, candidate)
 	}
 	return out
-}
-
-func (s *Server) hasPluginContinuationWork(threadID string) bool {
-	threadID = strings.TrimSpace(threadID)
-	if s == nil || threadID == "" {
-		return false
-	}
-	s.pluginContinuationMu.Lock()
-	defer s.pluginContinuationMu.Unlock()
-	return s.drainingPluginContinuation[threadID]
 }
 
 func candidateAccessTime(candidate cachedThreadCandidate) time.Time {

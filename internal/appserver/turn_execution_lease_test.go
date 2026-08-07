@@ -12,7 +12,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/blueberrycongee/wuu/internal/pluginhost"
 	"github.com/blueberrycongee/wuu/internal/providers"
 	"github.com/blueberrycongee/wuu/internal/session"
 )
@@ -186,10 +185,9 @@ func TestServerAppliesCrossProcessThreadExecutionReset(t *testing.T) {
 	}
 }
 
-func TestServerThreadExecutionLeaseGuardsAllTurnEntrypoints(t *testing.T) {
+func TestServerThreadExecutionLeaseGuardsUserAndCompactTurnEntrypoints(t *testing.T) {
 	client := &fakeClient{response: providers.ChatResponse{Content: "must not run"}}
 	rt := newTestRuntime(t, client)
-	rt.PluginHost = pluginhost.New(&continuationTestRuntime{id: "lease-continuation", output: pluginhost.AgentContinuationOutput{Continue: true}})
 	sess, err := session.CreateWithMetadata(rt.SessionDir, "lease-entrypoints", rt.RootDir)
 	if err != nil {
 		t.Fatalf("create session: %v", err)
@@ -231,13 +229,6 @@ func TestServerThreadExecutionLeaseGuardsAllTurnEntrypoints(t *testing.T) {
 		t.Fatalf("expected compact cross-server busy error, got %+v", compactResponse)
 	}
 
-	started, err := srv.startPluginContinuationTurn(context.Background(), sess.ID)
-	if !errors.Is(err, errThreadExecutionBusy) {
-		t.Fatalf("goal continuation ownership error = %v, want execution busy", err)
-	}
-	if started {
-		t.Fatal("goal continuation started without the thread lease")
-	}
 	assertFakeClientRequestCount(t, client, 0)
 	records, err := session.LoadHistoryRecords(rt.SessionDir, sess.ID, true)
 	if err != nil {

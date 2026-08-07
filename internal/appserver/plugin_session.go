@@ -1,0 +1,343 @@
+package appserver
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/blueberrycongee/wuu/internal/agent"
+	wuucontext "github.com/blueberrycongee/wuu/internal/context"
+	"github.com/blueberrycongee/wuu/internal/pluginhost"
+	"github.com/blueberrycongee/wuu/internal/providers"
+	"github.com/blueberrycongee/wuu/internal/runtime"
+	"github.com/blueberrycongee/wuu/internal/session"
+)
+
+type pluginTurnReference struct {
+	PluginID  string
+	RequestID string
+	QueueID   string
+}
+
+func clonePluginTurnReference(reference *pluginTurnReference) *pluginTurnReference {
+	if reference == nil {
+		return nil
+	}
+	cloned := *reference
+	return &cloned
+}
+
+func (s *Server) notifyPluginTurnDiscarded(threadID string, entry queuedTurn, reason string) {
+	reference := entry.snapshot.PluginTurn
+	if reference == nil {
+		return
+	}
+	if err := s.notifyPluginTurnLifecycle(context.Background(), reference.PluginID, pluginhost.AgentTurnLifecycleInput{
+		RequestID: reference.RequestID, State: pluginhost.TurnLifecycleDiscarded,
+		ThreadID: strings.TrimSpace(threadID), QueueID: reference.QueueID,
+		Error: strings.TrimSpace(reason),
+	}); err != nil {
+		providers.DebugLogf("notify plugin turn discarded for queue %q: %v", reference.QueueID, err)
+	}
+}
+
+func (s *Server) createPluginSession(_ context.Context, pluginID string, params pluginhost.SessionCreateParams) (pluginhost.SessionCreateResult, error) {
+	if s == nil || s.closed.Load() {
+		return pluginhost.SessionCreateResult{}, errServerClosed
+	}
+	pluginID = strings.TrimSpace(pluginID)
+	params.RequestID = strings.TrimSpace(params.RequestID)
+	params.Visibility = strings.TrimSpace(params.Visibility)
+	params.ParentSessionID = strings.TrimSpace(params.ParentSessionID)
+	params.ContextSource = strings.TrimSpace(params.ContextSource)
+	if pluginID == "" {
+		return pluginhost.SessionCreateResult{}, errors.New("plugin owner is required")
+	}
+	if params.RequestID == "" {
+		return pluginhost.SessionCreateResult{}, errors.New("request_id is required")
+	}
+	if len([]byte(params.RequestID)) > pluginhost.MaxSessionSendRequestIDBytes {
+		return pluginhost.SessionCreateResult{}, fmt.Errorf("request_id exceeds %d bytes", pluginhost.MaxSessionSendRequestIDBytes)
+	}
+	if params.Visibility != pluginhost.SessionVisibilityUser && params.Visibility != pluginhost.SessionVisibilityPlugin {
+		return pluginhost.SessionCreateResult{}, errors.New("visibility must be user or plugin")
+	}
+	if params.ContextSource != pluginhost.SessionContextFresh && params.ContextSource != pluginhost.SessionContextFork {
+		return pluginhost.SessionCreateResult{}, errors.New("context_source must be fresh or fork")
+	}
+	if params.ContextSource == pluginhost.SessionContextFork && params.ParentSessionID == "" {
+		return pluginhost.SessionCreateResult{}, errors.New("parent_session_id is required for fork context")
+	}
+	owner := "plugin:" + pluginID
+	if existing, ok, err := session.FindManagedByRequest(s.rt.SessionDir, owner, params.RequestID); err != nil {
+		return pluginhost.SessionCreateResult{}, err
+	} else if ok {
+		return pluginhost.SessionCreateResult{SessionID: existing.ID, Created: false}, nil
+	}
+	th, err := s.createPluginSessionThread(owner, params)
+	if err != nil {
+		if existing, ok, findErr := session.FindManagedByRequest(s.rt.SessionDir, owner, params.RequestID); findErr == nil && ok {
+			return pluginhost.SessionCreateResult{SessionID: existing.ID, Created: false}, nil
+		}
+		return pluginhost.SessionCreateResult{}, err
+	}
+	return pluginhost.SessionCreateResult{SessionID: th.ID, Created: true}, nil
+}
+
+func (s *Server) sendPluginSession(ctx context.Context, pluginID string, params pluginhost.SessionSendParams) (pluginhost.SessionSendResult, error) {
+	if s == nil || s.closed.Load() {
+		return pluginhost.SessionSendResult{}, errServerClosed
+	}
+	pluginID = strings.TrimSpace(pluginID)
+	params.RequestID = strings.TrimSpace(params.RequestID)
+	params.SessionID = strings.TrimSpace(params.SessionID)
+	params.Input.Prompt = strings.TrimSpace(params.Input.Prompt)
+	params.Cause = strings.TrimSpace(params.Cause)
+	if pluginID == "" || params.RequestID == "" || params.SessionID == "" || params.Input.Prompt == "" {
+		return pluginhost.SessionSendResult{}, errors.New("plugin owner, request_id, session_id, and input.prompt are required")
+	}
+	if len([]byte(params.RequestID)) > pluginhost.MaxSessionSendRequestIDBytes {
+		return pluginhost.SessionSendResult{}, fmt.Errorf("request_id exceeds %d bytes", pluginhost.MaxSessionSendRequestIDBytes)
+	}
+	metadata, ok, err := session.Find(s.rt.SessionDir, params.SessionID)
+	if err != nil {
+		return pluginhost.SessionSendResult{}, err
+	}
+	if !ok {
+		return pluginhost.SessionSendResult{}, session.ErrSessionNotFound
+	}
+	owner := "plugin:" + pluginID
+	if metadata.Visibility == pluginhost.SessionVisibilityPlugin && metadata.Owner != owner {
+		return pluginhost.SessionSendResult{}, errors.New("plugin does not own the private session")
+	}
+	requestContext, err := pluginTurnRequestContext(params.Input.ContextBlocks)
+	if err != nil {
+		return pluginhost.SessionSendResult{}, err
+	}
+	th, err := s.ensureThreadLoaded(params.SessionID)
+	if err != nil {
+		return pluginhost.SessionSendResult{}, err
+	}
+	clientID := pluginSessionRequestClientID(pluginID, params.RequestID)
+	if existing, ok := s.findPluginSessionRequest(th, clientID); ok {
+		return existing, nil
+	}
+	msg, err := userMessageFromPrompt(params.Input.Prompt, nil, nil)
+	if err != nil {
+		return pluginhost.SessionSendResult{}, err
+	}
+	msg.ClientID = clientID
+	msg.Origin = pluginhost.SessionInputPlugin
+	msg.OriginID = pluginID
+	msg.Cause = params.Cause
+	msg.PresentationKind = pluginhost.SessionPresentationQueryBubble
+	msg.ReadOnly = true
+	msg.DisplayContent = "插件已唤醒 Agent"
+	if params.Presentation != nil {
+		if kind := strings.TrimSpace(params.Presentation.Kind); kind != "" && kind != pluginhost.SessionPresentationQueryBubble {
+			return pluginhost.SessionSendResult{}, errors.New("presentation.kind must be query_bubble")
+		}
+		if text := strings.TrimSpace(params.Presentation.Text); text != "" {
+			msg.DisplayContent = text
+		}
+		msg.Name = strings.TrimSpace(params.Presentation.Name)
+	}
+	snapshot := turnRuntimeSnapshot{}.withPermissions(normalizeTurnPermissions(s.rt.Permissions))
+	snapshot.Ultra = s.rt.UltraMode()
+	snapshot.RequestContext = requestContext
+	snapshot.PluginTurn = &pluginTurnReference{PluginID: pluginID, RequestID: params.RequestID}
+
+	started, ok, err := s.startPluginSubmittedTurn(ctx, th, msg, snapshot)
+	if err != nil {
+		return pluginhost.SessionSendResult{}, err
+	}
+	if ok {
+		return pluginhost.SessionSendResult{State: pluginhost.TurnLifecycleRunning, SessionID: th.ID, TurnID: started.turnID}, nil
+	}
+
+	queueID := session.NewID()
+	snapshot.PluginTurn.QueueID = queueID
+	entry := queuedTurn{id: queueID, msg: msg, snapshot: snapshot}
+	s.enqueueQueuedUserTurn(th.ID, entry)
+	queued := queuedTurnSummary(th.ID, entry)
+	_ = s.writeNotification(NotificationTurnQueued, TurnQueuedNotification{Queued: queued})
+	s.kickQueuedTurnDrain(th.ID)
+	return pluginhost.SessionSendResult{State: pluginhost.TurnLifecycleQueued, SessionID: th.ID, QueueID: queueID}, nil
+}
+
+func pluginSessionRequestClientID(pluginID, requestID string) string {
+	return "plugin:" + strings.TrimSpace(pluginID) + ":" + strings.TrimSpace(requestID)
+}
+
+func (s *Server) findPluginSessionRequest(th *threadState, clientID string) (pluginhost.SessionSendResult, bool) {
+	if th == nil || strings.TrimSpace(clientID) == "" {
+		return pluginhost.SessionSendResult{}, false
+	}
+	th.mu.Lock()
+	for _, turn := range th.Turns {
+		for _, item := range turn.Items {
+			if item.Type != ThreadItemUserMessage || item.SourceID != clientID {
+				continue
+			}
+			state := pluginhost.TurnLifecycleCompleted
+			if turn.Status == TurnStatusInProgress {
+				state = pluginhost.TurnLifecycleRunning
+			}
+			result := pluginhost.SessionSendResult{State: state, SessionID: th.ID, TurnID: turn.ID}
+			th.mu.Unlock()
+			return result, true
+		}
+	}
+	th.mu.Unlock()
+
+	s.queuedTurnMu.Lock()
+	defer s.queuedTurnMu.Unlock()
+	for _, entry := range s.pendingQueuedTurns[th.ID] {
+		if entry.msg.ClientID == clientID {
+			return pluginhost.SessionSendResult{State: pluginhost.TurnLifecycleQueued, SessionID: th.ID, QueueID: entry.id}, true
+		}
+	}
+	return pluginhost.SessionSendResult{}, false
+}
+
+func (s *Server) createPluginSessionThread(owner string, params pluginhost.SessionCreateParams) (*threadState, error) {
+	if s.rt == nil || s.rt.StreamRunner == nil {
+		return nil, errors.New("runtime session is required")
+	}
+	id := session.NewID()
+	threadCWD := s.rt.RootDir
+	managed := session.ManagedMetadata{Owner: owner, Visibility: params.Visibility, ParentID: params.ParentSessionID, ContextSource: params.ContextSource, CreationRequestID: params.RequestID}
+	var history []providers.ChatMessage
+	var created *session.Session
+	var err error
+	if params.ContextSource == pluginhost.SessionContextFork {
+		parent, loadErr := s.loadPersistedThreadSnapshot(params.ParentSessionID)
+		if loadErr != nil {
+			return nil, loadErr
+		}
+		threadCWD = firstNonEmpty(parent.metadata.CWD, threadCWD)
+		history = cloneHistory(parent.history)
+		created, err = session.CreateManagedForkWithMetadata(s.rt.SessionDir, id, threadCWD, session.ForkMetadata{ForkedFromID: params.ParentSessionID}, managed)
+	} else {
+		created, err = session.CreateManagedWithMetadata(s.rt.SessionDir, id, threadCWD, managed)
+	}
+	if err != nil {
+		return nil, err
+	}
+	if _, err := session.SetRuntimeSelection(s.rt.SessionDir, id, s.currentSessionRuntimeSelection()); err != nil {
+		return nil, err
+	}
+	source := owner
+	if _, err := session.SetSource(s.rt.SessionDir, id, source); err != nil {
+		return nil, err
+	}
+	workspaceID := strings.TrimSpace(s.rt.WorkspaceID)
+	if workspaceID != "" {
+		if _, err := session.SetWorkspaceID(s.rt.SessionDir, id, workspaceID); err != nil {
+			return nil, err
+		}
+	}
+	if len(history) == 0 {
+		history = make([]providers.ChatMessage, 0, 1)
+	}
+	if prompt := strings.TrimSpace(s.rt.StreamRunner.SystemPrompt); prompt != "" && len(history) == 0 {
+		history = append(history, providers.ChatMessage{Role: "system", Content: prompt})
+	}
+	if params.ContextSource == pluginhost.SessionContextFork {
+		if err := rewriteChatHistory(s.rt.SessionDir, created.ID, history); err != nil {
+			return nil, err
+		}
+	}
+	th := newThreadState(id, history, s.rt.ProviderName, s.rt.Model, threadCWD, true, time.Now().UTC())
+	applyThreadRuntimeSelection(th, s.currentSessionRuntimeSelection())
+	th.Source = source
+	th.Owner = owner
+	th.Visibility = params.Visibility
+	th.ParentID = params.ParentSessionID
+	th.WorkspaceKind = workspaceKindForCWD(s.rt.WuuHome, threadCWD)
+	if workspaceID != "" {
+		th.WorkspaceKind = WorkspaceKindProject
+	}
+	s.mu.Lock()
+	s.threads[id] = th
+	s.mu.Unlock()
+	th.mu.Lock()
+	thread := th.snapshotLocked()
+	th.mu.Unlock()
+	if params.Visibility == pluginhost.SessionVisibilityUser {
+		if err := s.notifyThreadStarted(thread); err != nil {
+			return nil, err
+		}
+	}
+	s.pruneCachedThreads(id)
+	return th, nil
+}
+
+func (s *Server) startPluginSubmittedTurn(ctx context.Context, th *threadState, msg providers.ChatMessage, snapshot turnRuntimeSnapshot) (startedThreadTurn, bool, error) {
+	var threadRuntime *runtime.ThreadRuntime
+	started, ok, err := s.startThreadUserTurnWithAdmission(
+		ctx, th, msg, snapshot, false, turnReadOnlyFail,
+		turnAdmissionHooks{afterLease: func(admitted *threadState, _ *providers.ChatMessage) error {
+			var runtimeErr error
+			threadRuntime, runtimeErr = s.ensureThreadRuntimeAfterAdmission(admitted)
+			if runtimeErr == nil {
+				s.foldFrozenWorkerTree(admitted, threadRuntime)
+			}
+			return runtimeErr
+		}},
+	)
+	if err != nil {
+		if errors.Is(err, errThreadExecutionBusy) {
+			return startedThreadTurn{}, false, nil
+		}
+		return startedThreadTurn{}, false, err
+	}
+	if !ok {
+		return startedThreadTurn{}, false, nil
+	}
+	launch, accepted := s.reserveBackground(func() {
+		s.runTurn(started.ctx, th, threadRuntime, started.turnID, started.runtime, started.history)
+	})
+	if !accepted {
+		return startedThreadTurn{}, false, errors.Join(errServerClosed, s.abortStartedThreadTurnDurably(th, started, errServerClosed))
+	}
+	defer launch.Cancel()
+	if err := s.writeNotification(NotificationTurnStarted, TurnStartedNotification{ThreadID: th.ID, Turn: started.turn}); err != nil {
+		return startedThreadTurn{}, false, errors.Join(err, s.abortStartedThreadTurnDurably(th, started, err))
+	}
+	launch.Commit()
+	return started, true, nil
+}
+
+func pluginTurnRequestContext(input []pluginhost.SessionContextBlock) ([]agent.ContextSegment, error) {
+	if len(input) > pluginhost.MaxSessionSendContextBlocks {
+		return nil, fmt.Errorf("context_blocks exceeds %d entries", pluginhost.MaxSessionSendContextBlocks)
+	}
+	blocks := make([]wuucontext.Block, 0, len(input))
+	total := 0
+	for _, block := range input {
+		content := strings.TrimSpace(block.Content)
+		if content == "" {
+			return nil, errors.New("context block content is required")
+		}
+		size := len([]byte(content))
+		if size > pluginhost.MaxSessionSendContextBlockBytes {
+			return nil, fmt.Errorf("context block exceeds %d bytes", pluginhost.MaxSessionSendContextBlockBytes)
+		}
+		total += size
+		if total > pluginhost.MaxSessionSendContextTotalBytes {
+			return nil, fmt.Errorf("context_blocks exceeds %d total bytes", pluginhost.MaxSessionSendContextTotalBytes)
+		}
+		kind := strings.TrimSpace(block.Kind)
+		if kind == "" {
+			kind = string(wuucontext.BlockAdditionalContext)
+		}
+		blocks = append(blocks, wuucontext.Block{
+			Kind: wuucontext.BlockKind(kind), Title: strings.TrimSpace(block.Title),
+			Source: strings.TrimSpace(block.Source), Content: content,
+		})
+	}
+	return agent.RequestOnlyContextBlocks(blocks), nil
+}

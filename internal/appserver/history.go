@@ -45,6 +45,11 @@ type persistedMessage struct {
 	Role                string                             `json:"role"`
 	Content             string                             `json:"content"`
 	DisplayContent      string                             `json:"display_content,omitempty"`
+	Origin              string                             `json:"origin,omitempty"`
+	OriginID            string                             `json:"origin_id,omitempty"`
+	Cause               string                             `json:"cause,omitempty"`
+	PresentationKind    string                             `json:"presentation_kind,omitempty"`
+	ReadOnly            bool                               `json:"read_only,omitempty"`
 	Phase               string                             `json:"phase,omitempty"`
 	ProviderItemID      string                             `json:"provider_item_id,omitempty"`
 	ProviderItemModel   string                             `json:"provider_item_model,omitempty"`
@@ -121,6 +126,11 @@ func chatMessagesFromPersistedMessages(records []persistedMessage) []providers.C
 			ClientID:             rec.ClientID,
 			Content:              rec.Content,
 			DisplayContent:       rec.DisplayContent,
+			Origin:               rec.Origin,
+			OriginID:             rec.OriginID,
+			Cause:                rec.Cause,
+			PresentationKind:     rec.PresentationKind,
+			ReadOnly:             rec.ReadOnly,
 			Phase:                providers.NormalizeMessagePhase(rec.Phase),
 			Hidden:               rec.Hidden,
 			ProviderItemID:       rec.ProviderItemID,
@@ -291,6 +301,11 @@ func persistedMessageFromChatMessage(msg providers.ChatMessage) persistedMessage
 		Role:              strings.ToLower(msg.Role),
 		Content:           msg.Content,
 		DisplayContent:    msg.DisplayContent,
+		Origin:            msg.Origin,
+		OriginID:          msg.OriginID,
+		Cause:             msg.Cause,
+		PresentationKind:  msg.PresentationKind,
+		ReadOnly:          msg.ReadOnly,
 		Phase:             string(msg.Phase),
 		Hidden:            msg.Hidden,
 		ProviderItemID:    msg.ProviderItemID,
@@ -447,6 +462,11 @@ func historyRecordFromPersistedMessage(rec persistedMessage) sessionstore.Histor
 		Role:                rec.Role,
 		Content:             rec.Content,
 		DisplayContent:      rec.DisplayContent,
+		Origin:              rec.Origin,
+		OriginID:            rec.OriginID,
+		Cause:               rec.Cause,
+		PresentationKind:    rec.PresentationKind,
+		ReadOnly:            rec.ReadOnly,
 		Phase:               rec.Phase,
 		ProviderItemID:      rec.ProviderItemID,
 		ProviderItemModel:   rec.ProviderItemModel,
@@ -486,6 +506,11 @@ func persistedMessageFromHistoryRecord(rec sessionstore.HistoryRecord) (persiste
 		Role:                rec.Role,
 		Content:             rec.Content,
 		DisplayContent:      rec.DisplayContent,
+		Origin:              rec.Origin,
+		OriginID:            rec.OriginID,
+		Cause:               rec.Cause,
+		PresentationKind:    rec.PresentationKind,
+		ReadOnly:            rec.ReadOnly,
 		Phase:               rec.Phase,
 		ProviderItemID:      rec.ProviderItemID,
 		ProviderItemModel:   rec.ProviderItemModel,

@@ -25,7 +25,8 @@ var productionPluginHostServices = []pluginhost.HostServiceMethod{
 	pluginhost.HostServiceSettingsGet,
 	pluginhost.HostServiceSettingsList,
 	pluginhost.HostServiceChildSessionRequest,
-	pluginhost.HostServiceTurnSubmit,
+	pluginhost.HostServiceSessionCreate,
+	pluginhost.HostServiceSessionSend,
 }
 
 type childSessionRequestHandler func(context.Context, pluginhost.ChildSessionRequestParams) (json.RawMessage, error)
@@ -43,10 +44,10 @@ type pluginHostServices struct {
 	wuuHome             string
 	settings            map[string]pluginpkg.SettingDefinition
 	childSessionRequest childSessionRequestHandler
-	turnRouter          *PluginTurnRouter
+	turnRouter          *PluginSessionRouter
 }
 
-func newPluginHostServices(item pluginpkg.Plugin, projectRoot, wuuHome string, turnRouter *PluginTurnRouter, childSession ...childSessionRequestHandler) *pluginHostServices {
+func newPluginHostServices(item pluginpkg.Plugin, projectRoot, wuuHome string, turnRouter *PluginSessionRouter, childSession ...childSessionRequestHandler) *pluginHostServices {
 	settings := make(map[string]pluginpkg.SettingDefinition, len(item.Settings))
 	for key, definition := range item.Settings {
 		settings[key] = definition
@@ -89,15 +90,28 @@ func (s *pluginHostServices) HandleHostService(ctx context.Context, method plugi
 	}
 
 	switch method {
-	case pluginhost.HostServiceTurnSubmit:
+	case pluginhost.HostServiceSessionCreate:
 		if s.turnRouter == nil {
-			return nil, serviceError("service_unavailable", "turn submission service is unavailable")
+			return nil, serviceError("service_unavailable", "session service is unavailable")
 		}
-		var params pluginhost.TurnSubmitParams
+		var params pluginhost.SessionCreateParams
 		if err := decodeServiceParams(raw, &params); err != nil {
 			return nil, err
 		}
-		result, err := s.turnRouter.Submit(ctx, s.pluginID, params)
+		result, err := s.turnRouter.Create(ctx, s.pluginID, params)
+		if err != nil {
+			return nil, err
+		}
+		return marshalServiceResult(result)
+	case pluginhost.HostServiceSessionSend:
+		if s.turnRouter == nil {
+			return nil, serviceError("service_unavailable", "session service is unavailable")
+		}
+		var params pluginhost.SessionSendParams
+		if err := decodeServiceParams(raw, &params); err != nil {
+			return nil, err
+		}
+		result, err := s.turnRouter.Send(ctx, s.pluginID, params)
 		if err != nil {
 			return nil, err
 		}

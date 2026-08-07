@@ -2085,27 +2085,31 @@ type ThreadItem struct {
 	// Seq is the message's stable per-thread address (session_messages.seq),
 	// present on persisted chat messages.
 	// 0/absent for synthetic or not-yet-persisted items.
-	Seq          int                        `json:"seq,omitempty"`
-	SourceID     string                     `json:"source_id,omitempty"`
-	AgentID      string                     `json:"agent_id,omitempty"`
-	Type         ThreadItemType             `json:"type"`
-	Status       ThreadItemStatus           `json:"status,omitempty"`
-	Phase        ThreadItemPhase            `json:"phase,omitempty"`
-	Role         string                     `json:"role,omitempty"`
-	Text         string                     `json:"text,omitempty"`
-	Images       []ThreadItemImage          `json:"images,omitempty"`
-	Files        []ThreadItemFile           `json:"files,omitempty"`
-	Name         string                     `json:"name,omitempty"`
-	ReadOnly     bool                       `json:"read_only,omitempty"`
-	Arguments    string                     `json:"arguments,omitempty"`
-	Display      *providers.ToolCallDisplay `json:"display,omitempty"`
-	Result       string                     `json:"result,omitempty"`
-	ResultDetail *toolresult.Result         `json:"result_detail,omitempty"`
-	Error        string                     `json:"error,omitempty"`
-	Reason       string                     `json:"reason,omitempty"`
-	FinishReason string                     `json:"finish_reason,omitempty"`
-	StopReason   string                     `json:"stop_reason,omitempty"`
-	Truncated    bool                       `json:"truncated,omitempty"`
+	Seq              int                        `json:"seq,omitempty"`
+	SourceID         string                     `json:"source_id,omitempty"`
+	AgentID          string                     `json:"agent_id,omitempty"`
+	Type             ThreadItemType             `json:"type"`
+	Status           ThreadItemStatus           `json:"status,omitempty"`
+	Phase            ThreadItemPhase            `json:"phase,omitempty"`
+	Role             string                     `json:"role,omitempty"`
+	Text             string                     `json:"text,omitempty"`
+	Images           []ThreadItemImage          `json:"images,omitempty"`
+	Files            []ThreadItemFile           `json:"files,omitempty"`
+	Name             string                     `json:"name,omitempty"`
+	ReadOnly         bool                       `json:"read_only,omitempty"`
+	Origin           string                     `json:"origin,omitempty"`
+	OriginID         string                     `json:"origin_id,omitempty"`
+	Cause            string                     `json:"cause,omitempty"`
+	PresentationKind string                     `json:"presentation_kind,omitempty"`
+	Arguments        string                     `json:"arguments,omitempty"`
+	Display          *providers.ToolCallDisplay `json:"display,omitempty"`
+	Result           string                     `json:"result,omitempty"`
+	ResultDetail     *toolresult.Result         `json:"result_detail,omitempty"`
+	Error            string                     `json:"error,omitempty"`
+	Reason           string                     `json:"reason,omitempty"`
+	FinishReason     string                     `json:"finish_reason,omitempty"`
+	StopReason       string                     `json:"stop_reason,omitempty"`
+	Truncated        bool                       `json:"truncated,omitempty"`
 }
 
 type ThreadItemImage struct {

@@ -42,6 +42,8 @@ var (
 type threadState struct {
 	ID           string
 	Source       string
+	Owner        string
+	Visibility   string
 	NamedAgentID string
 	ParentID     string
 	AgentPath    string
@@ -203,9 +205,7 @@ type Server struct {
 	drainingQueuedTurns map[string]bool
 	heldUserWorkMu      sync.Mutex
 
-	pluginContinuationMu       sync.Mutex
-	drainingPluginContinuation map[string]bool
-	pluginTurnUnbind           func()
+	pluginTurnUnbind func()
 
 	rewriteChatHistoryForTest           func(string, string, []providers.ChatMessage) error
 	afterLifecycleHistoryAppendForTest  func(threadID string)
@@ -280,7 +280,6 @@ func NewWithCredentialStore(rt *runtime.Session, out io.Writer, store credential
 		drainingAgentCompletionTurns: make(map[string]bool),
 		pendingQueuedTurns:           make(map[string][]queuedTurn),
 		drainingQueuedTurns:          make(map[string]bool),
-		drainingPluginContinuation:   make(map[string]bool),
 		codexModelCache:              make(map[string]map[string]config.ProviderModelConfig),
 		memoryOverviewCache:          make(map[string]memoryOverviewCacheEntry),
 		inferenceMaintenanceStop:     make(chan struct{}),
@@ -381,8 +380,8 @@ func NewWithCredentialStore(rt *runtime.Session, out io.Writer, store credential
 			s.notifyActivityEvent(event)
 		})
 	}
-	if rt != nil && rt.PluginTurnRouter != nil {
-		s.pluginTurnUnbind = rt.PluginTurnRouter.Bind(s.submitPluginTurn)
+	if rt != nil && rt.PluginSessionRouter != nil {
+		s.pluginTurnUnbind = rt.PluginSessionRouter.Bind(s.createPluginSession, s.sendPluginSession)
 	}
 	s.startInferenceJournalMaintenance()
 	if rt != nil && rt.AutomationManager != nil {
@@ -658,9 +657,6 @@ func (s *Server) Close() {
 		clear(s.pendingAgentCompletionTurns)
 		clear(s.drainingAgentCompletionTurns)
 		s.agentCompletionMu.Unlock()
-		s.pluginContinuationMu.Lock()
-		clear(s.drainingPluginContinuation)
-		s.pluginContinuationMu.Unlock()
 		s.waitForOwnedShutdown(threads, controls)
 		s.interruptAttachedRunsOnClose()
 		for _, th := range threads {

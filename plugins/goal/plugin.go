@@ -16,7 +16,6 @@ import (
 
 const (
 	capabilityClientRequest = "plugin.client.request"
-	capabilityContinuation  = "agent.turn.continuation"
 	capabilityTurnCompleted = "agent.turn.completed"
 	storageScope            = "workspace"
 )
@@ -31,13 +30,13 @@ func Handler() pluginapi.Handler {
 			},
 			Capabilities: []pluginapi.Capability{
 				{ID: capabilityClientRequest, Kind: "decision", Version: 1},
-				{ID: capabilityContinuation, Kind: "decision", Version: 1},
 				{ID: capabilityTurnCompleted, Kind: "observe", ErrorPolicy: "isolate", Version: 1},
 			},
 			RequiredHostServices: []pluginapi.HostService{
 				{ID: "host.storage.get", Required: true},
 				{ID: "host.storage.set", Required: true},
 				{ID: "host.storage.delete", Required: true},
+				{ID: pluginapi.HostServiceSessionSend, Required: true},
 			},
 		},
 		ExecuteTool:      executeTool,
@@ -103,34 +102,13 @@ func executeTool(ctx context.Context, client pluginapi.Host, call pluginapi.Tool
 
 func invokeCapability(ctx context.Context, client pluginapi.Host, call pluginapi.CapabilityCall) (json.RawMessage, error) {
 	switch call.Capability {
-	case capabilityContinuation:
-		var input struct {
-			ThreadID string `json:"thread_id"`
-			Phase    string `json:"phase"`
-		}
-		if err := json.Unmarshal(call.Input, &input); err != nil {
-			return nil, err
-		}
-		goal, ok, err := load(ctx, client, input.ThreadID)
-		if err != nil || !ok || !goal.CanAutoContinue() {
-			return json.Marshal(map[string]any{"continue": false})
-		}
-		if input.Phase == "probe" {
-			return json.Marshal(map[string]any{"continue": true})
-		}
-		if input.Phase != "prepare" {
-			return nil, fmt.Errorf("unknown continuation phase %q", input.Phase)
-		}
-		return json.Marshal(map[string]any{
-			"continue": true,
-			"blocks":   []map[string]string{{"kind": "GOAL_CONTINUATION", "title": "Active goal continuation", "source": "plugin.goal", "content": continuationPrompt(goal.Objective)}},
-			"display":  map[string]string{"text": "Goal 持续推进中", "name": "wuu_plugin_continuation"},
-		})
 	case capabilityTurnCompleted:
 		var input struct {
 			ThreadID     string    `json:"thread_id"`
+			TurnID       string    `json:"turn_id"`
 			StartedAt    time.Time `json:"started_at"`
 			CompletedAt  time.Time `json:"completed_at"`
+			Succeeded    bool      `json:"succeeded"`
 			InputTokens  int       `json:"input_tokens"`
 			OutputTokens int       `json:"output_tokens"`
 		}
@@ -156,6 +134,21 @@ func invokeCapability(ctx context.Context, client pluginapi.Host, call pluginapi
 		}
 		if err != nil {
 			return nil, err
+		}
+		if input.Succeeded && goal.CanAutoContinue() {
+			var sent pluginapi.SessionSendResult
+			err = client.CallHost(ctx, pluginapi.HostServiceSessionSend, pluginapi.SessionSendParams{
+				RequestID: input.TurnID + ":goal:" + goal.GoalID,
+				SessionID: input.ThreadID,
+				Input:     pluginapi.SessionInput{Prompt: continuationPrompt(goal.Objective)},
+				Presentation: &pluginapi.SessionInputPresentation{
+					Kind: "query_bubble", Text: "Goal 持续推进中", Name: "goal",
+				},
+				Cause: "goal:" + goal.GoalID,
+			}, &sent)
+			if err != nil {
+				return nil, err
+			}
 		}
 		return json.Marshal(struct{}{})
 	case capabilityClientRequest:

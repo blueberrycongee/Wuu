@@ -361,6 +361,8 @@ export const HOST_SERVICE_METHODS = [
   "host.settings.get",
   "host.settings.list",
   "host.child_session.request",
+  "host.session.create",
+  "host.session.send",
   "host.session.info",
   "host.workspace.root",
   "host.workspace.list",
@@ -530,6 +532,28 @@ export interface HostServiceContracts {
   "host.child_session.request": {
     params: { action: string; actor_id?: string; actor_path?: string; input?: unknown };
     result: unknown;
+  };
+  "host.session.create": {
+    params: {
+      request_id: string;
+      visibility: "user" | "plugin";
+      parent_session_id?: string;
+      context_source: "fresh" | "fork";
+    };
+    result: { session_id: string; created: boolean };
+  };
+  "host.session.send": {
+    params: {
+      request_id: string;
+      session_id: string;
+      input: {
+        prompt: string;
+        context_blocks?: Array<{ kind?: string; title?: string; source?: string; content: string }>;
+      };
+      presentation?: { kind: "query_bubble"; text: string; name?: string };
+      cause?: string;
+    };
+    result: { state: string; session_id: string; turn_id?: string; queue_id?: string };
   };
   "host.session.info": { params: Record<string, never>; result: { session_id: string; thread_id?: string; cwd: string; model: string } };
   "host.workspace.root": { params: Record<string, never>; result: { root: string } };

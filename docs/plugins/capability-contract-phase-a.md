@@ -49,19 +49,19 @@
 - `agent.request.transform` (transform)
 - `agent.system_prompt.section` (transform)
 - `agent.compaction` (decision)
-- `agent.turn.continuation` (decision)
 - `agent.turn.completed` (observe)
+- `agent.turn.lifecycle` (observe, owner-scoped)
 - `plugin.client.request` (decision)
 
-“当前生产能力”只描述代码事实，不表示每一项都应成为长期公共合同。其中
-`agent.turn.continuation` 是 Goal 迁移过程中形成的产品专用过渡 seam：宿主按
-`probe/prepare` 轮询插件并为它启动内部 Turn。目标架构不保留这条能力，而是由插件观察
-Turn 生命周期后，主动通过通用 Session 投递唤醒同一个 Agent。
+Goal 迁移过程中曾存在产品专用的 `agent.turn.continuation` seam；它要求宿主按
+`probe/prepare` 轮询插件并为它启动内部 Turn。该 seam 已删除。Goal 现在观察
+`agent.turn.completed`，再主动通过 `host.session.send` 投递到同一个 Session。
 
 Goal 与 Subagent 共同证明通用投递还必须把模型输入、前端展示摘要和来源分开。前端可以把一次
 插件投递显示成只读 query 气泡，但持久数据必须标记为插件生成，不能伪造用户作者。通用 Session
-合同还需要 owner、`user | plugin` 可见性、父子关系、fresh/fork 上下文和 workspace 隔离；这些
-字段进入稳定 SDK 后，才能淘汰 `agent.turn.continuation` 和 `host.child_session.request`。
+合同现在持久化 owner、`user | plugin` 可见性、父子关系、fresh/fork 上下文和 workspace 身份，
+并把模型输入、query 气泡摘要、真实来源和 cause 分开。下一步用同一合同迁移 Subagent 后删除
+`host.child_session.request`。
 
 Plan 不属于这一迁移。`update_plan`、计划状态和标准展示留在核心 Agent 链路；Plan 不承担跨 Turn
 自动续跑。HelpMe 直接删除，不形成 capability 或兼容层。

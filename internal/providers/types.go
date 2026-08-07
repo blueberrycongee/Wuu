@@ -185,7 +185,15 @@ type ChatMessage struct {
 	ClientID       string
 	Content        string
 	DisplayContent string `json:"display_content,omitempty"`
-	Phase          MessagePhase
+	// Origin is product provenance, independent from provider Role. A plugin
+	// generated query still projects to provider role=user while retaining an
+	// auditable non-user author in durable history and UI state.
+	Origin           string
+	OriginID         string
+	Cause            string
+	PresentationKind string
+	ReadOnly         bool
+	Phase            MessagePhase
 	// Hidden marks model-visible context that should be omitted from
 	// user-facing conversation items and previews. It does not imply durable
 	// history; request-only context is owned by the agent request assembler.

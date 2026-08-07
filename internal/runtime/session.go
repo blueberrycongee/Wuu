@@ -99,27 +99,27 @@ const (
 // stream runner. UI surfaces should depend on this instead of reassembling the
 // pieces themselves.
 type Session struct {
-	ProviderName      string
-	Model             string
-	RootDir           string
-	Host              Host
-	WorkspaceID       string
-	StateDir          string
-	ConfigPath        string
-	HomeDir           string
-	ConfigLoadMode    ConfigLoadMode
-	SessionDir        string
-	StreamRunner      *agent.StreamRunner
-	TitleClient       providers.Client
-	HookDispatcher    *hooks.Dispatcher
-	Skills            []skills.Skill
-	Plugins           []pluginpkg.Plugin
-	ActivePlugins     []pluginpkg.Plugin
-	ExtensionSettings *extensions.Settings
-	PluginHost        *pluginhost.Host
-	PluginTurnRouter  *PluginTurnRouter
-	systemPrompts     *agent.SystemPromptAssembler
-	Memory            []memory.File
+	ProviderName        string
+	Model               string
+	RootDir             string
+	Host                Host
+	WorkspaceID         string
+	StateDir            string
+	ConfigPath          string
+	HomeDir             string
+	ConfigLoadMode      ConfigLoadMode
+	SessionDir          string
+	StreamRunner        *agent.StreamRunner
+	TitleClient         providers.Client
+	HookDispatcher      *hooks.Dispatcher
+	Skills              []skills.Skill
+	Plugins             []pluginpkg.Plugin
+	ActivePlugins       []pluginpkg.Plugin
+	ExtensionSettings   *extensions.Settings
+	PluginHost          *pluginhost.Host
+	PluginSessionRouter *PluginSessionRouter
+	systemPrompts       *agent.SystemPromptAssembler
+	Memory              []memory.File
 	// MemdirEnabled reports whether the file-directory memory (user
 	// notebook teaching + index injection and file-scope whitelist) is
 	// active for this session. False when Memory.Disable is set.
@@ -215,7 +215,7 @@ func (s *Session) cloneForThreadModel() *Session {
 		ActivePlugins:               s.ActivePlugins,
 		ExtensionSettings:           s.ExtensionSettings,
 		PluginHost:                  s.PluginHost,
-		PluginTurnRouter:            s.PluginTurnRouter,
+		PluginSessionRouter:         s.PluginSessionRouter,
 		systemPrompts:               s.systemPrompts,
 		Memory:                      s.Memory,
 		MemdirEnabled:               s.MemdirEnabled,
@@ -404,7 +404,7 @@ func NewSession(opts Options) (*Session, error) {
 	discoveredPlugins := discoverPlugins(rootDir, wuuHome)
 	activePlugins := activatedPlugins(cfg, discoveredPlugins)
 	var agentControl *agentcontrol.AgentControl
-	pluginTurnRouter := NewPluginTurnRouter()
+	pluginTurnRouter := NewPluginSessionRouter()
 	pluginHost := startPluginHost(activePlugins, rootDir, wuuHome, pluginTurnRouter, func(ctx context.Context, request pluginhost.ChildSessionRequestParams) (json.RawMessage, error) {
 		return dispatchChildSessionRequest(agentControl, ctx, request)
 	})
@@ -743,7 +743,7 @@ func NewSession(opts Options) (*Session, error) {
 		ActivePlugins:               activePlugins,
 		ExtensionSettings:           cfg.Extensions,
 		PluginHost:                  pluginHost,
-		PluginTurnRouter:            pluginTurnRouter,
+		PluginSessionRouter:         pluginTurnRouter,
 		systemPrompts:               systemPrompts,
 		Memory:                      memoryFiles,
 		MemdirEnabled:               memdirEnabled,

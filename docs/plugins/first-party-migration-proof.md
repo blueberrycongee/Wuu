@@ -48,9 +48,9 @@ state or Tool lifecycle.
 ## Example 3: Goal Uses Generic Session Delivery
 
 **Current implementation**: Goal owns its state machine, storage, Tool, prompt,
-and Desktop contribution, but depends on `agent.turn.continuation`. The host
-polls it with `probe/prepare`, starts an internal Turn, and adds a read-only query
-item such as “Goal 持续推进中”.
+and Desktop contribution. It observes `agent.turn.completed` and calls
+`host.session.send` on the same Session with a full continuation prompt and a
+safe read-only query summary such as “Goal 持续推进中”.
 
 **Target public composition**:
 
@@ -69,8 +69,8 @@ session.Send(SessionSendRequest{
 The host owns idempotency, durable queue admission, execution leases, user-work
 priority, cancellation, and recovery. The plugin owns the decision to continue
 and the two forms of content: full model input and concise user presentation.
-After this path is proven, `agent.turn.continuation` and its host polling are
-deleted.
+This path is now proven; `agent.turn.continuation` and its host polling have
+been deleted.
 
 ## Example 4: Subagent Uses Private Child Sessions
 

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/blueberrycongee/wuu/internal/pluginhost"
 	"github.com/blueberrycongee/wuu/internal/providers"
 	"github.com/blueberrycongee/wuu/internal/session"
 )
@@ -80,6 +81,9 @@ func (s *Server) threadSearchSources() ([]threadSearchSource, error) {
 	}
 	sourcesByID := make(map[string]threadSearchSource, len(sessions))
 	for _, sess := range sessions {
+		if sess.Visibility == pluginhost.SessionVisibilityPlugin {
+			continue
+		}
 		if sess.ArchivedAt != nil {
 			continue
 		}
@@ -102,9 +106,14 @@ func (s *Server) threadSearchSources() ([]threadSearchSource, error) {
 	for _, th := range s.threads {
 		th.mu.Lock()
 		thread := th.snapshotLocked()
+		visibility := th.Visibility
 		history := cloneHistory(th.History)
 		entry := threadListEntry{thread: thread, pinnedAt: th.PinnedAt}
 		th.mu.Unlock()
+		if visibility == pluginhost.SessionVisibilityPlugin {
+			delete(sourcesByID, thread.ID)
+			continue
+		}
 		if thread.Ephemeral {
 			continue
 		}

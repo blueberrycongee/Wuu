@@ -10,7 +10,6 @@ import (
 	"github.com/blueberrycongee/wuu/internal/agent"
 	"github.com/blueberrycongee/wuu/internal/execution"
 	"github.com/blueberrycongee/wuu/internal/hooks"
-	"github.com/blueberrycongee/wuu/internal/pluginhost"
 	"github.com/blueberrycongee/wuu/internal/providers"
 	"github.com/blueberrycongee/wuu/internal/session"
 	"github.com/blueberrycongee/wuu/internal/structuredoutput"
@@ -112,34 +111,6 @@ func TestExecutionRunSchemaOutcomeRetriesWithinOneRun(t *testing.T) {
 	}
 	if _, retry, validationErr := srv.executionRunSchemaOutcome("run-schema", `{"ok":true}`); retry || validationErr != nil {
 		t.Fatalf("valid outcome = retry %v, error %v", retry, validationErr)
-	}
-}
-
-func TestExecutionRunDefersSchemaValidationUntilContinuationSettles(t *testing.T) {
-	rt := newTestRuntime(t, &fakeClient{})
-	continuation := &continuationTestRuntime{id: "execution-continuation", output: pluginhost.AgentContinuationOutput{Continue: true}}
-	rt.PluginHost = pluginhost.New(continuation)
-	srv := New(rt, &lockedBuffer{})
-	defer srv.Close()
-	validator, err := structuredoutput.New(json.RawMessage(`{"type":"object","required":["ok"]}`))
-	if err != nil {
-		t.Fatalf("New validator: %v", err)
-	}
-	const threadID = "thread-schema-continuation"
-	srv.registerExecutionRun(execution.Run{ID: "run-schema-continuation", ThreadID: threadID}, validator)
-
-	awaiting, retryPrompt, validationErr := srv.executionRunSuccessfulTurnOutcome("run-schema-continuation", threadID, nil, `{"wrong":true}`)
-	if !awaiting || retryPrompt != "" || validationErr != nil {
-		t.Fatalf("active goal outcome = awaiting %v, prompt %q, error %v", awaiting, retryPrompt, validationErr)
-	}
-	if retries := srv.runs["run-schema-continuation"].retries; retries != 0 {
-		t.Fatalf("schema retries while continuation pending = %d", retries)
-	}
-
-	continuation.output = pluginhost.AgentContinuationOutput{}
-	awaiting, retryPrompt, validationErr = srv.executionRunSuccessfulTurnOutcome("run-schema-continuation", threadID, nil, `{"wrong":true}`)
-	if !awaiting || retryPrompt == "" || validationErr != nil {
-		t.Fatalf("final invalid outcome = awaiting %v, prompt %q, error %v", awaiting, retryPrompt, validationErr)
 	}
 }
 

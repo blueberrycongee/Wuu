@@ -13,6 +13,7 @@ import (
 	"github.com/blueberrycongee/wuu/internal/agentcontrol"
 	"github.com/blueberrycongee/wuu/internal/agentthread"
 	"github.com/blueberrycongee/wuu/internal/config"
+	"github.com/blueberrycongee/wuu/internal/pluginhost"
 	"github.com/blueberrycongee/wuu/internal/providers"
 	"github.com/blueberrycongee/wuu/internal/session"
 	"github.com/blueberrycongee/wuu/internal/statepath"
@@ -168,7 +169,6 @@ func (s *Server) writeThreadResumeResult(req Request, thread Thread) error {
 	}
 	if s.thread(thread.ID) != nil {
 		s.restorePendingProcessCompletionsOnThreadResume(thread.ID)
-		s.kickPluginContinuation(thread.ID)
 	}
 	s.pruneCachedThreads(thread.ID)
 	return nil
@@ -671,6 +671,9 @@ func (s *Server) handleThreadList(req Request) error {
 
 	entries := make(map[string]threadListEntry, len(sessions))
 	for _, sess := range sessions {
+		if sess.Visibility == pluginhost.SessionVisibilityPlugin {
+			continue
+		}
 		if sess.ArchivedAt != nil {
 			continue
 		}
@@ -687,8 +690,13 @@ func (s *Server) handleThreadList(req Request) error {
 	for _, th := range s.threads {
 		th.mu.Lock()
 		thread := th.snapshotLocked()
+		visibility := th.Visibility
 		entry := threadListEntry{thread: thread, pinnedAt: th.PinnedAt}
 		th.mu.Unlock()
+		if visibility == pluginhost.SessionVisibilityPlugin {
+			delete(entries, thread.ID)
+			continue
+		}
 		if thread.Ephemeral {
 			continue
 		}
@@ -745,6 +753,9 @@ func (s *Server) handleThreadListArchived(req Request) error {
 	}
 	entries := make(map[string]threadListEntry, len(sessions))
 	for _, sess := range sessions {
+		if sess.Visibility == pluginhost.SessionVisibilityPlugin {
+			continue
+		}
 		if sess.ArchivedAt == nil {
 			continue
 		}
@@ -758,8 +769,13 @@ func (s *Server) handleThreadListArchived(req Request) error {
 	for _, th := range s.threads {
 		th.mu.Lock()
 		thread := th.snapshotLocked()
+		visibility := th.Visibility
 		entry := threadListEntry{thread: thread, pinnedAt: th.PinnedAt}
 		th.mu.Unlock()
+		if visibility == pluginhost.SessionVisibilityPlugin {
+			delete(entries, thread.ID)
+			continue
+		}
 		if thread.Ephemeral {
 			continue
 		}
@@ -910,6 +926,8 @@ func applySessionMetadata(th *threadState, metadata session.Session) {
 	}
 	th.Title = metadata.Title
 	th.Source = metadata.Source
+	th.Owner = metadata.Owner
+	th.Visibility = metadata.Visibility
 	if selection := runtimeSelectionFromSession(metadata); selection.Provider != "" && selection.Model != "" {
 		applyThreadRuntimeSelection(th, selection)
 	}

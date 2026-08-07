@@ -216,7 +216,6 @@ func TestValidateCapabilityNegotiationHostServices(t *testing.T) {
 		{ID: CapabilityAgentSystemPromptSection, Kind: "transform", Version: 1},
 		{ID: CapabilityAgentCompaction, Kind: "decision", Version: 1},
 		{ID: CapabilityPluginClientRequest, Kind: "decision", Version: 1},
-		{ID: CapabilityAgentContinuation, Kind: "decision", Version: 1},
 	}
 
 	optional := base

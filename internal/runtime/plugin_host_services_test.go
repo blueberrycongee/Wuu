@@ -178,7 +178,7 @@ func TestProductionProcessClientNestedSettingsAndStorageCalls(t *testing.T) {
 	host, err := buildPluginHost([]pluginpkg.Plugin{item}, workspace, home, map[string]bool{item.ID: true}, func(ctx context.Context, config pluginhost.ProcessConfig) (pluginhost.Client, error) {
 		liveHandler = config.HostServiceHandler
 		return startPluginClient(ctx, config)
-	}, NewPluginTurnRouter())
+	}, NewPluginSessionRouter())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -219,7 +219,7 @@ func TestProductionHostServicesCloseOnGenerationSwap(t *testing.T) {
 	oldHost, err := buildPluginHost([]pluginpkg.Plugin{item}, workspace, home, map[string]bool{item.ID: true}, func(ctx context.Context, config pluginhost.ProcessConfig) (pluginhost.Client, error) {
 		oldHandler = config.HostServiceHandler
 		return startPluginClient(ctx, config)
-	}, NewPluginTurnRouter())
+	}, NewPluginSessionRouter())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -253,7 +253,7 @@ func runRuntimeHostServiceHelper() {
 		os.Exit(3)
 	}
 	var params pluginhost.CapabilityInitializeParams
-	if json.Unmarshal(initialize.Params, &params) != nil || len(params.SupportedHostServices) != 9 {
+	if json.Unmarshal(initialize.Params, &params) != nil || len(params.SupportedHostServices) != len(productionPluginHostServices) {
 		os.Exit(4)
 	}
 	initResult := pluginhost.CapabilityInitializeResult{

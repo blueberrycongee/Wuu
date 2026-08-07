@@ -45,14 +45,11 @@ const (
 	CapabilityAgentSystemPromptSection = "agent.system_prompt.section"
 	// CapabilityAgentCompaction selects a plugin-owned conversation compactor.
 	CapabilityAgentCompaction = "agent.compaction"
-	// CapabilityAgentContinuation lets a plugin request another host-owned turn
-	// and provide request-only context for that turn.
-	CapabilityAgentContinuation = "agent.turn.continuation"
 	// CapabilityAgentTurnCompleted observes a settled model turn after history
 	// and usage have been persisted. It cannot alter host turn control flow.
 	CapabilityAgentTurnCompleted = "agent.turn.completed"
 	// CapabilityAgentTurnLifecycle receives state changes for ordinary turns
-	// submitted by that same plugin through host.turn.submit. The host never
+	// submitted by that same plugin through host.session.send. The host never
 	// broadcasts these owner-scoped lifecycle events to other plugins.
 	CapabilityAgentTurnLifecycle = "agent.turn.lifecycle"
 	// CapabilityPluginClientRequest handles a generation-bound opaque request
@@ -180,9 +177,10 @@ const (
 	// calling plugin; the host only exposes a neutral request dispatcher.
 	HostServiceChildSessionRequest HostServiceMethod = "host.child_session.request"
 
-	// Turns. Plugins submit ordinary durable user turns; scheduling, retries,
-	// and product-specific run semantics remain owned by the calling plugin.
-	HostServiceTurnSubmit HostServiceMethod = "host.turn.submit"
+	// Sessions. Creation and input delivery are separate so ownership,
+	// visibility, provenance, and idempotency remain explicit.
+	HostServiceSessionCreate HostServiceMethod = "host.session.create"
+	HostServiceSessionSend   HostServiceMethod = "host.session.send"
 
 	// Session
 	HostServiceSessionGetInfo HostServiceMethod = "host.session.info"
@@ -203,28 +201,57 @@ type ChildSessionRequestParams struct {
 }
 
 const (
-	MaxTurnSubmitRequestIDBytes    = 256
-	MaxTurnSubmitContextBlocks     = 16
-	MaxTurnSubmitContextBlockBytes = 64 * 1024
-	MaxTurnSubmitContextTotalBytes = 256 * 1024
+	MaxSessionSendRequestIDBytes    = 256
+	MaxSessionSendContextBlocks     = 16
+	MaxSessionSendContextBlockBytes = 64 * 1024
+	MaxSessionSendContextTotalBytes = 256 * 1024
 )
 
-// TurnSubmitParams asks the host to admit an ordinary user turn. An empty
-// ThreadID creates a new durable thread in the current runtime workspace.
-// RequestID is opaque plugin-owned correlation data and is never interpreted
-// as an automation/task/run identifier by the host.
-type TurnSubmitParams struct {
-	RequestID     string                   `json:"request_id"`
-	ThreadID      string                   `json:"thread_id,omitempty"`
-	Prompt        string                   `json:"prompt"`
-	ContextBlocks []AgentContinuationBlock `json:"context_blocks,omitempty"`
+const (
+	SessionVisibilityUser          = "user"
+	SessionVisibilityPlugin        = "plugin"
+	SessionContextFresh            = "fresh"
+	SessionContextFork             = "fork"
+	SessionInputPlugin             = "plugin"
+	SessionPresentationQueryBubble = "query_bubble"
+)
+
+type SessionCreateParams struct {
+	RequestID       string `json:"request_id"`
+	Visibility      string `json:"visibility"`
+	ParentSessionID string `json:"parent_session_id,omitempty"`
+	ContextSource   string `json:"context_source"`
 }
 
-type TurnSubmitResult struct {
-	State    string `json:"state"`
-	ThreadID string `json:"thread_id"`
-	TurnID   string `json:"turn_id,omitempty"`
-	QueueID  string `json:"queue_id,omitempty"`
+type SessionCreateResult struct {
+	SessionID string `json:"session_id"`
+	Created   bool   `json:"created"`
+}
+
+type SessionInput struct {
+	Prompt        string                `json:"prompt"`
+	ContextBlocks []SessionContextBlock `json:"context_blocks,omitempty"`
+}
+
+type SessionInputPresentation struct {
+	Kind string `json:"kind"`
+	Text string `json:"text"`
+	Name string `json:"name,omitempty"`
+}
+
+type SessionSendParams struct {
+	RequestID    string                    `json:"request_id"`
+	SessionID    string                    `json:"session_id"`
+	Input        SessionInput              `json:"input"`
+	Presentation *SessionInputPresentation `json:"presentation,omitempty"`
+	Cause        string                    `json:"cause,omitempty"`
+}
+
+type SessionSendResult struct {
+	State     string `json:"state"`
+	SessionID string `json:"session_id"`
+	TurnID    string `json:"turn_id,omitempty"`
+	QueueID   string `json:"queue_id,omitempty"`
 }
 
 const (
@@ -238,7 +265,7 @@ const (
 
 // AgentTurnLifecycleInput is delivered only to the plugin that submitted the
 // correlated turn. Initial running/queued state is returned synchronously by
-// host.turn.submit; this event reports later transitions and terminal state.
+// host.session.send; this event reports later transitions and terminal state.
 type AgentTurnLifecycleInput struct {
 	RequestID    string     `json:"request_id"`
 	State        string     `json:"state"`
@@ -289,40 +316,12 @@ type PluginClientRequestOutput struct {
 	Result json.RawMessage `json:"result,omitempty"`
 }
 
-const (
-	ContinuationPhaseProbe   = "probe"
-	ContinuationPhasePrepare = "prepare"
-)
-
-// AgentContinuationInput asks a plugin whether it owns pending continuation
-// work for one thread. Prepare is called only after the host holds the thread's
-// execution lease and must revalidate the earlier probe.
-type AgentContinuationInput struct {
-	ThreadID string `json:"thread_id"`
-	Phase    string `json:"phase"`
-}
-
-// AgentContinuationBlock is request-only model context owned by the plugin.
-type AgentContinuationBlock struct {
+// SessionContextBlock is request-only model context owned by the plugin.
+type SessionContextBlock struct {
 	Kind    string `json:"kind"`
 	Title   string `json:"title,omitempty"`
 	Source  string `json:"source,omitempty"`
 	Content string `json:"content"`
-}
-
-// AgentContinuationOutput requests a turn and, during prepare, supplies the
-// context that explains the plugin-owned work to the model.
-type AgentContinuationOutput struct {
-	Continue bool                      `json:"continue"`
-	Blocks   []AgentContinuationBlock  `json:"blocks,omitempty"`
-	Display  *AgentContinuationDisplay `json:"display,omitempty"`
-}
-
-// AgentContinuationDisplay is an optional read-only user-query presentation
-// for the requested turn. The host renders it but never adds it to model context.
-type AgentContinuationDisplay struct {
-	Text string `json:"text"`
-	Name string `json:"name,omitempty"`
 }
 
 // AgentTurnCompletedInput is a product-neutral settled-turn observation.
@@ -607,8 +606,6 @@ func ValidateCapabilityDescriptor(c CapabilityDescriptor) error {
 		requiredKind = SeamTransform
 	case CapabilityAgentCompaction:
 		requiredKind = SeamDecision
-	case CapabilityAgentContinuation:
-		requiredKind = SeamDecision
 	case CapabilityAgentTurnCompleted:
 		requiredKind = SeamObserve
 	case CapabilityAgentTurnLifecycle:
@@ -695,7 +692,7 @@ func ValidateCapabilityNegotiation(result CapabilityInitializeResult, supported 
 			return err
 		}
 		switch capability.ID {
-		case CapabilityAgentRequestTransform, CapabilityAgentSystemPromptSection, CapabilityAgentCompaction, CapabilityAgentContinuation, CapabilityAgentTurnCompleted, CapabilityAgentTurnLifecycle, CapabilityPluginClientRequest:
+		case CapabilityAgentRequestTransform, CapabilityAgentSystemPromptSection, CapabilityAgentCompaction, CapabilityAgentTurnCompleted, CapabilityAgentTurnLifecycle, CapabilityPluginClientRequest:
 		default:
 			return fmt.Errorf("capability %s is not supported by this host", capability.ID)
 		}
@@ -741,7 +738,7 @@ func ValidateHostServiceMethod(m HostServiceMethod) error {
 	switch m {
 	case HostServiceStorageGet, HostServiceStorageSet, HostServiceStorageDelete, HostServiceStorageKeys, HostServiceStorageCompareExchange,
 		HostServiceSettingsGet, HostServiceSettingsList,
-		HostServiceChildSessionRequest, HostServiceTurnSubmit,
+		HostServiceChildSessionRequest, HostServiceSessionCreate, HostServiceSessionSend,
 		HostServiceSessionGetInfo,
 		HostServiceWorkspaceGetRoot, HostServiceWorkspaceList,
 		HostServiceDiagnosticsLog:
@@ -756,7 +753,7 @@ func AllHostServices() []HostServiceMethod {
 	return []HostServiceMethod{
 		HostServiceStorageGet, HostServiceStorageSet, HostServiceStorageDelete, HostServiceStorageKeys, HostServiceStorageCompareExchange,
 		HostServiceSettingsGet, HostServiceSettingsList,
-		HostServiceChildSessionRequest, HostServiceTurnSubmit,
+		HostServiceChildSessionRequest, HostServiceSessionCreate, HostServiceSessionSend,
 		HostServiceSessionGetInfo,
 		HostServiceWorkspaceGetRoot, HostServiceWorkspaceList,
 		HostServiceDiagnosticsLog,

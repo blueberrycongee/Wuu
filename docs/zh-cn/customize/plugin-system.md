@@ -180,20 +180,18 @@ RPC。
 当前代码已经证明插件可以承载 Tool、提示、状态和 Desktop 贡献，但“代码位于 plugins 目录”不等于
 完成纵向插件化。下面几处是明确的过渡实现，不能固化成公共生态合同：
 
-1. **Goal 的专用 continuation seam。** Goal 的状态机、存储、Tool 和 UI 已在插件中，但
-   `agent.turn.continuation` 仍要求宿主按 `probe/prepare` 两阶段询问插件，并在 Turn 主链路里
-   处理 Goal 式续跑。它应迁移为 `turn.completed → session.send(same session)`；现有只读 query
-   展示能力应进入通用投递的 `presentation`，随后删除 continuation capability 和宿主轮询。
+1. **Goal 已迁移到公共 Session 链路。** Goal 的状态机、存储、Tool、提示和 UI 均由插件拥有；
+   插件观察 `agent.turn.completed` 后通过 `host.session.send` 向同一 Session 投递只读 query。
+   `agent.turn.continuation`、`probe/prepare` 两阶段轮询以及 Turn 主链路里的 Goal 续跑分支已经删除。
 2. **Subagent 目前是外壳迁移。** Tool、提示和 UI 已在插件中，但 `host.child_session.request`
    仍由宿主按 `spawn/send/close/list/await/report` switch，并通过 `internal/agentcontrol` 和
    `internal/subagent` 理解 actor path、worker type、报告和完成回投。这些可靠执行实现不应粗暴
    删除，而应降成通用 Session、父子关系、上下文 fork、租约、恢复和 workspace 隔离；产品词汇
    留在插件。
-3. **当前 `host.turn.submit` 是待替换的过渡合同。** 它已经复用普通 durable Turn、队列、
-   租约和恢复，并允许创建新 Thread；但当前创建路径默认进入普通用户可见会话，投递被构造成
-   普通 user message，尚未完整表达 owner、visibility、parent、fresh/fork、workspace 隔离、
-   query 气泡展示和非用户来源。它应被通用 Session create/send 合同取代，而不是再并列新增
-   Goal 或 Subagent RPC。
+3. **通用 Session create/send 已取代 `host.turn.submit`。** 创建与投递是两个独立调用；创建持久化
+   generation 绑定的 owner、`user | plugin` 可见性、parent、`fresh | fork` 和幂等 request id，
+   投递则分离模型输入与 query 气泡摘要，并持久化真实插件来源、cause 和只读属性。Provider 仍按
+   普通 user role 执行，私有 Session 不进入普通列表与搜索，真实用户排队工作优先于插件唤醒。
 4. **HelpMe 仍有残留。** Subagent 插件仍注册 `helpme`，宿主还有被注释掉的 HelpMe 专用重写代码。
    产品决定是完整删除 Tool、Schema、Prompt、状态、测试、文档和死代码，不保留兼容入口，也不把
    它重命名成另一种插件工作流。

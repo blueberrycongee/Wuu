@@ -48,15 +48,18 @@ func TestGoalPluginNegotiatesAcrossRealProcessProtocol(t *testing.T) {
 	if err != nil || len(created.Result.Content) != 1 {
 		t.Fatalf("create = %+v, err = %v", created, err)
 	}
-	capability := findGoalCapability(t, client, pluginhost.CapabilityAgentContinuation)
-	var prepared pluginhost.AgentContinuationOutput
-	if err := pluginhost.New(client).InvokeCapability(context.Background(), capability, pluginhost.AgentContinuationInput{
-		ThreadID: "thread-1", Phase: pluginhost.ContinuationPhasePrepare,
-	}, &prepared); err != nil {
+	capability := findGoalCapability(t, client, pluginhost.CapabilityAgentTurnCompleted)
+	now := time.Now().UTC()
+	if err := pluginhost.New(client).InvokeCapability(context.Background(), capability, pluginhost.AgentTurnCompletedInput{
+		ThreadID: "thread-1", TurnID: "turn-1", StartedAt: now.Add(-time.Second), CompletedAt: now, Succeeded: true,
+	}, &pluginhost.AgentTurnCompletedOutput{}); err != nil {
 		t.Fatal(err)
 	}
-	if !prepared.Continue || len(prepared.Blocks) != 1 || !strings.Contains(prepared.Blocks[0].Content, "prove process integration") {
-		t.Fatalf("prepared = %+v", prepared)
+	services.mu.Lock()
+	sends := append([]pluginhost.SessionSendParams(nil), services.sends...)
+	services.mu.Unlock()
+	if len(sends) != 1 || sends[0].SessionID != "thread-1" || !strings.Contains(sends[0].Input.Prompt, "prove process integration") {
+		t.Fatalf("sends = %+v", sends)
 	}
 }
 
@@ -72,10 +75,11 @@ func findGoalCapability(t *testing.T, client *pluginhost.ProcessClient, id strin
 type goalTestHostServices struct {
 	mu     sync.Mutex
 	values map[string]string
+	sends  []pluginhost.SessionSendParams
 }
 
 func (s *goalTestHostServices) SupportedHostServices() []pluginhost.HostServiceMethod {
-	return []pluginhost.HostServiceMethod{pluginhost.HostServiceStorageGet, pluginhost.HostServiceStorageSet, pluginhost.HostServiceStorageDelete}
+	return []pluginhost.HostServiceMethod{pluginhost.HostServiceStorageGet, pluginhost.HostServiceStorageSet, pluginhost.HostServiceStorageDelete, pluginhost.HostServiceSessionSend}
 }
 
 func (s *goalTestHostServices) HandleHostService(_ context.Context, method pluginhost.HostServiceMethod, raw json.RawMessage) (json.RawMessage, error) {
@@ -106,6 +110,13 @@ func (s *goalTestHostServices) HandleHostService(_ context.Context, method plugi
 		}
 		delete(s.values, params.Key)
 		return json.RawMessage(`{}`), nil
+	case pluginhost.HostServiceSessionSend:
+		var params pluginhost.SessionSendParams
+		if err := json.Unmarshal(raw, &params); err != nil {
+			return nil, err
+		}
+		s.sends = append(s.sends, params)
+		return json.Marshal(pluginhost.SessionSendResult{State: pluginhost.TurnLifecycleQueued, SessionID: params.SessionID, QueueID: "queue-1"})
 	default:
 		return nil, errors.New("unsupported host service")
 	}
