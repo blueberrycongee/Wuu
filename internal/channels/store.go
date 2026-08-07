@@ -1190,7 +1190,11 @@ func (s *Service) WakeState(ctx context.Context, agentID string) (WakeState, err
 }
 
 func sqliteDSN(path string) string {
-	u := url.URL{Scheme: "file", Path: path}
+	slashed := filepath.ToSlash(path)
+	if filepath.VolumeName(path) != "" && !strings.HasPrefix(slashed, "/") {
+		slashed = "/" + slashed
+	}
+	u := url.URL{Scheme: "file", Path: slashed}
 	query := u.Query()
 	query.Add("_pragma", "busy_timeout(5000)")
 	query.Add("_pragma", "foreign_keys(1)")

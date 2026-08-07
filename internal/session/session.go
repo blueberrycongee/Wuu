@@ -785,7 +785,17 @@ func storeTableExists(db *sql.DB, name string) (bool, error) {
 }
 
 func sqliteDSN(path string) string {
-	u := url.URL{Scheme: "file", Path: path}
+	// url.URL percent-encodes backslashes and treats a path without a leading
+	// slash as opaque, so a Windows path like C:\dir\db turns into
+	// file:C:%5Cdir%5Cdb, which the sqlite driver rejects with "invalid uri
+	// authority". Normalize to forward slashes and ensure a leading slash so
+	// Windows paths yield a valid file:///... URI while relative POSIX paths
+	// retain their existing semantics.
+	slashed := filepath.ToSlash(path)
+	if filepath.VolumeName(path) != "" && !strings.HasPrefix(slashed, "/") {
+		slashed = "/" + slashed
+	}
+	u := url.URL{Scheme: "file", Path: slashed}
 	q := u.Query()
 	q.Add("_pragma", "busy_timeout(5000)")
 	q.Add("_pragma", "foreign_keys(1)")

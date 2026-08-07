@@ -5,15 +5,37 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
 	"testing"
 	"unicode/utf8"
 )
+
+func TestSQLiteDSNNormalizesWindowsPath(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows path normalization")
+	}
+	dsn := sqliteDSN(`C:\Users\wuu\AppData\Local\channels.sqlite3`)
+	parsed, err := url.Parse(dsn)
+	if err != nil {
+		t.Fatalf("parse sqlite DSN %q: %v", dsn, err)
+	}
+	if parsed.Scheme != "file" {
+		t.Fatalf("sqlite DSN scheme = %q, want file", parsed.Scheme)
+	}
+	if parsed.Host != "" {
+		t.Fatalf("sqlite DSN host = %q, want empty", parsed.Host)
+	}
+	if parsed.Path != "/C:/Users/wuu/AppData/Local/channels.sqlite3" {
+		t.Fatalf("sqlite DSN path = %q, want normalized absolute Windows path", parsed.Path)
+	}
+}
 
 type recordingWakeSink struct {
 	mu        sync.Mutex

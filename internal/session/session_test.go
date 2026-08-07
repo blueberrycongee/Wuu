@@ -4,8 +4,10 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"sync"
 	"testing"
@@ -13,6 +15,26 @@ import (
 
 	"github.com/blueberrycongee/wuu/internal/statepath"
 )
+
+func TestSQLiteDSNNormalizesWindowsPath(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows path normalization")
+	}
+	dsn := sqliteDSN(`C:\Users\wuu\AppData\Local\sessions.sqlite3`)
+	parsed, err := url.Parse(dsn)
+	if err != nil {
+		t.Fatalf("parse sqlite DSN %q: %v", dsn, err)
+	}
+	if parsed.Scheme != "file" {
+		t.Fatalf("sqlite DSN scheme = %q, want file", parsed.Scheme)
+	}
+	if parsed.Host != "" {
+		t.Fatalf("sqlite DSN host = %q, want empty", parsed.Host)
+	}
+	if parsed.Path != "/C:/Users/wuu/AppData/Local/sessions.sqlite3" {
+		t.Fatalf("sqlite DSN path = %q, want normalized absolute Windows path", parsed.Path)
+	}
+}
 
 func TestCreateAndList(t *testing.T) {
 	dir := t.TempDir()
