@@ -32,27 +32,10 @@ export function activate(api) {
         font-family: var(--wuu-font-family-ui, "Avenir Next Condensed", Arial, sans-serif);
       }
       .manga-shell *, .manga-shell *::before, .manga-shell *::after { box-sizing: border-box; }
-      .manga-mode-badge {
-        position: fixed;
-        top: 7px;
-        right: 12px;
-        z-index: 9000;
-        pointer-events: none;
-        padding: 3px 9px 2px;
-        color: var(--manga-paper);
-        background: var(--manga-ink);
-        border: 2px solid var(--manga-paper);
-        outline: 2px solid var(--manga-ink);
-        font: 900 10px/1 var(--wuu-font-family-ui, sans-serif);
-        letter-spacing: .16em;
-        transform: rotate(1.5deg);
-      }
       .manga-shell button,
       .manga-shell input,
       .manga-shell textarea,
       .manga-shell select { font-family: inherit; }
-      .manga-shell button { border-radius: 3px !important; font-weight: 800; }
-      .manga-shell button:not(:disabled):hover { transform: translate(-1px, -1px); }
       .manga-shell input,
       .manga-shell textarea,
       .manga-shell select {
@@ -456,16 +439,10 @@ export function activate(api) {
         border: 2px solid var(--manga-ink) !important;
         box-shadow: 2px 2px 0 var(--manga-ink);
       }
-      .manga-shell [data-wuu-component="conversation-pane"] > header {
+      .manga-shell [data-wuu-component="conversation-pane"] > .titlebar {
         color: var(--manga-paper);
         background: var(--manga-ink);
         border-bottom: 4px solid var(--manga-pink);
-      }
-      .manga-shell [data-wuu-component="conversation-pane"] > header button:not([data-wuu-component="sidebar-toggle"]) {
-        color: var(--manga-paper);
-        background: #332d26;
-        border: 1px solid var(--manga-paper) !important;
-        box-shadow: 2px 2px 0 var(--manga-pink);
       }
       .manga-shell [data-wuu-component="sidebar-toggle"] {
         color: var(--manga-paper);
@@ -473,23 +450,19 @@ export function activate(api) {
         border: 1px solid var(--manga-paper) !important;
         box-shadow: 2px 2px 0 var(--manga-pink);
       }
-      .manga-shell [data-wuu-component="conversation-pane"] > header button:disabled {
-        opacity: .42;
-        box-shadow: none;
-      }
-      .manga-shell [data-wuu-component="conversation-pane"] > header [data-wuu-component="session-tab"] {
+      .manga-shell [data-wuu-component="conversation-pane"] > .titlebar [data-wuu-component="session-tab"] {
         color: var(--manga-paper);
         background: #332d26;
         border: 1px solid var(--manga-paper);
         border-radius: 3px;
         box-shadow: 2px 2px 0 var(--manga-pink);
       }
-      .manga-shell [data-wuu-component="conversation-pane"] > header [data-wuu-component="session-tab"][data-wuu-active="true"] {
+      .manga-shell [data-wuu-component="conversation-pane"] > .titlebar [data-wuu-component="session-tab"][data-wuu-active="true"] {
         color: var(--manga-ink);
         background: var(--manga-yellow);
       }
-      .manga-shell [data-wuu-component="conversation-pane"] > header [data-wuu-component="session-tab-main"],
-      .manga-shell [data-wuu-component="conversation-pane"] > header [data-wuu-component="session-tab-close"] {
+      .manga-shell [data-wuu-component="conversation-pane"] > .titlebar [data-wuu-component="session-tab-main"],
+      .manga-shell [data-wuu-component="conversation-pane"] > .titlebar [data-wuu-component="session-tab-close"] {
         color: inherit;
         background: transparent;
         border: 0 !important;
@@ -497,22 +470,19 @@ export function activate(api) {
         box-shadow: none;
         transform: none !important;
       }
-      .manga-shell [data-wuu-component="conversation-pane"] > header [data-wuu-component="session-tab-close"] {
+      .manga-shell [data-wuu-component="conversation-pane"] > .titlebar [data-wuu-component="session-tab-close"] {
         margin-right: 0;
         border-left: 1px solid currentColor !important;
       }
-      .manga-shell [data-wuu-component="conversation-pane"] > header [data-wuu-component="session-tab-close"]:hover {
+      .manga-shell [data-wuu-component="conversation-pane"] > .titlebar [data-wuu-component="session-tab-close"]:hover {
         background: rgb(255 63 127 / .3);
       }
-      .manga-shell [data-wuu-component="conversation-pane"] > header [data-wuu-component="session-tab"][data-wuu-active="true"]::after {
+      .manga-shell [data-wuu-component="conversation-pane"] > .titlebar [data-wuu-component="session-tab"][data-wuu-active="true"]::after {
         right: 8px;
         left: 8px;
         height: 4px;
         border-radius: 0;
         background: var(--manga-pink);
-      }
-      @media (prefers-reduced-motion: reduce) {
-        .manga-shell button:not(:disabled):hover { transform: none; }
       }
     `,
   });
@@ -525,7 +495,6 @@ export function activate(api) {
         "main",
         { className: "manga-shell" },
         fallback,
-        React.createElement("span", { className: "manga-mode-badge", "aria-hidden": true }, "MANGA MODE • WUU"),
       );
     },
   });
