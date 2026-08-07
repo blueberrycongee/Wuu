@@ -105,6 +105,14 @@ export function activate(api) {
         background: rgb(255 253 242 / .96);
         border-right: 3px solid var(--manga-ink);
       }
+      .manga-shell [data-wuu-component="app-shell"][data-wuu-sidebar-mode="drawer"]
+        [data-wuu-component="sidebar"] {
+        background-color: var(--manga-paper);
+        background-image: radial-gradient(circle at 1px 1px, rgb(23 19 15 / .1) 1px, transparent 1.2px);
+        background-size: 13px 13px;
+        border-right-color: var(--manga-ink);
+        box-shadow: 7px 0 0 var(--manga-cyan);
+      }
       .manga-shell [data-wuu-component="conversation-pane"],
       .manga-shell [data-wuu-component="empty-session"],
       .manga-shell [data-wuu-component="settings-shell"],

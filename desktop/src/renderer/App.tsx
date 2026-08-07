@@ -4134,7 +4134,13 @@ export function App(): JSX.Element {
             },
           }}
           fallback={
-        <div ref={appShellRef} className={shellClassName} style={shellStyle} data-wuu-component="app-shell">
+        <div
+          ref={appShellRef}
+          className={shellClassName}
+          style={shellStyle}
+          data-wuu-component="app-shell"
+          data-wuu-sidebar-mode={sidebarDrawerVisible ? "drawer" : sidebarDrawerMode ? "collapsed" : "docked"}
+        >
           {!poppedOutMode ? (
             <>
           <div

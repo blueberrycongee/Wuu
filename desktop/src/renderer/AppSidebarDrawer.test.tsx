@@ -306,7 +306,9 @@ describe("collapsed sidebar hover drawer", () => {
 
   it("opens the collapsed sidebar when the titlebar toggle is hovered", async () => {
     await renderCollapsedApp();
+    expect(appShell()?.dataset.wuuSidebarMode).toBe("collapsed");
     await openDrawerViaSidebarToggle();
+    expect(appShell()?.dataset.wuuSidebarMode).toBe("drawer");
   });
 
   it("pins the collapsed sidebar open when its toggle is clicked after hover preview", async () => {
@@ -323,6 +325,7 @@ describe("collapsed sidebar hover drawer", () => {
     expect(appShell()?.classList.contains("sidebar-collapsed")).toBe(false);
     expect(appShell()?.classList.contains("sidebar-drawer-open")).toBe(false);
     expect(appShell()?.classList.contains("sidebar-drawer-docking")).toBe(true);
+    expect(appShell()?.dataset.wuuSidebarMode).toBe("docked");
 
     await act(async () => {
       vi.advanceTimersByTime(SIDEBAR_MOTION_MS);

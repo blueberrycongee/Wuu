@@ -74,6 +74,13 @@ describe("production semantic anchors", () => {
     expect(source.match(/data-wuu-component="environment-panel"/g)).toHaveLength(2);
   });
 
+  it("publishes docked, collapsed, and drawer sidebar presentation modes", () => {
+    const source = readFileSync(resolve(RENDERER_ROOT, "App.tsx"), "utf8");
+    expect(source).toContain("data-wuu-sidebar-mode=");
+    expect(source).toContain('sidebarDrawerVisible ? "drawer"');
+    expect(source).toContain('sidebarDrawerMode ? "collapsed" : "docked"');
+  });
+
   it("wraps every plugin contribution in the public coordinate boundary", () => {
     // Multi-plugin coexistence depends on this wrapper: it is what lets a
     // theme plugin's CSS snippets address a capability plugin's UI (by
