@@ -147,14 +147,18 @@ runtime 进程由 Wuu 启动，是一个长驻进程，通过标准输入输出�
 插件不能直接读写标准输入输出或假设请求与响应严格交替。后台 timer、watcher 或进程应在会话
 生命周期开始后启动，并在 generation 关闭时停止，不能越过禁用、升级和卸载边界继续运行。
 
-需要在后台发起一次普通 Agent 工作时，插件调用 `host.turn.submit`，传入自己生成的
-`request_id`、提示词、可选的目标 `thread_id` 和有大小上限的 request-only context blocks。
-省略 `thread_id` 会在当前工作区创建普通持久会话；目标会话忙时进入同一条普通用户回合队列。
-返回值只包含 `running | queued`、`thread_id`、`turn_id` 或 `queue_id`，不会创建任务、计划或
-运行记录。插件若声明 `agent.turn.lifecycle` observe 能力，宿主会把后续 running、completed、
-failed、interrupted、discarded 状态只发给原提交插件，并带回原样的 `request_id`。Cron、重试、
-错过触发恢复、并发合并和业务状态都必须由插件持有；核心不提供 timer tick，也不解释
-`request_id`。
+需要在后台发起普通 Agent 工作时，插件组合两个产品中立服务：`host.session.create` 创建具有明确
+owner、visibility、parent、fresh/fork 和 workspace 语义的 Session；`host.session.send` 向已有
+Session 投递输入。send 请求包含插件生成的 `request_id`、模型输入、有大小上限的 request-only
+context blocks、稳定 cause，以及可选的 `presentation: { kind: "query_bubble", text, name }`。
+
+`presentation.text` 是前端 query 气泡显示的安全摘要，不是完整内部 Prompt。用户输入和插件唤醒
+统一复用标准 query 气泡；宿主仍在持久记录中区分 `origin=user | host | plugin`，并把插件生成项
+标成只读、可审计。Provider 适配层可以按协议需要将其投影为 `user` role，但不能丢失产品来源。
+目标 Session 忙时进入同一条普通 Turn 队列。插件若声明 `agent.turn.lifecycle` observe 能力，
+宿主会把后续 running、completed、failed、interrupted、discarded 状态只发给原提交插件，并带回
+原样的 `request_id`。Cron、重试、错过触发恢复、并发合并和业务状态都必须由插件持有；核心不
+提供 timer tick，也不解释 `request_id` 或 cause。
 
 进程生命周期由 Wuu 管理：启用时启动，禁用、升级或卸载时终止。插件不能重启自身或
 绕过宿主对进程的监督。

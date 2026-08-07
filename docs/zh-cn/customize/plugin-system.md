@@ -87,15 +87,16 @@ Timer、Cron 表达式、错过触发后的补跑策略和运行记录属于 Cro
 ### 唤醒主 Agent 与“生成的 query”
 
 Goal 自动续跑和 Subagent 完成回投共享一条尤其重要的公共链路：它们都会向已有主 Session 投递
-一次新输入，从而唤醒主 Agent。Cron 向用户可见 Session 投递时也可复用同一语义。前端可以把
-这次投递渲染成 query 气泡，让用户理解为什么 Agent 又开始工作，但不能把它记录成用户亲自发送
-的消息。
+一次新输入，从而唤醒主 Agent。Cron 向用户可见 Session 投递时也可复用同一语义。产品表现统一
+使用现有 query 气泡：用户发送和插件唤醒不需要两套布局、颜色或交互节奏。这里“不把它记录成
+用户亲自发送的消息”只约束持久化来源和可编辑性，不要求前端把生成 query 画成另一种组件。
 
 因此通用投递必须区分三件事：
 
 - **模型输入**：真正送给 Agent 的 Prompt 或结构化上下文；
 - **展示摘要**：前端 query 气泡里的简短说明，可以与完整模型输入不同；
-- **来源**：用户、宿主或具体插件，以及稳定的 cause/request id。
+- **来源**：用户、宿主或具体插件，以及稳定的 cause/request id；该来源不改变 query 气泡的
+  基础视觉语义。
 
 概念上的合同类似：
 
@@ -103,17 +104,20 @@ Goal 自动续跑和 Subagent 完成回投共享一条尤其重要的公共链�
 session.send({
   session,
   input,
-  presentation: { kind: generated_query, text, name },
+  presentation: { kind: query_bubble, text, name },
   cause,
   request_id
 })
 ```
 
-`generated_query` 是只读、可审计的系统生成输入：视觉上可以复用用户 query 气泡，数据上必须保留
-插件来源，不能伪造用户作者。宿主负责幂等、持久化、执行租约、排队、取消和恢复，并保证真实
-用户工作优先；插件只决定何时投递、模型看什么以及用户看到什么。Subagent 的完成通知可以把完整
-交接内容作为模型输入，只把“子任务 A 已更新”显示在气泡里；Goal 可以把目标继续提示作为模型
-输入，只显示“Goal 持续推进中”。这不需要两条产品专用唤醒链路。
+`query_bubble` 表示沿用标准 query 气泡展示，不表示作者一定是用户。宿主在持久化记录中盖章
+`origin=user | host | plugin`，插件身份由 generation 绑定，不能由请求伪造；系统生成项默认只读、
+可审计。Provider 适配层为了启动一次模型回合，仍可以把这类输入投影成协议要求的 `user` role，
+但 Provider role 不能反向覆盖产品数据里的真实来源。宿主负责幂等、持久化、执行租约、排队、
+取消和恢复，并保证真实用户工作优先；插件只决定何时投递、模型看什么以及用户看到什么。
+Subagent 的完成通知可以把完整交接内容作为模型输入，只把“子任务 A 已更新”显示在气泡里；Goal
+可以把目标继续提示作为模型输入，只显示“Goal 持续推进中”。前端只接收经过区分的展示摘要和
+来源元数据，不直接拿完整内部 Prompt 生成气泡。这不需要两条产品专用唤醒链路。
 
 ### 从产品需求提炼公共能力，而不是公开产品内部
 
@@ -185,10 +189,10 @@ RPC。
    `internal/subagent` 理解 actor path、worker type、报告和完成回投。这些可靠执行实现不应粗暴
    删除，而应降成通用 Session、父子关系、上下文 fork、租约、恢复和 workspace 隔离；产品词汇
    留在插件。
-3. **当前 `host.turn.submit` 方向正确但还不完整。** 它已经复用普通 durable Turn、队列、
+3. **当前 `host.turn.submit` 是待替换的过渡合同。** 它已经复用普通 durable Turn、队列、
    租约和恢复，并允许创建新 Thread；但当前创建路径默认进入普通用户可见会话，投递被构造成
    普通 user message，尚未完整表达 owner、visibility、parent、fresh/fork、workspace 隔离、
-   生成 query 展示和非用户来源。它应演进成通用 Session create/send 合同，而不是再并列新增
+   query 气泡展示和非用户来源。它应被通用 Session create/send 合同取代，而不是再并列新增
    Goal 或 Subagent RPC。
 4. **HelpMe 仍有残留。** Subagent 插件仍注册 `helpme`，宿主还有被注释掉的 HelpMe 专用重写代码。
    产品决定是完整删除 Tool、Schema、Prompt、状态、测试、文档和死代码，不保留兼容入口，也不把
