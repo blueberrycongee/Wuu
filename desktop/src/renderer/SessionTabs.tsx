@@ -176,9 +176,11 @@ export function SessionTabStrip({
                     <div
                       key={`closing-${tab.id}`}
                       className="session-tab closing"
+                      data-wuu-component="session-tab"
+                      data-wuu-state="closing"
                       aria-hidden="true"
                     >
-                      <span className="session-tab-main">
+                      <span className="session-tab-main" data-wuu-component="session-tab-main">
                         <span className="session-tab-status" aria-hidden="true" />
                         <span className="session-tab-title">
                           {sessionTabLabel(tab, state)}
@@ -396,6 +398,8 @@ function SortableSessionTab({
       className={`session-tab${active ? " active" : ""}${running ? " running" : ""}${
         pendingSwitch ? " pending-switch" : ""
       }${unread ? " has-unread" : ""}${pendingCount > 0 ? " has-pending" : ""}${reorderable ? " can-reorder" : ""}${isDragging ? " dragging" : ""}`}
+      data-wuu-component="session-tab"
+      data-wuu-active={active ? "true" : "false"}
       style={style}
       aria-grabbed={isDragging || undefined}
       onContextMenu={onContextMenu}
@@ -403,6 +407,7 @@ function SortableSessionTab({
       <button
         ref={setActivatorNodeRef}
         className="session-tab-main"
+        data-wuu-component="session-tab-main"
         type="button"
         {...dragAttributes}
         {...listeners}
@@ -426,6 +431,7 @@ function SortableSessionTab({
       </button>
       <button
         className="session-tab-close"
+        data-wuu-component="session-tab-close"
         type="button"
         draggable={false}
         aria-label={closeLabel}
@@ -460,9 +466,12 @@ function SessionTabDragPreview({
   return (
     <div
       className={`session-tab session-tab-drag-overlay${active ? " active" : ""}${running ? " running" : ""}${unread ? " has-unread" : ""}${pendingCount > 0 ? " has-pending" : ""}`}
+      data-wuu-component="session-tab"
+      data-wuu-active={active ? "true" : "false"}
+      data-wuu-state="dragging"
       style={width ? { width } : undefined}
     >
-      <div className="session-tab-main">
+      <div className="session-tab-main" data-wuu-component="session-tab-main">
         <span className="session-tab-status" aria-hidden="true" />
         <span className="session-tab-title">{label}</span>
         {pendingCount > 0 ? (
@@ -471,7 +480,7 @@ function SessionTabDragPreview({
           </span>
         ) : null}
       </div>
-      <div className="session-tab-close" aria-hidden="true">
+      <div className="session-tab-close" data-wuu-component="session-tab-close" aria-hidden="true">
         <X className="icon-xs" />
       </div>
     </div>

@@ -18,14 +18,20 @@ const SEMANTIC_ANCHOR_OWNERS = Object.freeze({
   "automations-catalog": "AutomationsCatalog.tsx",
   "channel-view": "ChannelView.tsx",
   "composer": "ComposerView.tsx",
+  "composer-frame": "ComposerView.tsx",
   "composer-input": "ComposerView.tsx",
   "composer-pending": "ComposerInputSections.tsx",
   "composer-send": "ComposerView.tsx",
+  "composer-toolbar": "ComposerView.tsx",
   "conversation-pane": "App.tsx",
+  "empty-session": "LoadingViews.tsx",
   "environment-panel": "EnvironmentPanel.tsx",
   "launch-view": "LoadingViews.tsx",
   "message": "ThreadItemView.tsx",
   "settings-shell": "SettingsView.tsx",
+  "session-tab": "SessionTabs.tsx",
+  "session-tab-close": "SessionTabs.tsx",
+  "session-tab-main": "SessionTabs.tsx",
   "sidebar": "AppSidebar.tsx",
   "side-thread": "SideThreadPanel.tsx",
   "skills-catalog": "SkillsCatalog.tsx",
@@ -33,9 +39,12 @@ const SEMANTIC_ANCHOR_OWNERS = Object.freeze({
   "workspace-browser": "WorkspaceBrowserPanel.tsx",
   "workspace-document-turn": "WorkspaceDocumentTurnDock.tsx",
   "workspace-panel": "WorkspacePanels.tsx",
+  "workspace-panel-header": "WorkspacePanels.tsx",
   "workspace-pdf-preview": "WorkspacePdfPreview.tsx",
   "workspace-review": "WorkspaceReviewPanels.tsx",
   "workspace-terminal": "WorkspaceTerminalPanel.tsx",
+  "workspace-tool": "WorkspacePanels.tsx",
+  "workspace-tool-picker": "WorkspacePanels.tsx",
 } as const);
 
 describe("production semantic anchors", () => {
@@ -55,6 +64,14 @@ describe("production semantic anchors", () => {
     );
     expect(source).toContain('data-wuu-variant="user"');
     expect(source).toContain('data-wuu-variant="agent"');
+  });
+
+  it("keeps the environment panel anchor on its default and file-preview variants", () => {
+    const source = readFileSync(
+      resolve(RENDERER_ROOT, "EnvironmentPanel.tsx"),
+      "utf8",
+    );
+    expect(source.match(/data-wuu-component="environment-panel"/g)).toHaveLength(2);
   });
 
   it("wraps every plugin contribution in the public coordinate boundary", () => {

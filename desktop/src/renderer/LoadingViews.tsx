@@ -66,7 +66,7 @@ export function EmptyConversationHome({
   children: JSX.Element;
 }): JSX.Element {
   return (
-    <section className="empty-home">
+    <section className="empty-home" data-wuu-component="empty-session">
       <div className="empty-home-inner session-flow">
         <div className="empty-home-header">
           {/* The mascot greeting; see .empty-home-mascot in turns.css. */}

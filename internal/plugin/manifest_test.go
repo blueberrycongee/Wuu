@@ -304,13 +304,13 @@ func TestDeepUIExampleManifestLoads(t *testing.T) {
 	}
 }
 
-func TestMangaStudioFixtureManifestCoversDeclarativeUISchema(t *testing.T) {
+func TestMangaStudioExampleUsesLayoutSafeDeclarativeUI(t *testing.T) {
 	manifest, err := LoadManifest(filepath.Join("..", "..", "examples", "plugins", "manga-studio", ManifestFilename), "user")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(manifest.Surfaces) != 13 {
-		t.Fatalf("manga surfaces = %d, want 13", len(manifest.Surfaces))
+	if len(manifest.Surfaces) != 1 || manifest.Surfaces[0].Target != "app.shell" {
+		t.Fatalf("manga surfaces = %+v, want only app.shell", manifest.Surfaces)
 	}
 	wraps, replacements := 0, 0
 	for _, presenter := range manifest.Presenters {
@@ -321,8 +321,8 @@ func TestMangaStudioFixtureManifestCoversDeclarativeUISchema(t *testing.T) {
 			replacements++
 		}
 	}
-	if wraps != 9 || replacements != 6 {
-		t.Fatalf("manga presenters: wrap=%d replace=%d, want 9 and 6", wraps, replacements)
+	if wraps != 0 || replacements != 0 {
+		t.Fatalf("manga presenters: wrap=%d replace=%d, want no presenter DOM wrappers", wraps, replacements)
 	}
 	if len(manifest.Themes) != 1 || manifest.Themes[0].Tokens["--wuu-color-canvas"] == "" {
 		t.Fatalf("manga theme = %+v", manifest.Themes)

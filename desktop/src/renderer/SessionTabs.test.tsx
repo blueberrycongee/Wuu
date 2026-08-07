@@ -193,6 +193,12 @@ describe("SessionTabStrip pending indicators", () => {
     expect(tab?.getAttribute("role")).toBe("tab");
     expect(tab?.getAttribute("aria-selected")).toBe("true");
     expect(tab?.tabIndex).toBe(0);
+    const tabShell = container.querySelector('[data-wuu-component="session-tab"]');
+    expect(tabShell?.getAttribute("data-wuu-active")).toBe("true");
+    expect(tab?.getAttribute("data-wuu-component")).toBe("session-tab-main");
+    expect(
+      tabShell?.querySelector('[data-wuu-component="session-tab-close"]'),
+    ).not.toBeNull();
   });
 
   it("moves focus and selection across conversations with arrow keys", () => {

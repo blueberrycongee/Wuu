@@ -547,7 +547,7 @@ export function WorkspaceRightPanel({
       aria-hidden={!open}
       inert={!open}
     >
-      <div className="workspace-panel-tabbar">
+      <div className="workspace-panel-tabbar" data-wuu-component="workspace-panel-header">
         <PluginSlot
           host={pluginHost ?? desktopPluginHost}
           id="workspace.header"
@@ -1015,11 +1015,16 @@ function WorkspaceToolPicker({
 }): JSX.Element {
   const { t } = useI18n();
   return (
-    <div className="workspace-tool-menu" aria-label={t("workspace.tools")}>
+    <div
+      className="workspace-tool-menu"
+      aria-label={t("workspace.tools")}
+      data-wuu-component="workspace-tool-picker"
+    >
       {WORKSPACE_TOOL_ITEMS.map((item) => (
         <button
           key={item.id}
           className={`workspace-tool-menu-item${tabs.some((tab) => tab.kind === item.id) ? " active" : ""}`}
+          data-wuu-component="workspace-tool"
           type="button"
           onClick={() => onSelectTool(item.id)}
         >
@@ -1070,6 +1075,7 @@ export function WorkspaceBottomPanel({
             <button
               key={item.id}
               className={`workspace-tool-card${item.id === selectedView ? " active" : ""}`}
+              data-wuu-component="workspace-tool"
               type="button"
               onClick={() => onSelectTool(item.id)}
             >

@@ -629,6 +629,8 @@ function EnvironmentFilePreview({
       className={`environment-panel ${motionState}`}
       aria-label={t("environment.filePreview")}
       aria-hidden={motionState === "closing" ? true : undefined}
+      data-wuu-component="environment-panel"
+      data-wuu-state={motionState}
     >
       <div className="environment-panel-header">
         <h2>{t("environment.file")}</h2>

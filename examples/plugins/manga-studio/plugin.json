@@ -9,36 +9,7 @@
   },
   "contributes": {
     "surfaces": [
-      { "id": "manga-shell", "target": "app.shell", "mode": "wrap" },
-      { "id": "manga-app-sidebar", "target": "app.sidebar", "mode": "wrap" },
-      { "id": "manga-app-main", "target": "app.main", "mode": "wrap" },
-      { "id": "manga-app-auxiliary", "target": "app.auxiliary", "mode": "wrap" },
-      { "id": "manga-app-status", "target": "app.status", "mode": "wrap" },
-      { "id": "manga-view-launch", "target": "view.launch", "mode": "wrap" },
-      { "id": "manga-view-conversation", "target": "view.conversation", "mode": "wrap" },
-      { "id": "manga-view-workspace", "target": "view.workspace", "mode": "wrap" },
-      { "id": "manga-view-settings", "target": "view.settings", "mode": "wrap" },
-      { "id": "manga-view-catalog", "target": "view.catalog", "mode": "wrap" },
-      { "id": "manga-conversation-timeline", "target": "conversation.timeline", "mode": "wrap" },
-      { "id": "manga-conversation-message", "target": "conversation.message", "mode": "wrap" },
-      { "id": "manga-conversation-composer", "target": "conversation.composer", "mode": "wrap" }
-    ],
-    "presenters": [
-      { "id": "manga-presenter-conversation-item", "target": "conversation.item", "mode": "wrap" },
-      { "id": "manga-presenter-conversation-process", "target": "conversation.process", "mode": "wrap" },
-      { "id": "manga-presenter-conversation-composer", "target": "conversation.composer", "mode": "wrap" },
-      { "id": "manga-presenter-header-conversation", "target": "header.conversation", "mode": "wrap" },
-      { "id": "manga-presenter-header-workspace", "target": "header.workspace", "mode": "wrap" },
-      { "id": "manga-presenter-navigation-primary", "target": "navigation.primary", "mode": "wrap" },
-      { "id": "manga-presenter-app-status", "target": "app.status", "mode": "wrap" },
-      { "id": "manga-presenter-content-preview", "target": "content.preview", "mode": "wrap" },
-      { "id": "manga-presenter-settings", "target": "settings", "mode": "wrap" },
-      { "id": "manga-native-conversation-item", "target": "conversation.item", "mode": "replace", "priority": 100 },
-      { "id": "manga-native-process", "target": "conversation.process", "mode": "replace", "priority": 100 },
-      { "id": "manga-native-composer", "target": "conversation.composer", "mode": "replace", "priority": 100 },
-      { "id": "manga-native-header-conversation", "target": "header.conversation", "mode": "replace", "priority": 100 },
-      { "id": "manga-native-header-workspace", "target": "header.workspace", "mode": "replace", "priority": 100 },
-      { "id": "manga-native-navigation", "target": "navigation.primary", "mode": "replace", "priority": 100 }
+      { "id": "manga-shell", "target": "app.shell", "mode": "wrap" }
     ],
     "themes": [
       {
@@ -48,6 +19,7 @@
         "tokens": {
           "--wuu-color-canvas": "#fffdf2",
           "--wuu-color-text": "#17130f",
+          "--wuu-color-accent": "#ff3f7f",
           "--wuu-font-family-ui": "Avenir Next Condensed, Arial Narrow, Arial, PingFang SC, sans-serif",
           "--wuu-font-size-body": "14px",
           "--wuu-space-density": "1",

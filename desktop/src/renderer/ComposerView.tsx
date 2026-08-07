@@ -1080,6 +1080,7 @@ export function Composer({
           ) : null}
           <div
             className={`composer-frame${ultraEnabled ? " is-ultra" : ""}${dropActive ? " composer-frame-drop-active" : ""}`}
+            data-wuu-component="composer-frame"
             ref={composerFrameRef}
             onDragOver={handleComposerDragOver}
             onDragLeave={handleComposerDragLeave}
@@ -1155,7 +1156,10 @@ export function Composer({
                 {isComposerExpanded ? <ChevronDown aria-hidden="true" /> : <ChevronUp aria-hidden="true" />}
               </button>
             ) : null}
-            <div className={`composer-bar${voiceRecording ? " is-voice-recording" : ""}`}>
+            <div
+              className={`composer-bar${voiceRecording ? " is-voice-recording" : ""}`}
+              data-wuu-component="composer-toolbar"
+            >
               <div className="composer-bar-left">
                 {variant === "hero" ? (
                   // Hero (empty/unsent) project & 对话 conversations: the
