@@ -64,8 +64,10 @@ Goal 与 Subagent 共同证明通用投递还必须把模型输入、前端展�
 `host.child_session.request` 已删除；公共 Session 合同同时补齐 owner-scoped list/cancel、worktree
 和最终输出 lifecycle。
 
-Plan 不属于这一迁移。`update_plan`、计划状态和标准展示留在核心 Agent 链路；Plan 不承担跨 Turn
-自动续跑。HelpMe 直接删除，不形成 capability 或兼容层。
+Plan 不属于已经完成的这一阶段迁移。`update_plan`、计划状态和标准展示目前仍在核心 Agent 链路，
+但这是现状而不是永久 Plugin Kernel 边界。等可替换 Agent Loop Driver、通用协作状态、恢复和
+展示合同形成后，默认 Plan 应作为 bundled 一方插件重新评估；现在只移动 Prompt 会制造假迁移。
+Plan 无论位于何处都不承担跨 Turn 自动续跑。HelpMe 直接删除，不形成 capability 或兼容层。
 
 ## 实施状态
 

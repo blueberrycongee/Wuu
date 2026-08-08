@@ -32,18 +32,21 @@ func GuardFilePathAccess(ctx context.Context, input ToolExecuteInput) (ToolExecu
 
 **Why this works**: The `agent.tool.execute.before` seam is a guard — it short-circuits on rejection. The permission policy plugin registers at high priority and blocks unauthorized access before any other guard runs.
 
-## Boundary Example 2: Plan Stays in the Core Loop
+## Boundary Example 2: Plan Is Temporarily Core, Not a Permanent Kernel Rule
 
-Plan is the standard execution state of the main Agent loop. `update_plan`, the
-current task's plan state, lifecycle events, and standard presentation remain in
-the core. Plan must not grow into cross-Turn scheduling, automatic continuation,
-or a durable Goal system.
+Plan is currently implemented as standard execution state of the main Agent
+loop. `update_plan`, the current task's plan state, lifecycle events, and
+standard presentation therefore remain in the core today. This is an
+implementation fact, not a permanent Plugin Kernel boundary. Plan must not grow
+into cross-Turn scheduling, automatic continuation, or a durable Goal system.
 
 Plugins may observe or present the standard plan state where a future public
-contract permits it, but they do not replace its core semantics. The earlier
-proposal to prove Plan migration with an `agent.system_prompt.section` was the
+contract permits it. After the Agent Loop Driver and generic collaboration-state
+contracts exist, the default Plan implementation should be reconsidered as a
+bundled first-party plugin paired with the default driver. The earlier proposal
+to prove Plan migration with only an `agent.system_prompt.section` was still the
 wrong boundary: moving one prompt paragraph would not migrate the actual plan
-state or Tool lifecycle.
+state, Tool lifecycle, recovery, or presentation.
 
 ## Example 3: Goal Uses Generic Session Delivery
 

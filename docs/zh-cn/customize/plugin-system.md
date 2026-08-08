@@ -23,15 +23,42 @@ Surface 或 Agent 能力。
 插件系统的目标不是让插件接管 Wuu 的每个像素，而是让它能够形成完整、强烈且一致的视觉
 语言，同时不破坏产品结构和恢复路径。
 
-### 更上层的北极星：最小循环，产品由插件组成
+### 更上层的北极星：固定插件内核，可替换 Agent Loop
 
-Wuu 的长期目标不是在现有 Agent runtime 外围增加一层插件 API，而是主动把核心收敛成一个
-很小的通用循环：向模型发出请求，接收回复，执行 Tool，把结果追加回上下文，然后继续或结束。
-Plan 是这个执行循环的标准状态和模型可见控制面，继续留在核心；它不负责跨 Turn 自动续跑、
-定时唤醒或长期目标管理。Provider 协议不变量、取消、执行租约、持久化完整性、最终权限边界和
-崩溃恢复也仍由宿主保证；memory、dream、Cron、Goal、Subagent 等高级产品不应继续作为循环里的
-产品分支。HelpMe 直接从产品与代码中删除，不迁移成插件；协作比这些能力更高层，暂不纳入本轮
-剥离范围。
+Wuu 的长期目标不是在现有 Agent runtime 外围增加一层插件 API，也不是把某一种 ReAct 循环永久
+定义成核心。Wuu 固定的是一个小而强约束的 **Plugin Kernel**：服务发现、作用域生命周期、可靠
+Session/Event 存储、输入队列、执行租约、取消、权限、Provider 与 Tool 协议网关、generation
+事务和宿主 UI。默认 Agent Loop 是 Wuu 随软件分发的一方 Driver 插件，可以被另一个遵守相同
+端点和不变量的 Driver 替换。
+
+Loop Driver 决定 Agent 怎样运行：如何消费输入，怎样组织 Prompt 和上下文，一次输入包含多少
+Step，Tool 串行还是并行，何时重试、压缩、反思、停止或继续，以及使用单 Agent、Plan-Execute、
+多 Agent 还是 Workflow。Kernel 不规定 Agent 应该怎样思考，只保证任何 Driver 都不能破坏消息
+顺序、Tool call/result 配对、权限、持久化、取消和恢复。
+
+```text
+Wuu Plugin Kernel
+  ├── Service / Event / Scope / Effect
+  ├── Session/Event Store + Inbox/Outbox
+  ├── Provider Gateway + Tool/Permission Gateway
+  ├── Lease + Cancel + Checkpoint + Recovery
+  └── Generation + Shell/UI Host
+          ↓
+Bundled default plugins
+  ├── default Agent/Session services
+  ├── default ReAct Loop Driver
+  ├── default Prompt / Tools / Plan / Conversation UI
+  └── Goal / Subagent / Automation / Memory / Dream
+```
+
+当前 Plan 仍由核心 Tool、Turn 状态和原生展示实现，这是迁移现状，不是永久边界。等 Loop Driver、
+通用协作状态和恢复合同成立后，默认 Plan 应作为与默认 Loop 配套的一方插件重新评估；在此之前
+不为了目录上的“全插件化”拆出一个只移动 Prompt、却仍依赖核心状态机的假插件。Plan 无论位于
+何处都不应扩张成跨 Turn 自动续跑、定时唤醒或长期 Goal。
+
+Provider 协议不变量、取消、执行租约、持久化完整性、最终权限边界和崩溃恢复仍由 Kernel 保证；
+memory、dream、Cron、Goal、Subagent 等高级产品不应作为默认循环里的产品分支。HelpMe 直接从
+产品与代码中删除，不迁移成插件；协作比这些能力更高层，暂不纳入已完成的一方迁移范围。
 
 这些高级产品应成为一方插件，而且与第三方插件使用同一套公开能力。插件拥有自己的业务模型、
 提示、Tool、状态、后台策略和完整界面；Wuu 自己提供的插件只是生态的第一批实现，不是可以调用
@@ -56,7 +83,7 @@ Cron、Memory、Dream、Goal 和 Subagent 看起来是五套产品，实际都�
         ↓
 向 Session 投递模型输入
         ↓
-宿主排队并执行普通 Turn
+Kernel 可靠接纳输入，所选 Loop Driver 消费并执行
         ↓
 插件观察结果，更新自己的状态和界面，必要时再次投递
 ```
@@ -123,8 +150,9 @@ Subagent 的完成通知可以把完整交接内容作为模型输入，只把�
 
 这条能力也不是 Goal 或 Automation 的变相专用接口。任何插件只要需要把后台结果、定时触发、
 审批恢复、重试结果或外部事件交还给一个持续存在的 Agent，都需要同一条“向 Session 投递普通
-query”的链路。核心因此保留的是 `session.send` 的可靠排队和执行语义，而不是“定时唤醒”“目标
-续跑”或“子任务交付”等业务含义；是否以及何时调用它完全属于插件。
+query”的链路。Kernel 因此保留的是 `session.send` 的可靠接纳、持久化、优先级和执行租约，
+所选 Loop Driver 决定何时以及怎样消费；“定时唤醒”“目标续跑”或“子任务交付”等业务含义
+完全属于插件。
 
 ### 从产品需求提炼公共能力，而不是公开产品内部
 
@@ -136,7 +164,7 @@ query”的链路。核心因此保留的是 `session.send` 的可靠排队和�
 3. 只有涉及宿主所有权、跨进程安全、共享资源或生命周期完整性时，才增加宿主能力；
 4. 用至少另一个合理的一方或第三方场景检验抽象，避免接口只是在隐藏当前产品名；
 5. 以最窄的版本化输入、输出和生命周期合同发布，不暴露私有 ThreadItem、React state、
-   Agent loop 回调或内部存储结构。
+   某个具体 Loop Driver 的私有回调或内部存储结构。
 
 “通用”不等于预先建设一套万能框架。真实迁移尚未触达的 scheduler、后台任务或资源 API 不应
 凭想象加入 SDK；目前已经由多个产品证明需要的是“创建/复用 Session”“向 Session 投递输入并
@@ -157,30 +185,83 @@ RPC。
 版本化合同。例如 memory 概览和修改不需要宿主“受约束模型任务”：它可以创建或复用一个 Session
 并发送 Prompt。只有这条公共链路确实无法保护宿主不变量时，才继续提炼更底层能力。
 
-### 最小核心与公共能力的边界
+### Plugin Kernel 与可替换策略的边界
 
-最小核心不等于零能力宿主。以下责任如果开放给插件接管，会破坏所有产品共同依赖的不变量，
-因此应继续留在 Wuu：
+小 Kernel 不等于零能力宿主。以下是所有 Driver 和产品插件共同依赖的机制，继续由 Wuu 仲裁：
 
 - Provider 消息顺序、Tool call/result 配对、流式响应和上下文窗口等协议正确性；
-- Thread/Turn 的持久化、排队、执行租约、取消和崩溃后恢复；
-- Plan Tool、当前 Turn 的计划状态和标准事件/展示；Plan 不拥有跨 Turn 调度；
+- Session/Event 的追加持久化、Inbox/Outbox、幂等接纳、执行租约、取消和恢复原语；
 - Tool 执行、最终权限判定、工作区边界和用户审批；
-- 插件安装、批准、generation 原子替换、错误隔离、安全模式和默认 UI 逃生路径；
+- Service/Event/Scope/Effect、依赖解析、插件安装批准、generation 原子替换和错误隔离；
 - 原生窗口、系统安全区以及宿主拥有的导航、Tab、滚动、溢出和无障碍。
 
-其他能力默认属于插件。宿主公开的是少量可组合原语：模型可见 Tool、系统提示与请求上下文、
-请求变换、压缩决策、Session 创建与投递、生命周期事件、generation 绑定的 runtime 调用与事件、
-命名空间设置和存储。公共原语应组合出多个产品，而不是一项原语对应一个 Wuu 功能。
+Kernel 保留的是机制，不是策略。消息不能丢、同一执行权不能被两个 generation 同时持有属于
+Kernel；输入作为 steer、下一 Turn 还是中断来消费，何时开启 Step、重试或停止属于 Loop Driver。
+Session 日志必须可重建属于 Kernel；Turn、Round、Plan Node 或 Worker Branch 怎样解释和展示属于
+Driver 与其 UI 插件。Driver 只能通过版本化 Provider、Tool、Session、Permission 和 Checkpoint
+端点工作，不能直接绕过这些网关操作核心数据库或 Provider。
+
+其他能力默认属于插件。宿主公开少量可组合 Service：模型可见 Tool、系统提示与请求上下文、请求
+变换、压缩决策、Session 创建与投递、生命周期事件、generation 绑定的 runtime 调用与事件、
+命名空间设置和存储。公共 Service 应组合出多个产品和多种 Loop，而不是一项端点对应一个 Wuu
+功能。
 
 每次新增插件接口都应通过四个问题：
 
 1. 去掉 memory、automation、collaboration 等产品名后，这个能力仍然自然吗？
 2. 它是否保护了只有宿主才能保护的不变量，还是仅仅替插件省了几行领域代码？
 3. 一方插件和外部插件能否在相同权限与生命周期下使用它？
-4. 禁用插件后，核心是否仍是一个可用的通用 Agent，而不是留下半个产品状态或循环分支？
+4. 禁用插件后，Kernel 是否仍可管理、审计和只读打开 Session；默认分发是否仍可由 bundled
+   Driver 组成一个可用 Agent，而不是留下半个产品状态或产品专用循环分支？
 
 如果答案不成立，应继续把逻辑留在插件内部，或重新寻找更底层、更高复用的能力边界。
+
+### Loop Driver 合同与恢复原则
+
+Loop Driver 是普通的一方或第三方插件贡献，不是获得核心内部对象的特殊扩展。概念上的合同包括：
+
+- `start`：为绑定 Driver 的 Session 启动执行；
+- `deliver`：接收 Kernel 已可靠持久化的输入 occurrence；
+- `cancel`：响应宿主取消并停止派生工作；
+- `checkpoint`：在稳定边界保存 Driver 自有状态；
+- `resume`：从 Session 事实与版本化 checkpoint 恢复；
+- `shutdown`：停止接纳新工作，等待在途调用收敛并释放 Effect。
+
+Session 创建时必须持久化 `plugin_id`、`driver_id`、协议版本和 checkpoint 版本。运行中不能静默
+切换 Driver；fork 默认继承 Driver，显式派生可以选择另一 Driver。Driver 缺失、被禁用或拒绝旧
+checkpoint 时，Session 仍可只读打开，用户可以从最后一个稳定边界显式派生到新 Driver。当前高速
+迭代阶段不承诺复杂 checkpoint 向后兼容：新版本可以明确拒绝旧版本，但不能猜测解释或悄悄丢弃。
+
+通用事件流保存用户/插件输入、模型输出、Tool call/result、权限、错误、取消和 checkpoint 等宿主
+事实。Driver 可以追加命名空间事件来表达 Plan、Research Round、Critic、Worker 或 Workflow Stage，
+并注册自己的 Presenter/View；插件缺失或渲染失败时，宿主使用通用只读 fallback，而不是让整段
+历史无法打开。凡是模型可见的内容都必须能从 Session 事实重建。
+
+### 借鉴 Cordis 的运行模型，而不是绑定 TypeScript 实现
+
+Cordis 提供 Context、Service、typed Event、Fiber、Effect 和 Loader EntryTree。它展示了一种
+以可替换 Service、显式依赖和可回收插件生命周期装配应用的运行模型；Wuu 借鉴的是这些通用
+架构概念，而不是任何特定 Agent 产品的实现或未公开设计。
+
+Cordis 的具体便利部分依赖 TypeScript/Node：动态 `import`、同进程对象 Service、声明合并和浏览器
+bundle 加载。Wuu 不复制这些实现细节，而是在 Go core + 独立 runtime 进程 + Electron shell 上
+实现同一运行模型：
+
+| Cordis 概念 | Wuu 对应模型 |
+| --- | --- |
+| Context | generation-bound Plugin Scope |
+| Service object | 版本化 RPC Service / Host endpoint |
+| typed Event | 版本化事件目录与命名空间 payload |
+| Fiber | runtime 进程、Renderer 模块和贡献的统一插件实例 |
+| `ctx.effect()` | 由 Scope 记录并等待的资源、订阅、子 Session 和后台工作 |
+| `inject` | Manifest/handshake 中的 `requires` / `provides` |
+| Loader EntryTree | 经校验的 Activation Plan 与依赖图 |
+
+Go 生态中最接近进程插件边界的是 HashiCorp `go-plugin` 一类 subprocess + RPC 方案；`plugin` 标准库
+的进程内 `.so` 机制不适合作为跨平台桌面插件基础，`dig`/`fx`/`wire` 解决依赖注入但不提供运行时
+安装、卸载和 generation。Wuu 已经有自己的双工插件进程协议、fingerprint 和原子 generation，
+因此无需为追求 Cordis 体验把核心改写成 TypeScript；需要补的是统一 Scope、Service Graph、Effect
+所有权和两端共享的 Activation Plan。
 
 ### 一方高级功能的迁移结果
 
@@ -206,8 +287,9 @@ RPC。
    普通 user role 执行，私有 Session 不进入普通列表与搜索，真实用户排队工作优先于插件唤醒。
 4. **HelpMe 已完整删除。** Tool、Schema、Prompt、内部 worker type、历史重写/压缩特判、桌面文案、
    测试和死代码均已移除；没有保留兼容入口，也没有把它重命名成另一种插件工作流。
-5. **Plan 的旧迁移设想已经作废。** Plan 留在最小核心链路。插件仍可观察标准计划状态或在自己的
-   View 中展示它，但不替换核心 `update_plan` 语义，也不把 Plan 扩张成 Goal。
+5. **Plan 当前仍在核心链路，但这不是永久架构边界。** 现阶段没有把一段 Prompt 单独移动成
+   “Plan 插件”，因为核心 `update_plan`、Turn 状态和展示尚未形成可替换服务。Loop Driver 与通用
+   协作状态合同完成后，默认 Plan 应作为 bundled 插件重新评估；无论迁移与否都不把它扩张成 Goal。
 6. **Automation 已迁移到公共 Session 链路。** 一方插件拥有 Cron 表达式、Timer、补跑、任务与
    运行记录、Prompt、`cron` Tool 和完整桌面 View；触发时只调用 `host.session.create/send`，并通过
    通用 Turn lifecycle 收敛运行状态。核心的 Automation RPC、Manager、scheduler、Turn 特判、
@@ -241,12 +323,19 @@ RPC。
    提示、状态、桌面状态条和父 Session 回投由插件拥有。宿主不再识别 `spawn_agent` Tool 名、解析
    `<subagent_notification>`、生成专用 Tool item 或维护原生子任务面板；插件生成的回投只依赖通用
    `display_content/origin/cause/read_only` query 元数据，不改变公共合同。
-4. HelpMe 全链路已删除；Plan 仍通过核心 Tool/状态链运行。
+4. HelpMe 全链路已删除；Plan 当前仍通过核心 Tool/状态链运行，后续随 Loop Driver 和通用协作
+   状态合同重新评估，不把当前实现写成永久边界。
 5. Cron、Memory 和 Dream 已分别完成“插件 Timer → 用户可见 Session”、“Prompt + Tool + 私有
    Session + View”和“Timer + Memory Tool + 插件私有 Session”的纵向切片，三者没有产品专用
    宿主服务。
 6. 每项迁移都必须验证插件禁用、升级和卸载后不再唤醒、不残留 UI、Prompt、Tool、订阅或后台
    generation；核心删除旧协议、死代码和只为旧边界存在的测试。
+7. 收敛统一 Plugin Scope、Service/Event 目录、Effect 所有权和 Activation Plan，让 Agent runtime
+   与 Desktop 不再各自维护一套无法声明依赖的生命周期事实。
+8. 把现有执行循环先包成 `AgentLoopDriver v1`，保持产品行为不变；Session 持久化 Driver 身份和
+   checkpoint 版本，恢复只从稳定边界进行。
+9. 将默认 ReAct Loop 迁为 bundled 一方插件，并实现第二个结构明显不同的最小 Loop。只有第二个
+   Driver 不修改 Kernel 就能创建、执行、恢复 Session 并展示自己的过程，Loop seam 才算真实。
 
 插件链路的验收不是接口存在，而是：在核心搜索不到 Cron、Memory、Dream、Goal、Subagent 的产品
 调度分支时，这五个一方插件仍能仅通过公开合同保持现有体验；外部插件在相同权限和生命周期下也
@@ -369,6 +458,10 @@ Agent 插件运行在 Wuu 管理的独立进程中，通过版本化协议注册
 - 会话生命周期观察；
 - Shell 环境贡献。
 
+目标能力还包括注册 `AgentLoopDriver`。Driver 不获得私有 Go `Session`、`StreamRunner` 或数据库
+对象，只通过 Kernel 提供的 Session、Provider、Tool、Permission、Event 和 Checkpoint Service
+运行。普通功能插件可以依赖某个公开 Driver Service，但不应通过修改默认 Loop 私有回调获得能力。
+
 每个能力声明语义种类，例如 observe、transform、guard、around 或 decision，并按稳定优先级
 组合。Guard 和 decision 可以短路；Transform 按顺序执行。工具或能力出错时，宿主按公开错误
 策略传播、隔离或回退，不能靠吞掉异常维持表面成功。
@@ -386,6 +479,11 @@ Agent 插件运行在 Wuu 管理的独立进程中，通过版本化协议注册
 4. 校验或激活失败时，旧 generation 保持运行；
 5. 禁用、升级、卸载或开发热重载时，旧 generation 的 View、样式、命令、事件订阅和 runtime
    一起释放。
+
+目标 Plugin Scope 会把 generation 内每个 Service、Event 订阅、Timer、子 Session、后台任务、
+Renderer 贡献和子 Scope 都登记为 Effect。候选依赖满足并进入 ACTIVE 后才能对用户可见；关闭时
+先停止接纳新工作，再等待在途 Effect 收敛并逆序释放。一个插件提供的 Agent Service 与 Desktop
+View 必须来自同一份 Activation Plan，不能分别依赖偶然加载顺序。
 
 React 组件可以在 generation 激活后订阅宿主事件，组件卸载或 generation 被替换时订阅会清理。
 重复的同类诊断按 generation 去重；同一 generation 重新成功激活后，陈旧诊断被清除。
@@ -451,7 +549,10 @@ Goal、Subagent、Automation、Memory、Dream 已经通过与第三方插件相�
 - 画布、终端、Webview、PDF ShadowRoot 和专用预览仍是明确的主题边界；
 - Marketplace、远程自动更新、排名、依赖解析和签名分发不属于当前本地优先平台；
 - Goal、Subagent、Automation、用户/工作区/会话 Memory 和 Dream 已完成纵向迁移，并去除专用宿主执行 seam；
-- HelpMe 已从代码和产品中删除；Plan 明确保留在核心链路。
+- HelpMe 已从代码和产品中删除；Plan 当前仍在核心链路，但长期归属等待 Loop Driver 与通用协作
+  状态合同验证，不再把“留核心”写成永久原则；
+- 统一 Plugin Scope、Service 依赖图、Effect 所有权、Activation Plan 和可替换 Loop Driver 尚未
+  完成，是下一阶段架构主线。
 
 这些边界不是鼓励为未来预留抽象。新能力应由真实插件案例驱动，先确定责任属于宿主、功能插件
 还是外观插件，再选择最窄的公开合同。
