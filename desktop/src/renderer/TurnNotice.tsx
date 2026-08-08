@@ -1,3 +1,4 @@
+import { Archive } from "lucide-react";
 import type { ThreadItemStatus } from "../shared/protocol";
 import type { TurnEventDisplay } from "./TurnEvents";
 import type { UserFacingErrorDisplay, UserFacingErrorTone } from "./UserFacingErrors";
@@ -105,32 +106,30 @@ export function ContextCompactionNotice({
   reason?: string;
   status?: ThreadItemStatus;
 }): JSX.Element {
-  // in_progress reuses the shared live-gray sweep used by active
-  // process rows, reasoning labels, and previews. The host itself is a
-  // centered compact label — no Archive icon, no detail copy. When the
-  // item flips to completed the host swaps to the established icon + copy
-  // layout.
-  if (status === "in_progress") {
-    const title = contextCompactionProgressTitle(text, reason);
-    return (
-      <SystemEventNotice
-        event={{ label: title, state: "in_progress" }}
-        className="context-compaction-notice"
-      />
-    );
-  }
-  const detail = contextCompactionDetail(text, reason, status);
-  // The inline notice is a compact label. The full breakdown is moved to
-  // the `title` attribute so it is available on hover without taking a
-  // second visual line.
-  const label = contextCompactionTitle(text, reason, status);
   const normalized = normalizeContextCompactionText(text);
-  const tone = status === "failed" || isFailedCompactNotice(normalized) ? "error" : "neutral";
+  const failed = status === "failed" || isFailedCompactNotice(normalized);
+  const inProgress = status === "in_progress";
+  const title = inProgress
+    ? contextCompactionProgressTitle(text, reason)
+    : contextCompactionTitle(text, reason, status);
+  const detail = inProgress ? undefined : contextCompactionDetail(text, reason, status);
+  const state = failed ? "failed" : inProgress ? "in_progress" : "completed";
+  const description = detail ? `${title} — ${detail}` : title;
   return (
-    <SystemEventNotice
-      event={{ label, detail, tone }}
-      className="context-compaction-notice"
-    />
+    <aside
+      className={`turn-progress context-compaction-notice ${state}`}
+      role={failed ? "alert" : "status"}
+      aria-label={description}
+      aria-live={inProgress ? "polite" : undefined}
+    >
+      <span className="turn-progress-label">
+        <Archive aria-hidden="true" size={14} />
+        <span className="turn-progress-copy">
+          <strong className="turn-progress-title">{title}</strong>
+          {detail ? <span className="turn-progress-detail">{detail}</span> : null}
+        </span>
+      </span>
+    </aside>
   );
 }
 

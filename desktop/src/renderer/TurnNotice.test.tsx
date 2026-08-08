@@ -1,15 +1,8 @@
 /**
- * Tests for `ContextCompactionNotice`'s two-state rendering.
+ * Tests for `ContextCompactionNotice`'s tool-call row rendering.
  *
- * The component now branches on `status`:
- *   - `in_progress` renders the centered event divider with the shared
- *     live-gray sweep host.
- *   - everything else keeps the same centered event divider without motion.
- *
- * These tests pin the markup contract: which class is added, what the
- * host reads as, and which child element holds the sweep. The CSS
- * itself is verified by visual review against the shared live-gray
- * selector group in `turns.css`.
+ * These tests pin the shared progress-row classes, visible detail, icon,
+ * active sweep target, and failed-state semantics.
  */
 import { act, type ReactElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -68,7 +61,7 @@ function mount(element: ReactElement): HTMLDivElement {
 }
 
 describe("ContextCompactionNotice", () => {
-  it("localizes recognized compaction events", async () => {
+  it("localizes recognized compaction events", () => {
     setActiveLocale("en-US");
     const host = mount(
       <ContextCompactionNotice
@@ -77,25 +70,22 @@ describe("ContextCompactionNotice", () => {
       />,
     );
 
-    expect(host.querySelector(".turn-event-title")?.textContent).toBe("Context compacted");
-    expect(await hoverTooltipText(host.querySelector("aside"))).toContain("18 messages became 5");
+    expect(host.querySelector(".turn-progress-title")?.textContent).toBe("Context compacted");
+    expect(host.querySelector(".turn-progress-detail")?.textContent).toContain("18 messages became 5");
   });
   it("renders the in_progress host with the shimmer-ready label when status is in_progress", () => {
     const host = mount(<ContextCompactionNotice status="in_progress" />);
-    const aside = host.querySelector("aside.turn-notice.context-compaction-notice");
+    const aside = host.querySelector("aside.turn-progress.context-compaction-notice");
     expect(aside).not.toBeNull();
-    expect(aside?.classList.contains("is-progress")).toBe(true);
+    expect(aside?.classList.contains("in_progress")).toBe(true);
     expect(aside?.getAttribute("role")).toBe("status");
     expect(aside?.getAttribute("aria-live")).toBe("polite");
 
-    const label = host.querySelector(".turn-event-title");
+    const label = host.querySelector(".turn-progress-title");
     expect(label).not.toBeNull();
     expect(label?.textContent).toBe("正在自动压缩上下文");
-    expect(label?.classList.contains("live-progress-chip")).toBe(true);
-
-    // The event divider uses text and line color as the affordance; icons
-    // would make these lightweight stream events compete with message text.
-    expect(host.querySelector(".turn-notice-icon")).toBeNull();
+    expect(host.querySelector(".turn-progress-label svg")).not.toBeNull();
+    expect(host.querySelector(".turn-event-notice")).toBeNull();
   });
 
   it("uses the manual compact progress label for slash compact", () => {
@@ -107,33 +97,32 @@ describe("ContextCompactionNotice", () => {
       />,
     );
 
-    expect(host.querySelector(".turn-event-title")?.textContent).toBe(
+    expect(host.querySelector(".turn-progress-title")?.textContent).toBe(
       "正在压缩上下文",
     );
-    expect(host.querySelector(".live-progress-chip")).not.toBeNull();
+    expect(host.querySelector(".turn-progress.in_progress")).not.toBeNull();
   });
 
-  it("renders the established icon + copy layout when status is completed", async () => {
+  it("renders the established icon + copy layout when status is completed", () => {
     const host = mount(
       <ContextCompactionNotice
         status="completed"
         text="✦ Compacted history: 18 → 5 messages (was ~12k tokens)"
       />,
     );
-    const aside = host.querySelector("aside.turn-notice.context-compaction-notice");
+    const aside = host.querySelector("aside.turn-progress.context-compaction-notice");
     expect(aside).not.toBeNull();
-    expect(aside?.classList.contains("is-progress")).toBe(false);
+    expect(aside?.classList.contains("completed")).toBe(true);
     expect(aside?.getAttribute("aria-live")).toBeNull();
 
-    const title = host.querySelector(".turn-event-title");
+    const title = host.querySelector(".turn-progress-title");
     expect(title?.textContent).toBe("上下文已压缩");
 
-    expect(aside?.getAttribute("title")).toBeNull();
-    expect(await hoverTooltipText(aside)).toContain("18 条消息整理为 5 条");
-    expect(host.querySelector(".turn-notice-icon")).toBeNull();
+    expect(host.querySelector(".turn-progress-detail")?.textContent).toContain("18 条消息整理为 5 条");
+    expect(host.querySelector(".turn-progress-label svg")).not.toBeNull();
   });
 
-  it("labels manual compact completion as success", async () => {
+  it("labels manual compact completion as success", () => {
     const host = mount(
       <ContextCompactionNotice
         status="completed"
@@ -142,15 +131,15 @@ describe("ContextCompactionNotice", () => {
       />,
     );
 
-    expect(host.querySelector(".turn-event-title")?.textContent).toBe(
+    expect(host.querySelector(".turn-progress-title")?.textContent).toBe(
       "压缩成功",
     );
-    expect(await hoverTooltipText(host.querySelector("aside"))).toContain(
+    expect(host.querySelector(".turn-progress-detail")?.textContent).toContain(
       "18 条消息整理为 5 条",
     );
   });
 
-  it("labels failed manual compact status as failed", async () => {
+  it("labels failed manual compact status as failed", () => {
     const host = mount(
       <ContextCompactionNotice
         status="failed"
@@ -159,19 +148,21 @@ describe("ContextCompactionNotice", () => {
       />,
     );
 
-    expect(host.querySelector(".turn-event-title")?.textContent).toBe(
+    expect(host.querySelector(".turn-progress-title")?.textContent).toBe(
       "压缩失败",
     );
-    expect(await hoverTooltipText(host.querySelector("aside"))).toContain(
+    expect(host.querySelector(".turn-progress-detail")?.textContent).toContain(
       "当前对话仍保留原上下文",
     );
+    expect(host.querySelector("aside")?.classList.contains("failed")).toBe(true);
+    expect(host.querySelector("aside")?.getAttribute("role")).toBe("alert");
   });
 
   it("falls back to the completed layout when status is omitted", () => {
     const host = mount(<ContextCompactionNotice text="" />);
-    const aside = host.querySelector("aside.turn-notice.context-compaction-notice");
-    expect(aside?.classList.contains("is-progress")).toBe(false);
-    expect(host.querySelector(".turn-event-title")?.textContent).toBe(
+    const aside = host.querySelector("aside.turn-progress.context-compaction-notice");
+    expect(aside?.classList.contains("completed")).toBe(true);
+    expect(host.querySelector(".turn-progress-title")?.textContent).toBe(
       "上下文已压缩",
     );
   });
@@ -184,12 +175,12 @@ describe("ContextCompactionNotice", () => {
       />,
     );
 
-    expect(host.querySelector(".turn-event-title")?.textContent).toBe(
+    expect(host.querySelector(".turn-progress-title")?.textContent).toBe(
       "上下文已压缩",
     );
   });
 
-  it("labels HelpMe compaction as merged recovery result", async () => {
+  it("labels HelpMe compaction as merged recovery result", () => {
     const host = mount(
       <ContextCompactionNotice
         status="completed"
@@ -198,15 +189,15 @@ describe("ContextCompactionNotice", () => {
       />,
     );
 
-    expect(host.querySelector(".turn-event-title")?.textContent).toBe(
+    expect(host.querySelector(".turn-progress-title")?.textContent).toBe(
       "已合并求助结果",
     );
-    expect(await hoverTooltipText(host.querySelector("aside"))).toContain(
+    expect(host.querySelector(".turn-progress-detail")?.textContent).toContain(
       "HelpMe 恢复结果",
     );
   });
 
-  it("does not present failed proactive compaction as a successful compact", async () => {
+  it("does not present failed proactive compaction as a successful compact", () => {
     const failedCompactText =
       "Context compaction failed; continuing without compacting history.";
     const host = mount(
@@ -216,10 +207,10 @@ describe("ContextCompactionNotice", () => {
       />,
     );
 
-    expect(host.querySelector(".turn-event-title")?.textContent).toBe(
+    expect(host.querySelector(".turn-progress-title")?.textContent).toBe(
       "压缩失败",
     );
-    expect(await hoverTooltipText(host.querySelector("aside"))).toContain(
+    expect(host.querySelector(".turn-progress-detail")?.textContent).toContain(
       "当前对话仍保留原上下文",
     );
     expect(host.textContent).not.toContain("上下文已压缩");
