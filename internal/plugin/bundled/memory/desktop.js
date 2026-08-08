@@ -9,7 +9,8 @@ export async function activate(api) {
     "memory.empty": "The memory notebook is empty.", "memory.loading": "Reviewing memory…",
     "memory.chat": "Update memory with the Agent", "memory.chatHelp": "Ask the Agent to add, correct, or forget durable information.",
     "memory.message": "What should the Agent remember or change?", "memory.send": "Send",
-    "memory.changed": "Changed files", "memory.failed": "Memory task failed"
+    "memory.changed": "Changed files", "memory.failed": "Memory task failed",
+    "memory.loadFailed": "Memory overview could not be generated. Try again.", "memory.errorDetails": "Error details"
   }});
   api.registerLocale({ id: "memory-zh", locale: "zh-CN", entries: {
     "memory.subtitle": "管理长期偏好、反馈、参考信息和可复用经验。",
@@ -17,7 +18,8 @@ export async function activate(api) {
     "memory.empty": "记忆笔记本还是空的。", "memory.loading": "正在整理记忆…",
     "memory.chat": "通过 Agent 更新记忆", "memory.chatHelp": "让 Agent 添加、修正或忘记需要长期保留的信息。",
     "memory.message": "希望 Agent 记住或修改什么？", "memory.send": "发送",
-    "memory.changed": "变更文件", "memory.failed": "记忆任务失败"
+    "memory.changed": "变更文件", "memory.failed": "记忆任务失败",
+    "memory.loadFailed": "暂时无法生成记忆概览，请重试。", "memory.errorDetails": "错误详情"
   }});
   api.registerStyle({ id: "memory-settings", css: `
     .plugin-memory { padding-top: 8px; }
@@ -30,7 +32,9 @@ export async function activate(api) {
     .plugin-memory-file { display:grid; gap:6px; padding-top:12px; border-top:1px solid var(--wuu-color-border-subtle,var(--hairline)); }
     .plugin-memory-file:first-child { padding-top:0; border-top:0; }
     .plugin-memory-muted { color:var(--wuu-color-text-muted,var(--ink-soft)); font-size:13px; }
-    .plugin-memory-error { color:var(--wuu-color-danger,var(--danger)); font-size:13px; }
+    .plugin-memory-error { display:grid; gap:8px; padding:10px 12px; border:1px solid color-mix(in srgb,var(--wuu-color-danger,#b42318) 24%,transparent); border-radius:var(--wuu-radius-control,var(--radius-sm)); color:var(--wuu-color-danger,#b42318); background:color-mix(in srgb,var(--wuu-color-danger,#b42318) 6%,transparent); font-size:13px; overflow-wrap:anywhere; }
+    .plugin-memory-error summary { cursor:pointer; color:var(--wuu-color-text-muted,var(--ink-soft)); }
+    .plugin-memory-error pre { max-height:160px; margin:8px 0 0; overflow:auto; white-space:pre-wrap; color:var(--wuu-color-text-muted,var(--ink-soft)); font:12px/1.5 var(--wuu-font-mono,ui-monospace,monospace); }
   ` });
 
   const terminalStates = new Set(["completed", "failed", "interrupted", "discarded"]);
@@ -98,7 +102,7 @@ export async function activate(api) {
         h(TextArea,{label:tr("memory.message"),value:draft,disabled:busy,onChange:(event)=>setDraft(event.target.value)}),
         h(Row,null,h(Button,{variant:"primary",disabled:busy||!draft.trim(),onClick:()=>void send()},tr("memory.send")))
       ))),
-      error?h("div",{className:"plugin-memory-error",role:"alert"},error):null,
+      error?h("div",{className:"plugin-memory-error",role:"alert"},h("strong",null,tr("memory.loadFailed")),h("details",null,h("summary",null,tr("memory.errorDetails")),h("pre",null,error))):null,
       h(Panel,null,h(Section,{title:tr("memory.raw")},files.length?h(Stack,null,files.map((file)=>h("article",{className:"plugin-memory-file",key:file.name},h("strong",null,file.name),file.type||file.description?h("div",{className:"plugin-memory-muted"},[file.type,file.description].filter(Boolean).join(" · ")):null,h("pre",null,file.content)))):h(EmptyState,{title:tr("memory.empty")})))
     ));
   }

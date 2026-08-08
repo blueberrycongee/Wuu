@@ -61,6 +61,25 @@ func TestMemoryToolsOwnNotebookAndRejectPathEscape(t *testing.T) {
 	}
 }
 
+func TestMemoryListPublishesArrayRequiredSchema(t *testing.T) {
+	tools := Handler().Definition.Tools
+	if len(tools) == 0 || tools[0].ID != "memory_list" {
+		t.Fatalf("tools = %+v", tools)
+	}
+	raw, err := json.Marshal(tools[0].InputSchema)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var schema map[string]any
+	if err := json.Unmarshal(raw, &schema); err != nil {
+		t.Fatal(err)
+	}
+	required, ok := schema["required"].([]any)
+	if !ok || len(required) != 0 {
+		t.Fatalf("memory_list required = %#v, schema = %s", schema["required"], raw)
+	}
+}
+
 func TestMemoryPromptSanitizesIndexAndPrivateJobUsesSessionServices(t *testing.T) {
 	host := &testHost{}
 	home := t.TempDir()
