@@ -430,7 +430,7 @@ export class AppServerClient {
     }
     const child = this.spawnAppServer(command.command, appServerArgs, {
       cwd: command.cwd,
-      env: cuaMacHelperEnvironment(
+      env: appServerHelperEnvironment(
         process.env,
         sourceRoot,
         resourcesPath,
@@ -716,7 +716,22 @@ export class AppServerClient {
   }
 }
 
-export function cuaMacHelperEnvironment(
+interface AppServerHelper {
+  environment: string;
+  executable: string;
+  platform?: NodeJS.Platform;
+}
+
+const APP_SERVER_HELPERS: readonly AppServerHelper[] = [
+  { environment: "WUU_GOAL_PLUGIN_HELPER", executable: "wuu-goal-plugin" },
+  { environment: "WUU_SUBAGENT_PLUGIN_HELPER", executable: "wuu-subagent-plugin" },
+  { environment: "WUU_AUTOMATION_PLUGIN_HELPER", executable: "wuu-automation-plugin" },
+  { environment: "WUU_MEMORY_PLUGIN_HELPER", executable: "wuu-memory-plugin" },
+  { environment: "WUU_DREAM_PLUGIN_HELPER", executable: "wuu-dream-plugin" },
+  { environment: "WUU_CUA_MAC_HELPER", executable: "wuu-cua-mac", platform: "darwin" },
+];
+
+export function appServerHelperEnvironment(
   env: NodeJS.ProcessEnv,
   sourceRoot: string | undefined,
   resourcesPath: string | undefined,
@@ -724,16 +739,22 @@ export function cuaMacHelperEnvironment(
   exists: (path: string) => boolean = existsSync,
 ): NodeJS.ProcessEnv {
   const result = { ...env };
-  if (platform !== "darwin" || result.WUU_CUA_MAC_HELPER) {
-    return result;
-  }
-  const candidates = [
-    resourcesPath ? join(resourcesPath, "bin", "wuu-cua-mac") : undefined,
-    sourceRoot ? join(sourceRoot, "desktop", "build", "bin", "wuu-cua-mac") : undefined,
-  ].filter((candidate): candidate is string => Boolean(candidate));
-  const helper = candidates.find(exists);
-  if (helper) {
-    result.WUU_CUA_MAC_HELPER = helper;
+  for (const helper of APP_SERVER_HELPERS) {
+    if (helper.platform && helper.platform !== platform) {
+      continue;
+    }
+    if (result[helper.environment]) {
+      continue;
+    }
+    const executable = platform === "win32" ? `${helper.executable}.exe` : helper.executable;
+    const candidates = [
+      resourcesPath ? join(resourcesPath, "bin", executable) : undefined,
+      sourceRoot ? join(sourceRoot, "desktop", "build", "bin", executable) : undefined,
+    ].filter((candidate): candidate is string => Boolean(candidate));
+    const discovered = candidates.find(exists);
+    if (discovered) {
+      result[helper.environment] = discovered;
+    }
   }
   return result;
 }
