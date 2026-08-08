@@ -76,6 +76,8 @@ CLAUDE.md
 .claude/
 .mavis/
 .opencode/
+# agent scratch notes (proposals and research stay local, never committed)
+.agents/notes/
 
 # Editors
 .vscode/
