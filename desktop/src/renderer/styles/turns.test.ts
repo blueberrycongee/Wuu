@@ -40,7 +40,7 @@ describe("turns.css user message actions", () => {
     const body = cssRuleBody(".message-actions.user-message-actions");
     // Out-of-flow overlay: the buttons belong below the query, but
     // cannot reserve flow space or the user query -> rule gap stops
-    // matching the 24px message-flow token.
+    // matching the 32px message-flow token.
     expect(body).toMatch(/position:\s*absolute;/);
     expect(body).toMatch(/top:\s*100%;/);
     expect(body).toMatch(/bottom:\s*auto;/);

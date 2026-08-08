@@ -133,10 +133,10 @@
    * reply (whitespace only, no rule), process header -> expanded details,
    * process cluster -> final answer, final answer -> action row.
    * `--conversation-user-rule-gap` keeps its name for the query -> reply
-   * gap (there is no longer a hairline rule; the 24px band stays under the
+   * gap (there is no longer a hairline rule; the 32px band stays under the
    * 48px turn boundary so a Q&A pair reads as one group).
    */
-  --conversation-user-rule-gap: 24px;
+  --conversation-user-rule-gap: 32px;
   --conversation-user-message-trailing-gap: 8px;
   --conversation-rule-process-gap: 16px;
   --conversation-process-detail-gap: 16px;

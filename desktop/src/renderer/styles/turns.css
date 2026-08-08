@@ -204,7 +204,7 @@
    * hairline. Turn-to-turn separation already owns the single visible
    * boundary (the 48px --conversation-turn-boundary-gap band on .turn), so a
    * full-width rule inside a turn duplicated that meaning while splitting one
-   * Q&A pair in two. The gap holds at 24px (--conversation-user-rule-gap),
+   * Q&A pair in two. The gap holds at 32px (--conversation-user-rule-gap),
    * tighter than the 48px turn boundary: tight within a group, loose between.
    */
   margin-top: calc(
@@ -650,7 +650,7 @@
 }
 
 /* Hover actions live outside the flow but below the query bubble. The
- * 2px padding is the hover bridge; the 20px controls stay inside the 24px
+ * 2px padding is the hover bridge; the 20px controls stay inside the 32px
  * query -> reply gap (--conversation-user-rule-gap). */
 .user-message-block-with-actions {
   position: relative;
