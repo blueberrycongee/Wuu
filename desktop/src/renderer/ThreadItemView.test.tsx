@@ -123,6 +123,8 @@ describe("ThreadItemView", () => {
       turnStatus: "completed",
       streaming: false,
       editing: false,
+      locale: "zh-CN",
+      translate: expect.any(Function),
     });
     expect(Object.isFrozen(contexts[0])).toBe(true);
     expect(contexts[0]).not.toHaveProperty("item");

@@ -40,16 +40,13 @@ describe("conversation message-flow rhythm", () => {
     expect(textarea).toMatch(/min-height:\s*60px;/);
   });
 
-  it("keeps the composer clearance and debug baseline on the same landmarks", () => {
+  it("keeps the composer clearance on the shared layout landmark", () => {
     expect(
       cssRuleBody(
         ".scroll-region:not(.empty-scroll-region):not(.workspace-scroll-region) .conversation-width",
       ),
     ).toMatch(
       /var\(--dock-composer-height\)\s*\+\s*var\(--conversation-composer-clearance\)/,
-    );
-    expect(cssRuleBody(".conversation-grid-rows")).toMatch(
-      /top:\s*var\(--conversation-flow-top-gap\);/,
     );
   });
 });

@@ -92,8 +92,12 @@ describe("conversation shell message typography tokens", () => {
     expect(body).toMatch(/--conversation-rule-process-gap:\s*16px;/);
     expect(body).toMatch(/--conversation-process-detail-gap:\s*16px;/);
     expect(body).toMatch(/--conversation-process-answer-gap:\s*16px;/);
-    expect(body).toMatch(/--conversation-answer-action-gap:\s*12px;/);
-    expect(body).toMatch(/--conversation-answer-hover-action-gap:\s*6px;/);
+    expect(body).toMatch(
+      /--conversation-answer-action-gap:\s*var\(--wuu-message-actions-block-gap,\s*12px\);/,
+    );
+    expect(body).toMatch(
+      /--conversation-answer-hover-action-gap:\s*var\(--wuu-message-actions-overlay-gap,\s*6px\);/,
+    );
     expect(body).toMatch(/--conversation-activity-gap:\s*8px;/);
     expect(body).not.toMatch(/--conversation-process-gap\s*:/);
     expect(body).toMatch(/--conversation-composer-min-height:\s*100px;/);

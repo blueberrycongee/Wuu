@@ -1,4 +1,5 @@
 export const PROCESS_NOTIFICATION_NAME = "wuu_process_notification";
+export const AGENT_NOTIFICATION_NAME = "wuu_agent_notification";
 
 type InternalUserNotificationItem = {
   name?: string;
@@ -28,5 +29,5 @@ export function isProcessNotificationItem(
 export function isInternalUserNotificationItem(
   item: InternalUserNotificationItem | undefined,
 ): boolean {
-  return isProcessNotificationItem(item);
+  return item?.name === AGENT_NOTIFICATION_NAME || isProcessNotificationItem(item);
 }

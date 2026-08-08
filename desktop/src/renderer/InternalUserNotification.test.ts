@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  AGENT_NOTIFICATION_NAME,
   PROCESS_NOTIFICATION_NAME,
   isInternalUserNotificationItem,
   isProcessNotificationItem,
@@ -35,7 +36,7 @@ describe("process notification classification", () => {
 
   it("classifies both process notifications and agent handoffs as internal", () => {
     expect(isInternalUserNotificationItem({ name: PROCESS_NOTIFICATION_NAME })).toBe(true);
-    expect(isInternalUserNotificationItem({ name: "wuu_agent_notification" })).toBe(true);
+    expect(isInternalUserNotificationItem({ name: AGENT_NOTIFICATION_NAME })).toBe(true);
     expect(isInternalUserNotificationItem({ text: "真实用户消息" })).toBe(false);
   });
 });

@@ -14,9 +14,9 @@ import (
 func seedWorkspaceStateDir(t *testing.T, stateDir string) {
 	t.Helper()
 	seed := map[string]string{
-		filepath.Join("sessions", "thread-1", "runtime.json"):      "{}\n",
-		filepath.Join("plugin-storage", "plugin.example.json"):     "{}\n",
-		filepath.Join("memory", "MEMORY.md"):                       "# legacy plugin data\n",
+		filepath.Join("sessions", "thread-1", "runtime.json"):  "{}\n",
+		filepath.Join("plugin-storage", "plugin.example.json"): "{}\n",
+		filepath.Join("memory", "MEMORY.md"):                   "# legacy plugin data\n",
 	}
 	for rel, content := range seed {
 		path := filepath.Join(stateDir, rel)
