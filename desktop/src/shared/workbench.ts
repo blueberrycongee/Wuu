@@ -76,6 +76,10 @@ export interface ViewRenderProps {
   host: ViewHostAPI;
   /** Immutable context snapshot for this view instance. */
   context: Readonly<Record<string, unknown>>;
+  /** Active Wuu locale, such as zh-CN or en-US. */
+  locale: string;
+  /** Resolve a namespaced entry contributed through registerLocale(). */
+  translate(key: string, values?: Readonly<Record<string, string | number>>): string;
 }
 
 /** Controlled API surface the host exposes to view components. */
@@ -121,6 +125,16 @@ export interface PluginUITextInputProps extends Omit<React.InputHTMLAttributes<H
   description?: React.ReactNode;
 }
 
+export interface PluginUITextAreaProps extends Omit<React.TextareaHTMLAttributes<HTMLTextAreaElement>, "children"> {
+  label: React.ReactNode;
+  description?: React.ReactNode;
+}
+
+export interface PluginUICheckboxProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, "children" | "type"> {
+  label: React.ReactNode;
+  description?: React.ReactNode;
+}
+
 export interface PluginUIEmptyStateProps extends Omit<React.HTMLAttributes<HTMLElement>, "title"> {
   title: React.ReactNode;
   description?: React.ReactNode;
@@ -140,6 +154,8 @@ export interface PluginUIKit {
   readonly Row: React.ComponentType<PluginUIContainerProps>;
   readonly Button: React.ComponentType<PluginUIButtonProps>;
   readonly TextInput: React.ComponentType<PluginUITextInputProps>;
+  readonly TextArea: React.ComponentType<PluginUITextAreaProps>;
+  readonly Checkbox: React.ComponentType<PluginUICheckboxProps>;
   readonly EmptyState: React.ComponentType<PluginUIEmptyStateProps>;
 }
 
@@ -220,6 +236,35 @@ export function createPluginUIKit(react: typeof React): PluginUIKit {
     }));
   }
 
+  function TextArea({ className, label, description, ...props }: PluginUITextAreaProps): React.ReactNode {
+    return react.createElement("label", {
+      className: "plugin-ui-field",
+      "data-wuu-component": "plugin-ui-field",
+    },
+    react.createElement("span", { className: "plugin-ui-field-label" }, label),
+    description !== undefined
+      ? react.createElement("span", { className: "plugin-ui-field-description" }, description)
+      : null,
+    react.createElement("textarea", {
+      ...props,
+      className: joinPluginUIClass("plugin-ui-textarea", className),
+      "data-wuu-component": "plugin-ui-textarea",
+    }));
+  }
+
+  function Checkbox({ className, label, description, ...props }: PluginUICheckboxProps): React.ReactNode {
+    return react.createElement("label", {
+      className: joinPluginUIClass("plugin-ui-checkbox", className),
+      "data-wuu-component": "plugin-ui-checkbox",
+    },
+    react.createElement("input", { ...props, type: "checkbox" }),
+    react.createElement("span", { className: "plugin-ui-checkbox-copy" },
+      react.createElement("span", { className: "plugin-ui-field-label" }, label),
+      description !== undefined
+        ? react.createElement("span", { className: "plugin-ui-field-description" }, description)
+        : null));
+  }
+
   function EmptyState({ className, title, description, actions, ...props }: PluginUIEmptyStateProps): React.ReactNode {
     return react.createElement("section", {
       ...props,
@@ -231,7 +276,7 @@ export function createPluginUIKit(react: typeof React): PluginUIKit {
     actions !== undefined ? react.createElement("div", { className: "plugin-ui-empty-state-actions" }, actions) : null);
   }
 
-  return Object.freeze({ Page, Panel, Card, Section, Stack, Row, Button, TextInput, EmptyState });
+  return Object.freeze({ Page, Panel, Card, Section, Stack, Row, Button, TextInput, TextArea, Checkbox, EmptyState });
 }
 
 function joinPluginUIClass(base: string, className?: string): string {

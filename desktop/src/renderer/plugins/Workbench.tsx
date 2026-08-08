@@ -24,6 +24,8 @@ import type {
   RegisteredRenderer,
   RegisteredViewType,
 } from "./PluginHost";
+import { useI18n } from "../i18n";
+import { createPluginTranslator } from "./pluginI18n";
 import { PluginPresentation } from "./PluginPresentation";
 
 const LAYOUT_STORAGE_KEY = "wuu.plugin-workbench.layout.v1";
@@ -555,6 +557,11 @@ interface WorkbenchViewProps {
 function WorkbenchView({ controller, definition, view, siblingViews }: WorkbenchViewProps): JSX.Element {
   const View = definition.render;
   const host = React.useMemo(() => controller.createViewHostAPI(view), [controller, view]);
+  const { locale } = useI18n();
+  const translate = React.useMemo(
+    () => createPluginTranslator(controller.host, locale),
+    [controller.host, locale],
+  );
   return (
     <section className={`plugin-workbench-view plugin-workbench-view-${view.pane}`} data-plugin-id={view.pluginId}>
       <header className="plugin-workbench-view-header">
@@ -581,7 +588,7 @@ function WorkbenchView({ controller, definition, view, siblingViews }: Workbench
         services={controller.services}
         onUseDefault={() => void controller.closeView(view.id)}
       >
-        <View host={host} context={view.context} />
+        <View host={host} context={view.context} locale={locale} translate={translate} />
       </PluginErrorBoundary>
     </section>
   );
@@ -599,6 +606,7 @@ export function PluginViewContent({
   context?: Readonly<Record<string, unknown>>;
 }): JSX.Element {
   const snapshot = React.useSyncExternalStore(controller.subscribe, controller.getSnapshot);
+  const { locale } = useI18n();
   const definition = snapshot.viewTypes.find((view) =>
     view.pluginId === pluginId && view.id === viewTypeId);
   const view = React.useMemo<WorkbenchViewState | undefined>(() => definition ? Object.freeze({
@@ -611,6 +619,10 @@ export function PluginViewContent({
     context: freezeContext(context),
   }) : undefined, [context, definition, pluginId, viewTypeId]);
   const host = React.useMemo(() => view ? controller.createViewHostAPI(view) : undefined, [controller, view]);
+  const translate = React.useMemo(
+    () => createPluginTranslator(controller.host, locale),
+    [controller.host, locale, snapshot],
+  );
   if (!definition || !host || !view) {
     return <div className="plugin-workbench-error" role="status">Plugin view is unavailable.</div>;
   }
@@ -628,7 +640,7 @@ export function PluginViewContent({
         services={controller.services}
         onUseDefault={() => undefined}
       >
-        <View host={host} context={view.context} />
+        <View host={host} context={view.context} locale={locale} translate={translate} />
       </PluginErrorBoundary>
     </div>
   );

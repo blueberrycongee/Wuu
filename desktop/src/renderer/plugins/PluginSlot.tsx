@@ -3,6 +3,7 @@ import {
   createElement,
   Fragment,
   useCallback,
+  useMemo,
   useSyncExternalStore,
   type ErrorInfo,
   type ReactNode,
@@ -14,6 +15,8 @@ import {
   type PluginSlotRenderContext,
   type RegisteredPluginSlotContribution,
 } from "./PluginHost";
+import { useI18n } from "../i18n";
+import { createPluginTranslator } from "./pluginI18n";
 
 export interface PluginSlotProps {
   host: PluginHost;
@@ -54,14 +57,24 @@ class ContributionBoundary extends Component<ContributionBoundaryProps, Contribu
 function ContributionContent({
   context,
   contribution,
+  host,
+  locale,
 }: {
   context: PluginSlotRenderContext;
   contribution: RegisteredPluginSlotContribution;
+  host: PluginHost;
+  locale: string;
 }): ReactNode {
-  return contribution.render(context);
+  const localizedContext = useMemo(() => Object.freeze({
+    ...context,
+    locale,
+    translate: createPluginTranslator(host, locale),
+  }), [context, host, locale]);
+  return contribution.render(localizedContext);
 }
 
 export function PluginSlot({ host, id, context = EMPTY_CONTEXT }: PluginSlotProps): ReactNode {
+  const { locale } = useI18n();
   const subscribe = useCallback((listener: () => void) => host.subscribeSlot(id, listener), [host, id]);
   const getSnapshot = useCallback(() => host.getSlotSnapshot(id), [host, id]);
   const contributions = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
@@ -84,7 +97,7 @@ export function PluginSlot({ host, id, context = EMPTY_CONTEXT }: PluginSlotProp
         data-wuu-slot={id}
         data-wuu-contribution={contribution.id}
       >
-        <ContributionContent contribution={contribution} context={context} />
+        <ContributionContent contribution={contribution} context={context} host={host} locale={locale} />
       </div>,
     )),
   );

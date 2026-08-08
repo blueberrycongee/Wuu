@@ -7,7 +7,7 @@
   min-height: 0;
   flex-direction: column;
   color: var(--text-primary);
-  background: var(--surface-primary, var(--background));
+  background: var(--wuu-color-canvas, var(--paper, #fff));
 }
 
 .plugin-workbench-view-overlay {
@@ -215,7 +215,9 @@
 }
 
 .plugin-ui-button:focus-visible,
-.plugin-ui-input:focus-visible {
+.plugin-ui-input:focus-visible,
+.plugin-ui-textarea:focus-visible,
+.plugin-ui-checkbox input:focus-visible {
   outline: 2px solid var(--wuu-color-focus, var(--focus-ring));
   outline-offset: 2px;
 }
@@ -245,6 +247,40 @@
   color: var(--wuu-color-text, var(--ink));
   background: var(--wuu-color-canvas, var(--paper));
   font: inherit;
+}
+
+.plugin-ui-textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  min-height: 96px;
+  resize: vertical;
+  border: var(--wuu-border-subtle, 1px solid var(--wuu-color-border-subtle, var(--hairline)));
+  border-radius: var(--wuu-radius-control, var(--radius-sm));
+  padding: calc(var(--wuu-space-unit, 4px) * 2.5 * var(--wuu-space-density, 1));
+  color: var(--wuu-color-text, var(--ink));
+  background: var(--wuu-color-canvas, var(--paper));
+  font: inherit;
+  line-height: 1.5;
+}
+
+.plugin-ui-checkbox {
+  display: inline-grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: calc(var(--wuu-space-unit, 4px) * 2 * var(--wuu-space-density, 1));
+  color: var(--wuu-color-text, var(--ink));
+  cursor: pointer;
+}
+
+.plugin-ui-checkbox input {
+  margin: 3px 0 0;
+  accent-color: var(--wuu-color-accent, var(--wuu-accent));
+}
+
+.plugin-ui-checkbox-copy {
+  display: grid;
+  gap: calc(var(--wuu-space-unit, 4px) * var(--wuu-space-density, 1));
 }
 
 .plugin-ui-empty-state {

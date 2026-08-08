@@ -50,6 +50,8 @@ export interface ViewTypeDefinition {
 export interface ViewRenderProps {
   host: ViewHostAPI;
   context: Readonly<Record<string, unknown>>;
+  locale: string;
+  translate(key: string, values?: Readonly<Record<string, string | number>>): string;
 }
 
 export interface ViewHostAPI {
@@ -93,6 +95,23 @@ export interface PluginUITextInputProps extends PluginUIContainerProps {
   readonly onChange?: (event: unknown) => void;
 }
 
+export interface PluginUITextAreaProps extends PluginUIContainerProps {
+  readonly label: unknown;
+  readonly description?: unknown;
+  readonly value?: string;
+  readonly placeholder?: string;
+  readonly disabled?: boolean;
+  readonly onChange?: (event: unknown) => void;
+}
+
+export interface PluginUICheckboxProps extends PluginUIContainerProps {
+  readonly label: unknown;
+  readonly description?: unknown;
+  readonly checked?: boolean;
+  readonly disabled?: boolean;
+  readonly onChange?: (event: unknown) => void;
+}
+
 export interface PluginUIEmptyStateProps extends PluginUIContainerProps {
   readonly title: unknown;
   readonly description?: unknown;
@@ -111,6 +130,8 @@ export interface PluginUIKit {
   readonly Row: HostUIComponent<PluginUIContainerProps>;
   readonly Button: HostUIComponent<PluginUIButtonProps>;
   readonly TextInput: HostUIComponent<PluginUITextInputProps>;
+  readonly TextArea: HostUIComponent<PluginUITextAreaProps>;
+  readonly Checkbox: HostUIComponent<PluginUICheckboxProps>;
   readonly EmptyState: HostUIComponent<PluginUIEmptyStateProps>;
 }
 

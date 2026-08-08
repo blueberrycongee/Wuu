@@ -413,6 +413,33 @@ describe("DesktopWorkbench product path", () => {
     expect(document.body.textContent).not.toContain("Plugin ready");
   });
 
+  it("passes the active locale and registered plugin translations to Views", async () => {
+    const host = new PluginHost({ react: React });
+    await host.activateGeneration({
+      pluginId: "user:localized-view",
+      generation: "one",
+      register(api) {
+        api.registerLocale({
+          id: "localized-view-zh",
+          locale: "zh-CN",
+          entries: { "localized.title": "本地化视图" },
+        });
+        api.registerViewType({
+          id: "localized.view",
+          title: "Localized",
+          render: ({ locale, translate }) => <div>{locale}:{translate("localized.title")}</div>,
+        });
+        api.registerViewPlacement({ id: "localized-main", region: "main", view: "localized.view" });
+      },
+    });
+
+    await act(async () => root.render(
+      <DesktopWorkbench host={host} inventory={[inventoryPlugin("user:localized-view")]} />,
+    ));
+
+    expect(container.querySelector(".conversation-pane")?.textContent).toContain("zh-CN:本地化视图");
+  });
+
   it("replaces the complete status root with a sanitized immutable snapshot and controlled actions", async () => {
     const host = new PluginHost({ react: React });
     const execute = vi.fn();

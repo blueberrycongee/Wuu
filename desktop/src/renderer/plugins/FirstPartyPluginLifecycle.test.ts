@@ -2,6 +2,8 @@ import { readFileSync } from "node:fs";
 import { basename, resolve } from "node:path";
 
 import * as React from "react";
+import { act } from "react";
+import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
@@ -9,6 +11,7 @@ import {
   type PluginContributionDeclarations,
   type PluginGenerationApi,
 } from "./PluginHost";
+import { PluginViewContent, WorkbenchController } from "./Workbench";
 
 interface FirstPartyManifest {
   id: string;
@@ -120,7 +123,67 @@ describe("first-party desktop plugin lifecycle", () => {
     ].filter((item) => item.pluginId === pluginId).every((item) => item.generation === "new-generation"))
       .toBe(true);
   });
+
+  it.each([
+    ["automation", "automation.catalog", "还没有自动化任务"],
+    ["memory", "memory.settings", "记忆概览"],
+    ["dream", "dream.settings", "后台记忆整合"],
+  ] as const)("renders the real %s view with localized host UI", async (pluginId, viewTypeId, expectedText) => {
+    const host = new PluginHost({
+      react: React,
+      invokeRuntime: async ({ method }) => firstPartyRuntimeResponse(method),
+    });
+    const { manifest, module } = await loadFirstPartyPlugin(pluginId);
+    await host.activateGeneration({
+      pluginId,
+      generation: "render-test",
+      contributions: contributionDeclarations(manifest),
+      register: module.activate,
+    });
+    const controller = new WorkbenchController(host);
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    try {
+      await act(async () => {
+        root.render(React.createElement(PluginViewContent, {
+          controller,
+          pluginId,
+          viewTypeId,
+        }));
+      });
+      expect(container.querySelector(".plugin-ui-page")).not.toBeNull();
+      expect(container.textContent).toContain(expectedText);
+      expect(container.textContent).not.toMatch(/\b(?:title|subtitle|overview|loading|chat|raw|enabled|interval|minimum|model|new|empty)\b/);
+      expect([...container.querySelectorAll("input, textarea")].every((control) => control.closest("label"))).toBe(true);
+    } finally {
+      act(() => root.unmount());
+      container.remove();
+      controller.dispose();
+    }
+  });
 });
+
+function firstPartyRuntimeResponse(method: string): unknown {
+  switch (method) {
+    case "automation.list":
+      return { tasks: [] };
+    case "dream.get":
+      return {
+        settings: { enabled: false, interval_days: 7, min_sessions: 5, model_alias: "" },
+        candidates: {},
+        last_status: "",
+      };
+    case "memory.overview.start":
+      return { id: "overview-job" };
+    case "memory.job.get":
+      return { state: "completed", output: "" };
+    case "memory.read":
+      return { index_raw: "", files: [] };
+    default:
+      throw new Error(`Unexpected first-party runtime method: ${method}`);
+  }
+}
 
 async function loadFirstPartyPlugin(
   pluginId: typeof firstPartyPluginIds[number],
