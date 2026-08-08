@@ -35,6 +35,14 @@ product behavior:
   host retains layout, accessibility, overflow, safe areas, and recovery paths;
   plugins contribute capabilities and content through stable semantic surfaces.
 
+Long-term goal: agent self-evolution. An agent should eventually be able to
+inspect its own plugin runtime, author a plugin that extends its own
+capabilities, install and activate it, and have the new capability take effect
+in its next request. Self-authored plugins follow the same public contracts and
+trust line as third-party plugins: activation takes effect without a restart,
+survives restart, and remains cleanly reversible. This is the acceptance target
+for the ecosystem work in the migration below.
+
 This direction is informed by open-source projects including Pi, Cordis, and
 HashiCorp go-plugin. wuu does not aim to copy their runtime implementations or
 claim compatibility. It adapts the general ideas of small loops, service
