@@ -20,7 +20,7 @@ setup:
 	npm ci --prefix clients/core
 	npm ci --prefix clients/mobile
 	npm ci --prefix packages/protocol
-	npm install --prefix docs-site --no-audit --no-fund
+	npm ci --prefix docs-site --no-audit --no-fund
 
 dev:
 	cd desktop && npm run dev
