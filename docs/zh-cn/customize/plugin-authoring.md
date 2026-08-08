@@ -19,8 +19,8 @@ Wuu 插件平台当前是本地优先的：没有市场、没有中心仓库。�
 | Agent 插件 | 独立 runtime 进程（Node 等） | 是 |
 | 桌面插件 | Wuu Renderer（ESM 模块） | 是 |
 
-插件可以形成覆盖整个产品的强视觉语言，但通过公开 Token、UI Kit 和粗粒度语义边界实现，
-而不是接管私有 DOM。窗口安全区、导航结构、Tab、滚动、溢出、键盘与恢复路径由宿主管理。
+插件可以形成覆盖整个产品的强视觉语言，通过公开 Token、UI Kit 和粗粒度语义边界实现，
+不接管私有 DOM。窗口安全区、导航结构、Tab、滚动、溢出、键盘与恢复路径由宿主管理。
 Surface 替换等高信任能力是复杂结构定制的 escape hatch，不是普通控件的默认入口。
 整体设计与接口选择原则见[插件系统架构](plugin-system.md)。
 
@@ -275,9 +275,9 @@ export async function activate(api) {
   才使用自定义设置 View。
 - `api.ui`：宿主提供的小型 UI Kit，包括 `Page`、`Panel`、`Card`、`Section`、
   `Stack`、`Row`、`Button`、`TextInput` 和 `EmptyState`。普通插件页面优先使用这些组件，
-  因而会自动继承当前外观插件的颜色、字体、边框、圆角、阴影和密度。它不是页面 DSL：
-  复杂 View 仍可使用任意 React，画布、终端和专用预览可以保留自己的主题边界；但插件不应
-  覆盖 UI Kit 的内部 class，也不应重新接管宿主的页面边距和公共控件节奏。
+  因而会自动继承当前外观插件的颜色、字体、边框、圆角、阴影和密度。复杂 View 仍可使用
+  任意 React，画布、终端和专用预览可以保留自己的主题边界；插件不应覆盖 UI Kit 的内部
+  class，也不应重新接管宿主的页面边距和公共控件节奏。
 - `registerPresenter`：替换具体产品概念而不是宽泛区域。目标包括
   `conversation.item`、`conversation.process`、`conversation.tool-activity`、
   `conversation.composer`、`header.conversation`、`header.workspace`、
