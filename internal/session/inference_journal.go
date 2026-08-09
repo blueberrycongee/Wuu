@@ -1263,6 +1263,8 @@ WHERE id = ? AND closed_at = 0`, time.Now().UTC().UnixMilli(), j.runtime.runtime
 type InferenceCrashRecovery struct {
 	OperationID   string
 	AttemptID     string
+	OwnerID       string
+	Kind          providers.InferenceOperationKind
 	Profile       providers.InferenceWorkloadProfile
 	PriorPhase    string
 	PriorOutcome  string
@@ -1292,7 +1294,7 @@ func (r *InferenceJournalRuntime) ReconcileOrphans(now time.Time) ([]InferenceCr
 
 	cutoff := journalTime(now.Add(-inferenceJournalStaleAfter))
 	rows, err := tx.Query(`
-SELECT o.id, o.workload_profile,
+SELECT o.id, o.owner_id, o.kind, o.workload_profile,
        COALESCE(a.id, ''), COALESCE(a.phase, ''),
        COALESCE(a.terminal_outcome, ''), COALESCE(a.recovery_action, ''),
        rt.pid, rt.heartbeat_at, rt.closed_at
@@ -1302,19 +1304,18 @@ LEFT JOIN inference_attempts a
   ON a.operation_id = o.id
  AND a.ordinal = (SELECT MAX(last.ordinal) FROM inference_attempts last WHERE last.operation_id = o.id)
 WHERE o.workspace_scope = ? AND o.runtime_id <> ? AND o.status = 'active'
-  AND (rt.closed_at <> 0 OR rt.heartbeat_at < ?)
-ORDER BY o.created_at, o.id`, r.workspaceScope, r.runtimeID, cutoff)
+ORDER BY o.created_at, o.id`, r.workspaceScope, r.runtimeID)
 	if err != nil {
 		return nil, fmt.Errorf("reconcile inference journal: list: %w", err)
 	}
 	var recoveries []InferenceCrashRecovery
 	for rows.Next() {
 		var item InferenceCrashRecovery
-		var profile, priorRecovery string
+		var kind, profile, priorRecovery string
 		var pid int
 		var heartbeatAt, closedAt int64
 		if err := rows.Scan(
-			&item.OperationID, &profile, &item.AttemptID, &item.PriorPhase,
+			&item.OperationID, &item.OwnerID, &kind, &profile, &item.AttemptID, &item.PriorPhase,
 			&item.PriorOutcome, &priorRecovery, &pid, &heartbeatAt, &closedAt,
 		); err != nil {
 			rows.Close()
@@ -1324,6 +1325,7 @@ ORDER BY o.created_at, o.id`, r.workspaceScope, r.runtimeID, cutoff)
 			continue
 		}
 		item.Profile = providers.InferenceWorkloadProfile(profile)
+		item.Kind = providers.InferenceOperationKind(kind)
 		item.PriorRecovery = providers.RecoveryActionKind(priorRecovery)
 		switch {
 		case item.Profile == providers.InferenceProfileBestEffort:

@@ -396,6 +396,7 @@ func (s *Server) settleOnBoot() {
 		if recoverErr != nil {
 			providers.DebugLogf("settleOnBoot pass4 (inference journal): %v", recoverErr)
 		} else if len(recoveries) > 0 {
+			s.persistRecoveredTurnTerminals(recoveries, now)
 			var safe, blocked, abandoned int
 			for _, recovery := range recoveries {
 				switch recovery.Action {
@@ -425,6 +426,61 @@ func (s *Server) settleOnBoot() {
 	}
 }
 
+func (s *Server) persistRecoveredTurnTerminals(recoveries []session.InferenceCrashRecovery, now time.Time) {
+	owners := make(map[string]struct{})
+	for _, recovery := range recoveries {
+		ownerID := strings.TrimSpace(recovery.OwnerID)
+		if recovery.Kind == providers.InferenceOperationAgentRound && ownerID != "" {
+			owners[ownerID] = struct{}{}
+		}
+	}
+	for ownerID := range owners {
+		loaded, err := s.loadPersistedThreadSnapshot(ownerID)
+		if err != nil {
+			if !errors.Is(err, session.ErrSessionNotFound) {
+				providers.DebugLogf("settleOnBoot turn projection %q: %v", ownerID, err)
+			}
+			continue
+		}
+		turns := turnsFromPersistedHistory(ownerID, loaded.displayHistory, now, s.resolveParticipantSummary)
+		if len(turns) == 0 {
+			continue
+		}
+		turn := turns[len(turns)-1]
+		if hasPersistedTurnTerminal(loaded.rawHistory, turn.ID) || turnHasFinalAnswer(turn) {
+			continue
+		}
+		message := "execution interrupted because the previous app server exited"
+		if err := session.AppendHistoryRecord(s.rt.SessionDir, ownerID, session.HistoryRecord{
+			Role: "meta", Content: turnTerminalHistoryRecord, DisplayContent: message,
+			ClientID: turn.ID, StopReason: string(TurnStatusInterrupted), At: now,
+		}); err != nil {
+			providers.DebugLogf("settleOnBoot persist interrupted turn %q: %v", ownerID, err)
+		}
+	}
+}
+
+func hasPersistedTurnTerminal(history []persistedMessage, turnID string) bool {
+	turnID = strings.TrimSpace(turnID)
+	for _, record := range history {
+		if strings.EqualFold(strings.TrimSpace(record.Role), "meta") &&
+			record.Content == turnTerminalHistoryRecord &&
+			strings.TrimSpace(record.ClientID) == turnID {
+			return true
+		}
+	}
+	return false
+}
+
+func turnHasFinalAnswer(turn Turn) bool {
+	for _, item := range turn.Items {
+		if item.Type == ThreadItemAgentMessage && item.Phase == ThreadItemPhaseFinalAnswer && strings.TrimSpace(item.Text) != "" {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *Server) startInferenceJournalMaintenance() {
 	if s == nil || s.rt == nil || s.rt.InferenceJournalRuntime == nil {
 		return
@@ -444,6 +500,7 @@ func (s *Server) startInferenceJournalMaintenance() {
 					continue
 				}
 				if len(recoveries) > 0 {
+					s.persistRecoveredTurnTerminals(recoveries, now.UTC())
 					providers.DebugLogf("inference journal maintenance: recovered %d orphan operation(s)", len(recoveries))
 				}
 			case <-s.inferenceMaintenanceStop:
