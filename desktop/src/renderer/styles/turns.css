@@ -2309,6 +2309,15 @@
   overflow: hidden;
 }
 
+.turn-reasoning-summary-text.is-live-gray {
+  display: inline-grid;
+  flex-grow: 0;
+}
+
+.turn-reasoning-summary-text.is-live-gray + .turn-reasoning-chevron {
+  margin-inline-start: auto;
+}
+
 .process-surface-row.is-live-gray::after,
 .turn-reasoning-summary-text.is-live-gray::after,
 .turn-process-preview.is-live::after,
