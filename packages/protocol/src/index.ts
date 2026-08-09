@@ -385,6 +385,7 @@ export type ExtensionInventoryRecord = {
   state: ExtensionState;
   executable?: boolean;
   fingerprint?: string;
+  package_source?: "bundled" | "user" | "project" | "dev";
   grant_scope?: "action" | "session" | "project" | "user";
   requested_permissions?: string[];
   unsupported_fields?: string[];

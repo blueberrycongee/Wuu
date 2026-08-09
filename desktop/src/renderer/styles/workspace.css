@@ -2478,6 +2478,34 @@ html.resizing-workspace-terminal-split * {
   font-weight: var(--weight-semibold);
 }
 
+.plugin-detail-provenance {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 7px 12px;
+  margin: 0;
+  color: var(--ink-tertiary);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.plugin-detail-provenance dt,
+.plugin-detail-provenance dd {
+  min-width: 0;
+  margin: 0;
+}
+
+.plugin-detail-provenance dd {
+  color: var(--ink-secondary);
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+.plugin-detail-provenance code {
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
 .plugin-detail-dialog .plugin-settings-editor {
   grid-column: auto;
   margin-top: 18px;

@@ -481,6 +481,7 @@ func (s *Server) currentExtensionInventory() []ExtensionInventoryRecord {
 			State:                state,
 			Executable:           item.Runtime != nil || len(item.MCPServers) > 0 || len(item.Hooks) > 0,
 			Fingerprint:          item.Fingerprint,
+			PackageSource:        item.Source,
 			GrantScope:           grantScope,
 			RequestedPermissions: cloneSortedStrings(item.EffectivePermissions),
 			UnsupportedFields:    cloneSortedStrings(item.UnsupportedFields),

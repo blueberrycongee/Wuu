@@ -675,6 +675,7 @@ type ExtensionInventoryRecord struct {
 	State                ExtensionState                   `json:"state"`
 	Executable           bool                             `json:"executable,omitempty"`
 	Fingerprint          string                           `json:"fingerprint,omitempty"`
+	PackageSource        string                           `json:"package_source,omitempty"`
 	GrantScope           extensions.GrantScope            `json:"grant_scope,omitempty"`
 	RequestedPermissions []string                         `json:"requested_permissions,omitempty"`
 	UnsupportedFields    []string                         `json:"unsupported_fields,omitempty"`

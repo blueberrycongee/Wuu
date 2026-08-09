@@ -453,7 +453,8 @@ export function SkillsCatalog({
 function isRemovableUserPlugin(record: ExtensionInventoryRecord): boolean {
   return (
     record.provenance.official !== true &&
-    record.provenance.scope === "user" &&
+    (record.package_source === "user" ||
+      (record.package_source === undefined && record.provenance.scope === "user")) &&
     Boolean(record.provenance.plugin_id)
   );
 }
@@ -643,6 +644,25 @@ function PluginDetailDialog({
           ) : null}
         </div>
         <section className="plugin-detail-section">
+          <strong>{t("skills.pluginActivePackage")}</strong>
+          <dl className="plugin-detail-provenance">
+            <dt>{t("skills.pluginPackageSource")}</dt>
+            <dd>{record.package_source ?? record.provenance.scope}</dd>
+            {record.provenance.path ? (
+              <>
+                <dt>{t("skills.pluginActivePath")}</dt>
+                <dd><code>{record.provenance.path}</code></dd>
+              </>
+            ) : null}
+            {record.fingerprint ? (
+              <>
+                <dt>{t("skills.pluginFingerprint")}</dt>
+                <dd title={record.fingerprint}><code>{abbreviateFingerprint(record.fingerprint)}</code></dd>
+              </>
+            ) : null}
+          </dl>
+        </section>
+        <section className="plugin-detail-section">
           <strong>{t("skills.pluginPermissions")}</strong>
           <div className="extension-package-permissions">
             {(record.requested_permissions ?? []).length > 0 ? (
@@ -673,6 +693,12 @@ function PluginDetailDialog({
       </div>
     </Modal>
   );
+}
+
+function abbreviateFingerprint(fingerprint: string): string {
+  return fingerprint.length > 22
+    ? `${fingerprint.slice(0, 12)}…${fingerprint.slice(-6)}`
+    : fingerprint;
 }
 
 function PluginArtwork({ record }: { record: ExtensionInventoryRecord }): JSX.Element {
