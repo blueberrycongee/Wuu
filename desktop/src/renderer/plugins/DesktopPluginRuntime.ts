@@ -8,6 +8,7 @@ import {
   PluginGenerationSupersededError,
   type PluginContributionDeclarations,
   type PluginGenerationApi,
+  type PluginViewEntryDeclaration,
 } from "./PluginHost";
 import { WorkbenchController } from "./Workbench";
 
@@ -126,6 +127,8 @@ function desktopContributionDeclarations(
   plugin: ExtensionInventoryRecord,
 ): PluginContributionDeclarations {
   const declarations = (plugin.contributions ?? {}) as PluginContributionDeclarations;
+  const withPluginIcon = (entries: readonly PluginViewEntryDeclaration[] | undefined) =>
+    entries?.map((entry) => ({ ...entry, icon: entry.icon ?? plugin.icon }));
   return {
     ...declarations,
     // Inventory omits empty manifest arrays. Desktop-loaded code still has a
@@ -134,6 +137,9 @@ function desktopContributionDeclarations(
     slots: declarations.slots ?? [],
     surfaces: declarations.surfaces ?? [],
     presenters: declarations.presenters ?? [],
+    navigation: withPluginIcon(declarations.navigation),
+    workspace_tools: withPluginIcon(declarations.workspace_tools),
+    settings_pages: withPluginIcon(declarations.settings_pages),
   };
 }
 

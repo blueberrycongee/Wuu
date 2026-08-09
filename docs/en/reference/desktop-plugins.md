@@ -153,10 +153,16 @@ entry must reference a View registered by the same plugin. Standard `contributes
 automatically receive a host-rendered Settings page; use a custom settings View only for content
 that cannot be expressed by the standard schema.
 
-`icon` is a host-rendered semantic icon name, not an SVG path or a desktop-module component. Import
-`PUBLIC_ICON_NAMES` from `@wuu/plugin-sdk` to inspect the supported names and use `PublicIconName`
-for TypeScript autocomplete. Wuu validates manifest icon names during installation and keeps the
-drawing, sizing, active state, accessibility, and theme behavior consistent across host surfaces.
+Declare a top-level `icon` once to brand the plugin catalog, detail view, and host entries that do
+not override it. It may be a public semantic name, `{ "path": "assets/icon.svg" }`, or a themed
+`{ "light": "assets/icon-light.svg", "dark": "assets/icon-dark.svg" }` pair. Entry-level `icon`
+uses the same contract and overrides the package artwork. Import `PUBLIC_ICON_NAMES`,
+`PublicIconName`, and `PluginManifestIcon` from `@wuu/plugin-sdk` for authoring support.
+
+Package artwork accepts SVG, PNG, and WebP up to 256 KiB per file. Paths must remain inside the
+package and cannot be symbolic links. SVG scripts, event attributes, embedded documents, and
+external references are rejected. Wuu owns sizing, active state, accessibility, theme switching,
+and load-failure fallback; desktop modules cannot inject icon components into host chrome.
 
 ## Host-owned UI Kit
 

@@ -48,6 +48,12 @@ export const VIEW_PLACEMENT_REGIONS = [
 export type ViewPlacementRegion = (typeof VIEW_PLACEMENT_REGIONS)[number];
 export type ViewPersistence = "session" | "durable";
 
+/** Artwork declared in plugin.json for the package or a host-owned entry. */
+export type PluginManifestIcon =
+  | PublicIconName
+  | Readonly<{ path: string }>
+  | Readonly<{ light: string; dark: string }>;
+
 export interface ViewTypeDefinition {
   id: ViewTypeId;
   title: string;
@@ -1392,6 +1398,7 @@ export function createManifest(options: {
   name?: string;
   version?: string;
   description?: string;
+  icon?: PluginManifestIcon;
 }): Record<string, unknown> {
   return {
     schema_version: 1,
@@ -1399,5 +1406,6 @@ export function createManifest(options: {
     name: options.name ?? options.id,
     version: options.version ?? "0.1.0",
     description: options.description ?? `A Wuu plugin: ${options.id}`,
+    ...(options.icon ? { icon: options.icon } : {}),
   };
 }
