@@ -2,6 +2,7 @@ import type {
   PopOutInitResult,
   ProjectListResult,
   RuntimeContext,
+  ThreadResumeResult,
 } from "../shared/protocol";
 import {
   activeProjectID,
@@ -14,14 +15,20 @@ import {
   upsertThread,
   type AppState,
 } from "./AppState";
+import type { QueuedComposerMessage } from "./ComposerMessages";
+import { heldComposerMessagesFromResumeResult } from "./ComposerPendingState";
 import { translateCurrent } from "./i18n";
+
+export type LoadedRuntimeState = Partial<AppState> & {
+  heldComposerMessages?: QueuedComposerMessage[];
+};
 
 export async function loadRuntime(
   projectState: ProjectListResult,
   options: {
     resumeLatestThread?: boolean;
   } = {},
-): Promise<Partial<AppState>> {
+): Promise<LoadedRuntimeState> {
   if (!projectState.active_context) {
     return emptyRuntimeState(projectState);
   }
@@ -48,11 +55,11 @@ export async function loadRuntime(
   const defaultThread = resumeLatestThread
     ? (liveThreads.find((candidate) => !candidate.pinned) ?? liveThreads[0])
     : undefined;
-  const thread = defaultThread
-    ? requireThread(
-        await window.wuu.resumeThread(defaultThread.id),
-        translateCurrent("thread.resumeMissing"),
-      )
+  const resumed: ThreadResumeResult | undefined = defaultThread
+    ? await window.wuu.resumeThread(defaultThread.id)
+    : undefined;
+  const thread = resumed
+    ? requireThread(resumed, translateCurrent("thread.resumeMissing"))
     : undefined;
   return {
     initialized,
@@ -66,6 +73,11 @@ export async function loadRuntime(
     allowThreadAutoActivation: Boolean(thread),
     threads: thread ? upsertThread(listedThreads, thread) : listedThreads,
     running: isThreadRunning(thread),
+    // The resume RPC result carries the authoritative held snapshot. Seeding
+    // it here makes queued/steered messages survive a renderer reload: the
+    // `thread/resumed` notification is emitted before the app finishes
+    // booting, when the active-context gate still drops every server event.
+    heldComposerMessages: heldComposerMessagesFromResumeResult(resumed),
     status:
       initialized.status === "needs_setup"
         ? (initialized.issues?.[0]?.message ?? translateCurrent("runtime.configureCredentials"))
@@ -75,7 +87,7 @@ export async function loadRuntime(
 
 export async function loadPopOutRuntime(
   init: PopOutInitResult,
-): Promise<Partial<AppState>> {
+): Promise<LoadedRuntimeState> {
   if (!init.kind || !init.context) {
     return { status: "no-runtime" };
   }
@@ -136,6 +148,9 @@ export async function loadPopOutRuntime(
     activeSessionTabID: tab.id,
     threads: upsertThread(listedThreads, thread),
     running: isThreadRunning(thread),
+    // Same reload-survival seeding as loadRuntime: the pop-out window must
+    // restore its held snapshot from the RPC result, not the notification.
+    heldComposerMessages: heldComposerMessagesFromResumeResult(resumed),
     status: "ready",
   };
 }

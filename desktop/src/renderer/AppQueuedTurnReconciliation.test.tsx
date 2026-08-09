@@ -172,6 +172,7 @@ function installWindowStubs(): void {
 function installWuuApi(options: {
   queueTurn?: WuuDesktopApi["queueTurn"];
   steerTurn?: WuuDesktopApi["steerTurn"];
+  resumeThread?: WuuDesktopApi["resumeThread"];
 } = {}): {
   queuedClientIDs: string[];
   dequeuedClientIDs: string[];
@@ -191,7 +192,9 @@ function installWuuApi(options: {
     listThreads: vi.fn().mockResolvedValue({ threads: [runningThread()] }),
     listArchivedThreads: vi.fn().mockResolvedValue({ threads: [] }),
     listChannelRooms: vi.fn().mockResolvedValue({ rooms: [] }),
-    resumeThread: vi.fn().mockResolvedValue({ thread: runningThread() }),
+    resumeThread:
+      options.resumeThread ??
+      vi.fn().mockResolvedValue({ thread: runningThread() }),
     queueTurn: options.queueTurn ?? vi
       .fn()
       .mockImplementation(
@@ -495,5 +498,46 @@ describe("queued turn reconciliation", () => {
     expect(composerProbe().dataset.guideIds).toBe("guide-1");
     expect(composerProbe().dataset.queuedIds).toBe("queue-1,queue-2");
     expect(composerProbe().dataset.heldOrder).toBe("guide-1,queue-1,queue-2");
+  });
+
+  it("restores held and queued messages from the resume result on boot", async () => {
+    // Reload simulation: the renderer boots fresh and never receives the
+    // `thread/resumed` notification (the active-context gate drops server
+    // events until the runtime state is loaded). The queue must survive
+    // through the resume RPC result alone.
+    installWuuApi({
+      resumeThread: vi.fn().mockResolvedValue({
+        thread: runningThread(),
+        held_user_messages: [
+          {
+            id: "queue-1",
+            thread_id: threadID,
+            origin: "queue",
+            prompt: "First",
+          },
+          {
+            id: "guide-1",
+            thread_id: threadID,
+            origin: "steer",
+            prompt: "Guide",
+          },
+          {
+            id: "queue-2",
+            thread_id: threadID,
+            origin: "queue",
+            prompt: "Second",
+          },
+        ],
+      }),
+    });
+    await act(async () => {
+      root = createRoot(container);
+      root.render(<App />);
+    });
+    await flushAsync();
+
+    expect(composerProbe().dataset.guideIds).toBe("guide-1");
+    expect(composerProbe().dataset.queuedIds).toBe("queue-1,queue-2");
+    expect(composerProbe().dataset.heldOrder).toBe("queue-1,guide-1,queue-2");
   });
 });

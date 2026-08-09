@@ -789,6 +789,7 @@ export function App(): JSX.Element {
     removePendingComposerMessageByID,
     syncPendingComposerMessagesFromServerEvent,
     reconcilePendingComposerMessagesForState,
+    seedHeldComposerMessages,
     enqueueComposerMessage,
     removeQueuedMessage,
     removeGuideMessage,
@@ -1490,7 +1491,11 @@ export function App(): JSX.Element {
           if (!mounted) {
             return;
           }
-          setState((current) => ({ ...current, ...loadedState }));
+          const { heldComposerMessages, ...runtimeAppState } = loadedState;
+          setState((current) => ({ ...current, ...runtimeAppState }));
+          if (loadedState.thread && heldComposerMessages?.length) {
+            seedHeldComposerMessages(loadedState.thread.id, heldComposerMessages);
+          }
           return;
         }
         const listedProjects = await window.wuu.listProjects();
@@ -1501,9 +1506,13 @@ export function App(): JSX.Element {
         if (!mounted) {
           return;
         }
+        const { heldComposerMessages, ...runtimeAppState } = loadedState;
         setState((current) =>
-          withLoadedRuntimeSessionTab(current, loadedState),
+          withLoadedRuntimeSessionTab(current, runtimeAppState),
         );
+        if (loadedState.thread && heldComposerMessages?.length) {
+          seedHeldComposerMessages(loadedState.thread.id, heldComposerMessages);
+        }
       } catch (error) {
         if (!mounted) {
           return;
