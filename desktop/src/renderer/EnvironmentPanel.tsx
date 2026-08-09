@@ -16,7 +16,6 @@ import { type FormEvent as ReactFormEvent, type ReactNode, type RefObject, useEf
 import type {
   GitStatusResult,
   InitializeResult,
-  PlanUpdate,
   WorkspaceFileReadResult
 } from "../shared/protocol";
 import { desktopApiErrorMessage, formatBytes } from "./WorkspaceReviewHelpers";
@@ -30,7 +29,6 @@ export function EnvironmentPanel({
   panelRef,
   motionState,
   gitStatus,
-  planUpdate,
   activeMenu,
   running,
   pullRequestDisabledReason,
@@ -49,7 +47,6 @@ export function EnvironmentPanel({
   motionState: EnvironmentPanelMotionState;
   initialized: InitializeResult;
   gitStatus?: GitStatusResult;
-  planUpdate?: PlanUpdate;
   activeMenu: EnvironmentPanelMenu;
   running: boolean;
   pullRequestDisabledReason: string;
@@ -103,7 +100,7 @@ export function EnvironmentPanel({
     <aside
       className={`environment-panel ${motionState}`}
       ref={panelRef}
-      aria-label={t(planUpdate ? "environment.progressAndInfo" : "environment.info")}
+      aria-label={t("environment.info")}
       aria-hidden={motionState === "closing" ? true : undefined}
       data-wuu-component="environment-panel"
       data-wuu-state={motionState}
@@ -116,7 +113,6 @@ export function EnvironmentPanel({
         </div>
       </div>
 
-      {planUpdate ? <EnvironmentPlanSection planUpdate={planUpdate} /> : null}
       {pluginSections}
 
       <div className="environment-panel-body">
@@ -193,26 +189,6 @@ export function EnvironmentPanel({
         />
       ) : null}
     </aside>
-  );
-}
-
-function EnvironmentPlanSection({ planUpdate }: { planUpdate: PlanUpdate }): JSX.Element {
-  const { t } = useI18n();
-  return (
-    <section className="environment-plan-section" aria-label={t("environment.taskProgress")}>
-      <div className="environment-plan-scroll">
-        <ol className="environment-plan-list">
-          {planUpdate.plan.map((item, index) => (
-            <li className={`environment-plan-item ${item.status}`} key={`${index}-${item.step}`}>
-              <span className="environment-plan-marker" aria-hidden="true">
-                {item.status === "completed" ? <Check className="icon-xs" strokeWidth={3} /> : null}
-              </span>
-              <span>{item.step}</span>
-            </li>
-          ))}
-        </ol>
-      </div>
-    </section>
   );
 }
 

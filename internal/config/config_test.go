@@ -969,7 +969,6 @@ func TestDefaultSystemPromptLeavesToolManualsToActiveSurface(t *testing.T) {
 	prompt := DefaultSystemPrompt()
 	for _, toolName := range []string{
 		"tool_search",
-		"update_plan",
 		"spawn_agent",
 		"inception",
 		"apply_patch",

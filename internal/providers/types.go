@@ -507,13 +507,13 @@ type TokenUsage struct {
 	CacheCreationUnknown bool
 }
 
-// PlanStep is one item in an update_plan snapshot.
+// PlanStep is one item in a semantic plan snapshot.
 type PlanStep struct {
 	Step   string `json:"step"`
 	Status string `json:"status"`
 }
 
-// PlanUpdate carries the latest update_plan snapshot as a stream event.
+// PlanUpdate carries the latest semantic plan snapshot as a stream event.
 type PlanUpdate struct {
 	Explanation string     `json:"explanation,omitempty"`
 	Plan        []PlanStep `json:"plan"`

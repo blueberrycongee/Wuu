@@ -397,6 +397,12 @@ export interface InspectorPlanSnapshotV1 {
   readonly completed: number;
   readonly total: number;
   readonly activeStep?: string;
+  readonly items: readonly InspectorPlanItemSnapshotV1[];
+}
+
+export interface InspectorPlanItemSnapshotV1 {
+  readonly step: string;
+  readonly status: "pending" | "in_progress" | "completed";
 }
 
 /** Immutable public context for short, scan-friendly Inspector contributions. */

@@ -2380,7 +2380,7 @@ function latestPlanUpdateForThread(
     const turn = thread.turns[turnIndex];
     for (let itemIndex = turn.items.length - 1; itemIndex >= 0; itemIndex--) {
       const item = turn.items[itemIndex];
-      if (item.name !== "update_plan" || !item.arguments) {
+      if (item.display?.capability !== "plan" || !item.arguments) {
         continue;
       }
       const update = parsePlanUpdateArguments(item.arguments);

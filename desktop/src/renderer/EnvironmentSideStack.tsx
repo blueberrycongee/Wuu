@@ -111,7 +111,6 @@ export function EnvironmentSideStack({
         motionState={closing ? "closing" : motionState}
         initialized={state.initialized}
         gitStatus={state.gitStatus}
-        planUpdate={planUpdate}
         activeMenu={activeMenu}
         running={running}
         pullRequestDisabledReason={pullRequestDisabledReason}
@@ -164,6 +163,10 @@ function buildInspectorSnapshot(state: AppState, planUpdate?: PlanUpdate): Inspe
         completed: planUpdate.plan.filter((item) => item.status === "completed").length,
         total: planUpdate.plan.length,
         activeStep: planUpdate.plan.find((item) => item.status === "in_progress")?.step,
+        items: Object.freeze(planUpdate.plan.map((item) => Object.freeze({
+          step: item.step,
+          status: item.status,
+        }))),
       });
   return Object.freeze({ contractVersion: 1, session, workspace, plan });
 }

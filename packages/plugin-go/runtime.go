@@ -72,6 +72,13 @@ type Tool struct {
 	InputSchema     map[string]any `json:"input_schema"`
 	ExecutionScopes []string       `json:"execution_scopes,omitempty"`
 	Activity        *ToolActivity  `json:"activity,omitempty"`
+	Display         *ToolDisplay   `json:"display,omitempty"`
+}
+
+type ToolDisplay struct {
+	Kind       string `json:"kind,omitempty"`
+	Text       string `json:"text,omitempty"`
+	Capability string `json:"capability,omitempty"`
 }
 
 type ToolActivity struct {

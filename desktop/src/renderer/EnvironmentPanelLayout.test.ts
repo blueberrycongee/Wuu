@@ -24,7 +24,6 @@ describe("environment panel rows", () => {
     expect(header).toMatch(/position:\s*absolute/);
     expect(header).toMatch(/top:\s*15px/);
     expect(header).toMatch(/right:\s*14px/);
-    expect(cssRule(".environment-plan-item:first-child")).toMatch(/padding-right:\s*34px/);
     expect(
       cssRule(
         ".environment-panel-header.floating + .environment-panel-body .environment-row:first-child",

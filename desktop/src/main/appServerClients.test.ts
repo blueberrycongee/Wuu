@@ -122,6 +122,7 @@ describe("appServerHelperEnvironment", () => {
       `${packagedBin}/wuu-automation-plugin`,
       `${packagedBin}/wuu-memory-plugin`,
       `${packagedBin}/wuu-dream-plugin`,
+      `${packagedBin}/wuu-plan-plugin`,
       `${packagedBin}/wuu-cua-mac`,
     ]);
     const result = appServerHelperEnvironment(
@@ -136,6 +137,7 @@ describe("appServerHelperEnvironment", () => {
     expect(result.WUU_AUTOMATION_PLUGIN_HELPER).toBe(`${packagedBin}/wuu-automation-plugin`);
     expect(result.WUU_MEMORY_PLUGIN_HELPER).toBe(`${packagedBin}/wuu-memory-plugin`);
     expect(result.WUU_DREAM_PLUGIN_HELPER).toBe(`${packagedBin}/wuu-dream-plugin`);
+    expect(result.WUU_PLAN_PLUGIN_HELPER).toBe(`${packagedBin}/wuu-plan-plugin`);
     expect(result.WUU_CUA_MAC_HELPER).toBe(
       `${packagedBin}/wuu-cua-mac`,
     );
@@ -148,6 +150,7 @@ describe("appServerHelperEnvironment", () => {
       "/source/desktop/build/bin/wuu-automation-plugin",
       "/source/desktop/build/bin/wuu-memory-plugin",
       "/source/desktop/build/bin/wuu-dream-plugin",
+      "/source/desktop/build/bin/wuu-plan-plugin",
       "/source/desktop/build/bin/wuu-cua-mac",
     ]);
     const discovered = appServerHelperEnvironment(
@@ -159,6 +162,9 @@ describe("appServerHelperEnvironment", () => {
     );
     expect(discovered.WUU_GOAL_PLUGIN_HELPER).toBe(
       "/source/desktop/build/bin/wuu-goal-plugin",
+    );
+    expect(discovered.WUU_PLAN_PLUGIN_HELPER).toBe(
+      "/source/desktop/build/bin/wuu-plan-plugin",
     );
     expect(discovered.WUU_CUA_MAC_HELPER).toBe(
       "/source/desktop/build/bin/wuu-cua-mac",

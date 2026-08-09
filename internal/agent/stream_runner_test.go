@@ -343,16 +343,18 @@ func TestStreamRunner_EmitsPlanUpdateEventAfterUpdatePlan(t *testing.T) {
 					{
 						Type: providers.EventToolUseStart,
 						ToolCall: &providers.ToolCall{
-							ID:   "call-plan",
-							Name: "update_plan",
+							ID:      "call-plan",
+							Name:    "plugin_plan_update_plan_abc123",
+							Display: &providers.ToolCallDisplay{Kind: "plan", Text: "Updating plan", Capability: "plan"},
 						},
 					},
 					{
 						Type: providers.EventToolUseEnd,
 						ToolCall: &providers.ToolCall{
 							ID:        "call-plan",
-							Name:      "update_plan",
+							Name:      "plugin_plan_update_plan_abc123",
 							Arguments: `{"explanation":"start","plan":[{"step":"inspect","status":"completed"},{"step":"report","status":"in_progress"}]}`,
+							Display:   &providers.ToolCallDisplay{Kind: "plan", Text: "Updating plan", Capability: "plan"},
 						},
 					},
 					{Type: providers.EventDone},
@@ -367,7 +369,7 @@ func TestStreamRunner_EmitsPlanUpdateEventAfterUpdatePlan(t *testing.T) {
 		},
 	}
 	tools := &fakeLoopTools{
-		defs: []providers.ToolDefinition{{Name: "update_plan"}},
+		defs: []providers.ToolDefinition{{Name: "plugin_plan_update_plan_abc123"}},
 		results: map[string]string{
 			"call-plan": `{"status":"updated"}`,
 		},

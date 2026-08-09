@@ -134,8 +134,8 @@ func DynamicContextProjectionEnabled() bool {
 
 // DerivedContextLedgersEnabled returns whether the legacy derived context
 // ledgers ride in request-only context. They default to off: ordinary
-// requests read the same facts from their causal source (update_plan calls,
-// read_file results, web tool results, and the tool transcript itself).
+// requests read the same facts from their causal source (read_file results,
+// web tool results, and the tool transcript itself).
 // "on" restores the ledger projection as the A/B baseline.
 func DerivedContextLedgersEnabled() bool {
 	return strings.EqualFold(strings.TrimSpace(os.Getenv(DerivedContextLedgersEnvVar)), "on")
@@ -148,7 +148,6 @@ var derivedLedgerBlockIdentities = []struct {
 	kind   BlockKind
 	source string
 }{
-	{BlockTaskState, "update_plan"},
 	{BlockActiveFiles, "read_file"},
 	{BlockToolResultSummary, "tool_telemetry"},
 	{BlockWebEvidence, "web_tools"},

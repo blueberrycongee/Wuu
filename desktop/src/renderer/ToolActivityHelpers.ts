@@ -238,8 +238,6 @@ function readableToolActivityCommandInner(
         ? t("toolActivity.learnSkillTarget", { target: truncateText(skill.replace(/^\//, ""), 70) })
         : t("toolActivity.learnSkill");
     }
-    case "update_plan":
-      return t("toolActivity.updatePlan");
     case "bash":
       if (command.startsWith("git ")) {
         return readableCommandLabel(item);
@@ -356,8 +354,6 @@ function toolActivitySectionKey(item: ThreadItem): string {
       return "change";
     case "bash":
       return "command";
-    case "update_plan":
-      return "plan";
     case "browser":
       return "browser";
     case "load_skill":
@@ -1036,8 +1032,6 @@ export function readableToolName(name: string | undefined): string {
       return t("toolActivity.searchTools");
     case "load_skill":
       return t("toolActivity.learnSkill");
-    case "update_plan":
-      return t("toolActivity.updatePlan");
     case "browser":
       return t("toolActivity.browser");
     default:

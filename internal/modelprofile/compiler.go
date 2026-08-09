@@ -196,7 +196,6 @@ func compileOpenAICodex(b *surfaceBuilder, p Profile) {
 	addWebTools(b)
 	addBrowserTools(b)
 	addSessionTools(b)
-	addPlanningTools(b)
 	addSkillTools(b)
 	addExtensionTools(b)
 	addOpenAICodexEditTools(b)
@@ -210,7 +209,6 @@ func compileOpenAIGPT(b *surfaceBuilder, p Profile) {
 	addWebTools(b)
 	addBrowserTools(b)
 	addSessionTools(b)
-	addPlanningTools(b)
 	addSkillTools(b)
 	addExtensionTools(b)
 	addOpenAIGPTEditTools(b)
@@ -224,7 +222,6 @@ func compileAnthropicClaude(b *surfaceBuilder, p Profile) {
 	addWebTools(b)
 	addBrowserTools(b)
 	addSessionTools(b)
-	addPlanningTools(b)
 	addSkillTools(b)
 	addExtensionTools(b)
 	addClaudeEditTools(b)
@@ -238,7 +235,6 @@ func compileGeneric(b *surfaceBuilder, p Profile) {
 	addWebTools(b)
 	addBrowserTools(b)
 	addSessionTools(b)
-	addPlanningTools(b)
 	addSkillTools(b)
 	addExtensionTools(b)
 	addGenericEditTools(b)
@@ -289,10 +285,6 @@ func addSessionTools(b *surfaceBuilder) {
 
 func addSessionWorkspaceTool(b *surfaceBuilder) {
 	b.addDeferred("set_session_workspace", capability.CapabilitySessionWorkspace)
-}
-
-func addPlanningTools(b *surfaceBuilder) {
-	b.addVisible("update_plan", capability.CapabilityPlan)
 }
 
 func addChatTools(b *surfaceBuilder) {

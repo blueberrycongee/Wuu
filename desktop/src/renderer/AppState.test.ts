@@ -2808,7 +2808,12 @@ describe("activePlanUpdateForThread", () => {
       id: "turn-1-item-1",
       type: "tool_call",
       status: "completed",
-      name: "update_plan",
+      name: "plugin_plan_update_plan_abc123",
+      display: {
+        kind: "plan",
+        text: "Updating plan",
+        capability: "plan",
+      },
       arguments: JSON.stringify({
         plan: [
           { step: "定位问题", status: "completed" },

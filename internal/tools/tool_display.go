@@ -75,8 +75,6 @@ func displayCapabilityForKnownToolName(name string) string {
 		return "web.fetch"
 	case "web_search":
 		return "web.search"
-	case "update_plan":
-		return "plan"
 	}
 	return ""
 }
@@ -138,8 +136,6 @@ func builtInToolDisplay(call providers.ToolCall) providers.ToolCallDisplay {
 			return toolDisplay("agent", "创建长期 Agent")
 		}
 		return toolDisplay("agent", "创建长期 Agent "+displayTruncate(profile, 70))
-	case "update_plan":
-		return toolDisplay("plan", "更新计划")
 	default:
 		return providers.ToolCallDisplay{
 			Kind: displayKindForTool(name),
@@ -317,8 +313,6 @@ func displayKindForTool(name string) string {
 		return "search"
 	case ToolKindShell, ToolKindGit, ToolKindProcess:
 		return "command"
-	case ToolKindPlan:
-		return "plan"
 	case ToolKindAgent:
 		return "agent"
 	case ToolKindSchedule:

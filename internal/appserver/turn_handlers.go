@@ -231,11 +231,6 @@ func (s *Server) ensureThreadRuntimeAfterAdmission(th *threadState) (*runtime.Th
 	history := cloneHistory(th.History)
 	threadID := th.ID
 	th.mu.Unlock()
-	if threadRuntime.Toolkit != nil {
-		if _, restoreErr := threadRuntime.Toolkit.RestorePlanFromHistory(history); restoreErr != nil {
-			providers.DebugLogf("restore update_plan for refreshed thread %q: %v", threadID, restoreErr)
-		}
-	}
 	if threadRuntime.StreamRunner != nil {
 		threadRuntime.StreamRunner.SynchronizeConversationUsage(history, s.latestRetainedContextTokens(threadID))
 	}
@@ -895,9 +890,6 @@ func (s *Server) ensureThreadRuntime(th *threadState) (*runtime.ThreadRuntime, e
 			threadRuntime.Toolkit.SetBrowserBridge(s.browserBridgeForThread(root, th.ID))
 			return nil
 		})
-		if _, restoreErr := threadRuntime.Toolkit.RestorePlanFromHistory(history); restoreErr != nil {
-			providers.DebugLogf("restore update_plan for thread %q: %v", th.ID, restoreErr)
-		}
 	}
 	// A rebuilt runtime over existing history (resume/reopen) starts with an
 	// empty usage tracker; seed it from the last persisted ContextTokens so

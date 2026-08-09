@@ -557,7 +557,7 @@ func TestRuntimeContextInjectorIncludesOnlyDynamicTypedBlocks(t *testing.T) {
 		return []wuucontext.Block{{
 			Kind:    wuucontext.BlockTaskState,
 			Title:   "Current visible task plan",
-			Source:  "update_plan",
+			Source:  "runtime.task_state",
 			Content: "plan:\n- [in_progress] edit",
 		}}
 	})
@@ -3062,7 +3062,7 @@ func TestApplyWorkerToolFilter_HidesRecursiveAgentControls(t *testing.T) {
 	for _, def := range kit.Definitions() {
 		defs[def.Name] = true
 	}
-	for _, allowed := range []string{"read_file", "apply_patch", "bash", "update_plan"} {
+	for _, allowed := range []string{"read_file", "apply_patch", "bash"} {
 		if !defs[allowed] {
 			t.Fatalf("subagent toolkit should keep %s", allowed)
 		}

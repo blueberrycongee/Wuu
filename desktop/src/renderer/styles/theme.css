@@ -210,13 +210,7 @@
   --chat-user-message-bg: #26282b;
 
   /* environment.css */
-  /* Plan + dialog text: aligned with the shared ink ladder so the search and
-     dialog stay in the same neutral family as the rest of the chrome.
-     Status colours and the env-tone-* series stay per-tone; only the
-     greens that crept into the structural neutrals collapse onto ink-soft
-     / ink-muted so they read as the same ink both light and dark. */
-  --env-plan-item-text: var(--ink-soft);
-  --env-plan-marker-border: var(--ink-muted);
+  /* Dialog text follows the shared ink ladder. */
   --env-deletions-text: #f0705f;
   --env-archive-confirm-bg: rgba(240, 112, 95, 0.15);
   --env-create-branch-btn-bg: var(--surface-2);

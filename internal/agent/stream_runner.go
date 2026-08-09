@@ -355,7 +355,7 @@ func (r *StreamRunner) RunWithCallback(ctx context.Context, history []providers.
 				ToolResult:       truncateLog(textResult, 2000),
 				ToolResultDetail: resultPointer(result),
 			})
-			if update, ok := planUpdateEventFromToolResult(call, textResult); ok {
+			if update, ok := planUpdateEventFromToolResult(toolCall, textResult); ok {
 				effectiveOnEvent(providers.StreamEvent{
 					Type:       providers.EventPlanUpdate,
 					PlanUpdate: update,
@@ -492,7 +492,7 @@ func (r *StreamRunner) pendingToolResultMessages(ctx context.Context, history []
 }
 
 func planUpdateEventFromToolResult(call providers.ToolCall, result string) (*providers.PlanUpdate, bool) {
-	if call.Name != "update_plan" {
+	if call.Display == nil || call.Display.Capability != "plan" {
 		return nil, false
 	}
 	var status struct {

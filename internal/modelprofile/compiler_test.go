@@ -149,7 +149,7 @@ func TestOpenAICodexSurface(t *testing.T) {
 		"grep", "glob",
 		"web_search", "web_fetch",
 		"bash", "apply_patch",
-		"update_plan", "load_skill", "tool_search",
+		"load_skill", "tool_search",
 	}
 	for _, name := range mustVisible {
 		if _, ok := s.Tools[name]; !ok {
@@ -261,7 +261,7 @@ func TestAnthropicClaudeSurface(t *testing.T) {
 	for _, name := range []string{
 		"read_file", "list_files", "grep", "glob",
 		"web_search", "web_fetch",
-		"update_plan", "load_skill", "tool_search",
+		"load_skill", "tool_search",
 	} {
 		if _, ok := s.Tools[name]; !ok {
 			t.Fatalf("Claude surface must include %s, got tools=%v", name, sortedKeys(s.Tools))

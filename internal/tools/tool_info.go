@@ -27,7 +27,6 @@ const (
 	ToolKindWeb       ToolKind = "web"
 	ToolKindSession   ToolKind = "session"
 	ToolKindSkill     ToolKind = "skill"
-	ToolKindPlan      ToolKind = "plan"
 	ToolKindAgent     ToolKind = "agent"
 	ToolKindProcess   ToolKind = "process"
 	ToolKindSchedule  ToolKind = "schedule"
@@ -205,8 +204,6 @@ func classifyToolKind(name string) ToolKind {
 		return ToolKindSession
 	case "load_skill":
 		return ToolKindSkill
-	case "update_plan":
-		return ToolKindPlan
 	case "list_agent_profiles", "create_agent_profile":
 		return ToolKindAgent
 	case "chat_check", "chat_read", "chat_send", "chat_draft", "chat_task", "chat_remind":
