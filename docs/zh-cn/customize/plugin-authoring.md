@@ -410,6 +410,10 @@ Host Actions、generation 替换、失败恢复、disposal 和卸载，并演示
 测试：它同时覆盖应用壳与设置页，验证主题 Token、UI Kit、语义锚点和宿主布局所有权，
 不应被当作 Wuu 默认视觉规范。
 
+[`examples/plugins/tool-card-skin`](../../../examples/plugins/tool-card-skin/) 演示外观 Presenter：
+它只读取版本化 `ToolActivitySnapshot`，保留原生 fallback，不解析 Tool 参数或访问 Loop 私有状态，
+可与 Manga Studio 独立启用和禁用。
+
 ## 版本兼容
 
 插件跨 Wuu 小版本继续工作的承诺（开发者不 fork 也能跟上更新）是当前平台的

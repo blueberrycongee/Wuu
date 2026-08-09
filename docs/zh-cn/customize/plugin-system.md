@@ -448,6 +448,9 @@ Tab 的整体材质和选中 indicator，但不能拆开 Tab 与关闭按钮重�
 
 可信桌面代码可以通过 `registerStyle` 注册任意 CSS，但私有 class、DOM 层级和偶然结构不属于
 兼容合同。Manga Studio 的作用是压力测试公开合同，不是要求宿主为 Manga 增加特判。
+Tool Card Skin 则只消费版本化 `ToolActivitySnapshot` 和原生 fallback，为 `command.bash` 注册
+替换 Presenter；它不解析参数，也不读取任何 Driver 或产品插件私有状态。两个示例可以同时启用，
+分别验证 Theme/Token/snippet 与 Presenter 的独立组合。
 
 ## Agent 能力与闭环
 
@@ -575,6 +578,8 @@ Goal、Subagent、Automation、Memory、Dream、Plan 已经通过与第三方插
   View、入口、设置、存储和 generation 开发闭环；
 - [`examples/plugins/manga-studio`](../../../examples/plugins/manga-studio/)：强风格外观压力测试，
   验证原生界面与插件界面能否统一换肤；
+- [`examples/plugins/tool-card-skin`](../../../examples/plugins/tool-card-skin/)：只依赖公开 Tool
+  snapshot 与 fallback 的 Tool card Presenter，不理解具体 Loop 私有状态；
 - [`examples/plugins/deep-ui`](../../../examples/plugins/deep-ui/)：Surface wrapper 和声明式主题的
   最小示例。
 
