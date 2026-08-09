@@ -27,8 +27,9 @@ Surface 或 Agent 能力。
 Wuu 的长期目标不是在现有 Agent runtime 外围增加一层插件 API，也不是把某一种 ReAct 循环永久
 定义成核心。Wuu 固定的是一个小而强约束的 **Plugin Kernel**：服务发现、作用域生命周期、可靠
 Session/Event 存储、输入队列、执行租约、取消、权限、Provider 与 Tool 协议网关、generation
-事务和宿主 UI。默认 Agent Loop 是 Wuu 随软件分发的一方 Driver 插件，可以被另一个遵守相同
-端点和不变量的 Driver 替换。
+事务和宿主 UI。当前默认 Agent Loop 已由 bundled `DefaultDriver` 驱动；实验性的
+`SinglePassDriver` 使用同一 Kernel Gateway 完成单轮、无 Tool、无 Compaction 的另一种执行范式。
+Driver 目前是进程内实验合同，还不是可由 Manifest 安装或在设置中选择的普通插件贡献。
 
 Loop Driver 决定 Agent 怎样运行：如何消费输入，怎样组织 Prompt 和上下文，一次输入包含多少
 Step，Tool 串行还是并行，何时重试、压缩、反思、停止或继续，以及使用单 Agent、Plan-Execute、
@@ -219,7 +220,15 @@ Driver 与其 UI 插件。Driver 只能通过版本化 Provider、Tool、Session
 
 ### Loop Driver 合同与恢复原则
 
-Loop Driver 是普通的一方或第三方插件贡献，不是获得核心内部对象的特殊扩展。概念上的合同包括：
+当前 `internal/loopdriver` 提供版本 1 的实验合同：`Descriptor`、`create/resume`、`run`、
+`checkpoint`、`cancel`、`shutdown`、Kernel Gateway 和 terminal outcome。默认多轮 Tool Loop 与单轮
+无 Tool Driver 都只通过该 Gateway 请求模型执行，不读取 Session 数据库或 App Server 私有对象。
+每次执行把 Driver ID、版本、合同版本和 opaque checkpoint 保存到 Session；Provider 发送前还会
+保存最终 provider-neutral model-input receipt，包含稳定事实序号、最终消息、Tool surface、Prompt
+section 元数据和 transform 后的实际内容。崩溃留下 `running` checkpoint；消息提交后才写终态
+checkpoint。Driver 或版本不匹配时继续执行会 fail closed，但历史仍可读取。
+
+未来把 Driver 做成可安装的一方或第三方贡献时，它仍不能获得核心内部对象。完整概念合同包括：
 
 - `start`：为绑定 Driver 的 Session 启动执行；
 - `deliver`：接收 Kernel 已可靠持久化的输入 occurrence；
@@ -228,10 +237,10 @@ Loop Driver 是普通的一方或第三方插件贡献，不是获得核心内�
 - `resume`：从 Session 事实与版本化 checkpoint 恢复；
 - `shutdown`：停止接纳新工作，等待在途调用收敛并释放 Effect。
 
-Session 创建时必须持久化 `plugin_id`、`driver_id`、协议版本和 checkpoint 版本。运行中不能静默
-切换 Driver；fork 默认继承 Driver，显式派生可以选择另一 Driver。Driver 缺失、被禁用或拒绝旧
-checkpoint 时，Session 仍可只读打开，用户可以从最后一个稳定边界显式派生到新 Driver。当前高速
-迭代阶段不承诺复杂 checkpoint 向后兼容：新版本可以明确拒绝旧版本，但不能猜测解释或悄悄丢弃。
+当前绑定点是 Session checkpoint 的首次执行，不提前决定全局、Workspace 或 Session 级选择 UI。
+运行中不能静默切换 Driver。Driver 缺失、被禁用或拒绝旧 checkpoint 时，Session 仍可只读打开。
+fork 继承和显式派生选择属于后续选择语义；当前高速迭代阶段不承诺复杂 checkpoint 向后兼容：
+新版本可以明确拒绝旧版本，但不能猜测解释或悄悄丢弃。
 
 通用事件流保存用户/插件输入、模型输出、Tool call/result、权限、错误、取消和 checkpoint 等宿主
 事实。Driver 可以追加命名空间事件来表达 Plan、Research Round、Critic、Worker 或 Workflow Stage，
@@ -261,8 +270,10 @@ bundle 加载。Wuu 不复制这些实现细节，而是在 Go core + 独立 run
 Go 生态中最接近进程插件边界的是 HashiCorp `go-plugin` 一类 subprocess + RPC 方案；`plugin` 标准库
 的进程内 `.so` 机制不适合作为跨平台桌面插件基础，`dig`/`fx`/`wire` 解决依赖注入但不提供运行时
 安装、卸载和 generation。Wuu 已经有自己的双工插件进程协议、fingerprint 和原子 generation，
-因此无需为追求 Cordis 体验把核心改写成 TypeScript；需要补的是统一 Scope、Service Graph、Effect
-所有权和两端共享的 Activation Plan。
+因此无需为追求 Cordis 体验把核心改写成 TypeScript。当前 runtime 进程由 Go generation 拥有并在
+关闭时限内 shutdown，Desktop generation 统一拥有注册项和 cleanup 并逆序释放；Manifest 的
+`requires`、`breaks`、`conflicts` 已形成简单 Activation Plan。尚未形成的是跨 Go/Desktop 的单一
+Scope、通用 Service Graph，以及跨外部副作用的事务承诺。
 
 ### 一方高级功能的迁移结果
 
@@ -331,12 +342,12 @@ Go 生态中最接近进程插件边界的是 HashiCorp `go-plugin` 一类 subpr
    宿主服务。
 6. 每项迁移都必须验证插件禁用、升级和卸载后不再唤醒、不残留 UI、Prompt、Tool、订阅或后台
    generation；核心删除旧协议、死代码和只为旧边界存在的测试。
-7. 收敛统一 Plugin Scope、Service/Event 目录、Effect 所有权和 Activation Plan，让 Agent runtime
-   与 Desktop 不再各自维护一套无法声明依赖的生命周期事实。
-8. 把现有执行循环先包成 `AgentLoopDriver v1`，保持产品行为不变；Session 持久化 Driver 身份和
-   checkpoint 版本，恢复只从稳定边界进行。
-9. 将默认 ReAct Loop 迁为 bundled 一方插件，并实现第二个结构明显不同的最小 Loop。只有第二个
-   Driver 不修改 Kernel 就能创建、执行、恢复 Session 并展示自己的过程，Loop seam 才算真实。
+7. Go runtime 和 Desktop 注册项已分别收敛到 generation owner，Manifest 已支持简单依赖与冲突；
+   跨 Go/Desktop 的统一 Plugin Scope 和通用 Service Graph 暂不另造平行实现。
+8. 现有执行循环已包装成 Experimental v1 `DefaultDriver`，产品行为不变；Session 持久化 Driver
+   身份、checkpoint 与最终 model-input receipt，恢复只从稳定边界进行。
+9. `SinglePassDriver` 已证明单轮无 Tool 的不同范式可以不修改 Kernel 私有类型运行。把 Driver 做成
+   Manifest 可安装贡献、迁出进程内 bundled 代码和提供选择 UI，仍属于后续稳定化工作。
 
 插件链路的验收不是接口存在，而是：核心不存在 Cron、Memory、Dream、Goal、Subagent、Plan 的
 产品专用执行或可变状态分支时，这六个一方插件仍能仅通过公开合同保持现有体验；外部插件在相同
@@ -463,9 +474,9 @@ Agent 插件运行在 Wuu 管理的独立进程中，通过版本化协议注册
 - 会话生命周期观察；
 - Shell 环境贡献。
 
-目标能力还包括注册 `AgentLoopDriver`。Driver 不获得私有 Go `Session`、`StreamRunner` 或数据库
-对象，只通过 Kernel 提供的 Session、Provider、Tool、Permission、Event 和 Checkpoint Service
-运行。普通功能插件可以依赖某个公开 Driver Service，但不应通过修改默认 Loop 私有回调获得能力。
+实验能力已经包括进程内 `LoopDriver` 注入，但尚未开放 Manifest 注册或用户选择。Driver 不获得
+私有 Go `Session`、数据库或 App Server 对象，只通过 Kernel Gateway、版本化输入和 Checkpoint
+运行。普通功能插件不应通过修改默认 Loop 私有回调获得能力。
 
 每个能力声明语义种类，例如 observe、transform、guard、around 或 decision，并按稳定优先级
 组合。Guard 和 decision 可以短路；Transform 按顺序执行。工具或能力出错时，宿主按公开错误
@@ -555,8 +566,9 @@ Goal、Subagent、Automation、Memory、Dream、Plan 已经通过与第三方插
 - Marketplace、远程自动更新、排名、依赖解析和签名分发不属于当前本地优先平台；
 - Goal、Subagent、Automation、用户/工作区/会话 Memory、Dream 和 Plan 已完成纵向迁移，并去除专用宿主执行 seam；
 - HelpMe 已从代码和产品中删除；Plan 的旧核心 Tool、状态、恢复与原生展示同样已删除；
-- 统一 Plugin Scope、Service 依赖图、Effect 所有权、Activation Plan 和可替换 Loop Driver 尚未
-  完成，是下一阶段架构主线。
+- Go runtime 与 Desktop contribution 已按 generation 统一回收，简单 Activation Plan、Default
+  Driver、SinglePass Driver、checkpoint 和 model-input receipt 已实现；跨 Go/Desktop 的统一
+  Plugin Scope、通用 Service Graph、Driver Manifest/选择 UI 仍未完成。
 
 新能力应由真实插件案例驱动，先确定责任属于宿主、功能插件还是外观插件，再选择最窄的公开合同。
 
