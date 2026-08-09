@@ -2,6 +2,7 @@ package exec
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -14,6 +15,7 @@ import (
 	"github.com/blueberrycongee/wuu/internal/config"
 	"github.com/blueberrycongee/wuu/internal/runtime"
 	"github.com/blueberrycongee/wuu/internal/runtimeconfig"
+	wuusdk "github.com/blueberrycongee/wuu/sdk"
 )
 
 type localAppServerController struct {
@@ -22,43 +24,49 @@ type localAppServerController struct {
 	cancel context.CancelFunc
 	done   chan error
 	pipes  []io.Closer
+
+	sdkRuntime    *wuusdk.Runtime
+	sdkClient     *wuusdk.Client
+	sdkInit       wuusdk.Initialization
+	sdkSessions   map[string]*wuusdk.Session
+	sdkRuns       map[string]*wuusdk.Run
+	sdkEvents     *wuusdk.Subscription
+	notifications chan Notification
 }
 
 func NewLocalAppServerController(ctx context.Context, opts Options) (Controller, error) {
-	rootDir, err := resolveWorkdir(opts.Workdir)
-	if err != nil {
-		return nil, err
-	}
-	homeDir := os.Getenv("HOME")
-	cfg, configPath, configLoadMode, err := runtimeconfig.Load(runtimeconfig.LoadOptions{
-		RootDir:          rootDir,
-		HomeDir:          homeDir,
+	embedded, err := wuusdk.New(wuusdk.Options{
+		WorkDir:          opts.Workdir,
 		ConfigPath:       opts.ConfigPath,
 		IgnoreUserConfig: opts.IgnoreUserConfig,
+		Provider:         opts.Provider,
+		Model:            opts.Model,
+		AgentProfile:     opts.AgentProfile,
+		MaxTurns:         opts.MaxTurns,
+		Effort:           opts.Effort,
+		Variant:          opts.Variant,
+		PermissionMode:   opts.PermissionMode,
+		NoTools:          opts.NoTools,
 	})
 	if err != nil {
 		return nil, err
 	}
-	if err := applyConfigOverrides(&cfg, opts); err != nil {
-		return nil, err
-	}
-	rt, err := runtime.NewSession(runtime.Options{
-		RootDir:        rootDir,
-		HomeDir:        homeDir,
-		ConfigPath:     configPath,
-		ConfigLoadMode: configLoadMode,
-		Config:         cfg,
-		ProviderName:   opts.Provider,
-		ModelOverride:  opts.Model,
-		// Only a --permission-mode flag actually passed to exec becomes the
-		// process-scoped override that beats a resumed session's pinned mode.
-		PermissionModeExplicit: strings.TrimSpace(opts.PermissionMode) != "",
-		NoTools:                opts.NoTools,
-	})
+	client, err := embedded.Connect(ctx, wuusdk.ClientOptions{Name: "wuu-exec"})
 	if err != nil {
+		_ = embedded.Close()
 		return nil, err
 	}
-	return newLocalControllerForRuntime(ctx, rt), nil
+	controller := &localAppServerController{
+		sdkRuntime:    embedded,
+		sdkClient:     client,
+		sdkInit:       client.Initialization(),
+		sdkSessions:   map[string]*wuusdk.Session{},
+		sdkRuns:       map[string]*wuusdk.Run{},
+		notifications: make(chan Notification, 256),
+	}
+	controller.sdkEvents = client.Subscribe(ctx, wuusdk.SubscriptionOptions{Buffer: 256})
+	go controller.bridgeSDKEvents()
+	return controller, nil
 }
 
 // newLocalControllerForRuntime wires an in-process app server (over pipes)
@@ -95,12 +103,21 @@ func loadExecConfig(rootDir, homeDir string, opts Options) (config.Config, strin
 }
 
 func (c *localAppServerController) Initialize(ctx context.Context) (appserver.InitializeResult, error) {
+	if c.sdkClient != nil {
+		var result appserver.InitializeResult
+		err := json.Unmarshal(c.sdkInit.Raw, &result)
+		return result, err
+	}
 	var result appserver.InitializeResult
 	err := c.client.Call(ctx, appserver.MethodInitialize, nil, &result)
 	return result, err
 }
 
 func (c *localAppServerController) StartThread(ctx context.Context, ephemeral bool) (appserver.Thread, error) {
+	if c.sdkClient != nil {
+		session, err := c.sdkClient.NewSession(ctx, wuusdk.SessionOptions{Ephemeral: ephemeral})
+		return c.rememberSDKSession(session, err)
+	}
 	var result appserver.ThreadStartResult
 	params := appserver.ThreadStartParams{Ephemeral: ephemeral}
 	err := c.client.Call(ctx, appserver.MethodThreadStart, params, &result)
@@ -108,6 +125,10 @@ func (c *localAppServerController) StartThread(ctx context.Context, ephemeral bo
 }
 
 func (c *localAppServerController) ResumeThread(ctx context.Context, threadID string) (appserver.Thread, error) {
+	if c.sdkClient != nil {
+		session, err := c.sdkClient.ResumeSession(ctx, threadID)
+		return c.rememberSDKSession(session, err)
+	}
 	var result appserver.ThreadResumeResult
 	params := appserver.ThreadResumeParams{SessionID: strings.TrimSpace(threadID)}
 	err := c.client.Call(ctx, appserver.MethodThreadResume, params, &result)
@@ -115,6 +136,10 @@ func (c *localAppServerController) ResumeThread(ctx context.Context, threadID st
 }
 
 func (c *localAppServerController) ForkThread(ctx context.Context, threadID string) (appserver.Thread, error) {
+	if c.sdkClient != nil {
+		session, err := c.sdkClient.ForkSession(ctx, threadID)
+		return c.rememberSDKSession(session, err)
+	}
 	var result appserver.ThreadForkResult
 	params := appserver.ThreadForkParams{ThreadID: strings.TrimSpace(threadID)}
 	err := c.client.Call(ctx, appserver.MethodThreadFork, params, &result)
@@ -122,12 +147,69 @@ func (c *localAppServerController) ForkThread(ctx context.Context, threadID stri
 }
 
 func (c *localAppServerController) StartRun(ctx context.Context, params appserver.RunStartParams) (appserver.Run, error) {
+	if c.sdkClient != nil {
+		session := c.sdkSessions[strings.TrimSpace(params.ThreadID)]
+		if session == nil {
+			return appserver.Run{}, fmt.Errorf("session %q is not acquired", strings.TrimSpace(params.ThreadID))
+		}
+		images := make([]wuusdk.Image, 0, len(params.Images))
+		for _, image := range params.Images {
+			images = append(images, wuusdk.Image{MediaType: image.MediaType, Data: image.Data, Original: image.Original})
+		}
+		files := make([]wuusdk.File, 0, len(params.Files))
+		for _, file := range params.Files {
+			files = append(files, wuusdk.File{MediaType: file.MediaType, Data: file.Data, Filename: file.Filename})
+		}
+		permissionMode := ""
+		if params.PermissionMode != nil {
+			permissionMode = *params.PermissionMode
+		}
+		run, err := session.Send(ctx, wuusdk.SendOptions{
+			Prompt:         params.Prompt,
+			Images:         images,
+			Files:          files,
+			PermissionMode: permissionMode,
+			OutputSchema:   params.OutputSchema,
+			Provider:       params.Request.Requested.Provider,
+			Model:          params.Request.Requested.Model,
+			Variant:        params.Request.Requested.Variant,
+			Effort:         params.Request.Requested.Effort,
+			AgentProfile:   params.Request.AgentProfile,
+			MaxTurns:       params.Request.MaxTurns,
+			Timeout:        time.Duration(params.Request.TimeoutMS) * time.Millisecond,
+			NoTools:        params.Request.NoTools,
+		})
+		if err != nil {
+			return appserver.Run{}, fromSDKError(err)
+		}
+		c.sdkRuns[run.ID()] = run
+		snapshot, ok := run.Snapshot()
+		if !ok {
+			return appserver.Run{}, errors.New("started run has no snapshot")
+		}
+		var result appserver.Run
+		err = json.Unmarshal(snapshot.Raw, &result)
+		return result, err
+	}
 	var result appserver.RunStartResult
 	err := c.client.Call(ctx, appserver.MethodRunStart, params, &result)
 	return result.Run, err
 }
 
 func (c *localAppServerController) InterruptRun(ctx context.Context, runID, reason string) (appserver.Run, error) {
+	if c.sdkClient != nil {
+		run := c.sdkRuns[strings.TrimSpace(runID)]
+		if run == nil {
+			return appserver.Run{}, fmt.Errorf("run %q is not owned by this controller", strings.TrimSpace(runID))
+		}
+		snapshot, err := run.Cancel(ctx, reason)
+		if err != nil {
+			return appserver.Run{}, fromSDKError(err)
+		}
+		var result appserver.Run
+		err = json.Unmarshal(snapshot.Raw, &result)
+		return result, err
+	}
 	var result appserver.RunInterruptResult
 	err := c.client.Call(ctx, appserver.MethodRunInterrupt, appserver.RunInterruptParams{RunID: strings.TrimSpace(runID), Reason: strings.TrimSpace(reason)}, &result)
 	return result.Run, err
@@ -138,13 +220,30 @@ func (c *localAppServerController) InterruptRun(ctx context.Context, runID, reas
 const shutdownFallbackTimeout = 10 * time.Second
 
 func (c *localAppServerController) Shutdown(ctx context.Context) error {
-	if c.cancel != nil {
-		defer c.cancel()
-	}
 	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, shutdownFallbackTimeout)
 		defer cancel()
+	}
+	if c.sdkClient != nil {
+		drainDone := make(chan struct{})
+		go func() {
+			for range c.notifications {
+			}
+			close(drainDone)
+		}()
+		err := c.sdkClient.Close(ctx)
+		if err != nil {
+			return err
+		}
+		<-drainDone
+		if c.sdkRuntime != nil {
+			err = c.sdkRuntime.Close()
+		}
+		return err
+	}
+	if c.cancel != nil {
+		defer c.cancel()
 	}
 	// The notification channel is drained until the protocol closes. Without
 	// this a full buffer blocks the read loop, which would then never read
@@ -186,7 +285,41 @@ func (c *localAppServerController) Shutdown(ctx context.Context) error {
 }
 
 func (c *localAppServerController) Notifications() <-chan Notification {
+	if c.sdkClient != nil {
+		return c.notifications
+	}
 	return c.client.Notifications()
+}
+
+func (c *localAppServerController) rememberSDKSession(session *wuusdk.Session, err error) (appserver.Thread, error) {
+	if err != nil {
+		return appserver.Thread{}, fromSDKError(err)
+	}
+	snapshot, ok := session.Snapshot()
+	if !ok {
+		return appserver.Thread{}, errors.New("acquired session has no snapshot")
+	}
+	var thread appserver.Thread
+	if err := json.Unmarshal(snapshot.Raw, &thread); err != nil {
+		return appserver.Thread{}, err
+	}
+	c.sdkSessions[session.ID()] = session
+	return thread, nil
+}
+
+func fromSDKError(err error) error {
+	var protocolErr *wuusdk.ProtocolError
+	if errors.As(err, &protocolErr) {
+		return &ProtocolError{Code: protocolErr.Code, Message: protocolErr.Message}
+	}
+	return err
+}
+
+func (c *localAppServerController) bridgeSDKEvents() {
+	defer close(c.notifications)
+	for event := range c.sdkEvents.Events {
+		c.notifications <- Notification{Method: event.Method, Params: append(json.RawMessage(nil), event.Params...)}
+	}
 }
 
 func resolveWorkdir(input string) (string, error) {

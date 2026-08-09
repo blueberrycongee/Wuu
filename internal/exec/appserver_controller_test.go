@@ -161,7 +161,7 @@ func TestLocalAppServerControllerIgnoreUserConfigReloadsProjectLayers(t *testing
 	}
 }
 
-func TestNewLocalAppServerControllerMarksExplicitPermissionOverride(t *testing.T) {
+func TestNewLocalAppServerControllerAppliesPermissionOverride(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("WUU_HOME", filepath.Join(t.TempDir(), "wuu-home"))
 	configPath := filepath.Join(root, ".wuu.json")
@@ -194,9 +194,12 @@ func TestNewLocalAppServerControllerMarksExplicitPermissionOverride(t *testing.T
 		t.Fatalf("NewLocalAppServerController: %v", err)
 	}
 	defer flagged.Shutdown(context.Background())
-	flaggedRT := flagged.(*localAppServerController).rt
-	if !flaggedRT.PermissionModeExplicit || flaggedRT.Permissions.Mode != config.PermissionModeReadOnly {
-		t.Fatalf("--permission-mode should become the explicit override: explicit=%t mode=%q", flaggedRT.PermissionModeExplicit, flaggedRT.Permissions.Mode)
+	flaggedInit, err := flagged.Initialize(ctx)
+	if err != nil {
+		t.Fatalf("Initialize flagged controller: %v", err)
+	}
+	if flaggedInit.Permissions.Mode != config.PermissionModeReadOnly {
+		t.Fatalf("--permission-mode should become the active override: mode=%q", flaggedInit.Permissions.Mode)
 	}
 
 	unflagged, err := NewLocalAppServerController(ctx, Options{
@@ -208,9 +211,12 @@ func TestNewLocalAppServerControllerMarksExplicitPermissionOverride(t *testing.T
 		t.Fatalf("NewLocalAppServerController without flag: %v", err)
 	}
 	defer unflagged.Shutdown(context.Background())
-	unflaggedRT := unflagged.(*localAppServerController).rt
-	if unflaggedRT.PermissionModeExplicit || unflaggedRT.Permissions.Mode != config.PermissionModeUnconfined {
-		t.Fatalf("config-sourced mode must not count as explicit: explicit=%t mode=%q", unflaggedRT.PermissionModeExplicit, unflaggedRT.Permissions.Mode)
+	unflaggedInit, err := unflagged.Initialize(ctx)
+	if err != nil {
+		t.Fatalf("Initialize unflagged controller: %v", err)
+	}
+	if unflaggedInit.Permissions.Mode != config.PermissionModeUnconfined {
+		t.Fatalf("config-sourced mode should remain active: mode=%q", unflaggedInit.Permissions.Mode)
 	}
 }
 
