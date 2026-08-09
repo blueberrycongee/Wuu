@@ -377,9 +377,13 @@ func NewSession(opts Options) (*Session, error) {
 
 	discoveredPlugins := discoverPlugins(rootDir, wuuHome)
 	safeMode := opts.SafeMode || strings.TrimSpace(os.Getenv("WUU_SAFE_MODE")) == "1"
-	activePlugins := activatedPlugins(cfg, discoveredPlugins)
-	if safeMode {
-		activePlugins = nil
+	var activePlugins []pluginpkg.Plugin
+	if !safeMode {
+		activationPlan, activationErr := ResolvePluginActivationPlan(cfg, discoveredPlugins)
+		if activationErr != nil {
+			return nil, activationErr
+		}
+		activePlugins = activationPlan.Plugins
 	}
 	var agentControl *agentcontrol.AgentControl
 	pluginTurnRouter := NewPluginSessionRouter()
@@ -1756,6 +1760,12 @@ func activatedPlugins(cfg config.Config, discovered []pluginpkg.Plugin) []plugin
 		out = append(out, item)
 	}
 	return out
+}
+
+// ResolvePluginActivationPlan applies package relationships after trust,
+// explicit disablement, and host compatibility have selected candidates.
+func ResolvePluginActivationPlan(cfg config.Config, discovered []pluginpkg.Plugin) (pluginpkg.ActivationPlan, error) {
+	return pluginpkg.BuildActivationPlan(activatedPlugins(cfg, discovered))
 }
 
 func permissionSetContains(granted, required []string) bool {

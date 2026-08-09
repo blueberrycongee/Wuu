@@ -652,26 +652,35 @@ type ExtensionPendingUpdate struct {
 	EffectivePermissions []string `json:"effective_permissions,omitempty"`
 }
 
+type ExtensionPluginActivationIssue struct {
+	Kind            string `json:"kind"`
+	RelatedPluginID string `json:"related_plugin_id"`
+}
+
 type ExtensionInventoryRecord struct {
-	ID                   string                      `json:"id"`
-	Name                 string                      `json:"name"`
-	Description          string                      `json:"description,omitempty"`
-	Kind                 extensions.Kind             `json:"kind"`
-	Provenance           extensions.Provenance       `json:"provenance"`
-	State                ExtensionState              `json:"state"`
-	Executable           bool                        `json:"executable,omitempty"`
-	Fingerprint          string                      `json:"fingerprint,omitempty"`
-	GrantScope           extensions.GrantScope       `json:"grant_scope,omitempty"`
-	RequestedPermissions []string                    `json:"requested_permissions,omitempty"`
-	UnsupportedFields    []string                    `json:"unsupported_fields,omitempty"`
-	ParentID             string                      `json:"parent_id,omitempty"`
-	ApprovalState        ExtensionApprovalState      `json:"approval_state,omitempty"`
-	RuntimeState         ExtensionRuntimeState       `json:"runtime_state,omitempty"`
-	LastError            string                      `json:"last_error,omitempty"`
-	Enabled              *bool                       `json:"enabled,omitempty"`
-	Desktop              *ExtensionDesktopDescriptor `json:"desktop,omitempty"`
-	Contributions        *ExtensionContributions     `json:"contributions,omitempty"`
-	PendingUpdate        *ExtensionPendingUpdate     `json:"pending_update,omitempty"`
+	ID                   string                           `json:"id"`
+	Name                 string                           `json:"name"`
+	Description          string                           `json:"description,omitempty"`
+	Kind                 extensions.Kind                  `json:"kind"`
+	Provenance           extensions.Provenance            `json:"provenance"`
+	State                ExtensionState                   `json:"state"`
+	Executable           bool                             `json:"executable,omitempty"`
+	Fingerprint          string                           `json:"fingerprint,omitempty"`
+	GrantScope           extensions.GrantScope            `json:"grant_scope,omitempty"`
+	RequestedPermissions []string                         `json:"requested_permissions,omitempty"`
+	UnsupportedFields    []string                         `json:"unsupported_fields,omitempty"`
+	ParentID             string                           `json:"parent_id,omitempty"`
+	ApprovalState        ExtensionApprovalState           `json:"approval_state,omitempty"`
+	RuntimeState         ExtensionRuntimeState            `json:"runtime_state,omitempty"`
+	LastError            string                           `json:"last_error,omitempty"`
+	Requires             []string                         `json:"requires,omitempty"`
+	Breaks               []string                         `json:"breaks,omitempty"`
+	Conflicts            []string                         `json:"conflicts,omitempty"`
+	ActivationIssues     []ExtensionPluginActivationIssue `json:"activation_issues,omitempty"`
+	Enabled              *bool                            `json:"enabled,omitempty"`
+	Desktop              *ExtensionDesktopDescriptor      `json:"desktop,omitempty"`
+	Contributions        *ExtensionContributions          `json:"contributions,omitempty"`
+	PendingUpdate        *ExtensionPendingUpdate          `json:"pending_update,omitempty"`
 }
 
 type ExtensionPackageAction string

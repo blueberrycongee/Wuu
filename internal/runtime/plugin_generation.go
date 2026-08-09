@@ -158,9 +158,13 @@ func (s *Session) PreflightPluginUpdate(cfg config.Config, id, fingerprint, pack
 }
 
 func (s *Session) buildPluginGeneration(cfg config.Config, discovered []pluginpkg.Plugin, required map[string]bool, ownedRoots []string, start pluginClientStarter) (*PluginGeneration, error) {
-	active := activatedPlugins(cfg, discovered)
-	if s.SafeMode {
-		active = nil
+	var active []pluginpkg.Plugin
+	if !s.SafeMode {
+		activationPlan, err := ResolvePluginActivationPlan(cfg, discovered)
+		if err != nil {
+			return nil, err
+		}
+		active = activationPlan.Plugins
 	}
 	host, err := buildPluginHost(active, s.RootDir, s.WuuHome, s.StateDir, required, start, s.PluginSessionRouter)
 	if err != nil {

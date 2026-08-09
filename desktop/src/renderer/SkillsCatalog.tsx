@@ -436,6 +436,18 @@ export function SkillsCatalog({
                     {managed.runtime_state === "failed" && managed.last_error ? (
                       <span className="extension-package-error">{managed.last_error}</span>
                     ) : null}
+                    {record.activation_issues?.map((issue) => (
+                      <span
+                        className={issue.kind === "missing_requirement"
+                          ? "extension-package-error"
+                          : "extension-package-warning"}
+                        key={`${issue.kind}:${issue.related_plugin_id}`}
+                      >
+                        {issue.kind === "missing_requirement"
+                          ? t("skills.pluginDependencyMissing", { plugin: issue.related_plugin_id })
+                          : t("skills.pluginConflictWarning", { plugin: issue.related_plugin_id })}
+                      </span>
+                    ))}
                   </span>
                   {onUpdateExtensionPackage ||
                   (onRemovePluginPackage && removable) ? (
@@ -555,6 +567,12 @@ function extensionPackageTone(record: ManagedExtensionPackage): "good" | "warnin
   if (record.runtime_state === "failed" || extensionPackageApproval(record) === "changed") {
     return "danger";
   }
+  if (record.activation_issues?.some((issue) => issue.kind === "missing_requirement")) {
+    return "danger";
+  }
+  if (record.activation_issues?.some((issue) => issue.kind === "conflict")) {
+    return "warning";
+  }
   if (record.runtime_state === "active" || extensionPackageApproval(record) === "official") {
     return "good";
   }
@@ -569,6 +587,9 @@ function extensionPackageStatusLabel(record: ManagedExtensionPackage, t: ReturnT
   if (record.runtime_state === "failed") return t("skills.pluginStatusFailed");
   if (record.runtime_state === "starting") return t("skills.pluginStatusStarting");
   if (record.runtime_state === "active") return t("skills.pluginStatusActive");
+  if (record.activation_issues?.some((issue) => issue.kind === "missing_requirement")) {
+    return t("skills.pluginStatusBlocked");
+  }
   switch (extensionPackageApproval(record)) {
     case "official": return record.enabled === false ? t("skills.pluginStatusDisabled") : t("skills.pluginStatusOfficial");
     case "granted": return record.enabled === false ? t("skills.pluginStatusDisabled") : t("skills.pluginStatusGranted");

@@ -354,6 +354,11 @@ export type ExtensionPendingUpdate = {
   effective_permissions?: string[];
 };
 
+export type ExtensionPluginActivationIssue = {
+  kind: "missing_requirement" | "conflict";
+  related_plugin_id: string;
+};
+
 export type PluginConflictPreferences = Record<string, string>;
 
 export type ExtensionProvenance = {
@@ -381,6 +386,10 @@ export type ExtensionInventoryRecord = {
   approval_state?: ExtensionApprovalState;
   runtime_state?: ExtensionRuntimeState;
   last_error?: string;
+  requires?: string[];
+  breaks?: string[];
+  conflicts?: string[];
+  activation_issues?: ExtensionPluginActivationIssue[];
   enabled?: boolean;
   desktop?: ExtensionDesktopDescriptor;
   contributions?: ExtensionContributions;

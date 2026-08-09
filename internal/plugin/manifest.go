@@ -105,6 +105,9 @@ type Manifest struct {
 	SettingsPages        []ViewEntryContributionSpec       `json:"settings_pages,omitempty"`
 	Interface            json.RawMessage                   `json:"interface,omitempty"`
 	Platforms            []string                          `json:"platforms,omitempty"`
+	Requires             []string                          `json:"requires,omitempty"`
+	Breaks               []string                          `json:"breaks,omitempty"`
+	Conflicts            []string                          `json:"conflicts,omitempty"`
 	RequestedPermissions []string                          `json:"requested_permissions,omitempty"`
 	ActivityKinds        []string                          `json:"activity_kinds,omitempty"`
 	OfficialNativeHelper json.RawMessage                   `json:"official_native_helper,omitempty"`
@@ -241,6 +244,9 @@ type rawManifest struct {
 	Desktop                json.RawMessage `json:"desktop"`
 	Interface              json.RawMessage `json:"interface"`
 	Platforms              []string        `json:"platforms"`
+	Requires               []string        `json:"requires"`
+	Breaks                 []string        `json:"breaks"`
+	Conflicts              []string        `json:"conflicts"`
 	RequestedPermissions   []string        `json:"requestedPermissions"`
 	RequestedPermsAlias    []string        `json:"requested_permissions"`
 	ActivityKinds          []string        `json:"activityKinds"`
@@ -269,6 +275,7 @@ var supportedManifestFields = map[string]struct{}{
 	"homepage": {}, "repository": {}, "license": {}, "keywords": {},
 	"skills": {}, "runtime": {}, "hooks": {}, "mcpServers": {}, "mcp_servers": {},
 	"contributes": {}, "desktop": {}, "interface": {}, "platforms": {},
+	"requires": {}, "breaks": {}, "conflicts": {},
 	"requestedPermissions": {}, "requested_permissions": {},
 	"activityKinds": {}, "activity_kinds": {},
 	"officialNativeHelper": {}, "official_native_helper": {},
@@ -332,6 +339,18 @@ func normalizeManifest(data []byte, root string, official bool) (Manifest, error
 	}
 	if id == "" {
 		return Manifest{}, fmt.Errorf("requires id or name")
+	}
+	requires, err := normalizePackageRelationships(id, "requires", raw.Requires)
+	if err != nil {
+		return Manifest{}, err
+	}
+	breaks, err := normalizePackageRelationships(id, "breaks", raw.Breaks)
+	if err != nil {
+		return Manifest{}, err
+	}
+	conflicts, err := normalizePackageRelationships(id, "conflicts", raw.Conflicts)
+	if err != nil {
+		return Manifest{}, err
 	}
 
 	skills, err := normalizePathList(root, "skills", raw.Skills)
@@ -419,12 +438,28 @@ func normalizeManifest(data []byte, root string, official bool) (Manifest, error
 		SettingsPages:        ui.settingsPages,
 		Interface:            cloneRaw(raw.Interface),
 		Platforms:            normalizeStrings(raw.Platforms),
+		Requires:             requires,
+		Breaks:               breaks,
+		Conflicts:            conflicts,
 		RequestedPermissions: requested,
 		ActivityKinds:        normalizeStrings(append(raw.ActivityKindsAlias, raw.ActivityKinds...)),
 		OfficialNativeHelper: cloneRaw(helper),
 		MinimumWuuVersion:    firstString(raw.MinimumWuuVersion, raw.MinimumWuuVersionAlias),
 		UnsupportedFields:    unsupported,
 	}, nil
+}
+
+func normalizePackageRelationships(pluginID, field string, values []string) ([]string, error) {
+	normalized := normalizeStrings(values)
+	for _, relatedID := range normalized {
+		if err := validateInstallID(relatedID); err != nil {
+			return nil, fmt.Errorf("%s contains invalid plugin id %q: %w", field, relatedID, err)
+		}
+		if relatedID == pluginID {
+			return nil, fmt.Errorf("plugin %q cannot list itself in %s", pluginID, field)
+		}
+	}
+	return normalized, nil
 }
 
 func normalizeSchemaVersion(primary, alias json.RawMessage) (int, error) {

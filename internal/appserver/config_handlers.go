@@ -327,6 +327,10 @@ func (s *Server) currentExtensionInventory() []ExtensionInventoryRecord {
 			pendingUpdatesByID[pending.Package.ID] = pending
 		}
 	}
+	packageActivationIssues := make(map[string][]pluginpkg.ActivationIssue)
+	if plan, err := runtime.ResolvePluginActivationPlan(cfg, s.rt.Plugins); err == nil {
+		packageActivationIssues = plan.Issues
+	}
 
 	records := make([]ExtensionInventoryRecord, 0, len(s.rt.Skills)+len(s.rt.Plugins))
 	for _, skill := range s.rt.Skills {
@@ -482,7 +486,16 @@ func (s *Server) currentExtensionInventory() []ExtensionInventoryRecord {
 			ApprovalState:        approval,
 			RuntimeState:         runtimeState,
 			LastError:            lastError,
+			Requires:             cloneSortedStrings(item.Requires),
+			Breaks:               cloneSortedStrings(item.Breaks),
+			Conflicts:            cloneSortedStrings(item.Conflicts),
 			Enabled:              &enabled,
+		}
+		for _, issue := range packageActivationIssues[item.ID] {
+			packageRecord.ActivationIssues = append(packageRecord.ActivationIssues, ExtensionPluginActivationIssue{
+				Kind:            string(issue.Kind),
+				RelatedPluginID: issue.RelatedPluginID,
+			})
 		}
 		if item.Desktop != nil {
 			packageRecord.Desktop = &ExtensionDesktopDescriptor{Entry: item.Desktop.Entry}

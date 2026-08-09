@@ -125,6 +125,9 @@ type PackageSpec struct {
 	RequestedPermissions []string                 `json:"requested_permissions,omitempty"`
 	ActivityKinds        []string                 `json:"activity_kinds,omitempty"`
 	MinimumWuuVersion    string                   `json:"minimum_wuu_version,omitempty"`
+	Requires             []string                 `json:"requires,omitempty"`
+	Breaks               []string                 `json:"breaks,omitempty"`
+	Conflicts            []string                 `json:"conflicts,omitempty"`
 	EntryHashes          map[string]string        `json:"entry_hashes,omitempty"`
 }
 
@@ -163,6 +166,9 @@ func normalizePackageSpec(spec PackageSpec) PackageSpec {
 		RequestedPermissions: normalizedStrings(spec.RequestedPermissions),
 		ActivityKinds:        normalizedStrings(spec.ActivityKinds),
 		MinimumWuuVersion:    strings.TrimSpace(spec.MinimumWuuVersion),
+		Requires:             normalizedStrings(spec.Requires),
+		Breaks:               normalizedStrings(spec.Breaks),
+		Conflicts:            normalizedStrings(spec.Conflicts),
 	}
 	if spec.Runtime != nil {
 		normalized.Runtime = &RuntimeSpec{

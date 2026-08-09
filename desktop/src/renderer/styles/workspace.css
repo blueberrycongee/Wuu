@@ -2434,6 +2434,15 @@ html.resizing-workspace-terminal-split * {
   white-space: nowrap;
 }
 
+.extension-package-warning {
+  overflow: hidden;
+  color: var(--wuu-color-warning, var(--ink-secondary));
+  font-size: 11px;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .plugin-settings-editor {
   display: grid;
   grid-column: 2 / -1;

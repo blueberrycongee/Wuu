@@ -64,6 +64,9 @@ my-plugin/
 - `skills`、`hooks`、`mcp_servers`、`commands` 可以让插件直接提供这些能力，与用户
   手动配置的效果一致。
 - `minimum_wuu_version` 声明所需的最低 Wuu 版本；不满足时插件不会被激活。
+- `requires` 列出必须同时启用的插件 ID；缺失时当前插件保持未激活。`breaks` 声明明确
+  不兼容的插件，Host 会拒绝同时启用；`conflicts` 只在插件目录显示警告，由用户决定
+  停用哪一个。三者都是简单 ID 数组，不支持版本范围或自动求解。
 
 完整字段定义以 [`internal/plugin/manifest.go`](../../../internal/plugin/manifest.go) 和
 [`packages/plugin-sdk`](../../../packages/plugin-sdk/) 为准。

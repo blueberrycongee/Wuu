@@ -81,6 +81,10 @@ wuu plugin inspect ./path/to/plugin   # 安装前检查包内容与 fingerprint
 完成门槛，但尚未验证完成。在这之前，插件可能随 Wuu 升级而需要调整；发布插件时声明
 `minimum_wuu_version` 可以避免不兼容组合被激活。
 
+插件还可以声明简单的包关系：缺少 `requires` 中的插件时不会启动；`breaks` 命中时 Wuu
+拒绝同时启用；`conflicts` 只显示潜在冲突提示，不会替你选择或自动停用插件。当前不做
+版本范围、SAT 求解或组合评分。
+
 ## 编写插件
 
 要开发自己的插件，阅读[编写插件](plugin-authoring.md)：包结构与 manifest、Agent
