@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/blueberrycongee/wuu/internal/pluginhost"
-	"github.com/blueberrycongee/wuu/internal/providers"
 	pluginapi "github.com/blueberrycongee/wuu/packages/plugin-go"
 	"github.com/blueberrycongee/wuu/plugins/subagent"
 )
@@ -60,21 +59,16 @@ func TestProactiveDelegationNegotiatesAcrossRealProcessProtocol(t *testing.T) {
 	}
 
 	requestCapability := onlySubagentCapability(t, host, pluginhost.CapabilityAgentRequestTransform)
-	output := pluginhost.RequestTransformOutput{Request: providers.ChatRequest{
-		Model:    "test-model",
-		Messages: []providers.ChatMessage{{Role: "user", Content: "work"}},
-	}}
+	output := pluginhost.RequestTransformOutput{}
 	if err := host.InvokeCapability(context.Background(), requestCapability, pluginhost.RequestTransformInput{
 		SessionID: "thread-1",
 		ThreadID:  "thread-1",
+		Request:   pluginhost.ModelRequestViewV1{Version: 1, Model: "test-model", Messages: []pluginhost.ModelMessageViewV1{{Role: "user", Content: "work"}}},
 	}, &output); err != nil {
 		t.Fatal(err)
 	}
-	if len(output.Request.Messages) != 2 || output.Request.Messages[0].Role != "system" || !strings.Contains(output.Request.Messages[0].Content, "Proactive delegation is enabled") {
-		t.Fatalf("transformed messages = %+v", output.Request.Messages)
-	}
-	if output.Request.Messages[1].Role != "user" || output.Request.Messages[1].Content != "work" {
-		t.Fatalf("original request was not preserved: %+v", output.Request.Messages)
+	if len(output.PrependSystemMessages) != 1 || !strings.Contains(output.PrependSystemMessages[0], "Proactive delegation is enabled") {
+		t.Fatalf("transform patch = %+v", output)
 	}
 }
 

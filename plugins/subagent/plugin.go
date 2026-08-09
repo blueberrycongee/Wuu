@@ -269,20 +269,7 @@ func transformRequest(ctx context.Context, host pluginapi.Host, output json.RawM
 	if err != nil || !enabled {
 		return output, err
 	}
-	var envelope map[string]any
-	if err := json.Unmarshal(output, &envelope); err != nil {
-		return nil, err
-	}
-	request, ok := envelope["request"].(map[string]any)
-	if !ok {
-		return nil, errors.New("subagent request transform requires request output")
-	}
-	messages, ok := request["Messages"].([]any)
-	if !ok {
-		return nil, errors.New("subagent request transform requires provider-neutral messages")
-	}
-	request["Messages"] = append([]any{map[string]any{"Role": "system", "Content": ultraPrompt}}, messages...)
-	return json.Marshal(envelope)
+	return json.Marshal(map[string][]string{"prepend_system_messages": {ultraPrompt}})
 }
 
 func loadUltraEnabled(ctx context.Context, host pluginapi.Host) (bool, error) {

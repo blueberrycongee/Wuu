@@ -508,16 +508,61 @@ type CapabilityInvokeResult struct {
 
 // RequestTransformInput is immutable context for agent.request.transform.
 type RequestTransformInput struct {
-	SessionID string `json:"session_id,omitempty"`
-	ThreadID  string `json:"thread_id,omitempty"`
-	CWD       string `json:"cwd,omitempty"`
-	Provider  string `json:"provider,omitempty"`
-	StepIndex int    `json:"step_index"`
+	SessionID string             `json:"session_id,omitempty"`
+	ThreadID  string             `json:"thread_id,omitempty"`
+	CWD       string             `json:"cwd,omitempty"`
+	Provider  string             `json:"provider,omitempty"`
+	StepIndex int                `json:"step_index"`
+	Request   ModelRequestViewV1 `json:"request"`
 }
 
-// RequestTransformOutput is the mutable provider-neutral request contract.
+// ModelRequestViewV1 is a read-only, versioned projection of the model request.
+// It deliberately omits provider attempts, cache hints, media bytes, internal
+// execution objects, and provider-native replay state.
+type ModelRequestViewV1 struct {
+	Version                     int                  `json:"version"`
+	Model                       string               `json:"model"`
+	Messages                    []ModelMessageViewV1 `json:"messages"`
+	Tools                       []ModelToolViewV1    `json:"tools"`
+	Temperature                 float64              `json:"temperature,omitempty"`
+	MaxTokens                   int                  `json:"max_tokens,omitempty"`
+	Effort                      string               `json:"effort,omitempty"`
+	NativeDeferredToolDiscovery bool                 `json:"native_deferred_tool_discovery,omitempty"`
+	ForceToolName               string               `json:"force_tool_name,omitempty"`
+}
+
+type ModelMessageViewV1 struct {
+	Role            string                `json:"role"`
+	Name            string                `json:"name,omitempty"`
+	Content         string                `json:"content,omitempty"`
+	Hidden          bool                  `json:"hidden,omitempty"`
+	HasImages       bool                  `json:"has_images,omitempty"`
+	HasFiles        bool                  `json:"has_files,omitempty"`
+	ToolCallID      string                `json:"tool_call_id,omitempty"`
+	ToolCalls       []ModelToolCallViewV1 `json:"tool_calls,omitempty"`
+	HasToolResult   bool                  `json:"has_tool_result,omitempty"`
+	DiscoveredTools []string              `json:"discovered_tools,omitempty"`
+}
+
+type ModelToolCallViewV1 struct {
+	ID        string `json:"id,omitempty"`
+	Name      string `json:"name,omitempty"`
+	Arguments string `json:"arguments,omitempty"`
+	Kind      string `json:"kind,omitempty"`
+}
+
+type ModelToolViewV1 struct {
+	Name         string         `json:"name"`
+	Description  string         `json:"description,omitempty"`
+	InputSchema  map[string]any `json:"input_schema"`
+	DeferLoading bool           `json:"defer_loading,omitempty"`
+}
+
+// RequestTransformOutput is a deliberately narrow patch. New mutable fields
+// require a real consumer and a versioned validator instead of exposing the
+// host's internal ChatRequest.
 type RequestTransformOutput struct {
-	Request providers.ChatRequest `json:"request"`
+	PrependSystemMessages []string `json:"prepend_system_messages,omitempty"`
 }
 
 // SystemPromptSectionInput is immutable session context for the v1

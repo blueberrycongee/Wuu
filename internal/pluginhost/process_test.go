@@ -11,8 +11,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/blueberrycongee/wuu/internal/providers"
 )
 
 func TestProcessClientLifecycleAndInvoke(t *testing.T) {
@@ -81,7 +79,7 @@ func TestProcessClientNegotiatesAndInvokesCapability(t *testing.T) {
 	if len(capabilities) != 1 || capabilities[0].ID != CapabilityAgentRequestTransform {
 		t.Fatalf("capabilities = %+v", capabilities)
 	}
-	output, _ := json.Marshal(RequestTransformOutput{Request: providers.ChatRequest{Model: "before"}})
+	output, _ := json.Marshal(RequestTransformOutput{})
 	result, err := client.InvokeCapability(context.Background(), CapabilityInvokeParams{
 		Capability: CapabilityAgentRequestTransform,
 		Input:      json.RawMessage(`{"provider":"test"}`),
@@ -94,7 +92,7 @@ func TestProcessClientNegotiatesAndInvokesCapability(t *testing.T) {
 	if err := json.Unmarshal(result.Output, &transformed); err != nil {
 		t.Fatal(err)
 	}
-	if transformed.Request.Model != "after" {
+	if len(transformed.PrependSystemMessages) != 1 || transformed.PrependSystemMessages[0] != "after" {
 		t.Fatalf("output = %+v", transformed)
 	}
 }
@@ -133,7 +131,7 @@ func runCapabilityHelper() {
 			}
 			var output RequestTransformOutput
 			_ = json.Unmarshal(params.Output, &output)
-			output.Request.Model = "after"
+			output.PrependSystemMessages = []string{"after"}
 			data, _ := json.Marshal(output)
 			result = CapabilityInvokeResult{Output: data}
 		case "shutdown":

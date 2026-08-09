@@ -139,7 +139,7 @@ func TestTerminalLifecycleDeliversFinalOutputToParentSession(t *testing.T) {
 func TestProactiveDelegationSettingOwnsPromptTransform(t *testing.T) {
 	host := &ultraHost{}
 	handler := Handler()
-	requestOutput := json.RawMessage(`{"request":{"Model":"model","Messages":[{"Role":"user","Content":"work"}]}}`)
+	requestOutput := json.RawMessage(`{}`)
 
 	disabled, err := handler.InvokeCapability(context.Background(), host, pluginapi.CapabilityCall{Capability: capabilityRequest, Output: requestOutput})
 	if err != nil || string(disabled) != string(requestOutput) {
@@ -154,18 +154,13 @@ func TestProactiveDelegationSettingOwnsPromptTransform(t *testing.T) {
 		t.Fatalf("enabled transform = %s, err=%v", enabled, err)
 	}
 	var transformed struct {
-		Request struct {
-			Messages []struct {
-				Role    string
-				Content string
-			}
-		} `json:"request"`
+		PrependSystemMessages []string `json:"prepend_system_messages"`
 	}
 	if err := json.Unmarshal(enabled, &transformed); err != nil {
 		t.Fatal(err)
 	}
-	if len(transformed.Request.Messages) != 2 || transformed.Request.Messages[0].Role != "system" || transformed.Request.Messages[1].Role != "user" {
-		t.Fatalf("transformed messages = %+v", transformed.Request.Messages)
+	if len(transformed.PrependSystemMessages) != 1 || !strings.Contains(transformed.PrependSystemMessages[0], "Proactive delegation is enabled") {
+		t.Fatalf("transform patch = %+v", transformed.PrependSystemMessages)
 	}
 }
 

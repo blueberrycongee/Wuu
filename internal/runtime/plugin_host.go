@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/blueberrycongee/wuu/internal/agent"
@@ -143,21 +144,85 @@ func buildPluginRequestTransforms(host *pluginhost.Host, provider, threadID, cwd
 		capability := registered
 		key := capability.PluginID + ":" + capability.Descriptor.ID
 		chain.AddWithOwner(agent.NewRequestTransform(key, func(ctx context.Context, request *providers.ChatRequest) error {
-			output := pluginhost.RequestTransformOutput{Request: *request}
+			output := pluginhost.RequestTransformOutput{}
 			if err := host.InvokeCapability(ctx, capability, pluginhost.RequestTransformInput{
 				SessionID: threadID,
 				ThreadID:  threadID,
 				CWD:       cwd,
 				Provider:  provider,
 				StepIndex: request.StepIndex,
+				Request:   modelRequestViewV1(request),
 			}, &output); err != nil {
 				return host.HandleCapabilityError(capability, err)
 			}
-			*request = output.Request
+			if err := applyRequestTransformPatch(request, output); err != nil {
+				return host.HandleCapabilityError(capability, fmt.Errorf("plugin %q request transform patch: %w", capability.PluginID, err))
+			}
 			return nil
 		}, capability.Descriptor.Priority), capability.PluginID)
 	}
 	return chain
+}
+
+func modelRequestViewV1(request *providers.ChatRequest) pluginhost.ModelRequestViewV1 {
+	view := pluginhost.ModelRequestViewV1{Version: 1}
+	if request == nil {
+		return view
+	}
+	view.Model = request.Model
+	view.Temperature = request.Temperature
+	view.MaxTokens = request.MaxTokens
+	view.Effort = request.Effort
+	view.NativeDeferredToolDiscovery = request.NativeDeferredToolDiscovery
+	view.ForceToolName = request.ForceToolName
+	view.Messages = make([]pluginhost.ModelMessageViewV1, 0, len(request.Messages))
+	for _, message := range request.Messages {
+		item := pluginhost.ModelMessageViewV1{
+			Role: message.Role, Name: message.Name, Content: message.Content, Hidden: message.Hidden,
+			HasImages: len(message.Images) != 0, HasFiles: len(message.Files) != 0,
+			ToolCallID: message.ToolCallID, HasToolResult: message.ToolResult != nil,
+		}
+		for _, call := range message.ToolCalls {
+			item.ToolCalls = append(item.ToolCalls, pluginhost.ModelToolCallViewV1{
+				ID: call.ID, Name: call.Name, Arguments: call.Arguments, Kind: string(call.Kind),
+			})
+		}
+		for _, tool := range message.DiscoveredTools {
+			item.DiscoveredTools = append(item.DiscoveredTools, tool.Name)
+		}
+		view.Messages = append(view.Messages, item)
+	}
+	view.Tools = make([]pluginhost.ModelToolViewV1, 0, len(request.Tools))
+	for _, tool := range request.Tools {
+		view.Tools = append(view.Tools, pluginhost.ModelToolViewV1{
+			Name: tool.Name, Description: tool.Description, InputSchema: tool.InputSchema, DeferLoading: tool.DeferLoading,
+		})
+	}
+	return view
+}
+
+func applyRequestTransformPatch(request *providers.ChatRequest, patch pluginhost.RequestTransformOutput) error {
+	if request == nil || len(patch.PrependSystemMessages) == 0 {
+		return nil
+	}
+	if len(patch.PrependSystemMessages) > 16 {
+		return errors.New("prepend_system_messages exceeds 16 entries")
+	}
+	prefix := make([]providers.ChatMessage, 0, len(patch.PrependSystemMessages))
+	totalBytes := 0
+	for _, content := range patch.PrependSystemMessages {
+		content = strings.TrimSpace(content)
+		if content == "" {
+			return errors.New("prepend_system_messages contains an empty message")
+		}
+		totalBytes += len([]byte(content))
+		if totalBytes > 64*1024 {
+			return errors.New("prepend_system_messages exceeds 65536 bytes")
+		}
+		prefix = append(prefix, providers.ChatMessage{Role: "system", Content: content, Hidden: true})
+	}
+	request.Messages = append(prefix, request.Messages...)
+	return nil
 }
 
 func buildPluginAgentCapabilities(ctx context.Context, host *pluginhost.Host, provider, model, cwd string) (*agent.SystemPromptAssembler, *agent.CompactionRegistry, error) {

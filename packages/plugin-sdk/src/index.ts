@@ -472,10 +472,50 @@ export interface RequestTransformInput {
   cwd?: string;
   provider?: string;
   step_index: number;
+  request: ModelRequestViewV1;
 }
 
-export interface RequestTransformOutput<TRequest = Readonly<Record<string, unknown>>> {
-  request: TRequest;
+export interface ModelRequestViewV1 {
+  version: 1;
+  model: string;
+  messages: readonly ModelMessageViewV1[];
+  tools: readonly ModelToolViewV1[];
+  temperature?: number;
+  max_tokens?: number;
+  effort?: string;
+  native_deferred_tool_discovery?: boolean;
+  force_tool_name?: string;
+}
+
+export interface ModelMessageViewV1 {
+  role: string;
+  name?: string;
+  content?: string;
+  hidden?: boolean;
+  has_images?: boolean;
+  has_files?: boolean;
+  tool_call_id?: string;
+  tool_calls?: readonly ModelToolCallViewV1[];
+  has_tool_result?: boolean;
+  discovered_tools?: readonly string[];
+}
+
+export interface ModelToolCallViewV1 {
+  id?: string;
+  name?: string;
+  arguments?: string;
+  kind?: string;
+}
+
+export interface ModelToolViewV1 {
+  name: string;
+  description?: string;
+  input_schema: Readonly<Record<string, unknown>>;
+  defer_loading?: boolean;
+}
+
+export interface RequestTransformOutput {
+  prepend_system_messages?: readonly string[];
 }
 
 export interface SystemPromptSectionInput {

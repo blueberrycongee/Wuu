@@ -113,17 +113,17 @@ func TestPluginRequestInterceptorCarriesThreadContextAndTransformsRequest(t *tes
 
 func TestPluginCapabilityUsesRequestTransformRegistry(t *testing.T) {
 	client := &runtimeCapabilityClient{id: "capability", priority: 7, mutate: func(output *pluginhost.RequestTransformOutput) {
-		output.Request.Model = "capability-model"
+		output.PrependSystemMessages = []string{"capability context"}
 	}}
 	intercept := pluginRequestInterceptor(pluginhost.New(client), "openai", "thread-2", "/workspace")
 	request := providers.ChatRequest{Model: "before", StepIndex: 3, Messages: []providers.ChatMessage{{Role: "user", Content: "hello"}}}
 	if err := intercept(context.Background(), &request); err != nil {
 		t.Fatal(err)
 	}
-	if request.Model != "capability-model" || client.invoked != 1 {
+	if len(request.Messages) != 2 || request.Messages[0].Content != "capability context" || client.invoked != 1 {
 		t.Fatalf("request=%+v invoked=%d", request, client.invoked)
 	}
-	if client.input.ThreadID != "thread-2" || client.input.Provider != "openai" || client.input.StepIndex != 3 {
+	if client.input.ThreadID != "thread-2" || client.input.Provider != "openai" || client.input.StepIndex != 3 || client.input.Request.Model != "before" || len(client.input.Request.Messages) != 1 {
 		t.Fatalf("input = %+v", client.input)
 	}
 }
@@ -133,7 +133,7 @@ func TestPluginRequestTransformErrorPolicy(t *testing.T) {
 		t.Run(string(policy), func(t *testing.T) {
 			broken := &runtimeCapabilityClient{id: "broken", priority: 10, policy: policy, err: errors.New("transform boom")}
 			next := &runtimeCapabilityClient{id: "next", priority: 5, mutate: func(output *pluginhost.RequestTransformOutput) {
-				output.Request.Model = "next-model"
+				output.PrependSystemMessages = []string{"next context"}
 			}}
 			host := pluginhost.New(broken, next)
 			intercept := pluginRequestInterceptor(host, "openai", "thread", "/workspace")
@@ -151,7 +151,7 @@ func TestPluginRequestTransformErrorPolicy(t *testing.T) {
 			if err != nil {
 				t.Fatalf("isolated transform failed the request: %v", err)
 			}
-			if next.invoked != 1 || request.Model != "next-model" {
+			if next.invoked != 1 || len(request.Messages) != 2 || request.Messages[0].Content != "next context" {
 				t.Fatalf("isolated chain did not continue: invoked=%d request=%+v", next.invoked, request)
 			}
 			diagnostics := host.ContributionDiagnostics("broken")
@@ -162,10 +162,9 @@ func TestPluginRequestTransformErrorPolicy(t *testing.T) {
 	}
 }
 
-func TestPluginCapabilityCannotBreakToolCallResultOrdering(t *testing.T) {
+func TestPluginCapabilityRejectsInvalidRequestPatch(t *testing.T) {
 	client := &runtimeCapabilityClient{id: "unsafe", priority: 7, mutate: func(output *pluginhost.RequestTransformOutput) {
-		last := len(output.Request.Messages) - 1
-		output.Request.Messages[last-1], output.Request.Messages[last] = output.Request.Messages[last], output.Request.Messages[last-1]
+		output.PrependSystemMessages = []string{""}
 	}}
 	step := &runtimeTestStep{}
 	history := []providers.ChatMessage{
@@ -177,11 +176,11 @@ func TestPluginCapabilityCannotBreakToolCallResultOrdering(t *testing.T) {
 		Model: "model", MaxSteps: 1,
 		BeforeRequest: pluginRequestInterceptor(pluginhost.New(client), "openai", "thread-3", "/workspace"),
 	}, step)
-	if err == nil || !strings.Contains(err.Error(), "invalid message sequence") {
+	if err == nil || !strings.Contains(err.Error(), "empty message") {
 		t.Fatalf("error = %v", err)
 	}
 	if step.called {
-		t.Fatal("provider step was called with invalid tool-call history")
+		t.Fatal("provider step was called with an invalid request patch")
 	}
 }
 

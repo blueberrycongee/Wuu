@@ -190,7 +190,7 @@ runtime 插件可以注册工具和挂钩 Agent 生命周期。SDK 提供以下�
 | 能力 | 作用 | 语义 |
 | --- | --- | --- |
 | `agent.system_prompt.section` | 贡献一段系统提示 | transform |
-| `agent.request.transform` | 改写发给模型的请求 | transform |
+| `agent.request.transform` | 读取 `ModelRequestViewV1` 并返回受校验的窄 patch | transform |
 | `agent.compaction` | 替换摘要压缩结果 | decision；Experimental |
 | `agent.turn.completed` | 观察已提交的成功/失败 Turn 摘要 | observe |
 | `agent.turn.lifecycle` | 接收本插件投递 Turn 的 owner-scoped 生命周期 | observe |
@@ -206,6 +206,11 @@ decision）与 `priority`。`guard`、`around` 没有宿主实现，不是可声
 
 插件不会拿到私有 ThreadItem、协议消息、宿主 React 树或任意回调。快照、输入与输出
 都是冻结的公开结构，具体类型以 SDK 的 `index.ts` 为准。
+
+`ModelRequestViewV1` 只公开模型、消息摘要、工具 schema 和少量跨 Provider 选项；不包含重试对象、
+cache hint、媒体字节、Provider 原生 replay state 或 Go 字段名。当前 request transform 唯一可写字段是
+`prepend_system_messages`。需要新的可写能力时，必须新增版本化字段和宿主校验，不能恢复成任意
+`ChatRequest` 透传。
 
 ### 工具注册示例
 
