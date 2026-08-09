@@ -10,7 +10,6 @@ import {
 const plugin: RuntimePlugin = {
   initialize() {
     return {
-      hooks: [],
       protocol_version: 2,
       capabilities: [
         { id: REQUEST_TRANSFORM_CAPABILITY, kind: "transform", version: 1 },

@@ -66,13 +66,9 @@ type isolatedFailureClient struct {
 	invokeErr error
 }
 
-func (c *isolatedFailureClient) ID() string               { return c.id }
-func (c *isolatedFailureClient) Hooks() []pluginhost.Hook { return nil }
+func (c *isolatedFailureClient) ID() string { return c.id }
 func (c *isolatedFailureClient) Status() pluginhost.Status {
 	return pluginhost.Status{ID: c.id, State: pluginhost.StateActive}
-}
-func (c *isolatedFailureClient) Invoke(context.Context, pluginhost.InvokeParams) (pluginhost.InvokeResult, error) {
-	return pluginhost.InvokeResult{}, nil
 }
 func (c *isolatedFailureClient) Close(context.Context) error { return nil }
 func (c *isolatedFailureClient) ProtocolVersion() int        { return pluginhost.CapabilityProtocolVersion }

@@ -518,10 +518,9 @@ func dispatch(ctx context.Context, client *Client, handler Handler, request rpcR
 		}
 		return marshal(struct {
 			Definition
-			Hooks            []string `json:"hooks"`
-			ProtocolVersion  int      `json:"protocol_version"`
-			LifecycleVersion int      `json:"lifecycle_version"`
-		}{Definition: handler.Definition, Hooks: []string{}, ProtocolVersion: CapabilityProtocolVersion, LifecycleVersion: RuntimeLifecycleVersion})
+			ProtocolVersion  int `json:"protocol_version"`
+			LifecycleVersion int `json:"lifecycle_version"`
+		}{Definition: handler.Definition, ProtocolVersion: CapabilityProtocolVersion, LifecycleVersion: RuntimeLifecycleVersion})
 	case "activate":
 		if handler.Activate != nil {
 			if err := handler.Activate(ctx); err != nil {

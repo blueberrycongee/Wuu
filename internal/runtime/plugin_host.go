@@ -84,54 +84,14 @@ func pluginRequestInterceptor(host *pluginhost.Host, provider, threadID, cwd str
 }
 
 func pluginRequestInterceptorWithTransforms(host *pluginhost.Host, transforms *agent.RequestTransformChain, provider, threadID, cwd string) func(context.Context, *providers.ChatRequest) error {
-	hasLegacyHook := host != nil && host.HasHook(pluginhost.HookChatRequest)
-	if !hasLegacyHook && (transforms == nil || transforms.Count() == 0) {
+	if transforms == nil || transforms.Count() == 0 {
 		return nil
 	}
 	return func(ctx context.Context, request *providers.ChatRequest) error {
 		if request == nil {
 			return nil
 		}
-		if hasLegacyHook {
-			output := pluginhost.ChatRequestOutput{
-				Model:                       request.Model,
-				Messages:                    append([]providers.ChatMessage(nil), request.Messages...),
-				Tools:                       append([]providers.ToolDefinition(nil), request.Tools...),
-				Temperature:                 request.Temperature,
-				MaxTokens:                   request.MaxTokens,
-				Effort:                      request.Effort,
-				NativeDeferredToolDiscovery: request.NativeDeferredToolDiscovery,
-				ForceToolName:               request.ForceToolName,
-			}
-			if request.ProviderOptions != nil {
-				output.ProviderOptions = make(map[string]any, len(request.ProviderOptions))
-				for key, value := range request.ProviderOptions {
-					output.ProviderOptions[key] = value
-				}
-			}
-			if err := host.Run(ctx, pluginhost.HookChatRequest, pluginhost.ChatRequestInput{
-				SessionID: threadID,
-				ThreadID:  threadID,
-				CWD:       cwd,
-				Provider:  provider,
-				StepIndex: request.StepIndex,
-			}, &output); err != nil {
-				return err
-			}
-			request.Model = output.Model
-			request.Messages = output.Messages
-			request.Tools = output.Tools
-			request.Temperature = output.Temperature
-			request.MaxTokens = output.MaxTokens
-			request.Effort = output.Effort
-			request.ProviderOptions = output.ProviderOptions
-			request.NativeDeferredToolDiscovery = output.NativeDeferredToolDiscovery
-			request.ForceToolName = output.ForceToolName
-		}
-		if transforms != nil {
-			return transforms.Apply(ctx, request, nil)
-		}
-		return nil
+		return transforms.Apply(ctx, request, nil)
 	}
 }
 
@@ -278,39 +238,4 @@ func (p *pluginCompactionProvider) Compact(ctx context.Context, model string, me
 		return nil, fmt.Errorf("plugin compaction returned invalid tool-call history: %w", err)
 	}
 	return compacted, nil
-}
-
-// TransformUserMessage runs before app-server or CLI persistence so the user,
-// UI history, durable history, and model all observe the same plugin output.
-func (s *Session) TransformUserMessage(ctx context.Context, threadID, cwd string, message providers.ChatMessage) (providers.ChatMessage, error) {
-	if s == nil || s.PluginHost == nil {
-		return message, nil
-	}
-	output := pluginhost.ChatMessageOutput{
-		Content:        message.Content,
-		DisplayContent: message.DisplayContent,
-		Images:         append([]providers.InputImage(nil), message.Images...),
-		Files:          append([]providers.InputFile(nil), message.Files...),
-	}
-	if err := s.PluginHost.Run(ctx, pluginhost.HookChatMessage, pluginhost.ChatMessageInput{
-		SessionID: threadID,
-		ThreadID:  threadID,
-		CWD:       firstNonEmptyString(cwd, s.RootDir),
-	}, &output); err != nil {
-		return providers.ChatMessage{}, err
-	}
-	message.Content = output.Content
-	message.DisplayContent = output.DisplayContent
-	message.Images = output.Images
-	message.Files = output.Files
-	return message, nil
-}
-
-func firstNonEmptyString(values ...string) string {
-	for _, value := range values {
-		if value != "" {
-			return value
-		}
-	}
-	return ""
 }

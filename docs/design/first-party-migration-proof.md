@@ -9,28 +9,16 @@ without a product-specific host seam.
 
 > 如果一项功能只能通过修改 Agent loop 实现，应先判断缺少的是哪一个公共能力，而不是直接增加产品专用分支。
 
-## Example 1: Custom Tool Permission Guard
+## Boundary Example 1: Tool Permission Policy Stays Host-Owned
 
 **Current implementation**: Tool permission checks are embedded in the tool execution path within `internal/agent/tool_runtime.go`.
 
-**Public seam migration**:
-
-```go
-// Register via the capability contract as a plugin would:
-// seam: agent.tool.execute.before (guard)
-// priority: 100 (executes before other guards)
-
-func GuardFilePathAccess(ctx context.Context, input ToolExecuteInput) (ToolExecuteInput, error) {
-    // Check if the tool is attempting to access paths outside the workspace.
-    // Reject before execution reaches the tool runtime.
-    if isOutsideWorkspace(input.Arguments) {
-        return input, ErrPathAccessDenied
-    }
-    return input, nil
-}
-```
-
-**Why this works**: The `agent.tool.execute.before` seam is a guard — it short-circuits on rejection. The permission policy plugin registers at high priority and blocks unauthorized access before any other guard runs.
+This is intentionally not a public plugin seam. The former
+`tool.execute.before/after` RuntimeHook branch had no distributed consumer and
+duplicated Tool registration and capability dispatch, so it was deleted. Final
+permission decisions remain in the host safety boundary. A plugin can register
+and execute its own Tool, but cannot wrap every other Tool or override the
+host's final policy.
 
 ## Boundary Example 2: Plan Is Temporarily Core, Not a Permanent Kernel Rule
 

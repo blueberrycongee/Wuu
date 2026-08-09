@@ -201,7 +201,7 @@ runtime 插件可以注册工具和挂钩 Agent 生命周期。SDK 提供以下�
 每个 capability 都属于一个 generation，并声明已经实现的 `kind`（observe / transform /
 decision）与 `priority`。`guard`、`around` 没有宿主实现，不是可声明的公开 kind。
 
-旧 `hook.invoke` 只为现有插件兼容，禁止新增使用；新功能应使用上表的窄 capability、工具注册或 Host Service。
+旧 `hook.invoke` 已删除；Host→plugin 只通过上表的版本化 capability 或工具执行，plugin→Host 只通过 Host Service。
 候选 prepare 失败时旧 generation 继续工作；durable commit 后的单插件 activate 失败会在 inventory 中显示
 `failed/last_error`，不会伪装成 active。
 
@@ -221,7 +221,6 @@ import { runJSONLRuntime, type RuntimePlugin } from "@wuu/plugin-sdk";
 const plugin: RuntimePlugin = {
   initialize() {
     return {
-      hooks: [],
       protocol_version: 2,
       tools: [{
         id: "my_search",
@@ -423,8 +422,8 @@ previous-minor/current-minor 的 SDK 与宿主兼容矩阵。在矩阵验证完�
   生命周期、generation 错误隔离，以及用户逃生路径（设置、禁用插件、恢复默认 UI）
   始终由 Wuu host 控制，**永不**通过公开接口暴露给插件。
 - 使用 `WUU_SAFE_MODE=1`、`wuu app-server --safe-mode` 或 Desktop 的 `--safe-mode` 启动时，
-  Wuu 只发现 manifest 供插件管理展示，不激活任何插件 runtime、Tool、Skill、Hook 或 Desktop 模块。
+  Wuu 只发现 manifest 供插件管理展示，不激活任何插件 runtime、Tool、Skill、用户自动化 Hook 或 Desktop 模块。
 - 声明式主题只能修改公开语义 Token；`registerStyle` 可以使用任意 CSS，因此只提供给
   受信任的桌面代码插件。
-- runtime 进程与 Wuu 同权限，启用的插件声明的 Hook 与直接运行第三方本地命令具有
+- runtime 进程与 Wuu 同权限，启用第三方 runtime 与直接运行第三方本地命令具有
   相同风险；安装和启用前检查来源、命令与授权状态。

@@ -2,7 +2,6 @@ package runtime
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"sync"
 	"testing"
@@ -32,48 +31,9 @@ func (e *recordingToolExecutor) ExecuteResult(_ context.Context, call providers.
 	return toolresult.FromText(call.Arguments), nil
 }
 
-type toolPluginClient struct {
-	mu     sync.Mutex
-	inputs []pluginhost.ToolExecuteInput
-}
-
-func (c *toolPluginClient) ID() string { return "tool-plugin" }
-func (c *toolPluginClient) Hooks() []pluginhost.Hook {
-	return []pluginhost.Hook{pluginhost.HookToolExecuteBefore, pluginhost.HookToolExecuteAfter}
-}
-func (c *toolPluginClient) Status() pluginhost.Status {
-	return pluginhost.Status{ID: c.ID(), State: pluginhost.StateActive, Hooks: c.Hooks()}
-}
-func (c *toolPluginClient) Close(context.Context) error { return nil }
-func (c *toolPluginClient) Invoke(_ context.Context, params pluginhost.InvokeParams) (pluginhost.InvokeResult, error) {
-	var input pluginhost.ToolExecuteInput
-	if err := json.Unmarshal(params.Input, &input); err != nil {
-		return pluginhost.InvokeResult{}, err
-	}
-	c.mu.Lock()
-	c.inputs = append(c.inputs, input)
-	c.mu.Unlock()
-	switch params.Hook {
-	case pluginhost.HookToolExecuteBefore:
-		data, _ := json.Marshal(pluginhost.ToolExecuteBeforeOutput{Arguments: json.RawMessage(fmt.Sprintf(`{"value":%q}`, input.CallID))})
-		return pluginhost.InvokeResult{Output: data}, nil
-	case pluginhost.HookToolExecuteAfter:
-		var output pluginhost.ToolExecuteAfterOutput
-		if err := json.Unmarshal(params.Output, &output); err != nil {
-			return pluginhost.InvokeResult{}, err
-		}
-		output.Result = toolresult.FromText(output.Result.TextProjection() + "|after:" + input.CallID)
-		data, _ := json.Marshal(output)
-		return pluginhost.InvokeResult{Output: data}, nil
-	default:
-		return pluginhost.InvokeResult{}, fmt.Errorf("unexpected hook %s", params.Hook)
-	}
-}
-
-func TestPluginToolExecutorTransformsArgumentsAndRichResult(t *testing.T) {
+func TestPluginToolExecutorPreservesArgumentsAndRichResult(t *testing.T) {
 	inner := &recordingToolExecutor{}
-	plugin := &toolPluginClient{}
-	executor := newPluginToolExecutor(inner, pluginhost.New(plugin), "thread-1", "/workspace")
+	executor := newPluginToolExecutor(inner, pluginhost.New(), "thread-1", "/workspace")
 	rich := executor.(interface {
 		ExecuteResult(context.Context, providers.ToolCall) (toolresult.Result, error)
 	})
@@ -81,25 +41,17 @@ func TestPluginToolExecutorTransformsArgumentsAndRichResult(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.TextProjection() != `{"value":"call-1"}|after:call-1` {
+	if result.TextProjection() != `{}` {
 		t.Fatalf("result = %q", result.TextProjection())
 	}
-	if len(inner.calls) != 1 || inner.calls[0].Arguments != `{"value":"call-1"}` {
+	if len(inner.calls) != 1 || inner.calls[0].Arguments != `{}` {
 		t.Fatalf("calls = %+v", inner.calls)
-	}
-	plugin.mu.Lock()
-	defer plugin.mu.Unlock()
-	for _, input := range plugin.inputs {
-		if input.ThreadID != "thread-1" || input.CallID != "call-1" || input.CWD != "/workspace" || input.StepIndex != 4 {
-			t.Fatalf("input = %+v", input)
-		}
 	}
 }
 
 func TestPluginToolExecutorKeepsConcurrentCallsIsolated(t *testing.T) {
 	inner := &recordingToolExecutor{}
-	plugin := &toolPluginClient{}
-	executor := newPluginToolExecutor(inner, pluginhost.New(plugin), "thread", "/workspace")
+	executor := newPluginToolExecutor(inner, pluginhost.New(), "thread", "/workspace")
 	rich := executor.(interface {
 		ExecuteResult(context.Context, providers.ToolCall) (toolresult.Result, error)
 	})
@@ -115,7 +67,7 @@ func TestPluginToolExecutorKeepsConcurrentCallsIsolated(t *testing.T) {
 				errs <- err
 				return
 			}
-			want := fmt.Sprintf(`{"value":%q}|after:%s`, id, id)
+			want := `{}`
 			if result.TextProjection() != want {
 				errs <- fmt.Errorf("call %s result = %q, want %q", id, result.TextProjection(), want)
 			}
@@ -130,8 +82,7 @@ func TestPluginToolExecutorKeepsConcurrentCallsIsolated(t *testing.T) {
 
 func TestPluginToolExecutorRejectsInvalidArgumentsBeforeHooksOrExecution(t *testing.T) {
 	inner := &recordingToolExecutor{}
-	plugin := &toolPluginClient{}
-	executor := newPluginToolExecutor(inner, pluginhost.New(plugin), "thread", "/workspace")
+	executor := newPluginToolExecutor(inner, pluginhost.New(), "thread", "/workspace")
 
 	_, err := executor.Execute(context.Background(), providers.ToolCall{
 		ID: "call-write", Name: "write_file", Arguments: `{"path":"page.html","content":"truncated`,
@@ -144,8 +95,5 @@ func TestPluginToolExecutorRejectsInvalidArgumentsBeforeHooksOrExecution(t *test
 	}
 	if len(inner.calls) != 0 {
 		t.Fatalf("inner executor must not be called, got %+v", inner.calls)
-	}
-	if len(plugin.inputs) != 0 {
-		t.Fatalf("hooks must not be called for invalid input, got %+v", plugin.inputs)
 	}
 }

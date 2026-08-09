@@ -54,7 +54,6 @@ async function startSession(host: RuntimeHost, prompt: string): Promise<unknown>
 const plugin: RuntimePlugin = {
   initialize() {
     return {
-      hooks: [],
       protocol_version: 2,
       capabilities: [{ id: PLUGIN_CLIENT_REQUEST_CAPABILITY, kind: "decision", version: 1 }],
       required_host_services: [

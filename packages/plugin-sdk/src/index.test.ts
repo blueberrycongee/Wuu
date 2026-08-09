@@ -150,7 +150,6 @@ if (presenter.render({ activity: snapshot, host: {} as never, fallback: "native"
 const plugin: RuntimePlugin = {
   initialize(params) {
     return {
-      hooks: [],
       protocol_version: CAPABILITY_PROTOCOL_V2,
       capabilities: [{ id: REQUEST_TRANSFORM_CAPABILITY, kind: "transform", version: 1 }],
       tools: [{ id: "echo", description: "Echo input", input_schema: { type: "object" } }],

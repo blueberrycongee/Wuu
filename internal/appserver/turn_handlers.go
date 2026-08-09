@@ -2789,14 +2789,6 @@ func (s *Server) startThreadUserTurnWithAdmission(ctx context.Context, th *threa
 	threadID := th.ID
 	threadCWD := th.CWD
 	th.mu.Unlock()
-	if s.rt != nil {
-		transformed, err := s.rt.TransformUserMessage(ctx, threadID, threadCWD, userMsg)
-		if err != nil {
-			abortAdmission()
-			return startedThreadTurn{}, false, fmt.Errorf("transform user message: %w", err)
-		}
-		userMsg = transformed
-	}
 	if !chatMessageHasUserPayload(userMsg) {
 		abortAdmission()
 		return startedThreadTurn{}, false, nil

@@ -165,9 +165,7 @@ func TestAllHostServicesComplete(t *testing.T) {
 func TestCapabilityInitializeResultProtocolVersion(t *testing.T) {
 	// Protocol v2 should carry capability information.
 	result := CapabilityInitializeResult{
-		InitializeResult: InitializeResult{
-			Hooks: []Hook{HookSessionStart},
-		},
+		InitializeResult: InitializeResult{},
 		Capabilities: []CapabilityDescriptor{
 			{ID: "agent.tool.custom", Kind: "transform", Version: 1},
 		},

@@ -169,18 +169,6 @@ func Start(ctx context.Context, config ProcessConfig) (*ProcessClient, error) {
 		client.setFailure(err)
 		return nil, fmt.Errorf("initialize plugin %q: %w", config.ID, err)
 	}
-	seen := make(map[Hook]struct{}, len(initialized.Hooks))
-	for _, hook := range initialized.Hooks {
-		if !IsValidHook(hook) {
-			_ = client.stopProcess()
-			return nil, fmt.Errorf("initialize plugin %q: unknown hook %q", config.ID, hook)
-		}
-		if _, ok := seen[hook]; ok {
-			_ = client.stopProcess()
-			return nil, fmt.Errorf("initialize plugin %q: duplicate hook %q", config.ID, hook)
-		}
-		seen[hook] = struct{}{}
-	}
 	if err := validateToolRegistrations(initialized.Tools); err != nil {
 		_ = client.stopProcess()
 		client.setFailure(err)
@@ -200,7 +188,6 @@ func Start(ctx context.Context, config ProcessConfig) (*ProcessClient, error) {
 	}
 	client.mu.Lock()
 	client.status.State = StatePrepared
-	client.status.Hooks = append([]Hook(nil), initialized.Hooks...)
 	client.tools = make([]ToolRegistration, len(initialized.Tools))
 	for index, registration := range initialized.Tools {
 		client.tools[index] = cloneToolRegistration(registration)
@@ -223,12 +210,6 @@ func Start(ctx context.Context, config ProcessConfig) (*ProcessClient, error) {
 }
 
 func (c *ProcessClient) ID() string { return c.config.ID }
-
-func (c *ProcessClient) Hooks() []Hook {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return append([]Hook(nil), c.status.Hooks...)
-}
 
 func (c *ProcessClient) Tools() []ToolRegistration {
 	c.mu.RLock()
@@ -272,9 +253,7 @@ func (c *ProcessClient) InvokeCapability(ctx context.Context, params CapabilityI
 func (c *ProcessClient) Status() Status {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	status := c.status
-	status.Hooks = append([]Hook(nil), status.Hooks...)
-	return status
+	return c.status
 }
 
 // Activate opens the negotiated service set and starts lifecycle-aware
@@ -309,17 +288,6 @@ func (c *ProcessClient) Activate(ctx context.Context) error {
 	c.status.StartedAt = time.Now().UTC()
 	c.mu.Unlock()
 	return nil
-}
-
-func (c *ProcessClient) Invoke(ctx context.Context, params InvokeParams) (InvokeResult, error) {
-	callCtx, cancel := context.WithTimeout(ctx, c.config.Timeout)
-	defer cancel()
-	var result InvokeResult
-	if err := c.call(callCtx, "hook.invoke", params, &result); err != nil {
-		c.failFatalCall(err)
-		return InvokeResult{}, err
-	}
-	return result, nil
 }
 
 func (c *ProcessClient) ExecuteTool(ctx context.Context, params ToolExecuteParams) (ToolExecuteResult, error) {
@@ -738,7 +706,6 @@ func (c *ProcessClient) setFailure(err error) {
 	defer c.mu.Unlock()
 	c.status.State = StateFailed
 	c.status.Error = err.Error()
-	c.status.Hooks = nil
 	c.tools = nil
 	c.capabilities = nil
 }

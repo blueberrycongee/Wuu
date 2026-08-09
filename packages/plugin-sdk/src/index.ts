@@ -372,16 +372,6 @@ export const SYSTEM_PROMPT_SECTION_CAPABILITY = "agent.system_prompt.section" as
 export const COMPACTION_CAPABILITY = "agent.compaction" as const;
 export const PLUGIN_CLIENT_REQUEST_CAPABILITY = "plugin.client.request" as const;
 
-export type RuntimeHook =
-  | "session.start"
-  | "session.stop"
-  | "chat.message"
-  | "chat.request"
-  | "tool.definition"
-  | "tool.execute.before"
-  | "tool.execute.after"
-  | "shell.env";
-
 export type CapabilityKind = "observe" | "transform" | "decision";
 export type CapabilityErrorPolicy = "propagate" | "isolate" | "ignore";
 
@@ -428,7 +418,6 @@ export interface RuntimeInitializeParams {
 }
 
 export interface RuntimeInitializeResult {
-  hooks: RuntimeHook[];
   tools?: ToolRegistration[];
   protocol_version?: 1 | 2;
   capabilities?: CapabilityDescriptor[];
@@ -474,16 +463,6 @@ export interface CapabilityInvokeParams<TInput = unknown, TOutput = unknown> {
 }
 
 export interface CapabilityInvokeResult<TOutput = unknown> {
-  output: TOutput;
-}
-
-export interface HookInvokeParams<TInput = unknown, TOutput = unknown> {
-  hook: RuntimeHook;
-  input: TInput;
-  output: TOutput;
-}
-
-export interface HookInvokeResult<TOutput = unknown> {
   output: TOutput;
 }
 
@@ -698,7 +677,6 @@ export interface RuntimePlugin {
   initialize(params: RuntimeInitializeParams, host: RuntimeHost): RuntimeInitializeResult | Promise<RuntimeInitializeResult>;
   activate?(host: RuntimeHost): void | Promise<void>;
   invokeCapability?(params: CapabilityInvokeParams, host: RuntimeHost): CapabilityInvokeResult | Promise<CapabilityInvokeResult>;
-  invokeHook?(params: HookInvokeParams, host: RuntimeHost): HookInvokeResult | Promise<HookInvokeResult>;
   executeTool?(params: ToolExecuteParams, host: RuntimeHost): ToolExecuteResult | Promise<ToolExecuteResult>;
   shutdown?(): void | Promise<void>;
 }
@@ -721,12 +699,6 @@ export interface RuntimeActivateRequest {
   params?: undefined;
 }
 
-export interface RuntimeHookRequest {
-  id: string;
-  method: "hook.invoke";
-  params: HookInvokeParams;
-}
-
 export interface RuntimeToolRequest {
   id: string;
   method: "tool.execute";
@@ -743,12 +715,11 @@ export type RuntimeRequest =
   | RuntimeInitializeRequest
   | RuntimeActivateRequest
   | RuntimeCapabilityRequest
-  | RuntimeHookRequest
   | RuntimeToolRequest
   | RuntimeShutdownRequest;
 
 export type RuntimeResponse =
-  | { id: string; result: RuntimeInitializeResult | CapabilityInvokeResult | HookInvokeResult | ToolExecuteResult | null }
+  | { id: string; result: RuntimeInitializeResult | CapabilityInvokeResult | ToolExecuteResult | null }
   | { id: string; error: { message: string } };
 
 export async function handleRuntimeRequest(
@@ -766,9 +737,6 @@ export async function handleRuntimeRequest(
       case "capability.invoke":
         if (!plugin.invokeCapability) throw new Error("capability.invoke is not implemented");
         return { id: request.id, result: await plugin.invokeCapability(request.params, host) };
-      case "hook.invoke":
-        if (!plugin.invokeHook) throw new Error("hook.invoke is not implemented");
-        return { id: request.id, result: await plugin.invokeHook(request.params, host) };
       case "tool.execute":
         if (!plugin.executeTool) throw new Error("tool.execute is not implemented");
         return { id: request.id, result: await plugin.executeTool(request.params, host) };
@@ -912,7 +880,7 @@ function isRuntimeRequest(value: unknown): value is RuntimeRequest {
   const request = value as { id?: unknown; method?: unknown; params?: unknown };
   if (typeof request.id !== "string" || typeof request.method !== "string") return false;
   if (request.method === "activate" || request.method === "shutdown") return true;
-  return ["initialize", "capability.invoke", "hook.invoke", "tool.execute"].includes(request.method)
+  return ["initialize", "capability.invoke", "tool.execute"].includes(request.method)
     && typeof request.params === "object" && request.params !== null;
 }
 

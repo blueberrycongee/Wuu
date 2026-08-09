@@ -19,13 +19,9 @@ type pluginTurnLifecycleClient struct {
 	calls chan pluginhost.AgentTurnLifecycleInput
 }
 
-func (c *pluginTurnLifecycleClient) ID() string               { return c.id }
-func (c *pluginTurnLifecycleClient) Hooks() []pluginhost.Hook { return nil }
+func (c *pluginTurnLifecycleClient) ID() string { return c.id }
 func (c *pluginTurnLifecycleClient) Status() pluginhost.Status {
 	return pluginhost.Status{ID: c.id, State: pluginhost.StateActive}
-}
-func (c *pluginTurnLifecycleClient) Invoke(context.Context, pluginhost.InvokeParams) (pluginhost.InvokeResult, error) {
-	return pluginhost.InvokeResult{}, nil
 }
 func (c *pluginTurnLifecycleClient) Close(context.Context) error { return nil }
 func (c *pluginTurnLifecycleClient) ProtocolVersion() int {

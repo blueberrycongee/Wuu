@@ -117,5 +117,4 @@ func TestHostNoCrashOnNilClient(t *testing.T) {
 	// These should skip gracefully when client is nil.
 	host.AssertCapabilityRegistered("agent.tool.execute")
 	host.AssertToolRegistered("my-tool")
-	host.AssertHookRegistered(pluginhost.HookSessionStart)
 }

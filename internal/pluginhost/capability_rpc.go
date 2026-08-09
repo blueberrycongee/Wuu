@@ -12,14 +12,12 @@ import (
 )
 
 // CapabilityRPC defines the typed, bidirectional extension protocol between
-// the Wuu host and external plugin processes. This upgrades the existing
-// hook-based protocol (wuu-plugin-v1) to a full capability RPC where both
-// sides can initiate typed calls.
+// the Wuu host and external plugin processes.
 //
 // ## Host → Plugin (capability calls)
 //
-// The host calls plugin-registered capabilities through the existing
-// Invoke path. Each capability has a typed input/output contract.
+// The host calls plugin-registered capabilities through capability.invoke.
+// Each capability has a typed input/output contract.
 //
 // ## Plugin → Host (host service calls)
 //
@@ -31,8 +29,8 @@ import (
 //
 // ## Protocol version
 //
-// Protocol version 2 adds capability negotiation. Version 1 clients
-// are still supported; they default to hook-only mode.
+// Protocol version 2 adds capability negotiation and is the only production
+// Host-to-plugin extension seam.
 const (
 	CapabilityProtocolVersion = 2
 	CapabilityProtocolName    = "wuu-plugin-v2"
