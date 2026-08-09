@@ -454,8 +454,12 @@ func (c *Client) rememberRun(snapshot RunSnapshot) {
 	snapshot = cloneRunSnapshot(snapshot)
 	c.runs[snapshot.ID] = snapshot
 	if snapshot.FinalTurnID != "" {
-		if content := c.turnTexts[turnTextKey(snapshot.SessionID, snapshot.FinalTurnID)]; content != "" {
+		if content, ok := c.turnTexts[turnTextKey(snapshot.SessionID, snapshot.FinalTurnID)]; ok {
 			c.runTexts[snapshot.ID] = content
+		} else {
+			// Do not let output from an earlier turn satisfy a terminal run
+			// whose final turn notification has not arrived yet.
+			delete(c.runTexts, snapshot.ID)
 		}
 	}
 	c.mu.Unlock()
@@ -466,7 +470,16 @@ func (c *Client) rememberRunText(sessionID, turnID, content string) {
 	defer c.mu.Unlock()
 	c.turnTexts[turnTextKey(sessionID, turnID)] = content
 	for runID, run := range c.runs {
-		if run.SessionID == sessionID && runSnapshotContainsTurn(run, turnID) {
+		if run.SessionID != sessionID {
+			continue
+		}
+		if run.FinalTurnID != "" {
+			if run.FinalTurnID == turnID {
+				c.runTexts[runID] = content
+			}
+			continue
+		}
+		if runSnapshotContainsTurn(run, turnID) {
 			c.runTexts[runID] = content
 		}
 	}

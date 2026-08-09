@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/blueberrycongee/wuu/internal/appserver"
@@ -32,6 +33,10 @@ type localAppServerController struct {
 	sdkRuns       map[string]*wuusdk.Run
 	sdkEvents     *wuusdk.Subscription
 	notifications chan Notification
+
+	sdkShutdownMu   sync.Mutex
+	sdkShutdownDone chan struct{}
+	sdkShutdownErr  error
 }
 
 func NewLocalAppServerController(ctx context.Context, opts Options) (Controller, error) {
@@ -226,21 +231,16 @@ func (c *localAppServerController) Shutdown(ctx context.Context) error {
 		defer cancel()
 	}
 	if c.sdkClient != nil {
-		drainDone := make(chan struct{})
-		go func() {
-			for range c.notifications {
-			}
-			close(drainDone)
-		}()
-		err := c.sdkClient.Close(ctx)
-		if err != nil {
+		done := c.startSDKShutdown()
+		select {
+		case <-done:
+			c.sdkShutdownMu.Lock()
+			err := c.sdkShutdownErr
+			c.sdkShutdownMu.Unlock()
 			return err
+		case <-ctx.Done():
+			return ctx.Err()
 		}
-		<-drainDone
-		if c.sdkRuntime != nil {
-			err = c.sdkRuntime.Close()
-		}
-		return err
 	}
 	if c.cancel != nil {
 		defer c.cancel()
@@ -282,6 +282,39 @@ func (c *localAppServerController) Shutdown(ctx context.Context) error {
 		_, _ = c.rt.Cleanup()
 	}
 	return err
+}
+
+func (c *localAppServerController) startSDKShutdown() <-chan struct{} {
+	c.sdkShutdownMu.Lock()
+	defer c.sdkShutdownMu.Unlock()
+	if c.sdkShutdownDone == nil {
+		c.sdkShutdownDone = make(chan struct{})
+		go c.finishSDKShutdown()
+	}
+	return c.sdkShutdownDone
+}
+
+func (c *localAppServerController) finishSDKShutdown() {
+	// Draining keeps the event bridge from blocking while Client.Close cancels
+	// its subscription and waits for the app-server connection to finish.
+	drainDone := make(chan struct{})
+	go func() {
+		for range c.notifications {
+		}
+		close(drainDone)
+	}()
+
+	clientErr := c.sdkClient.Close(context.Background())
+	<-drainDone
+	var runtimeErr error
+	if c.sdkRuntime != nil {
+		runtimeErr = c.sdkRuntime.Close()
+	}
+
+	c.sdkShutdownMu.Lock()
+	c.sdkShutdownErr = errors.Join(clientErr, runtimeErr)
+	close(c.sdkShutdownDone)
+	c.sdkShutdownMu.Unlock()
 }
 
 func (c *localAppServerController) Notifications() <-chan Notification {

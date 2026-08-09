@@ -379,31 +379,32 @@ func (r *Run) Wait(ctx context.Context) (RunResult, error) {
 	subscription := r.client.subscribe(ctx, r.sessionID, SubscriptionOptions{Buffer: 16})
 	defer subscription.Close()
 	if snapshot, ok := r.Snapshot(); ok && snapshot.Status.Terminal() {
-		return RunResult{Run: snapshot, FinalMessage: r.finalMessage(snapshot)}, nil
+		if result, ready := r.terminalResult(snapshot); ready {
+			return result, nil
+		}
 	}
-	finalMessage := ""
 	for {
 		select {
 		case event, ok := <-subscription.Events:
 			if !ok {
-				if snapshot, found := r.Snapshot(); found && snapshot.Status.Terminal() {
-					return RunResult{Run: snapshot, FinalMessage: r.finalMessage(snapshot)}, nil
-				}
 				if ctx.Err() != nil {
 					return RunResult{}, ctx.Err()
+				}
+				if snapshot, found := r.Snapshot(); found && snapshot.Status.Terminal() {
+					message, _ := r.finalMessage(snapshot)
+					return RunResult{Run: snapshot, FinalMessage: message}, nil
 				}
 				return RunResult{}, errors.New("app-server event stream closed before run completed")
 			}
 			switch event.Method {
 			case appserver.NotificationTurnCompleted:
-				var payload struct {
-					Turn struct {
-						ID string `json:"id"`
-					} `json:"turn"`
-					Content string `json:"content"`
-				}
-				if event.Decode(&payload) == nil && r.containsTurn(payload.Turn.ID) {
-					finalMessage = payload.Content
+				// rememberEvent records the message before dispatching this event.
+				// Re-check the terminal snapshot so a turn/completed notification
+				// that arrives after run/updated can finish the wait.
+				if snapshot, found := r.Snapshot(); found && snapshot.Status.Terminal() {
+					if result, ready := r.terminalResult(snapshot); ready {
+						return result, nil
+					}
 				}
 			case appserver.NotificationRunUpdated:
 				var payload struct {
@@ -416,10 +417,9 @@ func (r *Run) Wait(ctx context.Context) (RunResult, error) {
 				if err != nil || snapshot.ID != r.id || !snapshot.Status.Terminal() {
 					continue
 				}
-				if finalMessage == "" {
-					finalMessage = r.finalMessage(snapshot)
+				if result, ready := r.terminalResult(snapshot); ready {
+					return result, nil
 				}
-				return RunResult{Run: snapshot, FinalMessage: finalMessage}, nil
 			}
 		case <-ctx.Done():
 			return RunResult{}, ctx.Err()
@@ -427,15 +427,12 @@ func (r *Run) Wait(ctx context.Context) (RunResult, error) {
 	}
 }
 
-func (r *Run) containsTurn(turnID string) bool {
-	if strings.TrimSpace(turnID) == "" {
-		return false
+func (r *Run) terminalResult(snapshot RunSnapshot) (RunResult, bool) {
+	message, messageReady := r.finalMessage(snapshot)
+	if snapshot.Status == RunCompleted && snapshot.FinalTurnID != "" && !messageReady {
+		return RunResult{}, false
 	}
-	snapshot, ok := r.Snapshot()
-	if !ok {
-		return false
-	}
-	return runSnapshotContainsTurn(snapshot, turnID)
+	return RunResult{Run: snapshot, FinalMessage: message}, true
 }
 
 func runSnapshotContainsTurn(snapshot RunSnapshot, turnID string) bool {
@@ -455,11 +452,11 @@ func runSnapshotContainsTurn(snapshot RunSnapshot, turnID string) bool {
 	return false
 }
 
-func (r *Run) finalMessage(run RunSnapshot) string {
+func (r *Run) finalMessage(run RunSnapshot) (string, bool) {
 	r.client.mu.RLock()
-	if content := r.client.runTexts[r.id]; content != "" {
+	if content, ok := r.client.runTexts[r.id]; ok {
 		r.client.mu.RUnlock()
-		return content
+		return content, true
 	}
 	session := r.client.sessions[r.sessionID]
 	r.client.mu.RUnlock()
@@ -474,7 +471,7 @@ func (r *Run) finalMessage(run RunSnapshot) string {
 		} `json:"turns"`
 	}
 	if json.Unmarshal(session.Raw, &wire) != nil {
-		return ""
+		return "", false
 	}
 	for turnIndex := len(wire.Turns) - 1; turnIndex >= 0; turnIndex-- {
 		turn := wire.Turns[turnIndex]
@@ -484,14 +481,14 @@ func (r *Run) finalMessage(run RunSnapshot) string {
 		for itemIndex := len(turn.Items) - 1; itemIndex >= 0; itemIndex-- {
 			item := turn.Items[itemIndex]
 			if run.FinalItemID != "" && item.ID == run.FinalItemID {
-				return item.Text
+				return item.Text, true
 			}
 			if run.FinalItemID == "" && item.Type == "agent_message" && item.Text != "" {
-				return item.Text
+				return item.Text, true
 			}
 		}
 	}
-	return ""
+	return "", false
 }
 
 func decodeSessionSnapshot(raw json.RawMessage) (SessionSnapshot, error) {
