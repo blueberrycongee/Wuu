@@ -213,6 +213,9 @@ func validateGoalForSave(goal Goal) error {
 	if goal.TimeUsedSeconds < 0 {
 		return errors.New("goal time_used_seconds cannot be negative")
 	}
+	if goal.TimeUsedMS < 0 {
+		return errors.New("goal time_used_ms cannot be negative")
+	}
 	if goal.GoalTurns < 0 {
 		return errors.New("goal goal_turns cannot be negative")
 	}

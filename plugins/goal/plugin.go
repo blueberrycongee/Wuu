@@ -17,6 +17,7 @@ import (
 const (
 	capabilityClientRequest = "plugin.client.request"
 	capabilityTurnCompleted = "agent.turn.completed"
+	capabilityTurnLifecycle = "agent.turn.lifecycle"
 	storageScope            = "workspace"
 )
 
@@ -31,6 +32,7 @@ func Handler() pluginapi.Handler {
 			Capabilities: []pluginapi.Capability{
 				{ID: capabilityClientRequest, Kind: "decision", Version: 1},
 				{ID: capabilityTurnCompleted, Kind: "observe", ErrorPolicy: "isolate", Version: 1},
+				{ID: capabilityTurnLifecycle, Kind: "observe", ErrorPolicy: "isolate", Version: 1},
 			},
 			RequiredHostServices: []pluginapi.HostService{
 				{ID: pluginapi.HostServiceStorageGet, Required: true},
@@ -102,6 +104,32 @@ func executeTool(ctx context.Context, client pluginapi.Host, call pluginapi.Tool
 
 func invokeCapability(ctx context.Context, client pluginapi.Host, call pluginapi.CapabilityCall) (json.RawMessage, error) {
 	switch call.Capability {
+	case capabilityTurnLifecycle:
+		var input pluginapi.TurnLifecycleInput
+		if err := json.Unmarshal(call.Input, &input); err != nil {
+			return nil, err
+		}
+		goal, ok, err := load(ctx, client, input.ThreadID)
+		if err != nil || !ok {
+			return json.Marshal(struct{}{})
+		}
+		now := time.Now().UTC()
+		switch input.State {
+		case "running":
+			startedAt := now
+			if parsed, parseErr := time.Parse(time.RFC3339Nano, input.StartedAt); parseErr == nil {
+				startedAt = parsed
+			}
+			goal = goal.StartRun(input.TurnID, startedAt)
+		case "completed", "failed", "interrupted", "discarded":
+			goal = goal.ClearRun(input.TurnID, now)
+		default:
+			return json.Marshal(struct{}{})
+		}
+		if err := save(ctx, client, goal); err != nil {
+			return nil, err
+		}
+		return json.Marshal(struct{}{})
 	case capabilityTurnCompleted:
 		var input struct {
 			ThreadID     string    `json:"thread_id"`
@@ -124,11 +152,19 @@ func invokeCapability(ctx context.Context, client pluginapi.Host, call pluginapi
 		if goal.Status != goalruntime.StatusActive && goal.UpdatedAt.Before(input.StartedAt) {
 			return json.Marshal(struct{}{})
 		}
-		elapsed := input.CompletedAt.Sub(input.StartedAt)
+		startedAt := input.StartedAt
+		if goal.CreatedAt.After(startedAt) {
+			startedAt = goal.CreatedAt
+		}
+		if goal.RunningSince != nil && (goal.RunningTurnID == "" || goal.RunningTurnID == input.TurnID) && goal.RunningSince.After(startedAt) {
+			startedAt = *goal.RunningSince
+		}
+		elapsed := input.CompletedAt.Sub(startedAt)
 		if elapsed < 0 {
 			elapsed = 0
 		}
 		goal, err = goal.AccountUsage(goalruntime.UsageDelta{Tokens: input.InputTokens + input.OutputTokens, Elapsed: elapsed, Turns: 1}, input.CompletedAt)
+		goal = goal.ClearRun("", input.CompletedAt)
 		if err == nil {
 			err = save(ctx, client, goal)
 		}
@@ -148,6 +184,12 @@ func invokeCapability(ctx context.Context, client pluginapi.Host, call pluginapi
 			}, &sent)
 			if err != nil {
 				return nil, err
+			}
+			if sent.State == "running" {
+				goal = goal.StartRun(sent.TurnID, time.Now().UTC())
+				if err := save(ctx, client, goal); err != nil {
+					return nil, err
+				}
 			}
 		}
 		return json.Marshal(struct{}{})
@@ -293,7 +335,15 @@ func result(goal goalruntime.Goal, ok bool, err error) (pluginapi.ToolResult, er
 }
 
 func goalView(goal goalruntime.Goal) map[string]any {
-	return map[string]any{"thread_id": goal.ThreadID, "objective": goal.Objective, "status": goal.Status, "tokens_used": goal.TokensUsed, "time_used_seconds": goal.TimeUsedSeconds, "created_at": goal.CreatedAt.Unix(), "updated_at": goal.UpdatedAt.Unix()}
+	timeUsedMS := goal.TimeUsedMS
+	if timeUsedMS == 0 && goal.TimeUsedSeconds > 0 {
+		timeUsedMS = goal.TimeUsedSeconds * int64(time.Second/time.Millisecond)
+	}
+	view := map[string]any{"thread_id": goal.ThreadID, "objective": goal.Objective, "status": goal.Status, "tokens_used": goal.TokensUsed, "time_used_seconds": goal.TimeUsedSeconds, "time_used_ms": timeUsedMS, "created_at": goal.CreatedAt.Unix(), "updated_at": goal.UpdatedAt.Unix()}
+	if goal.RunningSince != nil {
+		view["running_since_ms"] = goal.RunningSince.UnixMilli()
+	}
+	return view
 }
 
 func newGoalID() string {

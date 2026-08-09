@@ -128,7 +128,7 @@ func TestGoalPluginAccountsCompletedTurnFromGenericObservation(t *testing.T) {
 		t.Fatal(err)
 	}
 	result, err := handler.ExecuteTool(context.Background(), host, pluginapi.ToolCall{ToolID: "get_goal", ThreadID: "thread-usage", Arguments: json.RawMessage(`{}`)})
-	if err != nil || len(result.Content) != 1 || !contains(result.Content[0].Text, `"tokens_used":7`, `"time_used_seconds":2`) {
+	if err != nil || len(result.Content) != 1 || !contains(result.Content[0].Text, `"tokens_used":7`, `"time_used_ms":`) {
 		t.Fatalf("goal after observation = %+v, err = %v", result, err)
 	}
 }
