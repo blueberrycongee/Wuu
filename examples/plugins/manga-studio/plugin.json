@@ -3,15 +3,11 @@
   "id": "manga-studio",
   "name": "Manga Studio",
   "version": "1.0.0",
-  "description": "Turns the Wuu desktop into a bold black-and-white manga workspace.",
+  "description": "An appearance-only manga theme profile with semantic tokens and one CSS snippet.",
   "desktop": {
     "entry": "desktop.js"
   },
   "contributes": {
-    "surfaces": [
-      { "id": "manga-shell", "target": "app.shell", "mode": "wrap" },
-      { "id": "manga-settings", "target": "view.settings", "mode": "wrap" }
-    ],
     "themes": [
       {
         "id": "manga-paper",

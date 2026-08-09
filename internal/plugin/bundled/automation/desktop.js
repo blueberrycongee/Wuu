@@ -68,5 +68,5 @@ export async function activate(api) {
     ));
   }
 
-  api.registerViewType({ id:"automation.catalog", title:"Automations", icon:"clock", defaultPane:"main", persistence:"durable", render:(props)=>h(Catalog,props) });
+  api.registerViewType({ id:"automation.catalog", title:"Automations", icon:"clock", defaultRegion:"primary", persistence:"durable", render:(props)=>h(Catalog,props) });
 }

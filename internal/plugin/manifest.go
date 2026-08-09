@@ -549,10 +549,7 @@ var knownSlotTargets = map[string]struct{}{
 }
 
 var knownSurfaceTargets = map[string]struct{}{
-	"app.shell": {}, "app.sidebar": {}, "app.main": {}, "app.auxiliary": {}, "app.status": {},
-	"view.launch": {}, "view.conversation": {}, "view.workspace": {}, "view.catalog": {},
-	"view.settings": {}, "conversation.timeline": {}, "conversation.message": {},
-	"conversation.composer": {},
+	"conversation.timeline": {}, "conversation.message": {},
 }
 
 var knownPresenterTargets = map[string]struct{}{

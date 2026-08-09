@@ -2,7 +2,6 @@ import type * as React from "react";
 
 import type {
   CSSSnippet,
-  LayoutContribution,
   PluginUIKit,
   PresentationMode,
   PresentationTarget,
@@ -11,8 +10,8 @@ import type {
   StatusItemDefinition,
   ThemeTokens,
   ToolActivityPresenterDefinition,
-  ViewPane,
   ViewPlacementContribution,
+  ViewPlacementRegion,
   ViewTypeDefinition,
 } from "../../shared/workbench";
 import { createPluginUIKit, VIEW_PLACEMENT_REGIONS } from "../../shared/workbench";
@@ -35,19 +34,8 @@ export const PLUGIN_SLOT_IDS = [
 export type PluginSlotId = (typeof PLUGIN_SLOT_IDS)[number];
 
 export const PLUGIN_SURFACE_IDS = [
-  "app.shell",
-  "app.sidebar",
-  "app.main",
-  "app.auxiliary",
-  "app.status",
-  "view.launch",
-  "view.conversation",
-  "view.workspace",
-  "view.catalog",
-  "view.settings",
   "conversation.timeline",
   "conversation.message",
-  "conversation.composer",
 ] as const;
 
 export type PluginSurfaceId = (typeof PLUGIN_SURFACE_IDS)[number];
@@ -134,12 +122,10 @@ export interface PluginGenerationApi {
 
   // Phase C — Workbench API
 
-  /** Register a view type that the host can open in any pane. */
+  /** Register a view type that the host can open in a semantic region. */
   registerViewType(definition: ViewTypeDefinition): Disposable;
   /** Request a default View placement in a stable host-owned region. */
   registerViewPlacement(contribution: ViewPlacementContribution): Disposable;
-  /** @deprecated Use registerViewPlacement. */
-  registerLayoutContribution(contribution: LayoutContribution): Disposable;
   /** Register a custom content renderer (message, tool result, document, file). */
   registerRenderer(definition: RendererDefinition): Disposable;
   /** Apply theme token overrides for a specific theme. */
@@ -186,8 +172,7 @@ export interface RegisteredViewPlacement {
   readonly order: number;
   readonly id: string;
   readonly view: string;
-  readonly pane: ViewPane;
-  readonly legacy: boolean;
+  readonly region: ViewPlacementRegion;
 }
 
 export interface RegisteredRenderer extends RendererDefinition {
@@ -306,8 +291,7 @@ interface ViewTypeRecord extends OrderedRecord {
 
 interface ViewPlacementRecord extends OrderedRecord {
   readonly view: string;
-  readonly pane: ViewPane;
-  readonly legacy: boolean;
+  readonly region: ViewPlacementRegion;
 }
 
 interface RendererRecord extends OrderedRecord {
@@ -685,9 +669,8 @@ export class PluginHost {
       contribution: {
         id: string;
         view: string;
-        pane: ViewPane;
+        region: ViewPlacementRegion;
         priority?: number;
-        legacy: boolean;
       },
     ): Disposable => {
       this.assertAccepting(state);
@@ -698,11 +681,8 @@ export class PluginHost {
         id,
         order: normalizeOrder(contribution.priority),
         removed: false,
-        view: contribution.legacy
-          ? contribution.view.trim()
-          : requireNonEmpty(contribution.view, "view placement view id"),
-        pane: contribution.pane,
-        legacy: contribution.legacy,
+        view: requireNonEmpty(contribution.view, "view placement view id"),
+        region: contribution.region,
       };
       state.viewPlacements.push(record);
       return this.ownRecord(state, record);
@@ -851,20 +831,8 @@ export class PluginHost {
         return registerViewPlacement({
           id: contribution.id,
           view: contribution.view,
-          pane: region,
+          region,
           priority: contribution.priority,
-          legacy: false,
-        });
-      },
-
-      registerLayoutContribution: (contribution: LayoutContribution) => {
-        return registerViewPlacement({
-          id: contribution.id,
-          view: typeof contribution.defaultView === "string"
-            ? contribution.defaultView
-            : "",
-          pane: normalizeViewPane(contribution.pane),
-          legacy: true,
         });
       },
 
@@ -1078,7 +1046,7 @@ export class PluginHost {
 
   private assertViewPlacementTargets(state: GenerationState): void {
     for (const placement of state.viewPlacements) {
-      if (placement.removed || placement.legacy) continue;
+      if (placement.removed) continue;
       if (!state.views.some((view) => !view.removed && view.id === placement.view)) {
         throw new Error(
           `Plugin View placement ${placement.id} references an unregistered View: ${placement.view}`,
@@ -1480,8 +1448,7 @@ function toPublicViewPlacement(record: ViewPlacementRecord): RegisteredViewPlace
     id: record.id,
     order: record.order,
     view: record.view,
-    pane: record.pane,
-    legacy: record.legacy,
+    region: record.region,
   });
 }
 
@@ -1651,14 +1618,6 @@ function normalizeViewPlacementRegion(region: unknown): ViewPlacementContributio
     throw new Error(`Unsupported plugin View placement region: ${String(region)}`);
   }
   return region as ViewPlacementContribution["region"];
-}
-
-function normalizeViewPane(pane: unknown): ViewPane {
-  if (pane !== "main" && pane !== "sidebar" && pane !== "auxiliary"
-    && pane !== "overlay" && pane !== "tab" && pane !== "pane") {
-    throw new Error(`Unsupported legacy plugin View pane: ${String(pane)}`);
-  }
-  return pane;
 }
 
 function normalizeSurfaceMode(mode: PluginSurfaceMode): PluginSurfaceMode {

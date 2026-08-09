@@ -28,19 +28,11 @@ export async function activate(api) {
     `,
   });
 
-  for (const [surface, className] of [
-    ["app.sidebar", "deep-ui-frame"],
-    ["conversation.composer", "deep-ui-frame"],
-    ["conversation.timeline", "deep-ui-timeline"],
-    ["view.settings", "deep-ui-frame"],
-    ["view.catalog", "deep-ui-catalog"],
-  ]) {
-    api.registerSurface(surface, {
-      id: `frame-${surface}`,
-      mode: "wrap",
-      render(_context, fallback) {
-        return React.createElement("div", { className }, fallback);
-      },
-    });
-  }
+  api.registerSurface("conversation.timeline", {
+    id: "frame-conversation.timeline",
+    mode: "wrap",
+    render(_context, fallback) {
+      return React.createElement("div", { className: "deep-ui-timeline" }, fallback);
+    },
+  });
 }

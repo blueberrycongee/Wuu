@@ -94,5 +94,5 @@ export async function activate(api) {
   }
   api.registerSlot("composer.above", { id: "subagent-status", order: 30, render: (context) => h(ChildTaskStatus, context) });
   api.registerSlot("composer.toolbar", { id: "subagent-ultra", order: 30, render: (context) => h(ProactiveDelegation, context) });
-  api.registerViewType({ id: "subagent.settings", title: "Subagent", icon: "bot", defaultPane: "main", persistence: "durable", render: ModelAliases });
+  api.registerViewType({ id: "subagent.settings", title: "Subagent", icon: "bot", defaultRegion: "settings", persistence: "durable", render: ModelAliases });
 }

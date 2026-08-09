@@ -25,7 +25,7 @@ interface ConversationMessageSurfaceProps {
   host?: PluginHost;
 }
 
-/** Legacy surface boundary. Its context deliberately contains no private ThreadItem record. */
+/** Semantic message boundary. Its context deliberately contains no private ThreadItem record. */
 export function ConversationMessageSurface({
   context,
   fallback,

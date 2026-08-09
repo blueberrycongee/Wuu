@@ -35,7 +35,7 @@ if (!PRESENTATION_TARGETS.includes("conversation.tool-activity") || !PRESENTATIO
 if (!PUBLIC_THEME_TOKEN_NAMES.includes("--wuu-color-canvas") || !PUBLIC_SYNTAX_TOKEN_NAMES.includes("--wuu-syntax-keyword")) {
   throw new Error("theme token contract failed");
 }
-if (VIEW_PLACEMENT_REGIONS.join(",") !== "main,sidebar,auxiliary") {
+if (VIEW_PLACEMENT_REGIONS.join(",") !== "navigation,primary,auxiliary,inspector,settings,overlay") {
   throw new Error("View placement region contract failed");
 }
 const viewPlacement: ViewPlacementContribution = {

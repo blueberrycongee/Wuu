@@ -32,9 +32,15 @@ export {
 /** Unique identifier for a view type. */
 export type ViewTypeId = string;
 /** Where a view instance appears. */
-export type ViewPane = "main" | "sidebar" | "auxiliary" | "overlay" | "tab" | "pane";
-/** Stable host-owned regions available for declarative default placement. */
-export const VIEW_PLACEMENT_REGIONS = ["main", "sidebar", "auxiliary"] as const;
+/** Stable host-owned semantic regions available for View placement. */
+export const VIEW_PLACEMENT_REGIONS = [
+  "navigation",
+  "primary",
+  "auxiliary",
+  "inspector",
+  "settings",
+  "overlay",
+] as const;
 export type ViewPlacementRegion = (typeof VIEW_PLACEMENT_REGIONS)[number];
 export type ViewPersistence = "session" | "durable";
 
@@ -42,7 +48,7 @@ export interface ViewTypeDefinition {
   id: ViewTypeId;
   title: string;
   icon?: string;
-  defaultPane?: ViewPane;
+  defaultRegion?: ViewPlacementRegion;
   persistence?: ViewPersistence;
   render: unknown; // React.ComponentType<ViewRenderProps> — opaque in SDK
 }
@@ -157,7 +163,7 @@ export interface PluginUIKit {
 }
 
 export interface OpenViewOptions {
-  pane?: ViewPane;
+  region?: ViewPlacementRegion;
   context?: Readonly<Record<string, unknown>>;
   persistence?: ViewPersistence;
   reveal?: boolean;
@@ -224,19 +230,6 @@ export interface ViewPlacementContribution {
   view: ViewTypeId;
   region: ViewPlacementRegion;
   priority?: number;
-}
-
-/**
- * @deprecated Use ViewPlacementContribution. Only id, pane, and defaultView
- * are consumed by the compatibility adapter.
- */
-export interface LayoutContribution {
-  id: string;
-  parentId: string;
-  pane: ViewPane;
-  size?: number;
-  minSize?: number;
-  defaultView?: ViewTypeId;
 }
 
 export type RendererCategory = "message" | "tool-result" | "document" | "file-preview";
@@ -331,8 +324,6 @@ export interface PluginGenerationApi {
   registerCleanup(cleanup: () => void): Disposable;
   registerViewType(definition: ViewTypeDefinition): Disposable;
   registerViewPlacement(contribution: ViewPlacementContribution): Disposable;
-  /** @deprecated Use registerViewPlacement. */
-  registerLayoutContribution(contribution: LayoutContribution): Disposable;
   registerRenderer(definition: RendererDefinition): Disposable;
   registerThemeTokens(tokens: ThemeTokens): Disposable;
   registerCSSSnippet(snippet: CSSSnippet): Disposable;

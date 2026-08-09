@@ -107,5 +107,5 @@ export async function activate(api) {
     ));
   }
 
-  api.registerViewType({ id:"memory.settings", title:"Memory", icon:"brain", defaultPane:"main", persistence:"durable", render:(props)=>h(MemorySettings,props) });
+  api.registerViewType({ id:"memory.settings", title:"Memory", icon:"brain", defaultRegion:"settings", persistence:"durable", render:(props)=>h(MemorySettings,props) });
 }

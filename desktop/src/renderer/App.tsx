@@ -218,7 +218,7 @@ import {
   desktopWorkbenchController,
   useDesktopPluginRuntime,
 } from "./plugins/DesktopPluginRuntime";
-import { DesktopWorkbench, PluginSurface } from "./plugins";
+import { DesktopWorkbench } from "./plugins";
 import { WINDOW_RESIZING_CLASS } from "./WindowResizeState";
 import { useComposerDraftState } from "./ComposerDraftState";
 import { useComposerPendingState } from "./ComposerPendingState";
@@ -660,7 +660,7 @@ export function App(): JSX.Element {
     workspaceRightPanelDockableWithoutSidebar,
   ]);
   const revealConversationFromFocusedWorkspace = useCallback((): void => {
-    desktopWorkbenchController.deactivatePane("main");
+    desktopWorkbenchController.deactivateRegion("primary");
     if (!rightPanelGlobalized) {
       return;
     }
@@ -2316,28 +2316,6 @@ export function App(): JSX.Element {
     });
     const streamStatus = activeThreadStreamStatus;
     return (
-      <PluginSurface
-        host={desktopPluginHost}
-        id="conversation.composer"
-        context={{
-          version: 1,
-          variant,
-          prompt,
-          running: activeThreadIsRunning,
-          readOnly: activeThreadReadOnly,
-          activeThreadId: activeThread?.id,
-          actions: {
-            setPrompt,
-            send: (value?: string) => void sendPrompt("queue", value),
-            interrupt: () => void interrupt(),
-            startNewThread: startNewThreadWithComposerFocus,
-            openSettings: () => {
-              setSettingsInitialPage("providers");
-              setSettingsOpen(true);
-            },
-          },
-        }}
-        fallback={
       <Composer
         variant={variant}
         mainConversation
@@ -2460,8 +2438,6 @@ export function App(): JSX.Element {
         onInterrupt={() => void interrupt()}
         queryHistorySessionID={activeThread?.id}
         queryHistory={queryTextsForThread(activeThread)}
-      />
-        }
       />
     );
   }
@@ -3991,18 +3967,6 @@ export function App(): JSX.Element {
         {archiveTipNode}
         {checkoutErrorTipNode}
         {modelCatalogTipNode}
-        <PluginSurface
-          host={desktopPluginHost}
-          id="view.settings"
-          context={{
-            version: 1,
-            page: settingsInitialPage,
-            actions: {
-              close: () => setSettingsOpen(false),
-              toggleSidebar,
-            },
-          }}
-          fallback={
         <SettingsShellRenderer
           initialized={sessionRuntime}
           initialPage={settingsInitialPage}
@@ -4058,8 +4022,6 @@ export function App(): JSX.Element {
           onUnarchiveThread={(thread) => void unarchiveThread(thread)}
           onUnarchiveRoom={unarchiveChannelRoom}
         />
-          }
-        />
       </>
     );
   }
@@ -4070,29 +4032,6 @@ export function App(): JSX.Element {
       {checkoutErrorTipNode}
       {modelCatalogTipNode}
       <ImagePreviewProvider>
-        <PluginSurface
-          host={desktopPluginHost}
-          id="app.shell"
-          context={{
-            version: 1,
-            initialized: Boolean(state.initialized),
-            poppedOutMode,
-            workspaceRoot: state.initialized?.workspace_root,
-            activeThreadId: activeThreadID,
-            actions: {
-              openSettings: () => {
-                setSettingsInitialPage("providers");
-                setSettingsOpen(true);
-              },
-              startNewThread: () => {
-                revealConversationFromFocusedWorkspace();
-                startNewThreadWithComposerFocus();
-              },
-              openSkills: openSkillsTab,
-              toggleSidebar,
-            },
-          }}
-          fallback={
         <div
           ref={appShellRef}
           className={shellClassName}
@@ -4131,25 +4070,6 @@ export function App(): JSX.Element {
               </button>
             </div>
           ) : null}
-          <PluginSurface
-            host={desktopPluginHost}
-            id="app.sidebar"
-            context={{
-              version: 1,
-              activeThreadId: activeThreadID,
-              activeProjectId: state.activeProjectId,
-              collapsed: sidebarDrawerMode,
-              actions: {
-                openSettings: () => {
-                  setSettingsInitialPage("providers");
-                  setSettingsOpen(true);
-                },
-                startNewThread: startNewThreadWithComposerFocus,
-                openSkills: openSkillsTab,
-                toggleSidebar,
-              },
-            }}
-            fallback={
           <AppSidebar
             state={state}
             sidebarProjects={sidebarProjects}
@@ -4256,8 +4176,6 @@ export function App(): JSX.Element {
               setSettingsOpen(true);
             }}
           />
-            }
-          />
 
           {sidebarDrawerMode ? null : (
             <div
@@ -4294,27 +4212,6 @@ export function App(): JSX.Element {
             </>
           ) : null}
 
-      <PluginSurface
-        host={desktopPluginHost}
-        id="app.main"
-        context={{
-          version: 1,
-          view: previewingLaunch
-            ? "launch"
-            : showingManagementCatalog
-              ? "catalog"
-              : "conversation",
-          initialized: Boolean(state.initialized),
-          activeThreadId: activeThreadID,
-          actions: {
-            startNewThread: startNewThreadWithComposerFocus,
-            openSettings: () => {
-              setSettingsInitialPage("providers");
-              setSettingsOpen(true);
-            },
-          },
-        }}
-        fallback={
       <main
         inert={rightPanelOpen && rightPanelGlobalized}
         data-wuu-component="conversation-pane"
@@ -4571,15 +4468,6 @@ export function App(): JSX.Element {
           >
             <div ref={scrollContentRef} className="scroll-region-content">
               {showingSkillsCatalog ? (
-              <PluginSurface
-                host={desktopPluginHost}
-                id="view.catalog"
-                context={{
-                  version: 1,
-                  kind: "skills",
-                  actions: { refresh: refreshExtensionCatalog, install: installPluginPackage },
-                }}
-                fallback={
               <SkillsCatalog
                 activeContext={state.activeContext}
                 extensionInventory={state.initialized?.extension_inventory}
@@ -4589,21 +4477,7 @@ export function App(): JSX.Element {
                 onInstallPluginPackage={installPluginPackage}
                 onRemovePluginPackage={removePluginPackage}
               />
-                }
-              />
             ) : (
-              <PluginSurface
-                host={desktopPluginHost}
-                id="view.conversation"
-                context={{
-                  version: 1,
-                  activeThreadId: activeThreadID,
-                  empty: emptyConversation,
-                  split: splitConversation,
-                  readOnly: activeThreadReadOnly,
-                  actions: { startNewThread: startNewThreadWithComposerFocus },
-                }}
-                fallback={
               <>
                 {!activeThreadReadOnly ? (
                   <QueryHistoryRail
@@ -4720,8 +4594,6 @@ export function App(): JSX.Element {
               />
             )}
               </>
-                }
-              />
             )}
             </div>
             {mainConversationDockVisible ? (
@@ -4733,23 +4605,10 @@ export function App(): JSX.Element {
             ) : null}
           </div>
         ) : (
-          <PluginSurface
-            host={desktopPluginHost}
-            id="view.launch"
-            context={{
-              version: 1,
-              initialized: Boolean(state.initialized),
-              status: resolveLocalizedText(state.status),
-              preview: previewingLaunch,
-              actions: { exitPreview: () => setLaunchPreviewPinned(false) },
-            }}
-            fallback={
-              <RuntimeLoading
-                status={resolveLocalizedText(state.status)}
-                pinned={previewingLaunch}
-                onExitPreview={() => setLaunchPreviewPinned(false)}
-              />
-            }
+          <RuntimeLoading
+            status={resolveLocalizedText(state.status)}
+            pinned={previewingLaunch}
+            onExitPreview={() => setLaunchPreviewPinned(false)}
           />
         )}
 
@@ -4819,23 +4678,7 @@ export function App(): JSX.Element {
           </>
         )}
       </main>
-        }
-      />
 
-      <PluginSurface
-        host={desktopPluginHost}
-        id="app.auxiliary"
-        context={{
-          version: 1,
-          open: rightPanelOpen,
-          activeViewId: workspaceActiveViewTabID,
-          globalized: rightPanelGlobalized,
-          actions: {
-            close: () => setRightPanelOpenWithMotion(false),
-            toggle: toggleRightPanel,
-          },
-        }}
-        fallback={
       <>
       {!poppedOutMode && (rightPanelOpen || rightPanelAnimating) ? (
         <div
@@ -4854,22 +4697,6 @@ export function App(): JSX.Element {
         />
       ) : null}
       {poppedOutMode ? null : (
-        <PluginSurface
-          host={desktopPluginHost}
-          id="view.workspace"
-          context={{
-            version: 1,
-            open: rightPanelOpen,
-            activeViewId: workspaceActiveViewTabID,
-            activeFilePath: activeWorkspaceFile,
-            globalized: rightPanelGlobalized,
-            actions: {
-              close: () => setRightPanelOpenWithMotion(false),
-              openFile: openWorkspaceFile,
-              openTool: openWorkspaceTool,
-            },
-          }}
-          fallback={
         <WorkspaceRightPanel
           open={rightPanelOpen}
           present={rightPanelOpen || rightPanelAnimating}
@@ -4932,12 +4759,8 @@ export function App(): JSX.Element {
           pluginHost={desktopPluginHost}
           workbenchController={desktopWorkbenchController}
         />
-          }
-        />
       )}
       </>
-        }
-      />
       {environmentDialog === "commit" ? (
         <CommitChangesDialog
           gitStatus={state.gitStatus}
@@ -4988,17 +4811,6 @@ export function App(): JSX.Element {
           </div>
         </FloatingMenuPortal>
       ) : null}
-      <PluginSurface
-        host={desktopPluginHost}
-        id="app.status"
-        context={{
-          version: 1,
-          initialized: Boolean(state.initialized),
-          running: activeThreadIsRunning,
-          status: resolveLocalizedText(state.status),
-        }}
-        fallback={null}
-      />
       <DesktopWorkbench
         host={desktopPluginHost}
         controller={desktopWorkbenchController}
@@ -5029,8 +4841,6 @@ export function App(): JSX.Element {
         }}
       />
       </div>
-          }
-        />
     </ImagePreviewProvider>
     </>
   );

@@ -44,8 +44,8 @@ export async function activate(api) {
     css: ".my-frame { border: 1px solid var(--wuu-hairline); }",
   });
 
-  api.registerSurface("app.sidebar", {
-    id: "sidebar-frame",
+  api.registerSurface("conversation.timeline", {
+    id: "timeline-frame",
     mode: "wrap",
     render(_context, fallback) {
       return React.createElement("section", { className: "my-frame" }, fallback);
@@ -62,23 +62,12 @@ disabled, removed, or upgraded.
 
 | Surface | Host UI |
 | --- | --- |
-| `app.shell` | Entire React application shell |
-| `app.sidebar` | Left navigation |
-| `app.main` | Main content region |
-| `app.auxiliary` | Auxiliary workspace region |
-| `app.status` | Additive application status region |
-| `view.launch` | Launch and runtime-loading view |
-| `view.conversation` | Active conversation view |
-| `view.workspace` | Workspace side-panel view |
-| `conversation.composer` | Main prompt composer |
 | `conversation.timeline` | One conversation turn/orchestration group |
 | `conversation.message` | One sanitized conversation message boundary |
-| `view.settings` | Settings shell |
-| `view.catalog` | Skills, plugins, and Automations catalogs |
 
-Contexts expose versioned, limited state and host actions. For example, the shell exposes navigation
-actions, while the composer exposes its prompt, running/read-only state, `setPrompt`, `send`, and
-`interrupt`. Do not depend on private Wuu class names as a compatibility contract.
+App Shell, navigation, primary Session UI, Composer, auxiliary container, Settings, launch, and
+plugin management are protected Host roots. A plugin can add a View, Slot, or Presenter around
+their public semantic contracts, but cannot replace or hide those recovery paths.
 
 Additive contributions use `registerSlot`. Current production slots are `sidebar.primary`,
 `sidebar.footer`, `workspace.header`, `conversation.header`, `conversation.message.before`,
@@ -88,8 +77,8 @@ with native UI and semantic presenters rather than replacing their ownership bou
 
 ## View placements, not arbitrary layouts
 
-A plugin can register a View and request its initial placement in one stable host-owned region:
-`main`, `sidebar`, or `auxiliary`.
+A plugin can register a View and request its initial placement in one stable host-owned semantic
+region: `navigation`, `primary`, `auxiliary`, `inspector`, `settings`, or `overlay`.
 
 ```js
 api.registerViewType({
@@ -110,9 +99,7 @@ api.registerViewPlacement({
 `priority` only resolves the initial active View when a region has no user choice. User activation
 and dismissal win and are persisted. Placement does not expose the shell DOM, arbitrary parent
 nodes, split-tree construction, panel dimensions, protected chrome, plugin management, or recovery
-UI. The old `registerLayoutContribution` method remains as a compatibility adapter; its
-`parentId`, `size`, and `minSize` fields were never implemented as layout-tree controls and are not
-used. New plugins should use `registerViewPlacement`.
+UI. `registerViewPlacement` is the only placement API.
 
 ## Host-owned discovery entries
 

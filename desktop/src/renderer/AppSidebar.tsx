@@ -491,15 +491,15 @@ export function AppSidebar({
     workbenchController.getSnapshot,
   );
   const activePluginMainView = workbenchSnapshot.views.find(
-    (view) => view.id === workbenchSnapshot.activeViewByPane.main,
+    (view) => view.id === workbenchSnapshot.activeViewByRegion.primary,
   );
   const activateNative = useCallback((action: () => void): void => {
-    workbenchController.deactivatePane("main");
+    workbenchController.deactivateRegion("primary");
     action();
   }, [workbenchController]);
   const openPluginNavigation = useCallback((pluginId: string, viewTypeId: string): void => {
     void workbenchController.openPluginView(pluginId, viewTypeId, {
-      pane: "main",
+      region: "primary",
       persistence: "durable",
       reveal: true,
     });

@@ -268,8 +268,8 @@ export async function activate(api) {
     `,
   });
 
-  api.registerSurface("app.sidebar", {
-    id: "sidebar-frame",
+  api.registerSurface("conversation.timeline", {
+    id: "timeline-frame",
     mode: "wrap",
     render(_context, fallback) {
       return React.createElement("section", { className: "my-frame" }, fallback);
@@ -284,15 +284,15 @@ export async function activate(api) {
 ### 可用 API 概览
 
 - `registerStyle`：注册 CSS；任意 CSS 只提供给受信任的桌面代码插件。
-- `registerSurface`：替换或包装稳定 Surface（`app.sidebar` 等）。
+- `registerSurface`：替换或包装短小、带原生 fallback 的语义项 Surface；App Shell、
+  基础 Session、Composer、Settings、插件管理和各 Region 容器都是 protected roots。
 - `registerSlot`：在原生 UI 的稳定位置插入内容（`sidebar.primary`、
   `workspace.header`、`composer.toolbar` 等）。复杂设置应声明独立的 `settingsPages` View。
 - `registerViewType` + `registerViewPlacement`：注册可持久化的 View，并请求宿主把它
-  首次放到 `main`、`sidebar` 或 `auxiliary` 区域。`priority` 只在区域尚无用户选择时
+  首次放到 `navigation`、`primary`、`auxiliary`、`inspector`、`settings` 或 `overlay`
+  语义区域。`priority` 只在区域尚无用户选择时
   决定初始激活；用户后续的切换和关闭优先并持久化。落位 API 不暴露宿主 DOM、任意
-  父节点、分割树或面板尺寸。旧 `registerLayoutContribution` 仅作兼容保留，其
-  `parentId`、`size`、`minSize` 字段从未真正控制布局树，新插件应使用
-  `registerViewPlacement`。
+  父节点、分割树或面板尺寸。`registerViewPlacement` 是唯一的落位 API。
 - View 的入口由 manifest 声明，插件不自己绘制导航和 Tab：
   - `contributes.navigation` 出现在左侧栏可滚动的插件分组；
   - `contributes.workspaceTools` 出现在右侧工具选择器，并以原生工作区 Tab 打开；

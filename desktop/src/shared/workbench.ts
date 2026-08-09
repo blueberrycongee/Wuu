@@ -36,16 +36,15 @@ export {
 export type ViewTypeId = string;
 
 /** Where a view instance appears in the workbench. */
-export type ViewPane =
-  | "main"
-  | "sidebar"
-  | "auxiliary"
-  | "overlay"
-  | "tab"
-  | "pane";
-
-/** Stable host-owned regions available for declarative default placement. */
-export const VIEW_PLACEMENT_REGIONS = ["main", "sidebar", "auxiliary"] as const;
+/** Stable host-owned semantic regions available for View placement. */
+export const VIEW_PLACEMENT_REGIONS = [
+  "navigation",
+  "primary",
+  "auxiliary",
+  "inspector",
+  "settings",
+  "overlay",
+] as const;
 export type ViewPlacementRegion = (typeof VIEW_PLACEMENT_REGIONS)[number];
 
 /** Persistence policy for a view instance. */
@@ -62,8 +61,8 @@ export interface ViewTypeDefinition {
   title: string;
   /** Icon identifier from the host icon set, or a React node. */
   icon?: string;
-  /** Default pane when the host opens this view without a specific target. */
-  defaultPane?: ViewPane;
+  /** Default semantic region when the host opens this view. */
+  defaultRegion?: ViewPlacementRegion;
   /** Whether this view's state survives a session restart. */
   persistence?: ViewPersistence;
   /** React component that receives host context and renders the view. */
@@ -306,7 +305,7 @@ function joinPluginUIClass(base: string, className?: string): string {
 }
 
 export interface OpenViewOptions {
-  pane?: ViewPane;
+  region?: ViewPlacementRegion;
   context?: Readonly<Record<string, unknown>>;
   persistence?: ViewPersistence;
   reveal?: boolean;
@@ -704,7 +703,7 @@ export interface ToolActivityPresenterDefinition {
 }
 
 /** Current on-disk workbench state schema. */
-export const WORKBENCH_LAYOUT_STATE_VERSION = 1 as const;
+export const WORKBENCH_LAYOUT_STATE_VERSION = 2 as const;
 
 /** A host-owned view instance. Plugins never receive the mutable instance. */
 export interface WorkbenchViewState {
@@ -712,18 +711,18 @@ export interface WorkbenchViewState {
   pluginId: string;
   generation: string;
   viewTypeId: ViewTypeId;
-  pane: ViewPane;
+  region: ViewPlacementRegion;
   persistence: ViewPersistence;
   context: Readonly<Record<string, unknown>>;
-  sourceLayoutId?: string;
+  sourcePlacementId?: string;
 }
 
 /** Versioned, shell-independent state persisted by the desktop workbench. */
 export interface WorkbenchLayoutState {
   version: typeof WORKBENCH_LAYOUT_STATE_VERSION;
   views: readonly WorkbenchViewState[];
-  activeViewByPane: Readonly<Partial<Record<ViewPane, string>>>;
-  dismissedLayoutIds: readonly string[];
+  activeViewByRegion: Readonly<Partial<Record<ViewPlacementRegion, string>>>;
+  dismissedPlacementIds: readonly string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -745,20 +744,6 @@ export interface ViewPlacementContribution {
   region: ViewPlacementRegion;
   /** Higher priority becomes the initial active View when a region is empty. */
   priority?: number;
-}
-
-/**
- * @deprecated Use ViewPlacementContribution. These historical fields never
- * created an arbitrary layout tree; the compatibility adapter only uses
- * id, pane, and defaultView.
- */
-export interface LayoutContribution {
-  id: string;
-  parentId: string;
-  pane: ViewPane;
-  size?: number;
-  minSize?: number;
-  defaultView?: ViewTypeId;
 }
 
 // ---------------------------------------------------------------------------

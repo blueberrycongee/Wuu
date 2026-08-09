@@ -3,17 +3,13 @@
   "id": "deep-ui-example",
   "name": "Deep UI Example",
   "version": "1.0.0",
-  "description": "Demonstrates declarative themes and replaceable Wuu desktop surfaces.",
+  "description": "Demonstrates declarative themes and a replaceable conversation item surface.",
   "desktop": {
     "entry": "desktop.js"
   },
   "contributes": {
     "surfaces": [
-      { "id": "frame-app.sidebar", "target": "app.sidebar", "mode": "wrap" },
-      { "id": "frame-conversation.composer", "target": "conversation.composer", "mode": "wrap" },
-      { "id": "frame-conversation.timeline", "target": "conversation.timeline", "mode": "wrap" },
-      { "id": "frame-view.settings", "target": "view.settings", "mode": "wrap" },
-      { "id": "frame-view.catalog", "target": "view.catalog", "mode": "wrap" }
+      { "id": "frame-conversation.timeline", "target": "conversation.timeline", "mode": "wrap" }
     ],
     "themes": [
       {

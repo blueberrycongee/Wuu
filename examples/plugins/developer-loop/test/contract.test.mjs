@@ -90,8 +90,6 @@ const api = {
   },
   registerViewType: register("views"),
   registerViewPlacement: register("viewPlacements"),
-  // Kept in the stub so old bundles can still be exercised by this host.
-  registerLayoutContribution: register("layouts"),
   registerThemeTokens: register("themes"),
   registerCommand: register("commands"),
   registerStatusItem: register("status"),

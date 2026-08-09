@@ -44,5 +44,5 @@ export async function activate(api) {
       h(Card,null,h(Section,{title:tr("dream.activity")},h(Stack,{gap:"small"},h("div",null,`${tr("dream.candidates")}: ${Object.keys(state?.candidates||{}).length}`),h("div",{className:"plugin-dream-status"},`${tr("dream.status")}: ${state?.last_status||"—"}${state?.last_error?` · ${state.last_error}`:""}`))))
     ));
   }
-  api.registerViewType({id:"dream.settings",title:"Dream",icon:"moon",defaultPane:"main",persistence:"durable",render:(props)=>h(DreamSettings,props)});
+  api.registerViewType({id:"dream.settings",title:"Dream",icon:"moon",defaultRegion:"settings",persistence:"durable",render:(props)=>h(DreamSettings,props)});
 }
