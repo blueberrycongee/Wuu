@@ -20,7 +20,12 @@ export {
   type RegisteredPluginCommand,
   type RegisteredPluginSlotContribution,
   type RegisteredPluginSurfaceContribution,
+  type RegisteredInspectorSection,
 } from "./PluginHost";
+export {
+  PluginInspectorSections,
+  type PluginInspectorSectionsProps,
+} from "./PluginInspector";
 export { PluginSlot, type PluginSlotProps } from "./PluginSlot";
 export { PluginSurface, type PluginSurfaceProps } from "./PluginSurface";
 export {

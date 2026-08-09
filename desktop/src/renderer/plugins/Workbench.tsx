@@ -5,6 +5,7 @@ import type { ExtensionInventoryRecord } from "../../shared/protocol";
 import {
   STATUS_ACTIONS,
   WORKBENCH_LAYOUT_STATE_VERSION,
+  type InspectorSectionHostAPI,
   type OpenViewOptions,
   type PresentationHost,
   type RendererCategory,
@@ -229,6 +230,24 @@ export class WorkbenchController {
       context: {},
     };
     return this.createViewHostAPI(rendererView);
+  }
+
+  createInspectorHostAPI(pluginId: string, generation: string): InspectorSectionHostAPI {
+    const requireActive = (): void => {
+      if (!this.host.isGenerationActive(pluginId, generation)) {
+        throw new Error("Plugin host context is no longer active");
+      }
+    };
+    return Object.freeze({
+      executeCommand: async (commandId: string, input?: unknown) => {
+        requireActive();
+        return this.executeCommand(pluginId, commandId, input);
+      },
+      openView: async (viewTypeId: string, options?: OpenViewOptions) => {
+        requireActive();
+        this.openResolvedView(viewTypeId, options ?? {}, pluginId);
+      },
+    });
   }
 
   createPresentationHostAPI(

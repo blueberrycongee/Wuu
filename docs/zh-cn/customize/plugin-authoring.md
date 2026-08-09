@@ -301,6 +301,10 @@ export async function activate(api) {
   `registerViewType` 注册的 View。选中、关闭、持久化和溢出由 Wuu 管理。普通
   `contributes.settings` 会自动获得宿主渲染的设置页，只有标准 schema 表达不了的内容
   才使用自定义设置 View。
+- `registerInspectorSection`：在宿主环境信息面板注册短摘要。输入是冻结且版本化的
+  Session、Turn、Workspace、Git 和 Plan 公开 snapshot；Host Action 只允许打开已注册
+  View 或执行已注册 Command。宿主负责每个 Section 的独立错误边界、限高和溢出。
+  长列表、编辑器和复杂交互必须进入 `primary` 或 `auxiliary` View。
 - `api.ui`：宿主提供的小型 UI Kit，包括 `Page`、`Panel`、`Card`、`Section`、
   `Stack`、`Row`、`Button`、`TextInput` 和 `EmptyState`。普通插件页面优先使用这些组件，
   因而会自动继承当前外观插件的颜色、字体、边框、圆角、阴影和密度。复杂 View 仍可使用

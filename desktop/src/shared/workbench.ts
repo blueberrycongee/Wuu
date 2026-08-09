@@ -311,6 +311,53 @@ export interface OpenViewOptions {
   reveal?: boolean;
 }
 
+export interface InspectorSessionSnapshotV1 {
+  readonly id?: string;
+  readonly status: "idle" | "running";
+  readonly turnId?: string;
+  readonly turnStatus?: "in_progress" | "completed" | "failed" | "interrupted";
+}
+
+export interface InspectorWorkspaceSnapshotV1 {
+  readonly kind: "project" | "no_project";
+  readonly cwd: string;
+  readonly projectId?: string;
+  readonly projectName?: string;
+  readonly branch?: string;
+  readonly dirtyFileCount?: number;
+}
+
+export interface InspectorPlanSnapshotV1 {
+  readonly completed: number;
+  readonly total: number;
+  readonly activeStep?: string;
+}
+
+/** Immutable public context for short, scan-friendly Inspector contributions. */
+export interface InspectorSnapshotV1 {
+  readonly contractVersion: 1;
+  readonly session: InspectorSessionSnapshotV1;
+  readonly workspace?: InspectorWorkspaceSnapshotV1;
+  readonly plan?: InspectorPlanSnapshotV1;
+}
+
+export interface InspectorSectionHostAPI {
+  executeCommand(commandId: string, input?: unknown): Promise<unknown>;
+  openView(viewTypeId: ViewTypeId, options?: OpenViewOptions): Promise<void>;
+}
+
+export interface InspectorSectionRenderProps {
+  readonly snapshot: InspectorSnapshotV1;
+  readonly host: InspectorSectionHostAPI;
+}
+
+export interface InspectorSectionDefinition {
+  readonly id: string;
+  readonly title: string;
+  readonly priority?: number;
+  readonly render: React.ComponentType<InspectorSectionRenderProps>;
+}
+
 export const PRESENTATION_TARGETS = [
   "conversation.item", "conversation.process", "conversation.tool-activity",
   "conversation.composer", "header.conversation", "header.workspace",

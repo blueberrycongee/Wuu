@@ -169,6 +169,52 @@ export interface OpenViewOptions {
   reveal?: boolean;
 }
 
+export interface InspectorSessionSnapshotV1 {
+  readonly id?: string;
+  readonly status: "idle" | "running";
+  readonly turnId?: string;
+  readonly turnStatus?: "in_progress" | "completed" | "failed" | "interrupted";
+}
+
+export interface InspectorWorkspaceSnapshotV1 {
+  readonly kind: "project" | "no_project";
+  readonly cwd: string;
+  readonly projectId?: string;
+  readonly projectName?: string;
+  readonly branch?: string;
+  readonly dirtyFileCount?: number;
+}
+
+export interface InspectorPlanSnapshotV1 {
+  readonly completed: number;
+  readonly total: number;
+  readonly activeStep?: string;
+}
+
+export interface InspectorSnapshotV1 {
+  readonly contractVersion: 1;
+  readonly session: InspectorSessionSnapshotV1;
+  readonly workspace?: InspectorWorkspaceSnapshotV1;
+  readonly plan?: InspectorPlanSnapshotV1;
+}
+
+export interface InspectorSectionHostAPI {
+  executeCommand(commandId: string, input?: unknown): Promise<unknown>;
+  openView(viewTypeId: ViewTypeId, options?: OpenViewOptions): Promise<void>;
+}
+
+export interface InspectorSectionRenderProps {
+  readonly snapshot: InspectorSnapshotV1;
+  readonly host: InspectorSectionHostAPI;
+}
+
+export interface InspectorSectionDefinition {
+  readonly id: string;
+  readonly title: string;
+  readonly priority?: number;
+  readonly render: HostUIComponent<InspectorSectionRenderProps>;
+}
+
 export type ToolActivityStatus = "running" | "completed" | "failed";
 
 export interface ToolActivityResultContentPart {
@@ -324,6 +370,7 @@ export interface PluginGenerationApi {
   registerCleanup(cleanup: () => void): Disposable;
   registerViewType(definition: ViewTypeDefinition): Disposable;
   registerViewPlacement(contribution: ViewPlacementContribution): Disposable;
+  registerInspectorSection(definition: InspectorSectionDefinition): Disposable;
   registerRenderer(definition: RendererDefinition): Disposable;
   registerThemeTokens(tokens: ThemeTokens): Disposable;
   registerCSSSnippet(snippet: CSSSnippet): Disposable;

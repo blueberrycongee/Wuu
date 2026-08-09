@@ -12,7 +12,7 @@ import {
   Search,
   X
 } from "lucide-react";
-import { type FormEvent as ReactFormEvent, type RefObject, useEffect, useState } from "react";
+import { type FormEvent as ReactFormEvent, type ReactNode, type RefObject, useEffect, useState } from "react";
 import type {
   GitStatusResult,
   InitializeResult,
@@ -43,6 +43,7 @@ export function EnvironmentPanel({
   onOpenPullRequest,
   rightPanelFilePath,
   onCloseFilePreview,
+  pluginSections,
 }: {
   panelRef: RefObject<HTMLDivElement | null>;
   motionState: EnvironmentPanelMotionState;
@@ -72,6 +73,8 @@ export function EnvironmentPanel({
    * caller does not provide a file-specific closer.
    */
   onCloseFilePreview?: () => void;
+  /** Host-mounted plugin summaries. Each contribution owns its own error boundary. */
+  pluginSections?: ReactNode;
 }): JSX.Element {
   const { t, formatNumber } = useI18n();
   if (activeMenu === "file" && rightPanelFilePath) {
@@ -114,6 +117,7 @@ export function EnvironmentPanel({
       </div>
 
       {planUpdate ? <EnvironmentPlanSection planUpdate={planUpdate} /> : null}
+      {pluginSections}
 
       <div className="environment-panel-body">
         <button

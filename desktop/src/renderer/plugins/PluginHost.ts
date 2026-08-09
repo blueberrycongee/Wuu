@@ -2,6 +2,7 @@ import type * as React from "react";
 
 import type {
   CSSSnippet,
+  InspectorSectionDefinition,
   PluginUIKit,
   PresentationMode,
   PresentationTarget,
@@ -126,6 +127,8 @@ export interface PluginGenerationApi {
   registerViewType(definition: ViewTypeDefinition): Disposable;
   /** Request a default View placement in a stable host-owned region. */
   registerViewPlacement(contribution: ViewPlacementContribution): Disposable;
+  /** Register a short, context-driven summary in the host-owned Inspector. */
+  registerInspectorSection(definition: InspectorSectionDefinition): Disposable;
   /** Register a custom content renderer (message, tool result, document, file). */
   registerRenderer(definition: RendererDefinition): Disposable;
   /** Apply theme token overrides for a specific theme. */
@@ -161,6 +164,12 @@ export interface RegisteredPluginCommand extends PluginCommandRegistration {
 }
 
 export interface RegisteredViewType extends ViewTypeDefinition {
+  readonly pluginId: string;
+  readonly generation: string;
+  readonly order: number;
+}
+
+export interface RegisteredInspectorSection extends InspectorSectionDefinition {
   readonly pluginId: string;
   readonly generation: string;
   readonly order: number;
@@ -294,6 +303,11 @@ interface ViewPlacementRecord extends OrderedRecord {
   readonly region: ViewPlacementRegion;
 }
 
+interface InspectorSectionRecord extends OrderedRecord {
+  readonly title: string;
+  readonly render: InspectorSectionDefinition["render"];
+}
+
 interface RendererRecord extends OrderedRecord {
   readonly definition: RendererDefinition;
 }
@@ -332,6 +346,7 @@ interface GenerationState {
   // Phase C — Workbench
   readonly views: ViewTypeRecord[];
   readonly viewPlacements: ViewPlacementRecord[];
+  readonly inspectorSections: InspectorSectionRecord[];
   readonly renderers: RendererRecord[];
   readonly themeTokens: ThemeTokenRecord[];
   readonly cssSnippets: CSSSnippetRecord[];
@@ -355,6 +370,7 @@ const EMPTY_SURFACE_SNAPSHOT: readonly RegisteredPluginSurfaceContribution[] = O
 const EMPTY_COMMAND_SNAPSHOT: readonly RegisteredPluginCommand[] = Object.freeze([]);
 const EMPTY_VIEW_SNAPSHOT: readonly RegisteredViewType[] = Object.freeze([]);
 const EMPTY_VIEW_PLACEMENT_SNAPSHOT: readonly RegisteredViewPlacement[] = Object.freeze([]);
+const EMPTY_INSPECTOR_SECTION_SNAPSHOT: readonly RegisteredInspectorSection[] = Object.freeze([]);
 const EMPTY_VIEW_ENTRY_SNAPSHOT: readonly RegisteredPluginViewEntry[] = Object.freeze([]);
 const EMPTY_RENDERER_SNAPSHOT: readonly RegisteredRenderer[] = Object.freeze([]);
 const EMPTY_THEME_TOKEN_SNAPSHOT: readonly RegisteredThemeTokens[] = Object.freeze([]);
@@ -396,6 +412,7 @@ export class PluginHost {
   private commandSnapshot: readonly RegisteredPluginCommand[] = EMPTY_COMMAND_SNAPSHOT;
   private viewSnapshot: readonly RegisteredViewType[] = EMPTY_VIEW_SNAPSHOT;
   private viewPlacementSnapshot: readonly RegisteredViewPlacement[] = EMPTY_VIEW_PLACEMENT_SNAPSHOT;
+  private inspectorSectionSnapshot: readonly RegisteredInspectorSection[] = EMPTY_INSPECTOR_SECTION_SNAPSHOT;
   private navigationSnapshot: readonly RegisteredPluginViewEntry[] = EMPTY_VIEW_ENTRY_SNAPSHOT;
   private workspaceToolSnapshot: readonly RegisteredPluginViewEntry[] = EMPTY_VIEW_ENTRY_SNAPSHOT;
   private settingsPageSnapshot: readonly RegisteredPluginViewEntry[] = EMPTY_VIEW_ENTRY_SNAPSHOT;
@@ -538,6 +555,10 @@ export class PluginHost {
     return this.viewPlacementSnapshot;
   }
 
+  getInspectorSections(): readonly RegisteredInspectorSection[] {
+    return this.inspectorSectionSnapshot;
+  }
+
   getNavigationEntries(): readonly RegisteredPluginViewEntry[] {
     return this.navigationSnapshot;
   }
@@ -641,6 +662,17 @@ export class PluginHost {
       generation: contribution.generation,
       kind: "render",
       message: `Plugin presenter contribution ${contribution.id} failed to render: ${errorMessage(error)}`,
+      cause: error,
+      contributionId: contribution.id,
+    });
+  }
+
+  recordInspectorFailure(contribution: RegisteredInspectorSection, error: unknown): void {
+    this.addDiagnostic({
+      pluginId: contribution.pluginId,
+      generation: contribution.generation,
+      kind: "render",
+      message: `Plugin Inspector section ${contribution.id} failed to render: ${errorMessage(error)}`,
       cause: error,
       contributionId: contribution.id,
     });
@@ -834,6 +866,22 @@ export class PluginHost {
           region,
           priority: contribution.priority,
         });
+      },
+
+      registerInspectorSection: (definition: InspectorSectionDefinition) => {
+        this.assertAccepting(state);
+        const id = this.claimRegistrationId(state, "inspector-section", definition.id);
+        const record: InspectorSectionRecord = {
+          pluginId: state.pluginId,
+          generation: state.generation,
+          id,
+          order: normalizeOrder(definition.priority),
+          removed: false,
+          title: requireNonEmpty(definition.title, "Inspector section title"),
+          render: definition.render,
+        };
+        state.inspectorSections.push(record);
+        return this.ownRecord(state, record);
       },
 
       registerRenderer: (definition: RendererDefinition) => {
@@ -1090,6 +1138,7 @@ export class PluginHost {
     const styles: StyleRecord[] = [];
     const views: ViewTypeRecord[] = [];
     const viewPlacements: ViewPlacementRecord[] = [];
+    const inspectorSections: InspectorSectionRecord[] = [];
     const renderers: RendererRecord[] = [];
     const themeTokens: ThemeTokenRecord[] = [];
     const cssSnippets: CSSSnippetRecord[] = [];
@@ -1119,6 +1168,7 @@ export class PluginHost {
       styles.push(...state.styles.filter((record) => !record.removed));
       views.push(...state.views.filter((record) => !record.removed));
       viewPlacements.push(...state.viewPlacements.filter((record) => !record.removed));
+      inspectorSections.push(...state.inspectorSections.filter((record) => !record.removed));
       renderers.push(...state.renderers.filter((record) => !record.removed));
       themeTokens.push(...state.themeTokens.filter((record) => !record.removed));
       cssSnippets.push(...state.cssSnippets.filter((record) => !record.removed));
@@ -1185,6 +1235,14 @@ export class PluginHost {
     );
     if (!sameContributions(this.viewPlacementSnapshot, nextViewPlacements)) {
       this.viewPlacementSnapshot = nextViewPlacements;
+      changed = true;
+    }
+
+    const nextInspectorSections = Object.freeze(
+      inspectorSections.sort(compareOrdered).map(toPublicInspectorSection),
+    );
+    if (!sameContributions(this.inspectorSectionSnapshot, nextInspectorSections)) {
+      this.inspectorSectionSnapshot = nextInspectorSections;
       changed = true;
     }
 
@@ -1385,6 +1443,7 @@ function createGenerationState(
     locales: [],
     views: [],
     viewPlacements: [],
+    inspectorSections: [],
     renderers: [],
     themeTokens: [],
     cssSnippets: [],
@@ -1449,6 +1508,18 @@ function toPublicViewPlacement(record: ViewPlacementRecord): RegisteredViewPlace
     order: record.order,
     view: record.view,
     region: record.region,
+  });
+}
+
+function toPublicInspectorSection(record: InspectorSectionRecord): RegisteredInspectorSection {
+  return Object.freeze({
+    pluginId: record.pluginId,
+    generation: record.generation,
+    id: record.id,
+    title: record.title,
+    priority: record.order,
+    order: record.order,
+    render: record.render,
   });
 }
 

@@ -101,6 +101,30 @@ and dismissal win and are persisted. Placement does not expose the shell DOM, ar
 nodes, split-tree construction, panel dimensions, protected chrome, plugin management, or recovery
 UI. `registerViewPlacement` is the only placement API.
 
+## Inspector summaries
+
+Use `registerInspectorSection` for a short, scan-friendly summary in the host environment panel:
+
+```js
+api.registerInspectorSection({
+  id: "run-summary",
+  title: "Run summary",
+  priority: 20,
+  render({ snapshot, host }) {
+    return api.react.createElement(
+      api.ui.Button,
+      { onClick: () => host.openView("my-plugin.details", { region: "auxiliary" }) },
+      snapshot.session.status === "running" ? "Running" : "Idle",
+    );
+  },
+});
+```
+
+The versioned snapshot contains only public Session, Turn, Workspace, Git, and Plan summaries.
+Actions are limited to opening a registered View or executing a registered Command. The host caps
+each Section height, owns overflow, and isolates each contribution with its own error fallback.
+Long lists, editors, and complex interaction belong in a `primary` or `auxiliary` View.
+
 ## Host-owned discovery entries
 
 A registered View does not need to draw its own navigation or tabs. Declare where users should
