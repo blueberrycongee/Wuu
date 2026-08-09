@@ -1001,6 +1001,15 @@ func migrateSchema(db *sql.DB) error {
 			PRIMARY KEY(session_id, version),
 			FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE CASCADE
 		)`,
+		`CREATE TABLE IF NOT EXISTS session_driver_checkpoints (
+			session_id       TEXT PRIMARY KEY,
+			contract_version INTEGER NOT NULL,
+			driver_id        TEXT NOT NULL,
+			driver_version   TEXT NOT NULL,
+			state_json       TEXT NOT NULL,
+			updated_at       TEXT NOT NULL,
+			FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE CASCADE
+		)`,
 		`CREATE TABLE IF NOT EXISTS participants (
 			id         TEXT PRIMARY KEY,
 			kind       TEXT NOT NULL,

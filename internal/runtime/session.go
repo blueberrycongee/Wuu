@@ -25,6 +25,7 @@ import (
 	"github.com/blueberrycongee/wuu/internal/extensions"
 	"github.com/blueberrycongee/wuu/internal/hooks"
 	"github.com/blueberrycongee/wuu/internal/instructions"
+	"github.com/blueberrycongee/wuu/internal/loopdriver"
 	"github.com/blueberrycongee/wuu/internal/mcp"
 	"github.com/blueberrycongee/wuu/internal/memdir"
 	"github.com/blueberrycongee/wuu/internal/modelbudget"
@@ -1265,6 +1266,7 @@ func (s *Session) NewThreadRuntimeForRoot(sessionID, rootDir string) (*ThreadRun
 	runner.SystemPrompt, runner.SystemPromptSections = systemPromptForThreadRoot(runner.SystemPrompt, runner.SystemPromptSections, threadRoot, s.SessionDate)
 	runner.PromptCacheKey = strings.TrimSpace(id)
 	runner.InferenceJournal = s.InferenceJournalForOwner(id)
+	runner.DriverCheckpointStore = sessionDriverCheckpointStore{sessDir: s.SessionDir, sessionID: id}
 	runner.BeforeRequestContext = RuntimeContextInjector(agentControl, agentthread.RootPath, toolkitContextBlockProvider(kit))
 	runner.BeforeRequest = pluginRequestInterceptor(s.PluginHost, s.ProviderName, id, threadRoot)
 	return &ThreadRuntime{
@@ -1286,6 +1288,46 @@ func (s *Session) NewThreadRuntimeForRoot(sessionID, rootDir string) (*ThreadRun
 			PermissionMode: config.NormalizePermissionMode(s.Permissions.Mode),
 		},
 	}, nil
+}
+
+type sessionDriverCheckpointStore struct {
+	sessDir   string
+	sessionID string
+}
+
+func (store sessionDriverCheckpointStore) Load(ctx context.Context) (loopdriver.Checkpoint, bool, error) {
+	if err := ctx.Err(); err != nil {
+		return loopdriver.Checkpoint{}, false, err
+	}
+	record, ok, err := session.LoadDriverCheckpoint(store.sessDir, store.sessionID)
+	if errors.Is(err, session.ErrSessionNotFound) {
+		return loopdriver.Checkpoint{}, false, nil
+	}
+	if err != nil || !ok {
+		return loopdriver.Checkpoint{}, ok, err
+	}
+	return loopdriver.Checkpoint{
+		ContractVersion: record.ContractVersion,
+		DriverID:        record.DriverID,
+		DriverVersion:   record.DriverVersion,
+		State:           append(json.RawMessage(nil), record.State...),
+	}, true, nil
+}
+
+func (store sessionDriverCheckpointStore) Save(ctx context.Context, checkpoint loopdriver.Checkpoint) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	err := session.SaveDriverCheckpoint(store.sessDir, store.sessionID, session.DriverCheckpointRecord{
+		ContractVersion: checkpoint.ContractVersion,
+		DriverID:        checkpoint.DriverID,
+		DriverVersion:   checkpoint.DriverVersion,
+		State:           append(json.RawMessage(nil), checkpoint.State...),
+	})
+	if errors.Is(err, session.ErrSessionNotFound) {
+		return nil
+	}
+	return err
 }
 
 func cloneStreamRunnerForThread(base *agent.StreamRunner, toolExecutor agent.ToolExecutor) *agent.StreamRunner {

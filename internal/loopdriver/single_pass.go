@@ -91,8 +91,7 @@ func (instance *singlePassInstance) Run(ctx context.Context, gateway KernelGatew
 		LastReceiptID: receipt.ID,
 	})
 	instance.setCheckpoint(terminal)
-	checkpointErr := gateway.WriteCheckpoint(context.WithoutCancel(runCtx), terminal)
-	return TerminalOutcome{Status: status, ReceiptID: receipt.ID, Checkpoint: terminal}, errors.Join(runErr, checkpointErr)
+	return TerminalOutcome{Status: status, ReceiptID: receipt.ID, Checkpoint: terminal}, runErr
 }
 
 func (instance *singlePassInstance) Checkpoint() Checkpoint {

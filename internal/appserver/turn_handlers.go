@@ -3,6 +3,7 @@ package appserver
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"reflect"
@@ -2107,6 +2108,9 @@ func (s *Server) runTurnWithRequestContext(ctx context.Context, th *threadState,
 			persistErr = session.UpdateIndex(s.rt.SessionDir, th.ID, persistableMessageCount(th.History), threadPreview(th.History))
 		}
 	}
+	if persistErr == nil && th.PersistHistory {
+		persistErr = persistDriverCheckpoint(s.rt.SessionDir, th.ID, res)
+	}
 	status := TurnStatusCompleted
 	if err != nil {
 		status = TurnStatusFailed
@@ -2335,6 +2339,18 @@ func (s *Server) runTurnWithRequestContext(ctx context.Context, th *threadState,
 	s.kickQueuedTurnDrain(th.ID)
 }
 
+func persistDriverCheckpoint(sessDir, threadID string, res agent.LoopResult) error {
+	if strings.TrimSpace(res.DriverID) == "" || res.DriverContractVersion < 1 || len(res.DriverCheckpoint) == 0 {
+		return nil
+	}
+	return session.SaveDriverCheckpoint(sessDir, threadID, session.DriverCheckpointRecord{
+		ContractVersion: res.DriverContractVersion,
+		DriverID:        res.DriverID,
+		DriverVersion:   res.DriverVersion,
+		State:           append(json.RawMessage(nil), res.DriverCheckpoint...),
+	})
+}
+
 func (s *Server) persistTurnTrace(threadRuntime *runtime.ThreadRuntime, runner *agent.StreamRunner, threadID string, turnRuntime turnRuntimeSnapshot, turn Turn, res agent.LoopResult, runErr error, toolRecordStart int, contextRequests []sessiontrace.RequestContextRecord, providerStates []sessiontrace.ProviderStateRecord, compactAttempts []sessiontrace.CompactRecord, barrierRejectionsArg ...[]sessiontrace.BarrierToolBatchRejectionRecord) (string, error) {
 	if threadRuntime == nil || threadRuntime.Toolkit == nil {
 		return "", nil
@@ -2379,6 +2395,11 @@ func (s *Server) persistTurnTrace(threadRuntime *runtime.ThreadRuntime, runner *
 		StopReason:          res.StopReason,
 		Truncated:           res.Truncated,
 		HistoryRewritten:    res.HistoryRewritten,
+		DriverID:            res.DriverID,
+		DriverVersion:       res.DriverVersion,
+		DriverContract:      res.DriverContractVersion,
+		DriverStatus:        res.DriverStatus,
+		DriverCheckpoint:    append(json.RawMessage(nil), res.DriverCheckpoint...),
 		Error:               errorText,
 	}
 	finalRecord := sessiontrace.FinalRecord{
