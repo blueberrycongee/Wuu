@@ -4214,7 +4214,7 @@ export function App(): JSX.Element {
       >
         {ENABLE_GROUP_CHAT && channelsOpen ? (
           <>
-            <header className="titlebar">
+            <header className="titlebar" data-wuu-component="conversation-titlebar">
               <div className="title-block channel-title-block">
                 {sidebarVisible ? (
                   <button
@@ -4285,7 +4285,7 @@ export function App(): JSX.Element {
           </>
         ) : (
           <>
-        <header className="titlebar">
+        <header className="titlebar" data-wuu-component="conversation-titlebar">
           <div className="title-block">
             {sidebarVisible ? (
               <button
