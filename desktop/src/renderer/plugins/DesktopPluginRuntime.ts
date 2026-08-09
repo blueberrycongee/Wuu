@@ -5,6 +5,7 @@ import type { ExtensionInventoryRecord } from "../../shared/protocol";
 import { syncExtensionTheme } from "../Theme";
 import {
   PluginHost,
+  PluginGenerationSupersededError,
   type PluginContributionDeclarations,
   type PluginGenerationApi,
 } from "./PluginHost";
@@ -39,6 +40,7 @@ export const desktopWorkbenchController = new WorkbenchController(desktopPluginH
 
 export class DesktopPluginRuntime {
   private readonly activeGenerations = new Map<string, string>();
+  private desiredGenerations = new Map<string, string>();
   private syncEpoch = 0;
 
   constructor(
@@ -49,6 +51,7 @@ export class DesktopPluginRuntime {
   async sync(inventory: readonly ExtensionInventoryRecord[]): Promise<readonly DesktopPluginFailure[]> {
     const epoch = ++this.syncEpoch;
     const preferences = await window.wuu?.getPluginConflictPreferences?.();
+    if (epoch !== this.syncEpoch) return [];
     if (preferences) this.host.setConflictPreferences(preferences);
     const desired = new Map(
       inventory
@@ -56,7 +59,16 @@ export class DesktopPluginRuntime {
         .map((plugin) => [plugin.id, plugin] as const),
     );
 
-    for (const pluginId of this.activeGenerations.keys()) {
+    const previousDesired = this.desiredGenerations;
+    this.desiredGenerations = new Map(
+      [...desired.values()].map((plugin) => [plugin.id, plugin.fingerprint ?? ""]),
+    );
+
+    const knownPluginIds = new Set([
+      ...this.activeGenerations.keys(),
+      ...previousDesired.keys(),
+    ]);
+    for (const pluginId of knownPluginIds) {
       if (!desired.has(pluginId)) {
         this.host.unload(pluginId);
         this.activeGenerations.delete(pluginId);
@@ -70,7 +82,9 @@ export class DesktopPluginRuntime {
         continue;
       }
       try {
+        if (epoch !== this.syncEpoch) return failures;
         const loaded = await window.wuu?.loadPluginDesktopModule?.({ id: plugin.id, fingerprint });
+        if (epoch !== this.syncEpoch) return failures;
         if (!loaded || loaded.id !== plugin.id || loaded.fingerprint !== fingerprint) {
           throw new Error("Desktop plugin module identity mismatch");
         }
@@ -80,13 +94,27 @@ export class DesktopPluginRuntime {
           contributions: desktopContributionDeclarations(plugin),
           register: async (api) => {
             const module = requireDesktopPluginModule(await this.loadModule(loaded.url));
+            if (epoch !== this.syncEpoch) {
+              throw new PluginGenerationSupersededError(plugin.id, fingerprint);
+            }
             await module.activate(api);
+            if (epoch !== this.syncEpoch) {
+              throw new PluginGenerationSupersededError(plugin.id, fingerprint);
+            }
           },
         });
         if (epoch === this.syncEpoch) {
           this.activeGenerations.set(plugin.id, fingerprint);
         }
       } catch (error: unknown) {
+        if (epoch !== this.syncEpoch || error instanceof PluginGenerationSupersededError) {
+          continue;
+        }
+        const active = this.activeGenerations.get(plugin.id);
+        if (active && active !== fingerprint) {
+          this.host.unload(plugin.id);
+          this.activeGenerations.delete(plugin.id);
+        }
         failures.push({ pluginId: plugin.id, fingerprint, error });
       }
     }
@@ -138,6 +166,7 @@ function isLoadableDesktopPlugin(plugin: ExtensionInventoryRecord): boolean {
     && plugin.enabled !== false
     && approved
     && active
+    && plugin.runtime_state !== "failed"
     && typeof plugin.fingerprint === "string"
     && plugin.fingerprint.length > 0;
 }
