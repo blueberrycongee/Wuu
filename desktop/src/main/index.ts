@@ -121,6 +121,9 @@ import type {
   PluginDesktopModuleLoadResult,
   PluginDesktopModuleReadParams,
   PluginDesktopModuleReadResult,
+  PluginIconLoadResult,
+  PluginIconReadParams,
+  PluginIconReadResult,
   PluginSettingGetParams,
   PluginIdentityParams,
   PluginSettingSetParams,
@@ -187,6 +190,7 @@ import {
 } from "./renderableFileProtocol";
 import {
   cachePluginDesktopModule,
+  cachePluginIcon,
   registerPluginModuleProtocol,
   registerPluginModuleScheme,
 } from "./pluginModuleProtocol";
@@ -1445,6 +1449,17 @@ app.whenReady().then(async () => {
         params,
       );
       return cachePluginDesktopModule(module);
+    },
+  );
+  ipcMain.handle(
+    "wuu:plugin-icon-load",
+    async (event, params: PluginIconReadParams): Promise<PluginIconLoadResult> => {
+      const icon = await appServerRequest<PluginIconReadResult>(
+        event,
+        "plugin/icon/read",
+        params,
+      );
+      return cachePluginIcon(icon);
     },
   );
   ipcMain.handle("wuu:plugin-setting-get", (event, params: PluginSettingGetParams) =>

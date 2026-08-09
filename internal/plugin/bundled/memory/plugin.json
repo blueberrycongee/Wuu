@@ -3,6 +3,7 @@
   "id": "memory",
   "name": "Memory",
   "description": "Durable user memory notebook and management view.",
+  "icon": "brain",
   "version": "0.1.0",
   "author": { "name": "Wuu" },
   "minimumWuuVersion": "0.1.0",

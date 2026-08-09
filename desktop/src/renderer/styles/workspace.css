@@ -2632,6 +2632,12 @@ html.resizing-workspace-terminal-split * {
   background: var(--skill-artwork-official-bg);
 }
 
+.skill-artwork-plugin-brand .plugin-icon-asset,
+.skill-artwork-plugin-brand > svg {
+  width: 26px;
+  height: 26px;
+}
+
 .skill-artwork[class*="skill-artwork-official-"] svg,
 .skill-artwork-custom-skill svg,
 .skill-artwork-custom-plugin svg {

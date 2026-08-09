@@ -61,7 +61,7 @@ import { SCRATCH_PSEUDO_PROJECT_ID } from "./AppState";
 import { PinnedThreadList, ProjectGroup } from "./ThreadSidebar";
 import { SidebarSection, SidebarSectionDragHandleContext } from "./SidebarSection";
 import { PluginBlocksIcon } from "./PluginBlocksIcon";
-import { PublicIcon } from "./PublicIcon";
+import { PluginIcon } from "./PublicIcon";
 import { CollabNodesIcon } from "./CollabNodesIcon";
 import { useI18n } from "./i18n";
 import {
@@ -740,7 +740,7 @@ export function AppSidebar({
           parentId: "section:plugins",
           depth: 1,
           label: entry.title,
-          icon: entry.icon || "plugin-blocks",
+          icon: entry.icon && "name" in entry.icon ? entry.icon.name : "plugin-blocks",
           active: activePluginMainView?.pluginId === entry.pluginId
             && activePluginMainView.viewTypeId === entry.view,
           onActivate: () => openPluginNavigation(entry.pluginId, entry.view),
@@ -898,7 +898,7 @@ export function AppSidebar({
                       title={entry.description || entry.title}
                       onClick={() => openPluginNavigation(entry.pluginId, entry.view)}
                     >
-                      <PublicIcon name={entry.icon} className="icon-lg" />
+                      <PluginIcon icon={entry.icon} pluginId={entry.pluginId} fingerprint={entry.generation} className="icon-lg" />
                       <span>{entry.title}</span>
                     </button>
                   );

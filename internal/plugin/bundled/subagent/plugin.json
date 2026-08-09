@@ -3,6 +3,7 @@
   "id": "subagent",
   "name": "Subagent",
   "description": "Delegated child tasks and multi-agent coordination.",
+  "icon": "bot",
   "version": "0.1.0",
   "author": { "name": "Wuu" },
   "minimumWuuVersion": "0.1.0",

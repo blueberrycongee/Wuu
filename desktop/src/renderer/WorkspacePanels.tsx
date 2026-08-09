@@ -68,7 +68,7 @@ import type { TranslationKey } from "./i18n/resources/zh-CN";
 import { HeaderPresentation, immutableHeaderSnapshot } from "./plugins/HeaderPresentation";
 import { desktopPluginHost } from "./plugins/DesktopPluginRuntime";
 import type { PluginHost, RegisteredPluginViewEntry } from "./plugins/PluginHost";
-import { PublicIcon } from "./PublicIcon";
+import { PluginIcon } from "./PublicIcon";
 import { PluginSlot } from "./plugins/PluginSlot";
 import type { WorkbenchController } from "./plugins/Workbench";
 import { PluginViewContent } from "./plugins/Workbench";
@@ -1082,7 +1082,7 @@ function WorkspaceToolPicker({
             onClick={() => onSelectPluginTool(item)}
           >
             <span className="workspace-tool-menu-icon" aria-hidden="true">
-              <PublicIcon name={item.icon} className="icon-xl" />
+              <PluginIcon icon={item.icon} pluginId={item.pluginId} fingerprint={item.generation} className="icon-xl" />
             </span>
             <span className="workspace-tool-menu-copy">
               <strong>{item.title}</strong>
@@ -1183,7 +1183,7 @@ function WorkspaceViewTabIcon({ tab, className }: { tab: WorkspaceViewTab; class
     return <FileText className={className} />;
   }
   if (tab.kind === "plugin") {
-    return <PublicIcon name={tab.icon} className={className} />;
+    return <PluginIcon icon={tab.icon} pluginId={tab.pluginId} fingerprint={tab.fingerprint} className={className} />;
   }
   return <WorkspaceToolIcon view={tab.kind} className={className} />;
 }

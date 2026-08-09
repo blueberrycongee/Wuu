@@ -3,6 +3,7 @@
   "id": "plan",
   "name": "Plan",
   "description": "Visible task planning with an Inspector summary.",
+  "icon": "list-todo",
   "version": "0.1.0",
   "author": { "name": "Wuu" },
   "minimumWuuVersion": "0.1.0",

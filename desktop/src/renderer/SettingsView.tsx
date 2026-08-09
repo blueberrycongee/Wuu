@@ -88,7 +88,7 @@ import {
 import type { PluginHost } from "./plugins/PluginHost";
 import { PluginViewContent, type WorkbenchController } from "./plugins/Workbench";
 import { PluginSettingsEditor } from "./PluginSettingsEditor";
-import { PublicIcon } from "./PublicIcon";
+import { PluginIcon } from "./PublicIcon";
 import type { SettingsPageHostAPI, SettingsPageSummaryV1, SettingsValueMapV1 } from "../shared/workbench";
 
 export type SettingsPage =
@@ -897,7 +897,7 @@ export function SettingsView({
                   return (
                     <SettingsNavItem
                       key={pageId}
-                      icon={<PublicIcon name={entry.icon} className="icon-lg" />}
+                      icon={<PluginIcon icon={entry.icon} pluginId={entry.pluginId} fingerprint={entry.generation} className="icon-lg" />}
                       active={activePage === pageId}
                       onClick={() => setActivePage(pageId)}
                     >

@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 import { arrayMove } from "@dnd-kit/sortable";
-import type { RuntimeContext } from "../shared/protocol";
+import type { ExtensionIconDescriptor, RuntimeContext } from "../shared/protocol";
 import {
   parseWorkspaceFileTarget,
   type WorkspaceFileLinkTarget,
@@ -42,9 +42,10 @@ export type WorkspacePluginViewTab = {
   kind: "plugin";
   id: string;
   pluginId: string;
+  fingerprint: string;
   viewTypeId: string;
   title: string;
-  icon?: string;
+  icon?: ExtensionIconDescriptor;
 };
 
 export type WorkspaceViewTab = WorkspaceToolViewTab | WorkspaceDiffViewTab | WorkspaceFileViewTab | WorkspacePluginViewTab;
@@ -76,14 +77,16 @@ export function workspaceToolViewTab(kind: WorkspacePanelView): WorkspaceToolVie
 export function workspacePluginViewTab(entry: {
   id: string;
   pluginId: string;
+  generation: string;
   view: string;
   title: string;
-  icon?: string;
+  icon?: ExtensionIconDescriptor;
 }): WorkspacePluginViewTab {
   return {
     kind: "plugin",
     id: `plugin:${entry.pluginId}:${entry.id}`,
     pluginId: entry.pluginId,
+    fingerprint: entry.generation,
     viewTypeId: entry.view,
     title: entry.title,
     ...(entry.icon ? { icon: entry.icon } : {}),

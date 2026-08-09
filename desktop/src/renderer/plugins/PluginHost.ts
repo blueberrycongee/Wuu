@@ -1,4 +1,5 @@
 import type * as React from "react";
+import type { ExtensionIconDescriptor } from "../../shared/protocol";
 
 import type {
   CSSSnippet,
@@ -77,7 +78,7 @@ export interface PluginViewEntryDeclaration {
   readonly view: string;
   readonly title: string;
   readonly description?: string;
-  readonly icon?: string;
+  readonly icon?: ExtensionIconDescriptor;
   readonly order?: number;
 }
 

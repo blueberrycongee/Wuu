@@ -269,6 +269,7 @@ const api: WuuDesktopApi = {
     ipcRenderer.invoke("wuu:plugin-package-remove", id),
   loadPluginDesktopModule: (params) =>
     ipcRenderer.invoke("wuu:plugin-desktop-module-load", params),
+  loadPluginIcon: (params) => ipcRenderer.invoke("wuu:plugin-icon-load", params),
   getPluginSetting: (params) => ipcRenderer.invoke("wuu:plugin-setting-get", params),
   setPluginSetting: (params) => ipcRenderer.invoke("wuu:plugin-setting-set", params),
   getPluginDiagnostics: (params) => ipcRenderer.invoke("wuu:plugin-diagnostics-list", params),

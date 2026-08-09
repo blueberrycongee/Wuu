@@ -20,6 +20,7 @@ import { CatalogSearchField } from "./CatalogSearchField";
 import { translateCurrent, useI18n } from "./i18n";
 import { Modal } from "./Modal";
 import { PluginBlocksIcon } from "./PluginBlocksIcon";
+import { PluginIcon } from "./PublicIcon";
 import { PluginSettingsEditor } from "./PluginSettingsEditor";
 import { RichContent } from "./RichContent";
 import { ThreadContextMenu, type ThreadContextMenuItem } from "./ThreadContextMenu";
@@ -382,11 +383,7 @@ export function SkillsCatalog({
                   aria-label={t("skills.pluginDetailLabel", { name: record.name })}
                   onClick={() => setSelectedPluginID(record.id)}
                 >
-                  <SkillArtwork
-                    name={record.name}
-                    official={record.provenance.official === true}
-                    kind="plugin"
-                  />
+                  <PluginArtwork record={record} />
                   <span className="skill-row-copy">
                     <span className="skill-row-titlebar">
                       <h2>{record.name}</h2>
@@ -591,7 +588,11 @@ function PluginDetailDialog({
       ariaLabel={t("skills.pluginDetailLabel", { name: record.name })}
       icon={
         <span className="skill-preview-icon-title">
-          <PluginBlocksIcon />
+          {record.icon && record.fingerprint ? (
+            <PluginIcon icon={record.icon} pluginId={record.id} fingerprint={record.fingerprint} />
+          ) : (
+            <PluginBlocksIcon />
+          )}
           <span>{t("skills.sectionPlugins")}</span>
         </span>
       }
@@ -671,6 +672,21 @@ function PluginDetailDialog({
         <PluginSettingsEditor plugin={record} />
       </div>
     </Modal>
+  );
+}
+
+function PluginArtwork({ record }: { record: ExtensionInventoryRecord }): JSX.Element {
+  if (!record.icon || !record.fingerprint) {
+    return <SkillArtwork name={record.name} official={record.provenance.official === true} kind="plugin" />;
+  }
+  const identity = customSkillArtworkIdentity(record.name);
+  return (
+    <span
+      className={`skill-artwork skill-artwork-plugin-brand skill-artwork-palette-${identity.palette}`}
+      aria-hidden="true"
+    >
+      <PluginIcon icon={record.icon} pluginId={record.id} fingerprint={record.fingerprint} />
+    </span>
   );
 }
 
