@@ -46,8 +46,8 @@ func (s *Store) Create(spec Spec) (Goal, error) {
 	defer s.mu.Unlock()
 
 	existing, err := s.loadLocked()
-	if err == nil && !IsTerminalStatus(existing.Status) {
-		return Goal{}, fmt.Errorf("thread already has unfinished goal %q with status %s", existing.GoalID, existing.Status)
+	if err == nil {
+		return Goal{}, fmt.Errorf("thread already has goal %q with status %s; clear it before creating another", existing.GoalID, existing.Status)
 	}
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return Goal{}, err

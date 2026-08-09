@@ -25,7 +25,7 @@ func Handler() pluginapi.Handler {
 		Definition: pluginapi.Definition{
 			Tools: []pluginapi.Tool{
 				{ID: "get_goal", Description: "Get the current goal for this thread, including status, token usage, and elapsed-time usage.", InputSchema: emptySchema(), Activity: &pluginapi.ToolActivity{ReadOnly: true, ConcurrencySafe: true, Risk: "low"}},
-				{ID: "create_goal", Description: "Create a goal only when explicitly requested by the user or system/developer instructions; do not infer goals from ordinary tasks.", InputSchema: objectSchema(map[string]any{"objective": map[string]any{"type": "string", "description": "The concrete objective to pursue."}}, "objective")},
+				{ID: "create_goal", Description: "Create a goal only when explicitly requested by the user or system/developer instructions; do not infer goals from ordinary tasks. Fails if this thread already has a goal; the user must clear it first.", InputSchema: objectSchema(map[string]any{"objective": map[string]any{"type": "string", "description": "The concrete objective to pursue."}}, "objective")},
 				{ID: "update_goal", Description: "Mark the active goal complete or genuinely blocked. Complete requires verified achievement; blocked requires a repeated blocker that needs user input or external change.", InputSchema: objectSchema(map[string]any{"status": map[string]any{"type": "string", "enum": []string{"complete", "blocked"}}}, "status")},
 			},
 			Capabilities: []pluginapi.Capability{
@@ -62,8 +62,8 @@ func executeTool(ctx context.Context, client pluginapi.Host, call pluginapi.Tool
 		}
 		if current, ok, err := load(ctx, client, threadID); err != nil {
 			return pluginapi.ToolResult{}, err
-		} else if ok && !goalruntime.IsTerminalStatus(current.Status) {
-			return pluginapi.ToolResult{}, fmt.Errorf("thread already has unfinished goal %q with status %s", current.GoalID, current.Status)
+		} else if ok {
+			return pluginapi.ToolResult{}, fmt.Errorf("thread already has goal %q with status %s; the user must clear it before creating another", current.GoalID, current.Status)
 		}
 		goal, err := goalruntime.NewGoal(goalruntime.Spec{ThreadID: threadID, GoalID: newGoalID(), Objective: args.Objective}, time.Now().UTC())
 		if err == nil {
@@ -189,12 +189,12 @@ func handleClientRequest(ctx context.Context, client pluginapi.Host, method stri
 		}
 		return json.Marshal(map[string]any{"goal": goalView(goal)})
 	case "goal.set":
-		current, ok, err := load(ctx, client, threadID)
+		_, ok, err := load(ctx, client, threadID)
 		if err != nil {
 			return nil, err
 		}
-		if ok && !goalruntime.IsTerminalStatus(current.Status) {
-			return nil, errors.New("thread already has an unfinished goal")
+		if ok {
+			return nil, errors.New("thread already has a goal; clear it before creating another")
 		}
 		goal, err := goalruntime.NewGoal(goalruntime.Spec{ThreadID: threadID, GoalID: newGoalID(), Objective: args.Objective}, time.Now().UTC())
 		if err == nil {

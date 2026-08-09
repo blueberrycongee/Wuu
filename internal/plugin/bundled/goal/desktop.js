@@ -5,13 +5,13 @@ export async function activate(api) {
   api.registerLocale({ id: "goal-en", locale: "en-US", entries: {
     "goal.pause": "Pause goal", "goal.resume": "Resume goal", "goal.edit": "Edit goal",
     "goal.clear": "Clear goal", "goal.confirmClear": "Click again to confirm",
-    "goal.ready": "Ready to continue", "goal.paused": "Paused", "goal.blocked": "Blocked",
+    "goal.ready": "Ready to continue", "goal.paused": "Paused", "goal.blocked": "Blocked", "goal.complete": "Complete",
     "goal.save": "Save", "goal.cancel": "Cancel", "goal.emptyText": "Goal text cannot be empty"
   }});
   api.registerLocale({ id: "goal-zh", locale: "zh-CN", entries: {
     "goal.pause": "暂停目标", "goal.resume": "继续目标", "goal.edit": "编辑目标",
     "goal.clear": "清除目标", "goal.confirmClear": "再次点击确认清除",
-    "goal.ready": "可以继续", "goal.paused": "已暂停", "goal.blocked": "已阻塞",
+    "goal.ready": "可以继续", "goal.paused": "已暂停", "goal.blocked": "已阻塞", "goal.complete": "已完成",
     "goal.save": "保存", "goal.cancel": "取消", "goal.emptyText": "目标内容不能为空"
   }});
   api.registerStyle({ id: "goal-strip", css: `
@@ -75,15 +75,16 @@ export async function activate(api) {
         h("button", { className: "plugin-goal-button", disabled: busy, onClick: () => setEditing(false) }, tr("goal.cancel"))
       ), error ? h("div", { className: "plugin-goal-error" }, error) : null
     );
-    const statusKey = goal.status === "paused" ? "goal.paused" : goal.status === "blocked" ? "goal.blocked" : "goal.ready";
+    const statusKey = goal.status === "paused" ? "goal.paused" : goal.status === "blocked" ? "goal.blocked" : goal.status === "complete" ? "goal.complete" : "goal.ready";
+    const terminal = goal.status === "complete";
     return h("div", { className: "plugin-goal-strip" },
       h("div", { className: "plugin-goal-row" },
         h("span", { className: "plugin-goal-mark", "aria-hidden": true }, "◎"),
         h("span", { className: "plugin-goal-text", title: goal.objective }, goal.objective),
         h("span", { className: "plugin-goal-status" }, tr(statusKey)),
         h("div", { className: "plugin-goal-actions" },
-          h("button", { className: "plugin-goal-button", disabled: busy, onClick: () => { setDraft(goal.objective); setEditing(true); } }, tr("goal.edit")),
-          h("button", { className: "plugin-goal-button", disabled: busy, onClick: () => act(goal.status === "paused" ? "goal.resume" : "goal.pause") }, tr(goal.status === "paused" ? "goal.resume" : "goal.pause")),
+          terminal ? null : h("button", { className: "plugin-goal-button", disabled: busy, onClick: () => { setDraft(goal.objective); setEditing(true); } }, tr("goal.edit")),
+          terminal ? null : h("button", { className: "plugin-goal-button", disabled: busy, onClick: () => act(goal.status === "paused" || goal.status === "blocked" ? "goal.resume" : "goal.pause") }, tr(goal.status === "paused" || goal.status === "blocked" ? "goal.resume" : "goal.pause")),
           h("button", { className: "plugin-goal-button", disabled: busy, onClick: () => { if (confirmClear) void act("goal.clear"); else setConfirmClear(true); } }, tr(confirmClear ? "goal.confirmClear" : "goal.clear"))
         )
       ), error ? h("div", { className: "plugin-goal-error" }, error) : null
