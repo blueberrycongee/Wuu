@@ -338,8 +338,16 @@
   --activity-detail-error-border: #7a463f;
   --diff-insert-color: #3fb970;
   --diff-delete-color: #ef6a5e;
-  --live-gray-shimmer-edge: rgba(198, 202, 205, 0.1);
-  --live-gray-shimmer-center: rgba(198, 202, 205, 0.28);
+  --live-gray-shimmer-gradient: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(198, 202, 205, 0) 34%,
+    rgba(198, 202, 205, 0.2) 44%,
+    rgba(198, 202, 205, 0.42) 50%,
+    rgba(198, 202, 205, 0.2) 56%,
+    rgba(198, 202, 205, 0) 66%,
+    transparent 100%
+  );
   --rich-link-color: var(--wuu-color-link, #60a5fa);
   --rich-link-hover-color: var(--wuu-color-link-hover, #79b8ff);
   --rich-code-surface-bg: var(--wuu-color-surface-muted, #26292d);
@@ -380,6 +388,12 @@
   --shell-run-debug-panel-shadow-2: rgba(0, 0, 0, 0.35);
   --shell-run-debug-phase-running-color: #7dbba5;
   --shell-run-debug-empty-border: #33383d;
+  --conversation-floating-surface-bg: color-mix(in srgb, var(--wuu-color-surface-elevated, #282c32) 72%, transparent);
+  --conversation-floating-surface-border: color-mix(in srgb, var(--wuu-color-border-subtle, #ffffff1a) 78%, transparent);
+  --conversation-floating-surface-highlight: color-mix(in srgb, var(--wuu-color-canvas, #fff) 24%, transparent);
+  --conversation-floating-surface-hover-bg: color-mix(in srgb, var(--wuu-color-surface-elevated, #32363c) 88%, transparent);
+  --conversation-floating-surface-hover-border: color-mix(in srgb, var(--wuu-color-border-strong, #ffffff2e) 72%, transparent);
+  --conversation-floating-surface-focus: color-mix(in srgb, var(--wuu-color-focus, #fff) 38%, transparent);
   --shell-jump-pill-shadow: rgba(0, 0, 0, 0.28);
   --shell-jump-pill-contact-shadow: rgba(0, 0, 0, 0.12);
   --shell-jump-pill-hover-shadow: rgba(0, 0, 0, 0.35);
