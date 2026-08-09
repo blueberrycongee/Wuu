@@ -212,6 +212,26 @@
   font-weight: var(--weight-medium);
 }
 
+.settings-plugin-artwork {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid var(--skill-artwork-border);
+  border-radius: 6px;
+  background: var(--skill-artwork-official-bg);
+  box-shadow: 0 1px 5px var(--skill-artwork-shadow);
+}
+
+.settings-plugin-artwork > img,
+.settings-plugin-artwork > svg,
+.settings-plugin-artwork > .plugin-icon-themed {
+  width: 17px;
+  height: 17px;
+}
+
 /* =========================================================================
  * Settings sidebar collapse / hover-reveal — identical to the main app shell.
  *

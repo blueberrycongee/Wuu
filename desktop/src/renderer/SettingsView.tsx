@@ -227,6 +227,14 @@ export function SettingsView({
     () => (initialized?.extension_inventory ?? []).filter(isConfigurablePlugin),
     [initialized?.extension_inventory],
   );
+  const pluginRecordsByID = useMemo(
+    () => new Map(
+      (initialized?.extension_inventory ?? [])
+        .filter((record) => record.kind === "plugin")
+        .map((record) => [record.id, record] as const),
+    ),
+    [initialized?.extension_inventory],
+  );
   const activePluginSettingsRecord = activePage.startsWith("plugin-settings:")
     ? pluginSettingsRecords.find((plugin) => pluginSettingsPageId(plugin.id) === activePage)
     : undefined;
@@ -884,7 +892,7 @@ export function SettingsView({
                   return (
                     <SettingsNavItem
                       key={pageId}
-                      icon={<Plug className="icon-lg" />}
+                      icon={<SettingsPluginArtwork plugin={plugin} fallback={<Plug />} />}
                       active={activePage === pageId}
                       onClick={() => setActivePage(pageId)}
                     >
@@ -894,10 +902,22 @@ export function SettingsView({
                 })}
                 {customPluginSettingsPages.map((entry) => {
                   const pageId = pluginViewSettingsPageId(entry.pluginId, entry.id);
+                  const plugin = pluginRecordsByID.get(entry.pluginId);
                   return (
                     <SettingsNavItem
                       key={pageId}
-                      icon={<PluginIcon icon={entry.icon} pluginId={entry.pluginId} fingerprint={entry.generation} className="icon-lg" />}
+                      icon={
+                        <SettingsPluginArtwork
+                          plugin={plugin}
+                          fallback={
+                            <PluginIcon
+                              icon={entry.icon}
+                              pluginId={entry.pluginId}
+                              fingerprint={entry.generation}
+                            />
+                          }
+                        />
+                      }
                       active={activePage === pageId}
                       onClick={() => setActivePage(pageId)}
                     >
@@ -1128,6 +1148,22 @@ function SettingsNavItem({
       {icon}
       <span>{children}</span>
     </button>
+  );
+}
+
+function SettingsPluginArtwork({
+  plugin,
+  fallback,
+}: {
+  plugin?: ExtensionInventoryRecord;
+  fallback: ReactNode;
+}): JSX.Element {
+  return (
+    <span className="settings-plugin-artwork" aria-hidden="true">
+      {plugin?.icon && plugin.fingerprint ? (
+        <PluginIcon icon={plugin.icon} pluginId={plugin.id} fingerprint={plugin.fingerprint} />
+      ) : fallback}
+    </span>
   );
 }
 
