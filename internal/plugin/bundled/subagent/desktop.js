@@ -17,11 +17,9 @@ export async function activate(api) {
     .plugin-subagent-settings textarea { width:100%; min-height:120px; resize:vertical; font:12px/1.5 ui-monospace,monospace; color:var(--wuu-color-text); background:var(--wuu-color-surface-muted); border:1px solid var(--wuu-color-border-subtle); border-radius:7px; padding:9px; }
     .plugin-subagent-settings button { justify-self:start; }
     .plugin-subagent-settings-error { color:var(--wuu-color-danger); font-size:12px; }
-    .plugin-subagent-ultra { display:inline-grid; place-items:center; width:28px; height:28px; padding:0; border:1px solid transparent; border-radius:8px; background:transparent; color:var(--wuu-color-text-muted); cursor:pointer; font:600 11px/1 var(--wuu-font-family-ui); }
-    .plugin-subagent-ultra:hover { background:var(--wuu-color-surface-muted); color:var(--wuu-color-text); }
-    .plugin-subagent-ultra[aria-pressed="true"] { border-color:var(--wuu-color-accent); color:var(--wuu-color-accent); background:var(--wuu-color-surface-muted); }
-    .plugin-subagent-ultra:disabled { opacity:.45; cursor:default; }
     .plugin-subagent-ultra svg { width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:1.65; stroke-linecap:round; stroke-linejoin:round; }
+    .plugin-subagent-ultra .plugin-subagent-delegation-node { transition:fill var(--wuu-motion-duration-fast) var(--wuu-motion-easing-standard); }
+    .plugin-subagent-ultra[aria-pressed="true"] .plugin-subagent-delegation-node { fill:currentColor; }
   ` });
   function ChildTaskStatus(props) {
     const threadId = typeof props.threadId === "string" ? props.threadId : "";
@@ -72,10 +70,10 @@ export async function activate(api) {
   }
   function ProactiveDelegationIcon() {
     return h("svg", { viewBox:"0 0 20 20", "aria-hidden":"true" },
-      h("circle", { cx:"7", cy:"4", r:"2" }),
+      h("circle", { className:"plugin-subagent-delegation-node", cx:"7", cy:"4", r:"2" }),
       h("path", { d:"M7 6v2.5M3.5 11V9.5h7V11" }),
-      h("circle", { cx:"3.5", cy:"13.5", r:"2" }),
-      h("circle", { cx:"10.5", cy:"13.5", r:"2" }),
+      h("circle", { className:"plugin-subagent-delegation-node", cx:"3.5", cy:"13.5", r:"2" }),
+      h("circle", { className:"plugin-subagent-delegation-node", cx:"10.5", cy:"13.5", r:"2" }),
       h("path", { d:"M15.5 3v5M13 5.5h5" })
     );
   }
@@ -100,7 +98,7 @@ export async function activate(api) {
         setEnabled(Boolean(value?.enabled));
       } finally { setBusy(false); }
     };
-    return h("button", { type:"button", className:"plugin-subagent-ultra", disabled:busy, "aria-label":label, title:label, "aria-pressed":enabled, onClick:()=>void toggle() }, h(ProactiveDelegationIcon));
+    return h(api.ui.ToolbarToggle, { pressed:enabled, className:"plugin-subagent-ultra", disabled:busy, "aria-label":label, title:label, onClick:()=>void toggle() }, h(ProactiveDelegationIcon));
   }
   api.registerSlot("composer.above", { id: "subagent-status", order: 30, render: (context) => h(ChildTaskStatus, context) });
   api.registerSlot("composer.toolbar", { id: "subagent-ultra", order: 30, render: (context) => h(ProactiveDelegation, context) });
