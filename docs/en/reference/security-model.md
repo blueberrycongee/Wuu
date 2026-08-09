@@ -14,8 +14,8 @@ Wuu has three permission modes:
 
 | Mode | File reach | Mutations |
 |---|---|---|
-| `standard` | Registered workspace roots | Allowed inside those roots |
-| `read_only` | Registered workspace roots | Denied |
+| `standard` | Current runtime root, registered workspaces, system temporary directory, and explicit extra roots | Allowed inside those reachable roots |
+| `read_only` | Same reach as `standard` | Denied |
 | `unconfined` | No Wuu workspace restrictions | Allowed wherever the current OS user has permission |
 
 The default `standard` mode enforces paths and tool rules inside the Wuu

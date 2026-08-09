@@ -79,7 +79,8 @@ spawn，因此不经过 spawn 排队闸门；整合开始时，实际运行数�
 `wuu exec --json` 的 `session_configured` 事件都会回读实际生效的 `max_parallel`。
 
 主动委派不是核心配置或 app-server 模式。它由 Subagent 插件在自己的命名空间存储中保存开关，
-通过请求变换为后续模型请求加入委派 Prompt，并在 Composer 工具栏提供 A+ 控件。核心没有
+通过 `agent.pre_step` 为后续模型步骤追加带来源、可持久化的隐藏消息，并在 Composer 工具栏提供
+A+ 控件。核心没有
 `agent.ultra_mode`、Turn 快照、`ultra` 协议字段或 `wuu exec --ultra`；禁用 Subagent 插件会同时
 移除委派 Tool、Prompt、状态和界面入口。
 

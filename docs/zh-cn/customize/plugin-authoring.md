@@ -117,8 +117,9 @@ my-plugin/
 
 `contributes.settings` 声明生成式控件，支持 boolean、string、number 和 enum 四种类型。
 每个设置都有 `scope`（`user` 或 `workspace`）和 `apply`（`live` 或 `restart`）。用户
-在设置界面修改后，插件通过 SDK 的类型化 API 读取；桌面插件还可以通过
-`api.settings` 访问。设置和 Storage 按插件命名空间存储。禁用、升级和卸载插件都默认保留这些数据，
+在设置界面修改后，Agent runtime 可以通过版本化的 `host.settings.get/list` Service 读取；桌面
+View 则通过渲染参数中的 `host.getSetting` 访问。设置和 Storage 按插件命名空间存储，桌面 View
+使用 `host.getStorage` / `host.setStorage` 读写 Storage。禁用、升级和卸载插件都默认保留这些数据，
 便于重新安装后恢复；当前没有“卸载时同时删除数据”的隐式行为。
 
 ```json
@@ -327,7 +328,8 @@ export async function activate(api) {
   长列表、编辑器和复杂交互必须进入 `primary` 或 `auxiliary` View。
 - `api.ui`：宿主提供的小型 UI Kit，包括 `Page`、`Panel`、`Card`、`Section`、
   `Stack`、`Row`、`Button`、`ToolbarToggle`、`TextInput`、`TextArea`、`Checkbox`、`EmptyState`、
-  `LoadingState` 和 `ErrorState`。`Page` 支持 `comfortable`/`compact` 密度；状态组件由宿主
+  `LoadingState`、`ErrorState` 和 `LiveDuration`。`Page` 支持 `comfortable`/`compact` 密度；
+  `LiveDuration` 根据累计毫秒和可选运行起点显示实时更新的紧凑时长；状态组件由宿主
   统一处理 ARIA、加载动画、错误视觉、响应式间距和溢出。普通插件页面优先使用这些组件，
   因而会自动继承当前外观插件的颜色、字体、边框、圆角、阴影和密度。复杂 View 仍可使用
   任意 React，画布、终端和专用预览可以保留自己的主题边界；插件不应覆盖 UI Kit 的内部
@@ -341,7 +343,68 @@ export async function activate(api) {
   host；只有出现在 `host.actions` 中的 Action 才能调用。
   `registerToolActivityPresenter` 继续作为兼容的 Tool 专用入口。
 - `registerCommand`、`registerStatusItem`、`registerLocale`：命令、状态项和本地化。
-- `api.settings` / `api.storage`：读取声明式设置，读写插件命名空间的持久化存储。
+- `showConversationCard`：在指定会话底部显示由插件渲染的临时交互卡片。省略
+  `threadId` 时使用当前会话；返回的 handle 可以更新状态或关闭卡片。卡片不会写入
+  会话历史，也不会进入模型上下文；插件禁用、卸载或应用重启后由宿主清理。
+- View 渲染参数中的 `host.getSetting`、`host.getStorage`、`host.setStorage`：读取声明式设置，
+  读写插件命名空间的持久化存储。
+
+### 斜杠动作与临时卡片
+
+`contributes.commands` 中的 `runtime_action` 会与桌面入口通过 `registerCommand` 注册的
+同 ID 命令匹配。只有插件已获批、启用且桌面命令完成注册时，命令才会出现在 Composer
+的斜杠菜单中：
+
+```json
+{
+  "contributes": {
+    "commands": [{
+      "id": "show-status",
+      "title": "Show status",
+      "description": "Inspect the current plugin status",
+      "kind": "runtime_action",
+      "aliases": ["status"]
+    }]
+  }
+}
+```
+
+```js
+export function activate(api) {
+  let backgroundCard;
+
+  api.registerCommand({
+    id: "show-status",
+    title: "Show status",
+    execute(input) {
+      const card = api.showConversationCard({
+        threadId: input?.threadId,
+        title: "Plugin status",
+        state: { status: "ready" },
+        render({ state, dismiss }) {
+          return api.react.createElement(
+            api.ui.Stack,
+            { gap: "small" },
+            api.react.createElement("span", null, state.status),
+            api.react.createElement(api.ui.Button, { onClick: dismiss }, "Close"),
+          );
+        },
+      });
+      backgroundCard = card;
+    },
+  });
+
+  api.onHostEvent((event) => {
+    if (event?.type === "plugin-status-changed") {
+      backgroundCard?.update({ status: event.status });
+    }
+  });
+}
+```
+
+桌面插件也可以在后台事件或自身异步任务中直接调用 `showConversationCard`，不要求先执行
+斜杠命令。显式 `threadId` 可把卡片放入已加载的其他会话；省略时卡片进入当前会话。
+宿主负责底部位置、外壳、关闭按钮、错误边界和插件生命周期，插件负责卡片内部 UI 与状态。
 
 ### 声明式 CSS 锚点
 
@@ -366,7 +429,8 @@ snippets 而不是新增主题 Token：`app-shell`、`sidebar`、`conversation-p
 插件 UI Kit 公开 `plugin-ui-page`、`plugin-ui-panel`、`plugin-ui-card`、
 `plugin-ui-section`、`plugin-ui-stack`、`plugin-ui-row`、`plugin-ui-button`、
 `plugin-ui-field`、`plugin-ui-input`、`plugin-ui-empty-state`、`plugin-ui-loading-state` 和
-`plugin-ui-error-state`；外观插件应优先改公开 Token，确需结构化装饰时再按这些粗粒度语义处理。
+`plugin-ui-error-state`、`plugin-ui-live-duration`；外观插件应优先改公开 Token，确需结构化装饰时
+再按这些粗粒度语义处理。
 这份清单由 `desktop/src/renderer/plugins/ProductionSemanticAnchors.test.ts` 强制约束；
 锚点改名属于破坏性变更。
 

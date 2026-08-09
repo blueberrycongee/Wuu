@@ -169,11 +169,13 @@ and load-failure fallback; desktop modules cannot inject icon components into ho
 
 Custom Views receive `api.ui`, a deliberately small set of host-owned React components:
 `Page`, `Panel`, `Card`, `Section`, `Stack`, `Row`, `Button`, `ToolbarToggle`, `TextInput`, `TextArea`, `Checkbox`,
-`EmptyState`, `LoadingState`, and `ErrorState`.
+`EmptyState`, `LoadingState`, `ErrorState`, and `LiveDuration`.
 They preserve Wuu's spacing and interaction behavior while inheriting the active appearance theme.
 `Page` accepts `density: "comfortable" | "compact"`; state components own ARIA status, loading
 motion, error treatment, responsive spacing, and overflow behavior. Use `ToolbarToggle` for binary
 Composer-toolbar controls so the host owns `aria-pressed`, hit targets, focus, and active styling.
+`LiveDuration` renders accumulated milliseconds and, while active, updates from an optional running
+start time without requiring the plugin to own an interval.
 
 ```js
 const { Button, Card, Page, Section, Stack } = api.ui;
@@ -196,6 +198,41 @@ Use these components for ordinary product UI so appearance plugins also affect V
 other plugins. They are not a page DSL: complex Views may still render arbitrary React, and
 specialized canvases, terminals, and previews remain explicit theme boundaries. The UI Kit owns
 common layout rhythm; plugins should not override its internal class names.
+
+## Commands and conversation cards
+
+Declare a `runtime_action` under `contributes.commands` and register a desktop command with the same
+ID to expose an approved plugin action in the Composer slash menu. The entry is available only while
+the plugin is enabled and its desktop generation has registered the command; the manifest alone never
+executes plugin code.
+
+Use `api.showConversationCard` when that action, a host event, or plugin-owned asynchronous work needs
+to display temporary interaction at the bottom of a conversation. Omitting `threadId` targets the
+current conversation. The returned handle can update the card state or dismiss it. Cards are not
+written to conversation history or model context, and the host removes them when the generation is
+disposed or the app restarts.
+
+```js
+api.registerCommand({
+  id: "show-status",
+  title: "Show status",
+  execute(input) {
+    return api.showConversationCard({
+      threadId: input?.threadId,
+      title: "Plugin status",
+      state: { status: "ready" },
+      render({ state, dismiss }) {
+        return api.react.createElement(
+          api.ui.Stack,
+          { gap: "small" },
+          api.react.createElement("span", null, state.status),
+          api.react.createElement(api.ui.Button, { onClick: dismiss }, "Close"),
+        );
+      },
+    });
+  },
+});
+```
 
 ## Semantic presenters
 
@@ -288,7 +325,8 @@ of targeting individual action identities. The user-query surface is separately 
 
 The UI Kit exposes coarse anchors for `plugin-ui-page`, `plugin-ui-panel`, `plugin-ui-card`,
 `plugin-ui-section`, `plugin-ui-stack`, `plugin-ui-row`, `plugin-ui-button`, `plugin-ui-field`,
-`plugin-ui-input`, `plugin-ui-empty-state`, `plugin-ui-loading-state`, and `plugin-ui-error-state`.
+`plugin-ui-input`, `plugin-ui-empty-state`, `plugin-ui-loading-state`, `plugin-ui-error-state`, and
+`plugin-ui-live-duration`.
 Appearance plugins should prefer public tokens and use these boundaries only when a structural
 treatment is necessary.
 

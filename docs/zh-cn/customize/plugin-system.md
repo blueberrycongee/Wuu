@@ -432,7 +432,8 @@ Scope、通用 Service Graph，以及跨外部副作用的事务承诺。
 ## UI Kit 的覆盖范围
 
 `api.ui` 当前提供 `Page`、`Panel`、`Card`、`Section`、`Stack`、`Row`、`Button`、
-`ToolbarToggle`、`TextInput`、`TextArea`、`Checkbox`、`EmptyState`、`LoadingState` 和 `ErrorState`。
+`ToolbarToggle`、`TextInput`、`TextArea`、`Checkbox`、`EmptyState`、`LoadingState`、`ErrorState`
+和 `LiveDuration`。
 `Page` 统一密度和响应式间距，三种状态组件统一 ARIA、焦点、错误和加载行为。它的目的有三个：
 
 - 收敛页面、卡片、行和控件的公共节奏；

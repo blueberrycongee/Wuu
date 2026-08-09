@@ -190,6 +190,7 @@ Current implemented flags:
 --env KEY=VALUE
 --file <path>
 --image <path>
+--image-original
 --no-tools
 --json
 --ephemeral
@@ -200,7 +201,8 @@ Current implemented flags:
 --output-last-message <file>
 ```
 
-`--config` loads and explicitly trusts one config file. Relative paths are
+`--image-original` sends `--image` attachments without resizing them. `--config`
+loads and explicitly trusts one config file. Relative paths are
 resolved from `--workdir` when it is set, otherwise from the current directory.
 `--ignore-user-config` skips the user config and explicitly trusts the first
 project config (`.wuu.json`, then `wuu.json`) plus its project settings layers.
@@ -248,8 +250,9 @@ On a native `mcp_servers` name clash the native entry wins; `disabled` wins over
 
 `wuu exec` makes allow-or-deny decisions without an interactive approval step:
 
-- `standard` (default) confines file reach to registered workspace roots and
-  permits mutations inside them;
+- `standard` (default) confines file reach to the current runtime root,
+  registered workspaces, the system temporary directory, and explicit extra
+  roots, and permits mutations inside those reachable roots;
 - `read_only` keeps the same file reach and denies mutations;
 - `unconfined` removes Wuu's path confinement and permits mutations.
 
