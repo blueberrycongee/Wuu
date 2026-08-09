@@ -3,6 +3,7 @@ package subagent
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -42,7 +43,7 @@ func Handler() pluginapi.Handler {
 		Definition: pluginapi.Definition{
 			Tools: []pluginapi.Tool{
 				{ID: "spawn_agent", Description: "Delegate a bounded task when separate context or parallel work materially improves the result. Keep work local when the next step is tightly coupled or simpler to do directly. Set subagent_type for a fresh worker; omit it to fork the current conversation. Completion is delivered back into this session as a normal read-only query bubble.", InputSchema: spawnSchema(), ExecutionScopes: []string{"root"}, Activity: &pluginapi.ToolActivity{ConcurrencySafe: true}},
-				{ID: "send_message", Description: "Send a follow-up to an existing child task by session id or task name.", InputSchema: objectSchema(map[string]any{"target": stringField("Child session id or task name."), "message": stringField("Message to deliver."), "trigger_turn": map[string]any{"type": "boolean"}}, "target", "message"), ExecutionScopes: []string{"root"}, Activity: &pluginapi.ToolActivity{ConcurrencySafe: true}},
+				{ID: "send_message", Description: "Send a follow-up turn to an existing child task by session id or task name.", InputSchema: objectSchema(map[string]any{"target": stringField("Child session id or task name."), "message": stringField("Message to deliver.")}, "target", "message"), ExecutionScopes: []string{"root"}, Activity: &pluginapi.ToolActivity{ConcurrencySafe: true}},
 				{ID: "close_agent", Description: "Cancel an existing child task by session id or task name.", InputSchema: objectSchema(map[string]any{"target": stringField("Child session id or task name.")}, "target"), ExecutionScopes: []string{"root"}, Activity: &pluginapi.ToolActivity{ConcurrencySafe: true}},
 			},
 			Capabilities: []pluginapi.Capability{
@@ -80,14 +81,13 @@ func executeTool(ctx context.Context, host pluginapi.Host, call pluginapi.ToolCa
 
 func spawnAgent(ctx context.Context, host pluginapi.Host, call pluginapi.ToolCall) (pluginapi.ToolResult, error) {
 	var args struct {
-		Description     string `json:"description"`
-		Prompt          string `json:"prompt"`
-		SubagentType    string `json:"subagent_type"`
-		Name            string `json:"name"`
-		AgentProfile    string `json:"agent_profile"`
-		Model           string `json:"model"`
-		RunInBackground bool   `json:"run_in_background"`
-		Isolation       string `json:"isolation"`
+		Description  string `json:"description"`
+		Prompt       string `json:"prompt"`
+		SubagentType string `json:"subagent_type"`
+		Name         string `json:"name"`
+		AgentProfile string `json:"agent_profile"`
+		Model        string `json:"model"`
+		Isolation    string `json:"isolation"`
 	}
 	if err := json.Unmarshal(call.Arguments, &args); err != nil {
 		return pluginapi.ToolResult{}, err
@@ -142,7 +142,7 @@ func spawnAgent(ctx context.Context, host pluginapi.Host, call pluginapi.ToolCal
 	if err := saveRecord(ctx, host, record); err != nil {
 		return pluginapi.ToolResult{}, err
 	}
-	return pluginapi.TextResult(fmt.Sprintf(`{"session_id":%q,"task_name":%q,"state":%q,"background":%t}`, created.SessionID, name, sent.State, args.RunInBackground)), nil
+	return pluginapi.TextResult(fmt.Sprintf(`{"session_id":%q,"task_name":%q,"state":%q}`, created.SessionID, name, sent.State)), nil
 }
 
 func admitSpawn(ctx context.Context, host pluginapi.Host, parentSessionID string) (string, error) {
@@ -206,9 +206,8 @@ func sessionTreeRoot(sessionID string, byID map[string]pluginapi.SessionSummary)
 
 func sendMessage(ctx context.Context, host pluginapi.Host, call pluginapi.ToolCall) (pluginapi.ToolResult, error) {
 	var args struct {
-		Target      string `json:"target"`
-		Message     string `json:"message"`
-		TriggerTurn bool   `json:"trigger_turn"`
+		Target  string `json:"target"`
+		Message string `json:"message"`
 	}
 	if err := json.Unmarshal(call.Arguments, &args); err != nil {
 		return pluginapi.ToolResult{}, err
@@ -320,14 +319,26 @@ func invokeCapability(ctx context.Context, host pluginapi.Host, call pluginapi.C
 		if output == "" {
 			output = "子任务已结束，但没有返回文本结果。"
 		}
-		requestID, err := newRequestID()
+		deliveryRequestID := completionDeliveryRequestID(input.RequestID)
+		continuation, tracksContinuation, err := parentContinuationRecord(ctx, host, record, deliveryRequestID)
 		if err != nil {
 			return nil, err
 		}
+		if tracksContinuation {
+			if err := saveRecord(ctx, host, continuation); err != nil {
+				return nil, err
+			}
+		}
 		prompt := fmt.Sprintf("子任务 %s（session %s）已%s。请检查并整合以下交接结果：\n\n%s", record.Name, record.SessionID, lifecycleLabel(input.State), output)
 		var sent pluginapi.SessionSendResult
-		if err := host.CallHost(ctx, pluginapi.HostServiceSessionSend, pluginapi.SessionSendParams{RequestID: "deliver-" + requestID, SessionID: record.ParentSessionID, Input: pluginapi.SessionInput{Prompt: prompt}, Presentation: &pluginapi.SessionInputPresentation{Kind: "query_bubble", Text: "子任务 " + record.Name + " 已更新", Name: record.Name}, Cause: "subagent.completion"}, &sent); err != nil {
+		if err := host.CallHost(ctx, pluginapi.HostServiceSessionSend, pluginapi.SessionSendParams{RequestID: deliveryRequestID, SessionID: record.ParentSessionID, Input: pluginapi.SessionInput{Prompt: prompt}, Presentation: &pluginapi.SessionInputPresentation{Kind: "query_bubble", Text: "子任务 " + record.Name + " 已更新", Name: record.Name}, Cause: "subagent.completion"}, &sent); err != nil {
 			return nil, err
+		}
+		if tracksContinuation {
+			continuation.State = sent.State
+			if err := saveRecord(ctx, host, continuation); err != nil {
+				return nil, err
+			}
 		}
 		return json.RawMessage(`{}`), nil
 	default:
@@ -463,6 +474,42 @@ func loadStoredRecord(ctx context.Context, host pluginapi.Host, key string) (tas
 	return record, true, nil
 }
 
+func parentContinuationRecord(ctx context.Context, host pluginapi.Host, child taskRecord, requestID string) (taskRecord, bool, error) {
+	parentID := strings.TrimSpace(child.ParentSessionID)
+	if parentID == "" {
+		return taskRecord{}, false, nil
+	}
+	parent, ok, err := loadRecordBySession(ctx, host, parentID)
+	if err != nil {
+		return taskRecord{}, false, err
+	}
+	if !ok || strings.TrimSpace(parent.SessionID) != parentID || strings.TrimSpace(parent.ParentSessionID) == "" {
+		return taskRecord{}, false, nil
+	}
+	return taskRecord{
+		SessionID:       parentID,
+		ParentSessionID: parent.ParentSessionID,
+		RootSessionID:   firstNonEmpty(parent.RootSessionID, child.RootSessionID),
+		Name:            parent.Name,
+		RequestID:       requestID,
+		State:           "created",
+	}, true, nil
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
+}
+
+func completionDeliveryRequestID(requestID string) string {
+	digest := sha256.Sum256([]byte("subagent.completion\x00" + strings.TrimSpace(requestID)))
+	return "deliver-" + hex.EncodeToString(digest[:12])
+}
+
 func newRequestID() (string, error) {
 	var raw [12]byte
 	if _, err := rand.Read(raw[:]); err != nil {
@@ -501,7 +548,7 @@ func objectSchema(properties map[string]any, required ...string) map[string]any 
 	return map[string]any{"type": "object", "properties": properties, "required": required}
 }
 func spawnSchema() map[string]any {
-	return objectSchema(map[string]any{"description": stringField("Short 3-5 word summary of what the agent will do."), "prompt": stringField("Concrete, self-contained task brief with scope, constraints, acceptance criteria, and deliverable."), "subagent_type": stringField("Optional specialized agent type; omit to fork the current conversation."), "name": stringField("Optional addressable task name using lowercase letters, digits, and underscores."), "model": stringField("Optional configured model alias."), "run_in_background": map[string]any{"type": "boolean"}, "isolation": map[string]any{"type": "string", "enum": []string{"worktree"}}}, "description", "prompt")
+	return objectSchema(map[string]any{"description": stringField("Short 3-5 word summary of what the agent will do."), "prompt": stringField("Concrete, self-contained task brief with scope, constraints, acceptance criteria, and deliverable."), "subagent_type": stringField("Optional specialized agent type; omit to fork the current conversation."), "name": stringField("Optional addressable task name using lowercase letters, digits, and underscores."), "model": stringField("Optional configured model alias."), "isolation": map[string]any{"type": "string", "enum": []string{"worktree"}}}, "description", "prompt")
 }
 
 func workerPrompt(workerType, task string) string {
