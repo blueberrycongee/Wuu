@@ -68,8 +68,6 @@ type SeamKind string
 const (
 	SeamObserve   SeamKind = "observe"
 	SeamTransform SeamKind = "transform"
-	SeamGuard     SeamKind = "guard"
-	SeamAround    SeamKind = "around"
 	SeamDecision  SeamKind = "decision"
 )
 
@@ -117,10 +115,10 @@ func IsCapabilityNegotiationError(err error) bool {
 // CapabilityDescriptor declares one capability a plugin provides.
 // Capabilities are typed, versioned, and ordered by priority.
 type CapabilityDescriptor struct {
-	// ID is a stable dotted identifier, e.g. "agent.tool.execute.around".
+	// ID is a stable dotted identifier, e.g. "agent.request.transform".
 	ID string `json:"id"`
 
-	// Kind classifies the dispatch semantics (observe/transform/guard/around/decision).
+	// Kind classifies the dispatch semantics (observe/transform/decision).
 	Kind SeamKind `json:"kind"`
 
 	// ErrorPolicy controls whether one plugin failure stops dispatch. Omitted
@@ -182,16 +180,6 @@ const (
 	HostServiceSessionSend   HostServiceMethod = "host.session.send"
 	HostServiceSessionList   HostServiceMethod = "host.session.list"
 	HostServiceSessionCancel HostServiceMethod = "host.session.cancel"
-
-	// Session
-	HostServiceSessionGetInfo HostServiceMethod = "host.session.info"
-
-	// Workspace
-	HostServiceWorkspaceGetRoot HostServiceMethod = "host.workspace.root"
-	HostServiceWorkspaceList    HostServiceMethod = "host.workspace.list"
-
-	// Diagnostics
-	HostServiceDiagnosticsLog HostServiceMethod = "host.diagnostics.log"
 )
 
 const (
@@ -461,31 +449,6 @@ type SettingsListResult struct {
 	Entries map[string]json.RawMessage `json:"entries"`
 }
 
-// SessionInfoResult is the output of host.session.info.
-type SessionInfoResult struct {
-	SessionID string `json:"session_id"`
-	ThreadID  string `json:"thread_id,omitempty"`
-	CWD       string `json:"cwd"`
-	Model     string `json:"model"`
-}
-
-// WorkspaceRootResult is the output of host.workspace.root.
-type WorkspaceRootResult struct {
-	Root string `json:"root"`
-}
-
-// WorkspaceListResult is the output of host.workspace.list.
-type WorkspaceListResult struct {
-	Workspaces []WorkspaceInfo `json:"workspaces"`
-}
-
-// WorkspaceInfo describes one registered workspace.
-type WorkspaceInfo struct {
-	ID   string `json:"id"`
-	Root string `json:"root"`
-	Name string `json:"name,omitempty"`
-}
-
 // ---------------------------------------------------------------------------
 // Capability negotiation
 // ---------------------------------------------------------------------------
@@ -589,8 +552,6 @@ type CompactionOutput struct {
 var allowedCapabilityKinds = map[SeamKind]bool{
 	SeamObserve:   true,
 	SeamTransform: true,
-	SeamGuard:     true,
-	SeamAround:    true,
 	SeamDecision:  true,
 }
 
@@ -611,10 +572,7 @@ func ValidateCapabilityDescriptor(c CapabilityDescriptor) error {
 		return fmt.Errorf("capability %s: kind is required", id)
 	}
 	if !allowedCapabilityKinds[kind] {
-		return fmt.Errorf("capability %s: unknown kind %q (valid: observe, transform, guard, around, decision)", id, kind)
-	}
-	if kind == SeamGuard || kind == SeamAround {
-		return fmt.Errorf("capability %s: kind %q is not implemented by this host", id, kind)
+		return fmt.Errorf("capability %s: unknown kind %q (valid: observe, transform, decision)", id, kind)
 	}
 	policy := EffectiveErrorPolicy(c)
 	if policy != ErrorPolicyPropagate && policy != ErrorPolicyIsolate && policy != ErrorPolicyIgnore {
@@ -769,10 +727,7 @@ func ValidateHostServiceMethod(m HostServiceMethod) error {
 	switch m {
 	case HostServiceStorageGet, HostServiceStorageSet, HostServiceStorageDelete, HostServiceStorageKeys, HostServiceStorageCompareExchange,
 		HostServiceSettingsGet, HostServiceSettingsList,
-		HostServiceSessionCreate, HostServiceSessionSend, HostServiceSessionList, HostServiceSessionCancel,
-		HostServiceSessionGetInfo,
-		HostServiceWorkspaceGetRoot, HostServiceWorkspaceList,
-		HostServiceDiagnosticsLog:
+		HostServiceSessionCreate, HostServiceSessionSend, HostServiceSessionList, HostServiceSessionCancel:
 		return nil
 	default:
 		return fmt.Errorf("unknown host service method %q", m)
@@ -785,9 +740,6 @@ func AllHostServices() []HostServiceMethod {
 		HostServiceStorageGet, HostServiceStorageSet, HostServiceStorageDelete, HostServiceStorageKeys, HostServiceStorageCompareExchange,
 		HostServiceSettingsGet, HostServiceSettingsList,
 		HostServiceSessionCreate, HostServiceSessionSend, HostServiceSessionList, HostServiceSessionCancel,
-		HostServiceSessionGetInfo,
-		HostServiceWorkspaceGetRoot, HostServiceWorkspaceList,
-		HostServiceDiagnosticsLog,
 	}
 }
 

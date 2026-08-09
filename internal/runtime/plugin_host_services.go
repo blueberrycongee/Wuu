@@ -16,19 +16,7 @@ import (
 	"github.com/blueberrycongee/wuu/internal/pluginsettings"
 )
 
-var productionPluginHostServices = []pluginhost.HostServiceMethod{
-	pluginhost.HostServiceStorageGet,
-	pluginhost.HostServiceStorageSet,
-	pluginhost.HostServiceStorageDelete,
-	pluginhost.HostServiceStorageKeys,
-	pluginhost.HostServiceStorageCompareExchange,
-	pluginhost.HostServiceSettingsGet,
-	pluginhost.HostServiceSettingsList,
-	pluginhost.HostServiceSessionCreate,
-	pluginhost.HostServiceSessionSend,
-	pluginhost.HostServiceSessionList,
-	pluginhost.HostServiceSessionCancel,
-}
+var productionPluginHostServices = pluginhost.AllHostServices()
 
 // pluginHostServices is bound to exactly one installed plugin generation. It
 // never accepts a caller-supplied plugin ID or filesystem path: ownership and

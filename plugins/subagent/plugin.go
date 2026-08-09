@@ -18,8 +18,6 @@ const (
 	capabilityRequest   = "agent.request.transform"
 	capabilityClient    = "plugin.client.request"
 	capabilityLifecycle = "agent.turn.lifecycle"
-	hostStorageGet      = "host.storage.get"
-	hostStorageSet      = "host.storage.set"
 	ultraStorageKey     = "ultra.enabled"
 )
 
@@ -52,8 +50,8 @@ func Handler() pluginapi.Handler {
 				{ID: pluginapi.HostServiceSessionSend, Required: true},
 				{ID: pluginapi.HostServiceSessionList, Required: true},
 				{ID: pluginapi.HostServiceSessionCancel, Required: true},
-				{ID: hostStorageGet, Required: true},
-				{ID: hostStorageSet, Required: true},
+				{ID: pluginapi.HostServiceStorageGet, Required: true},
+				{ID: pluginapi.HostServiceStorageSet, Required: true},
 			},
 		},
 		ExecuteTool:      executeTool,
@@ -291,7 +289,7 @@ func loadUltraEnabled(ctx context.Context, host pluginapi.Host) (bool, error) {
 	var result struct {
 		Value *string `json:"value"`
 	}
-	if err := host.CallHost(ctx, hostStorageGet, map[string]any{"scope": "workspace", "key": ultraStorageKey}, &result); err != nil {
+	if err := host.CallHost(ctx, pluginapi.HostServiceStorageGet, map[string]any{"scope": "workspace", "key": ultraStorageKey}, &result); err != nil {
 		return false, err
 	}
 	return result.Value != nil && *result.Value == "true", nil
@@ -302,7 +300,7 @@ func saveUltraEnabled(ctx context.Context, host pluginapi.Host, enabled bool) er
 	if enabled {
 		value = "true"
 	}
-	return host.CallHost(ctx, hostStorageSet, map[string]any{"scope": "workspace", "key": ultraStorageKey, "value": value}, &struct{}{})
+	return host.CallHost(ctx, pluginapi.HostServiceStorageSet, map[string]any{"scope": "workspace", "key": ultraStorageKey, "value": value}, &struct{}{})
 }
 
 func resolveTask(ctx context.Context, host pluginapi.Host, parentID, target string) (taskRecord, error) {
@@ -341,7 +339,7 @@ func saveRecord(ctx context.Context, host pluginapi.Host, record taskRecord) err
 		return err
 	}
 	for _, key := range []string{"request." + record.RequestID, "session." + record.SessionID} {
-		if err := host.CallHost(ctx, hostStorageSet, map[string]any{"scope": "workspace", "key": key, "value": string(encoded)}, &struct{}{}); err != nil {
+		if err := host.CallHost(ctx, pluginapi.HostServiceStorageSet, map[string]any{"scope": "workspace", "key": key, "value": string(encoded)}, &struct{}{}); err != nil {
 			return err
 		}
 	}
@@ -358,7 +356,7 @@ func loadStoredRecord(ctx context.Context, host pluginapi.Host, key string) (tas
 	var result struct {
 		Value *string `json:"value"`
 	}
-	if err := host.CallHost(ctx, hostStorageGet, map[string]any{"scope": "workspace", "key": key}, &result); err != nil {
+	if err := host.CallHost(ctx, pluginapi.HostServiceStorageGet, map[string]any{"scope": "workspace", "key": key}, &result); err != nil {
 		return taskRecord{}, false, err
 	}
 	if result.Value == nil {

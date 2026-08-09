@@ -18,8 +18,6 @@ const (
 	capabilityTurnCompleted = "agent.turn.completed"
 	capabilityLifecycle     = "agent.turn.lifecycle"
 	capabilityClient        = "plugin.client.request"
-	hostStorageGet          = "host.storage.get"
-	hostStorageSet          = "host.storage.set"
 	stateStorageKey         = "dream.state"
 	defaultIntervalDays     = 7
 	defaultMinSessions      = 5
@@ -75,8 +73,8 @@ func Handler() pluginapi.Handler {
 			RequiredHostServices: []pluginapi.HostService{
 				{ID: pluginapi.HostServiceSessionCreate, Required: true},
 				{ID: pluginapi.HostServiceSessionSend, Required: true},
-				{ID: hostStorageGet, Required: true},
-				{ID: hostStorageSet, Required: true},
+				{ID: pluginapi.HostServiceStorageGet, Required: true},
+				{ID: pluginapi.HostServiceStorageSet, Required: true},
 			},
 		},
 		Initialize: func(ctx context.Context, host pluginapi.Host, _ pluginapi.InitializeParams) error {
@@ -139,7 +137,7 @@ func (c *controller) load(ctx context.Context) error {
 	var result struct {
 		Value *string `json:"value"`
 	}
-	if err := c.host.CallHost(ctx, hostStorageGet, map[string]any{"scope": "workspace", "key": stateStorageKey}, &result); err != nil {
+	if err := c.host.CallHost(ctx, pluginapi.HostServiceStorageGet, map[string]any{"scope": "workspace", "key": stateStorageKey}, &result); err != nil {
 		return err
 	}
 	if result.Value == nil {
@@ -178,7 +176,7 @@ func (c *controller) save(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	return c.host.CallHost(ctx, hostStorageSet, map[string]any{"scope": "workspace", "key": stateStorageKey, "value": string(encoded)}, &struct{}{})
+	return c.host.CallHost(ctx, pluginapi.HostServiceStorageSet, map[string]any{"scope": "workspace", "key": stateStorageKey, "value": string(encoded)}, &struct{}{})
 }
 
 func (c *controller) invokeCapability(ctx context.Context, call pluginapi.CapabilityCall) (json.RawMessage, error) {

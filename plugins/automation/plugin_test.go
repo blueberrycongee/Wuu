@@ -24,13 +24,13 @@ func (h *testHost) CallHost(_ context.Context, method string, params, result any
 	h.methods = append(h.methods, method)
 	var response any = struct{}{}
 	switch method {
-	case hostStorageGet:
+	case pluginapi.HostServiceStorageGet:
 		if h.state == "" {
 			response = map[string]any{"value": nil}
 		} else {
 			response = map[string]any{"value": h.state}
 		}
-	case hostStorageSet:
+	case pluginapi.HostServiceStorageSet:
 		encoded, _ := json.Marshal(params)
 		var input struct {
 			Value string `json:"value"`

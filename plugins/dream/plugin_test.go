@@ -24,11 +24,11 @@ func (h *fakeHost) CallHost(_ context.Context, method string, params, result any
 	defer h.mu.Unlock()
 	raw, _ := json.Marshal(params)
 	switch method {
-	case hostStorageGet:
+	case pluginapi.HostServiceStorageGet:
 		if h.state != "" {
 			_ = json.Unmarshal([]byte(`{"value":`+quoted(h.state)+`}`), result)
 		}
-	case hostStorageSet:
+	case pluginapi.HostServiceStorageSet:
 		var input struct {
 			Value string `json:"value"`
 		}

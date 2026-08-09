@@ -28,9 +28,9 @@ type ultraHost struct {
 
 func (h *ultraHost) CallHost(ctx context.Context, method string, params, result any) error {
 	switch method {
-	case hostStorageGet:
+	case pluginapi.HostServiceStorageGet:
 		return decodeInto(map[string]any{"value": h.value}, result)
-	case hostStorageSet:
+	case pluginapi.HostServiceStorageSet:
 		var input struct {
 			Value string `json:"value"`
 		}
@@ -44,7 +44,7 @@ func (h *ultraHost) CallHost(ctx context.Context, method string, params, result 
 }
 
 func (h *lifecycleHost) CallHost(ctx context.Context, method string, params, result any) error {
-	if method == hostStorageGet {
+	if method == pluginapi.HostServiceStorageGet {
 		encoded, _ := json.Marshal(h.record)
 		value, _ := json.Marshal(string(encoded))
 		return json.Unmarshal([]byte(`{"value":`+string(value)+`}`), result)

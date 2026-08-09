@@ -361,7 +361,7 @@ export type RuntimeHook =
   | "tool.execute.after"
   | "shell.env";
 
-export type CapabilityKind = "observe" | "transform" | "guard" | "around" | "decision";
+export type CapabilityKind = "observe" | "transform" | "decision";
 export type CapabilityErrorPolicy = "propagate" | "isolate" | "ignore";
 
 export interface CapabilityDescriptor {
@@ -379,16 +379,13 @@ export const HOST_SERVICE_METHODS = [
   "host.storage.set",
   "host.storage.delete",
   "host.storage.keys",
+  "host.storage.compare_exchange",
   "host.settings.get",
   "host.settings.list",
   "host.session.create",
   "host.session.send",
   "host.session.list",
   "host.session.cancel",
-  "host.session.info",
-  "host.workspace.root",
-  "host.workspace.list",
-  "host.diagnostics.log",
 ] as const;
 
 export type HostServiceMethod = (typeof HOST_SERVICE_METHODS)[number];
@@ -547,10 +544,14 @@ export interface ToolExecuteResult {
 }
 
 export interface HostServiceContracts {
-  "host.storage.get": { params: { key: string }; result: { value: string | null } };
-  "host.storage.set": { params: { key: string; value: string }; result: null };
-  "host.storage.delete": { params: { key: string }; result: null };
-  "host.storage.keys": { params: Record<string, never>; result: { keys: string[] } };
+  "host.storage.get": { params: { scope: "user" | "workspace"; key: string }; result: { value: string | null } };
+  "host.storage.set": { params: { scope: "user" | "workspace"; key: string; value: string }; result: Record<string, never> };
+  "host.storage.delete": { params: { scope: "user" | "workspace"; key: string }; result: Record<string, never> };
+  "host.storage.keys": { params: { scope: "user" | "workspace" }; result: { keys: string[] } };
+  "host.storage.compare_exchange": {
+    params: { scope: "user" | "workspace"; key: string; expected: string | null; value: string | null };
+    result: { swapped: boolean; value: string | null };
+  };
   "host.settings.get": { params: { key: string }; result: { value: unknown } };
   "host.settings.list": { params: Record<string, never>; result: { entries: Record<string, unknown> } };
   "host.session.create": {
@@ -596,13 +597,6 @@ export interface HostServiceContracts {
     params: { session_id: string };
     result: { session_id: string; cancelled: boolean };
   };
-  "host.session.info": { params: Record<string, never>; result: { session_id: string; thread_id?: string; cwd: string; model: string } };
-  "host.workspace.root": { params: Record<string, never>; result: { root: string } };
-  "host.workspace.list": {
-    params: Record<string, never>;
-    result: { workspaces: Array<{ id: string; root: string; name?: string }> };
-  };
-  "host.diagnostics.log": { params: Readonly<Record<string, unknown>>; result: unknown };
 }
 
 export type HostServiceCall<M extends HostServiceMethod = HostServiceMethod> = M extends HostServiceMethod
@@ -621,12 +615,30 @@ export type HostServiceResponse<M extends HostServiceMethod = HostServiceMethod>
 export type HostServiceRequest<M extends HostServiceMethod = HostServiceMethod> = HostServiceCall<M>;
 export type HostServiceResult<M extends HostServiceMethod = HostServiceMethod> = HostServiceResponse<M>;
 
+export class RuntimeHostServiceError extends Error {
+  readonly code: string;
+
+  constructor(error: HostServiceError) {
+    super(error.message);
+    this.name = "RuntimeHostServiceError";
+    this.code = error.code;
+  }
+}
+
+export interface RuntimeHost {
+  supports(method: HostServiceMethod): boolean;
+  call<M extends HostServiceMethod>(
+    method: M,
+    params: HostServiceContracts[M]["params"],
+  ): Promise<HostServiceContracts[M]["result"]>;
+}
+
 export interface RuntimePlugin {
-  initialize(params: RuntimeInitializeParams): RuntimeInitializeResult | Promise<RuntimeInitializeResult>;
-  activate?(): void | Promise<void>;
-  invokeCapability?(params: CapabilityInvokeParams): CapabilityInvokeResult | Promise<CapabilityInvokeResult>;
-  invokeHook?(params: HookInvokeParams): HookInvokeResult | Promise<HookInvokeResult>;
-  executeTool?(params: ToolExecuteParams): ToolExecuteResult | Promise<ToolExecuteResult>;
+  initialize(params: RuntimeInitializeParams, host: RuntimeHost): RuntimeInitializeResult | Promise<RuntimeInitializeResult>;
+  activate?(host: RuntimeHost): void | Promise<void>;
+  invokeCapability?(params: CapabilityInvokeParams, host: RuntimeHost): CapabilityInvokeResult | Promise<CapabilityInvokeResult>;
+  invokeHook?(params: HookInvokeParams, host: RuntimeHost): HookInvokeResult | Promise<HookInvokeResult>;
+  executeTool?(params: ToolExecuteParams, host: RuntimeHost): ToolExecuteResult | Promise<ToolExecuteResult>;
   shutdown?(): void | Promise<void>;
 }
 
@@ -678,23 +690,27 @@ export type RuntimeResponse =
   | { id: string; result: RuntimeInitializeResult | CapabilityInvokeResult | HookInvokeResult | ToolExecuteResult | null }
   | { id: string; error: { message: string } };
 
-export async function handleRuntimeRequest(plugin: RuntimePlugin, request: RuntimeRequest): Promise<RuntimeResponse> {
+export async function handleRuntimeRequest(
+  plugin: RuntimePlugin,
+  request: RuntimeRequest,
+  host: RuntimeHost = unavailableRuntimeHost,
+): Promise<RuntimeResponse> {
   try {
     switch (request.method) {
       case "initialize":
-        return { id: request.id, result: { ...await plugin.initialize(request.params), lifecycle_version: 1 } };
+        return { id: request.id, result: { ...await plugin.initialize(request.params, host), lifecycle_version: 1 } };
       case "activate":
-        await plugin.activate?.();
+        await plugin.activate?.(host);
         return { id: request.id, result: null };
       case "capability.invoke":
         if (!plugin.invokeCapability) throw new Error("capability.invoke is not implemented");
-        return { id: request.id, result: await plugin.invokeCapability(request.params) };
+        return { id: request.id, result: await plugin.invokeCapability(request.params, host) };
       case "hook.invoke":
         if (!plugin.invokeHook) throw new Error("hook.invoke is not implemented");
-        return { id: request.id, result: await plugin.invokeHook(request.params) };
+        return { id: request.id, result: await plugin.invokeHook(request.params, host) };
       case "tool.execute":
         if (!plugin.executeTool) throw new Error("tool.execute is not implemented");
-        return { id: request.id, result: await plugin.executeTool(request.params) };
+        return { id: request.id, result: await plugin.executeTool(request.params, host) };
       case "shutdown":
         await plugin.shutdown?.();
         return { id: request.id, result: null };
@@ -707,36 +723,127 @@ export async function handleRuntimeRequest(plugin: RuntimePlugin, request: Runti
 export interface JSONLInput extends AsyncIterable<Uint8Array | string> {}
 export interface JSONLOutput { write(chunk: string): unknown }
 
-/** Runs a plugin over Wuu's one-request/one-response JSON-lines transport. */
+const unavailableRuntimeHost: RuntimeHost = {
+  supports: () => false,
+  call: async (method) => { throw new Error(`host service ${method} is unavailable outside a runtime connection`); },
+};
+
+type PendingHostCall = {
+  resolve(value: unknown): void;
+  reject(error: Error): void;
+};
+
+class JSONLRuntimeHost implements RuntimeHost {
+  private sequence = 0;
+  private supported = new Set<HostServiceMethod>();
+  private readonly pending = new Map<string, PendingHostCall>();
+
+  constructor(private readonly send: (value: unknown) => Promise<void>) {}
+
+  configure(methods: readonly HostServiceMethod[] | undefined): void {
+    this.supported = new Set(methods ?? []);
+  }
+
+  supports(method: HostServiceMethod): boolean {
+    return this.supported.has(method);
+  }
+
+  call<M extends HostServiceMethod>(
+    method: M,
+    params: HostServiceContracts[M]["params"],
+  ): Promise<HostServiceContracts[M]["result"]> {
+    if (!this.supports(method)) {
+      return Promise.reject(new Error(`host service ${method} is not supported`));
+    }
+    const id = `plugin-${++this.sequence}`;
+    return new Promise<HostServiceContracts[M]["result"]>((resolve, reject) => {
+      this.pending.set(id, { resolve, reject });
+      void this.send({ id, method, params }).catch((error: unknown) => {
+        this.pending.delete(id);
+        reject(error instanceof Error ? error : new Error(String(error)));
+      });
+    });
+  }
+
+  route(value: unknown): boolean {
+    if (typeof value !== "object" || value === null) return false;
+    const response = value as { id?: unknown; method?: unknown; result?: unknown; error?: unknown };
+    if (typeof response.id !== "string" || response.method !== undefined) return false;
+    const pending = this.pending.get(response.id);
+    if (!pending) return false;
+    this.pending.delete(response.id);
+    if (response.error !== undefined) {
+      const error = response.error as { code?: unknown; message?: unknown };
+      pending.reject(new RuntimeHostServiceError({
+        code: typeof error.code === "string" ? error.code : "host_error",
+        message: typeof error.message === "string" ? error.message : "host service failed",
+      }));
+    } else {
+      pending.resolve(response.result);
+    }
+    return true;
+  }
+
+  close(): void {
+    for (const pending of this.pending.values()) {
+      pending.reject(new Error("runtime transport closed"));
+    }
+    this.pending.clear();
+  }
+}
+
+/** Runs a plugin over Wuu's full-duplex JSON-lines transport. */
 export async function runJSONLRuntime(
   plugin: RuntimePlugin,
   streams: { input: JSONLInput; output: JSONLOutput },
 ): Promise<void> {
+  let writes = Promise.resolve();
+  const send = (value: unknown): Promise<void> => {
+    const next = writes.then(async () => { await streams.output.write(`${JSON.stringify(value)}\n`); });
+    writes = next.catch(() => undefined);
+    return next;
+  };
+  const host = new JSONLRuntimeHost(send);
+  const active = new Set<Promise<void>>();
+  let requests = Promise.resolve();
+  const track = (task: Promise<void>): void => {
+    requests = task.catch(() => undefined);
+    active.add(task);
+    void task.then(() => active.delete(task), () => active.delete(task));
+  };
+  const enqueueResponse = (value: unknown): void => {
+    track(requests.then(() => send(value)));
+  };
+  const processLine = (line: string): void => {
+    if (line.trim() === "") return;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(line);
+    } catch (error) {
+      enqueueResponse({ id: "invalid", error: { message: error instanceof Error ? error.message : String(error) } });
+      return;
+    }
+    if (host.route(parsed)) return;
+    if (!isRuntimeRequest(parsed)) {
+      enqueueResponse({ id: "invalid", error: { message: "invalid runtime request" } });
+      return;
+    }
+    if (parsed.method === "initialize") host.configure(parsed.params.supported_host_services);
+    track(requests.then(() => handleRuntimeRequest(plugin, parsed, host)).then(send));
+  };
   const decoder = new TextDecoder();
   let buffered = "";
   for await (const chunk of streams.input) {
     buffered += typeof chunk === "string" ? chunk : decoder.decode(chunk, { stream: true });
     const lines = buffered.split("\n");
     buffered = lines.pop() ?? "";
-    for (const line of lines) {
-      await writeRuntimeLine(plugin, line, streams.output);
-    }
+    for (const line of lines) processLine(line);
   }
   buffered += decoder.decode();
-  if (buffered.trim() !== "") await writeRuntimeLine(plugin, buffered, streams.output);
-}
-
-async function writeRuntimeLine(plugin: RuntimePlugin, line: string, output: JSONLOutput): Promise<void> {
-  if (line.trim() === "") return;
-  let response: RuntimeResponse;
-  try {
-    const parsed: unknown = JSON.parse(line);
-    if (!isRuntimeRequest(parsed)) throw new Error("invalid runtime request");
-    response = await handleRuntimeRequest(plugin, parsed);
-  } catch (error) {
-    response = { id: "invalid", error: { message: error instanceof Error ? error.message : String(error) } };
-  }
-  output.write(`${JSON.stringify(response)}\n`);
+  if (buffered.trim() !== "") processLine(buffered);
+  host.close();
+  await Promise.all(active);
+  await writes;
 }
 
 function isRuntimeRequest(value: unknown): value is RuntimeRequest {

@@ -269,7 +269,7 @@ func runRuntimeHostServiceHelper() {
 		RequiredHostServices: []pluginhost.HostServiceDescriptor{
 			{ID: string(pluginhost.HostServiceStorageSet), Required: true},
 			{ID: string(pluginhost.HostServiceSettingsGet), Required: true},
-			{ID: string(pluginhost.HostServiceWorkspaceList), Required: false},
+			{ID: "host.workspace.list", Required: false},
 		},
 	}
 	encodeHelperResponse(encoder, initialize.ID, initResult)

@@ -140,12 +140,26 @@ runtime 进程由 Wuu 启动，是一个长驻进程，通过标准输入输出�
 它先协商协议与能力，然后持续接收事件和调用。开发者不需要手写协议：
 
 - TypeScript 侧使用公开的 `@wuu/plugin-sdk` 包；
-- Go 侧使用 `@wuu/plugin-go`（`packages/plugin-go`）。
+- Go 侧导入 `github.com/blueberrycongee/wuu/packages/plugin-go`。
 
-协议通道是异步双工的：宿主调用插件能力时，插件可以反向调用宿主服务；一次能力调用返回后，
-插件启动的后台工作也可以继续主动调用已经协商的宿主服务。SDK 按 request id 路由并发响应，
+协议通道是异步双工的：宿主调用插件能力时，插件可以通过传入的 `RuntimeHost` 反向调用宿主服务；
+一次能力调用返回后，插件启动的后台工作也可以继续主动调用已经协商的宿主服务。SDK 按 request id 路由并发响应，
 插件不能直接读写标准输入输出或假设请求与响应严格交替。后台 timer、watcher 或进程应在会话
 生命周期开始后启动，并在 generation 关闭时停止，不能越过禁用、升级和卸载边界继续运行。
+
+initialize 是只读 prepare 阶段，只能读取 Storage、Settings 和已有 Session 摘要。共享 Storage 写入、
+Session create/send 和后台 effect 在 generation 的包与策略提交后才开放，并通过 `activate(host)` 启动。
+旧 SDK 没有声明 lifecycle version，不能进入候选 generation。
+
+生产 Host Service 只有以下 11 个方法：
+
+- Storage：`get`、`set`、`delete`、`keys`、`compare_exchange`；每次调用都必须传
+  `scope: "user" | "workspace"`；
+- Settings：`get`、`list`，运行时只读；
+- Session：`create`、`send`、`list`、`cancel`。
+
+方法名、参数和结果类型以 SDK 的 `HOST_SERVICE_METHODS` 与 `HostServiceContracts` 为准。
+`host.session.info`、`host.workspace.*` 和 `host.diagnostics.log` 不属于生产合同。
 
 需要在后台发起普通 Agent 工作时，插件组合产品中立的 Session 服务：`host.session.create` 创建具有明确
 owner、visibility、parent、fresh/fork、workspace 和可选模型别名语义的 Session；`host.session.send` 向已有
@@ -175,19 +189,20 @@ runtime 插件可以注册工具和挂钩 Agent 生命周期。SDK 提供以下�
 
 | 能力 | 作用 | 语义 |
 | --- | --- | --- |
-| `agent.tool.register` | 注册模型可见的工具 | transform |
-| `agent.tool.execute.before` | 工具执行前拦截，可拒绝或改写参数 | guard |
-| `agent.tool.execute.after` | 工具成功后包装或改写结果 | transform |
 | `agent.system_prompt.section` | 贡献一段系统提示 | transform |
 | `agent.request.transform` | 改写发给模型的请求 | transform |
-| `agent.compaction` | 替换或参与摘要压缩策略 | decision |
-| `session.start` / `session.stop` | 观察会话生命周期 | observe |
-| `shell.env` | 提供命令运行时的环境变量 | transform |
+| `agent.compaction` | 替换摘要压缩结果 | decision；Experimental |
+| `agent.turn.completed` | 观察已提交的成功/失败 Turn 摘要 | observe |
+| `agent.turn.lifecycle` | 接收本插件投递 Turn 的 owner-scoped 生命周期 | observe |
+| `plugin.client.request` | 处理插件命名空间内的 Desktop/客户端请求 | decision |
 
-每个注册都属于一个 generation，并声明 `kind`（observe / transform / guard / around /
-decision）与 `priority`。guard 和 decision 可以短路；transform 按稳定顺序执行；插件
-不能把一种 seam 当作任意回调来用。候选激活是原子的：激活失败会回滚整个 generation，
-旧 generation 继续工作。
+工具通过 initialize result 的 `tools` 注册，不是一个名为 `agent.tool.register` 的 capability。
+每个 capability 都属于一个 generation，并声明已经实现的 `kind`（observe / transform /
+decision）与 `priority`。`guard`、`around` 没有宿主实现，不是可声明的公开 kind。
+
+旧 `hook.invoke` 只为现有插件兼容，禁止新增使用；新功能应使用上表的窄 capability、工具注册或 Host Service。
+候选 prepare 失败时旧 generation 继续工作；durable commit 后的单插件 activate 失败会在 inventory 中显示
+`failed/last_error`，不会伪装成 active。
 
 插件不会拿到私有 ThreadItem、协议消息、宿主 React 树或任意回调。快照、输入与输出
 都是冻结的公开结构，具体类型以 SDK 的 `index.ts` 为准。
@@ -195,27 +210,35 @@ decision）与 `priority`。guard 和 decision 可以短路；transform 按稳�
 ### 工具注册示例
 
 ```ts
-import { definePlugin, ToolRegistration } from "@wuu/plugin-sdk";
+import { runJSONLRuntime, type RuntimePlugin } from "@wuu/plugin-sdk";
 
-export default definePlugin({
-  async initialize(runtime) {
-    runtime.registerTool({
-      name: "my_search",
+const plugin: RuntimePlugin = {
+  initialize() {
+    return {
+      hooks: [],
+      protocol_version: 2,
+      tools: [{
+        id: "my_search",
       description: "Search a private index",
-      inputSchema: { type: "object", properties: { query: { type: "string" } } },
-      async execute(args) {
-        return { matches: await search(args.query) };
-      },
-    } satisfies ToolRegistration);
+        input_schema: {
+          type: "object",
+          properties: { query: { type: "string" } },
+          required: ["query"],
+        },
+      }],
+    };
   },
-});
+  async executeTool({ arguments: input }) {
+    const { query } = input as { query: string };
+    return { result: { structured_content: { matches: await search(query) } } };
+  },
+};
+
+await runJSONLRuntime(plugin, { input: process.stdin, output: process.stdout });
 ```
 
-### 工具策略挂钩示例
-
-在 `tool.execute.before` 挂钩中拒绝访问工作区外的路径，与插件文档中
-[权限模型](../reference/permissions.md) 的关系是：这是插件侧的策略，宿主的审批、权限底线和恢复
-路径始终由 Wuu 保留，插件不能覆盖。
+完整的 TypeScript 双工示例位于 `examples/plugins/stateful-runtime`：activate 后台使用 Storage CAS，
+capability handler 使用 Storage，并按显式客户端请求创建和投递 Session。
 
 ## 桌面插件
 

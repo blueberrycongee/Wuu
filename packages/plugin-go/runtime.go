@@ -22,12 +22,23 @@ const CapabilityProtocolVersion = 2
 const RuntimeLifecycleVersion = 1
 
 const (
+	HostServiceStorageGet             = "host.storage.get"
+	HostServiceStorageSet             = "host.storage.set"
+	HostServiceStorageDelete          = "host.storage.delete"
+	HostServiceStorageKeys            = "host.storage.keys"
 	HostServiceSessionCreate          = "host.session.create"
 	HostServiceSessionSend            = "host.session.send"
 	HostServiceSessionList            = "host.session.list"
 	HostServiceSessionCancel          = "host.session.cancel"
 	HostServiceStorageCompareExchange = "host.storage.compare_exchange"
+	HostServiceSettingsGet            = "host.settings.get"
+	HostServiceSettingsList           = "host.settings.list"
 	CapabilityAgentTurnLifecycle      = "agent.turn.lifecycle"
+)
+
+const (
+	StorageScopeUser      = "user"
+	StorageScopeWorkspace = "workspace"
 )
 
 type InitializeParams struct {
@@ -120,6 +131,58 @@ type TurnContextBlock struct {
 	Title   string `json:"title,omitempty"`
 	Source  string `json:"source,omitempty"`
 	Content string `json:"content"`
+}
+
+type StorageGetParams struct {
+	Scope string `json:"scope"`
+	Key   string `json:"key"`
+}
+
+type StorageGetResult struct {
+	Value *string `json:"value"`
+}
+
+type StorageSetParams struct {
+	Scope string `json:"scope"`
+	Key   string `json:"key"`
+	Value string `json:"value"`
+}
+
+type StorageDeleteParams struct {
+	Scope string `json:"scope"`
+	Key   string `json:"key"`
+}
+
+type StorageKeysParams struct {
+	Scope string `json:"scope"`
+}
+
+type StorageKeysResult struct {
+	Keys []string `json:"keys"`
+}
+
+type StorageCompareExchangeParams struct {
+	Scope    string  `json:"scope"`
+	Key      string  `json:"key"`
+	Expected *string `json:"expected"`
+	Value    *string `json:"value"`
+}
+
+type StorageCompareExchangeResult struct {
+	Swapped bool    `json:"swapped"`
+	Value   *string `json:"value"`
+}
+
+type SettingsGetParams struct {
+	Key string `json:"key"`
+}
+
+type SettingsGetResult struct {
+	Value json.RawMessage `json:"value"`
+}
+
+type SettingsListResult struct {
+	Entries map[string]json.RawMessage `json:"entries"`
 }
 
 type SessionCreateParams struct {

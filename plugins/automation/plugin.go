@@ -18,8 +18,6 @@ import (
 const (
 	capabilityClient    = "plugin.client.request"
 	capabilityLifecycle = "agent.turn.lifecycle"
-	hostStorageGet      = "host.storage.get"
-	hostStorageSet      = "host.storage.set"
 	stateStorageKey     = "automation.state"
 	maxTasks            = 100
 	maxRuns             = 500
@@ -77,7 +75,7 @@ func Handler() pluginapi.Handler {
 		Definition: pluginapi.Definition{
 			Tools:                []pluginapi.Tool{{ID: "cron", Description: "Manage scheduled Agent prompts. action=list returns tasks; action=add creates a one-shot or recurring task from a five-field cron expression; action=remove deletes a task. Use new_thread for an independent visible conversation and thread_heartbeat to wake an existing conversation.", InputSchema: cronSchema(), ExecutionScopes: []string{"root"}}},
 			Capabilities:         []pluginapi.Capability{{ID: capabilityClient, Kind: "decision", Version: 1}, {ID: capabilityLifecycle, Kind: "observe", Version: 1, ErrorPolicy: "isolate"}},
-			RequiredHostServices: []pluginapi.HostService{{ID: pluginapi.HostServiceSessionCreate, Required: true}, {ID: pluginapi.HostServiceSessionSend, Required: true}, {ID: hostStorageGet, Required: true}, {ID: hostStorageSet, Required: true}},
+			RequiredHostServices: []pluginapi.HostService{{ID: pluginapi.HostServiceSessionCreate, Required: true}, {ID: pluginapi.HostServiceSessionSend, Required: true}, {ID: pluginapi.HostServiceStorageGet, Required: true}, {ID: pluginapi.HostServiceStorageSet, Required: true}},
 		},
 		Initialize: func(ctx context.Context, host pluginapi.Host, _ pluginapi.InitializeParams) error {
 			return c.prepare(ctx, host)
@@ -151,7 +149,7 @@ func (c *controller) load(ctx context.Context) error {
 	var result struct {
 		Value *string `json:"value"`
 	}
-	if err := c.host.CallHost(ctx, hostStorageGet, map[string]any{"scope": "workspace", "key": stateStorageKey}, &result); err != nil {
+	if err := c.host.CallHost(ctx, pluginapi.HostServiceStorageGet, map[string]any{"scope": "workspace", "key": stateStorageKey}, &result); err != nil {
 		return err
 	}
 	if result.Value == nil {
@@ -184,7 +182,7 @@ func (c *controller) saveLocked(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	return c.host.CallHost(ctx, hostStorageSet, map[string]any{"scope": "workspace", "key": stateStorageKey, "value": string(encoded)}, &struct{}{})
+	return c.host.CallHost(ctx, pluginapi.HostServiceStorageSet, map[string]any{"scope": "workspace", "key": stateStorageKey, "value": string(encoded)}, &struct{}{})
 }
 
 func (c *controller) executeTool(ctx context.Context, call pluginapi.ToolCall) (pluginapi.ToolResult, error) {

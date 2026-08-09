@@ -33,9 +33,9 @@ func Handler() pluginapi.Handler {
 				{ID: capabilityTurnCompleted, Kind: "observe", ErrorPolicy: "isolate", Version: 1},
 			},
 			RequiredHostServices: []pluginapi.HostService{
-				{ID: "host.storage.get", Required: true},
-				{ID: "host.storage.set", Required: true},
-				{ID: "host.storage.delete", Required: true},
+				{ID: pluginapi.HostServiceStorageGet, Required: true},
+				{ID: pluginapi.HostServiceStorageSet, Required: true},
+				{ID: pluginapi.HostServiceStorageDelete, Required: true},
 				{ID: pluginapi.HostServiceSessionSend, Required: true},
 			},
 		},
@@ -254,7 +254,7 @@ func load(ctx context.Context, client pluginapi.Host, threadID string) (goalrunt
 	var response struct {
 		Value *string `json:"value"`
 	}
-	err := client.CallHost(ctx, "host.storage.get", map[string]string{"scope": storageScope, "key": storageKey(threadID)}, &response)
+	err := client.CallHost(ctx, pluginapi.HostServiceStorageGet, map[string]string{"scope": storageScope, "key": storageKey(threadID)}, &response)
 	if err != nil || response.Value == nil {
 		return goalruntime.Goal{}, false, err
 	}
@@ -268,11 +268,11 @@ func save(ctx context.Context, client pluginapi.Host, goal goalruntime.Goal) err
 	if err != nil {
 		return err
 	}
-	return client.CallHost(ctx, "host.storage.set", map[string]string{"scope": storageScope, "key": storageKey(goal.ThreadID), "value": string(raw)}, nil)
+	return client.CallHost(ctx, pluginapi.HostServiceStorageSet, map[string]string{"scope": storageScope, "key": storageKey(goal.ThreadID), "value": string(raw)}, nil)
 }
 
 func remove(ctx context.Context, client pluginapi.Host, threadID string) error {
-	return client.CallHost(ctx, "host.storage.delete", map[string]string{"scope": storageScope, "key": storageKey(threadID)}, nil)
+	return client.CallHost(ctx, pluginapi.HostServiceStorageDelete, map[string]string{"scope": storageScope, "key": storageKey(threadID)}, nil)
 }
 
 func storageKey(threadID string) string { return "goal." + strings.TrimSpace(threadID) }
