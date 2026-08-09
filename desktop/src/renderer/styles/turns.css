@@ -2347,11 +2347,14 @@
   animation: process-surface-count-jump var(--motion-base) var(--ease-out);
 }
 
+.process-surface-row.is-live-gray .process-surface-summary-line {
+  display: inline-block;
+}
+
 .process-surface-row.is-live-gray .process-surface-summary-line,
 .turn-reasoning-summary-text.is-live-gray,
 .turn-process-preview.is-live .turn-process-preview-text,
 .live-progress-chip {
-  display: inline-block;
   position: relative;
   isolation: isolate;
 }
@@ -2363,9 +2366,14 @@
   content: attr(data-text);
   position: absolute;
   inset: 0;
+  display: block;
   overflow: hidden;
   pointer-events: none;
   color: transparent;
+  font: inherit;
+  letter-spacing: inherit;
+  line-height: inherit;
+  text-align: inherit;
   text-overflow: ellipsis;
   white-space: nowrap;
   background-image: var(--live-gray-shimmer-gradient);
