@@ -11,11 +11,14 @@ export const ENABLE_REMOTE_CONTROL =
   import.meta.env.VITE_ENABLE_REMOTE_CONTROL === "true";
 
 /**
- * Collaboration is a standard desktop capability from v0.14.0 onward. Keep a
- * named constant while the renderer still shares gated component boundaries,
- * but do not let build-time environment drift hide the released product.
+ * Collaboration remains experimental while its product model is aligned with
+ * the plugin architecture. Keep it out of release builds until that ownership
+ * boundary is settled.
+ *
+ * Use `VITE_ENABLE_GROUP_CHAT=true npm run dev` for internal testing.
  */
-export const ENABLE_GROUP_CHAT = true;
+export const ENABLE_GROUP_CHAT =
+  import.meta.env.VITE_ENABLE_GROUP_CHAT === "true";
 
 /**
  * Voice input and its optional BYOK text polish are hidden while the native
