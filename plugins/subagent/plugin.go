@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"sync"
 
 	pluginapi "github.com/blueberrycongee/wuu/packages/plugin-go"
 )
@@ -21,13 +22,16 @@ const (
 	ultraStorageKey     = "ultra.enabled"
 	ultraMessageID      = "ultra.mode"
 	ultraOriginID       = "subagent:" + ultraMessageID
+	maxConcurrentAgents = 4
 )
 
 var taskNameCleaner = regexp.MustCompile(`[^a-z0-9_]+`)
+var spawnAdmissionMu sync.Mutex
 
 type taskRecord struct {
 	SessionID       string `json:"session_id"`
 	ParentSessionID string `json:"parent_session_id"`
+	RootSessionID   string `json:"root_session_id,omitempty"`
 	Name            string `json:"name"`
 	RequestID       string `json:"request_id"`
 	State           string `json:"state"`
@@ -97,6 +101,12 @@ func spawnAgent(ctx context.Context, host pluginapi.Host, call pluginapi.ToolCal
 	if strings.TrimSpace(call.SessionID) == "" {
 		return pluginapi.ToolResult{}, errors.New("spawn_agent requires a parent session")
 	}
+	spawnAdmissionMu.Lock()
+	defer spawnAdmissionMu.Unlock()
+	treeRoot, err := admitSpawn(ctx, host, call.SessionID)
+	if err != nil {
+		return pluginapi.ToolResult{}, err
+	}
 	name := strings.TrimSpace(args.Name)
 	if name == "" {
 		name = deriveTaskName(args.Description)
@@ -119,7 +129,7 @@ func spawnAgent(ctx context.Context, host pluginapi.Host, call pluginapi.ToolCal
 	if err != nil {
 		return pluginapi.ToolResult{}, err
 	}
-	record := taskRecord{SessionID: created.SessionID, ParentSessionID: call.SessionID, Name: name, RequestID: "turn-" + requestID, State: "created"}
+	record := taskRecord{SessionID: created.SessionID, ParentSessionID: call.SessionID, RootSessionID: treeRoot, Name: name, RequestID: "turn-" + requestID, State: "created"}
 	if err := saveRecord(ctx, host, record); err != nil {
 		return pluginapi.ToolResult{}, err
 	}
@@ -133,6 +143,65 @@ func spawnAgent(ctx context.Context, host pluginapi.Host, call pluginapi.ToolCal
 		return pluginapi.ToolResult{}, err
 	}
 	return pluginapi.TextResult(fmt.Sprintf(`{"session_id":%q,"task_name":%q,"state":%q,"background":%t}`, created.SessionID, name, sent.State, args.RunInBackground)), nil
+}
+
+func admitSpawn(ctx context.Context, host pluginapi.Host, parentSessionID string) (string, error) {
+	var listed pluginapi.SessionListResult
+	if err := host.CallHost(ctx, pluginapi.HostServiceSessionList, pluginapi.SessionListParams{}, &listed); err != nil {
+		return "", err
+	}
+	byID := make(map[string]pluginapi.SessionSummary, len(listed.Sessions))
+	for _, session := range listed.Sessions {
+		id := strings.TrimSpace(session.SessionID)
+		if id != "" {
+			byID[id] = session
+		}
+	}
+	treeRoot, err := sessionTreeRoot(strings.TrimSpace(parentSessionID), byID)
+	if err != nil {
+		return "", err
+	}
+	activeChildren := 0
+	for _, session := range listed.Sessions {
+		state := strings.TrimSpace(session.State)
+		if state != "running" && state != "queued" {
+			continue
+		}
+		root, err := sessionTreeRoot(strings.TrimSpace(session.SessionID), byID)
+		if err != nil {
+			return "", err
+		}
+		if root == treeRoot {
+			activeChildren++
+		}
+	}
+	if activeChildren >= maxConcurrentAgents-1 {
+		return "", fmt.Errorf("subagent tree has reached its active-agent limit (%d including the root); wait for or close an existing child before spawning another", maxConcurrentAgents)
+	}
+	return treeRoot, nil
+}
+
+func sessionTreeRoot(sessionID string, byID map[string]pluginapi.SessionSummary) (string, error) {
+	current := strings.TrimSpace(sessionID)
+	if current == "" {
+		return "", errors.New("subagent tree contains an empty session id")
+	}
+	seen := make(map[string]struct{})
+	for {
+		if _, exists := seen[current]; exists {
+			return "", fmt.Errorf("subagent tree contains a parent cycle at session %q", current)
+		}
+		seen[current] = struct{}{}
+		session, owned := byID[current]
+		if !owned {
+			return current, nil
+		}
+		parent := strings.TrimSpace(session.ParentSessionID)
+		if parent == "" {
+			return "", fmt.Errorf("plugin-owned child session %q has no parent session", current)
+		}
+		current = parent
+	}
 }
 
 func sendMessage(ctx context.Context, host pluginapi.Host, call pluginapi.ToolCall) (pluginapi.ToolResult, error) {
@@ -450,6 +519,8 @@ A completed subagent task does not mean the overall task is complete. Integrate 
 # Delegation
 
 The main agent owns the user conversation, final synthesis, and decision about whether delegation is worth the overhead. Keep tightly coupled, trivial, or critical-path work local. Delegate bounded independent research, verification, or disjoint implementation when separate context or parallel execution materially improves the result.
+
+Each delegation tree has four active-agent slots including its root, so at most three child sessions may be running or queued at once across the entire tree. Child sessions may delegate within that shared budget. Wait for or close existing work before spawning more when the tree is full.
 
 Fresh task prompts must be self-contained. Fork prompts may rely on inherited context but still need a concrete directive and scope. Child completion is delivered as a read-only query bubble; do not poll while work is running.`
 

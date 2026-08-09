@@ -101,13 +101,16 @@ func TestSpawnComposesPublicSessionServices(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(host.calls) != 6 {
+	if len(host.calls) != 7 {
 		t.Fatalf("calls = %+v", host.calls)
 	}
-	if host.calls[0].method != pluginapi.HostServiceSessionCreate || host.calls[0].params["parent_session_id"] != "parent-1" || host.calls[0].params["context_source"] != "fresh" || host.calls[0].params["model_alias"] != "cheap" {
-		t.Fatalf("create = %+v", host.calls[0])
+	if host.calls[0].method != pluginapi.HostServiceSessionList {
+		t.Fatalf("admission = %+v", host.calls[0])
 	}
-	if host.calls[3].method != pluginapi.HostServiceSessionSend {
+	if host.calls[1].method != pluginapi.HostServiceSessionCreate || host.calls[1].params["parent_session_id"] != "parent-1" || host.calls[1].params["context_source"] != "fresh" || host.calls[1].params["model_alias"] != "cheap" {
+		t.Fatalf("create = %+v", host.calls[1])
+	}
+	if host.calls[4].method != pluginapi.HostServiceSessionSend {
 		t.Fatalf("send = %+v", host.calls)
 	}
 	if len(result.Content) != 1 || result.Content[0].Text == "" {
