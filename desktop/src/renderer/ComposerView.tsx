@@ -65,6 +65,7 @@ import { WorkspaceDocumentDrawerContext } from "./WorkspaceDocumentTurnDock";
 import { desktopPluginHost } from "./plugins/DesktopPluginRuntime";
 import type { PluginHost } from "./plugins/PluginHost";
 import { PluginSlot } from "./plugins/PluginSlot";
+import { ComposerPluginToolbar } from "./plugins/ComposerPluginToolbar";
 import {
   AccessMenu,
   ComposerPlusButton,
@@ -90,6 +91,7 @@ import { ENABLE_VOICE_INPUT } from "./FeatureFlags";
 import type { TurnContextUsage } from "./AppState";
 
 const MemoizedComposerPluginSlot = memo(PluginSlot);
+const MemoizedComposerPluginToolbar = memo(ComposerPluginToolbar);
 
 type CollapsedComposerPromptBlock = {
   id: string;
@@ -1211,7 +1213,7 @@ export function Composer({
                     ) : null}
                   </div>
                 ) : null}
-                <MemoizedComposerPluginSlot host={pluginHost} id="composer.toolbar" context={pluginSlotContext} />
+                <MemoizedComposerPluginToolbar host={pluginHost} context={pluginSlotContext} />
               </div>
               <div className="composer-bar-right">
                 {hideRuntimeControls ? null : (

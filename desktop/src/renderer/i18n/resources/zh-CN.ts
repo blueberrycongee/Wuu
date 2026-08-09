@@ -680,6 +680,7 @@ export const zhCN = {
   "composer.addAttachment": "添加附件",
   "composer.addAttachmentHint": "图片或 PDF",
   "composer.plusMenu": "更多操作",
+  "composer.pluginToolsMore": "更多插件工具",
   "composer.plusSectionAdd": "添加",
   "composer.plusSectionCommands": "命令",
   "composer.permissionMode": "权限模式：{mode}",

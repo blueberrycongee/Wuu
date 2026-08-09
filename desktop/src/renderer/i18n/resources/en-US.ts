@@ -682,6 +682,7 @@ export const enUS = {
   "composer.addAttachment": "Add attachment",
   "composer.addAttachmentHint": "Images or PDFs",
   "composer.plusMenu": "More actions",
+  "composer.pluginToolsMore": "More plugin tools",
   "composer.plusSectionAdd": "Add",
   "composer.plusSectionCommands": "Commands",
   "composer.permissionMode": "Permission mode: {mode}",

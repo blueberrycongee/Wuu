@@ -24,6 +24,10 @@ export interface PluginSlotProps {
   context?: PluginSlotRenderContext;
 }
 
+export interface PluginSlotContributionProps extends PluginSlotProps {
+  contribution: RegisteredPluginSlotContribution;
+}
+
 interface ContributionBoundaryProps {
   host: PluginHost;
   slotId: PluginSlotId;
@@ -74,7 +78,6 @@ function ContributionContent({
 }
 
 export function PluginSlot({ host, id, context = EMPTY_CONTEXT }: PluginSlotProps): ReactNode {
-  const { locale } = useI18n();
   const subscribe = useCallback((listener: () => void) => host.subscribeSlot(id, listener), [host, id]);
   const getSnapshot = useCallback(() => host.getSlotSnapshot(id), [host, id]);
   const contributions = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
@@ -82,23 +85,38 @@ export function PluginSlot({ host, id, context = EMPTY_CONTEXT }: PluginSlotProp
   return createElement(
     Fragment,
     null,
-    ...contributions.map((contribution) => createElement(
-      ContributionBoundary,
-      {
-        key: `${contribution.pluginId}:${contribution.generation}:${contribution.id}`,
-        host,
-        slotId: id,
-        contribution,
-      },
-      <div
-        className="plugin-contribution-root"
-        data-wuu-component="plugin-contribution"
-        data-wuu-plugin={contribution.pluginId}
-        data-wuu-slot={id}
-        data-wuu-contribution={contribution.id}
-      >
-        <ContributionContent contribution={contribution} context={context} host={host} locale={locale} />
-      </div>,
-    )),
+    ...contributions.map((contribution) => createElement(PluginSlotContribution, {
+      key: `${contribution.pluginId}:${contribution.generation}:${contribution.id}`,
+      host,
+      id,
+      context,
+      contribution,
+    })),
+  );
+}
+
+export function PluginSlotContribution({
+  host,
+  id,
+  context = EMPTY_CONTEXT,
+  contribution,
+}: PluginSlotContributionProps): ReactNode {
+  const { locale } = useI18n();
+  return createElement(
+    ContributionBoundary,
+    {
+      host,
+      slotId: id,
+      contribution,
+    },
+    <div
+      className="plugin-contribution-root"
+      data-wuu-component="plugin-contribution"
+      data-wuu-plugin={contribution.pluginId}
+      data-wuu-slot={id}
+      data-wuu-contribution={contribution.id}
+    >
+      <ContributionContent contribution={contribution} context={context} host={host} locale={locale} />
+    </div>,
   );
 }

@@ -879,6 +879,53 @@
   overflow: hidden;
 }
 
+.composer-plugin-toolbar {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+}
+
+.composer-plugin-tools-anchor {
+  display: inline-flex;
+}
+
+.composer-plugin-tools-trigger svg {
+  width: var(--icon-size-sm);
+  height: var(--icon-size-sm);
+}
+
+.composer-plugin-tools-menu {
+  max-height: min(320px, var(--floating-menu-available-height, calc(100vh - 180px)));
+  gap: 2px;
+  overflow-y: auto;
+  padding: 6px;
+}
+
+.composer-plugin-tools-item {
+  display: grid;
+  min-height: 38px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  border-radius: var(--radius-sm);
+  padding: 4px 7px 4px 10px;
+}
+
+.composer-plugin-tools-item:hover {
+  background: var(--surface-2);
+}
+
+.composer-plugin-tools-label {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: var(--font-ui);
+  font-weight: var(--weight-medium);
+  line-height: var(--line-ui);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .composer-voice-input {
   display: inline-flex;
   min-width: 0;

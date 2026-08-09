@@ -21,6 +21,7 @@ export type FloatingMenuOwner =
   | "composer-token-gauge"
   | "composer-focus"
   | "composer-plus"
+  | "composer-plugin-tools"
   | "composer-slash"
   | "codex-runtime"
   | "composer-query-history"

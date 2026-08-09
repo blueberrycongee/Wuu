@@ -151,6 +151,7 @@ export interface ActivatePluginGenerationOptions {
 export interface RegisteredPluginSlotContribution extends PluginSlotRegistration {
   readonly pluginId: string;
   readonly generation: string;
+  readonly title?: string;
 }
 
 export interface RegisteredPluginSurfaceContribution extends PluginSurfaceRegistration {
@@ -267,6 +268,7 @@ interface OrderedRecord {
 
 interface SlotRecord extends OrderedRecord {
   readonly slotId: PluginSlotId;
+  readonly title?: string;
   readonly render: PluginSlotRegistration["render"];
 }
 
@@ -757,6 +759,7 @@ export class PluginHost {
           id,
           order,
           slotId,
+          title: declaredContributionTitle(state, "slot", id),
           render: contribution.render,
           removed: false,
         };
@@ -1464,6 +1467,7 @@ function toPublicSlotContribution(record: SlotRecord): RegisteredPluginSlotContr
     generation: record.generation,
     id: record.id,
     order: record.order,
+    title: record.title,
     render: record.render,
   });
 }
@@ -1573,12 +1577,14 @@ function toPublicPresenter(record: PresenterRecord): RegisteredPresenter {
 
 function declaredContributionTitle(
   state: GenerationState,
-  kind: "surface" | "presenter",
+  kind: "slot" | "surface" | "presenter",
   id: string,
 ): string | undefined {
-  const declarations = kind === "surface"
-    ? state.declaredContributions?.surfaces
-    : state.declaredContributions?.presenters;
+  const declarations = kind === "slot"
+    ? state.declaredContributions?.slots
+    : kind === "surface"
+      ? state.declaredContributions?.surfaces
+      : state.declaredContributions?.presenters;
   return declarations?.find((declaration) => declaration.id === id)?.title;
 }
 
