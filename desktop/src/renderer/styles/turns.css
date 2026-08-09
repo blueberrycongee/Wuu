@@ -32,13 +32,13 @@
   --live-gray-shimmer-center: color-mix(in srgb, var(--wuu-color-text-muted, #7b8580) 32%, transparent);
   --rich-link-color: var(--wuu-color-link, #0969da);
   --rich-link-hover-color: var(--wuu-color-link-hover, #0550ae);
-  --rich-code-surface-bg: #F4F4F4;
+  --rich-code-surface-bg: var(--wuu-color-surface-muted, #F4F4F4);
   --surface-chip: #E9EAEA;
   --fork-worktree-copy-bg: rgba(255, 255, 255, 0.84);
   --fork-worktree-focus-ring: rgba(9, 105, 218, 0.22);
   --rich-blockquote-color: var(--gray-650);
   --rich-rule-color: var(--gray-250);
-  --pre-text-color: var(--gray-700);
+  --pre-text-color: var(--wuu-color-text, var(--gray-700));
   --turn-notice-auth-color: #9a3412;
   --system-line-marker-color: var(--gray-400);
   --empty-home-action-border: var(--gray-200);
@@ -2753,7 +2753,7 @@
 .rich-code-block {
   margin: 8px 0;
   background: var(--rich-code-surface-bg);
-  border: 1px solid var(--ink-overlay-6);
+  border: 1px solid var(--wuu-color-border-subtle, var(--ink-overlay-6));
   border-radius: var(--radius-sm);
   overflow: hidden;
 }
@@ -3304,7 +3304,7 @@ pre {
   border-bottom: 1px solid var(--surface-3);
   background: var(--surface-1);
   color: var(--pre-text-color);
-  font-family: "SFMono-Regular", Consolas, monospace;
+  font-family: var(--wuu-font-family-mono, var(--font-mono, "SFMono-Regular", Consolas, monospace));
   font-size: var(--font-sm);
   line-height: 1.5;
   white-space: pre-wrap;

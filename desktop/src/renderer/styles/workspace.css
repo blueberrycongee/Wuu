@@ -64,11 +64,11 @@
   --hljs-keyword: var(--wuu-syntax-keyword, #2f6ea5);
   --hljs-function: var(--wuu-syntax-function, #7a4b9d);
   --hljs-string: var(--wuu-syntax-string, #2f7d5c);
-  --hljs-number: #98651f;
+  --hljs-number: var(--wuu-syntax-number, #98651f);
   --hljs-comment: var(--wuu-syntax-comment, #879098);
-  --hljs-tag: #9a4f55;
-  --hljs-literal: #6f5ca7;
-  --hljs-meta: #5f6870;
+  --hljs-tag: var(--wuu-syntax-tag, #9a4f55);
+  --hljs-literal: var(--wuu-syntax-literal, #6f5ca7);
+  --hljs-meta: var(--wuu-syntax-meta, #5f6870);
   --diff-branch-arrow: #b2b6ba;
   --diff-file-text: #2c3034;
   --diff-status-bg: #ecefec;
