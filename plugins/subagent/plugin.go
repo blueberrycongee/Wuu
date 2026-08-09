@@ -42,7 +42,7 @@ func Handler() pluginapi.Handler {
 	return pluginapi.Handler{
 		Definition: pluginapi.Definition{
 			Tools: []pluginapi.Tool{
-				{ID: "spawn_agent", Description: "Delegate a bounded task when separate context or parallel work materially improves the result. Keep work local when the next step is tightly coupled or simpler to do directly. Set subagent_type for a fresh worker; omit it to fork the current conversation. Completion is delivered back into this session as a normal read-only query bubble.", InputSchema: spawnSchema(), ExecutionScopes: []string{"root"}, Activity: &pluginapi.ToolActivity{ConcurrencySafe: true}},
+				{ID: "spawn_agent", Description: "Delegate a bounded task when separate context or parallel work materially improves the result. Child sessions start with fresh conversation context unless context is explicitly set to fork. Installed plugins and workspace capabilities remain available in either mode. Completion is delivered back into this session as a normal read-only query bubble.", InputSchema: spawnSchema(), ExecutionScopes: []string{"root"}, Activity: &pluginapi.ToolActivity{ConcurrencySafe: true}},
 				{ID: "send_message", Description: "Send a follow-up turn to an existing child task by session id or task name.", InputSchema: objectSchema(map[string]any{"target": stringField("Child session id or task name."), "message": stringField("Message to deliver.")}, "target", "message"), ExecutionScopes: []string{"root"}, Activity: &pluginapi.ToolActivity{ConcurrencySafe: true}},
 				{ID: "close_agent", Description: "Cancel an existing child task by session id or task name.", InputSchema: objectSchema(map[string]any{"target": stringField("Child session id or task name.")}, "target"), ExecutionScopes: []string{"root"}, Activity: &pluginapi.ToolActivity{ConcurrencySafe: true}},
 			},
@@ -87,6 +87,7 @@ func spawnAgent(ctx context.Context, host pluginapi.Host, call pluginapi.ToolCal
 		Name         string `json:"name"`
 		AgentProfile string `json:"agent_profile"`
 		Model        string `json:"model"`
+		Context      string `json:"context"`
 		Isolation    string `json:"isolation"`
 	}
 	if err := json.Unmarshal(call.Arguments, &args); err != nil {
@@ -115,9 +116,13 @@ func spawnAgent(ctx context.Context, host pluginapi.Host, call pluginapi.ToolCal
 	if err != nil {
 		return pluginapi.ToolResult{}, err
 	}
-	contextSource := "fork"
-	if strings.TrimSpace(args.SubagentType) != "" {
-		contextSource = "fresh"
+	contextSource := "fresh"
+	switch strings.TrimSpace(args.Context) {
+	case "", "fresh":
+	case "fork":
+		contextSource = "fork"
+	default:
+		return pluginapi.ToolResult{}, fmt.Errorf("unsupported subagent context %q", args.Context)
 	}
 	workspace := "shared"
 	if strings.TrimSpace(args.Isolation) == "worktree" {
@@ -548,7 +553,7 @@ func objectSchema(properties map[string]any, required ...string) map[string]any 
 	return map[string]any{"type": "object", "properties": properties, "required": required}
 }
 func spawnSchema() map[string]any {
-	return objectSchema(map[string]any{"description": stringField("Short 3-5 word summary of what the agent will do."), "prompt": stringField("Concrete, self-contained task brief with scope, constraints, acceptance criteria, and deliverable."), "subagent_type": stringField("Optional specialized agent type; omit to fork the current conversation."), "name": stringField("Optional addressable task name using lowercase letters, digits, and underscores."), "model": stringField("Optional configured model alias."), "isolation": map[string]any{"type": "string", "enum": []string{"worktree"}}}, "description", "prompt")
+	return objectSchema(map[string]any{"description": stringField("Short 3-5 word summary of what the agent will do."), "prompt": stringField("Concrete, self-contained task brief with scope, constraints, acceptance criteria, and deliverable."), "subagent_type": stringField("Optional specialized agent type."), "name": stringField("Optional addressable task name using lowercase letters, digits, and underscores."), "model": stringField("Optional configured model alias."), "context": map[string]any{"type": "string", "enum": []string{"fresh", "fork"}, "description": "Optional conversation context source. Defaults to fresh; fork inherits the parent conversation."}, "isolation": map[string]any{"type": "string", "enum": []string{"worktree"}}}, "description", "prompt")
 }
 
 func workerPrompt(workerType, task string) string {
@@ -569,7 +574,7 @@ The main agent owns the user conversation, final synthesis, and decision about w
 
 Each delegation tree has four active-agent slots including its root, so at most three child sessions may be running or queued at once across the entire tree. Child sessions may delegate within that shared budget. Wait for or close existing work before spawning more when the tree is full.
 
-Fresh task prompts must be self-contained. Fork prompts may rely on inherited context but still need a concrete directive and scope. Child completion is delivered as a read-only query bubble; do not poll while work is running.`
+Child sessions use fresh conversation context by default while retaining installed plugins and workspace capabilities. Fresh task prompts must be self-contained. Use context=fork only when inherited conversation history is materially necessary, and still provide a concrete directive and scope. Child completion is delivered as a read-only query bubble; do not poll while work is running.`
 
 const ultraPrompt = `# Proactive delegation
 
