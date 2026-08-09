@@ -16,6 +16,12 @@
   --composer-permission-mode-danger-border: rgba(180, 35, 24, 0.16);
   --composer-permission-mode-danger-bg: #fff1ec;
   --composer-menu-note-warning-strong: #b45309;
+  /* Accessory drawer upward shadow. Ink-sampled in light (a soft shade);
+     redefined black-based in dark — an ink-colored shadow would read as a
+     white glow above the drawer on dark paper. */
+  --composer-accessory-shadow: color-mix(in srgb, var(--ink) 7%, transparent);
+  --composer-accessory-shadow-hover: color-mix(in srgb, var(--ink) 10%, transparent);
+  --composer-accessory-shadow-expanded: color-mix(in srgb, var(--ink) 11%, transparent);
 }
 
 .composer-wrap {
@@ -517,14 +523,13 @@
   border: 1px solid var(--conversation-floating-surface-border);
   border-bottom: 0;
   border-radius: 12px 12px 0 0;
-  background:
-    linear-gradient(
-      180deg,
-      var(--conversation-floating-surface-highlight),
-      transparent 42%
-    ),
-    var(--conversation-floating-surface-bg);
-  box-shadow: 0 -6px 24px color-mix(in srgb, var(--ink) 7%, transparent);
+  /* Uniform glass fill — no specular highlight layer here. The pill sheen
+     is an edge treatment measured against a 34px capsule; painted over this
+     tall drawer the percentage gradient becomes a bright band across the
+     top (most visible in dark). The drawer's silhouette comes from the top
+     border + upward shadow; the backdrop shows through evenly. */
+  background: var(--conversation-floating-surface-bg);
+  box-shadow: 0 -6px 24px var(--composer-accessory-shadow);
   -webkit-backdrop-filter: blur(24px) saturate(1.18);
   backdrop-filter: blur(24px) saturate(1.18);
   color: var(--ink);
@@ -687,21 +692,15 @@
   z-index: 3;
   translate: 0 -2px;
   border-color: var(--conversation-floating-surface-hover-border);
-  background:
-    linear-gradient(
-      180deg,
-      var(--conversation-floating-surface-highlight),
-      transparent 42%
-    ),
-    var(--conversation-floating-surface-hover-bg);
-  box-shadow: 0 -8px 28px color-mix(in srgb, var(--ink) 10%, transparent);
+  background: var(--conversation-floating-surface-hover-bg);
+  box-shadow: 0 -8px 28px var(--composer-accessory-shadow-hover);
 }
 
 .document-composer-wrap .composer-accessory-drawer.expanded {
   z-index: 4;
   translate: 0 -6px;
   border-color: var(--conversation-floating-surface-hover-border);
-  box-shadow: 0 -10px 34px color-mix(in srgb, var(--ink) 11%, transparent);
+  box-shadow: 0 -10px 34px var(--composer-accessory-shadow-expanded);
 }
 
 .document-composer-wrap .composer-stack:not(.is-expanded) .composer textarea {

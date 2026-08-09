@@ -205,6 +205,9 @@
   --composer-permission-mode-danger-border: rgba(240, 112, 95, 0.3);
   --composer-permission-mode-danger-bg: #341c18;
   --composer-menu-note-warning-strong: #e2a04a;
+  --composer-accessory-shadow: rgba(0, 0, 0, 0.4);
+  --composer-accessory-shadow-hover: rgba(0, 0, 0, 0.45);
+  --composer-accessory-shadow-expanded: rgba(0, 0, 0, 0.5);
   --composer-context-meter-focus-outline: var(--wuu-color-focus, rgba(160, 168, 175, 0.55));
   --composer-context-meter-tooltip-divider: rgba(228, 232, 235, 0.1);
   --chat-user-message-bg: #26282b;
@@ -388,16 +391,23 @@
   --shell-run-debug-panel-shadow-2: rgba(0, 0, 0, 0.35);
   --shell-run-debug-phase-running-color: #7dbba5;
   --shell-run-debug-empty-border: #33383d;
+  /* Dark floating glass is rim-defined, not shadow-defined: on dark paper
+     a black drop shadow barely registers, so the silhouette comes from a
+     low-alpha edge sampled from the (light) text color, plus a deeper
+     shadow. Text-color ingredients keep the recipe palette-adaptive for
+     extension themes — any dark-based theme's text color is by definition
+     its high-contrast light color. The specular highlight drops to 7% —
+     it is a thin capsule rim (35% of 34px ≈ 12px), not a surface wash. */
   --conversation-floating-surface-bg: color-mix(in srgb, var(--wuu-color-surface-elevated, #282c32) 72%, transparent);
-  --conversation-floating-surface-border: color-mix(in srgb, var(--wuu-color-border-subtle, #ffffff1a) 78%, transparent);
-  --conversation-floating-surface-highlight: color-mix(in srgb, var(--wuu-color-canvas, #fff) 24%, transparent);
+  --conversation-floating-surface-border: color-mix(in srgb, var(--wuu-color-text, #e4e8eb) 14%, transparent);
+  --conversation-floating-surface-highlight: color-mix(in srgb, var(--wuu-color-text, #e4e8eb) 7%, transparent);
   --conversation-floating-surface-hover-bg: color-mix(in srgb, var(--wuu-color-surface-elevated, #32363c) 88%, transparent);
-  --conversation-floating-surface-hover-border: color-mix(in srgb, var(--wuu-color-border-strong, #ffffff2e) 72%, transparent);
+  --conversation-floating-surface-hover-border: color-mix(in srgb, var(--wuu-color-text, #e4e8eb) 22%, transparent);
   --conversation-floating-surface-focus: color-mix(in srgb, var(--wuu-color-focus, #fff) 38%, transparent);
-  --shell-jump-pill-shadow: rgba(0, 0, 0, 0.28);
-  --shell-jump-pill-contact-shadow: rgba(0, 0, 0, 0.12);
-  --shell-jump-pill-hover-shadow: rgba(0, 0, 0, 0.35);
-  --shell-jump-pill-focus-shadow-2: rgba(0, 0, 0, 0.3);
+  --shell-jump-pill-shadow: rgba(0, 0, 0, 0.5);
+  --shell-jump-pill-contact-shadow: rgba(0, 0, 0, 0.35);
+  --shell-jump-pill-hover-shadow: rgba(0, 0, 0, 0.55);
+  --shell-jump-pill-focus-shadow-2: rgba(0, 0, 0, 0.45);
   --shell-jump-progress-step-bg: color-mix(in srgb, var(--wuu-color-text, #e4e8eb) 6%, transparent);
   --shell-jump-progress-step-in-progress-bg: color-mix(in srgb, var(--wuu-color-text, #e4e8eb) 20%, transparent);
   --shell-turn-rail-bar-bg: rgba(174, 178, 186, 0.4);

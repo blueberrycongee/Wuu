@@ -19,12 +19,14 @@
      queue drawer and the jump/plan pills keep their own geometry, but resolve
      their material from these public-token-backed values. Backdrop blur does
      the actual adaptive color sampling; these tokens define the silhouette.
-     The pills additionally apply a single top specular highlight
-     (applied via a ::before gradient overlay, not via an inset shadow ring —
-     inset 1px shadow stacks read as a duplicate edge instead of refraction).
-     Keep border + top-highlight very low alpha so the backdrop blur reads
-     through. The previous 1px inset stack used bottom-shade and
-     hover-top-highlight; both were removed with that stack. */
+     The bg/border/hover/focus values are shared fills; -highlight is the
+     pills-only top specular sheen, applied via a ::before gradient that
+     fades by 35% of a 34px capsule (≈12px rim). It must stay pill-only:
+     painted over a taller surface (the drawer) the percentage gradient
+     stops reading as an edge and becomes a bright band. Dark-mode values
+     live in theme.css and follow rim-defined optics: silhouette from a
+     text-colored low-alpha edge + deeper shadows, not from drop shadows
+     alone (black shadows barely register on dark paper). */
   --conversation-floating-surface-bg: color-mix(in srgb, var(--wuu-color-surface-elevated, #fff) 72%, transparent);
   --conversation-floating-surface-border: color-mix(in srgb, var(--wuu-color-border-subtle, #d0d7de) 78%, transparent);
   --conversation-floating-surface-highlight: color-mix(in srgb, var(--wuu-color-canvas, #fff) 42%, transparent);
