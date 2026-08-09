@@ -631,6 +631,17 @@ func authorizeDevDirectory(devDir, pluginID, directory string) error {
 }
 
 func refreshDevGeneration(wuuHome, dir, packageManager string) (pluginDiagnostic, error) {
+	probe, acquired, err := session.TryAcquirePluginGenerationMutationLease(wuuHome)
+	if err != nil {
+		return pluginDiagnostic{Level: "fail", Check: "dev.mutation", Message: err.Error()}, fmt.Errorf("dev generation mutation check failed; previous generation preserved: %w", err)
+	}
+	if !acquired {
+		return pluginDiagnostic{Level: "fail", Check: "dev.mutation", Message: errDevGenerationBusy.Error()}, fmt.Errorf("dev generation refresh deferred; previous generation preserved: %w", errDevGenerationBusy)
+	}
+	if err := probe.Release(); err != nil {
+		return pluginDiagnostic{Level: "fail", Check: "dev.mutation", Message: err.Error()}, fmt.Errorf("release dev generation mutation check: %w", err)
+	}
+
 	if err := executePluginBuild(dir, packageManager); err != nil {
 		return pluginDiagnostic{Level: "fail", Check: "dev.build", Message: err.Error()}, fmt.Errorf("dev build failed; previous generation preserved: %w", err)
 	}
