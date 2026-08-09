@@ -226,6 +226,44 @@
   opacity: 0.48;
 }
 
+.plugin-ui-toolbar-toggle {
+  display: inline-grid;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  place-items: center;
+  border: 0;
+  border-radius: var(--wuu-radius-control, var(--radius-sm));
+  padding: 0;
+  color: var(--wuu-color-text-muted, var(--ink-muted));
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  transition:
+    color var(--wuu-motion-duration-fast, var(--motion-fast)) var(--wuu-motion-easing-standard, var(--ease-out)),
+    background-color var(--wuu-motion-duration-fast, var(--motion-fast)) var(--wuu-motion-easing-standard, var(--ease-out)),
+    transform var(--wuu-motion-duration-fast, var(--motion-fast)) var(--wuu-motion-easing-standard, var(--ease-out));
+}
+
+.plugin-ui-toolbar-toggle:not(:disabled):hover {
+  color: var(--wuu-color-text, var(--ink));
+  background: var(--wuu-color-surface-muted, var(--surface-2));
+}
+
+.plugin-ui-toolbar-toggle[aria-pressed="true"] {
+  color: var(--wuu-color-text, var(--ink));
+  background: var(--wuu-color-surface-elevated, var(--surface-3));
+}
+
+.plugin-ui-toolbar-toggle:not(:disabled):active {
+  transform: scale(0.96);
+}
+
+.plugin-ui-toolbar-toggle:disabled {
+  cursor: default;
+  opacity: 0.48;
+}
+
 .plugin-ui-input:disabled,
 .plugin-ui-textarea:disabled,
 .plugin-ui-checkbox:has(input:disabled) {
@@ -234,6 +272,7 @@
 }
 
 .plugin-ui-button:focus-visible,
+.plugin-ui-toolbar-toggle:focus-visible,
 .plugin-ui-input:focus-visible,
 .plugin-ui-textarea:focus-visible,
 .plugin-ui-checkbox input:focus-visible {

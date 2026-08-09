@@ -116,6 +116,15 @@ export interface PluginUIButtonProps extends PluginUIContainerProps {
   readonly onClick?: (event: unknown) => void;
 }
 
+export interface PluginUIToolbarToggleProps extends PluginUIContainerProps {
+  readonly pressed: boolean;
+  readonly type?: "button" | "submit" | "reset";
+  readonly disabled?: boolean;
+  readonly title?: string;
+  readonly "aria-label": string;
+  readonly onClick?: (event: unknown) => void;
+}
+
 export interface PluginUITextInputProps extends PluginUIContainerProps {
   readonly label: unknown;
   readonly description?: unknown;
@@ -172,6 +181,7 @@ export interface PluginUIKit {
   readonly Stack: HostUIComponent<PluginUIStackProps>;
   readonly Row: HostUIComponent<PluginUIContainerProps>;
   readonly Button: HostUIComponent<PluginUIButtonProps>;
+  readonly ToolbarToggle: HostUIComponent<PluginUIToolbarToggleProps>;
   readonly TextInput: HostUIComponent<PluginUITextInputProps>;
   readonly TextArea: HostUIComponent<PluginUITextAreaProps>;
   readonly Checkbox: HostUIComponent<PluginUICheckboxProps>;

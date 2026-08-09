@@ -145,6 +145,11 @@ export interface PluginUIButtonProps extends React.ButtonHTMLAttributes<HTMLButt
   variant?: "primary" | "secondary" | "ghost" | "danger";
 }
 
+export interface PluginUIToolbarToggleProps extends Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, "aria-pressed"> {
+  pressed: boolean;
+  "aria-label": string;
+}
+
 export interface PluginUITextInputProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, "children"> {
   label: React.ReactNode;
   description?: React.ReactNode;
@@ -189,6 +194,7 @@ export interface PluginUIKit {
   readonly Stack: React.ComponentType<PluginUIStackProps>;
   readonly Row: React.ComponentType<PluginUIContainerProps>;
   readonly Button: React.ComponentType<PluginUIButtonProps>;
+  readonly ToolbarToggle: React.ComponentType<PluginUIToolbarToggleProps>;
   readonly TextInput: React.ComponentType<PluginUITextInputProps>;
   readonly TextArea: React.ComponentType<PluginUITextAreaProps>;
   readonly Checkbox: React.ComponentType<PluginUICheckboxProps>;
@@ -262,6 +268,22 @@ export function createPluginUIKit(react: typeof React): PluginUIKit {
       className: joinPluginUIClass("plugin-ui-button", className),
       "data-wuu-component": "plugin-ui-button",
       "data-wuu-variant": variant,
+    }, children);
+  }
+
+  function ToolbarToggle({
+    className,
+    pressed,
+    type = "button",
+    children,
+    ...props
+  }: PluginUIToolbarToggleProps): React.ReactNode {
+    return react.createElement("button", {
+      ...props,
+      type,
+      className: joinPluginUIClass("plugin-ui-toolbar-toggle", className),
+      "data-wuu-component": "plugin-ui-toolbar-toggle",
+      "aria-pressed": pressed,
     }, children);
   }
 
@@ -357,6 +379,7 @@ export function createPluginUIKit(react: typeof React): PluginUIKit {
     Stack,
     Row,
     Button,
+    ToolbarToggle,
     TextInput,
     TextArea,
     Checkbox,
