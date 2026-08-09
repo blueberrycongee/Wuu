@@ -57,6 +57,8 @@ import (
 const (
 	headerSessionID       = "Mcp-Session-Id"
 	headerProtocolVersion = "MCP-Protocol-Version"
+	headerMethod          = "Mcp-Method"
+	headerName            = "Mcp-Name"
 	headerLastEventID     = "Last-Event-ID"
 
 	// acceptStreamableHTTP is required on every POST by the spec ("the client
@@ -124,7 +126,7 @@ type StreamableHTTPTransport struct {
 }
 
 // NewStreamableHTTPTransport creates a transport for the given MCP endpoint.
-// No network traffic happens until the first Send (the initialize POST).
+// No network traffic happens until the first Send.
 func NewStreamableHTTPTransport(endpoint string, headers map[string]string) *StreamableHTTPTransport {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &StreamableHTTPTransport{
@@ -191,6 +193,12 @@ func (t *StreamableHTTPTransport) post(ctx context.Context, req Request, body []
 	session := t.sessionID
 	version := t.protocolVersion
 	t.mu.Unlock()
+	if requestVersion := requestProtocolVersion(req.Params); requestVersion != "" {
+		version = requestVersion
+		if requestVersion == PreferredProtocolVersion {
+			session = ""
+		}
+	}
 
 	// Tie the HTTP request to the transport lifetime so an SSE response body
 	// that outlives this Send is not killed when the caller's ctx ends, while
@@ -205,6 +213,12 @@ func (t *StreamableHTTPTransport) post(ctx context.Context, req Request, body []
 		return fmt.Errorf("streamable HTTP POST %s: %w", t.endpoint, err)
 	}
 	t.applyHeaders(hreq, session, version)
+	if version == PreferredProtocolVersion && req.Method != "" {
+		hreq.Header.Set(headerMethod, req.Method)
+		if name := requestPrincipalName(req.Method, req.Params); name != "" {
+			hreq.Header.Set(headerName, name)
+		}
+	}
 	hreq.Header.Set("Content-Type", "application/json")
 	hreq.Header.Set("Accept", acceptStreamableHTTP)
 
@@ -262,7 +276,13 @@ func (t *StreamableHTTPTransport) post(ctx context.Context, req Request, body []
 			return fmt.Errorf("streamable HTTP POST %s: read response: %w", t.endpoint, err)
 		}
 		if len(bytes.TrimSpace(data)) == 0 {
-			return nil
+			if !isCall {
+				return nil
+			}
+			return &streamableHTTPError{
+				endpoint: t.endpoint,
+				reason:   "empty response body for a JSON-RPC request",
+			}
 		}
 		var msg Response
 		if err := json.Unmarshal(data, &msg); err != nil {
@@ -304,6 +324,35 @@ func (t *StreamableHTTPTransport) post(ctx context.Context, req Request, body []
 			reason:   fmt.Sprintf("unexpected content type %q for a JSON-RPC request (want application/json or text/event-stream)", resp.Header.Get("Content-Type")),
 		}
 	}
+}
+
+func requestProtocolVersion(params json.RawMessage) string {
+	var envelope struct {
+		Meta map[string]json.RawMessage `json:"_meta"`
+	}
+	if len(params) == 0 || json.Unmarshal(params, &envelope) != nil {
+		return ""
+	}
+	var version string
+	_ = json.Unmarshal(envelope.Meta["io.modelcontextprotocol/protocolVersion"], &version)
+	return strings.TrimSpace(version)
+}
+
+func requestPrincipalName(method string, params json.RawMessage) string {
+	if method != "tools/call" && method != "prompts/get" && method != "resources/read" {
+		return ""
+	}
+	var values struct {
+		Name string `json:"name"`
+		URI  string `json:"uri"`
+	}
+	if json.Unmarshal(params, &values) != nil {
+		return ""
+	}
+	if method == "resources/read" {
+		return values.URI
+	}
+	return values.Name
 }
 
 // applyHeaders sets user headers plus the protocol-mandated session and

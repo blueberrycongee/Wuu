@@ -3,6 +3,7 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sync"
 )
@@ -119,6 +120,10 @@ func (r *readLoop) signalStop() {
 
 // call performs a synchronous JSON-RPC call over the transport.
 func call(ctx context.Context, t Transport, f *inFlight, method string, params any) (json.RawMessage, error) {
+	return callWithProtocol(ctx, t, f, method, params, "")
+}
+
+func callWithProtocol(ctx context.Context, t Transport, f *inFlight, method string, params any, protocolVersion string) (json.RawMessage, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -129,6 +134,13 @@ func call(ctx context.Context, t Transport, f *inFlight, method string, params a
 			return nil, fmt.Errorf("marshal params: %w", err)
 		}
 		rawParams = b
+	}
+	if protocolVersion == PreferredProtocolVersion {
+		var err error
+		rawParams, err = addModernRequestMeta(rawParams)
+		if err != nil {
+			return nil, fmt.Errorf("marshal modern MCP request metadata: %w", err)
+		}
 	}
 	id := nextRequestID()
 	req := Request{JSONRPC: "2.0", ID: id, Method: method, Params: rawParams}
@@ -144,7 +156,7 @@ func call(ctx context.Context, t Transport, f *inFlight, method string, params a
 		// notification goes out on a background context and errors are ignored.
 		// The spec forbids cancelling initialize, so skip it there.
 		f.drop(id)
-		if method != "initialize" {
+		if method != "initialize" && method != "server/discover" {
 			if p, err := json.Marshal(cancelledParams{RequestID: id, Reason: ctx.Err().Error()}); err == nil {
 				_ = t.Send(context.Background(), Request{
 					JSONRPC: "2.0",
@@ -158,8 +170,42 @@ func call(ctx context.Context, t Transport, f *inFlight, method string, params a
 		if resp.Error != nil {
 			return nil, resp.Error
 		}
+		if protocolVersion == PreferredProtocolVersion {
+			var envelope struct {
+				ResultType string `json:"resultType"`
+			}
+			if err := json.Unmarshal(resp.Result, &envelope); err != nil {
+				return nil, fmt.Errorf("decode MCP result envelope: %w", err)
+			}
+			switch envelope.ResultType {
+			case "", "complete":
+			case "input_required":
+				return nil, errors.New("MCP request requires additional input, which Wuu does not support")
+			default:
+				return nil, fmt.Errorf("unsupported MCP result type %q", envelope.ResultType)
+			}
+		}
 		return resp.Result, nil
 	}
+}
+
+func addModernRequestMeta(params json.RawMessage) (json.RawMessage, error) {
+	values := make(map[string]json.RawMessage)
+	if len(params) > 0 {
+		if err := json.Unmarshal(params, &values); err != nil {
+			return nil, err
+		}
+	}
+	meta, err := json.Marshal(map[string]any{
+		"io.modelcontextprotocol/protocolVersion":    PreferredProtocolVersion,
+		"io.modelcontextprotocol/clientInfo":         map[string]string{"name": "wuu", "version": "0.1.0"},
+		"io.modelcontextprotocol/clientCapabilities": map[string]any{},
+	})
+	if err != nil {
+		return nil, err
+	}
+	values["_meta"] = meta
+	return json.Marshal(values)
 }
 
 // cancelledParams is the payload for MCP notifications/cancelled.

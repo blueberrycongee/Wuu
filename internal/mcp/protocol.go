@@ -14,10 +14,16 @@ import (
 	"sync/atomic"
 )
 
-// PreferredProtocolVersion is the newest MCP revision Wuu implements.
-const PreferredProtocolVersion = "2026-06-30"
+const (
+	// PreferredProtocolVersion is the newest MCP revision Wuu implements.
+	PreferredProtocolVersion = "2026-07-28"
+	// PreferredLegacyProtocolVersion is the newest revision that uses the
+	// initialize/initialized handshake.
+	PreferredLegacyProtocolVersion = "2025-11-25"
+)
 
 var acceptedProtocolVersions = map[string]struct{}{
+	"2026-07-28": {},
 	"2026-06-30": {},
 	"2025-11-25": {},
 	"2025-06-18": {},
@@ -27,9 +33,16 @@ var acceptedProtocolVersions = map[string]struct{}{
 
 func validateProtocolVersion(version string) error {
 	if _, ok := acceptedProtocolVersions[version]; !ok {
-		return fmt.Errorf("unsupported MCP protocol version %q; supported versions are 2026-06-30, 2025-11-25, 2025-06-18, 2025-03-26, and 2024-11-05", version)
+		return fmt.Errorf("unsupported MCP protocol version %q; supported versions are 2026-07-28, 2026-06-30, 2025-11-25, 2025-06-18, 2025-03-26, and 2024-11-05", version)
 	}
 	return nil
+}
+
+type DiscoverResult struct {
+	ResultType        string          `json:"resultType,omitempty"`
+	SupportedVersions []string        `json:"supportedVersions"`
+	Capabilities      json.RawMessage `json:"capabilities"`
+	Instructions      string          `json:"instructions,omitempty"`
 }
 
 // Request is a JSON-RPC request.

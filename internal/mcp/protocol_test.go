@@ -6,10 +6,10 @@ import (
 )
 
 func TestProtocolVersionNegotiation(t *testing.T) {
-	if PreferredProtocolVersion != "2026-06-30" {
+	if PreferredProtocolVersion != "2026-07-28" {
 		t.Fatalf("preferred version = %q", PreferredProtocolVersion)
 	}
-	for _, version := range []string{"2026-06-30", "2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"} {
+	for _, version := range []string{"2026-07-28", "2026-06-30", "2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"} {
 		if err := validateProtocolVersion(version); err != nil {
 			t.Fatalf("version %s rejected: %v", version, err)
 		}
