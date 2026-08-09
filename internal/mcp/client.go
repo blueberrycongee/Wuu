@@ -14,6 +14,12 @@ import (
 
 const defaultConnectionTimeout = 30 * time.Second
 
+const (
+	maxToolCatalogPages       = 100
+	maxToolCatalogItems       = 2048
+	maxToolCatalogCursorBytes = 64 * 1024
+)
+
 // ServerConfig describes one MCP server connection.
 type ServerConfig struct {
 	Name    string   `json:"name"`
@@ -253,22 +259,50 @@ func (c *Client) Name() string { return c.name }
 
 // DiscoverTools fetches the tool list from the server and caches it.
 func (c *Client) DiscoverTools(ctx context.Context) ([]Tool, error) {
-	resultBytes, err := call(ctx, c.transport, c.inFlight, "tools/list", nil)
-	if err != nil {
-		return nil, err
-	}
-	var result ListToolsResult
-	if err := json.Unmarshal(resultBytes, &result); err != nil {
-		return nil, fmt.Errorf("decode tools/list: %w", err)
+	var tools []Tool
+	var cursor string
+	seenCursors := make(map[string]struct{})
+	for page := 0; page < maxToolCatalogPages; page++ {
+		var params any
+		if cursor != "" {
+			params = ListToolsParams{Cursor: cursor}
+		}
+		resultBytes, err := call(ctx, c.transport, c.inFlight, "tools/list", params)
+		if err != nil {
+			return nil, err
+		}
+		var result ListToolsResult
+		if err := json.Unmarshal(resultBytes, &result); err != nil {
+			return nil, fmt.Errorf("decode tools/list page %d: %w", page+1, err)
+		}
+		if len(result.Tools) > maxToolCatalogItems-len(tools) {
+			return nil, fmt.Errorf("tools/list exceeded the catalog limit of %d tools", maxToolCatalogItems)
+		}
+		tools = append(tools, result.Tools...)
+		next := result.NextCursor
+		if next == "" {
+			break
+		}
+		if len(next) > maxToolCatalogCursorBytes {
+			return nil, fmt.Errorf("tools/list returned a cursor exceeding %d bytes", maxToolCatalogCursorBytes)
+		}
+		if _, duplicate := seenCursors[next]; duplicate {
+			return nil, fmt.Errorf("tools/list returned a repeated pagination cursor")
+		}
+		seenCursors[next] = struct{}{}
+		cursor = next
+		if page == maxToolCatalogPages-1 {
+			return nil, fmt.Errorf("tools/list exceeded the pagination limit of %d pages", maxToolCatalogPages)
+		}
 	}
 	c.mu.Lock()
-	c.tools = result.Tools
+	c.tools = tools
 	callback := c.onToolsChanged
 	c.mu.Unlock()
 	if callback != nil {
 		callback()
 	}
-	return result.Tools, nil
+	return tools, nil
 }
 
 func (c *Client) SetToolsChangedCallback(callback func()) {

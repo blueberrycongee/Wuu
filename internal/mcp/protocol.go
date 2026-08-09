@@ -110,7 +110,13 @@ type ToolAnnotations struct {
 
 // ListToolsResult is returned by tools/list.
 type ListToolsResult struct {
-	Tools []Tool `json:"tools"`
+	Tools      []Tool `json:"tools"`
+	NextCursor string `json:"nextCursor,omitempty"`
+}
+
+// ListToolsParams selects the next page of an MCP tool catalog.
+type ListToolsParams struct {
+	Cursor string `json:"cursor,omitempty"`
 }
 
 // CallToolParams are sent in tools/call.
