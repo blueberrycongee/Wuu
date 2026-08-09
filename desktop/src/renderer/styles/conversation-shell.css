@@ -23,18 +23,18 @@
      Keep border + top-highlight very low alpha so the backdrop blur reads
      through. The previous 1px inset stack used bottom-shade and
      hover-top-highlight; both were removed with that stack. */
-  --shell-jump-pill-bg: rgba(255, 255, 255, 0.55);
-  --shell-jump-pill-border: rgba(255, 255, 255, 0.22);
-  --shell-jump-pill-top-highlight: rgba(255, 255, 255, 0.35);
+  --shell-jump-pill-bg: color-mix(in srgb, var(--wuu-color-surface-elevated, #fff) 72%, transparent);
+  --shell-jump-pill-border: color-mix(in srgb, var(--wuu-color-border-subtle, #d0d7de) 78%, transparent);
+  --shell-jump-pill-top-highlight: color-mix(in srgb, var(--wuu-color-canvas, #fff) 42%, transparent);
   --shell-jump-pill-shadow: rgba(20, 24, 28, 0.12);
   --shell-jump-pill-contact-shadow: rgba(20, 24, 28, 0.06);
-  --shell-jump-pill-hover-bg: rgba(255, 255, 255, 0.7);
-  --shell-jump-pill-hover-border: rgba(255, 255, 255, 0.4);
+  --shell-jump-pill-hover-bg: color-mix(in srgb, var(--wuu-color-surface-elevated, #fff) 88%, transparent);
+  --shell-jump-pill-hover-border: color-mix(in srgb, var(--wuu-color-border-strong, #afb8c1) 72%, transparent);
   --shell-jump-pill-hover-shadow: rgba(20, 24, 28, 0.16);
-  --shell-jump-pill-focus-shadow-1: rgba(20, 24, 28, 0.2);
+  --shell-jump-pill-focus-shadow-1: color-mix(in srgb, var(--wuu-color-focus, #57606a) 38%, transparent);
   --shell-jump-pill-focus-shadow-2: rgba(20, 24, 28, 0.12);
-  --shell-jump-progress-step-bg: rgba(17, 19, 21, 0.05);
-  --shell-jump-progress-step-in-progress-bg: rgba(17, 19, 21, 0.20);
+  --shell-jump-progress-step-bg: color-mix(in srgb, var(--wuu-color-text, #111315) 6%, transparent);
+  --shell-jump-progress-step-in-progress-bg: color-mix(in srgb, var(--wuu-color-text, #111315) 20%, transparent);
   --shell-turn-rail-bar-bg: rgba(60, 60, 67, 0.4);
   /* Message-flow body typography. Owned at :root (not on .conversation-pane)
      so a user setting written to <html style="..."> cascades globally
