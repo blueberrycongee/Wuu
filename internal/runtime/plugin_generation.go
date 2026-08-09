@@ -186,6 +186,9 @@ func (s *Session) ActivatePluginGeneration(candidate *PluginGeneration, commit f
 		}
 	}
 	s.pluginGeneration = candidate
+	if err := candidate.host.Activate(context.Background()); err != nil {
+		providers.DebugLogf("activate committed plugin generation: %v", err)
+	}
 	if err := old.close(); err != nil {
 		providers.DebugLogf("plugin generation cleanup: %v", err)
 	}

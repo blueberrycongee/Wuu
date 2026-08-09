@@ -23,6 +23,9 @@ func startPluginHost(plugins []pluginpkg.Plugin, projectRoot, wuuHome, workspace
 	if err != nil {
 		return pluginhost.New(pluginhost.Failed("capability-negotiation", err))
 	}
+	if err := host.Activate(context.Background()); err != nil {
+		providers.DebugLogf("activate initial plugin generation: %v", err)
+	}
 	return host
 }
 
@@ -44,6 +47,7 @@ func buildPluginHost(plugins []pluginpkg.Plugin, projectRoot, wuuHome, workspace
 			WorkspaceStateDir:  workspaceStateDir,
 			Timeout:            timeout,
 			HostServiceHandler: newPluginHostServices(item, projectRoot, wuuHome, turnRouter),
+			PrepareOnly:        true,
 		})
 		if err != nil {
 			host.Add(pluginhost.Failed(item.ID, err))

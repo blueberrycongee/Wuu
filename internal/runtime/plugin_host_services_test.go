@@ -182,6 +182,9 @@ func TestProductionProcessClientNestedSettingsAndStorageCalls(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := host.Activate(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 	result := pluginhost.ChatMessageOutput{}
 	if err := host.Run(context.Background(), pluginhost.HookChatMessage, pluginhost.ChatMessageInput{}, &result); err != nil {
 		t.Fatal(err)
@@ -223,6 +226,9 @@ func TestProductionHostServicesCloseOnGenerationSwap(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := oldHost.Activate(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 	old := testPluginGeneration("old", &generationClient{id: "placeholder"})
 	_ = old.host.Close(context.Background())
 	old.host = oldHost
@@ -259,6 +265,7 @@ func runRuntimeHostServiceHelper() {
 	initResult := pluginhost.CapabilityInitializeResult{
 		InitializeResult: pluginhost.InitializeResult{Hooks: []pluginhost.Hook{pluginhost.HookChatMessage}},
 		ProtocolVersion:  pluginhost.CapabilityProtocolVersion,
+		LifecycleVersion: pluginhost.RuntimeLifecycleVersion,
 		RequiredHostServices: []pluginhost.HostServiceDescriptor{
 			{ID: string(pluginhost.HostServiceStorageSet), Required: true},
 			{ID: string(pluginhost.HostServiceSettingsGet), Required: true},
@@ -269,11 +276,22 @@ func runRuntimeHostServiceHelper() {
 	if !scanner.Scan() {
 		os.Exit(5)
 	}
+	var activate struct {
+		ID     string `json:"id"`
+		Method string `json:"method"`
+	}
+	if json.Unmarshal(scanner.Bytes(), &activate) != nil || activate.Method != "activate" {
+		os.Exit(6)
+	}
+	encodeHelperResponse(encoder, activate.ID, map[string]any{})
+	if !scanner.Scan() {
+		os.Exit(7)
+	}
 	var invoke struct {
 		ID string `json:"id"`
 	}
 	if json.Unmarshal(scanner.Bytes(), &invoke) != nil {
-		os.Exit(6)
+		os.Exit(8)
 	}
 	_ = encoder.Encode(pluginhost.HostServiceCall{ID: "storage", Method: pluginhost.HostServiceStorageSet, Params: json.RawMessage(`{"scope":"workspace","key":"nested","value":"stored"}`)})
 	if !scanner.Scan() {

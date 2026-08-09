@@ -19,6 +19,7 @@ import (
 )
 
 const CapabilityProtocolVersion = 2
+const RuntimeLifecycleVersion = 1
 
 const (
 	HostServiceSessionCreate          = "host.session.create"
@@ -38,6 +39,7 @@ type InitializeParams struct {
 	WuuHome                   string   `json:"wuu_home"`
 	WorkspaceStateDir         string   `json:"workspace_state_dir,omitempty"`
 	SupportedHostServices     []string `json:"supported_host_services,omitempty"`
+	LifecycleVersion          int      `json:"lifecycle_version,omitempty"`
 }
 
 type Capability struct {
@@ -210,6 +212,7 @@ type Host interface {
 type Handler struct {
 	Definition       Definition
 	Initialize       func(context.Context, Host, InitializeParams) error
+	Activate         func(context.Context) error
 	Shutdown         func(context.Context) error
 	ExecuteTool      func(context.Context, Host, ToolCall) (ToolResult, error)
 	InvokeCapability func(context.Context, Host, CapabilityCall) (json.RawMessage, error)
@@ -452,9 +455,17 @@ func dispatch(ctx context.Context, client *Client, handler Handler, request rpcR
 		}
 		return marshal(struct {
 			Definition
-			Hooks           []string `json:"hooks"`
-			ProtocolVersion int      `json:"protocol_version"`
-		}{Definition: handler.Definition, Hooks: []string{}, ProtocolVersion: CapabilityProtocolVersion})
+			Hooks            []string `json:"hooks"`
+			ProtocolVersion  int      `json:"protocol_version"`
+			LifecycleVersion int      `json:"lifecycle_version"`
+		}{Definition: handler.Definition, Hooks: []string{}, ProtocolVersion: CapabilityProtocolVersion, LifecycleVersion: RuntimeLifecycleVersion})
+	case "activate":
+		if handler.Activate != nil {
+			if err := handler.Activate(ctx); err != nil {
+				return nil, false, err
+			}
+		}
+		return json.RawMessage(`{}`), false, nil
 	case "tool.execute":
 		if handler.ExecuteTool == nil {
 			return nil, false, errors.New("tool execution is unavailable")

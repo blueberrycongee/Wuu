@@ -44,6 +44,9 @@ type ProcessConfig struct {
 	// declaration. When set it must match exactly; names alone never enable a
 	// service. The handler declaration is what is advertised on the wire.
 	SupportedHostServices []HostServiceMethod
+	// PrepareOnly leaves a lifecycle-aware runtime initialized but inactive.
+	// The owning generation activates it after its durable commit succeeds.
+	PrepareOnly bool
 }
 
 type rpcRequest struct {
@@ -71,30 +74,32 @@ type remoteCallError struct {
 func (e *remoteCallError) Error() string { return e.message }
 
 type ProcessClient struct {
-	config        ProcessConfig
-	cmd           *exec.Cmd
-	stdin         io.WriteCloser
-	scanner       *bufio.Scanner
-	seq           atomic.Uint64
-	writeMu       sync.Mutex
-	pendingMu     sync.Mutex
-	pending       map[string]chan rpcResponse
-	readerDone    chan struct{}
-	readerErrMu   sync.Mutex
-	readerErr     error
-	processCtx    context.Context
-	processCancel context.CancelFunc
-	mu            sync.RWMutex
-	status        Status
-	tools         []ToolRegistration
-	protocol      int
-	capabilities  []CapabilityDescriptor
-	negotiated    map[HostServiceMethod]struct{}
-	stderr        lockedBuffer
-	stopMu        sync.Mutex
-	stopped       bool
-	stopErr       error
-	serviceClose  sync.Once
+	config             ProcessConfig
+	cmd                *exec.Cmd
+	stdin              io.WriteCloser
+	scanner            *bufio.Scanner
+	seq                atomic.Uint64
+	writeMu            sync.Mutex
+	pendingMu          sync.Mutex
+	pending            map[string]chan rpcResponse
+	readerDone         chan struct{}
+	readerErrMu        sync.Mutex
+	readerErr          error
+	processCtx         context.Context
+	processCancel      context.CancelFunc
+	mu                 sync.RWMutex
+	status             Status
+	tools              []ToolRegistration
+	protocol           int
+	capabilities       []CapabilityDescriptor
+	negotiated         map[HostServiceMethod]struct{}
+	activationServices map[HostServiceMethod]struct{}
+	lifecycleVersion   int
+	stderr             lockedBuffer
+	stopMu             sync.Mutex
+	stopped            bool
+	stopErr            error
+	serviceClose       sync.Once
 }
 
 func Start(ctx context.Context, config ProcessConfig) (*ProcessClient, error) {
@@ -132,15 +137,9 @@ func Start(ctx context.Context, config ProcessConfig) (*ProcessClient, error) {
 		readerDone: make(chan struct{}),
 	}
 	client.processCtx, client.processCancel = context.WithCancel(context.Background())
-	// Initialization is allowed to restore plugin state through services the
-	// host handler explicitly advertises. Once the plugin returns its
-	// definition below, this provisional set is narrowed to the services it
-	// actually declared. Without this short bootstrap window, a stateful plugin
-	// cannot synchronously validate or restore itself before activation.
-	client.negotiated = make(map[HostServiceMethod]struct{}, len(config.SupportedHostServices))
-	for _, method := range config.SupportedHostServices {
-		client.negotiated[method] = struct{}{}
-	}
+	// Initialization is a prepare phase. Only read-only services are available
+	// until the generation and its durable policy commit.
+	client.negotiated = preflightHostServices(config.SupportedHostServices)
 	scanner := bufio.NewScanner(stdout)
 	scanner.Buffer(make([]byte, 0, 4096), maxResponseLineSize)
 	client.scanner = scanner
@@ -164,6 +163,7 @@ func Start(ctx context.Context, config ProcessConfig) (*ProcessClient, error) {
 		},
 		CapabilityProtocolVersion: CapabilityProtocolVersion,
 		SupportedHostServices:     append([]HostServiceMethod(nil), config.SupportedHostServices...),
+		LifecycleVersion:          RuntimeLifecycleVersion,
 	}, &initialized); err != nil {
 		_ = client.stopProcess()
 		client.setFailure(err)
@@ -192,8 +192,14 @@ func Start(ctx context.Context, config ProcessConfig) (*ProcessClient, error) {
 		client.setFailure(negotiationErr)
 		return nil, fmt.Errorf("initialize plugin %q: invalid capability negotiation: %w", config.ID, negotiationErr)
 	}
+	if config.PrepareOnly && initialized.LifecycleVersion != RuntimeLifecycleVersion {
+		_ = client.stopProcess()
+		err := fmt.Errorf("runtime lifecycle version %d is required for generation preflight", RuntimeLifecycleVersion)
+		client.setFailure(err)
+		return nil, fmt.Errorf("initialize plugin %q: %w", config.ID, err)
+	}
 	client.mu.Lock()
-	client.status.State = StateActive
+	client.status.State = StatePrepared
 	client.status.Hooks = append([]Hook(nil), initialized.Hooks...)
 	client.tools = make([]ToolRegistration, len(initialized.Tools))
 	for index, registration := range initialized.Tools {
@@ -204,9 +210,15 @@ func Start(ctx context.Context, config ProcessConfig) (*ProcessClient, error) {
 		client.protocol = ProtocolVersion
 	}
 	client.capabilities = cloneCapabilityDescriptors(initialized.Capabilities)
-	client.negotiated = negotiatedHostServices(initialized.RequiredHostServices, config.SupportedHostServices)
-	client.status.StartedAt = time.Now().UTC()
+	client.activationServices = negotiatedHostServices(initialized.RequiredHostServices, config.SupportedHostServices)
+	client.negotiated = preflightNegotiatedHostServices(client.activationServices)
+	client.lifecycleVersion = initialized.LifecycleVersion
 	client.mu.Unlock()
+	if !config.PrepareOnly {
+		if err := client.Activate(ctx); err != nil {
+			return nil, fmt.Errorf("activate plugin %q: %w", config.ID, err)
+		}
+	}
 	return client, nil
 }
 
@@ -263,6 +275,40 @@ func (c *ProcessClient) Status() Status {
 	status := c.status
 	status.Hooks = append([]Hook(nil), status.Hooks...)
 	return status
+}
+
+// Activate opens the negotiated service set and starts lifecycle-aware
+// background effects. Generation owners call this only after durable commit.
+func (c *ProcessClient) Activate(ctx context.Context) error {
+	if c == nil {
+		return errors.New("plugin process is not initialized")
+	}
+	c.mu.Lock()
+	if c.status.State == StateActive {
+		c.mu.Unlock()
+		return nil
+	}
+	if c.status.State != StatePrepared {
+		state := c.status.State
+		c.mu.Unlock()
+		return fmt.Errorf("plugin process cannot activate from state %q", state)
+	}
+	c.negotiated = cloneHostServiceSet(c.activationServices)
+	lifecycleVersion := c.lifecycleVersion
+	c.mu.Unlock()
+	if lifecycleVersion == RuntimeLifecycleVersion {
+		activateCtx, cancel := context.WithTimeout(ctx, c.config.Timeout)
+		defer cancel()
+		if err := c.call(activateCtx, "activate", nil, nil); err != nil {
+			c.fail(err)
+			return err
+		}
+	}
+	c.mu.Lock()
+	c.status.State = StateActive
+	c.status.StartedAt = time.Now().UTC()
+	c.mu.Unlock()
+	return nil
 }
 
 func (c *ProcessClient) Invoke(ctx context.Context, params InvokeParams) (InvokeResult, error) {
@@ -522,6 +568,39 @@ func negotiatedHostServices(required []HostServiceDescriptor, supported []HostSe
 		}
 	}
 	return negotiated
+}
+
+func preflightHostServices(supported []HostServiceMethod) map[HostServiceMethod]struct{} {
+	available := make(map[HostServiceMethod]struct{}, len(supported))
+	for _, service := range supported {
+		available[service] = struct{}{}
+	}
+	return preflightNegotiatedHostServices(available)
+}
+
+func preflightNegotiatedHostServices(negotiated map[HostServiceMethod]struct{}) map[HostServiceMethod]struct{} {
+	readOnly := map[HostServiceMethod]struct{}{
+		HostServiceStorageGet:   {},
+		HostServiceStorageKeys:  {},
+		HostServiceSettingsGet:  {},
+		HostServiceSettingsList: {},
+		HostServiceSessionList:  {},
+	}
+	out := make(map[HostServiceMethod]struct{})
+	for service := range negotiated {
+		if _, ok := readOnly[service]; ok {
+			out[service] = struct{}{}
+		}
+	}
+	return out
+}
+
+func cloneHostServiceSet(source map[HostServiceMethod]struct{}) map[HostServiceMethod]struct{} {
+	out := make(map[HostServiceMethod]struct{}, len(source))
+	for service := range source {
+		out[service] = struct{}{}
+	}
+	return out
 }
 
 func decodePluginMessage(line []byte) (pluginMessageKind, HostServiceCall, rpcResponse, error) {

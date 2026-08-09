@@ -406,6 +406,7 @@ export interface RuntimeInitializeParams {
   wuu_home: string;
   capability_protocol_version?: number;
   supported_host_services?: HostServiceMethod[];
+  lifecycle_version?: 1;
 }
 
 export interface RuntimeInitializeResult {
@@ -414,6 +415,7 @@ export interface RuntimeInitializeResult {
   protocol_version?: 1 | 2;
   capabilities?: CapabilityDescriptor[];
   required_host_services?: HostServiceDescriptor[];
+  lifecycle_version?: 1;
 }
 
 export interface JSONSchemaObject {
@@ -621,6 +623,7 @@ export type HostServiceResult<M extends HostServiceMethod = HostServiceMethod> =
 
 export interface RuntimePlugin {
   initialize(params: RuntimeInitializeParams): RuntimeInitializeResult | Promise<RuntimeInitializeResult>;
+  activate?(): void | Promise<void>;
   invokeCapability?(params: CapabilityInvokeParams): CapabilityInvokeResult | Promise<CapabilityInvokeResult>;
   invokeHook?(params: HookInvokeParams): HookInvokeResult | Promise<HookInvokeResult>;
   executeTool?(params: ToolExecuteParams): ToolExecuteResult | Promise<ToolExecuteResult>;
@@ -637,6 +640,12 @@ export interface RuntimeCapabilityRequest {
   id: string;
   method: "capability.invoke";
   params: CapabilityInvokeParams;
+}
+
+export interface RuntimeActivateRequest {
+  id: string;
+  method: "activate";
+  params?: undefined;
 }
 
 export interface RuntimeHookRequest {
@@ -659,6 +668,7 @@ export interface RuntimeShutdownRequest {
 
 export type RuntimeRequest =
   | RuntimeInitializeRequest
+  | RuntimeActivateRequest
   | RuntimeCapabilityRequest
   | RuntimeHookRequest
   | RuntimeToolRequest
@@ -672,7 +682,10 @@ export async function handleRuntimeRequest(plugin: RuntimePlugin, request: Runti
   try {
     switch (request.method) {
       case "initialize":
-        return { id: request.id, result: await plugin.initialize(request.params) };
+        return { id: request.id, result: { ...await plugin.initialize(request.params), lifecycle_version: 1 } };
+      case "activate":
+        await plugin.activate?.();
+        return { id: request.id, result: null };
       case "capability.invoke":
         if (!plugin.invokeCapability) throw new Error("capability.invoke is not implemented");
         return { id: request.id, result: await plugin.invokeCapability(request.params) };
@@ -730,7 +743,7 @@ function isRuntimeRequest(value: unknown): value is RuntimeRequest {
   if (typeof value !== "object" || value === null) return false;
   const request = value as { id?: unknown; method?: unknown; params?: unknown };
   if (typeof request.id !== "string" || typeof request.method !== "string") return false;
-  if (request.method === "shutdown") return true;
+  if (request.method === "activate" || request.method === "shutdown") return true;
   return ["initialize", "capability.invoke", "hook.invoke", "tool.execute"].includes(request.method)
     && typeof request.params === "object" && request.params !== null;
 }

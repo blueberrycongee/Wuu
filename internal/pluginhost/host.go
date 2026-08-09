@@ -43,6 +43,10 @@ type CapabilityClient interface {
 	InvokeCapability(context.Context, CapabilityInvokeParams) (CapabilityInvokeResult, error)
 }
 
+type lifecycleClient interface {
+	Activate(context.Context) error
+}
+
 // RegisteredCapability is the host-owned view of one negotiated capability.
 type RegisteredCapability struct {
 	PluginID   string
@@ -176,7 +180,7 @@ func (h *Host) Capabilities(id string) []RegisteredCapability {
 	defer h.mu.RUnlock()
 	var out []RegisteredCapability
 	for _, capability := range h.capabilities {
-		if capability.Descriptor.ID != id || capability.client.Status().State != StateActive {
+		if capability.Descriptor.ID != id || !capabilityStateReady(capability.client.Status().State) {
 			continue
 		}
 		copy := capability
@@ -198,7 +202,7 @@ func (h *Host) Capability(pluginID, id string) (RegisteredCapability, bool) {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	for _, capability := range h.capabilities {
-		if capability.PluginID == pluginID && capability.Descriptor.ID == id && capability.client.Status().State == StateActive {
+		if capability.PluginID == pluginID && capability.Descriptor.ID == id && capabilityStateReady(capability.client.Status().State) {
 			return capability, true
 		}
 	}
@@ -207,7 +211,7 @@ func (h *Host) Capability(pluginID, id string) (RegisteredCapability, bool) {
 
 // InvokeCapability invokes one exact plugin registration.
 func (h *Host) InvokeCapability(ctx context.Context, capability RegisteredCapability, input, output any) error {
-	if capability.client == nil || capability.client.Status().State != StateActive {
+	if capability.client == nil || !capabilityStateReady(capability.client.Status().State) {
 		return fmt.Errorf("plugin %q capability %q is not active", capability.PluginID, capability.Descriptor.ID)
 	}
 	inputJSON, err := json.Marshal(input)
@@ -400,6 +404,32 @@ func (h *Host) Run(ctx context.Context, hook Hook, input, output any) error {
 		outputJSON = append(outputJSON[:0], result.Output...)
 	}
 	return nil
+}
+
+func capabilityStateReady(state State) bool {
+	return state == StatePrepared || state == StateActive
+}
+
+// Activate starts prepared runtimes after the generation commit. Failures are
+// isolated to the affected runtime and remain visible through status inventory.
+func (h *Host) Activate(ctx context.Context) error {
+	if h == nil {
+		return nil
+	}
+	h.mu.RLock()
+	clients := append([]Client(nil), h.clients...)
+	h.mu.RUnlock()
+	var err error
+	for _, client := range clients {
+		lifecycle, ok := client.(lifecycleClient)
+		if !ok || client.Status().State != StatePrepared {
+			continue
+		}
+		if activateErr := lifecycle.Activate(ctx); activateErr != nil {
+			err = errors.Join(err, fmt.Errorf("activate plugin %q: %w", client.ID(), activateErr))
+		}
+	}
+	return err
 }
 
 func (h *Host) Statuses() []Status {

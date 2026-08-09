@@ -84,6 +84,7 @@ func Handler() pluginapi.Handler {
 			},
 		},
 		Initialize:       c.initialize,
+		Activate:         c.activate,
 		ExecuteTool:      c.executeTool,
 		InvokeCapability: c.invokeCapability,
 	}
@@ -97,15 +98,16 @@ func (c *controller) initialize(_ context.Context, host pluginapi.Host, params p
 	if notebook == "" {
 		return errors.New("memory plugin requires wuu_home")
 	}
-	if err := ensureNotebook(notebook); err != nil {
-		return err
-	}
 	c.mu.Lock()
 	c.host = host
 	c.notebook = notebook
 	c.workspaceStateDir = strings.TrimSpace(params.WorkspaceStateDir)
 	c.mu.Unlock()
 	return nil
+}
+
+func (c *controller) activate(context.Context) error {
+	return ensureNotebook(c.notebookPath())
 }
 
 func (c *controller) executeTool(_ context.Context, _ pluginapi.Host, call pluginapi.ToolCall) (pluginapi.ToolResult, error) {

@@ -80,8 +80,9 @@ func Handler() pluginapi.Handler {
 			RequiredHostServices: []pluginapi.HostService{{ID: pluginapi.HostServiceSessionCreate, Required: true}, {ID: pluginapi.HostServiceSessionSend, Required: true}, {ID: hostStorageGet, Required: true}, {ID: hostStorageSet, Required: true}},
 		},
 		Initialize: func(ctx context.Context, host pluginapi.Host, _ pluginapi.InitializeParams) error {
-			return c.start(ctx, host)
+			return c.prepare(ctx, host)
 		},
+		Activate: c.activate,
 		Shutdown: c.shutdown,
 		ExecuteTool: func(ctx context.Context, _ pluginapi.Host, call pluginapi.ToolCall) (pluginapi.ToolResult, error) {
 			return c.executeTool(ctx, call)
@@ -92,7 +93,7 @@ func Handler() pluginapi.Handler {
 	}
 }
 
-func (c *controller) start(ctx context.Context, host pluginapi.Host) error {
+func (c *controller) prepare(ctx context.Context, host pluginapi.Host) error {
 	if host == nil {
 		return errors.New("automation host is required")
 	}
@@ -111,6 +112,10 @@ func (c *controller) start(ctx context.Context, host pluginapi.Host) error {
 	if err := c.load(ctx); err != nil {
 		return err
 	}
+	return nil
+}
+
+func (c *controller) activate(context.Context) error {
 	go c.loop()
 	return nil
 }

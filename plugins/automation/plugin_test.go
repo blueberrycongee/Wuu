@@ -54,7 +54,10 @@ func TestAutomationTimerUsesPublicSessionServicesAndSettlesRun(t *testing.T) {
 	now := time.Date(2026, 8, 8, 9, 0, 0, 0, time.UTC)
 	host := &testHost{}
 	c := &controller{now: func() time.Time { return now }, tick: time.Hour}
-	if err := c.start(context.Background(), host); err != nil {
+	if err := c.prepare(context.Background(), host); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.activate(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = c.shutdown(context.Background()) })
@@ -136,7 +139,10 @@ func TestAutomationShutdownStopsTimerAndNextGenerationRestoresDurableState(t *te
 	now := time.Date(2026, 8, 8, 9, 0, 0, 0, time.UTC)
 	host := &testHost{}
 	first := &controller{now: func() time.Time { return now }, tick: time.Hour}
-	if err := first.start(context.Background(), host); err != nil {
+	if err := first.prepare(context.Background(), host); err != nil {
+		t.Fatal(err)
+	}
+	if err := first.activate(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	task, err := first.add(context.Background(), mutationInput{
@@ -156,7 +162,10 @@ func TestAutomationShutdownStopsTimerAndNextGenerationRestoresDurableState(t *te
 	}
 
 	second := &controller{now: func() time.Time { return now }, tick: time.Hour}
-	if err := second.start(context.Background(), host); err != nil {
+	if err := second.prepare(context.Background(), host); err != nil {
+		t.Fatal(err)
+	}
+	if err := second.activate(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = second.shutdown(context.Background()) })

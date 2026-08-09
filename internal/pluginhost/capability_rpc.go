@@ -36,6 +36,9 @@ import (
 const (
 	CapabilityProtocolVersion = 2
 	CapabilityProtocolName    = "wuu-plugin-v2"
+	// RuntimeLifecycleVersion identifies the side-effect-free prepare phase
+	// followed by explicit post-commit activation.
+	RuntimeLifecycleVersion = 1
 
 	// CapabilityAgentRequestTransform lets a plugin transform the complete,
 	// provider-neutral request immediately before provider validation and send.
@@ -503,6 +506,9 @@ type CapabilityInitializeResult struct {
 	// ProtocolVersion is the capability protocol version the plugin
 	// requests. The host may downgrade to v1 if v2 is unsupported.
 	ProtocolVersion int `json:"protocol_version,omitempty"`
+
+	// LifecycleVersion opts the runtime into prepare/activate semantics.
+	LifecycleVersion int `json:"lifecycle_version,omitempty"`
 }
 
 // CapabilityInitializeParams extends InitializeParams with the host's
@@ -518,6 +524,9 @@ type CapabilityInitializeParams struct {
 	// SupportedHostServices lists the host services available to this plugin.
 	// Plugins can use this to decide whether to enable optional features.
 	SupportedHostServices []HostServiceMethod `json:"supported_host_services,omitempty"`
+
+	// LifecycleVersion advertises the host's prepare/activate lifecycle.
+	LifecycleVersion int `json:"lifecycle_version,omitempty"`
 }
 
 // CapabilityInvokeParams carries one typed capability invocation. Input and

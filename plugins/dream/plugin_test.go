@@ -51,7 +51,10 @@ func (h *fakeHost) CallHost(_ context.Context, method string, params, result any
 func TestDreamUsesForkedPrivateSession(t *testing.T) {
 	host := &fakeHost{}
 	c := &controller{now: func() time.Time { return time.Date(2026, 8, 8, 0, 0, 0, 0, time.UTC) }, tick: time.Hour}
-	if err := c.start(context.Background(), host); err != nil {
+	if err := c.prepare(context.Background(), host); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.activate(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = c.shutdown(context.Background()) })
@@ -88,7 +91,10 @@ func TestDreamShutdownStopsTimerAndNextGenerationRestoresState(t *testing.T) {
 	now := time.Date(2026, 8, 8, 0, 0, 0, 0, time.UTC)
 	host := &fakeHost{}
 	first := &controller{now: func() time.Time { return now }, tick: time.Hour}
-	if err := first.start(context.Background(), host); err != nil {
+	if err := first.prepare(context.Background(), host); err != nil {
+		t.Fatal(err)
+	}
+	if err := first.activate(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	first.mu.Lock()
@@ -108,7 +114,10 @@ func TestDreamShutdownStopsTimerAndNextGenerationRestoresState(t *testing.T) {
 	}
 
 	second := &controller{now: func() time.Time { return now }, tick: time.Hour}
-	if err := second.start(context.Background(), host); err != nil {
+	if err := second.prepare(context.Background(), host); err != nil {
+		t.Fatal(err)
+	}
+	if err := second.activate(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = second.shutdown(context.Background()) })

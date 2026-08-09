@@ -261,6 +261,7 @@ type State string
 
 const (
 	StateStarting State = "starting"
+	StatePrepared State = "prepared"
 	StateActive   State = "active"
 	StateFailed   State = "failed"
 	StateStopped  State = "stopped"
