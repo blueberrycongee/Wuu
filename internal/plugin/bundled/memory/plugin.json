@@ -3,7 +3,7 @@
   "id": "memory",
   "name": "Memory",
   "description": "Durable user memory notebook and management view.",
-  "icon": "brain",
+  "icon": { "path": "assets/icon.svg" },
   "version": "0.1.0",
   "author": { "name": "Wuu" },
   "minimumWuuVersion": "0.1.0",
@@ -11,7 +11,7 @@
   "desktop": { "entry": "desktop.js" },
   "contributes": {
     "settingsPages": [
-      { "id": "memory", "title": "Memory", "description": "Review and manage durable memory", "view": "memory.settings", "icon": "brain", "order": 30 }
+      { "id": "memory", "title": "Memory", "description": "Review and manage durable memory", "view": "memory.settings", "order": 30 }
     ]
   },
   "interface": { "displayName": "Memory", "shortDescription": "Remember durable preferences, feedback, references, and lessons.", "developerName": "Wuu", "category": "Productivity", "capabilities": ["Write"] },

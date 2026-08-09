@@ -3,7 +3,7 @@
   "id": "automation",
   "name": "Automation",
   "description": "Scheduled Agent prompts and recurring work.",
-  "icon": "clock",
+  "icon": { "path": "assets/icon.svg" },
   "version": "0.1.0",
   "author": { "name": "Wuu" },
   "minimumWuuVersion": "0.1.0",
@@ -11,7 +11,7 @@
   "desktop": { "entry": "desktop.js" },
   "contributes": {
     "navigation": [
-      { "id": "automation", "title": "Automations", "view": "automation.catalog", "icon": "clock", "order": 40 }
+      { "id": "automation", "title": "Automations", "view": "automation.catalog", "order": 40 }
     ]
   },
   "interface": { "displayName": "Automation", "shortDescription": "Schedule prompts and recurring Agent work.", "developerName": "Wuu", "category": "Productivity", "capabilities": ["Write"] },

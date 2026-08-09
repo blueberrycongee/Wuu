@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
+  <defs><linearGradient id="subagent" x1="5" y1="4" x2="27" y2="28" gradientUnits="userSpaceOnUse"><stop stop-color="#F56EB3"/><stop offset=".52" stop-color="#A657D9"/><stop offset="1" stop-color="#4D72E8"/></linearGradient></defs>
+  <rect x="4" y="4" width="24" height="24" rx="8" fill="url(#subagent)"/>
+  <circle cx="23" cy="9" r="5" fill="#FF9ACB" opacity=".34"/>
+  <path d="M11 11.5 8.5 9M21 11.5 23.5 9M11 20.5 8.5 23M21 20.5l2.5 2.5" stroke="#F3C9FF" stroke-width="1.7" stroke-linecap="round"/>
+  <circle cx="8.5" cy="9" r="2" fill="white"/><circle cx="23.5" cy="9" r="2" fill="white"/><circle cx="8.5" cy="23" r="2" fill="white"/><circle cx="23.5" cy="23" r="2" fill="white"/>
+  <rect x="10" y="10" width="12" height="12" rx="4" fill="white"/>
+  <circle cx="14" cy="15.5" r="1.2" fill="#8E58D8"/><circle cx="18" cy="15.5" r="1.2" fill="#8E58D8"/>
+  <path d="M13.5 19h5" stroke="#8E58D8" stroke-width="1.6" stroke-linecap="round"/>
+</svg>

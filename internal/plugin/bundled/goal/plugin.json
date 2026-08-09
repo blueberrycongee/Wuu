@@ -4,7 +4,7 @@
   "name": "Goal",
   "version": "0.1.0",
   "description": "Thread-scoped durable objectives and automatic continuation.",
-  "icon": "gauge",
+  "icon": { "path": "assets/icon.svg" },
   "author": {
     "name": "Wuu"
   },
