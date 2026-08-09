@@ -454,14 +454,14 @@ export function DesktopWorkbench({
     if (!definition) return [];
     return [createPortal(
       <WorkbenchView
-        key={active.id}
+        key={`${active.id}:${active.generation}`}
         controller={controller}
         definition={definition}
         view={active}
         siblingViews={views}
       />,
       target,
-      active.id,
+      `${active.id}:${active.generation}`,
     )];
   });
 
@@ -583,6 +583,7 @@ function WorkbenchView({ controller, definition, view, siblingViews }: Workbench
         <button type="button" aria-label="Close plugin view" onClick={() => void controller.closeView(view.id)}>×</button>
       </header>
       <PluginErrorBoundary
+        key={`${view.pluginId}:${view.generation}:${view.id}`}
         pluginId={view.pluginId}
         generation={view.generation}
         services={controller.services}
@@ -635,6 +636,7 @@ export function PluginViewContent({
       data-wuu-view={viewTypeId}
     >
       <PluginErrorBoundary
+        key={`${pluginId}:${definition.generation}:${viewTypeId}`}
         pluginId={pluginId}
         generation={definition.generation}
         services={controller.services}
@@ -661,6 +663,7 @@ export function WorkbenchContentRenderer(props: WorkbenchContentRendererProps): 
   const Renderer = renderer.render;
   return (
     <PluginErrorBoundary
+      key={`${renderer.pluginId}:${renderer.generation}:${renderer.id}`}
       pluginId={renderer.pluginId}
       generation={renderer.generation}
       services={props.controller.services}
@@ -696,6 +699,15 @@ export class PluginErrorBoundary extends React.Component<PluginErrorBoundaryProp
 
   componentDidCatch(error: unknown): void {
     this.props.services.reportError?.(this.props.pluginId, this.props.generation, error);
+  }
+
+  componentDidUpdate(previous: PluginErrorBoundaryProps): void {
+    if (
+      this.state.error !== undefined &&
+      (previous.pluginId !== this.props.pluginId || previous.generation !== this.props.generation)
+    ) {
+      this.setState({ error: undefined });
+    }
   }
 
   render(): React.ReactNode {
