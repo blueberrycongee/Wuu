@@ -281,7 +281,10 @@ Scope、通用 Service Graph，以及跨外部副作用的事务承诺。
 链路和 Desktop 展示都由插件拥有，而不只是把代码移动到 `plugins/`：
 
 1. **Goal 已迁移到公共 Session 链路。** Goal 的状态机、存储、Tool、提示和 UI 均由插件拥有；
-   插件观察 `agent.turn.completed` 后通过 `host.session.send` 向同一 Session 投递只读 query。
+   插件观察 `agent.turn.completed` 决定是否续跑，通过 `host.session.send` 向同一 Session 投递只读 query，
+   并声明 owner-scoped 的 `agent.turn.lifecycle` 跟踪自己投递的 Turn 的
+   `queued`/`running`/`completed`/`failed`/`interrupted`/`discarded` 状态（初始
+   `queued`/`running` 状态由 `host.session.send` 同步返回，lifecycle 事件报告后续转移与终态）。
    `agent.turn.continuation`、`probe/prepare` 两阶段轮询以及 Turn 主链路里的 Goal 续跑分支已经删除。
 2. **Subagent 已迁移到公共 Session 链路。** 插件通过 `host.session.create/send/list/cancel` 创建和
    管理私有子 Session，用插件存储维护任务名与交付状态，观察 owner-scoped Turn lifecycle 后再向

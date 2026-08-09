@@ -348,6 +348,14 @@ export async function activate(api) {
   会话历史，也不会进入模型上下文；插件禁用、卸载或应用重启后由宿主清理。
 - View 渲染参数中的 `host.getSetting`、`host.getStorage`、`host.setStorage`：读取声明式设置，
   读写插件命名空间的持久化存储。
+- `registerRenderer`：按类别（`message`、`tool-result`、`document`、`file-preview`）注册内容
+  渲染器，用 `match` 匹配具体内容并接管渲染；`priority` 决定多个插件竞争同一内容时的顺序。
+- `registerThemeTokens`：以代码方式为指定主题应用公开 Token 覆盖（声明式主题的运行时版本），
+  同样只能修改公开语义 Token。
+- `registerCSSSnippet`：注入按插件作用域管理的 CSS 片段，随 generation 卸载时移除。
+- `registerCleanup`：在 generation 卸载时执行清理回调（释放外部资源、取消订阅等）。
+- View 作为设置页挂载时，渲染参数中的 `host.settings` 提供 `SettingsPageHostAPI`
+  （`contractVersion: 1`），当前可读写宿主 `runtime.modelAliases` 设置。
 
 ### 斜杠动作与临时卡片
 
@@ -395,12 +403,18 @@ export function activate(api) {
   });
 
   api.onHostEvent((event) => {
-    if (event?.type === "plugin-status-changed") {
-      backgroundCard?.update({ status: event.status });
+    if (event?.kind === "notification" && event.message?.method === "turn/completed") {
+      backgroundCard?.update({ status: "last turn completed" });
     }
   });
 }
 ```
+
+`onHostEvent` 收到的是 app-server 通知，结构为 `{ kind, workdir, message: { method, params } }`；
+`method` 使用真实方法名，例如 `turn/started`、`turn/queued`、`turn/completed`、`turn/error`，
+方法名常量见 `internal/appserver/protocol.go` 的 `Notification*` 定义，事件类型见
+`packages/protocol`。示例中的 `turn/completed` 在通知到达时才会触发更新，不要依赖任何
+文档未列出的自定义事件名。
 
 桌面插件也可以在后台事件或自身异步任务中直接调用 `showConversationCard`，不要求先执行
 斜杠命令。显式 `threadId` 可把卡片放入已加载的其他会话；省略时卡片进入当前会话。

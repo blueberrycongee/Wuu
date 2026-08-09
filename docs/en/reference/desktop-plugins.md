@@ -1,9 +1,10 @@
 # Customize the desktop UI with plugins
 
 > The complete plugin authoring guide (manifest, Agent plugins, desktop contributions,
-> and the local development loop) is currently in Chinese:
-> [编写插件（简体中文）](../../zh-cn/customize/plugin-authoring.md).
-> This page covers the desktop-code surface.
+> and the local development loop) lives in
+> [Writing plugins](../customize/plugin-authoring.md). For installing and managing
+> plugins, see [Plugins](../customize/plugins.md). This page covers the
+> desktop-code surface.
 
 Trusted desktop-code plugins can register global styles and replace or wrap stable UI surfaces.
 This supports coherent visual systems and bounded structural changes without relying on DOM monkey

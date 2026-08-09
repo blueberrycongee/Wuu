@@ -105,6 +105,13 @@
           ]
         },
         {
+          "title": "Customize",
+          "pages": [
+            "en/customize/plugins.md",
+            "en/customize/plugin-authoring.md"
+          ]
+        },
+        {
           "title": "Reference",
           "pages": [
             "en/reference/security-model.md",
