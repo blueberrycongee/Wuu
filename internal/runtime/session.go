@@ -1329,6 +1329,8 @@ func cloneStreamRunnerForThread(base *agent.StreamRunner, toolExecutor agent.Too
 		InferenceOperationKind:      base.InferenceOperationKind,
 		InferenceWorkloadProfile:    base.InferenceWorkloadProfile,
 		InferenceJournal:            base.InferenceJournal,
+		LoopDriver:                  base.LoopDriver,
+		DriverCheckpointStore:       base.DriverCheckpointStore,
 		CompactionRegistry:          base.CompactionRegistry,
 	}
 }

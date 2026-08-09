@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/blueberrycongee/wuu/internal/compact"
+	"github.com/blueberrycongee/wuu/internal/loopdriver"
 	"github.com/blueberrycongee/wuu/internal/provideroptions"
 	"github.com/blueberrycongee/wuu/internal/providers"
 	"github.com/blueberrycongee/wuu/internal/stringutil"
@@ -156,6 +157,11 @@ type StreamRunner struct {
 	// InferenceJournal is the durable write-ahead sink shared by every model
 	// round and nested compaction owned by this runner.
 	InferenceJournal providers.InferenceJournal
+	// LoopDriver owns turn policy while the runner remains the kernel gateway
+	// for provider, tool-ledger, history, and streaming invariants. Nil selects
+	// the behavior-compatible default driver.
+	LoopDriver            loopdriver.Driver
+	DriverCheckpointStore loopdriver.CheckpointStore
 
 	usageMu                sync.Mutex
 	conversationUsage      *UsageTracker
@@ -221,6 +227,100 @@ func (r *StreamRunner) systemPromptSnapshot() (string, []SystemPromptSectionInfo
 }
 
 func (r *StreamRunner) RunWithCallback(ctx context.Context, history []providers.ChatMessage, onEvent StreamCallback) (LoopResult, error) {
+	driver := r.LoopDriver
+	if driver == nil {
+		driver = loopdriver.DefaultDriver{}
+	}
+	descriptor := driver.Descriptor()
+	input := loopdriver.PersistedInput{Messages: providers.CloneChatMessages(history)}
+	execution := loopdriver.ExecutionContextFromContext(ctx)
+
+	var instance loopdriver.Instance
+	if r.DriverCheckpointStore != nil {
+		checkpoint, ok, err := r.DriverCheckpointStore.Load(ctx)
+		if err != nil {
+			return LoopResult{}, fmt.Errorf("load loop driver checkpoint: %w", err)
+		}
+		if ok && checkpoint.ContractVersion == loopdriver.ContractVersion && checkpoint.DriverID == descriptor.ID && checkpoint.DriverVersion == descriptor.Version {
+			instance, err = driver.Resume(execution, input, checkpoint)
+			if err != nil {
+				return LoopResult{}, fmt.Errorf("resume loop driver: %w", err)
+			}
+		}
+	}
+	if instance == nil {
+		var err error
+		instance, err = driver.Create(execution, input)
+		if err != nil {
+			return LoopResult{}, fmt.Errorf("create loop driver: %w", err)
+		}
+	}
+	if instance == nil {
+		return LoopResult{}, errors.New("loop driver returned a nil instance")
+	}
+
+	gateway := &streamDriverGateway{
+		runner:     r,
+		onEvent:    onEvent,
+		descriptor: descriptor,
+		results:    make(map[string]LoopResult),
+	}
+	done := make(chan struct{})
+	go func() {
+		select {
+		case <-ctx.Done():
+			instance.Cancel(ctx.Err().Error())
+		case <-done:
+		}
+	}()
+	outcome, runErr := instance.Run(ctx, gateway)
+	close(done)
+	instance.Shutdown()
+
+	res, ok := gateway.result(outcome.ReceiptID)
+	if outcome.ReceiptID != "" && !ok {
+		runErr = errors.Join(runErr, fmt.Errorf("loop driver returned unknown kernel receipt %q", outcome.ReceiptID))
+	}
+	res.DriverID = descriptor.ID
+	res.DriverVersion = descriptor.Version
+	res.DriverContractVersion = loopdriver.ContractVersion
+	res.DriverStatus = string(outcome.Status)
+	res.DriverCheckpoint = append(json.RawMessage(nil), outcome.Checkpoint.State...)
+	return res, runErr
+}
+
+type streamDriverGateway struct {
+	runner     *StreamRunner
+	onEvent    StreamCallback
+	descriptor loopdriver.Descriptor
+	results    map[string]LoopResult
+	next       int
+}
+
+func (gateway *streamDriverGateway) ExecuteModelLoop(ctx context.Context, input loopdriver.PersistedInput, policy loopdriver.LoopPolicy) (loopdriver.ModelLoopReceipt, error) {
+	gateway.next++
+	receipt := loopdriver.ModelLoopReceipt{ID: fmt.Sprintf("model-loop-%d", gateway.next)}
+	result, err := gateway.runner.runModelToolLoop(ctx, input.Messages, gateway.onEvent, policy)
+	gateway.results[receipt.ID] = result
+	return receipt, err
+}
+
+func (gateway *streamDriverGateway) WriteCheckpoint(ctx context.Context, checkpoint loopdriver.Checkpoint) error {
+	if checkpoint.ContractVersion != loopdriver.ContractVersion || checkpoint.DriverID != gateway.descriptor.ID || checkpoint.DriverVersion != gateway.descriptor.Version {
+		return errors.New("loop driver attempted to write a checkpoint for another contract")
+	}
+	if gateway.runner.DriverCheckpointStore == nil {
+		return nil
+	}
+	return gateway.runner.DriverCheckpointStore.Save(ctx, checkpoint)
+}
+
+func (gateway *streamDriverGateway) result(receiptID string) (LoopResult, bool) {
+	result, ok := gateway.results[receiptID]
+	return result, ok
+}
+
+func (r *StreamRunner) runModelToolLoop(ctx context.Context, history []providers.ChatMessage, onEvent StreamCallback, policy loopdriver.LoopPolicy) (LoopResult, error) {
 	if r.Client == nil {
 		return LoopResult{}, errors.New("client is required")
 	}
@@ -242,10 +342,14 @@ func (r *StreamRunner) RunWithCallback(ctx context.Context, history []providers.
 
 	effectiveOnEvent := onEvent
 
+	tools := r.Tools
+	if policy.DisableTools {
+		tools = nil
+	}
 	step := &streamStep{
 		client:                  r.Client,
 		onEvent:                 effectiveOnEvent,
-		tools:                   r.Tools,
+		tools:                   tools,
 		toolLedger:              r.ToolLedger,
 		enableStreamingToolExec: r.StreamingToolExecution,
 	}
@@ -253,7 +357,7 @@ func (r *StreamRunner) RunWithCallback(ctx context.Context, history []providers.
 	compactContextTokens := r.ContextWindowOverride
 	maxCtx := compactContextTokens
 	compactThresholdTokens := r.CompactThresholdTokens
-	if r.DisableAutoCompact || r.proactiveCompactCircuitOpen() {
+	if policy.DisableCompaction || r.DisableAutoCompact || r.proactiveCompactCircuitOpen() {
 		maxCtx = 0 // disables the proactive trigger inside RunToolLoop
 		compactThresholdTokens = 0
 	}
@@ -273,29 +377,37 @@ func (r *StreamRunner) RunWithCallback(ctx context.Context, history []providers.
 	if workloadProfile == "" {
 		workloadProfile = providers.InferenceProfileInteractive
 	}
+	maxSteps := r.MaxSteps
+	if policy.ModelRoundLimit > 0 {
+		maxSteps = policy.ModelRoundLimit
+	}
+	forceToolFirstStep := r.ForceToolFirstStep
+	if policy.DisableTools {
+		forceToolFirstStep = ""
+	}
 	cfg := LoopConfig{
-		Tools:                    r.Tools,
+		Tools:                    tools,
 		Model:                    requestModel,
 		ProviderName:             r.ProviderName,
 		InferenceOperationKind:   operationKind,
 		InferenceWorkloadProfile: workloadProfile,
 		Temperature:              r.Temperature,
 		MediaInput:               r.MediaInput,
-		MaxSteps:                 r.MaxSteps,
+		MaxSteps:                 maxSteps,
 		MaxContextTokens:         maxCtx,
 		MaxInputTokens:           r.MaxInputTokens,
 		OutputReserveTokens:      r.OutputReserveTokens,
 		CompactThresholdTokens:   compactThresholdTokens,
 		CompactThresholdPct:      r.CompactThresholdPct,
 		CompactKeepRecentTokens:  r.CompactKeepRecentTokens,
-		ForceInitialCompact:      r.ForceInitialCompact,
-		CompactOnly:              r.CompactOnly,
+		ForceInitialCompact:      r.ForceInitialCompact && !policy.DisableCompaction,
+		CompactOnly:              r.CompactOnly && !policy.DisableCompaction,
 		ToolWaitInterrupt:        r.ToolWaitInterrupt,
 		BeforeStep:               beforeStep,
 		BeforeRequestContext:     r.BeforeRequestContext,
 		BeforeRequest:            r.BeforeRequest,
 		SystemPromptSections:     systemPromptSections,
-		ForceToolFirstStep:       r.ForceToolFirstStep,
+		ForceToolFirstStep:       forceToolFirstStep,
 		OnRequestContext: func(info RequestContextInfo) {
 			if r.OnRequestContext != nil {
 				r.OnRequestContext(info)
@@ -415,6 +527,10 @@ func (r *StreamRunner) RunWithCallback(ctx context.Context, history []providers.
 		NativeDeferredToolDiscovery: r.NativeDeferredToolDiscovery,
 		PromptCacheKey:              r.PromptCacheKey,
 		RetainedRequestContext:      r.takeRetainedRequestContext(),
+	}
+	if policy.DisableCompaction {
+		cfg.Compact = nil
+		cfg.CompactionRegistry = nil
 	}
 
 	res, err := RunToolLoop(ctx, history, cfg, step)

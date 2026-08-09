@@ -8,6 +8,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/blueberrycongee/wuu/internal/providers"
 	"github.com/blueberrycongee/wuu/internal/toolresult"
@@ -395,4 +396,11 @@ type LoopResult struct {
 	FinishReason  providers.FinishReason
 	StopReason    string
 	Truncated     bool
+	// Driver metadata is the versioned policy identity and terminal checkpoint
+	// associated with this result. The checkpoint is opaque to callers.
+	DriverID              string
+	DriverVersion         string
+	DriverContractVersion int
+	DriverStatus          string
+	DriverCheckpoint      json.RawMessage
 }

@@ -21,6 +21,7 @@ import (
 	hookspkg "github.com/blueberrycongee/wuu/internal/hooks"
 	"github.com/blueberrycongee/wuu/internal/imageproc"
 	"github.com/blueberrycongee/wuu/internal/insight"
+	"github.com/blueberrycongee/wuu/internal/loopdriver"
 	"github.com/blueberrycongee/wuu/internal/pluginhost"
 	"github.com/blueberrycongee/wuu/internal/process"
 	"github.com/blueberrycongee/wuu/internal/providers"
@@ -2003,7 +2004,11 @@ func (s *Server) runTurnWithRequestContext(ctx context.Context, th *threadState,
 		)
 		return segments
 	}
-	res, err := runner.RunWithCallback(ctx, history, func(ev providers.StreamEvent) {
+	driverCtx := loopdriver.WithExecutionContext(ctx, loopdriver.ExecutionContext{
+		SessionID:   th.ID,
+		ExecutionID: turnID,
+	})
+	res, err := runner.RunWithCallback(driverCtx, history, func(ev providers.StreamEvent) {
 		th.mu.Lock()
 		if th.currentTurn != turnID {
 			th.mu.Unlock()
