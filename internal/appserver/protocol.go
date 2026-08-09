@@ -664,6 +664,7 @@ type ExtensionInventoryRecord struct {
 	ParentID             string                      `json:"parent_id,omitempty"`
 	ApprovalState        ExtensionApprovalState      `json:"approval_state,omitempty"`
 	RuntimeState         ExtensionRuntimeState       `json:"runtime_state,omitempty"`
+	LastError            string                      `json:"last_error,omitempty"`
 	Enabled              *bool                       `json:"enabled,omitempty"`
 	Desktop              *ExtensionDesktopDescriptor `json:"desktop,omitempty"`
 	Contributions        *ExtensionContributions     `json:"contributions,omitempty"`

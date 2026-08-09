@@ -59,8 +59,16 @@ type rpcResponse struct {
 }
 
 type rpcError struct {
+	Code    string `json:"code,omitempty"`
 	Message string `json:"message"`
 }
+
+type remoteCallError struct {
+	code    string
+	message string
+}
+
+func (e *remoteCallError) Error() string { return e.message }
 
 type ProcessClient struct {
 	config        ProcessConfig
@@ -237,7 +245,7 @@ func (c *ProcessClient) InvokeCapability(ctx context.Context, params CapabilityI
 	defer cancel()
 	var result CapabilityInvokeResult
 	if err := c.call(callCtx, "capability.invoke", params, &result); err != nil {
-		c.fail(err)
+		c.failFatalCall(err)
 		return CapabilityInvokeResult{}, err
 	}
 	if len(result.Output) == 0 {
@@ -262,7 +270,7 @@ func (c *ProcessClient) Invoke(ctx context.Context, params InvokeParams) (Invoke
 	defer cancel()
 	var result InvokeResult
 	if err := c.call(callCtx, "hook.invoke", params, &result); err != nil {
-		c.fail(err)
+		c.failFatalCall(err)
 		return InvokeResult{}, err
 	}
 	return result, nil
@@ -273,7 +281,7 @@ func (c *ProcessClient) ExecuteTool(ctx context.Context, params ToolExecuteParam
 	defer cancel()
 	var result ToolExecuteResult
 	if err := c.call(callCtx, "tool.execute", params, &result); err != nil {
-		c.fail(err)
+		c.failFatalCall(err)
 		return ToolExecuteResult{}, err
 	}
 	if err := result.Result.Validate(); err != nil {
@@ -331,7 +339,11 @@ func (c *ProcessClient) call(ctx context.Context, method string, params, result 
 	select {
 	case response := <-responseCh:
 		if response.Error != nil {
-			return errors.New(strings.TrimSpace(response.Error.Message))
+			message := strings.TrimSpace(response.Error.Message)
+			if message == "" {
+				message = "plugin call failed"
+			}
+			return &remoteCallError{code: strings.TrimSpace(response.Error.Code), message: message}
 		}
 		if result == nil {
 			return nil
@@ -351,7 +363,17 @@ func (c *ProcessClient) call(ctx context.Context, method string, params, result 
 }
 
 func (c *ProcessClient) readLoop() {
-	defer close(c.readerDone)
+	defer func() {
+		c.stopMu.Lock()
+		stopped := c.stopped
+		c.stopMu.Unlock()
+		if !stopped {
+			err := c.readFailure()
+			_ = c.stopProcess()
+			c.setFailure(err)
+		}
+		close(c.readerDone)
+	}()
 	for c.scanner.Scan() {
 		line := bytes.Clone(c.scanner.Bytes())
 		kind, call, response, err := decodePluginMessage(line)
@@ -645,6 +667,17 @@ func (c *ProcessClient) setFailure(err error) {
 func (c *ProcessClient) fail(err error) {
 	_ = c.stopProcess()
 	c.setFailure(err)
+}
+
+func (c *ProcessClient) failFatalCall(err error) {
+	if err == nil {
+		return
+	}
+	var domainErr *remoteCallError
+	if errors.As(err, &domainErr) {
+		return
+	}
+	c.fail(err)
 }
 
 func (c *ProcessClient) stderrSuffix() string {

@@ -22,6 +22,7 @@ import (
 	"github.com/blueberrycongee/wuu/internal/modelroles"
 	"github.com/blueberrycongee/wuu/internal/modelvariant"
 	pluginpkg "github.com/blueberrycongee/wuu/internal/plugin"
+	"github.com/blueberrycongee/wuu/internal/pluginhost"
 	"github.com/blueberrycongee/wuu/internal/providerfactory"
 	"github.com/blueberrycongee/wuu/internal/providers"
 	"github.com/blueberrycongee/wuu/internal/providers/codex"
@@ -314,6 +315,12 @@ func (s *Server) currentExtensionInventory() []ExtensionInventoryRecord {
 	for _, item := range s.rt.ActivePlugins {
 		activePluginSubjects[item.SubjectID] = struct{}{}
 	}
+	runtimeStatuses := make(map[string]pluginhost.Status)
+	if s.rt.PluginHost != nil {
+		for _, status := range s.rt.PluginHost.Statuses() {
+			runtimeStatuses[status.ID] = status
+		}
+	}
 	pendingUpdatesByID := map[string]pluginpkg.PendingUpdate{}
 	if pendingUpdates, err := pluginpkg.ListPendingUpdates(s.rt.WuuHome); err == nil {
 		for _, pending := range pendingUpdates {
@@ -361,8 +368,22 @@ func (s *Server) currentExtensionInventory() []ExtensionInventoryRecord {
 		}
 		approval, state, grantScope, enabled := pluginPackageInventoryState(grants, item)
 		runtimeState := ExtensionRuntimeInactive
+		lastError := ""
 		if _, ok := activePluginSubjects[item.SubjectID]; ok {
 			runtimeState = ExtensionRuntimeActive
+		}
+		if status, ok := runtimeStatuses[item.ID]; ok {
+			switch status.State {
+			case pluginhost.StateStarting:
+				runtimeState = ExtensionRuntimeStarting
+			case pluginhost.StateActive:
+				runtimeState = ExtensionRuntimeActive
+			case pluginhost.StateFailed:
+				runtimeState = ExtensionRuntimeFailed
+			case pluginhost.StateStopped:
+				runtimeState = ExtensionRuntimeStopped
+			}
+			lastError = status.Error
 		}
 		commands := make([]ExtensionCommandDescriptor, 0, len(item.Commands))
 		for _, command := range item.Commands {
@@ -460,6 +481,7 @@ func (s *Server) currentExtensionInventory() []ExtensionInventoryRecord {
 			UnsupportedFields:    cloneSortedStrings(item.UnsupportedFields),
 			ApprovalState:        approval,
 			RuntimeState:         runtimeState,
+			LastError:            lastError,
 			Enabled:              &enabled,
 		}
 		if item.Desktop != nil {

@@ -377,6 +377,7 @@ export type ExtensionInventoryRecord = {
   parent_id?: string;
   approval_state?: ExtensionApprovalState;
   runtime_state?: ExtensionRuntimeState;
+  last_error?: string;
   enabled?: boolean;
   desktop?: ExtensionDesktopDescriptor;
   contributions?: ExtensionContributions;
