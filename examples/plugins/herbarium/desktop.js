@@ -96,17 +96,20 @@ export async function activate(api) {
   background: color-mix(in srgb, var(--wuu-color-accent) 10%, transparent);
 }
 
-/* --- Session tabs: folder index cards, active tab carries a press rule */
-:root[data-herbarium] [data-wuu-component="session-tab"] {
+/* --- Navigation tabs: one folder-card family across split panes -------- */
+:root[data-herbarium] [data-wuu-component="session-tab"],
+:root[data-herbarium] [data-wuu-component="workspace-panel-header"] [role="tab"] {
   background: var(--wuu-color-surface);
   border: 1px solid var(--wuu-color-border-subtle);
-  border-radius: 6px;
+  border-radius: var(--wuu-radius-control);
+  letter-spacing: 0.02em;
 }
 
-:root[data-herbarium] [data-wuu-component="session-tab"][data-wuu-active="true"] {
+:root[data-herbarium] [data-wuu-component="session-tab"][data-wuu-active="true"],
+:root[data-herbarium] [data-wuu-component="workspace-panel-header"] [role="tab"][aria-selected="true"] {
   background: var(--wuu-color-surface-elevated);
   border-color: var(--wuu-color-border-strong);
-  box-shadow: inset 0 2px 0 var(--wuu-color-accent);
+  color: var(--wuu-color-text);
 }
 
 :root[data-herbarium] [data-wuu-component="session-tab-close"] {
@@ -163,17 +166,6 @@ export async function activate(api) {
 :root[data-herbarium] [data-wuu-component="workspace-panel-header"] {
   border-bottom: 1px solid var(--wuu-color-border-strong);
   box-shadow: 0 1px 0 var(--wuu-color-border-subtle);
-}
-
-:root[data-herbarium] [data-wuu-component="workspace-panel-header"] [role="tab"] {
-  border-radius: var(--wuu-radius-control);
-  letter-spacing: 0.02em;
-}
-
-:root[data-herbarium] [data-wuu-component="workspace-panel-header"] [role="tab"][aria-selected="true"] {
-  background: var(--wuu-color-surface-elevated);
-  box-shadow: inset 0 -2px 0 var(--wuu-color-accent);
-  color: var(--wuu-color-text);
 }
 
 /* Panel button families: one bordered, paper-raised control style. */
