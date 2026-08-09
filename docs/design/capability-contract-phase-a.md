@@ -64,17 +64,18 @@ Goal 与 Subagent 共同证明通用投递还必须把模型输入、前端展�
 `host.child_session.request` 已删除；公共 Session 合同同时补齐 owner-scoped list/cancel、worktree
 和最终输出 lifecycle。
 
-Plan 不属于已经完成的这一阶段迁移。`update_plan`、计划状态和标准展示目前仍在核心 Agent 链路，
-但这是现状而不是永久 Plugin Kernel 边界。等可替换 Agent Loop Driver、通用协作状态、恢复和
-展示合同形成后，默认 Plan 应作为 bundled 一方插件重新评估；现在只移动 Prompt 会制造假迁移。
-Plan 无论位于何处都不承担跨 Turn 自动续跑。HelpMe 直接删除，不形成 capability 或兼容层。
+Plan 已作为 bundled 一方插件完成纵向迁移：插件 runtime 拥有 Tool、参数校验与结果合同，Desktop
+模块拥有 Tool Activity Presenter 与 Inspector section。宿主只持久化普通 Tool call/result 事实，
+并按公开 `display.capability = "plan"` 投影版本化事件和只读 snapshot；核心不再注册 `update_plan`、
+保存/恢复可变计划状态、注入过期提醒或渲染原生计划 UI。Plan 不承担跨 Turn 自动续跑。
+HelpMe 直接删除，不形成 capability 或兼容层。
 
 ## 实施状态
 
 - [x] `internal/pluginhost/capability_rpc.go` — capability negotiation、SeamKind、ErrorPolicy 与 safety-kernel 校验
 - [x] `internal/runtime/plugin_generation.go` — 生产 generation 的原子发布与撤销
 - [x] 真实 Agent 链路通过 capability RPC 注册、排序和调用插件贡献
-- [x] Phase C: Desktop workbench registrations 已接入真实 View、Slot、导航、设置和 Style 产品路径；五个 bundled 一方插件的真实 `desktop.js` 生命周期测试覆盖 generation 原子激活、替换、禁用与完整撤回
+- [x] Phase C: Desktop workbench registrations 已接入真实 View、Slot、导航、设置、Inspector、Presenter 和 Style 产品路径；六个 bundled 一方插件的真实 `desktop.js` 生命周期测试覆盖 generation 原子激活、替换、禁用与完整撤回
 - [x] Phase D: `wuu plugin create/validate/build/test/pack/dev` 已形成独立插件仓闭环；脚手架只依赖公开 `@wuu/plugin-sdk`，runtime 契约测试启动真实子进程，dev generation 在构建或激活失败时保留上一代
 
 这些阶段只有在公共 SDK 的外部插件能够完成注册、调用、卸载和失败恢复，并有产品路径测试证明时才算完成。仅存在接口、registry 或协议类型不代表该能力已经开放。

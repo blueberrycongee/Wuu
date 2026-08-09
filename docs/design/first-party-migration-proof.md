@@ -20,21 +20,21 @@ permission decisions remain in the host safety boundary. A plugin can register
 and execute its own Tool, but cannot wrap every other Tool or override the
 host's final policy.
 
-## Boundary Example 2: Plan Is Temporarily Core, Not a Permanent Kernel Rule
+## Boundary Example 2: Plan Uses Semantic Tool Facts
 
-Plan is currently implemented as standard execution state of the main Agent
-loop. `update_plan`, the current task's plan state, lifecycle events, and
-standard presentation therefore remain in the core today. This is an
-implementation fact, not a permanent Plugin Kernel boundary. Plan must not grow
-into cross-Turn scheduling, automatic continuation, or a durable Goal system.
+Plan is a bundled first-party plugin. Its runtime owns the model-visible Tool,
+argument validation, and result contract; its Desktop module owns the Tool
+Activity presenter and Inspector section. The core no longer registers
+`update_plan`, stores mutable plan state, restores it into a Toolkit, injects a
+stale-plan reminder, or renders a native plan section.
 
-Plugins may observe or present the standard plan state where a future public
-contract permits it. After the Agent Loop Driver and generic collaboration-state
-contracts exist, the default Plan implementation should be reconsidered as a
-bundled first-party plugin paired with the default driver. The earlier proposal
-to prove Plan migration with only an `agent.system_prompt.section` was still the
-wrong boundary: moving one prompt paragraph would not migrate the actual plan
-state, Tool lifecycle, recovery, or presentation.
+The host persists ordinary Tool call/result facts and projects the public
+`display.capability = "plan"` semantic into the versioned stream and Inspector
+snapshots. It does not recognize the plugin's hashed public Tool name. This keeps
+recovery in the causal transcript and lets disabling the plugin remove its Tool
+and UI without a compatibility implementation in core. Plan remains bounded to
+the current Turn; cross-Turn continuation and durable goals belong to different
+plugins.
 
 ## Example 3: Goal Uses Generic Session Delivery
 
@@ -122,7 +122,7 @@ func (p *SummaryCompactionProvider) Compact(ctx context.Context, model string, m
 
 ## Verification
 
-The five distributed first-party plugins now use only:
+The six distributed first-party plugins now use only:
 
 - the versioned public plugin SDK;
 - documented capability and host-service contracts;
@@ -143,9 +143,11 @@ The current proof matrix is:
 | Automation | Cron parser, Timer, records, prompt and Session delivery live in the plugin | Real bundled module owns navigation, View and settings | Shutdown joins the Timer loop; a new generation restores namespaced state |
 | Memory | User/workspace/session files, Tools, prompt and management Session live in the plugin | Real bundled module owns navigation, View and settings | Disable removes prompt, Tools and UI; workspace state is recovered through plugin storage/files |
 | Dream | Candidate selection, Timer, retry state, prompt and private Session live in the plugin | Real bundled module owns navigation, View and settings | Shutdown joins the Timer loop; a new generation restores state; writes require the Memory plugin Tool |
+| Plan | Tool schema, validation and result contract live in the plugin; host stores ordinary Tool facts | Real bundled module owns the semantic Tool presenter and Inspector section | Disable removes Tool, presenter, section and style; the transcript remains the recoverable source of truth |
 
-`FirstPartyPluginLifecycle.test.ts` executes all five real bundled Desktop modules
+`FirstPartyPluginLifecycle.test.ts` executes all six real bundled Desktop modules
 through the production `WorkbenchController`/`PluginHost` path. It verifies atomic
 generation activation and replacement, and that disabling a plugin removes every
-View, Slot, navigation item, settings entry, locale, and style contribution.
+View, Slot, navigation item, settings entry, Inspector section, Presenter,
+locale, and style contribution.
 Ordinary Agent sessions remain usable when any or all of these plugins are absent.

@@ -80,6 +80,7 @@ describe("first-party desktop plugin lifecycle", () => {
     expect(host.getInspectorSections().map((item) => `${item.pluginId}:${item.id}`)).toEqual([
       "plan:current-plan",
     ]);
+    expect(host.getPresenters("conversation.tool-activity", "plan").at(-1)?.pluginId).toBe("plan");
     expect(document.head.querySelectorAll("style[data-wuu-plugin-id]")).toHaveLength(6);
 
     for (const pluginId of firstPartyPluginIds) {
@@ -92,6 +93,7 @@ describe("first-party desktop plugin lifecycle", () => {
     expect(host.getNavigationEntries()).toEqual([]);
     expect(host.getSettingsPages()).toEqual([]);
     expect(host.getInspectorSections()).toEqual([]);
+    expect(host.getPresenters("conversation.tool-activity", "plan")).toEqual([]);
     expect(document.head.querySelector("style[data-wuu-plugin-id]")).toBeNull();
   });
 
