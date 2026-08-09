@@ -134,7 +134,7 @@ discover it in `plugin.json`:
 {
   "contributes": {
     "navigation": [
-      { "id": "dashboard", "view": "product.dashboard", "title": "Dashboard" }
+      { "id": "dashboard", "view": "product.dashboard", "title": "Dashboard", "icon": "gauge" }
     ],
     "workspaceTools": [
       { "id": "inspector", "view": "product.inspector", "title": "Inspector" }
@@ -152,6 +152,11 @@ the Plugins group in Settings. Wuu owns selection, close behavior, persistence, 
 entry must reference a View registered by the same plugin. Standard `contributes.settings` entries
 automatically receive a host-rendered Settings page; use a custom settings View only for content
 that cannot be expressed by the standard schema.
+
+`icon` is a host-rendered semantic icon name, not an SVG path or a desktop-module component. Import
+`PUBLIC_ICON_NAMES` from `@wuu/plugin-sdk` to inspect the supported names and use `PublicIconName`
+for TypeScript autocomplete. Wuu validates manifest icon names during installation and keeps the
+drawing, sizing, active state, accessibility, and theme behavior consistent across host surfaces.
 
 ## Host-owned UI Kit
 

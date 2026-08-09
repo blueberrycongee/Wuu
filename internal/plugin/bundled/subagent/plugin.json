@@ -14,7 +14,7 @@
       { "id": "subagent-ultra", "target": "composer.toolbar", "order": 30, "title": "Proactive delegation" }
     ],
     "settingsPages": [
-      { "id": "subagent", "title": "Subagent", "description": "Configure model aliases used by delegated tasks", "view": "subagent.settings", "order": 30 }
+      { "id": "subagent", "title": "Subagent", "description": "Configure model aliases used by delegated tasks", "view": "subagent.settings", "icon": "bot", "order": 30 }
     ]
   },
   "interface": { "displayName": "Subagent", "shortDescription": "Delegate bounded work to child tasks.", "developerName": "Wuu", "category": "Productivity", "capabilities": ["Write"] },

@@ -61,6 +61,7 @@ import { SCRATCH_PSEUDO_PROJECT_ID } from "./AppState";
 import { PinnedThreadList, ProjectGroup } from "./ThreadSidebar";
 import { SidebarSection, SidebarSectionDragHandleContext } from "./SidebarSection";
 import { PluginBlocksIcon } from "./PluginBlocksIcon";
+import { PublicIcon } from "./PublicIcon";
 import { CollabNodesIcon } from "./CollabNodesIcon";
 import { useI18n } from "./i18n";
 import {
@@ -897,7 +898,7 @@ export function AppSidebar({
                       title={entry.description || entry.title}
                       onClick={() => openPluginNavigation(entry.pluginId, entry.view)}
                     >
-                      <PluginBlocksIcon className="icon-lg" />
+                      <PublicIcon name={entry.icon} className="icon-lg" />
                       <span>{entry.title}</span>
                     </button>
                   );

@@ -13,17 +13,21 @@
 
 import type * as React from "react";
 import type {
+  PublicIconName,
   PublicSyntaxTokenName,
   PublicThemeTokenName,
 } from "./themeContract.generated";
 
 export {
   LEGACY_THEME_TOKEN_ALIASES,
+  PUBLIC_ICON_NAMES,
   PUBLIC_SYNTAX_TOKEN_NAMES,
   PUBLIC_THEME_TOKEN_NAMES,
   canonicalThemeTokenName,
+  isPublicIconName,
   isPublicSyntaxTokenName,
   isPublicThemeTokenName,
+  type PublicIconName,
   type PublicSyntaxTokenName,
   type PublicThemeTokenName,
 } from "./themeContract.generated";
@@ -59,8 +63,8 @@ export interface ViewTypeDefinition {
   id: ViewTypeId;
   /** User-facing title for the view tab or header. */
   title: string;
-  /** Icon identifier from the host icon set, or a React node. */
-  icon?: string;
+  /** Semantic icon identifier from the public host icon set. */
+  icon?: PublicIconName;
   /** Default semantic region when the host opens this view. */
   defaultRegion?: ViewPlacementRegion;
   /** Whether this view's state survives a session restart. */

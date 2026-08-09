@@ -666,6 +666,11 @@ func normalizeViewEntries(field string, raw json.RawMessage, seen map[string]str
 		if spec.Title == "" {
 			return nil, fmt.Errorf("%s requires title", itemField)
 		}
+		if spec.Icon != "" {
+			if _, ok := allowedIconNames[spec.Icon]; !ok {
+				return nil, fmt.Errorf("%s icon %q is not a public Wuu icon", itemField, spec.Icon)
+			}
+		}
 		seen[spec.ID] = itemField
 		out = append(out, spec)
 	}

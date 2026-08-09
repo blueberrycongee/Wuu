@@ -304,6 +304,9 @@ export async function activate(api) {
   `registerViewType` 注册的 View。选中、关闭、持久化和溢出由 Wuu 管理。普通
   `contributes.settings` 会自动获得宿主渲染的设置页，只有标准 schema 表达不了的内容
   才使用自定义设置 View。
+  `icon` 填宿主公开的语义图标名，不接受 SVG 路径或桌面模块里的 React 组件。插件可从
+  `@wuu/plugin-sdk` 导入 `PUBLIC_ICON_NAMES` 查看当前名称，并用 `PublicIconName` 获得
+  TypeScript 自动补全。Wuu 在安装时校验名称，并统一负责绘制、尺寸、选中态、无障碍和主题适配。
 - `registerInspectorSection`：在宿主环境信息面板注册短摘要。输入是冻结且版本化的
   Session、Turn、Workspace、Git 和 Plan 公开 snapshot；Host Action 只允许打开已注册
   View 或执行已注册 Command。宿主负责每个 Section 的独立错误边界、限高和溢出。

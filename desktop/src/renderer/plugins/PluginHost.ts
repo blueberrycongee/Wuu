@@ -17,6 +17,7 @@ import type {
 } from "../../shared/workbench";
 import { createPluginUIKit, VIEW_PLACEMENT_REGIONS } from "../../shared/workbench";
 import {
+  isPublicIconName,
   isPublicSyntaxTokenName,
   isPublicThemeTokenName,
 } from "../../shared/themeContract.generated";
@@ -853,6 +854,7 @@ export class PluginHost {
       registerViewType: (definition: ViewTypeDefinition) => {
         this.assertAccepting(state);
         const id = this.claimRegistrationId(state, "view", definition.id);
+        validatePublicIcon(definition.icon, `Plugin view ${id}`);
         const record: ViewTypeRecord = {
           pluginId: state.pluginId, generation: state.generation, id,
           order: 0, removed: false, definition: { ...definition, id },
@@ -1725,6 +1727,12 @@ function requireExactNonEmpty(value: string, label: string): string {
     throw new Error(`Plugin ${label} must not be empty`);
   }
   return value;
+}
+
+function validatePublicIcon(icon: string | undefined, label: string): void {
+  if (icon !== undefined && !isPublicIconName(icon)) {
+    throw new Error(`${label} uses unsupported icon: ${icon}`);
+  }
 }
 
 function validateThemeTokens(contribution: ThemeTokens): void {

@@ -10,17 +10,21 @@
  */
 
 import type {
+  PublicIconName,
   PublicSyntaxTokenName,
   PublicThemeTokenName,
 } from "./theme-contract.generated.js";
 
 export {
   LEGACY_THEME_TOKEN_ALIASES,
+  PUBLIC_ICON_NAMES,
   PUBLIC_SYNTAX_TOKEN_NAMES,
   PUBLIC_THEME_TOKEN_NAMES,
   canonicalThemeTokenName,
+  isPublicIconName,
   isPublicSyntaxTokenName,
   isPublicThemeTokenName,
+  type PublicIconName,
   type PublicSyntaxTokenName,
   type PublicThemeTokenName,
 } from "./theme-contract.generated.js";
@@ -47,7 +51,7 @@ export type ViewPersistence = "session" | "durable";
 export interface ViewTypeDefinition {
   id: ViewTypeId;
   title: string;
-  icon?: string;
+  icon?: PublicIconName;
   defaultRegion?: ViewPlacementRegion;
   persistence?: ViewPersistence;
   render: unknown; // React.ComponentType<ViewRenderProps> — opaque in SDK

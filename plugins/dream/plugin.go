@@ -104,7 +104,10 @@ func (c *controller) prepare(ctx context.Context, host pluginapi.Host) error {
 	return nil
 }
 
-func (c *controller) activate(context.Context) error {
+func (c *controller) activate(ctx context.Context) error {
+	if err := c.save(ctx); err != nil {
+		return err
+	}
 	go c.loop()
 	return nil
 }
@@ -166,7 +169,7 @@ func (c *controller) load(ctx context.Context) error {
 	c.mu.Lock()
 	c.state = state
 	c.mu.Unlock()
-	return c.save(ctx)
+	return nil
 }
 
 func (c *controller) save(ctx context.Context) error {
