@@ -27,6 +27,14 @@
   border-left: 1px solid var(--border-subtle);
 }
 
+.conversation-pane > .plugin-workbench-view-primary {
+  position: relative;
+  inset: auto;
+  grid-row: 2;
+  width: 100%;
+  height: 100%;
+}
+
 .plugin-workbench-view-header {
   display: flex;
   min-height: 38px;

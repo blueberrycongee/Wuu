@@ -1,9 +1,10 @@
-import type {
-  ComponentProps,
-  KeyboardEvent as ReactKeyboardEvent,
-  MutableRefObject,
-  PointerEvent as ReactPointerEvent,
-  RefObject,
+import {
+  useSyncExternalStore,
+  type ComponentProps,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type MutableRefObject,
+  type PointerEvent as ReactPointerEvent,
+  type RefObject,
 } from "react";
 import {
   Bug,
@@ -51,7 +52,7 @@ import { ViewSwitchLoading } from "./LoadingViews";
 import type { TurnFileDiffSelection } from "./TurnFileDiffTypes";
 import { useI18n } from "./i18n";
 import { HeaderPresentation, immutableHeaderSnapshot } from "./plugins/HeaderPresentation";
-import { desktopPluginHost } from "./plugins/DesktopPluginRuntime";
+import { desktopPluginHost, desktopWorkbenchController } from "./plugins/DesktopPluginRuntime";
 import type { PluginHost } from "./plugins/PluginHost";
 import { PluginSlot } from "./plugins/PluginSlot";
 import type { WorkbenchController } from "./plugins/Workbench";
@@ -271,7 +272,24 @@ export function ConversationTitleContent({
   pluginHost,
   workbenchController,
 }: ConversationTitleContentProps): JSX.Element {
-  const fallback = sessionTabsVisible ? (
+  const controller = workbenchController ?? desktopWorkbenchController;
+  const workbenchSnapshot = useSyncExternalStore(
+    controller.subscribe,
+    controller.getSnapshot,
+    controller.getSnapshot,
+  );
+  const primaryViews = workbenchSnapshot.views.filter((view) => view.region === "primary");
+  const activePrimaryView = primaryViews.find(
+    (view) => view.id === workbenchSnapshot.activeViewByRegion.primary,
+  );
+  const primaryTabs = primaryViews.map((view) => ({
+    id: view.id,
+    title: workbenchSnapshot.viewTypes.find((definition) =>
+      definition.pluginId === view.pluginId
+      && definition.id === view.viewTypeId
+      && definition.generation === view.generation)?.title ?? view.viewTypeId,
+  }));
+  const fallback = sessionTabsVisible || primaryTabs.length > 0 ? (
       <SessionTabStrip
         state={state}
         crossWorkspaceThreads={crossWorkspaceThreads}
@@ -279,12 +297,19 @@ export function ConversationTitleContent({
         pendingComposerMessagesByThread={pendingComposerMessagesByThread}
         channelUnreadByRoomID={channelUnreadByRoomID}
         canStartNewThread={Boolean(state.activeContext)}
-        onSelect={onSelectSessionTab}
+        onSelect={(tabId) => {
+          controller.deactivateRegion("primary");
+          onSelectSessionTab(tabId);
+        }}
         onClose={onCloseSessionTab}
         onCloseTabs={onCloseSessionTabs}
         onPopOut={onPopOutSessionTab}
         onNewThread={onStartNewThread}
         onReorder={onReorderSessionTabs}
+        additionalTabs={primaryTabs}
+        activeAdditionalTabID={activePrimaryView?.id}
+        onSelectAdditionalTab={(tabId) => controller.activateView(tabId)}
+        onCloseAdditionalTab={(tabId) => void controller.closeView(tabId)}
       />
   ) : (
     <h1>{activeTitle}</h1>
@@ -309,33 +334,52 @@ export function ConversationTitleContent({
         };
       })
     : undefined;
+  const showingPrimaryWorkbench = activePrimaryView !== undefined;
+  const headerTabs = [...(tabs ?? []), ...primaryTabs];
   const snapshot = immutableHeaderSnapshot({
-    scope: "conversation",
-    title: activeTitle,
-    tabs,
-    activeTabId: sessionTabsVisible ? state.activeSessionTabID || undefined : undefined,
+    scope: showingPrimaryWorkbench ? "workspace" : "conversation",
+    title: showingPrimaryWorkbench
+      ? primaryTabs.find((tab) => tab.id === activePrimaryView.id)?.title
+      : activeTitle,
+    tabs: headerTabs.length > 0 ? headerTabs : undefined,
+    activeTabId: activePrimaryView?.id
+      ?? (sessionTabsVisible ? state.activeSessionTabID || undefined : undefined),
     busy: tabs?.some((tab) => tab.busy) || undefined,
     dirty: tabs?.some((tab) => tab.dirty) || undefined,
   });
+  const primaryTabIDs = new Set(primaryTabs.map((tab) => tab.id));
   return (
     <>
       <PluginSlot
         host={pluginHost ?? desktopPluginHost}
-        id="conversation.header"
+        id={showingPrimaryWorkbench ? "workspace.header" : "conversation.header"}
         context={Object.freeze({
-          scope: "conversation",
-          hasSessionTabs: sessionTabsVisible,
-          tabCount: tabs?.length ?? 0,
+          scope: showingPrimaryWorkbench ? "workspace" : "conversation",
+          hasSessionTabs: showingPrimaryWorkbench || sessionTabsVisible,
+          tabCount: headerTabs.length,
           busy: snapshot.busy ?? false,
         })}
       />
       <HeaderPresentation
         snapshot={snapshot}
         fallback={fallback}
-        onSelectTab={sessionTabsVisible ? onSelectSessionTab : undefined}
-        onCloseTab={sessionTabsVisible ? onCloseSessionTab : undefined}
+        onSelectTab={headerTabs.length > 0 ? (tabId) => {
+          if (primaryTabIDs.has(tabId)) {
+            controller.activateView(tabId);
+            return;
+          }
+          controller.deactivateRegion("primary");
+          onSelectSessionTab(tabId);
+        } : undefined}
+        onCloseTab={headerTabs.length > 0 ? (tabId) => {
+          if (primaryTabIDs.has(tabId)) {
+            void controller.closeView(tabId);
+            return;
+          }
+          onCloseSessionTab(tabId);
+        } : undefined}
         host={pluginHost}
-        controller={workbenchController}
+        controller={controller}
       />
     </>
   );

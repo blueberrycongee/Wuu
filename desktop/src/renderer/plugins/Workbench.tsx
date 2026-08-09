@@ -582,7 +582,7 @@ function WorkbenchView({ controller, definition, view, siblingViews }: Workbench
   );
   return (
     <section className={`plugin-workbench-view plugin-workbench-view-${view.region}`} data-plugin-id={view.pluginId}>
-      <header className="plugin-workbench-view-header">
+      {view.region !== "primary" ? <header className="plugin-workbench-view-header">
         <div role="tablist" aria-label="Plugin views">
           {siblingViews.map((sibling) => (
             <button
@@ -599,7 +599,7 @@ function WorkbenchView({ controller, definition, view, siblingViews }: Workbench
           ))}
         </div>
         <button type="button" aria-label="Close plugin view" onClick={() => void controller.closeView(view.id)}>×</button>
-      </header>
+      </header> : null}
       <PluginErrorBoundary
         key={`${view.pluginId}:${view.generation}:${view.id}`}
         pluginId={view.pluginId}
