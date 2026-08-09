@@ -279,7 +279,7 @@ export class WorkbenchController {
     let views = this.state.views.flatMap((view): WorkbenchViewState[] => {
       if (this.availablePluginIds && !this.availablePluginIds.has(view.pluginId)) return [];
       const definition = definitions.get(viewTypeKey(view.pluginId, view.viewTypeId));
-      if (!definition) return [view];
+      if (!definition) return [];
       return [{
         ...view,
         generation: definition.generation,
@@ -619,12 +619,14 @@ export function PluginViewContent({
   viewTypeId,
   context = Object.freeze({}),
   settings,
+  onFailure,
 }: {
   controller: WorkbenchController;
   pluginId: string;
   viewTypeId: string;
   context?: Readonly<Record<string, unknown>>;
   settings?: SettingsPageHostAPI;
+  onFailure?: () => void;
 }): JSX.Element {
   const snapshot = React.useSyncExternalStore(controller.subscribe, controller.getSnapshot);
   const { locale } = useI18n();
@@ -664,7 +666,8 @@ export function PluginViewContent({
         pluginId={pluginId}
         generation={definition.generation}
         services={controller.services}
-        onUseDefault={() => undefined}
+        onUseDefault={onFailure ?? (() => undefined)}
+        onError={onFailure}
       >
         <View host={host} context={view.context} locale={locale} translate={translate} />
       </PluginErrorBoundary>
@@ -708,6 +711,7 @@ interface PluginErrorBoundaryProps {
   generation: string;
   services: WorkbenchServices;
   onUseDefault(): void;
+  onError?: (error: unknown) => void;
   fallback?: React.ReactNode;
   children: React.ReactNode;
 }
@@ -723,6 +727,7 @@ export class PluginErrorBoundary extends React.Component<PluginErrorBoundaryProp
 
   componentDidCatch(error: unknown): void {
     this.props.services.reportError?.(this.props.pluginId, this.props.generation, error);
+    this.props.onError?.(error);
   }
 
   componentDidUpdate(previous: PluginErrorBoundaryProps): void {

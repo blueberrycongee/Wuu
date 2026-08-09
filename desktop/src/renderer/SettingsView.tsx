@@ -272,6 +272,14 @@ export function SettingsView({
   }, [initialPage]);
 
   useLayoutEffect(() => {
+    const missingGeneratedPage = activePage.startsWith("plugin-settings:")
+      && activePluginSettingsRecord === undefined;
+    const missingCustomPage = activePage.startsWith("plugin-view:")
+      && activeCustomPluginPage === undefined;
+    if (missingGeneratedPage || missingCustomPage) setActivePage("providers");
+  }, [activeCustomPluginPage, activePage, activePluginSettingsRecord]);
+
+  useLayoutEffect(() => {
     if (settingsScrollRef.current) {
       settingsScrollRef.current.scrollTop = 0;
     }
@@ -960,6 +968,7 @@ export function SettingsView({
                 viewTypeId={activeCustomPluginPage.view}
                 context={Object.freeze({ surface: "settings" })}
                 settings={settingsPageHost}
+                onFailure={() => setActivePage("providers")}
               />
             ) : activePage === "providers" ? (
               <SettingsProvidersPage

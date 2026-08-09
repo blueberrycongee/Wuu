@@ -502,7 +502,7 @@ export function AppSidebar({
       region: "primary",
       persistence: "durable",
       reveal: true,
-    });
+    }).catch(() => workbenchController.deactivateRegion("primary"));
   }, [workbenchController]);
 
   // Drag-and-drop reorder wiring for the reorderable sections. The 6px
