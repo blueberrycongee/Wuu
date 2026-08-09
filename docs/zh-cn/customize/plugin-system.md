@@ -419,7 +419,8 @@ Go 生态中最接近进程插件边界的是 HashiCorp `go-plugin` 一类 subpr
 ## UI Kit 的覆盖范围
 
 `api.ui` 当前提供 `Page`、`Panel`、`Card`、`Section`、`Stack`、`Row`、`Button`、
-`TextInput` 和 `EmptyState`。它的目的有三个：
+`TextInput`、`TextArea`、`Checkbox`、`EmptyState`、`LoadingState` 和 `ErrorState`。
+`Page` 统一密度和响应式间距，三种状态组件统一 ARIA、焦点、错误和加载行为。它的目的有三个：
 
 - 收敛页面、卡片、行和控件的公共节奏；
 - 让功能插件自动继承任意兼容外观插件；

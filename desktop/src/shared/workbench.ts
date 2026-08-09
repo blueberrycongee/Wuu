@@ -127,6 +127,10 @@ export interface PluginUIContainerProps extends React.HTMLAttributes<HTMLElement
   children?: React.ReactNode;
 }
 
+export interface PluginUIPageProps extends PluginUIContainerProps {
+  density?: "comfortable" | "compact";
+}
+
 export interface PluginUISectionProps extends Omit<PluginUIContainerProps, "title"> {
   title?: React.ReactNode;
   description?: React.ReactNode;
@@ -162,12 +166,23 @@ export interface PluginUIEmptyStateProps extends Omit<React.HTMLAttributes<HTMLE
   actions?: React.ReactNode;
 }
 
+export interface PluginUILoadingStateProps extends Omit<React.HTMLAttributes<HTMLElement>, "title"> {
+  title?: React.ReactNode;
+  description?: React.ReactNode;
+}
+
+export interface PluginUIErrorStateProps extends Omit<React.HTMLAttributes<HTMLElement>, "title"> {
+  title: React.ReactNode;
+  description?: React.ReactNode;
+  actions?: React.ReactNode;
+}
+
 /**
  * Small host-owned component set for plugin views. These components own the
  * common visual rhythm while plugins retain full freedom inside their view.
  */
 export interface PluginUIKit {
-  readonly Page: React.ComponentType<PluginUIContainerProps>;
+  readonly Page: React.ComponentType<PluginUIPageProps>;
   readonly Panel: React.ComponentType<PluginUIContainerProps>;
   readonly Card: React.ComponentType<PluginUIContainerProps>;
   readonly Section: React.ComponentType<PluginUISectionProps>;
@@ -178,6 +193,8 @@ export interface PluginUIKit {
   readonly TextArea: React.ComponentType<PluginUITextAreaProps>;
   readonly Checkbox: React.ComponentType<PluginUICheckboxProps>;
   readonly EmptyState: React.ComponentType<PluginUIEmptyStateProps>;
+  readonly LoadingState: React.ComponentType<PluginUILoadingStateProps>;
+  readonly ErrorState: React.ComponentType<PluginUIErrorStateProps>;
 }
 
 export function createPluginUIKit(react: typeof React): PluginUIKit {
@@ -196,7 +213,14 @@ export function createPluginUIKit(react: typeof React): PluginUIKit {
     }, children);
   };
 
-  const Page = container("section", "plugin-ui-page");
+  function Page({ className, density = "comfortable", children, ...props }: PluginUIPageProps): React.ReactNode {
+    return react.createElement("section", {
+      ...props,
+      className: joinPluginUIClass("plugin-ui-page", className),
+      "data-wuu-component": "plugin-ui-page",
+      "data-wuu-density": density,
+    }, children);
+  }
   const Panel = container("section", "plugin-ui-panel");
   const Card = container("article", "plugin-ui-card");
   const Row = container("div", "plugin-ui-row");
@@ -286,18 +310,60 @@ export function createPluginUIKit(react: typeof React): PluginUIKit {
         : null));
   }
 
-  function EmptyState({ className, title, description, actions, ...props }: PluginUIEmptyStateProps): React.ReactNode {
+  const renderState = (
+    kind: "empty" | "loading" | "error",
+    className: string | undefined,
+    title: React.ReactNode,
+    description: React.ReactNode,
+    actions: React.ReactNode,
+    props: React.HTMLAttributes<HTMLElement>,
+  ): React.ReactNode => {
+    const component = {
+      empty: "plugin-ui-empty-state",
+      loading: "plugin-ui-loading-state",
+      error: "plugin-ui-error-state",
+    }[kind];
     return react.createElement("section", {
       ...props,
-      className: joinPluginUIClass("plugin-ui-empty-state", className),
-      "data-wuu-component": "plugin-ui-empty-state",
+      className: joinPluginUIClass(`plugin-ui-state ${component}`, className),
+      "data-wuu-component": component,
+      "data-wuu-state": kind,
+      role: kind === "error" ? "alert" : "status",
+      "aria-busy": kind === "loading" ? true : undefined,
     },
-    react.createElement("strong", null, title),
+    kind === "loading" ? react.createElement("span", { className: "plugin-ui-state-spinner", "aria-hidden": true }) : null,
+    title !== undefined ? react.createElement("strong", null, title) : null,
     description !== undefined ? react.createElement("p", null, description) : null,
-    actions !== undefined ? react.createElement("div", { className: "plugin-ui-empty-state-actions" }, actions) : null);
+    actions !== undefined ? react.createElement("div", { className: "plugin-ui-state-actions" }, actions) : null);
+  };
+
+  function EmptyState({ className, title, description, actions, ...props }: PluginUIEmptyStateProps): React.ReactNode {
+    return renderState("empty", className, title, description, actions, props);
   }
 
-  return Object.freeze({ Page, Panel, Card, Section, Stack, Row, Button, TextInput, TextArea, Checkbox, EmptyState });
+  function LoadingState({ className, title, description, ...props }: PluginUILoadingStateProps): React.ReactNode {
+    return renderState("loading", className, title, description, undefined, props);
+  }
+
+  function ErrorState({ className, title, description, actions, ...props }: PluginUIErrorStateProps): React.ReactNode {
+    return renderState("error", className, title, description, actions, props);
+  }
+
+  return Object.freeze({
+    Page,
+    Panel,
+    Card,
+    Section,
+    Stack,
+    Row,
+    Button,
+    TextInput,
+    TextArea,
+    Checkbox,
+    EmptyState,
+    LoadingState,
+    ErrorState,
+  });
 }
 
 function joinPluginUIClass(base: string, className?: string): string {

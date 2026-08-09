@@ -87,6 +87,8 @@ const api = {
     Button: "button",
     TextInput: "input",
     EmptyState: "section",
+    LoadingState: "section",
+    ErrorState: "section",
   },
   registerViewType: register("views"),
   registerViewPlacement: register("viewPlacements"),

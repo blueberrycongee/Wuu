@@ -96,6 +96,10 @@ export interface PluginUIContainerProps {
   readonly [property: string]: unknown;
 }
 
+export interface PluginUIPageProps extends PluginUIContainerProps {
+  readonly density?: "comfortable" | "compact";
+}
+
 export interface PluginUISectionProps extends PluginUIContainerProps {
   readonly title?: unknown;
   readonly description?: unknown;
@@ -145,11 +149,23 @@ export interface PluginUIEmptyStateProps extends PluginUIContainerProps {
   readonly actions?: unknown;
 }
 
+
+export interface PluginUILoadingStateProps extends PluginUIContainerProps {
+  readonly title?: unknown;
+  readonly description?: unknown;
+}
+
+export interface PluginUIErrorStateProps extends PluginUIContainerProps {
+  readonly title: unknown;
+  readonly description?: unknown;
+  readonly actions?: unknown;
+}
+
 export type HostUIComponent<Props> = (props: Props) => unknown;
 
 /** Stable host-owned primitives for plugin views. */
 export interface PluginUIKit {
-  readonly Page: HostUIComponent<PluginUIContainerProps>;
+  readonly Page: HostUIComponent<PluginUIPageProps>;
   readonly Panel: HostUIComponent<PluginUIContainerProps>;
   readonly Card: HostUIComponent<PluginUIContainerProps>;
   readonly Section: HostUIComponent<PluginUISectionProps>;
@@ -160,6 +176,8 @@ export interface PluginUIKit {
   readonly TextArea: HostUIComponent<PluginUITextAreaProps>;
   readonly Checkbox: HostUIComponent<PluginUICheckboxProps>;
   readonly EmptyState: HostUIComponent<PluginUIEmptyStateProps>;
+  readonly LoadingState: HostUIComponent<PluginUILoadingStateProps>;
+  readonly ErrorState: HostUIComponent<PluginUIErrorStateProps>;
 }
 
 export interface OpenViewOptions {

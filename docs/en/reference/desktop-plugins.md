@@ -156,8 +156,11 @@ that cannot be expressed by the standard schema.
 ## Host-owned UI Kit
 
 Custom Views receive `api.ui`, a deliberately small set of host-owned React components:
-`Page`, `Panel`, `Card`, `Section`, `Stack`, `Row`, `Button`, `TextInput`, and `EmptyState`.
+`Page`, `Panel`, `Card`, `Section`, `Stack`, `Row`, `Button`, `TextInput`, `TextArea`, `Checkbox`,
+`EmptyState`, `LoadingState`, and `ErrorState`.
 They preserve Wuu's spacing and interaction behavior while inheriting the active appearance theme.
+`Page` accepts `density: "comfortable" | "compact"`; state components own ARIA status, loading
+motion, error treatment, responsive spacing, and overflow behavior.
 
 ```js
 const { Button, Card, Page, Section, Stack } = api.ui;
@@ -272,8 +275,9 @@ of targeting individual action identities. The user-query surface is separately 
 
 The UI Kit exposes coarse anchors for `plugin-ui-page`, `plugin-ui-panel`, `plugin-ui-card`,
 `plugin-ui-section`, `plugin-ui-stack`, `plugin-ui-row`, `plugin-ui-button`, `plugin-ui-field`,
-`plugin-ui-input`, and `plugin-ui-empty-state`. Appearance plugins should prefer public tokens and
-use these boundaries only when a structural treatment is necessary.
+`plugin-ui-input`, `plugin-ui-empty-state`, `plugin-ui-loading-state`, and `plugin-ui-error-state`.
+Appearance plugins should prefer public tokens and use these boundaries only when a structural
+treatment is necessary.
 
 Settings exposes `settings-shell`, `settings-sidebar`, `settings-content`, and `settings-page` as
 coarse layout boundaries. Themes can give the navigation rail and content canvas different material

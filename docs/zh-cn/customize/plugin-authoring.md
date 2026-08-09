@@ -306,7 +306,9 @@ export async function activate(api) {
   View 或执行已注册 Command。宿主负责每个 Section 的独立错误边界、限高和溢出。
   长列表、编辑器和复杂交互必须进入 `primary` 或 `auxiliary` View。
 - `api.ui`：宿主提供的小型 UI Kit，包括 `Page`、`Panel`、`Card`、`Section`、
-  `Stack`、`Row`、`Button`、`TextInput` 和 `EmptyState`。普通插件页面优先使用这些组件，
+  `Stack`、`Row`、`Button`、`TextInput`、`TextArea`、`Checkbox`、`EmptyState`、
+  `LoadingState` 和 `ErrorState`。`Page` 支持 `comfortable`/`compact` 密度；状态组件由宿主
+  统一处理 ARIA、加载动画、错误视觉、响应式间距和溢出。普通插件页面优先使用这些组件，
   因而会自动继承当前外观插件的颜色、字体、边框、圆角、阴影和密度。复杂 View 仍可使用
   任意 React，画布、终端和专用预览可以保留自己的主题边界；插件不应覆盖 UI Kit 的内部
   class，也不应重新接管宿主的页面边距和公共控件节奏。
@@ -342,8 +344,8 @@ snippets 而不是新增主题 Token：`app-shell`、`sidebar`、`conversation-p
 `message-bubble` + `user` 变体，并由 `--wuu-message-user-*` Token 控制视觉属性。
 插件 UI Kit 公开 `plugin-ui-page`、`plugin-ui-panel`、`plugin-ui-card`、
 `plugin-ui-section`、`plugin-ui-stack`、`plugin-ui-row`、`plugin-ui-button`、
-`plugin-ui-field`、`plugin-ui-input` 和 `plugin-ui-empty-state`；外观插件应优先改公开
-Token，确需结构化装饰时再按这些粗粒度语义处理。
+`plugin-ui-field`、`plugin-ui-input`、`plugin-ui-empty-state`、`plugin-ui-loading-state` 和
+`plugin-ui-error-state`；外观插件应优先改公开 Token，确需结构化装饰时再按这些粗粒度语义处理。
 这份清单由 `desktop/src/renderer/plugins/ProductionSemanticAnchors.test.ts` 强制约束；
 锚点改名属于破坏性变更。
 

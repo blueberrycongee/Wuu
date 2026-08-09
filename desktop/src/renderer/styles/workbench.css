@@ -83,10 +83,14 @@
  * appearance plugins style the coarse data-wuu-component boundaries or the
  * public tokens instead of chasing each feature plugin's private DOM. */
 .plugin-ui-page {
+  box-sizing: border-box;
   width: min(100%, var(--wuu-content-max-width, 1088px));
+  max-width: 100%;
   min-width: 0;
+  min-height: 100%;
   margin: 0 auto;
   padding: calc(var(--wuu-space-unit, 4px) * 6 * var(--wuu-space-density, 1));
+  overflow-wrap: anywhere;
   color: var(--wuu-color-text, var(--ink));
   font-family: var(--wuu-font-family-ui, inherit);
   font-size: var(--wuu-font-size-body, var(--font-body));
@@ -94,7 +98,7 @@
 }
 
 .plugin-ui-page[data-wuu-density="compact"] {
-  padding: calc(var(--wuu-space-unit, 4px) * 3 * var(--wuu-space-density, 1));
+  --wuu-space-density: 0.75;
 }
 
 .plugin-ui-panel,
@@ -127,7 +131,7 @@
 
 .plugin-ui-section-header h2,
 .plugin-ui-section-header p,
-.plugin-ui-empty-state p {
+.plugin-ui-state p {
   margin: 0;
 }
 
@@ -140,7 +144,7 @@
 
 .plugin-ui-section-header p,
 .plugin-ui-field-description,
-.plugin-ui-empty-state p {
+.plugin-ui-state p {
   color: var(--wuu-color-text-muted, var(--ink-soft));
 }
 
@@ -214,6 +218,13 @@
   opacity: 0.48;
 }
 
+.plugin-ui-input:disabled,
+.plugin-ui-textarea:disabled,
+.plugin-ui-checkbox:has(input:disabled) {
+  cursor: default;
+  opacity: 0.52;
+}
+
 .plugin-ui-button:focus-visible,
 .plugin-ui-input:focus-visible,
 .plugin-ui-textarea:focus-visible,
@@ -283,7 +294,7 @@
   gap: calc(var(--wuu-space-unit, 4px) * var(--wuu-space-density, 1));
 }
 
-.plugin-ui-empty-state {
+.plugin-ui-state {
   display: grid;
   min-height: 180px;
   place-content: center;
@@ -293,11 +304,45 @@
   text-align: center;
 }
 
-.plugin-ui-empty-state-actions {
+.plugin-ui-state[data-wuu-state="error"] {
+  color: var(--wuu-color-danger, var(--danger));
+}
+
+.plugin-ui-state-spinner {
+  width: 22px;
+  height: 22px;
+  border: 2px solid var(--wuu-color-border-subtle, var(--hairline));
+  border-top-color: var(--wuu-color-accent, var(--wuu-accent));
+  border-radius: 50%;
+  animation: plugin-ui-state-spin 800ms linear infinite;
+}
+
+.plugin-ui-state-actions {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
   gap: calc(var(--wuu-space-unit, 4px) * 2 * var(--wuu-space-density, 1));
+}
+
+@keyframes plugin-ui-state-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (max-width: 560px) {
+  .plugin-ui-page {
+    padding: calc(var(--wuu-space-unit, 4px) * 3 * var(--wuu-space-density, 1));
+  }
+
+  .plugin-ui-panel,
+  .plugin-ui-card {
+    padding: calc(var(--wuu-space-unit, 4px) * 3 * var(--wuu-space-density, 1));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .plugin-ui-state-spinner {
+    animation-duration: 1600ms;
+  }
 }
 
 .plugin-workbench-error {
