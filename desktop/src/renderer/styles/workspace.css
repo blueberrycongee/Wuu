@@ -3468,29 +3468,40 @@ html.resizing-workspace-terminal-split * {
   white-space: pre;
 }
 
+.rich-code .hljs-keyword,
 .workspace-file-code .hljs-keyword {
   color: var(--hljs-keyword);
 }
 
+.rich-code .hljs-built_in,
+.rich-code .hljs-title,
+.rich-code .hljs-function,
 .workspace-file-code .hljs-built_in,
 .workspace-file-code .hljs-title,
 .workspace-file-code .hljs-function {
   color: var(--hljs-function);
 }
 
+.rich-code .hljs-string,
 .workspace-file-code .hljs-string {
   color: var(--hljs-string);
 }
 
+.rich-code .hljs-number,
 .workspace-file-code .hljs-number {
   color: var(--hljs-number);
 }
 
+.rich-code .hljs-comment,
 .workspace-file-code .hljs-comment {
   color: var(--hljs-comment);
   font-style: italic;
 }
 
+.rich-code .hljs-attr,
+.rich-code .hljs-attribute,
+.rich-code .hljs-name,
+.rich-code .hljs-tag,
 .workspace-file-code .hljs-attr,
 .workspace-file-code .hljs-attribute,
 .workspace-file-code .hljs-name,
@@ -3498,11 +3509,17 @@ html.resizing-workspace-terminal-split * {
   color: var(--hljs-tag);
 }
 
+.rich-code .hljs-literal,
+.rich-code .hljs-symbol,
 .workspace-file-code .hljs-literal,
 .workspace-file-code .hljs-symbol {
   color: var(--hljs-literal);
 }
 
+.rich-code .hljs-meta,
+.rich-code .hljs-variable,
+.rich-code .hljs-params,
+.rich-code .hljs-property,
 .workspace-file-code .hljs-meta,
 .workspace-file-code .hljs-variable,
 .workspace-file-code .hljs-params,
