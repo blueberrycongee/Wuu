@@ -5,6 +5,10 @@ extend the agent pipeline, how to contribute desktop UI, and how the local
 development loop works. For installing and managing plugins as a user, see
 [Plugins](plugins.md).
 
+Writing your first plugin? Walk through the
+[quickstart](plugin-quickstart.md) to get a working Agent plugin in about ten
+minutes, then come back for the full reference.
+
 The Wuu plugin platform is local-first: there is no marketplace or central
 registry. Plugins are installed locally as directories or zip packages.
 Developers usually maintain their plugins in their own GitHub repositories, and

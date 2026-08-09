@@ -46,6 +46,7 @@
             "zh-cn/customize/hooks.md",
             "zh-cn/customize/memory.md",
             "zh-cn/customize/dream.md",
+            "zh-cn/customize/plugin-quickstart.md",
             "zh-cn/customize/plugins.md",
             "zh-cn/customize/plugin-system.md",
             "zh-cn/customize/plugin-authoring.md",
@@ -107,6 +108,7 @@
         {
           "title": "Customize",
           "pages": [
+            "en/customize/plugin-quickstart.md",
             "en/customize/plugins.md",
             "en/customize/plugin-authoring.md"
           ]

@@ -126,4 +126,5 @@ combination scoring today.
 To develop your own plugins, read [Writing plugins](plugin-authoring.md):
 package structure and manifest, the Agent and Desktop plugin APIs, the local
 development loop (`wuu plugin create/build/test/dev/pack`), and the
-installable, developable examples in the repository.
+installable, developable examples in the repository. Want to start hands-on?
+Walk through the [quickstart](plugin-quickstart.md) first.

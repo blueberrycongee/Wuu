@@ -92,4 +92,4 @@ wuu plugin inspect ./path/to/plugin   # 安装前检查包内容与 fingerprint
 
 要开发自己的插件，阅读[编写插件](plugin-authoring.md)：包结构与 manifest、Agent
 插件与桌面插件的 API、本地开发闭环（`wuu plugin create/build/test/dev/pack`）以及
-仓库中可直接安装和开发的示例。
+仓库中可直接安装和开发的示例。想直接上手？先走一遍[快速上手](plugin-quickstart.md)。
