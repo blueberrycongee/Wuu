@@ -183,9 +183,28 @@ export function ProcessSurface({
   const className = `process-surface${
     hasDetails ? " has-details" : " no-details"
   }${streaming ? " is-streaming" : ""}`;
+  const summaryText = useCondensedSummary
+    ? condensedToolActivityText(
+        toolSegments,
+        toolItems.length,
+        reasoningStreaming,
+      )
+    : `${toolSegments
+        .map((segment) =>
+          typeof segment.count === "number"
+            ? `${segment.countPrefix}${segment.count}${segment.countSuffix}`
+            : (segment.text ?? ""),
+        )
+        .join(" · ")}${
+        hasReasoning
+          ? `${toolSegments.length > 0 ? " · " : ""}${
+              reasoningStreaming ? t("process.thinking") : t("process.reasoning")
+            }`
+          : ""
+      }`;
 
   const summaryLine = (
-    <span className="process-surface-summary-line">
+    <span className="process-surface-summary-line" aria-label={summaryText}>
       {useCondensedSummary ? (
         <AnimatedProcessText
           className="process-surface-condensed-summary"

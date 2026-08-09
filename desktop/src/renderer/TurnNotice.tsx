@@ -37,6 +37,7 @@ export function SystemEventNotice({
         <span className="turn-event-content">
           <strong
             className={`turn-event-title${inProgress ? " live-progress-chip" : ""}`}
+            data-text={event.label}
           >
             {event.label}
           </strong>

@@ -52,7 +52,7 @@ export function TruncatedText({
   const Tag = as as ElementType;
   return (
     <Tooltip content={text} disabled={!truncated}>
-      <Tag ref={ref} className={className} {...rest}>
+      <Tag ref={ref} className={className} data-text={text} {...rest}>
         {text}
       </Tag>
     </Tooltip>

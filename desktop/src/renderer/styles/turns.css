@@ -28,8 +28,16 @@
   --activity-detail-error-border: #e89088;
   --diff-insert-color: #12a150;
   --diff-delete-color: #cf2e2e;
-  --live-gray-shimmer-edge: rgba(255, 255, 255, 0.4);
-  --live-gray-shimmer-center: rgba(255, 255, 255, 0.85);
+  --live-gray-shimmer-gradient: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0) 34%,
+    rgba(255, 255, 255, 0.55) 44%,
+    rgba(255, 255, 255, 0.95) 50%,
+    rgba(255, 255, 255, 0.55) 56%,
+    rgba(255, 255, 255, 0) 66%,
+    transparent 100%
+  );
   --rich-link-color: var(--wuu-color-link, #0969da);
   --rich-link-hover-color: var(--wuu-color-link-hover, #0550ae);
   --rich-code-surface-bg: var(--wuu-color-surface-muted, #F4F4F4);
@@ -2243,26 +2251,17 @@
   animation: process-text-rise-out var(--motion-base) var(--ease-out) both;
 }
 
-/* Visible gray process labels sweep while the turn is running. The bright
-   band is painted as a `::after` overlay *over* the row content and blended
-   with `mix-blend-mode: lighten`, so themed surface colors never replace glyph
-   pixels and the text stays readable.
+/* Live gray labels sweep the glyphs themselves, not the invisible layout box.
+   A text-clipped duplicate carries the themed highlight band; the original
+   label stays fully opaque underneath, so chevrons and counts remain stable
+   and plugin themes can replace the sweep as one public gradient token.
 
-   The overlay slides a transform translate from -50% to 150% of
-   the host's own width, so the bright bar always traverses the
-   whole row in lockstep with its width — top to bottom of any
-   text appended during streaming. */
+   The highlight band is sized larger than the label and spends the first and
+   last stretches fully outside the text, which gives each pass a visible rest
+   before it sweeps left→right again. */
 @keyframes live-gray-shimmer {
-  /* Absolute px (not %) so every host — short "正在回复 56s" and
-     long "运行命令 · 搜索4项 · 查看 composer.css · 思考过程" alike —
-     moves the bright bar at the same 83 px/s. The % version had a
-     fixed 4.8s period, which read as a slow crawl on short rows
-     and a fast blur on long rows. The trade-off: short rows now
-     spend less of the cycle with the bar inside them, long rows
-     spend more — but the bar's actual speed matches across all
-     rows. */
-  from { transform: translateX(-200px); }
-  to   { transform: translateX(200px); }
+  from { background-position: 180% 50%; }
+  to   { background-position: -80% 50%; }
 }
 
 .process-surface,
@@ -2348,14 +2347,38 @@
   animation: process-surface-count-jump var(--motion-base) var(--ease-out);
 }
 
-.process-surface-row.is-live-gray,
+.process-surface-row.is-live-gray .process-surface-summary-line,
 .turn-reasoning-summary-text.is-live-gray,
-.turn-process-preview.is-live,
+.turn-process-preview.is-live .turn-process-preview-text,
 .live-progress-chip {
   display: inline-block;
   position: relative;
   isolation: isolate;
+}
+
+.process-surface-row.is-live-gray .process-surface-summary-line::after,
+.turn-reasoning-summary-text.is-live-gray::after,
+.turn-process-preview.is-live .turn-process-preview-text::after,
+.live-progress-chip::after {
+  content: attr(data-text);
+  position: absolute;
+  inset: 0;
   overflow: hidden;
+  pointer-events: none;
+  color: transparent;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background-image: var(--live-gray-shimmer-gradient);
+  background-repeat: no-repeat;
+  background-size: 260% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  animation: live-gray-shimmer 4.8s linear infinite;
+  z-index: 1;
+}
+
+.process-surface-row.is-live-gray .process-surface-summary-line::after {
+  content: attr(aria-label);
 }
 
 .turn-reasoning-summary-text.is-live-gray {
@@ -2367,40 +2390,11 @@
   margin-inline-start: auto;
 }
 
-.process-surface-row.is-live-gray::after,
-.turn-reasoning-summary-text.is-live-gray::after,
-.turn-process-preview.is-live::after,
-.live-progress-chip::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  /* The shared live gray sweep: a themed light band glides over the text.
-     We use a `::after` overlay with `mix-blend-mode: lighten` so the
-     text itself stays fully opaque and readable, and the sweep reads
-     as a highlight rather than a muddy background smear. Light mode uses
-     a white band; dark mode caps it at a translucent silver gray so it
-     lifts muted text without flashing to white against the dark canvas. */
-  background-image: linear-gradient(
-    90deg,
-    transparent 0%,
-    transparent 40%,
-    var(--live-gray-shimmer-edge) 47%,
-    var(--live-gray-shimmer-center) 50%,
-    var(--live-gray-shimmer-edge) 53%,
-    transparent 60%,
-    transparent 100%
-  );
-  animation: live-gray-shimmer 4.8s linear infinite;
-  mix-blend-mode: lighten;
-  z-index: 1;
-}
-
 :root[data-renderer-hidden] .turn-progress.in_progress .turn-progress-title,
 :root[data-renderer-hidden] .turn-process-live-dot,
-:root[data-renderer-hidden] .process-surface-row.is-live-gray::after,
+:root[data-renderer-hidden] .process-surface-row.is-live-gray .process-surface-summary-line::after,
 :root[data-renderer-hidden] .turn-reasoning-summary-text.is-live-gray::after,
-:root[data-renderer-hidden] .turn-process-preview.is-live::after,
+:root[data-renderer-hidden] .turn-process-preview.is-live .turn-process-preview-text::after,
 :root[data-renderer-hidden] .live-progress-chip::after,
 :root[data-renderer-hidden] .wuu-launch-glass::after,
 :root[data-renderer-hidden] .wuu-launch-mark::after,
@@ -2426,12 +2420,11 @@
     display: none;
   }
 
-  .process-surface-row.is-live-gray::after,
+  .process-surface-row.is-live-gray .process-surface-summary-line::after,
   .turn-reasoning-summary-text.is-live-gray::after,
-  .turn-process-preview.is-live::after,
+  .turn-process-preview.is-live .turn-process-preview-text::after,
   .live-progress-chip::after {
-    animation: none;
-    transform: translateX(50%);
+    display: none;
   }
 }
 
