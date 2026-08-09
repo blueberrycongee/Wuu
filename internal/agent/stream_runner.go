@@ -111,6 +111,10 @@ type StreamRunner struct {
 	// round right before building the provider request. Any returned
 	// messages are appended to history for that round.
 	BeforeStep func() []providers.ChatMessage
+	// BeforeModelStep is the context-aware extension boundary for durable,
+	// append-only plugin contributions. Returned messages join live history and
+	// are persisted with the rest of the turn.
+	BeforeModelStep func(context.Context, int, []providers.ChatMessage) ([]providers.ChatMessage, error)
 
 	// BeforeRequestContext, when set, is called before each provider request.
 	// Returned segments are assembled into that request but are not appended
@@ -423,6 +427,7 @@ func (r *StreamRunner) runModelToolLoop(ctx context.Context, history []providers
 		CompactOnly:              r.CompactOnly && !policy.DisableCompaction,
 		ToolWaitInterrupt:        r.ToolWaitInterrupt,
 		BeforeStep:               beforeStep,
+		BeforeModelStep:          r.BeforeModelStep,
 		BeforeRequestContext:     r.BeforeRequestContext,
 		BeforeRequest:            r.BeforeRequest,
 		SystemPromptSections:     systemPromptSections,

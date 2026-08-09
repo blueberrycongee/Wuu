@@ -47,6 +47,7 @@
 ## 当前生产能力
 
 - `agent.request.transform` (transform)
+- `agent.pre_step` (transform, sourced durable append)
 - `agent.system_prompt.section` (transform)
 - `agent.compaction` (decision)
 - `agent.turn.completed` (observe)

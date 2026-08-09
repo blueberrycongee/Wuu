@@ -41,6 +41,9 @@ const (
 	// CapabilityAgentRequestTransform lets a plugin transform the complete,
 	// provider-neutral request immediately before provider validation and send.
 	CapabilityAgentRequestTransform = "agent.request.transform"
+	// CapabilityAgentPreStep lets a plugin append sourced, durable context at
+	// the model-step boundary. Plugins own emission and cache policy.
+	CapabilityAgentPreStep = "agent.pre_step"
 	// CapabilityAgentSystemPromptSection contributes a generation-stable section
 	// evaluated before that plugin generation can become active.
 	CapabilityAgentSystemPromptSection = "agent.system_prompt.section"
@@ -186,6 +189,10 @@ const (
 	MaxSessionSendContextBlocks     = 16
 	MaxSessionSendContextBlockBytes = 64 * 1024
 	MaxSessionSendContextTotalBytes = 256 * 1024
+	MaxPreStepMessages              = 16
+	MaxPreStepMessageIDBytes        = 96
+	MaxPreStepMessageBytes          = 64 * 1024
+	MaxPreStepTotalBytes            = 256 * 1024
 )
 
 const (
@@ -535,6 +542,10 @@ type ModelMessageViewV1 struct {
 	Name            string                `json:"name,omitempty"`
 	Content         string                `json:"content,omitempty"`
 	Hidden          bool                  `json:"hidden,omitempty"`
+	Origin          string                `json:"origin,omitempty"`
+	OriginID        string                `json:"origin_id,omitempty"`
+	Cause           string                `json:"cause,omitempty"`
+	ReadOnly        bool                  `json:"read_only,omitempty"`
 	HasImages       bool                  `json:"has_images,omitempty"`
 	HasFiles        bool                  `json:"has_files,omitempty"`
 	ToolCallID      string                `json:"tool_call_id,omitempty"`
@@ -562,6 +573,30 @@ type ModelToolViewV1 struct {
 // host's internal ChatRequest.
 type RequestTransformOutput struct {
 	PrependSystemMessages []string `json:"prepend_system_messages,omitempty"`
+}
+
+// AgentPreStepInput is the immutable live transcript at a model-step boundary.
+// Messages include durable plugin contributions so a plugin can own its own
+// emit-on-change policy without host-managed state.
+type AgentPreStepInput struct {
+	SessionID string               `json:"session_id,omitempty"`
+	ThreadID  string               `json:"thread_id,omitempty"`
+	CWD       string               `json:"cwd,omitempty"`
+	Provider  string               `json:"provider,omitempty"`
+	Model     string               `json:"model,omitempty"`
+	StepIndex int                  `json:"step_index"`
+	Messages  []ModelMessageViewV1 `json:"messages"`
+}
+
+// AgentPreStepMessage is appended after the current transcript and persisted
+// with host-stamped plugin provenance. ID is stable within the plugin.
+type AgentPreStepMessage struct {
+	ID      string `json:"id"`
+	Content string `json:"content"`
+}
+
+type AgentPreStepOutput struct {
+	AppendMessages []AgentPreStepMessage `json:"append_messages,omitempty"`
 }
 
 // SystemPromptSectionInput is immutable session context for the v1
@@ -634,6 +669,8 @@ func ValidateCapabilityDescriptor(c CapabilityDescriptor) error {
 	var requiredKind SeamKind
 	switch c.ID {
 	case CapabilityAgentRequestTransform:
+		requiredKind = SeamTransform
+	case CapabilityAgentPreStep:
 		requiredKind = SeamTransform
 	case CapabilityAgentSystemPromptSection:
 		requiredKind = SeamTransform
@@ -725,7 +762,7 @@ func ValidateCapabilityNegotiation(result CapabilityInitializeResult, supported 
 			return err
 		}
 		switch capability.ID {
-		case CapabilityAgentRequestTransform, CapabilityAgentSystemPromptSection, CapabilityAgentCompaction, CapabilityAgentTurnCompleted, CapabilityAgentTurnLifecycle, CapabilityPluginClientRequest:
+		case CapabilityAgentRequestTransform, CapabilityAgentPreStep, CapabilityAgentSystemPromptSection, CapabilityAgentCompaction, CapabilityAgentTurnCompleted, CapabilityAgentTurnLifecycle, CapabilityPluginClientRequest:
 		default:
 			return fmt.Errorf("capability %s is not supported by this host", capability.ID)
 		}

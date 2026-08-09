@@ -83,6 +83,90 @@ func pluginRequestInterceptor(host *pluginhost.Host, provider, threadID, cwd str
 	return pluginRequestInterceptorWithTransforms(host, buildPluginRequestTransforms(host, provider, threadID, cwd), provider, threadID, cwd)
 }
 
+func pluginPreStepInjector(host *pluginhost.Host, provider, model, threadID, cwd string) func(context.Context, int, []providers.ChatMessage) ([]providers.ChatMessage, error) {
+	if host == nil || len(host.Capabilities(pluginhost.CapabilityAgentPreStep)) == 0 {
+		return nil
+	}
+	return func(ctx context.Context, stepIndex int, history []providers.ChatMessage) ([]providers.ChatMessage, error) {
+		var messages []providers.ChatMessage
+		currentHistory := providers.CloneChatMessages(history)
+		for _, capability := range host.Capabilities(pluginhost.CapabilityAgentPreStep) {
+			output := pluginhost.AgentPreStepOutput{}
+			if err := host.InvokeCapability(ctx, capability, pluginhost.AgentPreStepInput{
+				SessionID: threadID,
+				ThreadID:  threadID,
+				CWD:       cwd,
+				Provider:  provider,
+				Model:     model,
+				StepIndex: stepIndex,
+				Messages:  modelMessageViewsV1(currentHistory),
+			}, &output); err != nil {
+				if policyErr := host.HandleCapabilityError(capability, err); policyErr != nil {
+					return nil, policyErr
+				}
+				continue
+			}
+			converted, err := pluginPreStepMessages(capability.PluginID, output.AppendMessages)
+			if err != nil {
+				if policyErr := host.HandleCapabilityError(capability, err); policyErr != nil {
+					return nil, policyErr
+				}
+				continue
+			}
+			messages = append(messages, converted...)
+			currentHistory = append(currentHistory, providers.CloneChatMessages(converted)...)
+		}
+		return messages, nil
+	}
+}
+
+func pluginPreStepMessages(pluginID string, input []pluginhost.AgentPreStepMessage) ([]providers.ChatMessage, error) {
+	if len(input) > pluginhost.MaxPreStepMessages {
+		return nil, fmt.Errorf("plugin %q pre-step exceeds %d messages", pluginID, pluginhost.MaxPreStepMessages)
+	}
+	seen := make(map[string]struct{}, len(input))
+	messages := make([]providers.ChatMessage, 0, len(input))
+	total := 0
+	for _, inputMessage := range input {
+		id := strings.TrimSpace(inputMessage.ID)
+		if id == "" || len([]byte(id)) > pluginhost.MaxPreStepMessageIDBytes || !validPluginContributionID(id) {
+			return nil, fmt.Errorf("plugin %q pre-step message has invalid id %q", pluginID, id)
+		}
+		if _, exists := seen[id]; exists {
+			return nil, fmt.Errorf("plugin %q pre-step message id %q is duplicated", pluginID, id)
+		}
+		seen[id] = struct{}{}
+		content := strings.TrimSpace(inputMessage.Content)
+		if content == "" {
+			return nil, fmt.Errorf("plugin %q pre-step message %q has empty content", pluginID, id)
+		}
+		size := len([]byte(content))
+		if size > pluginhost.MaxPreStepMessageBytes {
+			return nil, fmt.Errorf("plugin %q pre-step message %q exceeds %d bytes", pluginID, id, pluginhost.MaxPreStepMessageBytes)
+		}
+		total += size
+		if total > pluginhost.MaxPreStepTotalBytes {
+			return nil, fmt.Errorf("plugin %q pre-step exceeds %d total bytes", pluginID, pluginhost.MaxPreStepTotalBytes)
+		}
+		messages = append(messages, providers.ChatMessage{
+			Role: "user", Content: content, Hidden: true, ReadOnly: true,
+			Origin: "plugin", OriginID: pluginID + ":" + id,
+			Cause: pluginhost.CapabilityAgentPreStep,
+		})
+	}
+	return messages, nil
+}
+
+func validPluginContributionID(id string) bool {
+	for _, r := range id {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '.' || r == '_' || r == '-' {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
 func pluginRequestInterceptorWithTransforms(host *pluginhost.Host, transforms *agent.RequestTransformChain, provider, threadID, cwd string) func(context.Context, *providers.ChatRequest) error {
 	if transforms == nil || transforms.Count() == 0 {
 		return nil
@@ -135,10 +219,22 @@ func modelRequestViewV1(request *providers.ChatRequest) pluginhost.ModelRequestV
 	view.Effort = request.Effort
 	view.NativeDeferredToolDiscovery = request.NativeDeferredToolDiscovery
 	view.ForceToolName = request.ForceToolName
-	view.Messages = make([]pluginhost.ModelMessageViewV1, 0, len(request.Messages))
-	for _, message := range request.Messages {
+	view.Messages = modelMessageViewsV1(request.Messages)
+	view.Tools = make([]pluginhost.ModelToolViewV1, 0, len(request.Tools))
+	for _, tool := range request.Tools {
+		view.Tools = append(view.Tools, pluginhost.ModelToolViewV1{
+			Name: tool.Name, Description: tool.Description, InputSchema: tool.InputSchema, DeferLoading: tool.DeferLoading,
+		})
+	}
+	return view
+}
+
+func modelMessageViewsV1(messages []providers.ChatMessage) []pluginhost.ModelMessageViewV1 {
+	view := make([]pluginhost.ModelMessageViewV1, 0, len(messages))
+	for _, message := range messages {
 		item := pluginhost.ModelMessageViewV1{
 			Role: message.Role, Name: message.Name, Content: message.Content, Hidden: message.Hidden,
+			Origin: message.Origin, OriginID: message.OriginID, Cause: message.Cause, ReadOnly: message.ReadOnly,
 			HasImages: len(message.Images) != 0, HasFiles: len(message.Files) != 0,
 			ToolCallID: message.ToolCallID, HasToolResult: message.ToolResult != nil,
 		}
@@ -150,13 +246,7 @@ func modelRequestViewV1(request *providers.ChatRequest) pluginhost.ModelRequestV
 		for _, tool := range message.DiscoveredTools {
 			item.DiscoveredTools = append(item.DiscoveredTools, tool.Name)
 		}
-		view.Messages = append(view.Messages, item)
-	}
-	view.Tools = make([]pluginhost.ModelToolViewV1, 0, len(request.Tools))
-	for _, tool := range request.Tools {
-		view.Tools = append(view.Tools, pluginhost.ModelToolViewV1{
-			Name: tool.Name, Description: tool.Description, InputSchema: tool.InputSchema, DeferLoading: tool.DeferLoading,
-		})
+		view = append(view, item)
 	}
 	return view
 }

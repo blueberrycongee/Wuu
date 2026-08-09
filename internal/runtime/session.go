@@ -616,6 +616,7 @@ func NewSession(opts Options) (*Session, error) {
 			return err
 		},
 		BeforeRequestContext:     RuntimeContextInjector(agentControl, agentthread.RootPath, toolkitContextBlockProvider(toolkit)),
+		BeforeModelStep:          pluginPreStepInjector(pluginHost, resolvedName, providerCfg.Model, "", rootDir),
 		BeforeRequest:            pluginRequestInterceptor(pluginHost, resolvedName, "", rootDir),
 		InferenceOperationKind:   providers.InferenceOperationAgentRound,
 		InferenceWorkloadProfile: providers.InferenceProfileInteractive,
@@ -1269,6 +1270,7 @@ func (s *Session) NewThreadRuntimeForRoot(sessionID, rootDir string) (*ThreadRun
 	runner.DriverCheckpointStore = sessionDriverCheckpointStore{sessDir: s.SessionDir, sessionID: id}
 	runner.ModelInputReceiptStore = sessionModelInputReceiptStore{sessDir: s.SessionDir, sessionID: id}
 	runner.BeforeRequestContext = RuntimeContextInjector(agentControl, agentthread.RootPath, toolkitContextBlockProvider(kit))
+	runner.BeforeModelStep = pluginPreStepInjector(s.PluginHost, s.ProviderName, s.Model, id, threadRoot)
 	runner.BeforeRequest = pluginRequestInterceptor(s.PluginHost, s.ProviderName, id, threadRoot)
 	return &ThreadRuntime{
 		StreamRunner:      runner,
@@ -1391,6 +1393,7 @@ func cloneStreamRunnerForThread(base *agent.StreamRunner, toolExecutor agent.Too
 		DisableAutoCompact:          base.DisableAutoCompact,
 		StreamingToolExecution:      base.StreamingToolExecution,
 		BeforeStep:                  base.BeforeStep,
+		BeforeModelStep:             base.BeforeModelStep,
 		BeforeRequestContext:        base.BeforeRequestContext,
 		BeforeRequest:               base.BeforeRequest,
 		AfterTurn:                   base.AfterTurn,

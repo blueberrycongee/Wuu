@@ -445,6 +445,7 @@ export interface HostReact {
 export const RUNTIME_PROTOCOL_V1 = 1 as const;
 export const CAPABILITY_PROTOCOL_V2 = 2 as const;
 export const REQUEST_TRANSFORM_CAPABILITY = "agent.request.transform" as const;
+export const AGENT_PRE_STEP_CAPABILITY = "agent.pre_step" as const;
 export const SYSTEM_PROMPT_SECTION_CAPABILITY = "agent.system_prompt.section" as const;
 /** @experimental No distributed first-party consumer has proven this contract. */
 export const COMPACTION_CAPABILITY = "agent.compaction" as const;
@@ -570,6 +571,10 @@ export interface ModelMessageViewV1 {
   name?: string;
   content?: string;
   hidden?: boolean;
+  origin?: string;
+  origin_id?: string;
+  cause?: string;
+  read_only?: boolean;
   has_images?: boolean;
   has_files?: boolean;
   tool_call_id?: string;
@@ -594,6 +599,25 @@ export interface ModelToolViewV1 {
 
 export interface RequestTransformOutput {
   prepend_system_messages?: readonly string[];
+}
+
+export interface AgentPreStepInput {
+  session_id?: string;
+  thread_id?: string;
+  cwd?: string;
+  provider?: string;
+  model?: string;
+  step_index: number;
+  messages: readonly ModelMessageViewV1[];
+}
+
+export interface AgentPreStepMessage {
+  id: string;
+  content: string;
+}
+
+export interface AgentPreStepOutput {
+  append_messages?: readonly AgentPreStepMessage[];
 }
 
 export interface SystemPromptSectionInput {

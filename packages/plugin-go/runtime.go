@@ -34,6 +34,7 @@ const (
 	HostServiceSettingsGet            = "host.settings.get"
 	HostServiceSettingsList           = "host.settings.list"
 	CapabilityAgentTurnLifecycle      = "agent.turn.lifecycle"
+	CapabilityAgentPreStep            = "agent.pre_step"
 )
 
 const (
@@ -138,6 +139,36 @@ type TurnContextBlock struct {
 	Title   string `json:"title,omitempty"`
 	Source  string `json:"source,omitempty"`
 	Content string `json:"content"`
+}
+
+type ModelMessageViewV1 struct {
+	Role     string `json:"role"`
+	Name     string `json:"name,omitempty"`
+	Content  string `json:"content,omitempty"`
+	Hidden   bool   `json:"hidden,omitempty"`
+	Origin   string `json:"origin,omitempty"`
+	OriginID string `json:"origin_id,omitempty"`
+	Cause    string `json:"cause,omitempty"`
+	ReadOnly bool   `json:"read_only,omitempty"`
+}
+
+type AgentPreStepInput struct {
+	SessionID string               `json:"session_id,omitempty"`
+	ThreadID  string               `json:"thread_id,omitempty"`
+	CWD       string               `json:"cwd,omitempty"`
+	Provider  string               `json:"provider,omitempty"`
+	Model     string               `json:"model,omitempty"`
+	StepIndex int                  `json:"step_index"`
+	Messages  []ModelMessageViewV1 `json:"messages"`
+}
+
+type AgentPreStepMessage struct {
+	ID      string `json:"id"`
+	Content string `json:"content"`
+}
+
+type AgentPreStepOutput struct {
+	AppendMessages []AgentPreStepMessage `json:"append_messages,omitempty"`
 }
 
 type StorageGetParams struct {

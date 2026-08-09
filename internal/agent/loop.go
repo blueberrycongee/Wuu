@@ -335,6 +335,16 @@ func RunToolLoop(
 				usage.RecordPendingMessages(injected)
 			}
 		}
+		if cfg.BeforeModelStep != nil {
+			injected, injectErr := cfg.BeforeModelStep(ctx, stepIdx, providers.CloneChatMessages(messages))
+			if injectErr != nil {
+				return loopResultSnapshot(messages, startLen, historyRewritten, totalIn, totalOut, totalCacheCreation, totalCacheRead), fmt.Errorf("before model step: %w", injectErr)
+			}
+			for _, msg := range injected {
+				appendMessage(msg)
+			}
+			usage.RecordPendingMessages(injected)
+		}
 		tryProactiveCompact()
 		if repaired, changed, nerr := repairLiveToolCallHistory(messages); nerr != nil {
 			return LoopResult{

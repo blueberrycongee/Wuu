@@ -270,6 +270,9 @@ type LoopConfig struct {
 	// sub-agent follow-up messaging: send_message queues
 	// user-role messages that are injected on the next round.
 	BeforeStep func() []providers.ChatMessage
+	// BeforeModelStep is the context-aware extension boundary for durable,
+	// append-only messages. The input is an immutable snapshot of live history.
+	BeforeModelStep func(context.Context, int, []providers.ChatMessage) ([]providers.ChatMessage, error)
 	// BeforeRequestContext, when set, is called after live-history updates
 	// and before each provider request. Returned segments are assembled into
 	// the provider request without being appended to live or durable history.
