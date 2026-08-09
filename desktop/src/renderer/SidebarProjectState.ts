@@ -20,7 +20,6 @@ import {
   sortThreads,
   threadBelongsToProject,
   threadFromRecord,
-  upsertThread,
 } from "./AppState";
 import {
   reconcileSidebarSectionOrder,
@@ -175,11 +174,20 @@ export function mergeSidebarThreadSnapshots(
   cached: Thread[] | undefined,
   incoming: Thread[],
 ): Thread[] {
-  let merged = cached ?? [];
+  const previous = cached ?? [];
+  const byID = new Map(previous.map((thread) => [thread.id, thread]));
+  let changed = false;
   for (const thread of incoming) {
-    merged = upsertThread(merged, thread);
+    if (byID.get(thread.id) === thread) {
+      continue;
+    }
+    byID.set(thread.id, thread);
+    changed = true;
   }
-  return sortThreads(merged);
+  if (!changed) {
+    return previous;
+  }
+  return sortThreads([...byID.values()]);
 }
 
 export function threadsForDesktopProject(

@@ -1458,11 +1458,7 @@ function sortThreads(threads: Thread[]): Thread[] {
   // Archived threads stay in the list so the Settings → Archive page can show
   // them; sidebar surfaces must filter them out themselves.
   const valid = threads.filter((thread): thread is Thread => isThread(thread));
-  const running = valid.filter(isThreadRunning);
-  const settled = valid.filter((thread) => !isThreadRunning(thread));
-  running.sort((left, right) => threadCreatedTime(right) - threadCreatedTime(left));
-  settled.sort((left, right) => threadTime(right) - threadTime(left));
-  return [...running, ...settled];
+  return sortThreadCandidates(valid);
 }
 
 function summarizeAgentForSidebar(agent: Agent): Agent {
@@ -1545,11 +1541,38 @@ function sortThreadSummaries(threads: ThreadSummary[]): ThreadSummary[] {
       // records out of the root-session rail as well.
       !thread.agent_path,
   );
-  const running = valid.filter(isThreadRunning);
-  const settled = valid.filter((thread) => !isThreadRunning(thread));
-  running.sort((left, right) => threadCreatedTime(right) - threadCreatedTime(left));
-  settled.sort((left, right) => threadTime(right) - threadTime(left));
-  return [...running, ...settled];
+  return sortThreadCandidates(valid);
+}
+
+type ThreadSortCandidate = ThreadRunningCandidate &
+  Pick<Thread, "created_at" | "updated_at">;
+
+type ThreadSortEntry<T extends ThreadSortCandidate> = {
+  thread: T;
+  time: number;
+};
+
+function sortThreadCandidates<T extends ThreadSortCandidate>(threads: T[]): T[] {
+  const running: ThreadSortEntry<T>[] = [];
+  const settled: ThreadSortEntry<T>[] = [];
+  for (const thread of threads) {
+    const threadRunning = isThreadRunning(thread);
+    const entry = {
+      thread,
+      time: threadRunning
+        ? threadCreatedTime(thread)
+        : threadTime(thread),
+    };
+    (threadRunning ? running : settled).push(entry);
+  }
+  const byNewest = (left: ThreadSortEntry<T>, right: ThreadSortEntry<T>) =>
+    right.time - left.time;
+  running.sort(byNewest);
+  settled.sort(byNewest);
+  return [
+    ...running.map((entry) => entry.thread),
+    ...settled.map((entry) => entry.thread),
+  ];
 }
 
 function threadCreatedTime(thread: Pick<Thread, "created_at" | "updated_at">): number {
