@@ -31,6 +31,7 @@ const (
 	MethodPluginPackageInstall     = "plugin/package/install"
 	MethodPluginPackageRemove      = "plugin/package/remove"
 	MethodPluginDesktopModuleRead  = "plugin/desktop-module/read"
+	MethodPluginIconRead           = "plugin/icon/read"
 	MethodPluginSettingGet         = "plugin/setting/get"
 	MethodPluginSettingSet         = "plugin/setting/set"
 	MethodPluginDiagnosticsList    = "plugin/diagnostics/list"
@@ -613,12 +614,19 @@ type ExtensionContributions struct {
 }
 
 type ExtensionViewEntryDescriptor struct {
-	ID          string `json:"id"`
-	View        string `json:"view"`
-	Title       string `json:"title"`
-	Description string `json:"description,omitempty"`
-	Icon        string `json:"icon,omitempty"`
-	Order       int    `json:"order,omitempty"`
+	ID          string                   `json:"id"`
+	View        string                   `json:"view"`
+	Title       string                   `json:"title"`
+	Description string                   `json:"description,omitempty"`
+	Icon        *ExtensionIconDescriptor `json:"icon,omitempty"`
+	Order       int                      `json:"order,omitempty"`
+}
+
+type ExtensionIconDescriptor struct {
+	Name  string `json:"name,omitempty"`
+	Path  string `json:"path,omitempty"`
+	Light string `json:"light,omitempty"`
+	Dark  string `json:"dark,omitempty"`
 }
 
 type ExtensionSlotContributionDescriptor struct {
@@ -661,6 +669,7 @@ type ExtensionInventoryRecord struct {
 	ID                   string                           `json:"id"`
 	Name                 string                           `json:"name"`
 	Description          string                           `json:"description,omitempty"`
+	Icon                 *ExtensionIconDescriptor         `json:"icon,omitempty"`
 	Kind                 extensions.Kind                  `json:"kind"`
 	Provenance           extensions.Provenance            `json:"provenance"`
 	State                ExtensionState                   `json:"state"`
@@ -777,6 +786,21 @@ type PluginDesktopModuleReadResult struct {
 	MediaType   string `json:"media_type"`
 	Digest      string `json:"digest"`
 	Source      string `json:"source"`
+}
+
+type PluginIconReadParams struct {
+	ID          string `json:"id"`
+	Fingerprint string `json:"fingerprint"`
+	Path        string `json:"path"`
+}
+
+type PluginIconReadResult struct {
+	ID          string `json:"id"`
+	Fingerprint string `json:"fingerprint"`
+	Path        string `json:"path"`
+	MediaType   string `json:"media_type"`
+	Digest      string `json:"digest"`
+	Data        []byte `json:"data"`
 }
 
 type PluginValueScope string

@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"encoding/xml"
 	"errors"
 	"fmt"
 	"io"
@@ -32,6 +33,9 @@ const maxPromptFileSize = 1 << 20
 
 // maxDesktopEntrySize bounds the browser module read by a Desktop shell.
 const maxDesktopEntrySize = 10 << 20
+
+// maxPluginIconSize keeps declarative artwork cheap to inspect and transport.
+const maxPluginIconSize = 256 << 10
 
 // CommandKind enumerates the supported command contribution kinds.
 type CommandKind string
@@ -79,6 +83,7 @@ type Manifest struct {
 	ID                   string                            `json:"id"`
 	Name                 string                            `json:"name,omitempty"`
 	Description          string                            `json:"description,omitempty"`
+	Icon                 *IconSpec                         `json:"icon,omitempty"`
 	Version              string                            `json:"version,omitempty"`
 	Author               json.RawMessage                   `json:"author,omitempty"`
 	Homepage             string                            `json:"homepage,omitempty"`
@@ -163,12 +168,200 @@ type PresenterContributionSpec struct {
 // host-owned discovery surface. The plugin owns the View content; Wuu owns
 // navigation, tabs, overflow, lifecycle, and the surrounding chrome.
 type ViewEntryContributionSpec struct {
-	ID          string `json:"id"`
-	View        string `json:"view"`
-	Title       string `json:"title"`
-	Description string `json:"description,omitempty"`
-	Icon        string `json:"icon,omitempty"`
-	Order       int    `json:"order,omitempty"`
+	ID          string    `json:"id"`
+	View        string    `json:"view"`
+	Title       string    `json:"title"`
+	Description string    `json:"description,omitempty"`
+	Icon        *IconSpec `json:"icon,omitempty"`
+	Order       int       `json:"order,omitempty"`
+}
+
+// IconSpec is a host-rendered semantic icon or package-contained artwork.
+// Exactly one of Name, Path, or the Light/Dark pair is populated after
+// manifest normalization.
+type IconSpec struct {
+	Name  string `json:"name,omitempty"`
+	Path  string `json:"path,omitempty"`
+	Light string `json:"light,omitempty"`
+	Dark  string `json:"dark,omitempty"`
+}
+
+func (i *IconSpec) UnmarshalJSON(data []byte) error {
+	data = bytes.TrimSpace(data)
+	if len(data) == 0 || bytes.Equal(data, []byte("null")) {
+		return nil
+	}
+	if data[0] == '"' {
+		return json.Unmarshal(data, &i.Name)
+	}
+	type iconObject IconSpec
+	var value iconObject
+	if err := json.Unmarshal(data, &value); err != nil {
+		return errors.New("must be a public icon name or an icon asset object")
+	}
+	*i = IconSpec(value)
+	return nil
+}
+
+func (i IconSpec) AssetPaths() []string {
+	if i.Path != "" {
+		return []string{i.Path}
+	}
+	paths := make([]string, 0, 2)
+	if i.Light != "" {
+		paths = append(paths, i.Light)
+	}
+	if i.Dark != "" && i.Dark != i.Light {
+		paths = append(paths, i.Dark)
+	}
+	return paths
+}
+
+func normalizeIcon(root, field string, raw json.RawMessage) (*IconSpec, error) {
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null")) {
+		return nil, nil
+	}
+	var icon IconSpec
+	if err := json.Unmarshal(trimmed, &icon); err != nil {
+		return nil, fmt.Errorf("%s %w", field, err)
+	}
+	return normalizeIconValue(root, field, &icon)
+}
+
+func normalizeIconValue(root, field string, icon *IconSpec) (*IconSpec, error) {
+	if icon == nil {
+		return nil, nil
+	}
+	value := &IconSpec{
+		Name: strings.TrimSpace(icon.Name), Path: strings.TrimSpace(icon.Path),
+		Light: strings.TrimSpace(icon.Light), Dark: strings.TrimSpace(icon.Dark),
+	}
+	if value.Name != "" {
+		if value.Path != "" || value.Light != "" || value.Dark != "" {
+			return nil, fmt.Errorf("%s must declare exactly one public name, path, or light/dark pair", field)
+		}
+		if _, ok := allowedIconNames[value.Name]; !ok {
+			return nil, fmt.Errorf("%s %q is not a public Wuu icon", field, value.Name)
+		}
+		return value, nil
+	}
+	if value.Path != "" {
+		if value.Light != "" || value.Dark != "" {
+			return nil, fmt.Errorf("%s path cannot be combined with light or dark", field)
+		}
+		path, err := normalizeIconAssetPath(root, field+".path", value.Path)
+		if err != nil {
+			return nil, err
+		}
+		value.Path = path
+		return value, nil
+	}
+	if value.Light == "" || value.Dark == "" {
+		return nil, fmt.Errorf("%s requires a public icon name, path, or both light and dark", field)
+	}
+	light, err := normalizeIconAssetPath(root, field+".light", value.Light)
+	if err != nil {
+		return nil, err
+	}
+	dark, err := normalizeIconAssetPath(root, field+".dark", value.Dark)
+	if err != nil {
+		return nil, err
+	}
+	value.Light, value.Dark = light, dark
+	return value, nil
+}
+
+func normalizeIconAssetPath(root, field, value string) (string, error) {
+	if strings.Contains(value, `\`) {
+		return "", fmt.Errorf("%s path %q must use package-relative slash separators", field, value)
+	}
+	rel, err := normalizePluginPath(root, field, value)
+	if err != nil {
+		return "", err
+	}
+	switch strings.ToLower(filepath.Ext(rel)) {
+	case ".svg", ".png", ".webp":
+	default:
+		return "", fmt.Errorf("%s %q must be an SVG, PNG, or WebP image", field, value)
+	}
+	path := filepath.Join(root, filepath.FromSlash(rel))
+	linkInfo, err := os.Lstat(path)
+	if err != nil {
+		return "", fmt.Errorf("%s %s: %w", field, rel, err)
+	}
+	if linkInfo.Mode()&os.ModeSymlink != 0 {
+		return "", fmt.Errorf("%s %s must not be a symbolic link", field, rel)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return "", fmt.Errorf("%s %s: %w", field, rel, err)
+	}
+	if !info.Mode().IsRegular() {
+		return "", fmt.Errorf("%s %s must be a regular file", field, rel)
+	}
+	if info.Size() > maxPluginIconSize {
+		return "", fmt.Errorf("%s %s exceeds %d bytes", field, rel, maxPluginIconSize)
+	}
+	if strings.EqualFold(filepath.Ext(rel), ".svg") {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return "", fmt.Errorf("%s %s: %w", field, rel, err)
+		}
+		if err := validatePluginSVG(data); err != nil {
+			return "", fmt.Errorf("%s %s: %w", field, rel, err)
+		}
+	}
+	return filepath.ToSlash(rel), nil
+}
+
+func validatePluginSVG(data []byte) error {
+	if bytes.Contains(bytes.ToLower(data), []byte("<!doctype")) {
+		return errors.New("SVG document types are not allowed")
+	}
+	decoder := xml.NewDecoder(bytes.NewReader(data))
+	seenRoot := false
+	for {
+		token, err := decoder.Token()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("invalid SVG: %w", err)
+		}
+		start, ok := token.(xml.StartElement)
+		if !ok {
+			continue
+		}
+		name := strings.ToLower(start.Name.Local)
+		if !seenRoot {
+			if name != "svg" {
+				return errors.New("root element must be svg")
+			}
+			seenRoot = true
+		}
+		switch name {
+		case "script", "style", "foreignobject", "iframe", "object", "embed", "audio", "video":
+			return fmt.Errorf("SVG element %s is not allowed", name)
+		}
+		for _, attr := range start.Attr {
+			attrName := strings.ToLower(attr.Name.Local)
+			attrValue := strings.TrimSpace(strings.ToLower(attr.Value))
+			if strings.HasPrefix(attrName, "on") {
+				return fmt.Errorf("SVG event attribute %s is not allowed", attrName)
+			}
+			if attrName == "href" && attrValue != "" && !strings.HasPrefix(attrValue, "#") {
+				return errors.New("SVG external references are not allowed")
+			}
+			if (attrName == "style" || attrName == "fill" || attrName == "stroke" || attrName == "filter") && strings.Contains(attrValue, "url(") && !strings.Contains(attrValue, "url(#") {
+				return errors.New("SVG external URL references are not allowed")
+			}
+		}
+	}
+	if !seenRoot {
+		return errors.New("SVG root element is missing")
+	}
+	return nil
 }
 
 type SettingType string
@@ -228,6 +421,7 @@ type rawManifest struct {
 	ID                     string          `json:"id"`
 	Name                   string          `json:"name"`
 	Description            string          `json:"description"`
+	Icon                   json.RawMessage `json:"icon"`
 	Version                string          `json:"version"`
 	Author                 json.RawMessage `json:"author"`
 	Homepage               string          `json:"homepage"`
@@ -271,7 +465,7 @@ type rawContributes struct {
 
 var supportedManifestFields = map[string]struct{}{
 	"schemaVersion": {}, "schema_version": {},
-	"id": {}, "name": {}, "description": {}, "version": {}, "author": {},
+	"id": {}, "name": {}, "description": {}, "icon": {}, "version": {}, "author": {},
 	"homepage": {}, "repository": {}, "license": {}, "keywords": {},
 	"skills": {}, "runtime": {}, "hooks": {}, "mcpServers": {}, "mcp_servers": {},
 	"contributes": {}, "desktop": {}, "interface": {}, "platforms": {},
@@ -352,6 +546,10 @@ func normalizeManifest(data []byte, root string, official bool) (Manifest, error
 	if err != nil {
 		return Manifest{}, err
 	}
+	icon, err := normalizeIcon(root, "icon", raw.Icon)
+	if err != nil {
+		return Manifest{}, err
+	}
 
 	skills, err := normalizePathList(root, "skills", raw.Skills)
 	if err != nil {
@@ -385,7 +583,7 @@ func normalizeManifest(data []byte, root string, official bool) (Manifest, error
 	if err != nil {
 		return Manifest{}, err
 	}
-	ui, err := normalizeUIContributions(raw.Contributes)
+	ui, err := normalizeUIContributions(root, raw.Contributes)
 	if err != nil {
 		return Manifest{}, err
 	}
@@ -412,6 +610,7 @@ func normalizeManifest(data []byte, root string, official bool) (Manifest, error
 		ID:                   id,
 		Name:                 strings.TrimSpace(raw.Name),
 		Description:          strings.TrimSpace(raw.Description),
+		Icon:                 icon,
 		Version:              strings.TrimSpace(raw.Version),
 		Author:               cloneRaw(raw.Author),
 		Homepage:             strings.TrimSpace(raw.Homepage),
@@ -602,7 +801,7 @@ type normalizedUIContributions struct {
 	settingsPages  []ViewEntryContributionSpec
 }
 
-func normalizeUIContributions(raw rawContributes) (normalizedUIContributions, error) {
+func normalizeUIContributions(root string, raw rawContributes) (normalizedUIContributions, error) {
 	seen := make(map[string]string)
 	slots, err := normalizeSlots(raw.Slots, seen)
 	if err != nil {
@@ -616,15 +815,15 @@ func normalizeUIContributions(raw rawContributes) (normalizedUIContributions, er
 	if err != nil {
 		return normalizedUIContributions{}, err
 	}
-	navigation, err := normalizeViewEntries("contributes.navigation", raw.Navigation, seen)
+	navigation, err := normalizeViewEntries(root, "contributes.navigation", raw.Navigation, seen)
 	if err != nil {
 		return normalizedUIContributions{}, err
 	}
-	workspaceTools, err := normalizeViewEntries("contributes.workspaceTools", raw.WorkspaceTools, seen)
+	workspaceTools, err := normalizeViewEntries(root, "contributes.workspaceTools", raw.WorkspaceTools, seen)
 	if err != nil {
 		return normalizedUIContributions{}, err
 	}
-	settingsPages, err := normalizeViewEntries("contributes.settingsPages", raw.SettingsPages, seen)
+	settingsPages, err := normalizeViewEntries(root, "contributes.settingsPages", raw.SettingsPages, seen)
 	if err != nil {
 		return normalizedUIContributions{}, err
 	}
@@ -634,7 +833,7 @@ func normalizeUIContributions(raw rawContributes) (normalizedUIContributions, er
 	}, nil
 }
 
-func normalizeViewEntries(field string, raw json.RawMessage, seen map[string]string) ([]ViewEntryContributionSpec, error) {
+func normalizeViewEntries(root, field string, raw json.RawMessage, seen map[string]string) ([]ViewEntryContributionSpec, error) {
 	items, err := decodeContributionArray(field, raw)
 	if err != nil {
 		return nil, err
@@ -653,7 +852,11 @@ func normalizeViewEntries(field string, raw json.RawMessage, seen map[string]str
 		spec.View = strings.TrimSpace(spec.View)
 		spec.Title = strings.TrimSpace(spec.Title)
 		spec.Description = strings.TrimSpace(spec.Description)
-		spec.Icon = strings.TrimSpace(spec.Icon)
+		icon, err := normalizeIconValue(root, itemField+".icon", spec.Icon)
+		if err != nil {
+			return nil, err
+		}
+		spec.Icon = icon
 		if spec.ID == "" {
 			return nil, fmt.Errorf("%s requires id", itemField)
 		}
@@ -665,11 +868,6 @@ func normalizeViewEntries(field string, raw json.RawMessage, seen map[string]str
 		}
 		if spec.Title == "" {
 			return nil, fmt.Errorf("%s requires title", itemField)
-		}
-		if spec.Icon != "" {
-			if _, ok := allowedIconNames[spec.Icon]; !ok {
-				return nil, fmt.Errorf("%s icon %q is not a public Wuu icon", itemField, spec.Icon)
-			}
 		}
 		seen[spec.ID] = itemField
 		out = append(out, spec)

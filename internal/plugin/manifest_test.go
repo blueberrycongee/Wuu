@@ -247,7 +247,7 @@ func TestLoadManifestNormalizesDeclarativeUIContributions(t *testing.T) {
 	if len(manifest.WorkspaceTools) != 1 || manifest.WorkspaceTools[0].Description != "Workspace inspector" {
 		t.Fatalf("workspace tools = %+v", manifest.WorkspaceTools)
 	}
-	if len(manifest.SettingsPages) != 1 || manifest.SettingsPages[0].Icon != "sliders" {
+	if len(manifest.SettingsPages) != 1 || manifest.SettingsPages[0].Icon == nil || manifest.SettingsPages[0].Icon.Name != "sliders" {
 		t.Fatalf("settings pages = %+v", manifest.SettingsPages)
 	}
 }

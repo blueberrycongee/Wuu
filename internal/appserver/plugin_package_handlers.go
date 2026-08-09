@@ -86,6 +86,80 @@ func (s *Server) handlePluginDesktopModuleRead(req Request) error {
 	}, nil)
 }
 
+func (s *Server) handlePluginIconRead(req Request) error {
+	var params PluginIconReadParams
+	if err := decodeParams(req.Params, &params); err != nil {
+		return s.writeResponse(req.ID, nil, err)
+	}
+	params.ID = strings.TrimSpace(params.ID)
+	params.Fingerprint = strings.TrimSpace(params.Fingerprint)
+	params.Path = filepath.ToSlash(strings.TrimSpace(params.Path))
+	if params.ID == "" || params.Fingerprint == "" || params.Path == "" {
+		return s.writeResponse(req.ID, nil, errors.New("plugin id, fingerprint, and icon path are required"))
+	}
+
+	var selected *pluginpkg.Plugin
+	for index := range s.rt.Plugins {
+		if s.rt.Plugins[index].SubjectID == params.ID {
+			selected = &s.rt.Plugins[index]
+			break
+		}
+	}
+	if selected == nil {
+		return s.writeResponse(req.ID, nil, fmt.Errorf("plugin %q is not available in this workspace", params.ID))
+	}
+	fresh, err := pluginpkg.LoadManifestWithOptions(selected.ManifestPath, pluginpkg.LoadOptions{
+		Source: selected.Source, Official: selected.Official, WorkspaceID: selected.WorkspaceID,
+	})
+	if err != nil {
+		return s.writeResponse(req.ID, nil, fmt.Errorf("reload plugin icon %q: %w", params.ID, err))
+	}
+	if fresh.SubjectID != params.ID || fresh.Fingerprint != params.Fingerprint {
+		return s.writeResponse(req.ID, nil, errors.New("plugin changed; refresh inventory before loading its icon"))
+	}
+	declared := false
+	check := func(icon *pluginpkg.IconSpec) {
+		if icon == nil {
+			return
+		}
+		for _, path := range icon.AssetPaths() {
+			if path == params.Path {
+				declared = true
+			}
+		}
+	}
+	check(fresh.Icon)
+	for _, entries := range [][]pluginpkg.ViewEntryContributionSpec{fresh.Navigation, fresh.WorkspaceTools, fresh.SettingsPages} {
+		for _, entry := range entries {
+			check(entry.Icon)
+		}
+	}
+	if !declared {
+		return s.writeResponse(req.ID, nil, errors.New("icon path is not declared by this plugin generation"))
+	}
+	data, err := os.ReadFile(filepath.Join(fresh.Root, filepath.FromSlash(params.Path)))
+	if err != nil {
+		return s.writeResponse(req.ID, nil, fmt.Errorf("read plugin icon: %w", err))
+	}
+	mediaType := ""
+	switch strings.ToLower(filepath.Ext(params.Path)) {
+	case ".svg":
+		mediaType = "image/svg+xml"
+	case ".png":
+		mediaType = "image/png"
+	case ".webp":
+		mediaType = "image/webp"
+	}
+	if mediaType == "" {
+		return s.writeResponse(req.ID, nil, errors.New("unsupported plugin icon format"))
+	}
+	digest := sha256.Sum256(data)
+	return s.writeResponse(req.ID, PluginIconReadResult{
+		ID: fresh.SubjectID, Fingerprint: fresh.Fingerprint, Path: params.Path,
+		MediaType: mediaType, Digest: hex.EncodeToString(digest[:]), Data: data,
+	}, nil)
+}
+
 func (s *Server) handlePluginPackageInspect(req Request) error {
 	var params PluginPackageInspectParams
 	if err := decodeParams(req.Params, &params); err != nil {

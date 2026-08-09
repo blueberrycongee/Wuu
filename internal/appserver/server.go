@@ -889,6 +889,8 @@ func (s *Server) handleLine(ctx context.Context, raw []byte) error {
 		return s.handlePluginPackageRemove(req)
 	case MethodPluginDesktopModuleRead:
 		return s.handlePluginDesktopModuleRead(req)
+	case MethodPluginIconRead:
+		return s.handlePluginIconRead(req)
 	case MethodPluginSettingGet:
 		return s.handlePluginSettingGet(req)
 	case MethodPluginSettingSet:

@@ -456,7 +456,7 @@ func (s *Server) currentExtensionInventory() []ExtensionInventoryRecord {
 			for _, contribution := range items {
 				entries = append(entries, ExtensionViewEntryDescriptor{
 					ID: contribution.ID, View: contribution.View, Title: contribution.Title,
-					Description: contribution.Description, Icon: contribution.Icon, Order: contribution.Order,
+					Description: contribution.Description, Icon: extensionIconDescriptor(contribution.Icon), Order: contribution.Order,
 				})
 			}
 			return entries
@@ -468,6 +468,7 @@ func (s *Server) currentExtensionInventory() []ExtensionInventoryRecord {
 			ID:          item.SubjectID,
 			Name:        item.ID,
 			Description: item.Description,
+			Icon:        extensionIconDescriptor(item.Icon),
 			Kind:        extensions.KindPlugin,
 			Provenance: extensions.Provenance{
 				Kind:     extensions.KindPlugin,
@@ -612,6 +613,15 @@ func (s *Server) currentExtensionInventory() []ExtensionInventoryRecord {
 		return records[i].ID < records[j].ID
 	})
 	return records
+}
+
+func extensionIconDescriptor(icon *pluginpkg.IconSpec) *ExtensionIconDescriptor {
+	if icon == nil {
+		return nil
+	}
+	return &ExtensionIconDescriptor{
+		Name: icon.Name, Path: icon.Path, Light: icon.Light, Dark: icon.Dark,
+	}
 }
 
 func (s *Server) currentExtensionConfig() config.Config {

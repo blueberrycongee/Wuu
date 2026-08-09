@@ -319,9 +319,14 @@ export interface ExtensionViewEntryDescriptor {
   view: string;
   title: string;
   description?: string;
-  icon?: string;
+  icon?: ExtensionIconDescriptor;
   order?: number;
 }
+
+export type ExtensionIconDescriptor =
+  | { name: string; path?: never; light?: never; dark?: never }
+  | { name?: never; path: string; light?: never; dark?: never }
+  | { name?: never; path?: never; light: string; dark: string };
 
 export interface ExtensionSlotContributionDescriptor {
   id: string;
@@ -374,6 +379,7 @@ export type ExtensionInventoryRecord = {
   id: string;
   name: string;
   description?: string;
+  icon?: ExtensionIconDescriptor;
   kind: ExtensionKind;
   provenance: ExtensionProvenance;
   state: ExtensionState;
@@ -478,6 +484,23 @@ export interface PluginDesktopModuleReadResult {
 export interface PluginDesktopModuleLoadResult {
   id: string;
   fingerprint: string;
+  digest: string;
+  url: string;
+}
+
+export interface PluginIconReadParams {
+  id: string;
+  fingerprint: string;
+  path: string;
+}
+
+export interface PluginIconReadResult extends PluginIconReadParams {
+  media_type: "image/svg+xml" | "image/png" | "image/webp";
+  digest: string;
+  data: string;
+}
+
+export interface PluginIconLoadResult extends PluginIconReadParams {
   digest: string;
   url: string;
 }
@@ -2308,6 +2331,7 @@ export type WuuDesktopApi = {
   loadPluginDesktopModule: (
     params: PluginDesktopModuleReadParams,
   ) => Promise<PluginDesktopModuleLoadResult>;
+  loadPluginIcon: (params: PluginIconReadParams) => Promise<PluginIconLoadResult>;
   getPluginSetting: (params: PluginSettingGetParams) => Promise<PluginSettingResult>;
   setPluginSetting: (params: PluginSettingSetParams) => Promise<PluginSettingResult>;
   getPluginDiagnostics: (params: PluginIdentityParams) => Promise<PluginDiagnosticsResult>;
