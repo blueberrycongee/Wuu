@@ -21,6 +21,7 @@ export async function activate(api) {
     .plugin-subagent-ultra:hover { background:var(--wuu-color-surface-muted); color:var(--wuu-color-text); }
     .plugin-subagent-ultra[aria-pressed="true"] { border-color:var(--wuu-color-accent); color:var(--wuu-color-accent); background:var(--wuu-color-surface-muted); }
     .plugin-subagent-ultra:disabled { opacity:.45; cursor:default; }
+    .plugin-subagent-ultra svg { width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:1.65; stroke-linecap:round; stroke-linejoin:round; }
   ` });
   function ChildTaskStatus(props) {
     const threadId = typeof props.threadId === "string" ? props.threadId : "";
@@ -69,6 +70,15 @@ export async function activate(api) {
       error ? h("div", { className: "plugin-subagent-settings-error", role: "alert" }, error) : null,
       h(Button, { variant: "primary", disabled: busy, onClick: () => void save() }, "Save aliases"))));
   }
+  function ProactiveDelegationIcon() {
+    return h("svg", { viewBox:"0 0 20 20", "aria-hidden":"true" },
+      h("circle", { cx:"7", cy:"4", r:"2" }),
+      h("path", { d:"M7 6v2.5M3.5 11V9.5h7V11" }),
+      h("circle", { cx:"3.5", cy:"13.5", r:"2" }),
+      h("circle", { cx:"10.5", cy:"13.5", r:"2" }),
+      h("path", { d:"M15.5 3v5M13 5.5h5" })
+    );
+  }
   function ProactiveDelegation(props) {
     const translate = typeof props.translate === "function" ? props.translate : (key) => key;
     const [enabled, setEnabled] = React.useState(false);
@@ -90,7 +100,7 @@ export async function activate(api) {
         setEnabled(Boolean(value?.enabled));
       } finally { setBusy(false); }
     };
-    return h("button", { type:"button", className:"plugin-subagent-ultra", disabled:busy, "aria-label":label, title:label, "aria-pressed":enabled, onClick:()=>void toggle() }, "A+");
+    return h("button", { type:"button", className:"plugin-subagent-ultra", disabled:busy, "aria-label":label, title:label, "aria-pressed":enabled, onClick:()=>void toggle() }, h(ProactiveDelegationIcon));
   }
   api.registerSlot("composer.above", { id: "subagent-status", order: 30, render: (context) => h(ChildTaskStatus, context) });
   api.registerSlot("composer.toolbar", { id: "subagent-ultra", order: 30, render: (context) => h(ProactiveDelegation, context) });
