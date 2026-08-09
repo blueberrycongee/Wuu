@@ -391,8 +391,10 @@ func (r *Run) Wait(ctx context.Context) (RunResult, error) {
 					return RunResult{}, ctx.Err()
 				}
 				if snapshot, found := r.Snapshot(); found && snapshot.Status.Terminal() {
-					message, _ := r.finalMessage(snapshot)
-					return RunResult{Run: snapshot, FinalMessage: message}, nil
+					if result, ready := r.terminalResult(snapshot); ready {
+						return result, nil
+					}
+					return RunResult{}, errors.New("app-server event stream closed before final message was recorded")
 				}
 				return RunResult{}, errors.New("app-server event stream closed before run completed")
 			}
