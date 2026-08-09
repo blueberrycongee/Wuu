@@ -82,7 +82,7 @@ actions, while the composer exposes its prompt, running/read-only state, `setPro
 
 Additive contributions use `registerSlot`. Current production slots are `sidebar.primary`,
 `sidebar.footer`, `workspace.header`, `conversation.header`, `conversation.message.before`,
-`conversation.message.after`, `composer.above`, `composer.toolbar`, and `settings.plugin`. Slot
+`conversation.message.after`, `composer.above`, and `composer.toolbar`. Slot
 contexts contain only frozen summary fields; they do not contain private host records. Slots compose
 with native UI and semantic presenters rather than replacing their ownership boundary.
 

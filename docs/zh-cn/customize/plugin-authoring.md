@@ -287,7 +287,7 @@ export async function activate(api) {
 - `registerStyle`：注册 CSS；任意 CSS 只提供给受信任的桌面代码插件。
 - `registerSurface`：替换或包装稳定 Surface（`app.sidebar` 等）。
 - `registerSlot`：在原生 UI 的稳定位置插入内容（`sidebar.primary`、
-  `workspace.header`、`composer.toolbar`、`settings.plugin` 等）。
+  `workspace.header`、`composer.toolbar` 等）。复杂设置应声明独立的 `settingsPages` View。
 - `registerViewType` + `registerViewPlacement`：注册可持久化的 View，并请求宿主把它
   首次放到 `main`、`sidebar` 或 `auxiliary` 区域。`priority` 只在区域尚无用户选择时
   决定初始激活；用户后续的切换和关闭优先并持久化。落位 API 不暴露宿主 DOM、任意

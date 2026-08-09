@@ -54,6 +54,26 @@ export interface ViewRenderProps {
   translate(key: string, values?: Readonly<Record<string, string | number>>): string;
 }
 
+export interface SettingsModelAliasV1 {
+  readonly provider: string;
+  readonly model: string;
+  readonly effort?: string;
+  readonly variant?: string;
+}
+
+export interface SettingsValueMapV1 {
+  readonly "runtime.modelAliases": Readonly<Record<string, SettingsModelAliasV1>>;
+}
+
+export type SettingsValueKeyV1 = keyof SettingsValueMapV1;
+
+/** Narrow settings service exposed only to plugin views mounted as Settings pages. */
+export interface SettingsPageHostAPI {
+  readonly contractVersion: 1;
+  getValue<Key extends SettingsValueKeyV1>(key: Key): SettingsValueMapV1[Key];
+  updateValue<Key extends SettingsValueKeyV1>(key: Key, value: SettingsValueMapV1[Key]): Promise<void>;
+}
+
 export interface ViewHostAPI {
   getStorage(key: string, scope?: "user" | "workspace"): Promise<string | null>;
   setStorage(key: string, value: string, scope?: "user" | "workspace"): Promise<void>;
@@ -61,6 +81,7 @@ export interface ViewHostAPI {
   executeCommand(commandId: string, input?: unknown): Promise<unknown>;
   openView(viewTypeId: ViewTypeId, options?: OpenViewOptions): Promise<void>;
   closeView(): Promise<void>;
+  readonly settings?: SettingsPageHostAPI;
 }
 
 export interface PluginUIContainerProps {

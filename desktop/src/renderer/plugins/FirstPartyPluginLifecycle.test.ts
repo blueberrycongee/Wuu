@@ -60,9 +60,6 @@ describe("first-party desktop plugin lifecycle", () => {
       "goal",
       "subagent",
     ]);
-    expect(host.getSlotSnapshot("settings.plugin").map((item) => item.pluginId)).toEqual([
-      "subagent",
-    ]);
     expect(host.getSlotSnapshot("composer.toolbar").map((item) => item.pluginId)).toEqual([
       "subagent",
     ]);
@@ -70,12 +67,14 @@ describe("first-party desktop plugin lifecycle", () => {
       "automation:automation.catalog",
       "dream:dream.settings",
       "memory:memory.settings",
+      "subagent:subagent.settings",
     ]);
     expect(host.getNavigationEntries().map((item) => `${item.pluginId}:${item.view}`)).toEqual([
       "automation:automation.catalog",
     ]);
     expect(host.getSettingsPages().map((item) => `${item.pluginId}:${item.view}`)).toEqual([
       "memory:memory.settings",
+      "subagent:subagent.settings",
       "dream:dream.settings",
     ]);
     expect(document.head.querySelectorAll("style[data-wuu-plugin-id]")).toHaveLength(5);
@@ -85,7 +84,6 @@ describe("first-party desktop plugin lifecycle", () => {
     }
 
     expect(host.getSlotSnapshot("composer.above")).toEqual([]);
-    expect(host.getSlotSnapshot("settings.plugin")).toEqual([]);
     expect(host.getSlotSnapshot("composer.toolbar")).toEqual([]);
     expect(host.getViewTypes()).toEqual([]);
     expect(host.getNavigationEntries()).toEqual([]);
@@ -118,7 +116,6 @@ describe("first-party desktop plugin lifecycle", () => {
     expect([
       ...host.getSlotSnapshot("composer.above"),
       ...host.getSlotSnapshot("composer.toolbar"),
-      ...host.getSlotSnapshot("settings.plugin"),
       ...host.getViewTypes(),
     ].filter((item) => item.pluginId === pluginId).every((item) => item.generation === "new-generation"))
       .toBe(true);

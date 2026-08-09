@@ -8,6 +8,7 @@ import {
   type OpenViewOptions,
   type PresentationHost,
   type RendererCategory,
+  type SettingsPageHostAPI,
   type StatusSnapshotV1,
   type ViewHostAPI,
   type ViewPane,
@@ -600,11 +601,13 @@ export function PluginViewContent({
   pluginId,
   viewTypeId,
   context = Object.freeze({}),
+  settings,
 }: {
   controller: WorkbenchController;
   pluginId: string;
   viewTypeId: string;
   context?: Readonly<Record<string, unknown>>;
+  settings?: SettingsPageHostAPI;
 }): JSX.Element {
   const snapshot = React.useSyncExternalStore(controller.subscribe, controller.getSnapshot);
   const { locale } = useI18n();
@@ -619,7 +622,11 @@ export function PluginViewContent({
     persistence: "session",
     context: freezeContext(context),
   }) : undefined, [context, definition, pluginId, viewTypeId]);
-  const host = React.useMemo(() => view ? controller.createViewHostAPI(view) : undefined, [controller, view]);
+  const host = React.useMemo(() => {
+    if (!view) return undefined;
+    const base = controller.createViewHostAPI(view);
+    return settings ? Object.freeze({ ...base, settings }) : base;
+  }, [controller, settings, view]);
   const translate = React.useMemo(
     () => createPluginTranslator(controller.host, locale),
     [controller.host, locale, snapshot],

@@ -27,7 +27,6 @@ describe("PluginHost", () => {
       "conversation.message.after",
       "composer.above",
       "composer.toolbar",
-      "settings.plugin",
     ]);
 
     const host = new PluginHost({ react: React });
@@ -239,7 +238,7 @@ describe("PluginHost", () => {
       pluginId: "removable",
       generation: "one",
       register(api) {
-        disposables.push(api.registerSlot("settings.plugin", contribution("settings")));
+        disposables.push(api.registerSlot("sidebar.footer", contribution("footer")));
         disposables.push(api.registerCommand(command("action")));
         disposables.push(api.registerStyle({ id: "theme", css: ".theme {}" }));
         disposables.push(api.registerLocale({ id: "copy", locale: "en", entries: { copy: "Copy" } }));
@@ -252,7 +251,7 @@ describe("PluginHost", () => {
       disposable.dispose();
     }
 
-    expect(host.getSlotSnapshot("settings.plugin")).toEqual([]);
+    expect(host.getSlotSnapshot("sidebar.footer")).toEqual([]);
     expect(host.getCommands()).toEqual([]);
     expect(host.getLocaleEntries("en")).toEqual({});
     expect(document.head.querySelector("style[data-wuu-plugin-id=removable]")).toBeNull();

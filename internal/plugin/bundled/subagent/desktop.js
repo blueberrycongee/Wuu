@@ -13,7 +13,7 @@ export async function activate(api) {
     .plugin-subagent-status { display:flex; gap:6px; flex-wrap:wrap; margin:0 2px 8px; }
     .plugin-subagent-chip { padding:3px 7px; border:1px solid var(--wuu-color-border-subtle); border-radius:999px; background:var(--wuu-color-surface-muted); color:var(--wuu-color-text-muted); font-size:11px; }
     .plugin-subagent-chip[data-status="running"] { color:var(--wuu-color-text); }
-    .plugin-subagent-settings { display:grid; gap:10px; padding:14px; border:1px solid var(--wuu-color-border-subtle); border-radius:10px; }
+    .plugin-subagent-settings { padding-top:8px; }
     .plugin-subagent-settings textarea { width:100%; min-height:120px; resize:vertical; font:12px/1.5 ui-monospace,monospace; color:var(--wuu-color-text); background:var(--wuu-color-surface-muted); border:1px solid var(--wuu-color-border-subtle); border-radius:7px; padding:9px; }
     .plugin-subagent-settings button { justify-self:start; }
     .plugin-subagent-settings-error { color:var(--wuu-color-danger); font-size:12px; }
@@ -45,27 +45,29 @@ export async function activate(api) {
       className: "plugin-subagent-chip", "data-status": task.state, key: task.session_id,
     }, `${task.name || "Child task"} · ${task.state}`)));
   }
-  function ModelAliases({ context }) {
-    const active = context && context.activePage === "advanced";
-    const aliases = context && context.modelAliases ? context.modelAliases : {};
+  function ModelAliases({ host }) {
+    const { Page, Panel, Stack, Button, TextArea } = api.ui;
+    const settings = host.settings;
+    const aliases = settings ? settings.getValue("runtime.modelAliases") : {};
     const [draft, setDraft] = React.useState(() => JSON.stringify(aliases, null, 2));
     const [error, setError] = React.useState("");
+    const [busy, setBusy] = React.useState(false);
     React.useEffect(() => setDraft(JSON.stringify(aliases, null, 2)), [JSON.stringify(aliases)]);
-    if (!active) return null;
     const save = async () => {
+      setBusy(true);
       try {
         const value = JSON.parse(draft);
         if (!value || Array.isArray(value) || typeof value !== "object") throw new Error("Aliases must be a JSON object.");
-        if (typeof context.onSaveModelAliases !== "function") throw new Error("Settings update is unavailable.");
-        await context.onSaveModelAliases(value);
+        if (!settings) throw new Error("Settings update is unavailable.");
+        await settings.updateValue("runtime.modelAliases", value);
         setError("");
       } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
+      finally { setBusy(false); }
     };
-    return h("section", { className: "plugin-subagent-settings" },
-      h("strong", null, "Subagent model aliases"),
-      h("textarea", { value: draft, disabled: Boolean(context.busy), onChange: (event) => setDraft(event.target.value), "aria-label": "Subagent model aliases JSON" }),
-      error ? h("div", { className: "plugin-subagent-settings-error" }, error) : null,
-      h("button", { type: "button", disabled: Boolean(context.busy), onClick: save }, "Save aliases"));
+    return h(Page, { className: "plugin-subagent-settings" }, h(Panel, null, h(Stack, null,
+      h(TextArea, { label: "Subagent model aliases", value: draft, disabled: busy, onChange: (event) => setDraft(event.target.value) }),
+      error ? h("div", { className: "plugin-subagent-settings-error", role: "alert" }, error) : null,
+      h(Button, { variant: "primary", disabled: busy, onClick: () => void save() }, "Save aliases"))));
   }
   function ProactiveDelegation(props) {
     const translate = typeof props.translate === "function" ? props.translate : (key) => key;
@@ -92,5 +94,5 @@ export async function activate(api) {
   }
   api.registerSlot("composer.above", { id: "subagent-status", order: 30, render: (context) => h(ChildTaskStatus, context) });
   api.registerSlot("composer.toolbar", { id: "subagent-ultra", order: 30, render: (context) => h(ProactiveDelegation, context) });
-  api.registerSlot("settings.plugin", { id: "subagent-settings", order: 30, render: (context) => h(ModelAliases, { context }) });
+  api.registerViewType({ id: "subagent.settings", title: "Subagent", icon: "bot", defaultPane: "main", persistence: "durable", render: ModelAliases });
 }

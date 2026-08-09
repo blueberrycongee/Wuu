@@ -87,9 +87,8 @@ import {
 } from "./plugins/DesktopPluginRuntime";
 import type { PluginHost } from "./plugins/PluginHost";
 import { PluginViewContent, type WorkbenchController } from "./plugins/Workbench";
-import { PluginSlot } from "./plugins/PluginSlot";
 import { PluginSettingsEditor } from "./PluginSettingsEditor";
-import type { SettingsPageSummaryV1 } from "../shared/workbench";
+import type { SettingsPageHostAPI, SettingsPageSummaryV1, SettingsValueMapV1 } from "../shared/workbench";
 
 export type SettingsPage =
   | "providers"
@@ -233,6 +232,22 @@ export function SettingsView({
   const activeCustomPluginPage = activePage.startsWith("plugin-view:")
     ? customPluginSettingsPages.find((entry) => pluginViewSettingsPageId(entry.pluginId, entry.id) === activePage)
     : undefined;
+  const settingsPageHost = useMemo<SettingsPageHostAPI>(() => {
+    const modelAliases = Object.freeze(Object.fromEntries(
+      Object.entries(initialized?.model_aliases ?? {}).map(([name, alias]) => [name, Object.freeze({ ...alias })]),
+    ));
+    return Object.freeze({
+      contractVersion: 1 as const,
+      getValue: (key: "runtime.modelAliases") => {
+        if (key !== "runtime.modelAliases") throw new Error(`Unsupported settings value: ${key}`);
+        return modelAliases;
+      },
+      updateValue: async (key: "runtime.modelAliases", value: SettingsValueMapV1["runtime.modelAliases"]) => {
+        if (key !== "runtime.modelAliases") throw new Error(`Unsupported settings value: ${key}`);
+        await onAdvancedSave({ model_aliases: value });
+      },
+    });
+  }, [initialized?.model_aliases, onAdvancedSave]);
   const [mcpServers, setMCPServers] = useState<MCPServerStatus[]>([]);
   const [mcpLoading, setMCPLoading] = useState(false);
   const [mcpError, setMCPError] = useState("");
@@ -944,6 +959,7 @@ export function SettingsView({
                 pluginId={activeCustomPluginPage.pluginId}
                 viewTypeId={activeCustomPluginPage.view}
                 context={Object.freeze({ surface: "settings" })}
+                settings={settingsPageHost}
               />
             ) : activePage === "providers" ? (
               <SettingsProvidersPage
@@ -1054,19 +1070,6 @@ export function SettingsView({
                 error={usageError}
               />
             )}
-            <PluginSlot
-              host={pluginHost}
-              id="settings.plugin"
-              context={Object.freeze({
-                activePage,
-                initialized: Boolean(initialized),
-                busy: running || usageLoading || mcpLoading || codexPetsLoading || Boolean(mcpBusyServer),
-                hasError: Boolean(error || advancedError || usageError || mcpError || codexPetsError),
-                pluginCount: initialized?.extension_inventory?.filter((extension) => extension.kind === "plugin").length ?? 0,
-                modelAliases: initialized?.model_aliases ?? {},
-                onSaveModelAliases: (modelAliases: RuntimeAdvancedSettingsUpdate["model_aliases"]) => onAdvancedSave({ model_aliases: modelAliases }),
-              })}
-            />
           </div>
         </div>
       </main>

@@ -545,7 +545,7 @@ func normalizeThemes(raw json.RawMessage) ([]ThemeSpec, error) {
 var knownSlotTargets = map[string]struct{}{
 	"sidebar.primary": {}, "sidebar.footer": {}, "workspace.header": {}, "conversation.header": {},
 	"conversation.message.before": {}, "conversation.message.after": {}, "composer.above": {},
-	"composer.toolbar": {}, "settings.plugin": {},
+	"composer.toolbar": {},
 }
 
 var knownSurfaceTargets = map[string]struct{}{
