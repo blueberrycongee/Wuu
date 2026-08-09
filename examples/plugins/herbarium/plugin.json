@@ -83,7 +83,7 @@
           "--wuu-color-canvas": "#f3eee0",
           "--wuu-color-surface": "#ece6d4",
           "--wuu-color-surface-muted": "#e3dcc6",
-          "--wuu-color-surface-elevated": "#faf7ec",
+          "--wuu-color-surface-elevated": "#f0e9d7",
           "--wuu-color-overlay-backdrop": "rgba(45, 42, 32, 0.3)",
           "--wuu-color-text": "#2d2a20",
           "--wuu-color-text-muted": "#6e6854",
