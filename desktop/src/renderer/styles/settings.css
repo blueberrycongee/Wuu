@@ -43,7 +43,7 @@
  *   .settings-page                   content column
  *   .settings-page-header            page title
  *   .settings-section                a logical group (label + rows)
- *   .settings-card                   structural group wrapper — paints nothing
+ *   .settings-group                  structural group wrapper — paints nothing
  *   .settings-row                    one label/control pair
  *   .settings-input / .settings-select   shared form controls
  *   .settings-switch                 boolean toggle
@@ -382,12 +382,12 @@
 /* The card is a structural grouping only: it paints nothing. Enclosure
  * signals (fill, border, radius) are banned from grouped lists — one
  * grouping, one signal, and the signal is the label-plus-whitespace. */
-.settings-card {
+.settings-group {
   display: flex;
   flex-direction: column;
 }
 
-.settings-card .settings-row:last-child {
+.settings-group .settings-row:last-child {
   border-bottom: 0;
 }
 
@@ -948,6 +948,8 @@
 .settings-theme-options {
   display: flex;
   gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
 }
 
 .settings-theme-card {
@@ -955,7 +957,8 @@
   flex-direction: column;
   align-items: center;
   gap: 8px;
-  flex: 0 0 auto;
+  flex: 0 0 120px;
+  min-width: 0;
   background: transparent;
   padding: 0;
 }
@@ -964,7 +967,7 @@
   position: relative;
   display: block;
   overflow: hidden;
-  width: 120px;
+  width: 100%;
   height: 76px;
   border: 1px solid var(--hairline);
   border-radius: var(--radius-sm);
@@ -983,13 +986,28 @@
 }
 
 .settings-theme-card-label {
+  max-width: 100%;
   color: var(--ink-soft);
   font-size: var(--font-sm);
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  text-align: center;
+}
+
+.settings-theme-card-source {
+  margin-top: -4px;
+  color: var(--ink-muted);
+  font-size: var(--font-xs);
 }
 
 .settings-theme-card.active .settings-theme-card-label {
   color: var(--ink);
   font-weight: var(--weight-medium);
+}
+
+.settings-theme-card.active .settings-theme-card-source {
+  color: var(--ink-muted);
+  font-weight: 400;
 }
 
 .settings-theme-preview-window {
@@ -2272,7 +2290,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .settings-button,
-  .settings-card,
+  .settings-group,
   .settings-input,
   .settings-nav-item,
   .settings-provider-button,

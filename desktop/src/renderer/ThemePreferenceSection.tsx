@@ -125,7 +125,7 @@ export function ThemePreferenceControl({
             <ThemePreviewWindow theme={theme.base} />
           </span>
           <span className="settings-theme-card-label">{theme.name}</span>
-          <span className="settings-theme-card-label">{theme.pluginName}</span>
+          <span className="settings-theme-card-label settings-theme-card-source">{theme.pluginName}</span>
         </button>
       ))}
     </div>

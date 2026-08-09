@@ -1162,7 +1162,7 @@ function SettingsSection({
 }
 
 function SettingsCard({ children }: { children: ReactNode }): JSX.Element {
-  return <div className="settings-card" data-wuu-component="settings-card">{children}</div>;
+  return <div className="settings-group" data-wuu-component="settings-group">{children}</div>;
 }
 
 function SettingsRow({
@@ -1373,7 +1373,7 @@ function SettingsProvidersPage({
           <span>{t("provider.add")}</span>
         </button>
       ) : null}
-      <form className="settings-card" onSubmit={onSubmit}>
+      <form className="settings-group" onSubmit={onSubmit}>
         <SettingsRow title={addingProvider ? t("provider.add") : t("provider.current")}>
           <div className="settings-row-control-block">
             {addingProvider ? (
@@ -1589,7 +1589,7 @@ function SettingsAdvancedPage({
     };
   return (
     <SettingsSection testID="settings-advanced">
-      <div className="settings-card">
+      <div className="settings-group">
         <SettingsRow
           title={t("settings.autoCompact")}
           description={t("settings.autoCompactDescription")}
@@ -2709,7 +2709,7 @@ function SettingsUsagePage({
       ) : null}
 
       {usage.model_breakdowns.length > 0 ? (
-          <div className="settings-card settings-usage-table-wrap">
+          <div className="settings-group settings-usage-table-wrap">
             <h2 className="settings-usage-table-title">{t("settings.modelUsage")}</h2>
             <table className="settings-usage-table">
               <thead>

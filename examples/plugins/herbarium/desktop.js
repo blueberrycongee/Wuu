@@ -212,7 +212,9 @@ export async function activate(api) {
   --wuu-workspace-terminal-font-family: var(--wuu-font-family-mono);
 }
 
-/* --- Settings: same spine, bookmark-tab navigation, flat press cards -- */
+/* --- Settings: same spine and bookmark-tab navigation. The host owns the
+   flat section rhythm; themes should not turn structural row groups back into
+   framed cards because that changes layout rather than appearance. -------- */
 :root[data-herbarium] [data-wuu-component="settings-shell"] {
   background: var(--wuu-color-canvas);
 }
@@ -235,13 +237,6 @@ export async function activate(api) {
   background: color-mix(in srgb, var(--wuu-color-accent) 12%, transparent);
   box-shadow: inset 2px 0 0 var(--wuu-color-accent);
   color: var(--wuu-color-text);
-}
-
-:root[data-herbarium] [data-wuu-component="settings-card"] {
-  background: var(--wuu-color-surface-elevated);
-  border: 1px solid var(--wuu-color-border-subtle);
-  border-radius: var(--wuu-radius-panel);
-  box-shadow: 0 1px 0 var(--wuu-color-border-subtle);
 }
 
 /* --- Layers: bookplate dialogs, framed menus, annotated tooltips ------ */
