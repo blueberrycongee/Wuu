@@ -230,6 +230,9 @@ const DARK_WINDOW_BACKGROUND = "#1d2024";
 // Matches the renderer titlebar row (48px in the tabbed/popped-out states)
 // so the overlay buttons center on the same strip the renderer draws.
 const WINDOWS_TITLEBAR_OVERLAY_HEIGHT = 48;
+if (process.argv.includes("--safe-mode")) {
+  process.env.WUU_SAFE_MODE = "1";
+}
 registerRenderableFileScheme();
 registerPluginModuleScheme();
 

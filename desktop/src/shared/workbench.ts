@@ -815,8 +815,8 @@ export interface ThemeTokens {
 }
 
 /**
- * CSS snippet contributed by a plugin. Snippets are scoped to the plugin
- * and injected into the document. They should use CSS custom properties
+ * CSS snippet contributed by a plugin. Snippets are injected into the shared
+ * document without selector rewriting. They should use CSS custom properties
  * for theming and stable data attributes for targeting host elements.
  *
  * Snippets are a high-trust feature: they run in the same document as the
@@ -826,7 +826,7 @@ export interface ThemeTokens {
 export interface CSSSnippet {
   /** Stable snippet identifier. */
   id: string;
-  /** Raw CSS to inject. Scoped via a data-plugin attribute automatically. */
+  /** Raw high-trust CSS. The host does not rewrite or isolate selectors. */
   css: string;
   /** Priority — higher values are injected later (higher specificity). */
   priority?: number;

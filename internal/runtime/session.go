@@ -79,6 +79,9 @@ type Options struct {
 	// into sessions.
 	PermissionModeExplicit bool
 	NoTools                bool
+	// SafeMode discovers plugin manifests for management but activates no
+	// runtime, tool, skill, hook, or desktop contribution from a plugin.
+	SafeMode bool
 }
 
 // ConfigLoadMode identifies the three supported config source models. It is
@@ -137,6 +140,7 @@ type Session struct {
 	// per-turn message stream, never in this cached prefix.
 	SessionDate string
 	WuuHome     string
+	SafeMode    bool
 	pluginEpoch uint64
 	Permissions config.ResolvedPermissions
 	// PermissionModeExplicit reports that Permissions carries an explicit
@@ -206,6 +210,7 @@ func (s *Session) cloneForThreadModel() *Session {
 		UserSystemPrompt:            s.UserSystemPrompt,
 		SessionDate:                 s.SessionDate,
 		WuuHome:                     s.WuuHome,
+		SafeMode:                    s.SafeMode,
 		Permissions:                 s.Permissions,
 		PermissionModeExplicit:      s.PermissionModeExplicit,
 		maxParallel:                 s.maxParallel,
@@ -371,7 +376,11 @@ func NewSession(opts Options) (*Session, error) {
 	setupCatwalk(cfg)
 
 	discoveredPlugins := discoverPlugins(rootDir, wuuHome)
+	safeMode := opts.SafeMode || strings.TrimSpace(os.Getenv("WUU_SAFE_MODE")) == "1"
 	activePlugins := activatedPlugins(cfg, discoveredPlugins)
+	if safeMode {
+		activePlugins = nil
+	}
 	var agentControl *agentcontrol.AgentControl
 	pluginTurnRouter := NewPluginSessionRouter()
 	pluginHost := startPluginHost(activePlugins, rootDir, wuuHome, workspaceStateDir, pluginTurnRouter)
@@ -651,6 +660,7 @@ func NewSession(opts Options) (*Session, error) {
 		UserSystemPrompt:            userSystemPrompt,
 		SessionDate:                 sessionDate,
 		WuuHome:                     wuuHome,
+		SafeMode:                    safeMode,
 		pluginEpoch:                 initialPluginGenerationEpoch,
 		Permissions:                 permissions,
 		PermissionModeExplicit:      opts.PermissionModeExplicit,

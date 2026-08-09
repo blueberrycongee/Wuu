@@ -111,7 +111,8 @@ my-plugin/
 `contributes.settings` 声明生成式控件，支持 boolean、string、number 和 enum 四种类型。
 每个设置都有 `scope`（`user` 或 `workspace`）和 `apply`（`live` 或 `restart`）。用户
 在设置界面修改后，插件通过 SDK 的类型化 API 读取；桌面插件还可以通过
-`api.settings` 访问。设置按插件命名空间存储，卸载插件时随 generation 一起清除。
+`api.settings` 访问。设置和 Storage 按插件命名空间存储。禁用、升级和卸载插件都默认保留这些数据，
+便于重新安装后恢复；当前没有“卸载时同时删除数据”的隐式行为。
 
 ```json
 {
@@ -346,6 +347,10 @@ Token，确需结构化装饰时再按这些粗粒度语义处理。
 可信代码插件补充 CSS 时，应只使用这些公开属性和 Token，不应依赖私有 class 名或
 DOM 层级。依赖私有 class 名可以用于本地实验，但不属于兼容性承诺。
 
+Raw CSS 会原样进入宿主 document，不会自动改写 selector，也没有 ShadowRoot/iframe 隔离。
+`:root`、`body`、通配符或宿主 selector 都可能影响全局界面，因此这是 high-trust Desktop
+能力，不是面向未知第三方代码的安全样式沙箱。
+
 ## 本地开发闭环
 
 ### 脚手架与构建
@@ -417,6 +422,8 @@ previous-minor/current-minor 的 SDK 与宿主兼容矩阵。在矩阵验证完�
 - 插件管理、审批、安全模式、崩溃恢复、权限提示的最终边界、原生窗口与 app-server
   生命周期、generation 错误隔离，以及用户逃生路径（设置、禁用插件、恢复默认 UI）
   始终由 Wuu host 控制，**永不**通过公开接口暴露给插件。
+- 使用 `WUU_SAFE_MODE=1`、`wuu app-server --safe-mode` 或 Desktop 的 `--safe-mode` 启动时，
+  Wuu 只发现 manifest 供插件管理展示，不激活任何插件 runtime、Tool、Skill、Hook 或 Desktop 模块。
 - 声明式主题只能修改公开语义 Token；`registerStyle` 可以使用任意 CSS，因此只提供给
   受信任的桌面代码插件。
 - runtime 进程与 Wuu 同权限，启用的插件声明的 Hook 与直接运行第三方本地命令具有

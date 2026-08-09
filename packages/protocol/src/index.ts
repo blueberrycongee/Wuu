@@ -115,6 +115,9 @@ export type FeatureFlags = {
   // Advertises that this client can host the embedded browser backend
   // (hidden WebContentsView + CDP bridge). Mirrors appserver.FeatureFlags.
   browser?: boolean;
+  // Plugin manifests remain visible for recovery, but no plugin contribution
+  // is activated in either runtime or desktop planes.
+  safe_mode?: boolean;
 };
 
 // Browser* are the core→desktop server-initiated request payloads. The core

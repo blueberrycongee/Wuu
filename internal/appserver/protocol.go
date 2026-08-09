@@ -268,6 +268,9 @@ type FeatureFlags struct {
 	// backend (hidden WebContentsView + CDP bridge). Mirrored by
 	// desktop/src/shared/protocol.ts. Filled by config_handlers.handleInitialize.
 	Browser bool `json:"browser"`
+	// SafeMode reports that plugin manifests are visible for recovery, but no
+	// plugin-owned runtime or desktop contribution is active.
+	SafeMode bool `json:"safe_mode,omitempty"`
 }
 
 // clientResponse is the inbound envelope for a Response the desktop client

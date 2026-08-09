@@ -2151,6 +2151,7 @@ func runAppServer(args []string) error {
 	hostKind := fs.String("host", string(runtime.HostLocal), "runtime host: local or cloud")
 	instanceID := fs.String("instance-id", "", "cloud runtime instance identity")
 	noTools := fs.Bool("no-tools", false, "disable local tools")
+	safeMode := fs.Bool("safe-mode", false, "start without activating plugins")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -2180,6 +2181,7 @@ func runAppServer(args []string) error {
 		ProviderName:   *providerName,
 		ModelOverride:  *modelOverride,
 		NoTools:        *noTools,
+		SafeMode:       *safeMode,
 	})
 	if err != nil {
 		return err
