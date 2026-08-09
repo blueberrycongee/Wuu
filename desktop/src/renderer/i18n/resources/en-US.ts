@@ -1411,6 +1411,7 @@ export const enUS = {
   "skills.pluginTag": "Plugin · {id}",
   "skills.sectionPlugins": "Plugins",
   "skills.officialPluginTitle": "Official plugin bundled with Wuu",
+  "skills.pluginDetailLabel": "Plugin details for {name}",
   "skills.pluginStatusOfficial": "Official",
   "skills.pluginStatusPending": "Approval required",
   "skills.pluginStatusGranted": "Approved",

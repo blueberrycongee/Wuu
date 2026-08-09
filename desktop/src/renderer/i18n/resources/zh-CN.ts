@@ -1409,6 +1409,7 @@ export const zhCN = {
   "skills.pluginTag": "插件 · {id}",
   "skills.sectionPlugins": "插件",
   "skills.officialPluginTitle": "随 Wuu 内置分发的官方插件",
+  "skills.pluginDetailLabel": "{name} 插件详情",
   "skills.pluginStatusOfficial": "官方",
   "skills.pluginStatusPending": "待授权",
   "skills.pluginStatusGranted": "已授权",
