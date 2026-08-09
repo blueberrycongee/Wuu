@@ -104,10 +104,11 @@ func watchDevDirFS(wuuHome, dir, packageManager string, pollInterval time.Durati
 			pending = false
 			debounceC = nil
 			diagnostic, err := refreshDevGeneration(wuuHome, dir, packageManager)
-			printDevDiagnostic(diagnostic)
 			if errors.Is(err, errDevGenerationBusy) {
 				schedule(pollInterval)
+				continue
 			}
+			printDevDiagnostic(diagnostic)
 		}
 	}
 }

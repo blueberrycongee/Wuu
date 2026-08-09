@@ -564,10 +564,10 @@ func watchDevDir(wuuHome, dir, packageManager string, interval time.Duration, in
 			continue
 		}
 		diagnostic, err := refreshDevGeneration(wuuHome, dir, packageManager)
-		printDevDiagnostic(diagnostic)
 		if errors.Is(err, errDevGenerationBusy) {
 			continue
 		}
+		printDevDiagnostic(diagnostic)
 		pending = false
 		lastMod = latest
 	}
