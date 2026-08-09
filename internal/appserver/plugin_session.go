@@ -290,7 +290,7 @@ func (s *Server) createPluginSessionThread(owner string, params pluginhost.Sessi
 			return nil, loadErr
 		}
 		threadCWD = firstNonEmpty(parent.metadata.CWD, threadCWD)
-		history = cloneHistory(parent.history)
+		history = cloneForkHistory(parent.history)
 		fork = session.ForkMetadata{ForkedFromID: params.ParentSessionID}
 	}
 	selection := s.currentSessionRuntimeSelection()
