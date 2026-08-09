@@ -360,7 +360,7 @@ Scope、通用 Service Graph，以及跨外部副作用的事务承诺。
 | 层 | 贡献内容 | 运行位置 | 典型用途 |
 | --- | --- | --- | --- |
 | 声明层 | 主题、设置、入口、权限和元数据 | Manifest + 宿主 | 主题、开关、左侧入口、右侧工具、设置页 |
-| Agent 层 | Tool、Hook、请求变换、系统提示、压缩策略 | 独立 runtime 进程 | 搜索、策略控制、memory、上下文处理 |
+| Agent 层 | Tool、版本化 capability、请求变换、系统提示、压缩策略 | 独立 runtime 进程 | 搜索、策略控制、memory、上下文处理 |
 | Workbench 层 | View、命令、状态项、Presenter、Slot、Surface | Electron Renderer | 协作页面、审查工具、消息呈现、复杂设置 |
 | 外观层 | 主题 Token、UI Kit 样式、公开语义锚点 | Renderer CSS | 完整换肤、密度、字体、材质和控件视觉 |
 
@@ -432,7 +432,7 @@ Scope、通用 Service Graph，以及跨外部副作用的事务承诺。
 ## UI Kit 的覆盖范围
 
 `api.ui` 当前提供 `Page`、`Panel`、`Card`、`Section`、`Stack`、`Row`、`Button`、
-`TextInput`、`TextArea`、`Checkbox`、`EmptyState`、`LoadingState` 和 `ErrorState`。
+`ToolbarToggle`、`TextInput`、`TextArea`、`Checkbox`、`EmptyState`、`LoadingState` 和 `ErrorState`。
 `Page` 统一密度和响应式间距，三种状态组件统一 ARIA、焦点、错误和加载行为。它的目的有三个：
 
 - 收敛页面、卡片、行和控件的公共节奏；
@@ -468,19 +468,22 @@ Tool Card Skin 则只消费版本化 `ToolActivitySnapshot` 和原生 fallback�
 Agent 插件运行在 Wuu 管理的独立进程中，通过版本化协议注册能力。当前公共能力覆盖：
 
 - 注册模型可见的 Tool；
-- Tool 执行前后的 guard 和 transform；
-- 系统提示片段与请求变换；
-- 压缩策略；
-- 会话生命周期观察；
-- Shell 环境贡献。
+- 通过 `agent.system_prompt.section` 贡献系统提示片段；
+- 通过 `agent.pre_step` 在模型步骤前追加带来源、可持久化的隐藏消息；
+- 通过 `agent.request.transform` 读取版本化请求视图并返回受校验的窄 patch；
+- 通过 Experimental `agent.compaction` 替换摘要压缩结果；
+- 通过 `agent.turn.completed` 和 owner-scoped `agent.turn.lifecycle` 观察 Turn；
+- 通过 `plugin.client.request` 处理插件命名空间内的 Desktop/客户端请求。
 
 实验能力已经包括进程内 `LoopDriver` 注入，但尚未开放 Manifest 注册或用户选择。Driver 不获得
 私有 Go `Session`、数据库或 App Server 对象，只通过 Kernel Gateway、版本化输入和 Checkpoint
 运行。普通功能插件不应通过修改默认 Loop 私有回调获得能力。
 
-每个能力声明语义种类，例如 observe、transform、guard、around 或 decision，并按稳定优先级
-组合。Guard 和 decision 可以短路；Transform 按顺序执行。工具或能力出错时，宿主按公开错误
-策略传播、隔离或回退，不能靠吞掉异常维持表面成功。
+工具通过 initialize result 的 `tools` 注册，不是 capability。每个 capability 只可声明宿主已实现的
+`observe`、`transform` 或 `decision` kind，并按稳定优先级组合；`guard` 与 `around` 不是当前公开
+合同。插件包可另外通过 manifest 声明配置型 Hook，但它走 Hook 事件与命令/模型执行链路，不是
+runtime capability。工具或能力出错时，宿主按公开错误策略传播、隔离或回退，不能靠吞掉异常
+维持表面成功。
 
 增加一个 LLM 可见能力时必须闭合两端：实现注册与执行路径，也要让提示或公开说明告诉模型
 何时使用；同时保持消息顺序、Tool call/result 配对等 Provider 协议不变量。

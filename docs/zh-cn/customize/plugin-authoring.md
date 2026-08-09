@@ -326,12 +326,13 @@ export async function activate(api) {
   View 或执行已注册 Command。宿主负责每个 Section 的独立错误边界、限高和溢出。
   长列表、编辑器和复杂交互必须进入 `primary` 或 `auxiliary` View。
 - `api.ui`：宿主提供的小型 UI Kit，包括 `Page`、`Panel`、`Card`、`Section`、
-  `Stack`、`Row`、`Button`、`TextInput`、`TextArea`、`Checkbox`、`EmptyState`、
+  `Stack`、`Row`、`Button`、`ToolbarToggle`、`TextInput`、`TextArea`、`Checkbox`、`EmptyState`、
   `LoadingState` 和 `ErrorState`。`Page` 支持 `comfortable`/`compact` 密度；状态组件由宿主
   统一处理 ARIA、加载动画、错误视觉、响应式间距和溢出。普通插件页面优先使用这些组件，
   因而会自动继承当前外观插件的颜色、字体、边框、圆角、阴影和密度。复杂 View 仍可使用
   任意 React，画布、终端和专用预览可以保留自己的主题边界；插件不应覆盖 UI Kit 的内部
-  class，也不应重新接管宿主的页面边距和公共控件节奏。
+  class，也不应重新接管宿主的页面边距和公共控件节奏。Composer 工具栏中的二态开关应使用
+  `ToolbarToggle`，由宿主统一 `aria-pressed`、命中区域、焦点和激活态。
 - `registerPresenter`：替换具体产品概念而不是宽泛区域。目标包括
   `conversation.item`、`conversation.process`、`conversation.tool-activity`、
   `conversation.composer`、`header.conversation`、`header.workspace`、

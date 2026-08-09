@@ -168,11 +168,12 @@ and load-failure fallback; desktop modules cannot inject icon components into ho
 ## Host-owned UI Kit
 
 Custom Views receive `api.ui`, a deliberately small set of host-owned React components:
-`Page`, `Panel`, `Card`, `Section`, `Stack`, `Row`, `Button`, `TextInput`, `TextArea`, `Checkbox`,
+`Page`, `Panel`, `Card`, `Section`, `Stack`, `Row`, `Button`, `ToolbarToggle`, `TextInput`, `TextArea`, `Checkbox`,
 `EmptyState`, `LoadingState`, and `ErrorState`.
 They preserve Wuu's spacing and interaction behavior while inheriting the active appearance theme.
 `Page` accepts `density: "comfortable" | "compact"`; state components own ARIA status, loading
-motion, error treatment, responsive spacing, and overflow behavior.
+motion, error treatment, responsive spacing, and overflow behavior. Use `ToolbarToggle` for binary
+Composer-toolbar controls so the host owns `aria-pressed`, hit targets, focus, and active styling.
 
 ```js
 const { Button, Card, Page, Section, Stack } = api.ui;
