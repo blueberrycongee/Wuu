@@ -241,6 +241,48 @@ export function useSidebarProjectState({
     () => new Map(projects.map((project) => [project.id, project])),
     [projects],
   );
+  const activeProject =
+    activeContext?.kind === "project" && activeProjectID
+      ? projectsByID.get(activeProjectID)
+      : undefined;
+  const activeProjectThreads = useMemo(
+    () =>
+      activeProject
+        ? threadsForDesktopProject(threads, activeProject)
+        : undefined,
+    [activeProject, threads],
+  );
+  const cachedActiveProjectThreads = activeProjectID
+    ? projectThreadsByProjectID[activeProjectID]
+    : undefined;
+  const activeProjectThreadSnapshot = useMemo(
+    () =>
+      activeProjectID && activeProjectThreads
+        ? mergeSidebarThreadSnapshots(
+            cachedActiveProjectThreads,
+            activeProjectThreads,
+          )
+        : undefined,
+    [activeProjectID, activeProjectThreads, cachedActiveProjectThreads],
+  );
+  const visibleProjectThreadsByProjectID = useMemo(() => {
+    if (
+      !activeProjectID ||
+      !activeProjectThreadSnapshot ||
+      activeProjectThreadSnapshot === cachedActiveProjectThreads
+    ) {
+      return projectThreadsByProjectID;
+    }
+    return {
+      ...projectThreadsByProjectID,
+      [activeProjectID]: activeProjectThreadSnapshot,
+    };
+  }, [
+    activeProjectID,
+    activeProjectThreadSnapshot,
+    cachedActiveProjectThreads,
+    projectThreadsByProjectID,
+  ]);
   const loadingProjectThreadIDs = useMemo(() => {
     const loading = new Set(loadingProjectThreadIDsRef.current);
     for (const project of projects) {
@@ -314,15 +356,21 @@ export function useSidebarProjectState({
   }, [projects]);
 
   useEffect(() => {
-    if (activeContext?.kind !== "project" || !activeProjectID) {
+    if (
+      !activeProjectID ||
+      !activeProjectThreads ||
+      !activeProjectThreadSnapshot ||
+      activeProjectThreadSnapshot === cachedActiveProjectThreads
+    ) {
       return;
     }
-    const activeProject = projectsByID.get(activeProjectID);
-    if (!activeProject) {
-      return;
-    }
-    const activeProjectThreads = threadsForDesktopProject(threads, activeProject);
     setProjectThreadsByProjectID((current) => {
+      if (current[activeProjectID] === cachedActiveProjectThreads) {
+        return {
+          ...current,
+          [activeProjectID]: activeProjectThreadSnapshot,
+        };
+      }
       const merged = mergeSidebarThreadSnapshots(
         current[activeProjectID],
         activeProjectThreads,
@@ -332,7 +380,12 @@ export function useSidebarProjectState({
       }
       return { ...current, [activeProjectID]: merged };
     });
-  }, [activeContext?.kind, activeProjectID, projectsByID, threads]);
+  }, [
+    activeProjectID,
+    activeProjectThreads,
+    activeProjectThreadSnapshot,
+    cachedActiveProjectThreads,
+  ]);
 
   useEffect(() => {
     if (activeContext?.kind !== "no_project") {
@@ -573,7 +626,7 @@ export function useSidebarProjectState({
     collapsedSidebarSectionIDs,
     expandedSidebarSectionIDs,
     loadingProjectThreadIDs,
-    projectThreadsByProjectID,
+    projectThreadsByProjectID: visibleProjectThreadsByProjectID,
     cachedScratchThreads,
     sidebarSectionOrder,
     setSidebarSectionOrder,

@@ -223,11 +223,7 @@ import { WINDOW_RESIZING_CLASS } from "./WindowResizeState";
 import { useComposerDraftState } from "./ComposerDraftState";
 import { useComposerPendingState } from "./ComposerPendingState";
 import { useSidebarDrawerState } from "./SidebarDrawerState";
-import {
-  mergeSidebarThreadSnapshots,
-  threadsForDesktopProject,
-  useSidebarProjectState,
-} from "./SidebarProjectState";
+import { useSidebarProjectState } from "./SidebarProjectState";
 import { useViewSwitchState } from "./ViewSwitchState";
 import { turnTelemetryStore } from "./TurnTelemetryStore";
 import {
@@ -1973,30 +1969,7 @@ export function App(): JSX.Element {
   const rememberWorkspaceDirtyFiles = useStableCallback((dirty: boolean): void => {
     workspaceHasDirtyFilesRef.current = dirty;
   });
-  const sidebarProjectThreadsByProjectID = useMemo(() => {
-    if (state.activeContext?.kind !== "project" || !state.activeProjectId) {
-      return projectThreadsByProjectID;
-    }
-    const activeProject = state.projects.find(
-      (project) => project.id === state.activeProjectId,
-    );
-    if (!activeProject) {
-      return projectThreadsByProjectID;
-    }
-    return {
-      ...projectThreadsByProjectID,
-      [state.activeProjectId]: mergeSidebarThreadSnapshots(
-        projectThreadsByProjectID[state.activeProjectId],
-        threadsForDesktopProject(state.threads, activeProject),
-      ),
-    };
-  }, [
-    projectThreadsByProjectID,
-    state.activeContext?.kind,
-    state.activeProjectId,
-    state.projects,
-    state.threads,
-  ]);
+  const sidebarProjectThreadsByProjectID = projectThreadsByProjectID;
   const sidebarThreads = useMemo(() => {
     const byID = new Map<string, Thread>();
     for (const thread of cachedScratchThreads) {
