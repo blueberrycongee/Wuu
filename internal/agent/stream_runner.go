@@ -160,8 +160,9 @@ type StreamRunner struct {
 	// LoopDriver owns turn policy while the runner remains the kernel gateway
 	// for provider, tool-ledger, history, and streaming invariants. Nil selects
 	// the behavior-compatible default driver.
-	LoopDriver            loopdriver.Driver
-	DriverCheckpointStore loopdriver.CheckpointStore
+	LoopDriver             loopdriver.Driver
+	DriverCheckpointStore  loopdriver.CheckpointStore
+	ModelInputReceiptStore ModelInputReceiptStore
 
 	usageMu                sync.Mutex
 	conversationUsage      *UsageTracker
@@ -263,6 +264,7 @@ func (r *StreamRunner) RunWithCallback(ctx context.Context, history []providers.
 		runner:     r,
 		onEvent:    onEvent,
 		descriptor: descriptor,
+		execution:  execution,
 		results:    make(map[string]LoopResult),
 	}
 	done := make(chan struct{})
@@ -293,6 +295,7 @@ type streamDriverGateway struct {
 	runner     *StreamRunner
 	onEvent    StreamCallback
 	descriptor loopdriver.Descriptor
+	execution  loopdriver.ExecutionContext
 	results    map[string]LoopResult
 	next       int
 }
@@ -300,7 +303,7 @@ type streamDriverGateway struct {
 func (gateway *streamDriverGateway) ExecuteModelLoop(ctx context.Context, input loopdriver.PersistedInput, policy loopdriver.LoopPolicy) (loopdriver.ModelLoopReceipt, error) {
 	gateway.next++
 	receipt := loopdriver.ModelLoopReceipt{ID: fmt.Sprintf("model-loop-%d", gateway.next)}
-	result, err := gateway.runner.runModelToolLoop(ctx, input.Messages, gateway.onEvent, policy)
+	result, err := gateway.runner.runModelToolLoop(ctx, input.Messages, gateway.onEvent, policy, gateway.descriptor, gateway.execution)
 	gateway.results[receipt.ID] = result
 	return receipt, err
 }
@@ -320,7 +323,7 @@ func (gateway *streamDriverGateway) result(receiptID string) (LoopResult, bool) 
 	return result, ok
 }
 
-func (r *StreamRunner) runModelToolLoop(ctx context.Context, history []providers.ChatMessage, onEvent StreamCallback, policy loopdriver.LoopPolicy) (LoopResult, error) {
+func (r *StreamRunner) runModelToolLoop(ctx context.Context, history []providers.ChatMessage, onEvent StreamCallback, policy loopdriver.LoopPolicy, descriptor loopdriver.Descriptor, execution loopdriver.ExecutionContext) (LoopResult, error) {
 	if r.Client == nil {
 		return LoopResult{}, errors.New("client is required")
 	}
@@ -391,6 +394,11 @@ func (r *StreamRunner) runModelToolLoop(ctx context.Context, history []providers
 		ProviderName:             r.ProviderName,
 		InferenceOperationKind:   operationKind,
 		InferenceWorkloadProfile: workloadProfile,
+		SessionID:                execution.SessionID,
+		ExecutionID:              execution.ExecutionID,
+		DriverID:                 descriptor.ID,
+		DriverVersion:            descriptor.Version,
+		ModelInputReceiptStore:   r.ModelInputReceiptStore,
 		Temperature:              r.Temperature,
 		MediaInput:               r.MediaInput,
 		MaxSteps:                 maxSteps,

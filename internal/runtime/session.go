@@ -1267,6 +1267,7 @@ func (s *Session) NewThreadRuntimeForRoot(sessionID, rootDir string) (*ThreadRun
 	runner.PromptCacheKey = strings.TrimSpace(id)
 	runner.InferenceJournal = s.InferenceJournalForOwner(id)
 	runner.DriverCheckpointStore = sessionDriverCheckpointStore{sessDir: s.SessionDir, sessionID: id}
+	runner.ModelInputReceiptStore = sessionModelInputReceiptStore{sessDir: s.SessionDir, sessionID: id}
 	runner.BeforeRequestContext = RuntimeContextInjector(agentControl, agentthread.RootPath, toolkitContextBlockProvider(kit))
 	runner.BeforeRequest = pluginRequestInterceptor(s.PluginHost, s.ProviderName, id, threadRoot)
 	return &ThreadRuntime{
@@ -1293,6 +1294,36 @@ func (s *Session) NewThreadRuntimeForRoot(sessionID, rootDir string) (*ThreadRun
 type sessionDriverCheckpointStore struct {
 	sessDir   string
 	sessionID string
+}
+
+type sessionModelInputReceiptStore struct {
+	sessDir   string
+	sessionID string
+}
+
+func (store sessionModelInputReceiptStore) SaveModelInputReceipt(ctx context.Context, receipt agent.ModelInputReceipt) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if receipt.SessionID != "" && receipt.SessionID != store.sessionID {
+		return fmt.Errorf("model input receipt session %q does not match runtime %q", receipt.SessionID, store.sessionID)
+	}
+	payload, err := json.Marshal(receipt)
+	if err != nil {
+		return fmt.Errorf("encode model input receipt: %w", err)
+	}
+	err = session.SaveModelInputReceipt(store.sessDir, store.sessionID, session.ModelInputReceiptRecord{
+		OperationID:     receipt.OperationID,
+		ContractVersion: receipt.ContractVersion,
+		DriverID:        receipt.DriverID,
+		DriverVersion:   receipt.DriverVersion,
+		Payload:         payload,
+		CreatedAt:       receipt.CreatedAt,
+	})
+	if errors.Is(err, session.ErrSessionNotFound) {
+		return nil
+	}
+	return err
 }
 
 func (store sessionDriverCheckpointStore) Load(ctx context.Context) (loopdriver.Checkpoint, bool, error) {
@@ -1373,6 +1404,7 @@ func cloneStreamRunnerForThread(base *agent.StreamRunner, toolExecutor agent.Too
 		InferenceJournal:            base.InferenceJournal,
 		LoopDriver:                  base.LoopDriver,
 		DriverCheckpointStore:       base.DriverCheckpointStore,
+		ModelInputReceiptStore:      base.ModelInputReceiptStore,
 		CompactionRegistry:          base.CompactionRegistry,
 	}
 }

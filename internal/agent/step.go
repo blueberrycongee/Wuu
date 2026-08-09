@@ -198,6 +198,11 @@ type LoopConfig struct {
 	// provider request for the shared retry lifecycle.
 	InferenceOperationKind   providers.InferenceOperationKind
 	InferenceWorkloadProfile providers.InferenceWorkloadProfile
+	SessionID                string
+	ExecutionID              string
+	DriverID                 string
+	DriverVersion            string
+	ModelInputReceiptStore   ModelInputReceiptStore
 	// Temperature is the sampling temperature; 0 means provider default.
 	Temperature float64
 	// MediaInput is the admission policy for user-supplied media on every
