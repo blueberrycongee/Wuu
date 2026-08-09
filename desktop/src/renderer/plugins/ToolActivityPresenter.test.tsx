@@ -39,6 +39,7 @@ describe("ToolActivityPresenter", () => {
     const snapshot = toToolActivitySnapshot(item);
 
     expect(snapshot).toEqual({
+      contractVersion: 1,
       id: "call",
       toolName: "echo",
       capability: "tool.echo",

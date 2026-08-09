@@ -133,6 +133,7 @@ const actionIds = [
 if (actionIds.some((action) => !action.includes("."))) throw new Error("presentation action ID contract failed");
 
 const snapshot: ToolActivitySnapshot = Object.freeze({
+  contractVersion: 1,
   id: "call",
   toolName: "echo",
   status: "running",

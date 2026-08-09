@@ -798,6 +798,7 @@ export interface ToolActivityStructuredResult {
 }
 
 export interface ToolActivitySnapshot {
+  readonly contractVersion: 1;
   readonly id: string;
   readonly toolName: string;
   readonly capability?: string;

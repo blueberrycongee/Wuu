@@ -65,6 +65,7 @@ export function toToolActivitySnapshot(item: ThreadItem): ToolActivitySnapshot {
       }),
     });
   return Object.freeze({
+    contractVersion: 1,
     id: item.id,
     toolName: item.name ?? "",
     capability: item.display?.capability,

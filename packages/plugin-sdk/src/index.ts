@@ -267,6 +267,7 @@ export interface ToolActivityStructuredResult {
 
 /** Host-owned immutable view of a tool call. It intentionally excludes thread internals. */
 export interface ToolActivitySnapshot {
+  readonly contractVersion: 1;
   readonly id: string;
   readonly toolName: string;
   readonly capability?: string;
