@@ -412,14 +412,18 @@ func Serve(ctx context.Context, handler Handler) error {
 }
 
 func ServeIO(ctx context.Context, input io.Reader, output io.Writer, handler Handler) error {
+	serveCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	scanner := bufio.NewScanner(input)
 	scanner.Buffer(make([]byte, 64*1024), 4<<20)
 	client := newClient(output)
+	incomingRequests := make(chan rpcRequest)
 	requests := make(chan rpcRequest)
 	workerDone := make(chan error, 1)
+	go queueRequests(serveCtx, incomingRequests, requests)
 	go func() {
 		for request := range requests {
-			result, stop, err := dispatch(ctx, client, handler, request)
+			result, stop, err := dispatch(serveCtx, client, handler, request)
 			response := rpcResponse{ID: request.ID, Result: result}
 			if err != nil {
 				response = rpcResponse{ID: request.ID, Error: &rpcError{Message: err.Error()}}
@@ -437,15 +441,15 @@ func ServeIO(ctx context.Context, input io.Reader, output io.Writer, handler Han
 	}()
 
 	for scanner.Scan() {
-		if err := ctx.Err(); err != nil {
+		if err := serveCtx.Err(); err != nil {
 			client.closeTransport(err)
-			close(requests)
+			close(incomingRequests)
 			return err
 		}
 		kind, request, response, err := decodeMessage(scanner.Bytes())
 		if err != nil {
 			client.closeTransport(err)
-			close(requests)
+			close(incomingRequests)
 			return err
 		}
 		if kind == messageResponse {
@@ -453,23 +457,58 @@ func ServeIO(ctx context.Context, input io.Reader, output io.Writer, handler Han
 			continue
 		}
 		select {
-		case requests <- request:
+		case incomingRequests <- request:
 		case err := <-workerDone:
 			client.closeTransport(err)
+			cancel()
+			close(incomingRequests)
 			return err
-		case <-ctx.Done():
-			client.closeTransport(ctx.Err())
-			return ctx.Err()
+		case <-serveCtx.Done():
+			client.closeTransport(serveCtx.Err())
+			close(incomingRequests)
+			return serveCtx.Err()
 		}
 	}
 	readErr := scanner.Err()
 	client.closeTransport(readErr)
-	close(requests)
+	close(incomingRequests)
 	workerErr := <-workerDone
 	if readErr != nil {
 		return readErr
 	}
 	return workerErr
+}
+
+// queueRequests keeps host requests ordered without allowing handler backpressure
+// to block the transport reader. The reader must remain available to route host
+// service responses while the current handler is waiting in CallHost.
+func queueRequests(ctx context.Context, input <-chan rpcRequest, output chan<- rpcRequest) {
+	defer close(output)
+	var queued []rpcRequest
+	for input != nil || len(queued) != 0 {
+		var next rpcRequest
+		var ready chan<- rpcRequest
+		if len(queued) != 0 {
+			next = queued[0]
+			ready = output
+		}
+		select {
+		case request, ok := <-input:
+			if !ok {
+				input = nil
+				continue
+			}
+			queued = append(queued, request)
+		case ready <- next:
+			queued[0] = rpcRequest{}
+			queued = queued[1:]
+			if len(queued) == 0 {
+				queued = nil
+			}
+		case <-ctx.Done():
+			return
+		}
+	}
 }
 
 type messageKind int
