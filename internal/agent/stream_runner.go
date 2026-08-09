@@ -242,7 +242,18 @@ func (r *StreamRunner) RunWithCallback(ctx context.Context, history []providers.
 		if err != nil {
 			return LoopResult{}, fmt.Errorf("load loop driver checkpoint: %w", err)
 		}
-		if ok && checkpoint.ContractVersion == loopdriver.ContractVersion && checkpoint.DriverID == descriptor.ID && checkpoint.DriverVersion == descriptor.Version {
+		if ok {
+			if checkpoint.ContractVersion != loopdriver.ContractVersion || checkpoint.DriverID != descriptor.ID || checkpoint.DriverVersion != descriptor.Version {
+				return LoopResult{}, fmt.Errorf(
+					"loop driver checkpoint requires %s@%s contract %d; active driver is %s@%s contract %d",
+					checkpoint.DriverID,
+					checkpoint.DriverVersion,
+					checkpoint.ContractVersion,
+					descriptor.ID,
+					descriptor.Version,
+					loopdriver.ContractVersion,
+				)
+			}
 			instance, err = driver.Resume(execution, input, checkpoint)
 			if err != nil {
 				return LoopResult{}, fmt.Errorf("resume loop driver: %w", err)
