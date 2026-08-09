@@ -102,23 +102,12 @@ switch, IPC state, or native Composer treatment.
 
 **Current implementation**: `compact.CompactWithBudgetAndOptions` is called directly from `Runner.RunWithUsage`.
 
-**Public seam migration**:
-
-```go
-// seam: agent.compaction (decision)
-// key: "wuu.summary-compaction"
-// priority: 1 (default; custom strategies use higher priority)
-
-type SummaryCompactionProvider struct{}
-
-func (p *SummaryCompactionProvider) CompactionKey() string { return "wuu.summary-compaction" }
-func (p *SummaryCompactionProvider) CompactionPriority() int { return 1 }
-func (p *SummaryCompactionProvider) Compact(ctx context.Context, model string, messages []providers.ChatMessage) ([]providers.ChatMessage, error) {
-    return compact.CompactWithBudgetAndOptions(ctx, messages, client, model, budget, opts)
-}
-```
-
-**Why this works**: `CompactionRegistry.Resolve()` returns the highest-priority provider. A plugin can register a custom compaction strategy at priority 100 to override the default.
+`agent.compaction` is connected to the live stream and the host validates the
+returned Tool history, but it remains Experimental. No distributed first-party
+plugin consumes it, and the developer-loop sample no longer registers a
+pass-through implementation merely to make the seam appear proven. The default
+compactor remains the fallback until a real second strategy demonstrates the
+public contract.
 
 ## Verification
 

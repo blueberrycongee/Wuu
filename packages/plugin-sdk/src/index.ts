@@ -432,6 +432,7 @@ export const RUNTIME_PROTOCOL_V1 = 1 as const;
 export const CAPABILITY_PROTOCOL_V2 = 2 as const;
 export const REQUEST_TRANSFORM_CAPABILITY = "agent.request.transform" as const;
 export const SYSTEM_PROMPT_SECTION_CAPABILITY = "agent.system_prompt.section" as const;
+/** @experimental No distributed first-party consumer has proven this contract. */
 export const COMPACTION_CAPABILITY = "agent.compaction" as const;
 export const PLUGIN_CLIENT_REQUEST_CAPABILITY = "plugin.client.request" as const;
 
@@ -591,14 +592,16 @@ export interface SystemPromptSectionOutput {
   text: string;
 }
 
-/** Provider-neutral message payload. Preserve unknown fields when compacting. */
+/** @experimental Provider-neutral message payload. Preserve unknown fields when compacting. */
 export type CompactionMessage = Readonly<Record<string, unknown>>;
 
+/** @experimental No distributed first-party consumer has proven this contract. */
 export interface CompactionInput<TMessage extends CompactionMessage = CompactionMessage> {
   model: string;
   messages: readonly TMessage[];
 }
 
+/** @experimental No distributed first-party consumer has proven this contract. */
 export interface CompactionOutput<TMessage extends CompactionMessage = CompactionMessage> {
   messages: readonly TMessage[];
 }

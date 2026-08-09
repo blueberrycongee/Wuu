@@ -44,7 +44,8 @@ const (
 	// CapabilityAgentSystemPromptSection contributes a generation-stable section
 	// evaluated before that plugin generation can become active.
 	CapabilityAgentSystemPromptSection = "agent.system_prompt.section"
-	// CapabilityAgentCompaction selects a plugin-owned conversation compactor.
+	// CapabilityAgentCompaction is experimental. No distributed first-party
+	// consumer has proven the plugin-owned conversation compactor contract.
 	CapabilityAgentCompaction = "agent.compaction"
 	// CapabilityAgentTurnCompleted observes a settled model turn after history
 	// and usage have been persisted. It cannot alter host turn control flow.
@@ -576,13 +577,13 @@ type SystemPromptSectionOutput struct {
 	Text string `json:"text"`
 }
 
-// CompactionInput is immutable request context for the v1 agent.compaction contract.
+// CompactionInput is experimental immutable request context for agent.compaction v1.
 type CompactionInput struct {
 	Model    string                  `json:"model"`
 	Messages []providers.ChatMessage `json:"messages"`
 }
 
-// CompactionOutput is the replacement transcript returned by a compactor.
+// CompactionOutput is the experimental replacement transcript returned by a compactor.
 type CompactionOutput struct {
 	Messages []providers.ChatMessage `json:"messages"`
 }

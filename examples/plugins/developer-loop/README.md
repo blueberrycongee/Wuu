@@ -44,4 +44,5 @@ settings, namespaced storage, contribution disposal, and generation swaps. This 
 only the public SDK API and view-scoped host methods. It cannot import Desktop or core internals,
 and it must not assume access to host classes, global storage keys, or private DOM structure. The
 executable runtime is a separate Node process speaking JSONL over standard input/output; only its
-declared request transform and tool cross that boundary.
+declared request transform, static prompt section, and tool cross that boundary. It intentionally
+does not register the experimental compaction capability as a pass-through consumer.
