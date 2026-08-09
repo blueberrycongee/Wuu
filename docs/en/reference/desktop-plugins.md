@@ -153,10 +153,11 @@ entry must reference a View registered by the same plugin. Standard `contributes
 automatically receive a host-rendered Settings page; use a custom settings View only for content
 that cannot be expressed by the standard schema.
 
-Declare a top-level `icon` once to brand the plugin catalog, detail view, and host entries that do
-not override it. It may be a public semantic name, `{ "path": "assets/icon.svg" }`, or a themed
+Declare a top-level `icon` to brand the plugin catalog and detail view. It may be a public semantic
+name, `{ "path": "assets/icon.svg" }`, or a themed
 `{ "light": "assets/icon-light.svg", "dark": "assets/icon-dark.svg" }` pair. Entry-level `icon`
-uses the same contract and overrides the package artwork. Import `PUBLIC_ICON_NAMES`,
+uses the same contract but is independent from the package artwork. Host navigation does not
+inherit the brand icon when an entry omits `icon`. Import `PUBLIC_ICON_NAMES`,
 `PublicIconName`, and `PluginManifestIcon` from `@wuu/plugin-sdk` for authoring support.
 
 Package artwork accepts SVG, PNG, and WebP up to 256 KiB per file. Paths must remain inside the

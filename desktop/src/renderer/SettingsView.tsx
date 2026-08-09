@@ -884,11 +884,7 @@ export function SettingsView({
                   return (
                     <SettingsNavItem
                       key={pageId}
-                      icon={plugin.icon && plugin.fingerprint ? (
-                        <PluginIcon icon={plugin.icon} pluginId={plugin.id} fingerprint={plugin.fingerprint} className="icon-lg" />
-                      ) : (
-                        <Plug className="icon-lg" />
-                      )}
+                      icon={<Plug className="icon-lg" />}
                       active={activePage === pageId}
                       onClick={() => setActivePage(pageId)}
                     >

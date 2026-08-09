@@ -59,7 +59,7 @@ my-plugin/
 
 - `id` 是全局唯一标识，决定安装目录名和所有注册的命名空间前缀；一旦发布不应更改。
 - `version` 是语义化版本。包的任何文件变化都会产生新的整包 fingerprint，原审批随之失效。
-- 顶层 `icon` 是插件品牌图标，会用于插件目录、详情及未单独指定图标的宿主入口。可填
+- 顶层 `icon` 是插件品牌图标，用于插件目录和详情，不自动进入宿主导航。可填
   公共语义图标名、`{ "path": "assets/icon.svg" }`，或
   `{ "light": "assets/icon-light.svg", "dark": "assets/icon-dark.svg" }`。
 - `runtime` 声明一个长驻的外部进程，通过标准输入输出与 Wuu 通信（Agent 插件）。
@@ -315,8 +315,9 @@ export async function activate(api) {
   `registerViewType` 注册的 View。选中、关闭、持久化和溢出由 Wuu 管理。普通
   `contributes.settings` 会自动获得宿主渲染的设置页，只有标准 schema 表达不了的内容
   才使用自定义设置 View。
-  `icon` 可覆盖插件顶层品牌图标：填宿主公开的语义图标名，或使用与顶层 `icon` 相同的
-  包内资源对象。插件可从 `@wuu/plugin-sdk` 导入 `PUBLIC_ICON_NAMES`、`PublicIconName`
+  入口 `icon` 与顶层品牌图标相互独立：填宿主公开的语义图标名，或使用与顶层 `icon`
+  相同的包内资源对象；省略时回退宿主默认图标，不继承品牌图标。插件可从
+  `@wuu/plugin-sdk` 导入 `PUBLIC_ICON_NAMES`、`PublicIconName`
   和 `PluginManifestIcon`。自绘资源只接受 SVG、PNG、WebP，单文件不超过 256 KiB；路径
   必须留在插件包内，不能是符号链接。SVG 会拒绝脚本、事件属性、外部引用与嵌入式文档。
   Wuu 统一负责尺寸、选中态、无障碍、主题切换与加载失败兜底，插件不通过桌面模块注入图标组件。

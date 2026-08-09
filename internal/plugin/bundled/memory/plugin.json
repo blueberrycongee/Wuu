@@ -11,7 +11,7 @@
   "desktop": { "entry": "desktop.js" },
   "contributes": {
     "settingsPages": [
-      { "id": "memory", "title": "Memory", "description": "Review and manage durable memory", "view": "memory.settings", "order": 30 }
+      { "id": "memory", "title": "Memory", "description": "Review and manage durable memory", "view": "memory.settings", "icon": "brain", "order": 30 }
     ]
   },
   "interface": { "displayName": "Memory", "shortDescription": "Remember durable preferences, feedback, references, and lessons.", "developerName": "Wuu", "category": "Productivity", "capabilities": ["Write"] },

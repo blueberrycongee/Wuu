@@ -11,7 +11,7 @@
   "desktop": { "entry": "desktop.js" },
   "contributes": {
     "navigation": [
-      { "id": "automation", "title": "Automations", "view": "automation.catalog", "order": 40 }
+      { "id": "automation", "title": "Automations", "view": "automation.catalog", "icon": "clock", "order": 40 }
     ]
   },
   "interface": { "displayName": "Automation", "shortDescription": "Schedule prompts and recurring Agent work.", "developerName": "Wuu", "category": "Productivity", "capabilities": ["Write"] },
