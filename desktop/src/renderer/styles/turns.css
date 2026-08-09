@@ -2375,12 +2375,12 @@
   position: absolute;
   inset: 0;
   pointer-events: none;
-  /* The shared live gray sweep: a bright white band glides over the text.
+  /* The shared live gray sweep: a themed light band glides over the text.
      We use a `::after` overlay with `mix-blend-mode: lighten` so the
      text itself stays fully opaque and readable, and the sweep reads
-     as a highlight rather than a muddy background smear. The band is
-     plain white with theme-independent opacity, so it stays bright
-     across light, dark, and plugin-provided themes. */
+     as a highlight rather than a muddy background smear. Light mode uses
+     a white band; dark mode caps it at a translucent silver gray so it
+     lifts muted text without flashing to white against the dark canvas. */
   background-image: linear-gradient(
     90deg,
     transparent 0%,
