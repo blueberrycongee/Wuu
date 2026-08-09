@@ -843,39 +843,60 @@ func (s *Server) handleExtensionPackageUpdate(req Request) error {
 	if err != nil {
 		return s.writeResponse(req.ID, nil, fmt.Errorf("resolve user config: %w", err))
 	}
-	settings, err := config.UpdateExtensionSettings(userConfigPath, func(settings *extensions.Settings) error {
-		switch params.Action {
-		case ExtensionPackageGrant:
-			return settings.RecordGrant(extensions.Grant{
-				SubjectID:   selected.SubjectID,
-				Fingerprint: selected.Fingerprint,
-				Scope:       extensions.GrantScopeProject,
-				Permissions: append([]string(nil), selected.EffectivePermissions...),
-				ApprovedAt:  time.Now().UTC(),
-			})
-		case ExtensionPackageReject:
-			return settings.RecordRejection(selected.SubjectID, selected.Fingerprint)
-		case ExtensionPackageRevoke:
-			settings.Revoke(selected.SubjectID)
-		case ExtensionPackageEnable:
-			settings.SetDisabled(selected.SubjectID, false)
-		case ExtensionPackageDisable:
-			settings.SetDisabled(selected.SubjectID, true)
-		default:
-			return fmt.Errorf("unsupported extension package action %q", params.Action)
-		}
-		return nil
-	})
-	if err != nil {
-		return s.writeResponse(req.ID, nil, fmt.Errorf("persist extension policy: %w", err))
-	}
-	cfg := s.currentExtensionConfig()
-	cfg.Extensions = &settings
-	if err := s.rt.ApplyExtensionPolicy(cfg); err != nil {
+	approvedAt := time.Now().UTC()
+	preparedSettings := cloneExtensionSettings(s.rt.ExtensionSettings)
+	if err := applyExtensionPackageAction(&preparedSettings, params.Action, *selected, approvedAt); err != nil {
 		return s.writeResponse(req.ID, nil, err)
 	}
+	cfg := s.currentExtensionConfig()
+	cfg.Extensions = &preparedSettings
+	candidate, err := s.rt.PreflightExtensionPolicy(cfg)
+	if err != nil {
+		return s.writeResponse(req.ID, nil, err)
+	}
+	var persistedSettings extensions.Settings
+	if err := s.rt.ActivatePluginGeneration(candidate, func() error {
+		updated, updateErr := config.UpdateExtensionSettings(userConfigPath, func(settings *extensions.Settings) error {
+			return applyExtensionPackageAction(settings, params.Action, *selected, approvedAt)
+		})
+		if updateErr != nil {
+			return fmt.Errorf("persist extension policy: %w", updateErr)
+		}
+		persistedSettings = updated
+		return nil
+	}); err != nil {
+		return s.writeResponse(req.ID, nil, err)
+	}
+	s.rt.SetExtensionSettings(&persistedSettings)
 	s.resetThreadRuntimesForGeneralSettings("")
 	return s.writeResponse(req.ID, ExtensionPackageUpdateResult{ExtensionInventory: s.currentExtensionInventory()}, nil)
+}
+
+func applyExtensionPackageAction(settings *extensions.Settings, action ExtensionPackageAction, selected pluginpkg.Plugin, approvedAt time.Time) error {
+	if settings == nil {
+		return errors.New("extension settings are required")
+	}
+	switch action {
+	case ExtensionPackageGrant:
+		return settings.RecordGrant(extensions.Grant{
+			SubjectID:   selected.SubjectID,
+			Fingerprint: selected.Fingerprint,
+			Scope:       extensions.GrantScopeProject,
+			Permissions: append([]string(nil), selected.EffectivePermissions...),
+			ApprovedAt:  approvedAt,
+		})
+	case ExtensionPackageReject:
+		return settings.RecordRejection(selected.SubjectID, selected.Fingerprint)
+	case ExtensionPackageRevoke:
+		settings.Revoke(selected.SubjectID)
+	case ExtensionPackageEnable:
+		settings.SetDisabled(selected.SubjectID, false)
+	case ExtensionPackageDisable:
+		settings.SetDisabled(selected.SubjectID, true)
+	default:
+		return fmt.Errorf("unsupported extension package action %q", action)
+	}
+	return nil
 }
 
 func (s *Server) handleExtensionCatalogRefresh(req Request) error {

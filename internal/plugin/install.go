@@ -63,6 +63,15 @@ type UninstallResult struct {
 	Removed     bool
 }
 
+// UninstallTransaction keeps a removed package in a private tombstone until
+// the caller commits the matching policy and runtime generation.
+type UninstallTransaction struct {
+	destination string
+	tombstone   string
+	packagePath string
+	finished    bool
+}
+
 // PackToZip creates a distributable .zip from a validated plugin directory.
 // It validates the source directory first, then archives it. The zip is
 // suitable for distribution and installation via wuu plugin install.
@@ -218,38 +227,81 @@ func InstallPackage(wuuHome, source string) (InstallResult, error) {
 	return result, nil
 }
 
-// UninstallPackage atomically removes an installed package from discovery,
-// then deletes its files. It never interprets id as a path.
-func UninstallPackage(wuuHome, id string) (UninstallResult, error) {
+// PrepareUninstallPackage removes an installed package from discovery while
+// retaining a rollback copy. It never interprets id as a path.
+func PrepareUninstallPackage(wuuHome, id string) (*UninstallTransaction, UninstallResult, error) {
 	if err := validateInstallID(id); err != nil {
-		return UninstallResult{}, err
+		return nil, UninstallResult{}, err
 	}
 	pluginsRoot, err := userInstallRoot(wuuHome)
 	if err != nil {
-		return UninstallResult{}, err
+		return nil, UninstallResult{}, err
 	}
 	destination := filepath.Join(pluginsRoot, id)
 	result := UninstallResult{ID: id, Destination: destination}
 	if _, err := os.Lstat(destination); err != nil {
 		if os.IsNotExist(err) {
-			return result, nil
+			return nil, result, nil
 		}
-		return result, fmt.Errorf("inspect installed plugin %s: %w", id, err)
+		return nil, result, fmt.Errorf("inspect installed plugin %s: %w", id, err)
 	}
 
 	tombstone, err := os.MkdirTemp(pluginsRoot, ".uninstall-")
 	if err != nil {
-		return result, fmt.Errorf("create plugin uninstall staging directory: %w", err)
+		return nil, result, fmt.Errorf("create plugin uninstall staging directory: %w", err)
 	}
 	removePath := filepath.Join(tombstone, "package")
 	if err := os.Rename(destination, removePath); err != nil {
 		_ = os.Remove(tombstone)
-		return result, fmt.Errorf("remove plugin %s from discovery: %w", id, err)
+		return nil, result, fmt.Errorf("remove plugin %s from discovery: %w", id, err)
 	}
 	result.Removed = true
-	// Renaming out of the discovery root is the commit point. Cleanup is
-	// best-effort so callers always refresh the live generation after removal.
-	_ = os.RemoveAll(tombstone)
+	return &UninstallTransaction{destination: destination, tombstone: tombstone, packagePath: removePath}, result, nil
+}
+
+// Rollback restores the package to the discovery root.
+func (t *UninstallTransaction) Rollback() error {
+	if t == nil || t.finished {
+		return nil
+	}
+	if _, err := os.Lstat(t.destination); err == nil {
+		return fmt.Errorf("restore plugin package: destination already exists at %s", t.destination)
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("restore plugin package: inspect destination: %w", err)
+	}
+	if err := os.Rename(t.packagePath, t.destination); err != nil {
+		return fmt.Errorf("restore plugin package: %w (recovery copy remains at %s)", err, t.packagePath)
+	}
+	t.finished = true
+	if err := os.Remove(t.tombstone); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("remove plugin uninstall tombstone: %w", err)
+	}
+	return nil
+}
+
+// Commit makes the removal final. Discovery already changed at prepare time;
+// cleanup failure only leaves a hidden recovery tombstone.
+func (t *UninstallTransaction) Commit() error {
+	if t == nil || t.finished {
+		return nil
+	}
+	t.finished = true
+	if err := os.RemoveAll(t.tombstone); err != nil {
+		return fmt.Errorf("remove plugin uninstall tombstone %s: %w", t.tombstone, err)
+	}
+	return nil
+}
+
+// UninstallPackage is the direct CLI operation built on the same reversible
+// transaction used by the app server.
+func UninstallPackage(wuuHome, id string) (UninstallResult, error) {
+	transaction, result, err := PrepareUninstallPackage(wuuHome, id)
+	if err != nil || transaction == nil {
+		return result, err
+	}
+	// The package is already absent from discovery. Tombstone cleanup is
+	// best-effort and does not change the successful uninstall result.
+	_ = transaction.Commit()
 	return result, nil
 }
 
@@ -286,6 +338,12 @@ func userInstallRoot(wuuHome string) (string, error) {
 		return "", fmt.Errorf("resolve Wuu home: %w", err)
 	}
 	return filepath.Join(absHome, "plugins"), nil
+}
+
+// ValidateInstallID verifies that id is safe as one portable package path
+// component without touching the plugin directory.
+func ValidateInstallID(id string) error {
+	return validateInstallID(id)
 }
 
 func inspectPackageTree(root string) (stagedPackage, error) {

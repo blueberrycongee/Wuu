@@ -1778,20 +1778,6 @@ func (s *Session) SetExtensionSettings(settings *extensions.Settings) {
 	}
 }
 
-// ApplyExtensionPolicy refreshes all package-owned execution surfaces after a
-// grant, rejection, revoke, enable, or disable decision. Callers must ensure no
-// turn is running while the surface graph is replaced.
-func (s *Session) ApplyExtensionPolicy(cfg config.Config) error {
-	if s == nil {
-		return errors.New("runtime is not initialized")
-	}
-	candidate, err := s.buildPluginGeneration(cfg, s.Plugins, nil, nil, startPluginClient)
-	if err != nil {
-		return err
-	}
-	return s.ActivatePluginGeneration(candidate, nil)
-}
-
 // RefreshExtensions rediscovers package manifests before rebuilding the active
 // extension surfaces. It is used by the catalog's explicit Refresh action.
 func (s *Session) RefreshExtensions(cfg config.Config) error {

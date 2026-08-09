@@ -31,6 +31,14 @@ type PendingUpdate struct {
 	Path              string            `json:"path"`
 }
 
+// PendingUpdateRemoval keeps a rejected update outside discovery until the
+// caller commits or rolls back the surrounding package transaction.
+type PendingUpdateRemoval struct {
+	destination string
+	tombstone   string
+	finished    bool
+}
+
 type pendingUpdateMetadata struct {
 	Package           PackageInspection `json:"package"`
 	ActiveFingerprint string            `json:"active_fingerprint"`
@@ -255,46 +263,79 @@ func PromotePendingUpdate(wuuHome, id, fingerprint string) (InstallResult, error
 	return result, nil
 }
 
-// RejectPendingUpdate removes the exact pending generation without changing the
-// installed plugin. A stale fingerprint leaves the pending generation intact.
-func RejectPendingUpdate(wuuHome, id, fingerprint string) error {
+// PreparePendingUpdateRemoval hides the exact pending generation while keeping
+// a rollback copy. A stale fingerprint leaves it untouched.
+func PreparePendingUpdateRemoval(wuuHome, id, fingerprint string) (*PendingUpdateRemoval, error) {
 	pendingUpdatesMu.Lock()
 	defer pendingUpdatesMu.Unlock()
 
 	root, err := pendingUpdatesRoot(wuuHome)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	pending, err := readPendingUpdateAt(wuuHome, root, id)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if fingerprint == "" || fingerprint != pending.Package.Fingerprint {
-		return fmt.Errorf("%w for plugin %s", ErrPendingUpdateFingerprintMismatch, id)
+		return nil, fmt.Errorf("%w for plugin %s", ErrPendingUpdateFingerprintMismatch, id)
 	}
 	destination, err := pendingUpdatePath(root, id)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	rejectedPath, err := os.MkdirTemp(root, ".reject-")
+	tombstone, err := os.MkdirTemp(root, ".remove-")
 	if err != nil {
-		return fmt.Errorf("reserve rejected plugin update path: %w", err)
+		return nil, fmt.Errorf("reserve removed plugin update path: %w", err)
 	}
-	if err := os.Remove(rejectedPath); err != nil {
-		return fmt.Errorf("prepare rejected plugin update path: %w", err)
+	if err := os.Remove(tombstone); err != nil {
+		return nil, fmt.Errorf("prepare removed plugin update path: %w", err)
 	}
-	if err := os.Rename(destination, rejectedPath); err != nil {
-		return fmt.Errorf("claim rejected plugin update %s: %w", id, err)
+	if err := os.Rename(destination, tombstone); err != nil {
+		return nil, fmt.Errorf("claim removed plugin update %s: %w", id, err)
 	}
-	if err := os.RemoveAll(rejectedPath); err != nil {
-		return fmt.Errorf("remove rejected plugin update %s: %w", id, err)
+	return &PendingUpdateRemoval{destination: destination, tombstone: tombstone}, nil
+}
+
+func (t *PendingUpdateRemoval) Rollback() error {
+	if t == nil || t.finished {
+		return nil
+	}
+	pendingUpdatesMu.Lock()
+	defer pendingUpdatesMu.Unlock()
+	if _, err := os.Lstat(t.destination); err == nil {
+		return fmt.Errorf("restore pending plugin update: destination already exists at %s", t.destination)
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("restore pending plugin update: inspect destination: %w", err)
+	}
+	if err := os.Rename(t.tombstone, t.destination); err != nil {
+		return fmt.Errorf("restore pending plugin update: %w (recovery copy remains at %s)", err, t.tombstone)
+	}
+	t.finished = true
+	return nil
+}
+
+func (t *PendingUpdateRemoval) Commit() error {
+	if t == nil || t.finished {
+		return nil
+	}
+	pendingUpdatesMu.Lock()
+	defer pendingUpdatesMu.Unlock()
+	t.finished = true
+	if err := os.RemoveAll(t.tombstone); err != nil {
+		return fmt.Errorf("remove pending plugin update tombstone %s: %w", t.tombstone, err)
 	}
 	return nil
 }
 
-// RemovePendingUpdate is an alias for rejecting an exact pending generation.
-func RemovePendingUpdate(wuuHome, id, fingerprint string) error {
-	return RejectPendingUpdate(wuuHome, id, fingerprint)
+// RejectPendingUpdate is the direct operation built on the same reversible
+// transaction used by package removal.
+func RejectPendingUpdate(wuuHome, id, fingerprint string) error {
+	transaction, err := PreparePendingUpdateRemoval(wuuHome, id, fingerprint)
+	if err != nil {
+		return err
+	}
+	return transaction.Commit()
 }
 
 func pendingUpdatesRoot(wuuHome string) (string, error) {

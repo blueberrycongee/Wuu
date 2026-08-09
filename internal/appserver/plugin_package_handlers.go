@@ -160,43 +160,97 @@ func (s *Server) handlePluginPackageRemove(req Request) error {
 	}
 	defer releaseMutation()
 
+	params.ID = strings.TrimSpace(params.ID)
+	if err := pluginpkg.ValidateInstallID(params.ID); err != nil {
+		return s.writeResponse(req.ID, nil, fmt.Errorf("remove plugin package: %w", err))
+	}
+	var selected *pluginpkg.Plugin
+	for index := range s.rt.Plugins {
+		item := &s.rt.Plugins[index]
+		if item.Source == "user" && item.ID == params.ID {
+			selected = item
+			break
+		}
+	}
+	if selected == nil {
+		return s.writeResponse(req.ID, nil, fmt.Errorf("installed user plugin %q was not found", params.ID))
+	}
 	pending, pendingErr := pluginpkg.ReadPendingUpdate(s.rt.WuuHome, params.ID)
 	if pendingErr != nil && !errors.Is(pendingErr, pluginpkg.ErrPendingUpdateNotFound) {
 		return s.writeResponse(req.ID, nil, fmt.Errorf("remove plugin package: inspect pending update: %w", pendingErr))
 	}
-	removed, err := pluginpkg.UninstallPackage(s.rt.WuuHome, params.ID)
+	configPath, err := statepath.ConfigPath(s.rt.HomeDir)
 	if err != nil {
-		return s.writeResponse(req.ID, nil, fmt.Errorf("remove plugin package: %w", err))
+		return s.writeResponse(req.ID, nil, fmt.Errorf("resolve plugin policy path: %w", err))
 	}
-	if removed.Removed {
+	preparedSettings := cloneExtensionSettings(s.rt.ExtensionSettings)
+	preparedSettings.Revoke(selected.SubjectID)
+	cfg := s.currentExtensionConfig()
+	cfg.Extensions = &preparedSettings
+	candidate, err := s.rt.PreflightPluginRemoval(cfg, params.ID)
+	if err != nil {
+		return s.writeResponse(req.ID, nil, fmt.Errorf("prepare plugin removal: %w", err))
+	}
+	var (
+		packageRemoval *pluginpkg.UninstallTransaction
+		pendingRemoval *pluginpkg.PendingUpdateRemoval
+		removed        pluginpkg.UninstallResult
+		persisted      extensions.Settings
+	)
+	rollbackRemoval := func(cause error) error {
+		var rollbackErr error
+		if pendingRemoval != nil {
+			rollbackErr = errors.Join(rollbackErr, pendingRemoval.Rollback())
+		}
+		if packageRemoval != nil {
+			rollbackErr = errors.Join(rollbackErr, packageRemoval.Rollback())
+		}
+		if rollbackErr != nil {
+			return fmt.Errorf("%w (rollback plugin removal: %v)", cause, rollbackErr)
+		}
+		return cause
+	}
+	if err := s.rt.ActivatePluginGeneration(candidate, func() error {
+		var prepareErr error
+		packageRemoval, removed, prepareErr = pluginpkg.PrepareUninstallPackage(s.rt.WuuHome, params.ID)
+		if prepareErr != nil {
+			return fmt.Errorf("remove plugin package: %w", prepareErr)
+		}
+		if packageRemoval == nil || !removed.Removed {
+			return errors.New("installed plugin disappeared during removal")
+		}
 		if pendingErr == nil {
-			if err := pluginpkg.RemovePendingUpdate(s.rt.WuuHome, params.ID, pending.Package.Fingerprint); err != nil {
-				return s.writeResponse(req.ID, nil, fmt.Errorf("plugin %q was removed, but its pending update could not be cleared: %w", removed.ID, err))
+			pendingRemoval, prepareErr = pluginpkg.PreparePendingUpdateRemoval(s.rt.WuuHome, params.ID, pending.Package.Fingerprint)
+			if prepareErr != nil {
+				return rollbackRemoval(fmt.Errorf("remove pending plugin update: %w", prepareErr))
 			}
 		}
-		configPath, err := statepath.ConfigPath(s.rt.HomeDir)
-		if err != nil {
-			return s.writeResponse(req.ID, nil, fmt.Errorf("plugin %q was removed, but its policy path could not be resolved: %w", removed.ID, err))
-		}
-		if _, err := config.UpdateExtensionSettings(configPath, func(settings *extensions.Settings) error {
-			settings.Revoke(extensions.SubjectID("user", removed.ID))
+		persisted, prepareErr = config.UpdateExtensionSettings(configPath, func(settings *extensions.Settings) error {
+			settings.Revoke(selected.SubjectID)
 			return nil
-		}); err != nil {
-			return s.writeResponse(req.ID, nil, fmt.Errorf("plugin %q was removed, but its policy could not be cleared: %w", removed.ID, err))
+		})
+		if prepareErr != nil {
+			return rollbackRemoval(fmt.Errorf("clear plugin policy: %w", prepareErr))
+		}
+		return nil
+	}); err != nil {
+		return s.writeResponse(req.ID, nil, err)
+	}
+	s.rt.SetExtensionSettings(&persisted)
+	if pendingRemoval != nil {
+		if err := pendingRemoval.Commit(); err != nil {
+			providers.DebugLogf("finalize pending plugin removal: %v", err)
 		}
 	}
-	inventory, skills, err := s.refreshPluginPackages()
-	if err != nil {
-		if removed.Removed {
-			return s.writeResponse(req.ID, nil, fmt.Errorf("plugin %q was removed, but extension refresh failed: %w", removed.ID, err))
-		}
-		return s.writeResponse(req.ID, nil, fmt.Errorf("refresh extensions after checking plugin %q: %w", removed.ID, err))
+	if err := packageRemoval.Commit(); err != nil {
+		providers.DebugLogf("finalize plugin removal: %v", err)
 	}
+	s.resetThreadRuntimesForGeneralSettings("")
 	return s.writeResponse(req.ID, PluginPackageRemoveResult{
 		ID:                 removed.ID,
 		Removed:            removed.Removed,
-		ExtensionInventory: inventory,
-		Skills:             skills,
+		ExtensionInventory: s.currentExtensionInventory(),
+		Skills:             skillSummaries(s.rt.Skills),
 	}, nil)
 }
 
@@ -237,41 +291,37 @@ func (s *Server) handlePendingPluginUpdate(req Request, params ExtensionPackageU
 	if err := preparedSettings.RecordGrant(grant); err != nil {
 		return s.writeResponse(req.ID, nil, fmt.Errorf("prepare plugin update approval: %w", err))
 	}
-	settings, err := config.UpdateExtensionSettings(configPath, func(settings *extensions.Settings) error {
-		return settings.RecordGrant(grant)
-	})
-	if err != nil {
-		return s.writeResponse(req.ID, nil, fmt.Errorf("persist plugin update approval before activation: %w", err))
-	}
 	restorePreviousApproval := func() error {
-		rolledBack, rollbackErr := config.UpdateExtensionSettings(configPath, func(settings *extensions.Settings) error {
+		_, rollbackErr := config.UpdateExtensionSettings(configPath, func(settings *extensions.Settings) error {
 			*settings = cloneExtensionSettings(&previousSettings)
 			return nil
 		})
-		if rollbackErr == nil {
-			s.rt.SetExtensionSettings(&rolledBack)
-		}
 		return rollbackErr
 	}
 	cfg := s.currentExtensionConfig()
 	cfg.Extensions = &preparedSettings
 	candidate, err := s.rt.PreflightPluginUpdate(cfg, selected.ID, params.Fingerprint, filepath.Join(pending.Path, "package"), pending.Package.ManifestPath)
 	if err != nil {
-		if rollbackErr := restorePreviousApproval(); rollbackErr != nil {
-			return s.writeResponse(req.ID, nil, fmt.Errorf("activate pending plugin update: %w (restore previous plugin approval: %v)", err, rollbackErr))
-		}
 		return s.writeResponse(req.ID, nil, fmt.Errorf("activate pending plugin update: %w", err))
 	}
+	var settings extensions.Settings
 	if err := s.rt.ActivatePluginGeneration(candidate, func() error {
+		updated, persistErr := config.UpdateExtensionSettings(configPath, func(settings *extensions.Settings) error {
+			return settings.RecordGrant(grant)
+		})
+		if persistErr != nil {
+			return fmt.Errorf("persist plugin update approval: %w", persistErr)
+		}
+		settings = updated
 		_, promoteErr := pluginpkg.PromotePendingUpdate(s.rt.WuuHome, selected.ID, params.Fingerprint)
 		if promoteErr != nil {
+			if rollbackErr := restorePreviousApproval(); rollbackErr != nil {
+				return fmt.Errorf("promote pending plugin update: %w (restore previous plugin approval: %v)", promoteErr, rollbackErr)
+			}
 			return fmt.Errorf("promote pending plugin update: %w", promoteErr)
 		}
 		return nil
 	}); err != nil {
-		if rollbackErr := restorePreviousApproval(); rollbackErr != nil {
-			return s.writeResponse(req.ID, nil, fmt.Errorf("%w (restore previous plugin approval: %v)", err, rollbackErr))
-		}
 		return s.writeResponse(req.ID, nil, err)
 	}
 	s.rt.SetExtensionSettings(&settings)
