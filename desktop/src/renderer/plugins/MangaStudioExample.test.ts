@@ -11,26 +11,15 @@ const mangaDesktopModule = readFileSync(
   "utf8",
 );
 
-function cssRule(selector: string): string {
-  const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const match = mangaDesktopModule.match(new RegExp(`${escapedSelector}\\s*\\{([^}]*)\\}`));
-  expect(match, `missing Manga Studio rule: ${selector}`).not.toBeNull();
-  return match?.[1] ?? "";
-}
-
 describe("Manga Studio example shell contract", () => {
-  it("keeps the app-shell wrapper out of the host layout box tree", () => {
-    const shellRule = cssRule(".manga-shell");
-
-    expect(shellRule).toContain("display: contents");
-    expect(shellRule).not.toMatch(/\b(?:width|height|overflow)\s*:/);
+  it("no longer wraps the host app shell with a bespoke surface", () => {
+    expect(mangaDesktopModule).not.toContain(".manga-shell");
+    expect(mangaDesktopModule).not.toContain("body:has(");
   });
 
-  it("styles published controls without overriding every host button", () => {
-    expect(mangaDesktopModule).not.toContain(".manga-shell button {");
-    expect(mangaDesktopModule).not.toContain(".manga-shell button:not(:disabled):hover");
-    expect(mangaDesktopModule).toContain(
-      '.manga-shell [data-wuu-component="conversation-pane"] > .titlebar',
-    );
+  it("styles published plugin components without overriding host buttons", () => {
+    expect(mangaDesktopModule).not.toContain("button {");
+    expect(mangaDesktopModule).toContain('[data-wuu-component="plugin-ui-panel"]');
+    expect(mangaDesktopModule).toContain('[data-wuu-component="plugin-ui-card"]');
   });
 });

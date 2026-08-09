@@ -240,11 +240,13 @@ describe("SkillsCatalog", () => {
     });
 
     expect(container.textContent).toContain("待授权");
-    expect(container.textContent).toContain("file.read");
-    expect(container.textContent).toContain("命令 1 · 设置 0 · 主题 0");
+    await act(async () => {
+      skillButton("docs")?.click();
+    });
+    expect(document.body.textContent).toContain("file.read");
+    expect(document.body.textContent).toContain("命令 1 · 设置 0 · 主题 0");
 
-    const grantButton = [...container.querySelectorAll("button")]
-      .find((button) => button.textContent === "授权并启用");
+    const grantButton = buttonByText("授权并启用");
     await act(async () => {
       grantButton?.click();
     });
@@ -316,7 +318,10 @@ describe("SkillsCatalog", () => {
 
     expect(buttonsByText("移除")).toHaveLength(0);
     await act(async () => {
-      container.querySelector<HTMLButtonElement>('[aria-label="community-tools 的更多操作"]')?.click();
+      skillButton("community-tools")?.click();
+    });
+    await act(async () => {
+      document.querySelector<HTMLButtonElement>('[aria-label="community-tools 的更多操作"]')?.click();
     });
     expect(buttonsByText("移除")).toHaveLength(1);
     await act(async () => {
@@ -368,7 +373,10 @@ describe("SkillsCatalog", () => {
     });
 
     expect(container.textContent).toContain("更新待授权");
-    expect(container.textContent).toContain("版本 2.0.0 已就绪");
+    await act(async () => {
+      skillButton("update-demo")?.click();
+    });
+    expect(document.body.textContent).toContain("版本 2.0.0 已就绪");
     await act(async () => {
       buttonByText("授权并更新")?.click();
     });
@@ -379,7 +387,7 @@ describe("SkillsCatalog", () => {
     });
 
     await act(async () => {
-      container.querySelector<HTMLButtonElement>('[aria-label="update-demo 的更多操作"]')?.click();
+      document.querySelector<HTMLButtonElement>('[aria-label="update-demo 的更多操作"]')?.click();
     });
     await act(async () => {
       buttonByText("拒绝更新")?.click();
@@ -424,7 +432,10 @@ describe("SkillsCatalog", () => {
 
     expect(container.textContent).toContain("内容已更改");
     expect(container.textContent).toContain("启动失败");
-    expect(container.textContent).toContain("Plugin process exited before initialize");
+    await act(async () => {
+      skillButton("broken")?.click();
+    });
+    expect(document.body.textContent).toContain("Plugin process exited before initialize");
   });
 
   it("opens a skill preview dialog from a skill row", async () => {

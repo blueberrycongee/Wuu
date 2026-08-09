@@ -52,15 +52,12 @@ describe("conversation message-flow rhythm", () => {
 });
 
 describe("extension package layout", () => {
-  it("keeps lifecycle actions usable in wide and narrow catalogs", () => {
+  it("keeps catalog rows readable in wide and narrow catalogs", () => {
     expect(cssRuleBody(".extension-package-row")).toMatch(
-      /grid-template-columns:\s*36px\s+minmax\(0,\s*1fr\)\s+auto;/,
+      /grid-template-columns:\s*36px\s+minmax\(0,\s*1fr\)\s+16px;/,
     );
     expect(workspaceCss).toMatch(
-      /@media \(max-width:\s*720px\)[\s\S]*?\.extension-package-row\s*\{[\s\S]*?grid-template-columns:\s*36px\s+minmax\(0,\s*1fr\);/,
-    );
-    expect(workspaceCss).toMatch(
-      /@media \(max-width:\s*720px\)[\s\S]*?\.extension-package-actions\s*\{[\s\S]*?grid-column:\s*2;/,
+      /@media \(max-width:\s*720px\)[\s\S]*?\.skill-row\.extension-package-row\s*\{[\s\S]*?grid-template-columns:\s*36px\s+minmax\(0,\s*1fr\)\s+16px;/,
     );
   });
 });

@@ -72,8 +72,8 @@ describe("turns.css streaming block wrappers", () => {
 describe("turns.css rich links", () => {
   it("uses an accessible light-theme blue with no underlines or icon backplates", () => {
     expect(cssRuleBody(".rich-link")).toMatch(/color:\s*var\(--rich-link-color\);/);
-    expect(turnsCss).toMatch(/--rich-link-color:\s*#0969da;/);
-    expect(turnsCss).toMatch(/--rich-link-hover-color:\s*#0550ae;/);
+    expect(turnsCss).toMatch(/--rich-link-color:\s*var\(--wuu-color-link,\s*#0969da\);/);
+    expect(turnsCss).toMatch(/--rich-link-hover-color:\s*var\(--wuu-color-link-hover,\s*#0550ae\);/);
     expect(cssRuleBody(".rich-link")).toMatch(/text-decoration-line:\s*none;/);
     expect(cssRuleBody(".rich-link-favicon-frame")).not.toMatch(/\bbackground\s*:/);
     expect(cssRuleBody(".rich-link-favicon")).not.toMatch(/\bbackground\s*:/);
