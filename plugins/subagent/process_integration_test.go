@@ -58,17 +58,18 @@ func TestProactiveDelegationNegotiatesAcrossRealProcessProtocol(t *testing.T) {
 		t.Fatal("proactive delegation setting was not enabled")
 	}
 
-	requestCapability := onlySubagentCapability(t, host, pluginhost.CapabilityAgentRequestTransform)
-	output := pluginhost.RequestTransformOutput{}
-	if err := host.InvokeCapability(context.Background(), requestCapability, pluginhost.RequestTransformInput{
+	preStepCapability := onlySubagentCapability(t, host, pluginhost.CapabilityAgentPreStep)
+	output := pluginhost.AgentPreStepOutput{}
+	if err := host.InvokeCapability(context.Background(), preStepCapability, pluginhost.AgentPreStepInput{
 		SessionID: "thread-1",
 		ThreadID:  "thread-1",
-		Request:   pluginhost.ModelRequestViewV1{Version: 1, Model: "test-model", Messages: []pluginhost.ModelMessageViewV1{{Role: "user", Content: "work"}}},
+		Model:     "test-model",
+		Messages:  []pluginhost.ModelMessageViewV1{{Role: "user", Content: "work"}},
 	}, &output); err != nil {
 		t.Fatal(err)
 	}
-	if len(output.PrependSystemMessages) != 1 || !strings.Contains(output.PrependSystemMessages[0], "Proactive delegation is enabled") {
-		t.Fatalf("transform patch = %+v", output)
+	if len(output.AppendMessages) != 1 || !strings.Contains(output.AppendMessages[0].Content, "Proactive delegation is enabled") {
+		t.Fatalf("pre-step contribution = %+v", output)
 	}
 }
 

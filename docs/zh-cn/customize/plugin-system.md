@@ -290,8 +290,8 @@ Scope、通用 Service Graph，以及跨外部副作用的事务承诺。
    `spawn/send/close/list/await/report` switch 已删除。现有 `agentcontrol` 的租约和恢复代码仍可服务
    核心内部执行，但不再是 Subagent 插件的公开或私有调用入口。
    主动委派同样属于 Subagent 插件：插件用命名空间 storage 保存开关，通过
-   `agent.request.transform` 为下一次 provider-neutral 请求加入插件 Prompt，并在
-   `composer.toolbar` 注册自己的 A+ 控件。核心不再保存 `agent.ultra_mode`，不再做 Turn 快照或
+   `agent.pre_step` 在开关状态变化后的下一次模型步骤追加带来源的持久消息，并在
+   `composer.toolbar` 注册自己的控件。核心不再保存 `agent.ultra_mode`，不再做 Turn 快照或
    注入委派政策，也不再暴露 Ultra app-server/CLI/IPC/原生 Composer 状态。
 3. **通用 Session create/send 已取代 `host.turn.submit`。** 创建与投递是两个独立调用；创建持久化
    generation 绑定的 owner、`user | plugin` 可见性、parent、`fresh | fork` 和幂等 request id，

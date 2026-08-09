@@ -207,8 +207,8 @@ It uses `5` when omitted or set to zero. `InitializeResult`, `ConfigReadResult`,
 and `ConfigModelUpdateResult` report the effective `max_parallel` value.
 
 Proactive delegation is not an app-server mode. It is supplied by the Subagent
-plugin through namespaced storage, an `agent.request.transform`, and a Desktop
-composer contribution. Consequently the core protocol has no `ultra` request or
+plugin through namespaced storage, an `agent.pre_step` state-change message,
+and a Desktop composer contribution. Consequently the core protocol has no `ultra` request or
 result field, and `wuu exec` has no `--ultra` switch.
 
 ## Anonymous Worker Lifecycle States

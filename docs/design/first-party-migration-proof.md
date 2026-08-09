@@ -94,7 +94,8 @@ prompting belong to the plugin. HelpMe is deleted rather than migrated.
 
 Proactive delegation is also plugin-owned. The Subagent runtime stores its
 setting through namespaced storage and contributes a dynamic
-`agent.request.transform`; its Desktop module contributes the composer control.
+`agent.pre_step` message only when that setting changes; its Desktop module
+contributes the composer control.
 The core has no Ultra config field, turn snapshot, policy injection, CLI/API
 switch, IPC state, or native Composer treatment.
 

@@ -136,31 +136,30 @@ func TestTerminalLifecycleDeliversFinalOutputToParentSession(t *testing.T) {
 	}
 }
 
-func TestProactiveDelegationSettingOwnsPromptTransform(t *testing.T) {
+func TestProactiveDelegationSettingAppendsStateChanges(t *testing.T) {
 	host := &ultraHost{}
 	handler := Handler()
-	requestOutput := json.RawMessage(`{}`)
 
-	disabled, err := handler.InvokeCapability(context.Background(), host, pluginapi.CapabilityCall{Capability: capabilityRequest, Output: requestOutput})
-	if err != nil || string(disabled) != string(requestOutput) {
-		t.Fatalf("disabled transform = %s, err=%v", disabled, err)
+	disabled, err := handler.InvokeCapability(context.Background(), host, pluginapi.CapabilityCall{Capability: capabilityPreStep, Input: json.RawMessage(`{"messages":[],"step_index":0}`)})
+	if err != nil || string(disabled) != `{}` {
+		t.Fatalf("disabled pre-step = %s, err=%v", disabled, err)
 	}
 	updateInput := json.RawMessage(`{"method":"ultra.update","input":{"enabled":true}}`)
 	if _, err := handler.InvokeCapability(context.Background(), host, pluginapi.CapabilityCall{Capability: capabilityClient, Input: updateInput}); err != nil {
 		t.Fatal(err)
 	}
-	enabled, err := handler.InvokeCapability(context.Background(), host, pluginapi.CapabilityCall{Capability: capabilityRequest, Output: requestOutput})
+	enabled, err := handler.InvokeCapability(context.Background(), host, pluginapi.CapabilityCall{Capability: capabilityPreStep, Input: json.RawMessage(`{"messages":[],"step_index":0}`)})
 	if err != nil || !strings.Contains(string(enabled), "Proactive delegation is enabled") {
-		t.Fatalf("enabled transform = %s, err=%v", enabled, err)
+		t.Fatalf("enabled pre-step = %s, err=%v", enabled, err)
 	}
-	var transformed struct {
-		PrependSystemMessages []string `json:"prepend_system_messages"`
+	var contributed struct {
+		AppendMessages []pluginapi.AgentPreStepMessage `json:"append_messages"`
 	}
-	if err := json.Unmarshal(enabled, &transformed); err != nil {
+	if err := json.Unmarshal(enabled, &contributed); err != nil {
 		t.Fatal(err)
 	}
-	if len(transformed.PrependSystemMessages) != 1 || !strings.Contains(transformed.PrependSystemMessages[0], "Proactive delegation is enabled") {
-		t.Fatalf("transform patch = %+v", transformed.PrependSystemMessages)
+	if len(contributed.AppendMessages) != 1 || contributed.AppendMessages[0].ID != ultraMessageID {
+		t.Fatalf("pre-step contribution = %+v", contributed.AppendMessages)
 	}
 }
 

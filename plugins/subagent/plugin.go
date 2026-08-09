@@ -15,10 +15,12 @@ import (
 
 const (
 	capabilityPrompt    = "agent.system_prompt.section"
-	capabilityRequest   = "agent.request.transform"
+	capabilityPreStep   = "agent.pre_step"
 	capabilityClient    = "plugin.client.request"
 	capabilityLifecycle = "agent.turn.lifecycle"
 	ultraStorageKey     = "ultra.enabled"
+	ultraMessageID      = "ultra.mode"
+	ultraOriginID       = "subagent:" + ultraMessageID
 )
 
 var taskNameCleaner = regexp.MustCompile(`[^a-z0-9_]+`)
@@ -41,7 +43,7 @@ func Handler() pluginapi.Handler {
 			},
 			Capabilities: []pluginapi.Capability{
 				{ID: capabilityPrompt, Kind: "transform", Version: 1},
-				{ID: capabilityRequest, Kind: "transform", Version: 1, Priority: 20},
+				{ID: capabilityPreStep, Kind: "transform", Version: 1, Priority: 20},
 				{ID: capabilityClient, Kind: "decision", Version: 1},
 				{ID: capabilityLifecycle, Kind: "observe", Version: 1, ErrorPolicy: "isolate"},
 			},
@@ -183,8 +185,8 @@ func invokeCapability(ctx context.Context, host pluginapi.Host, call pluginapi.C
 	switch call.Capability {
 	case capabilityPrompt:
 		return json.Marshal(map[string]string{"text": promptSection})
-	case capabilityRequest:
-		return transformRequest(ctx, host, call.Output)
+	case capabilityPreStep:
+		return contributeUltraMode(ctx, host, call.Input)
 	case capabilityClient:
 		var request struct {
 			Method string          `json:"method"`
@@ -264,12 +266,48 @@ func invokeCapability(ctx context.Context, host pluginapi.Host, call pluginapi.C
 	}
 }
 
-func transformRequest(ctx context.Context, host pluginapi.Host, output json.RawMessage) (json.RawMessage, error) {
-	enabled, err := loadUltraEnabled(ctx, host)
-	if err != nil || !enabled {
-		return output, err
+func contributeUltraMode(ctx context.Context, host pluginapi.Host, raw json.RawMessage) (json.RawMessage, error) {
+	var input pluginapi.AgentPreStepInput
+	if err := json.Unmarshal(raw, &input); err != nil {
+		return nil, err
 	}
-	return json.Marshal(map[string][]string{"prepend_system_messages": {ultraPrompt}})
+	if input.StepIndex > 0 {
+		return json.RawMessage(`{}`), nil
+	}
+	enabled, err := loadUltraEnabled(ctx, host)
+	if err != nil {
+		return nil, err
+	}
+	current := latestUltraMode(input.Messages)
+	desired := "inactive"
+	if enabled {
+		desired = "active"
+	}
+	if current == desired || (!enabled && current == "") {
+		return json.RawMessage(`{}`), nil
+	}
+	content := "status: active\n\n" + ultraPrompt
+	if !enabled {
+		content = "status: inactive\n\nProactive delegation is disabled. Follow the standard delegation policy from the Subagent system prompt."
+	}
+	return json.Marshal(pluginapi.AgentPreStepOutput{AppendMessages: []pluginapi.AgentPreStepMessage{{ID: ultraMessageID, Content: content}}})
+}
+
+func latestUltraMode(messages []pluginapi.ModelMessageViewV1) string {
+	for index := len(messages) - 1; index >= 0; index-- {
+		message := messages[index]
+		if message.Origin != "plugin" || message.OriginID != ultraOriginID {
+			continue
+		}
+		content := strings.TrimSpace(message.Content)
+		switch {
+		case strings.HasPrefix(content, "status: active"):
+			return "active"
+		case strings.HasPrefix(content, "status: inactive"):
+			return "inactive"
+		}
+	}
+	return ""
 }
 
 func loadUltraEnabled(ctx context.Context, host pluginapi.Host) (bool, error) {
