@@ -1,4 +1,4 @@
-export function activate(api) {
+export async function activate(api) {
   const h = api.react.createElement;
 
   api.registerInspectorSection({

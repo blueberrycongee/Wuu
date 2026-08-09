@@ -34,7 +34,7 @@ const repositoryRoot = basename(process.cwd()) === "desktop"
   ? resolve(process.cwd(), "..")
   : process.cwd();
 const bundledRoot = resolve(repositoryRoot, "internal/plugin/bundled");
-const firstPartyPluginIds = ["goal", "subagent", "automation", "memory", "dream"] as const;
+const firstPartyPluginIds = ["goal", "subagent", "automation", "memory", "dream", "plan"] as const;
 
 afterEach(() => {
   for (const style of document.head.querySelectorAll("style[data-wuu-plugin-id]")) {
@@ -77,7 +77,10 @@ describe("first-party desktop plugin lifecycle", () => {
       "subagent:subagent.settings",
       "dream:dream.settings",
     ]);
-    expect(document.head.querySelectorAll("style[data-wuu-plugin-id]")).toHaveLength(5);
+    expect(host.getInspectorSections().map((item) => `${item.pluginId}:${item.id}`)).toEqual([
+      "plan:current-plan",
+    ]);
+    expect(document.head.querySelectorAll("style[data-wuu-plugin-id]")).toHaveLength(6);
 
     for (const pluginId of firstPartyPluginIds) {
       host.disable(pluginId);
@@ -88,6 +91,7 @@ describe("first-party desktop plugin lifecycle", () => {
     expect(host.getViewTypes()).toEqual([]);
     expect(host.getNavigationEntries()).toEqual([]);
     expect(host.getSettingsPages()).toEqual([]);
+    expect(host.getInspectorSections()).toEqual([]);
     expect(document.head.querySelector("style[data-wuu-plugin-id]")).toBeNull();
   });
 
