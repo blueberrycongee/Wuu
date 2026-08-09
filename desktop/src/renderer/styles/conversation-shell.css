@@ -15,23 +15,31 @@
   --shell-run-debug-panel-shadow-2: rgba(20, 24, 28, 0.08);
   --shell-run-debug-phase-running-color: #486f61;
   --shell-run-debug-empty-border: #e0e1dc;
-  /* iOS-style liquid-glass tokens for the jump-to-latest pill + plan-progress
-     pill. The backdrop-filter blur does the actual adaptive color sampling;
-     these tokens define only the silhouette + a single top specular highlight
+  /* Shared floating-surface recipe for conversation controls. The composer
+     queue drawer and the jump/plan pills keep their own geometry, but resolve
+     their material from these public-token-backed values. Backdrop blur does
+     the actual adaptive color sampling; these tokens define the silhouette.
+     The pills additionally apply a single top specular highlight
      (applied via a ::before gradient overlay, not via an inset shadow ring —
      inset 1px shadow stacks read as a duplicate edge instead of refraction).
      Keep border + top-highlight very low alpha so the backdrop blur reads
      through. The previous 1px inset stack used bottom-shade and
      hover-top-highlight; both were removed with that stack. */
-  --shell-jump-pill-bg: color-mix(in srgb, var(--wuu-color-surface-elevated, #fff) 72%, transparent);
-  --shell-jump-pill-border: color-mix(in srgb, var(--wuu-color-border-subtle, #d0d7de) 78%, transparent);
-  --shell-jump-pill-top-highlight: color-mix(in srgb, var(--wuu-color-canvas, #fff) 42%, transparent);
+  --conversation-floating-surface-bg: color-mix(in srgb, var(--wuu-color-surface-elevated, #fff) 72%, transparent);
+  --conversation-floating-surface-border: color-mix(in srgb, var(--wuu-color-border-subtle, #d0d7de) 78%, transparent);
+  --conversation-floating-surface-highlight: color-mix(in srgb, var(--wuu-color-canvas, #fff) 42%, transparent);
+  --conversation-floating-surface-hover-bg: color-mix(in srgb, var(--wuu-color-surface-elevated, #fff) 88%, transparent);
+  --conversation-floating-surface-hover-border: color-mix(in srgb, var(--wuu-color-border-strong, #afb8c1) 72%, transparent);
+  --conversation-floating-surface-focus: color-mix(in srgb, var(--wuu-color-focus, #57606a) 38%, transparent);
+  --shell-jump-pill-bg: var(--conversation-floating-surface-bg);
+  --shell-jump-pill-border: var(--conversation-floating-surface-border);
+  --shell-jump-pill-top-highlight: var(--conversation-floating-surface-highlight);
   --shell-jump-pill-shadow: rgba(20, 24, 28, 0.12);
   --shell-jump-pill-contact-shadow: rgba(20, 24, 28, 0.06);
-  --shell-jump-pill-hover-bg: color-mix(in srgb, var(--wuu-color-surface-elevated, #fff) 88%, transparent);
-  --shell-jump-pill-hover-border: color-mix(in srgb, var(--wuu-color-border-strong, #afb8c1) 72%, transparent);
+  --shell-jump-pill-hover-bg: var(--conversation-floating-surface-hover-bg);
+  --shell-jump-pill-hover-border: var(--conversation-floating-surface-hover-border);
   --shell-jump-pill-hover-shadow: rgba(20, 24, 28, 0.16);
-  --shell-jump-pill-focus-shadow-1: color-mix(in srgb, var(--wuu-color-focus, #57606a) 38%, transparent);
+  --shell-jump-pill-focus-shadow-1: var(--conversation-floating-surface-focus);
   --shell-jump-pill-focus-shadow-2: rgba(20, 24, 28, 0.12);
   --shell-jump-progress-step-bg: color-mix(in srgb, var(--wuu-color-text, #111315) 6%, transparent);
   --shell-jump-progress-step-in-progress-bg: color-mix(in srgb, var(--wuu-color-text, #111315) 20%, transparent);

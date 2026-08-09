@@ -514,20 +514,16 @@
   max-height: 40px;
   margin: 0 auto -8px;
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--ink) 8%, transparent);
+  border: 1px solid var(--conversation-floating-surface-border);
   border-bottom: 0;
   border-radius: 12px 12px 0 0;
   background:
-    radial-gradient(
-      circle at 24% 0%,
-      color-mix(in srgb, var(--paper) 42%, transparent) 0 16%,
-      transparent 48%
-    ),
     linear-gradient(
-      145deg,
-      color-mix(in srgb, var(--paper) 34%, transparent),
-      color-mix(in srgb, var(--surface-2) 16%, transparent)
-    );
+      180deg,
+      var(--conversation-floating-surface-highlight),
+      transparent 42%
+    ),
+    var(--conversation-floating-surface-bg);
   box-shadow: 0 -6px 24px color-mix(in srgb, var(--ink) 7%, transparent);
   -webkit-backdrop-filter: blur(24px) saturate(1.18);
   backdrop-filter: blur(24px) saturate(1.18);
@@ -577,7 +573,7 @@
 
 .composer-drawer-summary-select:focus-visible {
   border-radius: var(--radius-sm);
-  outline: 2px solid var(--ink-overlay-18);
+  outline: 2px solid var(--conversation-floating-surface-focus);
   outline-offset: 1px;
 }
 
@@ -690,14 +686,21 @@
 .document-composer-wrap .composer-accessory-drawer:focus-within {
   z-index: 3;
   translate: 0 -2px;
-  border-color: color-mix(in srgb, var(--ink) 14%, transparent);
+  border-color: var(--conversation-floating-surface-hover-border);
+  background:
+    linear-gradient(
+      180deg,
+      var(--conversation-floating-surface-highlight),
+      transparent 42%
+    ),
+    var(--conversation-floating-surface-hover-bg);
   box-shadow: 0 -8px 28px color-mix(in srgb, var(--ink) 10%, transparent);
 }
 
 .document-composer-wrap .composer-accessory-drawer.expanded {
   z-index: 4;
   translate: 0 -6px;
-  border-color: color-mix(in srgb, var(--ink) 16%, transparent);
+  border-color: var(--conversation-floating-surface-hover-border);
   box-shadow: 0 -10px 34px color-mix(in srgb, var(--ink) 11%, transparent);
 }
 
