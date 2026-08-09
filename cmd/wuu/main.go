@@ -24,12 +24,14 @@ import (
 	"github.com/blueberrycongee/wuu/internal/gitattribution"
 	"github.com/blueberrycongee/wuu/internal/providers/codex"
 	"github.com/blueberrycongee/wuu/internal/runtime"
+	"github.com/blueberrycongee/wuu/internal/runtimeconfig"
 	"github.com/blueberrycongee/wuu/internal/securefs"
 	"github.com/blueberrycongee/wuu/internal/session"
 	"github.com/blueberrycongee/wuu/internal/sessiontrace"
 	"github.com/blueberrycongee/wuu/internal/skills"
 	"github.com/blueberrycongee/wuu/internal/statepath"
 	"github.com/blueberrycongee/wuu/internal/version"
+	wuusdk "github.com/blueberrycongee/wuu/sdk"
 )
 
 func main() {
@@ -2156,41 +2158,33 @@ func runAppServer(args []string) error {
 		return err
 	}
 
-	rootDir, err := resolveWorkdir(*workdir)
-	if err != nil {
-		return err
-	}
 	host, err := resolveAppServerHost(*hostKind, *instanceID, *workspaceID, *configFile)
 	if err != nil {
 		return err
 	}
-	homeDir := os.Getenv("HOME")
-	cfg, configPath, configLoadMode, err := loadAppServerRuntimeConfig(rootDir, homeDir, *configFile)
-	if err != nil {
-		return err
-	}
-
-	rt, err := runtime.NewSession(runtime.Options{
-		RootDir:        rootDir,
-		Host:           host,
-		WorkspaceID:    *workspaceID,
-		HomeDir:        homeDir,
-		ConfigPath:     configPath,
-		ConfigLoadMode: configLoadMode,
-		Config:         cfg,
-		ProviderName:   *providerName,
-		ModelOverride:  *modelOverride,
-		NoTools:        *noTools,
-		SafeMode:       *safeMode,
+	rt, err := wuusdk.New(wuusdk.Options{
+		WorkDir:               *workdir,
+		WorkspaceID:           *workspaceID,
+		HomeDir:               os.Getenv("HOME"),
+		ConfigPath:            *configFile,
+		CreateConfigIfMissing: strings.TrimSpace(*configFile) == "",
+		Host: wuusdk.Host{
+			Kind:       wuusdk.HostKind(host.Kind),
+			InstanceID: host.InstanceID,
+		},
+		Provider: *providerName,
+		Model:    *modelOverride,
+		NoTools:  *noTools,
+		SafeMode: *safeMode,
 	})
 	if err != nil {
 		return err
 	}
 	defer func() {
-		_, _ = rt.Cleanup()
+		_ = rt.Close()
 	}()
 
-	return appserver.RunStdio(context.Background(), rt, os.Stdin, os.Stdout)
+	return rt.Serve(context.Background(), os.Stdin, os.Stdout)
 }
 
 func resolveAppServerHost(kind, instanceID, workspaceID, configFile string) (runtime.Host, error) {
@@ -2211,54 +2205,25 @@ func resolveAppServerHost(kind, instanceID, workspaceID, configFile string) (run
 }
 
 func loadAppServerRuntimeConfig(rootDir, homeDir, configFile string) (config.Config, string, runtime.ConfigLoadMode, error) {
-	path := strings.TrimSpace(configFile)
-	if path == "" {
-		cfg, configPath, err := loadOrCreateAppServerConfig(rootDir, homeDir)
-		return cfg, configPath, runtime.ConfigLoadNormal, err
-	}
-	if !filepath.IsAbs(path) {
-		path = filepath.Join(rootDir, path)
-	}
-	cfg, configPath, err := config.LoadPath(path)
-	return cfg, configPath, runtime.ConfigLoadFile, err
+	return runtimeconfig.Load(runtimeconfig.LoadOptions{
+		RootDir:               rootDir,
+		HomeDir:               homeDir,
+		ConfigPath:            configFile,
+		CreateConfigIfMissing: strings.TrimSpace(configFile) == "",
+	})
 }
 
 func loadOrCreateAppServerConfig(rootDir, homeDir string) (config.Config, string, error) {
-	cfg, configPath, err := config.LoadFrom(rootDir, homeDir)
-	if err == nil {
-		return cfg, configPath, nil
-	}
-	if !errors.Is(err, config.ErrConfigNotFound) {
-		return config.Config{}, "", err
-	}
-
-	configPath, err = statepath.ConfigPath(homeDir)
-	if err != nil {
-		return config.Config{}, "", fmt.Errorf("resolve user config: %w", err)
-	}
-	cfg = appServerStarterConfig()
-	data, err := json.MarshalIndent(cfg, "", "  ")
-	if err != nil {
-		return config.Config{}, "", err
-	}
-	if err := os.MkdirAll(filepath.Dir(configPath), 0o700); err != nil {
-		return config.Config{}, "", fmt.Errorf("create config directory: %w", err)
-	}
-	if err := securefs.WriteFileAtomic(configPath, append(data, '\n')); err != nil {
-		return config.Config{}, "", fmt.Errorf("write starter config: %w", err)
-	}
-	return config.LoadFrom(rootDir, homeDir)
+	cfg, configPath, _, err := runtimeconfig.Load(runtimeconfig.LoadOptions{
+		RootDir:               rootDir,
+		HomeDir:               homeDir,
+		CreateConfigIfMissing: true,
+	})
+	return cfg, configPath, err
 }
 
 func appServerStarterConfig() config.Config {
-	cfg := config.Default()
-	if provider, ok := cfg.Providers["openai-codex"]; ok {
-		cfg.DefaultProvider = "openai-codex"
-		cfg.Providers = map[string]config.ProviderConfig{
-			"openai-codex": provider,
-		}
-	}
-	return cfg
+	return runtimeconfig.StarterConfig()
 }
 
 func resolveWorkdir(input string) (string, error) {

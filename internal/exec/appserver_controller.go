@@ -13,6 +13,7 @@ import (
 	"github.com/blueberrycongee/wuu/internal/appserver"
 	"github.com/blueberrycongee/wuu/internal/config"
 	"github.com/blueberrycongee/wuu/internal/runtime"
+	"github.com/blueberrycongee/wuu/internal/runtimeconfig"
 )
 
 type localAppServerController struct {
@@ -29,18 +30,17 @@ func NewLocalAppServerController(ctx context.Context, opts Options) (Controller,
 		return nil, err
 	}
 	homeDir := os.Getenv("HOME")
-	cfg, configPath, err := loadExecConfig(rootDir, homeDir, opts)
+	cfg, configPath, configLoadMode, err := runtimeconfig.Load(runtimeconfig.LoadOptions{
+		RootDir:          rootDir,
+		HomeDir:          homeDir,
+		ConfigPath:       opts.ConfigPath,
+		IgnoreUserConfig: opts.IgnoreUserConfig,
+	})
 	if err != nil {
 		return nil, err
 	}
 	if err := applyConfigOverrides(&cfg, opts); err != nil {
 		return nil, err
-	}
-	configLoadMode := runtime.ConfigLoadNormal
-	if strings.TrimSpace(opts.ConfigPath) != "" {
-		configLoadMode = runtime.ConfigLoadFile
-	} else if opts.IgnoreUserConfig {
-		configLoadMode = runtime.ConfigLoadProject
 	}
 	rt, err := runtime.NewSession(runtime.Options{
 		RootDir:        rootDir,
@@ -85,17 +85,13 @@ func newLocalControllerForRuntime(ctx context.Context, rt *runtime.Session) *loc
 }
 
 func loadExecConfig(rootDir, homeDir string, opts Options) (config.Config, string, error) {
-	if strings.TrimSpace(opts.ConfigPath) != "" {
-		path := strings.TrimSpace(opts.ConfigPath)
-		if !filepath.IsAbs(path) {
-			path = filepath.Join(rootDir, path)
-		}
-		return config.LoadPath(path)
-	}
-	if opts.IgnoreUserConfig {
-		return config.LoadProjectConfig(rootDir)
-	}
-	return config.LoadFrom(rootDir, homeDir)
+	cfg, configPath, _, err := runtimeconfig.Load(runtimeconfig.LoadOptions{
+		RootDir:          rootDir,
+		HomeDir:          homeDir,
+		ConfigPath:       opts.ConfigPath,
+		IgnoreUserConfig: opts.IgnoreUserConfig,
+	})
+	return cfg, configPath, err
 }
 
 func (c *localAppServerController) Initialize(ctx context.Context) (appserver.InitializeResult, error) {
@@ -209,29 +205,11 @@ func resolveWorkdir(input string) (string, error) {
 }
 
 func applyConfigOverrides(cfg *config.Config, opts Options) error {
-	if cfg == nil {
-		return nil
-	}
-	if strings.TrimSpace(opts.Effort) != "" {
-		cfg.Agent.Effort = strings.TrimSpace(opts.Effort)
-		if strings.TrimSpace(opts.Variant) == "" {
-			cfg.Agent.Variant = ""
-		}
-	}
-	if strings.TrimSpace(opts.Variant) != "" {
-		cfg.Agent.Variant = strings.TrimSpace(opts.Variant)
-	}
-	if strings.TrimSpace(opts.AgentProfile) != "" {
-		cfg.Agent.Name = strings.TrimSpace(opts.AgentProfile)
-	}
-	if opts.MaxTurns < 0 {
-		return errors.New("max turns must be non-negative")
-	}
-	if opts.MaxTurns > 0 {
-		cfg.Agent.MaxSteps = opts.MaxTurns
-	}
-	if strings.TrimSpace(opts.PermissionMode) != "" {
-		cfg.Agent.PermissionMode = config.NormalizePermissionMode(opts.PermissionMode)
-	}
-	return nil
+	return runtimeconfig.ApplyOverrides(cfg, runtimeconfig.Overrides{
+		AgentProfile:   opts.AgentProfile,
+		MaxTurns:       opts.MaxTurns,
+		Effort:         opts.Effort,
+		Variant:        opts.Variant,
+		PermissionMode: opts.PermissionMode,
+	})
 }
