@@ -239,6 +239,7 @@ type Server struct {
 	pluginGenerationMutation     atomic.Bool
 	pluginGenerationEpoch        atomic.Uint64
 	pluginGenerationRefreshMu    sync.Mutex
+	pluginLifecycleReplayPending atomic.Bool
 	refreshExtensionsForTest     func(config.Config) error
 	presenceLease                *session.AppServerPresenceLease
 	startupErr                   error
@@ -375,6 +376,7 @@ func NewWithCredentialStore(rt *runtime.Session, out io.Writer, store credential
 	}
 	if rt != nil && rt.PluginSessionRouter != nil {
 		s.pluginTurnUnbind = rt.PluginSessionRouter.Bind(s.createPluginSession, s.sendPluginSession, s.listPluginSessions, s.cancelPluginSession)
+		s.startBackground(s.replayPendingPluginTurnLifecycles)
 	}
 	s.startInferenceJournalMaintenance()
 	if s.channelService != nil {

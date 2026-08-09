@@ -980,6 +980,15 @@ func migrateSchema(db *sql.DB) error {
 			FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE CASCADE
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_session_messages_role ON session_messages(session_id, role, seq)`,
+		`CREATE TABLE IF NOT EXISTS plugin_turn_lifecycle_outbox (
+				plugin_id TEXT NOT NULL,
+				request_id TEXT NOT NULL,
+				payload_json TEXT NOT NULL,
+				updated_at TEXT NOT NULL,
+				PRIMARY KEY(plugin_id, request_id)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_plugin_turn_lifecycle_outbox_updated
+			ON plugin_turn_lifecycle_outbox(updated_at, plugin_id, request_id)`,
 		`CREATE TABLE IF NOT EXISTS held_user_work (
 				session_id TEXT NOT NULL,
 				position INTEGER NOT NULL,

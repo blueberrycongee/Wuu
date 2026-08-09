@@ -318,7 +318,10 @@ func (s *Server) handlePluginPackageRemove(req Request) error {
 	}
 	if err := packageRemoval.Commit(); err != nil {
 		providers.DebugLogf("finalize plugin removal: %v", err)
+	} else if err := session.DeletePluginTurnLifecycleOutboxForPlugin(s.rt.SessionDir, removed.ID); err != nil {
+		providers.DebugLogf("delete plugin lifecycle outbox for removed plugin %q: %v", removed.ID, err)
 	}
+	s.schedulePluginTurnLifecycleReplay()
 	s.resetThreadRuntimesForGeneralSettings("")
 	return s.writeResponse(req.ID, PluginPackageRemoveResult{
 		ID:                 removed.ID,
@@ -399,6 +402,7 @@ func (s *Server) handlePendingPluginUpdate(req Request, params ExtensionPackageU
 		return s.writeResponse(req.ID, nil, err)
 	}
 	s.rt.SetExtensionSettings(&settings)
+	s.schedulePluginTurnLifecycleReplay()
 	s.resetThreadRuntimesForGeneralSettings("")
 	return s.writeResponse(req.ID, ExtensionPackageUpdateResult{ExtensionInventory: s.currentExtensionInventory()}, nil)
 }
@@ -497,6 +501,7 @@ func (s *Server) refreshPluginPackages() ([]ExtensionInventoryRecord, []SkillSum
 	if err := s.refreshExtensions(s.currentExtensionConfig()); err != nil {
 		return nil, nil, err
 	}
+	s.schedulePluginTurnLifecycleReplay()
 	s.resetThreadRuntimesForGeneralSettings("")
 	return s.currentExtensionInventory(), skillSummaries(s.rt.Skills), nil
 }
