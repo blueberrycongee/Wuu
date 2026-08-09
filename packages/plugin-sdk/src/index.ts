@@ -180,6 +180,12 @@ export interface PluginUIErrorStateProps extends PluginUIContainerProps {
   readonly actions?: unknown;
 }
 
+export interface PluginUILiveDurationProps extends PluginUIContainerProps {
+  readonly elapsedMs: number;
+  readonly runningSinceMs?: number;
+  readonly active?: boolean;
+}
+
 export type HostUIComponent<Props> = (props: Props) => unknown;
 
 /** Stable host-owned primitives for plugin views. */
@@ -198,6 +204,7 @@ export interface PluginUIKit {
   readonly EmptyState: HostUIComponent<PluginUIEmptyStateProps>;
   readonly LoadingState: HostUIComponent<PluginUILoadingStateProps>;
   readonly ErrorState: HostUIComponent<PluginUIErrorStateProps>;
+  readonly LiveDuration: HostUIComponent<PluginUILiveDurationProps>;
 }
 
 export interface OpenViewOptions {
@@ -410,6 +417,8 @@ export interface PluginGenerationApi {
   registerSlot(slotId: string, contribution: SlotRegistration): Disposable;
   registerSurface(surfaceId: string, contribution: SurfaceRegistration): Disposable;
   registerCommand(command: CommandRegistration): Disposable;
+  /** Show a non-persistent card at the bottom of a conversation. */
+  showConversationCard(card: ConversationCardRegistration): ConversationCardHandle;
   registerStyle(style: StyleRegistration): Disposable;
   registerLocale(locale: LocaleRegistration): Disposable;
   registerCleanup(cleanup: () => void): Disposable;
@@ -1360,6 +1369,27 @@ export interface CommandRegistration {
   title: string;
   order?: number;
   execute(input?: unknown): unknown | Promise<unknown>;
+}
+
+export interface ConversationCardRenderProps {
+  readonly id: string;
+  readonly threadId: string;
+  readonly state: unknown;
+  dismiss(): void;
+}
+
+export interface ConversationCardRegistration {
+  readonly id?: string;
+  readonly threadId?: string;
+  readonly title: string;
+  readonly state?: unknown;
+  readonly render: HostUIComponent<ConversationCardRenderProps>;
+}
+
+export interface ConversationCardHandle extends Disposable {
+  readonly id: string;
+  update(state: unknown): void;
+  dismiss(): void;
 }
 
 export interface StyleRegistration {

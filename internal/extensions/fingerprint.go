@@ -86,9 +86,8 @@ const (
 	// CommandKindPromptTemplate loads a host-owned prompt template from the
 	// plugin root. It is executable only by the host composer.
 	CommandKindPromptTemplate CommandKind = "prompt_template"
-	// CommandKindRuntimeAction is reserved in the schema but not executable until
-	// its request/response contract, permissions, and audit behavior are
-	// defined.
+	// CommandKindRuntimeAction is executable only through an approved desktop
+	// command registration with the same plugin and command id.
 	CommandKindRuntimeAction CommandKind = "runtime_action"
 )
 

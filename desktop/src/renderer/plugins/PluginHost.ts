@@ -94,6 +94,27 @@ export interface PluginCommandRegistration {
   execute(input?: unknown): unknown | Promise<unknown>;
 }
 
+export interface ConversationCardRenderProps {
+  readonly id: string;
+  readonly threadId: string;
+  readonly state: unknown;
+  dismiss(): void;
+}
+
+export interface ConversationCardRegistration {
+  id?: string;
+  threadId?: string;
+  title: string;
+  state?: unknown;
+  render(props: ConversationCardRenderProps): React.ReactNode;
+}
+
+export interface ConversationCardHandle extends Disposable {
+  readonly id: string;
+  update(state: unknown): void;
+  dismiss(): void;
+}
+
 export interface PluginStyleRegistration {
   id: string;
   css: string;
@@ -119,6 +140,8 @@ export interface PluginGenerationApi {
   registerSlot(slotId: PluginSlotId, contribution: PluginSlotRegistration): Disposable;
   registerSurface(surfaceId: PluginSurfaceId, contribution: PluginSurfaceRegistration): Disposable;
   registerCommand(command: PluginCommandRegistration): Disposable;
+  /** Show a session-local card at the bottom of a conversation. */
+  showConversationCard(card: ConversationCardRegistration): ConversationCardHandle;
   registerStyle(style: PluginStyleRegistration): Disposable;
   registerLocale(locale: PluginLocaleRegistration): Disposable;
   registerCleanup(cleanup: () => void): Disposable;
@@ -164,6 +187,18 @@ export interface RegisteredPluginSurfaceContribution extends PluginSurfaceRegist
 export interface RegisteredPluginCommand extends PluginCommandRegistration {
   readonly pluginId: string;
   readonly generation: string;
+}
+
+export interface RegisteredConversationCard {
+  readonly id: string;
+  readonly pluginId: string;
+  readonly generation: string;
+  readonly threadId: string;
+  readonly title: string;
+  readonly state: unknown;
+  readonly order: number;
+  readonly render: ConversationCardRegistration["render"];
+  readonly dismiss: () => void;
 }
 
 export interface RegisteredViewType extends ViewTypeDefinition {
@@ -286,6 +321,14 @@ interface CommandRecord extends OrderedRecord {
   readonly execute: PluginCommandRegistration["execute"];
 }
 
+interface ConversationCardRecord extends OrderedRecord {
+  readonly threadId: string;
+  readonly title: string;
+  state: unknown;
+  readonly render: ConversationCardRegistration["render"];
+  readonly dismiss: () => void;
+}
+
 interface StyleRecord extends OrderedRecord {
   readonly css: string;
   element?: HTMLStyleElement;
@@ -345,6 +388,7 @@ interface GenerationState {
   readonly slots: SlotRecord[];
   readonly surfaces: SurfaceRecord[];
   readonly commands: CommandRecord[];
+  readonly conversationCards: ConversationCardRecord[];
   readonly styles: StyleRecord[];
   readonly locales: LocaleRecord[];
   // Phase C — Workbench
@@ -372,6 +416,7 @@ interface PendingActivation {
 const EMPTY_SLOT_SNAPSHOT: readonly RegisteredPluginSlotContribution[] = Object.freeze([]);
 const EMPTY_SURFACE_SNAPSHOT: readonly RegisteredPluginSurfaceContribution[] = Object.freeze([]);
 const EMPTY_COMMAND_SNAPSHOT: readonly RegisteredPluginCommand[] = Object.freeze([]);
+const EMPTY_CONVERSATION_CARD_SNAPSHOT: readonly RegisteredConversationCard[] = Object.freeze([]);
 const EMPTY_VIEW_SNAPSHOT: readonly RegisteredViewType[] = Object.freeze([]);
 const EMPTY_VIEW_PLACEMENT_SNAPSHOT: readonly RegisteredViewPlacement[] = Object.freeze([]);
 const EMPTY_INSPECTOR_SECTION_SNAPSHOT: readonly RegisteredInspectorSection[] = Object.freeze([]);
@@ -414,6 +459,10 @@ export class PluginHost {
   private conflictPreferences: Readonly<Record<string, string>> = Object.freeze({});
   private conflictSnapshot: readonly PluginContributionConflict[] = Object.freeze([]);
   private commandSnapshot: readonly RegisteredPluginCommand[] = EMPTY_COMMAND_SNAPSHOT;
+  private conversationCardSnapshot: readonly RegisteredConversationCard[] = EMPTY_CONVERSATION_CARD_SNAPSHOT;
+  private readonly conversationCardListeners = new Set<() => void>();
+  private activeConversationThreadId?: string;
+  private nextConversationCardSequence = 1;
   private viewSnapshot: readonly RegisteredViewType[] = EMPTY_VIEW_SNAPSHOT;
   private viewPlacementSnapshot: readonly RegisteredViewPlacement[] = EMPTY_VIEW_PLACEMENT_SNAPSHOT;
   private inspectorSectionSnapshot: readonly RegisteredInspectorSection[] = EMPTY_INSPECTOR_SECTION_SNAPSHOT;
@@ -551,6 +600,19 @@ export class PluginHost {
     return this.commandSnapshot;
   }
 
+  setActiveConversationThread(threadId?: string): void {
+    this.activeConversationThreadId = threadId?.trim() || undefined;
+  }
+
+  getConversationCards(): readonly RegisteredConversationCard[] {
+    return this.conversationCardSnapshot;
+  }
+
+  subscribeConversationCards(listener: () => void): () => void {
+    this.conversationCardListeners.add(listener);
+    return () => this.conversationCardListeners.delete(listener);
+  }
+
   getViewTypes(): readonly RegisteredViewType[] {
     return this.viewSnapshot;
   }
@@ -668,6 +730,17 @@ export class PluginHost {
       message: `Plugin presenter contribution ${contribution.id} failed to render: ${errorMessage(error)}`,
       cause: error,
       contributionId: contribution.id,
+    });
+  }
+
+  recordConversationCardFailure(card: RegisteredConversationCard, error: unknown): void {
+    this.addDiagnostic({
+      pluginId: card.pluginId,
+      generation: card.generation,
+      kind: "render",
+      message: `Plugin conversation card ${card.id} failed to render: ${errorMessage(error)}`,
+      cause: error,
+      contributionId: card.id,
     });
   }
 
@@ -802,6 +875,61 @@ export class PluginHost {
         };
         state.commands.push(record);
         return this.ownRecord(state, record);
+      },
+      showConversationCard: (card: ConversationCardRegistration): ConversationCardHandle => {
+        this.assertUsable(state);
+        const threadId = card.threadId?.trim() || this.activeConversationThreadId;
+        if (!threadId) {
+          throw new Error("Plugin conversation card requires an active or explicit thread id");
+        }
+        const localId = card.id?.trim() || `card-${this.nextConversationCardSequence}`;
+        if (state.conversationCards.some((record) => !record.removed && record.id === localId)) {
+          throw new Error(`Duplicate plugin conversation card id: ${localId}`);
+        }
+        if (typeof card.render !== "function") {
+          throw new Error("Plugin conversation card render must be a function");
+        }
+        const sequence = this.nextConversationCardSequence++;
+        let cleanupDisposable: Disposable | undefined;
+        const dismiss = (): void => {
+          if (record.removed) return;
+          record.removed = true;
+          const cardIndex = state.conversationCards.indexOf(record);
+          if (cardIndex >= 0) state.conversationCards.splice(cardIndex, 1);
+          if (cleanupDisposable) {
+            const teardownIndex = state.teardown.indexOf(cleanupDisposable);
+            if (teardownIndex >= 0) state.teardown.splice(teardownIndex, 1);
+          }
+          this.refreshConversationCards();
+        };
+        const record: ConversationCardRecord = {
+          pluginId: state.pluginId,
+          generation: state.generation,
+          id: localId,
+          order: sequence,
+          threadId,
+          title: requireNonEmpty(card.title, "conversation card title"),
+          state: card.state,
+          render: card.render,
+          dismiss,
+          removed: false,
+        };
+        state.conversationCards.push(record);
+        const handle: ConversationCardHandle = Object.freeze({
+          id: localId,
+          update: (nextState: unknown) => {
+            this.assertUsable(state);
+            if (record.removed) throw new Error(`Plugin conversation card is no longer active: ${localId}`);
+            record.state = nextState;
+            this.refreshConversationCards();
+          },
+          dismiss,
+          dispose: dismiss,
+        });
+        cleanupDisposable = createDisposable(dismiss);
+        state.teardown.push(cleanupDisposable);
+        if (state.active) this.refreshConversationCards();
+        return handle;
       },
       registerStyle: (style: PluginStyleRegistration) => {
         this.assertAccepting(state);
@@ -1331,6 +1459,26 @@ export class PluginHost {
     if (changed) {
       this.notifyListeners();
     }
+    this.refreshConversationCards();
+  }
+
+  private refreshConversationCards(): void {
+    const next = Object.freeze([...this.activeGenerations.values()]
+      .flatMap((state) => state.conversationCards.filter((record) => !record.removed))
+      .sort(compareOrdered)
+      .map((record): RegisteredConversationCard => Object.freeze({
+        id: record.id,
+        pluginId: record.pluginId,
+        generation: record.generation,
+        threadId: record.threadId,
+        title: record.title,
+        state: record.state,
+        order: record.order,
+        render: record.render,
+        dismiss: record.dismiss,
+      })));
+    this.conversationCardSnapshot = next;
+    for (const listener of this.conversationCardListeners) listener();
   }
 
   private refreshLocales(records: LocaleRecord[]): boolean {
@@ -1445,6 +1593,7 @@ function createGenerationState(
     slots: [],
     surfaces: [],
     commands: [],
+    conversationCards: [],
     styles: [],
     locales: [],
     views: [],

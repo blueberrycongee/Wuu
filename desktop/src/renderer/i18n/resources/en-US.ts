@@ -273,6 +273,7 @@ export const enUS = {
   "common.loadingEllipsis": "Loading…",
   "common.back": "Back",
   "common.refresh": "Refresh",
+  "pluginCard.renderFailed": "This plugin card could not be displayed.",
   "settings.autoCompact": "Automatic compaction",
   "settings.autoCompactDescription": "Summarize older history near the context limit",
   "settings.enableAutoCompact": "Enable automatic compaction",

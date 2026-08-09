@@ -18,10 +18,18 @@ export {
   type PluginSurfaceMode,
   type PluginSurfaceRegistration,
   type RegisteredPluginCommand,
+  type RegisteredConversationCard,
+  type ConversationCardHandle,
+  type ConversationCardRegistration,
+  type ConversationCardRenderProps,
   type RegisteredPluginSlotContribution,
   type RegisteredPluginSurfaceContribution,
   type RegisteredInspectorSection,
 } from "./PluginHost";
+export {
+  PluginConversationCards,
+  type PluginConversationCardsProps,
+} from "./PluginConversationCards";
 export {
   PluginInspectorSections,
   type PluginInspectorSectionsProps,

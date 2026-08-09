@@ -186,6 +186,12 @@ export interface PluginUIErrorStateProps extends Omit<React.HTMLAttributes<HTMLE
   actions?: React.ReactNode;
 }
 
+export interface PluginUILiveDurationProps extends Omit<React.HTMLAttributes<HTMLSpanElement>, "children"> {
+  elapsedMs: number;
+  runningSinceMs?: number;
+  active?: boolean;
+}
+
 /**
  * Small host-owned component set for plugin views. These components own the
  * common visual rhythm while plugins retain full freedom inside their view.
@@ -205,6 +211,7 @@ export interface PluginUIKit {
   readonly EmptyState: React.ComponentType<PluginUIEmptyStateProps>;
   readonly LoadingState: React.ComponentType<PluginUILoadingStateProps>;
   readonly ErrorState: React.ComponentType<PluginUIErrorStateProps>;
+  readonly LiveDuration: React.ComponentType<PluginUILiveDurationProps>;
 }
 
 export function createPluginUIKit(react: typeof React): PluginUIKit {
@@ -375,6 +382,38 @@ export function createPluginUIKit(react: typeof React): PluginUIKit {
     return renderState("error", className, title, description, actions, props);
   }
 
+  function LiveDuration({
+    className,
+    elapsedMs,
+    runningSinceMs,
+    active = false,
+    ...props
+  }: PluginUILiveDurationProps): React.ReactNode {
+    const nodeRef = react.useRef<HTMLSpanElement | null>(null);
+    const value = (): string => formatCompactDuration(
+      Math.max(0, elapsedMs) + (
+        active && Number.isFinite(runningSinceMs)
+          ? Math.max(0, Date.now() - Number(runningSinceMs))
+          : 0
+      ),
+    );
+    react.useEffect(() => {
+      const update = (): void => {
+        if (nodeRef.current) nodeRef.current.textContent = value();
+      };
+      update();
+      if (!active || !Number.isFinite(runningSinceMs)) return undefined;
+      const timer = window.setInterval(update, 1_000);
+      return () => window.clearInterval(timer);
+    }, [active, elapsedMs, runningSinceMs]);
+    return react.createElement("span", {
+      ...props,
+      ref: nodeRef,
+      className: joinPluginUIClass("plugin-ui-live-duration", className),
+      "data-wuu-component": "plugin-ui-live-duration",
+    }, value());
+  }
+
   return Object.freeze({
     Page,
     Panel,
@@ -390,7 +429,18 @@ export function createPluginUIKit(react: typeof React): PluginUIKit {
     EmptyState,
     LoadingState,
     ErrorState,
+    LiveDuration,
   });
+}
+
+export function formatCompactDuration(ms: number): string {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1_000));
+  const hours = Math.floor(totalSeconds / 3_600);
+  const minutes = Math.floor((totalSeconds % 3_600) / 60);
+  const seconds = totalSeconds % 60;
+  if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`;
+  if (minutes > 0) return `${minutes}m ${seconds}s`;
+  return `${seconds}s`;
 }
 
 function joinPluginUIClass(base: string, className?: string): string {

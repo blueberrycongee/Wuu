@@ -28,8 +28,8 @@
   --activity-detail-error-border: #e89088;
   --diff-insert-color: #12a150;
   --diff-delete-color: #cf2e2e;
-  --live-gray-shimmer-edge: color-mix(in srgb, var(--wuu-color-text-muted, #7b8580) 18%, transparent);
-  --live-gray-shimmer-center: color-mix(in srgb, var(--wuu-color-text-muted, #7b8580) 32%, transparent);
+  --live-gray-shimmer-edge: rgba(255, 255, 255, 0.4);
+  --live-gray-shimmer-center: rgba(255, 255, 255, 0.85);
   --rich-link-color: var(--wuu-color-link, #0969da);
   --rich-link-hover-color: var(--wuu-color-link-hover, #0550ae);
   --rich-code-surface-bg: var(--wuu-color-surface-muted, #F4F4F4);
@@ -819,15 +819,63 @@
  * lives here; nothing is split across other files.
  */
 .context-composition-card,
-.instruction-files-card {
+.instruction-files-card,
+.plugin-conversation-card {
   width: 100%;
   max-width: none;
   margin: 2px 0 22px;
 }
 
 .conversation-split-width .context-composition-card,
-.conversation-split-width .instruction-files-card {
+.conversation-split-width .instruction-files-card,
+.conversation-split-width .plugin-conversation-card {
   width: 100%;
+}
+
+.plugin-conversation-card-shell {
+  overflow: hidden;
+  border: 1px solid var(--ink-overlay-8);
+  border-radius: var(--radius-lg);
+  background: var(--surface-1);
+}
+
+.plugin-conversation-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 44px;
+  padding: 8px 10px 8px 16px;
+  border-bottom: 1px solid var(--ink-overlay-6);
+}
+
+.plugin-conversation-card-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.plugin-conversation-card-heading strong {
+  overflow: hidden;
+  font-size: var(--font-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plugin-conversation-card-heading span {
+  color: var(--ink-tertiary);
+  font-size: var(--font-xs);
+}
+
+.plugin-conversation-card-content {
+  min-width: 0;
+  padding: 16px;
+}
+
+.plugin-conversation-card-error {
+  color: var(--error);
+  font-size: var(--font-sm);
 }
 
 .context-composition-card-inner,
@@ -2195,9 +2243,10 @@
   animation: process-text-rise-out var(--motion-base) var(--ease-out) both;
 }
 
-/* Visible gray process labels sweep while the turn is running. The moving
-   band is painted behind the row content, so themed surface colors can never
-   replace glyph pixels or reduce the label to the background color.
+/* Visible gray process labels sweep while the turn is running. The bright
+   band is painted as a `::after` overlay *over* the row content and blended
+   with `mix-blend-mode: lighten`, so themed surface colors never replace glyph
+   pixels and the text stays readable.
 
    The overlay slides a transform translate from -50% to 150% of
    the host's own width, so the bright bar always traverses the
@@ -2326,6 +2375,12 @@
   position: absolute;
   inset: 0;
   pointer-events: none;
+  /* The shared live gray sweep: a bright white band glides over the text.
+     We use a `::after` overlay with `mix-blend-mode: lighten` so the
+     text itself stays fully opaque and readable, and the sweep reads
+     as a highlight rather than a muddy background smear. The band is
+     plain white with theme-independent opacity, so it stays bright
+     across light, dark, and plugin-provided themes. */
   background-image: linear-gradient(
     90deg,
     transparent 0%,
@@ -2337,7 +2392,8 @@
     transparent 100%
   );
   animation: live-gray-shimmer 4.8s linear infinite;
-  z-index: -1;
+  mix-blend-mode: lighten;
+  z-index: 1;
 }
 
 :root[data-renderer-hidden] .turn-progress.in_progress .turn-progress-title,

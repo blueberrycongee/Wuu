@@ -44,9 +44,9 @@ const (
 	// CommandKindPromptTemplate loads a bounded UTF-8 file inside the plugin
 	// root and produces a host-owned composer action.
 	CommandKindPromptTemplate CommandKind = "prompt_template"
-	// CommandKindRuntimeAction is reserved in the schema but not executable
-	// until its request/response contract, permissions, and audit behavior are
-	// defined.
+	// CommandKindRuntimeAction is resolved against a command registered by the
+	// plugin's approved desktop generation. The manifest alone never executes
+	// plugin code.
 	CommandKindRuntimeAction CommandKind = "runtime_action"
 )
 
@@ -1471,8 +1471,8 @@ func normalizeCommands(root, pluginID string, raw json.RawMessage) ([]ResolvedCo
 			resolved.ResolvedPrompt = prompt
 			paths = append(paths, promptPath)
 		case CommandKindRuntimeAction:
-			// Reserved: validate and store the descriptor, but do not resolve or
-			// execute anything.
+			// Desktop activation resolves this descriptor against a registered
+			// command with the same plugin and command id.
 		default:
 			return nil, nil, fmt.Errorf("commands: unknown kind %q for %q", spec.Kind, spec.ID)
 		}

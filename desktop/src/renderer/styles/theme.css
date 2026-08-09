@@ -338,8 +338,8 @@
   --activity-detail-error-border: #7a463f;
   --diff-insert-color: #3fb970;
   --diff-delete-color: #ef6a5e;
-  --live-gray-shimmer-edge: color-mix(in srgb, var(--wuu-color-text-muted, #79837e) 18%, transparent);
-  --live-gray-shimmer-center: color-mix(in srgb, var(--wuu-color-text-muted, #79837e) 32%, transparent);
+  --live-gray-shimmer-edge: rgba(255, 255, 255, 0.4);
+  --live-gray-shimmer-center: rgba(255, 255, 255, 0.85);
   --rich-link-color: var(--wuu-color-link, #60a5fa);
   --rich-link-hover-color: var(--wuu-color-link-hover, #79b8ff);
   --rich-code-surface-bg: var(--wuu-color-surface-muted, #26292d);

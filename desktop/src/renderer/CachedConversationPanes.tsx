@@ -23,6 +23,8 @@ import { TurnView } from "./TurnView";
 import type { TurnFileDiffSelection } from "./TurnFileDiffTypes";
 import { latestAgentMessageLocation } from "./TurnViewHelpers";
 import type { HistoryMessageEditState } from "./ConversationHistoryActions";
+import { desktopPluginHost } from "./plugins/DesktopPluginRuntime";
+import { PluginConversationCards } from "./plugins/PluginConversationCards";
 
 const CONVERSATION_LAYOUT_STABLE_FRAMES = 2;
 const CONVERSATION_LAYOUT_SETTLE_TIMEOUT_MS = 120;
@@ -402,13 +404,18 @@ const CachedConversationPane = memo(function CachedConversationPane({
           threadID={thread.id}
           turns={threadTurns}
           renderBeforeTurns={[
-            ...threadInstructionCards,
             ...entriesBeforeTurns.map(renderContextEntry),
           ]}
           renderAfterMissingTurn={
             <>
               {entriesAfterMissingTurn.map(renderContextEntry)}
               {forkWorktreeNotice}
+              {threadInstructionCards}
+              <PluginConversationCards
+                host={desktopPluginHost}
+                threadId={thread.id}
+                onStreamFrame={onStreamFrame}
+              />
             </>
           }
           renderAfterTurn={(turn) =>

@@ -19,6 +19,7 @@ export type ComposerSlashCommandAction =
   | "no-project"
   | "context"
   | "instructions"
+  | "plugin"
   | "compact"
   | "model"
   | "fast"
@@ -39,6 +40,7 @@ export type ComposerSlashCommand = {
   argumentHint?: string;
   disabledReason?: string;
   pluginId?: string;
+  pluginCommandId?: string;
   promptTemplate?: string;
 };
 
@@ -87,7 +89,8 @@ export function buildComposerSlashCommands({
   running,
   compactDisabledReason,
   sideThreadDisabledReason,
-  skills = []
+  skills = [],
+  availablePluginRuntimeCommands = new Set<string>(),
 }: {
   activeContext?: RuntimeContext;
   initialized?: InitializeResult;
@@ -95,6 +98,7 @@ export function buildComposerSlashCommands({
   compactDisabledReason?: string;
   sideThreadDisabledReason?: string;
   skills?: SkillSummary[];
+  availablePluginRuntimeCommands?: ReadonlySet<string>;
 }): ComposerSlashCommand[] {
   const needsRuntime = activeContext && initialized ? undefined : t("slash.selectWorkspaceFirst");
   const needsWorkspace = activeContext ? undefined : t("slash.selectWorkspaceFirst");
@@ -369,17 +373,22 @@ export function buildComposerSlashCommands({
     pluginCommandPackagesFromInventory(initialized?.extension_inventory ?? []),
     reservedNames,
     activeContext?.kind,
+    availablePluginRuntimeCommands,
   ).commands.map((command): ComposerSlashCommand => ({
     id: command.id,
     name: command.name,
     title: command.title,
     description: command.description,
     tag: `Plugin · ${command.pluginId}`,
-    kind: "prompt",
+    kind: command.kind === "runtime_action" ? "action" : "prompt",
+    action: command.kind === "runtime_action" ? "plugin" : undefined,
     aliases: command.aliases,
     keywords: [command.pluginId, "plugin", ...command.keywords],
-    disabledReason: needsRuntime,
+    disabledReason: command.kind === "runtime_action"
+      ? needsRuntime ?? sideThreadDisabledReason
+      : needsRuntime,
     pluginId: command.pluginId,
+    pluginCommandId: command.name,
     promptTemplate: command.template,
   }));
   return [...commands, ...pluginCommands, ...skillCommands];

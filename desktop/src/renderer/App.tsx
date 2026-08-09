@@ -992,6 +992,10 @@ export function App(): JSX.Element {
       : undefined;
   const activeThread = activeThreadForState(state);
   const activeThreadID = activeThread?.id;
+  useEffect(() => {
+    desktopPluginHost.setActiveConversationThread(activeThreadID);
+    return () => desktopPluginHost.setActiveConversationThread(undefined);
+  }, [activeThreadID]);
   const activeTabKind = activeSessionTab(state)?.kind;
   const environmentContext = workspacePanelContext(state.activeContext, activeThread);
   const sideThread = useSideThreadController({

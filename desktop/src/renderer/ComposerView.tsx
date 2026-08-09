@@ -21,12 +21,14 @@ import {
   forwardRef,
   memo,
   startTransition,
+  useCallback,
   useContext,
   useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
-  useState
+  useState,
+  useSyncExternalStore
 } from "react";
 import type {
   DesktopProject,
@@ -480,9 +482,31 @@ export function Composer({
   const slashSkillContextKey = activeContext ? composerRuntimeContextKey(activeContext) : "";
   const slashSkillCountKey = initialized?.extension_trust?.main_session?.skills?.count ?? 0;
   const slashRuntimeReady = Boolean(activeContext && initialized);
+  const subscribePluginHost = useCallback(
+    (listener: () => void) => pluginHost.subscribe(listener),
+    [pluginHost],
+  );
+  const getPluginCommands = useCallback(() => pluginHost.getCommands(), [pluginHost]);
+  const registeredPluginCommands = useSyncExternalStore(
+    subscribePluginHost,
+    getPluginCommands,
+    getPluginCommands,
+  );
+  const availablePluginRuntimeCommands = useMemo(
+    () => new Set(registeredPluginCommands.map((command) => `${command.pluginId}:${command.id}`)),
+    [registeredPluginCommands],
+  );
   const builtinSlashCommands = useMemo(
-    () => buildComposerSlashCommands({ activeContext, initialized, running, compactDisabledReason, sideThreadDisabledReason, skills: slashSkills }),
-    [activeContext, compactDisabledReason, initialized, locale, running, sideThreadDisabledReason, slashSkills]
+    () => buildComposerSlashCommands({
+      activeContext,
+      initialized,
+      running,
+      compactDisabledReason,
+      sideThreadDisabledReason,
+      skills: slashSkills,
+      availablePluginRuntimeCommands,
+    }),
+    [activeContext, availablePluginRuntimeCommands, compactDisabledReason, initialized, locale, running, sideThreadDisabledReason, slashSkills]
   );
   const slashCommands = slashCommandsOverride ?? builtinSlashCommands;
   const fastModelTarget = useMemo(() => runtimeFastModelTarget(initialized), [initialized]);
@@ -848,6 +872,22 @@ export function Composer({
       case "instructions":
         onOpenInstructions();
         break;
+      case "plugin": {
+        const pluginCommand = pluginHost.getCommands().find((candidate) =>
+          candidate.pluginId === command.pluginId
+          && candidate.id === command.pluginCommandId);
+        if (!pluginCommand) break;
+        void Promise.resolve(pluginCommand.execute(Object.freeze({
+          source: "slash-command",
+          commandId: command.pluginCommandId,
+          args: draft?.args ?? "",
+          threadId: queryHistorySessionID,
+          context: activeContext,
+        }))).catch((error: unknown) => {
+          console.error(`Plugin slash command ${command.pluginId}:${command.pluginCommandId} failed`, error);
+        });
+        break;
+      }
       case "model":
         onToggleCodexRuntimeMenu("model");
         break;

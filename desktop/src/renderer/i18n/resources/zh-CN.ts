@@ -271,6 +271,7 @@ export const zhCN = {
   "common.loadingEllipsis": "加载中…",
   "common.back": "返回",
   "common.refresh": "刷新",
+  "pluginCard.renderFailed": "无法显示此插件卡片。",
   "settings.autoCompact": "自动压缩",
   "settings.autoCompactDescription": "接近上下文上限时自动整理旧历史",
   "settings.enableAutoCompact": "打开自动压缩",

@@ -130,8 +130,8 @@ func RequiredPermissionsForHook(entry *HookEntry) []string {
 
 // RequiredPermissionsForCommand returns the permissions required to execute a
 // command surface. prompt_template commands are host-rendered and require no
-// runtime permission; runtime_action is reserved but declares the command
-// execution permission it would need when activated.
+// runtime permission; runtime_action declares command execution permission
+// before an approved desktop generation can activate it.
 func RequiredPermissionsForCommand(spec *CommandSpec) []string {
 	if spec == nil {
 		return nil
