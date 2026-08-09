@@ -281,9 +281,9 @@ func (s *Server) createPluginSessionThread(owner string, params pluginhost.Sessi
 	threadCWD := s.rt.RootDir
 	managed := session.ManagedMetadata{Owner: owner, Visibility: params.Visibility, ParentID: params.ParentSessionID, ContextSource: params.ContextSource, CreationRequestID: params.RequestID}
 	var history []providers.ChatMessage
-	var created *session.Session
 	var createdWorktreePath string
-	var err error
+	cleanupWorktree := false
+	fork := session.ForkMetadata{}
 	if params.ContextSource == pluginhost.SessionContextFork {
 		parent, loadErr := s.loadPersistedThreadSnapshot(params.ParentSessionID)
 		if loadErr != nil {
@@ -291,30 +291,7 @@ func (s *Server) createPluginSessionThread(owner string, params pluginhost.Sessi
 		}
 		threadCWD = firstNonEmpty(parent.metadata.CWD, threadCWD)
 		history = cloneHistory(parent.history)
-		fork := session.ForkMetadata{ForkedFromID: params.ParentSessionID}
-		if params.Workspace == "worktree" {
-			manager, managerErr := s.worktreeManager(firstNonEmpty(parent.metadata.CWD, s.rt.RootDir))
-			if managerErr != nil {
-				return nil, managerErr
-			}
-			wt, createErr := manager.Create(id, "plugin", "")
-			if createErr != nil {
-				return nil, createErr
-			}
-			createdWorktreePath = wt.Path
-			threadCWD = wt.Path
-			created, err = session.CreateManagedWithWorktree(s.rt.SessionDir, id, threadCWD, fork, session.WorktreeInfo{Path: wt.Path, BaseHEAD: wt.HEAD, BaseRepo: firstNonEmpty(parent.metadata.CWD, s.rt.RootDir)}, managed)
-			if err != nil {
-				_ = manager.Cleanup(wt)
-			}
-		} else {
-			created, err = session.CreateManagedForkWithMetadata(s.rt.SessionDir, id, threadCWD, fork, managed)
-		}
-	} else {
-		created, err = session.CreateManagedWithMetadata(s.rt.SessionDir, id, threadCWD, managed)
-	}
-	if err != nil {
-		return nil, err
+		fork = session.ForkMetadata{ForkedFromID: params.ParentSessionID}
 	}
 	selection := s.currentSessionRuntimeSelection()
 	if params.ModelAlias != "" {
@@ -330,36 +307,55 @@ func (s *Server) createPluginSessionThread(owner string, params pluginhost.Sessi
 		selection.Variant = resolved.Runtime.Variant
 		selection.Effort = resolved.Runtime.Effort
 	}
-	if _, err := session.SetRuntimeSelection(s.rt.SessionDir, id, selection); err != nil {
-		return nil, err
-	}
-	if params.Name != "" {
-		if _, err := session.UpdateTitle(s.rt.SessionDir, id, params.Name); err != nil {
-			return nil, err
-		}
-		created.Title = params.Name
-	}
 	source := owner
-	if _, err := session.SetSource(s.rt.SessionDir, id, source); err != nil {
-		return nil, err
-	}
 	workspaceID := strings.TrimSpace(s.rt.WorkspaceID)
-	if workspaceID != "" {
-		if _, err := session.SetWorkspaceID(s.rt.SessionDir, id, workspaceID); err != nil {
-			return nil, err
-		}
-	}
 	if len(history) == 0 {
 		history = make([]providers.ChatMessage, 0, 1)
 	}
 	if prompt := strings.TrimSpace(s.rt.StreamRunner.SystemPrompt); prompt != "" && len(history) == 0 {
 		history = append(history, providers.ChatMessage{Role: "system", Content: prompt})
 	}
-	if params.ContextSource == pluginhost.SessionContextFork {
-		if err := rewriteChatHistory(s.rt.SessionDir, created.ID, history); err != nil {
+
+	worktree := session.WorktreeInfo{}
+	if params.Workspace == "worktree" {
+		baseRepo := threadCWD
+		manager, err := s.worktreeManager(baseRepo)
+		if err != nil {
 			return nil, err
 		}
+		createdWorktree, err := manager.Create(id, "plugin", "")
+		if err != nil {
+			return nil, err
+		}
+		createdWorktreePath = createdWorktree.Path
+		cleanupWorktree = true
+		threadCWD = createdWorktree.Path
+		worktree = session.WorktreeInfo{Path: createdWorktree.Path, BaseHEAD: createdWorktree.HEAD, BaseRepo: baseRepo}
+		defer func() {
+			if cleanupWorktree {
+				_ = manager.Cleanup(createdWorktree)
+			}
+		}()
 	}
+	initial := session.Session{
+		ID: id, Title: params.Name, CWD: threadCWD,
+		WorkspaceID: workspaceID, Source: source,
+		Owner: managed.Owner, Visibility: managed.Visibility, ParentID: managed.ParentID,
+		ContextSource: managed.ContextSource, CreationRequestID: managed.CreationRequestID,
+		ForkedFromID: fork.ForkedFromID,
+		WorktreePath: worktree.Path, WorktreeBaseHEAD: worktree.BaseHEAD, WorktreeBaseRepo: worktree.BaseRepo,
+		Provider: selection.Provider, Model: selection.Model, Variant: selection.Variant,
+		Effort: selection.Effort, PermissionMode: selection.PermissionMode,
+	}
+	var records []session.HistoryRecord
+	if params.ContextSource == pluginhost.SessionContextFork {
+		records = historyRecordsFromChatMessages(history)
+	}
+	created, err := session.CreateInitialized(s.rt.SessionDir, initial, records)
+	if err != nil {
+		return nil, err
+	}
+	cleanupWorktree = false
 	th := newThreadState(id, history, s.rt.ProviderName, s.rt.Model, threadCWD, true, time.Now().UTC())
 	applyThreadRuntimeSelection(th, selection)
 	th.Source = source
@@ -384,7 +380,7 @@ func (s *Server) createPluginSessionThread(owner string, params pluginhost.Sessi
 	th.mu.Unlock()
 	if params.Visibility == pluginhost.SessionVisibilityUser {
 		if err := s.notifyThreadStarted(thread); err != nil {
-			return nil, err
+			providers.DebugLogf("notify plugin-created thread %q: %v", id, err)
 		}
 	}
 	s.pruneCachedThreads(id)
