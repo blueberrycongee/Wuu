@@ -86,6 +86,9 @@ interface ThreadItemViewProps {
 export const ThreadItemView = memo(function ThreadItemView(props: ThreadItemViewProps): JSX.Element | null {
   const { item, onEditMessage, turnID, editing } = props;
   const { t } = useI18n();
+  if (item.type === "user_message" && isInternalUserNotificationItem(item)) {
+    return null;
+  }
   const pluginSlotContext = Object.freeze({
     kind: item.type,
     turnStatus: props.turnStatus,
@@ -93,13 +96,6 @@ export const ThreadItemView = memo(function ThreadItemView(props: ThreadItemView
     editing: Boolean(editing),
   });
   if (item.type === "tool_call") {
-    return (
-      <PluginMessageSlots host={props.pluginHost} context={pluginSlotContext}>
-        <BuiltInThreadItemView {...props} />
-      </PluginMessageSlots>
-    );
-  }
-  if (item.type === "user_message" && (isProcessNotificationItem(item) || isInternalUserNotificationItem(item))) {
     return (
       <PluginMessageSlots host={props.pluginHost} context={pluginSlotContext}>
         <BuiltInThreadItemView {...props} />

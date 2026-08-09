@@ -14,6 +14,7 @@ import { TurnEditSummaryCard } from "./TurnEditSummaryCard";
 import type { TurnFileDiffSelection } from "./TurnFileDiffTypes";
 import { TurnEventNotice, StreamReconnectNotice } from "./TurnNotice";
 import { turnEventForTurn } from "./TurnEvents";
+import { isInternalUserNotificationItem } from "./InternalUserNotification";
 import type { TurnStreamStatus } from "./AppState";
 import {
   latestAgentMessageItemID,
@@ -52,16 +53,20 @@ export type TurnViewProps = {
   isLatestTurn?: boolean;
 };
 
-export function TurnView(props: TurnViewProps): JSX.Element {
+export function TurnView(props: TurnViewProps): JSX.Element | null {
+  const projectedTurn = projectTurnForPresentation(props.turn);
+  if (props.turn.items.length > 0 && projectedTurn.items.length === 0) {
+    return null;
+  }
   return (
     <PluginSurface
       host={desktopPluginHost}
       id="conversation.timeline"
       context={{
         version: 1,
-        turns: [props.turn],
+        turns: [projectedTurn],
         awaiting: false,
-        interrupted: props.turn.status === "interrupted",
+        interrupted: projectedTurn.status === "interrupted",
         cwd: props.cwd,
         actions: {
           openFile: props.onOpenFile,
@@ -70,9 +75,17 @@ export function TurnView(props: TurnViewProps): JSX.Element {
           editMessage: props.onEditMessage,
         },
       }}
-      fallback={<TurnContent {...props} />}
+      fallback={<TurnContent {...props} turn={projectedTurn} />}
     />
   );
+}
+
+function projectTurnForPresentation(turn: Turn): Turn {
+  const items = turn.items.filter(
+    (item) =>
+      item.type !== "user_message" || !isInternalUserNotificationItem(item),
+  );
+  return items.length === turn.items.length ? turn : { ...turn, items };
 }
 
 function TurnContent({
