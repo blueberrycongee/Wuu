@@ -2243,26 +2243,19 @@
   animation: process-text-rise-out var(--motion-base) var(--ease-out) both;
 }
 
-/* Visible gray process labels sweep while the turn is running. The bright
-   band is painted as a `::after` overlay *over* the row content and blended
-   with `mix-blend-mode: lighten`, so themed surface colors never replace glyph
-   pixels and the text stays readable.
+/* Visible gray process labels sweep while the turn is running. The bar is a
+   fixed-width `::after` sliver above the row content, blended with
+   `mix-blend-mode: lighten`, so themed surfaces never replace glyph pixels
+   and the text stays readable.
 
-   The overlay slides a transform translate from -50% to 150% of
-   the host's own width, so the bright bar always traverses the
-   whole row in lockstep with its width — top to bottom of any
-   text appended during streaming. */
+   The bar starts just off the left edge and travels to just past the right
+   edge, so it crosses the full row without stretching into a wide block. */
 @keyframes live-gray-shimmer {
-  /* Absolute px (not %) so every host — short "正在回复 56s" and
-     long "运行命令 · 搜索4项 · 查看 composer.css · 思考过程" alike —
-     moves the bright bar at the same 83 px/s. The % version had a
-     fixed 4.8s period, which read as a slow crawl on short rows
-     and a fast blur on long rows. The trade-off: short rows now
-     spend less of the cycle with the bar inside them, long rows
-     spend more — but the bar's actual speed matches across all
-     rows. */
-  from { transform: translateX(-200px); }
-  to   { transform: translateX(200px); }
+  /* The bar itself is fixed-width, but its travel still spans the full row:
+     100% here is the row width, so short and long labels sweep at a
+     proportional pace without stretching the bar into a block. */
+  from { transform: translateX(-24px); }
+  to   { transform: translateX(calc(100% + 24px)); }
 }
 
 .process-surface,
@@ -2373,25 +2366,24 @@
 .live-progress-chip::after {
   content: "";
   position: absolute;
-  inset: 0;
+  inset-block: 0;
+  left: 0;
+  width: 24px;
   pointer-events: none;
-  /* The shared live gray sweep: a themed light band glides over the text.
-     We use a `::after` overlay with `mix-blend-mode: lighten` so the
-     text itself stays fully opaque and readable, and the sweep reads
-     as a highlight rather than a muddy background smear. Light mode uses
-     a white band; dark mode caps it at a translucent silver gray so it
-     lifts muted text without flashing to white against the dark canvas. */
+  /* The shared live gray sweep is a narrow vertical bar, not a block
+     stretched across the row: a fixed-width sliver slides left→right,
+     and `mix-blend-mode: lighten` lifts the glyphs it passes without
+     repainting the text. Light mode keeps a white band; dark mode caps
+     it at translucent silver gray so it never flashes to pure white. */
   background-image: linear-gradient(
     90deg,
     transparent 0%,
-    transparent 40%,
-    var(--live-gray-shimmer-edge) 47%,
+    var(--live-gray-shimmer-edge) 34%,
     var(--live-gray-shimmer-center) 50%,
-    var(--live-gray-shimmer-edge) 53%,
-    transparent 60%,
+    var(--live-gray-shimmer-edge) 66%,
     transparent 100%
   );
-  animation: live-gray-shimmer 4.8s linear infinite;
+  animation: live-gray-shimmer 1.6s linear infinite;
   mix-blend-mode: lighten;
   z-index: 1;
 }
