@@ -2633,17 +2633,13 @@ html.resizing-workspace-terminal-split * {
 }
 
 .skill-artwork-plugin-brand {
-  display: grid;
-  width: 36px;
-  height: 36px;
-  place-items: center;
-  background: transparent;
+  background: var(--skill-artwork-official-bg);
 }
 
 .skill-artwork-plugin-brand .plugin-icon-asset,
 .skill-artwork-plugin-brand > svg {
-  width: 30px;
-  height: 30px;
+  width: 26px;
+  height: 26px;
 }
 
 .skill-artwork[class*="skill-artwork-official-"] svg,

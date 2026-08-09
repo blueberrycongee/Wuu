@@ -682,7 +682,7 @@ function PluginArtwork({ record }: { record: ExtensionInventoryRecord }): JSX.El
   const identity = customSkillArtworkIdentity(record.name);
   return (
     <span
-      className={`skill-artwork-plugin-brand skill-artwork-palette-${identity.palette}`}
+      className={`skill-artwork skill-artwork-plugin-brand skill-artwork-palette-${identity.palette}`}
       aria-hidden="true"
     >
       <PluginIcon icon={record.icon} pluginId={record.id} fingerprint={record.fingerprint} />
