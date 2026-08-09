@@ -11,7 +11,7 @@ export async function activate(api) {
   } });
   api.registerStyle({ id: "subagent-status", css: `
     .plugin-subagent-status { display:flex; gap:6px; flex-wrap:wrap; margin:0 2px 8px; }
-    .plugin-subagent-chip { padding:3px 7px; border:1px solid var(--wuu-color-border-subtle); border-radius:999px; background:var(--wuu-color-surface-muted); color:var(--wuu-color-text-muted); font-size:11px; }
+    .plugin-subagent-chip { padding:3px 7px; border:1px solid var(--wuu-color-border-subtle); border-radius:var(--wuu-radius-control, 999px); background:var(--wuu-color-surface-muted); color:var(--wuu-color-text-muted); font-size:11px; }
     .plugin-subagent-chip[data-status="running"] { color:var(--wuu-color-text); }
     .plugin-subagent-settings { padding-top:8px; }
     .plugin-subagent-settings textarea { width:100%; min-height:120px; resize:vertical; font:12px/1.5 ui-monospace,monospace; color:var(--wuu-color-text); background:var(--wuu-color-surface-muted); border:1px solid var(--wuu-color-border-subtle); border-radius:7px; padding:9px; }
