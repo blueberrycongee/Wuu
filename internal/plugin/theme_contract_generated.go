@@ -26,6 +26,8 @@ var allowedThemeTokens = map[string]struct{}{
 	"--wuu-color-warning":                 {},
 	"--wuu-color-danger":                  {},
 	"--wuu-color-info":                    {},
+	"--wuu-color-link":                    {},
+	"--wuu-color-link-hover":              {},
 	"--wuu-color-on-accent":               {},
 	"--wuu-control-secondary-background":  {},
 	"--wuu-control-field-background":      {},

@@ -1442,7 +1442,7 @@
 
 .channel-agent-memory-link:focus-visible {
   border-radius: 3px;
-  outline: 2px solid color-mix(in srgb, var(--rich-link-color) 40%, transparent);
+  outline: 2px solid var(--wuu-color-focus, color-mix(in srgb, var(--rich-link-color) 40%, transparent));
   outline-offset: 2px;
 }
 

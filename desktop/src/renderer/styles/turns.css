@@ -28,9 +28,10 @@
   --activity-detail-error-border: #e89088;
   --diff-insert-color: #12a150;
   --diff-delete-color: #cf2e2e;
-  --live-gray-shimmer-edge: rgba(255, 255, 255, 0.5);
-  --rich-link-color: #0969da;
-  --rich-link-hover-color: #0550ae;
+  --live-gray-shimmer-edge: color-mix(in srgb, var(--wuu-color-text-muted, #7b8580) 18%, transparent);
+  --live-gray-shimmer-center: color-mix(in srgb, var(--wuu-color-text-muted, #7b8580) 32%, transparent);
+  --rich-link-color: var(--wuu-color-link, #0969da);
+  --rich-link-hover-color: var(--wuu-color-link-hover, #0550ae);
   --rich-code-surface-bg: #F4F4F4;
   --surface-chip: #E9EAEA;
   --fork-worktree-copy-bg: rgba(255, 255, 255, 0.84);
@@ -2194,13 +2195,9 @@
   animation: process-text-rise-out var(--motion-base) var(--ease-out) both;
 }
 
-/* Visible gray process labels sweep while the turn is running. We use
-   a `::after` overlay with `mix-blend-mode: lighten` instead of
-   painting the text itself: this keeps the label at full opacity
-   (no `color: transparent`) so there is no one-frame flash the
-   moment the live state flips on, and the overlay covers chevrons,
-   counts, and preview text naturally without a dedicated color
-   override.
+/* Visible gray process labels sweep while the turn is running. The moving
+   band is painted behind the row content, so themed surface colors can never
+   replace glyph pixels or reduce the label to the background color.
 
    The overlay slides a transform translate from -50% to 150% of
    the host's own width, so the bright bar always traverses the
@@ -2325,18 +2322,13 @@
     transparent 0%,
     transparent 40%,
     var(--live-gray-shimmer-edge) 47%,
-    var(--paper) 50%,
+    var(--live-gray-shimmer-center) 50%,
     var(--live-gray-shimmer-edge) 53%,
     transparent 60%,
     transparent 100%
   );
-  /* (no background-clip / color: transparent — the overlay is a
-     plain gradient that mix-blend-mode: lighten uses to whiten the
-     row text in place, instead of trying to clip to the ::after's
-     own (empty) text glyphs) */
-  mix-blend-mode: lighten;
   animation: live-gray-shimmer 4.8s linear infinite;
-  z-index: 1;
+  z-index: -1;
 }
 
 :root[data-renderer-hidden] .turn-progress.in_progress .turn-progress-title,
@@ -2624,7 +2616,7 @@
 
 .rich-file-link:focus-visible {
   border-radius: 3px;
-  outline: 2px solid color-mix(in srgb, var(--rich-link-color) 45%, transparent);
+  outline: 2px solid var(--wuu-color-focus, color-mix(in srgb, var(--rich-link-color) 45%, transparent));
   outline-offset: 2px;
 }
 

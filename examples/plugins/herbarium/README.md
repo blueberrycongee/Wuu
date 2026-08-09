@@ -41,8 +41,11 @@ class names, or DOM structure.
 - **Dialogs, menus, popovers**: bookplate frames (inner hairline outline),
   stronger borders and overlay elevation; tooltips read as italic
   annotations; notices get an accent leading edge.
-- **Global**: moss-tinted text selection and a penciled (dashed) focus
-  outline.
+- **Environment and information cards**: paper surfaces with stronger botanical
+  rules; rich links use the moss accent across conversation, channel, file,
+  settings and environment content.
+- **Global**: moss-tinted text selection while host-owned focus treatment stays
+  intact for every control type.
 
 ## Design notes
 

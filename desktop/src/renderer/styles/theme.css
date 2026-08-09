@@ -87,8 +87,8 @@
   --wuu-accent: var(--wuu-color-accent, #ff5a26);
   --wuu-accent-press: var(--wuu-color-accent-pressed, #ff6d3f);
 
-  --menu-bg: rgba(30, 33, 37, 0.98);
-  --menu-hover: #2b2f34;
+  --menu-bg: var(--wuu-color-surface-elevated, rgba(30, 33, 37, 0.98));
+  --menu-hover: var(--wuu-color-surface-muted, #2b2f34);
 
   --sidebar-glass-bg: linear-gradient(180deg, rgba(26, 29, 32, 0.94), rgba(20, 22, 24, 0.9));
   --sidebar-glass-border: rgba(228, 232, 235, 0.12);
@@ -338,9 +338,10 @@
   --activity-detail-error-border: #7a463f;
   --diff-insert-color: #3fb970;
   --diff-delete-color: #ef6a5e;
-  --live-gray-shimmer-edge: rgba(255, 255, 255, 0.35);
-  --rich-link-color: #60a5fa;
-  --rich-link-hover-color: #79b8ff;
+  --live-gray-shimmer-edge: color-mix(in srgb, var(--wuu-color-text-muted, #79837e) 18%, transparent);
+  --live-gray-shimmer-center: color-mix(in srgb, var(--wuu-color-text-muted, #79837e) 32%, transparent);
+  --rich-link-color: var(--wuu-color-link, #60a5fa);
+  --rich-link-hover-color: var(--wuu-color-link-hover, #79b8ff);
   --rich-code-surface-bg: #26292d;
   --surface-chip: var(--surface-4);
   --fork-worktree-copy-bg: rgba(38, 42, 46, 0.9);
@@ -365,7 +366,7 @@
   --turn-source-icon-hover-shadow: rgba(0, 0, 0, 0.45);
 
   /* conversation-shell.css */
-  --shell-process-control-color: var(--gray-400);
+  --shell-process-control-color: var(--wuu-color-text-muted, var(--gray-400));
   --shell-session-tab-hover-border: rgba(228, 232, 235, 0.16);
   --shell-session-tab-active-border: rgba(228, 232, 235, 0.22);
   --shell-session-tab-main-focus-shadow: rgba(228, 232, 235, 0.25);

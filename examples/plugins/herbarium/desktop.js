@@ -80,14 +80,9 @@ export async function activate(api) {
   background: color-mix(in srgb, var(--wuu-color-accent) 24%, transparent);
 }
 
-/* Penciled annotation instead of a solid focus ring. */
-:root[data-herbarium] :focus-visible {
-  outline: 1.5px dashed var(--wuu-color-focus);
-  outline-offset: 2px;
-}
-
 /* --- Left rail: book gutter — hairline edge with a moss spine -------- */
 :root[data-herbarium] [data-wuu-component="sidebar"] {
+  background: var(--wuu-color-surface-muted);
   border-right: 1px solid var(--wuu-color-border-subtle);
   box-shadow: inset -2px 0 0 var(--wuu-color-accent);
 }
@@ -152,9 +147,16 @@ export async function activate(api) {
   color: var(--wuu-color-accent);
 }
 
+/* Information and environment cards share this public host boundary. */
+:root[data-herbarium] [data-wuu-component="environment-panel"] {
+  background: var(--wuu-color-surface);
+  border-color: var(--wuu-color-border-strong);
+  color: var(--wuu-color-text);
+}
+
 /* --- Right panel: printed masthead with the classic double rule ------- */
 :root[data-herbarium] [data-wuu-component="workspace-panel"] {
-  background: var(--wuu-color-surface);
+  background: var(--wuu-color-canvas);
   border-left: 1px solid var(--wuu-color-border-subtle);
 }
 
@@ -193,7 +195,6 @@ export async function activate(api) {
 /* Public bridges into the file tree's shadow DOM and the xterm screen. */
 :root[data-herbarium] {
   --wuu-workspace-file-tree-color: var(--wuu-color-text);
-  --wuu-workspace-file-tree-background: var(--wuu-color-surface);
   --wuu-workspace-file-tree-selected-background: color-mix(in srgb, var(--wuu-color-accent) 16%, transparent);
   --wuu-workspace-file-tree-font-family: var(--wuu-font-family-ui);
   --wuu-workspace-file-tree-search-background: var(--wuu-control-field-background);
@@ -225,6 +226,7 @@ export async function activate(api) {
 }
 
 :root[data-herbarium] [data-wuu-component="settings-sidebar"] {
+  background: var(--wuu-color-surface-muted);
   border-right: 1px solid var(--wuu-color-border-subtle);
   box-shadow: inset -2px 0 0 var(--wuu-color-accent);
 }

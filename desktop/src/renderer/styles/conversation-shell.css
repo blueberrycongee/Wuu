@@ -1,7 +1,7 @@
 /* Component color tokens for conversation-shell.css.
    Light-theme values; the dark theme overrides these in base.css theme blocks. */
 :root {
-  --shell-process-control-color: #BCBCBD;
+  --shell-process-control-color: var(--wuu-color-text-muted, #BCBCBD);
   --shell-session-tab-hover-border: rgba(17, 19, 21, 0.14);
   --shell-session-tab-active-border: rgba(17, 19, 21, 0.18);
   --shell-session-tab-main-focus-shadow: rgba(17, 19, 21, 0.18);

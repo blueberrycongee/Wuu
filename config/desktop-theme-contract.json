@@ -55,6 +55,8 @@
     { "name": "--wuu-color-warning", "category": "color" },
     { "name": "--wuu-color-danger", "category": "color" },
     { "name": "--wuu-color-info", "category": "color" },
+    { "name": "--wuu-color-link", "category": "color" },
+    { "name": "--wuu-color-link-hover", "category": "color" },
     { "name": "--wuu-color-on-accent", "category": "color" },
     { "name": "--wuu-control-secondary-background", "category": "color" },
     { "name": "--wuu-control-field-background", "category": "color" },
