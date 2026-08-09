@@ -17,6 +17,11 @@
 // Operation contexts bound local requests and waits; use Run.Cancel to request
 // server-side interruption. Client.Close performs protocol shutdown, and
 // Runtime.Close releases workspace resources after its connections have ended.
+// Goal, Subagent, Automation, Memory, Dream, and Plan remain complete
+// plugin-owned product slices composed through versioned plugin contracts;
+// embedding the host does not expose their private state or policy. Loop-driver
+// registration and selection also remain internal and experimental.
+//
 // The facade intentionally covers the shared session and run lifecycle. More
 // specialized host controls remain on the versioned app-server protocol until
 // they have stable, host-neutral SDK semantics.
