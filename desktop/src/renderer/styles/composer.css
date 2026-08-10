@@ -5,17 +5,17 @@
   --composer-image-attachment-button-shadow: 0 2px 8px rgba(20, 24, 28, 0.12);
   --composer-file-attachment-button-hover-bg: #eceee9;
   --composer-collapsed-prompt-card-shadow: 0 1px 2px rgba(20, 24, 28, 0.05);
-  --composer-textarea-placeholder: #a0a3a5;
-  --composer-textarea-disabled: #6d7471;
+  --composer-textarea-placeholder: var(--wuu-color-text-muted, #a0a3a5);
+  --composer-textarea-disabled: var(--wuu-color-text-muted, #6d7471);
   --composer-send-button-disabled-text: rgba(255, 255, 255, 0.86);
   --composer-slash-menu-bg: rgba(255, 255, 255, 0.96);
   --composer-slash-menu-shadow: 0 14px 38px rgba(20, 24, 28, 0.08), 0 1px 4px rgba(20, 24, 28, 0.06);
-  --composer-project-search-bg: #f8f8f6;
-  --composer-project-search-placeholder: #9da1a4;
-  --composer-project-menu-icon: #6b7176;
+  --composer-project-search-bg: var(--wuu-control-field-background, #f8f8f6);
+  --composer-project-search-placeholder: var(--wuu-color-text-muted, #9da1a4);
+  --composer-project-menu-icon: var(--wuu-color-text-muted, #6b7176);
   --composer-permission-mode-danger-border: rgba(180, 35, 24, 0.16);
   --composer-permission-mode-danger-bg: #fff1ec;
-  --composer-menu-note-warning-strong: #b45309;
+  --composer-menu-note-warning-strong: var(--wuu-color-warning, #b45309);
   /* Accessory drawer upward shadow. Ink-sampled in light (a soft shade);
      redefined black-based in dark — an ink-colored shadow would read as a
      white glow above the drawer on dark paper. */

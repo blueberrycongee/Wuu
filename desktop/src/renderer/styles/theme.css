@@ -81,7 +81,7 @@
   --danger-soft: #341c18;
   --danger-border: #562f29;
   --info: var(--wuu-color-info, #58a6ff);
-  --accent-warm: #ff7a3d;
+  --accent-warm: var(--wuu-color-accent, #ff7a3d);
 
   /* Brand vermillion lifts a step to hold against the dark ground.
      --sidebar-accent inherits var(--wuu-accent) from base. */
@@ -195,17 +195,17 @@
   --composer-image-attachment-button-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
   --composer-file-attachment-button-hover-bg: #2b2f34;
   --composer-collapsed-prompt-card-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
-  --composer-textarea-placeholder: #6d7378;
-  --composer-textarea-disabled: #757b78;
+  --composer-textarea-placeholder: var(--wuu-color-text-muted, #6d7378);
+  --composer-textarea-disabled: var(--wuu-color-text-muted, #757b78);
   --composer-send-button-disabled-text: rgba(20, 23, 26, 0.7);
   --composer-slash-menu-bg: rgba(30, 33, 37, 0.98);
   --composer-slash-menu-shadow: 0 14px 38px rgba(0, 0, 0, 0.5), 0 1px 4px rgba(0, 0, 0, 0.4);
-  --composer-project-search-bg: #1b1e21;
-  --composer-project-search-placeholder: #6d7378;
-  --composer-project-menu-icon: #9aa0a5;
+  --composer-project-search-bg: var(--wuu-control-field-background, #1b1e21);
+  --composer-project-search-placeholder: var(--wuu-color-text-muted, #6d7378);
+  --composer-project-menu-icon: var(--wuu-color-text-muted, #9aa0a5);
   --composer-permission-mode-danger-border: rgba(240, 112, 95, 0.3);
   --composer-permission-mode-danger-bg: #341c18;
-  --composer-menu-note-warning-strong: #e2a04a;
+  --composer-menu-note-warning-strong: var(--wuu-color-warning, #e2a04a);
   --composer-accessory-shadow: rgba(0, 0, 0, 0.4);
   --composer-accessory-shadow-hover: rgba(0, 0, 0, 0.45);
   --composer-accessory-shadow-expanded: rgba(0, 0, 0, 0.5);

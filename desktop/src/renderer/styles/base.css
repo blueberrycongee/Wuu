@@ -115,7 +115,7 @@
   --danger-border: #f1c2bf;
   --info: var(--wuu-color-info, #0969da);
   --ink-on-accent: var(--wuu-color-on-accent, #ffffff);
-  --accent-warm: #ef5b18;
+  --accent-warm: var(--wuu-color-accent, #ef5b18);
   --selection-bg: rgba(64, 133, 216, 0.3);
 
                                                                   
