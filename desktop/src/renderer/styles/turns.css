@@ -381,7 +381,7 @@
   box-sizing: border-box;
   flex-direction: column;
   align-items: flex-start;
-  border-radius: calc(var(--radius-lg) + 8px);
+  border-radius: var(--wuu-message-user-radius, calc(var(--radius-lg) + 8px));
   overflow: hidden;
   padding: 18px 22px 16px;
 }

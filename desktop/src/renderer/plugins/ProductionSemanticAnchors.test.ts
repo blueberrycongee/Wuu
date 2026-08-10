@@ -136,6 +136,24 @@ describe("production semantic anchors", () => {
     }
   });
 
+  it("publishes sidebar navigation hover as theme tokens", () => {
+    const sidebar = readFileSync(resolve(RENDERER_ROOT, "styles/sidebar.css"), "utf8");
+    expect(sidebar).toContain("var(--wuu-nav-item-hover-background,");
+    expect(sidebar).toContain("var(--wuu-nav-item-hover-ring,");
+    const settings = readFileSync(resolve(RENDERER_ROOT, "styles/settings.css"), "utf8");
+    expect(settings).toContain("var(--wuu-nav-item-hover-background,");
+    const themeContract = readFileSync(
+      resolve(process.cwd(), "../config/desktop-theme-contract.json"),
+      "utf8",
+    );
+    for (const token of [
+      "--wuu-nav-item-hover-background",
+      "--wuu-nav-item-hover-ring",
+    ]) {
+      expect(themeContract).toContain(`"name": "${token}"`);
+    }
+  });
+
   it("keeps the coarse plugin UI Kit anchors stable", () => {
     const source = readFileSync(resolve(SHARED_ROOT, "workbench.ts"), "utf8");
     for (const anchor of [

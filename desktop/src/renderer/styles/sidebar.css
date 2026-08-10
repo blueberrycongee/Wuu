@@ -857,9 +857,9 @@
 .nav-item:hover,
 .project-row:hover,
 .thread-row:hover {
-  background: var(--sidebar-glass-hover);
+  background: var(--wuu-nav-item-hover-background, var(--sidebar-glass-hover));
   color: var(--ink);
-  box-shadow: inset 0 0 0 1px var(--sidebar-nav-item-hover-ring);
+  box-shadow: inset 0 0 0 1px var(--wuu-nav-item-hover-ring, var(--sidebar-nav-item-hover-ring));
   /* Keep the hitbox and its contents on the same x-axis. A 1 CSS px hover
    * nudge becomes a visible 2 physical px jump on Retina displays. */
   transform: none;
@@ -1894,7 +1894,7 @@
 
 .sidebar-settings-button:hover,
 .sidebar-settings-button[aria-expanded="true"] {
-  background: var(--sidebar-glass-hover);
+  background: var(--wuu-nav-item-hover-background, var(--sidebar-glass-hover));
   color: var(--ink);
   box-shadow: inset 0 0 0 1px var(--sidebar-settings-button-hover-ring);
   transform: none;

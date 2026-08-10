@@ -210,7 +210,7 @@
   --composer-accessory-shadow-expanded: rgba(0, 0, 0, 0.5);
   --composer-context-meter-focus-outline: var(--wuu-color-focus, rgba(160, 168, 175, 0.55));
   --composer-context-meter-tooltip-divider: rgba(228, 232, 235, 0.1);
-  --chat-user-message-bg: #26282b;
+  --chat-user-message-bg: var(--wuu-message-user-background, #26282b);
 
   /* environment.css */
   /* Dialog text follows the shared ink ladder. */

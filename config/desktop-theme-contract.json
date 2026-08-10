@@ -81,6 +81,8 @@
     { "name": "--wuu-message-user-color", "category": "color" },
     { "name": "--wuu-message-user-radius", "category": "radius" },
     { "name": "--wuu-message-user-shadow", "category": "elevation" },
+    { "name": "--wuu-nav-item-hover-background", "category": "color" },
+    { "name": "--wuu-nav-item-hover-ring", "category": "color" },
     { "name": "--wuu-radius-control", "category": "radius" },
     { "name": "--wuu-radius-panel", "category": "radius" },
     { "name": "--wuu-radius-overlay", "category": "radius" },

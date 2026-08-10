@@ -446,6 +446,10 @@ snippets 而不是新增主题 Token：`app-shell`、`sidebar`、`conversation-p
 响应式收纳和两种布局语义仍由宿主负责。插件应把直接子按钮作为同一控件族统一处理，
 不按 copy/like/edit 动作建立私有样式。user query 的实际气泡表面另有
 `message-bubble` + `user` 变体，并由 `--wuu-message-user-*` Token 控制视觉属性。
+侧栏导航（主栏、插件入口、项目行、会话行、设置栏和返回按钮）的 hover 共享同一套公开
+Token：`--wuu-nav-item-hover-background` 绘制悬停/展开行的底色，
+`--wuu-nav-item-hover-ring` 调整内描边颜色，两者都回退到宿主玻璃质感，
+主题无需依赖私有行级 class。
 插件 UI Kit 公开 `plugin-ui-page`、`plugin-ui-panel`、`plugin-ui-card`、
 `plugin-ui-section`、`plugin-ui-stack`、`plugin-ui-row`、`plugin-ui-button`、
 `plugin-ui-field`、`plugin-ui-input`、`plugin-ui-empty-state`、`plugin-ui-loading-state` 和

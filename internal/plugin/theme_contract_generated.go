@@ -52,6 +52,8 @@ var allowedThemeTokens = map[string]struct{}{
 	"--wuu-message-user-color":            {},
 	"--wuu-message-user-radius":           {},
 	"--wuu-message-user-shadow":           {},
+	"--wuu-nav-item-hover-background":     {},
+	"--wuu-nav-item-hover-ring":           {},
 	"--wuu-radius-control":                {},
 	"--wuu-radius-panel":                  {},
 	"--wuu-radius-overlay":                {},

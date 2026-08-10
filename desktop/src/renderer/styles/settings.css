@@ -148,7 +148,7 @@
 }
 
 .settings-back-button:hover {
-  background: var(--sidebar-glass-hover);
+  background: var(--wuu-nav-item-hover-background, var(--sidebar-glass-hover));
   color: var(--ink);
 }
 
@@ -202,7 +202,7 @@
 }
 
 .settings-nav-item:hover {
-  background: var(--sidebar-glass-hover);
+  background: var(--wuu-nav-item-hover-background, var(--sidebar-glass-hover));
   color: var(--ink);
 }
 
