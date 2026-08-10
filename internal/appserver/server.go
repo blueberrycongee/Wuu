@@ -1012,11 +1012,39 @@ func (s *Server) handleLine(ctx context.Context, raw []byte) error {
 	case MethodWorkspaceStateCleanup:
 		return s.handleWorkspaceStateCleanup(req)
 	case MethodThreadRegenerateTitle:
-		return s.handleThreadRegenerateTitle(ctx, req)
+		// Title generation is a synchronous LLM call. Keep it off the
+		// serial stdio dispatch loop so unrelated requests are not queued
+		// behind provider latency; response writes are independently locked.
+		if !s.startBackground(func() {
+			if err := s.handleThreadRegenerateTitle(ctx, req); err != nil {
+				log.Printf("wuu: thread/regenerate-title: %v", err)
+			}
+		}) {
+			return s.writeResponse(req.ID, nil, errServerClosed)
+		}
+		return nil
 	case MethodTextPolish:
-		return s.handleTextPolish(req)
+		// Same reasoning as title regeneration: a synchronous LLM call must
+		// not stall the serial dispatch loop.
+		if !s.startBackground(func() {
+			if err := s.handleTextPolish(req); err != nil {
+				log.Printf("wuu: text/polish: %v", err)
+			}
+		}) {
+			return s.writeResponse(req.ID, nil, errServerClosed)
+		}
+		return nil
 	case MethodGitCommitMessage:
-		return s.handleGitCommitMessage(req)
+		// Same reasoning as title regeneration: a synchronous LLM call must
+		// not stall the serial dispatch loop.
+		if !s.startBackground(func() {
+			if err := s.handleGitCommitMessage(req); err != nil {
+				log.Printf("wuu: git/commit-message: %v", err)
+			}
+		}) {
+			return s.writeResponse(req.ID, nil, errServerClosed)
+		}
+		return nil
 	case MethodTurnStart:
 		return s.handleTurnStart(ctx, req)
 	case MethodTurnQueue:

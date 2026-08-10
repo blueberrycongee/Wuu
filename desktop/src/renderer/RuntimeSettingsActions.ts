@@ -19,6 +19,7 @@ import type {
 } from "./ComposerTypes";
 import { isCodexProvider } from "./RuntimeHelpers";
 import { runtimeViewForSession } from "./SessionRuntimeState";
+import { showErrorToast } from "./Toast";
 import { translateCurrent } from "./i18n";
 
 type SetAppState = (update: SetStateAction<AppState>) => void;
@@ -62,8 +63,8 @@ export type RuntimeSettingsActions = {
     provider: string,
     model: string,
     variant?: string,
-  ) => Promise<void>;
-  selectRuntimeEffort: (nextVariant: string) => Promise<void>;
+  ) => Promise<boolean>;
+  selectRuntimeEffort: (nextVariant: string) => Promise<boolean>;
   selectPermissionMode: (mode: PermissionMode) => Promise<void>;
   interrupt: () => Promise<void>;
   interruptPane: (pane: ConversationPaneID) => Promise<void>;
@@ -448,10 +449,10 @@ export function createRuntimeSettingsActions(
     provider: string,
     model: string,
     variant?: string,
-  ): Promise<void> {
+  ): Promise<boolean> {
     const state = deps.getAppState();
     if (!state.initialized || deps.getViewContextSwitchPending()) {
-      return;
+      return false;
     }
     const targetThread = activeThreadForState(state);
     const currentProvider =
@@ -475,22 +476,28 @@ export function createRuntimeSettingsActions(
     // The model panel stays open after a selection: the row highlight and the
     // effort pills update optimistically inside the panel, so the user can
     // chain "switch model → tune effort" in one visit instead of reopening the
-    // picker for every change.
+    // picker for every change. A rejection (for example a background agent
+    // still running on the thread) surfaces as a toast — the status line
+    // alone was too easy to miss against the optimistic highlight.
     try {
       await sendRuntimeSelection({ provider, model, variant: nextVariant });
-    } catch {
-      // Failure already surfaced through the status line.
+      return true;
+    } catch (error) {
+      showErrorToast(error, translateCurrent("runtime.settingsUpdateFailed"));
+      return false;
     }
   }
 
-  async function selectRuntimeEffort(nextVariant: string): Promise<void> {
+  async function selectRuntimeEffort(nextVariant: string): Promise<boolean> {
     if (!deps.getAppState().initialized || deps.getViewContextSwitchPending()) {
-      return;
+      return false;
     }
     try {
       await sendRuntimeSelection({ variant: nextVariant });
-    } catch {
-      // Failure already surfaced through the status line.
+      return true;
+    } catch (error) {
+      showErrorToast(error, translateCurrent("runtime.settingsUpdateFailed"));
+      return false;
     }
     // Keep the panel open — see selectRuntimeModel.
   }

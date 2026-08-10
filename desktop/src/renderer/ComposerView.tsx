@@ -243,8 +243,8 @@ export function Composer({
   onToggleMenu: () => void;
   onToggleAccessMenu: () => void;
   onToggleCodexRuntimeMenu: (menu: Exclude<CodexRuntimeMenu, null>) => void;
-  onSelectRuntimeModel: (provider: string, model: string, variant?: string) => void;
-  onSelectRuntimeEffort: (variant: string) => void;
+  onSelectRuntimeModel: (provider: string, model: string, variant?: string) => void | Promise<boolean>;
+  onSelectRuntimeEffort: (variant: string) => void | Promise<boolean>;
   onSelectPermissionMode: (mode: PermissionMode) => void;
   onToggleBranchMenu: () => void;
   onOpenSettings: () => void;

@@ -736,6 +736,7 @@ export const zhCN = {
   "runtime.loadingCodexModels": "正在加载 Codex 模型",
   "runtime.codexLoginUnavailable": "无法读取 Codex 登录态",
   "runtime.noModels": "没有可用模型",
+  "runtime.modelSwitchWhileRunning": "对话进行中，完成后才能切换模型",
   "runtime.uncommittedChanges": "有未提交更改",
   "runtime.dirtyFileWarningOne": "{count} 个文件会随分支切换保留；如果会覆盖本地改动，Git 会拒绝切换。",
   "runtime.dirtyFileWarning": "{count} 个文件会随分支切换保留；如果会覆盖本地改动，Git 会拒绝切换。",

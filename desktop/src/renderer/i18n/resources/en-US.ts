@@ -738,6 +738,7 @@ export const enUS = {
   "runtime.loadingCodexModels": "Loading Codex models",
   "runtime.codexLoginUnavailable": "Could not read Codex login status",
   "runtime.noModels": "No models available",
+  "runtime.modelSwitchWhileRunning": "Wait for the current run to finish before switching models",
   "runtime.uncommittedChanges": "Uncommitted changes",
   "runtime.dirtyFileWarningOne": "{count} file will be preserved when switching branches. Git will refuse the switch if it would overwrite local changes.",
   "runtime.dirtyFileWarning": "{count} files will be preserved when switching branches. Git will refuse the switch if it would overwrite local changes.",

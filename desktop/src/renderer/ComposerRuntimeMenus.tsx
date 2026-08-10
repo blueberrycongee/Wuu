@@ -147,9 +147,10 @@ export function RuntimePicker({
   anchorRef: RefObject<HTMLDivElement | null>;
   running: boolean;
   onToggleMenu: (menu: Exclude<CodexRuntimeMenu, null>) => void;
-  onSelectModel: (provider: string, model: string, variant?: string) => void;
-  onSelectEffort: (variant: string) => void;
+  onSelectModel: (provider: string, model: string, variant?: string) => void | Promise<boolean>;
+  onSelectEffort: (variant: string) => void | Promise<boolean>;
 }): JSX.Element {
+  const { t } = useI18n();
   const currentProvider = initialized.providers?.find((provider) => provider.name === initialized.provider);
   const codexProvider = isCodexProvider(initialized);
   const currentCodexModel = codexProvider ? state.models.find((model) => model.slug === initialized.model) : undefined;
@@ -158,18 +159,20 @@ export function RuntimePicker({
   const placement: FloatingMenuPlacement = variant === "hero" ? "below" : "above";
   return (
     <div className="codex-runtime-anchor" ref={anchorRef}>
-      <button
-        className="codex-runtime-trigger"
-        type="button"
-        disabled={running}
-        aria-haspopup="menu"
-        aria-expanded={openMenu === "model"}
-        onClick={() => onToggleMenu("model")}
-      >
-        <span>{runtimeTriggerLabel(initialized, currentProviderModel, currentCodexModel)}</span>
-        <span className="codex-runtime-effort">{variantLabel(currentVariant)}</span>
-        <ChevronDown className="icon" />
-      </button>
+      <Tooltip content={running ? t("runtime.modelSwitchWhileRunning") : undefined}>
+        <button
+          className="codex-runtime-trigger"
+          type="button"
+          disabled={running}
+          aria-haspopup="menu"
+          aria-expanded={openMenu === "model"}
+          onClick={() => onToggleMenu("model")}
+        >
+          <span>{runtimeTriggerLabel(initialized, currentProviderModel, currentCodexModel)}</span>
+          <span className="codex-runtime-effort">{variantLabel(currentVariant)}</span>
+          <ChevronDown className="icon" />
+        </button>
+      </Tooltip>
       {openMenu === "model" ? (
         <FloatingMenuPortal
           anchorRef={anchorRef}
@@ -208,8 +211,8 @@ function RuntimeModelMenu({
   selectedProvider: string;
   selectedModel: string;
   selectedVariant: string;
-  onSelectModel: (provider: string, model: string, variant?: string) => void;
-  onSelectEffort: (variant: string) => void;
+  onSelectModel: (provider: string, model: string, variant?: string) => void | Promise<boolean>;
+  onSelectEffort: (variant: string) => void | Promise<boolean>;
 }): JSX.Element {
   const { t } = useI18n();
   const [query, setQuery] = useState("");
@@ -330,7 +333,16 @@ function RuntimeModelMenu({
                 selectedVariant={effectiveVariant}
                 onSelectModel={(provider, model, variant) => {
                   setOptimistic({ provider, model, variant: variant ?? "" });
-                  onSelectModel(provider, model, variant);
+                  // A rejected switch (for example the thread still has a
+                  // background agent running) never produces a server
+                  // confirmation, so clear the optimistic highlight
+                  // explicitly instead of leaving a selection that did
+                  // not take effect.
+                  void Promise.resolve(onSelectModel(provider, model, variant)).then((committed) => {
+                    if (committed === false) {
+                      setOptimistic(null);
+                    }
+                  });
                 }}
               />
             ))}
@@ -354,7 +366,11 @@ function RuntimeModelMenu({
                   ? { ...current, variant }
                   : { provider: selectedProvider, model: selectedModel, variant }
               );
-              onSelectEffort(variant);
+              void Promise.resolve(onSelectEffort(variant)).then((committed) => {
+                if (committed === false) {
+                  setOptimistic(null);
+                }
+              });
             }}
           />
         </div>

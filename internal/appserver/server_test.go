@@ -5579,7 +5579,8 @@ func TestServerRegenerateTitle(t *testing.T) {
 	}
 	rt := newTestRuntime(t, mainClient)
 	rt.TitleClient = titleClient
-	srv := New(rt, &lockedBuffer{})
+	out := &lockedBuffer{}
+	srv := New(rt, out)
 
 	// Seed an existing thread that is BEYOND its first turn. The first-turn
 	// auto title gen would skip this because history has > 1 user message;
@@ -5610,6 +5611,9 @@ func TestServerRegenerateTitle(t *testing.T) {
 	if err := srv.handleLine(context.Background(), dryReq); err != nil {
 		t.Fatalf("regenerate-title dry-run: %v", err)
 	}
+	// The handler runs on a background goroutine; wait for its response
+	// before asserting anything about persistence.
+	waitForResponseByID(t, out, "reg-1")
 	// Verify title was NOT persisted.
 	if _, ok, _ := session.Find(rt.SessionDir, sess.ID); !ok {
 		t.Fatal("session should still exist")
@@ -5630,6 +5634,7 @@ func TestServerRegenerateTitle(t *testing.T) {
 	if err := srv.handleLine(context.Background(), persistReq); err != nil {
 		t.Fatalf("regenerate-title persist: %v", err)
 	}
+	waitForResponseByID(t, out, "reg-2")
 	persisted2, _ := session.List(rt.SessionDir, 100)
 	var updated *session.Session
 	for i := range persisted2 {
@@ -9067,6 +9072,24 @@ func waitForNotificationCount(t *testing.T, out *lockedBuffer, method string, co
 		time.Sleep(10 * time.Millisecond)
 	}
 	t.Fatalf("timed out waiting for %d %s notifications; output:\n%s", count, method, out.String())
+	return nil
+}
+
+// waitForResponseByID polls for a response written by a handler dispatched
+// through startBackground (text/polish, git/commit-message,
+// thread/regenerate-title): handleLine returns before the goroutine writes.
+func waitForResponseByID(t *testing.T, out *lockedBuffer, id string) map[string]any {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		for _, msg := range parseOutput(t, out.String()) {
+			if msg["id"] == id && msg["method"] == nil {
+				return msg
+			}
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("timed out waiting for response id %s; output:\n%s", id, out.String())
 	return nil
 }
 

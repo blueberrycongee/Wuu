@@ -283,9 +283,13 @@ const ENVIRONMENT_PANEL_WIDTH_CSS = `${ENVIRONMENT_PANEL_WIDTH_PX}px`;
 // rail is a thin at-a-glance index; if there are more queries than fit,
 // we collapse the tail into a single bar.
 const QUERY_HISTORY_RAIL_MAX_BARS = 20;
-// Keep only the active conversation pane mounted. Hidden panes used to retain
-// full TurnView DOM trees, making long sessions heavier after each tab switch.
-const CACHED_THREAD_PANE_LIMIT = 1;
+// Keep the active conversation pane plus a small recency buffer mounted.
+// Limit 1 made every tab switch a full TurnView remount — the multi-second
+// white frame on long threads. A bound is still needed because a hidden pane
+// re-renders whenever its background thread streams; content-visibility
+// keeps the retained DOM out of the render path, so the cost of a warm pane
+// is memory plus cheap memo-bailout renders.
+const CACHED_THREAD_PANE_LIMIT = 3;
 type EnvironmentDialog = "commit" | "pull-request" | null;
 const RENDERER_ENV = (
   import.meta as ImportMeta & {
@@ -2377,10 +2381,10 @@ export function App(): JSX.Element {
         }}
         onToggleCodexRuntimeMenu={toggleCodexRuntimeMenu}
         onSelectRuntimeModel={(provider, model, variant) =>
-          void selectRuntimeModel(provider, model, variant)
+          selectRuntimeModel(provider, model, variant)
         }
         onSelectRuntimeEffort={(nextVariant) =>
-          void selectRuntimeEffort(nextVariant)
+          selectRuntimeEffort(nextVariant)
         }
         onSelectPermissionMode={(mode) =>
           void selectPermissionMode(mode)

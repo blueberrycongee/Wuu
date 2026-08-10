@@ -25,7 +25,7 @@ func TestGitCommitMessageUsesConfiguredBYOKRuntime(t *testing.T) {
 
 	result := remarshal[GitCommitMessageResult](
 		t,
-		responseByID(t, parseOutput(t, out.String()), "commitmsg")["result"],
+		waitForResponseByID(t, out, "commitmsg")["result"],
 	)
 	if result.Message != "feat(desktop): add embedded browser proxy" {
 		t.Fatalf("message = %q", result.Message)
@@ -70,11 +70,10 @@ func TestGitCommitMessageValidationAndUnavailableRuntime(t *testing.T) {
 		}
 	}
 
-	responses := parseOutput(t, out.String())
-	if got := responseByID(t, responses, "empty")["error"]; !strings.Contains(strings.ToLower(toString(got)), "diff is required") {
+	if got := waitForResponseByID(t, out, "empty")["error"]; !strings.Contains(strings.ToLower(toString(got)), "diff is required") {
 		t.Fatalf("empty error = %v", got)
 	}
-	if got := responseByID(t, responses, "unavailable")["error"]; !strings.Contains(toString(got), "BYOK model runtime") {
+	if got := waitForResponseByID(t, out, "unavailable")["error"]; !strings.Contains(toString(got), "BYOK model runtime") {
 		t.Fatalf("unavailable error = %v", got)
 	}
 }
@@ -106,7 +105,7 @@ func TestGitCommitMessageProviderErrorAndEmptyResponse(t *testing.T) {
 			)); err != nil {
 				t.Fatal(err)
 			}
-			got := responseByID(t, parseOutput(t, out.String()), "gen")["error"]
+			got := waitForResponseByID(t, out, "gen")["error"]
 			if !strings.Contains(toString(got), tc.contains) {
 				t.Fatalf("error = %v, want substring %q", got, tc.contains)
 			}

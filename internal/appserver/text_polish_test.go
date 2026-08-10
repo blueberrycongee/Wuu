@@ -25,7 +25,7 @@ func TestTextPolishUsesConfiguredBYOKRuntime(t *testing.T) {
 
 	result := remarshal[TextPolishResult](
 		t,
-		responseByID(t, parseOutput(t, out.String()), "polish")["result"],
+		waitForResponseByID(t, out, "polish")["result"],
 	)
 	if result.Text != "这是润色后的文本。" {
 		t.Fatalf("text = %q", result.Text)
@@ -63,11 +63,12 @@ func TestTextPolishValidationAndUnavailableRuntime(t *testing.T) {
 		}
 	}
 
-	responses := parseOutput(t, out.String())
-	if got := responseByID(t, responses, "empty")["error"]; !strings.Contains(strings.ToLower(strings.TrimSpace(toString(got))), "text is required") {
+	// Both requests were dispatched to background goroutines; wait for each
+	// response rather than assuming handleLine completed the work.
+	if got := waitForResponseByID(t, out, "empty")["error"]; !strings.Contains(strings.ToLower(strings.TrimSpace(toString(got))), "text is required") {
 		t.Fatalf("empty error = %v", got)
 	}
-	if got := responseByID(t, responses, "unavailable")["error"]; !strings.Contains(toString(got), "BYOK model runtime") {
+	if got := waitForResponseByID(t, out, "unavailable")["error"]; !strings.Contains(toString(got), "BYOK model runtime") {
 		t.Fatalf("unavailable error = %v", got)
 	}
 }
