@@ -1175,6 +1175,7 @@ type debugAppServerOptions struct {
 	workdir     string
 	provider    string
 	model       string
+	driver      string
 	noTools     bool
 	sandbox     bool
 	sandboxName string
@@ -1185,6 +1186,7 @@ type debugAppServerCLIConfig struct {
 	workdir  *string
 	provider *string
 	model    *string
+	driver   *string
 	noTools  *bool
 }
 
@@ -1326,6 +1328,7 @@ func addDebugAppServerFlags(fs *flag.FlagSet) debugAppServerCLIConfig {
 		workdir:  fs.String("workdir", "", "workspace directory"),
 		provider: fs.String("provider", "", "provider name in config"),
 		model:    fs.String("model", "", "model override"),
+		driver:   fs.String("driver", "", "loop driver profile provided as a plugin service (empty keeps the default driver)"),
 		noTools:  fs.Bool("no-tools", false, "disable local tools"),
 	}
 }
@@ -1335,6 +1338,7 @@ func debugAppServerOptionsFromCLI(cfg debugAppServerCLIConfig) debugAppServerOpt
 		workdir:  valueOfStringFlag(cfg.workdir),
 		provider: valueOfStringFlag(cfg.provider),
 		model:    valueOfStringFlag(cfg.model),
+		driver:   valueOfStringFlag(cfg.driver),
 		noTools:  valueOfBoolFlag(cfg.noTools),
 	}
 }
@@ -1388,6 +1392,7 @@ func newLocalDebugAppServerClient(ctx context.Context, opts debugAppServerOption
 		Config:        cfg,
 		ProviderName:  opts.provider,
 		ModelOverride: opts.model,
+		DriverProfile: opts.driver,
 		NoTools:       opts.noTools,
 	})
 	if err != nil {
