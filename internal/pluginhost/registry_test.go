@@ -216,3 +216,22 @@ func TestServiceRegistrySnapshot(t *testing.T) {
 		t.Fatalf("snapshot not deterministic: %+v vs %+v", snapshot, again)
 	}
 }
+
+func TestServiceRegistryCallPreservesTypedProviderErrors(t *testing.T) {
+	provider := &fakeServiceProcess{
+		id: "slow.tool", state: StateActive, provided: []ServiceDescriptor{searchService("1.0.0")},
+		invoke: func(_ context.Context, params ServiceInvokeParams) (json.RawMessage, error) {
+			return nil, &HostServiceError{Code: "execution_not_found", Message: "execution exec-1 is not live"}
+		},
+	}
+	consumer := &fakeServiceProcess{id: "notes", state: StateActive, required: []ServiceRequirement{{Name: "search.provider", MajorVersion: 1, Required: true}}}
+	registry, conflicts := BuildServiceRegistry(provider, consumer)
+	if len(conflicts) != 0 {
+		t.Fatalf("conflicts = %+v", conflicts)
+	}
+	registry.Activate()
+	_, err := registry.Call(context.Background(), "notes", ServiceCallParams{Service: "search.provider", Method: "query"})
+	if err == nil || err.Code != "execution_not_found" || err.Message != "execution exec-1 is not live" {
+		t.Fatalf("typed provider error = %v, want execution_not_found", err)
+	}
+}

@@ -13,7 +13,7 @@ func TestKernelHostServicesRouteThroughRegistryAndPreserveStorageScope(t *testin
 	home, workspace := t.TempDir(), t.TempDir()
 	item := serviceTestPlugin("demo", "plugin:user:demo", "generation")
 	handler := newPluginHostServices(item, workspace, home, nil)
-	kernel := newKernelHostServices(nil)
+	kernel := newKernelHostServices(nil, nil)
 	kernel.add(item.ID, handler)
 	registry, conflicts := pluginhost.BuildServiceRegistry(kernel)
 	kernel.bindRegistry(registry)
@@ -65,7 +65,7 @@ func TestKernelRegistryIntrospectRoutesThroughRegistry(t *testing.T) {
 	home, workspace := t.TempDir(), t.TempDir()
 	item := serviceTestPlugin("demo", "plugin:user:demo", "generation")
 	handler := newPluginHostServices(item, workspace, home, nil)
-	kernel := newKernelHostServices(func() uint64 { return 42 })
+	kernel := newKernelHostServices(func() uint64 { return 42 }, nil)
 	kernel.add(item.ID, handler)
 	registry, conflicts := pluginhost.BuildServiceRegistry(kernel)
 	kernel.bindRegistry(registry)
@@ -111,6 +111,64 @@ func TestKernelRegistryIntrospectRoutesThroughRegistry(t *testing.T) {
 	}); serviceErr == nil || serviceErr.Code != "service_not_authorized" {
 		t.Fatalf("undeclared caller error = %#v, want service_not_authorized", serviceErr)
 	}
+}
+
+func TestKernelExecutionUpdateRoutesToExecutionTable(t *testing.T) {
+	home, workspace := t.TempDir(), t.TempDir()
+	item := serviceTestPlugin("demo", "plugin:user:demo", "generation")
+	handler := newPluginHostServices(item, workspace, home, nil)
+	recorder := &fakeExecutionRecorder{}
+	kernel := newKernelHostServices(nil, recorder)
+	kernel.add(item.ID, handler)
+	registry, conflicts := pluginhost.BuildServiceRegistry(kernel)
+	kernel.bindRegistry(registry)
+	if len(conflicts) != 0 {
+		t.Fatalf("conflicts = %+v", conflicts)
+	}
+	registry.RegisterClients(&kernelConsumer{id: item.ID, requirements: pluginhost.KernelServiceRequirements(
+		pluginhost.KernelExecutionUpdateService,
+	)})
+	registry.Activate()
+
+	result, serviceErr := registry.Call(context.Background(), item.ID, pluginhost.ServiceCallParams{
+		Service: pluginhost.KernelExecutionUpdateService, Method: pluginhost.KernelServiceMethod,
+		Params: json.RawMessage(`{"execution_id":"exec-7","message":"halfway","detail":{"pct":50}}`),
+	})
+	if serviceErr != nil {
+		t.Fatal(serviceErr)
+	}
+	if string(result) != `{}` {
+		t.Fatalf("update result = %s", result)
+	}
+	if recorder.caller != item.ID || recorder.params.ExecutionID != "exec-7" || recorder.params.Message != "halfway" {
+		t.Fatalf("recorder = %q %+v", recorder.caller, recorder.params)
+	}
+
+	recorder.err = &pluginhost.HostServiceError{Code: "execution_not_found", Message: "execution exec-7 is not live"}
+	if _, serviceErr := registry.Call(context.Background(), item.ID, pluginhost.ServiceCallParams{
+		Service: pluginhost.KernelExecutionUpdateService, Method: pluginhost.KernelServiceMethod,
+		Params: json.RawMessage(`{"execution_id":"exec-7","message":"late"}`),
+	}); serviceErr == nil || serviceErr.Code != "execution_not_found" {
+		t.Fatalf("typed tracker error = %#v, want execution_not_found", serviceErr)
+	}
+
+	if _, serviceErr := registry.Call(context.Background(), "stranger", pluginhost.ServiceCallParams{
+		Service: pluginhost.KernelExecutionUpdateService, Method: pluginhost.KernelServiceMethod,
+		Params: json.RawMessage(`{"execution_id":"exec-7"}`),
+	}); serviceErr == nil || serviceErr.Code != "service_not_authorized" {
+		t.Fatalf("undeclared caller error = %#v, want service_not_authorized", serviceErr)
+	}
+}
+
+type fakeExecutionRecorder struct {
+	caller string
+	params pluginhost.ExecutionUpdateParams
+	err    *pluginhost.HostServiceError
+}
+
+func (f *fakeExecutionRecorder) RecordExecutionUpdate(caller string, params pluginhost.ExecutionUpdateParams) *pluginhost.HostServiceError {
+	f.caller, f.params = caller, params
+	return f.err
 }
 
 type kernelConsumer struct {

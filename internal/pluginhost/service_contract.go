@@ -48,6 +48,10 @@ const (
 	// introspection service: which services exist, at what version, provided
 	// by whom, in which generation.
 	KernelRegistryIntrospectService = "registry.introspect"
+
+	// KernelExecutionUpdateService is the kernel's execution progress
+	// endpoint; the constant lives with the execution scope vocabulary.
+	KernelExecutionUpdateService = ExecutionUpdateService
 )
 
 // KernelServiceDescriptors are the host-provided services available to every
@@ -94,6 +98,18 @@ func KernelRegistryIntrospectDescriptor() ServiceDescriptor {
 	return ServiceDescriptor{
 		Name: KernelRegistryIntrospectService, Version: "1.0.0",
 		Methods: []ServiceMethodDescriptor{{Name: KernelServiceMethod, InputSchema: "registry.introspect.input.v1", OutputSchema: "registry.introspect.output.v1"}},
+	}
+}
+
+// KernelExecutionUpdateDescriptor is the descriptor the kernel registers for
+// execution progress. The complementary host-initiated frames (open riding
+// the invoke params, execution.cancel mid-flight, close riding the invoke
+// response) complete the execution scope vocabulary without being callable
+// services.
+func KernelExecutionUpdateDescriptor() ServiceDescriptor {
+	return ServiceDescriptor{
+		Name: ExecutionUpdateService, Version: "1.0.0",
+		Methods: []ServiceMethodDescriptor{{Name: KernelServiceMethod, InputSchema: "execution.update.request.v1", OutputSchema: "execution.update.response.v1"}},
 	}
 }
 

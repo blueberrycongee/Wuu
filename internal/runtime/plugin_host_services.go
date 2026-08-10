@@ -14,6 +14,7 @@ import (
 	pluginpkg "github.com/blueberrycongee/wuu/internal/plugin"
 	"github.com/blueberrycongee/wuu/internal/pluginhost"
 	"github.com/blueberrycongee/wuu/internal/pluginsettings"
+	"github.com/blueberrycongee/wuu/internal/providers"
 )
 
 // pluginHostServices is bound to exactly one installed plugin generation. It
@@ -265,16 +266,23 @@ func kernelServiceReadOnly(method pluginhost.HostServiceMethod) bool {
 	}
 }
 
+// executionUpdateRecorder is the kernel's view into the host's live execution
+// table; *pluginhost.Host satisfies it in production.
+type executionUpdateRecorder interface {
+	RecordExecutionUpdate(callerPluginID string, params pluginhost.ExecutionUpdateParams) *pluginhost.HostServiceError
+}
+
 type kernelHostServices struct {
 	mu         sync.RWMutex
 	active     bool
 	services   map[string]*pluginHostServices
 	registry   *pluginhost.ServiceRegistry
 	generation func() uint64
+	executions executionUpdateRecorder
 }
 
-func newKernelHostServices(generation func() uint64) *kernelHostServices {
-	return &kernelHostServices{services: make(map[string]*pluginHostServices), generation: generation}
+func newKernelHostServices(generation func() uint64, executions executionUpdateRecorder) *kernelHostServices {
+	return &kernelHostServices{services: make(map[string]*pluginHostServices), generation: generation, executions: executions}
 }
 
 func (k *kernelHostServices) add(pluginID string, services *pluginHostServices) {
@@ -324,10 +332,16 @@ func (k *kernelHostServices) KernelServiceRegistrations() []pluginhost.ServiceRe
 			Descriptor: descriptor, Invoker: &kernelServiceInvoker{parent: k, method: methods[index]}, Kernel: true,
 		})
 	}
-	registrations = append(registrations, pluginhost.ServiceRegistration{
-		Descriptor: pluginhost.KernelRegistryIntrospectDescriptor(),
-		Invoker:    &registryIntrospectInvoker{parent: k}, Kernel: true,
-	})
+	registrations = append(registrations,
+		pluginhost.ServiceRegistration{
+			Descriptor: pluginhost.KernelRegistryIntrospectDescriptor(),
+			Invoker:    &registryIntrospectInvoker{parent: k}, Kernel: true,
+		},
+		pluginhost.ServiceRegistration{
+			Descriptor: pluginhost.KernelExecutionUpdateDescriptor(),
+			Invoker:    &executionUpdateInvoker{parent: k}, Kernel: true,
+		},
+	)
 	return registrations
 }
 
@@ -405,6 +419,42 @@ func (k *registryIntrospectInvoker) InvokeService(ctx context.Context, params pl
 		epoch = generation()
 	}
 	return marshalServiceResult(registry.Snapshot(epoch))
+}
+
+// executionUpdateInvoker answers execution.update against the host's live
+// execution table. Ownership and liveness are enforced by the tracker; the
+// typed error reaches the caller through the registry unchanged.
+type executionUpdateInvoker struct {
+	parent *kernelHostServices
+}
+
+func (k *executionUpdateInvoker) ID() string                { return k.parent.ID() }
+func (k *executionUpdateInvoker) Status() pluginhost.Status { return k.parent.Status() }
+func (k *executionUpdateInvoker) InvokeService(ctx context.Context, params pluginhost.ServiceInvokeParams) (json.RawMessage, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if params.Method != pluginhost.KernelServiceMethod {
+		return nil, serviceError("method_not_found", "kernel service method is unavailable")
+	}
+	k.parent.mu.RLock()
+	executions := k.parent.executions
+	k.parent.mu.RUnlock()
+	if executions == nil {
+		return nil, serviceError("service_unavailable", "execution scope is unavailable")
+	}
+	var update pluginhost.ExecutionUpdateParams
+	if err := json.Unmarshal(params.Params, &update); err != nil {
+		return nil, serviceError("invalid_request", fmt.Sprintf("decode execution.update params: %v", err))
+	}
+	if err := executions.RecordExecutionUpdate(params.Caller, update); err != nil {
+		return nil, err
+	}
+	message := strings.TrimSpace(update.Message)
+	if message != "" {
+		providers.DebugLogf("plugin %q execution %s: %s", params.Caller, update.ExecutionID, message)
+	}
+	return json.RawMessage(`{}`), nil
 }
 
 func (s *pluginHostServices) storageGet(params pluginhost.StorageGetParams) (json.RawMessage, error) {

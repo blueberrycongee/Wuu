@@ -328,6 +328,10 @@ func (r *ServiceRegistry) Call(ctx context.Context, consumerPluginID string, par
 		Params:  params.Params,
 	})
 	if err != nil {
+		var hostErr *HostServiceError
+		if errors.As(err, &hostErr) && hostErr.Code != "" {
+			return nil, hostErr
+		}
 		var remoteErr *remoteCallError
 		if errors.As(err, &remoteErr) && remoteErr.code != "" {
 			return nil, &HostServiceError{Code: remoteErr.code, Message: remoteErr.message}

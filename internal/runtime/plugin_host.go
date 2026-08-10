@@ -43,7 +43,7 @@ func buildPluginHost(plugins []pluginpkg.Plugin, projectRoot, wuuHome, workspace
 			return 0
 		}
 		return epoch
-	})
+	}, host)
 	registry, conflicts := pluginhost.BuildServiceRegistry(kernel)
 	kernel.bindRegistry(registry)
 	closeStarted := func() error {
