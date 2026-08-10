@@ -35,6 +35,7 @@ const (
 	MethodPluginSettingGet         = "plugin/setting/get"
 	MethodPluginSettingSet         = "plugin/setting/set"
 	MethodPluginDiagnosticsList    = "plugin/diagnostics/list"
+	MethodPluginRegistryIntrospect = "plugin/registry/introspect"
 	MethodPluginStorageGet         = "plugin/storage/get"
 	MethodPluginStorageSet         = "plugin/storage/set"
 	MethodPluginClientRequest      = "plugin/client/request"

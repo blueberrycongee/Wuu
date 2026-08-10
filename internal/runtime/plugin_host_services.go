@@ -266,18 +266,28 @@ func kernelServiceReadOnly(method pluginhost.HostServiceMethod) bool {
 }
 
 type kernelHostServices struct {
-	mu       sync.RWMutex
-	active   bool
-	services map[string]*pluginHostServices
+	mu         sync.RWMutex
+	active     bool
+	services   map[string]*pluginHostServices
+	registry   *pluginhost.ServiceRegistry
+	generation func() uint64
 }
 
-func newKernelHostServices() *kernelHostServices {
-	return &kernelHostServices{services: make(map[string]*pluginHostServices)}
+func newKernelHostServices(generation func() uint64) *kernelHostServices {
+	return &kernelHostServices{services: make(map[string]*pluginHostServices), generation: generation}
 }
 
 func (k *kernelHostServices) add(pluginID string, services *pluginHostServices) {
 	k.mu.Lock()
 	k.services[pluginID] = services
+	k.mu.Unlock()
+}
+
+// bindRegistry late-binds the registry built from this kernel's registrations
+// so the introspection invoker can answer from the live provider table.
+func (k *kernelHostServices) bindRegistry(registry *pluginhost.ServiceRegistry) {
+	k.mu.Lock()
+	k.registry = registry
 	k.mu.Unlock()
 }
 
@@ -308,12 +318,16 @@ func (k *kernelHostServices) KernelServiceRegistrations() []pluginhost.ServiceRe
 		pluginhost.HostServiceSessionSend, pluginhost.HostServiceSessionList,
 		pluginhost.HostServiceSessionCancel,
 	}
-	registrations := make([]pluginhost.ServiceRegistration, 0, len(descriptors))
+	registrations := make([]pluginhost.ServiceRegistration, 0, len(descriptors)+1)
 	for index, descriptor := range descriptors {
 		registrations = append(registrations, pluginhost.ServiceRegistration{
 			Descriptor: descriptor, Invoker: &kernelServiceInvoker{parent: k, method: methods[index]}, Kernel: true,
 		})
 	}
+	registrations = append(registrations, pluginhost.ServiceRegistration{
+		Descriptor: pluginhost.KernelRegistryIntrospectDescriptor(),
+		Invoker:    &registryIntrospectInvoker{parent: k}, Kernel: true,
+	})
 	return registrations
 }
 
@@ -361,6 +375,36 @@ func (k *kernelServiceInvoker) InvokeService(ctx context.Context, params pluginh
 		return nil, serviceError("method_not_found", "kernel service method is unavailable")
 	}
 	return services.invoke(ctx, k.method, params.Params)
+}
+
+// registryIntrospectInvoker answers registry.introspect from the live
+// registry. The answer is identical for every caller; authority was already
+// enforced by the registry's declaration check before routing here.
+type registryIntrospectInvoker struct {
+	parent *kernelHostServices
+}
+
+func (k *registryIntrospectInvoker) ID() string                { return k.parent.ID() }
+func (k *registryIntrospectInvoker) Status() pluginhost.Status { return k.parent.Status() }
+func (k *registryIntrospectInvoker) InvokeService(ctx context.Context, params pluginhost.ServiceInvokeParams) (json.RawMessage, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if params.Method != pluginhost.KernelServiceMethod {
+		return nil, serviceError("method_not_found", "kernel service method is unavailable")
+	}
+	k.parent.mu.RLock()
+	registry := k.parent.registry
+	generation := k.parent.generation
+	k.parent.mu.RUnlock()
+	if registry == nil {
+		return nil, serviceError("service_unavailable", "registry introspection is unavailable")
+	}
+	var epoch uint64
+	if generation != nil {
+		epoch = generation()
+	}
+	return marshalServiceResult(registry.Snapshot(epoch))
 }
 
 func (s *pluginHostServices) storageGet(params pluginhost.StorageGetParams) (json.RawMessage, error) {

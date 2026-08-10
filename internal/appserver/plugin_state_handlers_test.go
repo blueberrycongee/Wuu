@@ -133,3 +133,38 @@ func requireRPCErrorContains(t *testing.T, response map[string]any, text string)
 		t.Fatalf("response = %+v", response)
 	}
 }
+
+func TestPluginRegistryIntrospectReturnsKernelServices(t *testing.T) {
+	rt := newTestRuntime(t, &fakeClient{})
+	rt.WuuHome = retryingTempDir(t)
+	out := &lockedBuffer{}
+	srv := New(rt, out)
+	defer srv.Close()
+	if srv.startupErr != nil {
+		t.Fatalf("server startup: %v", srv.startupErr)
+	}
+	if err := srv.refreshExtensions(srv.currentExtensionConfig()); err != nil {
+		t.Fatalf("refresh extensions: %v", err)
+	}
+	callPluginPackageRPC(t, srv, "introspect", MethodPluginRegistryIntrospect, nil)
+	response := responseByID(t, parseOutput(t, out.String()), "introspect")
+	if response["error"] != nil {
+		t.Fatalf("introspect response = %+v", response)
+	}
+	result := remarshal[pluginhost.ServiceRegistrySnapshot](t, response["result"])
+	if len(result.Services) == 0 {
+		t.Fatal("introspect returned no services")
+	}
+	foundStorage, foundIntrospect := false, false
+	for _, entry := range result.Services {
+		switch entry.Service {
+		case pluginhost.KernelStorageGetService:
+			foundStorage = entry.Provider == "kernel" && entry.Kernel
+		case pluginhost.KernelRegistryIntrospectService:
+			foundIntrospect = entry.Provider == "kernel" && entry.Kernel
+		}
+	}
+	if !foundStorage || !foundIntrospect {
+		t.Fatalf("kernel services missing from snapshot: %+v", result.Services)
+	}
+}

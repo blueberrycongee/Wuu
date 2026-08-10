@@ -19,6 +19,7 @@ import (
 	pluginpkg "github.com/blueberrycongee/wuu/internal/plugin"
 	"github.com/blueberrycongee/wuu/internal/pluginhost"
 	"github.com/blueberrycongee/wuu/internal/providers"
+	"github.com/blueberrycongee/wuu/internal/session"
 	"github.com/blueberrycongee/wuu/internal/skills"
 	"github.com/blueberrycongee/wuu/internal/tools"
 )
@@ -402,4 +403,26 @@ func snapshotPluginPackage(source string) (string, error) {
 		return "", err
 	}
 	return destination, nil
+}
+
+// PluginServiceRegistrySnapshot introspects the service registry of the
+// active plugin generation: which services exist, at what version, provided
+// by whom, tagged with the durable generation epoch.
+func (s *Session) PluginServiceRegistrySnapshot() (pluginhost.ServiceRegistrySnapshot, error) {
+	if s == nil {
+		return pluginhost.ServiceRegistrySnapshot{}, errors.New("runtime is not initialized")
+	}
+	host := s.PluginHost
+	if host == nil {
+		return pluginhost.ServiceRegistrySnapshot{}, errors.New("plugin host is not initialized")
+	}
+	registry := host.ServiceRegistry()
+	if registry == nil {
+		return pluginhost.ServiceRegistrySnapshot{}, errors.New("service registry is not active")
+	}
+	epoch, err := session.ReadPluginGenerationEpoch(s.WuuHome)
+	if err != nil {
+		epoch = 0
+	}
+	return registry.Snapshot(epoch), nil
 }

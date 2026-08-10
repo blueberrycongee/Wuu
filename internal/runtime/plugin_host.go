@@ -11,6 +11,7 @@ import (
 	pluginpkg "github.com/blueberrycongee/wuu/internal/plugin"
 	"github.com/blueberrycongee/wuu/internal/pluginhost"
 	"github.com/blueberrycongee/wuu/internal/providers"
+	"github.com/blueberrycongee/wuu/internal/session"
 )
 
 type pluginClientStarter func(context.Context, pluginhost.ProcessConfig) (pluginhost.Client, error)
@@ -36,8 +37,15 @@ func startPluginHost(plugins []pluginpkg.Plugin, projectRoot, wuuHome, workspace
 func buildPluginHost(plugins []pluginpkg.Plugin, projectRoot, wuuHome, workspaceStateDir string, required map[string]bool, start pluginClientStarter, turnRouter *PluginSessionRouter) (*pluginhost.Host, error) {
 	host := pluginhost.New()
 	var started []pluginhost.Client
-	kernel := newKernelHostServices()
+	kernel := newKernelHostServices(func() uint64 {
+		epoch, err := session.ReadPluginGenerationEpoch(wuuHome)
+		if err != nil {
+			return 0
+		}
+		return epoch
+	})
 	registry, conflicts := pluginhost.BuildServiceRegistry(kernel)
+	kernel.bindRegistry(registry)
 	closeStarted := func() error {
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()

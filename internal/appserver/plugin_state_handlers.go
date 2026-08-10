@@ -59,6 +59,17 @@ func (s *Server) handlePluginSettingSet(req Request) error {
 	return s.writeResponse(req.ID, PluginSettingResult{ID: plugin.SubjectID, Key: key, Scope: scope, Value: document.Values[key]}, nil)
 }
 
+func (s *Server) handlePluginRegistryIntrospect(req Request) error {
+	if s.rt == nil {
+		return s.writeResponse(req.ID, nil, errors.New("runtime is not initialized"))
+	}
+	snapshot, err := s.rt.PluginServiceRegistrySnapshot()
+	if err != nil {
+		return s.writeResponse(req.ID, nil, err)
+	}
+	return s.writeResponse(req.ID, snapshot, nil)
+}
+
 func (s *Server) handlePluginDiagnosticsList(req Request) error {
 	var params PluginDiagnosticsParams
 	if err := decodeParams(req.Params, &params); err != nil {

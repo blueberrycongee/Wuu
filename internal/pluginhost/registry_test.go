@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -177,5 +178,41 @@ func TestServiceRegistryCloseNotifiesConsumers(t *testing.T) {
 	}
 	if _, err := registry.Call(context.Background(), "notes", ServiceCallParams{Service: "search.provider", Method: "query"}); err == nil || err.Code != "service_unavailable" {
 		t.Fatalf("call after close = %v, want service_unavailable", err)
+	}
+}
+
+func TestServiceRegistrySnapshot(t *testing.T) {
+	providerZeta := &fakeServiceProcess{id: "zeta", state: StateActive, provided: []ServiceDescriptor{searchService("1.2.0")}}
+	providerAlpha := &fakeServiceProcess{id: "alpha", state: StateActive, provided: []ServiceDescriptor{{
+		Name: "agent.factory", Version: "2.0.0",
+		Methods: []ServiceMethodDescriptor{
+			{Name: "spawn", InputSchema: "agent.spawn.request.v1", OutputSchema: "agent.spawn.response.v1"},
+			{Name: "list", InputSchema: "agent.list.request.v1", OutputSchema: "agent.list.response.v1"},
+		},
+	}}}
+	registry, conflicts := BuildServiceRegistry(providerZeta, providerAlpha)
+	if len(conflicts) != 0 {
+		t.Fatalf("conflicts = %+v", conflicts)
+	}
+
+	snapshot := registry.Snapshot(7)
+	if snapshot.Generation != 7 {
+		t.Fatalf("generation = %d, want 7", snapshot.Generation)
+	}
+	if len(snapshot.Services) != 2 {
+		t.Fatalf("services = %+v", snapshot.Services)
+	}
+	first, second := snapshot.Services[0], snapshot.Services[1]
+	if first.Service != "agent.factory" || first.Provider != "alpha" || first.Version != "2.0.0" || first.Kernel {
+		t.Fatalf("first entry = %+v", first)
+	}
+	if strings.Join(first.Methods, ",") != "list,spawn" {
+		t.Fatalf("methods not sorted: %+v", first.Methods)
+	}
+	if second.Service != "search.provider" || second.Provider != "zeta" || second.Version != "1.2.0" {
+		t.Fatalf("second entry = %+v", second)
+	}
+	if again := registry.Snapshot(7); !reflect.DeepEqual(snapshot, again) {
+		t.Fatalf("snapshot not deterministic: %+v vs %+v", snapshot, again)
 	}
 }

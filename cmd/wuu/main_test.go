@@ -2209,6 +2209,42 @@ func TestRunDebugAppServerSendForwardsMethodAndParams(t *testing.T) {
 	}
 }
 
+func TestRunDebugAppServerRegistryUsesClient(t *testing.T) {
+	client := &fakeDebugAppServerClient{
+		results: map[string]json.RawMessage{
+			appserver.MethodPluginRegistryIntrospect: json.RawMessage(`{"generation":3,"services":[{"service":"registry.introspect","version":"1.0.0","provider":"kernel","kernel":true,"methods":["call"]}]}`),
+		},
+	}
+	restore := installDebugAppServerClientOverride(t, client)
+	defer restore()
+
+	output := captureStdout(t, func() {
+		if err := run([]string{"debug", "app-server", "registry", "--workdir", "/tmp/repo"}); err != nil {
+			t.Fatalf("run debug app-server registry: %v", err)
+		}
+	})
+
+	if len(client.calls) != 1 || client.calls[0].method != appserver.MethodPluginRegistryIntrospect {
+		t.Fatalf("unexpected calls: %+v", client.calls)
+	}
+	var payload struct {
+		Generation uint64 `json:"generation"`
+		Services   []struct {
+			Service  string `json:"service"`
+			Provider string `json:"provider"`
+		} `json:"services"`
+	}
+	if err := json.Unmarshal([]byte(output), &payload); err != nil {
+		t.Fatalf("parse JSON: %v\n%s", err, output)
+	}
+	if payload.Generation != 3 || len(payload.Services) != 1 || payload.Services[0].Service != "registry.introspect" || payload.Services[0].Provider != "kernel" {
+		t.Fatalf("unexpected registry output: %+v", payload)
+	}
+	if !client.shutdown {
+		t.Fatal("debug client should be shut down")
+	}
+}
+
 func TestRunDebugChannelInspectResolvesRoomNameAndListsMessages(t *testing.T) {
 	client := &fakeDebugAppServerClient{results: map[string]json.RawMessage{
 		appserver.MethodChannelBootstrap:   json.RawMessage(`{"agents":[{"id":"agent-1","name":"Alpha","memory_dir":"/tmp/alpha","avatar_key":"","autostart":true,"created_at":"2026-07-28T00:00:00Z"}],"rooms":[{"id":"room-1","kind":"group","name":"Review","created_by":"local-user","created_at":"2026-07-28T00:00:00Z","members":[]}]}`),

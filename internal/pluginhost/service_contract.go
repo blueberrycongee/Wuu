@@ -43,6 +43,11 @@ const (
 	KernelSessionSendService            = "host.session.send"
 	KernelSessionListService            = "host.session.list"
 	KernelSessionCancelService          = "host.session.cancel"
+
+	// KernelRegistryIntrospectService is the kernel's read-only registry
+	// introspection service: which services exist, at what version, provided
+	// by whom, in which generation.
+	KernelRegistryIntrospectService = "registry.introspect"
 )
 
 // KernelServiceDescriptors are the host-provided services available to every
@@ -80,6 +85,16 @@ func KernelPreflightRequirements() []ServiceRequirement {
 		KernelSettingsGetService, KernelSettingsListService,
 		KernelSessionListService,
 	)
+}
+
+// KernelRegistryIntrospectDescriptor is the descriptor the kernel registers
+// for registry introspection. It rides the same registry contract as every
+// other kernel service.
+func KernelRegistryIntrospectDescriptor() ServiceDescriptor {
+	return ServiceDescriptor{
+		Name: KernelRegistryIntrospectService, Version: "1.0.0",
+		Methods: []ServiceMethodDescriptor{{Name: KernelServiceMethod, InputSchema: "registry.introspect.input.v1", OutputSchema: "registry.introspect.output.v1"}},
+	}
 }
 
 var (

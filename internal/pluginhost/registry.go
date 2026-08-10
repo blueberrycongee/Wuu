@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -341,6 +342,54 @@ func (r *ServiceRegistry) Call(ctx context.Context, consumerPluginID string, par
 
 func (r *ServiceRegistry) RouteServiceCall(ctx context.Context, pluginID string, params ServiceCallParams) (json.RawMessage, *HostServiceError) {
 	return r.Call(ctx, pluginID, params)
+}
+
+// ServiceRegistryEntry describes one provided service in a registry snapshot.
+type ServiceRegistryEntry struct {
+	Service  string   `json:"service"`
+	Version  string   `json:"version"`
+	Provider string   `json:"provider"`
+	Kernel   bool     `json:"kernel,omitempty"`
+	Methods  []string `json:"methods"`
+}
+
+// ServiceRegistrySnapshot is the machine-readable answer to "which services
+// exist, at what version, provided by whom, in which generation". It carries
+// registration metadata only — never configuration values, credentials, or
+// another plugin's private data.
+type ServiceRegistrySnapshot struct {
+	Generation uint64                 `json:"generation"`
+	Services   []ServiceRegistryEntry `json:"services"`
+}
+
+// Snapshot returns a deterministic view of the currently registered
+// providers. The generation identity is supplied by the caller because the
+// registry itself is generation-scoped but does not own the durable epoch.
+func (r *ServiceRegistry) Snapshot(generation uint64) ServiceRegistrySnapshot {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	entries := make([]ServiceRegistryEntry, 0, len(r.providers))
+	for _, provider := range r.providers {
+		methods := make([]string, 0, len(provider.descriptor.Methods))
+		for _, method := range provider.descriptor.Methods {
+			methods = append(methods, method.Name)
+		}
+		sort.Strings(methods)
+		entries = append(entries, ServiceRegistryEntry{
+			Service:  provider.descriptor.Name,
+			Version:  provider.descriptor.Version,
+			Provider: provider.pluginID,
+			Kernel:   provider.kernel,
+			Methods:  methods,
+		})
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		if entries[i].Service != entries[j].Service {
+			return entries[i].Service < entries[j].Service
+		}
+		return entries[i].Version < entries[j].Version
+	})
+	return ServiceRegistrySnapshot{Generation: generation, Services: entries}
 }
 
 // notifyConsumers delivers service.changed to every consumer of (name,
