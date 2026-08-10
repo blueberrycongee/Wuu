@@ -24,34 +24,36 @@ source map under `thirdparty/claude-code-sourcemap/src` (a decompiled dump; trea
 
 ### 1.1 Entry point and emission mechanism
 
-- CLI flags are defined in `cmd/wuu/main.go:1400-1437`. Relevant ones:
-  - `--json` (bool) → `cmd/wuu/main.go:1430` ("emit machine-readable JSONL to stdout").
-  - `--output-schema <schema.json>` → `cmd/wuu/main.go:1436`.
-  - `--output-last-message <file>` → `cmd/wuu/main.go:1433`.
-  - `--max-turns <n>` → `cmd/wuu/main.go:1435`.
-  - Usage text: `cmd/wuu/main.go:1907-1930`.
-- The run loop is `exec.Run` in `internal/exec/runner.go:32-195`.
-- Every JSONL line is written by `emitJSON` (`internal/exec/runner.go:978-984`):
+- CLI flags are defined by `addExecFlags` in `cmd/wuu/main.go:1831-1862`. Relevant ones:
+  - `--json` (bool) → `cmd/wuu/main.go:1854` ("emit machine-readable JSONL to stdout").
+  - `--output-schema <schema.json>` → `cmd/wuu/main.go:1860`.
+  - `--output-last-message <file>` → `cmd/wuu/main.go:1857`.
+  - `--max-turns <n>` → `cmd/wuu/main.go:1859`.
+  - Usage text: `cmd/wuu/main.go:2358-2381`.
+- The run loop is `exec.Run` in `internal/exec/runner.go:52-185`.
+- Every JSONL line is written by `emitJSON` (`internal/exec/runner.go:1004-1010`):
   `json.NewEncoder(opts.Stdout).Encode(payload)` — one JSON object per line, newline
-  delimited. **It is a no-op unless `opts.JSON` is true** (`runner.go:979`), so in the
+  delimited. **It is a no-op unless `opts.JSON` is true** (`runner.go:1005`), so in the
   default (non-JSON) mode none of these events are produced; stdout gets only the final
-  message and stderr gets metadata (`runner.go:186-193`, and the `else`/stderr branches in
-  each `emit*` function, e.g. `runner.go:449-452`, `460`, `468`).
+  message and stderr gets metadata (`runner.go:176-183`, and the non-JSON branches in
+  `emitSessionConfigured`, `emitThreadEvent`, and `emitTurnStarted`, `runner.go:486-520`).
 - Design contract (human-authored, not the emitter): `docs/en/automation/jsonl-events.md`, `docs/en/automation/exec.md`.
-  Note: `docs/en/automation/jsonl-events.md:32-63` lists a *target* event family set; the list below is
-  what the code **actually emits** today. Families present in the doc but not emitted by
-  `runner.go` (e.g. a generic `error` for non-schema failures) are called out.
+  Note: the **Required Event Families** section of `docs/en/automation/jsonl-events.md`
+  lists the event family set; the list below records what the code **actually emits**
+  today, including fields and conditional cases such as the narrowly scoped `error` event.
 
 ### 1.2 Identity model
 
 wuu has **no `session_id`**. It identifies work with:
 
 - `thread_id` — a persistent wuu session id, formatted like `20260618-120000-abcdef`
-  (`docs/en/automation/jsonl-events.md:92`; `appserver.Thread.ID`, `internal/appserver/protocol.go:1254`).
-- `turn_id` — one user turn within a thread (`appserver.Turn.ID`,
-  `internal/appserver/protocol.go:1313`).
+  (see the `thread_started` shape in `docs/en/automation/jsonl-events.md`;
+  `appserver.Thread.ID`, `internal/appserver/protocol.go:1860`).
+- `turn_id` — one agent turn within a thread (`appserver.Turn.ID`,
+  `internal/appserver/protocol.go:1898`). One execution Run may contain multiple
+  turn ids because of structured-output correction or other automatic continuation.
 - `item_id` — one thread item (tool call, message, …) within a turn
-  (`appserver.ThreadItem.ID`, `internal/appserver/protocol.go:1378`).
+  (`appserver.ThreadItem.ID`, `internal/appserver/protocol.go:1977`).
 
 Almost every event carries `thread_id` and usually `turn_id`.
 
@@ -63,51 +65,58 @@ Every payload also has a `type` string. Fields listed are exactly the map keys p
 | Event `type` | Emit site | Fields |
 |---|---|---|
 | `session_configured` | `emitSessionConfigured` | `protocol_version`, `provider`, `model`, `effort`, `variant`, `max_parallel`, `workspace_root`, `permissions` |
-| `thread_started` / `thread_resumed` / `thread_forked` | `runner.go:455-461` (`emitThreadEvent`); which one chosen at `runner.go:100-107` | `thread_id`, `model`, `provider`, `cwd` |
-| `turn_started` | `runner.go:463-469` | `thread_id`, `turn_id` |
-| `agent_message_delta` | `runner.go:298` | `thread_id`, `turn_id`, `delta` (token-level text; also accumulated into `finalMessage`, `runner.go:297`) |
-| `agent_message_final` | `runner.go:307` (from `AgentMessageReplace`) | `thread_id`, `turn_id`, `message` |
-| `tool_started` | `runner.go:474` (`emitItemStarted`) | `thread_id`, `turn_id`, `item_id`, `name`, `arguments` (a JSON **string**) |
-| `tool_output_delta` | `runner.go:339` | `thread_id`, `turn_id`, `item_id`, `delta` |
-| `tool_completed` | `runner.go:492` (`emitItemCompleted`) | `thread_id`, `turn_id`, `item_id`, `name`, `status`, `error` |
-| `command_started` | `runner.go:477` (only for command tools) | command payload (`runner.go:662-677`): `thread_id`, `turn_id`, `item_id`, `name`, `arguments`, plus `command` / `process_id` extracted from args |
-| `command_output_delta` | `runner.go:510-518` | command payload + `delta` |
-| `command_completed` | `runner.go:495-498` | command payload + `status`, `error` |
-| `file_changed` | `runner.go:501-503` (`fileChangeEventsFromToolResult`, `runner.go:697-718`) | `tool_name`, `path`, `action`, `old_file_sha`, `new_file_sha`, `workspace_revision` (see `docs/en/automation/jsonl-events.md:309-328`) |
-| `subagent_started` / `subagent_updated` / `subagent_completed` | `runner.go:520-556` (`emitSubagentUpdated`) | `thread_id`, `agent_id`, `agent_type`, `status`, `task_name`, `agent_profile`, `agent_path`, `parent_id`, `description`, `result`, `result_path`, `result_bytes`, `result_truncated`, `error`, `input_tokens`, `output_tokens`, `cache_creation_tokens`, `cache_read_tokens` |
-| `usage_updated` | `runner.go:352` | `thread_id`, `turn_id`, `input_tokens`, `output_tokens`, `cache_creation_tokens`, `cache_read_tokens` |
-| `plan_updated` | `runner.go:866` | `thread_id`, `turn_id`, `plan` |
-| `request_context` | `runner.go:867-909` | large diagnostic snapshot: `step_index`, byte/segment counts, hashes, `prompt_cache_key`, … |
-| `provider_state` | `runner.go:910-935` | large transport snapshot: `provider`, `protocol`, `transport`, `replay_mode`, fallback state, input-item counts, … |
-| `turn_completed` | `runner.go:364` | `thread_id`, `turn_id`, `input_tokens`, `output_tokens`, `trace_path` |
-| `turn_failed` | `runner.go:381` | `thread_id`, `turn_id`, `error` |
-| `turn_interrupted` | `runner.go:594-601` | `thread_id`, `turn_id`, `reason` (`"timeout"` \| `"interrupted"`) |
-| `error` | `runner.go:939-955` (`emitStructuredOutputValidation`) | `thread_id`, `turn_id`, `error`, `retrying` — **emitted only for `--output-schema` validation failures**, not as a general error channel |
-| `result` | `runner.go:957-976` (`emitResult`) | `status`, `thread_id`, `turn_id`, `final_message`, `trace_path`, `error` (if any), `structured_result` (if `--output-schema` validated) |
+| `thread_started` / `thread_resumed` / `thread_forked` | `emitThreadEvent`, `runner.go:507-513`; selected at `runner.go:120-127` | `thread_id`, `model`, `provider`, `cwd` |
+| `turn_started` | `emitTurnStarted`, `runner.go:515-520` | `thread_id`, `turn_id` |
+| `agent_message_delta` | `runner.go:312-320` | `thread_id`, `turn_id`, `delta` (token-level text, also accumulated into `finalMessage`) |
+| `agent_message_final` | `runner.go:321-329` (from `AgentMessageReplace`) | `thread_id`, `turn_id`, `message` |
+| `tool_started` | `emitItemStarted`, `runner.go:523-536` | `thread_id`, `turn_id`, `item_id`, `name`, `arguments` (a JSON **string**) |
+| `tool_output_delta` | `runner.go:348-355` | `thread_id`, `turn_id`, `item_id`, `delta` |
+| `tool_completed` | `emitItemCompleted`, `runner.go:539-560` | `thread_id`, `turn_id`, `item_id`, `name`, `status`, `error` |
+| `command_started` | `runner.go:529-532` (only for command tools) | command payload (`runner.go:680-696`): `thread_id`, `turn_id`, `item_id`, `name`, `arguments`, plus `command` / `process_id` extracted from args |
+| `command_output_delta` | `runner.go:564-571` | command payload + `delta` |
+| `command_completed` | `runner.go:548-553` | command payload + `status`, `error` |
+| `file_changed` | `runner.go:555-556` (`fileChangeEventsFromToolResult`, `runner.go:715+`) | `thread_id`, `turn_id`, `item_id`, `tool_name`, `path`, `action`, `old_file_sha`, `new_file_sha`, `workspace_revision`, plus tool-specific move/journal fields |
+| `subagent_started` / `subagent_updated` / `subagent_completed` | `emitSubagentUpdated`, `runner.go:574-610` | `thread_id`, `agent_id`, `agent_type`, `status`, `task_name`, `agent_profile`, `agent_path`, `parent_id`, `description`, `result`, `result_path`, `result_bytes`, `result_truncated`, `error`, `input_tokens`, `output_tokens`, `cache_creation_tokens`, `cache_read_tokens` |
+| `usage_updated` | `runner.go:362-367` | `thread_id`, `turn_id`, cumulative `input_tokens`, `output_tokens`, `cache_creation_tokens`, `cache_read_tokens` |
+| `plan_updated` | `runner.go:859-863` | `thread_id`, `turn_id`, `plan` |
+| `request_context` | `runner.go:863-905` | large diagnostic snapshot: `step_index`, byte/segment counts, hashes, `prompt_cache_key`, … |
+| `provider_state` | `runner.go:906-934` | large transport snapshot: `provider`, `protocol`, `transport`, `replay_mode`, fallback state, input-item counts, … |
+| `turn_completed` | `runner.go:374-392` | `thread_id`, `turn_id`, `input_tokens`, `output_tokens`, `trace_path`, `awaiting_auto_continuation` |
+| `turn_failed` | `runner.go:441-468` | `thread_id`, `turn_id`, `error` |
+| `turn_interrupted` | `runner.go:441-459`, `612-618` | `thread_id`, `turn_id`, `reason` (`"timeout"` \| `"interrupted"`) |
+| `error` | `emitStructuredOutputValidation`, `runner.go:938-955` | `thread_id`, `turn_id`, `run_id`, `error`, `retrying` — **only a terminal CLI/app-server structured-output settlement mismatch**, not normal correction turns or a general error channel |
+| `result` | `emitResult`, `runner.go:957-976` | `status`, `thread_id`, `turn_id`, `run_id`, `final_message`, `trace_path`, `error` (if any), `structured_result` (if `--output-schema` validated) |
 
 ### 1.4 First and last events
 
-- **First:** `session_configured` (`runner.go:93`), then one of
-  `thread_started`/`thread_resumed`/`thread_forked` (`runner.go:100-107`), then
-  `turn_started` (`runner.go:133`).
-- **Last:** exactly one `result` event ends every run (`runner.go:140,146,157,174,180,403`;
-  contract in `docs/en/automation/jsonl-events.md:14`).
+- **First after preflight succeeds:** `session_configured` (`runner.go:113`), then one of
+  `thread_started`/`thread_resumed`/`thread_forked` (`runner.go:120-127`), then
+  `turn_started` when the app-server accepts the first turn (`runner.go:300-311`). A
+  preflight failure can instead produce a single terminal `result` with empty ids.
+- **Last:** exactly one `result` event ends every run (the `emitResult`/`finishRunError`
+  paths at `runner.go:957-1001`; contract in the **Rules** section of
+  `docs/en/automation/jsonl-events.md`).
 
 ### 1.5 `result.status` values and error expression
 
 - `status` ∈ `completed`, `failed`, `permission_denied`, `timeout`, `interrupted`
-  (set at `runner.go:180`, `174`, `157`, `140`, `146`; also `runner.go:388-403`;
-  `docs/en/automation/jsonl-events.md:466-472`).
-- Errors are expressed two ways:
-  1. Per-turn: `turn_failed` event (`runner.go:381`) then a `result` with the failing
+  (settled by `Run`, its `run/updated` handler, and `finishRunError`; documented under
+  the `result` event in `docs/en/automation/jsonl-events.md`).
+- Failures are expressed at several layers:
+  1. Per-turn: `turn_failed` event (`runner.go:461`) then a `result` with the failing
      `status` and an `error` string.
-  2. The optional `error` event only covers structured-output validation retries.
+  2. Setup failures and some Run-settlement failures produce only the terminal `result`;
+     structured-output retry exhaustion is one such case.
+  3. The optional `error` event only covers a final structured-output validation
+     mismatch after the app-server reported successful Run settlement.
 - There is **no** `total_cost_usd`, `usage` block, `num_turns`, or `duration_ms` on the
   `result`. Token usage lives only in separate `usage_updated` / `turn_completed` events.
 
 ### 1.6 Exit codes (granular)
 
-Defined in `internal/exec/types.go:13-23` (documented `docs/en/automation/exec.md:154-166`):
+Defined in `internal/execution/exitcodes.go:9-20` and re-exported by
+`internal/exec/types.go:16-27` (documented in the **Exit Codes** section of
+`docs/en/automation/exec.md`):
 
 | Code | Const | Meaning |
 |---|---|---|
@@ -120,40 +129,44 @@ Defined in `internal/exec/types.go:13-23` (documented `docs/en/automation/exec.m
 | 6 | `ExitProtocol` | app-server protocol error |
 | 7 | `ExitProviderModelError` | provider/model error |
 | 8 | `ExitToolFailed` | tool execution failed, unrecovered |
+| 9 | `ExitConflict` | target thread already has a running turn |
 
-Classification: `runner.go:388-404` (turn-error → code), `runner.go:996-1017`
-(setup/protocol/context → code).
+Classification comes from the terminal execution Run and the setup/protocol/context
+helpers in `internal/exec/runner.go`.
 
 ### 1.7 `--output-schema` behavior
 
-Implemented in `internal/exec/structured_output.go`:
+Implemented across the CLI's schema loader and the app-server execution Run:
 
-- `loadOutputSchema` reads and compiles a JSON Schema (Draft 2020),
-  `structured_output.go:23-61`.
-- The schema instruction is prepended to the prompt (`initialPrompt`,
-  `structured_output.go:63-77`).
-- The final message is parsed as a single JSON value and validated (`validate`,
-  `structured_output.go:97-114`).
-- On failure the run retries up to `outputSchemaMaxRetries = 2`
-  (`structured_output.go:15`; loop `runner.go:117-178`), emitting an `error` event with
-  `retrying` each time (`runner.go:171`). Exhausting retries yields `result`
-  `status:"failed"` and exit `ExitTurnFailed` (`runner.go:172-175`).
-- On success, `structured_result` (the parsed value) is attached to the `result` event
-  (`runner.go:164-168`, `972-974`).
+- `loadOutputSchema` reads and compiles a JSON Schema using Draft 2020
+  (`internal/exec/structured_output.go:21-59`).
+- The app-server compiles the same raw schema and prepends its instruction to the
+  first prompt (`internal/appserver/run_handlers.go:56-70`;
+  `internal/structuredoutput/validator.go:21-54`).
+- A failed final answer creates up to two correction turns inside the **same** Run
+  (`structuredoutput.MaxRetries = 2`; `run_handlers.go:303-317`, `385-434`). The
+  preceding `turn_completed` has `awaiting_auto_continuation:true`; normal correction
+  turns do not emit `error` events.
+- Exhausting retries settles the Run as failed, producing `result.status:"failed"` and
+  exit `ExitTurnFailed`.
+- After a successful Run settlement, the CLI parses the final answer once more to
+  populate `structured_result` (`runner.go:154-167`). A disagreement at that final
+  boundary emits `error` with `retrying:false` before the failed `result`.
 
 ### 1.8 `--output-last-message` behavior
 
 Writes the final agent message text to a file after a successful run
-(`runner.go:181-185`, `writeLastMessage` at `runner.go:1028+`). It is **not** part of the
+(`runner.go:169-173`, `writeLastMessage` at `runner.go:1061+`). It is **not** part of the
 JSONL stream and does not add or change any event.
 
 ### 1.9 Session start / resume / fork are subcommands, not flags
 
-wuu selects thread lifecycle via subcommands (`docs/en/automation/exec.md:91-108`), e.g.
+wuu selects thread lifecycle via subcommands (see **Resume** in
+`docs/en/automation/exec.md`), e.g.
 `wuu exec resume --last`, `wuu exec resume <thread-id>`, `wuu exec fork <thread-id>`.
 There is **no** `--session-id`, `--resume`, or `--output-format` flag on `wuu exec`.
 Provider/model are chosen with `--provider` / `--model` / `--effort` / `--variant`
-(`cmd/wuu/main.go:1411-1414`).
+(`cmd/wuu/main.go:1840-1843`).
 
 ### 1.10 Permission flow
 
@@ -306,9 +319,9 @@ Legend: **=** direct map · **~** needs transform/synthesis · **wuu∅** wuu ha
 
 | cc `system/init` field | wuu source | Rel. |
 |---|---|---|
-| `cwd` | `thread_started.cwd` (`runner.go:457`) / `session_configured.workspace_root` | = |
-| `model` | `session_configured.model` (`runner.go:440`) | = |
-| `permissionMode` | `session_configured.permissions` (`runner.go:444`) | ~ (shape differs; wuu carries a `PermissionSummary`) |
+| `cwd` | `thread_started.cwd` (`runner.go:509`) / `session_configured.workspace_root` | = |
+| `model` | `session_configured.model` (`runner.go:492`) | = |
+| `permissionMode` | `session_configured.permissions` (`runner.go:497`) | ~ (shape differs; wuu carries a `PermissionSummary`) |
 | `tools[]` | none emitted at init | wuu∅ (tools appear only when used via `tool_started`) |
 | `slash_commands[]`, `agents[]`, `skills[]`, `plugins[]`, `mcp_servers[]` | none at init | wuu∅ |
 | `apiKeySource`, `betas`, `claude_code_version`, `output_style`, `fast_mode_state` | none | wuu∅ (cc-specific) |
@@ -319,19 +332,19 @@ Legend: **=** direct map · **~** needs transform/synthesis · **wuu∅** wuu ha
 
 | Concept | wuu | cc | Rel. |
 |---|---|---|---|
-| Assistant text (incremental) | `agent_message_delta.delta` (`runner.go:298`) | `stream_event` w/ `content_block_delta` (`--include-partial-messages`) | ~ |
-| Assistant text (final/whole) | `agent_message_final.message` (`runner.go:307`) | `assistant.message.content[]` text blocks | ~ (cc ships a full API message; wuu ships plain text) |
+| Assistant text (incremental) | `agent_message_delta.delta` (`runner.go:319`) | `stream_event` w/ `content_block_delta` (`--include-partial-messages`) | ~ |
+| Assistant text (final/whole) | `agent_message_final.message` (`runner.go:328`) | `assistant.message.content[]` text blocks | ~ (cc ships a full API message; wuu ships plain text) |
 | Reasoning / thinking | intentionally omitted from the automation stream | `assistant.message.content[]` `thinking` blocks (+ partial `stream_event`) | wuu∅ |
-| Tool call start | `tool_started` (`runner.go:474`) | `tool_use` block inside `assistant.message.content[]` | ~ (event vs content block) |
-| Tool output (incremental) | `tool_output_delta` (`runner.go:339`) | none as text; final result only | ~ / cc∅ streaming |
-| Tool result (final) | `tool_completed` (`runner.go:492`) | `tool_result` block inside a `user` message | ~ |
-| Command tools | `command_*` events (`runner.go:475-518`) | folded into the same `tool_use`/`tool_result` blocks | ~ (wuu splits them out) |
-| File change | `file_changed` (`runner.go:501-503`) | none (implicit in tool result) | cc∅ |
-| Plan | `plan_updated` (`runner.go:866`) | none (TodoWrite tool result) | cc∅ |
-| Subagents | `subagent_*` (`runner.go:520-556`) | `parent_tool_use_id` threading on `assistant`/`user` msgs | ~ |
+| Tool call start | `tool_started` (`runner.go:528`) | `tool_use` block inside `assistant.message.content[]` | ~ (event vs content block) |
+| Tool output (incremental) | `tool_output_delta` (`runner.go:354`) | none as text; final result only | ~ / cc∅ streaming |
+| Tool result (final) | `tool_completed` (`runner.go:546`) | `tool_result` block inside a `user` message | ~ |
+| Command tools | `command_*` events (`runner.go:529-571`) | folded into the same `tool_use`/`tool_result` blocks | ~ (wuu splits them out) |
+| File change | `file_changed` (`runner.go:555-556`) | none (implicit in tool result) | cc∅ |
+| Plan | `plan_updated` (`runner.go:862`) | none (TodoWrite tool result) | cc∅ |
+| Subagents | `subagent_*` (`runner.go:574-610`) | `parent_tool_use_id` threading on `assistant`/`user` msgs | ~ |
 | User prompt echo | none emitted | `user` message | wuu∅ |
-| Provider/request diagnostics | `provider_state`, `request_context` (`runner.go:867-935`) | none | cc∅ |
-| Token usage (incremental) | `usage_updated` (`runner.go:352`) | none per-message; only in final `result.usage` | ~ |
+| Provider/request diagnostics | `provider_state`, `request_context` (`runner.go:863-934`) | none | cc∅ |
+| Token usage (cumulative turn snapshot) | `usage_updated` (`runner.go:367`) | none per-message; only in final `result.usage` | ~ |
 | Rate limits | none | `rate_limit_event` | cc∅ |
 
 ### 3.4 Result
@@ -340,13 +353,13 @@ Legend: **=** direct map · **~** needs transform/synthesis · **wuu∅** wuu ha
 |---|---|---|
 | `subtype` (`success` / `error_*`) | `result.status` (`runner.go:963`) | ~ (see mapping table §5.2) |
 | `is_error` | derive from `status != "completed"` | ~ |
-| `result` (final text) | `result.final_message` (`runner.go:966`) | = |
-| `structured_output` | `result.structured_result` (`runner.go:973`) | = |
-| `errors[]` | `result.error` string (`runner.go:970`) | ~ (string → array) |
-| `stop_reason` | not on wuu `result` (available on `TurnCompletedNotification.StopReason`, `protocol.go:1164`, but not emitted) | wuu∅ on result |
+| `result` (final text) | `result.final_message` (`runner.go:967`) | = |
+| `structured_output` | `result.structured_result` (`runner.go:974`) | = |
+| `errors[]` | `result.error` string (`runner.go:971`) | ~ (string → array) |
+| `stop_reason` | not on wuu `result` (available on `TurnCompletedNotification.StopReason`, `protocol.go:1760`, but not emitted) | wuu∅ on result |
 | `num_turns` | derivable by counting `turn_started` | ~ |
-| `duration_ms` / `duration_api_ms` | not tracked/emitted | wuu∅ |
-| `usage` (aggregate) | sum of `usage_updated` / `turn_completed` tokens | ~ |
+| `duration_ms` / `duration_api_ms` | wall duration exists on app-server `Turn.DurationMS` but is not emitted to JSONL; no API-time split | ~ / wuu∅ |
+| `usage` (aggregate) | sum the latest cumulative `usage_updated` snapshot per turn; use `turn_completed` input/output as the final fallback | ~ |
 | `modelUsage` (per-model map w/ cost) | no per-model cost tracking | wuu∅ |
 | **`total_cost_usd`** | **not computed anywhere in wuu** | **wuu∅ — hard blocker, see §5.3** |
 | `permission_denials[]` | no direct event field | wuu∅ |
@@ -360,10 +373,10 @@ Legend: **=** direct map · **~** needs transform/synthesis · **wuu∅** wuu ha
 | Turn failure | `turn_failed` + `result(status:"failed")` | `result(subtype:"error_during_execution")` | ~ |
 | Timeout | `turn_interrupted(reason:"timeout")` + `result(status:"timeout")`, exit 4 | no dedicated subtype/exit | cc∅ |
 | Interrupt/cancel | `turn_interrupted(reason:"interrupted")` + `result(status:"interrupted")`, exit 5 | SIGINT → graceful shutdown, exit 0 (`runHeadlessStreaming` `sigintHandler`, `cli/print.ts:1027-1034`) | ~ |
-| Max turns | no distinct result subtype (loop just caps) | `result(subtype:"error_max_turns")` | ~ |
+| Max turns | generic turn/Run failure after the configured step cap; no distinct result subtype | `result(subtype:"error_max_turns")` | ~ |
 | Permission request | none; exec makes allow-or-deny decisions without an interactive approval step | `control_request(can_use_tool)`; answered by client on stdin | wuu∅ |
 | Permission denied | `result(status:"permission_denied")`, exit 3 | recorded in `result.permission_denials[]`; **not** a terminal error subtype | ~ |
-| Schema retry failure | `error` events + `result(status:"failed")` | `result(subtype:"error_max_structured_output_retries")` | ~ |
+| Schema retry failure | correction `turn_completed` events (`awaiting_auto_continuation:true`) + final `result(status:"failed")`; no retry `error` events | `result(subtype:"error_max_structured_output_retries")` | ~ |
 
 ---
 
@@ -376,24 +389,24 @@ Legend: **=** direct map · **~** needs transform/synthesis · **wuu∅** wuu ha
 | `--output-format json` | none (wuu has no single-object mode) | wuu∅ |
 | `--output-format text` | default `wuu exec` mode (final message on stdout) | ~ |
 | `--verbose` | n/a (wuu always emits full stream in `--json`) | — |
-| `--input-format stream-json` | `--input-json` reads one input object (`cmd/wuu/main.go:1434`; `docs/en/automation/exec.md:66-88`) — **not** a streaming JSONL input channel | ~ |
-| `--max-turns <n>` | `--max-turns <n>` (`cmd/wuu/main.go:1435`) | = |
+| `--input-format stream-json` | `--input-json` reads one input object (`cmd/wuu/main.go:1858`; see **Machine Input** in `docs/en/automation/exec.md`) — **not** a streaming JSONL input channel | ~ |
+| `--max-turns <n>` | `--max-turns <n>` (`cmd/wuu/main.go:1859`) | = |
 | `--max-budget-usd` | none (no cost tracking) | wuu∅ |
-| `--json-schema <schema>` | `--output-schema <schema.json>` (`cmd/wuu/main.go:1436`) | ~ (file vs inline; wuu also injects schema into the prompt) |
-| `--permission-mode <mode>` | `--permission-mode <mode>` (`cmd/wuu/main.go:1415`) | ~ (mode vocab may differ — **unconfirmed**) |
+| `--json-schema <schema>` | `--output-schema <schema.json>` (`cmd/wuu/main.go:1860`) | ~ (file vs inline; wuu injects the schema and keeps correction turns in one Run) |
+| `--permission-mode <mode>` | `--permission-mode standard|read_only|unconfined` (`cmd/wuu/main.go:1844`, `1873-1879`) | ~ (different vocabulary) |
 | `--allowedTools` | none | wuu∅ |
 | `--disallowedTools` | none | wuu∅ |
 | `--permission-prompt-tool` | none | wuu∅ |
-| `--dangerously-skip-permissions` | closest: `--permission-mode` value (**unconfirmed** which) | ~ |
+| `--dangerously-skip-permissions` | closest: `--permission-mode unconfined` | ~ |
 | `-r, --resume [id]` | `wuu exec resume <id>` / `resume --last` subcommand | ~ |
 | `-c, --continue` | `wuu exec resume --last` | ~ |
 | `--fork-session` | `wuu exec fork <id>` subcommand | ~ |
 | `--session-id <uuid>` | none — wuu allocates its own `thread_id`, no pre-set id | wuu∅ |
-| `--model` | `--model` (`cmd/wuu/main.go:1412`) | = |
+| `--model` | `--model` (`cmd/wuu/main.go:1841`) | = |
 | `--fallback-model` | none | wuu∅ |
-| `--system-prompt` / `--append-system-prompt` | none on `wuu exec` (config/profile-driven) | wuu∅ (**unconfirmed** if a profile flag covers it) |
-| `--add-dir` | `--workdir` (single root) (`cmd/wuu/main.go:1416`) | ~ |
-| `--mcp-config` | config-file driven (**unconfirmed** flag) | ~ |
+| `--system-prompt` / `--append-system-prompt` | none on `wuu exec` (instruction/config-driven) | wuu∅ |
+| `--add-dir` | `--workdir` (single root) (`cmd/wuu/main.go:1845`) | ~ |
+| `--mcp-config` | `--config <path>` can load a full trusted Wuu config containing MCP servers; no MCP-only flag | ~ |
 | `--replay-user-messages` | none | wuu∅ |
 | — | `--output-last-message <file>` | cc∅ (cc has no direct equivalent) |
 | — | `--effort` / `--variant` / `--profile` / `--provider` | cc∅ (wuu multi-provider knobs) |
@@ -406,24 +419,24 @@ Legend: **=** direct map · **~** needs transform/synthesis · **wuu∅** wuu ha
 **Not implemented — design only.** The idea: add an *additive*, opt-in translation layer
 that consumes wuu's existing app-server notification stream and emits cc-shaped
 `SDKMessage` NDJSON, so cc harnesses can drive wuu unchanged. This would be a new writer
-alongside `emitJSON` (`runner.go:978`), keyed off a new `--output-format` value; the native
+alongside `emitJSON` (`runner.go:1004`), keyed off a new `--output-format` value; the native
 `--json` stream stays as-is.
 
 ### 5.1 What can be synthesized cleanly
 
 | cc message | Built from | How |
 |---|---|---|
-| `system/init` | `session_configured` + `thread_started` (`runner.go:93,106`) | Map `cwd`, `model`, `permissionMode`. Emit `session_id = thread_id`. Fill `tools[]`, `slash_commands[]`, `mcp_servers[]`, `agents[]` with empty arrays or best-effort (wuu doesn't list these at init — see §5.4). Constant `claude_code_version` placeholder, `apiKeySource:"none"`, `betas:[]`. |
-| `user` (prompt echo) | the `--json`-invisible prompt (wuu `TurnInput.Prompt`, `runner.go:123`) | Synthesize one `user` message with `message.content` = prompt text at `turn_started`. wuu currently emits nothing here. |
-| `assistant` | buffer `agent_message_delta` (`runner.go:298`) until `turn_completed`/`agent_message_final`; fold `tool_started` (`runner.go:474`) into `tool_use` content blocks | Reassemble an Anthropic-shaped `message.content[]`. Thinking blocks cannot be synthesized because wuu deliberately omits provider reasoning at the automation boundary. Hard part below (§5.5). |
-| `user` (tool results) | `tool_completed`/`command_completed` (`runner.go:492`) | Emit a `user` message with a `tool_result` block referencing the `tool_use` id. Requires stable id mapping wuu `item_id` → cc `tool_use_id`. |
+| `system/init` | `session_configured` + `thread_started` (`runner.go:113,126`) | Map `cwd`, `model`, `permissionMode`. Emit `session_id = thread_id`. Fill `tools[]`, `slash_commands[]`, `mcp_servers[]`, `agents[]` with empty arrays or best-effort (wuu doesn't list these at init — see §5.4). Constant `claude_code_version` placeholder, `apiKeySource:"none"`, `betas:[]`. |
+| `user` (prompt echo) | the `--json`-invisible prompt (wuu `TurnInput.Prompt`, `runner.go:129`) | Synthesize one `user` message with `message.content` = prompt text at `turn_started`. wuu currently emits nothing here. |
+| `assistant` | buffer `agent_message_delta` (`runner.go:319`) until `turn_completed`/`agent_message_final`; fold `tool_started` (`runner.go:528`) into `tool_use` content blocks | Reassemble an Anthropic-shaped `message.content[]`. Thinking blocks cannot be synthesized because wuu deliberately omits provider reasoning at the automation boundary. Hard part below (§5.5). |
+| `user` (tool results) | `tool_completed`/`command_completed` (`runner.go:546-552`) | Emit a `user` message with a `tool_result` block referencing the `tool_use` id. Requires stable id mapping wuu `item_id` → cc `tool_use_id`. |
 | `stream_event` | `agent_message_delta` | Only if the compat mode also opts into partial messages; wrap each text delta as a `content_block_delta` raw event. |
-| `result.subtype` + `result.result` + `is_error` | `result` (`runner.go:963,966`) | Map status→subtype (§5.2); `result.result = final_message`; `is_error = status != "completed"`. |
-| `result.structured_output` | `result.structured_result` (`runner.go:973`) | direct. |
+| `result.subtype` + `result.result` + `is_error` | `result` (`runner.go:963,967`) | Map status→subtype (§5.2); `result.result = final_message`; `is_error = status != "completed"`. |
+| `result.structured_output` | `result.structured_result` (`runner.go:974`) | direct. |
 | `result.num_turns` | count emitted `turn_started` | derivable. |
-| `result.usage` | accumulate `usage_updated`/`turn_completed` tokens (`runner.go:352,364`) | derivable (map `input_tokens`/`output_tokens`/cache fields to cc `usage` shape). |
+| `result.usage` | keep the latest cumulative `usage_updated` snapshot per turn (`runner.go:367`), with `turn_completed` (`runner.go:379`) as the final input/output fallback | derivable; sum once per turn and map the token/cache fields to cc's `usage` shape. |
 | `result.permission_denials[]` | no equivalent exec event | not derivable without adding a new event contract. |
-| `result.errors[]` | `result.error` string (`runner.go:970`) | wrap as single-element array. |
+| `result.errors[]` | `result.error` string (`runner.go:971`) | wrap as single-element array. |
 
 ### 5.2 Status → subtype mapping (proposed)
 
@@ -440,25 +453,28 @@ alongside `emitJSON` (`runner.go:978`), keyed off a new `--output-format` value;
 
 1. **`total_cost_usd` (and `modelUsage[*].costUSD`).** wuu core computes **no cost**. There
    is no cost tracker; the `result` event (`runner.go:957-976`) has no cost field, and no
-   `usage_updated`/`turn_completed` field carries money (`protocol.go:1136-1167`). cc's
+   `usage_updated`/`turn_completed` field carries money (`protocol.go:1732-1764`). cc's
    value comes from `getTotalCost()` (`QueryEngine.ts:628`). Options, all lossy: emit
    `total_cost_usd: 0` (misleads cost-gating harnesses), or compute a client-side estimate
    from token counts × a hardcoded price table (fragile, provider-specific, wrong for
    non-Anthropic models). **Recommend emitting `0` and documenting it as unsupported.**
 
 2. **`session_id` UUID semantics.** wuu `thread_id` is `YYYYMMDD-HHMMSS-suffix`
-   (`docs/en/automation/jsonl-events.md:92`), **not a UUID**. cc consumers that validate the id
+   (see `thread_started` in `docs/en/automation/jsonl-events.md`), **not a UUID**. cc consumers that validate the id
    (`validateUuid`, `cli/print.ts:774`) or feed it back to `--session-id`/`--resume` (which
    require a UUID, `main.tsx:1000`) will reject or mishandle it. A synthetic UUID could be
    minted per run, but then it no longer round-trips to `wuu exec resume <thread-id>`, so
    resume-by-session-id compat breaks either way. **No lossless choice.**
 
 3. **`stop_reason`.** Present in wuu core (`TurnCompletedNotification.StopReason`,
-   `protocol.go:1164`) but **not emitted** on any JSONL event, so the compat layer can't see
+   `protocol.go:1760`) but **not emitted** on any JSONL event, so the compat layer can't see
    it without a runner change; it would emit `null`. Low stakes but note it.
 
-4. **`duration_api_ms`.** wuu tracks no API-time split. `duration_ms` (wall clock) can be
-   measured by the compat writer; `duration_api_ms` would be a fabricated `0`.
+4. **`duration_api_ms`.** wuu persists wall time on `Turn.DurationMS`
+   (`internal/appserver/protocol.go:1914`) but does not expose it in the exec notification
+   stream. A compat writer would need an additional app-server lookup or signal to
+   populate `duration_ms`; there is no API-time source, so `duration_api_ms` would be a
+   fabricated `0`.
 
 5. **Assistant-message content fidelity for non-Anthropic providers (see §5.5).**
 
@@ -466,8 +482,8 @@ alongside `emitJSON` (`runner.go:978`), keyed off a new `--output-format` value;
 
 - **`system/init` tool/command inventory.** cc lists `tools[]`, `slash_commands[]`,
   `mcp_servers[]`, `agents[]`, `skills[]` at init (`systemInit.ts:62-84`). wuu's
-  `session_configured` doesn't (`runner.go:436-446`). The data exists in app-server
-  (`InitializeResult` has `ToolSurface`, `protocol.go:166`), but the exec runner doesn't
+  `session_configured` doesn't (`runner.go:486-498`). The data exists in app-server
+  (`InitializeResult` has `ToolSurface`, `protocol.go:258`), but the exec runner doesn't
   emit it. Filling these requires either threading more of `InitializeResult` into the
   compat writer or accepting empty arrays (some harnesses render pickers from these).
 - **Permission model translation.** cc expects the client to answer `can_use_tool`
@@ -486,13 +502,13 @@ keyed by `item_id`. To synthesize cc's shape the compat writer must:
 - buffer text deltas into text blocks; thinking blocks cannot be reconstructed because
   wuu omits provider reasoning from its automation stream,
 - convert each `tool_started` into a `tool_use` block with a generated/`item_id`-derived
-  `id` and parse `arguments` (a JSON **string**, `runner.go:474`) back into an object,
+  `id` and parse `arguments` (a JSON **string**, `runner.go:528`) back into an object,
 - pair each `tool_completed` with a `tool_result` user message referencing that id.
 
 The text and tool-call conversion is mechanical for Anthropic-backed runs, but thinking
 content remains unavailable. For **non-Anthropic providers** (wuu is
-multi-provider — `--provider openai`, `gpt-5`, etc., `cmd/wuu/main.go:1411`; see
-`provider_state.provider`, `runner.go:920`) the reconstructed `message` is only *shaped
+multi-provider — `--provider openai`, `gpt-5`, etc., `cmd/wuu/main.go:1840`; see
+`provider_state.provider`, `runner.go:916`) the reconstructed `message` is only *shaped
 like* an Anthropic message; block types, id formats, and reasoning representations won't
 match what a real cc-on-Anthropic run produces. Harnesses that inspect
 `assistant.message` internals (not just `.content[].text`) may break. **Recommend:
@@ -501,7 +517,7 @@ that `message` block fidelity is best-effort and provider-dependent.**
 
 ### 5.6 Exit-code strategy
 
-cc callers expect 0/1 (`cli/print.ts:971`). wuu's granular 0-8 (`types.go:13-23`) already
+cc callers expect 0/1 (`cli/print.ts:971`). wuu's granular 0-9 (`types.go:16-27`) already
 collapses safely — any nonzero reads as "error" to a cc consumer. Recommendation: **keep
 wuu's granular exit codes** even in compat mode (a cc harness only checks zero/nonzero), or
 add a `--cc-exit-codes` toggle to squash to 0/1 if a strict consumer needs it. Document the
@@ -527,12 +543,14 @@ and usage). The unavoidable lossy points to advertise up front:
 
 ## Appendix: primary sources
 
-- wuu emitters: `internal/exec/runner.go` (esp. `289-419`, `434-601`, `863-984`).
-- wuu options / exit codes: `internal/exec/types.go:13-129`.
-- wuu structured output: `internal/exec/structured_output.go`.
-- wuu app-server types: `internal/appserver/protocol.go` (`154-208`, `1100-1210`,
-  `1253-1460`).
-- wuu CLI flags/usage: `cmd/wuu/main.go:1400-1456`, `1907-1930`.
+- wuu emitters: `internal/exec/runner.go` (esp. `300-468`, `486-618`, `859-1010`).
+- wuu options / exit codes: `internal/exec/types.go:16-131` and
+  `internal/execution/exitcodes.go`.
+- wuu structured output: `internal/exec/structured_output.go`,
+  `internal/structuredoutput/validator.go`, and `internal/appserver/run_handlers.go`.
+- wuu app-server types: `internal/appserver/protocol.go` (`InitializeResult`,
+  `TurnUsageNotification`, `TurnCompletedNotification`, `Thread`, `Turn`, and `ThreadItem`).
+- wuu CLI flags/usage: `cmd/wuu/main.go:1831-1862`, `2358-2381`.
 - wuu contract docs: `docs/en/automation/exec.md`, `docs/en/automation/jsonl-events.md`.
 - cc print/headless: `thirdparty/claude-code-sourcemap/src/cli/print.ts` (`455-974`,
   `1027-1079`).
