@@ -232,7 +232,6 @@ settings.css:1081 background --settings-preview-light-line
 settings.css:1052 background --settings-preview-light-sidebar
 settings.css:1076 background --settings-preview-light-sidebar
 settings.css:2117 background --settings-remote-qr-quiet-zone
-settings.css:1563 background --settings-usage-accent
 settings.css:611 background --success-soft
 side-thread.css:59 background --sidebar-resizer-hover-bg
 side-thread.css:60 box-shadow --sidebar-resizer-hover-ring

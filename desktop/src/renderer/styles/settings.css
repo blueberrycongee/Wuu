@@ -64,7 +64,7 @@
   --settings-preview-dark-sidebar: #141618;
   --settings-preview-dark-line: #3a4046;
   /* Sanctioned data-viz accent for the skill usage bar. */
-  --settings-usage-accent: #e8a23a;
+  --settings-usage-accent: var(--wuu-color-warning, #e8a23a);
   /* The remote-control QR keeps a white quiet zone so phones can scan
      it in dark theme too. */
   --settings-remote-qr-quiet-zone: #ffffff;
