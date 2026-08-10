@@ -31,6 +31,14 @@ const (
 	// ServiceChangedMethod is the host -> plugin notification that a service
 	// resolution changed.
 	ServiceChangedMethod = "service.changed"
+	// ExecutionCancelMethod is the host -> plugin fire-and-forget signal
+	// translating core context cancellation of one exact execution. It is
+	// handled out of band so it can preempt the running execution; any
+	// acknowledgement the plugin writes is discarded by the host.
+	ExecutionCancelMethod = "execution.cancel"
+	// ExecutionUpdateService is the kernel service a plugin calls to report
+	// progress for an execution it owns.
+	ExecutionUpdateService = "execution.update"
 )
 
 const (
@@ -165,17 +173,21 @@ type Definition struct {
 }
 
 type ToolCall struct {
-	ToolID    string          `json:"tool_id"`
-	SessionID string          `json:"session_id,omitempty"`
-	ThreadID  string          `json:"thread_id,omitempty"`
-	TurnID    string          `json:"turn_id,omitempty"`
-	ActorID   string          `json:"actor_id,omitempty"`
-	ActorPath string          `json:"actor_path,omitempty"`
-	CWD       string          `json:"cwd"`
-	StepIndex int             `json:"step_index,omitempty"`
-	CallID    string          `json:"call_id"`
-	Tool      string          `json:"tool"`
-	Arguments json.RawMessage `json:"arguments"`
+	ToolID    string `json:"tool_id"`
+	SessionID string `json:"session_id,omitempty"`
+	ThreadID  string `json:"thread_id,omitempty"`
+	TurnID    string `json:"turn_id,omitempty"`
+	// ExecutionID names this exact dispatch in the execution scope plane.
+	// The runtime translates execution.cancel for it into ctx cancellation
+	// and ReportExecutionUpdate references it.
+	ExecutionID string          `json:"execution_id,omitempty"`
+	ActorID     string          `json:"actor_id,omitempty"`
+	ActorPath   string          `json:"actor_path,omitempty"`
+	CWD         string          `json:"cwd"`
+	StepIndex   int             `json:"step_index,omitempty"`
+	CallID      string          `json:"call_id"`
+	Tool        string          `json:"tool"`
+	Arguments   json.RawMessage `json:"arguments"`
 }
 
 type ContentPart struct {
@@ -198,9 +210,12 @@ func TextResult(text string) ToolResult {
 }
 
 type CapabilityCall struct {
-	Capability string          `json:"capability"`
-	Input      json.RawMessage `json:"input"`
-	Output     json.RawMessage `json:"output"`
+	Capability string `json:"capability"`
+	// ExecutionID names this exact dispatch in the execution scope plane,
+	// identical in role to ToolCall.ExecutionID.
+	ExecutionID string          `json:"execution_id,omitempty"`
+	Input       json.RawMessage `json:"input"`
+	Output      json.RawMessage `json:"output"`
 }
 
 type TurnContextBlock struct {
@@ -409,6 +424,22 @@ func CallHostService(ctx context.Context, host Host, service string, params, res
 	return CallService(ctx, host, service, KernelServiceMethod, params, result)
 }
 
+// ExecutionUpdate is one progress report for an execution the calling plugin
+// owns. Detail carries arbitrary plugin-owned progress payload.
+type ExecutionUpdate struct {
+	ExecutionID string          `json:"execution_id"`
+	Message     string          `json:"message,omitempty"`
+	Detail      json.RawMessage `json:"detail,omitempty"`
+}
+
+// ReportExecutionUpdate reports progress for one live execution through the
+// kernel's execution.update service. The plugin must declare the service in
+// its Definition's RequiredServices; updates for executions that are not live
+// or not owned by the caller fail with typed errors.
+func ReportExecutionUpdate(ctx context.Context, host Host, update ExecutionUpdate) error {
+	return CallService(ctx, host, ExecutionUpdateService, KernelServiceMethod, update, nil)
+}
+
 func RequireHostServices(services ...string) []ServiceRequirement {
 	requirements := make([]ServiceRequirement, 0, len(services))
 	for _, service := range services {
@@ -445,17 +476,75 @@ type Handler struct {
 }
 
 type Client struct {
-	output    io.Writer
-	seq       atomic.Uint64
-	initMu    sync.RWMutex
-	init      InitializeParams
-	writeMu   sync.Mutex
-	pendingMu sync.Mutex
-	pending   map[string]chan rpcResponse
-	done      chan struct{}
-	doneOnce  sync.Once
-	errMu     sync.Mutex
-	readErr   error
+	output     io.Writer
+	seq        atomic.Uint64
+	initMu     sync.RWMutex
+	init       InitializeParams
+	writeMu    sync.Mutex
+	pendingMu  sync.Mutex
+	pending    map[string]chan rpcResponse
+	done       chan struct{}
+	doneOnce   sync.Once
+	errMu      sync.Mutex
+	readErr    error
+	executions *executionTable
+}
+
+// executionTable maps live execution IDs to their cancellation functions so
+// an out-of-band execution.cancel frame can preempt the exact running
+// execution. Entries are released when the dispatch returns; a cancel for an
+// unknown or already-closed ID is a no-op and can never hit a later
+// execution.
+type executionTable struct {
+	mu      sync.Mutex
+	cancels map[string]context.CancelFunc
+}
+
+func newExecutionTable() *executionTable {
+	return &executionTable{cancels: make(map[string]context.CancelFunc)}
+}
+
+func (t *executionTable) track(id string, cancel context.CancelFunc) {
+	t.mu.Lock()
+	t.cancels[id] = cancel
+	t.mu.Unlock()
+}
+
+func (t *executionTable) release(id string) {
+	t.mu.Lock()
+	delete(t.cancels, id)
+	t.mu.Unlock()
+}
+
+func (t *executionTable) cancelExecution(id string) {
+	t.mu.Lock()
+	cancel := t.cancels[id]
+	t.mu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+}
+
+// trackExecution derives a cancellable context for one execution dispatch and
+// registers it so a later execution.cancel frame can preempt it. The returned
+// release function unregisters the execution and frees the context; it must
+// run when the dispatch returns.
+func (c *Client) trackExecution(ctx context.Context, executionID string) (context.Context, func()) {
+	if strings.TrimSpace(executionID) == "" {
+		return ctx, nil
+	}
+	execCtx, cancel := context.WithCancel(ctx)
+	c.executions.track(executionID, cancel)
+	return execCtx, func() {
+		c.executions.release(executionID)
+		cancel()
+	}
+}
+
+// cancelExecution preempts one live execution. It answers the host's
+// fire-and-forget cancel frame, so it never blocks on the execution itself.
+func (c *Client) cancelExecution(executionID string) {
+	c.executions.cancelExecution(executionID)
 }
 
 func (c *Client) InitializeParams() InitializeParams {
@@ -504,7 +593,7 @@ func (c *Client) CallHost(ctx context.Context, method string, params, result any
 }
 
 func newClient(output io.Writer) *Client {
-	return &Client{output: output, pending: make(map[string]chan rpcResponse), done: make(chan struct{})}
+	return &Client{output: output, pending: make(map[string]chan rpcResponse), done: make(chan struct{}), executions: newExecutionTable()}
 }
 
 func (c *Client) write(value any) error {
@@ -566,6 +655,16 @@ type rpcError struct {
 	Message string `json:"message"`
 }
 
+// queuedDispatch carries one host request together with its execution-scoped
+// context. The execution is registered when its frame is read — in the same
+// goroutine that later reads any execution.cancel frame — so a cancel can
+// never arrive before the registration it targets.
+type queuedDispatch struct {
+	request rpcRequest
+	ctx     context.Context
+	release func()
+}
+
 func Serve(ctx context.Context, handler Handler) error {
 	return ServeIO(ctx, os.Stdin, os.Stdout, handler)
 }
@@ -576,16 +675,19 @@ func ServeIO(ctx context.Context, input io.Reader, output io.Writer, handler Han
 	scanner := bufio.NewScanner(input)
 	scanner.Buffer(make([]byte, 64*1024), 4<<20)
 	client := newClient(output)
-	incomingRequests := make(chan rpcRequest)
-	requests := make(chan rpcRequest)
+	incomingRequests := make(chan queuedDispatch)
+	requests := make(chan queuedDispatch)
 	workerDone := make(chan error, 1)
 	go queueRequests(serveCtx, incomingRequests, requests)
 	go func() {
-		for request := range requests {
-			result, stop, err := dispatch(serveCtx, client, handler, request)
-			response := rpcResponse{ID: request.ID, Result: result}
+		for envelope := range requests {
+			result, stop, err := dispatch(envelope.ctx, client, handler, envelope.request)
+			if envelope.release != nil {
+				envelope.release()
+			}
+			response := rpcResponse{ID: envelope.request.ID, Result: result}
 			if err != nil {
-				response = rpcResponse{ID: request.ID, Error: &rpcError{Message: err.Error()}}
+				response = rpcResponse{ID: envelope.request.ID, Error: &rpcError{Message: err.Error()}}
 			}
 			if writeErr := client.write(response); writeErr != nil {
 				workerDone <- writeErr
@@ -615,8 +717,31 @@ func ServeIO(ctx context.Context, input io.Reader, output io.Writer, handler Han
 			client.routeResponse(response)
 			continue
 		}
+		if request.Method == ExecutionCancelMethod {
+			// Cancel bypasses the serial dispatch queue so it can preempt the
+			// exact execution currently running inside a handler.
+			var params struct {
+				ExecutionID string `json:"execution_id"`
+			}
+			_ = json.Unmarshal(request.Params, &params)
+			client.cancelExecution(params.ExecutionID)
+			if writeErr := client.write(rpcResponse{ID: request.ID, Result: json.RawMessage(`{}`)}); writeErr != nil {
+				client.closeTransport(writeErr)
+				close(incomingRequests)
+				return writeErr
+			}
+			continue
+		}
+		envelope := queuedDispatch{request: request, ctx: serveCtx}
+		if request.Method == "tool.execute" || request.Method == "capability.invoke" {
+			var probe struct {
+				ExecutionID string `json:"execution_id"`
+			}
+			_ = json.Unmarshal(request.Params, &probe)
+			envelope.ctx, envelope.release = client.trackExecution(serveCtx, probe.ExecutionID)
+		}
 		select {
-		case incomingRequests <- request:
+		case incomingRequests <- envelope:
 		case err := <-workerDone:
 			client.closeTransport(err)
 			cancel()
@@ -641,12 +766,12 @@ func ServeIO(ctx context.Context, input io.Reader, output io.Writer, handler Han
 // queueRequests keeps host requests ordered without allowing handler backpressure
 // to block the transport reader. The reader must remain available to route host
 // service responses while the current handler is waiting in CallHost.
-func queueRequests(ctx context.Context, input <-chan rpcRequest, output chan<- rpcRequest) {
+func queueRequests(ctx context.Context, input <-chan queuedDispatch, output chan<- queuedDispatch) {
 	defer close(output)
-	var queued []rpcRequest
+	var queued []queuedDispatch
 	for input != nil || len(queued) != 0 {
-		var next rpcRequest
-		var ready chan<- rpcRequest
+		var next queuedDispatch
+		var ready chan<- queuedDispatch
 		if len(queued) != 0 {
 			next = queued[0]
 			ready = output
@@ -659,7 +784,7 @@ func queueRequests(ctx context.Context, input <-chan rpcRequest, output chan<- r
 			}
 			queued = append(queued, request)
 		case ready <- next:
-			queued[0] = rpcRequest{}
+			queued[0] = queuedDispatch{}
 			queued = queued[1:]
 			if len(queued) == 0 {
 				queued = nil

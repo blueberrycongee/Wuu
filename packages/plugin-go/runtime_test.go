@@ -233,3 +233,72 @@ func TestServeAllowsBackgroundHostCallAfterCapabilityReturns(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestExecutionCancelPreemptsRunningTool(t *testing.T) {
+	input := strings.Join([]string{
+		`{"id":"1","method":"initialize","params":{"protocol_version":1,"capability_protocol_version":3,"plugin_id":"slow"}}`,
+		`{"id":"2","method":"tool.execute","params":{"tool_id":"wait","execution_id":"exec-1","call_id":"c1","tool":"wait","arguments":{}}}`,
+		`{"id":"3","method":"execution.cancel","params":{"execution_id":"exec-1"}}`,
+		`{"id":"4","method":"shutdown"}`,
+	}, "\n") + "\n"
+	var output bytes.Buffer
+	observedCancel := make(chan error, 1)
+	err := ServeIO(context.Background(), strings.NewReader(input), &output, Handler{
+		Definition: Definition{Tools: []Tool{{ID: "wait", Description: "block until canceled", InputSchema: map[string]any{"type": "object"}}}},
+		ExecuteTool: func(ctx context.Context, _ Host, call ToolCall) (ToolResult, error) {
+			if call.ExecutionID != "exec-1" {
+				observedCancel <- nil
+				return TextResult("wrong execution"), nil
+			}
+			<-ctx.Done()
+			observedCancel <- ctx.Err()
+			return TextResult("canceled"), nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ctxErr := <-observedCancel; ctxErr == nil {
+		t.Fatal("tool handler context was not canceled")
+	}
+	lines := strings.Split(strings.TrimSpace(output.String()), "\n")
+	if len(lines) != 4 {
+		t.Fatalf("responses = %s", output.String())
+	}
+	// The cancel acknowledgement (id 3) is written before the tool result
+	// (id 2): proof the cancel preempted the serial dispatch queue.
+	cancelAck, toolResult := -1, -1
+	for index, line := range lines {
+		if strings.Contains(line, `"id":"3"`) {
+			cancelAck = index
+		}
+		if strings.Contains(line, `"id":"2"`) {
+			toolResult = index
+		}
+	}
+	if cancelAck == -1 || toolResult == -1 || cancelAck > toolResult || !strings.Contains(lines[toolResult], "canceled") {
+		t.Fatalf("preemption order = %s", output.String())
+	}
+}
+
+func TestExecutionCancelForUnknownExecutionIsNoop(t *testing.T) {
+	input := strings.Join([]string{
+		`{"id":"1","method":"initialize","params":{"protocol_version":1,"capability_protocol_version":3,"plugin_id":"slow"}}`,
+		`{"id":"2","method":"execution.cancel","params":{"execution_id":"exec-gone"}}`,
+		`{"id":"3","method":"shutdown"}`,
+	}, "\n") + "\n"
+	var output bytes.Buffer
+	if err := ServeIO(context.Background(), strings.NewReader(input), &output, Handler{}); err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimSpace(output.String()), "\n")
+	if len(lines) != 3 {
+		t.Fatalf("responses = %s", output.String())
+	}
+	joined := output.String()
+	for _, id := range []string{`"id":"1"`, `"id":"2"`, `"id":"3"`} {
+		if !strings.Contains(joined, id) {
+			t.Fatalf("missing ack for %s in %s", id, joined)
+		}
+	}
+}

@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,6 +12,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	plugingo "github.com/blueberrycongee/wuu/packages/plugin-go"
 )
 
 func mustRaw(value any) json.RawMessage {
@@ -366,4 +369,73 @@ func TestBaselineEnvKeyListHasNoDuplicates(t *testing.T) {
 			t.Fatalf("baseline key %q appears %d times", key, count)
 		}
 	}
+}
+
+func TestProcessClientCancelReachesPluginExecution(t *testing.T) {
+	if os.Getenv("WUU_PLUGINHOST_EXECUTION_HELPER") == "1" {
+		runExecutionHelper()
+		return
+	}
+	root := t.TempDir()
+	client, err := Start(context.Background(), ProcessConfig{
+		ID:          "exec-plugin",
+		Command:     os.Args[0],
+		Args:        []string{"-test.run=TestProcessClientCancelReachesPluginExecution"},
+		Env:         map[string]string{"WUU_PLUGINHOST_EXECUTION_HELPER": "1"},
+		PluginRoot:  root,
+		ProjectRoot: filepath.Dir(root),
+		WuuHome:     t.TempDir(),
+		Timeout:     2 * time.Second,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close(context.Background())
+	if client.Status().State != StateActive {
+		t.Fatalf("status = %+v", client.Status())
+	}
+
+	callCtx, cancel := context.WithCancel(context.Background())
+	first := make(chan error, 1)
+	go func() {
+		_, callErr := client.ExecuteTool(callCtx, ToolExecuteParams{
+			ToolExecuteInput: ToolExecuteInput{ExecutionID: "exec-1", CallID: "c1", CWD: root, Tool: "wait", Arguments: json.RawMessage(`{}`)},
+			ToolID:           "wait",
+		})
+		first <- callErr
+	}()
+	time.Sleep(150 * time.Millisecond)
+	cancel()
+	if callErr := <-first; callErr == nil || !errors.Is(callErr, context.Canceled) {
+		t.Fatalf("first call error = %v, want context.Canceled", callErr)
+	}
+
+	// The plugin runtime dispatches serially: ping can only be answered after
+	// the canceled wait execution actually aborted inside the plugin.
+	ping, err := client.ExecuteTool(context.Background(), ToolExecuteParams{
+		ToolExecuteInput: ToolExecuteInput{ExecutionID: "exec-2", CallID: "c2", CWD: root, Tool: "ping", Arguments: json.RawMessage(`{}`)},
+		ToolID:           "ping",
+	})
+	if err != nil {
+		t.Fatalf("ping after cancel: %v (the canceled execution did not abort plugin-side)", err)
+	}
+	if len(ping.Result.Content) != 1 || ping.Result.Content[0].Text != "pong" {
+		t.Fatalf("ping result = %+v", ping.Result)
+	}
+}
+
+func runExecutionHelper() {
+	_ = plugingo.Serve(context.Background(), plugingo.Handler{
+		Definition: plugingo.Definition{Tools: []plugingo.Tool{
+			{ID: "wait", Description: "block until canceled", InputSchema: map[string]any{"type": "object"}},
+			{ID: "ping", Description: "answer promptly", InputSchema: map[string]any{"type": "object"}},
+		}},
+		ExecuteTool: func(ctx context.Context, _ plugingo.Host, call plugingo.ToolCall) (plugingo.ToolResult, error) {
+			if call.ToolID == "wait" {
+				<-ctx.Done()
+				return plugingo.TextResult("aborted"), nil
+			}
+			return plugingo.TextResult("pong"), nil
+		},
+	})
 }
