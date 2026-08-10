@@ -433,8 +433,11 @@ Layer Host，并带有稳定的 `data-wuu-component`、`data-wuu-layer` 和 `dat
 snippets 而不是新增主题 Token：`app-shell`、`sidebar`、`conversation-pane`、
 `settings-shell`、`settings-sidebar`、`settings-content`、`settings-page`、
 `skills-catalog`、`automations-catalog`、`workspace-panel`、
+`workspace-tool-tab`、`workspace-tool-tab-close`、
 `launch-view`、`turn`、`message`（区分 `data-wuu-variant="user" | "agent"`）、
 `composer`、`composer-input`、`composer-send`（区分 `data-wuu-state="send" | "stop"`）。
+工作区 Tab 使用 `data-wuu-active="true" | "false"` 表示选中状态，并在关闭或拖拽时通过
+`data-wuu-state="closing" | "dragging"` 暴露瞬时状态。
 消息操作区只公开宿主管理的 `message-actions` 组锚点，通过
 `data-wuu-placement="persistent" | "overlay"` 区分常驻与悬浮。主题可使用
 `--wuu-message-actions-block-gap`、`--wuu-message-actions-overlay-gap`、

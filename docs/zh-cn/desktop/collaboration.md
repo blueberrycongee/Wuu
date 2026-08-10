@@ -1,5 +1,8 @@
 # 群聊与 Named Agent 协作
 
+Named Agent 群聊目前仍是实验功能，发布构建默认不显示入口。源码开发时需使用
+`cd desktop && VITE_ENABLE_GROUP_CHAT=true npm run dev` 显式启用；下文描述启用后的行为。
+
 wuu 提供两种 Agent 协作方式：
 
 - **匿名子代理**由主 Agent 在任务中自动派出，适合并行调查、独立实现和结果复核。它的身份、

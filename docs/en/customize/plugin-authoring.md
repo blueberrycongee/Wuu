@@ -512,10 +512,13 @@ Major UI regions and controls expose public `data-wuu-component` anchors so
 element-level tweaks can go through CSS snippets instead of new theme tokens:
 `app-shell`, `sidebar`, `conversation-pane`, `settings-shell`,
 `settings-sidebar`, `settings-content`, `settings-page`, `skills-catalog`,
-`automations-catalog`, `workspace-panel`, `launch-view`, `turn`, `message`
+`automations-catalog`, `workspace-panel`, `workspace-tool-tab`,
+`workspace-tool-tab-close`, `launch-view`, `turn`, `message`
 (distinguishing `data-wuu-variant="user" | "agent"`), `composer`,
 `composer-input`, and `composer-send` (distinguishing
-`data-wuu-state="send" | "stop"`). Message controls expose one host-owned
+`data-wuu-state="send" | "stop"`). Workspace tabs expose
+`data-wuu-active="true" | "false"` plus transient
+`data-wuu-state="closing" | "dragging"` states. Message controls expose one host-owned
 `message-actions` group anchor, distinguished by
 `data-wuu-placement="persistent" | "overlay"`. Themes may tune the rhythm with
 `--wuu-message-actions-block-gap`, `--wuu-message-actions-overlay-gap`,

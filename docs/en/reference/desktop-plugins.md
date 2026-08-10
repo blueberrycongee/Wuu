@@ -313,6 +313,10 @@ specialized rendering boundaries rather than appearance layers. Trusted code plu
 supplemental CSS should target only the published attributes and tokens, not private class names or
 DOM structure.
 
+Native workspace tabs expose `workspace-tool-tab` and `workspace-tool-tab-close` anchors. A tab uses
+`data-wuu-active="true" | "false"` for selection and `data-wuu-state="closing" | "dragging"` for
+transient lifecycle state; selection, closing, dragging, and overflow remain host-owned.
+
 Message controls expose one host-owned `message-actions` group anchor. Action bars distinguish
 `data-wuu-placement="persistent" | "overlay"`.
 Themes may tune their rhythm with `--wuu-message-actions-block-gap`,
