@@ -24,6 +24,7 @@ import { PluginIcon } from "./PublicIcon";
 import { PluginSettingsEditor } from "./PluginSettingsEditor";
 import { RichContent } from "./RichContent";
 import { ThreadContextMenu, type ThreadContextMenuItem } from "./ThreadContextMenu";
+import { showErrorToast } from "./Toast";
 
 type LoadState = {
   loading: boolean;
@@ -83,7 +84,6 @@ export function SkillsCatalog({
   const [previewSkill, setPreviewSkill] = useState<SkillSummary | null>(null);
   const [selectedPluginID, setSelectedPluginID] = useState("");
   const [packageMutation, setPackageMutation] = useState("");
-  const [packageMutationError, setPackageMutationError] = useState("");
   const [packageActionMenu, setPackageActionMenu] = useState<{
     record: ExtensionInventoryRecord;
     x: number;
@@ -209,7 +209,6 @@ export function SkillsCatalog({
       return;
     }
     setPackageMutation(`${record.id}:${action}`);
-    setPackageMutationError("");
     try {
       const fingerprint =
         action === "promote_update" || action === "reject_update"
@@ -217,7 +216,7 @@ export function SkillsCatalog({
           : record.fingerprint;
       await onUpdateExtensionPackage({ id: record.id, fingerprint, action });
     } catch (error) {
-      setPackageMutationError(error instanceof Error ? error.message : translateCurrent("skills.pluginUpdateFailed"));
+      showErrorToast(error, translateCurrent("skills.pluginUpdateFailed"));
     } finally {
       setPackageMutation("");
     }
@@ -229,7 +228,6 @@ export function SkillsCatalog({
     }
     const requestedContextKey = contextKey;
     setPackageMutation("install");
-    setPackageMutationError("");
     try {
       const result = await onInstallPluginPackage();
       if (!result || contextKeyRef.current !== requestedContextKey) {
@@ -238,11 +236,7 @@ export function SkillsCatalog({
       setState({ loading: false, error: "", skills: result.skills });
     } catch (error) {
       if (contextKeyRef.current === requestedContextKey) {
-        setPackageMutationError(
-          error instanceof Error
-            ? error.message
-            : translateCurrent("skills.pluginInstallFailed"),
-        );
+        showErrorToast(error, translateCurrent("skills.pluginInstallFailed"));
       }
     } finally {
       setPackageMutation("");
@@ -259,7 +253,6 @@ export function SkillsCatalog({
     }
     const requestedContextKey = contextKey;
     setPackageMutation(`${record.id}:remove`);
-    setPackageMutationError("");
     try {
       const result = await onRemovePluginPackage(pluginID);
       if (!result || contextKeyRef.current !== requestedContextKey) {
@@ -268,11 +261,7 @@ export function SkillsCatalog({
       setState({ loading: false, error: "", skills: result.skills });
     } catch (error) {
       if (contextKeyRef.current === requestedContextKey) {
-        setPackageMutationError(
-          error instanceof Error
-            ? error.message
-            : translateCurrent("skills.pluginRemoveFailed"),
-        );
+        showErrorToast(error, translateCurrent("skills.pluginRemoveFailed"));
       }
     } finally {
       setPackageMutation("");
@@ -364,10 +353,6 @@ export function SkillsCatalog({
             onTrySkill?.(skill);
           }}
         />
-      ) : null}
-
-      {packageMutationError ? (
-        <div className="skills-catalog-error">{packageMutationError}</div>
       ) : null}
 
       {plugins.length > 0 ? (
