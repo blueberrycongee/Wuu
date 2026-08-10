@@ -207,6 +207,126 @@ describe("isStateActiveThreadRunning with a background agent", () => {
   });
 });
 
+describe("subagent session state must not leak across tabs", () => {
+  const context: RuntimeContext = {
+    kind: "project",
+    project_id: "project-1",
+    cwd: "/repo",
+  };
+
+  function threadWithRunningTurn(id: string): Thread {
+    return {
+      ...threadWithUserTexts([`prompt for ${id}`]),
+      id,
+      status: "in_progress" as const,
+      turns: [
+        {
+          id: `${id}-turn-running`,
+          items_view: "full",
+          status: "in_progress" as const,
+          items: [],
+        },
+      ],
+    } as unknown as Thread;
+  }
+
+  it("keeps the active thread running when a background session completes its turn", () => {
+    const active = threadWithRunningTurn("thread-a");
+    const background = {
+      ...threadWithRunningTurn("thread-child"),
+      read_only: true as const,
+    };
+    const state = {
+      ...initialState,
+      activeContext: context,
+      thread: active,
+      sessionTabs: [createThreadSessionTab(active, context)],
+      activeSessionTabID: threadSessionTabID(active.id),
+      threads: [active, background],
+      running: true,
+      status: "running",
+    };
+
+    const next = reduceServerEvent(state, {
+      kind: "notification",
+      workdir: "/repo",
+      message: {
+        method: "turn/completed",
+        params: {
+          thread_id: background.id,
+          turn: {
+            id: `${background.id}-turn-running`,
+            items_view: "full",
+            status: "completed",
+            items: [],
+          },
+        },
+      },
+    });
+
+    expect(next.running).toBe(true);
+    expect(next.status).toBe("running");
+    expect(
+      next.threads.find((thread) => thread.id === background.id)?.turns.at(-1)
+        ?.status,
+    ).toBe("completed");
+  });
+
+  it("does not auto-activate a read-only subtask thread into an empty pane", () => {
+    const draft = createDraftSessionTab("draft:new", context);
+    const child = {
+      ...threadWithRunningTurn("thread-child"),
+      read_only: true as const,
+    };
+    const state = {
+      ...initialState,
+      activeContext: context,
+      thread: undefined,
+      sessionTabs: [draft],
+      activeSessionTabID: draft.id,
+      threads: [],
+      allowThreadAutoActivation: true,
+      running: false,
+    };
+
+    const next = reduceServerEvent(state, {
+      kind: "notification",
+      workdir: "/repo",
+      message: { method: "thread/started", params: { thread: child } },
+    });
+
+    expect(next.thread).toBeUndefined();
+    expect(next.threads.map((thread) => thread.id)).toContain(child.id);
+  });
+
+  it("re-derives running from the thread that auto-activates into an empty pane", () => {
+    const draft = createDraftSessionTab("draft:new", context);
+    const idle = threadWithUserTexts(["a normal conversation"]);
+    const state = {
+      ...initialState,
+      activeContext: context,
+      thread: undefined,
+      sessionTabs: [draft],
+      activeSessionTabID: draft.id,
+      threads: [],
+      allowThreadAutoActivation: true,
+      // Stale global flag set by another session's turn.
+      running: true,
+      status: "running",
+    };
+
+    const next = reduceServerEvent(state, {
+      kind: "notification",
+      workdir: "/repo",
+      message: { method: "thread/started", params: { thread: idle } },
+    });
+
+    expect(next.thread?.id).toBe(idle.id);
+    expect(next.running).toBe(false);
+    expect(next.status).toBe("ready");
+  });
+});
+
 function processNotificationText(): string {
   return '<process_notification>{"process_id":"proc-1","status":"completed"}</process_notification>';
 }

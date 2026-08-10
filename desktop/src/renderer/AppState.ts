@@ -616,11 +616,19 @@ function reduceNotification(
       const updatesVisibleThread =
         state.thread?.id === thread.id ||
         state.secondaryThread?.id === thread.id;
+      // Auto-activation only ever brings a normal user conversation into the
+      // now-empty pane. A read-only subtask session (subagent child) is opened
+      // on purpose from the sidebar / agent row — it must never hijack the
+      // pane the user is looking at. When a new thread does take over the
+      // pane, re-derive the composer running state from that thread instead of
+      // inheriting a global flag another session may have set.
+      const autoActivateNewThread =
+        state.allowThreadAutoActivation &&
+        !state.thread &&
+        !knownThread &&
+        !thread.read_only;
       const activateThread =
-        state.thread?.id === thread.id ||
-        (state.allowThreadAutoActivation &&
-          !state.thread &&
-          !knownThread);
+        state.thread?.id === thread.id || autoActivateNewThread;
       return {
         ...state,
         thread: activateThread ? mergedThread : state.thread,
@@ -633,6 +641,9 @@ function reduceNotification(
           : state.allowThreadAutoActivation,
         threads: upsertThread(state.threads, mergedThread),
         status: activateThread || updatesVisibleThread ? "ready" : state.status,
+        running: autoActivateNewThread
+          ? isThreadRunning(mergedThread)
+          : state.running,
       };
     }
     case "thread/updated": {
@@ -705,15 +716,18 @@ function reduceNotification(
           : state;
       }
       releaseSettledTurnStreams(turn);
+      // running/status describe the pane the user is looking at. A background
+      // session (another tab, or a subagent child) finishing its turn must not
+      // clear the active thread's live running indicator or overwrite its
+      // status text, so only scope the patch when the turn belongs to the
+      // active thread.
+      const threadIsActive = threadID === activeThreadIDForState(state);
       return clearTurnStreamStatus(
         updateThreadByID(
           state,
           threadID,
           (thread) => upsertTurn(thread, turn),
-          {
-            running: false,
-            status: "ready",
-          },
+          threadIsActive ? { running: false, status: "ready" } : {},
         ),
         turn.id,
         { clearTransport: true },
