@@ -521,9 +521,12 @@ type CapabilityInitializeParams struct {
 // output are both present so transform capabilities can build on the value
 // produced by an earlier, higher-priority plugin.
 type CapabilityInvokeParams struct {
-	Capability string          `json:"capability"`
-	Input      json.RawMessage `json:"input"`
-	Output     json.RawMessage `json:"output"`
+	Capability string `json:"capability"`
+	// ExecutionID names this exact dispatch in the execution scope plane,
+	// identical in role to ToolExecuteInput.ExecutionID.
+	ExecutionID string          `json:"execution_id,omitempty"`
+	Input       json.RawMessage `json:"input"`
+	Output      json.RawMessage `json:"output"`
 }
 
 // CapabilityInvokeResult is the transformed value returned by a plugin.

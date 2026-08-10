@@ -69,6 +69,7 @@ type Host struct {
 	capabilities    []RegisteredCapability
 	diagnostics     map[string]map[string]string
 	serviceRegistry *ServiceRegistry
+	executions      *ExecutionTracker
 }
 
 type ContributionDiagnostic struct {
@@ -77,7 +78,7 @@ type ContributionDiagnostic struct {
 }
 
 func New(clients ...Client) *Host {
-	host := &Host{tools: make(map[string]RegisteredTool), diagnostics: make(map[string]map[string]string)}
+	host := &Host{tools: make(map[string]RegisteredTool), diagnostics: make(map[string]map[string]string), executions: NewExecutionTracker()}
 	for _, client := range clients {
 		host.addLocked(client)
 	}
@@ -249,10 +250,13 @@ func (h *Host) InvokeCapability(ctx context.Context, capability RegisteredCapabi
 	if err != nil {
 		return fmt.Errorf("marshal capability %q output: %w", capability.Descriptor.ID, err)
 	}
+	executionID := h.executions.Begin(capability.PluginID)
+	defer h.executions.End(executionID)
 	result, err := capability.client.InvokeCapability(ctx, CapabilityInvokeParams{
-		Capability: capability.Descriptor.ID,
-		Input:      inputJSON,
-		Output:     outputJSON,
+		Capability:  capability.Descriptor.ID,
+		ExecutionID: executionID,
+		Input:       inputJSON,
+		Output:      outputJSON,
 	})
 	if err != nil {
 		return fmt.Errorf("plugin %q capability %q: %w", capability.PluginID, capability.Descriptor.ID, err)
@@ -372,6 +376,8 @@ func (h *Host) ExecuteTool(ctx context.Context, name string, input ToolExecuteIn
 		return toolresult.Result{}, fmt.Errorf("plugin tool %q is not registered", name)
 	}
 	input.Tool = name
+	input.ExecutionID = h.executions.Begin(tool.PluginID)
+	defer h.executions.End(input.ExecutionID)
 	response, err := tool.client.ExecuteTool(ctx, ToolExecuteParams{
 		ToolExecuteInput: input,
 		ToolID:           tool.Registration.ID,
@@ -387,6 +393,24 @@ func (h *Host) ExecuteTool(ctx context.Context, name string, input ToolExecuteIn
 
 func capabilityStateReady(state State) bool {
 	return state == StatePrepared || state == StateActive
+}
+
+// RecordExecutionUpdate is the kernel-side entry for execution.update: the
+// caller identity was already declaration-checked by the registry; ownership
+// and liveness are enforced by the tracker.
+func (h *Host) RecordExecutionUpdate(callerPluginID string, params ExecutionUpdateParams) *HostServiceError {
+	if h == nil || h.executions == nil {
+		return &HostServiceError{Code: "service_unavailable", Message: "execution scope is unavailable"}
+	}
+	return h.executions.RecordUpdate(callerPluginID, params)
+}
+
+// ExecutionSnapshots returns the host's live execution table for diagnostics.
+func (h *Host) ExecutionSnapshots() []ExecutionSnapshot {
+	if h == nil || h.executions == nil {
+		return nil
+	}
+	return h.executions.Snapshot()
 }
 
 // Activate starts prepared runtimes after the generation commit. Failures are

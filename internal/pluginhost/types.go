@@ -158,14 +158,18 @@ type ToolExecuteInput struct {
 	ThreadID  string `json:"thread_id,omitempty"`
 	// TurnID identifies the exact model turn that owns this tool invocation.
 	// Plugins may use it as a key when deciding how to propagate cancellation.
-	TurnID    string          `json:"turn_id,omitempty"`
-	ActorID   string          `json:"actor_id,omitempty"`
-	ActorPath string          `json:"actor_path,omitempty"`
-	CWD       string          `json:"cwd"`
-	StepIndex int             `json:"step_index,omitempty"`
-	CallID    string          `json:"call_id"`
-	Tool      string          `json:"tool"`
-	Arguments json.RawMessage `json:"arguments"`
+	TurnID string `json:"turn_id,omitempty"`
+	// ExecutionID names this exact dispatch in the execution scope plane. It
+	// is the open frame: the host cancels precisely this execution through
+	// execution.cancel, and progress rides execution.update with this ID.
+	ExecutionID string          `json:"execution_id,omitempty"`
+	ActorID     string          `json:"actor_id,omitempty"`
+	ActorPath   string          `json:"actor_path,omitempty"`
+	CWD         string          `json:"cwd"`
+	StepIndex   int             `json:"step_index,omitempty"`
+	CallID      string          `json:"call_id"`
+	Tool        string          `json:"tool"`
+	Arguments   json.RawMessage `json:"arguments"`
 }
 
 type State string

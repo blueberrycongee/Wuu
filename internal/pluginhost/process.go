@@ -261,9 +261,14 @@ func (c *ProcessClient) NotifyServiceChanged(ctx context.Context, params Service
 func (c *ProcessClient) InvokeCapability(ctx context.Context, params CapabilityInvokeParams) (CapabilityInvokeResult, error) {
 	callCtx, cancel := context.WithTimeout(ctx, c.config.Timeout)
 	defer cancel()
+	completed := &atomic.Bool{}
+	c.watchExecution(callCtx, params.ExecutionID, completed)
+	defer completed.Store(true)
 	var result CapabilityInvokeResult
 	if err := c.call(callCtx, "capability.invoke", params, &result); err != nil {
-		c.failFatalCall(err)
+		if ctx.Err() == nil {
+			c.failFatalCall(err)
+		}
 		return CapabilityInvokeResult{}, err
 	}
 	if len(result.Output) == 0 {
@@ -318,6 +323,9 @@ func (c *ProcessClient) Activate(ctx context.Context) error {
 func (c *ProcessClient) ExecuteTool(ctx context.Context, params ToolExecuteParams) (ToolExecuteResult, error) {
 	callCtx, cancel := context.WithTimeout(ctx, c.config.Timeout)
 	defer cancel()
+	completed := &atomic.Bool{}
+	c.watchExecution(callCtx, params.ExecutionID, completed)
+	defer completed.Store(true)
 	var result ToolExecuteResult
 	if err := c.call(callCtx, "tool.execute", params, &result); err != nil {
 		if ctx.Err() == nil {
@@ -332,6 +340,37 @@ func (c *ProcessClient) ExecuteTool(ctx context.Context, params ToolExecuteParam
 	}
 	result.Result = result.Result.Clone()
 	return result, nil
+}
+
+// watchExecution translates Go context cancellation of one dispatch into the
+// cross-process execution.cancel signal. The frame is fire-and-forget: the
+// core's terminal state is decided by its own timeout normalization, never by
+// waiting on plugin acknowledgement.
+func (c *ProcessClient) watchExecution(ctx context.Context, executionID string, completed *atomic.Bool) {
+	if executionID == "" {
+		return
+	}
+	go func() {
+		<-ctx.Done()
+		if completed.Load() {
+			return
+		}
+		c.notifyExecutionCancel(executionID)
+	}()
+}
+
+// notifyExecutionCancel writes the execution.cancel frame without registering
+// a pending response; whatever the plugin writes back for it is discarded.
+func (c *ProcessClient) notifyExecutionCancel(executionID string) {
+	payload, err := json.Marshal(rpcRequest{
+		ID:     fmt.Sprintf("%d", c.seq.Add(1)),
+		Method: ExecutionCancelMethod,
+		Params: ExecutionCancelParams{ExecutionID: executionID},
+	})
+	if err != nil {
+		return
+	}
+	_ = c.writeLine(payload)
 }
 
 func (c *ProcessClient) Close(ctx context.Context) error {
