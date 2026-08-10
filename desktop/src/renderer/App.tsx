@@ -1460,6 +1460,11 @@ export function App(): JSX.Element {
       // snapshots live so expanding a workspace only reveals state; it never
       // needs to wait for a status refresh first.
       syncSidebarServerEventStable(event);
+      // Queue state belongs to the composer message, not to whichever workdir
+      // is currently visible. Process these low-rate lifecycle events before
+      // active-context filtering so background turns cannot leave a phantom
+      // queued message behind.
+      syncPendingComposerMessagesFromServerEvent(event);
       if (!serverEventTargetsActiveContext(event, appStateRef.current)) {
         return;
       }
@@ -1487,7 +1492,6 @@ export function App(): JSX.Element {
       if (serverEventShouldRefreshGit(event)) {
         scheduleGitStatusRefresh(600);
       }
-      syncPendingComposerMessagesFromServerEvent(event);
       setState((current) => reduceServerEvent(current, event));
     });
 

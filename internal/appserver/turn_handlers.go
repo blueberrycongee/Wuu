@@ -2691,6 +2691,12 @@ func (s *Server) drainQueuedTurns(threadID string) {
 	}
 	if threadIsRunning(th) {
 		s.clearQueuedTurnDrain(threadID)
+		// Completion may have tried to kick the queue while this drain still
+		// owned the marker and been rejected as a duplicate. Recheck after
+		// releasing ownership so that interleaving cannot lose the only wake-up.
+		if !threadIsRunning(th) {
+			s.kickQueuedTurnDrain(threadID)
+		}
 		return
 	}
 
@@ -2701,7 +2707,8 @@ func (s *Server) drainQueuedTurns(threadID string) {
 	}
 	started, err := s.startQueuedTurn(context.Background(), threadID, entry)
 	executionBusy := errors.Is(err, errThreadExecutionBusy)
-	if err != nil && !executionBusy {
+	retryableAdmission := errors.Is(err, errRetryableTurnAdmission)
+	if err != nil && !executionBusy && !retryableAdmission {
 		providers.DebugLogf("start queued turn for thread %q: %v", threadID, err)
 		if reference := entry.snapshot.PluginTurn; reference != nil {
 			if lifecycleErr := s.notifyPluginTurnLifecycle(context.Background(), reference.PluginID, pluginhost.AgentTurnLifecycleInput{
@@ -2711,14 +2718,18 @@ func (s *Server) drainQueuedTurns(threadID string) {
 				providers.DebugLogf("notify queued plugin turn failure for thread %q: %v", threadID, lifecycleErr)
 			}
 		}
+		_ = s.writeNotification(NotificationTurnDequeued, TurnDequeuedNotification{
+			ThreadID: threadID,
+			QueueID:  entry.id,
+		})
 	}
 	requeued := false
-	if !started && (err == nil || executionBusy) {
+	if !started && (err == nil || executionBusy || retryableAdmission) {
 		s.prependQueuedUserTurns(threadID, []queuedTurn{entry})
 		requeued = true
 	}
 	s.clearQueuedTurnDrain(threadID)
-	if requeued && executionBusy {
+	if requeued && (executionBusy || retryableAdmission) {
 		s.scheduleThreadExecutionLeaseRetry(func() { s.kickQueuedTurnDrain(threadID) })
 		return
 	}
@@ -3266,6 +3277,12 @@ func (s *Server) drainAgentCompletionTurns(threadID string) {
 	}
 	if threadIsRunning(th) {
 		s.clearAgentCompletionDrain(threadID)
+		// Match the queued-user drain handshake: a completion kick can race with
+		// this owner releasing its marker, so recheck after the release before
+		// allowing the wake-up to disappear.
+		if !threadIsRunning(th) {
+			s.kickAgentCompletionDrain(threadID)
+		}
 		return
 	}
 	// User-authored work wins over automatic completion wakeups. The user turn

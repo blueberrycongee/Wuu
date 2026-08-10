@@ -271,6 +271,7 @@ export class AppServerClient {
   private pending = new Map<string, PendingRequest>();
   private threadCwdsByID = new Map<string, string>();
   private runningThreadIDs = new Set<string>();
+  private queuedTurnKeys = new Set<string>();
   private nextRequestID = 1;
   private stdoutBuffer = "";
   private disposing = false;
@@ -362,7 +363,11 @@ export class AppServerClient {
   }
 
   isBusy(): boolean {
-    return this.pending.size > 0 || this.runningThreadIDs.size > 0;
+    return (
+      this.pending.size > 0 ||
+      this.runningThreadIDs.size > 0 ||
+      this.queuedTurnKeys.size > 0
+    );
   }
 
   knownThreadCwds(): string[] {
@@ -551,6 +556,7 @@ export class AppServerClient {
     this.pending.clear();
     this.threadCwdsByID.clear();
     this.runningThreadIDs.clear();
+    this.queuedTurnKeys.clear();
 
     if (terminateChild && !child.killed) {
       try {
@@ -646,9 +652,37 @@ export class AppServerClient {
     const threadID =
       typeof params?.thread_id === "string" ? params.thread_id : undefined;
     switch (message.method) {
+      case "turn/queued": {
+        const queued = isRecord(params?.queued) ? params.queued : undefined;
+        if (
+          typeof queued?.thread_id === "string" &&
+          typeof queued.id === "string"
+        ) {
+          this.queuedTurnKeys.add(queuedTurnKey(queued.thread_id, queued.id));
+        }
+        return;
+      }
       case "turn/started":
         if (threadID) {
           this.runningThreadIDs.add(threadID);
+          if (typeof params?.queue_id === "string") {
+            this.queuedTurnKeys.delete(
+              queuedTurnKey(threadID, params.queue_id),
+            );
+          }
+        }
+        return;
+      case "turn/dequeued":
+        if (threadID && typeof params?.queue_id === "string") {
+          this.queuedTurnKeys.delete(queuedTurnKey(threadID, params.queue_id));
+        }
+        return;
+      case "turn/held":
+        if (threadID) {
+          // Interrupt moves ordinary in-memory queue entries into the durable
+          // held snapshot. They no longer require this app-server process to
+          // stay resident.
+          this.deleteQueuedTurnsForThread(threadID);
         }
         return;
       case "turn/completed":
@@ -669,6 +703,18 @@ export class AppServerClient {
     params: unknown,
     result: unknown,
   ): void {
+    if (method === "turn/queue" && isRecord(result)) {
+      const queued = isRecord(result.queued) ? result.queued : undefined;
+      if (
+        typeof queued?.thread_id === "string" &&
+        typeof queued.id === "string"
+      ) {
+        // The response is handled before the following turn/queued
+        // notification. Track it here so LRU eviction cannot tear down the
+        // app-server in that one-line gap.
+        this.queuedTurnKeys.add(queuedTurnKey(queued.thread_id, queued.id));
+      }
+    }
     if (
       method === "thread/list" &&
       isRecord(result) &&
@@ -714,6 +760,19 @@ export class AppServerClient {
       this.runningThreadIDs.delete(value.id);
     }
   }
+
+  private deleteQueuedTurnsForThread(threadID: string): void {
+    const prefix = `${threadID}\u0000`;
+    for (const key of this.queuedTurnKeys) {
+      if (key.startsWith(prefix)) {
+        this.queuedTurnKeys.delete(key);
+      }
+    }
+  }
+}
+
+function queuedTurnKey(threadID: string, queueID: string): string {
+  return `${threadID}\u0000${queueID}`;
 }
 
 interface AppServerHelper {

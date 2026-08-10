@@ -258,6 +258,16 @@ export function useComposerPendingState({
     if (event.kind !== "notification") {
       return;
     }
+    const method = event.message.method;
+    if (
+      method !== "turn/held" &&
+      method !== "thread/resumed" &&
+      method !== "turn/started" &&
+      method !== "turn/dequeued" &&
+      method !== "item/completed"
+    ) {
+      return;
+    }
     const params = isRecord(event.message.params)
       ? event.message.params
       : undefined;
@@ -266,12 +276,12 @@ export function useComposerPendingState({
     }
     const threadID = stringValue(params, "thread_id");
     if (
-      event.message.method === "turn/held" ||
-      event.message.method === "thread/resumed"
+      method === "turn/held" ||
+      method === "thread/resumed"
     ) {
       const snapshot = heldComposerMessagesFromParams(
         params,
-        event.message.method,
+        method,
       );
       if (!snapshot) {
         return;
@@ -281,21 +291,21 @@ export function useComposerPendingState({
       );
       return;
     }
-    if (event.message.method === "turn/started") {
+    if (method === "turn/started") {
       const queueID = stringValue(params, "queue_id");
       if (queueID) {
         removePendingComposerMessageByID(threadID, queueID);
       }
       return;
     }
-    if (event.message.method === "turn/dequeued") {
+    if (method === "turn/dequeued") {
       const queueID = stringValue(params, "queue_id");
       if (queueID) {
         removePendingComposerMessageByID(threadID, queueID, "queue");
       }
       return;
     }
-    if (event.message.method === "item/completed") {
+    if (method === "item/completed") {
       const item = threadItemFromRecord(recordValue(params, "item"));
       if (item?.type === "user_message" && item.source_id) {
         removePendingComposerMessageByID(threadID, item.source_id);
