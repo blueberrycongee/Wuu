@@ -273,16 +273,17 @@ type executionUpdateRecorder interface {
 }
 
 type kernelHostServices struct {
-	mu         sync.RWMutex
-	active     bool
-	services   map[string]*pluginHostServices
-	registry   *pluginhost.ServiceRegistry
-	generation func() uint64
-	executions executionUpdateRecorder
+	mu             sync.RWMutex
+	active         bool
+	services       map[string]*pluginHostServices
+	registry       *pluginhost.ServiceRegistry
+	generation     func() uint64
+	executions     executionUpdateRecorder
+	driverGateways *driverGatewayTable
 }
 
 func newKernelHostServices(generation func() uint64, executions executionUpdateRecorder) *kernelHostServices {
-	return &kernelHostServices{services: make(map[string]*pluginHostServices), generation: generation, executions: executions}
+	return &kernelHostServices{services: make(map[string]*pluginHostServices), generation: generation, executions: executions, driverGateways: newDriverGatewayTable()}
 }
 
 func (k *kernelHostServices) add(pluginID string, services *pluginHostServices) {
@@ -340,6 +341,14 @@ func (k *kernelHostServices) KernelServiceRegistrations() []pluginhost.ServiceRe
 		pluginhost.ServiceRegistration{
 			Descriptor: pluginhost.KernelExecutionUpdateDescriptor(),
 			Invoker:    &executionUpdateInvoker{parent: k}, Kernel: true,
+		},
+		pluginhost.ServiceRegistration{
+			Descriptor: pluginhost.KernelDriverModelLoopDescriptor(),
+			Invoker:    &driverModelLoopInvoker{parent: k}, Kernel: true,
+		},
+		pluginhost.ServiceRegistration{
+			Descriptor: pluginhost.KernelDriverCheckpointDescriptor(),
+			Invoker:    &driverCheckpointInvoker{parent: k}, Kernel: true,
 		},
 	)
 	return registrations

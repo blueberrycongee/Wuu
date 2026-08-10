@@ -52,6 +52,15 @@ const (
 	// KernelExecutionUpdateService is the kernel's execution progress
 	// endpoint; the constant lives with the execution scope vocabulary.
 	KernelExecutionUpdateService = ExecutionUpdateService
+
+	// KernelDriverModelLoopService is the kernel gateway endpoint a remote
+	// loop driver executes model loops through; calls are routed to the
+	// gateway registered for the execution id in the params.
+	KernelDriverModelLoopService = "driver.model_loop"
+
+	// KernelDriverCheckpointService is the kernel gateway endpoint a remote
+	// loop driver persists checkpoints through.
+	KernelDriverCheckpointService = "driver.checkpoint"
 )
 
 // KernelServiceDescriptors are the host-provided services available to every
@@ -110,6 +119,25 @@ func KernelExecutionUpdateDescriptor() ServiceDescriptor {
 	return ServiceDescriptor{
 		Name: ExecutionUpdateService, Version: "1.0.0",
 		Methods: []ServiceMethodDescriptor{{Name: KernelServiceMethod, InputSchema: "execution.update.request.v1", OutputSchema: "execution.update.response.v1"}},
+	}
+}
+
+// KernelDriverModelLoopDescriptor is the descriptor the kernel registers for
+// the remote-driver model-loop gateway. The method set is the single kernel
+// verb; execution scoping rides the params.
+func KernelDriverModelLoopDescriptor() ServiceDescriptor {
+	return ServiceDescriptor{
+		Name: KernelDriverModelLoopService, Version: "1.0.0",
+		Methods: []ServiceMethodDescriptor{{Name: KernelServiceMethod, InputSchema: "driver.model_loop.request.v1", OutputSchema: "driver.model_loop.response.v1"}},
+	}
+}
+
+// KernelDriverCheckpointDescriptor is the descriptor the kernel registers
+// for the remote-driver checkpoint gateway.
+func KernelDriverCheckpointDescriptor() ServiceDescriptor {
+	return ServiceDescriptor{
+		Name: KernelDriverCheckpointService, Version: "1.0.0",
+		Methods: []ServiceMethodDescriptor{{Name: KernelServiceMethod, InputSchema: "driver.checkpoint.request.v1", OutputSchema: "driver.checkpoint.response.v1"}},
 	}
 }
 
