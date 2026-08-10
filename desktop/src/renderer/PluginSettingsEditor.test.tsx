@@ -119,12 +119,27 @@ describe("PluginSettingsEditor", () => {
   });
 
   it("does not expose settings for unapproved or disabled plugins", async () => {
-    installAPI();
+    const getPluginDiagnostics = vi.fn();
+    installAPI({ getPluginDiagnostics });
     await renderEditor({ ...pluginRecord(), approval_state: "pending" });
     expect(container.querySelector(".plugin-settings-editor")).toBeNull();
+    expect(getPluginDiagnostics).not.toHaveBeenCalled();
 
     await act(async () => root?.render(<PluginSettingsEditor plugin={{ ...pluginRecord(), enabled: false }} />));
     expect(container.querySelector(".plugin-settings-editor")).toBeNull();
+    expect(getPluginDiagnostics).not.toHaveBeenCalled();
+  });
+
+  it("loads diagnostics after a plugin becomes approved and enabled", async () => {
+    const getPluginDiagnostics = vi.fn(async ({ id }) => ({ id, diagnostics: [] }));
+    installAPI({ getPluginDiagnostics });
+
+    await renderEditor({ ...pluginRecord(), approval_state: "pending", enabled: false });
+    expect(getPluginDiagnostics).not.toHaveBeenCalled();
+
+    await act(async () => root?.render(<PluginSettingsEditor plugin={pluginRecord()} />));
+    expect(getPluginDiagnostics).toHaveBeenCalledOnce();
+    expect(container.textContent).not.toContain("desktop plugin is not approved and enabled");
   });
 
   it("shows replace conflicts and persists a different winner", async () => {

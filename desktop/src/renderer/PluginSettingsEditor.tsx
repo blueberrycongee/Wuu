@@ -36,7 +36,12 @@ export function PluginSettingsEditor({
 
   useEffect(() => {
     let cancelled = false;
-    if (!fingerprint || !window.wuu.getPluginDiagnostics) return;
+    if (!approved || plugin.enabled === false || !fingerprint || !window.wuu.getPluginDiagnostics) {
+      setRuntimeDiagnostics([]);
+      setRuntimeDiagnosticError("");
+      return;
+    }
+    setRuntimeDiagnostics([]);
     setRuntimeDiagnosticError("");
     void window.wuu.getPluginDiagnostics({ id: plugin.id, fingerprint }).then((result) => {
       if (!cancelled) setRuntimeDiagnostics(result.diagnostics);
@@ -44,7 +49,7 @@ export function PluginSettingsEditor({
       if (!cancelled) setRuntimeDiagnosticError(errorMessage(loadError, "无法读取插件诊断"));
     });
     return () => { cancelled = true; };
-  }, [fingerprint, plugin.id]);
+  }, [approved, fingerprint, plugin.enabled, plugin.id]);
 
   if (!approved || plugin.enabled === false || !fingerprint || (settings.length === 0 && conflicts.length === 0 && rendererDiagnostics.length === 0 && runtimeDiagnostics.length === 0 && !runtimeDiagnosticError)) {
     return null;
