@@ -8,8 +8,8 @@ import (
 	"strings"
 
 	"github.com/blueberrycongee/wuu/internal/extensions"
-	"github.com/blueberrycongee/wuu/internal/pluginhost"
 	pluginpkg "github.com/blueberrycongee/wuu/internal/plugin"
+	"github.com/blueberrycongee/wuu/internal/pluginhost"
 	"github.com/blueberrycongee/wuu/internal/pluginsettings"
 )
 
