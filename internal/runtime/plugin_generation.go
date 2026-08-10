@@ -39,6 +39,10 @@ type PluginGeneration struct {
 	systemPrompts     *agent.SystemPromptAssembler
 	compactions       *agent.CompactionRegistry
 	ownedRoots        []string
+	// driverGateways is this generation's remote-driver gateway routing
+	// table; executions registered here route only to this generation's
+	// kernel services.
+	driverGateways *driverGatewayTable
 }
 
 // PreflightExtensions discovers and builds a replacement without changing the
@@ -167,7 +171,7 @@ func (s *Session) buildPluginGeneration(cfg config.Config, discovered []pluginpk
 		}
 		active = activationPlan.Plugins
 	}
-	host, err := buildPluginHost(active, s.RootDir, s.WuuHome, s.StateDir, required, start, s.PluginSessionRouter)
+	host, kernel, err := buildPluginHost(active, s.RootDir, s.WuuHome, s.StateDir, required, start, s.PluginSessionRouter)
 	if err != nil {
 		for _, root := range ownedRoots {
 			_ = os.RemoveAll(root)
@@ -196,6 +200,7 @@ func (s *Session) buildPluginGeneration(cfg config.Config, discovered []pluginpk
 		systemPrompts:     systemPrompts,
 		compactions:       compactions,
 		ownedRoots:        append([]string(nil), ownedRoots...),
+		driverGateways:    kernel.driverGateways,
 	}
 	generation.mcp, err = startMCPManager(cfg, active, required)
 	if err != nil {

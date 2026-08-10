@@ -219,6 +219,18 @@ func (r *ServiceRegistry) HasProvider(name string, major int) bool {
 	return ok
 }
 
+// ProviderPluginID reports which plugin provides one service major, so
+// kernel-side resolution can stamp execution ownership (remote drivers).
+func (r *ServiceRegistry) ProviderPluginID(name string, major int) (string, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	provider, ok := r.providers[serviceKey{name: strings.TrimSpace(name), major: major}]
+	if !ok {
+		return "", false
+	}
+	return provider.pluginID, true
+}
+
 // ProviderMajors returns the provided majors for one service name, for
 // diagnostics and version-mismatch errors.
 func (r *ServiceRegistry) ProviderMajors(name string) []int {

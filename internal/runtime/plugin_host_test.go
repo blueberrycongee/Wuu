@@ -143,7 +143,7 @@ func TestPluginRequestInterceptorSkipsHostsWithoutTransforms(t *testing.T) {
 }
 
 func TestStartPluginHostPreservesRuntimeFailure(t *testing.T) {
-	host := startPluginHost([]pluginpkg.Plugin{{
+	host, _ := startPluginHost([]pluginpkg.Plugin{{
 		Manifest: pluginpkg.Manifest{ID: "broken", Runtime: &pluginpkg.RuntimeSpec{
 			Protocol: pluginhost.ProtocolName,
 			Command:  "/definitely/not/a/wuu-plugin",

@@ -20,10 +20,10 @@ func startPluginClient(ctx context.Context, cfg pluginhost.ProcessConfig) (plugi
 	return pluginhost.Start(ctx, cfg)
 }
 
-func startPluginHost(plugins []pluginpkg.Plugin, projectRoot, wuuHome, workspaceStateDir string, turnRouter *PluginSessionRouter) *pluginhost.Host {
-	host, err := buildPluginHost(plugins, projectRoot, wuuHome, workspaceStateDir, nil, startPluginClient, turnRouter)
+func startPluginHost(plugins []pluginpkg.Plugin, projectRoot, wuuHome, workspaceStateDir string, turnRouter *PluginSessionRouter) (*pluginhost.Host, *kernelHostServices) {
+	host, kernel, err := buildPluginHost(plugins, projectRoot, wuuHome, workspaceStateDir, nil, startPluginClient, turnRouter)
 	if err != nil {
-		return pluginhost.New(pluginhost.Failed("capability-negotiation", err))
+		return pluginhost.New(pluginhost.Failed("capability-negotiation", err)), nil
 	}
 	if err := host.Activate(context.Background()); err != nil {
 		providers.DebugLogf("activate initial plugin generation: %v", err)
@@ -31,10 +31,10 @@ func startPluginHost(plugins []pluginpkg.Plugin, projectRoot, wuuHome, workspace
 	if registry := host.ServiceRegistry(); registry != nil {
 		registry.Activate()
 	}
-	return host
+	return host, kernel
 }
 
-func buildPluginHost(plugins []pluginpkg.Plugin, projectRoot, wuuHome, workspaceStateDir string, required map[string]bool, start pluginClientStarter, turnRouter *PluginSessionRouter) (*pluginhost.Host, error) {
+func buildPluginHost(plugins []pluginpkg.Plugin, projectRoot, wuuHome, workspaceStateDir string, required map[string]bool, start pluginClientStarter, turnRouter *PluginSessionRouter) (*pluginhost.Host, *kernelHostServices, error) {
 	host := pluginhost.New()
 	var started []pluginhost.Client
 	kernel := newKernelHostServices(func() uint64 {
@@ -80,7 +80,7 @@ func buildPluginHost(plugins []pluginpkg.Plugin, projectRoot, wuuHome, workspace
 			host.Add(pluginhost.Failed(item.ID, err))
 			if required[item.ID] || pluginhost.IsCapabilityNegotiationError(err) {
 				closeErr := closeStarted()
-				return nil, pluginActivationError(item.ID, err, closeErr)
+				return nil, nil, pluginActivationError(item.ID, err, closeErr)
 			}
 			continue
 		}
@@ -108,9 +108,9 @@ func buildPluginHost(plugins []pluginpkg.Plugin, projectRoot, wuuHome, workspace
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		closeErr := host.Close(ctx)
 		cancel()
-		return nil, errors.Join(err, closeErr)
+		return nil, nil, errors.Join(err, closeErr)
 	}
-	return host, nil
+	return host, kernel, nil
 }
 
 func pluginActivationError(id string, startErr, closeErr error) error {

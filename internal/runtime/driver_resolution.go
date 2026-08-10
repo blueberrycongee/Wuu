@@ -1,0 +1,91 @@
+package runtime
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"strings"
+
+	"github.com/blueberrycongee/wuu/internal/loopdriver"
+	"github.com/blueberrycongee/wuu/internal/pluginhost"
+)
+
+// DriverServicePrefix is the service-namespace convention a loop driver
+// plugin contributes under: profile "singlepass" resolves to the versioned
+// service "driver.singlepass" major 1.
+const DriverServicePrefix = "driver."
+
+// registryDriverInvoker adapts the service registry to loopdriver.RemoteInvoker.
+type registryDriverInvoker struct {
+	registry *pluginhost.ServiceRegistry
+	service  string
+	major    int
+}
+
+func (i registryDriverInvoker) InvokeDriver(ctx context.Context, executionID string, method string, params json.RawMessage) (json.RawMessage, error) {
+	result, hostErr := i.registry.CallProvider(ctx, i.service, i.major, method, params, executionID)
+	if hostErr != nil {
+		return nil, fmt.Errorf("%s: %s", hostErr.Code, hostErr.Message)
+	}
+	return result, nil
+}
+
+// dynamicGatewayRegistrar resolves the current generation's gateway table at
+// registration time, so a driver bound before a generation swap still lands
+// in the table the live kernel services consult.
+type dynamicGatewayRegistrar struct {
+	tableFn       func() *driverGatewayTable
+	ownerPluginID string
+}
+
+func (r dynamicGatewayRegistrar) RegisterGateway(executionID string, gateway loopdriver.KernelGateway) (func(), error) {
+	table := r.tableFn()
+	if table == nil {
+		return nil, fmt.Errorf("driver gateway table is unavailable")
+	}
+	return table.register(executionID, gateway, r.ownerPluginID)
+}
+
+// currentDriverGatewayTable resolves the live generation's gateway table; it
+// runs only at remote-run start, so the mutex cost is negligible.
+func (s *Session) currentDriverGatewayTable() *driverGatewayTable {
+	if s == nil {
+		return nil
+	}
+	s.pluginGenerationMu.Lock()
+	defer s.pluginGenerationMu.Unlock()
+	if s.pluginGeneration == nil {
+		return nil
+	}
+	return s.pluginGeneration.driverGateways
+}
+
+// resolveLoopDriver binds one session's selected driver profile to a Driver:
+// an empty profile keeps the in-process default; a profile with a live
+// provider becomes a RemoteDriver routed through the registry; anything else
+// fails closed so history stays readable but new runs are rejected with a
+// diagnostic error.
+func resolveLoopDriver(profile string, host *pluginhost.Host, tableFn func() *driverGatewayTable) loopdriver.Driver {
+	profile = strings.TrimSpace(profile)
+	if profile == "" {
+		return nil
+	}
+	service := DriverServicePrefix + profile
+	var registry *pluginhost.ServiceRegistry
+	if host != nil {
+		registry = host.ServiceRegistry()
+	}
+	if registry == nil {
+		return loopdriver.FailClosedDriver{Profile: profile, Reason: "service registry is unavailable"}
+	}
+	ownerPluginID, found := registry.ProviderPluginID(service, 1)
+	if !found {
+		return loopdriver.FailClosedDriver{Profile: profile, Reason: fmt.Sprintf("no provider for service %s major version 1", service)}
+	}
+	return &loopdriver.RemoteDriver{
+		Profile:   profile,
+		ServiceID: service,
+		Invoker:   registryDriverInvoker{registry: registry, service: service, major: 1},
+		Gateways:  dynamicGatewayRegistrar{tableFn: tableFn, ownerPluginID: ownerPluginID},
+	}
+}

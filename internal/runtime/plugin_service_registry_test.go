@@ -51,7 +51,7 @@ func buildServiceTestHost(t *testing.T, clients map[string]pluginhost.Client, pl
 	start := func(_ context.Context, cfg pluginhost.ProcessConfig) (pluginhost.Client, error) {
 		return clients[cfg.ID], nil
 	}
-	host, err := buildPluginHost(plugins, "", "", "", nil, start, nil)
+	host, _, err := buildPluginHost(plugins, "", "", "", nil, start, nil)
 	if err != nil {
 		t.Fatalf("buildPluginHost() = %v", err)
 	}

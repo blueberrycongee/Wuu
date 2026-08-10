@@ -80,6 +80,10 @@ type Options struct {
 	// into sessions.
 	PermissionModeExplicit bool
 	NoTools                bool
+	// DriverProfile selects the loop driver for new turns: empty keeps the
+	// in-process default; a profile name binds the plugin that provides the
+	// versioned "driver.<profile>" service. Unknown profiles fail closed.
+	DriverProfile string
 	// SafeMode discovers plugin manifests for management but activates no
 	// runtime, tool, skill, hook, or desktop contribution from a plugin.
 	SafeMode bool
@@ -101,24 +105,27 @@ const (
 // stream runner. UI surfaces should depend on this instead of reassembling the
 // pieces themselves.
 type Session struct {
-	ProviderName             string
-	Model                    string
-	RootDir                  string
-	Host                     Host
-	WorkspaceID              string
-	StateDir                 string
-	ConfigPath               string
-	HomeDir                  string
-	ConfigLoadMode           ConfigLoadMode
-	SessionDir               string
-	StreamRunner             *agent.StreamRunner
-	TitleClient              providers.Client
-	HookDispatcher           *hooks.Dispatcher
-	Skills                   []skills.Skill
-	Plugins                  []pluginpkg.Plugin
-	ActivePlugins            []pluginpkg.Plugin
-	ExtensionSettings        *extensions.Settings
-	PluginHost               *pluginhost.Host
+	ProviderName      string
+	Model             string
+	RootDir           string
+	Host              Host
+	WorkspaceID       string
+	StateDir          string
+	ConfigPath        string
+	HomeDir           string
+	ConfigLoadMode    ConfigLoadMode
+	SessionDir        string
+	StreamRunner      *agent.StreamRunner
+	TitleClient       providers.Client
+	HookDispatcher    *hooks.Dispatcher
+	Skills            []skills.Skill
+	Plugins           []pluginpkg.Plugin
+	ActivePlugins     []pluginpkg.Plugin
+	ExtensionSettings *extensions.Settings
+	PluginHost        *pluginhost.Host
+	// DriverProfile records the driver profile bound at construction, for
+	// diagnostics; the driver itself lives on the stream runner template.
+	DriverProfile            string
 	PluginSessionRouter      *PluginSessionRouter
 	systemPrompts            *agent.SystemPromptAssembler
 	InstructionFiles         []instructions.File
@@ -195,6 +202,7 @@ func (s *Session) cloneForThreadModel() *Session {
 		ActivePlugins:               s.ActivePlugins,
 		ExtensionSettings:           s.ExtensionSettings,
 		PluginHost:                  s.PluginHost,
+		DriverProfile:               s.DriverProfile,
 		PluginSessionRouter:         s.PluginSessionRouter,
 		systemPrompts:               s.systemPrompts,
 		InstructionFiles:            s.InstructionFiles,
@@ -388,7 +396,7 @@ func NewSession(opts Options) (*Session, error) {
 	}
 	var agentControl *agentcontrol.AgentControl
 	pluginTurnRouter := NewPluginSessionRouter()
-	pluginHost := startPluginHost(activePlugins, rootDir, wuuHome, workspaceStateDir, pluginTurnRouter)
+	pluginHost, pluginKernel := startPluginHost(activePlugins, rootDir, wuuHome, workspaceStateDir, pluginTurnRouter)
 	systemPrompts, compactions, capabilityErr := buildPluginAgentCapabilities(context.Background(), pluginHost, resolvedName, providerCfg.Model, rootDir)
 	if capabilityErr != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
@@ -692,6 +700,15 @@ func NewSession(opts Options) (*Session, error) {
 		mcpBinding:    mcpActivityBindingsFromPlugins(activePlugins),
 		systemPrompts: systemPrompts,
 		compactions:   compactions,
+	}
+	if pluginKernel != nil {
+		runtimeSession.pluginGeneration.driverGateways = pluginKernel.driverGateways
+	}
+	// Bind the session-selected loop driver: an installed profile resolves to
+	// a remote driver behind the registry; a missing one fails closed.
+	if driver := resolveLoopDriver(opts.DriverProfile, pluginHost, runtimeSession.currentDriverGatewayTable); driver != nil {
+		streamRunner.LoopDriver = driver
+		runtimeSession.DriverProfile = strings.TrimSpace(opts.DriverProfile)
 	}
 	if toolkit != nil {
 		runtimeSession.pluginGeneration.mcp = toolkit.MCPManager()
