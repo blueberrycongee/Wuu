@@ -848,7 +848,8 @@ func ValidateHostServiceMethod(m HostServiceMethod) error {
 	switch m {
 	case HostServiceStorageGet, HostServiceStorageSet, HostServiceStorageDelete, HostServiceStorageKeys, HostServiceStorageCompareExchange,
 		HostServiceSettingsGet, HostServiceSettingsList,
-		HostServiceSessionCreate, HostServiceSessionSend, HostServiceSessionList, HostServiceSessionCancel:
+		HostServiceSessionCreate, HostServiceSessionSend, HostServiceSessionList, HostServiceSessionCancel,
+		ServiceCallMethod:
 		return nil
 	default:
 		return fmt.Errorf("unknown host service method %q", m)
@@ -861,6 +862,7 @@ func AllHostServices() []HostServiceMethod {
 		HostServiceStorageGet, HostServiceStorageSet, HostServiceStorageDelete, HostServiceStorageKeys, HostServiceStorageCompareExchange,
 		HostServiceSettingsGet, HostServiceSettingsList,
 		HostServiceSessionCreate, HostServiceSessionSend, HostServiceSessionList, HostServiceSessionCancel,
+		ServiceCallMethod,
 	}
 }
 
@@ -872,4 +874,17 @@ func cloneCapabilityDescriptors(capabilities []CapabilityDescriptor) []Capabilit
 		cloned[index].Conflicts = append([]string(nil), capability.Conflicts...)
 	}
 	return cloned
+}
+
+func cloneServiceDescriptors(services []ServiceDescriptor) []ServiceDescriptor {
+	cloned := make([]ServiceDescriptor, len(services))
+	for index, service := range services {
+		cloned[index] = service
+		cloned[index].Methods = append([]ServiceMethodDescriptor(nil), service.Methods...)
+	}
+	return cloned
+}
+
+func cloneServiceRequirements(requirements []ServiceRequirement) []ServiceRequirement {
+	return append([]ServiceRequirement(nil), requirements...)
 }

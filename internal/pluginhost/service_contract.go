@@ -1,6 +1,7 @@
 package pluginhost
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -19,7 +20,7 @@ const (
 	// registered service. It is advertised alongside host services but is
 	// validated and routed through the service registry, not the fixed host
 	// service table.
-	ServiceCallMethod HostServiceMethod = "service.call"
+	ServiceCallMethod HostServiceMethod = "host.service.call"
 
 	// ServiceInvokeMethod is the host -> plugin request delivering one
 	// validated call to the service provider.
@@ -81,6 +82,13 @@ type ServiceInvokeParams struct {
 type ServiceChangedParams struct {
 	Service string `json:"service"`
 	Reason  string `json:"reason,omitempty"`
+}
+
+// ServiceRouter routes validated service.call frames into the active
+// generation's service registry. The runtime implements it; the pluginhost
+// package depends only on this narrow surface.
+type ServiceRouter interface {
+	RouteServiceCall(ctx context.Context, pluginID string, params ServiceCallParams) (json.RawMessage, *HostServiceError)
 }
 
 // ServiceVersionMajor parses the declared semver and returns its major. The

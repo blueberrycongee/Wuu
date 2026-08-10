@@ -22,15 +22,16 @@ var productionPluginHostServices = pluginhost.AllHostServices()
 // never accepts a caller-supplied plugin ID or filesystem path: ownership and
 // roots are captured from the validated plugin inventory at activation time.
 type pluginHostServices struct {
-	mu          sync.RWMutex
-	active      bool
-	pluginID    string
-	subjectID   string
-	fingerprint string
-	projectRoot string
-	wuuHome     string
-	settings    map[string]pluginpkg.SettingDefinition
-	turnRouter  *PluginSessionRouter
+	mu              sync.RWMutex
+	active          bool
+	pluginID        string
+	subjectID       string
+	fingerprint     string
+	projectRoot     string
+	wuuHome         string
+	settings        map[string]pluginpkg.SettingDefinition
+	turnRouter      *PluginSessionRouter
+	serviceRegistry *pluginhost.ServiceRegistry
 }
 
 func newPluginHostServices(item pluginpkg.Plugin, projectRoot, wuuHome string, turnRouter *PluginSessionRouter) *pluginHostServices {
@@ -57,6 +58,32 @@ func (s *pluginHostServices) CloseHostServices() {
 	s.mu.Lock()
 	s.active = false
 	s.mu.Unlock()
+}
+
+// setServiceRegistry binds the generation's service registry after every
+// plugin process of the generation has completed initialize. Calls only flow
+// once the generation is active; the registry enforces that itself.
+func (s *pluginHostServices) setServiceRegistry(registry *pluginhost.ServiceRegistry) {
+	s.mu.Lock()
+	s.serviceRegistry = registry
+	s.mu.Unlock()
+}
+
+// RouteServiceCall implements pluginhost.ServiceRouter: the transport passes
+// the caller identity it authenticated at process start, and every
+// authorization decision belongs to the registry.
+func (s *pluginHostServices) RouteServiceCall(ctx context.Context, pluginID string, params pluginhost.ServiceCallParams) (json.RawMessage, *pluginhost.HostServiceError) {
+	if s == nil {
+		return nil, &pluginhost.HostServiceError{Code: "service_unavailable", Message: "service routing is unavailable"}
+	}
+	s.mu.RLock()
+	active := s.active
+	registry := s.serviceRegistry
+	s.mu.RUnlock()
+	if !active || registry == nil {
+		return nil, &pluginhost.HostServiceError{Code: "service_unavailable", Message: "service routing is unavailable for this plugin generation"}
+	}
+	return registry.Call(ctx, pluginID, params)
 }
 
 func (s *pluginHostServices) HandleHostService(ctx context.Context, method pluginhost.HostServiceMethod, raw json.RawMessage) (json.RawMessage, error) {

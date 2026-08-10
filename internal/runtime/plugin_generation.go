@@ -231,6 +231,9 @@ func (s *Session) ActivatePluginGeneration(candidate *PluginGeneration, commit f
 	if err := candidate.host.Activate(context.Background()); err != nil {
 		providers.DebugLogf("activate committed plugin generation: %v", err)
 	}
+	if registry := candidate.host.ServiceRegistry(); registry != nil {
+		registry.Activate()
+	}
 	if err := old.close(); err != nil {
 		providers.DebugLogf("plugin generation cleanup: %v", err)
 	}
@@ -314,6 +317,9 @@ func (g *PluginGeneration) close() error {
 	}
 	if g.host != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		if registry := g.host.ServiceRegistry(); registry != nil {
+			registry.Close(ctx)
+		}
 		err = errors.Join(err, g.host.Close(ctx))
 		cancel()
 		g.host = nil

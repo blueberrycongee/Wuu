@@ -40,6 +40,10 @@ type ProcessConfig struct {
 	Timeout           time.Duration
 	// HostServiceHandler is the live dispatcher for Plugin -> Host calls.
 	HostServiceHandler HostServiceHandler
+	// ServiceRouter routes validated service.call frames into the active
+	// generation's service registry. When nil, service.call requests are
+	// rejected as unavailable.
+	ServiceRouter ServiceRouter
 	// SupportedHostServices is an optional assertion about HostServiceHandler's
 	// declaration. When set it must match exactly; names alone never enable a
 	// service. The handler declaration is what is advertised on the wire.
@@ -92,6 +96,8 @@ type ProcessClient struct {
 	tools              []ToolRegistration
 	protocol           int
 	capabilities       []CapabilityDescriptor
+	providedServices   []ServiceDescriptor
+	requiredServices   []ServiceRequirement
 	negotiated         map[HostServiceMethod]struct{}
 	activationServices map[HostServiceMethod]struct{}
 	lifecycleVersion   int
@@ -197,7 +203,20 @@ func Start(ctx context.Context, config ProcessConfig) (*ProcessClient, error) {
 		client.protocol = ProtocolVersion
 	}
 	client.capabilities = cloneCapabilityDescriptors(initialized.Capabilities)
+	client.providedServices = cloneServiceDescriptors(initialized.ProvidedServices)
+	client.requiredServices = cloneServiceRequirements(initialized.RequiredServices)
 	client.activationServices = negotiatedHostServices(initialized.RequiredHostServices, config.SupportedHostServices)
+	// A consumer plugin gets the service gateway in its negotiated set for the
+	// active generation; the prepare-phase filter below keeps it closed until
+	// activation. Per-call authorization stays with the registry.
+	if len(client.requiredServices) > 0 {
+		for _, advertised := range config.SupportedHostServices {
+			if advertised == ServiceCallMethod {
+				client.activationServices[ServiceCallMethod] = struct{}{}
+				break
+			}
+		}
+	}
 	client.negotiated = preflightNegotiatedHostServices(client.activationServices)
 	client.lifecycleVersion = initialized.LifecycleVersion
 	client.mu.Unlock()
@@ -231,6 +250,36 @@ func (c *ProcessClient) Capabilities() []CapabilityDescriptor {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return cloneCapabilityDescriptors(c.capabilities)
+}
+
+// ProvidedServices returns the service declarations captured during
+// initialize. The registry reads them when the generation is built.
+func (c *ProcessClient) ProvidedServices() []ServiceDescriptor {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return cloneServiceDescriptors(c.providedServices)
+}
+
+// RequiredServices returns the consumer declarations captured during
+// initialize.
+func (c *ProcessClient) RequiredServices() []ServiceRequirement {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return cloneServiceRequirements(c.requiredServices)
+}
+
+// InvokeService delivers one registry-routed call to this provider plugin.
+func (c *ProcessClient) InvokeService(ctx context.Context, params ServiceInvokeParams) (json.RawMessage, error) {
+	var result json.RawMessage
+	if err := c.call(ctx, ServiceInvokeMethod, params, &result); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+// NotifyServiceChanged delivers a best-effort service.changed notification.
+func (c *ProcessClient) NotifyServiceChanged(ctx context.Context, params ServiceChangedParams) error {
+	return c.call(ctx, ServiceChangedMethod, params, nil)
 }
 
 func (c *ProcessClient) InvokeCapability(ctx context.Context, params CapabilityInvokeParams) (CapabilityInvokeResult, error) {
@@ -627,6 +676,9 @@ func (c *ProcessClient) dispatchHostService(ctx context.Context, call HostServic
 	if !negotiated {
 		return c.rejectHostService(call.ID, "service_not_negotiated", fmt.Sprintf("host service %q was not negotiated", call.Method))
 	}
+	if call.Method == ServiceCallMethod {
+		return c.dispatchServiceCall(ctx, call)
+	}
 	result, err := c.config.HostServiceHandler.HandleHostService(ctx, call.Method, bytes.Clone(call.Params))
 	response := HostServiceResult{ID: call.ID}
 	if err != nil {
@@ -648,6 +700,35 @@ func (c *ProcessClient) dispatchHostService(ctx context.Context, call HostServic
 		} else {
 			response.Result = bytes.Clone(result)
 		}
+	}
+	return c.writeHostServiceResult(response)
+}
+
+// dispatchServiceCall routes a validated service.call frame into the active
+// generation's registry. The negotiated-set check in dispatchHostService has
+// already run; the registry performs per-call authorization.
+func (c *ProcessClient) dispatchServiceCall(ctx context.Context, call HostServiceCall) error {
+	var params ServiceCallParams
+	if err := json.Unmarshal(call.Params, &params); err != nil {
+		return c.rejectHostService(call.ID, "invalid_request", "service.call params must be a JSON object with service and method")
+	}
+	if c.config.ServiceRouter == nil {
+		return c.rejectHostService(call.ID, "service_unavailable", "service routing is unavailable for this plugin process")
+	}
+	result, serviceErr := c.config.ServiceRouter.RouteServiceCall(ctx, c.config.ID, params)
+	response := HostServiceResult{ID: call.ID}
+	if serviceErr != nil {
+		response.Error = &HostServiceError{Code: strings.TrimSpace(serviceErr.Code), Message: strings.TrimSpace(serviceErr.Message)}
+		if response.Error.Code == "" {
+			response.Error.Code = "service_unavailable"
+		}
+		if response.Error.Message == "" {
+			response.Error.Message = "service call failed"
+		}
+	} else if len(result) == 0 || !json.Valid(result) {
+		response.Error = &HostServiceError{Code: "service_unavailable", Message: "service provider returned an invalid result"}
+	} else {
+		response.Result = bytes.Clone(result)
 	}
 	return c.writeHostServiceResult(response)
 }

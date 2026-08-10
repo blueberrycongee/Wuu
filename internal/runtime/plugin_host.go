@@ -27,16 +27,31 @@ func startPluginHost(plugins []pluginpkg.Plugin, projectRoot, wuuHome, workspace
 	if err := host.Activate(context.Background()); err != nil {
 		providers.DebugLogf("activate initial plugin generation: %v", err)
 	}
+	if registry := host.ServiceRegistry(); registry != nil {
+		registry.Activate()
+	}
 	return host
 }
 
 func buildPluginHost(plugins []pluginpkg.Plugin, projectRoot, wuuHome, workspaceStateDir string, required map[string]bool, start pluginClientStarter, turnRouter *PluginSessionRouter) (*pluginhost.Host, error) {
 	host := pluginhost.New()
+	var started []pluginhost.Client
+	var handlers []*pluginHostServices
+	closeStarted := func() error {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		var err error
+		for index := len(started) - 1; index >= 0; index-- {
+			err = errors.Join(err, started[index].Close(ctx))
+		}
+		return err
+	}
 	for _, item := range plugins {
 		if item.Runtime == nil {
 			continue
 		}
 		timeout := time.Duration(item.Runtime.Timeout) * time.Second
+		handler := newPluginHostServices(item, projectRoot, wuuHome, turnRouter)
 		client, err := start(context.Background(), pluginhost.ProcessConfig{
 			ID:                 item.ID,
 			Command:            item.Runtime.Command,
@@ -47,18 +62,39 @@ func buildPluginHost(plugins []pluginpkg.Plugin, projectRoot, wuuHome, workspace
 			WuuHome:            wuuHome,
 			WorkspaceStateDir:  workspaceStateDir,
 			Timeout:            timeout,
-			HostServiceHandler: newPluginHostServices(item, projectRoot, wuuHome, turnRouter),
+			HostServiceHandler: handler,
+			ServiceRouter:      handler,
 			PrepareOnly:        true,
 		})
 		if err != nil {
 			host.Add(pluginhost.Failed(item.ID, err))
 			if required[item.ID] || pluginhost.IsCapabilityNegotiationError(err) {
-				ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-				closeErr := host.Close(ctx)
-				cancel()
+				closeErr := closeStarted()
 				return nil, pluginActivationError(item.ID, err, closeErr)
 			}
 			continue
+		}
+		started = append(started, client)
+		handlers = append(handlers, handler)
+	}
+	// The service registry is built from the whole generation's initialize
+	// results before any client is registered, so an unsatisfied required
+	// service blocks that consumer without its capabilities ever going live.
+	// There is no dependency solver; failures are deterministic diagnostics.
+	registry, conflicts := pluginhost.BuildServiceRegistry(started...)
+	for _, handler := range handlers {
+		handler.setServiceRegistry(registry)
+	}
+	host.AttachServiceRegistry(registry, conflicts)
+	for _, client := range started {
+		if serviceClient, ok := client.(pluginhost.ServiceClient); ok {
+			if err := registry.CheckSatisfaction(serviceClient.RequiredServices()); err != nil {
+				ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+				_ = client.Close(ctx)
+				cancel()
+				host.Add(pluginhost.Failed(client.ID(), err))
+				continue
+			}
 		}
 		host.Add(client)
 	}

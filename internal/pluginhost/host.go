@@ -62,12 +62,13 @@ type RegisteredTool struct {
 
 // Host owns the active plugin clients and their negotiated contributions.
 type Host struct {
-	mu           sync.RWMutex
-	clients      []Client
-	tools        map[string]RegisteredTool
-	toolOrder    []string
-	capabilities []RegisteredCapability
-	diagnostics  map[string]map[string]string
+	mu              sync.RWMutex
+	clients         []Client
+	tools           map[string]RegisteredTool
+	toolOrder       []string
+	capabilities    []RegisteredCapability
+	diagnostics     map[string]map[string]string
+	serviceRegistry *ServiceRegistry
 }
 
 type ContributionDiagnostic struct {
@@ -100,6 +101,35 @@ func (h *Host) Add(client Client) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.addLocked(client)
+}
+
+// AttachServiceRegistry binds the generation-scoped service registry to this
+// host and records each rejected provider registration as a contribution
+// diagnostic.
+func (h *Host) AttachServiceRegistry(registry *ServiceRegistry, conflicts []ServiceConflict) {
+	if h == nil {
+		return
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.serviceRegistry = registry
+	for _, conflict := range conflicts {
+		if h.diagnostics[conflict.PluginID] == nil {
+			h.diagnostics[conflict.PluginID] = make(map[string]string)
+		}
+		h.diagnostics[conflict.PluginID][fmt.Sprintf("service:%s@%d", conflict.Service, conflict.Major)] = conflict.Message
+	}
+}
+
+// ServiceRegistry returns the registry attached at generation build time, or
+// nil when the generation declares no service surface.
+func (h *Host) ServiceRegistry() *ServiceRegistry {
+	if h == nil {
+		return nil
+	}
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return h.serviceRegistry
 }
 
 func (h *Host) addLocked(client Client) {
