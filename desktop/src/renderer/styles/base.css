@@ -65,15 +65,15 @@
   --ink: var(--wuu-color-text, var(--gray-800));
   --ink-soft: var(--wuu-color-text-muted, var(--gray-650));
   --wuu-color-live-highlight: rgba(255, 255, 255, 0.95);
-  --ink-tertiary: var(--gray-600);
-  --ink-muted: var(--gray-500);
-  --ink-faint: var(--gray-400);
+  --ink-tertiary: var(--wuu-color-text-muted, var(--gray-600));
+  --ink-muted: var(--wuu-color-text-muted, var(--gray-500));
+  --ink-faint: var(--wuu-color-text-muted, var(--gray-400));
 
   --paper: var(--wuu-color-canvas, var(--gray-0));
   --surface-1: var(--wuu-color-surface, var(--gray-50));
   --surface-2: var(--wuu-color-surface-muted, var(--gray-100));
   --surface-3: var(--wuu-color-surface-elevated, var(--gray-150));
-  --surface-4: var(--gray-200);
+  --surface-4: var(--wuu-color-surface-elevated, var(--gray-200));
 
   --hairline: var(--wuu-color-border-subtle, var(--gray-250));
   --hairline-strong: var(--wuu-color-border-strong, var(--gray-350));
@@ -81,7 +81,7 @@
   /* In-flow horizontal rules inside the conversation (turn progress
      rule, system-event divider). One token so they read as the same
      line everywhere. */
-  --rule: var(--gray-300);                              
+  --rule: var(--wuu-color-border-subtle, var(--gray-300));                              
 
                                                                     
                                                     
