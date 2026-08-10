@@ -298,7 +298,24 @@ func (k *kernelHostServices) ProvidedServices() []pluginhost.ServiceDescriptor {
 	return pluginhost.KernelServiceDescriptors()
 }
 func (k *kernelHostServices) RequiredServices() []pluginhost.ServiceRequirement { return nil }
-func (k *kernelHostServices) KernelServices()                                   {}
+func (k *kernelHostServices) KernelServiceRegistrations() []pluginhost.ServiceRegistration {
+	descriptors := pluginhost.KernelServiceDescriptors()
+	methods := []pluginhost.HostServiceMethod{
+		pluginhost.HostServiceStorageGet, pluginhost.HostServiceStorageSet,
+		pluginhost.HostServiceStorageDelete, pluginhost.HostServiceStorageKeys,
+		pluginhost.HostServiceStorageCompareExchange, pluginhost.HostServiceSettingsGet,
+		pluginhost.HostServiceSettingsList, pluginhost.HostServiceSessionCreate,
+		pluginhost.HostServiceSessionSend, pluginhost.HostServiceSessionList,
+		pluginhost.HostServiceSessionCancel,
+	}
+	registrations := make([]pluginhost.ServiceRegistration, 0, len(descriptors))
+	for index, descriptor := range descriptors {
+		registrations = append(registrations, pluginhost.ServiceRegistration{
+			Descriptor: descriptor, Invoker: &kernelServiceInvoker{parent: k, method: methods[index]}, Kernel: true,
+		})
+	}
+	return registrations
+}
 
 func (k *kernelHostServices) ActivateKernelServices() {
 	k.mu.Lock()
@@ -326,36 +343,24 @@ func (k *kernelHostServices) CloseKernelServices() {
 	}
 }
 
-func (k *kernelHostServices) InvokeService(ctx context.Context, params pluginhost.ServiceInvokeParams) (json.RawMessage, error) {
-	k.mu.RLock()
-	services := k.services[params.Caller]
-	k.mu.RUnlock()
+type kernelServiceInvoker struct {
+	parent *kernelHostServices
+	method pluginhost.HostServiceMethod
+}
+
+func (k *kernelServiceInvoker) ID() string                { return k.parent.ID() }
+func (k *kernelServiceInvoker) Status() pluginhost.Status { return k.parent.Status() }
+func (k *kernelServiceInvoker) InvokeService(ctx context.Context, params pluginhost.ServiceInvokeParams) (json.RawMessage, error) {
+	k.parent.mu.RLock()
+	services := k.parent.services[params.Caller]
+	k.parent.mu.RUnlock()
 	if services == nil {
 		return nil, serviceError("service_unavailable", "kernel service caller is unavailable")
 	}
-	method, ok := kernelHostServiceMethod(params.Service)
-	if !ok || params.Method != pluginhost.KernelServiceMethod {
+	if params.Method != pluginhost.KernelServiceMethod {
 		return nil, serviceError("method_not_found", "kernel service method is unavailable")
 	}
-	return services.invoke(ctx, method, params.Params)
-}
-
-func kernelHostServiceMethod(service string) (pluginhost.HostServiceMethod, bool) {
-	methods := map[string]pluginhost.HostServiceMethod{
-		pluginhost.KernelStorageGetService:             pluginhost.HostServiceStorageGet,
-		pluginhost.KernelStorageSetService:             pluginhost.HostServiceStorageSet,
-		pluginhost.KernelStorageDeleteService:          pluginhost.HostServiceStorageDelete,
-		pluginhost.KernelStorageKeysService:            pluginhost.HostServiceStorageKeys,
-		pluginhost.KernelStorageCompareExchangeService: pluginhost.HostServiceStorageCompareExchange,
-		pluginhost.KernelSettingsGetService:            pluginhost.HostServiceSettingsGet,
-		pluginhost.KernelSettingsListService:           pluginhost.HostServiceSettingsList,
-		pluginhost.KernelSessionCreateService:          pluginhost.HostServiceSessionCreate,
-		pluginhost.KernelSessionSendService:            pluginhost.HostServiceSessionSend,
-		pluginhost.KernelSessionListService:            pluginhost.HostServiceSessionList,
-		pluginhost.KernelSessionCancelService:          pluginhost.HostServiceSessionCancel,
-	}
-	method, ok := methods[service]
-	return method, ok
+	return services.invoke(ctx, k.method, params.Params)
 }
 
 func (s *pluginHostServices) storageGet(params pluginhost.StorageGetParams) (json.RawMessage, error) {

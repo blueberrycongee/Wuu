@@ -63,17 +63,26 @@ type serviceProvider struct {
 
 // ServiceRegistry resolves and routes service calls for one generation.
 type ServiceRegistry struct {
-	mu        sync.RWMutex
-	active    bool
-	open      bool
-	providers map[serviceKey]serviceProvider
-	consumers map[string]map[serviceKey]struct{}
-	notifiers map[string]ServiceChangedNotifier
+	mu               sync.RWMutex
+	active           bool
+	open             bool
+	providers        map[serviceKey]serviceProvider
+	consumers        map[string]map[serviceKey]struct{}
+	notifiers        map[string]ServiceChangedNotifier
+	kernelLifecycles []kernelServiceLifecycle
+}
+
+// ServiceRegistration is the common provider entry consumed by the registry.
+// Kernel and plugin providers both become these entries before routing starts.
+type ServiceRegistration struct {
+	Descriptor ServiceDescriptor
+	Invoker    ServiceInvoker
+	Kernel     bool
 }
 
 type kernelServiceClient interface {
 	ServiceClient
-	KernelServices()
+	KernelServiceRegistrations() []ServiceRegistration
 }
 
 type kernelServiceLifecycle interface {
@@ -108,8 +117,20 @@ func (registry *ServiceRegistry) RegisterClients(clients ...Client) []ServiceCon
 		if notifier, ok := client.(ServiceChangedNotifier); ok {
 			registry.notifiers[declared.ID()] = notifier
 		}
-		_, kernel := declared.(kernelServiceClient)
-		for _, descriptor := range declared.ProvidedServices() {
+		kernelClient, kernel := declared.(kernelServiceClient)
+		registrations := make([]ServiceRegistration, 0, len(declared.ProvidedServices()))
+		if kernel {
+			registrations = append(registrations, kernelClient.KernelServiceRegistrations()...)
+		} else if invoker, ok := client.(ServiceInvoker); ok {
+			for _, descriptor := range declared.ProvidedServices() {
+				registrations = append(registrations, ServiceRegistration{Descriptor: descriptor, Invoker: invoker})
+			}
+		}
+		if lifecycle, ok := client.(kernelServiceLifecycle); kernel && ok {
+			registry.kernelLifecycles = append(registry.kernelLifecycles, lifecycle)
+		}
+		for _, registration := range registrations {
+			descriptor := registration.Descriptor
 			major, ok := ServiceVersionMajor(descriptor.Version)
 			if !ok {
 				continue
@@ -124,8 +145,7 @@ func (registry *ServiceRegistry) RegisterClients(clients ...Client) []ServiceCon
 				})
 				continue
 			}
-			invoker, ok := client.(ServiceInvoker)
-			if !ok {
+			if registration.Invoker == nil {
 				conflicts = append(conflicts, ServiceConflict{
 					PluginID: declared.ID(),
 					Service:  key.name,
@@ -134,7 +154,7 @@ func (registry *ServiceRegistry) RegisterClients(clients ...Client) []ServiceCon
 				})
 				continue
 			}
-			registry.providers[key] = serviceProvider{descriptor: descriptor, pluginID: declared.ID(), invoker: invoker, kernel: kernel}
+			registry.providers[key] = serviceProvider{descriptor: descriptor, pluginID: declared.ID(), invoker: registration.Invoker, kernel: kernel || registration.Kernel}
 		}
 		registry.consumers[declared.ID()] = make(map[serviceKey]struct{})
 		for _, requirement := range declared.RequiredServices() {
@@ -162,12 +182,8 @@ func (r *ServiceRegistry) Activate() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.active = true
-	for _, provider := range r.providers {
-		if provider.kernel {
-			if lifecycle, ok := provider.invoker.(kernelServiceLifecycle); ok {
-				lifecycle.ActivateKernelServices()
-			}
-		}
+	for _, lifecycle := range r.kernelLifecycles {
+		lifecycle.ActivateKernelServices()
 	}
 }
 
@@ -186,12 +202,8 @@ func (r *ServiceRegistry) Close(ctx context.Context) {
 		keys = append(keys, key)
 	}
 	r.mu.Unlock()
-	for _, provider := range r.providers {
-		if provider.kernel {
-			if lifecycle, ok := provider.invoker.(kernelServiceLifecycle); ok {
-				lifecycle.CloseKernelServices()
-			}
-		}
+	for _, lifecycle := range r.kernelLifecycles {
+		lifecycle.CloseKernelServices()
 	}
 	for _, key := range keys {
 		r.notifyConsumers(ctx, key, "provider_closed")
