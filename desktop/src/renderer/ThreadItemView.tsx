@@ -194,6 +194,20 @@ function BuiltInThreadItemView({
   editSummaryCard,
 }: ThreadItemViewProps): JSX.Element | null {
   const { t } = useI18n();
+  // The persistent actions bar mounts in the same commit that settles a live
+  // turn. Mark that one handoff with `agent-actions-enter` so the CSS reveal
+  // animation plays exactly once (see turns.css). Historical turns mount with
+  // `turnStatus` already "completed", so they never carry the class and never
+  // replay the animation when content-visibility renders them on scroll.
+  const [settleEntered, setSettleEntered] = useState(false);
+  const previousTurnStatusRef = useRef(turnStatus);
+  useEffect(() => {
+    const previous = previousTurnStatusRef.current;
+    previousTurnStatusRef.current = turnStatus;
+    if (previous === "in_progress" && turnStatus === "completed") {
+      setSettleEntered(true);
+    }
+  }, [turnStatus]);
   switch (item.type) {
     case "user_message": {
       const text = item.text ?? "";
@@ -290,7 +304,7 @@ function BuiltInThreadItemView({
           data-wuu-variant="agent"
           className={`agent-block${
             actionsVisible
-              ? ` agent-block-with-action-slot agent-actions-available${actionsPersistent ? " agent-actions-persistent" : " agent-actions-overlay"}`
+              ? ` agent-block-with-action-slot agent-actions-available${settleEntered ? " agent-actions-enter" : ""}${actionsPersistent ? " agent-actions-persistent" : " agent-actions-overlay"}`
               : ""
           }`}
         >
