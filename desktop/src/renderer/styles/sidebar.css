@@ -16,7 +16,7 @@
   --sidebar-glass-overlay-light: rgba(255, 255, 255, 0.14);
   --sidebar-glass-overlay-accent: rgba(209, 220, 211, 0.12);
   --sidebar-glass-overlay-highlight-strong: rgba(255, 255, 255, 0.44);
-  --sidebar-drawer-bg: #ffffff;
+  --sidebar-drawer-bg: var(--wuu-color-surface-muted, #ffffff);
   --sidebar-brand-wordmark-color: #b64a32;
   --sidebar-resizer-hover-bg: var(--ink-overlay-18);
   --sidebar-resizer-hover-ring: rgba(255, 255, 255, 0.4);

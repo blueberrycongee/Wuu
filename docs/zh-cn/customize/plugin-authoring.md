@@ -449,7 +449,8 @@ snippets 而不是新增主题 Token：`app-shell`、`sidebar`、`conversation-p
 侧栏导航（主栏、插件入口、项目行、会话行、设置栏和返回按钮）的 hover 共享同一套公开
 Token：`--wuu-nav-item-hover-background` 绘制悬停/展开行的底色，
 `--wuu-nav-item-hover-ring` 调整内描边颜色，两者都回退到宿主玻璃质感，
-主题无需依赖私有行级 class。
+主题无需依赖私有行级 class。收起侧栏后滑出的浮层抽屉通过
+`--wuu-color-surface-muted` 上色，与停靠态侧栏保持同一材质。
 插件 UI Kit 公开 `plugin-ui-page`、`plugin-ui-panel`、`plugin-ui-card`、
 `plugin-ui-section`、`plugin-ui-stack`、`plugin-ui-row`、`plugin-ui-button`、
 `plugin-ui-field`、`plugin-ui-input`、`plugin-ui-empty-state`、`plugin-ui-loading-state` 和

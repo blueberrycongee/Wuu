@@ -344,7 +344,8 @@ Sidebar navigation hover shares one public treatment across the main rail, plugi
 and thread rows, the settings rail, and the settings back button:
 `--wuu-nav-item-hover-background` paints hovered/expanded rows and `--wuu-nav-item-hover-ring`
 tints their inset ring. Both fall back to the host glass material, so themes opt in without
-touching private row classes.
+touching private row classes. The collapsed rail's floating drawer paints through
+`--wuu-color-surface-muted`, so it keeps the same material as the docked sidebar.
 
 See the installable [`examples/plugins/deep-ui`](../../../examples/plugins/deep-ui/) package for a
 theme and wrappers covering all current surfaces.

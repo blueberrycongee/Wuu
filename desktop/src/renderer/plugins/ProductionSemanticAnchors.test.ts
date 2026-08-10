@@ -154,6 +154,13 @@ describe("production semantic anchors", () => {
     }
   });
 
+  it("paints the sidebar drawer through the public surface token", () => {
+    const sidebar = readFileSync(resolve(RENDERER_ROOT, "styles/sidebar.css"), "utf8");
+    expect(sidebar).toContain("--sidebar-drawer-bg: var(--wuu-color-surface-muted,");
+    const theme = readFileSync(resolve(RENDERER_ROOT, "styles/theme.css"), "utf8");
+    expect(theme).toContain("--sidebar-drawer-bg: var(--wuu-color-surface-muted,");
+  });
+
   it("keeps the coarse plugin UI Kit anchors stable", () => {
     const source = readFileSync(resolve(SHARED_ROOT, "workbench.ts"), "utf8");
     for (const anchor of [
