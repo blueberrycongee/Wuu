@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 /**
  * Generates the theme surface matrix (config/desktop-theme-surface-matrix.json)
- * and the theme-author doc (docs/en/customize/theme-surface-matrix.md) from
- * the CSS dependency graph. Run via vite-node from the desktop package:
+ * and the theme-author docs (docs/en/customize/theme-surface-matrix.md and
+ * docs/zh-cn/customize/theme-surface-matrix.md) from the CSS dependency graph.
+ * Run via vite-node from the desktop package:
  *
  *   cd desktop && npx vite-node ../scripts/generate-theme-surface-matrix.ts
  *
@@ -42,7 +43,8 @@ const contract = JSON.parse(readFileSync(contractPath, "utf8"));
 const matrix = analyzeSurfaceMatrix(cssFiles, anchorSources, parsePinnedAnchors(pinnedTest));
 const outputs = new Map([
   [resolve(repoRoot, "config/desktop-theme-surface-matrix.json"), renderMatrixJson(matrix)],
-  [resolve(repoRoot, "docs/en/customize/theme-surface-matrix.md"), renderDoc(matrix, contract)],
+  [resolve(repoRoot, "docs/en/customize/theme-surface-matrix.md"), renderDoc(matrix, contract, "en")],
+  [resolve(repoRoot, "docs/zh-cn/customize/theme-surface-matrix.md"), renderDoc(matrix, contract, "zh")],
 ]);
 
 let stale = false;
@@ -100,7 +102,7 @@ function tokenSurfaces(matrix: SurfaceMatrix): Map<string, string[]> {
   return sorted;
 }
 
-function renderDoc(matrix: SurfaceMatrix, contract): string {
+function renderDoc(matrix: SurfaceMatrix, contract, locale: "en" | "zh"): string {
   const bridged = matrix.rows.filter((row) => row.status === "bridged").length;
   const unbridged = matrix.rows.length - bridged;
   const realAnchors = matrix.anchors.filter((anchor) => !anchor.synthetic);
@@ -109,7 +111,7 @@ function renderDoc(matrix: SurfaceMatrix, contract): string {
 
   const anchorRows = matrix.anchors.map(
     (anchor) =>
-      `| \`${anchor.name}\`${anchor.synthetic ? " (synthetic)" : ""} | ${anchor.rows} |`,
+      `| \`${anchor.name}\`${anchor.synthetic ? (locale === "zh" ? "（合成）" : " (synthetic)") : ""} | ${anchor.rows} |`,
   );
 
   const tokenNames = [...new Set([...contract.tokens.map((t) => t.name), ...contract.syntax])].sort();
@@ -127,7 +129,9 @@ function renderDoc(matrix: SurfaceMatrix, contract): string {
               return `\`${anchor.replace("unanchored:", "")}\` · ${state} · \`${prop}\`${count > 1 ? ` (${count})` : ""}`;
             })
             .join("<br>")
-        : "— (no host surface)";
+        : locale === "zh"
+          ? "—（未到达宿主表面）"
+          : "— (no host surface)";
     return `| \`${token}\` | ${rendered} |`;
   });
 
@@ -141,6 +145,56 @@ function renderDoc(matrix: SurfaceMatrix, contract): string {
     .sort((a, b) => b[1] - a[1])
     .map(([file, count]) => `${file} ${count}`)
     .join(", ");
+
+  if (locale === "zh") {
+    return `# 主题表面矩阵
+
+本页由 \`scripts/generate-theme-surface-matrix.ts\` 从宿主样式依赖图生成（运行
+\`make generate-theme-surface-matrix\`）；请勿手改。机器可读的矩阵位于
+[\`config/desktop-theme-surface-matrix.json\`](../../../config/desktop-theme-surface-matrix.json)，
+U1 覆盖基线位于
+[\`themeCoverage.baseline.txt\`](../../../desktop/src/renderer/styles/themeCoverage.baseline.txt)。
+
+矩阵的每一行是宿主样式表中一条颜色类绘制声明的 \`var()\` 引用。当公开 token 能沿自定义属性
+依赖图到达该变量时，这一行视为**已桥接（bridged）**，否则为**未桥接（unbridged）**。
+纯几何声明不在此范围。
+
+当前总计：**${matrix.rows.length} 行**（${bridged} 已桥接、${unbridged}
+未桥接），**${matrix.tokenSet.length} 个公开 token** 可达宿主表面，**${realAnchors.length} 个锚点**已发布。
+
+## 锚点覆盖
+
+宿主样式目前选择组件类名：**${realAnchors.length} 个锚点**中没有任何一个被宿主 CSS 选择器引用，
+**${matrix.rows.length} 行中的 ${anchoredRows} 行**归属于 \`data-wuu-component\` 锚点。
+其余行归入按文件划分的 \`unanchored\` 桶，直到宿主把选择器迁移到锚点。
+
+| 锚点 | 行数 |
+| --- | --- |
+${anchorRows.join("\n")}
+
+## token 可达的表面
+
+表面以 \`文件 · 状态 · 属性\` 单元格展示（一个单元格多于一条声明时标注数量）。\`—\` 表示该
+token 已在合同中声明，但未到达任何宿主绘制声明。
+
+| token | 表面 |
+| --- | --- |
+${tokenRows.join("\n")}
+
+## 未桥接的表面
+
+未桥接行即 U1 baseline 条目：按文件归属 unanchored，优先级顺序
+workspace → turns → sidebar → settings → composer/conversation-shell →
+channels → environment → image-preview → 其余。当前分布：
+${unbridgedSummary}。
+
+唯一允许的桥接写法是单条声明：
+
+\`\`\`css
+prop: var(--wuu-slot, var(--private-fallback));
+\`\`\`
+`;
+  }
 
   return `# Theme surface matrix
 

@@ -71,3 +71,11 @@ make build-docs
 Pushes to `main` that change `docs/` or `docs-site/` are built and deployed by
 GitHub Actions to GitHub Pages. Pull requests run the same build without
 deploying.
+
+## Generated pages
+
+- `en/customize/theme-surface-matrix.md` and `zh-cn/customize/theme-surface-matrix.md`
+  are generated from the host stylesheet dependency graph by
+  `scripts/generate-theme-surface-matrix.ts` (run
+  `make generate-theme-surface-matrix`); do not edit them by hand. CI checks
+  freshness with `make theme-surface-matrix-check`.
