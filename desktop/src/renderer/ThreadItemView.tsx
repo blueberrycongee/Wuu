@@ -338,6 +338,7 @@ function BuiltInThreadItemView({
           text={item.text}
           reason={item.reason}
           status={item.status}
+          summary={item.summary}
         />
       );
     case "error":

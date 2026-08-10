@@ -509,7 +509,7 @@ func splitLeadingSystemMessages(messages []providers.ChatMessage) ([]providers.C
 	for i < len(messages) && strings.EqualFold(messages[i].Role, "system") {
 		msg := messages[i]
 		if IsConversationSummaryContent(msg.Content) {
-			previousSummary = summaryBodyFromContent(msg.Content)
+			previousSummary = SummaryBodyFromContent(msg.Content)
 			previousSummaryDiscoveredTools = providers.MergeLoadableToolDefinitions(previousSummaryDiscoveredTools, msg.DiscoveredTools)
 			i++
 			continue
@@ -552,7 +552,12 @@ func IsConversationSummaryContent(content string) bool {
 	return strings.HasPrefix(strings.TrimSpace(content), ConversationSummaryPrefix)
 }
 
-func summaryBodyFromContent(content string) string {
+// SummaryBodyFromContent extracts the summary body from a persisted compact
+// summary message, stripping the stable handoff wrapper. Returns "" for
+// content that is not a conversation summary. This is the same extraction
+// the runtime uses when re-summarizing an existing summary, and it is also
+// what surfaces the compacted context to the client.
+func SummaryBodyFromContent(content string) string {
 	text := strings.TrimSpace(content)
 	if !IsConversationSummaryContent(text) {
 		return ""

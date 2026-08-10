@@ -39,6 +39,8 @@ export type TurnEventDisplay =
       text?: string;
       reason?: string;
       status?: ThreadItemStatus;
+      /** Replacement-context body produced by the completed compaction pass. */
+      summary?: string;
     };
 
 export function turnEventForTurn(
@@ -115,6 +117,7 @@ export function turnEventForItem(item: ThreadItem): TurnEventDisplay | undefined
       text: item.text,
       reason: item.reason,
       status: item.status,
+      summary: item.summary,
     };
   }
   if (item.type === "error") {

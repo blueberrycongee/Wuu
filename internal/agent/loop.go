@@ -291,6 +291,7 @@ func RunToolLoop(
 					TokensBefore:   before,
 					MessagesBefore: msgsBefore,
 					MessagesAfter:  len(messages),
+					Summary:        compactSummaryFromMessages(messages),
 				})
 			}
 		default:
@@ -568,6 +569,7 @@ func RunToolLoop(
 								TokensBefore:   before,
 								MessagesBefore: msgsBefore,
 								MessagesAfter:  len(messages),
+								Summary:        compactSummaryFromMessages(messages),
 							})
 						}
 						continue
@@ -910,6 +912,22 @@ func compactChanged(before, after []providers.ChatMessage) bool {
 		return true
 	}
 	return !reflect.DeepEqual(before, after)
+}
+
+// compactSummaryFromMessages extracts the replacement-context summary body
+// from a compacted message list. A successful pass installs at most one
+// "[Conversation summary]" system message at the history head; older
+// sessions can carry the bare-prefix form, which the extraction also accepts.
+func compactSummaryFromMessages(msgs []providers.ChatMessage) string {
+	for _, msg := range msgs {
+		if !strings.EqualFold(strings.TrimSpace(msg.Role), "system") {
+			continue
+		}
+		if compact.IsConversationSummaryContent(msg.Content) {
+			return compact.SummaryBodyFromContent(msg.Content)
+		}
+	}
+	return ""
 }
 
 // copyMessages returns an independent copy of msgs so callers can

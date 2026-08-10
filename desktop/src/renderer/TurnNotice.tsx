@@ -1,7 +1,9 @@
+import { useState } from "react";
 import type { ThreadItemStatus } from "../shared/protocol";
 import type { TurnEventDisplay } from "./TurnEvents";
 import type { UserFacingErrorDisplay, UserFacingErrorTone } from "./UserFacingErrors";
 import { translateCurrent as t } from "./i18n";
+import { ProcessSurfaceFold } from "./ProcessSurfaceFold";
 import { Tooltip } from "./Tooltip";
 
 export type SystemEventDisplay = {
@@ -36,7 +38,7 @@ export function SystemEventNotice({
       >
         <span className="turn-event-content">
           <strong
-            className={`turn-event-title${inProgress ? " live-progress-chip" : ""}`}
+            className={`turn-event-title${inProgress ? " wuu-live-text-wave" : ""}`}
             data-text={event.label}
           >
             {event.label}
@@ -63,7 +65,7 @@ export function TurnEventNotice({
   event: TurnEventDisplay;
 }): JSX.Element {
   if (event.presentation === "context_compaction") {
-    return <ContextCompactionNotice text={event.text} reason={event.reason} status={event.status} />;
+    return <ContextCompactionNotice text={event.text} reason={event.reason} status={event.status} summary={event.summary} />;
   }
   return <TurnNotice display={event.notice} />;
 }
@@ -101,10 +103,18 @@ export function ContextCompactionNotice({
   text,
   reason,
   status,
+  summary,
 }: {
   text?: string;
   reason?: string;
   status?: ThreadItemStatus;
+  /**
+   * Replacement-context body produced by this compaction pass. When present
+   * on a settled notice the row becomes expandable (same fold as tool
+   * activity) and reveals the compacted context, height-bounded by the
+   * shared process-surface body limit.
+   */
+  summary?: string;
 }): JSX.Element {
   const normalized = normalizeContextCompactionText(text);
   const failed = status === "failed" || isFailedCompactNotice(normalized);
@@ -115,6 +125,13 @@ export function ContextCompactionNotice({
   const detail = inProgress ? undefined : contextCompactionDetail(text, reason, status);
   const state = failed ? "failed" : inProgress ? "in_progress" : "completed";
   const description = detail ? `${title} — ${detail}` : title;
+  const hasSummary = !failed && !inProgress && Boolean(summary);
+  const [expanded, setExpanded] = useState(false);
+  const handleToggle = (
+    event: React.SyntheticEvent<HTMLDetailsElement>,
+  ): void => {
+    setExpanded(event.currentTarget.open);
+  };
   return (
     <aside
       className={`process-surface context-compaction-notice ${state}`}
@@ -122,11 +139,12 @@ export function ContextCompactionNotice({
       aria-label={description}
       aria-live={inProgress ? "polite" : undefined}
     >
-      <div className="process-surface-fold no-details">
-        <div
-          className={`process-surface-row${inProgress ? " is-live-gray is-streaming" : ""}`}
-        >
-          <span className="process-surface-summary-line" aria-label={description}>
+      <ProcessSurfaceFold
+        summary={
+          <span
+            className={`process-surface-summary-line${inProgress ? " wuu-live-text-wave" : ""}`}
+            aria-label={description}
+          >
             <strong className="process-surface-segment context-compaction-title">
               {title}
             </strong>
@@ -139,8 +157,14 @@ export function ContextCompactionNotice({
               </>
             ) : null}
           </span>
-        </div>
-      </div>
+        }
+        disabled={!hasSummary}
+        open={expanded}
+        onToggle={handleToggle}
+        rowClassName={inProgress ? " is-live-gray is-streaming" : ""}
+      >
+        <div className="context-compaction-summary">{summary}</div>
+      </ProcessSurfaceFold>
     </aside>
   );
 }

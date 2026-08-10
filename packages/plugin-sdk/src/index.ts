@@ -1160,6 +1160,8 @@ export interface ConversationItemSnapshotV1 {
   readonly toolReferences?: readonly ConversationToolReferenceV1[];
   readonly processReferences?: readonly ConversationProcessReferenceV1[];
   readonly createdAt?: string;
+  /** Replacement-context body of a completed context-compaction notice. */
+  readonly summary?: string;
 }
 
 export type ConversationProcessKindV1 = "reasoning" | "tool-group" | "mixed";

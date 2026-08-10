@@ -123,6 +123,13 @@ function galleryEntries(): GalleryEntry[] {
       <ContextCompactionNotice
         status="completed"
         text="✦ Compacted history: 18 → 5 messages (was ~12k tokens)"
+        summary={`## 目标
+压缩行与普通 tool call 一样可以展开，展开后显示压缩后的新上下文。
+
+## 已确认
+- 协议 ThreadItem 新增 summary 字段，live 与重建路径都填充。
+- 呈现走 conversation.item 插件边界，快照同步携带 summary。
+- 展开复用 process-surface fold，展开体限制 50vh 高度并滚动。`}
       />
     ),
   },

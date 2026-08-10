@@ -515,10 +515,11 @@ func (r *StreamRunner) runModelToolLoop(ctx context.Context, history []providers
 				return
 			}
 			effectiveOnEvent(providers.StreamEvent{
-				Type:          providers.EventCompact,
-				Content:       formatCompactNotice(info),
-				CompactReason: string(info.Reason),
-				CompactPhase:  providers.CompactPhaseCompleted,
+				Type:           providers.EventCompact,
+				Content:        formatCompactNotice(info),
+				CompactReason:  string(info.Reason),
+				CompactPhase:   providers.CompactPhaseCompleted,
+				CompactSummary: info.Summary,
 			})
 		},
 		OnCompactAttempt: func(info CompactAttemptInfo) {

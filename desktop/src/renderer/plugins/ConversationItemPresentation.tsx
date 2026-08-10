@@ -103,6 +103,9 @@ export function toConversationItemSnapshot(
     contentType,
     content,
     attachments,
+    // Context-compaction notices carry the replacement-context body so
+    // notice presenters can show what the model now runs on.
+    summary: item.summary,
   });
 }
 

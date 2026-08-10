@@ -108,6 +108,13 @@ type CompactInfo struct {
 	TokensBefore   int
 	MessagesBefore int
 	MessagesAfter  int
+	// Summary is the body of the replacement context produced by this pass
+	// (the "[Conversation summary]" handoff content without its wrapper).
+	// Empty when the pass did not replace history. This is durable
+	// conversation state, not raw prompt text, so it is safe to surface in
+	// the UI; it is intentionally kept out of CompactAttemptInfo, whose
+	// records stay metadata-only for traces.
+	Summary string
 }
 
 // CompactAttemptInfo describes every compact attempt, including failures and

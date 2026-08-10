@@ -1872,6 +1872,10 @@ export type ThreadItem = {
   result_detail?: ToolResult;
   error?: string;
   reason?: string;
+  // Replacement-context body of a completed context_compaction item — the
+  // compacted history the model now runs on. Empty for failed/no-op passes
+  // and for other item types.
+  summary?: string;
 };
 
 export type ThreadForkTarget = Pick<ThreadItem, "type" | "seq" | "source_id">;
@@ -2476,7 +2480,13 @@ export type WuuDesktopApi = {
     limit?: number
   ) => Promise<ThreadPreviewResult>;
   pinThread: (threadId: string, pinned: boolean) => Promise<{ thread: Thread }>;
-  archiveThread: (threadId: string, archived: boolean) => Promise<{ thread: Thread }>;
+  archiveThread: (
+    threadId: string,
+    archived: boolean,
+    // Escape hatch for conversations stuck in a running state: the server
+    // interrupts and settles the stuck turn, then archives.
+    force?: boolean
+  ) => Promise<{ thread: Thread }>;
   // Permanently deletes a conversation (history, artifacts, and any fork
   // worktree). Mirrors the `thread/delete` RPC; running threads are rejected
   // server-side.

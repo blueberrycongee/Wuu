@@ -5,7 +5,6 @@ import {
   type JSX,
   type SyntheticEvent,
 } from "react";
-import { ChevronRight } from "lucide-react";
 import type { ThreadItem } from "../shared/protocol";
 import {
   buildToolActivityProcessSegments,
@@ -19,6 +18,7 @@ import {
   useAutoFollowScrollContainer,
 } from "./AutoFollowScroll";
 import { AnimatedProcessText } from "./ProcessTextMotion";
+import { ProcessSurfaceFold } from "./ProcessSurfaceFold";
 import { translateCurrent as translate, useI18n } from "./i18n";
 
 /**
@@ -175,19 +175,7 @@ export function ProcessSurface({
   const handleToggle = (
     event: SyntheticEvent<HTMLDetailsElement>,
   ): void => {
-    if (!hasDetails) {
-      event.currentTarget.open = false;
-      setExpanded(false);
-      return;
-    }
-    const open = event.currentTarget.open;
-    setExpanded(open);
-  };
-
-  const handleSummaryClick = (event: SyntheticEvent<HTMLElement>): void => {
-    if (!hasDetails) {
-      event.preventDefault();
-    }
+    setExpanded(event.currentTarget.open);
   };
 
   const className = `process-surface${
@@ -214,7 +202,10 @@ export function ProcessSurface({
       }`;
 
   const summaryLine = (
-    <span className="process-surface-summary-line" aria-label={summaryText}>
+    <span
+      className={`process-surface-summary-line${activeGrayText ? " wuu-live-text-wave" : ""}`}
+      aria-label={summaryText}
+    >
       {useCondensedSummary ? (
         <AnimatedProcessText
           className="process-surface-condensed-summary"
@@ -266,63 +257,43 @@ export function ProcessSurface({
 
   const nativeFallback = (
     <div className={className}>
-      <details
-        className={`process-surface-fold${hasDetails ? " has-details" : " no-details"}${
-          expanded ? " expanded" : " collapsed"
-        }`}
-        open={hasDetails && expanded}
+      <ProcessSurfaceFold
+        summary={summaryLine}
+        header={errorBlock}
+        disabled={!hasDetails}
+        open={expanded}
         onToggle={handleToggle}
+        rowClassName={`${activeGrayText ? " is-live-gray" : ""}${
+          streaming ? " is-streaming" : ""
+        }`}
+        bodyRef={processScroll.scrollRef}
+        bodyProps={{ [AUTO_FOLLOW_NESTED_SCROLL_ATTR]: "true" }}
       >
-        <summary
-          className={`process-surface-row${
-            activeGrayText ? " is-live-gray" : ""
-          }${streaming ? " is-streaming" : ""}`}
-          onClick={handleSummaryClick}
-        >
-          {summaryLine}
-          {hasDetails ? (
-            <ChevronRight
-              className="process-surface-chevron icon-xs"
-              aria-hidden
+        {hasMultipleTools ? (
+          <div className="process-surface-tool-list">
+            <ToolActivityTimeline
+              items={toolItems}
+              revealItems={streaming}
+              streaming={streaming}
             />
-          ) : null}
-        </summary>
-        {hasDetails ? (
-          <>
-            {errorBlock}
-            <div
-              className="process-surface-body"
-              ref={processScroll.scrollRef}
-              {...{ [AUTO_FOLLOW_NESTED_SCROLL_ATTR]: "true" }}
-            >
-              {hasMultipleTools ? (
-                <div className="process-surface-tool-list">
-                  <ToolActivityTimeline
-                    items={toolItems}
-                    revealItems={streaming}
-                    streaming={streaming}
-                  />
-                </div>
-              ) : null}
-              {hasReasoning && renderReasoningItem ? (
-                <div className="process-surface-reasoning-list">
-                  {reasoningItems.map((item) => (
-                    <div
-                      key={item.id}
-                      className="process-surface-reasoning-item"
-                    >
-                      {renderReasoningItem(
-                        item,
-                        streaming && item.status === "in_progress",
-                      )}
-                    </div>
-                  ))}
-                </div>
-              ) : null}
-            </div>
-          </>
+          </div>
         ) : null}
-      </details>
+        {hasReasoning && renderReasoningItem ? (
+          <div className="process-surface-reasoning-list">
+            {reasoningItems.map((item) => (
+              <div
+                key={item.id}
+                className="process-surface-reasoning-item"
+              >
+                {renderReasoningItem(
+                  item,
+                  streaming && item.status === "in_progress",
+                )}
+              </div>
+            ))}
+          </div>
+        ) : null}
+      </ProcessSurfaceFold>
     </div>
   );
   // Nesting is deterministic: conversation.process is the complete outer

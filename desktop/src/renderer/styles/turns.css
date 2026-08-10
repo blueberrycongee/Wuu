@@ -2402,6 +2402,16 @@
   scrollbar-gutter: stable;
 }
 
+/* Expanded context-compaction body: the replacement-context summary is
+ * model prose, so keep the author's line breaks and wrap long tokens. */
+.context-compaction-summary {
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: var(--conversation-process-font-size);
+  line-height: var(--conversation-process-line-height);
+}
+
 .process-surface-tool-list {
   min-width: 0;
 }

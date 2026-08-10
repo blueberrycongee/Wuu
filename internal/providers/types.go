@@ -596,12 +596,18 @@ type StreamEvent struct {
 	ToolResultDetail *toolresult.Result
 	CompactReason    string
 	CompactPhase     CompactPhase
-	PlanUpdate       *PlanUpdate
-	RequestContext   *RequestContextSummary
-	ProviderState    *ProviderStateSummary
-	Lifecycle        *StreamLifecycle
-	Error            error
-	Usage            *TokenUsage
+	// CompactSummary carries the replacement-context summary body produced
+	// by a completed compact pass, for client surfaces that let the user
+	// inspect what the new context looks like. Only populated on
+	// EventCompact with CompactPhaseCompleted after a pass that replaced
+	// history; intentionally absent from the metadata-only attempt records.
+	CompactSummary string
+	PlanUpdate     *PlanUpdate
+	RequestContext *RequestContextSummary
+	ProviderState  *ProviderStateSummary
+	Lifecycle      *StreamLifecycle
+	Error          error
+	Usage          *TokenUsage
 	// StopReason / FinishReason / Truncated are populated on the terminal
 	// EventDone when the provider reports them. StopReason is raw-ish provider
 	// detail; FinishReason is the normalized semantic.

@@ -2002,9 +2002,13 @@ type ThreadItem struct {
 	ResultDetail     *toolresult.Result         `json:"result_detail,omitempty"`
 	Error            string                     `json:"error,omitempty"`
 	Reason           string                     `json:"reason,omitempty"`
-	FinishReason     string                     `json:"finish_reason,omitempty"`
-	StopReason       string                     `json:"stop_reason,omitempty"`
-	Truncated        bool                       `json:"truncated,omitempty"`
+	// Summary carries the replacement-context body for a completed
+	// context_compaction item — the compacted history the model now runs
+	// on. Empty for failed/no-op passes and for other item types.
+	Summary      string `json:"summary,omitempty"`
+	FinishReason string `json:"finish_reason,omitempty"`
+	StopReason   string `json:"stop_reason,omitempty"`
+	Truncated    bool   `json:"truncated,omitempty"`
 }
 
 type ThreadItemImage struct {

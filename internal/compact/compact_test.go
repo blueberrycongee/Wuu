@@ -366,7 +366,7 @@ func TestBuildSummaryContent_UsesStableConversationSummaryPrefix(t *testing.T) {
 	if !strings.Contains(content, "Summary:\nOlder turns were compacted.") {
 		t.Fatalf("expected formatted summary body, got %q", content)
 	}
-	if got := summaryBodyFromContent(content); got != "Older turns were compacted." {
+	if got := SummaryBodyFromContent(content); got != "Older turns were compacted." {
 		t.Fatalf("expected summary body extraction, got %q", got)
 	}
 }

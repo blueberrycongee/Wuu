@@ -365,7 +365,9 @@ export function createPluginUIKit(react: typeof React): PluginUIKit {
       "aria-busy": kind === "loading" ? true : undefined,
     },
     kind === "loading" ? react.createElement("span", { className: "plugin-ui-state-spinner", "aria-hidden": true }) : null,
-    title !== undefined ? react.createElement("strong", null, title) : null,
+    title !== undefined ? react.createElement("strong", {
+      className: kind === "loading" ? "wuu-live-text-wave" : undefined,
+    }, title) : null,
     description !== undefined ? react.createElement("p", null, description) : null,
     actions !== undefined ? react.createElement("div", { className: "plugin-ui-state-actions" }, actions) : null);
   };
@@ -560,6 +562,8 @@ export interface ConversationItemSnapshotV1 {
   readonly toolReferences?: readonly ConversationToolReferenceV1[];
   readonly processReferences?: readonly ConversationProcessReferenceV1[];
   readonly createdAt?: string;
+  /** Replacement-context body of a completed context-compaction notice. */
+  readonly summary?: string;
 }
 
 export type ConversationProcessKindV1 = "reasoning" | "tool-group" | "mixed";

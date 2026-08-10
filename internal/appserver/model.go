@@ -672,6 +672,7 @@ func (th *threadState) applyStreamEventLocked(turnID string, ev providers.Stream
 		item.Status = contextCompactionStatusForContent(ev.Content)
 		item.Text = ev.Content
 		item.Reason = ev.CompactReason
+		item.Summary = ev.CompactSummary
 		th.upsertItemLocked(turnID, item, now)
 		if replacesPending {
 			out = append(out, itemCompleted(th.ID, turnID, item, now))
@@ -1189,10 +1190,11 @@ func projectPersistedHistory(threadID string, history []persistedMessage, now ti
 		if msg.Role == "system" {
 			if compact.IsConversationSummaryContent(msg.Content) {
 				pendingCompactions = append(pendingCompactions, ThreadItem{
-					Seq:    msg.Seq,
-					Type:   ThreadItemContextCompaction,
-					Status: ThreadItemStatusCompleted,
-					Text:   "Compacted history",
+					Seq:     msg.Seq,
+					Type:    ThreadItemContextCompaction,
+					Status:  ThreadItemStatusCompleted,
+					Text:    "Compacted history",
+					Summary: compact.SummaryBodyFromContent(msg.Content),
 				})
 			}
 			continue
