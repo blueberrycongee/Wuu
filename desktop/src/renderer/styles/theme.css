@@ -210,7 +210,7 @@
   --composer-accessory-shadow-hover: rgba(0, 0, 0, 0.45);
   --composer-accessory-shadow-expanded: rgba(0, 0, 0, 0.5);
   --composer-context-meter-focus-outline: var(--wuu-color-focus, rgba(160, 168, 175, 0.55));
-  --composer-context-meter-tooltip-divider: rgba(228, 232, 235, 0.1);
+  --composer-context-meter-tooltip-divider: var(--wuu-border-subtle, rgba(228, 232, 235, 0.1));
   --chat-user-message-bg: var(--wuu-message-user-background, #26282b);
 
   /* environment.css */
@@ -266,8 +266,8 @@
 
   /* responsive-design.css
      (image-preview.css is a dark overlay in both themes — no override) */
-  --responsive-secondary-button-bg: #2b2f34;
-  --responsive-secondary-button-text: #ccd1d5;
+  --responsive-secondary-button-bg: var(--wuu-control-secondary-background, #2b2f34);
+  --responsive-secondary-button-text: var(--wuu-color-text, #ccd1d5);
 
   /* sidebar.css */
   /* macOS's `under-window` vibrancy material can remain light even when the

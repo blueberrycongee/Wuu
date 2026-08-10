@@ -49,11 +49,8 @@ channels.css:171 box-shadow --sidebar-resizer-hover-ring
 channels.css:1082 box-shadow --sidebar-resizer-hover-ring
 channels.css:549 background --success-soft
 chat.css:87 background --ink-overlay-4
-composer-context-meter.css:117 background --composer-context-meter-tooltip-divider
-composer-context-meter.css:86 border --context-meter-tooltip-border
 composer-context-meter.css:88 box-shadow --context-meter-tooltip-shadow
 composer-context-meter.css:48 stroke --context-meter-track
-composer-token-gauge.css:107 border --token-gauge-tooltip-border
 composer-token-gauge.css:109 box-shadow --token-gauge-tooltip-shadow
 composer-token-gauge.css:55 stroke --token-gauge-track
 composer.css:751 box-shadow --composer-collapsed-prompt-card-shadow
@@ -136,9 +133,7 @@ environment.css:1510 border-color --ink-overlay-12
 environment.css:1239 box-shadow --ink-overlay-12
 environment.css:1511 box-shadow --ink-overlay-12
 environment.css:801 color --ink-overlay-8
-image-preview.css:159 outline --image-preview-outline-focus
 image-preview.css:23 background --image-preview-overlay-bg
-image-preview.css:147 color --image-preview-status-error
 image-preview.css:141 color --image-preview-status-text
 image-preview.css:57 color --image-preview-title-text
 image-preview.css:67 background --image-preview-toolbar-actions-bg
@@ -160,8 +155,6 @@ responsive-design.css:300 background --responsive-design-toggle-bg
 responsive-design.css:312 background --responsive-design-toggle-hover-bg
 responsive-design.css:314 box-shadow --responsive-design-toggle-hover-shadow
 responsive-design.css:303 box-shadow --responsive-design-toggle-shadow
-responsive-design.css:200 background --responsive-secondary-button-bg
-responsive-design.css:201 color --responsive-secondary-button-text
 scrollbars.css:69 background-color --scrollbar-thumb
 scrollbars.css:81 background-color --scrollbar-thumb-active
 scrollbars.css:75 background-color --scrollbar-thumb-hover

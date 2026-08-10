@@ -1,8 +1,8 @@
 /* Component color tokens for responsive-design.css. Light-theme values; the dark
    theme overrides these in base.css theme blocks. */
 :root {
-  --responsive-secondary-button-bg: #f0f0ed;
-  --responsive-secondary-button-text: #3c4145;
+  --responsive-secondary-button-bg: var(--wuu-control-secondary-background, #f0f0ed);
+  --responsive-secondary-button-text: var(--wuu-color-text, #3c4145);
   --responsive-design-toggle-bg: rgba(31, 35, 40, 0.85);
   --responsive-design-toggle-hover-bg: rgba(31, 35, 40, 1);
   --responsive-design-toggle-shadow: rgba(0, 0, 0, 0.18);

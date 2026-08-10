@@ -10,8 +10,8 @@
   --image-preview-toolbar-button-active: rgba(255, 255, 255, 0.2);
   --image-preview-zoom-text: rgba(243, 244, 245, 0.88);
   --image-preview-status-text: rgba(243, 244, 245, 0.78);
-  --image-preview-status-error: rgba(255, 188, 188, 0.9);
-  --image-preview-outline-focus: #5b8def;
+  --image-preview-status-error: var(--wuu-color-danger, rgba(255, 188, 188, 0.9));
+  --image-preview-outline-focus: var(--wuu-color-focus, #5b8def);
 }
 
 .image-preview-overlay {
