@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
-	"errors"
 	"os"
 	"path/filepath"
 	"sync"
@@ -35,30 +34,20 @@ func (r *serviceRegistryRouter) RouteServiceCall(ctx context.Context, pluginID s
 	return registry.Call(ctx, pluginID, params)
 }
 
-type serviceGatewayHandler struct{}
-
-func (serviceGatewayHandler) SupportedHostServices() []HostServiceMethod {
-	return []HostServiceMethod{ServiceCallMethod}
-}
-
-func (serviceGatewayHandler) HandleHostService(context.Context, HostServiceMethod, json.RawMessage) (json.RawMessage, error) {
-	return nil, errors.New("service gateway must route through the registry")
-}
-
 func TestServiceRegistryRoutesBetweenProcessesAndConvergesAfterClose(t *testing.T) {
 	if role := os.Getenv(serviceProcessHelperEnv); role != "" {
 		runServiceProcessHelper(role)
 		return
 	}
 
-	start := func(id, role string, handler HostServiceHandler, router ServiceRouter) *ProcessClient {
+	start := func(id, role string, router ServiceRouter) *ProcessClient {
 		t.Helper()
 		root := t.TempDir()
 		client, err := Start(context.Background(), ProcessConfig{
 			ID: id, Command: os.Args[0], Args: []string{"-test.run=TestServiceRegistryRoutesBetweenProcessesAndConvergesAfterClose"},
 			Env: map[string]string{serviceProcessHelperEnv: role}, PluginRoot: root,
 			ProjectRoot: filepath.Dir(root), WuuHome: t.TempDir(), Timeout: 2 * time.Second,
-			HostServiceHandler: handler, ServiceRouter: router, PrepareOnly: true,
+			ServiceRouter: router, PrepareOnly: true,
 		})
 		if err != nil {
 			t.Fatalf("start %s: %v", id, err)
@@ -66,10 +55,10 @@ func TestServiceRegistryRoutesBetweenProcessesAndConvergesAfterClose(t *testing.
 		return client
 	}
 
-	provider := start("search-provider", "provider", nil, nil)
+	provider := start("search-provider", "provider", nil)
 	defer provider.Close(context.Background())
 	router := &serviceRegistryRouter{}
-	consumer := start("search-consumer", "consumer", serviceGatewayHandler{}, router)
+	consumer := start("search-consumer", "consumer", router)
 	defer consumer.Close(context.Background())
 
 	registry, conflicts := BuildServiceRegistry(provider, consumer)
