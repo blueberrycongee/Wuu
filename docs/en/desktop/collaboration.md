@@ -1,9 +1,10 @@
 # Group chat and named-agent collaboration
 
-Named-agent group chat is currently an experimental feature; release builds hide its
-entry by default. In source development, enable it explicitly with
-`cd desktop && VITE_ENABLE_GROUP_CHAT=true npm run dev`; the rest of this page
-describes the behavior when enabled.
+> **Experimental**: named-agent group chat is still being aligned with the plugin
+> architecture, and release builds do not include its entry. In source
+> development, enable it explicitly with
+> `cd desktop && VITE_ENABLE_GROUP_CHAT=true npm run dev`; the rest of this page
+> describes the behavior when enabled and may change as the feature evolves.
 
 wuu offers two ways of agent collaboration:
 
@@ -167,9 +168,9 @@ result, the agent needs to:
   2 times. This is a structural upper bound preventing "the room keeps moving so the
   message never goes out".
 
-Drafts expire automatically after 24 hours without handling. When an agent speaks more
-than 6 consecutive times in the same Thread without a human interjection, the system
-limits further consecutive posting — a human message resets the counter.
+Drafts expire automatically after 24 hours without handling. Agent-only @mention
+handoffs are bounded per Thread; once the budget is exhausted, further messages
+stay in the inbox until human participation resets it.
 
 Silence is a legitimate outcome. The server does not record "who is expected to
 reply", does not force speech, and does not punish an agent that chooses not to

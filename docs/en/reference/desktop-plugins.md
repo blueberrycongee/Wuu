@@ -298,8 +298,8 @@ width, and `--wuu-syntax-*` syntax colors. Early names such as `--wuu-paper`, `-
 should prefer the current `--wuu-color-*` and `--wuu-font-*` names.
 
 Shared neutral UI uses coarse semantic tokens so an appearance plugin does not need private DOM
-selectors. The complete token-to-surface mapping is generated from the host stylesheet dependency
-graph and published on the [theme surface matrix](../customize/theme-surface-matrix.md). Their
+selectors. The complete token list with host wiring status is generated from the host stylesheet
+dependency graph and published on the [theme token reference](../customize/theme-surface-matrix.md). Their
 text and font continue to inherit the corresponding public color and typography tokens. Compact
 controls keep host-owned border widths so a strong panel border cannot change their box model or
 break wrapping.

@@ -25,17 +25,9 @@
           "pages": [
             "zh-cn/desktop/workspaces.md",
             "zh-cn/desktop/conversations.md",
-            "zh-cn/desktop/workspace-tools.md"
-          ]
-        },
-        {
-          "title": "Wuu 怎样工作",
-          "pages": [
+            "zh-cn/desktop/workspace-tools.md",
             "zh-cn/desktop/subagents.md",
-            "zh-cn/desktop/collaboration.md",
-            "zh-cn/reference/agent-command-system.md",
-            "zh-cn/reference/cli-commands.md",
-            "zh-cn/reference/security-model.md"
+            "zh-cn/desktop/collaboration.md"
           ]
         },
         {
@@ -46,11 +38,25 @@
             "zh-cn/customize/hooks.md",
             "zh-cn/customize/memory.md",
             "zh-cn/customize/dream.md",
+            "zh-cn/customize/mcp.md"
+          ]
+        },
+        {
+          "title": "插件",
+          "pages": [
             "zh-cn/customize/plugin-quickstart.md",
             "zh-cn/customize/plugins.md",
             "zh-cn/customize/plugin-system.md",
             "zh-cn/customize/plugin-authoring.md",
-            "zh-cn/customize/theme-surface-matrix.md",
+            "zh-cn/customize/theme-surface-matrix.md"
+          ]
+        },
+        {
+          "title": "参考",
+          "pages": [
+            "zh-cn/reference/agent-command-system.md",
+            "zh-cn/reference/cli-commands.md",
+            "zh-cn/reference/security-model.md",
             "zh-cn/reference/permissions.md",
             "zh-cn/reference/configuration.md"
           ]
@@ -62,7 +68,6 @@
             "zh-cn/automation/exec.md",
             "zh-cn/automation/app-server.md",
             "zh-cn/automation/remote.md",
-            "zh-cn/customize/mcp.md",
             "en/automation/jsonl-events.md",
             "en/integrations/app-server-protocol.md"
           ]
@@ -130,12 +135,18 @@
             "en/customize/hooks.md",
             "en/customize/memory.md",
             "en/customize/dream.md",
-            "en/customize/mcp.md",
+            "en/customize/mcp.md"
+          ]
+        },
+        {
+          "title": "Plugins",
+          "pages": [
             "en/customize/plugin-quickstart.md",
             "en/customize/plugins.md",
             "en/customize/plugin-system.md",
             "en/customize/plugin-authoring.md",
-            "en/customize/theme-surface-matrix.md"
+            "en/customize/theme-surface-matrix.md",
+            "en/reference/desktop-plugins.md"
           ]
         },
         {
@@ -145,8 +156,7 @@
             "en/reference/permissions.md",
             "en/reference/configuration.md",
             "en/reference/cli-commands.md",
-            "en/reference/agent-command-system.md",
-            "en/reference/desktop-plugins.md"
+            "en/reference/agent-command-system.md"
           ]
         },
         {

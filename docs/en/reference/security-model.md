@@ -8,52 +8,28 @@ code than a passive document.
 This document describes the current boundary. It is not a claim that model
 output is safe or that Wuu is an operating-system sandbox.
 
-## Local authority
+## Permission modes
 
-Wuu has three permission modes:
+Wuu has three permission modes (`standard`, `read_only`, and `unconfined`) that
+control which local paths the agent can access and modify; how to switch and
+the CLI override are covered in [permission modes](permissions.md).
 
-| Mode | File reach | Mutations |
-|---|---|---|
-| `standard` | Current runtime root, registered workspaces, system temporary directory, and explicit extra roots | Allowed inside those reachable roots |
-| `read_only` | Same reach as `standard` | Denied |
-| `unconfined` | No Wuu workspace restrictions | Allowed wherever the current OS user has permission |
+In every mode, Wuu is not an OS sandbox: permitted child processes run with the
+Wuu process's operating-system identity, inherited environment, and network
+stack. The path boundary and hard tool guards reduce mistakes, but they are not
+a security boundary against malicious native code or a compromised dependency.
+`unconfined` hands the agent full local authority at the current user's
+privilege level and should be enabled only for trusted tasks; the sensitive-path
+guards kept by the dedicated file and Git tools (`.env`, SSH private keys,
+`~/.wuu` credential files, and so on) are defense in depth, and arbitrary shell
+commands, scripts, and child processes can bypass them. In `standard` and
+`read_only` modes, commands that expose the whole environment, read common
+credential paths, use unsafe Git operations, or perform package/network
+mutations receive extra classification or hard checks, and tool output is
+redacted for common secret patterns.
 
-The default `standard` mode enforces paths and tool rules inside the Wuu
-process. It is **not** a macOS sandbox, container, virtual machine, or separate
-OS user. A permitted child process runs with the Wuu process's operating-system
-identity, inherited environment, and network stack. The path boundary and hard
-tool guards reduce mistakes, but they are not a security boundary against
-malicious native code or a compromised dependency.
-
-`unconfined` means that Wuu no longer applies its own path boundary. The agent
-can read or modify anything available to the current OS user, including the
-user's home directory, other repositories, and configuration files. Wuu's
-dedicated file tools still refuse writes to known sensitive paths, and its
-structured Git tools still refuse to stage or commit them. The same dedicated
-tools block direct access to Wuu credential files under `~/.wuu` (`auth.json`,
-`credentials.json`, `remote.json`, and `phone.json`). These are tool-specific
-guards, not guarantees about every execution path: arbitrary shell commands,
-scripts, and child processes run with the Wuu process's OS authority and can
-bypass them. Common secret patterns are still masked in tool output in every
-mode, including `unconfined`, but redaction cannot recognize every secret or
-indirect disclosure.
-
-`unconfined` does not grant permissions beyond the current OS user, so file
-ownership and ACLs, macOS privacy controls, System Integrity Protection,
-read-only filesystems, and any container or OS sandbox still apply. Treat it as
-full local authority at the current user's privilege level and enable it only
-for trusted tasks.
-
-In `standard` and `read_only` modes, commands that expose the whole environment,
-read common credential paths, use unsafe Git operations, or perform
-package/network mutations receive extra classification or hard checks. Tool
-output is redacted for common secret patterns. These checks are defense in
-depth, not a guarantee that every secret format or indirect access path will be
-recognized.
-
-Use a disposable VM, container, or separate OS account when working with a
-repository you do not trust. Do not rely on a permission label as a substitute
-for OS isolation.
+For untrusted repositories, use a disposable VM, container, or a separate OS
+account. Do not substitute permission modes for OS-level isolation.
 
 ## Data sent to model providers
 

@@ -138,10 +138,11 @@ remain compatible and are mapped when applied; new themes should prefer the
 current `--wuu-color-*` and `--wuu-font-*` names.
 
 Shared neutral UI is skinned through a few coarse semantic tokens, so an
-appearance plugin does not need private DOM. The complete token-to-surface
-mapping is generated from the host stylesheet dependency graph and published
-on the [theme surface matrix](theme-surface-matrix.md). Text and fonts
-continue to inherit the corresponding public color and typography tokens.
+appearance plugin does not need private DOM. The complete token list,
+descriptions, and host wiring status are generated from the theme contract and
+the host stylesheet dependency graph and published on the [theme token
+reference](theme-surface-matrix.md). Text and fonts continue to inherit the
+corresponding public color and typography tokens.
 Compact controls keep host-owned border widths so a strong panel border
 cannot change their box model or break text wrapping.
 

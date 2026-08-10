@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 /**
  * Generates the theme surface matrix (config/desktop-theme-surface-matrix.json)
- * and the theme-author docs (docs/en/customize/theme-surface-matrix.md and
- * docs/zh-cn/customize/theme-surface-matrix.md) from the CSS dependency graph.
+ * and the theme token reference (docs/en/customize/theme-surface-matrix.md and
+ * docs/zh-cn/customize/theme-surface-matrix.md) from the theme contract and the
+ * host stylesheet dependency graph.
  * Run via vite-node from the desktop package:
  *
  *   cd desktop && npx vite-node ../scripts/generate-theme-surface-matrix.ts
@@ -103,151 +104,163 @@ function tokenSurfaces(matrix: SurfaceMatrix): Map<string, string[]> {
 }
 
 function renderDoc(matrix: SurfaceMatrix, contract, locale: "en" | "zh"): string {
-  const bridged = matrix.rows.filter((row) => row.status === "bridged").length;
-  const unbridged = matrix.rows.length - bridged;
-  const realAnchors = matrix.anchors.filter((anchor) => !anchor.synthetic);
-  const anchoredRows = matrix.rows.filter((row) => !row.anchor.startsWith("unanchored:")).length;
   const surfaces = tokenSurfaces(matrix);
+  const isWired = (token: string) => (surfaces.get(token) ?? []).length > 0;
+  const zh = locale === "zh";
 
-  const anchorRows = matrix.anchors.map(
-    (anchor) =>
-      `| \`${anchor.name}\`${anchor.synthetic ? (locale === "zh" ? "（合成）" : " (synthetic)") : ""} | ${anchor.rows} |`,
-  );
+  const categoryLabels: Record<string, Record<string, string>> = {
+    color: { zh: "颜色", en: "Color" },
+    typography: { zh: "排版", en: "Typography" },
+    spacing: { zh: "间距", en: "Spacing" },
+    density: { zh: "密度", en: "Density" },
+    radius: { zh: "圆角", en: "Radius" },
+    border: { zh: "边框", en: "Border" },
+    elevation: { zh: "阴影", en: "Elevation" },
+    motion: { zh: "动效", en: "Motion" },
+    content: { zh: "内容", en: "Content" },
+  };
 
-  const tokenNames = [...new Set([...contract.tokens.map((t) => t.name), ...contract.syntax])].sort();
-  const tokenRows = tokenNames.map((token) => {
-    const cells = surfaces.get(token) ?? [];
-    const rendered =
-      cells.length > 0
-        ? cells
-            .map((cell) => {
-              const [anchor, state, prop] = cell.split("|");
-              const count = matrix.rows.filter(
-                (row) =>
-                  row.anchor === anchor && row.state === state && row.prop === prop && row.tokens.includes(token),
-              ).length;
-              return `\`${anchor.replace("unanchored:", "")}\` · ${state} · \`${prop}\`${count > 1 ? ` (${count})` : ""}`;
-            })
-            .join("<br>")
-        : locale === "zh"
-          ? "—（未到达宿主表面）"
-          : "— (no host surface)";
-    return `| \`${token}\` | ${rendered} |`;
+  const describeToken = (token) =>
+    token.legacy
+      ? zh
+        ? `旧名称，请使用 \`${token.aliasFor}\``
+        : `Legacy name; use \`${token.aliasFor}\` instead`
+      : token.description?.[locale] ?? "";
+
+  const statusText = (wired: boolean) =>
+    wired
+      ? zh
+        ? "已接入"
+        : "Wired"
+      : zh
+        ? "未接入（预留）"
+        : "Not wired (reserved)";
+
+  const rowsByCategory = new Map<string, string[]>();
+  for (const token of contract.tokens) {
+    const rows = rowsByCategory.get(token.category) ?? [];
+    rows.push(`| \`${token.name}\` | ${describeToken(token)} | ${statusText(isWired(token.name))} |`);
+    rowsByCategory.set(token.category, rows);
+  }
+
+  const legacyCount = contract.tokens.filter((token) => token.legacy).length;
+  const wiredCount = [...contract.tokens, ...contract.syntax].filter((token) =>
+    isWired(typeof token === "string" ? token : token.name),
+  ).length;
+
+  const sections = [...rowsByCategory.entries()]
+    .map(
+      ([category, rows]) =>
+        `### ${categoryLabels[category]?.[locale] ?? category}\n\n| token | ${
+          zh ? "说明" : "Description"
+        } | ${zh ? "宿主" : "Host"} |\n| --- | --- | --- |\n${rows.join("\n")}`,
+    )
+    .join("\n\n");
+
+  const syntaxKinds: Record<string, Record<string, string>> = {
+    keyword: { zh: "关键字", en: "Keyword" },
+    function: { zh: "函数名", en: "Function name" },
+    string: { zh: "字符串", en: "String" },
+    number: { zh: "数字", en: "Number" },
+    comment: { zh: "注释", en: "Comment" },
+    tag: { zh: "HTML 标签", en: "HTML tag" },
+    literal: { zh: "字面量", en: "Literal" },
+    meta: { zh: "元信息", en: "Meta" },
+  };
+  const syntaxRows = contract.syntax.map((token) => {
+    const kind = token.split("-").pop() ?? token;
+    const kindLabel = syntaxKinds[kind]?.[locale] ?? kind;
+    return `| \`${token}\` | ${kindLabel} | ${statusText(isWired(token))} |`;
   });
 
-  const unbridgedByFile = matrix.rows
-    .filter((row) => row.status === "unbridged")
-    .reduce((acc, row) => {
-      acc.set(row.file, (acc.get(row.file) ?? 0) + 1);
-      return acc;
-    }, new Map<string, number>());
-  const unbridgedSummary = [...unbridgedByFile.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .map(([file, count]) => `${file} ${count}`)
-    .join(", ");
+  if (zh) {
+    return `# 主题 Token 参考
 
-  if (locale === "zh") {
-    return `# 主题表面矩阵
+Wuu 桌面端把界面外观收敛为一组公开的 CSS 自定义属性（design token）。插件可以通过
+\`contributes.themes\` 声明主题并覆盖这些 token，也可以用 \`registerThemeTokens\`
+在运行时按主题应用覆盖；机制见[插件主题](plugin-authoring.md)。
 
-本页由 \`scripts/generate-theme-surface-matrix.ts\` 从宿主样式依赖图生成（运行
-\`make generate-theme-surface-matrix\`）；请勿手改。机器可读的矩阵位于
-[\`config/desktop-theme-surface-matrix.json\`](../../../config/desktop-theme-surface-matrix.json)，
-U1 覆盖基线位于
-[\`themeCoverage.baseline.txt\`](../../../desktop/src/renderer/styles/themeCoverage.baseline.txt)。
+本页由 \`scripts/generate-theme-surface-matrix.ts\` 从
+[\`config/desktop-theme-contract.json\`](../../../config/desktop-theme-contract.json)
+与宿主样式依赖图生成（\`make generate-theme-surface-matrix\`），请勿手改；逐声明
+级的覆盖明细见
+[\`config/desktop-theme-surface-matrix.json\`](../../../config/desktop-theme-surface-matrix.json)。
 
-矩阵的每一行是宿主样式表中一条颜色类绘制声明的 \`var()\` 引用。当公开 token 能沿自定义属性
-依赖图到达该变量时，这一行视为**已桥接（bridged）**，否则为**未桥接（unbridged）**。
-纯几何声明不在此范围。
+## 覆盖方式
 
-当前总计：**${matrix.rows.length} 行**（${bridged} 已桥接、${unbridged}
-未桥接），**${matrix.tokenSet.length} 个公开 token** 可达宿主表面，**${realAnchors.length} 个锚点**已发布。
-
-## 锚点覆盖
-
-宿主样式目前选择组件类名：**${realAnchors.length} 个锚点**中没有任何一个被宿主 CSS 选择器引用，
-**${matrix.rows.length} 行中的 ${anchoredRows} 行**归属于 \`data-wuu-component\` 锚点。
-其余行归入按文件划分的 \`unanchored\` 桶，直到宿主把选择器迁移到锚点。
-
-| 锚点 | 行数 |
-| --- | --- |
-${anchorRows.join("\n")}
-
-## token 可达的表面
-
-表面以 \`文件 · 状态 · 属性\` 单元格展示（一个单元格多于一条声明时标注数量）。\`—\` 表示该
-token 已在合同中声明，但未到达任何宿主绘制声明。
-
-| token | 表面 |
-| --- | --- |
-${tokenRows.join("\n")}
-
-## 未桥接的表面
-
-未桥接行即 U1 baseline 条目：按文件归属 unanchored，优先级顺序
-workspace → turns → sidebar → settings → composer/conversation-shell →
-channels → environment → image-preview → 其余。当前分布：
-${unbridgedSummary}。
-
-唯一允许的桥接写法是单条声明：
+覆盖就是设置变量本身；宿主为每个 token 保留默认值，未覆盖的部分维持内置外观：
 
 \`\`\`css
-prop: var(--wuu-slot, var(--private-fallback));
+:root {
+  --wuu-color-canvas: #f6f6f4;
+  --wuu-color-text: #1c1c1a;
+}
 \`\`\`
+
+## Token 一览
+
+合同共定义 **${contract.tokens.length} 个公开 token**（其中 **${legacyCount} 个**
+旧名称兼容别名）与 **${contract.syntax.length} 个语法高亮 token**；当前 **${wiredCount} 个**
+已接入宿主界面。「已接入」表示宿主样式已在引用该 token，覆盖会立即生效；
+「未接入（预留）」表示 token 已声明但宿主尚未引用，覆盖暂不改变任何界面。
+
+${sections}
+
+## 语法高亮
+
+代码高亮颜色由 \`--wuu-syntax-*\` 控制；\`--hljs-*\` 是早期的兼容名称，两者等价。
+
+| token | 说明 | 宿主 |
+| --- | --- | --- |
+${syntaxRows.join("\n")}
 `;
   }
 
-  return `# Theme surface matrix
+  return `# Theme token reference
 
-This page is generated from the host stylesheet dependency graph by
+Wuu Desktop derives its appearance from a set of public CSS custom properties
+(design tokens). Plugins can declare themes through \`contributes.themes\` that
+override these tokens, or apply overrides at runtime with \`registerThemeTokens\`;
+see [plugin themes](plugin-authoring.md).
+
+This page is generated from
+[\`config/desktop-theme-contract.json\`](../../../config/desktop-theme-contract.json)
+and the host stylesheet dependency graph by
 \`scripts/generate-theme-surface-matrix.ts\` (run
-\`make generate-theme-surface-matrix\`); do not edit it by hand. The
-machine-readable matrix lives at
-[\`config/desktop-theme-surface-matrix.json\`](../../../config/desktop-theme-surface-matrix.json)
-and the U1 coverage baseline at
-[\`themeCoverage.baseline.txt\`](../../../desktop/src/renderer/styles/themeCoverage.baseline.txt).
+\`make generate-theme-surface-matrix\`); do not edit it by hand. Per-declaration
+coverage detail lives in
+[\`config/desktop-theme-surface-matrix.json\`](../../../config/desktop-theme-surface-matrix.json).
 
-Every row is one \`var()\` reference of a color-kind paint declaration in the
-host stylesheets. A row is **bridged** when a public token reaches the
-variable through the custom-property dependency graph, and **unbridged**
-otherwise. Geometry-only declarations are excluded.
+## Overriding tokens
 
-Current totals: **${matrix.rows.length} rows** (${bridged} bridged,
-${unbridged} unbridged), **${matrix.tokenSet.length} public tokens** reach a
-host surface, **${realAnchors.length} anchors** published.
-
-## Anchor coverage
-
-Host stylesheets currently target component class names: none of the
-**${realAnchors.length} anchors** has a host CSS selector referencing it, and
-**${anchoredRows} of ${matrix.rows.length} rows** are attributed to a
-\`data-wuu-component\` anchor. The remaining rows fall into the per-file
-\`unanchored\` bucket until the host migrates selectors to anchors.
-
-| anchor | rows |
-| --- | --- |
-${anchorRows.join("\n")}
-
-## Tokens and the surfaces they reach
-
-Surfaces are shown as \`file · state · property\` cells (with the number of
-declarations when a cell has more than one). \`—\` means the token is declared
-in the contract but reaches no host paint declaration.
-
-| token | surfaces |
-| --- | --- |
-${tokenRows.join("\n")}
-
-## Unbridged surfaces
-
-Unbridged rows are the U1 baseline entries: unanchored per file, priority
-order workspace → turns → sidebar → settings → composer/conversation-shell →
-channels → environment → image-preview → rest. Current distribution:
-${unbridgedSummary}.
-
-The only sanctioned bridge form is a single declaration:
+An override is just setting the variable; the host keeps a default for every
+token, so anything you do not override keeps the built-in appearance:
 
 \`\`\`css
-prop: var(--wuu-slot, var(--private-fallback));
+:root {
+  --wuu-color-canvas: #f6f6f4;
+  --wuu-color-text: #1c1c1a;
+}
 \`\`\`
+
+## Token list
+
+The contract defines **${contract.tokens.length} public tokens** (**${legacyCount}**
+legacy compatibility aliases) and **${contract.syntax.length} syntax-highlighting
+tokens**; **${wiredCount}** of them are currently wired into host surfaces.
+"Wired" means host styles already reference the token and overrides take effect;
+"Not wired (reserved)" means the token is declared but the host does not consume
+it yet, so overrides do not change anything.
+
+${sections}
+
+## Syntax highlighting
+
+Code highlighting colors use \`--wuu-syntax-*\`; \`--hljs-*\` are the early
+compatible names and both families take effect.
+
+| token | Description | Host |
+| --- | --- | --- |
+${syntaxRows.join("\n")}
 `;
 }

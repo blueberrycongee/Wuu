@@ -75,7 +75,9 @@ deploying.
 ## Generated pages
 
 - `en/customize/theme-surface-matrix.md` and `zh-cn/customize/theme-surface-matrix.md`
-  are generated from the host stylesheet dependency graph by
+  are the theme token reference (public `--wuu-*` tokens, their descriptions,
+  and host wiring status), generated from `config/desktop-theme-contract.json`
+  and the host stylesheet dependency graph by
   `scripts/generate-theme-surface-matrix.ts` (run
   `make generate-theme-surface-matrix`); do not edit them by hand. CI checks
   freshness with `make theme-surface-matrix-check`.
