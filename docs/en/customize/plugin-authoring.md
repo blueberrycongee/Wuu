@@ -207,15 +207,23 @@ and background effects open only after the generation's package and policy are
 committed, and start through `activate(host)`. SDKs that do not declare a
 lifecycle version cannot enter a candidate generation.
 
-Production host services are exactly these 11 methods:
+Host capabilities are published through the Service Registry: the kernel
+registers services under a stable name and version, plugins declare what they
+consume with `required_services` in `initialize`, and declaring is the only way
+to gain call authority. Calls all ride the `host.service.call` gateway frame
+and are routed and validated by the host against the registry. The callable
+kernel services are:
 
-- Storage: `get`, `set`, `delete`, `keys`, `compare_exchange`; every call must
-  pass `scope: "user" | "workspace"`;
-- Settings: `get`, `list`, read-only at runtime;
-- Session: `create`, `send`, `list`, `cancel`.
+| Service | Purpose |
+| --- | --- |
+| `host.storage.get` / `set` / `delete` / `keys` / `compare-exchange` | Namespaced storage; every call must pass `scope: "user" \| "workspace"` |
+| `host.settings.get` / `list` | Settings, read-only at runtime |
+| `host.session.create` / `send` / `list` / `cancel` | Create, deliver to, list, and cancel plugin-owned Sessions |
+| `registry.introspect` | Read-only introspection: which services exist, at what version, provided by which generation |
+| `execution.update` | Report progress for one in-flight execution (see "Execution scope") |
 
-Method names, parameters, and result types follow the SDK's
-`HOST_SERVICE_METHODS` and `HostServiceContracts`.
+Service names, parameters, and result types follow the SDK's
+`KERNEL_SERVICE_NAMES`, `kernelServiceCall`, and `HostServiceContracts`.
 `host.session.info`, `host.workspace.*`, and `host.diagnostics.log` are not
 part of the production contract.
 
@@ -255,6 +263,52 @@ the plugin; the core provides no timer tick and does not interpret
 Process lifecycle is managed by Wuu: started on enable, terminated on disable,
 upgrade, or uninstall. A plugin cannot restart itself or bypass host
 supervision.
+
+### Providing and consuming services
+
+Plugins and the kernel compose through the same registry. A provider declares
+`provided_services` in its initialize result: a stable name (for example
+`search.provider`), a strict semver version, and a method list whose input and
+output carry versioned schema identifiers. A consumer declares
+`required_services`: name plus major version. Declarations are collected during
+prepare, and calls only flow once both generations — provider and consumer —
+are active.
+
+- There is no dependency solver: when no provider can be resolved for the
+  required major version, that consumer's activation is blocked with an
+  explicit diagnostic;
+- Calls are authenticated by the host: the `caller` on the `ServiceCall` a
+  provider receives is the consumer plugin ID verified by the host and cannot
+  be forged;
+- After a provider upgrades, consumers re-resolve by name plus major version
+  and keep working; the host sends a `service.changed` notice. When a provider
+  is uninstalled or replaced, call authority is withdrawn with it, and
+  in-flight calls converge to typed errors.
+
+Now that kernel services live in the registry, the host and third parties use
+the exact same provide/consume contract; no private entry point exists that
+only first-party plugins can call.
+
+### Execution scope
+
+Every `tool.execute` or `capability.invoke` dispatch is one execution, and the
+host gives it a unique `execution_id` carried on the invocation frame. Open
+semantics ride the invocation frame itself, close rides its response, and
+`execution.cancel` is the only mid-flight frame:
+
+- While handling its own tool/capability call, a plugin can call
+  `execution.update` to report progress (`execution_id` + `message` + arbitrary
+  plugin-owned `detail`); the host verifies the caller owns the execution;
+- When the host cancels the dispatch, it sends `execution.cancel`, and the SDK
+  translates it into context cancellation of the handler; the plugin maps the
+  signal to whatever local cancellation primitive it owns;
+- Cancel is fire-and-forget: the host's terminal state is decided by the invoke
+  returning, never by plugin acknowledgement. A late or unauthorized update
+  fails with `execution_not_found` / `service_not_authorized` and can never
+  reopen a closed execution.
+
+The host builds no task tree on `execution_id` — trees, DAGs, and worker pools
+remain plugin-owned state.
 
 ### Extending the agent
 

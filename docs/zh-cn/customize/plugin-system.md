@@ -288,8 +288,9 @@ Go 生态中最接近进程插件边界的是 HashiCorp `go-plugin` 一类 subpr
 安装、卸载和 generation。Wuu 已经有自己的双工插件进程协议、fingerprint 和原子 generation，
 因此无需为追求 Cordis 体验把核心改写成 TypeScript。当前 runtime 进程由 Go generation 拥有并在
 关闭时限内 shutdown，Desktop generation 统一拥有注册项和 cleanup 并逆序释放；Manifest 的
-`requires`、`breaks`、`conflicts` 已形成简单 Activation Plan。尚未形成的是跨 Go/Desktop 的单一
-Scope、通用 Service Graph，以及跨外部副作用的事务承诺。
+`requires`、`breaks`、`conflicts` 已形成简单 Activation Plan；运行时组合已收敛为
+generation-scoped Service Registry，内核服务、自省与执行作用域都走同一个 provide/consume
+合同。尚未形成的是跨 Go/Desktop 的单一 Scope，以及跨外部副作用的事务承诺。
 
 ### 一方高级功能的迁移结果
 
@@ -366,7 +367,8 @@ Scope、通用 Service Graph，以及跨外部副作用的事务承诺。
 6. 每项迁移都必须验证插件禁用、升级和卸载后不再唤醒、不残留 UI、Prompt、Tool、订阅或后台
    generation；核心删除旧协议、死代码和只为旧边界存在的测试。
 7. Go runtime 和 Desktop 注册项已分别收敛到 generation owner，Manifest 已支持简单依赖与冲突；
-   跨 Go/Desktop 的统一 Plugin Scope 和通用 Service Graph 暂不另造平行实现。
+   运行时平面的组合已收敛为 generation-scoped Service Registry：内核服务、自省与执行作用域均
+   经同一注册入口（`host.service.call`），不再另造平行的固定宿主服务表。
 8. 现有执行循环已包装成 Experimental v1 `DefaultDriver`，产品行为不变；Session 持久化 Driver
    身份、checkpoint 与最终 model-input receipt，恢复只从稳定边界进行。
 9. `SinglePassDriver` 已证明单轮无 Tool 的不同范式可以不修改 Kernel 私有类型运行。把 Driver 做成
@@ -534,6 +536,28 @@ React 组件可以在 generation 激活后订阅宿主事件，组件卸载或 g
 桌面 Slot、Presenter 和 Surface 都有局部错误边界。一个贡献渲染失败时，Wuu 隔离当前边界并
 保留原生 fallback，不让整个 Renderer 白屏。插件管理、设置、禁用和恢复默认界面始终可达。
 
+## Service Registry：唯一的组合原语
+
+运行时平面的组合不再是一张固定的宿主中介表：插件与内核把能力以稳定名称 + 版本发布为
+Service，其他插件按名称 + 主版本消费，所有调用由宿主经 `host.service.call` 网关按注册表
+路由和校验。注册表是唯一的组合原语，合同、清单与自省接口都是它的构建产物；每个注册都随
+generation 发布与撤销，不另设平行生命周期。
+
+- **内核是第一个注册者，不是特例**：Storage、Settings、Session、执行作用域
+  （`execution.update`）与注册表自省（`registry.introspect`）都作为 kernel services 注册，
+  宿主与第三方走同一个 provide/consume 合同；
+- **声明是调用权限的唯一来源**：消费方声明 `required_services` 才获得 authority，没有依赖
+  求解器——要求未满足时该消费方激活失败并给出诊断，不静默降级；
+- **调用在 wire 上被验证**：未注册或未授权的服务调不通；服务方收到的 caller 由宿主认证，
+  不能伪造；
+- **可自省**：`registry.introspect` 让程序查询注册表现状（服务、版本、提供方、generation），
+  自进化工具与诊断共用这一入口。
+
+执行作用域是注册表的第一个内核 Service 消费者：每次 tool/capability 分发获得唯一
+`execution_id`，`execution.update` 报告进度、`execution.cancel` 精确取消单次分发，宿主不建立
+任务树。跨插件组合按同一个词汇工作：插件 B 消费插件 A 发布的版本化 Service，A 升级后 B
+重解析继续工作，A 卸载后调用权限撤销、在途调用收敛为带类型的错误。
+
 ## 多插件组合与冲突
 
 正常组合不需要仲裁：多个 Slot 按稳定顺序追加，多个 `wrap` Presenter/Surface 依次包装，
@@ -594,8 +618,9 @@ Goal、Subagent、Automation、Memory、Dream、Plan 已经通过与第三方插
 - Goal、Subagent、Automation、用户/工作区/会话 Memory、Dream 和 Plan 已完成纵向迁移，并去除专用宿主执行 seam；
 - HelpMe 已从代码和产品中删除；Plan 的旧核心 Tool、状态、恢复与原生展示同样已删除；
 - Go runtime 与 Desktop contribution 已按 generation 统一回收，简单 Activation Plan、Default
-  Driver、SinglePass Driver、checkpoint 和 model-input receipt 已实现；跨 Go/Desktop 的统一
-  Plugin Scope、通用 Service Graph、Driver Manifest/选择 UI 仍未完成。
+  Driver、SinglePass Driver、checkpoint 和 model-input receipt 已实现；Service Registry
+  （内核服务 + 自省 + 执行作用域）已作为运行时组合原语落地；跨 Go/Desktop 的统一
+  Plugin Scope、Driver Manifest/选择 UI 仍未完成。
 
 新能力应由真实插件案例驱动，先确定责任属于宿主、功能插件还是外观插件，再选择最窄的公开合同。
 

@@ -162,15 +162,21 @@ initialize 是只读 prepare 阶段，只能读取 Storage、Settings 和已有 
 Session create/send 和后台 effect 在 generation 的包与策略提交后才开放，并通过 `activate(host)` 启动。
 旧 SDK 没有声明 lifecycle version，不能进入候选 generation。
 
-生产 Host Service 只有以下 11 个方法：
+宿主能力通过 Service Registry 发布：内核把服务以稳定名称 + 版本注册进注册表，插件在
+initialize 里用 `required_services` 声明消费项，声明是获得调用权限的唯一途径；调用统一走
+`host.service.call` 网关帧，由宿主按注册表路由和校验。当前可调用的内核服务（kernel services）：
 
-- Storage：`get`、`set`、`delete`、`keys`、`compare_exchange`；每次调用都必须传
-  `scope: "user" | "workspace"`；
-- Settings：`get`、`list`，运行时只读；
-- Session：`create`、`send`、`list`、`cancel`。
+| 服务 | 用途 |
+| --- | --- |
+| `host.storage.get` / `set` / `delete` / `keys` / `compare-exchange` | 命名空间存储；每次调用都必须传 `scope: "user" | "workspace"` |
+| `host.settings.get` / `list` | 设置，运行时只读 |
+| `host.session.create` / `send` / `list` / `cancel` | 插件拥有的 Session 创建、投递、列表与取消 |
+| `registry.introspect` | 只读自省：注册表里有哪些服务、什么版本、由哪个 generation 提供 |
+| `execution.update` | 为一次正在执行的调用报告进度（见"执行作用域"） |
 
-方法名、参数和结果类型以 SDK 的 `HOST_SERVICE_METHODS` 与 `HostServiceContracts` 为准。
-`host.session.info`、`host.workspace.*` 和 `host.diagnostics.log` 不属于生产合同。
+服务名、参数和结果类型以 SDK 的 `KERNEL_SERVICE_NAMES`、`kernelServiceCall` 与
+`HostServiceContracts` 为准。`host.session.info`、`host.workspace.*` 和 `host.diagnostics.log`
+不属于生产合同。
 
 需要在后台发起普通 Agent 工作时，插件组合产品中立的 Session 服务：`host.session.create` 创建具有明确
 owner、visibility、parent、fresh/fork、workspace 和可选模型别名语义的 Session；`host.session.send` 向已有
@@ -193,13 +199,45 @@ context blocks、稳定 cause，以及可选的 `presentation: { kind: "query_bu
 原样的 `request_id`；终态还包含最终模型输出。Cron、重试、错过触发恢复、并发合并和业务状态都必须由插件持有；核心不
 提供 timer tick，也不解释 `request_id` 或 cause。
 
-每次插件 Tool 调用都包含拥有它的当前 `turn_id`。插件若声明 `agent.turn.interrupted` observe
+每次插件 Tool 调用都包含拥有它的当前 `turn_id`，以及该次分发的唯一 `execution_id`（进度上报
+与精确取消见"执行作用域"）。插件若声明 `agent.turn.interrupted` observe
 能力，还会收到产品中立的 Turn 中断信号。宿主不会根据 `parent_session_id` 建立取消树；插件可以
 把信号转发到它记录的任意 child Turn，也可以让工作脱离当前 Turn。树、DAG、worker pool、汇聚、
 重试和恢复等编排语义全部属于插件。
 
 进程生命周期由 Wuu 管理：启用时启动，禁用、升级或卸载时终止。插件不能重启自身或
 绕过宿主对进程的监督。
+
+### 提供与消费 Service
+
+插件之间、以及插件与内核之间，通过同一个注册表组合能力。提供方在 initialize 结果里声明
+`provided_services`：稳定名称（如 `search.provider`）、严格 semver 版本和带版本化 schema 标识的
+方法列表；消费方声明 `required_services`：名称 + 主版本号。声明在 prepare 阶段收集，调用只在
+提供方与消费方两个 generation 都激活后流动。
+
+- 没有依赖求解器：消费方要求的主版本没有可解析的提供者时，该消费方的激活会被阻塞并给出明确诊断；
+- 调用由宿主认证：服务方收到的 `ServiceCall` 里的 caller 是宿主核实的消费方插件 ID，不能伪造；
+- 提供方升级后，消费方按名称 + 主版本重解析继续工作，宿主会发送 `service.changed` 通知；
+  提供方卸载或替换后，调用权限随之撤销，在途调用收敛为带类型的错误。
+
+把内核服务迁入注册表之后，宿主与第三方使用完全相同的 provide/consume 合同，不存在只能由
+一方插件调用的私有入口。
+
+### 执行作用域
+
+每次 `tool.execute` 或 `capability.invoke` 分发都是一次 execution，宿主为它生成唯一的
+`execution_id` 并随调用帧下发。open 语义由调用帧本身携带、close 随其响应返回，
+`execution.cancel` 是唯一的 mid-flight 帧：
+
+- 插件在处理自己的 tool/capability 调用时，可以调用 `execution.update` 报告进度
+  （`execution_id` + `message` + 任意插件自有 `detail`）；宿主校验调用方必须是该 execution
+  的所有者；
+- 宿主取消本次分发时发送 `execution.cancel`，SDK 把它翻译为处理函数的 context 取消，插件负责
+  把信号转成自己拥有的任何本地取消原语；
+- cancel 是 fire-and-forget：宿主终态由 invoke 返回决定，不等待插件确认；迟到或越权的 update
+  会得到 `execution_not_found` / `service_not_authorized` 错误，且不会重新打开已结束的执行。
+
+宿主不基于 execution_id 构建任务树——树、DAG、worker pool 等编排仍然是插件自己的状态。
 
 ### 扩展 Agent 的能力
 

@@ -377,9 +377,12 @@ fingerprint, and atomic generation, so it does not need to rewrite the core in
 TypeScript to chase a Cordis experience. The current runtime process is owned by the
 Go generation and shuts down within the close deadline; the Desktop generation owns
 registrations and cleanup uniformly and releases them in reverse order; the Manifest's
-`requires`, `breaks`, and `conflicts` already form a simple Activation Plan. What does
-not exist yet is a single cross-Go/Desktop Scope, a general Service Graph, and
-transactional promises across external side effects.
+`requires`, `breaks`, and `conflicts` already form a simple Activation Plan.
+Runtime composition is now the generation-scoped Service Registry: kernel
+services, introspection, and the execution scope all ride the same
+provide/consume contract. What does not exist yet is a single
+cross-Go/Desktop Scope and transactional promises across external side
+effects.
 
 ### Migration results of the first-party advanced features
 
@@ -498,9 +501,11 @@ public boundary first, then delete the product-specific entry points:
    generation remains; the core deletes old protocols, dead code, and tests that only
    existed for the old boundary.
 7. The Go runtime and Desktop registrations have each converged on the generation
-   owner, and the Manifest supports simple dependencies and conflicts; a unified
-   cross-Go/Desktop Plugin Scope and a general Service Graph are not being built as
-   parallel implementations for now.
+   owner, and the Manifest supports simple dependencies and conflicts; runtime
+   composition has converged on the generation-scoped Service Registry — kernel
+   services, introspection, and the execution scope all ride the same
+   `host.service.call` entry point, and no parallel fixed host-service table is
+   being kept.
 8. The existing execution loop has been wrapped as the Experimental v1 `DefaultDriver`
    with unchanged product behavior; Sessions persist the Driver identity, checkpoint,
    and final model-input receipt, and recovery only proceeds from stable boundaries.
@@ -728,6 +733,40 @@ contribution fails to render, wuu isolates the current boundary and keeps the na
 fallback instead of white-screening the whole Renderer. Plugin management, settings,
 disabling, and restoring the default UI always remain reachable.
 
+## Service Registry: the single composition primitive
+
+Runtime composition is no longer a fixed host-mediated table: plugins and the
+kernel publish capabilities as Services under a stable name and version, other
+plugins consume them by name and major version, and every call is routed and
+validated by the host through the `host.service.call` gateway against the
+registry. The registry is the single composition primitive; contracts,
+manifests, and introspection interfaces are products of it, and every
+registration is published and withdrawn with its generation — no parallel
+lifecycle is created.
+
+- **The kernel is the first registrant, not a special case**: Storage,
+  Settings, Session, the execution scope (`execution.update`), and registry
+  introspection (`registry.introspect`) are all registered as kernel services;
+  the host and third parties use the same provide/consume contract;
+- **Declaring is the only source of call authority**: a consumer gains
+  authority only by declaring `required_services`; there is no dependency
+  solver — an unsatisfied requirement fails that consumer's activation with an
+  explicit diagnostic instead of silent degradation;
+- **Calls are validated on the wire**: unregistered or unauthorized services
+  cannot be reached, and the `caller` a provider receives is authenticated by
+  the host;
+- **Introspectable**: `registry.introspect` lets programs query the current
+  registry (services, versions, providers, generations); self-evolution tooling
+  and diagnostics share this entry point.
+
+The execution scope is the registry's first kernel Service consumer: every
+tool/capability dispatch gets a unique `execution_id`, `execution.update`
+reports progress, and `execution.cancel` cancels exactly one dispatch; the host
+builds no task tree. Cross-plugin composition speaks the same vocabulary:
+plugin B consumes plugin A's versioned Service, keeps working by re-resolving
+after A upgrades, and loses call authority when A is unloaded — in-flight calls
+converge to typed errors.
+
 ## Multi-plugin composition and conflicts
 
 Normal composition needs no arbitration: multiple Slots append in stable order,
@@ -812,8 +851,10 @@ The following must not be written as completed compatibility promises:
   recovery, and native display were also removed;
 - the Go runtime and Desktop contributions are now reclaimed uniformly per
   generation, and a simple Activation Plan, Default Driver, SinglePass Driver,
-  checkpoints, and model-input receipts are implemented; the unified cross-Go/Desktop
-  Plugin Scope, general Service Graph, and Driver Manifest/selection UI are not done.
+  checkpoints, and model-input receipts are implemented; the Service Registry
+  (kernel services + introspection + execution scope) is live as the runtime
+  composition primitive; the unified cross-Go/Desktop Plugin Scope and Driver
+  Manifest/selection UI are not done.
 
 New capabilities should be driven by real plugin cases: first decide whether the
 responsibility belongs to the host, a feature plugin, or an appearance plugin, then
