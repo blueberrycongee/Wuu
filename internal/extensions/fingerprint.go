@@ -86,9 +86,8 @@ const (
 	// CommandKindPromptTemplate loads a host-owned prompt template from the
 	// plugin root. It is executable only by the host composer.
 	CommandKindPromptTemplate CommandKind = "prompt_template"
-	// CommandKindRuntimeAction is reserved in the schema but not executable until
-	// its request/response contract, permissions, and audit behavior are
-	// defined.
+	// CommandKindRuntimeAction is executable only through an approved desktop
+	// command registration with the same plugin and command id.
 	CommandKindRuntimeAction CommandKind = "runtime_action"
 )
 
@@ -125,6 +124,9 @@ type PackageSpec struct {
 	RequestedPermissions []string                 `json:"requested_permissions,omitempty"`
 	ActivityKinds        []string                 `json:"activity_kinds,omitempty"`
 	MinimumWuuVersion    string                   `json:"minimum_wuu_version,omitempty"`
+	Requires             []string                 `json:"requires,omitempty"`
+	Breaks               []string                 `json:"breaks,omitempty"`
+	Conflicts            []string                 `json:"conflicts,omitempty"`
 	EntryHashes          map[string]string        `json:"entry_hashes,omitempty"`
 }
 
@@ -163,6 +165,9 @@ func normalizePackageSpec(spec PackageSpec) PackageSpec {
 		RequestedPermissions: normalizedStrings(spec.RequestedPermissions),
 		ActivityKinds:        normalizedStrings(spec.ActivityKinds),
 		MinimumWuuVersion:    strings.TrimSpace(spec.MinimumWuuVersion),
+		Requires:             normalizedStrings(spec.Requires),
+		Breaks:               normalizedStrings(spec.Breaks),
+		Conflicts:            normalizedStrings(spec.Conflicts),
 	}
 	if spec.Runtime != nil {
 		normalized.Runtime = &RuntimeSpec{

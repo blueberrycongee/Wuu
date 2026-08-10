@@ -44,6 +44,33 @@ describe("PluginSlot", () => {
     expect(container.textContent).toBe("");
   });
 
+  it("adds the active locale and plugin translations to every slot context", async () => {
+    const host = new PluginHost({ react: React });
+    await host.activateGeneration({
+      pluginId: "localized",
+      generation: "one",
+      register(api) {
+        api.registerLocale({
+          id: "localized-zh",
+          locale: "zh-CN",
+          entries: { "localized.label": "插件中文" },
+        });
+        api.registerSlot("composer.toolbar", {
+          id: "localized-action",
+          render: (context) => api.react.createElement(
+            "span",
+            null,
+            `${String(context.locale)}:${(context.translate as (key: string) => string)("localized.label")}`,
+          ),
+        });
+      },
+    });
+
+    act(() => root.render(<PluginSlot host={host} id="composer.toolbar" />));
+
+    expect(container.textContent).toBe("zh-CN:插件中文");
+  });
+
   it("isolates one contribution render failure and records it in generation diagnostics", async () => {
     const host = new PluginHost({ react: React });
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);

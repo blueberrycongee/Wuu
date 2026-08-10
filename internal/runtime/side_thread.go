@@ -86,6 +86,7 @@ func (s *Session) NewSideThreadRunner(sideThreadID, rootDir string, selected Thr
 	runner.OnTokenUsage = nil
 	runner.StreamingToolExecution = false
 	runner.BeforeStep = nil
+	runner.BeforeModelStep = nil
 	runner.BeforeRequestContext = nil
 	runner.BeforeRequest = nil
 	runner.OnRequestContext = nil

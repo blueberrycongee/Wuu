@@ -22,12 +22,8 @@ type registeredRuntimeToolClient struct {
 
 func (c *registeredRuntimeToolClient) ID() string { return "runtime-tools" }
 
-func (c *registeredRuntimeToolClient) Hooks() []pluginhost.Hook {
-	return []pluginhost.Hook{pluginhost.HookToolExecuteBefore, pluginhost.HookToolExecuteAfter}
-}
-
 func (c *registeredRuntimeToolClient) Status() pluginhost.Status {
-	return pluginhost.Status{ID: c.ID(), State: pluginhost.StateActive, Hooks: c.Hooks()}
+	return pluginhost.Status{ID: c.ID(), State: pluginhost.StateActive}
 }
 
 func (c *registeredRuntimeToolClient) Close(context.Context) error { return nil }
@@ -45,27 +41,6 @@ func (c *registeredRuntimeToolClient) Tools() []pluginhost.ToolRegistration {
 		},
 		Display: &providers.ToolCallDisplay{Kind: "plugin.lookup", Text: "Looking up data", Capability: "plugin.data"},
 	}}
-}
-
-func (c *registeredRuntimeToolClient) Invoke(_ context.Context, params pluginhost.InvokeParams) (pluginhost.InvokeResult, error) {
-	switch params.Hook {
-	case pluginhost.HookToolExecuteBefore:
-		c.events = append(c.events, "before")
-		output := pluginhost.ToolExecuteBeforeOutput{Arguments: json.RawMessage(`{"wrapped":true}`)}
-		data, _ := json.Marshal(output)
-		return pluginhost.InvokeResult{Output: data}, nil
-	case pluginhost.HookToolExecuteAfter:
-		c.events = append(c.events, "after")
-		var output pluginhost.ToolExecuteAfterOutput
-		if err := json.Unmarshal(params.Output, &output); err != nil {
-			return pluginhost.InvokeResult{}, err
-		}
-		output.Result.Content = append(output.Result.Content, toolresult.ContentPart{Type: toolresult.ContentTypeText, Text: "|after"})
-		data, _ := json.Marshal(output)
-		return pluginhost.InvokeResult{Output: data}, nil
-	default:
-		return pluginhost.InvokeResult{}, errors.New("unexpected hook")
-	}
 }
 
 func (c *registeredRuntimeToolClient) ExecuteTool(_ context.Context, params pluginhost.ToolExecuteParams) (pluginhost.ToolExecuteResult, error) {
@@ -110,16 +85,16 @@ func TestPluginToolExecutorExposesAndRunsRegisteredTool(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.TextProjection() != "plugin\n|after" || string(result.StructuredContent) != `{"ok":true}` {
+	if result.TextProjection() != "plugin" || string(result.StructuredContent) != `{"ok":true}` {
 		t.Fatalf("result = %+v", result)
 	}
 	if len(inner.calls) != 0 {
 		t.Fatalf("inner calls = %+v", inner.calls)
 	}
-	if !reflect.DeepEqual(plugin.events, []string{"before", "execute", "after"}) {
+	if !reflect.DeepEqual(plugin.events, []string{"execute"}) {
 		t.Fatalf("events = %v", plugin.events)
 	}
-	if plugin.params.ToolID != "lookup" || plugin.params.Tool != publicName || plugin.params.ThreadID != "thread-plugin" || plugin.params.StepIndex != 7 || string(plugin.params.Arguments) != `{"wrapped":true}` {
+	if plugin.params.ToolID != "lookup" || plugin.params.Tool != publicName || plugin.params.ThreadID != "thread-plugin" || plugin.params.StepIndex != 7 || string(plugin.params.Arguments) != `{"original":true}` {
 		t.Fatalf("params = %+v", plugin.params)
 	}
 }

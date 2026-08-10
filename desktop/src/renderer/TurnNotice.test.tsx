@@ -1,7 +1,7 @@
 /**
- * Tests for `ContextCompactionNotice`'s tool-call row rendering.
+ * Tests for `ContextCompactionNotice`'s process-activity row rendering.
  *
- * These tests pin the shared progress-row classes, visible detail, icon,
+ * These tests pin the shared process-surface classes, visible detail,
  * active sweep target, and failed-state semantics.
  */
 import { act, type ReactElement } from "react";
@@ -70,21 +70,24 @@ describe("ContextCompactionNotice", () => {
       />,
     );
 
-    expect(host.querySelector(".turn-progress-title")?.textContent).toBe("Context compacted");
-    expect(host.querySelector(".turn-progress-detail")?.textContent).toContain("18 messages became 5");
+    expect(host.querySelector(".context-compaction-title")?.textContent).toBe("Context compacted");
+    expect(host.querySelector(".context-compaction-detail")?.textContent).toContain("18 messages became 5");
   });
   it("renders the in_progress host with the shimmer-ready label when status is in_progress", () => {
     const host = mount(<ContextCompactionNotice status="in_progress" />);
-    const aside = host.querySelector("aside.turn-progress.context-compaction-notice");
+    const aside = host.querySelector("aside.process-surface.context-compaction-notice");
     expect(aside).not.toBeNull();
     expect(aside?.classList.contains("in_progress")).toBe(true);
     expect(aside?.getAttribute("role")).toBe("status");
     expect(aside?.getAttribute("aria-live")).toBe("polite");
 
-    const label = host.querySelector(".turn-progress-title");
+    const label = host.querySelector(".context-compaction-title");
     expect(label).not.toBeNull();
     expect(label?.textContent).toBe("正在自动压缩上下文");
-    expect(host.querySelector(".turn-progress-label svg")).not.toBeNull();
+    expect(host.querySelector(".process-surface-row.is-live-gray")).not.toBeNull();
+    expect(host.querySelector(".process-surface-summary-line")?.getAttribute("aria-label")).toBe(
+      "正在自动压缩上下文",
+    );
     expect(host.querySelector(".turn-event-notice")).toBeNull();
   });
 
@@ -97,29 +100,29 @@ describe("ContextCompactionNotice", () => {
       />,
     );
 
-    expect(host.querySelector(".turn-progress-title")?.textContent).toBe(
+    expect(host.querySelector(".context-compaction-title")?.textContent).toBe(
       "正在压缩上下文",
     );
-    expect(host.querySelector(".turn-progress.in_progress")).not.toBeNull();
+    expect(host.querySelector(".context-compaction-notice.in_progress .process-surface-row.is-live-gray")).not.toBeNull();
   });
 
-  it("renders the established icon + copy layout when status is completed", () => {
+  it("renders the process activity row with visible detail when status is completed", () => {
     const host = mount(
       <ContextCompactionNotice
         status="completed"
         text="✦ Compacted history: 18 → 5 messages (was ~12k tokens)"
       />,
     );
-    const aside = host.querySelector("aside.turn-progress.context-compaction-notice");
+    const aside = host.querySelector("aside.process-surface.context-compaction-notice");
     expect(aside).not.toBeNull();
     expect(aside?.classList.contains("completed")).toBe(true);
     expect(aside?.getAttribute("aria-live")).toBeNull();
 
-    const title = host.querySelector(".turn-progress-title");
+    const title = host.querySelector(".context-compaction-title");
     expect(title?.textContent).toBe("上下文已压缩");
 
-    expect(host.querySelector(".turn-progress-detail")?.textContent).toContain("18 条消息整理为 5 条");
-    expect(host.querySelector(".turn-progress-label svg")).not.toBeNull();
+    expect(host.querySelector(".context-compaction-detail")?.textContent).toContain("18 条消息整理为 5 条");
+    expect(host.querySelector(".process-surface-row.is-live-gray")).toBeNull();
   });
 
   it("labels manual compact completion as success", () => {
@@ -131,10 +134,10 @@ describe("ContextCompactionNotice", () => {
       />,
     );
 
-    expect(host.querySelector(".turn-progress-title")?.textContent).toBe(
+    expect(host.querySelector(".context-compaction-title")?.textContent).toBe(
       "压缩成功",
     );
-    expect(host.querySelector(".turn-progress-detail")?.textContent).toContain(
+    expect(host.querySelector(".context-compaction-detail")?.textContent).toContain(
       "18 条消息整理为 5 条",
     );
   });
@@ -148,10 +151,10 @@ describe("ContextCompactionNotice", () => {
       />,
     );
 
-    expect(host.querySelector(".turn-progress-title")?.textContent).toBe(
+    expect(host.querySelector(".context-compaction-title")?.textContent).toBe(
       "压缩失败",
     );
-    expect(host.querySelector(".turn-progress-detail")?.textContent).toContain(
+    expect(host.querySelector(".context-compaction-detail")?.textContent).toContain(
       "当前对话仍保留原上下文",
     );
     expect(host.querySelector("aside")?.classList.contains("failed")).toBe(true);
@@ -160,9 +163,9 @@ describe("ContextCompactionNotice", () => {
 
   it("falls back to the completed layout when status is omitted", () => {
     const host = mount(<ContextCompactionNotice text="" />);
-    const aside = host.querySelector("aside.turn-progress.context-compaction-notice");
+    const aside = host.querySelector("aside.process-surface.context-compaction-notice");
     expect(aside?.classList.contains("completed")).toBe(true);
-    expect(host.querySelector(".turn-progress-title")?.textContent).toBe(
+    expect(host.querySelector(".context-compaction-title")?.textContent).toBe(
       "上下文已压缩",
     );
   });
@@ -175,25 +178,8 @@ describe("ContextCompactionNotice", () => {
       />,
     );
 
-    expect(host.querySelector(".turn-progress-title")?.textContent).toBe(
+    expect(host.querySelector(".context-compaction-title")?.textContent).toBe(
       "上下文已压缩",
-    );
-  });
-
-  it("labels HelpMe compaction as merged recovery result", () => {
-    const host = mount(
-      <ContextCompactionNotice
-        status="completed"
-        reason="helpme"
-        text="✦ HelpMe recovered and compacted history: 42 → 2 messages (was ~90k tokens)"
-      />,
-    );
-
-    expect(host.querySelector(".turn-progress-title")?.textContent).toBe(
-      "已合并求助结果",
-    );
-    expect(host.querySelector(".turn-progress-detail")?.textContent).toContain(
-      "HelpMe 恢复结果",
     );
   });
 
@@ -207,10 +193,10 @@ describe("ContextCompactionNotice", () => {
       />,
     );
 
-    expect(host.querySelector(".turn-progress-title")?.textContent).toBe(
+    expect(host.querySelector(".context-compaction-title")?.textContent).toBe(
       "压缩失败",
     );
-    expect(host.querySelector(".turn-progress-detail")?.textContent).toContain(
+    expect(host.querySelector(".context-compaction-detail")?.textContent).toContain(
       "当前对话仍保留原上下文",
     );
     expect(host.textContent).not.toContain("上下文已压缩");

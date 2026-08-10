@@ -75,8 +75,6 @@ func displayCapabilityForKnownToolName(name string) string {
 		return "web.fetch"
 	case "web_search":
 		return "web.search"
-	case "update_plan":
-		return "plan"
 	}
 	return ""
 }
@@ -138,29 +136,6 @@ func builtInToolDisplay(call providers.ToolCall) providers.ToolCallDisplay {
 			return toolDisplay("agent", "创建长期 Agent")
 		}
 		return toolDisplay("agent", "创建长期 Agent "+displayTruncate(profile, 70))
-	case "update_plan":
-		return toolDisplay("plan", "更新计划")
-	case "spawn_agent":
-		return toolDisplay("agent", "启动子任务 "+displayTarget(displayString(args, "name", "description"), ""))
-	case "send_message":
-		return toolDisplay("agent", "发送给子任务 "+displayTarget(displayString(args, "target", "task_name"), ""))
-	case "close_agent":
-		return toolDisplay("agent", "关闭子任务 "+displayTarget(displayString(args, "target", "task_name"), ""))
-	case "agent_report":
-		return toolDisplay("agent", "读取子任务报告 "+displayTarget(displayString(args, "target", "task_name"), ""))
-	case "cron":
-		switch displayString(args, "action") {
-		case "add":
-			cron := displayString(args, "cron")
-			if cron == "" {
-				return toolDisplay("schedule", "安排定时任务")
-			}
-			return toolDisplay("schedule", "安排定时任务 "+displayTruncate(cron, 60))
-		case "remove":
-			return toolDisplay("schedule", "取消定时任务 "+displayTarget(displayString(args, "id"), ""))
-		default:
-			return toolDisplay("schedule", "查看定时任务")
-		}
 	default:
 		return providers.ToolCallDisplay{
 			Kind: displayKindForTool(name),
@@ -338,8 +313,6 @@ func displayKindForTool(name string) string {
 		return "search"
 	case ToolKindShell, ToolKindGit, ToolKindProcess:
 		return "command"
-	case ToolKindPlan:
-		return "plan"
 	case ToolKindAgent:
 		return "agent"
 	case ToolKindSchedule:

@@ -50,15 +50,6 @@ const (
 	CapabilityWebFetch  Capability = "web.fetch"
 	CapabilityWebSearch Capability = "web.search"
 
-	// Subagent orchestration.
-	CapabilityTaskSpawn       Capability = "task.spawn"
-	CapabilityTaskCommunicate Capability = "task.communicate"
-	CapabilityTaskManage      Capability = "task.manage"
-
-	// Memory: session-local scratch and project-level durable memory.
-	CapabilityMemorySession Capability = "memory.session"
-	CapabilityMemoryProject Capability = "memory.project"
-
 	// Session lookup: resolve a copied Wuu thread/session ID to the
 	// persisted conversation record and history.
 	CapabilitySessionLookup    Capability = "session.lookup"
@@ -67,9 +58,6 @@ const (
 	// Plan / skills.
 	CapabilityPlan  Capability = "plan"
 	CapabilitySkill Capability = "skill"
-
-	// Schedule.
-	CapabilitySchedule Capability = "schedule"
 
 	// Persistent named-agent group chat.
 	CapabilityChat Capability = "chat"
@@ -106,16 +94,10 @@ func All() []Capability {
 		CapabilityCommandBackground,
 		CapabilityWebFetch,
 		CapabilityWebSearch,
-		CapabilityTaskSpawn,
-		CapabilityTaskCommunicate,
-		CapabilityTaskManage,
-		CapabilityMemorySession,
-		CapabilityMemoryProject,
 		CapabilitySessionLookup,
 		CapabilitySessionWorkspace,
 		CapabilityPlan,
 		CapabilitySkill,
-		CapabilitySchedule,
 		CapabilityChat,
 		CapabilityMCP,
 		CapabilityDiscovery,

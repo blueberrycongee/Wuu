@@ -389,7 +389,6 @@ func TestRunJSONLEmitsStableEvents(t *testing.T) {
 		notification(appserver.NotificationTurnUsage, appserver.TurnUsageNotification{ThreadID: "thread-1", TurnID: "turn-1", InputTokens: 3, OutputTokens: 4}),
 		notification(appserver.NotificationTurnCompleted, appserver.TurnCompletedNotification{ThreadID: "thread-1", Turn: appserver.Turn{ID: "turn-1"}, Content: "hello", TracePath: "/trace.jsonl"}),
 	)
-	controller.initResult.Ultra = true
 	controller.initResult.MaxParallel = 7
 	var stdout, stderr bytes.Buffer
 
@@ -415,8 +414,8 @@ func TestRunJSONLEmitsStableEvents(t *testing.T) {
 		t.Fatalf("event types:\n got: %#v\nwant: %#v\njsonl:\n%s", gotTypes, wantTypes, stdout.String())
 	}
 	sessionConfigured := events[0]
-	if sessionConfigured["ultra"] != true || sessionConfigured["max_parallel"] != float64(7) {
-		t.Fatalf("session_configured missing Ultra mode readback: %+v", sessionConfigured)
+	if sessionConfigured["max_parallel"] != float64(7) {
+		t.Fatalf("session_configured missing max_parallel readback: %+v", sessionConfigured)
 	}
 	requestContext := events[3]
 	if requestContext["tool_count"] != float64(9) ||

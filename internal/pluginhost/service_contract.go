@@ -1,0 +1,197 @@
+package pluginhost
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"regexp"
+	"strings"
+)
+
+// This file defines the provide/consume service contract: plugins publish a
+// versioned service under a stable name, other plugins consume it by name and
+// major version, and every call is routed and validated by the host. Service
+// declarations ride the same initialize handshake as capabilities and are
+// collected during the prepare phase; calls only flow once both generations
+// are active.
+const (
+	// ServiceCallMethod is the plugin -> host gateway frame for consuming a
+	// registered service. It is advertised alongside host services but is
+	// validated and routed through the service registry, not the fixed host
+	// service table.
+	ServiceCallMethod HostServiceMethod = "host.service.call"
+
+	// ServiceInvokeMethod is the host -> plugin request delivering one
+	// validated call to the service provider.
+	ServiceInvokeMethod = "service.invoke"
+
+	// ServiceChangedMethod notifies consumers that a provided service was
+	// republished or revoked, so they can re-resolve on their next call.
+	ServiceChangedMethod = "service.changed"
+)
+
+var (
+	serviceNamePattern    = regexp.MustCompile(`^[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*)+$`)
+	serviceMethodPattern  = regexp.MustCompile(`^[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*)*$`)
+	serviceSchemaPattern  = regexp.MustCompile(`^[a-z][a-z0-9-]*(\.[a-z0-9-]+)+$`)
+	serviceVersionPattern = regexp.MustCompile(`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$`)
+)
+
+// ServiceMethodDescriptor declares one typed method of a provided service.
+type ServiceMethodDescriptor struct {
+	Name         string `json:"name"`
+	InputSchema  string `json:"input_schema"`
+	OutputSchema string `json:"output_schema"`
+}
+
+// ServiceDescriptor declares a versioned service a plugin provides. The name
+// is stable across versions; consumers resolve by name and major version.
+type ServiceDescriptor struct {
+	Name    string                    `json:"name"`
+	Version string                    `json:"version"`
+	Methods []ServiceMethodDescriptor `json:"methods"`
+}
+
+// ServiceRequirement declares a consumer's need for one service. Authority to
+// call a service is exactly this explicit declaration; the host never infers
+// it from plugin identity or session knowledge.
+type ServiceRequirement struct {
+	Name         string `json:"name"`
+	MajorVersion int    `json:"major_version"`
+	Required     bool   `json:"required,omitempty"`
+}
+
+// ServiceCallParams is the payload of the service.call gateway frame.
+type ServiceCallParams struct {
+	Service string          `json:"service"`
+	Method  string          `json:"method"`
+	Params  json.RawMessage `json:"params,omitempty"`
+}
+
+// ServiceInvokeParams is the payload of the host -> provider service.invoke
+// request. Caller carries the validated consumer plugin ID.
+type ServiceInvokeParams struct {
+	Service string          `json:"service"`
+	Method  string          `json:"method"`
+	Caller  string          `json:"caller"`
+	Params  json.RawMessage `json:"params,omitempty"`
+}
+
+// ServiceChangedParams notifies a consumer that a service resolution changed.
+type ServiceChangedParams struct {
+	Service string `json:"service"`
+	Reason  string `json:"reason,omitempty"`
+}
+
+// ServiceRouter routes validated service.call frames into the active
+// generation's service registry. The runtime implements it; the pluginhost
+// package depends only on this narrow surface.
+type ServiceRouter interface {
+	RouteServiceCall(ctx context.Context, pluginID string, params ServiceCallParams) (json.RawMessage, *HostServiceError)
+}
+
+// ServiceVersionMajor parses the declared semver and returns its major. The
+// descriptor is only usable after ValidateServiceDescriptor accepts it.
+func ServiceVersionMajor(version string) (int, bool) {
+	match := serviceVersionPattern.FindStringSubmatch(strings.TrimSpace(version))
+	if match == nil {
+		return 0, false
+	}
+	major := 0
+	for _, digit := range match[1] {
+		major = major*10 + int(digit-'0')
+	}
+	return major, true
+}
+
+func ValidateServiceDescriptor(descriptor ServiceDescriptor) error {
+	name := strings.TrimSpace(descriptor.Name)
+	if !serviceNamePattern.MatchString(name) {
+		return fmt.Errorf("service name %q must be a dotted lowercase identifier", descriptor.Name)
+	}
+	if _, ok := ServiceVersionMajor(descriptor.Version); !ok {
+		return fmt.Errorf("service %s: version %q must be strict MAJOR.MINOR.PATCH semver", name, descriptor.Version)
+	}
+	if len(descriptor.Methods) == 0 {
+		return fmt.Errorf("service %s must declare at least one method", name)
+	}
+	seen := make(map[string]struct{}, len(descriptor.Methods))
+	for _, method := range descriptor.Methods {
+		methodName := strings.TrimSpace(method.Name)
+		if !serviceMethodPattern.MatchString(methodName) {
+			return fmt.Errorf("service %s: method name %q must be a lowercase identifier", name, method.Name)
+		}
+		if _, exists := seen[methodName]; exists {
+			return fmt.Errorf("service %s: duplicate method %q", name, methodName)
+		}
+		seen[methodName] = struct{}{}
+		if !serviceSchemaPattern.MatchString(strings.TrimSpace(method.InputSchema)) {
+			return fmt.Errorf("service %s.%s: input schema %q must be a dotted versioned identifier", name, methodName, method.InputSchema)
+		}
+		if !serviceSchemaPattern.MatchString(strings.TrimSpace(method.OutputSchema)) {
+			return fmt.Errorf("service %s.%s: output schema %q must be a dotted versioned identifier", name, methodName, method.OutputSchema)
+		}
+	}
+	return nil
+}
+
+func ValidateServiceRequirement(requirement ServiceRequirement) error {
+	name := strings.TrimSpace(requirement.Name)
+	if !serviceNamePattern.MatchString(name) {
+		return fmt.Errorf("required service name %q must be a dotted lowercase identifier", requirement.Name)
+	}
+	if requirement.MajorVersion < 0 {
+		return fmt.Errorf("required service %s: major version cannot be negative", name)
+	}
+	return nil
+}
+
+// ValidateServiceNegotiation validates the service declarations of one
+// initialize response. Cross-plugin satisfaction is checked by the runtime
+// once every client of a generation has completed initialize; there is no
+// dependency solver — an unsatisfied required service simply blocks that
+// consumer's activation with a diagnostic.
+func ValidateServiceNegotiation(result CapabilityInitializeResult) error {
+	if len(result.ProvidedServices) == 0 && len(result.RequiredServices) == 0 {
+		return nil
+	}
+	version := result.ProtocolVersion
+	if version == 0 {
+		version = ProtocolVersion
+	}
+	if version < 3 {
+		return errors.New("service provide/consume declarations require capability protocol v3")
+	}
+	provided := make(map[string]struct{}, len(result.ProvidedServices))
+	for _, descriptor := range result.ProvidedServices {
+		if err := ValidateServiceDescriptor(descriptor); err != nil {
+			return err
+		}
+		name := strings.TrimSpace(descriptor.Name)
+		major, _ := ServiceVersionMajor(descriptor.Version)
+		key := fmt.Sprintf("%s@%d", name, major)
+		if _, exists := provided[key]; exists {
+			return fmt.Errorf("duplicate provided service %s major version %d", name, major)
+		}
+		provided[key] = struct{}{}
+	}
+	required := make(map[string]struct{}, len(result.RequiredServices))
+	for _, requirement := range result.RequiredServices {
+		if err := ValidateServiceRequirement(requirement); err != nil {
+			return err
+		}
+		name := strings.TrimSpace(requirement.Name)
+		if _, exists := required[name]; exists {
+			return fmt.Errorf("duplicate required service %q", name)
+		}
+		required[name] = struct{}{}
+	}
+	for _, descriptor := range result.ProvidedServices {
+		name := strings.TrimSpace(descriptor.Name)
+		if _, conflict := required[name]; conflict {
+			return fmt.Errorf("service %s cannot be both provided and required by one plugin", name)
+		}
+	}
+	return nil
+}

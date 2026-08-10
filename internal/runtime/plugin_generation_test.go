@@ -26,11 +26,7 @@ type generationClient struct {
 	invoked      int
 }
 
-func (c *generationClient) ID() string               { return c.id }
-func (c *generationClient) Hooks() []pluginhost.Hook { return nil }
-func (c *generationClient) Invoke(context.Context, pluginhost.InvokeParams) (pluginhost.InvokeResult, error) {
-	return pluginhost.InvokeResult{}, nil
-}
+func (c *generationClient) ID() string { return c.id }
 func (c *generationClient) Status() pluginhost.Status {
 	return pluginhost.Status{ID: c.id, State: pluginhost.StateActive}
 }

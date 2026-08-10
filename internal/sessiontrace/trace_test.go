@@ -106,7 +106,7 @@ func TestAppendTurnWritesAgentFriendlyEvents(t *testing.T) {
 		}},
 		[]BarrierToolBatchRejectionRecord{{
 			StepIndex:     0,
-			BarrierTool:   "helpme",
+			BarrierTool:   "barrier_tool",
 			SiblingTools:  []string{"run_shell"},
 			ToolCallCount: 2,
 		}},

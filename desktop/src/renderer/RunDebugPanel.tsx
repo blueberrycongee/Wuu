@@ -408,7 +408,7 @@ export function runDebugPhaseForState(state: AppState): RunDebugPhase {
   if (turn?.status === "in_progress") {
     const runningTool = turn.items.find(
       (item) =>
-        (item.type === "tool_call" || item.type === "collab_agent_tool_call") &&
+        item.type === "tool_call" &&
         (item.status ?? "in_progress") === "in_progress",
     );
     if (runningTool) {
@@ -461,10 +461,7 @@ export function runDebugPhaseForState(state: AppState): RunDebugPhase {
         activeItem: latestItem,
       };
     }
-    if (
-      latestItem.type === "tool_call" ||
-      latestItem.type === "collab_agent_tool_call"
-    ) {
+    if (latestItem.type === "tool_call") {
       return {
         label: t("runDebug.toolReturned"),
         detail: t("runDebug.waitingToolResultProcessing"),
@@ -828,7 +825,6 @@ function debugItemTitle(item: ThreadItem): string {
     case "reasoning":
       return t("runDebug.item.reasoning");
     case "tool_call":
-    case "collab_agent_tool_call":
       return t("runDebug.item.tool", { tool: readableToolName(item.name) });
     case "context_compaction":
       return t("runDebug.item.compaction");

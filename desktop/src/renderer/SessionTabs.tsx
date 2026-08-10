@@ -53,6 +53,10 @@ export function SessionTabStrip({
   onPopOut,
   onNewThread,
   onReorder,
+  additionalTabs = [],
+  activeAdditionalTabID,
+  onSelectAdditionalTab,
+  onCloseAdditionalTab,
 }: {
   state: AppState;
   crossWorkspaceThreads?: Thread[];
@@ -66,12 +70,20 @@ export function SessionTabStrip({
   onPopOut: (tabID: string) => void;
   onNewThread: () => void;
   onReorder: (activeID: string, overID: string) => void;
+  additionalTabs?: readonly { id: string; title: string }[];
+  activeAdditionalTabID?: string;
+  onSelectAdditionalTab?: (tabID: string) => void;
+  onCloseAdditionalTab?: (tabID: string) => void;
 }): JSX.Element {
   const { t } = useI18n();
   const newTabButtonRef = useRef<HTMLButtonElement>(null);
+  const allTabIDs = [
+    ...state.sessionTabs.map((tab) => tab.id),
+    ...additionalTabs.map((tab) => tab.id),
+  ];
   const { requestFocusRestoration, tabListRef } = useTabCloseFocusRestoration(
-    state.activeSessionTabID,
-    state.sessionTabs.map((tab) => tab.id),
+    activeAdditionalTabID ?? state.activeSessionTabID,
+    allTabIDs,
     newTabButtonRef,
   );
   const [draggingTabID, setDraggingTabID] = useState<string | undefined>();
@@ -92,7 +104,8 @@ export function SessionTabStrip({
     : undefined;
   const activeTab = state.sessionTabs.find((tab) => tab.id === state.activeSessionTabID);
   const showNewThreadButton =
-    !activeTab || activeTab.kind === "thread" || activeTab.kind === "draft";
+    activeAdditionalTabID === undefined
+    && (!activeTab || activeTab.kind === "thread" || activeTab.kind === "draft");
 
   function startDrag(event: DragStartEvent): void {
     setDraggingTabID(String(event.active.id));
@@ -156,7 +169,7 @@ export function SessionTabStrip({
           onDragCancel={cancelDrag}
         >
           <SortableContext
-            items={state.sessionTabs.map((tab) => tab.id)}
+            items={allTabIDs}
             strategy={horizontalListSortingStrategy}
           >
             <div
@@ -189,7 +202,8 @@ export function SessionTabStrip({
                     </div>
                   );
                 }
-                const active = tab.id === state.activeSessionTabID;
+                const active = activeAdditionalTabID === undefined
+                  && tab.id === state.activeSessionTabID;
                 const tabThread =
                   tab.kind === "thread"
                     ? threadForTab(tabState, tab.threadID)
@@ -255,6 +269,34 @@ export function SessionTabStrip({
                       onClose(tab.id);
                     }}
                     onContextMenu={(event) => handleTabContextMenu(tab.id, event)}
+                  />
+                );
+              })}
+              {additionalTabs.map((tab) => {
+                const active = tab.id === activeAdditionalTabID;
+                return (
+                  <SortableSessionTab
+                    key={tab.id}
+                    id={tab.id}
+                    active={active}
+                    running={false}
+                    pendingSwitch={false}
+                    pendingCount={0}
+                    unread={false}
+                    label={tab.title}
+                    closeLabel={t("tabs.closeNamed", { name: tab.title })}
+                    draggable={false}
+                    reorderable={false}
+                    onSelect={() => onSelectAdditionalTab?.(tab.id)}
+                    onClose={() => {
+                      requestFocusRestoration();
+                      onCloseAdditionalTab?.(tab.id);
+                    }}
+                    onDoubleClick={() => {
+                      requestFocusRestoration();
+                      onCloseAdditionalTab?.(tab.id);
+                    }}
+                    onContextMenu={(event) => event.preventDefault()}
                   />
                 );
               })}

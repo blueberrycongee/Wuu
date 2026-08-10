@@ -175,18 +175,25 @@ func TestProductionProcessClientNestedSettingsAndStorageCalls(t *testing.T) {
 		Timeout:  3,
 	}
 	var liveHandler pluginhost.HostServiceHandler
-	host, err := buildPluginHost([]pluginpkg.Plugin{item}, workspace, home, map[string]bool{item.ID: true}, func(ctx context.Context, config pluginhost.ProcessConfig) (pluginhost.Client, error) {
+	host, err := buildPluginHost([]pluginpkg.Plugin{item}, workspace, home, "", map[string]bool{item.ID: true}, func(ctx context.Context, config pluginhost.ProcessConfig) (pluginhost.Client, error) {
 		liveHandler = config.HostServiceHandler
 		return startPluginClient(ctx, config)
 	}, NewPluginSessionRouter())
 	if err != nil {
 		t.Fatal(err)
 	}
-	result := pluginhost.ChatMessageOutput{}
-	if err := host.Run(context.Background(), pluginhost.HookChatMessage, pluginhost.ChatMessageInput{}, &result); err != nil {
+	if err := host.Activate(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if result.Content != "stored:default" {
+	capability, ok := host.Capability(item.ID, pluginhost.CapabilityPluginClientRequest)
+	if !ok {
+		t.Fatal("nested-call capability was not registered")
+	}
+	var result pluginhost.PluginClientRequestOutput
+	if err := host.InvokeCapability(context.Background(), capability, pluginhost.PluginClientRequestInput{Method: "run"}, &result); err != nil {
+		t.Fatal(err)
+	}
+	if string(result.Result) != `"stored:default"` {
 		t.Fatalf("nested result = %+v", result)
 	}
 	if err := host.Close(context.Background()); err != nil {
@@ -216,11 +223,14 @@ func TestProductionHostServicesCloseOnGenerationSwap(t *testing.T) {
 		Timeout:  3,
 	}
 	var oldHandler pluginhost.HostServiceHandler
-	oldHost, err := buildPluginHost([]pluginpkg.Plugin{item}, workspace, home, map[string]bool{item.ID: true}, func(ctx context.Context, config pluginhost.ProcessConfig) (pluginhost.Client, error) {
+	oldHost, err := buildPluginHost([]pluginpkg.Plugin{item}, workspace, home, "", map[string]bool{item.ID: true}, func(ctx context.Context, config pluginhost.ProcessConfig) (pluginhost.Client, error) {
 		oldHandler = config.HostServiceHandler
 		return startPluginClient(ctx, config)
 	}, NewPluginSessionRouter())
 	if err != nil {
+		t.Fatal(err)
+	}
+	if err := oldHost.Activate(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	old := testPluginGeneration("old", &generationClient{id: "placeholder"})
@@ -237,7 +247,7 @@ func TestProductionHostServicesCloseOnGenerationSwap(t *testing.T) {
 }
 
 // runRuntimeHostServiceHelper implements a real protocol-v2 process which
-// performs two nested plugin-to-host calls while the host awaits hook.invoke.
+// performs two nested plugin-to-host calls while the host awaits capability.invoke.
 func runRuntimeHostServiceHelper() {
 	scanner := bufio.NewScanner(os.Stdin)
 	encoder := json.NewEncoder(os.Stdout)
@@ -257,23 +267,35 @@ func runRuntimeHostServiceHelper() {
 		os.Exit(4)
 	}
 	initResult := pluginhost.CapabilityInitializeResult{
-		InitializeResult: pluginhost.InitializeResult{Hooks: []pluginhost.Hook{pluginhost.HookChatMessage}},
 		ProtocolVersion:  pluginhost.CapabilityProtocolVersion,
+		LifecycleVersion: pluginhost.RuntimeLifecycleVersion,
+		Capabilities:     []pluginhost.CapabilityDescriptor{{ID: pluginhost.CapabilityPluginClientRequest, Kind: pluginhost.SeamDecision, Version: 1}},
 		RequiredHostServices: []pluginhost.HostServiceDescriptor{
 			{ID: string(pluginhost.HostServiceStorageSet), Required: true},
 			{ID: string(pluginhost.HostServiceSettingsGet), Required: true},
-			{ID: string(pluginhost.HostServiceWorkspaceList), Required: false},
+			{ID: "host.workspace.list", Required: false},
 		},
 	}
 	encodeHelperResponse(encoder, initialize.ID, initResult)
 	if !scanner.Scan() {
 		os.Exit(5)
 	}
+	var activate struct {
+		ID     string `json:"id"`
+		Method string `json:"method"`
+	}
+	if json.Unmarshal(scanner.Bytes(), &activate) != nil || activate.Method != "activate" {
+		os.Exit(6)
+	}
+	encodeHelperResponse(encoder, activate.ID, map[string]any{})
+	if !scanner.Scan() {
+		os.Exit(7)
+	}
 	var invoke struct {
 		ID string `json:"id"`
 	}
 	if json.Unmarshal(scanner.Bytes(), &invoke) != nil {
-		os.Exit(6)
+		os.Exit(8)
 	}
 	_ = encoder.Encode(pluginhost.HostServiceCall{ID: "storage", Method: pluginhost.HostServiceStorageSet, Params: json.RawMessage(`{"scope":"workspace","key":"nested","value":"stored"}`)})
 	if !scanner.Scan() {
@@ -299,7 +321,7 @@ func runRuntimeHostServiceHelper() {
 	if json.Unmarshal(value.Value, &label) != nil {
 		os.Exit(12)
 	}
-	encodeHelperResponse(encoder, invoke.ID, pluginhost.InvokeResult{Output: mustJSONHelper(pluginhost.ChatMessageOutput{Content: "stored:" + label})})
+	encodeHelperResponse(encoder, invoke.ID, pluginhost.CapabilityInvokeResult{Output: mustJSONHelper(pluginhost.PluginClientRequestOutput{Result: mustJSONHelper("stored:" + label)})})
 	time.Sleep(10 * time.Second)
 }
 

@@ -18,13 +18,41 @@ import (
 	"sync/atomic"
 )
 
-const CapabilityProtocolVersion = 2
+const CapabilityProtocolVersion = 3
+const RuntimeLifecycleVersion = 1
 
 const (
+	// HostServiceCallMethod is the plugin -> host gateway for consuming a
+	// registered service. CallService emits it.
+	HostServiceCallMethod = "host.service.call"
+	// ServiceInvokeMethod is the host -> plugin request delivering one
+	// validated call to a service provider.
+	ServiceInvokeMethod = "service.invoke"
+	// ServiceChangedMethod is the host -> plugin notification that a service
+	// resolution changed.
+	ServiceChangedMethod = "service.changed"
+)
+
+const (
+	HostServiceStorageGet             = "host.storage.get"
+	HostServiceStorageSet             = "host.storage.set"
+	HostServiceStorageDelete          = "host.storage.delete"
+	HostServiceStorageKeys            = "host.storage.keys"
 	HostServiceSessionCreate          = "host.session.create"
 	HostServiceSessionSend            = "host.session.send"
+	HostServiceSessionList            = "host.session.list"
+	HostServiceSessionCancel          = "host.session.cancel"
 	HostServiceStorageCompareExchange = "host.storage.compare_exchange"
+	HostServiceSettingsGet            = "host.settings.get"
+	HostServiceSettingsList           = "host.settings.list"
 	CapabilityAgentTurnLifecycle      = "agent.turn.lifecycle"
+	CapabilityAgentTurnInterrupted    = "agent.turn.interrupted"
+	CapabilityAgentPreStep            = "agent.pre_step"
+)
+
+const (
+	StorageScopeUser      = "user"
+	StorageScopeWorkspace = "workspace"
 )
 
 type InitializeParams struct {
@@ -34,7 +62,9 @@ type InitializeParams struct {
 	PluginRoot                string   `json:"plugin_root"`
 	ProjectRoot               string   `json:"project_root"`
 	WuuHome                   string   `json:"wuu_home"`
+	WorkspaceStateDir         string   `json:"workspace_state_dir,omitempty"`
 	SupportedHostServices     []string `json:"supported_host_services,omitempty"`
+	LifecycleVersion          int      `json:"lifecycle_version,omitempty"`
 }
 
 type Capability struct {
@@ -50,12 +80,57 @@ type HostService struct {
 	Required bool   `json:"required,omitempty"`
 }
 
+// ServiceMethod declares one typed method of a provided service.
+type ServiceMethod struct {
+	Name         string `json:"name"`
+	InputSchema  string `json:"input_schema"`
+	OutputSchema string `json:"output_schema"`
+}
+
+// Service declares a versioned service this plugin provides. The name is
+// stable across versions; consumers resolve by name and major version.
+type Service struct {
+	Name    string          `json:"name"`
+	Version string          `json:"version"`
+	Methods []ServiceMethod `json:"methods"`
+}
+
+// ServiceRequirement declares a service this plugin consumes. Declaring it is
+// the only way to gain authority to call the service.
+type ServiceRequirement struct {
+	Name         string `json:"name"`
+	MajorVersion int    `json:"major_version"`
+	Required     bool   `json:"required,omitempty"`
+}
+
+// ServiceCall is one validated call the host routes to a service provider.
+// Caller carries the consumer plugin ID authenticated by the host.
+type ServiceCall struct {
+	Service string          `json:"service"`
+	Method  string          `json:"method"`
+	Caller  string          `json:"caller"`
+	Params  json.RawMessage `json:"params,omitempty"`
+}
+
+// ServiceChangedNotice tells a consumer that a service resolution changed.
+type ServiceChangedNotice struct {
+	Service string `json:"service"`
+	Reason  string `json:"reason,omitempty"`
+}
+
 type Tool struct {
 	ID              string         `json:"id"`
 	Description     string         `json:"description"`
 	InputSchema     map[string]any `json:"input_schema"`
 	ExecutionScopes []string       `json:"execution_scopes,omitempty"`
 	Activity        *ToolActivity  `json:"activity,omitempty"`
+	Display         *ToolDisplay   `json:"display,omitempty"`
+}
+
+type ToolDisplay struct {
+	Kind       string `json:"kind,omitempty"`
+	Text       string `json:"text,omitempty"`
+	Capability string `json:"capability,omitempty"`
 }
 
 type ToolActivity struct {
@@ -67,15 +142,18 @@ type ToolActivity struct {
 }
 
 type Definition struct {
-	Tools                []Tool        `json:"tools,omitempty"`
-	Capabilities         []Capability  `json:"capabilities,omitempty"`
-	RequiredHostServices []HostService `json:"required_host_services,omitempty"`
+	Tools                []Tool               `json:"tools,omitempty"`
+	Capabilities         []Capability         `json:"capabilities,omitempty"`
+	RequiredHostServices []HostService        `json:"required_host_services,omitempty"`
+	ProvidedServices     []Service            `json:"provided_services,omitempty"`
+	RequiredServices     []ServiceRequirement `json:"required_services,omitempty"`
 }
 
 type ToolCall struct {
 	ToolID    string          `json:"tool_id"`
 	SessionID string          `json:"session_id,omitempty"`
 	ThreadID  string          `json:"thread_id,omitempty"`
+	TurnID    string          `json:"turn_id,omitempty"`
 	ActorID   string          `json:"actor_id,omitempty"`
 	ActorPath string          `json:"actor_path,omitempty"`
 	CWD       string          `json:"cwd"`
@@ -117,11 +195,96 @@ type TurnContextBlock struct {
 	Content string `json:"content"`
 }
 
+type ModelMessageViewV1 struct {
+	Role     string `json:"role"`
+	Name     string `json:"name,omitempty"`
+	Content  string `json:"content,omitempty"`
+	Hidden   bool   `json:"hidden,omitempty"`
+	Origin   string `json:"origin,omitempty"`
+	OriginID string `json:"origin_id,omitempty"`
+	Cause    string `json:"cause,omitempty"`
+	ReadOnly bool   `json:"read_only,omitempty"`
+}
+
+type AgentPreStepInput struct {
+	SessionID string               `json:"session_id,omitempty"`
+	ThreadID  string               `json:"thread_id,omitempty"`
+	CWD       string               `json:"cwd,omitempty"`
+	Provider  string               `json:"provider,omitempty"`
+	Model     string               `json:"model,omitempty"`
+	StepIndex int                  `json:"step_index"`
+	Messages  []ModelMessageViewV1 `json:"messages"`
+}
+
+type AgentPreStepMessage struct {
+	ID      string `json:"id"`
+	Content string `json:"content"`
+}
+
+type AgentPreStepOutput struct {
+	AppendMessages []AgentPreStepMessage `json:"append_messages,omitempty"`
+}
+
+type StorageGetParams struct {
+	Scope string `json:"scope"`
+	Key   string `json:"key"`
+}
+
+type StorageGetResult struct {
+	Value *string `json:"value"`
+}
+
+type StorageSetParams struct {
+	Scope string `json:"scope"`
+	Key   string `json:"key"`
+	Value string `json:"value"`
+}
+
+type StorageDeleteParams struct {
+	Scope string `json:"scope"`
+	Key   string `json:"key"`
+}
+
+type StorageKeysParams struct {
+	Scope string `json:"scope"`
+}
+
+type StorageKeysResult struct {
+	Keys []string `json:"keys"`
+}
+
+type StorageCompareExchangeParams struct {
+	Scope    string  `json:"scope"`
+	Key      string  `json:"key"`
+	Expected *string `json:"expected"`
+	Value    *string `json:"value"`
+}
+
+type StorageCompareExchangeResult struct {
+	Swapped bool    `json:"swapped"`
+	Value   *string `json:"value"`
+}
+
+type SettingsGetParams struct {
+	Key string `json:"key"`
+}
+
+type SettingsGetResult struct {
+	Value json.RawMessage `json:"value"`
+}
+
+type SettingsListResult struct {
+	Entries map[string]json.RawMessage `json:"entries"`
+}
+
 type SessionCreateParams struct {
 	RequestID       string `json:"request_id"`
+	Name            string `json:"name,omitempty"`
 	Visibility      string `json:"visibility"`
 	ParentSessionID string `json:"parent_session_id,omitempty"`
 	ContextSource   string `json:"context_source"`
+	Workspace       string `json:"workspace,omitempty"`
+	ModelAlias      string `json:"model_alias,omitempty"`
 }
 
 type SessionCreateResult struct {
@@ -155,6 +318,43 @@ type SessionSendResult struct {
 	QueueID   string `json:"queue_id,omitempty"`
 }
 
+type SessionListParams struct {
+	ParentSessionID string `json:"parent_session_id,omitempty"`
+}
+
+type SessionSummary struct {
+	SessionID       string `json:"session_id"`
+	Name            string `json:"name,omitempty"`
+	ParentSessionID string `json:"parent_session_id,omitempty"`
+	Visibility      string `json:"visibility"`
+	State           string `json:"state"`
+	CreatedAt       string `json:"created_at,omitempty"`
+	UpdatedAt       string `json:"updated_at,omitempty"`
+}
+
+type SessionListResult struct {
+	Sessions []SessionSummary `json:"sessions"`
+}
+
+type SessionCancelParams struct {
+	SessionID string `json:"session_id"`
+	TurnID    string `json:"turn_id,omitempty"`
+	QueueID   string `json:"queue_id,omitempty"`
+}
+
+type SessionCancelResult struct {
+	SessionID string `json:"session_id"`
+	TurnID    string `json:"turn_id,omitempty"`
+	QueueID   string `json:"queue_id,omitempty"`
+	Cancelled bool   `json:"cancelled"`
+}
+
+type AgentTurnInterruptedInput struct {
+	ThreadID string `json:"thread_id"`
+	TurnID   string `json:"turn_id"`
+	Cause    string `json:"cause,omitempty"`
+}
+
 type TurnLifecycleInput struct {
 	RequestID    string `json:"request_id"`
 	State        string `json:"state"`
@@ -166,6 +366,7 @@ type TurnLifecycleInput struct {
 	CompletedAt  string `json:"completed_at,omitempty"`
 	InputTokens  int    `json:"input_tokens,omitempty"`
 	OutputTokens int    `json:"output_tokens,omitempty"`
+	FinalOutput  string `json:"final_output,omitempty"`
 }
 
 type Host interface {
@@ -173,11 +374,26 @@ type Host interface {
 	CallHost(context.Context, string, any, any) error
 }
 
+// CallService invokes one method of a registered service through the host's
+// service gateway. The plugin must declare the service in its Definition's
+// RequiredServices; the host authorizes and routes the call.
+func CallService(ctx context.Context, host Host, service, method string, params, result any) error {
+	return host.CallHost(ctx, HostServiceCallMethod, struct {
+		Service string `json:"service"`
+		Method  string `json:"method"`
+		Params  any    `json:"params,omitempty"`
+	}{Service: service, Method: method, Params: params}, result)
+}
+
 type Handler struct {
 	Definition       Definition
 	Initialize       func(context.Context, Host, InitializeParams) error
+	Activate         func(context.Context) error
+	Shutdown         func(context.Context) error
 	ExecuteTool      func(context.Context, Host, ToolCall) (ToolResult, error)
 	InvokeCapability func(context.Context, Host, CapabilityCall) (json.RawMessage, error)
+	InvokeService    func(context.Context, Host, ServiceCall) (json.RawMessage, error)
+	ServiceChanged   func(context.Context, ServiceChangedNotice) error
 }
 
 type Client struct {
@@ -304,14 +520,18 @@ func Serve(ctx context.Context, handler Handler) error {
 }
 
 func ServeIO(ctx context.Context, input io.Reader, output io.Writer, handler Handler) error {
+	serveCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	scanner := bufio.NewScanner(input)
 	scanner.Buffer(make([]byte, 64*1024), 4<<20)
 	client := newClient(output)
+	incomingRequests := make(chan rpcRequest)
 	requests := make(chan rpcRequest)
 	workerDone := make(chan error, 1)
+	go queueRequests(serveCtx, incomingRequests, requests)
 	go func() {
 		for request := range requests {
-			result, stop, err := dispatch(ctx, client, handler, request)
+			result, stop, err := dispatch(serveCtx, client, handler, request)
 			response := rpcResponse{ID: request.ID, Result: result}
 			if err != nil {
 				response = rpcResponse{ID: request.ID, Error: &rpcError{Message: err.Error()}}
@@ -329,15 +549,15 @@ func ServeIO(ctx context.Context, input io.Reader, output io.Writer, handler Han
 	}()
 
 	for scanner.Scan() {
-		if err := ctx.Err(); err != nil {
+		if err := serveCtx.Err(); err != nil {
 			client.closeTransport(err)
-			close(requests)
+			close(incomingRequests)
 			return err
 		}
 		kind, request, response, err := decodeMessage(scanner.Bytes())
 		if err != nil {
 			client.closeTransport(err)
-			close(requests)
+			close(incomingRequests)
 			return err
 		}
 		if kind == messageResponse {
@@ -345,23 +565,58 @@ func ServeIO(ctx context.Context, input io.Reader, output io.Writer, handler Han
 			continue
 		}
 		select {
-		case requests <- request:
+		case incomingRequests <- request:
 		case err := <-workerDone:
 			client.closeTransport(err)
+			cancel()
+			close(incomingRequests)
 			return err
-		case <-ctx.Done():
-			client.closeTransport(ctx.Err())
-			return ctx.Err()
+		case <-serveCtx.Done():
+			client.closeTransport(serveCtx.Err())
+			close(incomingRequests)
+			return serveCtx.Err()
 		}
 	}
 	readErr := scanner.Err()
 	client.closeTransport(readErr)
-	close(requests)
+	close(incomingRequests)
 	workerErr := <-workerDone
 	if readErr != nil {
 		return readErr
 	}
 	return workerErr
+}
+
+// queueRequests keeps host requests ordered without allowing handler backpressure
+// to block the transport reader. The reader must remain available to route host
+// service responses while the current handler is waiting in CallHost.
+func queueRequests(ctx context.Context, input <-chan rpcRequest, output chan<- rpcRequest) {
+	defer close(output)
+	var queued []rpcRequest
+	for input != nil || len(queued) != 0 {
+		var next rpcRequest
+		var ready chan<- rpcRequest
+		if len(queued) != 0 {
+			next = queued[0]
+			ready = output
+		}
+		select {
+		case request, ok := <-input:
+			if !ok {
+				input = nil
+				continue
+			}
+			queued = append(queued, request)
+		case ready <- next:
+			queued[0] = rpcRequest{}
+			queued = queued[1:]
+			if len(queued) == 0 {
+				queued = nil
+			}
+		case <-ctx.Done():
+			return
+		}
+	}
 }
 
 type messageKind int
@@ -417,9 +672,16 @@ func dispatch(ctx context.Context, client *Client, handler Handler, request rpcR
 		}
 		return marshal(struct {
 			Definition
-			Hooks           []string `json:"hooks"`
-			ProtocolVersion int      `json:"protocol_version"`
-		}{Definition: handler.Definition, Hooks: []string{}, ProtocolVersion: CapabilityProtocolVersion})
+			ProtocolVersion  int `json:"protocol_version"`
+			LifecycleVersion int `json:"lifecycle_version"`
+		}{Definition: handler.Definition, ProtocolVersion: CapabilityProtocolVersion, LifecycleVersion: RuntimeLifecycleVersion})
+	case "activate":
+		if handler.Activate != nil {
+			if err := handler.Activate(ctx); err != nil {
+				return nil, false, err
+			}
+		}
+		return json.RawMessage(`{}`), false, nil
 	case "tool.execute":
 		if handler.ExecuteTool == nil {
 			return nil, false, errors.New("tool execution is unavailable")
@@ -453,7 +715,39 @@ func dispatch(ctx context.Context, client *Client, handler Handler, request rpcR
 		return marshal(struct {
 			Output json.RawMessage `json:"output"`
 		}{Output: value})
+	case "service.invoke":
+		if handler.InvokeService == nil {
+			return nil, false, errors.New("service invocation is unavailable")
+		}
+		var call ServiceCall
+		if err := json.Unmarshal(request.Params, &call); err != nil {
+			return nil, false, err
+		}
+		value, err := handler.InvokeService(ctx, client, call)
+		if err != nil {
+			return nil, false, err
+		}
+		if len(value) == 0 || !json.Valid(value) {
+			return nil, false, errors.New("service returned invalid JSON")
+		}
+		return value, false, nil
+	case "service.changed":
+		if handler.ServiceChanged != nil {
+			var notice ServiceChangedNotice
+			if err := json.Unmarshal(request.Params, &notice); err != nil {
+				return nil, false, err
+			}
+			if err := handler.ServiceChanged(ctx, notice); err != nil {
+				return nil, false, err
+			}
+		}
+		return json.RawMessage(`{}`), false, nil
 	case "shutdown":
+		if handler.Shutdown != nil {
+			if err := handler.Shutdown(ctx); err != nil {
+				return nil, false, err
+			}
+		}
 		return json.RawMessage(`{}`), true, nil
 	default:
 		return nil, false, fmt.Errorf("method %q is not supported", request.Method)

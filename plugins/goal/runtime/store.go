@@ -46,8 +46,8 @@ func (s *Store) Create(spec Spec) (Goal, error) {
 	defer s.mu.Unlock()
 
 	existing, err := s.loadLocked()
-	if err == nil && !IsTerminalStatus(existing.Status) {
-		return Goal{}, fmt.Errorf("thread already has unfinished goal %q with status %s", existing.GoalID, existing.Status)
+	if err == nil {
+		return Goal{}, fmt.Errorf("thread already has goal %q with status %s; clear it before creating another", existing.GoalID, existing.Status)
 	}
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return Goal{}, err
@@ -212,6 +212,9 @@ func validateGoalForSave(goal Goal) error {
 	}
 	if goal.TimeUsedSeconds < 0 {
 		return errors.New("goal time_used_seconds cannot be negative")
+	}
+	if goal.TimeUsedMS < 0 {
+		return errors.New("goal time_used_ms cannot be negative")
 	}
 	if goal.GoalTurns < 0 {
 		return errors.New("goal goal_turns cannot be negative")

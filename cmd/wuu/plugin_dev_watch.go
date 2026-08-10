@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -24,18 +25,18 @@ var devWatchIgnoredDirs = map[string]bool{
 // watchDevDirFS watches the plugin source tree with fsnotify and refreshes the
 // development generation after each settled save burst. It falls back to
 // polling when the platform watcher cannot be created.
-func watchDevDirFS(wuuHome, dir, packageManager string, pollInterval time.Duration) {
+func watchDevDirFS(wuuHome, dir, packageManager string, pollInterval time.Duration, initialPending bool) {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		fmt.Printf("fsnotify unavailable (%v); falling back to polling every %s\n", err, pollInterval)
-		watchDevDir(wuuHome, dir, packageManager, pollInterval)
+		watchDevDir(wuuHome, dir, packageManager, pollInterval, initialPending)
 		return
 	}
 	defer watcher.Close()
 
 	if err := addDevWatchDirs(watcher, dir); err != nil {
 		fmt.Printf("fsnotify setup failed (%v); falling back to polling every %s\n", err, pollInterval)
-		watchDevDir(wuuHome, dir, packageManager, pollInterval)
+		watchDevDir(wuuHome, dir, packageManager, pollInterval, initialPending)
 		return
 	}
 
@@ -44,11 +45,17 @@ func watchDevDirFS(wuuHome, dir, packageManager string, pollInterval time.Durati
 	var debounce *time.Timer
 	var debounceC <-chan time.Time
 	pending := false
-	schedule := func() {
+	schedule := func(delay time.Duration) {
 		if debounce == nil {
-			debounce = time.NewTimer(devWatchDebounce)
+			debounce = time.NewTimer(delay)
 		} else {
-			debounce.Reset(devWatchDebounce)
+			if !debounce.Stop() && pending {
+				select {
+				case <-debounce.C:
+				default:
+				}
+			}
+			debounce.Reset(delay)
 		}
 		debounceC = debounce.C
 		pending = true
@@ -66,6 +73,9 @@ func watchDevDirFS(wuuHome, dir, packageManager string, pollInterval time.Durati
 		pending = false
 	}
 	defer stopDebounce()
+	if initialPending {
+		schedule(pollInterval)
+	}
 
 	for {
 		select {
@@ -83,7 +93,7 @@ func watchDevDirFS(wuuHome, dir, packageManager string, pollInterval time.Durati
 				}
 			}
 			if event.Op&(fsnotify.Write|fsnotify.Create|fsnotify.Remove|fsnotify.Rename) != 0 {
-				schedule()
+				schedule(devWatchDebounce)
 			}
 		case err, ok := <-watcher.Errors:
 			if !ok {
@@ -93,7 +103,11 @@ func watchDevDirFS(wuuHome, dir, packageManager string, pollInterval time.Durati
 		case <-debounceC:
 			pending = false
 			debounceC = nil
-			diagnostic, _ := refreshDevGeneration(wuuHome, dir, packageManager)
+			diagnostic, err := refreshDevGeneration(wuuHome, dir, packageManager)
+			if errors.Is(err, errDevGenerationBusy) {
+				schedule(pollInterval)
+				continue
+			}
 			printDevDiagnostic(diagnostic)
 		}
 	}

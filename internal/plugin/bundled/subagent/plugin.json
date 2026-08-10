@@ -3,6 +3,7 @@
   "id": "subagent",
   "name": "Subagent",
   "description": "Delegated child tasks and multi-agent coordination.",
+  "icon": { "path": "assets/icon.svg" },
   "version": "0.1.0",
   "author": { "name": "Wuu" },
   "minimumWuuVersion": "0.1.0",
@@ -11,7 +12,10 @@
   "contributes": {
     "slots": [
       { "id": "subagent-status", "target": "composer.above", "order": 30, "title": "Subagent status" },
-      { "id": "subagent-settings", "target": "settings.plugin", "order": 30, "title": "Subagent settings" }
+      { "id": "subagent-ultra", "target": "composer.toolbar", "order": 30, "title": "Proactive delegation" }
+    ],
+    "settingsPages": [
+      { "id": "subagent", "title": "Subagent", "description": "Configure model aliases used by delegated tasks", "view": "subagent.settings", "icon": "bot", "order": 30 }
     ]
   },
   "interface": { "displayName": "Subagent", "shortDescription": "Delegate bounded work to child tasks.", "developerName": "Wuu", "category": "Productivity", "capabilities": ["Write"] },

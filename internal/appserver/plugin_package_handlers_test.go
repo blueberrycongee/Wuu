@@ -186,8 +186,9 @@ func TestPluginPackageInstallDirectoryIsPendingAndDoesNotActivate(t *testing.T) 
 	if record.ApprovalState != ExtensionApprovalPending || record.State != ExtensionStatePending || record.RuntimeState != ExtensionRuntimeInactive {
 		t.Fatalf("pending inventory record = %+v", record)
 	}
-	if activePluginVersion(rt.ActivePlugins, "pending-demo") != "" {
-		t.Fatalf("active plugins = %+v, want no unapproved plugin", rt.ActivePlugins)
+	state := capturePluginRuntimeState(srv)
+	if activePluginVersion(state.active, "pending-demo") != "" {
+		t.Fatalf("active plugins = %+v, want no unapproved plugin", state.active)
 	}
 	if _, err := os.Stat(marker); !os.IsNotExist(err) {
 		t.Fatalf("plugin runtime executed during install: %v", err)
@@ -243,8 +244,9 @@ func TestPluginPackageUpdateWaitsForExactApprovalBeforePromotion(t *testing.T) {
 	if stagedRecord.PendingUpdate == nil || stagedRecord.PendingUpdate.Version != "2.0.0" || stagedRecord.PendingUpdate.Fingerprint != staged.Package.Fingerprint {
 		t.Fatalf("staged inventory record = %+v", stagedRecord)
 	}
-	if activePluginVersion(rt.Plugins, "update-demo") != "1.0.0" || activePluginVersion(rt.ActivePlugins, "update-demo") != "1.0.0" {
-		t.Fatalf("active generation changed before approval: plugins=%+v active=%+v", rt.Plugins, rt.ActivePlugins)
+	state := capturePluginRuntimeState(srv)
+	if activePluginVersion(state.plugins, "update-demo") != "1.0.0" || activePluginVersion(state.active, "update-demo") != "1.0.0" {
+		t.Fatalf("active generation changed before approval: plugins=%+v active=%+v", state.plugins, state.active)
 	}
 
 	callPluginPackageRPC(t, srv, "stale-promote", MethodExtensionPackageUpdate, ExtensionPackageUpdateParams{
@@ -253,8 +255,9 @@ func TestPluginPackageUpdateWaitsForExactApprovalBeforePromotion(t *testing.T) {
 	if response := responseByID(t, parseOutput(t, out.String()), "stale-promote"); response["error"] == nil {
 		t.Fatalf("stale promotion response = %+v", response)
 	}
-	if activePluginVersion(rt.ActivePlugins, "update-demo") != "1.0.0" {
-		t.Fatalf("stale approval changed active generation: %+v", rt.ActivePlugins)
+	state = capturePluginRuntimeState(srv)
+	if activePluginVersion(state.active, "update-demo") != "1.0.0" {
+		t.Fatalf("stale approval changed active generation: %+v", state.active)
 	}
 
 	callPluginPackageRPC(t, srv, "promote-v2", MethodExtensionPackageUpdate, ExtensionPackageUpdateParams{
@@ -269,13 +272,14 @@ func TestPluginPackageUpdateWaitsForExactApprovalBeforePromotion(t *testing.T) {
 	if promotedRecord.PendingUpdate != nil || promotedRecord.Fingerprint != staged.Package.Fingerprint {
 		t.Fatalf("promoted inventory record = %+v", promotedRecord)
 	}
-	if activePluginVersion(rt.ActivePlugins, "update-demo") != "2.0.0" {
-		t.Fatalf("approved generation was not activated: %+v", rt.ActivePlugins)
+	state = capturePluginRuntimeState(srv)
+	if activePluginVersion(state.active, "update-demo") != "2.0.0" {
+		t.Fatalf("approved generation was not activated: %+v", state.active)
 	}
-	if rt.ExtensionSettings == nil {
+	if state.settings == nil {
 		t.Fatal("approved update settings were not applied")
 	}
-	grant, ok := rt.ExtensionSettings.FindGrant(stagedRecord.ID, staged.Package.Fingerprint)
+	grant, ok := state.settings.FindGrant(stagedRecord.ID, staged.Package.Fingerprint)
 	if !ok || grant.Fingerprint != staged.Package.Fingerprint {
 		t.Fatalf("approved update grant = %+v, %v", grant, ok)
 	}
@@ -291,8 +295,9 @@ func TestPluginPackageUpdateWaitsForExactApprovalBeforePromotion(t *testing.T) {
 	if rejectResponse["error"] != nil {
 		t.Fatalf("reject v3 response = %+v", rejectResponse)
 	}
-	if activePluginVersion(rt.ActivePlugins, "update-demo") != "2.0.0" {
-		t.Fatalf("rejection changed active generation: %+v", rt.ActivePlugins)
+	state = capturePluginRuntimeState(srv)
+	if activePluginVersion(state.active, "update-demo") != "2.0.0" {
+		t.Fatalf("rejection changed active generation: %+v", state.active)
 	}
 	if _, err := pluginpkg.ReadPendingUpdate(rt.WuuHome, "update-demo"); !errors.Is(err, pluginpkg.ErrPendingUpdateNotFound) {
 		t.Fatalf("pending update after rejection = %v", err)
@@ -314,6 +319,7 @@ func TestPluginPackageUpdateActivationFailureKeepsInstalledAndPendingGenerations
 	versionOne := writeManagedPluginPackage(t, "activation-failure", "1.0.0", "working generation")
 	out := &lockedBuffer{}
 	srv := New(rt, out)
+	defer srv.Close()
 	callPluginPackageRPC(t, srv, "install", MethodPluginPackageInstall, PluginPackageInstallParams{Path: versionOne})
 	installed := remarshal[PluginPackageInstallResult](t, responseByID(t, parseOutput(t, out.String()), "install")["result"])
 	installedRecord := pluginPackageRecord(t, installed.ExtensionInventory, "activation-failure")
@@ -342,6 +348,9 @@ func TestPluginPackageUpdateActivationFailureKeepsInstalledAndPendingGenerations
 	if message := responseErrorMessage(t, responseByID(t, parseOutput(t, out.String()), "promote")); !strings.Contains(message, "activate pending plugin update") {
 		t.Fatalf("activation error = %q", message)
 	}
+	// Runtime fields are generation-owned and may be rewritten by the watcher.
+	// Stop the server before inspecting the final rollback snapshot directly.
+	srv.Close()
 
 	active, err := pluginpkg.InspectPackage(filepath.Join(rt.WuuHome, "plugins", "activation-failure"))
 	if err != nil {
@@ -357,12 +366,16 @@ func TestPluginPackageUpdateActivationFailureKeepsInstalledAndPendingGenerations
 	if pending.Package.Version != "2.0.0" || pending.Package.Fingerprint != staged.Package.Fingerprint {
 		t.Fatalf("pending generation changed: %+v", pending.Package)
 	}
-	if activePluginVersion(rt.ActivePlugins, "activation-failure") != "1.0.0" {
-		t.Fatalf("live generation changed: %+v", rt.ActivePlugins)
+	state := capturePluginRuntimeState(srv)
+	if activePluginVersion(state.active, "activation-failure") != "1.0.0" {
+		t.Fatalf("live generation changed: %+v", state.active)
 	}
-	grant, ok := rt.ExtensionSettings.Grants[installedRecord.ID]
+	if state.settings == nil {
+		t.Fatal("rollback settings were not applied")
+	}
+	grant, ok := state.settings.Grants[installedRecord.ID]
 	if !ok || grant.Fingerprint != installed.Package.Fingerprint {
-		t.Fatalf("approval was not rolled back: %+v", rt.ExtensionSettings.Grants)
+		t.Fatalf("approval was not rolled back: %+v", state.settings.Grants)
 	}
 	cfg, _, err := config.LoadPath(configPath)
 	if err != nil {
@@ -573,19 +586,20 @@ description: Verifies plugin package removal.
 	if grantResponse["error"] != nil {
 		t.Fatalf("grant response = %+v", grantResponse)
 	}
+	state := capturePluginRuntimeState(srv)
 	foundPlugin := false
-	for _, active := range rt.ActivePlugins {
+	for _, active := range state.active {
 		foundPlugin = foundPlugin || active.ID == "remove-demo"
 	}
 	if !foundPlugin {
-		t.Fatalf("active plugins before removal = %+v", rt.ActivePlugins)
+		t.Fatalf("active plugins before removal = %+v", state.active)
 	}
 	foundSkill := false
-	for _, skill := range rt.Skills {
-		foundSkill = foundSkill || skill.Name == "remove-skill"
+	for _, name := range state.skillNames {
+		foundSkill = foundSkill || name == "remove-skill"
 	}
 	if !foundSkill {
-		t.Fatalf("approved plugin skill was not activated: %+v", rt.Skills)
+		t.Fatalf("approved plugin skill was not activated: %+v", state.skillNames)
 	}
 
 	callPluginPackageRPC(t, srv, "remove", MethodPluginPackageRemove, PluginPackageRemoveParams{ID: "remove-demo"})
@@ -605,17 +619,18 @@ description: Verifies plugin package removal.
 	if _, err := os.Stat(filepath.Join(rt.WuuHome, "plugins", "remove-demo")); !os.IsNotExist(err) {
 		t.Fatalf("removed plugin still exists: %v", err)
 	}
-	if activePluginVersion(rt.ActivePlugins, "remove-demo") != "" {
-		t.Fatalf("removed plugin remains active: %+v", rt.ActivePlugins)
+	state = capturePluginRuntimeState(srv)
+	if activePluginVersion(state.active, "remove-demo") != "" {
+		t.Fatalf("removed plugin remains active: %+v", state.active)
 	}
-	for _, skill := range rt.Skills {
-		if skill.Name == "remove-skill" {
-			t.Fatalf("removed plugin skill remains active: %+v", skill)
+	for _, name := range state.skillNames {
+		if name == "remove-skill" {
+			t.Fatalf("removed plugin skill remains active: %q", name)
 		}
 	}
-	if rt.ExtensionSettings != nil {
-		if _, ok := rt.ExtensionSettings.Grants[extensions.SubjectID("user", "remove-demo")]; ok {
-			t.Fatalf("removed plugin grant remains persisted: %+v", rt.ExtensionSettings.Grants)
+	if state.settings != nil {
+		if _, ok := state.settings.Grants[extensions.SubjectID("user", "remove-demo")]; ok {
+			t.Fatalf("removed plugin grant remains persisted: %+v", state.settings.Grants)
 		}
 	}
 }
@@ -697,6 +712,46 @@ func activePluginVersion(plugins []pluginpkg.Plugin, id string) string {
 		}
 	}
 	return ""
+}
+
+type pluginRuntimeState struct {
+	plugins    []pluginpkg.Plugin
+	active     []pluginpkg.Plugin
+	skillNames []string
+	settings   *extensions.Settings
+}
+
+func capturePluginRuntimeState(srv *Server) pluginRuntimeState {
+	srv.pluginGenerationRefreshMu.Lock()
+	defer srv.pluginGenerationRefreshMu.Unlock()
+
+	state := pluginRuntimeState{
+		plugins: append([]pluginpkg.Plugin(nil), srv.rt.Plugins...),
+		active:  append([]pluginpkg.Plugin(nil), srv.rt.ActivePlugins...),
+	}
+	for _, skill := range srv.rt.Skills {
+		state.skillNames = append(state.skillNames, skill.Name)
+	}
+	if srv.rt.ExtensionSettings == nil {
+		return state
+	}
+	settings := &extensions.Settings{
+		Grants:   make(map[string]extensions.Grant, len(srv.rt.ExtensionSettings.Grants)),
+		Disabled: make(map[string]bool, len(srv.rt.ExtensionSettings.Disabled)),
+		Rejected: make(map[string]extensions.PolicyDecision, len(srv.rt.ExtensionSettings.Rejected)),
+	}
+	for id, grant := range srv.rt.ExtensionSettings.Grants {
+		grant.Permissions = append([]string(nil), grant.Permissions...)
+		settings.Grants[id] = grant
+	}
+	for id, disabled := range srv.rt.ExtensionSettings.Disabled {
+		settings.Disabled[id] = disabled
+	}
+	for id, rejection := range srv.rt.ExtensionSettings.Rejected {
+		settings.Rejected[id] = rejection
+	}
+	state.settings = settings
+	return state
 }
 
 func responseErrorMessage(t *testing.T, response map[string]any) string {

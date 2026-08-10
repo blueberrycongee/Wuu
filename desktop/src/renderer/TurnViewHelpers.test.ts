@@ -1,7 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Thread, Turn } from "../shared/protocol";
-import { PROCESS_NOTIFICATION_NAME } from "./InternalUserNotification";
+import {
+  AGENT_NOTIFICATION_NAME,
+  PROCESS_NOTIFICATION_NAME,
+} from "./InternalUserNotification";
 import {
   firstUserMessageAnchor,
   lastUserMessageAnchor,
@@ -16,14 +19,14 @@ import {
 
 function handoffText(): string {
   return JSON.stringify({
-    author: "/root/helpme_recovery",
+    author: "/root/recovery_worker",
     recipient: "/root",
     content: `<subagent_notification>\n${JSON.stringify({
-      agent_path: "/root/helpme_recovery",
+      agent_path: "/root/recovery_worker",
       status: {
         type: "agent_result",
         agent_id: "worker-1",
-        task_name: "helpme_recovery",
+        task_name: "recovery_worker",
         status: "completed"
       }
     })}\n</subagent_notification>`,
@@ -355,7 +358,12 @@ describe("firstUserMessageAnchor", () => {
 
   it("skips internal agent handoff anchors", () => {
     const turn = buildTurn([
-      { id: "handoff", type: "user_message", text: handoffText() },
+      {
+        id: "handoff",
+        type: "user_message",
+        name: AGENT_NOTIFICATION_NAME,
+        text: handoffText(),
+      },
       { id: "u-1", type: "user_message", text: "hello" },
     ]);
     expect(firstUserMessageAnchor(turn)).toEqual({
@@ -492,7 +500,12 @@ describe("lastUserMessageAnchor", () => {
     const turn = buildTurn([
       { id: "u-1", type: "user_message", text: "hello" },
       { id: "a-1", type: "agent_message", text: "reply" },
-      { id: "handoff", type: "user_message", text: handoffText() },
+      {
+        id: "handoff",
+        type: "user_message",
+        name: AGENT_NOTIFICATION_NAME,
+        text: handoffText(),
+      },
     ]);
     expect(lastUserMessageAnchor(turn)).toEqual({
       turnID: "turn-1",
@@ -608,7 +621,12 @@ describe("firstUserMessageText", () => {
 
   it("skips internal agent handoff text", () => {
     const turn = buildTurn([
-      { id: "handoff", type: "user_message", text: handoffText() },
+      {
+        id: "handoff",
+        type: "user_message",
+        name: AGENT_NOTIFICATION_NAME,
+        text: handoffText(),
+      },
       { id: "u-1", type: "user_message", text: "hello" },
     ]);
     expect(firstUserMessageText(turn)).toBe("hello");

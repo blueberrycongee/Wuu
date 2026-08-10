@@ -108,7 +108,7 @@ type Observability struct {
 	ContextRequests    []ContextRequestObservation `json:"context_requests,omitempty"`
 	ToolInventory      []ToolInventoryObservation  `json:"tool_inventory,omitempty"`
 	ToolRecords        []ToolObservation           `json:"tool_records,omitempty"`
-	GoalAttention      []GoalAttentionObservation  `json:"goal_attention,omitempty"`
+	Attention          []AttentionObservation      `json:"attention,omitempty"`
 	HarnessTasks       []HarnessTaskObservation    `json:"harness_tasks,omitempty"`
 	HarnessReports     []HarnessReportObservation  `json:"harness_reports,omitempty"`
 	Warnings           []string                    `json:"warnings,omitempty"`
@@ -239,7 +239,7 @@ type PatchRiskObservation struct {
 	ReviewHint     string         `json:"review_hint,omitempty"`
 }
 
-type GoalAttentionObservation struct {
+type AttentionObservation struct {
 	Source  string `json:"source"`
 	ID      string `json:"id,omitempty"`
 	Status  string `json:"status,omitempty"`
@@ -253,8 +253,6 @@ type HarnessTaskObservation struct {
 	Path          string   `json:"path,omitempty"`
 	Name          string   `json:"name,omitempty"`
 	Role          string   `json:"role,omitempty"`
-	GoalID        string   `json:"goal_id,omitempty"`
-	GoalDir       string   `json:"goal_dir,omitempty"`
 	Status        string   `json:"status"`
 	ReportPath    string   `json:"report_path,omitempty"`
 	ArtifactPaths []string `json:"artifact_paths,omitempty"`
@@ -333,9 +331,9 @@ func Catalog() []Task {
 		{
 			ID:            "tool_search_deferred",
 			Name:          "Discover and use a deferred tool",
-			Description:   "The cron listing tool starts deferred and must be exposed through tool_search.",
-			Prompt:        "Find the tool for listing scheduled tasks using tool_search, call that tool with action=list, then write tool_search_result.txt containing DEFERRED_TOOL_FOUND.",
-			RequiredTools: []string{"tool_search", "cron"},
+			Description:   "The thread lookup tool starts deferred and must be exposed through tool_search.",
+			Prompt:        "Find the tool for looking up a session using tool_search, then write tool_search_result.txt containing DEFERRED_TOOL_FOUND.",
+			RequiredTools: []string{"tool_search", "thread_get"},
 			Setup:         setupEmptyTask,
 			Verify:        verifyDeferredToolFoundFile,
 		},

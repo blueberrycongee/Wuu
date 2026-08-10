@@ -18,7 +18,7 @@ import (
 	"github.com/blueberrycongee/wuu/internal/agentcontrol"
 	"github.com/blueberrycongee/wuu/internal/config"
 	"github.com/blueberrycongee/wuu/internal/evalharness"
-	goalrunner "github.com/blueberrycongee/wuu/internal/goal"
+	"github.com/blueberrycongee/wuu/internal/harness"
 	"github.com/blueberrycongee/wuu/internal/modelprofile"
 	"github.com/blueberrycongee/wuu/internal/providers"
 	"github.com/blueberrycongee/wuu/internal/providers/codex"
@@ -487,11 +487,7 @@ func runEvalTask(cfg evalTaskRunConfig) evalharness.Result {
 	if strings.TrimSpace(rt.StreamRunner.SystemPrompt) != "" {
 		history = append(history, providers.ChatMessage{Role: "system", Content: rt.StreamRunner.SystemPrompt})
 	}
-	userMessage, transformErr := rt.TransformUserMessage(ctx, evalSessionID, taskRoot, providers.ChatMessage{Role: "user", Content: cfg.Task.Prompt})
-	if transformErr != nil {
-		result.Error = transformErr.Error()
-		return result
-	}
+	userMessage := providers.ChatMessage{Role: "user", Content: cfg.Task.Prompt}
 	history = append(history, userMessage)
 
 	runResult, runErr := rt.StreamRunner.RunWithCallback(ctx, history, nil)
@@ -542,7 +538,7 @@ func applyEvalAttentionIssues(result *evalharness.Result) {
 	if result == nil || result.Observability == nil {
 		return
 	}
-	if len(evalharness.GoalAttentionValidationIssues(result.Observability.GoalAttention)) > 0 {
+	if len(evalharness.AttentionValidationIssues(result.Observability.Attention)) > 0 {
 		result.Success = false
 	}
 }
@@ -607,16 +603,23 @@ func collectEvalObservability(rt *runtime.Session, sessionID, taskRoot string, k
 		obs.ToolInventory = evalToolInventoryObservations(rt.Toolkit.ToolInfos())
 		obs.ToolRecords = evalToolObservations(rt.Toolkit.ToolTelemetry())
 	}
-	snapshotOpts := goalrunner.SnapshotOptions{}
 	if rt.AgentControl != nil {
-		snapshotOpts.HarnessStore = rt.AgentControl.HarnessStore()
+		store := rt.AgentControl.HarnessStore()
+		obs.HarnessDir = store.Dir()
+		tasks, taskErr := store.ListTasks()
+		if taskErr != nil {
+			obs.Warnings = append(obs.Warnings, "list harness tasks: "+taskErr.Error())
+		} else {
+			obs.HarnessTasks = evalHarnessTaskObservations(tasks)
+		}
+		reports, reportErr := store.ListReports()
+		if reportErr != nil {
+			obs.Warnings = append(obs.Warnings, "list harness reports: "+reportErr.Error())
+		} else {
+			obs.HarnessReports = evalHarnessReportObservations(reports)
+		}
+		obs.Attention = evalHarnessAttentionObservations(tasks, reports)
 	}
-	snapshot := goalrunner.SnapshotSystem(snapshotOpts)
-	obs.HarnessDir = snapshot.HarnessDir
-	obs.GoalAttention = evalGoalAttentionObservations(snapshot.Attention)
-	obs.HarnessTasks = evalHarnessTaskObservations(snapshot.Harness.Tasks)
-	obs.HarnessReports = evalHarnessReportObservations(snapshot.Harness.Reports)
-	obs.Warnings = append(obs.Warnings, evalSafeStringSlice(snapshot.Warnings, evalTextPreviewLimit)...)
 	return obs
 }
 
@@ -851,21 +854,7 @@ func evalToolInventoryObservations(infos []tools.ToolInfo) []evalharness.ToolInv
 	return out
 }
 
-func evalGoalAttentionObservations(items []goalrunner.AttentionItem) []evalharness.GoalAttentionObservation {
-	out := make([]evalharness.GoalAttentionObservation, 0, len(items))
-	for _, item := range items {
-		out = append(out, evalharness.GoalAttentionObservation{
-			Source:  item.Source,
-			ID:      item.ID,
-			Status:  item.Status,
-			Message: evalSafePreview(item.Message, evalTextPreviewLimit),
-			Path:    item.Path,
-		})
-	}
-	return out
-}
-
-func evalHarnessTaskObservations(tasks []goalrunner.HarnessTaskSnapshot) []evalharness.HarnessTaskObservation {
+func evalHarnessTaskObservations(tasks []harness.Task) []evalharness.HarnessTaskObservation {
 	out := make([]evalharness.HarnessTaskObservation, 0, len(tasks))
 	for _, task := range tasks {
 		out = append(out, evalharness.HarnessTaskObservation{
@@ -874,9 +863,7 @@ func evalHarnessTaskObservations(tasks []goalrunner.HarnessTaskSnapshot) []evalh
 			Path:          task.Path,
 			Name:          task.Name,
 			Role:          task.Role,
-			GoalID:        task.GoalID,
-			GoalDir:       task.GoalDir,
-			Status:        task.Status,
+			Status:        string(task.Status),
 			ReportPath:    task.ReportPath,
 			ArtifactPaths: append([]string(nil), task.ArtifactPaths...),
 			InputTokens:   task.InputTokens,
@@ -887,7 +874,7 @@ func evalHarnessTaskObservations(tasks []goalrunner.HarnessTaskSnapshot) []evalh
 	return out
 }
 
-func evalHarnessReportObservations(reports []goalrunner.HarnessReportSnapshot) []evalharness.HarnessReportObservation {
+func evalHarnessReportObservations(reports []harness.Report) []evalharness.HarnessReportObservation {
 	out := make([]evalharness.HarnessReportObservation, 0, len(reports))
 	for _, report := range reports {
 		out = append(out, evalharness.HarnessReportObservation{
@@ -903,6 +890,21 @@ func evalHarnessReportObservations(reports []goalrunner.HarnessReportSnapshot) [
 			Artifacts:    append([]string(nil), report.Artifacts...),
 			ReportPath:   report.ReportPath,
 		})
+	}
+	return out
+}
+
+func evalHarnessAttentionObservations(tasks []harness.Task, reports []harness.Report) []evalharness.AttentionObservation {
+	var out []evalharness.AttentionObservation
+	for _, task := range tasks {
+		if task.Status == harness.TaskStatusFailed {
+			out = append(out, evalharness.AttentionObservation{Source: "harness", ID: task.ID, Status: string(task.Status), Message: evalSafePreview(task.Error, evalTextPreviewLimit), Path: task.ReportPath})
+		}
+	}
+	for _, report := range reports {
+		if len(report.Blockers) > 0 || strings.EqualFold(strings.TrimSpace(report.Outcome), "blocked") || strings.EqualFold(strings.TrimSpace(report.Outcome), "failed") {
+			out = append(out, evalharness.AttentionObservation{Source: "harness_report", ID: report.ID, Status: report.Outcome, Message: evalSafePreview(strings.Join(report.Blockers, "; "), evalTextPreviewLimit), Path: report.ReportPath})
+		}
 	}
 	return out
 }
@@ -1383,8 +1385,8 @@ func printEvalTraceReplay(summary evalharness.TraceReplaySummary) {
 	if summary.Task != nil && len(summary.Task.ForbiddenToolsUsed) > 0 {
 		fmt.Printf("  forbidden_tools: %s\n", strings.Join(summary.Task.ForbiddenToolsUsed, ","))
 	}
-	if attention := formatEvalGoalAttention(summary.GoalAttention); attention != "" {
-		fmt.Printf("  goal_attention: %s\n", attention)
+	if attention := formatEvalAttention(summary.Attention); attention != "" {
+		fmt.Printf("  attention: %s\n", attention)
 	}
 	if summary.ToolSummary != nil {
 		fmt.Printf("  tool_summary: total=%d succeeded=%d failed=%d\n", summary.ToolSummary.Total, summary.ToolSummary.Succeeded, summary.ToolSummary.Failed)
@@ -1519,12 +1521,12 @@ func printSessionTraceReplay(summary sessiontrace.ReplaySummary) {
 	}
 }
 
-func formatEvalGoalAttention(items []evalharness.GoalAttentionObservation) string {
+func formatEvalAttention(items []evalharness.AttentionObservation) string {
 	parts := make([]string, 0, len(items))
 	for _, item := range items {
 		source := strings.TrimSpace(item.Source)
 		if source == "" {
-			source = "goal"
+			source = "runtime"
 		}
 		labelParts := []string{source}
 		if id := strings.TrimSpace(item.ID); id != "" {

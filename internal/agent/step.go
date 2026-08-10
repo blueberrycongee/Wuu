@@ -8,6 +8,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/blueberrycongee/wuu/internal/providers"
 	"github.com/blueberrycongee/wuu/internal/toolresult"
@@ -72,12 +73,6 @@ type Step interface {
 // summarization they need; the loop is intentionally agnostic.
 type CompactFn func(ctx context.Context, messages []providers.ChatMessage) ([]providers.ChatMessage, error)
 
-// PostToolRewriteFn can replace the live history after a complete assistant
-// tool-call turn has been recorded. The hook runs only after the assistant
-// tool_calls and every matching tool result are present in history, so provider
-// tool-call/result ordering is never rewritten mid-flight.
-type PostToolRewriteFn func(ctx context.Context, messages []providers.ChatMessage, toolMessages []providers.ChatMessage) ([]providers.ChatMessage, bool, error)
-
 // CompactReason classifies why the loop ran a compact pass.
 type CompactReason string
 
@@ -89,9 +84,7 @@ const (
 	// context-overflow error and the loop ran compact reactively as
 	// the recovery path.
 	CompactReasonOverflow CompactReason = "overflow"
-	// CompactReasonHelpMe means a recovery tool produced a validated
 	// replacement context after its tool result was recorded.
-	CompactReasonHelpMe CompactReason = "helpme"
 	// CompactReasonManual means the user explicitly requested a compact
 	// pass (the /compact slash command); it runs before the first model
 	// request of the turn regardless of the fill-rate threshold.
@@ -205,6 +198,11 @@ type LoopConfig struct {
 	// provider request for the shared retry lifecycle.
 	InferenceOperationKind   providers.InferenceOperationKind
 	InferenceWorkloadProfile providers.InferenceWorkloadProfile
+	SessionID                string
+	ExecutionID              string
+	DriverID                 string
+	DriverVersion            string
+	ModelInputReceiptStore   ModelInputReceiptStore
 	// Temperature is the sampling temperature; 0 means provider default.
 	Temperature float64
 	// MediaInput is the admission policy for user-supplied media on every
@@ -272,6 +270,9 @@ type LoopConfig struct {
 	// sub-agent follow-up messaging: send_message queues
 	// user-role messages that are injected on the next round.
 	BeforeStep func() []providers.ChatMessage
+	// BeforeModelStep is the context-aware extension boundary for durable,
+	// append-only messages. The input is an immutable snapshot of live history.
+	BeforeModelStep func(context.Context, int, []providers.ChatMessage) ([]providers.ChatMessage, error)
 	// BeforeRequestContext, when set, is called after live-history updates
 	// and before each provider request. Returned segments are assembled into
 	// the provider request without being appended to live or durable history.
@@ -316,11 +317,6 @@ type LoopConfig struct {
 	// OnToolResultDetail receives the lossless canonical result. New callers
 	// should prefer it; OnToolResult remains as a compatibility projection.
 	OnToolResultDetail func(call providers.ToolCall, result toolresult.Result)
-	// PostToolRewrite, when set, may replace live history after all
-	// tool results for a model step have been appended. This is for
-	// checkpoint/compact style tools that intentionally rewrite the
-	// next model-visible context.
-	PostToolRewrite PostToolRewriteFn
 	// OnCompactStart is invoked immediately before a potentially slow compact
 	// pass begins so interactive clients can render real progress.
 	OnCompactStart func(reason CompactReason)
@@ -408,4 +404,11 @@ type LoopResult struct {
 	FinishReason  providers.FinishReason
 	StopReason    string
 	Truncated     bool
+	// Driver metadata is the versioned policy identity and terminal checkpoint
+	// associated with this result. The checkpoint is opaque to callers.
+	DriverID              string
+	DriverVersion         string
+	DriverContractVersion int
+	DriverStatus          string
+	DriverCheckpoint      json.RawMessage
 }

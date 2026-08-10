@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-func TestStoreCreateLoadAndRejectUnfinishedReplacement(t *testing.T) {
+func TestStoreCreateLoadAndRejectReplacement(t *testing.T) {
 	now := time.Date(2026, 6, 25, 11, 0, 0, 0, time.UTC)
 	store := NewStore(filepath.Join(t.TempDir(), "goal_runtime.json"))
 	store.SetClock(func() time.Time { return now })
@@ -31,14 +31,14 @@ func TestStoreCreateLoadAndRejectUnfinishedReplacement(t *testing.T) {
 
 	_, err = store.Create(Spec{ThreadID: "thread-1", GoalID: "goal-2", Objective: "replace"})
 	if err == nil {
-		t.Fatal("expected unfinished replacement to fail")
+		t.Fatal("expected replacement to fail")
 	}
-	if !strings.Contains(err.Error(), "unfinished goal") {
+	if !strings.Contains(err.Error(), "already has goal") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
-func TestStoreCreateReplacesTerminalGoal(t *testing.T) {
+func TestStoreCreateRejectsTerminalReplacementUntilClear(t *testing.T) {
 	now := time.Date(2026, 6, 25, 11, 0, 0, 0, time.UTC)
 	store := NewStore(filepath.Join(t.TempDir(), "goal_runtime.json"))
 	store.SetClock(func() time.Time { return now })
@@ -54,12 +54,8 @@ func TestStoreCreateReplacesTerminalGoal(t *testing.T) {
 	if err := store.Save(goal); err != nil {
 		t.Fatalf("Save complete: %v", err)
 	}
-	next, err := store.Create(Spec{ThreadID: "thread-1", GoalID: "goal-2", Objective: "second"})
-	if err != nil {
-		t.Fatalf("Create second after terminal: %v", err)
-	}
-	if next.GoalID != "goal-2" || next.Status != StatusActive {
-		t.Fatalf("unexpected replacement: %+v", next)
+	if _, err := store.Create(Spec{ThreadID: "thread-1", GoalID: "goal-2", Objective: "second"}); err == nil {
+		t.Fatal("expected terminal replacement to fail")
 	}
 }
 

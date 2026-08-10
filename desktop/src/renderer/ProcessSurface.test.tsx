@@ -654,7 +654,7 @@ describe("ProcessSurface", () => {
     expect(label?.textContent).toBe("思考过程");
   });
 
-  describe("reasoning scroll container", () => {
+  describe("fold body scroll container", () => {
     type ScrollLayout = {
       scrollHeight: number;
       clientHeight: number;
@@ -688,7 +688,7 @@ describe("ProcessSurface", () => {
       return layout;
     }
 
-    it("wraps reasoning items in a scroll container for bounded growth", () => {
+    it("renders reasoning items inside the bounded fold body", () => {
       const { container } = render({
         processItems: [makeReasoning("reason-1", "thinking aloud", "in_progress")],
         streaming: true,
@@ -696,20 +696,18 @@ describe("ProcessSurface", () => {
           <span data-testid="reasoning-mock">{item.id}</span>
         ),
       });
-      const scroll = container.querySelector(
-        ".process-surface-reasoning-scroll",
-      );
-      expect(scroll).toBeTruthy();
-      const items = scroll?.querySelectorAll(
+      const body = container.querySelector(".process-surface-body");
+      expect(body).toBeTruthy();
+      const items = body?.querySelectorAll(
         ".process-surface-reasoning-item",
       );
       expect(items?.length).toBe(1);
       // The mock item is wrapped inside the reasoning item slot.
-      const mock = scroll?.querySelector('[data-testid="reasoning-mock"]');
+      const mock = body?.querySelector('[data-testid="reasoning-mock"]');
       expect(mock?.textContent).toBe("reason-1");
     });
 
-    it("snaps the reasoning scroll container to the bottom when the fold opens", async () => {
+    it("snaps the fold body to the bottom when the fold opens", async () => {
       const { container } = render({
         processItems: [makeReasoning("reason-1", "thinking aloud", "completed")],
         streaming: true,
@@ -719,14 +717,14 @@ describe("ProcessSurface", () => {
         "details.process-surface-fold",
       ) as HTMLDetailsElement | null;
       expect(details).toBeTruthy();
-      const scroll = details?.querySelector(
-        ".process-surface-reasoning-scroll",
+      const body = details?.querySelector(
+        ".process-surface-body",
       ) as HTMLElement | null;
-      expect(scroll).toBeTruthy();
+      expect(body).toBeTruthy();
 
       // jsdom does not lay out real heights — mock the scroll geometry
       // so snap-to-bottom has measurable values to read.
-      const layout = stubScrollLayout(scroll!, {
+      const layout = stubScrollLayout(body!, {
         scrollHeight: 1000,
         clientHeight: 200,
       });
@@ -750,10 +748,10 @@ describe("ProcessSurface", () => {
       const details = container.querySelector(
         "details.process-surface-fold",
       ) as HTMLDetailsElement | null;
-      const scroll = details?.querySelector(
-        ".process-surface-reasoning-scroll",
+      const body = details?.querySelector(
+        ".process-surface-body",
       ) as HTMLElement | null;
-      const layout = stubScrollLayout(scroll!, {
+      const layout = stubScrollLayout(body!, {
         scrollHeight: 1000,
         clientHeight: 200,
       });
@@ -767,11 +765,11 @@ describe("ProcessSurface", () => {
 
       // User scrolls up to read earlier reasoning.
       act(() => {
-        scroll!.dispatchEvent(new UIEvent("scroll", { bubbles: true }));
+        body!.dispatchEvent(new UIEvent("scroll", { bubbles: true }));
       });
       layout.scrollTop = 240;
       act(() => {
-        scroll!.dispatchEvent(new UIEvent("scroll", { bubbles: true }));
+        body!.dispatchEvent(new UIEvent("scroll", { bubbles: true }));
       });
 
       // User collapses then re-expands the fold; the scroll should

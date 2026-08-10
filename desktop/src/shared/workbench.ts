@@ -13,17 +13,21 @@
 
 import type * as React from "react";
 import type {
+  PublicIconName,
   PublicSyntaxTokenName,
   PublicThemeTokenName,
 } from "./themeContract.generated";
 
 export {
   LEGACY_THEME_TOKEN_ALIASES,
+  PUBLIC_ICON_NAMES,
   PUBLIC_SYNTAX_TOKEN_NAMES,
   PUBLIC_THEME_TOKEN_NAMES,
   canonicalThemeTokenName,
+  isPublicIconName,
   isPublicSyntaxTokenName,
   isPublicThemeTokenName,
+  type PublicIconName,
   type PublicSyntaxTokenName,
   type PublicThemeTokenName,
 } from "./themeContract.generated";
@@ -36,16 +40,15 @@ export {
 export type ViewTypeId = string;
 
 /** Where a view instance appears in the workbench. */
-export type ViewPane =
-  | "main"
-  | "sidebar"
-  | "auxiliary"
-  | "overlay"
-  | "tab"
-  | "pane";
-
-/** Stable host-owned regions available for declarative default placement. */
-export const VIEW_PLACEMENT_REGIONS = ["main", "sidebar", "auxiliary"] as const;
+/** Stable host-owned semantic regions available for View placement. */
+export const VIEW_PLACEMENT_REGIONS = [
+  "navigation",
+  "primary",
+  "auxiliary",
+  "inspector",
+  "settings",
+  "overlay",
+] as const;
 export type ViewPlacementRegion = (typeof VIEW_PLACEMENT_REGIONS)[number];
 
 /** Persistence policy for a view instance. */
@@ -60,10 +63,10 @@ export interface ViewTypeDefinition {
   id: ViewTypeId;
   /** User-facing title for the view tab or header. */
   title: string;
-  /** Icon identifier from the host icon set, or a React node. */
-  icon?: string;
-  /** Default pane when the host opens this view without a specific target. */
-  defaultPane?: ViewPane;
+  /** Semantic icon identifier from the public host icon set. */
+  icon?: PublicIconName;
+  /** Default semantic region when the host opens this view. */
+  defaultRegion?: ViewPlacementRegion;
   /** Whether this view's state survives a session restart. */
   persistence?: ViewPersistence;
   /** React component that receives host context and renders the view. */
@@ -76,6 +79,30 @@ export interface ViewRenderProps {
   host: ViewHostAPI;
   /** Immutable context snapshot for this view instance. */
   context: Readonly<Record<string, unknown>>;
+  /** Active Wuu locale, such as zh-CN or en-US. */
+  locale: string;
+  /** Resolve a namespaced entry contributed through registerLocale(). */
+  translate(key: string, values?: Readonly<Record<string, string | number>>): string;
+}
+
+export interface SettingsModelAliasV1 {
+  readonly provider: string;
+  readonly model: string;
+  readonly effort?: string;
+  readonly variant?: string;
+}
+
+export interface SettingsValueMapV1 {
+  readonly "runtime.modelAliases": Readonly<Record<string, SettingsModelAliasV1>>;
+}
+
+export type SettingsValueKeyV1 = keyof SettingsValueMapV1;
+
+/** Narrow settings service exposed only to plugin views mounted as Settings pages. */
+export interface SettingsPageHostAPI {
+  readonly contractVersion: 1;
+  getValue<Key extends SettingsValueKeyV1>(key: Key): SettingsValueMapV1[Key];
+  updateValue<Key extends SettingsValueKeyV1>(key: Key, value: SettingsValueMapV1[Key]): Promise<void>;
 }
 
 /** Controlled API surface the host exposes to view components. */
@@ -92,6 +119,8 @@ export interface ViewHostAPI {
   openView(viewTypeId: ViewTypeId, options?: OpenViewOptions): Promise<void>;
   /** Request the host to close this view instance. */
   closeView(): Promise<void>;
+  /** Available only when the view is mounted as a Settings page. */
+  readonly settings?: SettingsPageHostAPI;
 }
 
 // ---------------------------------------------------------------------------
@@ -100,6 +129,10 @@ export interface ViewHostAPI {
 
 export interface PluginUIContainerProps extends React.HTMLAttributes<HTMLElement> {
   children?: React.ReactNode;
+}
+
+export interface PluginUIPageProps extends PluginUIContainerProps {
+  density?: "comfortable" | "compact";
 }
 
 export interface PluginUISectionProps extends Omit<PluginUIContainerProps, "title"> {
@@ -116,7 +149,22 @@ export interface PluginUIButtonProps extends React.ButtonHTMLAttributes<HTMLButt
   variant?: "primary" | "secondary" | "ghost" | "danger";
 }
 
+export interface PluginUIToolbarToggleProps extends Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, "aria-pressed"> {
+  pressed: boolean;
+  "aria-label": string;
+}
+
 export interface PluginUITextInputProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, "children"> {
+  label: React.ReactNode;
+  description?: React.ReactNode;
+}
+
+export interface PluginUITextAreaProps extends Omit<React.TextareaHTMLAttributes<HTMLTextAreaElement>, "children"> {
+  label: React.ReactNode;
+  description?: React.ReactNode;
+}
+
+export interface PluginUICheckboxProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, "children" | "type"> {
   label: React.ReactNode;
   description?: React.ReactNode;
 }
@@ -127,20 +175,43 @@ export interface PluginUIEmptyStateProps extends Omit<React.HTMLAttributes<HTMLE
   actions?: React.ReactNode;
 }
 
+export interface PluginUILoadingStateProps extends Omit<React.HTMLAttributes<HTMLElement>, "title"> {
+  title?: React.ReactNode;
+  description?: React.ReactNode;
+}
+
+export interface PluginUIErrorStateProps extends Omit<React.HTMLAttributes<HTMLElement>, "title"> {
+  title: React.ReactNode;
+  description?: React.ReactNode;
+  actions?: React.ReactNode;
+}
+
+export interface PluginUILiveDurationProps extends Omit<React.HTMLAttributes<HTMLSpanElement>, "children"> {
+  elapsedMs: number;
+  runningSinceMs?: number;
+  active?: boolean;
+}
+
 /**
  * Small host-owned component set for plugin views. These components own the
  * common visual rhythm while plugins retain full freedom inside their view.
  */
 export interface PluginUIKit {
-  readonly Page: React.ComponentType<PluginUIContainerProps>;
+  readonly Page: React.ComponentType<PluginUIPageProps>;
   readonly Panel: React.ComponentType<PluginUIContainerProps>;
   readonly Card: React.ComponentType<PluginUIContainerProps>;
   readonly Section: React.ComponentType<PluginUISectionProps>;
   readonly Stack: React.ComponentType<PluginUIStackProps>;
   readonly Row: React.ComponentType<PluginUIContainerProps>;
   readonly Button: React.ComponentType<PluginUIButtonProps>;
+  readonly ToolbarToggle: React.ComponentType<PluginUIToolbarToggleProps>;
   readonly TextInput: React.ComponentType<PluginUITextInputProps>;
+  readonly TextArea: React.ComponentType<PluginUITextAreaProps>;
+  readonly Checkbox: React.ComponentType<PluginUICheckboxProps>;
   readonly EmptyState: React.ComponentType<PluginUIEmptyStateProps>;
+  readonly LoadingState: React.ComponentType<PluginUILoadingStateProps>;
+  readonly ErrorState: React.ComponentType<PluginUIErrorStateProps>;
+  readonly LiveDuration: React.ComponentType<PluginUILiveDurationProps>;
 }
 
 export function createPluginUIKit(react: typeof React): PluginUIKit {
@@ -159,7 +230,14 @@ export function createPluginUIKit(react: typeof React): PluginUIKit {
     }, children);
   };
 
-  const Page = container("section", "plugin-ui-page");
+  function Page({ className, density = "comfortable", children, ...props }: PluginUIPageProps): React.ReactNode {
+    return react.createElement("section", {
+      ...props,
+      className: joinPluginUIClass("plugin-ui-page", className),
+      "data-wuu-component": "plugin-ui-page",
+      "data-wuu-density": density,
+    }, children);
+  }
   const Panel = container("section", "plugin-ui-panel");
   const Card = container("article", "plugin-ui-card");
   const Row = container("div", "plugin-ui-row");
@@ -204,6 +282,22 @@ export function createPluginUIKit(react: typeof React): PluginUIKit {
     }, children);
   }
 
+  function ToolbarToggle({
+    className,
+    pressed,
+    type = "button",
+    children,
+    ...props
+  }: PluginUIToolbarToggleProps): React.ReactNode {
+    return react.createElement("button", {
+      ...props,
+      type,
+      className: joinPluginUIClass("plugin-ui-toolbar-toggle", className),
+      "data-wuu-component": "plugin-ui-toolbar-toggle",
+      "aria-pressed": pressed,
+    }, children);
+  }
+
   function TextInput({ className, label, description, ...props }: PluginUITextInputProps): React.ReactNode {
     return react.createElement("label", {
       className: "plugin-ui-field",
@@ -220,18 +314,133 @@ export function createPluginUIKit(react: typeof React): PluginUIKit {
     }));
   }
 
-  function EmptyState({ className, title, description, actions, ...props }: PluginUIEmptyStateProps): React.ReactNode {
-    return react.createElement("section", {
-      ...props,
-      className: joinPluginUIClass("plugin-ui-empty-state", className),
-      "data-wuu-component": "plugin-ui-empty-state",
+  function TextArea({ className, label, description, ...props }: PluginUITextAreaProps): React.ReactNode {
+    return react.createElement("label", {
+      className: "plugin-ui-field",
+      "data-wuu-component": "plugin-ui-field",
     },
-    react.createElement("strong", null, title),
-    description !== undefined ? react.createElement("p", null, description) : null,
-    actions !== undefined ? react.createElement("div", { className: "plugin-ui-empty-state-actions" }, actions) : null);
+    react.createElement("span", { className: "plugin-ui-field-label" }, label),
+    description !== undefined
+      ? react.createElement("span", { className: "plugin-ui-field-description" }, description)
+      : null,
+    react.createElement("textarea", {
+      ...props,
+      className: joinPluginUIClass("plugin-ui-textarea", className),
+      "data-wuu-component": "plugin-ui-textarea",
+    }));
   }
 
-  return Object.freeze({ Page, Panel, Card, Section, Stack, Row, Button, TextInput, EmptyState });
+  function Checkbox({ className, label, description, ...props }: PluginUICheckboxProps): React.ReactNode {
+    return react.createElement("label", {
+      className: joinPluginUIClass("plugin-ui-checkbox", className),
+      "data-wuu-component": "plugin-ui-checkbox",
+    },
+    react.createElement("input", { ...props, type: "checkbox" }),
+    react.createElement("span", { className: "plugin-ui-checkbox-copy" },
+      react.createElement("span", { className: "plugin-ui-field-label" }, label),
+      description !== undefined
+        ? react.createElement("span", { className: "plugin-ui-field-description" }, description)
+        : null));
+  }
+
+  const renderState = (
+    kind: "empty" | "loading" | "error",
+    className: string | undefined,
+    title: React.ReactNode,
+    description: React.ReactNode,
+    actions: React.ReactNode,
+    props: React.HTMLAttributes<HTMLElement>,
+  ): React.ReactNode => {
+    const component = {
+      empty: "plugin-ui-empty-state",
+      loading: "plugin-ui-loading-state",
+      error: "plugin-ui-error-state",
+    }[kind];
+    return react.createElement("section", {
+      ...props,
+      className: joinPluginUIClass(`plugin-ui-state ${component}`, className),
+      "data-wuu-component": component,
+      "data-wuu-state": kind,
+      role: kind === "error" ? "alert" : "status",
+      "aria-busy": kind === "loading" ? true : undefined,
+    },
+    kind === "loading" ? react.createElement("span", { className: "plugin-ui-state-spinner", "aria-hidden": true }) : null,
+    title !== undefined ? react.createElement("strong", null, title) : null,
+    description !== undefined ? react.createElement("p", null, description) : null,
+    actions !== undefined ? react.createElement("div", { className: "plugin-ui-state-actions" }, actions) : null);
+  };
+
+  function EmptyState({ className, title, description, actions, ...props }: PluginUIEmptyStateProps): React.ReactNode {
+    return renderState("empty", className, title, description, actions, props);
+  }
+
+  function LoadingState({ className, title, description, ...props }: PluginUILoadingStateProps): React.ReactNode {
+    return renderState("loading", className, title, description, undefined, props);
+  }
+
+  function ErrorState({ className, title, description, actions, ...props }: PluginUIErrorStateProps): React.ReactNode {
+    return renderState("error", className, title, description, actions, props);
+  }
+
+  function LiveDuration({
+    className,
+    elapsedMs,
+    runningSinceMs,
+    active = false,
+    ...props
+  }: PluginUILiveDurationProps): React.ReactNode {
+    const nodeRef = react.useRef<HTMLSpanElement | null>(null);
+    const value = (): string => formatCompactDuration(
+      Math.max(0, elapsedMs) + (
+        active && Number.isFinite(runningSinceMs)
+          ? Math.max(0, Date.now() - Number(runningSinceMs))
+          : 0
+      ),
+    );
+    react.useEffect(() => {
+      const update = (): void => {
+        if (nodeRef.current) nodeRef.current.textContent = value();
+      };
+      update();
+      if (!active || !Number.isFinite(runningSinceMs)) return undefined;
+      const timer = window.setInterval(update, 1_000);
+      return () => window.clearInterval(timer);
+    }, [active, elapsedMs, runningSinceMs]);
+    return react.createElement("span", {
+      ...props,
+      ref: nodeRef,
+      className: joinPluginUIClass("plugin-ui-live-duration", className),
+      "data-wuu-component": "plugin-ui-live-duration",
+    }, value());
+  }
+
+  return Object.freeze({
+    Page,
+    Panel,
+    Card,
+    Section,
+    Stack,
+    Row,
+    Button,
+    ToolbarToggle,
+    TextInput,
+    TextArea,
+    Checkbox,
+    EmptyState,
+    LoadingState,
+    ErrorState,
+    LiveDuration,
+  });
+}
+
+export function formatCompactDuration(ms: number): string {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1_000));
+  const hours = Math.floor(totalSeconds / 3_600);
+  const minutes = Math.floor((totalSeconds % 3_600) / 60);
+  const seconds = totalSeconds % 60;
+  if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`;
+  if (minutes > 0) return `${minutes}m ${seconds}s`;
+  return `${seconds}s`;
 }
 
 function joinPluginUIClass(base: string, className?: string): string {
@@ -239,10 +448,63 @@ function joinPluginUIClass(base: string, className?: string): string {
 }
 
 export interface OpenViewOptions {
-  pane?: ViewPane;
+  region?: ViewPlacementRegion;
   context?: Readonly<Record<string, unknown>>;
   persistence?: ViewPersistence;
   reveal?: boolean;
+}
+
+export interface InspectorSessionSnapshotV1 {
+  readonly id?: string;
+  readonly status: "idle" | "running";
+  readonly turnId?: string;
+  readonly turnStatus?: "in_progress" | "completed" | "failed" | "interrupted";
+}
+
+export interface InspectorWorkspaceSnapshotV1 {
+  readonly kind: "project" | "no_project";
+  readonly cwd: string;
+  readonly projectId?: string;
+  readonly projectName?: string;
+  readonly branch?: string;
+  readonly dirtyFileCount?: number;
+}
+
+export interface InspectorPlanSnapshotV1 {
+  readonly completed: number;
+  readonly total: number;
+  readonly activeStep?: string;
+  readonly items: readonly InspectorPlanItemSnapshotV1[];
+}
+
+export interface InspectorPlanItemSnapshotV1 {
+  readonly step: string;
+  readonly status: "pending" | "in_progress" | "completed";
+}
+
+/** Immutable public context for short, scan-friendly Inspector contributions. */
+export interface InspectorSnapshotV1 {
+  readonly contractVersion: 1;
+  readonly session: InspectorSessionSnapshotV1;
+  readonly workspace?: InspectorWorkspaceSnapshotV1;
+  readonly plan?: InspectorPlanSnapshotV1;
+}
+
+export interface InspectorSectionHostAPI {
+  executeCommand(commandId: string, input?: unknown): Promise<unknown>;
+  openView(viewTypeId: ViewTypeId, options?: OpenViewOptions): Promise<void>;
+}
+
+export interface InspectorSectionRenderProps {
+  readonly snapshot: InspectorSnapshotV1;
+  readonly host: InspectorSectionHostAPI;
+}
+
+export interface InspectorSectionDefinition {
+  readonly id: string;
+  readonly title: string;
+  readonly priority?: number;
+  readonly render: React.ComponentType<InspectorSectionRenderProps>;
 }
 
 export const PRESENTATION_TARGETS = [
@@ -613,6 +875,7 @@ export interface ToolActivityStructuredResult {
 }
 
 export interface ToolActivitySnapshot {
+  readonly contractVersion: 1;
   readonly id: string;
   readonly toolName: string;
   readonly capability?: string;
@@ -637,7 +900,7 @@ export interface ToolActivityPresenterDefinition {
 }
 
 /** Current on-disk workbench state schema. */
-export const WORKBENCH_LAYOUT_STATE_VERSION = 1 as const;
+export const WORKBENCH_LAYOUT_STATE_VERSION = 2 as const;
 
 /** A host-owned view instance. Plugins never receive the mutable instance. */
 export interface WorkbenchViewState {
@@ -645,18 +908,18 @@ export interface WorkbenchViewState {
   pluginId: string;
   generation: string;
   viewTypeId: ViewTypeId;
-  pane: ViewPane;
+  region: ViewPlacementRegion;
   persistence: ViewPersistence;
   context: Readonly<Record<string, unknown>>;
-  sourceLayoutId?: string;
+  sourcePlacementId?: string;
 }
 
 /** Versioned, shell-independent state persisted by the desktop workbench. */
 export interface WorkbenchLayoutState {
   version: typeof WORKBENCH_LAYOUT_STATE_VERSION;
   views: readonly WorkbenchViewState[];
-  activeViewByPane: Readonly<Partial<Record<ViewPane, string>>>;
-  dismissedLayoutIds: readonly string[];
+  activeViewByRegion: Readonly<Partial<Record<ViewPlacementRegion, string>>>;
+  dismissedPlacementIds: readonly string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -678,20 +941,6 @@ export interface ViewPlacementContribution {
   region: ViewPlacementRegion;
   /** Higher priority becomes the initial active View when a region is empty. */
   priority?: number;
-}
-
-/**
- * @deprecated Use ViewPlacementContribution. These historical fields never
- * created an arbitrary layout tree; the compatibility adapter only uses
- * id, pane, and defaultView.
- */
-export interface LayoutContribution {
-  id: string;
-  parentId: string;
-  pane: ViewPane;
-  size?: number;
-  minSize?: number;
-  defaultView?: ViewTypeId;
 }
 
 // ---------------------------------------------------------------------------
@@ -770,8 +1019,8 @@ export interface ThemeTokens {
 }
 
 /**
- * CSS snippet contributed by a plugin. Snippets are scoped to the plugin
- * and injected into the document. They should use CSS custom properties
+ * CSS snippet contributed by a plugin. Snippets are injected into the shared
+ * document without selector rewriting. They should use CSS custom properties
  * for theming and stable data attributes for targeting host elements.
  *
  * Snippets are a high-trust feature: they run in the same document as the
@@ -781,7 +1030,7 @@ export interface ThemeTokens {
 export interface CSSSnippet {
   /** Stable snippet identifier. */
   id: string;
-  /** Raw CSS to inject. Scoped via a data-plugin attribute automatically. */
+  /** Raw high-trust CSS. The host does not rewrite or isolate selectors. */
   css: string;
   /** Priority — higher values are injected later (higher specificity). */
   priority?: number;

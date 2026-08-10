@@ -22,6 +22,7 @@ import (
 	"github.com/blueberrycongee/wuu/internal/modelroles"
 	"github.com/blueberrycongee/wuu/internal/modelvariant"
 	pluginpkg "github.com/blueberrycongee/wuu/internal/plugin"
+	"github.com/blueberrycongee/wuu/internal/pluginhost"
 	"github.com/blueberrycongee/wuu/internal/providerfactory"
 	"github.com/blueberrycongee/wuu/internal/providers"
 	"github.com/blueberrycongee/wuu/internal/providers/codex"
@@ -66,7 +67,6 @@ func (s *Server) handleInitialize(req Request) error {
 		Model:       s.rt.Model,
 		Effort:      s.currentDisplayEffort(),
 		Variant:     s.currentVariant(),
-		Ultra:       s.rt.UltraMode(),
 		MaxParallel: s.rt.MaxParallel(),
 		RuntimeHost: RuntimeHostSummary{
 			Kind:       string(runtimeHost.Kind),
@@ -83,7 +83,7 @@ func (s *Server) handleInitialize(req Request) error {
 		Providers:          s.providerSummaries(),
 		AdvancedSettings:   s.currentAdvancedSettingsSummary(),
 		GeneralSettings:    s.currentGeneralSettingsSummary(),
-		Features:           FeatureFlags{Browser: s.supportsBrowserClient()},
+		Features:           FeatureFlags{Browser: s.supportsBrowserClient(), SafeMode: s.rt.SafeMode},
 	}, nil)
 }
 
@@ -94,7 +94,6 @@ func (s *Server) handleConfigRead(req Request) error {
 		Model:              s.rt.Model,
 		Effort:             s.currentDisplayEffort(),
 		Variant:            s.currentVariant(),
-		Ultra:              s.rt.UltraMode(),
 		MaxParallel:        s.rt.MaxParallel(),
 		ConfigPath:         s.rt.ConfigPath,
 		WorkspaceRoot:      s.rt.RootDir,
@@ -201,14 +200,6 @@ func (s *Server) currentGeneralSettingsSummary() GeneralSettingsSummary {
 	if cfg, _, err := s.rt.LoadEffectiveConfig(); err == nil {
 		summary.AppendSystemPrompt = cfg.Agent.AppendSystemPrompt
 		summary.GitAttributionEnabled = cfg.Agent.GitAttributionEnabledValue()
-		summary.MemoryDisabled = cfg.Memory.Disable
-		summary.DreamEnabled = cfg.Memory.DreamEnabled()
-		summary.DreamIntervalDays = cfg.Memory.DreamIntervalDaysValue()
-		if summary.DreamIntervalDays <= 0 {
-			summary.DreamIntervalDays = config.DefaultDreamIntervalDays
-		}
-		summary.DreamProvider = cfg.Memory.DreamProvider()
-		summary.DreamModel = cfg.Memory.DreamModel()
 		activePluginServers := make(map[string]bool)
 		for _, item := range s.rt.Plugins {
 			for name := range item.MCPServers {
@@ -324,11 +315,21 @@ func (s *Server) currentExtensionInventory() []ExtensionInventoryRecord {
 	for _, item := range s.rt.ActivePlugins {
 		activePluginSubjects[item.SubjectID] = struct{}{}
 	}
+	runtimeStatuses := make(map[string]pluginhost.Status)
+	if s.rt.PluginHost != nil {
+		for _, status := range s.rt.PluginHost.Statuses() {
+			runtimeStatuses[status.ID] = status
+		}
+	}
 	pendingUpdatesByID := map[string]pluginpkg.PendingUpdate{}
 	if pendingUpdates, err := pluginpkg.ListPendingUpdates(s.rt.WuuHome); err == nil {
 		for _, pending := range pendingUpdates {
 			pendingUpdatesByID[pending.Package.ID] = pending
 		}
+	}
+	packageActivationIssues := make(map[string][]pluginpkg.ActivationIssue)
+	if plan, err := runtime.ResolvePluginActivationPlan(cfg, s.rt.Plugins); err == nil {
+		packageActivationIssues = plan.Issues
 	}
 
 	records := make([]ExtensionInventoryRecord, 0, len(s.rt.Skills)+len(s.rt.Plugins))
@@ -371,8 +372,22 @@ func (s *Server) currentExtensionInventory() []ExtensionInventoryRecord {
 		}
 		approval, state, grantScope, enabled := pluginPackageInventoryState(grants, item)
 		runtimeState := ExtensionRuntimeInactive
+		lastError := ""
 		if _, ok := activePluginSubjects[item.SubjectID]; ok {
 			runtimeState = ExtensionRuntimeActive
+		}
+		if status, ok := runtimeStatuses[item.ID]; ok {
+			switch status.State {
+			case pluginhost.StateStarting:
+				runtimeState = ExtensionRuntimeStarting
+			case pluginhost.StateActive:
+				runtimeState = ExtensionRuntimeActive
+			case pluginhost.StateFailed:
+				runtimeState = ExtensionRuntimeFailed
+			case pluginhost.StateStopped:
+				runtimeState = ExtensionRuntimeStopped
+			}
+			lastError = status.Error
 		}
 		commands := make([]ExtensionCommandDescriptor, 0, len(item.Commands))
 		for _, command := range item.Commands {
@@ -441,7 +456,7 @@ func (s *Server) currentExtensionInventory() []ExtensionInventoryRecord {
 			for _, contribution := range items {
 				entries = append(entries, ExtensionViewEntryDescriptor{
 					ID: contribution.ID, View: contribution.View, Title: contribution.Title,
-					Description: contribution.Description, Icon: contribution.Icon, Order: contribution.Order,
+					Description: contribution.Description, Icon: extensionIconDescriptor(contribution.Icon), Order: contribution.Order,
 				})
 			}
 			return entries
@@ -453,6 +468,7 @@ func (s *Server) currentExtensionInventory() []ExtensionInventoryRecord {
 			ID:          item.SubjectID,
 			Name:        item.ID,
 			Description: item.Description,
+			Icon:        extensionIconDescriptor(item.Icon),
 			Kind:        extensions.KindPlugin,
 			Provenance: extensions.Provenance{
 				Kind:     extensions.KindPlugin,
@@ -465,12 +481,23 @@ func (s *Server) currentExtensionInventory() []ExtensionInventoryRecord {
 			State:                state,
 			Executable:           item.Runtime != nil || len(item.MCPServers) > 0 || len(item.Hooks) > 0,
 			Fingerprint:          item.Fingerprint,
+			PackageSource:        item.Source,
 			GrantScope:           grantScope,
 			RequestedPermissions: cloneSortedStrings(item.EffectivePermissions),
 			UnsupportedFields:    cloneSortedStrings(item.UnsupportedFields),
 			ApprovalState:        approval,
 			RuntimeState:         runtimeState,
+			LastError:            lastError,
+			Requires:             cloneSortedStrings(item.Requires),
+			Breaks:               cloneSortedStrings(item.Breaks),
+			Conflicts:            cloneSortedStrings(item.Conflicts),
 			Enabled:              &enabled,
+		}
+		for _, issue := range packageActivationIssues[item.ID] {
+			packageRecord.ActivationIssues = append(packageRecord.ActivationIssues, ExtensionPluginActivationIssue{
+				Kind:            string(issue.Kind),
+				RelatedPluginID: issue.RelatedPluginID,
+			})
 		}
 		if item.Desktop != nil {
 			packageRecord.Desktop = &ExtensionDesktopDescriptor{Entry: item.Desktop.Entry}
@@ -587,6 +614,15 @@ func (s *Server) currentExtensionInventory() []ExtensionInventoryRecord {
 		return records[i].ID < records[j].ID
 	})
 	return records
+}
+
+func extensionIconDescriptor(icon *pluginpkg.IconSpec) *ExtensionIconDescriptor {
+	if icon == nil {
+		return nil
+	}
+	return &ExtensionIconDescriptor{
+		Name: icon.Name, Path: icon.Path, Light: icon.Light, Dark: icon.Dark,
+	}
 }
 
 func (s *Server) currentExtensionConfig() config.Config {
@@ -831,39 +867,61 @@ func (s *Server) handleExtensionPackageUpdate(req Request) error {
 	if err != nil {
 		return s.writeResponse(req.ID, nil, fmt.Errorf("resolve user config: %w", err))
 	}
-	settings, err := config.UpdateExtensionSettings(userConfigPath, func(settings *extensions.Settings) error {
-		switch params.Action {
-		case ExtensionPackageGrant:
-			return settings.RecordGrant(extensions.Grant{
-				SubjectID:   selected.SubjectID,
-				Fingerprint: selected.Fingerprint,
-				Scope:       extensions.GrantScopeProject,
-				Permissions: append([]string(nil), selected.EffectivePermissions...),
-				ApprovedAt:  time.Now().UTC(),
-			})
-		case ExtensionPackageReject:
-			return settings.RecordRejection(selected.SubjectID, selected.Fingerprint)
-		case ExtensionPackageRevoke:
-			settings.Revoke(selected.SubjectID)
-		case ExtensionPackageEnable:
-			settings.SetDisabled(selected.SubjectID, false)
-		case ExtensionPackageDisable:
-			settings.SetDisabled(selected.SubjectID, true)
-		default:
-			return fmt.Errorf("unsupported extension package action %q", params.Action)
-		}
-		return nil
-	})
-	if err != nil {
-		return s.writeResponse(req.ID, nil, fmt.Errorf("persist extension policy: %w", err))
-	}
-	cfg := s.currentExtensionConfig()
-	cfg.Extensions = &settings
-	if err := s.rt.ApplyExtensionPolicy(cfg); err != nil {
+	approvedAt := time.Now().UTC()
+	preparedSettings := cloneExtensionSettings(s.rt.ExtensionSettings)
+	if err := applyExtensionPackageAction(&preparedSettings, params.Action, *selected, approvedAt); err != nil {
 		return s.writeResponse(req.ID, nil, err)
 	}
+	cfg := s.currentExtensionConfig()
+	cfg.Extensions = &preparedSettings
+	candidate, err := s.rt.PreflightExtensionPolicy(cfg)
+	if err != nil {
+		return s.writeResponse(req.ID, nil, err)
+	}
+	var persistedSettings extensions.Settings
+	if err := s.rt.ActivatePluginGeneration(candidate, func() error {
+		updated, updateErr := config.UpdateExtensionSettings(userConfigPath, func(settings *extensions.Settings) error {
+			return applyExtensionPackageAction(settings, params.Action, *selected, approvedAt)
+		})
+		if updateErr != nil {
+			return fmt.Errorf("persist extension policy: %w", updateErr)
+		}
+		persistedSettings = updated
+		return nil
+	}); err != nil {
+		return s.writeResponse(req.ID, nil, err)
+	}
+	s.rt.SetExtensionSettings(&persistedSettings)
+	s.schedulePluginTurnLifecycleReplay()
 	s.resetThreadRuntimesForGeneralSettings("")
 	return s.writeResponse(req.ID, ExtensionPackageUpdateResult{ExtensionInventory: s.currentExtensionInventory()}, nil)
+}
+
+func applyExtensionPackageAction(settings *extensions.Settings, action ExtensionPackageAction, selected pluginpkg.Plugin, approvedAt time.Time) error {
+	if settings == nil {
+		return errors.New("extension settings are required")
+	}
+	switch action {
+	case ExtensionPackageGrant:
+		return settings.RecordGrant(extensions.Grant{
+			SubjectID:   selected.SubjectID,
+			Fingerprint: selected.Fingerprint,
+			Scope:       extensions.GrantScopeProject,
+			Permissions: append([]string(nil), selected.EffectivePermissions...),
+			ApprovedAt:  approvedAt,
+		})
+	case ExtensionPackageReject:
+		return settings.RecordRejection(selected.SubjectID, selected.Fingerprint)
+	case ExtensionPackageRevoke:
+		settings.Revoke(selected.SubjectID)
+	case ExtensionPackageEnable:
+		settings.SetDisabled(selected.SubjectID, false)
+	case ExtensionPackageDisable:
+		settings.SetDisabled(selected.SubjectID, true)
+	default:
+		return fmt.Errorf("unsupported extension package action %q", action)
+	}
+	return nil
 }
 
 func (s *Server) handleExtensionCatalogRefresh(req Request) error {
@@ -1021,12 +1079,7 @@ func (s *Server) handleConfigGeneralUpdate(req Request) error {
 	if err := config.UpdateGeneralSettings(s.rt.ConfigPath, config.GeneralSettingsUpdate{
 		AppendSystemPrompt:    params.AppendSystemPrompt,
 		GitAttributionEnabled: params.GitAttributionEnabled,
-		MemoryDisable:         params.MemoryDisable,
 		MCPEnabledToggles:     params.MCPEnabledToggles,
-		DreamEnabled:          params.DreamEnabled,
-		DreamIntervalDays:     params.DreamIntervalDays,
-		DreamProvider:         params.DreamProvider,
-		DreamModel:            params.DreamModel,
 	}); err != nil {
 		return s.writeResponse(req.ID, nil, err)
 	}
@@ -1045,13 +1098,6 @@ func (s *Server) handleConfigModelUpdate(req Request) error {
 	var params ConfigModelUpdateParams
 	if err := decodeParams(req.Params, &params); err != nil {
 		return s.writeResponse(req.ID, nil, err)
-	}
-	if isUltraOnlyModelUpdate(params) {
-		if err := config.UpdateAgentUltraMode(s.rt.ConfigPath, params.Ultra); err != nil {
-			return s.writeResponse(req.ID, nil, err)
-		}
-		s.rt.SetUltraMode(*params.Ultra)
-		return s.writeResponse(req.ID, s.currentConfigModelUpdateResult(), nil)
 	}
 	providerName := strings.TrimSpace(params.Provider)
 	model := strings.TrimSpace(params.Model)
@@ -1324,17 +1370,13 @@ func (s *Server) handleConfigModelUpdate(req Request) error {
 		}
 	}
 	if creatingProvider {
-		err = config.CreateProviderRuntime(s.rt.ConfigPath, resolvedName, &providerTypeValue, model, params.BaseURL, apiKeyForConfig, authTokenForConfig, effortForConfig, variantForConfig, params.PermissionMode, params.Ultra)
+		err = config.CreateProviderRuntime(s.rt.ConfigPath, resolvedName, &providerTypeValue, model, params.BaseURL, apiKeyForConfig, authTokenForConfig, effortForConfig, variantForConfig, params.PermissionMode)
 	} else {
-		err = config.UpdateProviderRuntime(s.rt.ConfigPath, resolvedName, model, params.BaseURL, apiKeyForConfig, authTokenForConfig, effortForConfig, variantForConfig, params.PermissionMode, params.Ultra)
+		err = config.UpdateProviderRuntime(s.rt.ConfigPath, resolvedName, model, params.BaseURL, apiKeyForConfig, authTokenForConfig, effortForConfig, variantForConfig, params.PermissionMode)
 	}
 	if err != nil {
 		return s.writeResponse(req.ID, nil, err)
 	}
-	if params.Ultra != nil {
-		s.rt.SetUltraMode(*params.Ultra)
-	}
-
 	previousRuntimeProvider := s.rt.ProviderName
 	if explicitSelection {
 		s.rt.ProviderName = resolvedName
@@ -1475,7 +1517,6 @@ func (s *Server) handleConfigModelUpdate(req Request) error {
 		Model:            model,
 		Effort:           effort,
 		Variant:          selection.Variant,
-		Ultra:            s.rt.UltraMode(),
 		MaxParallel:      s.rt.MaxParallel(),
 		Permissions:      s.currentPermissionSummary(),
 		ExtensionTrust:   s.currentExtensionTrustSummary(),
@@ -1485,20 +1526,6 @@ func (s *Server) handleConfigModelUpdate(req Request) error {
 		Providers:        s.providerSummaries(),
 		AdvancedSettings: s.currentAdvancedSettingsSummary(),
 	}, nil)
-}
-
-func isUltraOnlyModelUpdate(params ConfigModelUpdateParams) bool {
-	return params.Ultra != nil &&
-		strings.TrimSpace(params.Provider) == "" &&
-		strings.TrimSpace(params.Model) == "" &&
-		params.Effort == nil &&
-		params.Variant == nil &&
-		params.PermissionMode == nil &&
-		params.BaseURL == nil &&
-		params.APIKey == nil &&
-		params.AuthToken == nil &&
-		params.Type == nil &&
-		!params.CreateProvider
 }
 
 func providerClientConfigChanged(previous, next config.ProviderConfig) bool {
@@ -1528,7 +1555,6 @@ func (s *Server) currentConfigModelUpdateResult() ConfigModelUpdateResult {
 		Model:            s.rt.Model,
 		Effort:           s.currentDisplayEffort(),
 		Variant:          s.currentVariant(),
-		Ultra:            s.rt.UltraMode(),
 		MaxParallel:      s.rt.MaxParallel(),
 		Permissions:      s.currentPermissionSummary(),
 		ExtensionTrust:   s.currentExtensionTrustSummary(),
@@ -2554,9 +2580,8 @@ func normalizedCodexEfforts(values []string) []string {
 	out := make([]string, 0, len(values))
 	for _, value := range values {
 		value = strings.TrimSpace(value)
-		// Codex uses Ultra as a client-side orchestration mode and downgrades it
-		// to max before making the model request. Wuu does not expose that mode
-		// through the reasoning-effort picker, where sending it verbatim is a 400.
+		// The catalog can expose non-standard effort names that the provider API
+		// rejects when sent verbatim. Do not advertise those as request variants.
 		if value == "" || strings.EqualFold(value, "ultra") || seen[value] {
 			continue
 		}

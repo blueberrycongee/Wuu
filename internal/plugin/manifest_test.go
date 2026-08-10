@@ -221,7 +221,7 @@ func TestLoadManifestNormalizesDeclarativeUIContributions(t *testing.T) {
   "id":"ui-demo",
   "contributes":{
     "slots":[{"id":"toolbar","target":"composer.toolbar","order":4,"title":"Toolbar"}],
-    "surfaces":[{"id":"main-frame","target":"app.main","mode":"wrap","order":2}],
+    "surfaces":[{"id":"timeline-frame","target":"conversation.timeline","mode":"wrap","order":2}],
     "presenters":[{"id":"message","target":"conversation.item","mode":"replace","priority":8}],
     "navigation":[{"id":"dashboard-nav","view":"dashboard","title":"Dashboard","order":3}],
     "workspaceTools":[{"id":"inspector-tool","view":"inspector","title":"Inspector","description":"Workspace inspector"}],
@@ -247,7 +247,7 @@ func TestLoadManifestNormalizesDeclarativeUIContributions(t *testing.T) {
 	if len(manifest.WorkspaceTools) != 1 || manifest.WorkspaceTools[0].Description != "Workspace inspector" {
 		t.Fatalf("workspace tools = %+v", manifest.WorkspaceTools)
 	}
-	if len(manifest.SettingsPages) != 1 || manifest.SettingsPages[0].Icon != "sliders" {
+	if len(manifest.SettingsPages) != 1 || manifest.SettingsPages[0].Icon == nil || manifest.SettingsPages[0].Icon.Name != "sliders" {
 		t.Fatalf("settings pages = %+v", manifest.SettingsPages)
 	}
 }
@@ -259,9 +259,9 @@ func TestLoadManifestRejectsInvalidDeclarativeUIContributions(t *testing.T) {
 		want string
 	}{
 		{name: "unknown slot target", body: `{"id":"demo","contributes":{"slots":[{"id":"one","target":"unknown"}]}}`, want: "unknown target"},
-		{name: "invalid surface mode", body: `{"id":"demo","contributes":{"surfaces":[{"id":"one","target":"app.main","mode":"append"}]}}`, want: "replace or wrap"},
+		{name: "invalid surface mode", body: `{"id":"demo","contributes":{"surfaces":[{"id":"one","target":"conversation.timeline","mode":"append"}]}}`, want: "replace or wrap"},
 		{name: "unknown presenter target", body: `{"id":"demo","contributes":{"presenters":[{"id":"one","target":"custom","mode":"wrap"}]}}`, want: "unknown target"},
-		{name: "duplicate id across kinds", body: `{"id":"demo","contributes":{"slots":[{"id":"same","target":"composer.above"}],"surfaces":[{"id":"same","target":"app.main","mode":"wrap"}]}}`, want: "duplicate plugin-local id"},
+		{name: "duplicate id across kinds", body: `{"id":"demo","contributes":{"slots":[{"id":"same","target":"composer.above"}],"surfaces":[{"id":"same","target":"conversation.timeline","mode":"wrap"}]}}`, want: "duplicate plugin-local id"},
 		{name: "unknown item field", body: `{"id":"demo","contributes":{"slots":[{"id":"one","target":"composer.above","priority":1}]}}`, want: "unknown field"},
 		{name: "missing View entry title", body: `{"id":"demo","contributes":{"navigation":[{"id":"one","view":"dashboard"}]}}`, want: "requires title"},
 		{name: "duplicate entry id across locations", body: `{"id":"demo","contributes":{"navigation":[{"id":"same","view":"one","title":"One"}],"workspaceTools":[{"id":"same","view":"two","title":"Two"}]}}`, want: "duplicate plugin-local id"},
@@ -313,7 +313,7 @@ func TestDeepUIExampleManifestLoads(t *testing.T) {
 	if len(manifest.Themes) != 1 || manifest.Themes[0].ID != "violet-night" {
 		t.Fatalf("example themes = %+v", manifest.Themes)
 	}
-	if len(manifest.Surfaces) != 5 {
+	if len(manifest.Surfaces) != 1 || manifest.Surfaces[0].Target != "conversation.timeline" {
 		t.Fatalf("example surfaces = %+v", manifest.Surfaces)
 	}
 }
@@ -323,8 +323,8 @@ func TestMangaStudioExampleUsesLayoutSafeDeclarativeUI(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(manifest.Surfaces) != 1 || manifest.Surfaces[0].Target != "app.shell" {
-		t.Fatalf("manga surfaces = %+v, want only app.shell", manifest.Surfaces)
+	if len(manifest.Surfaces) != 0 {
+		t.Fatalf("appearance-only manga plugin registered product surfaces: %+v", manifest.Surfaces)
 	}
 	wraps, replacements := 0, 0
 	for _, presenter := range manifest.Presenters {

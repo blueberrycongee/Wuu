@@ -267,7 +267,7 @@ function fileDisplayName(path: string): string {
 function collectTurnFileEdits(turn: Turn): FileEdit[] {
   const edits: FileEdit[] = [];
   for (const item of turn.items) {
-    if (item.type !== "tool_call" && item.type !== "collab_agent_tool_call") {
+    if (item.type !== "tool_call") {
       continue;
     }
     edits.push(...extractFileEdits(item));

@@ -13,13 +13,9 @@ type pluginClientRequestTestRuntime struct {
 	lastCall pluginhost.PluginClientRequestInput
 }
 
-func (c *pluginClientRequestTestRuntime) ID() string               { return c.id }
-func (c *pluginClientRequestTestRuntime) Hooks() []pluginhost.Hook { return nil }
+func (c *pluginClientRequestTestRuntime) ID() string { return c.id }
 func (c *pluginClientRequestTestRuntime) Status() pluginhost.Status {
 	return pluginhost.Status{ID: c.id, State: pluginhost.StateActive}
-}
-func (c *pluginClientRequestTestRuntime) Invoke(context.Context, pluginhost.InvokeParams) (pluginhost.InvokeResult, error) {
-	return pluginhost.InvokeResult{}, nil
 }
 func (c *pluginClientRequestTestRuntime) Close(context.Context) error { return nil }
 func (c *pluginClientRequestTestRuntime) ProtocolVersion() int {

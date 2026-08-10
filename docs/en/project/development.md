@@ -21,10 +21,10 @@ Run from the repository root:
 
 | Command | Purpose |
 |---|---|
-| `make setup` | Install locked npm dependencies for desktop, clients, and protocol |
+| `make setup` | Install locked npm dependencies for desktop, clients, protocol, and docs site |
 | `make dev` | Start the real Electron development path |
 | `make check` | Check Go modules/format/vet and TypeScript types |
-| `make test` | Run Go, desktop, remote-core, mobile, and macOS-native tests where supported |
+| `make test` | Run Go, desktop, remote-core, and mobile tests |
 | `make build` | Build the Go CLI, Electron renderer/main, and mobile web export |
 | `make ci` | Run the cross-platform check, test, and build gate |
 | `make release-check` | Check release versions and run the Go core and desktop test gates |

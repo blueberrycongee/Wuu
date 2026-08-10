@@ -93,8 +93,8 @@ func TestLoadFrom_NoSettingsLayers_MatchesBase(t *testing.T) {
 	if cfg.Agent.Effort != "" {
 		t.Fatalf("effort = %q, want empty (no layer applied)", cfg.Agent.Effort)
 	}
-	if len(cfg.Memory.Filenames) != 1 || cfg.Memory.Filenames[0] != "BASE.md" {
-		t.Fatalf("memory.filenames = %v, want [BASE.md]", cfg.Memory.Filenames)
+	if len(cfg.Instructions.Filenames) != 1 || cfg.Instructions.Filenames[0] != "BASE.md" {
+		t.Fatalf("instructions.filenames = %v, want [BASE.md]", cfg.Instructions.Filenames)
 	}
 }
 
@@ -223,8 +223,8 @@ func TestLoadFrom_ProjectLayersPreserveUserOwnedSettings(t *testing.T) {
 	if cfg.Agent.MaxSteps != 5 {
 		t.Fatalf("agent.max_steps = %d, want 5 (base value preserved)", cfg.Agent.MaxSteps)
 	}
-	if len(cfg.Memory.Filenames) != 1 || cfg.Memory.Filenames[0] != "BASE.md" {
-		t.Fatalf("memory.filenames = %v, want user-owned [BASE.md]", cfg.Memory.Filenames)
+	if len(cfg.Instructions.Filenames) != 1 || cfg.Instructions.Filenames[0] != "BASE.md" {
+		t.Fatalf("instructions.filenames = %v, want user-owned [BASE.md]", cfg.Instructions.Filenames)
 	}
 }
 
@@ -549,10 +549,10 @@ func TestLoadFrom_AllProjectSourcesPreserveUserSecuritySettings(t *testing.T) {
 				provider.Headers["X-Trusted"] != "yes" || provider.ReuseCodexCredentials {
 				t.Fatalf("project changed user provider: default=%q providers=%+v", cfg.DefaultProvider, cfg.Providers)
 			}
-			if len(cfg.Memory.Filenames) != 1 || cfg.Memory.Filenames[0] != "GLOBAL.md" ||
-				len(cfg.Memory.UserDirs) != 1 || cfg.Memory.UserDirs[0] != "~/.wuu" ||
-				cfg.Memory.IncludeLegacyMemory == nil || *cfg.Memory.IncludeLegacyMemory || !cfg.Memory.Disable {
-				t.Fatalf("project changed user memory settings: %+v", cfg.Memory)
+			if len(cfg.Instructions.Filenames) != 1 || cfg.Instructions.Filenames[0] != "GLOBAL.md" ||
+				len(cfg.Instructions.UserDirs) != 1 || cfg.Instructions.UserDirs[0] != "~/.wuu" ||
+				cfg.Instructions.IncludeLegacyInstructions == nil || *cfg.Instructions.IncludeLegacyInstructions {
+				t.Fatalf("project changed user instruction settings: %+v", cfg.Instructions)
 			}
 			if cfg.Agent.PermissionMode != PermissionModeReadOnly {
 				t.Fatalf("project changed permission mode: %q", cfg.Agent.PermissionMode)
@@ -626,8 +626,8 @@ func TestLoadFrom_ProjectSecurityKeysAreCaseInsensitive(t *testing.T) {
 	if cfg.DefaultProvider != "local" || len(cfg.Providers) != 2 {
 		t.Fatalf("case variant changed providers: default=%q providers=%+v", cfg.DefaultProvider, cfg.Providers)
 	}
-	if cfg.Memory.UserDirs[0] != "~/.wuu" || cfg.Agent.PermissionMode != PermissionModeReadOnly {
-		t.Fatalf("case variant changed memory or permissions: memory=%+v agent=%+v", cfg.Memory, cfg.Agent)
+	if cfg.Instructions.UserDirs[0] != "~/.wuu" || cfg.Agent.PermissionMode != PermissionModeReadOnly {
+		t.Fatalf("case variant changed instructions or permissions: instructions=%+v agent=%+v", cfg.Instructions, cfg.Agent)
 	}
 	if got := cfg.Agent.ModelRoles.Title; got.Provider != "local" || got.Model != "local-model" {
 		t.Fatalf("case variant changed title routing: %+v", got)
@@ -670,7 +670,7 @@ func TestLoadFrom_UserProviderUpdateDoesNotModifyProjectConfig(t *testing.T) {
 	if loadedPath != userPath {
 		t.Fatalf("writable config path = %q, want %q", loadedPath, userPath)
 	}
-	if err := UpdateProviderRuntime(loadedPath, "main", "saved-model", nil, nil, nil, nil, nil, nil, nil); err != nil {
+	if err := UpdateProviderRuntime(loadedPath, "main", "saved-model", nil, nil, nil, nil, nil, nil); err != nil {
 		t.Fatalf("UpdateProviderRuntime: %v", err)
 	}
 

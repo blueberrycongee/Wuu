@@ -16,7 +16,6 @@ const SHARED_ROOT = resolve(process.cwd(), "src/shared");
  */
 const SEMANTIC_ANCHOR_OWNERS = Object.freeze({
   "app-shell": "App.tsx",
-  "automations-catalog": "AutomationsCatalog.tsx",
   "channel-view": "ChannelView.tsx",
   "composer": "ComposerView.tsx",
   "composer-frame": "ComposerView.tsx",
@@ -34,8 +33,8 @@ const SEMANTIC_ANCHOR_OWNERS = Object.freeze({
   "plugin-navigation": "AppSidebar.tsx",
   "plugin-navigation-item": "AppSidebar.tsx",
   "plugin-settings": "PluginSettingsEditor.tsx",
-  "settings-card": "SettingsView.tsx",
   "settings-content": "SettingsView.tsx",
+  "settings-group": "SettingsView.tsx",
   "settings-navigation": "SettingsView.tsx",
   "settings-navigation-item": "SettingsView.tsx",
   "settings-page": "SettingsView.tsx",
@@ -135,6 +134,31 @@ describe("production semantic anchors", () => {
     ]) {
       expect(themeContract).toContain(`"name": "${token}"`);
     }
+  });
+
+  it("publishes sidebar navigation hover as theme tokens", () => {
+    const sidebar = readFileSync(resolve(RENDERER_ROOT, "styles/sidebar.css"), "utf8");
+    expect(sidebar).toContain("var(--wuu-nav-item-hover-background,");
+    expect(sidebar).toContain("var(--wuu-nav-item-hover-ring,");
+    const settings = readFileSync(resolve(RENDERER_ROOT, "styles/settings.css"), "utf8");
+    expect(settings).toContain("var(--wuu-nav-item-hover-background,");
+    const themeContract = readFileSync(
+      resolve(process.cwd(), "../config/desktop-theme-contract.json"),
+      "utf8",
+    );
+    for (const token of [
+      "--wuu-nav-item-hover-background",
+      "--wuu-nav-item-hover-ring",
+    ]) {
+      expect(themeContract).toContain(`"name": "${token}"`);
+    }
+  });
+
+  it("paints the sidebar drawer through the public surface token", () => {
+    const sidebar = readFileSync(resolve(RENDERER_ROOT, "styles/sidebar.css"), "utf8");
+    expect(sidebar).toContain("--sidebar-drawer-bg: var(--wuu-color-surface-muted,");
+    const theme = readFileSync(resolve(RENDERER_ROOT, "styles/theme.css"), "utf8");
+    expect(theme).toContain("--sidebar-drawer-bg: var(--wuu-color-surface-muted,");
   });
 
   it("keeps the coarse plugin UI Kit anchors stable", () => {

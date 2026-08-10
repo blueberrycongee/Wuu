@@ -33,6 +33,7 @@ type OAuthStartOptions struct {
 	Scopes       []string
 	ClientID     string
 	ClientSecret string
+	Headers      map[string]string
 }
 
 type OAuthStartResult struct {
@@ -57,13 +58,17 @@ type OAuthStatus struct {
 type protectedResourceMetadata struct {
 	Resource             string   `json:"resource"`
 	AuthorizationServers []string `json:"authorization_servers"`
+	ScopesSupported      []string `json:"scopes_supported,omitempty"`
 }
 
 type authorizationServerMetadata struct {
-	Issuer                string `json:"issuer"`
-	AuthorizationEndpoint string `json:"authorization_endpoint"`
-	TokenEndpoint         string `json:"token_endpoint"`
-	RegistrationEndpoint  string `json:"registration_endpoint,omitempty"`
+	Issuer                        string   `json:"issuer"`
+	AuthorizationEndpoint         string   `json:"authorization_endpoint"`
+	TokenEndpoint                 string   `json:"token_endpoint"`
+	RegistrationEndpoint          string   `json:"registration_endpoint,omitempty"`
+	ScopesSupported               []string `json:"scopes_supported,omitempty"`
+	CodeChallengeMethodsSupported []string `json:"code_challenge_methods_supported,omitempty"`
+	TokenEndpointAuthMethods      []string `json:"token_endpoint_auth_methods_supported,omitempty"`
 }
 
 type pendingOAuth struct {
@@ -74,6 +79,7 @@ type pendingOAuth struct {
 	Scopes        []string
 	ClientID      string
 	ClientSecret  string
+	TokenAuthMode string
 	TokenEndpoint string
 }
 
@@ -85,6 +91,7 @@ type storedOAuthToken struct {
 	Scopes        []string  `json:"scopes,omitempty"`
 	ClientID      string    `json:"client_id"`
 	ClientSecret  string    `json:"client_secret,omitempty"`
+	TokenAuthMode string    `json:"token_auth_mode,omitempty"`
 	TokenEndpoint string    `json:"token_endpoint"`
 	ResourceURL   string    `json:"resource_url,omitempty"`
 }
@@ -114,7 +121,7 @@ func (m *OAuthManager) Start(ctx context.Context, options OAuthStartOptions) (OA
 	if serverID == "" || resourceURL == "" || redirectURI == "" {
 		return OAuthStartResult{}, errors.New("server_id, resource_url, and redirect_uri are required")
 	}
-	resourceMeta, err := m.discoverProtectedResource(ctx, resourceURL)
+	resourceMeta, challengedScopes, err := m.discoverProtectedResource(ctx, resourceURL, options.Headers)
 	if err != nil {
 		return OAuthStartResult{}, err
 	}
@@ -127,8 +134,9 @@ func (m *OAuthManager) Start(ctx context.Context, options OAuthStartOptions) (OA
 	}
 	clientID := strings.TrimSpace(options.ClientID)
 	clientSecret := options.ClientSecret
+	tokenAuthMode := selectTokenAuthMode(authMeta.TokenEndpointAuthMethods, clientSecret)
 	if clientID == "" {
-		clientID, clientSecret, err = m.registerClient(ctx, authMeta.RegistrationEndpoint, redirectURI)
+		clientID, clientSecret, tokenAuthMode, err = m.registerClient(ctx, authMeta.RegistrationEndpoint, redirectURI)
 		if err != nil {
 			return OAuthStartResult{}, err
 		}
@@ -143,6 +151,16 @@ func (m *OAuthManager) Start(ctx context.Context, options OAuthStartOptions) (OA
 	}
 	challengeSum := sha256.Sum256([]byte(verifier))
 	challenge := base64.RawURLEncoding.EncodeToString(challengeSum[:])
+	scopes := append([]string(nil), options.Scopes...)
+	if len(scopes) == 0 {
+		scopes = append(scopes, challengedScopes...)
+	}
+	if len(scopes) == 0 {
+		scopes = append(scopes, resourceMeta.ScopesSupported...)
+	}
+	if len(scopes) == 0 {
+		scopes = append(scopes, authMeta.ScopesSupported...)
+	}
 	query := url.Values{
 		"response_type":         {"code"},
 		"client_id":             {clientID},
@@ -152,19 +170,19 @@ func (m *OAuthManager) Start(ctx context.Context, options OAuthStartOptions) (OA
 		"code_challenge_method": {"S256"},
 		"resource":              {resourceURL},
 	}
-	if len(options.Scopes) > 0 {
-		query.Set("scope", strings.Join(options.Scopes, " "))
+	if len(scopes) > 0 {
+		query.Set("scope", strings.Join(scopes, " "))
 	}
 	authorizationURL, err := url.Parse(authMeta.AuthorizationEndpoint)
 	if err != nil {
 		return OAuthStartResult{}, fmt.Errorf("parse authorization endpoint: %w", err)
 	}
 	authorizationURL.RawQuery = query.Encode()
-	pending := pendingOAuth{State: state, Verifier: verifier, RedirectURI: redirectURI, ResourceURL: resourceURL, Scopes: append([]string(nil), options.Scopes...), ClientID: clientID, ClientSecret: clientSecret, TokenEndpoint: authMeta.TokenEndpoint}
+	pending := pendingOAuth{State: state, Verifier: verifier, RedirectURI: redirectURI, ResourceURL: resourceURL, Scopes: append([]string(nil), scopes...), ClientID: clientID, ClientSecret: clientSecret, TokenAuthMode: tokenAuthMode, TokenEndpoint: authMeta.TokenEndpoint}
 	m.mu.Lock()
 	m.pending[serverID+"\x00"+state] = pending
 	m.mu.Unlock()
-	return OAuthStartResult{AuthorizationURL: authorizationURL.String(), State: state, Scopes: append([]string(nil), options.Scopes...)}, nil
+	return OAuthStartResult{AuthorizationURL: authorizationURL.String(), State: state, Scopes: append([]string(nil), scopes...)}, nil
 }
 
 func (m *OAuthManager) Finish(ctx context.Context, options OAuthFinishOptions) (OAuthStatus, error) {
@@ -186,11 +204,11 @@ func (m *OAuthManager) Finish(ctx context.Context, options OAuthFinishOptions) (
 		"code_verifier": {pending.Verifier},
 		"resource":      {pending.ResourceURL},
 	}
-	response, err := m.exchangeToken(ctx, pending.TokenEndpoint, pending.ClientSecret, form)
+	response, err := m.exchangeToken(ctx, pending.TokenEndpoint, pending.ClientSecret, pending.TokenAuthMode, form)
 	if err != nil {
 		return OAuthStatus{}, err
 	}
-	token := storedOAuthToken{AccessToken: response.AccessToken, RefreshToken: response.RefreshToken, TokenType: response.TokenType, ExpiresAt: tokenExpiry(response.ExpiresIn), Scopes: scopesFromResponse(response.Scope, pending.Scopes), ClientID: pending.ClientID, ClientSecret: pending.ClientSecret, TokenEndpoint: pending.TokenEndpoint, ResourceURL: pending.ResourceURL}
+	token := storedOAuthToken{AccessToken: response.AccessToken, RefreshToken: response.RefreshToken, TokenType: response.TokenType, ExpiresAt: tokenExpiry(response.ExpiresIn), Scopes: scopesFromResponse(response.Scope, pending.Scopes), ClientID: pending.ClientID, ClientSecret: pending.ClientSecret, TokenAuthMode: pending.TokenAuthMode, TokenEndpoint: pending.TokenEndpoint, ResourceURL: pending.ResourceURL}
 	if err := m.saveToken(ctx, options.ServerID, token); err != nil {
 		return OAuthStatus{}, err
 	}
@@ -223,7 +241,7 @@ func (m *OAuthManager) AccessToken(ctx context.Context, serverID string) (string
 	if token.ResourceURL != "" {
 		form.Set("resource", token.ResourceURL)
 	}
-	response, err := m.exchangeToken(ctx, token.TokenEndpoint, token.ClientSecret, form)
+	response, err := m.exchangeToken(ctx, token.TokenEndpoint, token.ClientSecret, token.TokenAuthMode, form)
 	if err != nil {
 		return "", err
 	}
@@ -244,70 +262,167 @@ func (m *OAuthManager) Remove(ctx context.Context, serverID string) error {
 	return m.store.Delete(ctx, oauthNamespace(serverID), "oauth")
 }
 
-func (m *OAuthManager) discoverProtectedResource(ctx context.Context, resource string) (protectedResourceMetadata, error) {
+func (m *OAuthManager) discoverProtectedResource(ctx context.Context, resource string, headers map[string]string) (protectedResourceMetadata, []string, error) {
 	parsed, err := url.Parse(resource)
 	if err != nil {
-		return protectedResourceMetadata{}, err
+		return protectedResourceMetadata{}, nil, err
 	}
-	endpoint := parsed.Scheme + "://" + parsed.Host + "/.well-known/oauth-protected-resource"
-	var metadata protectedResourceMetadata
-	if err := m.getJSON(ctx, endpoint, &metadata); err != nil {
-		return metadata, fmt.Errorf("discover OAuth protected resource: %w", err)
+	if parsed.Scheme == "" || parsed.Host == "" {
+		return protectedResourceMetadata{}, nil, errors.New("MCP OAuth resource URL must be absolute")
 	}
-	return metadata, nil
+
+	metadataURL, challengedScopes := m.protectedResourceChallenge(ctx, resource, headers)
+	candidates := make([]string, 0, 3)
+	if metadataURL != "" {
+		candidates = append(candidates, metadataURL)
+	}
+	origin := parsed.Scheme + "://" + parsed.Host
+	if path := strings.TrimRight(parsed.EscapedPath(), "/"); path != "" {
+		candidates = append(candidates, origin+"/.well-known/oauth-protected-resource"+path)
+	}
+	candidates = append(candidates, origin+"/.well-known/oauth-protected-resource")
+
+	var discoveryErrors []string
+	for _, endpoint := range dedupeURLs(candidates) {
+		var metadata protectedResourceMetadata
+		requestHeaders := headers
+		if !sameOrigin(resource, endpoint) {
+			requestHeaders = nil
+		}
+		if err := m.getJSONWithHeaders(ctx, endpoint, requestHeaders, &metadata); err != nil {
+			discoveryErrors = append(discoveryErrors, err.Error())
+			continue
+		}
+		if metadata.Resource != "" && strings.TrimRight(metadata.Resource, "/") != strings.TrimRight(resource, "/") {
+			discoveryErrors = append(discoveryErrors, fmt.Sprintf("%s returned mismatched resource %q", endpoint, metadata.Resource))
+			continue
+		}
+		return metadata, challengedScopes, nil
+	}
+	return protectedResourceMetadata{}, challengedScopes, fmt.Errorf("discover OAuth protected resource: %s", strings.Join(discoveryErrors, "; "))
 }
 
 func (m *OAuthManager) discoverAuthorizationServer(ctx context.Context, issuer string) (authorizationServerMetadata, error) {
-	endpoint := strings.TrimRight(issuer, "/") + "/.well-known/oauth-authorization-server"
-	var metadata authorizationServerMetadata
-	if err := m.getJSON(ctx, endpoint, &metadata); err != nil {
-		return metadata, fmt.Errorf("discover OAuth authorization server: %w", err)
+	parsed, err := url.Parse(issuer)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return authorizationServerMetadata{}, fmt.Errorf("invalid OAuth authorization server issuer %q", issuer)
 	}
-	if metadata.AuthorizationEndpoint == "" || metadata.TokenEndpoint == "" {
-		return metadata, errors.New("authorization server metadata is missing endpoints")
+	origin := parsed.Scheme + "://" + parsed.Host
+	path := strings.TrimRight(parsed.EscapedPath(), "/")
+	var candidates []string
+	if path != "" {
+		candidates = append(candidates,
+			origin+"/.well-known/oauth-authorization-server"+path,
+			origin+"/.well-known/openid-configuration"+path,
+			origin+path+"/.well-known/openid-configuration",
+		)
+	} else {
+		candidates = append(candidates,
+			origin+"/.well-known/oauth-authorization-server",
+			origin+"/.well-known/openid-configuration",
+		)
 	}
-	return metadata, nil
+	var discoveryErrors []string
+	for _, endpoint := range candidates {
+		var metadata authorizationServerMetadata
+		if err := m.getJSON(ctx, endpoint, &metadata); err != nil {
+			discoveryErrors = append(discoveryErrors, err.Error())
+			continue
+		}
+		if metadata.Issuer != "" && !sameIssuer(metadata.Issuer, issuer) {
+			discoveryErrors = append(discoveryErrors, fmt.Sprintf("%s returned mismatched issuer %q", endpoint, metadata.Issuer))
+			continue
+		}
+		if metadata.AuthorizationEndpoint == "" || metadata.TokenEndpoint == "" {
+			discoveryErrors = append(discoveryErrors, fmt.Sprintf("%s is missing authorization or token endpoints", endpoint))
+			continue
+		}
+		if len(metadata.CodeChallengeMethodsSupported) > 0 && !containsString(metadata.CodeChallengeMethodsSupported, "S256") {
+			return authorizationServerMetadata{}, errors.New("authorization server does not support PKCE S256")
+		}
+		return metadata, nil
+	}
+	return authorizationServerMetadata{}, fmt.Errorf("discover OAuth authorization server: %s", strings.Join(discoveryErrors, "; "))
 }
 
-func (m *OAuthManager) registerClient(ctx context.Context, endpoint, redirectURI string) (string, string, error) {
-	if strings.TrimSpace(endpoint) == "" {
-		return "", "", errors.New("OAuth client_id is required because the server does not support dynamic registration")
+func (m *OAuthManager) protectedResourceChallenge(ctx context.Context, resource string, headers map[string]string) (string, []string) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, resource, nil)
+	if err != nil {
+		return "", nil
 	}
-	body, _ := json.Marshal(map[string]any{"client_name": "Wuu", "redirect_uris": []string{redirectURI}, "token_endpoint_auth_method": "none", "grant_types": []string{"authorization_code", "refresh_token"}, "response_types": []string{"code"}})
+	applyHTTPHeaders(req, headers)
+	resp, err := m.client.Do(req)
+	if err != nil {
+		return "", nil
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		return "", nil
+	}
+	for _, challenge := range resp.Header.Values("WWW-Authenticate") {
+		if !strings.EqualFold(firstAuthToken(challenge), "Bearer") {
+			continue
+		}
+		metadataURL := authParameter(challenge, "resource_metadata")
+		scopes := strings.Fields(authParameter(challenge, "scope"))
+		if metadataURL != "" || len(scopes) > 0 {
+			return metadataURL, scopes
+		}
+	}
+	return "", nil
+}
+
+func (m *OAuthManager) registerClient(ctx context.Context, endpoint, redirectURI string) (string, string, string, error) {
+	if strings.TrimSpace(endpoint) == "" {
+		return "", "", "", errors.New("OAuth client_id is required because the server does not support dynamic registration")
+	}
+	body, _ := json.Marshal(map[string]any{"client_name": "Wuu", "application_type": "native", "redirect_uris": []string{redirectURI}, "token_endpoint_auth_method": "none", "grant_types": []string{"authorization_code", "refresh_token"}, "response_types": []string{"code"}})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
 	if err != nil {
-		return "", "", err
+		return "", "", "", err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := m.client.Do(req)
 	if err != nil {
-		return "", "", err
+		return "", "", "", err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return "", "", fmt.Errorf("OAuth dynamic registration returned %s", resp.Status)
+		return "", "", "", fmt.Errorf("OAuth dynamic registration returned %s", resp.Status)
 	}
 	var registered struct {
-		ClientID     string `json:"client_id"`
-		ClientSecret string `json:"client_secret,omitempty"`
+		ClientID                string `json:"client_id"`
+		ClientSecret            string `json:"client_secret,omitempty"`
+		TokenEndpointAuthMethod string `json:"token_endpoint_auth_method,omitempty"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&registered); err != nil {
-		return "", "", err
+		return "", "", "", err
 	}
 	if registered.ClientID == "" {
-		return "", "", errors.New("OAuth dynamic registration returned no client_id")
+		return "", "", "", errors.New("OAuth dynamic registration returned no client_id")
 	}
-	return registered.ClientID, registered.ClientSecret, nil
+	mode := registered.TokenEndpointAuthMethod
+	if mode == "" {
+		mode = selectTokenAuthMode(nil, registered.ClientSecret)
+	}
+	return registered.ClientID, registered.ClientSecret, mode, nil
 }
 
-func (m *OAuthManager) exchangeToken(ctx context.Context, endpoint, clientSecret string, form url.Values) (tokenResponse, error) {
+func (m *OAuthManager) exchangeToken(ctx context.Context, endpoint, clientSecret, authMode string, form url.Values) (tokenResponse, error) {
+	if authMode == "client_secret_post" && clientSecret != "" {
+		form.Set("client_secret", clientSecret)
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(form.Encode()))
 	if err != nil {
 		return tokenResponse{}, err
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	if clientSecret != "" {
-		req.SetBasicAuth(form.Get("client_id"), clientSecret)
+	switch authMode {
+	case "client_secret_post", "none":
+	default:
+		if clientSecret != "" {
+			req.SetBasicAuth(form.Get("client_id"), clientSecret)
+		}
 	}
 	resp, err := m.client.Do(req)
 	if err != nil {
@@ -329,10 +444,15 @@ func (m *OAuthManager) exchangeToken(ctx context.Context, endpoint, clientSecret
 }
 
 func (m *OAuthManager) getJSON(ctx context.Context, endpoint string, out any) error {
+	return m.getJSONWithHeaders(ctx, endpoint, nil, out)
+}
+
+func (m *OAuthManager) getJSONWithHeaders(ctx context.Context, endpoint string, headers map[string]string, out any) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return err
 	}
+	applyHTTPHeaders(req, headers)
 	resp, err := m.client.Do(req)
 	if err != nil {
 		return err
@@ -342,6 +462,133 @@ func (m *OAuthManager) getJSON(ctx context.Context, endpoint string, out any) er
 		return fmt.Errorf("%s returned %s", endpoint, resp.Status)
 	}
 	return json.NewDecoder(resp.Body).Decode(out)
+}
+
+func applyHTTPHeaders(req *http.Request, headers map[string]string) {
+	for name, value := range headers {
+		if strings.TrimSpace(name) != "" && strings.TrimSpace(value) != "" {
+			req.Header.Set(name, value)
+		}
+	}
+}
+
+func firstAuthToken(challenge string) string {
+	challenge = strings.TrimSpace(challenge)
+	if index := strings.IndexAny(challenge, " \t"); index >= 0 {
+		return challenge[:index]
+	}
+	return challenge
+}
+
+func authParameter(challenge, target string) string {
+	challenge = strings.TrimSpace(challenge)
+	if index := strings.IndexAny(challenge, " \t"); index >= 0 {
+		challenge = challenge[index+1:]
+	} else {
+		return ""
+	}
+	for len(challenge) > 0 {
+		challenge = strings.TrimLeft(challenge, " \t,")
+		nameEnd := strings.IndexByte(challenge, '=')
+		if nameEnd < 0 {
+			return ""
+		}
+		name := strings.TrimSpace(challenge[:nameEnd])
+		challenge = strings.TrimSpace(challenge[nameEnd+1:])
+		var value string
+		if strings.HasPrefix(challenge, "\"") {
+			challenge = challenge[1:]
+			var decoded strings.Builder
+			escaped := false
+			end := -1
+			for index, character := range challenge {
+				if escaped {
+					decoded.WriteRune(character)
+					escaped = false
+					continue
+				}
+				if character == '\\' {
+					escaped = true
+					continue
+				}
+				if character == '"' {
+					end = index
+					break
+				}
+				decoded.WriteRune(character)
+			}
+			if end < 0 {
+				return ""
+			}
+			value = decoded.String()
+			challenge = challenge[end+1:]
+		} else {
+			end := strings.IndexByte(challenge, ',')
+			if end < 0 {
+				value = strings.TrimSpace(challenge)
+				challenge = ""
+			} else {
+				value = strings.TrimSpace(challenge[:end])
+				challenge = challenge[end+1:]
+			}
+		}
+		if strings.EqualFold(name, target) {
+			return value
+		}
+	}
+	return ""
+}
+
+func dedupeURLs(values []string) []string {
+	seen := make(map[string]struct{}, len(values))
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		out = append(out, value)
+	}
+	return out
+}
+
+func sameIssuer(left, right string) bool {
+	return strings.TrimRight(strings.TrimSpace(left), "/") == strings.TrimRight(strings.TrimSpace(right), "/")
+}
+
+func sameOrigin(left, right string) bool {
+	leftURL, leftErr := url.Parse(left)
+	rightURL, rightErr := url.Parse(right)
+	if leftErr != nil || rightErr != nil {
+		return false
+	}
+	return strings.EqualFold(leftURL.Scheme, rightURL.Scheme) && strings.EqualFold(leftURL.Host, rightURL.Host)
+}
+
+func selectTokenAuthMode(supported []string, clientSecret string) string {
+	if clientSecret == "" {
+		return "none"
+	}
+	if len(supported) == 0 || containsString(supported, "client_secret_basic") {
+		return "client_secret_basic"
+	}
+	if containsString(supported, "client_secret_post") {
+		return "client_secret_post"
+	}
+	return "client_secret_basic"
+}
+
+func containsString(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
 }
 
 func (m *OAuthManager) saveToken(ctx context.Context, serverID string, token storedOAuthToken) error {

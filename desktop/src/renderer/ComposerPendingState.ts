@@ -1,5 +1,9 @@
 import { useRef, useState, type MutableRefObject } from "react";
-import type { ServerEvent, Thread } from "../shared/protocol";
+import type {
+  ServerEvent,
+  Thread,
+  ThreadResumeResult,
+} from "../shared/protocol";
 import {
   activeThreadIDForState,
   activeTurnIDForThread,
@@ -111,6 +115,27 @@ function heldComposerMessagesFromParams(
   return { threadID, messages };
 }
 
+/**
+ * Parse the authoritative held snapshot carried by the `thread/resume` RPC
+ * result. The desktop renderer restores pending composer messages from this
+ * on boot: the `thread/resumed` notification that the server emits alongside
+ * the response is filtered out while the app is still loading (the active
+ * context is not set yet), so a reload must not rely on it alone.
+ */
+export function heldComposerMessagesFromResumeResult(
+  result: ThreadResumeResult | undefined,
+): QueuedComposerMessage[] {
+  const raw = result?.held_user_messages;
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  const threadID = result?.thread?.id ?? "";
+  return raw.flatMap((value, position) => {
+    const message = heldComposerMessage({ ...value, thread_id: threadID }, position);
+    return message ? [message] : [];
+  });
+}
+
 export type ComposerPendingStateController = {
   pendingComposerMessagesByThread: PendingComposerMessagesByThread;
   pendingComposerMessagesByThreadRef: MutableRefObject<PendingComposerMessagesByThread>;
@@ -134,6 +159,10 @@ export type ComposerPendingStateController = {
   ) => void;
   syncPendingComposerMessagesFromServerEvent: (event: ServerEvent) => void;
   reconcilePendingComposerMessagesForState: (state: AppState) => void;
+  seedHeldComposerMessages: (
+    threadID: string,
+    messages: QueuedComposerMessage[],
+  ) => void;
   enqueueComposerMessage: (
     threadID: string,
     message: QueuedComposerMessage,
@@ -294,6 +323,18 @@ export function useComposerPendingState({
   ): void {
     updateThreadPendingComposerMessages(threadID, (previous) =>
       appendPendingComposerMessage(previous, "queue", message),
+    );
+  }
+
+  function seedHeldComposerMessages(
+    threadID: string,
+    messages: QueuedComposerMessage[],
+  ): void {
+    if (messages.length === 0) {
+      return;
+    }
+    updateThreadPendingComposerMessages(threadID, (previous) =>
+      applyHeldComposerSnapshot(previous, messages),
     );
   }
 
@@ -545,6 +586,7 @@ export function useComposerPendingState({
     removePendingComposerMessageByID,
     syncPendingComposerMessagesFromServerEvent,
     reconcilePendingComposerMessagesForState,
+    seedHeldComposerMessages,
     enqueueComposerMessage,
     removeQueuedMessage,
     removeGuideMessage,

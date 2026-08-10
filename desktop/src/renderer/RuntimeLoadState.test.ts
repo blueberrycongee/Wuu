@@ -184,7 +184,7 @@ describe("runtime load helpers", () => {
       ],
     } as Partial<Thread>);
     installWuuStub({
-      initialize: vi.fn().mockResolvedValue({ model: "gpt-test", ultra: true }),
+      initialize: vi.fn().mockResolvedValue({ model: "gpt-test" }),
       listThreads: vi.fn().mockResolvedValue({ threads: [pinned, latest] }),
       listArchivedThreads: vi.fn().mockResolvedValue({ threads: [] }),
       resumeThread: vi.fn().mockResolvedValue({ thread: resumed }),
@@ -193,7 +193,7 @@ describe("runtime load helpers", () => {
     const state = await loadRuntime(projectList(activeContext));
 
     expect(state.thread?.id).toBe("latest");
-    expect(state.initialized?.ultra).toBe(true);
+    expect(state.initialized?.model).toBe("gpt-test");
     expect(state.activeContext).toEqual(activeContext);
     expect(state.running).toBe(true);
     expect(state.threads?.some((item) => item.id === "latest")).toBe(true);

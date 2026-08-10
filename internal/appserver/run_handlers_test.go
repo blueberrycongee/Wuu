@@ -176,7 +176,7 @@ func TestRunInterruptDoesNotCancelSuccessorRun(t *testing.T) {
 	th.currentExecutionRunID = "run-successor"
 	srv.threads[threadID] = th
 
-	turnActive, err := srv.interruptThreadExecution(threadID, "run-original")
+	turnActive, err := srv.interruptThreadExecution(threadID, "run-original", "")
 	if !errors.Is(err, errExecutionRunChanged) || turnActive {
 		t.Fatalf("interrupt successor = active %v, error %v", turnActive, err)
 	}

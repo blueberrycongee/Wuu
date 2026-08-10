@@ -27,11 +27,6 @@ const (
 	// agent.max_parallel is omitted or set to zero.
 	DefaultAgentMaxParallel = 5
 
-	// DefaultDreamIntervalDays is the minimum elapsed-time gate for background
-	// consolidation. A dream also requires the runtime's minimum number of
-	// completed sessions, so reaching this interval alone never starts a pass.
-	DefaultDreamIntervalDays = 1
-
 	defaultCodexSubscriptionBaseURL = "https://chatgpt.com/backend-api/codex"
 )
 
@@ -99,7 +94,7 @@ type Config struct {
 	Providers       map[string]ProviderConfig `json:"providers"`
 	Agent           AgentConfig               `json:"agent"`
 	Hooks           map[string][]HookEntry    `json:"hooks,omitempty"`
-	Memory          MemoryConfig              `json:"memory,omitempty"`
+	Instructions    InstructionFilesConfig    `json:"instructions,omitempty"`
 	// MCPServers maps server name to connection config. When present, wuu
 	// connects to each server at startup (in the background) and exposes
 	// its tools to the agent.
@@ -115,87 +110,19 @@ type Config struct {
 	Extensions *extensions.Settings `json:"extensions,omitempty"`
 }
 
-// MemoryConfig overrides the defaults for memory file discovery. All fields
-// are optional; empty values fall back to memory.DefaultOptions().
-type MemoryConfig struct {
+// InstructionFilesConfig overrides project and user instruction discovery.
+// All fields are optional; empty values use the instruction defaults.
+type InstructionFilesConfig struct {
 	// Filenames to look for in priority order.
 	Filenames []string `json:"filenames,omitempty"`
 	// ProjectRootMarkers stop the upward walk through ancestors.
 	// Default: [".git", ".hg", ".jj", ".svn"].
 	ProjectRootMarkers []string `json:"project_root_markers,omitempty"`
-	// UserDirs are scanned for user-level memory. Tilde-expanded.
+	// UserDirs are scanned for user-level instruction files. Tilde-expanded.
 	UserDirs []string `json:"user_dirs,omitempty"`
-	// IncludeLegacyMemory imports Claude-style rules, local files, and
-	// auto-memory paths. It is off by default and intended for explicit
-	// migration, not normal request context.
-	IncludeLegacyMemory *bool `json:"include_legacy_memory,omitempty"`
-	// Disable turns off durable memory discovery and user-notebook injection.
-	Disable bool `json:"disable,omitempty"`
-	// NudgeInterval is retained for compatibility with configs written by the
-	// retired profile-memory reviewer. Current runtimes ignore it.
-	NudgeInterval *int `json:"nudge_interval,omitempty"`
-	// MemoryCharLimit is retained for compatibility with the retired indexed
-	// memory store. Current notebook memory does not apply this limit.
-	MemoryCharLimit int `json:"memory_char_limit,omitempty"`
-	// UserCharLimit is retained for compatibility with the retired indexed
-	// memory store. Current notebook memory does not apply this limit.
-	UserCharLimit int `json:"user_char_limit,omitempty"`
-	// DreamIntervalDays is the minimum elapsed-time gate for the background
-	// dream pass. The pass also requires five completed sessions since the last
-	// successful consolidation. nil means the default interval; 0 disables it.
-	//
-	// Deprecated: use Dream.IntervalDays instead. This field is retained so
-	// existing configs keep working.
-	DreamIntervalDays *int `json:"dream_interval_days,omitempty"`
-	// Dream configures the background session-dream memory consolidation pass.
-	Dream *DreamConfig `json:"dream,omitempty"`
-}
-
-// DreamConfig configures the background session-dream memory consolidation
-// pass. It is intentionally scoped: an enable switch, interval, and optional
-// dedicated provider/model. Empty provider/model means the dream uses the
-// currently selected main provider/model.
-type DreamConfig struct {
-	Enabled      bool   `json:"enabled,omitempty"`
-	IntervalDays int    `json:"interval_days,omitempty"`
-	Provider     string `json:"provider,omitempty"`
-	Model        string `json:"model,omitempty"`
-}
-
-func (m MemoryConfig) DreamEnabled() bool {
-	if m.Dream != nil {
-		return m.Dream.Enabled
-	}
-	// Backward compatibility: the legacy dream_interval_days field toggled the
-	// pass by value. A positive interval meant enabled; zero meant disabled.
-	if m.DreamIntervalDays != nil {
-		return *m.DreamIntervalDays > 0
-	}
-	return false
-}
-
-func (m MemoryConfig) DreamIntervalDaysValue() int {
-	if m.Dream != nil && m.Dream.IntervalDays > 0 {
-		return m.Dream.IntervalDays
-	}
-	if m.DreamIntervalDays != nil {
-		return *m.DreamIntervalDays
-	}
-	return DefaultDreamIntervalDays
-}
-
-func (m MemoryConfig) DreamProvider() string {
-	if m.Dream != nil {
-		return strings.TrimSpace(m.Dream.Provider)
-	}
-	return ""
-}
-
-func (m MemoryConfig) DreamModel() string {
-	if m.Dream != nil {
-		return strings.TrimSpace(m.Dream.Model)
-	}
-	return ""
+	// IncludeLegacyInstructions imports Claude-style rule and auto-memory paths.
+	// It is off by default and exists only for explicit migration.
+	IncludeLegacyInstructions *bool `json:"include_legacy_instructions,omitempty"`
 }
 
 // ProviderConfig configures one model gateway.
@@ -315,9 +242,6 @@ type AgentConfig struct {
 	// MaxParallel limits concurrently executing anonymous workers. Queued
 	// workers do not count toward the limit. Zero selects the default.
 	MaxParallel int `json:"max_parallel,omitempty"`
-	// UltraMode enables proactive multi-agent delegation for top-level turns.
-	// The runtime snapshots this value at the turn boundary.
-	UltraMode bool `json:"ultra_mode,omitempty"`
 	// Temperature overrides model/provider sampling when greater than zero.
 	// Zero means Auto: omit the request field and let the provider or model
 	// compatibility layer choose.
@@ -352,8 +276,9 @@ type AgentConfig struct {
 	// preserving the main model as the default. Empty role entries inherit the
 	// active provider/model/effort/variant selected above.
 	ModelRoles ModelRolesConfig `json:"model_roles,omitempty"`
-	// ModelAliases are stable labels that skills can pass as spawn_agent.model
-	// values. Each alias must explicitly name a configured provider and model;
+	// ModelAliases are stable labels that session-creating plugins and other
+	// runtime clients can pass when selecting a model. Each alias must explicitly
+	// name a configured provider and model;
 	// unlike model_roles entries, aliases never inherit from the active main
 	// selection. Project layers cannot define aliases.
 	ModelAliases map[string]ModelRoleConfig `json:"model_aliases,omitempty"`
@@ -410,7 +335,6 @@ type ModelRolesConfig struct {
 	Review   ModelRoleConfig `json:"review,omitempty"`
 	Compact  ModelRoleConfig `json:"compact,omitempty"`
 	Title    ModelRoleConfig `json:"title,omitempty"`
-	Memory   ModelRoleConfig `json:"memory,omitempty"`
 	Worker   ModelRoleConfig `json:"worker,omitempty"`
 	Fallback ModelRoleConfig `json:"fallback,omitempty"`
 }
@@ -443,12 +367,7 @@ type AdvancedRuntimeUpdate struct {
 type GeneralSettingsUpdate struct {
 	AppendSystemPrompt    *string
 	GitAttributionEnabled *bool
-	MemoryDisable         *bool
 	MCPEnabledToggles     map[string]*bool // server name → enabled; nil = skip
-	DreamEnabled          *bool
-	DreamIntervalDays     *int
-	DreamProvider         *string
-	DreamModel            *string
 }
 
 func (a AgentConfig) GitAttributionEnabledValue() bool {
@@ -464,7 +383,7 @@ func (a AgentConfig) GitAttributionEnabledValue() bool {
 // files are overlays in this order:
 // .wuu.json (or wuu.json), .wuu/settings.json, then
 // .wuu/settings.local.json. Project overlays cannot define provider
-// connections or credential sources, expand memory discovery outside the
+// connections or credential sources, expand instruction discovery outside the
 // workspace, or loosen the user's permission mode. This prevents a repository
 // from choosing where user credentials are sent merely by being opened.
 //
@@ -608,18 +527,61 @@ func stripLegacyPermissionKeys(data []byte) []byte {
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return data
 	}
-	agent, _ := raw["agent"].(map[string]any)
-	if agent == nil {
-		return data
+	if agent, _ := raw["agent"].(map[string]any); agent != nil {
+		for _, key := range []string{
+			"tool_policy",
+			"permission_rules",
+			"permission_profile",
+			"approval_policy",
+			"approvals_reviewer",
+		} {
+			delete(agent, key)
+		}
+		if roles, _ := agent["model_roles"].(map[string]any); roles != nil {
+			// The Memory plugin now selects ordinary private-session model aliases;
+			// the retired core-only role is accepted but discarded on migration.
+			for key := range roles {
+				if strings.EqualFold(key, "memory") {
+					delete(roles, key)
+				}
+			}
+		}
 	}
-	for _, key := range []string{
-		"tool_policy",
-		"permission_rules",
-		"permission_profile",
-		"approval_policy",
-		"approvals_reviewer",
-	} {
-		delete(agent, key)
+	// Project instruction discovery used to be stored under "memory". Translate
+	// only supported discovery fields at the load boundary; retired product
+	// settings never enter runtime state.
+	legacyKey := ""
+	var legacy map[string]any
+	for key, value := range raw {
+		if strings.EqualFold(key, "memory") {
+			legacyKey = key
+			legacy, _ = value.(map[string]any)
+			break
+		}
+	}
+	if legacy != nil {
+		hasInstructions := false
+		for key := range raw {
+			if strings.EqualFold(key, "instructions") {
+				hasInstructions = true
+				break
+			}
+		}
+		if !hasInstructions {
+			migrated := make(map[string]any)
+			for _, key := range []string{"filenames", "project_root_markers", "user_dirs"} {
+				if value, ok := legacy[key]; ok {
+					migrated[key] = value
+				}
+			}
+			if value, ok := legacy["include_legacy_memory"]; ok {
+				migrated["include_legacy_instructions"] = value
+			}
+			if len(migrated) > 0 {
+				raw["instructions"] = migrated
+			}
+		}
+		delete(raw, legacyKey)
 	}
 	out, err := json.Marshal(raw)
 	if err != nil {
@@ -781,17 +743,6 @@ func (c Config) Validate() error {
 	if strings.TrimSpace(string(c.Agent.ToolLoading)) != "" && NormalizeToolLoadingMode(c.Agent.ToolLoading) == "" {
 		return errors.New("agent.tool_loading must be one of auto, flat, or native")
 	}
-	if c.Memory.DreamIntervalDays != nil && *c.Memory.DreamIntervalDays < 0 {
-		return errors.New("memory.dream_interval_days cannot be negative")
-	}
-	if c.Memory.Dream != nil && c.Memory.Dream.IntervalDays < 0 {
-		return errors.New("memory.dream.interval_days cannot be negative")
-	}
-	if c.Memory.Dream != nil && strings.TrimSpace(c.Memory.Dream.Provider) != "" {
-		if _, ok := c.Providers[c.Memory.Dream.Provider]; !ok {
-			return fmt.Errorf("memory.dream.provider %q not found in providers", c.Memory.Dream.Provider)
-		}
-	}
 	if err := validatePermissionConfig(c.Agent); err != nil {
 		return err
 	}
@@ -810,7 +761,6 @@ func validateModelRolesConfig(c Config) error {
 		"review":   c.Agent.ModelRoles.Review,
 		"compact":  c.Agent.ModelRoles.Compact,
 		"title":    c.Agent.ModelRoles.Title,
-		"memory":   c.Agent.ModelRoles.Memory,
 		"worker":   c.Agent.ModelRoles.Worker,
 		"fallback": c.Agent.ModelRoles.Fallback,
 	}
@@ -968,23 +918,15 @@ func Default() Config {
 }
 
 // DefaultSystemPrompt returns wuu's built-in base behavior prompt for the
-// main agent. It combines the universal base sections with the main-only
-// orchestration path-selection map. It is not serialized into config files;
-// user config is appended separately.
+// main agent. It is not serialized into config files; user config is appended
+// separately.
 func DefaultSystemPrompt() string {
 	return prompts.System() + "\n\n" + prompts.SystemMain()
 }
 
-// WorkerSystemPrompt returns the system prompt used to seed spawned
-// subagents. It contains only the universal base sections; the main-only
-// orchestration map is excluded because orchestration belongs to the brain:
-// spawn_agent, helpme, and the subagent management suite (send_message,
-// close_agent) are compiled out of worker surfaces entirely
-// (internal/modelprofile/compiler.go). Of the
-// other tools the map mentions, update_plan stays visible on worker surfaces
-// and goal stays deferred behind tool_search — their
-// worker-facing guidance lives in the tool descriptions and the worker's
-// deferred-tool catalog, not in the orchestration map.
+// WorkerSystemPrompt returns the universal base prompt used by host-managed
+// executor workers. Product-specific delegation guidance is contributed by
+// plugins instead of being embedded here.
 func WorkerSystemPrompt() string {
 	return prompts.System()
 }
@@ -1115,13 +1057,13 @@ func UpdateProviderModel(configPath, providerName, newModel string) error {
 // UpdateProviderSelection changes the default provider and the selected
 // provider's model in the config file at configPath.
 func UpdateProviderSelection(configPath, providerName, newModel string) error {
-	return updateProviderSelection(configPath, providerName, newModel, nil, nil, nil, nil, nil, nil, nil, false, nil)
+	return updateProviderSelection(configPath, providerName, newModel, nil, nil, nil, nil, nil, nil, false, nil)
 }
 
 // UpdateProviderRuntime changes the default provider and editable connection
 // fields for that provider. A nil apiKey keeps the existing key configuration.
-func UpdateProviderRuntime(configPath, providerName, newModel string, baseURL, apiKey, authToken, effort, variant, permissionMode *string, ultraMode *bool) error {
-	return updateProviderSelection(configPath, providerName, newModel, baseURL, apiKey, authToken, effort, variant, permissionMode, ultraMode, false, nil)
+func UpdateProviderRuntime(configPath, providerName, newModel string, baseURL, apiKey, authToken, effort, variant, permissionMode *string) error {
+	return updateProviderSelection(configPath, providerName, newModel, baseURL, apiKey, authToken, effort, variant, permissionMode, false, nil)
 }
 
 // CreateProviderRuntime creates a new provider with the requested type
@@ -1129,35 +1071,8 @@ func UpdateProviderRuntime(configPath, providerName, newModel string, baseURL, a
 // editable runtime fields. A nil or empty providerType defaults to
 // "openai-compatible". The caller is responsible for whitelisting allowed
 // type values before invocation; this function writes the type verbatim.
-func CreateProviderRuntime(configPath, providerName string, providerType *string, newModel string, baseURL, apiKey, authToken, effort, variant, permissionMode *string, ultraMode *bool) error {
-	return updateProviderSelection(configPath, providerName, newModel, baseURL, apiKey, authToken, effort, variant, permissionMode, ultraMode, true, providerType)
-}
-
-// UpdateAgentUltraMode atomically persists an Ultra-only runtime update while
-// preserving provider selection and every unrelated config field.
-func UpdateAgentUltraMode(configPath string, ultraMode *bool) error {
-	if ultraMode == nil {
-		return nil
-	}
-	data, err := os.ReadFile(configPath)
-	if err != nil {
-		return fmt.Errorf("read config: %w", err)
-	}
-	var raw map[string]any
-	if err := json.Unmarshal(data, &raw); err != nil {
-		return fmt.Errorf("parse config: %w", err)
-	}
-	agent, _ := raw["agent"].(map[string]any)
-	if agent == nil {
-		agent = make(map[string]any)
-		raw["agent"] = agent
-	}
-	setOptionalBool(agent, "ultra_mode", ultraMode)
-	out, err := json.MarshalIndent(raw, "", "  ")
-	if err != nil {
-		return fmt.Errorf("marshal config: %w", err)
-	}
-	return securefs.WriteFileAtomic(configPath, append(out, '\n'))
+func CreateProviderRuntime(configPath, providerName string, providerType *string, newModel string, baseURL, apiKey, authToken, effort, variant, permissionMode *string) error {
+	return updateProviderSelection(configPath, providerName, newModel, baseURL, apiKey, authToken, effort, variant, permissionMode, true, providerType)
 }
 
 // RemoveProvider deletes a configured provider from the config file and,
@@ -1393,60 +1308,6 @@ func UpdateGeneralSettings(configPath string, update GeneralSettingsUpdate) erro
 		}
 	}
 
-	if update.MemoryDisable != nil {
-		memory, _ := raw["memory"].(map[string]any)
-		if memory == nil {
-			memory = make(map[string]any)
-			raw["memory"] = memory
-		}
-		if *update.MemoryDisable {
-			memory["disable"] = true
-		} else {
-			delete(memory, "disable")
-		}
-		if len(memory) == 0 {
-			delete(raw, "memory")
-		}
-	}
-
-	if update.DreamEnabled != nil || update.DreamIntervalDays != nil || update.DreamProvider != nil || update.DreamModel != nil {
-		memory, _ := raw["memory"].(map[string]any)
-		if memory == nil {
-			memory = make(map[string]any)
-			raw["memory"] = memory
-		}
-		dream, _ := memory["dream"].(map[string]any)
-		if dream == nil {
-			dream = make(map[string]any)
-			memory["dream"] = dream
-		}
-		if update.DreamEnabled != nil {
-			dream["enabled"] = *update.DreamEnabled
-		}
-		if update.DreamIntervalDays != nil {
-			if *update.DreamIntervalDays <= 0 {
-				delete(dream, "interval_days")
-			} else {
-				dream["interval_days"] = *update.DreamIntervalDays
-			}
-		}
-		if update.DreamProvider != nil {
-			setOptionalString(dream, "provider", update.DreamProvider)
-		}
-		if update.DreamModel != nil {
-			setOptionalString(dream, "model", update.DreamModel)
-		}
-		// Migrate away from the legacy flat field so the new section is the
-		// single source of truth.
-		delete(memory, "dream_interval_days")
-		if len(dream) == 0 {
-			delete(memory, "dream")
-		}
-		if len(memory) == 0 {
-			delete(raw, "memory")
-		}
-	}
-
 	if len(update.MCPEnabledToggles) > 0 {
 		mcpServers, _ := raw["mcp_servers"].(map[string]any)
 		if mcpServers == nil {
@@ -1595,7 +1456,7 @@ func setOptionalBool(target map[string]any, key string, value *bool) {
 	target[key] = true
 }
 
-func updateProviderSelection(configPath, providerName, newModel string, baseURL, apiKey, authToken, effort, variant, permissionMode *string, ultraMode *bool, createProvider bool, providerType *string) error {
+func updateProviderSelection(configPath, providerName, newModel string, baseURL, apiKey, authToken, effort, variant, permissionMode *string, createProvider bool, providerType *string) error {
 	data, err := os.ReadFile(configPath)
 	if err != nil {
 		return fmt.Errorf("read config: %w", err)
@@ -1708,15 +1569,6 @@ func updateProviderSelection(configPath, providerName, newModel string, baseURL,
 		delete(agent, "tool_policy")
 		delete(agent, "permission_rules")
 	}
-	if ultraMode != nil {
-		agent, _ := raw["agent"].(map[string]any)
-		if agent == nil {
-			agent = make(map[string]any)
-			raw["agent"] = agent
-		}
-		setOptionalBool(agent, "ultra_mode", ultraMode)
-	}
-
 	out, err := json.MarshalIndent(raw, "", "  ")
 	if err != nil {
 		return fmt.Errorf("marshal config: %w", err)

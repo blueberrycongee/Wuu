@@ -49,6 +49,41 @@ func (s *Session) PreflightExtensions(cfg config.Config) (*PluginGeneration, err
 	return s.buildPluginGeneration(cfg, discoverPlugins(s.RootDir, s.WuuHome), nil, nil, startPluginClient)
 }
 
+// PreflightExtensionPolicy builds a replacement from the current package set
+// without persisting the proposed grant/enable decisions.
+func (s *Session) PreflightExtensionPolicy(cfg config.Config) (*PluginGeneration, error) {
+	if s == nil {
+		return nil, errors.New("runtime is not initialized")
+	}
+	return s.buildPluginGeneration(cfg, s.Plugins, nil, nil, startPluginClient)
+}
+
+// PreflightPluginRemoval builds the generation that will remain after one
+// installed user package is removed, while the current package is still
+// available for rollback.
+func (s *Session) PreflightPluginRemoval(cfg config.Config, id string) (*PluginGeneration, error) {
+	if s == nil {
+		return nil, errors.New("runtime is not initialized")
+	}
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return nil, errors.New("plugin id is required")
+	}
+	discovered := make([]pluginpkg.Plugin, 0, len(s.Plugins))
+	found := false
+	for _, item := range s.Plugins {
+		if item.Source == "user" && item.ID == id {
+			found = true
+			continue
+		}
+		discovered = append(discovered, item)
+	}
+	if !found {
+		return nil, fmt.Errorf("installed user plugin %q was not found", id)
+	}
+	return s.buildPluginGeneration(cfg, discovered, nil, nil, startPluginClient)
+}
+
 // PreflightPluginUpdate builds an exact approved pending package as part of a
 // complete replacement generation. The private snapshot keeps registrations
 // valid after the pending directory is published and removed.
@@ -123,8 +158,15 @@ func (s *Session) PreflightPluginUpdate(cfg config.Config, id, fingerprint, pack
 }
 
 func (s *Session) buildPluginGeneration(cfg config.Config, discovered []pluginpkg.Plugin, required map[string]bool, ownedRoots []string, start pluginClientStarter) (*PluginGeneration, error) {
-	active := activatedPlugins(cfg, discovered)
-	host, err := buildPluginHost(active, s.RootDir, s.WuuHome, required, start, s.PluginSessionRouter)
+	var active []pluginpkg.Plugin
+	if !s.SafeMode {
+		activationPlan, err := ResolvePluginActivationPlan(cfg, discovered)
+		if err != nil {
+			return nil, err
+		}
+		active = activationPlan.Plugins
+	}
+	host, err := buildPluginHost(active, s.RootDir, s.WuuHome, s.StateDir, required, start, s.PluginSessionRouter)
 	if err != nil {
 		for _, root := range ownedRoots {
 			_ = os.RemoveAll(root)
@@ -186,6 +228,12 @@ func (s *Session) ActivatePluginGeneration(candidate *PluginGeneration, commit f
 		}
 	}
 	s.pluginGeneration = candidate
+	if err := candidate.host.Activate(context.Background()); err != nil {
+		providers.DebugLogf("activate committed plugin generation: %v", err)
+	}
+	if registry := candidate.host.ServiceRegistry(); registry != nil {
+		registry.Activate()
+	}
 	if err := old.close(); err != nil {
 		providers.DebugLogf("plugin generation cleanup: %v", err)
 	}
@@ -232,6 +280,7 @@ func (s *Session) applyPluginGeneration(generation *PluginGeneration) {
 			inner = previous.inner
 		}
 		s.StreamRunner.Tools = newPluginToolExecutor(inner, generation.host, "", s.RootDir)
+		s.StreamRunner.BeforeModelStep = pluginPreStepInjector(generation.host, s.ProviderName, s.Model, "", s.RootDir)
 		s.StreamRunner.BeforeRequest = pluginRequestInterceptorWithTransforms(generation.host, generation.requestTransforms, s.ProviderName, "", s.RootDir)
 		s.StreamRunner.CompactionRegistry = generation.compactions
 	}
@@ -268,6 +317,9 @@ func (g *PluginGeneration) close() error {
 	}
 	if g.host != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		if registry := g.host.ServiceRegistry(); registry != nil {
+			registry.Close(ctx)
+		}
 		err = errors.Join(err, g.host.Close(ctx))
 		cancel()
 		g.host = nil

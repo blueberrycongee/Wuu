@@ -138,7 +138,7 @@ func TestHostStopsAdvertisingToolsFromFailedClient(t *testing.T) {
 
 func TestProcessClientFailureClearsRuntimeRegistrations(t *testing.T) {
 	client := &ProcessClient{
-		status: Status{State: StateActive, Hooks: []Hook{HookToolExecuteBefore}},
+		status: Status{State: StateActive},
 		tools: []ToolRegistration{{
 			ID:          "lookup",
 			Description: "Look up data",
@@ -148,7 +148,7 @@ func TestProcessClientFailureClearsRuntimeRegistrations(t *testing.T) {
 	client.fail(errors.New("invalid response id"))
 
 	status := client.Status()
-	if status.State != StateFailed || status.Error != "invalid response id" || len(status.Hooks) != 0 {
+	if status.State != StateFailed || status.Error != "invalid response id" {
 		t.Fatalf("status = %+v", status)
 	}
 	if len(client.Tools()) != 0 {

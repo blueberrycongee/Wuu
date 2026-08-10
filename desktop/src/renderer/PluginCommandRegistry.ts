@@ -15,7 +15,8 @@ export type RegisteredPluginPromptCommand = {
   name: string;
   title: string;
   description: string;
-  template: string;
+  kind: "prompt_template" | "runtime_action";
+  template?: string;
   contexts: string[];
   aliases: string[];
   keywords: string[];
@@ -76,6 +77,7 @@ export function registerPluginPromptCommands(
   packages: readonly PluginCommandPackage[],
   reservedNames: ReadonlySet<string> = new Set(),
   activeContext?: string,
+  availableRuntimeCommands: ReadonlySet<string> = new Set(),
 ): PluginCommandRegistryResult {
   const commands: RegisteredPluginPromptCommand[] = [];
   const issues: PluginCommandRegistryIssue[] = [];
@@ -96,8 +98,9 @@ export function registerPluginPromptCommands(
         issues.push(registryIssue(source.pluginId, contribution.id, "inactive_package", "Plugin package is not active"));
         continue;
       }
-      if (contribution.kind !== "prompt_template") {
-        issues.push(registryIssue(source.pluginId, contribution.id, "unsupported", "Runtime plugin commands are not supported"));
+      if (contribution.kind === "runtime_action"
+        && !availableRuntimeCommands.has(`${source.pluginId}:${contribution.id}`)) {
+        issues.push(registryIssue(source.pluginId, contribution.id, "unsupported", "Runtime plugin command is not registered"));
         continue;
       }
       const contexts = uniqueStrings(contribution.contexts ?? []);
@@ -127,7 +130,8 @@ export function registerPluginPromptCommands(
         name: contribution.id,
         title: contribution.title.trim(),
         description: contribution.description?.trim() ?? "",
-        template: contribution.template!.trim(),
+        kind: contribution.kind,
+        template: contribution.template?.trim(),
         contexts,
         aliases,
         keywords: uniqueStrings(contribution.keywords ?? []),

@@ -343,16 +343,18 @@ func TestStreamRunner_EmitsPlanUpdateEventAfterUpdatePlan(t *testing.T) {
 					{
 						Type: providers.EventToolUseStart,
 						ToolCall: &providers.ToolCall{
-							ID:   "call-plan",
-							Name: "update_plan",
+							ID:      "call-plan",
+							Name:    "plugin_plan_update_plan_abc123",
+							Display: &providers.ToolCallDisplay{Kind: "plan", Text: "Updating plan", Capability: "plan"},
 						},
 					},
 					{
 						Type: providers.EventToolUseEnd,
 						ToolCall: &providers.ToolCall{
 							ID:        "call-plan",
-							Name:      "update_plan",
+							Name:      "plugin_plan_update_plan_abc123",
 							Arguments: `{"explanation":"start","plan":[{"step":"inspect","status":"completed"},{"step":"report","status":"in_progress"}]}`,
+							Display:   &providers.ToolCallDisplay{Kind: "plan", Text: "Updating plan", Capability: "plan"},
 						},
 					},
 					{Type: providers.EventDone},
@@ -367,7 +369,7 @@ func TestStreamRunner_EmitsPlanUpdateEventAfterUpdatePlan(t *testing.T) {
 		},
 	}
 	tools := &fakeLoopTools{
-		defs: []providers.ToolDefinition{{Name: "update_plan"}},
+		defs: []providers.ToolDefinition{{Name: "plugin_plan_update_plan_abc123"}},
 		results: map[string]string{
 			"call-plan": `{"status":"updated"}`,
 		},
@@ -2179,7 +2181,7 @@ func TestStreamRunnerRecoversSettledUnprojectedToolResult(t *testing.T) {
 }
 
 // TestStreamRunner_ResetConversationUsageReflectsCompaction verifies that an
-// out-of-loop history rewrite (e.g. the HelpMe joint compact) which calls
+// out-of-loop history rewrite (out-of-loop history replacement) which calls
 // ResetConversationUsage drops the cross-turn usage baseline to the compacted
 // size immediately, instead of carrying the inflated pre-compaction estimate
 // until the length heuristic in prepareUsageTracker happens to fire.
@@ -2202,7 +2204,7 @@ func TestStreamRunner_ResetConversationUsageReflectsCompaction(t *testing.T) {
 	}
 
 	// Out-of-loop compaction replaces history with a small joint summary.
-	compacted := []providers.ChatMessage{{Role: "user", Content: "bounded helpme summary"}}
+	compacted := []providers.ChatMessage{{Role: "user", Content: "bounded replacement summary"}}
 	r.ResetConversationUsage(compacted)
 
 	want := estimateMessages(compacted)
@@ -2228,7 +2230,7 @@ func TestStreamRunner_ResetConversationUsageReflectsCompaction(t *testing.T) {
 }
 
 // TestStreamRunner_ResetConversationUsageNilAndEmpty guards the edge cases the
-// helpme rewrite can hit: a runner that never recorded usage, and an empty
+// history rewrite can hit: a runner that never recorded usage, and an empty
 // compacted history.
 func TestStreamRunner_ResetConversationUsageNilAndEmpty(t *testing.T) {
 	r := &StreamRunner{}

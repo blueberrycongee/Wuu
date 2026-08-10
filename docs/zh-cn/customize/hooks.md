@@ -39,7 +39,7 @@ Hook 会在 Wuu 本机执行命令或调用模型，不是操作系统沙箱。�
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "run_shell",
+        "matcher": "bash",
         "type": "command",
         "command": "python3 ~/.wuu/hooks/check-shell.py",
         "timeout": 10
@@ -69,7 +69,7 @@ Hook 会在 Wuu 本机执行命令或调用模型，不是操作系统沙箱。�
 
 | 字段 | 含义 |
 | --- | --- |
-| `matcher` | 匹配工具名。不填或填 `*` 表示全部；其他值按工具名进行不区分大小写的精确匹配，不支持通配表达式 |
+| `matcher` | 匹配工具名。不填或填 `*` 表示全部；其他值按工具名做不区分大小写的精确匹配，不支持通配表达式 |
 | `type` | `command` 或 `prompt`；不填时使用 `command` |
 | `command` | `command` Hook 要执行的 shell 命令 |
 | `prompt` | `prompt` Hook 的判断要求；可以用 `$ARGUMENTS` 插入事件输入 JSON |
@@ -85,7 +85,7 @@ command Hook 通过 shell 启动。Wuu 把一个 JSON 对象写入命令的标�
 读取一个可选 JSON 对象。命令继承 Wuu 进程的环境，但不应依赖进程恰好从工作区启动；
 需要工作区路径时，从输入的 `cwd` 读取并显式切换目录。
 
-下面的脚本会阻止包含 `rm -rf` 的 `run_shell` 调用：
+下面的脚本会阻止包含 `rm -rf` 的 `bash` 调用：
 
 ```python
 #!/usr/bin/env python3
@@ -121,7 +121,7 @@ command Hook 会在标准输入收到以下结构。除了前三个公共字段�
   "hook_event_name": "PreToolUse",
   "session_id": "...",
   "cwd": "/path/to/workspace",
-  "tool_name": "run_shell",
+  "tool_name": "bash",
   "tool_input": {
     "command": "go test ./..."
   },
@@ -182,7 +182,7 @@ prompt Hook 把事件交给模型判断，适合难以用确定性脚本表达�
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "run_shell",
+        "matcher": "bash",
         "type": "prompt",
         "prompt": "判断下面的工具调用是否可能删除用户数据。只有确认安全时才允许：$ARGUMENTS",
         "timeout": 20

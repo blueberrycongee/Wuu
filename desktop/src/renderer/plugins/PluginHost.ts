@@ -1,8 +1,9 @@
 import type * as React from "react";
+import type { ExtensionIconDescriptor } from "../../shared/protocol";
 
 import type {
   CSSSnippet,
-  LayoutContribution,
+  InspectorSectionDefinition,
   PluginUIKit,
   PresentationMode,
   PresentationTarget,
@@ -11,12 +12,13 @@ import type {
   StatusItemDefinition,
   ThemeTokens,
   ToolActivityPresenterDefinition,
-  ViewPane,
   ViewPlacementContribution,
+  ViewPlacementRegion,
   ViewTypeDefinition,
 } from "../../shared/workbench";
 import { createPluginUIKit, VIEW_PLACEMENT_REGIONS } from "../../shared/workbench";
 import {
+  isPublicIconName,
   isPublicSyntaxTokenName,
   isPublicThemeTokenName,
 } from "../../shared/themeContract.generated";
@@ -30,25 +32,13 @@ export const PLUGIN_SLOT_IDS = [
   "conversation.message.after",
   "composer.above",
   "composer.toolbar",
-  "settings.plugin",
 ] as const;
 
 export type PluginSlotId = (typeof PLUGIN_SLOT_IDS)[number];
 
 export const PLUGIN_SURFACE_IDS = [
-  "app.shell",
-  "app.sidebar",
-  "app.main",
-  "app.auxiliary",
-  "app.status",
-  "view.launch",
-  "view.conversation",
-  "view.workspace",
-  "view.catalog",
-  "view.settings",
   "conversation.timeline",
   "conversation.message",
-  "conversation.composer",
 ] as const;
 
 export type PluginSurfaceId = (typeof PLUGIN_SURFACE_IDS)[number];
@@ -88,7 +78,7 @@ export interface PluginViewEntryDeclaration {
   readonly view: string;
   readonly title: string;
   readonly description?: string;
-  readonly icon?: string;
+  readonly icon?: ExtensionIconDescriptor;
   readonly order?: number;
 }
 
@@ -102,6 +92,27 @@ export interface PluginCommandRegistration {
   title: string;
   order?: number;
   execute(input?: unknown): unknown | Promise<unknown>;
+}
+
+export interface ConversationCardRenderProps {
+  readonly id: string;
+  readonly threadId: string;
+  readonly state: unknown;
+  dismiss(): void;
+}
+
+export interface ConversationCardRegistration {
+  id?: string;
+  threadId?: string;
+  title: string;
+  state?: unknown;
+  render(props: ConversationCardRenderProps): React.ReactNode;
+}
+
+export interface ConversationCardHandle extends Disposable {
+  readonly id: string;
+  update(state: unknown): void;
+  dismiss(): void;
 }
 
 export interface PluginStyleRegistration {
@@ -129,18 +140,20 @@ export interface PluginGenerationApi {
   registerSlot(slotId: PluginSlotId, contribution: PluginSlotRegistration): Disposable;
   registerSurface(surfaceId: PluginSurfaceId, contribution: PluginSurfaceRegistration): Disposable;
   registerCommand(command: PluginCommandRegistration): Disposable;
+  /** Show a session-local card at the bottom of a conversation. */
+  showConversationCard(card: ConversationCardRegistration): ConversationCardHandle;
   registerStyle(style: PluginStyleRegistration): Disposable;
   registerLocale(locale: PluginLocaleRegistration): Disposable;
   registerCleanup(cleanup: () => void): Disposable;
 
   // Phase C — Workbench API
 
-  /** Register a view type that the host can open in any pane. */
+  /** Register a view type that the host can open in a semantic region. */
   registerViewType(definition: ViewTypeDefinition): Disposable;
   /** Request a default View placement in a stable host-owned region. */
   registerViewPlacement(contribution: ViewPlacementContribution): Disposable;
-  /** @deprecated Use registerViewPlacement. */
-  registerLayoutContribution(contribution: LayoutContribution): Disposable;
+  /** Register a short, context-driven summary in the host-owned Inspector. */
+  registerInspectorSection(definition: InspectorSectionDefinition): Disposable;
   /** Register a custom content renderer (message, tool result, document, file). */
   registerRenderer(definition: RendererDefinition): Disposable;
   /** Apply theme token overrides for a specific theme. */
@@ -163,6 +176,7 @@ export interface ActivatePluginGenerationOptions {
 export interface RegisteredPluginSlotContribution extends PluginSlotRegistration {
   readonly pluginId: string;
   readonly generation: string;
+  readonly title?: string;
 }
 
 export interface RegisteredPluginSurfaceContribution extends PluginSurfaceRegistration {
@@ -175,7 +189,25 @@ export interface RegisteredPluginCommand extends PluginCommandRegistration {
   readonly generation: string;
 }
 
+export interface RegisteredConversationCard {
+  readonly id: string;
+  readonly pluginId: string;
+  readonly generation: string;
+  readonly threadId: string;
+  readonly title: string;
+  readonly state: unknown;
+  readonly order: number;
+  readonly render: ConversationCardRegistration["render"];
+  readonly dismiss: () => void;
+}
+
 export interface RegisteredViewType extends ViewTypeDefinition {
+  readonly pluginId: string;
+  readonly generation: string;
+  readonly order: number;
+}
+
+export interface RegisteredInspectorSection extends InspectorSectionDefinition {
   readonly pluginId: string;
   readonly generation: string;
   readonly order: number;
@@ -187,8 +219,7 @@ export interface RegisteredViewPlacement {
   readonly order: number;
   readonly id: string;
   readonly view: string;
-  readonly pane: ViewPane;
-  readonly legacy: boolean;
+  readonly region: ViewPlacementRegion;
 }
 
 export interface RegisteredRenderer extends RendererDefinition {
@@ -274,6 +305,7 @@ interface OrderedRecord {
 
 interface SlotRecord extends OrderedRecord {
   readonly slotId: PluginSlotId;
+  readonly title?: string;
   readonly render: PluginSlotRegistration["render"];
 }
 
@@ -287,6 +319,14 @@ interface SurfaceRecord extends OrderedRecord {
 interface CommandRecord extends OrderedRecord {
   readonly title: string;
   readonly execute: PluginCommandRegistration["execute"];
+}
+
+interface ConversationCardRecord extends OrderedRecord {
+  readonly threadId: string;
+  readonly title: string;
+  state: unknown;
+  readonly render: ConversationCardRegistration["render"];
+  readonly dismiss: () => void;
 }
 
 interface StyleRecord extends OrderedRecord {
@@ -307,8 +347,12 @@ interface ViewTypeRecord extends OrderedRecord {
 
 interface ViewPlacementRecord extends OrderedRecord {
   readonly view: string;
-  readonly pane: ViewPane;
-  readonly legacy: boolean;
+  readonly region: ViewPlacementRegion;
+}
+
+interface InspectorSectionRecord extends OrderedRecord {
+  readonly title: string;
+  readonly render: InspectorSectionDefinition["render"];
 }
 
 interface RendererRecord extends OrderedRecord {
@@ -344,11 +388,13 @@ interface GenerationState {
   readonly slots: SlotRecord[];
   readonly surfaces: SurfaceRecord[];
   readonly commands: CommandRecord[];
+  readonly conversationCards: ConversationCardRecord[];
   readonly styles: StyleRecord[];
   readonly locales: LocaleRecord[];
   // Phase C — Workbench
   readonly views: ViewTypeRecord[];
   readonly viewPlacements: ViewPlacementRecord[];
+  readonly inspectorSections: InspectorSectionRecord[];
   readonly renderers: RendererRecord[];
   readonly themeTokens: ThemeTokenRecord[];
   readonly cssSnippets: CSSSnippetRecord[];
@@ -370,8 +416,10 @@ interface PendingActivation {
 const EMPTY_SLOT_SNAPSHOT: readonly RegisteredPluginSlotContribution[] = Object.freeze([]);
 const EMPTY_SURFACE_SNAPSHOT: readonly RegisteredPluginSurfaceContribution[] = Object.freeze([]);
 const EMPTY_COMMAND_SNAPSHOT: readonly RegisteredPluginCommand[] = Object.freeze([]);
+const EMPTY_CONVERSATION_CARD_SNAPSHOT: readonly RegisteredConversationCard[] = Object.freeze([]);
 const EMPTY_VIEW_SNAPSHOT: readonly RegisteredViewType[] = Object.freeze([]);
 const EMPTY_VIEW_PLACEMENT_SNAPSHOT: readonly RegisteredViewPlacement[] = Object.freeze([]);
+const EMPTY_INSPECTOR_SECTION_SNAPSHOT: readonly RegisteredInspectorSection[] = Object.freeze([]);
 const EMPTY_VIEW_ENTRY_SNAPSHOT: readonly RegisteredPluginViewEntry[] = Object.freeze([]);
 const EMPTY_RENDERER_SNAPSHOT: readonly RegisteredRenderer[] = Object.freeze([]);
 const EMPTY_THEME_TOKEN_SNAPSHOT: readonly RegisteredThemeTokens[] = Object.freeze([]);
@@ -411,8 +459,13 @@ export class PluginHost {
   private conflictPreferences: Readonly<Record<string, string>> = Object.freeze({});
   private conflictSnapshot: readonly PluginContributionConflict[] = Object.freeze([]);
   private commandSnapshot: readonly RegisteredPluginCommand[] = EMPTY_COMMAND_SNAPSHOT;
+  private conversationCardSnapshot: readonly RegisteredConversationCard[] = EMPTY_CONVERSATION_CARD_SNAPSHOT;
+  private readonly conversationCardListeners = new Set<() => void>();
+  private activeConversationThreadId?: string;
+  private nextConversationCardSequence = 1;
   private viewSnapshot: readonly RegisteredViewType[] = EMPTY_VIEW_SNAPSHOT;
   private viewPlacementSnapshot: readonly RegisteredViewPlacement[] = EMPTY_VIEW_PLACEMENT_SNAPSHOT;
+  private inspectorSectionSnapshot: readonly RegisteredInspectorSection[] = EMPTY_INSPECTOR_SECTION_SNAPSHOT;
   private navigationSnapshot: readonly RegisteredPluginViewEntry[] = EMPTY_VIEW_ENTRY_SNAPSHOT;
   private workspaceToolSnapshot: readonly RegisteredPluginViewEntry[] = EMPTY_VIEW_ENTRY_SNAPSHOT;
   private settingsPageSnapshot: readonly RegisteredPluginViewEntry[] = EMPTY_VIEW_ENTRY_SNAPSHOT;
@@ -547,12 +600,29 @@ export class PluginHost {
     return this.commandSnapshot;
   }
 
+  setActiveConversationThread(threadId?: string): void {
+    this.activeConversationThreadId = threadId?.trim() || undefined;
+  }
+
+  getConversationCards(): readonly RegisteredConversationCard[] {
+    return this.conversationCardSnapshot;
+  }
+
+  subscribeConversationCards(listener: () => void): () => void {
+    this.conversationCardListeners.add(listener);
+    return () => this.conversationCardListeners.delete(listener);
+  }
+
   getViewTypes(): readonly RegisteredViewType[] {
     return this.viewSnapshot;
   }
 
   getViewPlacements(): readonly RegisteredViewPlacement[] {
     return this.viewPlacementSnapshot;
+  }
+
+  getInspectorSections(): readonly RegisteredInspectorSection[] {
+    return this.inspectorSectionSnapshot;
   }
 
   getNavigationEntries(): readonly RegisteredPluginViewEntry[] {
@@ -663,6 +733,28 @@ export class PluginHost {
     });
   }
 
+  recordConversationCardFailure(card: RegisteredConversationCard, error: unknown): void {
+    this.addDiagnostic({
+      pluginId: card.pluginId,
+      generation: card.generation,
+      kind: "render",
+      message: `Plugin conversation card ${card.id} failed to render: ${errorMessage(error)}`,
+      cause: error,
+      contributionId: card.id,
+    });
+  }
+
+  recordInspectorFailure(contribution: RegisteredInspectorSection, error: unknown): void {
+    this.addDiagnostic({
+      pluginId: contribution.pluginId,
+      generation: contribution.generation,
+      kind: "render",
+      message: `Plugin Inspector section ${contribution.id} failed to render: ${errorMessage(error)}`,
+      cause: error,
+      contributionId: contribution.id,
+    });
+  }
+
   publishHostEvent(event: unknown): void {
     for (const state of this.activeGenerations.values()) {
       for (const handler of state.hostEventHandlers) {
@@ -686,9 +778,8 @@ export class PluginHost {
       contribution: {
         id: string;
         view: string;
-        pane: ViewPane;
+        region: ViewPlacementRegion;
         priority?: number;
-        legacy: boolean;
       },
     ): Disposable => {
       this.assertAccepting(state);
@@ -699,11 +790,8 @@ export class PluginHost {
         id,
         order: normalizeOrder(contribution.priority),
         removed: false,
-        view: contribution.legacy
-          ? contribution.view.trim()
-          : requireNonEmpty(contribution.view, "view placement view id"),
-        pane: contribution.pane,
-        legacy: contribution.legacy,
+        view: requireNonEmpty(contribution.view, "view placement view id"),
+        region: contribution.region,
       };
       state.viewPlacements.push(record);
       return this.ownRecord(state, record);
@@ -746,6 +834,7 @@ export class PluginHost {
           id,
           order,
           slotId,
+          title: declaredContributionTitle(state, "slot", id),
           render: contribution.render,
           removed: false,
         };
@@ -786,6 +875,61 @@ export class PluginHost {
         };
         state.commands.push(record);
         return this.ownRecord(state, record);
+      },
+      showConversationCard: (card: ConversationCardRegistration): ConversationCardHandle => {
+        this.assertUsable(state);
+        const threadId = card.threadId?.trim() || this.activeConversationThreadId;
+        if (!threadId) {
+          throw new Error("Plugin conversation card requires an active or explicit thread id");
+        }
+        const localId = card.id?.trim() || `card-${this.nextConversationCardSequence}`;
+        if (state.conversationCards.some((record) => !record.removed && record.id === localId)) {
+          throw new Error(`Duplicate plugin conversation card id: ${localId}`);
+        }
+        if (typeof card.render !== "function") {
+          throw new Error("Plugin conversation card render must be a function");
+        }
+        const sequence = this.nextConversationCardSequence++;
+        let cleanupDisposable: Disposable | undefined;
+        const dismiss = (): void => {
+          if (record.removed) return;
+          record.removed = true;
+          const cardIndex = state.conversationCards.indexOf(record);
+          if (cardIndex >= 0) state.conversationCards.splice(cardIndex, 1);
+          if (cleanupDisposable) {
+            const teardownIndex = state.teardown.indexOf(cleanupDisposable);
+            if (teardownIndex >= 0) state.teardown.splice(teardownIndex, 1);
+          }
+          this.refreshConversationCards();
+        };
+        const record: ConversationCardRecord = {
+          pluginId: state.pluginId,
+          generation: state.generation,
+          id: localId,
+          order: sequence,
+          threadId,
+          title: requireNonEmpty(card.title, "conversation card title"),
+          state: card.state,
+          render: card.render,
+          dismiss,
+          removed: false,
+        };
+        state.conversationCards.push(record);
+        const handle: ConversationCardHandle = Object.freeze({
+          id: localId,
+          update: (nextState: unknown) => {
+            this.assertUsable(state);
+            if (record.removed) throw new Error(`Plugin conversation card is no longer active: ${localId}`);
+            record.state = nextState;
+            this.refreshConversationCards();
+          },
+          dismiss,
+          dispose: dismiss,
+        });
+        cleanupDisposable = createDisposable(dismiss);
+        state.teardown.push(cleanupDisposable);
+        if (state.active) this.refreshConversationCards();
+        return handle;
       },
       registerStyle: (style: PluginStyleRegistration) => {
         this.assertAccepting(state);
@@ -839,6 +983,7 @@ export class PluginHost {
       registerViewType: (definition: ViewTypeDefinition) => {
         this.assertAccepting(state);
         const id = this.claimRegistrationId(state, "view", definition.id);
+        validatePublicIcon(definition.icon, `Plugin view ${id}`);
         const record: ViewTypeRecord = {
           pluginId: state.pluginId, generation: state.generation, id,
           order: 0, removed: false, definition: { ...definition, id },
@@ -852,21 +997,25 @@ export class PluginHost {
         return registerViewPlacement({
           id: contribution.id,
           view: contribution.view,
-          pane: region,
+          region,
           priority: contribution.priority,
-          legacy: false,
         });
       },
 
-      registerLayoutContribution: (contribution: LayoutContribution) => {
-        return registerViewPlacement({
-          id: contribution.id,
-          view: typeof contribution.defaultView === "string"
-            ? contribution.defaultView
-            : "",
-          pane: normalizeViewPane(contribution.pane),
-          legacy: true,
-        });
+      registerInspectorSection: (definition: InspectorSectionDefinition) => {
+        this.assertAccepting(state);
+        const id = this.claimRegistrationId(state, "inspector-section", definition.id);
+        const record: InspectorSectionRecord = {
+          pluginId: state.pluginId,
+          generation: state.generation,
+          id,
+          order: normalizeOrder(definition.priority),
+          removed: false,
+          title: requireNonEmpty(definition.title, "Inspector section title"),
+          render: definition.render,
+        };
+        state.inspectorSections.push(record);
+        return this.ownRecord(state, record);
       },
 
       registerRenderer: (definition: RendererDefinition) => {
@@ -1079,7 +1228,7 @@ export class PluginHost {
 
   private assertViewPlacementTargets(state: GenerationState): void {
     for (const placement of state.viewPlacements) {
-      if (placement.removed || placement.legacy) continue;
+      if (placement.removed) continue;
       if (!state.views.some((view) => !view.removed && view.id === placement.view)) {
         throw new Error(
           `Plugin View placement ${placement.id} references an unregistered View: ${placement.view}`,
@@ -1123,6 +1272,7 @@ export class PluginHost {
     const styles: StyleRecord[] = [];
     const views: ViewTypeRecord[] = [];
     const viewPlacements: ViewPlacementRecord[] = [];
+    const inspectorSections: InspectorSectionRecord[] = [];
     const renderers: RendererRecord[] = [];
     const themeTokens: ThemeTokenRecord[] = [];
     const cssSnippets: CSSSnippetRecord[] = [];
@@ -1152,6 +1302,7 @@ export class PluginHost {
       styles.push(...state.styles.filter((record) => !record.removed));
       views.push(...state.views.filter((record) => !record.removed));
       viewPlacements.push(...state.viewPlacements.filter((record) => !record.removed));
+      inspectorSections.push(...state.inspectorSections.filter((record) => !record.removed));
       renderers.push(...state.renderers.filter((record) => !record.removed));
       themeTokens.push(...state.themeTokens.filter((record) => !record.removed));
       cssSnippets.push(...state.cssSnippets.filter((record) => !record.removed));
@@ -1218,6 +1369,14 @@ export class PluginHost {
     );
     if (!sameContributions(this.viewPlacementSnapshot, nextViewPlacements)) {
       this.viewPlacementSnapshot = nextViewPlacements;
+      changed = true;
+    }
+
+    const nextInspectorSections = Object.freeze(
+      inspectorSections.sort(compareOrdered).map(toPublicInspectorSection),
+    );
+    if (!sameContributions(this.inspectorSectionSnapshot, nextInspectorSections)) {
+      this.inspectorSectionSnapshot = nextInspectorSections;
       changed = true;
     }
 
@@ -1300,6 +1459,26 @@ export class PluginHost {
     if (changed) {
       this.notifyListeners();
     }
+    this.refreshConversationCards();
+  }
+
+  private refreshConversationCards(): void {
+    const next = Object.freeze([...this.activeGenerations.values()]
+      .flatMap((state) => state.conversationCards.filter((record) => !record.removed))
+      .sort(compareOrdered)
+      .map((record): RegisteredConversationCard => Object.freeze({
+        id: record.id,
+        pluginId: record.pluginId,
+        generation: record.generation,
+        threadId: record.threadId,
+        title: record.title,
+        state: record.state,
+        order: record.order,
+        render: record.render,
+        dismiss: record.dismiss,
+      })));
+    this.conversationCardSnapshot = next;
+    for (const listener of this.conversationCardListeners) listener();
   }
 
   private refreshLocales(records: LocaleRecord[]): boolean {
@@ -1414,10 +1593,12 @@ function createGenerationState(
     slots: [],
     surfaces: [],
     commands: [],
+    conversationCards: [],
     styles: [],
     locales: [],
     views: [],
     viewPlacements: [],
+    inspectorSections: [],
     renderers: [],
     themeTokens: [],
     cssSnippets: [],
@@ -1438,6 +1619,7 @@ function toPublicSlotContribution(record: SlotRecord): RegisteredPluginSlotContr
     generation: record.generation,
     id: record.id,
     order: record.order,
+    title: record.title,
     render: record.render,
   });
 }
@@ -1481,8 +1663,19 @@ function toPublicViewPlacement(record: ViewPlacementRecord): RegisteredViewPlace
     id: record.id,
     order: record.order,
     view: record.view,
-    pane: record.pane,
-    legacy: record.legacy,
+    region: record.region,
+  });
+}
+
+function toPublicInspectorSection(record: InspectorSectionRecord): RegisteredInspectorSection {
+  return Object.freeze({
+    pluginId: record.pluginId,
+    generation: record.generation,
+    id: record.id,
+    title: record.title,
+    priority: record.order,
+    order: record.order,
+    render: record.render,
   });
 }
 
@@ -1536,12 +1729,14 @@ function toPublicPresenter(record: PresenterRecord): RegisteredPresenter {
 
 function declaredContributionTitle(
   state: GenerationState,
-  kind: "surface" | "presenter",
+  kind: "slot" | "surface" | "presenter",
   id: string,
 ): string | undefined {
-  const declarations = kind === "surface"
-    ? state.declaredContributions?.surfaces
-    : state.declaredContributions?.presenters;
+  const declarations = kind === "slot"
+    ? state.declaredContributions?.slots
+    : kind === "surface"
+      ? state.declaredContributions?.surfaces
+      : state.declaredContributions?.presenters;
   return declarations?.find((declaration) => declaration.id === id)?.title;
 }
 
@@ -1654,14 +1849,6 @@ function normalizeViewPlacementRegion(region: unknown): ViewPlacementContributio
   return region as ViewPlacementContribution["region"];
 }
 
-function normalizeViewPane(pane: unknown): ViewPane {
-  if (pane !== "main" && pane !== "sidebar" && pane !== "auxiliary"
-    && pane !== "overlay" && pane !== "tab" && pane !== "pane") {
-    throw new Error(`Unsupported legacy plugin View pane: ${String(pane)}`);
-  }
-  return pane;
-}
-
 function normalizeSurfaceMode(mode: PluginSurfaceMode): PluginSurfaceMode {
   if (mode !== "replace" && mode !== "wrap") {
     throw new Error(`Unsupported plugin surface mode: ${String(mode)}`);
@@ -1690,6 +1877,12 @@ function requireExactNonEmpty(value: string, label: string): string {
     throw new Error(`Plugin ${label} must not be empty`);
   }
   return value;
+}
+
+function validatePublicIcon(icon: string | undefined, label: string): void {
+  if (icon !== undefined && !isPublicIconName(icon)) {
+    throw new Error(`${label} uses unsupported icon: ${icon}`);
+  }
 }
 
 function validateThemeTokens(contribution: ThemeTokens): void {

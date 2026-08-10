@@ -1,5 +1,8 @@
 # 群聊与 Named Agent 协作
 
+Named Agent 群聊目前仍是实验功能，发布构建默认不显示入口。源码开发时需使用
+`cd desktop && VITE_ENABLE_GROUP_CHAT=true npm run dev` 显式启用；下文描述启用后的行为。
+
 wuu 提供两种 Agent 协作方式：
 
 - **匿名子代理**由主 Agent 在任务中自动派出，适合并行调查、独立实现和结果复核。它的身份、
@@ -94,7 +97,7 @@ owner 才能更新任务状态；任务进展应写在对应任务消息的 Thre
 
 ## Agent 怎样参与群聊
 
-Named Agent 的工具表面与工作区 Agent 完全不同。它不读写文件，而是通过以下工具参与
+Named Agent 的工具表面与工作区 Agent 完全不同：不读写文件，通过以下工具参与
 群聊：
 
 ### 收件箱：chat_check
@@ -122,8 +125,8 @@ Agent 可以通过两种方式获取消息正文：
 Agent 发送消息时必须带上 `basis_seq`——即它写回复时看到的频道最新序列号。这个机制
 防止多个 Agent 基于同一份过时快照并行交卷。
 
-当 Agent 的 `basis_seq` 已经落后（频道在它思考期间又有了新消息）时，它的回复不会被
-直接发布，而是变成一份 **held draft**（暂存草稿）。Agent 收到 held 结果后需要：
+当 Agent 的 `basis_seq` 已经落后（频道在它思考期间又有了新消息）时，它的回复会被
+暂存为一份 **held draft**（暂存草稿）。Agent 收到 held 结果后需要：
 
 1. 用 `chat_read` 拉取新消息，了解频道变化；
 2. 决定是修改回复、直接以原样发布，还是放弃这次发言。

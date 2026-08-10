@@ -108,12 +108,6 @@ type SessionTab =
     }
   | {
       id: string;
-      kind: "automations";
-      context: RuntimeContext;
-      title: string;
-    }
-  | {
-      id: string;
       kind: "channel-room";
       context: RuntimeContext;
       roomID: string;
@@ -622,11 +616,19 @@ function reduceNotification(
       const updatesVisibleThread =
         state.thread?.id === thread.id ||
         state.secondaryThread?.id === thread.id;
+      // Auto-activation only ever brings a normal user conversation into the
+      // now-empty pane. A read-only subtask session (subagent child) is opened
+      // on purpose from the sidebar / agent row — it must never hijack the
+      // pane the user is looking at. When a new thread does take over the
+      // pane, re-derive the composer running state from that thread instead of
+      // inheriting a global flag another session may have set.
+      const autoActivateNewThread =
+        state.allowThreadAutoActivation &&
+        !state.thread &&
+        !knownThread &&
+        !thread.read_only;
       const activateThread =
-        state.thread?.id === thread.id ||
-        (state.allowThreadAutoActivation &&
-          !state.thread &&
-          !knownThread);
+        state.thread?.id === thread.id || autoActivateNewThread;
       return {
         ...state,
         thread: activateThread ? mergedThread : state.thread,
@@ -639,6 +641,9 @@ function reduceNotification(
           : state.allowThreadAutoActivation,
         threads: upsertThread(state.threads, mergedThread),
         status: activateThread || updatesVisibleThread ? "ready" : state.status,
+        running: autoActivateNewThread
+          ? isThreadRunning(mergedThread)
+          : state.running,
       };
     }
     case "thread/updated": {
@@ -687,15 +692,7 @@ function reduceNotification(
       const next = updateThreadByID(state, threadID, (thread) =>
         upsertTurnItem(thread, turnID, item),
       );
-      if (notification.method !== "item/completed") {
-        return next;
-      }
-      const spawned = runningAgentFromSpawnResult(threadID, item);
-      return spawned
-        ? updateThreadByID(next, threadID, (thread) =>
-            upsertThreadChildAgent(thread, spawned),
-          )
-        : next;
+      return next;
     }
     case "item/agentMessage/delta":
       return applyDelta(state, params, "text");
@@ -719,15 +716,18 @@ function reduceNotification(
           : state;
       }
       releaseSettledTurnStreams(turn);
+      // running/status describe the pane the user is looking at. A background
+      // session (another tab, or a subagent child) finishing its turn must not
+      // clear the active thread's live running indicator or overwrite its
+      // status text, so only scope the patch when the turn belongs to the
+      // active thread.
+      const threadIsActive = threadID === activeThreadIDForState(state);
       return clearTurnStreamStatus(
         updateThreadByID(
           state,
           threadID,
           (thread) => upsertTurn(thread, turn),
-          {
-            running: false,
-            status: "ready",
-          },
+          threadIsActive ? { running: false, status: "ready" } : {},
         ),
         turn.id,
         { clearTransport: true },
@@ -1472,11 +1472,7 @@ function sortThreads(threads: Thread[]): Thread[] {
   // Archived threads stay in the list so the Settings → Archive page can show
   // them; sidebar surfaces must filter them out themselves.
   const valid = threads.filter((thread): thread is Thread => isThread(thread));
-  const running = valid.filter(isThreadRunning);
-  const settled = valid.filter((thread) => !isThreadRunning(thread));
-  running.sort((left, right) => threadCreatedTime(right) - threadCreatedTime(left));
-  settled.sort((left, right) => threadTime(right) - threadTime(left));
-  return [...running, ...settled];
+  return sortThreadCandidates(valid);
 }
 
 function summarizeAgentForSidebar(agent: Agent): Agent {
@@ -1550,8 +1546,7 @@ function sortThreadSummaries(threads: ThreadSummary[]): ThreadSummary[] {
       !thread.archived &&
       !thread.read_only &&
       // The sidebar lists root sessions of a project. A thread whose
-      // parent_id is set is a subagent (a worker spawned by another
-      // thread) — including ultra-mode siblings of the root. Those live
+      // parent_id is set is a host-managed worker. Those live
       // under the parent thread's info panel ("子任务"), not in the
       // sidebar navigation list, regardless of pin state.
       !thread.parent_id &&
@@ -1560,11 +1555,38 @@ function sortThreadSummaries(threads: ThreadSummary[]): ThreadSummary[] {
       // records out of the root-session rail as well.
       !thread.agent_path,
   );
-  const running = valid.filter(isThreadRunning);
-  const settled = valid.filter((thread) => !isThreadRunning(thread));
-  running.sort((left, right) => threadCreatedTime(right) - threadCreatedTime(left));
-  settled.sort((left, right) => threadTime(right) - threadTime(left));
-  return [...running, ...settled];
+  return sortThreadCandidates(valid);
+}
+
+type ThreadSortCandidate = ThreadRunningCandidate &
+  Pick<Thread, "created_at" | "updated_at">;
+
+type ThreadSortEntry<T extends ThreadSortCandidate> = {
+  thread: T;
+  time: number;
+};
+
+function sortThreadCandidates<T extends ThreadSortCandidate>(threads: T[]): T[] {
+  const running: ThreadSortEntry<T>[] = [];
+  const settled: ThreadSortEntry<T>[] = [];
+  for (const thread of threads) {
+    const threadRunning = isThreadRunning(thread);
+    const entry = {
+      thread,
+      time: threadRunning
+        ? threadCreatedTime(thread)
+        : threadTime(thread),
+    };
+    (threadRunning ? running : settled).push(entry);
+  }
+  const byNewest = (left: ThreadSortEntry<T>, right: ThreadSortEntry<T>) =>
+    right.time - left.time;
+  running.sort(byNewest);
+  settled.sort(byNewest);
+  return [
+    ...running.map((entry) => entry.thread),
+    ...settled.map((entry) => entry.thread),
+  ];
 }
 
 function threadCreatedTime(thread: Pick<Thread, "created_at" | "updated_at">): number {
@@ -1866,15 +1888,6 @@ function createSkillsSessionTab(context: RuntimeContext): SessionTab {
     kind: "skills",
     context,
     title: "skills",
-  };
-}
-
-function createAutomationsSessionTab(context: RuntimeContext): SessionTab {
-  return {
-    id: `automations:${runtimeContextKey(context)}`,
-    kind: "automations",
-    context,
-    title: "automations",
   };
 }
 
@@ -2303,9 +2316,6 @@ function sessionTabLabel(tab: SessionTab, state: AppState): string {
   if (tab.kind === "skills") {
     return t("skills.title");
   }
-  if (tab.kind === "automations") {
-    return t("automations.title");
-  }
   if (tab.kind === "agents") {
     return t("channels.agents");
   }
@@ -2382,9 +2392,7 @@ function queryTextForUserItem(item: ThreadItem): string | undefined {
   if (item.type !== "user_message") {
     return undefined;
   }
-  // Gate first on the item-level signal so corrupted payload text
-  // (combined envelopes with \n\n joins, <changed_file_overlap> tails)
-  // never reaches the text trim/return path.
+  // Process notifications are internal runtime events, not query bubbles.
   if (isInternalUserNotificationItem(item)) {
     return undefined;
   }
@@ -2409,7 +2417,7 @@ function latestPlanUpdateForThread(
     const turn = thread.turns[turnIndex];
     for (let itemIndex = turn.items.length - 1; itemIndex >= 0; itemIndex--) {
       const item = turn.items[itemIndex];
-      if (item.name !== "update_plan" || !item.arguments) {
+      if (item.display?.capability !== "plan" || !item.arguments) {
         continue;
       }
       const update = parsePlanUpdateArguments(item.arguments);
@@ -2925,34 +2933,6 @@ function isDirectChildAgent(threadID: string, agent: Agent): boolean {
   return agentPathDepth(agent.agent_path) === 2;
 }
 
-function runningAgentFromSpawnResult(
-  threadID: string | undefined,
-  item: ThreadItem,
-): Agent | undefined {
-  if (!threadID || item.name !== "spawn_agent" || !item.result) {
-    return undefined;
-  }
-  try {
-    const result = JSON.parse(item.result) as Record<string, unknown>;
-    const id = typeof result.agent_id === "string" ? result.agent_id.trim() : "";
-    const status = typeof result.status === "string" ? result.status.trim() : "";
-    if (!id || !agentRunning({ status })) {
-      return undefined;
-    }
-    return {
-      id,
-      status,
-      parent_id: threadID,
-      task_name:
-        typeof result.task_name === "string" ? result.task_name : undefined,
-      agent_path:
-        typeof result.agent_path === "string" ? result.agent_path : undefined,
-    };
-  } catch {
-    return undefined;
-  }
-}
-
 function agentPathDepth(path: string | undefined): number {
   const trimmed = path?.trim().replace(/^\/+|\/+$/g, "") ?? "";
   return trimmed ? trimmed.split("/").length : 0;
@@ -3361,7 +3341,6 @@ export {
   conversationSearchThreadMeta,
   channelRoomSessionTabID,
   createAgentsSessionTab,
-  createAutomationsSessionTab,
   createChannelRoomSessionTab,
   createDraftSessionTab,
   createSkillsSessionTab,

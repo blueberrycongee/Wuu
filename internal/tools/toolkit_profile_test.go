@@ -106,7 +106,6 @@ func TestActiveProfileKeepsCoreLowFrequencyToolsDeferred(t *testing.T) {
 	}
 
 	for _, name := range []string{
-		"session_memory",
 		"thread_get",
 	} {
 		if containsProfileDef(defs, name) {
@@ -487,11 +486,11 @@ func TestActiveProfileDefinitionsRespectExplicitDisables(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 	kit.SetActiveProfile(modelprofile.Resolve("openai", "gpt-5-codex"), true)
-	kit.DisableTools("spawn_agent")
+	kit.DisableTools("bash")
 
 	defs := kit.Definitions()
-	if containsProfileDef(defs, "spawn_agent") {
-		t.Fatalf("explicitly disabled spawn_agent leaked into active surface: %v", sortedProfileDefNames(defs))
+	if containsProfileDef(defs, "bash") {
+		t.Fatalf("explicitly disabled bash leaked into active surface: %v", sortedProfileDefNames(defs))
 	}
 	if !containsProfileDef(defs, "apply_patch") {
 		t.Fatalf("unrelated surface tool apply_patch should remain visible: %v", sortedProfileDefNames(defs))
@@ -510,283 +509,6 @@ func TestActiveProfileBlocksHiddenToolExecution(t *testing.T) {
 		t.Fatalf("hidden run_shell should be blocked by active surface, got %v", err)
 	}
 }
-
-/* Removed with the first-party delegation plugin extraction.
-func TestActiveProfileExposesSpawnAgentAndDefersManagementTools(t *testing.T) {
-	kit, err := New(t.TempDir())
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-	kit.SetHelpMeEnabled(true)
-	kit.SetActiveProfile(modelprofile.Resolve("openai", "gpt-5-codex"), true)
-	registered := kit.registry.All()
-	registered = append(registered, &stubTool{
-		name: "mcp_docs_search",
-		def: providers.ToolDefinition{
-			Name:        "mcp_docs_search",
-			Description: "Search docs through MCP",
-			InputSchema: map[string]any{
-				"type": "object",
-			},
-		},
-	})
-	kit.registry = NewRegistry(registered...)
-	kit.markDeferredToolsLoaded("mcp_docs_search")
-
-	defs := kit.Definitions()
-	if !containsProfileDef(defs, "mcp_docs_search") {
-		t.Fatalf("loaded MCP tool should be visible before subagent management activates, got %v", sortedProfileDefNames(defs))
-	}
-	if !containsProfileDef(defs, "spawn_agent") {
-		t.Fatalf("spawn_agent should be visible by default, got %v", sortedProfileDefNames(defs))
-	}
-	if !containsProfileDef(defs, "helpme") {
-		t.Fatalf("helpme should be visible by default, got %v", sortedProfileDefNames(defs))
-	}
-	if info, ok := kit.ToolInfo("spawn_agent"); !ok {
-		t.Fatalf("ToolInfo(%q) not found", "spawn_agent")
-	} else if info.Exposure != ToolExposureDirect {
-		t.Fatalf("spawn_agent exposure = %s, want %s", info.Exposure, ToolExposureDirect)
-	}
-	if info, ok := kit.ToolInfo("helpme"); !ok {
-		t.Fatalf("ToolInfo(%q) not found", "helpme")
-	} else if info.Exposure != ToolExposureDirect {
-		t.Fatalf("helpme exposure = %s, want %s", info.Exposure, ToolExposureDirect)
-	}
-	_, err = kit.Execute(context.Background(), providers.ToolCall{Name: "spawn_agent", Arguments: `{}`})
-	if err == nil || strings.Contains(err.Error(), "deferred") || strings.Contains(err.Error(), "active model surface") {
-		t.Fatalf("visible spawn_agent should reach tool validation, got %v", err)
-	}
-	_, err = kit.Execute(context.Background(), providers.ToolCall{Name: "helpme", Arguments: `{}`})
-	if err == nil || strings.Contains(err.Error(), "deferred") || strings.Contains(err.Error(), "active model surface") {
-		t.Fatalf("visible helpme should reach runtime validation, got %v", err)
-	}
-
-	for _, name := range subagentManagementTools {
-		if containsProfileDef(defs, name) {
-			t.Fatalf("%s should stay hidden before a successful spawn, got %v", name, sortedProfileDefNames(defs))
-		}
-		if info, ok := kit.ToolInfo(name); !ok {
-			t.Fatalf("ToolInfo(%q) not found", name)
-		} else if info.Exposure != ToolExposureDeferred {
-			t.Fatalf("%s exposure = %s, want %s", name, info.Exposure, ToolExposureDeferred)
-		}
-	}
-
-	deferredNames := kit.AvailableDeferredToolNames()
-	for _, name := range subagentManagementTools {
-		if !containsString(deferredNames, name) {
-			t.Fatalf("deferred name index should include %s before spawn_agent succeeds: %v", name, deferredNames)
-		}
-	}
-	catalog, err := kit.DeferredToolCatalogSystemSection()
-	if err != nil {
-		t.Fatalf("deferred catalog: %v", err)
-	}
-	if !strings.Contains(catalog, "<available-deferred-tools>") || !strings.Contains(catalog, "send_message") {
-		t.Fatalf("deferred catalog missing stable names:\n%s", catalog)
-	}
-	if _, ok := kit.AvailableDeferredToolsContextBlock(); ok {
-		t.Fatal("deferred name index should not be emitted as a request-only context block")
-	}
-
-	resp, err := kit.Execute(context.Background(), providers.ToolCall{
-		Name:      "tool_search",
-		Arguments: `{"query":"select:send_message close_agent","limit":5}`,
-	})
-	if err != nil {
-		t.Fatalf("tool_search: %v", err)
-	}
-	var searched struct {
-		LoadedTools []string `json:"loaded_tools"`
-	}
-	if err := json.Unmarshal([]byte(resp), &searched); err != nil {
-		t.Fatalf("parse tool_search: %v", err)
-	}
-	for _, name := range subagentManagementTools {
-		if !containsString(searched.LoadedTools, name) {
-			t.Fatalf("tool_search should load stable deferred management tool %s before spawn_agent succeeds: %s", name, resp)
-		}
-	}
-
-	if discovered := kit.activateToolBundlesAfterSuccess("helpme"); len(discovered) != 0 {
-		t.Fatalf("fallback activation should not attach native discovered tools: %+v", discovered)
-	}
-	defs = kit.Definitions()
-	tailStart := len(defs) - len(subagentManagementTools)
-	if tailStart < 0 {
-		t.Fatalf("definitions shorter than subagent management tail: %+v", defs)
-	}
-	for _, name := range subagentManagementTools {
-		var found *providers.ToolDefinition
-		for i := range defs {
-			if defs[i].Name == name {
-				found = &defs[i]
-				break
-			}
-		}
-		if found == nil {
-			t.Fatalf("management tool %s should be visible after spawn_agent activates the subagent bundle: %v", name, sortedProfileDefNames(defs))
-		}
-		if found.CacheStable {
-			t.Fatalf("management tool %s should be appended outside the cache-stable prefix: %+v", name, *found)
-		}
-		if found.DeferLoading {
-			t.Fatalf("fallback-loaded management tool %s should be a normal callable schema: %+v", name, *found)
-		}
-	}
-	for i, want := range subagentManagementTools {
-		if got := defs[tailStart+i].Name; got != want {
-			names := make([]string, 0, len(defs))
-			for _, def := range defs {
-				names = append(names, def.Name)
-			}
-			t.Fatalf("subagent management tool %d should be in the strict tail: got %q want %q; all=%v", i, got, want, names)
-		}
-	}
-}
-
-func TestNativeSubagentBundleActivationDiscoversManagementTools(t *testing.T) {
-	kit, err := New(t.TempDir())
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-	kit.SetActiveProfile(modelprofile.Resolve("openai", "gpt-5-codex"), true)
-	kit.SetExperimentalDeferredToolBundles(true)
-	kit.SetNativeDeferredToolDiscovery(true)
-
-	discovered := kit.activateToolBundlesAfterSuccess("spawn_agent")
-	if len(discovered) != len(subagentManagementTools) {
-		t.Fatalf("native activation discovered %d tools, want %d: %+v", len(discovered), len(subagentManagementTools), discovered)
-	}
-	for i, want := range subagentManagementTools {
-		if discovered[i].Name != want {
-			t.Fatalf("discovered tool %d = %q, want %q", i, discovered[i].Name, want)
-		}
-	}
-
-	defs := kit.Definitions()
-	tailStart := len(defs) - len(subagentManagementTools)
-	if tailStart < 0 {
-		t.Fatalf("definitions shorter than subagent management tail: %+v", defs)
-	}
-	for i, want := range subagentManagementTools {
-		got := defs[tailStart+i]
-		if got.Name != want {
-			t.Fatalf("subagent management tool %d should be in the strict tail: got %q want %q", i, got.Name, want)
-		}
-		if got.CacheStable {
-			t.Fatalf("native management tool %s should be outside the cache-stable prefix: %+v", want, got)
-		}
-		if !got.DeferLoading {
-			t.Fatalf("native management tool %s should stay provider-deferred: %+v", want, got)
-		}
-	}
-}
-
-func TestFallbackSubagentNextStepsTellModelToUseToolSearch(t *testing.T) {
-	steps := []string{"Use send_message with root/worker only when the next step depends on this worker's output."}
-	got := subagentNextStepsForDiscovery(&Env{ToolSearchEnabled: true}, steps)
-	if len(got) != 2 || !strings.Contains(got[1], "tool_search") || !strings.Contains(got[1], "select:send_message") {
-		t.Fatalf("fallback next steps should mention tool_search loading, got %+v", got)
-	}
-
-	flat := subagentNextStepsForDiscovery(&Env{ToolSearchEnabled: false}, steps)
-	if len(flat) != 1 {
-		t.Fatalf("flat tool surface should not mention tool_search loading, got %+v", flat)
-	}
-
-	native := subagentNextStepsForDiscovery(&Env{ToolSearchEnabled: true, NativeDeferredToolDiscovery: true}, steps)
-	if len(native) != 1 {
-		t.Fatalf("native next steps should remain unchanged, got %+v", native)
-	}
-}
-
-*/
-
-/* Removed with the first-party delegation plugin extraction.
-func TestActiveProfileExposesTaskEntrypointsDirectly(t *testing.T) {
-	kit, err := New(t.TempDir())
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-	kit.SetHelpMeEnabled(true)
-	kit.SetActiveProfile(modelprofile.Resolve("compatible", "generic-coder"), true)
-
-	var found *providers.ToolDefinition
-	defs := kit.Definitions()
-	for i := range defs {
-		if defs[i].Name == "spawn_agent" {
-			found = &defs[i]
-			break
-		}
-	}
-	if found == nil {
-		t.Fatalf("main agent surface should receive spawn_agent in the default tool list: %v", sortedProfileDefNames(defs))
-	}
-	if !found.CacheStable {
-		t.Fatalf("direct spawn_agent should stay inside the cache-stable prefix: %+v", *found)
-	}
-	var helpmeFound *providers.ToolDefinition
-	for i := range defs {
-		if defs[i].Name == "helpme" {
-			helpmeFound = &defs[i]
-			break
-		}
-	}
-	if helpmeFound == nil {
-		t.Fatalf("main agent surface should receive helpme in the default tool list: %v", sortedProfileDefNames(defs))
-	}
-	if !helpmeFound.CacheStable {
-		t.Fatalf("direct helpme should stay inside the cache-stable prefix: %+v", *helpmeFound)
-	}
-	if _, err := kit.Execute(context.Background(), providers.ToolCall{Name: "spawn_agent", Arguments: `{}`}); err == nil || strings.Contains(err.Error(), "deferred") || strings.Contains(err.Error(), "active model surface") {
-		t.Fatalf("main agent surface should call spawn_agent directly, got %v", err)
-	}
-	if _, err := kit.Execute(context.Background(), providers.ToolCall{Name: "helpme", Arguments: `{}`}); err == nil || strings.Contains(err.Error(), "deferred") || strings.Contains(err.Error(), "active model surface") {
-		t.Fatalf("main agent surface should call helpme directly, got %v", err)
-	}
-	for _, name := range subagentManagementTools {
-		if containsProfileDef(defs, name) {
-			t.Fatalf("main agent surface should keep management tool %s deferred until tool_search loads it, got %v", name, sortedProfileDefNames(defs))
-		}
-	}
-}
-
-func TestActiveProfileFlatToolSurfaceHidesToolSearchAndExposesDeferredTools(t *testing.T) {
-	kit, err := New(t.TempDir())
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-	kit.SetActiveProfile(modelprofile.Resolve("compatible", "generic-coder"), true)
-	kit.SetToolSearchEnabled(false)
-
-	defs := kit.Definitions()
-	if containsProfileDef(defs, "tool_search") {
-		t.Fatalf("flat surface should hide tool_search: %v", sortedProfileDefNames(defs))
-	}
-	for _, name := range subagentManagementTools {
-		if !containsProfileDef(defs, name) {
-			t.Fatalf("flat surface should expose deferred tool %s directly: %v", name, sortedProfileDefNames(defs))
-		}
-		if info, ok := kit.ToolInfo(name); !ok {
-			t.Fatalf("ToolInfo(%q) not found", name)
-		} else if info.Exposure != ToolExposureDirect {
-			t.Fatalf("flat surface exposure for %s = %s, want %s", name, info.Exposure, ToolExposureDirect)
-		}
-	}
-	if _, ok := kit.AvailableDeferredToolsContextBlock(); ok {
-		t.Fatal("flat surface should not emit deferred tool name context")
-	}
-	if _, err := kit.Execute(context.Background(), providers.ToolCall{Name: "send_message", Arguments: `{}`}); err == nil || strings.Contains(err.Error(), "deferred") {
-		t.Fatalf("flat surface should call send_message directly and reach runtime validation, got %v", err)
-	}
-	if _, err := kit.Execute(context.Background(), providers.ToolCall{Name: "tool_search", Arguments: `{"query":"select:send_message"}`}); err == nil || !strings.Contains(err.Error(), "active model surface") {
-		t.Fatalf("flat surface should block tool_search execution, got %v", err)
-	}
-}
-
-*/
 
 func TestSetActiveProfileClaudeExposesEditAndWriteHidesApplyPatch(t *testing.T) {
 	kit, err := New(t.TempDir())
@@ -926,9 +648,9 @@ func TestDefinitionsFilterStaysWithinSurfaceAndAllowsDeferredTools(t *testing.T)
 	}
 	kit.SetActiveProfile(modelprofile.Resolve("anthropic", "claude-sonnet-4-5"), true)
 	loadedDeferred := map[string]struct{}{
-		"cron": {},
+		"thread_get": {},
 	}
-	kit.markDeferredToolsLoaded("cron")
+	kit.markDeferredToolsLoaded("thread_get")
 	surface := kit.ActiveSurface()
 	defs := kit.Definitions()
 	visible := make(map[string]struct{}, len(defs))

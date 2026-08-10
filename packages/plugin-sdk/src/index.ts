@@ -10,17 +10,21 @@
  */
 
 import type {
+  PublicIconName,
   PublicSyntaxTokenName,
   PublicThemeTokenName,
 } from "./theme-contract.generated.js";
 
 export {
   LEGACY_THEME_TOKEN_ALIASES,
+  PUBLIC_ICON_NAMES,
   PUBLIC_SYNTAX_TOKEN_NAMES,
   PUBLIC_THEME_TOKEN_NAMES,
   canonicalThemeTokenName,
+  isPublicIconName,
   isPublicSyntaxTokenName,
   isPublicThemeTokenName,
+  type PublicIconName,
   type PublicSyntaxTokenName,
   type PublicThemeTokenName,
 } from "./theme-contract.generated.js";
@@ -32,17 +36,29 @@ export {
 /** Unique identifier for a view type. */
 export type ViewTypeId = string;
 /** Where a view instance appears. */
-export type ViewPane = "main" | "sidebar" | "auxiliary" | "overlay" | "tab" | "pane";
-/** Stable host-owned regions available for declarative default placement. */
-export const VIEW_PLACEMENT_REGIONS = ["main", "sidebar", "auxiliary"] as const;
+/** Stable host-owned semantic regions available for View placement. */
+export const VIEW_PLACEMENT_REGIONS = [
+  "navigation",
+  "primary",
+  "auxiliary",
+  "inspector",
+  "settings",
+  "overlay",
+] as const;
 export type ViewPlacementRegion = (typeof VIEW_PLACEMENT_REGIONS)[number];
 export type ViewPersistence = "session" | "durable";
+
+/** Artwork declared in plugin.json for the package or a host-owned entry. */
+export type PluginManifestIcon =
+  | PublicIconName
+  | Readonly<{ path: string }>
+  | Readonly<{ light: string; dark: string }>;
 
 export interface ViewTypeDefinition {
   id: ViewTypeId;
   title: string;
-  icon?: string;
-  defaultPane?: ViewPane;
+  icon?: PublicIconName;
+  defaultRegion?: ViewPlacementRegion;
   persistence?: ViewPersistence;
   render: unknown; // React.ComponentType<ViewRenderProps> — opaque in SDK
 }
@@ -50,6 +66,28 @@ export interface ViewTypeDefinition {
 export interface ViewRenderProps {
   host: ViewHostAPI;
   context: Readonly<Record<string, unknown>>;
+  locale: string;
+  translate(key: string, values?: Readonly<Record<string, string | number>>): string;
+}
+
+export interface SettingsModelAliasV1 {
+  readonly provider: string;
+  readonly model: string;
+  readonly effort?: string;
+  readonly variant?: string;
+}
+
+export interface SettingsValueMapV1 {
+  readonly "runtime.modelAliases": Readonly<Record<string, SettingsModelAliasV1>>;
+}
+
+export type SettingsValueKeyV1 = keyof SettingsValueMapV1;
+
+/** Narrow settings service exposed only to plugin views mounted as Settings pages. */
+export interface SettingsPageHostAPI {
+  readonly contractVersion: 1;
+  getValue<Key extends SettingsValueKeyV1>(key: Key): SettingsValueMapV1[Key];
+  updateValue<Key extends SettingsValueKeyV1>(key: Key, value: SettingsValueMapV1[Key]): Promise<void>;
 }
 
 export interface ViewHostAPI {
@@ -59,12 +97,17 @@ export interface ViewHostAPI {
   executeCommand(commandId: string, input?: unknown): Promise<unknown>;
   openView(viewTypeId: ViewTypeId, options?: OpenViewOptions): Promise<void>;
   closeView(): Promise<void>;
+  readonly settings?: SettingsPageHostAPI;
 }
 
 export interface PluginUIContainerProps {
   readonly children?: unknown;
   readonly className?: string;
   readonly [property: string]: unknown;
+}
+
+export interface PluginUIPageProps extends PluginUIContainerProps {
+  readonly density?: "comfortable" | "compact";
 }
 
 export interface PluginUISectionProps extends PluginUIContainerProps {
@@ -83,6 +126,15 @@ export interface PluginUIButtonProps extends PluginUIContainerProps {
   readonly onClick?: (event: unknown) => void;
 }
 
+export interface PluginUIToolbarToggleProps extends PluginUIContainerProps {
+  readonly pressed: boolean;
+  readonly type?: "button" | "submit" | "reset";
+  readonly disabled?: boolean;
+  readonly title?: string;
+  readonly "aria-label": string;
+  readonly onClick?: (event: unknown) => void;
+}
+
 export interface PluginUITextInputProps extends PluginUIContainerProps {
   readonly label: unknown;
   readonly description?: unknown;
@@ -93,32 +145,125 @@ export interface PluginUITextInputProps extends PluginUIContainerProps {
   readonly onChange?: (event: unknown) => void;
 }
 
+export interface PluginUITextAreaProps extends PluginUIContainerProps {
+  readonly label: unknown;
+  readonly description?: unknown;
+  readonly value?: string;
+  readonly placeholder?: string;
+  readonly disabled?: boolean;
+  readonly onChange?: (event: unknown) => void;
+}
+
+export interface PluginUICheckboxProps extends PluginUIContainerProps {
+  readonly label: unknown;
+  readonly description?: unknown;
+  readonly checked?: boolean;
+  readonly disabled?: boolean;
+  readonly onChange?: (event: unknown) => void;
+}
+
 export interface PluginUIEmptyStateProps extends PluginUIContainerProps {
   readonly title: unknown;
   readonly description?: unknown;
   readonly actions?: unknown;
 }
 
+
+export interface PluginUILoadingStateProps extends PluginUIContainerProps {
+  readonly title?: unknown;
+  readonly description?: unknown;
+}
+
+export interface PluginUIErrorStateProps extends PluginUIContainerProps {
+  readonly title: unknown;
+  readonly description?: unknown;
+  readonly actions?: unknown;
+}
+
+export interface PluginUILiveDurationProps extends PluginUIContainerProps {
+  readonly elapsedMs: number;
+  readonly runningSinceMs?: number;
+  readonly active?: boolean;
+}
+
 export type HostUIComponent<Props> = (props: Props) => unknown;
 
 /** Stable host-owned primitives for plugin views. */
 export interface PluginUIKit {
-  readonly Page: HostUIComponent<PluginUIContainerProps>;
+  readonly Page: HostUIComponent<PluginUIPageProps>;
   readonly Panel: HostUIComponent<PluginUIContainerProps>;
   readonly Card: HostUIComponent<PluginUIContainerProps>;
   readonly Section: HostUIComponent<PluginUISectionProps>;
   readonly Stack: HostUIComponent<PluginUIStackProps>;
   readonly Row: HostUIComponent<PluginUIContainerProps>;
   readonly Button: HostUIComponent<PluginUIButtonProps>;
+  readonly ToolbarToggle: HostUIComponent<PluginUIToolbarToggleProps>;
   readonly TextInput: HostUIComponent<PluginUITextInputProps>;
+  readonly TextArea: HostUIComponent<PluginUITextAreaProps>;
+  readonly Checkbox: HostUIComponent<PluginUICheckboxProps>;
   readonly EmptyState: HostUIComponent<PluginUIEmptyStateProps>;
+  readonly LoadingState: HostUIComponent<PluginUILoadingStateProps>;
+  readonly ErrorState: HostUIComponent<PluginUIErrorStateProps>;
+  readonly LiveDuration: HostUIComponent<PluginUILiveDurationProps>;
 }
 
 export interface OpenViewOptions {
-  pane?: ViewPane;
+  region?: ViewPlacementRegion;
   context?: Readonly<Record<string, unknown>>;
   persistence?: ViewPersistence;
   reveal?: boolean;
+}
+
+export interface InspectorSessionSnapshotV1 {
+  readonly id?: string;
+  readonly status: "idle" | "running";
+  readonly turnId?: string;
+  readonly turnStatus?: "in_progress" | "completed" | "failed" | "interrupted";
+}
+
+export interface InspectorWorkspaceSnapshotV1 {
+  readonly kind: "project" | "no_project";
+  readonly cwd: string;
+  readonly projectId?: string;
+  readonly projectName?: string;
+  readonly branch?: string;
+  readonly dirtyFileCount?: number;
+}
+
+export interface InspectorPlanSnapshotV1 {
+  readonly completed: number;
+  readonly total: number;
+  readonly activeStep?: string;
+  readonly items: readonly InspectorPlanItemSnapshotV1[];
+}
+
+export interface InspectorPlanItemSnapshotV1 {
+  readonly step: string;
+  readonly status: "pending" | "in_progress" | "completed";
+}
+
+export interface InspectorSnapshotV1 {
+  readonly contractVersion: 1;
+  readonly session: InspectorSessionSnapshotV1;
+  readonly workspace?: InspectorWorkspaceSnapshotV1;
+  readonly plan?: InspectorPlanSnapshotV1;
+}
+
+export interface InspectorSectionHostAPI {
+  executeCommand(commandId: string, input?: unknown): Promise<unknown>;
+  openView(viewTypeId: ViewTypeId, options?: OpenViewOptions): Promise<void>;
+}
+
+export interface InspectorSectionRenderProps {
+  readonly snapshot: InspectorSnapshotV1;
+  readonly host: InspectorSectionHostAPI;
+}
+
+export interface InspectorSectionDefinition {
+  readonly id: string;
+  readonly title: string;
+  readonly priority?: number;
+  readonly render: HostUIComponent<InspectorSectionRenderProps>;
 }
 
 export type ToolActivityStatus = "running" | "completed" | "failed";
@@ -149,6 +294,7 @@ export interface ToolActivityStructuredResult {
 
 /** Host-owned immutable view of a tool call. It intentionally excludes thread internals. */
 export interface ToolActivitySnapshot {
+  readonly contractVersion: 1;
   readonly id: string;
   readonly toolName: string;
   readonly capability?: string;
@@ -182,19 +328,6 @@ export interface ViewPlacementContribution {
   view: ViewTypeId;
   region: ViewPlacementRegion;
   priority?: number;
-}
-
-/**
- * @deprecated Use ViewPlacementContribution. Only id, pane, and defaultView
- * are consumed by the compatibility adapter.
- */
-export interface LayoutContribution {
-  id: string;
-  parentId: string;
-  pane: ViewPane;
-  size?: number;
-  minSize?: number;
-  defaultView?: ViewTypeId;
 }
 
 export type RendererCategory = "message" | "tool-result" | "document" | "file-preview";
@@ -284,13 +417,14 @@ export interface PluginGenerationApi {
   registerSlot(slotId: string, contribution: SlotRegistration): Disposable;
   registerSurface(surfaceId: string, contribution: SurfaceRegistration): Disposable;
   registerCommand(command: CommandRegistration): Disposable;
+  /** Show a non-persistent card at the bottom of a conversation. */
+  showConversationCard(card: ConversationCardRegistration): ConversationCardHandle;
   registerStyle(style: StyleRegistration): Disposable;
   registerLocale(locale: LocaleRegistration): Disposable;
   registerCleanup(cleanup: () => void): Disposable;
   registerViewType(definition: ViewTypeDefinition): Disposable;
   registerViewPlacement(contribution: ViewPlacementContribution): Disposable;
-  /** @deprecated Use registerViewPlacement. */
-  registerLayoutContribution(contribution: LayoutContribution): Disposable;
+  registerInspectorSection(definition: InspectorSectionDefinition): Disposable;
   registerRenderer(definition: RendererDefinition): Disposable;
   registerThemeTokens(tokens: ThemeTokens): Disposable;
   registerCSSSnippet(snippet: CSSSnippet): Disposable;
@@ -325,22 +459,15 @@ export interface HostReact {
 
 export const RUNTIME_PROTOCOL_V1 = 1 as const;
 export const CAPABILITY_PROTOCOL_V2 = 2 as const;
+export const CAPABILITY_PROTOCOL_V3 = 3 as const;
 export const REQUEST_TRANSFORM_CAPABILITY = "agent.request.transform" as const;
+export const AGENT_PRE_STEP_CAPABILITY = "agent.pre_step" as const;
 export const SYSTEM_PROMPT_SECTION_CAPABILITY = "agent.system_prompt.section" as const;
+/** @experimental No distributed first-party consumer has proven this contract. */
 export const COMPACTION_CAPABILITY = "agent.compaction" as const;
 export const PLUGIN_CLIENT_REQUEST_CAPABILITY = "plugin.client.request" as const;
 
-export type RuntimeHook =
-  | "session.start"
-  | "session.stop"
-  | "chat.message"
-  | "chat.request"
-  | "tool.definition"
-  | "tool.execute.before"
-  | "tool.execute.after"
-  | "shell.env";
-
-export type CapabilityKind = "observe" | "transform" | "guard" | "around" | "decision";
+export type CapabilityKind = "observe" | "transform" | "decision";
 export type CapabilityErrorPolicy = "propagate" | "isolate" | "ignore";
 
 export interface CapabilityDescriptor {
@@ -358,15 +485,14 @@ export const HOST_SERVICE_METHODS = [
   "host.storage.set",
   "host.storage.delete",
   "host.storage.keys",
+  "host.storage.compare_exchange",
   "host.settings.get",
   "host.settings.list",
-  "host.child_session.request",
   "host.session.create",
   "host.session.send",
-  "host.session.info",
-  "host.workspace.root",
-  "host.workspace.list",
-  "host.diagnostics.log",
+  "host.session.list",
+  "host.session.cancel",
+  "host.service.call",
 ] as const;
 
 export type HostServiceMethod = (typeof HOST_SERVICE_METHODS)[number];
@@ -374,6 +500,41 @@ export type HostServiceMethod = (typeof HOST_SERVICE_METHODS)[number];
 export interface HostServiceDescriptor {
   id: HostServiceMethod | (string & {});
   required?: boolean;
+}
+
+/** One typed method of a provided service. */
+export interface ServiceMethodDescriptor {
+  name: string;
+  input_schema: string;
+  output_schema: string;
+}
+
+/** A versioned service a plugin provides; consumers resolve by name and major version. */
+export interface ServiceDescriptor {
+  name: string;
+  version: string;
+  methods: ServiceMethodDescriptor[];
+}
+
+/** A consumed service; declaring it is the only way to gain call authority. */
+export interface ServiceRequirement {
+  name: string;
+  major_version: number;
+  required?: boolean;
+}
+
+/** One validated, host-routed call delivered to a service provider. */
+export interface ServiceInvokeParams<TParams = unknown> {
+  service: string;
+  method: string;
+  caller: string;
+  params?: TParams;
+}
+
+/** Notification that a consumed service resolution changed. */
+export interface ServiceChangedParams {
+  service: string;
+  reason?: string;
 }
 
 export interface RuntimeInitializeParams {
@@ -384,14 +545,17 @@ export interface RuntimeInitializeParams {
   wuu_home: string;
   capability_protocol_version?: number;
   supported_host_services?: HostServiceMethod[];
+  lifecycle_version?: 1;
 }
 
 export interface RuntimeInitializeResult {
-  hooks: RuntimeHook[];
   tools?: ToolRegistration[];
-  protocol_version?: 1 | 2;
+  protocol_version?: 1 | 2 | 3;
   capabilities?: CapabilityDescriptor[];
   required_host_services?: HostServiceDescriptor[];
+  provided_services?: ServiceDescriptor[];
+  required_services?: ServiceRequirement[];
+  lifecycle_version?: 1;
 }
 
 export interface JSONSchemaObject {
@@ -435,26 +599,79 @@ export interface CapabilityInvokeResult<TOutput = unknown> {
   output: TOutput;
 }
 
-export interface HookInvokeParams<TInput = unknown, TOutput = unknown> {
-  hook: RuntimeHook;
-  input: TInput;
-  output: TOutput;
-}
-
-export interface HookInvokeResult<TOutput = unknown> {
-  output: TOutput;
-}
-
 export interface RequestTransformInput {
   session_id?: string;
   thread_id?: string;
   cwd?: string;
   provider?: string;
   step_index: number;
+  request: ModelRequestViewV1;
 }
 
-export interface RequestTransformOutput<TRequest = Readonly<Record<string, unknown>>> {
-  request: TRequest;
+export interface ModelRequestViewV1 {
+  version: 1;
+  model: string;
+  messages: readonly ModelMessageViewV1[];
+  tools: readonly ModelToolViewV1[];
+  temperature?: number;
+  max_tokens?: number;
+  effort?: string;
+  native_deferred_tool_discovery?: boolean;
+  force_tool_name?: string;
+}
+
+export interface ModelMessageViewV1 {
+  role: string;
+  name?: string;
+  content?: string;
+  hidden?: boolean;
+  origin?: string;
+  origin_id?: string;
+  cause?: string;
+  read_only?: boolean;
+  has_images?: boolean;
+  has_files?: boolean;
+  tool_call_id?: string;
+  tool_calls?: readonly ModelToolCallViewV1[];
+  has_tool_result?: boolean;
+  discovered_tools?: readonly string[];
+}
+
+export interface ModelToolCallViewV1 {
+  id?: string;
+  name?: string;
+  arguments?: string;
+  kind?: string;
+}
+
+export interface ModelToolViewV1 {
+  name: string;
+  description?: string;
+  input_schema: Readonly<Record<string, unknown>>;
+  defer_loading?: boolean;
+}
+
+export interface RequestTransformOutput {
+  prepend_system_messages?: readonly string[];
+}
+
+export interface AgentPreStepInput {
+  session_id?: string;
+  thread_id?: string;
+  cwd?: string;
+  provider?: string;
+  model?: string;
+  step_index: number;
+  messages: readonly ModelMessageViewV1[];
+}
+
+export interface AgentPreStepMessage {
+  id: string;
+  content: string;
+}
+
+export interface AgentPreStepOutput {
+  append_messages?: readonly AgentPreStepMessage[];
 }
 
 export interface SystemPromptSectionInput {
@@ -467,14 +684,16 @@ export interface SystemPromptSectionOutput {
   text: string;
 }
 
-/** Provider-neutral message payload. Preserve unknown fields when compacting. */
+/** @experimental Provider-neutral message payload. Preserve unknown fields when compacting. */
 export type CompactionMessage = Readonly<Record<string, unknown>>;
 
+/** @experimental No distributed first-party consumer has proven this contract. */
 export interface CompactionInput<TMessage extends CompactionMessage = CompactionMessage> {
   model: string;
   messages: readonly TMessage[];
 }
 
+/** @experimental No distributed first-party consumer has proven this contract. */
 export interface CompactionOutput<TMessage extends CompactionMessage = CompactionMessage> {
   messages: readonly TMessage[];
 }
@@ -523,22 +742,25 @@ export interface ToolExecuteResult {
 }
 
 export interface HostServiceContracts {
-  "host.storage.get": { params: { key: string }; result: { value: string | null } };
-  "host.storage.set": { params: { key: string; value: string }; result: null };
-  "host.storage.delete": { params: { key: string }; result: null };
-  "host.storage.keys": { params: Record<string, never>; result: { keys: string[] } };
+  "host.storage.get": { params: { scope: "user" | "workspace"; key: string }; result: { value: string | null } };
+  "host.storage.set": { params: { scope: "user" | "workspace"; key: string; value: string }; result: Record<string, never> };
+  "host.storage.delete": { params: { scope: "user" | "workspace"; key: string }; result: Record<string, never> };
+  "host.storage.keys": { params: { scope: "user" | "workspace" }; result: { keys: string[] } };
+  "host.storage.compare_exchange": {
+    params: { scope: "user" | "workspace"; key: string; expected: string | null; value: string | null };
+    result: { swapped: boolean; value: string | null };
+  };
   "host.settings.get": { params: { key: string }; result: { value: unknown } };
   "host.settings.list": { params: Record<string, never>; result: { entries: Record<string, unknown> } };
-  "host.child_session.request": {
-    params: { action: string; actor_id?: string; actor_path?: string; input?: unknown };
-    result: unknown;
-  };
   "host.session.create": {
     params: {
       request_id: string;
+      name?: string;
       visibility: "user" | "plugin";
       parent_session_id?: string;
       context_source: "fresh" | "fork";
+      workspace?: "shared" | "worktree";
+      model_alias?: string;
     };
     result: { session_id: string; created: boolean };
   };
@@ -555,13 +777,28 @@ export interface HostServiceContracts {
     };
     result: { state: string; session_id: string; turn_id?: string; queue_id?: string };
   };
-  "host.session.info": { params: Record<string, never>; result: { session_id: string; thread_id?: string; cwd: string; model: string } };
-  "host.workspace.root": { params: Record<string, never>; result: { root: string } };
-  "host.workspace.list": {
-    params: Record<string, never>;
-    result: { workspaces: Array<{ id: string; root: string; name?: string }> };
+  "host.session.list": {
+    params: { parent_session_id?: string };
+    result: {
+      sessions: Array<{
+        session_id: string;
+        name?: string;
+        parent_session_id?: string;
+        visibility: "user" | "plugin";
+        state: string;
+        created_at?: string;
+        updated_at?: string;
+      }>;
+    };
   };
-  "host.diagnostics.log": { params: Readonly<Record<string, unknown>>; result: unknown };
+  "host.session.cancel": {
+    params: { session_id: string };
+    result: { session_id: string; cancelled: boolean };
+  };
+  "host.service.call": {
+    params: { service: string; method: string; params?: unknown };
+    result: unknown;
+  };
 }
 
 export type HostServiceCall<M extends HostServiceMethod = HostServiceMethod> = M extends HostServiceMethod
@@ -580,11 +817,31 @@ export type HostServiceResponse<M extends HostServiceMethod = HostServiceMethod>
 export type HostServiceRequest<M extends HostServiceMethod = HostServiceMethod> = HostServiceCall<M>;
 export type HostServiceResult<M extends HostServiceMethod = HostServiceMethod> = HostServiceResponse<M>;
 
+export class RuntimeHostServiceError extends Error {
+  readonly code: string;
+
+  constructor(error: HostServiceError) {
+    super(error.message);
+    this.name = "RuntimeHostServiceError";
+    this.code = error.code;
+  }
+}
+
+export interface RuntimeHost {
+  supports(method: HostServiceMethod): boolean;
+  call<M extends HostServiceMethod>(
+    method: M,
+    params: HostServiceContracts[M]["params"],
+  ): Promise<HostServiceContracts[M]["result"]>;
+}
+
 export interface RuntimePlugin {
-  initialize(params: RuntimeInitializeParams): RuntimeInitializeResult | Promise<RuntimeInitializeResult>;
-  invokeCapability?(params: CapabilityInvokeParams): CapabilityInvokeResult | Promise<CapabilityInvokeResult>;
-  invokeHook?(params: HookInvokeParams): HookInvokeResult | Promise<HookInvokeResult>;
-  executeTool?(params: ToolExecuteParams): ToolExecuteResult | Promise<ToolExecuteResult>;
+  initialize(params: RuntimeInitializeParams, host: RuntimeHost): RuntimeInitializeResult | Promise<RuntimeInitializeResult>;
+  activate?(host: RuntimeHost): void | Promise<void>;
+  invokeCapability?(params: CapabilityInvokeParams, host: RuntimeHost): CapabilityInvokeResult | Promise<CapabilityInvokeResult>;
+  invokeService?(params: ServiceInvokeParams, host: RuntimeHost): unknown | Promise<unknown>;
+  serviceChanged?(params: ServiceChangedParams, host: RuntimeHost): void | Promise<void>;
+  executeTool?(params: ToolExecuteParams, host: RuntimeHost): ToolExecuteResult | Promise<ToolExecuteResult>;
   shutdown?(): void | Promise<void>;
 }
 
@@ -600,10 +857,22 @@ export interface RuntimeCapabilityRequest {
   params: CapabilityInvokeParams;
 }
 
-export interface RuntimeHookRequest {
+export interface RuntimeServiceInvokeRequest {
   id: string;
-  method: "hook.invoke";
-  params: HookInvokeParams;
+  method: "service.invoke";
+  params: ServiceInvokeParams;
+}
+
+export interface RuntimeServiceChangedRequest {
+  id: string;
+  method: "service.changed";
+  params: ServiceChangedParams;
+}
+
+export interface RuntimeActivateRequest {
+  id: string;
+  method: "activate";
+  params?: undefined;
 }
 
 export interface RuntimeToolRequest {
@@ -620,29 +889,41 @@ export interface RuntimeShutdownRequest {
 
 export type RuntimeRequest =
   | RuntimeInitializeRequest
+  | RuntimeActivateRequest
   | RuntimeCapabilityRequest
-  | RuntimeHookRequest
+  | RuntimeServiceInvokeRequest
+  | RuntimeServiceChangedRequest
   | RuntimeToolRequest
   | RuntimeShutdownRequest;
 
 export type RuntimeResponse =
-  | { id: string; result: RuntimeInitializeResult | CapabilityInvokeResult | HookInvokeResult | ToolExecuteResult | null }
+  | { id: string; result: unknown }
   | { id: string; error: { message: string } };
 
-export async function handleRuntimeRequest(plugin: RuntimePlugin, request: RuntimeRequest): Promise<RuntimeResponse> {
+export async function handleRuntimeRequest(
+  plugin: RuntimePlugin,
+  request: RuntimeRequest,
+  host: RuntimeHost = unavailableRuntimeHost,
+): Promise<RuntimeResponse> {
   try {
     switch (request.method) {
       case "initialize":
-        return { id: request.id, result: await plugin.initialize(request.params) };
+        return { id: request.id, result: { ...await plugin.initialize(request.params, host), lifecycle_version: 1 } };
+      case "activate":
+        await plugin.activate?.(host);
+        return { id: request.id, result: null };
       case "capability.invoke":
         if (!plugin.invokeCapability) throw new Error("capability.invoke is not implemented");
-        return { id: request.id, result: await plugin.invokeCapability(request.params) };
-      case "hook.invoke":
-        if (!plugin.invokeHook) throw new Error("hook.invoke is not implemented");
-        return { id: request.id, result: await plugin.invokeHook(request.params) };
+        return { id: request.id, result: await plugin.invokeCapability(request.params, host) };
+      case "service.invoke":
+        if (!plugin.invokeService) throw new Error("service.invoke is not implemented");
+        return { id: request.id, result: await plugin.invokeService(request.params, host) };
+      case "service.changed":
+        await plugin.serviceChanged?.(request.params, host);
+        return { id: request.id, result: null };
       case "tool.execute":
         if (!plugin.executeTool) throw new Error("tool.execute is not implemented");
-        return { id: request.id, result: await plugin.executeTool(request.params) };
+        return { id: request.id, result: await plugin.executeTool(request.params, host) };
       case "shutdown":
         await plugin.shutdown?.();
         return { id: request.id, result: null };
@@ -655,44 +936,135 @@ export async function handleRuntimeRequest(plugin: RuntimePlugin, request: Runti
 export interface JSONLInput extends AsyncIterable<Uint8Array | string> {}
 export interface JSONLOutput { write(chunk: string): unknown }
 
-/** Runs a plugin over Wuu's one-request/one-response JSON-lines transport. */
+const unavailableRuntimeHost: RuntimeHost = {
+  supports: () => false,
+  call: async (method) => { throw new Error(`host service ${method} is unavailable outside a runtime connection`); },
+};
+
+type PendingHostCall = {
+  resolve(value: unknown): void;
+  reject(error: Error): void;
+};
+
+class JSONLRuntimeHost implements RuntimeHost {
+  private sequence = 0;
+  private supported = new Set<HostServiceMethod>();
+  private readonly pending = new Map<string, PendingHostCall>();
+
+  constructor(private readonly send: (value: unknown) => Promise<void>) {}
+
+  configure(methods: readonly HostServiceMethod[] | undefined): void {
+    this.supported = new Set(methods ?? []);
+  }
+
+  supports(method: HostServiceMethod): boolean {
+    return this.supported.has(method);
+  }
+
+  call<M extends HostServiceMethod>(
+    method: M,
+    params: HostServiceContracts[M]["params"],
+  ): Promise<HostServiceContracts[M]["result"]> {
+    if (!this.supports(method)) {
+      return Promise.reject(new Error(`host service ${method} is not supported`));
+    }
+    const id = `plugin-${++this.sequence}`;
+    return new Promise<HostServiceContracts[M]["result"]>((resolve, reject) => {
+      this.pending.set(id, { resolve, reject });
+      void this.send({ id, method, params }).catch((error: unknown) => {
+        this.pending.delete(id);
+        reject(error instanceof Error ? error : new Error(String(error)));
+      });
+    });
+  }
+
+  route(value: unknown): boolean {
+    if (typeof value !== "object" || value === null) return false;
+    const response = value as { id?: unknown; method?: unknown; result?: unknown; error?: unknown };
+    if (typeof response.id !== "string" || response.method !== undefined) return false;
+    const pending = this.pending.get(response.id);
+    if (!pending) return false;
+    this.pending.delete(response.id);
+    if (response.error !== undefined) {
+      const error = response.error as { code?: unknown; message?: unknown };
+      pending.reject(new RuntimeHostServiceError({
+        code: typeof error.code === "string" ? error.code : "host_error",
+        message: typeof error.message === "string" ? error.message : "host service failed",
+      }));
+    } else {
+      pending.resolve(response.result);
+    }
+    return true;
+  }
+
+  close(): void {
+    for (const pending of this.pending.values()) {
+      pending.reject(new Error("runtime transport closed"));
+    }
+    this.pending.clear();
+  }
+}
+
+/** Runs a plugin over Wuu's full-duplex JSON-lines transport. */
 export async function runJSONLRuntime(
   plugin: RuntimePlugin,
   streams: { input: JSONLInput; output: JSONLOutput },
 ): Promise<void> {
+  let writes = Promise.resolve();
+  const send = (value: unknown): Promise<void> => {
+    const next = writes.then(async () => { await streams.output.write(`${JSON.stringify(value)}\n`); });
+    writes = next.catch(() => undefined);
+    return next;
+  };
+  const host = new JSONLRuntimeHost(send);
+  const active = new Set<Promise<void>>();
+  let requests = Promise.resolve();
+  const track = (task: Promise<void>): void => {
+    requests = task.catch(() => undefined);
+    active.add(task);
+    void task.then(() => active.delete(task), () => active.delete(task));
+  };
+  const enqueueResponse = (value: unknown): void => {
+    track(requests.then(() => send(value)));
+  };
+  const processLine = (line: string): void => {
+    if (line.trim() === "") return;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(line);
+    } catch (error) {
+      enqueueResponse({ id: "invalid", error: { message: error instanceof Error ? error.message : String(error) } });
+      return;
+    }
+    if (host.route(parsed)) return;
+    if (!isRuntimeRequest(parsed)) {
+      enqueueResponse({ id: "invalid", error: { message: "invalid runtime request" } });
+      return;
+    }
+    if (parsed.method === "initialize") host.configure(parsed.params.supported_host_services);
+    track(requests.then(() => handleRuntimeRequest(plugin, parsed, host)).then(send));
+  };
   const decoder = new TextDecoder();
   let buffered = "";
   for await (const chunk of streams.input) {
     buffered += typeof chunk === "string" ? chunk : decoder.decode(chunk, { stream: true });
     const lines = buffered.split("\n");
     buffered = lines.pop() ?? "";
-    for (const line of lines) {
-      await writeRuntimeLine(plugin, line, streams.output);
-    }
+    for (const line of lines) processLine(line);
   }
   buffered += decoder.decode();
-  if (buffered.trim() !== "") await writeRuntimeLine(plugin, buffered, streams.output);
-}
-
-async function writeRuntimeLine(plugin: RuntimePlugin, line: string, output: JSONLOutput): Promise<void> {
-  if (line.trim() === "") return;
-  let response: RuntimeResponse;
-  try {
-    const parsed: unknown = JSON.parse(line);
-    if (!isRuntimeRequest(parsed)) throw new Error("invalid runtime request");
-    response = await handleRuntimeRequest(plugin, parsed);
-  } catch (error) {
-    response = { id: "invalid", error: { message: error instanceof Error ? error.message : String(error) } };
-  }
-  output.write(`${JSON.stringify(response)}\n`);
+  if (buffered.trim() !== "") processLine(buffered);
+  host.close();
+  await Promise.all(active);
+  await writes;
 }
 
 function isRuntimeRequest(value: unknown): value is RuntimeRequest {
   if (typeof value !== "object" || value === null) return false;
   const request = value as { id?: unknown; method?: unknown; params?: unknown };
   if (typeof request.id !== "string" || typeof request.method !== "string") return false;
-  if (request.method === "shutdown") return true;
-  return ["initialize", "capability.invoke", "hook.invoke", "tool.execute"].includes(request.method)
+  if (request.method === "activate" || request.method === "shutdown") return true;
+  return ["initialize", "capability.invoke", "service.invoke", "service.changed", "tool.execute"].includes(request.method)
     && typeof request.params === "object" && request.params !== null;
 }
 
@@ -1064,6 +1436,27 @@ export interface CommandRegistration {
   execute(input?: unknown): unknown | Promise<unknown>;
 }
 
+export interface ConversationCardRenderProps {
+  readonly id: string;
+  readonly threadId: string;
+  readonly state: unknown;
+  dismiss(): void;
+}
+
+export interface ConversationCardRegistration {
+  readonly id?: string;
+  readonly threadId?: string;
+  readonly title: string;
+  readonly state?: unknown;
+  readonly render: HostUIComponent<ConversationCardRenderProps>;
+}
+
+export interface ConversationCardHandle extends Disposable {
+  readonly id: string;
+  update(state: unknown): void;
+  dismiss(): void;
+}
+
 export interface StyleRegistration {
   id: string;
   css: string;
@@ -1100,6 +1493,7 @@ export function createManifest(options: {
   name?: string;
   version?: string;
   description?: string;
+  icon?: PluginManifestIcon;
 }): Record<string, unknown> {
   return {
     schema_version: 1,
@@ -1107,5 +1501,6 @@ export function createManifest(options: {
     name: options.name ?? options.id,
     version: options.version ?? "0.1.0",
     description: options.description ?? `A Wuu plugin: ${options.id}`,
+    ...(options.icon ? { icon: options.icon } : {}),
   };
 }

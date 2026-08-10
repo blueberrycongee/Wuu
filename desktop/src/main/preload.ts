@@ -252,8 +252,6 @@ const api: WuuDesktopApi = {
       permissionMode,
       threadId,
     ),
-  updateUltraMode: (enabled: boolean) =>
-    ipcRenderer.invoke("wuu:config-ultra-update", enabled),
   removeProvider: (
     provider: string,
     options?: { fallbackProvider?: string; fallbackModel?: string },
@@ -271,6 +269,7 @@ const api: WuuDesktopApi = {
     ipcRenderer.invoke("wuu:plugin-package-remove", id),
   loadPluginDesktopModule: (params) =>
     ipcRenderer.invoke("wuu:plugin-desktop-module-load", params),
+  loadPluginIcon: (params) => ipcRenderer.invoke("wuu:plugin-icon-load", params),
   getPluginSetting: (params) => ipcRenderer.invoke("wuu:plugin-setting-get", params),
   setPluginSetting: (params) => ipcRenderer.invoke("wuu:plugin-setting-set", params),
   getPluginDiagnostics: (params) => ipcRenderer.invoke("wuu:plugin-diagnostics-list", params),
@@ -279,10 +278,6 @@ const api: WuuDesktopApi = {
   requestPluginRuntime: (params) => ipcRenderer.invoke("wuu:plugin-runtime-request", params),
   listSkills: () => ipcRenderer.invoke("wuu:skill-list"),
   readSkillContent: (params) => ipcRenderer.invoke("wuu:skill-content", params),
-  listAutomations: () => ipcRenderer.invoke("wuu:automation-list"),
-  createAutomation: (params) => ipcRenderer.invoke("wuu:automation-create", params),
-  updateAutomation: (params) => ipcRenderer.invoke("wuu:automation-update", params),
-  removeAutomation: (id: string) => ipcRenderer.invoke("wuu:automation-remove", id),
   listNamedAgents: () => ipcRenderer.invoke("wuu:channel-agent-list"),
   getNamedAgentInsights: () => ipcRenderer.invoke("wuu:channel-agent-insights"),
   bootstrapChannels: () => ipcRenderer.invoke("wuu:channel-bootstrap"),
@@ -438,10 +433,6 @@ const api: WuuDesktopApi = {
     ipcRenderer.invoke("wuu:message-flow-font-size-get"),
   setMessageFlowFontSize: (fontSize: MessageFlowFontSize) =>
     ipcRenderer.invoke("wuu:message-flow-font-size-set", fontSize),
-  getMemoryOverview: (params) =>
-    ipcRenderer.invoke("wuu:memory-overview", params),
-  sendMemoryChat: (params) => ipcRenderer.invoke("wuu:memory-chat", params),
-  readMemoryRaw: (params) => ipcRenderer.invoke("wuu:memory-read", params),
   listThreads: (cwd?: string) => ipcRenderer.invoke("wuu:thread-list", cwd),
   listArchivedThreads: () =>
     ipcRenderer.invoke("wuu:thread-list-archived"),

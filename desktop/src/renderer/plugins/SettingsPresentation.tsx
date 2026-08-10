@@ -15,7 +15,6 @@ export const SETTINGS_UPDATE_KEYS = Object.freeze({
   maxSteps: "runtime.maxSteps",
   temperature: "runtime.temperature",
   autoCompact: "runtime.autoCompact",
-  memoryEnabled: "general.memoryEnabled",
   gitAttributionEnabled: "general.gitAttributionEnabled",
 } as const);
 
@@ -141,8 +140,6 @@ async function updateSettingsValue(input: unknown, onAdvancedSave: (settings: Ru
       await onAdvancedSave({ temperature: requireNumber(record.value, record.key, 0, 2) }); return;
     case SETTINGS_UPDATE_KEYS.autoCompact:
       await onAdvancedSave({ disable_auto_compact: !requireBoolean(record.value, record.key) }); return;
-    case SETTINGS_UPDATE_KEYS.memoryEnabled:
-      await onGeneralSave({ memory_disable: !requireBoolean(record.value, record.key) }); return;
     case SETTINGS_UPDATE_KEYS.gitAttributionEnabled:
       await onGeneralSave({ git_attribution_enabled: requireBoolean(record.value, record.key) }); return;
     default:

@@ -907,7 +907,7 @@ func (th *threadState) toolItemFromCallLocked(turnID string, call providers.Tool
 	item := ThreadItem{
 		ID:        th.nextItemIDLocked(turnID),
 		SourceID:  id,
-		Type:      threadItemTypeForTool(call.Name),
+		Type:      ThreadItemToolCall,
 		Status:    ThreadItemStatusInProgress,
 		Name:      call.Name,
 		Arguments: call.Arguments,
@@ -1263,7 +1263,7 @@ func projectPersistedHistory(threadID string, history []persistedMessage, now ti
 					ID:        nextItemID(current.ID),
 					Seq:       msg.Seq,
 					SourceID:  call.ID,
-					Type:      threadItemTypeForTool(call.Name),
+					Type:      ThreadItemToolCall,
 					Status:    ThreadItemStatusCompleted,
 					Name:      call.Name,
 					Arguments: call.Arguments,
@@ -1460,15 +1460,6 @@ func chatMessageFromPersistedMessage(rec persistedMessage) providers.ChatMessage
 
 func isToolResultMessage(msg providers.ChatMessage) bool {
 	return msg.Role == "tool" || msg.ToolCallID != ""
-}
-
-func threadItemTypeForTool(name string) ThreadItemType {
-	switch strings.TrimSpace(name) {
-	case "spawn_agent", "helpme", "send_message", "close_agent", "agent_report":
-		return ThreadItemCollabAgentTool
-	default:
-		return ThreadItemToolCall
-	}
 }
 
 func assistantMessagePhase(msg providers.ChatMessage) ThreadItemPhase {

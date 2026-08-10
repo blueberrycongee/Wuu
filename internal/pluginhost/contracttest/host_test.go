@@ -97,7 +97,6 @@ func TestHostServiceValidation(t *testing.T) {
 	defer host.Close()
 
 	host.AssertHostServiceSupported(pluginhost.HostServiceStorageGet)
-	host.AssertHostServiceSupported(pluginhost.HostServiceChildSessionRequest)
 	host.AssertHostServiceSupported("host.unknown.service")
 }
 
@@ -118,5 +117,4 @@ func TestHostNoCrashOnNilClient(t *testing.T) {
 	// These should skip gracefully when client is nil.
 	host.AssertCapabilityRegistered("agent.tool.execute")
 	host.AssertToolRegistered("my-tool")
-	host.AssertHookRegistered(pluginhost.HookSessionStart)
 }

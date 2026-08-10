@@ -8,11 +8,8 @@ import { initialState, type AppState } from "./AppState";
 import { environmentPanelScaleForWidth } from "./EnvironmentPanelScale";
 import {
   EnvironmentSideStack,
-  type SubagentRowSummary,
 } from "./EnvironmentSideStack";
-import { agentStatusLabel } from "./ThreadAgents";
-import { translateCurrent } from "./i18n";
-import { hoverTooltipText, unhoverTooltip } from "./tooltipTestUtils";
+import { unhoverTooltip } from "./tooltipTestUtils";
 
 let container: HTMLDivElement;
 let root: Root | null = null;
@@ -56,10 +53,7 @@ function initialized(): InitializeResult {
   };
 }
 
-function renderStack(
-  stateOverrides: Partial<AppState> = {},
-  subagentSessions?: SubagentRowSummary[],
-): void {
+function renderStack(stateOverrides: Partial<AppState> = {}): void {
   const state: AppState = {
     ...initialState,
     initialized: initialized(),
@@ -86,7 +80,6 @@ function renderStack(
         onOpenReview={() => {}}
         onOpenCommit={() => {}}
         onOpenPullRequest={() => {}}
-        subagentSessions={subagentSessions}
       />,
     );
   });
@@ -133,62 +126,5 @@ describe("EnvironmentSideStack", () => {
     const rule = cssRule(".environment-side-stack.environment-info-side-stack");
     expect(rule).toContain("transform: scale(var(--environment-panel-scale, 1))");
     expect(rule).toContain("transform-origin: top right");
-  });
-
-  it("renders a subagent's pooled name and source in its tooltip", async () => {
-    renderStack({}, [
-      {
-        id: "agent-0",
-        status: "running",
-        type: "worker",
-        task_name: "Check types",
-      },
-    ]);
-
-    const row = container.querySelector<HTMLButtonElement>(".subagent-row-main");
-    expect(row).not.toBeNull();
-    expect(container.textContent).toContain("薛定谔");
-    expect(row?.title).toBe("");
-    const tooltip = await hoverTooltipText(row);
-    expect(tooltip).toContain("薛定谔");
-    expect(tooltip).toContain("科学家");
-    expect(tooltip).toContain(agentStatusLabel("running"));
-    expect(tooltip).toContain("worker");
-    expect(tooltip).toContain("Check types");
-    expect(tooltip).not.toContain("undefined");
-  });
-
-  it("shows only the five most recent subagents and reports older hidden ones", async () => {
-    renderStack(
-      {},
-      Array.from({ length: 7 }, (_, index) => ({
-        id: `agent-${index}`,
-        status: "completed",
-        task_name: `Task ${index}`,
-        started_at: `2026-01-0${index + 1}T00:00:00Z`,
-      })),
-    );
-
-    const rows = Array.from(
-      container.querySelectorAll<HTMLButtonElement>(".subagent-row-main"),
-    );
-    expect(rows).toHaveLength(5);
-    // Rows share pooled display names; the per-agent task name lives in the
-    // hover tooltip, so hover each row to see which agents made the cut.
-    const tooltips: string[] = [];
-    for (const row of rows) {
-      tooltips.push((await hoverTooltipText(row)) ?? "");
-    }
-    expect(tooltips).toEqual(
-      expect.arrayContaining([
-        expect.stringContaining("Task 2"),
-        expect.stringContaining("Task 6"),
-      ]),
-    );
-    expect(tooltips.some((text) => text.includes("Task 0"))).toBe(false);
-    expect(tooltips.some((text) => text.includes("Task 1"))).toBe(false);
-    expect(container.querySelector(".environment-subagent-overflow-note")?.textContent).toBe(
-      translateCurrent("environment.earlierSubtasksHidden", { count: 2 }),
-    );
   });
 });

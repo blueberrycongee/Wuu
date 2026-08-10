@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
+  <defs><linearGradient id="dream" x1="5" y1="4" x2="27" y2="28" gradientUnits="userSpaceOnUse"><stop stop-color="#6EA8FF"/><stop offset=".52" stop-color="#6865E8"/><stop offset="1" stop-color="#A44DD8"/></linearGradient></defs>
+  <rect x="4" y="4" width="24" height="24" rx="8" fill="url(#dream)"/>
+  <circle cx="21.5" cy="10.5" r="5.5" fill="#D99BFF" opacity=".36"/>
+  <path d="M20.7 20.7A8 8 0 0 1 11.3 9.3a7.2 7.2 0 1 0 9.4 11.4Z" fill="white"/>
+  <path d="m22.8 8.2.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8Z" fill="white"/>
+  <circle cx="23.5" cy="17.5" r="1.2" fill="#EEDBFF"/>
+</svg>

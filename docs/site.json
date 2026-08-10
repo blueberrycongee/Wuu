@@ -46,6 +46,7 @@
             "zh-cn/customize/hooks.md",
             "zh-cn/customize/memory.md",
             "zh-cn/customize/dream.md",
+            "zh-cn/customize/plugin-quickstart.md",
             "zh-cn/customize/plugins.md",
             "zh-cn/customize/plugin-system.md",
             "zh-cn/customize/plugin-authoring.md",
@@ -88,14 +89,30 @@
           "title": "Start",
           "pages": [
             "en/index.md",
-            "en/getting-started/index.md"
+            "en/getting-started/index.md",
+            "en/getting-started/installation.md",
+            "en/getting-started/model-services.md",
+            "en/getting-started/first-task.md"
+          ]
+        },
+        {
+          "title": "Desktop",
+          "pages": [
+            "en/desktop/workspaces.md",
+            "en/desktop/conversations.md",
+            "en/desktop/workspace-tools.md",
+            "en/desktop/subagents.md",
+            "en/desktop/collaboration.md"
           ]
         },
         {
           "title": "Automation",
           "pages": [
             "en/automation/exec.md",
-            "en/automation/jsonl-events.md"
+            "en/automation/jsonl-events.md",
+            "en/automation/scheduled-tasks.md",
+            "en/automation/app-server.md",
+            "en/automation/remote.md"
           ]
         },
         {
@@ -105,12 +122,43 @@
           ]
         },
         {
+          "title": "Customize",
+          "pages": [
+            "en/customize/skills.md",
+            "en/customize/skill-authoring.md",
+            "en/customize/hooks.md",
+            "en/customize/memory.md",
+            "en/customize/dream.md",
+            "en/customize/mcp.md",
+            "en/customize/plugin-quickstart.md",
+            "en/customize/plugins.md",
+            "en/customize/plugin-system.md",
+            "en/customize/plugin-authoring.md",
+            "en/customize/theme-surface-matrix.md"
+          ]
+        },
+        {
           "title": "Reference",
           "pages": [
             "en/reference/security-model.md",
-            "en/reference/desktop-plugins.md",
+            "en/reference/permissions.md",
+            "en/reference/configuration.md",
+            "en/reference/cli-commands.md",
+            "en/reference/agent-command-system.md",
+            "en/reference/desktop-plugins.md"
+          ]
+        },
+        {
+          "title": "Project",
+          "pages": [
             "en/project/development.md",
             "en/project/release.md"
+          ]
+        },
+        {
+          "title": "Help",
+          "pages": [
+            "en/help/troubleshooting.md"
           ]
         }
       ]

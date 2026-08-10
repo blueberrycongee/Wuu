@@ -38,7 +38,10 @@ type Goal struct {
 	Status          Status       `json:"status"`
 	TokensUsed      int          `json:"tokens_used,omitempty"`
 	TimeUsedSeconds int64        `json:"time_used_seconds,omitempty"`
+	TimeUsedMS      int64        `json:"time_used_ms,omitempty"`
 	GoalTurns       int          `json:"goal_turns,omitempty"`
+	RunningTurnID   string       `json:"running_turn_id,omitempty"`
+	RunningSince    *time.Time   `json:"running_since,omitempty"`
 	BlockerAudit    BlockerAudit `json:"blocker_audit,omitempty"`
 	CreatedAt       time.Time    `json:"created_at"`
 	UpdatedAt       time.Time    `json:"updated_at"`
@@ -92,6 +95,30 @@ func NewGoal(spec Spec, now time.Time) (Goal, error) {
 
 func (g Goal) CanAutoContinue() bool {
 	return g.Status == StatusActive
+}
+
+func (g Goal) StartRun(turnID string, startedAt time.Time) Goal {
+	if startedAt.IsZero() {
+		startedAt = time.Now().UTC()
+	}
+	startedAt = startedAt.UTC()
+	g.RunningTurnID = strings.TrimSpace(turnID)
+	g.RunningSince = &startedAt
+	g.UpdatedAt = startedAt
+	return g
+}
+
+func (g Goal) ClearRun(turnID string, now time.Time) Goal {
+	turnID = strings.TrimSpace(turnID)
+	if turnID != "" && g.RunningTurnID != "" && turnID != g.RunningTurnID {
+		return g
+	}
+	g.RunningTurnID = ""
+	g.RunningSince = nil
+	if !now.IsZero() {
+		g.UpdatedAt = now.UTC()
+	}
+	return g
 }
 
 func IsKnownStatus(status Status) bool {
@@ -199,8 +226,12 @@ func (g Goal) AccountUsage(delta UsageDelta, now time.Time) (Goal, error) {
 	if now.IsZero() {
 		now = time.Now().UTC()
 	}
+	if g.TimeUsedMS == 0 && g.TimeUsedSeconds > 0 {
+		g.TimeUsedMS = g.TimeUsedSeconds * int64(time.Second/time.Millisecond)
+	}
 	g.TokensUsed += delta.Tokens
-	g.TimeUsedSeconds += int64(delta.Elapsed / time.Second)
+	g.TimeUsedMS += delta.Elapsed.Milliseconds()
+	g.TimeUsedSeconds = g.TimeUsedMS / int64(time.Second/time.Millisecond)
 	g.GoalTurns += delta.Turns
 	g.UpdatedAt = now.UTC()
 	return g, nil

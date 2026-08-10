@@ -20,7 +20,7 @@ import (
 // handleThreadDelete permanently removes a conversation. Unlike archive
 // (which only hides the thread), delete is the storage-hygiene path: it
 // removes the session row and chat history, the workspace-scoped session
-// artifact directory (workers/threads/harness/goal_runtime.json), and any fork
+// artifact directory (workers/threads/harness), and any fork
 // worktree still bound to the thread. Only archived or otherwise idle (not
 // running) threads are eligible.
 func (s *Server) handleThreadDelete(req Request) error {

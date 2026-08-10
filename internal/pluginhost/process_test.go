@@ -11,11 +11,9 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/blueberrycongee/wuu/internal/providers"
 )
 
-func TestProcessClientLifecycleAndInvoke(t *testing.T) {
+func TestProcessClientLifecycle(t *testing.T) {
 	if os.Getenv("WUU_PLUGINHOST_HELPER") == "1" {
 		runPluginHelper()
 		return
@@ -24,7 +22,7 @@ func TestProcessClientLifecycleAndInvoke(t *testing.T) {
 	client, err := Start(context.Background(), ProcessConfig{
 		ID:          "test-plugin",
 		Command:     os.Args[0],
-		Args:        []string{"-test.run=TestProcessClientLifecycleAndInvoke"},
+		Args:        []string{"-test.run=TestProcessClientLifecycle"},
 		Env:         map[string]string{"WUU_PLUGINHOST_HELPER": "1"},
 		PluginRoot:  root,
 		ProjectRoot: filepath.Dir(root),
@@ -34,17 +32,8 @@ func TestProcessClientLifecycleAndInvoke(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if client.Status().State != StateActive || !hasHook(client.Hooks(), HookChatMessage) {
+	if client.Status().State != StateActive {
 		t.Fatalf("status = %+v", client.Status())
-	}
-	input, _ := json.Marshal(map[string]string{"session_id": "s1"})
-	output, _ := json.Marshal(map[string]string{"message": "hello"})
-	result, err := client.Invoke(context.Background(), InvokeParams{Hook: HookChatMessage, Input: input, Output: output})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(result.Output), "hello from plugin") {
-		t.Fatalf("output = %s", result.Output)
 	}
 	if err := client.Close(context.Background()); err != nil {
 		t.Fatal(err)
@@ -81,7 +70,7 @@ func TestProcessClientNegotiatesAndInvokesCapability(t *testing.T) {
 	if len(capabilities) != 1 || capabilities[0].ID != CapabilityAgentRequestTransform {
 		t.Fatalf("capabilities = %+v", capabilities)
 	}
-	output, _ := json.Marshal(RequestTransformOutput{Request: providers.ChatRequest{Model: "before"}})
+	output, _ := json.Marshal(RequestTransformOutput{})
 	result, err := client.InvokeCapability(context.Background(), CapabilityInvokeParams{
 		Capability: CapabilityAgentRequestTransform,
 		Input:      json.RawMessage(`{"provider":"test"}`),
@@ -94,7 +83,7 @@ func TestProcessClientNegotiatesAndInvokesCapability(t *testing.T) {
 	if err := json.Unmarshal(result.Output, &transformed); err != nil {
 		t.Fatal(err)
 	}
-	if transformed.Request.Model != "after" {
+	if len(transformed.PrependSystemMessages) != 1 || transformed.PrependSystemMessages[0] != "after" {
 		t.Fatalf("output = %+v", transformed)
 	}
 }
@@ -133,7 +122,7 @@ func runCapabilityHelper() {
 			}
 			var output RequestTransformOutput
 			_ = json.Unmarshal(params.Output, &output)
-			output.Request.Model = "after"
+			output.PrependSystemMessages = []string{"after"}
 			data, _ := json.Marshal(output)
 			result = CapabilityInvokeResult{Output: data}
 		case "shutdown":
@@ -207,16 +196,7 @@ func runPluginHelper() {
 			if params.ProtocolVersion != ProtocolVersion {
 				os.Exit(3)
 			}
-			// A v1 result remains valid while additive v2 fields are ignored.
-			result = InitializeResult{Hooks: []Hook{HookChatMessage}}
-		case "hook.invoke":
-			var params InvokeParams
-			_ = json.Unmarshal(req.Params, &params)
-			var out map[string]string
-			_ = json.Unmarshal(params.Output, &out)
-			out["message"] += " from plugin"
-			data, _ := json.Marshal(out)
-			result = InvokeResult{Output: data}
+			result = InitializeResult{}
 		case "shutdown":
 			_ = enc.Encode(map[string]any{"id": req.ID, "result": result})
 			return
@@ -225,30 +205,6 @@ func runPluginHelper() {
 			continue
 		}
 		_ = enc.Encode(map[string]any{"id": req.ID, "result": result})
-	}
-}
-
-func TestProcessClientRejectsUnknownDeclaredHook(t *testing.T) {
-	if os.Getenv("WUU_PLUGINHOST_BAD_HELPER") == "1" {
-		enc := json.NewEncoder(os.Stdout)
-		scanner := bufio.NewScanner(os.Stdin)
-		if scanner.Scan() {
-			var req rpcRequest
-			_ = json.Unmarshal(scanner.Bytes(), &req)
-			_ = enc.Encode(map[string]any{"id": req.ID, "result": InitializeResult{Hooks: []Hook{"not.real"}}})
-		}
-		return
-	}
-	_, err := Start(context.Background(), ProcessConfig{
-		ID:         "bad-plugin",
-		Command:    os.Args[0],
-		Args:       []string{"-test.run=TestProcessClientRejectsUnknownDeclaredHook"},
-		Env:        map[string]string{"WUU_PLUGINHOST_BAD_HELPER": "1"},
-		PluginRoot: t.TempDir(),
-		Timeout:    2 * time.Second,
-	})
-	if err == nil || !strings.Contains(err.Error(), "unknown hook") {
-		t.Fatalf("err = %v", err)
 	}
 }
 
@@ -320,9 +276,11 @@ func TestProcessEnvDoesNotInheritSecrets(t *testing.T) {
 		}
 	}()
 
-	input, _ := json.Marshal(map[string]string{"name": "WUU_PARENT_SECRET_TOKEN"})
-	output, _ := json.Marshal(map[string]string{})
-	result, err := client.Invoke(context.Background(), InvokeParams{Hook: HookChatMessage, Input: input, Output: output})
+	result, err := client.InvokeCapability(context.Background(), CapabilityInvokeParams{
+		Capability: CapabilityPluginClientRequest,
+		Input:      mustRaw(map[string]string{"name": "WUU_PARENT_SECRET_TOKEN"}),
+		Output:     json.RawMessage(`{}`),
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -350,15 +308,15 @@ func runEnvHelper() {
 		var result any = map[string]any{}
 		switch req.Method {
 		case "initialize":
-			result = InitializeResult{Hooks: []Hook{HookChatMessage}}
-		case "hook.invoke":
-			var params InvokeParams
+			result = CapabilityInitializeResult{ProtocolVersion: CapabilityProtocolVersion, Capabilities: []CapabilityDescriptor{{ID: CapabilityPluginClientRequest, Kind: SeamDecision, Version: 1}}}
+		case "capability.invoke":
+			var params CapabilityInvokeParams
 			_ = json.Unmarshal(req.Params, &params)
 			var query map[string]string
 			_ = json.Unmarshal(params.Input, &query)
 			value := os.Getenv(query["name"])
 			data, _ := json.Marshal(map[string]string{"value": value})
-			result = InvokeResult{Output: data}
+			result = CapabilityInvokeResult{Output: data}
 		case "shutdown":
 			_ = enc.Encode(map[string]any{"id": req.ID, "result": result})
 			return
@@ -392,9 +350,7 @@ func TestProcessOversizeResponse(t *testing.T) {
 		}
 	}()
 
-	input, _ := json.Marshal(map[string]string{})
-	output, _ := json.Marshal(map[string]string{})
-	_, err = client.Invoke(context.Background(), InvokeParams{Hook: HookChatMessage, Input: input, Output: output})
+	_, err = client.InvokeCapability(context.Background(), CapabilityInvokeParams{Capability: CapabilityPluginClientRequest, Input: json.RawMessage(`{}`), Output: json.RawMessage(`{}`)})
 	if err == nil {
 		t.Fatal("expected oversize response error")
 	}
@@ -417,12 +373,12 @@ func runOversizeHelper() {
 		var result any = map[string]any{}
 		switch req.Method {
 		case "initialize":
-			result = InitializeResult{Hooks: []Hook{HookChatMessage}}
-		case "hook.invoke":
+			result = CapabilityInitializeResult{ProtocolVersion: CapabilityProtocolVersion, Capabilities: []CapabilityDescriptor{{ID: CapabilityPluginClientRequest, Kind: SeamDecision, Version: 1}}}
+		case "capability.invoke":
 			// Produce one JSON-lines token larger than maxResponseLineSize.
 			big := strings.Repeat("x", maxResponseLineSize+1024)
 			payload, _ := json.Marshal(map[string]string{"message": big})
-			result = InvokeResult{Output: payload}
+			result = CapabilityInvokeResult{Output: payload}
 		case "shutdown":
 			_ = enc.Encode(map[string]any{"id": req.ID, "result": result})
 			return

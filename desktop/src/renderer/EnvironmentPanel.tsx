@@ -1,6 +1,5 @@
 import {
   AlertCircle,
-  Archive,
   Check,
   ChevronRight,
   CornerDownRight,
@@ -9,37 +8,27 @@ import {
   FolderPlus,
   Github,
   GitBranch,
-  Pin,
   Plus,
   Search,
   X
 } from "lucide-react";
-import { type FormEvent as ReactFormEvent, type RefObject, useEffect, useState } from "react";
+import { type FormEvent as ReactFormEvent, type ReactNode, type RefObject, useEffect, useState } from "react";
 import type {
-  Agent,
   GitStatusResult,
   InitializeResult,
-  PlanUpdate,
   WorkspaceFileReadResult
 } from "../shared/protocol";
 import { desktopApiErrorMessage, formatBytes } from "./WorkspaceReviewHelpers";
-import { agentStatusLabel, sortChildAgents } from "./ThreadAgents";
-import { ParticipantChip } from "./ParticipantChip";
-import { type SubagentRowSummary } from "./EnvironmentSideStack";
-import { agentNameForSubagentID } from "./agentNames";
 import { useI18n } from "./i18n";
 import { Tooltip } from "./Tooltip";
 
 export type EnvironmentPanelMenu = "branch" | "file" | null;
 export type EnvironmentPanelMotionState = "open" | "closing";
 
-const MAX_VISIBLE_ENVIRONMENT_SUBAGENTS = 5;
-
 export function EnvironmentPanel({
   panelRef,
   motionState,
   gitStatus,
-  planUpdate,
   activeMenu,
   running,
   pullRequestDisabledReason,
@@ -52,18 +41,12 @@ export function EnvironmentPanel({
   onOpenPullRequest,
   rightPanelFilePath,
   onCloseFilePreview,
-  subagentSessions,
-  archiveConfirmSubagentID,
-  onSelectSubagent,
-  onToggleSubagentPinned,
-  onArchiveSubagent,
-  onClearSubagentArchiveConfirm
+  pluginSections,
 }: {
   panelRef: RefObject<HTMLDivElement | null>;
   motionState: EnvironmentPanelMotionState;
   initialized: InitializeResult;
   gitStatus?: GitStatusResult;
-  planUpdate?: PlanUpdate;
   activeMenu: EnvironmentPanelMenu;
   running: boolean;
   pullRequestDisabledReason: string;
@@ -87,22 +70,8 @@ export function EnvironmentPanel({
    * caller does not provide a file-specific closer.
    */
   onCloseFilePreview?: () => void;
-  /**
-   * Subagent sessions owned by the active main session. When the array is
-   * undefined or empty the "子任务" section is hidden entirely so the panel
-   * stays quiet for sessions that never spawned one.
-   */
-  subagentSessions?: SubagentRowSummary[];
-  /**
-   * ID of the subagent currently sitting in the "press again to confirm"
-   * archive state. Mirrors `archiveConfirmThreadID` in the sidebar so the
-   * UX stays consistent between the two surfaces.
-   */
-  archiveConfirmSubagentID?: string;
-  onSelectSubagent?: (agent: SubagentRowSummary) => void;
-  onToggleSubagentPinned?: (agent: SubagentRowSummary) => void;
-  onArchiveSubagent?: (agent: SubagentRowSummary) => void;
-  onClearSubagentArchiveConfirm?: (agentID: string) => void;
+  /** Host-mounted plugin summaries. Each contribution owns its own error boundary. */
+  pluginSections?: ReactNode;
 }): JSX.Element {
   const { t, formatNumber } = useI18n();
   if (activeMenu === "file" && rightPanelFilePath) {
@@ -131,7 +100,7 @@ export function EnvironmentPanel({
     <aside
       className={`environment-panel ${motionState}`}
       ref={panelRef}
-      aria-label={t(planUpdate ? "environment.progressAndInfo" : "environment.info")}
+      aria-label={t("environment.info")}
       aria-hidden={motionState === "closing" ? true : undefined}
       data-wuu-component="environment-panel"
       data-wuu-state={motionState}
@@ -144,7 +113,7 @@ export function EnvironmentPanel({
         </div>
       </div>
 
-      {planUpdate ? <EnvironmentPlanSection planUpdate={planUpdate} /> : null}
+      {pluginSections}
 
       <div className="environment-panel-body">
         <button
@@ -210,16 +179,6 @@ export function EnvironmentPanel({
           </button>
         </Tooltip>
 
-        {subagentSessions && subagentSessions.length > 0 ? (
-          <EnvironmentSubagents
-            agents={subagentSessions}
-            archiveConfirmID={archiveConfirmSubagentID}
-            onSelect={onSelectSubagent}
-            onTogglePinned={onToggleSubagentPinned}
-            onArchive={onArchiveSubagent}
-            onClearArchiveConfirm={onClearSubagentArchiveConfirm}
-          />
-        ) : null}
       </div>
 
       {activeMenu === "branch" && gitStatus?.is_repo ? (
@@ -230,200 +189,6 @@ export function EnvironmentPanel({
         />
       ) : null}
     </aside>
-  );
-}
-
-/**
- * EnvironmentSubagents renders the active session's subagent sessions as
- * horizontal rows in the info panel. The section is only shown when at
- * least one subagent exists; otherwise the entire block disappears so
- * the panel stays uncluttered for plain sessions.
- *
- * The visual is deliberately a near-clone of the sidebar's `thread-row`
- * pattern: a single-row card with a status indicator, a title, and
- * hover-revealed Pin / Archive actions. The right column is also where
- * the nested-children counter appears for agents that have spawned their
- * own subagents.
- */
-function EnvironmentSubagents({
-  agents,
-  archiveConfirmID,
-  onSelect,
-  onTogglePinned,
-  onArchive,
-  onClearArchiveConfirm,
-}: {
-  agents: SubagentRowSummary[];
-  archiveConfirmID?: string;
-  onSelect?: (agent: SubagentRowSummary) => void;
-  onTogglePinned?: (agent: SubagentRowSummary) => void;
-  onArchive?: (agent: SubagentRowSummary) => void;
-  onClearArchiveConfirm?: (agentID: string) => void;
-}): JSX.Element {
-  const { t } = useI18n();
-  // We treat the summary as a quasi-`Agent` for the existing sort helper
-  // — it sorts by started_at then by agent_path which keeps the visible
-  // order deterministic and matches the sidebar's historical behaviour.
-  // The double cast is necessary because `SubagentRowSummary` is a strict
-  // subset of `Agent` and `sortChildAgents` is generic over the full type.
-  const ordered: SubagentRowSummary[] = sortChildAgents(
-    agents as unknown as Agent[],
-  );
-  const hiddenCount = Math.max(
-    0,
-    ordered.length - MAX_VISIBLE_ENVIRONMENT_SUBAGENTS,
-  );
-  const visibleAgents = ordered.slice(-MAX_VISIBLE_ENVIRONMENT_SUBAGENTS);
-  return (
-    <div
-      role="group"
-      aria-label={t("environment.subtasks")}
-      className="environment-subagent-group"
-    >
-      {visibleAgents.map((agent) => {
-          const archiveConfirming = archiveConfirmID === agent.id;
-          const nestedTotal = agent.nested_count ?? 0;
-          const nestedRunning = agent.nested_running_count ?? 0;
-          const nestedLabel =
-            nestedTotal <= 0
-              ? null
-              : nestedRunning > 0
-                ? `${nestedRunning}/${nestedTotal}`
-                : `+${nestedTotal}`;
-          return (
-            <div
-              key={agent.id}
-              className={`subagent-row ${agentStatusToneToClass(agent.status)}${
-                agent.archived ? " archived" : ""
-              }${archiveConfirming ? " archive-confirm" : ""}`}
-              onMouseLeave={() => onClearArchiveConfirm?.(agent.id)}
-            >
-              <Tooltip content={agentTooltipFromSummary(agent)}>
-                <button
-                  type="button"
-                  className="subagent-row-main"
-                  onClick={() => onSelect?.(agent)}
-                  aria-label={t("environment.openSubtask", {
-                    name: agentLabelFromSummary(agent),
-                  })}
-                >
-                  <span className="subagent-row-title">
-                    <ParticipantChip
-                      fallbackType=""
-                      fallbackTaskName={agentLabelFromSummary(agent)}
-                      size="sm"
-                    />
-                  </span>
-                  <span className="subagent-row-status">
-                    {agentStatusLabel(agent.status)}
-                  </span>
-                  {nestedLabel ? (
-                    <span className="subagent-row-nested">{nestedLabel}</span>
-                  ) : null}
-                </button>
-              </Tooltip>
-              <div
-                className="subagent-row-actions"
-                aria-label={t("environment.subtaskActions")}
-              >
-                <button
-                  className={`sidebar-row-icon-button subagent-row-action ${agent.pinned ? "active" : ""}`}
-                  type="button"
-                  aria-label={t(agent.pinned ? "sidebar.unpin" : "sidebar.pin")}
-                  title={t(agent.pinned ? "sidebar.unpin" : "sidebar.pin")}
-                  onClick={() => onTogglePinned?.(agent)}
-                >
-                  <Pin className="icon-sm" />
-                </button>
-                <button
-                  className={`sidebar-row-icon-button subagent-row-action archive ${archiveConfirming ? "confirm" : ""}`}
-                  type="button"
-                  aria-label={t(
-                    archiveConfirming
-                      ? "environment.confirmArchive"
-                      : "sidebar.archiveAction",
-                  )}
-                  title={t(
-                    archiveConfirming
-                      ? "environment.clickAgainArchive"
-                      : "sidebar.archiveAction",
-                  )}
-                  onClick={() => onArchive?.(agent)}
-                >
-                  <Archive className="icon-sm" />
-                </button>
-              </div>
-            </div>
-          );
-        })}
-      {hiddenCount > 0 ? (
-        <div className="environment-subagent-overflow-note" role="note">
-          {t("environment.earlierSubtasksHidden", { count: hiddenCount })}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-/** Keep the panel-specific visual class stable across agent states. */
-function agentStatusToneToClass(status: string | undefined): string {
-  switch (status) {
-    case "running":
-      return "running";
-    case "completed":
-      return "completed";
-    case "failed":
-      return "failed";
-    case "cancelled":
-      return "cancelled";
-    default:
-      return "pending";
-  }
-}
-
-function agentLabelFromSummary(agent: SubagentRowSummary): string {
-  return agentNameForSubagentID(agent.id).displayName;
-}
-
-function agentTooltipFromSummary(agent: SubagentRowSummary): string {
-  const { displayName, secondaryName, source } = agentNameForSubagentID(agent.id);
-  const pieces: string[] = [displayName];
-  if (secondaryName) {
-    pieces.push(secondaryName);
-  }
-  pieces.push(source, agentStatusLabel(agent.status));
-  const type = agent.type?.trim();
-  if (type && type !== displayName) {
-    pieces.push(type);
-  }
-  const path = agent.agent_path?.trim();
-  if (path) {
-    pieces.push(path);
-  }
-  const task = agent.task_name?.trim() || agent.description?.trim();
-  if (task) {
-    pieces.push(task);
-  }
-  return pieces.join(" · ");
-}
-
-function EnvironmentPlanSection({ planUpdate }: { planUpdate: PlanUpdate }): JSX.Element {
-  const { t } = useI18n();
-  return (
-    <section className="environment-plan-section" aria-label={t("environment.taskProgress")}>
-      <div className="environment-plan-scroll">
-        <ol className="environment-plan-list">
-          {planUpdate.plan.map((item, index) => (
-            <li className={`environment-plan-item ${item.status}`} key={`${index}-${item.step}`}>
-              <span className="environment-plan-marker" aria-hidden="true">
-                {item.status === "completed" ? <Check className="icon-xs" strokeWidth={3} /> : null}
-              </span>
-              <span>{item.step}</span>
-            </li>
-          ))}
-        </ol>
-      </div>
-    </section>
   );
 }
 

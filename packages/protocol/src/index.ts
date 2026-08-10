@@ -87,9 +87,7 @@ export type InitializeResult = {
   model: string;
   effort?: string;
   variant?: string;
-  ultra?: boolean;
-  // Effective anonymous-worker execution capacity after applying the
-  // default (docs/app-server-protocol.md, Ultra Mode Configuration).
+  // Effective anonymous-worker execution capacity.
   max_parallel?: number;
   runtime_host?: RuntimeHostSummary;
   workspace_root: string;
@@ -117,6 +115,9 @@ export type FeatureFlags = {
   // Advertises that this client can host the embedded browser backend
   // (hidden WebContentsView + CDP bridge). Mirrors appserver.FeatureFlags.
   browser?: boolean;
+  // Plugin manifests remain visible for recovery, but no plugin contribution
+  // is activated in either runtime or desktop planes.
+  safe_mode?: boolean;
 };
 
 // Browser* are the core→desktop server-initiated request payloads. The core
@@ -203,12 +204,7 @@ export type AdvancedSettingsSummary = {
 export type GeneralSettingsSummary = {
   append_system_prompt: string;
   git_attribution_enabled?: boolean;
-  memory_disabled: boolean;
   mcp_server_enabled: Record<string, boolean>;
-  dream_enabled: boolean;
-  dream_interval_days: number;
-  dream_provider?: string;
-  dream_model?: string;
 };
 
 export type PermissionSummary = {
@@ -323,9 +319,14 @@ export interface ExtensionViewEntryDescriptor {
   view: string;
   title: string;
   description?: string;
-  icon?: string;
+  icon?: ExtensionIconDescriptor;
   order?: number;
 }
+
+export type ExtensionIconDescriptor =
+  | { name: string; path?: never; light?: never; dark?: never }
+  | { name?: never; path: string; light?: never; dark?: never }
+  | { name?: never; path?: never; light: string; dark: string };
 
 export interface ExtensionSlotContributionDescriptor {
   id: string;
@@ -358,6 +359,11 @@ export type ExtensionPendingUpdate = {
   effective_permissions?: string[];
 };
 
+export type ExtensionPluginActivationIssue = {
+  kind: "missing_requirement" | "conflict";
+  related_plugin_id: string;
+};
+
 export type PluginConflictPreferences = Record<string, string>;
 
 export type ExtensionProvenance = {
@@ -373,17 +379,24 @@ export type ExtensionInventoryRecord = {
   id: string;
   name: string;
   description?: string;
+  icon?: ExtensionIconDescriptor;
   kind: ExtensionKind;
   provenance: ExtensionProvenance;
   state: ExtensionState;
   executable?: boolean;
   fingerprint?: string;
+  package_source?: "bundled" | "user" | "project" | "dev";
   grant_scope?: "action" | "session" | "project" | "user";
   requested_permissions?: string[];
   unsupported_fields?: string[];
   parent_id?: string;
   approval_state?: ExtensionApprovalState;
   runtime_state?: ExtensionRuntimeState;
+  last_error?: string;
+  requires?: string[];
+  breaks?: string[];
+  conflicts?: string[];
+  activation_issues?: ExtensionPluginActivationIssue[];
   enabled?: boolean;
   desktop?: ExtensionDesktopDescriptor;
   contributions?: ExtensionContributions;
@@ -476,6 +489,23 @@ export interface PluginDesktopModuleLoadResult {
   url: string;
 }
 
+export interface PluginIconReadParams {
+  id: string;
+  fingerprint: string;
+  path: string;
+}
+
+export interface PluginIconReadResult extends PluginIconReadParams {
+  media_type: "image/svg+xml" | "image/png" | "image/webp";
+  digest: string;
+  data: string;
+}
+
+export interface PluginIconLoadResult extends PluginIconReadParams {
+  digest: string;
+  url: string;
+}
+
 export type PluginValueScope = "user" | "workspace";
 export interface PluginIdentityParams { id: string; fingerprint: string; }
 export interface PluginSettingGetParams extends PluginIdentityParams { key: string; }
@@ -516,7 +546,6 @@ export type ConfigModelUpdateResult = {
   model: string;
   effort?: string;
   variant?: string;
-  ultra: boolean;
   // Readback of the effective anonymous-worker capacity, mirroring
   // InitializeResult.max_parallel.
   max_parallel: number;
@@ -620,7 +649,6 @@ export type ModelBehaviorSummary = {
     review?: boolean;
     compact?: boolean;
     title?: boolean;
-    memory?: boolean;
     worker?: boolean;
     fallback?: boolean;
   };
@@ -666,51 +694,6 @@ export type SkillContentParams = {
 export type SkillContentResult = {
   content: string;
 };
-
-export type AutomationTask = {
-  id: string;
-  title?: string;
-  cron: string;
-  timezone?: string;
-  prompt?: string;
-  mode?: "new_thread" | "thread_heartbeat";
-  creatorThreadId?: string;
-  heartbeatThreadId?: string;
-  workspaceId?: string;
-  workspacePath?: string;
-  metadata?: Record<string, string>;
-  createdAt: number;
-  lastFiredAt?: number;
-  recurring: boolean;
-  paused?: boolean;
-};
-
-export type AutomationListResult = { tasks: AutomationTask[] };
-export type AutomationCreateParams = {
-  title: string;
-  prompt: string;
-  schedule: string;
-  timezone?: string;
-  mode?: "new_thread" | "thread_heartbeat";
-  heartbeat_thread_id?: string;
-  workspace_id?: string;
-  workspace_path?: string;
-  recurring: boolean;
-  paused?: boolean;
-};
-export type AutomationCreateResult = { task: AutomationTask };
-export type AutomationUpdateParams = {
-  id: string;
-  title?: string;
-  prompt?: string;
-  schedule?: string;
-  timezone?: string;
-  mode?: "new_thread" | "thread_heartbeat";
-  heartbeat_thread_id?: string;
-  recurring?: boolean;
-  paused?: boolean;
-};
-export type AutomationUpdateResult = { task: AutomationTask };
 
 export type NamedAgent = {
   id: string;
@@ -980,12 +963,7 @@ export type ConfigAdvancedUpdateResult = {
 export type RuntimeGeneralSettingsUpdate = {
   append_system_prompt?: string;
   git_attribution_enabled?: boolean;
-  memory_disable?: boolean;
   mcp_enabled_toggles?: Record<string, boolean>;
-  dream_enabled?: boolean;
-  dream_interval_days?: number;
-  dream_provider?: string;
-  dream_model?: string;
 };
 
 export type ConfigGeneralUpdateResult = {
@@ -1307,7 +1285,6 @@ export type ThreadItemType =
   | "agent_message"
   | "reasoning"
   | "tool_call"
-  | "collab_agent_tool_call"
   | "context_compaction"
   | "error";
 export type ThreadItemStatus = "in_progress" | "completed" | "failed";
@@ -1400,85 +1377,15 @@ export type Agent = {
   started_at?: string;
   completed_at?: string | null;
   // Pinned and Archived mirror the underlying session metadata for the
-  // sub-agent's own session so the info panel can offer pin/archive
+  // child execution's own session so shells can offer generic session actions
   // actions without an extra round-trip.
   pinned?: boolean;
   archived?: boolean;
   participant?: ParticipantSummary;
 };
 
-// ---------------------------------------------------------------------------
-// Memory panel (设置 → 记忆). Wire contract fixed ahead of implementation by
-// docs/plans/2026-07-04-memory-redesign.md §8.2. The three RPCs are served
-// by the M2 memory-panel backend; a backend without M2 rejects them with an
-// "unknown method" error, which the renderer maps to a
-// "记忆面板后端尚未就绪" placeholder instead of crashing.
-
-// MemoryScope selects which notebook an RPC targets: "user" is the user
-// notebook (~/.wuu/memory). The participant scope is no longer exposed by the
-// product; the type remains for backwards compatibility with persisted data.
-export type MemoryScope = "user" | "participant";
-
-export type MemoryOverviewParams = {
-  scope: MemoryScope;
-  participant_id?: string;
-  force_refresh?: boolean;
-};
-
-// memory/overview result: the structured essay the overview agent generated
-// from the real notebook (one LLM pass). cached indicates the backend served
-// its (notebook, index mtime) cache instead of regenerating.
-export type MemoryOverviewResult = {
-  essay_md: string;
-  generated_at: string;
-  source_mtime: string;
-  cached: boolean;
-};
-
-export type MemoryChatParams = {
-  scope: MemoryScope;
-  participant_id?: string;
-  message: string;
-};
-
-export type MemoryChangedFileAction = "created" | "modified" | "deleted";
-
-export type MemoryChangedFile = {
-  path: string;
-  action: MemoryChangedFileAction;
-};
-
-// memory/chat result: the manager agent's natural-language reply plus the
-// real files it touched (topic files and/or the MEMORY.md index).
-export type MemoryChatResult = {
-  reply_md: string;
-  changed_files: MemoryChangedFile[];
-};
-
 export type TextPolishResult = {
   text: string;
-};
-
-export type MemoryReadParams = {
-  scope: MemoryScope;
-  participant_id?: string;
-};
-
-// One real memory file in the notebook. `type` mirrors the file's
-// frontmatter; canonical values are user | feedback | reference | lesson but
-// it stays a string so entries written by newer backends still render.
-export type MemoryFileInfo = {
-  name: string;
-  description: string;
-  type: string;
-  mtime: string;
-};
-
-// memory/read result: the raw MEMORY.md index plus the file inventory —
-// no LLM involved; the panel's "查看原文" audit/fallback view.
-export type MemoryReadResult = {
-  index_md: string;
-  files: MemoryFileInfo[];
 };
 
 export type WorktreeInfo = {
@@ -1764,7 +1671,7 @@ export type ContextSegmentCountSummary = {
 export type InstructionFileScope = "global" | "project";
 
 // InstructionFile mirrors appserver.InstructionFile: one AGENTS.md / CLAUDE.md
-// style file that memory.Discover loaded into the base system prompt.
+// style file discovered and loaded into the base system prompt.
 export type InstructionFile = {
   path: string;
   name: string;
@@ -1953,6 +1860,12 @@ export type ThreadItem = {
   files?: InputFile[];
   name?: string;
   read_only?: boolean;
+  // Generated queries keep the normal user-message shape while preserving
+  // their trusted source and plugin-selected presentation separately.
+  origin?: string;
+  origin_id?: string;
+  cause?: string;
+  presentation_kind?: string;
   arguments?: string;
   display?: ToolCallDisplay;
   result?: string;
@@ -2329,14 +2242,13 @@ export type WuuDesktopApi = {
   selectProject: (projectId: string) => Promise<ProjectListResult>;
   removeProject: (projectId: string) => Promise<ProjectListResult>;
   // Opt-in second step after removeProject: reclaim the removed workspace's
-  // local state directory. Non-memory state (session artifacts, goals,
-  // worktrees, runtime files) is deleted; memory directories are archived
-  // into `.archived/` inside the state dir, never hard-deleted. Mirrors the
+  // local state directory. Core transient state is deleted; plugin-owned and
+  // unknown durable directories are archived into `.archived/`. Mirrors the
   // `workspace/state/cleanup` RPC.
   cleanupProjectState: (
     projectId: string,
     projectPath: string,
-  ) => Promise<{ state_dir: string; removed: boolean; memory_archived: boolean }>;
+  ) => Promise<{ state_dir: string; removed: boolean; data_archived: boolean }>;
   relocateProject: (projectId: string) => Promise<ProjectListResult>;
   selectNoProject: (fresh?: boolean, cwd?: string) => Promise<ProjectListResult>;
   gitStatus: (root?: string) => Promise<GitStatusResult>;
@@ -2401,7 +2313,6 @@ export type WuuDesktopApi = {
     permissionMode?: string,
     threadId?: string
   ) => Promise<ConfigModelUpdateResult>;
-  updateUltraMode: (enabled: boolean) => Promise<ConfigModelUpdateResult>;
   removeProvider: (
     provider: string,
     options?: { fallbackProvider?: string; fallbackModel?: string }
@@ -2421,6 +2332,7 @@ export type WuuDesktopApi = {
   loadPluginDesktopModule: (
     params: PluginDesktopModuleReadParams,
   ) => Promise<PluginDesktopModuleLoadResult>;
+  loadPluginIcon: (params: PluginIconReadParams) => Promise<PluginIconLoadResult>;
   getPluginSetting: (params: PluginSettingGetParams) => Promise<PluginSettingResult>;
   setPluginSetting: (params: PluginSettingSetParams) => Promise<PluginSettingResult>;
   getPluginDiagnostics: (params: PluginIdentityParams) => Promise<PluginDiagnosticsResult>;
@@ -2441,10 +2353,6 @@ export type WuuDesktopApi = {
   stopActivity: (threadId: string, activityId: string) => Promise<ActivityActionResult>;
   listSkills: () => Promise<SkillListResult>;
   readSkillContent: (params: SkillContentParams) => Promise<SkillContentResult>;
-  listAutomations: () => Promise<AutomationListResult>;
-  createAutomation: (params: AutomationCreateParams) => Promise<AutomationCreateResult>;
-  updateAutomation: (params: AutomationUpdateParams) => Promise<AutomationUpdateResult>;
-  removeAutomation: (id: string) => Promise<{ ok: boolean }>;
   listNamedAgents: () => Promise<ChannelAgentListResult>;
   getNamedAgentInsights: () => Promise<ChannelAgentInsightsResult>;
   bootstrapChannels: () => Promise<ChannelBootstrapResult>;
@@ -2557,12 +2465,7 @@ export type WuuDesktopApi = {
   onCodexPetJumpRequest: (
     handler: (event: { thread_id: string }) => void,
   ) => () => void;
-  // 记忆面板（设置 → 记忆）。契约见 memory-redesign.md §8.2；后端 M2
-  // 未落地时三个方法都会以 unknown method 错误拒绝，面板渲染占位态。
-  getMemoryOverview: (params: MemoryOverviewParams) => Promise<MemoryOverviewResult>;
-  sendMemoryChat: (params: MemoryChatParams) => Promise<MemoryChatResult>;
   polishText: (text: string) => Promise<TextPolishResult>;
-  readMemoryRaw: (params: MemoryReadParams) => Promise<MemoryReadResult>;
   listThreads: (cwd?: string) => Promise<{ threads: Thread[] }>;
   // Settings → Archive panel uses this to surface archived sessions across
   // every cwd after a restart; the active list above stays non-archived.

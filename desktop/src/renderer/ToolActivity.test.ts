@@ -275,7 +275,7 @@ describe("buildToolActivityProcessSegments", () => {
     ]);
   });
 
-  it("uses action-oriented copy for repeated searches and scheduled tasks", () => {
+  it("uses action-oriented copy for repeated searches", () => {
     const segments = buildToolActivityProcessSegments([
       {
         id: "search-1",
@@ -298,13 +298,6 @@ describe("buildToolActivityProcessSegments", () => {
         status: "completed",
         arguments: JSON.stringify({ pattern: "cache_write" }),
       },
-      {
-        id: "schedule-1",
-        type: "tool_call",
-        name: "cron",
-        status: "completed",
-        arguments: JSON.stringify({ action: "list" }),
-      },
     ] satisfies ThreadItem[]);
 
     expect(segments).toMatchObject([
@@ -313,10 +306,6 @@ describe("buildToolActivityProcessSegments", () => {
         countPrefix: "搜索 ",
         count: 3,
         countSuffix: " 次",
-      },
-      {
-        kind: "schedule",
-        text: "查看定时任务",
       },
     ]);
   });
@@ -573,28 +562,4 @@ describe("collectTurnSources", () => {
     ]);
   });
 
-  it("treats collab_agent_tool_call web_search items the same as tool_call", () => {
-    expect(
-      collectTurnSources([
-        {
-          id: "ws-collab",
-          type: "collab_agent_tool_call",
-          name: "web_search",
-          status: "completed",
-          result: JSON.stringify({
-            results: [
-              { url: "https://collab.example/x", title: "Collab result" },
-            ],
-          }),
-        } satisfies ThreadItem,
-      ]),
-    ).toEqual([
-      {
-        url: "https://collab.example/x",
-        host: "collab.example",
-        title: "Collab result",
-        origin: "web_search",
-      },
-    ]);
-  });
 });

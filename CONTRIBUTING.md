@@ -83,6 +83,15 @@ run.
 4. Address review feedback with additional commits; avoid force-push after review starts
 5. A maintainer will squash-merge on approval
 
+## Documentation
+
+- Published pages live under `docs/zh-cn/` and `docs/en/`; only pages listed in
+  `docs/site.json` are rendered by the docs site.
+- Architecture and design documents go in `docs/design/`.
+- `docs/plans/` is local-only working space for proposals and research notes and
+  is never committed. Tracked documentation may reference open-source projects,
+  but must not contain research material about third-party commercial products.
+
 ## Project structure
 
 - `cmd/wuu/` — CLI entry point and the `wuu exec` / `wuu app-server` subcommands

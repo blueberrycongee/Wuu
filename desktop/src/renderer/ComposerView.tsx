@@ -21,12 +21,14 @@ import {
   forwardRef,
   memo,
   startTransition,
+  useCallback,
   useContext,
   useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
-  useState
+  useState,
+  useSyncExternalStore
 } from "react";
 import type {
   DesktopProject,
@@ -65,6 +67,7 @@ import { WorkspaceDocumentDrawerContext } from "./WorkspaceDocumentTurnDock";
 import { desktopPluginHost } from "./plugins/DesktopPluginRuntime";
 import type { PluginHost } from "./plugins/PluginHost";
 import { PluginSlot } from "./plugins/PluginSlot";
+import { ComposerPluginToolbar } from "./plugins/ComposerPluginToolbar";
 import {
   AccessMenu,
   ComposerPlusButton,
@@ -90,6 +93,7 @@ import { ENABLE_VOICE_INPUT } from "./FeatureFlags";
 import type { TurnContextUsage } from "./AppState";
 
 const MemoizedComposerPluginSlot = memo(PluginSlot);
+const MemoizedComposerPluginToolbar = memo(ComposerPluginToolbar);
 
 type CollapsedComposerPromptBlock = {
   id: string;
@@ -130,7 +134,6 @@ export function Composer({
   running,
   sendDisabled = false,
   forceStopWhileRunning = false,
-  ultraEnabled = false,
   runtimeControlsDisabled = running,
   status,
   statusLiveProgress,
@@ -168,7 +171,6 @@ export function Composer({
   onOpenContextComposition = () => {},
   onCompactContext = () => {},
   onOpenInstructions = () => {},
-  onOpenMemorySettings = () => {},
   onPasteAttachmentFiles,
   onRemoveFile,
   onRemoveImage,
@@ -176,7 +178,6 @@ export function Composer({
   onRemoveGuideMessage,
   onGuideQueuedMessage,
   onEditQueuedMessage,
-  onToggleUltra,
   onEditGuideMessage,
   onSend,
   onSteer,
@@ -218,7 +219,6 @@ export function Composer({
   running: boolean;
   sendDisabled?: boolean;
   forceStopWhileRunning?: boolean;
-  ultraEnabled?: boolean;
   runtimeControlsDisabled?: boolean;
   status: string;
   statusLiveProgress?: boolean;
@@ -261,8 +261,6 @@ export function Composer({
   onOpenContextComposition?: () => void;
   onCompactContext?: () => void;
   onOpenInstructions?: () => void;
-  // 打开 设置 → 记忆（/memory 指令）。
-  onOpenMemorySettings?: () => void;
   onPasteAttachmentFiles: (files: File[]) => void;
   onRemoveFile: (id: string) => void;
   onRemoveImage: (id: string) => void;
@@ -270,7 +268,6 @@ export function Composer({
   onRemoveGuideMessage: (id: string) => void;
   onGuideQueuedMessage: (id: string) => void;
   onEditQueuedMessage: (id: string) => void;
-  onToggleUltra?: (enabled: boolean) => void;
   onEditGuideMessage: (id: string) => void;
   onSend: (promptOverride?: string) => void;
   onSteer?: (promptOverride?: string) => void;
@@ -411,8 +408,6 @@ export function Composer({
       : composerSendLabel;
   const [expandedDrawer, setExpandedDrawer] = useState<ExpandedComposerDrawer>(null);
   const [dropActive, setDropActive] = useState(false);
-  const [ultraAnimationCycle, setUltraAnimationCycle] = useState(0);
-  const previousUltraEnabledRef = useRef(ultraEnabled);
   const [collapsedPromptBlocks, setCollapsedPromptBlocks] = useState<CollapsedComposerPromptBlock[]>([]);
   const [selectedSlashIndex, setSelectedSlashIndex] = useState(0);
   const [slashDismissedValue, setSlashDismissedValue] = useState("");
@@ -458,13 +453,6 @@ export function Composer({
     }
   }
 
-  useEffect(() => {
-    if (previousUltraEnabledRef.current === ultraEnabled) {
-      return;
-    }
-    previousUltraEnabledRef.current = ultraEnabled;
-    setUltraAnimationCycle((cycle) => cycle + 1);
-  }, [ultraEnabled]);
   const [slashSkills, setSlashSkills] = useState<SkillSummary[]>([]);
   const [composerContextMenu, setComposerContextMenu] = useState<{
     x: number;
@@ -494,9 +482,31 @@ export function Composer({
   const slashSkillContextKey = activeContext ? composerRuntimeContextKey(activeContext) : "";
   const slashSkillCountKey = initialized?.extension_trust?.main_session?.skills?.count ?? 0;
   const slashRuntimeReady = Boolean(activeContext && initialized);
+  const subscribePluginHost = useCallback(
+    (listener: () => void) => pluginHost.subscribe(listener),
+    [pluginHost],
+  );
+  const getPluginCommands = useCallback(() => pluginHost.getCommands(), [pluginHost]);
+  const registeredPluginCommands = useSyncExternalStore(
+    subscribePluginHost,
+    getPluginCommands,
+    getPluginCommands,
+  );
+  const availablePluginRuntimeCommands = useMemo(
+    () => new Set(registeredPluginCommands.map((command) => `${command.pluginId}:${command.id}`)),
+    [registeredPluginCommands],
+  );
   const builtinSlashCommands = useMemo(
-    () => buildComposerSlashCommands({ activeContext, initialized, running, compactDisabledReason, sideThreadDisabledReason, skills: slashSkills }),
-    [activeContext, compactDisabledReason, initialized, locale, running, sideThreadDisabledReason, slashSkills]
+    () => buildComposerSlashCommands({
+      activeContext,
+      initialized,
+      running,
+      compactDisabledReason,
+      sideThreadDisabledReason,
+      skills: slashSkills,
+      availablePluginRuntimeCommands,
+    }),
+    [activeContext, availablePluginRuntimeCommands, compactDisabledReason, initialized, locale, running, sideThreadDisabledReason, slashSkills]
   );
   const slashCommands = slashCommandsOverride ?? builtinSlashCommands;
   const fastModelTarget = useMemo(() => runtimeFastModelTarget(initialized), [initialized]);
@@ -862,9 +872,22 @@ export function Composer({
       case "instructions":
         onOpenInstructions();
         break;
-      case "open-memory":
-        onOpenMemorySettings();
+      case "plugin": {
+        const pluginCommand = pluginHost.getCommands().find((candidate) =>
+          candidate.pluginId === command.pluginId
+          && candidate.id === command.pluginCommandId);
+        if (!pluginCommand) break;
+        void Promise.resolve(pluginCommand.execute(Object.freeze({
+          source: "slash-command",
+          commandId: command.pluginCommandId,
+          args: draft?.args ?? "",
+          threadId: queryHistorySessionID,
+          context: activeContext,
+        }))).catch((error: unknown) => {
+          console.error(`Plugin slash command ${command.pluginId}:${command.pluginCommandId} failed`, error);
+        });
         break;
+      }
       case "model":
         onToggleCodexRuntimeMenu("model");
         break;
@@ -1056,30 +1079,8 @@ export function Composer({
           onEditQueuedMessage={onEditQueuedMessage}
         />
         <div className="composer-frame-shell">
-          {onToggleUltra ? (
-            <>
-              <button
-                className={`composer-ultra-button${ultraEnabled ? " is-active" : ""}`}
-                type="button"
-                aria-label={ultraEnabled ? t("composer.disableUltraMode") : t("composer.enableUltraMode")}
-                aria-pressed={ultraEnabled}
-                title={ultraEnabled ? t("composer.disableUltra") : t("composer.enableUltra")}
-                onClick={() => onToggleUltra(!ultraEnabled)}
-              >
-                <span className="composer-ultra-notch" aria-hidden="true" />
-                <span className="composer-ultra-impact" aria-hidden="true" />
-              </button>
-              {ultraAnimationCycle > 0 ? (
-                <span
-                  className={`composer-ultra-energy${ultraEnabled ? " turning-on" : " turning-off"}`}
-                  key={ultraAnimationCycle}
-                  aria-hidden="true"
-                />
-              ) : null}
-            </>
-          ) : null}
           <div
-            className={`composer-frame${ultraEnabled ? " is-ultra" : ""}${dropActive ? " composer-frame-drop-active" : ""}`}
+            className={`composer-frame${dropActive ? " composer-frame-drop-active" : ""}`}
             data-wuu-component="composer-frame"
             ref={composerFrameRef}
             onDragOver={handleComposerDragOver}
@@ -1252,7 +1253,7 @@ export function Composer({
                     ) : null}
                   </div>
                 ) : null}
-                <MemoizedComposerPluginSlot host={pluginHost} id="composer.toolbar" context={pluginSlotContext} />
+                <MemoizedComposerPluginToolbar host={pluginHost} context={pluginSlotContext} />
               </div>
               <div className="composer-bar-right">
                 {hideRuntimeControls ? null : (

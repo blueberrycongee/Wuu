@@ -96,6 +96,8 @@ assert.equal(
 );
 const devLauncherSource = readFileSync(resolve(__dirname, "dev.cjs"), "utf8");
 assert.doesNotMatch(devLauncherSource, /env\.WUU_ENABLE_CUA_MAC\s*=\s*["']1["']/);
+assert.match(devLauncherSource, /build-core\.cjs/);
+assert.match(devLauncherSource, /--plugins-only/);
 assert.equal(packageJSON.scripts["build:core"], "node scripts/build-core.cjs");
 assert.equal(
   packageJSON.scripts["build:core:win"],
@@ -129,6 +131,8 @@ assert.match(packageJSON.scripts["dist:mac"], /build:speech-mac/);
 assert.deepEqual(packageJSON.build.extraResources[0].filter, [
   "wuu-core",
   "wuu-core.exe",
+  "wuu-*-plugin",
+  "wuu-*-plugin.exe",
   "wuu-speech-mac",
 ]);
 assert.equal(

@@ -1,5 +1,4 @@
 import {
-  Brain,
   Bug,
   Check,
   ChevronDown,
@@ -19,7 +18,6 @@ import {
   GitCompare,
   GitPullRequest,
   Hammer,
-  LifeBuoy,
   MessageSquarePlus,
   Paperclip,
   PieChart,
@@ -725,8 +723,6 @@ export function SlashCommandIcon({ command }: { command: ComposerSlashCommand })
       return <Bug className="icon" />;
     case "fix":
       return <Hammer className="icon" />;
-    case "helpme":
-      return <LifeBuoy className="icon" />;
     case "test":
       return <FlaskConical className="icon" />;
     case "explain":
@@ -755,8 +751,6 @@ export function SlashCommandIcon({ command }: { command: ComposerSlashCommand })
       return <FoldVertical className="icon" />;
     case "instructions":
       return <ScrollText className="icon" />;
-    case "open-memory":
-      return <Brain className="icon" />;
     case "fast":
       return <Zap className="icon" />;
     case "model":

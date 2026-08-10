@@ -3,12 +3,12 @@ package runtime
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/blueberrycongee/wuu/internal/agent"
 	"github.com/blueberrycongee/wuu/internal/agentthread"
+	"github.com/blueberrycongee/wuu/internal/loopdriver"
 	"github.com/blueberrycongee/wuu/internal/pluginhost"
 	"github.com/blueberrycongee/wuu/internal/providers"
 	"github.com/blueberrycongee/wuu/internal/toolctx"
@@ -55,16 +55,6 @@ func (e *pluginToolExecutor) ExecuteResult(ctx context.Context, call providers.T
 	if err != nil {
 		return toolresult.Result{}, err
 	}
-	before := pluginhost.ToolExecuteBeforeOutput{Arguments: append(json.RawMessage(nil), input.Arguments...)}
-	if err := e.host.Run(ctx, pluginhost.HookToolExecuteBefore, input, &before); err != nil {
-		return toolresult.Result{}, err
-	}
-	if len(before.Arguments) == 0 || !json.Valid(before.Arguments) {
-		return toolresult.Result{}, fmt.Errorf("plugin tool.execute.before returned invalid arguments for %q", call.Name)
-	}
-	call.Arguments = string(before.Arguments)
-	input.Arguments = append(input.Arguments[:0], before.Arguments...)
-
 	var result toolresult.Result
 	var executeErr error
 	if e.host.SupportsTool(call.Name) && !e.pluginToolAllowed(call.Name) {
@@ -82,20 +72,7 @@ func (e *pluginToolExecutor) ExecuteResult(ctx context.Context, call providers.T
 	if executeErr != nil {
 		result.IsError = true
 	}
-	after := pluginhost.ToolExecuteAfterOutput{Result: result.Clone()}
-	if executeErr != nil {
-		after.Error = executeErr.Error()
-	}
-	if err := e.host.Run(ctx, pluginhost.HookToolExecuteAfter, input, &after); err != nil {
-		return result, err
-	}
-	if err := after.Result.Validate(); err != nil {
-		return toolresult.Result{}, fmt.Errorf("plugin tool.execute.after returned invalid result for %q: %w", call.Name, err)
-	}
-	if strings.TrimSpace(after.Error) != "" {
-		return after.Result, errors.New(after.Error)
-	}
-	return after.Result, nil
+	return result, executeErr
 }
 
 func (e *pluginToolExecutor) toolInput(ctx context.Context, call providers.ToolCall) (pluginhost.ToolExecuteInput, error) {
@@ -110,6 +87,7 @@ func (e *pluginToolExecutor) toolInput(ctx context.Context, call providers.ToolC
 		)
 	}
 	stepIndex, _ := toolctx.StepIndex(ctx)
+	execution := loopdriver.ExecutionContextFromContext(ctx)
 	actorID, actorPath := "", ""
 	if provider, ok := e.inner.(interface{ ExecutionActor() (string, string) }); ok {
 		actorID, actorPath = provider.ExecutionActor()
@@ -117,6 +95,7 @@ func (e *pluginToolExecutor) toolInput(ctx context.Context, call providers.ToolC
 	return pluginhost.ToolExecuteInput{
 		SessionID: e.threadID,
 		ThreadID:  e.threadID,
+		TurnID:    execution.ExecutionID,
 		ActorID:   actorID,
 		ActorPath: actorPath,
 		CWD:       e.cwd,

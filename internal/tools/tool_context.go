@@ -10,7 +10,6 @@ import (
 	"unicode"
 
 	wuucontext "github.com/blueberrycongee/wuu/internal/context"
-	"github.com/blueberrycongee/wuu/internal/sessionmemory"
 )
 
 const (
@@ -29,13 +28,11 @@ func (t *Toolkit) ContextBlocks() []wuucontext.Block {
 		return nil
 	}
 	var blocks []wuucontext.Block
-	blocks = append(blocks, t.SessionMemoryContextBlocks()...)
 	if wuucontext.DerivedContextLedgersEnabled() {
 		// Legacy derived ledgers, kept only as the A/B baseline arm. Ordinary
-		// requests read these facts from their causal source (update_plan
-		// calls, read_file results, web tool results, and the tool
-		// transcript itself) instead of re-stating them every request.
-		blocks = append(blocks, t.PlanContextBlocks()...)
+		// requests read these facts from their causal source (read_file
+		// results, web tool results, and the tool transcript itself) instead
+		// of re-stating them every request.
 		if block, ok := t.ActiveFilesContextBlock(); ok {
 			blocks = append(blocks, block)
 		}
@@ -45,9 +42,6 @@ func (t *Toolkit) ContextBlocks() []wuucontext.Block {
 		if block, ok := t.ToolResultSummaryContextBlock(); ok {
 			blocks = append(blocks, block)
 		}
-	}
-	if block, ok := t.PlanStaleReminderContextBlock(); ok {
-		blocks = append(blocks, block)
 	}
 	if block, ok := t.TestFailureContextBlock(); ok {
 		blocks = append(blocks, block)
@@ -201,17 +195,6 @@ func oneLineCatalogSummary(description string) string {
 		s = strings.TrimSpace(string(runes[:deferredToolCatalogSummaryMaxRunes-1])) + "..."
 	}
 	return s
-}
-
-func (t *Toolkit) SessionMemoryContextBlocks() []wuucontext.Block {
-	if t == nil || t.env == nil {
-		return nil
-	}
-	stateDir, err := t.env.WorkspaceStateDir()
-	if err != nil {
-		return nil
-	}
-	return sessionmemory.RequestContextBlocks(stateDir, t.env.SessionDir)
 }
 
 func (t *Toolkit) ActiveFilesContextBlock() (wuucontext.Block, bool) {

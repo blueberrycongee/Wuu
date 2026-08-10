@@ -34,6 +34,8 @@ var (
 	ErrManagerClosed = errors.New("mcp manager is closed")
 )
 
+const defaultMCPRedirectURI = "http://127.0.0.1/callback"
+
 type NativeTool struct {
 	Definition Tool
 	Client     *Client
@@ -121,14 +123,18 @@ func (m *Manager) Add(ctx context.Context, cfg ServerConfig) error {
 		return nil
 	}
 	m.recordStatus(ServerStatus{Name: cfg.Name, State: MCPServerStateConnecting, AuthStatus: authStatusForConfig(cfg)})
-	if cfg.OAuth != nil {
+	if cfg.URL != "" {
 		oauth := m.oauthManager()
-		if oauth == nil {
+		if oauth == nil && cfg.OAuth != nil {
 			m.recordStatus(ServerStatus{Name: cfg.Name, State: MCPServerStateAuthRequired, AuthStatus: MCPAuthStatusNotLoggedIn, Error: ErrOAuthRequired.Error()})
 			return ErrOAuthRequired
 		}
-		token, tokenErr := oauth.AccessToken(ctx, cfg.Name)
-		if tokenErr != nil {
+		var token string
+		var tokenErr error
+		if oauth != nil {
+			token, tokenErr = oauth.AccessToken(ctx, cfg.Name)
+		}
+		if tokenErr != nil && (!errors.Is(tokenErr, credentialstore.ErrNotFound) || cfg.OAuth != nil) {
 			if m.isClosed() {
 				return ErrManagerClosed
 			}
@@ -138,11 +144,16 @@ func (m *Manager) Add(ctx context.Context, cfg ServerConfig) error {
 			}
 			return fmt.Errorf("load OAuth credentials for MCP server %q: %w", cfg.Name, tokenErr)
 		}
-		cfg = cloneServerConfig(cfg)
-		if cfg.Headers == nil {
-			cfg.Headers = make(map[string]string)
+		if token != "" {
+			cfg = cloneServerConfig(cfg)
+			if cfg.Headers == nil {
+				cfg.Headers = make(map[string]string)
+			}
+			cfg.Headers["Authorization"] = "Bearer " + token
+			if cfg.OAuth == nil {
+				cfg.OAuth = &OAuthConfig{}
+			}
 		}
-		cfg.Headers["Authorization"] = "Bearer " + token
 	}
 	var client *Client
 	if cfg.URL != "" {
@@ -275,6 +286,7 @@ func (m *Manager) StartOAuth(ctx context.Context, name string) (OAuthStartResult
 		Scopes:       cfg.OAuth.Scopes,
 		ClientID:     cfg.OAuth.ClientID,
 		ClientSecret: cfg.OAuth.ClientSecret,
+		Headers:      cfg.Headers,
 	})
 	if err != nil {
 		return OAuthStartResult{}, err
@@ -322,8 +334,13 @@ func (m *Manager) oauthConfig(name string) (ServerConfig, *OAuthManager, error) 
 	if !ok {
 		return ServerConfig{}, nil, fmt.Errorf("mcp server %q not configured", strings.TrimSpace(name))
 	}
-	if cfg.OAuth == nil || strings.TrimSpace(cfg.URL) == "" {
+	if strings.TrimSpace(cfg.URL) == "" {
 		return ServerConfig{}, nil, fmt.Errorf("mcp server %q does not support OAuth", cfg.Name)
+	}
+	if cfg.OAuth == nil {
+		cfg.OAuth = &OAuthConfig{RedirectURI: defaultMCPRedirectURI}
+	} else if strings.TrimSpace(cfg.OAuth.RedirectURI) == "" {
+		cfg.OAuth.RedirectURI = defaultMCPRedirectURI
 	}
 	oauth := m.oauthManager()
 	if oauth == nil {

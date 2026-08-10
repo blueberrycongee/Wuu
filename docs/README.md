@@ -20,11 +20,15 @@ docs/
 │   └── reference/            # permissions, config, and security boundaries
 ├── en/                       # English content
 │   ├── getting-started/
+│   ├── desktop/
+│   ├── customize/
 │   ├── automation/
 │   ├── integrations/
 │   ├── reference/
-│   └── project/
-└── plans/                    # ignored working notes; never published
+│   ├── project/
+│   └── help/
+├── design/                   # public design docs (plugin architecture)
+└── plans/                    # local-only notes and research; never committed
 ```
 
 The current tree keeps all maintained legacy documents, but groups them by
@@ -39,6 +43,8 @@ the link label should make that fallback clear.
   directory.
 - Describe behavior that exists today. Keep proposals and temporary task notes
   out of the published navigation.
+- Tracked documentation carries only public references. Research notes about
+  third-party projects stay in `plans/`, which is ignored and never committed.
 - Treat current code, tests, CLI help, and a verified product path as the source
   of truth. Existing documentation is a lead, not proof that a feature still
   behaves the same way.

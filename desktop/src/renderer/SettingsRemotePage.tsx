@@ -61,7 +61,7 @@ export function SettingsRemotePage({
       {statusError ? <div className="settings-error">{statusError}</div> : null}
 
       <RemoteSection title={t("remote.relaySection")} description={t("remote.relaySectionDescription")}>
-        <div className="settings-card">
+        <div className="settings-group">
           <form
             onSubmit={(event) => {
               event.preventDefault();
@@ -117,7 +117,7 @@ export function SettingsRemotePage({
       </RemoteSection>
 
       <RemoteSection title={t("remote.pairSection")} description={t("remote.pairSectionDescription")}>
-        <div className="settings-card">
+        <div className="settings-group">
           {pairUri ? (
             <div className="settings-remote-pairing" data-testid="remote-pair-panel">
               <PairQRCode uri={pairUri} />
@@ -145,7 +145,7 @@ export function SettingsRemotePage({
       </RemoteSection>
 
       <RemoteSection title={t("remote.devicesSection")} description={t("remote.devicesSectionDescription")}>
-        <div className="settings-card">
+        <div className="settings-group">
           {!status || status.devices.length === 0 ? (
             <div className="settings-empty">{t("remote.noDevices")}</div>
           ) : (

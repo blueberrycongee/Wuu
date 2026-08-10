@@ -172,7 +172,7 @@ func TestRuntimeAccountActiveUsageSkipsMissingAndInactiveGoal(t *testing.T) {
 	}
 }
 
-func TestRuntimeAccountUsageForGoalIncludesTerminalTurnAndRejectsReplacement(t *testing.T) {
+func TestRuntimeAccountUsageForGoalIncludesTerminalTurnAndRejectsClearedGoal(t *testing.T) {
 	now := time.Date(2026, 8, 6, 12, 0, 0, 0, time.UTC)
 	runtime := newTestRuntime(t)
 	if _, err := runtime.Create(Spec{ThreadID: "thread-1", GoalID: "goal-1", Objective: "ship runtime"}); err != nil {
@@ -188,12 +188,15 @@ func TestRuntimeAccountUsageForGoalIncludesTerminalTurnAndRejectsReplacement(t *
 	if goal.TokensUsed != 9 || goal.GoalTurns != 1 || goal.Status != StatusComplete {
 		t.Fatalf("terminal goal usage = %+v", goal)
 	}
+	if err := runtime.Clear(); err != nil {
+		t.Fatalf("clear completed goal: %v", err)
+	}
 	if _, err := runtime.Create(Spec{ThreadID: "thread-1", GoalID: "goal-2", Objective: "replacement"}); err != nil {
-		t.Fatalf("create replacement: %v", err)
+		t.Fatalf("create after clear: %v", err)
 	}
 	goal, accounted, err = runtime.AccountUsageForGoal("goal-1", UsageDelta{Tokens: 5, Turns: 1}, now.Add(2*time.Minute))
 	if err != nil {
-		t.Fatalf("reject replacement usage: %v", err)
+		t.Fatalf("reject cleared goal usage: %v", err)
 	}
 	if accounted || goal.GoalID != "goal-2" || goal.TokensUsed != 0 {
 		t.Fatalf("replacement inherited predecessor usage: accounted=%v goal=%+v", accounted, goal)

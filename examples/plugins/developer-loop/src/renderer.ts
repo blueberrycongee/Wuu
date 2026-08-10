@@ -243,7 +243,7 @@ export function activate(api: PluginGenerationApi): void {
     id: VIEW_ID,
     title: "Acceptance Counter",
     icon: "check-circle",
-    defaultPane: "auxiliary",
+    defaultRegion: "auxiliary",
     persistence: "durable",
     render: (props: Readonly<Record<string, unknown>>) => acceptanceView(api, props),
   });
@@ -281,10 +281,10 @@ export function activate(api: PluginGenerationApi): void {
     title: "Open Acceptance Counter",
     async execute() {
       if (!activeViewHost) {
-        return { viewTypeId: VIEW_ID, pane: "auxiliary", persistence: "durable" };
+        return { viewTypeId: VIEW_ID, region: "auxiliary", persistence: "durable" };
       }
       await activeViewHost.openView(VIEW_ID, {
-        pane: "auxiliary",
+        region: "auxiliary",
         persistence: "durable",
         reveal: true,
       });

@@ -126,9 +126,6 @@ func TestLoadFrom_Defaults(t *testing.T) {
 	if cfg.Agent.MaxParallel != DefaultAgentMaxParallel {
 		t.Fatalf("expected default max_parallel %d, got %d", DefaultAgentMaxParallel, cfg.Agent.MaxParallel)
 	}
-	if cfg.Agent.UltraMode {
-		t.Fatal("expected ultra_mode to be disabled by default")
-	}
 	if cfg.Agent.SystemPrompt != "" {
 		t.Fatalf("expected config system_prompt to remain user-owned, got %q", cfg.Agent.SystemPrompt)
 	}
@@ -143,7 +140,7 @@ func TestLoadFrom_Defaults(t *testing.T) {
 	}
 }
 
-func TestLoadProjectConfigParsesUltraModeAndMaxParallel(t *testing.T) {
+func TestLoadProjectConfigParsesMaxParallel(t *testing.T) {
 	workdir := t.TempDir()
 	configPath := filepath.Join(workdir, ".wuu.json")
 	jsonData := `{
@@ -155,10 +152,7 @@ func TestLoadProjectConfigParsesUltraModeAndMaxParallel(t *testing.T) {
       "model": "gpt-4.1"
     }
   },
-  "agent": {
-    "ultra_mode": true,
-    "max_parallel": 3
-  }
+  "agent": {"max_parallel": 3}
 }`
 	if err := os.WriteFile(configPath, []byte(jsonData), 0o644); err != nil {
 		t.Fatalf("write config: %v", err)
@@ -167,7 +161,7 @@ func TestLoadProjectConfigParsesUltraModeAndMaxParallel(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadProjectConfig: %v", err)
 	}
-	if !cfg.Agent.UltraMode || cfg.Agent.MaxParallel != 3 || cfg.Agent.MaxParallelValue() != 3 {
+	if cfg.Agent.MaxParallel != 3 || cfg.Agent.MaxParallelValue() != 3 {
 		t.Fatalf("unexpected agent config: %+v", cfg.Agent)
 	}
 }
@@ -365,7 +359,7 @@ func TestConfig_ModelRolesRejectUnknownProvider(t *testing.T) {
 	}
 }
 
-func TestMemoryConfigLegacyIndexedMemoryFieldsRemainLoadable(t *testing.T) {
+func TestRetiredMemoryProductFieldsAreIgnoredAtLoadBoundary(t *testing.T) {
 	cfg, err := decodeConfig([]byte(`{
   "memory": {
     "nudge_interval": 3,
@@ -376,145 +370,9 @@ func TestMemoryConfigLegacyIndexedMemoryFieldsRemainLoadable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("decodeConfig: %v", err)
 	}
-	if cfg.Memory.NudgeInterval == nil || *cfg.Memory.NudgeInterval != 3 ||
-		cfg.Memory.MemoryCharLimit != 2200 || cfg.Memory.UserCharLimit != 1375 {
-		t.Fatalf("legacy memory fields were not preserved: %+v", cfg.Memory)
-	}
-}
-
-func TestMemoryConfig_DreamIntervalDays(t *testing.T) {
-	var cfg MemoryConfig
-	if got := cfg.DreamIntervalDaysValue(); got != DefaultDreamIntervalDays {
-		t.Fatalf("default dream interval = %d, want %d", got, DefaultDreamIntervalDays)
-	}
-
-	disabled := 0
-	cfg.DreamIntervalDays = &disabled
-	if got := cfg.DreamIntervalDaysValue(); got != 0 {
-		t.Fatalf("disabled dream interval = %d, want 0", got)
-	}
-
-	custom := 14
-	cfg.DreamIntervalDays = &custom
-	if got := cfg.DreamIntervalDaysValue(); got != 14 {
-		t.Fatalf("custom dream interval = %d, want 14", got)
-	}
-}
-
-func TestValidateRejectsNegativeDreamInterval(t *testing.T) {
-	cfg := Default()
-	negative := -1
-	cfg.Memory.DreamIntervalDays = &negative
-	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "dream_interval_days") {
-		t.Fatalf("expected negative dream interval error, got %v", err)
-	}
-}
-
-func TestMemoryConfig_DreamEnabledDefault(t *testing.T) {
-	var cfg MemoryConfig
-	if cfg.DreamEnabled() {
-		t.Fatal("Dream should be disabled by default")
-	}
-	cfg.Dream = &DreamConfig{Enabled: true}
-	if !cfg.DreamEnabled() {
-		t.Fatal("Dream should be enabled when Dream.Enabled is true")
-	}
-	cfg.Dream = &DreamConfig{Enabled: false}
-	if cfg.DreamEnabled() {
-		t.Fatal("Dream should be disabled when Dream.Enabled is false")
-	}
-}
-
-func TestMemoryConfig_DreamEnabledLegacyCompatibility(t *testing.T) {
-	var cfg MemoryConfig
-	days := 7
-	cfg.DreamIntervalDays = &days
-	if !cfg.DreamEnabled() {
-		t.Fatal("legacy positive dream_interval_days should enable Dream")
-	}
-	zero := 0
-	cfg.DreamIntervalDays = &zero
-	if cfg.DreamEnabled() {
-		t.Fatal("legacy zero dream_interval_days should disable Dream")
-	}
-}
-
-func TestMemoryConfig_DreamConfigOverridesLegacyInterval(t *testing.T) {
-	cfg := MemoryConfig{
-		DreamIntervalDays: intPtr(14),
-		Dream:             &DreamConfig{Enabled: true, IntervalDays: 3},
-	}
-	if got := cfg.DreamIntervalDaysValue(); got != 3 {
-		t.Fatalf("Dream.IntervalDays should win over legacy DreamIntervalDays, got %d", got)
-	}
-}
-
-func TestMemoryConfig_DreamProviderModel(t *testing.T) {
-	cfg := MemoryConfig{Dream: &DreamConfig{Provider: "openai", Model: "gpt-4.1"}}
-	if cfg.DreamProvider() != "openai" {
-		t.Fatalf("DreamProvider = %q, want openai", cfg.DreamProvider())
-	}
-	if cfg.DreamModel() != "gpt-4.1" {
-		t.Fatalf("DreamModel = %q, want gpt-4.1", cfg.DreamModel())
-	}
-}
-
-func TestValidateRejectsUnknownDreamProvider(t *testing.T) {
-	cfg := Default()
-	cfg.Memory.Dream = &DreamConfig{Enabled: true, Provider: "missing"}
-	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "memory.dream.provider") {
-		t.Fatalf("expected unknown dream provider error, got %v", err)
-	}
-}
-
-func TestUpdateGeneralSettings_DreamFields(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "config.json")
-	cfg := Default()
-	if err := writeConfigJSON(path, cfg); err != nil {
-		t.Fatalf("write config: %v", err)
-	}
-	enabled := true
-	interval := 5
-	provider := "openai"
-	model := "gpt-4.1"
-	if err := UpdateGeneralSettings(path, GeneralSettingsUpdate{
-		DreamEnabled:      &enabled,
-		DreamIntervalDays: &interval,
-		DreamProvider:     &provider,
-		DreamModel:        &model,
-	}); err != nil {
-		t.Fatalf("update dream settings: %v", err)
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("read config: %v", err)
-	}
-	var raw map[string]any
-	if err := json.Unmarshal(data, &raw); err != nil {
-		t.Fatalf("parse config: %v", err)
-	}
-	memory, _ := raw["memory"].(map[string]any)
-	if memory == nil {
-		t.Fatal("memory section missing")
-	}
-	dream, _ := memory["dream"].(map[string]any)
-	if dream == nil {
-		t.Fatal("dream section missing")
-	}
-	if dream["enabled"] != true {
-		t.Fatalf("dream.enabled = %v, want true", dream["enabled"])
-	}
-	if dream["interval_days"] != float64(5) {
-		t.Fatalf("dream.interval_days = %v, want 5", dream["interval_days"])
-	}
-	if dream["provider"] != "openai" {
-		t.Fatalf("dream.provider = %v, want openai", dream["provider"])
-	}
-	if dream["model"] != "gpt-4.1" {
-		t.Fatalf("dream.model = %v, want gpt-4.1", dream["model"])
-	}
-	if _, ok := memory["dream_interval_days"]; ok {
-		t.Fatal("legacy dream_interval_days should be removed after dream update")
+	if len(cfg.Instructions.Filenames) != 0 || len(cfg.Instructions.ProjectRootMarkers) != 0 ||
+		len(cfg.Instructions.UserDirs) != 0 || cfg.Instructions.IncludeLegacyInstructions != nil {
+		t.Fatalf("retired memory product fields entered runtime state: %+v", cfg.Instructions)
 	}
 }
 
@@ -558,34 +416,6 @@ func TestUpdateExtensionSettingsPreservesConcurrentDecisions(t *testing.T) {
 	}
 	if cfg.Extensions == nil || !cfg.Extensions.IsDisabled("plugin:project:first") || !cfg.Extensions.IsDisabled("plugin:project:second") {
 		t.Fatalf("concurrent extension decisions were not preserved: %+v", cfg.Extensions)
-	}
-}
-
-func TestUpdateGeneralSettings_DreamDisabledCleansSection(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "config.json")
-	cfg := Default()
-	cfg.Memory.Dream = &DreamConfig{Enabled: true, IntervalDays: 7}
-	if err := writeConfigJSON(path, cfg); err != nil {
-		t.Fatalf("write config: %v", err)
-	}
-	enabled := false
-	if err := UpdateGeneralSettings(path, GeneralSettingsUpdate{DreamEnabled: &enabled}); err != nil {
-		t.Fatalf("update dream settings: %v", err)
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("read config: %v", err)
-	}
-	var raw map[string]any
-	if err := json.Unmarshal(data, &raw); err != nil {
-		t.Fatalf("parse config: %v", err)
-	}
-	memory, _ := raw["memory"].(map[string]any)
-	if memory == nil {
-		t.Fatal("memory section missing")
-	}
-	if dream, ok := memory["dream"]; !ok || dream.(map[string]any)["enabled"] != false {
-		t.Fatalf("dream.enabled should be false, got %v", dream)
 	}
 }
 
@@ -1139,9 +969,7 @@ func TestDefaultSystemPromptLeavesToolManualsToActiveSurface(t *testing.T) {
 	prompt := DefaultSystemPrompt()
 	for _, toolName := range []string{
 		"tool_search",
-		"update_plan",
 		"spawn_agent",
-		"helpme",
 		"inception",
 		"apply_patch",
 		"web_search",
@@ -1834,7 +1662,7 @@ func TestUpdateProviderRuntimePersistsConnectionFields(t *testing.T) {
 
 	baseURL := "https://custom.example.com/v1"
 	apiKey := "sk-custom"
-	if err := UpdateProviderRuntime(path, "next", "custom-model", &baseURL, &apiKey, nil, nil, nil, nil, nil); err != nil {
+	if err := UpdateProviderRuntime(path, "next", "custom-model", &baseURL, &apiKey, nil, nil, nil, nil); err != nil {
 		t.Fatalf("UpdateProviderRuntime: %v", err)
 	}
 
@@ -1855,75 +1683,6 @@ func TestUpdateProviderRuntimePersistsConnectionFields(t *testing.T) {
 	old, _, _ := cfg.ResolveProvider("old")
 	if old.Model != "old-model" || old.BaseURL != "https://old.example.com" {
 		t.Fatalf("old provider changed: %+v", old)
-	}
-}
-
-func TestRuntimeUpdatesPersistUltraAtomicallyAndPreserveNil(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, ".wuu.json")
-	orig := `{
-  "default_provider": "main",
-  "providers": {
-    "main": {
-      "type": "openai-compatible",
-      "base_url": "https://example.com/v1",
-      "model": "old-model"
-    }
-  },
-  "agent": {
-    "max_parallel": 2
-  },
-  "memory": {
-    "disable": true
-  }
-}`
-	if err := os.WriteFile(path, []byte(orig), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	enabled := true
-	if err := UpdateProviderRuntime(path, "main", "new-model", nil, nil, nil, nil, nil, nil, &enabled); err != nil {
-		t.Fatalf("combined runtime update: %v", err)
-	}
-	cfg, _, err := LoadProjectConfig(dir)
-	if err != nil {
-		t.Fatalf("reload combined update: %v", err)
-	}
-	if !cfg.Agent.UltraMode || cfg.Agent.MaxParallel != 2 || cfg.Providers["main"].Model != "new-model" || !cfg.Memory.Disable {
-		t.Fatalf("combined update was not persisted: %+v", cfg)
-	}
-
-	if err := UpdateProviderRuntime(path, "main", "next-model", nil, nil, nil, nil, nil, nil, nil); err != nil {
-		t.Fatalf("nil Ultra update: %v", err)
-	}
-	cfg, _, err = LoadProjectConfig(dir)
-	if err != nil {
-		t.Fatalf("reload nil update: %v", err)
-	}
-	if !cfg.Agent.UltraMode || cfg.Providers["main"].Model != "next-model" {
-		t.Fatalf("nil Ultra update did not preserve mode: %+v", cfg)
-	}
-
-	disabled := false
-	if err := UpdateAgentUltraMode(path, &disabled); err != nil {
-		t.Fatalf("Ultra-only update: %v", err)
-	}
-	cfg, _, err = LoadProjectConfig(dir)
-	if err != nil {
-		t.Fatalf("reload Ultra-only update: %v", err)
-	}
-	if cfg.Agent.UltraMode || cfg.Agent.MaxParallel != 2 || cfg.Providers["main"].Model != "next-model" || !cfg.Memory.Disable {
-		t.Fatalf("Ultra-only update changed unrelated config: %+v", cfg)
-	}
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("read updated config: %v", err)
-	}
-	if strings.Contains(string(raw), "ultra_mode") {
-		t.Fatalf("disabled Ultra should use the default omission: %s", raw)
-	}
-	if !strings.Contains(string(raw), `"memory": {`) {
-		t.Fatalf("unrelated config was not preserved: %s", raw)
 	}
 }
 
@@ -1952,7 +1711,7 @@ func TestUpdateProviderRuntimePersistsPermissionMode(t *testing.T) {
 	}
 
 	mode := PermissionModeUnconfined
-	if err := UpdateProviderRuntime(path, "old", "old-model", nil, nil, nil, nil, nil, &mode, nil); err != nil {
+	if err := UpdateProviderRuntime(path, "old", "old-model", nil, nil, nil, nil, nil, &mode); err != nil {
 		t.Fatalf("UpdateProviderRuntime: %v", err)
 	}
 
@@ -1995,7 +1754,7 @@ func TestCreateProviderRuntimePersistsNewProvider(t *testing.T) {
 
 	baseURL := "https://custom.example.com/v1"
 	apiKey := "sk-custom"
-	if err := CreateProviderRuntime(path, "custom-1", nil, "custom-model", &baseURL, &apiKey, nil, nil, nil, nil, nil); err != nil {
+	if err := CreateProviderRuntime(path, "custom-1", nil, "custom-model", &baseURL, &apiKey, nil, nil, nil, nil); err != nil {
 		t.Fatalf("CreateProviderRuntime: %v", err)
 	}
 

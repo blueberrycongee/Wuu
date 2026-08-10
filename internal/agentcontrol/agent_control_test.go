@@ -781,7 +781,7 @@ func TestRecordAgentReportSyncsReportSinkWithoutGoalBinding(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListTasks: %v", err)
 	}
-	if len(tasks) != 1 || tasks[0].GoalID != "" || tasks[0].GoalDir != "" {
+	if len(tasks) != 1 {
 		t.Fatalf("agentcontrol spawn should not bind harness task to legacy goal state: %+v", tasks)
 	}
 	artifactPath := filepath.Join(tasks[0].Workspace.Root, "reports", "worker.patch")
@@ -1923,7 +1923,7 @@ func TestNewRestoresQueuedSpawnPayload(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListTasks: %v", err)
 	}
-	if len(tasks) != 1 || tasks[0].GoalID != "" || tasks[0].GoalDir != "" {
+	if len(tasks) != 1 {
 		t.Fatalf("restored queued spawn should ignore legacy goal binding fields, got %+v", tasks)
 	}
 	c.StopAll()
@@ -3195,7 +3195,7 @@ func TestRequiresReportWorkerGetsOneClosingNudge(t *testing.T) {
 	defer unsubscribe()
 
 	res, err := c.Spawn(context.Background(), SpawnRequest{
-		Type:        HelpMeRecoveryWorkerType,
+		Type:        requiresReportWorkerType,
 		TaskName:    "review_diff",
 		Description: "review the diff",
 		Prompt:      "review this diff",

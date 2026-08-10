@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/blueberrycongee/wuu/internal/compact"
 	wuucontext "github.com/blueberrycongee/wuu/internal/context"
@@ -334,6 +335,16 @@ func RunToolLoop(
 				usage.RecordPendingMessages(injected)
 			}
 		}
+		if cfg.BeforeModelStep != nil {
+			injected, injectErr := cfg.BeforeModelStep(ctx, stepIdx, providers.CloneChatMessages(messages))
+			if injectErr != nil {
+				return loopResultSnapshot(messages, startLen, historyRewritten, totalIn, totalOut, totalCacheCreation, totalCacheRead), fmt.Errorf("before model step: %w", injectErr)
+			}
+			for _, msg := range injected {
+				appendMessage(msg)
+			}
+			usage.RecordPendingMessages(injected)
+		}
 		tryProactiveCompact()
 		if repaired, changed, nerr := repairLiveToolCallHistory(messages); nerr != nil {
 			return LoopResult{
@@ -468,8 +479,36 @@ func RunToolLoop(
 		}
 		prevCacheFingerprint = currentFingerprint
 
+		requestInfo := requestContextInfo(stepIdx, assembly, req.Tools, cacheHint, cfg.SystemPromptSections)
 		if cfg.OnRequestContext != nil {
-			cfg.OnRequestContext(requestContextInfo(stepIdx, assembly, req.Tools, cacheHint, cfg.SystemPromptSections))
+			cfg.OnRequestContext(requestInfo)
+		}
+		if cfg.ModelInputReceiptStore != nil {
+			receipt := ModelInputReceipt{
+				ContractVersion:  ModelInputReceiptContractVersion,
+				OperationID:      req.Operation.ID,
+				SessionID:        cfg.SessionID,
+				ExecutionID:      cfg.ExecutionID,
+				DriverID:         cfg.DriverID,
+				DriverVersion:    cfg.DriverVersion,
+				Provider:         cfg.ProviderName,
+				Model:            req.Model,
+				StepIndex:        stepIdx,
+				InputFactSeqs:    durableInputFactSeqs(req.Messages),
+				Messages:         providers.CloneChatMessages(req.Messages),
+				Tools:            modelInputTools(req.Tools),
+				ToolSurfaceHash:  requestInfo.ToolSurfaceHash,
+				SystemSections:   modelInputSystemSections(cfg.SystemPromptSections),
+				PromptCacheKey:   requestInfo.PromptCacheKey,
+				ForceToolName:    req.ForceToolName,
+				Temperature:      req.Temperature,
+				Effort:           req.Effort,
+				HistoryRewritten: historyRewritten,
+				CreatedAt:        time.Now().UTC(),
+			}
+			if err := cfg.ModelInputReceiptStore.SaveModelInputReceipt(ctx, receipt); err != nil {
+				return loopResultSnapshot(messages, startLen, historyRewritten, totalIn, totalOut, totalCacheCreation, totalCacheRead), fmt.Errorf("persist model input receipt: %w", err)
+			}
 		}
 
 		result, err := step.Execute(ctx, req)
@@ -717,41 +756,6 @@ func RunToolLoop(
 			appendMessage(toolMsg)
 		}
 		usage.RecordPendingMessages(orderedToolMessages)
-		if cfg.PostToolRewrite != nil {
-			usageBefore := usage.Breakdown()
-			before := usageBefore.Total()
-			msgsBefore := len(messages)
-			rewritten, changed, rerr := cfg.PostToolRewrite(ctx, providers.CloneChatMessages(messages), providers.CloneChatMessages(orderedToolMessages))
-			if rerr != nil {
-				return LoopResult{
-					NewMessages:         newMessagesForReturn(messages, startLen, historyRewritten),
-					HistoryRewritten:    historyRewritten,
-					InputTokens:         totalIn,
-					OutputTokens:        totalOut,
-					CacheCreationTokens: totalCacheCreation,
-					CacheReadTokens:     totalCacheRead,
-				}, rerr
-			}
-			if changed && compactChanged(messages, rewritten) {
-				attempt := CompactAttemptInfo{
-					Reason:         CompactReasonHelpMe,
-					Status:         CompactAttemptSucceeded,
-					TokensBefore:   before,
-					MessagesBefore: msgsBefore,
-					MessagesAfter:  len(rewritten),
-				}
-				resetTranscript(rewritten)
-				emitCompactAttempt(cfg, compactAttemptWithUsage(attempt, usageBefore))
-				if cfg.OnCompact != nil {
-					cfg.OnCompact(CompactInfo{
-						Reason:         CompactReasonHelpMe,
-						TokensBefore:   before,
-						MessagesBefore: msgsBefore,
-						MessagesAfter:  len(messages),
-					})
-				}
-			}
-		}
 	}
 
 	return LoopResult{

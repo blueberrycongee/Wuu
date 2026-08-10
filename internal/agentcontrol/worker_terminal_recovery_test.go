@@ -15,7 +15,7 @@ func TestRecoveredQueuedRequiresReportClosingTurnRetainsExecutionLease(t *testin
 	rootDir := t.TempDir()
 	harnessDir := filepath.Join(rootDir, "harness")
 	const workerID = "worker_recovered_requires_report_closing"
-	persistQueuedSpawnOfTypeForConcurrencyTest(t, harnessDir, workerID, HelpMeRecoveryWorkerType, time.Now().UTC())
+	persistQueuedSpawnOfTypeForConcurrencyTest(t, harnessDir, workerID, requiresReportWorkerType, time.Now().UTC())
 
 	client := newClosingTurnBlockingClient()
 	control := newDormantQueuedSpawnConcurrencyControl(

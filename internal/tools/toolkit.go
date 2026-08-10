@@ -16,7 +16,6 @@ import (
 	"github.com/blueberrycongee/wuu/internal/activity"
 	"github.com/blueberrycongee/wuu/internal/agent"
 	"github.com/blueberrycongee/wuu/internal/agentcontrol"
-	"github.com/blueberrycongee/wuu/internal/automation"
 	"github.com/blueberrycongee/wuu/internal/capability"
 	"github.com/blueberrycongee/wuu/internal/channels"
 	"github.com/blueberrycongee/wuu/internal/mcp"
@@ -184,7 +183,7 @@ func (t *Toolkit) CloneForRoot(rootDir string) (*Toolkit, error) {
 	// sync.RWMutex, and the sync package contract forbids copying a Mutex or
 	// RWMutex after first use (go vet's copylocks analyzer enforces this).
 	// The lock-bearing per-session state fields (readState, testState,
-	// planState, webState, toolTelemetry, gitAttributionShell) stay zero so each cloned session
+	// webState, toolTelemetry, gitAttributionShell) stay zero so each cloned session
 	// owns independent mutable state, matching the original intent.
 	env := Env{
 		RootDir:                     abs,
@@ -203,7 +202,6 @@ func (t *Toolkit) CloneForRoot(rootDir string) (*Toolkit, error) {
 		GitWrapperExecutable:        t.env.GitWrapperExecutable,
 		ProcessMgr:                  t.env.ProcessMgr,
 		AgentControl:                t.env.AgentControl,
-		AutomationManager:           t.env.AutomationManager,
 		// Browser dependencies must be copied explicitly: every desktop thread
 		// runs through CloneForRoot, so omitting these here silently strips the
 		// bridge/tab store from every cloned session (the mcpActivityBindings
@@ -213,7 +211,6 @@ func (t *Toolkit) CloneForRoot(rootDir string) (*Toolkit, error) {
 		FileScopeRoots:            append([]string(nil), t.env.FileScopeRoots...),
 		Skills:                    t.env.Skills,
 		OnFileChanged:             t.env.OnFileChanged,
-		OnPlanUpdated:             t.env.OnPlanUpdated,
 		OnSessionWorkspaceChanged: t.env.OnSessionWorkspaceChanged,
 	}
 
@@ -274,8 +271,6 @@ func (t *Toolkit) rebuildRegistry() {
 		NewWebFetchTool(e),
 		// Skills
 		NewLoadSkillTool(e),
-		// Durable session/workspace memory
-		NewSessionMemoryTool(e),
 		// Session/thread lookup (used after right-click "copy ID" on the
 		// desktop session tree — agents receive a thread ID and resolve it
 		// back to the full conversation via this tool).
@@ -284,11 +279,6 @@ func (t *Toolkit) rebuildRegistry() {
 		// Recurring agent profiles
 		NewListAgentProfilesTool(e),
 		NewCreateAgentProfileTool(e),
-		// Planning
-		NewUpdatePlanTool(e),
-		// Agent orchestration
-		// Cron scheduling
-		NewCronTool(e),
 		// Embedded browser automation (default-disabled in New(); enabled per
 		// session by SetBrowserEnabled off WUU_ENABLE_BROWSER).
 		NewBrowserTool(e),
@@ -405,11 +395,6 @@ func (t *Toolkit) SetSessionID(id string) {
 	t.env.SessionID = id
 }
 
-// SetAutomationManager attaches the workspace automation service.
-func (t *Toolkit) SetAutomationManager(manager *automation.Manager) {
-	t.env.AutomationManager = manager
-}
-
 // SessionID returns the session currently bound to this toolkit.
 func (t *Toolkit) SessionID() string {
 	if t == nil || t.env == nil {
@@ -442,12 +427,6 @@ func (t *Toolkit) SetAgentIdentity(id, path string) {
 // successfully modifies a file. Used to dispatch FileChanged hooks.
 func (t *Toolkit) SetOnFileChanged(fn func(absPath string)) {
 	t.env.OnFileChanged = fn
-}
-
-// SetOnPlanUpdated sets the callback fired after update_plan successfully
-// stores a new snapshot.
-func (t *Toolkit) SetOnPlanUpdated(fn func(snapshot PlanSnapshot)) {
-	t.env.OnPlanUpdated = fn
 }
 
 // SetOnSessionWorkspaceChanged attaches the app-server persistence and
@@ -497,14 +476,6 @@ func (t *Toolkit) Boundary() WorkspaceBoundary {
 // AgentControl returns the attached agent control runtime, or nil.
 func (t *Toolkit) AgentControl() *agentcontrol.AgentControl {
 	return t.env.AgentControl
-}
-
-// CurrentPlan returns the latest update_plan snapshot stored by this toolkit.
-func (t *Toolkit) CurrentPlan() (PlanSnapshot, bool) {
-	if t == nil || t.env == nil {
-		return PlanSnapshot{}, false
-	}
-	return t.env.planState.get()
 }
 
 // ── Tool disabling ─────────────────────────────────────────────────
@@ -1093,9 +1064,7 @@ func isReadOnlyMCPProfileCapability(capName capability.Capability) bool {
 		capability.CapabilitySearchAST,
 		capability.CapabilitySearchSemantic,
 		capability.CapabilityWebFetch,
-		capability.CapabilityWebSearch,
-		capability.CapabilityMemorySession,
-		capability.CapabilityMemoryProject:
+		capability.CapabilityWebSearch:
 		return true
 	default:
 		return false

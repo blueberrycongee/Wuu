@@ -265,29 +265,52 @@ func runPluginRemove(args []string) error {
 	if pendingErr != nil && !errors.Is(pendingErr, pluginpkg.ErrPendingUpdateNotFound) {
 		return pluginCLIError(pendingErr)
 	}
-	result, err := pluginpkg.UninstallPackage(home, id)
+	configPath, err := statepath.ConfigPath("")
+	if err != nil {
+		return fmt.Errorf("resolve user config: %w", err)
+	}
+	_, configStatErr := os.Stat(configPath)
+	if configStatErr != nil && !os.IsNotExist(configStatErr) {
+		return fmt.Errorf("inspect plugin policy: %w", configStatErr)
+	}
+	packageRemoval, result, err := pluginpkg.PrepareUninstallPackage(home, id)
 	if err != nil {
 		return pluginCLIError(err)
 	}
-	if result.Removed && pendingErr == nil {
-		if err := pluginpkg.RemovePendingUpdate(home, id, pending.Package.Fingerprint); err != nil {
-			return pluginCLIError(fmt.Errorf("plugin was removed, but its pending update could not be cleared: %w", err))
+	var pendingRemoval *pluginpkg.PendingUpdateRemoval
+	rollback := func(cause error) error {
+		var rollbackErr error
+		if pendingRemoval != nil {
+			rollbackErr = errors.Join(rollbackErr, pendingRemoval.Rollback())
 		}
+		if packageRemoval != nil {
+			rollbackErr = errors.Join(rollbackErr, packageRemoval.Rollback())
+		}
+		if rollbackErr != nil {
+			return fmt.Errorf("%w (rollback plugin removal: %v)", cause, rollbackErr)
+		}
+		return cause
 	}
 	if result.Removed {
-		configPath, err := statepath.ConfigPath("")
-		if err != nil {
-			return fmt.Errorf("resolve user config: %w", err)
+		if pendingErr == nil {
+			pendingRemoval, err = pluginpkg.PreparePendingUpdateRemoval(home, id, pending.Package.Fingerprint)
+			if err != nil {
+				return pluginCLIError(rollback(fmt.Errorf("clear pending plugin update: %w", err)))
+			}
 		}
-		if _, statErr := os.Stat(configPath); statErr == nil {
+		if configStatErr == nil {
 			if _, err := config.UpdateExtensionSettings(configPath, func(settings *extensions.Settings) error {
 				settings.Revoke(extensions.SubjectID("user", id))
 				return nil
 			}); err != nil {
-				return fmt.Errorf("plugin was removed, but its policy could not be cleared: %w", err)
+				return pluginCLIError(rollback(fmt.Errorf("clear plugin policy: %w", err)))
 			}
-		} else if !os.IsNotExist(statErr) {
-			return fmt.Errorf("plugin was removed, but its policy could not be inspected: %w", statErr)
+		}
+		if pendingRemoval != nil {
+			_ = pendingRemoval.Commit()
+		}
+		if packageRemoval != nil {
+			_ = packageRemoval.Commit()
 		}
 	}
 	output := pluginPackageOutput{ID: result.ID, Destination: result.Destination, Removed: result.Removed}

@@ -86,9 +86,10 @@ export type HighlightedWorkspaceCode = {
   language: string;
 };
 
-export function highlightWorkspaceCode(path: string, text: string): HighlightedWorkspaceCode {
-  const language = workspaceLanguageForPath(path);
-  const supportedLanguage = hljs.getLanguage(language) ? language : "plaintext";
+export function highlightCode(language: string, text: string): HighlightedWorkspaceCode {
+  const normalizedLanguage = language.trim().toLowerCase();
+  const resolvedLanguage = LANGUAGE_BY_EXTENSION[normalizedLanguage] ?? normalizedLanguage;
+  const supportedLanguage = hljs.getLanguage(resolvedLanguage) ? resolvedLanguage : "plaintext";
   return {
     html: hljs.highlight(text, {
       language: supportedLanguage,
@@ -96,6 +97,10 @@ export function highlightWorkspaceCode(path: string, text: string): HighlightedW
     }).value,
     language: supportedLanguage
   };
+}
+
+export function highlightWorkspaceCode(path: string, text: string): HighlightedWorkspaceCode {
+  return highlightCode(workspaceLanguageForPath(path), text);
 }
 
 function workspaceLanguageForPath(path: string): string {

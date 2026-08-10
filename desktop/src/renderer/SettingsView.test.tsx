@@ -63,14 +63,6 @@ function installBuildInfoStub(info: BuildInfoResult): void {
     openExternal: vi.fn(),
     listCodexPets: vi.fn().mockResolvedValue(emptyCodexPetsSnapshot()),
     updateCodexPetSettings: vi.fn().mockResolvedValue(emptyCodexPetsSnapshot()),
-    getMemoryOverview: vi.fn().mockResolvedValue({
-      essay_md: "",
-      generated_at: "1970-01-01T00:00:00Z",
-      source_mtime: "1970-01-01T00:00:00Z",
-      cached: false,
-    }),
-    sendMemoryChat: vi.fn().mockResolvedValue({ reply_md: "", changed_files: [] }),
-    readMemoryRaw: vi.fn().mockResolvedValue({ index_md: "", files: [] }),
   };
   (globalThis as { wuu?: WuuDesktopApi }).wuu = stub as WuuDesktopApi;
   (window as unknown as GlobalWindow).wuu = stub as WuuDesktopApi;
@@ -802,10 +794,7 @@ describe("SettingsView general settings", () => {
         general_settings: {
           append_system_prompt: "",
           git_attribution_enabled: true,
-          memory_disabled: false,
           mcp_server_enabled: {},
-          dream_enabled: false,
-          dream_interval_days: 7,
         },
       }),
       initialPage: "general",
@@ -833,7 +822,7 @@ describe("SettingsView general settings", () => {
     });
   });
 
-  it("renders and saves prompt, memory, and MCP toggles", async () => {
+  it("renders and saves prompt and MCP toggles", async () => {
     installBuildInfoStub({
       core: undefined,
       desktop: { version: "0.0.0-test", date: "1970-01-01T00:00:00Z" },
@@ -844,13 +833,10 @@ describe("SettingsView general settings", () => {
       initialized: baseInitialized({
         general_settings: {
           append_system_prompt: "Keep answers compact.",
-          memory_disabled: false,
           mcp_server_enabled: {
             docs: true,
             search: false,
           },
-          dream_enabled: false,
-          dream_interval_days: 7,
         },
       }),
       onGeneralSave,
@@ -861,7 +847,6 @@ describe("SettingsView general settings", () => {
     expect(container.querySelector("[data-testid=\"settings-general\"]")).not.toBeNull();
     expect(container.querySelector("[data-testid=\"settings-voice-input\"]")).toBeNull();
     expect(rootText()).toContain("附加系统提示");
-    expect(rootText()).toContain("记忆");
     expect(rootText()).toContain("docs");
     expect(rootText()).toContain("search");
 
@@ -878,17 +863,6 @@ describe("SettingsView general settings", () => {
     expect(onGeneralSave).toHaveBeenCalledWith({
       append_system_prompt: "默认用中文回答。",
     });
-
-    // The memory switch saves immediately, optimistic with rollback on failure.
-    const memorySwitch = Array.from(container.querySelectorAll("button[role=\"switch\"]")).find((button) =>
-      button.textContent?.includes("关闭记忆"),
-    ) as HTMLButtonElement | undefined;
-    expect(memorySwitch).not.toBeUndefined();
-    await act(async () => {
-      memorySwitch?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-      await Promise.resolve();
-    });
-    expect(onGeneralSave).toHaveBeenCalledWith({ memory_disable: true });
 
     // MCP toggles now save immediately on switch, sending only the toggle map.
     const docsSwitch = container.querySelector("[data-testid=\"settings-mcp-enabled-docs\"]") as HTMLButtonElement | null;
@@ -996,53 +970,6 @@ describe("SettingsView general settings", () => {
       await Promise.resolve();
     });
     expect(onCodexPetsUpdate).toHaveBeenCalledWith({ selected_id: "beta" });
-  });
-});
-
-describe("SettingsView Dream settings", () => {
-  it("keeps the Memory page available and enables Dream with explicit defaults", async () => {
-    installBuildInfoStub({
-      core: undefined,
-      desktop: { version: "0.0.0-test", date: "1970-01-01T00:00:00Z" },
-    });
-    const onGeneralSave = vi.fn().mockResolvedValue(undefined);
-    renderSettings({
-      locale: "en-US",
-      initialPage: "memory",
-      initialized: baseInitialized({
-        providers: [],
-        general_settings: {
-          append_system_prompt: "",
-          memory_disabled: false,
-          mcp_server_enabled: {},
-          dream_enabled: false,
-          dream_interval_days: 7,
-        },
-      }),
-      onGeneralSave,
-    });
-
-    const dreamSwitch = container.querySelector<HTMLButtonElement>(
-      '[data-testid="settings-dream-toggle"]',
-    );
-    const dreamSection = container.querySelector<HTMLElement>('[data-testid="settings-dream"]');
-    expect(dreamSection?.querySelector(".settings-section-title")).toBeNull();
-    expect(dreamSection?.querySelector(".settings-row-label-title")?.textContent).toBe("Dream");
-    expect(dreamSwitch).not.toBeNull();
-    expect(dreamSwitch?.getAttribute("aria-checked")).toBe("false");
-
-    await act(async () => {
-      dreamSwitch?.click();
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-
-    expect(onGeneralSave).toHaveBeenCalledWith({
-      dream_enabled: true,
-      dream_interval_days: 7,
-      dream_provider: "",
-      dream_model: "",
-    });
   });
 });
 

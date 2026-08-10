@@ -31,8 +31,8 @@ type MergeResult struct {
 // a named-agent fork (decision six): a fork accumulates its own topic files
 // while it runs, and on retire those new topics are merged back into the母体.
 //
-// Semantics (name-centric, append-first, per internal/memory add/replace/remove
-// being append-dominant):
+// Semantics are name-centric and append-first so identity updates preserve
+// existing notebook knowledge unless a topic is explicitly replaced:
 //
 //   - A src topic whose content is byte-identical to any dst topic is skipped
 //     (union de-dup). A fork's snapshot carries all of the母体's topics

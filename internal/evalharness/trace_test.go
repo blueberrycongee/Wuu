@@ -89,7 +89,7 @@ func TestTraceEventsSummarizeEvalArtifacts(t *testing.T) {
 				Success:        true,
 				RawOutputBytes: 42,
 			}},
-			GoalAttention: []GoalAttentionObservation{{
+			Attention: []AttentionObservation{{
 				Source:  "harness_report",
 				ID:      "report-1",
 				Status:  "partial",
@@ -100,7 +100,7 @@ func TestTraceEventsSummarizeEvalArtifacts(t *testing.T) {
 		},
 	}, time.Unix(100, 0).UTC())
 
-	wantTypes := []string{"task", "observability", "model_profile", "context_blocks", "context_requests", "tool_inventory", "tool_records", "goal_attention", "harness_tasks", "harness_reports", "final"}
+	wantTypes := []string{"task", "observability", "model_profile", "context_blocks", "context_requests", "tool_inventory", "tool_records", "attention", "harness_tasks", "harness_reports", "final"}
 	if len(events) != len(wantTypes) {
 		t.Fatalf("event count = %d, want %d: %+v", len(events), len(wantTypes), events)
 	}
@@ -175,12 +175,12 @@ func TestTraceEventsSummarizeEvalArtifacts(t *testing.T) {
 	if len(task.VerificationEvidence) != 1 || task.VerificationEvidence[0].Command != "go test ./..." {
 		t.Fatalf("task event missing verification evidence: %+v", task)
 	}
-	attention, ok := events[7].Data.([]GoalAttentionObservation)
+	attention, ok := events[7].Data.([]AttentionObservation)
 	if !ok {
-		t.Fatalf("goal_attention event data has wrong type: %#v", events[7].Data)
+		t.Fatalf("attention event data has wrong type: %#v", events[7].Data)
 	}
 	if len(attention) != 1 || attention[0].Source != "harness_report" || attention[0].Status != "partial" {
-		t.Fatalf("goal_attention event missing attention item: %+v", attention)
+		t.Fatalf("attention event missing item: %+v", attention)
 	}
 }
 
@@ -300,7 +300,7 @@ func TestReplayTraceSummarizesRecordedEvents(t *testing.T) {
 				RevisionBefore:  "rev-before",
 				Success:         false,
 			}},
-			GoalAttention: []GoalAttentionObservation{{
+			Attention: []AttentionObservation{{
 				Source:  "harness_report",
 				ID:      "report-1",
 				Status:  "partial",
@@ -390,10 +390,10 @@ func TestReplayTraceSummarizesRecordedEvents(t *testing.T) {
 		summary.ToolSummary.PatchRisk.DeletedLines != 3 {
 		t.Fatalf("replay tool summary missing patch risk: %+v", summary.ToolSummary.PatchRisk)
 	}
-	if len(summary.GoalAttention) != 1 ||
-		summary.GoalAttention[0].Source != "harness_report" ||
-		summary.GoalAttention[0].Path != "shared.go" {
-		t.Fatalf("replay missing goal attention: %+v", summary.GoalAttention)
+	if len(summary.Attention) != 1 ||
+		summary.Attention[0].Source != "harness_report" ||
+		summary.Attention[0].Path != "shared.go" {
+		t.Fatalf("replay missing attention: %+v", summary.Attention)
 	}
 }
 
@@ -536,7 +536,7 @@ func TestBuildValidationSummaryFromEvalResult(t *testing.T) {
 			Observed: "missing",
 		}},
 		Observability: &Observability{
-			GoalAttention: []GoalAttentionObservation{{
+			Attention: []AttentionObservation{{
 				Source:  "harness_report",
 				ID:      "report-1",
 				Status:  "partial",
@@ -574,8 +574,8 @@ func TestBuildValidationSummaryFromEvalResult(t *testing.T) {
 	}
 }
 
-func TestGoalAttentionValidationIssuesSummarizesAttention(t *testing.T) {
-	issues := GoalAttentionValidationIssues([]GoalAttentionObservation{{
+func TestAttentionValidationIssuesSummarizesAttention(t *testing.T) {
+	issues := AttentionValidationIssues([]AttentionObservation{{
 		Source:  "goal_approval",
 		ID:      "approval-1",
 		Status:  "pending",

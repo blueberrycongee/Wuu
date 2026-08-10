@@ -1,4 +1,3 @@
-import { Archive } from "lucide-react";
 import type { ThreadItemStatus } from "../shared/protocol";
 import type { TurnEventDisplay } from "./TurnEvents";
 import type { UserFacingErrorDisplay, UserFacingErrorTone } from "./UserFacingErrors";
@@ -38,6 +37,7 @@ export function SystemEventNotice({
         <span className="turn-event-content">
           <strong
             className={`turn-event-title${inProgress ? " live-progress-chip" : ""}`}
+            data-text={event.label}
           >
             {event.label}
           </strong>
@@ -117,18 +117,30 @@ export function ContextCompactionNotice({
   const description = detail ? `${title} — ${detail}` : title;
   return (
     <aside
-      className={`turn-progress context-compaction-notice ${state}`}
+      className={`process-surface context-compaction-notice ${state}`}
       role={failed ? "alert" : "status"}
       aria-label={description}
       aria-live={inProgress ? "polite" : undefined}
     >
-      <span className="turn-progress-label">
-        <Archive aria-hidden="true" size={14} />
-        <span className="turn-progress-copy">
-          <strong className="turn-progress-title">{title}</strong>
-          {detail ? <span className="turn-progress-detail">{detail}</span> : null}
-        </span>
-      </span>
+      <div className="process-surface-fold no-details">
+        <div
+          className={`process-surface-row${inProgress ? " is-live-gray is-streaming" : ""}`}
+        >
+          <span className="process-surface-summary-line" aria-label={description}>
+            <strong className="process-surface-segment context-compaction-title">
+              {title}
+            </strong>
+            {detail ? (
+              <>
+                <span className="process-surface-separator">·</span>
+                <span className="process-surface-segment context-compaction-detail">
+                  {detail}
+                </span>
+              </>
+            ) : null}
+          </span>
+        </div>
+      </div>
     </aside>
   );
 }
@@ -156,9 +168,6 @@ function contextCompactionTitle(
   if (isUnchangedCompactNotice(normalized)) {
     return t("compaction.notNeeded");
   }
-  if (isHelpMeCompact(reason, normalized)) {
-    return t("compaction.helpmeComplete");
-  }
   if (isManualCompact(reason, normalized)) {
     return t("compaction.manualComplete");
   }
@@ -182,9 +191,6 @@ function contextCompactionDetail(
   }
   if (isUnchangedCompactNotice(normalized)) {
     return t("compaction.notNeededDetail");
-  }
-  if (isHelpMeCompact(reason, normalized)) {
-    return t("compaction.helpmeDetail");
   }
   if (/^Compacted history$/i.test(normalized)) {
     return t("compaction.completeDetail");
@@ -217,13 +223,9 @@ function isManualCompact(reason: string | undefined, text: string): boolean {
   );
 }
 
-function isHelpMeCompact(reason: string | undefined, text: string): boolean {
-  return reason === "helpme" || /^HelpMe recovered and compacted history\b/i.test(text);
-}
-
 function parseContextCompactionNotice(text: string): string | undefined {
   const match = text.match(
-    /^(Recovered from context overflow\s+[—-]\s+compacted|HelpMe recovered and compacted|Manually compacted|Compacted)\s+history:\s*(\d+)\s*(?:→|->)\s*(\d+)\s+messages(?:\s+\(was\s+~?([^)]+)\))?$/i,
+    /^(Recovered from context overflow\s+[—-]\s+compacted|Manually compacted|Compacted)\s+history:\s*(\d+)\s*(?:→|->)\s*(\d+)\s+messages(?:\s+\(was\s+~?([^)]+)\))?$/i,
   );
   if (!match) {
     return undefined;

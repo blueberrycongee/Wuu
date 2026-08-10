@@ -3,10 +3,10 @@
 // Static sections (base prompt, coordinator preamble, session environment)
 // are placed first so the prompt prefix stays stable across turns, maximizing
 // provider prompt-cache hit rates. Session-scoped discovered sections such as
-// memory, skills, and workflows follow. Volatile repository state belongs in
+// instruction files, skills, and workflows follow. Volatile repository state belongs in
 // per-turn context injection or tools, not in this builder.
 //
-// Memory files are truncated to MaxMemoryLines / MaxMemoryBytes to prevent
+// Instruction files are truncated to MaxInstructionLines / MaxInstructionBytes to prevent
 // prompt explosion from large project instruction files.
 package prompt
 
@@ -16,17 +16,17 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/blueberrycongee/wuu/internal/memory"
+	"github.com/blueberrycongee/wuu/internal/instructions"
 	"github.com/blueberrycongee/wuu/internal/skills"
 )
 
 const (
 	sectionInfoHashBytes = 16
 
-	// MaxMemoryLines caps a single memory file at 200 lines.
-	MaxMemoryLines = 200
-	// MaxMemoryBytes caps a single memory file at 25 KB.
-	MaxMemoryBytes = 25 * 1024
+	// MaxInstructionLines caps a single instruction file at 200 lines.
+	MaxInstructionLines = 200
+	// MaxInstructionBytes caps a single instruction file at 25 KB.
+	MaxInstructionBytes = 25 * 1024
 )
 
 // Section is one logical piece of the system prompt.
@@ -72,25 +72,23 @@ func (b *Builder) AddSection(key, content string, static bool) {
 	b.sections = append(b.sections, Section{Key: key, Content: content, Static: static})
 }
 
-// AddMemory adds a "Memory" section from discovered memory files,
-// applying per-file truncation.
-func (b *Builder) AddMemory(files []memory.File) {
+// AddInstructions adds discovered instruction files with per-file truncation.
+func (b *Builder) AddInstructions(files []instructions.File) {
 	if len(files) == 0 {
 		return
 	}
 	var sb strings.Builder
-	sb.WriteString("# Workspace instructions and memory\n\n")
+	sb.WriteString("# Workspace instructions\n\n")
 	sb.WriteString("The following markdown files were discovered for this session. ")
 	sb.WriteString("Instruction files may contain conventions, style guides, and constraints; follow them unless they conflict with higher-priority system, developer, or tool rules. ")
-	sb.WriteString("Durable MEMORY.md files are saved context and facts; use them to orient yourself, but verify time-sensitive or repo-specific details against the current workspace before acting. ")
-	sb.WriteString("When files overlap, prefer the more specific local or project instruction for that workspace, and do not treat old memory as live evidence without checking it.\n\n")
+	sb.WriteString("When files overlap, prefer the more specific local or project instruction for that workspace. Legacy imported files may be stale, so verify time-sensitive details against the current workspace.\n\n")
 	for _, f := range files {
-		content := TruncateMemory(f.Content, MaxMemoryLines, MaxMemoryBytes)
+		content := TruncateInstructions(f.Content, MaxInstructionLines, MaxInstructionBytes)
 		fmt.Fprintf(&sb, "## %s _[%s · %s]_\n\n", f.Name, f.Source, f.Path)
 		sb.WriteString(strings.TrimRight(content, "\n"))
 		sb.WriteString("\n\n")
 	}
-	b.AddSection("memory", strings.TrimRight(sb.String(), "\n"), false)
+	b.AddSection("instructions", strings.TrimRight(sb.String(), "\n"), false)
 }
 
 // MemdirSection renders the file-directory memory block: teaching text plus
@@ -187,9 +185,9 @@ func shortSectionHash(value string) string {
 	return hex.EncodeToString(sum[:sectionInfoHashBytes])
 }
 
-// TruncateMemory caps content at maxLines and maxBytes, whichever
+// TruncateInstructions caps content at maxLines and maxBytes, whichever
 // limit is hit first. Appends a marker if truncation occurred.
-func TruncateMemory(content string, maxLines, maxBytes int) string {
+func TruncateInstructions(content string, maxLines, maxBytes int) string {
 	if len(content) <= maxBytes && countLines(content) <= maxLines {
 		return content
 	}

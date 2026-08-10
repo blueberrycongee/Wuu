@@ -1598,7 +1598,6 @@ type execCLIConfig struct {
 	outputLastMessage *string
 	inputJSON         *bool
 	maxTurns          *int
-	ultra             *bool
 	outputSchema      *string
 }
 
@@ -1858,7 +1857,6 @@ func addExecFlags(fs *flag.FlagSet) execCLIConfig {
 		outputLastMessage: fs.String("output-last-message", "", "write final agent message to a file"),
 		inputJSON:         fs.Bool("input-json", false, "read machine input JSON from stdin"),
 		maxTurns:          fs.Int("max-turns", 0, "max agent turns"),
-		ultra:             fs.Bool("ultra", false, "enable proactive multi-agent delegation"),
 		outputSchema:      fs.String("output-schema", "", "JSON schema for structured final output"),
 	}
 }
@@ -1926,7 +1924,6 @@ func execOptionsFromCLI(cfg execCLIConfig, prompt, resumeID string, resumeLast b
 		IgnoreUserConfig:  valueOfBoolFlag(cfg.ignoreUserConfig),
 		Env:               stringListValues(cfg.env),
 		MaxTurns:          valueOfIntFlag(cfg.maxTurns),
-		Ultra:             valueOfBoolFlag(cfg.ultra),
 		NoTools:           valueOfBoolFlag(cfg.noTools),
 		JSON:              valueOfBoolFlag(cfg.jsonOutput),
 		Ephemeral:         valueOfBoolFlag(cfg.ephemeral),
@@ -2154,6 +2151,7 @@ func runAppServer(args []string) error {
 	hostKind := fs.String("host", string(runtime.HostLocal), "runtime host: local or cloud")
 	instanceID := fs.String("instance-id", "", "cloud runtime instance identity")
 	noTools := fs.Bool("no-tools", false, "disable local tools")
+	safeMode := fs.Bool("safe-mode", false, "start without activating plugins")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -2183,6 +2181,7 @@ func runAppServer(args []string) error {
 		ProviderName:   *providerName,
 		ModelOverride:  *modelOverride,
 		NoTools:        *noTools,
+		SafeMode:       *safeMode,
 	})
 	if err != nil {
 		return err
@@ -2376,7 +2375,6 @@ Exec flags:
   --ephemeral       run without creating a persistent session
   --input-json      read machine input JSON from stdin
   --max-turns       max agent loop turns
-  --ultra           enable proactive multi-agent delegation
   --output-schema   JSON schema for structured final output
   --timeout         total timeout (e.g. 20m)
   --output-last-message

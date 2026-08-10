@@ -17,6 +17,7 @@ import (
 const (
 	capabilityClientRequest = "plugin.client.request"
 	capabilityTurnCompleted = "agent.turn.completed"
+	capabilityTurnLifecycle = "agent.turn.lifecycle"
 	storageScope            = "workspace"
 )
 
@@ -25,17 +26,18 @@ func Handler() pluginapi.Handler {
 		Definition: pluginapi.Definition{
 			Tools: []pluginapi.Tool{
 				{ID: "get_goal", Description: "Get the current goal for this thread, including status, token usage, and elapsed-time usage.", InputSchema: emptySchema(), Activity: &pluginapi.ToolActivity{ReadOnly: true, ConcurrencySafe: true, Risk: "low"}},
-				{ID: "create_goal", Description: "Create a goal only when explicitly requested by the user or system/developer instructions; do not infer goals from ordinary tasks.", InputSchema: objectSchema(map[string]any{"objective": map[string]any{"type": "string", "description": "The concrete objective to pursue."}}, "objective")},
+				{ID: "create_goal", Description: "Create a goal only when explicitly requested by the user or system/developer instructions; do not infer goals from ordinary tasks. Fails if this thread already has a goal; the user must clear it first.", InputSchema: objectSchema(map[string]any{"objective": map[string]any{"type": "string", "description": "The concrete objective to pursue."}}, "objective")},
 				{ID: "update_goal", Description: "Mark the active goal complete or genuinely blocked. Complete requires verified achievement; blocked requires a repeated blocker that needs user input or external change.", InputSchema: objectSchema(map[string]any{"status": map[string]any{"type": "string", "enum": []string{"complete", "blocked"}}}, "status")},
 			},
 			Capabilities: []pluginapi.Capability{
 				{ID: capabilityClientRequest, Kind: "decision", Version: 1},
 				{ID: capabilityTurnCompleted, Kind: "observe", ErrorPolicy: "isolate", Version: 1},
+				{ID: capabilityTurnLifecycle, Kind: "observe", ErrorPolicy: "isolate", Version: 1},
 			},
 			RequiredHostServices: []pluginapi.HostService{
-				{ID: "host.storage.get", Required: true},
-				{ID: "host.storage.set", Required: true},
-				{ID: "host.storage.delete", Required: true},
+				{ID: pluginapi.HostServiceStorageGet, Required: true},
+				{ID: pluginapi.HostServiceStorageSet, Required: true},
+				{ID: pluginapi.HostServiceStorageDelete, Required: true},
 				{ID: pluginapi.HostServiceSessionSend, Required: true},
 			},
 		},
@@ -62,8 +64,8 @@ func executeTool(ctx context.Context, client pluginapi.Host, call pluginapi.Tool
 		}
 		if current, ok, err := load(ctx, client, threadID); err != nil {
 			return pluginapi.ToolResult{}, err
-		} else if ok && !goalruntime.IsTerminalStatus(current.Status) {
-			return pluginapi.ToolResult{}, fmt.Errorf("thread already has unfinished goal %q with status %s", current.GoalID, current.Status)
+		} else if ok {
+			return pluginapi.ToolResult{}, fmt.Errorf("thread already has goal %q with status %s; the user must clear it before creating another", current.GoalID, current.Status)
 		}
 		goal, err := goalruntime.NewGoal(goalruntime.Spec{ThreadID: threadID, GoalID: newGoalID(), Objective: args.Objective}, time.Now().UTC())
 		if err == nil {
@@ -102,6 +104,32 @@ func executeTool(ctx context.Context, client pluginapi.Host, call pluginapi.Tool
 
 func invokeCapability(ctx context.Context, client pluginapi.Host, call pluginapi.CapabilityCall) (json.RawMessage, error) {
 	switch call.Capability {
+	case capabilityTurnLifecycle:
+		var input pluginapi.TurnLifecycleInput
+		if err := json.Unmarshal(call.Input, &input); err != nil {
+			return nil, err
+		}
+		goal, ok, err := load(ctx, client, input.ThreadID)
+		if err != nil || !ok {
+			return json.Marshal(struct{}{})
+		}
+		now := time.Now().UTC()
+		switch input.State {
+		case "running":
+			startedAt := now
+			if parsed, parseErr := time.Parse(time.RFC3339Nano, input.StartedAt); parseErr == nil {
+				startedAt = parsed
+			}
+			goal = goal.StartRun(input.TurnID, startedAt)
+		case "completed", "failed", "interrupted", "discarded":
+			goal = goal.ClearRun(input.TurnID, now)
+		default:
+			return json.Marshal(struct{}{})
+		}
+		if err := save(ctx, client, goal); err != nil {
+			return nil, err
+		}
+		return json.Marshal(struct{}{})
 	case capabilityTurnCompleted:
 		var input struct {
 			ThreadID     string    `json:"thread_id"`
@@ -124,11 +152,19 @@ func invokeCapability(ctx context.Context, client pluginapi.Host, call pluginapi
 		if goal.Status != goalruntime.StatusActive && goal.UpdatedAt.Before(input.StartedAt) {
 			return json.Marshal(struct{}{})
 		}
-		elapsed := input.CompletedAt.Sub(input.StartedAt)
+		startedAt := input.StartedAt
+		if goal.CreatedAt.After(startedAt) {
+			startedAt = goal.CreatedAt
+		}
+		if goal.RunningSince != nil && (goal.RunningTurnID == "" || goal.RunningTurnID == input.TurnID) && goal.RunningSince.After(startedAt) {
+			startedAt = *goal.RunningSince
+		}
+		elapsed := input.CompletedAt.Sub(startedAt)
 		if elapsed < 0 {
 			elapsed = 0
 		}
 		goal, err = goal.AccountUsage(goalruntime.UsageDelta{Tokens: input.InputTokens + input.OutputTokens, Elapsed: elapsed, Turns: 1}, input.CompletedAt)
+		goal = goal.ClearRun("", input.CompletedAt)
 		if err == nil {
 			err = save(ctx, client, goal)
 		}
@@ -148,6 +184,12 @@ func invokeCapability(ctx context.Context, client pluginapi.Host, call pluginapi
 			}, &sent)
 			if err != nil {
 				return nil, err
+			}
+			if sent.State == "running" {
+				goal = goal.StartRun(sent.TurnID, time.Now().UTC())
+				if err := save(ctx, client, goal); err != nil {
+					return nil, err
+				}
 			}
 		}
 		return json.Marshal(struct{}{})
@@ -189,12 +231,12 @@ func handleClientRequest(ctx context.Context, client pluginapi.Host, method stri
 		}
 		return json.Marshal(map[string]any{"goal": goalView(goal)})
 	case "goal.set":
-		current, ok, err := load(ctx, client, threadID)
+		_, ok, err := load(ctx, client, threadID)
 		if err != nil {
 			return nil, err
 		}
-		if ok && !goalruntime.IsTerminalStatus(current.Status) {
-			return nil, errors.New("thread already has an unfinished goal")
+		if ok {
+			return nil, errors.New("thread already has a goal; clear it before creating another")
 		}
 		goal, err := goalruntime.NewGoal(goalruntime.Spec{ThreadID: threadID, GoalID: newGoalID(), Objective: args.Objective}, time.Now().UTC())
 		if err == nil {
@@ -254,7 +296,7 @@ func load(ctx context.Context, client pluginapi.Host, threadID string) (goalrunt
 	var response struct {
 		Value *string `json:"value"`
 	}
-	err := client.CallHost(ctx, "host.storage.get", map[string]string{"scope": storageScope, "key": storageKey(threadID)}, &response)
+	err := client.CallHost(ctx, pluginapi.HostServiceStorageGet, map[string]string{"scope": storageScope, "key": storageKey(threadID)}, &response)
 	if err != nil || response.Value == nil {
 		return goalruntime.Goal{}, false, err
 	}
@@ -268,11 +310,11 @@ func save(ctx context.Context, client pluginapi.Host, goal goalruntime.Goal) err
 	if err != nil {
 		return err
 	}
-	return client.CallHost(ctx, "host.storage.set", map[string]string{"scope": storageScope, "key": storageKey(goal.ThreadID), "value": string(raw)}, nil)
+	return client.CallHost(ctx, pluginapi.HostServiceStorageSet, map[string]string{"scope": storageScope, "key": storageKey(goal.ThreadID), "value": string(raw)}, nil)
 }
 
 func remove(ctx context.Context, client pluginapi.Host, threadID string) error {
-	return client.CallHost(ctx, "host.storage.delete", map[string]string{"scope": storageScope, "key": storageKey(threadID)}, nil)
+	return client.CallHost(ctx, pluginapi.HostServiceStorageDelete, map[string]string{"scope": storageScope, "key": storageKey(threadID)}, nil)
 }
 
 func storageKey(threadID string) string { return "goal." + strings.TrimSpace(threadID) }
@@ -293,7 +335,15 @@ func result(goal goalruntime.Goal, ok bool, err error) (pluginapi.ToolResult, er
 }
 
 func goalView(goal goalruntime.Goal) map[string]any {
-	return map[string]any{"thread_id": goal.ThreadID, "objective": goal.Objective, "status": goal.Status, "tokens_used": goal.TokensUsed, "time_used_seconds": goal.TimeUsedSeconds, "created_at": goal.CreatedAt.Unix(), "updated_at": goal.UpdatedAt.Unix()}
+	timeUsedMS := goal.TimeUsedMS
+	if timeUsedMS == 0 && goal.TimeUsedSeconds > 0 {
+		timeUsedMS = goal.TimeUsedSeconds * int64(time.Second/time.Millisecond)
+	}
+	view := map[string]any{"thread_id": goal.ThreadID, "objective": goal.Objective, "status": goal.Status, "tokens_used": goal.TokensUsed, "time_used_seconds": goal.TimeUsedSeconds, "time_used_ms": timeUsedMS, "created_at": goal.CreatedAt.Unix(), "updated_at": goal.UpdatedAt.Unix()}
+	if goal.RunningSince != nil {
+		view["running_since_ms"] = goal.RunningSince.UnixMilli()
+	}
+	return view
 }
 
 func newGoalID() string {

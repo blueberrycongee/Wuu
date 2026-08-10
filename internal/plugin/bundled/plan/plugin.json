@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "id": "plan",
+  "name": "Plan",
+  "description": "Visible task planning with an Inspector summary.",
+  "icon": { "path": "assets/icon.svg" },
+  "version": "0.1.0",
+  "author": { "name": "Wuu" },
+  "minimumWuuVersion": "0.1.0",
+  "runtime": { "protocol": "wuu-plugin-v1", "command": "@wuu-official-helper:plan", "timeout": 15 },
+  "desktop": { "entry": "desktop.js" },
+  "contributes": {
+    "presenters": [
+      { "id": "plan-tool", "target": "conversation.tool-activity", "mode": "replace", "priority": 20, "title": "Plan update" }
+    ]
+  },
+  "interface": { "displayName": "Plan", "shortDescription": "Track a visible multi-step task plan.", "developerName": "Wuu", "category": "Productivity", "capabilities": ["Write"] },
+  "officialNativeHelper": { "id": "plan", "environment": "WUU_PLAN_PLUGIN_HELPER", "executable": "wuu-plan-plugin" }
+}

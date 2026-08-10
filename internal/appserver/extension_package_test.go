@@ -153,6 +153,7 @@ func TestExtensionCatalogRefreshRediscoversPackages(t *testing.T) {
 
 	out := &lockedBuffer{}
 	srv := New(rt, out)
+	defer srv.Close()
 	if err := srv.handleLine(context.Background(), []byte(`{"id":"refresh","method":"extension/catalog/refresh"}`)); err != nil {
 		t.Fatalf("refresh extension catalog: %v", err)
 	}

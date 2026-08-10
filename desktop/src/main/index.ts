@@ -93,20 +93,12 @@ import type {
   ManagedProcessReadParams,
   ManagedProcessReadResult,
   ManagedProcessWriteResult,
-  MemoryChatParams,
-  MemoryChatResult,
-  MemoryOverviewParams,
-  MemoryOverviewResult,
-  MemoryReadParams,
-  MemoryReadResult,
   RemoteControlSnapshot,
   RemoteControlStatus,
   ServerEvent,
   SkillContentParams,
   SkillContentResult,
   SkillListResult,
-  AutomationCreateParams,
-  AutomationUpdateParams,
   RuntimeContext,
   RuntimeAdvancedSettingsUpdate,
   RuntimeGeneralSettingsUpdate,
@@ -129,6 +121,9 @@ import type {
   PluginDesktopModuleLoadResult,
   PluginDesktopModuleReadParams,
   PluginDesktopModuleReadResult,
+  PluginIconLoadResult,
+  PluginIconReadParams,
+  PluginIconReadResult,
   PluginSettingGetParams,
   PluginIdentityParams,
   PluginSettingSetParams,
@@ -195,6 +190,7 @@ import {
 } from "./renderableFileProtocol";
 import {
   cachePluginDesktopModule,
+  cachePluginIcon,
   registerPluginModuleProtocol,
   registerPluginModuleScheme,
 } from "./pluginModuleProtocol";
@@ -238,6 +234,9 @@ const DARK_WINDOW_BACKGROUND = "#1d2024";
 // Matches the renderer titlebar row (48px in the tabbed/popped-out states)
 // so the overlay buttons center on the same strip the renderer draws.
 const WINDOWS_TITLEBAR_OVERLAY_HEIGHT = 48;
+if (process.argv.includes("--safe-mode")) {
+  process.env.WUU_SAFE_MODE = "1";
+}
 registerRenderableFileScheme();
 registerPluginModuleScheme();
 
@@ -1155,7 +1154,7 @@ app.whenReady().then(async () => {
       return appServerClientPool.request<{
         state_dir: string;
         removed: boolean;
-        memory_archived: boolean;
+        data_archived: boolean;
       }>("workspace/state/cleanup", {
         workspace_id: projectId,
       });
@@ -1393,11 +1392,6 @@ app.whenReady().then(async () => {
           : { permission_mode: permissionMode }),
       }),
   );
-  ipcMain.handle("wuu:config-ultra-update", (event, enabled: boolean) =>
-    appServerRequest<ConfigModelUpdateResult>(event, "config/model/update", {
-      ultra: enabled,
-    }),
-  );
   ipcMain.handle(
     "wuu:config-advanced-update",
     (event, settings: RuntimeAdvancedSettingsUpdate) =>
@@ -1457,6 +1451,17 @@ app.whenReady().then(async () => {
       return cachePluginDesktopModule(module);
     },
   );
+  ipcMain.handle(
+    "wuu:plugin-icon-load",
+    async (event, params: PluginIconReadParams): Promise<PluginIconLoadResult> => {
+      const icon = await appServerRequest<PluginIconReadResult>(
+        event,
+        "plugin/icon/read",
+        params,
+      );
+      return cachePluginIcon(icon);
+    },
+  );
   ipcMain.handle("wuu:plugin-setting-get", (event, params: PluginSettingGetParams) =>
     appServerRequest<PluginSettingResult>(event, "plugin/setting/get", params));
   ipcMain.handle("wuu:plugin-setting-set", (event, params: PluginSettingSetParams) =>
@@ -1492,29 +1497,6 @@ app.whenReady().then(async () => {
   );
   ipcMain.handle("wuu:skill-list", (event) =>
     appServerRequest(event, "skill/list"),
-  );
-  ipcMain.handle("wuu:automation-list", (event) =>
-    appServerRequest(event, "automation/list"),
-  );
-  ipcMain.handle("wuu:automation-create", (event, params: AutomationCreateParams) => {
-    const workspaceID = typeof params?.workspace_id === "string" ? params.workspace_id.trim() : "";
-    const project = projectManager.list().projects.find((candidate) => (
-      candidate.id === workspaceID && !candidate.missing
-    ));
-    if (!project) {
-      throw new Error("automation workspace must be an available project");
-    }
-    return appServerRequest(event, "automation/create", {
-      ...params,
-      workspace_id: project.id,
-      workspace_path: project.path,
-    });
-  });
-  ipcMain.handle("wuu:automation-update", (event, params: AutomationUpdateParams) =>
-    appServerRequest(event, "automation/update", params),
-  );
-  ipcMain.handle("wuu:automation-remove", (event, id: string) =>
-    appServerRequest(event, "automation/remove", { id }),
   );
   ipcMain.handle("wuu:skill-content", async (event, params: SkillContentParams): Promise<SkillContentResult> => {
     const name = typeof params?.name === "string" ? params.name : "";
@@ -1852,29 +1834,6 @@ app.whenReady().then(async () => {
       setMessageFlowFontSize(next);
       return { ok: true, fontSize: next };
     },
-  );
-  // 记忆面板 RPC（memory-redesign.md §8.2）。participant_id 只在
-  // participant scope 下附带，避免后端 DisallowUnknownFields 之外的
-  // 空字段歧义；user scope 的请求只带 scope。
-  ipcMain.handle("wuu:memory-overview", (event, params: MemoryOverviewParams) =>
-    appServerRequest<MemoryOverviewResult>(event, "memory/overview", {
-      scope: params.scope,
-      ...(params.participant_id ? { participant_id: params.participant_id } : {}),
-      ...(params.force_refresh ? { force_refresh: true } : {}),
-    }),
-  );
-  ipcMain.handle("wuu:memory-chat", (event, params: MemoryChatParams) =>
-    appServerRequest<MemoryChatResult>(event, "memory/chat", {
-      scope: params.scope,
-      message: params.message,
-      ...(params.participant_id ? { participant_id: params.participant_id } : {}),
-    }),
-  );
-  ipcMain.handle("wuu:memory-read", (event, params: MemoryReadParams) =>
-    appServerRequest<MemoryReadResult>(event, "memory/read", {
-      scope: params.scope,
-      ...(params.participant_id ? { participant_id: params.participant_id } : {}),
-    }),
   );
   ipcMain.handle("wuu:thread-list", (event, cwd?: string) =>
     appServerRequest<{ threads: Thread[] }>(

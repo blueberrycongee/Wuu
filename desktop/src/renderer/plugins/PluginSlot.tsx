@@ -3,6 +3,7 @@ import {
   createElement,
   Fragment,
   useCallback,
+  useMemo,
   useSyncExternalStore,
   type ErrorInfo,
   type ReactNode,
@@ -14,11 +15,17 @@ import {
   type PluginSlotRenderContext,
   type RegisteredPluginSlotContribution,
 } from "./PluginHost";
+import { useI18n } from "../i18n";
+import { createPluginTranslator } from "./pluginI18n";
 
 export interface PluginSlotProps {
   host: PluginHost;
   id: PluginSlotId;
   context?: PluginSlotRenderContext;
+}
+
+export interface PluginSlotContributionProps extends PluginSlotProps {
+  contribution: RegisteredPluginSlotContribution;
 }
 
 interface ContributionBoundaryProps {
@@ -54,11 +61,20 @@ class ContributionBoundary extends Component<ContributionBoundaryProps, Contribu
 function ContributionContent({
   context,
   contribution,
+  host,
+  locale,
 }: {
   context: PluginSlotRenderContext;
   contribution: RegisteredPluginSlotContribution;
+  host: PluginHost;
+  locale: string;
 }): ReactNode {
-  return contribution.render(context);
+  const localizedContext = useMemo(() => Object.freeze({
+    ...context,
+    locale,
+    translate: createPluginTranslator(host, locale),
+  }), [context, host, locale]);
+  return contribution.render(localizedContext);
 }
 
 export function PluginSlot({ host, id, context = EMPTY_CONTEXT }: PluginSlotProps): ReactNode {
@@ -69,23 +85,38 @@ export function PluginSlot({ host, id, context = EMPTY_CONTEXT }: PluginSlotProp
   return createElement(
     Fragment,
     null,
-    ...contributions.map((contribution) => createElement(
-      ContributionBoundary,
-      {
-        key: `${contribution.pluginId}:${contribution.generation}:${contribution.id}`,
-        host,
-        slotId: id,
-        contribution,
-      },
-      <div
-        className="plugin-contribution-root"
-        data-wuu-component="plugin-contribution"
-        data-wuu-plugin={contribution.pluginId}
-        data-wuu-slot={id}
-        data-wuu-contribution={contribution.id}
-      >
-        <ContributionContent contribution={contribution} context={context} />
-      </div>,
-    )),
+    ...contributions.map((contribution) => createElement(PluginSlotContribution, {
+      key: `${contribution.pluginId}:${contribution.generation}:${contribution.id}`,
+      host,
+      id,
+      context,
+      contribution,
+    })),
+  );
+}
+
+export function PluginSlotContribution({
+  host,
+  id,
+  context = EMPTY_CONTEXT,
+  contribution,
+}: PluginSlotContributionProps): ReactNode {
+  const { locale } = useI18n();
+  return createElement(
+    ContributionBoundary,
+    {
+      host,
+      slotId: id,
+      contribution,
+    },
+    <div
+      className="plugin-contribution-root"
+      data-wuu-component="plugin-contribution"
+      data-wuu-plugin={contribution.pluginId}
+      data-wuu-slot={id}
+      data-wuu-contribution={contribution.id}
+    >
+      <ContributionContent contribution={contribution} context={context} host={host} locale={locale} />
+    </div>,
   );
 }

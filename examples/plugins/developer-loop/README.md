@@ -8,6 +8,9 @@ knowing this plugin exists. It uses the React instance owned by the host; React 
 dependency nor part of the bundle. It reads all four setting kinds and restores its counter from
 plugin-namespaced storage.
 
+The top-level manifest icon uses package-contained SVG artwork in the plugin catalog. Host-owned
+entries declare their own semantic or package-contained icon instead of inheriting brand artwork.
+
 Its presenter registrations are deliberately layout-neutral: they observe versioned snapshots and
 retain the native fallback instead of replacing navigation, titlebars, messages, or status chrome.
 The example can therefore stay enabled while testing another appearance plugin without changing
@@ -44,4 +47,5 @@ settings, namespaced storage, contribution disposal, and generation swaps. This 
 only the public SDK API and view-scoped host methods. It cannot import Desktop or core internals,
 and it must not assume access to host classes, global storage keys, or private DOM structure. The
 executable runtime is a separate Node process speaking JSONL over standard input/output; only its
-declared request transform and tool cross that boundary.
+declared request transform, static prompt section, and tool cross that boundary. It intentionally
+does not register the experimental compaction capability as a pass-through consumer.

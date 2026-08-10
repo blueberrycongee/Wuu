@@ -23,9 +23,14 @@ Events should include these fields when available:
 {
   "type": "event_name",
   "thread_id": "thread-id",
-  "turn_id": "turn-id"
+  "turn_id": "turn-id",
+  "run_id": "run-id"
 }
 ```
+
+`run_id` is currently present on `error` and `result`, the events whose payload is
+assembled from execution Run state. Turn and item events continue to use their
+thread-, turn-, and item-level identifiers.
 
 ## Required Event Families
 
@@ -76,7 +81,6 @@ Emitted after `initialize` succeeds.
   "protocol_version": "wuu-app-server/v0.1",
   "provider": "openai",
   "model": "gpt-5",
-  "ultra": false,
   "max_parallel": 5,
   "workspace_root": "/repo",
   "permissions": {}
@@ -134,6 +138,9 @@ Emitted when an existing thread is resumed.
 ```
 
 ### `usage_updated`
+
+Token counts are cumulative snapshots for the current in-flight turn, not
+per-event deltas. Use the latest snapshot for a turn when computing totals.
 
 ```json
 {
@@ -377,9 +384,14 @@ does not duplicate full diffs or file contents.
   "turn_id": "turn-id",
   "input_tokens": 100,
   "output_tokens": 20,
-  "trace_path": "/path/to/session-trace.jsonl"
+  "trace_path": "/path/to/session-trace.jsonl",
+  "awaiting_auto_continuation": false
 }
 ```
+
+`awaiting_auto_continuation` is `true` when the execution Run is awaiting another
+automatic turn, including a structured-output correction turn. In that case this
+event does not end the Run; wait for the final `result`.
 
 ### `turn_interrupted`
 
@@ -406,6 +418,23 @@ process cancellation.
 }
 ```
 
+### `error`
+
+This is not a general error channel. It is emitted only if the CLI's final
+`--output-schema` parse disagrees with the app-server's completed Run settlement.
+Normal structured-output correction turns do not emit this event.
+
+```json
+{
+  "type": "error",
+  "thread_id": "thread-id",
+  "turn_id": "turn-id",
+  "run_id": "run-id",
+  "error": "final answer does not match output schema",
+  "retrying": false
+}
+```
+
 ### `result`
 
 The final event in a run.
@@ -416,6 +445,7 @@ The final event in a run.
   "status": "completed",
   "thread_id": "thread-id",
   "turn_id": "turn-id",
+  "run_id": "run-id",
   "final_message": "final answer",
   "structured_result": {"summary": "valid JSON when --output-schema is used"},
   "trace_path": "/path/to/session-trace.jsonl"

@@ -1,5 +1,6 @@
 import { useEffect, useRef, type RefObject } from "react";
-import type { Agent, PlanUpdate } from "../shared/protocol";
+import type { PlanUpdate } from "../shared/protocol";
+import type { InspectorSnapshotV1 } from "../shared/workbench";
 import type { AppState } from "./AppState";
 import {
   EnvironmentPanel,
@@ -7,23 +8,8 @@ import {
   type EnvironmentPanelMotionState,
 } from "./EnvironmentPanel";
 import { environmentPanelScaleForWidth } from "./EnvironmentPanelScale";
-
-export type SubagentRowSummary = Pick<
-  Agent,
-  | "id"
-  | "type"
-  | "task_name"
-  | "agent_path"
-  | "description"
-  | "status"
-  | "pinned"
-  | "archived"
-  | "started_at"
-  | "completed_at"
-  | "nested_count"
-  | "nested_running_count"
-  | "participant"
->;
+import { desktopPluginHost, desktopWorkbenchController } from "./plugins/DesktopPluginRuntime";
+import { PluginInspectorSections } from "./plugins/PluginInspector";
 
 function useEnvironmentPanelScale(
   stackRef: RefObject<HTMLDivElement | null>,
@@ -79,12 +65,6 @@ export function EnvironmentSideStack({
   onOpenReview,
   onOpenCommit,
   onOpenPullRequest,
-  subagentSessions,
-  archiveConfirmSubagentID,
-  onSelectSubagent,
-  onToggleSubagentPinned,
-  onArchiveSubagent,
-  onClearSubagentArchiveConfirm,
 }: {
   visible: boolean;
   mounted: boolean;
@@ -110,23 +90,6 @@ export function EnvironmentSideStack({
   onOpenReview: () => void;
   onOpenCommit: () => void;
   onOpenPullRequest: () => void;
-  /**
-   * Subagent sessions owned by the active thread. Rendered in the
-   * environment panel as a "子任务" section. When undefined/empty the
-   * section is hidden, matching the user intent that no row appears unless
-   * the main session actually has subagents.
-   */
-  subagentSessions?: SubagentRowSummary[];
-  /**
-   * ID of the subagent currently in "press again to confirm" archive
-   * state. Mirrors `archiveConfirmThreadID` for the sidebar's session
-   * rows so the UX stays consistent between the two surfaces.
-   */
-  archiveConfirmSubagentID?: string;
-  onSelectSubagent?: (agent: SubagentRowSummary) => void;
-  onToggleSubagentPinned?: (agent: SubagentRowSummary) => void;
-  onArchiveSubagent?: (agent: SubagentRowSummary) => void;
-  onClearSubagentArchiveConfirm?: (agentID: string) => void;
 }): JSX.Element | null {
   const stackRef = useRef<HTMLDivElement>(null);
   const shouldRender = (visible || mounted) && Boolean(state.initialized);
@@ -135,6 +98,8 @@ export function EnvironmentSideStack({
   if (!shouldRender || !state.initialized) {
     return null;
   }
+
+  const inspectorSnapshot = buildInspectorSnapshot(state, planUpdate);
 
   return (
     <div
@@ -146,7 +111,6 @@ export function EnvironmentSideStack({
         motionState={closing ? "closing" : motionState}
         initialized={state.initialized}
         gitStatus={state.gitStatus}
-        planUpdate={planUpdate}
         activeMenu={activeMenu}
         running={running}
         pullRequestDisabledReason={pullRequestDisabledReason}
@@ -159,13 +123,50 @@ export function EnvironmentSideStack({
         onOpenReview={onOpenReview}
         onOpenCommit={onOpenCommit}
         onOpenPullRequest={onOpenPullRequest}
-        subagentSessions={subagentSessions}
-        archiveConfirmSubagentID={archiveConfirmSubagentID}
-        onSelectSubagent={onSelectSubagent}
-        onToggleSubagentPinned={onToggleSubagentPinned}
-        onArchiveSubagent={onArchiveSubagent}
-        onClearSubagentArchiveConfirm={onClearSubagentArchiveConfirm}
+        pluginSections={
+          <PluginInspectorSections
+            host={desktopPluginHost}
+            controller={desktopWorkbenchController}
+            snapshot={inspectorSnapshot}
+          />
+        }
       />
     </div>
   );
+}
+
+function buildInspectorSnapshot(state: AppState, planUpdate?: PlanUpdate): InspectorSnapshotV1 {
+  const latestTurn = state.thread?.turns.at(-1);
+  const activeContext = state.activeContext;
+  const session = Object.freeze({
+    id: state.thread?.id || state.activeSessionTabID || undefined,
+    status: state.running || state.thread?.status === "in_progress" ? "running" as const : "idle" as const,
+    turnId: latestTurn?.id,
+    turnStatus: latestTurn?.status,
+  });
+  const activeProject = activeContext?.kind === "project"
+    ? state.projects.find((project) => project.id === activeContext.project_id)
+    : undefined;
+  const workspace = activeContext === undefined
+    ? undefined
+    : Object.freeze({
+        kind: activeContext.kind,
+        cwd: activeContext.cwd,
+        projectId: activeContext.kind === "project" ? activeContext.project_id : undefined,
+        projectName: activeProject?.name,
+        branch: state.gitStatus?.branch,
+        dirtyFileCount: state.gitStatus?.dirty_count,
+      });
+  const plan = planUpdate === undefined
+    ? undefined
+    : Object.freeze({
+        completed: planUpdate.plan.filter((item) => item.status === "completed").length,
+        total: planUpdate.plan.length,
+        activeStep: planUpdate.plan.find((item) => item.status === "in_progress")?.step,
+        items: Object.freeze(planUpdate.plan.map((item) => Object.freeze({
+          step: item.step,
+          status: item.status,
+        }))),
+      });
+  return Object.freeze({ contractVersion: 1, session, workspace, plan });
 }

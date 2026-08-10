@@ -65,7 +65,7 @@ export function toConversationProcessSnapshot(
         error: item.error,
       })];
     }
-    if (item.type === "tool_call" || item.type === "collab_agent_tool_call") {
+    if (item.type === "tool_call") {
       return [Object.freeze({
         id: item.id,
         kind: "tool-activity" as const,

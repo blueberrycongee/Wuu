@@ -28,7 +28,7 @@ const (
 
 // Home returns the unified user-level wuu directory. It is the single root for
 // both configuration (config.json, auth.json, user AGENTS.md) and runtime
-// state (sessions, workspaces, memory, logs). WUU_HOME overrides it wholesale,
+// state (sessions, workspaces, plugin data, logs). WUU_HOME overrides it wholesale,
 // mirroring Claude Code's CLAUDE_CONFIG_DIR: setting WUU_HOME relocates the
 // entire directory, not just state.
 func Home(homeDir string) (string, error) {
@@ -140,7 +140,7 @@ func ChannelsDir(wuuHome string) string {
 // path, so the directory — and everything under it (memory, goals, scheduled
 // tasks, session artifacts) — survives the workspace being moved or renamed on
 // disk. The layout matches WorkspaceDir (<slug>-<hash16>) so every downstream
-// RuntimeDir/WorktreeRoot/GoalRoot/... helper is unaffected.
+// RuntimeDir/WorktreeRoot/... helper is unaffected.
 func WorkspaceDirByID(wuuHome, workspaceID string) (string, error) {
 	if strings.TrimSpace(wuuHome) == "" {
 		return "", errors.New("wuu home is required")
@@ -225,16 +225,6 @@ func WorktreeRoot(workspaceStateDir string) string {
 	return filepath.Join(workspaceStateDir, "worktrees")
 }
 
-// GoalRoot returns the workspace-scoped durable goal state directory.
-func GoalRoot(workspaceStateDir string) string {
-	return filepath.Join(workspaceStateDir, "goals")
-}
-
-// GoalDir returns the workspace-scoped durable state directory for one goal.
-func GoalDir(workspaceStateDir, goalID string) string {
-	return filepath.Join(GoalRoot(workspaceStateDir), goalID)
-}
-
 // SharedDir returns the workspace-scoped shared agent directory.
 func SharedDir(workspaceStateDir string) string {
 	return filepath.Join(workspaceStateDir, "shared")
@@ -250,21 +240,6 @@ func SessionArtifactDir(workspaceStateDir, sessionID string) string {
 // together with the thread on delete.
 func ThreadBrowserTabsPath(workspaceStateDir, sessionID string) string {
 	return filepath.Join(SessionArtifactDir(workspaceStateDir, sessionID), "browser_tabs.json")
-}
-
-// ScheduledTasksPath returns the workspace-scoped durable scheduled task file.
-func ScheduledTasksPath(workspaceStateDir string) string {
-	return filepath.Join(workspaceStateDir, "scheduled_tasks.json")
-}
-
-// ScheduledTasksLockPath returns the workspace-scoped scheduled task lock file.
-func ScheduledTasksLockPath(workspaceStateDir string) string {
-	return filepath.Join(workspaceStateDir, "scheduled_tasks.lock")
-}
-
-// AutomationRunsPath returns the workspace-scoped automation run history file.
-func AutomationRunsPath(workspaceStateDir string) string {
-	return filepath.Join(workspaceStateDir, "automation_runs.json")
 }
 
 func sanitizeSlug(input string) string {

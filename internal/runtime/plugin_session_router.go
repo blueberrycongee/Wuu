@@ -13,6 +13,8 @@ import (
 // plugin request payload.
 type PluginSessionCreateHandler func(context.Context, string, pluginhost.SessionCreateParams) (pluginhost.SessionCreateResult, error)
 type PluginSessionSendHandler func(context.Context, string, pluginhost.SessionSendParams) (pluginhost.SessionSendResult, error)
+type PluginSessionListHandler func(context.Context, string, pluginhost.SessionListParams) (pluginhost.SessionListResult, error)
+type PluginSessionCancelHandler func(context.Context, string, pluginhost.SessionCancelParams) (pluginhost.SessionCancelResult, error)
 
 // PluginSessionRouter lets plugin processes outlive individual app-server
 // bindings without coupling runtime construction to an app-server package.
@@ -20,6 +22,8 @@ type PluginSessionRouter struct {
 	mu      sync.RWMutex
 	create  PluginSessionCreateHandler
 	send    PluginSessionSendHandler
+	list    PluginSessionListHandler
+	cancel  PluginSessionCancelHandler
 	binding uint64
 }
 
@@ -28,7 +32,7 @@ func NewPluginSessionRouter() *PluginSessionRouter { return &PluginSessionRouter
 // Bind replaces the live handler and returns an idempotent unbind closure.
 // The closure only clears the handler it installed, so closing an older server
 // cannot disconnect a newer binding.
-func (r *PluginSessionRouter) Bind(create PluginSessionCreateHandler, send PluginSessionSendHandler) func() {
+func (r *PluginSessionRouter) Bind(create PluginSessionCreateHandler, send PluginSessionSendHandler, list PluginSessionListHandler, cancel PluginSessionCancelHandler) func() {
 	if r == nil {
 		return func() {}
 	}
@@ -37,6 +41,8 @@ func (r *PluginSessionRouter) Bind(create PluginSessionCreateHandler, send Plugi
 	binding := r.binding
 	r.create = create
 	r.send = send
+	r.list = list
+	r.cancel = cancel
 	r.mu.Unlock()
 	var once sync.Once
 	return func() {
@@ -45,10 +51,38 @@ func (r *PluginSessionRouter) Bind(create PluginSessionCreateHandler, send Plugi
 			if r.binding == binding {
 				r.create = nil
 				r.send = nil
+				r.list = nil
+				r.cancel = nil
 			}
 			r.mu.Unlock()
 		})
 	}
+}
+
+func (r *PluginSessionRouter) List(ctx context.Context, pluginID string, params pluginhost.SessionListParams) (pluginhost.SessionListResult, error) {
+	if r == nil {
+		return pluginhost.SessionListResult{}, errors.New("session service is unavailable")
+	}
+	r.mu.RLock()
+	handler := r.list
+	r.mu.RUnlock()
+	if handler == nil {
+		return pluginhost.SessionListResult{}, errors.New("session service is unavailable")
+	}
+	return handler(ctx, pluginID, params)
+}
+
+func (r *PluginSessionRouter) Cancel(ctx context.Context, pluginID string, params pluginhost.SessionCancelParams) (pluginhost.SessionCancelResult, error) {
+	if r == nil {
+		return pluginhost.SessionCancelResult{}, errors.New("session service is unavailable")
+	}
+	r.mu.RLock()
+	handler := r.cancel
+	r.mu.RUnlock()
+	if handler == nil {
+		return pluginhost.SessionCancelResult{}, errors.New("session service is unavailable")
+	}
+	return handler(ctx, pluginID, params)
 }
 
 func (r *PluginSessionRouter) Create(ctx context.Context, pluginID string, params pluginhost.SessionCreateParams) (pluginhost.SessionCreateResult, error) {

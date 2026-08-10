@@ -24,6 +24,8 @@ export const PUBLIC_THEME_TOKEN_NAMES = [
   "--wuu-color-warning",
   "--wuu-color-danger",
   "--wuu-color-info",
+  "--wuu-color-link",
+  "--wuu-color-link-hover",
   "--wuu-color-on-accent",
   "--wuu-control-secondary-background",
   "--wuu-control-field-background",
@@ -48,6 +50,8 @@ export const PUBLIC_THEME_TOKEN_NAMES = [
   "--wuu-message-user-color",
   "--wuu-message-user-radius",
   "--wuu-message-user-shadow",
+  "--wuu-nav-item-hover-background",
+  "--wuu-nav-item-hover-ring",
   "--wuu-radius-control",
   "--wuu-radius-panel",
   "--wuu-radius-overlay",
@@ -84,6 +88,40 @@ export const PUBLIC_SYNTAX_TOKEN_NAMES = [
 
 export type PublicSyntaxTokenName = (typeof PUBLIC_SYNTAX_TOKEN_NAMES)[number];
 
+export const PUBLIC_ICON_NAMES = [
+  "archive",
+  "bot",
+  "brain",
+  "calendar",
+  "check",
+  "check-circle",
+  "clock",
+  "code",
+  "database",
+  "file-text",
+  "folder",
+  "gauge",
+  "globe",
+  "inbox",
+  "layout-grid",
+  "list-todo",
+  "message-square",
+  "moon",
+  "plug",
+  "pulse",
+  "search",
+  "settings",
+  "shield",
+  "sliders",
+  "sparkles",
+  "terminal",
+  "users",
+  "workflow",
+  "wrench",
+] as const;
+
+export type PublicIconName = (typeof PUBLIC_ICON_NAMES)[number];
+
 export const LEGACY_THEME_TOKEN_ALIASES = {
   "--wuu-paper": "--wuu-color-canvas",
   "--wuu-ink": "--wuu-color-text",
@@ -96,6 +134,7 @@ export const LEGACY_THEME_TOKEN_ALIASES = {
 
 const PUBLIC_THEME_TOKEN_SET: ReadonlySet<string> = new Set(PUBLIC_THEME_TOKEN_NAMES);
 const PUBLIC_SYNTAX_TOKEN_SET: ReadonlySet<string> = new Set(PUBLIC_SYNTAX_TOKEN_NAMES);
+const PUBLIC_ICON_NAME_SET: ReadonlySet<string> = new Set(PUBLIC_ICON_NAMES);
 
 export function isPublicThemeTokenName(value: string): value is PublicThemeTokenName {
   return PUBLIC_THEME_TOKEN_SET.has(value);
@@ -103,6 +142,10 @@ export function isPublicThemeTokenName(value: string): value is PublicThemeToken
 
 export function isPublicSyntaxTokenName(value: string): value is PublicSyntaxTokenName {
   return PUBLIC_SYNTAX_TOKEN_SET.has(value);
+}
+
+export function isPublicIconName(value: string): value is PublicIconName {
+  return PUBLIC_ICON_NAME_SET.has(value);
 }
 
 export function canonicalThemeTokenName(value: PublicThemeTokenName): PublicThemeTokenName {

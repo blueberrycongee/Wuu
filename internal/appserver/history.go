@@ -215,14 +215,7 @@ func appendChatMessages(sessDir, id string, msgs []providers.ChatMessage) error 
 	if strings.TrimSpace(sessDir) == "" || strings.TrimSpace(id) == "" || len(msgs) == 0 {
 		return nil
 	}
-	records := make([]sessionstore.HistoryRecord, 0, len(msgs))
-	for _, msg := range msgs {
-		if !shouldPersistMessage(msg) {
-			continue
-		}
-		records = append(records, historyRecordFromPersistedMessage(persistedMessageFromChatMessage(msg)))
-	}
-	return sessionstore.AppendHistoryRecords(sessDir, id, records)
+	return sessionstore.AppendHistoryRecords(sessDir, id, historyRecordsFromChatMessages(msgs))
 }
 
 func rewriteChatHistory(sessDir, id string, msgs []providers.ChatMessage) error {
@@ -233,13 +226,7 @@ func rewriteChatHistory(sessDir, id string, msgs []providers.ChatMessage) error 
 	if err != nil {
 		return fmt.Errorf("load preserved session history: %w", err)
 	}
-	records := make([]sessionstore.HistoryRecord, 0, len(msgs)+len(preserved))
-	for _, msg := range msgs {
-		if !shouldPersistMessage(msg) {
-			continue
-		}
-		records = append(records, historyRecordFromPersistedMessage(persistedMessageFromChatMessage(msg)))
-	}
+	records := historyRecordsFromChatMessages(msgs)
 	for _, rec := range preserved {
 		records = append(records, historyRecordFromPersistedMessage(rec))
 	}
@@ -252,6 +239,11 @@ func rewriteChatHistoryAtBaseline(sessDir, id string, msgs []providers.ChatMessa
 	if strings.TrimSpace(sessDir) == "" || strings.TrimSpace(id) == "" {
 		return nil
 	}
+	records := historyRecordsFromChatMessages(msgs)
+	return sessionstore.RewriteHistoryRecordsAtBaseline(sessDir, id, records, baselineSeq)
+}
+
+func historyRecordsFromChatMessages(msgs []providers.ChatMessage) []sessionstore.HistoryRecord {
 	records := make([]sessionstore.HistoryRecord, 0, len(msgs))
 	for _, msg := range msgs {
 		if !shouldPersistMessage(msg) {
@@ -259,7 +251,7 @@ func rewriteChatHistoryAtBaseline(sessDir, id string, msgs []providers.ChatMessa
 		}
 		records = append(records, historyRecordFromPersistedMessage(persistedMessageFromChatMessage(msg)))
 	}
-	return sessionstore.RewriteHistoryRecordsAtBaseline(sessDir, id, records, baselineSeq)
+	return records
 }
 
 func maxHistorySeq(msgs []providers.ChatMessage) int {

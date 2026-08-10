@@ -12,6 +12,7 @@ const { ensureDevSigningIdentity } = require("./dev-signing.cjs");
 const desktopRoot = resolve(__dirname, "..");
 const buildHelper = join(__dirname, "build-cua-mac.cjs");
 const buildSpeechHelper = join(__dirname, "build-speech-mac.cjs");
+const buildPluginHelpers = join(__dirname, "build-core.cjs");
 const electronVitePackage = require.resolve("electron-vite/package.json", { paths: [desktopRoot] });
 const electronViteManifest = JSON.parse(readFileSync(electronVitePackage, "utf8"));
 const electronVite = join(dirname(electronVitePackage), electronViteManifest.bin["electron-vite"]);
@@ -38,6 +39,14 @@ const speechBuild = spawnSync(process.execPath, [buildSpeechHelper], {
 });
 if (speechBuild.status !== 0) {
   process.exit(speechBuild.status ?? 1);
+}
+const pluginHelperBuild = spawnSync(process.execPath, [buildPluginHelpers, "--plugins-only"], {
+  cwd: desktopRoot,
+  env: process.env,
+  stdio: "inherit",
+});
+if (pluginHelperBuild.status !== 0) {
+  process.exit(pluginHelperBuild.status ?? 1);
 }
 
 const env = { ...process.env };

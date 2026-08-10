@@ -21,8 +21,6 @@ import (
 // in subprocesses or in-process tests, but share the same typed wire contract.
 type Client interface {
 	ID() string
-	Hooks() []Hook
-	Invoke(context.Context, InvokeParams) (InvokeResult, error)
 	Status() Status
 	Close(context.Context) error
 }
@@ -43,6 +41,10 @@ type CapabilityClient interface {
 	InvokeCapability(context.Context, CapabilityInvokeParams) (CapabilityInvokeResult, error)
 }
 
+type lifecycleClient interface {
+	Activate(context.Context) error
+}
+
 // RegisteredCapability is the host-owned view of one negotiated capability.
 type RegisteredCapability struct {
 	PluginID   string
@@ -58,15 +60,15 @@ type RegisteredTool struct {
 	client       ToolClient
 }
 
-// Host invokes plugins in discovery order. A hook receives the output from the
-// previous plugin, preserving one deterministic Wuu transform chain.
+// Host owns the active plugin clients and their negotiated contributions.
 type Host struct {
-	mu           sync.RWMutex
-	clients      []Client
-	tools        map[string]RegisteredTool
-	toolOrder    []string
-	capabilities []RegisteredCapability
-	diagnostics  map[string]map[string]string
+	mu              sync.RWMutex
+	clients         []Client
+	tools           map[string]RegisteredTool
+	toolOrder       []string
+	capabilities    []RegisteredCapability
+	diagnostics     map[string]map[string]string
+	serviceRegistry *ServiceRegistry
 }
 
 type ContributionDiagnostic struct {
@@ -99,6 +101,35 @@ func (h *Host) Add(client Client) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.addLocked(client)
+}
+
+// AttachServiceRegistry binds the generation-scoped service registry to this
+// host and records each rejected provider registration as a contribution
+// diagnostic.
+func (h *Host) AttachServiceRegistry(registry *ServiceRegistry, conflicts []ServiceConflict) {
+	if h == nil {
+		return
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.serviceRegistry = registry
+	for _, conflict := range conflicts {
+		if h.diagnostics[conflict.PluginID] == nil {
+			h.diagnostics[conflict.PluginID] = make(map[string]string)
+		}
+		h.diagnostics[conflict.PluginID][fmt.Sprintf("service:%s@%d", conflict.Service, conflict.Major)] = conflict.Message
+	}
+}
+
+// ServiceRegistry returns the registry attached at generation build time, or
+// nil when the generation declares no service surface.
+func (h *Host) ServiceRegistry() *ServiceRegistry {
+	if h == nil {
+		return nil
+	}
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return h.serviceRegistry
 }
 
 func (h *Host) addLocked(client Client) {
@@ -176,7 +207,7 @@ func (h *Host) Capabilities(id string) []RegisteredCapability {
 	defer h.mu.RUnlock()
 	var out []RegisteredCapability
 	for _, capability := range h.capabilities {
-		if capability.Descriptor.ID != id || capability.client.Status().State != StateActive {
+		if capability.Descriptor.ID != id || !capabilityStateReady(capability.client.Status().State) {
 			continue
 		}
 		copy := capability
@@ -198,7 +229,7 @@ func (h *Host) Capability(pluginID, id string) (RegisteredCapability, bool) {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	for _, capability := range h.capabilities {
-		if capability.PluginID == pluginID && capability.Descriptor.ID == id && capability.client.Status().State == StateActive {
+		if capability.PluginID == pluginID && capability.Descriptor.ID == id && capabilityStateReady(capability.client.Status().State) {
 			return capability, true
 		}
 	}
@@ -207,7 +238,7 @@ func (h *Host) Capability(pluginID, id string) (RegisteredCapability, bool) {
 
 // InvokeCapability invokes one exact plugin registration.
 func (h *Host) InvokeCapability(ctx context.Context, capability RegisteredCapability, input, output any) error {
-	if capability.client == nil || capability.client.Status().State != StateActive {
+	if capability.client == nil || !capabilityStateReady(capability.client.Status().State) {
 		return fmt.Errorf("plugin %q capability %q is not active", capability.PluginID, capability.Descriptor.ID)
 	}
 	inputJSON, err := json.Marshal(input)
@@ -354,52 +385,30 @@ func (h *Host) ExecuteTool(ctx context.Context, name string, input ToolExecuteIn
 	return response.Result.Clone(), nil
 }
 
-// Run applies every plugin registered for hook to output. Output must be a
-// non-nil pointer so each successful transform can become the next input.
-func (h *Host) Run(ctx context.Context, hook Hook, input, output any) error {
+func capabilityStateReady(state State) bool {
+	return state == StatePrepared || state == StateActive
+}
+
+// Activate starts prepared runtimes after the generation commit. Failures are
+// isolated to the affected runtime and remain visible through status inventory.
+func (h *Host) Activate(ctx context.Context) error {
 	if h == nil {
 		return nil
 	}
-	if !IsValidHook(hook) {
-		return fmt.Errorf("unknown plugin hook %q", hook)
-	}
-	if output == nil {
-		return fmt.Errorf("plugin hook %q requires output", hook)
-	}
-
-	inputJSON, err := json.Marshal(input)
-	if err != nil {
-		return fmt.Errorf("marshal plugin hook %q input: %w", hook, err)
-	}
-	outputJSON, err := json.Marshal(output)
-	if err != nil {
-		return fmt.Errorf("marshal plugin hook %q output: %w", hook, err)
-	}
-
 	h.mu.RLock()
 	clients := append([]Client(nil), h.clients...)
 	h.mu.RUnlock()
+	var err error
 	for _, client := range clients {
-		if !hasHook(client.Hooks(), hook) {
+		lifecycle, ok := client.(lifecycleClient)
+		if !ok || client.Status().State != StatePrepared {
 			continue
 		}
-		result, invokeErr := client.Invoke(ctx, InvokeParams{
-			Hook:   hook,
-			Input:  inputJSON,
-			Output: outputJSON,
-		})
-		if invokeErr != nil {
-			return fmt.Errorf("plugin %q hook %q: %w", client.ID(), hook, invokeErr)
+		if activateErr := lifecycle.Activate(ctx); activateErr != nil {
+			err = errors.Join(err, fmt.Errorf("activate plugin %q: %w", client.ID(), activateErr))
 		}
-		if len(result.Output) == 0 {
-			return fmt.Errorf("plugin %q hook %q returned empty output", client.ID(), hook)
-		}
-		if err := json.Unmarshal(result.Output, output); err != nil {
-			return fmt.Errorf("plugin %q hook %q returned invalid output: %w", client.ID(), hook, err)
-		}
-		outputJSON = append(outputJSON[:0], result.Output...)
 	}
-	return nil
+	return err
 }
 
 func (h *Host) Statuses() []Status {
@@ -414,20 +423,6 @@ func (h *Host) Statuses() []Status {
 		out = append(out, client.Status())
 	}
 	return out
-}
-
-func (h *Host) HasHook(target Hook) bool {
-	if h == nil {
-		return false
-	}
-	h.mu.RLock()
-	defer h.mu.RUnlock()
-	for _, client := range h.clients {
-		if hasHook(client.Hooks(), target) {
-			return true
-		}
-	}
-	return false
 }
 
 func (h *Host) Close(ctx context.Context) error {
@@ -521,21 +516,8 @@ func cloneSchema(schema map[string]any) map[string]any {
 	return clone
 }
 
-func hasHook(hooks []Hook, target Hook) bool {
-	for _, hook := range hooks {
-		if hook == target {
-			return true
-		}
-	}
-	return false
-}
-
 type failedClient struct{ status Status }
 
-func (c *failedClient) ID() string    { return c.status.ID }
-func (c *failedClient) Hooks() []Hook { return nil }
-func (c *failedClient) Invoke(context.Context, InvokeParams) (InvokeResult, error) {
-	return InvokeResult{}, errors.New(c.status.Error)
-}
+func (c *failedClient) ID() string                  { return c.status.ID }
 func (c *failedClient) Status() Status              { return c.status }
 func (c *failedClient) Close(context.Context) error { return nil }

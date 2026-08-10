@@ -33,7 +33,7 @@ func (t *ListAgentProfilesTool) IsConcurrencySafe() bool { return true }
 func (t *ListAgentProfilesTool) Definition() providers.ToolDefinition {
 	return providers.ToolDefinition{
 		Name: "list_agent_profiles",
-		Description: "List named Agent Profiles with saved memory that can be reused by subagents or other recurring delegated roles. " +
+		Description: "List named Agent Profiles with saved identity notes for persistent collaboration roles. " +
 			"Use this before deciding whether a role should reuse an existing profile, create a new profile, or use a temporary worker without profile memory.",
 		InputSchema: map[string]any{
 			"type":       "object",
@@ -67,7 +67,7 @@ func (t *CreateAgentProfileTool) IsConcurrencySafe() bool { return true }
 func (t *CreateAgentProfileTool) Definition() providers.ToolDefinition {
 	return providers.ToolDefinition{
 		Name: "create_agent_profile",
-		Description: "Create or update a named Agent Profile with saved memory for recurring subagent roles. " +
+		Description: "Create or update a named Agent Profile with saved identity notes for persistent collaboration roles. " +
 			"Use only when the role is likely to recur or the user or agent policy asks for saved profile memory.",
 		InputSchema: map[string]any{
 			"type": "object",

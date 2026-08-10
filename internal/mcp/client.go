@@ -13,6 +13,13 @@ import (
 )
 
 const defaultConnectionTimeout = 30 * time.Second
+const modernDiscoveryTimeout = 3 * time.Second
+
+const (
+	maxToolCatalogPages       = 100
+	maxToolCatalogItems       = 2048
+	maxToolCatalogCursorBytes = 64 * 1024
+)
 
 // ServerConfig describes one MCP server connection.
 type ServerConfig struct {
@@ -81,6 +88,7 @@ type Client struct {
 	transport                Transport
 	inFlight                 *inFlight
 	readLoop                 *readLoop
+	protocolVersion          string
 	mu                       sync.RWMutex
 	tools                    []Tool
 	overrides                map[string]ToolOverride
@@ -95,6 +103,10 @@ type Client struct {
 
 // Connect establishes an MCP session with the given transport.
 func Connect(ctx context.Context, name string, t Transport) (*Client, error) {
+	return connect(ctx, name, t, true)
+}
+
+func connect(ctx context.Context, name string, t Transport, tryModern bool) (*Client, error) {
 	ctx, cancel := withDefaultConnectionTimeout(ctx)
 	defer cancel()
 
@@ -106,8 +118,28 @@ func Connect(ctx context.Context, name string, t Transport) (*Client, error) {
 	c.readLoop = newReadLoop(t, c.inFlight, c.handleNotification, c.handleRequest, c.handleReadLoopExit)
 	c.readLoop.Start()
 
-	// Initialize handshake.
-	params := InitializeParams{ProtocolVersion: PreferredProtocolVersion}
+	// Modern servers advertise the stateless 2026-07-28 protocol through
+	// server/discover. Legacy servers reject that method and continue through
+	// the initialize/initialized handshake below.
+	if tryModern {
+		discoveryCtx, cancelDiscovery := context.WithTimeout(ctx, modernDiscoveryTimeout)
+		discoverBytes, discoverErr := callWithProtocol(discoveryCtx, t, c.inFlight, "server/discover", nil, PreferredProtocolVersion)
+		cancelDiscovery()
+		if discoverErr == nil {
+			var discovered DiscoverResult
+			if err := json.Unmarshal(discoverBytes, &discovered); err == nil && containsString(discovered.SupportedVersions, PreferredProtocolVersion) {
+				c.protocolVersion = PreferredProtocolVersion
+				return c, nil
+			}
+		}
+		if err := ctx.Err(); err != nil {
+			c.Close()
+			return nil, err
+		}
+	}
+
+	// Legacy initialize handshake.
+	params := InitializeParams{ProtocolVersion: PreferredLegacyProtocolVersion}
 	params.ClientInfo.Name = "wuu"
 	params.ClientInfo.Version = "0.1.0"
 	resultBytes, err := call(ctx, t, c.inFlight, "initialize", params)
@@ -124,6 +156,11 @@ func Connect(ctx context.Context, name string, t Transport) (*Client, error) {
 		c.Close()
 		return nil, fmt.Errorf("mcp initialize compatibility: %w", err)
 	}
+	if result.ProtocolVersion == PreferredProtocolVersion {
+		c.Close()
+		return nil, fmt.Errorf("mcp initialize compatibility: protocol %s does not use initialize", result.ProtocolVersion)
+	}
+	c.protocolVersion = result.ProtocolVersion
 
 	// A failed initialized notification leaves the server and client with
 	// different session state, so treat it as a failed handshake.
@@ -173,7 +210,7 @@ func ConnectSSE(ctx context.Context, cfg ServerConfig) (*Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("mcp server %q: %w", cfg.Name, err)
 	}
-	c, err := Connect(ctx, cfg.Name, t)
+	c, err := connect(ctx, cfg.Name, t, false)
 	if err != nil {
 		return nil, fmt.Errorf("mcp server %q: SSE transport at %s: %w", cfg.Name, cfg.URL, err)
 	}
@@ -203,8 +240,9 @@ func ConnectStreamableHTTP(ctx context.Context, cfg ServerConfig) (*Client, erro
 //   - "http" / "streamable-http": streamable HTTP only; a failure is
 //     reported as-is with no SSE fallback (the user pinned the transport).
 //   - "sse": legacy HTTP+SSE only, exactly the pre-transport-field behavior.
-//   - empty (auto): POST an InitializeRequest as streamable HTTP first; if
-//     the endpoint rejects it with an HTTP 4xx (e.g. 405/404) or a
+//   - empty (auto): probe streamable HTTP first; if both modern discovery and
+//     legacy initialization show the endpoint is incompatible via HTTP 4xx
+//     (e.g. 405/404) or a
 //     non-JSON-RPC reply, fall back to legacy SSE. This is the client
 //     backwards-compatibility strategy from the MCP spec's transports
 //     chapter ("Backwards Compatibility"), so existing SSE-only server
@@ -253,22 +291,50 @@ func (c *Client) Name() string { return c.name }
 
 // DiscoverTools fetches the tool list from the server and caches it.
 func (c *Client) DiscoverTools(ctx context.Context) ([]Tool, error) {
-	resultBytes, err := call(ctx, c.transport, c.inFlight, "tools/list", nil)
-	if err != nil {
-		return nil, err
-	}
-	var result ListToolsResult
-	if err := json.Unmarshal(resultBytes, &result); err != nil {
-		return nil, fmt.Errorf("decode tools/list: %w", err)
+	var tools []Tool
+	var cursor string
+	seenCursors := make(map[string]struct{})
+	for page := 0; page < maxToolCatalogPages; page++ {
+		var params any
+		if cursor != "" {
+			params = ListToolsParams{Cursor: cursor}
+		}
+		resultBytes, err := callWithProtocol(ctx, c.transport, c.inFlight, "tools/list", params, c.protocolVersion)
+		if err != nil {
+			return nil, err
+		}
+		var result ListToolsResult
+		if err := json.Unmarshal(resultBytes, &result); err != nil {
+			return nil, fmt.Errorf("decode tools/list page %d: %w", page+1, err)
+		}
+		if len(result.Tools) > maxToolCatalogItems-len(tools) {
+			return nil, fmt.Errorf("tools/list exceeded the catalog limit of %d tools", maxToolCatalogItems)
+		}
+		tools = append(tools, result.Tools...)
+		next := result.NextCursor
+		if next == "" {
+			break
+		}
+		if len(next) > maxToolCatalogCursorBytes {
+			return nil, fmt.Errorf("tools/list returned a cursor exceeding %d bytes", maxToolCatalogCursorBytes)
+		}
+		if _, duplicate := seenCursors[next]; duplicate {
+			return nil, fmt.Errorf("tools/list returned a repeated pagination cursor")
+		}
+		seenCursors[next] = struct{}{}
+		cursor = next
+		if page == maxToolCatalogPages-1 {
+			return nil, fmt.Errorf("tools/list exceeded the pagination limit of %d pages", maxToolCatalogPages)
+		}
 	}
 	c.mu.Lock()
-	c.tools = result.Tools
+	c.tools = tools
 	callback := c.onToolsChanged
 	c.mu.Unlock()
 	if callback != nil {
 		callback()
 	}
-	return result.Tools, nil
+	return tools, nil
 }
 
 func (c *Client) SetToolsChangedCallback(callback func()) {
@@ -390,7 +456,7 @@ func cloneToolOverrides(in map[string]ToolOverride) map[string]ToolOverride {
 // CallTool invokes a tool on the server.
 func (c *Client) CallTool(ctx context.Context, name string, arguments json.RawMessage) (*CallToolResult, error) {
 	params := CallToolParams{Name: name, Arguments: arguments}
-	resultBytes, err := call(ctx, c.transport, c.inFlight, "tools/call", params)
+	resultBytes, err := callWithProtocol(ctx, c.transport, c.inFlight, "tools/call", params, c.protocolVersion)
 	if err != nil {
 		return nil, err
 	}

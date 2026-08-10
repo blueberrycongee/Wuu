@@ -64,11 +64,11 @@
   --hljs-keyword: var(--wuu-syntax-keyword, #2f6ea5);
   --hljs-function: var(--wuu-syntax-function, #7a4b9d);
   --hljs-string: var(--wuu-syntax-string, #2f7d5c);
-  --hljs-number: #98651f;
+  --hljs-number: var(--wuu-syntax-number, #98651f);
   --hljs-comment: var(--wuu-syntax-comment, #879098);
-  --hljs-tag: #9a4f55;
-  --hljs-literal: #6f5ca7;
-  --hljs-meta: #5f6870;
+  --hljs-tag: var(--wuu-syntax-tag, #9a4f55);
+  --hljs-literal: var(--wuu-syntax-literal, #6f5ca7);
+  --hljs-meta: var(--wuu-syntax-meta, #5f6870);
   --diff-branch-arrow: #b2b6ba;
   --diff-file-text: #2c3034;
   --diff-status-bg: #ecefec;
@@ -1000,11 +1000,6 @@ html.resizing-workspace-file-split * {
   pointer-events: none;
 }
 
-.conversation-pane.automation-detail-pane-open .skills-assistant-composer,
-.conversation-pane.automation-detail-pane-open .management-assistant-composer {
-  right: var(--automation-detail-reserved-width);
-}
-
 .conversation-pane.skills-assistant-visible .skills-scroll-region {
   padding-bottom: 132px;
 }
@@ -1066,13 +1061,6 @@ html.resizing-workspace-file-split * {
   translate: 0 -2px;
   border-color: color-mix(in srgb, var(--ink) 14%, transparent);
   box-shadow: 0 -8px 28px color-mix(in srgb, var(--ink) 10%, transparent);
-}
-
-.workspace-document-turn-dock:has(
-    .composer-goal-strip + .composer-pending-drawer
-  )
-  .workspace-document-turn-drawer {
-  width: calc(100% - 72px);
 }
 
 .workspace-document-turn-summary {
@@ -2209,427 +2197,6 @@ html.resizing-workspace-terminal-split * {
   background: var(--paper);
 }
 
-.automations-scroll-region .scroll-region-content {
-  box-sizing: border-box;
-  /* Flex column lets the catalog claim the region's full height; a percentage
-     min-height on the catalog itself cannot resolve because this wrapper's own
-     height is indefinite (it only has min-height: 100%). */
-  display: flex;
-  flex-direction: column;
-  width: 100%;
-  min-width: 0;
-  min-height: 100%;
-  container: automation-catalog-layout / inline-size;
-}
-
-.automations-catalog {
-  display: grid;
-  box-sizing: border-box;
-  /* Grow to at least the scroll region's height so the detail resizer's
-     divider line and the detail pane's background span it top to bottom. */
-  flex: 1 0 auto;
-  width: 100%;
-  min-width: 0;
-  grid-template-columns: minmax(0, 1fr);
-  min-height: 100%;
-  overflow-x: hidden;
-}
-
-.automations-catalog.detail-open {
-  grid-template-columns: minmax(340px, 1fr) 10px var(--automation-detail-pane-width);
-}
-
-.automations-master {
-  display: grid;
-  box-sizing: border-box;
-  width: 100%;
-  min-width: 0;
-  grid-template-columns: minmax(0, 1080px);
-  justify-content: center;
-  align-content: start;
-  padding: 42px clamp(32px, 6vw, 88px) 64px;
-}
-
-.automations-catalog.detail-open .automations-master {
-  padding: 34px clamp(20px, 3vw, 32px) 56px;
-}
-
-.automations-heading-row {
-  display: flex;
-  min-width: 0;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 24px;
-}
-
-.automations-heading-row .catalog-create {
-  flex: 0 0 auto;
-  margin-top: 2px;
-}
-
-.automation-create-controls {
-  display: flex;
-  min-width: 0;
-  align-items: flex-start;
-  gap: 8px;
-}
-
-.automations-catalog.detail-open .catalog-page-header {
-  gap: 20px;
-}
-
-.automations-catalog.detail-open .automations-heading-row {
-  gap: 16px;
-}
-
-.automations-catalog.detail-open .catalog-page-title strong {
-  font-size: 28px;
-}
-
-.automations-catalog.detail-open .catalog-page-title span {
-  display: none;
-}
-
-.automations-catalog.detail-open .catalog-create {
-  width: 36px;
-  min-width: 36px;
-  justify-content: center;
-  padding-inline: 0;
-}
-
-.automations-catalog.detail-open .catalog-create span {
-  display: none;
-}
-
-.automations-detail-resizer {
-  box-sizing: border-box;
-  position: relative;
-  width: 10px;
-  min-width: 10px;
-  align-self: stretch;
-  border: 0;
-  outline: 0;
-  background: transparent;
-  padding: 0;
-  cursor: col-resize;
-  touch-action: none;
-}
-
-.automations-detail-resizer::before {
-  position: absolute;
-  inset: 0 auto 0 50%;
-  width: 1px;
-  background: var(--surface-3);
-  content: "";
-  transform: translateX(-50%);
-  transition:
-    background-color var(--motion-fast) var(--ease-out),
-    box-shadow var(--motion-fast) var(--ease-out);
-}
-
-.automations-detail-resizer:hover::before,
-.automations-detail-resizer:focus-visible::before,
-.automations-catalog.resizing-detail .automations-detail-resizer::before {
-  background: var(--review-resizer-hover-bg);
-  box-shadow:
-    -3px 0 0 var(--ink-overlay-4),
-    3px 0 0 var(--ink-overlay-4);
-}
-
-.automations-filters {
-  display: flex;
-  width: max-content;
-  gap: 2px;
-  margin-top: 20px;
-  padding: 2px;
-  border-radius: var(--radius-sm);
-  background: var(--surface-2);
-}
-
-.automations-filters button {
-  height: 28px;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--ink-tertiary);
-  font-size: 13px;
-  font-weight: var(--weight-medium);
-  padding: 0 10px;
-}
-
-.automations-filters button.active {
-  background: var(--paper);
-  color: var(--ink);
-  box-shadow: 0 1px 3px var(--ink-overlay-8);
-}
-
-.automations-list {
-  display: grid;
-  gap: 2px;
-  margin-top: 14px;
-}
-
-.automation-row {
-  display: grid;
-  width: 100%;
-  min-height: 64px;
-  grid-template-columns: 8px minmax(0, 1fr) 16px;
-  align-items: center;
-  gap: 12px;
-  border: 0;
-  border-radius: 10px;
-  background: transparent;
-  color: var(--ink);
-  padding: 8px;
-  text-align: left;
-}
-
-.automation-row:hover,
-.automation-row.selected {
-  background: var(--surface-2);
-}
-
-.automation-state {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--success);
-  box-shadow: none;
-}
-
-.automation-state.paused {
-  background: var(--ink-muted);
-  box-shadow: none;
-}
-
-.automation-row-copy {
-  display: grid;
-  min-width: 0;
-  gap: 3px;
-}
-
-.automation-row-copy strong,
-.automation-row-copy span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.automation-row-copy strong {
-  font-size: 14px;
-  font-weight: var(--weight-medium);
-  letter-spacing: -0.01em;
-}
-
-.automation-row-copy span {
-  color: var(--ink-tertiary);
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-}
-
-.automation-row-chevron {
-  width: 16px;
-  height: 16px;
-  color: var(--ink-muted);
-  opacity: 0;
-  transform: translateX(-2px);
-  transition:
-    opacity var(--motion-fast) var(--ease-out),
-    transform var(--motion-fast) var(--ease-out);
-}
-
-.automation-row:hover .automation-row-chevron,
-.automation-row:focus-visible .automation-row-chevron,
-.automation-row.selected .automation-row-chevron {
-  opacity: 1;
-  transform: translateX(0);
-}
-
-.automations-detail {
-  min-width: 0;
-  container: automation-detail / inline-size;
-  background: var(--paper);
-  padding: 34px clamp(20px, 3vw, 32px) 56px;
-}
-
-.automation-detail-form {
-  display: grid;
-  max-width: 600px;
-  gap: 0;
-  margin: 0 auto;
-}
-
-.automation-detail-name-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: end;
-  gap: 8px;
-}
-
-.automation-detail-actions {
-  display: flex;
-  flex: 0 0 auto;
-  gap: 2px;
-}
-
-.automation-detail-actions .icon-button {
-  width: 28px;
-  height: 28px;
-  border-radius: 7px;
-}
-
-.automation-detail-section {
-  display: grid;
-  gap: 20px;
-}
-
-.automation-detail-section + .automation-detail-section {
-  margin-top: 32px;
-}
-
-.automation-detail-form label {
-  display: grid;
-  min-width: 0;
-  gap: 7px;
-  color: var(--ink-muted);
-  font-size: var(--font-sm);
-  font-weight: var(--weight-regular);
-}
-
-.automation-detail-form .settings-input,
-.automation-detail-form .settings-select-trigger {
-  box-sizing: border-box;
-  max-width: 100%;
-}
-
-.automation-detail-form textarea.settings-textarea {
-  min-height: 96px;
-  max-height: 220px;
-  line-height: 1.5;
-  resize: vertical;
-}
-
-.automation-detail-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 22px 14px;
-}
-
-.automation-workspace-field {
-  display: grid;
-  min-width: 0;
-  grid-column: 1 / -1;
-  gap: 7px;
-  color: var(--ink-muted);
-  font-size: var(--font-sm);
-}
-
-.automation-workspace-field strong {
-  overflow: hidden;
-  color: var(--ink-secondary);
-  font-weight: var(--weight-regular);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.automation-detail-create-bar {
-  display: flex;
-  justify-content: flex-end;
-}
-.automation-schedule-editor {
-  display: grid;
-  min-width: 0;
-  grid-column: 1 / -1;
-  gap: 7px;
-}
-
-.automation-schedule-controls {
-  display: grid;
-  min-width: 0;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
-}
-
-.automation-schedule-custom {
-  grid-column: 1 / -1;
-}
-
-.automation-schedule-summary {
-  display: flex;
-  min-width: 0;
-  flex-wrap: wrap;
-  gap: 5px 18px;
-  font-size: var(--font-sm);
-  line-height: 1.4;
-  margin: 0;
-}
-
-.automation-schedule-summary > div {
-  display: flex;
-  min-width: 0;
-  align-items: baseline;
-  gap: 6px;
-}
-
-.automation-schedule-summary dt {
-  color: var(--ink-tertiary);
-}
-
-.automation-schedule-summary dd {
-  overflow: hidden;
-  color: var(--ink-secondary);
-  margin: 0;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.automations-empty,
-.automations-error {
-  padding: 28px 12px;
-  color: var(--ink-tertiary);
-  text-align: center;
-}
-
-.automations-error {
-  color: var(--danger);
-}
-
-.automations-detail-empty {
-  display: grid;
-  min-height: 55vh;
-  place-content: center;
-  justify-items: center;
-  gap: 12px;
-  color: var(--ink-muted);
-}
-
-.automations-detail-empty svg {
-  width: 28px;
-  height: 28px;
-}
-
-@container automation-detail (max-width: 460px) {
-  .automation-detail-grid,
-  .automation-schedule-controls {
-    grid-template-columns: 1fr;
-  }
-}
-
-@container automation-catalog-layout (max-width: 840px) {
-  .automations-catalog.detail-open {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .automations-catalog.detail-open .automations-master,
-  .automations-catalog.detail-open .automations-detail-resizer {
-    display: none;
-  }
-
-  .automations-detail {
-    padding-inline: clamp(20px, 6vw, 48px);
-  }
-}
-
 .skills-catalog {
   display: grid;
   grid-template-columns: minmax(0, 1080px);
@@ -2781,20 +2348,15 @@ html.resizing-workspace-terminal-split * {
 }
 
 .extension-package-list {
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .skill-row.extension-package-row {
-  min-height: 112px;
-  grid-template-columns: 36px minmax(0, 1fr) auto;
-  align-items: start;
-  column-gap: 14px;
-  border-bottom: 1px solid var(--skills-section-border);
-  padding: 16px 12px;
-}
-
-.skill-row.extension-package-row:last-child {
-  border-bottom: 0;
+  min-height: 72px;
+  grid-template-columns: 36px minmax(0, 1fr) 16px;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 8px;
 }
 
 .extension-package-actions {
@@ -2867,6 +2429,15 @@ html.resizing-workspace-terminal-split * {
   white-space: nowrap;
 }
 
+.extension-package-warning {
+  overflow: hidden;
+  color: var(--wuu-color-warning, var(--ink-secondary));
+  font-size: 11px;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .plugin-settings-editor {
   display: grid;
   grid-column: 2 / -1;
@@ -2874,6 +2445,74 @@ html.resizing-workspace-terminal-split * {
   margin-top: 12px;
   border-top: var(--wuu-border-subtle, 1px solid var(--skills-section-border));
   padding-top: 14px;
+}
+
+.plugin-detail-body {
+  min-height: 0;
+  overflow: auto;
+  border-top: 1px solid var(--hairline);
+  padding: 18px 6px 0 0;
+  overscroll-behavior: contain;
+}
+
+.plugin-detail-summary {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  color: var(--ink-tertiary);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.plugin-detail-section {
+  display: grid;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.plugin-detail-section > strong {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: var(--weight-semibold);
+}
+
+.plugin-detail-provenance {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 7px 12px;
+  margin: 0;
+  color: var(--ink-tertiary);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.plugin-detail-provenance dt,
+.plugin-detail-provenance dd {
+  min-width: 0;
+  margin: 0;
+}
+
+.plugin-detail-provenance dd {
+  color: var(--ink-secondary);
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+.plugin-detail-provenance code {
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
+.plugin-detail-dialog .plugin-settings-editor {
+  grid-column: auto;
+  margin-top: 18px;
+}
+
+.plugin-detail-dialog .environment-dialog-footer .extension-package-more {
+  margin-right: auto;
 }
 
 .plugin-settings-editor-page {
@@ -3019,6 +2658,16 @@ html.resizing-workspace-terminal-split * {
 .skill-artwork-custom-skill,
 .skill-artwork-custom-plugin {
   background: var(--skill-artwork-official-bg);
+}
+
+.skill-artwork-plugin-brand {
+  background: var(--skill-artwork-official-bg);
+}
+
+.skill-artwork-plugin-brand .plugin-icon-asset,
+.skill-artwork-plugin-brand > svg {
+  width: 26px;
+  height: 26px;
 }
 
 .skill-artwork[class*="skill-artwork-official-"] svg,
@@ -3265,8 +2914,7 @@ html.resizing-workspace-terminal-split * {
 }
 
 @media (max-width: 720px) {
-  .skills-catalog,
-  .automations-master {
+  .skills-catalog {
     padding: 28px 20px 40px;
   }
 
@@ -3307,10 +2955,10 @@ html.resizing-workspace-terminal-split * {
   }
 
   .skill-row.extension-package-row {
-    min-height: 112px;
-    grid-template-columns: 36px minmax(0, 1fr);
-    align-items: start;
-    padding-block: 14px;
+    min-height: 72px;
+    grid-template-columns: 36px minmax(0, 1fr) 16px;
+    align-items: center;
+    padding: 9px 6px;
   }
 
   .extension-package-actions {
@@ -3848,29 +3496,40 @@ html.resizing-workspace-terminal-split * {
   white-space: pre;
 }
 
+.rich-code .hljs-keyword,
 .workspace-file-code .hljs-keyword {
   color: var(--hljs-keyword);
 }
 
+.rich-code .hljs-built_in,
+.rich-code .hljs-title,
+.rich-code .hljs-function,
 .workspace-file-code .hljs-built_in,
 .workspace-file-code .hljs-title,
 .workspace-file-code .hljs-function {
   color: var(--hljs-function);
 }
 
+.rich-code .hljs-string,
 .workspace-file-code .hljs-string {
   color: var(--hljs-string);
 }
 
+.rich-code .hljs-number,
 .workspace-file-code .hljs-number {
   color: var(--hljs-number);
 }
 
+.rich-code .hljs-comment,
 .workspace-file-code .hljs-comment {
   color: var(--hljs-comment);
   font-style: italic;
 }
 
+.rich-code .hljs-attr,
+.rich-code .hljs-attribute,
+.rich-code .hljs-name,
+.rich-code .hljs-tag,
 .workspace-file-code .hljs-attr,
 .workspace-file-code .hljs-attribute,
 .workspace-file-code .hljs-name,
@@ -3878,11 +3537,17 @@ html.resizing-workspace-terminal-split * {
   color: var(--hljs-tag);
 }
 
+.rich-code .hljs-literal,
+.rich-code .hljs-symbol,
 .workspace-file-code .hljs-literal,
 .workspace-file-code .hljs-symbol {
   color: var(--hljs-literal);
 }
 
+.rich-code .hljs-meta,
+.rich-code .hljs-variable,
+.rich-code .hljs-params,
+.rich-code .hljs-property,
 .workspace-file-code .hljs-meta,
 .workspace-file-code .hljs-variable,
 .workspace-file-code .hljs-params,

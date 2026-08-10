@@ -88,8 +88,6 @@ function renderComposer(props: {
   mainConversation?: boolean;
   prompt?: string;
   running?: boolean;
-  ultraEnabled?: boolean;
-  onToggleUltra?: (enabled: boolean) => void;
   queuedMessages?: QueuedComposerMessage[];
   guideMessages?: QueuedComposerMessage[];
   status?: string;
@@ -110,11 +108,6 @@ function renderComposer(props: {
   onGuideQueuedMessage?: (id: string) => void;
   onEditQueuedMessage?: (id: string) => void;
   onEditGuideMessage?: (id: string) => void;
-  goalSummary?: ReturnType<typeof activeGoalSummary> | null;
-  onEditGoal?: (text: string) => void | Promise<void>;
-  onPauseGoal?: () => void | Promise<void>;
-  onResumeGoal?: () => void | Promise<void>;
-  onClearGoal?: () => void | Promise<void>;
   permissions?: PermissionSummary;
   activeContext?: RuntimeContext;
   setPrompt?: (value: string) => void;
@@ -148,8 +141,6 @@ function renderComposer(props: {
           queuedMessages={props.queuedMessages ?? []}
           guideMessages={props.guideMessages ?? []}
           running={props.running ?? false}
-          ultraEnabled={props.ultraEnabled}
-          onToggleUltra={props.onToggleUltra}
           runtimeControlsDisabled={props.runtimeControlsDisabled}
           status={props.status ?? "ready"}
           statusLiveProgress={props.statusLiveProgress}
@@ -319,7 +310,6 @@ function renderStatefulComposer(props: {
   initialPrompt?: string;
   onSend?: (prompt: string) => void;
   onCommitPrompt?: (prompt: string, commit: (prompt: string) => void) => void;
-  showUltraToggle?: boolean;
   activeContext?: RuntimeContext;
   readOnly?: boolean;
   textOnly?: boolean;
@@ -335,7 +325,6 @@ function renderStatefulComposer(props: {
   function Harness(): JSX.Element {
     const [prompt, setPrompt] = useState(props.initialPrompt ?? "");
     const [promptRevision, setPromptRevision] = useState(0);
-    const [ultraEnabled, setUltraEnabled] = useState(false);
     replacePrompt = (nextPrompt) => {
       setPrompt(nextPrompt);
       setPromptRevision((current) => current + 1);
@@ -358,8 +347,6 @@ function renderStatefulComposer(props: {
           queuedMessages={[]}
           guideMessages={[]}
           running={false}
-          ultraEnabled={ultraEnabled}
-          onToggleUltra={props.showUltraToggle ? setUltraEnabled : undefined}
           status="ready"
           readOnly={props.readOnly ?? false}
           textOnly={props.textOnly}
@@ -443,16 +430,6 @@ function longPastedPrompt(title = "# 交接提示词(直接粘贴)", label = "�
     `这是第十四段${label}内容。`,
     `这是第十五段${label}内容。`,
   ].join("\n");
-}
-
-function activeGoalSummary(text = "Ship the active goal"): Record<string, unknown> {
-  return {
-    id: "goal-1",
-    text,
-    status: "active",
-    can_pause: true,
-    can_clear: true,
-  };
 }
 
 function pastePlainText(textarea: HTMLTextAreaElement, text: string): void {
@@ -937,83 +914,6 @@ describe("Composer send control", () => {
     expect(onSend).not.toHaveBeenCalled();
   });
 
-  it.skip("keeps active goal controls enabled while a request is running", async () => {
-    const onPauseGoal = vi.fn().mockResolvedValue(undefined);
-    const onClearGoal = vi.fn().mockResolvedValue(undefined);
-    renderComposer({
-      running: true,
-      goalSummary: activeGoalSummary(),
-      onPauseGoal,
-      onClearGoal,
-    });
-
-    const actionButton = container.querySelector<HTMLButtonElement>(
-      "button[aria-label=\"目标操作\"]",
-    );
-    const editButton = container.querySelector<HTMLButtonElement>(
-      "button[aria-label=\"编辑目标\"]",
-    );
-    expect(actionButton?.disabled).toBe(false);
-    expect(editButton?.disabled).toBe(false);
-
-    const openGoalMenu = (): void => {
-      act(() => {
-        container
-          .querySelector<HTMLButtonElement>("button[aria-label=\"目标操作\"]")
-          ?.dispatchEvent(
-            new MouseEvent("click", { bubbles: true, cancelable: true }),
-          );
-      });
-    };
-    const goalMenuItem = (label: string): HTMLButtonElement | undefined =>
-      Array.from(
-        document.querySelectorAll<HTMLButtonElement>("button[role=\"menuitem\"]"),
-      ).find((button) => button.textContent === label);
-
-    openGoalMenu();
-    expect(goalMenuItem("暂停目标")?.disabled).toBe(false);
-    expect(goalMenuItem("清除目标")?.disabled).toBe(false);
-
-    act(() => {
-      editButton?.dispatchEvent(
-        new MouseEvent("click", { bubbles: true, cancelable: true }),
-      );
-    });
-    expect(document.querySelector(".composer-goal-edit-dialog")).not.toBeNull();
-
-    act(() => {
-      document
-        .querySelector<HTMLButtonElement>(".composer-goal-edit-dialog .secondary-button")
-        ?.dispatchEvent(
-          new MouseEvent("click", { bubbles: true, cancelable: true }),
-        );
-    });
-
-    openGoalMenu();
-    const resumedPauseButton = goalMenuItem("暂停目标");
-    await act(async () => {
-      resumedPauseButton?.dispatchEvent(
-        new MouseEvent("click", { bubbles: true, cancelable: true }),
-      );
-      await Promise.resolve();
-    });
-    expect(onPauseGoal).toHaveBeenCalledTimes(1);
-
-    openGoalMenu();
-    const resumedClearButton = goalMenuItem("清除目标");
-    act(() => {
-      resumedClearButton?.dispatchEvent(
-        new MouseEvent("click", { bubbles: true, cancelable: true }),
-      );
-    });
-    await act(async () => {
-      goalMenuItem("再次点击确认清除")?.dispatchEvent(
-          new MouseEvent("click", { bubbles: true, cancelable: true }),
-        );
-      await Promise.resolve();
-    });
-    expect(onClearGoal).toHaveBeenCalledTimes(1);
-  });
 
   it("returns focus to the textarea after clicking send", async () => {
     const onSend = vi.fn();
@@ -1158,61 +1058,6 @@ describe("Composer send control", () => {
     expect(shell?.contains(frame)).toBe(true);
     expect(frame?.contains(composer)).toBe(true);
     expect(frame?.querySelector(".composer-context-bar")).toBeNull();
-  });
-
-  it("renders controlled Ultra state and preserves the existing treatment", () => {
-    renderStatefulComposer({
-      initialPrompt: "keep this draft",
-      showUltraToggle: true,
-    });
-
-    const button = container.querySelector<HTMLButtonElement>(".composer-ultra-button");
-    const frame = container.querySelector(".composer-frame");
-
-    expect(button?.querySelector(".composer-ultra-notch")).not.toBeNull();
-    expect(button?.getAttribute("aria-label")).toBe("开启 Ultra 多 agent 模式");
-    expect(button?.getAttribute("aria-pressed")).toBe("false");
-    expect(frame?.classList.contains("is-ultra")).toBe(false);
-
-    act(() => button?.click());
-
-    expect(button?.getAttribute("aria-pressed")).toBe("true");
-    expect(button?.getAttribute("aria-label")).toBe("关闭 Ultra 多 agent 模式");
-    expect(frame?.classList.contains("is-ultra")).toBe(true);
-    expect(container.querySelector(".composer-ultra-energy.turning-on")).not.toBeNull();
-    expect(
-      container.querySelector<HTMLTextAreaElement>("textarea")?.value,
-    ).toBe("keep this draft");
-
-    act(() => button?.click());
-
-    expect(button?.getAttribute("aria-pressed")).toBe("false");
-    expect(frame?.classList.contains("is-ultra")).toBe(false);
-    expect(container.querySelector(".composer-ultra-energy.turning-off")).not.toBeNull();
-  });
-
-  it("hides the global Ultra control when the host does not provide it", () => {
-    renderComposer({ variant: "dock" });
-
-    expect(container.querySelector(".composer-ultra-button")).toBeNull();
-  });
-
-  it("keeps the Ultra control available while a turn is running", () => {
-    const onToggleUltra = vi.fn();
-    renderComposer({
-      variant: "dock",
-      running: true,
-      ultraEnabled: false,
-      onToggleUltra,
-    });
-
-    const button = container.querySelector<HTMLButtonElement>(
-      ".composer-ultra-button",
-    );
-    expect(button?.disabled).toBe(false);
-
-    act(() => button?.click());
-    expect(onToggleUltra).toHaveBeenCalledWith(true);
   });
 
   it("renders the slash command menu through the same floating panel as the plus menu", () => {
@@ -1984,97 +1829,8 @@ function expandPendingMessages(): void {
 }
 
 describe("Composer queue strip", () => {
-  it.skip("stacks the goal and pending drawers outside the composer frame", () => {
-    renderComposer({
-      running: true,
-      goalSummary: activeGoalSummary(),
-      queuedMessages: [
-        { id: "queue-1", text: "排队消息", images: [], files: [] },
-      ],
-    });
 
-    const goal = container.querySelector(".composer-goal-strip");
-    const pending = container.querySelector(".composer-pending-drawer");
-    const shell = container.querySelector(".composer-shell");
-    const frameShell = container.querySelector(".composer-frame-shell");
-    const frame = container.querySelector(".composer-frame");
-    const actions = Array.from(
-      container.querySelectorAll(".composer-goal-strip-action, .composer-pending-toggle"),
-    );
 
-    expect(container.querySelector(".composer-input-header")).toBeNull();
-    expect(goal?.parentElement).toBe(shell);
-    expect(pending?.parentElement).toBe(shell);
-    expect(frameShell?.parentElement).toBe(shell);
-    expect(frame?.parentElement).toBe(frameShell);
-    expect(goal?.nextElementSibling).toBe(pending);
-    expect(pending?.nextElementSibling).toBe(frameShell);
-    expect(pending?.querySelector(".composer-pending-title")).toBeNull();
-    expect(pending?.querySelector(".composer-pending-icon")).not.toBeNull();
-    expect(pending?.querySelector(".composer-pending-preview")?.textContent).toBe("排队消息");
-    expect(pending?.querySelector(".composer-queue-list")).toBeNull();
-    expect(actions.length).toBeGreaterThan(0);
-    expect(
-      actions.every((action) => action.classList.contains("composer-input-header-action")),
-    ).toBe(true);
-    expect(pending?.querySelector(".composer-pending-summary-select")).not.toBeNull();
-    expect(goal?.querySelector(".composer-goal-strip-summary-select")).not.toBeNull();
-  });
-
-  it.skip("allows only one goal or pending drawer to be expanded", () => {
-    renderComposer({
-      running: true,
-      goalSummary: activeGoalSummary(),
-      queuedMessages: [
-        { id: "queue-1", text: "待处理消息", images: [], files: [] },
-      ],
-    });
-
-    const goalToggle = container.querySelector<HTMLButtonElement>(
-      'button[aria-label="展开目标"]',
-    );
-    const pendingToggle = container.querySelector<HTMLButtonElement>(
-      'button[aria-label="展开待处理消息"]',
-    );
-    expect(goalToggle?.getAttribute("aria-expanded")).toBe("false");
-    expect(pendingToggle?.getAttribute("aria-expanded")).toBe("false");
-
-    act(() => {
-      container
-        .querySelector<HTMLButtonElement>(".composer-pending-summary-select")
-        ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
-    expect(container.querySelector(".composer-pending-drawer")?.classList.contains("expanded")).toBe(true);
-    expect(container.querySelector(".composer-goal-strip")?.classList.contains("expanded")).toBe(false);
-    expect(container.querySelector(".composer-queue-list")).not.toBeNull();
-
-    act(() => {
-      goalToggle?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
-    expect(container.querySelector(".composer-goal-strip")?.classList.contains("expanded")).toBe(true);
-    expect(container.querySelector(".composer-pending-drawer")?.classList.contains("expanded")).toBe(false);
-    expect(container.querySelector(".composer-queue-list")).toBeNull();
-  });
-
-  it.skip("does not present ordinary pending messages as held when only the goal is paused", () => {
-    renderComposer({
-      running: true,
-      goalSummary: {
-        ...activeGoalSummary(),
-        status: "paused",
-        can_pause: false,
-        can_resume: true,
-      },
-      queuedMessages: [
-        { id: "queue-1", text: "仍是普通 Queue", images: [], files: [] },
-      ],
-    });
-
-    expect(container.querySelector(".composer-goal-strip-state")?.textContent).toBe("已暂停");
-    expect(container.querySelector(".composer-pending-title")).toBeNull();
-    expect(container.querySelector(".composer-pending-drawer")?.classList.contains("is-held")).toBe(false);
-    expect(container.querySelector(".composer-pending-preview")?.textContent).toBe("仍是普通 Queue");
-  });
 
   it("renders queued and guide messages in combined sequential order", () => {
     renderComposer({
@@ -2148,7 +1904,6 @@ describe("Composer queue strip", () => {
     );
     expect(container.querySelector(".composer-pending-title")).toBeNull();
     expect(container.querySelector(".composer-pending-drawer")?.classList.contains("expanded")).toBe(true);
-    expect(container.querySelector(".composer-goal-strip")?.classList.contains("expanded")).toBe(false);
     const rows = Array.from(
       container.querySelectorAll<HTMLLIElement>(".composer-queue-row"),
     );
@@ -2531,9 +2286,6 @@ describe("Composer expand button", () => {
       /\.workspace-document-turn-drawer\s*\{[^}]*width:\s*calc\(100% - 48px\)/,
     );
     expect(composerCSS).toMatch(
-      /\.composer-goal-strip:has\(\+ \.composer-pending-drawer\)\s*\{[^}]*width:\s*calc\(100% - 48px\)/,
-    );
-    expect(composerCSS).toMatch(
       /\.dock-composer-wrap::before\s*\{[^}]*background:\s*transparent/,
     );
     expect(composerCSS).toMatch(
@@ -2547,9 +2299,6 @@ describe("Composer expand button", () => {
     );
     expect(composerCSS).toMatch(
       /\.channel-thread-footer\s+\.dock-composer-wrap\s+\.composer-stack\s*\{[^}]*width:\s*100%/,
-    );
-    expect(workspaceCSS).toMatch(
-      /\.workspace-document-turn-dock:has\([^}]*\.composer-goal-strip \+ \.composer-pending-drawer[^}]*\)[^{]*\.workspace-document-turn-drawer\s*\{[^}]*width:\s*calc\(100% - 72px\)/,
     );
     expect(composerCSS).toMatch(
       /\.document-composer-wrap\s+\.composer-accessory-drawer:hover,[^{]*\.document-composer-wrap\s+\.composer-accessory-drawer:focus-within\s*\{[^}]*translate:\s*0 -2px[^}]*border-color:[^}]*box-shadow:/,
@@ -2616,7 +2365,7 @@ describe("Composer expand button", () => {
       /\.composer-stack\.is-expanded\s+\.composer-frame-shell\s*\{[^}]*margin-bottom:\s*calc\(var\(--composer-expanded-offset,\s*var\(--composer-expanded-delta\)\) \* -1\)[^}]*transform:\s*translateY\(calc\(var\(--composer-expanded-offset,\s*var\(--composer-expanded-delta\)\) \* -1\)\)/,
     );
     expect(composerCSS).toMatch(
-      /\.composer-stack\.is-expanded\s+\.composer-goal-strip,\s*\.composer-stack\.is-expanded\s+\.composer-pending-drawer\s*\{[^}]*transform:\s*translateY\(calc\(var\(--composer-expanded-offset,\s*var\(--composer-expanded-delta\)\) \* -1\)\)/,
+      /\.composer-stack\.is-expanded\s+\.composer-pending-drawer\s*\{[^}]*transform:\s*translateY\(calc\(var\(--composer-expanded-offset,\s*var\(--composer-expanded-delta\)\) \* -1\)\)/,
     );
     expect(composerCSS).toMatch(
       /\.composer-stack\.is-expanded\s+\.composer\s*\{[^}]*min-height:\s*var\(--composer-expanded-min-height\)/,
@@ -2768,7 +2517,7 @@ describe("Composer expand button", () => {
     );
   });
 
-  it("moves the goal / steer / queue header actions in sync with the expand button", () => {
+  it("keeps queued-message header actions aligned with the expand button", () => {
     // The drawer stays inset when open. Its details wrapper must not add
     // another horizontal inset around rows that already own their 8px gutter.
     expect(composerCSS).toMatch(

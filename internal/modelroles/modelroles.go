@@ -18,7 +18,6 @@ const (
 	RoleReview   Role = "review"
 	RoleCompact  Role = "compact"
 	RoleTitle    Role = "title"
-	RoleMemory   Role = "memory"
 	RoleWorker   Role = "worker"
 	RoleFallback Role = "fallback"
 )
@@ -28,7 +27,6 @@ var orderedRoles = []Role{
 	RoleReview,
 	RoleCompact,
 	RoleTitle,
-	RoleMemory,
 	RoleWorker,
 	RoleFallback,
 }
@@ -46,7 +44,6 @@ type Set struct {
 	Review   Selection
 	Compact  Selection
 	Title    Selection
-	Memory   Selection
 	Worker   Selection
 	Fallback Selection
 }
@@ -118,7 +115,6 @@ type Suitability struct {
 	Review   bool `json:"review,omitempty"`
 	Compact  bool `json:"compact,omitempty"`
 	Title    bool `json:"title,omitempty"`
-	Memory   bool `json:"memory,omitempty"`
 	Worker   bool `json:"worker,omitempty"`
 	Fallback bool `json:"fallback,omitempty"`
 }
@@ -137,8 +133,6 @@ func (s Set) ForRole(role Role) Selection {
 		return s.Compact
 	case RoleTitle:
 		return s.Title
-	case RoleMemory:
-		return s.Memory
 	case RoleWorker:
 		return s.Worker
 	case RoleFallback:
@@ -192,10 +186,6 @@ func Resolve(cfg config.Config, opts ResolveOptions) (Set, error) {
 		return Set{}, resolveErr
 	}
 	set.Title, resolveErr = resolveConfiguredRole(cfg, RoleTitle, cfg.Agent.ModelRoles.Title, main)
-	if resolveErr != nil {
-		return Set{}, resolveErr
-	}
-	set.Memory, resolveErr = resolveConfiguredRole(cfg, RoleMemory, cfg.Agent.ModelRoles.Memory, main)
 	if resolveErr != nil {
 		return Set{}, resolveErr
 	}
@@ -493,7 +483,6 @@ func suitabilityFor(profile modelprofile.Profile, jsonReliability int) Suitabili
 		Review:   profile.Code.TestDebugScore >= 3 && jsonReliability >= 3,
 		Compact:  profile.Context.WindowTokens >= 32_000 || profile.Family != modelprofile.FamilyLocal,
 		Title:    true,
-		Memory:   jsonReliability >= 3,
 		Worker:   profile.Execution.DefaultMaxAutonomousSteps >= 10,
 		Fallback: true,
 	}

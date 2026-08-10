@@ -3,6 +3,9 @@
 本文面向要扩展 Wuu 的开发者：插件如何打包、Agent 链路如何扩展、桌面界面如何贡献、
 以及本地开发闭环怎么跑。用户侧的安装与管理见[插件总览](plugins.md)。
 
+第一次写插件？先走一遍[快速上手](plugin-quickstart.md)，10 分钟做出第一个可用的
+Agent 插件，再回来看完整参考。
+
 Wuu 插件平台当前是本地优先的：没有市场、没有中心仓库。插件以目录或 zip 包的形式
 在本地安装，开发者通常在自己的 GitHub 仓库中维护，用户 clone 或下载后在 Wuu 中安装。
 分发能力只有在这种自然生态出现后才会建设，插件作者现在不需要为任何平台账号或审核
@@ -19,8 +22,8 @@ Wuu 插件平台当前是本地优先的：没有市场、没有中心仓库。�
 | Agent 插件 | 独立 runtime 进程（Node 等） | 是 |
 | 桌面插件 | Wuu Renderer（ESM 模块） | 是 |
 
-插件可以形成覆盖整个产品的强视觉语言，但通过公开 Token、UI Kit 和粗粒度语义边界实现，
-而不是接管私有 DOM。窗口安全区、导航结构、Tab、滚动、溢出、键盘与恢复路径由宿主管理。
+插件可以形成覆盖整个产品的强视觉语言，通过公开 Token、UI Kit 和粗粒度语义边界实现，
+不接管私有 DOM。窗口安全区、导航结构、Tab、滚动、溢出、键盘与恢复路径由宿主管理。
 Surface 替换等高信任能力是复杂结构定制的 escape hatch，不是普通控件的默认入口。
 整体设计与接口选择原则见[插件系统架构](plugin-system.md)。
 
@@ -43,6 +46,7 @@ my-plugin/
   "name": "My Plugin",
   "version": "1.0.0",
   "description": "What this plugin does",
+  "icon": { "path": "assets/icon.svg" },
   "runtime": {
     "protocol": "wuu-plugin-v1",
     "command": "node",
@@ -58,12 +62,18 @@ my-plugin/
 
 - `id` 是全局唯一标识，决定安装目录名和所有注册的命名空间前缀；一旦发布不应更改。
 - `version` 是语义化版本。包的任何文件变化都会产生新的整包 fingerprint，原审批随之失效。
+- 顶层 `icon` 是插件品牌图标，用于插件目录和详情，不自动进入宿主导航。可填
+  公共语义图标名、`{ "path": "assets/icon.svg" }`，或
+  `{ "light": "assets/icon-light.svg", "dark": "assets/icon-dark.svg" }`。
 - `runtime` 声明一个长驻的外部进程，通过标准输入输出与 Wuu 通信（Agent 插件）。
 - `desktop.entry` 指向一个自包含的浏览器 ESM 文件，最大 10 MiB（桌面插件）。
 - `contributes.themes` 声明式主题；`contributes.settings` 声明式设置。
 - `skills`、`hooks`、`mcp_servers`、`commands` 可以让插件直接提供这些能力，与用户
   手动配置的效果一致。
 - `minimum_wuu_version` 声明所需的最低 Wuu 版本；不满足时插件不会被激活。
+- `requires` 列出必须同时启用的插件 ID；缺失时当前插件保持未激活。`breaks` 声明明确
+  不兼容的插件，Host 会拒绝同时启用；`conflicts` 只在插件目录显示警告，由用户决定
+  停用哪一个。三者都是简单 ID 数组，不支持版本范围或自动求解。
 
 完整字段定义以 [`internal/plugin/manifest.go`](../../../internal/plugin/manifest.go) 和
 [`packages/plugin-sdk`](../../../packages/plugin-sdk/) 为准。
@@ -99,10 +109,9 @@ my-plugin/
 `--wuu-paper`、`--wuu-ink`、`--wuu-accent` 与 `--hljs-*` 等名称继续兼容，并在应用时
 映射到当前语义 Token；新主题应优先使用 `--wuu-color-*`、`--wuu-font-*` 等当前名称。
 
-宿主的常用中性界面通过少量粗粒度语义 Token 统一换肤，无需依赖私有 DOM：
-`--wuu-control-secondary-background` 控制次级操作，`--wuu-control-field-background` 控制输入框和
-下拉框，`--wuu-control-icon-background` 控制紧凑图标底板，`--wuu-badge-neutral-background` 控制
-中性状态与权限徽标，`--wuu-inline-code-background` 控制 Markdown 行内代码。文字和字体继续
+宿主的常用中性界面通过少量粗粒度语义 Token 统一换肤，无需依赖私有 DOM。完整的
+Token → 表面映射由脚本从宿主样式依赖图生成，见
+[主题表面矩阵](../../en/customize/theme-surface-matrix.md)（英文）。文字和字体继续
 继承对应的公共颜色与字体 Token；紧凑控件的边框宽度由宿主持有，避免面板级强边框改变其盒模型
 或破坏文字换行。
 
@@ -110,8 +119,10 @@ my-plugin/
 
 `contributes.settings` 声明生成式控件，支持 boolean、string、number 和 enum 四种类型。
 每个设置都有 `scope`（`user` 或 `workspace`）和 `apply`（`live` 或 `restart`）。用户
-在设置界面修改后，插件通过 SDK 的类型化 API 读取；桌面插件还可以通过
-`api.settings` 访问。设置按插件命名空间存储，卸载插件时随 generation 一起清除。
+在设置界面修改后，Agent runtime 可以通过版本化的 `host.settings.get/list` Service 读取；桌面
+View 则通过渲染参数中的 `host.getSetting` 访问。设置和 Storage 按插件命名空间存储，桌面 View
+使用 `host.getStorage` / `host.setStorage` 读写 Storage。禁用、升级和卸载插件都默认保留这些数据，
+便于重新安装后恢复；当前没有“卸载时同时删除数据”的隐式行为。
 
 ```json
 {
@@ -140,25 +151,52 @@ runtime 进程由 Wuu 启动，是一个长驻进程，通过标准输入输出�
 它先协商协议与能力，然后持续接收事件和调用。开发者不需要手写协议：
 
 - TypeScript 侧使用公开的 `@wuu/plugin-sdk` 包；
-- Go 侧使用 `@wuu/plugin-go`（`packages/plugin-go`）。
+- Go 侧导入 `github.com/blueberrycongee/wuu/packages/plugin-go`。
 
-协议通道是异步双工的：宿主调用插件能力时，插件可以反向调用宿主服务；一次能力调用返回后，
-插件启动的后台工作也可以继续主动调用已经协商的宿主服务。SDK 按 request id 路由并发响应，
+协议通道是异步双工的：宿主调用插件能力时，插件可以通过传入的 `RuntimeHost` 反向调用宿主服务；
+一次能力调用返回后，插件启动的后台工作也可以继续主动调用已经协商的宿主服务。SDK 按 request id 路由并发响应，
 插件不能直接读写标准输入输出或假设请求与响应严格交替。后台 timer、watcher 或进程应在会话
 生命周期开始后启动，并在 generation 关闭时停止，不能越过禁用、升级和卸载边界继续运行。
 
-需要在后台发起普通 Agent 工作时，插件组合两个产品中立服务：`host.session.create` 创建具有明确
-owner、visibility、parent、fresh/fork 和 workspace 语义的 Session；`host.session.send` 向已有
+initialize 是只读 prepare 阶段，只能读取 Storage、Settings 和已有 Session 摘要。共享 Storage 写入、
+Session create/send 和后台 effect 在 generation 的包与策略提交后才开放，并通过 `activate(host)` 启动。
+旧 SDK 没有声明 lifecycle version，不能进入候选 generation。
+
+生产 Host Service 只有以下 11 个方法：
+
+- Storage：`get`、`set`、`delete`、`keys`、`compare_exchange`；每次调用都必须传
+  `scope: "user" | "workspace"`；
+- Settings：`get`、`list`，运行时只读；
+- Session：`create`、`send`、`list`、`cancel`。
+
+方法名、参数和结果类型以 SDK 的 `HOST_SERVICE_METHODS` 与 `HostServiceContracts` 为准。
+`host.session.info`、`host.workspace.*` 和 `host.diagnostics.log` 不属于生产合同。
+
+需要在后台发起普通 Agent 工作时，插件组合产品中立的 Session 服务：`host.session.create` 创建具有明确
+owner、visibility、parent、fresh/fork、workspace 和可选模型别名语义的 Session；`host.session.send` 向已有
 Session 投递输入。send 请求包含插件生成的 `request_id`、模型输入、有大小上限的 request-only
 context blocks、稳定 cause，以及可选的 `presentation: { kind: "query_bubble", text, name }`。
 
+`host.session.list` 只返回当前 generation 所属插件拥有的 Session；`host.session.cancel` 也执行同样
+的所有权校验。cancel 可以用 send 返回的 `turn_id` 精确取消当前 Turn，或用 `queue_id` 移除尚未
+开始的投递；两者都不删除 Session。省略两者表示插件有意取消该 Session 当前拥有的执行。生命周期
+完成事件包含最终模型输出，但只发送给原始提交插件，便于插件在不读取宿主私有历史结构的前提下
+更新自己的状态或向父 Session 交付结果。
+
 `presentation.text` 是前端 query 气泡显示的安全摘要，不是完整内部 Prompt。用户输入和插件唤醒
 统一复用标准 query 气泡；宿主仍在持久记录中区分 `origin=user | host | plugin`，并把插件生成项
-标成只读、可审计。Provider 适配层可以按协议需要将其投影为 `user` role，但不能丢失产品来源。
+标成只读、可审计。Provider 适配层会将它投影为普通 `user` role 来驱动下一回合；这个协议角色
+不等于真人作者身份，也不能覆盖产品记录中的插件来源。插件不应把完整内部 Prompt 复制到展示
+摘要，桌面端也不应自行从模型输入生成气泡内容。
 目标 Session 忙时进入同一条普通 Turn 队列。插件若声明 `agent.turn.lifecycle` observe 能力，
 宿主会把后续 running、completed、failed、interrupted、discarded 状态只发给原提交插件，并带回
-原样的 `request_id`。Cron、重试、错过触发恢复、并发合并和业务状态都必须由插件持有；核心不
+原样的 `request_id`；终态还包含最终模型输出。Cron、重试、错过触发恢复、并发合并和业务状态都必须由插件持有；核心不
 提供 timer tick，也不解释 `request_id` 或 cause。
+
+每次插件 Tool 调用都包含拥有它的当前 `turn_id`。插件若声明 `agent.turn.interrupted` observe
+能力，还会收到产品中立的 Turn 中断信号。宿主不会根据 `parent_session_id` 建立取消树；插件可以
+把信号转发到它记录的任意 child Turn，也可以让工作脱离当前 Turn。树、DAG、worker pool、汇聚、
+重试和恢复等编排语义全部属于插件。
 
 进程生命周期由 Wuu 管理：启用时启动，禁用、升级或卸载时终止。插件不能重启自身或
 绕过宿主对进程的监督。
@@ -169,47 +207,68 @@ runtime 插件可以注册工具和挂钩 Agent 生命周期。SDK 提供以下�
 
 | 能力 | 作用 | 语义 |
 | --- | --- | --- |
-| `agent.tool.register` | 注册模型可见的工具 | transform |
-| `agent.tool.execute.before` | 工具执行前拦截，可拒绝或改写参数 | guard |
-| `agent.tool.execute.after` | 工具成功后包装或改写结果 | transform |
 | `agent.system_prompt.section` | 贡献一段系统提示 | transform |
-| `agent.request.transform` | 改写发给模型的请求 | transform |
-| `agent.compaction` | 替换或参与摘要压缩策略 | decision |
-| `session.start` / `session.stop` | 观察会话生命周期 | observe |
-| `shell.env` | 提供命令运行时的环境变量 | transform |
+| `agent.pre_step` | 在模型步骤前追加带来源、可持久化的隐藏消息 | transform |
+| `agent.request.transform` | 读取 `ModelRequestViewV1` 并返回受校验的窄 patch | transform |
+| `agent.compaction` | 替换摘要压缩结果 | decision；Experimental |
+| `agent.turn.completed` | 观察已提交的成功/失败 Turn 摘要 | observe |
+| `agent.turn.lifecycle` | 接收本插件投递 Turn 的 owner-scoped 生命周期 | observe |
+| `agent.turn.interrupted` | 接收任意 Turn 的非阻塞中断信号，由插件决定是否传播 | observe |
+| `plugin.client.request` | 处理插件命名空间内的 Desktop/客户端请求 | decision |
 
-每个注册都属于一个 generation，并声明 `kind`（observe / transform / guard / around /
-decision）与 `priority`。guard 和 decision 可以短路；transform 按稳定顺序执行；插件
-不能把一种 seam 当作任意回调来用。候选激活是原子的：激活失败会回滚整个 generation，
-旧 generation 继续工作。
+工具通过 initialize result 的 `tools` 注册，不是一个名为 `agent.tool.register` 的 capability。
+每个 capability 都属于一个 generation，并声明已经实现的 `kind`（observe / transform /
+decision）与 `priority`。`guard`、`around` 没有宿主实现，不是可声明的公开 kind。
+
+旧 `hook.invoke` 已删除；Host→plugin 只通过上表的版本化 capability 或工具执行，plugin→Host 只通过 Host Service。
+候选 prepare 失败时旧 generation 继续工作；durable commit 后的单插件 activate 失败会在 inventory 中显示
+`failed/last_error`，不会伪装成 active。
 
 插件不会拿到私有 ThreadItem、协议消息、宿主 React 树或任意回调。快照、输入与输出
 都是冻结的公开结构，具体类型以 SDK 的 `index.ts` 为准。
 
+`agent.pre_step` 是状态型模型上下文的首选入口。宿主按 capability priority 稳定调用，校验
+`append_messages`，并把每条消息标成隐藏、只读和 `origin=plugin` 后随 Turn 持久化。插件可以从
+输入里的 `origin_id` 找到自己此前追加的消息，自行实现只注入一次、状态变化时追加 tombstone，
+或每轮追加。宿主不替插件维护状态，也不替插件选择缓存策略；该接口只允许在历史尾部追加，
+不会改写已有前缀。
+
+`ModelRequestViewV1` 只公开模型、消息摘要、工具 schema 和少量跨 Provider 选项；不包含重试对象、
+cache hint、媒体字节、Provider 原生 replay state 或 Go 字段名。当前 request transform 唯一可写字段是
+`prepend_system_messages`，使用它意味着插件选择改变请求前缀并承担相应缓存影响。需要新的可写
+能力时，必须新增版本化字段和宿主校验，不能恢复成任意 `ChatRequest` 透传。
+
 ### 工具注册示例
 
 ```ts
-import { definePlugin, ToolRegistration } from "@wuu/plugin-sdk";
+import { runJSONLRuntime, type RuntimePlugin } from "@wuu/plugin-sdk";
 
-export default definePlugin({
-  async initialize(runtime) {
-    runtime.registerTool({
-      name: "my_search",
+const plugin: RuntimePlugin = {
+  initialize() {
+    return {
+      protocol_version: 2,
+      tools: [{
+        id: "my_search",
       description: "Search a private index",
-      inputSchema: { type: "object", properties: { query: { type: "string" } } },
-      async execute(args) {
-        return { matches: await search(args.query) };
-      },
-    } satisfies ToolRegistration);
+        input_schema: {
+          type: "object",
+          properties: { query: { type: "string" } },
+          required: ["query"],
+        },
+      }],
+    };
   },
-});
+  async executeTool({ arguments: input }) {
+    const { query } = input as { query: string };
+    return { result: { structured_content: { matches: await search(query) } } };
+  },
+};
+
+await runJSONLRuntime(plugin, { input: process.stdin, output: process.stdout });
 ```
 
-### 工具策略挂钩示例
-
-在 `tool.execute.before` 挂钩中拒绝访问工作区外的路径，与插件文档中
-[权限模型](../reference/permissions.md) 的关系是：这是插件侧的策略，宿主的审批、权限底线和恢复
-路径始终由 Wuu 保留，插件不能覆盖。
+完整的 TypeScript 双工示例位于 `examples/plugins/stateful-runtime`：activate 后台使用 Storage CAS，
+capability handler 使用 Storage，并按显式客户端请求创建和投递 Session。
 
 ## 桌面插件
 
@@ -234,8 +293,8 @@ export async function activate(api) {
     `,
   });
 
-  api.registerSurface("app.sidebar", {
-    id: "sidebar-frame",
+  api.registerSurface("conversation.timeline", {
+    id: "timeline-frame",
     mode: "wrap",
     render(_context, fallback) {
       return React.createElement("section", { className: "my-frame" }, fallback);
@@ -250,15 +309,15 @@ export async function activate(api) {
 ### 可用 API 概览
 
 - `registerStyle`：注册 CSS；任意 CSS 只提供给受信任的桌面代码插件。
-- `registerSurface`：替换或包装稳定 Surface（`app.sidebar` 等）。
+- `registerSurface`：替换或包装短小、带原生 fallback 的语义项 Surface；App Shell、
+  基础 Session、Composer、Settings、插件管理和各 Region 容器都是 protected roots。
 - `registerSlot`：在原生 UI 的稳定位置插入内容（`sidebar.primary`、
-  `workspace.header`、`composer.toolbar`、`settings.plugin` 等）。
+  `workspace.header`、`composer.toolbar` 等）。复杂设置应声明独立的 `settingsPages` View。
 - `registerViewType` + `registerViewPlacement`：注册可持久化的 View，并请求宿主把它
-  首次放到 `main`、`sidebar` 或 `auxiliary` 区域。`priority` 只在区域尚无用户选择时
+  首次放到 `navigation`、`primary`、`auxiliary`、`inspector`、`settings` 或 `overlay`
+  语义区域。`priority` 只在区域尚无用户选择时
   决定初始激活；用户后续的切换和关闭优先并持久化。落位 API 不暴露宿主 DOM、任意
-  父节点、分割树或面板尺寸。旧 `registerLayoutContribution` 仅作兼容保留，其
-  `parentId`、`size`、`minSize` 字段从未真正控制布局树，新插件应使用
-  `registerViewPlacement`。
+  父节点、分割树或面板尺寸。`registerViewPlacement` 是唯一的落位 API。
 - View 的入口由 manifest 声明，插件不自己绘制导航和 Tab：
   - `contributes.navigation` 出现在左侧栏可滚动的插件分组；
   - `contributes.workspaceTools` 出现在右侧工具选择器，并以原生工作区 Tab 打开；
@@ -267,11 +326,25 @@ export async function activate(api) {
   `registerViewType` 注册的 View。选中、关闭、持久化和溢出由 Wuu 管理。普通
   `contributes.settings` 会自动获得宿主渲染的设置页，只有标准 schema 表达不了的内容
   才使用自定义设置 View。
+  入口 `icon` 与顶层品牌图标相互独立：填宿主公开的语义图标名，或使用与顶层 `icon`
+  相同的包内资源对象；省略时回退宿主默认图标，不继承品牌图标。插件可从
+  `@wuu/plugin-sdk` 导入 `PUBLIC_ICON_NAMES`、`PublicIconName`
+  和 `PluginManifestIcon`。自绘资源只接受 SVG、PNG、WebP，单文件不超过 256 KiB；路径
+  必须留在插件包内，不能是符号链接。SVG 会拒绝脚本、事件属性、外部引用与嵌入式文档。
+  Wuu 统一负责尺寸、选中态、无障碍、主题切换与加载失败兜底，插件不通过桌面模块注入图标组件。
+- `registerInspectorSection`：在宿主环境信息面板注册短摘要。输入是冻结且版本化的
+  Session、Turn、Workspace、Git 和 Plan 公开 snapshot；Host Action 只允许打开已注册
+  View 或执行已注册 Command。宿主负责每个 Section 的独立错误边界、限高和溢出。
+  长列表、编辑器和复杂交互必须进入 `primary` 或 `auxiliary` View。
 - `api.ui`：宿主提供的小型 UI Kit，包括 `Page`、`Panel`、`Card`、`Section`、
-  `Stack`、`Row`、`Button`、`TextInput` 和 `EmptyState`。普通插件页面优先使用这些组件，
-  因而会自动继承当前外观插件的颜色、字体、边框、圆角、阴影和密度。它不是页面 DSL：
-  复杂 View 仍可使用任意 React，画布、终端和专用预览可以保留自己的主题边界；但插件不应
-  覆盖 UI Kit 的内部 class，也不应重新接管宿主的页面边距和公共控件节奏。
+  `Stack`、`Row`、`Button`、`ToolbarToggle`、`TextInput`、`TextArea`、`Checkbox`、`EmptyState`、
+  `LoadingState`、`ErrorState` 和 `LiveDuration`。`Page` 支持 `comfortable`/`compact` 密度；
+  `LiveDuration` 根据累计毫秒和可选运行起点显示实时更新的紧凑时长；状态组件由宿主
+  统一处理 ARIA、加载动画、错误视觉、响应式间距和溢出。普通插件页面优先使用这些组件，
+  因而会自动继承当前外观插件的颜色、字体、边框、圆角、阴影和密度。复杂 View 仍可使用
+  任意 React，画布、终端和专用预览可以保留自己的主题边界；插件不应覆盖 UI Kit 的内部
+  class，也不应重新接管宿主的页面边距和公共控件节奏。Composer 工具栏中的二态开关应使用
+  `ToolbarToggle`，由宿主统一 `aria-pressed`、命中区域、焦点和激活态。
 - `registerPresenter`：替换具体产品概念而不是宽泛区域。目标包括
   `conversation.item`、`conversation.process`、`conversation.tool-activity`、
   `conversation.composer`、`header.conversation`、`header.workspace`、
@@ -280,7 +353,82 @@ export async function activate(api) {
   host；只有出现在 `host.actions` 中的 Action 才能调用。
   `registerToolActivityPresenter` 继续作为兼容的 Tool 专用入口。
 - `registerCommand`、`registerStatusItem`、`registerLocale`：命令、状态项和本地化。
-- `api.settings` / `api.storage`：读取声明式设置，读写插件命名空间的持久化存储。
+- `showConversationCard`：在指定会话底部显示由插件渲染的临时交互卡片。省略
+  `threadId` 时使用当前会话；返回的 handle 可以更新状态或关闭卡片。卡片不会写入
+  会话历史，也不会进入模型上下文；插件禁用、卸载或应用重启后由宿主清理。
+- View 渲染参数中的 `host.getSetting`、`host.getStorage`、`host.setStorage`：读取声明式设置，
+  读写插件命名空间的持久化存储。
+- `registerRenderer`：按类别（`message`、`tool-result`、`document`、`file-preview`）注册内容
+  渲染器，用 `match` 匹配具体内容并接管渲染；`priority` 决定多个插件竞争同一内容时的顺序。
+- `registerThemeTokens`：以代码方式为指定主题应用公开 Token 覆盖（声明式主题的运行时版本），
+  同样只能修改公开语义 Token。
+- `registerCSSSnippet`：注入按插件作用域管理的 CSS 片段，随 generation 卸载时移除。
+- `registerCleanup`：在 generation 卸载时执行清理回调（释放外部资源、取消订阅等）。
+- View 作为设置页挂载时，渲染参数中的 `host.settings` 提供 `SettingsPageHostAPI`
+  （`contractVersion: 1`），当前可读写宿主 `runtime.modelAliases` 设置。
+
+### 斜杠动作与临时卡片
+
+`contributes.commands` 中的 `runtime_action` 会与桌面入口通过 `registerCommand` 注册的
+同 ID 命令匹配。只有插件已获批、启用且桌面命令完成注册时，命令才会出现在 Composer
+的斜杠菜单中：
+
+```json
+{
+  "contributes": {
+    "commands": [{
+      "id": "show-status",
+      "title": "Show status",
+      "description": "Inspect the current plugin status",
+      "kind": "runtime_action",
+      "aliases": ["status"]
+    }]
+  }
+}
+```
+
+```js
+export function activate(api) {
+  let backgroundCard;
+
+  api.registerCommand({
+    id: "show-status",
+    title: "Show status",
+    execute(input) {
+      const card = api.showConversationCard({
+        threadId: input?.threadId,
+        title: "Plugin status",
+        state: { status: "ready" },
+        render({ state, dismiss }) {
+          return api.react.createElement(
+            api.ui.Stack,
+            { gap: "small" },
+            api.react.createElement("span", null, state.status),
+            api.react.createElement(api.ui.Button, { onClick: dismiss }, "Close"),
+          );
+        },
+      });
+      backgroundCard = card;
+    },
+  });
+
+  api.onHostEvent((event) => {
+    if (event?.kind === "notification" && event.message?.method === "turn/completed") {
+      backgroundCard?.update({ status: "last turn completed" });
+    }
+  });
+}
+```
+
+`onHostEvent` 收到的是 app-server 通知，结构为 `{ kind, workdir, message: { method, params } }`；
+`method` 使用真实方法名，例如 `turn/started`、`turn/queued`、`turn/completed`、`turn/error`，
+方法名常量见 `internal/appserver/protocol.go` 的 `Notification*` 定义，事件类型见
+`packages/protocol`。示例中的 `turn/completed` 在通知到达时才会触发更新，不要依赖任何
+文档未列出的自定义事件名。
+
+桌面插件也可以在后台事件或自身异步任务中直接调用 `showConversationCard`，不要求先执行
+斜杠命令。显式 `threadId` 可把卡片放入已加载的其他会话；省略时卡片进入当前会话。
+宿主负责底部位置、外壳、关闭按钮、错误边界和插件生命周期，插件负责卡片内部 UI 与状态。
 
 ### 声明式 CSS 锚点
 
@@ -292,8 +440,11 @@ Layer Host，并带有稳定的 `data-wuu-component`、`data-wuu-layer` 和 `dat
 snippets 而不是新增主题 Token：`app-shell`、`sidebar`、`conversation-pane`、
 `settings-shell`、`settings-sidebar`、`settings-content`、`settings-page`、
 `skills-catalog`、`automations-catalog`、`workspace-panel`、
+`workspace-tool-tab`、`workspace-tool-tab-close`、
 `launch-view`、`turn`、`message`（区分 `data-wuu-variant="user" | "agent"`）、
 `composer`、`composer-input`、`composer-send`（区分 `data-wuu-state="send" | "stop"`）。
+工作区 Tab 使用 `data-wuu-active="true" | "false"` 表示选中状态，并在关闭或拖拽时通过
+`data-wuu-state="closing" | "dragging"` 暴露瞬时状态。
 消息操作区只公开宿主管理的 `message-actions` 组锚点，通过
 `data-wuu-placement="persistent" | "overlay"` 区分常驻与悬浮。主题可使用
 `--wuu-message-actions-block-gap`、`--wuu-message-actions-overlay-gap`、
@@ -302,15 +453,25 @@ snippets 而不是新增主题 Token：`app-shell`、`sidebar`、`conversation-p
 响应式收纳和两种布局语义仍由宿主负责。插件应把直接子按钮作为同一控件族统一处理，
 不按 copy/like/edit 动作建立私有样式。user query 的实际气泡表面另有
 `message-bubble` + `user` 变体，并由 `--wuu-message-user-*` Token 控制视觉属性。
+侧栏导航（主栏、插件入口、项目行、会话行、设置栏和返回按钮）的 hover 共享同一套公开
+Token：`--wuu-nav-item-hover-background` 绘制悬停/展开行的底色，
+`--wuu-nav-item-hover-ring` 调整内描边颜色，两者都回退到宿主玻璃质感，
+主题无需依赖私有行级 class。收起侧栏后滑出的浮层抽屉通过
+`--wuu-color-surface-muted` 上色，与停靠态侧栏保持同一材质。
 插件 UI Kit 公开 `plugin-ui-page`、`plugin-ui-panel`、`plugin-ui-card`、
 `plugin-ui-section`、`plugin-ui-stack`、`plugin-ui-row`、`plugin-ui-button`、
-`plugin-ui-field`、`plugin-ui-input` 和 `plugin-ui-empty-state`；外观插件应优先改公开
-Token，确需结构化装饰时再按这些粗粒度语义处理。
+`plugin-ui-field`、`plugin-ui-input`、`plugin-ui-empty-state`、`plugin-ui-loading-state` 和
+`plugin-ui-error-state`、`plugin-ui-live-duration`；外观插件应优先改公开 Token，确需结构化装饰时
+再按这些粗粒度语义处理。
 这份清单由 `desktop/src/renderer/plugins/ProductionSemanticAnchors.test.ts` 强制约束；
 锚点改名属于破坏性变更。
 
 可信代码插件补充 CSS 时，应只使用这些公开属性和 Token，不应依赖私有 class 名或
 DOM 层级。依赖私有 class 名可以用于本地实验，但不属于兼容性承诺。
+
+Raw CSS 会原样进入宿主 document，不会自动改写 selector，也没有 ShadowRoot/iframe 隔离。
+`:root`、`body`、通配符或宿主 selector 都可能影响全局界面，因此这是 high-trust Desktop
+能力，不是面向未知第三方代码的安全样式沙箱。
 
 ## 本地开发闭环
 
@@ -366,6 +527,10 @@ Host Actions、generation 替换、失败恢复、disposal 和卸载，并演示
 测试：它同时覆盖应用壳与设置页，验证主题 Token、UI Kit、语义锚点和宿主布局所有权，
 不应被当作 Wuu 默认视觉规范。
 
+[`examples/plugins/tool-card-skin`](../../../examples/plugins/tool-card-skin/) 演示外观 Presenter：
+它只读取版本化 `ToolActivitySnapshot`，保留原生 fallback，不解析 Tool 参数或访问 Loop 私有状态，
+可与 Manga Studio 独立启用和禁用。
+
 ## 版本兼容
 
 插件跨 Wuu 小版本继续工作的承诺（开发者不 fork 也能跟上更新）是当前平台的
@@ -383,7 +548,9 @@ previous-minor/current-minor 的 SDK 与宿主兼容矩阵。在矩阵验证完�
 - 插件管理、审批、安全模式、崩溃恢复、权限提示的最终边界、原生窗口与 app-server
   生命周期、generation 错误隔离，以及用户逃生路径（设置、禁用插件、恢复默认 UI）
   始终由 Wuu host 控制，**永不**通过公开接口暴露给插件。
+- 使用 `WUU_SAFE_MODE=1`、`wuu app-server --safe-mode` 或 Desktop 的 `--safe-mode` 启动时，
+  Wuu 只发现 manifest 供插件管理展示，不激活任何插件 runtime、Tool、Skill、用户自动化 Hook 或 Desktop 模块。
 - 声明式主题只能修改公开语义 Token；`registerStyle` 可以使用任意 CSS，因此只提供给
   受信任的桌面代码插件。
-- runtime 进程与 Wuu 同权限，启用的插件声明的 Hook 与直接运行第三方本地命令具有
+- runtime 进程与 Wuu 同权限，启用第三方 runtime 与直接运行第三方本地命令具有
   相同风险；安装和启用前检查来源、命令与授权状态。

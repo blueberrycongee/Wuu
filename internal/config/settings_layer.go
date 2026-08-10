@@ -21,7 +21,7 @@ import (
 //
 // Every project source is schema-checked, but normal startup removes settings
 // that must remain user-owned: the entire provider selection/connection map,
-// role-specific model selection, memory discovery, and permission mode.
+// role-specific model selection, instruction discovery, and permission mode.
 // Explicit LoadProjectConfig keeps the historical standalone-project behavior
 // for callers that deliberately trust the files.
 const (
@@ -231,7 +231,7 @@ func deepMergeObject(base, overlay map[string]any) {
 // remain protected until they are deliberately classified as project-safe.
 func stripProjectUserSettings(overlay map[string]any, path string) {
 	var ignored []string
-	for _, field := range []string{"default_provider", "providers", "memory"} {
+	for _, field := range []string{"default_provider", "providers", "instructions", "memory"} {
 		if deleteKeysEqualFold(overlay, field) {
 			ignored = append(ignored, field)
 		}

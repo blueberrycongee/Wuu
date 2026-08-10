@@ -291,50 +291,8 @@ func TestPrefixExperiment_OverflowCompactBreaksOnceThenResumes(t *testing.T) {
 	}
 }
 
-// A HelpMe result deliberately rewrites durable history. The request chain
 // may break for that rewrite, but the compacted continuation must establish a
 // stable prefix that subsequent rounds and turns extend normally.
-func TestPrefixExperiment_HelpMeBreaksOnceThenResumesAcrossTurn(t *testing.T) {
-	sim := &sessionSim{t: t}
-	helpMeResult := `{"action":"helpme","status":"completed","history_rewrite":{"kind":"helpme_joint_compact","content":"[HelpMe joint compact]\nRecovered task state"}}`
-	sim.runTurn("ask 1", &fakeStep{results: []StepResult{
-		{ToolCalls: []providers.ToolCall{{ID: "helpme_1", Name: "helpme", Arguments: `{}`}}},
-		{Content: "continued from recovery"},
-	}}, func(cfg *LoopConfig) {
-		cfg.Tools = &fakeLoopTools{
-			defs:    []providers.ToolDefinition{{Name: "helpme"}},
-			results: map[string]string{"helpme_1": helpMeResult},
-		}
-		cfg.BeforeRequestContext = stableContext()
-		cfg.PostToolRewrite = rewriteFromRecoveryEnvelopeForTest
-	})
-	sim.runTurn("ask 2", &fakeStep{results: toolRoundSteps("call_2")}, func(cfg *LoopConfig) {
-		cfg.Tools = experimentTools()
-		cfg.BeforeRequestContext = stableContext()
-	})
-
-	breaks := analyzePrefixChain(sim.requests)
-	if len(breaks) != 1 || breaks[0].pair != 0 {
-		t.Fatalf("HelpMe should break the prefix once at its rewrite and then recover, got:\n%s", formatBreaks(sim.requests, breaks))
-	}
-	for i, request := range sim.requests {
-		if err := providers.ValidateToolCallHistory(request); err != nil {
-			t.Fatalf("request %d has invalid tool history: %v\n%+v", i, err, request)
-		}
-	}
-	if err := providers.ValidateToolCallHistory(sim.history); err != nil {
-		t.Fatalf("post-HelpMe durable history is invalid: %v\n%+v", err, sim.history)
-	}
-	for _, msg := range sim.history {
-		if msg.Name == "wuu_context_anchor" {
-			t.Fatalf("HelpMe must not generate retired context anchors: %+v", sim.history)
-		}
-	}
-}
-
-// Scenario 5b: when typed request-only context changes across a turn boundary,
-// the old value stays only as a superseded update in the byte-stable prefix;
-// the latest update carries the fresh value.
 func TestPrefixExperiment_ChangedContextRefreshesAcrossTurns(t *testing.T) {
 	sim := &sessionSim{t: t}
 	makeCtx := func(state string) func() []ContextSegment {

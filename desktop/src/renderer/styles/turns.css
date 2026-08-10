@@ -28,16 +28,25 @@
   --activity-detail-error-border: #e89088;
   --diff-insert-color: #12a150;
   --diff-delete-color: #cf2e2e;
-  --live-gray-shimmer-edge: rgba(255, 255, 255, 0.5);
-  --rich-link-color: #0969da;
-  --rich-link-hover-color: #0550ae;
-  --rich-code-surface-bg: #F4F4F4;
+  --live-gray-shimmer-gradient: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0) 34%,
+    rgba(255, 255, 255, 0.55) 44%,
+    rgba(255, 255, 255, 0.95) 50%,
+    rgba(255, 255, 255, 0.55) 56%,
+    rgba(255, 255, 255, 0) 66%,
+    transparent 100%
+  );
+  --rich-link-color: var(--wuu-color-link, #0969da);
+  --rich-link-hover-color: var(--wuu-color-link-hover, #0550ae);
+  --rich-code-surface-bg: var(--wuu-color-surface-muted, #F4F4F4);
   --surface-chip: #E9EAEA;
   --fork-worktree-copy-bg: rgba(255, 255, 255, 0.84);
   --fork-worktree-focus-ring: rgba(9, 105, 218, 0.22);
   --rich-blockquote-color: var(--gray-650);
   --rich-rule-color: var(--gray-250);
-  --pre-text-color: var(--gray-700);
+  --pre-text-color: var(--wuu-color-text, var(--gray-700));
   --turn-notice-auth-color: #9a3412;
   --system-line-marker-color: var(--gray-400);
   --empty-home-action-border: var(--gray-200);
@@ -204,7 +213,7 @@
    * hairline. Turn-to-turn separation already owns the single visible
    * boundary (the 48px --conversation-turn-boundary-gap band on .turn), so a
    * full-width rule inside a turn duplicated that meaning while splitting one
-   * Q&A pair in two. The gap holds at 24px (--conversation-user-rule-gap),
+   * Q&A pair in two. The gap holds at 32px (--conversation-user-rule-gap),
    * tighter than the 48px turn boundary: tight within a group, loose between.
    */
   margin-top: calc(
@@ -372,7 +381,7 @@
   box-sizing: border-box;
   flex-direction: column;
   align-items: flex-start;
-  border-radius: calc(var(--radius-lg) + 8px);
+  border-radius: var(--wuu-message-user-radius, calc(var(--radius-lg) + 8px));
   overflow: hidden;
   padding: 18px 22px 16px;
 }
@@ -585,38 +594,6 @@
   opacity: 0.45;
 }
 
-.agent-handoff-divider {
-  width: min(760px, 88%);
-  max-width: min(760px, 88%);
-  margin: 2px auto 18px;
-}
-
-.subagent-chip {
-  white-space: nowrap;
-}
-
-.subagent-chip-failed {
-  color: var(--danger);
-}
-
-.subagent-chip-list {
-  display: inline-flex;
-  align-items: baseline;
-  flex-wrap: nowrap;
-  /* Same quiet register as the turn meta rows (用时, 查看思考过程) the
-     list rides on: chips are footnotes, not buttons. Self-styled so the
-     register holds on every host (turn header, user message bubble). */
-  color: var(--conversation-process-control-color, var(--process-control-color-fallback));
-  font-size: var(--conversation-process-font-size);
-  font-weight: var(--conversation-process-font-weight);
-  line-height: var(--conversation-process-line-height);
-}
-
-.subagent-chip-separator {
-  padding: 0 6px;
-  color: var(--ink-tertiary);
-}
-
 .message-copy-button {
   --message-copy-rest-transform: translate3d(0, 2px, 0) scale(0.98);
   --message-copy-visible-transform: translate3d(0, 0, 0) scale(1);
@@ -682,7 +659,7 @@
 }
 
 /* Hover actions live outside the flow but below the query bubble. The
- * 2px padding is the hover bridge; the 20px controls stay inside the 24px
+ * 2px padding is the hover bridge; the 20px controls stay inside the 32px
  * query -> reply gap (--conversation-user-rule-gap). */
 .user-message-block-with-actions {
   position: relative;
@@ -850,15 +827,63 @@
  * lives here; nothing is split across other files.
  */
 .context-composition-card,
-.instruction-files-card {
+.instruction-files-card,
+.plugin-conversation-card {
   width: 100%;
   max-width: none;
   margin: 2px 0 22px;
 }
 
 .conversation-split-width .context-composition-card,
-.conversation-split-width .instruction-files-card {
+.conversation-split-width .instruction-files-card,
+.conversation-split-width .plugin-conversation-card {
   width: 100%;
+}
+
+.plugin-conversation-card-shell {
+  overflow: hidden;
+  border: 1px solid var(--ink-overlay-8);
+  border-radius: var(--radius-lg);
+  background: var(--surface-1);
+}
+
+.plugin-conversation-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 44px;
+  padding: 8px 10px 8px 16px;
+  border-bottom: 1px solid var(--ink-overlay-6);
+}
+
+.plugin-conversation-card-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.plugin-conversation-card-heading strong {
+  overflow: hidden;
+  font-size: var(--font-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plugin-conversation-card-heading span {
+  color: var(--ink-tertiary);
+  font-size: var(--font-xs);
+}
+
+.plugin-conversation-card-content {
+  min-width: 0;
+  padding: 16px;
+}
+
+.plugin-conversation-card-error {
+  color: var(--error);
+  font-size: var(--font-sm);
 }
 
 .context-composition-card-inner,
@@ -1942,22 +1967,6 @@
   gap: 0;
 }
 
-/*
- * Collab tool-call rows prefix the activity line with the acting
- * subagent's identity chip (see ParticipantChip / environment.css).
- * Baseline alignment keeps the chip name level with the summary prose.
- */
-.collab-agent-activity {
-  display: flex;
-  min-width: 0;
-  align-items: baseline;
-  gap: 8px;
-}
-
-.collab-agent-activity .participant-chip-name {
-  color: var(--ink-soft);
-}
-
 .activity-row {
                                                                   
                                                                   
@@ -2242,29 +2251,17 @@
   animation: process-text-rise-out var(--motion-base) var(--ease-out) both;
 }
 
-/* Visible gray process labels sweep while the turn is running. We use
-   a `::after` overlay with `mix-blend-mode: lighten` instead of
-   painting the text itself: this keeps the label at full opacity
-   (no `color: transparent`) so there is no one-frame flash the
-   moment the live state flips on, and the overlay covers chevrons,
-   counts, and preview text naturally without a dedicated color
-   override.
+/* Live gray labels sweep the glyphs themselves, not the invisible layout box.
+   A text-clipped duplicate carries the themed highlight band; the original
+   label stays fully opaque underneath, so chevrons and counts remain stable
+   and plugin themes can replace the sweep as one public gradient token.
 
-   The overlay slides a transform translate from -50% to 150% of
-   the host's own width, so the bright bar always traverses the
-   whole row in lockstep with its width — top to bottom of any
-   text appended during streaming. */
+   The highlight band is sized larger than the label and spends the first and
+   last stretches fully outside the text, which gives each pass a visible rest
+   before it sweeps left→right again. */
 @keyframes live-gray-shimmer {
-  /* Absolute px (not %) so every host — short "正在回复 56s" and
-     long "运行命令 · 搜索4项 · 查看 composer.css · 思考过程" alike —
-     moves the bright bar at the same 83 px/s. The % version had a
-     fixed 4.8s period, which read as a slow crawl on short rows
-     and a fast blur on long rows. The trade-off: short rows now
-     spend less of the cycle with the bar inside them, long rows
-     spend more — but the bar's actual speed matches across all
-     rows. */
-  from { transform: translateX(-200px); }
-  to   { transform: translateX(200px); }
+  from { background-position: 180% 50%; }
+  to   { background-position: -80% 50%; }
 }
 
 .process-surface,
@@ -2289,6 +2286,10 @@
   font-weight: var(--conversation-process-font-weight);
   line-height: var(--conversation-process-line-height);
   list-style: none;
+}
+
+.context-compaction-notice.failed .process-surface-row {
+  color: var(--danger);
 }
 
 .process-surface-fold > .process-surface-row {
@@ -2350,48 +2351,62 @@
   animation: process-surface-count-jump var(--motion-base) var(--ease-out);
 }
 
-.process-surface-row.is-live-gray,
-.turn-reasoning-summary-text.is-live-gray,
-.turn-process-preview.is-live,
-.live-progress-chip {
+.process-surface-row.is-live-gray .process-surface-summary-line {
   display: inline-block;
-  position: relative;
-  isolation: isolate;
-  overflow: hidden;
 }
 
-.process-surface-row.is-live-gray::after,
+.process-surface-row.is-live-gray .process-surface-summary-line,
+.turn-reasoning-summary-text.is-live-gray,
+.turn-process-preview.is-live .turn-process-preview-text,
+.live-progress-chip {
+  position: relative;
+  isolation: isolate;
+}
+
+.process-surface-row.is-live-gray .process-surface-summary-line::after,
 .turn-reasoning-summary-text.is-live-gray::after,
-.turn-process-preview.is-live::after,
+.turn-process-preview.is-live .turn-process-preview-text::after,
 .live-progress-chip::after {
-  content: "";
+  content: attr(data-text);
   position: absolute;
   inset: 0;
+  display: block;
+  overflow: hidden;
   pointer-events: none;
-  background-image: linear-gradient(
-    90deg,
-    transparent 0%,
-    transparent 40%,
-    var(--live-gray-shimmer-edge) 47%,
-    var(--paper) 50%,
-    var(--live-gray-shimmer-edge) 53%,
-    transparent 60%,
-    transparent 100%
-  );
-  /* (no background-clip / color: transparent — the overlay is a
-     plain gradient that mix-blend-mode: lighten uses to whiten the
-     row text in place, instead of trying to clip to the ::after's
-     own (empty) text glyphs) */
-  mix-blend-mode: lighten;
+  color: transparent;
+  font: inherit;
+  letter-spacing: inherit;
+  line-height: inherit;
+  text-align: inherit;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background-image: var(--live-gray-shimmer-gradient);
+  background-repeat: no-repeat;
+  background-size: 260% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
   animation: live-gray-shimmer 4.8s linear infinite;
   z-index: 1;
 }
 
+.process-surface-row.is-live-gray .process-surface-summary-line::after {
+  content: attr(aria-label);
+}
+
+.turn-reasoning-summary-text.is-live-gray {
+  display: inline-grid;
+  flex-grow: 0;
+}
+
+.turn-reasoning-summary-text.is-live-gray + .turn-reasoning-chevron {
+  margin-inline-start: auto;
+}
+
 :root[data-renderer-hidden] .turn-progress.in_progress .turn-progress-title,
 :root[data-renderer-hidden] .turn-process-live-dot,
-:root[data-renderer-hidden] .process-surface-row.is-live-gray::after,
+:root[data-renderer-hidden] .process-surface-row.is-live-gray .process-surface-summary-line::after,
 :root[data-renderer-hidden] .turn-reasoning-summary-text.is-live-gray::after,
-:root[data-renderer-hidden] .turn-process-preview.is-live::after,
+:root[data-renderer-hidden] .turn-process-preview.is-live .turn-process-preview-text::after,
 :root[data-renderer-hidden] .live-progress-chip::after,
 :root[data-renderer-hidden] .wuu-launch-glass::after,
 :root[data-renderer-hidden] .wuu-launch-mark::after,
@@ -2417,12 +2432,11 @@
     display: none;
   }
 
-  .process-surface-row.is-live-gray::after,
+  .process-surface-row.is-live-gray .process-surface-summary-line::after,
   .turn-reasoning-summary-text.is-live-gray::after,
-  .turn-process-preview.is-live::after,
+  .turn-process-preview.is-live .turn-process-preview-text::after,
   .live-progress-chip::after {
-    animation: none;
-    transform: translateX(50%);
+    display: none;
   }
 }
 
@@ -2455,6 +2469,15 @@
   gap: var(--conversation-prose-block-gap, 10px);
   padding: 4px 0 2px 20px;
   color: var(--wuu-ink-soft);
+  /* One shared height bound for the whole expanded fold: the tool trail
+   * and the reasoning block both live here, and either can outgrow a
+   * viewport in busy turns. Cap the combined area at 50vh and scroll it
+   * as a single container so an open fold can never push the
+   * conversation past one screen of activity. */
+  max-height: 50vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
 
 .process-surface-tool-list {
@@ -2463,17 +2486,6 @@
 
 .process-surface-reasoning-list {
   min-width: 0;
-}
-
-.process-surface-reasoning-scroll {
-  display: flex;
-  max-height: 50vh;
-  min-width: 0;
-  flex-direction: column;
-  gap: var(--conversation-prose-block-gap, 10px);
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  scrollbar-gutter: stable;
 }
 
 .process-surface-reasoning-item {
@@ -2550,7 +2562,7 @@
    * The grid track must shrink with the parent — default `none` sizes
    * each track to the widest item's max-content, so a list item with a
    * long unbreakable token (`internal/appserver/turn_handlers.go:2452`,
-   * `<subagent_notification>`, etc.) pushes the whole list past the
+   * structured payloads, etc.) pushes the whole list past the
    * surrounding bubble / turn-process card. `minmax(0, 1fr)` lets the
    * track go down to 0 and up to the available 1fr, and `min-width: 0`
    * lets the grid container itself shrink inside the flex column it
@@ -2672,7 +2684,7 @@
 
 .rich-file-link:focus-visible {
   border-radius: 3px;
-  outline: 2px solid color-mix(in srgb, var(--rich-link-color) 45%, transparent);
+  outline: 2px solid var(--wuu-color-focus, color-mix(in srgb, var(--rich-link-color) 45%, transparent));
   outline-offset: 2px;
 }
 
@@ -2809,7 +2821,7 @@
 .rich-code-block {
   margin: 8px 0;
   background: var(--rich-code-surface-bg);
-  border: 1px solid var(--ink-overlay-6);
+  border: 1px solid var(--wuu-color-border-subtle, var(--ink-overlay-6));
   border-radius: var(--radius-sm);
   overflow: hidden;
 }
@@ -3360,7 +3372,7 @@ pre {
   border-bottom: 1px solid var(--surface-3);
   background: var(--surface-1);
   color: var(--pre-text-color);
-  font-family: "SFMono-Regular", Consolas, monospace;
+  font-family: var(--wuu-font-family-mono, var(--font-mono, "SFMono-Regular", Consolas, monospace));
   font-size: var(--font-sm);
   line-height: 1.5;
   white-space: pre-wrap;

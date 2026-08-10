@@ -207,22 +207,125 @@ describe("isStateActiveThreadRunning with a background agent", () => {
   });
 });
 
-function handoffText(): string {
-  return JSON.stringify({
-    author: "/root/helpme_recovery",
-    recipient: "/root",
-    content: `<subagent_notification>\n${JSON.stringify({
-      agent_path: "/root/helpme_recovery",
-      status: {
-        type: "agent_result",
-        agent_id: "worker-1",
-        task_name: "helpme_recovery",
-        status: "completed"
-      }
-    })}\n</subagent_notification>`,
-    trigger_turn: true
+describe("subagent session state must not leak across tabs", () => {
+  const context: RuntimeContext = {
+    kind: "project",
+    project_id: "project-1",
+    cwd: "/repo",
+  };
+
+  function threadWithRunningTurn(id: string): Thread {
+    return {
+      ...threadWithUserTexts([`prompt for ${id}`]),
+      id,
+      status: "in_progress" as const,
+      turns: [
+        {
+          id: `${id}-turn-running`,
+          items_view: "full",
+          status: "in_progress" as const,
+          items: [],
+        },
+      ],
+    } as unknown as Thread;
+  }
+
+  it("keeps the active thread running when a background session completes its turn", () => {
+    const active = threadWithRunningTurn("thread-a");
+    const background = {
+      ...threadWithRunningTurn("thread-child"),
+      read_only: true as const,
+    };
+    const state = {
+      ...initialState,
+      activeContext: context,
+      thread: active,
+      sessionTabs: [createThreadSessionTab(active, context)],
+      activeSessionTabID: threadSessionTabID(active.id),
+      threads: [active, background],
+      running: true,
+      status: "running",
+    };
+
+    const next = reduceServerEvent(state, {
+      kind: "notification",
+      workdir: "/repo",
+      message: {
+        method: "turn/completed",
+        params: {
+          thread_id: background.id,
+          turn: {
+            id: `${background.id}-turn-running`,
+            items_view: "full",
+            status: "completed",
+            items: [],
+          },
+        },
+      },
+    });
+
+    expect(next.running).toBe(true);
+    expect(next.status).toBe("running");
+    expect(
+      next.threads.find((thread) => thread.id === background.id)?.turns.at(-1)
+        ?.status,
+    ).toBe("completed");
   });
-}
+
+  it("does not auto-activate a read-only subtask thread into an empty pane", () => {
+    const draft = createDraftSessionTab("draft:new", context);
+    const child = {
+      ...threadWithRunningTurn("thread-child"),
+      read_only: true as const,
+    };
+    const state = {
+      ...initialState,
+      activeContext: context,
+      thread: undefined,
+      sessionTabs: [draft],
+      activeSessionTabID: draft.id,
+      threads: [],
+      allowThreadAutoActivation: true,
+      running: false,
+    };
+
+    const next = reduceServerEvent(state, {
+      kind: "notification",
+      workdir: "/repo",
+      message: { method: "thread/started", params: { thread: child } },
+    });
+
+    expect(next.thread).toBeUndefined();
+    expect(next.threads.map((thread) => thread.id)).toContain(child.id);
+  });
+
+  it("re-derives running from the thread that auto-activates into an empty pane", () => {
+    const draft = createDraftSessionTab("draft:new", context);
+    const idle = threadWithUserTexts(["a normal conversation"]);
+    const state = {
+      ...initialState,
+      activeContext: context,
+      thread: undefined,
+      sessionTabs: [draft],
+      activeSessionTabID: draft.id,
+      threads: [],
+      allowThreadAutoActivation: true,
+      // Stale global flag set by another session's turn.
+      running: true,
+      status: "running",
+    };
+
+    const next = reduceServerEvent(state, {
+      kind: "notification",
+      workdir: "/repo",
+      message: { method: "thread/started", params: { thread: idle } },
+    });
+
+    expect(next.thread?.id).toBe(idle.id);
+    expect(next.running).toBe(false);
+    expect(next.status).toBe("ready");
+  });
+});
 
 function processNotificationText(): string {
   return '<process_notification>{"process_id":"proc-1","status":"completed"}</process_notification>';
@@ -256,52 +359,6 @@ function threadWithUserTexts(texts: string[]): Thread {
 }
 
 describe("AppState protocol normalization", () => {
-  it("seeds a running child from a completed spawn item before agent updates arrive", () => {
-    const thread = threadWithUserTexts(["delegate"]);
-    const next = reduceServerEvent(
-      {
-        ...initialState,
-        activeContext: { kind: "no_project", cwd: "/repo" },
-        thread,
-        threads: [thread],
-      },
-      {
-        kind: "notification",
-        workdir: "/repo",
-        message: {
-          method: "item/completed",
-          params: {
-            thread_id: thread.id,
-            turn_id: "turn-1",
-            item: {
-              id: "spawn-1",
-              type: "collab_agent_tool_call",
-              name: "spawn_agent",
-              status: "completed",
-              result: JSON.stringify({
-                agent_id: "worker-1",
-                task_name: "review_auth",
-                agent_path: "/root/review_auth",
-                status: "running",
-              }),
-            },
-          },
-        },
-      },
-    );
-
-    expect(next.thread?.child_agents).toEqual([
-      expect.objectContaining({
-        id: "worker-1",
-        task_name: "review_auth",
-        status: "running",
-        parent_id: thread.id,
-      }),
-    ]);
-    expect(isStateActiveThreadRunning(next)).toBe(false);
-    expect(isThreadExecuting(next.thread)).toBe(true);
-  });
-
   it("keeps rendering when an older core starts an empty turn with null items", () => {
     const thread = threadWithUserTexts(["continue"]);
     const next = reduceServerEvent(
@@ -453,10 +510,13 @@ describe("AppState server requests", () => {
 });
 
 describe("queryTextsForThread", () => {
-  it("skips internal agent handoff messages", () => {
-    const thread = threadWithUserTexts([handoffText(), "真正的用户问题"]);
+  it("keeps generated query summaries in the visible query history", () => {
+    const thread = threadWithUserTexts(["子任务已更新", "真正的用户问题"]);
+    thread.turns[0].items[0].read_only = true;
+    thread.turns[0].items[0].origin = "plugin";
+    thread.turns[0].items[0].presentation_kind = "query_bubble";
 
-    expect(queryTextsForThread(thread)).toEqual(["真正的用户问题"]);
+    expect(queryTextsForThread(thread)).toEqual(["子任务已更新", "真正的用户问题"]);
   });
 
   it("skips named and legacy process notifications", () => {
@@ -2868,7 +2928,12 @@ describe("activePlanUpdateForThread", () => {
       id: "turn-1-item-1",
       type: "tool_call",
       status: "completed",
-      name: "update_plan",
+      name: "plugin_plan_update_plan_abc123",
+      display: {
+        kind: "plan",
+        text: "Updating plan",
+        capability: "plan",
+      },
       arguments: JSON.stringify({
         plan: [
           { step: "定位问题", status: "completed" },

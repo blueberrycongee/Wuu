@@ -16,15 +16,14 @@ func TestAllCapabilitiesReturnsStableClosedSet(t *testing.T) {
 	}
 	// The product spec calls out at least file.read, file.edit,
 	// search.grep, search.glob, command.bash, command.background,
-	// web.fetch, web.search, task.spawn, memory, plan. All of them
+	// web.fetch, web.search, and plan. All of them
 	// must be in the closed set.
 	mustHave := []Capability{
 		CapabilityFileRead, CapabilityFileEdit,
 		CapabilitySearchGrep, CapabilitySearchGlob,
 		CapabilityCommandBash, CapabilityCommandBackground,
 		CapabilityWebFetch, CapabilityWebSearch,
-		CapabilityTaskSpawn,
-		CapabilityMemorySession, CapabilityPlan,
+		CapabilityPlan,
 	}
 	for _, c := range mustHave {
 		if _, ok := seen[c]; !ok {

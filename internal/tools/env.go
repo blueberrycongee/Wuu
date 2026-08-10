@@ -13,7 +13,6 @@ import (
 
 	"github.com/blueberrycongee/wuu/internal/agentcontrol"
 	"github.com/blueberrycongee/wuu/internal/agentthread"
-	"github.com/blueberrycongee/wuu/internal/automation"
 	"github.com/blueberrycongee/wuu/internal/capability"
 	"github.com/blueberrycongee/wuu/internal/channels"
 	proc "github.com/blueberrycongee/wuu/internal/process"
@@ -256,7 +255,6 @@ type Env struct {
 	gitAttributionShell  gitAttributionShellState
 	ProcessMgr           *proc.Manager
 	AgentControl         *agentcontrol.AgentControl
-	AutomationManager    *automation.Manager
 	ChatAgent            *channels.AgentClient
 	// BrowserBridge routes the browser tool's actions to the desktop host that
 	// owns the hidden WebContentsView + CDP session. Nil means no embedded
@@ -284,17 +282,12 @@ type Env struct {
 	// modifies a file. Enables FileChanged hook dispatch without
 	// coupling the tools package to the hooks package.
 	OnFileChanged func(absPath string)
-	// OnPlanUpdated is called after update_plan successfully stores a
-	// new snapshot. Consumers can bridge it to runtime events or UI
-	// notifications without coupling the plan tool to either layer.
-	OnPlanUpdated func(snapshot PlanSnapshot)
 	// OnSessionWorkspaceChanged persists and broadcasts an explicit main-agent
 	// workspace move before subsequent tools start resolving paths there.
 	OnSessionWorkspaceChanged func(root string) error
 
 	readState *readFileState
 	testState testRunState
-	planState planState
 	webState  webEvidenceState
 
 	toolTelemetry toolTelemetry
@@ -516,13 +509,6 @@ func (e *Env) ResolvePath(input string) (string, error) {
 		return "", fmt.Errorf("resolve path: %w", err)
 	}
 	if e.BypassToolHardProtections() {
-		return resolved, nil
-	}
-	// Agent's own runtime metadata (statepath.Home) is allowed when the
-	// boundary permits mutations. Read-only mode keeps the gate; tools
-	// that go through this path without AllowMutations still see a denial
-	// for paths under the agent's runtime directory.
-	if e.AllowMutations && isAgentRuntimeMetadataPath(resolved) {
 		return resolved, nil
 	}
 	if len(e.FileScopeRoots) > 0 {
@@ -894,25 +880,4 @@ func (e *Env) ProcessSkillBody(ctx context.Context, skill skills.Skill, argument
 		Shell:            skill.Shell,
 		AllowInlineShell: false,
 	})
-}
-
-// OrchestrationStateDir returns the state root for user-visible orchestration
-// artifacts. Interactive turns bind tools to a SessionID, so their Goals live
-// with that conversation. Headless or workspace-level tools without a SessionID
-// keep using workspace state.
-func (e *Env) OrchestrationStateDir() (string, error) {
-	if e == nil {
-		return "", fmt.Errorf("tool environment is required")
-	}
-	if sessionID := strings.TrimSpace(e.SessionID); sessionID != "" {
-		if sessionDir := strings.TrimSpace(e.SessionDir); sessionDir != "" {
-			return sessionDir, nil
-		}
-		stateDir, err := e.WorkspaceStateDir()
-		if err != nil {
-			return "", err
-		}
-		return statepath.SessionArtifactDir(stateDir, sessionID), nil
-	}
-	return e.WorkspaceStateDir()
 }

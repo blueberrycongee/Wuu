@@ -16,38 +16,25 @@ import (
 	"github.com/blueberrycongee/wuu/internal/pluginsettings"
 )
 
-var productionPluginHostServices = []pluginhost.HostServiceMethod{
-	pluginhost.HostServiceStorageGet,
-	pluginhost.HostServiceStorageSet,
-	pluginhost.HostServiceStorageDelete,
-	pluginhost.HostServiceStorageKeys,
-	pluginhost.HostServiceStorageCompareExchange,
-	pluginhost.HostServiceSettingsGet,
-	pluginhost.HostServiceSettingsList,
-	pluginhost.HostServiceChildSessionRequest,
-	pluginhost.HostServiceSessionCreate,
-	pluginhost.HostServiceSessionSend,
-}
-
-type childSessionRequestHandler func(context.Context, pluginhost.ChildSessionRequestParams) (json.RawMessage, error)
+var productionPluginHostServices = pluginhost.AllHostServices()
 
 // pluginHostServices is bound to exactly one installed plugin generation. It
 // never accepts a caller-supplied plugin ID or filesystem path: ownership and
 // roots are captured from the validated plugin inventory at activation time.
 type pluginHostServices struct {
-	mu                  sync.RWMutex
-	active              bool
-	pluginID            string
-	subjectID           string
-	fingerprint         string
-	projectRoot         string
-	wuuHome             string
-	settings            map[string]pluginpkg.SettingDefinition
-	childSessionRequest childSessionRequestHandler
-	turnRouter          *PluginSessionRouter
+	mu              sync.RWMutex
+	active          bool
+	pluginID        string
+	subjectID       string
+	fingerprint     string
+	projectRoot     string
+	wuuHome         string
+	settings        map[string]pluginpkg.SettingDefinition
+	turnRouter      *PluginSessionRouter
+	serviceRegistry *pluginhost.ServiceRegistry
 }
 
-func newPluginHostServices(item pluginpkg.Plugin, projectRoot, wuuHome string, turnRouter *PluginSessionRouter, childSession ...childSessionRequestHandler) *pluginHostServices {
+func newPluginHostServices(item pluginpkg.Plugin, projectRoot, wuuHome string, turnRouter *PluginSessionRouter) *pluginHostServices {
 	settings := make(map[string]pluginpkg.SettingDefinition, len(item.Settings))
 	for key, definition := range item.Settings {
 		settings[key] = definition
@@ -56,9 +43,6 @@ func newPluginHostServices(item pluginpkg.Plugin, projectRoot, wuuHome string, t
 		active: true, pluginID: item.ID, subjectID: strings.TrimSpace(item.SubjectID),
 		fingerprint: item.Fingerprint, projectRoot: projectRoot, wuuHome: wuuHome,
 		settings: settings, turnRouter: turnRouter,
-	}
-	if len(childSession) != 0 {
-		services.childSessionRequest = childSession[0]
 	}
 	return services
 }
@@ -74,6 +58,32 @@ func (s *pluginHostServices) CloseHostServices() {
 	s.mu.Lock()
 	s.active = false
 	s.mu.Unlock()
+}
+
+// setServiceRegistry binds the generation's service registry after every
+// plugin process of the generation has completed initialize. Calls only flow
+// once the generation is active; the registry enforces that itself.
+func (s *pluginHostServices) setServiceRegistry(registry *pluginhost.ServiceRegistry) {
+	s.mu.Lock()
+	s.serviceRegistry = registry
+	s.mu.Unlock()
+}
+
+// RouteServiceCall implements pluginhost.ServiceRouter: the transport passes
+// the caller identity it authenticated at process start, and every
+// authorization decision belongs to the registry.
+func (s *pluginHostServices) RouteServiceCall(ctx context.Context, pluginID string, params pluginhost.ServiceCallParams) (json.RawMessage, *pluginhost.HostServiceError) {
+	if s == nil {
+		return nil, &pluginhost.HostServiceError{Code: "service_unavailable", Message: "service routing is unavailable"}
+	}
+	s.mu.RLock()
+	active := s.active
+	registry := s.serviceRegistry
+	s.mu.RUnlock()
+	if !active || registry == nil {
+		return nil, &pluginhost.HostServiceError{Code: "service_unavailable", Message: "service routing is unavailable for this plugin generation"}
+	}
+	return registry.Call(ctx, pluginID, params)
 }
 
 func (s *pluginHostServices) HandleHostService(ctx context.Context, method pluginhost.HostServiceMethod, raw json.RawMessage) (json.RawMessage, error) {
@@ -116,15 +126,32 @@ func (s *pluginHostServices) HandleHostService(ctx context.Context, method plugi
 			return nil, err
 		}
 		return marshalServiceResult(result)
-	case pluginhost.HostServiceChildSessionRequest:
-		if s.childSessionRequest == nil {
-			return nil, serviceError("service_unavailable", "child-session service is unavailable")
+	case pluginhost.HostServiceSessionList:
+		if s.turnRouter == nil {
+			return nil, serviceError("service_unavailable", "session service is unavailable")
 		}
-		var params pluginhost.ChildSessionRequestParams
+		var params pluginhost.SessionListParams
 		if err := decodeServiceParams(raw, &params); err != nil {
 			return nil, err
 		}
-		return s.childSessionRequest(ctx, params)
+		result, err := s.turnRouter.List(ctx, s.pluginID, params)
+		if err != nil {
+			return nil, err
+		}
+		return marshalServiceResult(result)
+	case pluginhost.HostServiceSessionCancel:
+		if s.turnRouter == nil {
+			return nil, serviceError("service_unavailable", "session service is unavailable")
+		}
+		var params pluginhost.SessionCancelParams
+		if err := decodeServiceParams(raw, &params); err != nil {
+			return nil, err
+		}
+		result, err := s.turnRouter.Cancel(ctx, s.pluginID, params)
+		if err != nil {
+			return nil, err
+		}
+		return marshalServiceResult(result)
 	case pluginhost.HostServiceSettingsGet:
 		return s.settingsGet(raw)
 	case pluginhost.HostServiceSettingsList:

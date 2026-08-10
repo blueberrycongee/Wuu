@@ -49,6 +49,11 @@ type TurnRecord struct {
 	StopReason          string              `json:"stop_reason,omitempty"`
 	Truncated           bool                `json:"truncated,omitempty"`
 	HistoryRewritten    bool                `json:"history_rewritten,omitempty"`
+	DriverID            string              `json:"driver_id,omitempty"`
+	DriverVersion       string              `json:"driver_version,omitempty"`
+	DriverContract      int                 `json:"driver_contract,omitempty"`
+	DriverStatus        string              `json:"driver_status,omitempty"`
+	DriverCheckpoint    json.RawMessage     `json:"driver_checkpoint,omitempty"`
 	Error               string              `json:"error,omitempty"`
 }
 

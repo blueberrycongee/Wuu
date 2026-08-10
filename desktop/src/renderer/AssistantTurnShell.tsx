@@ -346,6 +346,7 @@ function TurnProcessFold({
             text={visiblePreview?.text ?? ""}
             live={turn.status === "in_progress"}
             className="turn-process-preview-text"
+            data-text={visiblePreview?.text ?? ""}
           />
         </span>
       ) : null}

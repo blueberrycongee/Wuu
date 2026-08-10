@@ -34,7 +34,7 @@ jobs:
           node-version-file: .node-version
 
       - name: Install dependencies
-        run: npm install --prefix docs-site --no-audit --no-fund
+        run: npm ci --prefix docs-site --no-audit --no-fund
 
       - name: Build site
         run: npm --prefix docs-site run build

@@ -87,8 +87,8 @@
   --wuu-accent: var(--wuu-color-accent, #ff5a26);
   --wuu-accent-press: var(--wuu-color-accent-pressed, #ff6d3f);
 
-  --menu-bg: rgba(30, 33, 37, 0.98);
-  --menu-hover: #2b2f34;
+  --menu-bg: var(--wuu-color-surface-elevated, rgba(30, 33, 37, 0.98));
+  --menu-hover: var(--wuu-color-surface-muted, #2b2f34);
 
   --sidebar-glass-bg: linear-gradient(180deg, rgba(26, 29, 32, 0.94), rgba(20, 22, 24, 0.9));
   --sidebar-glass-border: rgba(228, 232, 235, 0.12);
@@ -145,14 +145,14 @@
   --skill-artwork-neutral-fg: #a5abb0;
   --skill-artwork-official-bg: #292d31;
   --skill-artwork-official-fg: #ffffff;
-  --hljs-keyword: #79b8ff;
-  --hljs-function: #c39ee8;
-  --hljs-string: #7ecb9e;
-  --hljs-number: #d9a86a;
-  --hljs-comment: #6d757d;
-  --hljs-tag: #e39aa0;
-  --hljs-literal: #b0a0e8;
-  --hljs-meta: #98a1a9;
+  --hljs-keyword: var(--wuu-syntax-keyword, #79b8ff);
+  --hljs-function: var(--wuu-syntax-function, #c39ee8);
+  --hljs-string: var(--wuu-syntax-string, #7ecb9e);
+  --hljs-number: var(--wuu-syntax-number, #d9a86a);
+  --hljs-comment: var(--wuu-syntax-comment, #6d757d);
+  --hljs-tag: var(--wuu-syntax-tag, #e39aa0);
+  --hljs-literal: var(--wuu-syntax-literal, #b0a0e8);
+  --hljs-meta: var(--wuu-syntax-meta, #98a1a9);
   --diff-branch-arrow: #565c62;
   --diff-file-text: #dde0e3;
   --diff-status-bg: #232a26;
@@ -205,18 +205,15 @@
   --composer-permission-mode-danger-border: rgba(240, 112, 95, 0.3);
   --composer-permission-mode-danger-bg: #341c18;
   --composer-menu-note-warning-strong: #e2a04a;
+  --composer-accessory-shadow: rgba(0, 0, 0, 0.4);
+  --composer-accessory-shadow-hover: rgba(0, 0, 0, 0.45);
+  --composer-accessory-shadow-expanded: rgba(0, 0, 0, 0.5);
   --composer-context-meter-focus-outline: var(--wuu-color-focus, rgba(160, 168, 175, 0.55));
   --composer-context-meter-tooltip-divider: rgba(228, 232, 235, 0.1);
-  --chat-user-message-bg: #26282b;
+  --chat-user-message-bg: var(--wuu-message-user-background, #26282b);
 
   /* environment.css */
-  /* Plan + dialog text: aligned with the shared ink ladder so the search and
-     dialog stay in the same neutral family as the rest of the chrome.
-     Status colours and the env-tone-* series stay per-tone; only the
-     greens that crept into the structural neutrals collapse onto ink-soft
-     / ink-muted so they read as the same ink both light and dark. */
-  --env-plan-item-text: var(--ink-soft);
-  --env-plan-marker-border: var(--ink-muted);
+  /* Dialog text follows the shared ink ladder. */
   --env-deletions-text: #f0705f;
   --env-archive-confirm-bg: rgba(240, 112, 95, 0.15);
   --env-create-branch-btn-bg: var(--surface-2);
@@ -288,7 +285,7 @@
   --sidebar-glass-overlay-light: rgba(255, 255, 255, 0.02);
   --sidebar-glass-overlay-accent: rgba(209, 220, 211, 0.03);
   --sidebar-glass-overlay-highlight-strong: rgba(255, 255, 255, 0.05);
-  --sidebar-drawer-bg: #1a1d20;
+  --sidebar-drawer-bg: var(--wuu-color-surface-muted, #1a1d20);
   --sidebar-brand-wordmark-color: #e06b4f;
   --sidebar-resizer-hover-bg: var(--ink-overlay-18);
   --sidebar-resizer-hover-ring: rgba(0, 0, 0, 0.4);
@@ -344,16 +341,25 @@
   --activity-detail-error-border: #7a463f;
   --diff-insert-color: #3fb970;
   --diff-delete-color: #ef6a5e;
-  --live-gray-shimmer-edge: rgba(255, 255, 255, 0.35);
-  --rich-link-color: #60a5fa;
-  --rich-link-hover-color: #79b8ff;
-  --rich-code-surface-bg: #26292d;
+  --live-gray-shimmer-gradient: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(198, 202, 205, 0) 34%,
+    rgba(198, 202, 205, 0.2) 44%,
+    rgba(198, 202, 205, 0.42) 50%,
+    rgba(198, 202, 205, 0.2) 56%,
+    rgba(198, 202, 205, 0) 66%,
+    transparent 100%
+  );
+  --rich-link-color: var(--wuu-color-link, #60a5fa);
+  --rich-link-hover-color: var(--wuu-color-link-hover, #79b8ff);
+  --rich-code-surface-bg: var(--wuu-color-surface-muted, #26292d);
   --surface-chip: var(--surface-4);
   --fork-worktree-copy-bg: rgba(38, 42, 46, 0.9);
   --fork-worktree-focus-ring: rgba(88, 166, 255, 0.3);
   --rich-blockquote-color: #a3a9ae;
   --rich-rule-color: #33383d;
-  --pre-text-color: #ccd1d5;
+  --pre-text-color: var(--wuu-color-text, #ccd1d5);
   --turn-notice-auth-color: #e0956a;
   --system-line-marker-color: #565c62;
   --empty-home-action-border: #33383d;
@@ -371,7 +377,7 @@
   --turn-source-icon-hover-shadow: rgba(0, 0, 0, 0.45);
 
   /* conversation-shell.css */
-  --shell-process-control-color: var(--gray-400);
+  --shell-process-control-color: var(--wuu-color-text-muted, var(--gray-400));
   --shell-session-tab-hover-border: rgba(228, 232, 235, 0.16);
   --shell-session-tab-active-border: rgba(228, 232, 235, 0.22);
   --shell-session-tab-main-focus-shadow: rgba(228, 232, 235, 0.25);
@@ -385,18 +391,25 @@
   --shell-run-debug-panel-shadow-2: rgba(0, 0, 0, 0.35);
   --shell-run-debug-phase-running-color: #7dbba5;
   --shell-run-debug-empty-border: #33383d;
-  --shell-jump-pill-bg: rgba(40, 44, 50, 0.5);
-  --shell-jump-pill-border: rgba(255, 255, 255, 0.1);
-  --shell-jump-pill-top-highlight: rgba(255, 255, 255, 0.22);
-  --shell-jump-pill-shadow: rgba(0, 0, 0, 0.28);
-  --shell-jump-pill-contact-shadow: rgba(0, 0, 0, 0.12);
-  --shell-jump-pill-hover-bg: rgba(50, 54, 60, 0.65);
-  --shell-jump-pill-hover-border: rgba(255, 255, 255, 0.18);
-  --shell-jump-pill-hover-shadow: rgba(0, 0, 0, 0.35);
-  --shell-jump-pill-focus-shadow-1: rgba(255, 255, 255, 0.22);
-  --shell-jump-pill-focus-shadow-2: rgba(0, 0, 0, 0.3);
-  --shell-jump-progress-step-bg: rgba(228, 232, 235, 0.06);
-  --shell-jump-progress-step-in-progress-bg: rgba(228, 232, 235, 0.22);
+  /* Dark floating glass is rim-defined, not shadow-defined: on dark paper
+     a black drop shadow barely registers, so the silhouette comes from a
+     low-alpha edge sampled from the (light) text color, plus a deeper
+     shadow. Text-color ingredients keep the recipe palette-adaptive for
+     extension themes — any dark-based theme's text color is by definition
+     its high-contrast light color. The specular highlight drops to 7% —
+     it is a thin capsule rim (35% of 34px ≈ 12px), not a surface wash. */
+  --conversation-floating-surface-bg: color-mix(in srgb, var(--wuu-color-surface-elevated, #282c32) 72%, transparent);
+  --conversation-floating-surface-border: color-mix(in srgb, var(--wuu-color-text, #e4e8eb) 14%, transparent);
+  --conversation-floating-surface-highlight: color-mix(in srgb, var(--wuu-color-text, #e4e8eb) 7%, transparent);
+  --conversation-floating-surface-hover-bg: color-mix(in srgb, var(--wuu-color-surface-elevated, #32363c) 88%, transparent);
+  --conversation-floating-surface-hover-border: color-mix(in srgb, var(--wuu-color-text, #e4e8eb) 22%, transparent);
+  --conversation-floating-surface-focus: color-mix(in srgb, var(--wuu-color-focus, #fff) 38%, transparent);
+  --shell-jump-pill-shadow: rgba(0, 0, 0, 0.5);
+  --shell-jump-pill-contact-shadow: rgba(0, 0, 0, 0.35);
+  --shell-jump-pill-hover-shadow: rgba(0, 0, 0, 0.55);
+  --shell-jump-pill-focus-shadow-2: rgba(0, 0, 0, 0.45);
+  --shell-jump-progress-step-bg: color-mix(in srgb, var(--wuu-color-text, #e4e8eb) 6%, transparent);
+  --shell-jump-progress-step-in-progress-bg: color-mix(in srgb, var(--wuu-color-text, #e4e8eb) 20%, transparent);
   --shell-turn-rail-bar-bg: rgba(174, 178, 186, 0.4);
 
   color-scheme: dark;

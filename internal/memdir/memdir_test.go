@@ -8,22 +8,6 @@ import (
 	"testing"
 )
 
-func TestNotebookPaths(t *testing.T) {
-	if got := UserMemdir("/home/u/.wuu"); got != filepath.Join("/home/u/.wuu", "memory") {
-		t.Fatalf("UserMemdir = %q", got)
-	}
-	if got := UserMemdir("  "); got != "" {
-		t.Fatalf("UserMemdir empty home = %q, want empty", got)
-	}
-	want := filepath.Join("/home/u/.wuu", "participants", "p-1", "memory")
-	if got := ParticipantMemdir("/home/u/.wuu", "p-1"); got != want {
-		t.Fatalf("ParticipantMemdir = %q, want %q", got, want)
-	}
-	if got := ParticipantMemdir("/home/u/.wuu", " "); got != "" {
-		t.Fatalf("ParticipantMemdir empty id = %q, want empty", got)
-	}
-}
-
 func TestEnsureDirCreatesAndIsIdempotent(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "a", "b", "memory")
 	if err := EnsureDir(dir); err != nil {
@@ -172,11 +156,11 @@ func TestReadIndexReplacesInvisibleUnicodeLines(t *testing.T) {
 	}
 }
 
-func TestTeachingVariants(t *testing.T) {
-	dir := "/home/u/.wuu/memory"
-	session := SessionTeaching(dir)
+func TestIdentityTeaching(t *testing.T) {
+	dir := "/home/u/.wuu/channels/agents/agent-1/memory"
+	teaching := IdentityTeaching(dir)
 	for _, want := range []string{
-		"# Memory directory",
+		"# Identity notebook",
 		"`" + dir + "`",
 		dirExistsGuidance,
 		"## Types of memory",
@@ -188,43 +172,11 @@ func TestTeachingVariants(t *testing.T) {
 		"## What NOT to save",
 		"even when the user explicitly asks you to save",
 	} {
-		if !strings.Contains(session, want) {
-			t.Errorf("SessionTeaching missing %q", want)
+		if !strings.Contains(teaching, want) {
+			t.Errorf("IdentityTeaching missing %q", want)
 		}
 	}
-	if got := len(strings.Split(session, "\n")); got > 45 {
-		t.Errorf("SessionTeaching is %d lines; keep it ~40 or fewer", got)
-	}
-
-	namedAgent := NamedAgentTeaching("/home/u/.wuu/participants/p-1/memory")
-	for _, want := range []string{
-		"## Memory notebook",
-		"`/home/u/.wuu/participants/p-1/memory`",
-		dirExistsGuidance,
-		"### Types of memory",
-		"### How to save a memory",
-		"### What NOT to save",
-	} {
-		if !strings.Contains(namedAgent, want) {
-			t.Errorf("NamedAgentTeaching missing %q", want)
-		}
-	}
-	if strings.Contains(namedAgent, "\n## Types of memory") {
-		t.Errorf("NamedAgentTeaching must demote ## headings to ###")
-	}
-
-	worker := WorkerTeaching(dir)
-	for _, want := range []string{"read-only", "not in your writable file scope", "`" + dir + "`"} {
-		if !strings.Contains(worker, want) {
-			t.Errorf("WorkerTeaching missing %q", want)
-		}
-	}
-	if strings.Contains(worker, "two-step") {
-		t.Errorf("WorkerTeaching must not teach saving")
-	}
-
-	notice := UserIndexNotice()
-	if !strings.Contains(notice, "read-only") || !strings.Contains(notice, "identity notebook") {
-		t.Errorf("UserIndexNotice missing read-only guidance: %q", notice)
+	if got := len(strings.Split(teaching, "\n")); got > 45 {
+		t.Errorf("IdentityTeaching is %d lines; keep it ~40 or fewer", got)
 	}
 }

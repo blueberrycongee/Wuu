@@ -83,7 +83,7 @@ function pendingSpawnTurn(): Turn {
       ...turn.items.slice(0, 1),
       {
         id: "spawn-1",
-        type: "collab_agent_tool_call",
+        type: "tool_call",
         name: "spawn_agent",
         status: "completed",
         result: JSON.stringify({

@@ -264,11 +264,18 @@ func newHandshakeTransport(initializedErr error) *handshakeTransport {
 }
 
 func (t *handshakeTransport) Send(ctx context.Context, req Request) error {
+	if req.Method == "server/discover" {
+		t.mu.Lock()
+		t.sent = append(t.sent, req)
+		t.mu.Unlock()
+		t.inbox <- Response{JSONRPC: "2.0", ID: req.ID, Error: &RPCError{Code: -32601, Message: "method not found"}}
+		return nil
+	}
 	if req.Method == "initialize" {
 		t.mu.Lock()
 		t.sent = append(t.sent, req)
 		t.mu.Unlock()
-		result, _ := json.Marshal(InitializeResult{ProtocolVersion: PreferredProtocolVersion})
+		result, _ := json.Marshal(InitializeResult{ProtocolVersion: PreferredLegacyProtocolVersion})
 		t.inbox <- Response{JSONRPC: "2.0", ID: req.ID, Result: result}
 		return nil
 	}

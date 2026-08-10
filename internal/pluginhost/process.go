@@ -29,20 +29,28 @@ const (
 )
 
 type ProcessConfig struct {
-	ID          string
-	Command     string
-	Args        []string
-	Env         map[string]string
-	PluginRoot  string
-	ProjectRoot string
-	WuuHome     string
-	Timeout     time.Duration
+	ID                string
+	Command           string
+	Args              []string
+	Env               map[string]string
+	PluginRoot        string
+	ProjectRoot       string
+	WuuHome           string
+	WorkspaceStateDir string
+	Timeout           time.Duration
 	// HostServiceHandler is the live dispatcher for Plugin -> Host calls.
 	HostServiceHandler HostServiceHandler
+	// ServiceRouter routes validated service.call frames into the active
+	// generation's service registry. When nil, service.call requests are
+	// rejected as unavailable.
+	ServiceRouter ServiceRouter
 	// SupportedHostServices is an optional assertion about HostServiceHandler's
 	// declaration. When set it must match exactly; names alone never enable a
 	// service. The handler declaration is what is advertised on the wire.
 	SupportedHostServices []HostServiceMethod
+	// PrepareOnly leaves a lifecycle-aware runtime initialized but inactive.
+	// The owning generation activates it after its durable commit succeeds.
+	PrepareOnly bool
 }
 
 type rpcRequest struct {
@@ -58,34 +66,46 @@ type rpcResponse struct {
 }
 
 type rpcError struct {
+	Code    string `json:"code,omitempty"`
 	Message string `json:"message"`
 }
 
+type remoteCallError struct {
+	code    string
+	message string
+}
+
+func (e *remoteCallError) Error() string { return e.message }
+
 type ProcessClient struct {
-	config        ProcessConfig
-	cmd           *exec.Cmd
-	stdin         io.WriteCloser
-	scanner       *bufio.Scanner
-	seq           atomic.Uint64
-	writeMu       sync.Mutex
-	pendingMu     sync.Mutex
-	pending       map[string]chan rpcResponse
-	readerDone    chan struct{}
-	readerErrMu   sync.Mutex
-	readerErr     error
-	processCtx    context.Context
-	processCancel context.CancelFunc
-	mu            sync.RWMutex
-	status        Status
-	tools         []ToolRegistration
-	protocol      int
-	capabilities  []CapabilityDescriptor
-	negotiated    map[HostServiceMethod]struct{}
-	stderr        lockedBuffer
-	stopMu        sync.Mutex
-	stopped       bool
-	stopErr       error
-	serviceClose  sync.Once
+	config             ProcessConfig
+	cmd                *exec.Cmd
+	stdin              io.WriteCloser
+	scanner            *bufio.Scanner
+	seq                atomic.Uint64
+	writeMu            sync.Mutex
+	pendingMu          sync.Mutex
+	pending            map[string]chan rpcResponse
+	readerDone         chan struct{}
+	readerErrMu        sync.Mutex
+	readerErr          error
+	processCtx         context.Context
+	processCancel      context.CancelFunc
+	mu                 sync.RWMutex
+	status             Status
+	tools              []ToolRegistration
+	protocol           int
+	capabilities       []CapabilityDescriptor
+	providedServices   []ServiceDescriptor
+	requiredServices   []ServiceRequirement
+	negotiated         map[HostServiceMethod]struct{}
+	activationServices map[HostServiceMethod]struct{}
+	lifecycleVersion   int
+	stderr             lockedBuffer
+	stopMu             sync.Mutex
+	stopped            bool
+	stopErr            error
+	serviceClose       sync.Once
 }
 
 func Start(ctx context.Context, config ProcessConfig) (*ProcessClient, error) {
@@ -123,6 +143,9 @@ func Start(ctx context.Context, config ProcessConfig) (*ProcessClient, error) {
 		readerDone: make(chan struct{}),
 	}
 	client.processCtx, client.processCancel = context.WithCancel(context.Background())
+	// Initialization is a prepare phase. Only read-only services are available
+	// until the generation and its durable policy commit.
+	client.negotiated = preflightHostServices(config.SupportedHostServices)
 	scanner := bufio.NewScanner(stdout)
 	scanner.Buffer(make([]byte, 0, 4096), maxResponseLineSize)
 	client.scanner = scanner
@@ -137,30 +160,20 @@ func Start(ctx context.Context, config ProcessConfig) (*ProcessClient, error) {
 	var initialized CapabilityInitializeResult
 	if err := client.call(initCtx, "initialize", CapabilityInitializeParams{
 		InitializeParams: InitializeParams{
-			ProtocolVersion: ProtocolVersion,
-			PluginID:        config.ID,
-			PluginRoot:      config.PluginRoot,
-			ProjectRoot:     config.ProjectRoot,
-			WuuHome:         config.WuuHome,
+			ProtocolVersion:   ProtocolVersion,
+			PluginID:          config.ID,
+			PluginRoot:        config.PluginRoot,
+			ProjectRoot:       config.ProjectRoot,
+			WuuHome:           config.WuuHome,
+			WorkspaceStateDir: config.WorkspaceStateDir,
 		},
 		CapabilityProtocolVersion: CapabilityProtocolVersion,
 		SupportedHostServices:     append([]HostServiceMethod(nil), config.SupportedHostServices...),
+		LifecycleVersion:          RuntimeLifecycleVersion,
 	}, &initialized); err != nil {
 		_ = client.stopProcess()
 		client.setFailure(err)
 		return nil, fmt.Errorf("initialize plugin %q: %w", config.ID, err)
-	}
-	seen := make(map[Hook]struct{}, len(initialized.Hooks))
-	for _, hook := range initialized.Hooks {
-		if !IsValidHook(hook) {
-			_ = client.stopProcess()
-			return nil, fmt.Errorf("initialize plugin %q: unknown hook %q", config.ID, hook)
-		}
-		if _, ok := seen[hook]; ok {
-			_ = client.stopProcess()
-			return nil, fmt.Errorf("initialize plugin %q: duplicate hook %q", config.ID, hook)
-		}
-		seen[hook] = struct{}{}
 	}
 	if err := validateToolRegistrations(initialized.Tools); err != nil {
 		_ = client.stopProcess()
@@ -173,9 +186,14 @@ func Start(ctx context.Context, config ProcessConfig) (*ProcessClient, error) {
 		client.setFailure(negotiationErr)
 		return nil, fmt.Errorf("initialize plugin %q: invalid capability negotiation: %w", config.ID, negotiationErr)
 	}
+	if config.PrepareOnly && initialized.LifecycleVersion != RuntimeLifecycleVersion {
+		_ = client.stopProcess()
+		err := fmt.Errorf("runtime lifecycle version %d is required for generation preflight", RuntimeLifecycleVersion)
+		client.setFailure(err)
+		return nil, fmt.Errorf("initialize plugin %q: %w", config.ID, err)
+	}
 	client.mu.Lock()
-	client.status.State = StateActive
-	client.status.Hooks = append([]Hook(nil), initialized.Hooks...)
+	client.status.State = StatePrepared
 	client.tools = make([]ToolRegistration, len(initialized.Tools))
 	for index, registration := range initialized.Tools {
 		client.tools[index] = cloneToolRegistration(registration)
@@ -185,19 +203,32 @@ func Start(ctx context.Context, config ProcessConfig) (*ProcessClient, error) {
 		client.protocol = ProtocolVersion
 	}
 	client.capabilities = cloneCapabilityDescriptors(initialized.Capabilities)
-	client.negotiated = negotiatedHostServices(initialized.RequiredHostServices, config.SupportedHostServices)
-	client.status.StartedAt = time.Now().UTC()
+	client.providedServices = cloneServiceDescriptors(initialized.ProvidedServices)
+	client.requiredServices = cloneServiceRequirements(initialized.RequiredServices)
+	client.activationServices = negotiatedHostServices(initialized.RequiredHostServices, config.SupportedHostServices)
+	// A consumer plugin gets the service gateway in its negotiated set for the
+	// active generation; the prepare-phase filter below keeps it closed until
+	// activation. Per-call authorization stays with the registry.
+	if len(client.requiredServices) > 0 {
+		for _, advertised := range config.SupportedHostServices {
+			if advertised == ServiceCallMethod {
+				client.activationServices[ServiceCallMethod] = struct{}{}
+				break
+			}
+		}
+	}
+	client.negotiated = preflightNegotiatedHostServices(client.activationServices)
+	client.lifecycleVersion = initialized.LifecycleVersion
 	client.mu.Unlock()
+	if !config.PrepareOnly {
+		if err := client.Activate(ctx); err != nil {
+			return nil, fmt.Errorf("activate plugin %q: %w", config.ID, err)
+		}
+	}
 	return client, nil
 }
 
 func (c *ProcessClient) ID() string { return c.config.ID }
-
-func (c *ProcessClient) Hooks() []Hook {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return append([]Hook(nil), c.status.Hooks...)
-}
 
 func (c *ProcessClient) Tools() []ToolRegistration {
 	c.mu.RLock()
@@ -221,12 +252,42 @@ func (c *ProcessClient) Capabilities() []CapabilityDescriptor {
 	return cloneCapabilityDescriptors(c.capabilities)
 }
 
+// ProvidedServices returns the service declarations captured during
+// initialize. The registry reads them when the generation is built.
+func (c *ProcessClient) ProvidedServices() []ServiceDescriptor {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return cloneServiceDescriptors(c.providedServices)
+}
+
+// RequiredServices returns the consumer declarations captured during
+// initialize.
+func (c *ProcessClient) RequiredServices() []ServiceRequirement {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return cloneServiceRequirements(c.requiredServices)
+}
+
+// InvokeService delivers one registry-routed call to this provider plugin.
+func (c *ProcessClient) InvokeService(ctx context.Context, params ServiceInvokeParams) (json.RawMessage, error) {
+	var result json.RawMessage
+	if err := c.call(ctx, ServiceInvokeMethod, params, &result); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+// NotifyServiceChanged delivers a best-effort service.changed notification.
+func (c *ProcessClient) NotifyServiceChanged(ctx context.Context, params ServiceChangedParams) error {
+	return c.call(ctx, ServiceChangedMethod, params, nil)
+}
+
 func (c *ProcessClient) InvokeCapability(ctx context.Context, params CapabilityInvokeParams) (CapabilityInvokeResult, error) {
 	callCtx, cancel := context.WithTimeout(ctx, c.config.Timeout)
 	defer cancel()
 	var result CapabilityInvokeResult
 	if err := c.call(callCtx, "capability.invoke", params, &result); err != nil {
-		c.fail(err)
+		c.failFatalCall(err)
 		return CapabilityInvokeResult{}, err
 	}
 	if len(result.Output) == 0 {
@@ -241,20 +302,41 @@ func (c *ProcessClient) InvokeCapability(ctx context.Context, params CapabilityI
 func (c *ProcessClient) Status() Status {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	status := c.status
-	status.Hooks = append([]Hook(nil), status.Hooks...)
-	return status
+	return c.status
 }
 
-func (c *ProcessClient) Invoke(ctx context.Context, params InvokeParams) (InvokeResult, error) {
-	callCtx, cancel := context.WithTimeout(ctx, c.config.Timeout)
-	defer cancel()
-	var result InvokeResult
-	if err := c.call(callCtx, "hook.invoke", params, &result); err != nil {
-		c.fail(err)
-		return InvokeResult{}, err
+// Activate opens the negotiated service set and starts lifecycle-aware
+// background effects. Generation owners call this only after durable commit.
+func (c *ProcessClient) Activate(ctx context.Context) error {
+	if c == nil {
+		return errors.New("plugin process is not initialized")
 	}
-	return result, nil
+	c.mu.Lock()
+	if c.status.State == StateActive {
+		c.mu.Unlock()
+		return nil
+	}
+	if c.status.State != StatePrepared {
+		state := c.status.State
+		c.mu.Unlock()
+		return fmt.Errorf("plugin process cannot activate from state %q", state)
+	}
+	c.negotiated = cloneHostServiceSet(c.activationServices)
+	lifecycleVersion := c.lifecycleVersion
+	c.mu.Unlock()
+	if lifecycleVersion == RuntimeLifecycleVersion {
+		activateCtx, cancel := context.WithTimeout(ctx, c.config.Timeout)
+		defer cancel()
+		if err := c.call(activateCtx, "activate", nil, nil); err != nil {
+			c.fail(err)
+			return err
+		}
+	}
+	c.mu.Lock()
+	c.status.State = StateActive
+	c.status.StartedAt = time.Now().UTC()
+	c.mu.Unlock()
+	return nil
 }
 
 func (c *ProcessClient) ExecuteTool(ctx context.Context, params ToolExecuteParams) (ToolExecuteResult, error) {
@@ -262,7 +344,9 @@ func (c *ProcessClient) ExecuteTool(ctx context.Context, params ToolExecuteParam
 	defer cancel()
 	var result ToolExecuteResult
 	if err := c.call(callCtx, "tool.execute", params, &result); err != nil {
-		c.fail(err)
+		if ctx.Err() == nil {
+			c.failFatalCall(err)
+		}
 		return ToolExecuteResult{}, err
 	}
 	if err := result.Result.Validate(); err != nil {
@@ -320,7 +404,11 @@ func (c *ProcessClient) call(ctx context.Context, method string, params, result 
 	select {
 	case response := <-responseCh:
 		if response.Error != nil {
-			return errors.New(strings.TrimSpace(response.Error.Message))
+			message := strings.TrimSpace(response.Error.Message)
+			if message == "" {
+				message = "plugin call failed"
+			}
+			return &remoteCallError{code: strings.TrimSpace(response.Error.Code), message: message}
 		}
 		if result == nil {
 			return nil
@@ -340,7 +428,17 @@ func (c *ProcessClient) call(ctx context.Context, method string, params, result 
 }
 
 func (c *ProcessClient) readLoop() {
-	defer close(c.readerDone)
+	defer func() {
+		c.stopMu.Lock()
+		stopped := c.stopped
+		c.stopMu.Unlock()
+		if !stopped {
+			err := c.readFailure()
+			_ = c.stopProcess()
+			c.setFailure(err)
+		}
+		close(c.readerDone)
+	}()
 	for c.scanner.Scan() {
 		line := bytes.Clone(c.scanner.Bytes())
 		kind, call, response, err := decodePluginMessage(line)
@@ -491,6 +589,39 @@ func negotiatedHostServices(required []HostServiceDescriptor, supported []HostSe
 	return negotiated
 }
 
+func preflightHostServices(supported []HostServiceMethod) map[HostServiceMethod]struct{} {
+	available := make(map[HostServiceMethod]struct{}, len(supported))
+	for _, service := range supported {
+		available[service] = struct{}{}
+	}
+	return preflightNegotiatedHostServices(available)
+}
+
+func preflightNegotiatedHostServices(negotiated map[HostServiceMethod]struct{}) map[HostServiceMethod]struct{} {
+	readOnly := map[HostServiceMethod]struct{}{
+		HostServiceStorageGet:   {},
+		HostServiceStorageKeys:  {},
+		HostServiceSettingsGet:  {},
+		HostServiceSettingsList: {},
+		HostServiceSessionList:  {},
+	}
+	out := make(map[HostServiceMethod]struct{})
+	for service := range negotiated {
+		if _, ok := readOnly[service]; ok {
+			out[service] = struct{}{}
+		}
+	}
+	return out
+}
+
+func cloneHostServiceSet(source map[HostServiceMethod]struct{}) map[HostServiceMethod]struct{} {
+	out := make(map[HostServiceMethod]struct{}, len(source))
+	for service := range source {
+		out[service] = struct{}{}
+	}
+	return out
+}
+
 func decodePluginMessage(line []byte) (pluginMessageKind, HostServiceCall, rpcResponse, error) {
 	var envelope struct {
 		ID     json.RawMessage `json:"id"`
@@ -545,6 +676,9 @@ func (c *ProcessClient) dispatchHostService(ctx context.Context, call HostServic
 	if !negotiated {
 		return c.rejectHostService(call.ID, "service_not_negotiated", fmt.Sprintf("host service %q was not negotiated", call.Method))
 	}
+	if call.Method == ServiceCallMethod {
+		return c.dispatchServiceCall(ctx, call)
+	}
 	result, err := c.config.HostServiceHandler.HandleHostService(ctx, call.Method, bytes.Clone(call.Params))
 	response := HostServiceResult{ID: call.ID}
 	if err != nil {
@@ -566,6 +700,35 @@ func (c *ProcessClient) dispatchHostService(ctx context.Context, call HostServic
 		} else {
 			response.Result = bytes.Clone(result)
 		}
+	}
+	return c.writeHostServiceResult(response)
+}
+
+// dispatchServiceCall routes a validated service.call frame into the active
+// generation's registry. The negotiated-set check in dispatchHostService has
+// already run; the registry performs per-call authorization.
+func (c *ProcessClient) dispatchServiceCall(ctx context.Context, call HostServiceCall) error {
+	var params ServiceCallParams
+	if err := json.Unmarshal(call.Params, &params); err != nil {
+		return c.rejectHostService(call.ID, "invalid_request", "service.call params must be a JSON object with service and method")
+	}
+	if c.config.ServiceRouter == nil {
+		return c.rejectHostService(call.ID, "service_unavailable", "service routing is unavailable for this plugin process")
+	}
+	result, serviceErr := c.config.ServiceRouter.RouteServiceCall(ctx, c.config.ID, params)
+	response := HostServiceResult{ID: call.ID}
+	if serviceErr != nil {
+		response.Error = &HostServiceError{Code: strings.TrimSpace(serviceErr.Code), Message: strings.TrimSpace(serviceErr.Message)}
+		if response.Error.Code == "" {
+			response.Error.Code = "service_unavailable"
+		}
+		if response.Error.Message == "" {
+			response.Error.Message = "service call failed"
+		}
+	} else if len(result) == 0 || !json.Valid(result) {
+		response.Error = &HostServiceError{Code: "service_unavailable", Message: "service provider returned an invalid result"}
+	} else {
+		response.Result = bytes.Clone(result)
 	}
 	return c.writeHostServiceResult(response)
 }
@@ -626,7 +789,6 @@ func (c *ProcessClient) setFailure(err error) {
 	defer c.mu.Unlock()
 	c.status.State = StateFailed
 	c.status.Error = err.Error()
-	c.status.Hooks = nil
 	c.tools = nil
 	c.capabilities = nil
 }
@@ -634,6 +796,17 @@ func (c *ProcessClient) setFailure(err error) {
 func (c *ProcessClient) fail(err error) {
 	_ = c.stopProcess()
 	c.setFailure(err)
+}
+
+func (c *ProcessClient) failFatalCall(err error) {
+	if err == nil {
+		return
+	}
+	var domainErr *remoteCallError
+	if errors.As(err, &domainErr) {
+		return
+	}
+	c.fail(err)
 }
 
 func (c *ProcessClient) stderrSuffix() string {

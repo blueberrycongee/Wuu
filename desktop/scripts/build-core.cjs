@@ -54,6 +54,7 @@ function main() {
   const target = resolveBuildTarget(process.argv.slice(2));
   const outDir = join(desktopRoot, "build", "bin");
   const outPath = join(outDir, target.binaryName);
+  const pluginsOnly = process.argv.includes("--plugins-only");
 
   mkdirSync(outDir, { recursive: true });
 
@@ -65,15 +66,17 @@ function main() {
     `-X github.com/blueberrycongee/wuu/internal/version.Date=${date}`,
   ].join(" ");
 
-  run("go", ["build", "-ldflags", ldflags, "-o", outPath, "./cmd/wuu"], {
-    cwd: repoRoot,
-    env: {
-      ...process.env,
-      CGO_ENABLED: "0",
-      GOOS: target.goos,
-      GOARCH: target.goarch,
-    },
-  });
+  if (!pluginsOnly) {
+    run("go", ["build", "-ldflags", ldflags, "-o", outPath, "./cmd/wuu"], {
+      cwd: repoRoot,
+      env: {
+        ...process.env,
+        CGO_ENABLED: "0",
+        GOOS: target.goos,
+        GOARCH: target.goarch,
+      },
+    });
+  }
 
   for (const command of readdirSync(join(repoRoot, "cmd"), { withFileTypes: true })) {
     if (!command.isDirectory() || !/^wuu-.+-plugin$/.test(command.name)) continue;
@@ -91,15 +94,21 @@ function main() {
     if (target.platform !== "win32") chmodSync(pluginPath, 0o755);
   }
 
-  if (target.platform !== "win32") {
+  if (!pluginsOnly && target.platform !== "win32") {
     chmodSync(outPath, 0o755);
   }
   // extraResources accepts both filenames. Remove a binary left by a build
   // for another platform so a Windows package can never prefer a stale Unix
   // core over the freshly-built .exe.
-  rmSync(join(outDir, target.staleBinaryName), { force: true });
+  if (!pluginsOnly) {
+    rmSync(join(outDir, target.staleBinaryName), { force: true });
+  }
 
-  console.log(`built ${outPath} (${target.goos}/${target.goarch})`);
+  console.log(
+    pluginsOnly
+      ? `built first-party plugin helpers (${target.goos}/${target.goarch})`
+      : `built ${outPath} (${target.goos}/${target.goarch})`,
+  );
 }
 
 function run(command, args, options = {}) {

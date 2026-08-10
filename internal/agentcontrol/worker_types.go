@@ -36,15 +36,10 @@ type WorkerType struct {
 	// never becomes a lifecycle state: if the closing turn still files
 	// nothing, the run completes with a synthesized final_text report.
 	RequiresReport bool
+	Internal       bool
 }
 
 const DefaultSubagentType = "general-purpose"
-
-// HelpMeRecoveryWorkerType is the worker type the helpme tool spawns for a
-// fresh-context recovery. Its tool surface matches general-purpose; unlike
-// general-purpose it carries RequiresReport because the parent-side history
-// rewrite is built from the helper's structured agent_report handoff.
-const HelpMeRecoveryWorkerType = "helpme_recovery"
 
 var builtinWorkerTypes = map[string]WorkerType{
 	DefaultSubagentType: {
@@ -54,29 +49,13 @@ var builtinWorkerTypes = map[string]WorkerType{
 		AllowedTools:     nil,
 		OneShot:          false,
 		DefaultIsolation: IsolationInplace,
-		ContextScope:     "Self-contained task prompt plus repository memory and skills.",
+		ContextScope:     "Self-contained task prompt plus repository instructions and skills.",
 		OutputSchema:     "Final message is the deliverable: outcome, what was done, what changed, blockers, and verifiable evidence. agent_report is an optional structured handoff on top.",
 		SuccessCriteria: []string{
 			"Task scope is completed or clearly blocked.",
 			"Changed files and verification are reported with evidence.",
 		},
 		SystemPrompt: "",
-	},
-	HelpMeRecoveryWorkerType: {
-		Name:             HelpMeRecoveryWorkerType,
-		Role:             "HelpMe Recovery",
-		Description:      "Fresh-context recovery helper launched by the helpme tool after the parent got stuck; prefer calling helpme instead of spawning this type directly.",
-		AllowedTools:     nil,
-		OneShot:          false,
-		DefaultIsolation: IsolationInplace,
-		ContextScope:     "Self-contained HelpMe handoff brief (goal, ask, reason, constraints, failed attempts, evidence) plus repository memory and skills.",
-		OutputSchema:     "Final message is the deliverable. A structured agent_report handoff is additionally required — submitted at close, requested automatically if missing — because the parent's context rewrite is built from it.",
-		SuccessCriteria: []string{
-			"Recovery ask is completed or clearly blocked.",
-			"Changed files and verification are reported with evidence.",
-		},
-		SystemPrompt:   "",
-		RequiresReport: true,
 	},
 	"worker": {
 		Name:         "worker",
@@ -103,7 +82,7 @@ var builtinWorkerTypes = map[string]WorkerType{
 func AvailableWorkerTypes() []WorkerType {
 	keys := make([]string, 0, len(builtinWorkerTypes))
 	for key := range builtinWorkerTypes {
-		if key == HelpMeRecoveryWorkerType {
+		if builtinWorkerTypes[key].Internal {
 			continue
 		}
 		keys = append(keys, key)
@@ -116,18 +95,16 @@ func AvailableWorkerTypes() []WorkerType {
 	return out
 }
 
-// LookupPublicWorkerType resolves only worker types exposed through
-// spawn_agent. HelpMe recovery is an internal implementation detail launched
-// by the gated helpme tool.
+// LookupPublicWorkerType resolves worker types exposed through spawn_agent.
 func LookupPublicWorkerType(name string) (WorkerType, error) {
-	wt, err := LookupWorkerType(name)
+	workerType, err := LookupWorkerType(name)
 	if err != nil {
 		return WorkerType{}, err
 	}
-	if wt.Name == HelpMeRecoveryWorkerType {
+	if workerType.Internal {
 		return WorkerType{}, fmt.Errorf("worker type %q is internal (available: %s)", name, strings.Join(AvailableWorkerTypeNames(), ", "))
 	}
-	return wt, nil
+	return workerType, nil
 }
 
 // AvailableWorkerTypeNames returns all built-in worker role names sorted by name.
@@ -152,13 +129,6 @@ func LookupWorkerType(name string) (WorkerType, error) {
 	return wt, nil
 }
 
-// alwaysBlockedTools is the set of tools that no anonymous worker may use.
-// Ultra unlocks recursive orchestration, but helpme remains a root-only
-// recovery mechanism.
-var alwaysBlockedTools = map[string]struct{}{
-	"helpme": {},
-}
-
 var defaultWorkerBlockedTools = map[string]struct{}{
 	"spawn_agent":  {},
 	"send_message": {},
@@ -166,10 +136,8 @@ var defaultWorkerBlockedTools = map[string]struct{}{
 }
 
 // FilterToolsForWorker returns the subset of fullList that this worker
-// type is allowed to call. ultraMode is optional so existing default-mode
-// callers retain byte-for-byte behavior without supplying a new argument.
-func FilterToolsForWorker(wt WorkerType, fullList []string, ultraMode ...bool) []string {
-	ultra := len(ultraMode) > 0 && ultraMode[0]
+// type is allowed to call.
+func FilterToolsForWorker(wt WorkerType, fullList []string) []string {
 	out := make([]string, 0, len(fullList))
 	allowSet := map[string]struct{}{}
 	for _, t := range wt.AllowedTools {
@@ -180,13 +148,8 @@ func FilterToolsForWorker(wt WorkerType, fullList []string, ultraMode ...bool) [
 		denySet[t] = struct{}{}
 	}
 	for _, name := range fullList {
-		if _, blocked := alwaysBlockedTools[name]; blocked {
+		if _, blocked := defaultWorkerBlockedTools[name]; blocked {
 			continue
-		}
-		if !ultra {
-			if _, blocked := defaultWorkerBlockedTools[name]; blocked {
-				continue
-			}
 		}
 		if _, denied := denySet[name]; denied {
 			continue

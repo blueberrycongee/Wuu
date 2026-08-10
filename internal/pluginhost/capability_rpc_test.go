@@ -92,6 +92,11 @@ func TestValidateCapabilityDescriptor(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name:    "turn interrupted defaults to isolate",
+			desc:    CapabilityDescriptor{ID: CapabilityAgentTurnInterrupted, Kind: SeamObserve, Version: 1},
+			wantErr: false,
+		},
+		{
 			name: "with dependencies",
 			desc: CapabilityDescriptor{
 				ID: "agent.tool.custom", Kind: "transform", Version: 1,
@@ -165,9 +170,7 @@ func TestAllHostServicesComplete(t *testing.T) {
 func TestCapabilityInitializeResultProtocolVersion(t *testing.T) {
 	// Protocol v2 should carry capability information.
 	result := CapabilityInitializeResult{
-		InitializeResult: InitializeResult{
-			Hooks: []Hook{HookSessionStart},
-		},
+		InitializeResult: InitializeResult{},
 		Capabilities: []CapabilityDescriptor{
 			{ID: "agent.tool.custom", Kind: "transform", Version: 1},
 		},

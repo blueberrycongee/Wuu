@@ -1,9 +1,7 @@
 import {
-  AlarmClock,
   Archive,
   ChevronRight,
   Clock,
-  CornerDownRight,
   FileText,
   Folder,
   FolderOpen,
@@ -63,6 +61,7 @@ import { SCRATCH_PSEUDO_PROJECT_ID } from "./AppState";
 import { PinnedThreadList, ProjectGroup } from "./ThreadSidebar";
 import { SidebarSection, SidebarSectionDragHandleContext } from "./SidebarSection";
 import { PluginBlocksIcon } from "./PluginBlocksIcon";
+import { PluginIcon } from "./PublicIcon";
 import { CollabNodesIcon } from "./CollabNodesIcon";
 import { useI18n } from "./i18n";
 import {
@@ -364,7 +363,6 @@ export function AppSidebar({
   debugFixturesVisible,
   sectionOrder,
   onStartNewThread,
-  onOpenAutomationsTab,
   onOpenSkillsTab,
   groupChatEnabled = false,
   channelRooms = [],
@@ -380,7 +378,6 @@ export function AppSidebar({
   onCreateChannelRoom,
   onToggleConversationSearch,
   onSeedConversationFixture,
-  onSeedAgentTreeDemo,
   onOpenChipGallery,
   onSelectThread,
   onTogglePinned,
@@ -428,7 +425,6 @@ export function AppSidebar({
   // SCRATCH_PSEUDO_PROJECT_ID or a real project id.
   sectionOrder: string[];
   onStartNewThread: () => void;
-  onOpenAutomationsTab: () => void;
   onOpenSkillsTab: () => void;
   groupChatEnabled?: boolean;
   // Unified 协作 section: the room list (with per-room unread counts) is
@@ -449,7 +445,6 @@ export function AppSidebar({
   onCreateChannelRoom?: () => void;
   onToggleConversationSearch: () => void;
   onSeedConversationFixture: (kind: ConversationFixtureKind) => void;
-  onSeedAgentTreeDemo: () => void;
   onOpenChipGallery: () => void;
   onSelectThread: (id: string) => void;
   onTogglePinned: (thread: ThreadSummary) => void;
@@ -497,18 +492,18 @@ export function AppSidebar({
     workbenchController.getSnapshot,
   );
   const activePluginMainView = workbenchSnapshot.views.find(
-    (view) => view.id === workbenchSnapshot.activeViewByPane.main,
+    (view) => view.id === workbenchSnapshot.activeViewByRegion.primary,
   );
   const activateNative = useCallback((action: () => void): void => {
-    workbenchController.deactivatePane("main");
+    workbenchController.deactivateRegion("primary");
     action();
   }, [workbenchController]);
   const openPluginNavigation = useCallback((pluginId: string, viewTypeId: string): void => {
     void workbenchController.openPluginView(pluginId, viewTypeId, {
-      pane: "main",
+      region: "primary",
       persistence: "durable",
       reveal: true,
-    });
+    }).catch(() => workbenchController.deactivateRegion("primary"));
   }, [workbenchController]);
 
   // Drag-and-drop reorder wiring for the reorderable sections. The 6px
@@ -610,14 +605,6 @@ export function AppSidebar({
     }
     nodes.push(
       {
-        id: "command:automations",
-        kind: "command",
-        label: t("automations.title"),
-        icon: "alarm-clock",
-        disabled: !hasRuntimeContext,
-        onActivate: () => activateNative(onOpenAutomationsTab),
-      },
-      {
         id: "command:skills",
         kind: "command",
         label: t("skills.sectionSkills"),
@@ -632,7 +619,6 @@ export function AppSidebar({
         ["fixture-rich", t("sidebar.devFixtures.richContent"), () => onSeedConversationFixture("rich"), !fixturesEnabled],
         ["fixture-running", t("sidebar.devFixtures.running"), () => onSeedConversationFixture("running"), !fixturesEnabled],
         ["fixture-compact", t("sidebar.devFixtures.compaction"), () => onSeedConversationFixture("compact"), !fixturesEnabled],
-        ["fixture-subtasks", t("sidebar.devFixtures.subtasks"), onSeedAgentTreeDemo, !fixturesEnabled],
         ["fixture-chips", t("sidebar.devFixtures.chipGallery"), onOpenChipGallery, false],
       ];
       for (const [id, label, onActivate, disabled] of fixtureCommands) {
@@ -754,7 +740,7 @@ export function AppSidebar({
           parentId: "section:plugins",
           depth: 1,
           label: entry.title,
-          icon: entry.icon || "plugin-blocks",
+          icon: entry.icon && "name" in entry.icon ? entry.icon.name : "plugin-blocks",
           active: activePluginMainView?.pluginId === entry.pluginId
             && activePluginMainView.viewTypeId === entry.view,
           onActivate: () => openPluginNavigation(entry.pluginId, entry.view),
@@ -773,9 +759,9 @@ export function AppSidebar({
   }, [
     activateNative, activeChannelRoomID, activeChannelSection, activeProjectID, activeThreadID,
     channelRooms, collabUnreadTotal, debugFixturesVisible, fixturesEnabled,
-    groupChatEnabled, hasPinnedRows, hasRuntimeContext, onOpenAutomationsTab,
+    groupChatEnabled, hasPinnedRows, hasRuntimeContext,
     onOpenChannelAgents, onOpenChipGallery, onOpenSettings, onOpenSkillsTab,
-    onSeedAgentTreeDemo, onSeedConversationFixture, onSelectChannelRoom,
+    onSeedConversationFixture, onSelectChannelRoom,
     onSelectProjectThread, onSelectProjectWorkspace, onSelectThread,
     onStartNewThread, onToggleChannelRoomPinned, onToggleConversationSearch,
     onTogglePinned, pinnedChannelRooms, pinnedRows, projectThreadsByProjectID,
@@ -835,14 +821,6 @@ export function AppSidebar({
           ) : null}
           <button
             className="nav-item"
-            onClick={() => activateNative(onOpenAutomationsTab)}
-            disabled={!hasRuntimeContext}
-          >
-            <AlarmClock className="icon-lg" />
-            <span>{t("automations.title")}</span>
-          </button>
-          <button
-            className="nav-item"
             onClick={() => activateNative(onOpenSkillsTab)}
             disabled={!hasRuntimeContext}
           >
@@ -886,14 +864,6 @@ export function AppSidebar({
               </button>
               <button
                 className="nav-item dev-fixture-button"
-                onClick={onSeedAgentTreeDemo}
-                disabled={!fixturesEnabled}
-              >
-                <CornerDownRight className="icon" />
-                <span>{t("sidebar.devFixtures.subtasks")}</span>
-              </button>
-              <button
-                className="nav-item dev-fixture-button"
                 onClick={onOpenChipGallery}
               >
                 <LayoutGrid className="icon" />
@@ -928,7 +898,7 @@ export function AppSidebar({
                       title={entry.description || entry.title}
                       onClick={() => openPluginNavigation(entry.pluginId, entry.view)}
                     >
-                      <PluginBlocksIcon className="icon-lg" />
+                      <PluginIcon icon={entry.icon} pluginId={entry.pluginId} fingerprint={entry.generation} className="icon-lg" />
                       <span>{entry.title}</span>
                     </button>
                   );

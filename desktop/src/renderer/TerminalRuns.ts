@@ -40,7 +40,7 @@ export type AgentRunTurnGroup = {
 const LEGACY_COMMAND_TOOL_NAMES = new Set(["bash", "run_shell"]);
 
 export function isCommandToolCall(item: ThreadItem): boolean {
-  if (item.type !== "tool_call" && item.type !== "collab_agent_tool_call") {
+  if (item.type !== "tool_call") {
     return false;
   }
   const capability = item.display?.capability?.trim().toLowerCase();

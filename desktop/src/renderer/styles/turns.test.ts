@@ -40,7 +40,7 @@ describe("turns.css user message actions", () => {
     const body = cssRuleBody(".message-actions.user-message-actions");
     // Out-of-flow overlay: the buttons belong below the query, but
     // cannot reserve flow space or the user query -> rule gap stops
-    // matching the 24px message-flow token.
+    // matching the 32px message-flow token.
     expect(body).toMatch(/position:\s*absolute;/);
     expect(body).toMatch(/top:\s*100%;/);
     expect(body).toMatch(/bottom:\s*auto;/);
@@ -72,8 +72,8 @@ describe("turns.css streaming block wrappers", () => {
 describe("turns.css rich links", () => {
   it("uses an accessible light-theme blue with no underlines or icon backplates", () => {
     expect(cssRuleBody(".rich-link")).toMatch(/color:\s*var\(--rich-link-color\);/);
-    expect(turnsCss).toMatch(/--rich-link-color:\s*#0969da;/);
-    expect(turnsCss).toMatch(/--rich-link-hover-color:\s*#0550ae;/);
+    expect(turnsCss).toMatch(/--rich-link-color:\s*var\(--wuu-color-link,\s*#0969da\);/);
+    expect(turnsCss).toMatch(/--rich-link-hover-color:\s*var\(--wuu-color-link-hover,\s*#0550ae\);/);
     expect(cssRuleBody(".rich-link")).toMatch(/text-decoration-line:\s*none;/);
     expect(cssRuleBody(".rich-link-favicon-frame")).not.toMatch(/\bbackground\s*:/);
     expect(cssRuleBody(".rich-link-favicon")).not.toMatch(/\bbackground\s*:/);
@@ -161,11 +161,6 @@ describe("turns.css turn notice positioning", () => {
     );
   });
 
-  it("gives subagent system events enough width for both side lines", () => {
-    expect(cssRuleBody(".agent-handoff-divider")).toMatch(
-      /width:\s*min\(760px,\s*88%\);/,
-    );
-  });
 });
 
 describe("turns.css message-flow typography", () => {

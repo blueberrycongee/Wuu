@@ -4,7 +4,6 @@
   --composer-frame-shadow: 0 8px 24px rgba(20, 24, 28, 0.06);
   --composer-image-attachment-button-shadow: 0 2px 8px rgba(20, 24, 28, 0.12);
   --composer-file-attachment-button-hover-bg: #eceee9;
-  --composer-goal-strip-danger-hover-bg: rgba(220, 80, 80, 0.12);
   --composer-collapsed-prompt-card-shadow: 0 1px 2px rgba(20, 24, 28, 0.05);
   --composer-textarea-placeholder: #a0a3a5;
   --composer-textarea-disabled: #6d7471;
@@ -17,28 +16,12 @@
   --composer-permission-mode-danger-border: rgba(180, 35, 24, 0.16);
   --composer-permission-mode-danger-bg: #fff1ec;
   --composer-menu-note-warning-strong: #b45309;
-  /* "Ultra" engagement glow: one decorative gradient plus its derived
-     glow layers, declared once so the effect stays coherent. */
-  --composer-ultra-gradient: linear-gradient(90deg, #6eeaf4, #7277ff 55%, #b96ce6);
-  --composer-ultra-notch-shadow: 0 0 6px rgba(104, 99, 244, 0.38);
-  --composer-ultra-impact-bg: #d9fbff;
-  --composer-ultra-impact-shadow:
-    0 0 7px 2px rgba(94, 231, 241, 0.8),
-    0 0 16px 5px rgba(112, 103, 255, 0.45);
-  --composer-ultra-energy-gradient: linear-gradient(90deg, transparent, #dffcff 12%, #6de8f5 35%, #796cff 68%, transparent);
-  --composer-ultra-energy-shadow:
-    0 0 5px rgba(94, 231, 241, 0.9),
-    0 0 13px rgba(112, 103, 255, 0.6);
-  --composer-ultra-energy-border: rgba(114, 103, 255, 0.8);
-  --composer-ultra-energy-inset-shadow:
-    inset 0 0 9px rgba(94, 231, 241, 0.18),
-    0 0 13px rgba(112, 103, 255, 0.32);
-  --composer-ultra-frame-gradient: linear-gradient(112deg, #6eeaf4 0%, #6f75ff 45%, #bf63ed 78%, #6eeaf4 100%);
-  --composer-ultra-frame-glow:
-    0 0 20px rgba(99, 89, 238, 0.18),
-    0 0 42px rgba(94, 231, 241, 0.06);
-  /* Opaque stop for the border mask composite; the hue is irrelevant. */
-  --composer-ultra-mask: #000000;
+  /* Accessory drawer upward shadow. Ink-sampled in light (a soft shade);
+     redefined black-based in dark — an ink-colored shadow would read as a
+     white glow above the drawer on dark paper. */
+  --composer-accessory-shadow: color-mix(in srgb, var(--ink) 7%, transparent);
+  --composer-accessory-shadow-hover: color-mix(in srgb, var(--ink) 10%, transparent);
+  --composer-accessory-shadow-expanded: color-mix(in srgb, var(--ink) 11%, transparent);
 }
 
 .composer-wrap {
@@ -112,107 +95,6 @@
   margin-bottom: 8px;
 }
 
-.composer-subagent-capsule {
-  display: inline-flex;
-  height: 30px;
-  flex: 0 0 auto;
-  align-items: center;
-  gap: 8px;
-  margin-right: auto;
-  padding: 3px 10px 3px 6px;
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-pill);
-  background: var(--surface-1);
-  color: var(--ink-muted);
-  font-size: var(--font-sm);
-  font-weight: var(--weight-medium);
-  line-height: 1;
-  white-space: nowrap;
-}
-
-.composer-subagent-capsule-single {
-  font: inherit;
-  color: var(--ink-muted);
-  cursor: pointer;
-  transition:
-    border-color var(--motion-fast) var(--ease-out),
-    background-color var(--motion-fast) var(--ease-out),
-    color var(--motion-fast) var(--ease-out);
-}
-
-.composer-subagent-capsule-single:hover,
-.composer-subagent-capsule-single:focus-visible {
-  border-color: var(--hairline-strong);
-  background: var(--paper);
-  color: var(--ink);
-}
-
-.composer-subagent-avatars {
-  display: inline-flex;
-  align-items: center;
-  padding-left: 7px;
-}
-
-.composer-subagent-avatar-button,
-.composer-subagent-avatar-frame {
-  position: relative;
-  display: inline-flex;
-  width: 22px;
-  height: 22px;
-  flex: 0 0 auto;
-  align-items: center;
-  justify-content: center;
-  box-sizing: border-box;
-  margin: 0 0 0 -7px;
-  padding: 0;
-  overflow: hidden;
-  border: 1.5px solid var(--surface-1);
-  border-radius: var(--radius-pill);
-  background: var(--paper);
-  color: var(--ink);
-}
-
-.composer-subagent-avatar-button {
-  cursor: pointer;
-  transition:
-    transform var(--motion-fast) var(--ease-out),
-    box-shadow var(--motion-fast) var(--ease-out);
-}
-
-.composer-subagent-avatar-button:hover,
-.composer-subagent-avatar-button:focus-visible {
-  z-index: 1;
-  transform: translateY(-1px);
-  box-shadow: 0 2px 6px var(--ink-overlay-12);
-  outline: 0;
-}
-
-.composer-subagent-avatar {
-  display: inline-flex;
-  width: 100%;
-  height: 100%;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-  border-radius: inherit;
-  background: var(--ink-overlay-6);
-}
-
-.composer-subagent-avatar img {
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.composer-subagent-overflow {
-  background: var(--surface-2);
-  color: var(--ink-muted);
-  font-size: 9px;
-  font-weight: var(--weight-semibold);
-  letter-spacing: -0.03em;
-}
-
 /* Hero (welcome) composer inherits the same dialog width as the dock composer
    so the input box stays the same width whether or not a turn has been sent. */
 
@@ -256,227 +138,6 @@
   box-shadow: inset 0 0 0 1px var(--ink-overlay-18);
 }
 
-.composer-ultra-button {
-  position: absolute;
-  top: -11px;
-  left: 18px;
-  z-index: 5;
-  width: 44px;
-  height: 22px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  isolation: isolate;
-}
-
-.composer-ultra-notch {
-  position: absolute;
-  top: 10px;
-  left: 10px;
-  width: 24px;
-  height: 2px;
-  border-radius: 999px;
-  background: var(--surface-4);
-  opacity: 0.7;
-  transition:
-    background 220ms ease,
-    box-shadow 220ms ease,
-    opacity 180ms ease,
-    transform 240ms cubic-bezier(0.2, 0.8, 0.2, 1),
-    width 240ms cubic-bezier(0.2, 0.8, 0.2, 1),
-    left 240ms cubic-bezier(0.2, 0.8, 0.2, 1);
-}
-
-.composer-ultra-notch::after {
-  position: absolute;
-  top: 0;
-  left: 50%;
-  width: 2px;
-  height: 2px;
-  background: var(--paper);
-  content: "";
-  opacity: 0.82;
-  transform: translateX(-1px);
-}
-
-.composer-ultra-button:hover .composer-ultra-notch,
-.composer-ultra-button:focus-visible .composer-ultra-notch {
-  left: 6px;
-  width: 32px;
-  background: var(--ink-overlay-36);
-  opacity: 1;
-}
-
-.composer-ultra-button:focus-visible {
-  outline: 2px solid var(--ink-overlay-18);
-  outline-offset: 0;
-  border-radius: 999px;
-}
-
-.composer-ultra-button.is-active .composer-ultra-notch {
-  left: 7px;
-  width: 30px;
-  animation: composer-ultra-notch-engage 360ms cubic-bezier(0.2, 0.75, 0.25, 1) both;
-  background: var(--composer-ultra-gradient);
-  box-shadow: var(--composer-ultra-notch-shadow);
-  opacity: 0.9;
-}
-
-.composer-ultra-button.is-active .composer-ultra-notch::after {
-  opacity: 0;
-}
-
-.composer-ultra-impact {
-  position: absolute;
-  top: 7px;
-  left: 18px;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--composer-ultra-impact-bg);
-  box-shadow: var(--composer-ultra-impact-shadow);
-  opacity: 0;
-  pointer-events: none;
-}
-
-.composer-ultra-button.is-active .composer-ultra-impact {
-  animation: composer-ultra-impact 460ms 120ms ease-out both;
-}
-
-.composer-ultra-energy {
-  position: absolute;
-  inset: -5px;
-  z-index: 4;
-  overflow: hidden;
-  border-radius: calc(var(--session-composer-radius, var(--radius-sm)) + 5px);
-  pointer-events: none;
-}
-
-.composer-ultra-energy::before {
-  position: absolute;
-  top: 4px;
-  right: 6px;
-  left: 26px;
-  height: 2px;
-  background: var(--composer-ultra-energy-gradient);
-  box-shadow: var(--composer-ultra-energy-shadow);
-  content: "";
-  opacity: 0;
-  transform: scaleX(0);
-  transform-origin: left center;
-}
-
-.composer-ultra-energy::after {
-  position: absolute;
-  inset: 4px;
-  border: 1px solid var(--composer-ultra-energy-border);
-  border-radius: var(--session-composer-radius, var(--radius-sm));
-  box-shadow: var(--composer-ultra-energy-inset-shadow);
-  content: "";
-  opacity: 0;
-}
-
-.composer-ultra-energy.turning-on::before {
-  animation: composer-ultra-edge-cut 520ms 280ms cubic-bezier(0.18, 0.72, 0.2, 1) both;
-}
-
-.composer-ultra-energy.turning-on::after {
-  animation: composer-ultra-frame-shock 650ms 420ms ease-out both;
-}
-
-.composer-ultra-energy.turning-off::before {
-  animation: composer-ultra-edge-cut 420ms ease-out reverse both;
-  transform-origin: right center;
-}
-
-.composer-frame::before {
-  position: absolute;
-  inset: 0;
-  z-index: 3;
-  padding: 1px;
-  border-radius: inherit;
-  background: var(--composer-ultra-frame-gradient);
-  content: "";
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 420ms ease;
-  -webkit-mask:
-    linear-gradient(var(--composer-ultra-mask) 0 0) content-box,
-    linear-gradient(var(--composer-ultra-mask) 0 0);
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
-}
-
-.composer-frame.is-ultra {
-  box-shadow:
-    var(--composer-frame-shadow),
-    var(--composer-ultra-frame-glow);
-  transition: box-shadow 440ms 260ms ease;
-}
-
-.composer-frame.is-ultra::before {
-  opacity: 0.9;
-  transition-delay: 300ms;
-}
-
-@keyframes composer-ultra-notch-engage {
-  0% {
-    transform: scaleX(1.08);
-  }
-  48% {
-    transform: scaleX(0.76);
-  }
-  100% {
-    transform: scaleX(1);
-  }
-}
-
-@keyframes composer-ultra-impact {
-  0%, 35% {
-    opacity: 0;
-    transform: scale(0.2);
-  }
-  48% {
-    opacity: 1;
-    transform: scale(1.15);
-  }
-  100% {
-    opacity: 0;
-    transform: scale(2.6);
-  }
-}
-
-@keyframes composer-ultra-edge-cut {
-  0% {
-    opacity: 0;
-    transform: scaleX(0);
-  }
-  16% {
-    opacity: 1;
-  }
-  76% {
-    opacity: 0.9;
-  }
-  100% {
-    opacity: 0;
-    transform: scaleX(1);
-  }
-}
-
-@keyframes composer-ultra-frame-shock {
-  0% {
-    opacity: 0;
-    transform: scale(0.997);
-  }
-  24% {
-    opacity: 0.86;
-  }
-  100% {
-    opacity: 0;
-    transform: scale(1.004);
-  }
-}
-
 .hero-composer-wrap .composer-frame {
   border-radius: var(--session-composer-radius, var(--radius-sm));
   background: var(--paper);
@@ -511,7 +172,7 @@
   padding: 0;
   border: 0;
   /*
-   * Quiet icon button, unified with the goal / 排队消息 row actions
+   * Quiet icon button, unified with the queued-message row actions
    * (.composer-input-header-action): transparent by default, revealing an
    * --ink-overlay-8 hover fill, 28x28 with a 14px glyph. Right-aligned to
    * the header rows' inline padding (right:8px) and matched in size so the
@@ -574,29 +235,12 @@
 @media (prefers-reduced-motion: reduce) {
   .composer-stack,
   .composer,
-  .composer-goal-strip,
   .composer-pending-drawer,
   .composer textarea,
   .composer-expand-button {
     transition: none;
   }
 
-  .composer-ultra-button,
-  .composer-ultra-notch,
-  .composer-frame::before {
-    transition: none;
-  }
-
-  .composer-ultra-button.is-active .composer-ultra-notch {
-    animation: none;
-    transform: none;
-  }
-
-  .composer-ultra-button.is-active .composer-ultra-impact,
-  .composer-ultra-energy::before,
-  .composer-ultra-energy::after {
-    animation: none;
-  }
 }
 
 .composer {
@@ -615,7 +259,6 @@
   transform: translateY(calc(var(--composer-expanded-offset, var(--composer-expanded-delta)) * -1));
 }
 
-.composer-stack.is-expanded .composer-goal-strip,
 .composer-stack.is-expanded .composer-pending-drawer {
   transform: translateY(calc(var(--composer-expanded-offset, var(--composer-expanded-delta)) * -1));
 }
@@ -877,21 +520,16 @@
   max-height: 40px;
   margin: 0 auto -8px;
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--ink) 8%, transparent);
+  border: 1px solid var(--conversation-floating-surface-border);
   border-bottom: 0;
   border-radius: 12px 12px 0 0;
-  background:
-    radial-gradient(
-      circle at 24% 0%,
-      color-mix(in srgb, var(--paper) 42%, transparent) 0 16%,
-      transparent 48%
-    ),
-    linear-gradient(
-      145deg,
-      color-mix(in srgb, var(--paper) 34%, transparent),
-      color-mix(in srgb, var(--surface-2) 16%, transparent)
-    );
-  box-shadow: 0 -6px 24px color-mix(in srgb, var(--ink) 7%, transparent);
+  /* Uniform glass fill — no specular highlight layer here. The pill sheen
+     is an edge treatment measured against a 34px capsule; painted over this
+     tall drawer the percentage gradient becomes a bright band across the
+     top (most visible in dark). The drawer's silhouette comes from the top
+     border + upward shadow; the backdrop shows through evenly. */
+  background: var(--conversation-floating-surface-bg);
+  box-shadow: 0 -6px 24px var(--composer-accessory-shadow);
   -webkit-backdrop-filter: blur(24px) saturate(1.18);
   backdrop-filter: blur(24px) saturate(1.18);
   color: var(--ink);
@@ -909,17 +547,6 @@
 
 .composer-pending-drawer.is-held {
   border-color: color-mix(in srgb, var(--warning) 24%, transparent);
-}
-
-.composer-goal-strip-summary {
-  position: relative;
-  z-index: 1;
-  display: grid;
-  min-height: 40px;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px;
-  align-items: center;
-  padding: 0 8px 8px;
 }
 
 .composer-pending-summary {
@@ -951,7 +578,7 @@
 
 .composer-drawer-summary-select:focus-visible {
   border-radius: var(--radius-sm);
-  outline: 2px solid var(--ink-overlay-18);
+  outline: 2px solid var(--conversation-floating-surface-focus);
   outline-offset: 1px;
 }
 
@@ -991,216 +618,6 @@
   padding: 4px 0 16px;
   overflow-y: auto;
   overscroll-behavior: contain;
-}
-
-.composer-goal-strip-icon {
-  display: grid;
-  width: 18px;
-  height: 18px;
-  flex: 0 0 auto;
-  place-items: center;
-  color: var(--ink-muted);
-}
-
-.composer-goal-strip-main {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: 8px;
-}
-
-.composer-goal-strip-text {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.composer-goal-strip-state {
-  flex: 0 0 auto;
-  color: var(--ink-muted);
-  font-size: 11px;
-  font-weight: var(--weight-medium);
-  line-height: var(--line-ui);
-  white-space: nowrap;
-}
-
-.composer-goal-strip-actions {
-  justify-self: end;
-}
-
-.composer-goal-strip-control-anchor {
-  position: relative;
-  display: inline-flex;
-}
-
-.composer-goal-strip-action:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.composer-goal-strip-menu {
-  position: absolute;
-  top: calc(100% + 4px);
-  right: 0;
-  z-index: 8;
-  border: 1px solid var(--menu-border);
-  border-radius: var(--menu-radius);
-  background: var(--menu-bg);
-  box-shadow: var(--menu-shadow);
-  backdrop-filter: blur(16px);
-  animation: menu-enter var(--menu-enter-duration) var(--menu-enter-easing) both;
-}
-
-.floating-menu-layer > .composer-goal-strip-menu {
-  position: static;
-  inset: auto;
-  max-width: calc(100vw - 16px);
-}
-
-.composer-goal-strip-details {
-  display: grid;
-  max-height: calc(min(34vh, 280px) - 40px);
-  gap: 14px;
-  margin-top: -8px;
-  padding: 10px 16px 24px;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-}
-
-.composer-goal-strip-full-text {
-  min-width: 0;
-  margin: 0;
-  color: var(--ink);
-  font-size: 14px;
-  line-height: 1.55;
-  overflow-wrap: anywhere;
-  white-space: pre-wrap;
-}
-
-.composer-goal-strip-info-list {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 8px 18px;
-  margin: 0;
-  padding-top: 10px;
-  border-top: 1px solid var(--ink-overlay-6);
-}
-
-.composer-goal-strip-info-row {
-  display: grid;
-  grid-template-columns: max-content minmax(0, 1fr);
-  gap: 8px;
-  align-items: start;
-  font-size: var(--font-sm);
-  line-height: var(--line-meta);
-}
-
-.composer-goal-strip-info-row dt {
-  color: var(--ink-muted);
-}
-
-.composer-goal-strip-info-row dd {
-  min-width: 0;
-  margin: 0;
-  overflow-wrap: anywhere;
-}
-
-.composer-goal-strip-menu {
-  display: grid;
-  width: 168px;
-  padding: 5px;
-}
-
-.composer-goal-strip-menu-item {
-  display: grid;
-  width: 100%;
-  min-height: 32px;
-  grid-template-columns: 18px minmax(0, 1fr);
-  gap: 8px;
-  align-items: center;
-  padding: 0 9px;
-  border: 0;
-  border-radius: var(--radius-xs);
-  background: transparent;
-  color: var(--ink);
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
-.composer-goal-strip-menu-item:hover,
-.composer-goal-strip-menu-item:focus-visible {
-  background: var(--ink-overlay-8);
-  outline: none;
-}
-
-.composer-goal-strip-menu-item.danger {
-  color: var(--danger);
-}
-
-.composer-goal-strip-menu-item.danger:hover,
-.composer-goal-strip-menu-item.danger:focus-visible {
-  background: var(--composer-goal-strip-danger-hover-bg);
-}
-
-.composer-goal-strip-error {
-  min-width: 0;
-  font-size: 12px;
-  color: var(--danger);
-  overflow-wrap: anywhere;
-}
-
-.composer-goal-strip-spin {
-  animation: wuu-spin var(--motion-spin) linear infinite;
-}
-
-.composer-goal-edit-dialog {
-  --environment-dialog-max-width: 680px;
-  gap: 12px;
-}
-
-.composer-goal-edit-field {
-  display: grid;
-  gap: 7px;
-  color: var(--ink-tertiary);
-  font-size: var(--font-sm);
-  font-weight: var(--weight-semibold);
-}
-
-.composer-goal-edit-textarea {
-  width: 100%;
-  min-height: 220px;
-  max-height: min(52dvh, 520px);
-  resize: vertical;
-  border: 1px solid var(--env-field-border);
-  border-radius: var(--radius-sm);
-  background: var(--paper);
-  color: var(--ink);
-  font: inherit;
-  font-size: var(--font-ui);
-  line-height: 1.55;
-  padding: 12px 14px;
-  outline: none;
-}
-
-.composer-goal-edit-textarea:focus {
-  border-color: var(--info);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--info) 18%, transparent);
-}
-
-.composer-goal-edit-save {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  min-width: 76px;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .composer-goal-strip-spin {
-    animation: none;
-  }
 }
 
 .composer textarea {
@@ -1256,13 +673,6 @@
   --composer-collapsed-min-height: 80px;
 }
 
-/* Goal and pending drawers can appear together in both the main conversation
-   and document mode. Step the complete goal drawer inward so the pair reads
-   as one ordered stack instead of two same-size cards colliding. */
-.composer-goal-strip:has(+ .composer-pending-drawer) {
-  width: calc(100% - 48px);
-}
-
 .document-composer-wrap .composer-frame-shell {
   z-index: 10;
 }
@@ -1281,15 +691,16 @@
 .document-composer-wrap .composer-accessory-drawer:focus-within {
   z-index: 3;
   translate: 0 -2px;
-  border-color: color-mix(in srgb, var(--ink) 14%, transparent);
-  box-shadow: 0 -8px 28px color-mix(in srgb, var(--ink) 10%, transparent);
+  border-color: var(--conversation-floating-surface-hover-border);
+  background: var(--conversation-floating-surface-hover-bg);
+  box-shadow: 0 -8px 28px var(--composer-accessory-shadow-hover);
 }
 
 .document-composer-wrap .composer-accessory-drawer.expanded {
   z-index: 4;
   translate: 0 -6px;
-  border-color: color-mix(in srgb, var(--ink) 16%, transparent);
-  box-shadow: 0 -10px 34px color-mix(in srgb, var(--ink) 11%, transparent);
+  border-color: var(--conversation-floating-surface-hover-border);
+  box-shadow: 0 -10px 34px var(--composer-accessory-shadow-expanded);
 }
 
 .document-composer-wrap .composer-stack:not(.is-expanded) .composer textarea {
@@ -1468,6 +879,53 @@
 .composer-bar-left {
   flex: 1 1 auto;
   overflow: hidden;
+}
+
+.composer-plugin-toolbar {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+}
+
+.composer-plugin-tools-anchor {
+  display: inline-flex;
+}
+
+.composer-plugin-tools-trigger svg {
+  width: var(--icon-size-sm);
+  height: var(--icon-size-sm);
+}
+
+.composer-plugin-tools-menu {
+  max-height: min(320px, var(--floating-menu-available-height, calc(100vh - 180px)));
+  gap: 2px;
+  overflow-y: auto;
+  padding: 6px;
+}
+
+.composer-plugin-tools-item {
+  display: grid;
+  min-height: 38px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  border-radius: var(--radius-sm);
+  padding: 4px 7px 4px 10px;
+}
+
+.composer-plugin-tools-item:hover {
+  background: var(--surface-2);
+}
+
+.composer-plugin-tools-label {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: var(--font-ui);
+  font-weight: var(--weight-medium);
+  line-height: var(--line-ui);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .composer-voice-input {

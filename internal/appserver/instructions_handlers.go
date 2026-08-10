@@ -5,10 +5,9 @@ import (
 	"strings"
 )
 
-// MethodInstructionsList exposes the instruction / memory files (AGENTS.md,
-// CLAUDE.md, ...) that internal/memory.Discover loaded into the base system
-// prompt at session start. It mirrors the Claude Code /memory affordance so
-// migrating users can see which instruction files are actually in effect.
+// MethodInstructionsList exposes the instruction files (AGENTS.md, CLAUDE.md,
+// ...) loaded into the base system prompt at session start so users can see
+// which project rules are actually in effect.
 //
 // The method is intentionally read-only and lives in its own handler file
 // (like thread_handlers.go) rather than touching model.go, so it does not
@@ -21,7 +20,7 @@ type InstructionFile struct {
 	Path string `json:"path"`
 	// Name is the base filename (AGENTS.md, CLAUDE.md, ...).
 	Name string `json:"name"`
-	// Source is the raw memory.File.Source ("user", "project", "local",
+	// Source is the raw instructions.File.Source ("user", "project", "local",
 	// "claude_auto", ...). Kept for callers that want the fine-grained
 	// origin; Scope is the two-level collapse most surfaces render.
 	Source string `json:"source"`
@@ -43,15 +42,14 @@ type InstructionsListResult struct {
 }
 
 // handleInstructionsList returns the instruction files discovered for the
-// active runtime session. The list is the same set memory.Discover fed into
-// the base system prompt (runtime.Session.Memory); when memory is disabled or
-// no files are found the list is empty.
+// active runtime session. The list is the same set instructions.Discover fed
+// into the base system prompt; when no files are found the list is empty.
 func (s *Server) handleInstructionsList(req Request) error {
 	if s == nil || s.rt == nil {
 		return s.writeResponse(req.ID, nil, errors.New("runtime session is required"))
 	}
-	files := make([]InstructionFile, 0, len(s.rt.Memory))
-	for _, f := range s.rt.Memory {
+	files := make([]InstructionFile, 0, len(s.rt.InstructionFiles))
+	for _, f := range s.rt.InstructionFiles {
 		files = append(files, InstructionFile{
 			Path:    f.Path,
 			Name:    f.Name,
@@ -64,7 +62,7 @@ func (s *Server) handleInstructionsList(req Request) error {
 	return s.writeResponse(req.ID, InstructionsListResult{Files: files}, nil)
 }
 
-// instructionFileScope collapses memory.File.Source into the two-level model
+// instructionFileScope collapses instructions.File.Source into the two-level model
 // the desktop shows. User-level files apply everywhere and read as "global";
 // everything discovered in the project hierarchy (project / local /
 // claude_auto) reads as "project".

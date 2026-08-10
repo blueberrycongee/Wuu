@@ -6,7 +6,6 @@ import (
 
 	"github.com/blueberrycongee/wuu/internal/activity"
 	"github.com/blueberrycongee/wuu/internal/agentcontrol"
-	"github.com/blueberrycongee/wuu/internal/automation"
 	"github.com/blueberrycongee/wuu/internal/capability"
 	"github.com/blueberrycongee/wuu/internal/channels"
 	"github.com/blueberrycongee/wuu/internal/execution"
@@ -32,6 +31,7 @@ const (
 	MethodPluginPackageInstall     = "plugin/package/install"
 	MethodPluginPackageRemove      = "plugin/package/remove"
 	MethodPluginDesktopModuleRead  = "plugin/desktop-module/read"
+	MethodPluginIconRead           = "plugin/icon/read"
 	MethodPluginSettingGet         = "plugin/setting/get"
 	MethodPluginSettingSet         = "plugin/setting/set"
 	MethodPluginDiagnosticsList    = "plugin/diagnostics/list"
@@ -61,11 +61,6 @@ const (
 	MethodChannelTaskUpdate        = "channel/task/update"
 	MethodChannelMentionStatus     = "channel/human-mention/status"
 	MethodChannelMentionAck        = "channel/human-mention/ack"
-	MethodAutomationList           = "automation/list"
-	MethodAutomationRuns           = "automation/run/list"
-	MethodAutomationCreate         = "automation/create"
-	MethodAutomationUpdate         = "automation/update"
-	MethodAutomationRemove         = "automation/remove"
 	MethodThreadStart              = "thread/start"
 	MethodThreadResume             = "thread/resume"
 	MethodThreadFork               = "thread/fork"
@@ -87,41 +82,35 @@ const (
 	MethodThreadRename             = "thread/rename"
 	MethodThreadDelete             = "thread/delete"
 	MethodWorkspaceStateCleanup    = "workspace/state/cleanup"
-	// Memory panel RPCs (设置 → 记忆). Wire contract fixed ahead of
-	// implementation by docs/plans/2026-07-04-memory-redesign.md §8.2 and
-	// mirrored field-for-field by desktop/src/shared/protocol.ts.
-	MethodMemoryOverview   = "memory/overview"
-	MethodMemoryChat       = "memory/chat"
-	MethodMemoryRead       = "memory/read"
-	MethodTextPolish       = "text/polish"
-	MethodGitCommitMessage = "git/commit-message"
-	MethodTurnStart        = "turn/start"
-	MethodTurnQueue        = "turn/queue"
-	MethodTurnUpdateQueued = "turn/update-queued"
-	MethodTurnDequeue      = "turn/dequeue"
-	MethodTurnSteer        = "turn/steer"
-	MethodTurnUnsteer      = "turn/unsteer"
-	MethodTurnInterrupt    = "turn/interrupt"
-	MethodRunStart         = "run/start"
-	MethodRunInterrupt     = "run/interrupt"
-	MethodProcessList      = "process/list"
-	MethodProcessRead      = "process/read"
-	MethodProcessWrite     = "process/write"
-	MethodProcessResize    = "process/resize"
-	MethodProcessStop      = "process/stop"
-	MethodMCPList          = "mcp/list"
-	MethodMCPConnect       = "mcp/connect"
-	MethodMCPDisconnect    = "mcp/disconnect"
-	MethodMCPRefresh       = "mcp/refresh"
-	MethodMCPAuthStart     = "mcp/auth/start"
-	MethodMCPAuthStatus    = "mcp/auth/status"
-	MethodMCPAuthFinish    = "mcp/auth/finish"
-	MethodMCPAuthRemove    = "mcp/auth/remove"
-	MethodActivityList     = "activity/list"
-	MethodActivityTakeover = "activity/takeover"
-	MethodActivityRelease  = "activity/release"
-	MethodActivityStop     = "activity/stop"
-	MethodShutdown         = "shutdown"
+	MethodTextPolish               = "text/polish"
+	MethodGitCommitMessage         = "git/commit-message"
+	MethodTurnStart                = "turn/start"
+	MethodTurnQueue                = "turn/queue"
+	MethodTurnUpdateQueued         = "turn/update-queued"
+	MethodTurnDequeue              = "turn/dequeue"
+	MethodTurnSteer                = "turn/steer"
+	MethodTurnUnsteer              = "turn/unsteer"
+	MethodTurnInterrupt            = "turn/interrupt"
+	MethodRunStart                 = "run/start"
+	MethodRunInterrupt             = "run/interrupt"
+	MethodProcessList              = "process/list"
+	MethodProcessRead              = "process/read"
+	MethodProcessWrite             = "process/write"
+	MethodProcessResize            = "process/resize"
+	MethodProcessStop              = "process/stop"
+	MethodMCPList                  = "mcp/list"
+	MethodMCPConnect               = "mcp/connect"
+	MethodMCPDisconnect            = "mcp/disconnect"
+	MethodMCPRefresh               = "mcp/refresh"
+	MethodMCPAuthStart             = "mcp/auth/start"
+	MethodMCPAuthStatus            = "mcp/auth/status"
+	MethodMCPAuthFinish            = "mcp/auth/finish"
+	MethodMCPAuthRemove            = "mcp/auth/remove"
+	MethodActivityList             = "activity/list"
+	MethodActivityTakeover         = "activity/takeover"
+	MethodActivityRelease          = "activity/release"
+	MethodActivityStop             = "activity/stop"
+	MethodShutdown                 = "shutdown"
 	// MethodSettingsUsage returns the aggregated per-provider/model token
 	// usage snapshot for the desktop settings page. Range filter selects
 	// the time window ("all", "7d", "30d", "90d"); empty defaults to "all".
@@ -259,7 +248,6 @@ type InitializeResult struct {
 	Model              string                       `json:"model"`
 	Effort             string                       `json:"effort,omitempty"`
 	Variant            string                       `json:"variant,omitempty"`
-	Ultra              bool                         `json:"ultra"`
 	MaxParallel        int                          `json:"max_parallel"`
 	RuntimeHost        RuntimeHostSummary           `json:"runtime_host"`
 	WorkspaceRoot      string                       `json:"workspace_root"`
@@ -281,6 +269,9 @@ type FeatureFlags struct {
 	// backend (hidden WebContentsView + CDP bridge). Mirrored by
 	// desktop/src/shared/protocol.ts. Filled by config_handlers.handleInitialize.
 	Browser bool `json:"browser"`
+	// SafeMode reports that plugin manifests are visible for recovery, but no
+	// plugin-owned runtime or desktop contribution is active.
+	SafeMode bool `json:"safe_mode,omitempty"`
 }
 
 // clientResponse is the inbound envelope for a Response the desktop client
@@ -376,7 +367,6 @@ type ConfigReadResult struct {
 	Model              string                       `json:"model"`
 	Effort             string                       `json:"effort,omitempty"`
 	Variant            string                       `json:"variant,omitempty"`
-	Ultra              bool                         `json:"ultra"`
 	MaxParallel        int                          `json:"max_parallel"`
 	ConfigPath         string                       `json:"config_path"`
 	WorkspaceRoot      string                       `json:"workspace_root"`
@@ -624,12 +614,19 @@ type ExtensionContributions struct {
 }
 
 type ExtensionViewEntryDescriptor struct {
-	ID          string `json:"id"`
-	View        string `json:"view"`
-	Title       string `json:"title"`
-	Description string `json:"description,omitempty"`
-	Icon        string `json:"icon,omitempty"`
-	Order       int    `json:"order,omitempty"`
+	ID          string                   `json:"id"`
+	View        string                   `json:"view"`
+	Title       string                   `json:"title"`
+	Description string                   `json:"description,omitempty"`
+	Icon        *ExtensionIconDescriptor `json:"icon,omitempty"`
+	Order       int                      `json:"order,omitempty"`
+}
+
+type ExtensionIconDescriptor struct {
+	Name  string `json:"name,omitempty"`
+	Path  string `json:"path,omitempty"`
+	Light string `json:"light,omitempty"`
+	Dark  string `json:"dark,omitempty"`
 }
 
 type ExtensionSlotContributionDescriptor struct {
@@ -663,25 +660,37 @@ type ExtensionPendingUpdate struct {
 	EffectivePermissions []string `json:"effective_permissions,omitempty"`
 }
 
+type ExtensionPluginActivationIssue struct {
+	Kind            string `json:"kind"`
+	RelatedPluginID string `json:"related_plugin_id"`
+}
+
 type ExtensionInventoryRecord struct {
-	ID                   string                      `json:"id"`
-	Name                 string                      `json:"name"`
-	Description          string                      `json:"description,omitempty"`
-	Kind                 extensions.Kind             `json:"kind"`
-	Provenance           extensions.Provenance       `json:"provenance"`
-	State                ExtensionState              `json:"state"`
-	Executable           bool                        `json:"executable,omitempty"`
-	Fingerprint          string                      `json:"fingerprint,omitempty"`
-	GrantScope           extensions.GrantScope       `json:"grant_scope,omitempty"`
-	RequestedPermissions []string                    `json:"requested_permissions,omitempty"`
-	UnsupportedFields    []string                    `json:"unsupported_fields,omitempty"`
-	ParentID             string                      `json:"parent_id,omitempty"`
-	ApprovalState        ExtensionApprovalState      `json:"approval_state,omitempty"`
-	RuntimeState         ExtensionRuntimeState       `json:"runtime_state,omitempty"`
-	Enabled              *bool                       `json:"enabled,omitempty"`
-	Desktop              *ExtensionDesktopDescriptor `json:"desktop,omitempty"`
-	Contributions        *ExtensionContributions     `json:"contributions,omitempty"`
-	PendingUpdate        *ExtensionPendingUpdate     `json:"pending_update,omitempty"`
+	ID                   string                           `json:"id"`
+	Name                 string                           `json:"name"`
+	Description          string                           `json:"description,omitempty"`
+	Icon                 *ExtensionIconDescriptor         `json:"icon,omitempty"`
+	Kind                 extensions.Kind                  `json:"kind"`
+	Provenance           extensions.Provenance            `json:"provenance"`
+	State                ExtensionState                   `json:"state"`
+	Executable           bool                             `json:"executable,omitempty"`
+	Fingerprint          string                           `json:"fingerprint,omitempty"`
+	PackageSource        string                           `json:"package_source,omitempty"`
+	GrantScope           extensions.GrantScope            `json:"grant_scope,omitempty"`
+	RequestedPermissions []string                         `json:"requested_permissions,omitempty"`
+	UnsupportedFields    []string                         `json:"unsupported_fields,omitempty"`
+	ParentID             string                           `json:"parent_id,omitempty"`
+	ApprovalState        ExtensionApprovalState           `json:"approval_state,omitempty"`
+	RuntimeState         ExtensionRuntimeState            `json:"runtime_state,omitempty"`
+	LastError            string                           `json:"last_error,omitempty"`
+	Requires             []string                         `json:"requires,omitempty"`
+	Breaks               []string                         `json:"breaks,omitempty"`
+	Conflicts            []string                         `json:"conflicts,omitempty"`
+	ActivationIssues     []ExtensionPluginActivationIssue `json:"activation_issues,omitempty"`
+	Enabled              *bool                            `json:"enabled,omitempty"`
+	Desktop              *ExtensionDesktopDescriptor      `json:"desktop,omitempty"`
+	Contributions        *ExtensionContributions          `json:"contributions,omitempty"`
+	PendingUpdate        *ExtensionPendingUpdate          `json:"pending_update,omitempty"`
 }
 
 type ExtensionPackageAction string
@@ -780,6 +789,21 @@ type PluginDesktopModuleReadResult struct {
 	Source      string `json:"source"`
 }
 
+type PluginIconReadParams struct {
+	ID          string `json:"id"`
+	Fingerprint string `json:"fingerprint"`
+	Path        string `json:"path"`
+}
+
+type PluginIconReadResult struct {
+	ID          string `json:"id"`
+	Fingerprint string `json:"fingerprint"`
+	Path        string `json:"path"`
+	MediaType   string `json:"media_type"`
+	Digest      string `json:"digest"`
+	Data        []byte `json:"data"`
+}
+
 type PluginValueScope string
 
 const (
@@ -850,7 +874,6 @@ type ConfigModelUpdateParams struct {
 	Model          string  `json:"model"`
 	Effort         *string `json:"effort,omitempty"`
 	Variant        *string `json:"variant,omitempty"`
-	Ultra          *bool   `json:"ultra,omitempty"`
 	PermissionMode *string `json:"permission_mode,omitempty"`
 	BaseURL        *string `json:"base_url,omitempty"`
 	APIKey         *string `json:"api_key,omitempty"`
@@ -868,7 +891,6 @@ type ConfigModelUpdateResult struct {
 	Model            string                  `json:"model"`
 	Effort           string                  `json:"effort,omitempty"`
 	Variant          string                  `json:"variant,omitempty"`
-	Ultra            bool                    `json:"ultra"`
 	MaxParallel      int                     `json:"max_parallel"`
 	Permissions      PermissionSummary       `json:"permissions"`
 	ExtensionTrust   ExtensionTrustSummary   `json:"extension_trust"`
@@ -942,12 +964,7 @@ type ConfigAdvancedUpdateResult struct {
 type ConfigGeneralUpdateParams struct {
 	AppendSystemPrompt    *string          `json:"append_system_prompt,omitempty"`
 	GitAttributionEnabled *bool            `json:"git_attribution_enabled,omitempty"`
-	MemoryDisable         *bool            `json:"memory_disable,omitempty"`
 	MCPEnabledToggles     map[string]*bool `json:"mcp_enabled_toggles,omitempty"`
-	DreamEnabled          *bool            `json:"dream_enabled,omitempty"`
-	DreamIntervalDays     *int             `json:"dream_interval_days,omitempty"`
-	DreamProvider         *string          `json:"dream_provider,omitempty"`
-	DreamModel            *string          `json:"dream_model,omitempty"`
 }
 
 type ConfigGeneralUpdateResult struct {
@@ -957,12 +974,7 @@ type ConfigGeneralUpdateResult struct {
 type GeneralSettingsSummary struct {
 	AppendSystemPrompt    string          `json:"append_system_prompt"`
 	GitAttributionEnabled bool            `json:"git_attribution_enabled"`
-	MemoryDisabled        bool            `json:"memory_disabled"`
 	MCPServerEnabled      map[string]bool `json:"mcp_server_enabled"`
-	DreamEnabled          bool            `json:"dream_enabled"`
-	DreamIntervalDays     int             `json:"dream_interval_days"`
-	DreamProvider         string          `json:"dream_provider,omitempty"`
-	DreamModel            string          `json:"dream_model,omitempty"`
 }
 
 type AdvancedSettingsSummary struct {
@@ -1447,11 +1459,10 @@ type ThreadDeleteResult struct {
 // WorkspaceStateCleanupParams is the input for the `workspace/state/cleanup`
 // method: after the user removes a project from the sidebar, the desktop can
 // offer a second, opt-in step that reclaims the removed workspace's local
-// state directory (session artifacts, goals, worktrees, runtime files).
-// Memory is never hard-deleted (self-consistency invariant 3): the memory
-// directories are moved into a `.archived/` folder inside the same state
-// directory instead. workspace_id (the desktop's stable project id) is
-// preferred; workspace_path is the fallback for path-keyed state dirs.
+// state directory. Core-owned transient state is deleted; plugin-owned and
+// unrecognized durable directories are moved into `.archived/` instead.
+// workspace_id (the desktop's stable project id) is preferred;
+// workspace_path is the fallback for path-keyed state dirs.
 type WorkspaceStateCleanupParams struct {
 	WorkspaceID   string `json:"workspace_id,omitempty"`
 	WorkspacePath string `json:"workspace_path,omitempty"`
@@ -1459,47 +1470,12 @@ type WorkspaceStateCleanupParams struct {
 
 type WorkspaceStateCleanupResult struct {
 	StateDir string `json:"state_dir"`
-	// Removed reports whether a state directory existed and its
-	// non-memory contents were deleted.
+	// Removed reports whether a state directory existed and its transient
+	// contents were deleted.
 	Removed bool `json:"removed"`
-	// MemoryArchived reports whether at least one memory directory was
-	// moved into .archived/ instead of being deleted.
-	MemoryArchived bool `json:"memory_archived"`
-}
-
-// Memory panel wire types. Each struct's json tags mirror the Memory* types
-// in desktop/src/shared/protocol.ts field-for-field; changing either side
-// requires changing both (memory-redesign contract §8.2).
-
-// Memory scope values: "user" targets the user notebook (~/.wuu/memory),
-// "participant" targets a named agent's identity notebook
-// (~/.wuu/participants/<id>/memory) and requires participant_id naming an
-// active (non-retired) named participant.
-const (
-	MemoryScopeUser        = "user"
-	MemoryScopeParticipant = "participant"
-)
-
-type MemoryOverviewParams struct {
-	Scope         string `json:"scope"`
-	ParticipantID string `json:"participant_id,omitempty"`
-	ForceRefresh  bool   `json:"force_refresh,omitempty"`
-}
-
-// MemoryOverviewResult carries the structured essay the overview agent
-// generated from the real notebook (one LLM pass). Cached indicates the
-// backend served the notebook's 12-hour cache instead of regenerating.
-type MemoryOverviewResult struct {
-	EssayMD     string `json:"essay_md"`
-	GeneratedAt string `json:"generated_at"`
-	SourceMtime string `json:"source_mtime"`
-	Cached      bool   `json:"cached"`
-}
-
-type MemoryChatParams struct {
-	Scope         string `json:"scope"`
-	ParticipantID string `json:"participant_id,omitempty"`
-	Message       string `json:"message"`
+	// DataArchived reports whether at least one extension-owned or unrecognized
+	// durable directory was moved into .archived/ instead of being deleted.
+	DataArchived bool `json:"data_archived"`
 }
 
 type TextPolishParams struct {
@@ -1520,42 +1496,6 @@ type GitCommitMessageParams struct {
 
 type GitCommitMessageResult struct {
 	Message string `json:"message"`
-}
-
-// MemoryChangedFile is one real notebook file the manager agent touched.
-// Action is "created", "modified", or "deleted".
-type MemoryChangedFile struct {
-	Path   string `json:"path"`
-	Action string `json:"action"`
-}
-
-type MemoryChatResult struct {
-	ReplyMD      string              `json:"reply_md"`
-	ChangedFiles []MemoryChangedFile `json:"changed_files"`
-}
-
-type MemoryReadParams struct {
-	Scope         string `json:"scope"`
-	ParticipantID string `json:"participant_id,omitempty"`
-}
-
-// MemoryFileInfo describes one topic file in the notebook. Name,
-// Description, and Type mirror the file's frontmatter (canonical types are
-// user | feedback | reference | lesson, but Type stays a plain string so
-// entries written by newer backends still render); Mtime is the file's
-// modification time in RFC 3339.
-type MemoryFileInfo struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	Type        string `json:"type"`
-	Mtime       string `json:"mtime"`
-}
-
-// MemoryReadResult is the raw MEMORY.md index plus the file inventory — no
-// LLM involved; the panel's "查看原文" audit/fallback view.
-type MemoryReadResult struct {
-	IndexMD string           `json:"index_md"`
-	Files   []MemoryFileInfo `json:"files"`
 }
 
 type TurnStartParams struct {
@@ -1917,51 +1857,6 @@ const (
 	WorkspaceKindScratch WorkspaceKind = "scratch"
 )
 
-type AutomationListResult struct {
-	Tasks []automation.Task `json:"tasks"`
-}
-
-type AutomationRunsResult struct {
-	Runs []automation.Run `json:"runs"`
-}
-
-type AutomationCreateParams struct {
-	Title             string          `json:"title"`
-	Prompt            string          `json:"prompt"`
-	Schedule          string          `json:"schedule"`
-	Timezone          string          `json:"timezone,omitempty"`
-	Mode              automation.Mode `json:"mode,omitempty"`
-	HeartbeatThreadID string          `json:"heartbeat_thread_id,omitempty"`
-	WorkspaceID       string          `json:"workspace_id,omitempty"`
-	WorkspacePath     string          `json:"workspace_path,omitempty"`
-	Recurring         bool            `json:"recurring"`
-	Paused            bool            `json:"paused,omitempty"`
-}
-
-type AutomationCreateResult struct {
-	Task automation.Task `json:"task"`
-}
-
-type AutomationUpdateParams struct {
-	ID                string           `json:"id"`
-	Title             *string          `json:"title,omitempty"`
-	Prompt            *string          `json:"prompt,omitempty"`
-	Schedule          *string          `json:"schedule,omitempty"`
-	Timezone          *string          `json:"timezone,omitempty"`
-	Mode              *automation.Mode `json:"mode,omitempty"`
-	HeartbeatThreadID *string          `json:"heartbeat_thread_id,omitempty"`
-	Recurring         *bool            `json:"recurring,omitempty"`
-	Paused            *bool            `json:"paused,omitempty"`
-}
-
-type AutomationUpdateResult struct {
-	Task automation.Task `json:"task"`
-}
-
-type AutomationRemoveParams struct {
-	ID string `json:"id"`
-}
-
 type Thread struct {
 	ID               string        `json:"id"`
 	Source           string        `json:"source,omitempty"`
@@ -2058,7 +1953,6 @@ const (
 	ThreadItemAgentMessage      ThreadItemType = "agent_message"
 	ThreadItemReasoning         ThreadItemType = "reasoning"
 	ThreadItemToolCall          ThreadItemType = "tool_call"
-	ThreadItemCollabAgentTool   ThreadItemType = "collab_agent_tool_call"
 	ThreadItemContextCompaction ThreadItemType = "context_compaction"
 	ThreadItemError             ThreadItemType = "error"
 )

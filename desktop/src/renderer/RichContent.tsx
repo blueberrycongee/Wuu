@@ -17,6 +17,7 @@ import { Tooltip } from "./Tooltip";
 import { currentAppliedTheme, observeAppliedTheme, type AppliedTheme } from "./Theme";
 import { desktopWorkbenchController } from "./plugins/DesktopPluginRuntime";
 import { WorkbenchContentRenderer } from "./plugins/Workbench";
+import { highlightCode } from "./WorkspaceCodeHighlight";
 
 type RichContentProps = {
   text?: string;
@@ -490,11 +491,10 @@ function markdownComponents(
         if (language === "mermaid" && renderMermaid) {
           return <MermaidDiagram code={reactNodeText(child.props.children).replace(/\n$/, "")} />;
         }
-        const code = reactNodeText(child.props.children).replace(/\n$/, "");
+        const displayedCode = reactNodeText(child.props.children);
+        const code = displayedCode.replace(/\n$/, "");
         return (
-          <RichCodeBlock code={code} language={language}>
-            {children}
-          </RichCodeBlock>
+          <RichCodeBlock code={code} displayedCode={displayedCode} language={language} />
         );
       }
       return <pre className="rich-code">{children}</pre>;
@@ -537,14 +537,24 @@ function markdownComponents(
 
 function RichCodeBlock({
   code,
-  language,
-  children
+  displayedCode,
+  language
 }: {
   code: string;
+  displayedCode: string;
   language: string;
-  children: ReactNode;
 }): JSX.Element {
   const { t } = useI18n();
+  const highlighted = useMemo(
+    () => highlightCode(language, displayedCode),
+    [displayedCode, language]
+  );
+  const highlightedCode = (
+    <code
+      className={`hljs language-${highlighted.language}`}
+      dangerouslySetInnerHTML={{ __html: highlighted.html }}
+    />
+  );
   // Two layouts:
   //   - With a language tag, the header row carries the language label
   //     and the copy button on the same baseline. Keeps the chrome
@@ -571,7 +581,7 @@ function RichCodeBlock({
           />
         </div>
         <pre className="rich-code">
-          {children}
+          {highlightedCode}
         </pre>
       </div>
     );
@@ -579,7 +589,7 @@ function RichCodeBlock({
   return (
     <div className="rich-code-block rich-code-block--no-header">
       <pre className="rich-code">
-        {children}
+        {highlightedCode}
       </pre>
       <MessageCopyButton
         getText={() => code}

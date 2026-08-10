@@ -240,7 +240,7 @@ func runStartParams(opts Options, threadID string, input TurnInput, outputSchema
 			PermissionMode: strings.TrimSpace(opts.PermissionMode),
 		},
 		AgentProfile: strings.TrimSpace(opts.AgentProfile), MaxTurns: opts.MaxTurns,
-		TimeoutMS: opts.Timeout.Milliseconds(), Ultra: opts.Ultra, NoTools: opts.NoTools,
+		TimeoutMS: opts.Timeout.Milliseconds(), NoTools: opts.NoTools,
 		HasPrompt: input.Prompt != "", ImageCount: len(input.Images), FileCount: len(input.Files),
 		StructuredOutput: outputSchema != nil,
 	}
@@ -492,7 +492,6 @@ func emitSessionConfigured(opts Options, result appserver.InitializeResult) {
 			"model":            result.Model,
 			"effort":           result.Effort,
 			"variant":          result.Variant,
-			"ultra":            result.Ultra,
 			"max_parallel":     result.MaxParallel,
 			"workspace_root":   result.WorkspaceRoot,
 			"permissions":      result.Permissions,
@@ -523,7 +522,7 @@ func emitTurnStarted(opts Options, threadID string, turn appserver.Turn) {
 
 func emitItemStarted(opts Options, params appserver.ItemStartedNotification, state *runState) {
 	switch params.Item.Type {
-	case appserver.ThreadItemToolCall, appserver.ThreadItemCollabAgentTool:
+	case appserver.ThreadItemToolCall:
 		safeItem := params.Item
 		safeItem.Arguments = tools.RedactToolOutput(safeItem.Arguments)
 		emitJSON(opts, map[string]any{"type": "tool_started", "thread_id": params.ThreadID, "turn_id": params.TurnID, "item_id": safeItem.ID, "name": safeItem.Name, "arguments": safeItem.Arguments})
@@ -539,7 +538,7 @@ func emitItemStarted(opts Options, params appserver.ItemStartedNotification, sta
 
 func emitItemCompleted(opts Options, params appserver.ItemCompletedNotification, state *runState) {
 	switch params.Item.Type {
-	case appserver.ThreadItemToolCall, appserver.ThreadItemCollabAgentTool:
+	case appserver.ThreadItemToolCall:
 		item := params.Item
 		if item.Result == "" {
 			item.Result = state.toolOutput(item.ID)

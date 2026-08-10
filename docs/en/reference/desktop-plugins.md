@@ -1,9 +1,10 @@
 # Customize the desktop UI with plugins
 
 > The complete plugin authoring guide (manifest, Agent plugins, desktop contributions,
-> and the local development loop) is currently in Chinese:
-> [编写插件（简体中文）](../../zh-cn/customize/plugin-authoring.md).
-> This page covers the desktop-code surface.
+> and the local development loop) lives in
+> [Writing plugins](../customize/plugin-authoring.md). For installing and managing
+> plugins, see [Plugins](../customize/plugins.md). This page covers the
+> desktop-code surface.
 
 Trusted desktop-code plugins can register global styles and replace or wrap stable UI surfaces.
 This supports coherent visual systems and bounded structural changes without relying on DOM monkey
@@ -44,8 +45,8 @@ export async function activate(api) {
     css: ".my-frame { border: 1px solid var(--wuu-hairline); }",
   });
 
-  api.registerSurface("app.sidebar", {
-    id: "sidebar-frame",
+  api.registerSurface("conversation.timeline", {
+    id: "timeline-frame",
     mode: "wrap",
     render(_context, fallback) {
       return React.createElement("section", { className: "my-frame" }, fallback);
@@ -62,34 +63,23 @@ disabled, removed, or upgraded.
 
 | Surface | Host UI |
 | --- | --- |
-| `app.shell` | Entire React application shell |
-| `app.sidebar` | Left navigation |
-| `app.main` | Main content region |
-| `app.auxiliary` | Auxiliary workspace region |
-| `app.status` | Additive application status region |
-| `view.launch` | Launch and runtime-loading view |
-| `view.conversation` | Active conversation view |
-| `view.workspace` | Workspace side-panel view |
-| `conversation.composer` | Main prompt composer |
 | `conversation.timeline` | One conversation turn/orchestration group |
 | `conversation.message` | One sanitized conversation message boundary |
-| `view.settings` | Settings shell |
-| `view.catalog` | Skills, plugins, and Automations catalogs |
 
-Contexts expose versioned, limited state and host actions. For example, the shell exposes navigation
-actions, while the composer exposes its prompt, running/read-only state, `setPrompt`, `send`, and
-`interrupt`. Do not depend on private Wuu class names as a compatibility contract.
+App Shell, navigation, primary Session UI, Composer, auxiliary container, Settings, launch, and
+plugin management are protected Host roots. A plugin can add a View, Slot, or Presenter around
+their public semantic contracts, but cannot replace or hide those recovery paths.
 
 Additive contributions use `registerSlot`. Current production slots are `sidebar.primary`,
 `sidebar.footer`, `workspace.header`, `conversation.header`, `conversation.message.before`,
-`conversation.message.after`, `composer.above`, `composer.toolbar`, and `settings.plugin`. Slot
+`conversation.message.after`, `composer.above`, and `composer.toolbar`. Slot
 contexts contain only frozen summary fields; they do not contain private host records. Slots compose
 with native UI and semantic presenters rather than replacing their ownership boundary.
 
 ## View placements, not arbitrary layouts
 
-A plugin can register a View and request its initial placement in one stable host-owned region:
-`main`, `sidebar`, or `auxiliary`.
+A plugin can register a View and request its initial placement in one stable host-owned semantic
+region: `navigation`, `primary`, `auxiliary`, `inspector`, `settings`, or `overlay`.
 
 ```js
 api.registerViewType({
@@ -110,9 +100,31 @@ api.registerViewPlacement({
 `priority` only resolves the initial active View when a region has no user choice. User activation
 and dismissal win and are persisted. Placement does not expose the shell DOM, arbitrary parent
 nodes, split-tree construction, panel dimensions, protected chrome, plugin management, or recovery
-UI. The old `registerLayoutContribution` method remains as a compatibility adapter; its
-`parentId`, `size`, and `minSize` fields were never implemented as layout-tree controls and are not
-used. New plugins should use `registerViewPlacement`.
+UI. `registerViewPlacement` is the only placement API.
+
+## Inspector summaries
+
+Use `registerInspectorSection` for a short, scan-friendly summary in the host environment panel:
+
+```js
+api.registerInspectorSection({
+  id: "run-summary",
+  title: "Run summary",
+  priority: 20,
+  render({ snapshot, host }) {
+    return api.react.createElement(
+      api.ui.Button,
+      { onClick: () => host.openView("my-plugin.details", { region: "auxiliary" }) },
+      snapshot.session.status === "running" ? "Running" : "Idle",
+    );
+  },
+});
+```
+
+The versioned snapshot contains only public Session, Turn, Workspace, Git, and Plan summaries.
+Actions are limited to opening a registered View or executing a registered Command. The host caps
+each Section height, owns overflow, and isolates each contribution with its own error fallback.
+Long lists, editors, and complex interaction belong in a `primary` or `auxiliary` View.
 
 ## Host-owned discovery entries
 
@@ -123,7 +135,7 @@ discover it in `plugin.json`:
 {
   "contributes": {
     "navigation": [
-      { "id": "dashboard", "view": "product.dashboard", "title": "Dashboard" }
+      { "id": "dashboard", "view": "product.dashboard", "title": "Dashboard", "icon": "gauge" }
     ],
     "workspaceTools": [
       { "id": "inspector", "view": "product.inspector", "title": "Inspector" }
@@ -142,11 +154,29 @@ entry must reference a View registered by the same plugin. Standard `contributes
 automatically receive a host-rendered Settings page; use a custom settings View only for content
 that cannot be expressed by the standard schema.
 
+Declare a top-level `icon` to brand the plugin catalog and detail view. It may be a public semantic
+name, `{ "path": "assets/icon.svg" }`, or a themed
+`{ "light": "assets/icon-light.svg", "dark": "assets/icon-dark.svg" }` pair. Entry-level `icon`
+uses the same contract but is independent from the package artwork. Host navigation does not
+inherit the brand icon when an entry omits `icon`. Import `PUBLIC_ICON_NAMES`,
+`PublicIconName`, and `PluginManifestIcon` from `@wuu/plugin-sdk` for authoring support.
+
+Package artwork accepts SVG, PNG, and WebP up to 256 KiB per file. Paths must remain inside the
+package and cannot be symbolic links. SVG scripts, event attributes, embedded documents, and
+external references are rejected. Wuu owns sizing, active state, accessibility, theme switching,
+and load-failure fallback; desktop modules cannot inject icon components into host chrome.
+
 ## Host-owned UI Kit
 
 Custom Views receive `api.ui`, a deliberately small set of host-owned React components:
-`Page`, `Panel`, `Card`, `Section`, `Stack`, `Row`, `Button`, `TextInput`, and `EmptyState`.
+`Page`, `Panel`, `Card`, `Section`, `Stack`, `Row`, `Button`, `ToolbarToggle`, `TextInput`, `TextArea`, `Checkbox`,
+`EmptyState`, `LoadingState`, `ErrorState`, and `LiveDuration`.
 They preserve Wuu's spacing and interaction behavior while inheriting the active appearance theme.
+`Page` accepts `density: "comfortable" | "compact"`; state components own ARIA status, loading
+motion, error treatment, responsive spacing, and overflow behavior. Use `ToolbarToggle` for binary
+Composer-toolbar controls so the host owns `aria-pressed`, hit targets, focus, and active styling.
+`LiveDuration` renders accumulated milliseconds and, while active, updates from an optional running
+start time without requiring the plugin to own an interval.
 
 ```js
 const { Button, Card, Page, Section, Stack } = api.ui;
@@ -169,6 +199,41 @@ Use these components for ordinary product UI so appearance plugins also affect V
 other plugins. They are not a page DSL: complex Views may still render arbitrary React, and
 specialized canvases, terminals, and previews remain explicit theme boundaries. The UI Kit owns
 common layout rhythm; plugins should not override its internal class names.
+
+## Commands and conversation cards
+
+Declare a `runtime_action` under `contributes.commands` and register a desktop command with the same
+ID to expose an approved plugin action in the Composer slash menu. The entry is available only while
+the plugin is enabled and its desktop generation has registered the command; the manifest alone never
+executes plugin code.
+
+Use `api.showConversationCard` when that action, a host event, or plugin-owned asynchronous work needs
+to display temporary interaction at the bottom of a conversation. Omitting `threadId` targets the
+current conversation. The returned handle can update the card state or dismiss it. Cards are not
+written to conversation history or model context, and the host removes them when the generation is
+disposed or the app restarts.
+
+```js
+api.registerCommand({
+  id: "show-status",
+  title: "Show status",
+  execute(input) {
+    return api.showConversationCard({
+      threadId: input?.threadId,
+      title: "Plugin status",
+      state: { status: "ready" },
+      render({ state, dismiss }) {
+        return api.react.createElement(
+          api.ui.Stack,
+          { gap: "small" },
+          api.react.createElement("span", null, state.status),
+          api.react.createElement(api.ui.Button, { onClick: dismiss }, "Close"),
+        );
+      },
+    });
+  },
+});
+```
 
 ## Semantic presenters
 
@@ -233,13 +298,11 @@ width, and `--wuu-syntax-*` syntax colors. Early names such as `--wuu-paper`, `-
 should prefer the current `--wuu-color-*` and `--wuu-font-*` names.
 
 Shared neutral UI uses coarse semantic tokens so an appearance plugin does not need private DOM
-selectors: `--wuu-control-secondary-background` styles secondary actions,
-`--wuu-control-field-background` styles text fields and selects,
-`--wuu-control-icon-background` styles compact icon tiles,
-`--wuu-badge-neutral-background` styles neutral status and permission badges, and
-`--wuu-inline-code-background` styles Markdown inline code. Their text and font continue to inherit
-the corresponding public color and typography tokens. Compact controls keep host-owned border widths
-so a strong panel border cannot change their box model or break wrapping.
+selectors. The complete token-to-surface mapping is generated from the host stylesheet dependency
+graph and published on the [theme surface matrix](../customize/theme-surface-matrix.md). Their
+text and font continue to inherit the corresponding public color and typography tokens. Compact
+controls keep host-owned border widths so a strong panel border cannot change their box model or
+break wrapping.
 
 Common host dialogs, menus, popovers, tooltips, notices, and floating navigation now render through
 the protected Layer Host and expose stable `data-wuu-component`, `data-wuu-layer`, and
@@ -247,6 +310,10 @@ the protected Layer Host and expose stable `data-wuu-component`, `data-wuu-layer
 specialized rendering boundaries rather than appearance layers. Trusted code plugins that need
 supplemental CSS should target only the published attributes and tokens, not private class names or
 DOM structure.
+
+Native workspace tabs expose `workspace-tool-tab` and `workspace-tool-tab-close` anchors. A tab uses
+`data-wuu-active="true" | "false"` for selection and `data-wuu-state="closing" | "dragging"` for
+transient lifecycle state; selection, closing, dragging, and overflow remain host-owned.
 
 Message controls expose one host-owned `message-actions` group anchor. Action bars distinguish
 `data-wuu-placement="persistent" | "overlay"`.
@@ -261,13 +328,22 @@ of targeting individual action identities. The user-query surface is separately 
 
 The UI Kit exposes coarse anchors for `plugin-ui-page`, `plugin-ui-panel`, `plugin-ui-card`,
 `plugin-ui-section`, `plugin-ui-stack`, `plugin-ui-row`, `plugin-ui-button`, `plugin-ui-field`,
-`plugin-ui-input`, and `plugin-ui-empty-state`. Appearance plugins should prefer public tokens and
-use these boundaries only when a structural treatment is necessary.
+`plugin-ui-input`, `plugin-ui-empty-state`, `plugin-ui-loading-state`, `plugin-ui-error-state`, and
+`plugin-ui-live-duration`.
+Appearance plugins should prefer public tokens and use these boundaries only when a structural
+treatment is necessary.
 
 Settings exposes `settings-shell`, `settings-sidebar`, `settings-content`, and `settings-page` as
 coarse layout boundaries. Themes can give the navigation rail and content canvas different material
 treatments without targeting private Settings classes; the shared sidebar divider inherits the
 public `--wuu-border-subtle` token.
+
+Sidebar navigation hover shares one public treatment across the main rail, plugin entries, project
+and thread rows, the settings rail, and the settings back button:
+`--wuu-nav-item-hover-background` paints hovered/expanded rows and `--wuu-nav-item-hover-ring`
+tints their inset ring. Both fall back to the host glass material, so themes opt in without
+touching private row classes. The collapsed rail's floating drawer paints through
+`--wuu-color-surface-muted`, so it keeps the same material as the docked sidebar.
 
 See the installable [`examples/plugins/deep-ui`](../../../examples/plugins/deep-ui/) package for a
 theme and wrappers covering all current surfaces.

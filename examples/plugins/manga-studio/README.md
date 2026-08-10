@@ -18,9 +18,10 @@ the plugin to unload every frame, presenter, style, and decorative element at on
 
 ## Design
 
-- warm paper canvas with halftone dots and speed lines;
-- heavy black panel borders and offset print shadows;
-- cyan, yellow, and magenta spot colors;
+- warm paper canvas with heavy ink panel frames and offset print shadows;
+- cyan, yellow, and magenta spot colors across controls, badges, inline code, links, and status;
+- speech-bubble user messages with an ink outline and offset shadow (main and chat views);
+- manga hover treatment for sidebar navigation, project, and thread rows;
 - semantic styling across navigation, conversations, settings, catalogs, and workspace panels;
 - public coordinates for all four workspace tools, plus Shadow DOM and xterm style bridges;
 - semantic panel treatment for messages, reasoning, and Tool activity;

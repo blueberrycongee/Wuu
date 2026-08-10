@@ -27,7 +27,6 @@ describe("PluginHost", () => {
       "conversation.message.after",
       "composer.above",
       "composer.toolbar",
-      "settings.plugin",
     ]);
 
     const host = new PluginHost({ react: React });
@@ -78,7 +77,7 @@ describe("PluginHost", () => {
         pluginId,
         generation: "one",
         register(api) {
-          api.registerSurface("app.main", {
+          api.registerSurface("conversation.timeline", {
             id: `${pluginId}-main`,
             mode: "replace",
             render: (_context, fallback) => fallback,
@@ -87,18 +86,18 @@ describe("PluginHost", () => {
       });
     }
 
-    expect(host.getSurfaceSnapshot("app.main").at(-1)?.pluginId).toBe("zeta");
+    expect(host.getSurfaceSnapshot("conversation.timeline").at(-1)?.pluginId).toBe("zeta");
     expect(host.getConflicts()).toEqual([
       expect.objectContaining({
-        key: "surface:app.main",
+        key: "surface:conversation.timeline",
         kind: "surface",
-        target: "app.main",
+        target: "conversation.timeline",
         winnerPluginId: "zeta",
       }),
     ]);
 
-    host.setConflictPreference("surface:app.main", "alpha");
-    expect(host.getSurfaceSnapshot("app.main").at(-1)?.pluginId).toBe("alpha");
+    host.setConflictPreference("surface:conversation.timeline", "alpha");
+    expect(host.getSurfaceSnapshot("conversation.timeline").at(-1)?.pluginId).toBe("alpha");
     expect(host.getConflicts()[0]?.winnerPluginId).toBe("alpha");
   });
 
@@ -239,7 +238,7 @@ describe("PluginHost", () => {
       pluginId: "removable",
       generation: "one",
       register(api) {
-        disposables.push(api.registerSlot("settings.plugin", contribution("settings")));
+        disposables.push(api.registerSlot("sidebar.footer", contribution("footer")));
         disposables.push(api.registerCommand(command("action")));
         disposables.push(api.registerStyle({ id: "theme", css: ".theme {}" }));
         disposables.push(api.registerLocale({ id: "copy", locale: "en", entries: { copy: "Copy" } }));
@@ -252,7 +251,7 @@ describe("PluginHost", () => {
       disposable.dispose();
     }
 
-    expect(host.getSlotSnapshot("settings.plugin")).toEqual([]);
+    expect(host.getSlotSnapshot("sidebar.footer")).toEqual([]);
     expect(host.getCommands()).toEqual([]);
     expect(host.getLocaleEntries("en")).toEqual({});
     expect(document.head.querySelector("style[data-wuu-plugin-id=removable]")).toBeNull();
@@ -292,13 +291,13 @@ describe("PluginHost", () => {
         api.registerViewType({
           id: "dashboard",
           title: "Dashboard",
-          defaultPane: "main",
+          defaultRegion: "primary",
           persistence: "durable",
           render: () => null,
         });
         api.registerViewPlacement({
           id: "dashboard-pane",
-          region: "main",
+          region: "primary",
           view: "dashboard",
         });
         api.registerRenderer({
@@ -338,37 +337,6 @@ describe("PluginHost", () => {
     expect(notifications).toHaveLength(2);
   });
 
-  it("normalizes legacy layout registrations without advertising a layout tree", async () => {
-    const host = new PluginHost({ react: React });
-
-    await host.activateGeneration({
-      pluginId: "legacy-layout",
-      generation: "one",
-      register(api) {
-        api.registerLayoutContribution({
-          id: "legacy-dashboard",
-          parentId: "invented-split",
-          pane: "auxiliary",
-          size: 0.4,
-          minSize: 240,
-          defaultView: "views.dashboard",
-        });
-      },
-    });
-
-    const [placement] = host.getViewPlacements();
-    expect(placement).toMatchObject({
-      id: "legacy-dashboard",
-      pluginId: "legacy-layout",
-      view: "views.dashboard",
-      pane: "auxiliary",
-      legacy: true,
-    });
-    expect(placement).not.toHaveProperty("parentId");
-    expect(placement).not.toHaveProperty("size");
-    expect(placement).not.toHaveProperty("minSize");
-  });
-
   it("validates stable placement regions and orders defaults by priority", async () => {
     const host = new PluginHost({ react: React });
 
@@ -381,20 +349,20 @@ describe("PluginHost", () => {
         api.registerViewPlacement({
           id: "high",
           view: "views.high",
-          region: "main",
+          region: "primary",
           priority: 20,
         });
         api.registerViewPlacement({
           id: "low",
           view: "views.low",
-          region: "main",
+          region: "primary",
           priority: 10,
         });
       },
     });
 
     expect(host.getViewPlacements().map((placement) => placement.id)).toEqual(["low", "high"]);
-    expect(host.getViewPlacements().every((placement) => placement.legacy === false)).toBe(true);
+    expect(host.getViewPlacements().every((placement) => placement.region === "primary")).toBe(true);
 
     await expect(host.activateGeneration({
       pluginId: "invalid-placement",
@@ -404,10 +372,10 @@ describe("PluginHost", () => {
         api.registerViewPlacement({
           id: "overlay",
           view: "views.overlay",
-          region: "overlay" as never,
+          region: "physical-right" as never,
         });
       },
-    })).rejects.toThrow("Unsupported plugin View placement region: overlay");
+    })).rejects.toThrow("Unsupported plugin View placement region: physical-right");
 
     await expect(host.activateGeneration({
       pluginId: "missing-placement-view",
@@ -416,7 +384,7 @@ describe("PluginHost", () => {
         api.registerViewPlacement({
           id: "missing",
           view: "views.missing",
-          region: "main",
+          region: "primary",
         });
       },
     })).rejects.toThrow(
@@ -501,7 +469,7 @@ describe("PluginHost", () => {
       pluginId: "missing-registration",
       generation: "one",
       contributions: {
-        surfaces: [{ id: "frame", target: "app.main", mode: "wrap" }],
+        surfaces: [{ id: "frame", target: "conversation.timeline", mode: "wrap" }],
       },
       register() {},
     })).rejects.toThrow("Manifest surface contribution frame was not registered");

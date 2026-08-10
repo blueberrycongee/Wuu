@@ -4,6 +4,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ExtensionInventoryRecord, SkillSummary, WuuDesktopApi } from "../shared/protocol";
 import { SkillsCatalog } from "./SkillsCatalog";
 
+const toastMocks = vi.hoisted(() => ({
+  showErrorToast: vi.fn(),
+}));
+
+vi.mock("./Toast", () => ({
+  showErrorToast: toastMocks.showErrorToast,
+}));
+
 vi.mock("./RichContent", () => ({
   RichContent: ({ text }: { text: string }) => <div data-testid="rich-content">{text}</div>,
 }));
@@ -12,6 +20,7 @@ let container: HTMLDivElement;
 let root: Root | null = null;
 
 beforeEach(() => {
+  toastMocks.showErrorToast.mockClear();
   container = document.createElement("div");
   document.body.appendChild(container);
 });
@@ -49,7 +58,7 @@ describe("SkillsCatalog", () => {
     expect(container.textContent).toContain("当前运行时未发现 Skills");
   });
 
-  it("shows install errors in the catalog", async () => {
+  it("shows install errors as a toast instead of inline catalog state", async () => {
     installSkillList([]);
     const onInstallPluginPackage = vi
       .fn()
@@ -65,7 +74,12 @@ describe("SkillsCatalog", () => {
       buttonByText("安装本地插件")?.click();
     });
 
-    expect(container.textContent).toContain("Package manifest is invalid");
+    expect(toastMocks.showErrorToast).toHaveBeenCalledWith(
+      expect.objectContaining({ message: "Package manifest is invalid" }),
+      "无法安装插件",
+    );
+    expect(container.textContent).not.toContain("Package manifest is invalid");
+    expect(container.querySelector(".skills-catalog-error")).toBeNull();
   });
 
   it("refreshes the complete extension catalog through the parent runtime", async () => {
@@ -240,11 +254,13 @@ describe("SkillsCatalog", () => {
     });
 
     expect(container.textContent).toContain("待授权");
-    expect(container.textContent).toContain("file.read");
-    expect(container.textContent).toContain("命令 1 · 设置 0 · 主题 0");
+    await act(async () => {
+      skillButton("docs")?.click();
+    });
+    expect(document.body.textContent).toContain("file.read");
+    expect(document.body.textContent).toContain("命令 1 · 设置 0 · 主题 0");
 
-    const grantButton = [...container.querySelectorAll("button")]
-      .find((button) => button.textContent === "授权并启用");
+    const grantButton = buttonByText("授权并启用");
     await act(async () => {
       grantButton?.click();
     });
@@ -254,6 +270,55 @@ describe("SkillsCatalog", () => {
       fingerprint: "sha256:docs",
       action: "grant",
     });
+  });
+
+  it("shows a busy-thread authorization failure as a toast", async () => {
+    installSkillList([]);
+    const busyError = new Error(
+      'Error invoking remote method \'wuu:extension-package-update\': Error: cannot change plugin packages while a turn is running or background work remains on thread "thread-busy"',
+    );
+    const onUpdateExtensionPackage = vi.fn().mockRejectedValue(busyError);
+    const extensionInventory = [
+      {
+        id: "plugin:user:manga-studio",
+        name: "manga-studio",
+        kind: "plugin",
+        provenance: {
+          kind: "plugin",
+          source: "user",
+          scope: "user",
+          plugin_id: "manga-studio",
+          official: false,
+        },
+        state: "changed",
+        approval_state: "changed",
+        runtime_state: "inactive",
+        enabled: false,
+        fingerprint: "sha256:manga-studio",
+      },
+    ] as unknown as ExtensionInventoryRecord[];
+
+    await act(async () => {
+      root = createRoot(container);
+      root.render(
+        <SkillsCatalog
+          extensionInventory={extensionInventory}
+          onUpdateExtensionPackage={onUpdateExtensionPackage}
+        />,
+      );
+    });
+    await act(async () => {
+      skillButton("manga-studio")?.click();
+    });
+    await act(async () => {
+      buttonByText("重新授权")?.click();
+    });
+
+    expect(toastMocks.showErrorToast).toHaveBeenCalledWith(
+      busyError,
+      "无法更新插件状态",
+    );
+    expect(container.textContent).not.toContain("cannot change plugin packages");
   });
 
   it("renders Remove only for user-installed plugins and removes by plugin ID after confirmation", async () => {
@@ -316,7 +381,10 @@ describe("SkillsCatalog", () => {
 
     expect(buttonsByText("移除")).toHaveLength(0);
     await act(async () => {
-      container.querySelector<HTMLButtonElement>('[aria-label="community-tools 的更多操作"]')?.click();
+      skillButton("community-tools")?.click();
+    });
+    await act(async () => {
+      document.querySelector<HTMLButtonElement>('[aria-label="community-tools 的更多操作"]')?.click();
     });
     expect(buttonsByText("移除")).toHaveLength(1);
     await act(async () => {
@@ -368,7 +436,10 @@ describe("SkillsCatalog", () => {
     });
 
     expect(container.textContent).toContain("更新待授权");
-    expect(container.textContent).toContain("版本 2.0.0 已就绪");
+    await act(async () => {
+      skillButton("update-demo")?.click();
+    });
+    expect(document.body.textContent).toContain("版本 2.0.0 已就绪");
     await act(async () => {
       buttonByText("授权并更新")?.click();
     });
@@ -379,7 +450,7 @@ describe("SkillsCatalog", () => {
     });
 
     await act(async () => {
-      container.querySelector<HTMLButtonElement>('[aria-label="update-demo 的更多操作"]')?.click();
+      document.querySelector<HTMLButtonElement>('[aria-label="update-demo 的更多操作"]')?.click();
     });
     await act(async () => {
       buttonByText("拒绝更新")?.click();
@@ -424,7 +495,10 @@ describe("SkillsCatalog", () => {
 
     expect(container.textContent).toContain("内容已更改");
     expect(container.textContent).toContain("启动失败");
-    expect(container.textContent).toContain("Plugin process exited before initialize");
+    await act(async () => {
+      skillButton("broken")?.click();
+    });
+    expect(document.body.textContent).toContain("Plugin process exited before initialize");
   });
 
   it("opens a skill preview dialog from a skill row", async () => {

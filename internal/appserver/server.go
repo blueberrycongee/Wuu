@@ -228,12 +228,6 @@ type Server struct {
 	participantMu           sync.Mutex
 	participantSummaryCache map[string]participant.Summary
 
-	// memoryOverviewCache memoizes the settings-panel overview essay per
-	// notebook, keyed by (scope, participant_id). Entries are also persisted
-	// under WuuHome so reopening the desktop does not immediately spend
-	// another inference; automatic refreshes are limited to once per 12 hours.
-	memoryOverviewMu             sync.Mutex
-	memoryOverviewCache          map[string]memoryOverviewCacheEntry
 	inferenceMaintenanceStop     chan struct{}
 	inferenceMaintenanceDone     chan struct{}
 	inferenceMaintenanceStopOnce sync.Once
@@ -245,6 +239,7 @@ type Server struct {
 	pluginGenerationMutation     atomic.Bool
 	pluginGenerationEpoch        atomic.Uint64
 	pluginGenerationRefreshMu    sync.Mutex
+	pluginLifecycleReplayPending atomic.Bool
 	refreshExtensionsForTest     func(config.Config) error
 	presenceLease                *session.AppServerPresenceLease
 	startupErr                   error
@@ -281,7 +276,6 @@ func NewWithCredentialStore(rt *runtime.Session, out io.Writer, store credential
 		pendingQueuedTurns:           make(map[string][]queuedTurn),
 		drainingQueuedTurns:          make(map[string]bool),
 		codexModelCache:              make(map[string]map[string]config.ProviderModelConfig),
-		memoryOverviewCache:          make(map[string]memoryOverviewCacheEntry),
 		inferenceMaintenanceStop:     make(chan struct{}),
 		channelMaintenanceStop:       make(chan struct{}),
 		sideTurns:                    make(map[string]*sideThreadTurn),
@@ -381,19 +375,10 @@ func NewWithCredentialStore(rt *runtime.Session, out io.Writer, store credential
 		})
 	}
 	if rt != nil && rt.PluginSessionRouter != nil {
-		s.pluginTurnUnbind = rt.PluginSessionRouter.Bind(s.createPluginSession, s.sendPluginSession)
+		s.pluginTurnUnbind = rt.PluginSessionRouter.Bind(s.createPluginSession, s.sendPluginSession, s.listPluginSessions, s.cancelPluginSession)
+		s.startBackground(s.replayPendingPluginTurnLifecycles)
 	}
 	s.startInferenceJournalMaintenance()
-	if rt != nil && rt.AutomationManager != nil {
-		if err := rt.AutomationManager.Start(s); err != nil {
-			if s.pluginTurnUnbind != nil {
-				s.pluginTurnUnbind()
-				s.pluginTurnUnbind = nil
-			}
-			s.startupErr = fmt.Errorf("start automation manager: %w", err)
-			return s
-		}
-	}
 	if s.channelService != nil {
 		s.startBackground(s.restoreNamedAgentWakes)
 	}
@@ -413,6 +398,7 @@ func (s *Server) settleOnBoot() {
 		if recoverErr != nil {
 			providers.DebugLogf("settleOnBoot pass4 (inference journal): %v", recoverErr)
 		} else if len(recoveries) > 0 {
+			s.persistRecoveredTurnTerminals(recoveries, now)
 			var safe, blocked, abandoned int
 			for _, recovery := range recoveries {
 				switch recovery.Action {
@@ -442,6 +428,61 @@ func (s *Server) settleOnBoot() {
 	}
 }
 
+func (s *Server) persistRecoveredTurnTerminals(recoveries []session.InferenceCrashRecovery, now time.Time) {
+	owners := make(map[string]struct{})
+	for _, recovery := range recoveries {
+		ownerID := strings.TrimSpace(recovery.OwnerID)
+		if recovery.Kind == providers.InferenceOperationAgentRound && ownerID != "" {
+			owners[ownerID] = struct{}{}
+		}
+	}
+	for ownerID := range owners {
+		loaded, err := s.loadPersistedThreadSnapshot(ownerID)
+		if err != nil {
+			if !errors.Is(err, session.ErrSessionNotFound) {
+				providers.DebugLogf("settleOnBoot turn projection %q: %v", ownerID, err)
+			}
+			continue
+		}
+		turns := turnsFromPersistedHistory(ownerID, loaded.displayHistory, now, s.resolveParticipantSummary)
+		if len(turns) == 0 {
+			continue
+		}
+		turn := turns[len(turns)-1]
+		if hasPersistedTurnTerminal(loaded.rawHistory, turn.ID) || turnHasFinalAnswer(turn) {
+			continue
+		}
+		message := "execution interrupted because the previous app server exited"
+		if err := session.AppendHistoryRecord(s.rt.SessionDir, ownerID, session.HistoryRecord{
+			Role: "meta", Content: turnTerminalHistoryRecord, DisplayContent: message,
+			ClientID: turn.ID, StopReason: string(TurnStatusInterrupted), At: now,
+		}); err != nil {
+			providers.DebugLogf("settleOnBoot persist interrupted turn %q: %v", ownerID, err)
+		}
+	}
+}
+
+func hasPersistedTurnTerminal(history []persistedMessage, turnID string) bool {
+	turnID = strings.TrimSpace(turnID)
+	for _, record := range history {
+		if strings.EqualFold(strings.TrimSpace(record.Role), "meta") &&
+			record.Content == turnTerminalHistoryRecord &&
+			strings.TrimSpace(record.ClientID) == turnID {
+			return true
+		}
+	}
+	return false
+}
+
+func turnHasFinalAnswer(turn Turn) bool {
+	for _, item := range turn.Items {
+		if item.Type == ThreadItemAgentMessage && item.Phase == ThreadItemPhaseFinalAnswer && strings.TrimSpace(item.Text) != "" {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *Server) startInferenceJournalMaintenance() {
 	if s == nil || s.rt == nil || s.rt.InferenceJournalRuntime == nil {
 		return
@@ -461,6 +502,7 @@ func (s *Server) startInferenceJournalMaintenance() {
 					continue
 				}
 				if len(recoveries) > 0 {
+					s.persistRecoveredTurnTerminals(recoveries, now.UTC())
 					providers.DebugLogf("inference journal maintenance: recovered %d orphan operation(s)", len(recoveries))
 				}
 			case <-s.inferenceMaintenanceStop:
@@ -574,9 +616,6 @@ func (s *Server) Close() {
 		if s.pluginTurnUnbind != nil {
 			s.pluginTurnUnbind()
 			s.pluginTurnUnbind = nil
-		}
-		if s.rt != nil && s.rt.AutomationManager != nil {
-			s.rt.AutomationManager.Stop()
 		}
 		s.cancelSideThreads()
 		// Synchronize with startBackground so no new owned goroutine can be
@@ -852,6 +891,8 @@ func (s *Server) handleLine(ctx context.Context, raw []byte) error {
 		return s.handlePluginPackageRemove(req)
 	case MethodPluginDesktopModuleRead:
 		return s.handlePluginDesktopModuleRead(req)
+	case MethodPluginIconRead:
+		return s.handlePluginIconRead(req)
 	case MethodPluginSettingGet:
 		return s.handlePluginSettingGet(req)
 	case MethodPluginSettingSet:
@@ -928,16 +969,6 @@ func (s *Server) handleLine(ctx context.Context, raw []byte) error {
 		return s.handleChannelHumanMentionStatus(ctx, req)
 	case MethodChannelMentionAck:
 		return s.handleChannelHumanMentionAck(ctx, req)
-	case MethodAutomationList:
-		return s.handleAutomationList(req)
-	case MethodAutomationRuns:
-		return s.handleAutomationRuns(req)
-	case MethodAutomationCreate:
-		return s.handleAutomationCreate(req)
-	case MethodAutomationUpdate:
-		return s.handleAutomationUpdate(req)
-	case MethodAutomationRemove:
-		return s.handleAutomationRemove(req)
 	case MethodThreadStart:
 		return s.handleThreadStart(req)
 	case MethodThreadResume:
@@ -982,12 +1013,6 @@ func (s *Server) handleLine(ctx context.Context, raw []byte) error {
 		return s.handleWorkspaceStateCleanup(req)
 	case MethodThreadRegenerateTitle:
 		return s.handleThreadRegenerateTitle(ctx, req)
-	case MethodMemoryRead:
-		return s.handleMemoryRead(req)
-	case MethodMemoryOverview:
-		return s.handleMemoryOverview(req)
-	case MethodMemoryChat:
-		return s.handleMemoryChat(req)
 	case MethodTextPolish:
 		return s.handleTextPolish(req)
 	case MethodGitCommitMessage:

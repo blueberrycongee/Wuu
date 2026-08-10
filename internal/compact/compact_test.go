@@ -327,7 +327,7 @@ func TestCompactInstructionPrompt_EnforcesNoToolsAndFormat(t *testing.T) {
 
 func TestCompactInstructionPrompt_CoversHandoffSections(t *testing.T) {
 	for _, want := range []string{
-		"## Goal",
+		"## Task objective",
 		"## Constraints & Preferences",
 		"## Progress",
 		"## External State",

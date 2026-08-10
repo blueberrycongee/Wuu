@@ -12,14 +12,12 @@ import (
 )
 
 // CapabilityRPC defines the typed, bidirectional extension protocol between
-// the Wuu host and external plugin processes. This upgrades the existing
-// hook-based protocol (wuu-plugin-v1) to a full capability RPC where both
-// sides can initiate typed calls.
+// the Wuu host and external plugin processes.
 //
 // ## Host → Plugin (capability calls)
 //
-// The host calls plugin-registered capabilities through the existing
-// Invoke path. Each capability has a typed input/output contract.
+// The host calls plugin-registered capabilities through capability.invoke.
+// Each capability has a typed input/output contract.
 //
 // ## Plugin → Host (host service calls)
 //
@@ -31,19 +29,28 @@ import (
 //
 // ## Protocol version
 //
-// Protocol version 2 adds capability negotiation. Version 1 clients
-// are still supported; they default to hook-only mode.
+// Protocol version 2 adds capability negotiation and is the only production
+// Host-to-plugin extension seam. Protocol version 3 adds service
+// provide/consume declarations routed through the generation-scoped service
+// registry.
 const (
-	CapabilityProtocolVersion = 2
+	CapabilityProtocolVersion = 3
 	CapabilityProtocolName    = "wuu-plugin-v2"
+	// RuntimeLifecycleVersion identifies the side-effect-free prepare phase
+	// followed by explicit post-commit activation.
+	RuntimeLifecycleVersion = 1
 
 	// CapabilityAgentRequestTransform lets a plugin transform the complete,
 	// provider-neutral request immediately before provider validation and send.
 	CapabilityAgentRequestTransform = "agent.request.transform"
+	// CapabilityAgentPreStep lets a plugin append sourced, durable context at
+	// the model-step boundary. Plugins own emission and cache policy.
+	CapabilityAgentPreStep = "agent.pre_step"
 	// CapabilityAgentSystemPromptSection contributes a generation-stable section
 	// evaluated before that plugin generation can become active.
 	CapabilityAgentSystemPromptSection = "agent.system_prompt.section"
-	// CapabilityAgentCompaction selects a plugin-owned conversation compactor.
+	// CapabilityAgentCompaction is experimental. No distributed first-party
+	// consumer has proven the plugin-owned conversation compactor contract.
 	CapabilityAgentCompaction = "agent.compaction"
 	// CapabilityAgentTurnCompleted observes a settled model turn after history
 	// and usage have been persisted. It cannot alter host turn control flow.
@@ -52,6 +59,11 @@ const (
 	// submitted by that same plugin through host.session.send. The host never
 	// broadcasts these owner-scoped lifecycle events to other plugins.
 	CapabilityAgentTurnLifecycle = "agent.turn.lifecycle"
+	// CapabilityAgentTurnInterrupted is a best-effort, observe-only signal for
+	// every active plugin generation when a turn is interrupted. The host does
+	// not infer a task graph from this event; a plugin decides whether and how
+	// to propagate it to work it owns.
+	CapabilityAgentTurnInterrupted = "agent.turn.interrupted"
 	// CapabilityPluginClientRequest handles a generation-bound opaque request
 	// from a Wuu client. Method names and payload schemas belong to the plugin.
 	CapabilityPluginClientRequest = "plugin.client.request"
@@ -65,8 +77,6 @@ type SeamKind string
 const (
 	SeamObserve   SeamKind = "observe"
 	SeamTransform SeamKind = "transform"
-	SeamGuard     SeamKind = "guard"
-	SeamAround    SeamKind = "around"
 	SeamDecision  SeamKind = "decision"
 )
 
@@ -114,10 +124,10 @@ func IsCapabilityNegotiationError(err error) bool {
 // CapabilityDescriptor declares one capability a plugin provides.
 // Capabilities are typed, versioned, and ordered by priority.
 type CapabilityDescriptor struct {
-	// ID is a stable dotted identifier, e.g. "agent.tool.execute.around".
+	// ID is a stable dotted identifier, e.g. "agent.request.transform".
 	ID string `json:"id"`
 
-	// Kind classifies the dispatch semantics (observe/transform/guard/around/decision).
+	// Kind classifies the dispatch semantics (observe/transform/decision).
 	Kind SeamKind `json:"kind"`
 
 	// ErrorPolicy controls whether one plugin failure stops dispatch. Omitted
@@ -173,38 +183,23 @@ const (
 	HostServiceSettingsGet  HostServiceMethod = "host.settings.get"
 	HostServiceSettingsList HostServiceMethod = "host.settings.list"
 
-	// Child sessions. Product-specific orchestration semantics remain in the
-	// calling plugin; the host only exposes a neutral request dispatcher.
-	HostServiceChildSessionRequest HostServiceMethod = "host.child_session.request"
-
 	// Sessions. Creation and input delivery are separate so ownership,
 	// visibility, provenance, and idempotency remain explicit.
 	HostServiceSessionCreate HostServiceMethod = "host.session.create"
 	HostServiceSessionSend   HostServiceMethod = "host.session.send"
-
-	// Session
-	HostServiceSessionGetInfo HostServiceMethod = "host.session.info"
-
-	// Workspace
-	HostServiceWorkspaceGetRoot HostServiceMethod = "host.workspace.root"
-	HostServiceWorkspaceList    HostServiceMethod = "host.workspace.list"
-
-	// Diagnostics
-	HostServiceDiagnosticsLog HostServiceMethod = "host.diagnostics.log"
+	HostServiceSessionList   HostServiceMethod = "host.session.list"
+	HostServiceSessionCancel HostServiceMethod = "host.session.cancel"
 )
-
-type ChildSessionRequestParams struct {
-	Action    string          `json:"action"`
-	ActorID   string          `json:"actor_id,omitempty"`
-	ActorPath string          `json:"actor_path,omitempty"`
-	Input     json.RawMessage `json:"input,omitempty"`
-}
 
 const (
 	MaxSessionSendRequestIDBytes    = 256
 	MaxSessionSendContextBlocks     = 16
 	MaxSessionSendContextBlockBytes = 64 * 1024
 	MaxSessionSendContextTotalBytes = 256 * 1024
+	MaxPreStepMessages              = 16
+	MaxPreStepMessageIDBytes        = 96
+	MaxPreStepMessageBytes          = 64 * 1024
+	MaxPreStepTotalBytes            = 256 * 1024
 )
 
 const (
@@ -218,9 +213,12 @@ const (
 
 type SessionCreateParams struct {
 	RequestID       string `json:"request_id"`
+	Name            string `json:"name,omitempty"`
 	Visibility      string `json:"visibility"`
 	ParentSessionID string `json:"parent_session_id,omitempty"`
 	ContextSource   string `json:"context_source"`
+	Workspace       string `json:"workspace,omitempty"`
+	ModelAlias      string `json:"model_alias,omitempty"`
 }
 
 type SessionCreateResult struct {
@@ -254,6 +252,41 @@ type SessionSendResult struct {
 	QueueID   string `json:"queue_id,omitempty"`
 }
 
+type SessionListParams struct {
+	ParentSessionID string `json:"parent_session_id,omitempty"`
+}
+
+type SessionSummary struct {
+	SessionID       string `json:"session_id"`
+	Name            string `json:"name,omitempty"`
+	ParentSessionID string `json:"parent_session_id,omitempty"`
+	Visibility      string `json:"visibility"`
+	State           string `json:"state"`
+	CreatedAt       string `json:"created_at,omitempty"`
+	UpdatedAt       string `json:"updated_at,omitempty"`
+}
+
+type SessionListResult struct {
+	Sessions []SessionSummary `json:"sessions"`
+}
+
+type SessionCancelParams struct {
+	SessionID string `json:"session_id"`
+	// TurnID narrows cancellation to one exact accepted turn. Empty preserves
+	// the legacy session-scoped operation for callers that intentionally own
+	// the whole session.
+	TurnID string `json:"turn_id,omitempty"`
+	// QueueID narrows cancellation to one queued turn that has not started.
+	QueueID string `json:"queue_id,omitempty"`
+}
+
+type SessionCancelResult struct {
+	SessionID string `json:"session_id"`
+	TurnID    string `json:"turn_id,omitempty"`
+	QueueID   string `json:"queue_id,omitempty"`
+	Cancelled bool   `json:"cancelled"`
+}
+
 const (
 	TurnLifecycleQueued      = "queued"
 	TurnLifecycleRunning     = "running"
@@ -277,9 +310,21 @@ type AgentTurnLifecycleInput struct {
 	CompletedAt  *time.Time `json:"completed_at,omitempty"`
 	InputTokens  int        `json:"input_tokens,omitempty"`
 	OutputTokens int        `json:"output_tokens,omitempty"`
+	FinalOutput  string     `json:"final_output,omitempty"`
 }
 
 type AgentTurnLifecycleOutput struct{}
+
+// AgentTurnInterruptedInput is delivered to every plugin that declares the
+// observe-only interruption capability. It is a signal, not a cancellation
+// tree edge: plugins own the policy for forwarding it to their work.
+type AgentTurnInterruptedInput struct {
+	ThreadID string `json:"thread_id"`
+	TurnID   string `json:"turn_id"`
+	Cause    string `json:"cause,omitempty"`
+}
+
+type AgentTurnInterruptedOutput struct{}
 
 // HostServiceCall is a Plugin → Host RPC call.
 type HostServiceCall struct {
@@ -436,31 +481,6 @@ type SettingsListResult struct {
 	Entries map[string]json.RawMessage `json:"entries"`
 }
 
-// SessionInfoResult is the output of host.session.info.
-type SessionInfoResult struct {
-	SessionID string `json:"session_id"`
-	ThreadID  string `json:"thread_id,omitempty"`
-	CWD       string `json:"cwd"`
-	Model     string `json:"model"`
-}
-
-// WorkspaceRootResult is the output of host.workspace.root.
-type WorkspaceRootResult struct {
-	Root string `json:"root"`
-}
-
-// WorkspaceListResult is the output of host.workspace.list.
-type WorkspaceListResult struct {
-	Workspaces []WorkspaceInfo `json:"workspaces"`
-}
-
-// WorkspaceInfo describes one registered workspace.
-type WorkspaceInfo struct {
-	ID   string `json:"id"`
-	Root string `json:"root"`
-	Name string `json:"name,omitempty"`
-}
-
 // ---------------------------------------------------------------------------
 // Capability negotiation
 // ---------------------------------------------------------------------------
@@ -478,9 +498,21 @@ type CapabilityInitializeResult struct {
 	// Activation fails if any required service is unavailable.
 	RequiredHostServices []HostServiceDescriptor `json:"required_host_services,omitempty"`
 
+	// ProvidedServices lists versioned services this plugin publishes into
+	// the generation-scoped registry (capability protocol v3).
+	ProvidedServices []ServiceDescriptor `json:"provided_services,omitempty"`
+
+	// RequiredServices lists services this plugin consumes by name and major
+	// version. An unsatisfied required service blocks activation with a
+	// diagnostic; there is no dependency solver.
+	RequiredServices []ServiceRequirement `json:"required_services,omitempty"`
+
 	// ProtocolVersion is the capability protocol version the plugin
 	// requests. The host may downgrade to v1 if v2 is unsupported.
 	ProtocolVersion int `json:"protocol_version,omitempty"`
+
+	// LifecycleVersion opts the runtime into prepare/activate semantics.
+	LifecycleVersion int `json:"lifecycle_version,omitempty"`
 }
 
 // CapabilityInitializeParams extends InitializeParams with the host's
@@ -496,6 +528,9 @@ type CapabilityInitializeParams struct {
 	// SupportedHostServices lists the host services available to this plugin.
 	// Plugins can use this to decide whether to enable optional features.
 	SupportedHostServices []HostServiceMethod `json:"supported_host_services,omitempty"`
+
+	// LifecycleVersion advertises the host's prepare/activate lifecycle.
+	LifecycleVersion int `json:"lifecycle_version,omitempty"`
 }
 
 // CapabilityInvokeParams carries one typed capability invocation. Input and
@@ -514,16 +549,89 @@ type CapabilityInvokeResult struct {
 
 // RequestTransformInput is immutable context for agent.request.transform.
 type RequestTransformInput struct {
-	SessionID string `json:"session_id,omitempty"`
-	ThreadID  string `json:"thread_id,omitempty"`
-	CWD       string `json:"cwd,omitempty"`
-	Provider  string `json:"provider,omitempty"`
-	StepIndex int    `json:"step_index"`
+	SessionID string             `json:"session_id,omitempty"`
+	ThreadID  string             `json:"thread_id,omitempty"`
+	CWD       string             `json:"cwd,omitempty"`
+	Provider  string             `json:"provider,omitempty"`
+	StepIndex int                `json:"step_index"`
+	Request   ModelRequestViewV1 `json:"request"`
 }
 
-// RequestTransformOutput is the mutable provider-neutral request contract.
+// ModelRequestViewV1 is a read-only, versioned projection of the model request.
+// It deliberately omits provider attempts, cache hints, media bytes, internal
+// execution objects, and provider-native replay state.
+type ModelRequestViewV1 struct {
+	Version                     int                  `json:"version"`
+	Model                       string               `json:"model"`
+	Messages                    []ModelMessageViewV1 `json:"messages"`
+	Tools                       []ModelToolViewV1    `json:"tools"`
+	Temperature                 float64              `json:"temperature,omitempty"`
+	MaxTokens                   int                  `json:"max_tokens,omitempty"`
+	Effort                      string               `json:"effort,omitempty"`
+	NativeDeferredToolDiscovery bool                 `json:"native_deferred_tool_discovery,omitempty"`
+	ForceToolName               string               `json:"force_tool_name,omitempty"`
+}
+
+type ModelMessageViewV1 struct {
+	Role            string                `json:"role"`
+	Name            string                `json:"name,omitempty"`
+	Content         string                `json:"content,omitempty"`
+	Hidden          bool                  `json:"hidden,omitempty"`
+	Origin          string                `json:"origin,omitempty"`
+	OriginID        string                `json:"origin_id,omitempty"`
+	Cause           string                `json:"cause,omitempty"`
+	ReadOnly        bool                  `json:"read_only,omitempty"`
+	HasImages       bool                  `json:"has_images,omitempty"`
+	HasFiles        bool                  `json:"has_files,omitempty"`
+	ToolCallID      string                `json:"tool_call_id,omitempty"`
+	ToolCalls       []ModelToolCallViewV1 `json:"tool_calls,omitempty"`
+	HasToolResult   bool                  `json:"has_tool_result,omitempty"`
+	DiscoveredTools []string              `json:"discovered_tools,omitempty"`
+}
+
+type ModelToolCallViewV1 struct {
+	ID        string `json:"id,omitempty"`
+	Name      string `json:"name,omitempty"`
+	Arguments string `json:"arguments,omitempty"`
+	Kind      string `json:"kind,omitempty"`
+}
+
+type ModelToolViewV1 struct {
+	Name         string         `json:"name"`
+	Description  string         `json:"description,omitempty"`
+	InputSchema  map[string]any `json:"input_schema"`
+	DeferLoading bool           `json:"defer_loading,omitempty"`
+}
+
+// RequestTransformOutput is a deliberately narrow patch. New mutable fields
+// require a real consumer and a versioned validator instead of exposing the
+// host's internal ChatRequest.
 type RequestTransformOutput struct {
-	Request providers.ChatRequest `json:"request"`
+	PrependSystemMessages []string `json:"prepend_system_messages,omitempty"`
+}
+
+// AgentPreStepInput is the immutable live transcript at a model-step boundary.
+// Messages include durable plugin contributions so a plugin can own its own
+// emit-on-change policy without host-managed state.
+type AgentPreStepInput struct {
+	SessionID string               `json:"session_id,omitempty"`
+	ThreadID  string               `json:"thread_id,omitempty"`
+	CWD       string               `json:"cwd,omitempty"`
+	Provider  string               `json:"provider,omitempty"`
+	Model     string               `json:"model,omitempty"`
+	StepIndex int                  `json:"step_index"`
+	Messages  []ModelMessageViewV1 `json:"messages"`
+}
+
+// AgentPreStepMessage is appended after the current transcript and persisted
+// with host-stamped plugin provenance. ID is stable within the plugin.
+type AgentPreStepMessage struct {
+	ID      string `json:"id"`
+	Content string `json:"content"`
+}
+
+type AgentPreStepOutput struct {
+	AppendMessages []AgentPreStepMessage `json:"append_messages,omitempty"`
 }
 
 // SystemPromptSectionInput is immutable session context for the v1
@@ -539,13 +647,13 @@ type SystemPromptSectionOutput struct {
 	Text string `json:"text"`
 }
 
-// CompactionInput is immutable request context for the v1 agent.compaction contract.
+// CompactionInput is experimental immutable request context for agent.compaction v1.
 type CompactionInput struct {
 	Model    string                  `json:"model"`
 	Messages []providers.ChatMessage `json:"messages"`
 }
 
-// CompactionOutput is the replacement transcript returned by a compactor.
+// CompactionOutput is the experimental replacement transcript returned by a compactor.
 type CompactionOutput struct {
 	Messages []providers.ChatMessage `json:"messages"`
 }
@@ -558,8 +666,6 @@ type CompactionOutput struct {
 var allowedCapabilityKinds = map[SeamKind]bool{
 	SeamObserve:   true,
 	SeamTransform: true,
-	SeamGuard:     true,
-	SeamAround:    true,
 	SeamDecision:  true,
 }
 
@@ -580,10 +686,7 @@ func ValidateCapabilityDescriptor(c CapabilityDescriptor) error {
 		return fmt.Errorf("capability %s: kind is required", id)
 	}
 	if !allowedCapabilityKinds[kind] {
-		return fmt.Errorf("capability %s: unknown kind %q (valid: observe, transform, guard, around, decision)", id, kind)
-	}
-	if kind == SeamGuard || kind == SeamAround {
-		return fmt.Errorf("capability %s: kind %q is not implemented by this host", id, kind)
+		return fmt.Errorf("capability %s: unknown kind %q (valid: observe, transform, decision)", id, kind)
 	}
 	policy := EffectiveErrorPolicy(c)
 	if policy != ErrorPolicyPropagate && policy != ErrorPolicyIsolate && policy != ErrorPolicyIgnore {
@@ -602,6 +705,8 @@ func ValidateCapabilityDescriptor(c CapabilityDescriptor) error {
 	switch c.ID {
 	case CapabilityAgentRequestTransform:
 		requiredKind = SeamTransform
+	case CapabilityAgentPreStep:
+		requiredKind = SeamTransform
 	case CapabilityAgentSystemPromptSection:
 		requiredKind = SeamTransform
 	case CapabilityAgentCompaction:
@@ -609,6 +714,8 @@ func ValidateCapabilityDescriptor(c CapabilityDescriptor) error {
 	case CapabilityAgentTurnCompleted:
 		requiredKind = SeamObserve
 	case CapabilityAgentTurnLifecycle:
+		requiredKind = SeamObserve
+	case CapabilityAgentTurnInterrupted:
 		requiredKind = SeamObserve
 	case CapabilityPluginClientRequest:
 		requiredKind = SeamDecision
@@ -628,7 +735,7 @@ func EffectiveErrorPolicy(c CapabilityDescriptor) ErrorPolicy {
 	if c.ErrorPolicy != "" {
 		return c.ErrorPolicy
 	}
-	if c.ID == CapabilityAgentTurnCompleted || c.ID == CapabilityAgentTurnLifecycle {
+	if c.ID == CapabilityAgentTurnCompleted || c.ID == CapabilityAgentTurnLifecycle || c.ID == CapabilityAgentTurnInterrupted {
 		return ErrorPolicyIsolate
 	}
 	return ErrorPolicyPropagate
@@ -679,6 +786,9 @@ func ValidateCapabilityNegotiation(result CapabilityInitializeResult, supported 
 	if version < ProtocolVersion || version > CapabilityProtocolVersion {
 		return fmt.Errorf("unsupported negotiated protocol version %d", version)
 	}
+	if err := ValidateServiceNegotiation(result); err != nil {
+		return err
+	}
 	if version == ProtocolVersion {
 		if len(result.Capabilities) != 0 || len(result.RequiredHostServices) != 0 {
 			return errors.New("protocol v1 cannot declare capabilities or host services")
@@ -692,7 +802,7 @@ func ValidateCapabilityNegotiation(result CapabilityInitializeResult, supported 
 			return err
 		}
 		switch capability.ID {
-		case CapabilityAgentRequestTransform, CapabilityAgentSystemPromptSection, CapabilityAgentCompaction, CapabilityAgentTurnCompleted, CapabilityAgentTurnLifecycle, CapabilityPluginClientRequest:
+		case CapabilityAgentRequestTransform, CapabilityAgentPreStep, CapabilityAgentSystemPromptSection, CapabilityAgentCompaction, CapabilityAgentTurnCompleted, CapabilityAgentTurnLifecycle, CapabilityAgentTurnInterrupted, CapabilityPluginClientRequest:
 		default:
 			return fmt.Errorf("capability %s is not supported by this host", capability.ID)
 		}
@@ -738,10 +848,8 @@ func ValidateHostServiceMethod(m HostServiceMethod) error {
 	switch m {
 	case HostServiceStorageGet, HostServiceStorageSet, HostServiceStorageDelete, HostServiceStorageKeys, HostServiceStorageCompareExchange,
 		HostServiceSettingsGet, HostServiceSettingsList,
-		HostServiceChildSessionRequest, HostServiceSessionCreate, HostServiceSessionSend,
-		HostServiceSessionGetInfo,
-		HostServiceWorkspaceGetRoot, HostServiceWorkspaceList,
-		HostServiceDiagnosticsLog:
+		HostServiceSessionCreate, HostServiceSessionSend, HostServiceSessionList, HostServiceSessionCancel,
+		ServiceCallMethod:
 		return nil
 	default:
 		return fmt.Errorf("unknown host service method %q", m)
@@ -753,10 +861,8 @@ func AllHostServices() []HostServiceMethod {
 	return []HostServiceMethod{
 		HostServiceStorageGet, HostServiceStorageSet, HostServiceStorageDelete, HostServiceStorageKeys, HostServiceStorageCompareExchange,
 		HostServiceSettingsGet, HostServiceSettingsList,
-		HostServiceChildSessionRequest, HostServiceSessionCreate, HostServiceSessionSend,
-		HostServiceSessionGetInfo,
-		HostServiceWorkspaceGetRoot, HostServiceWorkspaceList,
-		HostServiceDiagnosticsLog,
+		HostServiceSessionCreate, HostServiceSessionSend, HostServiceSessionList, HostServiceSessionCancel,
+		ServiceCallMethod,
 	}
 }
 
@@ -768,4 +874,17 @@ func cloneCapabilityDescriptors(capabilities []CapabilityDescriptor) []Capabilit
 		cloned[index].Conflicts = append([]string(nil), capability.Conflicts...)
 	}
 	return cloned
+}
+
+func cloneServiceDescriptors(services []ServiceDescriptor) []ServiceDescriptor {
+	cloned := make([]ServiceDescriptor, len(services))
+	for index, service := range services {
+		cloned[index] = service
+		cloned[index].Methods = append([]ServiceMethodDescriptor(nil), service.Methods...)
+	}
+	return cloned
+}
+
+func cloneServiceRequirements(requirements []ServiceRequirement) []ServiceRequirement {
+	return append([]ServiceRequirement(nil), requirements...)
 }

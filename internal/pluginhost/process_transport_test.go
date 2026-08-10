@@ -43,7 +43,7 @@ func TestProcessHostServiceTransport(t *testing.T) {
 		}
 		client := startTransportClient(t, "success", 2*time.Second, handler)
 		defer client.Close(context.Background())
-		result, err := client.Invoke(context.Background(), InvokeParams{Hook: HookChatMessage, Input: json.RawMessage(`{}`), Output: json.RawMessage(`{}`)})
+		result, err := invokeTransportCapability(context.Background(), client)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -72,7 +72,7 @@ func TestProcessHostServiceTransport(t *testing.T) {
 		}
 		client := startTransportClient(t, "background", 2*time.Second, handler)
 		defer client.Close(context.Background())
-		if _, err := client.Invoke(context.Background(), InvokeParams{Hook: HookChatMessage, Input: json.RawMessage(`{}`), Output: json.RawMessage(`{}`)}); err != nil {
+		if _, err := invokeTransportCapability(context.Background(), client); err != nil {
 			t.Fatal(err)
 		}
 		select {
@@ -91,7 +91,7 @@ func TestProcessHostServiceTransport(t *testing.T) {
 		}
 		client := startTransportClient(t, "handler-error", 2*time.Second, handler)
 		defer client.Close(context.Background())
-		result, err := client.Invoke(context.Background(), InvokeParams{Hook: HookChatMessage, Input: json.RawMessage(`{}`), Output: json.RawMessage(`{}`)})
+		result, err := invokeTransportCapability(context.Background(), client)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -109,7 +109,7 @@ func TestProcessHostServiceTransport(t *testing.T) {
 			},
 		}
 		client := startTransportClient(t, "undeclared", 2*time.Second, handler)
-		_, err := client.Invoke(context.Background(), InvokeParams{Hook: HookChatMessage, Input: json.RawMessage(`{}`), Output: json.RawMessage(`{}`)})
+		_, err := invokeTransportCapability(context.Background(), client)
 		if err == nil || !strings.Contains(err.Error(), "was not negotiated") {
 			t.Fatalf("error = %v", err)
 		}
@@ -127,7 +127,7 @@ func TestProcessHostServiceTransport(t *testing.T) {
 			},
 		}
 		client := startTransportClient(t, "malformed", 2*time.Second, handler)
-		_, err := client.Invoke(context.Background(), InvokeParams{Hook: HookChatMessage, Input: json.RawMessage(`{}`), Output: json.RawMessage(`{}`)})
+		_, err := invokeTransportCapability(context.Background(), client)
 		if err == nil || !strings.Contains(err.Error(), "params must be a JSON object") {
 			t.Fatalf("error = %v", err)
 		}
@@ -158,7 +158,7 @@ func TestProcessHostServiceTransport(t *testing.T) {
 				ctx, cancel = context.WithCancel(ctx)
 				time.AfterFunc(30*time.Millisecond, cancel)
 			}
-			_, err := client.Invoke(ctx, InvokeParams{Hook: HookChatMessage, Input: json.RawMessage(`{}`), Output: json.RawMessage(`{}`)})
+			_, err := invokeTransportCapability(ctx, client)
 			if test.cancel && !errors.Is(err, context.Canceled) {
 				t.Fatalf("error = %v", err)
 			}
@@ -214,6 +214,14 @@ func startTransportClient(t *testing.T, scenario string, timeout time.Duration, 
 	return client
 }
 
+func invokeTransportCapability(ctx context.Context, client *ProcessClient) (CapabilityInvokeResult, error) {
+	return client.InvokeCapability(ctx, CapabilityInvokeParams{
+		Capability: CapabilityPluginClientRequest,
+		Input:      json.RawMessage(`{}`),
+		Output:     json.RawMessage(`{}`),
+	})
+}
+
 func runHostServiceTransportHelper(scenario string) {
 	scanner := bufio.NewScanner(os.Stdin)
 	enc := json.NewEncoder(os.Stdout)
@@ -235,7 +243,8 @@ func runHostServiceTransportHelper(scenario string) {
 		required = nil
 	}
 	_ = enc.Encode(rpcResponse{ID: initialize.ID, Result: mustRaw(CapabilityInitializeResult{
-		InitializeResult: InitializeResult{Hooks: []Hook{HookChatMessage}}, ProtocolVersion: CapabilityProtocolVersion,
+		ProtocolVersion:      CapabilityProtocolVersion,
+		Capabilities:         []CapabilityDescriptor{{ID: CapabilityPluginClientRequest, Kind: SeamDecision, Version: 1}},
 		RequiredHostServices: required,
 	})})
 
@@ -243,7 +252,7 @@ func runHostServiceTransportHelper(scenario string) {
 		os.Exit(5)
 	}
 	var invoke rpcRequest
-	if json.Unmarshal(scanner.Bytes(), &invoke) != nil || invoke.Method != "hook.invoke" {
+	if json.Unmarshal(scanner.Bytes(), &invoke) != nil || invoke.Method != "capability.invoke" {
 		os.Exit(6)
 	}
 	if scenario == "malformed" {
@@ -267,9 +276,9 @@ func runHostServiceTransportHelper(scenario string) {
 	}
 	switch scenario {
 	case "success":
-		_ = enc.Encode(rpcResponse{ID: invoke.ID, Result: mustRaw(InvokeResult{Output: hostResult.Result})})
+		_ = enc.Encode(rpcResponse{ID: invoke.ID, Result: mustRaw(CapabilityInvokeResult{Output: hostResult.Result})})
 	case "background":
-		_ = enc.Encode(rpcResponse{ID: invoke.ID, Result: mustRaw(InvokeResult{Output: json.RawMessage(`{}`)})})
+		_ = enc.Encode(rpcResponse{ID: invoke.ID, Result: mustRaw(CapabilityInvokeResult{Output: json.RawMessage(`{}`)})})
 		_ = enc.Encode(HostServiceCall{ID: "background-1", Method: HostServiceStorageGet, Params: json.RawMessage(`{"key":"background"}`)})
 		if !scanner.Scan() {
 			os.Exit(12)
@@ -287,7 +296,7 @@ func runHostServiceTransportHelper(scenario string) {
 		}
 		_ = enc.Encode(rpcResponse{ID: shutdown.ID, Result: json.RawMessage(`{}`)})
 	case "handler-error":
-		_ = enc.Encode(rpcResponse{ID: invoke.ID, Result: mustRaw(InvokeResult{Output: mustRaw(map[string]string{"code": hostResult.Error.Code})})})
+		_ = enc.Encode(rpcResponse{ID: invoke.ID, Result: mustRaw(CapabilityInvokeResult{Output: mustRaw(map[string]string{"code": hostResult.Error.Code})})})
 	case "undeclared":
 		if hostResult.Error == nil || hostResult.Error.Code != "service_not_negotiated" {
 			os.Exit(9)

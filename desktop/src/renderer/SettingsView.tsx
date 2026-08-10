@@ -2,7 +2,6 @@ import {
   ArrowLeft,
   Archive,
   BarChart3,
-  Brain,
   Check,
   Folder,
   Hash,
@@ -73,7 +72,6 @@ export type ArchivedRoomView = {
 };
 import { normalizedVariantForProviderModel, providerModelReasoningMode, providerModelVariantOptions, variantLabel } from "./RuntimeHelpers";
 import { ENABLE_REMOTE_CONTROL, ENABLE_VOICE_INPUT } from "./FeatureFlags";
-import { MemoryPanel } from "./MemoryPanel";
 import { MessageFlowFontSizeControl } from "./MessageFlowFontSizeSection";
 import { SettingsRemotePage } from "./SettingsRemotePage";
 import { ThemePreferenceControl } from "./ThemePreferenceSection";
@@ -89,14 +87,13 @@ import {
 } from "./plugins/DesktopPluginRuntime";
 import type { PluginHost } from "./plugins/PluginHost";
 import { PluginViewContent, type WorkbenchController } from "./plugins/Workbench";
-import { PluginSlot } from "./plugins/PluginSlot";
 import { PluginSettingsEditor } from "./PluginSettingsEditor";
-import type { SettingsPageSummaryV1 } from "../shared/workbench";
+import { PluginIcon } from "./PublicIcon";
+import type { SettingsPageHostAPI, SettingsPageSummaryV1, SettingsValueMapV1 } from "../shared/workbench";
 
 export type SettingsPage =
   | "providers"
   | "general"
-  | "memory"
   | "advanced"
   | "usage"
   | "remote"
@@ -236,6 +233,22 @@ export function SettingsView({
   const activeCustomPluginPage = activePage.startsWith("plugin-view:")
     ? customPluginSettingsPages.find((entry) => pluginViewSettingsPageId(entry.pluginId, entry.id) === activePage)
     : undefined;
+  const settingsPageHost = useMemo<SettingsPageHostAPI>(() => {
+    const modelAliases = Object.freeze(Object.fromEntries(
+      Object.entries(initialized?.model_aliases ?? {}).map(([name, alias]) => [name, Object.freeze({ ...alias })]),
+    ));
+    return Object.freeze({
+      contractVersion: 1 as const,
+      getValue: (key: "runtime.modelAliases") => {
+        if (key !== "runtime.modelAliases") throw new Error(`Unsupported settings value: ${key}`);
+        return modelAliases;
+      },
+      updateValue: async (key: "runtime.modelAliases", value: SettingsValueMapV1["runtime.modelAliases"]) => {
+        if (key !== "runtime.modelAliases") throw new Error(`Unsupported settings value: ${key}`);
+        await onAdvancedSave({ model_aliases: value });
+      },
+    });
+  }, [initialized?.model_aliases, onAdvancedSave]);
   const [mcpServers, setMCPServers] = useState<MCPServerStatus[]>([]);
   const [mcpLoading, setMCPLoading] = useState(false);
   const [mcpError, setMCPError] = useState("");
@@ -258,6 +271,14 @@ export function SettingsView({
   useEffect(() => {
     setActivePage(availableSettingsPage(initialPage));
   }, [initialPage]);
+
+  useLayoutEffect(() => {
+    const missingGeneratedPage = activePage.startsWith("plugin-settings:")
+      && activePluginSettingsRecord === undefined;
+    const missingCustomPage = activePage.startsWith("plugin-view:")
+      && activeCustomPluginPage === undefined;
+    if (missingGeneratedPage || missingCustomPage) setActivePage("providers");
+  }, [activeCustomPluginPage, activePage, activePluginSettingsRecord]);
 
   useLayoutEffect(() => {
     if (settingsScrollRef.current) {
@@ -764,7 +785,6 @@ export function SettingsView({
     ?? settingsPageTitle(activePage, t);
   const availablePages = useMemo<readonly SettingsPageSummaryV1[]>(() => Object.freeze([
     Object.freeze({ id: "providers", label: settingsPageTitle("providers", t) }),
-    Object.freeze({ id: "memory", label: settingsPageTitle("memory", t) }),
     Object.freeze({ id: "advanced", label: settingsPageTitle("advanced", t) }),
     Object.freeze({ id: "general", label: settingsPageTitle("general", t) }),
     ...(ENABLE_REMOTE_CONTROL
@@ -829,9 +849,6 @@ export function SettingsView({
               <SettingsNavItem icon={<KeyRound className="icon-lg" />} active={activePage === "providers"} onClick={() => setActivePage("providers")}>
                 {t("settings.providers")}
               </SettingsNavItem>
-              <SettingsNavItem icon={<Brain className="icon-lg" />} active={activePage === "memory"} onClick={() => setActivePage("memory")}>
-                {t("settings.memory")}
-              </SettingsNavItem>
               <SettingsNavItem icon={<SlidersHorizontal className="icon-lg" />} active={activePage === "advanced"} onClick={() => setActivePage("advanced")}>
                 {t("settings.advanced")}
               </SettingsNavItem>
@@ -880,7 +897,7 @@ export function SettingsView({
                   return (
                     <SettingsNavItem
                       key={pageId}
-                      icon={<PlugZap className="icon-lg" />}
+                      icon={<PluginIcon icon={entry.icon} pluginId={entry.pluginId} fingerprint={entry.generation} className="icon-lg" />}
                       active={activePage === pageId}
                       onClick={() => setActivePage(pageId)}
                     >
@@ -939,11 +956,9 @@ export function SettingsView({
             data-wuu-page={activePage}
             key={activePage}
           >
-            {activePage === "memory" ? null : (
-              <header className="settings-page-header">
-                <h1 className="settings-page-title">{pageTitle}</h1>
-              </header>
-            )}
+            <header className="settings-page-header">
+              <h1 className="settings-page-title">{pageTitle}</h1>
+            </header>
   
             {activePluginSettingsRecord ? (
               <PluginSettingsEditor plugin={activePluginSettingsRecord} variant="page" />
@@ -953,6 +968,8 @@ export function SettingsView({
                 pluginId={activeCustomPluginPage.pluginId}
                 viewTypeId={activeCustomPluginPage.view}
                 context={Object.freeze({ surface: "settings" })}
+                settings={settingsPageHost}
+                onFailure={() => setActivePage("providers")}
               />
             ) : activePage === "providers" ? (
               <SettingsProvidersPage
@@ -1047,16 +1064,6 @@ export function SettingsView({
                 copyState={copyState}
                 onCopyVersion={copyVersionInfo}
               />
-            ) : activePage === "memory" ? (
-              <>
-                <MemorySettingsSection
-                  initialized={initialized}
-                  running={running}
-                  providers={providers}
-                  onGeneralSave={onGeneralSave}
-                />
-                <MemoryPanel />
-              </>
             ) : activePage === "remote" && ENABLE_REMOTE_CONTROL ? (
               <SettingsRemotePageContainer />
             ) : activePage === "archive" ? (
@@ -1073,19 +1080,6 @@ export function SettingsView({
                 error={usageError}
               />
             )}
-            <PluginSlot
-              host={pluginHost}
-              id="settings.plugin"
-              context={Object.freeze({
-                activePage,
-                initialized: Boolean(initialized),
-                busy: running || usageLoading || mcpLoading || codexPetsLoading || Boolean(mcpBusyServer),
-                hasError: Boolean(error || advancedError || usageError || mcpError || codexPetsError),
-                pluginCount: initialized?.extension_inventory?.filter((extension) => extension.kind === "plugin").length ?? 0,
-                modelAliases: initialized?.model_aliases ?? {},
-                onSaveModelAliases: (modelAliases: RuntimeAdvancedSettingsUpdate["model_aliases"]) => onAdvancedSave({ model_aliases: modelAliases }),
-              })}
-            />
           </div>
         </div>
       </main>
@@ -1168,7 +1162,7 @@ function SettingsSection({
 }
 
 function SettingsCard({ children }: { children: ReactNode }): JSX.Element {
-  return <div className="settings-card" data-wuu-component="settings-card">{children}</div>;
+  return <div className="settings-group" data-wuu-component="settings-group">{children}</div>;
 }
 
 function SettingsRow({
@@ -1379,7 +1373,7 @@ function SettingsProvidersPage({
           <span>{t("provider.add")}</span>
         </button>
       ) : null}
-      <form className="settings-card" onSubmit={onSubmit}>
+      <form className="settings-group" onSubmit={onSubmit}>
         <SettingsRow title={addingProvider ? t("provider.add") : t("provider.current")}>
           <div className="settings-row-control-block">
             {addingProvider ? (
@@ -1595,7 +1589,7 @@ function SettingsAdvancedPage({
     };
   return (
     <SettingsSection testID="settings-advanced">
-      <div className="settings-card">
+      <div className="settings-group">
         <SettingsRow
           title={t("settings.autoCompact")}
           description={t("settings.autoCompactDescription")}
@@ -1711,165 +1705,6 @@ function SettingsAdvancedPage({
 }
 
 /* -------------------------------------------------------------------------- */
-/*  Memory settings section (Dream)                                          */
-/* -------------------------------------------------------------------------- */
-
-function MemorySettingsSection({
-  initialized,
-  running,
-  providers,
-  onGeneralSave
-}: {
-  initialized: InitializeResult | undefined;
-  running: boolean;
-  providers: ProviderSummary[];
-  onGeneralSave: (settings: RuntimeGeneralSettingsUpdate) => Promise<void>;
-}): JSX.Element {
-  const { t } = useI18n();
-  const generalSettings = initialized?.general_settings;
-  const [dreamEnabledDraft, setDreamEnabledDraft] = useState(generalSettings?.dream_enabled ?? false);
-  const [dreamIntervalDraft, setDreamIntervalDraft] = useState(String(generalSettings?.dream_interval_days ?? 7));
-  const [dreamProviderDraft, setDreamProviderDraft] = useState(generalSettings?.dream_provider ?? "");
-  const [dreamModelDraft, setDreamModelDraft] = useState(generalSettings?.dream_model ?? "");
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    setDreamEnabledDraft(generalSettings?.dream_enabled ?? false);
-    setDreamIntervalDraft(String(generalSettings?.dream_interval_days ?? 7));
-    setDreamProviderDraft(generalSettings?.dream_provider ?? "");
-    setDreamModelDraft(generalSettings?.dream_model ?? "");
-    setError("");
-  }, [generalSettings?.dream_enabled, generalSettings?.dream_interval_days, generalSettings?.dream_provider, generalSettings?.dream_model]);
-
-  const providerOptions = useMemo(
-    () => [
-      { value: "", label: t("provider.current") },
-      ...providers.map((p) => ({ value: p.name, label: p.name }))
-    ],
-    [providers, t]
-  );
-
-  async function commitDreamToggle(): Promise<void> {
-    const next = !dreamEnabledDraft;
-    setDreamEnabledDraft(next);
-    setError("");
-    try {
-      await onGeneralSave({
-        dream_enabled: next,
-        dream_interval_days: parseInt(dreamIntervalDraft, 10) || 7,
-        dream_provider: dreamProviderDraft,
-        dream_model: dreamModelDraft
-      });
-    } catch (err) {
-      setDreamEnabledDraft(!next);
-      setError(err instanceof Error ? err.message : t("settings.saveDreamFailed"));
-    }
-  }
-
-  async function commitDreamFields(overrides?: { interval?: number; provider?: string; model?: string }): Promise<void> {
-    if (!generalSettings) return;
-    const interval = overrides?.interval ?? parseInt(dreamIntervalDraft, 10);
-    const provider = overrides?.provider ?? dreamProviderDraft;
-    const model = overrides?.model ?? dreamModelDraft;
-    if (Number.isNaN(interval) || interval <= 0) {
-      setError(t("settings.dreamIntervalPositive"));
-      return;
-    }
-    const update: RuntimeGeneralSettingsUpdate = {
-      dream_interval_days: interval,
-      dream_provider: provider,
-      dream_model: model
-    };
-    setError("");
-    try {
-      await onGeneralSave(update);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t("settings.saveDreamFailed"));
-    }
-  }
-
-  return (
-    <SettingsSection testID="settings-dream">
-      <SettingsCard>
-        <SettingsRow
-          title={t("settings.dream")}
-          description={t("settings.dreamDescription")}
-        >
-          <button
-            className="settings-switch"
-            type="button"
-            role="switch"
-            aria-checked={dreamEnabledDraft}
-            data-testid="settings-dream-toggle"
-            disabled={running || !initialized}
-            onClick={() => void commitDreamToggle()}
-          >
-            <span className="settings-switch-thumb" aria-hidden="true" />
-            <span className="sr-only">{dreamEnabledDraft ? t("settings.disableDream") : t("settings.enableDream")}</span>
-          </button>
-        </SettingsRow>
-        {dreamEnabledDraft ? (
-          <>
-            <SettingsRow
-              title={t("settings.dreamInterval")}
-              description={t("settings.dreamIntervalDescription")}
-            >
-              <input
-                type="number"
-                min={1}
-                step={1}
-                className="settings-input settings-input-num"
-                value={dreamIntervalDraft}
-                data-testid="settings-dream-interval"
-                disabled={running || !initialized}
-                onChange={(event) => setDreamIntervalDraft(event.target.value)}
-                onBlur={() => void commitDreamFields()}
-              />
-            </SettingsRow>
-            <SettingsRow
-              title={t("settings.dreamDedicatedProvider")}
-              description={t("settings.dreamDedicatedProviderDescription")}
-            >
-              <SelectMenu
-                value={dreamProviderDraft}
-                options={providerOptions}
-                disabled={running || !initialized}
-                dataTestid="settings-dream-provider"
-                onChange={(value) => {
-                  setDreamProviderDraft(value);
-                  setDreamModelDraft("");
-                  void commitDreamFields({ provider: value, model: "" });
-                }}
-              />
-            </SettingsRow>
-            <SettingsRow
-              title={t("settings.dreamDedicatedModel")}
-              description={t("settings.dreamDedicatedModelDescription")}
-            >
-              <input
-                type="text"
-                className="settings-input"
-                value={dreamModelDraft}
-                placeholder={t("provider.modelName")}
-                data-testid="settings-dream-model"
-                disabled={running || !initialized}
-                onChange={(event) => setDreamModelDraft(event.target.value)}
-                onBlur={() => void commitDreamFields()}
-              />
-            </SettingsRow>
-          </>
-        ) : null}
-        {error ? (
-          <div className="settings-row settings-row-footer">
-            <div className="settings-error">{error}</div>
-          </div>
-        ) : null}
-      </SettingsCard>
-    </SettingsSection>
-  );
-}
-
-/* -------------------------------------------------------------------------- */
 /*  General page                                                               */
 /* -------------------------------------------------------------------------- */
 
@@ -1925,7 +1760,6 @@ function SettingsGeneralPage({
   const configuredMCPEnabled = generalSettings?.mcp_server_enabled ?? {};
   const configuredMCPKey = stableBoolRecordSignature(configuredMCPEnabled);
   const [appendSystemPromptDraft, setAppendSystemPromptDraft] = useState(generalSettings?.append_system_prompt ?? "");
-  const [memoryDisabledDraft, setMemoryDisabledDraft] = useState(generalSettings?.memory_disabled ?? false);
   const [mcpEnabledDraft, setMCPEnabledDraft] = useState<Record<string, boolean>>(() => ({ ...configuredMCPEnabled }));
   const [mcpToggleBusy, setMCPToggleBusy] = useState("");
   const [mcpToggleError, setMCPToggleError] = useState("");
@@ -1939,14 +1773,12 @@ function SettingsGeneralPage({
 
   useEffect(() => {
     setAppendSystemPromptDraft(generalSettings?.append_system_prompt ?? "");
-    setMemoryDisabledDraft(generalSettings?.memory_disabled ?? false);
     setMCPEnabledDraft({ ...configuredMCPEnabled });
     setGeneralError("");
-  }, [generalSettings?.append_system_prompt, generalSettings?.memory_disabled, configuredMCPKey]);
+  }, [generalSettings?.append_system_prompt, configuredMCPKey]);
 
   // Instant-apply, same model as the MCP toggles below: the textarea
-  // commits on blur, the memory switch persists immediately, and only
-  // failures speak — inline at the foot of the section.
+  // commits on blur and only failures speak inline at the foot of the section.
   async function commitAppendSystemPrompt(): Promise<void> {
     const next = appendSystemPromptDraft.trim();
     if (next === (generalSettings?.append_system_prompt ?? "")) {
@@ -1956,18 +1788,6 @@ function SettingsGeneralPage({
     try {
       await onGeneralSave({ append_system_prompt: next });
     } catch (error) {
-      setGeneralError(error instanceof Error ? error.message : t("settings.saveFailed"));
-    }
-  }
-
-  async function toggleMemoryDisabled(): Promise<void> {
-    const next = !memoryDisabledDraft;
-    setMemoryDisabledDraft(next);
-    setGeneralError("");
-    try {
-      await onGeneralSave({ memory_disable: next });
-    } catch (error) {
-      setMemoryDisabledDraft(!next);
       setGeneralError(error instanceof Error ? error.message : t("settings.saveFailed"));
     }
   }
@@ -2167,22 +1987,6 @@ function SettingsGeneralPage({
               onBlur={() => void commitAppendSystemPrompt()}
               disabled={running || !initialized}
             />
-          </SettingsRow>
-          <SettingsRow
-            title={t("settings.memory")}
-            description={t("settings.memoryDescription")}
-          >
-            <button
-              className="settings-switch"
-              type="button"
-              role="switch"
-              aria-checked={!memoryDisabledDraft}
-              disabled={running || !initialized}
-              onClick={() => void toggleMemoryDisabled()}
-            >
-              <span className="settings-switch-thumb" aria-hidden="true" />
-              <span className="sr-only">{memoryDisabledDraft ? t("settings.enableMemory") : t("settings.disableMemory")}</span>
-            </button>
           </SettingsRow>
           <SettingsRow
             title={t("settings.gitAttribution")}
@@ -2905,7 +2709,7 @@ function SettingsUsagePage({
       ) : null}
 
       {usage.model_breakdowns.length > 0 ? (
-          <div className="settings-card settings-usage-table-wrap">
+          <div className="settings-group settings-usage-table-wrap">
             <h2 className="settings-usage-table-title">{t("settings.modelUsage")}</h2>
             <table className="settings-usage-table">
               <thead>
@@ -3074,8 +2878,6 @@ function settingsPageTitle(page: SettingsPage, t: Translate): string {
       return t("settings.advanced");
     case "general":
       return t("settings.general");
-    case "memory":
-      return t("settings.memory");
     case "usage":
       return t("settings.usage");
     case "remote":

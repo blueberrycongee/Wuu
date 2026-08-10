@@ -5,12 +5,14 @@ import type { ExtensionInventoryRecord } from "../../shared/protocol";
 import {
   STATUS_ACTIONS,
   WORKBENCH_LAYOUT_STATE_VERSION,
+  type InspectorSectionHostAPI,
   type OpenViewOptions,
   type PresentationHost,
   type RendererCategory,
+  type SettingsPageHostAPI,
   type StatusSnapshotV1,
   type ViewHostAPI,
-  type ViewPane,
+  type ViewPlacementRegion,
   type WorkbenchLayoutState,
   type WorkbenchViewState,
 } from "../../shared/workbench";
@@ -24,6 +26,8 @@ import type {
   RegisteredRenderer,
   RegisteredViewType,
 } from "./PluginHost";
+import { useI18n } from "../i18n";
+import { createPluginTranslator } from "./pluginI18n";
 import { PluginPresentation } from "./PluginPresentation";
 
 const LAYOUT_STORAGE_KEY = "wuu.plugin-workbench.layout.v1";
@@ -55,8 +59,8 @@ export interface WorkbenchSnapshot extends WorkbenchLayoutState {
 const EMPTY_STATE: WorkbenchLayoutState = Object.freeze({
   version: WORKBENCH_LAYOUT_STATE_VERSION,
   views: Object.freeze([]),
-  activeViewByPane: Object.freeze({}),
-  dismissedLayoutIds: Object.freeze([]),
+  activeViewByRegion: Object.freeze({}),
+  dismissedPlacementIds: Object.freeze([]),
 });
 
 export class WorkbenchController {
@@ -130,10 +134,10 @@ export class WorkbenchController {
     if (!definition) {
       throw new Error(`Plugin view type is not available: ${viewTypeId}`);
     }
-    const pane = options.pane ?? definition.defaultPane ?? "main";
+    const region = options.region ?? definition.defaultRegion ?? "primary";
     if (options.reveal !== false) {
       const existing = this.state.views.find((view) =>
-        view.pluginId === definition.pluginId && view.viewTypeId === definition.id && view.pane === pane);
+        view.pluginId === definition.pluginId && view.viewTypeId === definition.id && view.region === region);
       if (existing) {
         this.activateView(existing.id);
         return existing.id;
@@ -144,14 +148,14 @@ export class WorkbenchController {
       pluginId: definition.pluginId,
       generation: definition.generation,
       viewTypeId: definition.id,
-      pane,
+      region,
       persistence: options.persistence ?? definition.persistence ?? "session",
       context: freezeContext(options.context),
     });
     this.replaceState({
       ...this.state,
       views: [...this.state.views, instance],
-      activeViewByPane: { ...this.state.activeViewByPane, [pane]: instance.id },
+      activeViewByRegion: { ...this.state.activeViewByRegion, [region]: instance.id },
     });
     return instance.id;
   }
@@ -160,17 +164,17 @@ export class WorkbenchController {
     const closing = this.state.views.find((view) => view.id === instanceId);
     if (!closing) return;
     const views = this.state.views.filter((view) => view.id !== instanceId);
-    const activeViewByPane = { ...this.state.activeViewByPane };
-    if (activeViewByPane[closing.pane] === instanceId) {
-      activeViewByPane[closing.pane] = [...views].reverse().find((view) => view.pane === closing.pane)?.id;
+    const activeViewByRegion = { ...this.state.activeViewByRegion };
+    if (activeViewByRegion[closing.region] === instanceId) {
+      activeViewByRegion[closing.region] = [...views].reverse().find((view) => view.region === closing.region)?.id;
     }
     this.replaceState({
       ...this.state,
       views,
-      activeViewByPane,
-      dismissedLayoutIds: closing.sourceLayoutId
-        ? [...new Set([...this.state.dismissedLayoutIds, closing.sourceLayoutId])]
-        : this.state.dismissedLayoutIds,
+      activeViewByRegion,
+      dismissedPlacementIds: closing.sourcePlacementId
+        ? [...new Set([...this.state.dismissedPlacementIds, closing.sourcePlacementId])]
+        : this.state.dismissedPlacementIds,
     });
   }
 
@@ -179,15 +183,15 @@ export class WorkbenchController {
     if (!view) return;
     this.replaceState({
       ...this.state,
-      activeViewByPane: { ...this.state.activeViewByPane, [view.pane]: view.id },
+      activeViewByRegion: { ...this.state.activeViewByRegion, [view.region]: view.id },
     });
   }
 
-  deactivatePane(pane: ViewPane): void {
-    if (this.state.activeViewByPane[pane] === HIDDEN_PANE_VIEW_ID) return;
+  deactivateRegion(region: ViewPlacementRegion): void {
+    if (this.state.activeViewByRegion[region] === HIDDEN_REGION_VIEW_ID) return;
     this.replaceState({
       ...this.state,
-      activeViewByPane: { ...this.state.activeViewByPane, [pane]: HIDDEN_PANE_VIEW_ID },
+      activeViewByRegion: { ...this.state.activeViewByRegion, [region]: HIDDEN_REGION_VIEW_ID },
     });
   }
 
@@ -221,11 +225,29 @@ export class WorkbenchController {
       pluginId,
       generation,
       viewTypeId: "renderer",
-      pane: "pane",
+      region: "primary",
       persistence: "session",
       context: {},
     };
     return this.createViewHostAPI(rendererView);
+  }
+
+  createInspectorHostAPI(pluginId: string, generation: string): InspectorSectionHostAPI {
+    const requireActive = (): void => {
+      if (!this.host.isGenerationActive(pluginId, generation)) {
+        throw new Error("Plugin host context is no longer active");
+      }
+    };
+    return Object.freeze({
+      executeCommand: async (commandId: string, input?: unknown) => {
+        requireActive();
+        return this.executeCommand(pluginId, commandId, input);
+      },
+      openView: async (viewTypeId: string, options?: OpenViewOptions) => {
+        requireActive();
+        this.openResolvedView(viewTypeId, options ?? {}, pluginId);
+      },
+    });
   }
 
   createPresentationHostAPI(
@@ -257,7 +279,7 @@ export class WorkbenchController {
     let views = this.state.views.flatMap((view): WorkbenchViewState[] => {
       if (this.availablePluginIds && !this.availablePluginIds.has(view.pluginId)) return [];
       const definition = definitions.get(viewTypeKey(view.pluginId, view.viewTypeId));
-      if (!definition) return [view];
+      if (!definition) return [];
       return [{
         ...view,
         generation: definition.generation,
@@ -270,31 +292,29 @@ export class WorkbenchController {
       const definition = definitions.get(viewTypeKey(placement.pluginId, placement.view));
       if (!definition
         || (this.availablePluginIds && !this.availablePluginIds.has(definition.pluginId))
-        || this.state.dismissedLayoutIds.includes(placementId)) continue;
-      if (views.some((view) => view.sourceLayoutId === placementId)) continue;
+        || this.state.dismissedPlacementIds.includes(placementId)) continue;
+      if (views.some((view) => view.sourcePlacementId === placementId)) continue;
       views = [...views, {
         id: `placement:${placementId}`,
         pluginId: definition.pluginId,
         generation: definition.generation,
         viewTypeId: definition.id,
-        pane: placement.pane,
+        region: placement.region,
         persistence: definition.persistence ?? "session",
         context: Object.freeze({}),
-        // Kept under the legacy on-disk field until the persisted workbench
-        // schema gets its own versioned migration.
-        sourceLayoutId: placementId,
+        sourcePlacementId: placementId,
       }];
     }
 
-    const activeViewByPane = { ...this.state.activeViewByPane };
-    for (const pane of viewPanes) {
-      const active = activeViewByPane[pane];
-      if (active === HIDDEN_PANE_VIEW_ID) continue;
+    const activeViewByRegion = { ...this.state.activeViewByRegion };
+    for (const region of viewRegions) {
+      const active = activeViewByRegion[region];
+      if (active === HIDDEN_REGION_VIEW_ID) continue;
       if (!active || !views.some((view) => view.id === active)) {
-        activeViewByPane[pane] = [...views].reverse().find((view) => view.pane === pane)?.id;
+        activeViewByRegion[region] = [...views].reverse().find((view) => view.region === region)?.id;
       }
     }
-    this.state = freezeLayoutState({ ...this.state, views, activeViewByPane });
+    this.state = freezeLayoutState({ ...this.state, views, activeViewByRegion });
     this.persist();
     this.applyThemeTokens();
     this.publish();
@@ -353,15 +373,15 @@ export class WorkbenchController {
   private persist(): void {
     const durableViews = this.state.views.filter((view) => view.persistence === "durable");
     const durableIds = new Set(durableViews.map((view) => view.id));
-    const activeViewByPane = Object.fromEntries(
-      Object.entries(this.state.activeViewByPane).filter(([, id]) => id && durableIds.has(id)),
+    const activeViewByRegion = Object.fromEntries(
+      Object.entries(this.state.activeViewByRegion).filter(([, id]) => id && durableIds.has(id)),
     );
     try {
       this.storage.setItem(LAYOUT_STORAGE_KEY, JSON.stringify({
         version: WORKBENCH_LAYOUT_STATE_VERSION,
         views: durableViews,
-        activeViewByPane,
-        dismissedLayoutIds: this.state.dismissedLayoutIds,
+        activeViewByRegion,
+        dismissedPlacementIds: this.state.dismissedPlacementIds,
       } satisfies WorkbenchLayoutState));
     } catch {
       // Persistence failures must not take down the host workbench.
@@ -437,13 +457,13 @@ export function DesktopWorkbench({
     ));
   }, [controller, inventory]);
 
-  const portals = viewPanes.flatMap((pane) => {
-    const views = snapshot.views.filter((view) => view.pane === pane);
+  const portals = viewRegions.flatMap((region) => {
+    const views = snapshot.views.filter((view) => view.region === region);
     if (views.length === 0) return [];
-    const activeId = snapshot.activeViewByPane[pane] ?? views[views.length - 1]?.id;
-    if (activeId === HIDDEN_PANE_VIEW_ID) return [];
+    const activeId = snapshot.activeViewByRegion[region] ?? views[views.length - 1]?.id;
+    if (activeId === HIDDEN_REGION_VIEW_ID) return [];
     const active = views.find((view) => view.id === activeId) ?? views[views.length - 1];
-    const target = resolvePaneTarget(pane);
+    const target = resolveRegionTarget(region);
     if (!active || !target) return [];
     const definition = snapshot.viewTypes.find((view) =>
       view.pluginId === active.pluginId
@@ -452,14 +472,14 @@ export function DesktopWorkbench({
     if (!definition) return [];
     return [createPortal(
       <WorkbenchView
-        key={active.id}
+        key={`${active.id}:${active.generation}`}
         controller={controller}
         definition={definition}
         view={active}
         siblingViews={views}
       />,
       target,
-      active.id,
+      `${active.id}:${active.generation}`,
     )];
   });
 
@@ -555,9 +575,14 @@ interface WorkbenchViewProps {
 function WorkbenchView({ controller, definition, view, siblingViews }: WorkbenchViewProps): JSX.Element {
   const View = definition.render;
   const host = React.useMemo(() => controller.createViewHostAPI(view), [controller, view]);
+  const { locale } = useI18n();
+  const translate = React.useMemo(
+    () => createPluginTranslator(controller.host, locale),
+    [controller.host, locale],
+  );
   return (
-    <section className={`plugin-workbench-view plugin-workbench-view-${view.pane}`} data-plugin-id={view.pluginId}>
-      <header className="plugin-workbench-view-header">
+    <section className={`plugin-workbench-view plugin-workbench-view-${view.region}`} data-plugin-id={view.pluginId}>
+      {view.region !== "primary" ? <header className="plugin-workbench-view-header">
         <div role="tablist" aria-label="Plugin views">
           {siblingViews.map((sibling) => (
             <button
@@ -574,14 +599,15 @@ function WorkbenchView({ controller, definition, view, siblingViews }: Workbench
           ))}
         </div>
         <button type="button" aria-label="Close plugin view" onClick={() => void controller.closeView(view.id)}>×</button>
-      </header>
+      </header> : null}
       <PluginErrorBoundary
+        key={`${view.pluginId}:${view.generation}:${view.id}`}
         pluginId={view.pluginId}
         generation={view.generation}
         services={controller.services}
         onUseDefault={() => void controller.closeView(view.id)}
       >
-        <View host={host} context={view.context} />
+        <View host={host} context={view.context} locale={locale} translate={translate} />
       </PluginErrorBoundary>
     </section>
   );
@@ -592,13 +618,18 @@ export function PluginViewContent({
   pluginId,
   viewTypeId,
   context = Object.freeze({}),
+  settings,
+  onFailure,
 }: {
   controller: WorkbenchController;
   pluginId: string;
   viewTypeId: string;
   context?: Readonly<Record<string, unknown>>;
+  settings?: SettingsPageHostAPI;
+  onFailure?: () => void;
 }): JSX.Element {
   const snapshot = React.useSyncExternalStore(controller.subscribe, controller.getSnapshot);
+  const { locale } = useI18n();
   const definition = snapshot.viewTypes.find((view) =>
     view.pluginId === pluginId && view.id === viewTypeId);
   const view = React.useMemo<WorkbenchViewState | undefined>(() => definition ? Object.freeze({
@@ -606,11 +637,19 @@ export function PluginViewContent({
     pluginId,
     generation: definition.generation,
     viewTypeId,
-    pane: "pane",
+    region: "settings",
     persistence: "session",
     context: freezeContext(context),
   }) : undefined, [context, definition, pluginId, viewTypeId]);
-  const host = React.useMemo(() => view ? controller.createViewHostAPI(view) : undefined, [controller, view]);
+  const host = React.useMemo(() => {
+    if (!view) return undefined;
+    const base = controller.createViewHostAPI(view);
+    return settings ? Object.freeze({ ...base, settings }) : base;
+  }, [controller, settings, view]);
+  const translate = React.useMemo(
+    () => createPluginTranslator(controller.host, locale),
+    [controller.host, locale, snapshot],
+  );
   if (!definition || !host || !view) {
     return <div className="plugin-workbench-error" role="status">Plugin view is unavailable.</div>;
   }
@@ -623,12 +662,14 @@ export function PluginViewContent({
       data-wuu-view={viewTypeId}
     >
       <PluginErrorBoundary
+        key={`${pluginId}:${definition.generation}:${viewTypeId}`}
         pluginId={pluginId}
         generation={definition.generation}
         services={controller.services}
-        onUseDefault={() => undefined}
+        onUseDefault={onFailure ?? (() => undefined)}
+        onError={onFailure}
       >
-        <View host={host} context={view.context} />
+        <View host={host} context={view.context} locale={locale} translate={translate} />
       </PluginErrorBoundary>
     </div>
   );
@@ -649,6 +690,7 @@ export function WorkbenchContentRenderer(props: WorkbenchContentRendererProps): 
   const Renderer = renderer.render;
   return (
     <PluginErrorBoundary
+      key={`${renderer.pluginId}:${renderer.generation}:${renderer.id}`}
       pluginId={renderer.pluginId}
       generation={renderer.generation}
       services={props.controller.services}
@@ -669,6 +711,7 @@ interface PluginErrorBoundaryProps {
   generation: string;
   services: WorkbenchServices;
   onUseDefault(): void;
+  onError?: (error: unknown) => void;
   fallback?: React.ReactNode;
   children: React.ReactNode;
 }
@@ -684,6 +727,16 @@ export class PluginErrorBoundary extends React.Component<PluginErrorBoundaryProp
 
   componentDidCatch(error: unknown): void {
     this.props.services.reportError?.(this.props.pluginId, this.props.generation, error);
+    this.props.onError?.(error);
+  }
+
+  componentDidUpdate(previous: PluginErrorBoundaryProps): void {
+    if (
+      this.state.error !== undefined &&
+      (previous.pluginId !== this.props.pluginId || previous.generation !== this.props.generation)
+    ) {
+      this.setState({ error: undefined });
+    }
   }
 
   render(): React.ReactNode {
@@ -704,15 +757,17 @@ export class PluginErrorBoundary extends React.Component<PluginErrorBoundaryProp
   }
 }
 
-const viewPanes: readonly ViewPane[] = ["main", "sidebar", "auxiliary", "tab", "pane", "overlay"];
-const HIDDEN_PANE_VIEW_ID = "__wuu_hidden_pane__";
+const viewRegions: readonly ViewPlacementRegion[] = ["navigation", "primary", "auxiliary", "inspector", "settings", "overlay"];
+const HIDDEN_REGION_VIEW_ID = "__wuu_hidden_region__";
 
-function resolvePaneTarget(pane: ViewPane): Element | null {
-  if (pane === "overlay") return document.body;
-  if (pane === "sidebar") return document.querySelector(".sidebar");
-  if (pane === "auxiliary") {
+function resolveRegionTarget(region: ViewPlacementRegion): Element | null {
+  if (region === "overlay") return document.body;
+  if (region === "navigation") return document.querySelector(".sidebar");
+  if (region === "auxiliary") {
     return document.querySelector(".workspace-right-panel") ?? document.querySelector(".conversation-pane");
   }
+  if (region === "inspector") return document.querySelector(".environment-panel") ?? document.querySelector(".conversation-pane");
+  if (region === "settings") return document.querySelector(".settings-main");
   return document.querySelector(".conversation-pane");
 }
 
@@ -739,13 +794,13 @@ function readLayoutState(storage: StorageLike): WorkbenchLayoutState {
       return EMPTY_STATE;
     }
     const views = parsed.views.flatMap(parseViewState);
-    const activeViewByPane = isRecord(parsed.activeViewByPane)
-      ? Object.fromEntries(Object.entries(parsed.activeViewByPane).filter(([, value]) => typeof value === "string"))
+    const activeViewByRegion = isRecord(parsed.activeViewByRegion)
+      ? Object.fromEntries(Object.entries(parsed.activeViewByRegion).filter(([region, value]) => isViewRegion(region) && typeof value === "string"))
       : {};
-    const dismissedLayoutIds = Array.isArray(parsed.dismissedLayoutIds)
-      ? parsed.dismissedLayoutIds.filter((value): value is string => typeof value === "string")
+    const dismissedPlacementIds = Array.isArray(parsed.dismissedPlacementIds)
+      ? parsed.dismissedPlacementIds.filter((value): value is string => typeof value === "string")
       : [];
-    return freezeLayoutState({ version: WORKBENCH_LAYOUT_STATE_VERSION, views, activeViewByPane, dismissedLayoutIds });
+    return freezeLayoutState({ version: WORKBENCH_LAYOUT_STATE_VERSION, views, activeViewByRegion, dismissedPlacementIds });
   } catch {
     try {
       storage.removeItem(LAYOUT_STORAGE_KEY);
@@ -771,17 +826,17 @@ function parseViewState(value: unknown): WorkbenchViewState[] {
     || typeof value.pluginId !== "string"
     || typeof value.generation !== "string"
     || typeof value.viewTypeId !== "string"
-    || !isViewPane(value.pane)
+    || !isViewRegion(value.region)
     || (value.persistence !== "session" && value.persistence !== "durable")) return [];
   return [{
     id: value.id,
     pluginId: value.pluginId,
     generation: value.generation,
     viewTypeId: value.viewTypeId,
-    pane: value.pane,
+    region: value.region,
     persistence: value.persistence,
     context: freezeContext(isRecord(value.context) ? value.context : {}),
-    sourceLayoutId: typeof value.sourceLayoutId === "string" ? value.sourceLayoutId : undefined,
+    sourcePlacementId: typeof value.sourcePlacementId === "string" ? value.sourcePlacementId : undefined,
   }];
 }
 
@@ -789,8 +844,8 @@ function freezeLayoutState(state: WorkbenchLayoutState): WorkbenchLayoutState {
   return Object.freeze({
     version: WORKBENCH_LAYOUT_STATE_VERSION,
     views: Object.freeze([...state.views]),
-    activeViewByPane: Object.freeze({ ...state.activeViewByPane }),
-    dismissedLayoutIds: Object.freeze([...state.dismissedLayoutIds]),
+    activeViewByRegion: Object.freeze({ ...state.activeViewByRegion }),
+    dismissedPlacementIds: Object.freeze([...state.dismissedPlacementIds]),
   });
 }
 
@@ -810,8 +865,8 @@ function requireStorageKey(key: string): void {
   if (!STORAGE_KEY_PATTERN.test(key)) throw new Error("Plugin storage key is invalid");
 }
 
-function isViewPane(value: unknown): value is ViewPane {
-  return typeof value === "string" && (viewPanes as readonly string[]).includes(value);
+function isViewRegion(value: unknown): value is ViewPlacementRegion {
+  return typeof value === "string" && (viewRegions as readonly string[]).includes(value);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

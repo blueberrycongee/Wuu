@@ -7,7 +7,7 @@
   min-height: 0;
   flex-direction: column;
   color: var(--text-primary);
-  background: var(--surface-primary, var(--background));
+  background: var(--wuu-color-canvas, var(--paper, #fff));
 }
 
 .plugin-workbench-view-overlay {
@@ -25,6 +25,14 @@
   left: auto;
   width: min(420px, 45%);
   border-left: 1px solid var(--border-subtle);
+}
+
+.conversation-pane > .plugin-workbench-view-primary {
+  position: relative;
+  inset: auto;
+  grid-row: 2;
+  width: 100%;
+  height: 100%;
 }
 
 .plugin-workbench-view-header {
@@ -81,28 +89,54 @@
 
 /* Public Plugin UI Kit. The host owns layout rhythm and interaction states;
  * appearance plugins style the coarse data-wuu-component boundaries or the
- * public tokens instead of chasing each feature plugin's private DOM. */
+ * public tokens instead of chasing each feature plugin's private DOM.
+ *
+ * The kit speaks the same language as the native settings surface: quiet
+ * 12px group labels instead of boxed headings, hairline enclosures on the
+ * canvas, and the shared 32px control family (borderless buttons, filled
+ * inputs, pill switches). */
 .plugin-ui-page {
+  box-sizing: border-box;
   width: min(100%, var(--wuu-content-max-width, 1088px));
+  max-width: 100%;
   min-width: 0;
+  min-height: 100%;
   margin: 0 auto;
   padding: calc(var(--wuu-space-unit, 4px) * 6 * var(--wuu-space-density, 1));
+  overflow-wrap: anywhere;
   color: var(--wuu-color-text, var(--ink));
   font-family: var(--wuu-font-family-ui, inherit);
   font-size: var(--wuu-font-size-body, var(--font-body));
   line-height: var(--wuu-line-height-body, var(--line-body));
 }
 
-.plugin-ui-page[data-wuu-density="compact"] {
-  padding: calc(var(--wuu-space-unit, 4px) * 3 * var(--wuu-space-density, 1));
+/* On the settings surface a plugin page joins the native rhythm: the 640px
+ * centered column, 24px frame padding, 40px group gaps, and the same
+ * swap-in motion as first-party pages. */
+.settings-scroll .plugin-ui-page {
+  --wuu-content-max-width: 640px;
+  --wuu-space-density: 1;
+  padding: 24px;
+  animation: content-swap-enter var(--content-swap-duration, 160ms) var(--content-swap-easing, ease-out) both;
 }
 
+.settings-scroll .plugin-ui-stack[data-wuu-gap="large"] {
+  gap: 40px;
+}
+
+.plugin-ui-page[data-wuu-density="compact"] {
+  --wuu-space-density: 0.75;
+}
+
+/* Panel and card are quiet enclosures: one hairline on the canvas, no fill
+ * shift. Grouping reads from the edge line and whitespace, not from a
+ * heavier box. */
 .plugin-ui-panel,
 .plugin-ui-card {
   min-width: 0;
   border: var(--wuu-border-subtle, 1px solid var(--wuu-color-border-subtle, var(--hairline)));
   border-radius: var(--wuu-radius-panel, var(--radius-md));
-  background: var(--wuu-color-surface, var(--surface-1));
+  background: var(--wuu-color-canvas, var(--paper));
 }
 
 .plugin-ui-panel {
@@ -127,21 +161,30 @@
 
 .plugin-ui-section-header h2,
 .plugin-ui-section-header p,
-.plugin-ui-empty-state p {
+.plugin-ui-state p {
   margin: 0;
 }
 
+/* A section is named by a quiet 12px label, the same grouping signal the
+ * native settings surface uses — one ramp step below row titles, regular
+ * weight, no enclosure. */
 .plugin-ui-section-header h2 {
-  color: var(--wuu-color-text, var(--ink));
-  font-size: var(--font-heading);
-  font-weight: var(--weight-semibold);
-  line-height: var(--line-ui);
+  color: var(--wuu-color-text-muted, var(--ink-muted));
+  font-size: var(--font-sm);
+  font-weight: 400;
+  line-height: 1.3;
+}
+
+.plugin-ui-section-header p {
+  max-width: 60ch;
+  font-size: var(--font-ui);
+  line-height: 1.5;
 }
 
 .plugin-ui-section-header p,
 .plugin-ui-field-description,
-.plugin-ui-empty-state p {
-  color: var(--wuu-color-text-muted, var(--ink-soft));
+.plugin-ui-state p {
+  color: var(--wuu-color-text-muted, var(--ink-muted));
 }
 
 .plugin-ui-stack {
@@ -167,87 +210,267 @@
   gap: calc(var(--wuu-space-unit, 4px) * 2 * var(--wuu-space-density, 1));
 }
 
+/* Buttons join the shared 32px control family: no border, filled with the
+ * secondary-control ramp, a scale press, and a halo focus ring. The primary
+ * action is the strongest contrast pair in the ramp, not the accent — the
+ * accent stays reserved for live state and navigation. */
 .plugin-ui-button {
   min-height: 32px;
-  border: var(--wuu-border-subtle, 1px solid var(--wuu-color-border-subtle, var(--hairline)));
+  border: 0;
   border-radius: var(--wuu-radius-control, var(--radius-sm));
   padding: 0 calc(var(--wuu-space-unit, 4px) * 3 * var(--wuu-space-density, 1));
   color: var(--wuu-color-text, var(--ink));
-  background: var(--wuu-color-surface-muted, var(--surface-2));
+  background: var(--wuu-control-secondary-background, var(--surface-2));
   cursor: pointer;
   font: inherit;
+  font-size: var(--font-ui);
   font-weight: var(--weight-medium);
   transition:
     background-color var(--wuu-motion-duration-fast, var(--motion-fast)) var(--wuu-motion-easing-standard, var(--ease-out)),
-    border-color var(--wuu-motion-duration-fast, var(--motion-fast)) var(--wuu-motion-easing-standard, var(--ease-out));
+    color var(--wuu-motion-duration-fast, var(--motion-fast)) var(--wuu-motion-easing-standard, var(--ease-out)),
+    transform var(--wuu-motion-duration-fast, var(--motion-fast)) var(--wuu-motion-easing-standard, var(--ease-out));
 }
 
 .plugin-ui-button[data-wuu-variant="primary"] {
-  border-color: var(--wuu-color-accent, var(--wuu-accent));
-  color: var(--wuu-color-on-accent, var(--ink-on-accent));
-  background: var(--wuu-color-accent, var(--wuu-accent));
+  color: var(--wuu-color-canvas, var(--paper));
+  background: var(--wuu-color-text, var(--gray-900));
 }
 
 .plugin-ui-button[data-wuu-variant="ghost"] {
-  border-color: transparent;
+  color: var(--wuu-color-text-muted, var(--ink-soft));
   background: transparent;
 }
 
 .plugin-ui-button[data-wuu-variant="danger"] {
-  border-color: var(--wuu-color-danger, var(--danger));
   color: var(--wuu-color-danger, var(--danger));
   background: transparent;
 }
 
 .plugin-ui-button:not(:disabled):hover {
-  border-color: var(--wuu-color-border-strong, var(--hairline-strong));
-  background: var(--wuu-color-surface-elevated, var(--surface-3));
+  background: var(--wuu-control-secondary-background, var(--surface-3));
 }
 
 .plugin-ui-button[data-wuu-variant="primary"]:not(:disabled):hover {
-  border-color: var(--wuu-color-accent-pressed, var(--wuu-accent-press));
-  background: var(--wuu-color-accent-pressed, var(--wuu-accent-press));
+  background: color-mix(in srgb, var(--wuu-color-text, var(--gray-900)) 88%, var(--wuu-color-canvas, var(--paper)));
+}
+
+.plugin-ui-button[data-wuu-variant="ghost"]:not(:disabled):hover {
+  color: var(--wuu-color-text, var(--ink));
+}
+
+.plugin-ui-button[data-wuu-variant="danger"]:not(:disabled):hover {
+  background: color-mix(in srgb, var(--wuu-color-danger, var(--danger)) 10%, transparent);
+}
+
+.plugin-ui-button:not(:disabled):active {
+  transform: scale(0.97);
 }
 
 .plugin-ui-button:disabled {
   cursor: default;
+  opacity: 0.55;
+}
+
+.plugin-ui-toolbar-toggle {
+  display: inline-grid;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  place-items: center;
+  border: 0;
+  border-radius: var(--wuu-radius-control, var(--radius-sm));
+  padding: 0;
+  color: var(--wuu-color-text-muted, var(--ink-muted));
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  transition:
+    color var(--wuu-motion-duration-fast, var(--motion-fast)) var(--wuu-motion-easing-standard, var(--ease-out)),
+    background-color var(--wuu-motion-duration-fast, var(--motion-fast)) var(--wuu-motion-easing-standard, var(--ease-out)),
+    transform var(--wuu-motion-duration-fast, var(--motion-fast)) var(--wuu-motion-easing-standard, var(--ease-out));
+}
+
+.plugin-ui-toolbar-toggle:not(:disabled):hover {
+  color: var(--wuu-color-text, var(--ink));
+  background: var(--wuu-color-surface-muted, var(--surface-2));
+}
+
+.plugin-ui-toolbar-toggle[aria-pressed="true"] {
+  color: var(--wuu-color-text, var(--ink));
+  background: var(--wuu-color-surface-elevated, var(--surface-3));
+}
+
+.plugin-ui-toolbar-toggle:not(:disabled):active {
+  transform: scale(0.96);
+}
+
+.plugin-ui-toolbar-toggle:disabled {
+  cursor: default;
   opacity: 0.48;
 }
 
+.plugin-ui-input:disabled,
+.plugin-ui-textarea:disabled,
+.plugin-ui-checkbox:has(input:disabled) {
+  cursor: default;
+  opacity: 0.52;
+}
+
 .plugin-ui-button:focus-visible,
-.plugin-ui-input:focus-visible {
-  outline: 2px solid var(--wuu-color-focus, var(--focus-ring));
-  outline-offset: 2px;
+.plugin-ui-toolbar-toggle:focus-visible,
+.plugin-ui-input:focus-visible,
+.plugin-ui-textarea:focus-visible,
+.plugin-ui-checkbox input:focus-visible {
+  outline: 0;
+}
+
+.plugin-ui-button:focus-visible,
+.plugin-ui-toolbar-toggle:focus-visible {
+  box-shadow: 0 0 0 3px var(--ink-overlay-12, rgba(127, 127, 127, 0.24));
 }
 
 .plugin-ui-field {
   display: grid;
   min-width: 0;
-  gap: calc(var(--wuu-space-unit, 4px) * var(--wuu-space-density, 1));
+  gap: calc(var(--wuu-space-unit, 4px) * 1.5 * var(--wuu-space-density, 1));
 }
 
 .plugin-ui-field-label {
   color: var(--wuu-color-text, var(--ink));
+  font-size: var(--font-ui);
   font-weight: var(--weight-medium);
+  line-height: 1.4;
 }
 
 .plugin-ui-field-description {
   font-size: var(--font-sm);
+  line-height: 1.5;
 }
 
+/* Inputs share the settings control chrome: a quiet field fill, a
+ * transparent resting border, and focus that lifts the field onto the
+ * canvas with a hairline plus halo. */
 .plugin-ui-input {
   width: 100%;
   min-width: 0;
-  height: 34px;
-  border: var(--wuu-border-subtle, 1px solid var(--wuu-color-border-subtle, var(--hairline)));
+  height: 32px;
+  border: 1px solid transparent;
   border-radius: var(--wuu-radius-control, var(--radius-sm));
-  padding: 0 calc(var(--wuu-space-unit, 4px) * 2.5 * var(--wuu-space-density, 1));
+  padding: 0 calc(var(--wuu-space-unit, 4px) * 3 * var(--wuu-space-density, 1));
   color: var(--wuu-color-text, var(--ink));
-  background: var(--wuu-color-canvas, var(--paper));
+  background: var(--wuu-control-field-background, var(--surface-1));
   font: inherit;
+  font-size: var(--font-ui);
+  transition:
+    background-color var(--wuu-motion-duration-fast, var(--motion-fast)) var(--wuu-motion-easing-standard, var(--ease-out)),
+    border-color var(--wuu-motion-duration-fast, var(--motion-fast)) var(--wuu-motion-easing-standard, var(--ease-out)),
+    box-shadow var(--wuu-motion-duration-fast, var(--motion-fast)) var(--wuu-motion-easing-standard, var(--ease-out));
 }
 
-.plugin-ui-empty-state {
+.plugin-ui-input::placeholder,
+.plugin-ui-textarea::placeholder {
+  color: var(--ink-faint, var(--wuu-color-text-muted));
+}
+
+.plugin-ui-input:not(:disabled):hover,
+.plugin-ui-textarea:not(:disabled):hover {
+  background: var(--wuu-control-field-background, var(--surface-2));
+}
+
+.plugin-ui-input:focus,
+.plugin-ui-input:focus-visible,
+.plugin-ui-textarea:focus,
+.plugin-ui-textarea:focus-visible {
+  border-color: var(--wuu-color-border-strong, var(--gray-350));
+  background: var(--wuu-color-canvas, var(--paper));
+  box-shadow: 0 0 0 3px var(--ink-overlay-8, rgba(127, 127, 127, 0.18));
+}
+
+.plugin-ui-textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  min-height: 112px;
+  resize: vertical;
+  border: 1px solid transparent;
+  border-radius: var(--wuu-radius-control, var(--radius-sm));
+  padding: calc(var(--wuu-space-unit, 4px) * 2 * var(--wuu-space-density, 1)) calc(var(--wuu-space-unit, 4px) * 3 * var(--wuu-space-density, 1));
+  color: var(--wuu-color-text, var(--ink));
+  background: var(--wuu-control-field-background, var(--surface-1));
+  font: inherit;
+  font-size: var(--font-ui);
+  line-height: var(--wuu-line-height-body, 1.5);
+  transition:
+    background-color var(--wuu-motion-duration-fast, var(--motion-fast)) var(--wuu-motion-easing-standard, var(--ease-out)),
+    border-color var(--wuu-motion-duration-fast, var(--motion-fast)) var(--wuu-motion-easing-standard, var(--ease-out)),
+    box-shadow var(--wuu-motion-duration-fast, var(--motion-fast)) var(--wuu-motion-easing-standard, var(--ease-out));
+}
+
+/* Boolean rows read like native settings rows: the copy grows on the left,
+ * the switch pins to the right edge. The native checkbox input wears the
+ * pill-switch chrome so the DOM contract stays a plain checkbox. */
+.plugin-ui-checkbox {
+  display: inline-grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: calc(var(--wuu-space-unit, 4px) * 6 * var(--wuu-space-density, 1));
+  color: var(--wuu-color-text, var(--ink));
+  cursor: pointer;
+}
+
+.plugin-ui-checkbox input {
+  position: relative;
+  order: 2;
+  justify-self: end;
+  width: 38px;
+  height: 22px;
+  flex: 0 0 auto;
+  margin: 0;
+  appearance: none;
+  border-radius: var(--radius-pill, 999px);
+  background: var(--gray-350, var(--wuu-color-border-strong));
+  cursor: pointer;
+  transition:
+    background var(--wuu-motion-duration-base, var(--motion-base)) var(--wuu-motion-easing-standard, var(--ease-out)),
+    box-shadow var(--wuu-motion-duration-base, var(--motion-base)) var(--wuu-motion-easing-standard, var(--ease-out));
+}
+
+.plugin-ui-checkbox input::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: var(--radius-pill, 999px);
+  background: var(--wuu-color-canvas, var(--paper));
+  box-shadow: 0 1px 2px var(--ink-overlay-18, rgba(0, 0, 0, 0.3));
+  transition: transform var(--wuu-motion-duration-base, var(--motion-base)) var(--wuu-motion-easing-standard, var(--ease-out));
+}
+
+.plugin-ui-checkbox input:checked {
+  background: var(--wuu-color-text, var(--gray-900));
+}
+
+.plugin-ui-checkbox input:checked::after {
+  transform: translateX(16px);
+  background: var(--gray-0, #1d2024);
+}
+
+.plugin-ui-checkbox:hover input:not(:disabled) {
+  box-shadow: 0 0 0 4px var(--ink-overlay-6, rgba(127, 127, 127, 0.12));
+}
+
+.plugin-ui-checkbox input:focus-visible {
+  box-shadow: 0 0 0 4px var(--ink-overlay-12, rgba(127, 127, 127, 0.24));
+}
+
+.plugin-ui-checkbox-copy {
+  display: grid;
+  gap: calc(var(--wuu-space-unit, 4px) * var(--wuu-space-density, 1));
+}
+
+.plugin-ui-state {
   display: grid;
   min-height: 180px;
   place-content: center;
@@ -257,11 +480,45 @@
   text-align: center;
 }
 
-.plugin-ui-empty-state-actions {
+.plugin-ui-state[data-wuu-state="error"] {
+  color: var(--wuu-color-danger, var(--danger));
+}
+
+.plugin-ui-state-spinner {
+  width: 22px;
+  height: 22px;
+  border: 2px solid var(--wuu-color-border-subtle, var(--hairline));
+  border-top-color: var(--wuu-color-accent, var(--wuu-accent));
+  border-radius: 50%;
+  animation: plugin-ui-state-spin 800ms linear infinite;
+}
+
+.plugin-ui-state-actions {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
   gap: calc(var(--wuu-space-unit, 4px) * 2 * var(--wuu-space-density, 1));
+}
+
+@keyframes plugin-ui-state-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (max-width: 560px) {
+  .plugin-ui-page {
+    padding: calc(var(--wuu-space-unit, 4px) * 3 * var(--wuu-space-density, 1));
+  }
+
+  .plugin-ui-panel,
+  .plugin-ui-card {
+    padding: calc(var(--wuu-space-unit, 4px) * 3 * var(--wuu-space-density, 1));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .plugin-ui-state-spinner {
+    animation-duration: 1600ms;
+  }
 }
 
 .plugin-workbench-error {

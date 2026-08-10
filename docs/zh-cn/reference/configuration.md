@@ -23,51 +23,27 @@ Wuu 把配置分成“用户拥有”和“项目补充”两类。核心原则�
 
 - `default_provider`
 - `providers`
-- `memory`
+- `instructions`（旧版 `memory` 指令发现字段也按这一边界处理）
 - `agent.model_roles`
 - `agent.model_aliases`
 - `agent.permission_mode`
 
-这些字段分别控制默认提供商、端点与凭据来源、全局记忆发现、后台角色的模型路由，
+这些字段分别控制默认提供商、端点与凭据来源、工作区外指令发现、后台角色的模型路由，
 可供 Agent 显式选择的稳定模型别名，以及 Wuu 的本地权限边界。字段名按 JSON 的大小写匹配规则处理，所以换成
 `Providers`、`Memory` 或 `Permission_Mode` 也不会绕过限制。
 
 其他项目行为仍会正常叠加，例如 `agent.append_system_prompt`。项目配置必须符合完整
 配置结构；未知字段会直接报错，避免拼写错误被静默忽略。
 
-## 全局记忆与项目规则
+## 指令、Memory 与 Dream
 
-全局记忆本来就位于工作区外，默认保存在用户控制的 Wuu 主目录中。项目不能重定向
-它的发现目录，但这不会关闭全局记忆，也不会阻止 Wuu 正常读取和更新它。
+需要团队共同遵守的长期规则应写进仓库的 `AGENTS.md` 或项目文档。`instructions`
+只控制核心的通用指令文件发现，因此项目不能把它重定向到工作区外。旧版顶层 `memory`
+只在读取边界迁移其中的指令发现字段，不再配置或启停任何核心记忆产品。
 
-需要团队共同遵守的长期规则应写进仓库的 `AGENTS.md` 或项目文档。个人偏好、跨项目
-经验和自动整理出的记忆则留在用户目录中。
-
-### 记忆整合（Dream）
-
-`memory.dream` 配置后台记忆整合：Wuu 在对话轮次结束后检查已完成会话，把稳定事实
-写入工作区记忆。它默认关闭。
-
-```json
-{
-  "memory": {
-    "dream": {
-      "enabled": true,
-      "interval_days": 7,
-      "provider": "openai",
-      "model": "gpt-4.1"
-    }
-  }
-}
-```
-
-- `enabled`：是否启用，默认 `false`；
-- `interval_days`：距上次运行至少间隔的天数，默认 `1`；
-- `provider` / `model`：可选专用模型，留空使用当前提供商和默认模型。
-
-通过桌面设置修改会立即生效；直接编辑配置文件需要重新启动 Wuu。旧的
-`memory.dream_interval_days` 仍被识别（正数启用、`0` 停用），新配置优先。
-运行机制与限制见[后台记忆整合（Dream）](../customize/dream.md)。
+用户、工作区和会话记忆由一方 [Memory 插件](../customize/memory.md)管理；后台整理由
+[Dream 插件](../customize/dream.md)管理。两者的设置保存在插件自己的命名空间中，不写入
+核心配置。禁用插件会同时移除相应 Prompt、Tool、后台 Timer 和界面。
 
 ## 显式信任完整配置
 
@@ -77,19 +53,17 @@ Wuu 把配置分成“用户拥有”和“项目补充”两类。核心原则�
 - `wuu exec --ignore-user-config`：忽略用户配置，读取并信任项目 `.wuu.json`
   （或 `wuu.json`）及两个项目 settings 层。
 
-这两种方式会接受文件中的提供商端点、凭据环境变量名、记忆路径、hooks 和 MCP
+这两种方式会接受文件中的提供商端点、凭据环境变量名、指令路径、hooks 和 MCP
 服务器，因此只应对自己控制的文件使用。普通桌面和 CLI 启动不会通过空 `HOME`
 等隐式条件获得这项信任。
 
-## Ultra 主动多 Agent 模式
+## 匿名 Worker 并发与主动委派
 
-Ultra 是独立于模型和思考强度的会话开关。它打开主动委派政策，并允许匿名 worker
-继续编排自己的子任务；关闭时保留原有的主 Agent 和 worker 行为。
+核心只保存通用执行容量：
 
 ```json
 {
   "agent": {
-    "ultra_mode": true,
     "max_parallel": 5
   }
 }
@@ -97,44 +71,25 @@ Ultra 是独立于模型和思考强度的会话开关。它打开主动委派�
 
 | 字段 | 填写方式 | 默认值 | 语义 |
 | --- | --- | --- | --- |
-| `agent.ultra_mode` | `true` / `false` | `false` | 开启主动多 Agent 模式。省略或设为 `false` 时不注入 Ultra 政策，也不解锁默认 worker 的递归编排能力。 |
-| `agent.max_parallel` | 非负整数；`0` 等同省略 | `5` | 控制可同时执行的匿名 worker 数量。Ultra 不会提高这个值；超出的异步 spawn 进入 `queued`。 |
+| `agent.max_parallel` | 非负整数；`0` 等同省略 | `5` | 控制可同时执行的匿名 worker 数量；超出的异步执行进入 `queued`。 |
 
 `queued` 和 `waiting_children` 状态都不占执行槽。子结果唤醒父 worker 做整合不是新
 spawn，因此不经过 spawn 排队闸门；整合开始时，实际运行数可能短暂高于
-`max_parallel`。负数配置无效。
+`max_parallel`。负数配置无效。`initialize`、`config/read`、`config/model/update` 和
+`wuu exec --json` 的 `session_configured` 事件都会回读实际生效的 `max_parallel`。
 
-### Turn 边界与继承
-
-- 顶层 turn 启动时，core 会把会话当前的 Ultra 值快照为该 turn 的生效值。
-- worker 在 spawn 时继承父方的生效值。该值随 worker 一起保存，在其整个生命周期、
-  后续复活和继续派生的子树中保持不变。
-- 子 Agent 完成后触发的合成 completion turn 使用对应运行中的 turn 快照，不重新读取
-  一个可能已变化的会话值。
-- turn 运行中切换 Ultra 只更新会话配置和界面状态，不改变当前 turn、已经 spawn 的
-  worker 或它们的后代。下一次用户发起的顶层 turn 才读取新值。
-
-这样可以避免一棵正在运行的子树在中途被改变能力。默认配置没有
-`agent.ultra_mode` 时，快照始终为 `false`，行为与启用 Ultra 前一致。
-
-### App-server 与 CLI
-
-[`config/model/update`](../../en/integrations/app-server-protocol.md#ultra-mode-configuration) 的请求可以带可选
-字段 `ultra`。省略该字段会保留当前值；`{"ultra": true}` 或
-`{"ultra": false}` 可以单独更新模式，也可以与模型更新一起原子写入配置。
-`initialize`、`config/read` 和 `config/model/update` 的结果都会回读 `ultra` 与
-`max_parallel`。
-
-`wuu exec --ultra` 为当前 exec 运行显式开启 Ultra，不写回配置。配合 `--json` 时，
-首个 `session_configured` JSONL 事件会回读实际生效的 `ultra` 和 `max_parallel`。
-未传 `--ultra` 时，exec 保留配置中的值。
+主动委派不是核心配置或 app-server 模式。它由 Subagent 插件在自己的命名空间存储中保存开关，
+通过 `agent.pre_step` 为后续模型步骤追加带来源、可持久化的隐藏消息，并在 Composer 工具栏提供
+A+ 控件。核心没有
+`agent.ultra_mode`、Turn 快照、`ultra` 协议字段或 `wuu exec --ultra`；禁用 Subagent 插件会同时
+移除委派 Tool、Prompt、状态和界面入口。
 
 ## 从旧项目配置迁移
 
 如果旧项目把提供商放在 `.wuu.json` 中：
 
 1. 运行 `wuu init` 创建用户配置。
-2. 把 `default_provider`、`providers`、`memory`、`agent.model_roles`、
+2. 把 `default_provider`、`providers`、`instructions`、`agent.model_roles`、
    `agent.model_aliases` 和 `agent.permission_mode` 移到用户配置。
 3. 在项目文件中保留真正属于仓库的提示词和其他项目行为。
 

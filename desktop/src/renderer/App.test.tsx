@@ -116,7 +116,7 @@ function textOf(item: ThreadItem): string {
   if (item.type === "reasoning") {
     return item.text ?? "";
   }
-  if (item.type === "tool_call" || item.type === "collab_agent_tool_call") {
+  if (item.type === "tool_call") {
     return item.name ?? "tool";
   }
   if (item.type === "context_compaction") {

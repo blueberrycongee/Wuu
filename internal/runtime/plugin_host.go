@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/blueberrycongee/wuu/internal/agent"
@@ -18,21 +19,39 @@ func startPluginClient(ctx context.Context, cfg pluginhost.ProcessConfig) (plugi
 	return pluginhost.Start(ctx, cfg)
 }
 
-func startPluginHost(plugins []pluginpkg.Plugin, projectRoot, wuuHome string, turnRouter *PluginSessionRouter, childSession ...childSessionRequestHandler) *pluginhost.Host {
-	host, err := buildPluginHost(plugins, projectRoot, wuuHome, nil, startPluginClient, turnRouter, childSession...)
+func startPluginHost(plugins []pluginpkg.Plugin, projectRoot, wuuHome, workspaceStateDir string, turnRouter *PluginSessionRouter) *pluginhost.Host {
+	host, err := buildPluginHost(plugins, projectRoot, wuuHome, workspaceStateDir, nil, startPluginClient, turnRouter)
 	if err != nil {
 		return pluginhost.New(pluginhost.Failed("capability-negotiation", err))
+	}
+	if err := host.Activate(context.Background()); err != nil {
+		providers.DebugLogf("activate initial plugin generation: %v", err)
+	}
+	if registry := host.ServiceRegistry(); registry != nil {
+		registry.Activate()
 	}
 	return host
 }
 
-func buildPluginHost(plugins []pluginpkg.Plugin, projectRoot, wuuHome string, required map[string]bool, start pluginClientStarter, turnRouter *PluginSessionRouter, childSession ...childSessionRequestHandler) (*pluginhost.Host, error) {
+func buildPluginHost(plugins []pluginpkg.Plugin, projectRoot, wuuHome, workspaceStateDir string, required map[string]bool, start pluginClientStarter, turnRouter *PluginSessionRouter) (*pluginhost.Host, error) {
 	host := pluginhost.New()
+	var started []pluginhost.Client
+	var handlers []*pluginHostServices
+	closeStarted := func() error {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		var err error
+		for index := len(started) - 1; index >= 0; index-- {
+			err = errors.Join(err, started[index].Close(ctx))
+		}
+		return err
+	}
 	for _, item := range plugins {
 		if item.Runtime == nil {
 			continue
 		}
 		timeout := time.Duration(item.Runtime.Timeout) * time.Second
+		handler := newPluginHostServices(item, projectRoot, wuuHome, turnRouter)
 		client, err := start(context.Background(), pluginhost.ProcessConfig{
 			ID:                 item.ID,
 			Command:            item.Runtime.Command,
@@ -41,18 +60,41 @@ func buildPluginHost(plugins []pluginpkg.Plugin, projectRoot, wuuHome string, re
 			PluginRoot:         item.Root,
 			ProjectRoot:        projectRoot,
 			WuuHome:            wuuHome,
+			WorkspaceStateDir:  workspaceStateDir,
 			Timeout:            timeout,
-			HostServiceHandler: newPluginHostServices(item, projectRoot, wuuHome, turnRouter, childSession...),
+			HostServiceHandler: handler,
+			ServiceRouter:      handler,
+			PrepareOnly:        true,
 		})
 		if err != nil {
 			host.Add(pluginhost.Failed(item.ID, err))
 			if required[item.ID] || pluginhost.IsCapabilityNegotiationError(err) {
-				ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-				closeErr := host.Close(ctx)
-				cancel()
+				closeErr := closeStarted()
 				return nil, pluginActivationError(item.ID, err, closeErr)
 			}
 			continue
+		}
+		started = append(started, client)
+		handlers = append(handlers, handler)
+	}
+	// The service registry is built from the whole generation's initialize
+	// results before any client is registered, so an unsatisfied required
+	// service blocks that consumer without its capabilities ever going live.
+	// There is no dependency solver; failures are deterministic diagnostics.
+	registry, conflicts := pluginhost.BuildServiceRegistry(started...)
+	for _, handler := range handlers {
+		handler.setServiceRegistry(registry)
+	}
+	host.AttachServiceRegistry(registry, conflicts)
+	for _, client := range started {
+		if serviceClient, ok := client.(pluginhost.ServiceClient); ok {
+			if err := registry.CheckSatisfaction(serviceClient.RequiredServices()); err != nil {
+				ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+				_ = client.Close(ctx)
+				cancel()
+				host.Add(pluginhost.Failed(client.ID(), err))
+				continue
+			}
 		}
 		host.Add(client)
 	}
@@ -77,55 +119,99 @@ func pluginRequestInterceptor(host *pluginhost.Host, provider, threadID, cwd str
 	return pluginRequestInterceptorWithTransforms(host, buildPluginRequestTransforms(host, provider, threadID, cwd), provider, threadID, cwd)
 }
 
+func pluginPreStepInjector(host *pluginhost.Host, provider, model, threadID, cwd string) func(context.Context, int, []providers.ChatMessage) ([]providers.ChatMessage, error) {
+	if host == nil || len(host.Capabilities(pluginhost.CapabilityAgentPreStep)) == 0 {
+		return nil
+	}
+	return func(ctx context.Context, stepIndex int, history []providers.ChatMessage) ([]providers.ChatMessage, error) {
+		var messages []providers.ChatMessage
+		currentHistory := providers.CloneChatMessages(history)
+		for _, capability := range host.Capabilities(pluginhost.CapabilityAgentPreStep) {
+			output := pluginhost.AgentPreStepOutput{}
+			if err := host.InvokeCapability(ctx, capability, pluginhost.AgentPreStepInput{
+				SessionID: threadID,
+				ThreadID:  threadID,
+				CWD:       cwd,
+				Provider:  provider,
+				Model:     model,
+				StepIndex: stepIndex,
+				Messages:  modelMessageViewsV1(currentHistory),
+			}, &output); err != nil {
+				if policyErr := host.HandleCapabilityError(capability, err); policyErr != nil {
+					return nil, policyErr
+				}
+				continue
+			}
+			converted, err := pluginPreStepMessages(capability.PluginID, output.AppendMessages)
+			if err != nil {
+				if policyErr := host.HandleCapabilityError(capability, err); policyErr != nil {
+					return nil, policyErr
+				}
+				continue
+			}
+			messages = append(messages, converted...)
+			currentHistory = append(currentHistory, providers.CloneChatMessages(converted)...)
+		}
+		return messages, nil
+	}
+}
+
+func pluginPreStepMessages(pluginID string, input []pluginhost.AgentPreStepMessage) ([]providers.ChatMessage, error) {
+	if len(input) > pluginhost.MaxPreStepMessages {
+		return nil, fmt.Errorf("plugin %q pre-step exceeds %d messages", pluginID, pluginhost.MaxPreStepMessages)
+	}
+	seen := make(map[string]struct{}, len(input))
+	messages := make([]providers.ChatMessage, 0, len(input))
+	total := 0
+	for _, inputMessage := range input {
+		id := strings.TrimSpace(inputMessage.ID)
+		if id == "" || len([]byte(id)) > pluginhost.MaxPreStepMessageIDBytes || !validPluginContributionID(id) {
+			return nil, fmt.Errorf("plugin %q pre-step message has invalid id %q", pluginID, id)
+		}
+		if _, exists := seen[id]; exists {
+			return nil, fmt.Errorf("plugin %q pre-step message id %q is duplicated", pluginID, id)
+		}
+		seen[id] = struct{}{}
+		content := strings.TrimSpace(inputMessage.Content)
+		if content == "" {
+			return nil, fmt.Errorf("plugin %q pre-step message %q has empty content", pluginID, id)
+		}
+		size := len([]byte(content))
+		if size > pluginhost.MaxPreStepMessageBytes {
+			return nil, fmt.Errorf("plugin %q pre-step message %q exceeds %d bytes", pluginID, id, pluginhost.MaxPreStepMessageBytes)
+		}
+		total += size
+		if total > pluginhost.MaxPreStepTotalBytes {
+			return nil, fmt.Errorf("plugin %q pre-step exceeds %d total bytes", pluginID, pluginhost.MaxPreStepTotalBytes)
+		}
+		messages = append(messages, providers.ChatMessage{
+			Role: "user", Content: content, Hidden: true, ReadOnly: true,
+			Origin: "plugin", OriginID: pluginID + ":" + id,
+			Cause: pluginhost.CapabilityAgentPreStep,
+		})
+	}
+	return messages, nil
+}
+
+func validPluginContributionID(id string) bool {
+	for _, r := range id {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '.' || r == '_' || r == '-' {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
 func pluginRequestInterceptorWithTransforms(host *pluginhost.Host, transforms *agent.RequestTransformChain, provider, threadID, cwd string) func(context.Context, *providers.ChatRequest) error {
-	hasLegacyHook := host != nil && host.HasHook(pluginhost.HookChatRequest)
-	if !hasLegacyHook && (transforms == nil || transforms.Count() == 0) {
+	if transforms == nil || transforms.Count() == 0 {
 		return nil
 	}
 	return func(ctx context.Context, request *providers.ChatRequest) error {
 		if request == nil {
 			return nil
 		}
-		if hasLegacyHook {
-			output := pluginhost.ChatRequestOutput{
-				Model:                       request.Model,
-				Messages:                    append([]providers.ChatMessage(nil), request.Messages...),
-				Tools:                       append([]providers.ToolDefinition(nil), request.Tools...),
-				Temperature:                 request.Temperature,
-				MaxTokens:                   request.MaxTokens,
-				Effort:                      request.Effort,
-				NativeDeferredToolDiscovery: request.NativeDeferredToolDiscovery,
-				ForceToolName:               request.ForceToolName,
-			}
-			if request.ProviderOptions != nil {
-				output.ProviderOptions = make(map[string]any, len(request.ProviderOptions))
-				for key, value := range request.ProviderOptions {
-					output.ProviderOptions[key] = value
-				}
-			}
-			if err := host.Run(ctx, pluginhost.HookChatRequest, pluginhost.ChatRequestInput{
-				SessionID: threadID,
-				ThreadID:  threadID,
-				CWD:       cwd,
-				Provider:  provider,
-				StepIndex: request.StepIndex,
-			}, &output); err != nil {
-				return err
-			}
-			request.Model = output.Model
-			request.Messages = output.Messages
-			request.Tools = output.Tools
-			request.Temperature = output.Temperature
-			request.MaxTokens = output.MaxTokens
-			request.Effort = output.Effort
-			request.ProviderOptions = output.ProviderOptions
-			request.NativeDeferredToolDiscovery = output.NativeDeferredToolDiscovery
-			request.ForceToolName = output.ForceToolName
-		}
-		if transforms != nil {
-			return transforms.Apply(ctx, request, nil)
-		}
-		return nil
+		return transforms.Apply(ctx, request, nil)
 	}
 }
 
@@ -138,21 +224,91 @@ func buildPluginRequestTransforms(host *pluginhost.Host, provider, threadID, cwd
 		capability := registered
 		key := capability.PluginID + ":" + capability.Descriptor.ID
 		chain.AddWithOwner(agent.NewRequestTransform(key, func(ctx context.Context, request *providers.ChatRequest) error {
-			output := pluginhost.RequestTransformOutput{Request: *request}
+			output := pluginhost.RequestTransformOutput{}
 			if err := host.InvokeCapability(ctx, capability, pluginhost.RequestTransformInput{
 				SessionID: threadID,
 				ThreadID:  threadID,
 				CWD:       cwd,
 				Provider:  provider,
 				StepIndex: request.StepIndex,
+				Request:   modelRequestViewV1(request),
 			}, &output); err != nil {
 				return host.HandleCapabilityError(capability, err)
 			}
-			*request = output.Request
+			if err := applyRequestTransformPatch(request, output); err != nil {
+				return host.HandleCapabilityError(capability, fmt.Errorf("plugin %q request transform patch: %w", capability.PluginID, err))
+			}
 			return nil
 		}, capability.Descriptor.Priority), capability.PluginID)
 	}
 	return chain
+}
+
+func modelRequestViewV1(request *providers.ChatRequest) pluginhost.ModelRequestViewV1 {
+	view := pluginhost.ModelRequestViewV1{Version: 1}
+	if request == nil {
+		return view
+	}
+	view.Model = request.Model
+	view.Temperature = request.Temperature
+	view.MaxTokens = request.MaxTokens
+	view.Effort = request.Effort
+	view.NativeDeferredToolDiscovery = request.NativeDeferredToolDiscovery
+	view.ForceToolName = request.ForceToolName
+	view.Messages = modelMessageViewsV1(request.Messages)
+	view.Tools = make([]pluginhost.ModelToolViewV1, 0, len(request.Tools))
+	for _, tool := range request.Tools {
+		view.Tools = append(view.Tools, pluginhost.ModelToolViewV1{
+			Name: tool.Name, Description: tool.Description, InputSchema: tool.InputSchema, DeferLoading: tool.DeferLoading,
+		})
+	}
+	return view
+}
+
+func modelMessageViewsV1(messages []providers.ChatMessage) []pluginhost.ModelMessageViewV1 {
+	view := make([]pluginhost.ModelMessageViewV1, 0, len(messages))
+	for _, message := range messages {
+		item := pluginhost.ModelMessageViewV1{
+			Role: message.Role, Name: message.Name, Content: message.Content, Hidden: message.Hidden,
+			Origin: message.Origin, OriginID: message.OriginID, Cause: message.Cause, ReadOnly: message.ReadOnly,
+			HasImages: len(message.Images) != 0, HasFiles: len(message.Files) != 0,
+			ToolCallID: message.ToolCallID, HasToolResult: message.ToolResult != nil,
+		}
+		for _, call := range message.ToolCalls {
+			item.ToolCalls = append(item.ToolCalls, pluginhost.ModelToolCallViewV1{
+				ID: call.ID, Name: call.Name, Arguments: call.Arguments, Kind: string(call.Kind),
+			})
+		}
+		for _, tool := range message.DiscoveredTools {
+			item.DiscoveredTools = append(item.DiscoveredTools, tool.Name)
+		}
+		view = append(view, item)
+	}
+	return view
+}
+
+func applyRequestTransformPatch(request *providers.ChatRequest, patch pluginhost.RequestTransformOutput) error {
+	if request == nil || len(patch.PrependSystemMessages) == 0 {
+		return nil
+	}
+	if len(patch.PrependSystemMessages) > 16 {
+		return errors.New("prepend_system_messages exceeds 16 entries")
+	}
+	prefix := make([]providers.ChatMessage, 0, len(patch.PrependSystemMessages))
+	totalBytes := 0
+	for _, content := range patch.PrependSystemMessages {
+		content = strings.TrimSpace(content)
+		if content == "" {
+			return errors.New("prepend_system_messages contains an empty message")
+		}
+		totalBytes += len([]byte(content))
+		if totalBytes > 64*1024 {
+			return errors.New("prepend_system_messages exceeds 65536 bytes")
+		}
+		prefix = append(prefix, providers.ChatMessage{Role: "system", Content: content, Hidden: true})
+	}
+	request.Messages = append(prefix, request.Messages...)
+	return nil
 }
 
 func buildPluginAgentCapabilities(ctx context.Context, host *pluginhost.Host, provider, model, cwd string) (*agent.SystemPromptAssembler, *agent.CompactionRegistry, error) {
@@ -208,39 +364,4 @@ func (p *pluginCompactionProvider) Compact(ctx context.Context, model string, me
 		return nil, fmt.Errorf("plugin compaction returned invalid tool-call history: %w", err)
 	}
 	return compacted, nil
-}
-
-// TransformUserMessage runs before app-server or CLI persistence so the user,
-// UI history, durable history, and model all observe the same plugin output.
-func (s *Session) TransformUserMessage(ctx context.Context, threadID, cwd string, message providers.ChatMessage) (providers.ChatMessage, error) {
-	if s == nil || s.PluginHost == nil {
-		return message, nil
-	}
-	output := pluginhost.ChatMessageOutput{
-		Content:        message.Content,
-		DisplayContent: message.DisplayContent,
-		Images:         append([]providers.InputImage(nil), message.Images...),
-		Files:          append([]providers.InputFile(nil), message.Files...),
-	}
-	if err := s.PluginHost.Run(ctx, pluginhost.HookChatMessage, pluginhost.ChatMessageInput{
-		SessionID: threadID,
-		ThreadID:  threadID,
-		CWD:       firstNonEmptyString(cwd, s.RootDir),
-	}, &output); err != nil {
-		return providers.ChatMessage{}, err
-	}
-	message.Content = output.Content
-	message.DisplayContent = output.DisplayContent
-	message.Images = output.Images
-	message.Files = output.Files
-	return message, nil
-}
-
-func firstNonEmptyString(values ...string) string {
-	for _, value := range values {
-		if value != "" {
-			return value
-		}
-	}
-	return ""
 }

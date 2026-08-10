@@ -133,26 +133,6 @@ function buildActions({
 }
 
 describe("createConversationDemoPaneActions", () => {
-  it("seeds the agent-tree demo and selects the parent thread", () => {
-    const harness = buildActions();
-
-    harness.actions.seedAgentTreeDemo();
-
-    expect(harness.cancelViewSwitch).toHaveBeenCalled();
-    expect(harness.getComposerState()).toMatchObject({
-      prompt: "",
-      composerImages: [],
-      composerFiles: [],
-      
-    });
-    expect(harness.localDemoThreadsRef.current.size).toBeGreaterThan(1);
-    expect(harness.getAppState().thread?.id).toBeTruthy();
-    expect(harness.getAppState().activeSessionTabID).toBe(
-      threadSessionTabID(harness.getAppState().thread?.id ?? ""),
-    );
-    expect(harness.getAppState().status).toBe("ready");
-  });
-
   it("seeds the plan fixture and opens the environment debug panel", () => {
     const harness = buildActions();
 

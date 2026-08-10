@@ -78,11 +78,6 @@ type AgentControl struct {
 	defaultSys    string           // base system prompt prefix added to every worker
 	participants  ParticipantStore // optional; nil disables participant persistence
 	maxParallel   int
-	// turnUltra is the Ultra value of the currently admitted top-level turn.
-	// The turn owner snapshots the session setting here at turn start; root
-	// spawns inherit it, worker spawns inherit their parent worker's stored
-	// value instead, so an in-flight subtree never changes capability.
-	turnUltra atomic.Bool
 	// treeFrozen gates nested-result wakes between turn/interrupt's
 	// FreezeWorkerTree and the next user turn's ResolveFrozenWorkerTree.
 	treeFrozen        atomic.Bool
@@ -676,51 +671,6 @@ func (c *AgentControl) SessionID() string {
 // model-pin resolver (installed via SetModelPinClientResolver) consults
 // it to decide whether a queued spawn's pin targets the same provider
 // or a different one. Passing an empty string clears the binding.
-// SetTurnUltra snapshots the Ultra value for the top-level turn now being
-// admitted. The turn owner (app-server or exec) calls it at turn start with
-// the session setting for user turns, or with the completing worker's stored
-// value for synthetic completion turns, so an orchestration tree keeps the
-// capability it started with even when the session setting changes mid-run.
-func (c *AgentControl) SetTurnUltra(ultra bool) {
-	if c == nil {
-		return
-	}
-	c.turnUltra.Store(ultra)
-}
-
-// TurnUltra returns the admitted turn's effective Ultra value.
-func (c *AgentControl) TurnUltra() bool {
-	if c == nil {
-		return false
-	}
-	return c.turnUltra.Load()
-}
-
-// effectiveSpawnUltra resolves the Ultra value a new worker inherits: root
-// spawns take the admitted turn's snapshot; nested spawns take the parent
-// worker's stored value so descendants of an in-flight subtree keep the
-// capability the subtree started with.
-func (c *AgentControl) effectiveSpawnUltra(parentID string) bool {
-	if c == nil {
-		return false
-	}
-	parentID = strings.TrimSpace(parentID)
-	if parentID == "" || parentID == c.sessionID || parentID == c.rootThreadID {
-		return c.turnUltra.Load()
-	}
-	if c.manager != nil {
-		if parent := c.manager.Get(parentID); parent != nil {
-			return parent.Snapshot().Ultra
-		}
-	}
-	if c.threads != nil {
-		if meta, ok := c.threads.Resolve(parentID); ok {
-			return meta.Ultra
-		}
-	}
-	return c.turnUltra.Load()
-}
-
 func (c *AgentControl) SetWorkerProviderName(name string) {
 	if c == nil {
 		return
@@ -1099,10 +1049,6 @@ func (c *AgentControl) Spawn(ctx context.Context, req SpawnRequest) (spawnResult
 	if isolation == IsolationInplace && strings.TrimSpace(req.BaseRepo) != "" {
 		return nil, errors.New("base_repo is only supported with isolation=worktree")
 	}
-	// Snapshot the inherited Ultra value at admission so a queued spawn keeps
-	// the capability its spawner had, not whatever the session says at launch.
-	ultra := c.effectiveSpawnUltra(req.ParentID)
-
 	// Resolve the requested model alias at admission for diagnostics. Queued
 	// spawns re-resolve the alias at actual launch; direct spawns use this
 	// runtime immediately. Unknown and omitted aliases use the current
@@ -1183,7 +1129,7 @@ func (c *AgentControl) Spawn(ctx context.Context, req SpawnRequest) (spawnResult
 		// Once the child thread becomes resolvable, StopFrom must either observe
 		// its queued payload or wait until that payload is durable.
 		c.queueDrainMu.Lock()
-		threadMeta, err := c.registerChildThreadWithStatus(workerID, taskName, agentProfile, wtype, req.Prompt, agentthread.SourceThreadSpawn, "", req.ParentID, req.ParentPath, ultra, agentthread.StatusPending)
+		threadMeta, err := c.registerChildThreadWithStatus(workerID, taskName, agentProfile, wtype, req.Prompt, agentthread.SourceThreadSpawn, "", req.ParentID, req.ParentPath, agentthread.StatusPending)
 		if err != nil {
 			c.queueDrainMu.Unlock()
 			releaseQueueAdmission()
@@ -1281,7 +1227,7 @@ func (c *AgentControl) Spawn(ctx context.Context, req SpawnRequest) (spawnResult
 
 	// 2. Register the child thread before launch so the visible worker
 	// ID, worktree ID, and thread path all point at the same task.
-	threadMeta, err := c.registerChildThread(workerID, taskName, agentProfile, wtype, req.Prompt, agentthread.SourceThreadSpawn, "", req.ParentID, req.ParentPath, ultra)
+	threadMeta, err := c.registerChildThread(workerID, taskName, agentProfile, wtype, req.Prompt, agentthread.SourceThreadSpawn, "", req.ParentID, req.ParentPath)
 	if err != nil {
 		if worktreeRef != nil {
 			_ = worktrees.Cleanup(worktreeRef)
@@ -1366,7 +1312,6 @@ func (c *AgentControl) Spawn(ctx context.Context, req SpawnRequest) (spawnResult
 		ModelAlias:         strings.TrimSpace(req.ModelAlias),
 		ModelAliasFallback: modelAliasFallback,
 		WorkerRuntime:      spawnRuntime,
-		Ultra:              threadMeta.Ultra,
 		Client:             req.ClientOverride,
 		ProviderName:       spawnProviderName,
 	})
@@ -1618,10 +1563,6 @@ func (c *AgentControl) Fork(ctx context.Context, req ForkRequest, parentHistory 
 	if isolation == IsolationInplace && strings.TrimSpace(req.BaseRepo) != "" {
 		return nil, errors.New("base_repo is only supported with isolation=worktree")
 	}
-	// A fork inherits the forking agent's effective Ultra value, same as a
-	// fresh spawn (turn snapshot for the root, stored value for a worker).
-	ultra := c.effectiveSpawnUltra(req.ParentID)
-
 	// Resolve the requested model alias at admission for diagnostics. Queued
 	// forks re-resolve the alias at actual launch; direct forks use this
 	// runtime immediately. Unknown and omitted aliases use the current
@@ -1683,7 +1624,7 @@ func (c *AgentControl) Fork(ctx context.Context, req ForkRequest, parentHistory 
 		// Keep thread registration and durable queue publication indivisible
 		// from this process's drains and cancellation paths.
 		c.queueDrainMu.Lock()
-		threadMeta, err := c.registerChildThreadWithStatus(workerID, taskName, agentProfile, wt.Name, req.Prompt, agentthread.SourceThreadSpawn, req.ForkMode, req.ParentID, req.ParentPath, ultra, agentthread.StatusPending)
+		threadMeta, err := c.registerChildThreadWithStatus(workerID, taskName, agentProfile, wt.Name, req.Prompt, agentthread.SourceThreadSpawn, req.ForkMode, req.ParentID, req.ParentPath, agentthread.StatusPending)
 		if err != nil {
 			c.queueDrainMu.Unlock()
 			releaseQueueAdmission()
@@ -1776,7 +1717,7 @@ func (c *AgentControl) Fork(ctx context.Context, req ForkRequest, parentHistory 
 		forkPrompt = appendForkWorktreeReminder(forkPrompt, workerRoot, isolation)
 	}
 
-	threadMeta, err := c.registerChildThread(workerID, taskName, agentProfile, wt.Name, forkPrompt, agentthread.SourceThreadSpawn, req.ForkMode, req.ParentID, req.ParentPath, ultra)
+	threadMeta, err := c.registerChildThread(workerID, taskName, agentProfile, wt.Name, forkPrompt, agentthread.SourceThreadSpawn, req.ForkMode, req.ParentID, req.ParentPath)
 	if err != nil {
 		if worktreeRef != nil {
 			_ = worktrees.Cleanup(worktreeRef)
@@ -1837,7 +1778,6 @@ func (c *AgentControl) Fork(ctx context.Context, req ForkRequest, parentHistory 
 		ModelAlias:         strings.TrimSpace(req.ModelAlias),
 		ModelAliasFallback: modelAliasFallback,
 		WorkerRuntime:      spawnRuntime,
-		Ultra:              threadMeta.Ultra,
 		InitialHistory:     initialHistory,
 	})
 	if err != nil {
@@ -2373,7 +2313,7 @@ func (c *AgentControl) workerSystemPrompt(rootDir string, wt WorkerType, meta ag
 			base = customBase
 		}
 	}
-	return composeWorkerSystemPrompt(base, wt, rootDir, isolation, meta.Ultra), nil
+	return composeWorkerSystemPrompt(base, wt, rootDir, isolation), nil
 }
 
 func withInitialSystemPrompt(history []providers.ChatMessage, systemPrompt string) []providers.ChatMessage {
@@ -2391,11 +2331,11 @@ func withInitialSystemPrompt(history []providers.ChatMessage, systemPrompt strin
 	return out
 }
 
-func (c *AgentControl) registerChildThread(id, taskName, agentProfile, role, message string, source agentthread.SourceKind, forkMode, parentID, parentPath string, ultra bool) (agentthread.Metadata, error) {
-	return c.registerChildThreadWithStatus(id, taskName, agentProfile, role, message, source, forkMode, parentID, parentPath, ultra, agentthread.StatusRunning)
+func (c *AgentControl) registerChildThread(id, taskName, agentProfile, role, message string, source agentthread.SourceKind, forkMode, parentID, parentPath string) (agentthread.Metadata, error) {
+	return c.registerChildThreadWithStatus(id, taskName, agentProfile, role, message, source, forkMode, parentID, parentPath, agentthread.StatusRunning)
 }
 
-func (c *AgentControl) registerChildThreadWithStatus(id, taskName, agentProfile, role, message string, source agentthread.SourceKind, forkMode, parentID, parentPath string, ultra bool, status agentthread.Status) (agentthread.Metadata, error) {
+func (c *AgentControl) registerChildThreadWithStatus(id, taskName, agentProfile, role, message string, source agentthread.SourceKind, forkMode, parentID, parentPath string, status agentthread.Status) (agentthread.Metadata, error) {
 	if c == nil || c.threads == nil {
 		return agentthread.Metadata{}, errors.New("thread registry is not configured")
 	}
@@ -2418,7 +2358,6 @@ func (c *AgentControl) registerChildThreadWithStatus(id, taskName, agentProfile,
 		Role:            role,
 		LastTaskMessage: message,
 		CWD:             c.ParentRepo(),
-		Ultra:           ultra,
 		SourceKind:      source,
 		ForkMode:        strings.TrimSpace(forkMode),
 		Status:          status,
@@ -3398,7 +3337,6 @@ func (c *AgentControl) startQueuedSpawn(ctx context.Context, prepared preparedSp
 			ModelAlias:         prepared.ModelAlias,
 			ModelAliasFallback: modelAliasFallback,
 			WorkerRuntime:      spawnRuntime,
-			Ultra:              prepared.ThreadMeta.Ultra,
 			Client:             clientOverride,
 			ProviderName:       providerOverride,
 		})
@@ -5094,7 +5032,6 @@ func rehydratedThreadMeta(run subagent.PersistedRun) agentthread.Metadata {
 		Role:         run.Type,
 		CWD:          run.CWD,
 		Model:        run.Model,
-		Ultra:        run.Ultra,
 		Status:       threadStatusFromSubAgent(run.Status),
 		CreatedAt:    created,
 		UpdatedAt:    time.Now().UTC(),
@@ -5264,9 +5201,8 @@ func appendForkWorktreeReminder(prompt, workerRoot string, isolation IsolationMo
 // composeWorkerSystemPrompt builds the system prompt for a worker.
 // It prepends the worker type's role-specific prompt + a description
 // of the working directory and isolation mode, then appends the base
-// prompt (typically the main agent's project memory and skills, not
-// the optional coordinator-mode instructions).
-func composeWorkerSystemPrompt(base string, wt WorkerType, workerRoot string, isolation IsolationMode, ultraMode bool) string {
+// prompt (typically the main agent's instructions and skills).
+func composeWorkerSystemPrompt(base string, wt WorkerType, workerRoot string, isolation IsolationMode) string {
 	var b strings.Builder
 	b.WriteString(wt.SystemPrompt)
 	b.WriteString("\n\n")
@@ -5300,13 +5236,7 @@ func composeWorkerSystemPrompt(base string, wt WorkerType, workerRoot string, is
 	}
 	b.WriteString("All file paths in your tools resolve relative to this directory. ")
 	b.WriteString("Treat command execution as non-interactive when the active tool surface exposes it. Never rely on editors, pagers, password prompts, or confirmation dialogs. If command execution is unavailable under the active tool surface, report skipped command-based verification instead of inventing another path. Profile-specific tool-surface guidance tells you which command capability exists and how to use it. ")
-	if ultraMode {
-		b.WriteString("\n\n")
-		b.WriteString(UltraWorkerPolicy())
-		b.WriteString("\n")
-	} else {
-		b.WriteString("You cannot spawn or manage other agents from this worker. If the task seems to require additional delegation, report that need in your final handoff so the parent can decide and coordinate.\n")
-	}
+	b.WriteString("You cannot spawn or manage other agents from this worker. If the task seems to require additional delegation, report that need in your final handoff so the parent can decide and coordinate.\n")
 	if base != "" {
 		b.WriteString("\n---\n\n")
 		b.WriteString(base)

@@ -193,7 +193,7 @@ func (m *Manager) defaultsSnapshot() managerDefaults {
 
 // RuntimeDefaults is the exported subset of the manager's worker defaults
 // needed by out-of-band model calls that run beside the worker runtime (for
-// example the HelpMe parent-journal extraction): the shared stream client,
+// example parent-journal extraction): the shared stream client,
 // the session's default model, and the context budget dimensions used to
 // chunk long inputs.
 type RuntimeDefaults struct {
@@ -445,7 +445,6 @@ func (m *Manager) Spawn(ctx context.Context, opts SpawnOptions) (*SubAgent, erro
 		modelAliasFallback: opts.ModelAliasFallback,
 		runtime:            runtime,
 		workerRoot:         opts.WorkerRoot,
-		ultra:              opts.Ultra,
 		toolkit:            opts.Toolkit,
 		historyPath:        opts.HistoryPath,
 		initialHistory:     opts.InitialHistory,
@@ -1195,7 +1194,6 @@ func (m *Manager) Restore(opts RestoreOptions) (*SubAgent, error) {
 		modelAliasFallback: run.ModelAliasFallback,
 		runtime:            runtime,
 		workerRoot:         run.CWD,
-		ultra:              run.Ultra,
 		toolkit:            opts.Toolkit,
 		historyPath:        opts.HistoryPath,
 		history:            providers.CloneChatMessages(run.Messages),
@@ -1527,7 +1525,6 @@ func snapshotLocked(s *SubAgent) SubAgentSnapshot {
 		ResolvedAPIModel:    resolvedAPIModelFromRuntime(s),
 		ResolvedEffort:      resolvedEffortFromRuntime(s),
 		ResolvedVariant:     resolvedVariantFromRuntime(s),
-		Ultra:               s.ultra,
 		Status:              s.Status,
 		StartedAt:           s.StartedAt,
 		CompletedAt:         s.CompletedAt,

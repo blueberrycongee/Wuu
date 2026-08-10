@@ -1,7 +1,6 @@
 import type { Dispatch, MutableRefObject, SetStateAction } from "react";
 import type { Thread } from "../shared/protocol";
 import {
-  createAgentTreeDemo,
   createConversationFixture,
   type ConversationFixtureKind,
 } from "./ConversationFixtures";
@@ -41,7 +40,6 @@ export type ConversationDemoPaneActionsDeps = {
 };
 
 export type ConversationDemoPaneActions = {
-  seedAgentTreeDemo: () => void;
   seedConversationFixture: (kind: ConversationFixtureKind) => void;
   seedPlanPanelDebug: () => void;
   activateConversationPane: (pane: ConversationPaneID) => void;
@@ -57,36 +55,6 @@ export function createConversationDemoPaneActions(
     deps.setPrompt("");
     deps.setComposerImages([]);
     deps.setComposerFiles([]);
-  }
-
-  function seedAgentTreeDemo(): void {
-    const state = deps.getAppState();
-    if (!state.activeContext || !state.initialized) {
-      return;
-    }
-    const activeContext = state.activeContext;
-    resetComposerForDemo();
-    const demo = createAgentTreeDemo(activeContext.cwd, state.initialized);
-    const demoThreads = [demo.parent, ...demo.children];
-    deps.localDemoThreadsRef.current = new Map([
-      ...deps.localDemoThreadsRef.current,
-      ...demoThreads.map((thread): [string, Thread] => [thread.id, thread]),
-    ]);
-    deps.setAppState((current) => ({
-      ...current,
-      thread: demo.parent,
-      secondaryThread: undefined,
-      activePane: "primary",
-      allowThreadAutoActivation: true,
-      sessionTabs: ensureSessionTab(
-        current.sessionTabs,
-        createThreadSessionTab(demo.parent, activeContext),
-      ),
-      activeSessionTabID: threadSessionTabID(demo.parent.id),
-      threads: upsertThread(current.threads, demo.parent),
-      running: false,
-      status: "ready",
-    }));
   }
 
   function seedConversationFixture(kind: ConversationFixtureKind): void {
@@ -200,7 +168,6 @@ export function createConversationDemoPaneActions(
   }
 
   return {
-    seedAgentTreeDemo,
     seedConversationFixture,
     seedPlanPanelDebug,
     activateConversationPane,

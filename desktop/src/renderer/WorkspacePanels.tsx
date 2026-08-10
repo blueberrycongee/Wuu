@@ -36,7 +36,6 @@ import {
   PanelLeftOpen,
   PanelRightOpen,
   Plus,
-  Puzzle,
   ShieldCheck,
   Terminal,
   X,
@@ -69,6 +68,7 @@ import type { TranslationKey } from "./i18n/resources/zh-CN";
 import { HeaderPresentation, immutableHeaderSnapshot } from "./plugins/HeaderPresentation";
 import { desktopPluginHost } from "./plugins/DesktopPluginRuntime";
 import type { PluginHost, RegisteredPluginViewEntry } from "./plugins/PluginHost";
+import { PluginIcon } from "./PublicIcon";
 import { PluginSlot } from "./plugins/PluginSlot";
 import type { WorkbenchController } from "./plugins/Workbench";
 import { PluginViewContent } from "./plugins/Workbench";
@@ -611,6 +611,8 @@ export function WorkspaceRightPanel({
                       key={`closing-${tab.id}`}
                       className="workspace-tool-tab closing"
                       aria-hidden="true"
+                      data-wuu-component="workspace-tool-tab"
+                      data-wuu-state="closing"
                     >
                       <span className="workspace-tool-tab-main">
                         <WorkspaceViewTabIcon tab={tab} className="icon" />
@@ -972,6 +974,9 @@ function SortableWorkspaceViewTab({
       }`}
       style={style}
       aria-grabbed={isDragging || undefined}
+      data-wuu-component="workspace-tool-tab"
+      data-wuu-active={active ? "true" : "false"}
+      data-wuu-state={isDragging ? "dragging" : undefined}
     >
       <Tooltip content={tooltip} disabled={tooltip === label}>
         <button
@@ -997,6 +1002,7 @@ function SortableWorkspaceViewTab({
         className="workspace-tool-tab-close"
         type="button"
         draggable={false}
+        data-wuu-component="workspace-tool-tab-close"
         aria-label={t("workspace.closeTab", { label })}
         disabled={!open}
         onClick={(event) => {
@@ -1023,13 +1029,19 @@ function WorkspaceViewTabPreview({
 }): JSX.Element {
   const label = workspaceViewTabLabel(tab);
   return (
-    <div className={`workspace-tool-tab workspace-tool-tab-drag-overlay${active ? " active" : ""}${dirty ? " dirty" : ""}`} style={width ? { width } : undefined}>
+    <div
+      className={`workspace-tool-tab workspace-tool-tab-drag-overlay${active ? " active" : ""}${dirty ? " dirty" : ""}`}
+      style={width ? { width } : undefined}
+      data-wuu-component="workspace-tool-tab"
+      data-wuu-active={active ? "true" : "false"}
+      data-wuu-state="dragging"
+    >
       <div className="workspace-tool-tab-main">
         <WorkspaceViewTabIcon tab={tab} className="icon" />
         <span>{label}</span>
         {dirty ? <span className="workspace-tab-dirty-indicator" aria-hidden="true" /> : null}
       </div>
-      <div className="workspace-tool-tab-close" aria-hidden="true">
+      <div className="workspace-tool-tab-close" aria-hidden="true" data-wuu-component="workspace-tool-tab-close">
         <X className="icon-xs" />
       </div>
     </div>
@@ -1082,7 +1094,7 @@ function WorkspaceToolPicker({
             onClick={() => onSelectPluginTool(item)}
           >
             <span className="workspace-tool-menu-icon" aria-hidden="true">
-              <Puzzle className="icon-xl" />
+              <PluginIcon icon={item.icon} pluginId={item.pluginId} fingerprint={item.generation} className="icon-xl" />
             </span>
             <span className="workspace-tool-menu-copy">
               <strong>{item.title}</strong>
@@ -1183,7 +1195,7 @@ function WorkspaceViewTabIcon({ tab, className }: { tab: WorkspaceViewTab; class
     return <FileText className={className} />;
   }
   if (tab.kind === "plugin") {
-    return <Puzzle className={className} />;
+    return <PluginIcon icon={tab.icon} pluginId={tab.pluginId} fingerprint={tab.fingerprint} className={className} />;
   }
   return <WorkspaceToolIcon view={tab.kind} className={className} />;
 }

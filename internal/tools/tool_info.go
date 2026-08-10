@@ -25,10 +25,8 @@ const (
 	ToolKindTest      ToolKind = "test"
 	ToolKindGit       ToolKind = "git"
 	ToolKindWeb       ToolKind = "web"
-	ToolKindMemory    ToolKind = "memory"
 	ToolKindSession   ToolKind = "session"
 	ToolKindSkill     ToolKind = "skill"
-	ToolKindPlan      ToolKind = "plan"
 	ToolKindAgent     ToolKind = "agent"
 	ToolKindProcess   ToolKind = "process"
 	ToolKindSchedule  ToolKind = "schedule"
@@ -202,18 +200,12 @@ func classifyToolKind(name string) ToolKind {
 		return ToolKindGit
 	case "web_search", "web_fetch":
 		return ToolKindWeb
-	case "session_memory":
-		return ToolKindMemory
 	case "thread_get":
 		return ToolKindSession
 	case "load_skill":
 		return ToolKindSkill
-	case "update_plan":
-		return ToolKindPlan
 	case "list_agent_profiles", "create_agent_profile":
 		return ToolKindAgent
-	case "cron":
-		return ToolKindSchedule
 	case "chat_check", "chat_read", "chat_send", "chat_draft", "chat_task", "chat_remind":
 		return ToolKindChat
 	case "browser", browserToolName:
@@ -231,7 +223,7 @@ func isDeferredByDefault(name string) bool {
 		return true
 	}
 	switch name {
-	case "cron", "thread_get":
+	case "thread_get":
 		return true
 	default:
 		return false

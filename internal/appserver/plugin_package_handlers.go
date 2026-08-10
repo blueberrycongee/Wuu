@@ -86,6 +86,80 @@ func (s *Server) handlePluginDesktopModuleRead(req Request) error {
 	}, nil)
 }
 
+func (s *Server) handlePluginIconRead(req Request) error {
+	var params PluginIconReadParams
+	if err := decodeParams(req.Params, &params); err != nil {
+		return s.writeResponse(req.ID, nil, err)
+	}
+	params.ID = strings.TrimSpace(params.ID)
+	params.Fingerprint = strings.TrimSpace(params.Fingerprint)
+	params.Path = filepath.ToSlash(strings.TrimSpace(params.Path))
+	if params.ID == "" || params.Fingerprint == "" || params.Path == "" {
+		return s.writeResponse(req.ID, nil, errors.New("plugin id, fingerprint, and icon path are required"))
+	}
+
+	var selected *pluginpkg.Plugin
+	for index := range s.rt.Plugins {
+		if s.rt.Plugins[index].SubjectID == params.ID {
+			selected = &s.rt.Plugins[index]
+			break
+		}
+	}
+	if selected == nil {
+		return s.writeResponse(req.ID, nil, fmt.Errorf("plugin %q is not available in this workspace", params.ID))
+	}
+	fresh, err := pluginpkg.LoadManifestWithOptions(selected.ManifestPath, pluginpkg.LoadOptions{
+		Source: selected.Source, Official: selected.Official, WorkspaceID: selected.WorkspaceID,
+	})
+	if err != nil {
+		return s.writeResponse(req.ID, nil, fmt.Errorf("reload plugin icon %q: %w", params.ID, err))
+	}
+	if fresh.SubjectID != params.ID || fresh.Fingerprint != params.Fingerprint {
+		return s.writeResponse(req.ID, nil, errors.New("plugin changed; refresh inventory before loading its icon"))
+	}
+	declared := false
+	check := func(icon *pluginpkg.IconSpec) {
+		if icon == nil {
+			return
+		}
+		for _, path := range icon.AssetPaths() {
+			if path == params.Path {
+				declared = true
+			}
+		}
+	}
+	check(fresh.Icon)
+	for _, entries := range [][]pluginpkg.ViewEntryContributionSpec{fresh.Navigation, fresh.WorkspaceTools, fresh.SettingsPages} {
+		for _, entry := range entries {
+			check(entry.Icon)
+		}
+	}
+	if !declared {
+		return s.writeResponse(req.ID, nil, errors.New("icon path is not declared by this plugin generation"))
+	}
+	data, err := os.ReadFile(filepath.Join(fresh.Root, filepath.FromSlash(params.Path)))
+	if err != nil {
+		return s.writeResponse(req.ID, nil, fmt.Errorf("read plugin icon: %w", err))
+	}
+	mediaType := ""
+	switch strings.ToLower(filepath.Ext(params.Path)) {
+	case ".svg":
+		mediaType = "image/svg+xml"
+	case ".png":
+		mediaType = "image/png"
+	case ".webp":
+		mediaType = "image/webp"
+	}
+	if mediaType == "" {
+		return s.writeResponse(req.ID, nil, errors.New("unsupported plugin icon format"))
+	}
+	digest := sha256.Sum256(data)
+	return s.writeResponse(req.ID, PluginIconReadResult{
+		ID: fresh.SubjectID, Fingerprint: fresh.Fingerprint, Path: params.Path,
+		MediaType: mediaType, Digest: hex.EncodeToString(digest[:]), Data: data,
+	}, nil)
+}
+
 func (s *Server) handlePluginPackageInspect(req Request) error {
 	var params PluginPackageInspectParams
 	if err := decodeParams(req.Params, &params); err != nil {
@@ -160,43 +234,100 @@ func (s *Server) handlePluginPackageRemove(req Request) error {
 	}
 	defer releaseMutation()
 
+	params.ID = strings.TrimSpace(params.ID)
+	if err := pluginpkg.ValidateInstallID(params.ID); err != nil {
+		return s.writeResponse(req.ID, nil, fmt.Errorf("remove plugin package: %w", err))
+	}
+	var selected *pluginpkg.Plugin
+	for index := range s.rt.Plugins {
+		item := &s.rt.Plugins[index]
+		if item.Source == "user" && item.ID == params.ID {
+			selected = item
+			break
+		}
+	}
+	if selected == nil {
+		return s.writeResponse(req.ID, nil, fmt.Errorf("installed user plugin %q was not found", params.ID))
+	}
 	pending, pendingErr := pluginpkg.ReadPendingUpdate(s.rt.WuuHome, params.ID)
 	if pendingErr != nil && !errors.Is(pendingErr, pluginpkg.ErrPendingUpdateNotFound) {
 		return s.writeResponse(req.ID, nil, fmt.Errorf("remove plugin package: inspect pending update: %w", pendingErr))
 	}
-	removed, err := pluginpkg.UninstallPackage(s.rt.WuuHome, params.ID)
+	configPath, err := statepath.ConfigPath(s.rt.HomeDir)
 	if err != nil {
-		return s.writeResponse(req.ID, nil, fmt.Errorf("remove plugin package: %w", err))
+		return s.writeResponse(req.ID, nil, fmt.Errorf("resolve plugin policy path: %w", err))
 	}
-	if removed.Removed {
+	preparedSettings := cloneExtensionSettings(s.rt.ExtensionSettings)
+	preparedSettings.Revoke(selected.SubjectID)
+	cfg := s.currentExtensionConfig()
+	cfg.Extensions = &preparedSettings
+	candidate, err := s.rt.PreflightPluginRemoval(cfg, params.ID)
+	if err != nil {
+		return s.writeResponse(req.ID, nil, fmt.Errorf("prepare plugin removal: %w", err))
+	}
+	var (
+		packageRemoval *pluginpkg.UninstallTransaction
+		pendingRemoval *pluginpkg.PendingUpdateRemoval
+		removed        pluginpkg.UninstallResult
+		persisted      extensions.Settings
+	)
+	rollbackRemoval := func(cause error) error {
+		var rollbackErr error
+		if pendingRemoval != nil {
+			rollbackErr = errors.Join(rollbackErr, pendingRemoval.Rollback())
+		}
+		if packageRemoval != nil {
+			rollbackErr = errors.Join(rollbackErr, packageRemoval.Rollback())
+		}
+		if rollbackErr != nil {
+			return fmt.Errorf("%w (rollback plugin removal: %v)", cause, rollbackErr)
+		}
+		return cause
+	}
+	if err := s.rt.ActivatePluginGeneration(candidate, func() error {
+		var prepareErr error
+		packageRemoval, removed, prepareErr = pluginpkg.PrepareUninstallPackage(s.rt.WuuHome, params.ID)
+		if prepareErr != nil {
+			return fmt.Errorf("remove plugin package: %w", prepareErr)
+		}
+		if packageRemoval == nil || !removed.Removed {
+			return errors.New("installed plugin disappeared during removal")
+		}
 		if pendingErr == nil {
-			if err := pluginpkg.RemovePendingUpdate(s.rt.WuuHome, params.ID, pending.Package.Fingerprint); err != nil {
-				return s.writeResponse(req.ID, nil, fmt.Errorf("plugin %q was removed, but its pending update could not be cleared: %w", removed.ID, err))
+			pendingRemoval, prepareErr = pluginpkg.PreparePendingUpdateRemoval(s.rt.WuuHome, params.ID, pending.Package.Fingerprint)
+			if prepareErr != nil {
+				return rollbackRemoval(fmt.Errorf("remove pending plugin update: %w", prepareErr))
 			}
 		}
-		configPath, err := statepath.ConfigPath(s.rt.HomeDir)
-		if err != nil {
-			return s.writeResponse(req.ID, nil, fmt.Errorf("plugin %q was removed, but its policy path could not be resolved: %w", removed.ID, err))
-		}
-		if _, err := config.UpdateExtensionSettings(configPath, func(settings *extensions.Settings) error {
-			settings.Revoke(extensions.SubjectID("user", removed.ID))
+		persisted, prepareErr = config.UpdateExtensionSettings(configPath, func(settings *extensions.Settings) error {
+			settings.Revoke(selected.SubjectID)
 			return nil
-		}); err != nil {
-			return s.writeResponse(req.ID, nil, fmt.Errorf("plugin %q was removed, but its policy could not be cleared: %w", removed.ID, err))
+		})
+		if prepareErr != nil {
+			return rollbackRemoval(fmt.Errorf("clear plugin policy: %w", prepareErr))
+		}
+		return nil
+	}); err != nil {
+		return s.writeResponse(req.ID, nil, err)
+	}
+	s.rt.SetExtensionSettings(&persisted)
+	if pendingRemoval != nil {
+		if err := pendingRemoval.Commit(); err != nil {
+			providers.DebugLogf("finalize pending plugin removal: %v", err)
 		}
 	}
-	inventory, skills, err := s.refreshPluginPackages()
-	if err != nil {
-		if removed.Removed {
-			return s.writeResponse(req.ID, nil, fmt.Errorf("plugin %q was removed, but extension refresh failed: %w", removed.ID, err))
-		}
-		return s.writeResponse(req.ID, nil, fmt.Errorf("refresh extensions after checking plugin %q: %w", removed.ID, err))
+	if err := packageRemoval.Commit(); err != nil {
+		providers.DebugLogf("finalize plugin removal: %v", err)
+	} else if err := session.DeletePluginTurnLifecycleOutboxForPlugin(s.rt.SessionDir, removed.ID); err != nil {
+		providers.DebugLogf("delete plugin lifecycle outbox for removed plugin %q: %v", removed.ID, err)
 	}
+	s.schedulePluginTurnLifecycleReplay()
+	s.resetThreadRuntimesForGeneralSettings("")
 	return s.writeResponse(req.ID, PluginPackageRemoveResult{
 		ID:                 removed.ID,
 		Removed:            removed.Removed,
-		ExtensionInventory: inventory,
-		Skills:             skills,
+		ExtensionInventory: s.currentExtensionInventory(),
+		Skills:             skillSummaries(s.rt.Skills),
 	}, nil)
 }
 
@@ -237,44 +368,41 @@ func (s *Server) handlePendingPluginUpdate(req Request, params ExtensionPackageU
 	if err := preparedSettings.RecordGrant(grant); err != nil {
 		return s.writeResponse(req.ID, nil, fmt.Errorf("prepare plugin update approval: %w", err))
 	}
-	settings, err := config.UpdateExtensionSettings(configPath, func(settings *extensions.Settings) error {
-		return settings.RecordGrant(grant)
-	})
-	if err != nil {
-		return s.writeResponse(req.ID, nil, fmt.Errorf("persist plugin update approval before activation: %w", err))
-	}
 	restorePreviousApproval := func() error {
-		rolledBack, rollbackErr := config.UpdateExtensionSettings(configPath, func(settings *extensions.Settings) error {
+		_, rollbackErr := config.UpdateExtensionSettings(configPath, func(settings *extensions.Settings) error {
 			*settings = cloneExtensionSettings(&previousSettings)
 			return nil
 		})
-		if rollbackErr == nil {
-			s.rt.SetExtensionSettings(&rolledBack)
-		}
 		return rollbackErr
 	}
 	cfg := s.currentExtensionConfig()
 	cfg.Extensions = &preparedSettings
 	candidate, err := s.rt.PreflightPluginUpdate(cfg, selected.ID, params.Fingerprint, filepath.Join(pending.Path, "package"), pending.Package.ManifestPath)
 	if err != nil {
-		if rollbackErr := restorePreviousApproval(); rollbackErr != nil {
-			return s.writeResponse(req.ID, nil, fmt.Errorf("activate pending plugin update: %w (restore previous plugin approval: %v)", err, rollbackErr))
-		}
 		return s.writeResponse(req.ID, nil, fmt.Errorf("activate pending plugin update: %w", err))
 	}
+	var settings extensions.Settings
 	if err := s.rt.ActivatePluginGeneration(candidate, func() error {
+		updated, persistErr := config.UpdateExtensionSettings(configPath, func(settings *extensions.Settings) error {
+			return settings.RecordGrant(grant)
+		})
+		if persistErr != nil {
+			return fmt.Errorf("persist plugin update approval: %w", persistErr)
+		}
+		settings = updated
 		_, promoteErr := pluginpkg.PromotePendingUpdate(s.rt.WuuHome, selected.ID, params.Fingerprint)
 		if promoteErr != nil {
+			if rollbackErr := restorePreviousApproval(); rollbackErr != nil {
+				return fmt.Errorf("promote pending plugin update: %w (restore previous plugin approval: %v)", promoteErr, rollbackErr)
+			}
 			return fmt.Errorf("promote pending plugin update: %w", promoteErr)
 		}
 		return nil
 	}); err != nil {
-		if rollbackErr := restorePreviousApproval(); rollbackErr != nil {
-			return s.writeResponse(req.ID, nil, fmt.Errorf("%w (restore previous plugin approval: %v)", err, rollbackErr))
-		}
 		return s.writeResponse(req.ID, nil, err)
 	}
 	s.rt.SetExtensionSettings(&settings)
+	s.schedulePluginTurnLifecycleReplay()
 	s.resetThreadRuntimesForGeneralSettings("")
 	return s.writeResponse(req.ID, ExtensionPackageUpdateResult{ExtensionInventory: s.currentExtensionInventory()}, nil)
 }
@@ -373,6 +501,7 @@ func (s *Server) refreshPluginPackages() ([]ExtensionInventoryRecord, []SkillSum
 	if err := s.refreshExtensions(s.currentExtensionConfig()); err != nil {
 		return nil, nil, err
 	}
+	s.schedulePluginTurnLifecycleReplay()
 	s.resetThreadRuntimesForGeneralSettings("")
 	return s.currentExtensionInventory(), skillSummaries(s.rt.Skills), nil
 }

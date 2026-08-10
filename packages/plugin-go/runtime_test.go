@@ -31,7 +31,105 @@ func TestServeNegotiatesAndInvokesCapability(t *testing.T) {
 		t.Fatal(err)
 	}
 	lines := strings.Split(strings.TrimSpace(output.String()), "\n")
-	if len(lines) != 3 || !strings.Contains(lines[0], `"protocol_version":2`) || !strings.Contains(lines[1], `"accepted":true`) {
+	if len(lines) != 3 || !strings.Contains(lines[0], `"protocol_version":3`) || !strings.Contains(lines[1], `"accepted":true`) {
+		t.Fatalf("responses = %s", output.String())
+	}
+}
+
+func TestServeNegotiatesAndInvokesService(t *testing.T) {
+	input := strings.Join([]string{
+		`{"id":"1","method":"initialize","params":{"protocol_version":1,"capability_protocol_version":3,"plugin_id":"search"}}`,
+		`{"id":"2","method":"service.invoke","params":{"service":"search.provider","method":"query","caller":"notes","params":{"q":"x"}}}`,
+		`{"id":"3","method":"service.changed","params":{"service":"search.provider","reason":"provider_closed"}}`,
+		`{"id":"4","method":"shutdown"}`,
+	}, "\n") + "\n"
+	var output bytes.Buffer
+	var invoke ServiceCall
+	var notice ServiceChangedNotice
+	err := ServeIO(context.Background(), strings.NewReader(input), &output, Handler{
+		Definition: Definition{
+			ProvidedServices: []Service{{
+				Name:    "search.provider",
+				Version: "1.0.0",
+				Methods: []ServiceMethod{{Name: "query", InputSchema: "search.query.request.v1", OutputSchema: "search.query.response.v1"}},
+			}},
+			RequiredServices: []ServiceRequirement{{Name: "memory.index", MajorVersion: 1}},
+		},
+		InvokeService: func(_ context.Context, _ Host, call ServiceCall) (json.RawMessage, error) {
+			invoke = call
+			return json.RawMessage(`{"hits":["a"]}`), nil
+		},
+		ServiceChanged: func(_ context.Context, got ServiceChangedNotice) error {
+			notice = got
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if invoke.Caller != "notes" || invoke.Method != "query" {
+		t.Fatalf("invoke = %+v", invoke)
+	}
+	if notice.Reason != "provider_closed" {
+		t.Fatalf("notice = %+v", notice)
+	}
+	lines := strings.Split(strings.TrimSpace(output.String()), "\n")
+	if len(lines) != 4 {
+		t.Fatalf("responses = %s", output.String())
+	}
+	if !strings.Contains(lines[0], `"protocol_version":3`) || !strings.Contains(lines[0], `"provided_services"`) || !strings.Contains(lines[0], `"required_services"`) {
+		t.Fatalf("initialize response = %s", lines[0])
+	}
+	if !strings.Contains(lines[1], `"hits":["a"]`) {
+		t.Fatalf("service.invoke response = %s", lines[1])
+	}
+}
+
+func TestCallServiceUsesGatewayFrame(t *testing.T) {
+	requestReader, requestWriter := io.Pipe()
+	defer requestReader.Close()
+	client := newClient(requestWriter)
+	requestSeen := make(chan string, 1)
+	go func() {
+		scanner := bufio.NewScanner(requestReader)
+		if !scanner.Scan() {
+			return
+		}
+		requestSeen <- scanner.Text()
+		client.routeResponse(rpcResponse{ID: "plugin-1", Result: json.RawMessage(`{"hits":[]}`)})
+	}()
+	var result struct {
+		Hits []string `json:"hits"`
+	}
+	if err := CallService(context.Background(), client, "search.provider", "query", map[string]string{"q": "x"}, &result); err != nil {
+		t.Fatal(err)
+	}
+	request := <-requestSeen
+	if !strings.Contains(request, `"method":"host.service.call"`) || !strings.Contains(request, `"service":"search.provider"`) || !strings.Contains(request, `"method":"query"`) {
+		t.Fatalf("gateway request = %s", request)
+	}
+}
+
+func TestServeRunsShutdownCleanupBeforeAcknowledging(t *testing.T) {
+	input := strings.Join([]string{
+		`{"id":"1","method":"initialize","params":{"protocol_version":1,"capability_protocol_version":2,"plugin_id":"test"}}`,
+		`{"id":"2","method":"shutdown"}`,
+	}, "\n") + "\n"
+	var output bytes.Buffer
+	cleaned := false
+	err := ServeIO(context.Background(), strings.NewReader(input), &output, Handler{
+		Shutdown: func(context.Context) error {
+			cleaned = true
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cleaned {
+		t.Fatal("shutdown cleanup was not called")
+	}
+	if lines := strings.Split(strings.TrimSpace(output.String()), "\n"); len(lines) != 2 || !strings.Contains(lines[1], `"id":"2"`) {
 		t.Fatalf("responses = %s", output.String())
 	}
 }

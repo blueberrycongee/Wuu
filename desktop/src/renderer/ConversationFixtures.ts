@@ -8,177 +8,6 @@ export type ConversationFixtureKind =
   | "compact"
   | "plan";
 
-export function createAgentTreeDemo(
-  cwd: string,
-  initialized?: InitializeResult,
-): { parent: Thread; children: Thread[] } {
-  const base = Date.now();
-  const at = (offsetMs: number): string =>
-    new Date(base + offsetMs).toISOString();
-  const parentID = `demo-agent-tree-${base}`;
-  const inspectID = `${parentID}-inspect-sidebar`;
-  const resumeID = `${parentID}-resume-child`;
-  const provider = initialized?.provider ?? "demo-provider";
-  const model = initialized?.model ?? "demo-model";
-  const parentTurnID = `${parentID}-turn-0001`;
-  const inspectTurnID = `${inspectID}-turn-0001`;
-  const resumeTurnID = `${resumeID}-turn-0001`;
-
-  const parent: Thread = {
-    id: parentID,
-    preview: t("fixture.agentTree.preview"),
-    model_provider: provider,
-    model,
-    cwd,
-    status: "idle",
-    created_at: at(0),
-    updated_at: at(4000),
-    turns: [
-      {
-        id: parentTurnID,
-        items_view: "full",
-        status: "completed",
-        items: [
-          {
-            id: `${parentTurnID}-item-1`,
-            type: "user_message",
-            status: "completed",
-            role: "user",
-            text: t("fixture.agentTree.user"),
-          },
-          {
-            id: `${parentTurnID}-item-2`,
-            type: "collab_agent_tool_call",
-            status: "completed",
-            name: "spawn_agent",
-            arguments: JSON.stringify({ name: "inspect_sidebar", description: t("fixture.agentTree.inspectTask"), prompt: t("fixture.agentTree.inspectPrompt"), subagent_type: "general-purpose", run_in_background: true }),
-            result: `{"agent_id":"${inspectID}","agent_path":"/root/inspect_sidebar","status":"completed"}`,
-          },
-          {
-            id: `${parentTurnID}-item-3`,
-            type: "collab_agent_tool_call",
-            status: "completed",
-            name: "spawn_agent",
-            arguments: JSON.stringify({ name: "resume_child", description: t("fixture.agentTree.resumeTask"), prompt: t("fixture.agentTree.resumePrompt"), subagent_type: "general-purpose", run_in_background: true }),
-            result: `{"agent_id":"${resumeID}","agent_path":"/root/resume_child","status":"running"}`,
-          },
-          {
-            id: `${parentTurnID}-item-4`,
-            type: "agent_message",
-            status: "completed",
-            role: "assistant",
-            text: t("fixture.agentTree.answer"),
-          },
-        ],
-      },
-    ],
-    child_agents: [
-      {
-        id: inspectID,
-        type: "worker",
-        task_name: t("fixture.agentTree.inspectTask"),
-        agent_path: "/root/inspect-sidebar",
-        parent_id: parentID,
-        description: t("fixture.agentTree.inspectPrompt"),
-        status: "completed",
-        nested_count: 1,
-        nested_running_count: 0,
-        started_at: at(1000),
-        completed_at: at(2500),
-      },
-      {
-        id: resumeID,
-        type: "worker",
-        task_name: t("fixture.agentTree.resumeTask"),
-        agent_path: "/root/resume-child",
-        parent_id: parentID,
-        description: t("fixture.agentTree.resumePrompt"),
-        status: "running",
-        nested_count: 1,
-        nested_running_count: 1,
-        started_at: at(1800),
-      },
-    ],
-  };
-
-  const children: Thread[] = [
-    {
-      id: inspectID,
-      parent_id: parentID,
-      agent_path: "/root/inspect-sidebar",
-      preview: t("fixture.agentTree.inspectTask"),
-      model_provider: provider,
-      model,
-      cwd,
-      status: "idle",
-      read_only: true,
-      created_at: at(1000),
-      updated_at: at(2500),
-      turns: [
-        {
-          id: inspectTurnID,
-          items_view: "full",
-          status: "completed",
-          items: [
-            {
-              id: `${inspectTurnID}-item-1`,
-              type: "user_message",
-              status: "completed",
-              role: "user",
-              text: t("fixture.agentTree.inspectUser"),
-            },
-            {
-              id: `${inspectTurnID}-item-2`,
-              type: "agent_message",
-              status: "completed",
-              role: "assistant",
-              text: t("fixture.agentTree.inspectAnswer"),
-            },
-          ],
-        },
-      ],
-    },
-    {
-      id: resumeID,
-      parent_id: parentID,
-      agent_path: "/root/resume-child",
-      preview: t("fixture.agentTree.resumeTask"),
-      model_provider: provider,
-      model,
-      cwd,
-      status: "idle",
-      read_only: true,
-      created_at: at(1800),
-      updated_at: at(4200),
-      turns: [
-        {
-          id: resumeTurnID,
-          items_view: "full",
-          status: "completed",
-          items: [
-            {
-              id: `${resumeTurnID}-item-1`,
-              type: "user_message",
-              status: "completed",
-              role: "user",
-              text: t("fixture.agentTree.resumeUser"),
-            },
-            {
-              id: `${resumeTurnID}-item-2`,
-              type: "agent_message",
-              status: "completed",
-              role: "assistant",
-              text: t("fixture.agentTree.resumeAnswer"),
-            },
-          ],
-        },
-      ],
-    },
-  ];
-
-  return { parent, children };
-}
-
 export function createConversationFixture(
   kind: ConversationFixtureKind,
   cwd: string,
@@ -430,7 +259,12 @@ function createPlanPanelFixture(
             id: `${turnID}-item-2`,
             type: "tool_call",
             status: "completed",
-            name: "update_plan",
+            name: "plugin_plan_update_plan_abc123",
+            display: {
+              kind: "plan",
+              text: "Updating plan",
+              capability: "plan",
+            },
             arguments: JSON.stringify({
               plan: [
                 {

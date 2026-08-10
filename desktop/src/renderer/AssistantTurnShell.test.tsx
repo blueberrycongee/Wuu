@@ -150,7 +150,7 @@ function makeToolCall(name = "lookup"): ThreadItem {
 function makeAgentToolCall(): ThreadItem {
   return {
     id: nextID("collab-tool"),
-    type: "collab_agent_tool_call",
+    type: "tool_call",
     status: "completed",
     name: "spawn_agent",
     arguments: JSON.stringify({ name: "reviewer", prompt: "Review authentication" }),
@@ -1352,10 +1352,16 @@ describe("AssistantTurnShell — turn divider styles", () => {
   });
 
   it("shares the live gray sweep across process rows, reasoning labels, previews, and compaction", () => {
-    expect(turnsCSS).toContain(".process-surface-row.is-live-gray");
+    expect(turnsCSS).toContain(
+      ".process-surface-row.is-live-gray .process-surface-summary-line",
+    );
     expect(turnsCSS).toContain(".turn-reasoning-summary-text.is-live-gray");
-    expect(turnsCSS).toContain(".turn-process-preview.is-live");
+    expect(turnsCSS).toContain(
+      ".turn-process-preview.is-live .turn-process-preview-text",
+    );
     expect(turnsCSS).toContain(".live-progress-chip::after");
+    expect(turnsCSS).toContain("content: attr(aria-label);");
+    expect(turnsCSS).toContain("background-clip: text;");
     expect(turnsCSS).toContain("animation: live-gray-shimmer 4.8s linear infinite;");
     expect(turnsCSS).not.toContain(".process-surface-row.is-streaming::after");
     expect(turnsCSS).not.toContain(
@@ -1368,7 +1374,7 @@ describe("AssistantTurnShell — turn divider styles", () => {
       ":root[data-renderer-hidden] .turn-progress.in_progress .turn-progress-title",
     );
     expect(turnsCSS).toContain(
-      ":root[data-renderer-hidden] .process-surface-row.is-live-gray::after",
+      ":root[data-renderer-hidden] .process-surface-row.is-live-gray .process-surface-summary-line::after",
     );
     expect(turnsCSS).toContain("animation-play-state: paused;");
   });

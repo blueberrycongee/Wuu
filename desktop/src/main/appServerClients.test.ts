@@ -19,7 +19,7 @@ import {
   appServerExitMessage,
   AppServerClientPool,
   type AppServerSpawn,
-  cuaMacHelperEnvironment,
+  appServerHelperEnvironment,
   updateStoppedActivityIDs,
 } from "./appServerClients";
 
@@ -113,39 +113,86 @@ describe("appServerExitMessage", () => {
   });
 });
 
-describe("cuaMacHelperEnvironment", () => {
-  it("injects the packaged signed helper path on macOS", () => {
-    const result = cuaMacHelperEnvironment(
+describe("appServerHelperEnvironment", () => {
+  it("injects packaged first-party plugin helpers and the signed macOS helper", () => {
+    const packagedBin = "/Applications/wuu.app/Contents/Resources/bin";
+    const available = new Set([
+      `${packagedBin}/wuu-goal-plugin`,
+      `${packagedBin}/wuu-subagent-plugin`,
+      `${packagedBin}/wuu-automation-plugin`,
+      `${packagedBin}/wuu-memory-plugin`,
+      `${packagedBin}/wuu-dream-plugin`,
+      `${packagedBin}/wuu-plan-plugin`,
+      `${packagedBin}/wuu-cua-mac`,
+    ]);
+    const result = appServerHelperEnvironment(
       { HOME: "/Users/test" },
       "/source",
       "/Applications/wuu.app/Contents/Resources",
       "darwin",
-      (path) => path === "/Applications/wuu.app/Contents/Resources/bin/wuu-cua-mac",
+      (path) => available.has(path),
     );
+    expect(result.WUU_GOAL_PLUGIN_HELPER).toBe(`${packagedBin}/wuu-goal-plugin`);
+    expect(result.WUU_SUBAGENT_PLUGIN_HELPER).toBe(`${packagedBin}/wuu-subagent-plugin`);
+    expect(result.WUU_AUTOMATION_PLUGIN_HELPER).toBe(`${packagedBin}/wuu-automation-plugin`);
+    expect(result.WUU_MEMORY_PLUGIN_HELPER).toBe(`${packagedBin}/wuu-memory-plugin`);
+    expect(result.WUU_DREAM_PLUGIN_HELPER).toBe(`${packagedBin}/wuu-dream-plugin`);
+    expect(result.WUU_PLAN_PLUGIN_HELPER).toBe(`${packagedBin}/wuu-plan-plugin`);
     expect(result.WUU_CUA_MAC_HELPER).toBe(
-      "/Applications/wuu.app/Contents/Resources/bin/wuu-cua-mac",
+      `${packagedBin}/wuu-cua-mac`,
     );
   });
 
-  it("uses the development helper without replacing an explicit override", () => {
-    const discovered = cuaMacHelperEnvironment(
+  it("uses development plugin helpers without replacing explicit overrides", () => {
+    const available = new Set([
+      "/source/desktop/build/bin/wuu-goal-plugin",
+      "/source/desktop/build/bin/wuu-subagent-plugin",
+      "/source/desktop/build/bin/wuu-automation-plugin",
+      "/source/desktop/build/bin/wuu-memory-plugin",
+      "/source/desktop/build/bin/wuu-dream-plugin",
+      "/source/desktop/build/bin/wuu-plan-plugin",
+      "/source/desktop/build/bin/wuu-cua-mac",
+    ]);
+    const discovered = appServerHelperEnvironment(
       {},
       "/source",
       undefined,
       "darwin",
-      (path) => path === "/source/desktop/build/bin/wuu-cua-mac",
+      (path) => available.has(path),
+    );
+    expect(discovered.WUU_GOAL_PLUGIN_HELPER).toBe(
+      "/source/desktop/build/bin/wuu-goal-plugin",
+    );
+    expect(discovered.WUU_PLAN_PLUGIN_HELPER).toBe(
+      "/source/desktop/build/bin/wuu-plan-plugin",
     );
     expect(discovered.WUU_CUA_MAC_HELPER).toBe(
       "/source/desktop/build/bin/wuu-cua-mac",
     );
-    const overridden = cuaMacHelperEnvironment(
-      { WUU_CUA_MAC_HELPER: "/custom/helper" },
+    const overridden = appServerHelperEnvironment(
+      {
+        WUU_GOAL_PLUGIN_HELPER: "/custom/goal",
+        WUU_CUA_MAC_HELPER: "/custom/cua",
+      },
       "/source",
       undefined,
       "darwin",
       () => true,
     );
-    expect(overridden.WUU_CUA_MAC_HELPER).toBe("/custom/helper");
+    expect(overridden.WUU_GOAL_PLUGIN_HELPER).toBe("/custom/goal");
+    expect(overridden.WUU_CUA_MAC_HELPER).toBe("/custom/cua");
+  });
+
+  it("uses .exe plugin helpers on Windows without injecting the macOS helper", () => {
+    const result = appServerHelperEnvironment(
+      {},
+      "C:\\source",
+      undefined,
+      "win32",
+      (path) => path.endsWith("wuu-goal-plugin.exe"),
+    );
+    expect(result.WUU_GOAL_PLUGIN_HELPER).toMatch(/wuu-goal-plugin\.exe$/);
+    expect(result.WUU_CUA_MAC_HELPER).toBeUndefined();
   });
 });
 

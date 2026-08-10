@@ -41,7 +41,7 @@ describe("WorkbenchController", () => {
     controller.dispose();
   });
 
-  it("maps views to every workbench pane and persists only durable state", async () => {
+  it("maps views to every semantic region and persists only durable state", async () => {
     const host = new PluginHost({ react: React });
     await host.activateGeneration({
       pluginId: "user:views",
@@ -50,13 +50,13 @@ describe("WorkbenchController", () => {
         api.registerViewType({
           id: "views.dashboard",
           title: "Dashboard",
-          defaultPane: "main",
+          defaultRegion: "primary",
           persistence: "durable",
           render: () => <div>Dashboard</div>,
         });
         api.registerViewPlacement({
           id: "default-dashboard",
-          region: "sidebar",
+          region: "navigation",
           view: "views.dashboard",
         });
       },
@@ -64,28 +64,28 @@ describe("WorkbenchController", () => {
     const controller = new WorkbenchController(host);
     controller.setAvailablePluginIds(new Set(["user:views"]));
 
-    for (const pane of ["main", "sidebar", "auxiliary", "tab", "pane", "overlay"] as const) {
-      await controller.openView("views.dashboard", { pane, context: { pane } });
+    for (const region of ["navigation", "primary", "auxiliary", "inspector", "settings", "overlay"] as const) {
+      await controller.openView("views.dashboard", { region, context: { region } });
     }
 
-    expect(new Set(controller.getSnapshot().views.map((view) => view.pane))).toEqual(
-      new Set(["main", "sidebar", "auxiliary", "tab", "pane", "overlay"]),
+    expect(new Set(controller.getSnapshot().views.map((view) => view.region))).toEqual(
+      new Set(["navigation", "primary", "auxiliary", "inspector", "settings", "overlay"]),
     );
     expect(controller.getSnapshot().views).toEqual(expect.arrayContaining([
-      expect.objectContaining({ id: "placement:user:views:default-dashboard", pane: "sidebar" }),
+      expect.objectContaining({ id: "placement:user:views:default-dashboard", region: "navigation" }),
     ]));
 
     const restored = new WorkbenchController(host);
     restored.setAvailablePluginIds(new Set(["user:views"]));
     expect(restored.getSnapshot().views.every((view) => view.persistence === "durable")).toBe(true);
-    expect(restored.getSnapshot().views.map((view) => view.pane)).toEqual(
-      expect.arrayContaining(["main", "sidebar", "auxiliary", "tab", "pane", "overlay"]),
+    expect(restored.getSnapshot().views.map((view) => view.region)).toEqual(
+      expect.arrayContaining(["navigation", "primary", "auxiliary", "inspector", "settings", "overlay"]),
     );
     controller.dispose();
     restored.dispose();
   });
 
-  it("reveals an existing plugin View and can hide its pane without destroying state", async () => {
+  it("reveals an existing plugin View and can hide its region without destroying state", async () => {
     const host = new PluginHost({ react: React });
     await host.activateGeneration({
       pluginId: "product",
@@ -96,17 +96,17 @@ describe("WorkbenchController", () => {
     });
     const controller = new WorkbenchController(host);
 
-    const first = await controller.openPluginView("product", "dashboard", { pane: "main" });
-    const revealed = await controller.openPluginView("product", "dashboard", { pane: "main" });
+    const first = await controller.openPluginView("product", "dashboard", { region: "primary" });
+    const revealed = await controller.openPluginView("product", "dashboard", { region: "primary" });
     expect(revealed).toBe(first);
     expect(controller.getSnapshot().views).toHaveLength(1);
 
-    controller.deactivatePane("main");
+    controller.deactivateRegion("primary");
     expect(controller.getSnapshot().views).toHaveLength(1);
-    expect(controller.getSnapshot().activeViewByPane.main).not.toBe(first);
+    expect(controller.getSnapshot().activeViewByRegion.primary).not.toBe(first);
 
-    expect(await controller.openPluginView("product", "dashboard", { pane: "main" })).toBe(first);
-    expect(controller.getSnapshot().activeViewByPane.main).toBe(first);
+    expect(await controller.openPluginView("product", "dashboard", { region: "primary" })).toBe(first);
+    expect(controller.getSnapshot().activeViewByRegion.primary).toBe(first);
     controller.dispose();
   });
 
@@ -131,13 +131,13 @@ describe("WorkbenchController", () => {
         api.registerViewPlacement({
           id: "low",
           view: "views.low",
-          region: "main",
+          region: "primary",
           priority: 10,
         });
         api.registerViewPlacement({
           id: "high",
           view: "views.high",
-          region: "main",
+          region: "primary",
           priority: 20,
         });
       },
@@ -147,12 +147,12 @@ describe("WorkbenchController", () => {
 
     const initial = controller.getSnapshot();
     const high = initial.views.find((view) => view.viewTypeId === "views.high");
-    expect(initial.activeViewByPane.main).toBe(high?.id);
+    expect(initial.activeViewByRegion.primary).toBe(high?.id);
     expect(high).toBeDefined();
     if (!high) throw new Error("expected high-priority View placement");
 
     await controller.closeView(high.id);
-    expect(controller.getSnapshot().activeViewByPane.main).toBe(
+    expect(controller.getSnapshot().activeViewByRegion.primary).toBe(
       controller.getSnapshot().views.find((view) => view.viewTypeId === "views.low")?.id,
     );
 
@@ -161,40 +161,6 @@ describe("WorkbenchController", () => {
     expect(restored.getSnapshot().views.some((view) => view.viewTypeId === "views.high")).toBe(false);
     controller.dispose();
     restored.dispose();
-  });
-
-  it("keeps legacy layout registrations working through the placement adapter", async () => {
-    const host = new PluginHost({ react: React });
-    await host.activateGeneration({
-      pluginId: "user:legacy",
-      generation: "one",
-      register(api) {
-        api.registerViewType({
-          id: "views.legacy",
-          title: "Legacy",
-          render: () => null,
-        });
-        api.registerLayoutContribution({
-          id: "legacy-default",
-          parentId: "unused-parent",
-          pane: "auxiliary",
-          size: 0.5,
-          minSize: 200,
-          defaultView: "views.legacy",
-        });
-      },
-    });
-    const controller = new WorkbenchController(host);
-    controller.setAvailablePluginIds(new Set(["user:legacy"]));
-
-    expect(controller.getSnapshot().views).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        id: "placement:user:legacy:legacy-default",
-        pane: "auxiliary",
-        viewTypeId: "views.legacy",
-      }),
-    ]));
-    controller.dispose();
   });
 
   it("exposes controlled commands, settings, and plugin-namespaced storage", async () => {
@@ -293,11 +259,11 @@ describe("WorkbenchController", () => {
     expect(alphaLauncher).toBeDefined();
     if (!alphaLauncher) return;
     const alphaHost = controller.createViewHostAPI(alphaLauncher);
-    await alphaHost.openView("shared.view", { pane: "main" });
-    await alphaHost.openView("beta.unique", { pane: "pane" });
+    await alphaHost.openView("shared.view", { region: "primary" });
+    await alphaHost.openView("beta.unique", { region: "inspector" });
     expect(controller.getSnapshot().views).toEqual(expect.arrayContaining([
-      expect.objectContaining({ viewTypeId: "shared.view", pluginId: "user:alpha", pane: "main" }),
-      expect.objectContaining({ viewTypeId: "beta.unique", pluginId: "user:beta", pane: "pane" }),
+      expect.objectContaining({ viewTypeId: "shared.view", pluginId: "user:alpha", region: "primary" }),
+      expect.objectContaining({ viewTypeId: "beta.unique", pluginId: "user:beta", region: "inspector" }),
     ]));
 
     const restored = new WorkbenchController(host);
@@ -336,7 +302,7 @@ describe("WorkbenchController", () => {
     });
     const controller = new WorkbenchController(host);
     controller.setAvailablePluginIds(new Set(["user:reload"]));
-    const instanceId = await controller.openView("reload.view", { pane: "main" });
+    const instanceId = await controller.openView("reload.view", { region: "primary" });
     expect(document.documentElement.style.getPropertyValue("--wuu-color-accent")).toBe("one");
     expect(document.documentElement.style.getPropertyValue("--wuu-font-family-ui")).toBe("one-ui");
     expect(document.documentElement.style.getPropertyValue("--wuu-syntax-keyword")).toBe("one-keyword");
@@ -395,7 +361,7 @@ describe("DesktopWorkbench product path", () => {
         api.registerViewType({ id: "product.view", title: "Product", render: () => <div>Plugin product view</div> });
         api.registerViewPlacement({
           id: "product-main",
-          region: "main",
+          region: "primary",
           view: "product.view",
         });
         api.registerStatusItem({ id: "ready", label: "Plugin ready" });
@@ -411,6 +377,33 @@ describe("DesktopWorkbench product path", () => {
     await act(async () => host.unload("user:product"));
     expect(container.querySelector(".conversation-pane")?.textContent).not.toContain("Plugin product view");
     expect(document.body.textContent).not.toContain("Plugin ready");
+  });
+
+  it("passes the active locale and registered plugin translations to Views", async () => {
+    const host = new PluginHost({ react: React });
+    await host.activateGeneration({
+      pluginId: "user:localized-view",
+      generation: "one",
+      register(api) {
+        api.registerLocale({
+          id: "localized-view-zh",
+          locale: "zh-CN",
+          entries: { "localized.title": "本地化视图" },
+        });
+        api.registerViewType({
+          id: "localized.view",
+          title: "Localized",
+          render: ({ locale, translate }) => <div>{locale}:{translate("localized.title")}</div>,
+        });
+        api.registerViewPlacement({ id: "localized-main", region: "primary", view: "localized.view" });
+      },
+    });
+
+    await act(async () => root.render(
+      <DesktopWorkbench host={host} inventory={[inventoryPlugin("user:localized-view")]} />,
+    ));
+
+    expect(container.querySelector(".conversation-pane")?.textContent).toContain("zh-CN:本地化视图");
   });
 
   it("replaces the complete status root with a sanitized immutable snapshot and controlled actions", async () => {
@@ -563,7 +556,7 @@ describe("DesktopWorkbench product path", () => {
         });
         api.registerViewPlacement({
           id: "broken-main",
-          region: "main",
+          region: "primary",
           view: "broken.view",
         });
       },
@@ -665,7 +658,7 @@ function registerCollidingGeneration(
   }
   api.registerViewPlacement({
     id: "default-shared",
-    region: label === "alpha" ? "sidebar" : "auxiliary",
+    region: label === "alpha" ? "navigation" : "auxiliary",
     view: "shared.view",
   });
 }

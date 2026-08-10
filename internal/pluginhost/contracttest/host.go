@@ -169,10 +169,14 @@ func (h *Host) AssertCapabilityRegistered(capabilityID string) {
 		h.record("skip", "capability."+capabilityID, "plugin not initialized")
 		return
 	}
-	// Check hooks for a matching capability pattern.
-	for _, hook := range h.client.Hooks() {
-		if strings.Contains(string(hook), capabilityID) || hook == pluginhost.Hook(capabilityID) {
-			h.record("pass", "capability."+capabilityID, fmt.Sprintf("found via hook %s", hook))
+	client, ok := h.client.(pluginhost.CapabilityClient)
+	if !ok {
+		h.record("fail", "capability."+capabilityID, "plugin does not support capability negotiation")
+		return
+	}
+	for _, capability := range client.Capabilities() {
+		if capability.ID == capabilityID {
+			h.record("pass", "capability."+capabilityID, "capability registered")
 			return
 		}
 	}
@@ -198,22 +202,6 @@ func (h *Host) AssertToolRegistered(toolID string) {
 		}
 	}
 	h.record("fail", "tool."+toolID, "tool not found in plugin registrations")
-}
-
-// AssertHookRegistered verifies that the plugin registers a specific hook.
-func (h *Host) AssertHookRegistered(hook pluginhost.Hook) {
-	h.t.Helper()
-	if h.client == nil {
-		h.record("skip", "hook."+string(hook), "plugin not initialized")
-		return
-	}
-	for _, registered := range h.client.Hooks() {
-		if registered == hook {
-			h.record("pass", "hook."+string(hook), "hook registered")
-			return
-		}
-	}
-	h.record("fail", "hook."+string(hook), "hook not registered")
 }
 
 // AssertNoDiagnosticsAbove verifies that no diagnostics above the given

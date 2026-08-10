@@ -13,7 +13,6 @@ export type ToolActivityKind =
   | "agent"
   | "plan"
   | "interaction"
-  | "schedule"
   | "browser"
   | "skill"
   | "context"
@@ -239,8 +238,6 @@ function readableToolActivityCommandInner(
         ? t("toolActivity.learnSkillTarget", { target: truncateText(skill.replace(/^\//, ""), 70) })
         : t("toolActivity.learnSkill");
     }
-    case "update_plan":
-      return t("toolActivity.updatePlan");
     case "bash":
       if (command.startsWith("git ")) {
         return readableCommandLabel(item);
@@ -256,73 +253,6 @@ function readableToolActivityCommandInner(
       return path
         ? t("toolActivity.updateTarget", { target: formatPathTarget(path, t("toolActivity.file")) })
         : t("toolActivity.updateFiles");
-    case "spawn_agent": {
-      const task =
-        stringValue(args, "name") ??
-        stringValue(args, "description") ??
-        stringValue(args, "prompt");
-      return task
-        ? t("toolActivity.startSubtaskTarget", { target: truncateText(task, 70) })
-        : t("toolActivity.startSubtask");
-    }
-    case "followup_task": {
-      const task = stringValue(args, "target") ?? stringValue(args, "message");
-      return task
-        ? t("toolActivity.followupSubtaskTarget", { target: truncateText(task, 70) })
-        : t("toolActivity.followupSubtask");
-    }
-    case "send_message": {
-      const task = stringValue(args, "target") ?? stringValue(args, "message");
-      return task
-        ? t("toolActivity.messageSubtaskTarget", { target: truncateText(task, 70) })
-        : t("toolActivity.messageSubtask");
-    }
-    case "wait_agent":
-      return t("toolActivity.waitForSubtask");
-    case "await_agents":
-      return t("toolActivity.waitForSubtask");
-    case "close_agent":
-      return t("toolActivity.closeSubtask");
-    case "list_agents":
-      return t("toolActivity.viewSubtasks");
-    case "agent_report":
-      return t("toolActivity.readSubtaskReport");
-    case "goal":
-      switch (stringValue(args, "action")) {
-        case "create": {
-          const objective = stringValue(args, "objective");
-          return objective
-            ? t("toolActivity.startGoalTarget", { target: truncateText(objective, 60) })
-            : t("toolActivity.startGoal");
-        }
-        case "update":
-          return t("toolActivity.updateGoal");
-        default:
-          return t("toolActivity.viewGoal");
-      }
-    case "get_goal":
-      return t("toolActivity.viewGoal");
-    case "create_goal": {
-      const objective = stringValue(args, "objective");
-      return objective
-        ? t("toolActivity.startGoalTarget", { target: truncateText(objective, 60) })
-        : t("toolActivity.startGoal");
-    }
-    case "update_goal":
-      return t("toolActivity.updateGoal");
-    case "cron":
-      switch (stringValue(args, "action")) {
-        case "add": {
-          const cron = stringValue(args, "cron");
-          return cron
-            ? t("toolActivity.scheduleTarget", { target: truncateText(cron, 60) })
-            : t("toolActivity.schedule");
-        }
-        case "remove":
-          return t("toolActivity.cancelSchedule");
-        default:
-          return t("toolActivity.viewSchedule");
-      }
     case "browser":
       return readableBrowserLabel(args);
     default:
@@ -375,7 +305,6 @@ function displaySectionKey(kind: string | undefined): string | undefined {
     case "agent":
     case "plan":
     case "interaction":
-    case "schedule":
     case "browser":
     case "skill":
     case "context":
@@ -425,19 +354,6 @@ function toolActivitySectionKey(item: ThreadItem): string {
       return "change";
     case "bash":
       return "command";
-    case "spawn_agent":
-    case "send_message":
-    case "followup_task":
-    case "wait_agent":
-    case "await_agents":
-    case "close_agent":
-    case "list_agents":
-    case "agent_report":
-      return "agent";
-    case "update_plan":
-      return "plan";
-    case "cron":
-      return "schedule";
     case "browser":
       return "browser";
     case "load_skill":
@@ -473,8 +389,6 @@ function capabilitySectionKey(capability: string | undefined): string | undefine
   switch (normalized) {
     case "plan":
       return "plan";
-    case "schedule":
-      return "schedule";
     case "skill":
       return "skill";
     default:
@@ -552,15 +466,6 @@ function toolActivitySectionFromItems(
         id: key,
         kind: "interaction",
         title: t("toolActivity.waitingForUser"),
-        status: combinedToolStatus(items),
-        commands: toolCommands(items),
-        error: firstToolError(items),
-      };
-    case "schedule":
-      return {
-        id: key,
-        kind: "schedule",
-        title: readableScheduleSummary(items),
         status: combinedToolStatus(items),
         commands: toolCommands(items),
         error: firstToolError(items),
@@ -720,14 +625,6 @@ function toolActivityProcessSegmentFromItems(
         status,
         error,
         text: t("toolActivity.updatePlan"),
-      };
-    case "schedule":
-      return {
-        id: key,
-        kind: "schedule",
-        status,
-        error,
-        text: readableScheduleSummary(items),
       };
     case "browser":
       return {
@@ -929,27 +826,6 @@ function compactSearchTargets(items: ThreadItem[]): string[] {
 
 function compactCommandLabels(items: ThreadItem[]): string[] {
   return uniqueStrings(items.map((item) => readableCommandLabel(item)));
-}
-
-function readableScheduleSummary(items: ThreadItem[]): string {
-  const actions = uniqueStrings(
-    items.map((item) => {
-      const args = parseJSONRecord(item.arguments);
-      switch (stringValue(args, "action")) {
-        case "add":
-          return t("toolActivity.schedule");
-        case "remove":
-          return t("toolActivity.cancelSchedule");
-        case "list":
-          return t("toolActivity.viewSchedule");
-        default:
-          return t("toolActivity.handleSchedule");
-      }
-    }),
-  );
-  return actions.length === 1
-    ? actions[0]
-    : t("toolActivity.handleScheduleCount", { count: items.length });
 }
 
 function compactAgentLabels(items: ThreadItem[]): string[] {
@@ -1156,10 +1032,6 @@ export function readableToolName(name: string | undefined): string {
       return t("toolActivity.searchTools");
     case "load_skill":
       return t("toolActivity.learnSkill");
-    case "update_plan":
-      return t("toolActivity.updatePlan");
-    case "cron":
-      return t("toolActivity.scheduledTask");
     case "browser":
       return t("toolActivity.browser");
     default:
@@ -1190,7 +1062,6 @@ export function summarizeToolActivity(items: ThreadItem[]): ToolActivitySummary 
   let searchCount = 0;
   let listCount = 0;
   let commandCount = 0;
-  let agentCount = 0;
   let additions = 0;
   let deletions = 0;
   let running = false;
@@ -1250,15 +1121,6 @@ export function summarizeToolActivity(items: ThreadItem[]): ToolActivitySummary 
       primaryKind = diff.newFile ? "create" : "edit";
       continue;
     }
-    if (
-      name === "spawn_agent" ||
-      name === "fork_agent" ||
-      name === "send_message"
-    ) {
-      primaryKind = primaryKind === "unknown" ? "agent" : primaryKind;
-      agentCount++;
-      continue;
-    }
     unknownTools.add(name);
   }
 
@@ -1307,9 +1169,6 @@ export function summarizeToolActivity(items: ThreadItem[]): ToolActivitySummary 
   }
   if (commandCount > 0) {
     parts.push(t(commandCount === 1 ? "toolActivity.commandCountOne" : "toolActivity.commandCount", { count: commandCount }));
-  }
-  if (agentCount > 0) {
-    parts.push(t(agentCount === 1 ? "toolActivity.startedSubtaskCountOne" : "toolActivity.startedSubtaskCount", { count: agentCount }));
   }
   if (parts.length === 0 && unknownTools.size > 0) {
     const names = Array.from(unknownTools).slice(0, 2).join(t("toolActivity.compactSeparator"));
@@ -1361,7 +1220,7 @@ export type TurnSource = {
 export function collectTurnSources(items: ThreadItem[]): TurnSource[] {
   const byHost = new Map<string, TurnSource>();
   for (const item of items) {
-    if (item.type !== "tool_call" && item.type !== "collab_agent_tool_call") {
+    if (item.type !== "tool_call") {
       continue;
     }
     const name = (item.name ?? "").trim();

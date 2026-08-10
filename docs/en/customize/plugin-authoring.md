@@ -1,0 +1,655 @@
+# Writing plugins
+
+This guide is for developers extending Wuu: how plugins are packaged, how to
+extend the agent pipeline, how to contribute desktop UI, and how the local
+development loop works. For installing and managing plugins as a user, see
+[Plugins](plugins.md).
+
+Writing your first plugin? Walk through the
+[quickstart](plugin-quickstart.md) to get a working Agent plugin in about ten
+minutes, then come back for the full reference.
+
+The Wuu plugin platform is local-first: there is no marketplace or central
+registry. Plugins are installed locally as directories or zip packages.
+Developers usually maintain their plugins in their own GitHub repositories, and
+users clone or download them before installing in Wuu. Distribution features
+will only be built once a natural ecosystem emerges; plugin authors do not need
+to prepare for any platform account or review process today.
+
+## What a plugin can do
+
+One plugin package can contain any combination of the following contributions:
+
+| Contribution | Where it runs | Code required? |
+| --- | --- | --- |
+| Declarative theme | Renderer (CSS tokens) | No |
+| Declarative settings | Renderer + app-server | No |
+| Agent plugin | Separate runtime process (Node, etc.) | Yes |
+| Desktop plugin | Wuu Renderer (ESM module) | Yes |
+
+Plugins can form a strong visual language across the whole product through
+public tokens, the UI Kit, and coarse semantic boundaries — never by taking
+over private DOM. Window safe areas, navigation structure, tabs, scrolling,
+overflow, keyboard, and recovery paths stay with the host. High-trust
+capabilities such as Surface replacement are an escape hatch for complex
+structural customization, not the default entry point for ordinary controls.
+See the [plugin system architecture](../../zh-cn/customize/plugin-system.md)
+document (currently in Chinese) for the overall design and
+interface-selection principles.
+
+## Package structure and manifest
+
+```text
+my-plugin/
+├── plugin.json
+└── dist/
+    ├── runtime.js     # Agent plugin entry (optional)
+    └── desktop.js     # Desktop plugin entry (optional)
+```
+
+`plugin.json` is the manifest. Wuu re-reads and validates it on install and
+before every load. Minimal example:
+
+```json
+{
+  "schema_version": 1,
+  "id": "my-plugin",
+  "name": "My Plugin",
+  "version": "1.0.0",
+  "description": "What this plugin does",
+  "icon": { "path": "assets/icon.svg" },
+  "runtime": {
+    "protocol": "wuu-plugin-v1",
+    "command": "node",
+    "args": ["dist/runtime.js"]
+  },
+  "desktop": {
+    "entry": "dist/desktop.js"
+  }
+}
+```
+
+Common fields:
+
+- `id` is a globally unique identifier. It determines the install directory
+  name and the namespace prefix of every registration; once published it
+  should never change.
+- `version` is a semantic version. Any file change produces a new
+  whole-package fingerprint, which invalidates the previous approval.
+- The top-level `icon` is the plugin's brand icon, used in the plugin catalog
+  and detail views; it does not automatically enter host navigation. It can be
+  a public semantic icon name, `{ "path": "assets/icon.svg" }`, or
+  `{ "light": "assets/icon-light.svg", "dark": "assets/icon-dark.svg" }`.
+- `runtime` declares a long-lived external process that talks to Wuu over
+  standard input/output (an Agent plugin).
+- `desktop.entry` points to a self-contained browser ESM file, up to 10 MiB
+  (a Desktop plugin).
+- `contributes.themes` declares themes; `contributes.settings` declares
+  settings.
+- `skills`, `hooks`, `mcp_servers`, and `commands` let the plugin provide
+  these capabilities directly, with the same effect as configuring them by
+  hand.
+- `minimum_wuu_version` declares the minimum Wuu version; the plugin is not
+  activated when the requirement is not met.
+- `requires` lists plugin IDs that must be enabled together; the plugin stays
+  inactive when any is missing. `breaks` declares explicit incompatibilities;
+  the host refuses to enable both. `conflicts` only shows a warning in the
+  plugin catalog and leaves the decision to the user. All three are simple ID
+  arrays; there is no version range or automatic solving.
+
+The authoritative field definitions are
+[`internal/plugin/manifest.go`](../../../internal/plugin/manifest.go) and
+[`packages/plugin-sdk`](../../../packages/plugin-sdk/).
+
+## Declarative contributions
+
+### Themes
+
+Declare them in `contributes.themes`; no code is required. Themes of approved
+and enabled plugins appear under **Settings → Appearance**; when the plugin is
+disabled or the user switches back to a built-in theme, Wuu removes every
+token contributed by that plugin's settings.
+
+```json
+{
+  "contributes": {
+    "themes": [
+      {
+        "id": "my-dark",
+        "name": "My Dark",
+        "base": "dark",
+        "tokens": {
+          "--wuu-paper": "#111827",
+          "--wuu-ink": "#f9fafb"
+        }
+      }
+    ]
+  }
+}
+```
+
+Public tokens are defined once by
+[`config/desktop-theme-contract.json`](../../../config/desktop-theme-contract.json),
+which generates the manifest, the public SDK, and the Desktop validators.
+Stable families cover semantic colors, typography, spacing, density, radius,
+borders, elevation, motion, content width, and `--wuu-syntax-*` syntax colors.
+Early names such as `--wuu-paper`, `--wuu-ink`, `--wuu-accent`, and `--hljs-*`
+remain compatible and are mapped when applied; new themes should prefer the
+current `--wuu-color-*` and `--wuu-font-*` names.
+
+Shared neutral UI is skinned through a few coarse semantic tokens, so an
+appearance plugin does not need private DOM. The complete token-to-surface
+mapping is generated from the host stylesheet dependency graph and published
+on the [theme surface matrix](theme-surface-matrix.md). Text and fonts
+continue to inherit the corresponding public color and typography tokens.
+Compact controls keep host-owned border widths so a strong panel border
+cannot change their box model or break text wrapping.
+
+### Settings
+
+`contributes.settings` generates controls of four types: `boolean`, `string`,
+`number`, and `enum`. Every setting has a `scope` (`user` or `workspace`) and
+an `apply` mode (`live` or `restart`). After the user changes a value in the
+settings UI, the agent runtime can read it through the versioned
+`host.settings.get/list` services; desktop views use `host.getSetting` from
+their render props. Settings and Storage are stored under the plugin
+namespace, and desktop views use `host.getStorage` / `host.setStorage` for
+Storage. Disabling, upgrading, or uninstalling a plugin keeps this data by
+default so it can be restored on reinstall; there is no implicit
+"delete data on uninstall" behavior today.
+
+```json
+{
+  "contributes": {
+    "settings": {
+      "enabled": {
+        "type": "boolean",
+        "title": "Enable counter",
+        "default": true,
+        "scope": "user",
+        "apply": "live"
+      }
+    }
+  }
+}
+```
+
+## Agent plugins
+
+An Agent plugin is an external process declared by `runtime`. Installing or
+enabling the plugin grants that process the same user authority as Wuu, so
+only install plugins you trust, and check the source before enabling.
+
+### Process and protocol
+
+Wuu starts the runtime process; it is long-lived and communicates with Wuu
+through line-delimited JSON on standard input and output. It first negotiates
+the protocol and capabilities, then continuously receives events and calls.
+You do not need to hand-write the protocol:
+
+- On the TypeScript side, use the public `@wuu/plugin-sdk` package;
+- On the Go side, import
+  `github.com/blueberrycongee/wuu/packages/plugin-go`.
+
+The protocol channel is asynchronous and duplex: while the host is invoking a
+plugin capability, the plugin can call host services back through the
+`RuntimeHost` passed in; after a capability call returns, background work
+started by the plugin may also keep calling already-negotiated host services.
+The SDK routes concurrent responses by request id. Plugins must not read or
+write standard input/output directly, and must not assume requests and
+responses strictly alternate. Background timers, watchers, or processes should
+start after the session lifecycle begins and stop when the generation closes;
+they must not run past the disable, upgrade, or unload boundary.
+
+`initialize` is a read-only prepare phase: it may only read Storage, Settings,
+and existing Session summaries. Shared Storage writes, Session create/send,
+and background effects open only after the generation's package and policy are
+committed, and start through `activate(host)`. SDKs that do not declare a
+lifecycle version cannot enter a candidate generation.
+
+Production host services are exactly these 11 methods:
+
+- Storage: `get`, `set`, `delete`, `keys`, `compare_exchange`; every call must
+  pass `scope: "user" | "workspace"`;
+- Settings: `get`, `list`, read-only at runtime;
+- Session: `create`, `send`, `list`, `cancel`.
+
+Method names, parameters, and result types follow the SDK's
+`HOST_SERVICE_METHODS` and `HostServiceContracts`.
+`host.session.info`, `host.workspace.*`, and `host.diagnostics.log` are not
+part of the production contract.
+
+To start ordinary agent work in the background, plugins compose the
+product-neutral Session services: `host.session.create` creates a Session with
+explicit `owner`, `visibility`, `parent`, `fresh | fork`, workspace, and
+optional model-alias semantics; `host.session.send` delivers input to an
+existing Session. A send request carries a plugin-generated `request_id`, the
+model input, request-only context blocks with a size cap, a stable `cause`,
+and an optional `presentation: { kind: "query_bubble", text, name }`.
+
+`host.session.list` returns only Sessions owned by the calling plugin's
+generation; `host.session.cancel` enforces the same ownership check.
+Lifecycle completion events include the final model output but are delivered
+only to the plugin that submitted the turn, so a plugin can update its own
+state or deliver results to a parent Session without reading private host
+history structures.
+
+`presentation.text` is the safe summary shown in the front-end query bubble,
+not the full internal prompt. User input and plugin wake-ups share the same
+standard query bubble; the host still stamps `origin=user | host | plugin` in
+the persisted record and marks plugin-generated items read-only and
+auditable. The provider adapter projects such input to a plain `user` role to
+drive the next model turn; that protocol role does not claim a human author
+and cannot override the plugin origin in product records. Plugins should not
+copy the full internal prompt into the display summary, and the desktop side
+must not generate bubble content from model input on its own. When the target
+Session is busy, input enters the same ordinary turn queue. If the plugin
+declares the `agent.turn.lifecycle` observe capability, the host delivers
+subsequent `running`, `completed`, `failed`, `interrupted`, and `discarded`
+states only to the submitting plugin, echoing the original `request_id`;
+terminal states also include the final model output. Cron scheduling, retry,
+missed-trigger recovery, concurrent merging, and business state must live in
+the plugin; the core provides no timer tick and does not interpret
+`request_id` or `cause`.
+
+Process lifecycle is managed by Wuu: started on enable, terminated on disable,
+upgrade, or uninstall. A plugin cannot restart itself or bypass host
+supervision.
+
+### Extending the agent
+
+Runtime plugins can register tools and hook into the agent lifecycle. The SDK
+provides the following capabilities (the SDK exports are authoritative):
+
+| Capability | Purpose | Semantics |
+| --- | --- | --- |
+| `agent.system_prompt.section` | Contribute a system prompt section | transform |
+| `agent.pre_step` | Append a sourced, durable hidden message before a model step | transform |
+| `agent.request.transform` | Read `ModelRequestViewV1` and return a validated narrow patch | transform |
+| `agent.compaction` | Replace the summary-compaction result | decision; Experimental |
+| `agent.turn.completed` | Observe summaries of settled successful/failed turns | observe |
+| `agent.turn.lifecycle` | Receive owner-scoped lifecycle for turns this plugin submitted | observe |
+| `plugin.client.request` | Handle Desktop/client requests inside the plugin namespace | decision |
+
+Tools are registered through the `tools` field of the initialize result, not
+through a capability named `agent.tool.register`. Every capability belongs to
+a generation and declares the `kind` it implements (observe / transform /
+decision) plus `priority`. `guard` and `around` have no host implementation
+and are not declarable public kinds.
+
+The legacy `hook.invoke` has been removed; host→plugin traffic goes only
+through the versioned capabilities above or tool execution, and plugin→host
+traffic only through host services. When a candidate prepare fails, the old
+generation keeps working; after a durable commit, a single-plugin activate
+failure shows as `failed/last_error` in the inventory rather than pretending
+to be active.
+
+A complete TypeScript duplex example lives in
+`examples/plugins/stateful-runtime`: `activate` uses Storage CAS from the
+background, the capability handler uses Storage, and it creates and sends a
+Session on explicit client request.
+
+## Desktop plugins
+
+Desktop plugins are trusted code running in the Wuu Renderer. They can
+register global styles and replace or wrap the stable UI surfaces the host
+provides, to form a unified visual system or make bounded structural changes.
+They continue to use the session and navigation actions Wuu provides; they do
+not rely on DOM monkey patches or private React state.
+
+The desktop entry exports `activate(api)`. Do not bundle another copy of
+React; use the host React instance from `api.react`:
+
+```js
+export async function activate(api) {
+  const React = api.react;
+
+  api.registerStyle({
+    id: "visual-language",
+    css: `
+      :root {
+        --wuu-accent: #7c5cff;
+        --wuu-accent-press: #6847ed;
+      }
+    `,
+  });
+
+  api.registerSurface("conversation.timeline", {
+    id: "timeline-frame",
+    mode: "wrap",
+    render(_context, fallback) {
+      return React.createElement("section", { className: "my-frame" }, fallback);
+    },
+  });
+}
+```
+
+`mode: "replace"` takes over the complete semantic boundary;
+`mode: "wrap"` composes around the current result. A render failure falls back
+to the current boundary only; the host always keeps Settings, plugin disable,
+and default-UI recovery paths.
+
+### Available API overview
+
+- `registerStyle`: registers CSS; arbitrary CSS is only offered to trusted
+  desktop-code plugins.
+- `registerSurface`: replaces or wraps short semantic items that ship with a
+  native fallback. App Shell, base Session, Composer, Settings, plugin
+  management, and the region containers are protected roots.
+- `registerSlot`: inserts content into stable positions in native UI
+  (`sidebar.primary`, `workspace.header`, `composer.toolbar`, and more).
+  Complex settings should be declared as `settingsPages` views instead.
+- `registerViewType` + `registerViewPlacement`: register a persistent View
+  and request its initial placement in a stable host-owned semantic region:
+  `navigation`, `primary`, `auxiliary`, `inspector`, `settings`, or `overlay`.
+  `priority` only decides the initial active View while a region has no user
+  choice; later user switching and closing win and are persisted. The
+  placement API does not expose host DOM, arbitrary parent nodes, the split
+  tree, or panel dimensions. `registerViewPlacement` is the only placement
+  API.
+- View entries are declared by the manifest; the plugin does not draw its own
+  navigation or tabs:
+  - `contributes.navigation` appears in the scrollable plugin group of the
+    left sidebar;
+  - `contributes.workspaceTools` appears in the right-side tool picker and
+    opens in a native workspace tab;
+  - `contributes.settingsPages` appears in the plugin group of the Settings
+    page.
+  Each entry uses `{ id, view, title, description?, icon?, order? }` and must
+  reference a View registered by the same plugin through
+  `registerViewType`. Selection, closing, persistence, and overflow are
+  managed by Wuu. Ordinary `contributes.settings` automatically gets a
+  host-rendered settings page; use a custom settings View only for content a
+  standard schema cannot express.
+  Entry `icon` is independent of the top-level brand icon: use a public
+  semantic icon name, or the same in-package artwork object as the top-level
+  `icon`; when omitted, the host default icon is used, not the brand icon.
+  Plugins can import `PUBLIC_ICON_NAMES`, `PublicIconName`, and
+  `PluginManifestIcon` from `@wuu/plugin-sdk`. Custom artwork only accepts
+  SVG, PNG, and WebP, up to 256 KiB per file; paths must stay inside the
+  plugin package and cannot be symbolic links. SVG rejects scripts, event
+  attributes, external references, and embedded documents. Wuu owns sizing,
+  selected state, accessibility, theme switching, and load-failure fallback;
+  plugins do not inject icon components through desktop modules.
+- `registerInspectorSection`: registers a short summary in the host
+  environment panel. Input is a frozen, versioned snapshot of public Session,
+  Turn, Workspace, Git, and Plan data; host actions only allow opening a
+  registered View or executing a registered Command. The host provides an
+  independent error boundary, max height, and overflow per section. Long
+  lists, editors, and complex interactions must go into `primary` or
+  `auxiliary` Views.
+- `api.ui`: a small host-provided UI Kit: `Page`, `Panel`, `Card`, `Section`,
+  `Stack`, `Row`, `Button`, `ToolbarToggle`, `TextInput`, `TextArea`,
+  `Checkbox`, `EmptyState`, `LoadingState`, `ErrorState`, and
+  `LiveDuration`. `Page` supports `comfortable`/`compact` density;
+  `LiveDuration` renders a compact, live-updating duration from cumulative
+  milliseconds and an optional run start. The host handles ARIA, loading
+  animation, error visuals, responsive spacing, and overflow for the state
+  components. Ordinary plugin pages should prefer these components, so they
+  automatically inherit the current appearance plugin's colors, fonts,
+  borders, radius, shadows, and density. Complex Views may still use
+  arbitrary React; canvas, terminal, and specialized previews can keep their
+  own theme boundaries. Plugins must not override UI Kit internal classes or
+  re-own the host's page margins and public control rhythm. Binary toggles in
+  the Composer toolbar should use `ToolbarToggle`; the host unifies
+  `aria-pressed`, hit area, focus, and active state.
+- `registerPresenter`: replaces a concrete product concept rather than a
+  broad region. Targets include `conversation.item`,
+  `conversation.process`, `conversation.tool-activity`,
+  `conversation.composer`, `header.conversation`, `header.workspace`,
+  `navigation.primary`, `app.status`, `content.preview`, and `settings`.
+  Presenters receive a frozen, versioned, sanitized snapshot, the native
+  fallback, and a host exposing only the actions available at that boundary;
+  only actions present in `host.actions` can be invoked.
+  `registerToolActivityPresenter` remains as the compatible Tool-specific
+  entry point.
+- `registerCommand`, `registerStatusItem`, `registerLocale`: commands, status
+  items, and localization.
+- `showConversationCard`: shows a plugin-rendered temporary interaction card
+  at the bottom of a conversation. Omit `threadId` to use the current
+  conversation; the returned handle can update the state or close the card.
+  Cards are not written into conversation history and never enter model
+  context; the host cleans them up when the plugin is disabled, unloaded, or
+  the app restarts.
+- `registerRenderer`: registers a content renderer by category
+  (`message`, `tool-result`, `document`, `file-preview`), matching specific
+  content with `match` and taking over rendering; `priority` decides ordering
+  when several plugins compete for the same content.
+- `registerThemeTokens`: applies public token overrides for a specific theme
+  from code (the runtime counterpart of a declarative theme); only public
+  semantic tokens can be modified.
+- `registerCSSSnippet`: injects a CSS snippet managed under the plugin's
+  scope, removed when the generation unloads.
+- `registerCleanup`: runs a cleanup callback when the generation unloads
+  (releasing external resources, unsubscribing, etc.).
+- In View render props, `host.getSetting`, `host.getStorage`,
+  `host.setStorage`: read declarative settings and read/write namespaced
+  persistent storage. When a View is mounted as a Settings page, `host.settings`
+  additionally provides `SettingsPageHostAPI` (`contractVersion: 1`), which
+  currently can read and write the host's `runtime.modelAliases` setting.
+
+## Slash actions and conversation cards
+
+A `runtime_action` in `contributes.commands` matches a command with the same
+ID registered by the desktop entry through `registerCommand`. The command
+appears in the Composer slash menu only when the plugin is approved, enabled,
+and the desktop command finished registering:
+
+```json
+{
+  "contributes": {
+    "commands": [{
+      "id": "show-status",
+      "title": "Show status",
+      "description": "Inspect the current plugin status",
+      "kind": "runtime_action",
+      "aliases": ["status"]
+    }]
+  }
+}
+```
+
+```js
+export function activate(api) {
+  let backgroundCard;
+
+  api.registerCommand({
+    id: "show-status",
+    title: "Show status",
+    execute(input) {
+      const card = api.showConversationCard({
+        threadId: input?.threadId,
+        title: "Plugin status",
+        state: { status: "ready" },
+        render({ state, dismiss }) {
+          return api.react.createElement(
+            api.ui.Stack,
+            { gap: "small" },
+            api.react.createElement("span", null, state.status),
+            api.react.createElement(api.ui.Button, { onClick: dismiss }, "Close"),
+          );
+        },
+      });
+      backgroundCard = card;
+    },
+  });
+
+  api.onHostEvent((event) => {
+    if (event?.kind === "notification" && event.message?.method === "turn/completed") {
+      backgroundCard?.update({ status: "last turn completed" });
+    }
+  });
+}
+```
+
+`onHostEvent` delivers app-server notifications shaped
+`{ kind, workdir, message: { method, params } }`; `method` uses real method
+names such as `turn/started`, `turn/queued`, `turn/completed`, and
+`turn/error`. The method-name constants are the `Notification*` definitions in
+`internal/appserver/protocol.go`, and the event types live in
+`packages/protocol`. The `turn/completed` handler above fires when the
+notification arrives; do not rely on any custom event name not listed in the
+documentation.
+
+Desktop plugins can also call `showConversationCard` directly from background
+events or their own async tasks, without a prior slash command. An explicit
+`threadId` places the card into another loaded conversation; omitting it uses
+the current conversation. The host owns the bottom position, shell, close
+button, error boundary, and plugin lifecycle; the plugin owns the card's
+internal UI and state.
+
+## Declarative CSS anchors
+
+Common host dialogs, menus, popovers, tooltips, notices, and floating
+navigation render through a protected Layer Host and expose stable
+`data-wuu-component`, `data-wuu-layer`, and `data-wuu-state` attributes.
+Drag previews, PDF ShadowRoot content, and plugin View panes remain
+specialized rendering boundaries.
+
+Major UI regions and controls expose public `data-wuu-component` anchors so
+element-level tweaks can go through CSS snippets instead of new theme tokens:
+`app-shell`, `sidebar`, `conversation-pane`, `settings-shell`,
+`settings-sidebar`, `settings-content`, `settings-page`, `skills-catalog`,
+`automations-catalog`, `workspace-panel`, `workspace-tool-tab`,
+`workspace-tool-tab-close`, `launch-view`, `turn`, `message`
+(distinguishing `data-wuu-variant="user" | "agent"`), `composer`,
+`composer-input`, and `composer-send` (distinguishing
+`data-wuu-state="send" | "stop"`). Workspace tabs expose
+`data-wuu-active="true" | "false"` plus transient
+`data-wuu-state="closing" | "dragging"` states. Message controls expose one host-owned
+`message-actions` group anchor, distinguished by
+`data-wuu-placement="persistent" | "overlay"`. Themes may tune the rhythm with
+`--wuu-message-actions-block-gap`, `--wuu-message-actions-overlay-gap`,
+`--wuu-message-actions-control-gap`, `--wuu-message-actions-inline-offset`,
+`--wuu-message-action-size`, and `--wuu-message-action-radius`; keyboard
+order, hit targets, responsive overflow, and the two placement semantics
+remain host-owned. Plugins should style the direct child buttons as one
+control family instead of building private styles per copy/like/edit action.
+The user-query bubble surface is separately exposed as `message-bubble` with
+the `user` variant, controlled by `--wuu-message-user-*` tokens.
+
+The plugin UI Kit exposes coarse anchors: `plugin-ui-page`, `plugin-ui-panel`,
+`plugin-ui-card`, `plugin-ui-section`, `plugin-ui-stack`, `plugin-ui-row`,
+`plugin-ui-button`, `plugin-ui-field`, `plugin-ui-input`,
+`plugin-ui-empty-state`, `plugin-ui-loading-state`, `plugin-ui-error-state`,
+and `plugin-ui-live-duration`. Appearance plugins should prefer public tokens
+and use these boundaries only when a structural treatment is necessary. This
+list is enforced by
+`desktop/src/renderer/plugins/ProductionSemanticAnchors.test.ts`; renaming an
+anchor is a breaking change.
+
+Trusted code plugins adding supplemental CSS should use only these public
+attributes and tokens, not private class names or DOM structure. Relying on
+private class names may work for local experiments but is not a compatibility
+promise.
+
+Raw CSS enters the host document as-is: selectors are not rewritten and there
+is no ShadowRoot/iframe isolation. `:root`, `body`, wildcard, or host
+selectors can affect the whole UI, so this is a high-trust Desktop capability,
+not a safe style sandbox for unknown third-party code.
+
+## Local development loop
+
+### Scaffolding and build
+
+```bash
+wuu plugin create my-plugin      # generate a skeleton
+wuu plugin validate .            # validate manifest and package structure
+wuu plugin build .               # run the package's build (if package.json exists)
+wuu plugin test .                # start the executable runtime and run public SDK contract checks
+wuu plugin pack .                # package a distributable zip
+```
+
+`wuu plugin create` generates `agent`, `desktop`, or `full` (both) skeletons.
+`wuu plugin test` reports check failures through a non-zero exit code, so it
+fits into CI.
+
+### Development-mode hot reload
+
+```bash
+wuu plugin dev .
+```
+
+`dev` authorizes **the current directory** as a development directory: on
+save it rebuilds, validates the candidate, and publishes an atomic
+generation, keeping the active generation's lease until the switch completes;
+if the build or activation fails, the previous generation stays. Directory
+authorization is development-only and never transfers to ordinary plugins
+installed from downloaded packages.
+
+### Install, review, and publish
+
+```bash
+wuu plugin install .                 # install from a directory
+wuu plugin pack .                    # or package for distribution
+wuu plugin install ./my-plugin-1.0.0.zip
+wuu plugin approve my-plugin         # review then approve
+wuu plugin enable my-plugin
+wuu plugin dev .                     # iterate during development
+```
+
+Installed code is only activated after the user approves it; any file change
+produces a new fingerprint, invalidating the previous approval and requiring a
+fresh review and approval. Installing the same ID again stages a pending
+update: the installed generation stays active until the new package is
+approved.
+
+### Examples
+
+[`examples/plugins/deep-ui`](../../../examples/plugins/deep-ui/) is a
+self-contained, directly installable example: it uses wrappers that preserve
+every host fallback while also demonstrating a declarative theme.
+
+[`examples/plugins/developer-loop`](../../../examples/plugins/developer-loop/)
+is a cross-surface acceptance example that depends only on the public SDK: it
+covers the agent runtime (request transform, tool registration), host
+actions, generation replacement, failure recovery, disposal, and unload, and
+demonstrates the complete development loop
+(install → build → test → dev → pack).
+
+[`examples/plugins/manga-studio`](../../../examples/plugins/manga-studio/) is
+a strong-style appearance stress test: it covers both the app shell and the
+Settings page, exercising theme tokens, the UI Kit, semantic anchors, and
+host layout ownership. It is not a reference for Wuu's default visual style.
+
+[`examples/plugins/tool-card-skin`](../../../examples/plugins/tool-card-skin/)
+demonstrates an appearance Presenter: it reads only the versioned
+`ToolActivitySnapshot`, keeps the native fallback, and never parses tool
+arguments or accesses loop-private state; it can be enabled and disabled
+independently of Manga Studio.
+
+## Version compatibility
+
+The promise that plugins keep working across Wuu minor versions (developers
+keep up without forking) is the platform's release gate and has not been
+verified yet: protocol and manifest compatibility anchors exist, but a
+previous-minor/current-minor SDK and host compatibility matrix is still
+missing. Until the matrix is verified, do not promise that plugins work
+across minor versions unconditionally; declare `minimum_wuu_version` when
+publishing and re-validate after Wuu upgrades.
+
+## Trust boundary and security core
+
+- Plugin packages are untrusted input: the Renderer never reads a plugin's
+  absolute path. Before every load, app-server reloads the manifest,
+  recomputes the whole-package fingerprint, and confirms the plugin is still
+  approved and enabled for the current workspace; the Electron main process
+  verifies the source digest again, then loads the module through a
+  content-addressed `wuu-plugin:` URL. The Content Security Policy does not
+  enable `unsafe-eval` or arbitrary local scripts.
+- Plugin management, approval, safe mode, crash recovery, the final boundary
+  of permission prompts, native windows, app-server lifecycle, generation
+  error isolation, and the user escape paths (Settings, disabling plugins,
+  restoring default UI) always stay under Wuu host control and are **never**
+  exposed to plugins through public interfaces.
+- When started with `WUU_SAFE_MODE=1`, `wuu app-server --safe-mode`, or the
+  Desktop `--safe-mode`, Wuu only discovers manifests for the plugin
+  management UI; it activates no plugin runtime, tool, skill, user automation
+  hook, or desktop module.
+- Declarative themes can only modify public semantic tokens;
+  `registerStyle` can use arbitrary CSS and is therefore only offered to
+  trusted desktop-code plugins.
+- Runtime processes share Wuu's user authority; enabling a third-party
+  runtime carries the same risk as running a third-party local command.
+  Check the source, command, and authorization state before installing and
+  enabling.

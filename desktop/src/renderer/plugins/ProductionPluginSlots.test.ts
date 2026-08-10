@@ -11,8 +11,7 @@ const PRODUCTION_SLOT_OWNERS = Object.freeze({
   "conversation.message.before": "../ThreadItemView.tsx",
   "conversation.message.after": "../ThreadItemView.tsx",
   "composer.above": "../ComposerView.tsx",
-  "composer.toolbar": "../ComposerView.tsx",
-  "settings.plugin": "../SettingsView.tsx",
+  "composer.toolbar": "./ComposerPluginToolbar.tsx",
 } as const);
 
 describe("production plugin slot mounts", () => {
@@ -21,13 +20,17 @@ describe("production plugin slot mounts", () => {
 
     for (const [slotId, owner] of Object.entries(PRODUCTION_SLOT_OWNERS)) {
       const source = readFileSync(new URL(owner, import.meta.url), "utf8");
-      expect(source, `${slotId} production owner`).toContain(`id="${slotId}"`);
+      expect(source, `${slotId} production owner`).toContain(`"${slotId}"`);
       expect(owner).not.toBe("../App.tsx");
     }
   });
 
   it("freezes sanitized context at every production owner", () => {
-    for (const owner of new Set(Object.values(PRODUCTION_SLOT_OWNERS))) {
+    // composer.toolbar mounts through ComposerPluginToolbar, but its context
+    // is frozen at the Composer provider that feeds the toolbar component.
+    const contextOwners = new Map<string, string>(Object.entries(PRODUCTION_SLOT_OWNERS));
+    contextOwners.set("composer.toolbar", "../ComposerView.tsx");
+    for (const owner of new Set(contextOwners.values())) {
       const source = readFileSync(new URL(owner, import.meta.url), "utf8");
       expect(source, owner).toContain("Object.freeze({");
     }

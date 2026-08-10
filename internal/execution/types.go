@@ -55,7 +55,6 @@ type Request struct {
 	AgentProfile     string    `json:"agent_profile,omitempty"`
 	MaxTurns         int       `json:"max_turns,omitempty"`
 	TimeoutMS        int64     `json:"timeout_ms,omitempty"`
-	Ultra            bool      `json:"ultra,omitempty"`
 	NoTools          bool      `json:"no_tools,omitempty"`
 	HasPrompt        bool      `json:"has_prompt"`
 	ImageCount       int       `json:"image_count,omitempty"`
@@ -68,7 +67,6 @@ type RuntimeManifest struct {
 	ProtocolVersion string    `json:"protocol_version"`
 	CoreVersion     string    `json:"core_version,omitempty"`
 	CoreCommit      string    `json:"core_commit,omitempty"`
-	Ultra           bool      `json:"ultra"`
 	MaxParallel     int       `json:"max_parallel"`
 }
 

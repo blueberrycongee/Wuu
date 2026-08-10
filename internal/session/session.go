@@ -193,17 +193,18 @@ func CreateWithWorktree(sessDir, id, cwd string, fork ForkMetadata, worktree Wor
 	return createWithMetadataAndWorktree(sessDir, id, cwd, fork, worktree, ManagedMetadata{})
 }
 
+// CreateManagedWithWorktree initializes a plugin-owned session in an isolated
+// workspace while preserving the same ownership and idempotency metadata as
+// every other host.session.create call.
+func CreateManagedWithWorktree(sessDir, id, cwd string, fork ForkMetadata, worktree WorktreeInfo, managed ManagedMetadata) (*Session, error) {
+	return createWithMetadataAndWorktree(sessDir, id, cwd, fork, worktree, managed)
+}
+
 func createWithMetadata(sessDir, id, cwd string, fork ForkMetadata, managed ManagedMetadata) (*Session, error) {
 	return createWithMetadataAndWorktree(sessDir, id, cwd, fork, WorktreeInfo{}, managed)
 }
 
 func createWithMetadataAndWorktree(sessDir, id, cwd string, fork ForkMetadata, worktree WorktreeInfo, managed ManagedMetadata) (*Session, error) {
-	db, err := openStore(sessDir)
-	if err != nil {
-		return nil, err
-	}
-	defer db.Close()
-
 	sessID := NewID()
 	if strings.TrimSpace(id) != "" {
 		sessID = strings.TrimSpace(id)
@@ -225,12 +226,51 @@ func createWithMetadataAndWorktree(sessDir, id, cwd string, fork ForkMetadata, w
 		ParentID: strings.TrimSpace(managed.ParentID), ContextSource: strings.TrimSpace(managed.ContextSource),
 		CreationRequestID: strings.TrimSpace(managed.CreationRequestID),
 	}
-	storeWriteMu.Lock()
-	defer storeWriteMu.Unlock()
-	if err := insertSession(db, *sess); err != nil {
+	return CreateInitialized(sessDir, *sess, nil)
+}
+
+// CreateInitialized commits a fully prepared session and its initial durable
+// history in one transaction. Callers must resolve external resources and all
+// pure validation before invoking it.
+func CreateInitialized(sessDir string, sess Session, records []HistoryRecord) (*Session, error) {
+	sess.ID = strings.TrimSpace(sess.ID)
+	if sess.ID == "" {
+		sess.ID = NewID()
+	}
+	now := time.Now().UTC()
+	if sess.CreatedAt.IsZero() {
+		sess.CreatedAt = now
+	}
+	if sess.UpdatedAt.IsZero() {
+		sess.UpdatedAt = now
+	}
+
+	db, err := openStore(sessDir)
+	if err != nil {
 		return nil, err
 	}
-	return sess, nil
+	defer db.Close()
+
+	storeWriteMu.Lock()
+	defer storeWriteMu.Unlock()
+
+	tx, err := db.Begin()
+	if err != nil {
+		return nil, fmt.Errorf("begin initialized session create: %w", err)
+	}
+	defer tx.Rollback()
+	if err := insertSessionTx(tx, sess); err != nil {
+		return nil, err
+	}
+	for index, record := range records {
+		if err := insertHistoryRecordTx(tx, sess.ID, index+1, record); err != nil {
+			return nil, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit initialized session create: %w", err)
+	}
+	return &sess, nil
 }
 
 // List reads sessions and returns the most recent sessions (up to limit).
@@ -940,6 +980,15 @@ func migrateSchema(db *sql.DB) error {
 			FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE CASCADE
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_session_messages_role ON session_messages(session_id, role, seq)`,
+		`CREATE TABLE IF NOT EXISTS plugin_turn_lifecycle_outbox (
+				plugin_id TEXT NOT NULL,
+				request_id TEXT NOT NULL,
+				payload_json TEXT NOT NULL,
+				updated_at TEXT NOT NULL,
+				PRIMARY KEY(plugin_id, request_id)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_plugin_turn_lifecycle_outbox_updated
+			ON plugin_turn_lifecycle_outbox(updated_at, plugin_id, request_id)`,
 		`CREATE TABLE IF NOT EXISTS held_user_work (
 				session_id TEXT NOT NULL,
 				position INTEGER NOT NULL,
@@ -959,6 +1008,26 @@ func migrateSchema(db *sql.DB) error {
 			replacement_json TEXT NOT NULL,
 			created_at      TEXT NOT NULL,
 			PRIMARY KEY(session_id, version),
+			FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE CASCADE
+		)`,
+		`CREATE TABLE IF NOT EXISTS session_driver_checkpoints (
+			session_id       TEXT PRIMARY KEY,
+			contract_version INTEGER NOT NULL,
+			driver_id        TEXT NOT NULL,
+			driver_version   TEXT NOT NULL,
+			state_json       TEXT NOT NULL,
+			updated_at       TEXT NOT NULL,
+			FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE CASCADE
+		)`,
+		`CREATE TABLE IF NOT EXISTS session_model_input_receipts (
+			session_id       TEXT NOT NULL,
+			operation_id     TEXT NOT NULL,
+			contract_version INTEGER NOT NULL,
+			driver_id        TEXT NOT NULL,
+			driver_version   TEXT NOT NULL,
+			receipt_json     TEXT NOT NULL,
+			created_at       TEXT NOT NULL,
+			PRIMARY KEY(session_id, operation_id),
 			FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE CASCADE
 		)`,
 		`CREATE TABLE IF NOT EXISTS participants (
@@ -1425,8 +1494,8 @@ func addColumnIfMissing(db *sql.DB, table, column, definition string) error {
 	return nil
 }
 
-func insertSession(db *sql.DB, sess Session) error {
-	_, err := db.Exec(insertSessionSQL(), sessionArgs(sess)...)
+func insertSessionTx(tx *sql.Tx, sess Session) error {
+	_, err := tx.Exec(insertSessionSQL(), sessionArgs(sess)...)
 	if err != nil {
 		return fmt.Errorf("insert session: %w", err)
 	}

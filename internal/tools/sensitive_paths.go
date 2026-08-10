@@ -44,17 +44,11 @@ func isSensitivePath(path string) bool {
 	return ok
 }
 
-// isAgentRuntimeMetadataPath reports whether the absolute path lives under
-// the agent's own runtime metadata directory (statepath.Home, i.e. ~/.wuu
-// or $WUU_HOME). These paths hold agent-owned state — the user memory
-// notebook, session artifacts, runtime caches — not user content.
-//
-// Treating them with the same rules as workspace files makes the agent
-// forgetful across sessions, which is a product defect rather than a
-// safety property. They are exempt from the sensitive-path gate and the
-// workspace-root gate when the active boundary permits mutations.
-// Read-only mode keeps the gate to preserve strict side-effect isolation.
-func isAgentRuntimeMetadataPath(absPath string) bool {
+// isNamedAgentIdentityNotebookPath reports whether an absolute path belongs
+// to a collaboration named agent's identity notebook. This is the only core
+// file-tool exception under WUU_HOME: user and session memory belongs to the
+// Memory plugin and must be reached through that plugin's tools.
+func isNamedAgentIdentityNotebookPath(absPath string) bool {
 	if strings.TrimSpace(absPath) == "" {
 		return false
 	}
@@ -62,38 +56,13 @@ func isAgentRuntimeMetadataPath(absPath string) bool {
 	if err != nil {
 		return false
 	}
-	runtimeDir := filepath.ToSlash(filepath.Clean(home))
-	if runtimeDir == "" || runtimeDir == "." {
-		return false
-	}
-	normalized := filepath.ToSlash(filepath.Clean(absPath))
-	return normalized == runtimeDir ||
-		strings.HasPrefix(normalized, runtimeDir+"/")
-}
-
-// isAgentMemoryNotebookPath reports whether an absolute path belongs to a
-// user or named-agent memory notebook. Unlike the broader runtime metadata
-// exemption, this excludes credentials, configuration, session artifacts,
-// and caches stored elsewhere under WUU_HOME.
-func isAgentMemoryNotebookPath(absPath string) bool {
-	if strings.TrimSpace(absPath) == "" {
-		return false
-	}
-	home, err := statepath.Home("")
-	if err != nil {
-		return false
-	}
-	if pathWithinRoot(filepath.Join(home, "memory"), absPath) {
-		return true
-	}
-
-	participantsDir := filepath.Join(home, "participants")
-	rel, err := filepath.Rel(participantsDir, absPath)
+	agentsDir := filepath.Join(home, "channels", "agents")
+	rel, err := filepath.Rel(agentsDir, absPath)
 	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		return false
 	}
 	parts := strings.Split(filepath.ToSlash(rel), "/")
-	return len(parts) >= 3 && strings.TrimSpace(parts[0]) != "" && parts[1] == "memory"
+	return len(parts) >= 2 && strings.TrimSpace(parts[0]) != "" && parts[1] == "memory"
 }
 
 // wuuCredentialFileNames are the app's own credential files at the root of
@@ -149,7 +118,7 @@ func rejectSensitiveReadPath(env *Env, toolName, absPath string) error {
 	if env.BypassToolHardProtections() {
 		return nil
 	}
-	if env.AllowMutations && isAgentMemoryNotebookPath(absPath) {
+	if env.AllowMutations && isNamedAgentIdentityNotebookPath(absPath) {
 		return nil
 	}
 	displayPath := env.NormalizeDisplayPath(absPath)
@@ -165,9 +134,10 @@ func rejectSensitiveToolPath(env *Env, toolName, action, absPath string) error {
 	}
 	// Sensitive-path writes stay blocked in every mode, including
 	// unconfined: lifting the path boundary does not lift secret guards.
-	// Agent's own runtime metadata is allowed when the boundary permits
-	// mutations. Read-only mode keeps the gate (env.AllowMutations == false).
-	if env.AllowMutations && isAgentRuntimeMetadataPath(absPath) {
+	// A named agent's identity notebook is explicit collaboration state and is
+	// included in that agent's file scope. Other WUU_HOME state stays behind
+	// dedicated core or plugin APIs.
+	if env.AllowMutations && isNamedAgentIdentityNotebookPath(absPath) {
 		return nil
 	}
 	displayPath := env.NormalizeDisplayPath(absPath)

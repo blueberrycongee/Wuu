@@ -83,7 +83,7 @@ export function VoiceInputSettingsSection({
           {t("settings.voice.description")}
         </p>
       </header>
-      <div className="settings-card">
+      <div className="settings-group">
         {!supported ? (
           <VoiceSettingsRow
             title={t("settings.voice.platform")}

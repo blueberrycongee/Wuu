@@ -183,7 +183,6 @@ import type { SettingsPage } from "./SettingsView";
 import {
   ENABLE_GROUP_CHAT,
   ENABLE_MANAGEMENT_ASSISTANT,
-  ENABLE_ULTRA_MODE,
 } from "./FeatureFlags";
 import { ArchiveTip } from "./ArchiveTip";
 import { TopNotice } from "./TopNotice";
@@ -196,10 +195,6 @@ import { useSettingsRuntimeState } from "./SettingsRuntimeState";
 import { SidePanelToggleIcon } from "./SidePanelToggleIcon";
 import { JumpToLatestPill } from "./JumpToLatestPill";
 import { SkillsCatalog } from "./SkillsCatalog";
-import {
-  AutomationsCatalog,
-  type AutomationDetailPaneLayout,
-} from "./AutomationsCatalog";
 import { skillsAssistantPrompt, userVisibleThreads } from "./SkillsAssistant";
 import { runDebugPhaseForState } from "./RunDebugPanel";
 import { useBrowserVisibility } from "./BrowserVisibility";
@@ -223,16 +218,12 @@ import {
   desktopWorkbenchController,
   useDesktopPluginRuntime,
 } from "./plugins/DesktopPluginRuntime";
-import { DesktopWorkbench, PluginSurface } from "./plugins";
+import { DesktopWorkbench } from "./plugins";
 import { WINDOW_RESIZING_CLASS } from "./WindowResizeState";
 import { useComposerDraftState } from "./ComposerDraftState";
 import { useComposerPendingState } from "./ComposerPendingState";
 import { useSidebarDrawerState } from "./SidebarDrawerState";
-import {
-  mergeSidebarThreadSnapshots,
-  threadsForDesktopProject,
-  useSidebarProjectState,
-} from "./SidebarProjectState";
+import { useSidebarProjectState } from "./SidebarProjectState";
 import { useViewSwitchState } from "./ViewSwitchState";
 import { turnTelemetryStore } from "./TurnTelemetryStore";
 import {
@@ -416,8 +407,6 @@ export function App(): JSX.Element {
   });
   const [rightPanelManualGlobalized, setRightPanelManualGlobalized] =
     useState(false);
-  const [automationDetailPaneLayout, setAutomationDetailPaneLayout] =
-    useState<AutomationDetailPaneLayout>({ open: false, reservedWidth: 0 });
   const rightPanelAutoGlobalized =
     rightPanelOpen && workspaceRightPanelAutoGlobalized;
   const rightPanelGlobalized =
@@ -667,7 +656,7 @@ export function App(): JSX.Element {
     workspaceRightPanelDockableWithoutSidebar,
   ]);
   const revealConversationFromFocusedWorkspace = useCallback((): void => {
-    desktopWorkbenchController.deactivatePane("main");
+    desktopWorkbenchController.deactivateRegion("primary");
     if (!rightPanelGlobalized) {
       return;
     }
@@ -726,14 +715,6 @@ export function App(): JSX.Element {
   const dismissModelCatalogTip = useCallback(() => {
     setModelCatalogTip(null);
   }, []);
-  // Mirrors `archiveConfirmSubagentID` (legacy confirm state) for the
-  // info-panel subagent rows. The state lives in App rather than the panel
-  // so the "press again to confirm" survives the panel being toggled off
-  // and on, and so a single archive button click in either surface is
-  // consistent.
-  const [archiveConfirmSubagentID, setArchiveConfirmSubagentID] = useState<
-    string | undefined
-  >(undefined);
   // When the user clicks "分叉" on a non-latest user message, the fork
   // picker dialog asks whether to stay local or fork into a new worktree.
   // Holding the source thread snapshot in state lets the dialog callback
@@ -808,6 +789,7 @@ export function App(): JSX.Element {
     removePendingComposerMessageByID,
     syncPendingComposerMessagesFromServerEvent,
     reconcilePendingComposerMessagesForState,
+    seedHeldComposerMessages,
     enqueueComposerMessage,
     removeQueuedMessage,
     removeGuideMessage,
@@ -1011,6 +993,10 @@ export function App(): JSX.Element {
       : undefined;
   const activeThread = activeThreadForState(state);
   const activeThreadID = activeThread?.id;
+  useEffect(() => {
+    desktopPluginHost.setActiveConversationThread(activeThreadID);
+    return () => desktopPluginHost.setActiveConversationThread(undefined);
+  }, [activeThreadID]);
   const activeTabKind = activeSessionTab(state)?.kind;
   const environmentContext = workspacePanelContext(state.activeContext, activeThread);
   const sideThread = useSideThreadController({
@@ -1505,7 +1491,11 @@ export function App(): JSX.Element {
           if (!mounted) {
             return;
           }
-          setState((current) => ({ ...current, ...loadedState }));
+          const { heldComposerMessages, ...runtimeAppState } = loadedState;
+          setState((current) => ({ ...current, ...runtimeAppState }));
+          if (loadedState.thread && heldComposerMessages?.length) {
+            seedHeldComposerMessages(loadedState.thread.id, heldComposerMessages);
+          }
           return;
         }
         const listedProjects = await window.wuu.listProjects();
@@ -1516,9 +1506,13 @@ export function App(): JSX.Element {
         if (!mounted) {
           return;
         }
+        const { heldComposerMessages, ...runtimeAppState } = loadedState;
         setState((current) =>
-          withLoadedRuntimeSessionTab(current, loadedState),
+          withLoadedRuntimeSessionTab(current, runtimeAppState),
         );
+        if (loadedState.thread && heldComposerMessages?.length) {
+          seedHeldComposerMessages(loadedState.thread.id, heldComposerMessages);
+        }
       } catch (error) {
         if (!mounted) {
           return;
@@ -1631,12 +1625,7 @@ export function App(): JSX.Element {
     !previewingLaunch &&
     currentSessionTab?.kind === "skills",
   );
-  const showingAutomationsCatalog = Boolean(
-    state.initialized &&
-    !previewingLaunch &&
-    currentSessionTab?.kind === "automations",
-  );
-  const showingManagementCatalog = showingSkillsCatalog || showingAutomationsCatalog;
+  const showingManagementCatalog = showingSkillsCatalog;
   const skillsAssistantThread = skillsAssistantThreadID
     ? state.threads.find((thread) => thread.id === skillsAssistantThreadID)
     : undefined;
@@ -1645,8 +1634,6 @@ export function App(): JSX.Element {
   );
   const activeTitle = showingSkillsCatalog
     ? t("skills.title")
-    : showingAutomationsCatalog
-      ? t("automations.title")
     : currentSessionTab?.kind === "channel-room"
       ? currentSessionTab.title
       : currentSessionTab?.kind === "agents"
@@ -1995,30 +1982,7 @@ export function App(): JSX.Element {
   const rememberWorkspaceDirtyFiles = useStableCallback((dirty: boolean): void => {
     workspaceHasDirtyFilesRef.current = dirty;
   });
-  const sidebarProjectThreadsByProjectID = useMemo(() => {
-    if (state.activeContext?.kind !== "project" || !state.activeProjectId) {
-      return projectThreadsByProjectID;
-    }
-    const activeProject = state.projects.find(
-      (project) => project.id === state.activeProjectId,
-    );
-    if (!activeProject) {
-      return projectThreadsByProjectID;
-    }
-    return {
-      ...projectThreadsByProjectID,
-      [state.activeProjectId]: mergeSidebarThreadSnapshots(
-        projectThreadsByProjectID[state.activeProjectId],
-        threadsForDesktopProject(state.threads, activeProject),
-      ),
-    };
-  }, [
-    projectThreadsByProjectID,
-    state.activeContext?.kind,
-    state.activeProjectId,
-    state.projects,
-    state.threads,
-  ]);
+  const sidebarProjectThreadsByProjectID = projectThreadsByProjectID;
   const sidebarThreads = useMemo(() => {
     const byID = new Map<string, Thread>();
     for (const thread of cachedScratchThreads) {
@@ -2338,28 +2302,6 @@ export function App(): JSX.Element {
     });
     const streamStatus = activeThreadStreamStatus;
     return (
-      <PluginSurface
-        host={desktopPluginHost}
-        id="conversation.composer"
-        context={{
-          version: 1,
-          variant,
-          prompt,
-          running: activeThreadIsRunning,
-          readOnly: activeThreadReadOnly,
-          activeThreadId: activeThread?.id,
-          actions: {
-            setPrompt,
-            send: (value?: string) => void sendPrompt("queue", value),
-            interrupt: () => void interrupt(),
-            startNewThread: startNewThreadWithComposerFocus,
-            openSettings: () => {
-              setSettingsInitialPage("providers");
-              setSettingsOpen(true);
-            },
-          },
-        }}
-        fallback={
       <Composer
         variant={variant}
         mainConversation
@@ -2374,14 +2316,6 @@ export function App(): JSX.Element {
         running={
           (!activeThreadReadOnly && activeThreadIsRunning) ||
           viewContextSwitchPending
-        }
-        ultraEnabled={ENABLE_ULTRA_MODE && Boolean(state.initialized?.ultra)}
-        onToggleUltra={
-          ENABLE_ULTRA_MODE
-            ? (enabled) => {
-                void updateUltraMode(enabled).catch(() => undefined);
-              }
-            : undefined
         }
         runtimeControlsDisabled={
           (!activeThreadReadOnly && activeThreadIsRunning) ||
@@ -2456,7 +2390,6 @@ export function App(): JSX.Element {
           setSettingsInitialPage("providers");
           setSettingsOpen(true);
         }}
-        onOpenMemorySettings={() => openMemorySettings()}
         onOpenSkillsCatalog={openSkillsTab}
         onSelectProject={(id) => void selectProjectForNewThread(id)}
         onSelectNoProject={() => void useNoProject(false)}
@@ -2491,8 +2424,6 @@ export function App(): JSX.Element {
         onInterrupt={() => void interrupt()}
         queryHistorySessionID={activeThread?.id}
         queryHistory={queryTextsForThread(activeThread)}
-      />
-        }
       />
     );
   }
@@ -2988,15 +2919,10 @@ export function App(): JSX.Element {
     archiveThread,
     unarchiveThread,
     deleteThread,
-    toggleSubagentPinned,
-    archiveSubagent,
   } = createThreadMutationActions({
     getAppState: () => appStateRef.current,
     setAppState: setState,
     getActiveThreadID: () => activeThreadID,
-    getArchiveConfirmSubagentID: () => archiveConfirmSubagentID,
-    
-    setArchiveConfirmSubagentID,
     localDemoThreadsRef,
     nextDraftSessionTab,
     clearPrimaryComposerDraft: () =>
@@ -3035,7 +2961,6 @@ export function App(): JSX.Element {
 
   const {
     updateRuntimeSettings,
-    updateUltraMode,
     updateAdvancedSettings,
     updateGeneralSettings,
     removeProvider,
@@ -3060,13 +2985,11 @@ export function App(): JSX.Element {
   });
 
   const {
-    openAutomationsTab,
     openSkillsTab,
     dismissContextCompositionEntry,
     dismissInstructionFilesEntry,
     openInstructions,
     openContextComposition,
-    openMemorySettings,
   } = createWorkspaceActions({
     getAppState: () => appStateRef.current,
     setAppState: setState,
@@ -3087,7 +3010,6 @@ export function App(): JSX.Element {
   });
 
   const {
-    seedAgentTreeDemo,
     seedConversationFixture,
     seedPlanPanelDebug,
     activateConversationPane,
@@ -4031,18 +3953,6 @@ export function App(): JSX.Element {
         {archiveTipNode}
         {checkoutErrorTipNode}
         {modelCatalogTipNode}
-        <PluginSurface
-          host={desktopPluginHost}
-          id="view.settings"
-          context={{
-            version: 1,
-            page: settingsInitialPage,
-            actions: {
-              close: () => setSettingsOpen(false),
-              toggleSidebar,
-            },
-          }}
-          fallback={
         <SettingsShellRenderer
           initialized={sessionRuntime}
           initialPage={settingsInitialPage}
@@ -4098,8 +4008,6 @@ export function App(): JSX.Element {
           onUnarchiveThread={(thread) => void unarchiveThread(thread)}
           onUnarchiveRoom={unarchiveChannelRoom}
         />
-          }
-        />
       </>
     );
   }
@@ -4110,30 +4018,6 @@ export function App(): JSX.Element {
       {checkoutErrorTipNode}
       {modelCatalogTipNode}
       <ImagePreviewProvider>
-        <PluginSurface
-          host={desktopPluginHost}
-          id="app.shell"
-          context={{
-            version: 1,
-            initialized: Boolean(state.initialized),
-            poppedOutMode,
-            workspaceRoot: state.initialized?.workspace_root,
-            activeThreadId: activeThreadID,
-            actions: {
-              openSettings: () => {
-                setSettingsInitialPage("providers");
-                setSettingsOpen(true);
-              },
-              startNewThread: () => {
-                revealConversationFromFocusedWorkspace();
-                startNewThreadWithComposerFocus();
-              },
-              openSkills: openSkillsTab,
-              openAutomations: openAutomationsTab,
-              toggleSidebar,
-            },
-          }}
-          fallback={
         <div
           ref={appShellRef}
           className={shellClassName}
@@ -4172,26 +4056,6 @@ export function App(): JSX.Element {
               </button>
             </div>
           ) : null}
-          <PluginSurface
-            host={desktopPluginHost}
-            id="app.sidebar"
-            context={{
-              version: 1,
-              activeThreadId: activeThreadID,
-              activeProjectId: state.activeProjectId,
-              collapsed: sidebarDrawerMode,
-              actions: {
-                openSettings: () => {
-                  setSettingsInitialPage("providers");
-                  setSettingsOpen(true);
-                },
-                startNewThread: startNewThreadWithComposerFocus,
-                openSkills: openSkillsTab,
-                openAutomations: openAutomationsTab,
-                toggleSidebar,
-              },
-            }}
-            fallback={
           <AppSidebar
             state={state}
             sidebarProjects={sidebarProjects}
@@ -4222,9 +4086,6 @@ export function App(): JSX.Element {
             onOpenSkillsTab={() => {
               openSkillsTab();
             }}
-            onOpenAutomationsTab={() => {
-              openAutomationsTab();
-            }}
             groupChatEnabled={ENABLE_GROUP_CHAT}
             channelRooms={sidebarChannelRooms}
             pinnedChannelRooms={pinnedChannelRooms}
@@ -4239,7 +4100,6 @@ export function App(): JSX.Element {
             onCreateChannelRoom={openNewChannelRoom}
             onToggleConversationSearch={toggleConversationSearch}
             onSeedConversationFixture={seedConversationFixture}
-            onSeedAgentTreeDemo={seedAgentTreeDemo}
             onOpenChipGallery={() => setChipGalleryOpen(true)}
             onSelectThread={(id) => {
               revealConversationFromFocusedWorkspace();
@@ -4302,8 +4162,6 @@ export function App(): JSX.Element {
               setSettingsOpen(true);
             }}
           />
-            }
-          />
 
           {sidebarDrawerMode ? null : (
             <div
@@ -4340,27 +4198,6 @@ export function App(): JSX.Element {
             </>
           ) : null}
 
-      <PluginSurface
-        host={desktopPluginHost}
-        id="app.main"
-        context={{
-          version: 1,
-          view: previewingLaunch
-            ? "launch"
-            : showingManagementCatalog
-              ? "catalog"
-              : "conversation",
-          initialized: Boolean(state.initialized),
-          activeThreadId: activeThreadID,
-          actions: {
-            startNewThread: startNewThreadWithComposerFocus,
-            openSettings: () => {
-              setSettingsInitialPage("providers");
-              setSettingsOpen(true);
-            },
-          },
-        }}
-        fallback={
       <main
         inert={rightPanelOpen && rightPanelGlobalized}
         data-wuu-component="conversation-pane"
@@ -4372,21 +4209,12 @@ export function App(): JSX.Element {
           showingSkillsCatalog && ENABLE_MANAGEMENT_ASSISTANT
             ? " skills-assistant-visible"
             : ""
-        }${
-          showingAutomationsCatalog && automationDetailPaneLayout.open
-            ? " automation-detail-pane-open"
-            : ""
         }`}
-        style={showingAutomationsCatalog && automationDetailPaneLayout.open
-          ? {
-              "--automation-detail-reserved-width": `${automationDetailPaneLayout.reservedWidth}px`,
-            } as CSSProperties
-          : undefined}
         ref={conversationPaneRef}
       >
         {ENABLE_GROUP_CHAT && channelsOpen ? (
           <>
-            <header className="titlebar">
+            <header className="titlebar" data-wuu-component="conversation-titlebar">
               <div className="title-block channel-title-block">
                 {sidebarVisible ? (
                   <button
@@ -4457,7 +4285,7 @@ export function App(): JSX.Element {
           </>
         ) : (
           <>
-        <header className="titlebar">
+        <header className="titlebar" data-wuu-component="conversation-titlebar">
           <div className="title-block">
             {sidebarVisible ? (
               <button
@@ -4582,18 +4410,6 @@ export function App(): JSX.Element {
           onOpenPullRequest={() => openEnvironmentDialog("pull-request")}
           rightPanelFilePath={rightPanelFilePath}
           onCloseFilePreview={handleCloseFilePreview}
-          activeThread={activeThread}
-          archiveConfirmSubagentID={archiveConfirmSubagentID}
-          onSelectChildAgent={(agent) => void selectChildAgent(agent)}
-          onToggleSubagentPinned={(agent) =>
-            void toggleSubagentPinned(agent)
-          }
-          onArchiveSubagent={(agent) => void archiveSubagent(agent)}
-          onClearSubagentArchiveConfirm={(id) =>
-            setArchiveConfirmSubagentID((current) =>
-              current === id ? undefined : current,
-            )
-          }
           viewContextSwitchPending={viewContextSwitchPending}
         />
 
@@ -4632,23 +4448,12 @@ export function App(): JSX.Element {
           <div
             className={`scroll-region${emptyConversation ? " empty-scroll-region" : ""}${
               splitConversation ? " split-scroll-region" : ""
-            }${showingManagementCatalog ? " skills-scroll-region" : ""}${
-              showingAutomationsCatalog ? " automations-scroll-region" : ""
-            }`}
+            }${showingManagementCatalog ? " skills-scroll-region" : ""}`}
             onScroll={(event) => handleConversationScroll(event.currentTarget)}
             ref={conversationScrollRef}
           >
             <div ref={scrollContentRef} className="scroll-region-content">
               {showingSkillsCatalog ? (
-              <PluginSurface
-                host={desktopPluginHost}
-                id="view.catalog"
-                context={{
-                  version: 1,
-                  kind: "skills",
-                  actions: { refresh: refreshExtensionCatalog, install: installPluginPackage },
-                }}
-                fallback={
               <SkillsCatalog
                 activeContext={state.activeContext}
                 extensionInventory={state.initialized?.extension_inventory}
@@ -4658,33 +4463,7 @@ export function App(): JSX.Element {
                 onInstallPluginPackage={installPluginPackage}
                 onRemovePluginPackage={removePluginPackage}
               />
-                }
-              />
-            ) : showingAutomationsCatalog ? (
-              <PluginSurface
-                host={desktopPluginHost}
-                id="view.catalog"
-                context={{ version: 1, kind: "automations" }}
-                fallback={
-              <AutomationsCatalog
-                projects={state.projects}
-                onDetailPaneLayoutChange={setAutomationDetailPaneLayout}
-              />
-                }
-              />
             ) : (
-              <PluginSurface
-                host={desktopPluginHost}
-                id="view.conversation"
-                context={{
-                  version: 1,
-                  activeThreadId: activeThreadID,
-                  empty: emptyConversation,
-                  split: splitConversation,
-                  readOnly: activeThreadReadOnly,
-                  actions: { startNewThread: startNewThreadWithComposerFocus },
-                }}
-                fallback={
               <>
                 {!activeThreadReadOnly ? (
                   <QueryHistoryRail
@@ -4801,8 +4580,6 @@ export function App(): JSX.Element {
               />
             )}
               </>
-                }
-              />
             )}
             </div>
             {mainConversationDockVisible ? (
@@ -4814,23 +4591,10 @@ export function App(): JSX.Element {
             ) : null}
           </div>
         ) : (
-          <PluginSurface
-            host={desktopPluginHost}
-            id="view.launch"
-            context={{
-              version: 1,
-              initialized: Boolean(state.initialized),
-              status: resolveLocalizedText(state.status),
-              preview: previewingLaunch,
-              actions: { exitPreview: () => setLaunchPreviewPinned(false) },
-            }}
-            fallback={
-              <RuntimeLoading
-                status={resolveLocalizedText(state.status)}
-                pinned={previewingLaunch}
-                onExitPreview={() => setLaunchPreviewPinned(false)}
-              />
-            }
+          <RuntimeLoading
+            status={resolveLocalizedText(state.status)}
+            pinned={previewingLaunch}
+            onExitPreview={() => setLaunchPreviewPinned(false)}
           />
         )}
 
@@ -4900,23 +4664,7 @@ export function App(): JSX.Element {
           </>
         )}
       </main>
-        }
-      />
 
-      <PluginSurface
-        host={desktopPluginHost}
-        id="app.auxiliary"
-        context={{
-          version: 1,
-          open: rightPanelOpen,
-          activeViewId: workspaceActiveViewTabID,
-          globalized: rightPanelGlobalized,
-          actions: {
-            close: () => setRightPanelOpenWithMotion(false),
-            toggle: toggleRightPanel,
-          },
-        }}
-        fallback={
       <>
       {!poppedOutMode && (rightPanelOpen || rightPanelAnimating) ? (
         <div
@@ -4935,22 +4683,6 @@ export function App(): JSX.Element {
         />
       ) : null}
       {poppedOutMode ? null : (
-        <PluginSurface
-          host={desktopPluginHost}
-          id="view.workspace"
-          context={{
-            version: 1,
-            open: rightPanelOpen,
-            activeViewId: workspaceActiveViewTabID,
-            activeFilePath: activeWorkspaceFile,
-            globalized: rightPanelGlobalized,
-            actions: {
-              close: () => setRightPanelOpenWithMotion(false),
-              openFile: openWorkspaceFile,
-              openTool: openWorkspaceTool,
-            },
-          }}
-          fallback={
         <WorkspaceRightPanel
           open={rightPanelOpen}
           present={rightPanelOpen || rightPanelAnimating}
@@ -5013,12 +4745,8 @@ export function App(): JSX.Element {
           pluginHost={desktopPluginHost}
           workbenchController={desktopWorkbenchController}
         />
-          }
-        />
       )}
       </>
-        }
-      />
       {environmentDialog === "commit" ? (
         <CommitChangesDialog
           gitStatus={state.gitStatus}
@@ -5069,17 +4797,6 @@ export function App(): JSX.Element {
           </div>
         </FloatingMenuPortal>
       ) : null}
-      <PluginSurface
-        host={desktopPluginHost}
-        id="app.status"
-        context={{
-          version: 1,
-          initialized: Boolean(state.initialized),
-          running: activeThreadIsRunning,
-          status: resolveLocalizedText(state.status),
-        }}
-        fallback={null}
-      />
       <DesktopWorkbench
         host={desktopPluginHost}
         controller={desktopWorkbenchController}
@@ -5110,8 +4827,6 @@ export function App(): JSX.Element {
         }}
       />
       </div>
-          }
-        />
     </ImagePreviewProvider>
     </>
   );

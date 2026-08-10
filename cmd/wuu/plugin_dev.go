@@ -484,6 +484,8 @@ func runPluginPack(args []string) error {
 // DevAuthorization records a one-time dev directory grant.
 type DevAuthorization = pluginpkg.DevAuthorization
 
+var errDevGenerationBusy = errors.New("plugin executions currently own the active generation")
+
 func runPluginDevMode(args []string) error {
 	fs := flag.NewFlagSet("plugin dev", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
@@ -523,9 +525,13 @@ func runPluginDevMode(args []string) error {
 
 	fmt.Printf("Dev mode authorized for %s\n", pluginID)
 	fmt.Printf("  directory:  %s\n", dir)
+	initialRefreshPending := false
 	if diagnostic, err := refreshDevGeneration(wuuHome, dir, strings.TrimSpace(*packageManager)); err != nil {
 		printDevDiagnostic(diagnostic)
-		return pluginCLIError(err)
+		if !*watch || !errors.Is(err, errDevGenerationBusy) {
+			return pluginCLIError(err)
+		}
+		initialRefreshPending = true
 	} else {
 		printDevDiagnostic(diagnostic)
 	}
@@ -535,14 +541,15 @@ func runPluginDevMode(args []string) error {
 	}
 
 	if *watch {
-		watchDevDirFS(wuuHome, dir, strings.TrimSpace(*packageManager), *pollInterval)
+		watchDevDirFS(wuuHome, dir, strings.TrimSpace(*packageManager), *pollInterval, initialRefreshPending)
 	}
 
 	return nil
 }
 
-func watchDevDir(wuuHome, dir, packageManager string, interval time.Duration) {
+func watchDevDir(wuuHome, dir, packageManager string, interval time.Duration, initialPending bool) {
 	lastMod := latestPluginSourceModTime(dir)
+	pending := initialPending
 
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
@@ -551,10 +558,18 @@ func watchDevDir(wuuHome, dir, packageManager string, interval time.Duration) {
 	for range ticker.C {
 		latest := latestPluginSourceModTime(dir)
 		if latest.After(lastMod) {
-			lastMod = latest
-			diagnostic, _ := refreshDevGeneration(wuuHome, dir, packageManager)
-			printDevDiagnostic(diagnostic)
+			pending = true
 		}
+		if !pending {
+			continue
+		}
+		diagnostic, err := refreshDevGeneration(wuuHome, dir, packageManager)
+		if errors.Is(err, errDevGenerationBusy) {
+			continue
+		}
+		printDevDiagnostic(diagnostic)
+		pending = false
+		lastMod = latest
 	}
 }
 
@@ -616,6 +631,17 @@ func authorizeDevDirectory(devDir, pluginID, directory string) error {
 }
 
 func refreshDevGeneration(wuuHome, dir, packageManager string) (pluginDiagnostic, error) {
+	probe, acquired, err := session.TryAcquirePluginGenerationMutationLease(wuuHome)
+	if err != nil {
+		return pluginDiagnostic{Level: "fail", Check: "dev.mutation", Message: err.Error()}, fmt.Errorf("dev generation mutation check failed; previous generation preserved: %w", err)
+	}
+	if !acquired {
+		return pluginDiagnostic{Level: "fail", Check: "dev.mutation", Message: errDevGenerationBusy.Error()}, fmt.Errorf("dev generation refresh deferred; previous generation preserved: %w", errDevGenerationBusy)
+	}
+	if err := probe.Release(); err != nil {
+		return pluginDiagnostic{Level: "fail", Check: "dev.mutation", Message: err.Error()}, fmt.Errorf("release dev generation mutation check: %w", err)
+	}
+
 	if err := executePluginBuild(dir, packageManager); err != nil {
 		return pluginDiagnostic{Level: "fail", Check: "dev.build", Message: err.Error()}, fmt.Errorf("dev build failed; previous generation preserved: %w", err)
 	}
@@ -644,8 +670,7 @@ func refreshDevGeneration(wuuHome, dir, packageManager string) (pluginDiagnostic
 		return pluginDiagnostic{Level: "fail", Check: "dev.mutation", Message: err.Error()}, fmt.Errorf("dev generation mutation failed; previous generation preserved: %w", err)
 	}
 	if !acquired {
-		err := errors.New("plugin executions currently own the active generation")
-		return pluginDiagnostic{Level: "fail", Check: "dev.mutation", Message: err.Error()}, fmt.Errorf("dev generation refresh refused; previous generation preserved: %w", err)
+		return pluginDiagnostic{Level: "fail", Check: "dev.mutation", Message: errDevGenerationBusy.Error()}, fmt.Errorf("dev generation refresh deferred; previous generation preserved: %w", errDevGenerationBusy)
 	}
 	defer lease.Release()
 	epoch, err := lease.Advance()

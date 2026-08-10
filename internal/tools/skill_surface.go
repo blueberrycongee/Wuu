@@ -80,9 +80,6 @@ func isKnownSurfaceSkillTool(name string) bool {
 		"bash", "git",
 		"tool_search", "load_skill",
 		"web_fetch", "web_search",
-		"session_memory",
-		"update_plan",
-		"cron",
 		"wuu_browser",
 		"list_agent_profiles", "create_agent_profile":
 		return true

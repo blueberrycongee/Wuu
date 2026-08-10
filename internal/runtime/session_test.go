@@ -26,7 +26,6 @@ import (
 	"github.com/blueberrycongee/wuu/internal/harness"
 	"github.com/blueberrycongee/wuu/internal/hooks"
 	"github.com/blueberrycongee/wuu/internal/mcp"
-	"github.com/blueberrycongee/wuu/internal/memdir"
 	"github.com/blueberrycongee/wuu/internal/modelroles"
 	pluginpkg "github.com/blueberrycongee/wuu/internal/plugin"
 	"github.com/blueberrycongee/wuu/internal/process"
@@ -37,29 +36,10 @@ import (
 	"github.com/blueberrycongee/wuu/internal/tools"
 )
 
-func TestSessionUltraModeIsConcurrencySafe(t *testing.T) {
+func TestSessionMaxParallelDefaultsAndOverrides(t *testing.T) {
 	session := &Session{maxParallel: 3}
-	if session.UltraMode() {
-		t.Fatal("Ultra mode should default to false")
-	}
 	if session.MaxParallel() != 3 {
 		t.Fatalf("MaxParallel = %d, want 3", session.MaxParallel())
-	}
-
-	var wg sync.WaitGroup
-	for i := 0; i < 32; i++ {
-		enabled := i%2 == 0
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			session.SetUltraMode(enabled)
-			_ = session.UltraMode()
-		}()
-	}
-	wg.Wait()
-	session.SetUltraMode(true)
-	if !session.UltraMode() {
-		t.Fatal("Ultra mode update was not visible")
 	}
 
 	var zero Session
@@ -577,7 +557,7 @@ func TestRuntimeContextInjectorIncludesOnlyDynamicTypedBlocks(t *testing.T) {
 		return []wuucontext.Block{{
 			Kind:    wuucontext.BlockTaskState,
 			Title:   "Current visible task plan",
-			Source:  "update_plan",
+			Source:  "runtime.task_state",
 			Content: "plan:\n- [in_progress] edit",
 		}}
 	})
@@ -695,52 +675,6 @@ func TestNewSessionUsesUserStateNotWorkspaceDotWuu(t *testing.T) {
 	}
 }
 
-func TestNewSessionInjectsMemdir(t *testing.T) {
-	root := t.TempDir()
-	home := t.TempDir()
-	t.Setenv("WUU_HOME", filepath.Join(home, "state"))
-	t.Setenv("TEST_WUU_KEY", "abc")
-
-	rt, err := NewSession(Options{
-		RootDir:    root,
-		HomeDir:    home,
-		ConfigPath: filepath.Join(root, ".wuu.json"),
-		Config: config.Config{
-			DefaultProvider: "test",
-			Providers: map[string]config.ProviderConfig{
-				"test": {
-					Type:      "openai-compatible",
-					BaseURL:   "https://example.test/v1",
-					APIKeyEnv: "TEST_WUU_KEY",
-					Model:     "gpt-test",
-				},
-			},
-		},
-	})
-	if err != nil {
-		t.Fatalf("NewSession: %v", err)
-	}
-	if rt.Toolkit == nil {
-		t.Fatal("expected toolkit")
-	}
-	if rt.Toolkit.ActiveSurface().ProfileName == "" {
-		t.Fatal("expected runtime toolkit to install a model surface")
-	}
-	if !strings.Contains(rt.BaseSystemPrompt, "[Tool surface:") || !strings.Contains(rt.BaseSystemPrompt, "workspace boundaries") {
-		t.Fatalf("base system prompt should include compiled tool-surface fragment:\n%s", rt.BaseSystemPrompt)
-	}
-	if !strings.Contains(rt.BaseSystemPrompt, "# Memory directory") {
-		t.Fatalf("default profile should inject the memdir teaching block:\n%s", rt.BaseSystemPrompt)
-	}
-	if !strings.Contains(rt.BaseSystemPrompt, "## MEMORY.md") {
-		t.Fatalf("memdir section should carry the MEMORY.md index slot:\n%s", rt.BaseSystemPrompt)
-	}
-	if strings.Contains(rt.BaseSystemPrompt, "# Runtime Tool Policy") ||
-		strings.Contains(rt.BaseSystemPrompt, "permission_mode:") {
-		t.Fatalf("base system prompt should keep runtime authority state out of the stable prompt:\n%s", rt.BaseSystemPrompt)
-	}
-}
-
 func TestNewSessionKeepsGitContextOutOfBaseSystemPrompt(t *testing.T) {
 	root := t.TempDir()
 	home := t.TempDir()
@@ -813,41 +747,7 @@ func TestNewSessionKeepsGitContextOutOfBaseSystemPrompt(t *testing.T) {
 	}
 }
 
-func TestNewSessionMemoryDisableDisablesDreamScheduler(t *testing.T) {
-	root := t.TempDir()
-	home := t.TempDir()
-	t.Setenv("WUU_HOME", filepath.Join(home, "state"))
-	t.Setenv("TEST_WUU_KEY", "abc")
-
-	rt, err := NewSession(Options{
-		RootDir:    root,
-		HomeDir:    home,
-		ConfigPath: filepath.Join(root, ".wuu.json"),
-		Config: config.Config{
-			DefaultProvider: "test",
-			Providers: map[string]config.ProviderConfig{
-				"test": {
-					Type:      "openai-compatible",
-					BaseURL:   "https://example.test/v1",
-					APIKeyEnv: "TEST_WUU_KEY",
-					Model:     "gpt-test",
-				},
-			},
-			Memory: config.MemoryConfig{Disable: true},
-		},
-	})
-	if err != nil {
-		t.Fatalf("NewSession: %v", err)
-	}
-	if rt.DreamIntervalDays != 0 {
-		t.Fatalf("DreamIntervalDays = %d, want disabled", rt.DreamIntervalDays)
-	}
-	if rt.StreamRunner.AfterTurn != nil {
-		t.Fatal("memory.disable should disable automatic dream AfterTurn hook")
-	}
-}
-
-func TestApplyGeneralConfigRefreshesPromptAndMemory(t *testing.T) {
+func TestApplyGeneralConfigRefreshesPromptAndGitAttribution(t *testing.T) {
 	root := t.TempDir()
 	home := t.TempDir()
 	t.Setenv("WUU_HOME", filepath.Join(home, "state"))
@@ -876,29 +776,14 @@ func TestApplyGeneralConfigRefreshesPromptAndMemory(t *testing.T) {
 	if rt.Toolkit == nil {
 		t.Fatal("expected toolkit")
 	}
-	if !rt.MemdirEnabled || !strings.Contains(rt.BaseSystemPrompt, "# Memory directory") {
-		t.Fatal("expected default session to start with memdir enabled")
-	}
-
 	baseConfig.Agent.AppendSystemPrompt = "默认用中文回答。"
 	gitAttributionEnabled := false
 	baseConfig.Agent.GitAttributionEnabled = &gitAttributionEnabled
-	baseConfig.Memory.Disable = true
 	prompt := rt.ApplyGeneralConfig(baseConfig, home)
 
 	if rt.UserSystemPrompt != "默认用中文回答。" || !strings.Contains(prompt, "默认用中文回答。") || !strings.Contains(rt.StreamRunner.SystemPrompt, "默认用中文回答。") {
 		t.Fatalf("user prompt not refreshed: user=%q prompt=%q runner=%q", rt.UserSystemPrompt, prompt, rt.StreamRunner.SystemPrompt)
 	}
-	if rt.MemdirEnabled {
-		t.Fatal("memory.disable should disable memdir")
-	}
-	if strings.Contains(prompt, "# Memory directory") {
-		t.Fatalf("memory.disable should drop the memdir section:\n%s", prompt)
-	}
-	if rt.DreamIntervalDays != 0 {
-		t.Fatalf("DreamIntervalDays = %d, want disabled", rt.DreamIntervalDays)
-	}
-
 	for _, args := range [][]string{
 		{"init", "-q", root},
 		{"-C", root, "config", "user.name", "Runtime Test"},
@@ -1665,143 +1550,6 @@ func TestNewThreadRuntimeLocalWorkerDoesNotTeachTerminalPaths(t *testing.T) {
 	}
 }
 
-func TestNewThreadRuntimeAgentProfileSpawnGetsReadOnlyUserMemory(t *testing.T) {
-	root := t.TempDir()
-	home := t.TempDir()
-	wuuHome := filepath.Join(home, "state")
-	agentProfile := "qa workflow"
-	t.Setenv("WUU_HOME", wuuHome)
-	t.Setenv("TEST_WUU_KEY", "abc")
-
-	userNotebook := memdir.UserMemdir(wuuHome)
-	if err := os.MkdirAll(userNotebook, 0o755); err != nil {
-		t.Fatalf("mkdir user notebook: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(userNotebook, "MEMORY.md"), []byte("- [QA gate](qa_gate.md) — QA workflow checks visual regressions before release\n"), 0o644); err != nil {
-		t.Fatalf("seed notebook index: %v", err)
-	}
-
-	rt, err := NewSession(Options{
-		RootDir:    root,
-		HomeDir:    home,
-		ConfigPath: filepath.Join(root, ".wuu.json"),
-		Config: config.Config{
-			DefaultProvider: "test",
-			Providers: map[string]config.ProviderConfig{
-				"test": {
-					Type:      "openai-compatible",
-					BaseURL:   "https://example.test/v1",
-					APIKeyEnv: "TEST_WUU_KEY",
-					Model:     "gpt-test",
-				},
-			},
-		},
-	})
-	if err != nil {
-		t.Fatalf("NewSession: %v", err)
-	}
-	client := &sessionRecordingClient{}
-	rt.WorkerClient = client
-	threadRT, err := rt.NewThreadRuntime("thread-profile")
-	if err != nil {
-		t.Fatalf("NewThreadRuntime: %v", err)
-	}
-	defer func() {
-		threadRT.AgentControl.StopAll()
-		time.Sleep(100 * time.Millisecond)
-	}()
-	res, err := threadRT.AgentControl.Spawn(context.Background(), agentcontrol.SpawnRequest{
-		Type:         agentcontrol.DefaultSubagentType,
-		TaskName:     "qa_check",
-		AgentProfile: agentProfile,
-		Prompt:       "run the QA workflow",
-		Synchronous:  true,
-	})
-	if err != nil {
-		t.Fatalf("Spawn: %v", err)
-	}
-	if res.AgentProfile != agentProfile {
-		t.Fatalf("AgentProfile = %q, want %q", res.AgentProfile, agentProfile)
-	}
-
-	req := client.LastRequest()
-	toolNames := map[string]bool{}
-	for _, def := range req.Tools {
-		toolNames[def.Name] = true
-	}
-	if toolNames["tool_search"] {
-		t.Fatalf("compatible profile worker should not expose tool_search in flat mode: %+v", req.Tools)
-	}
-	if len(req.Messages) == 0 {
-		t.Fatal("profile worker sent no messages")
-	}
-	systemPrompt := req.Messages[0].Content
-	// Workers receive the read-only user-notebook variant: the MEMORY.md index
-	// is injected, and the teaching forbids writing.
-	for _, want := range []string{"# User memory (read-only)", "QA workflow checks visual regressions"} {
-		if !strings.Contains(systemPrompt, want) {
-			t.Fatalf("profile worker system prompt missing %q:\n%s", want, systemPrompt)
-		}
-	}
-	if strings.Contains(systemPrompt, "# Memory directory") {
-		t.Fatalf("worker prompt must use the read-only variant, not the session teaching:\n%s", systemPrompt)
-	}
-	if !strings.Contains(systemPrompt, "[Tool surface:") || !strings.Contains(systemPrompt, "workspace boundaries") {
-		t.Fatalf("profile worker system prompt missing tool-surface fragment:\n%s", systemPrompt)
-	}
-}
-
-func TestNewSessionInjectsUserNotebookIndex(t *testing.T) {
-	root := t.TempDir()
-	home := t.TempDir()
-	wuuHome := filepath.Join(home, "state")
-	agentName := "Mia Agent"
-	t.Setenv("WUU_HOME", wuuHome)
-	t.Setenv("TEST_WUU_KEY", "abc")
-
-	userNotebook := memdir.UserMemdir(wuuHome)
-	if err := os.MkdirAll(userNotebook, 0o755); err != nil {
-		t.Fatalf("mkdir user notebook: %v", err)
-	}
-	index := "- [Reply style](reply_style.md) — User prefers concise Chinese replies\n" +
-		"- [Local refresh](local_refresh.md) — Project uses make install for local CLI refresh\n"
-	if err := os.WriteFile(filepath.Join(userNotebook, "MEMORY.md"), []byte(index), 0o644); err != nil {
-		t.Fatalf("write notebook index: %v", err)
-	}
-
-	rt, err := NewSession(Options{
-		RootDir:    root,
-		HomeDir:    home,
-		ConfigPath: filepath.Join(root, ".wuu.json"),
-		Config: config.Config{
-			DefaultProvider: "test",
-			Providers: map[string]config.ProviderConfig{
-				"test": {
-					Type:      "openai-compatible",
-					BaseURL:   "https://example.test/v1",
-					APIKeyEnv: "TEST_WUU_KEY",
-					Model:     "gpt-test",
-				},
-			},
-			Agent: config.AgentConfig{Name: agentName},
-		},
-	})
-	if err != nil {
-		t.Fatalf("NewSession: %v", err)
-	}
-	// The memdir section injects the user notebook's MEMORY.md index lines.
-	for _, want := range []string{
-		"# Memory directory",
-		"## MEMORY.md",
-		"- [Reply style](reply_style.md) — User prefers concise Chinese replies",
-		"- [Local refresh](local_refresh.md) — Project uses make install for local CLI refresh",
-	} {
-		if !strings.Contains(rt.BaseSystemPrompt, want) {
-			t.Fatalf("BaseSystemPrompt missing %q:\n%s", want, rt.BaseSystemPrompt)
-		}
-	}
-}
-
 func TestNewSessionAppendsUserPromptAfterBuiltInBase(t *testing.T) {
 	root := t.TempDir()
 	home := t.TempDir()
@@ -2107,9 +1855,6 @@ func TestNewSessionAutoUsesNativeDeferredForFirstPartyOpenAIResponses(t *testing
 	if rt.StreamRunner == nil || !rt.StreamRunner.NativeDeferredToolDiscovery {
 		t.Fatal("first-party OpenAI Responses runner should forward native deferred loading to provider requests")
 	}
-	if def, ok := sessionToolDefByName(rt.Toolkit.Definitions(), "session_memory"); !ok || !def.DeferLoading {
-		t.Fatalf("first-party OpenAI Responses should declare deferred tools as native-deferred, got %+v", rt.Toolkit.Definitions())
-	}
 }
 
 func TestReconfigureToolLoadingClearsNativeDiscoveryForCompatibleProvider(t *testing.T) {
@@ -2201,9 +1946,6 @@ func TestNewSessionAutoFallsBackToFlatForUnsupportedFirstPartyOpenAIResponsesMod
 	if _, ok := sessionToolDefByName(defs, "tool_search"); ok {
 		t.Fatalf("flat fallback must not expose tool_search, got %+v", defs)
 	}
-	if _, ok := sessionToolDefByName(defs, "session_memory"); !ok {
-		t.Fatalf("flat fallback must declare formerly deferred tools directly, got %+v", defs)
-	}
 	for _, block := range rt.Toolkit.ContextBlocks() {
 		if block.Kind == wuucontext.BlockAvailableDeferred {
 			t.Fatalf("deferred catalog must not be emitted as request-only context: %+v", block)
@@ -2251,9 +1993,6 @@ func TestNewSessionAutoFlattensCompatibleOpenAIResponses(t *testing.T) {
 	defs := rt.Toolkit.Definitions()
 	if _, ok := sessionToolDefByName(defs, "tool_search"); ok {
 		t.Fatalf("compatible OpenAI Responses flat mode should hide tool_search, got %+v", defs)
-	}
-	if def, ok := sessionToolDefByName(defs, "session_memory"); !ok || def.DeferLoading {
-		t.Fatalf("compatible OpenAI Responses flat mode should expose session_memory directly, got %+v", defs)
 	}
 	if _, ok := sessionToolDefByName(defs, "send_message"); ok {
 		t.Fatalf("compatible OpenAI Responses flat mode must not expose plugin-owned send_message in the core toolkit, got %+v", defs)
@@ -2464,9 +2203,6 @@ func TestNewSessionTreatsRetiredWuuToolSearchConfigAsAuto(t *testing.T) {
 	defs := rt.Toolkit.Definitions()
 	if _, ok := sessionToolDefByName(defs, "tool_search"); ok {
 		t.Fatalf("retired mode must not expose tool_search, got %+v", defs)
-	}
-	if _, ok := sessionToolDefByName(defs, "session_memory"); !ok {
-		t.Fatalf("retired mode should declare formerly deferred tools directly, got %+v", defs)
 	}
 	if _, ok := sessionToolDefByName(defs, "send_message"); ok {
 		t.Fatalf("retired mode must not expose plugin-owned send_message in the core toolkit, got %+v", defs)
@@ -2849,7 +2585,7 @@ func TestSessionRefreshSystemPromptUpdatesRunnerPrompt(t *testing.T) {
 	}
 }
 
-func TestDiscoverMemoryHonorsLegacyOptIn(t *testing.T) {
+func TestDiscoverInstructionsHonorsLegacyOptIn(t *testing.T) {
 	home := t.TempDir()
 	root := filepath.Join(home, "repo")
 	if err := os.MkdirAll(filepath.Join(root, ".git"), 0o755); err != nil {
@@ -2862,18 +2598,18 @@ func TestDiscoverMemoryHonorsLegacyOptIn(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if files := discoverMemory(root, home, config.MemoryConfig{}); len(files) != 0 {
-		t.Fatalf("default runtime memory discovery should skip legacy files, got %+v", files)
+	if files := discoverInstructions(root, home, config.InstructionFilesConfig{}); len(files) != 0 {
+		t.Fatalf("default runtime instruction discovery should skip legacy files, got %+v", files)
 	}
 
 	includeLegacy := true
-	files := discoverMemory(root, home, config.MemoryConfig{IncludeLegacyMemory: &includeLegacy})
+	files := discoverInstructions(root, home, config.InstructionFilesConfig{IncludeLegacyInstructions: &includeLegacy})
 	if len(files) != 1 || files[0].Content != "legacy project rule" {
 		t.Fatalf("legacy opt-in did not load legacy file: %+v", files)
 	}
 }
 
-func TestDiscoverMemoryKeepsUserGlobalMemoryAndIgnoresProjectRedirect(t *testing.T) {
+func TestDiscoverInstructionsKeepsUserGlobalFilesAndIgnoresProjectRedirect(t *testing.T) {
 	home := t.TempDir()
 	wuuHome := filepath.Join(home, ".wuu")
 	root := filepath.Join(home, "repo")
@@ -2904,7 +2640,7 @@ func TestDiscoverMemoryKeepsUserGlobalMemoryAndIgnoresProjectRedirect(t *testing
 				Model:     "trusted-model",
 			},
 		},
-		Memory: config.MemoryConfig{
+		Instructions: config.InstructionFilesConfig{
 			Filenames: []string{"GLOBAL.md"},
 			UserDirs:  []string{wuuHome},
 		},
@@ -2931,13 +2667,13 @@ func TestDiscoverMemoryKeepsUserGlobalMemoryAndIgnoresProjectRedirect(t *testing
 	if err != nil {
 		t.Fatalf("LoadFrom: %v", err)
 	}
-	files := discoverMemory(root, home, cfg.Memory)
+	files := discoverInstructions(root, home, cfg.Instructions)
 	if len(files) != 1 || files[0].Content != "trusted global memory" || files[0].Path != filepath.Join(wuuHome, "GLOBAL.md") {
 		t.Fatalf("unexpected memory files: %+v", files)
 	}
 	for _, file := range files {
 		if strings.Contains(file.Content, "must not be loaded") || strings.Contains(file.Path, ".ssh") {
-			t.Fatalf("project redirected global memory discovery: %+v", files)
+			t.Fatalf("project redirected global instruction discovery: %+v", files)
 		}
 	}
 }
@@ -3320,13 +3056,13 @@ func TestApplyWorkerToolFilter_HidesRecursiveAgentControls(t *testing.T) {
 		t.Fatalf("agent type: %v", err)
 	}
 
-	applyWorkerToolFilter(kit, wt, false)
+	applyWorkerToolFilter(kit, wt)
 
 	defs := map[string]bool{}
 	for _, def := range kit.Definitions() {
 		defs[def.Name] = true
 	}
-	for _, allowed := range []string{"read_file", "apply_patch", "bash", "update_plan"} {
+	for _, allowed := range []string{"read_file", "apply_patch", "bash"} {
 		if !defs[allowed] {
 			t.Fatalf("subagent toolkit should keep %s", allowed)
 		}
@@ -3350,7 +3086,7 @@ func TestApplyWorkerToolFilter_RestrictedWorkerKeepsBashFirstSurface(t *testing.
 		AllowedTools: []string{"read_file", "grep", "glob", "bash", "agent_report"},
 	}
 
-	applyWorkerToolFilter(kit, wt, false)
+	applyWorkerToolFilter(kit, wt)
 
 	defs := map[string]bool{}
 	for _, def := range kit.Definitions() {
@@ -3388,12 +3124,12 @@ func TestWorkerDeferredToolCatalogPromptForToolkit(t *testing.T) {
 	if catalog == "" {
 		t.Fatal("worker deferred tool catalog must not be empty when tool search is enabled")
 	}
-	for _, want := range []string{"session_memory", "thread_get", "cron"} {
+	for _, want := range []string{"thread_get"} {
 		if !strings.Contains(catalog, want) {
 			t.Errorf("worker catalog must list deferred executor tool %s:\n%s", want, catalog)
 		}
 	}
-	for _, orchestration := range []string{"spawn_agent", "helpme", "send_message", "followup_task", "await_agents", "close_agent", "list_agents"} {
+	for _, orchestration := range []string{"spawn_agent", "send_message", "followup_task", "await_agents", "close_agent", "list_agents"} {
 		if strings.Contains(catalog, orchestration) {
 			t.Errorf("worker catalog must not list orchestration tool %s:\n%s", orchestration, catalog)
 		}

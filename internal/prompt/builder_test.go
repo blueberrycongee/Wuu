@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/blueberrycongee/wuu/internal/memory"
+	"github.com/blueberrycongee/wuu/internal/instructions"
 	"github.com/blueberrycongee/wuu/internal/skills"
 )
 
@@ -58,20 +58,20 @@ func TestBuilder_EmptyContentSkipped(t *testing.T) {
 	}
 }
 
-func TestBuilder_AddMemory_Truncation(t *testing.T) {
-	// Create a memory file with 300 lines.
+func TestBuilder_AddInstructions_Truncation(t *testing.T) {
+	// Create an instruction file with 300 lines.
 	lines := make([]string, 300)
 	for i := range lines {
 		lines[i] = "line content"
 	}
 	content := strings.Join(lines, "\n")
 
-	files := []memory.File{
+	files := []instructions.File{
 		{Name: "AGENTS.md", Source: "project", Path: "/workspace/AGENTS.md", Content: content},
 	}
 
 	var b Builder
-	b.AddMemory(files)
+	b.AddInstructions(files)
 	result := b.Build()
 
 	if !strings.Contains(result, "[truncated") {
@@ -82,13 +82,13 @@ func TestBuilder_AddMemory_Truncation(t *testing.T) {
 	}
 }
 
-func TestBuilder_AddMemory_SmallFile(t *testing.T) {
-	files := []memory.File{
+func TestBuilder_AddInstructions_SmallFile(t *testing.T) {
+	files := []instructions.File{
 		{Name: "CLAUDE.md", Source: "user", Path: "~/.claude/CLAUDE.md", Content: "some rules"},
 	}
 
 	var b Builder
-	b.AddMemory(files)
+	b.AddInstructions(files)
 	result := b.Build()
 
 	if strings.Contains(result, "[truncated") {
@@ -99,22 +99,22 @@ func TestBuilder_AddMemory_SmallFile(t *testing.T) {
 	}
 }
 
-func TestBuilder_AddMemory_DistinguishesDurableMemoryFromInstructions(t *testing.T) {
-	files := []memory.File{
+func TestBuilder_AddInstructionsMarksLegacyImportsAsPotentiallyStale(t *testing.T) {
+	files := []instructions.File{
 		{Name: "MEMORY.md", Source: "claude_auto", Path: "~/.claude/projects/repo/memory/MEMORY.md", Content: "Project usually runs make install."},
 	}
 
 	var b Builder
-	b.AddMemory(files)
+	b.AddInstructions(files)
 	result := b.Build()
 
-	for _, want := range []string{"Workspace instructions and memory", "Durable MEMORY.md files are saved context and facts", "verify time-sensitive"} {
+	for _, want := range []string{"Workspace instructions", "Legacy imported files may be stale", "verify time-sensitive"} {
 		if !strings.Contains(result, want) {
-			t.Fatalf("memory prompt missing %q:\n%s", want, result)
+			t.Fatalf("instruction prompt missing %q:\n%s", want, result)
 		}
 	}
 	if strings.Contains(result, "Treat them as binding instructions") {
-		t.Fatalf("durable memory should not be described as unconditionally binding:\n%s", result)
+		t.Fatalf("legacy context should not be described as unconditionally binding:\n%s", result)
 	}
 }
 
@@ -184,14 +184,14 @@ func TestBuilder_AddMemdirEmptyIndexRendersEmptyNote(t *testing.T) {
 	}
 }
 
-func TestTruncateMemory_Lines(t *testing.T) {
+func TestTruncateInstructions_Lines(t *testing.T) {
 	lines := make([]string, 250)
 	for i := range lines {
 		lines[i] = "x"
 	}
 	content := strings.Join(lines, "\n")
 
-	result := TruncateMemory(content, 200, 1<<20)
+	result := TruncateInstructions(content, 200, 1<<20)
 	if !strings.Contains(result, "[truncated") {
 		t.Error("expected truncation marker")
 	}
@@ -202,17 +202,17 @@ func TestTruncateMemory_Lines(t *testing.T) {
 	}
 }
 
-func TestTruncateMemory_Bytes(t *testing.T) {
+func TestTruncateInstructions_Bytes(t *testing.T) {
 	content := strings.Repeat("x", 30*1024) // 30KB
-	result := TruncateMemory(content, 1<<20, 25*1024)
+	result := TruncateInstructions(content, 1<<20, 25*1024)
 	if !strings.Contains(result, "[truncated") {
 		t.Error("expected truncation marker for oversized content")
 	}
 }
 
-func TestTruncateMemory_NoTruncation(t *testing.T) {
+func TestTruncateInstructions_NoTruncation(t *testing.T) {
 	content := "short content\nline two"
-	result := TruncateMemory(content, 200, 25*1024)
+	result := TruncateInstructions(content, 200, 25*1024)
 	if result != content {
 		t.Errorf("expected passthrough, got %q", result)
 	}
@@ -222,7 +222,7 @@ func TestBuilder_FullAssembly(t *testing.T) {
 	var b Builder
 	b.AddSection("base", "You are a coding agent.", true)
 	b.AddSection("preamble", "Coordinator preamble.", true)
-	b.AddMemory([]memory.File{
+	b.AddInstructions([]instructions.File{
 		{Name: "AGENTS.md", Source: "project", Path: "/p/AGENTS.md", Content: "project rules"},
 	})
 	b.AddSkills([]skills.Skill{

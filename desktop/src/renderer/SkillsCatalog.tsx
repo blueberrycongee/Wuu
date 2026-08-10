@@ -19,9 +19,12 @@ import type {
 import { CatalogSearchField } from "./CatalogSearchField";
 import { translateCurrent, useI18n } from "./i18n";
 import { Modal } from "./Modal";
+import { PluginBlocksIcon } from "./PluginBlocksIcon";
+import { PluginIcon } from "./PublicIcon";
 import { PluginSettingsEditor } from "./PluginSettingsEditor";
 import { RichContent } from "./RichContent";
 import { ThreadContextMenu, type ThreadContextMenuItem } from "./ThreadContextMenu";
+import { showErrorToast } from "./Toast";
 
 type LoadState = {
   loading: boolean;
@@ -79,8 +82,8 @@ export function SkillsCatalog({
   const [state, setState] = useState<LoadState>(initialLoadState);
   const [filter, setFilter] = useState("");
   const [previewSkill, setPreviewSkill] = useState<SkillSummary | null>(null);
+  const [selectedPluginID, setSelectedPluginID] = useState("");
   const [packageMutation, setPackageMutation] = useState("");
-  const [packageMutationError, setPackageMutationError] = useState("");
   const [packageActionMenu, setPackageActionMenu] = useState<{
     record: ExtensionInventoryRecord;
     x: number;
@@ -171,6 +174,7 @@ export function SkillsCatalog({
         .some((value) => value?.toLowerCase().includes(query)),
     );
   }, [filter, locale, plugins]);
+  const selectedPlugin = plugins.find((record) => record.id === selectedPluginID);
 
   async function refreshSkills(): Promise<void> {
     const requestedContextKey = contextKey;
@@ -205,7 +209,6 @@ export function SkillsCatalog({
       return;
     }
     setPackageMutation(`${record.id}:${action}`);
-    setPackageMutationError("");
     try {
       const fingerprint =
         action === "promote_update" || action === "reject_update"
@@ -213,7 +216,7 @@ export function SkillsCatalog({
           : record.fingerprint;
       await onUpdateExtensionPackage({ id: record.id, fingerprint, action });
     } catch (error) {
-      setPackageMutationError(error instanceof Error ? error.message : translateCurrent("skills.pluginUpdateFailed"));
+      showErrorToast(error, translateCurrent("skills.pluginUpdateFailed"));
     } finally {
       setPackageMutation("");
     }
@@ -225,7 +228,6 @@ export function SkillsCatalog({
     }
     const requestedContextKey = contextKey;
     setPackageMutation("install");
-    setPackageMutationError("");
     try {
       const result = await onInstallPluginPackage();
       if (!result || contextKeyRef.current !== requestedContextKey) {
@@ -234,11 +236,7 @@ export function SkillsCatalog({
       setState({ loading: false, error: "", skills: result.skills });
     } catch (error) {
       if (contextKeyRef.current === requestedContextKey) {
-        setPackageMutationError(
-          error instanceof Error
-            ? error.message
-            : translateCurrent("skills.pluginInstallFailed"),
-        );
+        showErrorToast(error, translateCurrent("skills.pluginInstallFailed"));
       }
     } finally {
       setPackageMutation("");
@@ -255,7 +253,6 @@ export function SkillsCatalog({
     }
     const requestedContextKey = contextKey;
     setPackageMutation(`${record.id}:remove`);
-    setPackageMutationError("");
     try {
       const result = await onRemovePluginPackage(pluginID);
       if (!result || contextKeyRef.current !== requestedContextKey) {
@@ -264,11 +261,7 @@ export function SkillsCatalog({
       setState({ loading: false, error: "", skills: result.skills });
     } catch (error) {
       if (contextKeyRef.current === requestedContextKey) {
-        setPackageMutationError(
-          error instanceof Error
-            ? error.message
-            : translateCurrent("skills.pluginRemoveFailed"),
-        );
+        showErrorToast(error, translateCurrent("skills.pluginRemoveFailed"));
       }
     } finally {
       setPackageMutation("");
@@ -362,35 +355,20 @@ export function SkillsCatalog({
         />
       ) : null}
 
-      {packageMutationError ? (
-        <div className="skills-catalog-error">{packageMutationError}</div>
-      ) : null}
-
       {plugins.length > 0 ? (
         <CatalogSection title={t("skills.sectionPlugins")}>
           <div className="skills-list extension-package-list">
             {visiblePlugins.map((record) => {
               const managed = record as ManagedExtensionPackage;
-              const primaryAction = extensionPackagePrimaryAction(managed);
-              const secondaryAction = extensionPackageSecondaryAction(managed);
-              const mutating = packageMutation.startsWith(`${record.id}:`);
-              const grantUnavailable =
-                (primaryAction === "grant" || primaryAction === "promote_update") &&
-                !(primaryAction === "promote_update"
-                  ? record.pending_update?.fingerprint
-                  : record.fingerprint);
-              const removable = isRemovableUserPlugin(record);
-              const hasOverflowActions = Boolean(
-                (onUpdateExtensionPackage && secondaryAction) ||
-                (onRemovePluginPackage && removable),
-              );
               return (
-                <article key={record.id} className="skill-row extension-package-row">
-                  <SkillArtwork
-                    name={record.name}
-                    official={record.provenance.official === true}
-                    kind="plugin"
-                  />
+                <button
+                  key={record.id}
+                  className="skill-row skill-row-button extension-package-row"
+                  type="button"
+                  aria-label={t("skills.pluginDetailLabel", { name: record.name })}
+                  onClick={() => setSelectedPluginID(record.id)}
+                >
+                  <PluginArtwork record={record} />
                   <span className="skill-row-copy">
                     <span className="skill-row-titlebar">
                       <h2>{record.name}</h2>
@@ -409,83 +387,32 @@ export function SkillsCatalog({
                       </span>
                     </span>
                     {record.description ? <p>{record.description}</p> : null}
-                    <span className="extension-package-meta">
-                      {managed.version ? <span>v{managed.version}</span> : null}
-                      <span>
-                        {t("skills.pluginScope", { scope: record.provenance.scope })}
-                      </span>
-                      <span>{extensionContributionSummary(managed, t)}</span>
-                      {record.pending_update ? (
-                        <span>
-                          {t("skills.pluginUpdateReady", {
-                            version: record.pending_update.version ?? "",
-                          })}
-                        </span>
-                      ) : null}
-                    </span>
-                    <span className="extension-package-permissions">
-                      <strong>{t("skills.pluginPermissions")}</strong>
-                      {(record.requested_permissions ?? []).length > 0 ? (
-                        record.requested_permissions?.map((permission) => (
-                          <code key={permission}>{permission}</code>
-                        ))
-                      ) : (
-                        <span>{t("skills.pluginNoPermissions")}</span>
-                      )}
-                    </span>
-                    {managed.runtime_state === "failed" && managed.last_error ? (
-                      <span className="extension-package-error">{managed.last_error}</span>
-                    ) : null}
                   </span>
-                  {onUpdateExtensionPackage ||
-                  (onRemovePluginPackage && removable) ? (
-                    <span className="extension-package-actions">
-                      {onUpdateExtensionPackage ? (
-                        <button
-                          type="button"
-                          className="secondary-button extension-package-primary-action"
-                          disabled={Boolean(packageMutation) || grantUnavailable}
-                          onClick={() =>
-                            void updateExtensionPackage(record, primaryAction)
-                          }
-                        >
-                          {mutating && packageMutation !== `${record.id}:remove`
-                            ? t("skills.pluginUpdating")
-                          : extensionPackageActionLabel(managed, primaryAction, t)}
-                        </button>
-                      ) : (
-                        <span className="extension-package-primary-placeholder" aria-hidden="true" />
-                      )}
-                      {hasOverflowActions ? (
-                        <button
-                          type="button"
-                          className="icon-button extension-package-more"
-                          aria-label={t("skills.pluginMoreActions", { name: record.name })}
-                          aria-haspopup="menu"
-                          aria-expanded={packageActionMenu?.record.id === record.id}
-                          disabled={Boolean(packageMutation)}
-                          onClick={(event) => {
-                            const bounds = event.currentTarget.getBoundingClientRect();
-                            setPackageActionMenu({
-                              record,
-                              x: bounds.right,
-                              y: bounds.bottom + 4,
-                            });
-                          }}
-                        >
-                          <MoreHorizontal className="icon" aria-hidden="true" />
-                        </button>
-                      ) : (
-                        <span className="extension-package-more-placeholder" aria-hidden="true" />
-                      )}
-                    </span>
-                  ) : null}
-                  <PluginSettingsEditor plugin={record} />
-                </article>
+                  <ChevronRight className="skill-row-chevron" aria-hidden="true" />
+                </button>
               );
             })}
           </div>
         </CatalogSection>
+      ) : null}
+
+      {selectedPlugin ? (
+        <PluginDetailDialog
+          record={selectedPlugin}
+          packageMutation={packageMutation}
+          canUpdate={Boolean(onUpdateExtensionPackage)}
+          canRemove={Boolean(onRemovePluginPackage)}
+          onClose={() => setSelectedPluginID("")}
+          onPrimaryAction={(action) => void updateExtensionPackage(selectedPlugin, action)}
+          onMoreActions={(button) => {
+            const bounds = button.getBoundingClientRect();
+            setPackageActionMenu({
+              record: selectedPlugin,
+              x: bounds.right,
+              y: bounds.bottom + 4,
+            });
+          }}
+        />
       ) : null}
 
       {!state.loading && visibleSkills.length === 0 && visiblePlugins.length === 0 ? (
@@ -511,7 +438,8 @@ export function SkillsCatalog({
 function isRemovableUserPlugin(record: ExtensionInventoryRecord): boolean {
   return (
     record.provenance.official !== true &&
-    record.provenance.scope === "user" &&
+    (record.package_source === "user" ||
+      (record.package_source === undefined && record.provenance.scope === "user")) &&
     Boolean(record.provenance.plugin_id)
   );
 }
@@ -555,6 +483,12 @@ function extensionPackageTone(record: ManagedExtensionPackage): "good" | "warnin
   if (record.runtime_state === "failed" || extensionPackageApproval(record) === "changed") {
     return "danger";
   }
+  if (record.activation_issues?.some((issue) => issue.kind === "missing_requirement")) {
+    return "danger";
+  }
+  if (record.activation_issues?.some((issue) => issue.kind === "conflict")) {
+    return "warning";
+  }
   if (record.runtime_state === "active" || extensionPackageApproval(record) === "official") {
     return "good";
   }
@@ -569,6 +503,9 @@ function extensionPackageStatusLabel(record: ManagedExtensionPackage, t: ReturnT
   if (record.runtime_state === "failed") return t("skills.pluginStatusFailed");
   if (record.runtime_state === "starting") return t("skills.pluginStatusStarting");
   if (record.runtime_state === "active") return t("skills.pluginStatusActive");
+  if (record.activation_issues?.some((issue) => issue.kind === "missing_requirement")) {
+    return t("skills.pluginStatusBlocked");
+  }
   switch (extensionPackageApproval(record)) {
     case "official": return record.enabled === false ? t("skills.pluginStatusDisabled") : t("skills.pluginStatusOfficial");
     case "granted": return record.enabled === false ? t("skills.pluginStatusDisabled") : t("skills.pluginStatusGranted");
@@ -599,6 +536,169 @@ function extensionContributionSummary(record: ManagedExtensionPackage, t: Return
   const settings = record.contributions?.settings?.length ?? 0;
   const themes = record.contributions?.themes?.length ?? 0;
   return t("skills.pluginContributions", { commands, settings, themes });
+}
+
+function PluginDetailDialog({
+  record,
+  packageMutation,
+  canUpdate,
+  canRemove,
+  onClose,
+  onPrimaryAction,
+  onMoreActions,
+}: {
+  record: ExtensionInventoryRecord;
+  packageMutation: string;
+  canUpdate: boolean;
+  canRemove: boolean;
+  onClose: () => void;
+  onPrimaryAction: (action: ExtensionPackageAction) => void;
+  onMoreActions: (button: HTMLButtonElement) => void;
+}): JSX.Element {
+  const { t } = useI18n();
+  const managed = record as ManagedExtensionPackage;
+  const primaryAction = extensionPackagePrimaryAction(managed);
+  const secondaryAction = extensionPackageSecondaryAction(managed);
+  const mutating = packageMutation.startsWith(`${record.id}:`);
+  const grantUnavailable =
+    (primaryAction === "grant" || primaryAction === "promote_update") &&
+    !(primaryAction === "promote_update"
+      ? record.pending_update?.fingerprint
+      : record.fingerprint);
+  const hasMoreActions =
+    (canUpdate && Boolean(secondaryAction)) ||
+    (canRemove && isRemovableUserPlugin(record));
+
+  return (
+    <Modal
+      ariaLabel={t("skills.pluginDetailLabel", { name: record.name })}
+      icon={
+        <span className="skill-preview-icon-title">
+          {record.icon && record.fingerprint ? (
+            <PluginIcon icon={record.icon} pluginId={record.id} fingerprint={record.fingerprint} />
+          ) : (
+            <PluginBlocksIcon />
+          )}
+          <span>{t("skills.sectionPlugins")}</span>
+        </span>
+      }
+      title={record.name}
+      subtitle={record.description}
+      panelClassName="skill-preview-dialog plugin-detail-dialog"
+      closeDisabled={Boolean(packageMutation)}
+      onClose={onClose}
+      footer={canUpdate || hasMoreActions ? (
+        <>
+          {hasMoreActions ? (
+            <button
+              type="button"
+              className="icon-button extension-package-more"
+              aria-label={t("skills.pluginMoreActions", { name: record.name })}
+              aria-haspopup="menu"
+              disabled={Boolean(packageMutation)}
+              onClick={(event) => onMoreActions(event.currentTarget)}
+            >
+              <MoreHorizontal className="icon" aria-hidden="true" />
+            </button>
+          ) : null}
+          {canUpdate ? (
+            <button
+              type="button"
+              className="settings-button settings-button-primary"
+              disabled={Boolean(packageMutation) || grantUnavailable}
+              onClick={() => onPrimaryAction(primaryAction)}
+            >
+              {mutating
+                ? t("skills.pluginUpdating")
+                : extensionPackageActionLabel(managed, primaryAction, t)}
+            </button>
+          ) : null}
+        </>
+      ) : undefined}
+    >
+      <div className="plugin-detail-body">
+        <div className="plugin-detail-summary">
+          <span className={`skill-row-tag skill-row-tag-neutral extension-status extension-status-${extensionPackageTone(managed)}`}>
+            {extensionPackageStatusLabel(managed, t)}
+          </span>
+          {managed.version ? <span>v{managed.version}</span> : null}
+          <span>{t("skills.pluginScope", { scope: record.provenance.scope })}</span>
+          <span>{extensionContributionSummary(managed, t)}</span>
+          {record.pending_update ? (
+            <span>{t("skills.pluginUpdateReady", { version: record.pending_update.version ?? "" })}</span>
+          ) : null}
+        </div>
+        <section className="plugin-detail-section">
+          <strong>{t("skills.pluginActivePackage")}</strong>
+          <dl className="plugin-detail-provenance">
+            <dt>{t("skills.pluginPackageSource")}</dt>
+            <dd>{record.package_source ?? record.provenance.scope}</dd>
+            {record.provenance.path ? (
+              <>
+                <dt>{t("skills.pluginActivePath")}</dt>
+                <dd><code>{record.provenance.path}</code></dd>
+              </>
+            ) : null}
+            {record.fingerprint ? (
+              <>
+                <dt>{t("skills.pluginFingerprint")}</dt>
+                <dd title={record.fingerprint}><code>{abbreviateFingerprint(record.fingerprint)}</code></dd>
+              </>
+            ) : null}
+          </dl>
+        </section>
+        <section className="plugin-detail-section">
+          <strong>{t("skills.pluginPermissions")}</strong>
+          <div className="extension-package-permissions">
+            {(record.requested_permissions ?? []).length > 0 ? (
+              record.requested_permissions?.map((permission) => (
+                <code key={permission}>{permission}</code>
+              ))
+            ) : (
+              <span>{t("skills.pluginNoPermissions")}</span>
+            )}
+          </div>
+        </section>
+        {managed.runtime_state === "failed" && managed.last_error ? (
+          <div className="extension-package-error">{managed.last_error}</div>
+        ) : null}
+        {record.activation_issues?.map((issue) => (
+          <div
+            className={issue.kind === "missing_requirement"
+              ? "extension-package-error"
+              : "extension-package-warning"}
+            key={`${issue.kind}:${issue.related_plugin_id}`}
+          >
+            {issue.kind === "missing_requirement"
+              ? t("skills.pluginDependencyMissing", { plugin: issue.related_plugin_id })
+              : t("skills.pluginConflictWarning", { plugin: issue.related_plugin_id })}
+          </div>
+        ))}
+        <PluginSettingsEditor plugin={record} />
+      </div>
+    </Modal>
+  );
+}
+
+function abbreviateFingerprint(fingerprint: string): string {
+  return fingerprint.length > 22
+    ? `${fingerprint.slice(0, 12)}…${fingerprint.slice(-6)}`
+    : fingerprint;
+}
+
+function PluginArtwork({ record }: { record: ExtensionInventoryRecord }): JSX.Element {
+  if (!record.icon || !record.fingerprint) {
+    return <SkillArtwork name={record.name} official={record.provenance.official === true} kind="plugin" />;
+  }
+  const identity = customSkillArtworkIdentity(record.name);
+  return (
+    <span
+      className={`skill-artwork skill-artwork-plugin-brand skill-artwork-palette-${identity.palette}`}
+      aria-hidden="true"
+    >
+      <PluginIcon icon={record.icon} pluginId={record.id} fingerprint={record.fingerprint} />
+    </span>
+  );
 }
 
 function CatalogSection({

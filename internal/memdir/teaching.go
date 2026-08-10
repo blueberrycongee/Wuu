@@ -49,78 +49,16 @@ var whatNotToSaveSection = []string{
 	"These exclusions apply even when the user explicitly asks you to save. If they ask you to save a task log or activity summary, ask what was *surprising* or *non-obvious* about it — that is the part worth keeping.",
 }
 
-// SessionTeaching returns the memory teaching block for the main session
-// agent, which reads and writes the user notebook at dir.
-func SessionTeaching(dir string) string {
+// IdentityTeaching returns the notebook teaching block for a collaboration
+// named agent, which reads and writes its durable identity notebook at dir.
+func IdentityTeaching(dir string) string {
 	lines := []string{
-		"# Memory directory",
-		fmt.Sprintf("You have a persistent, file-based memory directory at `%s` — your notebook about the user and the work you do together. %s", dir, dirExistsGuidance),
+		"# Identity notebook",
+		fmt.Sprintf("You have a persistent, file-based memory directory at `%s` — your identity across days and tasks. %s", dir, dirExistsGuidance),
 		"Build it up over time so future sessions know who the user is, how they like to collaborate, what to avoid or repeat, and the context behind their work. If the user explicitly asks you to remember something, save it immediately as whichever type fits best; if they ask you to forget something, find and remove the relevant topic file AND its index line.",
 	}
 	lines = append(lines, typesSection...)
 	lines = append(lines, howToSaveSection...)
 	lines = append(lines, whatNotToSaveSection...)
 	return strings.Join(lines, "\n")
-}
-
-// NamedAgentTeaching returns the memory teaching block for a named agent,
-// which reads and writes its identity notebook at dir.
-func NamedAgentTeaching(dir string) string {
-	lines := []string{
-		"## Memory notebook",
-		fmt.Sprintf("Your durable memory is a file-based notebook at `%s` — your identity across days and tasks: lessons learned, feedback received, decisions and their reasons. %s", dir, dirExistsGuidance),
-		"Anything worth keeping past this conversation belongs there. If the user asks you to remember something, save it immediately as whichever type fits best; if they ask you to forget something, find and remove the relevant topic file AND its index line.",
-	}
-	lines = append(lines, shiftHeadings(typesSection)...)
-	lines = append(lines, shiftHeadings(howToSaveSection)...)
-	lines = append(lines, shiftHeadings(whatNotToSaveSection)...)
-	return strings.Join(lines, "\n")
-}
-
-// WorkerTeaching returns the read-only user-notebook block for ephemeral
-// worker prompts: the index is injected as orientation, and the notebook is
-// outside the worker's writable file scope.
-func WorkerTeaching(dir string) string {
-	return strings.Join([]string{
-		"# User memory (read-only)",
-		fmt.Sprintf("The `%s` index below comes from the user's memory notebook at `%s` — durable facts about who the user is and how they like to work. Use it to orient your work. The notebook is read-only for you: it is not in your writable file scope, so never create, edit, or delete memory files — leave memory maintenance to the main agent.", EntrypointName, dir),
-		"If a remembered fact conflicts with what you observe in the current workspace, trust what you observe now.",
-	}, "\n")
-}
-
-// ManagerTeaching returns the notebook-format rules shared with the
-// settings-panel memory manager agent (memory-redesign contract §8.3): the
-// four memory types, the two-step save, and the What-NOT-to-save gate,
-// without the audience-specific header lines of Session/NamedAgentTeaching.
-// Exported so the appserver panel agent reuses the canonical wording
-// instead of duplicating it.
-func ManagerTeaching() string {
-	lines := append([]string{}, typesSection...)
-	lines = append(lines, howToSaveSection...)
-	lines = append(lines, whatNotToSaveSection...)
-	return strings.Join(lines, "\n")
-}
-
-// UserIndexNotice returns the read-only preamble a named agent sees
-// above the injected user-notebook index.
-func UserIndexNotice() string {
-	return strings.Join([]string{
-		"The lines below are the index of the user's memory notebook — durable knowledge about who the user is and how they like to work. It is read-only for you: that directory is not in your writable file scope, so never try to edit it; record your own learnings in your identity notebook instead.",
-		"If a remembered fact conflicts with what you observe now, trust what you observe.",
-	}, "\n")
-}
-
-// shiftHeadings demotes `## ` headings one level so a teaching block can sit
-// under an existing `## ` section of a larger prompt (the named-agent persona
-// prompt uses `## ` for its own top-level sections).
-func shiftHeadings(lines []string) []string {
-	out := make([]string, len(lines))
-	for i, line := range lines {
-		if strings.HasPrefix(line, "## ") {
-			out[i] = "#" + line
-		} else {
-			out[i] = line
-		}
-	}
-	return out
 }

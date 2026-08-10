@@ -27,19 +27,19 @@ describe("PluginSurface", () => {
       pluginId: "layout",
       generation: "one",
       register(api) {
-        api.registerSurface("app.main", {
+        api.registerSurface("conversation.timeline", {
           id: "low",
           mode: "replace",
           order: 0,
           render: () => api.react.createElement("span", null, "Low"),
         });
-        api.registerSurface("app.main", {
+        api.registerSurface("conversation.timeline", {
           id: "high",
           mode: "replace",
           order: 10,
           render: (context) => api.react.createElement("span", null, String(context.label)),
         });
-        api.registerSurface("app.main", {
+        api.registerSurface("conversation.timeline", {
           id: "frame",
           mode: "wrap",
           render: (_context, fallback) => api.react.createElement("section", { "data-frame": true }, fallback),
@@ -50,7 +50,7 @@ describe("PluginSurface", () => {
     act(() => root.render(
       <PluginSurface
         host={host}
-        id="app.main"
+        id="conversation.timeline"
         context={{ label: "High" }}
         fallback={<span>Built in</span>}
       />,
@@ -68,7 +68,7 @@ describe("PluginSurface", () => {
         pluginId: "broken-layout",
         generation: "one",
         register(api) {
-          api.registerSurface("view.conversation", {
+          api.registerSurface("conversation.message", {
             id: "broken",
             mode: "replace",
             render: () => {
@@ -81,7 +81,7 @@ describe("PluginSurface", () => {
       act(() => root.render(
         <PluginSurface
           host={host}
-          id="view.conversation"
+          id="conversation.message"
           fallback={<span>Built in conversation</span>}
         />,
       ));
@@ -91,7 +91,7 @@ describe("PluginSurface", () => {
         expect.objectContaining({
           contributionId: "broken",
           kind: "render",
-          surfaceId: "view.conversation",
+          surfaceId: "conversation.message",
         }),
       ]);
     } finally {
