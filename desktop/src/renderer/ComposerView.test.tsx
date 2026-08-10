@@ -13,6 +13,7 @@ import {
   type PermissionMode,
 } from "./ComposerView";
 import { ImagePreviewProvider } from "./ImagePreview";
+import { ComposerTokenGauge } from "./ComposerTokenGauge";
 import { WORKSPACE_FILE_DRAG_MIME, type QueuedComposerMessage } from "./ComposerMessages";
 import { hoverTooltipText, unhoverTooltip } from "./tooltipTestUtils";
 import { PluginHost } from "./plugins/PluginHost";
@@ -1204,7 +1205,9 @@ describe("Composer send control", () => {
     expect(leftGroup?.querySelector(".composer-project-control")).toBeNull();
     expect(leftGroup?.querySelector(".composer-plus-button")).not.toBeNull();
     expect(leftGroup?.querySelector(".permission-menu-anchor")).not.toBeNull();
-    expect(rightGroup?.querySelector(".composer-token-gauge")).not.toBeNull();
+    // The token-speed gauge is temporarily hidden from the toolbar; flip this
+    // back to not.toBeNull() when it is restored.
+    expect(rightGroup?.querySelector(".composer-token-gauge")).toBeNull();
     expect(rightGroup?.querySelector(".codex-runtime-anchor")).not.toBeNull();
     expect(rightGroup?.contains(sendButton)).toBe(true);
   });
@@ -2152,11 +2155,34 @@ describe("Composer permission menu", () => {
 });
 
 describe("ComposerTokenGauge", () => {
+  // The gauge is temporarily hidden from the composer toolbar (see
+  // ComposerRuntimeMeters), so these tests mount the component directly
+  // instead of going through the full composer. They stay valid so the
+  // component behavior is covered until it is restored.
+  function renderTokenGauge(props: {
+    running: boolean;
+    tokensPerSecond: number;
+    tokenSpeedSampledAt?: number;
+    tokenSpeedSource?: "real" | "estimated" | "none";
+  }): void {
+    act(() => {
+      root = createRoot(container);
+      root.render(
+        <ComposerTokenGauge
+          running={props.running}
+          tokensPerSecond={props.tokensPerSecond}
+          sampledAt={props.tokenSpeedSampledAt}
+          source={props.tokenSpeedSource}
+        />,
+      );
+    });
+  }
+
   it("does not schedule animation frames while idle at zero", () => {
     const requestAnimationFrame = vi.spyOn(window, "requestAnimationFrame");
 
     try {
-      renderComposer({ running: false, tokensPerSecond: 0 });
+      renderTokenGauge({ running: false, tokensPerSecond: 0 });
 
       expect(requestAnimationFrame).not.toHaveBeenCalled();
     } finally {
@@ -2165,7 +2191,7 @@ describe("ComposerTokenGauge", () => {
   });
 
   it("keeps the gauge visible with the speed label inline and a hidden hover tooltip", () => {
-    renderComposer({ running: false, tokensPerSecond: 0 });
+    renderTokenGauge({ running: false, tokensPerSecond: 0 });
     const gauge = container.querySelector(".composer-token-gauge");
     expect(gauge).not.toBeNull();
     expect(gauge?.getAttribute("data-state")).toBe("idle");
@@ -2187,7 +2213,7 @@ describe("ComposerTokenGauge", () => {
       .mockImplementation(() => 1);
 
     try {
-      renderComposer({ running: true, tokensPerSecond: 18.4 });
+      renderTokenGauge({ running: true, tokensPerSecond: 18.4 });
 
       const gauge = container.querySelector(".composer-token-gauge");
       expect(gauge).not.toBeNull();
@@ -2229,7 +2255,7 @@ describe("ComposerTokenGauge", () => {
     const requestAnimationFrame = vi.spyOn(window, "requestAnimationFrame");
 
     try {
-      renderComposer({
+      renderTokenGauge({
         running: true,
         tokensPerSecond: 20,
         tokenSpeedSampledAt: Date.now(),
@@ -2260,7 +2286,7 @@ describe("ComposerTokenGauge", () => {
   });
 
   it("marks fallback token speed as approximate in the inline label", () => {
-    renderComposer({
+    renderTokenGauge({
       running: true,
       tokensPerSecond: 18.4,
       tokenSpeedSource: "estimated",

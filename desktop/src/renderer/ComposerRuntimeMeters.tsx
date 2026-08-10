@@ -1,7 +1,10 @@
 import { useSyncExternalStore } from "react";
 import type { TurnContextUsage } from "./AppState";
 import { ComposerContextMeter } from "./ComposerContextMeter";
-import { ComposerTokenGauge } from "./ComposerTokenGauge";
+// Temporarily hidden: the token-speed gauge is removed from the composer
+// toolbar while we evaluate its cost/benefit. Restore by un-commenting this
+// import and the <ComposerTokenGauge> block in the JSX below.
+// import { ComposerTokenGauge } from "./ComposerTokenGauge";
 import { turnTelemetryStore } from "./TurnTelemetryStore";
 
 export function ComposerRuntimeMeters({
@@ -34,14 +37,15 @@ export function ComposerRuntimeMeters({
 
   return (
     <>
-      <ComposerTokenGauge
-        running={running}
-        tokensPerSecond={
-          useLiveTelemetry ? telemetry.tokensPerSecond : fallbackTokensPerSecond
-        }
-        sampledAt={useLiveTelemetry ? telemetry.sampledAt : fallbackSampledAt}
-        source={useLiveTelemetry ? telemetry.source : fallbackSource}
-      />
+      {/* Temporarily hidden — token-speed gauge, see note at the import.
+          <ComposerTokenGauge
+            running={running}
+            tokensPerSecond={
+              useLiveTelemetry ? telemetry.tokensPerSecond : fallbackTokensPerSecond
+            }
+            sampledAt={useLiveTelemetry ? telemetry.sampledAt : fallbackSampledAt}
+            source={useLiveTelemetry ? telemetry.source : fallbackSource}
+          /> */}
       <ComposerContextMeter usage={contextUsage} />
     </>
   );
