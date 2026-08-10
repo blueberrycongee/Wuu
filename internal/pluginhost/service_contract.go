@@ -56,7 +56,7 @@ const (
 	// KernelDriverModelLoopService is the kernel gateway endpoint a remote
 	// loop driver executes model loops through; calls are routed to the
 	// gateway registered for the execution id in the params.
-	KernelDriverModelLoopService = "driver.model_loop"
+	KernelDriverModelLoopService = "driver.model-loop"
 
 	// KernelDriverCheckpointService is the kernel gateway endpoint a remote
 	// loop driver persists checkpoints through.
@@ -128,7 +128,7 @@ func KernelExecutionUpdateDescriptor() ServiceDescriptor {
 func KernelDriverModelLoopDescriptor() ServiceDescriptor {
 	return ServiceDescriptor{
 		Name: KernelDriverModelLoopService, Version: "1.0.0",
-		Methods: []ServiceMethodDescriptor{{Name: KernelServiceMethod, InputSchema: "driver.model_loop.request.v1", OutputSchema: "driver.model_loop.response.v1"}},
+		Methods: []ServiceMethodDescriptor{{Name: KernelServiceMethod, InputSchema: "driver.model-loop.request.v1", OutputSchema: "driver.model-loop.response.v1"}},
 	}
 }
 

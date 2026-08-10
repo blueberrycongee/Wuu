@@ -1,13 +1,13 @@
 package loopdriver
 
 // Wire DTOs for the kernel-provided gateway services a remote driver calls
-// back on: "driver.model_loop" (execute) and "driver.checkpoint" (write).
+// back on: "driver.model-loop" (execute) and "driver.checkpoint" (write).
 // Both are scoped by the execution id the kernel assigned to the driver run;
 // the kernel routes each call to the gateway registered for that execution
 // and rejects calls from any plugin other than the execution's owner.
 
 const (
-	DriverModelLoopService  = "driver.model_loop"
+	DriverModelLoopService  = "driver.model-loop"
 	DriverCheckpointService = "driver.checkpoint"
 
 	DriverModelLoopMethod  = "execute"

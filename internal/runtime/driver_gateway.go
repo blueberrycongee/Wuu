@@ -12,7 +12,7 @@ import (
 )
 
 // driverGatewayTable tracks the live kernel gateways of in-flight remote
-// driver runs, keyed by execution id. The kernel's driver.model_loop and
+// driver runs, keyed by execution id. The kernel's driver.model-loop and
 // driver.checkpoint services route through it; entries are removed when the
 // run invoke returns.
 type driverGatewayTable struct {
@@ -81,7 +81,7 @@ func (k *driverModelLoopInvoker) Close(context.Context) error {
 func (k *driverModelLoopInvoker) InvokeService(ctx context.Context, params pluginhost.ServiceInvokeParams) (json.RawMessage, error) {
 	var decoded loopdriver.DriverModelLoopParams
 	if err := json.Unmarshal(params.Params, &decoded); err != nil {
-		return nil, serviceError("invalid_request", "driver.model_loop params: "+err.Error())
+		return nil, serviceError("invalid_request", "driver.model-loop params: "+err.Error())
 	}
 	gateway, hostErr := k.parent.driverGateways.authorizedGateway(params.Caller, decoded.ExecutionID)
 	if hostErr != nil {
@@ -93,7 +93,7 @@ func (k *driverModelLoopInvoker) InvokeService(ctx context.Context, params plugi
 	}
 	result, err := json.Marshal(loopdriver.DriverModelLoopResult{ReceiptID: receipt.ID})
 	if err != nil {
-		return nil, serviceError("service_unavailable", "encode driver.model_loop result: "+err.Error())
+		return nil, serviceError("service_unavailable", "encode driver.model-loop result: "+err.Error())
 	}
 	return result, nil
 }
