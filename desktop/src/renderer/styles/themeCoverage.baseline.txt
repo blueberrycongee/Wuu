@@ -233,8 +233,6 @@ settings.css:1052 background --settings-preview-light-sidebar
 settings.css:1076 background --settings-preview-light-sidebar
 settings.css:2117 background --settings-remote-qr-quiet-zone
 settings.css:1563 background --settings-usage-accent
-settings.css:151 background --sidebar-glass-hover
-settings.css:205 background --sidebar-glass-hover
 settings.css:611 background --success-soft
 side-thread.css:59 background --sidebar-resizer-hover-bg
 side-thread.css:60 box-shadow --sidebar-resizer-hover-ring
@@ -244,7 +242,6 @@ sidebar.css:398 box-shadow --ink-overlay-8
 sidebar.css:404 box-shadow --ink-overlay-8
 sidebar.css:435 box-shadow --ink-overlay-8
 sidebar.css:506 box-shadow --ink-overlay-8
-sidebar.css:717 color --sidebar-brand-wordmark-color
 sidebar.css:748 border-top --sidebar-dev-fixture-nav-border
 sidebar.css:433 border-right-color --sidebar-drawer-edge
 sidebar.css:504 border-right-color --sidebar-drawer-edge
@@ -252,8 +249,6 @@ sidebar.css:435 box-shadow --sidebar-drawer-inner-edge
 sidebar.css:506 box-shadow --sidebar-drawer-inner-edge
 sidebar.css:256 box-shadow --sidebar-edge-shadow
 sidebar.css:469 box-shadow --sidebar-edge-shadow
-sidebar.css:860 background --sidebar-glass-hover
-sidebar.css:1897 background --sidebar-glass-hover
 sidebar.css:2059 box-shadow --sidebar-glass-overlay-bright
 sidebar.css:253 border-right --sidebar-material-edge
 sidebar.css:466 border-right-color --sidebar-material-edge
@@ -267,7 +262,6 @@ sidebar.css:469 box-shadow --sidebar-material-inner-edge
 sidebar.css:269 background --sidebar-material-veil-1
 sidebar.css:269 background --sidebar-material-veil-2
 sidebar.css:894 box-shadow --sidebar-nav-item-focus-shadow
-sidebar.css:862 box-shadow --sidebar-nav-item-hover-ring
 sidebar.css:1232 border-top-color --sidebar-project-loading-notch
 sidebar.css:1102 background --sidebar-project-row-pending-bg
 sidebar.css:581 background --sidebar-resizer-hover-bg

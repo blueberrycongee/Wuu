@@ -17,7 +17,7 @@
   --sidebar-glass-overlay-accent: rgba(209, 220, 211, 0.12);
   --sidebar-glass-overlay-highlight-strong: rgba(255, 255, 255, 0.44);
   --sidebar-drawer-bg: var(--wuu-color-surface-muted, #ffffff);
-  --sidebar-brand-wordmark-color: #b64a32;
+  --sidebar-brand-wordmark-color: var(--wuu-color-accent, #b64a32);
   --sidebar-resizer-hover-bg: var(--ink-overlay-18);
   --sidebar-resizer-hover-ring: rgba(255, 255, 255, 0.4);
   /* Dev fixtures: text + nav-border come from the shared ink ladder so they
@@ -25,7 +25,7 @@
    * the running-child-agent tokens below, where it carries meaning. */
   --sidebar-dev-fixture-nav-border: var(--ink-overlay-12);
   --sidebar-dev-fixture-button-color: var(--ink-tertiary);
-  --sidebar-nav-item-hover-ring: rgba(255, 255, 255, 0.42);
+  --sidebar-nav-item-hover-ring: var(--wuu-nav-item-hover-ring, rgba(255, 255, 255, 0.42));
   --sidebar-nav-item-focus-shadow: var(--ink-overlay-18);
   --sidebar-row-selected-bg: var(--ink-overlay-6);
   --sidebar-project-row-pending-bg: rgba(255, 255, 255, 0.24);
