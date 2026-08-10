@@ -2,7 +2,7 @@
    overrides these in base.css theme blocks. */
 :root {
   /* Dialog text follows the shared ink ladder. */
-  --env-deletions-text: #c42020;
+  --env-deletions-text: var(--wuu-color-danger, #c42020);
   --env-archive-confirm-bg: rgba(184, 79, 53, 0.1);
   --env-create-branch-btn-bg: var(--surface-2);
   --env-search-input-text: var(--ink-soft);
@@ -10,7 +10,7 @@
   --env-search-clear-btn-text: var(--ink-soft);
   --env-search-clear-btn-hover-bg: var(--surface-2);
   --env-search-error-bg: #fff0ed;
-  --env-search-error-text: #a74431;
+  --env-search-error-text: var(--wuu-color-danger, #a74431);
   --env-search-result-text: var(--ink);
   --env-search-result-hover-bg: var(--surface-2);
   --env-search-result-active-bg: var(--surface-3);
@@ -20,7 +20,7 @@
   --env-dialog-summary-text: var(--ink-soft);
   --env-field-border: #e3e3df;
   --env-pr-result-bg: #f4f7f3;
-  --env-pr-result-text: #26703c;
+  --env-pr-result-text: var(--wuu-color-success, #26703c);
   --env-context-error-border: rgba(201, 84, 63, 0.24);
   --env-context-bar-bg: rgba(31, 35, 40, 0.09);
   --env-context-bar-inset-top: rgba(255, 255, 255, 0.55);

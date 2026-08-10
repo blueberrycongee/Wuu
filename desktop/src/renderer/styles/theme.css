@@ -215,7 +215,7 @@
 
   /* environment.css */
   /* Dialog text follows the shared ink ladder. */
-  --env-deletions-text: #f0705f;
+  --env-deletions-text: var(--wuu-color-danger, #f0705f);
   --env-archive-confirm-bg: rgba(240, 112, 95, 0.15);
   --env-create-branch-btn-bg: var(--surface-2);
   --env-search-input-text: var(--ink-soft);
@@ -223,7 +223,7 @@
   --env-search-clear-btn-text: var(--ink-soft);
   --env-search-clear-btn-hover-bg: var(--surface-2);
   --env-search-error-bg: #341c18;
-  --env-search-error-text: #f2a08f;
+  --env-search-error-text: var(--wuu-color-danger, #f2a08f);
   --env-search-result-text: var(--ink);
   --env-search-result-hover-bg: var(--surface-2);
   --env-search-result-active-bg: var(--surface-3);
@@ -233,7 +233,7 @@
   --env-dialog-summary-text: var(--ink-soft);
   --env-field-border: var(--hairline);
   --env-pr-result-bg: #17251c;
-  --env-pr-result-text: #4cc38a;
+  --env-pr-result-text: var(--wuu-color-success, #4cc38a);
   --env-context-error-border: rgba(240, 112, 95, 0.35);
   --env-context-bar-bg: rgba(228, 232, 235, 0.1);
   --env-context-bar-inset-top: rgba(255, 255, 255, 0.06);

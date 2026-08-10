@@ -116,13 +116,9 @@ conversation-shell.css:1031 border-color --warning-border
 conversation-shell.css:868 background --warning-soft
 environment.css:1058 background --danger-soft
 environment.css:1292 background --danger-soft
-environment.css:282 color --env-deletions-text
 environment.css:1071 background --env-pr-result-bg
-environment.css:1072 color --env-pr-result-text
 environment.css:599 background --env-search-error-bg
 environment.css:832 background --env-search-error-bg
-environment.css:600 color --env-search-error-text
-environment.css:833 color --env-search-error-text
 environment.css:303 box-shadow --env-shadow-dark-005
 environment.css:100 box-shadow --env-shadow-dark-006
 environment.css:303 box-shadow --env-shadow-dark-007
