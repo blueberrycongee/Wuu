@@ -157,7 +157,11 @@
   --conversation-answer-hover-action-gap: var(--wuu-message-actions-overlay-gap, 6px);
   --conversation-message-action-size: var(--wuu-message-action-size, 24px);
   --conversation-activity-gap: 8px;
-  --conversation-scrollbar-gutter: 12px;
+  /* Keep floating conversation chrome on the same visible centerline as the
+     scroll content. The scroll region reserves exactly this scrollbar width
+     via `scrollbar-gutter: stable`; duplicating the value here would let the
+     message flow and dock composer drift when the global scrollbar changes. */
+  --conversation-scrollbar-gutter: var(--scrollbar-width);
   --conversation-visible-inset-left: 0px;
   --conversation-visible-inset-right: 0px;
   --dock-composer-height: 0px;

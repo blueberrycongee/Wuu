@@ -36,9 +36,14 @@
   }
 }
 
-.conversation-pane.environment-panel-reserved .scroll-region,
-.conversation-pane.environment-panel-reserved .dock-composer-wrap {
+.conversation-pane.environment-panel-reserved .scroll-region {
   padding-right: var(--environment-panel-content-inset);
+}
+
+.conversation-pane.environment-panel-reserved .dock-composer-wrap {
+  padding-right: calc(
+    var(--environment-panel-content-inset) + var(--conversation-scrollbar-gutter)
+  );
 }
 
 @media (max-width: 1060px) {

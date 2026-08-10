@@ -38,6 +38,12 @@
   grid-column: 1;
   grid-row: 2;
   align-self: end;
+  /* The message flow is centered inside .scroll-region's visible content box,
+     which excludes its stable right scrollbar gutter. Reserve the same gutter
+     here so both surfaces share a centerline at every available width. The
+     flow's separate 2px optical inset then leaves the composer only 2px wider
+     per side instead of introducing an accidental horizontal offset. */
+  padding-right: var(--conversation-scrollbar-gutter);
   background: transparent;
   pointer-events: none;
   transition: padding-right var(--environment-flow-motion-duration) var(--environment-panel-motion-easing);
