@@ -290,7 +290,11 @@ describe("createThreadMutationActions", () => {
 
     const outcome = await harness.actions.archiveThread(summary(base));
 
-    expect(outcome).toEqual({ ok: false, error: "会话仍在运行，结束后再归档" });
+    expect(outcome).toEqual({
+      ok: false,
+      error: "会话仍在运行，结束后再归档",
+      forceRetryable: true,
+    });
     expect(api.archiveThread).not.toHaveBeenCalled();
     expect(harness.getAppState().threads[0]?.archived).toBe(false);
     expect(harness.getAppState().status).toBe("ready");
@@ -318,7 +322,11 @@ describe("createThreadMutationActions", () => {
 
     const outcome = await harness.actions.archiveThread(summary(base));
 
-    expect(outcome).toEqual({ ok: false, error: "会话仍在运行，结束后再归档" });
+    expect(outcome).toEqual({
+      ok: false,
+      error: "会话仍在运行，结束后再归档",
+      forceRetryable: true,
+    });
     expect(harness.getAppState().threads[0]?.archived).toBe(false);
     expect(harness.getAppState().status).toBe("ready");
     expect(toastMocks.showErrorToast).toHaveBeenCalledWith("会话仍在运行，结束后再归档");

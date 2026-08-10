@@ -1429,6 +1429,11 @@ type ThreadPinResult struct {
 type ThreadArchiveParams struct {
 	ThreadID string `json:"thread_id"`
 	Archived bool   `json:"archived"`
+	// Force is the escape hatch for threads whose execution state can no
+	// longer settle on its own (for example a runner that died while still
+	// marked running): the server interrupts and settles the stuck turn so the
+	// archive mutation can proceed. It only applies when archiving.
+	Force bool `json:"force,omitempty"`
 }
 
 type ThreadArchiveResult struct {

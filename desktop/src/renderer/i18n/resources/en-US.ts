@@ -1580,6 +1580,7 @@ export const enUS = {
   "thread.forkTitle": "{title} · Fork",
   "queryHistory.index": "Past input index",
   "thread.archive.running": "This conversation is still running. Archive it after it finishes.",
+  "thread.archive.force": "Archive anyway",
   "thread.archive.failed": "Failed to archive conversation",
   "thread.rename.failed": "Failed to rename conversation",
   "thread.memberRemove.failed": "Failed to remove Thread member",

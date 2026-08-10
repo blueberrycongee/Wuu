@@ -700,6 +700,9 @@ export function App(): JSX.Element {
     threadID: string;
     threadTitle: string;
     errorMessage?: string;
+    // Present when the archive failed with a running-turn rejection: the tip
+    // offers the force escape hatch and retries with this summary.
+    forceRetryThread?: ThreadSummary;
   } | null>(null);
   // Archive is now a single-click action (the previous two-step "click again
   // to confirm" pattern was too easy to misfire). Success and failure feedback
@@ -3922,6 +3925,27 @@ export function App(): JSX.Element {
           dismissArchiveTip();
           openArchiveSettings();
         }}
+        onForceArchive={
+          archiveTip.forceRetryThread
+            ? () => {
+                const target = archiveTip.forceRetryThread;
+                if (!target) {
+                  dismissArchiveTip();
+                  return;
+                }
+                void archiveThread(target, { force: true }).then((outcome) => {
+                  setArchiveTip({
+                    threadID: target.id,
+                    threadTitle:
+                      target.title?.trim() || t("app.thisConversation"),
+                    errorMessage: outcome.ok ? undefined : outcome.error,
+                    forceRetryThread:
+                      !outcome.ok && outcome.forceRetryable ? target : undefined,
+                  });
+                });
+              }
+            : undefined
+        }
         onDismiss={dismissArchiveTip}
       />
     </UILayerPortal>
@@ -4118,6 +4142,8 @@ export function App(): JSX.Element {
                   threadID: thread.id,
                   threadTitle: archivedTitle,
                   errorMessage: outcome.ok ? undefined : outcome.error,
+                  forceRetryThread:
+                    !outcome.ok && outcome.forceRetryable ? thread : undefined,
                 });
               });
             }}

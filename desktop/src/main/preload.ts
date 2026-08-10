@@ -445,8 +445,8 @@ const api: WuuDesktopApi = {
     ipcRenderer.invoke("wuu:thread-preview", threadId, limit),
   pinThread: (threadId: string, pinned: boolean) =>
     ipcRenderer.invoke("wuu:thread-pin", threadId, pinned),
-  archiveThread: (threadId: string, archived: boolean) =>
-    ipcRenderer.invoke("wuu:thread-archive", threadId, archived),
+  archiveThread: (threadId: string, archived: boolean, force?: boolean) =>
+    ipcRenderer.invoke("wuu:thread-archive", threadId, archived, force),
   deleteThread: (threadId: string) =>
     ipcRenderer.invoke("wuu:thread-delete", threadId),
   compactThread: (threadId: string) =>

@@ -1578,6 +1578,7 @@ export const zhCN = {
   "thread.forkTitle": "{title} · 分叉",
   "queryHistory.index": "历史输入索引",
   "thread.archive.running": "会话仍在运行，结束后再归档",
+  "thread.archive.force": "仍然归档",
   "thread.archive.failed": "归档会话失败",
   "thread.rename.failed": "重命名对话失败",
   "thread.memberRemove.failed": "移除 Thread 成员失败",

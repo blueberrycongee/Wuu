@@ -35,25 +35,44 @@ export type ThreadMutationActionsDeps = {
 export type ThreadMutationActions = {
   toggleThreadPinned: (thread: ThreadSummary) => Promise<void>;
   renameThread: (thread: ThreadSummary, title: string) => Promise<void>;
-  archiveThread: (thread: ThreadSummary) => Promise<ThreadArchiveOutcome>;
+  archiveThread: (
+    thread: ThreadSummary,
+    options?: ThreadArchiveOptions,
+  ) => Promise<ThreadArchiveOutcome>;
   unarchiveThread: (thread: Pick<ThreadSummary, "id">) => Promise<void>;
   deleteThread: (thread: ThreadSummary) => Promise<void>;
 };
 
+export type ThreadArchiveOptions = {
+  // Escape hatch for conversations stuck in a running state (for example a
+  // dead turn that never settled): the server interrupts and settles the
+  // stuck execution, then archives.
+  force?: boolean;
+};
+
 export type ThreadArchiveOutcome =
   | { ok: true }
-  | { ok: false; error: string };
+  // forceRetryable marks failures caused by a running-turn rejection, where
+  // the UI may offer the force escape hatch.
+  | { ok: false; error: string; forceRetryable?: boolean };
 
-function archiveThreadFailureMessage(error: unknown): string {
-  const message = error instanceof Error ? error.message : String(error ?? "");
-  if (
+function isRunningArchiveRejection(message: string): boolean {
+  return (
     message.includes("cannot archive a running thread") ||
     message.includes("already has a running turn") ||
     message.includes("execution is owned by another app-server")
-  ) {
-    return translateCurrent("thread.archive.running");
+  );
+}
+
+function archiveThreadFailure(error: unknown): { message: string; forceRetryable: boolean } {
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  if (isRunningArchiveRejection(message)) {
+    return { message: translateCurrent("thread.archive.running"), forceRetryable: true };
   }
-  return desktopApiErrorMessage(error, translateCurrent("thread.archive.failed"));
+  return {
+    message: desktopApiErrorMessage(error, translateCurrent("thread.archive.failed")),
+    forceRetryable: false,
+  };
 }
 
 export function createThreadMutationActions(
@@ -216,7 +235,10 @@ export function createThreadMutationActions(
     }
   }
 
-  async function archiveThread(thread: ThreadSummary): Promise<ThreadArchiveOutcome> {
+  async function archiveThread(
+    thread: ThreadSummary,
+    options?: ThreadArchiveOptions,
+  ): Promise<ThreadArchiveOutcome> {
     const currentState = deps.getAppState();
     const isLocalDemoThread = deps.localDemoThreadsRef.current.has(thread.id);
     if (!currentState.activeContext) {
@@ -224,10 +246,11 @@ export function createThreadMutationActions(
       setStatus(error);
       return { ok: false, error };
     }
-    if (!isLocalDemoThread && isThreadRunning(thread)) {
+    const force = options?.force === true;
+    if (!force && !isLocalDemoThread && isThreadRunning(thread)) {
       const error = translateCurrent("thread.archive.running");
       setStatus(error);
-      return { ok: false, error };
+      return { ok: false, error, forceRetryable: true };
     }
     deps.clearThreadPendingComposerMessages(thread.id);
     const archivedActiveThread = thread.id === deps.getActiveThreadID();
@@ -249,7 +272,9 @@ export function createThreadMutationActions(
       return { ok: true };
     }
     try {
-      const result = await window.wuu.archiveThread(thread.id, true);
+      const result = force
+        ? await window.wuu.archiveThread(thread.id, true, true)
+        : await window.wuu.archiveThread(thread.id, true);
       // Archived conversations remain in AppState for Settings → Archive, but
       // the project sidebar cache only represents visible conversations. An
       // archived response cannot be upserted through cacheSidebarThreads
@@ -271,9 +296,9 @@ export function createThreadMutationActions(
       });
       return { ok: true };
     } catch (error) {
-      const message = archiveThreadFailureMessage(error);
-      setStatus(message);
-      return { ok: false, error: message };
+      const failure = archiveThreadFailure(error);
+      setStatus(failure.message);
+      return { ok: false, error: failure.message, forceRetryable: failure.forceRetryable };
     }
   }
 

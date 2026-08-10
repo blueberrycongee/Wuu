@@ -852,6 +852,9 @@ func (s *Server) handleThreadArchive(req Request) error {
 	if id == "" {
 		return s.writeResponse(req.ID, nil, errors.New("thread_id is required"))
 	}
+	if params.Archived && params.Force {
+		s.settleThreadExecutionForForcedArchive(id)
+	}
 	if params.Archived {
 		if th := s.thread(id); th != nil {
 			th.mu.Lock()
@@ -882,6 +885,68 @@ func (s *Server) handleThreadArchive(req Request) error {
 	}
 	releaseThreadMutationLease(id, mutationLease)
 	return s.writeResponse(req.ID, ThreadArchiveResult{Thread: thread}, nil)
+}
+
+var errArchivedWhileRunning = errors.New("archived while the conversation was still running")
+
+// settleThreadExecutionForForcedArchive is the escape hatch behind
+// thread/archive force: it makes a thread whose execution state can no longer
+// settle on its own idle so the durable archive mutation can be admitted.
+// The canonical stuck shape is a runner that died without clearing the
+// running flag; nothing ever settles the turn again, so the thread would stay
+// un-archivable forever.
+//
+// A live turn is interrupted with the usual interrupt semantics first (queued
+// work is held, the worker tree freezes, observers are notified); the
+// synchronous settlement below then clears the running state immediately, and
+// the runner's own settlement no-ops once currentTurn is cleared. A dead turn
+// is settled in place. Cross-process ownership is unaffected: a live owner in
+// another app-server still holds the OS-level execution lock, so the mutation
+// lease acquisition that follows keeps rejecting the archive.
+func (s *Server) settleThreadExecutionForForcedArchive(threadID string) {
+	th := s.thread(threadID)
+	if th == nil {
+		return
+	}
+	th.mu.Lock()
+	live := th.cancel != nil
+	th.mu.Unlock()
+	if live {
+		if _, err := s.interruptThreadExecution(threadID, "", ""); err != nil {
+			// The escape hatch must still work when a side-path of the full
+			// interrupt fails: cancel the turn directly so its runner exits.
+			providers.DebugLogf("interrupt thread %q for forced archive: %v", threadID, err)
+			th.mu.Lock()
+			cancel := th.cancel
+			th.mu.Unlock()
+			if cancel != nil {
+				cancel()
+			}
+		}
+	}
+	now := time.Now().UTC()
+	th.mu.Lock()
+	turnID := strings.TrimSpace(th.currentTurn)
+	turnKind := th.currentTurnKind
+	settledTurnID := ""
+	switch {
+	case turnID != "":
+		th.completeTurnLocked(turnID, TurnStatusInterrupted, errArchivedWhileRunning, now, "", "", false)
+		settledTurnID = turnID
+	case th.executionLease != nil || th.admissionReserved || th.running:
+		// Stuck without an active turn record: a leaked admission or a
+		// running flag whose runner is gone. Release the execution lease so
+		// the archive mutation can be admitted.
+		th.releaseThreadExecutionLeaseLocked()
+		th.running = false
+	}
+	th.mu.Unlock()
+	if settledTurnID == "" {
+		return
+	}
+	if err := s.persistTurnTerminal(th, settledTurnID, turnKind, TurnStatusInterrupted, errArchivedWhileRunning, now); err != nil {
+		providers.DebugLogf("persist forced archive settlement for thread %q: %v", threadID, err)
+	}
 }
 
 func (s *Server) handleThreadRename(req Request) error {

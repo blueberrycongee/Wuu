@@ -1869,10 +1869,11 @@ app.whenReady().then(async () => {
   );
   ipcMain.handle(
     "wuu:thread-archive",
-    (event, threadId: string, archived: boolean) =>
+    (event, threadId: string, archived: boolean, force?: boolean) =>
       appServerRequest<{ thread: Thread }>(event, "thread/archive", {
         thread_id: threadId,
         archived,
+        force: force === true ? true : undefined,
       }),
   );
   ipcMain.handle("wuu:thread-delete", (event, threadId: string) =>

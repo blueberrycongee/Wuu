@@ -7,6 +7,9 @@ export type ArchiveTipProps = {
   errorMessage?: string;
   onViewArchive: () => void;
   onDismiss: () => void;
+  // Escape hatch shown when archiving was rejected because the conversation
+  // is (or appears to be) still running: retries the archive with force.
+  onForceArchive?: () => void;
 };
 
 /**
@@ -18,6 +21,7 @@ export function ArchiveTip({
   errorMessage,
   onViewArchive,
   onDismiss,
+  onForceArchive,
 }: ArchiveTipProps): JSX.Element {
   const { t } = useI18n();
   const failed = Boolean(errorMessage);
@@ -34,6 +38,12 @@ export function ArchiveTip({
     <span>{t("archive.conversationArchived")}</span>
   );
 
+  const action = failed
+    ? onForceArchive
+      ? { label: t("thread.archive.force"), onClick: onForceArchive }
+      : undefined
+    : { label: t("archive.viewArchive"), onClick: onViewArchive };
+
   return (
     <TopNotice
       message={message}
@@ -41,14 +51,7 @@ export function ArchiveTip({
       onDismiss={onDismiss}
       isError={failed}
       dismissAriaLabel={t("common.closeNotice")}
-      action={
-        failed
-          ? undefined
-          : {
-              label: t("archive.viewArchive"),
-              onClick: onViewArchive,
-            }
-      }
+      action={action}
     />
   );
 }
