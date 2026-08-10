@@ -64,6 +64,7 @@
   --ink-strong: var(--wuu-color-text, var(--gray-900));
   --ink: var(--wuu-color-text, var(--gray-800));
   --ink-soft: var(--wuu-color-text-muted, var(--gray-650));
+  --wuu-color-live-highlight: rgba(255, 255, 255, 0.95);
   --ink-tertiary: var(--gray-600);
   --ink-muted: var(--gray-500);
   --ink-faint: var(--gray-400);
@@ -321,6 +322,68 @@
     --environment-flow-motion-duration: 0ms;
     --environment-flow-motion-delay: 0ms;
     --sheet-exit-duration: 0ms;
+  }
+}
+
+/* Glyph-only running-state feedback. The real text remains normally painted;
+ * a duplicate in ::after carries the clipped highlight. Never make the source
+ * text transparent: live process rows can contain nested spans, and inherited
+ * text-fill transparency can erase those descendants in Chromium. */
+@keyframes wuu-live-text-wave {
+  0% {
+    background-position: 180% 50%;
+  }
+
+  80%,
+  100% {
+    background-position: -80% 50%;
+  }
+}
+
+.wuu-live-text-wave {
+  display: inline-block;
+  position: relative;
+}
+
+.wuu-live-text-wave::after {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background-image: linear-gradient(
+    90deg,
+    transparent calc(50% - 8px),
+    var(--wuu-color-live-highlight) 50%,
+    transparent calc(50% + 8px)
+  );
+  background-repeat: no-repeat;
+  background-position: 180% 50%;
+  background-size: 260% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  content: attr(data-text);
+  font: inherit;
+  letter-spacing: inherit;
+  pointer-events: none;
+  text-align: inherit;
+  -webkit-text-fill-color: transparent;
+  white-space: inherit;
+  animation: wuu-live-text-wave 6s linear infinite;
+}
+
+:root[data-renderer-hidden] .wuu-live-text-wave::after {
+  animation-play-state: paused;
+}
+
+.cached-conversation-pane[data-active="false"] .wuu-live-text-wave::after {
+  content: none;
+  animation: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wuu-live-text-wave::after {
+    content: none;
+    animation: none;
   }
 }
 

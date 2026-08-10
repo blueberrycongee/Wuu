@@ -44,6 +44,10 @@ const turnsCSS = readFileSync(
   resolve(process.cwd(), "src/renderer/styles/turns.css"),
   "utf8",
 );
+const baseCSS = readFileSync(
+  resolve(process.cwd(), "src/renderer/styles/base.css"),
+  "utf8",
+);
 const conversationShellCSS = readFileSync(
   resolve(process.cwd(), "src/renderer/styles/conversation-shell.css"),
   "utf8",
@@ -1351,11 +1355,15 @@ describe("AssistantTurnShell — turn divider styles", () => {
     expect(shellRule).not.toContain("padding-top");
   });
 
-  it("keeps live labels static instead of continuously repainting clipped text", () => {
+  it("moves a compositor wave over live labels without repainting clipped text", () => {
     expect(turnsCSS).not.toContain("@keyframes live-gray-shimmer");
     expect(turnsCSS).not.toContain("animation: live-gray-shimmer");
     expect(turnsCSS).not.toContain("@keyframes turn-text-sweep");
-    expect(turnsCSS).not.toContain(".live-progress-chip::after");
+    expect(baseCSS).toContain(".wuu-live-text-wave");
+    expect(baseCSS).toContain("animation: wuu-live-text-wave 6s linear infinite;");
+    expect(baseCSS).toContain("background-clip: text;");
+    expect(baseCSS).toContain('.cached-conversation-pane[data-active="false"]');
+    expect(turnsCSS).not.toContain("background-clip: text;");
     expect(cssRule(".turn-progress.in_progress .turn-progress-title")).not.toContain(
       "animation:",
     );

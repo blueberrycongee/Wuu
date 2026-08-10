@@ -40,6 +40,7 @@
   --ink-strong: var(--wuu-color-text, var(--gray-900));
   --ink: var(--wuu-color-text, var(--gray-800));
   --ink-soft: var(--wuu-color-text-muted, var(--gray-650));
+  --wuu-color-live-highlight: rgba(198, 202, 205, 0.36);
   --ink-tertiary: var(--gray-600);
   --ink-muted: var(--gray-500);
   --ink-faint: var(--gray-400);
@@ -341,16 +342,6 @@
   --activity-detail-error-border: #7a463f;
   --diff-insert-color: #3fb970;
   --diff-delete-color: #ef6a5e;
-  --live-gray-shimmer-gradient: linear-gradient(
-    90deg,
-    transparent 0%,
-    rgba(198, 202, 205, 0) 34%,
-    rgba(198, 202, 205, 0.2) 44%,
-    rgba(198, 202, 205, 0.42) 50%,
-    rgba(198, 202, 205, 0.2) 56%,
-    rgba(198, 202, 205, 0) 66%,
-    transparent 100%
-  );
   --rich-link-color: var(--wuu-color-link, #60a5fa);
   --rich-link-hover-color: var(--wuu-color-link-hover, #79b8ff);
   --rich-code-surface-bg: var(--wuu-color-surface-muted, #26292d);

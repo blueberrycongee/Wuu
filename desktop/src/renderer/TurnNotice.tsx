@@ -144,6 +144,7 @@ export function ContextCompactionNotice({
           <span
             className={`process-surface-summary-line${inProgress ? " wuu-live-text-wave" : ""}`}
             aria-label={description}
+            data-text={title}
           >
             <strong className="process-surface-segment context-compaction-title">
               {title}

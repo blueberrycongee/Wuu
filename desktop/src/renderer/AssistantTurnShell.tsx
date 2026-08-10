@@ -345,7 +345,9 @@ function TurnProcessFold({
           <LightweightStreamingText
             text={visiblePreview?.text ?? ""}
             live={turn.status === "in_progress"}
-            className="turn-process-preview-text"
+            className={`turn-process-preview-text${
+              turn.status === "in_progress" ? " wuu-live-text-wave" : ""
+            }`}
             data-text={visiblePreview?.text ?? ""}
           />
         </span>
@@ -559,7 +561,7 @@ function ReasoningFold({
   // is still running. The label text still reflects this item's own
   // state.
   const textClass = `turn-reasoning-summary-text${
-    activeGray ? " is-live-gray" : ""
+    activeGray ? " is-live-gray wuu-live-text-wave" : ""
   }${streaming ? " is-streaming" : ""}`;
   const [open, setOpen] = useState(false);
   const reasoningScroll = useAutoFollowScrollContainer();

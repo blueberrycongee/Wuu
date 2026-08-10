@@ -46,6 +46,7 @@
     { "name": "--wuu-color-overlay-backdrop", "category": "color" },
     { "name": "--wuu-color-text", "category": "color" },
     { "name": "--wuu-color-text-muted", "category": "color" },
+    { "name": "--wuu-color-live-highlight", "category": "color" },
     { "name": "--wuu-color-border-subtle", "category": "color" },
     { "name": "--wuu-color-border-strong", "category": "color" },
     { "name": "--wuu-color-accent", "category": "color" },

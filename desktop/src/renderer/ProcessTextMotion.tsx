@@ -29,6 +29,7 @@ export function AnimatedProcessText({
   return (
     <span
       className={["process-text-motion", className].filter(Boolean).join(" ")}
+      data-text={text}
       data-transitioning={exitingText ? "true" : undefined}
     >
       {exitingText ? (

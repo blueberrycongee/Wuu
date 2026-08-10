@@ -205,6 +205,7 @@ export function ProcessSurface({
     <span
       className={`process-surface-summary-line${activeGrayText ? " wuu-live-text-wave" : ""}`}
       aria-label={summaryText}
+      data-text={summaryText}
     >
       {useCondensedSummary ? (
         <AnimatedProcessText

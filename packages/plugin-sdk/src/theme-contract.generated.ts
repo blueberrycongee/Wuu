@@ -15,6 +15,7 @@ export const PUBLIC_THEME_TOKEN_NAMES = [
   "--wuu-color-overlay-backdrop",
   "--wuu-color-text",
   "--wuu-color-text-muted",
+  "--wuu-color-live-highlight",
   "--wuu-color-border-subtle",
   "--wuu-color-border-strong",
   "--wuu-color-accent",

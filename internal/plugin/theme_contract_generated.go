@@ -17,6 +17,7 @@ var allowedThemeTokens = map[string]struct{}{
 	"--wuu-color-overlay-backdrop":        {},
 	"--wuu-color-text":                    {},
 	"--wuu-color-text-muted":              {},
+	"--wuu-color-live-highlight":          {},
 	"--wuu-color-border-subtle":           {},
 	"--wuu-color-border-strong":           {},
 	"--wuu-color-accent":                  {},
