@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -17,6 +18,33 @@ import (
 type pluginTurnLifecycleClient struct {
 	id    string
 	calls chan pluginhost.AgentTurnLifecycleInput
+}
+
+type blockingPluginTurnLifecycleClient struct {
+	started chan struct{}
+	release chan struct{}
+	once    sync.Once
+}
+
+func (c *blockingPluginTurnLifecycleClient) ID() string { return "subagent" }
+func (c *blockingPluginTurnLifecycleClient) Status() pluginhost.Status {
+	return pluginhost.Status{ID: c.ID(), State: pluginhost.StateActive}
+}
+func (c *blockingPluginTurnLifecycleClient) Close(context.Context) error { return nil }
+func (c *blockingPluginTurnLifecycleClient) ProtocolVersion() int {
+	return pluginhost.CapabilityProtocolVersion
+}
+func (c *blockingPluginTurnLifecycleClient) Capabilities() []pluginhost.CapabilityDescriptor {
+	return []pluginhost.CapabilityDescriptor{{ID: pluginhost.CapabilityAgentTurnLifecycle, Kind: pluginhost.SeamObserve, Version: 1}}
+}
+func (c *blockingPluginTurnLifecycleClient) InvokeCapability(ctx context.Context, _ pluginhost.CapabilityInvokeParams) (pluginhost.CapabilityInvokeResult, error) {
+	c.once.Do(func() { close(c.started) })
+	select {
+	case <-c.release:
+		return pluginhost.CapabilityInvokeResult{Output: []byte(`{}`)}, nil
+	case <-ctx.Done():
+		return pluginhost.CapabilityInvokeResult{}, ctx.Err()
+	}
 }
 
 func (c *pluginTurnLifecycleClient) ID() string { return c.id }
@@ -179,6 +207,65 @@ func TestPluginSessionListAndCancelAreOwnerScoped(t *testing.T) {
 	cancelled, err := rt.PluginSessionRouter.Cancel(context.Background(), "subagent", pluginhost.SessionCancelParams{SessionID: created.SessionID})
 	if err != nil || !cancelled.Cancelled {
 		t.Fatalf("cancel = %+v, %v", cancelled, err)
+	}
+}
+
+func TestPluginSessionCancelDoesNotWaitForDiscardedLifecycleObserver(t *testing.T) {
+	stream := newBlockingStreamClient("must not complete")
+	client := &fakeClient{}
+	rt := newTestRuntime(t, client)
+	rt.StreamRunner.Client = providers.AdaptStreamClient(stream)
+	rt.PluginSessionRouter = runtime.NewPluginSessionRouter()
+	lifecycle := &blockingPluginTurnLifecycleClient{started: make(chan struct{}), release: make(chan struct{})}
+	rt.PluginHost = pluginhost.New(lifecycle)
+	out := &lockedBuffer{}
+	srv := New(rt, out)
+	t.Cleanup(func() {
+		close(lifecycle.release)
+		srv.Close()
+	})
+
+	created, err := rt.PluginSessionRouter.Create(context.Background(), lifecycle.ID(), pluginhost.SessionCreateParams{
+		RequestID: "create", Name: "child", Visibility: pluginhost.SessionVisibilityPlugin, ContextSource: pluginhost.SessionContextFresh,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	started, err := rt.PluginSessionRouter.Send(context.Background(), lifecycle.ID(), pluginhost.SessionSendParams{
+		RequestID: "first", SessionID: created.SessionID, Input: pluginhost.SessionInput{Prompt: "first"},
+	})
+	if err != nil || started.State != pluginhost.TurnLifecycleRunning {
+		t.Fatalf("first send = %+v, %v", started, err)
+	}
+	select {
+	case <-stream.started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("child turn did not start")
+	}
+	queued, err := rt.PluginSessionRouter.Send(context.Background(), lifecycle.ID(), pluginhost.SessionSendParams{
+		RequestID: "second", SessionID: created.SessionID, Input: pluginhost.SessionInput{Prompt: "second"},
+	})
+	if err != nil || queued.State != pluginhost.TurnLifecycleQueued || queued.QueueID == "" {
+		t.Fatalf("second send = %+v, %v", queued, err)
+	}
+
+	cancelled := make(chan error, 1)
+	go func() {
+		_, cancelErr := rt.PluginSessionRouter.Cancel(context.Background(), lifecycle.ID(), pluginhost.SessionCancelParams{SessionID: created.SessionID})
+		cancelled <- cancelErr
+	}()
+	select {
+	case err := <-cancelled:
+		if err != nil {
+			t.Fatalf("cancel = %v", err)
+		}
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("cancel waited for a plugin lifecycle observer")
+	}
+	select {
+	case <-lifecycle.started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("discarded lifecycle observer was not scheduled")
 	}
 }
 

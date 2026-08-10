@@ -1408,9 +1408,10 @@ func (s *Server) interruptThreadExecution(threadID, expectedRunID string) (bool,
 	th.workerTreeFrozen = true
 	control := threadAgentControlLocked(th)
 	th.mu.Unlock()
-	for _, entry := range discardedPluginTurns {
-		s.notifyPluginTurnDiscarded(threadID, entry, "queued turn was interrupted")
-	}
+	// Cancel the active turn before notifying plugin observers. A plugin host
+	// service may be running inside the same helper process as the observer; a
+	// synchronous observer callback here would otherwise re-enter that ordered
+	// process and prevent the cancellation response from ever being returned.
 	cancel()
 	// turn/interrupt means "freeze this work", not "leave background workers
 	// running": cancel the whole anonymous-worker tree, clear its queued
@@ -1421,6 +1422,9 @@ func (s *Server) interruptThreadExecution(threadID, expectedRunID string) (bool,
 	}
 	if err := s.stopResumeProcessesForThread(threadID, threadRuntime); err != nil {
 		return true, err
+	}
+	for _, entry := range discardedPluginTurns {
+		s.notifyPluginTurnDiscarded(threadID, entry, "queued turn was interrupted")
 	}
 	discardedIDs := queuedTurnIDs(discardedPluginTurns)
 	s.notifyQueuedTurnsDequeued(threadID, discardedIDs)
@@ -2135,11 +2139,9 @@ func (s *Server) runTurnWithRequestContext(ctx context.Context, th *threadState,
 	}
 	th.mu.Unlock()
 
-	if observerErr := s.notifyPluginTurnCompleted(context.Background(), pluginhost.AgentTurnCompletedInput{
+	completedObservation := pluginhost.AgentTurnCompletedInput{
 		ThreadID: th.ID, TurnID: turnID, StartedAt: startedAt, CompletedAt: now,
 		Succeeded: err == nil, InputTokens: res.InputTokens, OutputTokens: res.OutputTokens,
-	}); observerErr != nil {
-		providers.DebugLogf("notify plugin turn observers for thread %q turn %q: %v", th.ID, turnID, observerErr)
 	}
 	shouldPersistTerminal := status != TurnStatusCompleted || (turnKind == TurnKindUser && turnResumed)
 	var terminalErr error
@@ -2286,6 +2288,16 @@ func (s *Server) runTurnWithRequestContext(ctx context.Context, th *threadState,
 	if hasRunUpdate {
 		notify(NotificationRunUpdated, RunUpdatedNotification{Run: runUpdate})
 	}
+	// Observers are advisory and must not delay terminal state publication. In
+	// particular, a plugin helper can be blocked in a host service while core
+	// is trying to report the cancellation of that same service's child turn.
+	_ = s.startBackground(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), pluginObserverDeliveryTimeout)
+		defer cancel()
+		if observerErr := s.notifyPluginTurnCompleted(ctx, completedObservation); observerErr != nil {
+			providers.DebugLogf("notify plugin turn observers for thread %q turn %q: %v", th.ID, turnID, observerErr)
+		}
+	})
 	if reference := turnRuntime.PluginTurn; reference != nil {
 		lifecycleState := pluginhost.TurnLifecycleCompleted
 		errorText := ""
@@ -2296,14 +2308,12 @@ func (s *Server) runTurnWithRequestContext(ctx context.Context, th *threadState,
 			}
 			errorText = err.Error()
 		}
-		if lifecycleErr := s.notifyPluginTurnLifecycle(context.Background(), reference.PluginID, pluginhost.AgentTurnLifecycleInput{
+		s.notifyPluginTurnLifecycleAsync(reference.PluginID, pluginhost.AgentTurnLifecycleInput{
 			RequestID: reference.RequestID, State: lifecycleState, ThreadID: th.ID,
 			TurnID: turnID, QueueID: reference.QueueID, Error: errorText,
 			StartedAt: &startedAt, CompletedAt: &now,
 			InputTokens: res.InputTokens, OutputTokens: res.OutputTokens, FinalOutput: res.Content,
-		}); lifecycleErr != nil {
-			providers.DebugLogf("notify plugin turn terminal for thread %q turn %q: %v", th.ID, turnID, lifecycleErr)
-		}
+		})
 	}
 	if completionClaimFailed {
 		s.scheduleThreadExecutionLeaseRetry(func() {

@@ -34,13 +34,11 @@ func (s *Server) notifyPluginTurnDiscarded(threadID string, entry queuedTurn, re
 	if reference == nil {
 		return
 	}
-	if err := s.notifyPluginTurnLifecycle(context.Background(), reference.PluginID, pluginhost.AgentTurnLifecycleInput{
+	s.notifyPluginTurnLifecycleAsync(reference.PluginID, pluginhost.AgentTurnLifecycleInput{
 		RequestID: reference.RequestID, State: pluginhost.TurnLifecycleDiscarded,
 		ThreadID: strings.TrimSpace(threadID), QueueID: reference.QueueID,
 		Error: strings.TrimSpace(reason),
-	}); err != nil {
-		providers.DebugLogf("notify plugin turn discarded for queue %q: %v", reference.QueueID, err)
-	}
+	})
 }
 
 func (s *Server) createPluginSession(_ context.Context, pluginID string, params pluginhost.SessionCreateParams) (pluginhost.SessionCreateResult, error) {
