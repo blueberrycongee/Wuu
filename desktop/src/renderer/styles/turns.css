@@ -2251,14 +2251,8 @@
   animation: process-text-rise-out var(--motion-base) var(--ease-out) both;
 }
 
-/* Live gray labels sweep the glyphs themselves, not the invisible layout box.
-   A text-clipped duplicate carries the themed highlight band; the original
-   label stays fully opaque underneath, so chevrons and counts remain stable
-   and plugin themes can replace the sweep as one public gradient token.
-
-   The highlight band is sized larger than the label and spends the first and
-   last stretches fully outside the text, which gives each pass a visible rest
-   before it sweeps left→right again. */
+/* A text-clipped duplicate sweeps the glyphs while the opaque label underneath
+   keeps controls stable. The oversized band rests outside between passes. */
 @keyframes live-gray-shimmer {
   from { background-position: 180% 50%; }
   to   { background-position: -80% 50%; }
@@ -2337,7 +2331,6 @@
 
 .process-surface-separator {
   flex: 0 0 auto;
-  padding: 0 6px;
 }
 
 .process-surface-count {
@@ -2391,6 +2384,13 @@
 
 .process-surface-row.is-live-gray .process-surface-summary-line::after {
   content: attr(aria-label);
+}
+
+/* Avoid a third, already-updated copy while the real label changes state. */
+.process-surface-row.is-live-gray .process-surface-summary-line:has(
+  .process-text-motion[data-transitioning="true"], .process-surface-count.is-changing
+)::after {
+  display: none;
 }
 
 .turn-reasoning-summary-text.is-live-gray {

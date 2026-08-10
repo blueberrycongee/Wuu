@@ -1363,6 +1363,10 @@ describe("AssistantTurnShell — turn divider styles", () => {
     expect(turnsCSS).toContain("content: attr(aria-label);");
     expect(turnsCSS).toContain("background-clip: text;");
     expect(turnsCSS).toContain("animation: live-gray-shimmer 4.8s linear infinite;");
+    expect(turnsCSS).toContain(
+      '.process-text-motion[data-transitioning="true"],',
+    );
+    expect(turnsCSS).toContain(".process-surface-count.is-changing");
     expect(turnsCSS).not.toContain(".process-surface-row.is-streaming::after");
     expect(turnsCSS).not.toContain(
       ".turn-reasoning-summary-text.is-streaming::after",

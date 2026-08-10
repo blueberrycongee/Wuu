@@ -236,7 +236,7 @@ export function ProcessSurface({
       {hasReasoning && !useCondensedSummary ? (
         <span className="process-surface-segment process-surface-reasoning-segment">
           {toolSegments.length > 0 ? (
-            <span className="process-surface-separator">·</span>
+            <span className="process-surface-separator">{" · "}</span>
           ) : null}
           <AnimatedProcessText
             className="process-surface-reasoning-label"
@@ -357,7 +357,7 @@ function ProcessSurfaceSegmentView({
       className={`process-surface-segment process-surface-segment-${segment.kind}`}
     >
       {separator ? (
-        <span className="process-surface-separator">·</span>
+        <span className="process-surface-separator">{" · "}</span>
       ) : null}
       {typeof segment.count === "number" ? (
         <>

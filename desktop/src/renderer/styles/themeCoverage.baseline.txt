@@ -623,7 +623,7 @@ turns.css:3130 border-left --ink-overlay-18
 turns.css:454 box-shadow --ink-overlay-18
 turns.css:1202 box-shadow --ink-overlay-18
 turns.css:4429 box-shadow --ink-overlay-18
-turns.css:2310 text-decoration-color --ink-overlay-18
+turns.css:2304 text-decoration-color --ink-overlay-18
 turns.css:3251 text-decoration-color --ink-overlay-18
 turns.css:1197 background --ink-overlay-4
 turns.css:1248 background --ink-overlay-4
@@ -663,14 +663,14 @@ turns.css:4180 color --ink-tertiary
 turns.css:4189 color --ink-tertiary
 turns.css:4208 color --ink-tertiary
 turns.css:950 color --instruction-files-error-fallback
-turns.css:2383 background-image --live-gray-shimmer-gradient
+turns.css:2376 background-image --live-gray-shimmer-gradient
 turns.css:609 background --message-copy-bg
 turns.css:639 background --message-copy-bg
 turns.css:733 background --message-file-bg
 turns.css:734 color --message-file-fg
 turns.css:1946 color --process-control-color-fallback
 turns.css:1981 color --process-control-color-fallback
-turns.css:2283 color --process-control-color-fallback
+turns.css:2277 color --process-control-color-fallback
 turns.css:3230 color --process-control-color-fallback
 turns.css:4022 border --project-empty-actions-border
 turns.css:4032 background --project-empty-actions-hover-bg
