@@ -146,6 +146,7 @@ import type {
   VoicePermissionStatus,
 } from "../shared/protocol";
 import { AppServerClientPool } from "./appServerClients";
+import { RendererServerEventBatcher } from "./rendererServerEventBatcher";
 import { ObservationCoordinator } from "./cuaActivityWindows";
 import { createObservationPiPFactory } from "./browserPiPWindow";
 import { removeLegacyDesktopCliLink } from "./legacyCliLink";
@@ -471,6 +472,10 @@ function workspaceFilesForEvent(event: IpcMainInvokeEvent): WorkspaceFileService
   return new WorkspaceFileService(() => runtimeContextForEvent(event));
 }
 
+const rendererServerEventBatcher = new RendererServerEventBatcher((event) => {
+  broadcastToAll("wuu:server-event", event);
+});
+
 function emitServerEvent(event: ServerEvent): void {
   // Intercept core→desktop browser/* requests BEFORE broadcastToAll: the
   // renderer auto-rejects every server-request ("unsupported server request"),
@@ -498,7 +503,7 @@ function emitServerEvent(event: ServerEvent): void {
   if (sideThreadEvent) {
     broadcastToAll("wuu:side-thread-event", sideThreadEvent);
   }
-  broadcastToAll("wuu:server-event", event);
+  rendererServerEventBatcher.enqueue(event);
 }
 
 function broadcastToAll(channel: string, payload: unknown): void {
