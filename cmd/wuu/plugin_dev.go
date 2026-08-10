@@ -421,7 +421,7 @@ func testPluginPackage(source string, timeout time.Duration) []pluginDiagnostic 
 	defer client.Close(context.Background())
 	diagnostics = append(diagnostics, pluginDiagnostic{Level: "pass", Check: "runtime.initialize", Message: "runtime completed executable initialization"})
 	protocolVersion := client.ProtocolVersion()
-	if protocolVersion != pluginhost.ProtocolVersion && protocolVersion != pluginhost.CapabilityProtocolVersion {
+	if protocolVersion < pluginhost.ProtocolVersion || protocolVersion > pluginhost.CapabilityProtocolVersion {
 		return append(diagnostics, pluginDiagnostic{Level: "fail", Check: "runtime.protocol", Message: fmt.Sprintf("unsupported negotiated protocol version %d", protocolVersion)})
 	}
 	diagnostics = append(diagnostics, pluginDiagnostic{Level: "pass", Check: "runtime.protocol", Message: fmt.Sprintf("negotiated protocol v%d", protocolVersion)})

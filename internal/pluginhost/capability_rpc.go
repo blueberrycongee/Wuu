@@ -1,7 +1,6 @@
 package pluginhost
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -396,21 +395,6 @@ func (e *HostServiceError) Error() string {
 		return ""
 	}
 	return e.Message
-}
-
-// HostServiceHandler dispatches the host services that are live for one
-// plugin process. SupportedHostServices is both the dispatcher's declaration
-// and the source of the services advertised during initialization.
-// HandleHostService must return promptly when ctx is canceled.
-type HostServiceHandler interface {
-	SupportedHostServices() []HostServiceMethod
-	HandleHostService(ctx context.Context, method HostServiceMethod, params json.RawMessage) (json.RawMessage, error)
-}
-
-// HostServiceLifecycle is implemented by generation-owned dispatchers that
-// must stop accepting calls when their plugin process closes.
-type HostServiceLifecycle interface {
-	CloseHostServices()
 }
 
 // ---------------------------------------------------------------------------
@@ -846,23 +830,10 @@ func ValidateCapabilityNegotiation(result CapabilityInitializeResult, supported 
 // ValidateHostServiceMethod checks that a host service method is recognized.
 func ValidateHostServiceMethod(m HostServiceMethod) error {
 	switch m {
-	case HostServiceStorageGet, HostServiceStorageSet, HostServiceStorageDelete, HostServiceStorageKeys, HostServiceStorageCompareExchange,
-		HostServiceSettingsGet, HostServiceSettingsList,
-		HostServiceSessionCreate, HostServiceSessionSend, HostServiceSessionList, HostServiceSessionCancel,
-		ServiceCallMethod:
+	case ServiceCallMethod:
 		return nil
 	default:
 		return fmt.Errorf("unknown host service method %q", m)
-	}
-}
-
-// AllHostServices returns the complete list of supported host services.
-func AllHostServices() []HostServiceMethod {
-	return []HostServiceMethod{
-		HostServiceStorageGet, HostServiceStorageSet, HostServiceStorageDelete, HostServiceStorageKeys, HostServiceStorageCompareExchange,
-		HostServiceSettingsGet, HostServiceSettingsList,
-		HostServiceSessionCreate, HostServiceSessionSend, HostServiceSessionList, HostServiceSessionCancel,
-		ServiceCallMethod,
 	}
 }
 

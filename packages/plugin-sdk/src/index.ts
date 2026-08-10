@@ -497,6 +497,40 @@ export const HOST_SERVICE_METHODS = [
 
 export type HostServiceMethod = (typeof HOST_SERVICE_METHODS)[number];
 
+export const KERNEL_SERVICE_METHOD = "call" as const;
+export const KERNEL_SERVICE_NAMES = {
+  "host.storage.get": "host.storage.get",
+  "host.storage.set": "host.storage.set",
+  "host.storage.delete": "host.storage.delete",
+  "host.storage.keys": "host.storage.keys",
+  "host.storage.compare_exchange": "host.storage.compare-exchange",
+  "host.settings.get": "host.settings.get",
+  "host.settings.list": "host.settings.list",
+  "host.session.create": "host.session.create",
+  "host.session.send": "host.session.send",
+  "host.session.list": "host.session.list",
+  "host.session.cancel": "host.session.cancel",
+} as const satisfies Record<Exclude<HostServiceMethod, "host.service.call">, string>;
+
+export type KernelHostServiceMethod = keyof typeof KERNEL_SERVICE_NAMES;
+
+/** Preserve the former host-call input while emitting the Service Registry gateway frame. */
+export function kernelServiceCall<M extends KernelHostServiceMethod>(
+  id: string,
+  method: M,
+  params: HostServiceContracts[M]["params"],
+) {
+  return {
+    id,
+    method: "host.service.call" as const,
+    params: { service: KERNEL_SERVICE_NAMES[method], method: KERNEL_SERVICE_METHOD, params },
+  };
+}
+
+export function requireKernelService(method: KernelHostServiceMethod): ServiceRequirement {
+  return { name: KERNEL_SERVICE_NAMES[method], major_version: 1, required: true };
+}
+
 export interface HostServiceDescriptor {
   id: HostServiceMethod | (string & {});
   required?: boolean;

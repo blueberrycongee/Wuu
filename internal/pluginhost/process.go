@@ -38,16 +38,10 @@ type ProcessConfig struct {
 	WuuHome           string
 	WorkspaceStateDir string
 	Timeout           time.Duration
-	// HostServiceHandler is the live dispatcher for Plugin -> Host calls.
-	HostServiceHandler HostServiceHandler
 	// ServiceRouter routes validated service.call frames into the active
 	// generation's service registry. When nil, service.call requests are
 	// rejected as unavailable.
 	ServiceRouter ServiceRouter
-	// SupportedHostServices is an optional assertion about HostServiceHandler's
-	// declaration. When set it must match exactly; names alone never enable a
-	// service. The handler declaration is what is advertised on the wire.
-	SupportedHostServices []HostServiceMethod
 	// PrepareOnly leaves a lifecycle-aware runtime initialized but inactive.
 	// The owning generation activates it after its durable commit succeeds.
 	PrepareOnly bool
@@ -105,7 +99,6 @@ type ProcessClient struct {
 	stopMu             sync.Mutex
 	stopped            bool
 	stopErr            error
-	serviceClose       sync.Once
 }
 
 func Start(ctx context.Context, config ProcessConfig) (*ProcessClient, error) {
@@ -117,12 +110,6 @@ func Start(ctx context.Context, config ProcessConfig) (*ProcessClient, error) {
 	if config.Timeout <= 0 {
 		config.Timeout = 30 * time.Second
 	}
-	supported, err := configuredHostServices(config)
-	if err != nil {
-		return nil, fmt.Errorf("plugin %q host services: %w", config.ID, err)
-	}
-	config.SupportedHostServices = supported
-
 	cmd := exec.Command(config.Command, config.Args...)
 	cmd.Dir = config.PluginRoot
 	cmd.Env = buildEnv(config.Env)
@@ -145,7 +132,7 @@ func Start(ctx context.Context, config ProcessConfig) (*ProcessClient, error) {
 	client.processCtx, client.processCancel = context.WithCancel(context.Background())
 	// Initialization is a prepare phase. Only read-only services are available
 	// until the generation and its durable policy commit.
-	client.negotiated = preflightHostServices(config.SupportedHostServices)
+	client.negotiated = map[HostServiceMethod]struct{}{ServiceCallMethod: {}}
 	scanner := bufio.NewScanner(stdout)
 	scanner.Buffer(make([]byte, 0, 4096), maxResponseLineSize)
 	client.scanner = scanner
@@ -168,7 +155,7 @@ func Start(ctx context.Context, config ProcessConfig) (*ProcessClient, error) {
 			WorkspaceStateDir: config.WorkspaceStateDir,
 		},
 		CapabilityProtocolVersion: CapabilityProtocolVersion,
-		SupportedHostServices:     append([]HostServiceMethod(nil), config.SupportedHostServices...),
+		SupportedHostServices:     []HostServiceMethod{ServiceCallMethod},
 		LifecycleVersion:          RuntimeLifecycleVersion,
 	}, &initialized); err != nil {
 		_ = client.stopProcess()
@@ -180,7 +167,7 @@ func Start(ctx context.Context, config ProcessConfig) (*ProcessClient, error) {
 		client.setFailure(err)
 		return nil, fmt.Errorf("initialize plugin %q: invalid tool registrations: %w", config.ID, err)
 	}
-	if err := ValidateCapabilityNegotiation(initialized, config.SupportedHostServices); err != nil {
+	if err := ValidateCapabilityNegotiation(initialized, []HostServiceMethod{ServiceCallMethod}); err != nil {
 		_ = client.stopProcess()
 		negotiationErr := &CapabilityNegotiationError{Err: err}
 		client.setFailure(negotiationErr)
@@ -205,18 +192,7 @@ func Start(ctx context.Context, config ProcessConfig) (*ProcessClient, error) {
 	client.capabilities = cloneCapabilityDescriptors(initialized.Capabilities)
 	client.providedServices = cloneServiceDescriptors(initialized.ProvidedServices)
 	client.requiredServices = cloneServiceRequirements(initialized.RequiredServices)
-	client.activationServices = negotiatedHostServices(initialized.RequiredHostServices, config.SupportedHostServices)
-	// A consumer plugin gets the service gateway in its negotiated set for the
-	// active generation; the prepare-phase filter below keeps it closed until
-	// activation. Per-call authorization stays with the registry.
-	if len(client.requiredServices) > 0 {
-		for _, advertised := range config.SupportedHostServices {
-			if advertised == ServiceCallMethod {
-				client.activationServices[ServiceCallMethod] = struct{}{}
-				break
-			}
-		}
-	}
+	client.activationServices = map[HostServiceMethod]struct{}{ServiceCallMethod: {}}
 	client.negotiated = preflightNegotiatedHostServices(client.activationServices)
 	client.lifecycleVersion = initialized.LifecycleVersion
 	client.mu.Unlock()
@@ -522,92 +498,10 @@ const (
 	pluginMessageHostCall
 )
 
-func configuredHostServices(config ProcessConfig) ([]HostServiceMethod, error) {
-	if config.HostServiceHandler == nil {
-		if len(config.SupportedHostServices) != 0 {
-			return nil, errors.New("supported services require a live handler")
-		}
-		return nil, nil
-	}
-	declared := append([]HostServiceMethod(nil), config.HostServiceHandler.SupportedHostServices()...)
-	if err := validateHostServiceSet(declared); err != nil {
-		return nil, fmt.Errorf("handler declaration: %w", err)
-	}
-	if config.SupportedHostServices != nil {
-		if err := validateHostServiceSet(config.SupportedHostServices); err != nil {
-			return nil, fmt.Errorf("supported services assertion: %w", err)
-		}
-		if !sameHostServiceSet(declared, config.SupportedHostServices) {
-			return nil, errors.New("supported services do not match handler declaration")
-		}
-	}
-	return declared, nil
-}
-
-func validateHostServiceSet(services []HostServiceMethod) error {
-	seen := make(map[HostServiceMethod]struct{}, len(services))
-	for _, service := range services {
-		if err := ValidateHostServiceMethod(service); err != nil {
-			return err
-		}
-		if _, ok := seen[service]; ok {
-			return fmt.Errorf("duplicate host service %q", service)
-		}
-		seen[service] = struct{}{}
-	}
-	return nil
-}
-
-func sameHostServiceSet(left, right []HostServiceMethod) bool {
-	if len(left) != len(right) {
-		return false
-	}
-	set := make(map[HostServiceMethod]struct{}, len(left))
-	for _, service := range left {
-		set[service] = struct{}{}
-	}
-	for _, service := range right {
-		if _, ok := set[service]; !ok {
-			return false
-		}
-	}
-	return true
-}
-
-func negotiatedHostServices(required []HostServiceDescriptor, supported []HostServiceMethod) map[HostServiceMethod]struct{} {
-	available := make(map[HostServiceMethod]struct{}, len(supported))
-	for _, service := range supported {
-		available[service] = struct{}{}
-	}
-	negotiated := make(map[HostServiceMethod]struct{}, len(required))
-	for _, descriptor := range required {
-		service := HostServiceMethod(strings.TrimSpace(descriptor.ID))
-		if _, ok := available[service]; ok {
-			negotiated[service] = struct{}{}
-		}
-	}
-	return negotiated
-}
-
-func preflightHostServices(supported []HostServiceMethod) map[HostServiceMethod]struct{} {
-	available := make(map[HostServiceMethod]struct{}, len(supported))
-	for _, service := range supported {
-		available[service] = struct{}{}
-	}
-	return preflightNegotiatedHostServices(available)
-}
-
 func preflightNegotiatedHostServices(negotiated map[HostServiceMethod]struct{}) map[HostServiceMethod]struct{} {
-	readOnly := map[HostServiceMethod]struct{}{
-		HostServiceStorageGet:   {},
-		HostServiceStorageKeys:  {},
-		HostServiceSettingsGet:  {},
-		HostServiceSettingsList: {},
-		HostServiceSessionList:  {},
-	}
 	out := make(map[HostServiceMethod]struct{})
 	for service := range negotiated {
-		if _, ok := readOnly[service]; ok {
+		if service == ServiceCallMethod {
 			out[service] = struct{}{}
 		}
 	}
@@ -676,32 +570,10 @@ func (c *ProcessClient) dispatchHostService(ctx context.Context, call HostServic
 	if !negotiated {
 		return c.rejectHostService(call.ID, "service_not_negotiated", fmt.Sprintf("host service %q was not negotiated", call.Method))
 	}
-	if call.Method == ServiceCallMethod {
-		return c.dispatchServiceCall(ctx, call)
+	if call.Method != ServiceCallMethod {
+		return c.rejectHostService(call.ID, "method_not_found", fmt.Sprintf("unknown host service %q", call.Method))
 	}
-	result, err := c.config.HostServiceHandler.HandleHostService(ctx, call.Method, bytes.Clone(call.Params))
-	response := HostServiceResult{ID: call.ID}
-	if err != nil {
-		var serviceErr *HostServiceError
-		if errors.As(err, &serviceErr) && serviceErr != nil {
-			response.Error = &HostServiceError{Code: strings.TrimSpace(serviceErr.Code), Message: strings.TrimSpace(serviceErr.Message)}
-		} else {
-			response.Error = &HostServiceError{Code: "handler_error", Message: strings.TrimSpace(err.Error())}
-		}
-		if response.Error.Code == "" {
-			response.Error.Code = "handler_error"
-		}
-		if response.Error.Message == "" {
-			response.Error.Message = "host service handler failed"
-		}
-	} else {
-		if len(result) == 0 || !json.Valid(result) {
-			response.Error = &HostServiceError{Code: "invalid_handler_result", Message: "host service handler returned invalid JSON"}
-		} else {
-			response.Result = bytes.Clone(result)
-		}
-	}
-	return c.writeHostServiceResult(response)
+	return c.dispatchServiceCall(ctx, call)
 }
 
 // dispatchServiceCall routes a validated service.call frame into the active
@@ -758,11 +630,6 @@ func (c *ProcessClient) stopProcess() error {
 	if c == nil {
 		return nil
 	}
-	c.serviceClose.Do(func() {
-		if lifecycle, ok := c.config.HostServiceHandler.(HostServiceLifecycle); ok {
-			lifecycle.CloseHostServices()
-		}
-	})
 	c.stopMu.Lock()
 	defer c.stopMu.Unlock()
 	if c.stopped {

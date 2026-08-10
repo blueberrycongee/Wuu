@@ -43,6 +43,7 @@ func TestPluginHostSessionSendUsesGenerationBoundOwner(t *testing.T) {
 		return pluginhost.SessionSendResult{State: pluginhost.TurnLifecycleRunning, SessionID: params.SessionID, TurnID: params.RequestID}, nil
 	}, nil, nil)
 	handler := newPluginHostServices(serviceTestPlugin("alpha", "plugin:user:alpha", "one"), t.TempDir(), t.TempDir(), router)
+	handler.activate()
 	raw, err := handler.HandleHostService(context.Background(), pluginhost.HostServiceSessionSend, json.RawMessage(`{"request_id":"opaque","session_id":"thread-1","input":{"prompt":"work"}}`))
 	if err != nil {
 		t.Fatal(err)

@@ -33,7 +33,7 @@ func TestMemoryPluginNegotiatesAcrossRealProcessProtocol(t *testing.T) {
 	client, err := pluginhost.Start(context.Background(), pluginhost.ProcessConfig{
 		ID: "memory", Command: os.Args[0], Args: []string{"-test.run=^TestMemoryPluginProcessHelper$"},
 		Env: map[string]string{"WUU_MEMORY_PLUGIN_TEST_HELPER": "1"}, WuuHome: home, WorkspaceStateDir: workspaceStateDir, Timeout: 5 * time.Second,
-		HostServiceHandler: services, SupportedHostServices: services.SupportedHostServices(),
+		ServiceRouter: services,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -118,4 +118,12 @@ func (s *memoryTestHostServices) HandleHostService(_ context.Context, method plu
 	default:
 		return nil, errors.New("unsupported host service")
 	}
+}
+
+func (s *memoryTestHostServices) RouteServiceCall(ctx context.Context, _ string, params pluginhost.ServiceCallParams) (json.RawMessage, *pluginhost.HostServiceError) {
+	result, err := s.HandleHostService(ctx, pluginhost.HostServiceMethod(params.Service), params.Params)
+	if err != nil {
+		return nil, &pluginhost.HostServiceError{Code: "service_unavailable", Message: err.Error()}
+	}
+	return result, nil
 }

@@ -29,7 +29,58 @@ const (
 	// ServiceChangedMethod notifies consumers that a provided service was
 	// republished or revoked, so they can re-resolve on their next call.
 	ServiceChangedMethod = "service.changed"
+
+	KernelServiceMethod = "call"
+
+	KernelStorageGetService             = "host.storage.get"
+	KernelStorageSetService             = "host.storage.set"
+	KernelStorageDeleteService          = "host.storage.delete"
+	KernelStorageKeysService            = "host.storage.keys"
+	KernelStorageCompareExchangeService = "host.storage.compare-exchange"
+	KernelSettingsGetService            = "host.settings.get"
+	KernelSettingsListService           = "host.settings.list"
+	KernelSessionCreateService          = "host.session.create"
+	KernelSessionSendService            = "host.session.send"
+	KernelSessionListService            = "host.session.list"
+	KernelSessionCancelService          = "host.session.cancel"
 )
+
+// KernelServiceDescriptors are the host-provided services available to every
+// plugin generation. They use the same registry contract as plugin providers.
+func KernelServiceDescriptors() []ServiceDescriptor {
+	names := []string{
+		KernelStorageGetService, KernelStorageSetService, KernelStorageDeleteService,
+		KernelStorageKeysService, KernelStorageCompareExchangeService,
+		KernelSettingsGetService, KernelSettingsListService,
+		KernelSessionCreateService, KernelSessionSendService, KernelSessionListService,
+		KernelSessionCancelService,
+	}
+	descriptors := make([]ServiceDescriptor, 0, len(names))
+	for _, name := range names {
+		schema := strings.ReplaceAll(name, "-", ".")
+		descriptors = append(descriptors, ServiceDescriptor{
+			Name: name, Version: "1.0.0",
+			Methods: []ServiceMethodDescriptor{{Name: KernelServiceMethod, InputSchema: schema + ".input.v1", OutputSchema: schema + ".output.v1"}},
+		})
+	}
+	return descriptors
+}
+
+func KernelServiceRequirements(names ...string) []ServiceRequirement {
+	requirements := make([]ServiceRequirement, 0, len(names))
+	for _, name := range names {
+		requirements = append(requirements, ServiceRequirement{Name: name, MajorVersion: 1, Required: true})
+	}
+	return requirements
+}
+
+func KernelPreflightRequirements() []ServiceRequirement {
+	return KernelServiceRequirements(
+		KernelStorageGetService, KernelStorageKeysService,
+		KernelSettingsGetService, KernelSettingsListService,
+		KernelSessionListService,
+	)
+}
 
 var (
 	serviceNamePattern    = regexp.MustCompile(`^[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*)+$`)

@@ -16,22 +16,20 @@ import (
 	"github.com/blueberrycongee/wuu/internal/pluginsettings"
 )
 
-var productionPluginHostServices = pluginhost.AllHostServices()
-
 // pluginHostServices is bound to exactly one installed plugin generation. It
 // never accepts a caller-supplied plugin ID or filesystem path: ownership and
 // roots are captured from the validated plugin inventory at activation time.
 type pluginHostServices struct {
-	mu              sync.RWMutex
-	active          bool
-	pluginID        string
-	subjectID       string
-	fingerprint     string
-	projectRoot     string
-	wuuHome         string
-	settings        map[string]pluginpkg.SettingDefinition
-	turnRouter      *PluginSessionRouter
-	serviceRegistry *pluginhost.ServiceRegistry
+	mu          sync.RWMutex
+	active      bool
+	open        bool
+	pluginID    string
+	subjectID   string
+	fingerprint string
+	projectRoot string
+	wuuHome     string
+	settings    map[string]pluginpkg.SettingDefinition
+	turnRouter  *PluginSessionRouter
 }
 
 func newPluginHostServices(item pluginpkg.Plugin, projectRoot, wuuHome string, turnRouter *PluginSessionRouter) *pluginHostServices {
@@ -40,60 +38,39 @@ func newPluginHostServices(item pluginpkg.Plugin, projectRoot, wuuHome string, t
 		settings[key] = definition
 	}
 	services := &pluginHostServices{
-		active: true, pluginID: item.ID, subjectID: strings.TrimSpace(item.SubjectID),
+		open: true, pluginID: item.ID, subjectID: strings.TrimSpace(item.SubjectID),
 		fingerprint: item.Fingerprint, projectRoot: projectRoot, wuuHome: wuuHome,
 		settings: settings, turnRouter: turnRouter,
 	}
 	return services
 }
 
-func (s *pluginHostServices) SupportedHostServices() []pluginhost.HostServiceMethod {
-	if s == nil || strings.TrimSpace(s.subjectID) == "" || strings.TrimSpace(s.fingerprint) == "" || strings.TrimSpace(s.wuuHome) == "" {
-		return nil
-	}
-	return append([]pluginhost.HostServiceMethod(nil), productionPluginHostServices...)
-}
-
-func (s *pluginHostServices) CloseHostServices() {
+func (s *pluginHostServices) close() {
 	s.mu.Lock()
+	s.open = false
 	s.active = false
 	s.mu.Unlock()
 }
 
-// setServiceRegistry binds the generation's service registry after every
-// plugin process of the generation has completed initialize. Calls only flow
-// once the generation is active; the registry enforces that itself.
-func (s *pluginHostServices) setServiceRegistry(registry *pluginhost.ServiceRegistry) {
+func (s *pluginHostServices) activate() {
 	s.mu.Lock()
-	s.serviceRegistry = registry
+	if s.open {
+		s.active = true
+	}
 	s.mu.Unlock()
 }
 
-// RouteServiceCall implements pluginhost.ServiceRouter: the transport passes
-// the caller identity it authenticated at process start, and every
-// authorization decision belongs to the registry.
-func (s *pluginHostServices) RouteServiceCall(ctx context.Context, pluginID string, params pluginhost.ServiceCallParams) (json.RawMessage, *pluginhost.HostServiceError) {
-	if s == nil {
-		return nil, &pluginhost.HostServiceError{Code: "service_unavailable", Message: "service routing is unavailable"}
-	}
-	s.mu.RLock()
-	active := s.active
-	registry := s.serviceRegistry
-	s.mu.RUnlock()
-	if !active || registry == nil {
-		return nil, &pluginhost.HostServiceError{Code: "service_unavailable", Message: "service routing is unavailable for this plugin generation"}
-	}
-	return registry.Call(ctx, pluginID, params)
-}
-
-func (s *pluginHostServices) HandleHostService(ctx context.Context, method pluginhost.HostServiceMethod, raw json.RawMessage) (json.RawMessage, error) {
+func (s *pluginHostServices) invoke(ctx context.Context, method pluginhost.HostServiceMethod, raw json.RawMessage) (json.RawMessage, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	if !s.active {
+	if !s.open {
 		return nil, serviceError("generation_closed", "plugin generation is no longer active")
+	}
+	if !s.active && !kernelServiceReadOnly(method) {
+		return nil, serviceError("service_unavailable", "host service is unavailable during generation prepare")
 	}
 	if strings.TrimSpace(s.subjectID) == "" || strings.TrimSpace(s.fingerprint) == "" {
 		return nil, serviceError("generation_invalid", "plugin generation has no stable package identity")
@@ -267,6 +244,118 @@ func (s *pluginHostServices) settingValue(key string, definition pluginpkg.Setti
 		return nil, fmt.Errorf("persisted setting %q: %w", key, err)
 	}
 	return append(json.RawMessage(nil), value...), nil
+}
+
+// HandleHostService remains an internal semantic test seam; transport routing
+// enters through the kernel registry above it.
+func (s *pluginHostServices) HandleHostService(ctx context.Context, method pluginhost.HostServiceMethod, raw json.RawMessage) (json.RawMessage, error) {
+	return s.invoke(ctx, method, raw)
+}
+
+func (s *pluginHostServices) CloseHostServices() { s.close() }
+
+func kernelServiceReadOnly(method pluginhost.HostServiceMethod) bool {
+	switch method {
+	case pluginhost.HostServiceStorageGet, pluginhost.HostServiceStorageKeys,
+		pluginhost.HostServiceSettingsGet, pluginhost.HostServiceSettingsList,
+		pluginhost.HostServiceSessionList:
+		return true
+	default:
+		return false
+	}
+}
+
+type kernelHostServices struct {
+	mu       sync.RWMutex
+	active   bool
+	services map[string]*pluginHostServices
+}
+
+func newKernelHostServices() *kernelHostServices {
+	return &kernelHostServices{services: make(map[string]*pluginHostServices)}
+}
+
+func (k *kernelHostServices) add(pluginID string, services *pluginHostServices) {
+	k.mu.Lock()
+	k.services[pluginID] = services
+	k.mu.Unlock()
+}
+
+func (k *kernelHostServices) ID() string { return "kernel" }
+
+func (k *kernelHostServices) Status() pluginhost.Status {
+	k.mu.RLock()
+	defer k.mu.RUnlock()
+	state := pluginhost.StatePrepared
+	if k.active {
+		state = pluginhost.StateActive
+	}
+	return pluginhost.Status{ID: k.ID(), State: state}
+}
+
+func (k *kernelHostServices) Close(context.Context) error { return nil }
+func (k *kernelHostServices) ProvidedServices() []pluginhost.ServiceDescriptor {
+	return pluginhost.KernelServiceDescriptors()
+}
+func (k *kernelHostServices) RequiredServices() []pluginhost.ServiceRequirement { return nil }
+func (k *kernelHostServices) KernelServices()                                   {}
+
+func (k *kernelHostServices) ActivateKernelServices() {
+	k.mu.Lock()
+	k.active = true
+	services := make([]*pluginHostServices, 0, len(k.services))
+	for _, service := range k.services {
+		services = append(services, service)
+	}
+	k.mu.Unlock()
+	for _, service := range services {
+		service.activate()
+	}
+}
+
+func (k *kernelHostServices) CloseKernelServices() {
+	k.mu.Lock()
+	k.active = false
+	services := make([]*pluginHostServices, 0, len(k.services))
+	for _, service := range k.services {
+		services = append(services, service)
+	}
+	k.mu.Unlock()
+	for _, service := range services {
+		service.close()
+	}
+}
+
+func (k *kernelHostServices) InvokeService(ctx context.Context, params pluginhost.ServiceInvokeParams) (json.RawMessage, error) {
+	k.mu.RLock()
+	services := k.services[params.Caller]
+	k.mu.RUnlock()
+	if services == nil {
+		return nil, serviceError("service_unavailable", "kernel service caller is unavailable")
+	}
+	method, ok := kernelHostServiceMethod(params.Service)
+	if !ok || params.Method != pluginhost.KernelServiceMethod {
+		return nil, serviceError("method_not_found", "kernel service method is unavailable")
+	}
+	return services.invoke(ctx, method, params.Params)
+}
+
+func kernelHostServiceMethod(service string) (pluginhost.HostServiceMethod, bool) {
+	methods := map[string]pluginhost.HostServiceMethod{
+		pluginhost.KernelStorageGetService:             pluginhost.HostServiceStorageGet,
+		pluginhost.KernelStorageSetService:             pluginhost.HostServiceStorageSet,
+		pluginhost.KernelStorageDeleteService:          pluginhost.HostServiceStorageDelete,
+		pluginhost.KernelStorageKeysService:            pluginhost.HostServiceStorageKeys,
+		pluginhost.KernelStorageCompareExchangeService: pluginhost.HostServiceStorageCompareExchange,
+		pluginhost.KernelSettingsGetService:            pluginhost.HostServiceSettingsGet,
+		pluginhost.KernelSettingsListService:           pluginhost.HostServiceSettingsList,
+		pluginhost.KernelSessionCreateService:          pluginhost.HostServiceSessionCreate,
+		pluginhost.KernelSessionSendService:            pluginhost.HostServiceSessionSend,
+		pluginhost.KernelSessionListService:            pluginhost.HostServiceSessionList,
+		pluginhost.KernelSessionCancelService:          pluginhost.HostServiceSessionCancel,
+	}
+	method, ok := methods[service]
+	return method, ok
 }
 
 func (s *pluginHostServices) storageGet(params pluginhost.StorageGetParams) (json.RawMessage, error) {

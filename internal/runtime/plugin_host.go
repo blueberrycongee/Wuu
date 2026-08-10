@@ -36,7 +36,8 @@ func startPluginHost(plugins []pluginpkg.Plugin, projectRoot, wuuHome, workspace
 func buildPluginHost(plugins []pluginpkg.Plugin, projectRoot, wuuHome, workspaceStateDir string, required map[string]bool, start pluginClientStarter, turnRouter *PluginSessionRouter) (*pluginhost.Host, error) {
 	host := pluginhost.New()
 	var started []pluginhost.Client
-	var handlers []*pluginHostServices
+	kernel := newKernelHostServices()
+	registry, conflicts := pluginhost.BuildServiceRegistry(kernel)
 	closeStarted := func() error {
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()
@@ -52,19 +53,20 @@ func buildPluginHost(plugins []pluginpkg.Plugin, projectRoot, wuuHome, workspace
 		}
 		timeout := time.Duration(item.Runtime.Timeout) * time.Second
 		handler := newPluginHostServices(item, projectRoot, wuuHome, turnRouter)
+		kernel.add(item.ID, handler)
+		registry.AllowPreflight(item.ID, pluginhost.KernelPreflightRequirements())
 		client, err := start(context.Background(), pluginhost.ProcessConfig{
-			ID:                 item.ID,
-			Command:            item.Runtime.Command,
-			Args:               item.Runtime.Args,
-			Env:                item.Runtime.Env,
-			PluginRoot:         item.Root,
-			ProjectRoot:        projectRoot,
-			WuuHome:            wuuHome,
-			WorkspaceStateDir:  workspaceStateDir,
-			Timeout:            timeout,
-			HostServiceHandler: handler,
-			ServiceRouter:      handler,
-			PrepareOnly:        true,
+			ID:                item.ID,
+			Command:           item.Runtime.Command,
+			Args:              item.Runtime.Args,
+			Env:               item.Runtime.Env,
+			PluginRoot:        item.Root,
+			ProjectRoot:       projectRoot,
+			WuuHome:           wuuHome,
+			WorkspaceStateDir: workspaceStateDir,
+			Timeout:           timeout,
+			ServiceRouter:     registry,
+			PrepareOnly:       true,
 		})
 		if err != nil {
 			host.Add(pluginhost.Failed(item.ID, err))
@@ -75,16 +77,12 @@ func buildPluginHost(plugins []pluginpkg.Plugin, projectRoot, wuuHome, workspace
 			continue
 		}
 		started = append(started, client)
-		handlers = append(handlers, handler)
 	}
 	// The service registry is built from the whole generation's initialize
 	// results before any client is registered, so an unsatisfied required
 	// service blocks that consumer without its capabilities ever going live.
 	// There is no dependency solver; failures are deterministic diagnostics.
-	registry, conflicts := pluginhost.BuildServiceRegistry(started...)
-	for _, handler := range handlers {
-		handler.setServiceRegistry(registry)
-	}
+	conflicts = append(conflicts, registry.RegisterClients(started...)...)
 	host.AttachServiceRegistry(registry, conflicts)
 	for _, client := range started {
 		if serviceClient, ok := client.(pluginhost.ServiceClient); ok {

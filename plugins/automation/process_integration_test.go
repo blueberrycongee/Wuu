@@ -27,13 +27,12 @@ func TestAutomationPluginProcessHelper(t *testing.T) {
 func TestAutomationPluginNegotiatesAcrossRealProcessProtocol(t *testing.T) {
 	services := &automationTestHostServices{}
 	client, err := pluginhost.Start(context.Background(), pluginhost.ProcessConfig{
-		ID:                    "automation",
-		Command:               os.Args[0],
-		Args:                  []string{"-test.run=^TestAutomationPluginProcessHelper$"},
-		Env:                   map[string]string{"WUU_AUTOMATION_PLUGIN_TEST_HELPER": "1"},
-		Timeout:               5 * time.Second,
-		HostServiceHandler:    services,
-		SupportedHostServices: services.SupportedHostServices(),
+		ID:            "automation",
+		Command:       os.Args[0],
+		Args:          []string{"-test.run=^TestAutomationPluginProcessHelper$"},
+		Env:           map[string]string{"WUU_AUTOMATION_PLUGIN_TEST_HELPER": "1"},
+		Timeout:       5 * time.Second,
+		ServiceRouter: services,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -95,4 +94,12 @@ func (s *automationTestHostServices) HandleHostService(_ context.Context, method
 	default:
 		return nil, errors.New("unsupported host service")
 	}
+}
+
+func (s *automationTestHostServices) RouteServiceCall(ctx context.Context, _ string, params pluginhost.ServiceCallParams) (json.RawMessage, *pluginhost.HostServiceError) {
+	result, err := s.HandleHostService(ctx, pluginhost.HostServiceMethod(params.Service), params.Params)
+	if err != nil {
+		return nil, &pluginhost.HostServiceError{Code: "service_unavailable", Message: err.Error()}
+	}
+	return result, nil
 }

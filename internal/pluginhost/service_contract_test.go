@@ -178,14 +178,14 @@ func TestValidateCapabilityNegotiationServiceGates(t *testing.T) {
 		ProtocolVersion:  3,
 		ProvidedServices: []ServiceDescriptor{validServiceDescriptor()},
 	}
-	if err := ValidateCapabilityNegotiation(v3Plugin, AllHostServices()); err != nil {
+	if err := ValidateCapabilityNegotiation(v3Plugin, []HostServiceMethod{ServiceCallMethod}); err != nil {
 		t.Fatalf("v3 service plugin rejected: %v", err)
 	}
 	future := CapabilityInitializeResult{
 		ProtocolVersion:  4,
 		ProvidedServices: []ServiceDescriptor{validServiceDescriptor()},
 	}
-	if err := ValidateCapabilityNegotiation(future, AllHostServices()); err == nil {
+	if err := ValidateCapabilityNegotiation(future, []HostServiceMethod{ServiceCallMethod}); err == nil {
 		t.Fatal("protocol v4 must be rejected")
 	}
 }

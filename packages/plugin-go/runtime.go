@@ -55,6 +55,21 @@ const (
 	StorageScopeWorkspace = "workspace"
 )
 
+const (
+	KernelStorageGetService             = "host.storage.get"
+	KernelStorageSetService             = "host.storage.set"
+	KernelStorageDeleteService          = "host.storage.delete"
+	KernelStorageKeysService            = "host.storage.keys"
+	KernelStorageCompareExchangeService = "host.storage.compare-exchange"
+	KernelSettingsGetService            = "host.settings.get"
+	KernelSettingsListService           = "host.settings.list"
+	KernelSessionCreateService          = "host.session.create"
+	KernelSessionSendService            = "host.session.send"
+	KernelSessionListService            = "host.session.list"
+	KernelSessionCancelService          = "host.session.cancel"
+	KernelServiceMethod                 = "call"
+)
+
 type InitializeParams struct {
 	ProtocolVersion           int      `json:"protocol_version"`
 	CapabilityProtocolVersion int      `json:"capability_protocol_version,omitempty"`
@@ -385,6 +400,39 @@ func CallService(ctx context.Context, host Host, service, method string, params,
 	}{Service: service, Method: method, Params: params}, result)
 }
 
+// CallHostService preserves the former host-call signature while routing the
+// operation through its kernel Service Registry entry.
+func CallHostService(ctx context.Context, host Host, service string, params, result any) error {
+	if service == HostServiceStorageCompareExchange {
+		service = KernelStorageCompareExchangeService
+	}
+	return CallService(ctx, host, service, KernelServiceMethod, params, result)
+}
+
+func RequireHostServices(services ...string) []ServiceRequirement {
+	requirements := make([]ServiceRequirement, 0, len(services))
+	for _, service := range services {
+		if service == HostServiceStorageCompareExchange {
+			service = KernelStorageCompareExchangeService
+		}
+		requirements = append(requirements, ServiceRequirement{Name: service, MajorVersion: 1, Required: true})
+	}
+	return requirements
+}
+
+func kernelServiceForLegacyMethod(method string) (string, bool) {
+	services := map[string]string{
+		HostServiceStorageGet: KernelStorageGetService, HostServiceStorageSet: KernelStorageSetService,
+		HostServiceStorageDelete: KernelStorageDeleteService, HostServiceStorageKeys: KernelStorageKeysService,
+		HostServiceStorageCompareExchange: KernelStorageCompareExchangeService,
+		HostServiceSettingsGet:            KernelSettingsGetService, HostServiceSettingsList: KernelSettingsListService,
+		HostServiceSessionCreate: KernelSessionCreateService, HostServiceSessionSend: KernelSessionSendService,
+		HostServiceSessionList: KernelSessionListService, HostServiceSessionCancel: KernelSessionCancelService,
+	}
+	service, ok := services[method]
+	return service, ok
+}
+
 type Handler struct {
 	Definition       Definition
 	Initialize       func(context.Context, Host, InitializeParams) error
@@ -417,6 +465,9 @@ func (c *Client) InitializeParams() InitializeParams {
 }
 
 func (c *Client) CallHost(ctx context.Context, method string, params, result any) error {
+	if service, ok := kernelServiceForLegacyMethod(method); ok {
+		return CallService(ctx, c, service, KernelServiceMethod, params, result)
+	}
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -670,11 +721,18 @@ func dispatch(ctx context.Context, client *Client, handler Handler, request rpcR
 				return nil, false, err
 			}
 		}
+		definition := handler.Definition
+		for _, service := range definition.RequiredHostServices {
+			if name, ok := kernelServiceForLegacyMethod(service.ID); ok {
+				definition.RequiredServices = append(definition.RequiredServices, ServiceRequirement{Name: name, MajorVersion: 1, Required: service.Required})
+			}
+		}
+		definition.RequiredHostServices = nil
 		return marshal(struct {
 			Definition
 			ProtocolVersion  int `json:"protocol_version"`
 			LifecycleVersion int `json:"lifecycle_version"`
-		}{Definition: handler.Definition, ProtocolVersion: CapabilityProtocolVersion, LifecycleVersion: RuntimeLifecycleVersion})
+		}{Definition: definition, ProtocolVersion: CapabilityProtocolVersion, LifecycleVersion: RuntimeLifecycleVersion})
 	case "activate":
 		if handler.Activate != nil {
 			if err := handler.Activate(ctx); err != nil {

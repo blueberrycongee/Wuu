@@ -154,7 +154,7 @@ func TestClientCallsHostServiceOnSameChannel(t *testing.T) {
 		t.Fatal(err)
 	}
 	request := <-requestSeen
-	if result.Value != "stored" || !strings.Contains(request, `"method":"host.storage.get"`) {
+	if result.Value != "stored" || !strings.Contains(request, `"method":"host.service.call"`) || !strings.Contains(request, `"service":"host.storage.get"`) {
 		t.Fatalf("result = %+v request = %s", result, request)
 	}
 }
@@ -217,7 +217,7 @@ func TestServeAllowsBackgroundHostCallAfterCapabilityReturns(t *testing.T) {
 	close(release)
 	request := readPlugin()
 	var hostCall rpcRequest
-	if err := json.Unmarshal([]byte(request), &hostCall); err != nil || hostCall.Method != "host.storage.get" {
+	if err := json.Unmarshal([]byte(request), &hostCall); err != nil || hostCall.Method != "host.service.call" {
 		t.Fatalf("background request = %s err=%v", request, err)
 	}
 	writeHost(fmt.Sprintf(`{"id":%q,"result":{"value":"awake"}}`, hostCall.ID))

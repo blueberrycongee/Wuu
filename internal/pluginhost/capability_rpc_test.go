@@ -125,7 +125,7 @@ func TestValidateCapabilityDescriptor(t *testing.T) {
 }
 
 func TestValidateHostServiceMethod(t *testing.T) {
-	validMethods := AllHostServices()
+	validMethods := []HostServiceMethod{ServiceCallMethod}
 	for _, m := range validMethods {
 		if err := ValidateHostServiceMethod(m); err != nil {
 			t.Errorf("ValidateHostServiceMethod(%s) unexpected error: %v", m, err)
@@ -144,8 +144,8 @@ func TestValidateHostServiceMethod(t *testing.T) {
 	}
 }
 
-func TestAllHostServicesComplete(t *testing.T) {
-	services := AllHostServices()
+func TestServiceGatewayMethodComplete(t *testing.T) {
+	services := []HostServiceMethod{ServiceCallMethod}
 	if len(services) == 0 {
 		t.Fatal("expected non-empty host services list")
 	}
@@ -228,11 +228,11 @@ func TestValidateCapabilityNegotiationHostServices(t *testing.T) {
 	}
 
 	required := base
-	required.RequiredHostServices = []HostServiceDescriptor{{ID: string(HostServiceStorageGet), Required: true}}
+	required.RequiredHostServices = []HostServiceDescriptor{{ID: string(ServiceCallMethod), Required: true}}
 	if err := ValidateCapabilityNegotiation(required, nil); err == nil || !strings.Contains(err.Error(), "unavailable") {
 		t.Fatalf("required unavailable service error = %v", err)
 	}
-	if err := ValidateCapabilityNegotiation(required, []HostServiceMethod{HostServiceStorageGet}); err != nil {
+	if err := ValidateCapabilityNegotiation(required, []HostServiceMethod{ServiceCallMethod}); err != nil {
 		t.Fatalf("available required service rejected: %v", err)
 	}
 }

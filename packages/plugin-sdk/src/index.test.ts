@@ -13,6 +13,8 @@ import {
   STATUS_ACTIONS,
   VIEW_PLACEMENT_REGIONS,
   handleRuntimeRequest,
+  kernelServiceCall,
+  requireKernelService,
   runJSONLRuntime,
   type ComposerSnapshotV1,
   type ConversationItemSnapshotV1,
@@ -29,6 +31,17 @@ import {
   type ToolActivitySnapshot,
   type ViewPlacementContribution,
 } from "./index.js";
+
+const kernelCall = kernelServiceCall("storage", "host.storage.compare_exchange", {
+  scope: "workspace", key: "state", expected: null, value: "next",
+});
+if (kernelCall.method !== "host.service.call" || kernelCall.params.service !== "host.storage.compare-exchange" || kernelCall.params.method !== "call") {
+  throw new Error("kernel service wrapper contract failed");
+}
+const kernelRequirement = requireKernelService("host.session.send");
+if (kernelRequirement.name !== "host.session.send" || kernelRequirement.major_version !== 1 || !kernelRequirement.required) {
+  throw new Error("kernel service requirement contract failed");
+}
 
 if (!PRESENTATION_TARGETS.includes("conversation.tool-activity") || !PRESENTATION_TARGETS.includes("settings")) {
   throw new Error("presentation target contract failed");

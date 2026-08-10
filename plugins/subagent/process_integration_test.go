@@ -28,13 +28,12 @@ func TestSubagentPluginProcessHelper(t *testing.T) {
 func TestProactiveDelegationNegotiatesAcrossRealProcessProtocol(t *testing.T) {
 	services := &subagentTestHostServices{values: map[string]string{}}
 	client, err := pluginhost.Start(context.Background(), pluginhost.ProcessConfig{
-		ID:                    "subagent",
-		Command:               os.Args[0],
-		Args:                  []string{"-test.run=^TestSubagentPluginProcessHelper$"},
-		Env:                   map[string]string{"WUU_SUBAGENT_PLUGIN_TEST_HELPER": "1"},
-		Timeout:               5 * time.Second,
-		HostServiceHandler:    services,
-		SupportedHostServices: services.SupportedHostServices(),
+		ID:            "subagent",
+		Command:       os.Args[0],
+		Args:          []string{"-test.run=^TestSubagentPluginProcessHelper$"},
+		Env:           map[string]string{"WUU_SUBAGENT_PLUGIN_TEST_HELPER": "1"},
+		Timeout:       5 * time.Second,
+		ServiceRouter: services,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -122,4 +121,12 @@ func (s *subagentTestHostServices) HandleHostService(_ context.Context, method p
 	default:
 		return nil, errors.New("unexpected host service invocation")
 	}
+}
+
+func (s *subagentTestHostServices) RouteServiceCall(ctx context.Context, _ string, params pluginhost.ServiceCallParams) (json.RawMessage, *pluginhost.HostServiceError) {
+	result, err := s.HandleHostService(ctx, pluginhost.HostServiceMethod(params.Service), params.Params)
+	if err != nil {
+		return nil, &pluginhost.HostServiceError{Code: "service_unavailable", Message: err.Error()}
+	}
+	return result, nil
 }

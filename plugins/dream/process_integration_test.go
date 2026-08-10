@@ -26,7 +26,7 @@ func TestDreamPluginProcessHelper(t *testing.T) {
 
 func TestDreamPluginNegotiatesAcrossRealProcessProtocol(t *testing.T) {
 	services := &dreamHostServices{}
-	client, err := pluginhost.Start(context.Background(), pluginhost.ProcessConfig{ID: "dream", Command: os.Args[0], Args: []string{"-test.run=^TestDreamPluginProcessHelper$"}, Env: map[string]string{"WUU_DREAM_PLUGIN_TEST_HELPER": "1"}, Timeout: 5 * time.Second, HostServiceHandler: services, SupportedHostServices: services.SupportedHostServices()})
+	client, err := pluginhost.Start(context.Background(), pluginhost.ProcessConfig{ID: "dream", Command: os.Args[0], Args: []string{"-test.run=^TestDreamPluginProcessHelper$"}, Env: map[string]string{"WUU_DREAM_PLUGIN_TEST_HELPER": "1"}, Timeout: 5 * time.Second, ServiceRouter: services})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,4 +99,12 @@ func (s *dreamHostServices) HandleHostService(_ context.Context, method pluginho
 	default:
 		return nil, errors.New("unsupported host service")
 	}
+}
+
+func (s *dreamHostServices) RouteServiceCall(ctx context.Context, _ string, params pluginhost.ServiceCallParams) (json.RawMessage, *pluginhost.HostServiceError) {
+	result, err := s.HandleHostService(ctx, pluginhost.HostServiceMethod(params.Service), params.Params)
+	if err != nil {
+		return nil, &pluginhost.HostServiceError{Code: "service_unavailable", Message: err.Error()}
+	}
+	return result, nil
 }

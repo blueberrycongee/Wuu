@@ -58,26 +58,47 @@ type serviceProvider struct {
 	descriptor ServiceDescriptor
 	pluginID   string
 	invoker    ServiceInvoker
+	kernel     bool
 }
 
 // ServiceRegistry resolves and routes service calls for one generation.
 type ServiceRegistry struct {
 	mu        sync.RWMutex
 	active    bool
+	open      bool
 	providers map[serviceKey]serviceProvider
 	consumers map[string]map[serviceKey]struct{}
 	notifiers map[string]ServiceChangedNotifier
+}
+
+type kernelServiceClient interface {
+	ServiceClient
+	KernelServices()
+}
+
+type kernelServiceLifecycle interface {
+	ActivateKernelServices()
+	CloseKernelServices()
+}
+
+func NewServiceRegistry() *ServiceRegistry {
+	return &ServiceRegistry{
+		open: true, providers: make(map[serviceKey]serviceProvider),
+		consumers: make(map[string]map[serviceKey]struct{}),
+		notifiers: make(map[string]ServiceChangedNotifier),
+	}
 }
 
 // BuildServiceRegistry collects provide/consume declarations from one
 // generation's clients. Providers that cannot receive service.invoke are
 // rejected as conflicts.
 func BuildServiceRegistry(clients ...Client) (*ServiceRegistry, []ServiceConflict) {
-	registry := &ServiceRegistry{
-		providers: make(map[serviceKey]serviceProvider),
-		consumers: make(map[string]map[serviceKey]struct{}),
-		notifiers: make(map[string]ServiceChangedNotifier),
-	}
+	registry := NewServiceRegistry()
+	return registry, registry.RegisterClients(clients...)
+}
+
+// RegisterClients adds prepared providers and consumers before activation.
+func (registry *ServiceRegistry) RegisterClients(clients ...Client) []ServiceConflict {
 	var conflicts []ServiceConflict
 	for _, client := range clients {
 		declared, ok := client.(ServiceClient)
@@ -87,6 +108,7 @@ func BuildServiceRegistry(clients ...Client) (*ServiceRegistry, []ServiceConflic
 		if notifier, ok := client.(ServiceChangedNotifier); ok {
 			registry.notifiers[declared.ID()] = notifier
 		}
+		_, kernel := declared.(kernelServiceClient)
 		for _, descriptor := range declared.ProvidedServices() {
 			major, ok := ServiceVersionMajor(descriptor.Version)
 			if !ok {
@@ -112,17 +134,26 @@ func BuildServiceRegistry(clients ...Client) (*ServiceRegistry, []ServiceConflic
 				})
 				continue
 			}
-			registry.providers[key] = serviceProvider{descriptor: descriptor, pluginID: declared.ID(), invoker: invoker}
+			registry.providers[key] = serviceProvider{descriptor: descriptor, pluginID: declared.ID(), invoker: invoker, kernel: kernel}
 		}
+		registry.consumers[declared.ID()] = make(map[serviceKey]struct{})
 		for _, requirement := range declared.RequiredServices() {
 			key := serviceKey{name: strings.TrimSpace(requirement.Name), major: requirement.MajorVersion}
-			if registry.consumers[declared.ID()] == nil {
-				registry.consumers[declared.ID()] = make(map[serviceKey]struct{})
-			}
 			registry.consumers[declared.ID()][key] = struct{}{}
 		}
 	}
-	return registry, conflicts
+	return conflicts
+}
+
+// AllowPreflight grants only read-phase kernel calls while initialize runs.
+func (r *ServiceRegistry) AllowPreflight(pluginID string, requirements []ServiceRequirement) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	allowed := make(map[serviceKey]struct{}, len(requirements))
+	for _, requirement := range requirements {
+		allowed[serviceKey{name: strings.TrimSpace(requirement.Name), major: requirement.MajorVersion}] = struct{}{}
+	}
+	r.consumers[pluginID] = allowed
 }
 
 // Activate opens the registry for calls. The runtime activates the registry
@@ -131,22 +162,37 @@ func (r *ServiceRegistry) Activate() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.active = true
+	for _, provider := range r.providers {
+		if provider.kernel {
+			if lifecycle, ok := provider.invoker.(kernelServiceLifecycle); ok {
+				lifecycle.ActivateKernelServices()
+			}
+		}
+	}
 }
 
 // Close revokes every address and best-effort notifies consumers that their
 // services went away.
 func (r *ServiceRegistry) Close(ctx context.Context) {
 	r.mu.Lock()
-	if !r.active {
+	if !r.open {
 		r.mu.Unlock()
 		return
 	}
 	r.active = false
+	r.open = false
 	keys := make([]serviceKey, 0, len(r.providers))
 	for key := range r.providers {
 		keys = append(keys, key)
 	}
 	r.mu.Unlock()
+	for _, provider := range r.providers {
+		if provider.kernel {
+			if lifecycle, ok := provider.invoker.(kernelServiceLifecycle); ok {
+				lifecycle.CloseKernelServices()
+			}
+		}
+	}
 	for _, key := range keys {
 		r.notifyConsumers(ctx, key, "provider_closed")
 	}
@@ -208,6 +254,7 @@ func (r *ServiceRegistry) Call(ctx context.Context, consumerPluginID string, par
 	key := serviceKey{name: service}
 	r.mu.RLock()
 	active := r.active
+	open := r.open
 	var declaredMajor *int
 	if requirements, ok := r.consumers[consumerPluginID]; ok {
 		for consumerKey := range requirements {
@@ -219,7 +266,7 @@ func (r *ServiceRegistry) Call(ctx context.Context, consumerPluginID string, par
 		}
 	}
 	r.mu.RUnlock()
-	if !active {
+	if !open {
 		return nil, &HostServiceError{Code: "service_unavailable", Message: "service registry is not active"}
 	}
 	if declaredMajor == nil {
@@ -244,6 +291,9 @@ func (r *ServiceRegistry) Call(ctx context.Context, consumerPluginID string, par
 		}
 		return nil, &HostServiceError{Code: "service_version_mismatch", Message: fmt.Sprintf("no provider for service %s major version %d (provided majors: %v)", service, key.major, r.ProviderMajors(service))}
 	}
+	if !active && !provider.kernel {
+		return nil, &HostServiceError{Code: "service_unavailable", Message: fmt.Sprintf("service %s is unavailable during generation prepare", service)}
+	}
 	methodDeclared := false
 	for _, declared := range provider.descriptor.Methods {
 		if declared.Name == method {
@@ -254,7 +304,7 @@ func (r *ServiceRegistry) Call(ctx context.Context, consumerPluginID string, par
 	if !methodDeclared {
 		return nil, &HostServiceError{Code: "method_not_found", Message: fmt.Sprintf("service %s does not declare method %q", service, method)}
 	}
-	if state := provider.invoker.Status().State; state != StateActive {
+	if state := provider.invoker.Status().State; state != StateActive && !(provider.kernel && !active) {
 		go r.notifyConsumers(context.Background(), key, "provider_unavailable")
 		return nil, &HostServiceError{Code: "service_unavailable", Message: fmt.Sprintf("service %s provider %q is %s", service, provider.pluginID, state)}
 	}
@@ -275,6 +325,10 @@ func (r *ServiceRegistry) Call(ctx context.Context, consumerPluginID string, par
 		return nil, &HostServiceError{Code: "service_unavailable", Message: fmt.Sprintf("service %s provider returned an invalid result", service)}
 	}
 	return result, nil
+}
+
+func (r *ServiceRegistry) RouteServiceCall(ctx context.Context, pluginID string, params ServiceCallParams) (json.RawMessage, *HostServiceError) {
+	return r.Call(ctx, pluginID, params)
 }
 
 // notifyConsumers delivers service.changed to every consumer of (name,

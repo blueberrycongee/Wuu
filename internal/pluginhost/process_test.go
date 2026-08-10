@@ -13,6 +13,14 @@ import (
 	"time"
 )
 
+func mustRaw(value any) json.RawMessage {
+	raw, err := json.Marshal(value)
+	if err != nil {
+		panic(err)
+	}
+	return raw
+}
+
 func TestProcessClientLifecycle(t *testing.T) {
 	if os.Getenv("WUU_PLUGINHOST_HELPER") == "1" {
 		runPluginHelper()
@@ -133,47 +141,6 @@ func runCapabilityHelper() {
 		}
 		_ = enc.Encode(map[string]any{"id": req.ID, "result": result})
 	}
-}
-
-func TestProcessClientRejectsUnavailableRequiredHostService(t *testing.T) {
-	if os.Getenv("WUU_PLUGINHOST_REQUIRED_SERVICE_HELPER") == "1" {
-		runRequiredServiceHelper()
-		return
-	}
-	root := t.TempDir()
-	_, err := Start(context.Background(), ProcessConfig{
-		ID:          "required-service-plugin",
-		Command:     os.Args[0],
-		Args:        []string{"-test.run=TestProcessClientRejectsUnavailableRequiredHostService"},
-		Env:         map[string]string{"WUU_PLUGINHOST_REQUIRED_SERVICE_HELPER": "1"},
-		PluginRoot:  root,
-		ProjectRoot: filepath.Dir(root),
-		WuuHome:     t.TempDir(),
-		Timeout:     2 * time.Second,
-	})
-	if err == nil || !IsCapabilityNegotiationError(err) || !strings.Contains(err.Error(), "unavailable") {
-		t.Fatalf("error = %v", err)
-	}
-}
-
-func runRequiredServiceHelper() {
-	scanner := bufio.NewScanner(os.Stdin)
-	enc := json.NewEncoder(os.Stdout)
-	if !scanner.Scan() {
-		os.Exit(2)
-	}
-	var req struct {
-		ID string `json:"id"`
-	}
-	if json.Unmarshal(scanner.Bytes(), &req) != nil {
-		os.Exit(3)
-	}
-	_ = enc.Encode(map[string]any{"id": req.ID, "result": CapabilityInitializeResult{
-		ProtocolVersion: CapabilityProtocolVersion,
-		RequiredHostServices: []HostServiceDescriptor{{
-			ID: string(HostServiceStorageGet), Required: true,
-		}},
-	}})
 }
 
 func runPluginHelper() {
