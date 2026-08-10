@@ -18,10 +18,14 @@ const (
 	capabilityTurnCompleted = "agent.turn.completed"
 	capabilityLifecycle     = "agent.turn.lifecycle"
 	capabilityClient        = "plugin.client.request"
-	stateStorageKey         = "dream.state"
-	defaultIntervalDays     = 7
-	defaultMinSessions      = 5
-	failureBackoff          = time.Hour
+	// sessionMemoryService is the registry name dream resolves to read the
+	// current project memory before each run. The name is the contract; no
+	// provider-specific wiring exists on either side.
+	sessionMemoryService  = "memory.session"
+	stateStorageKey       = "dream.state"
+	defaultIntervalDays   = 7
+	defaultMinSessions    = 5
+	failureBackoff        = time.Hour
 )
 
 type settings struct {
@@ -75,6 +79,9 @@ func Handler() pluginapi.Handler {
 				{ID: pluginapi.HostServiceSessionSend, Required: true},
 				{ID: pluginapi.HostServiceStorageGet, Required: true},
 				{ID: pluginapi.HostServiceStorageSet, Required: true},
+			},
+			RequiredServices: []pluginapi.ServiceRequirement{
+				{Name: sessionMemoryService, MajorVersion: 1},
 			},
 		},
 		Initialize: func(ctx context.Context, host pluginapi.Host, _ pluginapi.InitializeParams) error {
@@ -286,17 +293,57 @@ func (c *controller) startDream(ctx context.Context, force bool) {
 		c.mu.Unlock()
 		return
 	}
-	parentID := latestCandidate(state.Candidates)
+	// Claim the run before touching the registry so a concurrent starter
+	// cannot double-launch while the memory read is in flight.
 	c.running = true
+	parentID := latestCandidate(state.Candidates)
+	modelAlias := state.Settings.ModelAlias
+	c.mu.Unlock()
+
+	projectMemory, err := c.readProjectMemory(ctx)
+	if err != nil {
+		c.skip(context.Background(), err)
+		return
+	}
+
+	c.mu.Lock()
 	c.state.LastStatus = "running"
 	c.state.LastStartedAt = now
 	c.state.LastFinishedAt = time.Time{}
 	c.state.LastError = ""
 	c.mu.Unlock()
-	go c.launch(ctx, parentID, state.Settings.ModelAlias)
+	go c.launch(ctx, parentID, modelAlias, projectMemory)
 }
 
-func (c *controller) launch(ctx context.Context, parentID, modelAlias string) {
+// readProjectMemory resolves the session-memory service fresh for every run,
+// so a provider upgrade in a new plugin generation is picked up without any
+// dream-side bookkeeping. A resolution or provider failure skips the run
+// rather than consolidating against stale or missing memory.
+func (c *controller) readProjectMemory(ctx context.Context) (string, error) {
+	var result struct {
+		Exists  bool   `json:"exists"`
+		Content string `json:"content"`
+	}
+	err := pluginapi.CallService(ctx, c.host, sessionMemoryService, "read", map[string]any{"target": "project_memory"}, &result)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(result.Content), nil
+}
+
+// skip releases a claimed run without launching it; the next trigger may
+// retry immediately since LastRunAt is untouched.
+func (c *controller) skip(ctx context.Context, err error) {
+	c.mu.Lock()
+	c.running = false
+	c.state.LastStatus = "skipped"
+	c.state.LastFinishedAt = c.now().UTC()
+	c.state.LastError = err.Error()
+	c.mu.Unlock()
+	_ = c.save(ctx)
+}
+
+func (c *controller) launch(ctx context.Context, parentID, modelAlias, projectMemory string) {
 	id, err := randomID()
 	if err != nil {
 		c.fail(context.Background(), err)
@@ -315,7 +362,7 @@ func (c *controller) launch(ctx context.Context, parentID, modelAlias string) {
 	var sent pluginapi.SessionSendResult
 	err = c.host.CallHost(ctx, pluginapi.HostServiceSessionSend, pluginapi.SessionSendParams{
 		RequestID: requestID, SessionID: created.SessionID,
-		Input: pluginapi.SessionInput{Prompt: dreamPrompt()}, Cause: "dream.consolidate",
+		Input: pluginapi.SessionInput{Prompt: dreamPrompt(projectMemory)}, Cause: "dream.consolidate",
 	}, &sent)
 	if err != nil {
 		c.fail(context.Background(), err)
@@ -382,8 +429,14 @@ func latestCandidate(candidates map[string]string) string {
 	return latestID
 }
 
-func dreamPrompt() string {
-	return `Review the forked completed conversation and consolidate only durable workspace knowledge. Use session_memory to read project_memory before editing it. Append or replace project_memory only for stable architecture decisions, conventions, tool quirks, or recurring workflow lessons that should survive future sessions. Never store secrets, raw transcripts, temporary progress, PR numbers, commit SHAs, or facts likely to go stale within a week. Do not modify source files. If nothing deserves durable memory, reply exactly: Nothing to dream.`
+func dreamPrompt(projectMemory string) string {
+	prompt := `Review the forked completed conversation and consolidate only durable workspace knowledge.`
+	if projectMemory = strings.TrimSpace(projectMemory); projectMemory != "" {
+		prompt += "\n\nCurrent project_memory, read when this run started; consolidate against it:\n\n" + projectMemory
+	} else {
+		prompt += "\n\nUse session_memory to read project_memory before editing it."
+	}
+	return prompt + ` Append or replace project_memory via the session_memory tool only for stable architecture decisions, conventions, tool quirks, or recurring workflow lessons that should survive future sessions. Never store secrets, raw transcripts, temporary progress, PR numbers, commit SHAs, or facts likely to go stale within a week. Do not modify source files. If nothing deserves durable memory, reply exactly: Nothing to dream.`
 }
 
 func randomID() (string, error) {

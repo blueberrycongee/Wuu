@@ -82,11 +82,13 @@ func Handler() pluginapi.Handler {
 				{ID: pluginapi.HostServiceSessionCreate, Required: true},
 				{ID: pluginapi.HostServiceSessionSend, Required: true},
 			},
+			ProvidedServices: []pluginapi.Service{sessionMemoryServiceDescriptor()},
 		},
 		Initialize:       c.initialize,
 		Activate:         c.activate,
 		ExecuteTool:      c.executeTool,
 		InvokeCapability: c.invokeCapability,
+		InvokeService:    c.invokeService,
 	}
 }
 

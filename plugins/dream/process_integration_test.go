@@ -102,6 +102,9 @@ func (s *dreamHostServices) HandleHostService(_ context.Context, method pluginho
 }
 
 func (s *dreamHostServices) RouteServiceCall(ctx context.Context, _ string, params pluginhost.ServiceCallParams) (json.RawMessage, *pluginhost.HostServiceError) {
+	if params.Service == "memory.session" {
+		return json.RawMessage(`{"action":"read","target":"project_memory","exists":false,"content":""}`), nil
+	}
 	result, err := s.HandleHostService(ctx, pluginhost.HostServiceMethod(params.Service), params.Params)
 	if err != nil {
 		return nil, &pluginhost.HostServiceError{Code: "service_unavailable", Message: err.Error()}

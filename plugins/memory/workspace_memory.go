@@ -44,9 +44,30 @@ func (c *controller) executeSessionMemory(call pluginapi.ToolCall) (pluginapi.To
 	if threadID == "" {
 		threadID = strings.TrimSpace(call.ThreadID)
 	}
-	paths, err := c.sessionMemoryPaths(threadID)
+	result, err := c.runSessionMemory(args, threadID)
 	if err != nil {
 		return pluginapi.ToolResult{}, err
+	}
+	return jsonResult(result, nil)
+}
+
+// runSessionMemory is the shared backend behind the session_memory tool and
+// the memory.session service. An empty threadID restricts the operation to
+// the workspace-scoped project_memory target.
+func (c *controller) runSessionMemory(args sessionMemoryArgs, threadID string) (map[string]any, error) {
+	var paths map[string]string
+	if strings.TrimSpace(threadID) == "" {
+		projectPath, err := c.projectMemoryPath()
+		if err != nil {
+			return nil, err
+		}
+		paths = map[string]string{"project_memory": projectPath}
+	} else {
+		var err error
+		paths, err = c.sessionMemoryPaths(threadID)
+		if err != nil {
+			return nil, err
+		}
 	}
 	switch strings.TrimSpace(args.Action) {
 	case "status":
@@ -57,52 +78,52 @@ func (c *controller) executeSessionMemory(call pluginapi.ToolCall) (pluginapi.To
 			if info, statErr := os.Stat(path); statErr == nil {
 				entry["exists"], entry["bytes"] = true, info.Size()
 			} else if !os.IsNotExist(statErr) {
-				return pluginapi.ToolResult{}, statErr
+				return nil, statErr
 			}
 			files = append(files, entry)
 		}
-		return jsonResult(map[string]any{"action": "status", "files": files}, nil)
+		return map[string]any{"action": "status", "files": files}, nil
 	case "read":
 		target, path, err := checkedSessionMemoryTarget(args.Target, paths)
 		if err != nil {
-			return pluginapi.ToolResult{}, err
+			return nil, err
 		}
 		content, readErr := os.ReadFile(path)
 		exists := readErr == nil
 		if readErr != nil && !os.IsNotExist(readErr) {
-			return pluginapi.ToolResult{}, readErr
+			return nil, readErr
 		}
 		truncated := false
 		if len(content) > sessionMemoryReadMaxBytes {
 			content = []byte(headTailText(string(content), sessionMemoryReadMaxBytes/2, sessionMemoryReadMaxBytes/2, "\n\n[trimmed session memory]\n\n"))
 			truncated = true
 		}
-		return jsonResult(map[string]any{"action": "read", "target": target, "path": path, "exists": exists, "content": string(content), "truncated": truncated}, nil)
+		return map[string]any{"action": "read", "target": target, "path": path, "exists": exists, "content": string(content), "truncated": truncated}, nil
 	case "append", "replace":
 		target, path, err := checkedSessionMemoryTarget(args.Target, paths)
 		if err != nil {
-			return pluginapi.ToolResult{}, err
+			return nil, err
 		}
 		content := strings.TrimSpace(args.Content)
 		if content == "" {
-			return pluginapi.ToolResult{}, errors.New("session_memory content is required")
+			return nil, errors.New("session_memory content is required")
 		}
 		if unsafeMemoryContent(content) {
-			return pluginapi.ToolResult{}, errors.New("session_memory content failed the prompt-injection safety scan")
+			return nil, errors.New("session_memory content failed the prompt-injection safety scan")
 		}
 		if len([]byte(content)) > sessionMemoryWriteMaxBytes {
-			return pluginapi.ToolResult{}, fmt.Errorf("session_memory content exceeds %d bytes", sessionMemoryWriteMaxBytes)
+			return nil, fmt.Errorf("session_memory content exceeds %d bytes", sessionMemoryWriteMaxBytes)
 		}
 		release, err := acquireSessionMemoryLock(path)
 		if err != nil {
-			return pluginapi.ToolResult{}, err
+			return nil, err
 		}
 		defer release()
 		var next string
 		if args.Action == "append" {
 			previous, readErr := os.ReadFile(path)
 			if readErr != nil && !os.IsNotExist(readErr) {
-				return pluginapi.ToolResult{}, readErr
+				return nil, readErr
 			}
 			existing := strings.TrimSpace(string(previous))
 			if existing == "" {
@@ -118,12 +139,24 @@ func (c *controller) executeSessionMemory(call pluginapi.ToolCall) (pluginapi.To
 			next = content + "\n"
 		}
 		if err := writeAtomicFile(path, []byte(strings.TrimSpace(next)+"\n")); err != nil {
-			return pluginapi.ToolResult{}, err
+			return nil, err
 		}
-		return jsonResult(map[string]any{"action": args.Action, "target": target, "path": path, "written": true, "length": len(next)}, nil)
+		return map[string]any{"action": args.Action, "target": target, "path": path, "written": true, "length": len(next)}, nil
 	default:
-		return pluginapi.ToolResult{}, errors.New("session_memory action must be status, read, append, or replace")
+		return nil, errors.New("session_memory action must be status, read, append, or replace")
 	}
+}
+
+// projectMemoryPath locates the workspace-scoped project memory file without
+// requiring a session id; used by thread-agnostic memory.session calls.
+func (c *controller) projectMemoryPath() (string, error) {
+	c.mu.Lock()
+	stateDir := strings.TrimSpace(c.workspaceStateDir)
+	c.mu.Unlock()
+	if stateDir == "" {
+		return "", errors.New("memory plugin requires workspace_state_dir")
+	}
+	return filepath.Join(stateDir, "memory", "MEMORY.md"), nil
 }
 
 func (c *controller) sessionMemoryPaths(threadID string) (map[string]string, error) {
