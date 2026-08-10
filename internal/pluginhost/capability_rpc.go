@@ -30,9 +30,11 @@ import (
 // ## Protocol version
 //
 // Protocol version 2 adds capability negotiation and is the only production
-// Host-to-plugin extension seam.
+// Host-to-plugin extension seam. Protocol version 3 adds service
+// provide/consume declarations routed through the generation-scoped service
+// registry.
 const (
-	CapabilityProtocolVersion = 2
+	CapabilityProtocolVersion = 3
 	CapabilityProtocolName    = "wuu-plugin-v2"
 	// RuntimeLifecycleVersion identifies the side-effect-free prepare phase
 	// followed by explicit post-commit activation.
@@ -496,6 +498,15 @@ type CapabilityInitializeResult struct {
 	// Activation fails if any required service is unavailable.
 	RequiredHostServices []HostServiceDescriptor `json:"required_host_services,omitempty"`
 
+	// ProvidedServices lists versioned services this plugin publishes into
+	// the generation-scoped registry (capability protocol v3).
+	ProvidedServices []ServiceDescriptor `json:"provided_services,omitempty"`
+
+	// RequiredServices lists services this plugin consumes by name and major
+	// version. An unsatisfied required service blocks activation with a
+	// diagnostic; there is no dependency solver.
+	RequiredServices []ServiceRequirement `json:"required_services,omitempty"`
+
 	// ProtocolVersion is the capability protocol version the plugin
 	// requests. The host may downgrade to v1 if v2 is unsupported.
 	ProtocolVersion int `json:"protocol_version,omitempty"`
@@ -774,6 +785,9 @@ func ValidateCapabilityNegotiation(result CapabilityInitializeResult, supported 
 	}
 	if version < ProtocolVersion || version > CapabilityProtocolVersion {
 		return fmt.Errorf("unsupported negotiated protocol version %d", version)
+	}
+	if err := ValidateServiceNegotiation(result); err != nil {
+		return err
 	}
 	if version == ProtocolVersion {
 		if len(result.Capabilities) != 0 || len(result.RequiredHostServices) != 0 {
