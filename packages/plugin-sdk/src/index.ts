@@ -459,6 +459,7 @@ export interface HostReact {
 
 export const RUNTIME_PROTOCOL_V1 = 1 as const;
 export const CAPABILITY_PROTOCOL_V2 = 2 as const;
+export const CAPABILITY_PROTOCOL_V3 = 3 as const;
 export const REQUEST_TRANSFORM_CAPABILITY = "agent.request.transform" as const;
 export const AGENT_PRE_STEP_CAPABILITY = "agent.pre_step" as const;
 export const SYSTEM_PROMPT_SECTION_CAPABILITY = "agent.system_prompt.section" as const;
@@ -491,6 +492,7 @@ export const HOST_SERVICE_METHODS = [
   "host.session.send",
   "host.session.list",
   "host.session.cancel",
+  "host.service.call",
 ] as const;
 
 export type HostServiceMethod = (typeof HOST_SERVICE_METHODS)[number];
@@ -498,6 +500,41 @@ export type HostServiceMethod = (typeof HOST_SERVICE_METHODS)[number];
 export interface HostServiceDescriptor {
   id: HostServiceMethod | (string & {});
   required?: boolean;
+}
+
+/** One typed method of a provided service. */
+export interface ServiceMethodDescriptor {
+  name: string;
+  input_schema: string;
+  output_schema: string;
+}
+
+/** A versioned service a plugin provides; consumers resolve by name and major version. */
+export interface ServiceDescriptor {
+  name: string;
+  version: string;
+  methods: ServiceMethodDescriptor[];
+}
+
+/** A consumed service; declaring it is the only way to gain call authority. */
+export interface ServiceRequirement {
+  name: string;
+  major_version: number;
+  required?: boolean;
+}
+
+/** One validated, host-routed call delivered to a service provider. */
+export interface ServiceInvokeParams<TParams = unknown> {
+  service: string;
+  method: string;
+  caller: string;
+  params?: TParams;
+}
+
+/** Notification that a consumed service resolution changed. */
+export interface ServiceChangedParams {
+  service: string;
+  reason?: string;
 }
 
 export interface RuntimeInitializeParams {
@@ -513,9 +550,11 @@ export interface RuntimeInitializeParams {
 
 export interface RuntimeInitializeResult {
   tools?: ToolRegistration[];
-  protocol_version?: 1 | 2;
+  protocol_version?: 1 | 2 | 3;
   capabilities?: CapabilityDescriptor[];
   required_host_services?: HostServiceDescriptor[];
+  provided_services?: ServiceDescriptor[];
+  required_services?: ServiceRequirement[];
   lifecycle_version?: 1;
 }
 
@@ -756,6 +795,10 @@ export interface HostServiceContracts {
     params: { session_id: string };
     result: { session_id: string; cancelled: boolean };
   };
+  "host.service.call": {
+    params: { service: string; method: string; params?: unknown };
+    result: unknown;
+  };
 }
 
 export type HostServiceCall<M extends HostServiceMethod = HostServiceMethod> = M extends HostServiceMethod
@@ -796,6 +839,8 @@ export interface RuntimePlugin {
   initialize(params: RuntimeInitializeParams, host: RuntimeHost): RuntimeInitializeResult | Promise<RuntimeInitializeResult>;
   activate?(host: RuntimeHost): void | Promise<void>;
   invokeCapability?(params: CapabilityInvokeParams, host: RuntimeHost): CapabilityInvokeResult | Promise<CapabilityInvokeResult>;
+  invokeService?(params: ServiceInvokeParams, host: RuntimeHost): unknown | Promise<unknown>;
+  serviceChanged?(params: ServiceChangedParams, host: RuntimeHost): void | Promise<void>;
   executeTool?(params: ToolExecuteParams, host: RuntimeHost): ToolExecuteResult | Promise<ToolExecuteResult>;
   shutdown?(): void | Promise<void>;
 }
@@ -810,6 +855,18 @@ export interface RuntimeCapabilityRequest {
   id: string;
   method: "capability.invoke";
   params: CapabilityInvokeParams;
+}
+
+export interface RuntimeServiceInvokeRequest {
+  id: string;
+  method: "service.invoke";
+  params: ServiceInvokeParams;
+}
+
+export interface RuntimeServiceChangedRequest {
+  id: string;
+  method: "service.changed";
+  params: ServiceChangedParams;
 }
 
 export interface RuntimeActivateRequest {
@@ -834,11 +891,13 @@ export type RuntimeRequest =
   | RuntimeInitializeRequest
   | RuntimeActivateRequest
   | RuntimeCapabilityRequest
+  | RuntimeServiceInvokeRequest
+  | RuntimeServiceChangedRequest
   | RuntimeToolRequest
   | RuntimeShutdownRequest;
 
 export type RuntimeResponse =
-  | { id: string; result: RuntimeInitializeResult | CapabilityInvokeResult | ToolExecuteResult | null }
+  | { id: string; result: unknown }
   | { id: string; error: { message: string } };
 
 export async function handleRuntimeRequest(
@@ -856,6 +915,12 @@ export async function handleRuntimeRequest(
       case "capability.invoke":
         if (!plugin.invokeCapability) throw new Error("capability.invoke is not implemented");
         return { id: request.id, result: await plugin.invokeCapability(request.params, host) };
+      case "service.invoke":
+        if (!plugin.invokeService) throw new Error("service.invoke is not implemented");
+        return { id: request.id, result: await plugin.invokeService(request.params, host) };
+      case "service.changed":
+        await plugin.serviceChanged?.(request.params, host);
+        return { id: request.id, result: null };
       case "tool.execute":
         if (!plugin.executeTool) throw new Error("tool.execute is not implemented");
         return { id: request.id, result: await plugin.executeTool(request.params, host) };
@@ -999,7 +1064,7 @@ function isRuntimeRequest(value: unknown): value is RuntimeRequest {
   const request = value as { id?: unknown; method?: unknown; params?: unknown };
   if (typeof request.id !== "string" || typeof request.method !== "string") return false;
   if (request.method === "activate" || request.method === "shutdown") return true;
-  return ["initialize", "capability.invoke", "tool.execute"].includes(request.method)
+  return ["initialize", "capability.invoke", "service.invoke", "service.changed", "tool.execute"].includes(request.method)
     && typeof request.params === "object" && request.params !== null;
 }
 

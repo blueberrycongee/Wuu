@@ -20,6 +20,7 @@ import {
   type FilePreviewSnapshotV1,
   type HeaderSnapshotV1,
   type NavigationSnapshotV1,
+  type RuntimeInitializeResult,
   type RuntimePlugin,
   type PresenterDefinition,
   type SettingsSnapshotV1,
@@ -170,7 +171,8 @@ const initialized = await handleRuntimeRequest(plugin, {
   method: "initialize",
   params: { protocol_version: 1, capability_protocol_version: 2, plugin_id: "test", plugin_root: ".", project_root: ".", wuu_home: "." },
 });
-if (!("result" in initialized) || initialized.result === null || !("protocol_version" in initialized.result)) {
+const initializedResult = "result" in initialized ? initialized.result as RuntimeInitializeResult | null : null;
+if (initializedResult === null || initializedResult.protocol_version === undefined) {
   throw new Error("initialize did not return the v2 descriptor");
 }
 
@@ -182,4 +184,59 @@ const lines: string[] = [];
 await runJSONLRuntime(plugin, { input: input(), output: { write: (line) => lines.push(line) } });
 if (lines.length !== 2 || !lines[0]?.includes('"text":"ok"') || !lines[1]?.includes('"id":"invalid"')) {
   throw new Error(`unexpected JSONL responses: ${lines.join("")}`);
+}
+
+// --- Service provide/consume (capability protocol v3) ---
+
+const servicePlugin: RuntimePlugin = {
+  initialize() {
+    return {
+      protocol_version: 3,
+      provided_services: [{
+        name: "search.provider",
+        version: "1.0.0",
+        methods: [{ name: "query", input_schema: "search.query.request.v1", output_schema: "search.query.response.v1" }],
+      }],
+      required_services: [{ name: "memory.index", major_version: 1 }],
+    };
+  },
+  invokeService(params) {
+    if (params.caller !== "notes" || params.method !== "query") {
+      throw new Error(`unexpected service.invoke params: ${JSON.stringify(params)}`);
+    }
+    return { hits: ["a"] };
+  },
+  serviceChanged(params) {
+    if (params.service !== "search.provider") {
+      throw new Error(`unexpected service.changed params: ${JSON.stringify(params)}`);
+    }
+  },
+};
+
+const serviceInit = await handleRuntimeRequest(servicePlugin, {
+  id: "init",
+  method: "initialize",
+  params: { protocol_version: 1, capability_protocol_version: 3, plugin_id: "search", plugin_root: ".", project_root: ".", wuu_home: "." },
+});
+const serviceInitResult = "result" in serviceInit ? serviceInit.result as RuntimeInitializeResult | null : null;
+if (serviceInitResult === null || serviceInitResult.provided_services === undefined || serviceInitResult.required_services === undefined) {
+  throw new Error("initialize did not return the v3 service descriptor");
+}
+
+const serviceInvoke = await handleRuntimeRequest(servicePlugin, {
+  id: "invoke",
+  method: "service.invoke",
+  params: { service: "search.provider", method: "query", caller: "notes", params: { q: "x" } },
+});
+if (!("result" in serviceInvoke) || JSON.stringify(serviceInvoke.result) !== '{"hits":["a"]}') {
+  throw new Error(`unexpected service.invoke response: ${JSON.stringify(serviceInvoke)}`);
+}
+
+const serviceChanged = await handleRuntimeRequest(servicePlugin, {
+  id: "changed",
+  method: "service.changed",
+  params: { service: "search.provider", reason: "provider_closed" },
+});
+if (!("result" in serviceChanged)) {
+  throw new Error(`unexpected service.changed response: ${JSON.stringify(serviceChanged)}`);
 }
