@@ -261,6 +261,16 @@ missed-trigger recovery, concurrent merging, and business state must live in
 the plugin; the core provides no timer tick and does not interpret
 `request_id` or `cause`.
 
+Every plugin tool call carries the `turn_id` that owns it plus the unique
+`execution_id` of that dispatch (progress reporting and precise cancellation
+are covered under "Execution scope"). A plugin declaring the
+`agent.turn.interrupted` observe capability also receives a product-neutral
+turn interruption signal. The host does not build a cancellation tree on
+`parent_session_id`; the plugin may forward the signal to any child turn it
+tracks, or let the work detach from the current turn. Orchestration semantics —
+trees, DAGs, worker pools, fan-in, retry, and recovery — all belong to the
+plugin.
+
 Process lifecycle is managed by Wuu: started on enable, terminated on disable,
 upgrade, or uninstall. A plugin cannot restart itself or bypass host
 supervision.
@@ -324,6 +334,7 @@ provides the following capabilities (the SDK exports are authoritative):
 | `agent.compaction` | Replace the summary-compaction result | decision; Experimental |
 | `agent.turn.completed` | Observe summaries of settled successful/failed turns | observe |
 | `agent.turn.lifecycle` | Receive owner-scoped lifecycle for turns this plugin submitted | observe |
+| `agent.turn.interrupted` | Receive a non-blocking interruption signal for any turn; the plugin decides whether to propagate it | observe |
 | `plugin.client.request` | Handle Desktop/client requests inside the plugin namespace | decision |
 
 Tools are registered through the `tools` field of the initialize result, not
@@ -338,6 +349,28 @@ traffic only through host services. When a candidate prepare fails, the old
 generation keeps working; after a durable commit, a single-plugin activate
 failure shows as `failed/last_error` in the inventory rather than pretending
 to be active.
+
+Plugins never receive private ThreadItems, protocol messages, the host React
+tree, or arbitrary callbacks. Snapshots, inputs, and outputs are frozen public
+structures; the concrete types are the SDK's `index.ts`.
+
+`agent.pre_step` is the preferred entry point for stateful model context. The
+host calls it stably by capability priority, validates `append_messages`,
+marks each message hidden, read-only, and `origin=plugin`, and persists it
+with the turn. A plugin can find the messages it previously appended through
+the `origin_id` on its input and implement its own policy: inject once,
+append a tombstone when state changes, or append every round. The host does
+not keep state for the plugin and does not choose its caching strategy; this
+interface only appends at the tail of history and never rewrites an existing
+prefix.
+
+`ModelRequestViewV1` exposes only the model, message summaries, tool schemas,
+and a few cross-provider options — no retry objects, cache hints, media bytes,
+provider-native replay state, or Go field names. The only writable field of
+the current request transform is `prepend_system_messages`; using it means the
+plugin chooses to change the request prefix and takes the cache impact of
+doing so. New writable capabilities require new versioned fields with host
+validation — not a return to arbitrary `ChatRequest` passthrough.
 
 A complete TypeScript duplex example lives in
 `examples/plugins/stateful-runtime`: `activate` uses Storage CAS from the

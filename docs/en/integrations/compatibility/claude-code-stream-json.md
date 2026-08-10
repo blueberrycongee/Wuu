@@ -24,12 +24,14 @@ source map under `thirdparty/claude-code-sourcemap/src` (a decompiled dump; trea
 
 ### 1.1 Entry point and emission mechanism
 
-- CLI flags are defined by `addExecFlags` in `cmd/wuu/main.go:1831-1862`. Relevant ones:
-  - `--json` (bool) → `cmd/wuu/main.go:1854` ("emit machine-readable JSONL to stdout").
-  - `--output-schema <schema.json>` → `cmd/wuu/main.go:1860`.
-  - `--output-last-message <file>` → `cmd/wuu/main.go:1857`.
-  - `--max-turns <n>` → `cmd/wuu/main.go:1859`.
-  - Usage text: `cmd/wuu/main.go:2358-2381`.
+- CLI flags are defined by `addExecFlags` in `cmd/wuu/main.go:1875-1906`. Relevant ones:
+  - `--json` (bool) → `cmd/wuu/main.go:1898` ("emit machine-readable JSONL to stdout").
+  - `--output-schema <schema.json>` → `cmd/wuu/main.go:1904`.
+  - `--output-last-message <file>` → `cmd/wuu/main.go:1901`.
+  - `--max-turns <n>` → `cmd/wuu/main.go:1903`.
+  - Usage text: `cmd/wuu/main.go:2360-2508`.
+  Line numbers drift as the file evolves; re-anchor with `grep -n addExecFlags
+  cmd/wuu/main.go` when in doubt.
 - The run loop is `exec.Run` in `internal/exec/runner.go:52-185`.
 - Every JSONL line is written by `emitJSON` (`internal/exec/runner.go:1004-1010`):
   `json.NewEncoder(opts.Stdout).Encode(payload)` — one JSON object per line, newline
@@ -550,7 +552,7 @@ and usage). The unavoidable lossy points to advertise up front:
   `internal/structuredoutput/validator.go`, and `internal/appserver/run_handlers.go`.
 - wuu app-server types: `internal/appserver/protocol.go` (`InitializeResult`,
   `TurnUsageNotification`, `TurnCompletedNotification`, `Thread`, `Turn`, and `ThreadItem`).
-- wuu CLI flags/usage: `cmd/wuu/main.go:1831-1862`, `2358-2381`.
+- wuu CLI flags/usage: `cmd/wuu/main.go:1875-1906`, `2360-2508`.
 - wuu contract docs: `docs/en/automation/exec.md`, `docs/en/automation/jsonl-events.md`.
 - cc print/headless: `thirdparty/claude-code-sourcemap/src/cli/print.ts` (`455-974`,
   `1027-1079`).

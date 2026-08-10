@@ -291,11 +291,10 @@ enabled plugins appear under **Settings → Appearance** and are removed cleanly
 the user returns to a built-in theme.
 
 [`config/desktop-theme-contract.json`](../../../config/desktop-theme-contract.json) is the single
-registry for public tokens and generates the manifest, SDK, and Desktop validators. Stable families
-cover semantic colors, typography, spacing, density, radius, borders, elevation, motion, content
-width, and `--wuu-syntax-*` syntax colors. Early names such as `--wuu-paper`, `--wuu-ink`,
-`--wuu-accent`, and `--hljs-*` remain compatible and map to the current semantic contract. New themes
-should prefer the current `--wuu-color-*` and `--wuu-font-*` names.
+registry for public tokens and generates the manifest, SDK, and Desktop validators; the token
+families, legacy names, and preferred current names are described in the [authoring
+guide](../customize/plugin-authoring.md) and listed in the [theme token
+reference](../customize/theme-surface-matrix.md).
 
 Shared neutral UI uses coarse semantic tokens so an appearance plugin does not need private DOM
 selectors. The complete token list with host wiring status is generated from the host stylesheet
@@ -304,46 +303,15 @@ text and font continue to inherit the corresponding public color and typography 
 controls keep host-owned border widths so a strong panel border cannot change their box model or
 break wrapping.
 
-Common host dialogs, menus, popovers, tooltips, notices, and floating navigation now render through
-the protected Layer Host and expose stable `data-wuu-component`, `data-wuu-layer`, and
-`data-wuu-state` attributes. Drag previews, PDF ShadowRoot content, and plugin View pane mounts remain
-specialized rendering boundaries rather than appearance layers. Trusted code plugins that need
-supplemental CSS should target only the published attributes and tokens, not private class names or
-DOM structure.
+## Semantic anchors
 
-Native workspace tabs expose `workspace-tool-tab` and `workspace-tool-tab-close` anchors. A tab uses
-`data-wuu-active="true" | "false"` for selection and `data-wuu-state="closing" | "dragging"` for
-transient lifecycle state; selection, closing, dragging, and overflow remain host-owned.
-
-Message controls expose one host-owned `message-actions` group anchor. Action bars distinguish
-`data-wuu-placement="persistent" | "overlay"`.
-Themes may tune their rhythm with `--wuu-message-actions-block-gap`,
-`--wuu-message-actions-overlay-gap`, `--wuu-message-actions-control-gap`,
-`--wuu-message-actions-inline-offset`, `--wuu-message-action-size`, and
-`--wuu-message-action-radius`. Wuu retains ownership of keyboard order, hit targets, responsive
-overflow, and the two placement semantics. Style its direct buttons as one control family instead
-of targeting individual action identities. The user-query surface is separately exposed as
-`message-bubble` with variant `user`; its visual properties use the matching
-`--wuu-message-user-*` tokens.
-
-The UI Kit exposes coarse anchors for `plugin-ui-page`, `plugin-ui-panel`, `plugin-ui-card`,
-`plugin-ui-section`, `plugin-ui-stack`, `plugin-ui-row`, `plugin-ui-button`, `plugin-ui-field`,
-`plugin-ui-input`, `plugin-ui-empty-state`, `plugin-ui-loading-state`, `plugin-ui-error-state`, and
-`plugin-ui-live-duration`.
-Appearance plugins should prefer public tokens and use these boundaries only when a structural
-treatment is necessary.
-
-Settings exposes `settings-shell`, `settings-sidebar`, `settings-content`, and `settings-page` as
-coarse layout boundaries. Themes can give the navigation rail and content canvas different material
-treatments without targeting private Settings classes; the shared sidebar divider inherits the
-public `--wuu-border-subtle` token.
-
-Sidebar navigation hover shares one public treatment across the main rail, plugin entries, project
-and thread rows, the settings rail, and the settings back button:
-`--wuu-nav-item-hover-background` paints hovered/expanded rows and `--wuu-nav-item-hover-ring`
-tints their inset ring. Both fall back to the host glass material, so themes opt in without
-touching private row classes. The collapsed rail's floating drawer paints through
-`--wuu-color-surface-muted`, so it keeps the same material as the docked sidebar.
+The host chrome exposes one anchor surface for CSS-snippet styling: the Layer Host
+`data-wuu-component` / `data-wuu-layer` / `data-wuu-state` attributes, the `workspace-tool-tab*`
+anchors, the `message-actions` and `message-bubble` groups with their `--wuu-message-*` tokens,
+the `plugin-ui-*` UI Kit anchors, the Settings layout boundaries, and the shared nav-item hover
+tokens. The complete spec lives in the [Declarative CSS anchors section of the authoring
+guide](../customize/plugin-authoring.md); target those anchors and tokens, not private class names
+or DOM structure.
 
 See the installable [`examples/plugins/deep-ui`](../../../examples/plugins/deep-ui/) package for a
 theme and wrappers covering all current surfaces.
