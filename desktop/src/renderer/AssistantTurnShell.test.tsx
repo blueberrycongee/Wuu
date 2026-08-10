@@ -1351,20 +1351,13 @@ describe("AssistantTurnShell — turn divider styles", () => {
     expect(shellRule).not.toContain("padding-top");
   });
 
-  it("shares the live gray sweep across process rows, reasoning labels, previews, and compaction", () => {
-    expect(turnsCSS).toContain(
-      ".process-surface-row.is-live-gray .process-surface-summary-line",
-    );
-    expect(turnsCSS).toContain(".turn-reasoning-summary-text.is-live-gray");
-    expect(turnsCSS).toContain(
-      ".turn-process-preview.is-live .turn-process-preview-text",
-    );
-    expect(turnsCSS).toContain(".live-progress-chip::after");
-    expect(turnsCSS).toContain("content: attr(aria-label);");
-    expect(turnsCSS).toContain("background-clip: text;");
-    expect(turnsCSS).toContain("animation: live-gray-shimmer 4.8s linear infinite;");
-    expect(turnsCSS).toContain(
-      '.process-text-motion[data-transitioning="true"],',
+  it("keeps live labels static instead of continuously repainting clipped text", () => {
+    expect(turnsCSS).not.toContain("@keyframes live-gray-shimmer");
+    expect(turnsCSS).not.toContain("animation: live-gray-shimmer");
+    expect(turnsCSS).not.toContain("@keyframes turn-text-sweep");
+    expect(turnsCSS).not.toContain(".live-progress-chip::after");
+    expect(cssRule(".turn-progress.in_progress .turn-progress-title")).not.toContain(
+      "animation:",
     );
     expect(turnsCSS).toContain(".process-surface-count.is-changing");
     expect(turnsCSS).not.toContain(".process-surface-row.is-streaming::after");
@@ -1374,12 +1367,7 @@ describe("AssistantTurnShell — turn divider styles", () => {
   });
 
   it("pauses infinite turn animations while the renderer is hidden", () => {
-    expect(turnsCSS).toContain(
-      ":root[data-renderer-hidden] .turn-progress.in_progress .turn-progress-title",
-    );
-    expect(turnsCSS).toContain(
-      ":root[data-renderer-hidden] .process-surface-row.is-live-gray .process-surface-summary-line::after",
-    );
+    expect(turnsCSS).toContain(":root[data-renderer-hidden] .turn-process-live-dot");
     expect(turnsCSS).toContain("animation-play-state: paused;");
   });
 

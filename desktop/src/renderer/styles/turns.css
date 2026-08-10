@@ -1593,16 +1593,6 @@
     transition: none;
   }
 }
-@keyframes turn-text-sweep {
-  0% {
-    background-position: 160% 50%;
-  }
-
-  100% {
-    background-position: -60% 50%;
-  }
-}
-
 .turn-progress {
   display: inline-flex;
   width: fit-content;
@@ -1671,12 +1661,7 @@
 }
 
 .turn-progress.in_progress .turn-progress-title {
-  background: linear-gradient(100deg, var(--turn-progress-sweep-base) 0%, var(--turn-progress-sweep-base) 34%, var(--turn-progress-sweep-highlight) 49%, var(--turn-progress-sweep-base) 64%, var(--turn-progress-sweep-base) 100%);
-  background-size: 220% 100%;
-  color: transparent;
-  animation: turn-text-sweep 2800ms linear infinite;
-  -webkit-background-clip: text;
-  background-clip: text;
+  color: var(--turn-progress-sweep-base);
 }
 
 .turn-progress.failed .turn-progress-label svg,
@@ -2251,13 +2236,6 @@
   animation: process-text-rise-out var(--motion-base) var(--ease-out) both;
 }
 
-/* A text-clipped duplicate sweeps the glyphs while the opaque label underneath
-   keeps controls stable. The oversized band rests outside between passes. */
-@keyframes live-gray-shimmer {
-  from { background-position: 180% 50%; }
-  to   { background-position: -80% 50%; }
-}
-
 .process-surface,
 .process-surface-fold,
 .process-surface-row {
@@ -2348,51 +2326,6 @@
   display: inline-block;
 }
 
-.process-surface-row.is-live-gray .process-surface-summary-line,
-.turn-reasoning-summary-text.is-live-gray,
-.turn-process-preview.is-live .turn-process-preview-text,
-.live-progress-chip {
-  position: relative;
-  isolation: isolate;
-}
-
-.process-surface-row.is-live-gray .process-surface-summary-line::after,
-.turn-reasoning-summary-text.is-live-gray::after,
-.turn-process-preview.is-live .turn-process-preview-text::after,
-.live-progress-chip::after {
-  content: attr(data-text);
-  position: absolute;
-  inset: 0;
-  display: block;
-  overflow: hidden;
-  pointer-events: none;
-  color: transparent;
-  font: inherit;
-  letter-spacing: inherit;
-  line-height: inherit;
-  text-align: inherit;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  background-image: var(--live-gray-shimmer-gradient);
-  background-repeat: no-repeat;
-  background-size: 260% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  animation: live-gray-shimmer 4.8s linear infinite;
-  z-index: 1;
-}
-
-.process-surface-row.is-live-gray .process-surface-summary-line::after {
-  content: attr(aria-label);
-}
-
-/* Avoid a third, already-updated copy while the real label changes state. */
-.process-surface-row.is-live-gray .process-surface-summary-line:has(
-  .process-text-motion[data-transitioning="true"], .process-surface-count.is-changing
-)::after {
-  display: none;
-}
-
 .turn-reasoning-summary-text.is-live-gray {
   display: inline-grid;
   flex-grow: 0;
@@ -2402,12 +2335,7 @@
   margin-inline-start: auto;
 }
 
-:root[data-renderer-hidden] .turn-progress.in_progress .turn-progress-title,
 :root[data-renderer-hidden] .turn-process-live-dot,
-:root[data-renderer-hidden] .process-surface-row.is-live-gray .process-surface-summary-line::after,
-:root[data-renderer-hidden] .turn-reasoning-summary-text.is-live-gray::after,
-:root[data-renderer-hidden] .turn-process-preview.is-live .turn-process-preview-text::after,
-:root[data-renderer-hidden] .live-progress-chip::after,
 :root[data-renderer-hidden] .wuu-launch-glass::after,
 :root[data-renderer-hidden] .wuu-launch-mark::after,
 :root[data-renderer-hidden] .wuu-launch-mark span,
@@ -2432,12 +2360,6 @@
     display: none;
   }
 
-  .process-surface-row.is-live-gray .process-surface-summary-line::after,
-  .turn-reasoning-summary-text.is-live-gray::after,
-  .turn-process-preview.is-live .turn-process-preview-text::after,
-  .live-progress-chip::after {
-    display: none;
-  }
 }
 
 .process-surface-fold.no-details > .process-surface-row {
