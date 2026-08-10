@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -300,5 +301,23 @@ func TestExecutionCancelForUnknownExecutionIsNoop(t *testing.T) {
 		if !strings.Contains(joined, id) {
 			t.Fatalf("missing ack for %s in %s", id, joined)
 		}
+	}
+}
+
+func TestCallHostPreservesTypedErrorCode(t *testing.T) {
+	requestReader, requestWriter := io.Pipe()
+	defer requestReader.Close()
+	client := newClient(requestWriter)
+	go func() {
+		scanner := bufio.NewScanner(requestReader)
+		if !scanner.Scan() {
+			return
+		}
+		client.routeResponse(rpcResponse{ID: "plugin-1", Error: &rpcError{Code: "service_not_found", Message: "no provider for service memory.session"}})
+	}()
+	err := client.CallHost(context.Background(), HostServiceCallMethod, map[string]string{"service": "memory.session", "method": "read"}, nil)
+	var hostErr *HostCallError
+	if !errors.As(err, &hostErr) || hostErr.Code != "service_not_found" || hostErr.Message != "no provider for service memory.session" {
+		t.Fatalf("typed error = %#v", err)
 	}
 }

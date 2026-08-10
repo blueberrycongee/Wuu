@@ -475,6 +475,17 @@ type Handler struct {
 	ServiceChanged   func(context.Context, ServiceChangedNotice) error
 }
 
+// HostCallError is the typed failure returned by a host service call. Code
+// carries the registry or provider error code unchanged so consumers can
+// branch on service_not_found, provider_closed, and friends instead of
+// parsing message text.
+type HostCallError struct {
+	Code    string
+	Message string
+}
+
+func (e *HostCallError) Error() string { return e.Message }
+
 type Client struct {
 	output     io.Writer
 	seq        atomic.Uint64
@@ -576,7 +587,7 @@ func (c *Client) CallHost(ctx context.Context, method string, params, result any
 	select {
 	case response := <-responseCh:
 		if response.Error != nil {
-			return errors.New(strings.TrimSpace(response.Error.Message))
+			return &HostCallError{Code: strings.TrimSpace(response.Error.Code), Message: strings.TrimSpace(response.Error.Message)}
 		}
 		if result == nil {
 			return nil
