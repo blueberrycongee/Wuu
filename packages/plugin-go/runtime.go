@@ -18,8 +18,20 @@ import (
 	"sync/atomic"
 )
 
-const CapabilityProtocolVersion = 2
+const CapabilityProtocolVersion = 3
 const RuntimeLifecycleVersion = 1
+
+const (
+	// HostServiceCallMethod is the plugin -> host gateway for consuming a
+	// registered service. CallService emits it.
+	HostServiceCallMethod = "host.service.call"
+	// ServiceInvokeMethod is the host -> plugin request delivering one
+	// validated call to a service provider.
+	ServiceInvokeMethod = "service.invoke"
+	// ServiceChangedMethod is the host -> plugin notification that a service
+	// resolution changed.
+	ServiceChangedMethod = "service.changed"
+)
 
 const (
 	HostServiceStorageGet             = "host.storage.get"
@@ -68,6 +80,44 @@ type HostService struct {
 	Required bool   `json:"required,omitempty"`
 }
 
+// ServiceMethod declares one typed method of a provided service.
+type ServiceMethod struct {
+	Name         string `json:"name"`
+	InputSchema  string `json:"input_schema"`
+	OutputSchema string `json:"output_schema"`
+}
+
+// Service declares a versioned service this plugin provides. The name is
+// stable across versions; consumers resolve by name and major version.
+type Service struct {
+	Name    string          `json:"name"`
+	Version string          `json:"version"`
+	Methods []ServiceMethod `json:"methods"`
+}
+
+// ServiceRequirement declares a service this plugin consumes. Declaring it is
+// the only way to gain authority to call the service.
+type ServiceRequirement struct {
+	Name         string `json:"name"`
+	MajorVersion int    `json:"major_version"`
+	Required     bool   `json:"required,omitempty"`
+}
+
+// ServiceCall is one validated call the host routes to a service provider.
+// Caller carries the consumer plugin ID authenticated by the host.
+type ServiceCall struct {
+	Service string          `json:"service"`
+	Method  string          `json:"method"`
+	Caller  string          `json:"caller"`
+	Params  json.RawMessage `json:"params,omitempty"`
+}
+
+// ServiceChangedNotice tells a consumer that a service resolution changed.
+type ServiceChangedNotice struct {
+	Service string `json:"service"`
+	Reason  string `json:"reason,omitempty"`
+}
+
 type Tool struct {
 	ID              string         `json:"id"`
 	Description     string         `json:"description"`
@@ -92,9 +142,11 @@ type ToolActivity struct {
 }
 
 type Definition struct {
-	Tools                []Tool        `json:"tools,omitempty"`
-	Capabilities         []Capability  `json:"capabilities,omitempty"`
-	RequiredHostServices []HostService `json:"required_host_services,omitempty"`
+	Tools                []Tool               `json:"tools,omitempty"`
+	Capabilities         []Capability         `json:"capabilities,omitempty"`
+	RequiredHostServices []HostService        `json:"required_host_services,omitempty"`
+	ProvidedServices     []Service            `json:"provided_services,omitempty"`
+	RequiredServices     []ServiceRequirement `json:"required_services,omitempty"`
 }
 
 type ToolCall struct {
@@ -322,6 +374,17 @@ type Host interface {
 	CallHost(context.Context, string, any, any) error
 }
 
+// CallService invokes one method of a registered service through the host's
+// service gateway. The plugin must declare the service in its Definition's
+// RequiredServices; the host authorizes and routes the call.
+func CallService(ctx context.Context, host Host, service, method string, params, result any) error {
+	return host.CallHost(ctx, HostServiceCallMethod, struct {
+		Service string `json:"service"`
+		Method  string `json:"method"`
+		Params  any    `json:"params,omitempty"`
+	}{Service: service, Method: method, Params: params}, result)
+}
+
 type Handler struct {
 	Definition       Definition
 	Initialize       func(context.Context, Host, InitializeParams) error
@@ -329,6 +392,8 @@ type Handler struct {
 	Shutdown         func(context.Context) error
 	ExecuteTool      func(context.Context, Host, ToolCall) (ToolResult, error)
 	InvokeCapability func(context.Context, Host, CapabilityCall) (json.RawMessage, error)
+	InvokeService    func(context.Context, Host, ServiceCall) (json.RawMessage, error)
+	ServiceChanged   func(context.Context, ServiceChangedNotice) error
 }
 
 type Client struct {
@@ -650,6 +715,33 @@ func dispatch(ctx context.Context, client *Client, handler Handler, request rpcR
 		return marshal(struct {
 			Output json.RawMessage `json:"output"`
 		}{Output: value})
+	case "service.invoke":
+		if handler.InvokeService == nil {
+			return nil, false, errors.New("service invocation is unavailable")
+		}
+		var call ServiceCall
+		if err := json.Unmarshal(request.Params, &call); err != nil {
+			return nil, false, err
+		}
+		value, err := handler.InvokeService(ctx, client, call)
+		if err != nil {
+			return nil, false, err
+		}
+		if len(value) == 0 || !json.Valid(value) {
+			return nil, false, errors.New("service returned invalid JSON")
+		}
+		return value, false, nil
+	case "service.changed":
+		if handler.ServiceChanged != nil {
+			var notice ServiceChangedNotice
+			if err := json.Unmarshal(request.Params, &notice); err != nil {
+				return nil, false, err
+			}
+			if err := handler.ServiceChanged(ctx, notice); err != nil {
+				return nil, false, err
+			}
+		}
+		return json.RawMessage(`{}`), false, nil
 	case "shutdown":
 		if handler.Shutdown != nil {
 			if err := handler.Shutdown(ctx); err != nil {
