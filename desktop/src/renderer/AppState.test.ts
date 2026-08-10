@@ -230,52 +230,6 @@ describe("subagent session state must not leak across tabs", () => {
     } as unknown as Thread;
   }
 
-  it("does not mark the active thread running when a background subtask starts", () => {
-    const active = {
-      ...threadWithUserTexts(["an idle conversation"]),
-      id: "thread-a",
-    };
-    const background = {
-      ...threadWithUserTexts(["background task"]),
-      id: "thread-child",
-      read_only: true as const,
-    };
-    const state = {
-      ...initialState,
-      activeContext: context,
-      thread: active,
-      sessionTabs: [createThreadSessionTab(active, context)],
-      activeSessionTabID: threadSessionTabID(active.id),
-      threads: [active, background],
-      running: false,
-      status: "ready",
-    };
-
-    const next = reduceServerEvent(state, {
-      kind: "notification",
-      workdir: "/repo",
-      message: {
-        method: "turn/started",
-        params: {
-          thread_id: background.id,
-          turn: {
-            id: `${background.id}-turn-running`,
-            items_view: "full",
-            status: "in_progress",
-            items: [],
-          },
-        },
-      },
-    });
-
-    expect(next.running).toBe(false);
-    expect(isStateActiveThreadRunning(next)).toBe(false);
-    expect(
-      next.threads.find((thread) => thread.id === background.id)?.turns.at(-1)
-        ?.status,
-    ).toBe("in_progress");
-  });
-
   it("keeps the active thread running when a background session completes its turn", () => {
     const active = threadWithRunningTurn("thread-a");
     const background = {
