@@ -2465,6 +2465,15 @@
   gap: var(--conversation-prose-block-gap, 10px);
   padding: 4px 0 2px 20px;
   color: var(--wuu-ink-soft);
+  /* One shared height bound for the whole expanded fold: the tool trail
+   * and the reasoning block both live here, and either can outgrow a
+   * viewport in busy turns. Cap the combined area at 50vh and scroll it
+   * as a single container so an open fold can never push the
+   * conversation past one screen of activity. */
+  max-height: 50vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
 
 .process-surface-tool-list {
@@ -2473,17 +2482,6 @@
 
 .process-surface-reasoning-list {
   min-width: 0;
-}
-
-.process-surface-reasoning-scroll {
-  display: flex;
-  max-height: 50vh;
-  min-width: 0;
-  flex-direction: column;
-  gap: var(--conversation-prose-block-gap, 10px);
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  scrollbar-gutter: stable;
 }
 
 .process-surface-reasoning-item {

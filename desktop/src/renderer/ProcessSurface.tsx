@@ -162,6 +162,16 @@ export function ProcessSurface({
     }
   }, [hasDetails]);
 
+  // The fold body is the single bounded scroll container for the whole
+  // expanded area (tool trail + reasoning). Auto-follow lives here so the
+  // combined content stays pinned to the latest item while streaming,
+  // and snaps to the bottom on every open.
+  const processScroll = useAutoFollowScrollContainer({
+    observeKey: processItems.map((item) => item.id).join("|"),
+    open: expanded,
+    openScrollDelayMs: REASONING_FOLD_OPEN_SNAP_DELAY_MS,
+  });
+
   const handleToggle = (
     event: SyntheticEvent<HTMLDetailsElement>,
   ): void => {
@@ -280,7 +290,11 @@ export function ProcessSurface({
         {hasDetails ? (
           <>
             {errorBlock}
-            <div className="process-surface-body">
+            <div
+              className="process-surface-body"
+              ref={processScroll.scrollRef}
+              {...{ [AUTO_FOLLOW_NESTED_SCROLL_ATTR]: "true" }}
+            >
               {hasMultipleTools ? (
                 <div className="process-surface-tool-list">
                   <ToolActivityTimeline
@@ -292,12 +306,17 @@ export function ProcessSurface({
               ) : null}
               {hasReasoning && renderReasoningItem ? (
                 <div className="process-surface-reasoning-list">
-                  <ProcessSurfaceReasoningScroll
-                    items={reasoningItems}
-                    streaming={streaming}
-                    renderReasoningItem={renderReasoningItem}
-                    foldOpen={expanded}
-                  />
+                  {reasoningItems.map((item) => (
+                    <div
+                      key={item.id}
+                      className="process-surface-reasoning-item"
+                    >
+                      {renderReasoningItem(
+                        item,
+                        streaming && item.status === "in_progress",
+                      )}
+                    </div>
+                  ))}
                 </div>
               ) : null}
             </div>
@@ -382,51 +401,3 @@ function ProcessSurfaceAnimatedCount({
   );
 }
 
-/**
- * Reasoning items rendered inside a single scroll container so the
- * fold body stays bounded as the model produces long deliberation
- * trails. The container owns the auto-follow machinery: when the
- * content height grows (token deltas) it snaps to the bottom unless
- * the user has scrolled up to read earlier reasoning, in which case
- * we leave their scroll position alone.
- *
- * Shared by grouped reasoning/tool rows so the parent ProcessSurface
- * keeps one stable component identity while the reasoning content grows.
- */
-function ProcessSurfaceReasoningScroll({
-  items,
-  streaming,
-  renderReasoningItem,
-  foldOpen,
-}: {
-  items: ThreadItem[];
-  streaming: boolean;
-  renderReasoningItem: (
-    item: ThreadItem,
-    isStreaming: boolean,
-  ) => JSX.Element | null;
-  foldOpen: boolean;
-}): JSX.Element {
-  const reasoningScroll = useAutoFollowScrollContainer({
-    observeKey: items.map((item) => item.id).join("|"),
-    open: foldOpen,
-    openScrollDelayMs: REASONING_FOLD_OPEN_SNAP_DELAY_MS,
-  });
-
-  return (
-    <div
-      className="process-surface-reasoning-scroll"
-      ref={reasoningScroll.scrollRef}
-      {...{ [AUTO_FOLLOW_NESTED_SCROLL_ATTR]: "true" }}
-    >
-      {items.map((item) => (
-        <div key={item.id} className="process-surface-reasoning-item">
-          {renderReasoningItem(
-            item,
-            streaming && item.status === "in_progress",
-          )}
-        </div>
-      ))}
-    </div>
-  );
-}
