@@ -2941,3 +2941,36 @@ func TestRunSessionShowNotFoundReturnsError(t *testing.T) {
 		t.Errorf("expected session-not-found, got: %v", err)
 	}
 }
+
+func TestRunDebugAppServerExecutionsUsesClient(t *testing.T) {
+	client := &fakeDebugAppServerClient{
+		results: map[string]json.RawMessage{
+			appserver.MethodPluginExecutionsList: json.RawMessage(`{"executions":[{"id":"exec-1","plugin_id":"memory","message":"waiting"}]}`),
+		},
+	}
+	restore := installDebugAppServerClientOverride(t, client)
+	defer restore()
+
+	output := captureStdout(t, func() {
+		if err := run([]string{"debug", "app-server", "executions", "--workdir", "/tmp/repo"}); err != nil {
+			t.Fatalf("run debug app-server executions: %v", err)
+		}
+	})
+
+	if len(client.calls) != 1 || client.calls[0].method != appserver.MethodPluginExecutionsList {
+		t.Fatalf("unexpected calls: %+v", client.calls)
+	}
+	var payload struct {
+		Executions []struct {
+			ID       string `json:"id"`
+			PluginID string `json:"plugin_id"`
+			Message  string `json:"message"`
+		} `json:"executions"`
+	}
+	if err := json.Unmarshal([]byte(output), &payload); err != nil {
+		t.Fatalf("output is not JSON: %v\n%s", err, output)
+	}
+	if len(payload.Executions) != 1 || payload.Executions[0].ID != "exec-1" || payload.Executions[0].Message != "waiting" {
+		t.Fatalf("payload = %+v", payload)
+	}
+}

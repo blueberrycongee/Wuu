@@ -430,12 +430,82 @@ func runExecutionHelper() {
 			{ID: "wait", Description: "block until canceled", InputSchema: map[string]any{"type": "object"}},
 			{ID: "ping", Description: "answer promptly", InputSchema: map[string]any{"type": "object"}},
 		}},
-		ExecuteTool: func(ctx context.Context, _ plugingo.Host, call plugingo.ToolCall) (plugingo.ToolResult, error) {
+		ExecuteTool: func(ctx context.Context, host plugingo.Host, call plugingo.ToolCall) (plugingo.ToolResult, error) {
 			if call.ToolID == "wait" {
+				_ = plugingo.ReportExecutionUpdate(ctx, host, plugingo.ExecutionUpdate{ExecutionID: call.ExecutionID, Message: "waiting"})
 				<-ctx.Done()
 				return plugingo.TextResult("aborted"), nil
 			}
 			return plugingo.TextResult("pong"), nil
 		},
 	})
+}
+
+type recordingServiceRouter struct {
+	seen chan ServiceCallParams
+}
+
+func (r *recordingServiceRouter) RouteServiceCall(_ context.Context, _ string, params ServiceCallParams) (json.RawMessage, *HostServiceError) {
+	r.seen <- params
+	return json.RawMessage(`{}`), nil
+}
+
+func TestProcessClientExecutionUpdateReachesHost(t *testing.T) {
+	if os.Getenv("WUU_PLUGINHOST_EXECUTION_HELPER") == "1" {
+		runExecutionHelper()
+		return
+	}
+	root := t.TempDir()
+	router := &recordingServiceRouter{seen: make(chan ServiceCallParams, 1)}
+	client, err := Start(context.Background(), ProcessConfig{
+		ID:            "exec-plugin",
+		Command:       os.Args[0],
+		Args:          []string{"-test.run=TestProcessClientExecutionUpdateReachesHost"},
+		Env:           map[string]string{"WUU_PLUGINHOST_EXECUTION_HELPER": "1"},
+		PluginRoot:    root,
+		ProjectRoot:   filepath.Dir(root),
+		WuuHome:       t.TempDir(),
+		Timeout:       2 * time.Second,
+		ServiceRouter: router,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close(context.Background())
+	if client.Status().State != StateActive {
+		t.Fatalf("status = %+v", client.Status())
+	}
+
+	callCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		_, callErr := client.ExecuteTool(callCtx, ToolExecuteParams{
+			ToolExecuteInput: ToolExecuteInput{ExecutionID: "exec-progress", CallID: "c9", CWD: root, Tool: "wait", Arguments: json.RawMessage(`{}`)},
+			ToolID:           "wait",
+		})
+		done <- callErr
+	}()
+
+	var update ServiceCallParams
+	select {
+	case update = <-router.seen:
+	case <-time.After(2 * time.Second):
+		t.Fatal("plugin progress update did not reach the host")
+	}
+	cancel()
+	<-done
+	if update.Service != "execution.update" || update.Method != KernelServiceMethod {
+		t.Fatalf("routed service call = %+v", update)
+	}
+	var payload struct {
+		ExecutionID string `json:"execution_id"`
+		Message     string `json:"message"`
+	}
+	if err := json.Unmarshal(update.Params, &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload.ExecutionID != "exec-progress" || payload.Message != "waiting" {
+		t.Fatalf("progress payload = %+v", payload)
+	}
 }

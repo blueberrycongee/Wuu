@@ -426,3 +426,14 @@ func (s *Session) PluginServiceRegistrySnapshot() (pluginhost.ServiceRegistrySna
 	}
 	return registry.Snapshot(epoch), nil
 }
+
+// PluginExecutionSnapshots returns the live execution table of the active
+// plugin host: which tool/capability executions are open right now, owned by
+// which plugin, with their latest self-reported progress. Read-only; each
+// entry is authored by the owning plugin about its own execution.
+func (s *Session) PluginExecutionSnapshots() []pluginhost.ExecutionSnapshot {
+	if s == nil || s.PluginHost == nil {
+		return nil
+	}
+	return s.PluginHost.ExecutionSnapshots()
+}

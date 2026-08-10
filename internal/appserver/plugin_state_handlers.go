@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/blueberrycongee/wuu/internal/extensions"
+	"github.com/blueberrycongee/wuu/internal/pluginhost"
 	pluginpkg "github.com/blueberrycongee/wuu/internal/plugin"
 	"github.com/blueberrycongee/wuu/internal/pluginsettings"
 )
@@ -68,6 +69,23 @@ func (s *Server) handlePluginRegistryIntrospect(req Request) error {
 		return s.writeResponse(req.ID, nil, err)
 	}
 	return s.writeResponse(req.ID, snapshot, nil)
+}
+
+// PluginExecutionsResult is the live execution table: open tool/capability
+// executions with their owning plugin and latest self-reported progress.
+type PluginExecutionsResult struct {
+	Executions []pluginhost.ExecutionSnapshot `json:"executions"`
+}
+
+func (s *Server) handlePluginExecutionsList(req Request) error {
+	if s.rt == nil {
+		return s.writeResponse(req.ID, nil, errors.New("runtime is not initialized"))
+	}
+	executions := s.rt.PluginExecutionSnapshots()
+	if executions == nil {
+		executions = []pluginhost.ExecutionSnapshot{}
+	}
+	return s.writeResponse(req.ID, PluginExecutionsResult{Executions: executions}, nil)
 }
 
 func (s *Server) handlePluginDiagnosticsList(req Request) error {

@@ -1217,6 +1217,8 @@ func runDebugAppServer(args []string) error {
 		return runDebugAppServerSend(args[1:])
 	case "registry":
 		return runDebugAppServerRegistry(args[1:])
+	case "executions":
+		return runDebugAppServerExecutions(args[1:])
 	default:
 		return wuuexec.WithExitCode(wuuexec.ExitInvalidInput, fmt.Errorf("unknown debug app-server subcommand %q", args[0]))
 	}
@@ -1257,6 +1259,26 @@ func runDebugAppServerRegistry(args []string) error {
 
 	var result json.RawMessage
 	if err := client.Call(context.Background(), appserver.MethodPluginRegistryIntrospect, nil, &result); err != nil {
+		return err
+	}
+	return printRawJSON(result)
+}
+
+func runDebugAppServerExecutions(args []string) error {
+	fs := flag.NewFlagSet("debug app-server executions", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	cfg := addDebugAppServerFlags(fs)
+	if err := fs.Parse(args); err != nil {
+		return wuuexec.WithExitCode(wuuexec.ExitInvalidInput, err)
+	}
+	client, err := newDebugAppServerClient(context.Background(), debugAppServerOptionsFromCLI(cfg))
+	if err != nil {
+		return err
+	}
+	defer shutdownDebugClient(client)
+
+	var result json.RawMessage
+	if err := client.Call(context.Background(), appserver.MethodPluginExecutionsList, nil, &result); err != nil {
 		return err
 	}
 	return printRawJSON(result)

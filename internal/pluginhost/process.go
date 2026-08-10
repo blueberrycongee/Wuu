@@ -644,11 +644,12 @@ func (c *ProcessClient) dispatchServiceCall(ctx context.Context, call HostServic
 	return c.writeHostServiceResult(response)
 }
 
+// rejectHostService answers a host-service frame with a typed error. The
+// rejection is a legitimate protocol response, not a transport fault, so a
+// successful write returns nil: the plugin process must survive it. Only a
+// failed write is an error worth killing the connection over.
 func (c *ProcessClient) rejectHostService(id, code, message string) error {
-	if err := c.writeHostServiceResult(HostServiceResult{ID: id, Error: &HostServiceError{Code: code, Message: message}}); err != nil {
-		return err
-	}
-	return errors.New(message)
+	return c.writeHostServiceResult(HostServiceResult{ID: id, Error: &HostServiceError{Code: code, Message: message}})
 }
 
 func (c *ProcessClient) writeHostServiceResult(response HostServiceResult) error {

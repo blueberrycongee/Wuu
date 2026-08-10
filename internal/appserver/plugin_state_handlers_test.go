@@ -168,3 +168,26 @@ func TestPluginRegistryIntrospectReturnsKernelServices(t *testing.T) {
 		t.Fatalf("kernel services missing from snapshot: %+v", result.Services)
 	}
 }
+
+func TestPluginExecutionsListReturnsLiveTable(t *testing.T) {
+	rt := newTestRuntime(t, &fakeClient{})
+	rt.WuuHome = retryingTempDir(t)
+	out := &lockedBuffer{}
+	srv := New(rt, out)
+	defer srv.Close()
+	if srv.startupErr != nil {
+		t.Fatalf("server startup: %v", srv.startupErr)
+	}
+	if err := srv.refreshExtensions(srv.currentExtensionConfig()); err != nil {
+		t.Fatalf("refresh extensions: %v", err)
+	}
+	callPluginPackageRPC(t, srv, "executions", MethodPluginExecutionsList, nil)
+	response := responseByID(t, parseOutput(t, out.String()), "executions")
+	if response["error"] != nil {
+		t.Fatalf("executions response = %+v", response)
+	}
+	result := remarshal[PluginExecutionsResult](t, response["result"])
+	if result.Executions == nil {
+		t.Fatal("executions must be an empty list, not null")
+	}
+}

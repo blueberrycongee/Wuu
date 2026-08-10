@@ -901,6 +901,8 @@ func (s *Server) handleLine(ctx context.Context, raw []byte) error {
 		return s.handlePluginDiagnosticsList(req)
 	case MethodPluginRegistryIntrospect:
 		return s.handlePluginRegistryIntrospect(req)
+	case MethodPluginExecutionsList:
+		return s.handlePluginExecutionsList(req)
 	case MethodPluginStorageGet:
 		return s.handlePluginStorageGet(req)
 	case MethodPluginStorageSet:
