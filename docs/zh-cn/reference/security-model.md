@@ -66,7 +66,7 @@ Wuu 不会有意把提供商 API Key 放进提示词。如果命令、hook、MCP
 或权限模式。`wuu exec --config` 和 `--ignore-user-config` 会显式信任所选项目配置，
 适用于受控的自动化环境。
 
-以下项目内容会影响 Agent 行为，使用前应进行检查：
+以下项目内容会影响 Agent 行为，使用前应检查：
 
 - `AGENTS.md` 和其他自动发现的指令文件；
 - `.wuu.json`、`wuu.json`、`.wuu/settings.json` 和本地设置；

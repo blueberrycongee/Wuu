@@ -69,7 +69,7 @@ Hook 会在 Wuu 本机执行命令或调用模型，不是操作系统沙箱。�
 
 | 字段 | 含义 |
 | --- | --- |
-| `matcher` | 匹配工具名。不填或填 `*` 表示全部；其他值按工具名进行不区分大小写的精确匹配，不支持通配表达式 |
+| `matcher` | 匹配工具名。不填或填 `*` 表示全部；其他值按工具名做不区分大小写的精确匹配，不支持通配表达式 |
 | `type` | `command` 或 `prompt`；不填时使用 `command` |
 | `command` | `command` Hook 要执行的 shell 命令 |
 | `prompt` | `prompt` Hook 的判断要求；可以用 `$ARGUMENTS` 插入事件输入 JSON |
