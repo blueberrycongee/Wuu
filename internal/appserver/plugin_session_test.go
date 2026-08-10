@@ -20,6 +20,11 @@ type pluginTurnLifecycleClient struct {
 	calls chan pluginhost.AgentTurnLifecycleInput
 }
 
+type pluginTurnInterruptedClient struct {
+	id    string
+	calls chan pluginhost.AgentTurnInterruptedInput
+}
+
 type blockingPluginTurnLifecycleClient struct {
 	started chan struct{}
 	release chan struct{}
@@ -60,6 +65,26 @@ func (c *pluginTurnLifecycleClient) Capabilities() []pluginhost.CapabilityDescri
 }
 func (c *pluginTurnLifecycleClient) InvokeCapability(_ context.Context, params pluginhost.CapabilityInvokeParams) (pluginhost.CapabilityInvokeResult, error) {
 	var input pluginhost.AgentTurnLifecycleInput
+	if err := json.Unmarshal(params.Input, &input); err != nil {
+		return pluginhost.CapabilityInvokeResult{}, err
+	}
+	c.calls <- input
+	return pluginhost.CapabilityInvokeResult{Output: json.RawMessage(`{}`)}, nil
+}
+
+func (c *pluginTurnInterruptedClient) ID() string { return c.id }
+func (c *pluginTurnInterruptedClient) Status() pluginhost.Status {
+	return pluginhost.Status{ID: c.id, State: pluginhost.StateActive}
+}
+func (c *pluginTurnInterruptedClient) Close(context.Context) error { return nil }
+func (c *pluginTurnInterruptedClient) ProtocolVersion() int {
+	return pluginhost.CapabilityProtocolVersion
+}
+func (c *pluginTurnInterruptedClient) Capabilities() []pluginhost.CapabilityDescriptor {
+	return []pluginhost.CapabilityDescriptor{{ID: pluginhost.CapabilityAgentTurnInterrupted, Kind: pluginhost.SeamObserve, Version: 1}}
+}
+func (c *pluginTurnInterruptedClient) InvokeCapability(_ context.Context, params pluginhost.CapabilityInvokeParams) (pluginhost.CapabilityInvokeResult, error) {
+	var input pluginhost.AgentTurnInterruptedInput
 	if err := json.Unmarshal(params.Input, &input); err != nil {
 		return pluginhost.CapabilityInvokeResult{}, err
 	}
@@ -207,6 +232,62 @@ func TestPluginSessionListAndCancelAreOwnerScoped(t *testing.T) {
 	cancelled, err := rt.PluginSessionRouter.Cancel(context.Background(), "subagent", pluginhost.SessionCancelParams{SessionID: created.SessionID})
 	if err != nil || !cancelled.Cancelled {
 		t.Fatalf("cancel = %+v, %v", cancelled, err)
+	}
+}
+
+func TestPluginSessionCancelIsTurnScopedAndBroadcastsInterruption(t *testing.T) {
+	chatStarted := make(chan struct{})
+	release := make(chan struct{})
+	rt := newTestRuntime(t, &fakeClient{response: providersResponse("done"), onChat: func(_ int, _ providers.ChatRequest) { close(chatStarted); <-release }})
+	rt.PluginSessionRouter = runtime.NewPluginSessionRouter()
+	observer := &pluginTurnInterruptedClient{id: "orchestrator", calls: make(chan pluginhost.AgentTurnInterruptedInput, 1)}
+	rt.PluginHost = pluginhost.New(observer)
+	srv := New(rt, &lockedBuffer{})
+	t.Cleanup(func() { close(release); srv.Close() })
+
+	created, err := rt.PluginSessionRouter.Create(context.Background(), observer.id, pluginhost.SessionCreateParams{
+		RequestID: "owned-turn", Visibility: pluginhost.SessionVisibilityPlugin, ContextSource: pluginhost.SessionContextFresh,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	started, err := rt.PluginSessionRouter.Send(context.Background(), observer.id, pluginhost.SessionSendParams{
+		RequestID: "run-turn", SessionID: created.SessionID, Input: pluginhost.SessionInput{Prompt: "work"},
+	})
+	if err != nil || started.TurnID == "" {
+		t.Fatalf("send = %+v, %v", started, err)
+	}
+	select {
+	case <-chatStarted:
+	case <-time.After(3 * time.Second):
+		t.Fatal("turn did not start")
+	}
+	queued, err := rt.PluginSessionRouter.Send(context.Background(), observer.id, pluginhost.SessionSendParams{
+		RequestID: "queued-turn", SessionID: created.SessionID, Input: pluginhost.SessionInput{Prompt: "later"},
+	})
+	if err != nil || queued.QueueID == "" {
+		t.Fatalf("queued send = %+v, %v", queued, err)
+	}
+	queuedCancel, err := rt.PluginSessionRouter.Cancel(context.Background(), observer.id, pluginhost.SessionCancelParams{SessionID: created.SessionID, QueueID: queued.QueueID})
+	if err != nil || !queuedCancel.Cancelled || queuedCancel.QueueID != queued.QueueID {
+		t.Fatalf("queued cancel = %+v, %v", queuedCancel, err)
+	}
+
+	mismatch, err := rt.PluginSessionRouter.Cancel(context.Background(), observer.id, pluginhost.SessionCancelParams{SessionID: created.SessionID, TurnID: "not-current"})
+	if err != nil || mismatch.Cancelled {
+		t.Fatalf("mismatched cancel = %+v, %v", mismatch, err)
+	}
+	cancelled, err := rt.PluginSessionRouter.Cancel(context.Background(), observer.id, pluginhost.SessionCancelParams{SessionID: created.SessionID, TurnID: started.TurnID})
+	if err != nil || !cancelled.Cancelled || cancelled.TurnID != started.TurnID {
+		t.Fatalf("exact cancel = %+v, %v", cancelled, err)
+	}
+	select {
+	case input := <-observer.calls:
+		if input.ThreadID != created.SessionID || input.TurnID != started.TurnID {
+			t.Fatalf("interruption = %+v", input)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("plugin did not receive turn interruption")
 	}
 }
 

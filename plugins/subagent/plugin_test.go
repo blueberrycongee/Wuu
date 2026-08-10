@@ -26,6 +26,11 @@ type ultraHost struct {
 	value *string
 }
 
+type interruptHost struct {
+	captureHost
+	record taskRecord
+}
+
 func (h *ultraHost) CallHost(ctx context.Context, method string, params, result any) error {
 	switch method {
 	case pluginapi.HostServiceStorageGet:
@@ -44,12 +49,40 @@ func (h *ultraHost) CallHost(ctx context.Context, method string, params, result 
 }
 
 func (h *lifecycleHost) CallHost(ctx context.Context, method string, params, result any) error {
-	if method == pluginapi.HostServiceStorageGet {
+	switch method {
+	case pluginapi.HostServiceStorageGet:
 		encoded, _ := json.Marshal(h.record)
 		value, _ := json.Marshal(string(encoded))
 		return json.Unmarshal([]byte(`{"value":`+string(value)+`}`), result)
+	case pluginapi.HostServiceSessionList:
+		return decodeInto(pluginapi.SessionListResult{Sessions: []pluginapi.SessionSummary{{
+			SessionID: h.record.SessionID, ParentSessionID: h.record.ParentSessionID, Name: h.record.Name, State: h.record.State,
+		}}}, result)
 	}
 	return h.captureHost.CallHost(ctx, method, params, result)
+}
+
+func (h *interruptHost) CallHost(ctx context.Context, method string, params, result any) error {
+	switch method {
+	case pluginapi.HostServiceSessionList:
+		return decodeInto(pluginapi.SessionListResult{Sessions: []pluginapi.SessionSummary{{
+			SessionID: h.record.SessionID, ParentSessionID: h.record.ParentSessionID, Name: h.record.Name, State: h.record.State,
+		}}}, result)
+	case pluginapi.HostServiceStorageGet:
+		encoded, _ := json.Marshal(h.record)
+		value := string(encoded)
+		return decodeInto(map[string]any{"value": &value}, result)
+	case pluginapi.HostServiceSessionCancel:
+		var input pluginapi.SessionCancelParams
+		raw, _ := json.Marshal(params)
+		_ = json.Unmarshal(raw, &input)
+		if err := h.captureHost.CallHost(ctx, method, params, result); err != nil {
+			return err
+		}
+		return decodeInto(pluginapi.SessionCancelResult{SessionID: input.SessionID, TurnID: input.TurnID, Cancelled: true}, result)
+	default:
+		return h.captureHost.CallHost(ctx, method, params, result)
+	}
 }
 
 func (h *captureHost) InitializeParams() pluginapi.InitializeParams {
@@ -101,16 +134,13 @@ func TestSpawnComposesPublicSessionServices(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(host.calls) != 7 {
+	if len(host.calls) != 6 {
 		t.Fatalf("calls = %+v", host.calls)
 	}
-	if host.calls[0].method != pluginapi.HostServiceSessionList {
-		t.Fatalf("admission = %+v", host.calls[0])
+	if host.calls[0].method != pluginapi.HostServiceSessionCreate || host.calls[0].params["parent_session_id"] != "parent-1" || host.calls[0].params["context_source"] != "fresh" || host.calls[0].params["model_alias"] != "cheap" {
+		t.Fatalf("create = %+v", host.calls[0])
 	}
-	if host.calls[1].method != pluginapi.HostServiceSessionCreate || host.calls[1].params["parent_session_id"] != "parent-1" || host.calls[1].params["context_source"] != "fresh" || host.calls[1].params["model_alias"] != "cheap" {
-		t.Fatalf("create = %+v", host.calls[1])
-	}
-	if host.calls[4].method != pluginapi.HostServiceSessionSend {
+	if host.calls[3].method != pluginapi.HostServiceSessionSend {
 		t.Fatalf("send = %+v", host.calls)
 	}
 	if len(result.Content) != 1 || result.Content[0].Text == "" {
@@ -136,6 +166,51 @@ func TestTerminalLifecycleDeliversFinalOutputToParentSession(t *testing.T) {
 	inputValue, _ := delivery.params["input"].(map[string]any)
 	if !strings.Contains(fmt.Sprint(inputValue["prompt"]), "parser is correct") {
 		t.Fatalf("delivery prompt = %+v", inputValue)
+	}
+}
+
+func TestParentTurnInterruptionCancelsOnlyItsCurrentChildTurn(t *testing.T) {
+	host := &interruptHost{record: taskRecord{
+		SessionID: "child-1", ParentSessionID: "parent-1", ParentTurnID: "parent-turn-1",
+		Name: "review_parser", RequestID: "child-request", TurnID: "child-turn-1", State: "running",
+	}}
+	input, _ := json.Marshal(pluginapi.AgentTurnInterruptedInput{ThreadID: "parent-1", TurnID: "parent-turn-1"})
+	if _, err := invokeCapability(context.Background(), host, pluginapi.CapabilityCall{Capability: capabilityInterrupt, Input: input}); err != nil {
+		t.Fatal(err)
+	}
+	var cancel *capturedCall
+	for index := range host.calls {
+		if host.calls[index].method == pluginapi.HostServiceSessionCancel {
+			cancel = &host.calls[index]
+		}
+	}
+	if cancel == nil || cancel.params["session_id"] != "child-1" || cancel.params["turn_id"] != "child-turn-1" {
+		t.Fatalf("cancel = %+v, calls = %+v", cancel, host.calls)
+	}
+}
+
+func TestSendMessageRebindsChildTurnToCurrentParentTurn(t *testing.T) {
+	host := &lifecycleHost{record: taskRecord{
+		SessionID: "child-1", ParentSessionID: "parent-1", ParentTurnID: "parent-turn-1",
+		Name: "review_parser", RequestID: "old-request", TurnID: "old-child-turn", State: "completed",
+	}}
+	_, err := sendMessage(context.Background(), host, pluginapi.ToolCall{
+		SessionID: "parent-1", TurnID: "parent-turn-2", Arguments: json.RawMessage(`{"target":"child-1","message":"continue"}`),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var saved taskRecord
+	for _, call := range host.calls {
+		if call.method != pluginapi.HostServiceStorageSet || call.params["key"] != "session.child-1" {
+			continue
+		}
+		if err := json.Unmarshal([]byte(fmt.Sprint(call.params["value"])), &saved); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if saved.ParentTurnID != "parent-turn-2" || saved.TurnID != "turn-1" || saved.ParentSessionID != "parent-1" {
+		t.Fatalf("saved task = %+v", saved)
 	}
 }
 

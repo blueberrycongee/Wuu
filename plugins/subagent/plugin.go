@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
-	"sync"
 
 	pluginapi "github.com/blueberrycongee/wuu/packages/plugin-go"
 )
@@ -20,21 +19,22 @@ const (
 	capabilityPreStep   = "agent.pre_step"
 	capabilityClient    = "plugin.client.request"
 	capabilityLifecycle = "agent.turn.lifecycle"
+	capabilityInterrupt = "agent.turn.interrupted"
 	ultraStorageKey     = "ultra.enabled"
 	ultraMessageID      = "ultra.mode"
 	ultraOriginID       = "subagent:" + ultraMessageID
-	maxConcurrentAgents = 4
 )
 
 var taskNameCleaner = regexp.MustCompile(`[^a-z0-9_]+`)
-var spawnAdmissionMu sync.Mutex
 
 type taskRecord struct {
 	SessionID       string `json:"session_id"`
 	ParentSessionID string `json:"parent_session_id"`
-	RootSessionID   string `json:"root_session_id,omitempty"`
+	ParentTurnID    string `json:"parent_turn_id,omitempty"`
 	Name            string `json:"name"`
 	RequestID       string `json:"request_id"`
+	TurnID          string `json:"turn_id,omitempty"`
+	QueueID         string `json:"queue_id,omitempty"`
 	State           string `json:"state"`
 }
 
@@ -51,6 +51,7 @@ func Handler() pluginapi.Handler {
 				{ID: capabilityPreStep, Kind: "transform", Version: 1, Priority: 20},
 				{ID: capabilityClient, Kind: "decision", Version: 1},
 				{ID: capabilityLifecycle, Kind: "observe", Version: 1, ErrorPolicy: "isolate"},
+				{ID: capabilityInterrupt, Kind: "observe", Version: 1, ErrorPolicy: "isolate"},
 			},
 			RequiredHostServices: []pluginapi.HostService{
 				{ID: pluginapi.HostServiceSessionCreate, Required: true},
@@ -102,12 +103,6 @@ func spawnAgent(ctx context.Context, host pluginapi.Host, call pluginapi.ToolCal
 	if strings.TrimSpace(call.SessionID) == "" {
 		return pluginapi.ToolResult{}, errors.New("spawn_agent requires a parent session")
 	}
-	spawnAdmissionMu.Lock()
-	defer spawnAdmissionMu.Unlock()
-	treeRoot, err := admitSpawn(ctx, host, call.SessionID)
-	if err != nil {
-		return pluginapi.ToolResult{}, err
-	}
 	name := strings.TrimSpace(args.Name)
 	if name == "" {
 		name = deriveTaskName(args.Description)
@@ -134,7 +129,7 @@ func spawnAgent(ctx context.Context, host pluginapi.Host, call pluginapi.ToolCal
 	if err != nil {
 		return pluginapi.ToolResult{}, err
 	}
-	record := taskRecord{SessionID: created.SessionID, ParentSessionID: call.SessionID, RootSessionID: treeRoot, Name: name, RequestID: "turn-" + requestID, State: "created"}
+	record := taskRecord{SessionID: created.SessionID, ParentSessionID: call.SessionID, ParentTurnID: call.TurnID, Name: name, RequestID: "turn-" + requestID, State: "created"}
 	if err := saveRecord(ctx, host, record); err != nil {
 		return pluginapi.ToolResult{}, err
 	}
@@ -144,69 +139,12 @@ func spawnAgent(ctx context.Context, host pluginapi.Host, call pluginapi.ToolCal
 		return pluginapi.ToolResult{}, err
 	}
 	record.State = sent.State
+	record.TurnID = sent.TurnID
+	record.QueueID = sent.QueueID
 	if err := saveRecord(ctx, host, record); err != nil {
 		return pluginapi.ToolResult{}, err
 	}
 	return pluginapi.TextResult(fmt.Sprintf(`{"session_id":%q,"task_name":%q,"state":%q}`, created.SessionID, name, sent.State)), nil
-}
-
-func admitSpawn(ctx context.Context, host pluginapi.Host, parentSessionID string) (string, error) {
-	var listed pluginapi.SessionListResult
-	if err := host.CallHost(ctx, pluginapi.HostServiceSessionList, pluginapi.SessionListParams{}, &listed); err != nil {
-		return "", err
-	}
-	byID := make(map[string]pluginapi.SessionSummary, len(listed.Sessions))
-	for _, session := range listed.Sessions {
-		id := strings.TrimSpace(session.SessionID)
-		if id != "" {
-			byID[id] = session
-		}
-	}
-	treeRoot, err := sessionTreeRoot(strings.TrimSpace(parentSessionID), byID)
-	if err != nil {
-		return "", err
-	}
-	activeChildren := 0
-	for _, session := range listed.Sessions {
-		state := strings.TrimSpace(session.State)
-		if state != "running" && state != "queued" {
-			continue
-		}
-		root, err := sessionTreeRoot(strings.TrimSpace(session.SessionID), byID)
-		if err != nil {
-			return "", err
-		}
-		if root == treeRoot {
-			activeChildren++
-		}
-	}
-	if activeChildren >= maxConcurrentAgents-1 {
-		return "", fmt.Errorf("subagent tree has reached its active-agent limit (%d including the root); wait for or close an existing child before spawning another", maxConcurrentAgents)
-	}
-	return treeRoot, nil
-}
-
-func sessionTreeRoot(sessionID string, byID map[string]pluginapi.SessionSummary) (string, error) {
-	current := strings.TrimSpace(sessionID)
-	if current == "" {
-		return "", errors.New("subagent tree contains an empty session id")
-	}
-	seen := make(map[string]struct{})
-	for {
-		if _, exists := seen[current]; exists {
-			return "", fmt.Errorf("subagent tree contains a parent cycle at session %q", current)
-		}
-		seen[current] = struct{}{}
-		session, owned := byID[current]
-		if !owned {
-			return current, nil
-		}
-		parent := strings.TrimSpace(session.ParentSessionID)
-		if parent == "" {
-			return "", fmt.Errorf("plugin-owned child session %q has no parent session", current)
-		}
-		current = parent
-	}
 }
 
 func sendMessage(ctx context.Context, host pluginapi.Host, call pluginapi.ToolCall) (pluginapi.ToolResult, error) {
@@ -226,11 +164,19 @@ func sendMessage(ctx context.Context, host pluginapi.Host, call pluginapi.ToolCa
 		return pluginapi.ToolResult{}, err
 	}
 	record.RequestID = "turn-" + requestID
+	record.ParentSessionID = call.SessionID
+	record.ParentTurnID = call.TurnID
 	if err := saveRecord(ctx, host, record); err != nil {
 		return pluginapi.ToolResult{}, err
 	}
 	var sent pluginapi.SessionSendResult
 	if err := host.CallHost(ctx, pluginapi.HostServiceSessionSend, pluginapi.SessionSendParams{RequestID: record.RequestID, SessionID: record.SessionID, Input: pluginapi.SessionInput{Prompt: strings.TrimSpace(args.Message)}, Presentation: &pluginapi.SessionInputPresentation{Kind: "query_bubble", Text: "父任务已更新要求", Name: record.Name}, Cause: "subagent.followup"}, &sent); err != nil {
+		return pluginapi.ToolResult{}, err
+	}
+	record.State = sent.State
+	record.TurnID = sent.TurnID
+	record.QueueID = sent.QueueID
+	if err := saveRecord(ctx, host, record); err != nil {
 		return pluginapi.ToolResult{}, err
 	}
 	return pluginapi.TextResult(fmt.Sprintf(`{"session_id":%q,"state":%q}`, record.SessionID, sent.State)), nil
@@ -248,7 +194,7 @@ func closeAgent(ctx context.Context, host pluginapi.Host, call pluginapi.ToolCal
 		return pluginapi.ToolResult{}, err
 	}
 	var result pluginapi.SessionCancelResult
-	if err := host.CallHost(ctx, pluginapi.HostServiceSessionCancel, pluginapi.SessionCancelParams{SessionID: record.SessionID}, &result); err != nil {
+	if err := host.CallHost(ctx, pluginapi.HostServiceSessionCancel, pluginapi.SessionCancelParams{SessionID: record.SessionID, TurnID: record.TurnID, QueueID: record.QueueID}, &result); err != nil {
 		return pluginapi.ToolResult{}, err
 	}
 	return pluginapi.TextResult(fmt.Sprintf(`{"session_id":%q,"cancelled":%t}`, result.SessionID, result.Cancelled)), nil
@@ -343,6 +289,38 @@ func invokeCapability(ctx context.Context, host pluginapi.Host, call pluginapi.C
 			continuation.State = sent.State
 			if err := saveRecord(ctx, host, continuation); err != nil {
 				return nil, err
+			}
+		}
+		return json.RawMessage(`{}`), nil
+	case capabilityInterrupt:
+		var input pluginapi.AgentTurnInterruptedInput
+		if err := json.Unmarshal(call.Input, &input); err != nil {
+			return nil, err
+		}
+		if strings.TrimSpace(input.ThreadID) == "" || strings.TrimSpace(input.TurnID) == "" {
+			return json.RawMessage(`{}`), nil
+		}
+		var listed pluginapi.SessionListResult
+		if err := host.CallHost(ctx, pluginapi.HostServiceSessionList, pluginapi.SessionListParams{ParentSessionID: input.ThreadID}, &listed); err != nil {
+			return nil, err
+		}
+		for _, child := range listed.Sessions {
+			record, ok, err := loadRecordBySession(ctx, host, child.SessionID)
+			if err != nil {
+				return nil, err
+			}
+			if !ok || strings.TrimSpace(record.ParentTurnID) != strings.TrimSpace(input.TurnID) {
+				continue
+			}
+			var result pluginapi.SessionCancelResult
+			if err := host.CallHost(ctx, pluginapi.HostServiceSessionCancel, pluginapi.SessionCancelParams{SessionID: record.SessionID, TurnID: record.TurnID, QueueID: record.QueueID}, &result); err != nil {
+				return nil, err
+			}
+			if result.Cancelled {
+				record.State = "interrupted"
+				if err := saveRecord(ctx, host, record); err != nil {
+					return nil, err
+				}
 			}
 		}
 		return json.RawMessage(`{}`), nil
@@ -494,20 +472,10 @@ func parentContinuationRecord(ctx context.Context, host pluginapi.Host, child ta
 	return taskRecord{
 		SessionID:       parentID,
 		ParentSessionID: parent.ParentSessionID,
-		RootSessionID:   firstNonEmpty(parent.RootSessionID, child.RootSessionID),
 		Name:            parent.Name,
 		RequestID:       requestID,
 		State:           "created",
 	}, true, nil
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if trimmed := strings.TrimSpace(value); trimmed != "" {
-			return trimmed
-		}
-	}
-	return ""
 }
 
 func completionDeliveryRequestID(requestID string) string {
@@ -572,10 +540,10 @@ A completed subagent task does not mean the overall task is complete. Integrate 
 
 The main agent owns the user conversation, final synthesis, and decision about whether delegation is worth the overhead. Keep tightly coupled, trivial, or critical-path work local. Delegate bounded independent research, verification, or disjoint implementation when separate context or parallel execution materially improves the result.
 
-Each delegation tree has four active-agent slots including its root, so at most three child sessions may be running or queued at once across the entire tree. Child sessions may delegate within that shared budget. Wait for or close existing work before spawning more when the tree is full.
+The Subagent plugin owns its task records, cancellation propagation, concurrency policy, and recovery. Use the public Session services to build whatever task topology fits the work; the host does not impose a delegation tree or a global child limit.
 
 Child sessions use fresh conversation context by default while retaining installed plugins and workspace capabilities. Fresh task prompts must be self-contained. Use context=fork only when inherited conversation history is materially necessary, and still provide a concrete directive and scope. Child completion is delivered as a read-only query bubble; do not poll while work is running.`
 
 const ultraPrompt = `# Proactive delegation
 
-Proactive delegation is enabled by the Subagent plugin. For deep or wide tasks, keep the blocking critical-path step local and delegate independent research, verification, or disjoint implementation to bounded child sessions. Child sessions may form their own task tree when that materially improves speed or context isolation. Do not duplicate work. Child results arrive automatically; use send_message or close_agent only when new information or changed scope requires intervention.`
+Proactive delegation is enabled by the Subagent plugin. For deep or wide tasks, keep the blocking critical-path step local and delegate independent research, verification, or disjoint implementation to bounded child sessions. Child sessions may form their own task graph when that materially improves speed or context isolation. Do not duplicate work. Child results arrive automatically; use send_message or close_agent only when new information or changed scope requires intervention.`

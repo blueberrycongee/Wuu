@@ -92,6 +92,11 @@ func TestValidateCapabilityDescriptor(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name:    "turn interrupted defaults to isolate",
+			desc:    CapabilityDescriptor{ID: CapabilityAgentTurnInterrupted, Kind: SeamObserve, Version: 1},
+			wantErr: false,
+		},
+		{
 			name: "with dependencies",
 			desc: CapabilityDescriptor{
 				ID: "agent.tool.custom", Kind: "transform", Version: 1,

@@ -51,6 +51,33 @@ func (s *Server) notifyPluginTurnLifecycleAsync(pluginID string, input pluginhos
 	}
 }
 
+// notifyPluginTurnInterruptedAsync exposes a turn-scoped cancellation signal
+// without making plugin observers part of the host's interruption critical
+// path. The event is intentionally broadcast: the host does not know which
+// plugin-defined work is related to the turn, and each trusted plugin owns its
+// own propagation policy.
+func (s *Server) notifyPluginTurnInterruptedAsync(input pluginhost.AgentTurnInterruptedInput) {
+	if s == nil || s.rt == nil || s.rt.PluginHost == nil {
+		return
+	}
+	capabilities := s.rt.PluginHost.Capabilities(pluginhost.CapabilityAgentTurnInterrupted)
+	for _, capability := range capabilities {
+		capability := capability
+		if !s.startBackground(func() {
+			ctx, cancel := context.WithTimeout(context.Background(), pluginObserverDeliveryTimeout)
+			defer cancel()
+			var output pluginhost.AgentTurnInterruptedOutput
+			if err := s.rt.PluginHost.InvokeCapability(ctx, capability, input, &output); err != nil {
+				if policyErr := s.rt.PluginHost.HandleCapabilityError(capability, err); policyErr != nil {
+					providers.DebugLogf("deliver turn interruption to plugin %q: %v", capability.PluginID, policyErr)
+				}
+			}
+		}) {
+			return
+		}
+	}
+}
+
 func (s *Server) persistPluginTurnLifecycle(pluginID string, input pluginhost.AgentTurnLifecycleInput) (bool, error) {
 	terminal := pluginTurnLifecycleTerminal(input.State)
 	if !terminal {

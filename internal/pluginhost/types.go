@@ -154,8 +154,11 @@ func validateBoundedMetadata(field, value string) error {
 }
 
 type ToolExecuteInput struct {
-	SessionID string          `json:"session_id,omitempty"`
-	ThreadID  string          `json:"thread_id,omitempty"`
+	SessionID string `json:"session_id,omitempty"`
+	ThreadID  string `json:"thread_id,omitempty"`
+	// TurnID identifies the exact model turn that owns this tool invocation.
+	// Plugins may use it as a key when deciding how to propagate cancellation.
+	TurnID    string          `json:"turn_id,omitempty"`
 	ActorID   string          `json:"actor_id,omitempty"`
 	ActorPath string          `json:"actor_path,omitempty"`
 	CWD       string          `json:"cwd"`

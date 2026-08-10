@@ -34,6 +34,7 @@ const (
 	HostServiceSettingsGet            = "host.settings.get"
 	HostServiceSettingsList           = "host.settings.list"
 	CapabilityAgentTurnLifecycle      = "agent.turn.lifecycle"
+	CapabilityAgentTurnInterrupted    = "agent.turn.interrupted"
 	CapabilityAgentPreStep            = "agent.pre_step"
 )
 
@@ -100,6 +101,7 @@ type ToolCall struct {
 	ToolID    string          `json:"tool_id"`
 	SessionID string          `json:"session_id,omitempty"`
 	ThreadID  string          `json:"thread_id,omitempty"`
+	TurnID    string          `json:"turn_id,omitempty"`
 	ActorID   string          `json:"actor_id,omitempty"`
 	ActorPath string          `json:"actor_path,omitempty"`
 	CWD       string          `json:"cwd"`
@@ -284,11 +286,21 @@ type SessionListResult struct {
 
 type SessionCancelParams struct {
 	SessionID string `json:"session_id"`
+	TurnID    string `json:"turn_id,omitempty"`
+	QueueID   string `json:"queue_id,omitempty"`
 }
 
 type SessionCancelResult struct {
 	SessionID string `json:"session_id"`
+	TurnID    string `json:"turn_id,omitempty"`
+	QueueID   string `json:"queue_id,omitempty"`
 	Cancelled bool   `json:"cancelled"`
+}
+
+type AgentTurnInterruptedInput struct {
+	ThreadID string `json:"thread_id"`
+	TurnID   string `json:"turn_id"`
+	Cause    string `json:"cause,omitempty"`
 }
 
 type TurnLifecycleInput struct {

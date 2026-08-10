@@ -1334,7 +1334,7 @@ func (s *Server) handleTurnInterrupt(req Request) error {
 		return s.writeResponse(req.ID, nil, err)
 	}
 	threadID := strings.TrimSpace(params.ThreadID)
-	_, err := s.interruptThreadExecution(threadID, "")
+	_, err := s.interruptThreadExecution(threadID, "", "")
 	return s.writeResponse(req.ID, OKResult{OK: err == nil}, err)
 }
 
@@ -1342,7 +1342,7 @@ func (s *Server) handleTurnInterrupt(req Request) error {
 // and run/interrupt. The bool reports whether an active Turn will perform the
 // terminal settlement; false means the caller interrupted only between-turn
 // background work.
-func (s *Server) interruptThreadExecution(threadID, expectedRunID string) (bool, error) {
+func (s *Server) interruptThreadExecution(threadID, expectedRunID, expectedTurnID string) (bool, error) {
 	th := s.thread(threadID)
 	if th == nil {
 		return false, fmt.Errorf("thread %q not found", threadID)
@@ -1350,6 +1350,12 @@ func (s *Server) interruptThreadExecution(threadID, expectedRunID string) (bool,
 	th.mu.Lock()
 	cancel := th.cancel
 	threadRuntime := th.execRuntime
+	turnID := strings.TrimSpace(th.currentTurn)
+	expectedTurnID = strings.TrimSpace(expectedTurnID)
+	if expectedTurnID != "" && turnID != expectedTurnID {
+		th.mu.Unlock()
+		return false, nil
+	}
 	if cancel != nil && strings.TrimSpace(expectedRunID) != "" && th.currentExecutionRunID != strings.TrimSpace(expectedRunID) {
 		currentRunID := th.currentExecutionRunID
 		th.mu.Unlock()
@@ -1413,6 +1419,11 @@ func (s *Server) interruptThreadExecution(threadID, expectedRunID string) (bool,
 	// synchronous observer callback here would otherwise re-enter that ordered
 	// process and prevent the cancellation response from ever being returned.
 	cancel()
+	s.notifyPluginTurnInterruptedAsync(pluginhost.AgentTurnInterruptedInput{
+		ThreadID: threadID,
+		TurnID:   turnID,
+		Cause:    "turn_interrupted",
+	})
 	// turn/interrupt means "freeze this work", not "leave background workers
 	// running": cancel the whole anonymous-worker tree, clear its queued
 	// spawns, and keep partial results as resumable state. The next

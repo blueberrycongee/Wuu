@@ -295,7 +295,9 @@ func (c *ProcessClient) ExecuteTool(ctx context.Context, params ToolExecuteParam
 	defer cancel()
 	var result ToolExecuteResult
 	if err := c.call(callCtx, "tool.execute", params, &result); err != nil {
-		c.failFatalCall(err)
+		if ctx.Err() == nil {
+			c.failFatalCall(err)
+		}
 		return ToolExecuteResult{}, err
 	}
 	if err := result.Result.Validate(); err != nil {

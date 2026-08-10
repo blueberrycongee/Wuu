@@ -190,7 +190,7 @@ func (s *Server) handleRunInterrupt(ctx context.Context, req Request) error {
 	// the Turn synchronously with cancel, so writing this afterward races the
 	// terminal Run update and can misclassify a timeout as a generic interrupt.
 	s.setExecutionRunInterruptStatus(runID, interruptStatus)
-	turnActive, err := s.interruptThreadExecution(view.Run.ThreadID, runID)
+	turnActive, err := s.interruptThreadExecution(view.Run.ThreadID, runID, "")
 	if err != nil {
 		if errors.Is(err, errExecutionRunChanged) {
 			latest, readErr := s.readExecutionRun(ctx, runID)

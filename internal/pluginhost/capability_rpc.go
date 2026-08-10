@@ -57,6 +57,11 @@ const (
 	// submitted by that same plugin through host.session.send. The host never
 	// broadcasts these owner-scoped lifecycle events to other plugins.
 	CapabilityAgentTurnLifecycle = "agent.turn.lifecycle"
+	// CapabilityAgentTurnInterrupted is a best-effort, observe-only signal for
+	// every active plugin generation when a turn is interrupted. The host does
+	// not infer a task graph from this event; a plugin decides whether and how
+	// to propagate it to work it owns.
+	CapabilityAgentTurnInterrupted = "agent.turn.interrupted"
 	// CapabilityPluginClientRequest handles a generation-bound opaque request
 	// from a Wuu client. Method names and payload schemas belong to the plugin.
 	CapabilityPluginClientRequest = "plugin.client.request"
@@ -265,10 +270,18 @@ type SessionListResult struct {
 
 type SessionCancelParams struct {
 	SessionID string `json:"session_id"`
+	// TurnID narrows cancellation to one exact accepted turn. Empty preserves
+	// the legacy session-scoped operation for callers that intentionally own
+	// the whole session.
+	TurnID string `json:"turn_id,omitempty"`
+	// QueueID narrows cancellation to one queued turn that has not started.
+	QueueID string `json:"queue_id,omitempty"`
 }
 
 type SessionCancelResult struct {
 	SessionID string `json:"session_id"`
+	TurnID    string `json:"turn_id,omitempty"`
+	QueueID   string `json:"queue_id,omitempty"`
 	Cancelled bool   `json:"cancelled"`
 }
 
@@ -299,6 +312,17 @@ type AgentTurnLifecycleInput struct {
 }
 
 type AgentTurnLifecycleOutput struct{}
+
+// AgentTurnInterruptedInput is delivered to every plugin that declares the
+// observe-only interruption capability. It is a signal, not a cancellation
+// tree edge: plugins own the policy for forwarding it to their work.
+type AgentTurnInterruptedInput struct {
+	ThreadID string `json:"thread_id"`
+	TurnID   string `json:"turn_id"`
+	Cause    string `json:"cause,omitempty"`
+}
+
+type AgentTurnInterruptedOutput struct{}
 
 // HostServiceCall is a Plugin → Host RPC call.
 type HostServiceCall struct {
@@ -680,6 +704,8 @@ func ValidateCapabilityDescriptor(c CapabilityDescriptor) error {
 		requiredKind = SeamObserve
 	case CapabilityAgentTurnLifecycle:
 		requiredKind = SeamObserve
+	case CapabilityAgentTurnInterrupted:
+		requiredKind = SeamObserve
 	case CapabilityPluginClientRequest:
 		requiredKind = SeamDecision
 	}
@@ -698,7 +724,7 @@ func EffectiveErrorPolicy(c CapabilityDescriptor) ErrorPolicy {
 	if c.ErrorPolicy != "" {
 		return c.ErrorPolicy
 	}
-	if c.ID == CapabilityAgentTurnCompleted || c.ID == CapabilityAgentTurnLifecycle {
+	if c.ID == CapabilityAgentTurnCompleted || c.ID == CapabilityAgentTurnLifecycle || c.ID == CapabilityAgentTurnInterrupted {
 		return ErrorPolicyIsolate
 	}
 	return ErrorPolicyPropagate
@@ -762,7 +788,7 @@ func ValidateCapabilityNegotiation(result CapabilityInitializeResult, supported 
 			return err
 		}
 		switch capability.ID {
-		case CapabilityAgentRequestTransform, CapabilityAgentPreStep, CapabilityAgentSystemPromptSection, CapabilityAgentCompaction, CapabilityAgentTurnCompleted, CapabilityAgentTurnLifecycle, CapabilityPluginClientRequest:
+		case CapabilityAgentRequestTransform, CapabilityAgentPreStep, CapabilityAgentSystemPromptSection, CapabilityAgentCompaction, CapabilityAgentTurnCompleted, CapabilityAgentTurnLifecycle, CapabilityAgentTurnInterrupted, CapabilityPluginClientRequest:
 		default:
 			return fmt.Errorf("capability %s is not supported by this host", capability.ID)
 		}

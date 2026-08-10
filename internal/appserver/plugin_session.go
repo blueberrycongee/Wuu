@@ -133,8 +133,13 @@ func (s *Server) listPluginSessions(_ context.Context, pluginID string, params p
 func (s *Server) cancelPluginSession(_ context.Context, pluginID string, params pluginhost.SessionCancelParams) (pluginhost.SessionCancelResult, error) {
 	pluginID = strings.TrimSpace(pluginID)
 	sessionID := strings.TrimSpace(params.SessionID)
+	turnID := strings.TrimSpace(params.TurnID)
+	queueID := strings.TrimSpace(params.QueueID)
 	if pluginID == "" || sessionID == "" {
 		return pluginhost.SessionCancelResult{}, errors.New("plugin owner and session_id are required")
+	}
+	if turnID != "" && queueID != "" {
+		return pluginhost.SessionCancelResult{}, errors.New("turn_id and queue_id are mutually exclusive")
 	}
 	metadata, ok, err := session.Find(s.rt.SessionDir, sessionID)
 	if err != nil {
@@ -146,14 +151,45 @@ func (s *Server) cancelPluginSession(_ context.Context, pluginID string, params 
 	if metadata.Owner != "plugin:"+pluginID {
 		return pluginhost.SessionCancelResult{}, errors.New("plugin does not own the session")
 	}
+	if queueID != "" {
+		entry, ok := s.removePluginQueuedTurn(sessionID, pluginID, queueID)
+		if !ok {
+			return pluginhost.SessionCancelResult{SessionID: sessionID, QueueID: queueID, Cancelled: false}, nil
+		}
+		s.notifyPluginTurnDiscarded(sessionID, entry, "queued plugin turn was cancelled")
+		s.notifyQueuedTurnsDequeued(sessionID, []string{queueID})
+		return pluginhost.SessionCancelResult{SessionID: sessionID, QueueID: queueID, Cancelled: true}, nil
+	}
 	if _, err := s.ensureThreadLoaded(sessionID); err != nil {
 		return pluginhost.SessionCancelResult{}, err
 	}
-	_, err = s.interruptThreadExecution(sessionID, "")
+	cancelled, err := s.interruptThreadExecution(sessionID, "", turnID)
 	if err != nil {
 		return pluginhost.SessionCancelResult{}, err
 	}
-	return pluginhost.SessionCancelResult{SessionID: sessionID, Cancelled: true}, nil
+	return pluginhost.SessionCancelResult{SessionID: sessionID, TurnID: turnID, Cancelled: cancelled}, nil
+}
+
+func (s *Server) removePluginQueuedTurn(threadID, pluginID, queueID string) (queuedTurn, bool) {
+	if s == nil {
+		return queuedTurn{}, false
+	}
+	s.queuedTurnMu.Lock()
+	defer s.queuedTurnMu.Unlock()
+	pending := s.pendingQueuedTurns[threadID]
+	for index, entry := range pending {
+		if entry.id != queueID || entry.snapshot.PluginTurn == nil || entry.snapshot.PluginTurn.PluginID != pluginID {
+			continue
+		}
+		remaining := append(append([]queuedTurn(nil), pending[:index]...), pending[index+1:]...)
+		if len(remaining) == 0 {
+			delete(s.pendingQueuedTurns, threadID)
+		} else {
+			s.pendingQueuedTurns[threadID] = remaining
+		}
+		return entry, true
+	}
+	return queuedTurn{}, false
 }
 
 func (s *Server) sendPluginSession(ctx context.Context, pluginID string, params pluginhost.SessionSendParams) (pluginhost.SessionSendResult, error) {

@@ -8,6 +8,7 @@ import (
 
 	"github.com/blueberrycongee/wuu/internal/agent"
 	"github.com/blueberrycongee/wuu/internal/agentthread"
+	"github.com/blueberrycongee/wuu/internal/loopdriver"
 	"github.com/blueberrycongee/wuu/internal/pluginhost"
 	"github.com/blueberrycongee/wuu/internal/providers"
 	"github.com/blueberrycongee/wuu/internal/toolctx"
@@ -86,6 +87,7 @@ func (e *pluginToolExecutor) toolInput(ctx context.Context, call providers.ToolC
 		)
 	}
 	stepIndex, _ := toolctx.StepIndex(ctx)
+	execution := loopdriver.ExecutionContextFromContext(ctx)
 	actorID, actorPath := "", ""
 	if provider, ok := e.inner.(interface{ ExecutionActor() (string, string) }); ok {
 		actorID, actorPath = provider.ExecutionActor()
@@ -93,6 +95,7 @@ func (e *pluginToolExecutor) toolInput(ctx context.Context, call providers.ToolC
 	return pluginhost.ToolExecuteInput{
 		SessionID: e.threadID,
 		ThreadID:  e.threadID,
+		TurnID:    execution.ExecutionID,
 		ActorID:   actorID,
 		ActorPath: actorPath,
 		CWD:       e.cwd,
