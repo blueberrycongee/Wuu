@@ -29,6 +29,8 @@ interface StreamEntry {
   hasValue: boolean;
   /** Latest value waiting to be published to subscribers on the next frame. */
   pendingValue: string | undefined;
+  /** Changes whenever the accumulated value is replaced instead of appended. */
+  replacementVersion: number;
   /** Subscribers for value changes. */
   valueListeners: Set<StreamTextListener>;
 }
@@ -51,6 +53,7 @@ class StreamTextStore {
   private dirtyEntries = new Set<StreamEntry>();
   private notifyScheduled = false;
   private lastNotifyAt = 0;
+  private nextReplacementVersion = 1;
 
   key(turnID: string, itemID: string, field: StreamTextField): string {
     return `${turnID}\u0000${itemID}\u0000${field}`;
@@ -70,6 +73,10 @@ class StreamTextStore {
     return entry?.hasValue ? entry.seed : "";
   }
 
+  replacementVersion(key: string): number {
+    return this.entries.get(key)?.replacementVersion ?? 0;
+  }
+
   /**
    * Seed an entry. Idempotent: subsequent seeds are no-ops so late-arriving
    * `item/started` notifications cannot clobber in-flight deltas.
@@ -84,6 +91,7 @@ class StreamTextStore {
       existing.displayValue = undefined;
       existing.seed = value;
       existing.hasValue = true;
+      existing.replacementVersion = this.nextReplacementVersion++;
       this.notifyValue(existing, value);
       return;
     }
@@ -93,6 +101,7 @@ class StreamTextStore {
       seed: value,
       hasValue: true,
       pendingValue: undefined,
+      replacementVersion: this.nextReplacementVersion++,
       valueListeners: new Set()
     };
     this.entries.set(key, entry);
@@ -114,6 +123,7 @@ class StreamTextStore {
       return;
     }
     entry.value = value;
+    entry.replacementVersion = this.nextReplacementVersion++;
     this.notifyValue(entry, value);
   }
 
@@ -136,6 +146,7 @@ class StreamTextStore {
     entry.hasValue = true;
     entry.value = "";
     entry.seed = "";
+    entry.replacementVersion = this.nextReplacementVersion++;
     if (currentVisible.length === 0) {
       entry.displayValue = undefined;
       return;
@@ -234,6 +245,7 @@ class StreamTextStore {
       seed: "",
       hasValue,
       pendingValue: undefined,
+      replacementVersion: 0,
       valueListeners: new Set()
     });
   }

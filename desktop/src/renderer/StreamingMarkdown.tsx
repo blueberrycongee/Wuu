@@ -12,6 +12,7 @@ import {
   type RichTextRenderer,
 } from "./RichContent";
 import {
+  streamTextStore,
   useStreamedTextHasValue,
   useStreamedText
 } from "./StreamText";
@@ -67,6 +68,7 @@ const CURSOR_SENTINEL = "";
 const CURSOR_MARKDOWN_BOUNDARY = " ";
 const FEATHER_RETENTION_MS = 110;
 const MAX_FEATHER_BATCHES = 8;
+const MAX_FEATHER_SOURCE_LENGTH = 8_000;
 
 export function StreamingMarkdown({
   streamKey,
@@ -90,8 +92,17 @@ export function StreamingMarkdown({
   const [renderedText, setRenderedText] = useState(
     isLive ? initialText : targetText,
   );
+  const renderedReplacementVersionRef = useRef(
+    streamTextStore.replacementVersion(streamKey),
+  );
+  // Feathering is presentation-only. Once a mutable Markdown source grows
+  // large, its reveal/expiry commits can multiply the cost of parsing the
+  // active tail, so long answers keep the text cadence but drop this effect.
+  const featherEnabled =
+    renderActive && renderedText.length <= MAX_FEATHER_SOURCE_LENGTH;
   const acceptedStreamValueRef = useRef(hasStreamValue);
   useLayoutEffect(() => {
+    const replacementVersion = streamTextStore.replacementVersion(streamKey);
     if (hasStreamValue) {
       acceptedStreamValueRef.current = true;
     }
@@ -103,9 +114,14 @@ export function StreamingMarkdown({
       ) {
         return;
       }
+      renderedReplacementVersionRef.current = replacementVersion;
       setRenderedText(targetText);
+      return;
     }
-  }, [hasStreamValue, targetText, renderedText]);
+    if (hasStreamValue) {
+      renderedReplacementVersionRef.current = replacementVersion;
+    }
+  }, [hasStreamValue, renderedText, streamKey, targetText]);
 
   /* ------------------------------ Phase ----------------------------------- */
   // Single internal phase: streaming while upstream is live, settled once
@@ -146,7 +162,7 @@ export function StreamingMarkdown({
   }, []);
 
   const queueFeatherReveal = useCallback((start: number, end: number): void => {
-    if (!renderActive) return;
+    if (!featherEnabled) return;
     featherSequenceRef.current += 1;
     const sequence = featherSequenceRef.current;
     setFeatherReveals((current) => [
@@ -162,7 +178,7 @@ export function StreamingMarkdown({
       ));
     }, FEATHER_RETENTION_MS);
     featherTimeoutsRef.current.set(sequence, timeout);
-  }, [renderActive]);
+  }, [featherEnabled]);
 
   useEffect(() => () => {
     featherTimeoutsRef.current.forEach((timeout) => window.clearTimeout(timeout));
@@ -170,10 +186,10 @@ export function StreamingMarkdown({
   }, []);
 
   useEffect(() => {
-    if (!renderActive) {
+    if (!featherEnabled) {
       clearFeatherReveals();
     }
-  }, [clearFeatherReveals, renderActive]);
+  }, [clearFeatherReveals, featherEnabled]);
 
   // The store already coalesces provider deltas to one notification per
   // animation frame. Rendering those committed chunks directly avoids a
@@ -202,7 +218,7 @@ export function StreamingMarkdown({
   // state update is flushed before paint, so newly appended glyphs enter on
   // their feather span without an intervening hard-cut frame.
   useLayoutEffect(() => {
-    if (!renderActive || !isLive) {
+    if (!featherEnabled || !isLive) {
       previousCursorContainerTextRef.current = undefined;
       return;
     }
@@ -222,7 +238,7 @@ export function StreamingMarkdown({
     // A Markdown structure change or replacement altered existing visible
     // glyphs. Clear old ranges rather than replaying them as new content.
     clearFeatherReveals();
-  }, [clearFeatherReveals, isLive, queueFeatherReveal, renderActive, renderedText]);
+  }, [clearFeatherReveals, featherEnabled, isLive, queueFeatherReveal, renderedText]);
 
   /* ------------------------- Derived view data -------------------------- */
   const visibleText = renderedText;
@@ -239,8 +255,8 @@ export function StreamingMarkdown({
   // data-cursor-state attribute (see turns.css) instead.
   const showCursor = true;
   const cursorTextRenderer = useMemo(
-    () => createCursorTextRenderer(isLive ? featherReveals : []),
-    [featherReveals, isLive]
+    () => createCursorTextRenderer(isLive && featherEnabled ? featherReveals : []),
+    [featherEnabled, featherReveals, isLive]
   );
   // Mermaid is expensive; do not flip the markdown renderer at settle for
   // ordinary text. Only messages that actually contain a Mermaid fence enter
@@ -262,9 +278,11 @@ export function StreamingMarkdown({
   // reconciliation jump is what caused the visible "settle flick" on
   // long answers (block-level memo would be wiped the instant the
   // upstream went idle).
-  const split = useMemo(
-    () => splitIntoStableBlocks(visibleText),
-    [visibleText]
+  const split = useIncrementalStableBlocks(
+    visibleText,
+    streamKey,
+    renderedReplacementVersionRef.current,
+    streamTextStore.has(streamKey),
   );
   // Keep the synthetic cursor separated from the Markdown source. Appending
   // the private-use sentinel directly after a closing emphasis delimiter can
@@ -427,9 +445,20 @@ function endsWithFenceCloser(text: string): boolean {
     return false;
   }
 
+  // Most snapshots do not end on a fence marker. Check only the final line
+  // first so ordinary prose does not allocate and scan every preceding line.
+  const finalLineStart = text.lastIndexOf("\n") + 1;
+  const finalLine = text.slice(finalLineStart);
+  const finalMatch = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(finalLine);
+  if (!finalMatch || finalMatch[2].trim() !== "") {
+    return false;
+  }
+
+  const finalMarker = finalMatch[1][0] as "`" | "~";
+  const finalMarkerLength = finalMatch[1].length;
   let activeFence: { marker: "`" | "~"; length: number } | undefined;
-  const lines = text.split("\n");
-  for (const [index, line] of lines.entries()) {
+  const precedingLines = text.slice(0, finalLineStart).split("\n");
+  for (const line of precedingLines) {
     const match = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line);
     if (!match) {
       continue;
@@ -451,33 +480,121 @@ function endsWithFenceCloser(text: string): boolean {
     if (!isCloser) {
       continue;
     }
-    if (index === lines.length - 1) {
-      return true;
-    }
     activeFence = undefined;
   }
-  return false;
+  return Boolean(
+    activeFence &&
+    activeFence.marker === finalMarker &&
+    finalMarkerLength >= activeFence.length,
+  );
 }
 
-/**
- * Returns true when the substring of `text` from `start` to the next newline
- * (or end of text) is empty or contains only spaces and tabs. Used by
- * `splitIntoStableBlocks` to decide whether a backtick line that we already
- * saw while `inFence` is true qualifies as a valid closer per CommonMark —
- * a closer must be just backticks and trailing whitespace, never an info
- * string or other body content.
- */
-function isFenceCloserLine(text: string, start: number): boolean {
-  for (let j = start; j < text.length; j += 1) {
-    const cj = text.charCodeAt(j);
-    if (cj === 10 /* \n */) {
-      return true;
+type StableBlockSplit = { blocks: string[]; tail: string };
+
+type StableBlockScanState = StableBlockSplit & {
+  sourceKey: string;
+  replacementVersion: number;
+  textLength: number;
+  scanOffset: number;
+  blockStart: number;
+  inFence: boolean;
+};
+
+function useIncrementalStableBlocks(
+  text: string,
+  sourceKey: string,
+  replacementVersion: number,
+  appendOnly: boolean,
+): StableBlockSplit {
+  const committedScanRef = useRef<StableBlockScanState | undefined>(undefined);
+  const scan = useMemo(() => {
+    const previous = committedScanRef.current;
+    const canExtend =
+      appendOnly &&
+      previous?.sourceKey === sourceKey &&
+      previous.replacementVersion === replacementVersion &&
+      text.length >= previous.textLength;
+    return scanStableBlocks(
+      text,
+      sourceKey,
+      replacementVersion,
+      canExtend ? previous : undefined,
+    );
+  }, [appendOnly, replacementVersion, sourceKey, text]);
+
+  useLayoutEffect(() => {
+    committedScanRef.current = scan;
+  }, [scan]);
+
+  return scan;
+}
+
+function scanStableBlocks(
+  text: string,
+  sourceKey = "",
+  replacementVersion = 0,
+  previous?: StableBlockScanState,
+): StableBlockScanState {
+  let blocks = previous?.blocks ?? [];
+  const previousBlocks = blocks;
+  let blocksCopied = false;
+  let inFence = previous?.inFence ?? false;
+  let blockStart = previous?.blockStart ?? 0;
+  let scanOffset = previous?.scanOffset ?? 0;
+
+  // Only complete lines are scanned. The final partial line may still grow
+  // into a fence opener/closer, so deferring it avoids rescanning or rolling
+  // back parser state when the next provider chunk arrives.
+  for (;;) {
+    const lineEnd = text.indexOf("\n", scanOffset);
+    if (lineEnd < 0) {
+      break;
     }
-    if (cj !== 32 /* space */ && cj !== 9 /* tab */) {
-      return false;
+    const lineStart = scanOffset;
+    const startsBacktickFence =
+      lineEnd - lineStart >= 3 &&
+      text.charCodeAt(lineStart) === 96 &&
+      text.charCodeAt(lineStart + 1) === 96 &&
+      text.charCodeAt(lineStart + 2) === 96;
+    if (startsBacktickFence) {
+      if (!inFence) {
+        inFence = true;
+      } else {
+        let isCloser = true;
+        for (let index = lineStart + 3; index < lineEnd; index += 1) {
+          const code = text.charCodeAt(index);
+          if (code !== 32 /* space */ && code !== 9 /* tab */) {
+            isCloser = false;
+            break;
+          }
+        }
+        if (isCloser) {
+          inFence = false;
+        }
+      }
+    }
+
+    scanOffset = lineEnd + 1;
+    if (!inFence && lineEnd === lineStart) {
+      if (!blocksCopied && blocks === previousBlocks && previous) {
+        blocks = [...blocks];
+        blocksCopied = true;
+      }
+      blocks.push(text.slice(blockStart, scanOffset));
+      blockStart = scanOffset;
     }
   }
-  return true;
+
+  return {
+    sourceKey,
+    replacementVersion,
+    textLength: text.length,
+    scanOffset,
+    blockStart,
+    inFence,
+    blocks,
+    tail: text.slice(blockStart),
+  };
 }
 
 /**
@@ -495,42 +612,7 @@ function isFenceCloserLine(text: string, start: number): boolean {
  */
 export function splitIntoStableBlocks(
   text: string
-): { blocks: string[]; tail: string } {
-  const blocks: string[] = [];
-  let inFence = false;
-  let blockStart = 0;
-  let lineStart = 0;
-  for (let i = 0; i < text.length; i += 1) {
-    const ch = text.charCodeAt(i);
-    if (ch === 10 /* \n */) {
-      if (!inFence && i + 1 < text.length && text.charCodeAt(i + 1) === 10) {
-        // Found the end of a stable block — include the trailing
-        // double newline so block separation is preserved.
-        const end = i + 2;
-        blocks.push(text.slice(blockStart, end));
-        blockStart = end;
-      }
-      lineStart = i + 1;
-      continue;
-    }
-    if (
-      ch === 96 /* ` */ &&
-      i === lineStart &&
-      i + 2 < text.length &&
-      text.charCodeAt(i + 1) === 96 &&
-      text.charCodeAt(i + 2) === 96
-    ) {
-      // When already inside a fence, only a line consisting of backticks
-      // and trailing spaces is a valid closer per CommonMark. Lines like
-      // ```other or ```ts are part of the fence body — toggling inFence
-      // on them would let a subsequent blank line split the fence into
-      // two stable blocks and orphan the real closer.
-      if (inFence && !isFenceCloserLine(text, i + 3)) {
-        continue;
-      }
-      inFence = !inFence;
-      i += 2;
-    }
-  }
-  return { blocks, tail: text.slice(blockStart) };
+): StableBlockSplit {
+  const { blocks, tail } = scanStableBlocks(text);
+  return { blocks, tail };
 }
