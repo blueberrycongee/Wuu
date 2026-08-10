@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from "react";
+import { useCallback, useSyncExternalStore } from "react";
 
 /**
  * The set of fields on a thread item that can be streamed incrementally.
@@ -8,6 +8,7 @@ import { useSyncExternalStore } from "react";
 export type StreamTextField = "text" | "arguments" | "result";
 
 type StreamTextListener = (value: string) => void;
+const subscribeToNothing = (): (() => void) => () => {};
 
 export type StreamTextStats = {
   entryCount: number;
@@ -322,18 +323,44 @@ export function streamTextKey(turnID: string, itemID: string, field: StreamTextF
  * Hook that subscribes to a stream key. Returns the latest value or
  * `initialValue` if nothing has been written yet.
  */
-export function useStreamedText(streamKey: string, initialValue = ""): string {
+export function useStreamedText(
+  streamKey: string,
+  initialValue = "",
+  enabled = true,
+): string {
+  const subscribe = useCallback(
+    (listener: StreamTextListener) => streamTextStore.subscribe(streamKey, listener),
+    [streamKey],
+  );
+  const getSnapshot = useCallback(
+    () =>
+      enabled && streamTextStore.has(streamKey)
+        ? streamTextStore.get(streamKey)
+        : initialValue,
+    [enabled, initialValue, streamKey],
+  );
   return useSyncExternalStore(
-    (listener) => streamTextStore.subscribe(streamKey, listener),
-    () => streamTextStore.has(streamKey) ? streamTextStore.get(streamKey) : initialValue,
-    () => streamTextStore.has(streamKey) ? streamTextStore.get(streamKey) : initialValue
+    enabled ? subscribe : subscribeToNothing,
+    getSnapshot,
+    getSnapshot,
   );
 }
 
-export function useStreamedTextHasValue(streamKey: string): boolean {
+export function useStreamedTextHasValue(
+  streamKey: string,
+  enabled = true,
+): boolean {
+  const subscribe = useCallback(
+    (listener: StreamTextListener) => streamTextStore.subscribe(streamKey, listener),
+    [streamKey],
+  );
+  const getSnapshot = useCallback(
+    () => enabled && streamTextStore.has(streamKey),
+    [enabled, streamKey],
+  );
   return useSyncExternalStore(
-    (listener) => streamTextStore.subscribe(streamKey, listener),
-    () => streamTextStore.has(streamKey),
-    () => streamTextStore.has(streamKey),
+    enabled ? subscribe : subscribeToNothing,
+    getSnapshot,
+    getSnapshot,
   );
 }

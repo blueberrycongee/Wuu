@@ -37,6 +37,7 @@ import {
   useAutoFollowScrollContainer,
 } from "./AutoFollowScroll";
 import { AnimatedProcessText } from "./ProcessTextMotion";
+import { useConversationRenderActive } from "./ConversationRenderActivity";
 import { translateCurrent as translate, useI18n } from "./i18n";
 
 const recoveredTurnStartedAt = new Map<string, number>();
@@ -230,6 +231,7 @@ function TurnProcessFold({
    */
   onCollapseComplete?: () => void;
 }): JSX.Element {
+  const renderActive = useConversationRenderActive();
   const [expanded, setExpanded] = useState(!collapseRequested);
   const handoffHandledRef = useRef(collapseRequested);
   // Once the reader changes the fold manually, that preference owns the
@@ -256,7 +258,7 @@ function TurnProcessFold({
   if (Number.isFinite(parsedStartedAt) || !liveDuration) {
     recoveredTurnStartedAt.delete(turn.id);
   }
-  const liveNow = useLiveNow(liveDuration);
+  const liveNow = useLiveNow(liveDuration && renderActive);
   const elapsedMs =
     completedDuration ?? (liveDuration ? Math.max(0, liveNow - startedAt) : 0);
   const processLabel = turnProcessTitle(
@@ -344,7 +346,7 @@ function TurnProcessFold({
           <span className="turn-process-live-dot" aria-hidden />
           <LightweightStreamingText
             text={visiblePreview?.text ?? ""}
-            live={turn.status === "in_progress"}
+            live={turn.status === "in_progress" && renderActive}
             className={`turn-process-preview-text${
               turn.status === "in_progress" ? " wuu-live-text-wave" : ""
             }`}

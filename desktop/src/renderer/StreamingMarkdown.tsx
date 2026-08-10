@@ -15,6 +15,7 @@ import {
   useStreamedTextHasValue,
   useStreamedText
 } from "./StreamText";
+import { useConversationRenderActive } from "./ConversationRenderActivity";
 
 /**
  * Progressive Markdown renderer used while assistant text is arriving.
@@ -78,8 +79,9 @@ export function StreamingMarkdown({
   onSettled
 }: StreamingMarkdownProps): JSX.Element {
   /* ------------------------- External store wiring ------------------------ */
-  const hasStreamValue = useStreamedTextHasValue(streamKey);
-  const targetText = useStreamedText(streamKey, initialText);
+  const renderActive = useConversationRenderActive();
+  const hasStreamValue = useStreamedTextHasValue(streamKey, renderActive);
+  const targetText = useStreamedText(streamKey, initialText, renderActive);
 
   /* ----------------------------- Sticky text ------------------------------ */
   // The text we actually render. The store may be cleared (in `onSettled`)
@@ -144,6 +146,7 @@ export function StreamingMarkdown({
   }, []);
 
   const queueFeatherReveal = useCallback((start: number, end: number): void => {
+    if (!renderActive) return;
     featherSequenceRef.current += 1;
     const sequence = featherSequenceRef.current;
     setFeatherReveals((current) => [
@@ -159,20 +162,28 @@ export function StreamingMarkdown({
       ));
     }, FEATHER_RETENTION_MS);
     featherTimeoutsRef.current.set(sequence, timeout);
-  }, []);
+  }, [renderActive]);
 
   useEffect(() => () => {
     featherTimeoutsRef.current.forEach((timeout) => window.clearTimeout(timeout));
     featherTimeoutsRef.current.clear();
   }, []);
 
+  useEffect(() => {
+    if (!renderActive) {
+      clearFeatherReveals();
+    }
+  }, [clearFeatherReveals, renderActive]);
+
   // The store already coalesces provider deltas to one notification per
   // animation frame. Rendering those committed chunks directly avoids a
   // second client-side character chase that used to keep React and Markdown
   // busy for seconds after the provider had already delivered the text.
   useLayoutEffect(() => {
-    onFrameRef.current?.();
-  }, [renderedText]);
+    if (renderActive) {
+      onFrameRef.current?.();
+    }
+  }, [renderActive, renderedText]);
 
   useEffect(() => {
     if (isLive) {
@@ -191,7 +202,7 @@ export function StreamingMarkdown({
   // state update is flushed before paint, so newly appended glyphs enter on
   // their feather span without an intervening hard-cut frame.
   useLayoutEffect(() => {
-    if (!isLive) {
+    if (!renderActive || !isLive) {
       previousCursorContainerTextRef.current = undefined;
       return;
     }
@@ -211,7 +222,7 @@ export function StreamingMarkdown({
     // A Markdown structure change or replacement altered existing visible
     // glyphs. Clear old ranges rather than replaying them as new content.
     clearFeatherReveals();
-  }, [clearFeatherReveals, isLive, queueFeatherReveal, renderedText]);
+  }, [clearFeatherReveals, isLive, queueFeatherReveal, renderActive, renderedText]);
 
   /* ------------------------- Derived view data -------------------------- */
   const visibleText = renderedText;

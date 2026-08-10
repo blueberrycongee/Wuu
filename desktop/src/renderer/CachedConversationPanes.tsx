@@ -25,6 +25,7 @@ import { latestAgentMessageLocation } from "./TurnViewHelpers";
 import type { HistoryMessageEditState } from "./ConversationHistoryActions";
 import { desktopPluginHost } from "./plugins/DesktopPluginRuntime";
 import { PluginConversationCards } from "./plugins/PluginConversationCards";
+import { ConversationRenderActivityProvider } from "./ConversationRenderActivity";
 
 const CONVERSATION_LAYOUT_STABLE_FRAMES = 2;
 const CONVERSATION_LAYOUT_SETTLE_TIMEOUT_MS = 120;
@@ -390,72 +391,74 @@ const CachedConversationPane = memo(function CachedConversationPane({
   }, [isActive, layoutSettled, thread.id]);
 
   return (
-    <div
-      aria-hidden={isActive ? undefined : true}
-      className="cached-conversation-pane"
-      data-active={isActive}
-      data-layout-settled={layoutSettled ? "" : undefined}
-      data-thread-id={thread.id}
-      inert={isActive ? undefined : true}
-      ref={paneRef}
-    >
-      <div className="conversation-width session-flow">
-        <ConversationTurnList
-          threadID={thread.id}
-          turns={threadTurns}
-          renderBeforeTurns={[
-            ...entriesBeforeTurns.map(renderContextEntry),
-          ]}
-          renderAfterMissingTurn={
-            <>
-              {entriesAfterMissingTurn.map(renderContextEntry)}
-              {forkWorktreeNotice}
-              {threadInstructionCards}
-              <PluginConversationCards
-                host={desktopPluginHost}
-                threadId={thread.id}
+    <ConversationRenderActivityProvider active={isActive}>
+      <div
+        aria-hidden={isActive ? undefined : true}
+        className="cached-conversation-pane"
+        data-active={isActive}
+        data-layout-settled={layoutSettled ? "" : undefined}
+        data-thread-id={thread.id}
+        inert={isActive ? undefined : true}
+        ref={paneRef}
+      >
+        <div className="conversation-width session-flow">
+          <ConversationTurnList
+            threadID={thread.id}
+            turns={threadTurns}
+            renderBeforeTurns={[
+              ...entriesBeforeTurns.map(renderContextEntry),
+            ]}
+            renderAfterMissingTurn={
+              <>
+                {entriesAfterMissingTurn.map(renderContextEntry)}
+                {forkWorktreeNotice}
+                {threadInstructionCards}
+                <PluginConversationCards
+                  host={desktopPluginHost}
+                  threadId={thread.id}
+                  onStreamFrame={onStreamFrame}
+                />
+              </>
+            }
+            renderAfterTurn={(turn) =>
+              (entriesByAfterTurnID.get(turn.id) ?? []).map(renderContextEntry)
+            }
+            forcedFullTurnIDs={
+              historyMessageEdit ? [historyMessageEdit.turnID] : undefined
+            }
+            renderTurn={(turn) => (
+              <PaneTurnView
+                turn={turn}
+                cwd={thread.cwd ?? activeContextCwd}
+                onOpenFile={onOpenFile ? handleOpenFile : undefined}
+                onOpenAgent={handleOpenAgentByID}
+                latestAgentMessageID={
+                  latestAgentLocation?.turnID === turn.id
+                    ? latestAgentLocation.itemID
+                    : undefined
+                }
+                isLatestTurn={latestTurn?.id === turn.id}
                 onStreamFrame={onStreamFrame}
+                onCollapseComplete={onCollapseComplete}
+                onForkMessage={handleForkMessage}
+                canEdit={canEditThreadMessage(thread)}
+                onEditMessage={handleEditMessage}
+                editingMessage={historyMessageEdit}
+                onCancelEditMessage={onCancelEditMessage}
+                onSubmitEditMessage={handleSubmitEditMessage}
+                onOpenFileDiff={handleOpenFileDiffSelection}
+                onOpenTurnRuns={
+                  onOpenTurnRuns ? handleOpenTurnRunsForThread : undefined
+                }
+                streamStatus={
+                  latestTurn?.id === turn.id ? latestTurnStreamStatus : undefined
+                }
               />
-            </>
-          }
-          renderAfterTurn={(turn) =>
-            (entriesByAfterTurnID.get(turn.id) ?? []).map(renderContextEntry)
-          }
-          forcedFullTurnIDs={
-            historyMessageEdit ? [historyMessageEdit.turnID] : undefined
-          }
-          renderTurn={(turn) => (
-            <PaneTurnView
-              turn={turn}
-              cwd={thread.cwd ?? activeContextCwd}
-              onOpenFile={onOpenFile ? handleOpenFile : undefined}
-              onOpenAgent={handleOpenAgentByID}
-              latestAgentMessageID={
-                latestAgentLocation?.turnID === turn.id
-                  ? latestAgentLocation.itemID
-                  : undefined
-              }
-              isLatestTurn={latestTurn?.id === turn.id}
-              onStreamFrame={onStreamFrame}
-              onCollapseComplete={onCollapseComplete}
-              onForkMessage={handleForkMessage}
-              canEdit={canEditThreadMessage(thread)}
-              onEditMessage={handleEditMessage}
-              editingMessage={historyMessageEdit}
-              onCancelEditMessage={onCancelEditMessage}
-              onSubmitEditMessage={handleSubmitEditMessage}
-              onOpenFileDiff={handleOpenFileDiffSelection}
-              onOpenTurnRuns={
-                onOpenTurnRuns ? handleOpenTurnRunsForThread : undefined
-              }
-              streamStatus={
-                latestTurn?.id === turn.id ? latestTurnStreamStatus : undefined
-              }
-            />
-          )}
-        />
+            )}
+          />
+        </div>
       </div>
-    </div>
+    </ConversationRenderActivityProvider>
   );
 });
 
