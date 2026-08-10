@@ -672,13 +672,13 @@ function reduceNotification(
       if (!turn) {
         return state;
       }
+      const threadID = threadIDFromParams(params);
+      const threadIsActive = threadID === activeThreadIDForState(state);
       return updateThreadByID(
         state,
-        threadIDFromParams(params),
+        threadID,
         (thread) => upsertTurn(thread, turn),
-        {
-          running: true,
-        },
+        threadIsActive ? { running: true } : {},
       );
     }
     case "item/started":
