@@ -4,7 +4,7 @@
   --shell-process-control-color: var(--wuu-color-text-muted, #BCBCBD);
   --shell-session-tab-hover-border: rgba(17, 19, 21, 0.14);
   --shell-session-tab-active-border: rgba(17, 19, 21, 0.18);
-  --shell-session-tab-main-focus-shadow: rgba(17, 19, 21, 0.18);
+  --shell-session-tab-main-focus-shadow: var(--wuu-color-focus, rgba(17, 19, 21, 0.18));
   --shell-session-tab-status-default: rgba(17, 19, 21, 0.22);
   --shell-session-tab-status-running-notch: rgba(17, 19, 21, 0.18);
   --shell-session-tab-pending-count-bg: rgba(17, 19, 21, 0.1);
@@ -14,7 +14,7 @@
   --shell-run-debug-panel-shadow-1: rgba(20, 24, 28, 0.16);
   --shell-run-debug-panel-shadow-2: rgba(20, 24, 28, 0.08);
   --shell-run-debug-phase-running-color: #486f61;
-  --shell-run-debug-empty-border: #e0e1dc;
+  --shell-run-debug-empty-border: var(--wuu-border-subtle, #e0e1dc);
   /* Shared floating-surface recipe for conversation controls. The composer
      queue drawer and the jump/plan pills keep their own geometry, but resolve
      their material from these public-token-backed values. Backdrop blur does

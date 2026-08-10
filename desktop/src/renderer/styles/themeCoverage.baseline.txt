@@ -105,12 +105,10 @@ conversation-shell.css:1187 box-shadow --shell-jump-pill-focus-shadow-2
 conversation-shell.css:1180 box-shadow --shell-jump-pill-hover-shadow
 conversation-shell.css:1099 box-shadow --shell-jump-pill-shadow
 conversation-shell.css:751 background --shell-launch-preview-button-hover-bg
-conversation-shell.css:1039 border --shell-run-debug-empty-border
 conversation-shell.css:790 box-shadow --shell-run-debug-panel-shadow-1
 conversation-shell.css:790 box-shadow --shell-run-debug-panel-shadow-2
 conversation-shell.css:859 color --shell-run-debug-phase-running-color
 conversation-shell.css:584 background --shell-session-tab-active-pending-count-bg
-conversation-shell.css:503 outline --shell-session-tab-main-focus-shadow
 conversation-shell.css:575 background --shell-session-tab-pending-count-bg
 conversation-shell.css:512 background --shell-session-tab-status-default
 conversation-shell.css:540 border-top-color --shell-session-tab-status-running-notch

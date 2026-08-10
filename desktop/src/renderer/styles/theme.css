@@ -371,7 +371,7 @@
   --shell-process-control-color: var(--wuu-color-text-muted, var(--gray-400));
   --shell-session-tab-hover-border: rgba(228, 232, 235, 0.16);
   --shell-session-tab-active-border: rgba(228, 232, 235, 0.22);
-  --shell-session-tab-main-focus-shadow: rgba(228, 232, 235, 0.25);
+  --shell-session-tab-main-focus-shadow: var(--wuu-color-focus, rgba(228, 232, 235, 0.25));
   --shell-session-tab-status-default: rgba(228, 232, 235, 0.28);
   --shell-session-tab-status-running-notch: rgba(228, 232, 235, 0.22);
   --shell-session-tab-pending-count-bg: rgba(228, 232, 235, 0.12);
@@ -381,7 +381,7 @@
   --shell-run-debug-panel-shadow-1: rgba(0, 0, 0, 0.5);
   --shell-run-debug-panel-shadow-2: rgba(0, 0, 0, 0.35);
   --shell-run-debug-phase-running-color: #7dbba5;
-  --shell-run-debug-empty-border: #33383d;
+  --shell-run-debug-empty-border: var(--wuu-border-subtle, #33383d);
   /* Dark floating glass is rim-defined, not shadow-defined: on dark paper
      a black drop shadow barely registers, so the silhouette comes from a
      low-alpha edge sampled from the (light) text color, plus a deeper
