@@ -1,3 +1,6 @@
+import { readdirSync } from "node:fs";
+import { resolve } from "node:path";
+
 import {
   PUBLIC_SYNTAX_TOKEN_NAMES,
   PUBLIC_THEME_TOKEN_NAMES,
@@ -52,8 +55,14 @@ interface Declaration {
   line: number;
 }
 
-export function scanDeclarations(source: string): Declaration[] {
-  const declarations: Declaration[] = [];
+/** A declaration with the header text of the rule block that directly contains it. */
+export interface ScopedDeclaration {
+  selector: string;
+  declaration: Declaration;
+}
+
+export function scanScopedDeclarations(source: string): ScopedDeclaration[] {
+  const scoped: ScopedDeclaration[] = [];
   let pos = 0;
   let line = 1;
 
@@ -136,7 +145,7 @@ export function scanDeclarations(source: string): Declaration[] {
     return raw.replace(/\/\*[\s\S]*?\*\//g, " ").trim();
   };
 
-  const parseBlock = (): void => {
+  const parseBlock = (selector: string): void => {
     for (;;) {
       skipWhitespaceAndComments();
       if (pos >= source.length) return;
@@ -146,11 +155,11 @@ export function scanDeclarations(source: string): Declaration[] {
         return;
       }
       if (ch === "@") {
-        readUntil(["{", ";"]);
+        const atRule = readUntil(["{", ";"]);
         if (pos >= source.length) return;
         if (source[pos] === "{") {
           pos += 1;
-          parseBlock();
+          parseBlock(atRule.trim());
         } else {
           pos += 1;
         }
@@ -162,7 +171,7 @@ export function scanDeclarations(source: string): Declaration[] {
       const delim = source[pos];
       if (delim === "{") {
         pos += 1;
-        parseBlock();
+        parseBlock(beforeColon.trim());
         continue;
       }
       if (delim === ";") {
@@ -180,10 +189,10 @@ export function scanDeclarations(source: string): Declaration[] {
       else if (pos < source.length && source[pos] === "{") {
         // invalid CSS (nested rule after a colon); skip the block
         pos += 1;
-        parseBlock();
+        parseBlock(selector);
         continue;
       }
-      if (prop.length > 0) declarations.push({ prop, value, line: propLine });
+      if (prop.length > 0) scoped.push({ selector, declaration: { prop, value, line: propLine } });
     }
   };
 
@@ -191,27 +200,31 @@ export function scanDeclarations(source: string): Declaration[] {
     skipWhitespaceAndComments();
     if (pos >= source.length) break;
     if (source[pos] === "@") {
-      readUntil(["{", ";"]);
+      const atRule = readUntil(["{", ";"]);
       if (pos >= source.length) break;
       if (source[pos] === "{") {
         pos += 1;
-        parseBlock();
+        parseBlock(atRule.trim());
       } else {
         pos += 1;
       }
       continue;
     }
-    readUntil(["{", ";"]);
+    const header = readUntil(["{", ";"]);
     if (pos >= source.length) break;
     if (source[pos] === "{") {
       pos += 1;
-      parseBlock();
+      parseBlock(header.trim());
     } else {
       pos += 1;
     }
   }
 
-  return declarations;
+  return scoped;
+}
+
+export function scanDeclarations(source: string): Declaration[] {
+  return scanScopedDeclarations(source).map((scoped) => scoped.declaration);
 }
 
 /* ------------------------------------------------------------------ */
@@ -363,28 +376,17 @@ function isColorPaint(prop: string): boolean {
 const COLOR_LITERAL =
   /#[0-9a-fA-F]{3,8}\b|(?:rgba?|hsla?)\([^)]*\)|\b(?:transparent|currentColor|black|blue|gray|grey|green|red|white)\b/;
 
-export function analyzeCoverage(files: CssFile[]): Violation[] {
-  const defs = new Map<string, string[]>();
-  const paintDecls: Array<{ file: string; line: number; prop: string; value: string }> = [];
+interface Resolver {
+  reachable: (name: string, seen?: Set<string>) => boolean;
+  isColorKind: (name: string, seen?: Set<string>) => boolean;
+  reachingTokens: (name: string, seen?: Set<string>) => string[];
+}
 
-  for (const file of files) {
-    for (const declaration of scanDeclarations(file.source)) {
-      if (declaration.prop.startsWith("--")) {
-        const list = defs.get(declaration.prop) ?? [];
-        list.push(declaration.value);
-        defs.set(declaration.prop, list);
-      } else if (isColorPaint(declaration.prop)) {
-        paintDecls.push({
-          file: file.name,
-          line: declaration.line,
-          prop: declaration.prop,
-          value: declaration.value,
-        });
-      }
-    }
-  }
-
+function createResolver(defs: Map<string, string[]>): Resolver {
   const reachMemo = new Map<string, boolean>();
+  const kindMemo = new Map<string, boolean>();
+  const tokenMemo = new Map<string, string[]>();
+
   const reachable = (name: string, seen: Set<string> = new Set()): boolean => {
     if (isPublicToken(name)) return true;
     const cached = reachMemo.get(name);
@@ -407,7 +409,6 @@ export function analyzeCoverage(files: CssFile[]): Violation[] {
     return ok;
   };
 
-  const kindMemo = new Map<string, boolean>();
   const isColorKind = (name: string, seen: Set<string> = new Set()): boolean => {
     if (isPublicToken(name)) return true;
     const cached = kindMemo.get(name);
@@ -433,6 +434,67 @@ export function analyzeCoverage(files: CssFile[]): Violation[] {
     kindMemo.set(name, color);
     return color;
   };
+
+  const reachingTokens = (name: string, seen: Set<string> = new Set()): string[] => {
+    const cached = tokenMemo.get(name);
+    if (cached !== undefined) return cached;
+    const list = defs.get(name);
+    if (isPublicToken(name)) {
+      // A public token is its own knob; its definitions may reach further
+      // public tokens (legacy aliases, syntax slot bridges).
+      const tokens = new Set<string>([name]);
+      if (list && !seen.has(name)) {
+        seen.add(name);
+        for (const value of list) {
+          for (const ref of varRefs(value)) {
+            for (const token of reachingTokens(ref, seen)) tokens.add(token);
+          }
+        }
+        seen.delete(name);
+      }
+      const sorted = [...tokens].sort();
+      tokenMemo.set(name, sorted);
+      return sorted;
+    }
+    if (!list || seen.has(name)) return [];
+    seen.add(name);
+    const tokens = new Set<string>();
+    for (const value of list) {
+      for (const ref of varRefs(value)) {
+        for (const token of reachingTokens(ref, seen)) tokens.add(token);
+      }
+    }
+    seen.delete(name);
+    const sorted = [...tokens].sort();
+    tokenMemo.set(name, sorted);
+    return sorted;
+  };
+
+  return { reachable, isColorKind, reachingTokens };
+}
+
+export function analyzeCoverage(files: CssFile[]): Violation[] {
+  const defs = new Map<string, string[]>();
+  const paintDecls: Array<{ file: string; line: number; prop: string; value: string }> = [];
+
+  for (const file of files) {
+    for (const declaration of scanDeclarations(file.source)) {
+      if (declaration.prop.startsWith("--")) {
+        const list = defs.get(declaration.prop) ?? [];
+        list.push(declaration.value);
+        defs.set(declaration.prop, list);
+      } else if (isColorPaint(declaration.prop)) {
+        paintDecls.push({
+          file: file.name,
+          line: declaration.line,
+          prop: declaration.prop,
+          value: declaration.value,
+        });
+      }
+    }
+  }
+
+  const { reachable, isColorKind } = createResolver(defs);
 
   const violations: Violation[] = [];
   for (const paint of paintDecls) {
@@ -470,4 +532,209 @@ export function formatViolation(violation: Violation): string {
 
 export function formatBaseline(files: CssFile[]): string[] {
   return sortViolations(analyzeCoverage(files)).map(formatViolation);
+}
+
+/* ------------------------------------------------------------------ */
+/* Surface matrix: anchor x state x paint property                     */
+/* ------------------------------------------------------------------ */
+
+export type SurfaceState = "default" | "hover" | "selected" | "disabled";
+
+const ANCHOR_ATTR = /\[data-wuu-component=(?:"([^"]+)"|'([^']+)')\]/;
+
+/** The first data-wuu-component anchor referenced by the selector, if any. */
+export function anchorOf(selector: string): string | null {
+  const match = selector.match(ANCHOR_ATTR);
+  return match ? (match[1] ?? match[2]) : null;
+}
+
+/** State derived from the selector's pseudo-classes and state attributes. */
+export function stateOf(selector: string): SurfaceState {
+  if (/:hover(?![a-zA-Z-])/.test(selector)) return "hover";
+  if (/:active(?![a-zA-Z-])|\[aria-selected|\[data-state=/.test(selector)) return "selected";
+  if (/:disabled(?![a-zA-Z-])|\[aria-disabled/.test(selector)) return "disabled";
+  return "default";
+}
+
+/** data-wuu-component anchor names found in the given sources (sorted, unique). */
+export function extractAnchorsFromSources(sources: string[]): string[] {
+  const anchors = new Set<string>();
+  const pattern = /data-wuu-component=(?:"([^"]+)"|'([^']+)')/g;
+  for (const source of sources) {
+    for (const match of source.matchAll(pattern)) {
+      anchors.add(match[1] ?? match[2]);
+    }
+  }
+  return [...anchors].sort();
+}
+
+/** Production .ts/.tsx files under a directory (test files excluded), sorted. */
+export function listProductionSources(dir: string): string[] {
+  const out: string[] = [];
+  const entries = readdirSync(dir, { withFileTypes: true }).sort((a, b) =>
+    a.name.localeCompare(b.name),
+  );
+  for (const entry of entries) {
+    const full = resolve(dir, entry.name);
+    if (entry.isDirectory()) {
+      out.push(...listProductionSources(full));
+    } else if (
+      (entry.name.endsWith(".ts") || entry.name.endsWith(".tsx")) &&
+      !/\.test\.(ts|tsx)$/.test(entry.name)
+    ) {
+      out.push(full);
+    }
+  }
+  return out;
+}
+
+/** Anchors pinned by the ProductionSemanticAnchors test's owner inventory. */
+export function parsePinnedAnchors(testSource: string): string[] {
+  const block = testSource.match(
+    /SEMANTIC_ANCHOR_OWNERS\s*=\s*Object\.freeze\(\{([\s\S]*?)\}\s*as const\)/,
+  );
+  if (!block) return [];
+  const anchors = new Set<string>();
+  const pattern = /"([a-z0-9-]+)"\s*:\s*"/g;
+  for (const match of block[1].matchAll(pattern)) anchors.add(match[1]);
+  return [...anchors].sort();
+}
+
+export interface MatrixRow {
+  anchor: string;
+  state: SurfaceState;
+  file: string;
+  line: number;
+  prop: string;
+  variable: string;
+  status: "bridged" | "unbridged";
+  tokens: string[];
+}
+
+export interface SurfaceMatrix {
+  schemaVersion: 1;
+  generatedBy: string;
+  anchors: Array<{ name: string; synthetic: boolean; rows: number }>;
+  tokenSet: string[];
+  rows: MatrixRow[];
+}
+
+/**
+ * Builds the anchor x state x paint-property matrix from the stylesheets.
+ *
+ * Each row is one var() reference of a color-kind paint declaration: the
+ * variable is either a public token (status bridged), a defined private
+ * variable with at least one reaching public token (bridged), or a defined
+ * private variable with no reaching token (unbridged - exactly the U1
+ * baseline entries). Declarations whose selector does not reference a
+ * data-wuu-component anchor fall into the synthetic `unanchored:<file>`
+ * bucket. Geometry-only and undefined variables are excluded.
+ */
+export function analyzeSurfaceMatrix(
+  files: CssFile[],
+  anchorSources: string[],
+  pinnedAnchors: string[],
+): SurfaceMatrix {
+  const defs = new Map<string, string[]>();
+  const scopedPaint: Array<{
+    file: string;
+    selector: string;
+    line: number;
+    prop: string;
+    value: string;
+  }> = [];
+
+  for (const file of files) {
+    for (const scoped of scanScopedDeclarations(file.source)) {
+      if (scoped.declaration.prop.startsWith("--")) {
+        const list = defs.get(scoped.declaration.prop) ?? [];
+        list.push(scoped.declaration.value);
+        defs.set(scoped.declaration.prop, list);
+      } else if (isColorPaint(scoped.declaration.prop)) {
+        scopedPaint.push({
+          file: file.name,
+          selector: scoped.selector,
+          line: scoped.declaration.line,
+          prop: scoped.declaration.prop,
+          value: scoped.declaration.value,
+        });
+      }
+    }
+  }
+
+  const { isColorKind, reachingTokens } = createResolver(defs);
+
+  const rows: MatrixRow[] = [];
+  for (const paint of scopedPaint) {
+    const anchor = anchorOf(paint.selector) ?? `unanchored:${paint.file}`;
+    const state = stateOf(paint.selector);
+    const seenInDecl = new Set<string>();
+    for (const ref of varRefs(paint.value)) {
+      if (seenInDecl.has(ref)) continue;
+      seenInDecl.add(ref);
+      if (isPublicToken(ref)) {
+        rows.push({
+          anchor,
+          state,
+          file: paint.file,
+          line: paint.line,
+          prop: paint.prop,
+          variable: ref,
+          status: "bridged",
+          tokens: reachingTokens(ref),
+        });
+        continue;
+      }
+      if (!defs.has(ref)) continue; // defined outside the stylesheets: out of scope
+      if (!isColorKind(ref)) continue; // geometry / coordination variable
+      const tokens = reachingTokens(ref);
+      rows.push({
+        anchor,
+        state,
+        file: paint.file,
+        line: paint.line,
+        prop: paint.prop,
+        variable: ref,
+        status: tokens.length > 0 ? "bridged" : "unbridged",
+        tokens,
+      });
+    }
+  }
+
+  rows.sort(
+    (a, b) =>
+      a.anchor.localeCompare(b.anchor) ||
+      a.state.localeCompare(b.state) ||
+      a.file.localeCompare(b.file) ||
+      a.line - b.line ||
+      a.prop.localeCompare(b.prop) ||
+      a.variable.localeCompare(b.variable),
+  );
+
+  const anchorSet = new Set<string>(pinnedAnchors);
+  for (const source of anchorSources) {
+    for (const anchor of extractAnchorsFromSources([source])) anchorSet.add(anchor);
+  }
+  const rowCountByAnchor = new Map<string, number>();
+  for (const row of rows) {
+    rowCountByAnchor.set(row.anchor, (rowCountByAnchor.get(row.anchor) ?? 0) + 1);
+  }
+  const anchors = [...anchorSet]
+    .sort()
+    .map((name) => ({ name, synthetic: false, rows: rowCountByAnchor.get(name) ?? 0 }));
+  for (const name of [...rowCountByAnchor.keys()].sort()) {
+    if (!anchorSet.has(name)) {
+      anchors.push({ name, synthetic: true, rows: rowCountByAnchor.get(name) ?? 0 });
+    }
+  }
+
+  const tokenSet = [...new Set(rows.flatMap((row) => row.tokens))].sort();
+
+  return {
+    schemaVersion: 1,
+    generatedBy: "scripts/generate-theme-surface-matrix.mjs",
+    anchors,
+    tokenSet,
+    rows,
+  };
 }

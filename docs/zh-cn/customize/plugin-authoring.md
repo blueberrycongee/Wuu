@@ -109,10 +109,9 @@ my-plugin/
 `--wuu-paper`、`--wuu-ink`、`--wuu-accent` 与 `--hljs-*` 等名称继续兼容，并在应用时
 映射到当前语义 Token；新主题应优先使用 `--wuu-color-*`、`--wuu-font-*` 等当前名称。
 
-宿主的常用中性界面通过少量粗粒度语义 Token 统一换肤，无需依赖私有 DOM：
-`--wuu-control-secondary-background` 控制次级操作，`--wuu-control-field-background` 控制输入框和
-下拉框，`--wuu-control-icon-background` 控制紧凑图标底板，`--wuu-badge-neutral-background` 控制
-中性状态与权限徽标，`--wuu-inline-code-background` 控制 Markdown 行内代码。文字和字体继续
+宿主的常用中性界面通过少量粗粒度语义 Token 统一换肤，无需依赖私有 DOM。完整的
+Token → 表面映射由脚本从宿主样式依赖图生成，见
+[主题表面矩阵](../../en/customize/theme-surface-matrix.md)（英文）。文字和字体继续
 继承对应的公共颜色与字体 Token；紧凑控件的边框宽度由宿主持有，避免面板级强边框改变其盒模型
 或破坏文字换行。
 
