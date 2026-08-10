@@ -20,10 +20,13 @@ docs/
 │   └── reference/            # permissions, config, and security boundaries
 ├── en/                       # English content
 │   ├── getting-started/
+│   ├── desktop/
+│   ├── customize/
 │   ├── automation/
 │   ├── integrations/
 │   ├── reference/
-│   └── project/
+│   ├── project/
+│   └── help/
 ├── design/                   # public design docs (plugin architecture)
 └── plans/                    # local-only notes and research; never committed
 ```

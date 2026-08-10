@@ -179,8 +179,10 @@ Session 投递输入。send 请求包含插件生成的 `request_id`、模型输
 context blocks、稳定 cause，以及可选的 `presentation: { kind: "query_bubble", text, name }`。
 
 `host.session.list` 只返回当前 generation 所属插件拥有的 Session；`host.session.cancel` 也执行同样
-的所有权校验。生命周期完成事件包含最终模型输出，但只发送给原始提交插件，便于插件在不读取
-宿主私有历史结构的前提下更新自己的状态或向父 Session 交付结果。
+的所有权校验。cancel 可以用 send 返回的 `turn_id` 精确取消当前 Turn，或用 `queue_id` 移除尚未
+开始的投递；两者都不删除 Session。省略两者表示插件有意取消该 Session 当前拥有的执行。生命周期
+完成事件包含最终模型输出，但只发送给原始提交插件，便于插件在不读取宿主私有历史结构的前提下
+更新自己的状态或向父 Session 交付结果。
 
 `presentation.text` 是前端 query 气泡显示的安全摘要，不是完整内部 Prompt。用户输入和插件唤醒
 统一复用标准 query 气泡；宿主仍在持久记录中区分 `origin=user | host | plugin`，并把插件生成项
@@ -191,6 +193,11 @@ context blocks、稳定 cause，以及可选的 `presentation: { kind: "query_bu
 宿主会把后续 running、completed、failed、interrupted、discarded 状态只发给原提交插件，并带回
 原样的 `request_id`；终态还包含最终模型输出。Cron、重试、错过触发恢复、并发合并和业务状态都必须由插件持有；核心不
 提供 timer tick，也不解释 `request_id` 或 cause。
+
+每次插件 Tool 调用都包含拥有它的当前 `turn_id`。插件若声明 `agent.turn.interrupted` observe
+能力，还会收到产品中立的 Turn 中断信号。宿主不会根据 `parent_session_id` 建立取消树；插件可以
+把信号转发到它记录的任意 child Turn，也可以让工作脱离当前 Turn。树、DAG、worker pool、汇聚、
+重试和恢复等编排语义全部属于插件。
 
 进程生命周期由 Wuu 管理：启用时启动，禁用、升级或卸载时终止。插件不能重启自身或
 绕过宿主对进程的监督。
@@ -207,6 +214,7 @@ runtime 插件可以注册工具和挂钩 Agent 生命周期。SDK 提供以下�
 | `agent.compaction` | 替换摘要压缩结果 | decision；Experimental |
 | `agent.turn.completed` | 观察已提交的成功/失败 Turn 摘要 | observe |
 | `agent.turn.lifecycle` | 接收本插件投递 Turn 的 owner-scoped 生命周期 | observe |
+| `agent.turn.interrupted` | 接收任意 Turn 的非阻塞中断信号，由插件决定是否传播 | observe |
 | `plugin.client.request` | 处理插件命名空间内的 Desktop/客户端请求 | decision |
 
 工具通过 initialize result 的 `tools` 注册，不是一个名为 `agent.tool.register` 的 capability。

@@ -4,6 +4,9 @@ This guide covers the stable path from installing wuu to completing daily work.
 For every task, wuu operates on a local workspace and calls a model provider with
 credentials you control.
 
+Step-by-step walkthroughs: [Installation](installation.md), [Model
+services](model-services.md), and [Your first task](first-task.md).
+
 ## Choose how to use wuu
 
 - **Desktop:** use the macOS app for interactive work, multiple conversations,

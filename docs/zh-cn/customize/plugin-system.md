@@ -98,7 +98,7 @@ Kernel 可靠接纳输入，所选 Loop Driver 消费并执行
 | --- | --- |
 | 注册贡献 | 注册模型可见 Tool、提示与请求上下文、命令、设置、View 和产品入口 |
 | Session 操作 | 创建、投递、取消以及列出当前插件拥有的 Session |
-| 生命周期事件 | 观察 Session 创建/关闭以及 Turn 排队、开始、完成、失败和取消 |
+| 生命周期事件 | 观察 Session 创建/关闭以及 Turn 排队、开始、完成、失败和取消；中断信号只通知插件，由插件决定是否转发 |
 | 状态与资源 | 命名空间存储、受控文件/进程/workspace，以及插件 runtime 自己维护的 Timer 和业务状态机 |
 
 创建 Session 时需要少量通用属性：`owner`、`visibility`、可选 `parent`、上下文来源
@@ -155,6 +155,22 @@ query”的链路。Kernel 因此保留的是 `session.send` 的可靠接纳、�
 所选 Loop Driver 决定何时以及怎样消费；“定时唤醒”“目标续跑”或“子任务交付”等业务含义
 完全属于插件。
 
+### 插件自定义 Agent 编排与取消
+
+Wuu 不规定插件必须采用哪一种 Subagent 模型。插件可以在自己的命名空间状态中维护树、DAG、
+supervisor/worker、并行池、审议流程或完全不同的任务系统，也可以只把 Session 当作一个模型执行
+端点。`ParentSessionID` 是来源、上下文和列表筛选信息，不是宿主自动递归取消的关系。
+
+宿主给每次插件 Tool 调用提供当前 `TurnID`，并给插件提供产品中立的 Turn 中断通知。插件可以
+用这个身份把中断信号转发给自己创建的某个或多个 child Turn，也可以让某些工作脱离当前 Turn
+继续运行。取消指定 child 时应使用 `session.send` 返回的准确 `TurnID`；尚未开始的投递使用
+`QueueID`。Session 本身不会因为 Turn 被取消而销毁，后续仍可通过 `session.send` 唤醒。
+
+这是一种可信代码之间的协作式合同：Kernel 取消自己拥有的 Turn、保证终态和迟到结果不变量，插件
+负责信号转发、内部请求/进程清理、重试、汇聚、恢复和卸载处理。Kernel 不强制插件 ACK，不递归
+解释插件私有任务图，也不提供强杀、沙箱或通用工作流管理器。用户停止时，能被保证停止的是插件
+选择传播的当前 Turn；插件有意脱离的后台工作由插件自己管理。
+
 ### 从产品需求提炼公共能力，而不是公开产品内部
 
 一方产品迁移会暴露插件平台的缺口，但不能把当前实现直接翻译成 `host.memory.*`、
@@ -192,7 +208,7 @@ RPC。
 小 Kernel 不等于零能力宿主。以下是所有 Driver 和产品插件共同依赖的机制，继续由 Wuu 仲裁：
 
 - Provider 消息顺序、Tool call/result 配对、流式响应和上下文窗口等协议正确性；
-- Session/Event 的追加持久化、Inbox/Outbox、幂等接纳、执行租约、取消和恢复原语；
+- Session/Event 的追加持久化、Inbox/Outbox、幂等接纳、执行租约、当前 Turn 的取消和恢复原语；
 - Tool 执行、最终权限判定、工作区边界和用户审批；
 - Service/Event/Scope/Effect、依赖解析、插件安装批准、generation 原子替换和错误隔离；
 - 原生窗口、系统安全区以及宿主拥有的导航、Tab、滚动、溢出和无障碍。
@@ -292,6 +308,10 @@ Scope、通用 Service Graph，以及跨外部副作用的事务承诺。
    都是产品中立的 Session 合同；`host.child_session.request` 及其
    `spawn/send/close/list/await/report` switch 已删除。现有 `agentcontrol` 的租约和恢复代码仍可服务
    核心内部执行，但不再是 Subagent 插件的公开或私有调用入口。
+   一方插件另外观察通用 Turn 中断信号，把父 Turn 的中断转发给它为该次调用创建的当前 child
+   Turn；child Session 保留，下一轮仍可 `send_message`。这只是该插件的策略，不是 Core 根据
+   `ParentSessionID` 建立的取消树。外部插件可以在相同 `TurnID`、中断事件和精确取消合同上实现
+   任意自己的拓扑与传播规则。
    主动委派同样属于 Subagent 插件：插件用命名空间 storage 保存开关，通过
    `agent.pre_step` 在开关状态变化后的下一次模型步骤追加带来源的持久消息，并在
    `composer.toolbar` 注册自己的控件。核心不再保存 `agent.ultra_mode`，不再做 Turn 快照或
