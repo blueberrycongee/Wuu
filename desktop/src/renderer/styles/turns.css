@@ -2288,6 +2288,10 @@
   list-style: none;
 }
 
+.context-compaction-notice.failed .process-surface-row {
+  color: var(--danger);
+}
+
 .process-surface-fold > .process-surface-row {
   cursor: pointer;
 }
