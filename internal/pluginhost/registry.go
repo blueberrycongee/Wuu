@@ -348,6 +348,69 @@ func (r *ServiceRegistry) RouteServiceCall(ctx context.Context, pluginID string,
 	return r.Call(ctx, pluginID, params)
 }
 
+// CallProvider is the kernel-caller entry point: the kernel itself is the
+// authority and needs no consumer declaration, but provider existence,
+// activation state, and the declared method set are still enforced, and the
+// execution id rides the invoke so long-lived kernel-initiated calls (loop
+// drivers) cancel through the execution plane.
+func (r *ServiceRegistry) CallProvider(ctx context.Context, service string, major int, method string, params json.RawMessage, executionID string) (json.RawMessage, *HostServiceError) {
+	service = strings.TrimSpace(service)
+	method = strings.TrimSpace(method)
+	if service == "" || method == "" {
+		return nil, &HostServiceError{Code: "invalid_request", Message: "kernel service call requires non-empty service and method"}
+	}
+	key := serviceKey{name: service, major: major}
+	r.mu.RLock()
+	provider, found := r.providers[key]
+	open := r.open
+	active := r.active
+	r.mu.RUnlock()
+	if !open {
+		return nil, &HostServiceError{Code: "service_unavailable", Message: "service registry is not active"}
+	}
+	if !found {
+		return nil, &HostServiceError{Code: "service_not_found", Message: fmt.Sprintf("no provider for service %s major version %d (provided majors: %v)", service, major, r.ProviderMajors(service))}
+	}
+	if !active && !provider.kernel {
+		return nil, &HostServiceError{Code: "service_unavailable", Message: fmt.Sprintf("service %s is unavailable during generation prepare", service)}
+	}
+	methodDeclared := false
+	for _, declared := range provider.descriptor.Methods {
+		if declared.Name == method {
+			methodDeclared = true
+			break
+		}
+	}
+	if !methodDeclared {
+		return nil, &HostServiceError{Code: "method_not_found", Message: fmt.Sprintf("service %s does not declare method %q", service, method)}
+	}
+	if state := provider.invoker.Status().State; state != StateActive && !(provider.kernel && !active) {
+		return nil, &HostServiceError{Code: "service_unavailable", Message: fmt.Sprintf("service %s provider %q is %s", service, provider.pluginID, state)}
+	}
+	result, err := provider.invoker.InvokeService(ctx, ServiceInvokeParams{
+		Service:     service,
+		Method:      method,
+		Caller:      "kernel",
+		Params:      params,
+		ExecutionID: executionID,
+	})
+	if err != nil {
+		var hostErr *HostServiceError
+		if errors.As(err, &hostErr) && hostErr.Code != "" {
+			return nil, hostErr
+		}
+		var remoteErr *remoteCallError
+		if errors.As(err, &remoteErr) && remoteErr.code != "" {
+			return nil, &HostServiceError{Code: remoteErr.code, Message: remoteErr.message}
+		}
+		return nil, &HostServiceError{Code: "service_unavailable", Message: fmt.Sprintf("service %s call failed: %v", service, err)}
+	}
+	if len(result) == 0 || !json.Valid(result) {
+		return nil, &HostServiceError{Code: "service_unavailable", Message: fmt.Sprintf("service %s provider returned an invalid result", service)}
+	}
+	return result, nil
+}
+
 // ServiceRegistryEntry describes one provided service in a registry snapshot.
 type ServiceRegistryEntry struct {
 	Service  string   `json:"service"`

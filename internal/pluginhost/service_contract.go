@@ -158,6 +158,9 @@ type ServiceInvokeParams struct {
 	Method  string          `json:"method"`
 	Caller  string          `json:"caller"`
 	Params  json.RawMessage `json:"params,omitempty"`
+	// ExecutionID, when set, binds the invoke to one execution scope so
+	// cross-process cancellation propagates through the execution plane.
+	ExecutionID string `json:"execution_id,omitempty"`
 }
 
 // ServiceChangedParams notifies a consumer that a service resolution changed.

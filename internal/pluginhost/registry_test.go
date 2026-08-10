@@ -235,3 +235,44 @@ func TestServiceRegistryCallPreservesTypedProviderErrors(t *testing.T) {
 		t.Fatalf("typed provider error = %v, want execution_not_found", err)
 	}
 }
+
+func TestServiceRegistryCallProviderFromKernel(t *testing.T) {
+	provider := &fakeServiceProcess{id: "driver", state: StateActive, provided: []ServiceDescriptor{{
+		Name:    "driver.singlepass",
+		Version: "1.0.0",
+		Methods: []ServiceMethodDescriptor{{Name: "run", InputSchema: "driver.run.request.v1", OutputSchema: "driver.run.response.v1"}},
+	}}}
+	registry, _ := BuildServiceRegistry(provider)
+
+	if _, err := registry.CallProvider(context.Background(), "driver.singlepass", 1, "run", nil, "exec-1"); err == nil || err.Code != "service_unavailable" {
+		t.Fatalf("inactive registry kernel call = %v, want service_unavailable", err)
+	}
+	registry.Activate()
+
+	if _, err := registry.CallProvider(context.Background(), "driver.singlepass", 2, "run", nil, "exec-1"); err == nil || err.Code != "service_not_found" {
+		t.Fatalf("missing major = %v, want service_not_found", err)
+	}
+	if _, err := registry.CallProvider(context.Background(), "driver.singlepass", 1, "create", nil, "exec-1"); err == nil || err.Code != "method_not_found" {
+		t.Fatalf("undeclared method = %v, want method_not_found", err)
+	}
+	if _, err := registry.CallProvider(context.Background(), " ", 1, "run", nil, "exec-1"); err == nil || err.Code != "invalid_request" {
+		t.Fatalf("blank service = %v, want invalid_request", err)
+	}
+
+	// The kernel needs no consumer declaration: the call routes with the
+	// kernel caller identity and the execution id intact.
+	result, err := registry.CallProvider(context.Background(), "driver.singlepass", 1, "run", json.RawMessage(`{"instance_id":"i-1"}`), "exec-1")
+	if err != nil {
+		t.Fatalf("kernel call failed: %v", err)
+	}
+	if string(result) != `{"ok":true}` {
+		t.Fatalf("result = %s", result)
+	}
+	if len(provider.invokeCalls) != 1 {
+		t.Fatalf("invoke calls = %+v", provider.invokeCalls)
+	}
+	got := provider.invokeCalls[0]
+	if got.Caller != "kernel" || got.Method != "run" || got.ExecutionID != "exec-1" {
+		t.Fatalf("invoke params = %+v", got)
+	}
+}

@@ -246,6 +246,8 @@ func (c *ProcessClient) RequiredServices() []ServiceRequirement {
 
 // InvokeService delivers one registry-routed call to this provider plugin.
 func (c *ProcessClient) InvokeService(ctx context.Context, params ServiceInvokeParams) (json.RawMessage, error) {
+	finishExecution := c.watchExecution(ctx, params.ExecutionID)
+	defer finishExecution()
 	var result json.RawMessage
 	if err := c.call(ctx, ServiceInvokeMethod, params, &result); err != nil {
 		return nil, err
@@ -261,9 +263,8 @@ func (c *ProcessClient) NotifyServiceChanged(ctx context.Context, params Service
 func (c *ProcessClient) InvokeCapability(ctx context.Context, params CapabilityInvokeParams) (CapabilityInvokeResult, error) {
 	callCtx, cancel := context.WithTimeout(ctx, c.config.Timeout)
 	defer cancel()
-	completed := &atomic.Bool{}
-	c.watchExecution(callCtx, params.ExecutionID, completed)
-	defer completed.Store(true)
+	finishExecution := c.watchExecution(callCtx, params.ExecutionID)
+	defer finishExecution()
 	var result CapabilityInvokeResult
 	if err := c.call(callCtx, "capability.invoke", params, &result); err != nil {
 		if ctx.Err() == nil {
@@ -323,9 +324,8 @@ func (c *ProcessClient) Activate(ctx context.Context) error {
 func (c *ProcessClient) ExecuteTool(ctx context.Context, params ToolExecuteParams) (ToolExecuteResult, error) {
 	callCtx, cancel := context.WithTimeout(ctx, c.config.Timeout)
 	defer cancel()
-	completed := &atomic.Bool{}
-	c.watchExecution(callCtx, params.ExecutionID, completed)
-	defer completed.Store(true)
+	finishExecution := c.watchExecution(callCtx, params.ExecutionID)
+	defer finishExecution()
 	var result ToolExecuteResult
 	if err := c.call(callCtx, "tool.execute", params, &result); err != nil {
 		if ctx.Err() == nil {
@@ -346,17 +346,34 @@ func (c *ProcessClient) ExecuteTool(ctx context.Context, params ToolExecuteParam
 // cross-process execution.cancel signal. The frame is fire-and-forget: the
 // core's terminal state is decided by its own timeout normalization, never by
 // waiting on plugin acknowledgement.
-func (c *ProcessClient) watchExecution(ctx context.Context, executionID string, completed *atomic.Bool) {
+func (c *ProcessClient) watchExecution(ctx context.Context, executionID string) func() {
 	if executionID == "" {
-		return
+		return func() {}
+	}
+	completed := &atomic.Bool{}
+	cancelSent := &atomic.Bool{}
+	finished := make(chan struct{})
+	notifyCancel := func() {
+		if cancelSent.CompareAndSwap(false, true) {
+			c.notifyExecutionCancel(executionID)
+		}
 	}
 	go func() {
-		<-ctx.Done()
-		if completed.Load() {
-			return
+		select {
+		case <-ctx.Done():
+			if !completed.Load() {
+				notifyCancel()
+			}
+		case <-finished:
 		}
-		c.notifyExecutionCancel(executionID)
 	}()
+	return func() {
+		completed.Store(true)
+		if ctx.Err() != nil {
+			notifyCancel()
+		}
+		close(finished)
+	}
 }
 
 // notifyExecutionCancel writes the execution.cancel frame without registering
