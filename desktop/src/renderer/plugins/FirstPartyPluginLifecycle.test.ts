@@ -11,6 +11,7 @@ import {
   type PluginContributionDeclarations,
   type PluginGenerationApi,
 } from "./PluginHost";
+import { PluginSlot } from "./PluginSlot";
 import { PluginViewContent, WorkbenchController } from "./Workbench";
 
 interface FirstPartyManifest {
@@ -125,6 +126,57 @@ describe("first-party desktop plugin lifecycle", () => {
       ...host.getViewTypes(),
     ].filter((item) => item.pluginId === pluginId).every((item) => item.generation === "new-generation"))
       .toBe(true);
+  });
+
+  it("hides the previous session's subagent status while the next session loads", async () => {
+    const pending = new Map<string, (value: unknown) => void>();
+    const host = new PluginHost({
+      react: React,
+      invokeRuntime: ({ method, input }) => {
+        if (method !== "status.list") {
+          return Promise.reject(new Error(`Unexpected subagent runtime method: ${method}`));
+        }
+        const threadId = String((input as { parent_session_id?: string })?.parent_session_id ?? "");
+        return new Promise((resolve) => pending.set(threadId, resolve));
+      },
+    });
+    const { manifest, module } = await loadFirstPartyPlugin("subagent");
+    await host.activateGeneration({
+      pluginId: "subagent",
+      generation: "session-status-test",
+      contributions: contributionDeclarations(manifest),
+      register: module.activate,
+    });
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    try {
+      await act(async () => {
+        root.render(React.createElement(PluginSlot, {
+          host,
+          id: "composer.above",
+          context: { threadId: "thread-a", mainConversation: true },
+        }));
+      });
+      await act(async () => {
+        pending.get("thread-a")?.({ sessions: [{ session_id: "child-a", name: "from-a", state: "running" }] });
+      });
+      expect(container.textContent).toContain("from-a · running");
+
+      await act(async () => {
+        root.render(React.createElement(PluginSlot, {
+          host,
+          id: "composer.above",
+          context: { threadId: "thread-b", mainConversation: true },
+        }));
+      });
+
+      expect(container.textContent).not.toContain("from-a");
+    } finally {
+      act(() => root.unmount());
+      container.remove();
+      host.disable("subagent");
+    }
   });
 
   it.each([

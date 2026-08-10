@@ -40,14 +40,23 @@ export async function activate(api) {
   ` });
   function ChildTaskStatus(props) {
     const threadId = typeof props.threadId === "string" ? props.threadId : "";
-    const [tasks, setTasks] = React.useState([]);
+    const [taskState, setTaskState] = React.useState({ threadId: "", tasks: [] });
+    const refreshGeneration = React.useRef(0);
     const refresh = React.useCallback(() => {
-      if (!threadId) { setTasks([]); return Promise.resolve(); }
+      const generation = ++refreshGeneration.current;
+      if (!threadId) { setTaskState({ threadId, tasks: [] }); return Promise.resolve(); }
       return api.invokeRuntime("status.list", { parent_session_id: threadId })
-		.then((value) => setTasks(Array.isArray(value?.sessions) ? value.sessions : []))
-		.catch(() => setTasks([]));
+		.then((value) => {
+		  if (refreshGeneration.current === generation) setTaskState({ threadId, tasks: Array.isArray(value?.sessions) ? value.sessions : [] });
+		})
+		.catch(() => {
+		  if (refreshGeneration.current === generation) setTaskState({ threadId, tasks: [] });
+		});
     }, [threadId]);
-    React.useEffect(() => { void refresh(); }, [refresh]);
+    React.useEffect(() => {
+      void refresh();
+      return () => { refreshGeneration.current += 1; };
+    }, [refresh]);
     React.useEffect(() => {
       const subscription = api.onHostEvent((event) => {
         const method = event && typeof event === "object" && event.message && typeof event.message === "object" ? event.message.method : "";
@@ -55,6 +64,7 @@ export async function activate(api) {
       });
       return () => subscription.dispose();
     }, [refresh]);
+    const tasks = taskState.threadId === threadId ? taskState.tasks : [];
     const visible = tasks.filter((task) => task && task.state && task.state !== "completed");
     if (!props.mainConversation || visible.length === 0) return null;
     return h("div", { className: "plugin-subagent-status" }, visible.map((task) => h("span", {
