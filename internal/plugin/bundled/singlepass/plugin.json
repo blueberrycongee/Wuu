@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "id": "singlepass",
+  "name": "Single-Pass Driver",
+  "description": "Single-pass loop driver: one model round per turn, installed and selected per session as the driver.singlepass service.",
+  "version": "0.1.0",
+  "author": { "name": "Wuu" },
+  "minimumWuuVersion": "0.1.0",
+  "runtime": { "protocol": "wuu-plugin-v1", "command": "@wuu-official-helper:singlepass", "timeout": 30 },
+  "interface": { "displayName": "Single-Pass Driver", "shortDescription": "Run turns as exactly one model round with no tool surface.", "developerName": "Wuu", "category": "Developer", "capabilities": ["Read"] },
+  "officialNativeHelper": { "id": "singlepass", "environment": "WUU_SINGLEPASS_PLUGIN_HELPER", "executable": "wuu-singlepass-plugin" }
+}
