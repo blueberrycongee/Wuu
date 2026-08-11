@@ -313,11 +313,11 @@ func TestCallHostPreservesTypedErrorCode(t *testing.T) {
 		if !scanner.Scan() {
 			return
 		}
-		client.routeResponse(rpcResponse{ID: "plugin-1", Error: &rpcError{Code: "service_not_found", Message: "no provider for service memory.session"}})
+		client.routeResponse(rpcResponse{ID: "plugin-1", Error: &rpcError{Code: "service_unavailable", Message: "no provider for service memory.session"}})
 	}()
 	err := client.CallHost(context.Background(), HostServiceCallMethod, map[string]string{"service": "memory.session", "method": "read"}, nil)
 	var hostErr *HostCallError
-	if !errors.As(err, &hostErr) || hostErr.Code != "service_not_found" || hostErr.Message != "no provider for service memory.session" {
+	if !errors.As(err, &hostErr) || hostErr.Code != "service_unavailable" || hostErr.Message != "no provider for service memory.session" {
 		t.Fatalf("typed error = %#v", err)
 	}
 }

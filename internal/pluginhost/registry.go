@@ -312,9 +312,9 @@ func (r *ServiceRegistry) Call(ctx context.Context, consumerPluginID string, par
 	r.mu.RUnlock()
 	if !found {
 		if !nameExists {
-			return nil, &HostServiceError{Code: "service_not_found", Message: fmt.Sprintf("no provider for service %s", service)}
+			return nil, &HostServiceError{Code: "service_unavailable", Message: fmt.Sprintf("no provider for service %s", service)}
 		}
-		return nil, &HostServiceError{Code: "service_version_mismatch", Message: fmt.Sprintf("no provider for service %s major version %d (provided majors: %v)", service, key.major, r.ProviderMajors(service))}
+		return nil, &HostServiceError{Code: "service_unavailable", Message: fmt.Sprintf("no provider for service %s major version %d (provided majors: %v)", service, key.major, r.ProviderMajors(service))}
 	}
 	if !active && !provider.kernel {
 		return nil, &HostServiceError{Code: "service_unavailable", Message: fmt.Sprintf("service %s is unavailable during generation prepare", service)}
@@ -381,7 +381,7 @@ func (r *ServiceRegistry) CallProvider(ctx context.Context, service string, majo
 		return nil, &HostServiceError{Code: "service_unavailable", Message: "service registry is not active"}
 	}
 	if !found {
-		return nil, &HostServiceError{Code: "service_not_found", Message: fmt.Sprintf("no provider for service %s major version %d (provided majors: %v)", service, major, r.ProviderMajors(service))}
+		return nil, &HostServiceError{Code: "service_unavailable", Message: fmt.Sprintf("no provider for service %s major version %d (provided majors: %v)", service, major, r.ProviderMajors(service))}
 	}
 	if !active && !provider.kernel {
 		return nil, &HostServiceError{Code: "service_unavailable", Message: fmt.Sprintf("service %s is unavailable during generation prepare", service)}

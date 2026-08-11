@@ -37,7 +37,7 @@ func (h *fakeHost) CallHost(_ context.Context, method string, params, result any
 		serve := h.serve
 		h.mu.Unlock()
 		if serve == nil {
-			return &pluginapi.HostCallError{Code: "service_not_found", Message: "no provider for service " + routed.Service}
+			return &pluginapi.HostCallError{Code: "service_unavailable", Message: "no provider for service " + routed.Service}
 		}
 		response, err := serve(context.Background(), routed.Service, routed.Method, routed.Params)
 		if err != nil {
@@ -243,7 +243,7 @@ func TestDreamConsumesMemorySessionServiceAcrossGenerations(t *testing.T) {
 }
 
 func TestDreamSkipsWhenSessionMemoryServiceUnavailable(t *testing.T) {
-	host := &fakeHost{} // no provider wired: resolution fails with service_not_found
+	host := &fakeHost{} // no provider wired: resolution fails with service_unavailable
 	c := &controller{now: func() time.Time { return time.Date(2026, 8, 8, 0, 0, 0, 0, time.UTC) }, tick: time.Hour}
 	if err := c.prepare(context.Background(), host); err != nil {
 		t.Fatal(err)
@@ -267,7 +267,7 @@ func TestDreamSkipsWhenSessionMemoryServiceUnavailable(t *testing.T) {
 		t.Fatal("readProjectMemory must fail without a provider")
 	} else {
 		var hostErr *pluginapi.HostCallError
-		if !errors.As(err, &hostErr) || hostErr.Code != "service_not_found" {
+		if !errors.As(err, &hostErr) || hostErr.Code != "service_unavailable" {
 			t.Fatalf("typed registry error must reach the consumer, got %#v", err)
 		}
 	}

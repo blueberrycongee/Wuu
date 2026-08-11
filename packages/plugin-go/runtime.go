@@ -476,8 +476,8 @@ type Handler struct {
 
 // HostCallError is the typed failure returned by a host service call. Code
 // carries the registry or provider error code unchanged so consumers can
-// branch on service_not_found, provider_closed, and friends instead of
-// parsing message text.
+// branch on service_unavailable and other typed failures instead of parsing
+// message text.
 type HostCallError struct {
 	Code    string
 	Message string

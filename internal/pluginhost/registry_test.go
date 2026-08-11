@@ -103,8 +103,8 @@ func TestServiceRegistryCall(t *testing.T) {
 	}
 	// A declared-but-unprovided service resolves to not_found; an undeclared
 	// one stays not_authorized so consumers cannot probe what exists.
-	if _, err := registry.Call(context.Background(), "notes", ServiceCallParams{Service: "memory.index", Method: "query"}); err == nil || err.Code != "service_not_found" {
-		t.Fatalf("declared unprovided service = %v, want service_not_found", err)
+	if _, err := registry.Call(context.Background(), "notes", ServiceCallParams{Service: "memory.index", Method: "query"}); err == nil || err.Code != "service_unavailable" {
+		t.Fatalf("declared unprovided service = %v, want service_unavailable", err)
 	}
 	if _, err := registry.Call(context.Background(), "notes", ServiceCallParams{Service: "unknown.service", Method: "query"}); err == nil || err.Code != "service_not_authorized" {
 		t.Fatalf("undeclared service = %v, want service_not_authorized", err)
@@ -112,8 +112,8 @@ func TestServiceRegistryCall(t *testing.T) {
 	majorMismatch := &fakeServiceProcess{id: "notes2", state: StateActive, required: []ServiceRequirement{{Name: "search.provider", MajorVersion: 2, Required: true}}}
 	registry2, _ := BuildServiceRegistry(provider, majorMismatch)
 	registry2.Activate()
-	if _, err := registry2.Call(context.Background(), "notes2", call); err == nil || err.Code != "service_version_mismatch" {
-		t.Fatalf("major mismatch = %v, want service_version_mismatch", err)
+	if _, err := registry2.Call(context.Background(), "notes2", call); err == nil || err.Code != "service_unavailable" {
+		t.Fatalf("major mismatch = %v, want service_unavailable", err)
 	}
 	if _, err := registry.Call(context.Background(), "notes", ServiceCallParams{Service: "search.provider", Method: "delete"}); err == nil || err.Code != "method_not_found" {
 		t.Fatalf("undeclared method = %v, want method_not_found", err)
@@ -249,8 +249,8 @@ func TestServiceRegistryCallProviderFromKernel(t *testing.T) {
 	}
 	registry.Activate()
 
-	if _, err := registry.CallProvider(context.Background(), "driver.singlepass", 2, "run", nil, "exec-1"); err == nil || err.Code != "service_not_found" {
-		t.Fatalf("missing major = %v, want service_not_found", err)
+	if _, err := registry.CallProvider(context.Background(), "driver.singlepass", 2, "run", nil, "exec-1"); err == nil || err.Code != "service_unavailable" {
+		t.Fatalf("missing major = %v, want service_unavailable", err)
 	}
 	if _, err := registry.CallProvider(context.Background(), "driver.singlepass", 1, "create", nil, "exec-1"); err == nil || err.Code != "method_not_found" {
 		t.Fatalf("undeclared method = %v, want method_not_found", err)

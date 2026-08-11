@@ -28,7 +28,7 @@ func (h *fakeHost) CallHost(_ context.Context, method string, params, result any
 	}
 	_ = json.Unmarshal(raw, &routed)
 	if h.serve == nil {
-		return &pluginapi.HostCallError{Code: "service_not_found", Message: "no provider for service " + routed.Service}
+		return &pluginapi.HostCallError{Code: "service_unavailable", Message: "no provider for service " + routed.Service}
 	}
 	response, err := h.serve(routed.Service, routed.Method, routed.Params)
 	if err != nil {
@@ -89,7 +89,7 @@ func TestInvokeServiceRunsDriverThroughKernelGateway(t *testing.T) {
 			checkpointCalls = append(checkpointCalls, decoded)
 			return json.RawMessage(`{}`), nil
 		}
-		return nil, &pluginapi.HostCallError{Code: "service_not_found", Message: service}
+		return nil, &pluginapi.HostCallError{Code: "service_unavailable", Message: service}
 	}}
 
 	handler := Handler()
