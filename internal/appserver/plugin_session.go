@@ -475,6 +475,9 @@ func (s *Server) createPluginSessionThread(owner string, params pluginhost.Sessi
 }
 
 func (s *Server) startPluginSubmittedTurn(ctx context.Context, th *threadState, msg providers.ChatMessage, snapshot turnRuntimeSnapshot) (startedThreadTurn, bool, error) {
+	// The host call only admits the turn. Once accepted, the turn belongs to the
+	// target session and must outlive the plugin invocation that submitted it.
+	ctx = context.WithoutCancel(ctx)
 	var threadRuntime *runtime.ThreadRuntime
 	started, ok, err := s.startThreadUserTurnWithAdmission(
 		ctx, th, msg, snapshot, false, turnReadOnlyFail,

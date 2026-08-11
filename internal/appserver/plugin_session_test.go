@@ -199,6 +199,75 @@ func TestPluginSessionCreateAndSendPersistProvenanceAndTargetLifecycle(t *testin
 	}
 }
 
+func TestPluginSessionSendTurnOutlivesHostCallContext(t *testing.T) {
+	client := &turnContextClient{started: make(chan context.Context, 1), release: make(chan struct{})}
+	rt := newTestRuntime(t, &fakeClient{})
+	rt.StreamRunner.Client = providers.AdaptStreamClient(client)
+	rt.PluginSessionRouter = runtime.NewPluginSessionRouter()
+	owner := &pluginTurnLifecycleClient{id: "subagent", calls: make(chan pluginhost.AgentTurnLifecycleInput, 1)}
+	rt.PluginHost = pluginhost.New(owner)
+	out := &lockedBuffer{}
+	srv := New(rt, out)
+	t.Cleanup(func() {
+		select {
+		case <-client.release:
+		default:
+			close(client.release)
+		}
+		srv.Close()
+	})
+
+	created, err := rt.PluginSessionRouter.Create(context.Background(), owner.id, pluginhost.SessionCreateParams{
+		RequestID: "create", Visibility: pluginhost.SessionVisibilityPlugin, ContextSource: pluginhost.SessionContextFresh,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	callCtx, cancelCall := context.WithCancel(context.Background())
+	result, err := rt.PluginSessionRouter.Send(callCtx, owner.id, pluginhost.SessionSendParams{
+		RequestID: "run", SessionID: created.SessionID, Input: pluginhost.SessionInput{Prompt: "work"},
+	})
+	if err != nil || result.State != pluginhost.TurnLifecycleRunning {
+		t.Fatalf("send = %+v, %v", result, err)
+	}
+
+	var turnCtx context.Context
+	select {
+	case turnCtx = <-client.started:
+	case <-time.After(3 * time.Second):
+		t.Fatal("turn did not reach provider")
+	}
+	cancelCall()
+	if err := turnCtx.Err(); err != nil {
+		t.Fatalf("turn inherited completed host call context: %v", err)
+	}
+	close(client.release)
+	waitForTurnCompletedForThread(t, out, result.SessionID)
+	select {
+	case lifecycle := <-owner.calls:
+		if lifecycle.State != pluginhost.TurnLifecycleCompleted || lifecycle.RequestID != "run" || lifecycle.FinalOutput != "done" {
+			t.Fatalf("lifecycle = %+v", lifecycle)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("owner did not receive completed lifecycle")
+	}
+}
+
+type turnContextClient struct {
+	started chan context.Context
+	release chan struct{}
+}
+
+func (client *turnContextClient) Chat(ctx context.Context, _ providers.ChatRequest) (providers.ChatResponse, error) {
+	client.started <- ctx
+	select {
+	case <-client.release:
+		return providersResponse("done"), nil
+	case <-ctx.Done():
+		return providers.ChatResponse{}, ctx.Err()
+	}
+}
+
 func TestPluginSessionListAndCancelAreOwnerScoped(t *testing.T) {
 	chatStarted := make(chan struct{})
 	release := make(chan struct{})
