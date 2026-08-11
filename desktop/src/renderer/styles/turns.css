@@ -1703,10 +1703,15 @@
 .turn-process-toggle {
   display: flex;
   width: 100%;
+  min-width: 0;
   min-height: 0;
-  align-items: baseline;
-  flex-wrap: wrap;
+  /* Live previews are atomic inline boxes so the sweep can be clipped to
+     their glyphs. Center the shared line boxes instead of using their
+     synthesized baselines, which lifts the preview above the status copy. */
+  align-items: center;
+  flex-wrap: nowrap;
   gap: 0 8px;
+  overflow: hidden;
   border: 0;
   background: transparent;
   color: inherit;
@@ -1736,15 +1741,17 @@
 }
 
 .turn-process-header {
-  display: contents;
+  display: flex;
+  flex: 0 0 auto;
   min-width: 0;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: baseline;
   gap: 0 8px;
   line-height: var(--conversation-process-line-height);
 }
 
 .turn-process-title {
+  flex: 0 0 auto;
   min-width: 0;
   overflow: hidden;
   color: var(--ink-muted);
@@ -1769,6 +1776,7 @@
                                                               
 .turn-process-live-dot {
   display: inline-block;
+  flex: 0 0 auto;
   width: 6px;
   height: 6px;
   border-radius: 50%;
@@ -1800,6 +1808,7 @@
 }
 
 .turn-process-meta {
+  flex: 0 0 auto;
   color: var(--ink-muted);
   font-size: var(--conversation-process-font-size);
   font-weight: var(--conversation-process-font-weight);
@@ -1812,16 +1821,21 @@
                                                                 
                                                               
 .turn-process-preview {
-  display: inline;
+  display: flex;
+  flex: 1 1 0;
   min-width: 0;
   align-items: center;
+  overflow: hidden;
   color: var(--ink-muted);
   font-size: var(--conversation-process-font-size);
   font-weight: var(--conversation-process-font-weight);
   line-height: var(--conversation-process-line-height);
+  white-space: nowrap;
 }
 
 .turn-process-preview-text {
+  display: block;
+  flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
