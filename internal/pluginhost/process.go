@@ -322,12 +322,13 @@ func (c *ProcessClient) Activate(ctx context.Context) error {
 }
 
 func (c *ProcessClient) ExecuteTool(ctx context.Context, params ToolExecuteParams) (ToolExecuteResult, error) {
-	callCtx, cancel := context.WithTimeout(ctx, c.config.Timeout)
-	defer cancel()
-	finishExecution := c.watchExecution(callCtx, params.ExecutionID)
+	// Tool execution is owned by the turn context. The configured process
+	// timeout protects startup and lifecycle handshakes; applying it here would
+	// kill healthy long-running tools such as user interaction.
+	finishExecution := c.watchExecution(ctx, params.ExecutionID)
 	defer finishExecution()
 	var result ToolExecuteResult
-	if err := c.call(callCtx, "tool.execute", params, &result); err != nil {
+	if err := c.call(ctx, "tool.execute", params, &result); err != nil {
 		if ctx.Err() == nil {
 			c.failFatalCall(err)
 		}

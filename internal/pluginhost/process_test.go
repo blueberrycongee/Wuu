@@ -396,6 +396,9 @@ func TestProcessClientCancelReachesPluginExecution(t *testing.T) {
 	}
 
 	callCtx, cancel := context.WithCancel(context.Background())
+	// The manifest timeout protects process lifecycle calls, not the tool's
+	// execution. Keep this below the wait so the test catches accidental reuse.
+	client.config.Timeout = 50 * time.Millisecond
 	first := make(chan error, 1)
 	go func() {
 		_, callErr := client.ExecuteTool(callCtx, ToolExecuteParams{
@@ -405,6 +408,11 @@ func TestProcessClientCancelReachesPluginExecution(t *testing.T) {
 		first <- callErr
 	}()
 	time.Sleep(150 * time.Millisecond)
+	select {
+	case callErr := <-first:
+		t.Fatalf("tool execution inherited the process timeout: %v", callErr)
+	default:
+	}
 	cancel()
 	if callErr := <-first; callErr == nil || !errors.Is(callErr, context.Canceled) {
 		t.Fatalf("first call error = %v, want context.Canceled", callErr)
