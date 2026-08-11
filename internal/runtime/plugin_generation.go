@@ -278,11 +278,7 @@ func (s *Session) applyPluginGeneration(generation *PluginGeneration) {
 	s.PluginHost = generation.host
 	s.systemPrompts = generation.systemPrompts
 	if s.StreamRunner != nil {
-		inner := s.StreamRunner.Tools
-		if previous, ok := inner.(*pluginToolExecutor); ok {
-			inner = previous.inner
-		}
-		s.StreamRunner.Tools = newPluginToolExecutor(inner, generation.host, "", s.RootDir)
+		s.StreamRunner.Tools = replacePluginToolHost(s.StreamRunner.Tools, generation.host, "", s.RootDir)
 		s.StreamRunner.BeforeModelStep = pluginPreStepInjector(generation.host, s.ProviderName, s.Model, "", s.RootDir)
 		s.StreamRunner.BeforeRequest = pluginRequestInterceptorWithTransforms(generation.host, generation.requestTransforms, s.ProviderName, "", s.RootDir)
 		s.StreamRunner.CompactionRegistry = generation.compactions

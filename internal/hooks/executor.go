@@ -86,6 +86,25 @@ func (h *HookedExecutor) ToolMetadata(call providers.ToolCall) (agent.ToolMetada
 	return agent.ToolMetadata{}, false
 }
 
+func (h *HookedExecutor) ToolDisplay(call providers.ToolCall) (providers.ToolCallDisplay, bool) {
+	if dp, ok := h.inner.(agent.ToolDisplayProvider); ok {
+		return dp.ToolDisplay(call)
+	}
+	return providers.ToolCallDisplay{}, false
+}
+
+// Inner exposes the decorated executor so host-owned composition layers can be
+// replaced without dropping this hook lifecycle.
+func (h *HookedExecutor) Inner() ToolExecutor { return h.inner }
+
+// WithInner returns the same hook configuration around a replacement executor.
+func (h *HookedExecutor) WithInner(inner ToolExecutor) *HookedExecutor {
+	if h == nil {
+		return nil
+	}
+	return NewHookedExecutor(inner, h.dispatcher, h.sessionID, h.cwd)
+}
+
 func (h *HookedExecutor) AuthorizeTool(ctx context.Context, call providers.ToolCall, metadata agent.ToolMetadata) error {
 	if gate, ok := h.inner.(agent.ToolAuthorizationGate); ok {
 		return gate.AuthorizeTool(ctx, call, metadata)

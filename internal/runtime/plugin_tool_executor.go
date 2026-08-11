@@ -8,6 +8,7 @@ import (
 
 	"github.com/blueberrycongee/wuu/internal/agent"
 	"github.com/blueberrycongee/wuu/internal/agentthread"
+	"github.com/blueberrycongee/wuu/internal/hooks"
 	"github.com/blueberrycongee/wuu/internal/loopdriver"
 	"github.com/blueberrycongee/wuu/internal/pluginhost"
 	"github.com/blueberrycongee/wuu/internal/providers"
@@ -28,6 +29,28 @@ func newPluginToolExecutor(inner agent.ToolExecutor, host *pluginhost.Host, thre
 		return inner
 	}
 	return &pluginToolExecutor{inner: inner, host: host, threadID: threadID, cwd: cwd}
+}
+
+func newPluginAwareToolExecutor(inner agent.ToolExecutor, host *pluginhost.Host, dispatcher *hooks.Dispatcher, pluginThreadID, hookSessionID, cwd string) agent.ToolExecutor {
+	executor := newPluginToolExecutor(inner, host, pluginThreadID, cwd)
+	if dispatcher != nil {
+		executor = hooks.NewHookedExecutor(executor, dispatcher, hookSessionID, cwd)
+	}
+	return executor
+}
+
+func replacePluginToolHost(executor agent.ToolExecutor, host *pluginhost.Host, threadID, cwd string) agent.ToolExecutor {
+	if hooked, ok := executor.(*hooks.HookedExecutor); ok {
+		inner := hooked.Inner()
+		if previous, ok := inner.(*pluginToolExecutor); ok {
+			inner = previous.inner
+		}
+		return hooked.WithInner(newPluginToolExecutor(inner, host, threadID, cwd))
+	}
+	if previous, ok := executor.(*pluginToolExecutor); ok {
+		executor = previous.inner
+	}
+	return newPluginToolExecutor(executor, host, threadID, cwd)
 }
 
 func (e *pluginToolExecutor) Definitions() []providers.ToolDefinition {

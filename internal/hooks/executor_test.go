@@ -46,6 +46,12 @@ type richStubExecutor struct {
 	result toolresult.Result
 }
 
+type displayStubExecutor struct{ stubExecutor }
+
+func (s *displayStubExecutor) ToolDisplay(call providers.ToolCall) (providers.ToolCallDisplay, bool) {
+	return providers.ToolCallDisplay{Text: "display " + call.Name}, true
+}
+
 func (s *richStubExecutor) ExecuteResult(_ context.Context, call providers.ToolCall) (toolresult.Result, error) {
 	s.calls = append(s.calls, call)
 	return s.result.Clone(), s.err
@@ -72,6 +78,14 @@ func TestHookedExecutor_PassThrough(t *testing.T) {
 	}
 	if len(inner.calls) != 1 {
 		t.Fatal("inner should be called once")
+	}
+}
+
+func TestHookedExecutorForwardsToolDisplay(t *testing.T) {
+	exec := NewHookedExecutor(&displayStubExecutor{}, NewDispatcher(NewRegistry(nil)), "sess-1", "/tmp")
+	display, ok := exec.ToolDisplay(providers.ToolCall{Name: "plugin_tool"})
+	if !ok || display.Text != "display plugin_tool" {
+		t.Fatalf("display = %+v ok = %v", display, ok)
 	}
 }
 

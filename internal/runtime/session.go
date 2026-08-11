@@ -451,8 +451,7 @@ func NewSession(opts Options) (*Session, error) {
 			})
 		})
 		toolkit = kit
-		toolExecutor = hooks.NewHookedExecutor(kit, hookDispatcher, "", rootDir)
-		toolExecutor = newPluginToolExecutor(toolExecutor, pluginHost, "", rootDir)
+		toolExecutor = newPluginAwareToolExecutor(kit, pluginHost, hookDispatcher, "", "", rootDir)
 		connectMCPServers(cfg, activePlugins, toolkit)
 	}
 
@@ -1280,8 +1279,7 @@ func (s *Session) NewThreadRuntimeForRoot(sessionID, rootDir string) (*ThreadRun
 			agentControl = control
 		}
 		kit.SetAgentControl(agentControl)
-		toolExecutor = hooks.NewHookedExecutor(kit, s.HookDispatcher, "", threadRoot)
-		toolExecutor = newPluginToolExecutor(toolExecutor, s.PluginHost, id, threadRoot)
+		toolExecutor = newPluginAwareToolExecutor(kit, s.PluginHost, s.HookDispatcher, id, "", threadRoot)
 	}
 
 	runner := cloneStreamRunnerForThread(s.StreamRunner, toolExecutor)

@@ -7,7 +7,6 @@ import (
 	"github.com/blueberrycongee/wuu/internal/agent"
 	"github.com/blueberrycongee/wuu/internal/agentthread"
 	"github.com/blueberrycongee/wuu/internal/config"
-	"github.com/blueberrycongee/wuu/internal/hooks"
 	"github.com/blueberrycongee/wuu/internal/modelcatalog"
 	"github.com/blueberrycongee/wuu/internal/modelroles"
 	"github.com/blueberrycongee/wuu/internal/modelvariant"
@@ -60,11 +59,7 @@ func (s *Session) NewSideThreadRunner(sideThreadID, rootDir string, selected Thr
 		kit.SetAgentIdentity(id, agentthread.RootPath)
 		kit.SetFileScopeRoots(workspaces.BoundaryRoots(kit.RootDir(), s.WuuHome))
 
-		var toolExecutor agent.ToolExecutor = kit
-		if s.HookDispatcher != nil {
-			toolExecutor = hooks.NewHookedExecutor(toolExecutor, s.HookDispatcher, "", root)
-		}
-		toolExecutor = newPluginToolExecutor(toolExecutor, s.PluginHost, id, root)
+		var toolExecutor agent.ToolExecutor = newPluginAwareToolExecutor(kit, s.PluginHost, s.HookDispatcher, id, "", root)
 		runner.Tools = toolExecutor
 
 		surface := kit.ActiveSurface()

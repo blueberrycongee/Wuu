@@ -7,11 +7,13 @@ import (
 	"testing"
 
 	"github.com/blueberrycongee/wuu/internal/agent"
+	"github.com/blueberrycongee/wuu/internal/hooks"
 	"github.com/blueberrycongee/wuu/internal/pluginhost"
 	"github.com/blueberrycongee/wuu/internal/providers"
 	"github.com/blueberrycongee/wuu/internal/toolctx"
 	"github.com/blueberrycongee/wuu/internal/toolerrors"
 	"github.com/blueberrycongee/wuu/internal/toolresult"
+	"github.com/blueberrycongee/wuu/internal/tools"
 )
 
 type recordingToolExecutor struct {
@@ -41,6 +43,13 @@ func (e *recordingToolExecutor) AuthorizeTool(_ context.Context, call providers.
 
 type pluginToolTestClient struct {
 	executed bool
+}
+
+type denyPluginAuthorizer struct{ calls int }
+
+func (a *denyPluginAuthorizer) Authorize(context.Context, tools.AuthorizationRequest) (tools.AuthorizationDecision, error) {
+	a.calls++
+	return tools.AuthorizationDecision{Outcome: "deny", Reason: "plugin policy"}, nil
 }
 
 func (c *pluginToolTestClient) ID() string { return "policy-tool" }
@@ -132,5 +141,79 @@ func TestPluginToolExecutorAuthorizesBeforeDispatch(t *testing.T) {
 	_, err := executor.Execute(context.Background(), providers.ToolCall{Name: name, Arguments: `{}`})
 	if err == nil || client.executed || len(inner.authorized) != 1 {
 		t.Fatalf("error = %v executed = %v authorized = %+v", err, client.executed, inner.authorized)
+	}
+}
+
+func TestPluginToolExecutorUsesToolkitBoundaryAndAuthorizer(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		configure func(*tools.Toolkit) *denyPluginAuthorizer
+		wantAuth  int
+	}{
+		{name: "read only boundary", configure: func(kit *tools.Toolkit) *denyPluginAuthorizer {
+			kit.SetBoundary(tools.ReadOnlyBoundary())
+			return nil
+		}},
+		{name: "custom authorizer", configure: func(kit *tools.Toolkit) *denyPluginAuthorizer {
+			authorizer := &denyPluginAuthorizer{}
+			kit.SetAuthorizer(authorizer)
+			return authorizer
+		}, wantAuth: 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			kit, err := tools.New(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			authorizer := tc.configure(kit)
+			client := &pluginToolTestClient{}
+			host := pluginhost.New(client)
+			name := host.ToolDefinitions()[0].Name
+			executor := newPluginToolExecutor(kit, host, "thread", kit.RootDir())
+
+			_, err = executor.Execute(context.Background(), providers.ToolCall{Name: name, Arguments: `{}`})
+			if err == nil || client.executed {
+				t.Fatalf("plugin tool escaped policy: error=%v executed=%v", err, client.executed)
+			}
+			if authorizer != nil && authorizer.calls != tc.wantAuth {
+				t.Fatalf("authorizer calls = %d, want %d", authorizer.calls, tc.wantAuth)
+			}
+		})
+	}
+}
+
+func TestPluginToolExecutorRunsInsideToolHooks(t *testing.T) {
+	client := &pluginToolTestClient{}
+	host := pluginhost.New(client)
+	name := host.ToolDefinitions()[0].Name
+	inner := &recordingToolExecutor{}
+	dispatcher := hooks.NewDispatcher(hooks.NewRegistry(map[hooks.Event][]hooks.HookConfig{
+		hooks.PreToolUse: {{Matcher: name, Command: "exit 2"}},
+	}))
+	executor := newPluginAwareToolExecutor(inner, host, dispatcher, "thread", "thread", "/workspace")
+
+	_, err := executor.Execute(context.Background(), providers.ToolCall{Name: name, Arguments: `{}`})
+	if err == nil || !hooks.IsBlocked(err) {
+		t.Fatalf("expected plugin tool hook denial, got %v", err)
+	}
+	if client.executed || len(inner.authorized) != 0 {
+		t.Fatalf("hook must run before authorization and dispatch: executed=%v authorized=%+v", client.executed, inner.authorized)
+	}
+}
+
+func TestReplacePluginToolHostPreservesHookLayer(t *testing.T) {
+	oldHost := pluginhost.New(&pluginToolTestClient{})
+	newClient := &pluginToolTestClient{}
+	newHost := pluginhost.New(newClient)
+	name := newHost.ToolDefinitions()[0].Name
+	dispatcher := hooks.NewDispatcher(hooks.NewRegistry(map[hooks.Event][]hooks.HookConfig{
+		hooks.PreToolUse: {{Matcher: name, Command: "exit 2"}},
+	}))
+	executor := newPluginAwareToolExecutor(&recordingToolExecutor{}, oldHost, dispatcher, "thread", "thread", "/workspace")
+	executor = replacePluginToolHost(executor, newHost, "thread", "/workspace")
+
+	_, err := executor.Execute(context.Background(), providers.ToolCall{Name: name, Arguments: `{}`})
+	if err == nil || !hooks.IsBlocked(err) || newClient.executed {
+		t.Fatalf("replacement lost hook layer: error=%v executed=%v", err, newClient.executed)
 	}
 }
