@@ -1,13 +1,19 @@
-# Writing plugins
+# Wuu Plugin authoring reference
 
-This guide is for developers extending Wuu: how plugins are packaged, how to
-extend the agent pipeline, how to contribute desktop UI, and how the local
-development loop works. For installing and managing plugins as a user, see
-[Plugins](plugins.md).
+This is the complete Wuu Plugin reference: package shape, Agent protocol, Desktop API,
+generations, local development, and trust boundaries. Use it after choosing a plugin
+type rather than as the first introduction.
 
-Writing your first plugin? Walk through the
-[quickstart](plugin-quickstart.md) to get a working Agent plugin in about ten
-minutes, then come back for the full reference.
+Start from your goal:
+
+- [Extend Wuu](index.md) — compare Skills, MCP, Hooks, and Wuu Plugins;
+- [Agent plugin quickstart](plugin-quickstart.md) — register a model-visible tool;
+- [Desktop plugin quickstart](desktop-plugin-quickstart.md) — add a Composer control;
+- [Desktop UI extension map](desktop-plugins.md) — choose a View, Slot, Presenter, or Surface;
+- [Desktop plugin recipes](plugin-recipes.md) — combine common capabilities.
+
+For user-side installation and management, see [Wuu Plugins](plugins.md). Complete the
+matching quickstart before returning to this reference for exact fields and APIs.
 
 The Wuu plugin platform is local-first: there is no marketplace or central
 registry. Plugins are installed locally as directories or zip packages.
@@ -33,7 +39,7 @@ over private DOM. Window safe areas, navigation structure, tabs, scrolling,
 overflow, keyboard, and recovery paths stay with the host. High-trust
 capabilities such as Surface replacement are an escape hatch for complex
 structural customization, not the default entry point for ordinary controls.
-See the [plugin system architecture](../../zh-cn/customize/plugin-system.md)
+See the [plugin system architecture](plugin-system.md)
 document (currently in Chinese) for the overall design and
 interface-selection principles.
 
@@ -319,8 +325,10 @@ Security policy and process isolation are separate extension seams:
 The Go SDK exports `AuthorizationService()` and
 `ProcessSandboxProviderService()`; the TypeScript SDK exports matching service
 descriptors and request/result types. When no provider exists, Wuu keeps its
-built-in policy and platform sandbox. Once a custom provider is selected, its
-failure never falls back to unrestricted execution: unknown authorization
+built-in policy and platform sandbox. If the platform has no built-in sandbox,
+confined modes require a provider and fail before execution when none is
+available; only explicit unconfined mode bypasses confinement. Once a custom
+provider is selected, its failure never falls back to unrestricted execution: unknown authorization
 outcomes are denied, and empty or relative sandbox argv, provider errors, and
 partial enforcement stop the process before it starts. Authorization providers
 return policy decisions only; interactive approval is a separate host concern.

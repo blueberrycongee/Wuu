@@ -1,8 +1,11 @@
-# 快速上手：第一个插件
+# Agent 插件快速上手
 
 本教程带你用 10 分钟做出第一个可用的 Agent 插件：它注册一个模型可见的工具，
 用命名空间 Storage 持久化计数，跑通"生成 → 构建 → 热重载 → 打包 → 审批 → 启用"
 的完整闭环。更完整的参考见[编写插件](plugin-authoring.md)。
+
+想先修改桌面界面？改走[Desktop 插件快速上手](desktop-plugin-quickstart.md)。不确定
+Skill、MCP、Hook 和插件怎样选？先看[扩展 Wuu](index.md)。
 
 ## 前置条件
 

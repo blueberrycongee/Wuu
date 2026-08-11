@@ -5,6 +5,10 @@ plugin system: how feature plugins and appearance plugins compose, what the host
 the plugins each own, and when a developer should choose a settings Schema, a View,
 the UI Kit, a Slot, a Presenter, a Surface, or an Agent capability.
 
+This is a design document for platform maintainers and advanced plugin authors. If you
+are extending Wuu for the first time, start with [Extend Wuu](index.md). For a UI
+plugin, start with the [Desktop UI extension map](desktop-plugins.md).
+
 If you only want to install and manage plugins, read [plugins](plugins.md); if you are
 about to write a plugin, read [writing plugins](plugin-authoring.md). This page
 explains why these APIs exist and how they work together; it does not repeat the full

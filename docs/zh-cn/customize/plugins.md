@@ -1,22 +1,36 @@
-# 插件
+# Wuu Plugin
 
-插件让 Wuu 在保持宿主安全内核的前提下被重新组装：换主题、加设置、扩展 Agent 的
-工具与策略、在桌面界面做有边界的结构贡献。插件平台当前是本地优先的——没有市场或
-中心仓库，插件以目录或 zip 包的形式在本地安装。
+Wuu Plugin 是一个可安装、可审批、可升级的扩展包。它可以只提供一种能力，也可以把
+Agent runtime、Desktop UI、主题、设置、Skills、Hooks、MCP server 和命令一起交付。
 
-插件分三类，信任成本不同：
+如果你还不确定是否需要插件，先看[扩展 Wuu](index.md)。一个只需要任务说明的需求适合
+Skill，一个已有工具服务适合 MCP；需要代码生命周期、宿主服务或桌面 UI 时才需要
+Wuu Plugin。
+
+插件平台当前是本地优先的：没有市场或中心仓库，插件以目录或 zip 包安装。插件作者
+通常在自己的 GitHub 仓库中开发和发布，使用者不需要 fork Wuu。
+
+## 一个插件包可以包含什么
 
 | 类型 | 做什么 | 是否需要代码 |
 | --- | --- | --- |
-| 声明式主题与设置 | 在 `plugin.json` 中声明，无需执行插件代码 | 否 |
-| Agent 插件 | 注册工具、贡献系统提示与模型前置上下文、变换请求、观察 Turn 生命周期 | 是，独立进程 |
-| 桌面插件 | 注册样式、替换或包装稳定 UI Surface | 是，Renderer 代码 |
+| 声明式贡献 | 主题、设置、Skills、Hooks、MCP servers 和命令 | 视贡献而定 |
+| Agent 插件 | 注册工具、贡献上下文、变换请求、观察 Turn、提供或消费服务 | 是，独立进程 |
+| Desktop 插件 | 添加 View、Slot、Presenter、Surface、样式和交互卡片 | 是，Renderer 代码 |
+
+同一个包可以同时声明 `runtime` 和 `desktop.entry`。例如，Agent runtime 负责查询私有
+服务，Desktop 模块负责展示结果；两部分共享插件 ID、审批状态和 generation 生命周期。
 
 插件管理、审批、安全模式、崩溃恢复、权限底线和原生窗口生命周期始终由 Wuu 控制，
 插件不能替换这些恢复路径。强风格外观插件可以通过公开 Token、UI Kit 和语义锚点统一改变
 整个产品，但窗口安全区、导航结构、Tab、滚动、溢出和恢复入口仍由宿主管理。
 
-功能插件、外观插件与宿主如何组合，见[插件系统架构](plugin-system.md)。
+第一次开发时直接选择一条路径：
+
+- [Agent 插件快速上手](plugin-quickstart.md)：注册模型可见工具并调用宿主 Storage；
+- [Desktop 插件快速上手](desktop-plugin-quickstart.md)：在 Composer 加入一个真实按钮；
+- [Desktop UI 扩展地图](desktop-plugins.md)：按界面位置选择 View、Slot、Presenter 或 Surface；
+- [插件场景教程](plugin-recipes.md)：输入框按钮、选区浮层和完整面板等组合方式。
 
 ## 获取与安装
 
@@ -53,7 +67,7 @@ wuu plugin inspect ./path/to/plugin   # 安装前检查包内容与 fingerprint
 
 `wuu plugin inspect` 适合在安装前查看包会做什么、请求哪些权限。
 
-## 插件能做什么
+## 常见能力
 
 - **换主题**：获批且启用的插件主题出现在"设置 → 外观"，禁用或切回内置主题时
   Token 被完整移除。主题只需要 `plugin.json` 声明，不执行代码。
@@ -67,6 +81,8 @@ wuu plugin inspect ./path/to/plugin   # 安装前检查包内容与 fingerprint
 - **定制桌面界面**：注册全局样式、在稳定区域放置可持久化的 View、替换或包装语义
   Presenter（消息、工具活动、导航、设置等）、在固定 Slot 插入内容。渲染失败只回退
   当前边界，设置、禁用和默认 UI 恢复始终可用。
+- **组合多种扩展**：插件包可以携带 Skills、Hooks 和 MCP server 定义，让安装、审批、
+  启用、更新和卸载使用同一条生命周期。
 
 ## 信任边界
 
@@ -88,8 +104,22 @@ wuu plugin inspect ./path/to/plugin   # 安装前检查包内容与 fingerprint
 拒绝同时启用；`conflicts` 只显示潜在冲突提示，不会替你选择或自动停用插件。当前不做
 版本范围、SAT 求解或组合评分。
 
-## 编写插件
+## 开发与发布
 
-要开发自己的插件，阅读[编写插件](plugin-authoring.md)：包结构与 manifest、Agent
-插件与桌面插件的 API、本地开发闭环（`wuu plugin create/build/test/dev/pack`）以及
-仓库中可直接安装和开发的示例。想直接上手？先走一遍[快速上手](plugin-quickstart.md)。
+CLI 提供完整的本地开发闭环：
+
+```bash
+wuu plugin create --type agent my-agent
+wuu plugin create --type desktop my-ui
+wuu plugin create --type full my-extension
+
+wuu plugin validate ./my-extension
+wuu plugin build ./my-extension
+wuu plugin test ./my-extension
+wuu plugin dev ./my-extension
+wuu plugin pack ./my-extension
+```
+
+完整 manifest、Agent 协议、Desktop API、generation 和安全边界见
+[插件开发参考](plugin-authoring.md)。底层设计和宿主所有权见
+[插件系统架构](plugin-system.md)。

@@ -32,11 +32,12 @@ project files or run project commands, add a real workspace.
   subagents](desktop/subagents.md), [group chats and named-agent
   collaboration](desktop/collaboration.md), and [slash commands and background
   tasks](reference/agent-command-system.md).
-- **Reuse and reshape how you work:** [skills](customize/skills.md),
-  [memory](customize/memory.md), [dream background memory
-  integration](customize/dream.md), and [desktop UI plugins](customize/plugins.md).
+- **Extend Wuu:** start with the [extension overview](customize/index.md), then choose
+  [Skills](customize/skills.md), [MCP](customize/mcp.md), [Hooks](customize/hooks.md),
+  or [Wuu Plugins](customize/plugins.md).
+- **Keep durable preferences:** [memory](customize/memory.md) and
+  [dream background memory integration](customize/dream.md).
 - **Run on a schedule:** [automations](automation/scheduled-tasks.md).
-- **Connect external tools:** [MCP servers](customize/mcp.md).
 - **Control local permissions:** [permission modes](reference/permissions.md) and the
   [security model](reference/security-model.md).
 - **Wire into scripts and CI:** [automate with `wuu exec`](automation/exec.md) and

@@ -1,0 +1,141 @@
+# Desktop UI 插件
+
+Desktop 插件是在 Wuu Renderer 中加载的受信任 ESM 模块。它可以使用宿主 React 和 UI Kit，
+在稳定的界面边界注册组件、页面、样式和动作，而不需要 fork Wuu 或修改宿主源码。
+
+本页先建立 UI 组合模型。完整类型和 manifest 见[插件开发参考](plugin-authoring.md)，可复制的
+实现见[插件场景教程](plugin-recipes.md)。
+
+## Wuu 的 UI 怎样被插件扩展
+
+Wuu 保留 App Shell、窗口安全区、导航结构、滚动、Tab、插件管理和恢复路径的最终所有权。
+宿主在这些结构中提供不同粒度的语义边界：
+
+```text
+Wuu Desktop
+├── Sidebar
+│   ├── sidebar.primary                 Slot
+│   └── sidebar.footer                  Slot
+├── Workspace
+│   ├── workspace.header                Slot
+│   └── View regions                    View
+└── Conversation
+    ├── conversation.header             Slot / Presenter
+    ├── conversation.timeline           Surface
+    │   └── conversation.message        Surface / Presenter
+    │       ├── conversation.message.before   Slot
+    │       └── conversation.message.after    Slot
+    └── conversation.composer           Presenter
+        ├── composer.above               Slot
+        └── composer.toolbar             Slot
+```
+
+插件在运行时注册贡献，Wuu 把它们和原生 UI 组合。禁用、升级或卸载插件时，当前 generation
+的全部贡献一起移除。
+
+## 按目标选择机制
+
+| 目标 | 使用 | 例子 |
+| --- | --- | --- |
+| 在一个固定位置增加小控件 | Slot | Composer 按钮、消息尾部标记、Header 状态 |
+| 改造一个具体产品概念 | Presenter | Composer、消息项、工具活动卡片 |
+| 包装或替换一段较大的语义区域 | Surface | 对话时间线、单条消息边界 |
+| 增加完整页面或复杂工具 | View | Dashboard、历史列表、编辑器、可视化面板 |
+| 在环境面板显示短摘要 | Inspector Section | 运行状态、计划摘要、仓库信息 |
+| 在对话底部显示临时交互 | Conversation Card | 一次命令的状态和操作 |
+| 只改变主题或样式 | Theme tokens / CSS snippets | 配色、字体、密度、语义装饰 |
+
+优先使用能完成需求的最小边界。一个按钮不要替换整个 Composer；长列表不要塞进工具栏。
+
+## Slot：在固定位置增加内容
+
+当前生产 Slot：
+
+| Slot | 位置 |
+| --- | --- |
+| `sidebar.primary` | 侧栏主要内容区 |
+| `sidebar.footer` | 侧栏底部 |
+| `workspace.header` | 工作区 Header |
+| `conversation.header` | 对话 Header |
+| `conversation.message.before` | 每条消息之前 |
+| `conversation.message.after` | 每条消息之后 |
+| `composer.above` | Composer 上方 |
+| `composer.toolbar` | Composer 工具栏 |
+
+Slot 是增量贡献，不接管原生边界。多个插件可以按 `order` 一起出现。
+
+## Presenter：改造一个产品概念
+
+Presenter 收到四样东西：版本化 snapshot、当前边界可用的 `host.actions`、原生 `fallback`，
+以及目标和匹配 key。`mode: "wrap"` 保留并包装当前结果；`mode: "replace"` 接管整个边界。
+
+主要目标包括：
+
+- `conversation.item`
+- `conversation.process`
+- `conversation.tool-activity`
+- `conversation.composer`
+- `header.conversation`
+- `header.workspace`
+- `navigation.primary`
+- `app.status`
+- `content.preview`
+- `settings`
+
+Action 不是全局权限。只有列在当前 presenter `host.actions` 中的动作才可调用。例如 Composer
+边界会按当前状态提供设置草稿、提交、停止或附件动作；只读和禁用状态仍由宿主校验。
+
+## Surface：包装较大的语义边界
+
+当前生产 Surface：
+
+| Surface | 范围 |
+| --- | --- |
+| `conversation.timeline` | 一个 Turn 的时间线和编排组 |
+| `conversation.message` | 一条经过脱敏的消息边界 |
+
+Surface 适合结构包装和强视觉变化，不适合只添加一个按钮。每个 Surface 都有原生 fallback；
+插件渲染失败时只回退当前边界。
+
+## View：增加完整页面
+
+插件先用 `registerViewType` 注册组件，再用 `registerViewPlacement` 请求初始区域：
+
+- `navigation`
+- `primary`
+- `auxiliary`
+- `inspector`
+- `settings`
+- `overlay`
+
+宿主负责 Tab、关闭、滚动、持久化和区域布局。插件不会获得任意父节点、分割树或面板尺寸。
+面向用户的导航、工作区工具和设置入口应在 manifest 中声明，指向同一插件注册的 View。
+
+## 可以使用标准 Web API
+
+Desktop 插件是 Renderer 中的受信任代码，因此可以使用 `selectionchange`、
+`window.getSelection()`、`ResizeObserver`、`IntersectionObserver` 等标准 Web API。
+
+标准 Web API 不等于可以依赖私有宿主结构。需要判断位置或添加 CSS 时，使用公开语义锚点：
+
+```text
+data-wuu-component="turn"
+data-wuu-component="message"
+data-wuu-component="composer"
+data-wuu-component="composer-input"
+data-wuu-component="composer-send"
+data-wuu-slot="..."
+data-wuu-surface="..."
+```
+
+不要依赖私有 class、React fiber、组件层级或模拟键盘事件。语义锚点由生产测试约束；私有
+DOM 只适合本地实验，不属于兼容承诺。
+
+## 宿主仍然拥有的边界
+
+插件不能替换或隐藏插件管理、安全模式、崩溃恢复、权限底线和原生窗口生命周期。
+Desktop 代码和任意 CSS 具有高信任成本，只安装可信来源。插件包每次变化都会产生新的
+fingerprint，并要求重新批准。
+
+下一步：完成[Desktop 插件快速上手](desktop-plugin-quickstart.md)，再按实际需求查看
+[插件场景教程](plugin-recipes.md)。

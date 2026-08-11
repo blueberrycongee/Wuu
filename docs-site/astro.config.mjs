@@ -55,7 +55,6 @@ export default defineConfig({
       components: {
         Head: "./src/components/Head.astro",
         LanguageSelect: "./src/components/LanguageMenu.astro",
-        Search: "./src/components/EmptySearch.astro",
         ThemeSelect: "./src/components/ThemeMenu.astro",
       },
       social: [

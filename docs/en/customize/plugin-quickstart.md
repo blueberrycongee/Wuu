@@ -1,9 +1,13 @@
-# Quickstart: your first plugin
+# Agent plugin quickstart
 
 This tutorial gets you to a working Agent plugin in about ten minutes: it
 registers a model-visible tool, persists a counter in namespaced Storage, and
 walks the full loop of generate → build → hot reload → pack → approve →
 enable. For the complete reference, see [Writing plugins](plugin-authoring.md).
+
+Want to change the desktop UI first? Follow the
+[Desktop plugin quickstart](desktop-plugin-quickstart.md). Not sure whether to use a
+Skill, MCP, Hook, or plugin? Start with [Extend Wuu](index.md).
 
 ## Prerequisites
 

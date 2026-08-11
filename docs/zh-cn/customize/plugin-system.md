@@ -4,6 +4,9 @@
 分别负责什么，以及开发者应该在什么时候选择设置 Schema、View、UI Kit、Slot、Presenter、
 Surface 或 Agent 能力。
 
+这是一篇面向平台维护者和复杂插件作者的设计文档。第一次扩展 Wuu 时先阅读
+[扩展 Wuu](index.md)；开发 UI 插件时先看[Desktop UI 扩展地图](desktop-plugins.md)。
+
 如果你只想安装和管理插件，阅读[插件](plugins.md)；如果你准备编写插件，阅读
 [编写插件](plugin-authoring.md)。本文说明这些 API 为什么存在、怎样协作，不重复完整 API。
 

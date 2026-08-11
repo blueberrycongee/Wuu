@@ -1,10 +1,19 @@
-# 编写插件
+# Wuu Plugin 开发参考
 
-本文面向要扩展 Wuu 的开发者：插件如何打包、Agent 链路如何扩展、桌面界面如何贡献、
-以及本地开发闭环怎么跑。用户侧的安装与管理见[插件总览](plugins.md)。
+本文是 Wuu Plugin 的完整开发参考：包结构、Agent 协议、Desktop API、generation、
+本地开发闭环和信任边界。它适合在你已经选定插件类型后查字段和接口，不是推荐的第一篇。
 
-第一次写插件？先走一遍[快速上手](plugin-quickstart.md)，10 分钟做出第一个可用的
-Agent 插件，再回来看完整参考。
+先按目标选择入口：
+
+- [扩展 Wuu](index.md)：比较 Skill、MCP、Hook 和 Wuu Plugin；
+- [Agent 插件快速上手](plugin-quickstart.md)：注册第一个模型可见工具；
+- [Desktop 插件快速上手](desktop-plugin-quickstart.md)：给 Composer 添加控件；
+- [Desktop UI 扩展地图](desktop-plugins.md)：选择 View、Slot、Presenter 或 Surface；
+- [插件场景教程](plugin-recipes.md)：查看常见能力怎样组合。
+
+用户侧的安装、审批和管理见[Wuu Plugin](plugins.md)。
+
+第一次写 Agent 插件或 Desktop 插件时，先走对应的快速上手，再回来看本页。
 
 Wuu 插件平台当前是本地优先的：没有市场、没有中心仓库。插件以目录或 zip 包的形式
 在本地安装，开发者通常在自己的 GitHub 仓库中维护，用户 clone 或下载后在 Wuu 中安装。
