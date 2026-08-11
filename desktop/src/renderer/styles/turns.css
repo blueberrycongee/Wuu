@@ -3117,6 +3117,7 @@
 }
 
 .rich-mermaid-diagram {
+  appearance: none;
   display: grid;
   width: 100%;
   height: 360px;
@@ -3124,6 +3125,14 @@
   place-items: center;
   overflow: hidden;
   margin-inline: auto;
+  color: inherit;
+  cursor: zoom-in;
+  font: inherit;
+}
+
+.rich-mermaid-diagram:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .rich-mermaid-diagram svg {

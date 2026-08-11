@@ -1103,6 +1103,8 @@ export const enUS = {
   "rich.enlargeNamed": "Enlarge: {alt}",
   "rich.enlargeImage": "Enlarge image",
   "rich.mermaidFailed": "Could not render the Mermaid diagram",
+  "rich.enlargeDiagram": "Open diagram preview",
+  "rich.mermaidDiagram": "Mermaid diagram",
   "rich.renderingDiagram": "Rendering diagram",
   "contextMenu.cut": "Cut",
   "contextMenu.copy": "Copy",

@@ -1458,6 +1458,7 @@ function base64URL(value: string): string {
 
 function MermaidDiagram({ code }: { code: string }): JSX.Element {
   const { locale, t } = useI18n();
+  const { openPreview } = useImagePreview();
   const reactID = useId();
   const diagramID = useMemo(() => `wuu-mermaid-${reactID.replace(/[^a-zA-Z0-9_-]/g, "")}-${hashString(code)}`, [code, reactID]);
   const [theme, setTheme] = useState<AppliedTheme>(currentAppliedTheme);
@@ -1499,7 +1500,20 @@ function MermaidDiagram({ code }: { code: string }): JSX.Element {
   }, [code, diagramID, locale, theme]);
 
   if (state.status === "rendered") {
-    return <div className="rich-mermaid rich-mermaid-diagram" dangerouslySetInnerHTML={{ __html: state.svg }} />;
+    return (
+      <button
+        type="button"
+        className="rich-mermaid rich-mermaid-diagram"
+        aria-label={t("rich.enlargeDiagram")}
+        title={t("rich.enlargeDiagram")}
+        onClick={() => openPreview({
+          src: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(state.svg)}`,
+          alt: t("rich.mermaidDiagram"),
+          title: t("rich.mermaidDiagram"),
+        })}
+        dangerouslySetInnerHTML={{ __html: state.svg }}
+      />
+    );
   }
   if (state.status === "error") {
     return (

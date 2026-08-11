@@ -119,7 +119,7 @@ describe("RichContent code block", () => {
   });
 
   it("rerenders Mermaid diagrams when the applied theme changes", async () => {
-    render(<RichContent text={"```mermaid\ngraph TD\nA --> B\n```"} />);
+    renderWithImagePreview(<RichContent text={"```mermaid\ngraph TD\nA --> B\n```"} />);
 
     await act(async () => {
       await vi.waitFor(() => {
@@ -153,6 +153,25 @@ describe("RichContent code block", () => {
         }),
       }),
     );
+  });
+
+  it("opens a rendered Mermaid diagram in the shared image preview", async () => {
+    renderWithImagePreview(<RichContent text={"```mermaid\ngraph LR\nA --> B\n```"} />);
+
+    await act(async () => {
+      await vi.waitFor(() => {
+        expect(mermaidRender).toHaveBeenCalledTimes(1);
+      });
+    });
+    expect(container.querySelector(".rich-mermaid-diagram svg")).not.toBeNull();
+
+    act(() => {
+      (container.querySelector(".rich-mermaid-diagram") as HTMLButtonElement).click();
+    });
+
+    const previewImage = document.body.querySelector(".image-preview-image") as HTMLImageElement | null;
+    expect(document.body.querySelector(".image-preview-overlay")).not.toBeNull();
+    expect(previewImage?.src).toContain("data:image/svg+xml");
   });
 
   it("renders an explicit markdown-link file reference as a clickable workspace file link", () => {

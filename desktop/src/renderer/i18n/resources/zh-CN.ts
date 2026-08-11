@@ -1101,6 +1101,8 @@ export const zhCN = {
   "rich.enlargeNamed": "放大查看：{alt}",
   "rich.enlargeImage": "放大查看图片",
   "rich.mermaidFailed": "无法渲染 Mermaid 图",
+  "rich.enlargeDiagram": "查看流程图大图",
+  "rich.mermaidDiagram": "Mermaid 流程图",
   "rich.renderingDiagram": "正在渲染图表",
   "contextMenu.cut": "剪切",
   "contextMenu.copy": "复制",
