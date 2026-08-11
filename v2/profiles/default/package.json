@@ -1,0 +1,30 @@
+{
+  "name": "@wuu-v2/profile-default",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./host": "./src/host.ts",
+    "./client": "./src/client.ts"
+  },
+  "dependencies": {
+    "@wuu-v2/client-runtime": "0.0.0",
+    "@wuu-v2/kernel": "0.0.0",
+    "@wuu-v2/plugin-agent-runtime": "0.0.0",
+    "@wuu-v2/plugin-composer": "0.0.0",
+    "@wuu-v2/plugin-context-projection": "0.0.0",
+    "@wuu-v2/plugin-conversation": "0.0.0",
+    "@wuu-v2/plugin-default-agent-loop": "0.0.0",
+    "@wuu-v2/plugin-layout": "0.0.0",
+    "@wuu-v2/plugin-model-session": "0.0.0",
+    "@wuu-v2/plugin-permission-session": "0.0.0",
+    "@wuu-v2/plugin-projection-feed": "0.0.0",
+    "@wuu-v2/plugin-prompt-core": "0.0.0",
+    "@wuu-v2/plugin-provider-openai": "0.0.0",
+    "@wuu-v2/plugin-provider-scripted": "0.0.0",
+    "@wuu-v2/plugin-session-jsonl": "0.0.0",
+    "@wuu-v2/plugin-side": "0.0.0",
+    "@wuu-v2/plugin-slash": "0.0.0",
+    "@wuu-v2/plugin-tools-basic": "0.0.0"
+  }
+}

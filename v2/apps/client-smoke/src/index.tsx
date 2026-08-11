@@ -8,6 +8,10 @@ import {
   clientKernelPlugin,
   type Plugin,
 } from "@wuu-v2/client-runtime";
+import {
+  arriveDefaultClientProfile,
+  buildDefaultClientBootManifest,
+} from "@wuu-v2/profile-default/client";
 import type {} from "@wuu-v2/plugin-slash/client-api";
 
 const sessionId = "client-smoke";
@@ -15,13 +19,8 @@ const ctx = new Context();
 const kernel = await ctx.plugin(clientKernelPlugin);
 const modules = new ClientModuleSystem(ctx);
 
-modules.arrive("layout", "1", () => import("@wuu-v2/plugin-layout/client"));
-modules.arrive("conversation", "1", () => import("@wuu-v2/plugin-conversation/client"));
-modules.arrive("composer", "1", () => import("@wuu-v2/plugin-composer/client"));
-modules.arrive("slash", "1", () => import("@wuu-v2/plugin-slash/client"));
-modules.arrive("model-session", "1", () => import("@wuu-v2/plugin-model-session/client"));
-modules.arrive("permission-session", "1", () => import("@wuu-v2/plugin-permission-session/client"));
-modules.arrive("side", "1", () => import("@wuu-v2/plugin-side/client"));
+const manifest = await buildDefaultClientBootManifest();
+arriveDefaultClientProfile(modules, manifest);
 modules.arrive("smoke-command", "1", async () => {
   const plugin: Plugin = function smokeCommand(client) {
     client.slashCommands.register({
@@ -37,13 +36,7 @@ modules.arrive("smoke-command", "1", async () => {
 
 try {
   await modules.activateAll([
-    "layout",
-    "conversation",
-    "composer",
-    "slash",
-    "model-session",
-    "permission-session",
-    "side",
+    ...manifest.map(({ id }) => id),
     "smoke-command",
   ]);
   const disconnect = ctx.clientActions.connect(async (action, input) => {

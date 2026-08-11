@@ -13,5 +13,5 @@
     "resolveJsonModule": true,
     "types": ["node"]
   },
-  "include": ["apps/**/*.ts", "apps/**/*.tsx", "packages/**/*.ts", "packages/**/*.tsx", "plugins/**/*.ts", "plugins/**/*.tsx"]
+  "include": ["apps/**/*.ts", "apps/**/*.tsx", "packages/**/*.ts", "packages/**/*.tsx", "plugins/**/*.ts", "plugins/**/*.tsx", "profiles/**/*.ts", "profiles/**/*.tsx"]
 }

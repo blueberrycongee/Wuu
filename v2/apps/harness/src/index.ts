@@ -2,20 +2,7 @@ import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AgentSessionRecord } from "@wuu-v2/contracts";
-import { agentRuntimePlugin } from "@wuu-v2/plugin-agent-runtime";
-import { contextProjectionPlugin } from "@wuu-v2/plugin-context-projection";
-import { conversationProjectionPlugin } from "@wuu-v2/plugin-conversation";
-import { defaultAgentLoopPlugin } from "@wuu-v2/plugin-default-agent-loop";
-import modelSessionHost from "@wuu-v2/plugin-model-session/host";
-import permissionSessionHost from "@wuu-v2/plugin-permission-session/host";
-import { corePromptPlugin } from "@wuu-v2/plugin-prompt-core";
-import { projectionFeedPlugin } from "@wuu-v2/plugin-projection-feed";
-import { openAIProviderPlugin } from "@wuu-v2/plugin-provider-openai";
-import { scriptedProviderPlugin } from "@wuu-v2/plugin-provider-scripted";
-import { jsonlSessionPlugin } from "@wuu-v2/plugin-session-jsonl";
-import sideHost from "@wuu-v2/plugin-side/host";
-import { basicToolsPlugin } from "@wuu-v2/plugin-tools-basic";
-import { createKernelContext, kernelPlugin } from "@wuu-v2/kernel";
+import { createDefaultHostProfile } from "@wuu-v2/profile-default/host";
 
 const smoke = process.argv.includes("--smoke");
 const cwd = process.cwd();
@@ -31,56 +18,46 @@ if (!prompt) {
   throw new Error("Pass a prompt or use --smoke");
 }
 
-const ctx = createKernelContext();
-const fibers: Array<{ dispose(): Promise<void> }> = [];
-fibers.push(await ctx.plugin(kernelPlugin));
-fibers.push(await ctx.plugin(jsonlSessionPlugin, { directory }));
-fibers.push(await ctx.plugin(corePromptPlugin, { cwd }));
-fibers.push(await ctx.plugin(basicToolsPlugin, { cwd }));
-fibers.push(await ctx.plugin(contextProjectionPlugin));
-fibers.push(await ctx.plugin(conversationProjectionPlugin));
-fibers.push(await ctx.plugin(projectionFeedPlugin));
-
-let providerId: string;
-if (smoke) {
-  providerId = "scripted";
-  fibers.push(await ctx.plugin(scriptedProviderPlugin, {
-    rounds: [
-      {
-        toolCalls: [{
-          type: "tool_call",
-          callId: "smoke-read",
-          name: "read",
-          input: { path: "package.json" },
-        }],
-      },
-      { text: "Smoke run completed." },
-    ],
-  }));
-} else {
-  providerId = "openai";
-  const apiKey = process.env.WUU_V2_OPENAI_API_KEY;
-  const model = process.env.WUU_V2_MODEL;
-  if (!apiKey || !model) {
-    throw new Error("Set WUU_V2_OPENAI_API_KEY and WUU_V2_MODEL");
-  }
-  fibers.push(await ctx.plugin(openAIProviderPlugin, {
-    apiKey,
-    model,
-    ...(process.env.WUU_V2_OPENAI_BASE_URL
-      ? { baseUrl: process.env.WUU_V2_OPENAI_BASE_URL }
-      : {}),
-  }));
+const apiKey = process.env.WUU_V2_OPENAI_API_KEY;
+const model = process.env.WUU_V2_MODEL;
+if (!smoke && (!apiKey || !model)) {
+  throw new Error("Set WUU_V2_OPENAI_API_KEY and WUU_V2_MODEL");
 }
-fibers.push(await ctx.plugin(agentRuntimePlugin, { agentId: "default" }));
-fibers.push(await ctx.plugin(modelSessionHost, { defaultProviderId: providerId }));
-fibers.push(await ctx.plugin(permissionSessionHost, { defaultMode: "workspace-write" }));
-fibers.push(await ctx.plugin(defaultAgentLoopPlugin, {}));
-fibers.push(await ctx.plugin(sideHost, { agentId: "default" }));
+const runtime = await createDefaultHostProfile({
+  cwd,
+  dataDirectory: directory,
+  provider: smoke
+    ? {
+        kind: "scripted",
+        config: {
+          rounds: [
+            {
+              toolCalls: [{
+                type: "tool_call",
+                callId: "smoke-read",
+                name: "read",
+                input: { path: "package.json" },
+              }],
+            },
+            { text: "Smoke run completed." },
+          ],
+        },
+      }
+    : {
+        kind: "openai",
+        config: {
+          apiKey: apiKey!,
+          model: model!,
+          ...(process.env.WUU_V2_OPENAI_BASE_URL
+            ? { baseUrl: process.env.WUU_V2_OPENAI_BASE_URL }
+            : {}),
+        },
+      },
+});
+const { ctx, providerId } = runtime;
 
 const shutdown = async () => {
-  for (const fiber of fibers.reverse()) await fiber.dispose();
-  await ctx.fiber.dispose();
+  await runtime.dispose();
 };
 process.once("SIGINT", () => void shutdown().finally(() => process.exit(130)));
 process.once("SIGTERM", () => void shutdown().finally(() => process.exit(143)));

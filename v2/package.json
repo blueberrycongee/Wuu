@@ -7,7 +7,8 @@
   "workspaces": [
     "apps/*",
     "packages/*",
-    "plugins/*"
+    "plugins/*",
+    "profiles/*"
   ],
   "scripts": {
     "smoke": "node --import tsx apps/harness/src/index.ts --smoke",
