@@ -154,6 +154,32 @@ api.registerViewPlacement({
 Presenter 应读取公开 snapshot，并始终保留合理 fallback。不要解析私有 ThreadItem、猜测
 工具内部状态或依赖宿主 class 名。
 
+## 添加无需代码的主题
+
+只改颜色、圆角或语法高亮时，在 manifest 中声明主题，不要加载 Desktop 代码：
+
+```json
+{
+  "contributes": {
+    "themes": [
+      {
+        "id": "calm-night",
+        "name": "Calm Night",
+        "base": "dark",
+        "tokens": {
+          "--wuu-color-canvas": "#151820",
+          "--wuu-color-accent": "#8fa7ff"
+        }
+      }
+    ]
+  }
+}
+```
+
+运行 `wuu plugin validate .` 后安装、批准并启用。主题会出现在**设置 → 外观**；切回
+内置主题即可移除覆盖。完整 Token 见[主题 Token 参考](theme-surface-matrix.md)，用户操作见
+[插件主题与设置](themes-settings.md)。
+
 ## 后台工作完成后显示结果
 
 Desktop 模块可以注册 Command，也可以在后台事件或异步任务完成时调用

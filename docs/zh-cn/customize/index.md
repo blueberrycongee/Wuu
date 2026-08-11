@@ -10,6 +10,7 @@ Wuu 提供四种主要扩展方式：Skill、MCP、Hook 和 Wuu Plugin。它们�
 | 让 Agent 按固定步骤完成一类任务 | [Skill](skills.md) | 只提供可复用说明和资源，最轻量 |
 | 接入已有的本地或远程工具服务 | [MCP](mcp.md) | 复用标准 MCP server，不需要改 Wuu |
 | 在工具调用、提交 Prompt 等事件前后执行检查 | [Hook](hooks.md) | 适合团队规则、阻止操作和自动检查 |
+| 只提供主题或宿主渲染的设置项 | [Wuu Plugin](plugins.md) 的声明式贡献 | 不需要加载 Desktop 代码 |
 | 注册新的 Agent 工具、上下文或长期后台行为 | [Wuu Plugin](plugins.md) 的 Agent 部分 | 插件 runtime 可以参与 Agent 生命周期并调用宿主服务 |
 | 给桌面端增加按钮、面板、页面或消息展示 | [Wuu Plugin](plugins.md) 的 Desktop 部分 | Desktop 模块可以在稳定 UI 边界中运行 React |
 | 同时交付 Skill、MCP、Hook、Agent 能力和界面 | [Wuu Plugin](plugins.md) | 一个插件包可以组合多种贡献并统一安装、审批和升级 |
@@ -48,6 +49,7 @@ Wuu 的权限模式、工作区边界和插件审批仍然适用。更小的扩�
 - [连接 MCP 服务器](mcp.md)
 - [配置 Hooks](hooks.md)
 - [了解 Wuu Plugin](plugins.md)
+- [使用插件主题与设置](themes-settings.md)
 - [Agent 插件快速上手](plugin-quickstart.md)
 - [Desktop 插件快速上手](desktop-plugin-quickstart.md)
 - [Desktop UI 扩展地图](desktop-plugins.md)

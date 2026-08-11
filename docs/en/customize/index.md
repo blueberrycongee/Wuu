@@ -11,6 +11,7 @@ from the behavior you want to change rather than from an API name.
 | Teach the agent a repeatable workflow | [Skill](skills.md) | Reusable instructions and resources, with no plugin process |
 | Connect an existing local or remote tool service | [MCP](mcp.md) | Reuse a standard MCP server without changing Wuu |
 | Run a check around tool calls or prompt submission | [Hook](hooks.md) | Fits policy checks, blocking, logging, and automation |
+| Ship only a theme or host-rendered settings | Declarative [Wuu Plugin](plugins.md) contributions | No Desktop code needs to load |
 | Register agent tools, context, or long-running behavior | [Wuu Plugin](plugins.md), Agent side | A managed runtime can join the agent lifecycle and call host services |
 | Add desktop buttons, panels, pages, or message presentation | [Wuu Plugin](plugins.md), Desktop side | A desktop module can run React at stable UI boundaries |
 | Ship Skills, MCP, Hooks, agent behavior, and UI together | [Wuu Plugin](plugins.md) | One package owns installation, approval, upgrade, and removal |
@@ -51,6 +52,7 @@ extension is easier to reason about, not exempt from source review.
 - [Connect MCP servers](mcp.md)
 - [Configure Hooks](hooks.md)
 - [Understand Wuu Plugins](plugins.md)
+- [Use plugin themes and settings](themes-settings.md)
 - [Agent plugin quickstart](plugin-quickstart.md)
 - [Desktop plugin quickstart](desktop-plugin-quickstart.md)
 - [Desktop UI extension map](desktop-plugins.md)

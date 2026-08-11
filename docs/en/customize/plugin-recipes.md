@@ -159,6 +159,34 @@ that points to the registered View. Wuu owns opening, closing, tabs, and persist
 Read public snapshots and retain a useful fallback. Do not parse private ThreadItems,
 guess tool-internal state, or depend on host class names.
 
+## Add a code-free theme
+
+For colors, radii, or syntax highlighting, declare a theme in the manifest instead of
+loading Desktop code:
+
+```json
+{
+  "contributes": {
+    "themes": [
+      {
+        "id": "calm-night",
+        "name": "Calm Night",
+        "base": "dark",
+        "tokens": {
+          "--wuu-color-canvas": "#151820",
+          "--wuu-color-accent": "#8fa7ff"
+        }
+      }
+    ]
+  }
+}
+```
+
+Run `wuu plugin validate .`, then install, approve, and enable the package. The theme
+appears under **Settings → Appearance**; selecting a built-in theme removes its
+overrides. See the [theme token reference](theme-surface-matrix.md) for available
+tokens and [plugin themes and settings](themes-settings.md) for user actions.
+
 ## Show a result after background work
 
 A Desktop module may register a Command or call `showConversationCard` from a host

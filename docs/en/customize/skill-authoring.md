@@ -68,6 +68,35 @@ Wuu also accepts flat `<name>.md` files under a skills root, but the directory p
 `SKILL.md` form makes it easier to carry scripts and material and to reuse across
 tools.
 
+### Install from a repository after inspection
+
+Wuu does not currently have a central Skill marketplace or automatic install command.
+Clone a repository into a temporary location before copying anything into a discovered
+skills directory:
+
+```bash
+git clone --depth 1 https://github.com/example/skills.git /tmp/example-skills
+wuu skills lint /tmp/example-skills/path/to/skill
+```
+
+Read `SKILL.md` and inspect sibling scripts, templates, and resources. Look for requests
+to run commands, access the network, read outside the workspace, or handle credentials.
+`wuu skills lint` checks structure and metadata; it does not prove that a workflow is
+safe.
+
+After review, copy the entire Skill directory to one install location, for example the
+current project:
+
+```bash
+mkdir -p .wuu/skills
+cp -R /tmp/example-skills/path/to/skill .wuu/skills/example-skill
+wuu skills lint .wuu/skills/example-skill
+```
+
+Refresh the Desktop Skills catalog, preview the installed content, and try it first on
+a low-risk task. Project Skills shared with a team should go through normal code review
+rather than letting unknown repository content bypass review.
+
 ## Available frontmatter
 
 Prefer these fields, which the current runtime can recognize and display:

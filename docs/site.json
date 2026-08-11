@@ -39,12 +39,12 @@
             "zh-cn/customize/mcp.md",
             "zh-cn/customize/hooks.md",
             "zh-cn/customize/plugins.md",
+            "zh-cn/customize/themes-settings.md",
             "zh-cn/customize/plugin-quickstart.md",
             "zh-cn/customize/desktop-plugin-quickstart.md",
             "zh-cn/customize/desktop-plugins.md",
             "zh-cn/customize/plugin-recipes.md",
             "zh-cn/customize/plugin-authoring.md",
-            "zh-cn/customize/plugin-system.md",
             "zh-cn/customize/theme-surface-matrix.md"
           ]
         },
@@ -62,7 +62,9 @@
             "zh-cn/reference/cli-commands.md",
             "zh-cn/reference/security-model.md",
             "zh-cn/reference/permissions.md",
-            "zh-cn/reference/configuration.md"
+            "zh-cn/reference/configuration.md",
+            "zh-cn/reference/desktop-plugins.md",
+            "zh-cn/customize/plugin-system.md"
           ]
         },
         {
@@ -140,12 +142,12 @@
             "en/customize/mcp.md",
             "en/customize/hooks.md",
             "en/customize/plugins.md",
+            "en/customize/themes-settings.md",
             "en/customize/plugin-quickstart.md",
             "en/customize/desktop-plugin-quickstart.md",
             "en/customize/desktop-plugins.md",
             "en/customize/plugin-recipes.md",
             "en/customize/plugin-authoring.md",
-            "en/customize/plugin-system.md",
             "en/customize/theme-surface-matrix.md"
           ]
         },
@@ -164,7 +166,8 @@
             "en/reference/configuration.md",
             "en/reference/cli-commands.md",
             "en/reference/agent-command-system.md",
-            "en/reference/desktop-plugins.md"
+            "en/reference/desktop-plugins.md",
+            "en/customize/plugin-system.md"
           ]
         },
         {

@@ -66,10 +66,25 @@ wuu plugin disable my-plugin
 wuu plugin remove my-plugin
 ```
 
+## Recovery and troubleshooting
+
+- **Pending approval or update:** inspect the directory or zip before approving or
+  rejecting it. The previous approved generation keeps running during a pending update.
+- **Activation failure:** a candidate generation does not replace the working version.
+  Read Runtime and Renderer diagnostics in **Skills & Plugins**, then rebuild or reinstall.
+- **Render failure:** Wuu falls back only at the failed Slot, Presenter, Surface, or View;
+  plugin management and default-UI recovery remain available.
+- **Immediate isolation:** run `wuu plugin disable <id>`. The CLI can disable a plugin
+  even when its Desktop contribution is broken. If Wuu enters safe mode after a crash,
+  leave the suspected plugin disabled while investigating.
+- **Removal:** run `wuu plugin remove <id>`. Wuu currently preserves plugin settings and
+  Storage by default, so removing a package is not the same as erasing all user data.
+
 ## Common capabilities
 
 - **Change themes:** declarative token themes appear under **Settings → Appearance**
-  and are removed cleanly when disabled.
+  and are removed cleanly when disabled. See [plugin themes and settings](themes-settings.md)
+  for user actions.
 - **Add settings:** schema fields create host-rendered controls stored in the plugin
   namespace. Settings and Storage remain available after reinstall by default.
 - **Extend the agent:** a managed runtime can register model-visible tools, contribute

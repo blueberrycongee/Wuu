@@ -39,8 +39,7 @@ over private DOM. Window safe areas, navigation structure, tabs, scrolling,
 overflow, keyboard, and recovery paths stay with the host. High-trust
 capabilities such as Surface replacement are an escape hatch for complex
 structural customization, not the default entry point for ordinary controls.
-See the [plugin system architecture](plugin-system.md)
-document (currently in Chinese) for the overall design and
+See the [plugin system architecture](plugin-system.md) for the overall design and
 interface-selection principles.
 
 ## Package structure and manifest

@@ -67,10 +67,24 @@ wuu plugin inspect ./path/to/plugin   # 安装前检查包内容与 fingerprint
 
 `wuu plugin inspect` 适合在安装前查看包会做什么、请求哪些权限。
 
+## 恢复与故障处理
+
+- **等待批准或待更新：**先运行 `wuu plugin inspect <目录或 zip>` 检查内容，再批准或拒绝。
+  待更新期间，上一代已批准版本继续运行。
+- **激活失败：**候选 generation 不会替换当前可用版本；在**技能与插件**中查看 runtime
+  和 Renderer 诊断，修复后重新构建或安装。
+- **界面渲染失败：**Wuu 只回退出错的 Slot、Presenter、Surface 或 View，插件管理和
+  默认 UI 恢复入口仍可用。
+- **需要立即隔离：**运行 `wuu plugin disable <id>`。即使 Desktop 贡献有问题，也可以
+  使用 CLI 禁用插件；若 Wuu 因崩溃进入安全模式，先保持问题插件禁用。
+- **不再需要：**运行 `wuu plugin remove <id>`。当前默认保留插件设置和 Storage，不要把
+  “移除包”理解为清除全部用户数据。
+
 ## 常见能力
 
 - **换主题**：获批且启用的插件主题出现在"设置 → 外观"，禁用或切回内置主题时
-  Token 被完整移除。主题只需要 `plugin.json` 声明，不执行代码。
+  Token 被完整移除。主题只需要 `plugin.json` 声明，不执行代码。用户操作见
+  [插件主题与设置](themes-settings.md)。
 - **加设置**：插件可以声明自己的设置项（开关、文本、数字、枚举），在设置界面生成
   控件，按插件命名空间存储。禁用、升级或卸载插件时默认保留设置和 Storage，便于之后
   恢复；当前不会隐式删除这些数据。

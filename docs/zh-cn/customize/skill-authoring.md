@@ -62,6 +62,31 @@ Wuu 会扫描以下位置。
 Wuu 也接受 skills 根目录下的扁平 `<name>.md` 文件，但目录加 `SKILL.md` 的形式更容易
 携带脚本和资料，也更便于跨工具复用。
 
+### 从仓库安装并先检查
+
+Wuu 当前没有中心 Skill 市场或自动安装命令。从仓库获取 Skill 时，先克隆到临时目录，
+不要直接复制到会被 Wuu 发现的位置：
+
+```bash
+git clone --depth 1 https://github.com/example/skills.git /tmp/example-skills
+wuu skills lint /tmp/example-skills/path/to/skill
+```
+
+安装前阅读 `SKILL.md`，并检查同目录中的脚本、模板和资料。重点确认它是否要求执行命令、
+访问网络、读取工作区外文件或处理凭据。`wuu skills lint` 只验证结构和元数据，不能证明
+工作流安全。
+
+确认后，把整个 Skill 目录复制到一个安装位置，例如项目级：
+
+```bash
+mkdir -p .wuu/skills
+cp -R /tmp/example-skills/path/to/skill .wuu/skills/example-skill
+wuu skills lint .wuu/skills/example-skill
+```
+
+在 Desktop 的 Skills 目录中刷新、预览最终安装内容，再用低风险任务试运行。团队共享的
+项目 Skill 应通过正常代码评审提交，不要让未知仓库内容绕过评审进入项目。
+
 ## 可用 frontmatter
 
 建议优先使用这些当前运行时能够识别和展示的字段：
