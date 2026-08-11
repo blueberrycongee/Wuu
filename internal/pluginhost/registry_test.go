@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 type fakeServiceProcess struct {
@@ -178,6 +179,104 @@ func TestServiceRegistryCloseNotifiesConsumers(t *testing.T) {
 	}
 	if _, err := registry.Call(context.Background(), "notes", ServiceCallParams{Service: "search.provider", Method: "query"}); err == nil || err.Code != "service_unavailable" {
 		t.Fatalf("call after close = %v, want service_unavailable", err)
+	}
+}
+
+func TestServiceRegistryCloseDrainsAcceptedExecutionAndAllowsNestedCalls(t *testing.T) {
+	service := func(name string) ServiceDescriptor {
+		return ServiceDescriptor{Name: name, Version: "1.0.0", Methods: []ServiceMethodDescriptor{{Name: "run"}}}
+	}
+	inner := &fakeServiceProcess{id: "inner", state: StateActive, provided: []ServiceDescriptor{service("inner")}}
+	outer := &fakeServiceProcess{
+		id: "outer", state: StateActive,
+		provided: []ServiceDescriptor{service("outer")},
+		required: []ServiceRequirement{{Name: "inner", MajorVersion: 1}},
+	}
+	registry, conflicts := BuildServiceRegistry(outer, inner)
+	if len(conflicts) != 0 {
+		t.Fatalf("conflicts = %+v", conflicts)
+	}
+	registry.Activate()
+	started := make(chan struct{})
+	continueNested := make(chan struct{})
+	outer.invoke = func(ctx context.Context, params ServiceInvokeParams) (json.RawMessage, error) {
+		close(started)
+		<-continueNested
+		result, serviceErr := registry.Call(ctx, "outer", ServiceCallParams{Service: "inner", Method: "run", ExecutionID: params.ExecutionID})
+		if serviceErr != nil {
+			return nil, serviceErr
+		}
+		return result, nil
+	}
+	callDone := make(chan *HostServiceError, 1)
+	go func() {
+		_, serviceErr := registry.CallProvider(context.Background(), "outer", 1, "run", nil, "exec-drain")
+		callDone <- serviceErr
+	}()
+	<-started
+	closeDone := make(chan struct{})
+	go func() {
+		registry.Close(context.Background())
+		close(closeDone)
+	}()
+	deadline := time.Now().Add(time.Second)
+	for {
+		registry.mu.RLock()
+		open := registry.open
+		registry.mu.RUnlock()
+		if !open {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("registry did not enter draining state")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if _, serviceErr := registry.CallProvider(context.Background(), "outer", 1, "run", nil, "exec-new"); serviceErr == nil || serviceErr.Code != "service_unavailable" {
+		t.Fatalf("new execution during drain = %v", serviceErr)
+	}
+	select {
+	case <-closeDone:
+		t.Fatal("close returned before accepted execution completed")
+	default:
+	}
+	close(continueNested)
+	if serviceErr := <-callDone; serviceErr != nil {
+		t.Fatalf("accepted execution failed during drain: %v", serviceErr)
+	}
+	select {
+	case <-closeDone:
+	case <-time.After(time.Second):
+		t.Fatal("close did not converge after accepted execution completed")
+	}
+	if len(inner.invokeCalls) != 1 || inner.invokeCalls[0].ExecutionID != "exec-drain" {
+		t.Fatalf("nested calls = %+v", inner.invokeCalls)
+	}
+}
+
+func TestServiceRegistryCloseCancelsExecutionAtDeadline(t *testing.T) {
+	provider := &fakeServiceProcess{id: "slow", state: StateActive, provided: []ServiceDescriptor{{
+		Name: "slow", Version: "1.0.0", Methods: []ServiceMethodDescriptor{{Name: "run"}},
+	}}}
+	started := make(chan struct{})
+	cancelled := make(chan struct{})
+	provider.invoke = func(ctx context.Context, _ ServiceInvokeParams) (json.RawMessage, error) {
+		close(started)
+		<-ctx.Done()
+		close(cancelled)
+		return nil, ctx.Err()
+	}
+	registry, _ := BuildServiceRegistry(provider)
+	registry.Activate()
+	go registry.CallProvider(context.Background(), "slow", 1, "run", nil, "exec-timeout")
+	<-started
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	registry.Close(ctx)
+	select {
+	case <-cancelled:
+	case <-time.After(time.Second):
+		t.Fatal("drain deadline did not cancel the live execution")
 	}
 }
 

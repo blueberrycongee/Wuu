@@ -62,6 +62,13 @@ type serviceProvider struct {
 	kernel     bool
 }
 
+type serviceExecution struct {
+	ctx          context.Context
+	cancel       context.CancelFunc
+	refs         int
+	participants map[string]struct{}
+}
+
 // ServiceRegistry resolves and routes service calls for one generation.
 type ServiceRegistry struct {
 	mu               sync.RWMutex
@@ -71,6 +78,9 @@ type ServiceRegistry struct {
 	consumers        map[string]map[serviceKey]struct{}
 	notifiers        map[string]ServiceChangedNotifier
 	kernelLifecycles []kernelServiceLifecycle
+	executions       map[string]*serviceExecution
+	executionChanged chan struct{}
+	nextExecution    uint64
 }
 
 // ServiceRegistration is the common provider entry consumed by the registry.
@@ -94,8 +104,9 @@ type kernelServiceLifecycle interface {
 func NewServiceRegistry() *ServiceRegistry {
 	return &ServiceRegistry{
 		open: true, providers: make(map[serviceKey]serviceProvider),
-		consumers: make(map[string]map[serviceKey]struct{}),
-		notifiers: make(map[string]ServiceChangedNotifier),
+		consumers:  make(map[string]map[serviceKey]struct{}),
+		notifiers:  make(map[string]ServiceChangedNotifier),
+		executions: make(map[string]*serviceExecution), executionChanged: make(chan struct{}),
 	}
 }
 
@@ -188,8 +199,9 @@ func (r *ServiceRegistry) Activate() {
 	}
 }
 
-// Close revokes every address and best-effort notifies consumers that their
-// services went away.
+// Close rejects new executions, drains calls already admitted by this
+// generation, then revokes every address. If the deadline expires, all live
+// execution contexts are canceled before process shutdown continues.
 func (r *ServiceRegistry) Close(ctx context.Context) {
 	r.mu.Lock()
 	if !r.open {
@@ -202,12 +214,94 @@ func (r *ServiceRegistry) Close(ctx context.Context) {
 	for key := range r.providers {
 		keys = append(keys, key)
 	}
+	for len(r.executions) != 0 {
+		changed := r.executionChanged
+		r.mu.Unlock()
+		select {
+		case <-changed:
+			r.mu.Lock()
+		case <-ctx.Done():
+			r.mu.Lock()
+			for _, execution := range r.executions {
+				execution.cancel()
+			}
+			r.mu.Unlock()
+			goto drained
+		}
+	}
 	r.mu.Unlock()
+
+drained:
 	for _, lifecycle := range r.kernelLifecycles {
 		lifecycle.CloseKernelServices()
 	}
 	for _, key := range keys {
 		r.notifyConsumers(ctx, key, "provider_closed")
+	}
+}
+
+func (r *ServiceRegistry) executionContinuation(executionID, caller string) bool {
+	executionID = strings.TrimSpace(executionID)
+	if executionID == "" {
+		return false
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	execution := r.executions[executionID]
+	if execution == nil {
+		return false
+	}
+	_, allowed := execution.participants[caller]
+	return caller == "kernel" || allowed
+}
+
+func (r *ServiceRegistry) acquireExecution(ctx context.Context, requestedID, caller, provider string, canStart bool) (context.Context, string, func(), *HostServiceError) {
+	r.mu.Lock()
+	id := strings.TrimSpace(requestedID)
+	if execution := r.executions[id]; id != "" && execution != nil {
+		if _, allowed := execution.participants[caller]; caller != "kernel" && !allowed {
+			r.mu.Unlock()
+			return nil, "", nil, &HostServiceError{Code: "service_unavailable", Message: "service execution is unavailable"}
+		}
+		execution.refs++
+		execution.participants[provider] = struct{}{}
+		r.mu.Unlock()
+		return execution.ctx, id, r.releaseExecution(id), nil
+	}
+	if !r.open || !canStart {
+		r.mu.Unlock()
+		return nil, "", nil, &HostServiceError{Code: "service_unavailable", Message: "service registry is not accepting new executions"}
+	}
+	if id == "" {
+		r.nextExecution++
+		id = fmt.Sprintf("service-%d", r.nextExecution)
+	}
+	execCtx, cancel := context.WithCancel(ctx)
+	r.executions[id] = &serviceExecution{
+		ctx: execCtx, cancel: cancel, refs: 1,
+		participants: map[string]struct{}{caller: {}, provider: {}},
+	}
+	r.mu.Unlock()
+	return execCtx, id, r.releaseExecution(id), nil
+}
+
+func (r *ServiceRegistry) releaseExecution(id string) func() {
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			r.mu.Lock()
+			execution := r.executions[id]
+			if execution != nil {
+				execution.refs--
+				if execution.refs == 0 {
+					delete(r.executions, id)
+					execution.cancel()
+					close(r.executionChanged)
+					r.executionChanged = make(chan struct{})
+				}
+			}
+			r.mu.Unlock()
+		})
 	}
 }
 
@@ -291,7 +385,8 @@ func (r *ServiceRegistry) Call(ctx context.Context, consumerPluginID string, par
 		}
 	}
 	r.mu.RUnlock()
-	if !open {
+	continuation := r.executionContinuation(params.ExecutionID, consumerPluginID)
+	if !open && !continuation {
 		return nil, &HostServiceError{Code: "service_unavailable", Message: "service registry is not active"}
 	}
 	if declaredMajor == nil {
@@ -316,7 +411,7 @@ func (r *ServiceRegistry) Call(ctx context.Context, consumerPluginID string, par
 		}
 		return nil, &HostServiceError{Code: "service_unavailable", Message: fmt.Sprintf("no provider for service %s major version %d (provided majors: %v)", service, key.major, r.ProviderMajors(service))}
 	}
-	if !active && !provider.kernel {
+	if !active && !provider.kernel && !continuation {
 		return nil, &HostServiceError{Code: "service_unavailable", Message: fmt.Sprintf("service %s is unavailable during generation prepare", service)}
 	}
 	methodDeclared := false
@@ -333,11 +428,17 @@ func (r *ServiceRegistry) Call(ctx context.Context, consumerPluginID string, par
 		go r.notifyConsumers(context.Background(), key, "provider_unavailable")
 		return nil, &HostServiceError{Code: "service_unavailable", Message: fmt.Sprintf("service %s provider %q is %s", service, provider.pluginID, state)}
 	}
-	result, err := provider.invoker.InvokeService(ctx, ServiceInvokeParams{
-		Service: service,
-		Method:  method,
-		Caller:  consumerPluginID,
-		Params:  params.Params,
+	execCtx, executionID, release, executionErr := r.acquireExecution(ctx, params.ExecutionID, consumerPluginID, provider.pluginID, active || provider.kernel)
+	if executionErr != nil {
+		return nil, executionErr
+	}
+	defer release()
+	result, err := provider.invoker.InvokeService(execCtx, ServiceInvokeParams{
+		Service:     service,
+		Method:      method,
+		Caller:      consumerPluginID,
+		Params:      params.Params,
+		ExecutionID: executionID,
 	})
 	if err != nil {
 		var hostErr *HostServiceError
@@ -374,16 +475,13 @@ func (r *ServiceRegistry) CallProvider(ctx context.Context, service string, majo
 	key := serviceKey{name: service, major: major}
 	r.mu.RLock()
 	provider, found := r.providers[key]
-	open := r.open
 	active := r.active
 	r.mu.RUnlock()
-	if !open {
-		return nil, &HostServiceError{Code: "service_unavailable", Message: "service registry is not active"}
-	}
 	if !found {
 		return nil, &HostServiceError{Code: "service_unavailable", Message: fmt.Sprintf("no provider for service %s major version %d (provided majors: %v)", service, major, r.ProviderMajors(service))}
 	}
-	if !active && !provider.kernel {
+	continuation := r.executionContinuation(executionID, "kernel")
+	if !active && !provider.kernel && !continuation {
 		return nil, &HostServiceError{Code: "service_unavailable", Message: fmt.Sprintf("service %s is unavailable during generation prepare", service)}
 	}
 	methodDeclared := false
@@ -399,7 +497,12 @@ func (r *ServiceRegistry) CallProvider(ctx context.Context, service string, majo
 	if state := provider.invoker.Status().State; state != StateActive && !(provider.kernel && !active) {
 		return nil, &HostServiceError{Code: "service_unavailable", Message: fmt.Sprintf("service %s provider %q is %s", service, provider.pluginID, state)}
 	}
-	result, err := provider.invoker.InvokeService(ctx, ServiceInvokeParams{
+	execCtx, executionID, release, executionErr := r.acquireExecution(ctx, executionID, "kernel", provider.pluginID, active || provider.kernel)
+	if executionErr != nil {
+		return nil, executionErr
+	}
+	defer release()
+	result, err := provider.invoker.InvokeService(execCtx, ServiceInvokeParams{
 		Service:     service,
 		Method:      method,
 		Caller:      "kernel",

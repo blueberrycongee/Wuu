@@ -110,10 +110,86 @@ func TestRemoteSinglepassDriverAcrossRealProcess(t *testing.T) {
 	}
 }
 
+func TestServiceRegistryCloseDrainsRemoteSinglepassExecution(t *testing.T) {
+	kernel := newKernelHostServices(nil, nil)
+	registry, conflicts := pluginhost.BuildServiceRegistry(kernel)
+	kernel.bindRegistry(registry)
+	if len(conflicts) != 0 {
+		t.Fatalf("conflicts = %+v", conflicts)
+	}
+	client, err := pluginhost.Start(context.Background(), pluginhost.ProcessConfig{
+		ID: "singlepass", Command: os.Args[0],
+		Args:    []string{"-test.run=^TestSinglepassPluginProcessHelper$"},
+		Env:     map[string]string{"WUU_SINGLEPASS_PLUGIN_TEST_HELPER": "1"},
+		Timeout: 5 * time.Second, ServiceRouter: registry,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = client.Close(context.Background()) })
+	if registrationConflicts := registry.RegisterClients(client); len(registrationConflicts) != 0 {
+		t.Fatalf("registration conflicts = %+v", registrationConflicts)
+	}
+	host := pluginhost.New(client)
+	host.AttachServiceRegistry(registry, nil)
+	if err := host.Activate(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	registry.Activate()
+
+	driver := resolveLoopDriver("singlepass", host, func() *driverGatewayTable { return kernel.driverGateways })
+	execution := loopdriver.ExecutionContext{SessionID: "s", ExecutionID: "exec-drain-e2e"}
+	instance, err := driver.Create(execution, loopdriver.PersistedInput{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	gateway := &blockingKernelGateway{started: make(chan struct{}), release: make(chan struct{})}
+	runDone := make(chan error, 1)
+	go func() {
+		_, runErr := instance.Run(context.Background(), gateway)
+		runDone <- runErr
+	}()
+	<-gateway.started
+	closeDone := make(chan struct{})
+	go func() {
+		registry.Close(context.Background())
+		close(closeDone)
+	}()
+	select {
+	case <-closeDone:
+		t.Fatal("registry closed while remote driver execution was in flight")
+	case <-time.After(20 * time.Millisecond):
+	}
+	close(gateway.release)
+	if runErr := <-runDone; runErr != nil {
+		t.Fatalf("remote driver failed while generation drained: %v", runErr)
+	}
+	select {
+	case <-closeDone:
+	case <-time.After(time.Second):
+		t.Fatal("registry did not close after remote driver completed")
+	}
+}
+
 type recordingKernelGateway struct {
 	mu          sync.Mutex
 	modelLoops  int
 	checkpoints []loopdriver.Checkpoint
+}
+
+type blockingKernelGateway struct {
+	started chan struct{}
+	release chan struct{}
+}
+
+func (g *blockingKernelGateway) ExecuteModelLoop(context.Context, loopdriver.PersistedInput, loopdriver.LoopPolicy) (loopdriver.ModelLoopReceipt, error) {
+	close(g.started)
+	<-g.release
+	return loopdriver.ModelLoopReceipt{ID: "drained"}, nil
+}
+
+func (g *blockingKernelGateway) WriteCheckpoint(context.Context, loopdriver.Checkpoint) error {
+	return nil
 }
 
 func (g *recordingKernelGateway) ExecuteModelLoop(_ context.Context, _ loopdriver.PersistedInput, policy loopdriver.LoopPolicy) (loopdriver.ModelLoopReceipt, error) {

@@ -174,9 +174,10 @@ type ServiceRequirement struct {
 
 // ServiceCallParams is the payload of the service.call gateway frame.
 type ServiceCallParams struct {
-	Service string          `json:"service"`
-	Method  string          `json:"method"`
-	Params  json.RawMessage `json:"params,omitempty"`
+	Service     string          `json:"service"`
+	Method      string          `json:"method"`
+	ExecutionID string          `json:"execution_id,omitempty"`
+	Params      json.RawMessage `json:"params,omitempty"`
 }
 
 // ServiceInvokeParams is the payload of the host -> provider service.invoke
