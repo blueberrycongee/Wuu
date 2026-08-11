@@ -3,6 +3,7 @@
 package processsandbox
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os/exec"
@@ -32,6 +33,25 @@ type Policy struct {
 	WritableRoots []string
 }
 
+type Enforcement string
+
+const (
+	EnforcementFull    Enforcement = "full"
+	EnforcementPartial Enforcement = "partial"
+)
+
+type ConfinedCommand struct {
+	Argv        []string
+	Enforcement Enforcement
+}
+
+// Provider is the stable seam for alternate same-world process sandboxes.
+// Implementations return the exact argv to execute and must never return the
+// original command as a successful no-op.
+type Provider interface {
+	Confine(ctx context.Context, argv []string, policy Policy) (ConfinedCommand, error)
+}
+
 // Apply rewrites cmd so the original command runs under the host filesystem
 // sandbox. Implementations must either install confinement or return an error;
 // silently running the original command is forbidden.
@@ -43,6 +63,39 @@ func Apply(cmd *exec.Cmd, policy Policy) error {
 		return err
 	}
 	return applyPlatform(cmd, normalizedPolicy(policy))
+}
+
+// ApplyWithProvider applies an alternate provider when configured, otherwise
+// it uses Wuu's built-in platform backend. Provider failures never fall back to
+// unconfined execution, and partial enforcement is rejected by this consumer.
+func ApplyWithProvider(ctx context.Context, cmd *exec.Cmd, policy Policy, provider Provider) error {
+	if provider == nil {
+		return Apply(cmd, policy)
+	}
+	if cmd == nil || cmd.Path == "" || len(cmd.Args) == 0 {
+		return errors.New("filesystem process sandbox requires a complete command argv")
+	}
+	if err := validatePolicy(policy); err != nil {
+		return err
+	}
+	argv := append([]string(nil), cmd.Args...)
+	argv[0] = cmd.Path
+	confined, err := provider.Confine(ctx, argv, normalizedPolicy(policy))
+	if err != nil {
+		return fmt.Errorf("custom filesystem process sandbox failed: %w", err)
+	}
+	if len(confined.Argv) == 0 || strings.TrimSpace(confined.Argv[0]) == "" {
+		return errors.New("custom filesystem process sandbox returned an empty argv")
+	}
+	if !filepath.IsAbs(confined.Argv[0]) {
+		return errors.New("custom filesystem process sandbox must return an absolute executable path")
+	}
+	if confined.Enforcement != EnforcementFull {
+		return fmt.Errorf("custom filesystem process sandbox reported %q enforcement; full enforcement is required", confined.Enforcement)
+	}
+	cmd.Path = confined.Argv[0]
+	cmd.Args = append([]string(nil), confined.Argv...)
+	return nil
 }
 
 // Supported reports whether this build has a filesystem process sandbox

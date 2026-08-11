@@ -1,0 +1,92 @@
+package runtime
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"strings"
+
+	"github.com/blueberrycongee/wuu/internal/pluginhost"
+	"github.com/blueberrycongee/wuu/internal/processsandbox"
+	"github.com/blueberrycongee/wuu/internal/tools"
+)
+
+type pluginAuthorizer struct {
+	registry *pluginhost.ServiceRegistry
+}
+
+func (a *pluginAuthorizer) Authorize(ctx context.Context, request tools.AuthorizationRequest) (tools.AuthorizationDecision, error) {
+	if a == nil || a.registry == nil {
+		return tools.AuthorizationDecision{}, errors.New("authorization provider is unavailable")
+	}
+	input := pluginhost.AuthorizationRequest{
+		SessionID: request.SessionID, ActorID: request.ActorID, CWD: request.CWD, PermissionMode: request.PermissionMode,
+		Tool: pluginhost.AuthorizationTool{
+			Name: request.Tool.Name, Kind: string(request.Tool.Kind), Arguments: request.Arguments,
+			ReadOnly: request.Tool.ReadOnly, ConcurrencySafe: request.Tool.ConcurrencySafe,
+			Destructive: request.Tool.Destructive, Risk: string(request.Tool.Risk), Reason: request.Tool.Reason,
+		},
+	}
+	raw, err := json.Marshal(input)
+	if err != nil {
+		return tools.AuthorizationDecision{}, err
+	}
+	result, callErr := a.registry.CallProvider(ctx, pluginhost.SecurityAuthorizeService, pluginhost.SecurityServiceMajor, pluginhost.SecurityAuthorizeMethod, raw, "")
+	if callErr != nil {
+		return tools.AuthorizationDecision{}, callErr
+	}
+	var decision pluginhost.AuthorizationDecision
+	if err := json.Unmarshal(result, &decision); err != nil {
+		return tools.AuthorizationDecision{}, fmt.Errorf("decode authorization decision: %w", err)
+	}
+	decision.Outcome = strings.TrimSpace(decision.Outcome)
+	if decision.Outcome != "allow" && decision.Outcome != "deny" {
+		return tools.AuthorizationDecision{}, fmt.Errorf("authorization provider returned unknown outcome %q", decision.Outcome)
+	}
+	return tools.AuthorizationDecision{Outcome: decision.Outcome, Reason: decision.Reason}, nil
+}
+
+type pluginSandboxProvider struct {
+	registry *pluginhost.ServiceRegistry
+}
+
+func (p *pluginSandboxProvider) Confine(ctx context.Context, argv []string, policy processsandbox.Policy) (processsandbox.ConfinedCommand, error) {
+	if p == nil || p.registry == nil {
+		return processsandbox.ConfinedCommand{}, errors.New("sandbox provider is unavailable")
+	}
+	input := pluginhost.ProcessSandboxRequest{
+		Argv:   append([]string(nil), argv...),
+		Policy: pluginhost.ProcessSandboxPolicy{Mode: string(policy.Mode), WritableRoots: append([]string(nil), policy.WritableRoots...)},
+	}
+	raw, err := json.Marshal(input)
+	if err != nil {
+		return processsandbox.ConfinedCommand{}, err
+	}
+	result, callErr := p.registry.CallProvider(ctx, pluginhost.ProcessSandboxService, pluginhost.SecurityServiceMajor, pluginhost.ProcessSandboxMethod, raw, "")
+	if callErr != nil {
+		return processsandbox.ConfinedCommand{}, callErr
+	}
+	var confined pluginhost.ProcessSandboxResult
+	if err := json.Unmarshal(result, &confined); err != nil {
+		return processsandbox.ConfinedCommand{}, fmt.Errorf("decode sandbox result: %w", err)
+	}
+	return processsandbox.ConfinedCommand{Argv: confined.Argv, Enforcement: processsandbox.Enforcement(confined.Enforcement)}, nil
+}
+
+func configureToolkitSecurityExtensions(kit *tools.Toolkit, registry *pluginhost.ServiceRegistry) {
+	if kit == nil {
+		return
+	}
+	kit.SetAuthorizer(nil)
+	kit.SetProcessSandboxProvider(nil)
+	if registry == nil {
+		return
+	}
+	if registry.HasProvider(pluginhost.SecurityAuthorizeService, pluginhost.SecurityServiceMajor) {
+		kit.SetAuthorizer(&pluginAuthorizer{registry: registry})
+	}
+	if registry.HasProvider(pluginhost.ProcessSandboxService, pluginhost.SecurityServiceMajor) {
+		kit.SetProcessSandboxProvider(&pluginSandboxProvider{registry: registry})
+	}
+}

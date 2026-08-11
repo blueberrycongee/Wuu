@@ -134,6 +134,9 @@ type StartOptions struct {
 	// preselected filesystem boundary. Nil preserves the platform's existing
 	// unsandboxed behavior (including explicit unconfined mode).
 	SandboxPolicy *processsandbox.Policy
+	// SandboxProvider replaces the built-in backend for this execution. It is
+	// ignored when SandboxPolicy is nil.
+	SandboxProvider processsandbox.Provider
 }
 
 type Event struct {
@@ -368,7 +371,7 @@ func (m *Manager) Start(ctx context.Context, opt StartOptions) (*Process, error)
 		return p, err
 	}
 	if opt.SandboxPolicy != nil {
-		if err := processsandbox.Apply(cmd, *opt.SandboxPolicy); err != nil {
+		if err := processsandbox.ApplyWithProvider(ctx, cmd, *opt.SandboxPolicy, opt.SandboxProvider); err != nil {
 			_ = logf.Close()
 			p.Status = StatusFailed
 			p.LastError = err.Error()

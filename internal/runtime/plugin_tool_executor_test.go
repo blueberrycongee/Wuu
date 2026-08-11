@@ -6,6 +6,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/blueberrycongee/wuu/internal/agent"
 	"github.com/blueberrycongee/wuu/internal/pluginhost"
 	"github.com/blueberrycongee/wuu/internal/providers"
 	"github.com/blueberrycongee/wuu/internal/toolctx"
@@ -14,8 +15,10 @@ import (
 )
 
 type recordingToolExecutor struct {
-	mu    sync.Mutex
-	calls []providers.ToolCall
+	mu               sync.Mutex
+	calls            []providers.ToolCall
+	authorized       []providers.ToolCall
+	authorizationErr error
 }
 
 func (e *recordingToolExecutor) Definitions() []providers.ToolDefinition {
@@ -29,6 +32,28 @@ func (e *recordingToolExecutor) ExecuteResult(_ context.Context, call providers.
 	e.calls = append(e.calls, call)
 	e.mu.Unlock()
 	return toolresult.FromText(call.Arguments), nil
+}
+
+func (e *recordingToolExecutor) AuthorizeTool(_ context.Context, call providers.ToolCall, _ agent.ToolMetadata) error {
+	e.authorized = append(e.authorized, call)
+	return e.authorizationErr
+}
+
+type pluginToolTestClient struct {
+	executed bool
+}
+
+func (c *pluginToolTestClient) ID() string { return "policy-tool" }
+func (c *pluginToolTestClient) Status() pluginhost.Status {
+	return pluginhost.Status{ID: c.ID(), State: pluginhost.StateActive}
+}
+func (c *pluginToolTestClient) Close(context.Context) error { return nil }
+func (c *pluginToolTestClient) Tools() []pluginhost.ToolRegistration {
+	return []pluginhost.ToolRegistration{{ID: "change", Description: "change state", InputSchema: map[string]any{"type": "object"}}}
+}
+func (c *pluginToolTestClient) ExecuteTool(context.Context, pluginhost.ToolExecuteParams) (pluginhost.ToolExecuteResult, error) {
+	c.executed = true
+	return pluginhost.ToolExecuteResult{Result: toolresult.FromText("changed")}, nil
 }
 
 func TestPluginToolExecutorPreservesArgumentsAndRichResult(t *testing.T) {
@@ -95,5 +120,17 @@ func TestPluginToolExecutorRejectsInvalidArgumentsBeforeHooksOrExecution(t *test
 	}
 	if len(inner.calls) != 0 {
 		t.Fatalf("inner executor must not be called, got %+v", inner.calls)
+	}
+}
+
+func TestPluginToolExecutorAuthorizesBeforeDispatch(t *testing.T) {
+	client := &pluginToolTestClient{}
+	host := pluginhost.New(client)
+	name := host.ToolDefinitions()[0].Name
+	inner := &recordingToolExecutor{authorizationErr: fmt.Errorf("policy denied")}
+	executor := newPluginToolExecutor(inner, host, "thread", "/workspace")
+	_, err := executor.Execute(context.Background(), providers.ToolCall{Name: name, Arguments: `{}`})
+	if err == nil || client.executed || len(inner.authorized) != 1 {
+		t.Fatalf("error = %v executed = %v authorized = %+v", err, client.executed, inner.authorized)
 	}
 }

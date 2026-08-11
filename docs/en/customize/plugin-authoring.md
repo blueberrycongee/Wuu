@@ -300,6 +300,35 @@ Now that kernel services live in the registry, the host and third parties use
 the exact same provide/consume contract; no private entry point exists that
 only first-party plugins can call.
 
+### Custom authorization and process sandboxes
+
+Security policy and process isolation are separate extension seams:
+
+- Provide `security.authorize@1` with method `authorize` to inspect each tool's
+  stable identity, arguments, classification, actor, workspace, and current
+  permission mode. Return only `allow` or `deny`. This policy may further
+  restrict an action; it cannot lift Wuu's workspace boundary.
+- Provide `sandbox.process@1` with method `confine` to turn an exact argv plus a
+  `read-only` or `workspace-write` file policy into the argv Wuu should execute.
+  Return the actual enforcement level as `full` or `partial`. This seam covers
+  model-facing shell and managed-process execution; plugin and MCP runtime
+  admission remains governed by package permissions and grants.
+
+The Go SDK exports `AuthorizationService()` and
+`ProcessSandboxProviderService()`; the TypeScript SDK exports matching service
+descriptors and request/result types. When no provider exists, Wuu keeps its
+built-in policy and platform sandbox. Once a custom provider is selected, its
+failure never falls back to unrestricted execution: unknown authorization
+outcomes are denied, and empty or relative sandbox argv, provider errors, and
+partial enforcement stop the process before it starts. A policy provider that
+needs a human decision can consume `host.user-question.ask` within the same
+cancelable execution scope.
+
+These services are intentionally narrow. Authorization does not execute a
+command, and a sandbox provider does not decide whether an action is allowed.
+Containers, virtual machines, and remote execution should expose a complete
+execution service rather than pretending to be a same-host argv wrapper.
+
 ### Execution scope
 
 Every `tool.execute`, `capability.invoke`, or `service.invoke` dispatch is one

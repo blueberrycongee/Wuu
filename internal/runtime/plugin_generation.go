@@ -297,6 +297,7 @@ func (s *Session) applyPluginGeneration(generation *PluginGeneration) {
 		s.Toolkit.SetSkills(s.Skills)
 		s.Toolkit.SetMCPActivityBindings(generation.mcpBinding)
 		s.Toolkit.SetMCPManager(generation.mcp)
+		configureToolkitSecurityExtensions(s.Toolkit, generation.host.ServiceRegistry())
 	}
 	s.RefreshSystemPrompt(s.ProviderName, s.Model)
 }

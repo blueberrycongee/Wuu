@@ -21,6 +21,7 @@ import (
 	"github.com/blueberrycongee/wuu/internal/mcp"
 	"github.com/blueberrycongee/wuu/internal/modelprofile"
 	proc "github.com/blueberrycongee/wuu/internal/process"
+	"github.com/blueberrycongee/wuu/internal/processsandbox"
 	"github.com/blueberrycongee/wuu/internal/providers"
 	"github.com/blueberrycongee/wuu/internal/skills"
 	"github.com/blueberrycongee/wuu/internal/statepath"
@@ -58,6 +59,7 @@ type Toolkit struct {
 	nativeDeferredDiscovery bool
 	boundary                WorkspaceBoundary
 	permissionRequestHook   func(context.Context, *Toolkit, ToolInfo, providers.ToolCall) error
+	authorizer              Authorizer
 	// mcpManager, when set, exposes MCP server tools alongside built-in
 	// tools. MCP tools are appended after built-ins to preserve prompt
 	// cache stability (the built-in prefix stays constant).
@@ -104,7 +106,39 @@ func (t *Toolkit) checkPermission(ctx context.Context, info ToolInfo, call provi
 			return err
 		}
 	}
-	return t.boundary.Check(info, call)
+	if err := t.boundary.Check(info, call); err != nil {
+		return err
+	}
+	if t.authorizer == nil {
+		return nil
+	}
+	decision, err := t.authorizer.Authorize(ctx, AuthorizationRequest{
+		SessionID: t.env.SessionID, ActorID: t.env.AgentID, CWD: t.env.RootDir,
+		PermissionMode: t.env.PermissionMode, Tool: info, Arguments: call.Arguments,
+	})
+	if err != nil {
+		return authorizationDenied(info.Name, "authorization provider unavailable")
+	}
+	if strings.TrimSpace(decision.Outcome) != "allow" {
+		return authorizationDenied(info.Name, decision.Reason)
+	}
+	return nil
+}
+
+func (t *Toolkit) SetAuthorizer(authorizer Authorizer) { t.authorizer = authorizer }
+
+func (t *Toolkit) SetProcessSandboxProvider(provider processsandbox.Provider) {
+	t.env.ProcessSandboxProvider = provider
+}
+
+func (t *Toolkit) SetPermissionMode(mode string) { t.env.PermissionMode = strings.TrimSpace(mode) }
+
+func (t *Toolkit) AuthorizeTool(ctx context.Context, call providers.ToolCall, metadata agent.ToolMetadata) error {
+	return t.checkPermission(ctx, ToolInfo{
+		Name: call.Name, Kind: ToolKindPlugin, Exposure: ToolExposureDirect,
+		Risk: ToolRisk(metadata.Risk), ReadOnly: metadata.ReadOnly,
+		ConcurrencySafe: metadata.ConcurrencySafe, Destructive: metadata.Destructive, Reason: metadata.Reason,
+	}, call)
 }
 
 func markPermissionChecked(ctx context.Context) context.Context {
@@ -190,6 +224,7 @@ func (t *Toolkit) CloneForRoot(rootDir string) (*Toolkit, error) {
 		WorkspaceID:                 t.env.WorkspaceID,
 		StateDir:                    t.env.StateDir,
 		Unconfined:                  t.env.Unconfined,
+		PermissionMode:              t.env.PermissionMode,
 		AllowMutations:              t.env.AllowMutations,
 		boundaryConfigured:          t.env.boundaryConfigured,
 		SessionID:                   t.env.SessionID,
@@ -201,6 +236,7 @@ func (t *Toolkit) CloneForRoot(rootDir string) (*Toolkit, error) {
 		GitAttributionDisabled:      t.env.GitAttributionDisabled,
 		GitWrapperExecutable:        t.env.GitWrapperExecutable,
 		ProcessMgr:                  t.env.ProcessMgr,
+		ProcessSandboxProvider:      t.env.ProcessSandboxProvider,
 		AgentControl:                t.env.AgentControl,
 		// Browser dependencies must be copied explicitly: every desktop thread
 		// runs through CloneForRoot, so omitting these here silently strips the
@@ -217,6 +253,7 @@ func (t *Toolkit) CloneForRoot(rootDir string) (*Toolkit, error) {
 	clone := &Toolkit{
 		env:                 &env,
 		boundary:            t.boundary,
+		authorizer:          t.authorizer,
 		mcpManager:          t.mcpManager,
 		activityRegistry:    t.activityRegistry,
 		mcpActivityBindings: cloneMCPActivityBindings(t.mcpActivityBindings),

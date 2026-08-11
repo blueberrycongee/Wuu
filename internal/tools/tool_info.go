@@ -33,6 +33,7 @@ const (
 	ToolKindMCP       ToolKind = "mcp"
 	ToolKindBrowser   ToolKind = "browser"
 	ToolKindChat      ToolKind = "chat"
+	ToolKindPlugin    ToolKind = "plugin"
 	ToolKindUnknown   ToolKind = "unknown"
 )
 

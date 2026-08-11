@@ -500,6 +500,10 @@ export type HostServiceMethod = (typeof HOST_SERVICE_METHODS)[number];
 export const KERNEL_SERVICE_METHOD = "call" as const;
 export const EXECUTION_UPDATE_SERVICE = "execution.update" as const;
 export const USER_QUESTION_ASK_SERVICE = "host.user-question.ask" as const;
+export const SECURITY_AUTHORIZE_SERVICE = "security.authorize" as const;
+export const PROCESS_SANDBOX_SERVICE = "sandbox.process" as const;
+export const SECURITY_AUTHORIZE_METHOD = "authorize" as const;
+export const PROCESS_SANDBOX_METHOD = "confine" as const;
 export const KERNEL_SERVICE_NAMES = {
   "host.storage.get": "host.storage.get",
   "host.storage.set": "host.storage.set",
@@ -551,6 +555,18 @@ export interface ServiceDescriptor {
   version: string;
   methods: ServiceMethodDescriptor[];
 }
+
+export const AUTHORIZATION_SERVICE_DESCRIPTOR: ServiceDescriptor = {
+  name: SECURITY_AUTHORIZE_SERVICE,
+  version: "1.0.0",
+  methods: [{ name: SECURITY_AUTHORIZE_METHOD, input_schema: "security.authorize.input.v1", output_schema: "security.authorize.output.v1" }],
+};
+
+export const PROCESS_SANDBOX_SERVICE_DESCRIPTOR: ServiceDescriptor = {
+  name: PROCESS_SANDBOX_SERVICE,
+  version: "1.0.0",
+  methods: [{ name: PROCESS_SANDBOX_METHOD, input_schema: "sandbox.process.input.v1", output_schema: "sandbox.process.output.v1" }],
+};
 
 /** A consumed service; declaring it is the only way to gain call authority. */
 export interface ServiceRequirement {
@@ -609,6 +625,45 @@ export interface ToolActivityMetadata {
   destructive?: boolean;
   risk?: string;
   reason?: string;
+}
+
+export interface AuthorizationRequest {
+  session_id?: string;
+  actor_id?: string;
+  cwd: string;
+  permission_mode: string;
+  tool: AuthorizationTool;
+}
+
+export interface AuthorizationTool {
+  name: string;
+  kind: string;
+  arguments?: string;
+  read_only: boolean;
+  concurrency_safe: boolean;
+  destructive: boolean;
+  risk?: string;
+  reason?: string;
+}
+
+export interface AuthorizationDecision {
+  outcome: "allow" | "deny";
+  reason?: string;
+}
+
+export interface ProcessSandboxRequest {
+  argv: string[];
+  policy: ProcessSandboxPolicy;
+}
+
+export interface ProcessSandboxPolicy {
+  mode: "read-only" | "workspace-write";
+  writable_roots?: string[];
+}
+
+export interface ProcessSandboxResult {
+  argv: string[];
+  enforcement: "full" | "partial";
 }
 
 export interface ToolDisplayMetadata {

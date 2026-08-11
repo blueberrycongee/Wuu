@@ -44,6 +44,12 @@ type ToolMetadataProvider interface {
 	ToolMetadata(call providers.ToolCall) (ToolMetadata, bool)
 }
 
+// ToolAuthorizationGate lets executor decorators route dynamically provided
+// tools through the same authority check as built-in tools.
+type ToolAuthorizationGate interface {
+	AuthorizeTool(ctx context.Context, call providers.ToolCall, metadata ToolMetadata) error
+}
+
 // ToolDisplayProvider is an optional interface a ToolExecutor can implement
 // to provide user-facing labels for tool calls. UI clients should treat this
 // as display metadata only; it is not sent to model providers.

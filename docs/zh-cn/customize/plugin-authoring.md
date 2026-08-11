@@ -223,6 +223,26 @@ context blocks、稳定 cause，以及可选的 `presentation: { kind: "query_bu
 把内核服务迁入注册表之后，宿主与第三方使用完全相同的 provide/consume 合同，不存在只能由
 一方插件调用的私有入口。
 
+### 自定义授权与进程沙箱
+
+安全策略和进程隔离是两个独立扩展点：
+
+- 提供 `security.authorize@1` 的 `authorize` 方法，可以读取工具的稳定身份、参数、风险分类、
+  调用者、工作区和当前权限模式，并返回 `allow` 或 `deny`。该策略只能进一步收紧权限，不能
+  绕过 Wuu 的工作区硬边界。
+- 提供 `sandbox.process@1` 的 `confine` 方法，把原始 argv 以及 `read-only` 或
+  `workspace-write` 文件策略转换成 Wuu 实际应执行的 argv，并报告 `full` 或 `partial` 隔离级别。
+  该扩展点覆盖模型发起的 shell 和托管进程；插件与 MCP runtime 的准入仍由包权限和 grant 管理。
+
+Go SDK 提供 `AuthorizationService()` 和 `ProcessSandboxProviderService()`；TypeScript SDK
+提供对应的 Service descriptor 和请求/结果类型。没有提供者时，Wuu 使用内置策略和平台沙箱；
+一旦选中自定义提供者，失败不会退回无限制执行：未知授权结果会被拒绝，沙箱提供者报错、返回
+空 argv、相对执行器或部分隔离时，进程都不会启动。需要人工确认的授权插件可以在同一个可取消
+execution 中消费 `host.user-question.ask`。
+
+这两个合同刻意保持窄小：授权不负责执行命令，沙箱也不决定动作是否允许。容器、虚拟机和远程
+执行应提供完整执行 Service，而不是伪装成同机 argv 包装器。
+
 ### 执行作用域
 
 每次 `tool.execute`、`capability.invoke` 或 `service.invoke` 分发都是一次 execution，宿主为它生成唯一的

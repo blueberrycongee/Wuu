@@ -211,7 +211,7 @@ func executeShellCommandInDir(ctx context.Context, env *Env, command string, tim
 		cmd.Env = replaceCommandEnv(cmd.Env, "TMPDIR", sandboxTempDir)
 	}
 	if sandboxPolicy != nil {
-		if err := processsandbox.Apply(cmd, *sandboxPolicy); err != nil {
+		if err := processsandbox.ApplyWithProvider(ctx, cmd, *sandboxPolicy, env.ProcessSandboxProvider); err != nil {
 			return shellExecutionResult{}, fmt.Errorf("prepare filesystem process sandbox: %w", err)
 		}
 	}

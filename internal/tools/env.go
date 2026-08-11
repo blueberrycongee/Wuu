@@ -16,6 +16,7 @@ import (
 	"github.com/blueberrycongee/wuu/internal/capability"
 	"github.com/blueberrycongee/wuu/internal/channels"
 	proc "github.com/blueberrycongee/wuu/internal/process"
+	"github.com/blueberrycongee/wuu/internal/processsandbox"
 	"github.com/blueberrycongee/wuu/internal/skills"
 	"github.com/blueberrycongee/wuu/internal/statepath"
 	"github.com/blueberrycongee/wuu/internal/toolctx"
@@ -206,7 +207,8 @@ type Env struct {
 	StateDir    string
 	// Unconfined is the explicit escape hatch for lifting path confinement.
 	// Default false means file tools stay inside FileScopeRoots/RootDir.
-	Unconfined bool
+	Unconfined     bool
+	PermissionMode string
 
 	// AllowMutations mirrors WorkspaceBoundary.AllowMutations for the active
 	// runtime. Set by Toolkit.SetBoundary. False in read-only mode even when
@@ -251,11 +253,12 @@ type Env struct {
 	GitAttributionDisabled bool
 	// GitWrapperExecutable overrides the WUU executable used by the private
 	// bash git launcher. Production resolves os.Executable when this is empty.
-	GitWrapperExecutable string
-	gitAttributionShell  gitAttributionShellState
-	ProcessMgr           *proc.Manager
-	AgentControl         *agentcontrol.AgentControl
-	ChatAgent            *channels.AgentClient
+	GitWrapperExecutable   string
+	gitAttributionShell    gitAttributionShellState
+	ProcessMgr             *proc.Manager
+	ProcessSandboxProvider processsandbox.Provider
+	AgentControl           *agentcontrol.AgentControl
+	ChatAgent              *channels.AgentClient
 	// BrowserBridge routes the browser tool's actions to the desktop host that
 	// owns the hidden WebContentsView + CDP session. Nil means no embedded
 	// browser backend is attached (for example the CLI/headless runtime), and

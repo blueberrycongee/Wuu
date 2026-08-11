@@ -429,6 +429,7 @@ func NewSession(opts Options) (*Session, error) {
 		kit.SetProcessManager(processMgr)
 		kit.SetSkills(discoveredSkills)
 		ConfigureToolkitPermissions(kit, permissions)
+		configureToolkitSecurityExtensions(kit, pluginKernel.registry)
 		kit.ConfigureSurfaceForProviderModel(ruleProviderName, toolModeModel, true)
 		kit.SetBrowserEnabled(browserEnabledFromEnv())
 		kit.SetToolSearchEnabled(toolSearchEnabled)
@@ -2225,6 +2226,7 @@ func ConfigureToolkitPermissions(kit *tools.Toolkit, permissions config.Resolved
 		return
 	}
 	kit.SetBoundary(BoundaryForMode(permissions.Mode))
+	kit.SetPermissionMode(config.NormalizePermissionMode(permissions.Mode))
 }
 
 // workerWakeAuthority builds the wake-time authority refresher for workers

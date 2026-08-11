@@ -13,10 +13,10 @@ import (
 
 // processSandboxPolicy translates the existing workspace boundary into an OS
 // filesystem policy. It never asks for per-call approval: policy changes remain
-// a user-owned session/workspace setting. Unsupported platforms keep the
-// existing workspace boundary and are not presented as process-sandboxed.
+// a user-owned session/workspace setting. Platforms without Wuu's built-in
+// backend may still confine processes through a configured provider.
 func (e *Env) processSandboxPolicy(ctx context.Context) (*processsandbox.Policy, string, error) {
-	if e == nil || e.Unconfined || !processsandbox.Supported() {
+	if e == nil || e.Unconfined || (e.ProcessSandboxProvider == nil && !processsandbox.Supported()) {
 		return nil, "", nil
 	}
 	if e.boundaryConfigured && !e.AllowMutations {

@@ -38,7 +38,11 @@ const (
 	ExecutionCancelMethod = "execution.cancel"
 	// ExecutionUpdateService is the kernel service a plugin calls to report
 	// progress for an execution it owns.
-	ExecutionUpdateService = "execution.update"
+	ExecutionUpdateService   = "execution.update"
+	SecurityAuthorizeService = "security.authorize"
+	ProcessSandboxService    = "sandbox.process"
+	SecurityAuthorizeMethod  = "authorize"
+	ProcessSandboxMethod     = "confine"
 )
 
 const (
@@ -119,6 +123,18 @@ type Service struct {
 	Methods []ServiceMethod `json:"methods"`
 }
 
+func AuthorizationService() Service {
+	return Service{Name: SecurityAuthorizeService, Version: "1.0.0", Methods: []ServiceMethod{{
+		Name: SecurityAuthorizeMethod, InputSchema: "security.authorize.input.v1", OutputSchema: "security.authorize.output.v1",
+	}}}
+}
+
+func ProcessSandboxProviderService() Service {
+	return Service{Name: ProcessSandboxService, Version: "1.0.0", Methods: []ServiceMethod{{
+		Name: ProcessSandboxMethod, InputSchema: "sandbox.process.input.v1", OutputSchema: "sandbox.process.output.v1",
+	}}}
+}
+
 // ServiceRequirement declares a service this plugin consumes. Declaring it is
 // the only way to gain authority to call the service.
 type ServiceRequirement struct {
@@ -164,6 +180,45 @@ type ToolActivity struct {
 	Destructive     bool   `json:"destructive,omitempty"`
 	Risk            string `json:"risk,omitempty"`
 	Reason          string `json:"reason,omitempty"`
+}
+
+type AuthorizationRequest struct {
+	SessionID      string            `json:"session_id,omitempty"`
+	ActorID        string            `json:"actor_id,omitempty"`
+	CWD            string            `json:"cwd"`
+	PermissionMode string            `json:"permission_mode"`
+	Tool           AuthorizationTool `json:"tool"`
+}
+
+type AuthorizationTool struct {
+	Name            string `json:"name"`
+	Kind            string `json:"kind"`
+	Arguments       string `json:"arguments,omitempty"`
+	ReadOnly        bool   `json:"read_only"`
+	ConcurrencySafe bool   `json:"concurrency_safe"`
+	Destructive     bool   `json:"destructive"`
+	Risk            string `json:"risk,omitempty"`
+	Reason          string `json:"reason,omitempty"`
+}
+
+type AuthorizationDecision struct {
+	Outcome string `json:"outcome"`
+	Reason  string `json:"reason,omitempty"`
+}
+
+type ProcessSandboxRequest struct {
+	Argv   []string             `json:"argv"`
+	Policy ProcessSandboxPolicy `json:"policy"`
+}
+
+type ProcessSandboxPolicy struct {
+	Mode          string   `json:"mode"`
+	WritableRoots []string `json:"writable_roots,omitempty"`
+}
+
+type ProcessSandboxResult struct {
+	Argv        []string `json:"argv"`
+	Enforcement string   `json:"enforcement"`
 }
 
 type Definition struct {

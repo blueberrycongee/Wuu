@@ -86,6 +86,13 @@ func (h *HookedExecutor) ToolMetadata(call providers.ToolCall) (agent.ToolMetada
 	return agent.ToolMetadata{}, false
 }
 
+func (h *HookedExecutor) AuthorizeTool(ctx context.Context, call providers.ToolCall, metadata agent.ToolMetadata) error {
+	if gate, ok := h.inner.(agent.ToolAuthorizationGate); ok {
+		return gate.AuthorizeTool(ctx, call, metadata)
+	}
+	return nil
+}
+
 // DiscoveredTools forwards provider-native deferred tool discovery through the
 // hook layer. Without this, successful tools can activate deferred schemas in
 // the inner Toolkit while the agent loop cannot attach them to the tool result.

@@ -1,0 +1,62 @@
+package pluginhost
+
+const (
+	SecurityAuthorizeService = "security.authorize"
+	ProcessSandboxService    = "sandbox.process"
+	SecurityServiceVersion   = "1.0.0"
+	SecurityServiceMajor     = 1
+
+	SecurityAuthorizeMethod = "authorize"
+	ProcessSandboxMethod    = "confine"
+)
+
+type AuthorizationRequest struct {
+	SessionID      string            `json:"session_id,omitempty"`
+	ActorID        string            `json:"actor_id,omitempty"`
+	CWD            string            `json:"cwd"`
+	PermissionMode string            `json:"permission_mode"`
+	Tool           AuthorizationTool `json:"tool"`
+}
+
+type AuthorizationTool struct {
+	Name            string `json:"name"`
+	Kind            string `json:"kind"`
+	Arguments       string `json:"arguments,omitempty"`
+	ReadOnly        bool   `json:"read_only"`
+	ConcurrencySafe bool   `json:"concurrency_safe"`
+	Destructive     bool   `json:"destructive"`
+	Risk            string `json:"risk,omitempty"`
+	Reason          string `json:"reason,omitempty"`
+}
+
+type AuthorizationDecision struct {
+	Outcome string `json:"outcome"`
+	Reason  string `json:"reason,omitempty"`
+}
+
+type ProcessSandboxRequest struct {
+	Argv   []string             `json:"argv"`
+	Policy ProcessSandboxPolicy `json:"policy"`
+}
+
+type ProcessSandboxPolicy struct {
+	Mode          string   `json:"mode"`
+	WritableRoots []string `json:"writable_roots,omitempty"`
+}
+
+type ProcessSandboxResult struct {
+	Argv        []string `json:"argv"`
+	Enforcement string   `json:"enforcement"`
+}
+
+func SecurityAuthorizeDescriptor() ServiceDescriptor {
+	return ServiceDescriptor{Name: SecurityAuthorizeService, Version: SecurityServiceVersion, Methods: []ServiceMethodDescriptor{{
+		Name: SecurityAuthorizeMethod, InputSchema: "security.authorize.input.v1", OutputSchema: "security.authorize.output.v1",
+	}}}
+}
+
+func ProcessSandboxDescriptor() ServiceDescriptor {
+	return ServiceDescriptor{Name: ProcessSandboxService, Version: SecurityServiceVersion, Methods: []ServiceMethodDescriptor{{
+		Name: ProcessSandboxMethod, InputSchema: "sandbox.process.input.v1", OutputSchema: "sandbox.process.output.v1",
+	}}}
+}
