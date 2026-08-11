@@ -50,7 +50,11 @@ function MarkdownMessage({ ownerProps }: { ownerProps?: unknown }) {
   const message = ownerProps as ConversationMessageItem;
   const terminal = message.status === "error"
     ? "Response failed"
-    : message.status === "cancelled" ? "Response cancelled" : undefined;
+    : message.status === "failed"
+      ? "Response failed"
+      : message.status === "cancelled"
+        ? "Response cancelled"
+        : message.status === "interrupted" ? "Response interrupted" : undefined;
   return (
     <article className={`message message-${message.role}`} data-status={message.status}>
       {message.text ? <MarkdownText text={message.text} /> : null}
@@ -128,16 +132,22 @@ const conversationClient: Plugin = function conversation(client) {
     const value = useProjection<ConversationValue>(componentClient, sessionId, "conversation");
     const [scrollState, setScrollState] = useScopedStore(scrollStates, sessionId);
     const scroll = useRef<HTMLDivElement>(null);
+    const lastScrollTop = useRef(0);
     const onComposerHeightChange = useCallback(() => {
       const element = scroll.current;
-      if (scrollState.pinned && element) element.scrollTop = element.scrollHeight;
+      if (!scrollState.pinned || !element) return;
+      const nextTop = Math.max(0, element.scrollHeight - element.clientHeight);
+      lastScrollTop.current = nextTop;
+      element.scrollTop = nextTop;
     }, [scrollState.pinned]);
     useEffect(() => {
       const element = scroll.current;
       if (!element) return;
-      element.scrollTop = scrollState.pinned
-        ? element.scrollHeight
+      const nextTop = scrollState.pinned
+        ? Math.max(0, element.scrollHeight - element.clientHeight)
         : Math.min(scrollState.top, Math.max(0, element.scrollHeight - element.clientHeight));
+      lastScrollTop.current = nextTop;
+      element.scrollTop = nextTop;
     }, [sessionId, value?.items, scrollState.pinned]);
     return (
       <section className="conversation-shell">
@@ -146,9 +156,12 @@ const conversationClient: Plugin = function conversation(client) {
           className="conversation-scroll"
           onScroll={(event) => {
             const element = event.currentTarget;
+            const movedUp = element.scrollTop < lastScrollTop.current;
+            lastScrollTop.current = element.scrollTop;
             const next = {
               top: element.scrollTop,
-              pinned: element.scrollHeight - element.scrollTop - element.clientHeight < 24,
+              pinned: !movedUp &&
+                element.scrollHeight - element.scrollTop - element.clientHeight < 24,
             };
             setScrollState((current) =>
               current.top === next.top && current.pinned === next.pinned ? current : next);

@@ -31,6 +31,8 @@ export const sideStyles = `
 }
 
 .side-header {
+  position: relative;
+  z-index: 3;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -38,6 +40,7 @@ export const sideStyles = `
   padding: 0 12px;
   border-bottom: 1px solid var(--hairline, rgba(31, 35, 40, 0.08));
   font-size: 13px;
+  -webkit-app-region: no-drag;
 }
 
 .side-header button,

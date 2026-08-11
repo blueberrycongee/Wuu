@@ -33,7 +33,7 @@ export const conversationProjectionPlugin: Plugin = function conversationProject
     } else if (record.type === "agent/assistant-tool-call") {
       next.items.push({
         kind: "tool",
-        id: `tool:${record.data.call.callId}`,
+        id: `tool:${record.data.messageId}:${record.data.call.callId}`,
         callId: record.data.call.callId,
         name: record.data.call.name,
         input: record.data.call.input,
@@ -49,7 +49,10 @@ export const conversationProjectionPlugin: Plugin = function conversationProject
         message.status = record.data.stopReason;
       }
     } else if (record.type === "agent/tool-result") {
-      const tool = next.items.find((item) => item.kind === "tool" && item.callId === record.data.callId);
+      const tool = next.items.findLast((item) =>
+        item.kind === "tool" &&
+        item.callId === record.data.callId &&
+        item.status === "running");
       if (tool?.kind === "tool") {
         tool.result = record.data.content.map((item) => item.text).join("\n");
         tool.status = record.data.isError ? "error" : "complete";
@@ -65,9 +68,13 @@ export const conversationProjectionPlugin: Plugin = function conversationProject
           item.kind === "message" &&
           item.role === "assistant" &&
           item.runId === record.data.runId);
+        if (assistant?.kind === "message" && assistant.status === "streaming") {
+          assistant.status = record.data.state;
+        }
         const represented = assistant?.kind === "message" && (
           (record.data.state === "cancelled" && assistant.status === "cancelled") ||
-          (record.data.state === "failed" && assistant.status === "error")
+          (record.data.state === "failed" && ["error", "failed"].includes(assistant.status)) ||
+          (record.data.state === "interrupted" && assistant.status === "interrupted")
         );
         if (!represented) {
           next.items.push({

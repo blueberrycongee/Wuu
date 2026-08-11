@@ -50,7 +50,7 @@ function ComposerSurface({
 
   useEffect(() => {
     if (autoFocus) textarea.current?.focus({ preventScroll: true });
-  }, [autoFocus]);
+  }, [autoFocus, sessionId]);
 
   useEffect(() => {
     const element = textarea.current;
@@ -77,6 +77,10 @@ function ComposerSurface({
   const submit = async (candidate = draft) => {
     const text = candidate.trim();
     if (!text || busy) return;
+    const restoreFocus = typeof document !== "undefined" && (
+      document.activeElement === document.body ||
+      !!stack.current?.contains(document.activeElement)
+    );
     setSubmitting(true);
     setError(undefined);
     try {
@@ -85,6 +89,21 @@ function ComposerSurface({
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
       setSubmitting(false);
+      if (
+        restoreFocus &&
+        typeof document !== "undefined" &&
+        (document.activeElement === document.body || !!stack.current?.contains(document.activeElement))
+      ) textarea.current?.focus();
+    }
+  };
+
+  const cancel = async () => {
+    if (!onCancel) return;
+    setError(undefined);
+    try {
+      await onCancel();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
     }
   };
 
@@ -107,12 +126,14 @@ function ComposerSurface({
         ownerProps={{ locked: busy }}
       />
       {commands ? (
-        <SlotOutlet
-          client={client}
-          slot={commandSurfaceSlot}
-          sessionId={sessionId}
-          ownerProps={commandSurface}
-        />
+        <div className="wuu-composer-command-host">
+          <SlotOutlet
+            client={client}
+            slot={commandSurfaceSlot}
+            sessionId={sessionId}
+            ownerProps={commandSurface}
+          />
+        </div>
       ) : null}
       <form className="wuu-composer-surface" onSubmit={(event) => {
         event.preventDefault();
@@ -171,7 +192,7 @@ function ComposerSurface({
               type={running ? "button" : "submit"}
               aria-label={running ? "Stop" : "Send"}
               disabled={running ? !onCancel : !draft.trim() || submitting}
-              onClick={running ? () => void onCancel?.() : undefined}
+              onClick={running ? () => void cancel() : undefined}
             >
               {running ? "■" : "↑"}
             </button>
@@ -232,6 +253,7 @@ const composerClient: Plugin = function composer(client) {
       sessionId,
       draft,
       running,
+      autoFocus: true,
       ariaLabel: "Message Wuu",
       placeholder: "Ask Wuu anything",
       ...(onVisualHeightChange ? { onVisualHeightChange } : {}),

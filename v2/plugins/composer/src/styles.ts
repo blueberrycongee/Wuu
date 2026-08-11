@@ -30,6 +30,13 @@ export const composerStyles = `
   max-height: var(--wuu-composer-expanded-height);
 }
 
+.wuu-composer-command-host {
+  position: relative;
+  z-index: 20;
+  height: 0;
+  min-width: 0;
+}
+
 .wuu-composer-surface textarea {
   display: block;
   width: 100%;

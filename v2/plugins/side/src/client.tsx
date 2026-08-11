@@ -140,6 +140,7 @@ function SidePanel({ client, sessionId }: { client: Context; sessionId?: string 
     "conversation",
   );
   const log = useRef<HTMLDivElement>(null);
+  const lastScrollTop = useRef(0);
   const openButton = useRef<HTMLButtonElement>(null);
   const wasOpen = useRef(state.open);
   const resize = useRef<{
@@ -149,15 +150,20 @@ function SidePanel({ client, sessionId }: { client: Context; sessionId?: string 
   } | undefined>(undefined);
   const onComposerHeightChange = useCallback(() => {
     const element = log.current;
-    if (state.pinned && element) element.scrollTop = element.scrollHeight;
+    if (!state.pinned || !element) return;
+    const nextTop = Math.max(0, element.scrollHeight - element.clientHeight);
+    lastScrollTop.current = nextTop;
+    element.scrollTop = nextTop;
   }, [state.pinned]);
 
   useEffect(() => {
     const element = log.current;
     if (!element) return;
-    element.scrollTop = state.pinned
-      ? element.scrollHeight
+    const nextTop = state.pinned
+      ? Math.max(0, element.scrollHeight - element.clientHeight)
       : Math.min(state.scrollTop, Math.max(0, element.scrollHeight - element.clientHeight));
+    lastScrollTop.current = nextTop;
+    element.scrollTop = nextTop;
   }, [conversation?.items, sessionId, state.open, state.pinned]);
 
   useEffect(() => {
@@ -173,7 +179,7 @@ function SidePanel({ client, sessionId }: { client: Context; sessionId?: string 
         className="side-open-button"
         type="button"
         aria-label="Open Side"
-        onClick={() => void client.sidePanels.show(sessionId)}
+        onClick={() => void client.sidePanels.show(sessionId).catch(() => {})}
       >
         Side
       </button>
@@ -234,10 +240,12 @@ function SidePanel({ client, sessionId }: { client: Context; sessionId?: string 
         aria-live="polite"
         onScroll={(event) => {
           const element = event.currentTarget;
+          const movedUp = element.scrollTop < lastScrollTop.current;
+          lastScrollTop.current = element.scrollTop;
           client.sidePanels.setScroll(
             sessionId,
             element.scrollTop,
-            element.scrollHeight - element.scrollTop - element.clientHeight < 24,
+            !movedUp && element.scrollHeight - element.scrollTop - element.clientHeight < 24,
           );
         }}
       >

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "reac
 import { type Context, type Plugin } from "@wuu-v2/client-runtime";
 import type { ComposerCommandSurface } from "@wuu-v2/plugin-composer/client-api";
 import { SlashCommandsService, type SlashCommand } from "./service.js";
+import { slashStyles } from "./styles.js";
 
 interface SlashDraft {
   query: string;
@@ -155,6 +156,14 @@ const slashClient: Plugin = function slash(client) {
     id: "slash-menu",
     component: SlashMenu,
   });
+  client.effect(() => {
+    if (typeof document === "undefined") return () => {};
+    const style = document.createElement("style");
+    style.dataset.wuuPluginStyle = "slash";
+    style.textContent = slashStyles;
+    document.head.append(style);
+    return () => style.remove();
+  }, "install Slash styles");
 };
 
 slashClient.inject = ["slots"];
