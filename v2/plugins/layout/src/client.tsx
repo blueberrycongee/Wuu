@@ -1,14 +1,33 @@
-import { SlotOutlet, type Context, type Plugin, type SlotHandle } from "@wuu-v2/client-runtime";
+import { useEffect } from "react";
+import {
+  SlotOutlet,
+  useActiveSession,
+  type Context,
+  type Plugin,
+  type SlotHandle,
+} from "@wuu-v2/client-runtime";
 import { layoutStyles } from "./styles.js";
 
 const layoutClient: Plugin = function layout(client) {
   let conversationSlot: SlotHandle;
   let sideSlot: SlotHandle;
+  let sidebarSlot: SlotHandle;
   function AppFrame({ client: componentClient, ownerProps }: { client: Context; ownerProps?: unknown }) {
-    const sessionId = (ownerProps as { sessionId?: string } | undefined)?.sessionId;
+    const initialSessionId = (ownerProps as { sessionId?: string } | undefined)?.sessionId;
+    const selectedSessionId = useActiveSession(componentClient);
+    const sessionId = selectedSessionId ?? initialSessionId;
+    useEffect(() => {
+      if (!selectedSessionId && initialSessionId) componentClient.activeSession.select(initialSessionId);
+    }, [componentClient, initialSessionId, selectedSessionId]);
     return (
       <div className="app-shell">
-        <aside className="app-sidebar" aria-label="Wuu sidebar" />
+        <aside className="app-sidebar" aria-label="Wuu sidebar">
+          <SlotOutlet
+            client={componentClient}
+            slot={sidebarSlot}
+            {...(sessionId ? { sessionId } : {})}
+          />
+        </aside>
         <main className="conversation-pane">
           <SlotOutlet
             client={componentClient}
@@ -29,10 +48,12 @@ const layoutClient: Plugin = function layout(client) {
     id: "default-layout",
     component: AppFrame,
     children: [
+      { name: "layout/sidebar", kind: "single", scope: "session-maybe" },
       { name: "layout/conversation", kind: "single", scope: "session" },
       { name: "layout/side", kind: "single", scope: "session" },
     ],
   });
+  sidebarSlot = registration.children.get("layout/sidebar")!;
   conversationSlot = registration.children.get("layout/conversation")!;
   sideSlot = registration.children.get("layout/side")!;
   client.effect(() => {
@@ -45,5 +66,5 @@ const layoutClient: Plugin = function layout(client) {
   }, "install layout styles");
 };
 
-layoutClient.inject = ["slots"];
+layoutClient.inject = ["activeSession", "slots"];
 export default layoutClient;

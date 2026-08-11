@@ -13,19 +13,9 @@ export const layoutStyles = `
 .app-sidebar {
   position: relative;
   min-width: 0;
-  padding: 52px 12px 12px;
+  padding: 48px 0 0;
   border-right: 1px solid var(--hairline);
   background: var(--surface-2);
-}
-
-.app-sidebar::before {
-  content: "Wuu";
-  display: block;
-  padding: 8px 10px;
-  color: var(--ink);
-  font-size: 14px;
-  font-weight: 650;
-  letter-spacing: -0.01em;
 }
 
 .app-sidebar::after {

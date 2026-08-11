@@ -331,6 +331,34 @@ export class ClientActionsService extends Service {
   }
 }
 
+export class ActiveSessionService extends Service {
+  private value: string | undefined;
+  private readonly listeners = new Set<() => void>();
+
+  constructor(ctx: Context) {
+    super(ctx, "activeSession");
+    ctx.effect(() => () => this.listeners.clear(), "clear active Session listeners");
+  }
+
+  current(): string | undefined {
+    return this.value;
+  }
+
+  select(sessionId: string): void {
+    if (!sessionId) throw new Error("active Session id must not be empty");
+    if (this.value === sessionId) return;
+    this.value = sessionId;
+    for (const listener of this.listeners) listener();
+  }
+
+  subscribe(listener: () => void): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
+  snapshot = (): string | undefined => this.value;
+}
+
 export interface ClientPluginModule {
   default: Plugin;
 }
@@ -494,6 +522,7 @@ export class ClientModuleSystem {
 
 declare module "cordis" {
   interface Context {
+    activeSession: ActiveSessionService;
     clientActions: ClientActionsService;
     clientProjections: ClientProjectionStore;
     slots: SlotsService;
@@ -501,12 +530,21 @@ declare module "cordis" {
 }
 
 export const clientKernelPlugin: Plugin = function clientKernel(ctx: Context) {
+  new ActiveSessionService(ctx);
   new ClientActionsService(ctx);
   new ClientProjectionStore(ctx);
   new SlotsService(ctx);
 };
 
-clientKernelPlugin.provide = ["clientActions", "clientProjections", "slots"];
+clientKernelPlugin.provide = ["activeSession", "clientActions", "clientProjections", "slots"];
+
+export function useActiveSession(client: Context): string | undefined {
+  return useSyncExternalStore(
+    client.activeSession.subscribe.bind(client.activeSession),
+    client.activeSession.snapshot,
+    client.activeSession.snapshot,
+  );
+}
 
 export function SlotOutlet(props: {
   client: Context;
