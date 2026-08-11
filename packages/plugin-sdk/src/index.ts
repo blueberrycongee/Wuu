@@ -830,7 +830,7 @@ export interface HostServiceContracts {
   };
   "host.session.cancel": {
     params: { session_id: string; turn_id?: string; queue_id?: string };
-    result: { session_id: string; cancelled: boolean };
+    result: { session_id: string; turn_id?: string; queue_id?: string; cancelled: boolean };
   };
   "host.service.call": {
     params: { service: string; method: string; params?: unknown };
