@@ -36,6 +36,7 @@ export interface SlotContribution {
 
 interface OwnedDeclaration extends SlotDeclaration {
   epoch: symbol;
+  closing?: boolean;
 }
 
 interface OwnedContribution extends SlotContribution {
@@ -96,7 +97,7 @@ export class SlotsService extends Service {
     return { name: declaration.name, epoch: owned.epoch };
   }
 
-  private detachDeclarationTree(
+  private drainDeclarationTree(
     name: string,
     epoch: symbol,
     excludedFiber: Fiber,
@@ -104,26 +105,34 @@ export class SlotsService extends Service {
   ): void {
     const current = this.declarations.get(name);
     if (!current || current.epoch !== epoch) return;
+    current.closing = true;
     for (const child of [...this.declarations.values()]) {
       if (child.parent === name) {
-        this.detachDeclarationTree(child.name, child.epoch, excludedFiber, fibers);
+        this.drainDeclarationTree(child.name, child.epoch, excludedFiber, fibers);
       }
     }
-    this.declarations.delete(name);
     const entries = this.contributions.get(name);
-    if (entries && this.contributions.get(name) === entries) {
-      this.contributions.delete(name);
+    if (entries) {
       for (const entry of entries.values()) {
         if (entry.fiber !== excludedFiber) fibers.add(entry.fiber);
       }
     }
   }
 
-  private async releaseDeclaration(name: string, epoch: symbol, excludedFiber: Fiber): Promise<void> {
+  private async drainDeclaration(name: string, epoch: symbol, excludedFiber: Fiber): Promise<void> {
     const fibers = new Set<Fiber>();
-    this.detachDeclarationTree(name, epoch, excludedFiber, fibers);
-    this.changed();
+    this.drainDeclarationTree(name, epoch, excludedFiber, fibers);
     for (const fiber of fibers) await fiber.dispose();
+  }
+
+  private finalizeDeclarationTree(name: string, epoch: symbol): void {
+    const current = this.declarations.get(name);
+    if (!current || current.epoch !== epoch) return;
+    for (const child of [...this.declarations.values()]) {
+      if (child.parent === name) this.finalizeDeclarationTree(child.name, child.epoch);
+    }
+    this.declarations.delete(name);
+    this.contributions.delete(name);
   }
 
   private rollbackDeclaration(name: string, epoch: symbol): void {
@@ -135,6 +144,7 @@ export class SlotsService extends Service {
 
   contribute(name: string, contribution: SlotContribution): SlotRegistration {
     const declaration = this.declarations.get(name);
+    if (declaration?.closing) throw new Error(`slot is being removed: ${name}`);
     const entries = this.contributions.get(name) ?? new Map();
     if (entries.has(contribution.id)) {
       throw new Error(`duplicate slot contribution: ${name}/${contribution.id}`);
@@ -164,7 +174,7 @@ export class SlotsService extends Service {
     this.changed();
     const dispose = this.ctx.effect(() => async () => {
       for (const handle of [...children.values()].reverse()) {
-        await this.releaseDeclaration(handle.name, handle.epoch, ownerFiber);
+        await this.drainDeclaration(handle.name, handle.epoch, ownerFiber);
       }
       if (entries.delete(contribution.id)) {
         if (!entries.size && this.contributions.get(name) === entries) {
@@ -172,6 +182,10 @@ export class SlotsService extends Service {
         }
         this.changed();
       }
+      for (const handle of [...children.values()].reverse()) {
+        this.finalizeDeclarationTree(handle.name, handle.epoch);
+      }
+      if (children.size) this.changed();
     }, `remove slot contribution:${name}/${contribution.id}`);
     return { children, dispose };
   }

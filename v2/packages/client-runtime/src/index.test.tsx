@@ -83,7 +83,18 @@ test("materializes lazily and invalidates owner slot authorization", async () =>
   });
   assert.equal(ctx.clientProjections.get("session-1", "conversation"), undefined);
 
+  let staleWhileOwnerMounted = false;
+  const stopWatching = ctx.slots.subscribe(() => {
+    if (!ctx.slots.entries(ctx.slots.root).some((entry) => entry.id === "layout")) return;
+    try {
+      ctx.slots.entries(surface!);
+    } catch {
+      staleWhileOwnerMounted = true;
+    }
+  });
   await modules.invalidate("owner");
+  stopWatching();
+  assert.equal(staleWhileOwnerMounted, false);
   assert.throws(() => ctx.slots.entries(surface!), /stale slot authorization/);
   assert.equal(contributorActive, 0);
   modules.arrive("owner", "2", ownerModule);
