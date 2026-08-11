@@ -82,7 +82,29 @@ test("materializes lazily and invalidates owner slot authorization", async () =>
   await modules.activate("owner");
   assert.equal(ctx.slots.entries(surface!).length, 1);
 
+  let candidateActive = 0;
+  modules.arrive("candidate", "1", async () => {
+    const plugin: Plugin = function candidate(client) {
+      client.effect(() => {
+        candidateActive += 1;
+        return () => { candidateActive -= 1; };
+      }, "candidate lifetime");
+    };
+    return { default: plugin };
+  });
+  modules.arrive("broken", "1", async () => {
+    throw new Error("candidate module failed");
+  });
+  await assert.rejects(
+    modules.activateAll(["candidate", "broken"]),
+    /candidate module failed/,
+  );
+  assert.equal(candidateActive, 0);
+  await modules.activate("candidate");
+  assert.equal(candidateActive, 1);
+
   await modules.dispose();
+  assert.equal(candidateActive, 0);
   await kernel.dispose();
   await ctx.fiber.dispose();
 });

@@ -375,15 +375,15 @@ export class ClientModuleSystem {
 
   async activateAll(ids: string[]): Promise<void> {
     const pending: Array<{ id: string; fiber: Fiber }> = [];
-    for (const id of ids) {
-      if (this.fibers.has(id)) continue;
-      const module = await this.materialize(id);
-      if (this.fibers.has(id)) continue;
-      const fiber = this.ctx.plugin(module.default);
-      this.fibers.set(id, fiber);
-      pending.push({ id, fiber });
-    }
     try {
+      for (const id of ids) {
+        if (this.fibers.has(id)) continue;
+        const module = await this.materialize(id);
+        if (this.fibers.has(id)) continue;
+        const fiber = this.ctx.plugin(module.default);
+        this.fibers.set(id, fiber);
+        pending.push({ id, fiber });
+      }
       await Promise.all(pending.map(({ fiber }) => fiber.await()));
     } catch (error) {
       for (const { id, fiber } of pending.reverse()) {
