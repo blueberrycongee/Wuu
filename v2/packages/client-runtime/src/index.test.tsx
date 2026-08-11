@@ -103,6 +103,33 @@ test("materializes lazily and invalidates owner slot authorization", async () =>
   await modules.activate("candidate");
   assert.equal(candidateActive, 1);
 
+  modules.arrive("missing-dependency", "1", async () => {
+    const plugin: Plugin = () => {};
+    plugin.inject = ["absentService"];
+    return { default: plugin };
+  });
+  await assert.rejects(
+    modules.activate("missing-dependency"),
+    /missing services: missing-dependency -> absentService/,
+  );
+
+  modules.arrive("cycle-a", "1", async () => {
+    const plugin: Plugin = () => {};
+    plugin.inject = ["cycleB"];
+    plugin.provide = "cycleA";
+    return { default: plugin };
+  });
+  modules.arrive("cycle-b", "1", async () => {
+    const plugin: Plugin = () => {};
+    plugin.inject = ["cycleA"];
+    plugin.provide = "cycleB";
+    return { default: plugin };
+  });
+  await assert.rejects(
+    modules.activateAll(["cycle-a", "cycle-b"]),
+    /dependency cycle: cycle-a -> cycle-b -> cycle-a/,
+  );
+
   await modules.dispose();
   assert.equal(candidateActive, 0);
   await kernel.dispose();

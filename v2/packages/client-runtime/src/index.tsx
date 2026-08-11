@@ -337,6 +337,44 @@ export interface ClientPluginModule {
 
 export type ClientModuleFactory = () => Promise<ClientPluginModule>;
 
+function pluginInject(plugin: Plugin): string[] {
+  if (!plugin.inject) return [];
+  return Array.isArray(plugin.inject) ? plugin.inject.map(String) : Object.keys(plugin.inject);
+}
+
+function pluginProvide(plugin: Plugin): string[] {
+  if (!plugin.provide) return [];
+  return Array.isArray(plugin.provide) ? plugin.provide : [plugin.provide];
+}
+
+function dependencyCycle(graph: Map<string, Set<string>>): string[] | undefined {
+  const visiting = new Set<string>();
+  const visited = new Set<string>();
+  const path: string[] = [];
+
+  function visit(id: string): string[] | undefined {
+    if (visiting.has(id)) {
+      const start = path.indexOf(id);
+      return [...path.slice(start), id];
+    }
+    if (visited.has(id)) return;
+    visiting.add(id);
+    path.push(id);
+    for (const dependency of graph.get(id) ?? []) {
+      const cycle = visit(dependency);
+      if (cycle) return cycle;
+    }
+    path.pop();
+    visiting.delete(id);
+    visited.add(id);
+  }
+
+  for (const id of graph.keys()) {
+    const cycle = visit(id);
+    if (cycle) return cycle;
+  }
+}
+
 export class ClientModuleSystem {
   private readonly arrivals = new Map<string, { revision: string; factory: ClientModuleFactory }>();
   private readonly modules = new Map<string, ClientPluginModule>();
@@ -374,7 +412,7 @@ export class ClientModuleSystem {
   }
 
   async activateAll(ids: string[]): Promise<void> {
-    const pending: Array<{ id: string; fiber: Fiber }> = [];
+    const pending: Array<{ id: string; fiber: Fiber; module: ClientPluginModule }> = [];
     try {
       for (const id of ids) {
         if (this.fibers.has(id)) continue;
@@ -382,9 +420,10 @@ export class ClientModuleSystem {
         if (this.fibers.has(id)) continue;
         const fiber = this.ctx.plugin(module.default);
         this.fibers.set(id, fiber);
-        pending.push({ id, fiber });
+        pending.push({ id, fiber, module });
       }
       await Promise.all(pending.map(({ fiber }) => fiber.await()));
+      this.auditActivation(pending);
     } catch (error) {
       for (const { id, fiber } of pending.reverse()) {
         await fiber.dispose();
@@ -393,6 +432,47 @@ export class ClientModuleSystem {
       }
       throw error;
     }
+  }
+
+  private auditActivation(pending: Array<{
+    id: string;
+    fiber: Fiber;
+    module: ClientPluginModule;
+  }>): void {
+    const unresolved = new Map<string, string[]>();
+    for (const { id, module } of pending) {
+      const missing = pluginInject(module.default)
+        .filter((name) => this.ctx.reflect.get(name) === undefined);
+      if (missing.length) unresolved.set(id, missing);
+    }
+    if (!unresolved.size) return;
+
+    const providers = new Map<string, string[]>();
+    for (const { id, module } of pending) {
+      for (const service of pluginProvide(module.default)) {
+        const ids = providers.get(service) ?? [];
+        ids.push(id);
+        providers.set(service, ids);
+      }
+    }
+    const graph = new Map<string, Set<string>>();
+    const missing: string[] = [];
+    for (const [id, services] of unresolved) {
+      const dependencies = new Set<string>();
+      graph.set(id, dependencies);
+      for (const service of services) {
+        const candidates = providers.get(service) ?? [];
+        if (!candidates.length) missing.push(`${id} -> ${service}`);
+        for (const candidate of candidates) dependencies.add(candidate);
+      }
+    }
+    const cycle = dependencyCycle(graph);
+    const reasons = [
+      ...(missing.length ? [`missing services: ${missing.join(", ")}`] : []),
+      ...(cycle ? [`dependency cycle: ${cycle.join(" -> ")}`] : []),
+      `unresolved modules: ${[...unresolved.keys()].join(", ")}`,
+    ];
+    throw new Error(`client startup dependency audit failed; ${reasons.join("; ")}`);
   }
 
   async invalidate(id: string): Promise<void> {
