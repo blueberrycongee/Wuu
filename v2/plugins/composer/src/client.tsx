@@ -15,11 +15,13 @@ import { composerStyles } from "./styles.js";
 
 interface SurfaceComponentProps extends ComposerSurfaceProps {
   client: Context;
+  aboveSlot: SlotHandle;
   commandSurfaceSlot: SlotHandle;
 }
 
 function ComposerSurface({
   client,
+  aboveSlot,
   commandSurfaceSlot,
   sessionId,
   draft,
@@ -70,6 +72,12 @@ function ComposerSurface({
 
   return (
     <div className={`wuu-composer-stack${expanded ? " is-expanded" : ""}`}>
+      <SlotOutlet
+        client={client}
+        slot={aboveSlot}
+        sessionId={sessionId}
+        ownerProps={{ locked: busy }}
+      />
       {commands ? (
         <SlotOutlet
           client={client}
@@ -149,6 +157,7 @@ function ComposerSurface({
 export class ComposerSurfacesService extends Service implements ComposerSurfaceRenderer {
   constructor(
     ctx: Context,
+    private readonly aboveSlot: SlotHandle,
     private readonly commandSurfaceSlot: SlotHandle,
     readonly toolbarLeftSlot: SlotHandle,
     readonly toolbarRightSlot: SlotHandle,
@@ -159,6 +168,7 @@ export class ComposerSurfacesService extends Service implements ComposerSurfaceR
   render(props: ComposerSurfaceProps) {
     return createElement(ComposerSurface, {
       client: this.ctx,
+      aboveSlot: this.aboveSlot,
       commandSurfaceSlot: this.commandSurfaceSlot,
       ...props,
     });
@@ -206,6 +216,7 @@ const composerClient: Plugin = function composer(client) {
     id: "default-composer",
     component: ConversationComposer,
     children: [
+      { name: "composer/above", kind: "list", scope: "session" },
       { name: "composer/command-surface", kind: "single", scope: "session" },
       { name: "composer/toolbar-left", kind: "list", scope: "session" },
       { name: "composer/toolbar-right", kind: "list", scope: "session" },
@@ -214,6 +225,7 @@ const composerClient: Plugin = function composer(client) {
   commandSurfaceSlot = registration.children.get("composer/command-surface")!;
   new ComposerSurfacesService(
     client,
+    registration.children.get("composer/above")!,
     commandSurfaceSlot,
     registration.children.get("composer/toolbar-left")!,
     registration.children.get("composer/toolbar-right")!,
