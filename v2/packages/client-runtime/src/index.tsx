@@ -2,10 +2,11 @@ import {
   createElement,
   type ComponentType,
   type ReactNode,
+  useEffect,
   useSyncExternalStore,
 } from "react";
 import { Context, Service, type Fiber, type Plugin } from "cordis";
-import type { JsonValue } from "@wuu-v2/contracts";
+import type { JsonValue, ProjectionFrame } from "@wuu-v2/contracts";
 
 export type SlotKind = "single" | "list" | "keyed" | "chain";
 export type SlotScope = "root" | "session-maybe" | "session";
@@ -180,11 +181,30 @@ interface ProjectionRow {
 
 export class ClientProjectionStore extends Service {
   private readonly rows = new Map<string, ProjectionRow>();
+  private readonly frameSeq = new Map<string, number>();
   private readonly listeners = new Set<() => void>();
   private revision = 0;
+  private transport: ClientProjectionTransport | undefined;
+  private readonly followers = new Map<string, { count: number; stop?: () => void }>();
 
   constructor(ctx: Context) {
     super(ctx, "clientProjections");
+  }
+
+  private startFollower(
+    sessionId: string,
+    follower: { count: number; stop?: () => void },
+    transport: ClientProjectionTransport,
+  ): void {
+    let baseline = true;
+    follower.stop = transport.follow(sessionId, (frame) => {
+      if (baseline) {
+        baseline = false;
+        this.frameSeq.delete(sessionId);
+        this.truncate(sessionId, frame.lastDurableSeq);
+      }
+      this.applyFrame(frame);
+    });
   }
 
   private rowKey(sessionId: string, key: string): string {
@@ -211,6 +231,65 @@ export class ClientProjectionStore extends Service {
     for (const listener of this.listeners) listener();
   }
 
+  applyFrame(frame: ProjectionFrame): void {
+    if ((this.frameSeq.get(frame.sessionId) ?? -1) > frame.lastDurableSeq) return;
+    this.frameSeq.set(frame.sessionId, frame.lastDurableSeq);
+    const keys = new Set(frame.projections.map(({ key }) => this.rowKey(frame.sessionId, key)));
+    let changed = false;
+    for (const key of [...this.rows.keys()]) {
+      if (!key.startsWith(`${frame.sessionId}\u0000`) || keys.has(key)) continue;
+      this.rows.delete(key);
+      changed = true;
+    }
+    for (const projection of frame.projections) {
+      const key = this.rowKey(frame.sessionId, projection.key);
+      const current = this.rows.get(key);
+      if (current?.seq === projection.seq && current.value === projection.value) continue;
+      this.rows.set(key, { seq: projection.seq, value: projection.value });
+      changed = true;
+    }
+    if (!changed) return;
+    this.revision += 1;
+    for (const listener of this.listeners) listener();
+  }
+
+  connect(transport: ClientProjectionTransport): () => void {
+    if (this.transport) throw new Error("client projection transport is already connected");
+    this.transport = transport;
+    for (const [sessionId, follower] of this.followers) {
+      this.startFollower(sessionId, follower, transport);
+    }
+    return this.ctx.effect(() => () => {
+      if (this.transport !== transport) return;
+      this.transport = undefined;
+      for (const follower of this.followers.values()) {
+        follower.stop?.();
+        delete follower.stop;
+      }
+    }, "disconnect client projection transport");
+  }
+
+  follow(sessionId: string): () => void {
+    const existing = this.followers.get(sessionId);
+    if (existing) {
+      existing.count += 1;
+    } else {
+      const follower: { count: number; stop?: () => void } = { count: 1 };
+      if (this.transport) {
+        this.startFollower(sessionId, follower, this.transport);
+      }
+      this.followers.set(sessionId, follower);
+    }
+    return () => {
+      const follower = this.followers.get(sessionId);
+      if (!follower) return;
+      follower.count -= 1;
+      if (follower.count > 0) return;
+      follower.stop?.();
+      this.followers.delete(sessionId);
+    };
+  }
+
   get(sessionId: string, key: string): ProjectionRow | undefined {
     return this.rows.get(this.rowKey(sessionId, key));
   }
@@ -221,6 +300,10 @@ export class ClientProjectionStore extends Service {
   }
 
   snapshot = (): number => this.revision;
+}
+
+export interface ClientProjectionTransport {
+  follow(sessionId: string, listener: (frame: ProjectionFrame) => void): () => void;
 }
 
 export type ClientActionHandler = (
@@ -375,6 +458,7 @@ export function useProjection<T extends JsonValue>(
   sessionId: string,
   key: string,
 ): T | undefined {
+  useEffect(() => sessionId ? client.clientProjections.follow(sessionId) : undefined, [client, sessionId]);
   useSyncExternalStore(
     client.clientProjections.subscribe.bind(client.clientProjections),
     client.clientProjections.snapshot,

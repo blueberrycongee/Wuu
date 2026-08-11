@@ -7,6 +7,7 @@ import { contextProjectionPlugin } from "@wuu-v2/plugin-context-projection";
 import { conversationProjectionPlugin } from "@wuu-v2/plugin-conversation";
 import { defaultAgentLoopPlugin } from "@wuu-v2/plugin-default-agent-loop";
 import { corePromptPlugin } from "@wuu-v2/plugin-prompt-core";
+import { projectionFeedPlugin } from "@wuu-v2/plugin-projection-feed";
 import { openAIProviderPlugin } from "@wuu-v2/plugin-provider-openai";
 import { scriptedProviderPlugin } from "@wuu-v2/plugin-provider-scripted";
 import { jsonlSessionPlugin } from "@wuu-v2/plugin-session-jsonl";
@@ -35,6 +36,7 @@ fibers.push(await ctx.plugin(corePromptPlugin, { cwd }));
 fibers.push(await ctx.plugin(basicToolsPlugin, { cwd }));
 fibers.push(await ctx.plugin(contextProjectionPlugin));
 fibers.push(await ctx.plugin(conversationProjectionPlugin));
+fibers.push(await ctx.plugin(projectionFeedPlugin));
 
 let providerId: string;
 if (smoke) {
@@ -120,6 +122,7 @@ try {
   const result = await ctx.agentRuns.wait(sessionId, runId);
   const events = await ctx.sessions.load(sessionId);
   const projections = await ctx.projections.build(ctx.sessions, sessionId);
+  const projectionFrame = await ctx.projectionFeed.snapshot(sessionId);
   const recordTypes = events.map((event) => event.record.type);
   if (smoke) {
     const recoveryEvents = await ctx.sessions.load(recoverySessionId!);
@@ -136,6 +139,7 @@ try {
       !recoveryTypes.includes("agent/assistant-completed") ||
       !recordTypes.includes("agent/assistant-tool-call") ||
       !recordTypes.includes("agent/tool-result") ||
+      projectionFrame.lastDurableSeq !== events.at(-1)?.seq ||
       !projections.some(({ key }) => key === "conversation")
     ) {
       throw new Error("smoke run did not complete the model-tool-result loop");

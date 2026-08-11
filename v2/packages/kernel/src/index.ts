@@ -142,7 +142,10 @@ export class ProjectionRegistry extends Service {
     sessions: SessionService,
     sessionId: string,
   ): Promise<ProjectionSnapshot[]> {
-    const events = await sessions.load(sessionId);
+    return this.buildEvents(await sessions.load(sessionId));
+  }
+
+  buildEvents(events: readonly SessionEvent[]): ProjectionSnapshot[] {
     return [...this.folds.entries()].map(([key, fold]) => {
       let value: JsonValue | undefined;
       for (const event of events) value = fold(value, event);

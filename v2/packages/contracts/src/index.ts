@@ -79,6 +79,16 @@ export interface SessionEvent<R extends SessionRecord = SessionRecord> {
   record: R;
 }
 
+export interface ProjectionFrame {
+  sessionId: string;
+  lastDurableSeq: number;
+  projections: Array<{
+    key: string;
+    seq: number;
+    value?: JsonValue;
+  }>;
+}
+
 export interface ModelTool {
   name: string;
   description: string;

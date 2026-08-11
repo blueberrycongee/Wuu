@@ -59,6 +59,24 @@ test("materializes lazily and invalidates owner slot authorization", async () =>
   assert.equal(materialized, 2);
   assert.equal(ctx.slots.entries(surface!).length, 1);
 
+  ctx.clientProjections.applyFrame({
+    sessionId: "session-1",
+    lastDurableSeq: 2,
+    projections: [{ key: "conversation", seq: 2, value: { running: true } }],
+  });
+  ctx.clientProjections.applyFrame({
+    sessionId: "session-1",
+    lastDurableSeq: 1,
+    projections: [],
+  });
+  assert.deepEqual(ctx.clientProjections.get("session-1", "conversation")?.value, { running: true });
+  ctx.clientProjections.applyFrame({
+    sessionId: "session-1",
+    lastDurableSeq: 2,
+    projections: [],
+  });
+  assert.equal(ctx.clientProjections.get("session-1", "conversation"), undefined);
+
   await modules.invalidate("owner");
   assert.throws(() => ctx.slots.entries(surface!), /stale slot authorization/);
 
