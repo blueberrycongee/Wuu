@@ -499,6 +499,7 @@ export type HostServiceMethod = (typeof HOST_SERVICE_METHODS)[number];
 
 export const KERNEL_SERVICE_METHOD = "call" as const;
 export const EXECUTION_UPDATE_SERVICE = "execution.update" as const;
+export const USER_QUESTION_ASK_SERVICE = "host.user-question.ask" as const;
 export const KERNEL_SERVICE_NAMES = {
   "host.storage.get": "host.storage.get",
   "host.storage.set": "host.storage.set",
@@ -739,6 +740,7 @@ export interface ToolExecuteParams<TArguments = unknown> {
   tool_id: string;
   session_id?: string;
   thread_id?: string;
+  turn_id?: string;
   execution_id?: string;
   actor_id?: string;
   cwd: string;
@@ -746,6 +748,31 @@ export interface ToolExecuteParams<TArguments = unknown> {
   call_id: string;
   tool: string;
   arguments: TArguments;
+}
+
+export interface UserQuestionOption {
+  label: string;
+  description?: string;
+}
+
+export interface UserQuestion {
+  id: string;
+  question: string;
+  header?: string;
+  detail?: string;
+  options?: readonly UserQuestionOption[];
+  multi_select?: boolean;
+  allow_custom?: boolean;
+}
+
+export interface UserQuestionAnswerItem {
+  id: string;
+  selected: readonly string[];
+  custom?: string;
+}
+
+export interface UserQuestionAnswer {
+  answers: readonly UserQuestionAnswerItem[];
 }
 
 export type ToolContentType = "text" | "image" | "audio" | "file" | "resource" | "resource_link";
@@ -889,6 +916,18 @@ export async function reportExecutionUpdate(host: RuntimeHost, update: Execution
     method: KERNEL_SERVICE_METHOD,
     params: update,
   });
+}
+
+export async function askUserQuestions(
+  host: RuntimeHost,
+  tool: Pick<ToolExecuteParams, "thread_id" | "turn_id">,
+  questions: readonly UserQuestion[],
+): Promise<UserQuestionAnswer> {
+  return await host.call("host.service.call", {
+    service: USER_QUESTION_ASK_SERVICE,
+    method: KERNEL_SERVICE_METHOD,
+    params: { thread_id: tool.thread_id, turn_id: tool.turn_id, questions },
+  }) as UserQuestionAnswer;
 }
 
 export interface RuntimePlugin {
