@@ -1,10 +1,12 @@
 import { createHash } from "node:crypto";
-import type { JsonValue } from "@wuu-v2/contracts";
+import type { JsonValue, ModelContextSeedRecord } from "@wuu-v2/contracts";
 import { Service, type Context, type Plugin } from "@wuu-v2/kernel";
 
 export interface SideHostConfig {
   agentId: string;
 }
+
+const source = { pluginId: "side", generation: "v1" } as const;
 
 function objectInput(input: JsonValue): Record<string, JsonValue> {
   if (!input || typeof input !== "object" || Array.isArray(input)) {
@@ -57,6 +59,21 @@ export class SideSessionsService extends Service {
     if (existing) return existing;
     const task = (async () => {
       const sideSessionId = this.resolve(mainSessionId);
+      const existing = await this.ctx.sessions.load(sideSessionId);
+      if (!existing.some((event) => event.record.type === "context/model-seed")) {
+        const snapshot = await this.ctx.modelContext.snapshot(
+          mainSessionId,
+          new AbortController().signal,
+        );
+        await this.ctx.sessions.append(sideSessionId, source, {
+          type: "context/model-seed",
+          data: {
+            sourceSessionId: mainSessionId,
+            sourceSeq: snapshot.sourceSeq,
+            messages: snapshot.messages,
+          },
+        } satisfies ModelContextSeedRecord);
+      }
       await this.ctx.modelRouting.initialize(sideSessionId, mainSessionId);
       await this.ctx.toolPolicy.initialize(sideSessionId, "read-only");
       return sideSessionId;
@@ -80,6 +97,13 @@ const sideHost: Plugin<SideHostConfig> = function side(ctx, config) {
   new SideSessionsService(ctx, config.agentId);
 };
 
-sideHost.inject = ["agentRuns", "hostActions", "modelRouting", "toolPolicy"];
+sideHost.inject = [
+  "agentRuns",
+  "hostActions",
+  "modelContext",
+  "modelRouting",
+  "sessions",
+  "toolPolicy",
+];
 sideHost.provide = "sideSessions";
 export default sideHost;

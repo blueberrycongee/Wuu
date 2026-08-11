@@ -36,6 +36,10 @@ export interface ModelContextService {
     generation: string;
     sources: string[];
   }>;
+  snapshot(sessionId: string, signal: AbortSignal): Promise<{
+    messages: import("@wuu-v2/contracts").ModelMessage[];
+    sourceSeq: number;
+  }>;
 }
 
 export interface ModelRoutingService {

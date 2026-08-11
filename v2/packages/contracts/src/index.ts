@@ -73,6 +73,15 @@ export type CompositionReceiptRecord = SessionRecord<
   }
 >;
 
+export type ModelContextSeedRecord = SessionRecord<
+  "context/model-seed",
+  {
+    sourceSessionId: string;
+    sourceSeq: number;
+    messages: ModelMessage[];
+  }
+>;
+
 export interface EventSource {
   pluginId: string;
   generation: string;

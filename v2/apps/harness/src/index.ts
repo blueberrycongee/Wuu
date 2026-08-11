@@ -99,7 +99,20 @@ try {
   const recoveredContext = smoke
     ? await ctx.modelContext.build(recoverySessionId!, new AbortController().signal)
     : undefined;
-  const sideResolution = await ctx.hostActions.execute("side/resolve", { sessionId });
+  const sideParentSessionId = `${sessionId}-side-parent`;
+  await ctx.sessions.append(sideParentSessionId, {
+    pluginId: "harness-smoke",
+    generation: "v1",
+  }, {
+    type: "agent/user-message",
+    data: {
+      messageId: randomUUID(),
+      content: [{ type: "text", text: "Parent context for Side." }],
+    },
+  } satisfies AgentSessionRecord);
+  const sideResolution = await ctx.hostActions.execute("side/resolve", {
+    sessionId: sideParentSessionId,
+  });
   if (
     !sideResolution ||
     Array.isArray(sideResolution) ||
@@ -109,9 +122,15 @@ try {
     throw new Error("side session was not resolved");
   }
   const sideSessionId = sideResolution.sessionId;
+  const sideContext = await ctx.modelContext.build(
+    sideSessionId,
+    new AbortController().signal,
+  );
   const sideTools = await ctx.toolPolicy.allowedTools(sideSessionId, ["read", "write"]);
   if (
     await ctx.modelRouting.resolve(sideSessionId) !== providerId ||
+    sideContext.messages[0]?.role !== "user" ||
+    sideContext.messages[0].content !== "Parent context for Side." ||
     !sideTools.has("read") ||
     sideTools.has("write")
   ) {
