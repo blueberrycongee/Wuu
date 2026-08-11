@@ -60,7 +60,17 @@ export async function activate(api) {
     React.useEffect(() => {
       const subscription = api.onHostEvent((event) => {
         const method = event && typeof event === "object" && event.message && typeof event.message === "object" ? event.message.method : "";
-        if (typeof method === "string" && (method.startsWith("turn/") || method.startsWith("thread/") || method.startsWith("agent/"))) void refresh();
+        if (typeof method === "string" && [
+          "thread/started",
+          "thread/resumed",
+          "thread/updated",
+          "turn/started",
+          "turn/queued",
+          "turn/dequeued",
+          "turn/held",
+          "turn/completed",
+          "turn/error",
+        ].includes(method)) void refresh();
       });
       return () => subscription.dispose();
     }, [refresh]);

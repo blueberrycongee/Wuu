@@ -130,12 +130,14 @@ describe("first-party desktop plugin lifecycle", () => {
 
   it("hides the previous session's subagent status while the next session loads", async () => {
     const pending = new Map<string, (value: unknown) => void>();
+    let runtimeCalls = 0;
     const host = new PluginHost({
       react: React,
       invokeRuntime: ({ method, input }) => {
         if (method !== "status.list") {
           return Promise.reject(new Error(`Unexpected subagent runtime method: ${method}`));
         }
+        runtimeCalls += 1;
         const threadId = String((input as { parent_session_id?: string })?.parent_session_id ?? "");
         return new Promise((resolve) => pending.set(threadId, resolve));
       },
@@ -158,6 +160,11 @@ describe("first-party desktop plugin lifecycle", () => {
           context: { threadId: "thread-a", mainConversation: true },
         }));
       });
+      act(() => {
+        host.publishHostEvent({ kind: "notification", message: { method: "turn/event" } });
+        host.publishHostEvent({ kind: "notification", message: { method: "turn/usage" } });
+      });
+      expect(runtimeCalls).toBe(1);
       await act(async () => {
         pending.get("thread-a")?.({ sessions: [{ session_id: "child-a", name: "from-a", state: "running" }] });
       });
