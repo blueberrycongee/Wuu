@@ -21,5 +21,7 @@ describe("Manga Studio example shell contract", () => {
     expect(mangaDesktopModule).not.toContain("button {");
     expect(mangaDesktopModule).toContain('[data-wuu-component="plugin-ui-panel"]');
     expect(mangaDesktopModule).toContain('[data-wuu-component="plugin-ui-card"]');
+    expect(mangaDesktopModule).toContain('[data-wuu-component="jump-to-latest"]');
+    expect(mangaDesktopModule).toContain("border-radius: var(--wuu-radius-control)");
   });
 });

@@ -26,6 +26,7 @@ const SEMANTIC_ANCHOR_OWNERS = Object.freeze({
   "conversation-pane": "App.tsx",
   "empty-session": "LoadingViews.tsx",
   "environment-panel": "EnvironmentPanel.tsx",
+  "jump-to-latest": "JumpToLatestPill.tsx",
   "launch-view": "LoadingViews.tsx",
   "message": "ThreadItemView.tsx",
   "message-actions": "MessageActions.tsx",
