@@ -98,6 +98,7 @@ function ComposerSurface({
           onChange={(event) => onDraftChange(event.currentTarget.value)}
           onKeyDown={(event) => {
             if (
+              event.defaultPrevented ||
               event.key !== "Enter" ||
               event.shiftKey ||
               event.metaKey ||

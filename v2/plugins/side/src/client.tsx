@@ -269,7 +269,7 @@ const sideClient: Plugin = function side(client) {
           ? surface.ownerSessionId
           : sessionId;
         await slashClient.sidePanels.toggle(ownerSessionId);
-        return { type: "handled" };
+        return { type: "replace", draft: "" };
       },
     });
   });
