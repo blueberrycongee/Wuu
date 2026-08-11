@@ -116,7 +116,7 @@ function ComposerSurface({
               client={client}
               slot={client.composerSurfaces.toolbarLeftSlot}
               sessionId={sessionId}
-              ownerProps={{ locked: submitting }}
+              ownerProps={{ locked: busy }}
             />
             <span className="wuu-composer-status" role={error ? "alert" : undefined}>
               {error ?? ""}
@@ -127,7 +127,7 @@ function ComposerSurface({
               client={client}
               slot={client.composerSurfaces.toolbarRightSlot}
               sessionId={sessionId}
-              ownerProps={{ locked: submitting }}
+              ownerProps={{ locked: busy }}
             />
             <button
               className="wuu-composer-send"

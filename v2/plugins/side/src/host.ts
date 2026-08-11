@@ -20,17 +20,19 @@ function stringField(input: Record<string, JsonValue>, field: string): string {
 }
 
 export class SideSessionsService extends Service {
+  private readonly pending = new Map<string, Promise<string>>();
+
   constructor(ctx: Context, private readonly agentId: string) {
     super(ctx, "sideSessions");
-    ctx.hostActions.register("side/resolve", (input) => {
+    ctx.hostActions.register("side/resolve", async (input) => {
       const value = objectInput(input);
-      return { sessionId: this.resolve(stringField(value, "sessionId")) };
+      return { sessionId: await this.ensure(stringField(value, "sessionId")) };
     });
     ctx.hostActions.register("side/prompt", async (input) => {
       const value = objectInput(input);
       const mainSessionId = stringField(value, "sessionId");
       const acceptance = await ctx.agentRuns.startWith(this.agentId, {
-        sessionId: this.resolve(mainSessionId),
+        sessionId: await this.ensure(mainSessionId),
         text: stringField(value, "text"),
       });
       return { runId: acceptance.runId, acceptedSeq: acceptance.acceptedSeq };
@@ -49,6 +51,23 @@ export class SideSessionsService extends Service {
       .slice(0, 40);
     return `side-${digest}`;
   }
+
+  private async ensure(mainSessionId: string): Promise<string> {
+    const existing = this.pending.get(mainSessionId);
+    if (existing) return existing;
+    const task = (async () => {
+      const sideSessionId = this.resolve(mainSessionId);
+      await this.ctx.modelRouting.initialize(sideSessionId, mainSessionId);
+      await this.ctx.toolPolicy.initialize(sideSessionId, "read-only");
+      return sideSessionId;
+    })();
+    this.pending.set(mainSessionId, task);
+    try {
+      return await task;
+    } finally {
+      this.pending.delete(mainSessionId);
+    }
+  }
 }
 
 declare module "cordis" {
@@ -61,6 +80,6 @@ const sideHost: Plugin<SideHostConfig> = function side(ctx, config) {
   new SideSessionsService(ctx, config.agentId);
 };
 
-sideHost.inject = ["agentRuns", "hostActions"];
+sideHost.inject = ["agentRuns", "hostActions", "modelRouting", "toolPolicy"];
 sideHost.provide = "sideSessions";
 export default sideHost;

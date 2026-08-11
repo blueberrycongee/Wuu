@@ -91,6 +91,34 @@ export const composerStyles = `
   flex: none;
 }
 
+.wuu-composer-toolbar label {
+  display: flex;
+  min-width: 0;
+}
+
+.wuu-composer-toolbar select {
+  max-width: 180px;
+  height: 28px;
+  min-width: 0;
+  padding: 0 24px 0 8px;
+  border: 0;
+  border-radius: 8px;
+  color: var(--ink-muted, #5f6663);
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+}
+
+.wuu-composer-toolbar select:hover,
+.wuu-composer-toolbar select:focus-visible {
+  background: rgba(31, 35, 40, 0.08);
+  outline: none;
+}
+
+.wuu-composer-toolbar select:disabled {
+  opacity: 0.5;
+}
+
 .wuu-composer-status {
   min-width: 0;
   overflow: hidden;

@@ -13,8 +13,6 @@ import { type Context, type Plugin } from "@wuu-v2/kernel";
 
 export interface DefaultAgentLoopConfig {
   agentId?: string;
-  providerId: string;
-  tools?: string[];
 }
 
 const source: EventSource = {
@@ -25,8 +23,6 @@ const source: EventSource = {
 class DefaultAgentLoop implements AgentLoop {
   constructor(
     private readonly ctx: Context,
-    private readonly providerId: string,
-    private readonly allowedTools?: ReadonlySet<string>,
   ) {}
 
   private append(sessionId: string, record: AgentSessionRecord) {
@@ -43,16 +39,23 @@ class DefaultAgentLoop implements AgentLoop {
       while (true) {
         signal.throwIfAborted();
         const context = await this.ctx.modelContext.build(input.sessionId, signal);
-        const modelTools = this.allowedTools
-          ? context.tools.filter((tool) => this.allowedTools!.has(tool.name))
-          : context.tools;
+        const allowedTools = await this.ctx.toolPolicy.allowedTools(
+          input.sessionId,
+          context.tools.map((tool) => tool.name),
+        );
+        const modelTools = context.tools.filter((tool) => allowedTools.has(tool.name));
+        const effectiveSources = [
+          ...context.sources.filter((entry) => !entry.startsWith("tool:")),
+          ...modelTools.map((tool) => `tool:${tool.name}`),
+        ];
+        const effectiveGeneration = effectiveSources.join("|") || "empty";
         const receipt: CompositionReceiptRecord = {
           type: "context/composition-receipt",
-          data: { generation: context.generation, sources: context.sources },
+          data: { generation: effectiveGeneration, sources: effectiveSources },
         };
         await this.ctx.sessions.append(input.sessionId, {
           pluginId: "context-projection",
-          generation: context.generation,
+          generation: effectiveGeneration,
         }, receipt);
 
         const messageId = randomUUID();
@@ -64,7 +67,9 @@ class DefaultAgentLoop implements AgentLoop {
 
         const calls: ToolCallContent[] = [];
         let stopReason: "stop" | "tool_calls" = "stop";
-        const provider = this.ctx.providers.require(this.providerId);
+        const provider = this.ctx.providers.require(
+          await this.ctx.modelRouting.resolve(input.sessionId),
+        );
         for await (const event of provider.stream({
           messages: context.messages,
           tools: modelTools,
@@ -105,9 +110,12 @@ class DefaultAgentLoop implements AgentLoop {
         for (const call of calls) {
           signal.throwIfAborted();
           let result: ToolResult;
-          const tool = this.allowedTools?.has(call.name) === false
-            ? undefined
-            : this.ctx.tools.get(call.name);
+          const currentAllowed = await this.ctx.toolPolicy.allowedTools(
+            input.sessionId,
+            this.ctx.tools.entries().map(([name]) => name),
+          );
+          const permitted = currentAllowed.has(call.name);
+          const tool = permitted ? this.ctx.tools.get(call.name) : undefined;
           try {
             result = tool
               ? await tool.execute(call.input, {
@@ -115,7 +123,13 @@ class DefaultAgentLoop implements AgentLoop {
                   callId: call.callId,
                   signal,
                 })
-              : { content: [{ type: "text", text: `unknown tool: ${call.name}` }], isError: true };
+              : {
+                  content: [{
+                    type: "text",
+                    text: permitted ? `unknown tool: ${call.name}` : `tool not permitted: ${call.name}`,
+                  }],
+                  isError: true,
+                };
           } catch (error) {
             result = {
               content: [{ type: "text", text: error instanceof Error ? error.message : String(error) }],
@@ -160,16 +174,15 @@ class DefaultAgentLoop implements AgentLoop {
 
 export const defaultAgentLoopPlugin: Plugin<DefaultAgentLoopConfig> =
   function defaultAgentLoop(ctx: Context, config: DefaultAgentLoopConfig) {
-    ctx.providers.require(config.providerId);
-    const allowedTools = config.tools ? new Set(config.tools) : undefined;
-    ctx.agents.register(config.agentId ?? "default", () =>
-      new DefaultAgentLoop(ctx, config.providerId, allowedTools));
+    ctx.agents.register(config.agentId ?? "default", () => new DefaultAgentLoop(ctx));
   };
 
 defaultAgentLoopPlugin.inject = [
   "agents",
   "modelContext",
+  "modelRouting",
   "providers",
   "sessions",
   "tools",
+  "toolPolicy",
 ];

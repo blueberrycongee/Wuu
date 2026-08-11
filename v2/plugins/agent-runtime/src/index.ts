@@ -185,6 +185,10 @@ export class AgentRuntimeService extends Service {
     return true;
   }
 
+  isActive(sessionId: string): boolean {
+    return this.starting.has(sessionId) || this.active.has(sessionId);
+  }
+
   async wait(sessionId: string, runId: string): Promise<AgentRunResult> {
     const active = this.active.get(sessionId);
     if (active?.runId === runId) return active.task;

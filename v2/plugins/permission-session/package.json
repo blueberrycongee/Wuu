@@ -1,0 +1,21 @@
+{
+  "name": "@wuu-v2/plugin-permission-session",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./host": "./src/host.ts",
+    "./client": "./src/client.tsx"
+  },
+  "dependencies": {
+    "@wuu-v2/client-runtime": "0.0.0",
+    "@wuu-v2/contracts": "0.0.0",
+    "@wuu-v2/kernel": "0.0.0",
+    "@wuu-v2/plugin-agent-runtime": "0.0.0",
+    "react": "^19.0.0"
+  },
+  "wuu": {
+    "host": "./src/host.ts",
+    "client": "./src/client.tsx"
+  }
+}

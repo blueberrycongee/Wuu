@@ -120,6 +120,7 @@ export type ModelStreamEvent =
 
 export interface ModelProvider {
   readonly id: string;
+  readonly displayName?: string;
   stream(request: ModelRequest): AsyncIterable<ModelStreamEvent>;
 }
 

@@ -17,6 +17,7 @@ export interface ScriptedProviderConfig {
 
 class ScriptedProvider implements ModelProvider {
   readonly id = "scripted";
+  readonly displayName = "Scripted";
   private round = 0;
 
   constructor(private readonly rounds: ScriptedRound[]) {}

@@ -6,6 +6,8 @@ import { agentRuntimePlugin } from "@wuu-v2/plugin-agent-runtime";
 import { contextProjectionPlugin } from "@wuu-v2/plugin-context-projection";
 import { conversationProjectionPlugin } from "@wuu-v2/plugin-conversation";
 import { defaultAgentLoopPlugin } from "@wuu-v2/plugin-default-agent-loop";
+import modelSessionHost from "@wuu-v2/plugin-model-session/host";
+import permissionSessionHost from "@wuu-v2/plugin-permission-session/host";
 import { corePromptPlugin } from "@wuu-v2/plugin-prompt-core";
 import { projectionFeedPlugin } from "@wuu-v2/plugin-projection-feed";
 import { openAIProviderPlugin } from "@wuu-v2/plugin-provider-openai";
@@ -70,14 +72,11 @@ if (smoke) {
       : {}),
   }));
 }
-fibers.push(await ctx.plugin(defaultAgentLoopPlugin, { providerId }));
-fibers.push(await ctx.plugin(defaultAgentLoopPlugin, {
-  agentId: "side",
-  providerId,
-  tools: ["read"],
-}));
 fibers.push(await ctx.plugin(agentRuntimePlugin, { agentId: "default" }));
-fibers.push(await ctx.plugin(sideHost, { agentId: "side" }));
+fibers.push(await ctx.plugin(modelSessionHost, { defaultProviderId: providerId }));
+fibers.push(await ctx.plugin(permissionSessionHost, { defaultMode: "workspace-write" }));
+fibers.push(await ctx.plugin(defaultAgentLoopPlugin, {}));
+fibers.push(await ctx.plugin(sideHost, { agentId: "default" }));
 
 const shutdown = async () => {
   for (const fiber of fibers.reverse()) await fiber.dispose();
@@ -128,6 +127,15 @@ try {
     typeof sideResolution.sessionId !== "string"
   ) {
     throw new Error("side session was not resolved");
+  }
+  const sideSessionId = sideResolution.sessionId;
+  const sideTools = await ctx.toolPolicy.allowedTools(sideSessionId, ["read", "write"]);
+  if (
+    await ctx.modelRouting.resolve(sideSessionId) !== providerId ||
+    !sideTools.has("read") ||
+    sideTools.has("write")
+  ) {
+    throw new Error("side session did not inherit model with read-only permission");
   }
   const acceptance = await ctx.hostActions.execute("agent/prompt", { sessionId, text: prompt });
   if (!acceptance || Array.isArray(acceptance) || typeof acceptance !== "object") {

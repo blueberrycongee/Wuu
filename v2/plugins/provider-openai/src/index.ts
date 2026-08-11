@@ -11,6 +11,7 @@ import { type Context, type Plugin } from "@wuu-v2/kernel";
 
 export interface OpenAIProviderConfig {
   apiKey: string;
+  id?: string;
   model: string;
   baseUrl?: string;
 }
@@ -83,9 +84,13 @@ async function* readSse(response: Response): AsyncIterable<string> {
 }
 
 class OpenAIProvider implements ModelProvider {
-  readonly id = "openai";
+  readonly id: string;
+  readonly displayName: string;
 
-  constructor(private readonly config: OpenAIProviderConfig) {}
+  constructor(private readonly config: OpenAIProviderConfig) {
+    this.id = config.id ?? "openai";
+    this.displayName = config.model;
+  }
 
   async *stream(request: ModelRequest): AsyncIterable<ModelStreamEvent> {
     const baseUrl = this.config.baseUrl ?? "https://api.openai.com/v1";

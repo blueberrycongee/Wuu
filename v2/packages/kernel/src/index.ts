@@ -38,6 +38,16 @@ export interface ModelContextService {
   }>;
 }
 
+export interface ModelRoutingService {
+  resolve(sessionId: string): Promise<string>;
+  initialize(sessionId: string, sourceSessionId?: string): Promise<void>;
+}
+
+export interface ToolPolicyService {
+  allowedTools(sessionId: string, available: readonly string[]): Promise<ReadonlySet<string>>;
+  initialize(sessionId: string, preset: string): Promise<void>;
+}
+
 export type HostActionHandler = (
   input: JsonValue,
 ) => Promise<JsonValue | undefined> | JsonValue | undefined;
@@ -52,6 +62,11 @@ export type ProjectionFold<T extends JsonValue = JsonValue> = (
   current: T | undefined,
   event: SessionEvent,
 ) => T | undefined;
+
+interface ProjectionUnit {
+  fold: ProjectionFold;
+  initial?: () => JsonValue | undefined;
+}
 
 class UniqueRegistry<T> extends Service {
   private readonly values = new Map<string, T>();
@@ -124,15 +139,19 @@ export class PromptRegistry extends UniqueRegistry<() => string> {
 }
 
 export class ProjectionRegistry extends Service {
-  private readonly folds = new Map<string, ProjectionFold>();
+  private readonly folds = new Map<string, ProjectionUnit>();
 
   constructor(ctx: Context) {
     super(ctx, "projections");
   }
 
-  register(key: string, fold: ProjectionFold): () => void {
+  register(
+    key: string,
+    fold: ProjectionFold,
+    initial?: () => JsonValue | undefined,
+  ): () => void {
     if (this.folds.has(key)) throw new Error(`duplicate projection: ${key}`);
-    this.folds.set(key, fold);
+    this.folds.set(key, { fold, ...(initial ? { initial } : {}) });
     return this.ctx.effect(() => () => {
       this.folds.delete(key);
     }, `unregister projection:${key}`);
@@ -146,9 +165,9 @@ export class ProjectionRegistry extends Service {
   }
 
   buildEvents(events: readonly SessionEvent[]): ProjectionSnapshot[] {
-    return [...this.folds.entries()].map(([key, fold]) => {
-      let value: JsonValue | undefined;
-      for (const event of events) value = fold(value, event);
+    return [...this.folds.entries()].map(([key, unit]) => {
+      let value = unit.initial?.();
+      for (const event of events) value = unit.fold(value, event);
       return { key, seq: events.at(-1)?.seq ?? 0, value };
     });
   }
@@ -159,11 +178,13 @@ declare module "cordis" {
     agents: AgentRegistry;
     hostActions: HostActionRegistry;
     modelContext: ModelContextService;
+    modelRouting: ModelRoutingService;
     projections: ProjectionRegistry;
     prompts: PromptRegistry;
     providers: ProviderRegistry;
     sessions: SessionService;
     tools: ToolRegistry;
+    toolPolicy: ToolPolicyService;
   }
 }
 

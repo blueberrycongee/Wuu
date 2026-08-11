@@ -9,6 +9,8 @@
     "@wuu-v2/plugin-context-projection": "0.0.0",
     "@wuu-v2/plugin-conversation": "0.0.0",
     "@wuu-v2/plugin-default-agent-loop": "0.0.0",
+    "@wuu-v2/plugin-model-session": "0.0.0",
+    "@wuu-v2/plugin-permission-session": "0.0.0",
     "@wuu-v2/plugin-prompt-core": "0.0.0",
     "@wuu-v2/plugin-projection-feed": "0.0.0",
     "@wuu-v2/plugin-provider-openai": "0.0.0",
