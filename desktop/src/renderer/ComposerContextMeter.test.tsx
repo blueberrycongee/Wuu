@@ -260,6 +260,24 @@ describe("ComposerContextMeter", () => {
     expect(offsetLarge).toBeLessThan(offsetSmall);
   });
 
+  it("keeps the visible round-cap gap proportional near a full ring", () => {
+    renderMeter(usageWith({ used: 96_000, window: 100_000 }));
+    const progress = container.querySelector(
+      ".composer-context-meter-progress",
+    );
+    const circumference = Number(
+      progress?.getAttribute("stroke-dasharray") ?? "0",
+    );
+    const dashOffset = Number(
+      progress?.getAttribute("stroke-dashoffset") ?? "0",
+    );
+    const strokeWidth = Number(progress?.getAttribute("stroke-width") ?? "0");
+
+    // The two round caps consume one stroke width of the geometric gap.
+    // Compensating the dash leaves a visible 4% gap for a 96% reading.
+    expect(dashOffset - strokeWidth).toBeCloseTo(circumference * 0.04, 8);
+  });
+
   it("drives the SVG data-fill and inline color from the gauge color tiers", () => {
     // ratio = 0 → idle gray (matches the token-speed gauge when stopped).
     renderMeter(
