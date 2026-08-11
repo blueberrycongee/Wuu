@@ -1398,8 +1398,8 @@
  * stays clear without overpowering the composer or shifting between states. */
 .composer-send-button,
 .composer-stop-button {
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
 }
 
 .composer-send-button {
@@ -1542,6 +1542,106 @@
   height: var(--icon-size-sm);
   flex: 0 0 auto;
   color: var(--ink-tertiary);
+}
+
+/* Keep the toolbar easy to click while giving every control the same compact
+   20px visual chrome. */
+.composer-tool-button,
+.permission-chip,
+.hero-project-pill,
+.codex-runtime-trigger,
+.composer-send-button,
+.composer-stop-button {
+  position: relative;
+  height: 32px;
+  background: transparent;
+  isolation: isolate;
+}
+
+.composer-tool-button::before,
+.permission-chip::before,
+.hero-project-pill::before,
+.codex-runtime-trigger::before,
+.composer-send-button::before,
+.composer-stop-button::before {
+  position: absolute;
+  z-index: -1;
+  inset: 6px 0;
+  border-radius: inherit;
+  background: transparent;
+  content: "";
+  pointer-events: none;
+  transition: background-color var(--motion-base) var(--ease-out);
+}
+
+.composer-tool-button:hover:not(:disabled)::before,
+.permission-chip.tone-neutral:hover::before,
+.permission-chip.tone-neutral[aria-expanded="true"]::before,
+.hero-project-pill:hover::before,
+.hero-project-pill[aria-expanded="true"]::before {
+  background: var(--surface-2);
+}
+
+.composer-tool-button:hover:not(:disabled),
+.permission-chip.tone-neutral:hover,
+.permission-chip.tone-neutral[aria-expanded="true"],
+.hero-project-pill:hover,
+.hero-project-pill[aria-expanded="true"] {
+  background: transparent;
+}
+
+.permission-chip.tone-danger:hover::before,
+.permission-chip.tone-danger[aria-expanded="true"]::before {
+  background: var(--danger-soft);
+}
+
+.permission-chip.tone-danger:hover,
+.permission-chip.tone-danger[aria-expanded="true"] {
+  background: transparent;
+}
+
+.codex-runtime-trigger:hover::before,
+.codex-runtime-trigger[aria-expanded="true"]::before {
+  background: var(--surface-3);
+}
+
+.codex-runtime-trigger:hover,
+.codex-runtime-trigger[aria-expanded="true"] {
+  background: transparent;
+}
+
+.composer-send-button::before {
+  background: var(--wuu-accent);
+}
+
+.composer-send-button:hover::before {
+  background: var(--wuu-accent-press);
+}
+
+.composer-send-button:hover {
+  background: transparent;
+}
+
+.composer-send-button:disabled::before,
+.composer-send-button:disabled:hover::before {
+  background: var(--surface-4);
+}
+
+.composer-send-button:disabled,
+.composer-send-button:disabled:hover {
+  background: transparent;
+}
+
+.composer-stop-button::before {
+  background: var(--ink);
+}
+
+.composer-stop-button:hover::before {
+  background: var(--ink-strong);
+}
+
+.composer-stop-button:hover {
+  background: transparent;
 }
 
 .floating-menu-layer {
