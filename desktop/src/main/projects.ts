@@ -131,11 +131,6 @@ export class ProjectManager {
     } else {
       this.store.projects = [project, ...this.store.projects];
     }
-    this.store.active_context = {
-      kind: "project",
-      project_id: project.id,
-      cwd: resolvedPath,
-    };
     this.save();
     return this.list();
   }

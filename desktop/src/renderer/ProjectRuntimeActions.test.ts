@@ -429,7 +429,7 @@ describe("createProjectRuntimeActions", () => {
     );
   });
 
-  it("adds an existing workspace on a blank tab without reviving old sessions", async () => {
+  it("adds an existing workspace without switching or reloading the runtime", async () => {
     const sourceContext = projectContext("project-1");
     const addedContext = projectContext("project-2");
     const sourceTab = createDraftSessionTab("draft:source", sourceContext);
@@ -441,15 +441,9 @@ describe("createProjectRuntimeActions", () => {
     });
     const projectState = {
       projects: [project("project-1"), project("project-2")],
-      active_context: addedContext,
+      active_context: sourceContext,
     } as ProjectListResult;
-    const loadRuntime = vi.fn().mockResolvedValue({
-      activeContext: addedContext,
-      activeProjectId: "project-2",
-      thread: undefined,
-      threads: [thread("old-session")],
-      status: "ready",
-    });
+    const loadRuntime = vi.fn();
     Object.defineProperty(window, "wuu", {
       configurable: true,
       value: {
@@ -470,23 +464,12 @@ describe("createProjectRuntimeActions", () => {
 
     await harness.actions.chooseProjectFolder();
 
-    expect(loadRuntime).toHaveBeenCalledWith(projectState, {
-      resumeLatestThread: false,
-    });
+    expect(loadRuntime).not.toHaveBeenCalled();
     const state = harness.getAppState();
-    const activeTab = state.sessionTabs.find(
-      (tab) => tab.id === state.activeSessionTabID,
-    );
-    expect(activeTab?.kind).toBe("draft");
-    expect(activeTab?.context).toEqual(addedContext);
-    expect(
-      state.sessionTabs.filter(
-        (tab) =>
-          tab.context.kind === "project" &&
-          tab.context.project_id === "project-2",
-      ),
-    ).toHaveLength(1);
-    expect(harness.getCurrentDraft()).toEqual(emptyComposerDraft());
+    expect(state.activeContext).toEqual(sourceContext);
+    expect(state.activeSessionTabID).toBe(sourceTab.id);
+    expect(state.sessionTabs).toEqual([sourceTab, staleThreadTab, staleDraftTab]);
+    expect(state.projects).toEqual(projectState.projects);
   });
 
   it("does not remove a workspace when confirmation is cancelled", async () => {

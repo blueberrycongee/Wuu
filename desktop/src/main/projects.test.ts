@@ -242,6 +242,25 @@ describe("ProjectManager project store migration", () => {
 });
 
 describe("ProjectManager runtime context availability", () => {
+  it("registers a workspace without changing the active runtime context", async () => {
+    const activePath = await createProjectDir("active");
+    const addedPath = await createProjectDir("added");
+    const activeProject = project("project-1", "active", activePath);
+    const activeContext: RuntimeContext = {
+      kind: "project",
+      project_id: activeProject.id,
+      cwd: activePath,
+    };
+    await writeStore(canonicalStorePath(), [activeProject], activeContext);
+
+    const listed = new ProjectManager().add(addedPath);
+
+    expect(listed.projects).toHaveLength(2);
+    expect(listed.projects.some((item) => item.path === addedPath)).toBe(true);
+    expect(listed.active_context).toEqual(activeContext);
+    expect(listed.active_project_id).toBe(activeProject.id);
+  });
+
   it("keeps a temporarily unavailable active project selected without persisting scratch", async () => {
     const projectPath = await createProjectDir("temporarily-offline");
     const activeProject = project("project-1", "temporarily-offline", projectPath);
