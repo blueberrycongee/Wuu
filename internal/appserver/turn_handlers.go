@@ -1870,6 +1870,7 @@ func (s *Server) runTurnWithRequestContext(ctx context.Context, th *threadState,
 	var usagePushMu sync.Mutex
 	var lastUsagePushAt time.Time
 	var lastUsagePushed providers.TokenUsage
+	var lastContextTokensPushed int
 	var completedUsage providers.TokenUsage
 	var liveUsage providers.TokenUsage
 	addUsage := func(a, b providers.TokenUsage) providers.TokenUsage {
@@ -1880,13 +1881,13 @@ func (s *Server) runTurnWithRequestContext(ctx context.Context, th *threadState,
 			CacheReadTokens:     a.CacheReadTokens + b.CacheReadTokens,
 		}
 	}
-	notifyUsage := func(snapshot providers.TokenUsage, force bool) {
+	notifyUsage := func(snapshot providers.TokenUsage, contextTokens int, force bool) {
 		now := time.Now()
 		usagePushMu.Lock()
 		// The stream's final EventUsage and the loop's per-call
 		// OnTokenUsage both report the same cumulative totals; pushing
 		// an unchanged snapshot again is pure noise for consumers.
-		if snapshot == lastUsagePushed && !lastUsagePushAt.IsZero() {
+		if snapshot == lastUsagePushed && contextTokens == lastContextTokensPushed && !lastUsagePushAt.IsZero() {
 			usagePushMu.Unlock()
 			return
 		}
@@ -1894,6 +1895,7 @@ func (s *Server) runTurnWithRequestContext(ctx context.Context, th *threadState,
 		if shouldPush {
 			lastUsagePushAt = now
 			lastUsagePushed = snapshot
+			lastContextTokensPushed = contextTokens
 		}
 		usagePushMu.Unlock()
 		if !shouldPush {
@@ -1905,6 +1907,7 @@ func (s *Server) runTurnWithRequestContext(ctx context.Context, th *threadState,
 			Model:               runner.Model,
 			InputTokens:         snapshot.InputTokens,
 			OutputTokens:        snapshot.OutputTokens,
+			ContextTokens:       contextTokens,
 			CacheCreationTokens: snapshot.CacheCreationTokens,
 			CacheReadTokens:     snapshot.CacheReadTokens,
 			ContextWindowTokens: contextWindowTokens,
@@ -1929,7 +1932,7 @@ func (s *Server) runTurnWithRequestContext(ctx context.Context, th *threadState,
 		liveUsage = providers.TokenUsage{}
 		usageSnapshot := completedUsage
 		usagePushMu.Unlock()
-		notifyUsage(usageSnapshot, true)
+		notifyUsage(usageSnapshot, usage.TotalContextTokens(), true)
 	}
 	runner.OnRequestContext = func(info agent.RequestContextInfo) {
 		if baseOnRequestContext != nil {
@@ -2037,7 +2040,7 @@ func (s *Server) runTurnWithRequestContext(ctx context.Context, th *threadState,
 			liveUsage = *ev.Usage
 			usageSnapshot := addUsage(completedUsage, liveUsage)
 			usagePushMu.Unlock()
-			notifyUsage(usageSnapshot, false)
+			notifyUsage(usageSnapshot, ev.Usage.TotalContextTokens(), false)
 		}
 		if ev.Type == providers.EventProviderState && ev.ProviderState != nil {
 			providerStates = append(providerStates, providerStateRecord(ev.ProviderState))

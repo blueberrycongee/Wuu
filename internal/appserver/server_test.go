@@ -4692,6 +4692,9 @@ func TestServerTurnStartForwardsStreamingUsage(t *testing.T) {
 	if firstUsage.Model != "fake-model" {
 		t.Fatalf("usage notification should carry runner model: %+v", firstUsage)
 	}
+	if firstUsage.ContextTokens != 10 {
+		t.Fatalf("usage notification should carry current request context: %+v", firstUsage)
+	}
 	if firstUsage.ContextWindowTokens != 0 {
 		t.Fatalf("unknown model should not emit fallback context window: %+v", firstUsage)
 	}
