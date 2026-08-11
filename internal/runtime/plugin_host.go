@@ -25,13 +25,17 @@ func startPluginHost(plugins []pluginpkg.Plugin, projectRoot, wuuHome, workspace
 	if err != nil {
 		return pluginhost.New(pluginhost.Failed("capability-negotiation", err)), nil
 	}
-	if err := host.Activate(context.Background()); err != nil {
+	if err := activatePluginHost(context.Background(), host); err != nil {
 		providers.DebugLogf("activate initial plugin generation: %v", err)
 	}
+	return host, kernel
+}
+
+func activatePluginHost(ctx context.Context, host *pluginhost.Host) error {
 	if registry := host.ServiceRegistry(); registry != nil {
 		registry.Activate()
 	}
-	return host, kernel
+	return host.Activate(ctx)
 }
 
 func buildPluginHost(plugins []pluginpkg.Plugin, projectRoot, wuuHome, workspaceStateDir string, required map[string]bool, start pluginClientStarter, turnRouter *PluginSessionRouter) (*pluginhost.Host, *kernelHostServices, error) {

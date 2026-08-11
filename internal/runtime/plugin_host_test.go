@@ -60,6 +60,39 @@ func (s *runtimeTestStep) Execute(context.Context, providers.ChatRequest) (agent
 	return agent.StepResult{Content: "done"}, nil
 }
 
+type activationOrderClient struct {
+	kernel *kernelHostServices
+	state  pluginhost.State
+}
+
+func (c *activationOrderClient) ID() string { return "activation-order" }
+func (c *activationOrderClient) Status() pluginhost.Status {
+	return pluginhost.Status{ID: c.ID(), State: c.state}
+}
+func (c *activationOrderClient) Close(context.Context) error { return nil }
+func (c *activationOrderClient) Activate(context.Context) error {
+	if c.kernel.Status().State != pluginhost.StateActive {
+		return errors.New("kernel services were not active")
+	}
+	c.state = pluginhost.StateActive
+	return nil
+}
+
+func TestActivatePluginHostOpensKernelServicesBeforePluginCallbacks(t *testing.T) {
+	kernel := newKernelHostServices(nil, nil)
+	registry, conflicts := pluginhost.BuildServiceRegistry(kernel)
+	client := &activationOrderClient{kernel: kernel, state: pluginhost.StatePrepared}
+	host := pluginhost.New(client)
+	host.AttachServiceRegistry(registry, conflicts)
+
+	if err := activatePluginHost(context.Background(), host); err != nil {
+		t.Fatal(err)
+	}
+	if client.state != pluginhost.StateActive {
+		t.Fatalf("client state = %q", client.state)
+	}
+}
+
 func TestPluginCapabilityUsesRequestTransformRegistry(t *testing.T) {
 	client := &runtimeCapabilityClient{id: "capability", priority: 7, mutate: func(output *pluginhost.RequestTransformOutput) {
 		output.PrependSystemMessages = []string{"capability context"}
