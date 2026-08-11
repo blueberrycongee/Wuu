@@ -138,8 +138,10 @@ export async function activate(api) {
     const started = React.useRef(false);
 
     const refreshRaw = React.useCallback(async () => {
-      const value = await api.invokeRuntime("memory.read", {});
-      setRaw({ index_raw: typeof value?.index_raw === "string" ? value.index_raw : "", files: Array.isArray(value?.files) ? value.files : [] });
+      try {
+        const value = await api.invokeRuntime("memory.read", {});
+        setRaw({ index_raw: typeof value?.index_raw === "string" ? value.index_raw : "", files: Array.isArray(value?.files) ? value.files : [] });
+      } catch (reason) { setError(String(reason)); }
     }, []);
     const waitForJob = React.useCallback(async (id) => {
       for (;;) {
@@ -161,8 +163,11 @@ export async function activate(api) {
     React.useEffect(() => {
       if (started.current) return;
       started.current = true;
+      // The raw notebook must render even when the LLM overview fails, so it
+      // loads independently instead of being gated behind overview success.
+      void refreshRaw();
       void refreshOverview();
-    }, [refreshOverview]);
+    }, [refreshRaw, refreshOverview]);
 
     const send = async () => {
       const message = draft.trim();
@@ -184,7 +189,7 @@ export async function activate(api) {
     return h(Page, { className: "plugin-memory" }, h(Stack, { gap: "large" },
       h(Row, { className: "plugin-memory-header" },
         h("p", { className: "plugin-memory-intro" }, tr("memory.subtitle")),
-        h(Button, { className: "plugin-memory-refresh", variant: "ghost", disabled: busy, "data-busy": busy ? "true" : "false", onClick: () => void refreshOverview() },
+        h(Button, { className: "plugin-memory-refresh", variant: "ghost", disabled: busy, "data-busy": busy ? "true" : "false", onClick: () => { void refreshRaw(); void refreshOverview(); } },
           h("span", { className: "plugin-memory-refresh-dot", "aria-hidden": true }, "↻"),
           tr(busy ? "memory.refreshing" : "memory.refresh"))),
       h(Section, { title: tr("memory.overview") },
