@@ -22,6 +22,14 @@ export const sideStyles = `
   cursor: col-resize;
 }
 
+.side-resizer:focus-visible::after {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 4px;
+  width: 2px;
+  background: var(--ink-muted, #6d7471);
+}
+
 .side-header {
   display: flex;
   align-items: center;

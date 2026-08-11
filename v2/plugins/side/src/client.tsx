@@ -133,7 +133,9 @@ function SidePanel({ client, sessionId }: { client: Context; sessionId?: string 
     "conversation",
   );
   const log = useRef<HTMLDivElement>(null);
+  const openButton = useRef<HTMLButtonElement>(null);
   const pinned = useRef(true);
+  const wasOpen = useRef(state.open);
   const resize = useRef<{
     pointerId: number;
     startX: number;
@@ -144,10 +146,16 @@ function SidePanel({ client, sessionId }: { client: Context; sessionId?: string 
     if (pinned.current && log.current) log.current.scrollTop = log.current.scrollHeight;
   }, [conversation?.messages]);
 
+  useEffect(() => {
+    if (wasOpen.current && !state.open) openButton.current?.focus({ preventScroll: true });
+    wasOpen.current = state.open;
+  }, [state.open]);
+
   if (!sessionId) return null;
   if (!state.open) {
     return (
       <button
+        ref={openButton}
         className="side-open-button"
         type="button"
         aria-label="Open Side"
@@ -164,6 +172,10 @@ function SidePanel({ client, sessionId }: { client: Context; sessionId?: string 
         role="separator"
         aria-label="Resize Side"
         aria-orientation="vertical"
+        aria-valuemin={280}
+        aria-valuemax={720}
+        aria-valuenow={state.width}
+        tabIndex={0}
         onPointerDown={(event) => {
           event.currentTarget.setPointerCapture(event.pointerId);
           resize.current = {
@@ -184,6 +196,17 @@ function SidePanel({ client, sessionId }: { client: Context; sessionId?: string 
           if (resize.current?.pointerId !== event.pointerId) return;
           resize.current = undefined;
           event.currentTarget.releasePointerCapture(event.pointerId);
+        }}
+        onLostPointerCapture={() => {
+          resize.current = undefined;
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "Home") client.sidePanels.setWidth(sessionId, 280);
+          else if (event.key === "End") client.sidePanels.setWidth(sessionId, 720);
+          else if (event.key === "ArrowLeft") client.sidePanels.setWidth(sessionId, state.width + 16);
+          else if (event.key === "ArrowRight") client.sidePanels.setWidth(sessionId, state.width - 16);
+          else return;
+          event.preventDefault();
         }}
       />
       <header className="side-header">
