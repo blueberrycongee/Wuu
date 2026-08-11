@@ -20,55 +20,62 @@ export interface ToolCallContent {
 
 export type AssistantContent = TextContent | ToolCallContent;
 
-export type SessionRecord =
-  | {
-      kind: "user_message";
+export interface SessionRecord<Type extends string = string, Data = unknown> {
+  type: Type;
+  data: Data;
+}
+
+export type AgentSessionRecord =
+  | SessionRecord<"agent/user-message", {
       messageId: string;
       content: TextContent[];
-    }
-  | {
-      kind: "assistant_started";
+    }>
+  | SessionRecord<"agent/assistant-started", {
       messageId: string;
-    }
-  | {
-      kind: "assistant_text_delta";
+    }>
+  | SessionRecord<"agent/assistant-text-delta", {
       messageId: string;
       delta: string;
-    }
-  | {
-      kind: "assistant_tool_call";
+    }>
+  | SessionRecord<"agent/assistant-tool-call", {
       messageId: string;
       call: ToolCallContent;
-    }
-  | {
-      kind: "assistant_completed";
+    }>
+  | SessionRecord<"agent/assistant-completed", {
       messageId: string;
       stopReason: "stop" | "tool_calls" | "cancelled" | "error";
-    }
-  | {
-      kind: "tool_result";
+    }>
+  | SessionRecord<"agent/tool-result", {
       callId: string;
       name: string;
       content: TextContent[];
       isError: boolean;
-    }
-  | {
-      kind: "run_state";
+    }>
+  | SessionRecord<"agent/run-state", {
       runId: string;
       state: "started" | "completed" | "cancelled" | "failed";
       error?: string;
-    }
-  | {
-      kind: "composition_receipt";
+    }>;
+
+export type CompositionReceiptRecord = SessionRecord<
+  "context/composition-receipt",
+  {
       generation: string;
       sources: string[];
-    };
+  }
+>;
+
+export interface EventSource {
+  pluginId: string;
+  generation: string;
+}
 
 export interface SessionEvent<R extends SessionRecord = SessionRecord> {
+  id: string;
   sessionId: string;
   seq: number;
   time: string;
-  source: string;
+  source: EventSource;
   record: R;
 }
 

@@ -10,7 +10,9 @@
     "plugins/*"
   ],
   "scripts": {
+    "smoke": "node --import tsx apps/harness/src/index.ts --smoke",
     "start": "node --import tsx apps/harness/src/index.ts",
+    "test:session": "node --import tsx --test plugins/session-jsonl/src/index.test.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {

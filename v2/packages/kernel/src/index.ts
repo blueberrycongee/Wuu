@@ -1,6 +1,7 @@
 import { Context, Service, type Plugin } from "cordis";
 import type {
   AgentLoopFactory,
+  EventSource,
   JsonValue,
   ModelProvider,
   SessionEvent,
@@ -11,7 +12,7 @@ import type {
 export interface SessionService {
   append<R extends SessionRecord>(
     sessionId: string,
-    source: string,
+    source: EventSource,
     record: R,
   ): Promise<SessionEvent<R>>;
   load(sessionId: string): Promise<SessionEvent[]>;
@@ -77,46 +78,14 @@ export class ToolRegistry extends UniqueRegistry<ToolDefinition> {
 }
 
 export class ProviderRegistry extends UniqueRegistry<ModelProvider> {
-  private selectedId: string | undefined;
-
   constructor(ctx: Context) {
     super(ctx, "providers");
-  }
-
-  select(id: string): () => void {
-    this.require(id);
-    const previous = this.selectedId;
-    this.selectedId = id;
-    return this.ctx.effect(() => () => {
-      this.selectedId = previous;
-    }, `restore provider selection:${id}`);
-  }
-
-  current(): ModelProvider {
-    if (!this.selectedId) throw new Error("no model provider selected");
-    return this.require(this.selectedId);
   }
 }
 
 export class AgentRegistry extends UniqueRegistry<AgentLoopFactory> {
-  private selectedId: string | undefined;
-
   constructor(ctx: Context) {
     super(ctx, "agents");
-  }
-
-  select(id: string): () => void {
-    this.require(id);
-    const previous = this.selectedId;
-    this.selectedId = id;
-    return this.ctx.effect(() => () => {
-      this.selectedId = previous;
-    }, `restore agent selection:${id}`);
-  }
-
-  create(): ReturnType<AgentLoopFactory> {
-    if (!this.selectedId) throw new Error("no agent loop selected");
-    return this.require(this.selectedId)();
   }
 }
 

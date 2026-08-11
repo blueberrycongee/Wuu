@@ -1,0 +1,11 @@
+{
+  "name": "@wuu-v2/plugin-context-projection",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": "./src/index.ts",
+  "dependencies": {
+    "@wuu-v2/contracts": "0.0.0",
+    "@wuu-v2/kernel": "0.0.0"
+  }
+}

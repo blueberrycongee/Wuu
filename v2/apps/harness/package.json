@@ -4,6 +4,13 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "@wuu-v2/kernel": "0.0.0"
+    "@wuu-v2/kernel": "0.0.0",
+    "@wuu-v2/plugin-context-projection": "0.0.0",
+    "@wuu-v2/plugin-default-agent-loop": "0.0.0",
+    "@wuu-v2/plugin-prompt-core": "0.0.0",
+    "@wuu-v2/plugin-provider-openai": "0.0.0",
+    "@wuu-v2/plugin-provider-scripted": "0.0.0",
+    "@wuu-v2/plugin-session-jsonl": "0.0.0",
+    "@wuu-v2/plugin-tools-basic": "0.0.0"
   }
 }
