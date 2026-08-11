@@ -91,14 +91,26 @@ interface ProjectionUnit {
 
 class UniqueRegistry<T> extends Service {
   private readonly values = new Map<string, T>();
+  private readonly listeners = new Set<() => void>();
+
+  private changed(): void {
+    for (const listener of this.listeners) {
+      try {
+        listener();
+      } catch (error) {
+        this.ctx.logger.error(error);
+      }
+    }
+  }
 
   register(id: string, value: T): () => void {
     if (this.values.has(id)) {
       throw new Error(`duplicate registration: ${id}`);
     }
     this.values.set(id, value);
+    this.changed();
     return this.ctx.effect(() => () => {
-      this.values.delete(id);
+      if (this.values.delete(id)) this.changed();
     }, `unregister ${this.name}:${id}`);
   }
 
@@ -114,6 +126,13 @@ class UniqueRegistry<T> extends Service {
 
   entries(): ReadonlyArray<readonly [string, T]> {
     return [...this.values.entries()];
+  }
+
+  subscribe(listener: () => void): () => void {
+    this.listeners.add(listener);
+    return this.ctx.effect(() => () => {
+      this.listeners.delete(listener);
+    }, `unsubscribe ${this.name}`);
   }
 }
 
@@ -161,6 +180,7 @@ export class PromptRegistry extends UniqueRegistry<() => string> {
 
 export class ProjectionRegistry extends Service {
   private readonly folds = new Map<string, ProjectionUnit>();
+  private readonly listeners = new Set<() => void>();
 
   constructor(ctx: Context) {
     super(ctx, "projections");
@@ -173,8 +193,9 @@ export class ProjectionRegistry extends Service {
   ): () => void {
     if (this.folds.has(key)) throw new Error(`duplicate projection: ${key}`);
     this.folds.set(key, { fold, ...(initial ? { initial } : {}) });
+    this.invalidate();
     return this.ctx.effect(() => () => {
-      this.folds.delete(key);
+      if (this.folds.delete(key)) this.invalidate();
     }, `unregister projection:${key}`);
   }
 
@@ -195,6 +216,23 @@ export class ProjectionRegistry extends Service {
 
   keys(): string[] {
     return [...this.folds.keys()];
+  }
+
+  invalidate(): void {
+    for (const listener of this.listeners) {
+      try {
+        listener();
+      } catch (error) {
+        this.ctx.logger.error(error);
+      }
+    }
+  }
+
+  subscribe(listener: () => void): () => void {
+    this.listeners.add(listener);
+    return this.ctx.effect(() => () => {
+      this.listeners.delete(listener);
+    }, "unsubscribe projections");
   }
 }
 

@@ -35,6 +35,7 @@ export class ModelSessionService extends Service implements ModelRoutingService 
       const record = event.record as ModelSelectedRecord;
       return this.projection(record.data.providerId);
     }, () => this.projection(defaultProviderId));
+    ctx.providers.subscribe(() => ctx.projections.invalidate());
     ctx.hostActions.register("model/select", async (input) => {
       const value = objectInput(input);
       const sessionId = stringField(value, "sessionId");

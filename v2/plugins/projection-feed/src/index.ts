@@ -44,10 +44,15 @@ export class ProjectionFeedService extends Service {
       dirty = true;
       void pump();
     });
+    const stopProjectionChanges = this.ctx.projections.subscribe(() => {
+      dirty = true;
+      void pump();
+    });
     void pump();
     return () => {
       active = false;
       stop();
+      stopProjectionChanges();
     };
   }
 }
