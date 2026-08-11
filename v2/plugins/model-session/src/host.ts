@@ -53,10 +53,9 @@ export class ModelSessionService extends Service implements ModelRoutingService 
   private projection(providerId: string): JsonValue {
     return {
       selected: providerId,
-      options: this.ctx.providers.entries().map(([id, provider]) => ({
-        id,
-        label: provider.displayName ?? id,
-      })),
+      options: this.ctx.providers.entries()
+        .map(([id, provider]) => ({ id, label: provider.displayName ?? id }))
+        .sort((left, right) => left.id.localeCompare(right.id)),
     };
   }
 

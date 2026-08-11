@@ -12,15 +12,18 @@ export interface ScriptedRound {
 }
 
 export interface ScriptedProviderConfig {
+  id?: string;
   rounds: ScriptedRound[];
 }
 
 class ScriptedProvider implements ModelProvider {
-  readonly id = "scripted";
+  readonly id: string;
   readonly displayName = "Scripted";
   private round = 0;
 
-  constructor(private readonly rounds: ScriptedRound[]) {}
+  constructor(id: string, private readonly rounds: ScriptedRound[]) {
+    this.id = id;
+  }
 
   async *stream(request: ModelRequest): AsyncIterable<ModelStreamEvent> {
     request.signal.throwIfAborted();
@@ -37,7 +40,7 @@ class ScriptedProvider implements ModelProvider {
 
 export const scriptedProviderPlugin: Plugin<ScriptedProviderConfig> =
   function providerScripted(ctx: Context, config: ScriptedProviderConfig) {
-    const provider = new ScriptedProvider(config.rounds);
+    const provider = new ScriptedProvider(config.id ?? "scripted", config.rounds);
     ctx.providers.register(provider.id, provider);
   };
 

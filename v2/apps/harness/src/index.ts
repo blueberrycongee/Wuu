@@ -26,7 +26,7 @@ if (!smoke && (!apiKey || !model)) {
 const runtime = await createDefaultHostProfile({
   cwd,
   dataDirectory: directory,
-  provider: smoke
+  providers: [smoke
     ? {
         kind: "scripted",
         config: {
@@ -52,7 +52,7 @@ const runtime = await createDefaultHostProfile({
             ? { baseUrl: process.env.WUU_V2_OPENAI_BASE_URL }
             : {}),
         },
-      },
+      }],
 });
 const { ctx, providerId } = runtime;
 

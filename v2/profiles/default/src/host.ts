@@ -29,7 +29,8 @@ export type DefaultProfileProvider =
 export interface DefaultHostProfileConfig {
   cwd: string;
   dataDirectory: string;
-  provider: DefaultProfileProvider;
+  providers: readonly DefaultProfileProvider[];
+  defaultProviderId?: string;
   defaultPermission?: PermissionMode;
 }
 
@@ -65,13 +66,20 @@ export async function createDefaultHostProfile(
     await install(ctx.plugin(conversationProjectionPlugin));
     await install(ctx.plugin(projectionFeedPlugin));
 
-    let providerId: string;
-    if (config.provider.kind === "openai") {
-      providerId = config.provider.config.id ?? "openai";
-      await install(ctx.plugin(openAIProviderPlugin, config.provider.config));
-    } else {
-      providerId = "scripted";
-      await install(ctx.plugin(scriptedProviderPlugin, config.provider.config));
+    if (!config.providers.length) throw new Error("default profile requires at least one model provider");
+    const providerIds: string[] = [];
+    for (const provider of config.providers) {
+      if (provider.kind === "openai") {
+        providerIds.push(provider.config.id ?? "openai");
+        await install(ctx.plugin(openAIProviderPlugin, provider.config));
+      } else {
+        providerIds.push(provider.config.id ?? "scripted");
+        await install(ctx.plugin(scriptedProviderPlugin, provider.config));
+      }
+    }
+    const providerId = config.defaultProviderId ?? providerIds[0]!;
+    if (!providerIds.includes(providerId)) {
+      throw new Error(`default model provider is not selected by this profile: ${providerId}`);
     }
 
     await install(ctx.plugin(agentRuntimePlugin, { agentId: "default" }));
