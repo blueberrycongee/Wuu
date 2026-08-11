@@ -69,6 +69,16 @@ type ToolContextProvider interface {
 	LastAdditionalContext() string
 }
 
+// ToolCallContextProvider exposes request-only context for a specific tool
+// call. Concurrent executors should implement this interface instead of
+// sharing a single "last result" slot, which cannot preserve call ownership
+// when multiple tools finish out of order.
+type ToolCallContextProvider interface {
+	// TakeAdditionalContext returns and clears additional context produced by
+	// the specified tool call.
+	TakeAdditionalContext(call providers.ToolCall) string
+}
+
 // ToolDiscoveryProvider is an optional interface a ToolExecutor can implement
 // to attach provider-native deferred tool schemas to the tool result message
 // that made those tools available.

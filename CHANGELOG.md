@@ -8,6 +8,11 @@ Versioning rules are documented in [the release guide](docs/en/project/release.m
 
 ## [Unreleased]
 
+### Fixed
+
+- Preserved `PostToolUse` hook context across concurrent tool batches and
+  isolated request-only context by tool call.
+
 ## [0.15.0] - 2026-08-05
 
 ### Added
