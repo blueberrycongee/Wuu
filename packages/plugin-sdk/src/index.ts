@@ -498,6 +498,7 @@ export const HOST_SERVICE_METHODS = [
 export type HostServiceMethod = (typeof HOST_SERVICE_METHODS)[number];
 
 export const KERNEL_SERVICE_METHOD = "call" as const;
+export const EXECUTION_UPDATE_SERVICE = "execution.update" as const;
 export const KERNEL_SERVICE_NAMES = {
   "host.storage.get": "host.storage.get",
   "host.storage.set": "host.storage.set",
@@ -562,6 +563,7 @@ export interface ServiceInvokeParams<TParams = unknown> {
   service: string;
   method: string;
   caller: string;
+  execution_id?: string;
   params?: TParams;
 }
 
@@ -625,6 +627,7 @@ export interface ToolRegistration {
 
 export interface CapabilityInvokeParams<TInput = unknown, TOutput = unknown> {
   capability: string;
+  execution_id?: string;
   input: TInput;
   output: TOutput;
 }
@@ -736,6 +739,7 @@ export interface ToolExecuteParams<TArguments = unknown> {
   tool_id: string;
   session_id?: string;
   thread_id?: string;
+  execution_id?: string;
   actor_id?: string;
   cwd: string;
   step_index?: number;
@@ -825,7 +829,7 @@ export interface HostServiceContracts {
     };
   };
   "host.session.cancel": {
-    params: { session_id: string };
+    params: { session_id: string; turn_id?: string; queue_id?: string };
     result: { session_id: string; cancelled: boolean };
   };
   "host.service.call": {
@@ -868,13 +872,32 @@ export interface RuntimeHost {
   ): Promise<HostServiceContracts[M]["result"]>;
 }
 
+export interface RuntimeExecutionContext {
+  readonly executionId: string;
+  readonly signal: AbortSignal;
+}
+
+export interface ExecutionUpdate {
+  execution_id: string;
+  message?: string;
+  detail?: unknown;
+}
+
+export async function reportExecutionUpdate(host: RuntimeHost, update: ExecutionUpdate): Promise<void> {
+  await host.call("host.service.call", {
+    service: EXECUTION_UPDATE_SERVICE,
+    method: KERNEL_SERVICE_METHOD,
+    params: update,
+  });
+}
+
 export interface RuntimePlugin {
   initialize(params: RuntimeInitializeParams, host: RuntimeHost): RuntimeInitializeResult | Promise<RuntimeInitializeResult>;
   activate?(host: RuntimeHost): void | Promise<void>;
-  invokeCapability?(params: CapabilityInvokeParams, host: RuntimeHost): CapabilityInvokeResult | Promise<CapabilityInvokeResult>;
-  invokeService?(params: ServiceInvokeParams, host: RuntimeHost): unknown | Promise<unknown>;
+  invokeCapability?(params: CapabilityInvokeParams, host: RuntimeHost, execution: RuntimeExecutionContext): CapabilityInvokeResult | Promise<CapabilityInvokeResult>;
+  invokeService?(params: ServiceInvokeParams, host: RuntimeHost, execution: RuntimeExecutionContext): unknown | Promise<unknown>;
   serviceChanged?(params: ServiceChangedParams, host: RuntimeHost): void | Promise<void>;
-  executeTool?(params: ToolExecuteParams, host: RuntimeHost): ToolExecuteResult | Promise<ToolExecuteResult>;
+  executeTool?(params: ToolExecuteParams, host: RuntimeHost, execution: RuntimeExecutionContext): ToolExecuteResult | Promise<ToolExecuteResult>;
   shutdown?(): void | Promise<void>;
 }
 
@@ -920,6 +943,12 @@ export interface RuntimeShutdownRequest {
   params?: undefined;
 }
 
+export interface RuntimeExecutionCancelRequest {
+  id: string;
+  method: "execution.cancel";
+  params: { execution_id: string };
+}
+
 export type RuntimeRequest =
   | RuntimeInitializeRequest
   | RuntimeActivateRequest
@@ -937,6 +966,7 @@ export async function handleRuntimeRequest(
   plugin: RuntimePlugin,
   request: RuntimeRequest,
   host: RuntimeHost = unavailableRuntimeHost,
+  execution: RuntimeExecutionContext = idleRuntimeExecution,
 ): Promise<RuntimeResponse> {
   try {
     switch (request.method) {
@@ -947,16 +977,16 @@ export async function handleRuntimeRequest(
         return { id: request.id, result: null };
       case "capability.invoke":
         if (!plugin.invokeCapability) throw new Error("capability.invoke is not implemented");
-        return { id: request.id, result: await plugin.invokeCapability(request.params, host) };
+        return { id: request.id, result: await plugin.invokeCapability(request.params, host, execution) };
       case "service.invoke":
         if (!plugin.invokeService) throw new Error("service.invoke is not implemented");
-        return { id: request.id, result: await plugin.invokeService(request.params, host) };
+        return { id: request.id, result: await plugin.invokeService(request.params, host, execution) };
       case "service.changed":
         await plugin.serviceChanged?.(request.params, host);
         return { id: request.id, result: null };
       case "tool.execute":
         if (!plugin.executeTool) throw new Error("tool.execute is not implemented");
-        return { id: request.id, result: await plugin.executeTool(request.params, host) };
+        return { id: request.id, result: await plugin.executeTool(request.params, host, execution) };
       case "shutdown":
         await plugin.shutdown?.();
         return { id: request.id, result: null };
@@ -972,6 +1002,11 @@ export interface JSONLOutput { write(chunk: string): unknown }
 const unavailableRuntimeHost: RuntimeHost = {
   supports: () => false,
   call: async (method) => { throw new Error(`host service ${method} is unavailable outside a runtime connection`); },
+};
+const idleRuntimeExecutionController = new AbortController();
+const idleRuntimeExecution: RuntimeExecutionContext = {
+  executionId: "",
+  signal: idleRuntimeExecutionController.signal,
 };
 
 type PendingHostCall = {
@@ -1050,6 +1085,7 @@ export async function runJSONLRuntime(
     return next;
   };
   const host = new JSONLRuntimeHost(send);
+  const executions = new Map<string, AbortController>();
   const active = new Set<Promise<void>>();
   let requests = Promise.resolve();
   const track = (task: Promise<void>): void => {
@@ -1070,12 +1106,26 @@ export async function runJSONLRuntime(
       return;
     }
     if (host.route(parsed)) return;
+    if (isExecutionCancelRequest(parsed)) {
+      executions.get(parsed.params.execution_id)?.abort();
+      return;
+    }
     if (!isRuntimeRequest(parsed)) {
       enqueueResponse({ id: "invalid", error: { message: "invalid runtime request" } });
       return;
     }
     if (parsed.method === "initialize") host.configure(parsed.params.supported_host_services);
-    track(requests.then(() => handleRuntimeRequest(plugin, parsed, host)).then(send));
+    const executionId = runtimeRequestExecutionId(parsed);
+    const controller = new AbortController();
+    if (executionId !== "") executions.set(executionId, controller);
+    const execution = { executionId, signal: controller.signal } satisfies RuntimeExecutionContext;
+    const task = requests
+      .then(() => handleRuntimeRequest(plugin, parsed, host, execution))
+      .then(send)
+      .finally(() => {
+        if (executionId !== "" && executions.get(executionId) === controller) executions.delete(executionId);
+      });
+    track(task);
   };
   const decoder = new TextDecoder();
   let buffered = "";
@@ -1088,8 +1138,29 @@ export async function runJSONLRuntime(
   buffered += decoder.decode();
   if (buffered.trim() !== "") processLine(buffered);
   host.close();
+  for (const controller of executions.values()) controller.abort();
   await Promise.all(active);
   await writes;
+}
+
+function isExecutionCancelRequest(value: unknown): value is RuntimeExecutionCancelRequest {
+  if (typeof value !== "object" || value === null) return false;
+  const request = value as { id?: unknown; method?: unknown; params?: { execution_id?: unknown } };
+  return typeof request.id === "string"
+    && request.method === "execution.cancel"
+    && typeof request.params?.execution_id === "string"
+    && request.params.execution_id.trim() !== "";
+}
+
+function runtimeRequestExecutionId(request: RuntimeRequest): string {
+  switch (request.method) {
+    case "capability.invoke":
+    case "service.invoke":
+    case "tool.execute":
+      return request.params.execution_id?.trim() ?? "";
+    default:
+      return "";
+  }
 }
 
 function isRuntimeRequest(value: unknown): value is RuntimeRequest {

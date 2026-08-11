@@ -199,6 +199,43 @@ if (lines.length !== 2 || !lines[0]?.includes('"text":"ok"') || !lines[1]?.inclu
   throw new Error(`unexpected JSONL responses: ${lines.join("")}`);
 }
 
+let markExecutionStarted!: () => void;
+const executionStarted = new Promise<void>((resolve) => { markExecutionStarted = resolve; });
+let markExecutionCancelled!: () => void;
+const executionCancelled = new Promise<void>((resolve) => { markExecutionCancelled = resolve; });
+const cancellablePlugin: RuntimePlugin = {
+  initialize: () => ({ protocol_version: 3 }),
+  async executeTool(params, _host, execution) {
+    if (params.execution_id !== "exec-ts" || execution.executionId !== "exec-ts") {
+      throw new Error(`execution identity was not preserved: ${JSON.stringify(params)}`);
+    }
+    markExecutionStarted();
+    await new Promise<void>((resolve) => {
+      if (execution.signal.aborted) {
+        resolve();
+        return;
+      }
+      execution.signal.addEventListener("abort", () => resolve(), { once: true });
+    });
+    markExecutionCancelled();
+    return { result: { content: [{ type: "text", text: "cancelled" }] } };
+  },
+};
+async function* cancellationInput(): AsyncIterable<string> {
+  yield '{"id":"tool-cancel","method":"tool.execute","params":{"tool_id":"wait","execution_id":"exec-ts","cwd":".","call_id":"1","tool":"wait","arguments":{}}}\n';
+  await executionStarted;
+  yield '{"id":"cancel","method":"execution.cancel","params":{"execution_id":"exec-ts"}}\n';
+  await executionCancelled;
+}
+const cancellationLines: string[] = [];
+await runJSONLRuntime(cancellablePlugin, {
+  input: cancellationInput(),
+  output: { write: (line) => cancellationLines.push(line) },
+});
+if (cancellationLines.length !== 1 || !cancellationLines[0]?.includes('"text":"cancelled"')) {
+  throw new Error(`execution.cancel emitted a response or failed to abort: ${cancellationLines.join("")}`);
+}
+
 // --- Service provide/consume (capability protocol v3) ---
 
 const servicePlugin: RuntimePlugin = {
