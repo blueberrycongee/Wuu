@@ -2,11 +2,18 @@ package tools
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"testing"
 
 	"github.com/blueberrycongee/wuu/internal/processsandbox"
 )
+
+type policyTestSandboxProvider struct{}
+
+func (policyTestSandboxProvider) Confine(context.Context, []string, processsandbox.Policy) (processsandbox.ConfinedCommand, error) {
+	return processsandbox.ConfinedCommand{}, nil
+}
 
 func TestProcessSandboxPolicyMapsWorkspaceBoundary(t *testing.T) {
 	if !processsandbox.Supported() {
@@ -47,5 +54,25 @@ func TestProcessSandboxPolicyMapsWorkspaceBoundary(t *testing.T) {
 	env.Unconfined = true
 	if policy, _, err := env.processSandboxPolicy(context.Background()); err != nil || policy != nil {
 		t.Fatalf("unconfined policy = %#v, want nil", policy)
+	}
+}
+
+func TestProcessSandboxPolicyFailsClosedWithoutBackend(t *testing.T) {
+	env := &Env{RootDir: t.TempDir()}
+	policy, tempDir, err := env.processSandboxPolicyWithBuiltIn(context.Background(), false)
+	if !errors.Is(err, processsandbox.ErrUnavailable) || policy != nil || tempDir != "" {
+		t.Fatalf("missing backend = policy %#v temp %q error %v", policy, tempDir, err)
+	}
+
+	env.Unconfined = true
+	if policy, _, err := env.processSandboxPolicyWithBuiltIn(context.Background(), false); err != nil || policy != nil {
+		t.Fatalf("explicit unconfined mode must bypass confinement: policy %#v error %v", policy, err)
+	}
+
+	env.Unconfined = false
+	env.ProcessSandboxProvider = policyTestSandboxProvider{}
+	policy, _, err = env.processSandboxPolicyWithBuiltIn(context.Background(), false)
+	if err != nil || policy == nil || policy.Mode != processsandbox.ModeWorkspaceWrite {
+		t.Fatalf("custom provider policy = %#v error %v", policy, err)
 	}
 }

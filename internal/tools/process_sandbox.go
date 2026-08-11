@@ -16,8 +16,15 @@ import (
 // a user-owned session/workspace setting. Platforms without Wuu's built-in
 // backend may still confine processes through a configured provider.
 func (e *Env) processSandboxPolicy(ctx context.Context) (*processsandbox.Policy, string, error) {
-	if e == nil || e.Unconfined || (e.ProcessSandboxProvider == nil && !processsandbox.Supported()) {
+	return e.processSandboxPolicyWithBuiltIn(ctx, processsandbox.Supported())
+}
+
+func (e *Env) processSandboxPolicyWithBuiltIn(ctx context.Context, builtInAvailable bool) (*processsandbox.Policy, string, error) {
+	if e == nil || e.Unconfined {
 		return nil, "", nil
+	}
+	if e.ProcessSandboxProvider == nil && !builtInAvailable {
+		return nil, "", fmt.Errorf("%w: no built-in backend is available; configure sandbox.process@1 or explicitly use unconfined mode", processsandbox.ErrUnavailable)
 	}
 	if e.boundaryConfigured && !e.AllowMutations {
 		return &processsandbox.Policy{Mode: processsandbox.ModeReadOnly}, "", nil
