@@ -16,6 +16,24 @@ const pages = [
   ),
 ]
 const publishedPages = new Set(pages)
+const locales = Object.values(manifest.locales)
+const localeRoots = locales.map((locale) => locale.root)
+
+const customizePages = locales.map((locale) => ({
+  root: locale.root,
+  pages: locale.navigation
+    .flatMap((group) => group.pages)
+    .filter((page) => page.startsWith(`${locale.root}/customize/`))
+    .map((page) => page.slice(locale.root.length + 1)),
+}))
+const customizeBaseline = customizePages[0]
+for (const locale of customizePages.slice(1)) {
+  if (JSON.stringify(locale.pages) !== JSON.stringify(customizeBaseline.pages)) {
+    throw new Error(
+      `Customize documentation navigation is not bilingual: ${customizeBaseline.root} and ${locale.root} must publish the same relative pages in the same order`,
+    )
+  }
+}
 
 const routeFromPage = (page) => page.replace(/\.md$/, "").replace(/\/index$/, "")
 
@@ -27,6 +45,16 @@ function rewriteMarkdownLinks(markdown, page) {
     if (/^[a-z][a-z\d+.-]*:/i.test(href)) return match
 
     const target = path.posix.normalize(path.posix.join(path.posix.dirname(page), href))
+    const sourceLocale = localeRoots.find((root) => page.startsWith(`${root}/`))
+    const targetLocale = localeRoots.find((root) => target.startsWith(`${root}/`))
+    if (
+      sourceLocale &&
+      targetLocale &&
+      sourceLocale !== targetLocale &&
+      page.startsWith(`${sourceLocale}/customize/`)
+    ) {
+      throw new Error(`Customize page ${page} links across locales: ${target}`)
+    }
     if (target.startsWith("../")) {
       const repositoryPath = path.posix.normalize(path.posix.join("docs", target))
       const view = href.endsWith("/") ? "tree" : "blob"
