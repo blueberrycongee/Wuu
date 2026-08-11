@@ -198,7 +198,7 @@ function acceptanceView(api: PluginGenerationApi, props: Readonly<Record<string,
         api.react.createElement(
           Stack,
           null,
-          api.react.createElement("span", null, "SDK v2 acceptance"),
+          api.react.createElement("span", null, "SDK v3 acceptance"),
           api.react.createElement("strong", { "data-counter-value": "" }, "0"),
           api.react.createElement(
             Row,

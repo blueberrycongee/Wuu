@@ -8,7 +8,7 @@ import {
 const plugin: RuntimePlugin = {
   initialize() {
     return {
-      protocol_version: 2,
+      protocol_version: 3,
       capabilities: [
         { id: REQUEST_TRANSFORM_CAPABILITY, kind: "transform", version: 1 },
         { id: SYSTEM_PROMPT_SECTION_CAPABILITY, kind: "transform", version: 1 },
@@ -29,7 +29,10 @@ const plugin: RuntimePlugin = {
         return { output };
     }
   },
-  executeTool() {
+  executeTool(params, _host, execution) {
+    if (params.execution_id && params.execution_id !== execution.executionId) {
+      throw new Error("tool execution identity does not match its runtime context");
+    }
     return { result: { content: [{ type: "text", text: "developer-loop tool ok" }] } };
   },
 };

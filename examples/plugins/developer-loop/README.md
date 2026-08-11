@@ -1,7 +1,7 @@
 # Developer Loop Example
 
 This independently buildable plugin uses only the published `@wuu/plugin-sdk` package. It keeps the
-SDK v2 request transform and tool while contributing a durable workbench View placement, complete
+SDK v3 request transform and tool while contributing a durable workbench View placement, complete
 theme token sample, command, status item, locales, and the conversation-header slot. The View is
 built from the host-owned `api.ui` primitives, so another appearance plugin can theme it without
 knowing this plugin exists. It uses the React instance owned by the host; React is neither a
@@ -37,7 +37,7 @@ wuu plugin install ./developer-loop-example-1.0.0.zip
 `npm test` runs type checking, builds both entries, and then performs static contract checks. Those
 checks reject private Wuu source imports and React bundling, and verify every acceptance
 contribution. `wuu plugin test` starts the executable runtime and checks protocol negotiation, the
-v2 capability descriptor, and executable tool registration. `wuu plugin dev` builds, validates,
+v3 capability descriptor, and executable tool registration. `wuu plugin dev` builds, validates,
 and publishes isolated development generations; a failed refresh keeps the previous generation.
 
 ## Trust boundary
