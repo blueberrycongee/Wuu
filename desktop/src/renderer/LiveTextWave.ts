@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef, type RefObject } from "react";
 
 const WAVE_SPEED_PX_PER_SECOND = 90;
-const WAVE_GAP_MS = 1200;
+const WAVE_GAP_MS = 4000;
 const WAVE_HIGHLIGHT_WIDTH_PX = 16;
 
 function updateWaveTiming(element: HTMLElement): void {
