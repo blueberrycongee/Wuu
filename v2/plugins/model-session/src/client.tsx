@@ -32,7 +32,7 @@ function ModelControl({
           try {
             await client.clientActions.execute("model/select", {
               sessionId,
-              providerId: event.currentTarget.value,
+              modelId: event.currentTarget.value,
             });
           } catch (cause) {
             setError(cause instanceof Error ? cause.message : String(cause));

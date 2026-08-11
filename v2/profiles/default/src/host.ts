@@ -30,13 +30,13 @@ export interface DefaultHostProfileConfig {
   cwd: string;
   dataDirectory: string;
   providers: readonly DefaultProfileProvider[];
-  defaultProviderId?: string;
+  defaultModelId?: string;
   defaultPermission?: PermissionMode;
 }
 
 export interface DefaultHostProfile {
   ctx: Context;
-  providerId: string;
+  modelId: string;
   dispose(): Promise<void>;
 }
 
@@ -67,30 +67,30 @@ export async function createDefaultHostProfile(
     await install(ctx.plugin(projectionFeedPlugin));
 
     if (!config.providers.length) throw new Error("default profile requires at least one model provider");
-    const providerIds: string[] = [];
+    const modelIds: string[] = [];
     for (const provider of config.providers) {
       if (provider.kind === "openai") {
-        providerIds.push(provider.config.id ?? "openai");
+        modelIds.push(provider.config.id ?? "openai");
         await install(ctx.plugin(openAIProviderPlugin, provider.config));
       } else {
-        providerIds.push(provider.config.id ?? "scripted");
+        modelIds.push(provider.config.id ?? "scripted");
         await install(ctx.plugin(scriptedProviderPlugin, provider.config));
       }
     }
-    const providerId = config.defaultProviderId ?? providerIds[0]!;
-    if (!providerIds.includes(providerId)) {
-      throw new Error(`default model provider is not selected by this profile: ${providerId}`);
+    const modelId = config.defaultModelId ?? modelIds[0]!;
+    if (!modelIds.includes(modelId)) {
+      throw new Error(`default model is not selected by this profile: ${modelId}`);
     }
 
     await install(ctx.plugin(agentRuntimePlugin, { agentId: "default" }));
-    await install(ctx.plugin(modelSessionHost, { defaultProviderId: providerId }));
+    await install(ctx.plugin(modelSessionHost, { defaultModelId: modelId }));
     await install(ctx.plugin(permissionSessionHost, {
       defaultMode: config.defaultPermission ?? "full-access",
     }));
     await install(ctx.plugin(defaultAgentLoopPlugin, {}));
     await install(ctx.plugin(sideHost, { agentId: "default" }));
 
-    return { ctx, providerId, dispose };
+    return { ctx, modelId, dispose };
   } catch (error) {
     await dispose();
     throw error;

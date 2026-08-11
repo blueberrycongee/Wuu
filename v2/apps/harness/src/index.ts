@@ -54,7 +54,7 @@ const runtime = await createDefaultHostProfile({
         },
       }],
 });
-const { ctx, providerId } = runtime;
+const { ctx, modelId } = runtime;
 
 const shutdown = async () => {
   await runtime.dispose();
@@ -128,7 +128,7 @@ try {
   );
   const sideTools = await ctx.toolPolicy.allowedTools(sideSessionId, ["read", "write"]);
   if (
-    await ctx.modelRouting.resolve(sideSessionId) !== providerId ||
+    await ctx.modelRouting.resolve(sideSessionId) !== modelId ||
     sideContext.messages[0]?.role !== "user" ||
     sideContext.messages[0].content !== "Parent context for Side." ||
     !sideTools.has("read") ||

@@ -7,10 +7,10 @@ import {
 } from "@wuu-v2/kernel";
 
 export interface ModelSessionConfig {
-  defaultProviderId: string;
+  defaultModelId: string;
 }
 
-type ModelSelectedRecord = SessionRecord<"model/selected", { providerId: string }>;
+type ModelSelectedRecord = SessionRecord<"model/selected", { modelId: string }>;
 const source: EventSource = { pluginId: "model-session", generation: "v1" };
 
 function objectInput(input: JsonValue): Record<string, JsonValue> {
@@ -27,32 +27,32 @@ function stringField(input: Record<string, JsonValue>, field: string): string {
 }
 
 export class ModelSessionService extends Service implements ModelRoutingService {
-  constructor(ctx: Context, private readonly defaultProviderId: string) {
+  constructor(ctx: Context, private readonly defaultModelId: string) {
     super(ctx, "modelRouting");
-    ctx.providers.require(defaultProviderId);
+    ctx.providers.require(defaultModelId);
     ctx.projections.register("model", (current, event) => {
       if (event.record.type !== "model/selected") return current;
       const record = event.record as ModelSelectedRecord;
-      return this.projection(record.data.providerId);
-    }, () => this.projection(defaultProviderId));
+      return this.projection(record.data.modelId);
+    }, () => this.projection(defaultModelId));
     ctx.providers.subscribe(() => ctx.projections.invalidate());
     ctx.hostActions.register("model/select", async (input) => {
       const value = objectInput(input);
       const sessionId = stringField(value, "sessionId");
-      const providerId = stringField(value, "providerId");
+      const modelId = stringField(value, "modelId");
       if (ctx.agentRuns.isActive(sessionId)) throw new Error("cannot change model during an active run");
-      ctx.providers.require(providerId);
+      ctx.providers.require(modelId);
       const event = await ctx.sessions.append(sessionId, source, {
         type: "model/selected",
-        data: { providerId },
+        data: { modelId },
       } satisfies ModelSelectedRecord);
-      return { providerId, acceptedSeq: event.seq };
+      return { modelId, acceptedSeq: event.seq };
     });
   }
 
-  private projection(providerId: string): JsonValue {
+  private projection(modelId: string): JsonValue {
     return {
-      selected: providerId,
+      selected: modelId,
       options: this.ctx.providers.entries()
         .map(([id, provider]) => ({ id, label: provider.displayName ?? id }))
         .sort((left, right) => left.id.localeCompare(right.id)),
@@ -60,10 +60,10 @@ export class ModelSessionService extends Service implements ModelRoutingService 
   }
 
   async resolve(sessionId: string): Promise<string> {
-    let selected = this.defaultProviderId;
+    let selected = this.defaultModelId;
     for (const event of await this.ctx.sessions.load(sessionId)) {
       if (event.record.type === "model/selected") {
-        selected = (event.record as ModelSelectedRecord).data.providerId;
+        selected = (event.record as ModelSelectedRecord).data.modelId;
       }
     }
     this.ctx.providers.require(selected);
@@ -76,16 +76,16 @@ export class ModelSessionService extends Service implements ModelRoutingService 
     await this.ctx.sessions.append(sessionId, source, {
       type: "model/selected",
       data: {
-        providerId: sourceSessionId
+        modelId: sourceSessionId
           ? await this.resolve(sourceSessionId)
-          : this.defaultProviderId,
+          : this.defaultModelId,
       },
     } satisfies ModelSelectedRecord);
   }
 }
 
 const modelSessionHost: Plugin<ModelSessionConfig> = function modelSession(ctx, config) {
-  new ModelSessionService(ctx, config.defaultProviderId);
+  new ModelSessionService(ctx, config.defaultModelId);
 };
 
 modelSessionHost.inject = ["agentRuns", "hostActions", "projections", "providers", "sessions"];
