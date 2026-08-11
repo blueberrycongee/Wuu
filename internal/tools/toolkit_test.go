@@ -1602,10 +1602,7 @@ func TestToolkit_DisableTools_HidesDefinitionsAndBlocksExecute(t *testing.T) {
 
 func TestToolkit_RunShell(t *testing.T) {
 	root := t.TempDir()
-	kit, err := New(root)
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
+	kit := newShellTestToolkit(t, root)
 
 	resp, err := kit.Execute(context.Background(), providers.ToolCall{
 		Name:      "bash",
@@ -1654,10 +1651,7 @@ func TestToolkit_RunShell(t *testing.T) {
 
 func TestToolkit_RunShellRedactsSensitiveOutput(t *testing.T) {
 	root := t.TempDir()
-	kit, err := New(root)
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
+	kit := newShellTestToolkit(t, root)
 	sessionDir := filepath.Join(t.TempDir(), "session")
 	kit.SetSessionDir(sessionDir)
 
@@ -1721,10 +1715,7 @@ func TestToolkit_RunShellRedactsSensitiveOutput(t *testing.T) {
 
 func TestToolkit_RunShellStructuredFailureOutput(t *testing.T) {
 	root := t.TempDir()
-	kit, err := New(root)
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
+	kit := newShellTestToolkit(t, root)
 
 	resp, err := kit.Execute(context.Background(), providers.ToolCall{
 		Name:      "bash",
@@ -1760,10 +1751,7 @@ func TestToolkit_RunShellStructuredFailureOutput(t *testing.T) {
 
 func TestToolkit_RunShellSetsNonInteractiveEnv(t *testing.T) {
 	root := t.TempDir()
-	kit, err := New(root)
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
+	kit := newShellTestToolkit(t, root)
 
 	resp, err := kit.Execute(context.Background(), providers.ToolCall{
 		Name:      "bash",

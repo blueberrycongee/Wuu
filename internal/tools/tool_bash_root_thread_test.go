@@ -13,10 +13,7 @@ import (
 func startBackgroundForRootThreadTest(t *testing.T, arguments string, bind func(kit *Toolkit)) ([]string, proc.Process) {
 	t.Helper()
 	root := t.TempDir()
-	kit, err := New(root)
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
+	kit := newShellTestToolkit(t, root)
 	manager, err := proc.NewManager(root, filepath.Join(t.TempDir(), "runtime"))
 	if err != nil {
 		t.Fatalf("NewManager: %v", err)

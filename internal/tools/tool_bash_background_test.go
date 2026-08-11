@@ -57,10 +57,7 @@ func TestBashUpdateBackgroundRequiresProcessID(t *testing.T) {
 
 func TestBashUpdateBackgroundScheduleLifecycle(t *testing.T) {
 	root := t.TempDir()
-	kit, err := New(root)
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
+	kit := newShellTestToolkit(t, root)
 	manager, err := proc.NewManager(root, filepath.Join(t.TempDir(), "runtime"))
 	if err != nil {
 		t.Fatalf("NewManager: %v", err)
@@ -124,10 +121,7 @@ func TestBashUpdateBackgroundScheduleLifecycle(t *testing.T) {
 
 func TestBashStartBackgroundAllowsExplicitLogOnlyMode(t *testing.T) {
 	root := t.TempDir()
-	kit, err := New(root)
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
+	kit := newShellTestToolkit(t, root)
 	manager, err := proc.NewManager(root, filepath.Join(t.TempDir(), "runtime"))
 	if err != nil {
 		t.Fatalf("NewManager: %v", err)
@@ -160,10 +154,7 @@ func TestBashStartBackgroundAllowsExplicitLogOnlyMode(t *testing.T) {
 
 func TestBashStartBackgroundRejectsInvalidRecheck(t *testing.T) {
 	root := t.TempDir()
-	kit, err := New(root)
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
+	kit := newShellTestToolkit(t, root)
 	manager, err := proc.NewManager(root, filepath.Join(t.TempDir(), "runtime"))
 	if err != nil {
 		t.Fatalf("NewManager: %v", err)
@@ -183,10 +174,7 @@ func TestBashStartBackgroundRejectsInvalidRecheck(t *testing.T) {
 
 func TestBashRunTimeoutPromotesToBackground(t *testing.T) {
 	root := t.TempDir()
-	kit, err := New(root)
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
+	kit := newShellTestToolkit(t, root)
 	manager, err := proc.NewManager(root, filepath.Join(t.TempDir(), "runtime"))
 	if err != nil {
 		t.Fatalf("NewManager: %v", err)

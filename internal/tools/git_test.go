@@ -103,6 +103,7 @@ func TestGitCommitAttributionPreservesIdentityAndExistingCoauthors(t *testing.T)
 
 func TestBashCommitAttributionPreservesMessageFileTrailersAndDeduplicates(t *testing.T) {
 	kit, root := setupGitRepo(t)
+	enableShellExecutionForTest(kit.env)
 	kit.env.GitWrapperExecutable = buildWuuForGitWrapper(t)
 	kit.SetSessionDir(t.TempDir())
 	runBash(t, root, "printf 'updated\n' > hello.txt")
@@ -132,6 +133,7 @@ func TestBashCommitAttributionPreservesMessageFileTrailersAndDeduplicates(t *tes
 
 func TestBashGitAttributionDoesNotRewriteHeredocAndCoversNestedShell(t *testing.T) {
 	kit, root := setupGitRepo(t)
+	enableShellExecutionForTest(kit.env)
 	kit.env.GitWrapperExecutable = buildWuuForGitWrapper(t)
 	kit.SetSessionDir(t.TempDir())
 	script := "#!/bin/sh\nprintf 'nested\\n' > hello.txt\ngit add hello.txt\ngit commit -m 'Nested commit'\n"
@@ -155,6 +157,7 @@ func TestBashGitAttributionDoesNotRewriteHeredocAndCoversNestedShell(t *testing.
 
 func TestBashGitAttributionRejectsWrapperSelfResolution(t *testing.T) {
 	kit, _ := setupGitRepo(t)
+	enableShellExecutionForTest(kit.env)
 	kit.env.GitWrapperExecutable = buildWuuForGitWrapper(t)
 	kit.SetSessionDir(t.TempDir())
 	args, _ := json.Marshal(map[string]any{
@@ -176,6 +179,7 @@ func TestBashGitAttributionRejectsWrapperSelfResolution(t *testing.T) {
 
 func TestBashBackgroundGitAttributionUsesWrapper(t *testing.T) {
 	kit, root := setupGitRepo(t)
+	enableShellExecutionForTest(kit.env)
 	kit.env.GitWrapperExecutable = buildWuuForGitWrapper(t)
 	kit.SetSessionDir(t.TempDir())
 	manager, err := proc.NewManager(root, filepath.Join(t.TempDir(), "runtime"))
@@ -225,6 +229,7 @@ func TestBashBackgroundGitAttributionUsesWrapper(t *testing.T) {
 
 func TestGitAttributionSkipsAmend(t *testing.T) {
 	kit, root := setupGitRepo(t)
+	enableShellExecutionForTest(kit.env)
 	kit.env.GitWrapperExecutable = buildWuuForGitWrapper(t)
 	kit.SetSessionDir(t.TempDir())
 	runBash(t, root, "printf 'human\\n' > hello.txt && git add hello.txt && git commit -qm human")
@@ -259,6 +264,7 @@ func TestGitCommitRejectsCallerSuppliedTrailer(t *testing.T) {
 
 func TestGitCommitAttributionCanBeDisabled(t *testing.T) {
 	kit, root := setupGitRepo(t)
+	enableShellExecutionForTest(kit.env)
 	kit.SetGitAttributionEnabled(false)
 	runBash(t, root, "printf 'updated\n' > hello.txt")
 	gitCall(t, kit, "add", "hello.txt")
@@ -803,6 +809,7 @@ func TestToolkit_Git_RedactsCredentialsInOutput(t *testing.T) {
 
 func TestToolkit_Git_NonInteractiveEnv(t *testing.T) {
 	kit, _ := setupGitRepo(t)
+	enableShellExecutionForTest(kit.env)
 	resp, err := kit.Execute(context.Background(), providers.ToolCall{
 		Name:      "bash",
 		Arguments: `{"command":"printf '%s' \"$GIT_TERMINAL_PROMPT\""}`,

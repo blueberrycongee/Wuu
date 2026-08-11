@@ -28,7 +28,7 @@ func TestExecuteShellCommandCancellationStopsProcessTree(t *testing.T) {
 	defer cancel()
 	resultCh := make(chan shellTestResult, 1)
 	go func() {
-		result, err := executeShellCommandInDir(ctx, &Env{RootDir: root}, `
+		result, err := executeShellCommandInDir(ctx, newShellTestEnv(root), `
 (trap '' TERM; while :; do sleep 1; done) &
 printf '%s' "$!" > "$WUU_TEST_DESCENDANT_MARKER"
 trap 'printf cleaned > "$WUU_TEST_CLEANUP_MARKER"; exit 0' TERM
@@ -72,7 +72,7 @@ func TestExecuteShellCommandTimeoutStopsProcessTree(t *testing.T) {
 
 	resultCh := make(chan shellTestResult, 1)
 	go func() {
-		result, err := executeShellCommandInDir(context.Background(), &Env{RootDir: root}, `
+		result, err := executeShellCommandInDir(context.Background(), newShellTestEnv(root), `
 trap '' TERM
 (trap '' TERM; while :; do sleep 1; done) &
 printf '%s' "$!" > "$WUU_TEST_DESCENDANT_MARKER"

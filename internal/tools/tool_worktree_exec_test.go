@@ -105,6 +105,7 @@ func TestWorktreeBoundReadAndEditUseWorktreeCopy(t *testing.T) {
 
 func TestWorktreeBoundShellRunsInWorktree(t *testing.T) {
 	kit, parent, worktree, ctx := newWorktreeExecFixture(t)
+	enableShellExecutionForTest(kit.env)
 
 	// Exercise the shared shell execution engine that backs bash. A
 	// worktree-bound run with the default (empty) cwd must relocate onto
@@ -132,6 +133,7 @@ func TestWorktreeBoundShellRunsInWorktree(t *testing.T) {
 
 func TestWorktreeBoundBashRunExecutesInWorktree(t *testing.T) {
 	kit, parent, worktree, ctx := newWorktreeExecFixture(t)
+	enableShellExecutionForTest(kit.env)
 
 	// Regression: BashTool.executeRun used to resolve the shell working dir
 	// twice (once in executeRun, again inside executeShellCommandWithCWD). With a

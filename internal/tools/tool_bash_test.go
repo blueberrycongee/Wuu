@@ -74,10 +74,7 @@ func TestBashVerificationFailure(t *testing.T) {
 }
 `)
 
-	kit, err := New(root)
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
+	kit := newShellTestToolkit(t, root)
 	kit.SetSessionDir(t.TempDir())
 
 	call := providers.ToolCall{
@@ -107,7 +104,7 @@ func TestBashVerificationFailure(t *testing.T) {
 		}
 	}
 
-	_, err = kit.Execute(context.Background(), call)
+	_, err := kit.Execute(context.Background(), call)
 	if err == nil || !strings.Contains(err.Error(), "bash blocked repeated failing verification command") {
 		t.Fatalf("expected bash verification repeat guard, got %v", err)
 	}
@@ -121,10 +118,7 @@ func TestBashRunResolvesLocalNpxVerificationRunner(t *testing.T) {
 		t.Fatalf("chmod runner: %v", err)
 	}
 
-	kit, err := New(root)
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
+	kit := newShellTestToolkit(t, root)
 	resp, err := kit.Execute(context.Background(), providers.ToolCall{
 		Name:      "bash",
 		Arguments: `{"command":"npx vitest --run","scope":"targeted"}`,
@@ -155,10 +149,7 @@ func TestBashRunResolvesLocalNpxTypecheckRunner(t *testing.T) {
 		t.Fatalf("chmod runner: %v", err)
 	}
 
-	kit, err := New(root)
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
+	kit := newShellTestToolkit(t, root)
 	resp, err := kit.Execute(context.Background(), providers.ToolCall{
 		Name:      "bash",
 		Arguments: `{"command":"cd desktop && npx tsc --noEmit","scope":"targeted"}`,
@@ -192,10 +183,7 @@ func TestBashRunResolvesLocalNpxTypecheckRunnerWithProjectOptionOrder(t *testing
 		t.Fatalf("chmod runner: %v", err)
 	}
 
-	kit, err := New(root)
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
+	kit := newShellTestToolkit(t, root)
 	resp, err := kit.Execute(context.Background(), providers.ToolCall{
 		Name:      "bash",
 		Arguments: `{"command":"cd desktop && npx tsc -p tsconfig.json --noEmit","scope":"targeted"}`,
@@ -243,10 +231,7 @@ func TestBashRunResolvesWrappedLocalNpxVerificationRunner(t *testing.T) {
 		t.Fatalf("chmod runner: %v", err)
 	}
 
-	kit, err := New(root)
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
+	kit := newShellTestToolkit(t, root)
 	resp, err := kit.Execute(context.Background(), providers.ToolCall{
 		Name:      "bash",
 		Arguments: `{"command":"nice npx vitest --run","scope":"targeted"}`,
@@ -279,10 +264,7 @@ func TestBashRunUsesCWD(t *testing.T) {
 	if err := os.MkdirAll(subdir, 0o755); err != nil {
 		t.Fatalf("mkdir subdir: %v", err)
 	}
-	kit, err := New(root)
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
+	kit := newShellTestToolkit(t, root)
 	expectedRevision := workspaceRevision(context.Background(), kit.env.RootDir)
 
 	tests := []struct {
@@ -374,10 +356,7 @@ func TestBashRunWithCWDResolvesLocalNpxVerificationRunner(t *testing.T) {
 		t.Fatalf("chmod runner: %v", err)
 	}
 
-	kit, err := New(root)
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
+	kit := newShellTestToolkit(t, root)
 	resp, err := kit.Execute(context.Background(), providers.ToolCall{
 		Name:      "bash",
 		Arguments: `{"command":"npx vitest --run","cwd":"desktop","scope":"targeted"}`,
@@ -402,10 +381,7 @@ func TestBashRunWithCWDResolvesLocalNpxVerificationRunner(t *testing.T) {
 
 func TestBashBackgroundModeUsesManagedProcessBackend(t *testing.T) {
 	root := t.TempDir()
-	kit, err := New(root)
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
+	kit := newShellTestToolkit(t, root)
 	manager, err := proc.NewManager(root, filepath.Join(t.TempDir(), "runtime"))
 	if err != nil {
 		t.Fatalf("NewManager: %v", err)
@@ -468,10 +444,7 @@ func TestBashBackgroundModeUsesManagedProcessBackend(t *testing.T) {
 
 func TestBashReadBackgroundConsumesCompletionWhenTerminalResultIsReturned(t *testing.T) {
 	root := t.TempDir()
-	kit, err := New(root)
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
+	kit := newShellTestToolkit(t, root)
 	manager, err := proc.NewManager(root, filepath.Join(t.TempDir(), "runtime"))
 	if err != nil {
 		t.Fatalf("NewManager: %v", err)
@@ -624,10 +597,7 @@ func TestBashBackgroundUsesCWD(t *testing.T) {
 	if err := os.MkdirAll(subdir, 0o755); err != nil {
 		t.Fatalf("mkdir subdir: %v", err)
 	}
-	kit, err := New(root)
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
+	kit := newShellTestToolkit(t, root)
 	manager, err := proc.NewManager(root, filepath.Join(t.TempDir(), "runtime"))
 	if err != nil {
 		t.Fatalf("NewManager: %v", err)
