@@ -1590,7 +1590,7 @@ export const zhCN = {
   "project.openFailed": "打开项目失败",
   "project.createFailed": "创建项目失败",
   "project.folderOpenFailed": "打开文件夹失败",
-  "project.cleanupConfirm": "是否同时清理该项目的本地运行状态？插件拥有的数据会保留归档。",
+  "project.removeConfirm": "要从侧栏移除工作区“{name}”吗？会话和插件数据仍会保留在本机。",
   "project.cleanupFailed": "清理项目状态失败",
   "project.removeFailed": "移除工作区失败",
   "project.scratchOpenFailed": "打开无项目工作区失败",

@@ -429,7 +429,124 @@ describe("createProjectRuntimeActions", () => {
     );
   });
 
-  it("lands on a scratch draft after removing the active workspace", async () => {
+  it("adds an existing workspace on a blank tab without reviving old sessions", async () => {
+    const sourceContext = projectContext("project-1");
+    const addedContext = projectContext("project-2");
+    const sourceTab = createDraftSessionTab("draft:source", sourceContext);
+    const staleThreadTab = createThreadSessionTab(thread("old-session"), addedContext);
+    const staleDraftTab = createDraftSessionTab("draft:stale", addedContext, {
+      prompt: "old workspace draft",
+      images: [],
+      files: [],
+    });
+    const projectState = {
+      projects: [project("project-1"), project("project-2")],
+      active_context: addedContext,
+    } as ProjectListResult;
+    const loadRuntime = vi.fn().mockResolvedValue({
+      activeContext: addedContext,
+      activeProjectId: "project-2",
+      thread: undefined,
+      threads: [thread("old-session")],
+      status: "ready",
+    });
+    Object.defineProperty(window, "wuu", {
+      configurable: true,
+      value: {
+        chooseProjectFolder: vi.fn().mockResolvedValue(projectState),
+      } as Partial<WuuDesktopApi>,
+    });
+    const harness = buildActions({
+      initial: {
+        ...initialState,
+        activeContext: sourceContext,
+        activeProjectId: "project-1",
+        projects: [project("project-1")],
+        sessionTabs: [sourceTab, staleThreadTab, staleDraftTab],
+        activeSessionTabID: sourceTab.id,
+      },
+      loadRuntime,
+    });
+
+    await harness.actions.chooseProjectFolder();
+
+    expect(loadRuntime).toHaveBeenCalledWith(projectState, {
+      resumeLatestThread: false,
+    });
+    const state = harness.getAppState();
+    const activeTab = state.sessionTabs.find(
+      (tab) => tab.id === state.activeSessionTabID,
+    );
+    expect(activeTab?.kind).toBe("draft");
+    expect(activeTab?.context).toEqual(addedContext);
+    expect(
+      state.sessionTabs.filter(
+        (tab) =>
+          tab.context.kind === "project" &&
+          tab.context.project_id === "project-2",
+      ),
+    ).toHaveLength(1);
+    expect(harness.getCurrentDraft()).toEqual(emptyComposerDraft());
+  });
+
+  it("does not remove a workspace when confirmation is cancelled", async () => {
+    const removeProject = vi.fn();
+    Object.defineProperty(window, "wuu", {
+      configurable: true,
+      value: { removeProject } as Partial<WuuDesktopApi>,
+    });
+    vi.spyOn(window, "confirm").mockReturnValue(false);
+    const harness = buildActions({
+      initial: {
+        ...initialState,
+        activeContext: projectContext(),
+        activeProjectId: "project-1",
+        projects: [project()],
+      },
+    });
+
+    await harness.actions.removeProject("project-1");
+
+    expect(removeProject).not.toHaveBeenCalled();
+    expect(harness.getAppState().projects).toEqual([project()]);
+  });
+
+  it("closes only the removed workspace tabs when another workspace stays active", async () => {
+    const activeContext = projectContext("project-1");
+    const removedContext = projectContext("project-2");
+    const activeTab = createDraftSessionTab("draft:active", activeContext);
+    const removedTab = createThreadSessionTab(thread("removed-session"), removedContext);
+    const projectState = {
+      projects: [project("project-1")],
+      active_context: activeContext,
+    } as ProjectListResult;
+    const removeProject = vi.fn().mockResolvedValue(projectState);
+    Object.defineProperty(window, "wuu", {
+      configurable: true,
+      value: { removeProject } as Partial<WuuDesktopApi>,
+    });
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    const loadRuntime = vi.fn();
+    const harness = buildActions({
+      initial: {
+        ...initialState,
+        activeContext,
+        activeProjectId: "project-1",
+        projects: [project("project-1"), project("project-2")],
+        sessionTabs: [activeTab, removedTab],
+        activeSessionTabID: activeTab.id,
+      },
+      loadRuntime,
+    });
+
+    await harness.actions.removeProject("project-2");
+
+    expect(loadRuntime).not.toHaveBeenCalled();
+    expect(harness.getAppState().sessionTabs).toEqual([activeTab]);
+    expect(harness.getAppState().activeSessionTabID).toBe(activeTab.id);
+  });
+
+  it("lands on a scratch draft and closes workspace tabs after removing the active workspace", async () => {
     const sourceContext = projectContext();
     const scratchContext = noProjectContext();
     const source = thread();
@@ -456,7 +573,7 @@ describe("createProjectRuntimeActions", () => {
       configurable: true,
       value: { removeProject } as Partial<WuuDesktopApi>,
     });
-    vi.spyOn(window, "confirm").mockReturnValue(false);
+    vi.spyOn(window, "confirm").mockReturnValue(true);
     const harness = buildActions({
       initial: {
         ...initialState,
@@ -464,7 +581,10 @@ describe("createProjectRuntimeActions", () => {
         activeProjectId: "project-1",
         projects: [project()],
         thread: source,
-        sessionTabs: [sourceTab],
+        sessionTabs: [
+          sourceTab,
+          createDraftSessionTab("draft:removed-project", sourceContext),
+        ],
         activeSessionTabID: sourceTab.id,
       },
       loadRuntime,
@@ -484,5 +604,12 @@ describe("createProjectRuntimeActions", () => {
     expect(activeTab?.kind === "draft" ? activeTab.context : undefined).toEqual(
       scratchContext,
     );
+    expect(
+      harness.getAppState().sessionTabs.some(
+        (tab) =>
+          tab.context.kind === "project" &&
+          tab.context.project_id === "project-1",
+      ),
+    ).toBe(false);
   });
 });

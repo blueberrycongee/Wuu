@@ -1,5 +1,5 @@
 import type { SetStateAction } from "react";
-import type { DesktopProject, ProjectListResult } from "../shared/protocol";
+import type { ProjectListResult } from "../shared/protocol";
 import {
   activeSessionTab,
   applyLoadedRuntimeWithDraftCarry,
@@ -56,6 +56,17 @@ export function createProjectRuntimeActions(
 
   function setStatus(status: string): void {
     showErrorToast(status);
+  }
+
+  function withoutProjectSessionTabs(state: AppState, projectId: string): AppState {
+    return {
+      ...state,
+      sessionTabs: state.sessionTabs.filter(
+        (tab) =>
+          tab.context.kind !== "project" ||
+          tab.context.project_id !== projectId,
+      ),
+    };
   }
 
   function activateWorkspaceDraft(
@@ -326,17 +337,26 @@ export function createProjectRuntimeActions(
         }));
         return;
       }
-      const loadedState = await loadRuntime(projectState);
+      const loadedState = await loadRuntime(projectState, {
+        resumeLatestThread: false,
+      });
       if (!deps.finishViewSwitch(requestID)) {
         return;
       }
-      deps.restoreLoadedRuntimeComposerDraft(loadedState);
-      deps.setAppState((current) =>
-        withLoadedRuntimeSessionTab(
-          persistActiveSessionTabDraft(current, outgoingDraft),
+      deps.clearPrimaryComposerDraft();
+      deps.setAppState((current) => {
+        const persisted = persistActiveSessionTabDraft(current, outgoingDraft);
+        const destinationProjectID =
+          loadedState.activeContext?.kind === "project"
+            ? loadedState.activeContext.project_id
+            : undefined;
+        return withLoadedRuntimeSessionTab(
+          destinationProjectID
+            ? withoutProjectSessionTabs(persisted, destinationProjectID)
+            : persisted,
           loadedState,
-        ),
-      );
+        );
+      });
     } catch (error) {
       if (!deps.finishViewSwitch(requestID)) {
         return;
@@ -345,38 +365,21 @@ export function createProjectRuntimeActions(
     }
   }
 
-  async function offerRemovedProjectStateCleanup(
-    removedProject: DesktopProject | undefined,
-  ): Promise<void> {
-    if (!removedProject) {
-      return;
-    }
+  async function removeProject(projectId: string): Promise<void> {
+    const currentState = deps.getAppState();
+    const removedProject = currentState.projects.find(
+      (project) => project.id === projectId,
+    );
     if (
+      !removedProject ||
       !window.confirm(
-        translateCurrent("project.cleanupConfirm"),
+        translateCurrent("project.removeConfirm", { name: removedProject.name }),
       )
     ) {
       return;
     }
-    try {
-      await window.wuu.cleanupProjectState(
-        removedProject.id,
-        removedProject.path,
-      );
-    } catch (error) {
-      setStatus(
-        error instanceof Error ? error.message : translateCurrent("project.cleanupFailed"),
-      );
-    }
-  }
-
-  async function removeProject(projectId: string): Promise<void> {
-    const currentState = deps.getAppState();
     const requestID = deps.beginViewSwitch("runtime", "remove-project");
     const outgoingDraft = deps.getPrimaryComposerDraft();
-    const removedProject = currentState.projects.find(
-      (project) => project.id === projectId,
-    );
     try {
       const projectState = await window.wuu.removeProject(projectId);
       if (sameRuntimeContext(projectState.active_context, currentState.activeContext)) {
@@ -384,10 +387,9 @@ export function createProjectRuntimeActions(
           return;
         }
         deps.setAppState((current) => ({
-          ...current,
+          ...withoutProjectSessionTabs(current, projectId),
           projects: projectState.projects,
         }));
-        void offerRemovedProjectStateCleanup(removedProject);
         return;
       }
       const loadedState = await loadRuntime(projectState, {
@@ -399,11 +401,13 @@ export function createProjectRuntimeActions(
       deps.restoreLoadedRuntimeComposerDraft(loadedState);
       deps.setAppState((current) =>
         withLoadedRuntimeSessionTab(
-          persistActiveSessionTabDraft(current, outgoingDraft),
+          withoutProjectSessionTabs(
+            persistActiveSessionTabDraft(current, outgoingDraft),
+            projectId,
+          ),
           loadedState,
         ),
       );
-      void offerRemovedProjectStateCleanup(removedProject);
     } catch (error) {
       if (!deps.finishViewSwitch(requestID)) {
         return;

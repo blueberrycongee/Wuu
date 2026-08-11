@@ -1592,7 +1592,7 @@ export const enUS = {
   "project.openFailed": "Failed to open project",
   "project.createFailed": "Failed to create project",
   "project.folderOpenFailed": "Failed to open folder",
-  "project.cleanupConfirm": "Also clear this project's local runtime state? Plugin-owned data will remain archived.",
+  "project.removeConfirm": "Remove workspace “{name}” from the sidebar? Conversations and plugin data will stay on this device.",
   "project.cleanupFailed": "Failed to clean up project state",
   "project.removeFailed": "Failed to remove workspace",
   "project.scratchOpenFailed": "Failed to open the no-project workspace",
