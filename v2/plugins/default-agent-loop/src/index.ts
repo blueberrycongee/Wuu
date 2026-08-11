@@ -66,7 +66,8 @@ class DefaultAgentLoop implements AgentLoop {
         });
 
         const calls: ToolCallContent[] = [];
-        let stopReason: "stop" | "tool_calls" = "stop";
+        const callIds = new Set<string>();
+        let stopReason: "stop" | "tool_calls" | undefined;
         const provider = this.ctx.providers.require(
           await this.ctx.modelRouting.resolve(input.sessionId),
         );
@@ -77,12 +78,20 @@ class DefaultAgentLoop implements AgentLoop {
           signal,
         })) {
           signal.throwIfAborted();
+          if (stopReason) throw new Error("provider emitted output after done");
           if (event.type === "text_delta") {
             await this.append(input.sessionId, {
               type: "agent/assistant-text-delta",
               data: { messageId, delta: event.delta },
             });
           } else if (event.type === "tool_call") {
+            if (!event.call.callId || !event.call.name) {
+              throw new Error("provider emitted an invalid tool call identity");
+            }
+            if (callIds.has(event.call.callId)) {
+              throw new Error(`provider emitted duplicate tool call id: ${event.call.callId}`);
+            }
+            callIds.add(event.call.callId);
             calls.push(event.call);
             await this.append(input.sessionId, {
               type: "agent/assistant-tool-call",
@@ -93,8 +102,9 @@ class DefaultAgentLoop implements AgentLoop {
           }
         }
 
-        if (stopReason === "tool_calls" && !calls.length) {
-          throw new Error("provider ended with tool_calls but emitted no tool call");
+        if (!stopReason) throw new Error("provider stream ended without done");
+        if ((stopReason === "tool_calls") !== Boolean(calls.length)) {
+          throw new Error("provider tool calls do not match its stop reason");
         }
         await this.append(input.sessionId, {
           type: "agent/assistant-completed",
