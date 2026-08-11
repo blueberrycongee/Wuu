@@ -41,9 +41,7 @@
 }
 
 .conversation-pane.environment-panel-reserved .dock-composer-wrap {
-  padding-right: calc(
-    var(--environment-panel-content-inset) + var(--conversation-scrollbar-gutter)
-  );
+  padding-right: var(--environment-panel-content-inset);
 }
 
 @media (max-width: 1060px) {

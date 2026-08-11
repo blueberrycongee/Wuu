@@ -72,14 +72,9 @@
   --channel-directory-row-gap: 8px;
   --channel-avatar-size: 30px;
   --channel-message-column-gap: 10px;
-  /* Match the workspace message flow's 2px optical inset around its composer. */
-  --channel-content-max-width: calc(
-    var(--session-composer-width) - var(--conversation-flow-optical-inset) -
-      var(--conversation-flow-optical-inset)
-  );
-  --channel-horizontal-gutter: calc(
-    var(--session-outer-padding-inline) + var(--conversation-flow-optical-inset)
-  );
+  /* Match the workspace message flow and composer width. */
+  --channel-content-max-width: var(--session-composer-width);
+  --channel-horizontal-gutter: var(--session-outer-padding-inline);
   --bg-primary: var(--paper);
   --bg-secondary: var(--surface-1);
   --surface-raised: var(--surface-2);

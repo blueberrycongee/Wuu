@@ -86,19 +86,16 @@ describe("conversation flow and dock composer alignment", () => {
     );
   });
 
-  it("keeps the composer centered and insets the message flow by 2px per side", () => {
+  it("keeps the composer and message flow on the same geometric edges", () => {
     expect(composerCss).not.toMatch(
       /\.dock-composer-wrap \.composer-stack\s*\{[^}]*transform:/,
     );
     expect(composerCss).not.toMatch(
       /\.composer-stack\s*\{[^}]*width:[^}]*var\(--conversation-scrollbar-gutter\)/,
     );
-    expect(conversationShellCss).toMatch(
-      /--conversation-flow-optical-inset:\s*2px;/,
-    );
-    expect(workspaceCss).toMatch(
-      /\.conversation-width:has\(\.turn\)\s*\{[^}]*padding-inline:\s*calc\(\s*var\(--session-outer-padding-inline\)\s*\+\s*var\(--conversation-flow-optical-inset\)\s*\);/,
-    );
+    expect(composerCss).not.toMatch(/--conversation-scrollbar-gutter/);
+    expect(conversationShellCss).not.toMatch(/--conversation-flow-optical-inset/);
+    expect(workspaceCss).not.toMatch(/--conversation-flow-optical-inset/);
   });
 });
 

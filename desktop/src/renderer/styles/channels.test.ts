@@ -128,8 +128,8 @@ describe("channel message resizing", () => {
     const ownMessageContent = ruleFor(".channel-message.own .channel-message-content");
     const messageBubble = ruleFor(".channel-message-bubble");
 
-    expect(view).toMatch(/--channel-content-max-width:\s*calc\([\s\S]*var\(--session-composer-width\)[\s\S]*var\(--conversation-flow-optical-inset\)[\s\S]*var\(--conversation-flow-optical-inset\)/);
-    expect(view).toMatch(/--channel-horizontal-gutter:\s*calc\([\s\S]*var\(--session-outer-padding-inline\)[\s\S]*var\(--conversation-flow-optical-inset\)/);
+    expect(view).toMatch(/--channel-content-max-width:\s*var\(--session-composer-width\)/);
+    expect(view).toMatch(/--channel-horizontal-gutter:\s*var\(--session-outer-padding-inline\)/);
     expect(view).toMatch(/--channel-avatar-size:\s*30px/);
     expect(view).toMatch(/--channel-message-column-gap:\s*10px/);
     expect(stream).toMatch(/padding:\s*12px var\(--channel-horizontal-gutter\)/);
