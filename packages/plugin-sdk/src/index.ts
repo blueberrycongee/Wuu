@@ -737,7 +737,6 @@ export interface ToolExecuteParams<TArguments = unknown> {
   session_id?: string;
   thread_id?: string;
   actor_id?: string;
-  actor_path?: string;
   cwd: string;
   step_index?: number;
   call_id: string;

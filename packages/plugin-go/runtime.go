@@ -182,7 +182,6 @@ type ToolCall struct {
 	// and ReportExecutionUpdate references it.
 	ExecutionID string          `json:"execution_id,omitempty"`
 	ActorID     string          `json:"actor_id,omitempty"`
-	ActorPath   string          `json:"actor_path,omitempty"`
 	CWD         string          `json:"cwd"`
 	StepIndex   int             `json:"step_index,omitempty"`
 	CallID      string          `json:"call_id"`
