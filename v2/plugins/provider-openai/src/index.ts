@@ -67,22 +67,32 @@ async function* readSse(response: Response): AsyncIterable<string> {
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
+  let dataLines: string[] = [];
   while (true) {
     const { done, value } = await reader.read();
     buffer += decoder.decode(value, { stream: !done });
-    const frames = buffer.split("\n\n");
-    buffer = frames.pop() ?? "";
-    for (const frame of frames) {
-      for (const line of frame.split("\n")) {
-        if (line.startsWith("data:")) yield line.slice(5).trim();
+    let newline = buffer.indexOf("\n");
+    while (newline >= 0) {
+      let line = buffer.slice(0, newline);
+      buffer = buffer.slice(newline + 1);
+      if (line.endsWith("\r")) line = line.slice(0, -1);
+      if (!line) {
+        if (dataLines.length) {
+          yield dataLines.join("\n");
+          dataLines = [];
+        }
+      } else if (line.startsWith("data:")) {
+        dataLines.push(line.slice(5).trimStart());
       }
+      newline = buffer.indexOf("\n");
     }
     if (done) break;
   }
-  if (buffer.trim()) {
-    for (const line of buffer.split("\n")) {
-      if (line.startsWith("data:")) yield line.slice(5).trim();
-    }
+  let tail = buffer;
+  if (tail.endsWith("\r")) tail = tail.slice(0, -1);
+  if (tail.startsWith("data:")) dataLines.push(tail.slice(5).trimStart());
+  if (dataLines.length) {
+    yield dataLines.join("\n");
   }
 }
 

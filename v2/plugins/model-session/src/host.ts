@@ -59,9 +59,10 @@ export class ModelSessionService extends Service implements ModelRoutingService 
     };
   }
 
-  async resolve(sessionId: string): Promise<string> {
+  async resolve(sessionId: string, throughSeq?: number): Promise<string> {
     let selected = this.defaultModelId;
     for (const event of await this.ctx.sessions.load(sessionId)) {
+      if (throughSeq !== undefined && event.seq > throughSeq) break;
       if (event.record.type === "model/selected") {
         selected = (event.record as ModelSelectedRecord).data.modelId;
       }
@@ -70,14 +71,14 @@ export class ModelSessionService extends Service implements ModelRoutingService 
     return selected;
   }
 
-  async initialize(sessionId: string, sourceSessionId?: string): Promise<void> {
+  async initialize(sessionId: string, sourceSessionId?: string, throughSeq?: number): Promise<void> {
     const target = await this.ctx.sessions.load(sessionId);
     if (target.some((event) => event.record.type === "model/selected")) return;
     await this.ctx.sessions.append(sessionId, source, {
       type: "model/selected",
       data: {
         modelId: sourceSessionId
-          ? await this.resolve(sourceSessionId)
+          ? await this.resolve(sourceSessionId, throughSeq)
           : this.defaultModelId,
       },
     } satisfies ModelSelectedRecord);

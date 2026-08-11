@@ -61,7 +61,9 @@ function readTool(cwd: string): ToolDefinition {
     },
     async execute(input, execution) {
       execution.signal.throwIfAborted();
-      return textResult(await readFile(await workspacePath(cwd, stringField(input, "path")), "utf8"));
+      const path = await workspacePath(cwd, stringField(input, "path"));
+      execution.signal.throwIfAborted();
+      return textResult(await readFile(path, { encoding: "utf8", signal: execution.signal }));
     },
   };
 }
@@ -80,7 +82,11 @@ function writeTool(cwd: string): ToolDefinition {
     async execute(input, execution) {
       execution.signal.throwIfAborted();
       const path = await workspacePath(cwd, stringField(input, "path"), true);
-      await writeFile(path, stringField(input, "content"), "utf8");
+      execution.signal.throwIfAborted();
+      await writeFile(path, stringField(input, "content"), {
+        encoding: "utf8",
+        signal: execution.signal,
+      });
       return textResult(`wrote ${relative(cwd, path)}`);
     },
   };
@@ -105,13 +111,19 @@ function editTool(cwd: string): ToolDefinition {
       execution.signal.throwIfAborted();
       const path = await workspacePath(cwd, stringField(input, "path"));
       const oldText = stringField(input, "oldText");
-      const content = await readFile(path, "utf8");
+      execution.signal.throwIfAborted();
+      const content = await readFile(path, { encoding: "utf8", signal: execution.signal });
       const first = content.indexOf(oldText);
       if (first < 0) throw new Error("oldText was not found");
       if (content.indexOf(oldText, first + oldText.length) >= 0) {
         throw new Error("oldText is not unique");
       }
-      await writeFile(path, content.slice(0, first) + stringField(input, "newText") + content.slice(first + oldText.length), "utf8");
+      execution.signal.throwIfAborted();
+      await writeFile(
+        path,
+        content.slice(0, first) + stringField(input, "newText") + content.slice(first + oldText.length),
+        { encoding: "utf8", signal: execution.signal },
+      );
       return textResult(`edited ${relative(cwd, path)}`);
     },
   };

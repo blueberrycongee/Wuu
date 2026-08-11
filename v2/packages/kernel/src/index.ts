@@ -43,8 +43,8 @@ export interface ModelContextService {
 }
 
 export interface ModelRoutingService {
-  resolve(sessionId: string): Promise<string>;
-  initialize(sessionId: string, sourceSessionId?: string): Promise<void>;
+  resolve(sessionId: string, throughSeq?: number): Promise<string>;
+  initialize(sessionId: string, sourceSessionId?: string, throughSeq?: number): Promise<void>;
 }
 
 export interface ToolPolicyService {

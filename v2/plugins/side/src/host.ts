@@ -78,11 +78,14 @@ export class SideSessionsService extends Service {
       const sideSessionId = this.resolve(mainSessionId);
       const existing = await this.ctx.sessions.load(sideSessionId);
       this.assertOpen();
-      if (!existing.some((event) => event.record.type === "context/model-seed")) {
+      const seed = existing.find((event) => event.record.type === "context/model-seed");
+      let sourceSeq: number;
+      if (!seed) {
         const snapshot = await this.ctx.modelContext.snapshot(
           mainSessionId,
           this.closingController.signal,
         );
+        sourceSeq = snapshot.sourceSeq;
         this.assertOpen();
         await this.ctx.sessions.append(sideSessionId, source, {
           type: "context/model-seed",
@@ -92,9 +95,11 @@ export class SideSessionsService extends Service {
             messages: snapshot.messages,
           },
         } satisfies ModelContextSeedRecord);
+      } else {
+        sourceSeq = (seed.record as ModelContextSeedRecord).data.sourceSeq;
       }
       this.assertOpen();
-      await this.ctx.modelRouting.initialize(sideSessionId, mainSessionId);
+      await this.ctx.modelRouting.initialize(sideSessionId, mainSessionId, sourceSeq);
       this.assertOpen();
       await this.ctx.toolPolicy.initialize(sideSessionId, "read-only");
       this.assertOpen();

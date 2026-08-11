@@ -70,7 +70,9 @@ function planTool(ctx: Context): ToolDefinition {
       additionalProperties: false,
     },
     async execute(input, execution) {
+      execution.signal.throwIfAborted();
       const data = planValue(input);
+      execution.signal.throwIfAborted();
       const event = await ctx.sessions.append(execution.sessionId, source, {
         type: "plan/updated",
         data,

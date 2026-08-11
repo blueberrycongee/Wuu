@@ -190,7 +190,7 @@ export class SubagentService extends Service {
         } satisfies SubagentRecord,
       ]);
       this.assertOpen();
-      await this.ctx.modelRouting.initialize(childSessionId, parentSessionId);
+      await this.ctx.modelRouting.initialize(childSessionId, parentSessionId, snapshot.sourceSeq);
       this.assertOpen();
       await this.ctx.toolPolicy.initialize(childSessionId, "read-only");
       this.assertOpen();

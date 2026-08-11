@@ -85,13 +85,12 @@ function recoveryRecords(events: readonly SessionEvent[], runId: string): AgentS
     if (record.type === "agent/tool-result") calls.delete(record.data.callId);
   }
   return [
-    ...[...activeMessages].map((messageId): AgentSessionRecord => ({
-      type: "agent/assistant-completed",
-      data: {
-        messageId,
-        stopReason: messageCalls.get(messageId)?.size ? "tool_calls" : "error",
-      },
-    })),
+    ...[...activeMessages]
+      .filter((messageId) => messageCalls.get(messageId)?.size)
+      .map((messageId): AgentSessionRecord => ({
+        type: "agent/assistant-completed",
+        data: { messageId, stopReason: "tool_calls" },
+      })),
     ...[...calls].map(([callId, name]): AgentSessionRecord => ({
       type: "agent/tool-result",
       data: {
@@ -115,6 +114,8 @@ export class AgentRuntimeService extends Service {
   private readonly active = new Map<string, ActiveRun>();
   private readonly starting = new Set<string>();
   private readonly recovering = new Set<string>();
+  private readonly pendingStarts = new Set<Promise<AgentRunAcceptance>>();
+  private closing = false;
 
   constructor(ctx: Context, private readonly agentId: string) {
     super(ctx, "agentRuns");
@@ -131,6 +132,8 @@ export class AgentRuntimeService extends Service {
       return { cancelled: this.cancel(stringField(value, "sessionId")) };
     });
     this.ctx.effect(() => async () => {
+      this.closing = true;
+      await Promise.allSettled(this.pendingStarts);
       const active = [...this.active.values()];
       for (const run of active) run.controller.abort(new Error("Agent runtime disposed"));
       await Promise.allSettled(active.map((run) => run.task));
@@ -142,6 +145,20 @@ export class AgentRuntimeService extends Service {
   }
 
   async startWith(agentId: string, input: AgentPromptInput): Promise<AgentRunAcceptance> {
+    if (this.closing) throw new Error("Agent runtime is stopping");
+    const pending = this.startInternal(agentId, input);
+    this.pendingStarts.add(pending);
+    try {
+      return await pending;
+    } finally {
+      this.pendingStarts.delete(pending);
+    }
+  }
+
+  private async startInternal(
+    agentId: string,
+    input: AgentPromptInput,
+  ): Promise<AgentRunAcceptance> {
     const text = input.text.trim();
     if (!text) throw new Error("prompt must not be empty");
     if (
@@ -157,6 +174,7 @@ export class AgentRuntimeService extends Service {
     try {
       const createAgent = this.ctx.agents.require(agentId);
       const existing = openRunIds(await this.ctx.sessions.load(input.sessionId));
+      if (this.closing) throw new Error("Agent runtime is stopping");
       if (existing.length) throw new Error(`session has an unfinished run: ${input.sessionId}`);
       const accepted = await this.ctx.sessions.appendBatch(input.sessionId, source, [
         {
@@ -191,6 +209,11 @@ export class AgentRuntimeService extends Service {
         if (this.active.get(input.sessionId)?.runId === runId) this.active.delete(input.sessionId);
       });
       this.active.set(input.sessionId, { runId, controller, task });
+      if (this.closing) {
+        controller.abort(new Error("Agent runtime disposed while starting a run"));
+        await task;
+        throw new Error("Agent runtime stopped while starting a run");
+      }
       return { runId, acceptedSeq: accepted.at(-1)!.seq };
     } finally {
       this.starting.delete(input.sessionId);
