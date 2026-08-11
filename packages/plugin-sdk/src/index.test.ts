@@ -250,10 +250,11 @@ const servicePlugin: RuntimePlugin = {
       required_services: [{ name: "memory.index", major_version: 1 }],
     };
   },
-  invokeService(params) {
+  async invokeService(params, host) {
     if (params.caller !== "notes" || params.method !== "query") {
       throw new Error(`unexpected service.invoke params: ${JSON.stringify(params)}`);
     }
+    await host.call("host.service.call", { service: "memory.index", method: "lookup" });
     return { hits: ["a"] };
   },
   serviceChanged(params) {
@@ -276,8 +277,16 @@ if (serviceInitResult === null || serviceInitResult.provided_services === undefi
 const serviceInvoke = await handleRuntimeRequest(servicePlugin, {
   id: "invoke",
   method: "service.invoke",
-  params: { service: "search.provider", method: "query", caller: "notes", params: { q: "x" } },
-});
+  params: { service: "search.provider", method: "query", caller: "notes", execution_id: "exec-service", params: { q: "x" } },
+}, {
+  supports: () => true,
+  call: async (method, params) => {
+    if (method !== "host.service.call" || (params as { execution_id?: string }).execution_id !== "exec-service") {
+      throw new Error(`nested service call lost execution identity: ${JSON.stringify(params)}`);
+    }
+    return { found: true };
+  },
+}, { executionId: "exec-service", signal: new AbortController().signal });
 if (!("result" in serviceInvoke) || JSON.stringify(serviceInvoke.result) !== '{"hits":["a"]}') {
   throw new Error(`unexpected service.invoke response: ${JSON.stringify(serviceInvoke)}`);
 }

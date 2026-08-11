@@ -409,10 +409,11 @@ type Host interface {
 // RequiredServices; the host authorizes and routes the call.
 func CallService(ctx context.Context, host Host, service, method string, params, result any) error {
 	return host.CallHost(ctx, HostServiceCallMethod, struct {
-		Service string `json:"service"`
-		Method  string `json:"method"`
-		Params  any    `json:"params,omitempty"`
-	}{Service: service, Method: method, Params: params}, result)
+		Service     string `json:"service"`
+		Method      string `json:"method"`
+		ExecutionID string `json:"execution_id,omitempty"`
+		Params      any    `json:"params,omitempty"`
+	}{Service: service, Method: method, ExecutionID: executionIDFromContext(ctx), Params: params}, result)
 }
 
 // CallHostService preserves the former host-call signature while routing the
@@ -536,6 +537,13 @@ func (t *executionTable) cancelExecution(id string) {
 	}
 }
 
+type executionContextKey struct{}
+
+func executionIDFromContext(ctx context.Context) string {
+	id, _ := ctx.Value(executionContextKey{}).(string)
+	return strings.TrimSpace(id)
+}
+
 // trackExecution derives a cancellable context for one execution dispatch and
 // registers it so a later execution.cancel frame can preempt it. The returned
 // release function unregisters the execution and frees the context; it must
@@ -545,6 +553,7 @@ func (c *Client) trackExecution(ctx context.Context, executionID string) (contex
 		return ctx, nil
 	}
 	execCtx, cancel := context.WithCancel(ctx)
+	execCtx = context.WithValue(execCtx, executionContextKey{}, executionID)
 	c.executions.track(executionID, cancel)
 	return execCtx, func() {
 		c.executions.release(executionID)

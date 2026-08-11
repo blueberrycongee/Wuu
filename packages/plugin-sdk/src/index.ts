@@ -833,7 +833,7 @@ export interface HostServiceContracts {
     result: { session_id: string; turn_id?: string; queue_id?: string; cancelled: boolean };
   };
   "host.service.call": {
-    params: { service: string; method: string; params?: unknown };
+    params: { service: string; method: string; execution_id?: string; params?: unknown };
     result: unknown;
   };
 }
@@ -968,6 +968,7 @@ export async function handleRuntimeRequest(
   host: RuntimeHost = unavailableRuntimeHost,
   execution: RuntimeExecutionContext = idleRuntimeExecution,
 ): Promise<RuntimeResponse> {
+  const executionHost = scopedRuntimeHost(host, execution.executionId);
   try {
     switch (request.method) {
       case "initialize":
@@ -977,16 +978,16 @@ export async function handleRuntimeRequest(
         return { id: request.id, result: null };
       case "capability.invoke":
         if (!plugin.invokeCapability) throw new Error("capability.invoke is not implemented");
-        return { id: request.id, result: await plugin.invokeCapability(request.params, host, execution) };
+        return { id: request.id, result: await plugin.invokeCapability(request.params, executionHost, execution) };
       case "service.invoke":
         if (!plugin.invokeService) throw new Error("service.invoke is not implemented");
-        return { id: request.id, result: await plugin.invokeService(request.params, host, execution) };
+        return { id: request.id, result: await plugin.invokeService(request.params, executionHost, execution) };
       case "service.changed":
         await plugin.serviceChanged?.(request.params, host);
         return { id: request.id, result: null };
       case "tool.execute":
         if (!plugin.executeTool) throw new Error("tool.execute is not implemented");
-        return { id: request.id, result: await plugin.executeTool(request.params, host, execution) };
+        return { id: request.id, result: await plugin.executeTool(request.params, executionHost, execution) };
       case "shutdown":
         await plugin.shutdown?.();
         return { id: request.id, result: null };
@@ -994,6 +995,16 @@ export async function handleRuntimeRequest(
   } catch (error) {
     return { id: request.id, error: { message: error instanceof Error ? error.message : String(error) } };
   }
+}
+
+function scopedRuntimeHost(host: RuntimeHost, executionId: string): RuntimeHost {
+  if (executionId === "") return host;
+  return {
+    supports: (method) => host.supports(method),
+    call: (method, params) => host.call(method, method === "host.service.call"
+      ? { ...params, execution_id: executionId }
+      : params),
+  } as RuntimeHost;
 }
 
 export interface JSONLInput extends AsyncIterable<Uint8Array | string> {}

@@ -111,6 +111,50 @@ func TestCallServiceUsesGatewayFrame(t *testing.T) {
 	}
 }
 
+func TestServiceHandlerPropagatesExecutionToNestedCall(t *testing.T) {
+	inputReader, inputWriter := io.Pipe()
+	outputReader, outputWriter := io.Pipe()
+	serveDone := make(chan error, 1)
+	go func() {
+		serveDone <- ServeIO(context.Background(), inputReader, outputWriter, Handler{
+			Definition: Definition{ProvidedServices: []Service{{Name: "outer", Version: "1.0.0"}}},
+			InvokeService: func(ctx context.Context, host Host, _ ServiceCall) (json.RawMessage, error) {
+				var nested json.RawMessage
+				if err := CallService(ctx, host, "inner", "run", nil, &nested); err != nil {
+					return nil, err
+				}
+				return nested, nil
+			},
+		})
+	}()
+	writeHost := func(line string) { _, _ = io.WriteString(inputWriter, line+"\n") }
+	scanner := bufio.NewScanner(outputReader)
+	writeHost(`{"id":"1","method":"initialize","params":{"protocol_version":1,"capability_protocol_version":3,"plugin_id":"outer","supported_host_services":["host.service.call"]}}`)
+	if !scanner.Scan() {
+		t.Fatal("missing initialize response")
+	}
+	writeHost(`{"id":"2","method":"service.invoke","params":{"service":"outer","method":"run","caller":"kernel","execution_id":"exec-nested"}}`)
+	if !scanner.Scan() {
+		t.Fatal("missing nested service call")
+	}
+	var nested rpcRequest
+	if err := json.Unmarshal(scanner.Bytes(), &nested); err != nil {
+		t.Fatal(err)
+	}
+	if nested.Method != HostServiceCallMethod || !strings.Contains(string(nested.Params), `"execution_id":"exec-nested"`) {
+		t.Fatalf("nested service call = %s", scanner.Text())
+	}
+	writeHost(`{"id":"` + nested.ID + `","result":{"ok":true}}`)
+	if !scanner.Scan() || !strings.Contains(scanner.Text(), `"id":"2"`) {
+		t.Fatalf("service response = %s", scanner.Text())
+	}
+	_ = inputWriter.Close()
+	_ = outputReader.Close()
+	if err := <-serveDone; err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestServeRunsShutdownCleanupBeforeAcknowledging(t *testing.T) {
 	input := strings.Join([]string{
 		`{"id":"1","method":"initialize","params":{"protocol_version":1,"capability_protocol_version":2,"plugin_id":"test"}}`,
