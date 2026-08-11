@@ -4,6 +4,7 @@ import type { TurnEventDisplay } from "./TurnEvents";
 import type { UserFacingErrorDisplay, UserFacingErrorTone } from "./UserFacingErrors";
 import { translateCurrent as t } from "./i18n";
 import { ProcessSurfaceFold } from "./ProcessSurfaceFold";
+import { useLiveTextWave } from "./LiveTextWave";
 import { Tooltip } from "./Tooltip";
 
 export type SystemEventDisplay = {
@@ -25,6 +26,7 @@ export function SystemEventNotice({
   const description = event.detail
     ? `${event.label} — ${event.detail}`
     : event.label;
+  const waveRef = useLiveTextWave<HTMLElement>(inProgress);
   return (
     // The visible line carries only the label; when a detail exists the
     // hover tooltip reveals the composed "label — detail" (bounded to the
@@ -38,6 +40,7 @@ export function SystemEventNotice({
       >
         <span className="turn-event-content">
           <strong
+            ref={waveRef}
             className={`turn-event-title${inProgress ? " wuu-live-text-wave" : ""}`}
             data-text={event.label}
           >
@@ -127,6 +130,7 @@ export function ContextCompactionNotice({
   const description = detail ? `${title} — ${detail}` : title;
   const hasSummary = !failed && !inProgress && Boolean(summary);
   const [expanded, setExpanded] = useState(false);
+  const waveRef = useLiveTextWave<HTMLSpanElement>(inProgress);
   const handleToggle = (
     event: React.SyntheticEvent<HTMLDetailsElement>,
   ): void => {
@@ -142,6 +146,7 @@ export function ContextCompactionNotice({
       <ProcessSurfaceFold
         summary={
           <span
+            ref={waveRef}
             className={`process-surface-summary-line${inProgress ? " wuu-live-text-wave" : ""}`}
             aria-label={description}
             data-text={title}

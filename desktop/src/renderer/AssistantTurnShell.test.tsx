@@ -1360,7 +1360,8 @@ describe("AssistantTurnShell — turn divider styles", () => {
     expect(turnsCSS).not.toContain("animation: live-gray-shimmer");
     expect(turnsCSS).not.toContain("@keyframes turn-text-sweep");
     expect(baseCSS).toContain(".wuu-live-text-wave");
-    expect(baseCSS).toContain("animation: wuu-live-text-wave 6s linear infinite;");
+    expect(baseCSS).toContain("--wuu-live-text-wave-duration");
+    expect(baseCSS).toContain("--wuu-live-text-wave-travel-stop");
     expect(baseCSS).toContain("background-clip: text;");
     expect(baseCSS).toContain('.cached-conversation-pane[data-active="false"]');
     expect(turnsCSS).not.toContain("background-clip: text;");

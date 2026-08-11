@@ -18,6 +18,7 @@ import {
   useAutoFollowScrollContainer,
 } from "./AutoFollowScroll";
 import { AnimatedProcessText } from "./ProcessTextMotion";
+import { useLiveTextWave } from "./LiveTextWave";
 import { ProcessSurfaceFold } from "./ProcessSurfaceFold";
 import { translateCurrent as translate, useI18n } from "./i18n";
 
@@ -151,6 +152,7 @@ export function ProcessSurface({
     toolItems.length >= CONDENSED_SUMMARY_MIN_TOOL_COUNT &&
     toolSegments.length > 1;
   const activeGrayText = active ?? streaming;
+  const summaryWaveRef = useLiveTextWave<HTMLSpanElement>(activeGrayText);
 
   // Details are opt-in. The running row itself should stay compact by
   // default; expanding it is a user request to inspect the process trail.
@@ -203,6 +205,7 @@ export function ProcessSurface({
 
   const summaryLine = (
     <span
+      ref={summaryWaveRef}
       className={`process-surface-summary-line${activeGrayText ? " wuu-live-text-wave" : ""}`}
       aria-label={summaryText}
       data-text={summaryText}

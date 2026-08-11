@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type JSX } from "react";
+import { useEffect, useRef, useState, type JSX, type Ref } from "react";
 import { motionDurationMs } from "./motion";
 
 // Mirrors the process-text-rise-out duration in turns.css.
@@ -7,9 +7,11 @@ const PROCESS_TEXT_EXIT_MS = motionDurationMs("--motion-base", 180);
 export function AnimatedProcessText({
   text,
   className,
+  ref,
 }: {
   text: string;
   className?: string;
+  ref?: Ref<HTMLSpanElement>;
 }): JSX.Element {
   const previousText = useRef(text);
   const [exitingText, setExitingText] = useState<string | undefined>();
@@ -28,6 +30,7 @@ export function AnimatedProcessText({
 
   return (
     <span
+      ref={ref}
       className={["process-text-motion", className].filter(Boolean).join(" ")}
       data-text={text}
       data-transitioning={exitingText ? "true" : undefined}

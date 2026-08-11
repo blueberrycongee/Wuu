@@ -19,6 +19,7 @@ import type {
 import { CollapsibleDetails } from "./CollapsibleMotion";
 import { ThreadItemView } from "./ThreadItemView";
 import { LightweightStreamingText } from "./LightweightStreamingText";
+import { useLiveTextWave } from "./LiveTextWave";
 import { streamFieldValue } from "./ThreadItemText";
 import { TurnEventNotice } from "./TurnNotice";
 import { turnEventForItem } from "./TurnEvents";
@@ -322,6 +323,9 @@ function TurnProcessFold({
   const hasDetails = entries.length > 0;
   const visiblePreview = expanded ? undefined : latestPreview;
   const hasPreview = Boolean(visiblePreview);
+  const previewWaveRef = useLiveTextWave<HTMLSpanElement>(
+    turn.status === "in_progress" && hasPreview,
+  );
   const activeGrayEntryKey =
     turn.status === "in_progress"
       ? latestActiveGrayProcessEntryKey(entries)
@@ -344,14 +348,18 @@ function TurnProcessFold({
           }`}
         >
           <span className="turn-process-live-dot" aria-hidden />
-          <LightweightStreamingText
-            text={visiblePreview?.text ?? ""}
-            live={turn.status === "in_progress" && renderActive}
+          <span
+            ref={previewWaveRef}
             className={`turn-process-preview-text${
               turn.status === "in_progress" ? " wuu-live-text-wave" : ""
             }`}
             data-text={visiblePreview?.text ?? ""}
-          />
+          >
+            <LightweightStreamingText
+              text={visiblePreview?.text ?? ""}
+              live={turn.status === "in_progress" && renderActive}
+            />
+          </span>
         </span>
       ) : null}
     </>
@@ -565,6 +573,7 @@ function ReasoningFold({
   const textClass = `turn-reasoning-summary-text${
     activeGray ? " is-live-gray wuu-live-text-wave" : ""
   }${streaming ? " is-streaming" : ""}`;
+  const waveRef = useLiveTextWave<HTMLSpanElement>(Boolean(activeGray));
   const [open, setOpen] = useState(false);
   const reasoningScroll = useAutoFollowScrollContainer();
 
@@ -608,7 +617,7 @@ function ReasoningFold({
       onToggle={handleToggle}
     >
       <summary className="turn-reasoning-summary">
-        <AnimatedProcessText className={textClass} text={label} />
+        <AnimatedProcessText ref={waveRef} className={textClass} text={label} />
         <ChevronRight
           className="turn-reasoning-chevron icon-xs"
           aria-hidden
