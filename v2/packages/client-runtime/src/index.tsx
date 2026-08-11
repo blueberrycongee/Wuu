@@ -197,6 +197,32 @@ export class ClientProjectionStore extends Service {
   snapshot = (): number => this.revision;
 }
 
+export type ClientActionHandler = (
+  action: string,
+  input: JsonValue,
+) => Promise<JsonValue | undefined>;
+
+export class ClientActionsService extends Service {
+  private handler: ClientActionHandler | undefined;
+
+  constructor(ctx: Context) {
+    super(ctx, "clientActions");
+  }
+
+  connect(handler: ClientActionHandler): () => void {
+    if (this.handler) throw new Error("client action bridge is already connected");
+    this.handler = handler;
+    return this.ctx.effect(() => () => {
+      if (this.handler === handler) this.handler = undefined;
+    }, "disconnect client action bridge");
+  }
+
+  execute(action: string, input: JsonValue): Promise<JsonValue | undefined> {
+    if (!this.handler) throw new Error("client action bridge is not connected");
+    return this.handler(action, input);
+  }
+}
+
 export interface ClientPluginModule {
   default: Plugin;
 }
@@ -280,17 +306,19 @@ export class ClientModuleSystem {
 
 declare module "cordis" {
   interface Context {
+    clientActions: ClientActionsService;
     clientProjections: ClientProjectionStore;
     slots: SlotsService;
   }
 }
 
 export const clientKernelPlugin: Plugin = function clientKernel(ctx: Context) {
+  new ClientActionsService(ctx);
   new ClientProjectionStore(ctx);
   new SlotsService(ctx);
 };
 
-clientKernelPlugin.provide = ["clientProjections", "slots"];
+clientKernelPlugin.provide = ["clientActions", "clientProjections", "slots"];
 
 export function SlotOutlet(props: {
   client: Context;
@@ -298,7 +326,11 @@ export function SlotOutlet(props: {
   ownerProps?: unknown;
   sessionId?: string;
 }): ReactNode {
-  useSyncExternalStore(props.client.slots.subscribe.bind(props.client.slots), props.client.slots.snapshot);
+  useSyncExternalStore(
+    props.client.slots.subscribe.bind(props.client.slots),
+    props.client.slots.snapshot,
+    props.client.slots.snapshot,
+  );
   return props.client.slots.entries(props.slot).map((entry) =>
     createElement(entry.component, {
       key: entry.id,
@@ -316,6 +348,7 @@ export function useProjection<T extends JsonValue>(
 ): T | undefined {
   useSyncExternalStore(
     client.clientProjections.subscribe.bind(client.clientProjections),
+    client.clientProjections.snapshot,
     client.clientProjections.snapshot,
   );
   return client.clientProjections.get(sessionId, key)?.value as T | undefined;

@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { contextProjectionPlugin } from "@wuu-v2/plugin-context-projection";
+import { conversationProjectionPlugin } from "@wuu-v2/plugin-conversation";
 import { defaultAgentLoopPlugin } from "@wuu-v2/plugin-default-agent-loop";
 import { corePromptPlugin } from "@wuu-v2/plugin-prompt-core";
 import { openAIProviderPlugin } from "@wuu-v2/plugin-provider-openai";
@@ -31,6 +32,7 @@ fibers.push(await ctx.plugin(jsonlSessionPlugin, { directory }));
 fibers.push(await ctx.plugin(corePromptPlugin, { cwd }));
 fibers.push(await ctx.plugin(basicToolsPlugin, { cwd }));
 fibers.push(await ctx.plugin(contextProjectionPlugin));
+fibers.push(await ctx.plugin(conversationProjectionPlugin));
 
 let providerId: string;
 if (smoke) {
@@ -75,12 +77,14 @@ process.once("SIGTERM", () => void shutdown().finally(() => process.exit(143)));
 try {
   const result = await ctx.agents.require("default")().run({ sessionId, text: prompt });
   const events = await ctx.sessions.load(sessionId);
+  const projections = await ctx.projections.build(ctx.sessions, sessionId);
   const recordTypes = events.map((event) => event.record.type);
   if (smoke) {
     if (
       result.status !== "completed" ||
       !recordTypes.includes("agent/assistant-tool-call") ||
-      !recordTypes.includes("agent/tool-result")
+      !recordTypes.includes("agent/tool-result") ||
+      !projections.some(({ key }) => key === "conversation")
     ) {
       throw new Error("smoke run did not complete the model-tool-result loop");
     }
@@ -90,6 +94,7 @@ try {
     sessionId,
     status: result.status,
     lastSeq: events.at(-1)?.seq ?? 0,
+    projectionKeys: projections.map(({ key }) => key),
     recordTypes,
   }));
 } finally {

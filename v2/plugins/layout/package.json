@@ -1,0 +1,9 @@
+{
+  "name": "@wuu-v2/plugin-layout",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": { "./client": "./src/client.tsx" },
+  "dependencies": { "@wuu-v2/client-runtime": "0.0.0", "react": "^19.0.0" },
+  "wuu": { "client": "./src/client.tsx" }
+}

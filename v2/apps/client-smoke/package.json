@@ -1,0 +1,14 @@
+{
+  "name": "@wuu-v2/client-smoke",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@wuu-v2/client-runtime": "0.0.0",
+    "@wuu-v2/plugin-composer": "0.0.0",
+    "@wuu-v2/plugin-conversation": "0.0.0",
+    "@wuu-v2/plugin-layout": "0.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  }
+}

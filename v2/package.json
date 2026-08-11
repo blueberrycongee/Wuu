@@ -11,6 +11,7 @@
   ],
   "scripts": {
     "smoke": "node --import tsx apps/harness/src/index.ts --smoke",
+    "smoke:client": "node --import tsx apps/client-smoke/src/index.tsx",
     "start": "node --import tsx apps/harness/src/index.ts",
     "test:client-runtime": "node --import tsx --test packages/client-runtime/src/index.test.tsx",
     "test:session": "node --import tsx --test plugins/session-jsonl/src/index.test.ts",
