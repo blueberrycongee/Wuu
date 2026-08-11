@@ -12,7 +12,7 @@ Skill, MCP, Hook, or plugin? Start with [Extend Wuu](index.md).
 ## Prerequisites
 
 - The `wuu` CLI (confirm `wuu plugin --help` works);
-- Node.js 18+.
+- Node.js 22+.
 
 ## Step 1: generate a skeleton
 
@@ -158,11 +158,12 @@ Key points:
 npm install
 npm run build        # tsc compiles to dist/
 wuu plugin validate .   # validate manifest and package structure
-wuu plugin test .       # start the executable runtime and run public SDK contract checks
+wuu plugin test .       # start the runtime and validate its negotiated descriptors
 ```
 
-`wuu plugin test` really starts the runtime and checks public contracts such
-as capability negotiation and host service method names; failures exit with a
+`wuu plugin test` starts the runtime and validates initialization, protocol
+negotiation, capability descriptors, and tool registrations. It does not exercise
+Host Service calls. Failures exit with a
 non-zero code, so it fits into CI.
 
 ## Step 4: development-mode hot reload
@@ -171,7 +172,7 @@ non-zero code, so it fits into CI.
 wuu plugin dev .
 ```
 
-`dev` authorizes **the current directory** as a development directory: on
+`wuu plugin dev .` authorizes **the supplied path** (`.` here) as a development directory: on
 every save it rebuilds, validates the candidate, and publishes an atomic
 generation; if the build or activation fails, the previous generation stays.
 Directory authorization is development-only and never transfers to ordinary

@@ -10,7 +10,7 @@ Skill、MCP、Hook 和插件怎样选？先看[扩展 Wuu](index.md)。
 ## 前置条件
 
 - `wuu` CLI（确认 `wuu plugin --help` 可用）；
-- Node.js 18+。
+- Node.js 22+。
 
 ## 第 1 步：生成骨架
 
@@ -152,11 +152,12 @@ runJSONLRuntime(plugin, { input: process.stdin, output: process.stdout }).catch(
 npm install
 npm run build        # tsc 编译到 dist/
 wuu plugin validate .   # 校验 manifest 与包结构
-wuu plugin test .       # 启动可执行 runtime，跑公开 SDK 契约检查
+wuu plugin test .       # 启动 runtime 并校验协商后的描述符
 ```
 
-`wuu plugin test` 会真实启动 runtime 并检查能力协商、Host Service 方法名等公开
-合同；检查失败时以非零退出码结束，可以直接接进 CI。
+`wuu plugin test` 会真实启动 runtime，校验初始化、协议协商、capability 描述符和
+工具注册；它不会执行 Host Service 调用。检查失败时以
+非零退出码结束，可以直接接进 CI。
 
 ## 第 4 步：开发模式热重载
 
@@ -164,7 +165,7 @@ wuu plugin test .       # 启动可执行 runtime，跑公开 SDK 契约检查
 wuu plugin dev .
 ```
 
-`dev` 把**当前目录**授权为开发目录：每次保存后自动构建、校验候选并发布原子
+`wuu plugin dev .` 把**参数指定的路径**（这里是 `.`）授权为开发目录：每次保存后自动构建、校验候选并发布原子
 generation；构建或激活失败时保留上一代。目录授权是开发专用，不会转移到从下载包
 安装的普通插件。
 

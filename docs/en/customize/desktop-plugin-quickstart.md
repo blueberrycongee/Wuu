@@ -7,7 +7,7 @@ React code in the Wuu Renderer without requiring a fork.
 ## Prerequisites
 
 - The `wuu` CLI (`wuu plugin --help` must work)
-- Node.js 18+
+- Node.js 22+
 - A running Wuu Desktop app
 
 ## Step 1: generate a Desktop skeleton
@@ -87,6 +87,10 @@ wuu plugin validate .
 wuu plugin test .
 ```
 
+For a Desktop-only package, `wuu plugin test` validates the package and reports that
+runtime testing was skipped; it does not import or render the Desktop entry. The next
+step verifies Renderer behavior in the real app.
+
 The Desktop entry must be a self-contained ESM file inside the package. Type-only
 imports disappear at compile time. Do not leave relative imports to plugin source or
 bundle another React runtime.
@@ -97,7 +101,7 @@ bundle another React runtime.
 wuu plugin dev .
 ```
 
-Development mode authorizes the current directory. Each save builds and activates an
+`wuu plugin dev .` authorizes the supplied path (`.` here). Each save builds and activates an
 atomic candidate generation; a failed candidate leaves the previous generation
 running. Click **Focus** in the Composer toolbar and verify that its state changes.
 

@@ -6,7 +6,7 @@
 ## 前置条件
 
 - 已安装 `wuu` CLI，并确认 `wuu plugin --help` 可用；
-- Node.js 18+；
+- Node.js 22+；
 - Wuu Desktop 正在运行。
 
 ## 第 1 步：生成 Desktop 骨架
@@ -85,6 +85,9 @@ wuu plugin validate .
 wuu plugin test .
 ```
 
+对于只有 Desktop 入口的包，`wuu plugin test` 会校验插件包并报告跳过 runtime 测试；它不会
+导入或渲染 Desktop 入口。下一步需要在真实 App 中验证 Renderer 行为。
+
 Desktop 入口必须是包内的自包含 ESM 文件。类型导入会在编译时移除；不要在构建结果中保留
 指向插件源码的相对 import，也不要打包另一份 React。
 
@@ -94,7 +97,7 @@ Desktop 入口必须是包内的自包含 ESM 文件。类型导入会在编译�
 wuu plugin dev .
 ```
 
-开发模式会授权当前目录。保存后 Wuu 构建并激活新的原子 generation；候选构建或激活失败时，
+`wuu plugin dev .` 会授权命令参数指定的路径（这里是 `.`）。保存后 Wuu 构建并激活新的原子 generation；候选构建或激活失败时，
 上一代继续工作。在 Wuu Desktop 的 Composer 工具栏中点击“专注”，确认状态可以切换。
 
 主进程或宿主源码没有变化时不需要 fork 或重编 Wuu。插件只通过公开入口加载。

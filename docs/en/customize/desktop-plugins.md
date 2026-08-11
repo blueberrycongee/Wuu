@@ -88,10 +88,27 @@ Built-in targets include:
 - `content.preview`
 - `settings`
 
+Although the TypeScript `PresentationTarget` type leaves room for future dotted
+strings, current manifest validation accepts only the ten targets above.
+
 Actions are not global permissions. A plugin may invoke only actions listed in the
 current `host.actions`. The Composer boundary exposes draft, submission, stop, or
 attachment actions as its current state allows; Wuu still validates read-only and
 disabled states.
+
+Current action vocabulary:
+
+| Boundary | Action IDs |
+| --- | --- |
+| Conversation item | `conversation.item.copy`, `conversation.item.edit`, `conversation.item.retry`, `conversation.item.open-attachment`, `conversation.item.open-tool`, `conversation.item.cancel-process` |
+| Composer | `conversation.composer.set-draft`, `conversation.composer.add-attachment`, `conversation.composer.remove-attachment`, `conversation.composer.set-submission-mode`, `conversation.composer.submit`, `conversation.composer.stop` |
+| Header | `header.select-tab`, `header.close-tab`, `header.navigate-back`, `header.navigate-forward` |
+| Navigation | `navigation.activate-node`, `navigation.pin-node`, `navigation.unpin-node` |
+| Status | `status.activate-item` |
+| File preview | `file-preview.open`, `file-preview.reveal`, `file-preview.select`, `file-preview.save`, `file-preview.reload` |
+| Settings | `settings.open-page`, `settings.update-value`, `settings.refresh` |
+
+This is the public vocabulary, not a promise that every action appears for every render.
 
 ## Surface: wrap a larger semantic boundary
 

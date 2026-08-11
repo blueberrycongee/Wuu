@@ -82,8 +82,25 @@ Presenter 收到四样东西：版本化 snapshot、当前边界可用的 `host.
 - `content.preview`
 - `settings`
 
+TypeScript 的 `PresentationTarget` 类型为未来 dotted string 留有空间，但当前 manifest
+校验只接受上面十个目标。
+
 Action 不是全局权限。只有列在当前 presenter `host.actions` 中的动作才可调用。例如 Composer
 边界会按当前状态提供设置草稿、提交、停止或附件动作；只读和禁用状态仍由宿主校验。
+
+当前 Action 词表：
+
+| 边界 | Action ID |
+| --- | --- |
+| Conversation item | `conversation.item.copy`、`conversation.item.edit`、`conversation.item.retry`、`conversation.item.open-attachment`、`conversation.item.open-tool`、`conversation.item.cancel-process` |
+| Composer | `conversation.composer.set-draft`、`conversation.composer.add-attachment`、`conversation.composer.remove-attachment`、`conversation.composer.set-submission-mode`、`conversation.composer.submit`、`conversation.composer.stop` |
+| Header | `header.select-tab`、`header.close-tab`、`header.navigate-back`、`header.navigate-forward` |
+| Navigation | `navigation.activate-node`、`navigation.pin-node`、`navigation.unpin-node` |
+| Status | `status.activate-item` |
+| File preview | `file-preview.open`、`file-preview.reveal`、`file-preview.select`、`file-preview.save`、`file-preview.reload` |
+| Settings | `settings.open-page`、`settings.update-value`、`settings.refresh` |
+
+这只是公开词表，不代表每次 render 都会提供全部 Action。
 
 ## Surface：包装较大的语义边界
 

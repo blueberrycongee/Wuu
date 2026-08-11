@@ -74,6 +74,10 @@ before every load. Minimal example:
 }
 ```
 
+Both `schema_version` and `schemaVersion` are accepted for compatibility, but a
+manifest must choose one; declaring both is invalid. New manifests should use the
+scaffolded `schema_version` form.
+
 Common fields:
 
 - `id` is a globally unique identifier. It determines the install directory
@@ -87,8 +91,8 @@ Common fields:
   `{ "light": "assets/icon-light.svg", "dark": "assets/icon-dark.svg" }`.
 - `runtime` declares a long-lived external process that talks to Wuu over
   standard input/output (an Agent plugin).
-- `desktop.entry` points to a self-contained browser ESM file, up to 10 MiB
-  (a Desktop plugin).
+- `desktop.entry` points to a package-relative `.js` or `.mjs` browser ESM file, using
+  slash separators and remaining inside the package. The entry is limited to 10 MiB.
 - `contributes.themes` declares themes; `contributes.settings` declares
   settings.
 - `skills`, `hooks`, `mcp_servers`, and `commands` let the plugin provide
@@ -465,8 +469,18 @@ export async function activate(api) {
 to the current boundary only; the host always keeps Settings, plugin disable,
 and default-UI recovery paths.
 
+When the manifest declares Slots, Surfaces, or Presenters, activation must register
+every declaration exactly, including target, mode, order, or priority. An undeclared
+registration or a declaration left unregistered rejects the candidate generation.
+Manifest View entries must reference a View registered by that same generation.
+
 ### Available API overview
 
+- `react`, `ui`, `pluginId`, and `generation`: the host React runtime, UI Kit,
+  stable plugin identity, and current atomic generation ID.
+- `invokeRuntime`: calls a method owned by this plugin's active Agent runtime;
+  `onHostEvent` observes host lifecycle notifications. Both remain scoped to the
+  active generation.
 - `registerStyle`: registers CSS; arbitrary CSS is only offered to trusted
   desktop-code plugins.
 - `registerSurface`: replaces or wraps short semantic items that ship with a
@@ -646,7 +660,7 @@ Major UI regions and controls expose public `data-wuu-component` anchors so
 element-level tweaks can go through CSS snippets instead of new theme tokens:
 `app-shell`, `sidebar`, `conversation-pane`, `settings-shell`,
 `settings-sidebar`, `settings-content`, `settings-page`, `skills-catalog`,
-`automations-catalog`, `workspace-panel`, `workspace-tool-tab`,
+`workspace-panel`, `workspace-tool-tab`,
 `workspace-tool-tab-close`, `launch-view`, `turn`, `message`
 (distinguishing `data-wuu-variant="user" | "agent"`), `composer`,
 `composer-input`, and `composer-send` (distinguishing
@@ -669,10 +683,10 @@ The plugin UI Kit exposes coarse anchors: `plugin-ui-page`, `plugin-ui-panel`,
 `plugin-ui-button`, `plugin-ui-field`, `plugin-ui-input`,
 `plugin-ui-empty-state`, `plugin-ui-loading-state`, `plugin-ui-error-state`,
 and `plugin-ui-live-duration`. Appearance plugins should prefer public tokens
-and use these boundaries only when a structural treatment is necessary. This
-list is enforced by
-`desktop/src/renderer/plugins/ProductionSemanticAnchors.test.ts`; renaming an
-anchor is a breaking change.
+and use these boundaries only when a structural treatment is necessary. The
+production semantic-anchor test enforces the host inventory above and the core UI Kit
+anchors through `plugin-ui-empty-state`; the loading, error, and live-duration anchors
+are current public UI Kit output but are not yet covered by that inventory test.
 
 Trusted code plugins adding supplemental CSS should use only these public
 attributes and tokens, not private class names or DOM structure. Relying on
@@ -691,14 +705,22 @@ not a safe style sandbox for unknown third-party code.
 ```bash
 wuu plugin create my-plugin      # generate a skeleton
 wuu plugin validate .            # validate manifest and package structure
-wuu plugin build .               # run the package's build (if package.json exists)
-wuu plugin test .                # start the executable runtime and run public SDK contract checks
+wuu plugin build .               # run the required package.json scripts.build
+wuu plugin test .                # validate package and, when present, runtime descriptors
 wuu plugin pack .                # package a distributable zip
 ```
 
-`wuu plugin create` generates `agent`, `desktop`, or `full` (both) skeletons.
-`wuu plugin test` reports check failures through a non-zero exit code, so it
-fits into CI.
+`wuu plugin create NAME` defaults to `agent`; use `--type desktop` or `--type full`
+and optionally `--output DIR`. Names start with a lowercase letter, contain only
+lowercase letters, digits, `-`, or `_`, and are at most 64 characters.
+
+`wuu plugin build` requires `package.json` and a non-empty `scripts.build`; use
+`--package-manager` to override lockfile and `packageManager` detection.
+`wuu plugin test` starts a declared runtime and checks initialization, negotiated
+protocol, capability descriptors, and tool
+registrations. Desktop-only packages skip runtime testing, and the command never
+imports or renders the Desktop entry. Use `--timeout` to change the 30-second default.
+Any check failure returns a non-zero exit code for CI.
 
 ### Development-mode hot reload
 
@@ -706,7 +728,7 @@ fits into CI.
 wuu plugin dev .
 ```
 
-`dev` authorizes **the current directory** as a development directory: on
+`wuu plugin dev .` authorizes **the supplied path** (`.` here) as a development directory: on
 save it rebuilds, validates the candidate, and publishes an atomic
 generation, keeping the active generation's lease until the switch completes;
 if the build or activation fails, the previous generation stays. Directory
@@ -733,8 +755,8 @@ approved.
 ### Examples
 
 [`examples/plugins/deep-ui`](../../../examples/plugins/deep-ui/) is a
-self-contained, directly installable example: it uses wrappers that preserve
-every host fallback while also demonstrating a declarative theme.
+self-contained, directly installable example with one `conversation.timeline`
+wrapper and a declarative theme.
 
 [`examples/plugins/developer-loop`](../../../examples/plugins/developer-loop/)
 is a cross-surface acceptance example that depends only on the public SDK: it
@@ -742,6 +764,9 @@ covers the agent runtime (request transform, tool registration), host
 actions, generation replacement, failure recovery, disposal, and unload, and
 demonstrates the complete development loop
 (install → build → test → dev → pack).
+
+[`examples/plugins/herbarium`](../../../examples/plugins/herbarium/) is a focused
+appearance example using a theme and CSS snippet.
 
 [`examples/plugins/manga-studio`](../../../examples/plugins/manga-studio/) is
 a strong-style appearance stress test: it covers both the app shell and the

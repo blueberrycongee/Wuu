@@ -67,6 +67,9 @@ my-plugin/
 }
 ```
 
+为兼容已有插件，`schema_version` 和 `schemaVersion` 都可用，但一个 manifest 只能选择
+其中一个，同时声明会校验失败。新插件应沿用脚手架生成的 `schema_version`。
+
 常用字段：
 
 - `id` 是全局唯一标识，决定安装目录名和所有注册的命名空间前缀；一旦发布不应更改。
@@ -75,7 +78,8 @@ my-plugin/
   公共语义图标名、`{ "path": "assets/icon.svg" }`，或
   `{ "light": "assets/icon-light.svg", "dark": "assets/icon-dark.svg" }`。
 - `runtime` 声明一个长驻的外部进程，通过标准输入输出与 Wuu 通信（Agent 插件）。
-- `desktop.entry` 指向一个自包含的浏览器 ESM 文件，最大 10 MiB（桌面插件）。
+- `desktop.entry` 指向包内的 `.js` 或 `.mjs` 浏览器 ESM 文件，路径使用 `/`、不能逃出
+  插件包，文件最大 10 MiB。
 - `contributes.themes` 声明式主题；`contributes.settings` 声明式设置。
 - `skills`、`hooks`、`mcp_servers`、`commands` 可以让插件直接提供这些能力，与用户
   手动配置的效果一致。
@@ -382,8 +386,16 @@ export async function activate(api) {
 `mode: "replace"` 接管完整语义边界；`mode: "wrap"` 包装当前结果。渲染失败只回退当前
 边界，宿主始终保留设置、插件禁用和默认 UI 恢复路径。
 
+如果 manifest 声明了 Slot、Surface 或 Presenter，激活时必须逐项精确注册，包括 target、
+mode、order 或 priority。注册未声明贡献，或漏掉任何已声明贡献，都会拒绝候选 generation。
+manifest 中的 View 入口也必须引用同一 generation 注册的 View。
+
 ### 可用 API 概览
 
+- `react`、`ui`、`pluginId`、`generation`：宿主 React、UI Kit、稳定插件 ID 和当前原子
+  generation ID。
+- `invokeRuntime`：调用当前插件活跃 Agent runtime 提供的方法；`onHostEvent` 观察宿主
+  生命周期通知。两者都受当前 generation 约束。
 - `registerStyle`：注册 CSS；任意 CSS 只提供给受信任的桌面代码插件。
 - `registerSurface`：替换或包装短小、带原生 fallback 的语义项 Surface；App Shell、
   基础 Session、Composer、Settings、插件管理和各 Region 容器都是 protected roots。
@@ -515,7 +527,7 @@ Layer Host，并带有稳定的 `data-wuu-component`、`data-wuu-layer` 和 `dat
 主要界面区域和控件带有公开的 `data-wuu-component` 锚点，让逐元素微调可以走 CSS
 snippets 而不是新增主题 Token：`app-shell`、`sidebar`、`conversation-pane`、
 `settings-shell`、`settings-sidebar`、`settings-content`、`settings-page`、
-`skills-catalog`、`automations-catalog`、`workspace-panel`、
+`skills-catalog`、`workspace-panel`、
 `workspace-tool-tab`、`workspace-tool-tab-close`、
 `launch-view`、`turn`、`message`（区分 `data-wuu-variant="user" | "agent"`）、
 `composer`、`composer-input`、`composer-send`（区分 `data-wuu-state="send" | "stop"`）。
@@ -538,9 +550,9 @@ Token：`--wuu-nav-item-hover-background` 绘制悬停/展开行的底色，
 `plugin-ui-section`、`plugin-ui-stack`、`plugin-ui-row`、`plugin-ui-button`、
 `plugin-ui-field`、`plugin-ui-input`、`plugin-ui-empty-state`、`plugin-ui-loading-state` 和
 `plugin-ui-error-state`、`plugin-ui-live-duration`；外观插件应优先改公开 Token，确需结构化装饰时
-再按这些粗粒度语义处理。
-这份清单由 `desktop/src/renderer/plugins/ProductionSemanticAnchors.test.ts` 强制约束；
-锚点改名属于破坏性变更。
+再按这些粗粒度语义处理。生产语义锚点测试会约束上面的宿主清单，以及截至
+`plugin-ui-empty-state` 的核心 UI Kit 锚点；loading、error 和 live-duration 是当前公开输出，
+但尚未纳入该 inventory 测试。
 
 可信代码插件补充 CSS 时，应只使用这些公开属性和 Token，不应依赖私有 class 名或
 DOM 层级。依赖私有 class 名可以用于本地实验，但不属于兼容性承诺。
@@ -556,13 +568,20 @@ Raw CSS 会原样进入宿主 document，不会自动改写 selector，也没有
 ```bash
 wuu plugin create my-plugin      # 生成骨架
 wuu plugin validate .            # 校验 manifest 与包结构
-wuu plugin build .               # 运行包内构建（如果有 package.json）
-wuu plugin test .                # 启动可执行 runtime，跑公开 SDK 契约检查
+wuu plugin build .               # 运行必需的 package.json scripts.build
+wuu plugin test .                # 校验包，并在有 runtime 时校验协商描述符
 wuu plugin pack .                # 打成可分发 zip
 ```
 
-`wuu plugin create` 生成 agent、desktop 或 full（两者都有）骨架。`wuu plugin test`
-以非零退出码反映检查失败，适合接进 CI。
+`wuu plugin create NAME` 默认生成 agent 骨架；使用 `--type desktop` 或 `--type full`，并可
+用 `--output DIR` 指定输出。名称必须以小写字母开头，只含小写字母、数字、`-`、`_`，
+最长 64 个字符。
+
+`wuu plugin build` 要求存在 `package.json` 和非空 `scripts.build`；可用
+`--package-manager` 覆盖 packageManager 字段和 lockfile 探测。`wuu plugin test` 会启动
+已声明 runtime，校验初始化、协议协商、capability 描述符和
+工具注册；只有 Desktop 入口的包会跳过 runtime 测试，命令不会导入或渲染 Desktop 入口。
+可用 `--timeout` 修改默认 30 秒超时。任何检查失败都会返回非零退出码，适合接进 CI。
 
 ### 开发模式热重载
 
@@ -570,7 +589,7 @@ wuu plugin pack .                # 打成可分发 zip
 wuu plugin dev .
 ```
 
-`dev` 授权**当前目录**为开发目录：保存后自动构建、校验候选、发布原子 generation，
+`wuu plugin dev .` 授权**参数指定的路径**（这里是 `.`）为开发目录：保存后自动构建、校验候选、发布原子 generation，
 并保留活跃 generation 的租约直到切换完成；构建或激活失败时保留上一代。目录授权
 是开发专用，绝不转移到从下载包里安装的普通插件。
 
@@ -592,12 +611,15 @@ wuu plugin dev .                     # 开发期修改
 ### 示例
 
 仓库中的 [`examples/plugins/deep-ui`](../../../examples/plugins/deep-ui/) 是一个可以直接
-安装的自包含示例：用 wrapper 保留所有宿主 fallback，并同时演示声明式主题。
+安装的自包含示例：包含一个 `conversation.timeline` wrapper 和一个声明式主题。
 
 [`examples/plugins/developer-loop`](../../../examples/plugins/developer-loop/) 是只依赖
 公开 SDK 的跨 Surface 验收示例，覆盖 Agent runtime（request transform、工具注册）、
 Host Actions、generation 替换、失败恢复、disposal 和卸载，并演示完整开发闭环
 （install → build → test → dev → pack）。
+
+[`examples/plugins/herbarium`](../../../examples/plugins/herbarium/) 是聚焦外观能力的主题与
+CSS snippet 示例。
 
 [`examples/plugins/manga-studio`](../../../examples/plugins/manga-studio/) 是强风格外观压力
 测试：它同时覆盖应用壳与设置页，验证主题 Token、UI Kit、语义锚点和宿主布局所有权，
