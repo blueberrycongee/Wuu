@@ -5,6 +5,7 @@ export interface ConversationMessageItem {
   kind: "message";
   id: string;
   role: "user" | "assistant";
+  runId?: string;
   text: string;
   status: string;
 }
@@ -20,10 +21,22 @@ export interface ConversationToolItem {
   status: string;
 }
 
-export type ConversationItem = ConversationMessageItem | ConversationToolItem;
+export interface ConversationStatusItem {
+  [key: string]: JsonValue;
+  kind: "status";
+  id: string;
+  text: string;
+  status: string;
+}
+
+export type ConversationItem =
+  | ConversationMessageItem
+  | ConversationStatusItem
+  | ConversationToolItem;
 
 export interface ConversationValue {
   [key: string]: JsonValue;
   items: ConversationItem[];
   running: boolean;
+  activeRunId?: string;
 }

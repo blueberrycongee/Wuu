@@ -48,7 +48,7 @@ try {
       kind: "message",
       id: "message-1",
       role: "assistant",
-      text: "Client smoke ready.",
+      text: "Client smoke **ready**.",
       status: "complete",
     }, {
       kind: "tool",
@@ -58,6 +58,11 @@ try {
       input: { path: "package.json" },
       result: "package contents",
       status: "complete",
+    }, {
+      kind: "status",
+      id: "status-1",
+      text: "Run failed visibly.",
+      status: "failed",
     }],
     running: false,
   });
@@ -76,7 +81,8 @@ try {
     ownerProps: { sessionId },
   }));
   assert.match(markup, /app-shell/);
-  assert.match(markup, /Client smoke ready\./);
+  assert.match(markup, /Client smoke <strong>ready<\/strong>\./);
+  assert.match(markup, /Run failed visibly\./);
   assert.match(markup, /tool-activity/);
   assert.match(markup, /package contents/);
   assert.match(markup, /Message Wuu/);

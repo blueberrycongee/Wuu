@@ -21,6 +21,7 @@ export interface ComposerSurfaceProps {
   commands?: boolean;
   commandContext?: JsonValue;
   footer?: ReactNode;
+  onVisualHeightChange?(height: number): void;
   onDraftChange(value: string): void;
   onSubmit(text: string): Promise<void> | void;
   onCancel?(): Promise<void> | void;

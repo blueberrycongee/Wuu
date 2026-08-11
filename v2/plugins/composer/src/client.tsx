@@ -2,8 +2,10 @@ import { createElement, useEffect, useRef, useState } from "react";
 import {
   Service,
   SlotOutlet,
+  useScopedStore,
   type Context,
   type Plugin,
+  type ScopedStoreSeat,
   type SlotHandle,
 } from "@wuu-v2/client-runtime";
 import type {
@@ -17,12 +19,14 @@ interface SurfaceComponentProps extends ComposerSurfaceProps {
   client: Context;
   aboveSlot: SlotHandle;
   commandSurfaceSlot: SlotHandle;
+  expandedSeat: ScopedStoreSeat<boolean>;
 }
 
 function ComposerSurface({
   client,
   aboveSlot,
   commandSurfaceSlot,
+  expandedSeat,
   sessionId,
   draft,
   running,
@@ -32,12 +36,14 @@ function ComposerSurface({
   commands = true,
   commandContext,
   footer,
+  onVisualHeightChange,
   onDraftChange,
   onSubmit,
   onCancel,
 }: SurfaceComponentProps) {
+  const stack = useRef<HTMLDivElement>(null);
   const textarea = useRef<HTMLTextAreaElement>(null);
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useScopedStore(expandedSeat, sessionId);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string>();
   const busy = running || submitting;
@@ -45,6 +51,28 @@ function ComposerSurface({
   useEffect(() => {
     if (autoFocus) textarea.current?.focus({ preventScroll: true });
   }, [autoFocus]);
+
+  useEffect(() => {
+    const element = textarea.current;
+    if (!element) return;
+    if (expanded) {
+      element.style.height = "";
+      return;
+    }
+    element.style.height = "0px";
+    element.style.height = `${Math.max(60, Math.min(180, element.scrollHeight))}px`;
+  }, [draft, expanded]);
+
+  useEffect(() => {
+    const element = stack.current;
+    if (!element || !onVisualHeightChange) return;
+    const emit = () => onVisualHeightChange(element.getBoundingClientRect().height);
+    emit();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(emit);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [onVisualHeightChange]);
 
   const submit = async (candidate = draft) => {
     const text = candidate.trim();
@@ -71,7 +99,7 @@ function ComposerSurface({
   };
 
   return (
-    <div className={`wuu-composer-stack${expanded ? " is-expanded" : ""}`}>
+    <div ref={stack} className={`wuu-composer-stack${expanded ? " is-expanded" : ""}`}>
       <SlotOutlet
         client={client}
         slot={aboveSlot}
@@ -160,6 +188,7 @@ export class ComposerSurfacesService extends Service implements ComposerSurfaceR
     ctx: Context,
     private readonly aboveSlot: SlotHandle,
     private readonly commandSurfaceSlot: SlotHandle,
+    private readonly expandedSeat: ScopedStoreSeat<boolean>,
     readonly toolbarLeftSlot: SlotHandle,
     readonly toolbarRightSlot: SlotHandle,
   ) {
@@ -171,6 +200,7 @@ export class ComposerSurfacesService extends Service implements ComposerSurfaceR
       client: this.ctx,
       aboveSlot: this.aboveSlot,
       commandSurfaceSlot: this.commandSurfaceSlot,
+      expandedSeat: this.expandedSeat,
       ...props,
     });
   }
@@ -184,24 +214,27 @@ declare module "cordis" {
 
 const composerClient: Plugin = function composer(client) {
   let commandSurfaceSlot: SlotHandle;
-  function ConversationComposer({
-    client: componentClient,
+  const drafts = client.scopedStores.define("composer/draft", () => "");
+  const expandedStates = client.scopedStores.define("composer/expanded", () => false);
+  function SessionComposer({
+    componentClient,
     sessionId,
-    ownerProps,
+    running,
+    onVisualHeightChange,
   }: {
-    client: Context;
-    sessionId?: string;
-    ownerProps?: unknown;
+    componentClient: Context;
+    sessionId: string;
+    running: boolean;
+    onVisualHeightChange?: (height: number) => void;
   }) {
-    const [draft, setDraft] = useState("");
-    const running = (ownerProps as { running?: boolean } | undefined)?.running ?? false;
-    if (!sessionId) return null;
+    const [draft, setDraft] = useScopedStore(drafts, sessionId);
     return componentClient.composerSurfaces.render({
       sessionId,
       draft,
       running,
       ariaLabel: "Message Wuu",
       placeholder: "Ask Wuu anything",
+      ...(onVisualHeightChange ? { onVisualHeightChange } : {}),
       onDraftChange: setDraft,
       onSubmit: async (text) => {
         await componentClient.clientActions.execute("agent/prompt", { sessionId, text });
@@ -211,6 +244,29 @@ const composerClient: Plugin = function composer(client) {
         await componentClient.clientActions.execute("agent/cancel", { sessionId });
       },
     });
+  }
+  function ConversationComposer({
+    client: componentClient,
+    sessionId,
+    ownerProps,
+  }: {
+    client: Context;
+    sessionId?: string;
+    ownerProps?: unknown;
+  }) {
+    const running = (ownerProps as { running?: boolean } | undefined)?.running ?? false;
+    const onVisualHeightChange = (
+      ownerProps as { onVisualHeightChange?: (height: number) => void } | undefined
+    )?.onVisualHeightChange;
+    if (!sessionId) return null;
+    return (
+      <SessionComposer
+        componentClient={componentClient}
+        sessionId={sessionId}
+        running={running}
+        {...(onVisualHeightChange ? { onVisualHeightChange } : {})}
+      />
+    );
   }
 
   const registration = client.slots.contribute("conversation/composer", {
@@ -228,6 +284,7 @@ const composerClient: Plugin = function composer(client) {
     client,
     registration.children.get("composer/above")!,
     commandSurfaceSlot,
+    expandedStates,
     registration.children.get("composer/toolbar-left")!,
     registration.children.get("composer/toolbar-right")!,
   );
@@ -242,6 +299,6 @@ const composerClient: Plugin = function composer(client) {
   }, "install composer styles");
 };
 
-composerClient.inject = ["clientActions", "slots"];
+composerClient.inject = ["clientActions", "scopedStores", "slots"];
 composerClient.provide = "composerSurfaces";
 export default composerClient;

@@ -1,36 +1,67 @@
-import { createElement, useEffect, useRef } from "react";
+import { createElement, useCallback, useEffect, useRef } from "react";
 import {
   Service,
   SlotOutlet,
   useProjection,
+  useScopedStore,
   type Context,
   type Plugin,
   type SlotHandle,
 } from "@wuu-v2/client-runtime";
 import { conversationStyles } from "./styles.js";
-import type { ConversationItem, ConversationToolItem, ConversationValue } from "./shared.js";
+import { MarkdownText } from "./markdown.js";
+import type {
+  ConversationItem,
+  ConversationMessageItem,
+  ConversationStatusItem,
+  ConversationToolItem,
+  ConversationValue,
+} from "./shared.js";
 
 interface ConversationItemsProps {
   client: Context;
   sessionId: string;
   items: readonly ConversationItem[];
+  messageSlot: SlotHandle;
+  statusSlot: SlotHandle;
   toolSlot: SlotHandle;
 }
 
-function ConversationItems({ client, sessionId, items, toolSlot }: ConversationItemsProps) {
-  return items.map((item) => item.kind === "message" ? (
-    <article className={`message message-${item.role}`} key={item.id} data-status={item.status}>
-      {item.text}
-    </article>
-  ) : (
+function ConversationItems({
+  client,
+  sessionId,
+  items,
+  messageSlot,
+  statusSlot,
+  toolSlot,
+}: ConversationItemsProps) {
+  return items.map((item) => (
     <SlotOutlet
       key={item.id}
       client={client}
-      slot={toolSlot}
+      slot={item.kind === "message" ? messageSlot : item.kind === "tool" ? toolSlot : statusSlot}
       sessionId={sessionId}
       ownerProps={item}
     />
   ));
+}
+
+function MarkdownMessage({ ownerProps }: { ownerProps?: unknown }) {
+  const message = ownerProps as ConversationMessageItem;
+  const terminal = message.status === "error"
+    ? "Response failed"
+    : message.status === "cancelled" ? "Response cancelled" : undefined;
+  return (
+    <article className={`message message-${message.role}`} data-status={message.status}>
+      {message.text ? <MarkdownText text={message.text} /> : null}
+      {terminal ? <small className="message-terminal" role="status">{terminal}</small> : null}
+    </article>
+  );
+}
+
+function ConversationStatus({ ownerProps }: { ownerProps?: unknown }) {
+  const status = ownerProps as ConversationStatusItem;
+  return <p className="conversation-status" data-status={status.status} role="status">{status.text}</p>;
 }
 
 function GenericToolActivity({ ownerProps }: { ownerProps?: unknown }) {
@@ -51,7 +82,12 @@ function GenericToolActivity({ ownerProps }: { ownerProps?: unknown }) {
 }
 
 export class ConversationSurfacesService extends Service {
-  constructor(ctx: Context, private readonly toolSlot: SlotHandle) {
+  constructor(
+    ctx: Context,
+    private readonly messageSlot: SlotHandle,
+    private readonly statusSlot: SlotHandle,
+    private readonly toolSlot: SlotHandle,
+  ) {
     super(ctx, "conversationSurfaces");
   }
 
@@ -60,6 +96,8 @@ export class ConversationSurfacesService extends Service {
       client: this.ctx,
       sessionId,
       items,
+      messageSlot: this.messageSlot,
+      statusSlot: this.statusSlot,
       toolSlot: this.toolSlot,
     });
   }
@@ -73,15 +111,34 @@ declare module "cordis" {
 
 const conversationClient: Plugin = function conversation(client) {
   let composerSlot: SlotHandle;
+  let messageSlot: SlotHandle;
+  let statusSlot: SlotHandle;
   let toolSlot: SlotHandle;
-  function Conversation({ client: componentClient, sessionId }: { client: Context; sessionId?: string }) {
-    const value = useProjection<ConversationValue>(componentClient, sessionId ?? "", "conversation");
+  const scrollStates = client.scopedStores.define("conversation/scroll", () => ({
+    top: 0,
+    pinned: true,
+  }));
+  function SessionConversation({
+    componentClient,
+    sessionId,
+  }: {
+    componentClient: Context;
+    sessionId: string;
+  }) {
+    const value = useProjection<ConversationValue>(componentClient, sessionId, "conversation");
+    const [scrollState, setScrollState] = useScopedStore(scrollStates, sessionId);
     const scroll = useRef<HTMLDivElement>(null);
-    const pinned = useRef(true);
+    const onComposerHeightChange = useCallback(() => {
+      const element = scroll.current;
+      if (scrollState.pinned && element) element.scrollTop = element.scrollHeight;
+    }, [scrollState.pinned]);
     useEffect(() => {
-      if (pinned.current && scroll.current) scroll.current.scrollTop = scroll.current.scrollHeight;
-    }, [sessionId, value?.items]);
-    if (!sessionId) return <div className="conversation-empty">Choose or create a task</div>;
+      const element = scroll.current;
+      if (!element) return;
+      element.scrollTop = scrollState.pinned
+        ? element.scrollHeight
+        : Math.min(scrollState.top, Math.max(0, element.scrollHeight - element.clientHeight));
+    }, [sessionId, value?.items, scrollState.pinned]);
     return (
       <section className="conversation-shell">
         <div
@@ -89,7 +146,12 @@ const conversationClient: Plugin = function conversation(client) {
           className="conversation-scroll"
           onScroll={(event) => {
             const element = event.currentTarget;
-            pinned.current = element.scrollHeight - element.scrollTop - element.clientHeight < 24;
+            const next = {
+              top: element.scrollTop,
+              pinned: element.scrollHeight - element.scrollTop - element.clientHeight < 24,
+            };
+            setScrollState((current) =>
+              current.top === next.top && current.pinned === next.pinned ? current : next);
           }}
         >
           {componentClient.conversationSurfaces.render(sessionId, value?.items ?? [])}
@@ -98,10 +160,18 @@ const conversationClient: Plugin = function conversation(client) {
           client={componentClient}
           slot={composerSlot}
           sessionId={sessionId}
-          ownerProps={{ running: value?.running ?? false }}
+          ownerProps={{
+            running: value?.running ?? false,
+            onVisualHeightChange: onComposerHeightChange,
+          }}
         />
       </section>
     );
+  }
+  function Conversation({ client: componentClient, sessionId }: { client: Context; sessionId?: string }) {
+    return sessionId
+      ? <SessionConversation componentClient={componentClient} sessionId={sessionId} />
+      : <div className="conversation-empty">Choose or create a task</div>;
   }
 
   const registration = client.slots.contribute("layout/conversation", {
@@ -109,12 +179,26 @@ const conversationClient: Plugin = function conversation(client) {
     component: Conversation,
     children: [
       { name: "conversation/composer", kind: "chain", scope: "session" },
+      { name: "conversation/message", kind: "chain", scope: "session" },
+      { name: "conversation/status", kind: "chain", scope: "session" },
       { name: "conversation/tool", kind: "chain", scope: "session" },
     ],
   });
   composerSlot = registration.children.get("conversation/composer")!;
+  messageSlot = registration.children.get("conversation/message")!;
+  statusSlot = registration.children.get("conversation/status")!;
   toolSlot = registration.children.get("conversation/tool")!;
-  new ConversationSurfacesService(client, toolSlot);
+  new ConversationSurfacesService(client, messageSlot, statusSlot, toolSlot);
+  client.slots.contribute("conversation/message", {
+    id: "markdown-message",
+    priority: -100,
+    component: MarkdownMessage,
+  });
+  client.slots.contribute("conversation/status", {
+    id: "conversation-status",
+    priority: -100,
+    component: ConversationStatus,
+  });
   client.slots.contribute("conversation/tool", {
     id: "generic-tool-activity",
     priority: -100,
@@ -129,6 +213,6 @@ const conversationClient: Plugin = function conversation(client) {
     return () => style.remove();
   }, "install conversation styles");
 };
-conversationClient.inject = ["clientProjections", "slots"];
+conversationClient.inject = ["clientProjections", "scopedStores", "slots"];
 conversationClient.provide = "conversationSurfaces";
 export default conversationClient;

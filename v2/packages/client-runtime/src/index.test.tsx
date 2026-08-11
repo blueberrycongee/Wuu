@@ -3,6 +3,7 @@ import test from "node:test";
 import { Context } from "cordis";
 import {
   ClientModuleSystem,
+  type ScopedStoreSeat,
   clientKernelPlugin,
   type Plugin,
   type SlotHandle,
@@ -13,6 +14,7 @@ test("materializes lazily and invalidates owner slot authorization", async () =>
   const kernel = await ctx.plugin(clientKernelPlugin);
   const modules = new ClientModuleSystem(ctx);
   let materialized = 0;
+  let contributorActive = 0;
   let surface: SlotHandle | undefined;
   const ownerModule = async () => {
     materialized += 1;
@@ -39,6 +41,10 @@ test("materializes lazily and invalidates owner slot authorization", async () =>
         id: "conversation",
         component: () => null,
       });
+      client.effect(() => {
+        contributorActive += 1;
+        return () => { contributorActive -= 1; };
+      }, "contributor lifetime");
     };
     plugin.inject = ["slots"];
     return {
@@ -57,6 +63,7 @@ test("materializes lazily and invalidates owner slot authorization", async () =>
   await modules.activateAll(["contributor", "owner"]);
   assert.equal(materialized, 2);
   assert.equal(ctx.slots.entries(surface!).length, 1);
+  assert.equal(contributorActive, 1);
 
   ctx.clientProjections.applyFrame({
     sessionId: "session-1",
@@ -78,9 +85,28 @@ test("materializes lazily and invalidates owner slot authorization", async () =>
 
   await modules.invalidate("owner");
   assert.throws(() => ctx.slots.entries(surface!), /stale slot authorization/);
+  assert.equal(contributorActive, 0);
   modules.arrive("owner", "2", ownerModule);
   await modules.activate("owner");
+  await modules.activate("contributor");
   assert.equal(ctx.slots.entries(surface!).length, 1);
+  assert.equal(contributorActive, 1);
+
+  let store: ScopedStoreSeat<string> | undefined;
+  modules.arrive("store-owner", "1", async () => {
+    const plugin: Plugin = function storeOwner(client) {
+      store = client.scopedStores.define("test/draft", () => "");
+    };
+    plugin.inject = ["scopedStores"];
+    return { default: plugin };
+  });
+  await modules.activate("store-owner");
+  store!.set("session-a", "draft a");
+  store!.set("session-b", "draft b");
+  assert.equal(store!.get("session-a"), "draft a");
+  assert.equal(store!.get("session-b"), "draft b");
+  await modules.invalidate("store-owner");
+  assert.throws(() => store!.get("session-a"), /stale scoped store seat/);
 
   let candidateActive = 0;
   modules.arrive("candidate", "1", async () => {

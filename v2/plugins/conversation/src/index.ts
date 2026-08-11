@@ -23,6 +23,7 @@ export const conversationProjectionPlugin: Plugin = function conversationProject
         kind: "message",
         id: record.data.messageId,
         role: "assistant",
+        ...(next.activeRunId ? { runId: next.activeRunId } : {}),
         text: "",
         status: "streaming",
       });
@@ -55,10 +56,30 @@ export const conversationProjectionPlugin: Plugin = function conversationProject
       }
     } else if (record.type === "agent/run-state") {
       next.running = record.data.state === "started";
+      if (record.data.state === "started") next.activeRunId = record.data.runId;
       if (["cancelled", "failed", "interrupted"].includes(record.data.state)) {
         for (const item of next.items) {
           if (item.kind === "tool" && item.status === "running") item.status = record.data.state;
         }
+        const assistant = next.items.findLast((item) =>
+          item.kind === "message" &&
+          item.role === "assistant" &&
+          item.runId === record.data.runId);
+        const represented = assistant?.kind === "message" && (
+          (record.data.state === "cancelled" && assistant.status === "cancelled") ||
+          (record.data.state === "failed" && assistant.status === "error")
+        );
+        if (!represented) {
+          next.items.push({
+            kind: "status",
+            id: `run:${record.data.runId}:${record.data.state}`,
+            text: record.data.error ?? `Run ${record.data.state}`,
+            status: record.data.state,
+          });
+        }
+      }
+      if (record.data.state !== "started" && next.activeRunId === record.data.runId) {
+        delete next.activeRunId;
       }
     }
     return next as unknown as JsonValue;

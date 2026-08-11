@@ -2,6 +2,7 @@ import {
   createElement,
   type ComponentType,
   type ReactNode,
+  useCallback,
   useEffect,
   useSyncExternalStore,
 } from "react";
@@ -37,6 +38,10 @@ interface OwnedDeclaration extends SlotDeclaration {
   epoch: symbol;
 }
 
+interface OwnedContribution extends SlotContribution {
+  fiber: Fiber;
+}
+
 export interface SlotHandle {
   readonly name: string;
   readonly epoch: symbol;
@@ -49,7 +54,7 @@ export interface SlotRegistration {
 
 export class SlotsService extends Service {
   private readonly declarations = new Map<string, OwnedDeclaration>();
-  private readonly contributions = new Map<string, Map<string, SlotContribution>>();
+  private readonly contributions = new Map<string, Map<string, OwnedContribution>>();
   private readonly listeners = new Set<() => void>();
   private revision = 0;
   readonly root: SlotHandle;
@@ -91,14 +96,34 @@ export class SlotsService extends Service {
     return { name: declaration.name, epoch: owned.epoch };
   }
 
-  private releaseDeclaration(name: string, epoch: symbol): void {
+  private detachDeclarationTree(
+    name: string,
+    epoch: symbol,
+    excludedFiber: Fiber,
+    fibers: Set<Fiber>,
+  ): void {
     const current = this.declarations.get(name);
     if (!current || current.epoch !== epoch) return;
     for (const child of [...this.declarations.values()]) {
-      if (child.parent === name) this.releaseDeclaration(child.name, child.epoch);
+      if (child.parent === name) {
+        this.detachDeclarationTree(child.name, child.epoch, excludedFiber, fibers);
+      }
     }
     this.declarations.delete(name);
+    const entries = this.contributions.get(name);
+    if (entries && this.contributions.get(name) === entries) {
+      this.contributions.delete(name);
+      for (const entry of entries.values()) {
+        if (entry.fiber !== excludedFiber) fibers.add(entry.fiber);
+      }
+    }
+  }
+
+  private async releaseDeclaration(name: string, epoch: symbol, excludedFiber: Fiber): Promise<void> {
+    const fibers = new Set<Fiber>();
+    this.detachDeclarationTree(name, epoch, excludedFiber, fibers);
     this.changed();
+    for (const fiber of fibers) await fiber.dispose();
   }
 
   contribute(name: string, contribution: SlotContribution): SlotRegistration {
@@ -110,7 +135,8 @@ export class SlotsService extends Service {
     if (declaration?.kind === "single" && entries.size) {
       throw new Error(`single slot is already occupied: ${name}`);
     }
-    entries.set(contribution.id, contribution);
+    const ownerFiber = this.ctx.fiber;
+    entries.set(contribution.id, { ...contribution, fiber: ownerFiber });
     this.contributions.set(name, entries);
     const children = new Map<string, SlotHandle>();
     try {
@@ -120,19 +146,24 @@ export class SlotsService extends Service {
       }
     } catch (error) {
       for (const handle of [...children.values()].reverse()) {
-        this.releaseDeclaration(handle.name, handle.epoch);
+        void this.releaseDeclaration(handle.name, handle.epoch, ownerFiber)
+          .catch((cause) => this.ctx.logger.error(cause));
       }
       entries.delete(contribution.id);
-      if (!entries.size) this.contributions.delete(name);
+      if (!entries.size && this.contributions.get(name) === entries) {
+        this.contributions.delete(name);
+      }
       throw error;
     }
     this.changed();
-    const dispose = this.ctx.effect(() => () => {
+    const dispose = this.ctx.effect(() => async () => {
       for (const handle of [...children.values()].reverse()) {
-        this.releaseDeclaration(handle.name, handle.epoch);
+        await this.releaseDeclaration(handle.name, handle.epoch, ownerFiber);
       }
       if (entries.delete(contribution.id)) {
-        if (!entries.size) this.contributions.delete(name);
+        if (!entries.size && this.contributions.get(name) === entries) {
+          this.contributions.delete(name);
+        }
         this.changed();
       }
     }, `remove slot contribution:${name}/${contribution.id}`);
@@ -145,6 +176,14 @@ export class SlotsService extends Service {
       throw new Error(`stale slot authorization: ${handle.name}`);
     }
     return [...(this.contributions.get(handle.name)?.values() ?? [])]
+      .map(({ id, order, priority, select, component, children }) => ({
+        id,
+        ...(order === undefined ? {} : { order }),
+        ...(priority === undefined ? {} : { priority }),
+        ...(select === undefined ? {} : { select }),
+        component,
+        ...(children === undefined ? {} : { children }),
+      }))
       .sort((left, right) => declaration.kind === "chain"
         ? (right.priority ?? 0) - (left.priority ?? 0) || left.id.localeCompare(right.id)
         : (left.order ?? 0) - (right.order ?? 0) || left.id.localeCompare(right.id));
@@ -359,6 +398,77 @@ export class ActiveSessionService extends Service {
   snapshot = (): string | undefined => this.value;
 }
 
+export type ScopedStoreUpdate<T> = T | ((current: T) => T);
+
+export class ScopedStoreSeat<T> {
+  private readonly values = new Map<string, T>();
+  private readonly listeners = new Map<string, Set<() => void>>();
+  private active = true;
+
+  constructor(
+    readonly id: string,
+    private readonly initial: () => T,
+  ) {}
+
+  private assertActive(): void {
+    if (!this.active) throw new Error(`stale scoped store seat: ${this.id}`);
+  }
+
+  get(sessionId: string): T {
+    this.assertActive();
+    if (!this.values.has(sessionId)) this.values.set(sessionId, this.initial());
+    return this.values.get(sessionId)!;
+  }
+
+  set(sessionId: string, update: ScopedStoreUpdate<T>): void {
+    this.assertActive();
+    const current = this.get(sessionId);
+    const next = typeof update === "function"
+      ? (update as (current: T) => T)(current)
+      : update;
+    if (Object.is(current, next)) return;
+    this.values.set(sessionId, next);
+    for (const listener of this.listeners.get(sessionId) ?? []) listener();
+  }
+
+  subscribe(sessionId: string, listener: () => void): () => void {
+    this.assertActive();
+    const listeners = this.listeners.get(sessionId) ?? new Set();
+    listeners.add(listener);
+    this.listeners.set(sessionId, listeners);
+    return () => {
+      listeners.delete(listener);
+      if (!listeners.size) this.listeners.delete(sessionId);
+    };
+  }
+
+  close(): void {
+    this.active = false;
+    this.values.clear();
+    this.listeners.clear();
+  }
+}
+
+export class ScopedStoresService extends Service {
+  private readonly seats = new Map<string, ScopedStoreSeat<unknown>>();
+
+  constructor(ctx: Context) {
+    super(ctx, "scopedStores");
+  }
+
+  define<T>(id: string, initial: () => T): ScopedStoreSeat<T> {
+    if (this.seats.has(id)) throw new Error(`duplicate scoped store seat: ${id}`);
+    const seat = new ScopedStoreSeat(id, initial);
+    this.seats.set(id, seat as ScopedStoreSeat<unknown>);
+    this.ctx.effect(() => () => {
+      if (this.seats.get(id) !== seat) return;
+      this.seats.delete(id);
+      seat.close();
+    }, `remove scoped store seat:${id}`);
+    return seat;
+  }
+}
+
 export interface ClientPluginModule {
   default: Plugin;
 }
@@ -443,9 +553,13 @@ export class ClientModuleSystem {
     const pending: Array<{ id: string; fiber: Fiber; module: ClientPluginModule }> = [];
     try {
       for (const id of ids) {
-        if (this.fibers.has(id)) continue;
+        const active = this.fibers.get(id);
+        if (active?.uid === null) this.fibers.delete(id);
+        else if (active) continue;
         const module = await this.materialize(id);
-        if (this.fibers.has(id)) continue;
+        const materialized = this.fibers.get(id);
+        if (materialized?.uid === null) this.fibers.delete(id);
+        else if (materialized) continue;
         const fiber = this.ctx.plugin(module.default);
         this.fibers.set(id, fiber);
         pending.push({ id, fiber, module });
@@ -526,6 +640,7 @@ declare module "cordis" {
     clientActions: ClientActionsService;
     clientProjections: ClientProjectionStore;
     slots: SlotsService;
+    scopedStores: ScopedStoresService;
   }
 }
 
@@ -533,10 +648,34 @@ export const clientKernelPlugin: Plugin = function clientKernel(ctx: Context) {
   new ActiveSessionService(ctx);
   new ClientActionsService(ctx);
   new ClientProjectionStore(ctx);
+  new ScopedStoresService(ctx);
   new SlotsService(ctx);
 };
 
-clientKernelPlugin.provide = ["activeSession", "clientActions", "clientProjections", "slots"];
+clientKernelPlugin.provide = [
+  "activeSession",
+  "clientActions",
+  "clientProjections",
+  "scopedStores",
+  "slots",
+];
+
+export function useScopedStore<T>(
+  seat: ScopedStoreSeat<T>,
+  sessionId: string,
+): readonly [T, (update: ScopedStoreUpdate<T>) => void] {
+  const subscribe = useCallback(
+    (listener: () => void) => seat.subscribe(sessionId, listener),
+    [seat, sessionId],
+  );
+  const snapshot = useCallback(() => seat.get(sessionId), [seat, sessionId]);
+  const value = useSyncExternalStore(subscribe, snapshot, snapshot);
+  const set = useCallback(
+    (update: ScopedStoreUpdate<T>) => seat.set(sessionId, update),
+    [seat, sessionId],
+  );
+  return [value, set] as const;
+}
 
 export function useActiveSession(client: Context): string | undefined {
   return useSyncExternalStore(
@@ -551,6 +690,7 @@ export function SlotOutlet(props: {
   slot: SlotHandle;
   ownerProps?: unknown;
   sessionId?: string;
+  empty?: ReactNode;
 }): ReactNode {
   useSyncExternalStore(
     props.client.slots.subscribe.bind(props.client.slots),
@@ -562,7 +702,9 @@ export function SlotOutlet(props: {
     ...(props.ownerProps === undefined ? {} : { ownerProps: props.ownerProps }),
     ...(props.sessionId === undefined ? {} : { sessionId: props.sessionId }),
   };
-  return props.client.slots.renderEntries(props.slot, componentProps).map((entry) =>
+  const entries = props.client.slots.renderEntries(props.slot, componentProps);
+  if (!entries.length) return props.empty ?? null;
+  return entries.map((entry) =>
     createElement(entry.component, {
       key: props.client.slots.renderKey(props.slot, entry.id, props.sessionId),
       ...componentProps,

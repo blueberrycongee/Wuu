@@ -1,4 +1,4 @@
-import { useEffect, useRef, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 import {
   Service,
   useProjection,
@@ -13,6 +13,8 @@ interface SidePanelState {
   open: boolean;
   width: number;
   draft: string;
+  scrollTop: number;
+  pinned: boolean;
   resolving: boolean;
   sideSessionId?: string;
   error: string | undefined;
@@ -22,6 +24,8 @@ const initialState: SidePanelState = {
   open: false,
   width: 360,
   draft: "",
+  scrollTop: 0,
+  pinned: true,
   resolving: false,
   error: undefined,
 };
@@ -102,6 +106,12 @@ class SidePanelsService extends Service {
     this.update(sessionId, { width: Math.max(280, Math.min(720, Math.round(width))) });
   }
 
+  setScroll(sessionId: string, scrollTop: number, pinned: boolean): void {
+    const current = this.get(sessionId);
+    if (current.scrollTop === scrollTop && current.pinned === pinned) return;
+    this.update(sessionId, { scrollTop, pinned });
+  }
+
   async send(sessionId: string, draft: string): Promise<void> {
     const text = draft.trim();
     if (!text) return;
@@ -131,17 +141,24 @@ function SidePanel({ client, sessionId }: { client: Context; sessionId?: string 
   );
   const log = useRef<HTMLDivElement>(null);
   const openButton = useRef<HTMLButtonElement>(null);
-  const pinned = useRef(true);
   const wasOpen = useRef(state.open);
   const resize = useRef<{
     pointerId: number;
     startX: number;
     startWidth: number;
   } | undefined>(undefined);
+  const onComposerHeightChange = useCallback(() => {
+    const element = log.current;
+    if (state.pinned && element) element.scrollTop = element.scrollHeight;
+  }, [state.pinned]);
 
   useEffect(() => {
-    if (pinned.current && log.current) log.current.scrollTop = log.current.scrollHeight;
-  }, [conversation?.items]);
+    const element = log.current;
+    if (!element) return;
+    element.scrollTop = state.pinned
+      ? element.scrollHeight
+      : Math.min(state.scrollTop, Math.max(0, element.scrollHeight - element.clientHeight));
+  }, [conversation?.items, sessionId, state.open, state.pinned]);
 
   useEffect(() => {
     if (wasOpen.current && !state.open) openButton.current?.focus({ preventScroll: true });
@@ -217,7 +234,11 @@ function SidePanel({ client, sessionId }: { client: Context; sessionId?: string 
         aria-live="polite"
         onScroll={(event) => {
           const element = event.currentTarget;
-          pinned.current = element.scrollHeight - element.scrollTop - element.clientHeight < 24;
+          client.sidePanels.setScroll(
+            sessionId,
+            element.scrollTop,
+            element.scrollHeight - element.scrollTop - element.clientHeight < 24,
+          );
         }}
       >
         {state.sideSessionId
@@ -235,6 +256,7 @@ function SidePanel({ client, sessionId }: { client: Context; sessionId?: string 
           autoFocus: true,
           placeholder: "Ask a side question",
           commandContext: { kind: "side", ownerSessionId: sessionId },
+          onVisualHeightChange: onComposerHeightChange,
           onDraftChange: (draft) => client.sidePanels.setDraft(sessionId, draft),
           onSubmit: (draft) => client.sidePanels.send(sessionId, draft),
           onCancel: async () => {

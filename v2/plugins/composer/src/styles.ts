@@ -25,7 +25,9 @@ export const composerStyles = `
 }
 
 .wuu-composer-stack.is-expanded .wuu-composer-surface {
+  height: var(--wuu-composer-expanded-height);
   min-height: var(--wuu-composer-expanded-height);
+  max-height: var(--wuu-composer-expanded-height);
 }
 
 .wuu-composer-surface textarea {
@@ -33,8 +35,8 @@ export const composerStyles = `
   width: 100%;
   height: 60px;
   min-height: 60px;
-  max-height: 60px;
-  flex: 0 0 60px;
+  max-height: 180px;
+  flex: 0 0 auto;
   box-sizing: border-box;
   resize: none;
   overflow-y: auto;

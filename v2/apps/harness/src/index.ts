@@ -156,6 +156,8 @@ try {
   await smokeWorkspaceLoader();
   let recoverySessionId: string | undefined;
   let recoveryRunId: string | undefined;
+  let terminalSessionId: string | undefined;
+  let terminalRunId: string | undefined;
   if (smoke) {
     recoverySessionId = `${sessionId}-recovery`;
     recoveryRunId = randomUUID();
@@ -182,6 +184,25 @@ try {
             input: { path: "unknown" },
           },
         },
+      },
+    ] satisfies AgentSessionRecord[]);
+    terminalSessionId = `${sessionId}-terminal`;
+    terminalRunId = randomUUID();
+    await ctx.sessions.appendBatch(terminalSessionId, {
+      pluginId: "harness-smoke",
+      generation: "v1",
+    }, [
+      { type: "agent/run-state", data: { runId: "old-failure", state: "started" } },
+      { type: "agent/assistant-started", data: { messageId: "old-failure-message" } },
+      {
+        type: "agent/assistant-completed",
+        data: { messageId: "old-failure-message", stopReason: "error" },
+      },
+      { type: "agent/run-state", data: { runId: "old-failure", state: "failed" } },
+      { type: "agent/run-state", data: { runId: terminalRunId, state: "started" } },
+      {
+        type: "agent/run-state",
+        data: { runId: terminalRunId, state: "failed", error: "Current run failed before response" },
       },
     ] satisfies AgentSessionRecord[]);
   }
@@ -250,11 +271,39 @@ try {
     const recoveryState = recoveryEvents
       .map((event) => event.record as AgentSessionRecord)
       .findLast((record) => record.type === "agent/run-state");
+    const recoveryConversation = (await ctx.projections.build(ctx.sessions, recoverySessionId!))
+      .find(({ key }) => key === "conversation")?.value;
+    const recoveryItems = recoveryConversation &&
+      !Array.isArray(recoveryConversation) &&
+      typeof recoveryConversation === "object" &&
+      Array.isArray(recoveryConversation.items)
+      ? recoveryConversation.items
+      : [];
+    const terminalConversation = (await ctx.projections.build(ctx.sessions, terminalSessionId!))
+      .find(({ key }) => key === "conversation")?.value;
+    const terminalItems = terminalConversation &&
+      !Array.isArray(terminalConversation) &&
+      typeof terminalConversation === "object" &&
+      Array.isArray(terminalConversation.items)
+      ? terminalConversation.items
+      : [];
     if (
       result.status !== "completed" ||
       !recovered.includes(recoveryRunId!) ||
       recoveryState?.type !== "agent/run-state" ||
       recoveryState.data.state !== "interrupted" ||
+      !recoveryItems.some((item) =>
+        item &&
+        !Array.isArray(item) &&
+        typeof item === "object" &&
+        item.kind === "status" &&
+        item.status === "interrupted") ||
+      !terminalItems.some((item) =>
+        item &&
+        !Array.isArray(item) &&
+        typeof item === "object" &&
+        item.id === `run:${terminalRunId}:failed` &&
+        item.status === "failed") ||
       recoveredContext?.messages.at(-1)?.role !== "tool" ||
       !recoveryTypes.includes("agent/tool-result") ||
       !recoveryTypes.includes("agent/assistant-completed") ||
