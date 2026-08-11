@@ -12,7 +12,9 @@ import type {
 import { type Context, type Plugin } from "@wuu-v2/kernel";
 
 export interface DefaultAgentLoopConfig {
+  agentId?: string;
   providerId: string;
+  tools?: string[];
 }
 
 const source: EventSource = {
@@ -24,6 +26,7 @@ class DefaultAgentLoop implements AgentLoop {
   constructor(
     private readonly ctx: Context,
     private readonly providerId: string,
+    private readonly allowedTools?: ReadonlySet<string>,
   ) {}
 
   private append(sessionId: string, record: AgentSessionRecord) {
@@ -40,6 +43,9 @@ class DefaultAgentLoop implements AgentLoop {
       while (true) {
         signal.throwIfAborted();
         const context = await this.ctx.modelContext.build(input.sessionId, signal);
+        const modelTools = this.allowedTools
+          ? context.tools.filter((tool) => this.allowedTools!.has(tool.name))
+          : context.tools;
         const receipt: CompositionReceiptRecord = {
           type: "context/composition-receipt",
           data: { generation: context.generation, sources: context.sources },
@@ -61,7 +67,7 @@ class DefaultAgentLoop implements AgentLoop {
         const provider = this.ctx.providers.require(this.providerId);
         for await (const event of provider.stream({
           messages: context.messages,
-          tools: context.tools,
+          tools: modelTools,
           systemPrompt: context.systemPrompt,
           signal,
         })) {
@@ -99,7 +105,9 @@ class DefaultAgentLoop implements AgentLoop {
         for (const call of calls) {
           signal.throwIfAborted();
           let result: ToolResult;
-          const tool = this.ctx.tools.get(call.name);
+          const tool = this.allowedTools?.has(call.name) === false
+            ? undefined
+            : this.ctx.tools.get(call.name);
           try {
             result = tool
               ? await tool.execute(call.input, {
@@ -153,7 +161,9 @@ class DefaultAgentLoop implements AgentLoop {
 export const defaultAgentLoopPlugin: Plugin<DefaultAgentLoopConfig> =
   function defaultAgentLoop(ctx: Context, config: DefaultAgentLoopConfig) {
     ctx.providers.require(config.providerId);
-    ctx.agents.register("default", () => new DefaultAgentLoop(ctx, config.providerId));
+    const allowedTools = config.tools ? new Set(config.tools) : undefined;
+    ctx.agents.register(config.agentId ?? "default", () =>
+      new DefaultAgentLoop(ctx, config.providerId, allowedTools));
   };
 
 defaultAgentLoopPlugin.inject = [

@@ -44,7 +44,12 @@ function SlashMenu({ client, sessionId, ownerProps }: { client: Context; session
   const open = Boolean(sessionId && parsed && surface.draft !== dismissedDraft && commands.length);
 
   const disabledReason = (command: SlashCommand): string | undefined => sessionId
-    ? command.disabled?.({ client, sessionId, running: surface.running })
+    ? command.disabled?.({
+        client,
+        sessionId,
+        running: surface.running,
+        ...(surface.context === undefined ? {} : { surface: surface.context }),
+      })
     : "No active session";
   const nextEnabled = (current: number, direction: 1 | -1): number => {
     for (let step = 1; step <= commands.length; step += 1) {
@@ -65,15 +70,19 @@ function SlashMenu({ client, sessionId, ownerProps }: { client: Context; session
     if (disabledReason(command)) return;
     setError(undefined);
     try {
-      const result = await command.execute({ client, sessionId, args: parsed.args });
+      const result = await command.execute({
+        client,
+        sessionId,
+        args: parsed.args,
+        ...(surface.context === undefined ? {} : { surface: surface.context }),
+      });
       if (result.type === "replace") {
         surface.setDraft(result.draft);
         setDismissedDraft(result.draft);
       }
       if (result.type === "submit") {
         if (surface.running) throw new Error("The agent is already running");
-        await client.clientActions.execute("agent/prompt", { sessionId, text: result.text });
-        surface.setDraft("");
+        await surface.submit(result.text);
       }
       if (result.type === "handled") setDismissedDraft(surface.draft);
       queueMicrotask(surface.focus);

@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@wuu-v2/client-runtime": "0.0.0",
+    "@wuu-v2/contracts": "0.0.0",
     "@wuu-v2/plugin-composer": "0.0.0",
     "react": "^19.0.0"
   },

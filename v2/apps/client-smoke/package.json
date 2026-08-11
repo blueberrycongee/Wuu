@@ -9,6 +9,7 @@
     "@wuu-v2/plugin-conversation": "0.0.0",
     "@wuu-v2/plugin-layout": "0.0.0",
     "@wuu-v2/plugin-slash": "0.0.0",
+    "@wuu-v2/plugin-side": "0.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   }

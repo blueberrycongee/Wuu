@@ -4,6 +4,7 @@ export interface SlashCommandContext {
   client: Context;
   sessionId: string;
   args: string;
+  surface?: import("@wuu-v2/contracts").JsonValue;
 }
 
 export type SlashCommandResult =

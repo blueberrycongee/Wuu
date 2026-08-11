@@ -123,6 +123,10 @@ export class AgentRuntimeService extends Service {
   }
 
   async start(input: AgentPromptInput): Promise<AgentRunAcceptance> {
+    return this.startWith(this.agentId, input);
+  }
+
+  async startWith(agentId: string, input: AgentPromptInput): Promise<AgentRunAcceptance> {
     const text = input.text.trim();
     if (!text) throw new Error("prompt must not be empty");
     if (this.starting.has(input.sessionId) || this.active.has(input.sessionId)) {
@@ -132,6 +136,7 @@ export class AgentRuntimeService extends Service {
     const runId = randomUUID();
     const controller = new AbortController();
     try {
+      const createAgent = this.ctx.agents.require(agentId);
       const existing = openRunIds(await this.ctx.sessions.load(input.sessionId));
       if (existing.length) throw new Error(`session has an unfinished run: ${input.sessionId}`);
       const accepted = await this.ctx.sessions.appendBatch(input.sessionId, source, [
@@ -145,7 +150,7 @@ export class AgentRuntimeService extends Service {
       const task = Promise.resolve().then(async () => {
         let result: AgentRunResult;
         try {
-          result = await this.ctx.agents.require(this.agentId)().run({
+          result = await createAgent().run({
             sessionId: input.sessionId,
             runId,
             signal: controller.signal,

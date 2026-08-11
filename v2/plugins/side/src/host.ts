@@ -1,0 +1,66 @@
+import { createHash } from "node:crypto";
+import type { JsonValue } from "@wuu-v2/contracts";
+import { Service, type Context, type Plugin } from "@wuu-v2/kernel";
+
+export interface SideHostConfig {
+  agentId: string;
+}
+
+function objectInput(input: JsonValue): Record<string, JsonValue> {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    throw new Error("action input must be an object");
+  }
+  return input;
+}
+
+function stringField(input: Record<string, JsonValue>, field: string): string {
+  const value = input[field];
+  if (typeof value !== "string" || !value) throw new Error(`missing string field: ${field}`);
+  return value;
+}
+
+export class SideSessionsService extends Service {
+  constructor(ctx: Context, private readonly agentId: string) {
+    super(ctx, "sideSessions");
+    ctx.hostActions.register("side/resolve", (input) => {
+      const value = objectInput(input);
+      return { sessionId: this.resolve(stringField(value, "sessionId")) };
+    });
+    ctx.hostActions.register("side/prompt", async (input) => {
+      const value = objectInput(input);
+      const mainSessionId = stringField(value, "sessionId");
+      const acceptance = await ctx.agentRuns.startWith(this.agentId, {
+        sessionId: this.resolve(mainSessionId),
+        text: stringField(value, "text"),
+      });
+      return { runId: acceptance.runId, acceptedSeq: acceptance.acceptedSeq };
+    });
+    ctx.hostActions.register("side/cancel", (input) => {
+      const value = objectInput(input);
+      return { cancelled: ctx.agentRuns.cancel(this.resolve(stringField(value, "sessionId"))) };
+    });
+  }
+
+  resolve(mainSessionId: string): string {
+    const digest = createHash("sha256")
+      .update("wuu-side-session\0")
+      .update(mainSessionId)
+      .digest("hex")
+      .slice(0, 40);
+    return `side-${digest}`;
+  }
+}
+
+declare module "cordis" {
+  interface Context {
+    sideSessions: SideSessionsService;
+  }
+}
+
+const sideHost: Plugin<SideHostConfig> = function side(ctx, config) {
+  new SideSessionsService(ctx, config.agentId);
+};
+
+sideHost.inject = ["agentRuns", "hostActions"];
+sideHost.provide = "sideSessions";
+export default sideHost;

@@ -11,6 +11,7 @@ import { projectionFeedPlugin } from "@wuu-v2/plugin-projection-feed";
 import { openAIProviderPlugin } from "@wuu-v2/plugin-provider-openai";
 import { scriptedProviderPlugin } from "@wuu-v2/plugin-provider-scripted";
 import { jsonlSessionPlugin } from "@wuu-v2/plugin-session-jsonl";
+import sideHost from "@wuu-v2/plugin-side/host";
 import { basicToolsPlugin } from "@wuu-v2/plugin-tools-basic";
 import { createKernelContext, kernelPlugin } from "@wuu-v2/kernel";
 
@@ -70,7 +71,13 @@ if (smoke) {
   }));
 }
 fibers.push(await ctx.plugin(defaultAgentLoopPlugin, { providerId }));
+fibers.push(await ctx.plugin(defaultAgentLoopPlugin, {
+  agentId: "side",
+  providerId,
+  tools: ["read"],
+}));
 fibers.push(await ctx.plugin(agentRuntimePlugin, { agentId: "default" }));
+fibers.push(await ctx.plugin(sideHost, { agentId: "side" }));
 
 const shutdown = async () => {
   for (const fiber of fibers.reverse()) await fiber.dispose();
@@ -113,6 +120,15 @@ try {
   }
 
   const recovered = await ctx.agentRuns.recoverAll();
+  const sideResolution = await ctx.hostActions.execute("side/resolve", { sessionId });
+  if (
+    !sideResolution ||
+    Array.isArray(sideResolution) ||
+    typeof sideResolution !== "object" ||
+    typeof sideResolution.sessionId !== "string"
+  ) {
+    throw new Error("side session was not resolved");
+  }
   const acceptance = await ctx.hostActions.execute("agent/prompt", { sessionId, text: prompt });
   if (!acceptance || Array.isArray(acceptance) || typeof acceptance !== "object") {
     throw new Error("agent prompt was not accepted");
