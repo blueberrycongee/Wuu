@@ -1,4 +1,5 @@
 import { SlotOutlet, type Context, type Plugin, type SlotHandle } from "@wuu-v2/client-runtime";
+import { layoutStyles } from "./styles.js";
 
 const layoutClient: Plugin = function layout(client) {
   let conversationSlot: SlotHandle;
@@ -34,6 +35,14 @@ const layoutClient: Plugin = function layout(client) {
   });
   conversationSlot = registration.children.get("layout/conversation")!;
   sideSlot = registration.children.get("layout/side")!;
+  client.effect(() => {
+    if (typeof document === "undefined") return () => {};
+    const style = document.createElement("style");
+    style.dataset.wuuPluginStyle = "layout";
+    style.textContent = layoutStyles;
+    document.head.append(style);
+    return () => style.remove();
+  }, "install layout styles");
 };
 
 layoutClient.inject = ["slots"];

@@ -1,4 +1,5 @@
 import { SlotOutlet, useProjection, type Context, type Plugin, type SlotHandle } from "@wuu-v2/client-runtime";
+import { conversationStyles } from "./styles.js";
 type ConversationValue = {
   messages: Array<{ id: string; role: string; text: string; status: string }>;
   running: boolean;
@@ -34,6 +35,14 @@ const conversationClient: Plugin = function conversation(client) {
     children: [{ name: "conversation/composer", kind: "chain", scope: "session" }],
   });
   composerSlot = registration.children.get("conversation/composer")!;
+  client.effect(() => {
+    if (typeof document === "undefined") return () => {};
+    const style = document.createElement("style");
+    style.dataset.wuuPluginStyle = "conversation";
+    style.textContent = conversationStyles;
+    document.head.append(style);
+    return () => style.remove();
+  }, "install conversation styles");
 };
 conversationClient.inject = ["clientProjections", "slots"];
 export default conversationClient;
