@@ -240,6 +240,13 @@ optional model-alias semantics; `host.session.send` delivers input to an
 existing Session. A send request carries a plugin-generated `request_id`, the
 model input, request-only context blocks with a size cap, a stable `cause`,
 and an optional `presentation: { kind: "query_bubble", text, name }`.
+Plugins choose how a busy target handles the input with
+`if_running: "queue" | "steer"`: `queue` starts another Turn after the active
+one, while `steer` injects the input into the active Turn. The default remains
+`queue`; a steered result returns `steered: true` and the active `turn_id`.
+Steering does not create a second lifecycle event, and cannot carry
+`context_blocks`; completion remains correlated with the active Turn's original
+request.
 
 `host.session.list` returns only Sessions owned by the calling plugin's
 generation; `host.session.cancel` enforces the same ownership check.
@@ -257,7 +264,8 @@ drive the next model turn; that protocol role does not claim a human author
 and cannot override the plugin origin in product records. Plugins should not
 copy the full internal prompt into the display summary, and the desktop side
 must not generate bubble content from model input on its own. When the target
-Session is busy, input enters the same ordinary turn queue. If the plugin
+Session is busy, input enters the same ordinary turn queue unless the request
+selects `if_running: "steer"`. If the plugin
 declares the `agent.turn.lifecycle` observe capability, the host delivers
 subsequent `running`, `completed`, `failed`, `interrupted`, and `discarded`
 states only to the submitting plugin, echoing the original `request_id`;

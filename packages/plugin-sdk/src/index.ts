@@ -895,8 +895,9 @@ export interface HostServiceContracts {
       };
       presentation?: { kind: "query_bubble"; text: string; name?: string };
       cause?: string;
+      if_running?: "queue" | "steer";
     };
-    result: { state: string; session_id: string; turn_id?: string; queue_id?: string };
+    result: { state: string; session_id: string; turn_id?: string; queue_id?: string; steered?: boolean };
   };
   "host.session.list": {
     params: { parent_session_id?: string };

@@ -437,6 +437,77 @@ func TestPluginSessionSendQueuesBusyThreadAndReportsLaterTransitions(t *testing.
 	}
 }
 
+func TestPluginSessionSendSteersBusyThreadWithoutQueueingAnotherTurn(t *testing.T) {
+	chatStarted := make(chan struct{})
+	releaseFirst := make(chan struct{})
+	client := &fakeClient{
+		responses: []providers.ChatResponse{providersResponse("first"), providersResponse("second")},
+		onChat: func(call int, _ providers.ChatRequest) {
+			if call == 1 {
+				close(chatStarted)
+				<-releaseFirst
+			}
+		},
+	}
+	rt := newTestRuntime(t, client)
+	rt.PluginSessionRouter = runtime.NewPluginSessionRouter()
+	owner := &pluginTurnLifecycleClient{id: "subagent", calls: make(chan pluginhost.AgentTurnLifecycleInput, 8)}
+	rt.PluginHost = pluginhost.New(owner)
+	out := &lockedBuffer{}
+	srv := New(rt, out)
+	t.Cleanup(srv.Close)
+
+	created, err := rt.PluginSessionRouter.Create(context.Background(), owner.id, pluginhost.SessionCreateParams{RequestID: "create", Visibility: pluginhost.SessionVisibilityPlugin, ContextSource: pluginhost.SessionContextFresh})
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := rt.PluginSessionRouter.Send(context.Background(), owner.id, pluginhost.SessionSendParams{RequestID: "first", SessionID: created.SessionID, Input: pluginhost.SessionInput{Prompt: "work"}})
+	if err != nil || first.State != pluginhost.TurnLifecycleRunning {
+		t.Fatalf("first submit = %+v, %v", first, err)
+	}
+	select {
+	case <-chatStarted:
+	case <-time.After(3 * time.Second):
+		t.Fatal("first turn did not start")
+	}
+
+	params := pluginhost.SessionSendParams{
+		RequestID: "steer", SessionID: created.SessionID,
+		Input: pluginhost.SessionInput{Prompt: "summarize now"}, IfRunning: pluginhost.SessionIfRunningSteer,
+	}
+	steered, err := rt.PluginSessionRouter.Send(context.Background(), owner.id, params)
+	if err != nil || !steered.Steered || steered.State != pluginhost.TurnLifecycleRunning || steered.TurnID != first.TurnID || steered.QueueID != "" {
+		t.Fatalf("steer = %+v, %v", steered, err)
+	}
+	replayed, err := rt.PluginSessionRouter.Send(context.Background(), owner.id, params)
+	if err != nil || !replayed.Steered || replayed.TurnID != first.TurnID {
+		t.Fatalf("idempotent steer = %+v, %v", replayed, err)
+	}
+
+	srv.queuedTurnMu.Lock()
+	queued := len(srv.pendingQueuedTurns[created.SessionID])
+	srv.queuedTurnMu.Unlock()
+	if queued != 0 {
+		t.Fatalf("steer queued %d follow-up turn(s)", queued)
+	}
+	thread := srv.thread(created.SessionID)
+	thread.mu.Lock()
+	pendingSteers := len(thread.pendingSteers)
+	thread.mu.Unlock()
+	if pendingSteers != 1 {
+		t.Fatalf("pending steers = %d, want 1", pendingSteers)
+	}
+
+	close(releaseFirst)
+	waitForTurnCompletedForThread(t, out, created.SessionID)
+	thread.mu.Lock()
+	turns := len(thread.Turns)
+	thread.mu.Unlock()
+	if turns != 1 {
+		t.Fatalf("steer created %d turns, want 1", turns)
+	}
+}
+
 func TestQueuedUserWorkHasPriorityOverPluginWakeups(t *testing.T) {
 	srv := &Server{pendingQueuedTurns: map[string][]queuedTurn{}}
 	threadID := "priority-thread"

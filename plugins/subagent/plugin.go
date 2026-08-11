@@ -163,15 +163,20 @@ func sendMessage(ctx context.Context, host pluginapi.Host, call pluginapi.ToolCa
 	if err != nil {
 		return pluginapi.ToolResult{}, err
 	}
-	record.RequestID = "turn-" + requestID
+	nextRequestID := "turn-" + requestID
+	previousRequestID := record.RequestID
+	record.RequestID = nextRequestID
 	record.ParentSessionID = call.SessionID
 	record.ParentTurnID = call.TurnID
 	if err := saveRecord(ctx, host, record); err != nil {
 		return pluginapi.ToolResult{}, err
 	}
 	var sent pluginapi.SessionSendResult
-	if err := host.CallHost(ctx, pluginapi.HostServiceSessionSend, pluginapi.SessionSendParams{RequestID: record.RequestID, SessionID: record.SessionID, Input: pluginapi.SessionInput{Prompt: strings.TrimSpace(args.Message)}, Presentation: &pluginapi.SessionInputPresentation{Kind: "query_bubble", Text: "父任务已更新要求", Name: record.Name}, Cause: "subagent.followup"}, &sent); err != nil {
+	if err := host.CallHost(ctx, pluginapi.HostServiceSessionSend, pluginapi.SessionSendParams{RequestID: nextRequestID, SessionID: record.SessionID, Input: pluginapi.SessionInput{Prompt: strings.TrimSpace(args.Message)}, Presentation: &pluginapi.SessionInputPresentation{Kind: "query_bubble", Text: "父任务已更新要求", Name: record.Name}, Cause: "subagent.followup", IfRunning: pluginapi.SessionIfRunningSteer}, &sent); err != nil {
 		return pluginapi.ToolResult{}, err
+	}
+	if sent.Steered {
+		record.RequestID = previousRequestID
 	}
 	record.State = sent.State
 	record.TurnID = sent.TurnID
@@ -179,7 +184,7 @@ func sendMessage(ctx context.Context, host pluginapi.Host, call pluginapi.ToolCa
 	if err := saveRecord(ctx, host, record); err != nil {
 		return pluginapi.ToolResult{}, err
 	}
-	return pluginapi.TextResult(fmt.Sprintf(`{"session_id":%q,"state":%q}`, record.SessionID, sent.State)), nil
+	return pluginapi.TextResult(fmt.Sprintf(`{"session_id":%q,"state":%q,"steered":%t}`, record.SessionID, sent.State, sent.Steered)), nil
 }
 
 func closeAgent(ctx context.Context, host pluginapi.Host, call pluginapi.ToolCall) (pluginapi.ToolResult, error) {

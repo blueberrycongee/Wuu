@@ -208,6 +208,8 @@ const (
 	SessionContextFork             = "fork"
 	SessionInputPlugin             = "plugin"
 	SessionPresentationQueryBubble = "query_bubble"
+	SessionIfRunningQueue          = "queue"
+	SessionIfRunningSteer          = "steer"
 )
 
 type SessionCreateParams struct {
@@ -242,6 +244,7 @@ type SessionSendParams struct {
 	Input        SessionInput              `json:"input"`
 	Presentation *SessionInputPresentation `json:"presentation,omitempty"`
 	Cause        string                    `json:"cause,omitempty"`
+	IfRunning    string                    `json:"if_running,omitempty"`
 }
 
 type SessionSendResult struct {
@@ -249,6 +252,7 @@ type SessionSendResult struct {
 	SessionID string `json:"session_id"`
 	TurnID    string `json:"turn_id,omitempty"`
 	QueueID   string `json:"queue_id,omitempty"`
+	Steered   bool   `json:"steered,omitempty"`
 }
 
 type SessionListParams struct {

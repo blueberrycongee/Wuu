@@ -191,6 +191,10 @@ initialize 里用 `required_services` 声明消费项，声明是获得调用权
 owner、visibility、parent、fresh/fork、workspace 和可选模型别名语义的 Session；`host.session.send` 向已有
 Session 投递输入。send 请求包含插件生成的 `request_id`、模型输入、有大小上限的 request-only
 context blocks、稳定 cause，以及可选的 `presentation: { kind: "query_bubble", text, name }`。
+插件通过 `if_running: "queue" | "steer"` 决定目标繁忙时的投递方式：`queue` 在当前 Turn 之后
+再启动一个 Turn，`steer` 则把输入注入当前 Turn。默认仍为 `queue`；steer 成功时返回
+`steered: true` 和当前 `turn_id`。steer 不会创建第二组生命周期事件，也不能携带
+`context_blocks`；完成事件仍关联当前 Turn 的原始请求。
 
 `host.session.list` 只返回当前 generation 所属插件拥有的 Session；`host.session.cancel` 也执行同样
 的所有权校验。cancel 可以用 send 返回的 `turn_id` 精确取消当前 Turn，或用 `queue_id` 移除尚未
@@ -203,7 +207,8 @@ context blocks、稳定 cause，以及可选的 `presentation: { kind: "query_bu
 标成只读、可审计。Provider 适配层会将它投影为普通 `user` role 来驱动下一回合；这个协议角色
 不等于真人作者身份，也不能覆盖产品记录中的插件来源。插件不应把完整内部 Prompt 复制到展示
 摘要，桌面端也不应自行从模型输入生成气泡内容。
-目标 Session 忙时进入同一条普通 Turn 队列。插件若声明 `agent.turn.lifecycle` observe 能力，
+目标 Session 忙时默认进入同一条普通 Turn 队列，除非请求选择 `if_running: "steer"`。插件若声明
+`agent.turn.lifecycle` observe 能力，
 宿主会把后续 running、completed、failed、interrupted、discarded 状态只发给原提交插件，并带回
 原样的 `request_id`；终态还包含最终模型输出。Cron、重试、错过触发恢复、并发合并和业务状态都必须由插件持有；核心不
 提供 timer tick，也不解释 `request_id` 或 cause。

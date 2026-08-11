@@ -21,6 +21,7 @@ import {
   type ConversationProcessSnapshotV1,
   type FilePreviewSnapshotV1,
   type HeaderSnapshotV1,
+  type HostServiceContracts,
   type NavigationSnapshotV1,
   type RuntimeInitializeResult,
   type RuntimePlugin,
@@ -42,6 +43,13 @@ const kernelRequirement = requireKernelService("host.session.send");
 if (kernelRequirement.name !== "host.session.send" || kernelRequirement.major_version !== 1 || !kernelRequirement.required) {
   throw new Error("kernel service requirement contract failed");
 }
+const steerDelivery: HostServiceContracts["host.session.send"]["params"] = {
+  request_id: "follow-up-1",
+  session_id: "child-1",
+  input: { prompt: "Summarize now" },
+  if_running: "steer",
+};
+if (steerDelivery.if_running !== "steer") throw new Error("session steer contract failed");
 
 if (!PRESENTATION_TARGETS.includes("conversation.tool-activity") || !PRESENTATION_TARGETS.includes("settings")) {
   throw new Error("presentation target contract failed");

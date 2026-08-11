@@ -201,8 +201,18 @@ func (s *Server) sendPluginSession(ctx context.Context, pluginID string, params 
 	params.SessionID = strings.TrimSpace(params.SessionID)
 	params.Input.Prompt = strings.TrimSpace(params.Input.Prompt)
 	params.Cause = strings.TrimSpace(params.Cause)
+	params.IfRunning = strings.TrimSpace(params.IfRunning)
 	if pluginID == "" || params.RequestID == "" || params.SessionID == "" || params.Input.Prompt == "" {
 		return pluginhost.SessionSendResult{}, errors.New("plugin owner, request_id, session_id, and input.prompt are required")
+	}
+	if params.IfRunning == "" {
+		params.IfRunning = pluginhost.SessionIfRunningQueue
+	}
+	if params.IfRunning != pluginhost.SessionIfRunningQueue && params.IfRunning != pluginhost.SessionIfRunningSteer {
+		return pluginhost.SessionSendResult{}, errors.New("if_running must be queue or steer")
+	}
+	if params.IfRunning == pluginhost.SessionIfRunningSteer && len(params.Input.ContextBlocks) > 0 {
+		return pluginhost.SessionSendResult{}, errors.New("context_blocks cannot be used when if_running is steer")
 	}
 	if len([]byte(params.RequestID)) > pluginhost.MaxSessionSendRequestIDBytes {
 		return pluginhost.SessionSendResult{}, fmt.Errorf("request_id exceeds %d bytes", pluginhost.MaxSessionSendRequestIDBytes)
@@ -250,6 +260,13 @@ func (s *Server) sendPluginSession(ctx context.Context, pluginID string, params 
 		}
 		msg.Name = strings.TrimSpace(params.Presentation.Name)
 	}
+	if params.IfRunning == pluginhost.SessionIfRunningSteer {
+		if turnID, steered := s.steerPluginSession(th, msg); steered {
+			return pluginhost.SessionSendResult{
+				State: pluginhost.TurnLifecycleRunning, SessionID: th.ID, TurnID: turnID, Steered: true,
+			}, nil
+		}
+	}
 	snapshot := turnRuntimeSnapshot{}.withPermissions(normalizeTurnPermissions(s.rt.Permissions))
 	snapshot.RequestContext = requestContext
 	snapshot.PluginTurn = &pluginTurnReference{PluginID: pluginID, RequestID: params.RequestID}
@@ -276,11 +293,47 @@ func pluginSessionRequestClientID(pluginID, requestID string) string {
 	return "plugin:" + strings.TrimSpace(pluginID) + ":" + strings.TrimSpace(requestID)
 }
 
+func (s *Server) steerPluginSession(th *threadState, msg providers.ChatMessage) (string, bool) {
+	if th == nil {
+		return "", false
+	}
+	th.mu.Lock()
+	defer th.mu.Unlock()
+	if !th.running || th.currentTurn == "" || th.currentTurnKind == TurnKindCompact || th.interrupting {
+		return "", false
+	}
+	for _, existing := range th.pendingSteers {
+		if existing.ClientID == msg.ClientID {
+			return th.currentTurn, true
+		}
+	}
+	msg.Steered = true
+	th.pendingSteers = append(th.pendingSteers, msg)
+	th.signalSteerWakeLocked()
+	return th.currentTurn, true
+}
+
 func (s *Server) findPluginSessionRequest(th *threadState, clientID string) (pluginhost.SessionSendResult, bool) {
 	if th == nil || strings.TrimSpace(clientID) == "" {
 		return pluginhost.SessionSendResult{}, false
 	}
 	th.mu.Lock()
+	for _, pending := range th.pendingSteers {
+		if pending.ClientID == clientID {
+			result := pluginhost.SessionSendResult{
+				State: pluginhost.TurnLifecycleRunning, SessionID: th.ID, TurnID: th.currentTurn, Steered: true,
+			}
+			th.mu.Unlock()
+			return result, true
+		}
+	}
+	steered := false
+	for _, message := range th.History {
+		if message.ClientID == clientID && message.Steered {
+			steered = true
+			break
+		}
+	}
 	for _, turn := range th.Turns {
 		for _, item := range turn.Items {
 			if item.Type != ThreadItemUserMessage || item.SourceID != clientID {
@@ -290,7 +343,7 @@ func (s *Server) findPluginSessionRequest(th *threadState, clientID string) (plu
 			if turn.Status == TurnStatusInProgress {
 				state = pluginhost.TurnLifecycleRunning
 			}
-			result := pluginhost.SessionSendResult{State: state, SessionID: th.ID, TurnID: turn.ID}
+			result := pluginhost.SessionSendResult{State: state, SessionID: th.ID, TurnID: turn.ID, Steered: steered}
 			th.mu.Unlock()
 			return result, true
 		}

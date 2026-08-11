@@ -60,6 +60,8 @@ const (
 	CapabilityAgentTurnLifecycle      = "agent.turn.lifecycle"
 	CapabilityAgentTurnInterrupted    = "agent.turn.interrupted"
 	CapabilityAgentPreStep            = "agent.pre_step"
+	SessionIfRunningQueue             = "queue"
+	SessionIfRunningSteer             = "steer"
 )
 
 const (
@@ -422,6 +424,7 @@ type SessionSendParams struct {
 	Input        SessionInput              `json:"input"`
 	Presentation *SessionInputPresentation `json:"presentation,omitempty"`
 	Cause        string                    `json:"cause,omitempty"`
+	IfRunning    string                    `json:"if_running,omitempty"`
 }
 
 type SessionSendResult struct {
@@ -429,6 +432,7 @@ type SessionSendResult struct {
 	SessionID string `json:"session_id"`
 	TurnID    string `json:"turn_id,omitempty"`
 	QueueID   string `json:"queue_id,omitempty"`
+	Steered   bool   `json:"steered,omitempty"`
 }
 
 type SessionListParams struct {
