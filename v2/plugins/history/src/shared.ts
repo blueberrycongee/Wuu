@@ -11,3 +11,11 @@ export interface HistoryEntry {
   updatedAt: string;
   running: boolean;
 }
+
+export interface HistoryEntryProjection {
+  [key: string]: JsonValue;
+  title: string;
+  updatedAt: string;
+  running: boolean;
+  hasPrompt: boolean;
+}

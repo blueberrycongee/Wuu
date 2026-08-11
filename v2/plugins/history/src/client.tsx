@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import {
+  useProjection,
   useActiveSession,
   type Context,
   type Plugin,
 } from "@wuu-v2/client-runtime";
 import type { JsonValue } from "@wuu-v2/contracts";
-import type { HistoryEntry } from "./shared.js";
+import type { HistoryEntry, HistoryEntryProjection } from "./shared.js";
 import { historyStyles } from "./styles.js";
 
 function objectValue(value: JsonValue | undefined): Record<string, JsonValue> {
@@ -33,6 +34,31 @@ function parseEntries(value: JsonValue | undefined): HistoryEntry[] {
       running: entry.running,
     };
   });
+}
+
+function HistoryRow({
+  client,
+  entry,
+  active,
+}: {
+  client: Context;
+  entry: HistoryEntry;
+  active: boolean;
+}) {
+  const live = useProjection<HistoryEntryProjection>(client, entry.id, "history/entry");
+  const value = live ?? entry;
+  return (
+    <button
+      type="button"
+      className={active ? "is-active" : undefined}
+      aria-current={active ? "page" : undefined}
+      title={entry.id}
+      onClick={() => client.activeSession.select(entry.id)}
+    >
+      <span>{value.title}</span>
+      {value.running ? <i aria-label="Running" /> : null}
+    </button>
+  );
 }
 
 function HistorySidebar({ client }: { client: Context }) {
@@ -83,17 +109,12 @@ function HistorySidebar({ client }: { client: Context }) {
       </header>
       <nav className="history-list" aria-label="Tasks">
         {entries.map((entry) => (
-          <button
+          <HistoryRow
             key={entry.id}
-            type="button"
-            className={entry.id === activeSessionId ? "is-active" : undefined}
-            aria-current={entry.id === activeSessionId ? "page" : undefined}
-            title={entry.id}
-            onClick={() => client.activeSession.select(entry.id)}
-          >
-            <span>{entry.title}</span>
-            {entry.running ? <i aria-label="Running" /> : null}
-          </button>
+            client={client}
+            entry={entry}
+            active={entry.id === activeSessionId}
+          />
         ))}
         {loading ? <p>Loading tasks…</p> : null}
         {!loading && !entries.length ? <p>No tasks yet</p> : null}
@@ -123,5 +144,5 @@ const historyClient: Plugin = function history(client) {
   }, "install History styles");
 };
 
-historyClient.inject = ["activeSession", "clientActions", "slots"];
+historyClient.inject = ["activeSession", "clientActions", "clientProjections", "slots"];
 export default historyClient;

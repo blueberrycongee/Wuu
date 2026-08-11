@@ -270,7 +270,14 @@ try {
       !inspection.tools.includes("read") ||
       inspection.fibers.some(({ pending }) => pending.length) ||
       projectionFrame.lastDurableSeq !== events.at(-1)?.seq ||
-      !projections.some(({ key }) => key === "conversation")
+      !projections.some(({ key }) => key === "conversation") ||
+      !projections.some(({ key, value }) =>
+        key === "history/entry" &&
+        value &&
+        !Array.isArray(value) &&
+        typeof value === "object" &&
+        value.title === prompt &&
+        value.running === false)
     ) {
       throw new Error("smoke run did not complete the model-tool-result loop");
     }

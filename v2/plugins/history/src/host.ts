@@ -5,7 +5,11 @@ import type {
   SessionEvent,
 } from "@wuu-v2/contracts";
 import { Service, type Context, type Plugin } from "@wuu-v2/kernel";
-import type { HistoryEntry, HistoryRecord } from "./shared.js";
+import type {
+  HistoryEntry,
+  HistoryEntryProjection,
+  HistoryRecord,
+} from "./shared.js";
 
 const source = { pluginId: "history", generation: "v1" } as const;
 
@@ -13,12 +17,18 @@ function hasMarker(events: readonly SessionEvent[]): boolean {
   return events.some((event) => event.record.type === "history/session-created");
 }
 
+function promptTitle(record: AgentSessionRecord): string | undefined {
+  if (record.type !== "agent/user-message") return;
+  const text = record.data.content.map((item) => item.text).join(" ").replace(/\s+/g, " ").trim();
+  if (!text) return;
+  return text.length > 72 ? `${text.slice(0, 69)}…` : text;
+}
+
 function firstPrompt(events: readonly SessionEvent[]): string | undefined {
   for (const event of events) {
     const record = event.record as AgentSessionRecord;
-    if (record.type !== "agent/user-message") continue;
-    const text = record.data.content.map((item) => item.text).join(" ").replace(/\s+/g, " ").trim();
-    if (text) return text.length > 72 ? `${text.slice(0, 69)}…` : text;
+    const title = promptTitle(record);
+    if (title) return title;
   }
 }
 
@@ -85,8 +95,32 @@ declare module "cordis" {
 
 const historyHost: Plugin = function history(ctx) {
   new HistorySessionsService(ctx);
+  ctx.projections.register("history/entry", (current, event) => {
+    const record = event.record as AgentSessionRecord | HistoryRecord;
+    if (record.type === "history/session-created") {
+      return {
+        title: "New task",
+        updatedAt: event.time,
+        running: false,
+        hasPrompt: false,
+      } satisfies HistoryEntryProjection;
+    }
+    if (!current || typeof current !== "object" || Array.isArray(current)) return current;
+    const value = current as unknown as HistoryEntryProjection;
+    const prompt = value.hasPrompt ? undefined : promptTitle(record as AgentSessionRecord);
+    const title = prompt ?? value.title;
+    const running = record.type === "agent/run-state"
+      ? record.data.state === "started"
+      : value.running;
+    return {
+      title,
+      updatedAt: event.time,
+      running,
+      hasPrompt: value.hasPrompt || prompt !== undefined,
+    } satisfies HistoryEntryProjection;
+  });
 };
 
-historyHost.inject = ["hostActions", "modelRouting", "sessions", "toolPolicy"];
+historyHost.inject = ["hostActions", "modelRouting", "projections", "sessions", "toolPolicy"];
 historyHost.provide = "historySessions";
 export default historyHost;
