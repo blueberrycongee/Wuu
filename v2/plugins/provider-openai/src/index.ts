@@ -126,7 +126,7 @@ class OpenAIProvider implements ModelProvider {
     }
 
     const calls = new Map<number, ToolCallAccumulator>();
-    let stopReason: "stop" | "tool_calls" = "stop";
+    let stopReason: "stop" | "tool_calls" | undefined;
     for await (const data of readSse(response)) {
       request.signal.throwIfAborted();
       if (data === "[DONE]") break;
@@ -155,10 +155,20 @@ class OpenAIProvider implements ModelProvider {
         if (update.function?.arguments) current.arguments += update.function.arguments;
         calls.set(update.index, current);
       }
-      if (choice.finish_reason === "tool_calls") stopReason = "tool_calls";
+      if (choice.finish_reason) {
+        if (choice.finish_reason !== "stop" && choice.finish_reason !== "tool_calls") {
+          throw new Error(`model response ended with ${choice.finish_reason}`);
+        }
+        if (stopReason) throw new Error("model response emitted multiple finish reasons");
+        stopReason = choice.finish_reason;
+      }
     }
 
-    for (const call of [...calls.values()]) {
+    if (!stopReason) throw new Error("model response ended without a finish reason");
+    if ((stopReason === "tool_calls") !== Boolean(calls.size)) {
+      throw new Error("model tool calls do not match its finish reason");
+    }
+    for (const [, call] of [...calls.entries()].sort(([left], [right]) => left - right)) {
       if (!call.id || !call.name) throw new Error("incomplete model tool call");
       let input: JsonValue;
       try {
@@ -171,7 +181,7 @@ class OpenAIProvider implements ModelProvider {
         call: { type: "tool_call", callId: call.id, name: call.name, input },
       };
     }
-    yield { type: "done", stopReason: calls.size ? "tool_calls" : stopReason };
+    yield { type: "done", stopReason };
   }
 }
 
