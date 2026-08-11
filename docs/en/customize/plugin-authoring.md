@@ -302,17 +302,20 @@ only first-party plugins can call.
 
 ### Execution scope
 
-Every `tool.execute` or `capability.invoke` dispatch is one execution, and the
-host gives it a unique `execution_id` carried on the invocation frame. Open
-semantics ride the invocation frame itself, close rides its response, and
+Every `tool.execute`, `capability.invoke`, or `service.invoke` dispatch is one
+execution, and the host gives it a unique `execution_id` carried on the
+invocation frame. Open semantics ride the invocation frame itself, close rides its response, and
 `execution.cancel` is the only mid-flight frame:
 
-- While handling its own tool/capability call, a plugin can call
-  `execution.update` to report progress (`execution_id` + `message` + arbitrary
-  plugin-owned `detail`); the host verifies the caller owns the execution;
+- While handling its own tool, capability, or service call, a plugin can call
+  `execution.update` (or the TypeScript SDK's `reportExecutionUpdate`) to report
+  progress (`execution_id` + `message` + arbitrary plugin-owned `detail`); the
+  host verifies the caller owns the execution;
 - When the host cancels the dispatch, it sends `execution.cancel`, and the SDK
-  translates it into context cancellation of the handler; the plugin maps the
-  signal to whatever local cancellation primitive it owns;
+  translates it into handler cancellation. Go handlers receive it through
+  `context.Context`; TypeScript handlers receive it through the third argument's
+  `AbortSignal`. The plugin maps that signal to any local cancellation primitive
+  it owns;
 - Cancel is fire-and-forget: the host's terminal state is decided by the invoke
   returning, never by plugin acknowledgement. A late or unauthorized update
   fails with `execution_not_found` / `service_not_authorized` and can never

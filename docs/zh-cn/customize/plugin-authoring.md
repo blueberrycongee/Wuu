@@ -225,15 +225,17 @@ context blocks、稳定 cause，以及可选的 `presentation: { kind: "query_bu
 
 ### 执行作用域
 
-每次 `tool.execute` 或 `capability.invoke` 分发都是一次 execution，宿主为它生成唯一的
+每次 `tool.execute`、`capability.invoke` 或 `service.invoke` 分发都是一次 execution，宿主为它生成唯一的
 `execution_id` 并随调用帧下发。open 语义由调用帧本身携带、close 随其响应返回，
 `execution.cancel` 是唯一的 mid-flight 帧：
 
-- 插件在处理自己的 tool/capability 调用时，可以调用 `execution.update` 报告进度
+- 插件在处理自己的 tool、capability 或 service 调用时，可以调用 `execution.update`（TypeScript
+  SDK 也提供 `reportExecutionUpdate`）报告进度
   （`execution_id` + `message` + 任意插件自有 `detail`）；宿主校验调用方必须是该 execution
   的所有者；
-- 宿主取消本次分发时发送 `execution.cancel`，SDK 把它翻译为处理函数的 context 取消，插件负责
-  把信号转成自己拥有的任何本地取消原语；
+- 宿主取消本次分发时发送 `execution.cancel`。Go 处理函数通过 `context.Context` 接收取消，
+  TypeScript 处理函数通过第三个参数中的 `AbortSignal` 接收取消；插件负责把信号转成自己拥有的
+  任何本地取消原语；
 - cancel 是 fire-and-forget：宿主终态由 invoke 返回决定，不等待插件确认；迟到或越权的 update
   会得到 `execution_not_found` / `service_not_authorized` 错误，且不会重新打开已结束的执行。
 
