@@ -1772,6 +1772,7 @@ func TestToolkit_RunShellSetsNonInteractiveEnv(t *testing.T) {
 
 func TestToolkit_RunShellAllowsSafeGitCommands(t *testing.T) {
 	kit, root := setupGitRepo(t)
+	enableShellExecutionForTest(kit.env)
 	kit.env.GitWrapperExecutable = buildWuuForGitWrapper(t)
 	kit.SetSessionDir(t.TempDir())
 
