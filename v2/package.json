@@ -12,14 +12,19 @@
   "scripts": {
     "smoke": "node --import tsx apps/harness/src/index.ts --smoke",
     "start": "node --import tsx apps/harness/src/index.ts",
+    "test:client-runtime": "node --import tsx --test packages/client-runtime/src/index.test.tsx",
     "test:session": "node --import tsx --test plugins/session-jsonl/src/index.test.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "cordis": "4.0.0-rc.8"
+    "cordis": "4.0.0-rc.8",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
     "tsx": "^4.20.6",
     "typescript": "^5.9.3"
   },
