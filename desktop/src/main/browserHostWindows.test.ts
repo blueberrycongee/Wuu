@@ -51,6 +51,8 @@ class FakeView implements BrowserViewHandle {
   captureCount = 0;
   boundsSet: Rectangle | undefined;
   visibleState: boolean | undefined;
+  backgroundThrottling = true;
+  readonly backgroundThrottlingChanges: boolean[] = [];
   zoomFactor = 1;
   readonly listeners = new Map<string, Array<(...args: unknown[]) => void>>();
   closed = false;
@@ -73,7 +75,10 @@ class FakeView implements BrowserViewHandle {
   readonly webContents: BrowserWebContentsHandle = {
     id: this.wcID,
     debugger: this.debuggerHandle,
-    setBackgroundThrottling: () => undefined,
+    setBackgroundThrottling: (allowed: boolean) => {
+      this.backgroundThrottling = allowed;
+      this.backgroundThrottlingChanges.push(allowed);
+    },
     setWindowOpenHandler: () => undefined,
     setZoomFactor: (factor: number) => {
       this.zoomFactor = factor;
@@ -247,6 +252,38 @@ function twoNodeSnapshot(): Record<string, unknown> {
 }
 
 describe("BrowserHostCoordinator CDP routing", () => {
+  it("parks hidden tabs and reactivates them only during an operation", async () => {
+    const harness = makeHarness();
+    await openTab(harness, "/repo", "t1");
+    const view = harness.views[0];
+    expect(view.visibleState).toBe(false);
+    expect(view.backgroundThrottling).toBe(true);
+
+    let release!: () => void;
+    view.webContents.loadURL = async (url: string) => {
+      view.loadedURLs.push(url);
+      await new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      view.url = url;
+    };
+    const request = harness.coordinator.handleServerRequest(
+      serverRequest(
+        "browser/cdp",
+        { workdir: "/repo", tab_id: "t1", method: "navigate", params: { url: "https://active.test/" } },
+        "active-1",
+      ),
+    );
+    await Promise.resolve();
+    expect(view.visibleState).toBe(true);
+    expect(view.backgroundThrottling).toBe(false);
+
+    release();
+    await request;
+    expect(view.visibleState).toBe(false);
+    expect(view.backgroundThrottling).toBe(true);
+  });
+
   it("translates navigate to loadURL and returns url + title", async () => {
     const harness = makeHarness();
     await openTab(harness, "/repo", "t1");
@@ -531,7 +568,7 @@ describe("BrowserHostCoordinator visibility takeover", () => {
     harness.coordinator.setOverlaySuppressed("/repo", "t1", true);
     expect(view.visibleState).toBe(false);
     harness.coordinator.setOverlaySuppressed("/repo", "t1", false);
-    expect(view.visibleState).toBe(true);
+    expect(view.visibleState).toBe(false);
   });
 });
 

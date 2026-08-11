@@ -145,6 +145,10 @@ type TabEntry = {
   // visibility. setVisibility must respect it so an agent promotion cannot paint
   // over a modal; cleared back to visible when the overlay goes away.
   suppressed: boolean;
+  // A tab is presented while a takeover panel or PiP owns it. Hidden tabs are
+  // only kept fully active for the duration of an agent operation.
+  presented: boolean;
+  activeOperations: number;
 };
 
 type BoundsReport = {
@@ -319,9 +323,10 @@ export class BrowserHostCoordinator {
     if (!entry || entry.view.webContents.isDestroyed()) return undefined;
     const previous = entry.view.getBounds();
     this.reparent(entry, parent);
+    entry.presented = true;
     entry.view.webContents.setZoomFactor(zoom);
     entry.view.setBounds(rect);
-    entry.view.setVisible(true);
+    this.applyEntryActivity(entry);
     return previous;
   }
 
@@ -355,8 +360,9 @@ export class BrowserHostCoordinator {
     if (!entry || entry.view.webContents.isDestroyed()) return;
     if (entry.currentParent !== owner) return;
     this.reparent(entry, this.ensureHostWindow());
+    entry.presented = false;
     entry.view.setBounds(restore);
-    entry.view.setVisible(!entry.suppressed);
+    this.applyEntryActivity(entry);
   }
 
   tabSurfaceMeta(workdir: string, tabID: string): BrowserTabSurfaceMeta | undefined {
@@ -425,7 +431,7 @@ export class BrowserHostCoordinator {
     // Persist the flag so a concurrent set_visibility promotion respects it
     // instead of painting the agent view back over the modal.
     entry.suppressed = suppressed;
-    entry.view.setVisible(!suppressed);
+    this.applyEntryActivity(entry);
   }
 
   // -------------------------------------------------------------------------
@@ -470,9 +476,6 @@ export class BrowserHostCoordinator {
     let entry = this.tabs.get(key);
     if (!entry) {
       const view = this.deps.createView();
-      // Hidden views default to throttled rAF/timers; disable so a background
-      // SPA keeps ticking for the agent.
-      view.webContents.setBackgroundThrottling(false);
       // Agent tabs never spawn popups; deny window.open. (A future revision may
       // adopt them as hidden tabs instead of denying.)
       view.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
@@ -488,7 +491,10 @@ export class BrowserHostCoordinator {
         nodeMap: new Map(),
         currentParent: this.ensureHostWindow().contentView,
         suppressed: false,
+        presented: false,
+        activeOperations: 0,
       };
+      this.applyEntryActivity(entry);
       this.tabs.set(key, entry);
       this.agentWebContentsIds.add(view.webContents.id);
       const onNavigate = (...args: unknown[]): void => {
@@ -500,7 +506,7 @@ export class BrowserHostCoordinator {
     }
     const initialURL = typeof params.initial_url === "string" ? params.initial_url : "";
     if (initialURL) {
-      await entry.view.webContents.loadURL(initialURL);
+      await this.withActiveEntry(entry, () => entry.view.webContents.loadURL(initialURL));
     }
     return { ok: true, tab_id: tabID };
   }
@@ -534,14 +540,16 @@ export class BrowserHostCoordinator {
       // report repositions it.
       const target = this.resolveTargetWindow(workdir, tabID) ?? this.ensureHostWindow();
       this.reparent(entry, target);
-      entry.view.setVisible(!entry.suppressed);
+      entry.presented = true;
+      this.applyEntryActivity(entry);
       const rect = this.lastBounds.get(tabKey(workdir, tabID))?.rect;
       if (rect) entry.view.setBounds(rect);
     } else {
-      // Park back on the hidden host. Keep the view "visible" so capturePage
-      // keeps producing frames while the tab runs in the background.
+      // Park back on the hidden host. Agent operations temporarily reactivate
+      // the view when they need timers, layout, input, or a fresh frame.
       this.reparent(entry, this.ensureHostWindow());
-      entry.view.setVisible(!entry.suppressed);
+      entry.presented = false;
+      this.applyEntryActivity(entry);
     }
     return { ok: true };
   }
@@ -550,7 +558,7 @@ export class BrowserHostCoordinator {
     const entry = this.requireTab(workdir, String(params.tab_id ?? ""));
     const destPath = String(params.dest_path ?? "");
     if (!destPath) throw new Error("screenshot requires dest_path");
-    return this.captureToFile(entry, destPath);
+    return this.withActiveEntry(entry, () => this.captureToFile(entry, destPath));
   }
 
   // browser/cdp with the >1MB overflow gate applied to the semantic result.
@@ -561,7 +569,9 @@ export class BrowserHostCoordinator {
     const entry = this.requireTab(workdir, String(params.tab_id ?? ""));
     const semanticMethod = String(params.method ?? "");
     const semanticParams = asRecord(params.params);
-    const output = await this.runSemantic(entry, semanticMethod, semanticParams);
+    const output = await this.withActiveEntry(entry, () =>
+      this.runSemantic(entry, semanticMethod, semanticParams),
+    );
     const json = JSON.stringify(output ?? null);
     const size = Buffer.byteLength(json, "utf8");
     if (size > MAX_INLINE_RESULT_BYTES) {
@@ -732,6 +742,24 @@ export class BrowserHostCoordinator {
   // -------------------------------------------------------------------------
   // Helpers.
   // -------------------------------------------------------------------------
+  private applyEntryActivity(entry: TabEntry): void {
+    if (entry.view.webContents.isDestroyed()) return;
+    const active = entry.presented || entry.activeOperations > 0;
+    entry.view.webContents.setBackgroundThrottling(!active);
+    entry.view.setVisible(active && !entry.suppressed);
+  }
+
+  private async withActiveEntry<T>(entry: TabEntry, operation: () => Promise<T>): Promise<T> {
+    entry.activeOperations += 1;
+    this.applyEntryActivity(entry);
+    try {
+      return await operation();
+    } finally {
+      entry.activeOperations = Math.max(0, entry.activeOperations - 1);
+      this.applyEntryActivity(entry);
+    }
+  }
+
   private async captureToFile(
     entry: TabEntry,
     destPath: string,
