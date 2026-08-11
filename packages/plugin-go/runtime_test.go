@@ -282,6 +282,48 @@ func TestExecutionCancelPreemptsRunningTool(t *testing.T) {
 	}
 }
 
+func TestExecutionCancelPreemptsRunningService(t *testing.T) {
+	input := strings.Join([]string{
+		`{"id":"1","method":"initialize","params":{"protocol_version":1,"capability_protocol_version":3,"plugin_id":"slow-service"}}`,
+		`{"id":"2","method":"service.invoke","params":{"service":"search.provider","method":"query","caller":"notes","execution_id":"exec-service"}}`,
+		`{"id":"3","method":"execution.cancel","params":{"execution_id":"exec-service"}}`,
+		`{"id":"4","method":"shutdown"}`,
+	}, "\n") + "\n"
+	var output bytes.Buffer
+	observedCancel := make(chan error, 1)
+	err := ServeIO(context.Background(), strings.NewReader(input), &output, Handler{
+		Definition: Definition{ProvidedServices: []Service{{Name: "search.provider", Version: "1.0.0"}}},
+		InvokeService: func(ctx context.Context, _ Host, call ServiceCall) (json.RawMessage, error) {
+			if call.ExecutionID != "exec-service" {
+				observedCancel <- nil
+				return json.RawMessage(`{"state":"wrong execution"}`), nil
+			}
+			<-ctx.Done()
+			observedCancel <- ctx.Err()
+			return json.RawMessage(`{"state":"cancelled"}`), nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ctxErr := <-observedCancel; ctxErr == nil {
+		t.Fatal("service handler context was not canceled")
+	}
+	lines := strings.Split(strings.TrimSpace(output.String()), "\n")
+	cancelAck, serviceResult := -1, -1
+	for index, line := range lines {
+		if strings.Contains(line, `"id":"3"`) {
+			cancelAck = index
+		}
+		if strings.Contains(line, `"id":"2"`) {
+			serviceResult = index
+		}
+	}
+	if cancelAck == -1 || serviceResult == -1 || cancelAck > serviceResult || !strings.Contains(lines[serviceResult], "cancelled") {
+		t.Fatalf("service preemption order = %s", output.String())
+	}
+}
+
 func TestExecutionCancelForUnknownExecutionIsNoop(t *testing.T) {
 	input := strings.Join([]string{
 		`{"id":"1","method":"initialize","params":{"protocol_version":1,"capability_protocol_version":3,"plugin_id":"slow"}}`,

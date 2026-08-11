@@ -129,10 +129,11 @@ type ServiceRequirement struct {
 // ServiceCall is one validated call the host routes to a service provider.
 // Caller carries the consumer plugin ID authenticated by the host.
 type ServiceCall struct {
-	Service string          `json:"service"`
-	Method  string          `json:"method"`
-	Caller  string          `json:"caller"`
-	Params  json.RawMessage `json:"params,omitempty"`
+	Service     string          `json:"service"`
+	Method      string          `json:"method"`
+	Caller      string          `json:"caller"`
+	ExecutionID string          `json:"execution_id,omitempty"`
+	Params      json.RawMessage `json:"params,omitempty"`
 }
 
 // ServiceChangedNotice tells a consumer that a service resolution changed.
@@ -743,7 +744,7 @@ func ServeIO(ctx context.Context, input io.Reader, output io.Writer, handler Han
 			continue
 		}
 		envelope := queuedDispatch{request: request, ctx: serveCtx}
-		if request.Method == "tool.execute" || request.Method == "capability.invoke" {
+		if request.Method == "tool.execute" || request.Method == "capability.invoke" || request.Method == ServiceInvokeMethod {
 			var probe struct {
 				ExecutionID string `json:"execution_id"`
 			}
