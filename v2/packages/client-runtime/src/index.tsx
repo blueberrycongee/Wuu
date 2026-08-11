@@ -26,6 +26,8 @@ export interface SlotComponentProps {
 export interface SlotContribution {
   id: string;
   order?: number;
+  priority?: number;
+  select?(props: SlotComponentProps): boolean;
   component: ComponentType<SlotComponentProps>;
   children?: Array<Omit<SlotDeclaration, "parent">>;
 }
@@ -143,7 +145,31 @@ export class SlotsService extends Service {
       throw new Error(`stale slot authorization: ${handle.name}`);
     }
     return [...(this.contributions.get(handle.name)?.values() ?? [])]
-      .sort((left, right) => (left.order ?? 0) - (right.order ?? 0) || left.id.localeCompare(right.id));
+      .sort((left, right) => declaration.kind === "chain"
+        ? (right.priority ?? 0) - (left.priority ?? 0) || left.id.localeCompare(right.id)
+        : (left.order ?? 0) - (right.order ?? 0) || left.id.localeCompare(right.id));
+  }
+
+  renderEntries(handle: SlotHandle, props: SlotComponentProps): SlotContribution[] {
+    const declaration = this.declarations.get(handle.name);
+    if (!declaration || declaration.epoch !== handle.epoch) {
+      throw new Error(`stale slot authorization: ${handle.name}`);
+    }
+    if (declaration.scope === "session" && props.sessionId === undefined) return [];
+    const entries = this.entries(handle);
+    if (declaration.kind !== "chain") return entries;
+    const selected = entries.find((entry) => entry.select?.(props) ?? true);
+    return selected ? [selected] : [];
+  }
+
+  renderKey(handle: SlotHandle, contributionId: string, sessionId?: string): string {
+    const declaration = this.declarations.get(handle.name);
+    if (!declaration || declaration.epoch !== handle.epoch) {
+      throw new Error(`stale slot authorization: ${handle.name}`);
+    }
+    return declaration.scope === "session"
+      ? `${contributionId}:${sessionId}`
+      : contributionId;
   }
 }
 
@@ -331,12 +357,15 @@ export function SlotOutlet(props: {
     props.client.slots.snapshot,
     props.client.slots.snapshot,
   );
-  return props.client.slots.entries(props.slot).map((entry) =>
+  const componentProps: SlotComponentProps = {
+    client: props.client,
+    ...(props.ownerProps === undefined ? {} : { ownerProps: props.ownerProps }),
+    ...(props.sessionId === undefined ? {} : { sessionId: props.sessionId }),
+  };
+  return props.client.slots.renderEntries(props.slot, componentProps).map((entry) =>
     createElement(entry.component, {
-      key: entry.id,
-      client: props.client,
-      ...(props.ownerProps === undefined ? {} : { ownerProps: props.ownerProps }),
-      ...(props.sessionId === undefined ? {} : { sessionId: props.sessionId }),
+      key: props.client.slots.renderKey(props.slot, entry.id, props.sessionId),
+      ...componentProps,
     }),
   );
 }
