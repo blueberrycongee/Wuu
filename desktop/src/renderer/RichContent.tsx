@@ -12,6 +12,7 @@ import {
   type WorkspaceFileLinkTarget,
 } from "./LinkTargets";
 import { MessageCopyButton } from "./MessageActions";
+import { copyToClipboard, ThreadContextMenu } from "./ThreadContextMenu";
 import { useI18n } from "./i18n";
 import { Tooltip } from "./Tooltip";
 import { currentAppliedTheme, observeAppliedTheme, type AppliedTheme } from "./Theme";
@@ -465,6 +466,7 @@ function markdownComponents(
           <RichFileLink
             key={`a-${formatWorkspaceFileTarget(target)}`}
             display={inner}
+            cwd={cwd}
             target={target}
             onOpenFile={onOpenFile}
           />
@@ -845,6 +847,7 @@ function RichResolvedFileReference({
   return (
     <RichFileLink
       display={display}
+      cwd={cwd}
       target={{ kind: "workspace-file", path: linkPath }}
       onOpenFile={onOpenFile}
     />
@@ -946,31 +949,74 @@ export function __resetRichFileReferenceResolutionCacheForTests(): void {
 
 function RichFileLink({
   display,
+  cwd,
   target,
   onOpenFile
 }: {
   display: ReactNode;
+  cwd?: string;
   target: WorkspaceFileLinkTarget;
   onOpenFile: (path: string) => void;
 }): JSX.Element {
   const { t } = useI18n();
   const reference = formatWorkspaceFileTarget(target);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const path = target.path;
+  const normalizedPath = path.replace(/\\/g, "/");
+  const absolutePath = isAbsolutePath(normalizedPath)
+    ? path
+    : cwd
+      ? `${cwd.replace(/[\\/]+$/, "")}/${path.replace(/^[/\\]+/, "")}`
+      : path;
+  const fileName = normalizedPath.split("/").filter(Boolean).at(-1) ?? path;
+  const closeContextMenu = (): void => setContextMenu(null);
   return (
-    <Tooltip content={t("rich.openFile", { reference })}>
-      <button
-        type="button"
-        className="rich-link rich-file-link"
-        onClick={() => onOpenFile(reference)}
-      >
-        <span className="rich-link-content">
-          <span className="rich-link-icon" aria-hidden="true">
-            <FileText className="icon-xs" />
+    <>
+      <Tooltip content={t("rich.openFile", { reference })}>
+        <button
+          type="button"
+          className="rich-link rich-file-link"
+          onClick={() => onOpenFile(reference)}
+          onContextMenu={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            setContextMenu({ x: event.clientX, y: event.clientY });
+          }}
+        >
+          <span className="rich-link-content">
+            <span className="rich-link-icon" aria-hidden="true">
+              <FileText className="icon-xs" />
+            </span>
+            <span className="rich-link-label">{display}</span>
           </span>
-          <span className="rich-link-label">{display}</span>
-        </span>
-      </button>
-    </Tooltip>
+        </button>
+      </Tooltip>
+      {contextMenu ? (
+        <ThreadContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onClose={closeContextMenu}
+          items={[
+            { label: t("workspace.files.openFile"), onSelect: () => onOpenFile(reference) },
+            { separator: true },
+            { label: t("workspace.files.copyPath"), onSelect: () => copyToClipboard(absolutePath) },
+            { label: t("workspace.files.copyRelativePath"), onSelect: () => copyToClipboard(path) },
+            { label: t("workspace.files.copyFileName"), onSelect: () => copyToClipboard(fileName) },
+            ...(window.wuu?.revealWorkspaceItem
+              ? [{ separator: true } as const, {
+                  label: t("workspace.files.revealInFileManager"),
+                  onSelect: () => window.wuu.revealWorkspaceItem(absolutePath),
+                }]
+              : []),
+          ]}
+        />
+      ) : null}
+    </>
   );
+}
+
+function isAbsolutePath(path: string): boolean {
+  return path.startsWith("/") || path.startsWith("//") || /^[a-z]:\//i.test(path);
 }
 
 function RichAnchorLink({
