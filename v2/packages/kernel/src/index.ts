@@ -170,7 +170,7 @@ export class PromptRegistry extends UniqueRegistry<() => string> {
   }
 
   render(): { text: string; sources: string[] } {
-    const entries = this.entries();
+    const entries = [...this.entries()].sort(([left], [right]) => left.localeCompare(right));
     return {
       text: entries.map(([, render]) => render()).filter(Boolean).join("\n\n"),
       sources: entries.map(([id]) => id),

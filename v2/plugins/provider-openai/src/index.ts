@@ -5,6 +5,7 @@ import type {
   ModelProvider,
   ModelRequest,
   ModelStreamEvent,
+  ModelUsage,
   ToolCallContent,
 } from "@wuu-v2/contracts";
 import { type Context, type Plugin } from "@wuu-v2/kernel";
@@ -14,6 +15,8 @@ export interface OpenAIProviderConfig {
   id?: string;
   model: string;
   baseUrl?: string;
+  promptCaching?: boolean;
+  reportUsage?: boolean;
 }
 
 interface ToolCallAccumulator {
@@ -94,6 +97,10 @@ class OpenAIProvider implements ModelProvider {
 
   async *stream(request: ModelRequest): AsyncIterable<ModelStreamEvent> {
     const baseUrl = this.config.baseUrl ?? "https://api.openai.com/v1";
+    const officialEndpoint = !this.config.baseUrl
+      || new URL(baseUrl).hostname === "api.openai.com";
+    const promptCaching = this.config.promptCaching ?? officialEndpoint;
+    const reportUsage = this.config.reportUsage ?? officialEndpoint;
     const messages = [
       ...(request.systemPrompt
         ? [{ role: "system", content: request.systemPrompt }]
@@ -109,6 +116,8 @@ class OpenAIProvider implements ModelProvider {
       body: JSON.stringify({
         model: this.config.model,
         stream: true,
+        ...(reportUsage ? { stream_options: { include_usage: true } } : {}),
+        ...(promptCaching ? { prompt_cache_key: request.cache.key } : {}),
         messages,
         tools: request.tools.map((tool) => ({
           type: "function",
@@ -127,6 +136,7 @@ class OpenAIProvider implements ModelProvider {
 
     const calls = new Map<number, ToolCallAccumulator>();
     let stopReason: "stop" | "tool_calls" | undefined;
+    let usage: ModelUsage | undefined;
     for await (const data of readSse(response)) {
       request.signal.throwIfAborted();
       if (data === "[DONE]") break;
@@ -142,7 +152,28 @@ class OpenAIProvider implements ModelProvider {
           };
           finish_reason?: string | null;
         }>;
+        usage?: {
+          prompt_tokens?: number;
+          completion_tokens?: number;
+          prompt_tokens_details?: {
+            cached_tokens?: number;
+            cache_write_tokens?: number;
+          };
+        };
       };
+      if (chunk.usage) {
+        const cacheReadTokens = chunk.usage.prompt_tokens_details?.cached_tokens ?? 0;
+        const cacheWriteTokens = chunk.usage.prompt_tokens_details?.cache_write_tokens ?? 0;
+        usage = {
+          inputTokens: Math.max(
+            0,
+            (chunk.usage.prompt_tokens ?? 0) - cacheReadTokens - cacheWriteTokens,
+          ),
+          outputTokens: chunk.usage.completion_tokens ?? 0,
+          cacheReadTokens,
+          cacheWriteTokens,
+        };
+      }
       const choice = chunk.choices?.[0];
       if (!choice) continue;
       if (choice.delta?.content) {
@@ -181,6 +212,7 @@ class OpenAIProvider implements ModelProvider {
         call: { type: "tool_call", callId: call.id, name: call.name, input },
       };
     }
+    if (usage) yield { type: "usage", usage };
     yield { type: "done", stopReason };
   }
 }

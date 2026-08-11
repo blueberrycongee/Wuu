@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type {
   AgentLoop,
   AgentLoopInput,
@@ -8,6 +8,11 @@ import type {
   EventSource,
   ToolCallContent,
   ToolResult,
+  ModelCacheHint,
+  ModelMessage,
+  ModelProvider,
+  ModelTool,
+  ModelUsage,
 } from "@wuu-v2/contracts";
 import { type Context, type Plugin } from "@wuu-v2/kernel";
 
@@ -19,6 +24,32 @@ const source: EventSource = {
   pluginId: "default-agent-loop",
   generation: "v1",
 };
+
+function cacheHint(sessionId: string, systemPrompt: string, messages: readonly ModelMessage[]): ModelCacheHint {
+  let lastUser = -1;
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    if (messages[index]?.role === "user") {
+      lastUser = index;
+      break;
+    }
+  }
+  const stablePrefixMessages = lastUser < 0 ? messages.length : lastUser;
+  return {
+    key: createHash("sha256")
+      .update("wuu-v2-model-cache\0")
+      .update(sessionId)
+      .digest("hex"),
+    stableSystem: Boolean(systemPrompt),
+    stablePrefixMessages,
+    turnPrefixMessages: lastUser < 0 ? stablePrefixMessages : lastUser + 1,
+  };
+}
+
+function surfaceGeneration(systemPrompt: string, tools: readonly ModelTool[]): string {
+  return `sha256:${createHash("sha256")
+    .update(JSON.stringify({ systemPrompt, tools }))
+    .digest("hex")}`;
+}
 
 class DefaultAgentLoop implements AgentLoop {
   constructor(
@@ -34,28 +65,50 @@ class DefaultAgentLoop implements AgentLoop {
     const runId = input.runId;
     let activeMessageId: string | undefined;
     let unfinishedCalls: ToolCallContent[] = [];
+    let surface: {
+      systemPrompt: string;
+      tools: ModelTool[];
+      sources: string[];
+      generation: string;
+      provider: ModelProvider;
+    } | undefined;
 
     try {
       while (true) {
         signal.throwIfAborted();
         const context = await this.ctx.modelContext.build(input.sessionId, signal);
-        const allowedTools = await this.ctx.toolPolicy.allowedTools(
-          input.sessionId,
-          context.tools.map((tool) => tool.name),
-        );
-        const modelTools = context.tools.filter((tool) => allowedTools.has(tool.name));
-        const effectiveSources = [
-          ...context.sources.filter((entry) => !entry.startsWith("tool:")),
-          ...modelTools.map((tool) => `tool:${tool.name}`),
-        ];
-        const effectiveGeneration = effectiveSources.join("|") || "empty";
+        if (!surface) {
+          const allowedTools = await this.ctx.toolPolicy.allowedTools(
+            input.sessionId,
+            context.tools.map((tool) => tool.name),
+          );
+          const tools = context.tools.filter((tool) => allowedTools.has(tool.name));
+          const sources = [
+            ...context.sources.filter((entry) => !entry.startsWith("tool:")),
+            ...tools.map((tool) => `tool:${tool.name}`),
+          ];
+          surface = {
+            systemPrompt: context.systemPrompt,
+            tools,
+            sources,
+            generation: surfaceGeneration(context.systemPrompt, tools),
+            provider: this.ctx.providers.require(
+              await this.ctx.modelRouting.resolve(input.sessionId),
+            ),
+          };
+        }
+        const requestCache = cacheHint(input.sessionId, surface.systemPrompt, context.messages);
         const receipt: CompositionReceiptRecord = {
           type: "context/composition-receipt",
-          data: { generation: effectiveGeneration, sources: effectiveSources },
+          data: {
+            generation: surface.generation,
+            sources: surface.sources,
+            cache: requestCache,
+          },
         };
         await this.ctx.sessions.append(input.sessionId, {
           pluginId: "context-projection",
-          generation: effectiveGeneration,
+          generation: surface.generation,
         }, receipt);
 
         const messageId = randomUUID();
@@ -68,13 +121,12 @@ class DefaultAgentLoop implements AgentLoop {
         const calls: ToolCallContent[] = [];
         const callIds = new Set<string>();
         let stopReason: "stop" | "tool_calls" | undefined;
-        const provider = this.ctx.providers.require(
-          await this.ctx.modelRouting.resolve(input.sessionId),
-        );
-        for await (const event of provider.stream({
+        let usage: ModelUsage | undefined;
+        for await (const event of surface.provider.stream({
           messages: context.messages,
-          tools: modelTools,
-          systemPrompt: context.systemPrompt,
+          tools: surface.tools,
+          systemPrompt: surface.systemPrompt,
+          cache: requestCache,
           signal,
         })) {
           signal.throwIfAborted();
@@ -97,6 +149,9 @@ class DefaultAgentLoop implements AgentLoop {
               type: "agent/assistant-tool-call",
               data: { messageId, call: event.call },
             });
+          } else if (event.type === "usage") {
+            if (usage) throw new Error("provider emitted multiple usage summaries");
+            usage = event.usage;
           } else {
             stopReason = event.stopReason;
           }
@@ -105,6 +160,12 @@ class DefaultAgentLoop implements AgentLoop {
         if (!stopReason) throw new Error("provider stream ended without done");
         if ((stopReason === "tool_calls") !== Boolean(calls.length)) {
           throw new Error("provider tool calls do not match its stop reason");
+        }
+        if (usage) {
+          await this.append(input.sessionId, {
+            type: "agent/model-usage",
+            data: { messageId, ...usage },
+          });
         }
         await this.append(input.sessionId, {
           type: "agent/assistant-completed",

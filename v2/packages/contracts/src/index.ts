@@ -51,6 +51,13 @@ export type AgentSessionRecord =
       content: TextContent[];
       isError: boolean;
     }>
+  | SessionRecord<"agent/model-usage", {
+      messageId: string;
+      inputTokens: number;
+      outputTokens: number;
+      cacheReadTokens: number;
+      cacheWriteTokens: number;
+    }>
   | SessionRecord<"agent/run-state", {
       runId: string;
       state: "started" | "completed" | "cancelled" | "failed" | "interrupted";
@@ -62,6 +69,7 @@ export type CompositionReceiptRecord = SessionRecord<
   {
       generation: string;
       sources: string[];
+      cache: ModelCacheHint;
   }
 >;
 
@@ -110,12 +118,29 @@ export interface ModelRequest {
   messages: ModelMessage[];
   tools: ModelTool[];
   systemPrompt: string;
+  cache: ModelCacheHint;
   signal: AbortSignal;
+}
+
+export interface ModelCacheHint {
+  key: string;
+  stableSystem: boolean;
+  stablePrefixMessages: number;
+  turnPrefixMessages: number;
+}
+
+export interface ModelUsage {
+  /** Input tokens that were neither read from nor written to a provider cache. */
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
 }
 
 export type ModelStreamEvent =
   | { type: "text_delta"; delta: string }
   | { type: "tool_call"; call: ToolCallContent }
+  | { type: "usage"; usage: ModelUsage }
   | { type: "done"; stopReason: "stop" | "tool_calls" };
 
 export interface ModelProvider {

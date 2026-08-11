@@ -1,7 +1,9 @@
+import { createHash } from "node:crypto";
 import type {
   AgentSessionRecord,
   AssistantContent,
   CompositionReceiptRecord,
+  JsonValue,
   ModelMessage,
   TextContent,
 } from "@wuu-v2/contracts";
@@ -11,6 +13,26 @@ import {
   type ModelContextService,
   type Plugin,
 } from "@wuu-v2/kernel";
+
+function canonicalJson(value: JsonValue): JsonValue {
+  if (Array.isArray(value)) return value.map(canonicalJson);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(
+    Object.entries(value)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, child]) => [key, canonicalJson(child)]),
+  );
+}
+
+function surfaceGeneration(systemPrompt: string, tools: readonly {
+  name: string;
+  description: string;
+  inputSchema: JsonValue;
+}[]): string {
+  return `sha256:${createHash("sha256")
+    .update(JSON.stringify({ systemPrompt, tools }))
+    .digest("hex")}`;
+}
 
 interface PendingAssistant {
   content: AssistantContent[];
@@ -100,18 +122,20 @@ class DefaultModelContextService extends Service implements ModelContextService 
     }
 
     const prompt = this.ctx.prompts.render();
-    const tools = this.ctx.tools.entries().map(([, tool]) => ({
-      name: tool.name,
-      description: tool.description,
-      inputSchema: tool.inputSchema,
-    }));
+    const tools = this.ctx.tools.entries()
+      .map(([, tool]) => ({
+        name: tool.name,
+        description: tool.description,
+        inputSchema: canonicalJson(tool.inputSchema),
+      }))
+      .sort((left, right) => left.name.localeCompare(right.name));
     const sources = [...prompt.sources, ...tools.map((tool) => `tool:${tool.name}`)];
 
     return {
       messages,
       tools,
       systemPrompt: prompt.text,
-      generation: sources.join("|") || "empty",
+      generation: surfaceGeneration(prompt.text, tools),
       sources,
     };
   }
