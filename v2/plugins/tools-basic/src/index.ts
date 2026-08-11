@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
-import { readFile, writeFile } from "node:fs/promises";
-import { isAbsolute, relative, resolve } from "node:path";
+import { readFile, realpath, writeFile } from "node:fs/promises";
+import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import type { JsonValue, ToolDefinition } from "@wuu-v2/contracts";
 import { type Context, type Plugin } from "@wuu-v2/kernel";
 
@@ -21,12 +21,26 @@ function stringField(input: JsonValue, name: string): string {
   return value;
 }
 
-function workspacePath(cwd: string, inputPath: string): string {
-  const path = resolve(cwd, inputPath);
-  const rel = relative(cwd, path);
-  if (isAbsolute(rel) || rel === ".." || rel.startsWith(`..${process.platform === "win32" ? "\\" : "/"}`)) {
+function assertContained(root: string, path: string): void {
+  const rel = relative(root, path);
+  if (isAbsolute(rel) || rel === ".." || rel.startsWith(`..${sep}`)) {
     throw new Error("path escapes the workspace");
   }
+}
+
+async function workspacePath(cwd: string, inputPath: string, allowCreate = false): Promise<string> {
+  const root = await realpath(cwd);
+  const path = resolve(root, inputPath);
+  assertContained(root, path);
+  try {
+    const target = await realpath(path);
+    assertContained(root, target);
+    return target;
+  } catch (error) {
+    if (!allowCreate || (error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+  const parent = await realpath(dirname(path));
+  assertContained(root, parent);
   return path;
 }
 
@@ -46,7 +60,7 @@ function readTool(cwd: string): ToolDefinition {
     },
     async execute(input, execution) {
       execution.signal.throwIfAborted();
-      return textResult(await readFile(workspacePath(cwd, stringField(input, "path")), "utf8"));
+      return textResult(await readFile(await workspacePath(cwd, stringField(input, "path")), "utf8"));
     },
   };
 }
@@ -63,7 +77,7 @@ function writeTool(cwd: string): ToolDefinition {
     },
     async execute(input, execution) {
       execution.signal.throwIfAborted();
-      const path = workspacePath(cwd, stringField(input, "path"));
+      const path = await workspacePath(cwd, stringField(input, "path"), true);
       await writeFile(path, stringField(input, "content"), "utf8");
       return textResult(`wrote ${relative(cwd, path)}`);
     },
@@ -86,7 +100,7 @@ function editTool(cwd: string): ToolDefinition {
     },
     async execute(input, execution) {
       execution.signal.throwIfAborted();
-      const path = workspacePath(cwd, stringField(input, "path"));
+      const path = await workspacePath(cwd, stringField(input, "path"));
       const oldText = stringField(input, "oldText");
       const content = await readFile(path, "utf8");
       const first = content.indexOf(oldText);
