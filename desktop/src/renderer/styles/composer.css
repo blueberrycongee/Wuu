@@ -145,6 +145,9 @@
   grid-column: 1;
   grid-row: 2;
   align-self: end;
+  /* Match the scroll region's stable scrollbar gutter so the dock composer
+     and message flow are centered inside the same visible content box. */
+  padding-right: var(--scrollbar-width);
   background: transparent;
   pointer-events: none;
   transition: padding-right var(--environment-flow-motion-duration) var(--environment-panel-motion-easing);
@@ -190,6 +193,18 @@
   min-width: 0;
   flex-direction: column;
   margin: 0 auto;
+}
+
+/* Let the main dock composer optically overhang the message flow by 2px on
+   each side while preserving their shared centerline. */
+.dock-composer-wrap[data-main-conversation-composer="dock"] .composer-stack {
+  width: min(
+    calc(var(--session-composer-width) + 4px),
+    calc(
+      100% - var(--session-outer-padding-inline) -
+        var(--session-outer-padding-inline) + 4px
+    )
+  );
 }
 
 .channel-thread-footer .dock-composer-wrap .composer-stack {
