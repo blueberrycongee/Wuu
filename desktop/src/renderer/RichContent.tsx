@@ -1507,7 +1507,7 @@ function MermaidDiagram({ code }: { code: string }): JSX.Element {
         aria-label={t("rich.enlargeDiagram")}
         title={t("rich.enlargeDiagram")}
         onClick={() => openPreview({
-          src: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(state.svg)}`,
+          svg: state.svg,
           alt: t("rich.mermaidDiagram"),
           title: t("rich.mermaidDiagram"),
         })}

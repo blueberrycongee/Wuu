@@ -13,11 +13,9 @@ import {
 import { Minus, RotateCcw, X, ZoomIn } from "lucide-react";
 import { useI18n } from "./i18n";
 
-export type ImagePreviewItem = {
-  src: string;
-  alt?: string;
-  title?: string;
-};
+export type ImagePreviewItem =
+  | { src: string; alt?: string; title?: string; svg?: undefined }
+  | { src?: undefined; alt?: string; title?: string; svg: string };
 
 export type ImagePreviewContextValue = {
   openPreview: (item: ImagePreviewItem) => void;
@@ -58,7 +56,7 @@ export function ImagePreviewProvider({ children }: { children: ReactNode }): JSX
   const [item, setItem] = useState<ImagePreviewItem | null>(null);
 
   const openPreview = useCallback((next: ImagePreviewItem) => {
-    setItem({ src: next.src, alt: next.alt, title: next.title });
+    setItem(next);
   }, []);
   const closePreview = useCallback(() => setItem(null), []);
 
@@ -93,7 +91,7 @@ function ImagePreviewOverlay({
     setScale(1);
     setOffset({ x: 0, y: 0 });
     setLoadStatus("loading");
-  }, [item.src]);
+  }, [item.src, item.svg]);
 
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
@@ -269,23 +267,33 @@ function ImagePreviewOverlay({
         onPointerCancel={endDrag}
         onDoubleClick={handleDoubleClick}
       >
-        {loadStatus === "loading" ? (
+        {item.svg == null && loadStatus === "loading" ? (
           <div className="image-preview-status">{t("imagePreview.loading")}</div>
         ) : null}
-        {loadStatus === "error" ? (
+        {item.svg == null && loadStatus === "error" ? (
           <div className="image-preview-status error">
             {t("imagePreview.loadFailed")}
           </div>
         ) : null}
-        <img
-          className={`image-preview-image${loadStatus === "loaded" ? " loaded" : ""}`}
-          src={item.src}
-          alt={item.alt ?? ""}
-          draggable={false}
-          style={{ transform }}
-          onLoad={handleImageLoad}
-          onError={handleImageError}
-        />
+        {item.svg != null ? (
+          <div
+            className="image-preview-image image-preview-svg loaded"
+            role="img"
+            aria-label={item.alt ?? ""}
+            style={{ transform }}
+            dangerouslySetInnerHTML={{ __html: item.svg }}
+          />
+        ) : (
+          <img
+            className={`image-preview-image${loadStatus === "loaded" ? " loaded" : ""}`}
+            src={item.src}
+            alt={item.alt ?? ""}
+            draggable={false}
+            style={{ transform }}
+            onLoad={handleImageLoad}
+            onError={handleImageError}
+          />
+        )}
       </div>
     </div>
   );

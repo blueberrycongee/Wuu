@@ -117,6 +117,21 @@ describe("ImagePreviewProvider", () => {
     expect(overlayRoot()).not.toBeNull();
   });
 
+  it("renders raw SVG markup directly when openPreview receives svg", () => {
+    const probe = renderWithProbe();
+    act(() => {
+      probe.getAPI()?.openPreview({
+        svg: "<svg><text>Diagram</text></svg>",
+        alt: "Diagram",
+      });
+    });
+    const svg = container.querySelector(".image-preview-svg svg");
+    expect(svg).not.toBeNull();
+    expect(svg?.textContent).toBe("Diagram");
+    expect(container.querySelector("img.image-preview-image")).toBeNull();
+    expect(container.querySelector(".image-preview-status")).toBeNull();
+  });
+
   it("does not render the title or alt text in the toolbar", () => {
     const probe = renderWithProbe();
     act(() => {

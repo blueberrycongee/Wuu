@@ -133,6 +133,20 @@
   opacity: 1;
 }
 
+.image-preview-svg {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.image-preview-svg svg {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: 92vw;
+  max-height: 88vh;
+}
+
 .image-preview-status {
   position: absolute;
   inset: 0;

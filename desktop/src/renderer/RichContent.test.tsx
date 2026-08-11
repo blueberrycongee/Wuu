@@ -169,9 +169,10 @@ describe("RichContent code block", () => {
       (container.querySelector(".rich-mermaid-diagram") as HTMLButtonElement).click();
     });
 
-    const previewImage = document.body.querySelector(".image-preview-image") as HTMLImageElement | null;
+    const previewSvg = document.body.querySelector(".image-preview-svg svg");
     expect(document.body.querySelector(".image-preview-overlay")).not.toBeNull();
-    expect(previewImage?.src).toContain("data:image/svg+xml");
+    expect(previewSvg?.getAttribute("data-diagram-id")).toMatch(/^wuu-mermaid-/);
+    expect(document.body.querySelector("img.image-preview-image")).toBeNull();
   });
 
   it("renders an explicit markdown-link file reference as a clickable workspace file link", () => {
