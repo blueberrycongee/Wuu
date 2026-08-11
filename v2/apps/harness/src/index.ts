@@ -127,6 +127,7 @@ try {
   const events = await ctx.sessions.load(sessionId);
   const projections = await ctx.projections.build(ctx.sessions, sessionId);
   const projectionFrame = await ctx.projectionFeed.snapshot(sessionId);
+  const inspection = ctx.runtimeInspection.snapshot();
   const recordTypes = events.map((event) => event.record.type);
   if (smoke) {
     const recoveryEvents = await ctx.sessions.load(recoverySessionId!);
@@ -144,6 +145,9 @@ try {
       !recoveryTypes.includes("agent/assistant-completed") ||
       !recordTypes.includes("agent/assistant-tool-call") ||
       !recordTypes.includes("agent/tool-result") ||
+      !inspection.services.includes("sessions") ||
+      !inspection.tools.includes("read") ||
+      inspection.fibers.some(({ pending }) => pending.length) ||
       projectionFrame.lastDurableSeq !== events.at(-1)?.seq ||
       !projections.some(({ key }) => key === "conversation")
     ) {

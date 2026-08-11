@@ -48,6 +48,27 @@ export interface ToolPolicyService {
   initialize(sessionId: string, preset: string): Promise<void>;
 }
 
+export interface RuntimeFiberSnapshot {
+  uid: number | null;
+  name: string;
+  state: "pending" | "loading" | "active" | "failed" | "disposed" | "unloading";
+  inject: string[];
+  pending: string[];
+  provides: string[];
+  effects: string[];
+}
+
+export interface RuntimeInspectionSnapshot {
+  services: string[];
+  tools: string[];
+  providers: string[];
+  agents: string[];
+  prompts: string[];
+  projections: string[];
+  hostActions: string[];
+  fibers: RuntimeFiberSnapshot[];
+}
+
 export type HostActionHandler = (
   input: JsonValue,
 ) => Promise<JsonValue | undefined> | JsonValue | undefined;
@@ -171,6 +192,67 @@ export class ProjectionRegistry extends Service {
       return { key, seq: events.at(-1)?.seq ?? 0, value };
     });
   }
+
+  keys(): string[] {
+    return [...this.folds.keys()];
+  }
+}
+
+const fiberStateNames: RuntimeFiberSnapshot["state"][] = [
+  "pending",
+  "loading",
+  "active",
+  "failed",
+  "disposed",
+  "unloading",
+];
+
+function fiberStateName(state: number): RuntimeFiberSnapshot["state"] {
+  const name = fiberStateNames[state];
+  if (!name) throw new Error(`unknown Fiber state: ${state}`);
+  return name;
+}
+
+export class RuntimeInspectionService extends Service {
+  constructor(ctx: Context) {
+    super(ctx, "runtimeInspection");
+  }
+
+  snapshot(): RuntimeInspectionSnapshot {
+    const serviceNames = Object.entries(this.ctx.reflect.props)
+      .filter(([name, property]) =>
+        property.type === "service" && this.ctx.get(name) !== undefined)
+      .map(([name]) => name)
+      .sort();
+    const fibers = [...this.ctx.registry.values()]
+      .flatMap((runtime) => [...runtime.fibers])
+      .map((fiber): RuntimeFiberSnapshot => {
+        const inject = Object.keys(fiber.inject).sort();
+        return {
+          uid: fiber.uid,
+          name: fiber.name,
+          state: fiberStateName(fiber.state),
+          inject,
+          pending: inject.filter((name) => fiber.ctx.get(name) === undefined),
+          provides: Object.keys(fiber.store ?? {}).sort(),
+          effects: fiber.getEffects().map(({ label }) => label),
+        };
+      })
+      .sort((left, right) =>
+        (left.uid ?? Number.MAX_SAFE_INTEGER) - (right.uid ?? Number.MAX_SAFE_INTEGER));
+    const keys = <T>(registry: { entries(): ReadonlyArray<readonly [string, T]> }) =>
+      registry.entries().map(([id]) => id).sort();
+    return {
+      services: serviceNames,
+      tools: keys(this.ctx.tools),
+      providers: keys(this.ctx.providers),
+      agents: keys(this.ctx.agents),
+      prompts: keys(this.ctx.prompts),
+      projections: this.ctx.projections.keys().sort(),
+      hostActions: keys(this.ctx.hostActions),
+      fibers,
+    };
+  }
 }
 
 declare module "cordis" {
@@ -182,6 +264,7 @@ declare module "cordis" {
     projections: ProjectionRegistry;
     prompts: PromptRegistry;
     providers: ProviderRegistry;
+    runtimeInspection: RuntimeInspectionService;
     sessions: SessionService;
     tools: ToolRegistry;
     toolPolicy: ToolPolicyService;
@@ -194,10 +277,19 @@ export const kernelPlugin: Plugin = function kernel(ctx: Context) {
   new ProjectionRegistry(ctx);
   new PromptRegistry(ctx);
   new ProviderRegistry(ctx);
+  new RuntimeInspectionService(ctx);
   new ToolRegistry(ctx);
 };
 
-kernelPlugin.provide = ["agents", "hostActions", "projections", "prompts", "providers", "tools"];
+kernelPlugin.provide = [
+  "agents",
+  "hostActions",
+  "projections",
+  "prompts",
+  "providers",
+  "runtimeInspection",
+  "tools",
+];
 
 export function createKernelContext(): Context {
   return new Context();
