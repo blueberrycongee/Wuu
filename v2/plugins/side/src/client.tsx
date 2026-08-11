@@ -5,12 +5,9 @@ import {
   type Context,
   type Plugin,
 } from "@wuu-v2/client-runtime";
+import type {} from "@wuu-v2/plugin-conversation/client";
+import type { ConversationValue } from "@wuu-v2/plugin-conversation/shared";
 import { sideStyles } from "./styles.js";
-
-type ConversationValue = {
-  messages: Array<{ id: string; role: string; text: string; status: string }>;
-  running: boolean;
-};
 
 interface SidePanelState {
   open: boolean;
@@ -144,7 +141,7 @@ function SidePanel({ client, sessionId }: { client: Context; sessionId?: string 
 
   useEffect(() => {
     if (pinned.current && log.current) log.current.scrollTop = log.current.scrollHeight;
-  }, [conversation?.messages]);
+  }, [conversation?.items]);
 
   useEffect(() => {
     if (wasOpen.current && !state.open) openButton.current?.focus({ preventScroll: true });
@@ -223,11 +220,9 @@ function SidePanel({ client, sessionId }: { client: Context; sessionId?: string 
           pinned.current = element.scrollHeight - element.scrollTop - element.clientHeight < 24;
         }}
       >
-        {(conversation?.messages ?? []).map((message) => (
-          <article key={message.id} className={`side-message side-message-${message.role}`} data-status={message.status}>
-            {message.text}
-          </article>
-        ))}
+        {state.sideSessionId
+          ? client.conversationSurfaces.render(state.sideSessionId, conversation?.items ?? [])
+          : null}
         {state.resolving ? <p>Opening Side…</p> : null}
         {state.error ? <p role="alert">{state.error}</p> : null}
       </div>
@@ -283,6 +278,12 @@ const sideClient: Plugin = function side(client) {
   }, "install Side styles");
 };
 
-sideClient.inject = ["clientActions", "clientProjections", "composerSurfaces", "slots"];
+sideClient.inject = [
+  "clientActions",
+  "clientProjections",
+  "composerSurfaces",
+  "conversationSurfaces",
+  "slots",
+];
 sideClient.provide = "sidePanels";
 export default sideClient;

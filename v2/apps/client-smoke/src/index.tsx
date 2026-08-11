@@ -44,7 +44,21 @@ try {
     return { action, input };
   });
   ctx.clientProjections.apply(sessionId, "conversation", 1, {
-    messages: [{ id: "message-1", role: "assistant", text: "Client smoke ready.", status: "complete" }],
+    items: [{
+      kind: "message",
+      id: "message-1",
+      role: "assistant",
+      text: "Client smoke ready.",
+      status: "complete",
+    }, {
+      kind: "tool",
+      id: "tool:smoke-read",
+      callId: "smoke-read",
+      name: "read",
+      input: { path: "package.json" },
+      result: "package contents",
+      status: "complete",
+    }],
     running: false,
   });
   ctx.clientProjections.apply(sessionId, "model", 1, {
@@ -63,12 +77,20 @@ try {
   }));
   assert.match(markup, /app-shell/);
   assert.match(markup, /Client smoke ready\./);
+  assert.match(markup, /tool-activity/);
+  assert.match(markup, /package contents/);
   assert.match(markup, /Message Wuu/);
   assert.deepEqual(ctx.slashCommands.entries().map(({ name }) => name), ["side", "smoke"]);
 
   await ctx.sidePanels.show(sessionId);
   ctx.clientProjections.apply("side-client-smoke", "conversation", 1, {
-    messages: [{ id: "side-message", role: "assistant", text: "Side smoke ready.", status: "complete" }],
+    items: [{
+      kind: "message",
+      id: "side-message",
+      role: "assistant",
+      text: "Side smoke ready.",
+      status: "complete",
+    }],
     running: false,
   });
   ctx.clientProjections.apply("side-client-smoke", "model", 1, {

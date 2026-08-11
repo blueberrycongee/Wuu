@@ -33,6 +33,57 @@ export const conversationStyles = `
   background: var(--surface-3);
 }
 
+.tool-activity {
+  margin: 0 0 16px;
+  overflow: hidden;
+  border: 1px solid var(--hairline, rgba(31, 35, 40, 0.08));
+  border-radius: 10px;
+  color: var(--ink-muted, #5f6663);
+  background: var(--surface-2, #f7f7f5);
+  font-size: 12px;
+}
+
+.tool-activity[data-status="error"],
+.tool-activity[data-status="failed"] {
+  border-color: color-mix(in srgb, var(--danger, #b1271b) 35%, transparent);
+}
+
+.tool-activity-heading {
+  display: flex;
+  min-height: 34px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 11px;
+}
+
+.tool-activity-heading code {
+  color: var(--ink, #202423);
+  font: inherit;
+  font-weight: 600;
+}
+
+.tool-activity details,
+.tool-activity-result {
+  margin: 0;
+  border-top: 1px solid var(--hairline, rgba(31, 35, 40, 0.08));
+}
+
+.tool-activity summary {
+  padding: 8px 11px;
+  cursor: pointer;
+}
+
+.tool-activity pre {
+  max-height: 180px;
+  margin: 0;
+  overflow: auto;
+  padding: 10px 11px;
+  color: var(--ink, #202423);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .message-assistant[data-status="streaming"]::after {
   content: "";
   display: inline-block;

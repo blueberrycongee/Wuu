@@ -13,6 +13,7 @@
     "@wuu-v2/kernel": "0.0.0",
     "@wuu-v2/plugin-agent-runtime": "0.0.0",
     "@wuu-v2/plugin-composer": "0.0.0",
+    "@wuu-v2/plugin-conversation": "0.0.0",
     "@wuu-v2/plugin-slash": "0.0.0",
     "react": "^19.0.0"
   },
