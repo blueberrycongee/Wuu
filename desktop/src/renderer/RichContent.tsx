@@ -1499,7 +1499,7 @@ function MermaidDiagram({ code }: { code: string }): JSX.Element {
   }, [code, diagramID, locale, theme]);
 
   if (state.status === "rendered") {
-    return <div className="rich-mermaid" dangerouslySetInnerHTML={{ __html: state.svg }} />;
+    return <div className="rich-mermaid rich-mermaid-diagram" dangerouslySetInnerHTML={{ __html: state.svg }} />;
   }
   if (state.status === "error") {
     return (
