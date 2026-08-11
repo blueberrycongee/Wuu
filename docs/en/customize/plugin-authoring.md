@@ -312,7 +312,9 @@ Security policy and process isolation are separate extension seams:
   `read-only` or `workspace-write` file policy into the argv Wuu should execute.
   Return the actual enforcement level as `full` or `partial`. This seam covers
   model-facing shell and managed-process execution; plugin and MCP runtime
-  admission remains governed by package permissions and grants.
+  admission remains governed by package permissions and grants. A provider may
+  also return its own `denial_signatures` and `runner_failure_signatures`; Wuu
+  uses only those per-call diagnostics when attributing a failed execution.
 
 The Go SDK exports `AuthorizationService()` and
 `ProcessSandboxProviderService()`; the TypeScript SDK exports matching service
@@ -320,9 +322,8 @@ descriptors and request/result types. When no provider exists, Wuu keeps its
 built-in policy and platform sandbox. Once a custom provider is selected, its
 failure never falls back to unrestricted execution: unknown authorization
 outcomes are denied, and empty or relative sandbox argv, provider errors, and
-partial enforcement stop the process before it starts. A policy provider that
-needs a human decision can consume `host.user-question.ask` within the same
-cancelable execution scope.
+partial enforcement stop the process before it starts. Authorization providers
+return policy decisions only; interactive approval is a separate host concern.
 
 These services are intentionally narrow. Authorization does not execute a
 command, and a sandbox provider does not decide whether an action is allowed.

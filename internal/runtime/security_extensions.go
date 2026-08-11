@@ -71,7 +71,10 @@ func (p *pluginSandboxProvider) Confine(ctx context.Context, argv []string, poli
 	if err := json.Unmarshal(result, &confined); err != nil {
 		return processsandbox.ConfinedCommand{}, fmt.Errorf("decode sandbox result: %w", err)
 	}
-	return processsandbox.ConfinedCommand{Argv: confined.Argv, Enforcement: processsandbox.Enforcement(confined.Enforcement)}, nil
+	return processsandbox.ConfinedCommand{
+		Argv: confined.Argv, Enforcement: processsandbox.Enforcement(confined.Enforcement),
+		DenialSignatures: confined.DenialSignatures, RunnerFailureSignatures: confined.RunnerFailureSignatures,
+	}, nil
 }
 
 func configureToolkitSecurityExtensions(kit *tools.Toolkit, registry *pluginhost.ServiceRegistry) {

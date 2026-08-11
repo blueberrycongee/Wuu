@@ -41,8 +41,17 @@ const (
 )
 
 type ConfinedCommand struct {
-	Argv        []string
-	Enforcement Enforcement
+	Argv                    []string
+	Enforcement             Enforcement
+	DenialSignatures        []string
+	RunnerFailureSignatures []string
+}
+
+// ResultClassifier carries the diagnostic dialect of the backend that wrapped
+// one command. These strings classify results; they are not a security boundary.
+type ResultClassifier struct {
+	DenialSignatures        []string
+	RunnerFailureSignatures []string
 }
 
 // Provider is the stable seam for alternate same-world process sandboxes.
@@ -68,34 +77,37 @@ func Apply(cmd *exec.Cmd, policy Policy) error {
 // ApplyWithProvider applies an alternate provider when configured, otherwise
 // it uses Wuu's built-in platform backend. Provider failures never fall back to
 // unconfined execution, and partial enforcement is rejected by this consumer.
-func ApplyWithProvider(ctx context.Context, cmd *exec.Cmd, policy Policy, provider Provider) error {
+func ApplyWithProvider(ctx context.Context, cmd *exec.Cmd, policy Policy, provider Provider) (ResultClassifier, error) {
 	if provider == nil {
-		return Apply(cmd, policy)
+		return builtInResultClassifier(), Apply(cmd, policy)
 	}
 	if cmd == nil || cmd.Path == "" || len(cmd.Args) == 0 {
-		return errors.New("filesystem process sandbox requires a complete command argv")
+		return ResultClassifier{}, errors.New("filesystem process sandbox requires a complete command argv")
 	}
 	if err := validatePolicy(policy); err != nil {
-		return err
+		return ResultClassifier{}, err
 	}
 	argv := append([]string(nil), cmd.Args...)
 	argv[0] = cmd.Path
 	confined, err := provider.Confine(ctx, argv, normalizedPolicy(policy))
 	if err != nil {
-		return fmt.Errorf("custom filesystem process sandbox failed: %w", err)
+		return ResultClassifier{}, fmt.Errorf("custom filesystem process sandbox failed: %w", err)
 	}
 	if len(confined.Argv) == 0 || strings.TrimSpace(confined.Argv[0]) == "" {
-		return errors.New("custom filesystem process sandbox returned an empty argv")
+		return ResultClassifier{}, errors.New("custom filesystem process sandbox returned an empty argv")
 	}
 	if !filepath.IsAbs(confined.Argv[0]) {
-		return errors.New("custom filesystem process sandbox must return an absolute executable path")
+		return ResultClassifier{}, errors.New("custom filesystem process sandbox must return an absolute executable path")
 	}
 	if confined.Enforcement != EnforcementFull {
-		return fmt.Errorf("custom filesystem process sandbox reported %q enforcement; full enforcement is required", confined.Enforcement)
+		return ResultClassifier{}, fmt.Errorf("custom filesystem process sandbox reported %q enforcement; full enforcement is required", confined.Enforcement)
 	}
 	cmd.Path = confined.Argv[0]
 	cmd.Args = append([]string(nil), confined.Argv...)
-	return nil
+	return ResultClassifier{
+		DenialSignatures:        normalizedSignatures(confined.DenialSignatures),
+		RunnerFailureSignatures: normalizedSignatures(confined.RunnerFailureSignatures),
+	}, nil
 }
 
 // Supported reports whether this build has a filesystem process sandbox
@@ -106,11 +118,15 @@ func Supported() bool { return platformSupported() }
 // produced by the shipped backends. It is a result fact, not an approval
 // trigger.
 func IsDenied(exitCode int, output string) bool {
+	return builtInResultClassifier().IsDenied(exitCode, output)
+}
+
+func (c ResultClassifier) IsDenied(exitCode int, output string) bool {
 	if exitCode == 0 {
 		return false
 	}
 	lower := strings.ToLower(output)
-	for _, signature := range denialSignatures {
+	for _, signature := range c.DenialSignatures {
 		if strings.Contains(lower, signature) {
 			return true
 		}
@@ -121,7 +137,37 @@ func IsDenied(exitCode int, output string) bool {
 // IsRunnerFailure distinguishes a failed sandbox launcher from a command that
 // ran and was denied. The original command did not execute on this path.
 func IsRunnerFailure(exitCode int, output string) bool {
-	return exitCode != 0 && strings.Contains(strings.ToLower(output), "sandbox-exec:")
+	return builtInResultClassifier().IsRunnerFailure(exitCode, output)
+}
+
+func (c ResultClassifier) IsRunnerFailure(exitCode int, output string) bool {
+	if exitCode == 0 {
+		return false
+	}
+	lower := strings.ToLower(output)
+	for _, signature := range c.RunnerFailureSignatures {
+		if strings.Contains(lower, signature) {
+			return true
+		}
+	}
+	return false
+}
+
+func builtInResultClassifier() ResultClassifier {
+	return ResultClassifier{
+		DenialSignatures:        append([]string(nil), denialSignatures...),
+		RunnerFailureSignatures: []string{"sandbox-exec:"},
+	}
+}
+
+func normalizedSignatures(signatures []string) []string {
+	result := make([]string, 0, len(signatures))
+	for _, signature := range signatures {
+		if signature = strings.ToLower(strings.TrimSpace(signature)); signature != "" {
+			result = append(result, signature)
+		}
+	}
+	return result
 }
 
 func validatePolicy(policy Policy) error {

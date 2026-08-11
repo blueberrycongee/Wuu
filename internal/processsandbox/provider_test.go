@@ -19,14 +19,21 @@ func (p testProvider) Confine(context.Context, []string, Policy) (ConfinedComman
 
 func TestApplyWithProviderInstallsFullConfinement(t *testing.T) {
 	cmd := exec.Command("/bin/echo", "hello")
-	err := ApplyWithProvider(context.Background(), cmd, Policy{Mode: ModeReadOnly}, testProvider{result: ConfinedCommand{
+	classifier, err := ApplyWithProvider(context.Background(), cmd, Policy{Mode: ModeReadOnly}, testProvider{result: ConfinedCommand{
 		Argv: []string{"/usr/bin/env", "wrapped", "/bin/echo", "hello"}, Enforcement: EnforcementFull,
+		DenialSignatures: []string{"CUSTOM DENIAL"}, RunnerFailureSignatures: []string{"CUSTOM RUNNER FAILURE"},
 	}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if cmd.Path != "/usr/bin/env" || !reflect.DeepEqual(cmd.Args, []string{"/usr/bin/env", "wrapped", "/bin/echo", "hello"}) {
 		t.Fatalf("command = %q %+v", cmd.Path, cmd.Args)
+	}
+	if !classifier.IsDenied(1, "custom denial") || classifier.IsDenied(1, "operation not permitted") {
+		t.Fatalf("provider denial classifier used the wrong backend dialect: %+v", classifier)
+	}
+	if !classifier.IsRunnerFailure(1, "custom runner failure") || classifier.IsRunnerFailure(1, "sandbox-exec: failed") {
+		t.Fatalf("provider runner classifier used the wrong backend dialect: %+v", classifier)
 	}
 }
 
@@ -43,7 +50,7 @@ func TestApplyWithProviderFailsClosed(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			cmd := exec.Command("/bin/echo", "hello")
 			beforePath, beforeArgs := cmd.Path, append([]string(nil), cmd.Args...)
-			if err := ApplyWithProvider(context.Background(), cmd, Policy{Mode: ModeReadOnly}, tc.provider); err == nil {
+			if _, err := ApplyWithProvider(context.Background(), cmd, Policy{Mode: ModeReadOnly}, tc.provider); err == nil {
 				t.Fatal("expected failure")
 			}
 			if cmd.Path != beforePath || !reflect.DeepEqual(cmd.Args, beforeArgs) {

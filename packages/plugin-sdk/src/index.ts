@@ -664,6 +664,8 @@ export interface ProcessSandboxPolicy {
 export interface ProcessSandboxResult {
   argv: string[];
   enforcement: "full" | "partial";
+  denial_signatures?: string[];
+  runner_failure_signatures?: string[];
 }
 
 export interface ToolDisplayMetadata {

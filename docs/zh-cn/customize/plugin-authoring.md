@@ -233,12 +233,14 @@ context blocks、稳定 cause，以及可选的 `presentation: { kind: "query_bu
 - 提供 `sandbox.process@1` 的 `confine` 方法，把原始 argv 以及 `read-only` 或
   `workspace-write` 文件策略转换成 Wuu 实际应执行的 argv，并报告 `full` 或 `partial` 隔离级别。
   该扩展点覆盖模型发起的 shell 和托管进程；插件与 MCP runtime 的准入仍由包权限和 grant 管理。
+  提供者还可以返回自己的 `denial_signatures` 和 `runner_failure_signatures`；Wuu 只使用本次调用
+  返回的诊断方言归因执行失败。
 
 Go SDK 提供 `AuthorizationService()` 和 `ProcessSandboxProviderService()`；TypeScript SDK
 提供对应的 Service descriptor 和请求/结果类型。没有提供者时，Wuu 使用内置策略和平台沙箱；
 一旦选中自定义提供者，失败不会退回无限制执行：未知授权结果会被拒绝，沙箱提供者报错、返回
-空 argv、相对执行器或部分隔离时，进程都不会启动。需要人工确认的授权插件可以在同一个可取消
-execution 中消费 `host.user-question.ask`。
+空 argv、相对执行器或部分隔离时，进程都不会启动。授权提供者只返回策略决策；交互式审批属于
+独立的宿主能力。
 
 这两个合同刻意保持窄小：授权不负责执行命令，沙箱也不决定动作是否允许。容器、虚拟机和远程
 执行应提供完整执行 Service，而不是伪装成同机 argv 包装器。

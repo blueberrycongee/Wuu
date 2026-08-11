@@ -80,27 +80,29 @@ type Process struct {
 	// Deprecated: Lifecycle is being retired with the managed process class.
 	// It still parses and round-trips so existing registry records keep
 	// loading; new behavior must not branch on it.
-	Lifecycle             Lifecycle           `json:"lifecycle"`
-	CompletionMode        CompletionMode      `json:"completion_mode,omitempty"`
-	Status                Status              `json:"status"`
-	PID                   int                 `json:"pid"`
-	PGID                  int                 `json:"pgid"`
-	ProcessStartTime      string              `json:"process_start_time,omitempty"`
-	TTY                   bool                `json:"tty,omitempty"`
-	LogPath               string              `json:"log_path"`
-	Command               string              `json:"command"`
-	CWD                   string              `json:"cwd"`
-	StartedAt             time.Time           `json:"started_at"`
-	UpdatedAt             time.Time           `json:"updated_at"`
-	StoppedAt             time.Time           `json:"stopped_at,omitempty"`
-	ExitCode              int                 `json:"exit_code,omitempty"`
-	LastError             string              `json:"last_error,omitempty"`
-	SandboxMode           processsandbox.Mode `json:"sandbox_mode,omitempty"`
-	SandboxDenied         bool                `json:"sandbox_denied,omitempty"`
-	SandboxRunnerFailed   bool                `json:"sandbox_runner_failed,omitempty"`
-	TerminalCause         EventCause          `json:"terminal_cause,omitempty"`
-	CompletionDeliveredAt time.Time           `json:"completion_delivered_at,omitempty"`
-	CompletionConsumedBy  string              `json:"completion_consumed_by,omitempty"`
+	Lifecycle                      Lifecycle           `json:"lifecycle"`
+	CompletionMode                 CompletionMode      `json:"completion_mode,omitempty"`
+	Status                         Status              `json:"status"`
+	PID                            int                 `json:"pid"`
+	PGID                           int                 `json:"pgid"`
+	ProcessStartTime               string              `json:"process_start_time,omitempty"`
+	TTY                            bool                `json:"tty,omitempty"`
+	LogPath                        string              `json:"log_path"`
+	Command                        string              `json:"command"`
+	CWD                            string              `json:"cwd"`
+	StartedAt                      time.Time           `json:"started_at"`
+	UpdatedAt                      time.Time           `json:"updated_at"`
+	StoppedAt                      time.Time           `json:"stopped_at,omitempty"`
+	ExitCode                       int                 `json:"exit_code,omitempty"`
+	LastError                      string              `json:"last_error,omitempty"`
+	SandboxMode                    processsandbox.Mode `json:"sandbox_mode,omitempty"`
+	SandboxDenied                  bool                `json:"sandbox_denied,omitempty"`
+	SandboxRunnerFailed            bool                `json:"sandbox_runner_failed,omitempty"`
+	SandboxDenialSignatures        []string            `json:"sandbox_denial_signatures,omitempty"`
+	SandboxRunnerFailureSignatures []string            `json:"sandbox_runner_failure_signatures,omitempty"`
+	TerminalCause                  EventCause          `json:"terminal_cause,omitempty"`
+	CompletionDeliveredAt          time.Time           `json:"completion_delivered_at,omitempty"`
+	CompletionConsumedBy           string              `json:"completion_consumed_by,omitempty"`
 	// RecheckMinutes is the model-declared progress recheck interval. Zero
 	// disables scheduled rechecks. NextRecheckAt is the persisted deadline of
 	// the next scheduled wake; PendingRecheckAt marks a fired recheck that has
@@ -371,15 +373,18 @@ func (m *Manager) Start(ctx context.Context, opt StartOptions) (*Process, error)
 		return p, err
 	}
 	if opt.SandboxPolicy != nil {
-		if err := processsandbox.ApplyWithProvider(ctx, cmd, *opt.SandboxPolicy, opt.SandboxProvider); err != nil {
+		classifier, confineErr := processsandbox.ApplyWithProvider(ctx, cmd, *opt.SandboxPolicy, opt.SandboxProvider)
+		if confineErr != nil {
 			_ = logf.Close()
 			p.Status = StatusFailed
-			p.LastError = err.Error()
+			p.LastError = confineErr.Error()
 			p.UpdatedAt = time.Now()
 			_ = m.save(p)
 			m.publish(Event{Type: EventFailed, Process: *p})
-			return p, fmt.Errorf("prepare filesystem process sandbox: %w", err)
+			return p, fmt.Errorf("prepare filesystem process sandbox: %w", confineErr)
 		}
+		p.SandboxDenialSignatures = classifier.DenialSignatures
+		p.SandboxRunnerFailureSignatures = classifier.RunnerFailureSignatures
 	}
 	if opt.TTY {
 		cmd.Env = terminalCommandEnv(cmd.Env)
@@ -604,8 +609,9 @@ func (m *Manager) finishWait(id string, cmd *exec.Cmd, err error) {
 	}
 	if p.SandboxMode != "" {
 		if output, _, _, _, _, readErr := readLogWindow(p.LogPath, 8*1024, nil); readErr == nil {
-			p.SandboxRunnerFailed = processsandbox.IsRunnerFailure(p.ExitCode, output)
-			p.SandboxDenied = !p.SandboxRunnerFailed && processsandbox.IsDenied(p.ExitCode, output)
+			classifier := processsandbox.ResultClassifier{DenialSignatures: p.SandboxDenialSignatures, RunnerFailureSignatures: p.SandboxRunnerFailureSignatures}
+			p.SandboxRunnerFailed = classifier.IsRunnerFailure(p.ExitCode, output)
+			p.SandboxDenied = !p.SandboxRunnerFailed && classifier.IsDenied(p.ExitCode, output)
 			if p.SandboxRunnerFailed {
 				p.LastError = "filesystem process sandbox runner failed; command did not run"
 			}

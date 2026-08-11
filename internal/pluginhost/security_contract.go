@@ -45,8 +45,10 @@ type ProcessSandboxPolicy struct {
 }
 
 type ProcessSandboxResult struct {
-	Argv        []string `json:"argv"`
-	Enforcement string   `json:"enforcement"`
+	Argv                    []string `json:"argv"`
+	Enforcement             string   `json:"enforcement"`
+	DenialSignatures        []string `json:"denial_signatures,omitempty"`
+	RunnerFailureSignatures []string `json:"runner_failure_signatures,omitempty"`
 }
 
 func SecurityAuthorizeDescriptor() ServiceDescriptor {

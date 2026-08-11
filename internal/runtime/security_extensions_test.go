@@ -30,7 +30,7 @@ func (p *securityServiceProvider) InvokeService(_ context.Context, params plugin
 	case pluginhost.SecurityAuthorizeService:
 		return json.RawMessage(`{"outcome":"deny","reason":"protected branch"}`), nil
 	case pluginhost.ProcessSandboxService:
-		return json.RawMessage(`{"argv":["/usr/bin/env","secure-runner"],"enforcement":"full"}`), nil
+		return json.RawMessage(`{"argv":["/usr/bin/env","secure-runner"],"enforcement":"full","denial_signatures":["custom denied"],"runner_failure_signatures":["custom runner failed"]}`), nil
 	default:
 		return nil, nil
 	}
@@ -58,7 +58,7 @@ func TestPluginSecurityServicesAreRealCoreConsumers(t *testing.T) {
 
 	sandbox := &pluginSandboxProvider{registry: registry}
 	confined, err := sandbox.Confine(context.Background(), []string{"/bin/echo", "hello"}, processsandbox.Policy{Mode: processsandbox.ModeReadOnly})
-	if err != nil || confined.Enforcement != processsandbox.EnforcementFull || len(confined.Argv) != 2 {
+	if err != nil || confined.Enforcement != processsandbox.EnforcementFull || len(confined.Argv) != 2 || len(confined.DenialSignatures) != 1 || len(confined.RunnerFailureSignatures) != 1 {
 		t.Fatalf("confined = %+v err = %v", confined, err)
 	}
 	if len(provider.invocations) != 2 || provider.invocations[0].Caller != "kernel" || provider.invocations[1].ExecutionID == "" {

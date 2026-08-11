@@ -210,8 +210,10 @@ func executeShellCommandInDir(ctx context.Context, env *Env, command string, tim
 	if sandboxTempDir != "" {
 		cmd.Env = replaceCommandEnv(cmd.Env, "TMPDIR", sandboxTempDir)
 	}
+	var sandboxClassifier processsandbox.ResultClassifier
 	if sandboxPolicy != nil {
-		if err := processsandbox.ApplyWithProvider(ctx, cmd, *sandboxPolicy, env.ProcessSandboxProvider); err != nil {
+		sandboxClassifier, err = processsandbox.ApplyWithProvider(ctx, cmd, *sandboxPolicy, env.ProcessSandboxProvider)
+		if err != nil {
 			return shellExecutionResult{}, fmt.Errorf("prepare filesystem process sandbox: %w", err)
 		}
 	}
@@ -313,7 +315,7 @@ func executeShellCommandInDir(ctx context.Context, env *Env, command string, tim
 
 	stdoutText := stdout.String()
 	stderrText := stderr.String()
-	if sandboxPolicy != nil && processsandbox.IsRunnerFailure(exitCode, stdoutText+stderrText) {
+	if sandboxPolicy != nil && sandboxClassifier.IsRunnerFailure(exitCode, stdoutText+stderrText) {
 		return shellExecutionResult{}, fmt.Errorf("filesystem process sandbox runner failed; command did not run: %w", processsandbox.ErrUnavailable)
 	}
 	redactedStdout := env.RedactToolOutput(stdoutText)
@@ -329,7 +331,7 @@ func executeShellCommandInDir(ctx context.Context, env *Env, command string, tim
 	nextSuggestions := shellNextSuggestions(exitCode, timedOut, classification)
 	var sandboxResult *shellSandboxResult
 	if sandboxPolicy != nil {
-		denied := processsandbox.IsDenied(exitCode, stdoutText+stderrText)
+		denied := sandboxClassifier.IsDenied(exitCode, stdoutText+stderrText)
 		sandboxResult = &shellSandboxResult{Mode: sandboxPolicy.Mode, Enforcement: "full", Denied: denied}
 		if denied {
 			nextSuggestions = []string{
