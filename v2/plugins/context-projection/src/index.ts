@@ -175,7 +175,7 @@ class DefaultModelContextService extends Service implements ModelContextService 
     const events = await this.ctx.sessions.load(sessionId);
     const { messages } = reconstructMessages(events, true, signal);
 
-    const prompt = this.ctx.prompts.render();
+    const prompt = await this.ctx.prompts.render(sessionId);
     const tools = this.ctx.tools.entries()
       .map(([, tool]) => ({
         name: tool.name,

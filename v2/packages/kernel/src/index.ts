@@ -168,16 +168,25 @@ export class HostActionRegistry extends UniqueRegistry<HostActionHandler> {
   }
 }
 
-export class PromptRegistry extends UniqueRegistry<() => string> {
+export type PromptRenderer = (
+  sessionId: string,
+) => string | undefined | Promise<string | undefined>;
+
+export class PromptRegistry extends UniqueRegistry<PromptRenderer> {
   constructor(ctx: Context) {
     super(ctx, "prompts");
   }
 
-  render(): { text: string; sources: string[] } {
+  async render(sessionId: string): Promise<{ text: string; sources: string[] }> {
     const entries = [...this.entries()].sort(([left], [right]) => left.localeCompare(right));
+    const sections: Array<{ id: string; text: string }> = [];
+    for (const [id, render] of entries) {
+      const text = (await render(sessionId))?.trim();
+      if (text) sections.push({ id, text });
+    }
     return {
-      text: entries.map(([, render]) => render()).filter(Boolean).join("\n\n"),
-      sources: entries.map(([id]) => id),
+      text: sections.map(({ text }) => text).join("\n\n"),
+      sources: sections.map(({ id }) => id),
     };
   }
 }
