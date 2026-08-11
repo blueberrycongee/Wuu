@@ -96,6 +96,9 @@ try {
   }
 
   const recovered = await ctx.agentRuns.recoverAll();
+  const recoveredContext = smoke
+    ? await ctx.modelContext.build(recoverySessionId!, new AbortController().signal)
+    : undefined;
   const sideResolution = await ctx.hostActions.execute("side/resolve", { sessionId });
   if (
     !sideResolution ||
@@ -136,6 +139,7 @@ try {
       !recovered.includes(recoveryRunId!) ||
       recoveryState?.type !== "agent/run-state" ||
       recoveryState.data.state !== "interrupted" ||
+      recoveredContext?.messages.at(-1)?.role !== "tool" ||
       !recoveryTypes.includes("agent/tool-result") ||
       !recoveryTypes.includes("agent/assistant-completed") ||
       !recordTypes.includes("agent/assistant-tool-call") ||

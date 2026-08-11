@@ -66,17 +66,31 @@ function recoveryRecords(events: readonly SessionEvent[], runId: string): AgentS
   const tail = startIndex < 0 ? [] : events.slice(startIndex + 1);
   const activeMessages = new Set<string>();
   const calls = new Map<string, string>();
+  const messageCalls = new Map<string, Set<string>>();
   for (const event of tail) {
     const record = event.record as AgentSessionRecord;
     if (record.type === "agent/assistant-started") activeMessages.add(record.data.messageId);
-    if (record.type === "agent/assistant-completed") activeMessages.delete(record.data.messageId);
-    if (record.type === "agent/assistant-tool-call") calls.set(record.data.call.callId, record.data.call.name);
+    if (record.type === "agent/assistant-tool-call") {
+      calls.set(record.data.call.callId, record.data.call.name);
+      const ids = messageCalls.get(record.data.messageId) ?? new Set<string>();
+      ids.add(record.data.call.callId);
+      messageCalls.set(record.data.messageId, ids);
+    }
+    if (record.type === "agent/assistant-completed") {
+      activeMessages.delete(record.data.messageId);
+      if (record.data.stopReason !== "tool_calls") {
+        for (const callId of messageCalls.get(record.data.messageId) ?? []) calls.delete(callId);
+      }
+    }
     if (record.type === "agent/tool-result") calls.delete(record.data.callId);
   }
   return [
     ...[...activeMessages].map((messageId): AgentSessionRecord => ({
       type: "agent/assistant-completed",
-      data: { messageId, stopReason: "error" },
+      data: {
+        messageId,
+        stopReason: messageCalls.get(messageId)?.size ? "tool_calls" : "error",
+      },
     })),
     ...[...calls].map(([callId, name]): AgentSessionRecord => ({
       type: "agent/tool-result",
