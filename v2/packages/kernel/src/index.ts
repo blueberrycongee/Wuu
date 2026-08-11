@@ -38,6 +38,10 @@ export interface ModelContextService {
   }>;
 }
 
+export type HostActionHandler = (
+  input: JsonValue,
+) => Promise<JsonValue | undefined> | JsonValue | undefined;
+
 export interface ProjectionSnapshot<T extends JsonValue = JsonValue> {
   key: string;
   seq: number;
@@ -95,6 +99,16 @@ export class AgentRegistry extends UniqueRegistry<AgentLoopFactory> {
   }
 }
 
+export class HostActionRegistry extends UniqueRegistry<HostActionHandler> {
+  constructor(ctx: Context) {
+    super(ctx, "hostActions");
+  }
+
+  async execute(action: string, input: JsonValue): Promise<JsonValue | undefined> {
+    return this.require(action)(input);
+  }
+}
+
 export class PromptRegistry extends UniqueRegistry<() => string> {
   constructor(ctx: Context) {
     super(ctx, "prompts");
@@ -140,6 +154,7 @@ export class ProjectionRegistry extends Service {
 declare module "cordis" {
   interface Context {
     agents: AgentRegistry;
+    hostActions: HostActionRegistry;
     modelContext: ModelContextService;
     projections: ProjectionRegistry;
     prompts: PromptRegistry;
@@ -151,13 +166,14 @@ declare module "cordis" {
 
 export const kernelPlugin: Plugin = function kernel(ctx: Context) {
   new AgentRegistry(ctx);
+  new HostActionRegistry(ctx);
   new ProjectionRegistry(ctx);
   new PromptRegistry(ctx);
   new ProviderRegistry(ctx);
   new ToolRegistry(ctx);
 };
 
-kernelPlugin.provide = ["agents", "projections", "prompts", "providers", "tools"];
+kernelPlugin.provide = ["agents", "hostActions", "projections", "prompts", "providers", "tools"];
 
 export function createKernelContext(): Context {
   return new Context();

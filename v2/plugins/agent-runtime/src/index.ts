@@ -30,6 +30,19 @@ interface ActiveRun {
 type RunState = Extract<AgentSessionRecord, { type: "agent/run-state" }>["data"]["state"];
 const source: EventSource = { pluginId: "agent-runtime", generation: "v1" };
 
+function objectInput(input: unknown): Record<string, unknown> {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    throw new Error("action input must be an object");
+  }
+  return input as Record<string, unknown>;
+}
+
+function stringField(input: Record<string, unknown>, field: string): string {
+  const value = input[field];
+  if (typeof value !== "string" || !value) throw new Error(`missing string field: ${field}`);
+  return value;
+}
+
 function runStates(events: readonly SessionEvent[]): Map<string, RunState> {
   const states = new Map<string, RunState>();
   for (const event of events) {
@@ -90,6 +103,18 @@ export class AgentRuntimeService extends Service {
 
   constructor(ctx: Context, private readonly agentId: string) {
     super(ctx, "agentRuns");
+    ctx.hostActions.register("agent/prompt", async (input) => {
+      const value = objectInput(input);
+      const acceptance = await this.start({
+        sessionId: stringField(value, "sessionId"),
+        text: stringField(value, "text"),
+      });
+      return { runId: acceptance.runId, acceptedSeq: acceptance.acceptedSeq };
+    });
+    ctx.hostActions.register("agent/cancel", (input) => {
+      const value = objectInput(input);
+      return { cancelled: this.cancel(stringField(value, "sessionId")) };
+    });
     this.ctx.effect(() => async () => {
       const active = [...this.active.values()];
       for (const run of active) run.controller.abort(new Error("Agent runtime disposed"));
@@ -193,5 +218,5 @@ export const agentRuntimePlugin: Plugin<AgentRuntimeConfig> = function agentRunt
   new AgentRuntimeService(ctx, config.agentId);
 };
 
-agentRuntimePlugin.inject = ["agents", "sessions"];
+agentRuntimePlugin.inject = ["agents", "hostActions", "sessions"];
 agentRuntimePlugin.provide = "agentRuns";

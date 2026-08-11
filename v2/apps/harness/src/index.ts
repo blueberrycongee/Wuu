@@ -111,8 +111,13 @@ try {
   }
 
   const recovered = await ctx.agentRuns.recoverAll();
-  const accepted = await ctx.agentRuns.start({ sessionId, text: prompt });
-  const result = await ctx.agentRuns.wait(sessionId, accepted.runId);
+  const acceptance = await ctx.hostActions.execute("agent/prompt", { sessionId, text: prompt });
+  if (!acceptance || Array.isArray(acceptance) || typeof acceptance !== "object") {
+    throw new Error("agent prompt was not accepted");
+  }
+  const runId = acceptance.runId;
+  if (typeof runId !== "string") throw new Error("agent prompt acceptance omitted runId");
+  const result = await ctx.agentRuns.wait(sessionId, runId);
   const events = await ctx.sessions.load(sessionId);
   const projections = await ctx.projections.build(ctx.sessions, sessionId);
   const recordTypes = events.map((event) => event.record.type);
