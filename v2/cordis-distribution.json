@@ -1,0 +1,9 @@
+{
+  "package": "cordis",
+  "packageVersion": "4.0.0-rc.8",
+  "upstreamRepository": "https://github.com/cordiverse/cordis.git",
+  "upstreamRevision": "f46ae95e039f156b966e1e0f7e8d1af91e73e9db",
+  "license": "MIT",
+  "distribution": "exact npm package resolved by package-lock.json",
+  "patches": []
+}

@@ -1,0 +1,11 @@
+{
+  "name": "@wuu-v2/kernel",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": "./src/index.ts",
+  "dependencies": {
+    "@wuu-v2/contracts": "0.0.0",
+    "cordis": "4.0.0-rc.8"
+  }
+}

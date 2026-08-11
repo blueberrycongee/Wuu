@@ -1,0 +1,9 @@
+{
+  "name": "@wuu-v2/harness",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@wuu-v2/kernel": "0.0.0"
+  }
+}
