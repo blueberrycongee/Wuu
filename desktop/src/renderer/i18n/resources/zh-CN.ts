@@ -1,4 +1,10 @@
 export const zhCN = {
+  "frontendPreview.invalidTitle": "无法打开的预览",
+  "frontendPreview.kind": "交互式预览",
+  "frontendPreview.invalidDetail": "这个历史预览无法安全打开：{{detail}}",
+  "frontendPreview.tabsLabel": "预览视图",
+  "frontendPreview.previewTab": "预览",
+  "frontendPreview.sourceTab": "源码",
   "common.system": "跟随系统",
   "common.chinese": "简体中文",
   "common.english": "English",

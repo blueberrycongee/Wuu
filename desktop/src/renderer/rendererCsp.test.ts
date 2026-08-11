@@ -8,4 +8,10 @@ describe("renderer content security policy", () => {
   it("allows PDF.js to fetch documents through the renderable file scheme", () => {
     expect(rendererHtml).toMatch(/connect-src\s+'self'\s+wuu-file:/);
   });
+
+  it("allows same-origin srcdoc previews without allowing network frames", () => {
+    const frameDirective = rendererHtml.match(/frame-src\s+([^;]+);/)?.[1] ?? "";
+    expect(frameDirective.split(/\s+/)).toEqual(["'self'", "wuu-file:"]);
+    expect(frameDirective).not.toMatch(/https?:|data:|blob:/);
+  });
 });

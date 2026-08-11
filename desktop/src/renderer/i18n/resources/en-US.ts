@@ -1,6 +1,12 @@
 import type { TranslationKey } from "./zh-CN";
 
 export const enUS = {
+  "frontendPreview.invalidTitle": "Unavailable preview",
+  "frontendPreview.kind": "Interactive preview",
+  "frontendPreview.invalidDetail": "This saved preview cannot be opened: {{detail}}",
+  "frontendPreview.tabsLabel": "Preview views",
+  "frontendPreview.previewTab": "Preview",
+  "frontendPreview.sourceTab": "Source",
   "common.system": "Use system language",
   "common.chinese": "简体中文",
   "common.english": "English",

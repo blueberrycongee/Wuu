@@ -8,6 +8,11 @@ Versioning rules are documented in [the release guide](docs/en/project/release.m
 
 ## [Unreleased]
 
+### Added
+
+- Added capability-gated, sandboxed HTML, CSS, and JavaScript previews to
+  desktop conversation answers.
+
 ## [0.15.0] - 2026-08-05
 
 ### Added

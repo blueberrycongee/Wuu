@@ -34,6 +34,18 @@ function makeReasoning(): ThreadItem {
   };
 }
 
+function makeFrontendPreview(status: "completed" | "failed" = "completed"): ThreadItem {
+  return {
+    id: nextID("frontend-preview"),
+    type: "tool_call",
+    status,
+    name: "render_frontend_preview",
+    arguments: JSON.stringify({ version: 1, title: "Button", html: "<button>Save</button>" }),
+    result: status === "completed" ? "Frontend preview ready." : undefined,
+    error: status === "failed" ? "invalid frontend preview" : undefined,
+  };
+}
+
 function makeToolCall(): ThreadItem {
   return {
     id: nextID("tool"),
@@ -119,5 +131,40 @@ describe("buildAssistantTurnDisplay generated queries", () => {
       ]),
     );
     expect(display.entries.map((entry) => entry.kind)).toEqual(["commentary"]);
+  });
+});
+
+describe("buildAssistantTurnDisplay frontend previews", () => {
+  it("keeps a successful preview as standalone answer content between activities", () => {
+    const preview = makeFrontendPreview();
+    const display = build(makeTurn("completed", [makeToolCall(), preview, makeToolCall()]));
+    expect(display.entries.map((entry) => entry.kind)).toEqual([
+      "activity",
+      "presentation",
+      "activity",
+    ]);
+    expect(display.entries[1]).toMatchObject({
+      item: preview,
+      position: "answer",
+      settled: true,
+      streaming: false,
+    });
+    expect(display.entries[1].items).toBeUndefined();
+    expect(display.hasAnswer).toBe(true);
+    expect(display.missingReplyMessage).toBeUndefined();
+  });
+
+  it("treats a preview-only completed turn as an answered turn", () => {
+    const display = build(makeTurn("completed", [makeFrontendPreview()]));
+    expect(display.hasAnswer).toBe(true);
+    expect(display.entries.map((entry) => entry.kind)).toEqual(["presentation"]);
+    expect(display.missingReplyMessage).toBeUndefined();
+  });
+
+  it("leaves failed previews in ordinary process activity", () => {
+    const display = build(makeTurn("failed", [makeFrontendPreview("failed")]));
+    expect(display.entries).toHaveLength(1);
+    expect(display.entries[0]).toMatchObject({ kind: "activity", position: "process" });
+    expect(display.hasAnswer).toBe(false);
   });
 });

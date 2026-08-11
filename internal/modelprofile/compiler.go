@@ -65,6 +65,10 @@ func (k SurfaceKind) includesChat() bool {
 	return k == SurfaceNamedAgent
 }
 
+func (k SurfaceKind) includesPresentation() bool {
+	return k == SurfaceMain
+}
+
 // Compiler compiles a model profile into a built-in tool surface. Plugin-owned
 // product tools are not part of this compiler.
 type Compiler interface {
@@ -95,6 +99,9 @@ func (DefaultCompiler) Compile(p Profile, kind SurfaceKind) capability.Surface {
 	}
 	if kind.includesChat() {
 		addChatTools(b)
+	}
+	if kind.includesPresentation() {
+		addPresentationTools(b)
 	}
 	b.sortCaps()
 	return b.surface
@@ -309,6 +316,9 @@ func addExtensionTools(b *surfaceBuilder) {
 	b.addDeferredCapability(capability.CapabilityMCP)
 }
 
+func addPresentationTools(b *surfaceBuilder) {
+	b.addVisible("render_frontend_preview", capability.CapabilityPresentationFrontend)
+}
 func addOpenAICodexEditTools(b *surfaceBuilder) {
 	b.addVisible(openaiPatchEditTool, capability.CapabilityFileEdit)
 }

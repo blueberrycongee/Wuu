@@ -1313,6 +1313,9 @@ app.whenReady().then(async () => {
       client: { name: "wuu-desktop", version: DESKTOP_BUILD_INFO.version },
       capabilities: {
         reverse_rpc: { methods: [...BROWSER_REVERSE_RPC_METHODS] },
+        presentations: {
+          frontend_preview_versions: [1],
+        },
       },
     });
     if (result.core) {

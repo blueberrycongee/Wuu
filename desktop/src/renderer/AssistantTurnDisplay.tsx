@@ -2,6 +2,7 @@ import { type JSX } from "react";
 import type { ThreadItem, Turn } from "../shared/protocol";
 import { streamFieldValue } from "./ThreadItemText";
 import { readableToolActivityCommand } from "./ToolActivityHelpers";
+import { isSuccessfulFrontendPreviewToolCall } from "./FrontendPreviewSpec";
 import { isCancellationMessage } from "./UserFacingErrors";
 import { translateCurrent } from "./i18n";
 
@@ -40,6 +41,7 @@ export type TurnEntry = {
 export type TurnEntryKind =
   | "commentary"
   | "answer"
+  | "presentation"
   | "activity"
   | "process"
   | "process_group";
@@ -163,11 +165,24 @@ export function buildAssistantTurnDisplay(
     }
 
     if (item.type === "tool_call") {
+      if (isSuccessfulFrontendPreviewToolCall(item)) {
+        hasAnswer = true;
+        entries.push({
+          key: `${item.id}-presentation`,
+          item,
+          position: "answer",
+          settled: true,
+          streaming: false,
+          kind: "presentation",
+        });
+        continue;
+      }
       const group: ThreadItem[] = [item];
       let nextIndex = index + 1;
       while (
         nextIndex < turn.items.length &&
-        turn.items[nextIndex].type === "tool_call"
+        turn.items[nextIndex].type === "tool_call" &&
+        !isSuccessfulFrontendPreviewToolCall(turn.items[nextIndex])
       ) {
         group.push(turn.items[nextIndex]);
         nextIndex++;

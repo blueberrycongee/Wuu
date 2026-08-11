@@ -4757,3 +4757,142 @@ button.turn-sources-pill:focus-visible {
     transform: none;
   }
 }
+
+/* A successful render_frontend_preview call is answer content, not process
+ * chrome. The runtime is mounted only while this card is expanded on Preview. */
+.frontend-preview-card {
+  width: 100%;
+  overflow: hidden;
+  border: 1px solid var(--hairline-soft);
+  border-radius: var(--radius-md);
+  background: var(--surface-1);
+  color: var(--ink);
+}
+
+.frontend-preview-summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.frontend-preview-summary:hover,
+.frontend-preview-summary:focus-visible {
+  background: var(--surface-2);
+}
+
+.frontend-preview-summary-copy {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.frontend-preview-title {
+  overflow: hidden;
+  font-weight: var(--weight-semibold, 600);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.frontend-preview-kind {
+  color: var(--ink-muted);
+  font-size: 12px;
+}
+
+.frontend-preview-chevron {
+  flex: 0 0 auto;
+  color: var(--ink-muted);
+  transition: transform var(--motion-fast) var(--ease-out);
+}
+
+.frontend-preview-summary[aria-expanded="true"] .frontend-preview-chevron {
+  transform: rotate(90deg);
+}
+
+.frontend-preview-body {
+  border-top: 1px solid var(--hairline-soft);
+  background: var(--paper);
+}
+
+.frontend-preview-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 8px;
+  border-bottom: 1px solid var(--hairline-soft);
+  background: var(--surface-1);
+}
+
+.frontend-preview-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink-muted);
+  font: inherit;
+  cursor: pointer;
+}
+
+.frontend-preview-tabs button:hover,
+.frontend-preview-tabs button:focus-visible,
+.frontend-preview-tabs button.is-active {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+
+.frontend-preview-frame {
+  display: block;
+  width: 100%;
+  min-height: 160px;
+  border: 0;
+  background: #fff;
+}
+
+.frontend-preview-source {
+  max-height: 520px;
+  overflow: auto;
+  padding: 12px;
+}
+
+.frontend-preview-source section + section {
+  margin-top: 14px;
+}
+
+.frontend-preview-source h4 {
+  margin: 0 0 6px;
+  color: var(--ink-muted);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.frontend-preview-source pre {
+  margin: 0;
+  overflow: auto;
+  padding: 10px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  white-space: pre;
+}
+
+.frontend-preview-error {
+  padding: 14px;
+  color: var(--danger, #b42318);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .frontend-preview-chevron {
+    transition: none;
+  }
+}

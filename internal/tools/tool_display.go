@@ -75,6 +75,8 @@ func displayCapabilityForKnownToolName(name string) string {
 		return "web.fetch"
 	case "web_search":
 		return "web.search"
+	case frontendPreviewToolName:
+		return "presentation.frontend-preview"
 	}
 	return ""
 }
@@ -136,6 +138,12 @@ func builtInToolDisplay(call providers.ToolCall) providers.ToolCallDisplay {
 			return toolDisplay("agent", "创建长期 Agent")
 		}
 		return toolDisplay("agent", "创建长期 Agent "+displayTruncate(profile, 70))
+	case frontendPreviewToolName:
+		title := displayString(args, "title")
+		if title == "" {
+			return toolDisplay("presentation", "准备交互式预览")
+		}
+		return toolDisplay("presentation", "准备交互式预览 "+displayTruncate(title, 80))
 	default:
 		return providers.ToolCallDisplay{
 			Kind: displayKindForTool(name),

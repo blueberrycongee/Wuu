@@ -87,6 +87,11 @@ func TestNamedAgentSurfaceAddsChatToolsToCompleteMainSurface(t *testing.T) {
 		named := c.Compile(profile, SurfaceNamedAgent)
 		chatTools := []string{"chat_check", "chat_draft", "chat_read", "chat_remind", "chat_send", "chat_task"}
 		for name, capabilityName := range main.Tools {
+			// Presentations require the desktop turn renderer and are intentionally
+			// absent from named-agent/channel surfaces.
+			if name == "render_frontend_preview" {
+				continue
+			}
 			if named.Tools[name] != capabilityName {
 				t.Errorf("%s/%s named-agent surface lost main tool %s", tt.provider, tt.model, name)
 			}
@@ -96,7 +101,8 @@ func TestNamedAgentSurfaceAddsChatToolsToCompleteMainSurface(t *testing.T) {
 				t.Errorf("%s/%s named-agent surface must expose %s as chat capability", tt.provider, tt.model, name)
 			}
 		}
-		wantTools := append(sortedKeys(main.Tools), chatTools...)
+		mainTools := slices.DeleteFunc(sortedKeys(main.Tools), func(name string) bool { return name == "render_frontend_preview" })
+		wantTools := append(mainTools, chatTools...)
 		slices.Sort(wantTools)
 		if got := sortedKeys(named.Tools); !slices.Equal(got, wantTools) {
 			t.Errorf("%s/%s named-agent tools = %v, want main + chat %v", tt.provider, tt.model, got, wantTools)

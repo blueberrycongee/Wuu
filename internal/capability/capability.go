@@ -75,6 +75,10 @@ const (
 	// so permission routing and telemetry can reason about browser control
 	// independently of the general web fetch/search surface.
 	CapabilityBrowser Capability = "browser"
+
+	// A validated immutable frontend snapshot rendered only by compatible
+	// conversation shells. The core records it but never executes its code.
+	CapabilityPresentationFrontend Capability = "presentation.frontend-preview"
 )
 
 // All returns the full closed set of capabilities. The list is
@@ -102,6 +106,7 @@ func All() []Capability {
 		CapabilityMCP,
 		CapabilityDiscovery,
 		CapabilityBrowser,
+		CapabilityPresentationFrontend,
 	}
 }
 

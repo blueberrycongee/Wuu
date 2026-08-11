@@ -234,11 +234,16 @@ type ClientInfo struct {
 }
 
 type ClientCapabilities struct {
-	ReverseRPC ReverseRPCCapabilities `json:"reverse_rpc,omitempty"`
+	ReverseRPC    ReverseRPCCapabilities   `json:"reverse_rpc,omitempty"`
+	Presentations PresentationCapabilities `json:"presentations,omitempty"`
 }
 
 type ReverseRPCCapabilities struct {
 	Methods []string `json:"methods,omitempty"`
+}
+
+type PresentationCapabilities struct {
+	FrontendPreviewVersions []int `json:"frontend_preview_versions,omitempty"`
 }
 
 type InitializeResult struct {
@@ -271,6 +276,8 @@ type FeatureFlags struct {
 	// backend (hidden WebContentsView + CDP bridge). Mirrored by
 	// desktop/src/shared/protocol.ts. Filled by config_handlers.handleInitialize.
 	Browser bool `json:"browser"`
+	// FrontendPreview reports successful v1 presentation negotiation.
+	FrontendPreview bool `json:"frontend_preview,omitempty"`
 	// SafeMode reports that plugin manifests are visible for recovery, but no
 	// plugin-owned runtime or desktop contribution is active.
 	SafeMode bool `json:"safe_mode,omitempty"`

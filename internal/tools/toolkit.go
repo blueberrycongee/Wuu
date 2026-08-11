@@ -150,7 +150,7 @@ func New(rootDir string) (*Toolkit, error) {
 	}
 	t := &Toolkit{
 		env:               env,
-		disabledTools:     map[string]struct{}{browserToolName: {}},
+		disabledTools:     map[string]struct{}{browserToolName: {}, frontendPreviewToolName: {}},
 		toolSearchEnabled: true,
 		boundary:          StandardBoundary(),
 	}
@@ -282,6 +282,9 @@ func (t *Toolkit) rebuildRegistry() {
 		// Embedded browser automation (default-disabled in New(); enabled per
 		// session by SetBrowserEnabled off WUU_ENABLE_BROWSER).
 		NewBrowserTool(e),
+		// Content-bearing previews stay disabled until a compatible shell
+		// explicitly negotiates support during app-server initialization.
+		NewFrontendPreviewTool(),
 		// Deferred tool discovery
 		NewToolSearchTool(t),
 	}
@@ -535,6 +538,23 @@ func (t *Toolkit) SetBrowserEnabled(enabled bool) {
 		t.EnableTools(browserToolName)
 	} else {
 		t.DisableTools(browserToolName)
+	}
+	t.activeProfileMu.Lock()
+	t.publishActiveSurfaceLocked()
+	t.activeProfileMu.Unlock()
+}
+
+// SetFrontendPreviewEnabled gates the content-bearing frontend preview tool.
+// New toolkits keep it disabled so CLI/headless shells never advertise a UI
+// surface they cannot render. CloneForRoot copies this gate to thread runtimes.
+func (t *Toolkit) SetFrontendPreviewEnabled(enabled bool) {
+	if t == nil {
+		return
+	}
+	if enabled {
+		t.EnableTools(frontendPreviewToolName)
+	} else {
+		t.DisableTools(frontendPreviewToolName)
 	}
 	t.activeProfileMu.Lock()
 	t.publishActiveSurfaceLocked()

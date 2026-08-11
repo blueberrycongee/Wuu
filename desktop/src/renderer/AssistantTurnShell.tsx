@@ -32,6 +32,7 @@ import { ProcessSurface } from "./ProcessSurface";
 import { turnProgressContent } from "./TurnViewHelpers";
 import { collectTurnSources } from "./ToolActivityHelpers";
 import { TurnSourcesRow } from "./TurnSourcesRow";
+import { FrontendPreviewCard } from "./FrontendPreviewCard";
 import {
   AUTO_FOLLOW_NESTED_SCROLL_ATTR,
   useAutoFollowScrollContainer,
@@ -128,8 +129,9 @@ export function AssistantTurnShell({
   const hasAnswer = answerEntries.length > 0;
   const answerHandoffRequested = answerEntries.some(
     (entry) =>
-      entry.item.type === "agent_message" &&
-      streamFieldValue(turn.id, entry.item, "text").trim().length > 0,
+      entry.kind === "presentation" ||
+      (entry.item.type === "agent_message" &&
+        streamFieldValue(turn.id, entry.item, "text").trim().length > 0),
   );
   const processCollapseRequested = answerHandoffRequested;
   const className = [
@@ -469,6 +471,9 @@ function EntryRenderer({
   onOpenRuns?: () => void;
 }): JSX.Element | null {
   const { item, kind, streaming } = entry;
+  if (kind === "presentation") {
+    return <FrontendPreviewCard item={item} />;
+  }
   if (kind === "activity" || kind === "process_group") {
     return (
       <ProcessSurface

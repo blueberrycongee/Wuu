@@ -43,6 +43,8 @@ func (s *Server) handleInitialize(req Request) error {
 		return s.writeResponse(req.ID, nil, fmt.Errorf("unsupported protocol version %q (server uses %q)", params.ProtocolVersion, ProtocolVersion))
 	}
 	s.setClientMethods(params.Capabilities.ReverseRPC.Methods)
+	frontendPreview := supportsPresentationVersion(params.Capabilities.Presentations.FrontendPreviewVersions, 1)
+	s.rt.Toolkit.SetFrontendPreviewEnabled(frontendPreview)
 	s.pinLegacyRuntimeSelections()
 	core := version.Info()
 	runtimeHost := s.rt.HostInfo()
@@ -83,8 +85,21 @@ func (s *Server) handleInitialize(req Request) error {
 		Providers:          s.providerSummaries(),
 		AdvancedSettings:   s.currentAdvancedSettingsSummary(),
 		GeneralSettings:    s.currentGeneralSettingsSummary(),
-		Features:           FeatureFlags{Browser: s.supportsBrowserClient(), SafeMode: s.rt.SafeMode},
+		Features: FeatureFlags{
+			Browser:         s.supportsBrowserClient(),
+			FrontendPreview: frontendPreview,
+			SafeMode:        s.rt.SafeMode,
+		},
 	}, nil)
+}
+
+func supportsPresentationVersion(versions []int, want int) bool {
+	for _, version := range versions {
+		if version == want {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Server) handleConfigRead(req Request) error {

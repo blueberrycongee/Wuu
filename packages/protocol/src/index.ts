@@ -75,6 +75,9 @@ export type InitializeParams = {
     reverse_rpc?: {
       methods?: string[];
     };
+    presentations?: {
+      frontend_preview_versions?: number[];
+    };
   };
 };
 
@@ -115,6 +118,8 @@ export type FeatureFlags = {
   // Advertises that this client can host the embedded browser backend
   // (hidden WebContentsView + CDP bridge). Mirrors appserver.FeatureFlags.
   browser?: boolean;
+  // True only when the desktop and core agreed on frontend preview schema v1.
+  frontend_preview?: boolean;
   // Plugin manifests remain visible for recovery, but no plugin contribution
   // is activated in either runtime or desktop planes.
   safe_mode?: boolean;

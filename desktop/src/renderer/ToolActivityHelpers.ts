@@ -323,6 +323,8 @@ function displaySectionKey(kind: string | undefined): string | undefined {
       return "command";
     case "user_interaction":
       return "interaction";
+    case "presentation":
+      return "interaction";
     default:
       return undefined;
   }
