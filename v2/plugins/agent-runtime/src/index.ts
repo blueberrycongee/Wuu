@@ -114,6 +114,7 @@ function recoveryRecords(events: readonly SessionEvent[], runId: string): AgentS
 export class AgentRuntimeService extends Service {
   private readonly active = new Map<string, ActiveRun>();
   private readonly starting = new Set<string>();
+  private readonly recovering = new Set<string>();
 
   constructor(ctx: Context, private readonly agentId: string) {
     super(ctx, "agentRuns");
@@ -143,7 +144,11 @@ export class AgentRuntimeService extends Service {
   async startWith(agentId: string, input: AgentPromptInput): Promise<AgentRunAcceptance> {
     const text = input.text.trim();
     if (!text) throw new Error("prompt must not be empty");
-    if (this.starting.has(input.sessionId) || this.active.has(input.sessionId)) {
+    if (
+      this.starting.has(input.sessionId) ||
+      this.active.has(input.sessionId) ||
+      this.recovering.has(input.sessionId)
+    ) {
       throw new Error(`session already has an active run: ${input.sessionId}`);
     }
     this.starting.add(input.sessionId);
@@ -200,7 +205,9 @@ export class AgentRuntimeService extends Service {
   }
 
   isActive(sessionId: string): boolean {
-    return this.starting.has(sessionId) || this.active.has(sessionId);
+    return this.starting.has(sessionId) ||
+      this.active.has(sessionId) ||
+      this.recovering.has(sessionId);
   }
 
   async wait(sessionId: string, runId: string): Promise<AgentRunResult> {
@@ -212,13 +219,18 @@ export class AgentRuntimeService extends Service {
   }
 
   async recoverSession(sessionId: string): Promise<string | undefined> {
-    if (this.active.has(sessionId) || this.starting.has(sessionId)) return undefined;
-    const events = await this.ctx.sessions.load(sessionId);
-    const open = openRunIds(events);
-    if (!open.length) return undefined;
-    if (open.length > 1) throw new Error(`session has multiple unfinished runs: ${sessionId}`);
-    await this.ctx.sessions.appendBatch(sessionId, source, recoveryRecords(events, open[0]!));
-    return open[0];
+    if (this.isActive(sessionId)) return undefined;
+    this.recovering.add(sessionId);
+    try {
+      const events = await this.ctx.sessions.load(sessionId);
+      const open = openRunIds(events);
+      if (!open.length) return undefined;
+      if (open.length > 1) throw new Error(`session has multiple unfinished runs: ${sessionId}`);
+      await this.ctx.sessions.appendBatch(sessionId, source, recoveryRecords(events, open[0]!));
+      return open[0];
+    } finally {
+      this.recovering.delete(sessionId);
+    }
   }
 
   async recoverAll(): Promise<string[]> {
