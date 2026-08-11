@@ -61,9 +61,7 @@ describe("first-party desktop plugin lifecycle", () => {
       "goal",
       "subagent",
     ]);
-    expect(host.getSlotSnapshot("composer.toolbar").map((item) => item.pluginId)).toEqual([
-      "subagent",
-    ]);
+    expect(host.getSlotSnapshot("composer.toolbar")).toEqual([]);
     expect(host.getViewTypes().map((item) => `${item.pluginId}:${item.id}`)).toEqual([
       "automation:automation.catalog",
       "dream:dream.settings",

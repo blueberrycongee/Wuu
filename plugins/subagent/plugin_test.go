@@ -21,31 +21,9 @@ type lifecycleHost struct {
 	record taskRecord
 }
 
-type ultraHost struct {
-	captureHost
-	value *string
-}
-
 type interruptHost struct {
 	captureHost
 	record taskRecord
-}
-
-func (h *ultraHost) CallHost(ctx context.Context, method string, params, result any) error {
-	switch method {
-	case pluginapi.HostServiceStorageGet:
-		return decodeInto(map[string]any{"value": h.value}, result)
-	case pluginapi.HostServiceStorageSet:
-		var input struct {
-			Value string `json:"value"`
-		}
-		raw, _ := json.Marshal(params)
-		_ = json.Unmarshal(raw, &input)
-		h.value = &input.Value
-		return nil
-	default:
-		return h.captureHost.CallHost(ctx, method, params, result)
-	}
 }
 
 func (h *lifecycleHost) CallHost(ctx context.Context, method string, params, result any) error {
@@ -211,33 +189,6 @@ func TestSendMessageRebindsChildTurnToCurrentParentTurn(t *testing.T) {
 	}
 	if saved.ParentTurnID != "parent-turn-2" || saved.TurnID != "turn-1" || saved.ParentSessionID != "parent-1" {
 		t.Fatalf("saved task = %+v", saved)
-	}
-}
-
-func TestProactiveDelegationSettingAppendsStateChanges(t *testing.T) {
-	host := &ultraHost{}
-	handler := Handler()
-
-	disabled, err := handler.InvokeCapability(context.Background(), host, pluginapi.CapabilityCall{Capability: capabilityPreStep, Input: json.RawMessage(`{"messages":[],"step_index":0}`)})
-	if err != nil || string(disabled) != `{}` {
-		t.Fatalf("disabled pre-step = %s, err=%v", disabled, err)
-	}
-	updateInput := json.RawMessage(`{"method":"ultra.update","input":{"enabled":true}}`)
-	if _, err := handler.InvokeCapability(context.Background(), host, pluginapi.CapabilityCall{Capability: capabilityClient, Input: updateInput}); err != nil {
-		t.Fatal(err)
-	}
-	enabled, err := handler.InvokeCapability(context.Background(), host, pluginapi.CapabilityCall{Capability: capabilityPreStep, Input: json.RawMessage(`{"messages":[],"step_index":0}`)})
-	if err != nil || !strings.Contains(string(enabled), "Proactive delegation is enabled") {
-		t.Fatalf("enabled pre-step = %s, err=%v", enabled, err)
-	}
-	var contributed struct {
-		AppendMessages []pluginapi.AgentPreStepMessage `json:"append_messages"`
-	}
-	if err := json.Unmarshal(enabled, &contributed); err != nil {
-		t.Fatal(err)
-	}
-	if len(contributed.AppendMessages) != 1 || contributed.AppendMessages[0].ID != ultraMessageID {
-		t.Fatalf("pre-step contribution = %+v", contributed.AppendMessages)
 	}
 }
 

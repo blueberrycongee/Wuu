@@ -2,8 +2,6 @@ export async function activate(api) {
   const React = api.react;
   const h = React.createElement;
   api.registerLocale({ id: "subagent-en", locale: "en-US", entries: {
-    "subagent.ultra.enable": "Enable proactive delegation",
-    "subagent.ultra.disable": "Disable proactive delegation",
     "subagent.aliases.intro": "Route delegated child tasks to specific models by naming aliases here.",
     "subagent.aliases.title": "Model aliases",
     "subagent.aliases.help": "A JSON object mapping alias names to model identifiers, applied to newly spawned child tasks.",
@@ -13,8 +11,6 @@ export async function activate(api) {
     "subagent.aliases.invalid": "Aliases must be a JSON object."
   } });
   api.registerLocale({ id: "subagent-zh", locale: "zh-CN", entries: {
-    "subagent.ultra.enable": "开启主动委派",
-    "subagent.ultra.disable": "关闭主动委派",
     "subagent.aliases.intro": "通过别名把委派的子任务路由到指定模型。",
     "subagent.aliases.title": "模型别名",
     "subagent.aliases.help": "一个 JSON 对象，把别名映射到模型标识，对之后创建的子任务生效。",
@@ -34,9 +30,6 @@ export async function activate(api) {
     .plugin-subagent-saved { color:var(--wuu-color-text-muted,var(--ink-muted)); font-size:var(--font-sm,12px); animation:plugin-subagent-fade 2.4s ease both; }
     @keyframes plugin-subagent-fade { 0% { opacity:0; } 12% { opacity:1; } 70% { opacity:1; } 100% { opacity:0; } }
     .plugin-subagent-settings-error { color:var(--wuu-color-danger); font-size:var(--font-ui,13px); overflow-wrap:anywhere; }
-    .plugin-subagent-ultra svg { width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:1.65; stroke-linecap:round; stroke-linejoin:round; }
-    .plugin-subagent-ultra .plugin-subagent-delegation-node { transition:fill var(--wuu-motion-duration-fast) var(--wuu-motion-easing-standard); }
-    .plugin-subagent-ultra[aria-pressed="true"] .plugin-subagent-delegation-node { fill:currentColor; }
   ` });
   function ChildTaskStatus(props) {
     const threadId = typeof props.threadId === "string" ? props.threadId : "";
@@ -113,39 +106,6 @@ export async function activate(api) {
           savedTick ? h("span", { key: savedTick, className: "plugin-subagent-saved" }, tr("subagent.aliases.saved")) : null),
         error ? h("div", { className: "plugin-subagent-settings-error", role: "alert" }, error) : null))));
   }
-  function ProactiveDelegationIcon() {
-    return h("svg", { viewBox:"0 0 20 20", "aria-hidden":"true" },
-      h("circle", { className:"plugin-subagent-delegation-node", cx:"7", cy:"4", r:"2" }),
-      h("path", { d:"M7 6v2.5M3.5 11V9.5h7V11" }),
-      h("circle", { className:"plugin-subagent-delegation-node", cx:"3.5", cy:"13.5", r:"2" }),
-      h("circle", { className:"plugin-subagent-delegation-node", cx:"10.5", cy:"13.5", r:"2" }),
-      h("path", { d:"M15.5 3v5M13 5.5h5" })
-    );
-  }
-  function ProactiveDelegation(props) {
-    const translate = typeof props.translate === "function" ? props.translate : (key) => key;
-    const [enabled, setEnabled] = React.useState(false);
-    const [busy, setBusy] = React.useState(true);
-    React.useEffect(() => {
-      let active = true;
-      api.invokeRuntime("ultra.get", {}).then((value) => {
-        if (active) setEnabled(Boolean(value?.enabled));
-      }).finally(() => { if (active) setBusy(false); });
-      return () => { active = false; };
-    }, []);
-    const labelKey = enabled ? "subagent.ultra.disable" : "subagent.ultra.enable";
-    const label = translate(labelKey);
-    const toggle = async () => {
-      const next = !enabled;
-      setBusy(true);
-      try {
-        const value = await api.invokeRuntime("ultra.update", { enabled: next });
-        setEnabled(Boolean(value?.enabled));
-      } finally { setBusy(false); }
-    };
-    return h(api.ui.ToolbarToggle, { pressed:enabled, className:"plugin-subagent-ultra", disabled:busy, "aria-label":label, title:label, onClick:()=>void toggle() }, h(ProactiveDelegationIcon));
-  }
   api.registerSlot("composer.above", { id: "subagent-status", order: 30, render: (context) => h(ChildTaskStatus, context) });
-  api.registerSlot("composer.toolbar", { id: "subagent-ultra", order: 30, render: (context) => h(ProactiveDelegation, context) });
   api.registerViewType({ id: "subagent.settings", title: "Subagent", icon: "bot", defaultRegion: "settings", persistence: "durable", render: ModelAliases });
 }

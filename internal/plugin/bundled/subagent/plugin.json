@@ -11,8 +11,7 @@
   "desktop": { "entry": "desktop.js" },
   "contributes": {
     "slots": [
-      { "id": "subagent-status", "target": "composer.above", "order": 30, "title": "Subagent status" },
-      { "id": "subagent-ultra", "target": "composer.toolbar", "order": 30, "title": "Proactive delegation" }
+      { "id": "subagent-status", "target": "composer.above", "order": 30, "title": "Subagent status" }
     ],
     "settingsPages": [
       { "id": "subagent", "title": "Subagent", "description": "Configure model aliases used by delegated tasks", "view": "subagent.settings", "icon": "bot", "order": 30 }

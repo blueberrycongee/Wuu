@@ -16,13 +16,9 @@ import (
 
 const (
 	capabilityPrompt    = "agent.system_prompt.section"
-	capabilityPreStep   = "agent.pre_step"
 	capabilityClient    = "plugin.client.request"
 	capabilityLifecycle = "agent.turn.lifecycle"
 	capabilityInterrupt = "agent.turn.interrupted"
-	ultraStorageKey     = "ultra.enabled"
-	ultraMessageID      = "ultra.mode"
-	ultraOriginID       = "subagent:" + ultraMessageID
 )
 
 var taskNameCleaner = regexp.MustCompile(`[^a-z0-9_]+`)
@@ -48,7 +44,6 @@ func Handler() pluginapi.Handler {
 			},
 			Capabilities: []pluginapi.Capability{
 				{ID: capabilityPrompt, Kind: "transform", Version: 1},
-				{ID: capabilityPreStep, Kind: "transform", Version: 1, Priority: 20},
 				{ID: capabilityClient, Kind: "decision", Version: 1},
 				{ID: capabilityLifecycle, Kind: "observe", Version: 1, ErrorPolicy: "isolate"},
 				{ID: capabilityInterrupt, Kind: "observe", Version: 1, ErrorPolicy: "isolate"},
@@ -209,8 +204,6 @@ func invokeCapability(ctx context.Context, host pluginapi.Host, call pluginapi.C
 	switch call.Capability {
 	case capabilityPrompt:
 		return json.Marshal(map[string]string{"text": promptSection})
-	case capabilityPreStep:
-		return contributeUltraMode(ctx, host, call.Input)
 	case capabilityClient:
 		var request struct {
 			Method string          `json:"method"`
@@ -232,23 +225,6 @@ func invokeCapability(ctx context.Context, host pluginapi.Host, call pluginapi.C
 				return nil, err
 			}
 			return json.Marshal(map[string]any{"result": result})
-		case "ultra.get":
-			enabled, err := loadUltraEnabled(ctx, host)
-			if err != nil {
-				return nil, err
-			}
-			return json.Marshal(map[string]any{"result": map[string]bool{"enabled": enabled}})
-		case "ultra.update":
-			var input struct {
-				Enabled bool `json:"enabled"`
-			}
-			if err := json.Unmarshal(request.Input, &input); err != nil {
-				return nil, err
-			}
-			if err := saveUltraEnabled(ctx, host, input.Enabled); err != nil {
-				return nil, err
-			}
-			return json.Marshal(map[string]any{"result": map[string]bool{"enabled": input.Enabled}})
 		default:
 			return nil, fmt.Errorf("unknown client method %q", request.Method)
 		}
@@ -332,68 +308,6 @@ func invokeCapability(ctx context.Context, host pluginapi.Host, call pluginapi.C
 	default:
 		return nil, fmt.Errorf("unknown capability %q", call.Capability)
 	}
-}
-
-func contributeUltraMode(ctx context.Context, host pluginapi.Host, raw json.RawMessage) (json.RawMessage, error) {
-	var input pluginapi.AgentPreStepInput
-	if err := json.Unmarshal(raw, &input); err != nil {
-		return nil, err
-	}
-	if input.StepIndex > 0 {
-		return json.RawMessage(`{}`), nil
-	}
-	enabled, err := loadUltraEnabled(ctx, host)
-	if err != nil {
-		return nil, err
-	}
-	current := latestUltraMode(input.Messages)
-	desired := "inactive"
-	if enabled {
-		desired = "active"
-	}
-	if current == desired || (!enabled && current == "") {
-		return json.RawMessage(`{}`), nil
-	}
-	content := "status: active\n\n" + ultraPrompt
-	if !enabled {
-		content = "status: inactive\n\nProactive delegation is disabled. Follow the standard delegation policy from the Subagent system prompt."
-	}
-	return json.Marshal(pluginapi.AgentPreStepOutput{AppendMessages: []pluginapi.AgentPreStepMessage{{ID: ultraMessageID, Content: content}}})
-}
-
-func latestUltraMode(messages []pluginapi.ModelMessageViewV1) string {
-	for index := len(messages) - 1; index >= 0; index-- {
-		message := messages[index]
-		if message.Origin != "plugin" || message.OriginID != ultraOriginID {
-			continue
-		}
-		content := strings.TrimSpace(message.Content)
-		switch {
-		case strings.HasPrefix(content, "status: active"):
-			return "active"
-		case strings.HasPrefix(content, "status: inactive"):
-			return "inactive"
-		}
-	}
-	return ""
-}
-
-func loadUltraEnabled(ctx context.Context, host pluginapi.Host) (bool, error) {
-	var result struct {
-		Value *string `json:"value"`
-	}
-	if err := host.CallHost(ctx, pluginapi.HostServiceStorageGet, map[string]any{"scope": "workspace", "key": ultraStorageKey}, &result); err != nil {
-		return false, err
-	}
-	return result.Value != nil && *result.Value == "true", nil
-}
-
-func saveUltraEnabled(ctx context.Context, host pluginapi.Host, enabled bool) error {
-	value := "false"
-	if enabled {
-		value = "true"
-	}
-	return host.CallHost(ctx, pluginapi.HostServiceStorageSet, map[string]any{"scope": "workspace", "key": ultraStorageKey, "value": value}, &struct{}{})
 }
 
 func resolveTask(ctx context.Context, host pluginapi.Host, parentID, target string) (taskRecord, error) {
@@ -548,7 +462,3 @@ The main agent owns the user conversation, final synthesis, and decision about w
 The Subagent plugin owns its task records, cancellation propagation, concurrency policy, and recovery. Use the public Session services to build whatever task topology fits the work; the host does not impose a delegation tree or a global child limit.
 
 Child sessions use fresh conversation context by default while retaining installed plugins and workspace capabilities. Fresh task prompts must be self-contained. Use context=fork only when inherited conversation history is materially necessary, and still provide a concrete directive and scope. Child completion is delivered as a read-only query bubble; do not poll while work is running.`
-
-const ultraPrompt = `# Proactive delegation
-
-Proactive delegation is enabled by the Subagent plugin. For deep or wide tasks, keep the blocking critical-path step local and delegate independent research, verification, or disjoint implementation to bounded child sessions. Child sessions may form their own task graph when that materially improves speed or context isolation. Do not duplicate work. Child results arrive automatically; use send_message or close_agent only when new information or changed scope requires intervention.`
