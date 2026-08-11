@@ -7,6 +7,7 @@ import type {
   CompositionReceiptRecord,
   EventSource,
   ToolCallContent,
+  ToolDefinition,
   ToolResult,
   ModelCacheHint,
   ModelMessage,
@@ -71,6 +72,7 @@ class DefaultAgentLoop implements AgentLoop {
       sources: string[];
       generation: string;
       provider: ModelProvider;
+      executors: ReadonlyMap<string, ToolDefinition>;
     } | undefined;
 
     try {
@@ -78,11 +80,13 @@ class DefaultAgentLoop implements AgentLoop {
         signal.throwIfAborted();
         const context = await this.ctx.modelContext.build(input.sessionId, signal);
         if (!surface) {
+          const availableTools = new Map(this.ctx.tools.entries());
           const allowedTools = await this.ctx.toolPolicy.allowedTools(
             input.sessionId,
             context.tools.map((tool) => tool.name),
           );
-          const tools = context.tools.filter((tool) => allowedTools.has(tool.name));
+          const tools = context.tools.filter((tool) =>
+            allowedTools.has(tool.name) && availableTools.has(tool.name));
           const sources = [
             ...context.sources.filter((entry) => !entry.startsWith("tool:")),
             ...tools.map((tool) => `tool:${tool.name}`),
@@ -95,6 +99,7 @@ class DefaultAgentLoop implements AgentLoop {
             provider: this.ctx.providers.require(
               await this.ctx.modelRouting.resolve(input.sessionId),
             ),
+            executors: new Map(tools.map((tool) => [tool.name, availableTools.get(tool.name)!])),
           };
         }
         const requestCache = cacheHint(input.sessionId, surface.systemPrompt, context.messages);
@@ -181,12 +186,7 @@ class DefaultAgentLoop implements AgentLoop {
         for (const call of calls) {
           signal.throwIfAborted();
           let result: ToolResult;
-          const currentAllowed = await this.ctx.toolPolicy.allowedTools(
-            input.sessionId,
-            this.ctx.tools.entries().map(([name]) => name),
-          );
-          const permitted = currentAllowed.has(call.name);
-          const tool = permitted ? this.ctx.tools.get(call.name) : undefined;
+          const tool = surface.executors.get(call.name);
           try {
             result = tool
               ? await tool.execute(call.input, {
@@ -197,7 +197,7 @@ class DefaultAgentLoop implements AgentLoop {
               : {
                   content: [{
                     type: "text",
-                    text: permitted ? `unknown tool: ${call.name}` : `tool not permitted: ${call.name}`,
+                    text: `tool not available in the frozen run surface: ${call.name}`,
                   }],
                   isError: true,
                 };
