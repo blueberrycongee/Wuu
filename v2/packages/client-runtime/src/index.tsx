@@ -98,7 +98,6 @@ export class SlotsService extends Service {
       if (child.parent === name) this.releaseDeclaration(child.name, child.epoch);
     }
     this.declarations.delete(name);
-    this.contributions.delete(name);
     this.changed();
   }
 

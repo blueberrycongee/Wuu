@@ -14,21 +14,7 @@ test("materializes lazily and invalidates owner slot authorization", async () =>
   const modules = new ClientModuleSystem(ctx);
   let materialized = 0;
   let surface: SlotHandle | undefined;
-
-  modules.arrive("contributor", "1", async () => {
-    materialized += 1;
-    const plugin: Plugin = function contributor(client) {
-      client.slots.contribute("surface", {
-        id: "conversation",
-        component: () => null,
-      });
-    };
-    plugin.inject = ["slots"];
-    return {
-      default: plugin,
-    };
-  });
-  modules.arrive("owner", "1", async () => {
+  const ownerModule = async () => {
     materialized += 1;
     const plugin: Plugin = function owner(client) {
       const registration = client.slots.contribute("root", {
@@ -43,10 +29,23 @@ test("materializes lazily and invalidates owner slot authorization", async () =>
       surface = registration.children.get("surface");
     };
     plugin.inject = ["slots"];
+    return { default: plugin };
+  };
+
+  modules.arrive("contributor", "1", async () => {
+    materialized += 1;
+    const plugin: Plugin = function contributor(client) {
+      client.slots.contribute("surface", {
+        id: "conversation",
+        component: () => null,
+      });
+    };
+    plugin.inject = ["slots"];
     return {
       default: plugin,
     };
   });
+  modules.arrive("owner", "1", ownerModule);
 
   assert.equal(materialized, 0);
   const [firstOwner, secondOwner] = await Promise.all([
@@ -79,6 +78,9 @@ test("materializes lazily and invalidates owner slot authorization", async () =>
 
   await modules.invalidate("owner");
   assert.throws(() => ctx.slots.entries(surface!), /stale slot authorization/);
+  modules.arrive("owner", "2", ownerModule);
+  await modules.activate("owner");
+  assert.equal(ctx.slots.entries(surface!).length, 1);
 
   await modules.dispose();
   await kernel.dispose();
