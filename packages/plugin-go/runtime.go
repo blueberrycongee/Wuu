@@ -75,6 +75,7 @@ const (
 	KernelSessionSendService            = "host.session.send"
 	KernelSessionListService            = "host.session.list"
 	KernelSessionCancelService          = "host.session.cancel"
+	KernelUserQuestionAskService        = "host.user-question.ask"
 	KernelServiceMethod                 = "call"
 )
 
@@ -200,6 +201,31 @@ type ToolResult struct {
 	StructuredContent json.RawMessage `json:"structured_content,omitempty"`
 	Meta              json.RawMessage `json:"meta,omitempty"`
 	IsError           bool            `json:"is_error,omitempty"`
+}
+
+type UserQuestionOption struct {
+	Label       string `json:"label"`
+	Description string `json:"description,omitempty"`
+}
+
+type UserQuestion struct {
+	ID          string               `json:"id"`
+	Question    string               `json:"question"`
+	Header      string               `json:"header,omitempty"`
+	Detail      string               `json:"detail,omitempty"`
+	Options     []UserQuestionOption `json:"options,omitempty"`
+	MultiSelect bool                 `json:"multi_select,omitempty"`
+	AllowCustom bool                 `json:"allow_custom,omitempty"`
+}
+
+type UserQuestionAnswerItem struct {
+	ID       string   `json:"id"`
+	Selected []string `json:"selected"`
+	Custom   string   `json:"custom,omitempty"`
+}
+
+type UserQuestionAnswer struct {
+	Answers []UserQuestionAnswerItem `json:"answers"`
 }
 
 func TextResult(text string) ToolResult {
@@ -439,6 +465,19 @@ type ExecutionUpdate struct {
 // or not owned by the caller fail with typed errors.
 func ReportExecutionUpdate(ctx context.Context, host Host, update ExecutionUpdate) error {
 	return CallService(ctx, host, ExecutionUpdateService, KernelServiceMethod, update, nil)
+}
+
+// AskUserQuestions pauses the current Tool execution until a shell answers or
+// the execution context is cancelled. The caller must declare
+// KernelUserQuestionAskService in RequiredServices.
+func AskUserQuestions(ctx context.Context, host Host, call ToolCall, questions []UserQuestion) (UserQuestionAnswer, error) {
+	var answer UserQuestionAnswer
+	err := CallService(ctx, host, KernelUserQuestionAskService, KernelServiceMethod, struct {
+		ThreadID  string         `json:"thread_id"`
+		TurnID    string         `json:"turn_id"`
+		Questions []UserQuestion `json:"questions"`
+	}{ThreadID: call.ThreadID, TurnID: call.TurnID, Questions: questions}, &answer)
+	return answer, err
 }
 
 func RequireHostServices(services ...string) []ServiceRequirement {

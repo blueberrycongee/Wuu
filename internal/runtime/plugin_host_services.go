@@ -279,11 +279,18 @@ type kernelHostServices struct {
 	registry       *pluginhost.ServiceRegistry
 	generation     func() uint64
 	executions     executionUpdateRecorder
+	userQuestions  *pluginhost.UserQuestionBroker
 	driverGateways *driverGatewayTable
 }
 
 func newKernelHostServices(generation func() uint64, executions executionUpdateRecorder) *kernelHostServices {
 	return &kernelHostServices{services: make(map[string]*pluginHostServices), generation: generation, executions: executions, driverGateways: newDriverGatewayTable()}
+}
+
+func (k *kernelHostServices) bindUserQuestions(broker *pluginhost.UserQuestionBroker) {
+	k.mu.Lock()
+	k.userQuestions = broker
+	k.mu.Unlock()
 }
 
 func (k *kernelHostServices) add(pluginID string, services *pluginHostServices) {
@@ -341,6 +348,10 @@ func (k *kernelHostServices) KernelServiceRegistrations() []pluginhost.ServiceRe
 		pluginhost.ServiceRegistration{
 			Descriptor: pluginhost.KernelExecutionUpdateDescriptor(),
 			Invoker:    &executionUpdateInvoker{parent: k}, Kernel: true,
+		},
+		pluginhost.ServiceRegistration{
+			Descriptor: pluginhost.KernelUserQuestionAskDescriptor(),
+			Invoker:    &userQuestionAskInvoker{parent: k}, Kernel: true,
 		},
 		pluginhost.ServiceRegistration{
 			Descriptor: pluginhost.KernelDriverModelLoopDescriptor(),
@@ -464,6 +475,40 @@ func (k *executionUpdateInvoker) InvokeService(ctx context.Context, params plugi
 		providers.DebugLogf("plugin %q execution %s: %s", params.Caller, update.ExecutionID, message)
 	}
 	return json.RawMessage(`{}`), nil
+}
+
+type userQuestionAskInvoker struct {
+	parent *kernelHostServices
+}
+
+func (k *userQuestionAskInvoker) ID() string                { return k.parent.ID() }
+func (k *userQuestionAskInvoker) Status() pluginhost.Status { return k.parent.Status() }
+func (k *userQuestionAskInvoker) InvokeService(ctx context.Context, params pluginhost.ServiceInvokeParams) (json.RawMessage, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if params.Method != pluginhost.KernelServiceMethod {
+		return nil, serviceError("method_not_found", "kernel service method is unavailable")
+	}
+	k.parent.mu.RLock()
+	broker := k.parent.userQuestions
+	k.parent.mu.RUnlock()
+	if broker == nil {
+		return nil, serviceError("service_unavailable", "user interaction is unavailable")
+	}
+	var input pluginhost.UserQuestionAskParams
+	if err := json.Unmarshal(params.Params, &input); err != nil {
+		return nil, serviceError("invalid_request", fmt.Sprintf("decode user question params: %v", err))
+	}
+	answer, err := broker.Ask(ctx, params.Caller, params.ExecutionID, input)
+	if err != nil {
+		var questionErr *pluginhost.UserQuestionError
+		if errors.As(err, &questionErr) {
+			return nil, serviceError(questionErr.Code, questionErr.Message)
+		}
+		return nil, err
+	}
+	return marshalServiceResult(answer)
 }
 
 func (s *pluginHostServices) storageGet(params pluginhost.StorageGetParams) (json.RawMessage, error) {

@@ -20,8 +20,8 @@ func startPluginClient(ctx context.Context, cfg pluginhost.ProcessConfig) (plugi
 	return pluginhost.Start(ctx, cfg)
 }
 
-func startPluginHost(plugins []pluginpkg.Plugin, projectRoot, wuuHome, workspaceStateDir string, turnRouter *PluginSessionRouter) (*pluginhost.Host, *kernelHostServices) {
-	host, kernel, err := buildPluginHost(plugins, projectRoot, wuuHome, workspaceStateDir, nil, startPluginClient, turnRouter)
+func startPluginHost(plugins []pluginpkg.Plugin, projectRoot, wuuHome, workspaceStateDir string, turnRouter *PluginSessionRouter, userQuestions *pluginhost.UserQuestionBroker) (*pluginhost.Host, *kernelHostServices) {
+	host, kernel, err := buildPluginHost(plugins, projectRoot, wuuHome, workspaceStateDir, nil, startPluginClient, turnRouter, userQuestions)
 	if err != nil {
 		return pluginhost.New(pluginhost.Failed("capability-negotiation", err)), nil
 	}
@@ -38,7 +38,7 @@ func activatePluginHost(ctx context.Context, host *pluginhost.Host) error {
 	return host.Activate(ctx)
 }
 
-func buildPluginHost(plugins []pluginpkg.Plugin, projectRoot, wuuHome, workspaceStateDir string, required map[string]bool, start pluginClientStarter, turnRouter *PluginSessionRouter) (*pluginhost.Host, *kernelHostServices, error) {
+func buildPluginHost(plugins []pluginpkg.Plugin, projectRoot, wuuHome, workspaceStateDir string, required map[string]bool, start pluginClientStarter, turnRouter *PluginSessionRouter, userQuestions *pluginhost.UserQuestionBroker) (*pluginhost.Host, *kernelHostServices, error) {
 	host := pluginhost.New()
 	var started []pluginhost.Client
 	kernel := newKernelHostServices(func() uint64 {
@@ -48,6 +48,7 @@ func buildPluginHost(plugins []pluginpkg.Plugin, projectRoot, wuuHome, workspace
 		}
 		return epoch
 	}, host)
+	kernel.bindUserQuestions(userQuestions)
 	registry, conflicts := pluginhost.BuildServiceRegistry(kernel)
 	kernel.bindRegistry(registry)
 	closeStarted := func() error {

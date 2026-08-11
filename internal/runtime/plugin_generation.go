@@ -171,7 +171,7 @@ func (s *Session) buildPluginGeneration(cfg config.Config, discovered []pluginpk
 		}
 		active = activationPlan.Plugins
 	}
-	host, kernel, err := buildPluginHost(active, s.RootDir, s.WuuHome, s.StateDir, required, start, s.PluginSessionRouter)
+	host, kernel, err := buildPluginHost(active, s.RootDir, s.WuuHome, s.StateDir, required, start, s.PluginSessionRouter, s.UserQuestions)
 	if err != nil {
 		for _, root := range ownedRoots {
 			_ = os.RemoveAll(root)

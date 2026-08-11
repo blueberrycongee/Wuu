@@ -123,6 +123,7 @@ type Session struct {
 	ActivePlugins     []pluginpkg.Plugin
 	ExtensionSettings *extensions.Settings
 	PluginHost        *pluginhost.Host
+	UserQuestions     *pluginhost.UserQuestionBroker
 	// DriverProfile records the driver profile bound at construction, for
 	// diagnostics; the driver itself lives on the stream runner template.
 	DriverProfile            string
@@ -202,6 +203,7 @@ func (s *Session) cloneForThreadModel() *Session {
 		ActivePlugins:               s.ActivePlugins,
 		ExtensionSettings:           s.ExtensionSettings,
 		PluginHost:                  s.PluginHost,
+		UserQuestions:               s.UserQuestions,
 		DriverProfile:               s.DriverProfile,
 		PluginSessionRouter:         s.PluginSessionRouter,
 		systemPrompts:               s.systemPrompts,
@@ -396,7 +398,8 @@ func NewSession(opts Options) (*Session, error) {
 	}
 	var agentControl *agentcontrol.AgentControl
 	pluginTurnRouter := NewPluginSessionRouter()
-	pluginHost, pluginKernel := startPluginHost(activePlugins, rootDir, wuuHome, workspaceStateDir, pluginTurnRouter)
+	userQuestions := pluginhost.NewUserQuestionBroker()
+	pluginHost, pluginKernel := startPluginHost(activePlugins, rootDir, wuuHome, workspaceStateDir, pluginTurnRouter, userQuestions)
 	systemPrompts, compactions, capabilityErr := buildPluginAgentCapabilities(context.Background(), pluginHost, resolvedName, providerCfg.Model, rootDir)
 	if capabilityErr != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
@@ -658,6 +661,7 @@ func NewSession(opts Options) (*Session, error) {
 		ActivePlugins:               activePlugins,
 		ExtensionSettings:           cfg.Extensions,
 		PluginHost:                  pluginHost,
+		UserQuestions:               userQuestions,
 		PluginSessionRouter:         pluginTurnRouter,
 		systemPrompts:               systemPrompts,
 		InstructionFiles:            instructionFiles,
@@ -1654,6 +1658,10 @@ func (s *Session) Cleanup() (process.CleanupResult, error) {
 	if s.InferenceJournalRuntime != nil {
 		cleanupErr = errors.Join(cleanupErr, s.InferenceJournalRuntime.Close())
 		s.InferenceJournalRuntime = nil
+	}
+	if s.UserQuestions != nil {
+		s.UserQuestions.Close()
+		s.UserQuestions = nil
 	}
 	if s.PluginHost != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)

@@ -40,6 +40,9 @@ const (
 	MethodPluginStorageGet         = "plugin/storage/get"
 	MethodPluginStorageSet         = "plugin/storage/set"
 	MethodPluginClientRequest      = "plugin/client/request"
+	MethodUserQuestionList         = "user-question/list"
+	MethodUserQuestionRespond      = "user-question/respond"
+	MethodUserQuestionCancel       = "user-question/cancel"
 	MethodConfigCodexModels        = "config/codex/models"
 	MethodConfigCatalogRefresh     = "config/model-catalog/refresh"
 	MethodConfigProviderRemove     = "config/provider/remove"
@@ -170,6 +173,8 @@ const (
 	NotificationAgentMailbox           = "agent/mailbox"
 	NotificationMCPStatusUpdated       = "mcp/status/updated"
 	NotificationPluginInventoryChanged = "plugin/inventory/changed"
+	NotificationUserQuestionRequested  = "user-question/requested"
+	NotificationUserQuestionResolved   = "user-question/resolved"
 )
 
 type PluginInventoryChangedNotification struct {

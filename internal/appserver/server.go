@@ -205,7 +205,10 @@ type Server struct {
 	drainingQueuedTurns map[string]bool
 	heldUserWorkMu      sync.Mutex
 
-	pluginTurnUnbind func()
+	pluginTurnUnbind   func()
+	userQuestionUnbind func()
+	userQuestionStop   chan struct{}
+	userQuestionDone   chan struct{}
 
 	rewriteChatHistoryForTest           func(string, string, []providers.ChatMessage) error
 	afterLifecycleHistoryAppendForTest  func(threadID string)
@@ -285,6 +288,7 @@ func NewWithCredentialStore(rt *runtime.Session, out io.Writer, store credential
 		activeRunByThread:            make(map[string]string),
 		modelCatalogHTTPClient:       httpClient,
 	}
+	s.bindUserQuestions()
 	if rt != nil {
 		catalogHome := strings.TrimSpace(rt.WuuHome)
 		if catalogHome == "" && strings.TrimSpace(rt.ConfigPath) != "" {
@@ -617,6 +621,16 @@ func (s *Server) Close() {
 			s.pluginTurnUnbind()
 			s.pluginTurnUnbind = nil
 		}
+		if s.userQuestionUnbind != nil {
+			s.userQuestionUnbind()
+			s.userQuestionUnbind = nil
+		}
+		if s.userQuestionStop != nil {
+			close(s.userQuestionStop)
+			<-s.userQuestionDone
+			s.userQuestionStop = nil
+			s.userQuestionDone = nil
+		}
 		s.cancelSideThreads()
 		// Synchronize with startBackground so no new owned goroutine can be
 		// added after the shutdown waiter begins.
@@ -909,6 +923,12 @@ func (s *Server) handleLine(ctx context.Context, raw []byte) error {
 		return s.handlePluginStorageSet(req)
 	case MethodPluginClientRequest:
 		return s.handlePluginClientRequest(ctx, req)
+	case MethodUserQuestionList:
+		return s.handleUserQuestionList(req)
+	case MethodUserQuestionRespond:
+		return s.handleUserQuestionRespond(req)
+	case MethodUserQuestionCancel:
+		return s.handleUserQuestionCancel(req)
 	case MethodConfigCodexModels:
 		// Model discovery performs an external Codex request. Keep it off the
 		// serial stdio dispatch loop so unrelated local mutations, especially a

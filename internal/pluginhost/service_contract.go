@@ -43,6 +43,7 @@ const (
 	KernelSessionSendService            = "host.session.send"
 	KernelSessionListService            = "host.session.list"
 	KernelSessionCancelService          = "host.session.cancel"
+	KernelUserQuestionAskService        = "host.user-question.ask"
 
 	// KernelRegistryIntrospectService is the kernel's read-only registry
 	// introspection service: which services exist, at what version, provided
@@ -119,6 +120,13 @@ func KernelExecutionUpdateDescriptor() ServiceDescriptor {
 	return ServiceDescriptor{
 		Name: ExecutionUpdateService, Version: "1.0.0",
 		Methods: []ServiceMethodDescriptor{{Name: KernelServiceMethod, InputSchema: "execution.update.request.v1", OutputSchema: "execution.update.response.v1"}},
+	}
+}
+
+func KernelUserQuestionAskDescriptor() ServiceDescriptor {
+	return ServiceDescriptor{
+		Name: KernelUserQuestionAskService, Version: "1.0.0",
+		Methods: []ServiceMethodDescriptor{{Name: KernelServiceMethod, InputSchema: "host.user-question.ask.input.v1", OutputSchema: "host.user-question.ask.output.v1"}},
 	}
 }
 
