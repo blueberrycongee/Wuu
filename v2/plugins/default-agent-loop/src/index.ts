@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type {
   AgentLoop,
-  AgentRunInput,
+  AgentLoopInput,
   AgentRunResult,
   AgentSessionRecord,
   CompositionReceiptRecord,
@@ -30,23 +30,11 @@ class DefaultAgentLoop implements AgentLoop {
     return this.ctx.sessions.append(sessionId, source, record);
   }
 
-  async run(input: AgentRunInput): Promise<AgentRunResult> {
-    const signal = input.signal ?? new AbortController().signal;
-    const runId = randomUUID();
+  async run(input: AgentLoopInput): Promise<AgentRunResult> {
+    const signal = input.signal;
+    const runId = input.runId;
     let activeMessageId: string | undefined;
     let unfinishedCalls: ToolCallContent[] = [];
-
-    await this.append(input.sessionId, {
-      type: "agent/user-message",
-      data: {
-        messageId: randomUUID(),
-        content: [{ type: "text", text: input.text }],
-      },
-    });
-    await this.append(input.sessionId, {
-      type: "agent/run-state",
-      data: { runId, state: "started" },
-    });
 
     try {
       while (true) {
@@ -104,10 +92,6 @@ class DefaultAgentLoop implements AgentLoop {
         activeMessageId = undefined;
 
         if (!calls.length) {
-          await this.append(input.sessionId, {
-            type: "agent/run-state",
-            data: { runId, state: "completed" },
-          });
           return { runId, status: "completed" };
         }
 
@@ -161,14 +145,6 @@ class DefaultAgentLoop implements AgentLoop {
           },
         });
       }
-      await this.append(input.sessionId, {
-        type: "agent/run-state",
-        data: {
-          runId,
-          state: cancelled ? "cancelled" : "failed",
-          ...(!cancelled ? { error: error instanceof Error ? error.message : String(error) } : {}),
-        },
-      });
       return { runId, status: cancelled ? "cancelled" : "failed" };
     }
   }

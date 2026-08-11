@@ -15,6 +15,12 @@ export interface SessionService {
     source: EventSource,
     record: R,
   ): Promise<SessionEvent<R>>;
+  appendBatch<R extends SessionRecord>(
+    sessionId: string,
+    source: EventSource,
+    records: readonly R[],
+  ): Promise<Array<SessionEvent<R>>>;
+  list(): Promise<string[]>;
   load(sessionId: string): Promise<SessionEvent[]>;
   subscribe(
     sessionId: string,

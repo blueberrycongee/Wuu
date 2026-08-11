@@ -5,6 +5,7 @@
   "type": "module",
   "dependencies": {
     "@wuu-v2/kernel": "0.0.0",
+    "@wuu-v2/plugin-agent-runtime": "0.0.0",
     "@wuu-v2/plugin-context-projection": "0.0.0",
     "@wuu-v2/plugin-conversation": "0.0.0",
     "@wuu-v2/plugin-default-agent-loop": "0.0.0",

@@ -53,7 +53,7 @@ export type AgentSessionRecord =
     }>
   | SessionRecord<"agent/run-state", {
       runId: string;
-      state: "started" | "completed" | "cancelled" | "failed";
+      state: "started" | "completed" | "cancelled" | "failed" | "interrupted";
       error?: string;
     }>;
 
@@ -131,19 +131,19 @@ export interface ToolDefinition {
   execute(input: JsonValue, execution: ToolExecution): Promise<ToolResult>;
 }
 
-export interface AgentRunInput {
+export interface AgentLoopInput {
   sessionId: string;
-  text: string;
-  signal?: AbortSignal;
+  runId: string;
+  signal: AbortSignal;
 }
 
 export interface AgentRunResult {
   runId: string;
-  status: "completed" | "cancelled" | "failed";
+  status: "completed" | "cancelled" | "failed" | "interrupted";
 }
 
 export interface AgentLoop {
-  run(input: AgentRunInput): Promise<AgentRunResult>;
+  run(input: AgentLoopInput): Promise<AgentRunResult>;
 }
 
 export type AgentLoopFactory = () => AgentLoop;

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, open, readFile, rename, rm } from "node:fs/promises";
+import { mkdir, open, readFile, readdir, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
 import type {
   EventSource,
@@ -75,24 +75,55 @@ class JsonlSessionService extends Service implements SessionService {
     return this.loadCommitted(sessionId);
   }
 
+  async list(): Promise<string[]> {
+    await Promise.all(this.tails.values());
+    try {
+      const entries = await readdir(this.directory, { withFileTypes: true });
+      return entries
+        .filter((entry) => entry.isFile() && entry.name.endsWith(".jsonl"))
+        .map((entry) => entry.name.slice(0, -".jsonl".length))
+        .filter((sessionId) => {
+          try {
+            assertSessionId(sessionId);
+            return true;
+          } catch {
+            return false;
+          }
+        })
+        .sort();
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+      throw error;
+    }
+  }
+
   append<R extends SessionRecord>(
     sessionId: string,
     source: EventSource,
     record: R,
   ): Promise<SessionEvent<R>> {
+    return this.appendBatch(sessionId, source, [record]).then(([event]) => event!);
+  }
+
+  appendBatch<R extends SessionRecord>(
+    sessionId: string,
+    source: EventSource,
+    records: readonly R[],
+  ): Promise<Array<SessionEvent<R>>> {
     assertSessionId(sessionId);
+    if (!records.length) return Promise.resolve([]);
     const previous = this.tails.get(sessionId) ?? Promise.resolve();
     const operation = previous.then(async () => {
       const events = await this.loadCommitted(sessionId);
       const seq = events.at(-1)?.seq ?? 0;
-      const event: SessionEvent<R> = {
+      const appended = records.map((record, index): SessionEvent<R> => ({
         id: randomUUID(),
         sessionId,
-        seq: seq + 1,
+        seq: seq + index + 1,
         time: new Date().toISOString(),
         source,
         record,
-      };
+      }));
       const path = this.path(sessionId);
       const temporary = `${path}.${randomUUID()}.tmp`;
       await mkdir(this.directory, { recursive: true });
@@ -100,7 +131,7 @@ class JsonlSessionService extends Service implements SessionService {
         const file = await open(temporary, "wx", 0o600);
         try {
           await file.writeFile(
-            [...events, event].map((item) => JSON.stringify(item)).join("\n") + "\n",
+            [...events, ...appended].map((item) => JSON.stringify(item)).join("\n") + "\n",
             "utf8",
           );
           await file.sync();
@@ -119,14 +150,16 @@ class JsonlSessionService extends Service implements SessionService {
         throw error;
       }
 
-      for (const listener of this.listeners.get(sessionId) ?? []) {
-        try {
-          listener(event);
-        } catch (error) {
-          this.ctx.logger.error(error);
+      for (const event of appended) {
+        for (const listener of this.listeners.get(sessionId) ?? []) {
+          try {
+            listener(event);
+          } catch (error) {
+            this.ctx.logger.error(error);
+          }
         }
       }
-      return event;
+      return appended;
     });
     this.tails.set(sessionId, operation.then(() => undefined, () => undefined));
     return operation;

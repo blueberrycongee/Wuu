@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { AgentSessionRecord } from "@wuu-v2/contracts";
+import { agentRuntimePlugin } from "@wuu-v2/plugin-agent-runtime";
 import { contextProjectionPlugin } from "@wuu-v2/plugin-context-projection";
 import { conversationProjectionPlugin } from "@wuu-v2/plugin-conversation";
 import { defaultAgentLoopPlugin } from "@wuu-v2/plugin-default-agent-loop";
@@ -66,6 +68,7 @@ if (smoke) {
   }));
 }
 fibers.push(await ctx.plugin(defaultAgentLoopPlugin, { providerId }));
+fibers.push(await ctx.plugin(agentRuntimePlugin, { agentId: "default" }));
 
 const shutdown = async () => {
   for (const fiber of fibers.reverse()) await fiber.dispose();
@@ -75,13 +78,57 @@ process.once("SIGINT", () => void shutdown().finally(() => process.exit(130)));
 process.once("SIGTERM", () => void shutdown().finally(() => process.exit(143)));
 
 try {
-  const result = await ctx.agents.require("default")().run({ sessionId, text: prompt });
+  let recoverySessionId: string | undefined;
+  let recoveryRunId: string | undefined;
+  if (smoke) {
+    recoverySessionId = `${sessionId}-recovery`;
+    recoveryRunId = randomUUID();
+    await ctx.sessions.appendBatch(recoverySessionId, {
+      pluginId: "harness-smoke",
+      generation: "v1",
+    }, [
+      {
+        type: "agent/run-state",
+        data: { runId: recoveryRunId, state: "started" },
+      },
+      {
+        type: "agent/assistant-started",
+        data: { messageId: "interrupted-message" },
+      },
+      {
+        type: "agent/assistant-tool-call",
+        data: {
+          messageId: "interrupted-message",
+          call: {
+            type: "tool_call",
+            callId: "interrupted-call",
+            name: "write",
+            input: { path: "unknown" },
+          },
+        },
+      },
+    ] satisfies AgentSessionRecord[]);
+  }
+
+  const recovered = await ctx.agentRuns.recoverAll();
+  const accepted = await ctx.agentRuns.start({ sessionId, text: prompt });
+  const result = await ctx.agentRuns.wait(sessionId, accepted.runId);
   const events = await ctx.sessions.load(sessionId);
   const projections = await ctx.projections.build(ctx.sessions, sessionId);
   const recordTypes = events.map((event) => event.record.type);
   if (smoke) {
+    const recoveryEvents = await ctx.sessions.load(recoverySessionId!);
+    const recoveryTypes = recoveryEvents.map((event) => event.record.type);
+    const recoveryState = recoveryEvents
+      .map((event) => event.record as AgentSessionRecord)
+      .findLast((record) => record.type === "agent/run-state");
     if (
       result.status !== "completed" ||
+      !recovered.includes(recoveryRunId!) ||
+      recoveryState?.type !== "agent/run-state" ||
+      recoveryState.data.state !== "interrupted" ||
+      !recoveryTypes.includes("agent/tool-result") ||
+      !recoveryTypes.includes("agent/assistant-completed") ||
       !recordTypes.includes("agent/assistant-tool-call") ||
       !recordTypes.includes("agent/tool-result") ||
       !projections.some(({ key }) => key === "conversation")
