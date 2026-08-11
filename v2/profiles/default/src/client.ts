@@ -20,6 +20,7 @@ interface ProfileClientEntry {
 
 const entries: ProfileClientEntry[] = [
   { id: "theme-default", url: "@wuu-v2/plugin-theme-default/client", revision: "1", load: () => import("@wuu-v2/plugin-theme-default/client") },
+  { id: "history", url: "@wuu-v2/plugin-history/client", revision: "1", load: () => import("@wuu-v2/plugin-history/client") },
   { id: "layout", url: "@wuu-v2/plugin-layout/client", revision: "1", load: () => import("@wuu-v2/plugin-layout/client") },
   { id: "conversation", url: "@wuu-v2/plugin-conversation/client", revision: "1", load: () => import("@wuu-v2/plugin-conversation/client") },
   { id: "composer", url: "@wuu-v2/plugin-composer/client", revision: "1", load: () => import("@wuu-v2/plugin-composer/client") },

@@ -96,6 +96,7 @@ try {
   }
 
   const recovered = await ctx.agentRuns.recoverAll();
+  await runtime.openSession(sessionId);
   const recoveredContext = smoke
     ? await ctx.modelContext.build(recoverySessionId!, new AbortController().signal)
     : undefined;
@@ -149,6 +150,10 @@ try {
   const inspection = ctx.runtimeInspection.snapshot();
   const recordTypes = events.map((event) => event.record.type);
   if (smoke) {
+    const history = await ctx.hostActions.execute("history/list", {});
+    const historySessions = history && !Array.isArray(history) && typeof history === "object"
+      ? history.sessions
+      : undefined;
     const recoveryEvents = await ctx.sessions.load(recoverySessionId!);
     const recoveryTypes = recoveryEvents.map((event) => event.record.type);
     const recoveryState = recoveryEvents
@@ -164,6 +169,12 @@ try {
       !recoveryTypes.includes("agent/assistant-completed") ||
       !recordTypes.includes("agent/assistant-tool-call") ||
       !recordTypes.includes("agent/tool-result") ||
+      !Array.isArray(historySessions) ||
+      historySessions.length !== 1 ||
+      !historySessions[0] ||
+      typeof historySessions[0] !== "object" ||
+      Array.isArray(historySessions[0]) ||
+      historySessions[0].id !== sessionId ||
       !inspection.services.includes("sessions") ||
       !inspection.tools.includes("read") ||
       inspection.fibers.some(({ pending }) => pending.length) ||

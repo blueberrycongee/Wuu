@@ -3,6 +3,7 @@ import { agentRuntimePlugin } from "@wuu-v2/plugin-agent-runtime";
 import { contextProjectionPlugin } from "@wuu-v2/plugin-context-projection";
 import { conversationProjectionPlugin } from "@wuu-v2/plugin-conversation";
 import { defaultAgentLoopPlugin } from "@wuu-v2/plugin-default-agent-loop";
+import historyHost from "@wuu-v2/plugin-history/host";
 import modelSessionHost from "@wuu-v2/plugin-model-session/host";
 import permissionSessionHost, {
   type PermissionMode,
@@ -37,6 +38,7 @@ export interface DefaultHostProfileConfig {
 export interface DefaultHostProfile {
   ctx: Context;
   modelId: string;
+  openSession(sessionId?: string): Promise<string>;
   dispose(): Promise<void>;
 }
 
@@ -87,11 +89,19 @@ export async function createDefaultHostProfile(
     await install(ctx.plugin(permissionSessionHost, {
       defaultMode: config.defaultPermission ?? "full-access",
     }));
+    await install(ctx.plugin(historyHost));
     await install(ctx.plugin(defaultAgentLoopPlugin, {}));
     await install(ctx.plugin(sideHost, { agentId: "default" }));
     ctx.runtimeInspection.assertReady();
 
-    return { ctx, modelId, dispose };
+    return {
+      ctx,
+      modelId,
+      openSession: (sessionId) => sessionId
+        ? ctx.historySessions.ensure(sessionId)
+        : ctx.historySessions.openLatestOrCreate(),
+      dispose,
+    };
   } catch (error) {
     await dispose();
     throw error;

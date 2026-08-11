@@ -15,6 +15,7 @@
     "@wuu-v2/plugin-context-projection": "0.0.0",
     "@wuu-v2/plugin-conversation": "0.0.0",
     "@wuu-v2/plugin-default-agent-loop": "0.0.0",
+    "@wuu-v2/plugin-history": "0.0.0",
     "@wuu-v2/plugin-layout": "0.0.0",
     "@wuu-v2/plugin-model-session": "0.0.0",
     "@wuu-v2/plugin-permission-session": "0.0.0",
