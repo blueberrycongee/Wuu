@@ -129,6 +129,55 @@ test("materializes lazily and invalidates owner slot authorization", async () =>
   await modules.activate("candidate");
   assert.equal(candidateActive, 1);
 
+  let pendingContributorActive = 0;
+  modules.arrive("pending-contributor", "1", async () => {
+    const plugin: Plugin = function pendingContributor(client) {
+      client.slots.contribute("future-seat", {
+        id: "pending-view",
+        component: () => null,
+      });
+      client.effect(() => {
+        pendingContributorActive += 1;
+        return () => { pendingContributorActive -= 1; };
+      }, "pending contributor lifetime");
+    };
+    plugin.inject = ["slots"];
+    return { default: plugin };
+  });
+  modules.arrive("failed-owner", "1", async () => {
+    const plugin: Plugin = function failedOwner(client) {
+      client.slots.contribute("future-parent", {
+        id: "failed-owner",
+        component: () => null,
+        children: [
+          { name: "future-seat", kind: "single", scope: "root" },
+          { name: "surface", kind: "single", scope: "root" },
+        ],
+      });
+    };
+    plugin.inject = ["slots"];
+    return { default: plugin };
+  });
+  await modules.activate("pending-contributor");
+  await assert.rejects(modules.activate("failed-owner"), /duplicate slot declaration: surface/);
+  assert.equal(pendingContributorActive, 1);
+  let futureSeat: SlotHandle | undefined;
+  modules.arrive("future-owner", "1", async () => {
+    const plugin: Plugin = function futureOwner(client) {
+      const registration = client.slots.contribute("future-parent", {
+        id: "future-owner",
+        component: () => null,
+        children: [{ name: "future-seat", kind: "single", scope: "root" }],
+      });
+      futureSeat = registration.children.get("future-seat");
+    };
+    plugin.inject = ["slots"];
+    return { default: plugin };
+  });
+  await modules.activate("future-owner");
+  assert.equal(ctx.slots.entries(futureSeat!).length, 1);
+  assert.equal(pendingContributorActive, 1);
+
   modules.arrive("missing-dependency", "1", async () => {
     const plugin: Plugin = () => {};
     plugin.inject = ["absentService"];

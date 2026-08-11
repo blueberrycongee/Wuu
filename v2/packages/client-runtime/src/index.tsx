@@ -126,6 +126,13 @@ export class SlotsService extends Service {
     for (const fiber of fibers) await fiber.dispose();
   }
 
+  private rollbackDeclaration(name: string, epoch: symbol): void {
+    const current = this.declarations.get(name);
+    if (!current || current.epoch !== epoch) return;
+    this.declarations.delete(name);
+    this.changed();
+  }
+
   contribute(name: string, contribution: SlotContribution): SlotRegistration {
     const declaration = this.declarations.get(name);
     const entries = this.contributions.get(name) ?? new Map();
@@ -146,8 +153,7 @@ export class SlotsService extends Service {
       }
     } catch (error) {
       for (const handle of [...children.values()].reverse()) {
-        void this.releaseDeclaration(handle.name, handle.epoch, ownerFiber)
-          .catch((cause) => this.ctx.logger.error(cause));
+        this.rollbackDeclaration(handle.name, handle.epoch);
       }
       entries.delete(contribution.id);
       if (!entries.size && this.contributions.get(name) === entries) {
