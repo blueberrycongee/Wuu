@@ -214,6 +214,12 @@ const api: WuuDesktopApi = {
   stopManagedProcess: (threadId: string, processId: string) =>
     ipcRenderer.invoke("wuu:managed-process-stop", threadId, processId),
   initialize: () => ipcRenderer.invoke("wuu:initialize"),
+  listUserQuestions: (threadId?: string) =>
+    ipcRenderer.invoke("wuu:user-question-list", threadId),
+  answerUserQuestion: (requestId, answer) =>
+    ipcRenderer.invoke("wuu:user-question-answer", requestId, answer),
+  cancelUserQuestion: (requestId) =>
+    ipcRenderer.invoke("wuu:user-question-cancel", requestId),
   getBuildInfo: () => ipcRenderer.invoke("wuu:build-info"),
   polishText: (text: string) => ipcRenderer.invoke("wuu:text-polish", text),
   startSpeechRecognition: (locale: string) =>

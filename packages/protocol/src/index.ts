@@ -28,6 +28,50 @@ export type AppServerNotification<T = unknown> = {
   params?: T;
 };
 
+export type UserQuestionOption = {
+  label: string;
+  description?: string;
+};
+
+export type UserQuestion = {
+  id: string;
+  question: string;
+  header?: string;
+  detail?: string;
+  options?: UserQuestionOption[];
+  multi_select?: boolean;
+  allow_custom?: boolean;
+};
+
+export type UserQuestionRequest = {
+  request_id: string;
+  plugin_id: string;
+  execution_id: string;
+  thread_id: string;
+  turn_id: string;
+  questions: UserQuestion[];
+  created_at: string;
+};
+
+export type UserQuestionAnswerItem = {
+  id: string;
+  selected: string[];
+  custom?: string;
+};
+
+export type UserQuestionAnswer = {
+  answers: UserQuestionAnswerItem[];
+};
+
+export type UserQuestionListResult = {
+  questions: UserQuestionRequest[];
+};
+
+export type UserQuestionResolveResult = {
+  request_id: string;
+  resolved: boolean;
+};
+
 export const APP_SERVER_PROTOCOL_VERSION = "wuu-app-server/v0.1";
 
 export const BROWSER_REVERSE_RPC_METHODS = [
@@ -2295,6 +2339,12 @@ export type WuuDesktopApi = {
     processId: string,
   ) => Promise<ManagedProcessActionResult>;
   initialize: () => Promise<InitializeResult>;
+  listUserQuestions: (threadId?: string) => Promise<UserQuestionListResult>;
+  answerUserQuestion: (
+    requestId: string,
+    answer: UserQuestionAnswer,
+  ) => Promise<UserQuestionResolveResult>;
+  cancelUserQuestion: (requestId: string) => Promise<UserQuestionResolveResult>;
   getBuildInfo: () => Promise<BuildInfoResult>;
   startSpeechRecognition: (
     locale: string,

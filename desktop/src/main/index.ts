@@ -114,6 +114,9 @@ import type {
   ThreadResumeResult,
   ThreadStartParams,
   Turn,
+  UserQuestionAnswer,
+  UserQuestionListResult,
+  UserQuestionResolveResult,
   PopOutInitResult,
   PopOutSessionParams,
   PluginPackageInstallResult,
@@ -1320,6 +1323,22 @@ app.whenReady().then(async () => {
     }
     return result;
   });
+  ipcMain.handle("wuu:user-question-list", (event, threadId?: string) =>
+    appServerRequest<UserQuestionListResult>(event, "user-question/list", {
+      thread_id: threadId,
+    }));
+  ipcMain.handle(
+    "wuu:user-question-answer",
+    (event, requestId: string, answer: UserQuestionAnswer) =>
+      appServerRequest<UserQuestionResolveResult>(event, "user-question/respond", {
+        request_id: requestId,
+        answer,
+      }),
+  );
+  ipcMain.handle("wuu:user-question-cancel", (event, requestId: string) =>
+    appServerRequest<UserQuestionResolveResult>(event, "user-question/cancel", {
+      request_id: requestId,
+    }));
   ipcMain.handle("wuu:build-info", (): BuildInfoResult => ({
     core: cachedCoreBuildInfo,
     desktop: DESKTOP_BUILD_INFO,

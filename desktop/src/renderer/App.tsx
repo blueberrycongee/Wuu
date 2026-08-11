@@ -28,6 +28,8 @@ import type {
   Thread,
   ThreadItem,
   Turn,
+  UserQuestionAnswer,
+  UserQuestionRequest,
 } from "../shared/protocol";
 import {
   awaitComposerImages,
@@ -54,6 +56,7 @@ import {
   type CodexRuntimeMenu,
   type ComposerVariant,
 } from "./ComposerView";
+import { UserQuestionCard } from "./UserQuestionCard";
 import {
   QueryHistoryPopover,
   type QueryHistoryEntry,
@@ -339,6 +342,12 @@ export function App(): JSX.Element {
   const [popOutInit] = useState<PopOutInitResult | null>(() => readPopOutInit());
   const poppedOutMode = Boolean(popOutInit?.kind && popOutInit.context);
   const [state, setState] = useState<AppState>(initialState);
+  const [userQuestions, setUserQuestions] = useState<UserQuestionRequest[]>([]);
+  const resolvedUserQuestionIDsRef = useRef(new Set<string>());
+  const userQuestionApiAvailable =
+    typeof window.wuu.listUserQuestions === "function" &&
+    typeof window.wuu.answerUserQuestion === "function" &&
+    typeof window.wuu.cancelUserQuestion === "function";
   useDesktopPluginRuntime(state.initialized?.extension_inventory);
   const {
     prompt,
@@ -1001,6 +1010,23 @@ export function App(): JSX.Element {
   const activeThread = activeThreadForState(state);
   const activeThreadID = activeThread?.id;
   useEffect(() => {
+    let current = true;
+    if (!activeThreadID || !userQuestionApiAvailable) {
+      setUserQuestions([]);
+      return () => { current = false; };
+    }
+    void window.wuu.listUserQuestions(activeThreadID).then((result) => {
+      if (current) {
+        setUserQuestions(result.questions.filter(
+          (request) => !resolvedUserQuestionIDsRef.current.has(request.request_id),
+        ));
+      }
+    }).catch(() => {
+      if (current) setUserQuestions([]);
+    });
+    return () => { current = false; };
+  }, [activeThreadID, userQuestionApiAvailable]);
+  useEffect(() => {
     desktopPluginHost.setActiveConversationThread(activeThreadID);
     return () => desktopPluginHost.setActiveConversationThread(undefined);
   }, [activeThreadID]);
@@ -1455,6 +1481,26 @@ export function App(): JSX.Element {
       turnTelemetryStore.ingest(event);
       if (serverEventCarriesActivitySessionUpdate(event)) {
         setActivitySessions((current) => reduceActivitySessionEvent(current, event));
+      }
+      if (event.kind === "notification" && event.message.method === "user-question/requested") {
+        const request = (event.message.params as { request?: UserQuestionRequest } | undefined)?.request;
+        if (request) {
+          resolvedUserQuestionIDsRef.current.delete(request.request_id);
+          setUserQuestions((current) => [
+            ...current.filter((item) => item.request_id !== request.request_id),
+            request,
+          ]);
+        }
+      }
+      if (event.kind === "notification" && event.message.method === "user-question/resolved") {
+        const requestID = (event.message.params as { request_id?: string } | undefined)?.request_id;
+        if (requestID) {
+          if (resolvedUserQuestionIDsRef.current.size >= 256) {
+            resolvedUserQuestionIDsRef.current.clear();
+          }
+          resolvedUserQuestionIDsRef.current.add(requestID);
+          setUserQuestions((current) => current.filter((item) => item.request_id !== requestID));
+        }
       }
       // All app-server clients share this event channel. Keep folded workspace
       // snapshots live so expanding a workspace only reveals state; it never
@@ -2312,7 +2358,28 @@ export function App(): JSX.Element {
         state.initialized?.advanced_settings?.context_window_tokens,
     });
     const streamStatus = activeThreadStreamStatus;
+    const pendingQuestion = userQuestionApiAvailable
+      ? userQuestions.find((request) => request.thread_id === activeThreadID)
+      : undefined;
     return (
+      <>
+      {pendingQuestion ? (
+        <UserQuestionCard
+          request={pendingQuestion}
+          onAnswer={async (answer: UserQuestionAnswer) => {
+            await window.wuu.answerUserQuestion(pendingQuestion.request_id, answer);
+            setUserQuestions((current) => current.filter(
+              (request) => request.request_id !== pendingQuestion.request_id,
+            ));
+          }}
+          onCancel={async () => {
+            await window.wuu.cancelUserQuestion(pendingQuestion.request_id);
+            setUserQuestions((current) => current.filter(
+              (request) => request.request_id !== pendingQuestion.request_id,
+            ));
+          }}
+        />
+      ) : null}
       <Composer
         variant={variant}
         mainConversation
@@ -2436,6 +2503,7 @@ export function App(): JSX.Element {
         queryHistorySessionID={activeThread?.id}
         queryHistory={queryTextsForThread(activeThread)}
       />
+      </>
     );
   }
 
