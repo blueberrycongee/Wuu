@@ -1,4 +1,5 @@
 import type { Fiber } from "cordis";
+import { join } from "node:path";
 import { agentRuntimePlugin } from "@wuu-v2/plugin-agent-runtime";
 import { contextProjectionPlugin } from "@wuu-v2/plugin-context-projection";
 import { conversationProjectionPlugin } from "@wuu-v2/plugin-conversation";
@@ -21,6 +22,7 @@ import {
 import { jsonlSessionPlugin } from "@wuu-v2/plugin-session-jsonl";
 import sideHost from "@wuu-v2/plugin-side/host";
 import { basicToolsPlugin } from "@wuu-v2/plugin-tools-basic";
+import { workspaceLoaderPlugin } from "@wuu-v2/plugin-workspace-loader";
 import { createKernelContext, kernelPlugin, type Context } from "@wuu-v2/kernel";
 
 export type DefaultProfileProvider =
@@ -33,6 +35,7 @@ export interface DefaultHostProfileConfig {
   providers: readonly DefaultProfileProvider[];
   defaultModelId?: string;
   defaultPermission?: PermissionMode;
+  workspacePluginDirectory?: string;
 }
 
 export interface DefaultHostProfile {
@@ -92,6 +95,9 @@ export async function createDefaultHostProfile(
     await install(ctx.plugin(historyHost));
     await install(ctx.plugin(defaultAgentLoopPlugin, {}));
     await install(ctx.plugin(sideHost, { agentId: "default" }));
+    await install(ctx.plugin(workspaceLoaderPlugin, {
+      directory: config.workspacePluginDirectory ?? join(config.cwd, ".wuu-v2", "plugins"),
+    }));
     ctx.runtimeInspection.assertReady();
 
     return {

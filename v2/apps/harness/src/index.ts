@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AgentSessionRecord } from "@wuu-v2/contracts";
@@ -10,6 +11,9 @@ const sessionId = process.env.WUU_V2_SESSION_ID ?? `session-${randomUUID()}`;
 const directory = smoke
   ? join(tmpdir(), `wuu-v2-smoke-${process.pid}`)
   : process.env.WUU_V2_DATA_DIR ?? join(cwd, ".wuu-v2", "sessions");
+const workspacePluginDirectory = smoke
+  ? join(directory, "workspace-plugins")
+  : join(cwd, ".wuu-v2", "plugins");
 const prompt = smoke
   ? "Read package.json and then confirm the smoke run completed."
   : process.argv.slice(2).filter((arg) => !arg.startsWith("--")).join(" ").trim();
@@ -23,9 +27,27 @@ const model = process.env.WUU_V2_MODEL;
 if (!smoke && (!apiKey || !model)) {
   throw new Error("Set WUU_V2_OPENAI_API_KEY and WUU_V2_MODEL");
 }
+if (smoke) {
+  await mkdir(join(workspacePluginDirectory, "smoke"), { recursive: true });
+  await writeFile(join(workspacePluginDirectory, "smoke", "index.ts"), `
+export default function plugin(ctx: any) {
+  ctx.tools.register("workspace_smoke", {
+    name: "workspace_smoke",
+    description: "Workspace loader smoke tool.",
+    access: "read",
+    inputSchema: { type: "object", properties: {}, additionalProperties: false },
+    async execute() {
+      return { content: [{ type: "text", text: "workspace-v1" }] };
+    },
+  });
+}
+plugin.inject = ["tools"];
+`, "utf8");
+}
 const runtime = await createDefaultHostProfile({
   cwd,
   dataDirectory: directory,
+  workspacePluginDirectory,
   providers: [smoke
     ? {
         kind: "scripted",
@@ -56,6 +78,74 @@ const runtime = await createDefaultHostProfile({
 });
 const { ctx, modelId } = runtime;
 
+const smokeWorkspaceLoader = async () => {
+  if (!smoke) return;
+  const executeWorkspaceSmoke = async () => {
+    const result = await ctx.tools.require("workspace_smoke").execute({}, {
+      sessionId,
+      callId: randomUUID(),
+      signal: new AbortController().signal,
+    });
+    return result.content.map((item) => item.text).join("\n");
+  };
+  if (await executeWorkspaceSmoke() !== "workspace-v1") {
+    throw new Error("workspace plugin was not discovered");
+  }
+  const runtimeInspection = await ctx.hostActions.execute("workspace-plugin/inspect", {});
+  if (
+    !runtimeInspection ||
+    Array.isArray(runtimeInspection) ||
+    typeof runtimeInspection !== "object" ||
+    !Array.isArray(runtimeInspection.tools) ||
+    !runtimeInspection.tools.includes("workspace_smoke")
+  ) {
+    throw new Error("workspace runtime inspection omitted the discovered Tool");
+  }
+  await writeFile(join(workspacePluginDirectory, "smoke", "index.ts"), `
+function plugin(ctx: any) {
+  ctx.tools.register("workspace_smoke", {
+    name: "workspace_smoke",
+    description: "Workspace loader smoke tool.",
+    access: "read",
+    inputSchema: { type: "object", properties: {}, additionalProperties: false },
+    async execute() {
+      return { content: [{ type: "text", text: "workspace-v2" }] };
+    },
+  });
+}
+plugin.inject = ["tools"];
+export default plugin;
+`, "utf8");
+  await ctx.hostActions.execute("workspace-plugin/load", { id: "smoke" });
+  if (await executeWorkspaceSmoke() !== "workspace-v2") {
+    throw new Error("workspace plugin did not reload");
+  }
+  await writeFile(join(workspacePluginDirectory, "smoke", "index.ts"), `
+function plugin(ctx: any) {
+  ctx.tools.register("read", {
+    name: "read",
+    description: "Invalid duplicate tool.",
+    access: "read",
+    inputSchema: { type: "object" },
+    async execute() { return { content: [] }; },
+  });
+}
+plugin.inject = ["tools"];
+export default plugin;
+`, "utf8");
+  let rejected = false;
+  try {
+    await ctx.hostActions.execute("workspace-plugin/load", { id: "smoke" });
+  } catch {
+    rejected = true;
+  }
+  if (!rejected || await executeWorkspaceSmoke() !== "workspace-v2") {
+    throw new Error("workspace plugin rollback did not preserve the previous generation");
+  }
+  await ctx.hostActions.execute("workspace-plugin/unload", { id: "smoke" });
+  if (ctx.tools.get("workspace_smoke")) throw new Error("workspace plugin did not unload");
+};
+
 const shutdown = async () => {
   await runtime.dispose();
 };
@@ -63,6 +153,7 @@ process.once("SIGINT", () => void shutdown().finally(() => process.exit(130)));
 process.once("SIGTERM", () => void shutdown().finally(() => process.exit(143)));
 
 try {
+  await smokeWorkspaceLoader();
   let recoverySessionId: string | undefined;
   let recoveryRunId: string | undefined;
   if (smoke) {
