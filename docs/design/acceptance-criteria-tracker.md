@@ -19,6 +19,26 @@ This tracker measures working product paths, not type declarations or planned AP
 | 11 | Pass public SDK contract tests | Complete | `wuu plugin test` starts the configured executable runtime, negotiates protocol v2, validates capabilities and Tools, and exits non-zero on failed checks. The standalone example additionally executes its built renderer through activation, host use, storage recovery, and generation disposal. |
 | 12 | Continue working across compatible Wuu minor releases | Blocked | Protocol, manifest, platform, minimum-Wuu, and runtime-executable compatibility gates exist. However, `v0.14.0` and earlier releases predate the public SDK package, so there is no legitimate previous-minor SDK artifact for a released-host matrix. This remains blocked until the first SDK-bearing release can serve as the preserved previous-minor input; an unreleased historical commit is not release evidence. |
 
+## Open composition runtime
+
+This matrix records product paths that an independently developed plugin can
+use. A bundled implementation is useful evidence only when it goes through the
+same public process boundary and SDK; internal Go registries or type declarations
+do not count on their own.
+
+| Capability | State | Product evidence and boundary |
+|---|---|---|
+| Versioned plugin services | Complete | Plugins publish and consume generation-owned services through the public process protocol. Dream reads Memory through that path. Missing providers, incompatible major versions, stopped providers, and failed providers return typed `service_unavailable`; registry inspection exposes only names, versions, providers, methods, and generation identity. |
+| Exact execution identity, progress, and cancellation | Complete | Tool, capability, and kernel-to-plugin service dispatches carry one execution ID. Progress is owner-checked, cancellation targets only that live dispatch, and late updates cannot reopen it. Session lineage remains descriptive and does not create a host-owned recursive cancellation tree. |
+| Plugin-owned Agent topology | Partial | Public Session services let a plugin create, send to, list, and precisely cancel private Sessions. The bundled Subagent proves the same public path, but an independently maintained plugin has not yet demonstrated a DAG, worker pool, detached worker policy, and custom cancellation propagation. No additional topology API is justified until that consumer exists. |
+| Replaceable loop driver | Complete | The bundled single-pass driver runs in a plugin process, is selected per Session, calls model-loop and checkpoint kernel gateways through services, and resumes only from a compatible checkpoint. Missing drivers fail closed without making stored history unreadable. |
+| Third-party model provider adapter | Not opened | Wuu has internal provider factories and stream validation, but no public cross-process provider contract and no real external provider consumer. A provider wire contract must not expose internal messages or be added solely to complete this matrix. The first real adapter must drive the contract and must pass Tool call/result ordering through the kernel gateway. |
+| Plugin-owned durable Session events and projections | Not opened | Plugins currently persist namespaced state and ordinary transcript facts. No real plugin requires a separate durable event → projection contract yet. When one does, ownership, schema versioning, bounded payloads, Presenter input, generic read-only fallback, and model-input receipts must be designed together. |
+| Functional UI and themes compose independently | Complete | Public regions, UI Kit primitives, semantic tokens, Presenter fallback, and generation cleanup are live. The [composition contract test](../../desktop/src/renderer/plugins/ThirdPartyComposition.test.tsx) loads the real Deep UI and Manga Studio example packages together and proves that disabling the theme removes its tokens and CSS without removing the functional surface. |
+| Headless install, replace, and rollback | Partial | `wuu plugin` covers inspect, install, approve, enable, update, disable, and remove; `wuu plugin dev` preserves the previous generation after build or activation failure; `wuu exec` can use installed Tools without Desktop. One black-box flow still needs to exercise install → invoke → replace → failed activation rollback end to end against the same development package. |
+| Observer, Presenter, and background failure isolation | Complete | Turn observers run outside terminal publication with bounded delivery, renderer failures preserve host fallback, and plugin background delivery cannot reopen or block a committed terminal state. |
+| First-party/public-entry parity | Complete | Distributed first-party plugins use the public SDK, process protocol, host services, UI regions, and Presenter APIs. Production lifecycle tests prove generation replacement and full removal without private React state or product-specific host actions. |
+
 ## Completion rules
 
 - A public interface, registry, manifest field, or protocol struct alone counts as **Partial**, never **Complete**.
