@@ -3118,7 +3118,7 @@
 
 .rich-mermaid-diagram {
   display: grid;
-  width: min(100%, 560px);
+  width: 100%;
   height: 360px;
   box-sizing: border-box;
   place-items: center;
