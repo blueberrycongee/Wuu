@@ -14,14 +14,14 @@ export const composerStyles = `
   display: flex;
   min-height: var(--wuu-composer-collapsed-height);
   flex-direction: column;
-  gap: 8px;
   box-sizing: border-box;
-  padding: 10px 8px 7px;
   overflow: hidden;
-  border: 1px solid var(--surface-4, rgba(31, 35, 40, 0.12));
+  border: 0;
   border-radius: var(--session-composer-radius, 18px);
   background: var(--paper, #fff);
-  box-shadow: 0 8px 24px rgba(20, 24, 28, 0.06);
+  box-shadow:
+    inset 0 0 0 1px var(--surface-4, rgba(31, 35, 40, 0.12)),
+    0 8px 24px rgba(20, 24, 28, 0.06);
 }
 
 .wuu-composer-stack.is-expanded .wuu-composer-surface {
@@ -29,15 +29,16 @@ export const composerStyles = `
 }
 
 .wuu-composer-surface textarea {
-  field-sizing: content;
+  display: block;
   width: 100%;
-  min-height: 46px;
-  max-height: 336px;
-  flex: 1 1 auto;
+  height: 60px;
+  min-height: 60px;
+  max-height: 60px;
+  flex: 0 0 60px;
   box-sizing: border-box;
   resize: none;
   overflow-y: auto;
-  padding: 4px 36px 4px 8px;
+  padding: 10px 44px 8px 16px;
   border: 0;
   outline: 0;
   color: var(--ink, #202423);
@@ -45,6 +46,13 @@ export const composerStyles = `
   font: inherit;
   font-size: 15px;
   line-height: 22px;
+}
+
+.wuu-composer-stack.is-expanded .wuu-composer-surface textarea {
+  height: auto;
+  min-height: clamp(180px, 34vh, 320px);
+  max-height: none;
+  flex: 1 1 0;
 }
 
 .wuu-composer-surface textarea::placeholder {
@@ -73,10 +81,12 @@ export const composerStyles = `
 
 .wuu-composer-toolbar {
   display: flex;
-  min-height: 28px;
+  height: 40px;
+  min-height: 40px;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  padding: 0 8px 4px;
 }
 
 .wuu-composer-toolbar-left,
