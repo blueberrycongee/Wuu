@@ -2362,7 +2362,11 @@ describe("Composer expand button", () => {
     expect(composerCSS).toMatch(
       /\.composer-send-button,\s*\n\.composer-stop-button\s*\{[^}]*width:\s*32px[^}]*height:\s*32px/,
     );
-    expect(composerCSS).toMatch(/\.composer-tool-button::before,[\s\S]*inset:\s*6px 0/);
+    expect(composerCSS).toMatch(/\.composer-tool-button::before,[\s\S]*inset:\s*4px 0/);
+    expect(composerCSS).toMatch(/\.composer-plus-button::before\s*\{[^}]*inset:\s*4px/);
+    expect(composerCSS).toMatch(
+      /\.composer-send-button::before,\s*\n\.composer-stop-button::before\s*\{[^}]*inset:\s*1px/,
+    );
     expect(composerCSS).toMatch(
       /\.composer-send-button\s+svg\s*\{[^}]*width:\s*14px[^}]*height:\s*14px/,
     );
