@@ -89,6 +89,7 @@ export async function createDefaultHostProfile(
     }));
     await install(ctx.plugin(defaultAgentLoopPlugin, {}));
     await install(ctx.plugin(sideHost, { agentId: "default" }));
+    ctx.runtimeInspection.assertReady();
 
     return { ctx, modelId, dispose };
   } catch (error) {

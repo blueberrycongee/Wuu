@@ -295,6 +295,16 @@ export class RuntimeInspectionService extends Service {
       fibers,
     };
   }
+
+  assertReady(): void {
+    const stalled = this.snapshot().fibers.filter(
+      ({ state, pending }) => state === "pending" && pending.length,
+    );
+    if (!stalled.length) return;
+    throw new Error(`host startup dependency audit failed; ${stalled
+      .map(({ name, pending }) => `${name} -> ${pending.join(",")}`)
+      .join("; ")}`);
+  }
 }
 
 declare module "cordis" {
