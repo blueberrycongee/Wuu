@@ -100,7 +100,10 @@ func (r userQuestionBrokerRouter) RouteServiceCall(ctx context.Context, pluginID
 	if err := json.Unmarshal(call.Params, &params); err != nil {
 		return nil, &pluginhost.HostServiceError{Code: "invalid_params", Message: err.Error()}
 	}
-	answer, err := r.broker.Ask(ctx, pluginID, call.ExecutionID, params)
+	answer, err := r.broker.Ask(ctx, pluginhost.UserQuestionOwner{
+		PluginID: pluginID, ExecutionID: call.ExecutionID,
+		ThreadID: "thread-real", TurnID: "turn-real", CallID: "call-real",
+	}, params)
 	if err != nil {
 		return nil, &pluginhost.HostServiceError{Code: "question_failed", Message: err.Error()}
 	}
@@ -122,8 +125,7 @@ func TestUserQuestionPublicProtocolResumesWaitingExecution(t *testing.T) {
 	answerCh := make(chan pluginhost.UserQuestionAnswer, 1)
 	errCh := make(chan error, 1)
 	go func() {
-		answer, err := rt.UserQuestions.Ask(context.Background(), "ask-user", "exec-1", pluginhost.UserQuestionAskParams{
-			ThreadID: "thread-1", TurnID: "turn-1",
+		answer, err := rt.UserQuestions.Ask(context.Background(), appServerQuestionOwner("1"), pluginhost.UserQuestionAskParams{
 			Questions: []pluginhost.UserQuestion{{
 				ID: "color", Question: "Which color?", AllowCustom: true,
 				Options: []pluginhost.UserQuestionOption{{Label: "Blue"}, {Label: "Green"}},
@@ -197,8 +199,7 @@ func TestUserQuestionPublicProtocolCancelsWaitingExecution(t *testing.T) {
 	defer unsubscribe()
 	errCh := make(chan error, 1)
 	go func() {
-		_, err := rt.UserQuestions.Ask(context.Background(), "ask-user", "exec-cancel", pluginhost.UserQuestionAskParams{
-			ThreadID: "thread-cancel", TurnID: "turn-cancel",
+		_, err := rt.UserQuestions.Ask(context.Background(), appServerQuestionOwner("cancel"), pluginhost.UserQuestionAskParams{
 			Questions: []pluginhost.UserQuestion{{ID: "confirm", Question: "Continue?", Options: []pluginhost.UserQuestionOption{{Label: "Yes"}}}},
 		})
 		errCh <- err
@@ -212,6 +213,13 @@ func TestUserQuestionPublicProtocolCancelsWaitingExecution(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Fatal("cancel did not release waiting execution")
+	}
+}
+
+func appServerQuestionOwner(suffix string) pluginhost.UserQuestionOwner {
+	return pluginhost.UserQuestionOwner{
+		PluginID: "ask-user", ExecutionID: "exec-" + suffix,
+		ThreadID: "thread-" + suffix, TurnID: "turn-" + suffix, CallID: "call-" + suffix,
 	}
 }
 

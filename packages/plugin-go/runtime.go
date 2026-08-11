@@ -525,13 +525,11 @@ func ReportExecutionUpdate(ctx context.Context, host Host, update ExecutionUpdat
 // AskUserQuestions pauses the current Tool execution until a shell answers or
 // the execution context is cancelled. The caller must declare
 // KernelUserQuestionAskService in RequiredServices.
-func AskUserQuestions(ctx context.Context, host Host, call ToolCall, questions []UserQuestion) (UserQuestionAnswer, error) {
+func AskUserQuestions(ctx context.Context, host Host, questions []UserQuestion) (UserQuestionAnswer, error) {
 	var answer UserQuestionAnswer
 	err := CallService(ctx, host, KernelUserQuestionAskService, KernelServiceMethod, struct {
-		ThreadID  string         `json:"thread_id"`
-		TurnID    string         `json:"turn_id"`
 		Questions []UserQuestion `json:"questions"`
-	}{ThreadID: call.ThreadID, TurnID: call.TurnID, Questions: questions}, &answer)
+	}{Questions: questions}, &answer)
 	return answer, err
 }
 

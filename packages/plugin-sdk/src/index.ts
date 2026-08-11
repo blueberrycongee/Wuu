@@ -975,13 +975,12 @@ export async function reportExecutionUpdate(host: RuntimeHost, update: Execution
 
 export async function askUserQuestions(
   host: RuntimeHost,
-  tool: Pick<ToolExecuteParams, "thread_id" | "turn_id">,
   questions: readonly UserQuestion[],
 ): Promise<UserQuestionAnswer> {
   return await host.call("host.service.call", {
     service: USER_QUESTION_ASK_SERVICE,
     method: KERNEL_SERVICE_METHOD,
-    params: { thread_id: tool.thread_id, turn_id: tool.turn_id, questions },
+    params: { questions },
   }) as UserQuestionAnswer;
 }
 

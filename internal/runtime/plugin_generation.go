@@ -320,6 +320,7 @@ func (g *PluginGeneration) close() error {
 		g.compactions = nil
 	}
 	if g.host != nil {
+		g.host.CancelExecutions(&pluginhost.UserQuestionError{Code: "generation_closed", Message: "plugin generation retired"})
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		if registry := g.host.ServiceRegistry(); registry != nil {
 			registry.Close(ctx)

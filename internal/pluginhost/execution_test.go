@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/blueberrycongee/wuu/internal/toolresult"
 )
@@ -144,4 +145,59 @@ func TestHostInvokeCapabilityMintsScopedExecutionID(t *testing.T) {
 	if err := host.RecordExecutionUpdate("acme.slow", ExecutionUpdateParams{ExecutionID: seen, Message: "late"}); err == nil || !strings.Contains(err.Message, "not live") {
 		t.Fatalf("late update = %v, want execution_not_found", err)
 	}
+}
+
+func TestExecutionTrackerToolScopeIsTrustedAndEndsWaiters(t *testing.T) {
+	tracker := NewExecutionTracker()
+	id := tracker.BeginTool("ask-user", context.Background(), ToolExecuteInput{
+		SessionID: "session-1", ThreadID: "thread-1", TurnID: "turn-1",
+		ActorID: "actor-1", CallID: "call-1", Tool: "plugin_ask_user",
+	})
+	scope, serviceErr := tracker.ResolveTool("ask-user", id)
+	if serviceErr != nil {
+		t.Fatal(serviceErr)
+	}
+	if scope.ThreadID != "thread-1" || scope.TurnID != "turn-1" || scope.CallID != "call-1" {
+		t.Fatalf("scope = %+v", scope.ExecutionSnapshot)
+	}
+	if _, serviceErr := tracker.ResolveTool("other", id); serviceErr == nil || serviceErr.Code != "service_not_authorized" {
+		t.Fatalf("foreign resolve = %#v", serviceErr)
+	}
+
+	tracker.End(id)
+	select {
+	case <-scope.Context.Done():
+		if !IsUserQuestionErrorCode(context.Cause(scope.Context), "execution_cancelled") {
+			t.Fatalf("scope cause = %v", context.Cause(scope.Context))
+		}
+	case <-time.After(time.Second):
+		t.Fatal("End did not cancel the execution scope")
+	}
+	if _, serviceErr := tracker.ResolveTool("ask-user", id); serviceErr == nil || serviceErr.Code != "execution_not_found" {
+		t.Fatalf("late resolve = %#v", serviceErr)
+	}
+}
+
+func TestExecutionTrackerRejectsCapabilityAsQuestionOwner(t *testing.T) {
+	tracker := NewExecutionTracker()
+	id := tracker.Begin("ask-user")
+	defer tracker.End(id)
+	if _, serviceErr := tracker.ResolveTool("ask-user", id); serviceErr == nil || serviceErr.Code != "invalid_execution_scope" {
+		t.Fatalf("capability resolve = %#v", serviceErr)
+	}
+}
+
+func TestExecutionTrackerCancelAllKeepsGenerationCause(t *testing.T) {
+	tracker := NewExecutionTracker()
+	id := tracker.BeginTool("ask-user", context.Background(), ToolExecuteInput{ThreadID: "thread", TurnID: "turn", CallID: "call"})
+	scope, serviceErr := tracker.ResolveTool("ask-user", id)
+	if serviceErr != nil {
+		t.Fatal(serviceErr)
+	}
+	tracker.CancelAll(&UserQuestionError{Code: "generation_closed", Message: "retired"})
+	<-scope.Context.Done()
+	if !IsUserQuestionErrorCode(context.Cause(scope.Context), "generation_closed") {
+		t.Fatalf("scope cause = %v", context.Cause(scope.Context))
+	}
+	tracker.End(id)
 }

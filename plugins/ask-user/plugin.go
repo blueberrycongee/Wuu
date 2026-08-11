@@ -35,7 +35,7 @@ func executeTool(ctx context.Context, host pluginapi.Host, call pluginapi.ToolCa
 	if err := json.Unmarshal(call.Arguments, &input); err != nil {
 		return pluginapi.ToolResult{}, fmt.Errorf("invalid tool arguments: %w", err)
 	}
-	answer, err := pluginapi.AskUserQuestions(ctx, host, call, input.Questions)
+	answer, err := pluginapi.AskUserQuestions(ctx, host, input.Questions)
 	if err != nil {
 		return pluginapi.ToolResult{}, err
 	}

@@ -270,6 +270,7 @@ func kernelServiceReadOnly(method pluginhost.HostServiceMethod) bool {
 // table; *pluginhost.Host satisfies it in production.
 type executionUpdateRecorder interface {
 	RecordExecutionUpdate(callerPluginID string, params pluginhost.ExecutionUpdateParams) *pluginhost.HostServiceError
+	ResolveToolExecution(callerPluginID, executionID string) (pluginhost.ToolExecutionScope, *pluginhost.HostServiceError)
 }
 
 type kernelHostServices struct {
@@ -496,11 +497,24 @@ func (k *userQuestionAskInvoker) InvokeService(ctx context.Context, params plugi
 	if broker == nil {
 		return nil, serviceError("service_unavailable", "user interaction is unavailable")
 	}
-	var input pluginhost.UserQuestionAskParams
-	if err := json.Unmarshal(params.Params, &input); err != nil {
-		return nil, serviceError("invalid_request", fmt.Sprintf("decode user question params: %v", err))
+	k.parent.mu.RLock()
+	executions := k.parent.executions
+	k.parent.mu.RUnlock()
+	if executions == nil {
+		return nil, serviceError("service_unavailable", "execution scope is unavailable")
 	}
-	answer, err := broker.Ask(ctx, params.Caller, params.ExecutionID, input)
+	scope, scopeErr := executions.ResolveToolExecution(params.Caller, params.ExecutionID)
+	if scopeErr != nil {
+		return nil, scopeErr
+	}
+	var input pluginhost.UserQuestionAskParams
+	if err := decodeServiceParams(params.Params, &input); err != nil {
+		return nil, serviceError("invalid_request", "invalid user question parameters")
+	}
+	answer, err := broker.Ask(scope.Context, pluginhost.UserQuestionOwner{
+		PluginID: scope.PluginID, ExecutionID: scope.ID, SessionID: scope.SessionID,
+		ThreadID: scope.ThreadID, TurnID: scope.TurnID, ActorID: scope.ActorID, CallID: scope.CallID,
+	}, input)
 	if err != nil {
 		var questionErr *pluginhost.UserQuestionError
 		if errors.As(err, &questionErr) {

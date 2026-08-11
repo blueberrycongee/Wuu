@@ -47,8 +47,11 @@ export type UserQuestionRequest = {
   request_id: string;
   plugin_id: string;
   execution_id: string;
+  session_id?: string;
   thread_id: string;
   turn_id: string;
+  actor_id?: string;
+  call_id?: string;
   questions: UserQuestion[];
   created_at: string;
 };

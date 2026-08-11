@@ -376,7 +376,7 @@ func (h *Host) ExecuteTool(ctx context.Context, name string, input ToolExecuteIn
 		return toolresult.Result{}, fmt.Errorf("plugin tool %q is not registered", name)
 	}
 	input.Tool = name
-	input.ExecutionID = h.executions.Begin(tool.PluginID)
+	input.ExecutionID = h.executions.BeginTool(tool.PluginID, ctx, input)
 	defer h.executions.End(input.ExecutionID)
 	response, err := tool.client.ExecuteTool(ctx, ToolExecuteParams{
 		ToolExecuteInput: input,
@@ -403,6 +403,19 @@ func (h *Host) RecordExecutionUpdate(callerPluginID string, params ExecutionUpda
 		return &HostServiceError{Code: "service_unavailable", Message: "execution scope is unavailable"}
 	}
 	return h.executions.RecordUpdate(callerPluginID, params)
+}
+
+func (h *Host) ResolveToolExecution(callerPluginID, executionID string) (ToolExecutionScope, *HostServiceError) {
+	if h == nil || h.executions == nil {
+		return ToolExecutionScope{}, &HostServiceError{Code: "service_unavailable", Message: "execution scope is unavailable"}
+	}
+	return h.executions.ResolveTool(callerPluginID, executionID)
+}
+
+func (h *Host) CancelExecutions(cause error) {
+	if h != nil && h.executions != nil {
+		h.executions.CancelAll(cause)
+	}
 }
 
 // ExecutionSnapshots returns the host's live execution table for diagnostics.
@@ -453,6 +466,7 @@ func (h *Host) Close(ctx context.Context) error {
 	if h == nil {
 		return nil
 	}
+	h.CancelExecutions(&UserQuestionError{Code: "generation_closed", Message: "plugin generation retired"})
 	h.mu.Lock()
 	clients := append([]Client(nil), h.clients...)
 	h.clients = nil

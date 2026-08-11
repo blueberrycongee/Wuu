@@ -2,7 +2,6 @@ package pluginhost
 
 import (
 	"context"
-	"errors"
 	"testing"
 	"time"
 )
@@ -14,8 +13,7 @@ func TestUserQuestionBrokerAskRespondRoundTrip(t *testing.T) {
 	result := make(chan UserQuestionAnswer, 1)
 	errCh := make(chan error, 1)
 	go func() {
-		answer, err := broker.Ask(context.Background(), "ask-user", "exec-1", UserQuestionAskParams{
-			ThreadID: "thread-1", TurnID: "turn-1",
+		answer, err := broker.Ask(context.Background(), testUserQuestionOwner("1"), UserQuestionAskParams{
 			Questions: []UserQuestion{{
 				ID: "color", Question: "Pick a color", MultiSelect: true, AllowCustom: true,
 				Options: []UserQuestionOption{{Label: "Blue"}, {Label: "Green"}},
@@ -63,8 +61,7 @@ func TestUserQuestionBrokerCancellationRemovesPendingRequest(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	errCh := make(chan error, 1)
 	go func() {
-		_, err := broker.Ask(ctx, "ask-user", "exec-2", UserQuestionAskParams{
-			ThreadID: "thread-2", TurnID: "turn-2",
+		_, err := broker.Ask(ctx, testUserQuestionOwner("2"), UserQuestionAskParams{
 			Questions: []UserQuestion{{ID: "name", Question: "Name?", AllowCustom: true}},
 		})
 		errCh <- err
@@ -73,7 +70,7 @@ func TestUserQuestionBrokerCancellationRemovesPendingRequest(t *testing.T) {
 	cancel()
 	select {
 	case err := <-errCh:
-		if !errors.Is(err, context.Canceled) {
+		if !IsUserQuestionErrorCode(err, "execution_cancelled") {
 			t.Fatalf("Ask() error = %v", err)
 		}
 	case <-time.After(time.Second):
@@ -95,8 +92,7 @@ func TestUserQuestionBrokerRejectsMalformedAnswerWithoutClaiming(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go func() {
-		_, _ = broker.Ask(ctx, "ask-user", "exec-3", UserQuestionAskParams{
-			ThreadID: "thread-3", TurnID: "turn-3",
+		_, _ = broker.Ask(ctx, testUserQuestionOwner("3"), UserQuestionAskParams{
 			Questions: []UserQuestion{{ID: "choice", Question: "Choose", Options: []UserQuestionOption{{Label: "A"}}}},
 		})
 	}()
@@ -111,6 +107,13 @@ func TestUserQuestionBrokerRejectsMalformedAnswerWithoutClaiming(t *testing.T) {
 	}
 	if got := broker.List("thread-3"); len(got) != 1 {
 		t.Fatalf("pending = %+v", got)
+	}
+}
+
+func testUserQuestionOwner(suffix string) UserQuestionOwner {
+	return UserQuestionOwner{
+		PluginID: "ask-user", ExecutionID: "exec-" + suffix,
+		ThreadID: "thread-" + suffix, TurnID: "turn-" + suffix, CallID: "call-" + suffix,
 	}
 }
 

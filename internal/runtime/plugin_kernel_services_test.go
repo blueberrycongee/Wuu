@@ -3,7 +3,9 @@ package runtime
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
+	"time"
 
 	pluginpkg "github.com/blueberrycongee/wuu/internal/plugin"
 	"github.com/blueberrycongee/wuu/internal/pluginhost"
@@ -160,15 +162,127 @@ func TestKernelExecutionUpdateRoutesToExecutionTable(t *testing.T) {
 	}
 }
 
+func TestKernelUserQuestionUsesTrustedToolExecutionScope(t *testing.T) {
+	executionCtx, cancel := context.WithCancelCause(context.Background())
+	defer cancel(nil)
+	recorder := &fakeExecutionRecorder{scope: pluginhost.ToolExecutionScope{
+		ExecutionSnapshot: pluginhost.ExecutionSnapshot{
+			ID: "exec-trusted", PluginID: "ask-user", ThreadID: "thread-trusted",
+			TurnID: "turn-trusted", ActorID: "actor-trusted", CallID: "call-trusted",
+		},
+		Context: executionCtx,
+	}}
+	broker := pluginhost.NewUserQuestionBroker()
+	kernel := newKernelHostServices(nil, recorder)
+	kernel.bindUserQuestions(broker)
+	events, unsubscribe := broker.Subscribe(2)
+	defer unsubscribe()
+
+	type invokeResult struct {
+		result json.RawMessage
+		err    error
+	}
+	done := make(chan invokeResult, 1)
+	go func() {
+		result, err := (&userQuestionAskInvoker{parent: kernel}).InvokeService(context.Background(), pluginhost.ServiceInvokeParams{
+			Method: pluginhost.KernelServiceMethod, Caller: "ask-user", ExecutionID: "exec-trusted",
+			Params: json.RawMessage(`{"questions":[{"id":"choice","question":"Choose","options":[{"label":"A"}]}]}`),
+		})
+		done <- invokeResult{result: result, err: err}
+	}()
+	var requested pluginhost.UserQuestionEvent
+	select {
+	case requested = <-events:
+	case <-time.After(time.Second):
+		t.Fatal("question was not published")
+	}
+	if requested.Request == nil || requested.Request.ThreadID != "thread-trusted" || requested.Request.TurnID != "turn-trusted" || requested.Request.CallID != "call-trusted" {
+		t.Fatalf("request = %+v", requested.Request)
+	}
+	if err := broker.Respond(requested.Request.RequestID, pluginhost.UserQuestionAnswer{Answers: []pluginhost.UserQuestionAnswerItem{{ID: "choice", Selected: []string{"A"}}}}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case outcome := <-done:
+		if outcome.err != nil || len(outcome.result) == 0 {
+			t.Fatalf("invoke = %s, %v", outcome.result, outcome.err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("question service did not resume")
+	}
+}
+
+func TestKernelUserQuestionRejectsSpoofedOwnershipPayload(t *testing.T) {
+	recorder := &fakeExecutionRecorder{scope: pluginhost.ToolExecutionScope{
+		ExecutionSnapshot: pluginhost.ExecutionSnapshot{ID: "exec-1", PluginID: "ask-user", ThreadID: "trusted", TurnID: "trusted", CallID: "trusted"},
+		Context:           context.Background(),
+	}}
+	kernel := newKernelHostServices(nil, recorder)
+	kernel.bindUserQuestions(pluginhost.NewUserQuestionBroker())
+	_, err := (&userQuestionAskInvoker{parent: kernel}).InvokeService(context.Background(), pluginhost.ServiceInvokeParams{
+		Method: pluginhost.KernelServiceMethod, Caller: "ask-user", ExecutionID: "exec-1",
+		Params: json.RawMessage(`{"thread_id":"spoofed","turn_id":"spoofed","questions":[{"id":"q","question":"Q","options":[{"label":"A"}]}]}`),
+	})
+	var serviceErr *pluginhost.HostServiceError
+	if !errors.As(err, &serviceErr) || serviceErr.Code != "invalid_request" {
+		t.Fatalf("spoofed payload error = %#v", err)
+	}
+}
+
+func TestKernelUserQuestionEndsWithOwningExecution(t *testing.T) {
+	executionCtx, cancelExecution := context.WithCancelCause(context.Background())
+	recorder := &fakeExecutionRecorder{scope: pluginhost.ToolExecutionScope{
+		ExecutionSnapshot: pluginhost.ExecutionSnapshot{ID: "exec-1", PluginID: "ask-user", ThreadID: "thread-1", TurnID: "turn-1", CallID: "call-1"},
+		Context:           executionCtx,
+	}}
+	broker := pluginhost.NewUserQuestionBroker()
+	kernel := newKernelHostServices(nil, recorder)
+	kernel.bindUserQuestions(broker)
+	events, unsubscribe := broker.Subscribe(2)
+	defer unsubscribe()
+	done := make(chan error, 1)
+	go func() {
+		_, err := (&userQuestionAskInvoker{parent: kernel}).InvokeService(context.Background(), pluginhost.ServiceInvokeParams{
+			Method: pluginhost.KernelServiceMethod, Caller: "ask-user", ExecutionID: "exec-1",
+			Params: json.RawMessage(`{"questions":[{"id":"q","question":"Q","options":[{"label":"A"}]}]}`),
+		})
+		done <- err
+	}()
+	select {
+	case <-events:
+	case <-time.After(time.Second):
+		t.Fatal("question was not published")
+	}
+	cancelExecution(&pluginhost.UserQuestionError{Code: "execution_cancelled", Message: "turn interrupted"})
+	select {
+	case err := <-done:
+		var serviceErr *pluginhost.HostServiceError
+		if !errors.As(err, &serviceErr) || serviceErr.Code != "execution_cancelled" {
+			t.Fatalf("execution cancellation error = %#v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("execution cancellation did not release question")
+	}
+	if pending := broker.List("thread-1"); len(pending) != 0 {
+		t.Fatalf("pending after execution cancellation = %+v", pending)
+	}
+}
+
 type fakeExecutionRecorder struct {
-	caller string
-	params pluginhost.ExecutionUpdateParams
-	err    *pluginhost.HostServiceError
+	caller     string
+	params     pluginhost.ExecutionUpdateParams
+	err        *pluginhost.HostServiceError
+	scope      pluginhost.ToolExecutionScope
+	resolveErr *pluginhost.HostServiceError
 }
 
 func (f *fakeExecutionRecorder) RecordExecutionUpdate(caller string, params pluginhost.ExecutionUpdateParams) *pluginhost.HostServiceError {
 	f.caller, f.params = caller, params
 	return f.err
+}
+
+func (f *fakeExecutionRecorder) ResolveToolExecution(string, string) (pluginhost.ToolExecutionScope, *pluginhost.HostServiceError) {
+	return f.scope, f.resolveErr
 }
 
 type kernelConsumer struct {

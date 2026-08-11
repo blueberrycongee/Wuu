@@ -32,9 +32,17 @@ type UserQuestion struct {
 }
 
 type UserQuestionAskParams struct {
-	ThreadID  string         `json:"thread_id"`
-	TurnID    string         `json:"turn_id"`
 	Questions []UserQuestion `json:"questions"`
+}
+
+type UserQuestionOwner struct {
+	PluginID    string
+	ExecutionID string
+	SessionID   string
+	ThreadID    string
+	TurnID      string
+	ActorID     string
+	CallID      string
 }
 
 type UserQuestionAnswerItem struct {
@@ -51,8 +59,11 @@ type UserQuestionRequest struct {
 	RequestID   string         `json:"request_id"`
 	PluginID    string         `json:"plugin_id"`
 	ExecutionID string         `json:"execution_id"`
+	SessionID   string         `json:"session_id,omitempty"`
 	ThreadID    string         `json:"thread_id"`
 	TurnID      string         `json:"turn_id"`
+	ActorID     string         `json:"actor_id,omitempty"`
+	CallID      string         `json:"call_id,omitempty"`
 	Questions   []UserQuestion `json:"questions"`
 	CreatedAt   time.Time      `json:"created_at"`
 }
@@ -100,8 +111,8 @@ func NewUserQuestionBroker() *UserQuestionBroker {
 	}
 }
 
-func (b *UserQuestionBroker) Ask(ctx context.Context, pluginID, executionID string, params UserQuestionAskParams) (UserQuestionAnswer, error) {
-	if err := validateUserQuestionAsk(pluginID, executionID, params); err != nil {
+func (b *UserQuestionBroker) Ask(ctx context.Context, owner UserQuestionOwner, params UserQuestionAskParams) (UserQuestionAnswer, error) {
+	if err := validateUserQuestionAsk(owner, params); err != nil {
 		return UserQuestionAnswer{}, err
 	}
 	requestID, err := newUserQuestionRequestID()
@@ -110,8 +121,10 @@ func (b *UserQuestionBroker) Ask(ctx context.Context, pluginID, executionID stri
 	}
 	entry := &pendingUserQuestion{
 		request: UserQuestionRequest{
-			RequestID: requestID, PluginID: strings.TrimSpace(pluginID), ExecutionID: strings.TrimSpace(executionID),
-			ThreadID: strings.TrimSpace(params.ThreadID), TurnID: strings.TrimSpace(params.TurnID),
+			RequestID: requestID, PluginID: strings.TrimSpace(owner.PluginID), ExecutionID: strings.TrimSpace(owner.ExecutionID),
+			SessionID: strings.TrimSpace(owner.SessionID),
+			ThreadID:  strings.TrimSpace(owner.ThreadID), TurnID: strings.TrimSpace(owner.TurnID),
+			ActorID: strings.TrimSpace(owner.ActorID), CallID: strings.TrimSpace(owner.CallID),
 			Questions: cloneUserQuestions(params.Questions), CreatedAt: time.Now().UTC(),
 		},
 		result: make(chan userQuestionResult, 1),
@@ -130,8 +143,9 @@ func (b *UserQuestionBroker) Ask(ctx context.Context, pluginID, executionID stri
 	case result := <-entry.result:
 		return result.answer, result.err
 	case <-ctx.Done():
-		if b.resolve(requestID, userQuestionResult{err: ctx.Err()}, "cancelled") {
-			return UserQuestionAnswer{}, ctx.Err()
+		cancelErr := userQuestionContextError(ctx)
+		if b.resolve(requestID, userQuestionResult{err: cancelErr}, "cancelled") {
+			return UserQuestionAnswer{}, cancelErr
 		}
 		result := <-entry.result
 		return result.answer, result.err
@@ -257,12 +271,12 @@ func (b *UserQuestionBroker) publish(subscribers []chan UserQuestionEvent, event
 	}
 }
 
-func validateUserQuestionAsk(pluginID, executionID string, params UserQuestionAskParams) error {
-	if strings.TrimSpace(pluginID) == "" || strings.TrimSpace(executionID) == "" {
+func validateUserQuestionAsk(owner UserQuestionOwner, params UserQuestionAskParams) error {
+	if strings.TrimSpace(owner.PluginID) == "" || strings.TrimSpace(owner.ExecutionID) == "" {
 		return &UserQuestionError{Code: "invalid_request", Message: "user questions require a live plugin execution"}
 	}
-	if strings.TrimSpace(params.ThreadID) == "" || strings.TrimSpace(params.TurnID) == "" {
-		return &UserQuestionError{Code: "invalid_request", Message: "user questions require thread_id and turn_id"}
+	if strings.TrimSpace(owner.ThreadID) == "" || strings.TrimSpace(owner.TurnID) == "" || strings.TrimSpace(owner.CallID) == "" {
+		return &UserQuestionError{Code: "invalid_request", Message: "user questions require a scoped tool execution"}
 	}
 	if len(params.Questions) == 0 || len(params.Questions) > 8 {
 		return &UserQuestionError{Code: "invalid_request", Message: "user questions must contain between 1 and 8 items"}
@@ -305,6 +319,15 @@ func validateUserQuestionAsk(pluginID, executionID string, params UserQuestionAs
 		}
 	}
 	return nil
+}
+
+func userQuestionContextError(ctx context.Context) error {
+	cause := context.Cause(ctx)
+	var questionErr *UserQuestionError
+	if errors.As(cause, &questionErr) {
+		return questionErr
+	}
+	return &UserQuestionError{Code: "execution_cancelled", Message: "owning execution was cancelled"}
 }
 
 func validateUserQuestionAnswer(questions []UserQuestion, answer UserQuestionAnswer) error {
