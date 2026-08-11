@@ -1471,7 +1471,7 @@ function MermaidDiagram({ code }: { code: string }): JSX.Element {
 
     void (async () => {
       try {
-        const mermaid = (await import("mermaid")).default;
+        const mermaid = (await import("./MermaidRuntime")).default;
         mermaid.initialize({
           startOnLoad: false,
           securityLevel: "strict",
