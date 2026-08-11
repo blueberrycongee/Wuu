@@ -77,7 +77,7 @@ export async function createDefaultHostProfile(
     await install(ctx.plugin(agentRuntimePlugin, { agentId: "default" }));
     await install(ctx.plugin(modelSessionHost, { defaultProviderId: providerId }));
     await install(ctx.plugin(permissionSessionHost, {
-      defaultMode: config.defaultPermission ?? "workspace-write",
+      defaultMode: config.defaultPermission ?? "full-access",
     }));
     await install(ctx.plugin(defaultAgentLoopPlugin, {}));
     await install(ctx.plugin(sideHost, { agentId: "default" }));

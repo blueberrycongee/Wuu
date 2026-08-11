@@ -6,14 +6,14 @@ import {
   type ToolPolicyService,
 } from "@wuu-v2/kernel";
 
-export type PermissionMode = "read-only" | "workspace-write";
+export type PermissionMode = "read-only" | "workspace-write" | "full-access";
 export interface PermissionSessionConfig {
   defaultMode: PermissionMode;
 }
 
 type PermissionSelectedRecord = SessionRecord<"permission/selected", { mode: PermissionMode }>;
 const source: EventSource = { pluginId: "permission-session", generation: "v1" };
-const modes: PermissionMode[] = ["read-only", "workspace-write"];
+const modes: PermissionMode[] = ["read-only", "workspace-write", "full-access"];
 
 function objectInput(input: JsonValue): Record<string, JsonValue> {
   if (!input || typeof input !== "object" || Array.isArray(input)) {
@@ -29,7 +29,7 @@ function stringField(input: Record<string, JsonValue>, field: string): string {
 }
 
 function permissionMode(value: string): PermissionMode {
-  if (value !== "read-only" && value !== "workspace-write") {
+  if (value !== "read-only" && value !== "workspace-write" && value !== "full-access") {
     throw new Error(`unknown permission mode: ${value}`);
   }
   return value;
@@ -64,6 +64,7 @@ export class PermissionSessionService extends Service implements ToolPolicyServi
       options: [
         { id: "read-only", label: "Read only" },
         { id: "workspace-write", label: "Workspace write" },
+        { id: "full-access", label: "Full access" },
       ],
     };
   }
@@ -80,7 +81,12 @@ export class PermissionSessionService extends Service implements ToolPolicyServi
 
   async allowedTools(sessionId: string, available: readonly string[]): Promise<ReadonlySet<string>> {
     const mode = await this.resolve(sessionId);
-    return new Set(mode === "read-only" ? available.filter((name) => name === "read") : available);
+    if (mode === "full-access") return new Set(available);
+    const allowed = mode === "read-only" ? new Set(["read"]) : new Set(["read", "write"]);
+    return new Set(available.filter((name) => {
+      const tool = this.ctx.tools.get(name);
+      return tool ? allowed.has(tool.access) : false;
+    }));
   }
 
   async initialize(sessionId: string, preset: string): Promise<void> {
@@ -99,6 +105,6 @@ const permissionSessionHost: Plugin<PermissionSessionConfig> = function permissi
   new PermissionSessionService(ctx, config.defaultMode);
 };
 
-permissionSessionHost.inject = ["agentRuns", "hostActions", "projections", "sessions"];
+permissionSessionHost.inject = ["agentRuns", "hostActions", "projections", "sessions", "tools"];
 permissionSessionHost.provide = "toolPolicy";
 export default permissionSessionHost;

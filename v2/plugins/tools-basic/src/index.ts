@@ -52,6 +52,7 @@ function readTool(cwd: string): ToolDefinition {
   return {
     name: "read",
     description: "Read a UTF-8 file in the current workspace.",
+    access: "read",
     inputSchema: {
       type: "object",
       properties: { path: { type: "string" } },
@@ -69,6 +70,7 @@ function writeTool(cwd: string): ToolDefinition {
   return {
     name: "write",
     description: "Write a UTF-8 file in the current workspace.",
+    access: "write",
     inputSchema: {
       type: "object",
       properties: { path: { type: "string" }, content: { type: "string" } },
@@ -88,6 +90,7 @@ function editTool(cwd: string): ToolDefinition {
   return {
     name: "edit",
     description: "Replace one exact UTF-8 text occurrence in a workspace file.",
+    access: "write",
     inputSchema: {
       type: "object",
       properties: {
@@ -118,6 +121,7 @@ function bashTool(cwd: string): ToolDefinition {
   return {
     name: "bash",
     description: "Run a shell command in the current workspace.",
+    access: "execute",
     inputSchema: {
       type: "object",
       properties: { command: { type: "string" } },

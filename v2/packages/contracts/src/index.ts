@@ -138,6 +138,7 @@ export interface ToolResult {
 export interface ToolDefinition {
   name: string;
   description: string;
+  access: "read" | "write" | "execute";
   inputSchema: JsonValue;
   execute(input: JsonValue, execution: ToolExecution): Promise<ToolResult>;
 }
