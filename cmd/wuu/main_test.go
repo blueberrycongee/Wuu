@@ -98,22 +98,6 @@ func TestRunTUICommandIsRemoved(t *testing.T) {
 	}
 }
 
-func TestRunGoalCommandIsRemoved(t *testing.T) {
-	err := run([]string{"goal"})
-	if err == nil || !strings.Contains(err.Error(), `unknown command "goal"`) {
-		t.Fatalf("expected unknown goal command error, got %v", err)
-	}
-
-	output := captureStdout(t, func() {
-		if err := run(nil); err != nil {
-			t.Fatalf("run returned error: %v", err)
-		}
-	})
-	if strings.Contains(output, "wuu goal") || strings.Contains(output, "Goal flags:") {
-		t.Fatalf("usage should not include legacy goal CLI, got %q", output)
-	}
-}
-
 func TestRunExecJSONUsesControllerPath(t *testing.T) {
 	controller := newCLIExecFakeController(
 		cliExecNotification(appserver.NotificationAgentMessageDelta, appserver.AgentMessageDeltaNotification{ThreadID: "thread-1", TurnID: "turn-1", Delta: "ok"}),

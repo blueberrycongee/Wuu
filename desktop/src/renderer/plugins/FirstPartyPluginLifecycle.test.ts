@@ -35,7 +35,7 @@ const repositoryRoot = basename(process.cwd()) === "desktop"
   ? resolve(process.cwd(), "..")
   : process.cwd();
 const bundledRoot = resolve(repositoryRoot, "internal/plugin/bundled");
-const firstPartyPluginIds = ["goal", "subagent", "automation", "memory", "dream", "todo"] as const;
+const firstPartyPluginIds = ["subagent", "automation", "memory", "dream", "todo"] as const;
 
 afterEach(() => {
   for (const style of document.head.querySelectorAll("style[data-wuu-plugin-id]")) {
@@ -58,7 +58,6 @@ describe("first-party desktop plugin lifecycle", () => {
     }
 
     expect(host.getSlotSnapshot("composer.above").map((item) => item.pluginId)).toEqual([
-      "goal",
       "subagent",
     ]);
     expect(host.getSlotSnapshot("composer.toolbar")).toEqual([]);
@@ -80,7 +79,7 @@ describe("first-party desktop plugin lifecycle", () => {
       "todo:current-todo",
     ]);
     expect(host.getPresenters("conversation.tool-activity", "todo").at(-1)?.pluginId).toBe("todo");
-    expect(document.head.querySelectorAll("style[data-wuu-plugin-id]")).toHaveLength(6);
+    expect(document.head.querySelectorAll("style[data-wuu-plugin-id]")).toHaveLength(5);
 
     for (const pluginId of firstPartyPluginIds) {
       host.disable(pluginId);

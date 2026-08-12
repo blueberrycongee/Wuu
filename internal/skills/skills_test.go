@@ -338,20 +338,6 @@ func TestDiscoverSourceDirsRecursiveFindsNestedSkillDirectories(t *testing.T) {
 	}
 }
 
-func TestBundledSkillsIncludesLongRunningGoal(t *testing.T) {
-	items := BundledSkills()
-	skill, ok := Find(items, "long-running-goal")
-	if !ok {
-		t.Fatalf("bundled skill %q not found in %+v", "long-running-goal", items)
-	}
-	if skill.Source != "bundled" {
-		t.Fatalf("long-running-goal Source = %q", skill.Source)
-	}
-	if len(skill.VerificationChecklist) == 0 {
-		t.Fatal("long-running-goal missing verification checklist")
-	}
-}
-
 func TestBundledSkillsExcludesCommit(t *testing.T) {
 	if _, ok := Find(BundledSkills(), "commit"); ok {
 		t.Fatal("generic commit workflow must not be bundled")

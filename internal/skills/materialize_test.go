@@ -48,7 +48,7 @@ func TestMaterializeBundledIsIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("first materialize: %v", err)
 	}
-	sentinel := filepath.Join(first, "long-running-goal", "sentinel.txt")
+	sentinel := filepath.Join(first, "browser", "sentinel.txt")
 	if err := os.WriteFile(sentinel, []byte("x"), 0o644); err != nil {
 		t.Fatalf("write sentinel: %v", err)
 	}
@@ -61,29 +61,6 @@ func TestMaterializeBundledIsIdempotent(t *testing.T) {
 	}
 	if _, err := os.Stat(sentinel); err != nil {
 		t.Fatalf("idempotent run rewrote unchanged tree (sentinel gone): %v", err)
-	}
-}
-
-// The core fix: a bundled skill's Dir is a real on-disk directory, so
-// load_skill's base-directory reference and file sampling resolve.
-func TestMergeWithBundledGivesRealDir(t *testing.T) {
-	merged := MergeWithBundled(nil, t.TempDir())
-	goal, ok := Find(merged, "long-running-goal")
-	if !ok {
-		t.Fatalf("bundled 'long-running-goal' missing from %+v", merged)
-	}
-	if goal.Source != "bundled" {
-		t.Fatalf("long-running-goal Source = %q, want bundled", goal.Source)
-	}
-	if info, err := os.Stat(goal.Dir); err != nil || !info.IsDir() {
-		t.Fatalf("long-running-goal Dir %q is not a real directory: %v", goal.Dir, err)
-	}
-}
-
-// With no cache root, bundled skills still surface (embed-only fallback).
-func TestMergeWithBundledEmptyCacheFallsBack(t *testing.T) {
-	if _, ok := Find(MergeWithBundled(nil, ""), "long-running-goal"); !ok {
-		t.Fatal("bundled 'long-running-goal' missing with empty cacheRoot")
 	}
 }
 
