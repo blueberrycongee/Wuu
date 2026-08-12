@@ -57,6 +57,11 @@ function main() {
   const pluginsOnly = process.argv.includes("--plugins-only");
 
   mkdirSync(outDir, { recursive: true });
+  for (const artifact of readdirSync(outDir, { withFileTypes: true })) {
+    if (artifact.isFile() && /^wuu-.+-plugin(?:\.exe)?$/.test(artifact.name)) {
+      rmSync(join(outDir, artifact.name), { force: true });
+    }
+  }
 
   const ldflags = [
     "-s",
@@ -80,6 +85,12 @@ function main() {
 
   for (const command of readdirSync(join(repoRoot, "cmd"), { withFileTypes: true })) {
     if (!command.isDirectory() || !/^wuu-.+-plugin$/.test(command.name)) continue;
+    // A plugin directory without Go sources (empty leftover of a rename or an
+    // in-flight plugin removal) cannot be built; skip it instead of failing the
+    // whole dev launch. Safe to drop once empty wuu-*-plugin directories can no
+    // longer appear in the tree.
+    const commandDir = join(repoRoot, "cmd", command.name);
+    if (!readdirSync(commandDir).some((file) => file.endsWith(".go"))) continue;
     const binaryName = target.platform === "win32" ? `${command.name}.exe` : command.name;
     const pluginPath = join(outDir, binaryName);
     run("go", ["build", "-ldflags", "-s -w", "-o", pluginPath, `./cmd/${command.name}`], {
