@@ -5,7 +5,8 @@
   "type": "module",
   "exports": {
     "./host": "./src/host.ts",
-    "./client": "./src/client.ts"
+    "./client": "./src/client.ts",
+    "./provider-environment": "./src/provider-environment.ts"
   },
   "dependencies": {
     "@wuu-v2/client-runtime": "0.0.0",
@@ -27,6 +28,7 @@
     "@wuu-v2/plugin-side": "0.0.0",
     "@wuu-v2/plugin-slash": "0.0.0",
     "@wuu-v2/plugin-theme-default": "0.0.0",
+    "@wuu-v2/plugin-tool-result-projection": "0.0.0",
     "@wuu-v2/plugin-tools-basic": "0.0.0",
     "@wuu-v2/plugin-workspace-loader": "0.0.0"
   }

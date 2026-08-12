@@ -14,7 +14,12 @@
     "smoke": "node --import tsx apps/harness/src/index.ts --smoke",
     "smoke:client": "node --import tsx apps/client-smoke/src/index.tsx",
     "start": "node --import tsx apps/harness/src/index.ts",
+    "check:client-revisions": "node scripts/check-client-revisions.mjs",
+    "desktop:build": "npm run check:client-revisions && npm --workspace @wuu-v2/desktop run build",
+    "desktop:dev": "npm run check:client-revisions && npm --workspace @wuu-v2/desktop run dev",
+    "postinstall": "node scripts/apply-cordis-patches.mjs",
     "test:client-runtime": "node --import tsx --test packages/client-runtime/src/index.test.tsx",
+    "test:kernel": "node --import tsx --test packages/kernel/src/cordis-conformance.test.ts",
     "test:session": "node --import tsx --test plugins/session-jsonl/src/index.test.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
@@ -24,11 +29,15 @@
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
     "@types/node": "^22.10.2",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "electron": "^42.2.0",
+    "electron-vite": "^5.0.0",
     "tsx": "^4.20.6",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vite": "^7.3.6"
   },
   "engines": {
     "node": ">=22.13"
