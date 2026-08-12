@@ -45,8 +45,11 @@ function ComposerSurface({
   const textarea = useRef<HTMLTextAreaElement>(null);
   const [expanded, setExpanded] = useScopedStore(expandedSeat, sessionId);
   const [submitting, setSubmitting] = useState(false);
+  const submittingRef = useRef(false);
+  const [cancelling, setCancelling] = useState(false);
+  const cancellingRef = useRef(false);
   const [error, setError] = useState<string>();
-  const busy = running || submitting;
+  const busy = running || submitting || cancelling;
 
   useEffect(() => {
     if (autoFocus) textarea.current?.focus({ preventScroll: true });
@@ -76,11 +79,12 @@ function ComposerSurface({
 
   const submit = async (candidate = draft) => {
     const text = candidate.trim();
-    if (!text || busy) return;
+    if (!text || busy || submittingRef.current) return;
     const restoreFocus = typeof document !== "undefined" && (
       document.activeElement === document.body ||
       !!stack.current?.contains(document.activeElement)
     );
+    submittingRef.current = true;
     setSubmitting(true);
     setError(undefined);
     try {
@@ -88,6 +92,7 @@ function ComposerSurface({
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
+      submittingRef.current = false;
       setSubmitting(false);
       if (
         restoreFocus &&
@@ -98,12 +103,17 @@ function ComposerSurface({
   };
 
   const cancel = async () => {
-    if (!onCancel) return;
+    if (!onCancel || cancellingRef.current) return;
+    cancellingRef.current = true;
+    setCancelling(true);
     setError(undefined);
     try {
       await onCancel();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      cancellingRef.current = false;
+      setCancelling(false);
     }
   };
 
@@ -191,7 +201,7 @@ function ComposerSurface({
               className="wuu-composer-send"
               type={running ? "button" : "submit"}
               aria-label={running ? "Stop" : "Send"}
-              disabled={running ? !onCancel : !draft.trim() || submitting}
+              disabled={running ? !onCancel || cancelling : !draft.trim() || submitting || cancelling}
               onClick={running ? () => void cancel() : undefined}
             >
               {running ? "■" : "↑"}
