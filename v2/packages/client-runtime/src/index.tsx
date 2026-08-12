@@ -71,6 +71,11 @@ export class SlotsService extends Service {
       scope: "root",
       epoch: this.root.epoch,
     });
+    ctx.effect(() => () => {
+      this.listeners.clear();
+      this.declarations.clear();
+      this.contributions.clear();
+    }, "dispose client slots");
   }
 
   private changed(): void {
