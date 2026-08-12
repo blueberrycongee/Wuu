@@ -126,19 +126,16 @@ assert.deepEqual(
 );
 assert.doesNotMatch(packageJSON.scripts["pack:mac"], /cua-mac/);
 assert.doesNotMatch(packageJSON.scripts["dist:mac"], /cua-mac/);
-assert.match(packageJSON.scripts["pack:mac"], /build:speech-mac/);
-assert.match(packageJSON.scripts["dist:mac"], /build:speech-mac/);
+assert.doesNotMatch(packageJSON.scripts["pack:mac"], /speech-mac/);
+assert.doesNotMatch(packageJSON.scripts["dist:mac"], /speech-mac/);
 assert.deepEqual(packageJSON.build.extraResources[0].filter, [
   "wuu-core",
   "wuu-core.exe",
   "wuu-*-plugin",
   "wuu-*-plugin.exe",
-  "wuu-speech-mac",
 ]);
-assert.equal(
-  packageJSON.build.mac.extendInfo.NSSpeechRecognitionUsageDescription,
-  "Wuu uses macOS Speech Recognition to turn your dictation into text.",
-);
+assert.equal(packageJSON.build.mac.extendInfo, undefined);
+assert.equal(packageJSON.build.afterPack, "scripts/after-pack.cjs");
 
 const identities = parseCodeSigningIdentities([
   '  1) 0123456789ABCDEF0123456789ABCDEF01234567 "Wuu Dev Signing"',

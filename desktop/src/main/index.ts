@@ -238,6 +238,10 @@ const DARK_WINDOW_BACKGROUND = "#1d2024";
 // Matches the renderer titlebar row (48px in the tabbed/popped-out states)
 // so the overlay buttons center on the same strip the renderer draws.
 const WINDOWS_TITLEBAR_OVERLAY_HEIGHT = 48;
+const ENABLE_EMBEDDED_BROWSER =
+  !app.isPackaged && process.env.WUU_ENABLE_BROWSER === "1";
+const ENABLE_VOICE_INPUT =
+  !app.isPackaged && process.env.VITE_ENABLE_VOICE_INPUT === "true";
 if (process.argv.includes("--safe-mode")) {
   process.env.WUU_SAFE_MODE = "1";
 }
@@ -485,7 +489,11 @@ function emitServerEvent(event: ServerEvent): void {
   // and server-request routes are single-shot, so letting the renderer race
   // would reject the route before the main-process handler can answer it. Cheap
   // prefix test on the hot stdout path.
-  if (event.kind === "server-request" && event.message.method.startsWith("browser/")) {
+  if (
+    ENABLE_EMBEDDED_BROWSER &&
+    event.kind === "server-request" &&
+    event.message.method.startsWith("browser/")
+  ) {
     void browserHostCoordinator.handleServerRequest(event);
     return;
   }
@@ -1017,20 +1025,21 @@ app.whenReady().then(async () => {
   // Sort permission/download traffic on the shared browser partition by
   // webContents ownership: only agent-driven views are denied sensitive
   // capabilities, the user's own <webview> on the same partition is untouched.
-  const browserSession = electronSession.fromPartition(BROWSER_PARTITION);
-  try {
-    if (await configureBrowserProxy(browserSession)) {
-      console.info("[desktop] embedded browser proxy enabled via WUU_BROWSER_PROXY");
+  if (ENABLE_EMBEDDED_BROWSER) {
+    const browserSession = electronSession.fromPartition(BROWSER_PARTITION);
+    try {
+      if (await configureBrowserProxy(browserSession)) {
+        console.info("[desktop] embedded browser proxy enabled via WUU_BROWSER_PROXY");
+      }
+    } catch (error) {
+      // A stale or unavailable proxy must not prevent the desktop shell from
+      // starting. The browser falls back to its normal connection behavior.
+      console.warn(
+        `[desktop] failed to configure embedded browser proxy: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
-  } catch (error) {
-    // A stale or unavailable Clash port must not prevent the app-server and
-    // desktop shell from starting. The browser will fall back to its normal
-    // connection behavior until the app is restarted with a valid proxy.
-    console.warn(
-      `[desktop] failed to configure embedded browser proxy: ${error instanceof Error ? error.message : String(error)}`,
-    );
+    installBrowserSessionHandlers(browserSession, browserHostCoordinator);
   }
-  installBrowserSessionHandlers(browserSession, browserHostCoordinator);
   // Pick up the user's chosen size before the pet window is created, so the
   // initial BrowserWindow and the inline data: URL are sized right the first
   // time. setSize is a no-op when the persisted size equals the default. A
@@ -1346,13 +1355,16 @@ app.whenReady().then(async () => {
   ipcMain.handle("wuu:text-polish", (event, text: string) =>
     appServerRequest<TextPolishResult>(event, "text/polish", { text }),
   );
-  ipcMain.handle("wuu:speech-start", (event, locale: string) =>
-    speechRecognitionService.start(locale, (payload) => {
+  ipcMain.handle("wuu:speech-start", (event, locale: string) => {
+    if (!ENABLE_VOICE_INPUT) {
+      return { ok: false as const, error: "platform_unsupported" as const };
+    }
+    return speechRecognitionService.start(locale, (payload) => {
       if (!event.sender.isDestroyed()) {
         event.sender.send("wuu:speech-event", payload);
       }
-    }),
-  );
+    });
+  });
   ipcMain.handle("wuu:speech-stop", () => {
     speechRecognitionService.stop();
     return { ok: true as const };
@@ -1775,7 +1787,9 @@ app.whenReady().then(async () => {
     async (): Promise<VoiceInputSettingsSnapshot> => ({
       settings: getVoiceInputSettings(),
       microphone_permission: microphonePermissionStatus(),
-      speech_permission: await speechRecognitionService.permissionStatus(),
+      speech_permission: ENABLE_VOICE_INPUT
+        ? await speechRecognitionService.permissionStatus()
+        : "unavailable",
     }),
   );
   ipcMain.handle(
@@ -1793,7 +1807,7 @@ app.whenReady().then(async () => {
   ipcMain.handle(
     "wuu:voice-input-open-privacy-settings",
     async (_event, permission: "microphone" | "speech") => {
-      if (process.platform !== "darwin") {
+      if (!ENABLE_VOICE_INPUT || process.platform !== "darwin") {
         throw new Error("Voice privacy settings are available only on macOS");
       }
       const pane =
@@ -2112,6 +2126,7 @@ app.whenReady().then(async () => {
         rect: { x: number; y: number; width: number; height: number };
       },
     ) => {
+      if (!ENABLE_EMBEDDED_BROWSER) return { ok: false };
       const senderWindow = BrowserWindow.fromWebContents(event.sender);
       if (!senderWindow || senderWindow.isDestroyed()) return { ok: false };
       browserHostCoordinator.reportBounds(
@@ -2128,6 +2143,7 @@ app.whenReady().then(async () => {
   ipcMain.handle(
     "wuu:browser-overlay-suppress",
     (_event, payload: { workdir: string; tabID: string; suppressed: boolean }) => {
+      if (!ENABLE_EMBEDDED_BROWSER) return { ok: false };
       browserHostCoordinator.setOverlaySuppressed(
         payload.workdir,
         payload.tabID,

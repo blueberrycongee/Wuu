@@ -72,6 +72,7 @@ import { PluginIcon } from "./PublicIcon";
 import { PluginSlot } from "./plugins/PluginSlot";
 import type { WorkbenchController } from "./plugins/Workbench";
 import { PluginViewContent } from "./plugins/Workbench";
+import { ENABLE_EMBEDDED_BROWSER } from "./FeatureFlags";
 
 export type WorkspacePanelView = "files" | "review" | "terminal" | "browser";
 
@@ -83,7 +84,9 @@ const WORKSPACE_TOOL_ITEMS: Array<{
   { id: "files", titleKey: "workspace.tool.files", subtitleKey: "workspace.tool.filesDescription" },
   { id: "review", titleKey: "workspace.tool.review", subtitleKey: "workspace.tool.reviewDescription" },
   { id: "terminal", titleKey: "workspace.tool.terminal", subtitleKey: "workspace.tool.terminalDescription" },
-  { id: "browser", titleKey: "workspace.tool.browser", subtitleKey: "workspace.tool.browserDescription" }
+  ...(ENABLE_EMBEDDED_BROWSER
+    ? [{ id: "browser" as const, titleKey: "workspace.tool.browser" as const, subtitleKey: "workspace.tool.browserDescription" as const }]
+    : []),
 ];
 
 export const WORKSPACE_FILE_TREE_DEFAULT_WIDTH = 320;

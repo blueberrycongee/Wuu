@@ -18,8 +18,8 @@
     "build:core": "node scripts/build-core.cjs",
     "build:core:win": "node scripts/build-core.cjs --platform=win32",
     "build": "electron-vite build",
-    "pack:mac": "npm run build:core && npm run build:speech-mac && npm run build && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac dir --publish=never",
-    "dist:mac": "npm run build:core && npm run build:speech-mac && npm run build && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac dmg zip --publish=never",
+    "pack:mac": "npm run build:core && npm run build && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac dir --publish=never",
+    "dist:mac": "npm run build:core && npm run build && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac dmg zip --publish=never",
     "pack:win": "npm run build:core:win && npm run build && electron-builder --win dir --publish=never",
     "dist:win": "npm run build:core:win && npm run build && electron-builder --win nsis zip --publish=never",
     "release:desktop": "npm run dist:mac",
@@ -67,6 +67,7 @@
     "directories": {
       "output": "release"
     },
+    "afterPack": "scripts/after-pack.cjs",
     "files": [
       "out/**/*",
       "package.json"
@@ -79,8 +80,7 @@
           "wuu-core",
           "wuu-core.exe",
           "wuu-*-plugin",
-          "wuu-*-plugin.exe",
-          "wuu-speech-mac"
+          "wuu-*-plugin.exe"
         ]
       }
     ],
@@ -90,10 +90,6 @@
     "mac": {
       "category": "public.app-category.developer-tools",
       "icon": "build/icon.icns",
-      "extendInfo": {
-        "NSMicrophoneUsageDescription": "Wuu uses the microphone only while you are dictating text.",
-        "NSSpeechRecognitionUsageDescription": "Wuu uses macOS Speech Recognition to turn your dictation into text."
-      },
       "target": [
         "dmg",
         "zip"

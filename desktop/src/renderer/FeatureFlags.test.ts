@@ -35,6 +35,17 @@ describe("frontend feature flags", () => {
     expect(featureFlags.ENABLE_VOICE_INPUT).toBe(true);
   });
 
+  it("keeps the embedded browser disabled unless explicitly enabled in development", async () => {
+    vi.stubEnv("VITE_ENABLE_BROWSER", "false");
+    let featureFlags = await import("./FeatureFlags");
+    expect(featureFlags.ENABLE_EMBEDDED_BROWSER).toBe(false);
+
+    vi.resetModules();
+    vi.stubEnv("VITE_ENABLE_BROWSER", "true");
+    featureFlags = await import("./FeatureFlags");
+    expect(featureFlags.ENABLE_EMBEDDED_BROWSER).toBe(true);
+  });
+
   it("keeps management assistants disabled unless explicitly enabled", async () => {
     vi.stubEnv("VITE_ENABLE_MANAGEMENT_ASSISTANT", "false");
     let featureFlags = await import("./FeatureFlags");

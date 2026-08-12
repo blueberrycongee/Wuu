@@ -27,7 +27,15 @@ export const ENABLE_GROUP_CHAT =
  * Use `VITE_ENABLE_VOICE_INPUT=true npm run dev` for internal testing.
  */
 export const ENABLE_VOICE_INPUT =
-  import.meta.env.VITE_ENABLE_VOICE_INPUT === "true";
+  import.meta.env.DEV && import.meta.env.VITE_ENABLE_VOICE_INPUT === "true";
+
+/**
+ * The embedded browser remains an internal development capability. Production
+ * builds do not expose its workspace surface even if the build environment
+ * happens to contain the opt-in variable.
+ */
+export const ENABLE_EMBEDDED_BROWSER =
+  import.meta.env.DEV && import.meta.env.VITE_ENABLE_BROWSER === "true";
 
 /**
  * The Skills management assistant is an early surface-assistant experiment.

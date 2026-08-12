@@ -13,6 +13,12 @@ Versioning rules are documented in [the release guide](docs/en/project/release.m
 - Preserved `PostToolUse` hook context across concurrent tool batches and
   isolated request-only context by tool call.
 
+### Changed
+
+- Removed experimental voice input, computer use, and embedded browser
+  capabilities from production desktop builds while retaining explicit
+  development opt-ins.
+
 ## [0.15.0] - 2026-08-05
 
 ### Added

@@ -433,14 +433,21 @@ export class AppServerClient {
     if (this.workspaceId.trim() !== "") {
       appServerArgs.push("--workspace-id", this.workspaceId);
     }
+    const helperEnv = appServerHelperEnvironment(
+      process.env,
+      sourceRoot,
+      resourcesPath,
+      process.platform,
+    );
+    if (app.isPackaged) {
+      delete helperEnv.WUU_ENABLE_BROWSER;
+      delete helperEnv.WUU_ENABLE_CUA_MAC;
+      delete helperEnv.WUU_CUA_MAC_HELPER;
+      delete helperEnv.WUU_CUA_MAC_PIP_HELPER;
+    }
     const child = this.spawnAppServer(command.command, appServerArgs, {
       cwd: command.cwd,
-      env: appServerHelperEnvironment(
-        process.env,
-        sourceRoot,
-        resourcesPath,
-        process.platform,
-      ),
+      env: helperEnv,
       stdio: ["pipe", "pipe", "pipe"],
     });
     this.child = child;

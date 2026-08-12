@@ -50,6 +50,9 @@ if (pluginHelperBuild.status !== 0) {
 }
 
 const env = { ...process.env };
+if (env.WUU_ENABLE_BROWSER === "1") {
+  env.VITE_ENABLE_BROWSER = "true";
+}
 if (process.platform === "darwin") {
   // Keep the stable signed host for macOS permissions, but do not bypass
   // feature gates. CUA is enabled only when the caller explicitly exports

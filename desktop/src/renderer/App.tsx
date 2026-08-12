@@ -184,6 +184,7 @@ import { deriveActiveSessionHints } from "./activeSessionHint";
 import { pullRequestUnavailableReason } from "./RuntimeHelpers";
 import type { SettingsPage } from "./SettingsView";
 import {
+  ENABLE_EMBEDDED_BROWSER,
   ENABLE_GROUP_CHAT,
   ENABLE_MANAGEMENT_ASSISTANT,
 } from "./FeatureFlags";
@@ -1049,9 +1050,11 @@ export function App(): JSX.Element {
   }, [activeThreadID]);
   const activeBrowserActivity = useMemo(
     () =>
-      activitiesForThread(activitySessions, state.activeContext?.cwd, activeThreadID)
-        .filter((activity) => activity.kind === "browser" && activity.state !== "stopped")
-        .at(-1),
+      ENABLE_EMBEDDED_BROWSER
+        ? activitiesForThread(activitySessions, state.activeContext?.cwd, activeThreadID)
+            .filter((activity) => activity.kind === "browser" && activity.state !== "stopped")
+            .at(-1)
+        : undefined,
     [activitySessions, activeThreadID, state.activeContext?.cwd],
   );
 
