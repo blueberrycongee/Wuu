@@ -295,6 +295,14 @@ const appServerClientPool = new AppServerClientPool(
   () => projectManager.activeWorkdir(),
   (event) => emitServerEvent(event),
 );
+// Cross-workdir running state (which sessions are actively turning in any
+// workspace) is aggregated in the main process from each client's own turn
+// lifecycle tracking and broadcast to the renderer on change. The renderer's
+// sidebar uses it to show spinners for non-active workspaces without depending
+// on event routing that is filtered to the active context.
+appServerClientPool.setRunningThreadsChangedHandler((snapshot) =>
+  broadcastToAll("wuu:running-threads-changed", snapshot),
+);
 // Owns every agent-driven embedded browser tab (hidden WebContentsView + CDP
 // bridge). Reverse-RPC browser/* requests are intercepted in emitServerEvent
 // (below) and answered here via the pool's single-shot reply channel. The view
@@ -1138,11 +1146,15 @@ app.whenReady().then(async () => {
     // that session because no later focus event is guaranteed.
     observationCoordinator.setActiveThread(threadID);
   });
+  ipcMain.handle("wuu:running-threads-snapshot", () =>
+    appServerClientPool.runningThreadsSnapshot(),
+  );
   ipcMain.handle("wuu:project-list", () => {
     const result = projectManager.list();
     const contexts: RuntimeContext[] = [];
     if (result.active_context) {
       contexts.push(result.active_context);
+      appServerClientPool.noteContextUsed(result.active_context);
     }
     for (const project of result.projects) {
       if (project.missing || project.id === result.active_project_id) {
@@ -1157,11 +1169,25 @@ app.whenReady().then(async () => {
     // Project runtimes take seconds to cold-start. Fill the small client pool
     // while the user is still reading the current project so switching among
     // the pooled projects does not begin that startup work after the click.
+    // prewarmContexts fills in MRU order (most recently used first) so the
+    // pool stays warm for the projects the user actually switches between.
     appServerClientPool.prewarmContexts(contexts);
     return result;
   });
-  ipcMain.handle("wuu:project-select", (_event, projectIDToSelect: string) =>
-    projectManager.select(projectIDToSelect),
+  ipcMain.handle(
+    "wuu:project-select",
+    (_event, projectIDToSelect: string) => {
+      const result = projectManager.select(projectIDToSelect);
+      // Kick the target runtime's spawn off the moment the user clicks,
+      // before the renderer's follow-up listThreads/thread-start requests
+      // arrive, so the cold-start wait overlaps with the IPC round-trips
+      // instead of being serialized after them.
+      if (result.active_context) {
+        appServerClientPool.noteContextUsed(result.active_context);
+        appServerClientPool.prewarmContexts([result.active_context]);
+      }
+      return result;
+    },
   );
   ipcMain.handle("wuu:project-remove", (_event, projectIDToRemove: string) =>
     projectManager.remove(projectIDToRemove),
@@ -1185,8 +1211,14 @@ app.whenReady().then(async () => {
   );
   ipcMain.handle(
     "wuu:project-select-none",
-    (_event, fresh?: boolean, cwd?: string) =>
-      projectManager.selectNoProject(Boolean(fresh), cwd),
+    (_event, fresh?: boolean, cwd?: string) => {
+      const result = projectManager.selectNoProject(Boolean(fresh), cwd);
+      if (result.active_context) {
+        appServerClientPool.noteContextUsed(result.active_context);
+        appServerClientPool.prewarmContexts([result.active_context]);
+      }
+      return result;
+    },
   );
   ipcMain.handle("wuu:git-status", (event, root?: string) =>
     gitServiceForEvent(event).status({}, root),

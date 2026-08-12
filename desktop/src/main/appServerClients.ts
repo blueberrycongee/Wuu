@@ -11,12 +11,18 @@ import type {
   AppServerNotification,
   AppServerRequest,
   AppServerResponse,
+  RunningThreadSnapshot,
   RuntimeContext,
   ServerEvent,
 } from "../shared/protocol";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const MAX_APP_SERVER_CLIENTS = 3;
+// Soft cap on resident app-server clients. A workdir switch that finds its
+// client already alive is a pure data load (~100ms), while a cold start takes
+// ~1s, so the cap is a memory/perf trade: keep a small MRU of warm runtimes and
+// idle-evict beyond that. 4 keeps the active workdir + the three most recently
+// used ones resident without letting the pool grow unbounded.
+const MAX_APP_SERVER_CLIENTS = 4;
 
 type AppServerSpawnOptions = {
   cwd: string;
@@ -59,11 +65,17 @@ export class AppServerClientPool {
   private clients = new Map<string, AppServerClient>();
   private nextServerRequestRouteID = 1;
   private serverRequestRoutes = new Map<string, ServerRequestRoute>();
+  // Most-recently-used workdirs (most recent last). prewarmContexts fills the
+  // resident pool in this order so the workdirs the user actually switches
+  // between stay warm instead of the first registered projects winning.
+  private mruWorkdirs: string[] = [];
   // Optional cross-cutting hooks wired after construction (index.ts) so the
   // embedded browser coordinator can (a) veto idle-eviction of a workdir that
   // still owns agent tabs and (b) tear down that workdir's views on dispose.
   private isWorkdirPinned?: (workdir: string) => boolean;
   private clientTorndownHandler?: (workdir: string) => void;
+  private runningThreadsChangedHandler?: (snapshot: RunningThreadSnapshot[]) => void;
+  private lastRunningThreadsKey = "";
 
   constructor(
     private readonly getRuntimeContext: () => RuntimeContext,
@@ -90,7 +102,19 @@ export class AppServerClientPool {
   }
 
   prewarmContexts(contexts: readonly RuntimeContext[]): void {
-    for (const context of contexts) {
+    // Fill the resident pool in MRU order: workdirs the user recently switched
+    // to are the ones a next click is most likely to hit. Unknown workdirs fall
+    // back to their call order. Respect the cap by only starting clients up to
+    // it; the rest stay cold and start on demand.
+    const byRecency = new Map(
+      this.mruWorkdirs.map((workdir, index) => [workdir, index] as const),
+    );
+    const ordered = [...contexts].sort(
+      (left, right) =>
+        (byRecency.get(resolve(right.cwd)) ?? -1) -
+        (byRecency.get(resolve(left.cwd)) ?? -1),
+    );
+    for (const context of ordered) {
       const workdir = resolve(context.cwd);
       const existing = this.clients.get(workdir);
       if (existing) {
@@ -102,6 +126,36 @@ export class AppServerClientPool {
       }
       this.clientForContext(context).start();
     }
+  }
+
+  // Records a workdir as recently used (called on context select) so prewarm
+  // keeps the right runtimes resident.
+  noteContextUsed(context: RuntimeContext): void {
+    const workdir = resolve(context.cwd);
+    const index = this.mruWorkdirs.indexOf(workdir);
+    if (index >= 0) {
+      this.mruWorkdirs.splice(index, 1);
+    }
+    this.mruWorkdirs.push(workdir);
+  }
+
+  runningThreadsSnapshot(): RunningThreadSnapshot[] {
+    const snapshot: RunningThreadSnapshot[] = [];
+    for (const client of this.clients.values()) {
+      for (const threadID of client.runningThreadIDsList()) {
+        snapshot.push({ workdir: client.workdir, thread_id: threadID });
+      }
+    }
+    return snapshot;
+  }
+
+  // Wired by index.ts so the renderer can render cross-workdir running state
+  // (sidebar spinners) from an aggregate fact source instead of filtered events.
+  setRunningThreadsChangedHandler(
+    handler: (snapshot: RunningThreadSnapshot[]) => void,
+  ): void {
+    this.runningThreadsChangedHandler = handler;
+    this.maybeBroadcastRunningThreads();
   }
 
   requestInContext<T>(
@@ -152,6 +206,29 @@ export class AppServerClientPool {
     route.client.reject(route.serverID, message);
   }
 
+  // Compares the aggregate running set and broadcasts only on change, so
+  // high-rate streaming notifications (which never alter runningThreadIDs) do
+  // not spam the renderer with identical snapshots.
+  private maybeBroadcastRunningThreads(): void {
+    const key = this.runningThreadsKey();
+    if (key === this.lastRunningThreadsKey) {
+      return;
+    }
+    this.lastRunningThreadsKey = key;
+    this.runningThreadsChangedHandler?.(this.runningThreadsSnapshot());
+  }
+
+  private runningThreadsKey(): string {
+    return [...this.clients.values()]
+      .flatMap((client) =>
+        client
+          .runningThreadIDsList()
+          .map((threadID) => `${client.workdir}\u0000${threadID}`),
+      )
+      .sort()
+      .join("|");
+  }
+
   shutdown(): void {
     for (const client of this.clients.values()) {
       client.dispose();
@@ -189,12 +266,16 @@ export class AppServerClientPool {
         workdir,
         workspaceId,
         (source, event) => this.emitServerEvent(source, event),
-        () => this.evictIdleClients(),
+        () => {
+          this.evictIdleClients();
+          this.maybeBroadcastRunningThreads();
+        },
       );
       this.clients.set(workdir, client);
     }
     client.touch();
     this.evictIdleClients();
+    this.maybeBroadcastRunningThreads();
     return client;
   }
 
@@ -372,6 +453,10 @@ export class AppServerClient {
 
   knownThreadCwds(): string[] {
     return [...new Set([this.workdir, ...this.threadCwdsByID.values()])];
+  }
+
+  runningThreadIDsList(): string[] {
+    return [...this.runningThreadIDs];
   }
 
   runningThreadCwds(): string[] {

@@ -1990,6 +1990,15 @@ export type ServerEvent = {
   | { kind: "server-exit"; code: number | null; message: string }
 );
 
+// One running thread in one workdir, aggregated by the host process from the
+// app-server clients' own turn lifecycle tracking. It is the authoritative
+// cross-workdir activity fact source for sidebar spinners: it does not depend
+// on event routing that is filtered to the active context.
+export type RunningThreadSnapshot = {
+  workdir: string;
+  thread_id: string;
+};
+
 export type WindowResizeState = {
   resizing: boolean;
 };
@@ -2596,6 +2605,14 @@ export type WuuDesktopApi = {
   respondToServerRequest: (id: string, result: unknown) => Promise<void>;
   rejectServerRequest: (id: string, message: string) => Promise<void>;
   onServerEvent: (handler: (event: ServerEvent) => void) => () => void;
+  // Cross-workdir activity aggregate: which sessions are actively turning in
+  // any workspace, computed by the host process from each runtime's own turn
+  // lifecycle tracking. Broadcast on change; the renderer can also pull the
+  // current snapshot on startup via getRunningThreadsSnapshot.
+  onRunningThreadsChanged: (
+    handler: (snapshot: RunningThreadSnapshot[]) => void,
+  ) => () => void;
+  getRunningThreadsSnapshot: () => Promise<RunningThreadSnapshot[]>;
   onTerminalEvent: (handler: (event: TerminalSessionEvent) => void) => () => void;
   onWindowResizeState: (handler: (state: WindowResizeState) => void) => () => void;
   renameThread: (threadId: string, title: string) => Promise<{ thread: Thread }>;

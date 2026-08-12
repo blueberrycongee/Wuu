@@ -106,6 +106,7 @@ import {
   initialState,
   isAnyThreadRunning,
   isStateActiveThreadRunning,
+  isThreadExecuting,
   isThreadRunning,
   isThreadUnread,
   latestTodoUpdateForThread,
@@ -767,6 +768,35 @@ export function App(): JSX.Element {
     // offers the force escape hatch and retries with this summary.
     forceRetryThread?: ThreadSummary;
   } | null>(null);
+  // Cross-workdir running threads aggregated by the main process. While a
+  // non-active workspace's turn events are filtered out of renderer state, the
+  // host still tracks which sessions are turning; this set drives accurate
+  // sidebar spinners for every workspace. It only ever marks threads running —
+  // completion is delivered by the same aggregate broadcast, so a thread never
+  // sticks as running.
+  const [crossWorkdirRunningThreadIDs, setCrossWorkdirRunningThreadIDs] =
+    useState<ReadonlySet<string>>(() => new Set());
+  useEffect(() => {
+    // Defensive optional calls: renderer tests stub window.wuu with partial
+    // mocks that predate this API; the real preload always provides both.
+    let disposed = false;
+    void window.wuu.getRunningThreadsSnapshot?.().then((snapshot) => {
+      if (disposed) return;
+      setCrossWorkdirRunningThreadIDs(
+        new Set(snapshot.map((item) => item.thread_id)),
+      );
+    });
+    const unsubscribe = window.wuu.onRunningThreadsChanged?.((snapshot) => {
+      if (disposed) return;
+      setCrossWorkdirRunningThreadIDs(
+        new Set(snapshot.map((item) => item.thread_id)),
+      );
+    });
+    return () => {
+      disposed = true;
+      unsubscribe?.();
+    };
+  }, []);
   // Archive is now a single-click action (the previous two-step "click again
   // to confirm" pattern was too easy to misfire). Success and failure feedback
   // lives in `archiveTip` above; the underlying IPC still goes through
@@ -2124,20 +2154,37 @@ export function App(): JSX.Element {
   });
   const sidebarProjectThreadsByProjectID = projectThreadsByProjectID;
   const sidebarThreads = useMemo(() => {
+    // Cross-workdir running state from the main process aggregate. While a
+    // non-active workspace's turn events are filtered out of state, the host
+    // still tracks which of its sessions are turning; overlay that here so the
+    // sidebar shows an accurate spinner for every workspace, not just the
+    // active one. The overlay only ever flips a thread to running — it never
+    // clears a running flag the local event flow already established.
+    const overlay = (thread: Thread): Thread =>
+      crossWorkdirRunningThreadIDs.has(thread.id) &&
+      !isThreadRunning(thread) &&
+      !isThreadExecuting(thread)
+        ? { ...thread, status: "in_progress" }
+        : thread;
     const byID = new Map<string, Thread>();
     for (const thread of cachedScratchThreads) {
-      byID.set(thread.id, thread);
+      byID.set(thread.id, overlay(thread));
     }
     for (const threads of Object.values(sidebarProjectThreadsByProjectID)) {
       for (const thread of threads) {
-        byID.set(thread.id, thread);
+        byID.set(thread.id, overlay(thread));
       }
     }
     for (const thread of state.threads) {
-      byID.set(thread.id, thread);
+      byID.set(thread.id, overlay(thread));
     }
     return sortThreads([...byID.values()]);
-  }, [cachedScratchThreads, sidebarProjectThreadsByProjectID, state.threads]);
+  }, [
+    cachedScratchThreads,
+    crossWorkdirRunningThreadIDs,
+    sidebarProjectThreadsByProjectID,
+    state.threads,
+  ]);
   const sidebarProjectThreadSummariesByProjectID = useMemo(() => {
     const next: Record<string, ThreadSummary[]> = {};
     for (const [projectID, threads] of Object.entries(

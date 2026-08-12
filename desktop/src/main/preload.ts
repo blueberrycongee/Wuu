@@ -20,6 +20,7 @@ import {
   type MessageFlowFontSize,
   type PopOutInitResult,
   type RemoteControlEvent,
+  type RunningThreadSnapshot,
   type ServerEvent,
   type SideThreadEventEnvelope,
   type SideThreadSendParams,
@@ -504,6 +505,19 @@ const api: WuuDesktopApi = {
     ipcRenderer.on("wuu:server-event", listener);
     return () => ipcRenderer.removeListener("wuu:server-event", listener);
   },
+  onRunningThreadsChanged: (
+    handler: (snapshot: RunningThreadSnapshot[]) => void,
+  ) => {
+    const listener = (
+      _event: Electron.IpcRendererEvent,
+      payload: RunningThreadSnapshot[],
+    ) => handler(payload);
+    ipcRenderer.on("wuu:running-threads-changed", listener);
+    return () =>
+      ipcRenderer.removeListener("wuu:running-threads-changed", listener);
+  },
+  getRunningThreadsSnapshot: () =>
+    ipcRenderer.invoke("wuu:running-threads-snapshot"),
   // 桌宠气泡点击跳转：主进程把当前 thread_id 广播到所有窗口，渲染进程
   // 据此把主窗口前置并切换 thread。
   onCodexPetJumpRequest: (
