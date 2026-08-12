@@ -41,40 +41,6 @@ beforeAll(() => {
 let container: HTMLDivElement | null = null;
 let root: Root | null = null;
 
-async function withManualAnimationFrames(
-  run: (flush: (timestamp: number) => Promise<void>) => Promise<void>,
-): Promise<void> {
-  const realRequestAnimationFrame = window.requestAnimationFrame;
-  const realCancelAnimationFrame = window.cancelAnimationFrame;
-  let nextHandle = 1;
-  const callbacks = new Map<number, FrameRequestCallback>();
-
-  window.requestAnimationFrame = ((callback: FrameRequestCallback) => {
-    const handle = nextHandle;
-    nextHandle += 1;
-    callbacks.set(handle, callback);
-    return handle;
-  }) as typeof window.requestAnimationFrame;
-  window.cancelAnimationFrame = ((handle: number) => {
-    callbacks.delete(handle);
-  }) as typeof window.cancelAnimationFrame;
-
-  const flush = async (timestamp: number): Promise<void> => {
-    const pending = Array.from(callbacks.values());
-    callbacks.clear();
-    await act(async () => {
-      pending.forEach((callback) => callback(timestamp));
-    });
-  };
-
-  try {
-    await run(flush);
-  } finally {
-    window.requestAnimationFrame = realRequestAnimationFrame;
-    window.cancelAnimationFrame = realCancelAnimationFrame;
-  }
-}
-
 function mount(props: Parameters<typeof StreamingMarkdown>[0]): void {
   if (container) unmount();
   container = document.createElement("div");
@@ -274,7 +240,7 @@ describe("StreamingMarkdown", () => {
     expect(cursor?.closest(".rich-paragraph")).toBeTruthy();
   });
 
-  it("feathers only the newest live microbatch beside the cursor", async () => {
+  it("keeps streamed body text fully legible beside the cursor", async () => {
     const key = streamTextKey("turn", "s2", "text");
     streamTextStore.seed(key, "Hello world");
     mount({ streamKey: key, initialText: "Hello", isLive: true, phase: "final_answer" });
@@ -284,53 +250,12 @@ describe("StreamingMarkdown", () => {
     });
 
     const surface = document.querySelector(".streaming-markdown") as HTMLElement;
-    const feathers = Array.from(
-      surface.querySelectorAll<HTMLElement>(".stream-feather-enter"),
-    );
-    const feather = feathers.at(-1) ?? null;
-    expect(feather).not.toBeNull();
-    expect(feather?.textContent?.length).toBeGreaterThan(0);
-    expect(feather?.textContent?.length).toBeLessThan(surface.textContent?.length ?? 0);
-    expect(feather?.nextElementSibling?.classList.contains("stream-cursor")).toBe(true);
+    expect(surface.textContent).toContain("Hello world");
+    expect(surface.querySelector(".stream-feather-enter")).toBeNull();
+    expect(surface.querySelector(".stream-cursor")).not.toBeNull();
   });
 
-  it("keeps only the latest feather batch at the throttled render cadence", async () => {
-    const key = streamTextKey("turn", "s2", "text");
-    streamTextStore.seed(key, "Hello");
-    mount({ streamKey: key, initialText: "Hello", isLive: true, phase: "final_answer" });
-
-    await act(async () => {
-      streamTextStore.append(key, " world");
-      await new Promise((resolve) => setTimeout(resolve, 40));
-      streamTextStore.append(key, " again");
-      await new Promise((resolve) =>
-        setTimeout(resolve, STREAM_TEXT_NOTIFY_INTERVAL_MS + 20),
-      );
-    });
-
-    const feathers = document.querySelectorAll(".stream-feather-enter");
-    expect(feathers.length).toBe(1);
-    expect(feathers[0]?.textContent).toContain("again");
-  });
-
-  it("caps retained feather batches during sustained provider chunks", async () => {
-    const key = streamTextKey("turn", "s2", "text");
-    streamTextStore.seed(key, "x");
-    mount({ streamKey: key, initialText: "x", isLive: true, phase: "final_answer" });
-
-    await act(async () => {
-      for (let frame = 0; frame < 20; frame += 1) {
-        streamTextStore.append(key, "x");
-        await new Promise((resolve) => setTimeout(resolve, 35));
-      }
-    });
-
-    const retained = document.querySelectorAll(".stream-feather-enter").length;
-    expect(retained).toBeGreaterThan(0);
-    expect(retained).toBeLessThanOrEqual(2);
-  });
-
-  it("does not re-feather existing text when an inline Markdown delimiter closes", async () => {
+  it("keeps existing text stable when an inline Markdown delimiter closes", async () => {
     const key = streamTextKey("turn", "s2", "text");
     streamTextStore.seed(key, "**bold");
     mount({ streamKey: key, initialText: "", isLive: true, phase: "final_answer" });
@@ -344,31 +269,6 @@ describe("StreamingMarkdown", () => {
     });
 
     expect(document.querySelector("strong")).not.toBeNull();
-    expect(document.querySelector("strong .stream-feather-enter")).toBeNull();
-  });
-
-  it("removes active feather batches when a live item settles", async () => {
-    await withManualAnimationFrames(async (flush) => {
-      const key = streamTextKey("turn", "s2", "text");
-      streamTextStore.seed(key, "Hello world");
-      const liveProps = { streamKey: key, initialText: "", isLive: true, phase: "final_answer" as const };
-      mount(liveProps);
-
-      await flush(0);
-      await flush(16);
-      expect(document.querySelector(".stream-feather-enter")).not.toBeNull();
-
-      rerender({ ...liveProps, isLive: false });
-      expect(document.querySelector(".stream-feather-enter")).toBeNull();
-    });
-  });
-
-  it("does not feather settled historical text", () => {
-    const key = streamTextKey("turn", "s2", "text");
-    streamTextStore.seed(key, "Hello world");
-    mount({ streamKey: key, initialText: "Hello world", isLive: false, phase: "final_answer" });
-
-    expect(document.querySelector(".stream-feather-enter")).toBeNull();
   });
 
   it("uses the same live cursor treatment for commentary text", async () => {
@@ -529,23 +429,6 @@ describe("StreamingMarkdown", () => {
     const cursor = surface.querySelector(".stream-cursor") as HTMLElement | null;
     expect(surface.textContent).not.toContain("\uE000");
     expect(cursor?.closest("li")).toBeTruthy();
-  });
-});
-
-describe("StreamingMarkdown feather motion", () => {
-  it("uses a 90ms opacity-only entrance and disables it for reduced motion", () => {
-    const rule = turnsCSS.match(
-      /\.stream-feather-enter\s*\{([\s\S]*?)\n\}/,
-    )?.[1] ?? "";
-
-    expect(rule).toContain("animation: stream-feather-in 90ms linear both;");
-    expect(rule).not.toContain("transform");
-    expect(turnsCSS).toMatch(
-      /@keyframes stream-feather-in\s*\{[\s\S]*?from\s*\{\s*opacity:\s*0\.18;[\s\S]*?to\s*\{\s*opacity:\s*1;/,
-    );
-    expect(turnsCSS).toMatch(
-      /@media \(prefers-reduced-motion: reduce\)\s*\{[\s\S]*?\.stream-feather-enter\s*\{\s*animation:\s*none;/,
-    );
   });
 });
 

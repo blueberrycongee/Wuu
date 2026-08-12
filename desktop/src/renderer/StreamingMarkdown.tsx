@@ -8,7 +8,6 @@ import {
 } from "react";
 import {
   MarkdownContent,
-  type RichTextRenderContext,
   type RichTextRenderer,
 } from "./RichContent";
 import {
@@ -26,7 +25,7 @@ import { useConversationRenderActive } from "./ConversationRenderActivity";
  * streaming/settling/settled state machine — `isLive` flips the renderer
  * between two modes:
  *   - `isLive=true`: server-streamed chunks render on the store's coalesced
- *                    animation frame with a cursor and a short glyph fade.
+ *                    cadence with a stable cursor marking the output edge.
  *   - `isLive=false`: text remains rendered in full. The cursor fades out
  *                     and `onSettled` fires once the final snapshot lands.
  *
@@ -53,22 +52,13 @@ type StreamingMarkdownProps = {
 
 type StreamPhase = "streaming" | "settled";
 
-type FeatherReveal = {
-  /** Raw source interval exposed by one RAF tick. */
-  start: number;
-  end: number;
-  /** Changes every tick so the short opacity entrance restarts. */
-  sequence: number;
-};
-
 const DEFAULT_CLASS_NAME = "streaming-markdown rich-content";
 const CURSOR_CLASS_NAME = "stream-cursor";
 const CURSOR_BLOCK_TAIL_CLASS_NAME = "stream-cursor-block-tail";
 const CURSOR_SENTINEL = "";
 const CURSOR_MARKDOWN_BOUNDARY = " ";
-const FEATHER_RETENTION_MS = 110;
-const MAX_FEATHER_BATCHES = 8;
-const MAX_FEATHER_SOURCE_LENGTH = 8_000;
+const CURSOR_PULSE_MAX_DELTA = 64;
+const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
 
 export function StreamingMarkdown({
   streamKey,
@@ -95,11 +85,6 @@ export function StreamingMarkdown({
   const renderedReplacementVersionRef = useRef(
     streamTextStore.replacementVersion(streamKey),
   );
-  // Feathering is presentation-only. Once a mutable Markdown source grows
-  // large, its reveal/expiry commits can multiply the cost of parsing the
-  // active tail, so long answers keep the text cadence but drop this effect.
-  const featherEnabled =
-    renderActive && renderedText.length <= MAX_FEATHER_SOURCE_LENGTH;
   const acceptedStreamValueRef = useRef(hasStreamValue);
   useLayoutEffect(() => {
     const replacementVersion = streamTextStore.replacementVersion(streamKey);
@@ -128,16 +113,13 @@ export function StreamingMarkdown({
   // it isn't. The back-end message phase never gates rendering of the text.
   const phase: StreamPhase = isLive ? "streaming" : "settled";
 
-  const [featherReveals, setFeatherReveals] = useState<FeatherReveal[]>([]);
-
   /* ------------------------------- Refs ---------------------------------- */
   const surfaceRef = useRef<HTMLDivElement | null>(null);
-  const previousCursorContainerTextRef = useRef<string | undefined>(undefined);
+  const previousRenderedTextRef = useRef(renderedText);
+  const cursorPulseAnimationRef = useRef<Animation | null>(null);
   const onFrameRef = useRef(onFrame);
   const onSettledRef = useRef(onSettled);
   const settledNotifiedRef = useRef(false);
-  const featherSequenceRef = useRef(0);
-  const featherTimeoutsRef = useRef(new Map<number, number>());
 
   /* ----------------------- Refs always track props ------------------------ */
   useLayoutEffect(() => {
@@ -155,44 +137,8 @@ export function StreamingMarkdown({
     onSettledRef.current?.();
   }, []);
 
-  const clearFeatherReveals = useCallback((): void => {
-    featherTimeoutsRef.current.forEach((timeout) => window.clearTimeout(timeout));
-    featherTimeoutsRef.current.clear();
-    setFeatherReveals([]);
-  }, []);
-
-  const queueFeatherReveal = useCallback((start: number, end: number): void => {
-    if (!featherEnabled) return;
-    featherSequenceRef.current += 1;
-    const sequence = featherSequenceRef.current;
-    setFeatherReveals((current) => [
-      ...current,
-      { start, end, sequence },
-    ].slice(-MAX_FEATHER_BATCHES));
-    // Keep the batch slightly longer than the 90ms CSS animation so React's
-    // commit time cannot remove the span before the browser paints its end.
-    const timeout = window.setTimeout(() => {
-      featherTimeoutsRef.current.delete(sequence);
-      setFeatherReveals((current) => current.filter(
-        (reveal) => reveal.sequence !== sequence,
-      ));
-    }, FEATHER_RETENTION_MS);
-    featherTimeoutsRef.current.set(sequence, timeout);
-  }, [featherEnabled]);
-
-  useEffect(() => () => {
-    featherTimeoutsRef.current.forEach((timeout) => window.clearTimeout(timeout));
-    featherTimeoutsRef.current.clear();
-  }, []);
-
-  useEffect(() => {
-    if (!featherEnabled) {
-      clearFeatherReveals();
-    }
-  }, [clearFeatherReveals, featherEnabled]);
-
   // The store already coalesces provider deltas to one notification per
-  // animation frame. Rendering those committed chunks directly avoids a
+  // visual update. Rendering those committed chunks directly avoids a
   // second client-side character chase that used to keep React and Markdown
   // busy for seconds after the provider had already delivered the text.
   useLayoutEffect(() => {
@@ -206,39 +152,63 @@ export function StreamingMarkdown({
       settledNotifiedRef.current = false;
       return;
     }
-    clearFeatherReveals();
+    cursorPulseAnimationRef.current?.cancel();
+    cursorPulseAnimationRef.current = null;
     trySettle();
-  }, [clearFeatherReveals, isLive, trySettle]);
+  }, [isLive, trySettle]);
 
-  /* ---------------------- Visible glyph feathering ---------------------- */
-  // Markdown source growth is not the same as visible text growth: closing
-  // `**`, a link destination, or a code delimiter can add raw characters
-  // while only reinterpreting glyphs already on screen. Read the committed
-  // cursor container and diff its actual text instead. A layout effect's
-  // state update is flushed before paint, so newly appended glyphs enter on
-  // their feather span without an intervening hard-cut frame.
+  /* ----------------------- Cursor arrival feedback ----------------------- */
+  // Streamed prose becomes fully legible immediately. Only the stable cursor
+  // receives a short arrival cue, keeping previously rendered lines visually
+  // inert while rapid wrapping and auto-follow move them through the viewport.
+  // Dense batches and line breaks already carry enough motion, so they skip
+  // the pulse rather than stacking another signal on top.
   useLayoutEffect(() => {
-    if (!featherEnabled || !isLive) {
-      previousCursorContainerTextRef.current = undefined;
+    const previousText = previousRenderedTextRef.current;
+    previousRenderedTextRef.current = renderedText;
+    cursorPulseAnimationRef.current?.cancel();
+    cursorPulseAnimationRef.current = null;
+
+    if (
+      !renderActive ||
+      !isLive ||
+      !renderedText.startsWith(previousText) ||
+      renderedText.length <= previousText.length
+    ) {
       return;
     }
-    const currentText = cursorContainerText(surfaceRef.current);
-    if (currentText === undefined) {
+
+    const appendedText = renderedText.slice(previousText.length);
+    if (
+      appendedText.length > CURSOR_PULSE_MAX_DELTA ||
+      appendedText.includes("\n") ||
+      window.matchMedia?.(REDUCED_MOTION_QUERY).matches
+    ) {
       return;
     }
-    const previousText = previousCursorContainerTextRef.current;
-    previousCursorContainerTextRef.current = currentText;
-    if (previousText === undefined || currentText === previousText) {
+
+    const cursor = surfaceRef.current?.querySelector<HTMLElement>(
+      `.${CURSOR_CLASS_NAME}`,
+    );
+    if (!cursor || typeof cursor.animate !== "function") {
       return;
     }
-    if (currentText.startsWith(previousText)) {
-      queueFeatherReveal(previousText.length, currentText.length);
-      return;
-    }
-    // A Markdown structure change or replacement altered existing visible
-    // glyphs. Clear old ranges rather than replaying them as new content.
-    clearFeatherReveals();
-  }, [clearFeatherReveals, featherEnabled, isLive, queueFeatherReveal, renderedText]);
+    cursorPulseAnimationRef.current = cursor.animate(
+      [
+        { opacity: 0.68, transform: "scaleX(1)" },
+        { opacity: 1, transform: "scaleX(1.45)", offset: 0.35 },
+        { opacity: 1, transform: "scaleX(1)" },
+      ],
+      {
+        duration: 140,
+        easing: "cubic-bezier(0.16, 1, 0.3, 1)",
+      },
+    );
+  }, [isLive, renderActive, renderedText]);
+
+  useEffect(() => () => {
+    cursorPulseAnimationRef.current?.cancel();
+  }, []);
 
   /* ------------------------- Derived view data -------------------------- */
   const visibleText = renderedText;
@@ -254,10 +224,7 @@ export function StreamingMarkdown({
   // into a V-shape jitter. Visibility is controlled by the parent
   // data-cursor-state attribute (see turns.css) instead.
   const showCursor = true;
-  const cursorTextRenderer = useMemo(
-    () => createCursorTextRenderer(isLive && featherEnabled ? featherReveals : []),
-    [featherEnabled, featherReveals, isLive]
-  );
+  const cursorTextRenderer = useMemo(() => createCursorTextRenderer(), []);
   // Mermaid is expensive; do not flip the markdown renderer at settle for
   // ordinary text. Only messages that actually contain a Mermaid fence enter
   // the diagram renderer after streaming ends.
@@ -349,40 +316,14 @@ export function StreamingMarkdown({
  */
 const MemoMarkdownContent = MarkdownContent;
 
-function createCursorTextRenderer(
-  featherReveals: FeatherReveal[],
-): RichTextRenderer {
-  return (text, keyPrefix, context) => {
+function createCursorTextRenderer(): RichTextRenderer {
+  return (text, keyPrefix) => {
     const cursorIndex = text.indexOf(CURSOR_SENTINEL);
     const textBeforeCursor = cursorIndex >= 0 ? text.slice(0, cursorIndex) : text;
     const visibleText = cursorIndex >= 0 && textBeforeCursor.endsWith(CURSOR_MARKDOWN_BOUNDARY)
       ? textBeforeCursor.slice(0, -CURSOR_MARKDOWN_BOUNDARY.length)
       : textBeforeCursor;
-    const output: Array<JSX.Element | string> = [];
-
-    const ranges = featherRangesForNode(
-      featherReveals,
-      visibleText.length,
-      context,
-    );
-    let localOffset = 0;
-    ranges.forEach(({ start, end, sequence }) => {
-      if (start > localOffset) {
-        output.push(visibleText.slice(localOffset, start));
-      }
-      output.push(
-        <span
-          key={`${keyPrefix}-feather-${sequence}-${start}`}
-          className="stream-feather-enter"
-        >
-          {visibleText.slice(start, end)}
-        </span>
-      );
-      localOffset = end;
-    });
-    if (localOffset < visibleText.length) {
-      output.push(visibleText.slice(localOffset));
-    }
+    const output: Array<JSX.Element | string> = visibleText ? [visibleText] : [];
 
     if (cursorIndex >= 0) {
       output.push(
@@ -399,41 +340,6 @@ function createCursorTextRenderer(
     }
     return output;
   };
-}
-
-function featherRangesForNode(
-  reveals: FeatherReveal[],
-  nodeLength: number,
-  context?: RichTextRenderContext,
-): Array<FeatherReveal> {
-  if (!context?.hasCursor || nodeLength === 0 || reveals.length === 0) {
-    return [];
-  }
-
-  const nodeStart = context.startOffset;
-  const nodeEnd = nodeStart + nodeLength;
-  let occupiedUntil = 0;
-  const ranges: FeatherReveal[] = [];
-
-  reveals.forEach((reveal) => {
-    const start = Math.max(occupiedUntil, 0, reveal.start - nodeStart);
-    const end = Math.min(nodeLength, reveal.end - nodeStart);
-    if (end <= start || reveal.end <= nodeStart || reveal.start >= nodeEnd) {
-      return;
-    }
-    ranges.push({ start, end, sequence: reveal.sequence });
-    occupiedUntil = end;
-  });
-
-  return ranges;
-}
-
-function cursorContainerText(surface: HTMLDivElement | null): string | undefined {
-  const cursor = surface?.querySelector(`.${CURSOR_CLASS_NAME}`);
-  const container = cursor?.closest<HTMLElement>(
-    ".rich-paragraph, .rich-heading, li, code, th, td, blockquote",
-  ) ?? cursor?.parentElement;
-  return container?.textContent ?? undefined;
 }
 
 export function containsMermaidFence(text: string): boolean {
