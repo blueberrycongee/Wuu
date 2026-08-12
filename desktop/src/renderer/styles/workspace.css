@@ -4713,7 +4713,14 @@ html.resizing-workspace-terminal-split * {
   row-gap: 0;
 }
 
-.conversation-width > * {
+.conversation-width > *,
+/* Plugin wrap surfaces render through the host's display:contents
+   `.plugin-contribution-root` boundary, which must never change layout.
+   The child combinator alone would miss a wrapped turn (it is no longer a
+   direct grid child), auto-placing it into a single 1/12 column. Span every
+   direct child of a contribution boundary too, at any nesting depth, so the
+   "wrapping is layout-transparent" contract holds for the 12-col flow grid. */
+.conversation-width .plugin-contribution-root > * {
   grid-column: 1 / -1;
 }
 
