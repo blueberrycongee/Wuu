@@ -17,7 +17,7 @@ export const layoutStyles = `
   position: absolute;
   z-index: 5;
   top: 10px;
-  left: 10px;
+  left: 72px;
   display: grid;
   width: 30px;
   height: 30px;
@@ -65,7 +65,7 @@ export const layoutStyles = `
 
 .app-shell.is-sidebar-collapsed { grid-template-columns: 0 minmax(0, 1fr) auto; }
 .app-shell.is-sidebar-collapsed .app-sidebar { opacity: 0; pointer-events: none; transform: translateX(-12px); }
-.app-shell.is-sidebar-collapsed .app-sidebar-toggle { left: 10px; }
+.app-shell.is-sidebar-collapsed .app-sidebar-toggle { left: 72px; }
 
 @media (prefers-reduced-motion: reduce) {
   .app-shell, .app-sidebar, .app-sidebar-toggle { transition: none !important; }
