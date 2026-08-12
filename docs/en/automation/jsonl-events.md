@@ -43,7 +43,7 @@ The target event family list is:
 - `turn_started`
 - `agent_message_delta`
 - `agent_message_final`
-- `plan_updated`
+- `todo_updated`
 - `provider_state`
 - `request_context`
 - `tool_started`

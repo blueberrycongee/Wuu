@@ -80,7 +80,7 @@ Every payload also has a `type` string. Fields listed are exactly the map keys p
 | `file_changed` | `runner.go:555-556` (`fileChangeEventsFromToolResult`, `runner.go:715+`) | `thread_id`, `turn_id`, `item_id`, `tool_name`, `path`, `action`, `old_file_sha`, `new_file_sha`, `workspace_revision`, plus tool-specific move/journal fields |
 | `subagent_started` / `subagent_updated` / `subagent_completed` | `emitSubagentUpdated`, `runner.go:574-610` | `thread_id`, `agent_id`, `agent_type`, `status`, `task_name`, `agent_profile`, `agent_path`, `parent_id`, `description`, `result`, `result_path`, `result_bytes`, `result_truncated`, `error`, `input_tokens`, `output_tokens`, `cache_creation_tokens`, `cache_read_tokens` |
 | `usage_updated` | `runner.go:362-367` | `thread_id`, `turn_id`, cumulative `input_tokens`, `output_tokens`, `cache_creation_tokens`, `cache_read_tokens` |
-| `plan_updated` | `runner.go:859-863` | `thread_id`, `turn_id`, `plan` |
+| `todo_updated` | `runner.go:859-863` | `thread_id`, `turn_id`, `todo` |
 | `request_context` | `runner.go:863-905` | large diagnostic snapshot: `step_index`, byte/segment counts, hashes, `prompt_cache_key`, … |
 | `provider_state` | `runner.go:906-934` | large transport snapshot: `provider`, `protocol`, `transport`, `replay_mode`, fallback state, input-item counts, … |
 | `turn_completed` | `runner.go:374-392` | `thread_id`, `turn_id`, `input_tokens`, `output_tokens`, `trace_path`, `awaiting_auto_continuation` |
@@ -342,7 +342,7 @@ Legend: **=** direct map · **~** needs transform/synthesis · **wuu∅** wuu ha
 | Tool result (final) | `tool_completed` (`runner.go:546`) | `tool_result` block inside a `user` message | ~ |
 | Command tools | `command_*` events (`runner.go:529-571`) | folded into the same `tool_use`/`tool_result` blocks | ~ (wuu splits them out) |
 | File change | `file_changed` (`runner.go:555-556`) | none (implicit in tool result) | cc∅ |
-| Plan | `plan_updated` (`runner.go:862`) | none (TodoWrite tool result) | cc∅ |
+| TODO | `todo_updated` (`runner.go:862`) | none (TodoWrite tool result) | cc∅ |
 | Subagents | `subagent_*` (`runner.go:574-610`) | `parent_tool_use_id` threading on `assistant`/`user` msgs | ~ |
 | User prompt echo | none emitted | `user` message | wuu∅ |
 | Provider/request diagnostics | `provider_state`, `request_context` (`runner.go:863-934`) | none | cc∅ |
