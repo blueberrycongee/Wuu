@@ -2,8 +2,8 @@
 
 This tutorial gets you to a working Agent plugin in about ten minutes: it
 registers a model-visible tool, persists a counter in namespaced Storage, and
-walks the full loop of generate → build → hot reload → pack → approve →
-enable. For the complete reference, see [Writing plugins](plugin-authoring.md).
+walks the full loop of generate → build → hot reload → install → run. For the
+complete reference, see [Writing plugins](plugin-authoring.md).
 
 Want to change the desktop UI first? Follow the
 [Desktop plugin quickstart](desktop-plugin-quickstart.md). Not sure whether to use a
@@ -178,19 +178,18 @@ generation; if the build or activation fails, the previous generation stays.
 Directory authorization is development-only and never transfers to ordinary
 plugins installed from downloaded packages.
 
-## Step 5: pack, approve, and enable
+## Step 5: install and run
 
 ```bash
 wuu plugin pack .                      # outputs hello-plugin-0.1.0.zip
-wuu plugin inspect ./hello-plugin-0.1.0.zip   # inspect content and fingerprint before installing
-wuu plugin install ./hello-plugin-0.1.0.zip
-wuu plugin approve hello-plugin        # review then approve
-wuu plugin enable hello-plugin
+wuu extension install ./hello-plugin-0.1.0.zip
 ```
 
-Installed code is only activated after you approve it; no plugin code runs
-before approval. Any file change in the package produces a new fingerprint,
-invalidating the previous approval and requiring a fresh review and approval.
+Install is the trust decision: the plugin runs with your user authority.
+Installing or enabling a source means trusting that source's code. Updates from
+the same npm package identity or the same Git remote keep the trust; a change of
+source identity asks for confirmation again. Wuu does not review, certify, or
+sandbox plugin code — install only code you trust.
 
 ## Step 6: use it
 
@@ -199,8 +198,8 @@ the tool activity card. Ask it to greet again — the count in the result
 increments, which shows the Storage persistence working.
 
 ```bash
-wuu plugin disable hello-plugin   # the tool disappears from sessions
-wuu plugin remove hello-plugin    # uninstall
+wuu extension disable hello-plugin   # the tool disappears from sessions
+wuu extension remove hello-plugin    # uninstall
 ```
 
 ## Next steps

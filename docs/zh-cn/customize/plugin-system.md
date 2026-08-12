@@ -50,14 +50,14 @@ Wuu Plugin Kernel
 Bundled default plugins
   ├── default Agent/Session services
   ├── default ReAct Loop Driver
-  ├── default Prompt / Tools / Plan / Conversation UI
+  ├── default Prompt / Tools / TODO / Conversation UI
   └── Goal / Subagent / Automation / Memory / Dream
 ```
 
-Plan 已作为 bundled 一方插件运行：runtime 拥有 Tool、参数校验和结果合同，Desktop 模块拥有
+TODO 已作为 bundled 一方插件运行：runtime 拥有 Tool、参数校验和结果合同，Desktop 模块拥有
 Tool Activity Presenter 与 Inspector section。宿主只保存普通 Tool call/result 事实，并依据公开的
-`display.capability = "plan"` 生成版本化事件和只读 snapshot；它不再注册 `update_plan`、维护或恢复
-可变计划状态、注入过期提醒或渲染原生计划界面。Plan 不扩张成跨 Turn 自动续跑、定时唤醒或
+`display.capability = "todo"` 生成版本化事件和只读 snapshot；它不维护或恢复
+可变 TODO 状态、注入过期提醒或渲染原生 TODO 界面。TODO 不扩张成跨 Turn 自动续跑、定时唤醒或
 长期 Goal。
 
 Provider 协议不变量、取消、执行租约、持久化完整性、最终权限边界和崩溃恢复仍由 Kernel 保证；
@@ -200,7 +200,7 @@ RPC。
 | Dream | Timer + Memory → 插件私有 Session → 整理后通过 Memory Tool 写回 | 候选选择、整合提示、失败退避、结果状态和管理界面 | `sessionDreamScheduler` 和 StreamRunner 的产品专用 AfterTurn Hook |
 | Goal | Turn 完成事件 → 检查目标状态 → 向同一主 Session 投递生成的 query | 目标状态机、预算、提示、Tool、存储和界面 | `agent.turn.continuation` 及 Goal 专用的 probe/prepare 调度 |
 | Subagent | 创建私有子 Session → fresh/fork 上下文 → 投递任务 → 完成后向父 Session 回投生成的 query | `spawn_agent` 等 Tool、任务命名、worker 策略、主动委派设置与请求 Prompt、报告和界面 | `host.child_session.request` 的 spawn/send/close/list/await/report 产品动作，以及核心 Ultra 配置、Turn 快照、CLI/API 与 Composer 控件 |
-| Plan | 注册带语义 capability 的 Tool → 普通 Tool 事实进入日志 → Presenter 与 Inspector 读取公开 snapshot | Tool schema、校验、结果合同、Presenter、Inspector section 和样式 | 核心 `update_plan`、可变状态、恢复、stale reminder 和原生展示 |
+| TODO | 注册带语义 capability 的 Tool → 普通 Tool 事实进入日志 → Presenter 与 Inspector 读取公开 snapshot | Tool schema、校验、结果合同、Presenter、Inspector section 和样式 | 核心可变状态、恢复、stale reminder 和原生展示 |
 
 表中说明公共能力模型；六个一方迁移的当前完成情况见下文。字段和方法仍必须在真实调用点形成
 版本化合同。例如 memory 概览和修改不需要宿主“受约束模型任务”：它可以创建或复用一个 Session
@@ -212,8 +212,8 @@ RPC。
 
 - Provider 消息顺序、Tool call/result 配对、流式响应和上下文窗口等协议正确性；
 - Session/Event 的追加持久化、Inbox/Outbox、幂等接纳、执行租约、当前 Turn 的取消和恢复原语；
-- Tool 执行、最终权限判定、工作区边界和用户审批；
-- Service/Event/Scope/Effect、依赖解析、插件安装批准、generation 原子替换和错误隔离；
+- Tool 执行、最终权限判定、工作区边界和用户确认；
+- Service/Event/Scope/Effect、依赖解析、插件安装/信任、generation 原子替换和错误隔离；
 - 原生窗口、系统安全区以及宿主拥有的导航、Tab、滚动、溢出和无障碍。
 
 Kernel 保留的是机制，不是策略。消息不能丢、同一执行权不能被两个 generation 同时持有属于
@@ -326,10 +326,10 @@ generation-scoped Service Registry，内核服务、自省与执行作用域都�
    普通 user role 执行，私有 Session 不进入普通列表与搜索，真实用户排队工作优先于插件唤醒。
 4. **HelpMe 已完整删除。** Tool、Schema、Prompt、内部 worker type、历史重写/压缩特判、桌面文案、
    测试和死代码均已移除；没有保留兼容入口，也没有把它重命名成另一种插件工作流。
-5. **Plan 已迁移到语义 Tool 事实链路。** bundled 插件拥有 Tool schema、参数校验、结果合同、
+5. **TODO 使用语义 Tool 事实链路。** bundled 插件拥有 Tool schema、参数校验、结果合同、
    Tool Activity Presenter、Inspector section 和样式。核心只把普通 Tool call/result 写入 Session
-   日志，并按 `display.capability = "plan"` 投影事件和公开 snapshot；旧的核心 Tool、可变状态、恢复、
-   stale reminder、原生 Plan section 与工具名特判均已删除，也没有保留兼容适配器。
+   日志，并按 `display.capability = "todo"` 投影事件和公开 snapshot；核心可变状态、恢复、
+   stale reminder、原生 TODO section 与工具名特判均不存在，也没有兼容适配器。
 6. **Automation 已迁移到公共 Session 链路。** 一方插件拥有 Cron 表达式、Timer、补跑、任务与
    运行记录、Prompt、`cron` Tool 和完整桌面 View；触发时只调用 `host.session.create/send`，并通过
    通用 Turn lifecycle 收敛运行状态。核心的 Automation RPC、Manager、scheduler、Turn 特判、
@@ -346,7 +346,7 @@ generation-scoped Service Registry，内核服务、自省与执行作用域都�
    Timer、间隔、失败退避和运行状态，再通过 `host.session.create/send` 创建 fork 私有 Session；Prompt
    和设置 View 也由插件拥有，并让该 Session 通过 Memory 插件提供的 `session_memory` Tool 写回。
    核心 `sessionDreamScheduler`、Dream 状态/锁、AfterTurn Hook、配置字段和原生设置已经删除。
-9. **Desktop 生命周期已由真实一方模块证明。** Goal、Subagent、Automation、Memory、Dream、Plan 的
+9. **Desktop 生命周期已由真实一方模块证明。** Goal、Subagent、Automation、Memory、Dream、TODO 的
    bundled `desktop.js` 直接运行在 `WorkbenchController`/`PluginHost` 产品路径；View、Slot、导航、
    设置入口、Locale 和 Style 随 generation 原子激活与替换，禁用后全部撤回。测试不使用伪造的
    注册清单来代替模块执行。
@@ -363,7 +363,7 @@ generation-scoped Service Registry，内核服务、自省与执行作用域都�
    提示、状态、桌面状态条和父 Session 回投由插件拥有。宿主不再识别 `spawn_agent` Tool 名、解析
    `<subagent_notification>`、生成专用 Tool item 或维护原生子任务面板；插件生成的回投只依赖通用
    `display_content/origin/cause/read_only` query 元数据，不改变公共合同。
-4. HelpMe 全链路已删除；Plan 已迁移到 bundled 插件，并删除核心 Tool、状态、恢复和原生展示分支。
+4. HelpMe 全链路已删除；TODO 作为 bundled 插件运行，核心没有对应 Tool、状态、恢复和原生展示分支。
 5. Cron、Memory 和 Dream 已分别完成“插件 Timer → 用户可见 Session”、“Prompt + Tool + 私有
    Session + View”和“Timer + Memory Tool + 插件私有 Session”的纵向切片，三者没有产品专用
    宿主服务。
@@ -377,7 +377,7 @@ generation-scoped Service Registry，内核服务、自省与执行作用域都�
 9. `SinglePassDriver` 已证明单轮无 Tool 的不同范式可以不修改 Kernel 私有类型运行。把 Driver 做成
    Manifest 可安装贡献、迁出进程内 bundled 代码和提供选择 UI，仍属于后续稳定化工作。
 
-插件链路的验收不是接口存在，而是：核心不存在 Cron、Memory、Dream、Goal、Subagent、Plan 的
+插件链路的验收不是接口存在，而是：核心不存在 Cron、Memory、Dream、Goal、Subagent、TODO 的
 产品专用执行或可变状态分支时，这六个一方插件仍能仅通过公开合同保持现有体验；外部插件在相同
 权限和生命周期下也能组合出同类能力。
 
@@ -521,7 +521,7 @@ runtime capability。工具或能力出错时，宿主按公开错误策略传�
 
 插件所有可执行贡献都属于一个 generation：
 
-1. Wuu 读取 Manifest、重算整包 fingerprint，并检查批准和权限；
+1. Wuu 读取 Manifest、记录来源身份，并确认插件在当前 workspace 中已启用；
 2. 候选 generation 在外部构建和注册，尚未对用户可见；
 3. 校验成功后一次性替换旧 generation；
 4. 校验或激活失败时，旧 generation 保持运行；
@@ -582,7 +582,7 @@ generation 发布与撤销，不另设平行生命周期。
 
 ## 一方插件与第三方插件同构
 
-Goal、Subagent、Automation、Memory、Dream、Plan 已经通过与第三方插件相同的 generation、capability
+Goal、Subagent、Automation、Memory、Dream、TODO 已经通过与第三方插件相同的 generation、capability
 和公开宿主合同运行。它们各自拥有 Prompt、Tool、状态、后台策略和 Desktop 贡献，专用宿主
 执行 seam 与原生产品外壳已经删除，是当前“一方/三方同构”的纵向证明。协作暂不纳入当前改造
 范围，不应为了它预建接口。
@@ -598,12 +598,12 @@ Goal、Subagent、Automation、Memory、Dream、Plan 已经通过与第三方插
 - 声明式主题和设置不执行插件代码；
 - Agent runtime 进程与 Wuu 拥有相同用户权限；
 - 桌面代码在 Renderer 中运行，并可注册任意 CSS；
-- 插件包任何字节变化都会产生新 fingerprint，旧批准失效；
+- 安装或启用来源就是信任决定；同一来源身份的更新延续信任，来源身份改变时重新确认；
 - runtime 只获得文档化的环境变量白名单，不直接继承全部宿主环境；
-- Renderer 不读取插件绝对路径，Electron 校验摘要后通过内容寻址的 `wuu-plugin:` URL 加载；
+- Renderer 不读取插件绝对路径，Electron 通过内容寻址的 `wuu-plugin:` URL 加载；
 - CSP 不开放 `unsafe-eval`。
 
-插件管理、审批、安全模式、权限底线、原生窗口、app-server 生命周期、崩溃恢复和默认 UI
+插件管理、安全模式、原生窗口、app-server 生命周期、崩溃恢复和默认 UI
 永远由 Wuu 控制。只能安装和启用可信来源的可执行插件。
 
 ## 当前边界与尚未完成的能力
@@ -618,8 +618,8 @@ Goal、Subagent、Automation、Memory、Dream、Plan 已经通过与第三方插
 - 部分 Presenter 的 `replace` 快照和 Action 还不足以无损重建完整原生语义，优先使用 `wrap`；
 - 画布、终端、Webview、PDF ShadowRoot 和专用预览仍是明确的主题边界；
 - Marketplace、远程自动更新、排名、依赖解析和签名分发不属于当前本地优先平台；
-- Goal、Subagent、Automation、用户/工作区/会话 Memory、Dream 和 Plan 已完成纵向迁移，并去除专用宿主执行 seam；
-- HelpMe 已从代码和产品中删除；Plan 的旧核心 Tool、状态、恢复与原生展示同样已删除；
+- Goal、Subagent、Automation、用户/工作区/会话 Memory、Dream 和 TODO 已完成纵向迁移，并去除专用宿主执行 seam；
+- HelpMe 已从代码和产品中删除；TODO 没有核心 Tool、状态、恢复与原生展示；
 - Go runtime 与 Desktop contribution 已按 generation 统一回收，简单 Activation Plan、Default
   Driver、SinglePass Driver、checkpoint 和 model-input receipt 已实现；Service Registry
   （内核服务 + 自省 + 执行作用域）已作为运行时组合原语落地；跨 Go/Desktop 的统一

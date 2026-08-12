@@ -14,7 +14,7 @@ from the behavior you want to change rather than from an API name.
 | Ship only a theme or host-rendered settings | Declarative [Wuu Plugin](plugins.md) contributions | No Desktop code needs to load |
 | Register agent tools, context, or long-running behavior | [Wuu Plugin](plugins.md), Agent side | A managed runtime can join the agent lifecycle and call host services |
 | Add desktop buttons, panels, pages, or message presentation | [Wuu Plugin](plugins.md), Desktop side | A desktop module can run React at stable UI boundaries |
-| Ship Skills, MCP, Hooks, agent behavior, and UI together | [Wuu Plugin](plugins.md) | One package owns installation, approval, upgrade, and removal |
+| Ship Skills, MCP, Hooks, agent behavior, and UI together | [Wuu Plugin](plugins.md) | One package owns installation, trust, upgrade, and removal |
 
 Prefer a Skill or MCP server when it fully solves the problem. Use a Wuu Plugin when
 you need code lifecycle, host services, or desktop UI.
@@ -28,8 +28,8 @@ A code-review extension might include all of the following:
 3. a Hook that runs a compliance check before completion;
 4. a Wuu Plugin that adds a review-history View and dedicated agent tools.
 
-Only a Wuu Plugin is a package with `plugin.json`, generation lifecycle, and approval
-state. A plugin package may carry Skills, MCP, and Hooks, but those contributions are
+Only a Wuu Plugin is a package with a manifest and a single install/trust
+lifecycle. A plugin package may carry Skills, MCP, and Hooks, but those contributions are
 not themselves desktop modules.
 
 ## Runtime and trust
@@ -39,11 +39,11 @@ not themselves desktop modules.
 | Skill | Instructions in agent context | May direct the agent to use tools; read it first |
 | MCP | Local subprocess or remote server | Local commands, network access, and third-party tool output |
 | Hook | Local command or model call | Runs during lifecycle events and may block or rewrite behavior |
-| Agent plugin | Wuu-managed subprocess | Runs with user authority and may register tools or call approved services |
+| Agent plugin | Wuu-managed subprocess | Runs with user authority and may register tools or call host services it declares |
 | Desktop plugin | Trusted code in the Wuu Renderer | Runs React and may inject CSS; install only trusted sources |
 
-Wuu permission modes, workspace boundaries, and plugin approval still apply. A smaller
-extension is easier to reason about, not exempt from source review.
+Wuu permission modes and workspace boundaries still apply, and installing a plugin is a
+trust decision. A smaller extension is easier to reason about, not exempt from source review.
 
 ## Start building
 

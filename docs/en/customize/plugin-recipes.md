@@ -182,9 +182,9 @@ loading Desktop code:
 }
 ```
 
-Run `wuu plugin validate .`, then install, approve, and enable the package. The theme
-appears under **Settings → Appearance**; selecting a built-in theme removes its
-overrides. See the [theme token reference](theme-surface-matrix.md) for available
+Run `wuu plugin validate .`, then install the package with `wuu extension install .`.
+The theme appears under **Settings → Appearance**; selecting a built-in theme removes
+its overrides. See the [theme token reference](theme-surface-matrix.md) for available
 tokens and [plugin themes and settings](themes-settings.md) for user actions.
 
 ## Show a result after background work

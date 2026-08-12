@@ -1,12 +1,12 @@
 # Use plugin themes and settings
 
-Approved and enabled plugins may contribute themes and settings. This page explains
+Enabled plugins may contribute themes and settings. This page explains
 how users select, reset, and manage those contributions. Authors can find declaration
 fields in the [plugin authoring reference](plugin-authoring.md#declarative-contributions).
 
 ## Select or reset a theme
 
-Open **Settings → Appearance**. Approved and enabled plugin themes appear alongside
+Open **Settings → Appearance**. Enabled plugin themes appear alongside
 **System**, **Light**, and **Dark**. A choice applies immediately without a restart.
 
 To stop using a plugin theme, choose any built-in option:
@@ -21,7 +21,7 @@ Settings, plugin management, or recovery entries.
 ## Manage plugin settings
 
 Wuu renders declared boolean, text, number, and enum fields, so the plugin does not
-need to build its own form. After approval and enablement, settings are available from:
+need to build its own form. After install, settings are available from:
 
 - the plugin-contributed page in the **Settings** sidebar;
 - the plugin details in **Skills & Plugins**.
@@ -38,8 +38,8 @@ upgrade, and removal so they can be restored later; data is not automatically er
 
 Check the following in order:
 
-1. the plugin is installed, approved, and enabled;
-2. the current package fingerprint is still approved;
+1. the plugin is installed and enabled;
+2. its source identity is unchanged;
 3. the manifest actually declares a theme or setting;
 4. the setting does not require a restart;
 5. plugin diagnostics in **Skills & Plugins** do not report a manifest or activation error.

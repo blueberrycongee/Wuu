@@ -1,7 +1,7 @@
 # Agent 插件快速上手
 
 本教程带你用 10 分钟做出第一个可用的 Agent 插件：它注册一个模型可见的工具，
-用命名空间 Storage 持久化计数，跑通"生成 → 构建 → 热重载 → 打包 → 审批 → 启用"
+用命名空间 Storage 持久化计数，跑通"生成 → 构建 → 热重载 → 安装 → 运行"
 的完整闭环。更完整的参考见[编写插件](plugin-authoring.md)。
 
 想先修改桌面界面？改走[Desktop 插件快速上手](desktop-plugin-quickstart.md)。不确定
@@ -169,18 +169,16 @@ wuu plugin dev .
 generation；构建或激活失败时保留上一代。目录授权是开发专用，不会转移到从下载包
 安装的普通插件。
 
-## 第 5 步：打包、审批与启用
+## 第 5 步：安装并运行
 
 ```bash
 wuu plugin pack .                      # 输出 hello-plugin-0.1.0.zip
-wuu plugin inspect ./hello-plugin-0.1.0.zip   # 安装前查看包内容与 fingerprint
-wuu plugin install ./hello-plugin-0.1.0.zip
-wuu plugin approve hello-plugin        # 检查后批准
-wuu plugin enable hello-plugin
+wuu extension install ./hello-plugin-0.1.0.zip
 ```
 
-安装后的代码必须经你批准才会激活，批准前不会执行任何插件代码。包的任何文件变化
-都会产生新的 fingerprint，原批准随之失效，需要重新检查并批准。
+安装就是信任决定：插件以你的用户权限执行。安装或启用来源表示信任该来源的代码；
+同一 npm 包身份或同一 Git remote 的更新延续信任，来源身份改变时重新确认。Wuu
+不审核、不认证、也不沙箱插件代码——只安装你信任的代码。
 
 ## 第 6 步：使用
 
@@ -188,8 +186,8 @@ wuu plugin enable hello-plugin
 结果里的计数会 +1——说明 Storage 持久化生效了。
 
 ```bash
-wuu plugin disable hello-plugin   # 工具从会话中消失
-wuu plugin remove hello-plugin    # 卸载
+wuu extension disable hello-plugin   # 工具从会话中消失
+wuu extension remove hello-plugin    # 卸载
 ```
 
 ## 下一步

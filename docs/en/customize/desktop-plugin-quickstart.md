@@ -111,14 +111,12 @@ No Wuu source rebuild is needed when only plugin code changes.
 
 ```bash
 wuu plugin pack .
-wuu plugin inspect ./focus-mode-0.1.0.zip
-wuu plugin install ./focus-mode-0.1.0.zip
-wuu plugin approve focus-mode
-wuu plugin enable focus-mode
+wuu extension install ./focus-mode-0.1.0.zip
 ```
 
-Any package change creates a new fingerprint and requires review. Development-directory
-authorization never transfers with the zip.
+Install is the trust decision: the plugin runs with your user authority. Updates from
+the same source identity keep the trust. Development-directory authorization never
+transfers with the zip.
 
 ## Next steps
 

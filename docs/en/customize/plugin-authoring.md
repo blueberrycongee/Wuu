@@ -1,7 +1,7 @@
 # Wuu Plugin authoring reference
 
 This is the complete Wuu Plugin reference: package shape, Agent protocol, Desktop API,
-generations, local development, and trust boundaries. Use it after choosing a plugin
+lifecycle, local development, and trust boundaries. Use it after choosing a plugin
 type rather than as the first introduction.
 
 Start from your goal:
@@ -83,8 +83,8 @@ Common fields:
 - `id` is a globally unique identifier. It determines the install directory
   name and the namespace prefix of every registration; once published it
   should never change.
-- `version` is a semantic version. Any file change produces a new
-  whole-package fingerprint, which invalidates the previous approval.
+- `version` is a semantic version. Updates from the same source identity keep
+  trust; Wuu does not re-approve per file change.
 - The top-level `icon` is the plugin's brand icon, used in the plugin catalog
   and detail views; it does not automatically enter host navigation. It can be
   a public semantic icon name, `{ "path": "assets/icon.svg" }`, or
@@ -114,8 +114,8 @@ The authoritative field definitions are
 
 ### Themes
 
-Declare them in `contributes.themes`; no code is required. Themes of approved
-and enabled plugins appear under **Settings → Appearance**; when the plugin is
+Declare them in `contributes.themes`; no code is required. Themes of enabled
+plugins appear under **Settings → Appearance**; when the plugin is
 disabled or the user switches back to a built-in theme, Wuu removes every
 token contributed by that plugin's settings.
 
@@ -523,8 +523,10 @@ Manifest View entries must reference a View registered by that same generation.
   plugins do not inject icon components through desktop modules.
 - `registerInspectorSection`: registers a short summary in the host
   environment panel. Input is a frozen, versioned snapshot of public Session,
-  Turn, Workspace, Git, and Plan data; host actions only allow opening a
-  registered View or executing a registered Command. The host provides an
+  Turn, Workspace, Git, and TODO data; host actions only allow opening a
+  registered View or executing a registered Command. Optional `when(snapshot)`
+  returns `false` when the current snapshot has no meaningful content, in which
+  case the host omits the section title and container. The host provides an
   independent error boundary, max height, and overflow per section. Long
   lists, editors, and complex interactions must go into `primary` or
   `auxiliary` Views.
@@ -582,8 +584,8 @@ Manifest View entries must reference a View registered by that same generation.
 
 A `runtime_action` in `contributes.commands` matches a command with the same
 ID registered by the desktop entry through `registerCommand`. The command
-appears in the Composer slash menu only when the plugin is approved, enabled,
-and the desktop command finished registering:
+appears in the Composer slash menu only when the plugin is enabled and the
+desktop command finished registering:
 
 ```json
 {
@@ -735,22 +737,20 @@ if the build or activation fails, the previous generation stays. Directory
 authorization is development-only and never transfers to ordinary plugins
 installed from downloaded packages.
 
-### Install, review, and publish
+### Install and publish
 
 ```bash
-wuu plugin install .                 # install from a directory
-wuu plugin pack .                    # or package for distribution
-wuu plugin install ./my-plugin-1.0.0.zip
-wuu plugin approve my-plugin         # review then approve
-wuu plugin enable my-plugin
+wuu plugin pack .                    # package for distribution
+wuu extension install ./my-plugin-1.0.0.zip
+wuu extension install npm:foo        # or from npm
+wuu extension install git:github.com/example/foo
 wuu plugin dev .                     # iterate during development
 ```
 
-Installed code is only activated after the user approves it; any file change
-produces a new fingerprint, invalidating the previous approval and requiring a
-fresh review and approval. Installing the same ID again stages a pending
-update: the installed generation stays active until the new package is
-approved.
+Install or enable is the trust decision: the plugin runs with your user
+authority. Updates from the same npm package identity or the same Git remote
+keep the trust; a change of source identity asks for confirmation again. Wuu
+does not re-approve per file change.
 
 ### Examples
 
@@ -791,18 +791,17 @@ publishing and re-validate after Wuu upgrades.
 
 ## Trust boundary and security core
 
-- Plugin packages are untrusted input: the Renderer never reads a plugin's
-  absolute path. Before every load, app-server reloads the manifest,
-  recomputes the whole-package fingerprint, and confirms the plugin is still
-  approved and enabled for the current workspace; the Electron main process
-  verifies the source digest again, then loads the module through a
-  content-addressed `wuu-plugin:` URL. The Content Security Policy does not
-  enable `unsafe-eval` or arbitrary local scripts.
-- Plugin management, approval, safe mode, crash recovery, the final boundary
-  of permission prompts, native windows, app-server lifecycle, generation
-  error isolation, and the user escape paths (Settings, disabling plugins,
-  restoring default UI) always stay under Wuu host control and are **never**
-  exposed to plugins through public interfaces.
+- Plugin code runs with the user's authority; Wuu does not sandbox it. The
+  Renderer never reads a plugin's absolute path. Before load, app-server
+  records the source identity (npm package name, Git remote, or local path)
+  and confirms the plugin is enabled for the current workspace; the Electron
+  main process loads the module through a content-addressed `wuu-plugin:` URL.
+  The Content Security Policy does not enable `unsafe-eval` or arbitrary local
+  scripts.
+- Plugin management, safe mode, crash recovery, native windows, app-server
+  lifecycle, and the user escape paths (Settings, disabling plugins, restoring
+  default UI) always stay under Wuu host control and are **never** exposed to
+  plugins through public interfaces.
 - When started with `WUU_SAFE_MODE=1`, `wuu app-server --safe-mode`, or the
   Desktop `--safe-mode`, Wuu only discovers manifests for the plugin
   management UI; it activates no plugin runtime, tool, skill, user automation
@@ -810,7 +809,7 @@ publishing and re-validate after Wuu upgrades.
 - Declarative themes can only modify public semantic tokens;
   `registerStyle` can use arbitrary CSS and is therefore only offered to
   trusted desktop-code plugins.
-- Runtime processes share Wuu's user authority; enabling a third-party
-  runtime carries the same risk as running a third-party local command.
-  Check the source, command, and authorization state before installing and
-  enabling.
+- Runtime processes share Wuu's user authority; installing a third-party
+  runtime carries the same risk as running a third-party local command. Check
+  the source before installing. Updates from the same source identity keep
+  trust; a change of source identity asks for confirmation again.

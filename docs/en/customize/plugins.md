@@ -1,8 +1,9 @@
 # Wuu Plugins
 
-A Wuu Plugin is an installable, reviewable, and upgradeable extension package. It can
-provide one capability or combine an Agent runtime, Desktop UI, themes, settings,
-Skills, Hooks, MCP servers, and commands.
+A Wuu Plugin is an installable and upgradeable extension package. It can provide one
+capability or combine an Agent runtime, Desktop UI, themes, settings, Skills, Hooks,
+MCP servers, and commands. Installing a plugin means you trust its code to run with
+your user authority; Wuu does not sandbox it.
 
 If you are not sure that you need a plugin, start with [Extend Wuu](index.md). A
 repeatable instruction set may only need a Skill, and an existing tool service may
@@ -11,7 +12,7 @@ desktop UI.
 
 The platform is local-first: there is no marketplace or central registry. Authors
 normally develop and release plugins from their own GitHub repositories, and users
-install a directory or zip without forking Wuu.
+install from npm, a Git remote, or a local path without forking Wuu.
 
 ## What one package can contain
 
@@ -23,10 +24,10 @@ install a directory or zip without forking Wuu.
 
 One package may declare both `runtime` and `desktop.entry`. For example, the runtime
 can query a private service while the Desktop module presents the result. Both share
-the plugin ID, approval state, and generation lifecycle.
+the plugin ID and the one install/trust lifecycle.
 
-Plugin management, approval, safe mode, crash recovery, permission limits, and native
-window lifecycle remain host-owned. Plugins cannot replace those recovery paths.
+Plugin management, safe mode, crash recovery, and native window lifecycle remain
+host-owned. Plugins cannot replace those recovery paths.
 
 Choose a first path:
 
@@ -37,47 +38,52 @@ Choose a first path:
 
 ## Get and install plugins
 
-Clone a repository, download a directory, or download a release zip, then install it
-from the Desktop app or CLI:
+Install from npm, a Git repository, or a local directory with one action:
 
 ```bash
-wuu plugin install ./path/to/plugin
-wuu plugin install ./my-plugin-1.0.0.zip
+wuu extension install npm:foo
+wuu extension install git:github.com/example/foo
+wuu extension install ./foo
 ```
 
-In the Desktop app, open **Skills & Plugins**, choose **Install local plugin**, and
-select a directory or zip. Wuu installs packages under `~/.wuu/plugins/`, or below
-`WUU_HOME` when set. It recalculates the whole-package fingerprint before every load.
+In the Desktop app, the same install action can target a package name, repository,
+directory, or zip. Wuu installs packages under `~/.wuu/plugins/`, or below `WUU_HOME`
+when set. Installing or enabling a source is the trust decision: the code runs with
+your user authority. In the UI this appears as one confirmation that names the source;
+the CLI treats an explicit `install` command as the confirmation.
 
-## Approval and enabling
+## Trust, update, and user-visible state
 
-Installed code does not activate immediately. Review the source, package contents,
-requested capabilities, and fingerprint before approval. Any package change produces
-a new fingerprint and invalidates the old approval. Reinstalling the same ID stages a
-pending update while the approved generation keeps running.
+- Installing or enabling a source means trusting that source's code.
+- Updates from the same npm package identity or the same Git remote keep the trust;
+  Wuu does not re-approve per file change.
+- A change of source identity asks for confirmation again.
+- Extensions in a trusted project directory load with the project's trust, without
+  per-plugin confirmation.
+- A local `-e` path is explicit development execution and never enters install approval.
+- A failed update reports the failure and keeps a recoverable entry; the user is not
+  sent through onboarding again.
+
+A plugin is always in one of three user-visible states: `Enabled` (installed and
+running), `Disabled` (the user turned it off), or `Failed` (load or run failure; the
+error is viewable and the plugin can be disabled).
 
 ```bash
-wuu plugin list
-wuu plugin inspect ./path/to/plugin
-wuu plugin approve my-plugin
-wuu plugin reject my-plugin
-wuu plugin enable my-plugin
-wuu plugin disable my-plugin
-wuu plugin remove my-plugin
+wuu extension list
+wuu extension disable my-plugin
+wuu extension remove my-plugin
 ```
 
 ## Recovery and troubleshooting
 
-- **Pending approval or update:** inspect the directory or zip before approving or
-  rejecting it. The previous approved generation keeps running during a pending update.
-- **Activation failure:** a candidate generation does not replace the working version.
-  Read Runtime and Renderer diagnostics in **Skills & Plugins**, then rebuild or reinstall.
+- **Failed:** the error is visible in the plugin list and settings page; disable the
+  plugin or reinstall it. Other enabled plugins keep running.
 - **Render failure:** Wuu falls back only at the failed Slot, Presenter, Surface, or View;
   plugin management and default-UI recovery remain available.
-- **Immediate isolation:** run `wuu plugin disable <id>`. The CLI can disable a plugin
+- **Immediate isolation:** run `wuu extension disable <id>`. The CLI can disable a plugin
   even when its Desktop contribution is broken. If Wuu enters safe mode after a crash,
   leave the suspected plugin disabled while investigating.
-- **Removal:** run `wuu plugin remove <id>`. Wuu currently preserves plugin settings and
+- **Removal:** run `wuu extension remove <id>`. Wuu currently preserves plugin settings and
   Storage by default, so removing a package is not the same as erasing all user data.
 
 ## Common capabilities
@@ -100,11 +106,13 @@ wuu plugin remove my-plugin
 - Agent runtime processes run with the same user authority as Wuu.
 - Desktop modules run in the Renderer and may register arbitrary CSS.
 - Hooks have the same risk as running the declared local command directly.
-- The Renderer never receives an absolute plugin path. App-server rechecks the
-  fingerprint and approval state; Electron verifies the digest and imports through a
-  content-addressed `wuu-plugin:` URL. CSP does not enable `unsafe-eval`.
+- The Renderer never receives an absolute plugin path. App-server records the source
+  identity; Electron imports desktop code through a content-addressed `wuu-plugin:`
+  URL. CSP does not enable `unsafe-eval`.
+- Wuu does not review, certify, or sandbox plugin code. Updates keep trust by source
+  identity, not by per-change approval.
 
-Install code plugins only from trusted sources and review every changed generation.
+Install code plugins only from sources you trust.
 
 ## Current compatibility boundary
 
@@ -131,6 +139,6 @@ wuu plugin pack ./my-extension
 ```
 
 See the [plugin authoring reference](plugin-authoring.md) for the complete manifest,
-Agent protocol, Desktop API, generations, and security boundaries. See the
+Agent protocol, Desktop API, lifecycle, and security boundaries. See the
 [plugin system architecture](plugin-system.md) for the design rationale and host
 ownership model.

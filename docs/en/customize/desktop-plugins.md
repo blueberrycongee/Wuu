@@ -165,10 +165,9 @@ only for local experiments.
 
 ## Host-owned boundaries remain
 
-Plugins cannot replace or hide plugin management, safe mode, crash recovery,
-permission limits, or native window lifecycle. Desktop code and unrestricted CSS are
-high-trust capabilities. Install only trusted sources; every package change creates a
-new fingerprint and requires approval.
+Plugins cannot replace or hide plugin management, safe mode, crash recovery, or native
+window lifecycle. Desktop code and unrestricted CSS are high-trust capabilities. Install
+only trusted sources; updates from the same source identity keep the trust.
 
 Complete the [Desktop plugin quickstart](desktop-plugin-quickstart.md), then choose a
 real implementation from the [Desktop plugin recipes](plugin-recipes.md).

@@ -106,14 +106,11 @@ wuu plugin dev .
 
 ```bash
 wuu plugin pack .
-wuu plugin inspect ./focus-mode-0.1.0.zip
-wuu plugin install ./focus-mode-0.1.0.zip
-wuu plugin approve focus-mode
-wuu plugin enable focus-mode
+wuu extension install ./focus-mode-0.1.0.zip
 ```
 
-安装包的任何文件变化都会产生新 fingerprint，并要求用户重新检查和批准。开发目录授权不会
-随 zip 一起转移。
+安装就是信任决定：插件以你的用户权限执行。同一来源身份的更新延续信任。
+开发目录授权不会随 zip 一起转移。
 
 ## 下一步
 

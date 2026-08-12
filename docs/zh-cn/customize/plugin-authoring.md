@@ -1,6 +1,6 @@
 # Wuu Plugin 开发参考
 
-本文是 Wuu Plugin 的完整开发参考：包结构、Agent 协议、Desktop API、generation、
+本文是 Wuu Plugin 的完整开发参考：包结构、Agent 协议、Desktop API、生命周期、
 本地开发闭环和信任边界。它适合在你已经选定插件类型后查字段和接口，不是推荐的第一篇。
 
 先按目标选择入口：
@@ -11,7 +11,7 @@
 - [Desktop UI 扩展地图](desktop-plugins.md)：选择 View、Slot、Presenter 或 Surface；
 - [插件场景教程](plugin-recipes.md)：查看常见能力怎样组合。
 
-用户侧的安装、审批和管理见[Wuu Plugin](plugins.md)。
+用户侧的安装、信任和管理见[Wuu Plugin](plugins.md)。
 
 第一次写 Agent 插件或 Desktop 插件时，先走对应的快速上手，再回来看本页。
 
@@ -73,7 +73,7 @@ my-plugin/
 常用字段：
 
 - `id` 是全局唯一标识，决定安装目录名和所有注册的命名空间前缀；一旦发布不应更改。
-- `version` 是语义化版本。包的任何文件变化都会产生新的整包 fingerprint，原审批随之失效。
+- `version` 是语义化版本。同一来源身份的更新延续信任，Wuu 不按文件变化重新审批。
 - 顶层 `icon` 是插件品牌图标，用于插件目录和详情，不自动进入宿主导航。可填
   公共语义图标名、`{ "path": "assets/icon.svg" }`，或
   `{ "light": "assets/icon-light.svg", "dark": "assets/icon-dark.svg" }`。
@@ -95,7 +95,7 @@ my-plugin/
 
 ### 主题
 
-无需任何代码，在 `contributes.themes` 中声明即可。获批且启用的插件主题会出现在
+无需任何代码，在 `contributes.themes` 中声明即可。启用的插件主题会出现在
 "设置 → 外观"；禁用插件或切回内置主题时，Wuu 会移除该插件设置的全部 Token。
 
 ```json
@@ -421,8 +421,9 @@ manifest 中的 View 入口也必须引用同一 generation 注册的 View。
   必须留在插件包内，不能是符号链接。SVG 会拒绝脚本、事件属性、外部引用与嵌入式文档。
   Wuu 统一负责尺寸、选中态、无障碍、主题切换与加载失败兜底，插件不通过桌面模块注入图标组件。
 - `registerInspectorSection`：在宿主环境信息面板注册短摘要。输入是冻结且版本化的
-  Session、Turn、Workspace、Git 和 Plan 公开 snapshot；Host Action 只允许打开已注册
-  View 或执行已注册 Command。宿主负责每个 Section 的独立错误边界、限高和溢出。
+  Session、Turn、Workspace、Git 和 TODO 公开 snapshot；Host Action 只允许打开已注册
+  View 或执行已注册 Command。可选的 `when(snapshot)` 在当前摘要没有有意义内容时返回
+  `false`，宿主不会渲染该 Section 的标题或容器。宿主负责每个 Section 的独立错误边界、限高和溢出。
   长列表、编辑器和复杂交互必须进入 `primary` 或 `auxiliary` View。
 - `api.ui`：宿主提供的小型 UI Kit，包括 `Page`、`Panel`、`Card`、`Section`、
   `Stack`、`Row`、`Button`、`ToolbarToggle`、`TextInput`、`TextArea`、`Checkbox`、`EmptyState`、
@@ -593,20 +594,18 @@ wuu plugin dev .
 并保留活跃 generation 的租约直到切换完成；构建或激活失败时保留上一代。目录授权
 是开发专用，绝不转移到从下载包里安装的普通插件。
 
-### 安装、验收与发布
+### 安装与发布
 
 ```bash
-wuu plugin install .                 # 从目录安装
-wuu plugin pack .                    # 或打包后分发
-wuu plugin install ./my-plugin-1.0.0.zip
-wuu plugin approve my-plugin         # 检查后批准
-wuu plugin enable my-plugin
+wuu plugin pack .                    # 打包后分发
+wuu extension install ./my-plugin-1.0.0.zip
+wuu extension install npm:foo        # 或从 npm 安装
+wuu extension install git:github.com/example/foo
 wuu plugin dev .                     # 开发期修改
 ```
 
-安装后代码必须经用户批准才会激活；文件变化产生新 fingerprint，原批准失效，需要重新
-检查并批准。同一 ID 再次安装会被暂存为 pending 更新，已安装 generation 保持活跃，
-直到新包被批准。
+安装或启用就是信任决定：插件以你的用户权限执行。同一 npm 包身份或同一 Git remote
+的更新延续信任，来源身份改变时重新确认。Wuu 不按文件变化重新审批。
 
 ### 示例
 
@@ -639,16 +638,15 @@ previous-minor/current-minor 的 SDK 与宿主兼容矩阵。在矩阵验证完�
 
 ## 信任边界与安全内核
 
-- 插件包是 untrusted 输入：Renderer 不会读取插件的绝对路径，Wuu 在每次加载前由
-  app-server 重新加载 Manifest、重算整包 fingerprint，并确认插件在当前 workspace
-  中仍获批且启用；Electron 主进程再次校验源码摘要，然后通过内容寻址的
+- 插件代码以用户权限执行，Wuu 不提供沙箱。Renderer 不会读取插件的绝对路径，
+  Wuu 在加载前由 app-server 记录来源身份（npm 包名、Git remote 或本地路径），
+  并确认插件在当前 workspace 中已启用；Electron 主进程通过内容寻址的
   `wuu-plugin:` 协议加载模块；CSP 不开放 `unsafe-eval` 或任意本地脚本。
-- 插件管理、审批、安全模式、崩溃恢复、权限提示的最终边界、原生窗口与 app-server
-  生命周期、generation 错误隔离，以及用户逃生路径（设置、禁用插件、恢复默认 UI）
-  始终由 Wuu host 控制，**永不**通过公开接口暴露给插件。
+- 插件管理、安全模式、崩溃恢复、原生窗口与 app-server 生命周期，以及用户逃生路径
+  （设置、禁用插件、恢复默认 UI）始终由 Wuu host 控制，**永不**通过公开接口暴露给插件。
 - 使用 `WUU_SAFE_MODE=1`、`wuu app-server --safe-mode` 或 Desktop 的 `--safe-mode` 启动时，
   Wuu 只发现 manifest 供插件管理展示，不激活任何插件 runtime、Tool、Skill、用户自动化 Hook 或 Desktop 模块。
 - 声明式主题只能修改公开语义 Token；`registerStyle` 可以使用任意 CSS，因此只提供给
   受信任的桌面代码插件。
-- runtime 进程与 Wuu 同权限，启用第三方 runtime 与直接运行第三方本地命令具有
-  相同风险；安装和启用前检查来源、命令与授权状态。
+- runtime 进程与 Wuu 同权限，安装第三方 runtime 与直接运行第三方本地命令具有
+  相同风险；安装前检查来源。同一来源身份的更新延续信任，来源身份改变时重新确认。

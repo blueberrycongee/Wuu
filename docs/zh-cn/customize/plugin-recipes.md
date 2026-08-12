@@ -176,8 +176,8 @@ Presenter 应读取公开 snapshot，并始终保留合理 fallback。不要解�
 }
 ```
 
-运行 `wuu plugin validate .` 后安装、批准并启用。主题会出现在**设置 → 外观**；切回
-内置主题即可移除覆盖。完整 Token 见[主题 Token 参考](theme-surface-matrix.md)，用户操作见
+运行 `wuu plugin validate .` 后用 `wuu extension install .` 安装。主题会出现在**设置 → 外观**；
+切回内置主题即可移除覆盖。完整 Token 见[主题 Token 参考](theme-surface-matrix.md)，用户操作见
 [插件主题与设置](themes-settings.md)。
 
 ## 后台工作完成后显示结果

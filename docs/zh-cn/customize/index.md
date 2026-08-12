@@ -13,7 +13,7 @@ Wuu 提供四种主要扩展方式：Skill、MCP、Hook 和 Wuu Plugin。它们�
 | 只提供主题或宿主渲染的设置项 | [Wuu Plugin](plugins.md) 的声明式贡献 | 不需要加载 Desktop 代码 |
 | 注册新的 Agent 工具、上下文或长期后台行为 | [Wuu Plugin](plugins.md) 的 Agent 部分 | 插件 runtime 可以参与 Agent 生命周期并调用宿主服务 |
 | 给桌面端增加按钮、面板、页面或消息展示 | [Wuu Plugin](plugins.md) 的 Desktop 部分 | Desktop 模块可以在稳定 UI 边界中运行 React |
-| 同时交付 Skill、MCP、Hook、Agent 能力和界面 | [Wuu Plugin](plugins.md) | 一个插件包可以组合多种贡献并统一安装、审批和升级 |
+| 同时交付 Skill、MCP、Hook、Agent 能力和界面 | [Wuu Plugin](plugins.md) | 一个插件包可以组合多种贡献并统一安装、信任和升级 |
 
 如果一个需求只靠 Skill 或 MCP 就能完成，优先使用更小的扩展方式。需要代码生命周期、
 宿主服务或桌面 UI 时，再使用 Wuu Plugin。
@@ -27,7 +27,7 @@ Wuu 提供四种主要扩展方式：Skill、MCP、Hook 和 Wuu Plugin。它们�
 3. 一个 Hook，在提交评审结果前运行合规检查；
 4. 一个 Wuu Plugin，在侧边栏提供评审历史 View，并注册专用 Agent 工具。
 
-只有 Wuu Plugin 是带 `plugin.json`、generation 生命周期和审批状态的 Wuu 插件包。
+只有 Wuu Plugin 是带 manifest 和单次安装/信任生命周期的 Wuu 插件包。
 Skill、MCP 和 Hook 也可以由插件包携带，但它们本身不是 Desktop 插件模块。
 
 ## 信任与运行位置
@@ -37,10 +37,10 @@ Skill、MCP 和 Hook 也可以由插件包携带，但它们本身不是 Desktop
 | Skill | 作为说明进入 Agent 上下文 | 可能引导 Agent 调用工具；使用前阅读内容 |
 | MCP | 本地子进程或远程服务器 | 本地命令、网络访问和第三方工具结果 |
 | Hook | 本机命令或模型调用 | 会在生命周期事件中执行；可阻止或改写部分行为 |
-| Agent 插件 | Wuu 管理的独立进程 | 与当前用户同权限，可注册工具并调用获准服务 |
+| Agent 插件 | Wuu 管理的独立进程 | 与当前用户同权限，可注册工具并调用其声明的宿主服务 |
 | Desktop 插件 | Wuu Renderer 中的受信任代码 | 可运行 React 和注入 CSS，只安装可信来源 |
 
-Wuu 的权限模式、工作区边界和插件审批仍然适用。更小的扩展方式不代表可以跳过来源检查。
+Wuu 的权限模式和工作区边界仍然适用，安装插件本身就是信任决定。更小的扩展方式不代表可以跳过来源检查。
 
 ## 开始开发
 

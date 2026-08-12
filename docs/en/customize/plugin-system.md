@@ -68,17 +68,17 @@ Wuu Plugin Kernel
 Bundled default plugins
   ├── default Agent/Session services
   ├── default ReAct Loop Driver
-  ├── default Prompt / Tools / Plan / Conversation UI
+  ├── default Prompt / Tools / TODO / Conversation UI
   └── Goal / Subagent / Automation / Memory / Dream
 ```
 
-Plan already runs as a bundled first-party plugin: the runtime owns the tool,
+TODO already runs as a bundled first-party plugin: the runtime owns the tool,
 argument validation, and result contract, and the Desktop module owns the Tool
 Activity Presenter and the Inspector section. The host only persists ordinary
 Tool call/result facts and emits versioned events and read-only snapshots based on the
-public `display.capability = "plan"`; it no longer registers `update_plan`, maintains
-or restores mutable plan state, injects staleness reminders, or renders a native plan
-UI. Plan does not expand into cross-turn auto-continuation, scheduled wake-ups, or a
+public `display.capability = "todo"`; it does not maintain or restore mutable TODO
+state, inject staleness reminders, or render a native TODO UI. TODO does not expand
+into cross-turn auto-continuation, scheduled wake-ups, or a
 long-term Goal.
 
 Provider protocol invariants, cancellation, execution leases, persistence integrity,
@@ -248,7 +248,7 @@ The current code gives several clear migration directions:
 | Dream | Timer + Memory → plugin-private Session → write back through the Memory Tool after consolidation | Candidate selection, consolidation prompts, failure backoff, result state, and management UI | `sessionDreamScheduler` and the StreamRunner product-specific AfterTurn Hook |
 | Goal | Turn-completion events → check goal state → deliver a generated query to the same main Session | Goal state machine, budgets, prompts, Tools, storage, and UI | `agent.turn.continuation` and the Goal-specific probe/prepare scheduling |
 | Subagent | Create a private child Session → fresh/fork context → deliver a task → report back to the parent Session with a generated query when done | `spawn_agent` and similar Tools, task naming, worker policy, proactive-delegation settings and request prompts, reports, and UI | The spawn/send/close/list/await/report product actions of `host.child_session.request`, plus core Ultra configuration, Turn snapshots, CLI/API, and Composer controls |
-| Plan | Register a Tool with a semantic capability → ordinary Tool facts enter the log → Presenter and Inspector read the public snapshot | Tool schema, validation, result contract, Presenter, Inspector section, and styling | Core `update_plan`, mutable state, recovery, staleness reminders, and native display |
+| TODO | Register a Tool with a semantic capability → ordinary Tool facts enter the log → Presenter and Inspector read the public snapshot | Tool schema, validation, result contract, Presenter, Inspector section, and styling | Core mutable state, recovery, staleness reminders, and native display |
 
 The table describes the public capability model; the current completion status of the
 six first-party migrations follows below. Fields and methods must still form
@@ -267,8 +267,8 @@ Drivers and product plugins, continue to be arbitrated by wuu:
 - append-only Session/Event persistence, Inbox/Outbox, idempotent acceptance,
   execution leases, cancellation, and recovery primitives;
 - tool execution, final permission decisions, workspace boundaries, and user
-  approval;
-- Service/Event/Scope/Effect, dependency resolution, plugin install approval,
+  confirmation;
+- Service/Event/Scope/Effect, dependency resolution, plugin install/trust,
   atomic generation replacement, and error isolation;
 - native windows, system safe areas, and host-owned navigation, tabs, scrolling,
   overflow, and accessibility.
@@ -432,12 +432,12 @@ code was moved into `plugins/`:
    history rewrite/compaction special-casing, desktop copy, tests, and dead code have
    all been removed; no compatibility entry remains, and it was not renamed into
    another plugin workflow.
-5. **Plan has migrated to the semantic Tool-fact chain.** The bundled plugin owns the
+5. **TODO uses the semantic Tool-fact chain.** The bundled plugin owns the
    Tool schema, argument validation, result contract, Tool Activity Presenter,
    Inspector section, and styling. The core only writes ordinary Tool call/result
    facts into the Session log and projects events and public snapshots by
-   `display.capability = "plan"`; the old core Tool, mutable state, recovery, staleness
-   reminders, native Plan section, and tool-name special-casing have all been removed,
+   `display.capability = "todo"`; core mutable state, recovery, staleness reminders,
+   a native TODO section, and tool-name special-casing are absent,
    with no compatibility adapter kept.
 6. **Automation has migrated to the public Session chain.** The first-party plugin owns
    the Cron expression, Timer, catch-up, tasks and run records, prompts, the `cron`
@@ -469,7 +469,7 @@ code was moved into `plugins/`:
    plugin. The core `sessionDreamScheduler`, Dream state/locks, the AfterTurn Hook, the
    configuration fields, and the native settings have been removed.
 9. **Desktop lifecycle is proven by real first-party modules.** The bundled
-   `desktop.js` of Goal, Subagent, Automation, Memory, Dream, and Plan runs directly on
+   `desktop.js` of Goal, Subagent, Automation, Memory, Dream, and TODO runs directly on
    the `WorkbenchController`/`PluginHost` product path; Views, Slots, navigation,
    settings entries, Locale, and Style activate and replace atomically with the
    generation, and all are withdrawn when disabled. Tests do not use a fake registry
@@ -494,7 +494,7 @@ public boundary first, then delete the product-specific entry points:
    a dedicated Tool item, or maintains a native subtask panel; the plugin's generated
    callback only relies on the generic `display_content/origin/cause/read_only` query
    metadata and does not change the public contract.
-4. HelpMe has been removed end to end; Plan has migrated to a bundled plugin, and the
+4. HelpMe has been removed end to end; TODO runs as a bundled plugin, and the
    core Tool, state, recovery, and native display branches were removed.
 5. Cron, Memory, and Dream have each completed the vertical slices of "plugin Timer →
    user-visible Session", "Prompt + Tool + private Session + View", and "Timer +
@@ -520,7 +520,7 @@ public boundary first, then delete the product-specific entry points:
 
 The acceptance of the plugin chain is not that interfaces exist, but that when the
 core has no product-specific execution or mutable state branches for Cron, Memory,
-Dream, Goal, Subagent, or Plan, these six first-party plugins can still keep the
+Dream, Goal, Subagent, or TODO, these six first-party plugins can still keep the
 existing experience solely through public contracts; external plugins can compose
 equivalent capabilities under the same permissions and lifecycle.
 
@@ -709,8 +709,8 @@ ordering and tool call/result pairing.
 
 All executable contributions of a plugin belong to one generation:
 
-1. wuu reads the Manifest, recomputes the package fingerprint, and checks approval
-   and permissions;
+1. wuu reads the Manifest, records the source identity, and checks it is enabled
+   for the current workspace;
 2. the candidate generation is built and registered externally, not yet visible to
    users;
 3. after validation succeeds, the old generation is replaced in one step;
@@ -797,7 +797,7 @@ the corresponding entry, subscriptions, and state.
 
 ## First-party and third-party plugins are isomorphic
 
-Goal, Subagent, Automation, Memory, Dream, and Plan already run through the same
+Goal, Subagent, Automation, Memory, Dream, and TODO already run through the same
 generation, capability, and public host contracts as third-party plugins. Each owns
 its prompts, Tools, state, background policy, and Desktop contributions; the
 product-specific host execution seams and the native product shells have been
@@ -817,17 +817,17 @@ Plugins are locally installed application code, with no sandbox promise:
 - declarative themes and settings do not execute plugin code;
 - Agent runtime processes share the same user permissions as wuu;
 - desktop code runs in the Renderer and can register arbitrary CSS;
-- any byte change in a plugin package produces a new fingerprint, invalidating old
-  approvals;
+- installing or enabling a source is the trust decision; updates from the same
+  source identity keep trust, and a source-identity change asks for confirmation;
 - the runtime only receives a documented whitelist of environment variables; it does
   not directly inherit the whole host environment;
 - the Renderer does not read plugin absolute paths; Electron loads plugins through
-  content-addressed `wuu-plugin:` URLs after validating digests;
+  content-addressed `wuu-plugin:` URLs;
 - CSP does not enable `unsafe-eval`.
 
-Plugin management, approval, safe mode, the permission baseline, native windows,
-app-server lifecycle, crash recovery, and the default UI are always controlled by
-wuu. Only install and enable executable plugins from trusted sources.
+Plugin management, safe mode, native windows, app-server lifecycle, crash recovery,
+and the default UI are always controlled by wuu. Only install and enable executable
+plugins from trusted sources.
 
 ## Current boundaries and unfinished capabilities
 
@@ -848,10 +848,10 @@ The following must not be written as completed compatibility promises:
   explicit theme boundaries;
 - a Marketplace, remote auto-update, ranking, dependency resolution, and signed
   distribution are not part of the current local-first platform;
-- Goal, Subagent, Automation, user/workspace/session Memory, Dream, and Plan have
+- Goal, Subagent, Automation, user/workspace/session Memory, Dream, and TODO have
   completed their vertical migrations, and the product-specific host execution seams
   were removed;
-- HelpMe has been removed from the code and the product; Plan's old core Tool, state,
+- HelpMe has been removed from the code and the product; TODO has no core Tool, state,
   recovery, and native display were also removed;
 - the Go runtime and Desktop contributions are now reclaimed uniformly per
   generation, and a simple Activation Plan, Default Driver, SinglePass Driver,
