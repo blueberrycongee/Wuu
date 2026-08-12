@@ -1233,17 +1233,19 @@ func projectPersistedHistory(threadID string, history []persistedMessage, now ti
 		case "assistant":
 			if strings.TrimSpace(msg.ReasoningContent) != "" {
 				appendItem(ThreadItem{
-					ID:     nextItemID(current.ID),
-					Seq:    msg.Seq,
-					Type:   ThreadItemReasoning,
-					Status: ThreadItemStatusCompleted,
-					Text:   msg.ReasoningContent,
+					ID:       nextItemID(current.ID),
+					Seq:      msg.Seq,
+					SourceID: msg.ProviderItemID,
+					Type:     ThreadItemReasoning,
+					Status:   ThreadItemStatusCompleted,
+					Text:     msg.ReasoningContent,
 				}, historyIndex, true)
 			}
 			if strings.TrimSpace(msg.Content) != "" {
 				appendItem(ThreadItem{
 					ID:           nextItemID(current.ID),
 					Seq:          msg.Seq,
+					SourceID:     msg.ProviderItemID,
 					Type:         ThreadItemAgentMessage,
 					Status:       ThreadItemStatusCompleted,
 					Phase:        assistantMessagePhase(msg),

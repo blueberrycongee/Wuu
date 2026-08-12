@@ -86,16 +86,31 @@ func projectionOriginForIdentity(projection historyProjection, target ThreadItem
 	if target.Type == "" {
 		return historyItemOrigin{}, false
 	}
+	sourceID := strings.TrimSpace(target.SourceID)
+	var best historyItemOrigin
+	found := false
 	for _, origin := range projection.ItemOrigins {
 		if origin.Item.Type != target.Type {
 			continue
 		}
-		if target.Seq > 0 && origin.Item.Seq == target.Seq && (target.SourceID == "" || origin.Item.SourceID == target.SourceID) {
+		// Prefer the exact durable address (seq + provider source id). Live
+		// turns created from the current in-memory history often carry seq 0
+		// until the messages are durably assigned addresses, so fall back to
+		// the provider source id alone — it is stable across the live turn,
+		// the in-memory history, and the persisted raw/display histories.
+		if target.Seq > 0 && origin.Item.Seq == target.Seq && (sourceID == "" || origin.Item.SourceID == sourceID) {
 			return origin, true
 		}
-		if target.Seq <= 0 && strings.TrimSpace(target.SourceID) != "" && origin.Item.SourceID == target.SourceID {
-			return origin, true
+		if sourceID == "" || origin.Item.SourceID != sourceID {
+			continue
 		}
+		if !found || origin.EndIndex > best.EndIndex {
+			best = origin
+			found = true
+		}
+	}
+	if found {
+		return best, true
 	}
 	return historyItemOrigin{}, false
 }
