@@ -33,42 +33,58 @@ const initialState: SidePanelState = {
 
 class SidePanelsService extends Service {
   private readonly resolutions = new Map<string, Promise<string>>();
+  private readonly owners = new Map<string, string>();
+  private closed = false;
 
   constructor(ctx: Context, private readonly states: ScopedStoreSeat<SidePanelState>) {
     super(ctx, "sidePanels");
+    ctx.effect(() => () => {
+      this.closed = true;
+      this.resolutions.clear();
+      this.owners.clear();
+    }, "dispose Side panel state");
   }
 
   get(sessionId: string): SidePanelState {
-    return this.states.get(sessionId);
+    return this.states.get(this.ownerSession(sessionId));
   }
 
   subscribe(sessionId: string, listener: () => void): () => void {
-    return this.states.subscribe(sessionId, listener);
+    return this.states.subscribe(this.ownerSession(sessionId), listener);
   }
 
   snapshot(sessionId: string): SidePanelState {
-    return this.states.get(sessionId);
+    return this.get(sessionId);
   }
 
   private update(sessionId: string, patch: Partial<SidePanelState>): void {
+    if (this.closed) return;
     this.states.set(sessionId, (current) => ({ ...current, ...patch }));
   }
 
+  private ownerSession(sessionId: string): string {
+    return this.owners.get(sessionId) ?? sessionId;
+  }
+
   private async resolve(sessionId: string): Promise<string> {
+    if (this.closed) throw new Error("Side plugin is stopping");
     const existing = this.get(sessionId).sideSessionId;
     if (existing) return existing;
     const pending = this.resolutions.get(sessionId);
     if (pending) return pending;
     this.update(sessionId, { resolving: true, error: undefined });
     const task = this.ctx.clientActions.execute("side/resolve", { sessionId }).then((result) => {
+      if (this.closed) throw new Error("Side plugin is stopping");
       if (!result || Array.isArray(result) || typeof result !== "object") {
         throw new Error("Side session resolution returned an invalid response");
       }
       const sideSessionId = result.sessionId;
       if (typeof sideSessionId !== "string") throw new Error("Side session resolution omitted sessionId");
+      this.owners.set(sideSessionId, sessionId);
       this.update(sessionId, { sideSessionId, resolving: false, error: undefined });
       return sideSessionId;
     }).catch((cause) => {
+      if (this.closed) throw cause;
       this.update(sessionId, {
         resolving: false,
         error: cause instanceof Error ? cause.message : String(cause),
@@ -82,17 +98,25 @@ class SidePanelsService extends Service {
   }
 
   async show(sessionId: string): Promise<void> {
-    this.update(sessionId, { open: true });
-    await this.resolve(sessionId);
+    if (this.closed) throw new Error("Side plugin is stopping");
+    const owner = this.ownerSession(sessionId);
+    this.update(owner, { open: true });
+    await this.resolve(owner);
   }
 
   hide(sessionId: string): void {
-    this.update(sessionId, { open: false });
+    this.update(this.ownerSession(sessionId), { open: false });
   }
 
   async toggle(sessionId: string): Promise<void> {
-    if (this.get(sessionId).open) this.hide(sessionId);
-    else await this.show(sessionId);
+    if (this.closed) throw new Error("Side plugin is stopping");
+    const owner = this.ownerSession(sessionId);
+    if (this.get(owner).open) this.hide(owner);
+    else await this.show(owner);
+  }
+
+  isOpen(sessionId: string): boolean {
+    return this.get(sessionId).open;
   }
 
   setDraft(sessionId: string, draft: string): void {
@@ -124,6 +148,28 @@ declare module "cordis" {
   }
 }
 
+function SideToggle({ client, sessionId }: { client: Context; sessionId?: string; ownerProps?: unknown }) {
+  const scope = sessionId ?? "";
+  useSyncExternalStore(
+    useCallback((listener) => client.sidePanels.subscribe(scope, listener), [client, scope]),
+    useCallback(() => client.sidePanels.snapshot(scope), [client, scope]),
+    useCallback(() => client.sidePanels.snapshot(scope), [client, scope]),
+  );
+  if (!sessionId) return null;
+  const open = client.sidePanels.isOpen(sessionId);
+  return (
+    <button
+      className="side-toolbar-toggle"
+      type="button"
+      aria-label={open ? "Close Side" : "Open Side"}
+      aria-pressed={open}
+      onClick={() => void client.sidePanels.toggle(sessionId).catch(() => {})}
+    >
+      {open ? "Side ✓" : "Side"}
+    </button>
+  );
+}
+
 function SidePanel({ client, sessionId }: { client: Context; sessionId?: string }) {
   const scope = sessionId ?? "";
   useSyncExternalStore(
@@ -139,8 +185,6 @@ function SidePanel({ client, sessionId }: { client: Context; sessionId?: string 
   );
   const log = useRef<HTMLDivElement>(null);
   const lastScrollTop = useRef(0);
-  const openButton = useRef<HTMLButtonElement>(null);
-  const wasOpen = useRef(state.open);
   const resize = useRef<{
     pointerId: number;
     startX: number;
@@ -164,25 +208,8 @@ function SidePanel({ client, sessionId }: { client: Context; sessionId?: string 
     element.scrollTop = nextTop;
   }, [conversation?.items, sessionId, state.open, state.pinned]);
 
-  useEffect(() => {
-    if (wasOpen.current && !state.open) openButton.current?.focus({ preventScroll: true });
-    wasOpen.current = state.open;
-  }, [state.open]);
-
   if (!sessionId) return null;
-  if (!state.open) {
-    return (
-      <button
-        ref={openButton}
-        className="side-open-button"
-        type="button"
-        aria-label="Open Side"
-        onClick={() => void client.sidePanels.show(sessionId).catch(() => {})}
-      >
-        Side
-      </button>
-    );
-  }
+  if (!state.open) return null;
   return (
     <aside
       className="side-panel"
@@ -284,6 +311,11 @@ const sideClient: Plugin = function side(client) {
   client.slots.contribute("layout/side", {
     id: "side-panel",
     component: SidePanel,
+  });
+  client.slots.contribute("composer/toolbar-left", {
+    id: "side-toggle",
+    order: 30,
+    component: SideToggle,
   });
   void client.inject(["sidePanels", "slashCommands"], (slashClient) => {
     slashClient.slashCommands.register({

@@ -57,7 +57,7 @@ export const sideStyles = `
 }
 
 .side-header button,
-.side-open-button {
+.side-toolbar-toggle {
   min-height: 28px;
   padding: 0 10px;
   border: 0;
@@ -67,7 +67,7 @@ export const sideStyles = `
 }
 
 .side-header button:hover,
-.side-open-button:hover {
+.side-toolbar-toggle:hover {
   color: var(--ink, #202423);
   background: rgba(31, 35, 40, 0.08);
 }
