@@ -581,6 +581,7 @@ func (r *TurnToolRuntime) executeBatch(
 	onResult func(providers.ToolCall, string),
 ) toolBatchResult {
 	ctxProvider, hasCtxProvider := r.executor.(ToolContextProvider)
+	callCtxProvider, hasCallCtxProvider := r.executor.(ToolCallContextProvider)
 	discoveryProvider, hasDiscoveryProvider := r.executor.(ToolDiscoveryProvider)
 
 	if !batch.concurrent || len(batch.calls) == 1 {
@@ -593,12 +594,10 @@ func (r *TurnToolRuntime) executeBatch(
 			}
 			r.notifyResult(call, result, onResult)
 			msgs = append(msgs, toolResultMessage(call, r.invocationIDForCall(call), result, discoveryProvider, hasDiscoveryProvider))
-			if hasCtxProvider {
-				if extra := ctxProvider.LastAdditionalContext(); extra != "" {
-					segment := postToolAdditionalContextSegment(call.Name, extra)
-					if len(segment.Messages) > 0 {
-						requestContext = append(requestContext, segment)
-					}
+			if extra := takeToolAdditionalContext(call, callCtxProvider, hasCallCtxProvider, ctxProvider, hasCtxProvider); extra != "" {
+				segment := postToolAdditionalContextSegment(call.Name, extra)
+				if len(segment.Messages) > 0 {
+					requestContext = append(requestContext, segment)
 				}
 			}
 		}
@@ -615,6 +614,7 @@ func (r *TurnToolRuntime) executeBatch(
 	r.mu.Unlock()
 
 	msgs := make([]providers.ChatMessage, len(batch.calls))
+	requestContext := make([]ContextSegment, 0, len(batch.calls))
 	for i, call := range batch.calls {
 		result, err := r.awaitRunResult(ctx, runs[i])
 		if err != nil {
@@ -622,8 +622,32 @@ func (r *TurnToolRuntime) executeBatch(
 		}
 		r.notifyResult(call, result, onResult)
 		msgs[i] = toolResultMessage(call, runs[i].invocationID, result, discoveryProvider, hasDiscoveryProvider)
+		if hasCallCtxProvider {
+			if extra := callCtxProvider.TakeAdditionalContext(call); extra != "" {
+				segment := postToolAdditionalContextSegment(call.Name, extra)
+				if len(segment.Messages) > 0 {
+					requestContext = append(requestContext, segment)
+				}
+			}
+		}
 	}
-	return toolBatchResult{messages: msgs}
+	return toolBatchResult{messages: msgs, requestContext: requestContext}
+}
+
+func takeToolAdditionalContext(
+	call providers.ToolCall,
+	callProvider ToolCallContextProvider,
+	hasCallProvider bool,
+	legacyProvider ToolContextProvider,
+	hasLegacyProvider bool,
+) string {
+	if hasCallProvider {
+		return callProvider.TakeAdditionalContext(call)
+	}
+	if hasLegacyProvider {
+		return legacyProvider.LastAdditionalContext()
+	}
+	return ""
 }
 
 type toolBatchResult struct {

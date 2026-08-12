@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/blueberrycongee/wuu/internal/agent"
 	"github.com/blueberrycongee/wuu/internal/providers"
@@ -36,7 +37,9 @@ type HookedExecutor struct {
 	dispatcher        *Dispatcher
 	sessionID         string
 	cwd               string
-	lastAdditionalCtx string // populated by PostToolUse hooks
+	contextMu         sync.Mutex
+	lastAdditionalCtx string            // legacy serial consumer support
+	additionalByCall  map[string]string // populated by PostToolUse hooks
 }
 
 // NewHookedExecutor wraps inner with hook dispatch.
@@ -142,7 +145,7 @@ func (h *HookedExecutor) Execute(ctx context.Context, call providers.ToolCall) (
 // ExecuteResult preserves the canonical rich result while exposing only a
 // deterministic projection to legacy hook payloads.
 func (h *HookedExecutor) ExecuteResult(ctx context.Context, call providers.ToolCall) (toolresult.Result, error) {
-	h.lastAdditionalCtx = "" // reset for this call
+	h.clearAdditionalContext(call)
 	input := &Input{
 		SessionID: h.sessionID,
 		CWD:       h.cwd,
@@ -201,7 +204,7 @@ func (h *HookedExecutor) ExecuteResult(ctx context.Context, call providers.ToolC
 	}
 	postOut, _ := h.dispatcher.Dispatch(ctx, PostToolUse, postInput)
 	if postOut != nil && postOut.Context != "" {
-		h.lastAdditionalCtx = postOut.Context
+		h.storeAdditionalContext(call, postOut.Context)
 	}
 
 	return result, nil
@@ -212,5 +215,54 @@ func (h *HookedExecutor) ExecuteResult(ctx context.Context, call providers.ToolC
 // each Execute call so it can only be consumed once. Implements
 // agent.ToolContextProvider.
 func (h *HookedExecutor) LastAdditionalContext() string {
-	return h.lastAdditionalCtx
+	if h == nil {
+		return ""
+	}
+	h.contextMu.Lock()
+	defer h.contextMu.Unlock()
+	context := h.lastAdditionalCtx
+	h.lastAdditionalCtx = ""
+	return context
+}
+
+// TakeAdditionalContext returns and clears PostToolUse context for one tool
+// call. Keying context by provider call ID keeps concurrent results isolated
+// even when they finish out of order. Implements agent.ToolCallContextProvider.
+func (h *HookedExecutor) TakeAdditionalContext(call providers.ToolCall) string {
+	if h == nil || strings.TrimSpace(call.ID) == "" {
+		return ""
+	}
+	h.contextMu.Lock()
+	defer h.contextMu.Unlock()
+	context := h.additionalByCall[call.ID]
+	delete(h.additionalByCall, call.ID)
+	return context
+}
+
+func (h *HookedExecutor) clearAdditionalContext(call providers.ToolCall) {
+	if h == nil {
+		return
+	}
+	h.contextMu.Lock()
+	defer h.contextMu.Unlock()
+	h.lastAdditionalCtx = ""
+	if strings.TrimSpace(call.ID) != "" {
+		delete(h.additionalByCall, call.ID)
+	}
+}
+
+func (h *HookedExecutor) storeAdditionalContext(call providers.ToolCall, context string) {
+	if h == nil {
+		return
+	}
+	h.contextMu.Lock()
+	defer h.contextMu.Unlock()
+	h.lastAdditionalCtx = context
+	if strings.TrimSpace(call.ID) == "" {
+		return
+	}
+	if h.additionalByCall == nil {
+		h.additionalByCall = make(map[string]string)
+	}
+	h.additionalByCall[call.ID] = context
 }
