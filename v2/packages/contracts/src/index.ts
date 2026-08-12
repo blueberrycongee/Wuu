@@ -156,6 +156,14 @@ export type ModelStreamEvent =
 export interface ModelProvider {
   readonly id: string;
   readonly displayName?: string;
+  /**
+   * Stable canonical identity of every provider configuration that can change
+   * the wire request or its cache semantics. It is compared as an opaque value
+   * when a run freezes its request surface: equal values must mean equivalent
+   * request shaping, while changed model, endpoint, or request-affecting
+   * options must change it. It must not include secrets or transient state.
+   */
+  readonly requestIdentity: string;
   stream(request: ModelRequest): AsyncIterable<ModelStreamEvent>;
 }
 

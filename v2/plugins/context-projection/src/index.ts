@@ -38,30 +38,31 @@ function surfaceGeneration(systemPrompt: string, tools: readonly {
 }
 
 interface PendingAssistant {
+  messageId: string;
   content: AssistantContent[];
   text: string;
 }
 
-function validateSeed(messages: readonly ModelMessage[]): void {
+function seedError(messages: readonly ModelMessage[]): string | undefined {
   const calls = new Set<string>();
   for (const message of messages) {
     if (message.role === "tool") {
       if (!calls.delete(message.callId)) {
-        throw new Error(`orphan tool result in model context seed: ${message.callId}`);
+        return `orphan tool result in model context seed: ${message.callId}`;
       }
       continue;
     }
-    if (calls.size) throw new Error("model context seed interrupts a tool result batch");
+    if (calls.size) return "model context seed interrupts a tool result batch";
     if (message.role !== "assistant") continue;
     for (const item of message.content) {
       if (item.type !== "tool_call") continue;
       if (calls.has(item.callId)) {
-        throw new Error(`duplicate tool call id in model context seed: ${item.callId}`);
+        return `duplicate tool call id in model context seed: ${item.callId}`;
       }
       calls.add(item.callId);
     }
   }
-  if (calls.size) throw new Error(`unpaired tool call in model context seed: ${calls.values().next().value}`);
+  if (calls.size) return `unpaired tool call in model context seed: ${calls.values().next().value}`;
 }
 
 async function reconstructMessages(
@@ -71,11 +72,16 @@ async function reconstructMessages(
   toolResults: ToolResultProjectionService,
 ) {
   const messages: ModelMessage[] = [];
-  const pending = new Map<string, PendingAssistant>();
-  const pendingCalls = new Map<string, string>();
+  let pendingAssistant: PendingAssistant | undefined;
+  const pendingCalls: Array<{ callId: string; name: string }> = [];
   let safeLength = 0;
   let safeSeq = 0;
   let sawSeed = false;
+  let failure: string | undefined;
+
+  const reject = (message: string) => {
+    failure = message;
+  };
 
   for (const event of events) {
     signal.throwIfAborted();
@@ -85,35 +91,65 @@ async function reconstructMessages(
       | ModelContextSeedRecord;
     switch (record.type) {
       case "context/model-seed":
-        if (sawSeed || messages.length || pending.size || pendingCalls.size) {
-          throw new Error("model context seed must precede conversation history");
+        if (sawSeed || messages.length || pendingAssistant || pendingCalls.length) {
+          reject("model context seed must precede conversation history");
+          break;
+        }
+        const invalidSeed = seedError(record.data.messages);
+        if (invalidSeed) {
+          reject(invalidSeed);
+          break;
         }
         sawSeed = true;
-        validateSeed(record.data.messages);
         messages.push(...record.data.messages);
         break;
       case "agent/user-message":
+        if (pendingAssistant || pendingCalls.length) {
+          reject("user message interrupts an unfinished assistant or tool batch");
+          break;
+        }
         messages.push({
           role: "user",
           content: record.data.content.map((item) => item.text).join("\n"),
         });
         break;
       case "agent/assistant-started":
-        pending.set(record.data.messageId, { content: [], text: "" });
+        if (pendingAssistant || pendingCalls.length) {
+          reject("assistant message interrupts an unfinished assistant or tool batch");
+          break;
+        }
+        pendingAssistant = { messageId: record.data.messageId, content: [], text: "" };
         break;
       case "agent/assistant-text-delta": {
-        const assistant = pending.get(record.data.messageId);
-        if (assistant) assistant.text += record.data.delta;
+        if (!pendingAssistant || pendingAssistant.messageId !== record.data.messageId) {
+          reject(`text delta has no active assistant message: ${record.data.messageId}`);
+          break;
+        }
+        pendingAssistant.text += record.data.delta;
         break;
       }
       case "agent/assistant-tool-call": {
-        const assistant = pending.get(record.data.messageId);
-        if (assistant) assistant.content.push(record.data.call);
+        if (!pendingAssistant || pendingAssistant.messageId !== record.data.messageId) {
+          reject(`tool call has no active assistant message: ${record.data.messageId}`);
+          break;
+        }
+        pendingAssistant.content.push(record.data.call);
         break;
       }
       case "agent/assistant-completed": {
-        const assistant = pending.get(record.data.messageId);
-        if (!assistant) break;
+        const assistant = pendingAssistant;
+        if (!assistant || assistant.messageId !== record.data.messageId) {
+          reject(`completion has no active assistant message: ${record.data.messageId}`);
+          break;
+        }
+        const calls = assistant.content.filter(
+          (item): item is Extract<AssistantContent, { type: "tool_call" }> =>
+            item.type === "tool_call",
+        );
+        if (record.data.stopReason === "tool_calls" && !calls.length) {
+          reject("assistant completed for tool calls without a tool batch");
+          break;
+        }
         if (record.data.stopReason !== "tool_calls") {
           assistant.content = assistant.content.filter((item) => item.type !== "tool_call");
         }
@@ -123,22 +159,26 @@ async function reconstructMessages(
         }
         if (assistant.content.length) {
           messages.push({ role: "assistant", content: assistant.content });
-          for (const item of assistant.content) {
-            if (item.type !== "tool_call") continue;
-            if (pendingCalls.has(item.callId)) {
-              throw new Error(`duplicate tool call id: ${item.callId}`);
+          for (const call of calls) {
+            if (pendingCalls.some((item) => item.callId === call.callId)) {
+              reject(`duplicate tool call id: ${call.callId}`);
+              break;
             }
-            pendingCalls.set(item.callId, item.name);
+            pendingCalls.push({ callId: call.callId, name: call.name });
           }
         }
-        pending.delete(record.data.messageId);
+        pendingAssistant = undefined;
         break;
       }
       case "agent/tool-result": {
-        const expectedName = pendingCalls.get(record.data.callId);
-        if (!expectedName) throw new Error(`orphan tool result: ${record.data.callId}`);
-        if (expectedName !== record.data.name) {
-          throw new Error(`tool result name mismatch: ${record.data.callId}`);
+        const expected = pendingCalls[0];
+        if (!expected) {
+          reject(`orphan tool result: ${record.data.callId}`);
+          break;
+        }
+        if (expected.callId !== record.data.callId || expected.name !== record.data.name) {
+          reject(`tool result is not the next call in its batch: ${record.data.callId}`);
+          break;
         }
         const projected = await toolResults.project(
           event.sessionId,
@@ -152,30 +192,44 @@ async function reconstructMessages(
           content: projected.content,
           isError: projected.isError,
         });
-        pendingCalls.delete(record.data.callId);
+        pendingCalls.shift();
         break;
       }
       case "agent/run-state":
-        if (record.data.state === "interrupted" && (pending.size || pendingCalls.size)) {
+        if (record.data.state === "interrupted" && (pendingAssistant || pendingCalls.length)) {
           messages.length = safeLength;
-          pending.clear();
-          pendingCalls.clear();
+          pendingAssistant = undefined;
+          pendingCalls.length = 0;
+          // This is a recovery boundary, not part of the reusable transcript.
+          continue;
+        }
+        if (pendingAssistant || pendingCalls.length) {
+          reject("run state interrupts an unfinished assistant or tool batch");
         }
         break;
       default:
         break;
     }
-    if (!pending.size && !pendingCalls.size) {
+    if (failure) break;
+    if (!pendingAssistant && !pendingCalls.length) {
       safeLength = messages.length;
       safeSeq = event.seq;
     }
   }
-  const incomplete = pending.size > 0 || pendingCalls.size > 0;
-  if (strict && incomplete) {
-    if (pendingCalls.size) {
-      throw new Error(`unpaired tool call: ${pendingCalls.keys().next().value}`);
-    }
-    throw new Error(`incomplete assistant message: ${pending.keys().next().value}`);
+  if (!failure && (pendingAssistant || pendingCalls.length)) {
+    const firstPendingCall = pendingCalls[0];
+    failure = firstPendingCall
+      ? `unpaired tool call: ${firstPendingCall.callId}`
+      : `incomplete assistant message: ${pendingAssistant!.messageId}`;
+  }
+  if (failure && strict) {
+    throw new Error(failure);
+  }
+  if (failure) {
+    return {
+      messages: messages.slice(0, safeLength),
+      sourceSeq: safeSeq,
+    };
   }
   return {
     messages: strict ? messages : messages.slice(0, safeLength),

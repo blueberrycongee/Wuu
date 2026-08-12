@@ -19,10 +19,12 @@ export interface ScriptedProviderConfig {
 class ScriptedProvider implements ModelProvider {
   readonly id: string;
   readonly displayName = "Scripted";
+  readonly requestIdentity: string;
   private round = 0;
 
   constructor(id: string, private readonly rounds: ScriptedRound[]) {
     this.id = id;
+    this.requestIdentity = `scripted:${id}`;
   }
 
   async *stream(request: ModelRequest): AsyncIterable<ModelStreamEvent> {

@@ -2,7 +2,10 @@ import { randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { AgentSessionRecord } from "@wuu-v2/contracts";
+import type {
+  AgentSessionRecord,
+  CompositionReceiptRecord,
+} from "@wuu-v2/contracts";
 import { createDefaultHostProfile } from "@wuu-v2/profile-default/host";
 import { providersFromEnvironment } from "@wuu-v2/profile-default/provider-environment";
 
@@ -58,6 +61,7 @@ const runtime = await createDefaultHostProfile({
               }],
             },
             { text: "Smoke run completed." },
+            { text: "Second turn completed." },
           ],
         },
       }]
@@ -257,6 +261,19 @@ try {
   const runId = acceptance.runId;
   if (typeof runId !== "string") throw new Error("agent prompt acceptance omitted runId");
   const result = await ctx.agentRuns.wait(sessionId, runId);
+  if (smoke) {
+    const secondAcceptance = await ctx.hostActions.execute("agent/prompt", {
+      sessionId,
+      text: "Confirm the second turn.",
+    });
+    if (!secondAcceptance || Array.isArray(secondAcceptance) || typeof secondAcceptance !== "object") {
+      throw new Error("second agent prompt was not accepted");
+    }
+    const secondRunId = secondAcceptance.runId;
+    if (typeof secondRunId !== "string") throw new Error("second prompt acceptance omitted runId");
+    const secondResult = await ctx.agentRuns.wait(sessionId, secondRunId);
+    if (secondResult.status !== "completed") throw new Error("second agent run did not complete");
+  }
   const events = await ctx.sessions.load(sessionId);
   const projections = await ctx.projections.build(ctx.sessions, sessionId);
   const projectionFrame = await ctx.projectionFeed.snapshot(sessionId);
@@ -288,6 +305,11 @@ try {
       Array.isArray(terminalConversation.items)
       ? terminalConversation.items
       : [];
+    const receipts = events
+      .map((event) => event.record)
+      .filter((record): record is CompositionReceiptRecord =>
+        record.type === "context/composition-receipt");
+    const [firstReceipt, toolReceipt, secondTurnReceipt] = receipts;
     if (
       result.status !== "completed" ||
       !recovered.includes(recoveryRunId!) ||
@@ -317,6 +339,18 @@ try {
       recoveredContext.messages[0].content !== "Keep this committed user message." ||
       recoveryTypes.includes("agent/tool-result") ||
       recoveryTypes.includes("agent/assistant-completed") ||
+      receipts.length !== 3 ||
+      !firstReceipt ||
+      !toolReceipt ||
+      !secondTurnReceipt ||
+      firstReceipt.data.generation !== toolReceipt.data.generation ||
+      toolReceipt.data.generation !== secondTurnReceipt.data.generation ||
+      firstReceipt.data.cache.key !== toolReceipt.data.cache.key ||
+      toolReceipt.data.cache.key !== secondTurnReceipt.data.cache.key ||
+      toolReceipt.data.cache.turnPrefixMessages !==
+        firstReceipt.data.cache.turnPrefixMessages ||
+      secondTurnReceipt.data.cache.stablePrefixMessages <=
+        toolReceipt.data.cache.stablePrefixMessages ||
       !recordTypes.includes("agent/assistant-tool-call") ||
       !recordTypes.includes("agent/tool-result") ||
       !Array.isArray(historySessions) ||

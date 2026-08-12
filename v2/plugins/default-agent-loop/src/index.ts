@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import type {
   AgentLoop,
   AgentLoopInput,
@@ -48,10 +49,28 @@ function cacheHint(sessionId: string, systemPrompt: string, messages: readonly M
   };
 }
 
-function surfaceGeneration(contextGeneration: string, tools: readonly ModelTool[]): string {
+function surfaceGeneration(
+  contextGeneration: string,
+  providerIdentity: string,
+  tools: readonly ModelTool[],
+): string {
   return `sha256:${createHash("sha256")
-    .update(JSON.stringify({ contextGeneration, tools }))
+    .update(JSON.stringify({ contextGeneration, providerIdentity, tools }))
     .digest("hex")}`;
+}
+
+function assertAppendOnlyTranscript(
+  previous: readonly ModelMessage[],
+  current: readonly ModelMessage[],
+): void {
+  if (current.length < previous.length) {
+    throw new Error("model context shortened during an active run");
+  }
+  for (let index = 0; index < previous.length; index += 1) {
+    if (!isDeepStrictEqual(previous[index], current[index])) {
+      throw new Error(`model context changed inside the frozen prefix at message ${index}`);
+    }
+  }
 }
 
 function schemaError(schema: JsonValue, value: JsonValue, path = "$"): string | undefined {
@@ -141,6 +160,9 @@ class DefaultAgentLoop implements AgentLoop {
     input.signal.throwIfAborted();
     const tools = context.tools.filter((tool) =>
       allowedTools.has(tool.name) && availableTools.has(tool.name));
+    const provider = this.ctx.providers.require(
+      await this.ctx.modelRouting.resolve(input.sessionId),
+    );
     this.surface = {
       systemPrompt: context.systemPrompt,
       tools,
@@ -148,10 +170,8 @@ class DefaultAgentLoop implements AgentLoop {
         ...context.sources.filter((entry) => !entry.startsWith("tool:")),
         ...tools.map((tool) => `tool:${tool.name}`),
       ],
-      generation: surfaceGeneration(context.generation, tools),
-      provider: this.ctx.providers.require(
-        await this.ctx.modelRouting.resolve(input.sessionId),
-      ),
+      generation: surfaceGeneration(context.generation, provider.requestIdentity, tools),
+      provider,
       executors: new Map(tools.map((tool) => [tool.name, availableTools.get(tool.name)!])),
       replay: context.replay,
     };
@@ -162,6 +182,8 @@ class DefaultAgentLoop implements AgentLoop {
     const runId = input.runId;
     let activeMessageId: string | undefined;
     let unfinishedCalls: ToolCallContent[] = [];
+    let previousMessages: readonly ModelMessage[] | undefined;
+    let runCacheKey: string | undefined;
     const surface = this.surface;
     if (!surface) throw new Error("Agent loop must be prepared before it runs");
 
@@ -169,7 +191,12 @@ class DefaultAgentLoop implements AgentLoop {
       while (true) {
         signal.throwIfAborted();
         const messages = await surface.replay(signal);
+        if (previousMessages) assertAppendOnlyTranscript(previousMessages, messages);
         const requestCache = cacheHint(input.sessionId, surface.systemPrompt, messages);
+        if (runCacheKey && requestCache.key !== runCacheKey) {
+          throw new Error("model cache affinity changed during an active run");
+        }
+        runCacheKey = requestCache.key;
         const receipt: CompositionReceiptRecord = {
           type: "context/composition-receipt",
           data: {
@@ -296,6 +323,7 @@ class DefaultAgentLoop implements AgentLoop {
           });
           unfinishedCalls.shift();
         }
+        previousMessages = messages;
       }
     } catch (error) {
       const cancelled = signal.aborted;

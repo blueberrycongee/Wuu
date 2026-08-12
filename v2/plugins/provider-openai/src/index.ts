@@ -99,10 +99,16 @@ async function* readSse(response: Response): AsyncIterable<string> {
 class OpenAIProvider implements ModelProvider {
   readonly id: string;
   readonly displayName: string;
+  readonly requestIdentity: string;
 
   constructor(private readonly config: OpenAIProviderConfig) {
     this.id = config.id ?? "openai";
     this.displayName = config.model;
+    this.requestIdentity = JSON.stringify({
+      baseUrl: (config.baseUrl ?? "https://api.openai.com/v1").replace(/\/$/, ""),
+      model: config.model,
+      promptCaching: config.promptCaching ?? "auto",
+    });
   }
 
   async *stream(request: ModelRequest): AsyncIterable<ModelStreamEvent> {
@@ -167,21 +173,21 @@ class OpenAIProvider implements ModelProvider {
           completion_tokens?: number;
           prompt_tokens_details?: {
             cached_tokens?: number;
-            cache_write_tokens?: number;
           };
         };
       };
       if (chunk.usage) {
-        const cacheReadTokens = chunk.usage.prompt_tokens_details?.cached_tokens ?? 0;
-        const cacheWriteTokens = chunk.usage.prompt_tokens_details?.cache_write_tokens ?? 0;
+        // `cached_tokens` is the only settled cache accounting defined by the
+        // official Chat Completions response. Compatible endpoints often add
+        // fields with different meanings, so they remain ordinary input usage.
+        const cacheReadTokens = officialEndpoint
+          ? chunk.usage.prompt_tokens_details?.cached_tokens ?? 0
+          : 0;
         usage = {
-          inputTokens: Math.max(
-            0,
-            (chunk.usage.prompt_tokens ?? 0) - cacheReadTokens - cacheWriteTokens,
-          ),
+          inputTokens: Math.max(0, (chunk.usage.prompt_tokens ?? 0) - cacheReadTokens),
           outputTokens: chunk.usage.completion_tokens ?? 0,
           cacheReadTokens,
-          cacheWriteTokens,
+          cacheWriteTokens: 0,
         };
       }
       const choice = chunk.choices?.[0];
