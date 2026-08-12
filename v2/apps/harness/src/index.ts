@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type {
@@ -26,9 +26,17 @@ if (!prompt) {
   throw new Error("Pass a prompt or use --smoke");
 }
 
-if (smoke) {
-  await mkdir(join(workspacePluginDirectory, "smoke"), { recursive: true });
-  await writeFile(join(workspacePluginDirectory, "smoke", "index.ts"), `
+const cleanupSmokeDirectory = async () => {
+  if (!smoke) return;
+  await rm(directory, { recursive: true, force: true });
+};
+
+let runtime: Awaited<ReturnType<typeof createDefaultHostProfile>> | undefined;
+let mainFailure: unknown;
+try {
+  if (smoke) {
+    await mkdir(join(workspacePluginDirectory, "smoke"), { recursive: true });
+    await writeFile(join(workspacePluginDirectory, "smoke", "index.ts"), `
 export default function plugin(ctx: any) {
   ctx.tools.register("workspace_smoke", {
     name: "workspace_smoke",
@@ -42,8 +50,8 @@ export default function plugin(ctx: any) {
 }
 plugin.inject = ["tools"];
 `, "utf8");
-}
-const runtime = await createDefaultHostProfile({
+  }
+  runtime = await createDefaultHostProfile({
   cwd,
   dataDirectory: directory,
   workspacePluginDirectory,
@@ -69,7 +77,15 @@ const runtime = await createDefaultHostProfile({
   ...(process.env.WUU_V2_DEFAULT_MODEL
     ? { defaultModelId: process.env.WUU_V2_DEFAULT_MODEL }
     : {}),
-});
+  });
+} catch (error) {
+  try {
+    await cleanupSmokeDirectory();
+  } catch (cleanupError) {
+    throw new AggregateError([error, cleanupError], "harness startup failed and smoke cleanup failed");
+  }
+  throw error;
+}
 const { ctx, modelId } = runtime;
 
 const smokeWorkspaceLoader = async () => {
@@ -140,11 +156,33 @@ export default plugin;
   if (ctx.tools.get("workspace_smoke")) throw new Error("workspace plugin did not unload");
 };
 
-const shutdown = async () => {
-  await runtime.dispose();
+let shutdown: Promise<void> | undefined;
+const stop = async () => {
+  const failures: unknown[] = [];
+  try {
+    await runtime.dispose();
+  } catch (error) {
+    failures.push(error);
+  }
+  try {
+    await cleanupSmokeDirectory();
+  } catch (error) {
+    failures.push(error);
+  }
+  if (failures.length === 1) throw failures[0];
+  if (failures.length > 1) throw new AggregateError(failures, "harness shutdown failed");
 };
-process.once("SIGINT", () => void shutdown().finally(() => process.exit(130)));
-process.once("SIGTERM", () => void shutdown().finally(() => process.exit(143)));
+const shutdownRuntime = () => {
+  shutdown ??= stop();
+  return shutdown;
+};
+const handleSignal = (exitCode: number) => {
+  void shutdownRuntime().catch((error) => {
+    console.error(error);
+  }).finally(() => process.exit(exitCode));
+};
+process.once("SIGINT", () => handleSignal(130));
+process.once("SIGTERM", () => handleSignal(143));
 
 try {
   await smokeWorkspaceLoader();
@@ -383,6 +421,16 @@ try {
     projectionKeys: projections.map(({ key }) => key),
     recordTypes,
   }));
+} catch (error) {
+  mainFailure = error;
+  throw error;
 } finally {
-  await shutdown();
+  try {
+    await shutdownRuntime();
+  } catch (shutdownFailure) {
+    if (mainFailure) {
+      throw new AggregateError([mainFailure, shutdownFailure], "harness run and shutdown failed");
+    }
+    throw shutdownFailure;
+  }
 }
