@@ -782,7 +782,7 @@ export function AppSidebar({
         {/*
           * Brand placeholder at the top of the sidebar visible area.
           * 等真正的 logo / wordmark / lockup 设计落地后整体替换。
-          * 见 desktop/DESIGN.md 的"克制"原则：用最少的署名时刻承载识别度。
+          * 用最少的署名时刻承载识别度。
           */}
         <div className="sidebar-brand">
           <span className="sidebar-brand-wordmark">wuu</span>

@@ -39,11 +39,10 @@ function createSlide(pres, theme) {
     x: 1.15, y: 4.92, w: 7.7, h: 0.24,
     fontFace: FONT_CN, fontSize: 11.5, color: COLORS.gold2, align: "center", margin: 0,
   });
-  addFooterSource(slide, "资料来源：README_zh.md · ROADMAP.md", true);
+  addFooterSource(slide, "资料来源：README_zh.md", true);
   addPageNumber(slide, pres, 6, theme, true);
   return slide;
 }
 
 if (require.main === module) { const p = new pptxgen(); p.layout = "LAYOUT_16x9"; createSlide(p, { primary: "111111", secondary: "2A2A2A", accent: "D4AF37", light: "F0D77B", bg: "F7F4ED" }); p.writeFile({ fileName: "slide-06-preview.pptx" }); }
 module.exports = { createSlide, slideConfig };
-

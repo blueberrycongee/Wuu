@@ -87,10 +87,9 @@ run.
 
 - Published pages live under `docs/zh-cn/` and `docs/en/`; only pages listed in
   `docs/site.json` are rendered by the docs site.
-- Architecture and design documents go in `docs/design/`.
-- `docs/plans/` is local-only working space for proposals and research notes and
-  is never committed. Tracked documentation may reference open-source projects,
-  but must not contain research material about third-party commercial products.
+- Private architecture research and future plans live outside this public
+  repository. Tracked documentation is limited to maintained product,
+  development, protocol, security, and release contracts.
 
 ## Project structure
 
@@ -100,6 +99,6 @@ run.
 - `packages/protocol/` — shared app-server protocol types
 - `clients/core/` — remote-control client core
 - `clients/mobile/` — Expo mobile shell
-- `docs/` — Maintained user, protocol, development, and design documentation; see
+- `docs/` — Maintained user, protocol, and development documentation; see
   [`docs/README.md`](docs/README.md) for the index
 - `prototypes/` — Throwaway design exploration; not shipped

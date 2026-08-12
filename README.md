@@ -80,7 +80,6 @@ Read the [security model](docs/en/reference/security-model.md) before using wuu 
 ## Project
 
 - [Documentation](https://blueberrycongee.github.io/wuu/en/)
-- [Roadmap](ROADMAP.md)
 - [Changelog](CHANGELOG.md)
 - [Public evaluations](evals/)
 - [Contributing](CONTRIBUTING.md)

@@ -1,8 +1,7 @@
 /* =========================================================================
  * Settings page — flat grouped list on the shared paper chassis
  *
- * The surface speaks the app's chassis language (see desktop/DESIGN.md):
- * one paper canvas; grouping carried by structure — a group label,
+ * The surface uses one paper canvas; grouping is carried by structure — a group label,
  * hairlines between rows, whitespace between groups. Enclosure signals
  * (fill steps, borders, radii on grouped lists) are banned: one grouping
  * reads from one signal, and the signal is label-plus-whitespace.
