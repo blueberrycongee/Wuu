@@ -800,7 +800,6 @@ function SkillsList({
 type SkillArtworkVariant =
   | "official-browser"
   | "official-commit"
-  | "official-goal"
   | "official-presentation"
   | "official-creator"
   | "official-plugin"
@@ -855,8 +854,6 @@ function skillArtworkVariant(
       return "official-browser";
     case "commit":
       return "official-commit";
-    case "long-running-goal":
-      return "official-goal";
     case "pptx-generator":
       return "official-presentation";
     case "skill-creator":
@@ -1028,17 +1025,6 @@ function OfficialSkillMark({
           <circle className="skill-mark-light-fill" cx="10" cy="9" r="2.2" />
           <circle className="skill-mark-light-fill" cx="22" cy="22" r="2.2" />
           <circle className="skill-mark-color-c-fill" cx="10" cy="17" r="2.2" />
-        </svg>
-      );
-    case "official-goal":
-      return (
-        <svg viewBox="0 0 32 32" focusable="false">
-          {gradient}
-          <circle cx="16" cy="16" r="12" fill={`url(#${gradientID})`} />
-          <circle className="skill-mark-color-c-stroke skill-mark-stroke-wide" cx="16" cy="16" r="8" />
-          <circle className="skill-mark-light-stroke skill-mark-stroke-wide" cx="16" cy="16" r="3.5" />
-          <path className="skill-mark-light-stroke skill-mark-stroke-wide" d="m18.5 13.5 8-8m-4.2.4 4.4-.7-.7 4.4" />
-          <circle className="skill-mark-light-fill" cx="16" cy="16" r="1.5" />
         </svg>
       );
     case "official-presentation":

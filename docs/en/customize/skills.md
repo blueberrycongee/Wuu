@@ -18,7 +18,7 @@ Discovered Skills also appear in the `/` menu. You can invoke one directly with 
 name and arguments, for example:
 
 ```text
-/long-running-goal complete the authentication system migration
+/browser inspect the current page
 ```
 
 The agent also sees a directory of available Skills with names and descriptions, and

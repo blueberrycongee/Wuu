@@ -35,7 +35,7 @@ func TestGeneralPurposePromptIsProductNeutral(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, product := range []string{"agent_report", "required_report", "spawn_agent", "subagent", "goal"} {
+	for _, product := range []string{"agent_report", "required_report", "spawn_agent", "subagent"} {
 		if strings.Contains(wt.SystemPrompt, product) {
 			t.Fatalf("core general-purpose prompt must not carry product term %q:\n%s", product, wt.SystemPrompt)
 		}

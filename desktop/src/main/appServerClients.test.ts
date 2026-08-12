@@ -117,7 +117,6 @@ describe("appServerHelperEnvironment", () => {
   it("injects packaged first-party plugin helpers and the signed macOS helper", () => {
     const packagedBin = "/Applications/wuu.app/Contents/Resources/bin";
     const available = new Set([
-      `${packagedBin}/wuu-goal-plugin`,
       `${packagedBin}/wuu-subagent-plugin`,
       `${packagedBin}/wuu-automation-plugin`,
       `${packagedBin}/wuu-memory-plugin`,
@@ -133,7 +132,6 @@ describe("appServerHelperEnvironment", () => {
       "darwin",
       (path) => available.has(path),
     );
-    expect(result.WUU_GOAL_PLUGIN_HELPER).toBe(`${packagedBin}/wuu-goal-plugin`);
     expect(result.WUU_SUBAGENT_PLUGIN_HELPER).toBe(`${packagedBin}/wuu-subagent-plugin`);
     expect(result.WUU_AUTOMATION_PLUGIN_HELPER).toBe(`${packagedBin}/wuu-automation-plugin`);
     expect(result.WUU_MEMORY_PLUGIN_HELPER).toBe(`${packagedBin}/wuu-memory-plugin`);
@@ -147,7 +145,6 @@ describe("appServerHelperEnvironment", () => {
 
   it("uses development plugin helpers without replacing explicit overrides", () => {
     const available = new Set([
-      "/source/desktop/build/bin/wuu-goal-plugin",
       "/source/desktop/build/bin/wuu-subagent-plugin",
       "/source/desktop/build/bin/wuu-automation-plugin",
       "/source/desktop/build/bin/wuu-memory-plugin",
@@ -163,9 +160,6 @@ describe("appServerHelperEnvironment", () => {
       "darwin",
       (path) => available.has(path),
     );
-    expect(discovered.WUU_GOAL_PLUGIN_HELPER).toBe(
-      "/source/desktop/build/bin/wuu-goal-plugin",
-    );
     expect(discovered.WUU_TODO_PLUGIN_HELPER).toBe(
       "/source/desktop/build/bin/wuu-todo-plugin",
     );
@@ -174,7 +168,7 @@ describe("appServerHelperEnvironment", () => {
     );
     const overridden = appServerHelperEnvironment(
       {
-        WUU_GOAL_PLUGIN_HELPER: "/custom/goal",
+        WUU_SUBAGENT_PLUGIN_HELPER: "/custom/subagent",
         WUU_CUA_MAC_HELPER: "/custom/cua",
       },
       "/source",
@@ -182,7 +176,7 @@ describe("appServerHelperEnvironment", () => {
       "darwin",
       () => true,
     );
-    expect(overridden.WUU_GOAL_PLUGIN_HELPER).toBe("/custom/goal");
+    expect(overridden.WUU_SUBAGENT_PLUGIN_HELPER).toBe("/custom/subagent");
     expect(overridden.WUU_CUA_MAC_HELPER).toBe("/custom/cua");
   });
 
@@ -192,9 +186,9 @@ describe("appServerHelperEnvironment", () => {
       "C:\\source",
       undefined,
       "win32",
-      (path) => path.endsWith("wuu-goal-plugin.exe"),
+      (path) => path.endsWith("wuu-subagent-plugin.exe"),
     );
-    expect(result.WUU_GOAL_PLUGIN_HELPER).toMatch(/wuu-goal-plugin\.exe$/);
+    expect(result.WUU_SUBAGENT_PLUGIN_HELPER).toMatch(/wuu-subagent-plugin\.exe$/);
     expect(result.WUU_CUA_MAC_HELPER).toBeUndefined();
   });
 });

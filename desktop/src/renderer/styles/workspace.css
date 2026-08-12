@@ -46,9 +46,6 @@
   --skill-mark-commit-a: #ffbd3d;
   --skill-mark-commit-b: #ff6b52;
   --skill-mark-commit-c: #d92f81;
-  --skill-mark-goal-a: #9cdb3b;
-  --skill-mark-goal-b: #22b89a;
-  --skill-mark-goal-c: #1978e7;
   --skill-mark-presentation-a: #ffd84a;
   --skill-mark-presentation-b: #f59a18;
   --skill-mark-presentation-c: #e84b35;
@@ -2839,12 +2836,6 @@ html.resizing-workspace-terminal-split * {
   --skill-mark-a: var(--skill-mark-commit-a);
   --skill-mark-b: var(--skill-mark-commit-b);
   --skill-mark-c: var(--skill-mark-commit-c);
-}
-
-.skill-artwork-official-goal {
-  --skill-mark-a: var(--skill-mark-goal-a);
-  --skill-mark-b: var(--skill-mark-goal-b);
-  --skill-mark-c: var(--skill-mark-goal-c);
 }
 
 .skill-artwork-official-presentation {

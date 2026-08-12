@@ -581,7 +581,7 @@ func TestQueuedUserWorkHasPriorityOverPluginWakeups(t *testing.T) {
 	srv := &Server{pendingQueuedTurns: map[string][]queuedTurn{}}
 	threadID := "priority-thread"
 	srv.pendingQueuedTurns[threadID] = []queuedTurn{
-		{id: "plugin", snapshot: turnRuntimeSnapshot{PluginTurn: &pluginTurnReference{PluginID: "goal", RequestID: "continue"}}},
+		{id: "plugin", snapshot: turnRuntimeSnapshot{PluginTurn: &pluginTurnReference{PluginID: "example", RequestID: "continue"}}},
 		{id: "user"},
 	}
 	first, ok := srv.takeNextQueuedUserTurn(threadID)

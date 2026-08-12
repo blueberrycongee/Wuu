@@ -37,7 +37,7 @@ func TestPluginClientRequestRoutesOnlyToActiveGeneration(t *testing.T) {
 	srv.rt.PluginHost = pluginhost.New(client)
 
 	callPluginPackageRPC(t, srv, "ok", MethodPluginClientRequest, PluginClientRequestParams{
-		ID: item.SubjectID, Fingerprint: item.Fingerprint, Method: "goal.summary", Input: json.RawMessage(`{"thread_id":"thread-1"}`),
+		ID: item.SubjectID, Fingerprint: item.Fingerprint, Method: "example.summary", Input: json.RawMessage(`{"thread_id":"thread-1"}`),
 	})
 	response := responseByID(t, parseOutput(t, out.String()), "ok")
 	if response["error"] != nil {
@@ -47,12 +47,12 @@ func TestPluginClientRequestRoutesOnlyToActiveGeneration(t *testing.T) {
 	if string(result.Result) != `{"accepted":true}` {
 		t.Fatalf("result = %s", result.Result)
 	}
-	if client.lastCall.Method != "goal.summary" || string(client.lastCall.Input) != `{"thread_id":"thread-1"}` {
+	if client.lastCall.Method != "example.summary" || string(client.lastCall.Input) != `{"thread_id":"thread-1"}` {
 		t.Fatalf("call = %+v", client.lastCall)
 	}
 
 	callPluginPackageRPC(t, srv, "stale", MethodPluginClientRequest, PluginClientRequestParams{
-		ID: item.SubjectID, Fingerprint: "stale", Method: "goal.summary",
+		ID: item.SubjectID, Fingerprint: "stale", Method: "example.summary",
 	})
 	if responseByID(t, parseOutput(t, out.String()), "stale")["error"] == nil {
 		t.Fatal("stale generation unexpectedly reached plugin runtime")
