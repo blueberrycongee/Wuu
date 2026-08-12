@@ -3,26 +3,11 @@ export const historyStyles = `
   display: grid;
   height: 100%;
   min-height: 0;
-  grid-template-rows: 52px 28px minmax(0, 1fr) auto;
+  flex: 1 1 0;
+  grid-template-rows: 28px minmax(0, 1fr) auto;
   padding: 8px 10px 12px;
   color: var(--ink, #202423);
   background: linear-gradient(115deg, rgba(255,255,255,.16), transparent 58%);
-}
-
-.history-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 0 6px 0 10px;
-}
-
-.history-header strong {
-  font-family: Georgia, serif;
-  font-size: 21px;
-  font-weight: 650;
-  letter-spacing: .02em;
-  color: var(--wuu-accent, #b64a32);
 }
 
 .history-header button,
@@ -62,6 +47,9 @@ export const historyStyles = `
   letter-spacing: .04em;
   text-transform: uppercase;
 }
+.history-section-heading button { display: grid; width: 24px; height: 24px; margin-left: auto; place-items: center; border: 0; border-radius: 6px; color: inherit; background: transparent; cursor: pointer; }
+.history-section-heading button:hover, .history-section-heading button:focus-visible { background: rgba(31,35,40,.08); outline: none; }
+.history-create-error { padding: 0 10px; color: var(--danger, #b42318); font-size: 11px; }
 .history-header button:hover,
 .history-header button:focus-visible,
 .history-list button:hover,

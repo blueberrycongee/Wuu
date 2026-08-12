@@ -13,6 +13,7 @@
     "@wuu-v2/contracts": "0.0.0",
     "@wuu-v2/kernel": "0.0.0",
     "@wuu-v2/plugin-workbench": "0.0.0",
+    "@wuu-v2/ui-kit": "0.0.0",
     "react": "^19.0.0"
   },
   "wuu": {

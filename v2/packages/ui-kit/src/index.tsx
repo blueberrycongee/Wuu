@@ -12,6 +12,8 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 
+export * from "./icons";
+
 const LayerContext = createContext<HTMLElement | null>(null);
 
 const styles = `

@@ -8,6 +8,8 @@ import {
 import type { JsonValue } from "@wuu-v2/contracts";
 import type { HistoryEntry, HistoryEntryProjection } from "./shared.js";
 import { historyStyles } from "./styles.js";
+import { NewConversationIcon } from "@wuu-v2/ui-kit";
+import { WorkbenchSidebarItem } from "@wuu-v2/plugin-workbench/client";
 
 function objectValue(value: JsonValue | undefined): Record<string, JsonValue> {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -71,11 +73,36 @@ function HistoryRow({
   );
 }
 
+function useCreateSession(client: Context) {
+  const [creating, setCreating] = useState(false);
+  const [error, setError] = useState<string>();
+  const create = useCallback(async () => {
+    if (creating) return;
+    setCreating(true);
+    setError(undefined);
+    try {
+      const result = objectValue(await client.clientActions.execute("history/create", {}));
+      if (typeof result.sessionId !== "string") throw new Error("History did not create a Session");
+      client.workbenchNavigation.select("conversation");
+      client.activeSession.select(result.sessionId);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setCreating(false);
+    }
+  }, [client, creating]);
+  return { create, creating, error };
+}
+
+function NewConversationEntry({ client }: { client: Context }) {
+  const { create, creating, error } = useCreateSession(client);
+  return <nav className="workbench-navigation history-new-conversation" aria-label="会话"><WorkbenchSidebarItem disabled={creating} onActivate={() => void create()}><NewConversationIcon aria-hidden="true" /><span>新会话</span></WorkbenchSidebarItem>{error ? <span className="history-create-error" role="alert">{error}</span> : null}</nav>;
+}
+
 function HistorySidebar({ client }: { client: Context }) {
   const activeSessionId = useActiveSession(client);
   const [entries, setEntries] = useState<HistoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
-  const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string>();
   const rowRefs = useRef(new Map<string, HTMLButtonElement>());
 
@@ -92,24 +119,7 @@ function HistorySidebar({ client }: { client: Context }) {
 
   useEffect(() => {
     void refresh();
-  }, [refresh]);
-
-  const create = async () => {
-    if (creating) return;
-    setCreating(true);
-    setError(undefined);
-    try {
-      const result = objectValue(await client.clientActions.execute("history/create", {}));
-      if (typeof result.sessionId !== "string") throw new Error("History did not create a Session");
-      client.workbenchNavigation.select("conversation");
-      client.activeSession.select(result.sessionId);
-      await refresh();
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
-    } finally {
-      setCreating(false);
-    }
-  };
+  }, [activeSessionId, refresh]);
 
   const moveSelection = (index: number) => {
     const entry = entries[index];
@@ -133,13 +143,7 @@ function HistorySidebar({ client }: { client: Context }) {
 
   return (
     <div className="history-sidebar">
-      <header className="history-header">
-        <strong className="history-wordmark">wuu</strong>
-        <button className="history-new-button" type="button" aria-label="New task" disabled={creating} onClick={() => void create()}>
-          <span aria-hidden="true">＋</span><span>新会话</span>
-        </button>
-      </header>
-      <div className="history-section-heading"><span>Tasks</span><span aria-hidden="true">⌄</span></div>
+      <div className="history-section-heading"><span>对话</span></div>
       <nav className="history-list" aria-label="Tasks" aria-busy={loading}>
         {entries.map((entry, index) => (
           <HistoryRow
@@ -168,6 +172,11 @@ function HistorySidebar({ client }: { client: Context }) {
 }
 
 const historyClient: Plugin = function history(client) {
+  client.slots.contribute("workbench/sidebar-primary", {
+    id: "history-new-conversation",
+    order: -100,
+    component: NewConversationEntry,
+  });
   client.slots.contribute("workbench/sidebar-content", {
     id: "history",
     component: HistorySidebar,
