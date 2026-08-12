@@ -18,6 +18,8 @@ import type {
   InputImage,
   Thread,
   ThreadItem,
+  UserQuestionAnswer,
+  UserQuestionRequest,
 } from "../shared/protocol";
 import {
   emptyComposerDraft,
@@ -103,6 +105,9 @@ export type ConversationSplitPaneRendererProps = {
   ) => void;
   onStreamFrame: () => void;
   onOpenFileDiff: (threadID: string, selection: TurnFileDiffSelection) => void;
+  pendingUserQuestion?: UserQuestionRequest;
+  onAnswerUserQuestion?: (requestID: string, answer: UserQuestionAnswer) => Promise<void>;
+  onCancelUserQuestion?: (requestID: string) => Promise<void>;
 };
 
 export function ConversationSplitPaneRenderer({
@@ -131,6 +136,9 @@ export function ConversationSplitPaneRenderer({
   onSubmitEditMessage,
   onStreamFrame,
   onOpenFileDiff,
+  pendingUserQuestion,
+  onAnswerUserQuestion,
+  onCancelUserQuestion,
 }: ConversationSplitPaneRendererProps): JSX.Element {
   return (
     <ConversationSplitPane
@@ -182,6 +190,9 @@ export function ConversationSplitPaneRenderer({
       }
       onStreamFrame={onStreamFrame}
       onOpenFileDiff={(selection) => onOpenFileDiff(thread.id, selection)}
+      pendingUserQuestion={pendingUserQuestion}
+      onAnswerUserQuestion={onAnswerUserQuestion}
+      onCancelUserQuestion={onCancelUserQuestion}
     />
   );
 }

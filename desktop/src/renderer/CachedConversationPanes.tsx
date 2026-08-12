@@ -6,6 +6,8 @@ import type {
   Thread,
   ThreadItem,
   Turn,
+  UserQuestionAnswer,
+  UserQuestionRequest,
 } from "../shared/protocol";
 import type { TurnStreamStatus } from "./AppState";
 import { ConversationTurnList } from "./ConversationTurnList";
@@ -20,6 +22,7 @@ import {
 } from "./InstructionFilesCard";
 import { OPTIMISTIC_TURN_ID_PREFIX } from "./ComposerMessages";
 import { TurnView } from "./TurnView";
+import { UserQuestionCard } from "./UserQuestionCard";
 import type { TurnFileDiffSelection } from "./TurnFileDiffTypes";
 import { latestAgentMessageLocation } from "./TurnViewHelpers";
 import type { HistoryMessageEditState } from "./ConversationHistoryActions";
@@ -66,6 +69,9 @@ export type CachedConversationPanesProps = {
   onOpenFileDiff: (thread: Thread, selection: TurnFileDiffSelection) => void;
   onOpenTurnRuns?: (thread: Thread, turnID: string) => void;
   turnStreamStatus: Record<string, TurnStreamStatus>;
+  pendingUserQuestion?: UserQuestionRequest;
+  onAnswerUserQuestion?: (requestID: string, answer: UserQuestionAnswer) => Promise<void>;
+  onCancelUserQuestion?: (requestID: string) => Promise<void>;
 };
 
 export const CachedConversationPanes = memo(function CachedConversationPanes({
@@ -90,6 +96,9 @@ export const CachedConversationPanes = memo(function CachedConversationPanes({
   onOpenFileDiff,
   onOpenTurnRuns,
   turnStreamStatus,
+  pendingUserQuestion,
+  onAnswerUserQuestion,
+  onCancelUserQuestion,
 }: CachedConversationPanesProps): JSX.Element {
   return (
     <div className="cached-conversation-panes">
@@ -124,6 +133,9 @@ export const CachedConversationPanes = memo(function CachedConversationPanes({
             onOpenFileDiff={onOpenFileDiff}
             onOpenTurnRuns={onOpenTurnRuns}
             turnStreamStatus={turnStreamStatus}
+            pendingUserQuestion={pendingUserQuestion}
+            onAnswerUserQuestion={onAnswerUserQuestion}
+            onCancelUserQuestion={onCancelUserQuestion}
           />
         );
       })}
@@ -160,6 +172,9 @@ const CachedConversationPane = memo(function CachedConversationPane({
   onOpenFileDiff,
   onOpenTurnRuns,
   turnStreamStatus,
+  pendingUserQuestion,
+  onAnswerUserQuestion,
+  onCancelUserQuestion,
 }: CachedConversationPaneProps): JSX.Element {
   // A brand-new thread takes over from the already-visible optimistic first
   // turn. Hiding that same turn behind the tab-switch layout gate creates a
@@ -257,6 +272,35 @@ const CachedConversationPane = memo(function CachedConversationPane({
       onDismiss={onDismissContextComposition}
     />
   );
+  // Ask-user interruptions render inline after the turn that paused for them,
+  // not above the composer dock.
+  const pendingQuestion =
+    pendingUserQuestion &&
+    pendingUserQuestion.thread_id === thread.id &&
+    onAnswerUserQuestion &&
+    onCancelUserQuestion
+      ? {
+          request: pendingUserQuestion,
+          onAnswerUserQuestion,
+          onCancelUserQuestion,
+        }
+      : undefined;
+  const renderPendingQuestionCard = (attachAfterTurn: boolean): JSX.Element | null => {
+    if (!pendingQuestion) return null;
+    const card = (
+      <UserQuestionCard
+        key={pendingQuestion.request.request_id}
+        request={pendingQuestion.request}
+        onAnswer={(answer) =>
+          pendingQuestion.onAnswerUserQuestion(pendingQuestion.request.request_id, answer)
+        }
+        onCancel={() =>
+          pendingQuestion.onCancelUserQuestion(pendingQuestion.request.request_id)
+        }
+      />
+    );
+    return attachAfterTurn ? <div className="user-question-after-turn">{card}</div> : card;
+  };
   const threadInstructionEntries = instructionFilesEntries.filter(
     (entry) => entry.threadID === thread.id,
   );
@@ -418,11 +462,19 @@ const CachedConversationPane = memo(function CachedConversationPane({
                   threadId={thread.id}
                   onStreamFrame={onStreamFrame}
                 />
+                {pendingQuestion && !turnIDs.has(pendingQuestion.request.turn_id)
+                  ? renderPendingQuestionCard(false)
+                  : null}
               </>
             }
-            renderAfterTurn={(turn) =>
-              (entriesByAfterTurnID.get(turn.id) ?? []).map(renderContextEntry)
-            }
+            renderAfterTurn={(turn) => (
+              <>
+                {(entriesByAfterTurnID.get(turn.id) ?? []).map(renderContextEntry)}
+                {turn.id === pendingQuestion?.request.turn_id
+                  ? renderPendingQuestionCard(true)
+                  : null}
+              </>
+            )}
             forcedFullTurnIDs={
               historyMessageEdit ? [historyMessageEdit.turnID] : undefined
             }

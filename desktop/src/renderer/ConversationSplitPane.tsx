@@ -4,6 +4,8 @@ import type {
   InputImage,
   Thread,
   ThreadItem,
+  UserQuestionAnswer,
+  UserQuestionRequest,
 } from "../shared/protocol";
 import { SplitPaneComposer } from "./ComposerView";
 import {
@@ -15,6 +17,7 @@ import {
 import { ConversationTurnList } from "./ConversationTurnList";
 import { threadDisplayTitle } from "./ThreadTitles";
 import { TurnView, latestAgentMessageItemID } from "./TurnView";
+import { UserQuestionCard } from "./UserQuestionCard";
 import type { TurnFileDiffSelection } from "./TurnFileDiffTypes";
 import { useI18n } from "./i18n";
 
@@ -48,6 +51,9 @@ export function ConversationSplitPane({
   onSubmitEditMessage,
   onStreamFrame,
   onOpenFileDiff,
+  pendingUserQuestion,
+  onAnswerUserQuestion,
+  onCancelUserQuestion,
 }: {
   pane: ConversationPaneID;
   thread: Thread;
@@ -84,10 +90,40 @@ export function ConversationSplitPane({
   ) => void;
   onStreamFrame: () => void;
   onOpenFileDiff?: (selection: TurnFileDiffSelection) => void;
+  pendingUserQuestion?: UserQuestionRequest;
+  onAnswerUserQuestion?: (requestID: string, answer: UserQuestionAnswer) => Promise<void>;
+  onCancelUserQuestion?: (requestID: string) => Promise<void>;
 }): JSX.Element {
   const { t } = useI18n();
   const paneTurns = thread.turns ?? [];
   const paneLatestAgentMessageID = latestAgentMessageItemID(paneTurns);
+  const pendingQuestion =
+    pendingUserQuestion &&
+    pendingUserQuestion.thread_id === thread.id &&
+    onAnswerUserQuestion &&
+    onCancelUserQuestion
+      ? {
+          request: pendingUserQuestion,
+          onAnswerUserQuestion,
+          onCancelUserQuestion,
+        }
+      : undefined;
+  const renderPendingQuestionCard = (attachAfterTurn: boolean): JSX.Element | null => {
+    if (!pendingQuestion) return null;
+    const card = (
+      <UserQuestionCard
+        key={pendingQuestion.request.request_id}
+        request={pendingQuestion.request}
+        onAnswer={(answer) =>
+          pendingQuestion.onAnswerUserQuestion(pendingQuestion.request.request_id, answer)
+        }
+        onCancel={() =>
+          pendingQuestion.onCancelUserQuestion(pendingQuestion.request.request_id)
+        }
+      />
+    );
+    return attachAfterTurn ? <div className="user-question-after-turn">{card}</div> : card;
+  };
   const closeLabel = t(
     pane === "secondary" ? "split.closeRight" : "split.closeLeft",
   );
@@ -139,6 +175,17 @@ export function ConversationSplitPane({
           <ConversationTurnList
             threadID={thread.id}
             turns={paneTurns}
+            renderAfterMissingTurn={
+              pendingQuestion &&
+              !paneTurns.some((turn) => turn.id === pendingQuestion.request.turn_id)
+                ? renderPendingQuestionCard(false)
+                : null
+            }
+            renderAfterTurn={(turn) =>
+              turn.id === pendingQuestion?.request.turn_id
+                ? renderPendingQuestionCard(true)
+                : null
+            }
             forcedFullTurnIDs={
               editingMessage ? [editingMessage.turnID] : undefined
             }

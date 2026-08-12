@@ -56,7 +56,6 @@ import {
   type CodexRuntimeMenu,
   type ComposerVariant,
 } from "./ComposerView";
-import { UserQuestionCard } from "./UserQuestionCard";
 import {
   QueryHistoryPopover,
   type QueryHistoryEntry,
@@ -2348,6 +2347,32 @@ export function App(): JSX.Element {
     }
   }
 
+  // Pending ask-user requests belong to the conversation stream, not the
+  // composer dock: render the card after the turn that paused for an answer.
+  const pendingUserQuestion = userQuestionApiAvailable
+    ? userQuestions.find((request) => request.thread_id === activeThreadID)
+    : undefined;
+
+  const answerUserQuestion = useCallback(
+    async (requestID: string, answer: UserQuestionAnswer): Promise<void> => {
+      await window.wuu.answerUserQuestion(requestID, answer);
+      setUserQuestions((current) =>
+        current.filter((request) => request.request_id !== requestID),
+      );
+    },
+    [],
+  );
+
+  const cancelUserQuestion = useCallback(
+    async (requestID: string): Promise<void> => {
+      await window.wuu.cancelUserQuestion(requestID);
+      setUserQuestions((current) =>
+        current.filter((request) => request.request_id !== requestID),
+      );
+    },
+    [],
+  );
+
   function renderComposer(variant: ComposerVariant): JSX.Element {
     const telemetryTurnID = activeThread
       ? activeTurnIDForThread(activeThread)
@@ -2361,28 +2386,8 @@ export function App(): JSX.Element {
         state.initialized?.advanced_settings?.context_window_tokens,
     });
     const streamStatus = activeThreadStreamStatus;
-    const pendingQuestion = userQuestionApiAvailable
-      ? userQuestions.find((request) => request.thread_id === activeThreadID)
-      : undefined;
     return (
       <>
-      {pendingQuestion ? (
-        <UserQuestionCard
-          request={pendingQuestion}
-          onAnswer={async (answer: UserQuestionAnswer) => {
-            await window.wuu.answerUserQuestion(pendingQuestion.request_id, answer);
-            setUserQuestions((current) => current.filter(
-              (request) => request.request_id !== pendingQuestion.request_id,
-            ));
-          }}
-          onCancel={async () => {
-            await window.wuu.cancelUserQuestion(pendingQuestion.request_id);
-            setUserQuestions((current) => current.filter(
-              (request) => request.request_id !== pendingQuestion.request_id,
-            ));
-          }}
-        />
-      ) : null}
       <Composer
         variant={variant}
         mainConversation
@@ -4633,6 +4638,9 @@ export function App(): JSX.Element {
                     }
                     onStreamFrame={scheduleStreamScroll}
                     onOpenFileDiff={openTurnFileDiffPanel}
+                    pendingUserQuestion={pendingUserQuestion}
+                    onAnswerUserQuestion={answerUserQuestion}
+                    onCancelUserQuestion={cancelUserQuestion}
                   />
                 ) : activePendingNewThreadTurn ? (
                   <div className="conversation-width session-flow">
@@ -4682,6 +4690,9 @@ export function App(): JSX.Element {
                 turnStreamStatus={state.turnStreamStatus}
                 onOpenFileDiff={handleCachedPaneOpenFileDiff}
                 onOpenTurnRuns={handleOpenTurnRuns}
+                pendingUserQuestion={pendingUserQuestion}
+                onAnswerUserQuestion={answerUserQuestion}
+                onCancelUserQuestion={cancelUserQuestion}
               />
             )}
               </>

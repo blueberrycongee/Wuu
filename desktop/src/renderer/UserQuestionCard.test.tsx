@@ -1,7 +1,8 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { UserQuestionRequest } from "../shared/protocol";
+import type { UserQuestionRequest, WuuDesktopApi } from "../shared/protocol";
+import { I18nProvider, setActiveLocale } from "./i18n";
 import { UserQuestionCard } from "./UserQuestionCard";
 
 let root: Root | undefined;
@@ -10,6 +11,8 @@ afterEach(() => {
   act(() => root?.unmount());
   root = undefined;
   document.body.innerHTML = "";
+  delete (window as unknown as { wuu?: unknown }).wuu;
+  setActiveLocale("zh-CN");
 });
 
 describe("UserQuestionCard", () => {
@@ -29,11 +32,19 @@ describe("UserQuestionCard", () => {
         allow_custom: true,
       }],
     };
+    window.wuu = {
+      initialLanguagePreference: "en-US",
+      initialSystemLocale: "en-US",
+    } as unknown as WuuDesktopApi;
     const container = document.createElement("div");
     document.body.append(container);
     root = createRoot(container);
     await act(async () => {
-      root?.render(<UserQuestionCard request={request} onAnswer={onAnswer} onCancel={async () => undefined} />);
+      root?.render(
+        <I18nProvider>
+          <UserQuestionCard request={request} onAnswer={onAnswer} onCancel={async () => undefined} />
+        </I18nProvider>,
+      );
     });
 
     const option = Array.from(container.querySelectorAll("button"))
