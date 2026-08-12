@@ -382,53 +382,58 @@ if (!app.requestSingleInstanceLock()) {
     window.show();
     window.focus();
   });
-  await app.whenReady();
-  controller = new HarnessController(
-    join(app.getPath("userData"), "v2", "sessions"),
-    process.env.WUU_V2_WORKSPACE ?? process.cwd(),
-    () => subscriptions.entries(),
-    sendProjection,
-    broadcastState,
-  );
-  void controller.start().catch(() => {});
-
-  ipcMain.handle(bridgeChannels.boot, () => bootResult());
-  ipcMain.handle(bridgeChannels.restart, async () => {
+  void (async () => {
+    await app.whenReady();
+    controller = new HarnessController(
+      join(app.getPath("userData"), "v2", "sessions"),
+      process.env.WUU_V2_WORKSPACE ?? process.cwd(),
+      () => subscriptions.entries(),
+      sendProjection,
+      broadcastState,
+    );
     void controller.start().catch(() => {});
-    return bootResult();
-  });
-  ipcMain.handle(bridgeChannels.action, (_event: IpcMainInvokeEvent, action: unknown, input: unknown) => {
-    if (typeof action !== "string" || !action || !isJsonValue(input)) {
-      throw new Error("Invalid Harness action request");
-    }
-    return controller.action(action, input);
-  });
-  ipcMain.on(bridgeChannels.follow, (event: IpcMainEvent, subscriptionId: string, followedSessionId: string) => {
-    if (!isSubscriptionId(subscriptionId) || !isSessionId(followedSessionId)) return;
-    const existing = subscriptions.get(subscriptionId);
-    if (existing && existing.senderId !== event.sender.id) return;
-    subscriptions.set(subscriptionId, { senderId: event.sender.id, sessionId: followedSessionId });
-    void controller.follow(subscriptionId, followedSessionId).catch(() => {});
-  });
-  ipcMain.on(bridgeChannels.unfollow, (event: IpcMainEvent, subscriptionId: string) => {
-    if (!isSubscriptionId(subscriptionId)) return;
-    if (subscriptions.get(subscriptionId)?.senderId !== event.sender.id) return;
-    subscriptions.delete(subscriptionId);
-    controller.unfollow(subscriptionId);
-  });
 
-  createWindow();
-  app.on("activate", () => {
-    if (!BrowserWindow.getAllWindows().length) createWindow();
-  });
-  app.on("window-all-closed", () => {
-    if (process.platform !== "darwin") app.quit();
-  });
-  let quitting = false;
-  app.on("before-quit", (event) => {
-    if (quitting) return;
-    event.preventDefault();
-    quitting = true;
-    void controller.stop().finally(() => app.quit());
+    ipcMain.handle(bridgeChannels.boot, () => bootResult());
+    ipcMain.handle(bridgeChannels.restart, async () => {
+      void controller.start().catch(() => {});
+      return bootResult();
+    });
+    ipcMain.handle(bridgeChannels.action, (_event: IpcMainInvokeEvent, action: unknown, input: unknown) => {
+      if (typeof action !== "string" || !action || !isJsonValue(input)) {
+        throw new Error("Invalid Harness action request");
+      }
+      return controller.action(action, input);
+    });
+    ipcMain.on(bridgeChannels.follow, (event: IpcMainEvent, subscriptionId: string, followedSessionId: string) => {
+      if (!isSubscriptionId(subscriptionId) || !isSessionId(followedSessionId)) return;
+      const existing = subscriptions.get(subscriptionId);
+      if (existing && existing.senderId !== event.sender.id) return;
+      subscriptions.set(subscriptionId, { senderId: event.sender.id, sessionId: followedSessionId });
+      void controller.follow(subscriptionId, followedSessionId).catch(() => {});
+    });
+    ipcMain.on(bridgeChannels.unfollow, (event: IpcMainEvent, subscriptionId: string) => {
+      if (!isSubscriptionId(subscriptionId)) return;
+      if (subscriptions.get(subscriptionId)?.senderId !== event.sender.id) return;
+      subscriptions.delete(subscriptionId);
+      controller.unfollow(subscriptionId);
+    });
+
+    createWindow();
+    app.on("activate", () => {
+      if (!BrowserWindow.getAllWindows().length) createWindow();
+    });
+    app.on("window-all-closed", () => {
+      if (process.platform !== "darwin") app.quit();
+    });
+    let quitting = false;
+    app.on("before-quit", (event) => {
+      if (quitting) return;
+      event.preventDefault();
+      quitting = true;
+      void controller.stop().finally(() => app.quit());
+    });
+  })().catch((error) => {
+    console.error(`[desktop] startup failed: ${errorMessage(error)}`);
+    app.quit();
   });
 }
