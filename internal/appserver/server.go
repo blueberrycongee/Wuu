@@ -1170,8 +1170,8 @@ func sanitizeStreamEvent(ev providers.StreamEvent) StreamEventPayload {
 		detail := ev.ToolResultDetail.Clone()
 		out.ToolResultDetail = &detail
 	}
-	if ev.PlanUpdate != nil {
-		out.PlanUpdate = ev.PlanUpdate
+	if ev.TodoUpdate != nil {
+		out.TodoUpdate = ev.TodoUpdate
 	}
 	if ev.Lifecycle != nil {
 		out.Lifecycle = sanitizeStreamLifecycle(ev.Lifecycle)

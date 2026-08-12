@@ -858,8 +858,8 @@ func isProviderModelFailure(text string) bool {
 
 func emitTurnStreamEvent(opts Options, params appserver.TurnEventNotification) {
 	switch params.Event.Type {
-	case "plan_update":
-		emitJSON(opts, map[string]any{"type": "plan_updated", "thread_id": params.ThreadID, "turn_id": params.TurnID, "plan": params.Event.PlanUpdate})
+	case "todo_update":
+		emitJSON(opts, map[string]any{"type": "todo_updated", "thread_id": params.ThreadID, "turn_id": params.TurnID, "todo": params.Event.TodoUpdate})
 	case "request_context":
 		rc := params.Event.RequestContext
 		if rc == nil {

@@ -6,7 +6,7 @@ export type ConversationFixtureKind =
   | "rich"
   | "running"
   | "compact"
-  | "plan";
+  | "todo";
 
 export function createConversationFixture(
   kind: ConversationFixtureKind,
@@ -20,8 +20,8 @@ export function createConversationFixture(
       return createRunningFixture(cwd, initialized);
     case "compact":
       return createContextCompactionFixture(cwd, initialized);
-    case "plan":
-      return createPlanPanelFixture(cwd, initialized);
+    case "todo":
+      return createTodoPanelFixture(cwd, initialized);
     default:
       return createLongReadingFixture(cwd, initialized);
   }
@@ -219,7 +219,7 @@ function createRichContentFixture(
   };
 }
 
-function createPlanPanelFixture(
+function createTodoPanelFixture(
   cwd: string,
   initialized?: InitializeResult,
 ): Thread {
@@ -227,12 +227,12 @@ function createPlanPanelFixture(
   const at = (offsetMs: number): string =>
     new Date(base + offsetMs).toISOString();
   const { provider, model } = fixtureRuntime(initialized);
-  const threadID = `demo-plan-panel-${base}`;
+  const threadID = `demo-todo-panel-${base}`;
   const turnID = `${threadID}-turn-0001`;
 
   return {
     id: threadID,
-    preview: t("fixture.plan.preview"),
+    preview: t("fixture.todo.preview"),
     model_provider: provider,
     model,
     cwd,
@@ -253,27 +253,27 @@ function createPlanPanelFixture(
             type: "user_message",
             status: "completed",
             role: "user",
-            text: t("fixture.plan.user"),
+            text: t("fixture.todo.user"),
           },
           {
             id: `${turnID}-item-2`,
             type: "tool_call",
             status: "completed",
-            name: "plugin_plan_update_plan_abc123",
+            name: "plugin_todo_update_todo_abc123",
             display: {
-              kind: "plan",
-              text: "Updating plan",
-              capability: "plan",
+              kind: "todo",
+              text: "Updating TODO",
+              capability: "todo",
             },
             arguments: JSON.stringify({
-              plan: [
+              todos: [
                 {
-                  step: t("fixture.plan.step1"),
+                  content: t("fixture.todo.item1"),
                   status: "completed",
                 },
-                { step: t("fixture.plan.step2"), status: "completed" },
-                { step: t("fixture.plan.step3"), status: "in_progress" },
-                { step: t("fixture.plan.step4"), status: "pending" },
+                { content: t("fixture.todo.item2"), status: "completed" },
+                { content: t("fixture.todo.item3"), status: "in_progress" },
+                { content: t("fixture.todo.item4"), status: "pending" },
               ],
             }),
             result: `{"status":"updated"}`,
@@ -283,7 +283,7 @@ function createPlanPanelFixture(
             type: "agent_message",
             status: "completed",
             role: "assistant",
-            text: t("fixture.plan.answer"),
+            text: t("fixture.todo.answer"),
           },
         ],
       },

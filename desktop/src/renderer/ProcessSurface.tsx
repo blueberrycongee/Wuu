@@ -88,7 +88,7 @@ function processKindLabel(kind: ToolActivityProcessSegment["kind"]): string {
     case "list": return translate("process.kind.list");
     case "command": return translate("process.kind.command");
     case "agent": return translate("process.kind.agent");
-    case "plan": return translate("process.kind.plan");
+    case "todo": return translate("process.kind.todo");
     case "interaction": return translate("process.kind.interaction");
     case "browser": return translate("process.kind.browser");
     case "skill": return translate("process.kind.skill");

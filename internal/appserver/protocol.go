@@ -2097,7 +2097,7 @@ type StreamEventPayload struct {
 	ToolCall         *providers.ToolCall              `json:"tool_call,omitempty"`
 	ToolResult       string                           `json:"tool_result,omitempty"`
 	ToolResultDetail *toolresult.Result               `json:"tool_result_detail,omitempty"`
-	PlanUpdate       *providers.PlanUpdate            `json:"plan_update,omitempty"`
+	TodoUpdate       *providers.TodoUpdate            `json:"todo_update,omitempty"`
 	Lifecycle        *StreamLifecyclePayload          `json:"lifecycle,omitempty"`
 	RequestContext   *providers.RequestContextSummary `json:"request_context,omitempty"`
 	ProviderState    *providers.ProviderStateSummary  `json:"provider_state,omitempty"`

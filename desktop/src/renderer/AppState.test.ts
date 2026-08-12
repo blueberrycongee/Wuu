@@ -10,7 +10,7 @@ import type {
   Turn,
 } from "../shared/protocol";
 import {
-  activePlanUpdateForThread,
+  activeTodoUpdateForThread,
   activeThreadForState,
   activeTurnTokenSpeed,
   activeTurnTokenSpeedSnapshot,
@@ -2963,27 +2963,27 @@ describe("latestContextUsageForThread", () => {
   });
 });
 
-describe("activePlanUpdateForThread", () => {
+describe("activeTodoUpdateForThread", () => {
   // The floating "跳到最新" pill cluster's progress chip must disappear
   // once its turn completes — otherwise it lingers on top of the same
-  // turn's now-persistent action row (issue #7). `latestPlanUpdateForThread`
+  // turn's now-persistent action row (issue #7). `latestTodoUpdateForThread`
   // itself (used by the environment side panel) stays turn-status-agnostic;
   // this wrapper is the one the pill actually reads.
-  function threadWithPlan(turnStatus: Turn["status"]): Thread {
-    const planItem: ThreadItem = {
+  function threadWithTodo(turnStatus: Turn["status"]): Thread {
+    const todoItem: ThreadItem = {
       id: "turn-1-item-1",
       type: "tool_call",
       status: "completed",
-      name: "plugin_plan_update_plan_abc123",
+      name: "plugin_todo_update_todo_abc123",
       display: {
-        kind: "plan",
-        text: "Updating plan",
-        capability: "plan",
+        kind: "todo",
+        text: "Updating TODO",
+        capability: "todo",
       },
       arguments: JSON.stringify({
-        plan: [
-          { step: "定位问题", status: "completed" },
-          { step: "实现修复", status: "in_progress" },
+        todos: [
+          { content: "定位问题", status: "completed" },
+          { content: "实现修复", status: "in_progress" },
         ],
       }),
     };
@@ -3001,31 +3001,31 @@ describe("activePlanUpdateForThread", () => {
           id: "turn-1",
           items_view: "full",
           status: turnStatus,
-          items: [planItem],
+          items: [todoItem],
         },
       ],
     };
   }
 
-  it("returns the plan while its turn is still running", () => {
-    const thread = threadWithPlan("in_progress");
-    expect(activePlanUpdateForThread(thread)?.plan).toEqual([
-      { step: "定位问题", status: "completed" },
-      { step: "实现修复", status: "in_progress" },
+  it("returns the TODO list while its turn is still running", () => {
+    const thread = threadWithTodo("in_progress");
+    expect(activeTodoUpdateForThread(thread)?.todos).toEqual([
+      { content: "定位问题", status: "completed" },
+      { content: "实现修复", status: "in_progress" },
     ]);
   });
 
-  it("hides the plan once the turn completes", () => {
-    expect(activePlanUpdateForThread(threadWithPlan("completed"))).toBeUndefined();
+  it("hides the TODO list once the turn completes", () => {
+    expect(activeTodoUpdateForThread(threadWithTodo("completed"))).toBeUndefined();
   });
 
-  it("hides the plan for a failed or interrupted turn", () => {
-    expect(activePlanUpdateForThread(threadWithPlan("failed"))).toBeUndefined();
-    expect(activePlanUpdateForThread(threadWithPlan("interrupted"))).toBeUndefined();
+  it("hides the TODO list for a failed or interrupted turn", () => {
+    expect(activeTodoUpdateForThread(threadWithTodo("failed"))).toBeUndefined();
+    expect(activeTodoUpdateForThread(threadWithTodo("interrupted"))).toBeUndefined();
   });
 
   it("returns undefined when there is no thread", () => {
-    expect(activePlanUpdateForThread(undefined)).toBeUndefined();
+    expect(activeTodoUpdateForThread(undefined)).toBeUndefined();
   });
 });
 

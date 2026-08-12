@@ -49,6 +49,7 @@ function PluginInspectorSection({
   host: PluginHost;
   snapshot: InspectorSnapshotV1;
 }): React.ReactNode {
+  if (contribution.when?.(snapshot) === false) return null;
   const Content = contribution.render;
   return (
     <section

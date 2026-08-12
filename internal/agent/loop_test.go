@@ -2527,9 +2527,9 @@ func TestRunToolLoop_RejectsDuplicateProviderToolCallIDs(t *testing.T) {
 
 func TestRunToolLoop_ReturnsInvalidToolArgumentsToModel(t *testing.T) {
 	step := &fakeStep{results: []StepResult{{ToolCalls: []providers.ToolCall{
-		{ID: "call_1", Name: "update_plan", Arguments: `{"plan": `},
+		{ID: "call_1", Name: "update_todo", Arguments: `{"todos": `},
 	}}, {Content: "recovered"}}}
-	tools := &fakeLoopTools{defs: []providers.ToolDefinition{{Name: "update_plan"}}}
+	tools := &fakeLoopTools{defs: []providers.ToolDefinition{{Name: "update_todo"}}}
 	var persisted []providers.ChatMessage
 	result, err := RunToolLoop(context.Background(), nil, LoopConfig{
 		Model: "m",
@@ -2547,7 +2547,7 @@ func TestRunToolLoop_ReturnsInvalidToolArgumentsToModel(t *testing.T) {
 	if len(persisted) != 3 {
 		t.Fatalf("expected assistant, tool, final assistant messages, got %+v", persisted)
 	}
-	if len(persisted[0].ToolCalls) != 1 || persisted[0].ToolCalls[0].Arguments != `{"plan": ` {
+	if len(persisted[0].ToolCalls) != 1 || persisted[0].ToolCalls[0].Arguments != `{"todos": ` {
 		t.Fatalf("invalid tool call should be persisted for pairing, got %+v", persisted[0])
 	}
 	if persisted[1].Role != "tool" || persisted[1].ToolCallID != "call_1" || !strings.Contains(persisted[1].Content, `"error_kind":"invalid_tool_arguments"`) {

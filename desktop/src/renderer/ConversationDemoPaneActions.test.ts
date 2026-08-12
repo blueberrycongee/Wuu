@@ -136,9 +136,9 @@ describe("createConversationDemoPaneActions", () => {
   it("seeds the plan fixture and opens the environment debug panel", () => {
     const harness = buildActions();
 
-    harness.actions.seedPlanPanelDebug();
+    harness.actions.seedTodoPanelDebug();
 
-    expect(harness.getAppState().thread?.id).toContain("plan");
+    expect(harness.getAppState().thread?.id).toContain("todo");
     expect(harness.getEnvironmentState()).toEqual({
       runDebugOpen: false,
       environmentPanelOpen: true,

@@ -381,7 +381,7 @@ const (
 	EventToolUseStart    StreamEventType = "tool_use_start"
 	EventToolUseDelta    StreamEventType = "tool_use_delta"
 	EventToolUseEnd      StreamEventType = "tool_use_end"
-	EventPlanUpdate      StreamEventType = "plan_update"
+	EventTodoUpdate      StreamEventType = "todo_update"
 	EventRequestContext  StreamEventType = "request_context"
 	EventProviderState   StreamEventType = "provider_state"
 	EventUsage           StreamEventType = "usage"
@@ -507,16 +507,16 @@ type TokenUsage struct {
 	CacheCreationUnknown bool
 }
 
-// PlanStep is one item in a semantic plan snapshot.
-type PlanStep struct {
-	Step   string `json:"step"`
-	Status string `json:"status"`
+// TodoItem is one item in a semantic TODO snapshot.
+type TodoItem struct {
+	Content string `json:"content"`
+	Status  string `json:"status"`
 }
 
-// PlanUpdate carries the latest semantic plan snapshot as a stream event.
-type PlanUpdate struct {
+// TodoUpdate carries the latest semantic TODO snapshot as a stream event.
+type TodoUpdate struct {
 	Explanation string     `json:"explanation,omitempty"`
-	Plan        []PlanStep `json:"plan"`
+	Todos       []TodoItem `json:"todos"`
 }
 
 // RequestContextSummary carries metadata-only context compilation details for
@@ -602,7 +602,7 @@ type StreamEvent struct {
 	// EventCompact with CompactPhaseCompleted after a pass that replaced
 	// history; intentionally absent from the metadata-only attempt records.
 	CompactSummary string
-	PlanUpdate     *PlanUpdate
+	TodoUpdate     *TodoUpdate
 	RequestContext *RequestContextSummary
 	ProviderState  *ProviderStateSummary
 	Lifecycle      *StreamLifecycle

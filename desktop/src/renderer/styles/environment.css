@@ -181,6 +181,10 @@
   border-bottom: 1px solid var(--surface-3);
 }
 
+.plugin-inspector-sections:empty {
+  display: none;
+}
+
 .plugin-inspector-section {
   display: grid;
   min-width: 0;

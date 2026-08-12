@@ -1,4 +1,4 @@
-package plan
+package todo
 
 import (
 	"context"
@@ -20,49 +20,49 @@ const (
 )
 
 type Item struct {
-	Step   string `json:"step"`
-	Status Status `json:"status"`
+	Content string `json:"content"`
+	Status  Status `json:"status"`
 }
 
 type Update struct {
 	Explanation string `json:"explanation,omitempty"`
-	Plan        []Item `json:"plan"`
+	Todos       []Item `json:"todos"`
 }
 
 func Handler() pluginapi.Handler {
 	return pluginapi.Handler{
 		Definition: pluginapi.Definition{Tools: []pluginapi.Tool{{
-			ID:          "update_plan",
-			Description: "Update the current task plan. Provide the full plan every time. Keep exactly one item in_progress until all items are completed.",
+			ID:          "update_todo",
+			Description: "Update the current task TODO list. Provide the full TODO list every time. Keep exactly one item in_progress until all items are completed.",
 			InputSchema: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
-					"explanation": map[string]any{"type": "string", "description": "Optional short explanation for why the plan changed."},
-					"plan": map[string]any{
-						"type": "array", "minItems": 1, "description": "Full current plan.",
+					"explanation": map[string]any{"type": "string", "description": "Optional short explanation for why the TODO list changed."},
+					"todos": map[string]any{
+						"type": "array", "minItems": 1, "description": "Full current TODO list.",
 						"items": map[string]any{
 							"type": "object",
 							"properties": map[string]any{
-								"step":   map[string]any{"type": "string", "description": "Concrete task step."},
-								"status": map[string]any{"type": "string", "enum": []string{"pending", "in_progress", "completed"}},
+								"content": map[string]any{"type": "string", "description": "Concrete task to complete."},
+								"status":  map[string]any{"type": "string", "enum": []string{"pending", "in_progress", "completed"}},
 							},
-							"required":             []string{"step", "status"},
+							"required":             []string{"content", "status"},
 							"additionalProperties": false,
 						},
 					},
 				},
-				"required":             []string{"plan"},
+				"required":             []string{"todos"},
 				"additionalProperties": false,
 			},
-			Display: &pluginapi.ToolDisplay{Kind: "plan", Text: "Updating plan", Capability: "plan"},
+			Display: &pluginapi.ToolDisplay{Kind: "todo", Text: "Updating TODO", Capability: "todo"},
 		}}},
 		ExecuteTool: executeTool,
 	}
 }
 
 func executeTool(_ context.Context, _ pluginapi.Host, call pluginapi.ToolCall) (pluginapi.ToolResult, error) {
-	if call.ToolID != "update_plan" {
-		return pluginapi.ToolResult{}, fmt.Errorf("unknown plan tool %q", call.ToolID)
+	if call.ToolID != "update_todo" {
+		return pluginapi.ToolResult{}, fmt.Errorf("unknown TODO tool %q", call.ToolID)
 	}
 	update, err := decodeUpdate(call.Arguments)
 	if err != nil {
@@ -72,9 +72,9 @@ func executeTool(_ context.Context, _ pluginapi.Host, call pluginapi.ToolCall) (
 		return pluginapi.ToolResult{}, err
 	}
 	result, err := json.Marshal(map[string]any{
-		"action": "update_plan",
+		"action": "update_todo",
 		"status": "updated",
-		"plan":   update.Plan,
+		"todos":  update.Todos,
 	})
 	if err != nil {
 		return pluginapi.ToolResult{}, err
@@ -99,14 +99,14 @@ func decodeUpdate(raw json.RawMessage) (Update, error) {
 }
 
 func validateUpdate(update Update) error {
-	if len(update.Plan) == 0 {
-		return errors.New("update_plan requires at least one plan item")
+	if len(update.Todos) == 0 {
+		return errors.New("update_todo requires at least one TODO item")
 	}
 	inProgress := 0
 	completed := 0
-	for index, item := range update.Plan {
-		if strings.TrimSpace(item.Step) == "" {
-			return fmt.Errorf("plan item %d requires step", index)
+	for index, item := range update.Todos {
+		if strings.TrimSpace(item.Content) == "" {
+			return fmt.Errorf("TODO item %d requires content", index)
 		}
 		switch item.Status {
 		case StatusPending:
@@ -115,17 +115,17 @@ func validateUpdate(update Update) error {
 		case StatusCompleted:
 			completed++
 		default:
-			return fmt.Errorf("plan item %d has invalid status %q", index, item.Status)
+			return fmt.Errorf("TODO item %d has invalid status %q", index, item.Status)
 		}
 	}
-	if completed == len(update.Plan) {
+	if completed == len(update.Todos) {
 		if inProgress != 0 {
-			return errors.New("completed plan cannot have an in_progress item")
+			return errors.New("completed TODO list cannot have an in_progress item")
 		}
 		return nil
 	}
 	if inProgress != 1 {
-		return errors.New("unfinished plan requires exactly one in_progress item")
+		return errors.New("unfinished TODO list requires exactly one in_progress item")
 	}
 	return nil
 }

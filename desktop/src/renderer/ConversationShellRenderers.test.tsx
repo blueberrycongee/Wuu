@@ -161,8 +161,8 @@ describe("ConversationTitleActions icon sizing", () => {
           enableLaunchPreview={false}
           previewingLaunch={false}
           onPinLaunchPreview={() => {}}
-          enablePlanPanelDebug={false}
-          onSeedPlanPanelDebug={() => {}}
+          enableTodoPanelDebug={false}
+          onSeedTodoPanelDebug={() => {}}
           enableRunDebugPanel={false}
           runDebugRef={createRef<HTMLDivElement>()}
           runDebugOpen={false}

@@ -1927,16 +1927,16 @@ export type ThreadItem = {
 
 export type ThreadForkTarget = Pick<ThreadItem, "type" | "seq" | "source_id">;
 
-export type PlanStepStatus = "pending" | "in_progress" | "completed";
+export type TodoStatus = "pending" | "in_progress" | "completed";
 
-export type PlanStep = {
-  step: string;
-  status: PlanStepStatus;
+export type TodoItem = {
+  content: string;
+  status: TodoStatus;
 };
 
-export type PlanUpdate = {
+export type TodoUpdate = {
   explanation?: string;
-  plan: PlanStep[];
+  todos: TodoItem[];
 };
 
 export type InputImage = {

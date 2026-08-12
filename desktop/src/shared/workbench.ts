@@ -472,15 +472,15 @@ export interface InspectorWorkspaceSnapshotV1 {
   readonly dirtyFileCount?: number;
 }
 
-export interface InspectorPlanSnapshotV1 {
+export interface InspectorTodoSnapshotV1 {
   readonly completed: number;
   readonly total: number;
-  readonly activeStep?: string;
-  readonly items: readonly InspectorPlanItemSnapshotV1[];
+  readonly activeContent?: string;
+  readonly items: readonly InspectorTodoItemSnapshotV1[];
 }
 
-export interface InspectorPlanItemSnapshotV1 {
-  readonly step: string;
+export interface InspectorTodoItemSnapshotV1 {
+  readonly content: string;
   readonly status: "pending" | "in_progress" | "completed";
 }
 
@@ -489,7 +489,7 @@ export interface InspectorSnapshotV1 {
   readonly contractVersion: 1;
   readonly session: InspectorSessionSnapshotV1;
   readonly workspace?: InspectorWorkspaceSnapshotV1;
-  readonly plan?: InspectorPlanSnapshotV1;
+  readonly todo?: InspectorTodoSnapshotV1;
 }
 
 export interface InspectorSectionHostAPI {
@@ -506,6 +506,8 @@ export interface InspectorSectionDefinition {
   readonly id: string;
   readonly title: string;
   readonly priority?: number;
+  /** Return false when this section has no meaningful content for the snapshot. */
+  readonly when?: (snapshot: InspectorSnapshotV1) => boolean;
   readonly render: React.ComponentType<InspectorSectionRenderProps>;
 }
 

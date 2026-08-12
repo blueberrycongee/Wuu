@@ -1,5 +1,5 @@
 import { useEffect, useRef, type RefObject } from "react";
-import type { PlanUpdate } from "../shared/protocol";
+import type { TodoUpdate } from "../shared/protocol";
 import type { InspectorSnapshotV1 } from "../shared/workbench";
 import type { AppState } from "./AppState";
 import {
@@ -52,7 +52,7 @@ export function EnvironmentSideStack({
   panelRef,
   closing,
   motionState,
-  planUpdate,
+  todoUpdate,
   activeMenu,
   running,
   pullRequestDisabledReason,
@@ -72,7 +72,7 @@ export function EnvironmentSideStack({
   panelRef: RefObject<HTMLDivElement | null>;
   closing: boolean;
   motionState: EnvironmentPanelMotionState;
-  planUpdate?: PlanUpdate;
+  todoUpdate?: TodoUpdate;
   activeMenu: EnvironmentPanelMenu;
   running: boolean;
   pullRequestDisabledReason: string;
@@ -99,7 +99,7 @@ export function EnvironmentSideStack({
     return null;
   }
 
-  const inspectorSnapshot = buildInspectorSnapshot(state, planUpdate);
+  const inspectorSnapshot = buildInspectorSnapshot(state, todoUpdate);
 
   return (
     <div
@@ -135,7 +135,7 @@ export function EnvironmentSideStack({
   );
 }
 
-function buildInspectorSnapshot(state: AppState, planUpdate?: PlanUpdate): InspectorSnapshotV1 {
+function buildInspectorSnapshot(state: AppState, todoUpdate?: TodoUpdate): InspectorSnapshotV1 {
   const latestTurn = state.thread?.turns.at(-1);
   const activeContext = state.activeContext;
   const session = Object.freeze({
@@ -157,16 +157,16 @@ function buildInspectorSnapshot(state: AppState, planUpdate?: PlanUpdate): Inspe
         branch: state.gitStatus?.branch,
         dirtyFileCount: state.gitStatus?.dirty_count,
       });
-  const plan = planUpdate === undefined
+  const todo = todoUpdate === undefined
     ? undefined
     : Object.freeze({
-        completed: planUpdate.plan.filter((item) => item.status === "completed").length,
-        total: planUpdate.plan.length,
-        activeStep: planUpdate.plan.find((item) => item.status === "in_progress")?.step,
-        items: Object.freeze(planUpdate.plan.map((item) => Object.freeze({
-          step: item.step,
+        completed: todoUpdate.todos.filter((item) => item.status === "completed").length,
+        total: todoUpdate.todos.length,
+        activeContent: todoUpdate.todos.find((item) => item.status === "in_progress")?.content,
+        items: Object.freeze(todoUpdate.todos.map((item) => Object.freeze({
+          content: item.content,
           status: item.status,
         }))),
       });
-  return Object.freeze({ contractVersion: 1, session, workspace, plan });
+  return Object.freeze({ contractVersion: 1, session, workspace, todo });
 }

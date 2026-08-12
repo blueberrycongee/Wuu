@@ -352,6 +352,7 @@ interface ViewPlacementRecord extends OrderedRecord {
 
 interface InspectorSectionRecord extends OrderedRecord {
   readonly title: string;
+  readonly when: InspectorSectionDefinition["when"];
   readonly render: InspectorSectionDefinition["render"];
 }
 
@@ -1012,6 +1013,7 @@ export class PluginHost {
           order: normalizeOrder(definition.priority),
           removed: false,
           title: requireNonEmpty(definition.title, "Inspector section title"),
+          when: definition.when,
           render: definition.render,
         };
         state.inspectorSections.push(record);
@@ -1675,6 +1677,7 @@ function toPublicInspectorSection(record: InspectorSectionRecord): RegisteredIns
     title: record.title,
     priority: record.order,
     order: record.order,
+    when: record.when,
     render: record.render,
   });
 }

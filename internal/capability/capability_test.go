@@ -23,7 +23,7 @@ func TestAllCapabilitiesReturnsStableClosedSet(t *testing.T) {
 		CapabilitySearchGrep, CapabilitySearchGlob,
 		CapabilityCommandBash, CapabilityCommandBackground,
 		CapabilityWebFetch, CapabilityWebSearch,
-		CapabilityPlan,
+		CapabilityTodo,
 	}
 	for _, c := range mustHave {
 		if _, ok := seen[c]; !ok {

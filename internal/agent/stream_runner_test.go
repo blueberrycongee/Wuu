@@ -335,7 +335,7 @@ func TestStreamRunnerCarriesStreamedMessagePhaseToCommittedMessage(t *testing.T)
 	}
 }
 
-func TestStreamRunner_EmitsPlanUpdateEventAfterUpdatePlan(t *testing.T) {
+func TestStreamRunner_EmitsTodoUpdateEventAfterUpdateTodo(t *testing.T) {
 	client := &mockStreamClient{
 		attempts: []mockStreamAttempt{
 			{
@@ -343,18 +343,18 @@ func TestStreamRunner_EmitsPlanUpdateEventAfterUpdatePlan(t *testing.T) {
 					{
 						Type: providers.EventToolUseStart,
 						ToolCall: &providers.ToolCall{
-							ID:      "call-plan",
-							Name:    "plugin_plan_update_plan_abc123",
-							Display: &providers.ToolCallDisplay{Kind: "plan", Text: "Updating plan", Capability: "plan"},
+							ID:      "call-todo",
+							Name:    "plugin_todo_update_todo_abc123",
+							Display: &providers.ToolCallDisplay{Kind: "todo", Text: "Updating TODO", Capability: "todo"},
 						},
 					},
 					{
 						Type: providers.EventToolUseEnd,
 						ToolCall: &providers.ToolCall{
-							ID:        "call-plan",
-							Name:      "plugin_plan_update_plan_abc123",
-							Arguments: `{"explanation":"start","plan":[{"step":"inspect","status":"completed"},{"step":"report","status":"in_progress"}]}`,
-							Display:   &providers.ToolCallDisplay{Kind: "plan", Text: "Updating plan", Capability: "plan"},
+							ID:        "call-todo",
+							Name:      "plugin_todo_update_todo_abc123",
+							Arguments: `{"explanation":"start","todos":[{"content":"inspect","status":"completed"},{"content":"report","status":"in_progress"}]}`,
+							Display:   &providers.ToolCallDisplay{Kind: "todo", Text: "Updating TODO", Capability: "todo"},
 						},
 					},
 					{Type: providers.EventDone},
@@ -369,31 +369,31 @@ func TestStreamRunner_EmitsPlanUpdateEventAfterUpdatePlan(t *testing.T) {
 		},
 	}
 	tools := &fakeLoopTools{
-		defs: []providers.ToolDefinition{{Name: "plugin_plan_update_plan_abc123"}},
+		defs: []providers.ToolDefinition{{Name: "plugin_todo_update_todo_abc123"}},
 		results: map[string]string{
-			"call-plan": `{"status":"updated"}`,
+			"call-todo": `{"status":"updated"}`,
 		},
 	}
-	var planUpdate *providers.PlanUpdate
+	var todoUpdate *providers.TodoUpdate
 	runner := StreamRunner{
 		Client: client,
 		Model:  "test-model",
 		Tools:  tools,
 		OnEvent: func(ev providers.StreamEvent) {
-			if ev.Type == providers.EventPlanUpdate {
-				planUpdate = ev.PlanUpdate
+			if ev.Type == providers.EventTodoUpdate {
+				todoUpdate = ev.TodoUpdate
 			}
 		},
 	}
-	result, err := runner.Run(context.Background(), "plan")
+	result, err := runner.Run(context.Background(), "todo")
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 	if result != "done" {
 		t.Fatalf("unexpected result: %q", result)
 	}
-	if planUpdate == nil || planUpdate.Explanation != "start" || len(planUpdate.Plan) != 2 || planUpdate.Plan[1].Status != "in_progress" {
-		t.Fatalf("unexpected plan update event: %+v", planUpdate)
+	if todoUpdate == nil || todoUpdate.Explanation != "start" || len(todoUpdate.Todos) != 2 || todoUpdate.Todos[1].Status != "in_progress" {
+		t.Fatalf("unexpected TODO update event: %+v", todoUpdate)
 	}
 }
 

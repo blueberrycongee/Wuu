@@ -41,7 +41,7 @@ export type ConversationDemoPaneActionsDeps = {
 
 export type ConversationDemoPaneActions = {
   seedConversationFixture: (kind: ConversationFixtureKind) => void;
-  seedPlanPanelDebug: () => void;
+  seedTodoPanelDebug: () => void;
   activateConversationPane: (pane: ConversationPaneID) => void;
   closeConversationPane: (pane: ConversationPaneID) => void;
 };
@@ -90,12 +90,12 @@ export function createConversationDemoPaneActions(
     }));
   }
 
-  function seedPlanPanelDebug(): void {
+  function seedTodoPanelDebug(): void {
     const state = deps.getAppState();
     if (!state.activeContext || !state.initialized) {
       return;
     }
-    seedConversationFixture("plan");
+    seedConversationFixture("todo");
     deps.setRunDebugOpen(false);
     deps.setEnvironmentPanelOpen(true);
     deps.setEnvironmentPanelDismissed(false);
@@ -169,7 +169,7 @@ export function createConversationDemoPaneActions(
 
   return {
     seedConversationFixture,
-    seedPlanPanelDebug,
+    seedTodoPanelDebug,
     activateConversationPane,
     closeConversationPane,
   };

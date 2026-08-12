@@ -563,11 +563,11 @@ func TestBuildAnthropicRequest_ReplaysInvalidToolArgumentsWithErrorResult(t *tes
 	payload, err := buildAnthropicRequest(providers.ChatRequest{
 		Model: "claude-test",
 		Messages: []providers.ChatMessage{
-			{Role: "user", Content: "update plan"},
+			{Role: "user", Content: "update TODO"},
 			{Role: "assistant", ToolCalls: []providers.ToolCall{
-				{ID: "call_plan", Name: "update_plan", Arguments: `{"plan": `},
+				{ID: "call_todo", Name: "update_todo", Arguments: `{"todos": `},
 			}},
-			{Role: "tool", ToolCallID: "call_plan", Name: "update_plan", Content: `{"error":"invalid tool arguments: unexpected EOF","ok":false}`},
+			{Role: "tool", ToolCallID: "call_todo", Name: "update_todo", Content: `{"error":"invalid tool arguments: unexpected EOF","ok":false}`},
 		},
 	}, 1024, false)
 	if err != nil {
@@ -581,7 +581,7 @@ func TestBuildAnthropicRequest_ReplaysInvalidToolArgumentsWithErrorResult(t *tes
 		t.Fatalf("expected assistant tool_use, got %+v", assistant)
 	}
 	toolUse := assistant.Content[0]
-	if toolUse.Type != "tool_use" || toolUse.ID != "call_plan" || toolUse.Name != "update_plan" {
+	if toolUse.Type != "tool_use" || toolUse.ID != "call_todo" || toolUse.Name != "update_todo" {
 		t.Fatalf("unexpected tool_use block: %+v", toolUse)
 	}
 	input, ok := toolUse.Input.(map[string]any)

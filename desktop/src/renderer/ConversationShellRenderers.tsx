@@ -391,8 +391,8 @@ export type ConversationTitleActionsProps = {
   enableLaunchPreview: boolean;
   previewingLaunch: boolean;
   onPinLaunchPreview: () => void;
-  enablePlanPanelDebug: boolean;
-  onSeedPlanPanelDebug: () => void;
+  enableTodoPanelDebug: boolean;
+  onSeedTodoPanelDebug: () => void;
   enableRunDebugPanel: boolean;
   runDebugRef: RefObject<HTMLDivElement | null>;
   runDebugOpen: boolean;
@@ -421,8 +421,8 @@ export function ConversationTitleActions({
   enableLaunchPreview,
   previewingLaunch,
   onPinLaunchPreview,
-  enablePlanPanelDebug,
-  onSeedPlanPanelDebug,
+  enableTodoPanelDebug,
+  onSeedTodoPanelDebug,
   enableRunDebugPanel,
   runDebugRef,
   runDebugOpen,
@@ -458,15 +458,15 @@ export function ConversationTitleActions({
           <span>{t("shell.launchPreview")}</span>
         </button>
       ) : null}
-      {debugControlsVisible && enablePlanPanelDebug ? (
+      {debugControlsVisible && enableTodoPanelDebug ? (
         <button
-          className="launch-preview-button plan-panel-debug-button"
+          className="launch-preview-button todo-panel-debug-button"
           type="button"
           disabled={!state.activeContext || !state.initialized}
-          onClick={onSeedPlanPanelDebug}
+          onClick={onSeedTodoPanelDebug}
         >
           <ListChecks className="icon" />
-          <span>{t("shell.planPanel")}</span>
+          <span>{t("shell.todoPanel")}</span>
         </button>
       ) : null}
       {debugControlsVisible && enableRunDebugPanel ? (
@@ -536,7 +536,7 @@ export type ConversationSidePanelsProps = {
   environmentPanelRef: EnvironmentSideStackProps["panelRef"];
   environmentPanelClosing: boolean;
   environmentPanelMotionState: EnvironmentSideStackProps["motionState"];
-  activePlanUpdate: EnvironmentSideStackProps["planUpdate"];
+  activeTodoUpdate: EnvironmentSideStackProps["todoUpdate"];
   environmentPanelMenu: EnvironmentSideStackProps["activeMenu"];
   environmentGitBusy: boolean;
   pullRequestDisabledReason: string;
@@ -559,7 +559,7 @@ export function ConversationSidePanels({
   environmentPanelRef,
   environmentPanelClosing,
   environmentPanelMotionState,
-  activePlanUpdate,
+  activeTodoUpdate,
   environmentPanelMenu,
   environmentGitBusy,
   pullRequestDisabledReason,
@@ -583,7 +583,7 @@ export function ConversationSidePanels({
         panelRef={environmentPanelRef}
         closing={environmentPanelClosing}
         motionState={environmentPanelMotionState}
-        planUpdate={activePlanUpdate}
+        todoUpdate={activeTodoUpdate}
         activeMenu={environmentPanelMenu}
         running={environmentGitBusy}
         pullRequestDisabledReason={pullRequestDisabledReason}

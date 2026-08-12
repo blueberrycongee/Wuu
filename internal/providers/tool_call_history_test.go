@@ -41,7 +41,7 @@ func TestValidateAssistantToolCalls_rejectsDuplicateID(t *testing.T) {
 }
 
 func TestValidateAssistantToolCalls_allowsRawFunctionArguments(t *testing.T) {
-	err := ValidateAssistantToolCalls([]ToolCall{{ID: "call_1", Name: "update_plan", Arguments: `{"plan": `}})
+	err := ValidateAssistantToolCalls([]ToolCall{{ID: "call_1", Name: "update_todo", Arguments: `{"todos": `}})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -107,17 +107,17 @@ func TestRepairToolCallHistory_keepsRecoverableInvalidToolArguments(t *testing.T
 		{Role: "user", Content: "continue"},
 		{
 			Role:    "assistant",
-			Content: "I will update the plan.",
+			Content: "I will update the TODO list.",
 			ToolCalls: []ToolCall{{
-				ID:        "call_plan",
-				Name:      "update_plan",
-				Arguments: `{"plan": `,
+				ID:        "call_todo",
+				Name:      "update_todo",
+				Arguments: `{"todos": `,
 			}},
 		},
 		{
 			Role:       "tool",
-			Name:       "update_plan",
-			ToolCallID: "call_plan",
+			Name:       "update_todo",
+			ToolCallID: "call_todo",
 			Content:    `{"error":"request body ended before the object closed","error_kind":"invalid_tool_arguments","ok":false}`,
 		},
 		{Role: "user", Content: "continue again"},
@@ -132,7 +132,7 @@ func TestRepairToolCallHistory_keepsRecoverableInvalidToolArguments(t *testing.T
 	if len(got[1].ToolCalls) != 1 {
 		t.Fatalf("expected invalid tool call to be retained, got %+v", got[1].ToolCalls)
 	}
-	if got[2].ToolCallID != "call_plan" || got[3].Content != "continue again" {
+	if got[2].ToolCallID != "call_todo" || got[3].Content != "continue again" {
 		t.Fatalf("unexpected repaired messages: %+v", got)
 	}
 }
@@ -166,9 +166,9 @@ func TestRepairToolCallHistory_synthesizesInvalidToolArgumentsOutput(t *testing.
 		{
 			Role: "assistant",
 			ToolCalls: []ToolCall{{
-				ID:        "call_plan",
-				Name:      "update_plan",
-				Arguments: `{"plan": `,
+				ID:        "call_todo",
+				Name:      "update_todo",
+				Arguments: `{"todos": `,
 			}},
 		},
 	}
@@ -179,7 +179,7 @@ func TestRepairToolCallHistory_synthesizesInvalidToolArgumentsOutput(t *testing.
 	if len(got) != 3 {
 		t.Fatalf("expected synthetic result, got %d messages: %+v", len(got), roles(got))
 	}
-	if got[2].Role != "tool" || got[2].ToolCallID != "call_plan" {
+	if got[2].Role != "tool" || got[2].ToolCallID != "call_todo" {
 		t.Fatalf("expected synthetic tool result, got %+v", got[2])
 	}
 	if !strings.Contains(got[2].Content, `"error_kind":"invalid_tool_arguments"`) {
@@ -193,12 +193,12 @@ func TestRepairToolCallHistory_keepsInvalidToolArgumentsWithoutMatchingToolError
 		{
 			Role: "assistant",
 			ToolCalls: []ToolCall{{
-				ID:        "call_plan",
-				Name:      "update_plan",
-				Arguments: `{"plan": `,
+				ID:        "call_todo",
+				Name:      "update_todo",
+				Arguments: `{"todos": `,
 			}},
 		},
-		{Role: "tool", Name: "update_plan", ToolCallID: "call_plan", Content: `{"error":"different failure","error_kind":"tool","ok":false}`},
+		{Role: "tool", Name: "update_todo", ToolCallID: "call_todo", Content: `{"error":"different failure","error_kind":"tool","ok":false}`},
 	}
 	_, err := RepairAndValidateToolCallHistory(msgs)
 	if err == nil {

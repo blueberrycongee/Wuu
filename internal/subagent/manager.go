@@ -1429,10 +1429,10 @@ func cloneStreamEvent(ev providers.StreamEvent) providers.StreamEvent {
 		call := cloneToolCall(*ev.ToolCall)
 		out.ToolCall = &call
 	}
-	if ev.PlanUpdate != nil {
-		update := *ev.PlanUpdate
-		update.Plan = append([]providers.PlanStep(nil), ev.PlanUpdate.Plan...)
-		out.PlanUpdate = &update
+	if ev.TodoUpdate != nil {
+		update := *ev.TodoUpdate
+		update.Todos = append([]providers.TodoItem(nil), ev.TodoUpdate.Todos...)
+		out.TodoUpdate = &update
 	}
 	if ev.Lifecycle != nil {
 		lifecycle := *ev.Lifecycle

@@ -55,8 +55,8 @@ const (
 	CapabilitySessionLookup    Capability = "session.lookup"
 	CapabilitySessionWorkspace Capability = "session.workspace"
 
-	// Plan / skills.
-	CapabilityPlan  Capability = "plan"
+	// TODO / skills.
+	CapabilityTodo  Capability = "todo"
 	CapabilitySkill Capability = "skill"
 
 	// Persistent named-agent group chat.
@@ -96,7 +96,7 @@ func All() []Capability {
 		CapabilityWebSearch,
 		CapabilitySessionLookup,
 		CapabilitySessionWorkspace,
-		CapabilityPlan,
+		CapabilityTodo,
 		CapabilitySkill,
 		CapabilityChat,
 		CapabilityMCP,

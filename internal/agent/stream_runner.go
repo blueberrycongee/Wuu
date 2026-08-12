@@ -491,10 +491,10 @@ func (r *StreamRunner) runModelToolLoop(ctx context.Context, history []providers
 				ToolResult:       truncateLog(textResult, 2000),
 				ToolResultDetail: resultPointer(result),
 			})
-			if update, ok := planUpdateEventFromToolResult(toolCall, textResult); ok {
+			if update, ok := todoUpdateEventFromToolResult(toolCall, textResult); ok {
 				effectiveOnEvent(providers.StreamEvent{
-					Type:       providers.EventPlanUpdate,
-					PlanUpdate: update,
+					Type:       providers.EventTodoUpdate,
+					TodoUpdate: update,
 				})
 			}
 		},
@@ -632,8 +632,8 @@ func (r *StreamRunner) pendingToolResultMessages(ctx context.Context, history []
 	return messages, nil
 }
 
-func planUpdateEventFromToolResult(call providers.ToolCall, result string) (*providers.PlanUpdate, bool) {
-	if call.Display == nil || call.Display.Capability != "plan" {
+func todoUpdateEventFromToolResult(call providers.ToolCall, result string) (*providers.TodoUpdate, bool) {
+	if call.Display == nil || call.Display.Capability != "todo" {
 		return nil, false
 	}
 	var status struct {
@@ -642,8 +642,8 @@ func planUpdateEventFromToolResult(call providers.ToolCall, result string) (*pro
 	if err := json.Unmarshal([]byte(result), &status); err != nil || status.Status != "updated" {
 		return nil, false
 	}
-	var update providers.PlanUpdate
-	if err := json.Unmarshal([]byte(call.Arguments), &update); err != nil || len(update.Plan) == 0 {
+	var update providers.TodoUpdate
+	if err := json.Unmarshal([]byte(call.Arguments), &update); err != nil || len(update.Todos) == 0 {
 		return nil, false
 	}
 	return &update, true

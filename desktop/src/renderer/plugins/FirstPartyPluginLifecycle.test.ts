@@ -35,7 +35,7 @@ const repositoryRoot = basename(process.cwd()) === "desktop"
   ? resolve(process.cwd(), "..")
   : process.cwd();
 const bundledRoot = resolve(repositoryRoot, "internal/plugin/bundled");
-const firstPartyPluginIds = ["goal", "subagent", "automation", "memory", "dream", "plan"] as const;
+const firstPartyPluginIds = ["goal", "subagent", "automation", "memory", "dream", "todo"] as const;
 
 afterEach(() => {
   for (const style of document.head.querySelectorAll("style[data-wuu-plugin-id]")) {
@@ -77,9 +77,9 @@ describe("first-party desktop plugin lifecycle", () => {
       "dream:dream.settings",
     ]);
     expect(host.getInspectorSections().map((item) => `${item.pluginId}:${item.id}`)).toEqual([
-      "plan:current-plan",
+      "todo:current-todo",
     ]);
-    expect(host.getPresenters("conversation.tool-activity", "plan").at(-1)?.pluginId).toBe("plan");
+    expect(host.getPresenters("conversation.tool-activity", "todo").at(-1)?.pluginId).toBe("todo");
     expect(document.head.querySelectorAll("style[data-wuu-plugin-id]")).toHaveLength(6);
 
     for (const pluginId of firstPartyPluginIds) {
@@ -92,7 +92,7 @@ describe("first-party desktop plugin lifecycle", () => {
     expect(host.getNavigationEntries()).toEqual([]);
     expect(host.getSettingsPages()).toEqual([]);
     expect(host.getInspectorSections()).toEqual([]);
-    expect(host.getPresenters("conversation.tool-activity", "plan")).toEqual([]);
+    expect(host.getPresenters("conversation.tool-activity", "todo")).toEqual([]);
     expect(document.head.querySelector("style[data-wuu-plugin-id]")).toBeNull();
   });
 

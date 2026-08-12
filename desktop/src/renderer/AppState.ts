@@ -6,7 +6,7 @@ import type {
   ExtensionInventoryRecord,
   GitStatusResult,
   InitializeResult,
-  PlanUpdate,
+  TodoUpdate,
   PluginInventoryChangedNotification,
   RuntimeContext,
   ServerEvent,
@@ -2407,9 +2407,9 @@ function activeThreadIDForState(state: AppState): string | undefined {
   return activeThreadForState(state)?.id;
 }
 
-function latestPlanUpdateForThread(
+function latestTodoUpdateForThread(
   thread: Thread | undefined,
-): PlanUpdate | undefined {
+): TodoUpdate | undefined {
   if (!thread) {
     return undefined;
   }
@@ -2417,10 +2417,10 @@ function latestPlanUpdateForThread(
     const turn = thread.turns[turnIndex];
     for (let itemIndex = turn.items.length - 1; itemIndex >= 0; itemIndex--) {
       const item = turn.items[itemIndex];
-      if (item.display?.capability !== "plan" || !item.arguments) {
+      if (item.display?.capability !== "todo" || !item.arguments) {
         continue;
       }
-      const update = parsePlanUpdateArguments(item.arguments);
+      const update = parseTodoUpdateArguments(item.arguments);
       if (update) {
         return update;
       }
@@ -2429,58 +2429,58 @@ function latestPlanUpdateForThread(
   return undefined;
 }
 
-// Gates `latestPlanUpdateForThread` on the thread still running a turn.
+// Gates `latestTodoUpdateForThread` on the thread still running a turn.
 // The floating "跳到最新" pill cluster's progress chip should track only a
-// plan that is actively in flight — once the turn completes, the message
+// TODO list that is actively in flight — once the turn completes, the message
 // flow's own completed-turn action row takes over that vertical space, and
-// a stale plan chip would sit on top of it. `latestPlanUpdateForThread`
+// a stale TODO chip would sit on top of it. `latestTodoUpdateForThread`
 // itself stays turn-status-agnostic: the environment side panel (opened
-// explicitly by the user) intentionally keeps showing the most recent plan
+// explicitly by the user) intentionally keeps showing the most recent TODO list
 // as a completed checklist after the turn finishes.
-function activePlanUpdateForThread(
+function activeTodoUpdateForThread(
   thread: Thread | undefined,
-): PlanUpdate | undefined {
+): TodoUpdate | undefined {
   if (!isThreadRunning(thread)) {
     return undefined;
   }
-  return latestPlanUpdateForThread(thread);
+  return latestTodoUpdateForThread(thread);
 }
 
-function parsePlanUpdateArguments(
+function parseTodoUpdateArguments(
   argumentsJSON: string,
-): PlanUpdate | undefined {
+): TodoUpdate | undefined {
   let parsed: unknown;
   try {
     parsed = JSON.parse(argumentsJSON);
   } catch {
     return undefined;
   }
-  if (!isRecord(parsed) || !Array.isArray(parsed.plan)) {
+  if (!isRecord(parsed) || !Array.isArray(parsed.todos)) {
     return undefined;
   }
-  const plan = parsed.plan
-    .map((raw): PlanUpdate["plan"][number] | undefined => {
+  const todos = parsed.todos
+    .map((raw): TodoUpdate["todos"][number] | undefined => {
       if (!isRecord(raw)) {
         return undefined;
       }
-      const step = stringValue(raw, "step")?.trim();
+      const content = stringValue(raw, "content")?.trim();
       const status = stringValue(raw, "status");
       if (
-        !step ||
+        !content ||
         (status !== "pending" &&
           status !== "in_progress" &&
           status !== "completed")
       ) {
         return undefined;
       }
-      return { step, status };
+      return { content, status };
     })
-    .filter((item): item is PlanUpdate["plan"][number] => Boolean(item));
-  if (plan.length === 0) {
+    .filter((item): item is TodoUpdate["todos"][number] => Boolean(item));
+  if (todos.length === 0) {
     return undefined;
   }
   const explanation = stringValue(parsed, "explanation")?.trim();
-  return explanation ? { explanation, plan } : { plan };
+  return explanation ? { explanation, todos } : { todos };
 }
 
 function setThreadForPane(
@@ -3313,7 +3313,7 @@ function normalizeModelID(model: string | undefined): string {
 }
 
 export {
-  activePlanUpdateForThread,
+  activeTodoUpdateForThread,
   activeProjectID,
   activeSessionTab,
   activeThreadForState,
@@ -3360,12 +3360,12 @@ export {
   isThreadRunning,
   isThreadUnread,
   latestCompletedTurnID,
-  latestPlanUpdateForThread,
+  latestTodoUpdateForThread,
   markThreadTurnsViewed,
   mergeAgentSummary,
   mergeListedThreads,
   openForkThreadAsPrimary,
-  parsePlanUpdateArguments,
+  parseTodoUpdateArguments,
   persistActiveSessionTabDraft,
   pinnedThreads,
   pinnedThreadSummaries,

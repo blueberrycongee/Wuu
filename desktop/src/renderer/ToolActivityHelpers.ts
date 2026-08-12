@@ -11,7 +11,7 @@ export type ToolActivityKind =
   | "list"
   | "command"
   | "agent"
-  | "plan"
+  | "todo"
   | "interaction"
   | "browser"
   | "skill"
@@ -303,7 +303,7 @@ function displaySectionKey(kind: string | undefined): string | undefined {
     case "search":
     case "command":
     case "agent":
-    case "plan":
+    case "todo":
     case "interaction":
     case "browser":
     case "skill":
@@ -387,8 +387,8 @@ function capabilitySectionKey(capability: string | undefined): string | undefine
     return "context";
   }
   switch (normalized) {
-    case "plan":
-      return "plan";
+    case "todo":
+      return "todo";
     case "skill":
       return "skill";
     default:
@@ -451,12 +451,12 @@ function toolActivitySectionFromItems(
         commands: toolCommands(items),
         error: firstToolError(items),
       };
-    case "plan":
+    case "todo":
       return {
         id: key,
-        kind: "plan",
-        title: t("toolActivity.updatePlan"),
-        detail: compactDetailText(compactPlanUpdates(items)),
+        kind: "todo",
+        title: t("toolActivity.updateTodo"),
+        detail: compactDetailText(compactTodoUpdates(items)),
         status: combinedToolStatus(items),
         commands: toolCommands(items),
         error: firstToolError(items),
@@ -618,13 +618,13 @@ function toolActivityProcessSegmentFromItems(
               : t("toolActivity.subtasks"),
           };
     }
-    case "plan":
+    case "todo":
       return {
         id: key,
-        kind: "plan",
+        kind: "todo",
         status,
         error,
-        text: t("toolActivity.updatePlan"),
+        text: t("toolActivity.updateTodo"),
       };
     case "browser":
       return {
@@ -785,7 +785,7 @@ function compactSkillTargets(items: ThreadItem[]): string[] {
   );
 }
 
-function compactPlanUpdates(items: ThreadItem[]): string[] {
+function compactTodoUpdates(items: ThreadItem[]): string[] {
   return uniqueStrings(
     items
       .map((item) => {

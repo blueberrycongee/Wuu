@@ -84,7 +84,7 @@ import {
 import { createEnvironmentActions } from "./EnvironmentActions";
 import { useGitActionBusy } from "./GitActionBusy";
 import {
-  activePlanUpdateForThread,
+  activeTodoUpdateForThread,
   activeSessionTab,
   activeThreadForState,
   activeThreadIDForState,
@@ -109,7 +109,7 @@ import {
   isStateActiveThreadRunning,
   isThreadRunning,
   isThreadUnread,
-  latestPlanUpdateForThread,
+  latestTodoUpdateForThread,
   markThreadTurnsViewed,
   pinnedThreadSummaries,
   queryTextForUserItem,
@@ -309,7 +309,7 @@ const ENABLE_RUN_DEBUG_PANEL = Boolean(
   RENDERER_ENV?.DEV || RENDERER_ENV?.VITE_ENABLE_RUN_DEBUG_PANEL === "true",
 );
 const ENABLE_CONVERSATION_FIXTURES = Boolean(RENDERER_ENV?.DEV);
-const ENABLE_PLAN_PANEL_DEBUG = Boolean(RENDERER_ENV?.DEV);
+const ENABLE_TODO_PANEL_DEBUG = Boolean(RENDERER_ENV?.DEV);
 
 function useStableCallback<T extends (...args: any[]) => any>(callback: T): T {
   const callbackRef = useRef(callback);
@@ -1292,33 +1292,33 @@ export function App(): JSX.Element {
         clearActivitiesForWorkdir(current, workdir),
       ),
   });
-  const activePlanUpdate = latestPlanUpdateForThread(activeThread);
-  // Distinct from `activePlanUpdate` above: the floating "jump to latest /
-  // progress" pill cluster only tracks a plan while its turn is still
-  // running (see `activePlanUpdateForThread`), whereas the environment
-  // side panel keeps showing the most recent plan — running or completed —
+  const activeTodoUpdate = latestTodoUpdateForThread(activeThread);
+  // Distinct from `activeTodoUpdate` above: the floating "jump to latest /
+  // progress" pill cluster only tracks a TODO list while its turn is still
+  // running (see `activeTodoUpdateForThread`), whereas the environment
+  // side panel keeps showing the most recent TODO list — running or completed —
   // as a persistent checklist once the user opens it.
-  const activePlanPillUpdate = activePlanUpdateForThread(activeThread);
+  const activeTodoPillUpdate = activeTodoUpdateForThread(activeThread);
   const activeContextKey = state.activeContext
     ? runtimeContextKey(state.activeContext)
     : "";
-  const activePlanTotal = activePlanPillUpdate?.plan.length ?? 0;
-  const activePlanCompleted =
-    activePlanPillUpdate?.plan.filter((item) => item.status === "completed").length ?? 0;
-  // Hide the pill once the active plan is fully done; it will reappear when
-  // the next plan arrives with pending work (or more steps are appended).
-  const activePlanVisible = Boolean(
-    activePlanPillUpdate &&
-      activePlanTotal > 0 &&
-      activePlanCompleted < activePlanTotal,
+  const activeTodoTotal = activeTodoPillUpdate?.todos.length ?? 0;
+  const activeTodoCompleted =
+    activeTodoPillUpdate?.todos.filter((item) => item.status === "completed").length ?? 0;
+  // Hide the pill once the active TODO list is fully done; it will reappear
+  // when the next list arrives with pending work (or more items are appended).
+  const activeTodoVisible = Boolean(
+    activeTodoPillUpdate &&
+      activeTodoTotal > 0 &&
+      activeTodoCompleted < activeTodoTotal,
   );
-  const activePlanCurrentItem = activePlanPillUpdate?.plan.find(
+  const activeTodoCurrentItem = activeTodoPillUpdate?.todos.find(
     (item) => item.status === "in_progress",
   );
-  const activePlanNextItem = activePlanPillUpdate?.plan.find(
+  const activeTodoNextItem = activeTodoPillUpdate?.todos.find(
     (item) => item.status === "pending",
   );
-  const activePlanDetailItems = [activePlanCurrentItem, activePlanNextItem].flatMap(
+  const activeTodoDetailItems = [activeTodoCurrentItem, activeTodoNextItem].flatMap(
     (item, index, items) =>
       item && items.findIndex((other) => other === item) === index ? [item] : [],
   );
@@ -3093,7 +3093,7 @@ export function App(): JSX.Element {
 
   const {
     seedConversationFixture,
-    seedPlanPanelDebug,
+    seedTodoPanelDebug,
     activateConversationPane,
     closeConversationPane,
   } = createConversationDemoPaneActions({
@@ -4434,8 +4434,8 @@ export function App(): JSX.Element {
             enableLaunchPreview={ENABLE_LAUNCH_PREVIEW}
             previewingLaunch={previewingLaunch}
             onPinLaunchPreview={() => setLaunchPreviewPinned(true)}
-            enablePlanPanelDebug={ENABLE_PLAN_PANEL_DEBUG}
-            onSeedPlanPanelDebug={seedPlanPanelDebug}
+            enableTodoPanelDebug={ENABLE_TODO_PANEL_DEBUG}
+            onSeedTodoPanelDebug={seedTodoPanelDebug}
             enableRunDebugPanel={ENABLE_RUN_DEBUG_PANEL}
             runDebugRef={runDebugRef}
             runDebugOpen={runDebugOpen}
@@ -4487,7 +4487,7 @@ export function App(): JSX.Element {
           environmentPanelRef={environmentPanelRef}
           environmentPanelClosing={environmentPanelClosing}
           environmentPanelMotionState={environmentPanelMotionState}
-          activePlanUpdate={activePlanUpdate}
+          activeTodoUpdate={activeTodoUpdate}
           environmentPanelMenu={environmentPanelMenu}
           environmentGitBusy={environmentGitBusy}
           pullRequestDisabledReason={pullRequestDisabledReason}
@@ -4731,32 +4731,32 @@ export function App(): JSX.Element {
           </div>
         ) : null}
 
-        {mainConversationDockVisible && activePlanVisible && !mainConversationScrolledAway ? (
+        {mainConversationDockVisible && activeTodoVisible && !mainConversationScrolledAway ? (
           <div
             className="jump-to-latest-cluster"
             aria-label={t("app.currentPositionAndProgress")}
           >
-            {activePlanVisible ? (
+            {activeTodoVisible ? (
               <div
                 className="jump-to-latest-progress"
-                aria-label={t("app.planProgressLabel", {
-                  completed: formatNumber(activePlanCompleted),
-                  total: formatNumber(activePlanTotal),
+                aria-label={t("app.todoProgressLabel", {
+                  completed: formatNumber(activeTodoCompleted),
+                  total: formatNumber(activeTodoTotal),
                 })}
               >
                 {t("app.progressFraction", {
-                  completed: formatNumber(activePlanCompleted),
-                  total: formatNumber(activePlanTotal),
+                  completed: formatNumber(activeTodoCompleted),
+                  total: formatNumber(activeTodoTotal),
                 })}
-                {activePlanDetailItems.length > 0 ? (
+                {activeTodoDetailItems.length > 0 ? (
                   <span className="jump-to-latest-progress-detail" aria-hidden="true">
-                    {activePlanDetailItems.map((item) => (
-                      <span className={`jump-to-latest-progress-step ${item.status}`} key={item.step}>
+                    {activeTodoDetailItems.map((item) => (
+                      <span className={`jump-to-latest-progress-step ${item.status}`} key={item.content}>
                         {t(
                           item.status === "in_progress"
-                            ? "app.planInProgress"
-                            : "app.planNext",
-                          { step: item.step },
+                            ? "app.todoInProgress"
+                            : "app.todoNext",
+                          { content: item.content },
                         )}
                       </span>
                     ))}
