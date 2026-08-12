@@ -14,9 +14,11 @@ const EMPTY_DIAGNOSTICS: readonly PluginGenerationDiagnostic[] = Object.freeze([
 export function PluginSettingsEditor({
   plugin,
   variant = "card",
+  title,
 }: {
   plugin: ExtensionInventoryRecord;
   variant?: "card" | "page";
+  title?: string;
 }): JSX.Element | null {
   const settings = plugin.contributions?.settings ?? [];
   const approved = plugin.approval_state === "official" || plugin.approval_state === "granted";
@@ -60,8 +62,9 @@ export function PluginSettingsEditor({
       className={`plugin-settings-editor plugin-settings-editor-${variant}`}
       data-wuu-component="plugin-settings"
       data-wuu-plugin={plugin.id}
-      aria-label={`${plugin.name} settings`}
+      aria-label={title ?? `${plugin.name} settings`}
     >
+      {title ? <h3 className="plugin-settings-editor-title">{title}</h3> : null}
       {conflicts.map((conflict) => (
         <PluginConflictControl key={conflict.key} conflict={conflict} />
       ))}

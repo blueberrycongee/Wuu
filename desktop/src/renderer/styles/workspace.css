@@ -2420,24 +2420,6 @@ html.resizing-workspace-terminal-split * {
   font-size: 10px;
 }
 
-.extension-package-error {
-  overflow: hidden;
-  color: var(--danger);
-  font-size: 11px;
-  line-height: 1.4;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.extension-package-warning {
-  overflow: hidden;
-  color: var(--wuu-color-warning, var(--ink-secondary));
-  font-size: 11px;
-  line-height: 1.4;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .plugin-settings-editor {
   display: grid;
   grid-column: 2 / -1;
@@ -2451,48 +2433,160 @@ html.resizing-workspace-terminal-split * {
   min-height: 0;
   overflow: auto;
   border-top: 1px solid var(--hairline);
-  padding: 18px 6px 0 0;
+  padding: 16px 6px 0 0;
   overscroll-behavior: contain;
 }
 
+/* Status badge plus key facts sit on one quiet line under the dialog
+ * subtitle. Facts are labeled instead of dumped as bare values. */
 .plugin-detail-summary {
   display: flex;
   min-width: 0;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px 12px;
-  color: var(--ink-tertiary);
-  font-size: 12px;
-  line-height: 1.4;
+  gap: 10px 14px;
 }
 
-.plugin-detail-section {
+.plugin-detail-status {
+  gap: 6px;
+}
+
+.plugin-detail-status-dot {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+/* The base .skill-row-tag paints a bundled orange regardless of tone; the
+ * detail badge borrows its pill chrome but must carry the status tone. */
+.plugin-detail-status.extension-status-good {
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.plugin-detail-status.extension-status-warning {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+.plugin-detail-status.extension-status-danger {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.plugin-detail-facts {
+  display: inline-flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 14px;
+  color: var(--ink-secondary);
+  font-size: var(--font-sm);
+  line-height: 1.45;
+}
+
+.plugin-detail-fact {
+  display: inline-flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.plugin-detail-fact-label {
+  flex: none;
+  color: var(--ink-muted);
+}
+
+/* Alerts are the one boxed element in this panel: they carry a state, not a
+ * grouping, so a soft tone plus an icon replaces bare colored text. */
+.plugin-detail-notices {
   display: grid;
   gap: 8px;
-  margin-top: 18px;
+  margin-top: 14px;
 }
 
-.plugin-detail-section > strong {
+.plugin-detail-notice {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  gap: 8px;
+  border: 1px solid var(--warning);
+  border-radius: var(--radius-sm);
+  padding: 9px 11px;
+  background: var(--warning-soft);
   color: var(--ink);
-  font-size: 13px;
-  font-weight: var(--weight-semibold);
+  font-size: var(--font-sm);
+  line-height: 1.5;
+}
+
+.plugin-detail-notice.is-error {
+  border-color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.plugin-detail-notice svg {
+  flex: none;
+  margin-top: 1px;
+  color: var(--warning);
+}
+
+.plugin-detail-notice.is-error svg {
+  color: var(--danger);
+}
+
+.plugin-detail-notice span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+/* Sections follow the settings language: a quiet label plus whitespace,
+ * hairline-separated rows, no painted boxes. */
+.plugin-detail-section {
+  display: grid;
+  gap: 4px;
+  margin-top: 20px;
+}
+
+.plugin-detail-section-title {
+  margin: 0;
+  color: var(--ink-muted);
+  font-size: var(--font-sm);
+  font-weight: 400;
+  line-height: 1.3;
 }
 
 .plugin-detail-provenance {
   display: grid;
   min-width: 0;
-  grid-template-columns: max-content minmax(0, 1fr);
-  gap: 7px 12px;
   margin: 0;
-  color: var(--ink-tertiary);
-  font-size: 11px;
-  line-height: 1.45;
+}
+
+.plugin-detail-provenance-row {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(76px, max-content) minmax(0, 1fr);
+  gap: 14px;
+  border-bottom: 1px solid var(--hairline-soft);
+  padding: 7px 0;
+}
+
+.plugin-detail-provenance-row:last-child {
+  border-bottom: 0;
 }
 
 .plugin-detail-provenance dt,
 .plugin-detail-provenance dd {
   min-width: 0;
   margin: 0;
+  font-size: var(--font-sm);
+  line-height: 1.45;
+}
+
+.plugin-detail-provenance dt {
+  color: var(--ink-muted);
 }
 
 .plugin-detail-provenance dd {
@@ -2503,12 +2597,21 @@ html.resizing-workspace-terminal-split * {
 
 .plugin-detail-provenance code {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .plugin-detail-dialog .plugin-settings-editor {
   grid-column: auto;
-  margin-top: 18px;
+  margin-top: 20px;
+}
+
+.plugin-settings-editor-title {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--ink-muted);
+  font-size: var(--font-sm);
+  font-weight: 400;
+  line-height: 1.3;
 }
 
 .plugin-detail-dialog .environment-dialog-footer .extension-package-more {

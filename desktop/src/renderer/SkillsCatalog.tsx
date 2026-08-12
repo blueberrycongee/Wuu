@@ -1,4 +1,6 @@
 import {
+  AlertCircle,
+  AlertTriangle,
   ChevronRight,
   MoreHorizontal,
   PackagePlus,
@@ -559,6 +561,7 @@ function PluginDetailDialog({
   const managed = record as ManagedExtensionPackage;
   const primaryAction = extensionPackagePrimaryAction(managed);
   const secondaryAction = extensionPackageSecondaryAction(managed);
+  const tone = extensionPackageTone(managed);
   const mutating = packageMutation.startsWith(`${record.id}:`);
   const grantUnavailable =
     (primaryAction === "grant" || primaryAction === "promote_update") &&
@@ -618,37 +621,88 @@ function PluginDetailDialog({
     >
       <div className="plugin-detail-body">
         <div className="plugin-detail-summary">
-          <span className={`skill-row-tag skill-row-tag-neutral extension-status extension-status-${extensionPackageTone(managed)}`}>
+          <span
+            className={`skill-row-tag extension-status extension-status-${tone} plugin-detail-status${tone === "muted" ? " skill-row-tag-neutral" : ""}`}
+          >
+            <span className="plugin-detail-status-dot" aria-hidden="true" />
             {extensionPackageStatusLabel(managed, t)}
           </span>
-          {managed.version ? <span>v{managed.version}</span> : null}
-          <span>{t("skills.pluginScope", { scope: record.provenance.scope })}</span>
-          <span>{extensionContributionSummary(managed, t)}</span>
-          {record.pending_update ? (
-            <span>{t("skills.pluginUpdateReady", { version: record.pending_update.version ?? "" })}</span>
-          ) : null}
+          <span className="plugin-detail-facts">
+            {managed.version ? (
+              <span className="plugin-detail-fact">
+                <span className="plugin-detail-fact-label">{t("skills.pluginVersionLabel")}</span>
+                <span>v{managed.version}</span>
+              </span>
+            ) : null}
+            <span className="plugin-detail-fact">
+              <span className="plugin-detail-fact-label">{t("skills.pluginScopeLabel")}</span>
+              <span>{record.provenance.scope}</span>
+            </span>
+            <span className="plugin-detail-fact">
+              <span className="plugin-detail-fact-label">{t("skills.pluginContributionsLabel")}</span>
+              <span>{extensionContributionSummary(managed, t)}</span>
+            </span>
+          </span>
         </div>
+
+        {record.pending_update || (managed.runtime_state === "failed" && managed.last_error) || (record.activation_issues?.length ?? 0) > 0 ? (
+          <div className="plugin-detail-notices">
+            {record.pending_update ? (
+              <div className="plugin-detail-notice is-warning" role="status">
+                <AlertTriangle className="icon-sm" aria-hidden="true" />
+                <span>{t("skills.pluginUpdateReady", { version: record.pending_update.version ?? "" })}</span>
+              </div>
+            ) : null}
+            {managed.runtime_state === "failed" && managed.last_error ? (
+              <div className="plugin-detail-notice is-error" role="alert">
+                <AlertCircle className="icon-sm" aria-hidden="true" />
+                <span>{managed.last_error}</span>
+              </div>
+            ) : null}
+            {record.activation_issues?.map((issue) => (
+              <div
+                className={`plugin-detail-notice ${issue.kind === "missing_requirement" ? "is-error" : "is-warning"}`}
+                role="status"
+                key={`${issue.kind}:${issue.related_plugin_id}`}
+              >
+                {issue.kind === "missing_requirement" ? (
+                  <AlertCircle className="icon-sm" aria-hidden="true" />
+                ) : (
+                  <AlertTriangle className="icon-sm" aria-hidden="true" />
+                )}
+                <span>
+                  {issue.kind === "missing_requirement"
+                    ? t("skills.pluginDependencyMissing", { plugin: issue.related_plugin_id })
+                    : t("skills.pluginConflictWarning", { plugin: issue.related_plugin_id })}
+                </span>
+              </div>
+            ))}
+          </div>
+        ) : null}
+
         <section className="plugin-detail-section">
-          <strong>{t("skills.pluginActivePackage")}</strong>
+          <h3 className="plugin-detail-section-title">{t("skills.pluginActivePackage")}</h3>
           <dl className="plugin-detail-provenance">
-            <dt>{t("skills.pluginPackageSource")}</dt>
-            <dd>{record.package_source ?? record.provenance.scope}</dd>
+            <div className="plugin-detail-provenance-row">
+              <dt>{t("skills.pluginPackageSource")}</dt>
+              <dd>{record.package_source ?? record.provenance.scope}</dd>
+            </div>
             {record.provenance.path ? (
-              <>
+              <div className="plugin-detail-provenance-row">
                 <dt>{t("skills.pluginActivePath")}</dt>
                 <dd><code>{record.provenance.path}</code></dd>
-              </>
+              </div>
             ) : null}
             {record.fingerprint ? (
-              <>
+              <div className="plugin-detail-provenance-row">
                 <dt>{t("skills.pluginFingerprint")}</dt>
                 <dd title={record.fingerprint}><code>{abbreviateFingerprint(record.fingerprint)}</code></dd>
-              </>
+              </div>
             ) : null}
           </dl>
         </section>
         <section className="plugin-detail-section">
-          <strong>{t("skills.pluginPermissions")}</strong>
+          <h3 className="plugin-detail-section-title">{t("skills.pluginPermissions")}</h3>
           <div className="extension-package-permissions">
             {(record.requested_permissions ?? []).length > 0 ? (
               record.requested_permissions?.map((permission) => (
@@ -659,22 +713,7 @@ function PluginDetailDialog({
             )}
           </div>
         </section>
-        {managed.runtime_state === "failed" && managed.last_error ? (
-          <div className="extension-package-error">{managed.last_error}</div>
-        ) : null}
-        {record.activation_issues?.map((issue) => (
-          <div
-            className={issue.kind === "missing_requirement"
-              ? "extension-package-error"
-              : "extension-package-warning"}
-            key={`${issue.kind}:${issue.related_plugin_id}`}
-          >
-            {issue.kind === "missing_requirement"
-              ? t("skills.pluginDependencyMissing", { plugin: issue.related_plugin_id })
-              : t("skills.pluginConflictWarning", { plugin: issue.related_plugin_id })}
-          </div>
-        ))}
-        <PluginSettingsEditor plugin={record} />
+        <PluginSettingsEditor plugin={record} title={t("skills.pluginSettingsLabel")} />
       </div>
     </Modal>
   );
