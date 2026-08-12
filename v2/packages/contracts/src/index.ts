@@ -50,6 +50,7 @@ export type AgentSessionRecord =
       name: string;
       content: TextContent[];
       isError: boolean;
+      meta?: JsonValue;
     }>
   | SessionRecord<"agent/model-usage", {
       messageId: string;
@@ -167,6 +168,7 @@ export interface ToolExecution {
 export interface ToolResult {
   content: TextContent[];
   isError?: boolean;
+  meta?: JsonValue;
 }
 
 export interface ToolDefinition {
@@ -174,6 +176,7 @@ export interface ToolDefinition {
   description: string;
   access: "read" | "write" | "execute";
   inputSchema: JsonValue;
+  available?(sessionId: string): boolean | Promise<boolean>;
   execute(input: JsonValue, execution: ToolExecution): Promise<ToolResult>;
 }
 
@@ -183,12 +186,18 @@ export interface AgentLoopInput {
   signal: AbortSignal;
 }
 
+export interface AgentLoopPrepareInput {
+  sessionId: string;
+  signal: AbortSignal;
+}
+
 export interface AgentRunResult {
   runId: string;
   status: "completed" | "cancelled" | "failed" | "interrupted";
 }
 
 export interface AgentLoop {
+  prepare(input: AgentLoopPrepareInput): Promise<void>;
   run(input: AgentLoopInput): Promise<AgentRunResult>;
 }
 

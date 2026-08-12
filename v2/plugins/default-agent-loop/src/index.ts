@@ -2,10 +2,12 @@ import { createHash, randomUUID } from "node:crypto";
 import type {
   AgentLoop,
   AgentLoopInput,
+  AgentLoopPrepareInput,
   AgentRunResult,
   AgentSessionRecord,
   CompositionReceiptRecord,
   EventSource,
+  JsonValue,
   ToolCallContent,
   ToolDefinition,
   ToolResult,
@@ -46,13 +48,80 @@ function cacheHint(sessionId: string, systemPrompt: string, messages: readonly M
   };
 }
 
-function surfaceGeneration(systemPrompt: string, tools: readonly ModelTool[]): string {
+function surfaceGeneration(contextGeneration: string, tools: readonly ModelTool[]): string {
   return `sha256:${createHash("sha256")
-    .update(JSON.stringify({ systemPrompt, tools }))
+    .update(JSON.stringify({ contextGeneration, tools }))
     .digest("hex")}`;
 }
 
+function schemaError(schema: JsonValue, value: JsonValue, path = "$"): string | undefined {
+  if (schema === true) return;
+  if (schema === false) return `${path} is not allowed`;
+  if (!schema || typeof schema !== "object" || Array.isArray(schema)) {
+    return `${path} has an invalid schema`;
+  }
+  if (Array.isArray(schema.enum) && !schema.enum.some((item) =>
+    JSON.stringify(item) === JSON.stringify(value))) {
+    return `${path} is not one of the allowed values`;
+  }
+  const expected = schema.type;
+  if (expected === "object") {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return `${path} must be an object`;
+    const properties = schema.properties && typeof schema.properties === "object" && !Array.isArray(schema.properties)
+      ? schema.properties
+      : {};
+    if (Array.isArray(schema.required)) {
+      for (const key of schema.required) {
+        if (typeof key === "string" && !(key in value)) return `${path}.${key} is required`;
+      }
+    }
+    for (const [key, child] of Object.entries(value)) {
+      const childSchema = properties[key];
+      if (childSchema === undefined) {
+        if (schema.additionalProperties === false) return `${path}.${key} is not allowed`;
+        continue;
+      }
+      const error = schemaError(childSchema, child, `${path}.${key}`);
+      if (error) return error;
+    }
+    return;
+  }
+  if (expected === "array") {
+    if (!Array.isArray(value)) return `${path} must be an array`;
+    if (typeof schema.minItems === "number" && value.length < schema.minItems) {
+      return `${path} must contain at least ${schema.minItems} items`;
+    }
+    if (schema.items !== undefined) {
+      for (const [index, child] of value.entries()) {
+        const error = schemaError(schema.items, child, `${path}[${index}]`);
+        if (error) return error;
+      }
+    }
+    return;
+  }
+  if (expected === "string") return typeof value === "string" ? undefined : `${path} must be a string`;
+  if (expected === "number") return typeof value === "number" && Number.isFinite(value)
+    ? undefined
+    : `${path} must be a number`;
+  if (expected === "integer") return typeof value === "number" && Number.isInteger(value)
+    ? undefined
+    : `${path} must be an integer`;
+  if (expected === "boolean") return typeof value === "boolean" ? undefined : `${path} must be a boolean`;
+  if (expected === "null") return value === null ? undefined : `${path} must be null`;
+  return expected === undefined ? undefined : `${path} uses an unsupported schema type`;
+}
+
 class DefaultAgentLoop implements AgentLoop {
+  private surface: {
+    systemPrompt: string;
+    tools: ModelTool[];
+    sources: string[];
+    generation: string;
+    provider: ModelProvider;
+    executors: ReadonlyMap<string, ToolDefinition>;
+    replay(signal: AbortSignal): Promise<ModelMessage[]>;
+  } | undefined;
+
   constructor(
     private readonly ctx: Context,
   ) {}
@@ -61,48 +130,46 @@ class DefaultAgentLoop implements AgentLoop {
     return this.ctx.sessions.append(sessionId, source, record);
   }
 
+  async prepare(input: AgentLoopPrepareInput): Promise<void> {
+    if (this.surface) throw new Error("Agent loop surface is already prepared");
+    const context = await this.ctx.modelContext.build(input.sessionId, input.signal);
+    const availableTools = new Map(this.ctx.tools.entries());
+    const allowedTools = await this.ctx.toolPolicy.allowedTools(
+      input.sessionId,
+      context.tools.map((tool) => tool.name),
+    );
+    input.signal.throwIfAborted();
+    const tools = context.tools.filter((tool) =>
+      allowedTools.has(tool.name) && availableTools.has(tool.name));
+    this.surface = {
+      systemPrompt: context.systemPrompt,
+      tools,
+      sources: [
+        ...context.sources.filter((entry) => !entry.startsWith("tool:")),
+        ...tools.map((tool) => `tool:${tool.name}`),
+      ],
+      generation: surfaceGeneration(context.generation, tools),
+      provider: this.ctx.providers.require(
+        await this.ctx.modelRouting.resolve(input.sessionId),
+      ),
+      executors: new Map(tools.map((tool) => [tool.name, availableTools.get(tool.name)!])),
+      replay: context.replay,
+    };
+  }
+
   async run(input: AgentLoopInput): Promise<AgentRunResult> {
     const signal = input.signal;
     const runId = input.runId;
     let activeMessageId: string | undefined;
     let unfinishedCalls: ToolCallContent[] = [];
-    let surface: {
-      systemPrompt: string;
-      tools: ModelTool[];
-      sources: string[];
-      generation: string;
-      provider: ModelProvider;
-      executors: ReadonlyMap<string, ToolDefinition>;
-    } | undefined;
+    const surface = this.surface;
+    if (!surface) throw new Error("Agent loop must be prepared before it runs");
 
     try {
       while (true) {
         signal.throwIfAborted();
-        const context = await this.ctx.modelContext.build(input.sessionId, signal);
-        if (!surface) {
-          const availableTools = new Map(this.ctx.tools.entries());
-          const allowedTools = await this.ctx.toolPolicy.allowedTools(
-            input.sessionId,
-            context.tools.map((tool) => tool.name),
-          );
-          const tools = context.tools.filter((tool) =>
-            allowedTools.has(tool.name) && availableTools.has(tool.name));
-          const sources = [
-            ...context.sources.filter((entry) => !entry.startsWith("tool:")),
-            ...tools.map((tool) => `tool:${tool.name}`),
-          ];
-          surface = {
-            systemPrompt: context.systemPrompt,
-            tools,
-            sources,
-            generation: surfaceGeneration(context.systemPrompt, tools),
-            provider: this.ctx.providers.require(
-              await this.ctx.modelRouting.resolve(input.sessionId),
-            ),
-            executors: new Map(tools.map((tool) => [tool.name, availableTools.get(tool.name)!])),
-          };
-        }
-        const requestCache = cacheHint(input.sessionId, surface.systemPrompt, context.messages);
+        const messages = await surface.replay(signal);
+        const requestCache = cacheHint(input.sessionId, surface.systemPrompt, messages);
         const receipt: CompositionReceiptRecord = {
           type: "context/composition-receipt",
           data: {
@@ -128,7 +195,7 @@ class DefaultAgentLoop implements AgentLoop {
         let stopReason: "stop" | "tool_calls" | undefined;
         let usage: ModelUsage | undefined;
         for await (const event of surface.provider.stream({
-          messages: context.messages,
+          messages,
           tools: surface.tools,
           systemPrompt: surface.systemPrompt,
           cache: requestCache,
@@ -183,12 +250,22 @@ class DefaultAgentLoop implements AgentLoop {
         }
 
         unfinishedCalls = [...calls];
+        const callErrors = new Map(calls.map((call) => {
+          const tool = surface.executors.get(call.name);
+          return [call.callId, tool ? schemaError(tool.inputSchema, call.input) : undefined] as const;
+        }));
         for (const call of calls) {
           signal.throwIfAborted();
           let result: ToolResult;
           const tool = surface.executors.get(call.name);
+          const validationError = callErrors.get(call.callId);
           try {
-            result = tool
+            result = validationError
+              ? {
+                  content: [{ type: "text", text: `invalid tool input: ${validationError}` }],
+                  isError: true,
+                }
+              : tool
               ? await tool.execute(call.input, {
                   sessionId: input.sessionId,
                   callId: call.callId,
@@ -214,6 +291,7 @@ class DefaultAgentLoop implements AgentLoop {
               name: call.name,
               content: result.content,
               isError: result.isError ?? false,
+              ...(result.meta === undefined ? {} : { meta: result.meta }),
             },
           });
           unfinishedCalls.shift();

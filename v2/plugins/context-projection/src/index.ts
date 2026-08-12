@@ -14,6 +14,7 @@ import {
   type Context,
   type ModelContextService,
   type Plugin,
+  type ToolResultProjectionService,
 } from "@wuu-v2/kernel";
 
 function canonicalJson(value: JsonValue): JsonValue {
@@ -30,9 +31,9 @@ function surfaceGeneration(systemPrompt: string, tools: readonly {
   name: string;
   description: string;
   inputSchema: JsonValue;
-}[]): string {
+}[], toolResultProjection: string): string {
   return `sha256:${createHash("sha256")
-    .update(JSON.stringify({ systemPrompt, tools }))
+    .update(JSON.stringify({ systemPrompt, tools, toolResultProjection }))
     .digest("hex")}`;
 }
 
@@ -63,10 +64,11 @@ function validateSeed(messages: readonly ModelMessage[]): void {
   if (calls.size) throw new Error(`unpaired tool call in model context seed: ${calls.values().next().value}`);
 }
 
-function reconstructMessages(
+async function reconstructMessages(
   events: readonly SessionEvent[],
   strict: boolean,
   signal: AbortSignal,
+  toolResults: ToolResultProjectionService,
 ) {
   const messages: ModelMessage[] = [];
   const pending = new Map<string, PendingAssistant>();
@@ -138,16 +140,28 @@ function reconstructMessages(
         if (expectedName !== record.data.name) {
           throw new Error(`tool result name mismatch: ${record.data.callId}`);
         }
+        const projected = await toolResults.project(
+          event.sessionId,
+          record.data,
+          signal,
+        );
         messages.push({
           role: "tool",
           callId: record.data.callId,
           name: record.data.name,
-          content: record.data.content,
-          isError: record.data.isError,
+          content: projected.content,
+          isError: projected.isError,
         });
         pendingCalls.delete(record.data.callId);
         break;
       }
+      case "agent/run-state":
+        if (record.data.state === "interrupted" && (pending.size || pendingCalls.size)) {
+          messages.length = safeLength;
+          pending.clear();
+          pendingCalls.clear();
+        }
+        break;
       default:
         break;
     }
@@ -156,8 +170,12 @@ function reconstructMessages(
       safeSeq = event.seq;
     }
   }
-  if (strict && pendingCalls.size) {
-    throw new Error(`unpaired tool call: ${pendingCalls.keys().next().value}`);
+  const incomplete = pending.size > 0 || pendingCalls.size > 0;
+  if (strict && incomplete) {
+    if (pendingCalls.size) {
+      throw new Error(`unpaired tool call: ${pendingCalls.keys().next().value}`);
+    }
+    throw new Error(`incomplete assistant message: ${pending.keys().next().value}`);
   }
   return {
     messages: strict ? messages : messages.slice(0, safeLength),
@@ -170,26 +188,57 @@ class DefaultModelContextService extends Service implements ModelContextService 
     super(ctx, "modelContext");
   }
 
-  async build(sessionId: string, signal: AbortSignal) {
+  async messages(sessionId: string, signal: AbortSignal) {
+    return this.projectMessages(sessionId, signal, this.ctx.toolResultProjection);
+  }
+
+  private async projectMessages(
+    sessionId: string,
+    signal: AbortSignal,
+    toolResults: ToolResultProjectionService,
+  ) {
     signal.throwIfAborted();
     const events = await this.ctx.sessions.load(sessionId);
-    const { messages } = reconstructMessages(events, true, signal);
+    return (await reconstructMessages(
+      events,
+      true,
+      signal,
+      toolResults,
+    )).messages;
+  }
+
+  async build(sessionId: string, signal: AbortSignal) {
+    const toolResults = this.ctx.toolResultProjection;
+    const messages = await this.projectMessages(sessionId, signal, toolResults);
 
     const prompt = await this.ctx.prompts.render(sessionId);
-    const tools = this.ctx.tools.entries()
-      .map(([, tool]) => ({
+    const tools = [];
+    for (const [, tool] of [...this.ctx.tools.entries()].sort(([left], [right]) => left.localeCompare(right))) {
+      if (tool.available && !await tool.available(sessionId)) continue;
+      tools.push({
         name: tool.name,
         description: tool.description,
         inputSchema: canonicalJson(tool.inputSchema),
-      }))
-      .sort((left, right) => left.name.localeCompare(right.name));
-    const sources = [...prompt.sources, ...tools.map((tool) => `tool:${tool.name}`)];
+      });
+    }
+    const toolResultSource = `tool-result-projection:${toolResults.generation}`;
+    const sources = [
+      ...prompt.sources,
+      toolResultSource,
+      ...tools.map((tool) => `tool:${tool.name}`),
+    ];
 
     return {
       messages,
+      replay: (replaySignal: AbortSignal) =>
+        this.projectMessages(sessionId, replaySignal, toolResults),
       tools,
       systemPrompt: prompt.text,
-      generation: surfaceGeneration(prompt.text, tools),
+      generation: surfaceGeneration(
+        prompt.text,
+        tools,
+        toolResults.generation,
+      ),
       sources,
     };
   }
@@ -197,7 +246,12 @@ class DefaultModelContextService extends Service implements ModelContextService 
   async snapshot(sessionId: string, signal: AbortSignal) {
     signal.throwIfAborted();
     const events = await this.ctx.sessions.load(sessionId);
-    const { messages, sourceSeq } = reconstructMessages(events, false, signal);
+    const { messages, sourceSeq } = await reconstructMessages(
+      events,
+      false,
+      signal,
+      this.ctx.toolResultProjection,
+    );
     return { messages, sourceSeq };
   }
 }
@@ -208,5 +262,5 @@ export const contextProjectionPlugin: Plugin = function contextProjection(
   new DefaultModelContextService(ctx);
 };
 
-contextProjectionPlugin.inject = ["sessions", "prompts", "tools"];
+contextProjectionPlugin.inject = ["sessions", "prompts", "toolResultProjection", "tools"];
 contextProjectionPlugin.provide = "modelContext";

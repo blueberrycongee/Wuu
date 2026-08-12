@@ -32,19 +32,17 @@ test("serializes concurrent appends into a recoverable sequence", async () => {
   }
 });
 
-test("does not publish an append that cannot commit", async () => {
+test("does not start when the durable directory cannot be owned", async () => {
   const root = await mkdtemp(join(tmpdir(), "wuu-v2-session-fail-"));
   const blocked = join(root, "blocked");
   await writeFile(blocked, "not a directory", "utf8");
   const ctx = createKernelContext();
-  const fiber = await ctx.plugin(jsonlSessionPlugin, { directory: blocked });
-  const published: number[] = [];
-  ctx.sessions.subscribe("session-1", (event) => published.push(event.seq));
   try {
-    await assert.rejects(ctx.sessions.append("session-1", source, record(1)));
-    assert.deepEqual(published, []);
+    await assert.rejects(async () => {
+      await ctx.plugin(jsonlSessionPlugin, { directory: blocked });
+    });
+    assert.equal(ctx.get("sessions"), undefined);
   } finally {
-    await fiber.dispose();
     await ctx.fiber.dispose();
     await rm(root, { recursive: true, force: true });
   }

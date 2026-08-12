@@ -110,15 +110,15 @@ async function importPlugin(
 
 export class WorkspacePluginsService extends Service {
   private readonly loaded = new Map<string, LoadedWorkspacePlugin>();
+  private readonly failures = new Map<string, string>();
   private readonly seenRevisions = new Set<string>();
-  private tail: Promise<void> = Promise.resolve();
   private closing = false;
 
   constructor(ctx: Context, private readonly directory: string) {
     super(ctx, "workspacePlugins");
     ctx.hostActions.register("workspace-plugin/inspect", () =>
       ctx.runtimeInspection.snapshot() as unknown as JsonValue);
-    ctx.hostActions.register("workspace-plugin/list", () => ({ plugins: this.list() }));
+    ctx.hostActions.register("workspace-plugin/list", () => this.status());
     ctx.hostActions.register("workspace-plugin/load", async (input) => ({
       plugin: await this.load(pluginId(input)),
     }));
@@ -129,9 +129,10 @@ export class WorkspacePluginsService extends Service {
     for (const tool of this.tools()) ctx.tools.register(tool.name, tool);
     ctx.effect(() => async () => {
       this.closing = true;
-      await this.tail.catch(() => {});
-      for (const entry of [...this.loaded.values()].reverse()) await entry.fiber.dispose();
-      this.loaded.clear();
+      await this.ctx.composition.run(async () => {
+        for (const entry of [...this.loaded.values()].reverse()) await entry.fiber.dispose();
+        this.loaded.clear();
+      });
     }, "unload workspace plugins");
   }
 
@@ -141,10 +142,7 @@ export class WorkspacePluginsService extends Service {
 
   private enqueue<T>(operation: () => Promise<T>): Promise<T> {
     this.assertOpen();
-    const task = this.tail.then(operation, operation);
-    const tail = task.then(() => undefined, () => undefined);
-    this.tail = tail;
-    return task;
+    return this.ctx.composition.run(operation);
   }
 
   private entry(id: string): string {
@@ -177,13 +175,31 @@ export class WorkspacePluginsService extends Service {
       .sort((left, right) => left.id.localeCompare(right.id));
   }
 
+  status(): {
+    plugins: Array<{ id: string; revision: string }>;
+    failures: Array<{ id: string; error: string }>;
+  } {
+    return {
+      plugins: this.list(),
+      failures: [...this.failures]
+        .map(([id, error]) => ({ id, error }))
+        .sort((left, right) => left.id.localeCompare(right.id)),
+    };
+  }
+
   load(id: string): Promise<{
     id: string;
     revision: string;
     modelChangesApplyFrom: "next-run";
   }> {
     if (!pluginIdPattern.test(id)) throw new Error(`invalid workspace plugin id: ${id}`);
-    return this.enqueue(() => this.replace(id));
+    return this.enqueue(() => this.replace(id)).then((result) => {
+      this.failures.delete(id);
+      return result;
+    }, (error) => {
+      this.failures.set(id, error instanceof Error ? error.message : String(error));
+      throw error;
+    });
   }
 
   private async replace(id: string): Promise<{
@@ -258,6 +274,7 @@ export class WorkspacePluginsService extends Service {
       if (!current) return false;
       await current.fiber.dispose();
       this.loaded.delete(id);
+      this.failures.delete(id);
       return true;
     });
   }
@@ -270,6 +287,7 @@ export class WorkspacePluginsService extends Service {
       try {
         await this.load(entry.name);
       } catch (error) {
+        this.failures.set(entry.name, error instanceof Error ? error.message : String(error));
         this.ctx.logger.error(error);
       }
     }
@@ -287,7 +305,7 @@ export class WorkspacePluginsService extends Service {
       description: "List active trusted TypeScript plugins from .wuu-v2/plugins.",
       access: "read",
       inputSchema: { type: "object", properties: {}, additionalProperties: false },
-      execute: async () => textResult(JSON.stringify(this.list())),
+      execute: async () => textResult(JSON.stringify(this.status())),
     }, {
       name: "workspace_plugin_load",
       description: "Load or reload one trusted TypeScript plugin. Model-visible changes apply from the next Agent run.",
@@ -331,5 +349,5 @@ export const workspaceLoaderPlugin: Plugin<WorkspaceLoaderConfig> = async functi
   await service.discover();
 };
 
-workspaceLoaderPlugin.inject = ["hostActions", "runtimeInspection", "tools"];
+workspaceLoaderPlugin.inject = ["composition", "hostActions", "runtimeInspection", "tools"];
 workspaceLoaderPlugin.provide = "workspacePlugins";

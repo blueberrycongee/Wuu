@@ -4,6 +4,27 @@
   "upstreamRepository": "https://github.com/cordiverse/cordis.git",
   "upstreamRevision": "f46ae95e039f156b966e1e0f7e8d1af91e73e9db",
   "license": "MIT",
-  "distribution": "exact npm package resolved by package-lock.json",
-  "patches": []
+  "distribution": "exact npm package resolved by package-lock.json plus audited postinstall patch queue",
+  "patches": [
+    {
+      "id": "join-repeated-effect-disposal",
+      "upstreamAnchor": "packages/core/src/fiber.ts@f46ae95e039f156b966e1e0f7e8d1af91e73e9db",
+      "diff": "scripts/apply-cordis-patches.mjs#join repeated effect disposal",
+      "failedInvariant": "Repeated disposal must join the cleanup already in progress.",
+      "reproduction": "packages/kernel/src/cordis-conformance.test.ts#repeated disposal joins the same cleanup",
+      "license": "MIT",
+      "upstreamStatus": "local patch; not yet accepted upstream",
+      "removalCondition": "Remove after the pinned upstream release passes the Wuu conformance reproduction without this patch."
+    },
+    {
+      "id": "serialize-fiber-disposers",
+      "upstreamAnchor": "packages/core/src/fiber.ts@f46ae95e039f156b966e1e0f7e8d1af91e73e9db",
+      "diff": "scripts/apply-cordis-patches.mjs#serialize fiber disposers in reverse registration order",
+      "failedInvariant": "A Fiber must drain asynchronous disposers serially in reverse registration order.",
+      "reproduction": "packages/kernel/src/cordis-conformance.test.ts#drains async disposers serially in reverse registration order",
+      "license": "MIT",
+      "upstreamStatus": "local patch; not yet accepted upstream",
+      "removalCondition": "Remove after the pinned upstream release passes the Wuu conformance reproduction without this patch."
+    }
+  ]
 }

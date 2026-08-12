@@ -22,6 +22,7 @@ import {
 import { jsonlSessionPlugin } from "@wuu-v2/plugin-session-jsonl";
 import sideHost from "@wuu-v2/plugin-side/host";
 import { basicToolsPlugin } from "@wuu-v2/plugin-tools-basic";
+import toolResultProjectionPlugin from "@wuu-v2/plugin-tool-result-projection";
 import { workspaceLoaderPlugin } from "@wuu-v2/plugin-workspace-loader";
 import { createKernelContext, kernelPlugin, type Context } from "@wuu-v2/kernel";
 
@@ -67,6 +68,7 @@ export async function createDefaultHostProfile(
     await install(ctx.plugin(jsonlSessionPlugin, { directory: config.dataDirectory }));
     await install(ctx.plugin(corePromptPlugin, { cwd: config.cwd }));
     await install(ctx.plugin(basicToolsPlugin, { cwd: config.cwd }));
+    await install(ctx.plugin(toolResultProjectionPlugin));
     await install(ctx.plugin(contextProjectionPlugin));
     await install(ctx.plugin(conversationProjectionPlugin));
     await install(ctx.plugin(projectionFeedPlugin));

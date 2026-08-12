@@ -1,6 +1,7 @@
 import { Context, Service, type Plugin } from "cordis";
 import type {
   AgentLoopFactory,
+  AgentSessionRecord,
   EventSource,
   JsonValue,
   ModelProvider,
@@ -29,8 +30,13 @@ export interface SessionService {
 }
 
 export interface ModelContextService {
+  messages(
+    sessionId: string,
+    signal: AbortSignal,
+  ): Promise<import("@wuu-v2/contracts").ModelMessage[]>;
   build(sessionId: string, signal: AbortSignal): Promise<{
     messages: import("@wuu-v2/contracts").ModelMessage[];
+    replay(signal: AbortSignal): Promise<import("@wuu-v2/contracts").ModelMessage[]>;
     tools: import("@wuu-v2/contracts").ModelTool[];
     systemPrompt: string;
     generation: string;
@@ -50,6 +56,18 @@ export interface ModelRoutingService {
 export interface ToolPolicyService {
   allowedTools(sessionId: string, available: readonly string[]): Promise<ReadonlySet<string>>;
   initialize(sessionId: string, preset: string): Promise<void>;
+}
+
+export interface ToolResultProjectionService {
+  readonly generation: string;
+  project(
+    sessionId: string,
+    result: Extract<AgentSessionRecord, { type: "agent/tool-result" }>["data"],
+    signal: AbortSignal,
+  ): Promise<{
+    content: import("@wuu-v2/contracts").TextContent[];
+    isError: boolean;
+  }>;
 }
 
 export interface RuntimeFiberSnapshot {
@@ -91,6 +109,24 @@ export type ProjectionFold<T extends JsonValue = JsonValue> = (
 interface ProjectionUnit {
   fold: ProjectionFold;
   initial?: () => JsonValue | undefined;
+}
+
+export class CompositionService extends Service {
+  private tail: Promise<void> = Promise.resolve();
+
+  constructor(ctx: Context) {
+    super(ctx, "composition");
+  }
+
+  run<T>(operation: () => Promise<T>): Promise<T> {
+    const task = this.tail.then(operation, operation);
+    this.tail = task.then(() => undefined, () => undefined);
+    return task;
+  }
+
+  settled(): Promise<void> {
+    return this.tail;
+  }
 }
 
 class UniqueRegistry<T> extends Service {
@@ -319,6 +355,7 @@ export class RuntimeInspectionService extends Service {
 declare module "cordis" {
   interface Context {
     agents: AgentRegistry;
+    composition: CompositionService;
     hostActions: HostActionRegistry;
     modelContext: ModelContextService;
     modelRouting: ModelRoutingService;
@@ -329,11 +366,13 @@ declare module "cordis" {
     sessions: SessionService;
     tools: ToolRegistry;
     toolPolicy: ToolPolicyService;
+    toolResultProjection: ToolResultProjectionService;
   }
 }
 
 export const kernelPlugin: Plugin = function kernel(ctx: Context) {
   new AgentRegistry(ctx);
+  new CompositionService(ctx);
   new HostActionRegistry(ctx);
   new ProjectionRegistry(ctx);
   new PromptRegistry(ctx);
@@ -344,6 +383,7 @@ export const kernelPlugin: Plugin = function kernel(ctx: Context) {
 
 kernelPlugin.provide = [
   "agents",
+  "composition",
   "hostActions",
   "projections",
   "prompts",

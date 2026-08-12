@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AgentSessionRecord } from "@wuu-v2/contracts";
 import { createDefaultHostProfile } from "@wuu-v2/profile-default/host";
+import { providersFromEnvironment } from "@wuu-v2/profile-default/provider-environment";
 
 const smoke = process.argv.includes("--smoke");
 const cwd = process.cwd();
@@ -22,11 +23,6 @@ if (!prompt) {
   throw new Error("Pass a prompt or use --smoke");
 }
 
-const apiKey = process.env.WUU_V2_OPENAI_API_KEY;
-const model = process.env.WUU_V2_MODEL;
-if (!smoke && (!apiKey || !model)) {
-  throw new Error("Set WUU_V2_OPENAI_API_KEY and WUU_V2_MODEL");
-}
 if (smoke) {
   await mkdir(join(workspacePluginDirectory, "smoke"), { recursive: true });
   await writeFile(join(workspacePluginDirectory, "smoke", "index.ts"), `
@@ -48,8 +44,8 @@ const runtime = await createDefaultHostProfile({
   cwd,
   dataDirectory: directory,
   workspacePluginDirectory,
-  providers: [smoke
-    ? {
+  providers: smoke
+    ? [{
         kind: "scripted",
         config: {
           rounds: [
@@ -64,17 +60,11 @@ const runtime = await createDefaultHostProfile({
             { text: "Smoke run completed." },
           ],
         },
-      }
-    : {
-        kind: "openai",
-        config: {
-          apiKey: apiKey!,
-          model: model!,
-          ...(process.env.WUU_V2_OPENAI_BASE_URL
-            ? { baseUrl: process.env.WUU_V2_OPENAI_BASE_URL }
-            : {}),
-        },
-      }],
+      }]
+    : providersFromEnvironment(process.env),
+  ...(process.env.WUU_V2_DEFAULT_MODEL
+    ? { defaultModelId: process.env.WUU_V2_DEFAULT_MODEL }
+    : {}),
 });
 const { ctx, modelId } = runtime;
 
@@ -166,12 +156,23 @@ try {
       generation: "v1",
     }, [
       {
+        type: "agent/user-message",
+        data: {
+          messageId: "interrupted-user",
+          content: [{ type: "text", text: "Keep this committed user message." }],
+        },
+      },
+      {
         type: "agent/run-state",
         data: { runId: recoveryRunId, state: "started" },
       },
       {
         type: "agent/assistant-started",
         data: { messageId: "interrupted-message" },
+      },
+      {
+        type: "agent/assistant-text-delta",
+        data: { messageId: "interrupted-message", delta: "Do not reuse this partial response." },
       },
       {
         type: "agent/assistant-tool-call",
@@ -296,7 +297,14 @@ try {
         item &&
         !Array.isArray(item) &&
         typeof item === "object" &&
-        item.kind === "status" &&
+        item.kind === "message" &&
+        item.id === "interrupted-message" &&
+        item.status === "interrupted") ||
+      !recoveryItems.some((item) =>
+        item &&
+        !Array.isArray(item) &&
+        typeof item === "object" &&
+        item.kind === "tool" &&
         item.status === "interrupted") ||
       !terminalItems.some((item) =>
         item &&
@@ -304,9 +312,11 @@ try {
         typeof item === "object" &&
         item.id === `run:${terminalRunId}:failed` &&
         item.status === "failed") ||
-      recoveredContext?.messages.at(-1)?.role !== "tool" ||
-      !recoveryTypes.includes("agent/tool-result") ||
-      !recoveryTypes.includes("agent/assistant-completed") ||
+      recoveredContext?.messages.length !== 1 ||
+      recoveredContext.messages[0]?.role !== "user" ||
+      recoveredContext.messages[0].content !== "Keep this committed user message." ||
+      recoveryTypes.includes("agent/tool-result") ||
+      recoveryTypes.includes("agent/assistant-completed") ||
       !recordTypes.includes("agent/assistant-tool-call") ||
       !recordTypes.includes("agent/tool-result") ||
       !Array.isArray(historySessions) ||

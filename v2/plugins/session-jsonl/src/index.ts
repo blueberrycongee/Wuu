@@ -12,6 +12,7 @@ import {
   type Plugin,
   type SessionService,
 } from "@wuu-v2/kernel";
+import { acquireWriterLease } from "./writer-lease.js";
 
 export interface JsonlSessionConfig {
   directory: string;
@@ -183,7 +184,9 @@ class JsonlSessionService extends Service implements SessionService {
 }
 
 export const jsonlSessionPlugin: Plugin<JsonlSessionConfig> =
-  function sessionJsonl(ctx: Context, config: JsonlSessionConfig) {
+  async function sessionJsonl(ctx: Context, config: JsonlSessionConfig) {
+    const lease = await acquireWriterLease(config.directory);
+    ctx.effect(() => () => lease.release(), "release Session writer lease");
     new JsonlSessionService(ctx, config.directory);
   };
 

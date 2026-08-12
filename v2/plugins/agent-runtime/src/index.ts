@@ -58,56 +58,11 @@ function openRunIds(events: readonly SessionEvent[]): string[] {
     .map(([runId]) => runId);
 }
 
-function recoveryRecords(events: readonly SessionEvent[], runId: string): AgentSessionRecord[] {
-  const startIndex = events.findIndex((event) => {
-    const record = event.record as AgentSessionRecord;
-    return record.type === "agent/run-state" && record.data.runId === runId && record.data.state === "started";
-  });
-  const tail = startIndex < 0 ? [] : events.slice(startIndex + 1);
-  const activeMessages = new Set<string>();
-  const calls = new Map<string, string>();
-  const messageCalls = new Map<string, Set<string>>();
-  for (const event of tail) {
-    const record = event.record as AgentSessionRecord;
-    if (record.type === "agent/assistant-started") activeMessages.add(record.data.messageId);
-    if (record.type === "agent/assistant-tool-call") {
-      calls.set(record.data.call.callId, record.data.call.name);
-      const ids = messageCalls.get(record.data.messageId) ?? new Set<string>();
-      ids.add(record.data.call.callId);
-      messageCalls.set(record.data.messageId, ids);
-    }
-    if (record.type === "agent/assistant-completed") {
-      activeMessages.delete(record.data.messageId);
-      if (record.data.stopReason !== "tool_calls") {
-        for (const callId of messageCalls.get(record.data.messageId) ?? []) calls.delete(callId);
-      }
-    }
-    if (record.type === "agent/tool-result") calls.delete(record.data.callId);
-  }
-  return [
-    ...[...activeMessages]
-      .filter((messageId) => messageCalls.get(messageId)?.size)
-      .map((messageId): AgentSessionRecord => ({
-        type: "agent/assistant-completed",
-        data: { messageId, stopReason: "tool_calls" },
-      })),
-    ...[...calls].map(([callId, name]): AgentSessionRecord => ({
-      type: "agent/tool-result",
-      data: {
-        callId,
-        name,
-        content: [{
-          type: "text",
-          text: "Tool outcome is unknown after interruption. Verify external state before retrying.",
-        }],
-        isError: true,
-      },
-    })),
-    {
-      type: "agent/run-state",
-      data: { runId, state: "interrupted", error: "Agent run was interrupted by host shutdown" },
-    },
-  ];
+function recoveryRecords(runId: string): AgentSessionRecord[] {
+  return [{
+    type: "agent/run-state",
+    data: { runId, state: "interrupted", error: "Agent run was interrupted by host shutdown" },
+  }];
 }
 
 export class AgentRuntimeService extends Service {
@@ -115,6 +70,7 @@ export class AgentRuntimeService extends Service {
   private readonly starting = new Set<string>();
   private readonly recovering = new Set<string>();
   private readonly pendingStarts = new Set<Promise<AgentRunAcceptance>>();
+  private readonly startingControllers = new Set<AbortController>();
   private closing = false;
 
   constructor(ctx: Context, private readonly agentId: string) {
@@ -133,6 +89,9 @@ export class AgentRuntimeService extends Service {
     });
     this.ctx.effect(() => async () => {
       this.closing = true;
+      for (const controller of this.startingControllers) {
+        controller.abort(new Error("Agent runtime disposed while preparing a run"));
+      }
       await Promise.allSettled(this.pendingStarts);
       const active = [...this.active.values()];
       for (const run of active) run.controller.abort(new Error("Agent runtime disposed"));
@@ -171,23 +130,29 @@ export class AgentRuntimeService extends Service {
     this.starting.add(input.sessionId);
     const runId = randomUUID();
     const controller = new AbortController();
+    this.startingControllers.add(controller);
     try {
       const createAgent = this.ctx.agents.require(agentId);
       const existing = openRunIds(await this.ctx.sessions.load(input.sessionId));
       if (this.closing) throw new Error("Agent runtime is stopping");
       if (existing.length) throw new Error(`session has an unfinished run: ${input.sessionId}`);
-      const accepted = await this.ctx.sessions.appendBatch(input.sessionId, source, [
-        {
-          type: "agent/user-message",
-          data: { messageId: randomUUID(), content: [{ type: "text", text }] },
-        },
-        { type: "agent/run-state", data: { runId, state: "started" } },
-      ] satisfies AgentSessionRecord[]);
+      const loop = createAgent();
+      const accepted = await this.ctx.composition.run(async () => {
+        await loop.prepare({ sessionId: input.sessionId, signal: controller.signal });
+        if (this.closing) throw new Error("Agent runtime is stopping");
+        return this.ctx.sessions.appendBatch(input.sessionId, source, [
+          {
+            type: "agent/user-message",
+            data: { messageId: randomUUID(), content: [{ type: "text", text }] },
+          },
+          { type: "agent/run-state", data: { runId, state: "started" } },
+        ] satisfies AgentSessionRecord[]);
+      });
 
       const task = Promise.resolve().then(async () => {
         let result: AgentRunResult;
         try {
-          result = await createAgent().run({
+          result = await loop.run({
             sessionId: input.sessionId,
             runId,
             signal: controller.signal,
@@ -216,6 +181,7 @@ export class AgentRuntimeService extends Service {
       }
       return { runId, acceptedSeq: accepted.at(-1)!.seq };
     } finally {
+      this.startingControllers.delete(controller);
       this.starting.delete(input.sessionId);
     }
   }
@@ -249,7 +215,7 @@ export class AgentRuntimeService extends Service {
       const open = openRunIds(events);
       if (!open.length) return undefined;
       if (open.length > 1) throw new Error(`session has multiple unfinished runs: ${sessionId}`);
-      await this.ctx.sessions.appendBatch(sessionId, source, recoveryRecords(events, open[0]!));
+      await this.ctx.sessions.appendBatch(sessionId, source, recoveryRecords(open[0]!));
       return open[0];
     } finally {
       this.recovering.delete(sessionId);
@@ -276,5 +242,5 @@ export const agentRuntimePlugin: Plugin<AgentRuntimeConfig> = function agentRunt
   new AgentRuntimeService(ctx, config.agentId);
 };
 
-agentRuntimePlugin.inject = ["agents", "hostActions", "sessions"];
+agentRuntimePlugin.inject = ["agents", "composition", "hostActions", "sessions"];
 agentRuntimePlugin.provide = "agentRuns";
