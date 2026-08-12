@@ -210,6 +210,12 @@ export const conversationStyles = `
   color: var(--ink-muted);
 }
 
+.conversation-empty-state {
+  margin: 18vh 0 0;
+  color: var(--ink-muted);
+  text-align: center;
+}
+
 @keyframes wuu-caret {
   50% { opacity: 0; }
 }

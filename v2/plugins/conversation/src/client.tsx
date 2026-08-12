@@ -56,7 +56,11 @@ function MarkdownMessage({ ownerProps }: { ownerProps?: unknown }) {
         ? "Response cancelled"
         : message.status === "interrupted" ? "Response interrupted" : undefined;
   return (
-    <article className={`message message-${message.role}`} data-status={message.status}>
+    <article
+      className={`message message-${message.role}`}
+      data-status={message.status}
+      aria-label={message.role === "user" ? "Your message" : "Assistant message"}
+    >
       {message.text ? <MarkdownText text={message.text} /> : null}
       {terminal ? <small className="message-terminal" role="status">{terminal}</small> : null}
     </article>
@@ -71,7 +75,7 @@ function ConversationStatus({ ownerProps }: { ownerProps?: unknown }) {
 function GenericToolActivity({ ownerProps }: { ownerProps?: unknown }) {
   const tool = ownerProps as ConversationToolItem;
   return (
-    <article className="tool-activity" data-status={tool.status}>
+    <article className="tool-activity" data-status={tool.status} aria-label={`Tool ${tool.name}`}>
       <div className="tool-activity-heading">
         <code>{tool.name}</code>
         <span>{tool.status}</span>
@@ -167,7 +171,9 @@ const conversationClient: Plugin = function conversation(client) {
               current.top === next.top && current.pinned === next.pinned ? current : next);
           }}
         >
-          {componentClient.conversationSurfaces.render(sessionId, value?.items ?? [])}
+          {value?.items.length
+            ? componentClient.conversationSurfaces.render(sessionId, value.items)
+            : <p className="conversation-empty-state" role="status">Start a task to begin.</p>}
         </div>
         <SlotOutlet
           client={componentClient}
@@ -184,7 +190,7 @@ const conversationClient: Plugin = function conversation(client) {
   function Conversation({ client: componentClient, sessionId }: { client: Context; sessionId?: string }) {
     return sessionId
       ? <SessionConversation componentClient={componentClient} sessionId={sessionId} />
-      : <div className="conversation-empty">Choose or create a task</div>;
+      : <div className="conversation-empty" role="status">Choose or create a task</div>;
   }
 
   const registration = client.slots.contribute("layout/conversation", {
