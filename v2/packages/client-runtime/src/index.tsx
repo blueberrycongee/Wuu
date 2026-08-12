@@ -276,6 +276,14 @@ export class ClientProjectionStore extends Service {
 
   constructor(ctx: Context) {
     super(ctx, "clientProjections");
+    ctx.effect(() => () => {
+      for (const follower of this.followers.values()) follower.stop?.();
+      this.followers.clear();
+      this.transport = undefined;
+      this.rows.clear();
+      this.frameSeq.clear();
+      this.listeners.clear();
+    }, "dispose client projection transport");
   }
 
   private startFollower(
@@ -615,13 +623,23 @@ export class ClientModuleSystem {
   }
 
   private async activateAllNow(ids: string[]): Promise<void> {
+    const uniqueIds = [...new Set(ids)];
+    const loaded = new Map<string, ClientPluginModule>();
+    const wasMaterialized = new Set<string>();
     const pending: Array<{ id: string; fiber: Fiber; module: ClientPluginModule }> = [];
     try {
-      for (const id of ids) {
+      for (const id of uniqueIds) {
         const active = this.fibers.get(id);
         if (active?.uid === null) this.fibers.delete(id);
         else if (active) continue;
+        if (this.modules.has(id)) wasMaterialized.add(id);
         const module = await this.materialize(id);
+        loaded.set(id, module);
+      }
+
+      const order = this.resolveActivationOrder(loaded);
+      for (const id of order) {
+        const module = loaded.get(id)!;
         const materialized = this.fibers.get(id);
         if (materialized?.uid === null) this.fibers.delete(id);
         else if (materialized) continue;
@@ -635,10 +653,59 @@ export class ClientModuleSystem {
       for (const { id, fiber } of pending.reverse()) {
         await fiber.dispose();
         this.fibers.delete(id);
-        this.modules.delete(id);
+      }
+      for (const id of uniqueIds) {
+        if (!wasMaterialized.has(id)) this.modules.delete(id);
       }
       throw error;
     }
+  }
+
+  private resolveActivationOrder(loaded: Map<string, ClientPluginModule>): string[] {
+    const providers = new Map<string, string[]>();
+    for (const [id, module] of loaded) {
+      for (const service of pluginProvide(module.default)) {
+        const ids = providers.get(service) ?? [];
+        ids.push(id);
+        providers.set(service, ids);
+      }
+    }
+    const graph = new Map<string, Set<string>>();
+    const missing: string[] = [];
+    for (const [id, module] of loaded) {
+      const dependencies = new Set<string>();
+      graph.set(id, dependencies);
+      for (const service of pluginInject(module.default)) {
+        if (this.ctx.reflect.get(service) !== undefined) continue;
+        const candidates = providers.get(service) ?? [];
+        if (!candidates.length) {
+          missing.push(`${id} -> ${service}`);
+          continue;
+        }
+        for (const candidate of candidates) dependencies.add(candidate);
+      }
+    }
+    if (missing.length) {
+      throw new Error(`client startup dependency audit failed; missing services: ${missing.join(", ")}`);
+    }
+    const cycle = dependencyCycle(graph);
+    if (cycle) {
+      throw new Error(`client startup dependency audit failed; dependency cycle: ${cycle.join(" -> ")}`);
+    }
+    const visiting = new Set<string>();
+    const visited = new Set<string>();
+    const order: string[] = [];
+    const visit = (id: string) => {
+      if (visited.has(id)) return;
+      if (visiting.has(id)) throw new Error(`client startup dependency audit failed; dependency cycle: ${id}`);
+      visiting.add(id);
+      for (const dependency of graph.get(id) ?? []) visit(dependency);
+      visiting.delete(id);
+      visited.add(id);
+      order.push(id);
+    };
+    for (const id of loaded.keys()) visit(id);
+    return order;
   }
 
   private auditActivation(pending: Array<{
