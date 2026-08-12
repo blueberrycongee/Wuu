@@ -51,9 +51,12 @@ export const layoutStyles = `
   background: var(--paper-solid);
 }
 
-.side-open-button {
-  align-self: start;
-  margin: 54px 10px 0;
+.app-work-surface {
+  position: relative;
+  display: block;
+  min-width: 0;
+  min-height: 0;
+  overflow: visible;
 }
 
 @media (max-width: 760px) {

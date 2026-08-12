@@ -61,11 +61,13 @@ const layoutClient: Plugin = function layout(client) {
             {...(sessionId ? { sessionId } : {})}
           />
         </main>
-        <SlotOutlet
-          client={componentClient}
-          slot={sideSlot}
-          {...(sessionId ? { sessionId } : {})}
-        />
+        <aside className="app-work-surface" aria-label="Auxiliary work surface">
+          <SlotOutlet
+            client={componentClient}
+            slot={sideSlot}
+            {...(sessionId ? { sessionId } : {})}
+          />
+        </aside>
       </div>
       </DialogLayerHost>
     );
