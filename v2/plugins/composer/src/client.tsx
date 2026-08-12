@@ -1,4 +1,4 @@
-import { createElement, useEffect, useRef, useState } from "react";
+import { createElement, useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   Service,
   SlotOutlet,
@@ -55,7 +55,7 @@ function ComposerSurface({
     if (autoFocus) textarea.current?.focus({ preventScroll: true });
   }, [autoFocus, sessionId]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const element = textarea.current;
     if (!element) return;
     if (expanded) {
@@ -145,10 +145,15 @@ function ComposerSurface({
           />
         </div>
       ) : null}
-      <form className="wuu-composer-surface" onSubmit={(event) => {
-        event.preventDefault();
-        void submit();
-      }}>
+      <form
+        className="wuu-composer-surface"
+        data-busy={busy ? "true" : undefined}
+        data-expanded={expanded ? "true" : "false"}
+        onSubmit={(event) => {
+          event.preventDefault();
+          void submit();
+        }}
+      >
         <textarea
           ref={textarea}
           aria-label={ariaLabel}
@@ -186,8 +191,8 @@ function ComposerSurface({
               sessionId={sessionId}
               ownerProps={{ locked: busy }}
             />
-            <span className="wuu-composer-status" role={error ? "alert" : undefined}>
-              {error ?? ""}
+            <span className="wuu-composer-status" role={error ? "alert" : undefined} aria-live="polite">
+              {error ?? (submitting ? "Sending…" : cancelling ? "Stopping…" : "")}
             </span>
           </div>
           <div className="wuu-composer-toolbar-right">
@@ -204,7 +209,7 @@ function ComposerSurface({
               disabled={running ? !onCancel || cancelling : !draft.trim() || submitting || cancelling}
               onClick={running ? () => void cancel() : undefined}
             >
-              {running ? "■" : "↑"}
+              <span aria-hidden="true">{running ? "■" : submitting ? "…" : "↑"}</span>
             </button>
           </div>
         </div>

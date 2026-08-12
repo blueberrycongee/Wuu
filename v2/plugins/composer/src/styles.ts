@@ -22,12 +22,29 @@ export const composerStyles = `
   box-shadow:
     inset 0 0 0 1px var(--surface-4, rgba(31, 35, 40, 0.12)),
     0 8px 24px rgba(20, 24, 28, 0.06);
+  transition:
+    min-height 280ms cubic-bezier(.22, 1, .36, 1),
+    height 280ms cubic-bezier(.22, 1, .36, 1),
+    box-shadow 180ms ease,
+    transform 180ms ease;
 }
 
 .wuu-composer-stack.is-expanded .wuu-composer-surface {
   height: var(--wuu-composer-expanded-height);
   min-height: var(--wuu-composer-expanded-height);
   max-height: var(--wuu-composer-expanded-height);
+}
+
+.wuu-composer-surface:focus-within {
+  box-shadow:
+    inset 0 0 0 1px var(--wuu-accent, #202423),
+    0 10px 30px rgba(20, 24, 28, 0.1);
+}
+
+.wuu-composer-surface[data-busy="true"] {
+  box-shadow:
+    inset 0 0 0 1px var(--surface-4, rgba(31, 35, 40, 0.12)),
+    0 8px 24px rgba(20, 24, 28, 0.08);
 }
 
 .wuu-composer-command-host {
@@ -55,6 +72,7 @@ export const composerStyles = `
   font: inherit;
   font-size: 15px;
   line-height: 22px;
+  transition: min-height 220ms cubic-bezier(.22, 1, .36, 1), color 160ms ease;
 }
 
 .wuu-composer-stack.is-expanded .wuu-composer-surface textarea {
@@ -81,6 +99,11 @@ export const composerStyles = `
   border-radius: 7px;
   color: var(--ink-muted, #6d7471);
   background: transparent;
+  transition: color 160ms ease, background-color 160ms ease, transform 220ms cubic-bezier(.22, 1, .36, 1);
+}
+
+.wuu-composer-stack.is-expanded .wuu-composer-expand {
+  transform: rotate(180deg);
 }
 
 .wuu-composer-expand:hover,
@@ -145,6 +168,7 @@ export const composerStyles = `
   font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
+  min-height: 1em;
 }
 
 .wuu-composer-send {
@@ -159,6 +183,21 @@ export const composerStyles = `
   color: var(--wuu-color-on-accent, #fff);
   background: var(--wuu-accent, #202423);
   font-weight: 600;
+  transition: opacity 160ms ease, transform 160ms ease, background-color 160ms ease;
+}
+
+.wuu-composer-send:not(:disabled):hover {
+  transform: translateY(-1px);
+}
+
+.wuu-composer-send:not(:disabled):active {
+  transform: scale(.94);
+}
+
+.wuu-composer-send:focus-visible,
+.wuu-composer-expand:focus-visible {
+  outline: 2px solid var(--wuu-accent, #202423);
+  outline-offset: 2px;
 }
 
 .wuu-composer-send:disabled {
@@ -167,7 +206,9 @@ export const composerStyles = `
 
 @media (prefers-reduced-motion: reduce) {
   .wuu-composer-surface,
-  .wuu-composer-expand {
+  .wuu-composer-surface textarea,
+  .wuu-composer-expand,
+  .wuu-composer-send {
     transition: none;
   }
 }
