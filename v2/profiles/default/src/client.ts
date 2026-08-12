@@ -21,6 +21,7 @@ interface ProfileClientEntry {
 
 const entries: ProfileClientEntry[] = [
   { id: "theme-default", url: "@wuu-v2/plugin-theme-default/client", revision: revisions["theme-default"], load: () => import("@wuu-v2/plugin-theme-default/client") },
+  { id: "workbench", url: "@wuu-v2/plugin-workbench/client", revision: revisions.workbench, load: () => import("@wuu-v2/plugin-workbench/client") },
   { id: "history", url: "@wuu-v2/plugin-history/client", revision: revisions.history, load: () => import("@wuu-v2/plugin-history/client") },
   { id: "layout", url: "@wuu-v2/plugin-layout/client", revision: revisions.layout, load: () => import("@wuu-v2/plugin-layout/client") },
   { id: "conversation", url: "@wuu-v2/plugin-conversation/client", revision: revisions.conversation, load: () => import("@wuu-v2/plugin-conversation/client") },

@@ -60,7 +60,10 @@ function HistoryRow({
       title={entry.id}
       ref={rowRef}
       onKeyDown={onKeyDown}
-      onClick={() => client.activeSession.select(entry.id)}
+      onClick={() => {
+        client.workbenchNavigation.select("conversation");
+        client.activeSession.select(entry.id);
+      }}
     >
       <span>{value.title}</span>
       {value.running ? <i aria-hidden="true" /> : null}
@@ -98,6 +101,7 @@ function HistorySidebar({ client }: { client: Context }) {
     try {
       const result = objectValue(await client.clientActions.execute("history/create", {}));
       if (typeof result.sessionId !== "string") throw new Error("History did not create a Session");
+      client.workbenchNavigation.select("conversation");
       client.activeSession.select(result.sessionId);
       await refresh();
     } catch (cause) {
@@ -110,6 +114,7 @@ function HistorySidebar({ client }: { client: Context }) {
   const moveSelection = (index: number) => {
     const entry = entries[index];
     if (!entry) return;
+    client.workbenchNavigation.select("conversation");
     client.activeSession.select(entry.id);
     rowRefs.current.get(entry.id)?.focus();
   };
@@ -131,7 +136,7 @@ function HistorySidebar({ client }: { client: Context }) {
       <header className="history-header">
         <strong className="history-wordmark">wuu</strong>
         <button className="history-new-button" type="button" aria-label="New task" disabled={creating} onClick={() => void create()}>
-          <span aria-hidden="true">＋</span>
+          <span aria-hidden="true">＋</span><span>新会话</span>
         </button>
       </header>
       <div className="history-section-heading"><span>Tasks</span><span aria-hidden="true">⌄</span></div>
@@ -163,7 +168,7 @@ function HistorySidebar({ client }: { client: Context }) {
 }
 
 const historyClient: Plugin = function history(client) {
-  client.slots.contribute("layout/sidebar", {
+  client.slots.contribute("workbench/sidebar-content", {
     id: "history",
     component: HistorySidebar,
   });
@@ -177,5 +182,5 @@ const historyClient: Plugin = function history(client) {
   }, "install History styles");
 };
 
-historyClient.inject = ["activeSession", "clientActions", "clientProjections", "slots"];
+historyClient.inject = ["activeSession", "clientActions", "clientProjections", "slots", "workbenchNavigation"];
 export default historyClient;

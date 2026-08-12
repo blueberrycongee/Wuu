@@ -36,7 +36,8 @@ export const historyStyles = `
 
 .history-header button {
   display: grid;
-  width: 30px;
+  width: auto;
+  min-width: 30px;
   height: 30px;
   place-items: center;
   padding: 0;
@@ -45,6 +46,8 @@ export const historyStyles = `
   cursor: pointer;
   transition: background-color 140ms ease, transform 140ms ease;
 }
+
+.history-new-button { grid-auto-flow: column; gap: 4px; padding: 0 7px !important; font-size: 13px !important; white-space: nowrap; }
 
 .history-new-button:active { transform: scale(.95); }
 

@@ -204,8 +204,9 @@ const conversationClient: Plugin = function conversation(client) {
       : <div className="conversation-empty" role="status">Choose or create a task</div>;
   }
 
-  const registration = client.slots.contribute("layout/conversation", {
+  const registration = client.slots.contribute("workbench/main", {
     id: "conversation",
+    select: (props) => props.businessKey === "conversation",
     component: Conversation,
     children: [
       { name: "conversation/composer", kind: "chain", scope: "session" },
@@ -243,6 +244,6 @@ const conversationClient: Plugin = function conversation(client) {
     return () => style.remove();
   }, "install conversation styles");
 };
-conversationClient.inject = ["clientProjections", "scopedStores", "slots"];
+conversationClient.inject = ["clientProjections", "scopedStores", "slots", "workbenchNavigation"];
 conversationClient.provide = "conversationSurfaces";
 export default conversationClient;

@@ -4,6 +4,6 @@
   "private": true,
   "type": "module",
   "exports": { ".": "./src/index.ts", "./client": "./src/client.tsx", "./shared": "./src/shared.ts" },
-  "dependencies": { "@wuu-v2/client-runtime": "0.0.0", "@wuu-v2/contracts": "0.0.0", "@wuu-v2/kernel": "0.0.0", "react": "^19.0.0" },
+  "dependencies": { "@wuu-v2/client-runtime": "0.0.0", "@wuu-v2/contracts": "0.0.0", "@wuu-v2/kernel": "0.0.0", "@wuu-v2/plugin-workbench": "0.0.0", "react": "^19.0.0" },
   "wuu": { "host": "./src/index.ts", "client": "./src/client.tsx" }
 }
