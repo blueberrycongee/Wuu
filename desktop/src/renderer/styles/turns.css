@@ -2340,6 +2340,21 @@
   flex: 0 0 auto;
 }
 
+/* Keep the compacted-state label readable and give the longer detail the
+ * remaining width. Without explicit flex ownership, English copy can shrink
+ * both segments below their painted text width and make them overlap. */
+.context-compaction-title {
+  flex: 0 0 auto;
+}
+
+.context-compaction-detail {
+  display: block;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .process-surface-count {
   display: inline-block;
   min-width: 1ch;

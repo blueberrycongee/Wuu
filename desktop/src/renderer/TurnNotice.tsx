@@ -151,9 +151,9 @@ export function ContextCompactionNotice({
             aria-label={description}
             data-text={title}
           >
-            <strong className="process-surface-segment context-compaction-title">
+            <span className="process-surface-segment context-compaction-title">
               {title}
-            </strong>
+            </span>
             {detail ? (
               <>
                 <span className="process-surface-separator">·</span>
