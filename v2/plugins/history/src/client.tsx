@@ -129,11 +129,12 @@ function HistorySidebar({ client }: { client: Context }) {
   return (
     <div className="history-sidebar">
       <header className="history-header">
-        <strong>Wuu</strong>
-        <button type="button" aria-label="New task" disabled={creating} onClick={() => void create()}>
-          {creating ? "…" : "+"}
+        <strong className="history-wordmark">wuu</strong>
+        <button className="history-new-button" type="button" aria-label="New task" disabled={creating} onClick={() => void create()}>
+          <span aria-hidden="true">＋</span>
         </button>
       </header>
+      <div className="history-section-heading"><span>Tasks</span><span aria-hidden="true">⌄</span></div>
       <nav className="history-list" aria-label="Tasks" aria-busy={loading}>
         {entries.map((entry, index) => (
           <HistoryRow

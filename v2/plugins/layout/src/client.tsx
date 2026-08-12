@@ -15,6 +15,8 @@ const layoutClient: Plugin = function layout(client) {
   let sidebarSlot: SlotHandle;
   function AppFrame({ client: componentClient, ownerProps }: { client: Context; ownerProps?: unknown }) {
     const [sidebarOpen, setSidebarOpen] = useState(false);
+    const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+    const [isNarrow, setIsNarrow] = useState(() => typeof window !== "undefined" && window.matchMedia("(max-width: 760px)").matches);
     const initialSessionId = (ownerProps as { sessionId?: string } | undefined)?.sessionId;
     const selectedSessionId = useActiveSession(componentClient);
     const sessionId = selectedSessionId ?? initialSessionId;
@@ -31,18 +33,32 @@ const layoutClient: Plugin = function layout(client) {
       if (!selectedSessionId && initialSessionId) componentClient.activeSession.select(initialSessionId);
     }, [componentClient, initialSessionId, selectedSessionId]);
     useEffect(() => setSidebarOpen(false), [selectedSessionId]);
+    useEffect(() => {
+      const query = window.matchMedia("(max-width: 760px)");
+      const update = () => {
+        setIsNarrow(query.matches);
+        if (query.matches) setSidebarCollapsed(false);
+        else setSidebarOpen(false);
+      };
+      update();
+      query.addEventListener("change", update);
+      return () => query.removeEventListener("change", update);
+    }, []);
     return (
       <DialogLayerHost>
-      <div className={`app-shell${hasSidebar ? "" : " is-sidebar-empty"}${sidebarOpen ? " is-sidebar-open" : ""}`}>
+      <div className={`app-shell${hasSidebar ? "" : " is-sidebar-empty"}${sidebarOpen ? " is-sidebar-open" : ""}${sidebarCollapsed ? " is-sidebar-collapsed" : ""}`}>
         {hasSidebar ? (
           <button
             type="button"
             className="app-sidebar-toggle"
-            aria-label={sidebarOpen ? "Close task history" : "Open task history"}
-            aria-expanded={sidebarOpen}
-            onClick={() => setSidebarOpen((value) => !value)}
+            aria-label={isNarrow ? (sidebarOpen ? "Close task history" : "Open task history") : (sidebarCollapsed ? "Open task history" : "Collapse task history")}
+            aria-expanded={isNarrow ? sidebarOpen : !sidebarCollapsed}
+            onClick={() => {
+              if (isNarrow) setSidebarOpen((value) => !value);
+              else setSidebarCollapsed((value) => !value);
+            }}
           >
-            {sidebarOpen ? "×" : "☰"}
+            {isNarrow ? (sidebarOpen ? "×" : "☰") : (sidebarCollapsed ? "☰" : "‹")}
           </button>
         ) : null}
         {hasSidebar ? (

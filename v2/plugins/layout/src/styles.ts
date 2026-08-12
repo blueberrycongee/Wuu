@@ -7,14 +7,31 @@ export const layoutStyles = `
   height: 100%;
   min-width: 0;
   min-height: 0;
-  grid-template-columns: 326px minmax(0, 1fr) auto;
+  grid-template-columns: 286px minmax(0, 1fr) auto;
+  transition: grid-template-columns 180ms cubic-bezier(.22,.8,.25,1);
   color: var(--ink);
   background: var(--paper);
 }
 
 .app-sidebar-toggle {
-  display: none;
+  position: absolute;
+  z-index: 5;
+  top: 10px;
+  left: 10px;
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  color: var(--ink);
+  background: transparent;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+  transition: background-color 140ms ease, left 180ms ease, transform 140ms ease;
 }
+.app-sidebar-toggle:hover, .app-sidebar-toggle:focus-visible { background: rgba(31,35,40,.08); outline: none; }
 
 .app-shell.is-sidebar-empty {
   --side-reserved-width: 360px;
@@ -42,6 +59,16 @@ export const layoutStyles = `
   padding: 48px 0 0;
   border-right: 1px solid var(--hairline);
   background: var(--surface-2);
+  box-shadow: inset -1px 0 rgba(255,255,255,.18), 10px 0 28px rgba(31,35,40,.035);
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+
+.app-shell.is-sidebar-collapsed { grid-template-columns: 0 minmax(0, 1fr) auto; }
+.app-shell.is-sidebar-collapsed .app-sidebar { opacity: 0; pointer-events: none; transform: translateX(-12px); }
+.app-shell.is-sidebar-collapsed .app-sidebar-toggle { left: 10px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .app-shell, .app-sidebar, .app-sidebar-toggle { transition: none !important; }
 }
 
 .conversation-pane {
@@ -68,7 +95,7 @@ export const layoutStyles = `
     position: absolute;
     z-index: 4;
     inset: 0 auto 0 0;
-    width: min(326px, calc(100vw - 48px));
+    width: min(286px, calc(100vw - 48px));
     visibility: hidden;
     transform: translateX(-100%);
     transition: transform 140ms ease, visibility 140ms step-end;
@@ -99,7 +126,7 @@ export const layoutStyles = `
   }
 
   .app-shell.is-sidebar-open .app-sidebar-toggle {
-    left: min(334px, calc(100vw - 40px));
+    left: min(294px, calc(100vw - 40px));
   }
 }
 `;
