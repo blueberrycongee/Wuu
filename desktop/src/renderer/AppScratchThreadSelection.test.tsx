@@ -65,7 +65,7 @@ function initialized(workspaceRoot: string): InitializeResult {
     workspace_root: workspaceRoot,
     permissions: { mode: "standard" },
     providers: [
-      { name: "fake", type: "openai-compatible", model: "fake-model" },
+      { name: "fake", type: "openai-compatible", model: "fake-model", api_key_configured: true },
     ],
     advanced_settings: {
       max_steps: 64,

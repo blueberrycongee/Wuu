@@ -2,9 +2,9 @@ import type { ProviderSummary } from "../shared/protocol";
 import { useI18n } from "./i18n";
 
 /**
- * Onboarding chips rendered under the empty-conversation greeting.
+ * Onboarding strip rendered under the empty-conversation greeting.
  *
- * The chip nudges the user toward the real source of friction on a
+ * The strip nudges the user toward the real source of friction on a
  * brand-new session: confirming that a model provider is configured.
  * The greeting above is already a meta-layer line, so this strip
  * stays in meta layer too (13px / --ink-soft) and never grows into
@@ -22,7 +22,7 @@ export type EmptyStateHintsProps = {
   onSelect: (action: EmptyStateHintAction) => void;
 };
 
-function hasReadyProvider(providers: ProviderSummary[] | undefined): boolean {
+export function hasReadyProvider(providers: ProviderSummary[] | undefined): boolean {
   if (!providers || providers.length === 0) {
     return false;
   }
@@ -41,6 +41,7 @@ export function EmptyStateHints({
   }
   return (
     <div className="empty-home-hints" aria-label={t("emptyHints.label")}>
+      <p className="empty-home-hint-copy">{t("emptyHints.description")}</p>
       <button
         type="button"
         className="participant-chip participant-chip--pill empty-home-hint-chip"

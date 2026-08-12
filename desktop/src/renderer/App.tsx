@@ -173,6 +173,7 @@ import { DesignTokensPanel } from "./DesignTokensPanel";
 import { useAppDebugState } from "./AppDebugState";
 import {
   EmptyStateHints,
+  hasReadyProvider,
   type EmptyStateHintAction,
 } from "./EmptyStateHints";
 import {
@@ -190,7 +191,7 @@ import {
 import { ArchiveTip } from "./ArchiveTip";
 import { TopNotice } from "./TopNotice";
 import { UILayerPortal } from "./ui/layers/UILayerHost";
-import { showErrorToast } from "./Toast";
+import { showErrorToast, showToast } from "./Toast";
 import { CircleAlert, RefreshCw } from "lucide-react";
 import type {
 } from "../shared/protocol";
@@ -309,6 +310,24 @@ const ENABLE_RUN_DEBUG_PANEL = Boolean(
 );
 const ENABLE_CONVERSATION_FIXTURES = Boolean(RENDERER_ENV?.DEV);
 const ENABLE_TODO_PANEL_DEBUG = Boolean(RENDERER_ENV?.DEV);
+
+/**
+ * True when a turn/start failure means the user has no usable model
+ * configuration (no provider with a key, or model roles unresolved).
+ * The Go side raises these from modelroles resolution; they map to the
+ * "configure a model provider" onboarding toast instead of the composer
+ * status row.
+ */
+function isNoModelConfiguredError(message: string): boolean {
+  const lower = message.toLowerCase();
+  return (
+    lower.includes("main model is required") ||
+    lower.includes("has no model") ||
+    lower.includes("has no provider") ||
+    lower.includes("not found in providers") ||
+    lower.includes("model is required")
+  );
+}
 
 function useStableCallback<T extends (...args: any[]) => any>(callback: T): T {
   const callbackRef = useRef(callback);
@@ -2515,11 +2534,27 @@ export function App(): JSX.Element {
     );
   }
 
+  function openProviderSettings(): void {
+    closeProjectMenus();
+    setSettingsInitialPage("providers");
+    setSettingsOpen(true);
+  }
+
+  function showNoModelConfiguredToast(): void {
+    showToast({
+      message: t("composer.noModelConfigured"),
+      tone: "error",
+      dedupeKey: "composer:no-model-configured",
+      action: {
+        label: t("common.goConfigure"),
+        onClick: openProviderSettings,
+      },
+    });
+  }
+
   function handleEmptyStateHint(action: EmptyStateHintAction): void {
     if (action.kind === "openSettings") {
-      closeProjectMenus();
-      setSettingsInitialPage("providers");
-      setSettingsOpen(true);
+      openProviderSettings();
     }
   }
 
@@ -3505,6 +3540,10 @@ export function App(): JSX.Element {
       return false;
     }
     const activeContext = currentState.activeContext;
+    if (!hasReadyProvider(currentState.initialized?.providers)) {
+      showNoModelConfiguredToast();
+      return false;
+    }
     enableConversationAutoFollow();
     resetRunDebugEvents({
       source: "client",
@@ -3630,6 +3669,7 @@ export function App(): JSX.Element {
     } catch (error) {
       const rawMessage = rawErrorMessage(error, t("composer.sendFailed"));
       const errorMessage = statusMessageForError(rawMessage, t("composer.sendFailed"));
+      const noModelConfigured = isNoModelConfiguredError(rawMessage);
       appendRunDebugEvent({
         source: "client",
         method: "turn/start failed",
@@ -3649,7 +3689,9 @@ export function App(): JSX.Element {
       appStateRef.current = {
         ...droppedState,
         running: false,
-        status: errorMessage,
+        // A missing model configuration is announced via the onboarding
+        // toast; do not also flag the composer status row with the error.
+        status: noModelConfigured ? "" : errorMessage,
       };
       setState((current) => ({
         ...(optimisticTurnID && optimisticThreadID
@@ -3661,11 +3703,14 @@ export function App(): JSX.Element {
             )
           : current),
         running: false,
-        status: errorMessage,
+        status: noModelConfigured ? "" : errorMessage,
       }));
       setPendingNewThreadTurn((current) =>
         current?.turn.id === optimisticTurn.id ? undefined : current,
       );
+      if (noModelConfigured) {
+        showNoModelConfiguredToast();
+      }
       if (restoreDraftOnError) {
         setPrompt(message.text);
         setComposerImages(message.images);
@@ -3750,6 +3795,10 @@ export function App(): JSX.Element {
     ) {
       return false;
     }
+    if (!hasReadyProvider(currentState.initialized?.providers)) {
+      showNoModelConfiguredToast();
+      return false;
+    }
     enableConversationAutoFollow();
     resetRunDebugEvents({
       source: "client",
@@ -3825,6 +3874,7 @@ export function App(): JSX.Element {
     } catch (error) {
       const rawMessage = rawErrorMessage(error, t("composer.sendFailed"));
       const errorMessage = statusMessageForError(rawMessage, t("composer.sendFailed"));
+      const noModelConfigured = isNoModelConfiguredError(rawMessage);
       appendRunDebugEvent({
         source: "client",
         method: "turn/start failed",
@@ -3843,7 +3893,9 @@ export function App(): JSX.Element {
         ...droppedState,
         activePane: pane,
         running: false,
-        status: errorMessage,
+        // A missing model configuration is announced via the onboarding
+        // toast; do not also flag the composer status row with the error.
+        status: noModelConfigured ? "" : errorMessage,
       };
       setState((current) => ({
         ...(optimisticTurnID
@@ -3855,8 +3907,11 @@ export function App(): JSX.Element {
           : current),
         activePane: pane,
         running: false,
-        status: errorMessage,
+        status: noModelConfigured ? "" : errorMessage,
       }));
+      if (noModelConfigured) {
+        showNoModelConfiguredToast();
+      }
       return false;
     }
     return true;

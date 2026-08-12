@@ -2,9 +2,10 @@
  * Tests for `EmptyStateHints`.
  *
  * Contract:
- * - Renders a "配置模型" chip when no provider reports
- *   `api_key_configured === true` or `connection_locked === true`,
- *   and clicking it emits an `openSettings` action.
+ * - Renders a "配置模型服务商" chip with a one-line description when no
+ *   provider reports `api_key_configured === true` or
+ *   `connection_locked === true`, and clicking the chip emits an
+ *   `openSettings` action.
  * - The settings chip is suppressed when any provider is ready (key
  *   configured OR connection locked, e.g. OAuth).
  * - When the chip would be hidden the strip returns null (caller
@@ -51,6 +52,14 @@ function hintLabels(): string[] {
   ).map((node) => node.textContent?.trim() ?? "");
 }
 
+function hintCopy(): string {
+  return (
+    container
+      ?.querySelector(".empty-home-hint-copy")
+      ?.textContent?.trim() ?? ""
+  );
+}
+
 function clickHint(label: string): void {
   const chip = Array.from(
     container?.querySelectorAll(".empty-home-hint-chip") ?? [],
@@ -94,7 +103,8 @@ describe("EmptyStateHints", () => {
       providers: [providerWithoutKey],
       onSelect: () => {},
     });
-    expect(hintLabels()).toContain("配置模型");
+    expect(hintLabels()).toContain("配置模型服务商");
+    expect(hintCopy()).toBe("配置模型服务商后即可开始对话");
   });
 
   it("emits openSettings when the settings chip is clicked", () => {
@@ -103,7 +113,7 @@ describe("EmptyStateHints", () => {
       providers: [providerWithoutKey],
       onSelect,
     });
-    clickHint("配置模型");
+    clickHint("配置模型服务商");
     expect(onSelect).toHaveBeenCalledWith({ kind: "openSettings" });
   });
 
@@ -112,7 +122,7 @@ describe("EmptyStateHints", () => {
       providers: [providerWithKey],
       onSelect: () => {},
     });
-    expect(hintLabels()).not.toContain("配置模型");
+    expect(hintLabels()).not.toContain("配置模型服务商");
   });
 
   it("hides the settings chip when a provider is connection_locked (OAuth)", () => {
@@ -120,7 +130,7 @@ describe("EmptyStateHints", () => {
       providers: [providerOAuth],
       onSelect: () => {},
     });
-    expect(hintLabels()).not.toContain("配置模型");
+    expect(hintLabels()).not.toContain("配置模型服务商");
   });
 
   it("renders nothing when the settings chip would be hidden", () => {
@@ -136,7 +146,7 @@ describe("EmptyStateHints", () => {
       providers: undefined,
       onSelect: () => {},
     });
-    expect(hintLabels()).toContain("配置模型");
+    expect(hintLabels()).toContain("配置模型服务商");
   });
 
   it("renders the settings chip when the providers list is empty", () => {
@@ -144,6 +154,6 @@ describe("EmptyStateHints", () => {
       providers: [],
       onSelect: () => {},
     });
-    expect(hintLabels()).toContain("配置模型");
+    expect(hintLabels()).toContain("配置模型服务商");
   });
 });

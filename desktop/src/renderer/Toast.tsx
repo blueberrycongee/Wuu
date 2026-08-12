@@ -1,7 +1,7 @@
 import { CircleAlert } from "lucide-react";
 import { useSyncExternalStore } from "react";
 import { useI18n } from "./i18n";
-import { TopNotice } from "./TopNotice";
+import { TopNotice, type TopNoticeAction } from "./TopNotice";
 import { UILayerPortal } from "./ui/layers/UILayerHost";
 
 const TOAST_DEDUPE_WINDOW_MS = 30_000;
@@ -13,11 +13,14 @@ export type ToastInput = {
   message: string;
   tone?: ToastTone;
   dedupeKey?: string;
+  /** Optional action button rendered inside the toast (e.g. "go configure"). */
+  action?: TopNoticeAction;
 };
 
 type ToastRecord = Required<Pick<ToastInput, "message" | "tone">> & {
   id: number;
   dedupeKey: string;
+  action?: TopNoticeAction;
 };
 
 let nextToastID = 1;
@@ -54,7 +57,12 @@ export function dismissToast(id: number): void {
   queuedToasts = queuedToasts.filter((toast) => toast.id !== id);
 }
 
-export function showToast({ message, tone = "info", dedupeKey }: ToastInput): number | undefined {
+export function showToast({
+  message,
+  tone = "info",
+  dedupeKey,
+  action,
+}: ToastInput): number | undefined {
   const trimmedMessage = message.trim();
   if (!trimmedMessage) return undefined;
 
@@ -71,6 +79,7 @@ export function showToast({ message, tone = "info", dedupeKey }: ToastInput): nu
     message: trimmedMessage,
     tone,
     dedupeKey: key,
+    action,
   };
   if (activeToast === null) {
     activeToast = toast;
@@ -129,6 +138,7 @@ export function ToastViewport(): JSX.Element | null {
         message={toast.message}
         icon={toast.tone === "error" ? CircleAlert : undefined}
         isError={toast.tone === "error"}
+        action={toast.action}
         dismissAriaLabel={t("common.closeNotice")}
         onDismiss={() => dismissToast(toast.id)}
       />
