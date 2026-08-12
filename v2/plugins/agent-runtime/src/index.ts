@@ -70,7 +70,7 @@ export class AgentRuntimeService extends Service {
   private readonly starting = new Set<string>();
   private readonly recovering = new Set<string>();
   private readonly pendingStarts = new Set<Promise<AgentRunAcceptance>>();
-  private readonly startingControllers = new Set<AbortController>();
+  private readonly startingControllers = new Map<string, AbortController>();
   private closing = false;
 
   constructor(ctx: Context, private readonly agentId: string) {
@@ -89,7 +89,7 @@ export class AgentRuntimeService extends Service {
     });
     this.ctx.effect(() => async () => {
       this.closing = true;
-      for (const controller of this.startingControllers) {
+      for (const controller of this.startingControllers.values()) {
         controller.abort(new Error("Agent runtime disposed while preparing a run"));
       }
       await Promise.allSettled(this.pendingStarts);
@@ -130,7 +130,7 @@ export class AgentRuntimeService extends Service {
     this.starting.add(input.sessionId);
     const runId = randomUUID();
     const controller = new AbortController();
-    this.startingControllers.add(controller);
+    this.startingControllers.set(input.sessionId, controller);
     try {
       const createAgent = this.ctx.agents.require(agentId);
       const existing = openRunIds(await this.ctx.sessions.load(input.sessionId));
@@ -181,15 +181,22 @@ export class AgentRuntimeService extends Service {
       }
       return { runId, acceptedSeq: accepted.at(-1)!.seq };
     } finally {
-      this.startingControllers.delete(controller);
+      if (this.startingControllers.get(input.sessionId) === controller) {
+        this.startingControllers.delete(input.sessionId);
+      }
       this.starting.delete(input.sessionId);
     }
   }
 
   cancel(sessionId: string): boolean {
     const run = this.active.get(sessionId);
-    if (!run) return false;
-    run.controller.abort(new Error("Cancelled by user"));
+    if (run) {
+      run.controller.abort(new Error("Cancelled by user"));
+      return true;
+    }
+    const starting = this.startingControllers.get(sessionId);
+    if (!starting) return false;
+    starting.abort(new Error("Cancelled by user"));
     return true;
   }
 
