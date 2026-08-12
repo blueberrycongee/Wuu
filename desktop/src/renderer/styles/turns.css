@@ -3630,34 +3630,6 @@ pre {
   line-height: 1.35;
 }
 
-.empty-home-hints {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  width: 100%;
-  gap: 10px;
-  margin: 0;
-  padding: 0;
-  color: var(--ink-soft);
-  font-size: var(--font-ui);
-  line-height: var(--line-meta);
-}
-
-.empty-home-hints .empty-home-hint-copy {
-  margin: 0;
-  color: var(--ink-soft);
-  font-size: var(--font-ui);
-  line-height: 1.45;
-  text-align: center;
-}
-
-.empty-home-hints .empty-home-hint-chip {
-  /* meta-layer strip: chips sit below the greeting and its one-line
-     explanation. Keep the visual weight of a quiet meta row, not a
-     button bar. */
-  text-align: center;
-}
-
 .project-empty-pane {
   display: grid;
   min-height: 0;

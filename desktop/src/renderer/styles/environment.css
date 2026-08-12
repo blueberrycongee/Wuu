@@ -1243,6 +1243,36 @@
   box-shadow: inset 0 0 0 1px var(--ink-overlay-12);
 }
 
+.provider-setup-fields {
+  display: grid;
+  gap: 12px;
+}
+
+.provider-setup-field {
+  display: grid;
+  gap: 6px;
+}
+
+.provider-setup-label {
+  color: var(--ink-tertiary);
+  font-size: var(--font-sm);
+  font-weight: var(--weight-semibold);
+}
+
+.provider-setup-description {
+  margin: 0;
+  color: var(--ink-muted);
+  font-size: var(--font-ui);
+  line-height: 1.45;
+}
+
+.provider-setup-error {
+  margin: 0;
+  color: var(--danger-soft);
+  font-size: var(--font-ui);
+  line-height: 1.35;
+}
+
 .sidebar-name-dialog-actions {
   display: flex;
   align-items: center;

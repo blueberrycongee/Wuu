@@ -172,10 +172,11 @@ import type { InstructionFilesEntry } from "./InstructionFilesCard";
 import { DesignTokensPanel } from "./DesignTokensPanel";
 import { useAppDebugState } from "./AppDebugState";
 import {
-  EmptyStateHints,
   hasReadyProvider,
-  type EmptyStateHintAction,
-} from "./EmptyStateHints";
+  ProviderSetupDialog,
+  PROVIDER_SETUP_DISMISSED_KEY,
+  type ProviderSetupConnection,
+} from "./ProviderSetupDialog";
 import {
   EmptyConversationHome,
   RuntimeLoading,
@@ -546,6 +547,11 @@ export function App(): JSX.Element {
   });
   const [branchMenuOpen, setBranchMenuOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [providerSetupOpen, setProviderSetupOpen] = useState(false);
+  // Guards the startup evaluation so the setup dialog is offered at most
+  // once per session: after the first initialized snapshot we never re-open
+  // it on later provider changes (configured, skipped, or dismissed).
+  const providerSetupEvaluatedRef = useRef(false);
   const [newRoomRequest, setNewRoomRequest] = useState(0);
   // Rooms (with per-room unread counts) live at the App level so the unified
   // sidebar and the channel canvas share one source of truth; selection is
@@ -606,6 +612,35 @@ export function App(): JSX.Element {
       window.clearInterval(timer);
     };
   }, [state.initialized]);
+  useEffect(() => {
+    // Offer the provider setup dialog once per session on first load:
+    // when the runtime has no usable provider and the user has not
+    // previously skipped it. Later provider changes never re-open it.
+    if (providerSetupEvaluatedRef.current) {
+      return;
+    }
+    const initialized = state.initialized;
+    if (!initialized) {
+      return;
+    }
+    providerSetupEvaluatedRef.current = true;
+    let dismissed = false;
+    try {
+      dismissed = window.localStorage.getItem(PROVIDER_SETUP_DISMISSED_KEY) === "1";
+    } catch {
+      dismissed = false;
+    }
+    if (!hasReadyProvider(initialized.providers) && !dismissed) {
+      setProviderSetupOpen(true);
+    }
+  }, [state.initialized]);
+  useEffect(() => {
+    // Opening settings supersedes the dialog: the user can configure the
+    // provider there instead. The dialog is not re-shown afterwards.
+    if (settingsOpen) {
+      setProviderSetupOpen(false);
+    }
+  }, [settingsOpen]);
   const [projectFilter, setProjectFilter] = useState("");
   const [launchPreviewPinned, setLaunchPreviewPinned] = useState(false);
   const {
@@ -2577,12 +2612,6 @@ export function App(): JSX.Element {
         onClick: openProviderSettings,
       },
     });
-  }
-
-  function handleEmptyStateHint(action: EmptyStateHintAction): void {
-    if (action.kind === "openSettings") {
-      openProviderSettings();
-    }
   }
 
   function openArchiveSettings(): void {
@@ -4734,15 +4763,7 @@ export function App(): JSX.Element {
                     />
                   </div>
                 ) : emptyConversation ? (
-              <EmptyConversationHome
-                title={emptyThreadTitle}
-                belowTitle={
-                  <EmptyStateHints
-                    providers={state.initialized?.providers}
-                    onSelect={handleEmptyStateHint}
-                  />
-                }
-              >
+              <EmptyConversationHome title={emptyThreadTitle}>
                 {rightPanelGlobalized && activeWorkspaceFileTabID
                   ? <div />
                   : renderComposer("hero")}
@@ -5023,6 +5044,14 @@ export function App(): JSX.Element {
             console.error(`Plugin view ${pluginId}@${generation} failed to render`, error);
           },
         }}
+      />
+      <ProviderSetupDialog
+        open={providerSetupOpen}
+        providers={state.initialized?.providers}
+        onSave={async (provider, model, connection) => {
+          await updateRuntimeSettings(provider, model, undefined, connection, undefined);
+        }}
+        onClose={() => setProviderSetupOpen(false)}
       />
       </div>
     </ImagePreviewProvider>
