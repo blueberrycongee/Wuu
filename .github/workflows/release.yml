@@ -45,7 +45,10 @@ jobs:
         run: make -C .. check-go test-go
 
       - name: Install
-        run: npm ci
+        run: |
+          npm ci
+          node node_modules/electron/install.js
+          node -e 'require("electron")'
 
       - name: Test
         run: npm test

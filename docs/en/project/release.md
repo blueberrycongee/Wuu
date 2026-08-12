@@ -34,8 +34,10 @@ they have an independent public release contract.
 
 Before tagging, the Go core and desktop test suites must pass. The release
 workflow reruns those gates against the tagged commit before it builds the
-desktop app. Release tooling consumes committed module manifests and does not
-update `go.mod` or `go.sum`.
+desktop app. After `npm ci`, the workflow explicitly installs and verifies the
+Electron binary so runner-level install settings cannot leave the test or build
+steps with an incomplete Electron package. Release tooling consumes committed
+module manifests and does not update `go.mod` or `go.sum`.
 
 ## GitHub Secrets
 
