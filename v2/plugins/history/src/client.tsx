@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   useProjection,
   useActiveSession,
@@ -40,10 +40,14 @@ function HistoryRow({
   client,
   entry,
   active,
+  onKeyDown,
+  rowRef,
 }: {
   client: Context;
   entry: HistoryEntry;
   active: boolean;
+  onKeyDown: (event: React.KeyboardEvent<HTMLButtonElement>) => void;
+  rowRef: (element: HTMLButtonElement | null) => void;
 }) {
   const live = useProjection<HistoryEntryProjection>(client, entry.id, "history/entry");
   const value = live ?? entry;
@@ -52,11 +56,14 @@ function HistoryRow({
       type="button"
       className={active ? "is-active" : undefined}
       aria-current={active ? "page" : undefined}
+      aria-label={`${value.title}${value.running ? " (running)" : ""}`}
       title={entry.id}
+      ref={rowRef}
+      onKeyDown={onKeyDown}
       onClick={() => client.activeSession.select(entry.id)}
     >
       <span>{value.title}</span>
-      {value.running ? <i aria-label="Running" /> : null}
+      {value.running ? <i aria-hidden="true" /> : null}
     </button>
   );
 }
@@ -67,6 +74,7 @@ function HistorySidebar({ client }: { client: Context }) {
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string>();
+  const rowRefs = useRef(new Map<string, HTMLButtonElement>());
 
   const refresh = useCallback(async () => {
     setError(undefined);
@@ -99,6 +107,25 @@ function HistorySidebar({ client }: { client: Context }) {
     }
   };
 
+  const moveSelection = (index: number) => {
+    const entry = entries[index];
+    if (!entry) return;
+    client.activeSession.select(entry.id);
+    rowRefs.current.get(entry.id)?.focus();
+  };
+
+  const handleRowKeyDown = (index: number) => (event: React.KeyboardEvent<HTMLButtonElement>) => {
+    if (!entries.length) return;
+    let next: number | undefined;
+    if (event.key === "ArrowDown") next = Math.min(index + 1, entries.length - 1);
+    if (event.key === "ArrowUp") next = Math.max(index - 1, 0);
+    if (event.key === "Home") next = 0;
+    if (event.key === "End") next = entries.length - 1;
+    if (next === undefined) return;
+    event.preventDefault();
+    moveSelection(next);
+  };
+
   return (
     <div className="history-sidebar">
       <header className="history-header">
@@ -107,17 +134,22 @@ function HistorySidebar({ client }: { client: Context }) {
           {creating ? "…" : "+"}
         </button>
       </header>
-      <nav className="history-list" aria-label="Tasks">
-        {entries.map((entry) => (
+      <nav className="history-list" aria-label="Tasks" aria-busy={loading}>
+        {entries.map((entry, index) => (
           <HistoryRow
             key={entry.id}
             client={client}
             entry={entry}
             active={entry.id === activeSessionId}
+            onKeyDown={handleRowKeyDown(index)}
+            rowRef={(element) => {
+              if (element) rowRefs.current.set(entry.id, element);
+              else rowRefs.current.delete(entry.id);
+            }}
           />
         ))}
-        {loading ? <p>Loading tasks…</p> : null}
-        {!loading && !entries.length ? <p>No tasks yet</p> : null}
+        {loading ? <p role="status">Loading tasks…</p> : null}
+        {!loading && !entries.length ? <p role="status">No tasks yet</p> : null}
       </nav>
       {error ? (
         <div className="history-error" role="alert">

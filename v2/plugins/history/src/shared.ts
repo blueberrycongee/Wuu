@@ -17,5 +17,7 @@ export interface HistoryEntryProjection {
   title: string;
   updatedAt: string;
   running: boolean;
+  /** Durable fold state used to keep concurrent runs readable in the sidebar. */
+  runningRunIds: string[];
   hasPrompt: boolean;
 }

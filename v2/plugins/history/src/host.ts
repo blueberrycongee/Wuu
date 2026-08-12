@@ -102,6 +102,7 @@ const historyHost: Plugin = function history(ctx) {
         title: "New task",
         updatedAt: event.time,
         running: false,
+        runningRunIds: [],
         hasPrompt: false,
       } satisfies HistoryEntryProjection;
     }
@@ -109,13 +110,20 @@ const historyHost: Plugin = function history(ctx) {
     const value = current as unknown as HistoryEntryProjection;
     const prompt = value.hasPrompt ? undefined : promptTitle(record as AgentSessionRecord);
     const title = prompt ?? value.title;
-    const running = record.type === "agent/run-state"
-      ? record.data.state === "started"
-      : value.running;
+    const runningRunIds = [...(Array.isArray(value.runningRunIds) ? value.runningRunIds : [])];
+    if (record.type === "agent/run-state") {
+      if (record.data.state === "started") {
+        if (!runningRunIds.includes(record.data.runId)) runningRunIds.push(record.data.runId);
+      } else {
+        const index = runningRunIds.indexOf(record.data.runId);
+        if (index >= 0) runningRunIds.splice(index, 1);
+      }
+    }
     return {
       title,
       updatedAt: event.time,
-      running,
+      running: runningRunIds.length > 0,
+      runningRunIds,
       hasPrompt: value.hasPrompt || prompt !== undefined,
     } satisfies HistoryEntryProjection;
   });
