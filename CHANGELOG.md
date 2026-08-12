@@ -8,16 +8,48 @@ Versioning rules are documented in [the release guide](docs/en/project/release.m
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-08-12
+
+### Added
+
+- Added versioned plugin services for Go and TypeScript plugins, including
+  generation-safe registration, execution identity, cancellation, host calls,
+  settings pages, workbench views, conversation presentation, and theme
+  surfaces.
+- Added replaceable model-loop drivers with a bundled single-pass driver and
+  persisted per-session driver checkpoints.
+- Added execution-bound user questions so tools and plugins can pause for a
+  response and resume the correct turn.
+- Added richer plugin development and inspection workflows, including source
+  watching, compatibility checks, artwork, runtime diagnostics, and live
+  execution visibility.
+
+### Changed
+
+- Moved Goal, Subagent, Memory, Dream, and Automation capabilities behind the
+  first-party plugin runtime, reducing core coupling while preserving their
+  desktop experience.
+- Strengthened plugin activation and replacement with scoped storage,
+  generation leases, transactional lifecycle updates, service draining, and
+  explicit capability error policies.
+- Refined the desktop conversation, composer, workspace tabs, settings,
+  Mermaid previews, context displays, plugin catalog, and theme contracts.
+- Removed experimental voice input, computer use, and embedded browser
+  capabilities from production desktop builds while retaining explicit
+  development opt-ins.
+
 ### Fixed
 
 - Preserved `PostToolUse` hook context across concurrent tool batches and
   isolated request-only context by tool call.
-
-### Changed
-
-- Removed experimental voice input, computer use, and embedded browser
-  capabilities from production desktop builds while retaining explicit
-  development opt-ins.
+- Kept queued, steered, interrupted, and plugin-submitted turns attached to
+  the correct session and execution lifetime.
+- Prevented stale plugin generations, failed registrations, and unavailable
+  services from replacing or leaking into the active runtime.
+- Improved desktop responsiveness during streaming, hidden conversations,
+  long process output, sidebar activity, and context compaction.
+- Tightened sandbox, authorization, hook, and plugin-tool execution boundaries
+  so unsupported or unavailable protection fails closed.
 
 ## [0.15.0] - 2026-08-05
 
