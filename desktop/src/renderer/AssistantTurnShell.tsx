@@ -38,6 +38,7 @@ import {
   useAutoFollowScrollContainer,
 } from "./AutoFollowScroll";
 import { AnimatedProcessText } from "./ProcessTextMotion";
+import { ThinkingTokenCount } from "./ThinkingTokenCount";
 import { useConversationRenderActive } from "./ConversationRenderActivity";
 import { translateCurrent as translate, useI18n } from "./i18n";
 
@@ -483,6 +484,7 @@ function EntryRenderer({
         processItems={entry.items ?? [item]}
         streaming={streaming}
         active={activeGray}
+        turnID={turn.id}
         renderReasoningItem={(processItem, isStreaming) => (
           <ThreadItemView
             turnID={turn.id}
@@ -618,6 +620,7 @@ function ReasoningFold({
     >
       <summary className="turn-reasoning-summary">
         <AnimatedProcessText ref={waveRef} className={textClass} text={label} />
+        {streaming || activeGray ? <ThinkingTokenCount turnID={turnID} /> : null}
         <ChevronRight
           className="turn-reasoning-chevron icon-xs"
           aria-hidden

@@ -16,12 +16,25 @@ export type TurnTelemetrySnapshot = {
   source: TokenSpeedSource;
   sampledAt?: number;
   contextUsage?: LiveTurnContextUsage;
+  /**
+   * Cumulative input tokens for the turn, provider-reported. Zero when the
+   * provider does not report stream-time usage (input has no text-delta
+   * estimate).
+   */
+  inputTokens: number;
+  /**
+   * Cumulative streamed output tokens for the turn. Provider-reported when
+   * `source === "real"`, otherwise the running estimate built from
+   * agent-message and reasoning text deltas. Monotonic while the turn runs.
+   */
+  outputTokens: number;
 };
 
 type TokenSample = { tokens: number; at: number };
 
 type TurnTelemetryEntry = {
   realSeen: boolean;
+  realInputTokens: number;
   realTokens: number;
   estimatedTokens: number;
   realSamples: TokenSample[];
@@ -36,6 +49,8 @@ const RETAINED_TURN_TELEMETRY_LIMIT = 24;
 const EMPTY_SNAPSHOT: TurnTelemetrySnapshot = Object.freeze({
   tokensPerSecond: 0,
   source: "none",
+  inputTokens: 0,
+  outputTokens: 0,
 });
 
 const ESTIMATED_TEXT_DELTA_METHODS = new Set([
@@ -87,10 +102,16 @@ export class TurnTelemetryStore {
   ): void {
     const entry = this.entry(turnID);
     const outputTokens = Math.max(0, numberValue(params, "output_tokens") ?? 0);
+    const inputTokens = Math.max(0, numberValue(params, "input_tokens") ?? 0);
     entry.realSeen = true;
     if (outputTokens > entry.realTokens) {
       entry.realTokens = outputTokens;
       entry.realSamples = appendSample(entry.realSamples, outputTokens, at);
+    }
+    // Input is cumulative per provider request too; keep the max so later
+    // requests in the same turn never regress the displayed total.
+    if (inputTokens > entry.realInputTokens) {
+      entry.realInputTokens = inputTokens;
     }
 
     const contextTokens = numberValue(params, "context_tokens") ?? 0;
@@ -141,6 +162,7 @@ export class TurnTelemetryStore {
     if (existing) return existing;
     const created: TurnTelemetryEntry = {
       realSeen: false,
+      realInputTokens: 0,
       realTokens: 0,
       estimatedTokens: 0,
       realSamples: [],
@@ -165,6 +187,8 @@ export class TurnTelemetryStore {
       tokensPerSecond: tokenSpeed(samples),
       source,
       sampledAt: samples.at(-1)?.at,
+      inputTokens: source === "real" ? entry.realInputTokens : 0,
+      outputTokens: source === "real" ? entry.realTokens : entry.estimatedTokens,
       ...(entry.contextUsage ? { contextUsage: entry.contextUsage } : {}),
     };
   }

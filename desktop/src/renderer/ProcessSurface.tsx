@@ -20,6 +20,7 @@ import {
 import { AnimatedProcessText } from "./ProcessTextMotion";
 import { useLiveTextWave } from "./LiveTextWave";
 import { ProcessSurfaceFold } from "./ProcessSurfaceFold";
+import { ThinkingTokenCount } from "./ThinkingTokenCount";
 import { translateCurrent as translate, useI18n } from "./i18n";
 
 /**
@@ -47,6 +48,11 @@ type ProcessSurfaceProps = {
    * not have to split tools from reasoning first.
    */
   processItems: ThreadItem[];
+  /**
+   * The owning turn, used to subscribe the "正在思考" label's live token
+   * counter to that turn's telemetry. Omitted by legacy callers/tests.
+   */
+  turnID?: string;
   /**
    * True while any process item is still receiving deltas. Drives the
    * tool/reasoning reveal behavior while the fold stays compact until
@@ -133,6 +139,7 @@ export function ProcessSurface({
   processItems,
   streaming,
   active,
+  turnID,
   renderReasoningItem,
 }: ProcessSurfaceProps): JSX.Element {
   const { t } = useI18n();
@@ -152,6 +159,11 @@ export function ProcessSurface({
     toolItems.length >= CONDENSED_SUMMARY_MIN_TOOL_COUNT &&
     toolSegments.length > 1;
   const activeGrayText = active ?? streaming;
+  // The token counter belongs to the reasoning trail but stays visible after
+  // thinking settles: the total freezes at the last sample and resumes
+  // climbing on the next thinking phase. It only leaves when the process row
+  // itself stops sweeping (turn done or no longer the live label).
+  const showThinkingToken = Boolean(turnID) && hasReasoning && activeGrayText;
   const summaryWaveRef = useLiveTextWave<HTMLSpanElement>(activeGrayText);
 
   // Details are opt-in. The running row itself should stay compact by
@@ -238,6 +250,9 @@ export function ProcessSurface({
             text={reasoningStreaming ? t("process.thinking") : t("process.reasoning")}
           />
         </span>
+      ) : null}
+      {showThinkingToken && turnID ? (
+        <ThinkingTokenCount turnID={turnID} />
       ) : null}
     </span>
   );

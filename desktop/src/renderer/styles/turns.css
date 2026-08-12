@@ -2346,6 +2346,40 @@
   animation: process-surface-count-jump var(--motion-base) var(--ease-out);
 }
 
+/* Live token counter after the "正在思考" process label. Reuses the count
+ * jump keyframe so the increment cue matches the operation counters. */
+.thinking-token-count {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: baseline;
+}
+
+.thinking-token-separator {
+  flex: 0 0 auto;
+}
+
+.thinking-token-stat {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.thinking-token-value {
+  display: inline-block;
+  min-width: 1ch;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.thinking-token-suffix {
+  opacity: 0.82;
+  white-space: nowrap;
+}
+
+.thinking-token-value.is-changing {
+  animation: process-surface-count-jump var(--motion-base) var(--ease-out);
+}
+
 .process-surface-row.is-live-gray .process-surface-summary-line {
   display: inline-block;
 }
@@ -2368,7 +2402,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .process-surface-count.is-changing {
+  .process-surface-count.is-changing,
+  .thinking-token-value.is-changing {
     animation: none;
   }
 
