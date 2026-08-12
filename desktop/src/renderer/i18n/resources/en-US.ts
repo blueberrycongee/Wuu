@@ -1780,5 +1780,9 @@ export const enUS = {
   "userQuestion.customAriaLabel": "Custom answer for {question}",
   "userQuestion.sendFailed": "Could not send your answer.",
   "userQuestion.cancelFailed": "Could not cancel the question.",
+  "notification.turnCompletedTitle": "Wuu",
+  "notification.turnCompletedBody": "A response is ready",
+  "notification.questionTitle": "Wuu",
+  "notification.questionBody": "A question needs your answer",
   "i18n.missing": "Content unavailable",
 } as const satisfies Record<TranslationKey, string>;

@@ -255,7 +255,7 @@ import {
   type HistoryMessageEditState,
   type PendingForkState,
 } from "./ConversationHistoryActions";
-import { localizedText, resolveLocalizedText, useI18n } from "./i18n";
+import { localizedText, resolveLocalizedText, translateCurrent, useI18n } from "./i18n";
 import { CachedConversationPanes } from "./CachedConversationPanes";
 import {
   ConversationSidePanels,
@@ -1511,6 +1511,12 @@ export function App(): JSX.Element {
             ...current.filter((item) => item.request_id !== request.request_id),
             request,
           ]);
+          if (typeof window.wuu.showSystemNotification === "function") {
+            void window.wuu.showSystemNotification({
+              title: translateCurrent("notification.questionTitle"),
+              body: translateCurrent("notification.questionBody"),
+            });
+          }
         }
       }
       if (event.kind === "notification" && event.message.method === "user-question/resolved") {
@@ -1521,6 +1527,27 @@ export function App(): JSX.Element {
           }
           resolvedUserQuestionIDsRef.current.add(requestID);
           setUserQuestions((current) => current.filter((item) => item.request_id !== requestID));
+        }
+      }
+      if (event.kind === "notification" && event.message.method === "turn/completed") {
+        const params = event.message.params as { thread_id?: string } | undefined;
+        const threadID = typeof params?.thread_id === "string" ? params.thread_id : undefined;
+        const thread = threadID
+          ? appStateRef.current.threads.find((item) => item.id === threadID)
+          : undefined;
+        // Main-thread turns only: child/subagent completions stay quiet, and
+        // ephemeral threads never reach user-facing history. The main process
+        // still suppresses the notification when the window has focus.
+        if (
+          thread &&
+          !thread.parent_id &&
+          !thread.ephemeral &&
+          typeof window.wuu.showSystemNotification === "function"
+        ) {
+          void window.wuu.showSystemNotification({
+            title: translateCurrent("notification.turnCompletedTitle"),
+            body: translateCurrent("notification.turnCompletedBody"),
+          });
         }
       }
       // All app-server clients share this event channel. Keep folded workspace

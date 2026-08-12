@@ -9,6 +9,7 @@ import {
   Menu,
   nativeImage,
   nativeTheme,
+  Notification,
   screen,
   session as electronSession,
   systemPreferences,
@@ -117,6 +118,8 @@ import type {
   UserQuestionAnswer,
   UserQuestionListResult,
   UserQuestionResolveResult,
+  SystemNotificationParams,
+  SystemNotificationResult,
   PopOutInitResult,
   PopOutSessionParams,
   PluginPackageInstallResult,
@@ -249,6 +252,9 @@ registerRenderableFileScheme();
 registerPluginModuleScheme();
 
 let mainWindow: BrowserWindow | null = null;
+// Live system notifications are kept referenced so the OS cannot collect
+// them before the user acts on them (Electron retains only while referenced).
+const activeSystemNotifications = new Set<Notification>();
 const windowRegistry: WindowRegistry = createWindowRegistry();
 const projectManager = new ProjectManager();
 const speechRecognitionService = createSpeechRecognitionService({
@@ -1348,6 +1354,42 @@ app.whenReady().then(async () => {
     appServerRequest<UserQuestionResolveResult>(event, "user-question/cancel", {
       request_id: requestId,
     }));
+  ipcMain.handle(
+    "wuu:system-notification",
+    (event, params: SystemNotificationParams): SystemNotificationResult => {
+      // macOS first: the notification stack differs per platform (app bundle,
+      // permission model, toast routing). Windows/Linux land separately.
+      if (process.platform !== "darwin") {
+        return { shown: false };
+      }
+      const win = BrowserWindow.fromWebContents(event.sender);
+      // The in-app surface already shows the event while the window has
+      // focus; only reach out of the app when the user is elsewhere.
+      if (win && !win.isDestroyed() && win.isFocused()) {
+        return { shown: false };
+      }
+      const notification = new Notification({
+        title: params.title,
+        body: params.body,
+      });
+      activeSystemNotifications.add(notification);
+      notification.on("close", () => {
+        activeSystemNotifications.delete(notification);
+      });
+      notification.on("click", () => {
+        if (win && !win.isDestroyed()) {
+          if (win.isMinimized()) {
+            win.restore();
+          }
+          win.show();
+          win.focus();
+        }
+        activeSystemNotifications.delete(notification);
+      });
+      notification.show();
+      return { shown: true };
+    },
+  );
   ipcMain.handle("wuu:build-info", (): BuildInfoResult => ({
     core: cachedCoreBuildInfo,
     desktop: DESKTOP_BUILD_INFO,

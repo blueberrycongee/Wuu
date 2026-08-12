@@ -75,6 +75,15 @@ export type UserQuestionResolveResult = {
   resolved: boolean;
 };
 
+export type SystemNotificationParams = {
+  title: string;
+  body: string;
+};
+
+export type SystemNotificationResult = {
+  shown: boolean;
+};
+
 export const APP_SERVER_PROTOCOL_VERSION = "wuu-app-server/v0.1";
 
 export const BROWSER_REVERSE_RPC_METHODS = [
@@ -2348,6 +2357,9 @@ export type WuuDesktopApi = {
     answer: UserQuestionAnswer,
   ) => Promise<UserQuestionResolveResult>;
   cancelUserQuestion: (requestId: string) => Promise<UserQuestionResolveResult>;
+  showSystemNotification: (
+    params: SystemNotificationParams,
+  ) => Promise<SystemNotificationResult>;
   getBuildInfo: () => Promise<BuildInfoResult>;
   startSpeechRecognition: (
     locale: string,

@@ -1778,6 +1778,10 @@ export const zhCN = {
   "userQuestion.customAriaLabel": "{question} 的自定义答案",
   "userQuestion.sendFailed": "无法发送回答。",
   "userQuestion.cancelFailed": "无法取消提问。",
+  "notification.turnCompletedTitle": "Wuu",
+  "notification.turnCompletedBody": "回复已完成",
+  "notification.questionTitle": "Wuu",
+  "notification.questionBody": "有一个问题需要你的回答",
   "i18n.missing": "内容暂不可用",
 } as const;
 

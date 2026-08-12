@@ -220,6 +220,8 @@ const api: WuuDesktopApi = {
     ipcRenderer.invoke("wuu:user-question-answer", requestId, answer),
   cancelUserQuestion: (requestId) =>
     ipcRenderer.invoke("wuu:user-question-cancel", requestId),
+  showSystemNotification: (params) =>
+    ipcRenderer.invoke("wuu:system-notification", params),
   getBuildInfo: () => ipcRenderer.invoke("wuu:build-info"),
   polishText: (text: string) => ipcRenderer.invoke("wuu:text-polish", text),
   startSpeechRecognition: (locale: string) =>
