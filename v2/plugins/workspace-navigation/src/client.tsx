@@ -1,0 +1,12 @@
+import { SlotOutlet, type Context, type Plugin, type SlotHandle } from "@wuu-v2/client-runtime";
+import { AddWorkspaceIcon } from "@wuu-v2/ui-kit";
+function Workspace({ client, sessions }: { client: Context; sessions: SlotHandle }) { return <section className="workbench-section workspace-navigation-section" aria-label="工作区"><header><span>工作区</span><button type="button" aria-label="添加工作区" title="添加工作区" onClick={() => client.workbenchNavigation.select("workspace")}><AddWorkspaceIcon aria-hidden="true" /></button></header><div className="workspace-group"><button type="button" className="workspace-row" onClick={() => client.workbenchNavigation.select("conversation")}><span className="workspace-folder" aria-hidden="true" /><span>对话</span></button><div className="workspace-session-slot"><SlotOutlet client={client} slot={sessions} /></div></div></section>; }
+
+const plugin: Plugin = function workspaceNavigation(client) {
+  let sessions: SlotHandle;
+  const registration = client.slots.contribute("workbench/sidebar-content", { id: "workspace-navigation", component: ({ client: c }) => <Workspace client={c} sessions={sessions} />, children: [{ name: "workspace-navigation/workspace-sessions", kind: "list", scope: "session-maybe" }] });
+  sessions = registration.children.get("workspace-navigation/workspace-sessions")!;
+  client.effect(() => { if (typeof document === "undefined") return () => {}; const style = document.createElement("style"); style.dataset.wuuPluginStyle = "workspace-navigation"; style.textContent = `.workspace-group{display:grid;gap:2px}.workspace-row{display:flex;align-items:center;gap:var(--sidebar-label-gap,10px);width:calc(100% - var(--sidebar-pad,10px) * 2);margin:0 var(--sidebar-pad,10px);padding:7px var(--sidebar-pad,10px);border:0;border-radius:7px;color:var(--ink);background:transparent;font:inherit;text-align:left;cursor:pointer}.workspace-row:hover,.workspace-row:focus-visible{background:var(--surface-3);outline:none}.workspace-folder{width:var(--sidebar-icon-col,18px);height:var(--sidebar-icon-col,18px);flex:0 0 var(--sidebar-icon-col,18px)}.workspace-session-slot{padding-left:0}.workspace-session-slot .history-list{padding-top:2px}.workspace-session-slot .history-list button{width:calc(100% - var(--sidebar-pad,10px) * 2);margin-inline:var(--sidebar-pad,10px);padding-left:calc(var(--sidebar-label-axis,48px) - var(--sidebar-pad,10px))}`; document.head.append(style); return () => style.remove(); }, "install workspace navigation styles");
+};
+plugin.inject = ["slots", "workbenchNavigation"];
+export default plugin;

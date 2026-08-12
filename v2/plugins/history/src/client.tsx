@@ -143,7 +143,6 @@ function HistorySidebar({ client }: { client: Context }) {
 
   return (
     <div className="history-sidebar">
-      <div className="history-section-heading"><span>对话</span></div>
       <nav className="history-list" aria-label="Tasks" aria-busy={loading}>
         {entries.map((entry, index) => (
           <HistoryRow
@@ -177,7 +176,7 @@ const historyClient: Plugin = function history(client) {
     order: -100,
     component: NewConversationEntry,
   });
-  client.slots.contribute("workbench/sidebar-content", {
+  client.slots.contribute("workspace-navigation/workspace-sessions", {
     id: "history",
     component: HistorySidebar,
   });

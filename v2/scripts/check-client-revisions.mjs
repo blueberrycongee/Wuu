@@ -8,6 +8,7 @@ const generatedPath = join(root, "profiles", "default", "src", "client-revisions
 const packages = {
   "theme-default": "plugins/theme-default/src",
   workbench: "plugins/workbench/src",
+  "workspace-navigation": "plugins/workspace-navigation/src",
   history: "plugins/history/src",
   layout: "plugins/layout/src",
   conversation: "plugins/conversation/src",

@@ -1,5 +1,9 @@
 export const layoutStyles = `
 .app-shell {
+  --titlebar-height: 48px;
+  --titlebar-control-size: 30px;
+  --titlebar-control-top: calc((var(--titlebar-height) - 2px - var(--titlebar-control-size)) / 2);
+  --sidebar-toggle-left: 82px;
   --side-reserved-width: 686px;
   position: relative;
   display: grid;
@@ -16,11 +20,11 @@ export const layoutStyles = `
 .app-sidebar-toggle {
   position: absolute;
   z-index: 5;
-  top: 10px;
-  left: 72px;
+  top: var(--titlebar-control-top);
+  left: var(--sidebar-toggle-left);
   display: grid;
-  width: 30px;
-  height: 30px;
+  width: var(--titlebar-control-size);
+  height: var(--titlebar-control-size);
   place-items: center;
   padding: 0;
   border: 0;
@@ -83,7 +87,7 @@ body.is-sidebar-resizing * { cursor: col-resize !important; user-select: none !i
 
 .app-shell.is-sidebar-collapsed { grid-template-columns: 0 minmax(0, 1fr) auto; }
 .app-shell.is-sidebar-collapsed .app-sidebar { opacity: 0; pointer-events: none; transform: translateX(-12px); }
-.app-shell.is-sidebar-collapsed .app-sidebar-toggle { left: 72px; }
+.app-shell.is-sidebar-collapsed .app-sidebar-toggle { left: var(--sidebar-toggle-left); }
 
 @media (prefers-reduced-motion: reduce) {
   .app-shell, .app-sidebar, .app-sidebar-toggle { transition: none !important; }
@@ -104,7 +108,7 @@ body.is-sidebar-resizing * { cursor: col-resize !important; user-select: none !i
   overflow: visible;
 }
 
-@media (max-width: 760px) {
+@media (max-width: 899px) {
   .app-shell {
     grid-template-columns: minmax(0, 1fr) auto;
   }

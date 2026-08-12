@@ -1,0 +1,14 @@
+{
+  "name": "@wuu-v2/plugin-workspace-navigation",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": { "./client": "./src/client.tsx" },
+  "dependencies": {
+    "@wuu-v2/client-runtime": "0.0.0",
+    "@wuu-v2/plugin-workbench": "0.0.0",
+    "@wuu-v2/ui-kit": "0.0.0",
+    "react": "^19.0.0"
+  },
+  "wuu": { "client": "./src/client.tsx" }
+}

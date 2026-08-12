@@ -2,7 +2,7 @@ import { createElement, useSyncExternalStore, type ReactNode } from "react";
 import {
   Service, SlotOutlet, type Context, type Plugin, type SlotHandle,
 } from "@wuu-v2/client-runtime";
-import { AddWorkspaceIcon, SearchIcon, PluginsIcon, SettingsIcon } from "@wuu-v2/ui-kit";
+import { PluginsIcon, SearchIcon, SettingsIcon } from "@wuu-v2/ui-kit";
 
 export type WorkbenchSurface = "conversation" | "search" | "workspace" | "plugins" | "settings";
 
@@ -36,7 +36,7 @@ function MainComposition({ client, sessionId, slot }: { client: Context; session
   return <SlotOutlet client={client} slot={slot} businessKey={surface} {...(sessionId ? { sessionId } : {})} />;
 }
 
-const labels: Record<Exclude<WorkbenchSurface, "conversation">, string> = { search: "搜索", workspace: "添加工作区", plugins: "插件管理", settings: "设置" };
+export const workbenchSurfaceLabels: Record<Exclude<WorkbenchSurface, "conversation">, string> = { search: "搜索", workspace: "工作区", plugins: "插件管理", settings: "设置" };
 
 export function WorkbenchSidebarItem({
   children,
@@ -52,31 +52,31 @@ export function WorkbenchSidebarItem({
   return <button type="button" className={`workbench-entry${active ? " is-active" : ""}`} aria-current={active ? "page" : undefined} disabled={disabled} onClick={onActivate}>{children}</button>;
 }
 
-function ProductEntry({ client, surface, children }: { client: Context; surface: WorkbenchSurface; children: ReactNode }) {
+function Brand() {
+  return <div className="workbench-brand" aria-label="wuu harness"><span>wuu</span><small>harness</small></div>;
+}
+
+function SurfaceEntry({ client, surface, children }: { client: Context; surface: WorkbenchSurface; children: ReactNode }) {
   const active = useSurface(client) === surface;
   return <WorkbenchSidebarItem active={active} onActivate={() => client.workbenchNavigation.select(surface)}>{children}</WorkbenchSidebarItem>;
 }
 
-function ProductNavigation({ client }: { client: Context }) {
+function Primary({ client }: { client: Context }) {
   return <nav className="workbench-navigation" aria-label="Workbench">
-    <ProductEntry client={client} surface="search"><SearchIcon aria-hidden="true" /> <span>{labels.search}</span></ProductEntry>
-    <ProductEntry client={client} surface="plugins"><PluginsIcon aria-hidden="true" /> <span>{labels.plugins}</span></ProductEntry>
+    <SurfaceEntry client={client} surface="search"><SearchIcon aria-hidden="true" /><span>搜索</span></SurfaceEntry>
+    <SurfaceEntry client={client} surface="plugins"><PluginsIcon aria-hidden="true" /><span>插件管理</span></SurfaceEntry>
   </nav>;
 }
 
-function ProductFooter({ client }: { client: Context }) {
-  return <nav className="workbench-navigation workbench-footer" aria-label="Workbench settings">
-    <ProductEntry client={client} surface="settings"><SettingsIcon aria-hidden="true" /> <span>{labels.settings}</span></ProductEntry>
+function Footer({ client }: { client: Context }) {
+  return <nav className="workbench-navigation workbench-footer" aria-label="设置">
+    <SurfaceEntry client={client} surface="settings"><SettingsIcon aria-hidden="true" /><span>设置</span></SurfaceEntry>
   </nav>;
-}
-
-function WorkspaceSection({ client }: { client: Context }) {
-  return <section className="workbench-section" aria-label="工作区"><header><span>工作区</span><button type="button" aria-label="添加工作区" title="添加工作区" onClick={() => client.workbenchNavigation.select("workspace")}><AddWorkspaceIcon aria-hidden="true" /></button></header></section>;
 }
 
 function EmptySurface({ ownerProps }: { ownerProps?: unknown }) {
   const surface = ownerProps as Exclude<WorkbenchSurface, "conversation">;
-  return <section className="workbench-empty-surface" aria-label={labels[surface]} />;
+  return <section className="workbench-empty-surface" aria-label={workbenchSurfaceLabels[surface]} />;
 }
 
 const workbenchClient: Plugin = function workbench(client) {
@@ -92,12 +92,11 @@ const workbenchClient: Plugin = function workbench(client) {
   sidebarPrimary = sidebar.children.get("workbench/sidebar-primary")!;
   sidebarContent = sidebar.children.get("workbench/sidebar-content")!;
   sidebarFooter = sidebar.children.get("workbench/sidebar-footer")!;
+  client.slots.contribute("workbench/sidebar-brand", { id: "workbench-brand", component: Brand });
+  client.slots.contribute("workbench/sidebar-primary", { id: "workbench-primary", component: Primary });
+  client.slots.contribute("workbench/sidebar-footer", { id: "workbench-footer", component: Footer });
   const mainRegistration = client.slots.contribute("layout/conversation", { id: "workbench-main", component: ({ client: c, sessionId }) => <MainComposition client={c} {...(sessionId ? { sessionId } : {})} slot={main} />, children: [{ name: "workbench/main", kind: "chain", scope: "session-maybe" }] });
   main = mainRegistration.children.get("workbench/main")!;
-  client.slots.contribute("workbench/sidebar-primary", { id: "product-navigation", component: ProductNavigation });
-  client.slots.contribute("workbench/sidebar-brand", { id: "product-brand", component: () => <div className="workbench-brand" aria-label="wuu">wuu</div> });
-  client.slots.contribute("workbench/sidebar-content", { id: "workspace-section", order: -100, component: WorkspaceSection });
-  client.slots.contribute("workbench/sidebar-footer", { id: "product-footer", component: ProductFooter });
   for (const surface of ["search", "workspace", "plugins", "settings"] as const) {
     client.slots.contribute("workbench/main", { id: `empty-${surface}`, key: surface, component: () => <EmptySurface ownerProps={surface} />, select: (props) => props.businessKey === surface });
   }
@@ -105,7 +104,7 @@ const workbenchClient: Plugin = function workbench(client) {
     if (typeof document === "undefined") return () => {};
     const style = document.createElement("style");
     style.dataset.wuuPluginStyle = "workbench";
-    style.textContent = `.workbench-sidebar{display:grid;height:100%;min-height:0;grid-template-rows:auto auto minmax(0,1fr) auto}.workbench-brand-region,.workbench-footer-region{min-width:0}.workbench-primary-region{display:grid;min-width:0;gap:2px;padding:6px 10px}.workbench-primary-region>.workbench-navigation{padding:0}.workbench-content-region{display:flex;min-width:0;min-height:0;flex-direction:column;overflow:hidden}.workbench-brand{padding:18px 16px 10px;font-family:Georgia,serif;font-size:23px;font-weight:650;letter-spacing:.02em;color:var(--wuu-accent,#b64a32)}.workbench-navigation{display:grid;gap:2px;padding:6px 10px}.workbench-entry{display:flex;align-items:center;gap:10px;padding:8px 10px;border:0;border-radius:7px;color:var(--ink);background:transparent;font:inherit;text-align:left;cursor:pointer}.workbench-entry svg{width:18px;height:18px;flex:0 0 auto}.workbench-entry:hover,.workbench-entry:focus-visible,.workbench-entry.is-active{background:var(--surface-3);outline:none}.workbench-entry:disabled{cursor:default;opacity:.55}.workbench-section{flex:0 0 auto;padding:16px 10px 0}.workbench-section header{display:flex;height:28px;align-items:center;justify-content:space-between;padding:0 10px;color:var(--ink-muted);font-size:11px;font-weight:650;letter-spacing:.04em;text-transform:uppercase}.workbench-section button{display:grid;width:24px;height:24px;place-items:center;border:0;border-radius:6px;color:inherit;background:transparent;cursor:pointer}.workbench-section button:hover,.workbench-section button:focus-visible{background:rgba(31,35,40,.08);outline:none}.workbench-footer{padding-bottom:14px}.workbench-empty-surface{width:100%;height:100%;min-height:0}`;
+    style.textContent = `.workbench-sidebar{--sidebar-rhythm-row:4px;--sidebar-rhythm-heading:8px;--sidebar-rhythm-group:24px;--sidebar-rhythm-footer:16px;--sidebar-pad:10px;--sidebar-icon-col:18px;--sidebar-label-gap:10px;--sidebar-label-axis:calc(var(--sidebar-pad) * 2 + var(--sidebar-icon-col) + var(--sidebar-label-gap));display:grid;height:100%;min-height:0;grid-template-rows:auto auto minmax(0,1fr) auto}.workbench-brand-region,.workbench-footer-region{min-width:0}.workbench-primary-region{display:grid;min-width:0;gap:var(--sidebar-rhythm-row);padding:4px var(--sidebar-pad) 0}.workbench-primary-region>.workbench-navigation{padding:0}.workbench-content-region{display:flex;min-width:0;min-height:0;flex-direction:column;overflow:hidden}.workbench-brand{display:flex;align-items:baseline;gap:7px;padding:8px 16px 12px;transform:translateY(-2px);font-family:Georgia,serif;font-size:23px;font-weight:650;letter-spacing:.02em;color:var(--wuu-accent,#b64a32)}.workbench-brand small{font-family:inherit;font-size:12px;font-weight:500;letter-spacing:.03em;color:var(--ink-muted)}.workbench-navigation{display:grid;gap:var(--sidebar-rhythm-row);padding:0 var(--sidebar-pad)}.workbench-entry{display:flex;align-items:center;gap:var(--sidebar-label-gap);padding:8px var(--sidebar-pad);border:0;border-radius:7px;color:var(--ink);background:transparent;font:inherit;text-align:left;cursor:pointer}.workbench-entry svg{width:var(--sidebar-icon-col);height:var(--sidebar-icon-col);flex:0 0 var(--sidebar-icon-col)}.workbench-entry:hover,.workbench-entry:focus-visible,.workbench-entry.is-active{background:var(--surface-3);outline:none}.workbench-entry:disabled{cursor:default;opacity:.55}.workbench-section{flex:0 0 auto;padding:var(--sidebar-rhythm-group) 0 0}.workbench-section header{display:flex;height:28px;align-items:center;justify-content:space-between;padding:0 calc(var(--sidebar-pad) * 2) 8px var(--sidebar-label-axis);color:var(--ink-muted);font-size:11px;font-weight:650;letter-spacing:.04em;text-transform:uppercase}.workbench-section button{display:grid;width:24px;height:24px;place-items:center;border:0;border-radius:6px;color:inherit;background:transparent;cursor:pointer}.workbench-section button:hover,.workbench-section button:focus-visible{background:rgba(31,35,40,.08);outline:none}.workbench-footer{padding:var(--sidebar-rhythm-footer) 0 14px}.workbench-empty-surface{width:100%;height:100%;min-height:0}`;
     document.head.append(style);
     return () => style.remove();
   }, "install workbench styles");

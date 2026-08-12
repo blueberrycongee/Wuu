@@ -1,11 +1,13 @@
 export const historyStyles = `
 .history-sidebar {
+  --history-row-gap: 4px;
+  --history-heading-gap: 8px;
   display: grid;
   height: 100%;
   min-height: 0;
   flex: 1 1 0;
-  grid-template-rows: 28px minmax(0, 1fr) auto;
-  padding: 8px 10px 12px;
+  grid-template-rows: minmax(0, 1fr) auto;
+  padding: 0 0 12px;
   color: var(--ink, #202423);
   background: linear-gradient(115deg, rgba(255,255,255,.16), transparent 58%);
 }
@@ -39,7 +41,7 @@ export const historyStyles = `
 .history-section-heading {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--history-heading-gap);
   padding: 0 10px;
   color: var(--ink-muted, #6d7471);
   font-size: 11px;
@@ -61,7 +63,10 @@ export const historyStyles = `
 .history-list {
   min-height: 0;
   overflow-y: auto;
-  padding: 4px 0 14px;
+  padding: var(--history-heading-gap) 0 14px;
+  display: grid;
+  align-content: start;
+  gap: var(--history-row-gap);
   scrollbar-width: thin;
 }
 
@@ -79,7 +84,6 @@ export const historyStyles = `
 
 .history-list button.is-active {
   background: var(--surface-3, rgba(31, 35, 40, 0.09));
-  box-shadow: inset 2px 0 0 var(--wuu-accent, #b64a32);
 }
 
 .history-list button span {

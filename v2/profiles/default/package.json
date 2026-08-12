@@ -31,6 +31,7 @@
     "@wuu-v2/plugin-tool-result-projection": "0.0.0",
     "@wuu-v2/plugin-tools-basic": "0.0.0",
     "@wuu-v2/plugin-workspace-loader": "0.0.0",
-    "@wuu-v2/plugin-workbench": "0.0.0"
+    "@wuu-v2/plugin-workbench": "0.0.0",
+    "@wuu-v2/plugin-workspace-navigation": "0.0.0"
   }
 }
