@@ -11,15 +11,16 @@ export const conversationStyles = `
 .conversation-scroll {
   min-height: 0;
   overflow-y: auto;
-  padding: 72px 48px 32px;
+  padding: 56px 48px 36px;
   overscroll-behavior: contain;
 }
 
 .message {
-  margin: 0 0 22px;
+  max-width: 680px;
+  margin: 0 auto 28px;
   color: var(--ink);
   font-size: 15px;
-  line-height: 1.65;
+  line-height: 1.68;
   overflow-wrap: anywhere;
 }
 
@@ -136,7 +137,9 @@ export const conversationStyles = `
 }
 
 .tool-activity {
-  margin: 0 0 16px;
+  position: relative;
+  max-width: 680px;
+  margin: 0 auto 16px;
   overflow: hidden;
   border: 1px solid var(--hairline, rgba(31, 35, 40, 0.08));
   border-radius: 10px;
@@ -146,7 +149,9 @@ export const conversationStyles = `
 }
 
 .tool-activity[data-status="error"],
-.tool-activity[data-status="failed"] {
+.tool-activity[data-status="failed"],
+.tool-activity[data-status="cancelled"],
+.tool-activity[data-status="interrupted"] {
   border-color: color-mix(in srgb, var(--danger, #b1271b) 35%, transparent);
 }
 
@@ -163,6 +168,22 @@ export const conversationStyles = `
   color: var(--ink, #202423);
   font: inherit;
   font-weight: 600;
+}
+
+.tool-activity-state {
+  color: var(--ink-muted, #69716d);
+  font-size: 11px;
+}
+
+.tool-activity[data-status="running"] .tool-activity-state { color: var(--ink, #202423); }
+
+.tool-activity-sweep {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(105deg, transparent 28%, color-mix(in srgb, var(--ink) 10%, transparent) 48%, transparent 68%);
+  background-size: 220% 100%;
+  animation: wuu-tool-sweep 1.8s var(--ease-out, ease-out) infinite;
 }
 
 .tool-activity details,
@@ -187,12 +208,25 @@ export const conversationStyles = `
 }
 
 .message-assistant[data-status="streaming"]::after {
-  content: "";
+  content: none;
+}
+
+.message-stream-cursor {
+  position: relative;
   display: inline-block;
-  width: 5px;
-  height: 1em;
-  margin-left: 3px;
+  width: 0;
+  height: 1.05em;
+  margin-left: 0;
   vertical-align: -0.12em;
+}
+
+.message-stream-cursor::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 3px;
+  width: 2px;
+  height: 1.05em;
   border-radius: 2px;
   background: var(--ink-muted);
   animation: wuu-caret 900ms steps(1, end) infinite;
@@ -220,6 +254,11 @@ export const conversationStyles = `
   50% { opacity: 0; }
 }
 
+@keyframes wuu-tool-sweep {
+  from { background-position: 120% 0; }
+  to { background-position: -20% 0; }
+}
+
 @media (max-width: 760px) {
   .conversation-scroll {
     padding-right: 20px;
@@ -233,7 +272,8 @@ export const conversationStyles = `
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .message-assistant[data-status="streaming"]::after {
+  .message-stream-cursor::after,
+  .tool-activity-sweep {
     animation: none;
   }
 }

@@ -62,6 +62,9 @@ function MarkdownMessage({ ownerProps }: { ownerProps?: unknown }) {
       aria-label={message.role === "user" ? "Your message" : "Assistant message"}
     >
       {message.text ? <MarkdownText text={message.text} /> : null}
+      {message.role === "assistant" && message.status === "streaming" ? (
+        <span className="message-stream-cursor" aria-hidden="true" />
+      ) : null}
       {terminal ? <small className="message-terminal" role="status">{terminal}</small> : null}
     </article>
   );
@@ -74,17 +77,25 @@ function ConversationStatus({ ownerProps }: { ownerProps?: unknown }) {
 
 function GenericToolActivity({ ownerProps }: { ownerProps?: unknown }) {
   const tool = ownerProps as ConversationToolItem;
+  const terminal = tool.status === "error" || tool.status === "failed"
+    ? "Tool failed"
+    : tool.status === "cancelled"
+      ? "Tool cancelled"
+      : tool.status === "interrupted"
+        ? "Tool interrupted"
+        : tool.status === "complete" ? "Completed" : "Running";
   return (
     <article className="tool-activity" data-status={tool.status} aria-label={`Tool ${tool.name}`}>
       <div className="tool-activity-heading">
         <code>{tool.name}</code>
-        <span>{tool.status}</span>
+        <span className="tool-activity-state">{terminal}</span>
       </div>
       <details>
         <summary>Input</summary>
         <pre>{JSON.stringify(tool.input, null, 2)}</pre>
       </details>
       {tool.result === null ? null : <pre className="tool-activity-result">{tool.result}</pre>}
+      {tool.status === "running" ? <span className="tool-activity-sweep" aria-hidden="true" /> : null}
     </article>
   );
 }
