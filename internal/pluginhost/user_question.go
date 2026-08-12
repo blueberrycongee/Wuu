@@ -16,6 +16,11 @@ const (
 	UserQuestionResolved  = "resolved"
 )
 
+// userQuestionResponseTimeout bounds how long a pending question may block
+// its execution: unanswered questions expire instead of hanging the turn.
+// A package variable so expiry tests can shorten it without waiting.
+var userQuestionResponseTimeout = 5 * time.Minute
+
 type UserQuestionOption struct {
 	Label       string `json:"label"`
 	Description string `json:"description,omitempty"`
@@ -91,6 +96,10 @@ type userQuestionResult struct {
 type pendingUserQuestion struct {
 	request UserQuestionRequest
 	result  chan userQuestionResult
+	// timer expires this request when the user never answers. Each pending
+	// question owns its own timer: concurrent asks in different threads are
+	// timed independently from their own registration.
+	timer *time.Timer
 }
 
 // UserQuestionBroker owns live, execution-bound human questions. Requests are
@@ -135,6 +144,15 @@ func (b *UserQuestionBroker) Ask(ctx context.Context, owner UserQuestionOwner, p
 		return UserQuestionAnswer{}, &UserQuestionError{Code: "service_unavailable", Message: "user interaction is unavailable"}
 	}
 	b.pending[requestID] = entry
+	// Each request carries its own expiry timer so a pending question can
+	// never hang its execution forever. Arming under the lock means no
+	// answer can slip in before the timer exists.
+	entry.timer = time.AfterFunc(userQuestionResponseTimeout, func() {
+		b.resolve(requestID, userQuestionResult{err: &UserQuestionError{
+			Code:    "question_expired",
+			Message: "user did not answer within the time limit",
+		}}, "expired")
+	})
 	subscribers := b.subscribersLocked()
 	b.mu.Unlock()
 	b.publish(subscribers, UserQuestionEvent{Type: UserQuestionRequested, Request: cloneUserQuestionRequest(&entry.request)})
@@ -165,6 +183,9 @@ func (b *UserQuestionBroker) Respond(requestID string, answer UserQuestionAnswer
 		return err
 	}
 	delete(b.pending, requestID)
+	if entry.timer != nil {
+		entry.timer.Stop()
+	}
 	subscribers := b.subscribersLocked()
 	b.mu.Unlock()
 	entry.result <- userQuestionResult{answer: cloneUserQuestionAnswer(answer)}
@@ -235,6 +256,9 @@ func (b *UserQuestionBroker) Close() {
 	}
 	b.mu.Unlock()
 	for _, entry := range pending {
+		if entry.timer != nil {
+			entry.timer.Stop()
+		}
 		entry.result <- userQuestionResult{err: &UserQuestionError{Code: "service_unavailable", Message: "user interaction is unavailable"}}
 	}
 }
@@ -247,6 +271,9 @@ func (b *UserQuestionBroker) resolve(requestID string, result userQuestionResult
 		return false
 	}
 	delete(b.pending, requestID)
+	if entry.timer != nil {
+		entry.timer.Stop()
+	}
 	subscribers := b.subscribersLocked()
 	b.mu.Unlock()
 	entry.result <- result
