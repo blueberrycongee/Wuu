@@ -2005,6 +2005,58 @@
   height: 12px;
 }
 
+/* Line-start marker of a tool activity row: a rounded square whose only job
+ * is encoding execution state, not a semantic metaphor. */
+.tool-activity-marker {
+  flex: 0 0 auto;
+  width: 12px;
+  height: 12px;
+  align-self: center;
+}
+
+.tool-activity-marker-track {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.4;
+  stroke-linecap: round;
+}
+
+/* Running: a bright segment chases around the square perimeter. The path is
+ * pathLength-normalized to 100, so a 26-unit dash on a -100 offset loop reads
+ * as one cursor completing a lap — no rotation, no spinner. */
+.tool-activity-marker.is-running .tool-activity-marker-track {
+  stroke-dasharray: 26 74;
+  animation: tool-activity-marker-chase 1.5s linear infinite;
+}
+
+/* Settled: the row's resting state — a quiet hollow square. */
+.tool-activity-marker.is-settled .tool-activity-marker-track {
+  opacity: 0.55;
+}
+
+/* Failed: solid, in the danger color inherited from the row. */
+.tool-activity-marker.is-failed .tool-activity-marker-track {
+  fill: currentColor;
+  stroke: none;
+}
+
+@keyframes tool-activity-marker-chase {
+  from {
+    stroke-dashoffset: 0;
+  }
+  to {
+    stroke-dashoffset: -100;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tool-activity-marker.is-running .tool-activity-marker-track {
+    animation: none;
+    stroke-dasharray: none;
+    opacity: 0.55;
+  }
+}
+
 .activity-toggle:hover svg {
   color: currentColor;
 }

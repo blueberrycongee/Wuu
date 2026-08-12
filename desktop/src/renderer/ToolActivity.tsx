@@ -6,6 +6,7 @@ import {
   summarizeToolActivity,
 } from "./ToolActivityHelpers";
 import { ToolActivityPresenter } from "./plugins/ToolActivityPresenter";
+import { ToolActivityMarker } from "./ToolActivityMarker";
 export type { JsonRecord } from "./ToolActivityHelpers";
 export {
   isRecord,
@@ -144,6 +145,10 @@ export function ToolActivityRow({
   return (
     <article className={className}>
       <span className="activity-row activity-summary">
+        <ToolActivityMarker
+          running={summary.running}
+          failed={summary.failed}
+        />
         <span className="activity-copy">
           <LightweightStreamingText
             text={summaryText}
