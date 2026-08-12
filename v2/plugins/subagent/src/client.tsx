@@ -4,7 +4,13 @@ import type { SlashCommand } from "@wuu-v2/plugin-slash/client-api";
 import type { SubagentValue } from "./shared.js";
 
 type ConversationValue = {
-  messages: Array<{ id: string; role: string; text: string; status: string }>;
+  items: Array<{
+    id: string;
+    kind: "message" | "status" | "tool";
+    role?: string;
+    text?: string;
+    status: string;
+  }>;
   running: boolean;
 };
 
@@ -23,8 +29,10 @@ function SubagentRow({
     subagent.childSessionId,
     "conversation",
   );
-  const answer = conversation?.messages.findLast((message) =>
-    message.role === "assistant" && message.text.trim())?.text;
+  const answer = conversation?.items.findLast((item) =>
+    item.kind === "message" &&
+    item.role === "assistant" &&
+    item.text?.trim())?.text;
   return (
     <div>
       <span>

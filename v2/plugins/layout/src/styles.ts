@@ -1,5 +1,6 @@
 export const layoutStyles = `
 .app-shell {
+  --side-reserved-width: 686px;
   position: relative;
   display: grid;
   width: 100%;
@@ -16,7 +17,14 @@ export const layoutStyles = `
 }
 
 .app-shell.is-sidebar-empty {
+  --side-reserved-width: 360px;
   grid-template-columns: minmax(0, 1fr) auto;
+}
+
+@media (max-width: 1080px) {
+  .app-shell {
+    --side-overlay-width: calc(100vw - 48px);
+  }
 }
 
 .app-shell::before {

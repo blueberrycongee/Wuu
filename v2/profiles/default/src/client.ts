@@ -2,6 +2,7 @@ import type {
   ClientModuleFactory,
   ClientModuleSystem,
 } from "@wuu-v2/client-runtime";
+import revisions from "./client-revisions.json" with { type: "json" };
 
 export interface ClientBootEntry {
   id: string;
@@ -19,15 +20,15 @@ interface ProfileClientEntry {
 }
 
 const entries: ProfileClientEntry[] = [
-  { id: "theme-default", url: "@wuu-v2/plugin-theme-default/client", revision: "1", load: () => import("@wuu-v2/plugin-theme-default/client") },
-  { id: "history", url: "@wuu-v2/plugin-history/client", revision: "1", load: () => import("@wuu-v2/plugin-history/client") },
-  { id: "layout", url: "@wuu-v2/plugin-layout/client", revision: "1", load: () => import("@wuu-v2/plugin-layout/client") },
-  { id: "conversation", url: "@wuu-v2/plugin-conversation/client", revision: "1", load: () => import("@wuu-v2/plugin-conversation/client") },
-  { id: "composer", url: "@wuu-v2/plugin-composer/client", revision: "1", load: () => import("@wuu-v2/plugin-composer/client") },
-  { id: "slash", url: "@wuu-v2/plugin-slash/client", revision: "1", load: () => import("@wuu-v2/plugin-slash/client") },
-  { id: "model-session", url: "@wuu-v2/plugin-model-session/client", revision: "1", load: () => import("@wuu-v2/plugin-model-session/client") },
-  { id: "permission-session", url: "@wuu-v2/plugin-permission-session/client", revision: "1", load: () => import("@wuu-v2/plugin-permission-session/client") },
-  { id: "side", url: "@wuu-v2/plugin-side/client", revision: "1", load: () => import("@wuu-v2/plugin-side/client") },
+  { id: "theme-default", url: "@wuu-v2/plugin-theme-default/client", revision: revisions["theme-default"], load: () => import("@wuu-v2/plugin-theme-default/client") },
+  { id: "history", url: "@wuu-v2/plugin-history/client", revision: revisions.history, load: () => import("@wuu-v2/plugin-history/client") },
+  { id: "layout", url: "@wuu-v2/plugin-layout/client", revision: revisions.layout, load: () => import("@wuu-v2/plugin-layout/client") },
+  { id: "conversation", url: "@wuu-v2/plugin-conversation/client", revision: revisions.conversation, load: () => import("@wuu-v2/plugin-conversation/client") },
+  { id: "composer", url: "@wuu-v2/plugin-composer/client", revision: revisions.composer, load: () => import("@wuu-v2/plugin-composer/client") },
+  { id: "slash", url: "@wuu-v2/plugin-slash/client", revision: revisions.slash, load: () => import("@wuu-v2/plugin-slash/client") },
+  { id: "model-session", url: "@wuu-v2/plugin-model-session/client", revision: revisions["model-session"], load: () => import("@wuu-v2/plugin-model-session/client") },
+  { id: "permission-session", url: "@wuu-v2/plugin-permission-session/client", revision: revisions["permission-session"], load: () => import("@wuu-v2/plugin-permission-session/client") },
+  { id: "side", url: "@wuu-v2/plugin-side/client", revision: revisions.side, load: () => import("@wuu-v2/plugin-side/client") },
 ];
 
 function injectKeys(inject: Awaited<ReturnType<ClientModuleFactory>>["default"]["inject"]): string[] {

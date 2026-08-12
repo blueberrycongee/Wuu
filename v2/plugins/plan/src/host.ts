@@ -1,6 +1,12 @@
 import type { JsonValue, ToolDefinition } from "@wuu-v2/contracts";
 import { type Context, type Plugin } from "@wuu-v2/kernel";
-import type { PlanStep, PlanStepStatus, PlanUpdatedRecord, PlanValue } from "./shared.js";
+import type {
+  PlanActivatedRecord,
+  PlanStep,
+  PlanStepStatus,
+  PlanUpdatedRecord,
+  PlanValue,
+} from "./shared.js";
 
 const source = { pluginId: "plan", generation: "v1" } as const;
 const statuses = new Set<PlanStepStatus>(["pending", "in_progress", "completed"]);
@@ -42,11 +48,17 @@ function planValue(input: JsonValue): PlanValue {
   return { ...(explanation ? { explanation } : {}), steps };
 }
 
+async function planActive(ctx: Context, sessionId: string): Promise<boolean> {
+  return (await ctx.sessions.load(sessionId))
+    .some((event) => event.record.type === "plan/activated");
+}
+
 function planTool(ctx: Context): ToolDefinition {
   return {
     name: "update_plan",
     description: "Publish the current task plan. Keep it short and update step statuses as work progresses.",
     access: "write",
+    available: (sessionId) => planActive(ctx, sessionId),
     inputSchema: {
       type: "object",
       properties: {
@@ -71,6 +83,9 @@ function planTool(ctx: Context): ToolDefinition {
     },
     async execute(input, execution) {
       execution.signal.throwIfAborted();
+      if (!await planActive(ctx, execution.sessionId)) {
+        throw new Error("Plan is not active in this Session");
+      }
       const data = planValue(input);
       execution.signal.throwIfAborted();
       const event = await ctx.sessions.append(execution.sessionId, source, {
@@ -85,14 +100,28 @@ function planTool(ctx: Context): ToolDefinition {
 }
 
 const planHost: Plugin = function plan(ctx) {
+  ctx.hostActions.register("plan/activate", async (input) => {
+    const value = objectValue(input);
+    const sessionId = typeof value.sessionId === "string" ? value.sessionId : "";
+    if (!sessionId) throw new Error("plan activation requires sessionId");
+    if (ctx.agentRuns.isActive(sessionId)) throw new Error("cannot activate Plan during an active run");
+    if (await planActive(ctx, sessionId)) return { active: true };
+    const event = await ctx.sessions.append(sessionId, source, {
+      type: "plan/activated",
+      data: {},
+    } satisfies PlanActivatedRecord);
+    return { active: true, acceptedSeq: event.seq };
+  });
   ctx.tools.register("update_plan", planTool(ctx));
-  ctx.prompts.register("plan", () =>
-    "Use update_plan only when a task benefits from a visible multi-step plan; do not create a plan for trivial work.");
+  ctx.prompts.register("plan", async (sessionId) =>
+    await planActive(ctx, sessionId)
+      ? "Use update_plan only when a task benefits from a visible multi-step plan; do not create a plan for trivial work."
+      : undefined);
   ctx.projections.register("plan", (current, event) => {
     if (event.record.type !== "plan/updated") return current;
     return (event.record as PlanUpdatedRecord).data;
   });
 };
 
-planHost.inject = ["projections", "prompts", "sessions", "tools"];
+planHost.inject = ["agentRuns", "hostActions", "projections", "prompts", "sessions", "tools"];
 export default planHost;

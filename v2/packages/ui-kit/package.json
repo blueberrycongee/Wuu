@@ -1,0 +1,11 @@
+{
+  "name": "@wuu-v2/ui-kit",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": "./src/index.tsx",
+  "dependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  }
+}

@@ -39,6 +39,7 @@ try {
     ...manifest.map(({ id }) => id),
     "smoke-command",
   ]);
+  modules.auditReady();
   const disconnect = ctx.clientActions.connect(async (action, input) => {
     if (action === "side/resolve") return { sessionId: "side-client-smoke" };
     return { action, input };

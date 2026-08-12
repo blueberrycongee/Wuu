@@ -4,11 +4,24 @@ export const sideStyles = `
   display: grid;
   height: 100%;
   min-width: 0;
+  width: min(var(--side-width, 360px), calc(100vw - var(--side-reserved-width, 686px)));
+  max-width: calc(100vw - var(--side-reserved-width, 686px));
   min-height: 0;
   grid-template-rows: 48px minmax(0, 1fr) auto;
   border-left: 1px solid var(--hairline-strong, rgba(31, 35, 40, 0.12));
   color: var(--ink, #202423);
   background: var(--paper, #fff);
+}
+
+@media (max-width: 1080px) {
+  .side-panel {
+    position: absolute;
+    z-index: 4;
+    inset: 0 0 0 auto;
+    width: min(var(--side-width, 360px), var(--side-overlay-width, calc(100vw - 48px)));
+    max-width: var(--side-overlay-width, calc(100vw - 48px));
+    box-shadow: -16px 0 36px rgba(31, 35, 40, 0.16);
+  }
 }
 
 .side-resizer {

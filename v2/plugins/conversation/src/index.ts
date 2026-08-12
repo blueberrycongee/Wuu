@@ -55,6 +55,7 @@ export const conversationProjectionPlugin: Plugin = function conversationProject
         item.status === "running");
       if (tool?.kind === "tool") {
         tool.result = record.data.content.map((item) => item.text).join("\n");
+        if (record.data.meta !== undefined) tool.meta = record.data.meta;
         tool.status = record.data.isError ? "error" : "complete";
       }
     } else if (record.type === "agent/run-state") {

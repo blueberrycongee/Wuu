@@ -14,3 +14,4 @@ export type PlanValue = {
 };
 
 export type PlanUpdatedRecord = SessionRecord<"plan/updated", PlanValue>;
+export type PlanActivatedRecord = SessionRecord<"plan/activated", Record<string, never>>;

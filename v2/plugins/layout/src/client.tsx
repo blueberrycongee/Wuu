@@ -6,6 +6,7 @@ import {
   type Plugin,
   type SlotHandle,
 } from "@wuu-v2/client-runtime";
+import { DialogLayerHost } from "@wuu-v2/ui-kit";
 import { layoutStyles } from "./styles.js";
 
 const layoutClient: Plugin = function layout(client) {
@@ -31,6 +32,7 @@ const layoutClient: Plugin = function layout(client) {
     }, [componentClient, initialSessionId, selectedSessionId]);
     useEffect(() => setSidebarOpen(false), [selectedSessionId]);
     return (
+      <DialogLayerHost>
       <div className={`app-shell${hasSidebar ? "" : " is-sidebar-empty"}${sidebarOpen ? " is-sidebar-open" : ""}`}>
         {hasSidebar ? (
           <button
@@ -65,6 +67,7 @@ const layoutClient: Plugin = function layout(client) {
           {...(sessionId ? { sessionId } : {})}
         />
       </div>
+      </DialogLayerHost>
     );
   }
 

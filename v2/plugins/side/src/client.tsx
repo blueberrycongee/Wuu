@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useSyncExternalStore, type CSSProperties } from "react";
 import {
   Service,
   useProjection,
   type Context,
   type Plugin,
+  type ScopedStoreSeat,
 } from "@wuu-v2/client-runtime";
 import type {} from "@wuu-v2/plugin-conversation/client";
 import type { ConversationValue } from "@wuu-v2/plugin-conversation/shared";
@@ -31,30 +32,26 @@ const initialState: SidePanelState = {
 };
 
 class SidePanelsService extends Service {
-  private readonly states = new Map<string, SidePanelState>();
-  private readonly listeners = new Set<() => void>();
   private readonly resolutions = new Map<string, Promise<string>>();
-  private revision = 0;
 
-  constructor(ctx: Context) {
+  constructor(ctx: Context, private readonly states: ScopedStoreSeat<SidePanelState>) {
     super(ctx, "sidePanels");
   }
 
   get(sessionId: string): SidePanelState {
-    return this.states.get(sessionId) ?? initialState;
+    return this.states.get(sessionId);
   }
 
-  subscribe(listener: () => void): () => void {
-    this.listeners.add(listener);
-    return () => this.listeners.delete(listener);
+  subscribe(sessionId: string, listener: () => void): () => void {
+    return this.states.subscribe(sessionId, listener);
   }
 
-  snapshot = (): number => this.revision;
+  snapshot(sessionId: string): SidePanelState {
+    return this.states.get(sessionId);
+  }
 
   private update(sessionId: string, patch: Partial<SidePanelState>): void {
-    this.states.set(sessionId, { ...this.get(sessionId), ...patch });
-    this.revision += 1;
-    for (const listener of this.listeners) listener();
+    this.states.set(sessionId, (current) => ({ ...current, ...patch }));
   }
 
   private async resolve(sessionId: string): Promise<string> {
@@ -128,10 +125,11 @@ declare module "cordis" {
 }
 
 function SidePanel({ client, sessionId }: { client: Context; sessionId?: string }) {
+  const scope = sessionId ?? "";
   useSyncExternalStore(
-    client.sidePanels.subscribe.bind(client.sidePanels),
-    client.sidePanels.snapshot,
-    client.sidePanels.snapshot,
+    useCallback((listener) => client.sidePanels.subscribe(scope, listener), [client, scope]),
+    useCallback(() => client.sidePanels.snapshot(scope), [client, scope]),
+    useCallback(() => client.sidePanels.snapshot(scope), [client, scope]),
   );
   const state = sessionId ? client.sidePanels.get(sessionId) : initialState;
   const conversation = useProjection<ConversationValue>(
@@ -186,7 +184,11 @@ function SidePanel({ client, sessionId }: { client: Context; sessionId?: string 
     );
   }
   return (
-    <aside className="side-panel" aria-label="Side conversation" style={{ width: state.width }}>
+    <aside
+      className="side-panel"
+      aria-label="Side conversation"
+      style={{ "--side-width": `${state.width}px` } as CSSProperties}
+    >
       <div
         className="side-resizer"
         role="separator"
@@ -277,7 +279,8 @@ function SidePanel({ client, sessionId }: { client: Context; sessionId?: string 
 }
 
 const sideClient: Plugin = function side(client) {
-  new SidePanelsService(client);
+  const states = client.scopedStores.define("side/panel", () => ({ ...initialState }));
+  new SidePanelsService(client, states);
   client.slots.contribute("layout/side", {
     id: "side-panel",
     component: SidePanel,
@@ -313,6 +316,7 @@ sideClient.inject = [
   "clientProjections",
   "composerSurfaces",
   "conversationSurfaces",
+  "scopedStores",
   "slots",
 ];
 sideClient.provide = "sidePanels";

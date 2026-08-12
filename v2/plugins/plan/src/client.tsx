@@ -1,4 +1,5 @@
 import { useProjection, type Context, type Plugin } from "@wuu-v2/client-runtime";
+import type { SlashCommand } from "@wuu-v2/plugin-slash/client-api";
 import type { PlanValue } from "./shared.js";
 
 function PlanCard({ client, sessionId }: { client: Context; sessionId?: string }) {
@@ -42,6 +43,20 @@ const planClient: Plugin = function plan(client) {
     id: "plan",
     component: PlanCard,
   });
+  void client.inject(["slashCommands"], (slashClient) => {
+    const command: SlashCommand = {
+      id: "plan.activate",
+      name: "plan",
+      title: "Activate planning for this task",
+      description: "Expose the Plan prompt and update_plan tool in this Session",
+      disabled: ({ running }) => running ? "The agent is running" : undefined,
+      execute: async ({ client: commandClient, sessionId }) => {
+        await commandClient.clientActions.execute("plan/activate", { sessionId });
+        return { type: "replace", draft: "" };
+      },
+    };
+    return slashClient.slashCommands.register(command);
+  });
   client.effect(() => {
     if (typeof document === "undefined") return () => {};
     const style = document.createElement("style");
@@ -52,5 +67,5 @@ const planClient: Plugin = function plan(client) {
   }, "install Plan styles");
 };
 
-planClient.inject = ["clientProjections", "slots"];
+planClient.inject = ["clientActions", "clientProjections", "slots"];
 export default planClient;

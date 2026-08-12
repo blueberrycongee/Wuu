@@ -21,12 +21,14 @@ export interface SlotDeclaration {
 
 export interface SlotComponentProps {
   client: Context;
+  businessKey?: string;
   ownerProps?: unknown;
   sessionId?: string;
 }
 
 export interface SlotContribution {
   id: string;
+  key?: string;
   order?: number;
   priority?: number;
   select?(props: SlotComponentProps): boolean;
@@ -91,6 +93,14 @@ export class SlotsService extends Service {
     if (declaration.kind === "single" && (existing?.size ?? 0) > 1) {
       throw new Error(`single slot has multiple pending contributions: ${declaration.name}`);
     }
+    if (declaration.kind === "keyed" && existing) {
+      const keys = new Set<string>();
+      for (const entry of existing.values()) {
+        if (!entry.key) throw new Error(`keyed slot contribution omitted its key: ${declaration.name}/${entry.id}`);
+        if (keys.has(entry.key)) throw new Error(`keyed slot has duplicate key: ${declaration.name}/${entry.key}`);
+        keys.add(entry.key);
+      }
+    }
     const owned = { ...declaration, epoch: Symbol(declaration.name) };
     this.declarations.set(declaration.name, owned);
     this.changed();
@@ -152,6 +162,12 @@ export class SlotsService extends Service {
     if (declaration?.kind === "single" && entries.size) {
       throw new Error(`single slot is already occupied: ${name}`);
     }
+    if (declaration?.kind === "keyed") {
+      if (!contribution.key) throw new Error(`keyed slot contribution omitted its key: ${name}/${contribution.id}`);
+      if ([...entries.values()].some((entry) => entry.key === contribution.key)) {
+        throw new Error(`keyed slot is already occupied: ${name}/${contribution.key}`);
+      }
+    }
     const ownerFiber = this.ctx.fiber;
     entries.set(contribution.id, { ...contribution, fiber: ownerFiber });
     this.contributions.set(name, entries);
@@ -196,8 +212,9 @@ export class SlotsService extends Service {
       throw new Error(`stale slot authorization: ${handle.name}`);
     }
     return [...(this.contributions.get(handle.name)?.values() ?? [])]
-      .map(({ id, order, priority, select, component, children }) => ({
+      .map(({ id, key, order, priority, select, component, children }) => ({
         id,
+        ...(key === undefined ? {} : { key }),
         ...(order === undefined ? {} : { order }),
         ...(priority === undefined ? {} : { priority }),
         ...(select === undefined ? {} : { select }),
@@ -216,6 +233,11 @@ export class SlotsService extends Service {
     }
     if (declaration.scope === "session" && props.sessionId === undefined) return [];
     const entries = this.entries(handle);
+    if (declaration.kind === "keyed") {
+      return props.businessKey === undefined
+        ? []
+        : entries.filter((entry) => entry.key === props.businessKey);
+    }
     if (declaration.kind !== "chain") return entries;
     const selected = entries.find((entry) => entry.select?.(props) ?? true);
     return selected ? [selected] : [];
@@ -229,6 +251,13 @@ export class SlotsService extends Service {
     return declaration.scope === "session"
       ? `${contributionId}:${sessionId}`
       : contributionId;
+  }
+
+  pendingDeclarations(): string[] {
+    return [...this.contributions]
+      .filter(([name, entries]) => !this.declarations.has(name) && entries.size)
+      .map(([name, entries]) => `${name} <- ${[...entries.keys()].sort().join(",")}`)
+      .sort();
   }
 }
 
@@ -296,12 +325,14 @@ export class ClientProjectionStore extends Service {
     let changed = false;
     for (const key of [...this.rows.keys()]) {
       if (!key.startsWith(`${frame.sessionId}\u0000`) || keys.has(key)) continue;
+      if ((this.rows.get(key)?.seq ?? -1) > frame.lastDurableSeq) continue;
       this.rows.delete(key);
       changed = true;
     }
     for (const projection of frame.projections) {
       const key = this.rowKey(frame.sessionId, projection.key);
       const current = this.rows.get(key);
+      if ((current?.seq ?? -1) > projection.seq) continue;
       if (current?.seq === projection.seq && current.value === projection.value) continue;
       this.rows.set(key, { seq: projection.seq, value: projection.value });
       changed = true;
@@ -538,10 +569,19 @@ export class ClientModuleSystem {
   private readonly modules = new Map<string, ClientPluginModule>();
   private readonly materializing = new Map<string, Promise<ClientPluginModule>>();
   private readonly fibers = new Map<string, Fiber>();
+  private transition: Promise<void> = Promise.resolve();
+  private closing = false;
 
   constructor(private readonly ctx: Context) {}
 
+  private enqueue<T>(operation: () => Promise<T>): Promise<T> {
+    const task = this.transition.then(operation, operation);
+    this.transition = task.then(() => undefined, () => undefined);
+    return task;
+  }
+
   arrive(id: string, revision: string, factory: ClientModuleFactory): void {
+    if (this.closing) throw new Error("client module system is stopping");
     if (this.arrivals.has(id)) throw new Error(`client module already arrived: ${id}`);
     this.arrivals.set(id, { revision, factory });
   }
@@ -554,7 +594,7 @@ export class ClientModuleSystem {
     const arrival = this.arrivals.get(id);
     if (!arrival) throw new Error(`client module has not arrived: ${id}`);
     const task = arrival.factory().then((module) => {
-      this.modules.set(id, module);
+      if (this.arrivals.get(id) === arrival) this.modules.set(id, module);
       return module;
     });
     this.materializing.set(id, task);
@@ -570,6 +610,11 @@ export class ClientModuleSystem {
   }
 
   async activateAll(ids: string[]): Promise<void> {
+    if (this.closing) throw new Error("client module system is stopping");
+    return this.enqueue(() => this.activateAllNow(ids));
+  }
+
+  private async activateAllNow(ids: string[]): Promise<void> {
     const pending: Array<{ id: string; fiber: Fiber; module: ClientPluginModule }> = [];
     try {
       for (const id of ids) {
@@ -632,12 +677,26 @@ export class ClientModuleSystem {
     const reasons = [
       ...(missing.length ? [`missing services: ${missing.join(", ")}`] : []),
       ...(cycle ? [`dependency cycle: ${cycle.join(" -> ")}`] : []),
-      `unresolved modules: ${[...unresolved.keys()].join(", ")}`,
+      ...(unresolved.size
+        ? [`unresolved modules: ${[...unresolved.keys()].join(", ")}`]
+        : []),
     ];
     throw new Error(`client startup dependency audit failed; ${reasons.join("; ")}`);
   }
 
+  auditReady(): void {
+    const pendingSlots = this.ctx.slots.pendingDeclarations();
+    if (!pendingSlots.length) return;
+    throw new Error(`client startup slot audit failed; undeclared slots: ${pendingSlots.join("; ")}`);
+  }
+
   async invalidate(id: string): Promise<void> {
+    if (this.closing) throw new Error("client module system is stopping");
+    return this.enqueue(() => this.invalidateNow(id));
+  }
+
+  private async invalidateNow(id: string): Promise<void> {
+    this.arrivals.delete(id);
     try {
       await this.materializing.get(id);
     } catch {
@@ -646,11 +705,14 @@ export class ClientModuleSystem {
     await this.fibers.get(id)?.dispose();
     this.fibers.delete(id);
     this.modules.delete(id);
-    this.arrivals.delete(id);
   }
 
   async dispose(): Promise<void> {
-    for (const id of [...this.arrivals.keys()].reverse()) await this.invalidate(id);
+    if (this.closing) return this.transition;
+    this.closing = true;
+    return this.enqueue(async () => {
+      for (const id of [...this.arrivals.keys()].reverse()) await this.invalidateNow(id);
+    });
   }
 }
 
@@ -709,6 +771,7 @@ export function SlotOutlet(props: {
   client: Context;
   slot: SlotHandle;
   ownerProps?: unknown;
+  businessKey?: string;
   sessionId?: string;
   empty?: ReactNode;
 }): ReactNode {
@@ -719,6 +782,7 @@ export function SlotOutlet(props: {
   );
   const componentProps: SlotComponentProps = {
     client: props.client,
+    ...(props.businessKey === undefined ? {} : { businessKey: props.businessKey }),
     ...(props.ownerProps === undefined ? {} : { ownerProps: props.ownerProps }),
     ...(props.sessionId === undefined ? {} : { sessionId: props.sessionId }),
   };

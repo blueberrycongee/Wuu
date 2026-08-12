@@ -18,6 +18,7 @@ export interface ConversationToolItem {
   name: string;
   input: JsonValue;
   result: string | null;
+  meta?: JsonValue;
   status: string;
 }
 
