@@ -75,7 +75,7 @@ describe("ConversationForkDialog", () => {
     );
   });
 
-  it("renders the two fork option buttons and the cancel button", () => {
+  it("renders the two fork option buttons", () => {
     mount(
       createElement(ConversationForkDialog, {
         onCancel: () => undefined,
@@ -85,7 +85,6 @@ describe("ConversationForkDialog", () => {
 
     expect(buttonByLabel("派生到本地")).toBeTruthy();
     expect(buttonByLabel("派生到 git worktree")).toBeTruthy();
-    expect(buttonByLabel("取消")).toBeTruthy();
     expect(buttonByLabel("关闭")).toBeTruthy();
   });
 
@@ -186,22 +185,6 @@ describe("ConversationForkDialog", () => {
     expect(onCancel).not.toHaveBeenCalled();
   });
 
-  it("invokes onCancel when the 取消 button is clicked", () => {
-    const onChoose = vi.fn(() => Promise.resolve());
-    const onCancel = vi.fn();
-
-    mount(
-      createElement(ConversationForkDialog, { onCancel, onChoose }),
-    );
-
-    act(() => {
-      buttonByLabel("取消").click();
-    });
-
-    expect(onCancel).toHaveBeenCalledTimes(1);
-    expect(onChoose).not.toHaveBeenCalled();
-  });
-
   it("invokes onCancel when the X close button is clicked", () => {
     const onChoose = vi.fn(() => Promise.resolve());
     const onCancel = vi.fn();
@@ -297,7 +280,6 @@ describe("ConversationForkDialog", () => {
     expect(onChoose).toHaveBeenCalledWith("local");
     expect(buttonByLabel("派生到本地").disabled).toBe(true);
     expect(buttonByLabel("派生到 git worktree").disabled).toBe(true);
-    expect(buttonByLabel("取消").disabled).toBe(true);
     expect(buttonByLabel("关闭").disabled).toBe(true);
 
     // Resolve inside act() so the busy-mode-reset state update lands
@@ -329,6 +311,5 @@ describe("ConversationForkDialog", () => {
     );
     expect(buttonByLabel("派生到本地").disabled).toBe(false);
     expect(buttonByLabel("派生到 git worktree").disabled).toBe(false);
-    expect(buttonByLabel("取消").disabled).toBe(false);
   });
 });

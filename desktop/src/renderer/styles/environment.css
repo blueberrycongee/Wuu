@@ -1720,14 +1720,6 @@
   line-height: 1.45;
 }
 
-.fork-dialog-cancel {
-  width: 100%;
-  min-height: 46px;
-  justify-content: center;
-  border: 0;
-  background: var(--wuu-control-secondary-background, var(--surface-2));
-}
-
 @media (max-width: 720px) {
   .modal-backdrop {
     padding: 12px;

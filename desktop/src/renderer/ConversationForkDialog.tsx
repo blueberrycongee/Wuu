@@ -32,14 +32,13 @@ const FORK_OPTIONS: ForkOption[] = [
 // the same working directory ("local") or in a freshly created git
 // worktree ("worktree"). The shared `Modal` chrome handles backdrop,
 // focus, Escape, and backdrop-click dismissal — this component only
-// owns the option list, the busy-state spinner, and the footer
-// Cancel button.
+// owns the option list, the busy-state spinner, and the error note.
 //
 // `onChoose` resolves when the caller has finished starting the fork;
 // the dialog stays open until then so the active spinner / disabled
 // state on the chosen option is the visible feedback. Cancelling is
-// always available via the Cancel button (footer) and the Modal's
-// own close affordances (X, Esc, backdrop click) while not busy.
+// always available via the Modal's own close affordances (X, Esc,
+// backdrop click) while not busy.
 export function ConversationForkDialog({
   onCancel,
   onChoose,
@@ -85,17 +84,6 @@ export function ConversationForkDialog({
       onClose={onCancel}
       closeDisabled={disabled}
       panelClassName="fork-dialog"
-      footer={
-        <button
-          className="secondary-button fork-dialog-cancel"
-          type="button"
-          aria-label={t("common.cancel")}
-          disabled={disabled}
-          onClick={onCancel}
-        >
-          {t("common.cancel")}
-        </button>
-      }
     >
       <div className="fork-dialog-options">
         {FORK_OPTIONS.map(({ mode, icon: Icon, titleKey, descriptionKey }) => {
