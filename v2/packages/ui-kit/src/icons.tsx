@@ -1,4 +1,4 @@
-import { Blocks, FolderPlus, MessageSquarePlus, Search, Settings, type LucideIcon } from "lucide-react";
+import { Blocks, FolderPlus, PanelLeft, Search, Settings, type LucideIcon } from "lucide-react";
 
 export interface WuuIconProps {
   size?: number;
@@ -13,8 +13,8 @@ function icon(Icon: LucideIcon) {
   };
 }
 
-export const NewConversationIcon = icon(MessageSquarePlus);
 export const SearchIcon = icon(Search);
 export const PluginsIcon = icon(Blocks);
 export const AddWorkspaceIcon = icon(FolderPlus);
+export const SidebarToggleIcon = icon(PanelLeft);
 export const SettingsIcon = icon(Settings);

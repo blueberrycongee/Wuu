@@ -22,6 +22,7 @@ ipcRenderer.on(bridgeChannels.state, (_event: IpcRendererEvent, state: HarnessSt
 const bridge: DesktopBridge = {
   boot: () => ipcRenderer.invoke(bridgeChannels.boot),
   restart: () => ipcRenderer.invoke(bridgeChannels.restart),
+  chooseWorkspaceDirectory: () => ipcRenderer.invoke(bridgeChannels.chooseWorkspaceDirectory),
   action: (action: string, input: JsonValue) =>
     ipcRenderer.invoke(bridgeChannels.action, action, input),
   follow(sessionId, listener) {

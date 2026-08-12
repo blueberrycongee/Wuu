@@ -77,11 +77,13 @@ async function boot(generation: number): Promise<() => Promise<void>> {
   const modules = new ClientModuleSystem(client);
   let disconnectActions: (() => void) | undefined;
   let disconnectProjections: (() => void) | undefined;
+  let disconnectShellCapabilities: (() => void) | undefined;
   let disposed = false;
   const dispose = async () => {
     if (disposed) return;
     disposed = true;
     disconnectProjections?.();
+    disconnectShellCapabilities?.();
     disconnectActions?.();
     await modules.dispose();
     await kernel.dispose();
@@ -100,6 +102,9 @@ async function boot(generation: number): Promise<() => Promise<void>> {
     assertCurrent();
     disconnectActions = client.clientActions.connect((action, input) =>
       desktop.action(action, input));
+    disconnectShellCapabilities = client.shellCapabilities.connect({
+      chooseWorkspaceDirectory: () => desktop.chooseWorkspaceDirectory(),
+    });
     disconnectProjections = client.clientProjections.connect({
       follow: (sessionId, listener) => desktop.follow(sessionId, listener),
     });

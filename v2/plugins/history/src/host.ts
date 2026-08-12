@@ -17,6 +17,25 @@ function hasMarker(events: readonly SessionEvent[]): boolean {
   return events.some((event) => event.record.type === "history/session-created");
 }
 
+function workspaceId(events: readonly SessionEvent[]): string | undefined {
+  for (const event of events) {
+    if (event.record.type !== "history/session-created") continue;
+    const data = (event.record as HistoryRecord).data;
+    return data.version === 2 ? data.workspaceId : "conversation";
+  }
+}
+
+function inputWorkspaceId(input: JsonValue | undefined): string {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    throw new Error("History requires a Workspace");
+  }
+  const id = input.workspaceId;
+  if (typeof id !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(id)) {
+    throw new Error("History received an invalid Workspace");
+  }
+  return id;
+}
+
 function promptTitle(record: AgentSessionRecord): string | undefined {
   if (record.type !== "agent/user-message") return;
   const text = record.data.content.map((item) => item.text).join(" ").replace(/\s+/g, " ").trim();
@@ -46,15 +65,16 @@ function isRunning(events: readonly SessionEvent[]): boolean {
 export class HistorySessionsService extends Service {
   constructor(ctx: Context) {
     super(ctx, "historySessions");
-    ctx.hostActions.register("history/list", async () => ({ sessions: await this.list() }));
-    ctx.hostActions.register("history/create", async () => ({ sessionId: await this.create() }));
+    ctx.hostActions.register("history/list", async (input) => ({ sessions: await this.list(inputWorkspaceId(input)) }));
+    ctx.hostActions.register("history/create", async (input) => ({ sessionId: await this.create(inputWorkspaceId(input)) }));
   }
 
-  async list(): Promise<HistoryEntry[]> {
+  async list(workspace: string): Promise<HistoryEntry[]> {
     const entries: HistoryEntry[] = [];
     for (const id of await this.ctx.sessions.list()) {
       const events = await this.ctx.sessions.load(id);
       if (!hasMarker(events)) continue;
+      if (workspaceId(events) !== workspace) continue;
       entries.push({
         id,
         title: firstPrompt(events) ?? "New task",
@@ -66,24 +86,24 @@ export class HistorySessionsService extends Service {
       right.updatedAt.localeCompare(left.updatedAt) || left.id.localeCompare(right.id));
   }
 
-  async create(): Promise<string> {
-    return this.ensure(`session-${randomUUID()}`);
+  async create(workspace: string): Promise<string> {
+    return this.ensure(`session-${randomUUID()}`, workspace);
   }
 
-  async ensure(sessionId: string): Promise<string> {
+  async ensure(sessionId: string, workspace = "conversation"): Promise<string> {
     const events = await this.ctx.sessions.load(sessionId);
     if (hasMarker(events)) return sessionId;
     await this.ctx.modelRouting.initialize(sessionId);
     await this.ctx.toolPolicy.initialize(sessionId, "full-access");
     await this.ctx.sessions.append(sessionId, source, {
       type: "history/session-created",
-      data: { version: 1 },
+      data: { version: 2, workspaceId: workspace },
     } satisfies HistoryRecord);
     return sessionId;
   }
 
   async openLatestOrCreate(): Promise<string> {
-    return (await this.list())[0]?.id ?? this.create();
+    return (await this.list("conversation"))[0]?.id ?? this.create("conversation");
   }
 }
 

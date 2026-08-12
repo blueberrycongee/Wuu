@@ -8,8 +8,6 @@ import {
 import type { JsonValue } from "@wuu-v2/contracts";
 import type { HistoryEntry, HistoryEntryProjection } from "./shared.js";
 import { historyStyles } from "./styles.js";
-import { NewConversationIcon } from "@wuu-v2/ui-kit";
-import { WorkbenchSidebarItem } from "@wuu-v2/plugin-workbench/client";
 
 function objectValue(value: JsonValue | undefined): Record<string, JsonValue> {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -73,7 +71,7 @@ function HistoryRow({
   );
 }
 
-function useCreateSession(client: Context) {
+function useCreateSession(client: Context, workspaceId: string) {
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string>();
   const create = useCallback(async () => {
@@ -81,7 +79,7 @@ function useCreateSession(client: Context) {
     setCreating(true);
     setError(undefined);
     try {
-      const result = objectValue(await client.clientActions.execute("history/create", {}));
+      const result = objectValue(await client.clientActions.execute("history/create", { workspaceId }));
       if (typeof result.sessionId !== "string") throw new Error("History did not create a Session");
       client.workbenchNavigation.select("conversation");
       client.activeSession.select(result.sessionId);
@@ -90,16 +88,25 @@ function useCreateSession(client: Context) {
     } finally {
       setCreating(false);
     }
-  }, [client, creating]);
+  }, [client, creating, workspaceId]);
   return { create, creating, error };
 }
 
-function NewConversationEntry({ client }: { client: Context }) {
-  const { create, creating, error } = useCreateSession(client);
-  return <nav className="workbench-navigation history-new-conversation" aria-label="会话"><WorkbenchSidebarItem disabled={creating} onActivate={() => void create()}><NewConversationIcon aria-hidden="true" /><span>新会话</span></WorkbenchSidebarItem>{error ? <span className="history-create-error" role="alert">{error}</span> : null}</nav>;
+function workspaceFrom(ownerProps: unknown): string {
+  if (!ownerProps || typeof ownerProps !== "object" || Array.isArray(ownerProps)) throw new Error("History requires Workspace context");
+  const workspaceId = (ownerProps as { workspaceId?: unknown }).workspaceId;
+  if (typeof workspaceId !== "string" || !workspaceId) throw new Error("History requires Workspace context");
+  return workspaceId;
 }
 
-function HistorySidebar({ client }: { client: Context }) {
+function WorkspaceCreateSession({ client, ownerProps }: { client: Context; ownerProps?: unknown }) {
+  const workspaceId = workspaceFrom(ownerProps);
+  const { create, creating, error } = useCreateSession(client, workspaceId);
+  return <><button type="button" className="history-workspace-create" aria-label="在对话工作区中新建会话" title="新会话" disabled={creating} onClick={() => void create()}>＋</button>{error ? <span className="history-create-error" role="alert">{error}</span> : null}</>;
+}
+
+function HistorySidebar({ client, ownerProps }: { client: Context; ownerProps?: unknown }) {
+  const workspaceId = workspaceFrom(ownerProps);
   const activeSessionId = useActiveSession(client);
   const [entries, setEntries] = useState<HistoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -109,13 +116,13 @@ function HistorySidebar({ client }: { client: Context }) {
   const refresh = useCallback(async () => {
     setError(undefined);
     try {
-      setEntries(parseEntries(await client.clientActions.execute("history/list", {})));
+      setEntries(parseEntries(await client.clientActions.execute("history/list", { workspaceId })));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
       setLoading(false);
     }
-  }, [client]);
+  }, [client, workspaceId]);
 
   useEffect(() => {
     void refresh();
@@ -171,10 +178,9 @@ function HistorySidebar({ client }: { client: Context }) {
 }
 
 const historyClient: Plugin = function history(client) {
-  client.slots.contribute("workbench/sidebar-primary", {
-    id: "history-new-conversation",
-    order: -100,
-    component: NewConversationEntry,
+  client.slots.contribute("workspace-navigation/workspace-actions", {
+    id: "history-create-session",
+    component: WorkspaceCreateSession,
   });
   client.slots.contribute("workspace-navigation/workspace-sessions", {
     id: "history",

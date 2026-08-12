@@ -33,8 +33,9 @@ export const layoutStyles = `
   background: transparent;
   cursor: pointer;
   -webkit-app-region: no-drag;
-  transition: background-color 140ms ease, left 180ms ease, transform 140ms ease;
+  transition: background-color 140ms ease, transform 140ms ease;
 }
+.app-sidebar-toggle svg { width: 17px; height: 17px; }
 .app-sidebar-toggle:hover, .app-sidebar-toggle:focus-visible { background: rgba(31,35,40,.08); outline: none; }
 
 .app-shell.is-sidebar-empty {
@@ -131,24 +132,12 @@ body.is-sidebar-resizing * { cursor: col-resize !important; user-select: none !i
   }
 
   .app-sidebar-toggle {
-    position: absolute;
-    z-index: 5;
-    top: 52px;
-    left: 10px;
-    display: grid;
-    width: 32px;
-    height: 32px;
-    place-items: center;
-    padding: 0;
-    border: 1px solid var(--hairline);
-    border-radius: 8px;
-    color: var(--ink);
-    background: var(--paper-solid);
-    transition: left 140ms ease;
-  }
-
-  .app-shell.is-sidebar-open .app-sidebar-toggle {
-    left: min(calc(var(--sidebar-width, 326px) + 8px), calc(100vw - 40px));
+    top: var(--titlebar-control-top);
+    left: var(--sidebar-toggle-left);
+    width: var(--titlebar-control-size);
+    height: var(--titlebar-control-size);
+    border: 0;
+    background: transparent;
   }
 }
 `;

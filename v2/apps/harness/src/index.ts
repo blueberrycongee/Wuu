@@ -318,7 +318,7 @@ try {
   const inspection = ctx.runtimeInspection.snapshot();
   const recordTypes = events.map((event) => event.record.type);
   if (smoke) {
-    const history = await ctx.hostActions.execute("history/list", {});
+    const history = await ctx.hostActions.execute("history/list", { workspaceId: "conversation" });
     const historySessions = history && !Array.isArray(history) && typeof history === "object"
       ? history.sessions
       : undefined;

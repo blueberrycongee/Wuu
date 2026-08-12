@@ -34,9 +34,8 @@ export const historyStyles = `
   transition: background-color 140ms ease, transform 140ms ease;
 }
 
-.history-new-button { grid-auto-flow: column; gap: 4px; padding: 0 7px !important; font-size: 13px !important; white-space: nowrap; }
-
-.history-new-button:active { transform: scale(.95); }
+.history-workspace-create { display: grid; width: 26px; height: 26px; margin-right: 5px; place-items: center; padding: 0; border: 0; border-radius: 6px; color: var(--ink-muted); background: transparent; font: inherit; font-size: 18px; cursor: pointer; }
+.history-workspace-create:hover,.history-workspace-create:focus-visible{color:var(--ink);background:rgba(31,35,40,.08);outline:none}.history-workspace-create:disabled{opacity:.45}
 
 .history-section-heading {
   display: flex;

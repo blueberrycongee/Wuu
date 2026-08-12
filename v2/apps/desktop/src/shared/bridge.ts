@@ -13,6 +13,7 @@ export type HarnessState =
 export interface DesktopBridge {
   boot(): Promise<DesktopBootResult>;
   restart(): Promise<DesktopBootResult>;
+  chooseWorkspaceDirectory(): Promise<string | undefined>;
   action(action: string, input: JsonValue): Promise<JsonValue | undefined>;
   follow(sessionId: string, listener: (frame: ProjectionFrame) => void): () => void;
   onHarnessState(listener: (state: HarnessState) => void): () => void;
@@ -34,6 +35,7 @@ export type HarnessOutboundMessage =
 export const bridgeChannels = {
   boot: "wuu-v2:boot",
   restart: "wuu-v2:restart",
+  chooseWorkspaceDirectory: "wuu-v2:choose-workspace-directory",
   action: "wuu-v2:action",
   follow: "wuu-v2:follow",
   unfollow: "wuu-v2:unfollow",

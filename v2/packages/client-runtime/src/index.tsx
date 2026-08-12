@@ -55,6 +55,30 @@ export interface SlotRegistration {
   dispose(): void | Promise<void>;
 }
 
+export interface ShellCapabilitiesAdapter {
+  chooseWorkspaceDirectory(): Promise<string | undefined>;
+}
+
+export class ShellCapabilitiesService extends Service {
+  private adapter: ShellCapabilitiesAdapter | undefined;
+
+  constructor(ctx: Context) {
+    super(ctx, "shellCapabilities");
+    ctx.effect(() => () => { this.adapter = undefined; }, "disconnect shell capabilities");
+  }
+
+  connect(adapter: ShellCapabilitiesAdapter): () => void {
+    if (this.adapter) throw new Error("shell capabilities are already connected");
+    this.adapter = adapter;
+    return () => { if (this.adapter === adapter) this.adapter = undefined; };
+  }
+
+  chooseWorkspaceDirectory(): Promise<string | undefined> {
+    if (!this.adapter) throw new Error("This shell cannot choose a Workspace directory");
+    return this.adapter.chooseWorkspaceDirectory();
+  }
+}
+
 export class SlotsService extends Service {
   private readonly declarations = new Map<string, OwnedDeclaration>();
   private readonly contributions = new Map<string, Map<string, OwnedContribution>>();
@@ -795,6 +819,7 @@ declare module "cordis" {
     clientProjections: ClientProjectionStore;
     slots: SlotsService;
     scopedStores: ScopedStoresService;
+    shellCapabilities: ShellCapabilitiesService;
   }
 }
 
@@ -803,6 +828,7 @@ export const clientKernelPlugin: Plugin = function clientKernel(ctx: Context) {
   new ClientActionsService(ctx);
   new ClientProjectionStore(ctx);
   new ScopedStoresService(ctx);
+  new ShellCapabilitiesService(ctx);
   new SlotsService(ctx);
 };
 
@@ -811,6 +837,7 @@ clientKernelPlugin.provide = [
   "clientActions",
   "clientProjections",
   "scopedStores",
+  "shellCapabilities",
   "slots",
 ];
 

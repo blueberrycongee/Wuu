@@ -1,8 +1,9 @@
 import type { JsonValue, SessionRecord } from "@wuu-v2/contracts";
 
-export type HistoryRecord = SessionRecord<"history/session-created", {
-  version: 1;
-}>;
+export type HistoryRecord = SessionRecord<"history/session-created",
+  | { version: 1 }
+  | { version: 2; workspaceId: string }
+>;
 
 export interface HistoryEntry {
   [key: string]: JsonValue;

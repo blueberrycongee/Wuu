@@ -7,7 +7,7 @@ import {
   type Plugin,
   type SlotHandle,
 } from "@wuu-v2/client-runtime";
-import { DialogLayerHost } from "@wuu-v2/ui-kit";
+import { DialogLayerHost, SidebarToggleIcon } from "@wuu-v2/ui-kit";
 import { layoutStyles } from "./styles.js";
 
 const layoutClient: Plugin = function layout(client) {
@@ -127,7 +127,7 @@ const layoutClient: Plugin = function layout(client) {
               });
             }}
           >
-            {isNarrow ? (sidebarOpen ? "×" : "☰") : (sidebarCollapsed ? "☰" : "‹")}
+            <SidebarToggleIcon aria-hidden="true" />
           </button>
         ) : null}
         {hasSidebar ? (

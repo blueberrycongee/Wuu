@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import {
   app,
   BrowserWindow,
+  dialog,
   type Event,
   type IpcMainEvent,
   type IpcMainInvokeEvent,
@@ -397,6 +398,15 @@ if (!app.requestSingleInstanceLock()) {
     ipcMain.handle(bridgeChannels.restart, async () => {
       void controller.start().catch(() => {});
       return bootResult();
+    });
+    ipcMain.handle(bridgeChannels.chooseWorkspaceDirectory, async (event: IpcMainInvokeEvent) => {
+      const owner = BrowserWindow.fromWebContents(event.sender);
+      if (!owner) throw new Error("Workspace chooser requires an active window");
+      const result = await dialog.showOpenDialog(owner, {
+        title: "添加工作区",
+        properties: ["openDirectory", "createDirectory"],
+      });
+      return result.canceled ? undefined : result.filePaths[0];
     });
     ipcMain.handle(bridgeChannels.action, (_event: IpcMainInvokeEvent, action: unknown, input: unknown) => {
       if (typeof action !== "string" || !action || !isJsonValue(input)) {
