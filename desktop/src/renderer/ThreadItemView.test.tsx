@@ -434,7 +434,7 @@ describe("ThreadItemView", () => {
     expect(visibleActions.getAttribute("aria-label")).toBe("助手消息操作");
     expect(visibleActions.dataset.wuuComponent).toBe("message-actions");
     expect(visibleActions.dataset.wuuPlacement).toBe("persistent");
-    expect(visibleActions.querySelectorAll("button")).toHaveLength(4);
+    expect(visibleActions.querySelectorAll("button")).toHaveLength(2);
     const block = container?.querySelector(".agent-block");
     expect(block?.classList.contains("agent-actions-persistent")).toBe(true);
     expect(block?.classList.contains("agent-actions-overlay")).toBe(false);
