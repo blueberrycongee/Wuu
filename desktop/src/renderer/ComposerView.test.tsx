@@ -388,7 +388,7 @@ function renderStatefulComposer(props: {
           onGuideQueuedMessage={() => {}}
           onEditQueuedMessage={() => {}}
           onEditGuideMessage={() => {}}
-          onSend={() => props.onSend?.(prompt)}
+          onSend={(promptOverride) => props.onSend?.(promptOverride ?? prompt)}
           onInterrupt={() => {}}
           tokensPerSecond={0}
         />
@@ -678,6 +678,31 @@ describe("Composer send control", () => {
     expect(textarea.value).toBe("");
   });
 
+  it("clears after send when Chromium omits compositionend", () => {
+    const onSend = vi.fn();
+    renderStatefulComposer({
+      onSend,
+      onCommitPrompt: () => {},
+    });
+    const textarea = container.querySelector<HTMLTextAreaElement>("textarea");
+    if (!textarea) throw new Error("composer textarea not rendered");
+
+    act(() => {
+      textarea.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+      setTextareaValue(textarea, "发送这条消息");
+    });
+    act(() => {
+      textarea.dispatchEvent(new KeyboardEvent("keydown", {
+        key: "Enter",
+        bubbles: true,
+        cancelable: true,
+      }));
+    });
+
+    expect(onSend).toHaveBeenCalledWith("发送这条消息");
+    expect(textarea.value).toBe("");
+  });
+
   it("does not replace active IME text with a delayed parent draft echo", () => {
     const pendingCommits: Array<() => void> = [];
     renderStatefulComposer({
@@ -803,6 +828,11 @@ describe("Composer send control", () => {
     expect(onQueue).not.toHaveBeenCalled();
     expect(onSend).not.toHaveBeenCalled();
 
+    act(() => {
+      if (textarea) {
+        setTextareaValue(textarea, "queue next");
+      }
+    });
     act(() => {
       textarea?.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true }));
     });

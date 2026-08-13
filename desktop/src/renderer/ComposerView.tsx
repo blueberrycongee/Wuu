@@ -412,6 +412,7 @@ export function Composer({
   const [selectedSlashIndex, setSelectedSlashIndex] = useState(0);
   const [slashDismissedValue, setSlashDismissedValue] = useState("");
   const [compositionSubmitRequest, setCompositionSubmitRequest] = useState(0);
+  const [submissionClearRevision, setSubmissionClearRevision] = useState(0);
   const hasPendingMessages = guideMessages.length > 0 || queuedMessages.length > 0;
   const hasHeldMessages = [...guideMessages, ...queuedMessages].some((message) => message.held);
   const previousHeldMessagesRef = useRef(false);
@@ -661,6 +662,7 @@ export function Composer({
       return;
     }
     onSubmit(promptOverride);
+    setSubmissionClearRevision((current) => current + 1);
     focusComposerSoon();
   }
 
@@ -1124,6 +1126,7 @@ export function Composer({
               ref={textareaRef}
               value={visiblePromptValue}
               valueRevision={promptRevision}
+              submissionClearRevision={submissionClearRevision}
               placeholder={composerPlaceholder}
               maxLength={maxLength}
               disabled={readOnly}
@@ -1395,6 +1398,7 @@ export function Composer({
 type ComposerTextareaProps = {
   value: string;
   valueRevision: number;
+  submissionClearRevision: number;
   placeholder: string;
   maxLength?: number;
   disabled: boolean;
@@ -1415,6 +1419,7 @@ const ComposerTextarea = forwardRef<HTMLTextAreaElement, ComposerTextareaProps>(
   function ComposerTextarea({
     value: committedValue,
     valueRevision,
+    submissionClearRevision,
     placeholder,
     maxLength,
     disabled,
@@ -1430,11 +1435,20 @@ const ComposerTextarea = forwardRef<HTMLTextAreaElement, ComposerTextareaProps>(
     const [value, setValue] = useState(committedValue);
     const [lastCommittedValue, setLastCommittedValue] = useState(committedValue);
     const [lastValueRevision, setLastValueRevision] = useState(valueRevision);
+    const [lastSubmissionClearRevision, setLastSubmissionClearRevision] = useState(
+      submissionClearRevision,
+    );
     const optimisticValueQueueRef = useRef<string[]>([]);
     const compositionActiveRef = useRef(false);
     const pendingProgrammaticValueRef = useRef<{ value: string } | null>(null);
 
-    if (valueRevision !== lastValueRevision) {
+    if (submissionClearRevision !== lastSubmissionClearRevision) {
+      setLastSubmissionClearRevision(submissionClearRevision);
+      compositionActiveRef.current = false;
+      pendingProgrammaticValueRef.current = null;
+      optimisticValueQueueRef.current.length = 0;
+      setValue("");
+    } else if (valueRevision !== lastValueRevision) {
       setLastValueRevision(valueRevision);
       setLastCommittedValue(committedValue);
       optimisticValueQueueRef.current.length = 0;
