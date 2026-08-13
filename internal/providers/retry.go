@@ -386,6 +386,12 @@ func isNetworkError(err error) bool {
 	}
 	// String fallback for wrapped errors that lose type info.
 	msg := strings.ToLower(err.Error())
+	// HTTP/2 transport resets arrive as RST_STREAM with no error code, e.g.
+	// "stream error: stream ID 1; NO_ERROR; received from peer", and are not
+	// covered by the net.Error/net.OpError type checks above.
+	if strings.Contains(msg, "received from peer") || strings.Contains(msg, "stream id") {
+		return true
+	}
 	return strings.Contains(msg, "connection refused") ||
 		strings.Contains(msg, "connection reset") ||
 		strings.Contains(msg, "no such host") ||

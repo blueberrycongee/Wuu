@@ -35,6 +35,20 @@ func TestPlanRecoveryHTTPStatusSemantics(t *testing.T) {
 	}
 }
 
+func TestPlanRecoveryHTTP2StreamReset(t *testing.T) {
+	err := errors.New("read SSE stream: stream error: stream ID 1; NO_ERROR; received from peer")
+	failure := NormalizeFailure(err)
+	if failure.Origin != FailureOriginNetwork || failure.Category != FailureNetwork {
+		t.Fatalf("failure = %+v, want network origin/category", failure)
+	}
+	if plan := PlanRecovery(failure); plan.Action != RecoveryReplaySame {
+		t.Fatalf("plan = %+v, want RecoveryReplaySame", plan)
+	}
+	if !IsRetryable(err) {
+		t.Fatalf("IsRetryable = false, want true")
+	}
+}
+
 func TestPlanRecoveryStopsLocalBackpressureAndUnsafeReplay(t *testing.T) {
 	backpressure := PlanRecovery(NormalizeFailure(&LocalBackpressureError{Component: "responses websocket"}))
 	if backpressure.Action != RecoveryStop {
