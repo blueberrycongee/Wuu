@@ -643,9 +643,21 @@ function loadRenderer(window: BrowserWindow): void {
   });
 
   if (devRendererURL) {
-    window.loadURL(devRendererURL);
+    window.webContents.on(
+      "did-fail-load",
+      (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+        if (!isMainFrame || errorCode === -3) return;
+        console.error(
+          `[renderer] failed to load ${validatedURL || devRendererURL}: ${errorDescription} (${errorCode})`,
+        );
+        app.quit();
+      },
+    );
+    void window.loadURL(devRendererURL).catch(() => {
+      // did-fail-load logs the Chromium error and shuts down the stale dev host.
+    });
   } else {
-    window.loadFile(rendererPath);
+    void window.loadFile(rendererPath);
   }
 }
 
