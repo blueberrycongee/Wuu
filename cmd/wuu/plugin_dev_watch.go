@@ -42,6 +42,8 @@ func watchDevDirFS(wuuHome, dir, packageManager string, pollInterval time.Durati
 
 	fmt.Printf("Watching for changes (fsnotify, debounce %s)... (Ctrl+C to stop)\n", devWatchDebounce)
 
+	lastSnapshot := snapshotPluginSource(dir)
+
 	var debounce *time.Timer
 	var debounceC <-chan time.Time
 	pending := false
@@ -103,12 +105,20 @@ func watchDevDirFS(wuuHome, dir, packageManager string, pollInterval time.Durati
 		case <-debounceC:
 			pending = false
 			debounceC = nil
+			currentSnapshot := snapshotPluginSource(dir)
+			changed := changedPluginSourcePaths(lastSnapshot, currentSnapshot)
 			diagnostic, err := refreshDevGeneration(wuuHome, dir, packageManager)
 			if errors.Is(err, errDevGenerationBusy) {
 				schedule(pollInterval)
 				continue
 			}
 			printDevDiagnostic(diagnostic)
+			if err == nil {
+				if len(changed) > 0 {
+					printDevReloadHint(dir, changed)
+				}
+				lastSnapshot = currentSnapshot
+			}
 		}
 	}
 }

@@ -548,7 +548,7 @@ func runPluginDevMode(args []string) error {
 }
 
 func watchDevDir(wuuHome, dir, packageManager string, interval time.Duration, initialPending bool) {
-	lastMod := latestPluginSourceModTime(dir)
+	lastSnapshot := snapshotPluginSource(dir)
 	pending := initialPending
 
 	ticker := time.NewTicker(interval)
@@ -556,8 +556,9 @@ func watchDevDir(wuuHome, dir, packageManager string, interval time.Duration, in
 
 	fmt.Printf("Watching for changes... (Ctrl+C to stop)\n")
 	for range ticker.C {
-		latest := latestPluginSourceModTime(dir)
-		if latest.After(lastMod) {
+		currentSnapshot := snapshotPluginSource(dir)
+		changed := changedPluginSourcePaths(lastSnapshot, currentSnapshot)
+		if len(changed) > 0 {
 			pending = true
 		}
 		if !pending {
@@ -568,8 +569,11 @@ func watchDevDir(wuuHome, dir, packageManager string, interval time.Duration, in
 			continue
 		}
 		printDevDiagnostic(diagnostic)
+		if err == nil && len(changed) > 0 {
+			printDevReloadHint(dir, changed)
+		}
 		pending = false
-		lastMod = latest
+		lastSnapshot = currentSnapshot
 	}
 }
 
@@ -756,28 +760,17 @@ func printDevDiagnostic(diagnostic pluginDiagnostic) {
 	fmt.Println(string(data))
 }
 
-func latestPluginSourceModTime(root string) time.Time {
-	var latest time.Time
-	_ = filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return nil
-		}
-		if entry.IsDir() && path != root {
-			switch entry.Name() {
-			case ".git", "node_modules", "dist":
-				return filepath.SkipDir
-			}
-			if strings.HasPrefix(entry.Name(), ".") {
-				return filepath.SkipDir
-			}
-		}
-		info, err := entry.Info()
-		if err == nil && info.ModTime().After(latest) {
-			latest = info.ModTime()
-		}
-		return nil
-	})
-	return latest
+// printDevReloadHint loads the current manifest and prints the one-line effect
+// hint for the paths that changed during the last dev refresh.
+func printDevReloadHint(dir string, changed []string) {
+	manifest, err := pluginpkg.LoadManifest(filepath.Join(dir, pluginpkg.ManifestFilename), "dev")
+	if err != nil {
+		return
+	}
+	hint := pluginpkg.ClassifyReload(manifest.Manifest, changed)
+	if hint.Message != "" {
+		fmt.Printf("  effect: %s\n", hint.Message)
+	}
 }
 
 func validatePluginName(name string) error {
