@@ -2,6 +2,7 @@ import {
   useEffect,
   useRef,
   useState,
+  useSyncExternalStore,
   type JSX,
   type SyntheticEvent,
 } from "react";
@@ -20,7 +21,12 @@ import {
 import { AnimatedProcessText } from "./ProcessTextMotion";
 import { useLiveTextWave } from "./LiveTextWave";
 import { ProcessSurfaceFold } from "./ProcessSurfaceFold";
-import { ThinkingTokenCount } from "./ThinkingTokenCount";
+import { turnTelemetryStore } from "./TurnTelemetryStore";
+import {
+  ThinkingTokenCount,
+  tokenCountLocale,
+  turnTokenCountText,
+} from "./ThinkingTokenCount";
 import { translateCurrent as translate, useI18n } from "./i18n";
 
 /**
@@ -143,6 +149,11 @@ export function ProcessSurface({
   renderReasoningItem,
 }: ProcessSurfaceProps): JSX.Element {
   const { t } = useI18n();
+  const tokenSnapshot = useSyncExternalStore(
+    turnTelemetryStore.subscribe,
+    () => turnTelemetryStore.getSnapshot(turnID),
+    () => turnTelemetryStore.getSnapshot(turnID),
+  );
   const toolItems = processItems.filter(isToolActivityItem);
   const reasoningItems = processItems.filter(
     (item) => item.type === "reasoning",
@@ -215,12 +226,23 @@ export function ProcessSurface({
           : ""
       }`;
 
+  const tokenWaveText =
+    showThinkingToken &&
+    (tokenSnapshot.inputTokens > 0 || tokenSnapshot.outputTokens > 0)
+      ? turnTokenCountText(
+          tokenSnapshot.inputTokens,
+          tokenSnapshot.outputTokens,
+          tokenCountLocale(),
+        )
+      : "";
+  const summaryWaveText = `${summaryText}${tokenWaveText}`;
+
   const summaryLine = (
     <span
       ref={summaryWaveRef}
       className={`process-surface-summary-line${activeGrayText ? " wuu-live-text-wave" : ""}`}
       aria-label={summaryText}
-      data-text={summaryText}
+      data-text={summaryWaveText}
     >
       {useCondensedSummary ? (
         <AnimatedProcessText
@@ -252,7 +274,7 @@ export function ProcessSurface({
         </span>
       ) : null}
       {showThinkingToken && turnID ? (
-        <ThinkingTokenCount turnID={turnID} sweeping={activeGrayText} />
+        <ThinkingTokenCount turnID={turnID} />
       ) : null}
     </span>
   );

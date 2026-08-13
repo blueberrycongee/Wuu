@@ -2438,7 +2438,8 @@
 }
 
 .turn-reasoning-summary-text.is-live-gray {
-  display: inline-grid;
+  display: inline-flex;
+  align-items: baseline;
   flex-grow: 0;
 }
 

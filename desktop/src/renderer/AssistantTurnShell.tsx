@@ -6,6 +6,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react";
 import type {
   ThreadItem,
@@ -38,7 +39,12 @@ import {
   useAutoFollowScrollContainer,
 } from "./AutoFollowScroll";
 import { AnimatedProcessText } from "./ProcessTextMotion";
-import { ThinkingTokenCount } from "./ThinkingTokenCount";
+import { turnTelemetryStore } from "./TurnTelemetryStore";
+import {
+  ThinkingTokenCount,
+  tokenCountLocale,
+  turnTokenCountText,
+} from "./ThinkingTokenCount";
 import { useConversationRenderActive } from "./ConversationRenderActivity";
 import { translateCurrent as translate, useI18n } from "./i18n";
 
@@ -569,6 +575,17 @@ function ReasoningFold({
 }): JSX.Element {
   const { t } = useI18n();
   const label = streaming ? t("process.thinking") : t("process.viewReasoning");
+  const tokenSnapshot = useSyncExternalStore(
+    turnTelemetryStore.subscribe,
+    () => turnTelemetryStore.getSnapshot(turnID),
+    () => turnTelemetryStore.getSnapshot(turnID),
+  );
+  const tokenWaveText = turnTokenCountText(
+    tokenSnapshot.inputTokens,
+    tokenSnapshot.outputTokens,
+    tokenCountLocale(),
+  );
+  const reasoningWaveText = `${label}${tokenWaveText}`;
   // Only the latest visible gray process label sweeps while the turn
   // is still running. The label text still reflects this item's own
   // state.
@@ -619,8 +636,13 @@ function ReasoningFold({
       onToggle={handleToggle}
     >
       <summary className="turn-reasoning-summary">
-        <AnimatedProcessText ref={waveRef} className={textClass} text={label} />
-        <ThinkingTokenCount turnID={turnID} sweeping={Boolean(activeGray)} />
+        <span ref={waveRef} className={textClass} data-text={reasoningWaveText}>
+          <AnimatedProcessText
+            className="turn-reasoning-summary-label"
+            text={label}
+          />
+          <ThinkingTokenCount turnID={turnID} />
+        </span>
         <ChevronRight
           className="turn-reasoning-chevron icon-xs"
           aria-hidden

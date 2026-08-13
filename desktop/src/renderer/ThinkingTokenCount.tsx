@@ -6,7 +6,6 @@ import {
   type JSX,
 } from "react";
 import { turnTelemetryStore } from "./TurnTelemetryStore";
-import { useLiveTextWave } from "./LiveTextWave";
 
 /**
  * Live token counter rendered right after the "正在思考" process label.
@@ -20,7 +19,7 @@ import { useLiveTextWave } from "./LiveTextWave";
  * and each increment triggers a one-shot jump on the value.
  */
 
-function formatTokenCount(value: number, locale: string): string {
+export function formatTokenCount(value: number, locale: string): string {
   const safe = Math.max(0, Math.round(value));
   const format = (scaled: number, fractionDigits: number) =>
     new Intl.NumberFormat(locale, { maximumFractionDigits: fractionDigits }).format(
@@ -30,6 +29,23 @@ function formatTokenCount(value: number, locale: string): string {
   if (safe >= 1_000_000) return `${format(safe / 1_000_000, 1)}M`;
   if (safe >= 1_000) return `${format(safe / 1_000, 1)}k`;
   return format(safe, 0);
+}
+
+export function tokenCountLocale(): "zh-CN" | "en-US" {
+  return typeof document !== "undefined" && document.documentElement?.lang === "zh-CN"
+    ? "zh-CN"
+    : "en-US";
+}
+
+export function turnTokenCountText(
+  input: number,
+  output: number,
+  locale: string,
+): string {
+  const stats: string[] = [];
+  if (input > 0) stats.push(`${formatTokenCount(input, locale)} toks ↑`);
+  if (output > 0) stats.push(`${formatTokenCount(output, locale)} toks ↓`);
+  return stats.length > 0 ? ` · ${stats.join(" · ")}` : "";
 }
 
 function prefersReducedMotion(): boolean {
@@ -133,11 +149,8 @@ function TokenStat({
 
 export function ThinkingTokenCount({
   turnID,
-  sweeping = false,
 }: {
   turnID: string;
-  /** When true, the token text joins the process row's live sweep highlight. */
-  sweeping?: boolean;
 }): JSX.Element | null {
   const snapshot = useSyncExternalStore(
     turnTelemetryStore.subscribe,
@@ -146,27 +159,14 @@ export function ThinkingTokenCount({
   );
   const input = snapshot.inputTokens;
   const output = snapshot.outputTokens;
-  const locale =
-    typeof document !== "undefined" && document.documentElement?.lang === "zh-CN"
-      ? "zh-CN"
-      : "en-US";
-  const waveRef = useLiveTextWave<HTMLSpanElement>(sweeping);
+  const locale = tokenCountLocale();
 
   if (input <= 0 && output <= 0) {
     return null;
   }
 
-  const stats: string[] = [];
-  if (input > 0) stats.push(`${formatTokenCount(input, locale)} toks ↑`);
-  if (output > 0) stats.push(`${formatTokenCount(output, locale)} toks ↓`);
-  const waveText = ` · ${stats.join(" · ")}`;
-
   return (
-    <span
-      ref={waveRef}
-      className={`thinking-token-count${sweeping ? " wuu-live-text-wave" : ""}`}
-      data-text={waveText}
-    >
+    <span className="thinking-token-count">
       <span className="thinking-token-separator" aria-hidden>
         {" · "}
       </span>
