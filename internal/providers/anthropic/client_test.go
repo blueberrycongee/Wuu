@@ -592,7 +592,7 @@ func TestBuildAnthropicRequest_ReplaysInvalidToolArgumentsWithErrorResult(t *tes
 	if result.Role != "user" || len(result.Content) != 1 {
 		t.Fatalf("expected tool result message, got %+v", result)
 	}
-	if result.Content[0].Type != "tool_result" || result.Content[0].ToolUseID != "call_plan" {
+	if result.Content[0].Type != "tool_result" || result.Content[0].ToolUseID != "call_todo" {
 		t.Fatalf("unexpected tool_result block: %+v", result.Content[0])
 	}
 	content, ok := result.Content[0].Content.(string)
