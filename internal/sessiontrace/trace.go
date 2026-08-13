@@ -29,6 +29,17 @@ type Event struct {
 	Data      any       `json:"data,omitempty"`
 }
 
+// RawEvent is a read-only trace event whose payload is preserved verbatim. It
+// is the stable surface for the host data service; decoding into `any` here
+// would round-trip numbers through float64 and lose byte fidelity.
+type RawEvent struct {
+	Type      string          `json:"type"`
+	ThreadID  string          `json:"thread_id,omitempty"`
+	TurnID    string          `json:"turn_id,omitempty"`
+	CreatedAt time.Time       `json:"created_at"`
+	Data      json.RawMessage `json:"data,omitempty"`
+}
+
 type TurnRecord struct {
 	ThreadID            string              `json:"thread_id"`
 	TurnID              string              `json:"turn_id"`
@@ -329,6 +340,34 @@ func Path(sessionDir string) string {
 		return ""
 	}
 	return filepath.Join(sessionDir, "session-trace.jsonl")
+}
+
+// ReadEvents reads a session trace as raw events without summarizing them. It
+// is the read-only source for the host data service and preserves each event
+// payload byte-for-byte.
+func ReadEvents(path string) ([]RawEvent, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	scanner.Buffer(make([]byte, 64*1024), 16*1024*1024)
+	out := make([]RawEvent, 0)
+	line := 0
+	for scanner.Scan() {
+		line++
+		var event RawEvent
+		if err := json.Unmarshal(scanner.Bytes(), &event); err != nil {
+			return nil, fmt.Errorf("decode trace line %d: %w", line, err)
+		}
+		out = append(out, event)
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func ReplayTrace(path string) (ReplaySummary, error) {

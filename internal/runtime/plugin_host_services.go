@@ -274,18 +274,27 @@ type executionUpdateRecorder interface {
 }
 
 type kernelHostServices struct {
-	mu             sync.RWMutex
-	active         bool
-	services       map[string]*pluginHostServices
-	registry       *pluginhost.ServiceRegistry
-	generation     func() uint64
-	executions     executionUpdateRecorder
-	userQuestions  *pluginhost.UserQuestionBroker
-	driverGateways *driverGatewayTable
+	mu                sync.RWMutex
+	active            bool
+	services          map[string]*pluginHostServices
+	registry          *pluginhost.ServiceRegistry
+	generation        func() uint64
+	executions        executionUpdateRecorder
+	userQuestions     *pluginhost.UserQuestionBroker
+	driverGateways    *driverGatewayTable
+	workspaceStateDir string
 }
 
 func newKernelHostServices(generation func() uint64, executions executionUpdateRecorder) *kernelHostServices {
 	return &kernelHostServices{services: make(map[string]*pluginHostServices), generation: generation, executions: executions, driverGateways: newDriverGatewayTable()}
+}
+
+// bindWorkspaceStateDir sets the workspace state directory used by read-only
+// kernel data services. It is set once during generation construction.
+func (k *kernelHostServices) bindWorkspaceStateDir(dir string) {
+	k.mu.Lock()
+	k.workspaceStateDir = strings.TrimSpace(dir)
+	k.mu.Unlock()
 }
 
 func (k *kernelHostServices) bindUserQuestions(broker *pluginhost.UserQuestionBroker) {
@@ -353,6 +362,10 @@ func (k *kernelHostServices) KernelServiceRegistrations() []pluginhost.ServiceRe
 		pluginhost.ServiceRegistration{
 			Descriptor: pluginhost.KernelUserQuestionAskDescriptor(),
 			Invoker:    &userQuestionAskInvoker{parent: k}, Kernel: true,
+		},
+		pluginhost.ServiceRegistration{
+			Descriptor: pluginhost.KernelDataQueryDescriptor(),
+			Invoker:    &dataQueryInvoker{parent: k}, Kernel: true,
 		},
 		pluginhost.ServiceRegistration{
 			Descriptor: pluginhost.KernelDriverModelLoopDescriptor(),
