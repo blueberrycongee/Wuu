@@ -45,7 +45,7 @@ func (k *dataQueryInvoker) InvokeService(ctx context.Context, params pluginhost.
 	}
 
 	tracePath := sessiontrace.Path(statepath.SessionArtifactDir(stateDir, query.ThreadID))
-	events, err := sessiontrace.ReadEvents(tracePath)
+	rawEvents, err := sessiontrace.ReadEvents(tracePath)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return marshalServiceResult(pluginhost.DataQueryResult{
@@ -56,9 +56,18 @@ func (k *dataQueryInvoker) InvokeService(ctx context.Context, params pluginhost.
 		}
 		return nil, serviceError("data_unavailable", "session data is unavailable")
 	}
-	if query.Limit > 0 && len(events) > query.Limit {
-		events = events[:query.Limit]
+
+	events := make([]pluginhost.DataEvent, 0, len(rawEvents))
+	for _, event := range rawEvents {
+		events = append(events, pluginhost.DataEvent{
+			Type:      event.Type,
+			ThreadID:  event.ThreadID,
+			TurnID:    event.TurnID,
+			CreatedAt: event.CreatedAt,
+			Data:      event.Data,
+		})
 	}
+	events = pluginhost.FilterDataEvents(events, query)
 
 	result := pluginhost.DataQueryResult{
 		Version:  pluginhost.DataQueryServiceVersion,
