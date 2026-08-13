@@ -58,6 +58,7 @@ export function TurnView(props: TurnViewProps): JSX.Element | null {
   if (props.turn.items.length > 0 && projectedTurn.items.length === 0) {
     return null;
   }
+  const threadId = desktopPluginHost.getActiveConversationThreadId();
   return (
     <PluginSurface
       host={desktopPluginHost}
@@ -67,6 +68,7 @@ export function TurnView(props: TurnViewProps): JSX.Element | null {
         turns: [projectedTurn],
         awaiting: false,
         interrupted: projectedTurn.status === "interrupted",
+        ...(threadId === undefined ? {} : { threadId }),
         cwd: props.cwd,
         actions: {
           openFile: props.onOpenFile,

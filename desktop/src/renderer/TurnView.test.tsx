@@ -100,6 +100,7 @@ afterEach(() => {
     root?.unmount();
   });
   container?.remove();
+  desktopPluginHost.setActiveConversationThread(undefined);
   root = undefined;
   container = undefined;
 });
@@ -126,6 +127,32 @@ describe("TurnView", () => {
       "turn-1",
     );
 
+    await act(async () => desktopPluginHost.unload("test:turn-timeline"));
+  });
+
+  it("exposes the active thread id on the conversation timeline surface", async () => {
+    let received: Readonly<Record<string, unknown>> | undefined;
+    await desktopPluginHost.activateGeneration({
+      pluginId: "test:turn-timeline",
+      generation: "thread-id",
+      register(api) {
+        api.registerSurface("conversation.timeline", {
+          id: "thread-aware-turn",
+          mode: "replace",
+          render(context) {
+            received = context;
+            return <div data-thread-aware-turn>{String(context.threadId)}</div>;
+          },
+        });
+      },
+    });
+
+    desktopPluginHost.setActiveConversationThread("thread-timeline-1");
+    const view = render(makeTurn("completed"));
+
+    expect(view.querySelector("[data-thread-aware-turn]")?.textContent).toBe("thread-timeline-1");
+    expect(received).toHaveProperty("threadId", "thread-timeline-1");
+    desktopPluginHost.setActiveConversationThread(undefined);
     await act(async () => desktopPluginHost.unload("test:turn-timeline"));
   });
 
