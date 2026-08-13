@@ -852,8 +852,6 @@ export const zhCN = {
   "sources.viewMore": "查看另外 {count} 个来源",
   "sources.moreTitle": "还有 {count} 个来源",
   "message.assistantActions": "助手消息操作",
-  "message.like": "赞",
-  "message.dislike": "踩",
   "message.fork": "分叉",
   "message.copy": "复制消息",
   "message.copied": "已复制消息",

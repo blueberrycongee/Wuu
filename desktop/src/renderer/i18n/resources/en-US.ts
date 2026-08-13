@@ -854,8 +854,6 @@ export const enUS = {
   "sources.viewMore": "View {count} more sources",
   "sources.moreTitle": "{count} more sources",
   "message.assistantActions": "Assistant message actions",
-  "message.like": "Like",
-  "message.dislike": "Dislike",
   "message.fork": "Fork",
   "message.copy": "Copy message",
   "message.copied": "Message copied",

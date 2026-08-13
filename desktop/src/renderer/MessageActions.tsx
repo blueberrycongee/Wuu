@@ -1,4 +1,4 @@
-import { AlertCircle, Check, Copy, FileText, GitFork, PencilLine, SquareTerminal, ThumbsDown, ThumbsUp, X } from "lucide-react";
+import { AlertCircle, Check, Copy, FileText, GitFork, PencilLine, SquareTerminal, X } from "lucide-react";
 import { type KeyboardEvent as ReactKeyboardEvent, useEffect, useRef, useState } from "react";
 import type { InputFile, InputImage } from "../shared/protocol";
 import { imageSource } from "./ComposerMessages";
@@ -17,40 +17,6 @@ export function AgentMessageActions({
   placement: "overlay" | "persistent";
 }): JSX.Element {
   const { t } = useI18n();
-  const [feedback, setFeedback] = useState<"liked" | "disliked" | null>(null);
-  // `pulse` is a transient state used to retrigger the icon bounce/shake keyframes
-  // and to render the floating "+1" / "−1" burst above the clicked button. It is
-  // cleared after the animation duration so the same animation can play again on
-  // the next click.
-  const [pulse, setPulse] = useState<"liked" | "disliked" | null>(null);
-  // `clickToken` is bumped on every feedback click so the icon and burst spans
-  // can be keyed against it. This forces React to remount them on each click,
-  // which restarts the CSS keyframe animations even if the user clicks the
-  // same button twice in a row while the `pulse` class is still applied.
-  const [clickToken, setClickToken] = useState(0);
-  const pulseTimerRef = useRef<number | undefined>(undefined);
-
-  useEffect(() => {
-    return () => {
-      if (pulseTimerRef.current !== undefined) {
-        window.clearTimeout(pulseTimerRef.current);
-      }
-    };
-  }, []);
-
-  function handleFeedbackClick(kind: "liked" | "disliked"): void {
-    const next = feedback === kind ? null : kind;
-    setFeedback(next);
-    if (pulseTimerRef.current !== undefined) {
-      window.clearTimeout(pulseTimerRef.current);
-    }
-    setPulse(kind);
-    setClickToken((t) => t + 1);
-    pulseTimerRef.current = window.setTimeout(() => {
-      setPulse(null);
-      pulseTimerRef.current = undefined;
-    }, 700);
-  }
 
   return (
     <div
@@ -61,48 +27,6 @@ export function AgentMessageActions({
     >
       <MessageCopyButton getText={getText} className="message-action-button" iconSize={15} />
       {onOpenRuns ? <TurnRunButton onOpenRuns={onOpenRuns} /> : null}
-      <button
-        className={`message-action-button message-action-button--like${
-          feedback === "liked" ? " is-active" : ""
-        }${pulse === "liked" ? " is-pulsing" : ""}`}
-        type="button"
-        aria-label={t("message.like")}
-        aria-pressed={feedback === "liked"}
-        title={t("message.like")}
-        onClick={() => handleFeedbackClick("liked")}
-      >
-        <ThumbsUp key={`thumbs-up-${clickToken}`} className="icon" />
-        {pulse === "liked" ? (
-          <span
-            key={`burst-like-${clickToken}`}
-            className="message-action-burst message-action-burst--like"
-            aria-hidden="true"
-          >
-            +1
-          </span>
-        ) : null}
-      </button>
-      <button
-        className={`message-action-button message-action-button--dislike${
-          feedback === "disliked" ? " is-active" : ""
-        }${pulse === "disliked" ? " is-pulsing" : ""}`}
-        type="button"
-        aria-label={t("message.dislike")}
-        aria-pressed={feedback === "disliked"}
-        title={t("message.dislike")}
-        onClick={() => handleFeedbackClick("disliked")}
-      >
-        <ThumbsDown key={`thumbs-down-${clickToken}`} className="icon" />
-        {pulse === "disliked" ? (
-          <span
-            key={`burst-dislike-${clickToken}`}
-            className="message-action-burst message-action-burst--dislike"
-            aria-hidden="true"
-          >
-            −1
-          </span>
-        ) : null}
-      </button>
       <button
         className="message-action-button"
         type="button"
