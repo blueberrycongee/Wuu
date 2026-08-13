@@ -22,19 +22,19 @@ const (
 // forward-compatible (they simply match no events) rather than rejected, so the
 // host can add facts without breaking older consumers.
 const (
-	DataEventTypeTurn                    = "turn"
-	DataEventTypeStep                    = "step"
-	DataEventTypeModelCall               = "model_call"
-	DataEventTypeToolCall                = "tool_call"
-	DataEventTypeToolResult              = "tool_result"
-	DataEventTypeStreamingChunk          = "streaming_chunk"
-	DataEventTypeContextRequests         = "context_requests"
-	DataEventTypeProviderStates          = "provider_states"
-	DataEventTypeCompactAttempts         = "compact_attempts"
+	DataEventTypeTurn                     = "turn"
+	DataEventTypeStep                     = "step"
+	DataEventTypeModelCall                = "model_call"
+	DataEventTypeToolCall                 = "tool_call"
+	DataEventTypeToolResult               = "tool_result"
+	DataEventTypeStreamingChunk           = "streaming_chunk"
+	DataEventTypeContextRequests          = "context_requests"
+	DataEventTypeProviderStates           = "provider_states"
+	DataEventTypeCompactAttempts          = "compact_attempts"
 	DataEventTypeBarrierToolBatchRejected = "barrier_tool_batch_rejected"
-	DataEventTypeToolInventory           = "tool_inventory"
-	DataEventTypeToolRecords             = "tool_records"
-	DataEventTypeFinal                   = "final"
+	DataEventTypeToolInventory            = "tool_inventory"
+	DataEventTypeToolRecords              = "tool_records"
+	DataEventTypeFinal                    = "final"
 )
 
 // DataEvent is the stable envelope for one first-party data fact. Payload
@@ -150,19 +150,19 @@ func validateDataThreadID(id string) error {
 }
 
 var knownDataEventTypes = map[string]struct{}{
-	DataEventTypeTurn:                    {},
-	DataEventTypeStep:                    {},
-	DataEventTypeModelCall:               {},
-	DataEventTypeToolCall:                {},
-	DataEventTypeToolResult:              {},
-	DataEventTypeStreamingChunk:          {},
-	DataEventTypeContextRequests:         {},
-	DataEventTypeProviderStates:          {},
-	DataEventTypeCompactAttempts:         {},
+	DataEventTypeTurn:                     {},
+	DataEventTypeStep:                     {},
+	DataEventTypeModelCall:                {},
+	DataEventTypeToolCall:                 {},
+	DataEventTypeToolResult:               {},
+	DataEventTypeStreamingChunk:           {},
+	DataEventTypeContextRequests:          {},
+	DataEventTypeProviderStates:           {},
+	DataEventTypeCompactAttempts:          {},
 	DataEventTypeBarrierToolBatchRejected: {},
-	DataEventTypeToolInventory:           {},
-	DataEventTypeToolRecords:             {},
-	DataEventTypeFinal:                   {},
+	DataEventTypeToolInventory:            {},
+	DataEventTypeToolRecords:              {},
+	DataEventTypeFinal:                    {},
 }
 
 // FilterDataEvents applies the read-only query contract to a snapshot: type
