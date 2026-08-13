@@ -5,7 +5,10 @@ import {
   useSyncExternalStore,
   type JSX,
 } from "react";
-import { turnTelemetryStore } from "./TurnTelemetryStore";
+import {
+  turnTelemetryStore,
+  type TurnTelemetrySnapshot,
+} from "./TurnTelemetryStore";
 
 /**
  * Live token counter rendered right after the "正在思考" process label.
@@ -149,14 +152,27 @@ function TokenStat({
 
 export function ThinkingTokenCount({
   turnID,
+  active = false,
 }: {
   turnID: string;
+  /** True while this process row is the live gray row. Once false, the
+   *  counter freezes at the last live sample instead of following the turn. */
+  active?: boolean;
 }): JSX.Element | null {
-  const snapshot = useSyncExternalStore(
+  const liveSnapshot = useSyncExternalStore(
     turnTelemetryStore.subscribe,
     () => turnTelemetryStore.getSnapshot(turnID),
     () => turnTelemetryStore.getSnapshot(turnID),
   );
+  const frozenRef = useRef<TurnTelemetrySnapshot>(liveSnapshot);
+
+  useEffect(() => {
+    if (active) {
+      frozenRef.current = liveSnapshot;
+    }
+  }, [active, liveSnapshot]);
+
+  const snapshot = active ? liveSnapshot : frozenRef.current;
   const input = snapshot.inputTokens;
   const output = snapshot.outputTokens;
   const locale = tokenCountLocale();

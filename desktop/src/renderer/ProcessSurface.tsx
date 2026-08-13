@@ -274,7 +274,7 @@ export function ProcessSurface({
         </span>
       ) : null}
       {showThinkingToken && turnID ? (
-        <ThinkingTokenCount turnID={turnID} />
+        <ThinkingTokenCount turnID={turnID} active={active} />
       ) : null}
     </span>
   );

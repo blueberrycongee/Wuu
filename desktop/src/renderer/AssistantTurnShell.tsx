@@ -641,7 +641,7 @@ function ReasoningFold({
             className="turn-reasoning-summary-label"
             text={label}
           />
-          <ThinkingTokenCount turnID={turnID} />
+          <ThinkingTokenCount turnID={turnID} active={activeGray} />
         </span>
         <ChevronRight
           className="turn-reasoning-chevron icon-xs"
