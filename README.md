@@ -24,6 +24,8 @@ You still open a project and work with an agent. wuu puts the rest of that workf
 
 wuu is independently developed and is not an official client for OpenCode, Claude Code, or Codex.
 
+In our internal benchmark on real code repositories, standard wuu sessions cost about half as much per successful fix as [pi](https://github.com/badlogic/pi-mono).
+
 > [!WARNING]
 > wuu is an early preview and changes quickly. Packaged builds currently support Apple silicon Macs.
 

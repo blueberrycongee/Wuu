@@ -24,6 +24,8 @@
 
 wuu 是独立开发的项目，不是 OpenCode、Claude Code 或 Codex 的官方客户端。
 
+在真实代码仓库的内部 bench 中，wuu 普通 session 每次成功修复的成本约为 [pi](https://github.com/badlogic/pi-mono) 的一半。
+
 > [!WARNING]
 > wuu 仍处于早期预览阶段，正在快速迭代。打包版本目前支持 Apple 芯片 Mac。
 
