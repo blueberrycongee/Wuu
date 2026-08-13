@@ -8,6 +8,7 @@ export type ConversationMessageSurfaceContext = Readonly<Record<string, unknown>
   readonly version: 1;
   readonly messageId: string;
   readonly turnId: string;
+  readonly threadId?: string;
   readonly kind: "user-message" | "assistant-message" | "reasoning" | "notice";
   readonly status?: string;
   readonly phase?: string;

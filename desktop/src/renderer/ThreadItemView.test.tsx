@@ -85,6 +85,7 @@ afterEach(() => {
   streamTextStore.clearItem("turn-1", "final-1");
   clearToasts();
   desktopPluginHost.unload("thread-item-production-test");
+  desktopPluginHost.setActiveConversationThread(undefined);
   vi.restoreAllMocks();
   root = undefined;
   container = undefined;
@@ -198,6 +199,31 @@ describe("ThreadItemView", () => {
 
     act(() => desktopPluginHost.unload("thread-item-production-test"));
     expect(container?.querySelector(".agent-block")).not.toBeNull();
+  });
+
+  it("exposes the active thread id on the conversation message surface", async () => {
+    let received: Readonly<Record<string, unknown>> | undefined;
+    await desktopPluginHost.activateGeneration({
+      pluginId: "thread-item-production-test",
+      generation: "gen-thread-id",
+      register: (api) => {
+        api.registerSurface("conversation.message", {
+          id: "thread-aware-message",
+          mode: "replace",
+          render: (context) => {
+            received = context;
+            return <section data-thread-aware>{String(context.threadId)}</section>;
+          },
+        });
+      },
+    });
+
+    desktopPluginHost.setActiveConversationThread("thread-aware-1");
+    render({ item: makeFinalAnswer("completed"), turnStatus: "completed", streaming: false });
+
+    expect(container?.querySelector("[data-thread-aware]")?.textContent).toBe("thread-aware-1");
+    expect(received).toHaveProperty("threadId", "thread-aware-1");
+    desktopPluginHost.setActiveConversationThread(undefined);
   });
 
   it("lets the keyed presenter replace the legacy surface and native fallback coherently", async () => {

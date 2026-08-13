@@ -138,10 +138,12 @@ function conversationMessageSurfaceContext(
         ? "reasoning"
         : "notice";
   const status = item.status === "in_progress" ? "streaming" : item.status;
+  const threadId = desktopPluginHost.getActiveConversationThreadId();
   return Object.freeze({
     version: 1,
     messageId: item.id,
     turnId: turnID,
+    ...(threadId === undefined ? {} : { threadId }),
     kind,
     status,
     phase: item.phase,
