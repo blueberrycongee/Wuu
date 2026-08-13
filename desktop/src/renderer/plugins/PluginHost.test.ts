@@ -70,6 +70,15 @@ describe("PluginHost", () => {
       .toEqual(["alpha:alpha-style", "zeta:z-style"]);
   });
 
+  it("tracks the active conversation thread id and trims it", () => {
+    const host = new PluginHost({ react: React });
+    expect(host.getActiveConversationThreadId()).toBeUndefined();
+    host.setActiveConversationThread(" thread-123 ");
+    expect(host.getActiveConversationThreadId()).toBe("thread-123");
+    host.setActiveConversationThread(undefined);
+    expect(host.getActiveConversationThreadId()).toBeUndefined();
+  });
+
   it("records replace conflicts, preserves the default winner, and applies a user preference", async () => {
     const host = new PluginHost({ react: React });
     for (const pluginId of ["alpha", "zeta"]) {

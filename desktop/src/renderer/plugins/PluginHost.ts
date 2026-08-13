@@ -605,6 +605,10 @@ export class PluginHost {
     this.activeConversationThreadId = threadId?.trim() || undefined;
   }
 
+  getActiveConversationThreadId(): string | undefined {
+    return this.activeConversationThreadId;
+  }
+
   getConversationCards(): readonly RegisteredConversationCard[] {
     return this.conversationCardSnapshot;
   }
