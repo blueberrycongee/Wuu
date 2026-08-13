@@ -2420,6 +2420,7 @@
   display: inline-block;
   min-width: 1ch;
   font-variant-numeric: tabular-nums;
+  font-weight: 600;
   text-align: center;
 }
 

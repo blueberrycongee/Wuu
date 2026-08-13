@@ -6,6 +6,7 @@ import {
   type JSX,
 } from "react";
 import { turnTelemetryStore } from "./TurnTelemetryStore";
+import { useLiveTextWave } from "./LiveTextWave";
 
 /**
  * Live token counter rendered right after the "正在思考" process label.
@@ -132,8 +133,11 @@ function TokenStat({
 
 export function ThinkingTokenCount({
   turnID,
+  sweeping = false,
 }: {
   turnID: string;
+  /** When true, the token text joins the process row's live sweep highlight. */
+  sweeping?: boolean;
 }): JSX.Element | null {
   const snapshot = useSyncExternalStore(
     turnTelemetryStore.subscribe,
@@ -142,18 +146,27 @@ export function ThinkingTokenCount({
   );
   const input = snapshot.inputTokens;
   const output = snapshot.outputTokens;
+  const locale =
+    typeof document !== "undefined" && document.documentElement?.lang === "zh-CN"
+      ? "zh-CN"
+      : "en-US";
+  const waveRef = useLiveTextWave<HTMLSpanElement>(sweeping);
 
   if (input <= 0 && output <= 0) {
     return null;
   }
 
-  const locale =
-    typeof document !== "undefined" && document.documentElement?.lang === "zh-CN"
-      ? "zh-CN"
-      : "en-US";
+  const stats: string[] = [];
+  if (input > 0) stats.push(`${formatTokenCount(input, locale)} toks ↑`);
+  if (output > 0) stats.push(`${formatTokenCount(output, locale)} toks ↓`);
+  const waveText = ` · ${stats.join(" · ")}`;
 
   return (
-    <span className="thinking-token-count">
+    <span
+      ref={waveRef}
+      className={`thinking-token-count${sweeping ? " wuu-live-text-wave" : ""}`}
+      data-text={waveText}
+    >
       <span className="thinking-token-separator" aria-hidden>
         {" · "}
       </span>

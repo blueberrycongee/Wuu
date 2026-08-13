@@ -620,7 +620,7 @@ function ReasoningFold({
     >
       <summary className="turn-reasoning-summary">
         <AnimatedProcessText ref={waveRef} className={textClass} text={label} />
-        {streaming || activeGray ? <ThinkingTokenCount turnID={turnID} /> : null}
+        <ThinkingTokenCount turnID={turnID} sweeping={Boolean(activeGray)} />
         <ChevronRight
           className="turn-reasoning-chevron icon-xs"
           aria-hidden

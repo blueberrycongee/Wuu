@@ -159,11 +159,11 @@ export function ProcessSurface({
     toolItems.length >= CONDENSED_SUMMARY_MIN_TOOL_COUNT &&
     toolSegments.length > 1;
   const activeGrayText = active ?? streaming;
-  // The token counter belongs to the reasoning trail but stays visible after
+  // The token counter belongs to the reasoning trail and stays visible after
   // thinking settles: the total freezes at the last sample and resumes
-  // climbing on the next thinking phase. It only leaves when the process row
-  // itself stops sweeping (turn done or no longer the live label).
-  const showThinkingToken = Boolean(turnID) && hasReasoning && activeGrayText;
+  // climbing on the next thinking phase. It persists for the live session
+  // even once the process row stops sweeping.
+  const showThinkingToken = Boolean(turnID) && hasReasoning;
   const summaryWaveRef = useLiveTextWave<HTMLSpanElement>(activeGrayText);
 
   // Details are opt-in. The running row itself should stay compact by
@@ -252,7 +252,7 @@ export function ProcessSurface({
         </span>
       ) : null}
       {showThinkingToken && turnID ? (
-        <ThinkingTokenCount turnID={turnID} />
+        <ThinkingTokenCount turnID={turnID} sweeping={activeGrayText} />
       ) : null}
     </span>
   );
