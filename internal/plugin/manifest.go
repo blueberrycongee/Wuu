@@ -85,6 +85,7 @@ type Manifest struct {
 	Description          string                            `json:"description,omitempty"`
 	Icon                 *IconSpec                         `json:"icon,omitempty"`
 	Version              string                            `json:"version,omitempty"`
+	DefaultEnabled       *bool                             `json:"default_enabled,omitempty"`
 	Author               json.RawMessage                   `json:"author,omitempty"`
 	Homepage             string                            `json:"homepage,omitempty"`
 	Repository           string                            `json:"repository,omitempty"`
@@ -118,6 +119,10 @@ type Manifest struct {
 	OfficialNativeHelper json.RawMessage                   `json:"official_native_helper,omitempty"`
 	MinimumWuuVersion    string                            `json:"minimum_wuu_version,omitempty"`
 	UnsupportedFields    []string                          `json:"unsupported_fields,omitempty"`
+}
+
+func (m Manifest) EnabledByDefault() bool {
+	return m.DefaultEnabled == nil || *m.DefaultEnabled
 }
 
 // DesktopSpec identifies the package-relative browser module for Desktop
@@ -423,6 +428,8 @@ type rawManifest struct {
 	Description            string          `json:"description"`
 	Icon                   json.RawMessage `json:"icon"`
 	Version                string          `json:"version"`
+	DefaultEnabled         *bool           `json:"defaultEnabled"`
+	DefaultEnabledAlias    *bool           `json:"default_enabled"`
 	Author                 json.RawMessage `json:"author"`
 	Homepage               string          `json:"homepage"`
 	Repository             string          `json:"repository"`
@@ -465,7 +472,7 @@ type rawContributes struct {
 
 var supportedManifestFields = map[string]struct{}{
 	"schemaVersion": {}, "schema_version": {},
-	"id": {}, "name": {}, "description": {}, "icon": {}, "version": {}, "author": {},
+	"id": {}, "name": {}, "description": {}, "icon": {}, "version": {}, "defaultEnabled": {}, "default_enabled": {}, "author": {},
 	"homepage": {}, "repository": {}, "license": {}, "keywords": {},
 	"skills": {}, "runtime": {}, "hooks": {}, "mcpServers": {}, "mcp_servers": {},
 	"contributes": {}, "desktop": {}, "interface": {}, "platforms": {},
@@ -612,6 +619,7 @@ func normalizeManifest(data []byte, root string, official bool) (Manifest, error
 		Description:          strings.TrimSpace(raw.Description),
 		Icon:                 icon,
 		Version:              strings.TrimSpace(raw.Version),
+		DefaultEnabled:       firstBool(raw.DefaultEnabled, raw.DefaultEnabledAlias),
 		Author:               cloneRaw(raw.Author),
 		Homepage:             strings.TrimSpace(raw.Homepage),
 		Repository:           strings.TrimSpace(raw.Repository),
@@ -1629,6 +1637,16 @@ func firstString(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func firstBool(values ...*bool) *bool {
+	for _, value := range values {
+		if value != nil {
+			copy := *value
+			return &copy
+		}
+	}
+	return nil
 }
 
 func hasDeclaredValue(raw json.RawMessage) bool {

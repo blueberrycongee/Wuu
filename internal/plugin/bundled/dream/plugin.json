@@ -5,6 +5,7 @@
   "description": "Background consolidation of durable workspace memory.",
   "icon": { "path": "assets/icon.svg" },
   "version": "0.1.0",
+  "defaultEnabled": false,
   "author": { "name": "Wuu" },
   "minimumWuuVersion": "0.1.0",
   "runtime": { "protocol": "wuu-plugin-v1", "command": "@wuu-official-helper:dream", "timeout": 30 },

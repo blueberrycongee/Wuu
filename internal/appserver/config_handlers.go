@@ -636,7 +636,7 @@ func (s *Server) currentExtensionConfig() config.Config {
 }
 
 func pluginPackageInventoryState(settings extensions.Settings, item pluginpkg.Plugin) (ExtensionApprovalState, ExtensionState, extensions.GrantScope, bool) {
-	enabled := !settings.IsDisabled(item.SubjectID)
+	enabled := settings.IsEnabled(item.SubjectID, item.EnabledByDefault())
 	if item.AuthorizedDev {
 		if !enabled {
 			return ExtensionApprovalGranted, ExtensionStateRejected, "", false
@@ -915,9 +915,9 @@ func applyExtensionPackageAction(settings *extensions.Settings, action Extension
 	case ExtensionPackageRevoke:
 		settings.Revoke(selected.SubjectID)
 	case ExtensionPackageEnable:
-		settings.SetDisabled(selected.SubjectID, false)
+		settings.SetEnabled(selected.SubjectID, true)
 	case ExtensionPackageDisable:
-		settings.SetDisabled(selected.SubjectID, true)
+		settings.SetEnabled(selected.SubjectID, false)
 	default:
 		return fmt.Errorf("unsupported extension package action %q", action)
 	}

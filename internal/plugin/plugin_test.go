@@ -158,6 +158,60 @@ func TestDiscoverWithOptionsHidesBundledCUAMacByDefault(t *testing.T) {
 	}
 }
 
+func TestBundledOptionalPluginsAreInstalledButDisabledByDefault(t *testing.T) {
+	plugins := DiscoverWithOptions("", t.TempDir(), DiscoverOptions{
+		GOOS:      runtime.GOOS,
+		LookPath:  func(command string) (string, error) { return command, nil },
+		LookupEnv: func(string) (string, bool) { return "", false },
+	})
+	want := map[string]bool{"ask-user": false, "subagent": false, "dream": false, "memory": false}
+	for _, item := range plugins {
+		if _, ok := want[item.ID]; ok {
+			want[item.ID] = !item.EnabledByDefault()
+		}
+	}
+	for id, foundDisabled := range want {
+		if !foundDisabled {
+			t.Errorf("bundled plugin %q was missing or enabled by default", id)
+		}
+	}
+}
+
+func TestDiscoverWithOptionsHidesBundledSinglepassByDefault(t *testing.T) {
+	plugins := DiscoverWithOptions("", t.TempDir(), DiscoverOptions{
+		GOOS:      runtime.GOOS,
+		LookPath:  func(command string) (string, error) { return command, nil },
+		LookupEnv: func(string) (string, bool) { return "", false },
+	})
+	for _, item := range plugins {
+		if item.ID == "singlepass" {
+			t.Fatalf("singlepass must stay hidden until %s=1: %+v", EnableSinglepassEnv, item)
+		}
+	}
+}
+
+func TestDiscoverWithOptionsExposesBundledSinglepassForDevelopment(t *testing.T) {
+	plugins := DiscoverWithOptions("", t.TempDir(), DiscoverOptions{
+		GOOS:     runtime.GOOS,
+		LookPath: func(command string) (string, error) { return command, nil },
+		LookupEnv: func(key string) (string, bool) {
+			if key == EnableSinglepassEnv {
+				return "1", true
+			}
+			return "", false
+		},
+	})
+	for _, item := range plugins {
+		if item.ID == "singlepass" {
+			if item.EnabledByDefault() {
+				t.Fatal("development singlepass package must still require explicit activation")
+			}
+			return
+		}
+	}
+	t.Fatal("singlepass was not exposed for development")
+}
+
 func TestDiscoverWithOptionsFiltersBundledCUAMacOutsideDarwin(t *testing.T) {
 	plugins := DiscoverWithOptions("", t.TempDir(), DiscoverOptions{GOOS: "linux"})
 	for _, item := range plugins {

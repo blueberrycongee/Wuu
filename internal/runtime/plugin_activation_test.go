@@ -75,6 +75,28 @@ func TestActivatedPluginsFailClosed(t *testing.T) {
 	}
 }
 
+func TestActivatedPluginsHonorsPackageDefaultAndExplicitEnable(t *testing.T) {
+	disabled := false
+	official := pluginpkg.Plugin{
+		Manifest:  pluginpkg.Manifest{ID: "experimental", DefaultEnabled: &disabled},
+		SubjectID: "plugin:bundled:experimental",
+		Official:  true,
+	}
+
+	if got := activatedPlugins(config.Config{}, []pluginpkg.Plugin{official}); len(got) != 0 {
+		t.Fatalf("default-disabled official package activated: %+v", got)
+	}
+	settings := &extensions.Settings{}
+	settings.SetEnabled(official.SubjectID, true)
+	if got := activatedPlugins(config.Config{Extensions: settings}, []pluginpkg.Plugin{official}); len(got) != 1 {
+		t.Fatalf("explicitly enabled official package did not activate: %+v", got)
+	}
+	settings.SetEnabled(official.SubjectID, false)
+	if got := activatedPlugins(config.Config{Extensions: settings}, []pluginpkg.Plugin{official}); len(got) != 0 {
+		t.Fatalf("explicitly disabled official package activated: %+v", got)
+	}
+}
+
 func TestActivatedPluginsEnforcesMinimumWuuVersion(t *testing.T) {
 	original := currentWuuVersion
 	t.Cleanup(func() { currentWuuVersion = original })

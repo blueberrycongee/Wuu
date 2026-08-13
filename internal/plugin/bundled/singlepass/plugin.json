@@ -4,6 +4,7 @@
   "name": "Single-Pass Driver",
   "description": "Single-pass loop driver: one model round per turn, installed and selected per session as the driver.singlepass service.",
   "version": "0.1.0",
+  "defaultEnabled": false,
   "author": { "name": "Wuu" },
   "minimumWuuVersion": "0.1.0",
   "runtime": { "protocol": "wuu-plugin-v1", "command": "@wuu-official-helper:singlepass", "timeout": 30 },

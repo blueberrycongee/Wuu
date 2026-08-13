@@ -410,6 +410,7 @@ func (s *Server) handlePendingPluginUpdate(req Request, params ExtensionPackageU
 func cloneExtensionSettings(current *extensions.Settings) extensions.Settings {
 	clone := extensions.Settings{
 		Grants:   map[string]extensions.Grant{},
+		Enabled:  map[string]bool{},
 		Disabled: map[string]bool{},
 		Rejected: map[string]extensions.PolicyDecision{},
 	}
@@ -422,6 +423,9 @@ func cloneExtensionSettings(current *extensions.Settings) extensions.Settings {
 	}
 	for key, disabled := range current.Disabled {
 		clone.Disabled[key] = disabled
+	}
+	for key, enabled := range current.Enabled {
+		clone.Enabled[key] = enabled
 	}
 	for key, decision := range current.Rejected {
 		clone.Rejected[key] = decision

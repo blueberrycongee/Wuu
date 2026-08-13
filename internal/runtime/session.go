@@ -1835,7 +1835,8 @@ var currentWuuVersion = func() string { return version.Info().Version }
 // activatedPlugins separates inert discovery from executable activation.
 // Community packages require an exact user-owned grant. Official bundled
 // packages and authenticated local development generations are trusted by
-// provenance. Every tier may still be explicitly disabled, and every tier
+// provenance. Every tier follows its package default unless the user has made
+// an explicit choice, and every tier
 // must satisfy its declared minimum_wuu_version against the running host:
 // the compatibility contract fails closed regardless of trust tier.
 func activatedPlugins(cfg config.Config, discovered []pluginpkg.Plugin) []pluginpkg.Plugin {
@@ -1843,7 +1844,11 @@ func activatedPlugins(cfg config.Config, discovered []pluginpkg.Plugin) []plugin
 	hostVersion := currentWuuVersion()
 	out := make([]pluginpkg.Plugin, 0, len(discovered))
 	for _, item := range discovered {
-		if settings != nil && settings.IsDisabled(item.SubjectID) {
+		enabled := item.EnabledByDefault()
+		if settings != nil {
+			enabled = settings.IsEnabled(item.SubjectID, enabled)
+		}
+		if !enabled {
 			continue
 		}
 		if err := pluginpkg.CheckMinimumWuuVersion(item.MinimumWuuVersion, hostVersion); err != nil {

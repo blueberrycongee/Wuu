@@ -15,6 +15,9 @@ func TestBundledSinglepassResolvesRuntime(t *testing.T) {
 		if key == "WUU_SINGLEPASS_PLUGIN_HELPER" {
 			return helper, true
 		}
+		if key == EnableSinglepassEnv {
+			return "1", true
+		}
 		return "", false
 	}})
 	for _, item := range plugins {

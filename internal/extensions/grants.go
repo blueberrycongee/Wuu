@@ -31,12 +31,13 @@ type PolicyDecision struct {
 	At          time.Time `json:"at"`
 }
 
-// Settings persists package grants and policy decisions (disabled/rejected).
+// Settings persists package grants and policy decisions (enabled/disabled/rejected).
 // Grants are keyed by subject id and must match the exact fingerprint stored in
 // the grant. Disabled preserves a valid grant but prevents activation.
 // Rejected records the rejected fingerprint and avoids repeated prompting.
 type Settings struct {
 	Grants   map[string]Grant          `json:"grants,omitempty"`
+	Enabled  map[string]bool           `json:"enabled,omitempty"`
 	Disabled map[string]bool           `json:"disabled,omitempty"`
 	Rejected map[string]PolicyDecision `json:"rejected,omitempty"`
 }
@@ -57,6 +58,17 @@ func (s Settings) IsDisabled(subjectID string) bool {
 	return s.Disabled[subjectID]
 }
 
+// IsEnabled applies an explicit user choice over the package's default state.
+func (s Settings) IsEnabled(subjectID string, defaultEnabled bool) bool {
+	if s.Disabled[subjectID] {
+		return false
+	}
+	if s.Enabled[subjectID] {
+		return true
+	}
+	return defaultEnabled
+}
+
 // IsRejected reports whether the exact fingerprint for the subject has been
 // rejected. A changed fingerprint is not considered rejected.
 func (s Settings) IsRejected(subjectID, fingerprint string) bool {
@@ -72,9 +84,28 @@ func (s *Settings) SetDisabled(subjectID string, disabled bool) {
 	}
 	if disabled {
 		s.Disabled[subjectID] = true
+		if s.Enabled != nil {
+			delete(s.Enabled, subjectID)
+		}
 		return
 	}
 	delete(s.Disabled, subjectID)
+}
+
+// SetEnabled records an explicit package activation choice.
+func (s *Settings) SetEnabled(subjectID string, enabled bool) {
+	if s.Enabled == nil {
+		s.Enabled = map[string]bool{}
+	}
+	if enabled {
+		s.Enabled[subjectID] = true
+		if s.Disabled != nil {
+			delete(s.Disabled, subjectID)
+		}
+		return
+	}
+	delete(s.Enabled, subjectID)
+	s.SetDisabled(subjectID, true)
 }
 
 // RecordGrant stores an approval for the exact subject and fingerprint and
@@ -128,6 +159,9 @@ func (s *Settings) Revoke(subjectID string) {
 	}
 	if s.Disabled != nil {
 		delete(s.Disabled, subjectID)
+	}
+	if s.Enabled != nil {
+		delete(s.Enabled, subjectID)
 	}
 	if s.Rejected != nil {
 		delete(s.Rejected, subjectID)

@@ -392,10 +392,10 @@ func runPluginPolicy(action string, args []string) error {
 		case "reject":
 			return settings.RecordRejection(item.SubjectID, item.Fingerprint)
 		case "enable":
-			settings.SetDisabled(item.SubjectID, false)
+			settings.SetEnabled(item.SubjectID, true)
 			return nil
 		case "disable":
-			settings.SetDisabled(item.SubjectID, true)
+			settings.SetEnabled(item.SubjectID, false)
 			return nil
 		default:
 			return fmt.Errorf("unsupported plugin policy action %q", action)
