@@ -77,22 +77,22 @@ func testExecution() ExecutionContext {
 func TestRemoteDriverCreateRunShutdown(t *testing.T) {
 	invoker := &fakeRemoteInvoker{}
 	gateways := &fakeGatewayRegistry{}
-	driver := &RemoteDriver{Profile: "singlepass", Invoker: invoker, Gateways: gateways, ServiceID: "driver.singlepass"}
+	driver := &RemoteDriver{Profile: "demo", Invoker: invoker, Gateways: gateways, ServiceID: "driver.demo"}
 
 	invoker.serve = func(_ context.Context, _ string, method string, _ json.RawMessage) (json.RawMessage, error) {
 		switch method {
 		case RemoteMethodDescriptor:
-			return json.Marshal(Descriptor{ID: "wuu.single-pass", Version: "0.1.0", Capabilities: []string{"single_round"}})
+			return json.Marshal(Descriptor{ID: "wuu.demo", Version: "0.1.0", Capabilities: []string{"demo_round"}})
 		case RemoteMethodCreate:
 			return json.Marshal(remoteInstanceResult{
 				InstanceID: "inst-1",
-				Checkpoint: Checkpoint{ContractVersion: ContractVersion, DriverID: "wuu.single-pass", DriverVersion: "0.1.0", State: json.RawMessage(`{"phase":"ready"}`)},
+				Checkpoint: Checkpoint{ContractVersion: ContractVersion, DriverID: "wuu.demo", DriverVersion: "0.1.0", State: json.RawMessage(`{"phase":"ready"}`)},
 			})
 		case RemoteMethodRun:
 			return json.Marshal(remoteRunResult{
 				Status:     TerminalSucceeded,
 				ReceiptID:  "rcpt-1",
-				Checkpoint: Checkpoint{ContractVersion: ContractVersion, DriverID: "wuu.single-pass", DriverVersion: "0.1.0", State: json.RawMessage(`{"phase":"succeeded"}`)},
+				Checkpoint: Checkpoint{ContractVersion: ContractVersion, DriverID: "wuu.demo", DriverVersion: "0.1.0", State: json.RawMessage(`{"phase":"succeeded"}`)},
 			})
 		case RemoteMethodShutdown:
 			return json.RawMessage(`{}`), nil
@@ -102,7 +102,7 @@ func TestRemoteDriverCreateRunShutdown(t *testing.T) {
 	}
 
 	descriptor := driver.Descriptor()
-	if descriptor.ID != "wuu.single-pass" || descriptor.Version != "0.1.0" {
+	if descriptor.ID != "wuu.demo" || descriptor.Version != "0.1.0" {
 		t.Fatalf("descriptor = %+v", descriptor)
 	}
 	if cached := driver.Descriptor(); cached.ID != descriptor.ID {
@@ -152,7 +152,7 @@ func TestRemoteDriverCreateRunShutdown(t *testing.T) {
 func TestRemoteDriverRunRegistersGatewayDuringRun(t *testing.T) {
 	invoker := &fakeRemoteInvoker{}
 	gateways := &fakeGatewayRegistry{}
-	driver := &RemoteDriver{Profile: "singlepass", Invoker: invoker, Gateways: gateways}
+	driver := &RemoteDriver{Profile: "demo", Invoker: invoker, Gateways: gateways}
 	gatewayVisible := make(chan KernelGateway, 1)
 
 	invoker.serve = func(ctx context.Context, _ string, method string, _ json.RawMessage) (json.RawMessage, error) {
@@ -189,7 +189,7 @@ func TestRemoteDriverRunRegistersGatewayDuringRun(t *testing.T) {
 
 func TestRemoteDriverCancelPropagatesThroughExecution(t *testing.T) {
 	invoker := &fakeRemoteInvoker{}
-	driver := &RemoteDriver{Profile: "singlepass", Invoker: invoker, Gateways: &fakeGatewayRegistry{}}
+	driver := &RemoteDriver{Profile: "demo", Invoker: invoker, Gateways: &fakeGatewayRegistry{}}
 	runStarted := make(chan struct{})
 	runCanceled := make(chan error, 1)
 
@@ -235,7 +235,7 @@ func TestRemoteDriverCancelPropagatesThroughExecution(t *testing.T) {
 }
 
 func TestRemoteDriverRequiresExecutionID(t *testing.T) {
-	driver := &RemoteDriver{Profile: "singlepass", Invoker: &fakeRemoteInvoker{}}
+	driver := &RemoteDriver{Profile: "demo", Invoker: &fakeRemoteInvoker{}}
 	if _, err := driver.Create(ExecutionContext{SessionID: "sess-1"}, PersistedInput{}); err == nil || !strings.Contains(err.Error(), "execution id") {
 		t.Fatalf("Create() = %v, want execution id error", err)
 	}
@@ -246,8 +246,8 @@ func TestRemoteDriverRequiresExecutionID(t *testing.T) {
 
 func TestRemoteDriverResumeSendsCheckpoint(t *testing.T) {
 	invoker := &fakeRemoteInvoker{}
-	driver := &RemoteDriver{Profile: "singlepass", Invoker: invoker}
-	checkpoint := Checkpoint{ContractVersion: ContractVersion, DriverID: "wuu.single-pass", DriverVersion: "0.1.0", State: json.RawMessage(`{"phase":"running"}`)}
+	driver := &RemoteDriver{Profile: "demo", Invoker: invoker}
+	checkpoint := Checkpoint{ContractVersion: ContractVersion, DriverID: "wuu.demo", DriverVersion: "0.1.0", State: json.RawMessage(`{"phase":"running"}`)}
 	invoker.serve = func(_ context.Context, _ string, method string, params json.RawMessage) (json.RawMessage, error) {
 		if method != RemoteMethodResume {
 			return nil, errors.New("unexpected method " + method)
@@ -267,15 +267,15 @@ func TestRemoteDriverResumeSendsCheckpoint(t *testing.T) {
 }
 
 func TestFailClosedDriver(t *testing.T) {
-	driver := FailClosedDriver{Profile: "singlepass", Reason: "no provider for service driver.singlepass"}
+	driver := FailClosedDriver{Profile: "demo", Reason: "no provider for service driver.demo"}
 	if _, err := driver.Create(testExecution(), PersistedInput{}); err == nil ||
-		!strings.Contains(err.Error(), `"singlepass"`) || !strings.Contains(err.Error(), "read-only") {
+		!strings.Contains(err.Error(), `"demo"`) || !strings.Contains(err.Error(), "read-only") {
 		t.Fatalf("Create() = %v", err)
 	}
 	if _, err := driver.Resume(testExecution(), PersistedInput{}, Checkpoint{}); err == nil || !strings.Contains(err.Error(), "read-only") {
 		t.Fatalf("Resume() = %v", err)
 	}
-	if descriptor := driver.Descriptor(); !strings.Contains(descriptor.ID, "singlepass") {
+	if descriptor := driver.Descriptor(); !strings.Contains(descriptor.ID, "demo") {
 		t.Fatalf("descriptor = %+v", descriptor)
 	}
 }

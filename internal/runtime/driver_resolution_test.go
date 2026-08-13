@@ -78,9 +78,9 @@ func TestResolveLoopDriverFailsClosedWithoutProvider(t *testing.T) {
 func TestResolveLoopDriverRemoteRoutesThroughRegistry(t *testing.T) {
 	var gotExecutionID, gotMethod, gotService string
 	provider := &driverProviderClient{
-		id: "driver-singlepass",
+		id: "driver-demo",
 		descriptor: pluginhost.ServiceDescriptor{
-			Name:    "driver.singlepass",
+			Name:    "driver.demo",
 			Version: "1.0.0",
 			Methods: []pluginhost.ServiceMethodDescriptor{{Name: "descriptor"}, {Name: "create"}, {Name: "resume"}, {Name: "run"}, {Name: "shutdown"}},
 		},
@@ -88,7 +88,7 @@ func TestResolveLoopDriverRemoteRoutesThroughRegistry(t *testing.T) {
 			gotService, gotMethod, gotExecutionID = params.Service, params.Method, params.ExecutionID
 			switch params.Method {
 			case loopdriver.RemoteMethodDescriptor:
-				return json.Marshal(map[string]any{"id": "singlepass", "version": "1.0.0"})
+				return json.Marshal(map[string]any{"id": "demo", "version": "1.0.0"})
 			case loopdriver.RemoteMethodCreate:
 				return json.Marshal(map[string]any{"instance_id": "inst-1"})
 			case loopdriver.RemoteMethodRun:
@@ -102,15 +102,15 @@ func TestResolveLoopDriverRemoteRoutesThroughRegistry(t *testing.T) {
 	host.AttachServiceRegistry(registry, nil)
 	table := newDriverGatewayTable()
 
-	driver := resolveLoopDriver("singlepass", host, func() *driverGatewayTable { return table })
+	driver := resolveLoopDriver("demo", host, func() *driverGatewayTable { return table })
 	remote, ok := driver.(*loopdriver.RemoteDriver)
 	if !ok {
 		t.Fatalf("driver = %#v, want *RemoteDriver", driver)
 	}
-	if remote.ServiceID != "driver.singlepass" {
+	if remote.ServiceID != "driver.demo" {
 		t.Fatalf("ServiceID = %q", remote.ServiceID)
 	}
-	if got := remote.Descriptor().ID; got != "singlepass" {
+	if got := remote.Descriptor().ID; got != "demo" {
 		t.Fatalf("Descriptor().ID = %q", got)
 	}
 	instance, err := remote.Create(loopdriver.ExecutionContext{SessionID: "s", ExecutionID: "exec-1"}, loopdriver.PersistedInput{})
@@ -124,7 +124,7 @@ func TestResolveLoopDriverRemoteRoutesThroughRegistry(t *testing.T) {
 	if outcome.Status != loopdriver.TerminalSucceeded {
 		t.Fatalf("outcome = %+v", outcome)
 	}
-	if gotService != "driver.singlepass" || gotMethod != "run" || gotExecutionID != "exec-1" {
+	if gotService != "driver.demo" || gotMethod != "run" || gotExecutionID != "exec-1" {
 		t.Fatalf("invoke = (%q, %q, %q)", gotService, gotMethod, gotExecutionID)
 	}
 	// The resolved driver must register its gateway into the current

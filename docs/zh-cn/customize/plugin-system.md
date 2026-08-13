@@ -30,8 +30,7 @@ Surface 或 Agent 能力。
 Wuu 的长期目标不是在现有 Agent runtime 外围增加一层插件 API，也不是把某一种 ReAct 循环永久
 定义成核心。Wuu 固定的是一个小而强约束的 **Plugin Kernel**：服务发现、作用域生命周期、可靠
 Session/Event 存储、输入队列、执行租约、取消、权限、Provider 与 Tool 协议网关、generation
-事务和宿主 UI。当前默认 Agent Loop 已由 bundled `DefaultDriver` 驱动；实验性的
-`SinglePassDriver` 使用同一 Kernel Gateway 完成单轮、无 Tool、无 Compaction 的另一种执行范式。
+事务和宿主 UI。当前默认 Agent Loop 已由 bundled `DefaultDriver` 驱动。
 Driver 目前是进程内实验合同，还不是可由 Manifest 安装或在设置中选择的普通插件贡献。
 
 Loop Driver 决定 Agent 怎样运行：如何消费输入，怎样组织 Prompt 和上下文，一次输入包含多少
@@ -374,8 +373,6 @@ generation-scoped Service Registry，内核服务、自省与执行作用域都�
    经同一注册入口（`host.service.call`），不再另造平行的固定宿主服务表。
 8. 现有执行循环已包装成 Experimental v1 `DefaultDriver`，产品行为不变；Session 持久化 Driver
    身份、checkpoint 与最终 model-input receipt，恢复只从稳定边界进行。
-9. `SinglePassDriver` 已证明单轮无 Tool 的不同范式可以不修改 Kernel 私有类型运行。把 Driver 做成
-   Manifest 可安装贡献、迁出进程内 bundled 代码和提供选择 UI，仍属于后续稳定化工作。
 
 插件链路的验收不是接口存在，而是：核心不存在 Cron、Memory、Dream、Goal、Subagent、TODO 的
 产品专用执行或可变状态分支时，这六个一方插件仍能仅通过公开合同保持现有体验；外部插件在相同
@@ -621,7 +618,7 @@ Goal、Subagent、Automation、Memory、Dream、TODO 已经通过与第三方插
 - Goal、Subagent、Automation、用户/工作区/会话 Memory、Dream 和 TODO 已完成纵向迁移，并去除专用宿主执行 seam；
 - HelpMe 已从代码和产品中删除；TODO 没有核心 Tool、状态、恢复与原生展示；
 - Go runtime 与 Desktop contribution 已按 generation 统一回收，简单 Activation Plan、Default
-  Driver、SinglePass Driver、checkpoint 和 model-input receipt 已实现；Service Registry
+  Driver、checkpoint 和 model-input receipt 已实现；Service Registry
   （内核服务 + 自省 + 执行作用域）已作为运行时组合原语落地；跨 Go/Desktop 的统一
   Plugin Scope、Driver Manifest/选择 UI 仍未完成。
 

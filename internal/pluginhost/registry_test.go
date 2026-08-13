@@ -337,21 +337,21 @@ func TestServiceRegistryCallPreservesTypedProviderErrors(t *testing.T) {
 
 func TestServiceRegistryCallProviderFromKernel(t *testing.T) {
 	provider := &fakeServiceProcess{id: "driver", state: StateActive, provided: []ServiceDescriptor{{
-		Name:    "driver.singlepass",
+		Name:    "driver.demo",
 		Version: "1.0.0",
 		Methods: []ServiceMethodDescriptor{{Name: "run", InputSchema: "driver.run.request.v1", OutputSchema: "driver.run.response.v1"}},
 	}}}
 	registry, _ := BuildServiceRegistry(provider)
 
-	if _, err := registry.CallProvider(context.Background(), "driver.singlepass", 1, "run", nil, "exec-1"); err == nil || err.Code != "service_unavailable" {
+	if _, err := registry.CallProvider(context.Background(), "driver.demo", 1, "run", nil, "exec-1"); err == nil || err.Code != "service_unavailable" {
 		t.Fatalf("inactive registry kernel call = %v, want service_unavailable", err)
 	}
 	registry.Activate()
 
-	if _, err := registry.CallProvider(context.Background(), "driver.singlepass", 2, "run", nil, "exec-1"); err == nil || err.Code != "service_unavailable" {
+	if _, err := registry.CallProvider(context.Background(), "driver.demo", 2, "run", nil, "exec-1"); err == nil || err.Code != "service_unavailable" {
 		t.Fatalf("missing major = %v, want service_unavailable", err)
 	}
-	if _, err := registry.CallProvider(context.Background(), "driver.singlepass", 1, "create", nil, "exec-1"); err == nil || err.Code != "method_not_found" {
+	if _, err := registry.CallProvider(context.Background(), "driver.demo", 1, "create", nil, "exec-1"); err == nil || err.Code != "method_not_found" {
 		t.Fatalf("undeclared method = %v, want method_not_found", err)
 	}
 	if _, err := registry.CallProvider(context.Background(), " ", 1, "run", nil, "exec-1"); err == nil || err.Code != "invalid_request" {
@@ -360,7 +360,7 @@ func TestServiceRegistryCallProviderFromKernel(t *testing.T) {
 
 	// The kernel needs no consumer declaration: the call routes with the
 	// kernel caller identity and the execution id intact.
-	result, err := registry.CallProvider(context.Background(), "driver.singlepass", 1, "run", json.RawMessage(`{"instance_id":"i-1"}`), "exec-1")
+	result, err := registry.CallProvider(context.Background(), "driver.demo", 1, "run", json.RawMessage(`{"instance_id":"i-1"}`), "exec-1")
 	if err != nil {
 		t.Fatalf("kernel call failed: %v", err)
 	}

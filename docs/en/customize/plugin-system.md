@@ -43,11 +43,9 @@ to define one particular ReAct loop as the core forever. What wuu fixes is a sma
 tightly constrained **Plugin Kernel**: service discovery, scoped lifecycle, reliable
 Session/Event storage, an input queue, execution leases, cancellation, permissions,
 the Provider and Tool protocol gateway, generation transactions, and the host UI. The
-current default agent loop is driven by the bundled `DefaultDriver`; the experimental
-`SinglePassDriver` uses the same Kernel Gateway for another execution paradigm:
-single-turn, no tools, no compaction. Drivers are currently an in-process experimental
-contract, not yet an ordinary plugin contribution that can be installed via a Manifest
-or chosen in settings.
+current default agent loop is driven by the bundled `DefaultDriver`. Drivers are
+currently an in-process experimental contract, not yet an ordinary plugin contribution
+that can be installed via a Manifest or chosen in settings.
 
 The Loop Driver decides how the agent runs: how input is consumed, how prompts and
 context are organized, how many steps one input contains, whether tools run serially or
@@ -513,10 +511,6 @@ public boundary first, then delete the product-specific entry points:
 8. The existing execution loop has been wrapped as the Experimental v1 `DefaultDriver`
    with unchanged product behavior; Sessions persist the Driver identity, checkpoint,
    and final model-input receipt, and recovery only proceeds from stable boundaries.
-9. `SinglePassDriver` proved that a different single-turn no-tool paradigm can run
-   without modifying Kernel private types. Making Drivers a Manifest-installable
-   contribution, moving them out of in-process bundled code, and providing a selection
-   UI remain later stabilization work.
 
 The acceptance of the plugin chain is not that interfaces exist, but that when the
 core has no product-specific execution or mutable state branches for Cron, Memory,
@@ -854,8 +848,8 @@ The following must not be written as completed compatibility promises:
 - HelpMe has been removed from the code and the product; TODO has no core Tool, state,
   recovery, and native display were also removed;
 - the Go runtime and Desktop contributions are now reclaimed uniformly per
-  generation, and a simple Activation Plan, Default Driver, SinglePass Driver,
-  checkpoints, and model-input receipts are implemented; the Service Registry
+  generation, and a simple Activation Plan, Default Driver, checkpoints, and
+  model-input receipts are implemented; the Service Registry
   (kernel services + introspection + execution scope) is live as the runtime
   composition primitive; the unified cross-Go/Desktop Plugin Scope and Driver
   Manifest/selection UI are not done.

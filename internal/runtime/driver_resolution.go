@@ -11,8 +11,8 @@ import (
 )
 
 // DriverServicePrefix is the service-namespace convention a loop driver
-// plugin contributes under: profile "singlepass" resolves to the versioned
-// service "driver.singlepass" major 1.
+// plugin contributes under: a driver profile resolves to the versioned
+// service "driver.<profile>" major 1.
 const DriverServicePrefix = "driver."
 
 // registryDriverInvoker adapts the service registry to loopdriver.RemoteInvoker.

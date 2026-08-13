@@ -23,9 +23,6 @@ const bundledFingerprintFile = ".fingerprint"
 // normal releases while the native integration is under internal evaluation.
 const EnableCUAMacEnv = "WUU_ENABLE_CUA_MAC"
 
-// EnableSinglepassEnv exposes the internal single-pass driver for development.
-const EnableSinglepassEnv = "WUU_ENABLE_SINGLEPASS"
-
 type DiscoverOptions struct {
 	GOOS       string
 	WuuVersion string
@@ -84,8 +81,6 @@ func bundledPluginEnabled(item Plugin, lookupEnv func(string) (string, bool)) bo
 	switch item.ID {
 	case "cua-mac":
 		key = EnableCUAMacEnv
-	case "singlepass":
-		key = EnableSinglepassEnv
 	default:
 		return true
 	}
