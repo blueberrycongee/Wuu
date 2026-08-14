@@ -9,6 +9,8 @@ type Input struct {
 	Event         Event           `json:"hook_event_name"`
 	SessionID     string          `json:"session_id"`
 	CWD           string          `json:"cwd"`
+	Title         string          `json:"title,omitempty"`
+	Message       string          `json:"message,omitempty"`
 	ToolName      string          `json:"tool_name,omitempty"`
 	ToolInput     json.RawMessage `json:"tool_input,omitempty"`
 	ToolResponse  string          `json:"tool_response,omitempty"`

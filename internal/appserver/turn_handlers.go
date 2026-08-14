@@ -2053,7 +2053,15 @@ func (s *Server) runTurnWithRequestContext(ctx context.Context, th *threadState,
 		})
 	})
 	if s.rt != nil && s.rt.HookDispatcher != nil {
-		_, stopErr := s.rt.HookDispatcher.Dispatch(ctx, hookspkg.Stop, &hookspkg.Input{SessionID: th.ID, CWD: s.rt.RootDir})
+		th.mu.Lock()
+		title := th.Title
+		th.mu.Unlock()
+		_, stopErr := s.rt.HookDispatcher.Dispatch(ctx, hookspkg.Stop, &hookspkg.Input{
+			SessionID: th.ID,
+			CWD:       s.rt.RootDir,
+			Title:     title,
+			Message:   stopHookMessage(res),
+		})
 		err = errors.Join(err, stopErr)
 	}
 	// RunWithCallback has consumed every per-turn callback. Restore the
@@ -4007,6 +4015,20 @@ func truncateUsageTitle(s string) string {
 	r := []rune(s)
 	if len(r) <= max {
 		return s
+	}
+	return string(r[:max-1]) + "…"
+}
+
+// stopHookMessage provides a single-line, bounded snippet of the turn's final
+// assistant message for Stop hooks that surface it to the user (for example a
+// desktop notification). Collapsing whitespace keeps the payload easy to embed
+// in plain-text commands without exposing raw formatting or a full response.
+func stopHookMessage(res agent.LoopResult) string {
+	const max = 200
+	text := strings.Join(strings.Fields(strings.TrimSpace(res.Content)), " ")
+	r := []rune(text)
+	if len(r) <= max {
+		return text
 	}
 	return string(r[:max-1]) + "…"
 }
