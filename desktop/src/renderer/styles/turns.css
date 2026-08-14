@@ -2186,6 +2186,9 @@
 
 .process-text-motion-copy {
   grid-area: 1 / 1;
+  justify-self: start;
+  width: max-content;
+  max-width: 100%;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;

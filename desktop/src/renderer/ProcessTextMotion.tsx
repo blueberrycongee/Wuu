@@ -1,8 +1,15 @@
-import { useEffect, useRef, useState, type JSX, type Ref } from "react";
+import {
+  useLayoutEffect,
+  useRef,
+  useState,
+  type JSX,
+  type Ref,
+} from "react";
 import { motionDurationMs } from "./motion";
 
 // Mirrors the process-text-rise-out duration in turns.css.
 const PROCESS_TEXT_EXIT_MS = motionDurationMs("--motion-base", 180);
+const WIDTH_CLEANUP_BUFFER_MS = 32;
 
 export function AnimatedProcessText({
   text,
@@ -15,28 +22,95 @@ export function AnimatedProcessText({
 }): JSX.Element {
   const previousText = useRef(text);
   const [exitingText, setExitingText] = useState<string | undefined>();
+  const motionRef = useRef<HTMLSpanElement | null>(null);
+  const exitRef = useRef<HTMLSpanElement | null>(null);
+  const currentRef = useRef<HTMLSpanElement | null>(null);
 
-  useEffect(() => {
+  // Keep the outgoing copy mounted through the crossfade, but do it in a
+  // layout effect so the enter/exit pair is committed before paint. If the
+  // swap waited for a passive effect, the row would paint the new (shorter)
+  // text at its new width for one frame and only then expand back out to the
+  // old width for the fade — the exact long-to-short snap this component
+  // exists to smooth out.
+  useLayoutEffect(() => {
     if (previousText.current === text) {
       return undefined;
     }
-    setExitingText(previousText.current);
+    const previous = previousText.current;
     previousText.current = text;
+    setExitingText(previous);
     const timeoutID = window.setTimeout(() => {
       setExitingText(undefined);
     }, PROCESS_TEXT_EXIT_MS);
     return () => window.clearTimeout(timeoutID);
   }, [text]);
 
+  // The crossfade stacks old and new copy in the same grid cell, so the
+  // container's intrinsic width stays at the wider text while both copies
+  // exist and then snaps to the shorter width when the outgoing copy is
+  // removed. Tween that width change so a long summary that collapses into a
+  // short one (for example "查看、编辑、搜索" into "查看") does not reflow in
+  // a single frame.
+  useLayoutEffect(() => {
+    if (!exitingText || PROCESS_TEXT_EXIT_MS <= 0) {
+      return undefined;
+    }
+    const containerEl = motionRef.current;
+    const exitEl = exitRef.current;
+    const currentEl = currentRef.current;
+    if (!containerEl || !exitEl || !currentEl) {
+      return undefined;
+    }
+
+    const exitWidth = exitEl.getBoundingClientRect().width;
+    const currentWidth = currentEl.getBoundingClientRect().width;
+    if (exitWidth <= 0 || currentWidth <= 0 || exitWidth === currentWidth) {
+      return undefined;
+    }
+
+    // Freeze at the outgoing width, then animate down to the incoming width
+    // with an inline transition. Keeping the transition scoped here avoids
+    // animating unrelated reflows (for example a parent resize) whenever the
+    // summary text stays the same.
+    containerEl.style.transition = "none";
+    containerEl.style.width = `${exitWidth}px`;
+    void containerEl.offsetWidth;
+    containerEl.style.transition = `width ${PROCESS_TEXT_EXIT_MS}ms var(--ease-out)`;
+    containerEl.style.width = `${currentWidth}px`;
+
+    const cleanup = (): void => {
+      containerEl.style.width = "";
+      containerEl.style.transition = "";
+    };
+    const cleanupTimeout = window.setTimeout(
+      cleanup,
+      PROCESS_TEXT_EXIT_MS + WIDTH_CLEANUP_BUFFER_MS,
+    );
+    return () => {
+      window.clearTimeout(cleanupTimeout);
+      cleanup();
+    };
+  }, [exitingText, text]);
+
+  const setMotionRef = (node: HTMLSpanElement | null): void => {
+    motionRef.current = node;
+    if (typeof ref === "function") {
+      ref(node);
+    } else if (ref) {
+      (ref as { current: HTMLSpanElement | null }).current = node;
+    }
+  };
+
   return (
     <span
-      ref={ref}
+      ref={setMotionRef}
       className={["process-text-motion", className].filter(Boolean).join(" ")}
       data-text={text}
       data-transitioning={exitingText ? "true" : undefined}
     >
       {exitingText ? (
         <span
+          ref={exitRef}
           aria-hidden="true"
           className="process-text-motion-copy process-text-motion-exit"
         >
@@ -44,6 +118,7 @@ export function AnimatedProcessText({
         </span>
       ) : null}
       <span
+        ref={currentRef}
         className={`process-text-motion-copy process-text-motion-current${
           exitingText ? " process-text-motion-enter" : ""
         }`}

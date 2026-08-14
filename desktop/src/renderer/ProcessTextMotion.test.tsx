@@ -1,6 +1,6 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { AnimatedProcessText } from "./ProcessTextMotion";
 
 let container: HTMLDivElement | null = null;
@@ -61,5 +61,43 @@ describe("AnimatedProcessText", () => {
       true,
     );
     expect(exit?.textContent).toBe("正在思考");
+  });
+
+  it("tweens the container width from the outgoing text to the incoming text", () => {
+    const getRect = vi
+      .spyOn(HTMLElement.prototype, "getBoundingClientRect")
+      .mockImplementation(function (this: HTMLElement) {
+        const width = this.classList.contains("process-text-motion-exit")
+          ? 160
+          : 48;
+        return {
+          x: 0,
+          y: 0,
+          top: 0,
+          left: 0,
+          right: width,
+          bottom: 0,
+          width,
+          height: 0,
+          toJSON() {
+            return this;
+          },
+        } as DOMRect;
+      });
+
+    try {
+      mount("这是一段比较长的工具调用聚合文本");
+      rerender("查看");
+
+      const motion = container?.querySelector(
+        ".process-text-motion",
+      ) as HTMLElement | null;
+      // The layout effect freezes at the outgoing width and then commits to
+      // the incoming width so the stylesheet's width transition can animate
+      // the reflow instead of snapping it in a single frame.
+      expect(motion?.style.width).toBe("48px");
+    } finally {
+      getRect.mockRestore();
+    }
   });
 });
