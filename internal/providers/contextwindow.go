@@ -158,11 +158,19 @@ var contextWindowRegistry = []contextWindowEntry{
 	{"gpt-3.5-turbo", 16_000},
 
 	// --- DeepSeek ---------------------------------------------------
+	{"deepseek-v4", 1_000_000},
 	{"deepseek-v3", 64_000},
 	{"deepseek-r1", 64_000},
 	{"deepseek-coder", 64_000},
 	{"deepseek-chat", 64_000},
 	{"deepseek", 64_000},
+
+	// --- GLM --------------------------------------------------------
+	{"glm-5.2", 1_000_000},
+	{"glm-5.3", 1_000_000},
+
+	// --- xAI Grok ---------------------------------------------------
+	{"grok-4", 500_000},
 
 	// --- Google Gemini ----------------------------------------------
 	{"gemini-2.5-pro", 2_000_000},
@@ -245,7 +253,11 @@ var maxOutputTokensRegistry = []contextWindowEntry{
 	{"o3", 100_000},
 	{"o1", 32_768},
 	// DeepSeek
+	{"deepseek-v4", 384_000},
 	{"deepseek", 8_192},
+	// GLM
+	{"glm-5.2", 128_000},
+	{"glm-5.3", 128_000},
 	// MiniMax-M3 documents 128K as the recommended Chat Completions output
 	// cap, with larger values allowed by explicit request.
 	{"minimax-m3", 131_072},

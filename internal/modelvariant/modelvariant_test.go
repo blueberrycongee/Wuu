@@ -131,6 +131,23 @@ func TestSummariesUseExplicitXAIReasoningEfforts(t *testing.T) {
 	}
 }
 
+func TestGrok46FallbackReasoningEfforts(t *testing.T) {
+	reasoning := true
+	provider := config.ProviderConfig{
+		Type:  "openai-compatible",
+		NPM:   "@ai-sdk/xai",
+		Model: "grok-4.6",
+		Models: map[string]config.ProviderModelConfig{
+			"grok-4.6": {Reasoning: &reasoning},
+		},
+	}
+
+	variants := SummariesForProvider("xai", provider, "grok-4.6")
+	if got := strings.Join(variantIDs(variants), ","); got != "low,medium,high,xhigh" {
+		t.Fatalf("variants = %q, want low,medium,high,xhigh", got)
+	}
+}
+
 func TestSummariesMatchProviderCompatForGenericOpenAICompatible(t *testing.T) {
 	provider := config.ProviderConfig{
 		Type:  "openai-compatible",
@@ -444,6 +461,81 @@ func TestResolveDeepSeekV4EffortEnablesThinking(t *testing.T) {
 	thinking, ok := selection.ProviderOptions["thinking"].(map[string]any)
 	if !ok || thinking["type"] != "enabled" {
 		t.Fatalf("thinking = %#v; options=%#v", selection.ProviderOptions["thinking"], selection.ProviderOptions)
+	}
+}
+
+func TestDeepSeekV4UsesVendorEffortTiers(t *testing.T) {
+	for _, model := range []string{"deepseek-v4-flash", "deepseek-v4-pro"} {
+		t.Run(model, func(t *testing.T) {
+			providerName, provider := modelcatalog.EnrichProvider("deepseek", config.ProviderConfig{
+				Type:  "openai-compatible",
+				Model: model,
+			}, model)
+
+			variants := SummariesForProvider(providerName, provider, model)
+			if got := strings.Join(variantIDs(variants), ","); got != "none,low,high,max" {
+				t.Fatalf("variants = %q, want none,low,high,max", got)
+			}
+
+			selection := ResolveForProvider(providerName, provider, model, "max", "")
+			thinking, ok := selection.ProviderOptions["thinking"].(map[string]any)
+			if !ok || thinking["type"] != "enabled" {
+				t.Fatalf("max thinking = %#v; options=%#v", selection.ProviderOptions["thinking"], selection.ProviderOptions)
+			}
+			if got := selection.ProviderOptions["reasoningEffort"]; got != "max" {
+				t.Fatalf("max reasoningEffort = %#v", got)
+			}
+
+			off := ResolveForProvider(providerName, provider, model, "none", "")
+			thinking, ok = off.ProviderOptions["thinking"].(map[string]any)
+			if !ok || thinking["type"] != "disabled" {
+				t.Fatalf("none thinking = %#v; options=%#v", off.ProviderOptions["thinking"], off.ProviderOptions)
+			}
+		})
+	}
+}
+
+func TestGLM52UsesVendorEffortTiers(t *testing.T) {
+	providerName, provider := modelcatalog.EnrichProvider("zai", config.ProviderConfig{
+		Type:  "openai-compatible",
+		Model: "glm-5.2",
+	}, "glm-5.2")
+
+	variants := SummariesForProvider(providerName, provider, "glm-5.2")
+	if got := strings.Join(variantIDs(variants), ","); got != "none,high,max" {
+		t.Fatalf("variants = %q, want none,high,max", got)
+	}
+
+	selection := ResolveForProvider(providerName, provider, "glm-5.2", "max", "")
+	if got := selection.ProviderOptions["reasoningEffort"]; got != "max" {
+		t.Fatalf("max reasoningEffort = %#v", got)
+	}
+	thinking, ok := selection.ProviderOptions["thinking"].(map[string]any)
+	if !ok || thinking["type"] != "enabled" {
+		t.Fatalf("max thinking = %#v; options=%#v", selection.ProviderOptions["thinking"], selection.ProviderOptions)
+	}
+
+	off := ResolveForProvider(providerName, provider, "glm-5.2", "none", "")
+	thinking, ok = off.ProviderOptions["thinking"].(map[string]any)
+	if !ok || thinking["type"] != "disabled" {
+		t.Fatalf("none thinking = %#v; options=%#v", off.ProviderOptions["thinking"], off.ProviderOptions)
+	}
+}
+
+func TestGLM53UsesSameEffortTiersAsGLM52(t *testing.T) {
+	reasoning := true
+	provider := config.ProviderConfig{
+		Type:  "openai-compatible",
+		NPM:   "@ai-sdk/openai-compatible",
+		Model: "glm-5.3",
+		Models: map[string]config.ProviderModelConfig{
+			"glm-5.3": {Reasoning: &reasoning},
+		},
+	}
+
+	variants := SummariesForProvider("zai", provider, "glm-5.3")
+	if got := strings.Join(variantIDs(variants), ","); got != "none,high,max" {
+		t.Fatalf("variants = %q, want none,high,max", got)
 	}
 }
 

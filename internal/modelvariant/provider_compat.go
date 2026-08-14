@@ -204,6 +204,9 @@ func inferredOptionsForProvider(providerName string, provider config.ProviderCon
 			"thinking": {"thinking": map[string]any{"type": "adaptive"}},
 		}
 	}
+	if isGLM52Or53(id) && desc.APINPM == compatNPMOpenAICompatible {
+		return compatGLM52Variants()
+	}
 	if compatExcludedReasoningModel(id) {
 		return nil
 	}
@@ -218,7 +221,7 @@ func inferredOptionsForProvider(providerName string, provider config.ProviderCon
 	if strings.Contains(id, "grok") {
 		efforts := modelReasoningEfforts(provider.Models[model])
 		if len(efforts) == 0 {
-			return nil
+			efforts = compatGrokFallbackEfforts(id)
 		}
 		return compatReasoningEffortVariants(efforts)
 	}
@@ -260,13 +263,12 @@ func inferredOptionsForProvider(providerName string, provider config.ProviderCon
 		}
 		return compatVariantsFromEfforts(efforts, compatOpenAIProviderVariantOptions)
 	case compatNPMCerebras, compatNPMTogetherAI, compatNPMXAI, compatNPMDeepInfra, compatNPMVenice, compatNPMOpenAICompatible:
+		if strings.Contains(apiID, "deepseek-v4") {
+			return compatDeepSeekV4Variants()
+		}
 		efforts := modelReasoningEfforts(provider.Models[model])
 		if len(efforts) == 0 {
 			efforts = append([]string{}, compatWidelySupportedEfforts()...)
-		}
-		if strings.Contains(apiID, "deepseek-v4") {
-			efforts = appendUniqueEffort(efforts, "max")
-			return compatVariantsFromEfforts(efforts, compatDeepSeekVariantOptions)
 		}
 		return compatReasoningEffortVariants(efforts)
 	case compatNPMAzure:
@@ -347,11 +349,18 @@ func stringOption(value any) string {
 	return text
 }
 
-func appendUniqueEffort(efforts []string, effort string) []string {
-	for _, existing := range efforts {
-		if existing == effort {
-			return efforts
-		}
+func isGLM52Or53(id string) bool {
+	id = strings.ToLower(strings.TrimSpace(id))
+	return strings.Contains(id, "glm-5.2") || strings.Contains(id, "glm-5.3") ||
+		strings.Contains(id, "glm5.2") || strings.Contains(id, "glm5.3")
+}
+
+// compatGrokFallbackEfforts fills the reasoning tiers for Grok models that are
+// not yet in the embedded catalog. Grok 4.6 tiers come from OpenRouter's model
+// metadata; earlier Grok 4.x fall back to the conservative low/medium/high set.
+func compatGrokFallbackEfforts(id string) []string {
+	if strings.Contains(id, "grok-4.6") {
+		return []string{"low", "medium", "high", "xhigh"}
 	}
-	return append(efforts, effort)
+	return []string{"low", "medium", "high"}
 }
