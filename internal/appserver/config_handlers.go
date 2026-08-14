@@ -903,13 +903,20 @@ func applyExtensionPackageAction(settings *extensions.Settings, action Extension
 	}
 	switch action {
 	case ExtensionPackageGrant:
-		return settings.RecordGrant(extensions.Grant{
+		if err := settings.RecordGrant(extensions.Grant{
 			SubjectID:   selected.SubjectID,
 			Fingerprint: selected.Fingerprint,
 			Scope:       extensions.GrantScopeProject,
 			Permissions: append([]string(nil), selected.EffectivePermissions...),
 			ApprovedAt:  approvedAt,
-		})
+		}); err != nil {
+			return err
+		}
+		// Approve and enable are the same user gesture in the catalog. Record
+		// the explicit enable here so default-disabled packages do not require a
+		// second "enable" click after approval.
+		settings.SetEnabled(selected.SubjectID, true)
+		return nil
 	case ExtensionPackageReject:
 		return settings.RecordRejection(selected.SubjectID, selected.Fingerprint)
 	case ExtensionPackageRevoke:

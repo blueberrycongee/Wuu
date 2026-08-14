@@ -6,10 +6,31 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/blueberrycongee/wuu/internal/extensions"
 	pluginpkg "github.com/blueberrycongee/wuu/internal/plugin"
 )
+
+func TestExtensionPackageGrantEnablesDefaultDisabledPackage(t *testing.T) {
+	disabled := false
+	plugin := pluginpkg.Plugin{
+		Manifest:             pluginpkg.Manifest{ID: "experimental", DefaultEnabled: &disabled},
+		SubjectID:            "plugin:bundled:experimental",
+		Fingerprint:          "sha256:experimental",
+		EffectivePermissions: []string{extensions.PermProcessSpawn},
+	}
+	settings := &extensions.Settings{}
+	if err := applyExtensionPackageAction(settings, ExtensionPackageGrant, plugin, time.Now().UTC()); err != nil {
+		t.Fatalf("grant default-disabled package: %v", err)
+	}
+	if !settings.IsEnabled(plugin.SubjectID, plugin.EnabledByDefault()) {
+		t.Fatalf("grant did not enable default-disabled package: %+v", settings)
+	}
+	if _, ok := settings.FindGrant(plugin.SubjectID, plugin.Fingerprint); !ok {
+		t.Fatalf("grant was not recorded: %+v", settings)
+	}
+}
 
 func TestExtensionPackageUpdateGrantsExactFingerprintAndDisablesImmediately(t *testing.T) {
 	rt := newTestRuntime(t, &fakeClient{})

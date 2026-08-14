@@ -236,6 +236,17 @@ export function SkillsCatalog({
         return;
       }
       setState({ loading: false, error: "", skills: result.skills });
+      const installedID = result.package?.id?.trim();
+      if (installedID) {
+        const record = (result.extension_inventory ?? []).find(
+          (candidate) =>
+            candidate.kind === "plugin" &&
+            candidate.provenance?.plugin_id === installedID,
+        );
+        if (record) {
+          setSelectedPluginID(record.id);
+        }
+      }
     } catch (error) {
       if (contextKeyRef.current === requestedContextKey) {
         showErrorToast(error, translateCurrent("skills.pluginInstallFailed"));
