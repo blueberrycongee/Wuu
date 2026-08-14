@@ -2,7 +2,7 @@
 
 <p align="center"><strong>Your coding agent, in a desktop workspace.</strong></p>
 
-<p align="center">Open source · macOS · Bring your own model</p>
+<p align="center">Open source · macOS · Bring your own model · Extensible</p>
 
 <div align="center">
   <p>
@@ -18,13 +18,32 @@
 
 <img width="2272" height="2494" alt="wuu desktop app" src="https://github.com/user-attachments/assets/2d9030aa-ca03-42b1-9333-f79cc5aff95b" />
 
-If you have used OpenCode, Claude Code, or Codex, wuu will feel familiar. The shortest description is: **a desktop GUI for the local coding-agent workflow**.
+If you have used OpenCode, Claude Code, or Codex, wuu will feel familiar. The shortest description is: **a desktop GUI for the local coding-agent workflow, built on an extension platform**.
 
 You still open a project and work with an agent. wuu puts the rest of that workflow into one visible workspace: projects and conversations on the left; the current task in the center; files, diffs, terminals, browser, skills, and model settings alongside it.
 
 wuu is independently developed and is not an official client for OpenCode, Claude Code, or Codex.
 
 In our internal benchmark on real code repositories, standard wuu sessions cost about half as much per successful fix as [pi](https://github.com/badlogic/pi-mono).
+
+## Built to be extended
+
+wuu's main development focus is its extension system: a plugin platform so the ecosystem can grow the product without forking it.
+
+- **One package, many capabilities.** A Wuu Plugin is an installable, upgradeable package that can add agent tools, context, desktop views, themes, settings, Skills, Hooks, MCP servers, and commands together, with one trust and upgrade lifecycle.
+- **Feature plugins extend, appearance plugins reskin.** The two are orthogonal and composable; they compose without knowing each other exists.
+- **First-party features use the same API.** Goals, subagents, automation, memory, and todos ship as plugins on the same mechanisms available to third parties.
+- **Local-first, no fork.** Install from npm, a Git remote, or a local path. There is no marketplace or central registry.
+
+```bash
+wuu plugin create --type agent my-agent
+wuu plugin create --type desktop my-ui
+
+wuu plugin build ./my-agent
+wuu extension install npm:my-agent
+```
+
+Start with the [Wuu Plugins guide](docs/en/customize/plugins.md), or see [Extend Wuu](docs/en/customize/index.md) to pick the smallest extension that fits.
 
 > [!WARNING]
 > wuu is an early preview and changes quickly. Packaged builds currently support Apple silicon Macs.

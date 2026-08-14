@@ -2,7 +2,7 @@
 
 <p align="center"><strong>把 Coding Agent 放进桌面工作区。</strong></p>
 
-<p align="center">开源 · macOS · 自选模型</p>
+<p align="center">开源 · macOS · 自选模型 · 可扩展</p>
 
 <div align="center">
   <p>
@@ -18,13 +18,32 @@
 
 <img width="2272" height="2494" alt="wuu 桌面应用" src="https://github.com/user-attachments/assets/2d9030aa-ca03-42b1-9333-f79cc5aff95b" />
 
-如果你用过 OpenCode、Claude Code 或 Codex，wuu 的上手方式不会陌生。最简单的理解是：**它把本地 Coding Agent 的工作方式做成了一个桌面 GUI。**
+如果你用过 OpenCode、Claude Code 或 Codex，wuu 的上手方式不会陌生。最简单的理解是：**它把本地 Coding Agent 的工作方式做成了一个桌面 GUI，并构建在一个可扩展的插件平台之上。**
 
 你仍然是打开一个项目，然后和 Agent 一起工作。区别在于，wuu 把这套工作流放进了一个完整的桌面工作区：左侧管理项目和会话，中间处理当前任务，文件、diff、终端、浏览器、技能和模型设置都在旁边。
 
 wuu 是独立开发的项目，不是 OpenCode、Claude Code 或 Codex 的官方客户端。
 
 在真实代码仓库的内部 bench 中，wuu 普通 session 每次成功修复的成本约为 [pi](https://github.com/badlogic/pi-mono) 的一半。
+
+## 为扩展而生
+
+wuu 当前的主线是它的插件体系：一个让生态可以共同生长、而无需 fork 项目的插件平台。
+
+- **一个包承载多种能力**：Wuu Plugin 是可安装、可升级的扩展包，能把 Agent 工具、上下文、桌面视图、主题、设置、技能、Hook、MCP 服务器和命令打包在一起，共享同一套安装与升级生命周期。
+- **功能插件自由扩展，外观插件统一换肤**：两者正交且可组合，无需感知彼此的存在。
+- **内置功能走同一套 API**：目标、子 Agent、自动化、记忆和待办都以插件形式提供，使用与第三方相同的机制。
+- **本地优先，无需 fork**：从 npm、Git 仓库或本地路径安装；没有应用市场或中心注册表。
+
+```bash
+wuu plugin create --type agent my-agent
+wuu plugin create --type desktop my-ui
+
+wuu plugin build ./my-agent
+wuu extension install npm:my-agent
+```
+
+从 [Wuu Plugin 指南](docs/zh-cn/customize/plugins.md)开始，或查看[扩展 Wuu](docs/zh-cn/customize/index.md)选择最合适的扩展。
 
 > [!WARNING]
 > wuu 仍处于早期预览阶段，正在快速迭代。打包版本目前支持 Apple 芯片 Mac。
