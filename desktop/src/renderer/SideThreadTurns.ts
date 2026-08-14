@@ -97,7 +97,7 @@ function assistantItem(message: SideThreadMessage): ThreadItem {
     id: message.id,
     type: "agent_message",
     status: assistantItemStatus(message.status),
-    phase: "final_answer",
+    terminal: true,
     role: "assistant",
     text: message.text,
   };

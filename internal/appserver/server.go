@@ -483,7 +483,7 @@ func hasPersistedTurnTerminal(history []persistedMessage, turnID string) bool {
 
 func turnHasFinalAnswer(turn Turn) bool {
 	for _, item := range turn.Items {
-		if item.Type == ThreadItemAgentMessage && item.Phase == ThreadItemPhaseFinalAnswer && strings.TrimSpace(item.Text) != "" {
+		if item.Type == ThreadItemAgentMessage && item.Terminal && strings.TrimSpace(item.Text) != "" {
 			return true
 		}
 	}

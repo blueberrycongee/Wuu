@@ -57,7 +57,7 @@ function makeCommentary(text: string): ThreadItem {
     id: nextID("commentary"),
     type: "agent_message",
     status: "completed",
-    phase: "commentary",
+    terminal: false,
     role: "assistant",
     text,
   };
@@ -68,7 +68,7 @@ function makeFinalAnswer(text: string): ThreadItem {
     id: nextID("final"),
     type: "agent_message",
     status: "completed",
-    phase: "final_answer",
+    terminal: true,
     role: "assistant",
     text,
   };
@@ -294,7 +294,7 @@ describe("assistant turn entries layout", () => {
     const secondTool = makeToolCall("read_file");
     const emptyCommentary: ThreadItem = {
       ...makeLiveUnclassifiedAgentMessage(""),
-      phase: "commentary",
+      terminal: false,
     };
     const emptyUnknown = makeLiveUnclassifiedAgentMessage("   ");
     const reasoning: ThreadItem = {
@@ -330,7 +330,7 @@ describe("assistant turn entries layout", () => {
   it("keeps an empty running turn shell without adding an empty answer entry", () => {
     const emptyFinal: ThreadItem = {
       ...makeLiveUnclassifiedAgentMessage(""),
-      phase: "final_answer",
+      terminal: true,
     };
     const turn = makeTurn({ status: "in_progress", items: [emptyFinal] });
 

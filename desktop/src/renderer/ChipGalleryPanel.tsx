@@ -364,7 +364,6 @@ function commentary(text: string): Turn["items"][number] {
     id: `c-${text.slice(0, 8)}`,
     type: "agent_message",
     role: "assistant",
-    phase: "commentary",
     status: "completed",
     text,
   };
@@ -375,7 +374,7 @@ function finalAnswer(text: string): Turn["items"][number] {
     id: `f-${text.slice(0, 8)}`,
     type: "agent_message",
     role: "assistant",
-    phase: "final_answer",
+    terminal: true,
     status: "completed",
     text,
   };

@@ -1988,15 +1988,6 @@ const (
 	ThreadItemStatusFailed     ThreadItemStatus = "failed"
 )
 
-type ThreadItemPhase string
-
-const (
-	// Empty phase means unknown while text is streaming. This mirrors Codex's
-	// nullable message phase: only committed messages are classified.
-	ThreadItemPhaseCommentary  ThreadItemPhase = "commentary"
-	ThreadItemPhaseFinalAnswer ThreadItemPhase = "final_answer"
-)
-
 type ThreadItem struct {
 	ID string `json:"id"`
 	// Seq is the message's stable per-thread address (session_messages.seq),
@@ -2007,7 +1998,10 @@ type ThreadItem struct {
 	AgentID          string                     `json:"agent_id,omitempty"`
 	Type             ThreadItemType             `json:"type"`
 	Status           ThreadItemStatus           `json:"status,omitempty"`
-	Phase            ThreadItemPhase            `json:"phase,omitempty"`
+	// Terminal marks an assistant message that carried no tool calls and is
+	// therefore the turn's final answer. It is derived structurally from the
+	// assistant message, not from a provider phase signal.
+	Terminal         bool                       `json:"terminal,omitempty"`
 	Role             string                     `json:"role,omitempty"`
 	Text             string                     `json:"text,omitempty"`
 	Images           []ThreadItemImage          `json:"images,omitempty"`

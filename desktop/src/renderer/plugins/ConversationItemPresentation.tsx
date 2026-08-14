@@ -98,7 +98,12 @@ export function toConversationItemSnapshot(
     id: item.id,
     kind,
     status: publicStatus(item.status),
-    phase: item.phase,
+    phase:
+      item.type === "agent_message"
+        ? item.terminal
+          ? "final_answer"
+          : "commentary"
+        : undefined,
     text: displayText,
     contentType,
     content,

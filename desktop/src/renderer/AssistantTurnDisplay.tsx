@@ -89,14 +89,10 @@ export function buildAssistantTurnDisplay(
   }
 
   function entryPosition(item: ThreadItem): "process" | "answer" {
-    // Per the message-display policy: only a confirmed `final_answer`
-    // moves into the answer region. Empty / unparseable phase is
-    // treated as `unknown` (rule 5) and stays in process so it never
-    // collapses the process fold mid-stream (rule 7). The back-end
-    // settles the phase after streaming, so unknown items either
-    // upgrade to final_answer (which will re-enter here on the next
-    // render) or stay as commentary.
-    if (item.type === "agent_message" && item.phase === "final_answer") {
+    // Only a terminal assistant message (one that carried no tool calls)
+    // moves into the answer region. Streaming text stays in process until the
+    // turn settles and the terminal flag is set structurally.
+    if (item.type === "agent_message" && item.terminal) {
       return "answer";
     }
     return "process";
@@ -104,10 +100,9 @@ export function buildAssistantTurnDisplay(
 
   function entryKind(item: ThreadItem): TurnEntryKind {
     if (item.type === "agent_message") {
-      if (item.phase === "final_answer") return "answer";
-      // commentary covers both explicit `phase: "commentary"` items
-      // and `phase`-less in-flight agent text (rule 6: unknown is
-      // surfaced inline alongside commentary).
+      if (item.terminal) return "answer";
+      // Non-terminal agent text is ordinary process text; it is not driven by
+      // a provider phase signal.
       return "commentary";
     }
     if (item.type === "tool_call") {
@@ -217,10 +212,10 @@ export function buildAssistantTurnDisplay(
   const isCompleted = turn.status === "completed";
   let missingReplyMessage: string | undefined;
   if (isCompleted && !hasAnswer) {
-    const hasCommentary = turn.items.some(
-      (item) => item.type === "agent_message" && item.phase === "commentary",
+    const hasProcessText = turn.items.some(
+      (item) => item.type === "agent_message" && !item.terminal,
     );
-    if (hasCommentary) {
+    if (hasProcessText) {
       missingReplyMessage = translateCurrent("turn.missingFinalAnswer");
     }
   }
@@ -338,7 +333,7 @@ function processPreviewForItem(
   item: ThreadItem,
 ): TurnProcessPreview | undefined {
   if (item.type === "agent_message") {
-    if (item.phase !== "commentary") {
+    if (item.terminal) {
       return undefined;
     }
     // The fold-header preview is a committed snapshot, not a live

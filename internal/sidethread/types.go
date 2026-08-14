@@ -57,7 +57,7 @@ type Item struct {
 	SourceID     string                     `json:"source_id,omitempty"`
 	Type         string                     `json:"type"`
 	Status       string                     `json:"status,omitempty"`
-	Phase        string                     `json:"phase,omitempty"`
+	Terminal     bool                       `json:"terminal,omitempty"`
 	Role         string                     `json:"role,omitempty"`
 	Text         string                     `json:"text,omitempty"`
 	Name         string                     `json:"name,omitempty"`

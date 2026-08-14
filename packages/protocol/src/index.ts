@@ -1355,7 +1355,6 @@ export type ThreadItemType =
   | "context_compaction"
   | "error";
 export type ThreadItemStatus = "in_progress" | "completed" | "failed";
-export type ThreadItemPhase = "commentary" | "final_answer";
 
 export type ToolCallDisplay = {
   kind?: string;
@@ -1920,7 +1919,9 @@ export type ThreadItem = {
   agent_id?: string;
   type: ThreadItemType;
   status?: ThreadItemStatus;
-  phase?: ThreadItemPhase;
+  // Terminal marks an assistant message with no tool calls — the turn's final
+  // answer. It is derived structurally, not from a provider phase signal.
+  terminal?: boolean;
   role?: string;
   text?: string;
   images?: InputImage[];

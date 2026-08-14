@@ -49,7 +49,7 @@ function makeTurn(index: number, status: Turn["status"] = "completed"): Turn {
         id: `agent-${index}`,
         type: "agent_message",
         status: status === "in_progress" ? "in_progress" : "completed",
-        phase: "final_answer",
+        terminal: true,
         text: `Agent answer ${index}`,
       },
     ],

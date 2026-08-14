@@ -218,7 +218,7 @@ func finalAnswerItemForForkTest(t *testing.T, turns []Turn, text string) (Turn, 
 	t.Helper()
 	for _, turn := range turns {
 		for _, item := range turn.Items {
-			if item.Type == ThreadItemAgentMessage && item.Phase == ThreadItemPhaseFinalAnswer && item.Text == text {
+			if item.Type == ThreadItemAgentMessage && item.Terminal && item.Text == text {
 				return turn, item
 			}
 		}

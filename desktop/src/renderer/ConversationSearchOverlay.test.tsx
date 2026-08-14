@@ -42,9 +42,9 @@ function userItem(text: string): ThreadItem {
 
 function agentItem(
   text: string,
-  phase?: ThreadItem["phase"],
+  terminal?: boolean,
 ): ThreadItem {
-  return { id: `a-${text}`, type: "agent_message", text, phase };
+  return { id: `a-${text}`, type: "agent_message", text, terminal };
 }
 
 function toolItem(): ThreadItem {
@@ -140,7 +140,7 @@ describe("PreviewTurnGroup", () => {
 
   it("renders only the assistant row when the turn has no user_message", () => {
     const container = renderTurn(
-      turnWith([agentItem("好的，让我看看。", "final_answer")]),
+      turnWith([agentItem("好的，让我看看。", true)]),
     );
     const rendered = rows(container);
     expect(rendered).toHaveLength(1);
@@ -151,7 +151,7 @@ describe("PreviewTurnGroup", () => {
     const container = renderTurn(
       turnWith([
         userItem("Q1 — 为什么 cmd+P 右边看不见我的 query？"),
-        agentItem("A1 — 因为之前每条 turn 合并成一行", "final_answer"),
+        agentItem("A1 — 因为之前每条 turn 合并成一行", true),
       ]),
     );
     const rendered = rows(container);
@@ -172,7 +172,7 @@ describe("PreviewTurnGroup", () => {
         userItem("请检查 `src/App.tsx`"),
         agentItem(
           "# 修复结果\n\n这里有 **重点**：\n\n- 第一项\n- 第二项",
-          "final_answer",
+          true,
         ),
       ]),
     );
@@ -200,8 +200,8 @@ describe("PreviewTurnGroup", () => {
     const container = renderTurn(
       turnWith([
         userItem("Q2"),
-        agentItem("commentary 先说两句", "commentary"),
-        agentItem("final 答案", "final_answer"),
+        agentItem("commentary 先说两句", false),
+        agentItem("final 答案", true),
       ]),
     );
     const rendered = rows(container);

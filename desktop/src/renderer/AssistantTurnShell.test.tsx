@@ -86,7 +86,7 @@ function makeCommentary(text: string): ThreadItem {
     id: nextID("commentary"),
     type: "agent_message",
     status: "completed",
-    phase: "commentary",
+    terminal: false,
     role: "assistant",
     text,
   };
@@ -97,7 +97,7 @@ function makeFinalAnswer(text: string): ThreadItem {
     id: nextID("final"),
     type: "agent_message",
     status: "completed",
-    phase: "final_answer",
+    terminal: true,
     role: "assistant",
     text,
   };
@@ -108,7 +108,7 @@ function makeStreamingFinalAnswer(text: string): ThreadItem {
     id: nextID("final"),
     type: "agent_message",
     status: "in_progress",
-    phase: "final_answer",
+    terminal: true,
     role: "assistant",
     text,
   };

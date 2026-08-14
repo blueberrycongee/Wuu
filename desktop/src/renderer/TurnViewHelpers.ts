@@ -415,7 +415,7 @@ export function turnProgressContent(
   if (latestItem.type === "agent_message") {
     const hasText =
       hasFinalText ||
-      (latestItem.phase === "final_answer" &&
+      (latestItem.terminal === true &&
         debugStreamFieldLength(turn.id, latestItem, "text") > 0);
     return {
       label: messageFlowStatusLabel({
@@ -556,7 +556,7 @@ export function messageFlowAgentMessageItemID(
 function explicitFinalAgentMessageItemID(turn: Turn): string | undefined {
   for (let itemIndex = turn.items.length - 1; itemIndex >= 0; itemIndex--) {
     const item = turn.items[itemIndex];
-    if (item.type !== "agent_message" || item.phase !== "final_answer") {
+    if (item.type !== "agent_message" || !item.terminal) {
       continue;
     }
     if (streamFieldValue(turn.id, item, "text").trim().length > 0) {

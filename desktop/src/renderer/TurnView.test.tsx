@@ -29,7 +29,7 @@ function makeCommentary(text: string): ThreadItem {
     id: "commentary-1",
     type: "agent_message",
     status: "completed",
-    phase: "commentary",
+    terminal: false,
     role: "assistant",
     text,
   };
@@ -43,7 +43,7 @@ function makeFinalAnswer(
     id: "answer-1",
     type: "agent_message",
     status,
-    phase: "final_answer",
+    terminal: true,
     role: "assistant",
     text,
   };

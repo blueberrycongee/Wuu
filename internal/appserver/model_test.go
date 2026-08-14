@@ -116,8 +116,8 @@ func TestThreadStateCompletesPreambleBeforeToolStart(t *testing.T) {
 	if turn.Items[1].Type != ThreadItemAgentMessage || turn.Items[1].Status != ThreadItemStatusCompleted {
 		t.Fatalf("preamble should be a completed assistant item before the tool row, got %+v", turn.Items[1])
 	}
-	if turn.Items[1].Phase != ThreadItemPhaseCommentary {
-		t.Fatalf("preamble should be commentary, got %+v", turn.Items[1])
+	if turn.Items[1].Terminal {
+		t.Fatalf("preamble should not be terminal, got %+v", turn.Items[1])
 	}
 	if turn.Items[2].Type != ThreadItemToolCall || turn.Items[2].Status != ThreadItemStatusInProgress {
 		t.Fatalf("tool should follow the completed preamble, got %+v", turn.Items[2])
@@ -216,12 +216,12 @@ func TestThreadStateLeavesUnresolvedTextPhaseUnknown(t *testing.T) {
 	if live.Type != ThreadItemAgentMessage || live.Status != ThreadItemStatusInProgress {
 		t.Fatalf("expected live assistant item, got %+v", live)
 	}
-	if live.Phase != "" {
-		t.Fatalf("unresolved assistant text should have unknown phase, got %+v", live)
+	if live.Terminal {
+		t.Fatalf("unresolved assistant text should not be terminal, got %+v", live)
 	}
 	started, ok := out[0].params.(ItemStartedNotification)
-	if !ok || started.Item.Phase != "" {
-		t.Fatalf("started notification should leave phase unknown, got %#v", out[0].params)
+	if !ok || started.Item.Terminal {
+		t.Fatalf("started notification should leave the item non-terminal, got %#v", out[0].params)
 	}
 }
 
@@ -241,12 +241,12 @@ func TestThreadStateUsesProviderPhaseOnStreamingText(t *testing.T) {
 		t.Fatalf("expected user and live assistant items, got %+v", turn.Items)
 	}
 	live := turn.Items[1]
-	if live.Phase != ThreadItemPhaseFinalAnswer {
-		t.Fatalf("streaming text should preserve provider phase, got %+v", live)
+	if live.Terminal {
+		t.Fatalf("streaming text should remain non-terminal until the complete message arrives, got %+v", live)
 	}
 	started, ok := out[0].params.(ItemStartedNotification)
-	if !ok || started.Item.Phase != ThreadItemPhaseFinalAnswer {
-		t.Fatalf("started notification should carry provider phase, got %#v", out[0].params)
+	if !ok || started.Item.Terminal {
+		t.Fatalf("started notification should not mark the item terminal, got %#v", out[0].params)
 	}
 }
 
@@ -685,15 +685,15 @@ func TestThreadStateLeavesPostToolStreamingTextPhaseUnknownOnFirstDelta(t *testi
 	if streamed.Type != ThreadItemAgentMessage || streamed.Status != ThreadItemStatusInProgress {
 		t.Fatalf("post-tool text should start a live assistant item, got %+v", streamed)
 	}
-	if streamed.Phase != "" {
-		t.Fatalf("post-tool streaming text should have unknown phase, got %+v", streamed)
+	if streamed.Terminal {
+		t.Fatalf("post-tool streaming text should not be terminal, got %+v", streamed)
 	}
 	if len(out) == 0 {
 		t.Fatal("expected notifications for first text delta")
 	}
 	started, ok := out[0].params.(ItemStartedNotification)
-	if !ok || started.Item.Phase != "" {
-		t.Fatalf("started notification should leave phase unknown, got %#v", out[0].params)
+	if !ok || started.Item.Terminal {
+		t.Fatalf("started notification should leave the item non-terminal, got %#v", out[0].params)
 	}
 }
 
@@ -740,8 +740,8 @@ func TestThreadStateMovesStreamingTextToFinalAnswerOnAssistantMessage(t *testing
 	if len(agentItems) != 1 {
 		t.Fatalf("expected exactly one agent item, got %+v", agentItems)
 	}
-	if agentItems[0].Phase != ThreadItemPhaseFinalAnswer {
-		t.Fatalf("EventAssistantMessage should promote streaming commentary to final_answer, got %+v", agentItems[0])
+	if !agentItems[0].Terminal {
+		t.Fatalf("EventAssistantMessage should mark the no-tool-call message terminal, got %+v", agentItems[0])
 	}
 	if agentItems[0].Status != ThreadItemStatusCompleted {
 		t.Fatalf("EventAssistantMessage should mark the agent item completed, got %+v", agentItems[0])
@@ -767,14 +767,14 @@ func TestTurnsFromHistoryMarksAssistantMessagePhases(t *testing.T) {
 	if len(turns) != 1 {
 		t.Fatalf("expected one turn, got %+v", turns)
 	}
-	var phases []ThreadItemPhase
+	var terminals []bool
 	for _, item := range turns[0].Items {
 		if item.Type == ThreadItemAgentMessage {
-			phases = append(phases, item.Phase)
+			terminals = append(terminals, item.Terminal)
 		}
 	}
-	if len(phases) != 2 || phases[0] != ThreadItemPhaseCommentary || phases[1] != ThreadItemPhaseFinalAnswer {
-		t.Fatalf("unexpected assistant phases: %+v", phases)
+	if len(terminals) != 2 || terminals[0] || !terminals[1] {
+		t.Fatalf("unexpected assistant terminal flags: %+v", terminals)
 	}
 }
 
@@ -793,8 +793,8 @@ func TestTurnsFromHistoryPreservesProviderAssistantPhase(t *testing.T) {
 		t.Fatalf("expected one turn with user and assistant, got %+v", turns)
 	}
 	item := turns[0].Items[1]
-	if item.Type != ThreadItemAgentMessage || item.Phase != ThreadItemPhaseCommentary {
-		t.Fatalf("history should preserve provider assistant phase, got %+v", item)
+	if item.Type != ThreadItemAgentMessage || !item.Terminal {
+		t.Fatalf("history should mark the no-tool-call assistant message terminal, got %+v", item)
 	}
 }
 

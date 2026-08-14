@@ -97,7 +97,7 @@ function completedThread(): Thread {
             id: "item-agent",
             type: "agent_message",
             role: "assistant",
-            phase: "final_answer",
+            terminal: true,
             status: "completed",
             text: "Open [README.md](README.md) beside this conversation.",
           },

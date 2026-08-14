@@ -122,8 +122,8 @@ function entryStructureSignature(entry: TurnEntry): string {
 }
 
 function itemStructureSignature(item: ThreadItem): string {
-  const phase = item.type === "agent_message" ? item.phase ?? "" : "";
-  return [item.id, item.type, item.status, phase].join("/");
+  const terminal = item.type === "agent_message" ? String(item.terminal ?? false) : "";
+  return [item.id, item.type, item.status, terminal].join("/");
 }
 
 function displayContentSignature(

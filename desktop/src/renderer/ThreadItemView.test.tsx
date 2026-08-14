@@ -16,7 +16,7 @@ function makeFinalAnswer(status: ThreadItem["status"]): ThreadItem {
     id: "final-1",
     type: "agent_message",
     status,
-    phase: "final_answer",
+    terminal: true,
     text: "Final answer text.",
   };
 }

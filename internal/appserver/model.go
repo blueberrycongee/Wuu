@@ -508,7 +508,7 @@ func (th *threadState) applyStreamEventLocked(turnID string, ev providers.Stream
 		}
 		// Streaming text usually has unknown phase. If the provider exposes
 		// Codex-style phase metadata on the active output item, keep it.
-		item, started := th.ensureActiveAgentItemLocked(turnID, now, threadItemPhaseFromProvider(ev.Phase))
+		item, started := th.ensureActiveAgentItemLocked(turnID, now)
 		if started {
 			out = append(out, itemStarted(th.ID, turnID, item, now))
 		}
@@ -527,7 +527,7 @@ func (th *threadState) applyStreamEventLocked(turnID string, ev providers.Stream
 		if th.activeAgentItemID == "" && ev.Content == "" {
 			return nil
 		}
-		item, started := th.ensureActiveAgentItemLocked(turnID, now, threadItemPhaseFromProvider(ev.Phase))
+		item, started := th.ensureActiveAgentItemLocked(turnID, now)
 		if started {
 			out = append(out, itemStarted(th.ID, turnID, item, now))
 		}
@@ -596,7 +596,7 @@ func (th *threadState) applyStreamEventLocked(turnID string, ev providers.Stream
 		if ev.ToolCall == nil {
 			return nil
 		}
-		out = append(out, th.completeActiveAgentItemLocked(turnID, now, ThreadItemPhaseCommentary)...)
+		out = append(out, th.completeActiveAgentItemLocked(turnID, now, false)...)
 		item := th.toolItemFromCallLocked(turnID, *ev.ToolCall, now)
 		out = append(out, itemStarted(th.ID, turnID, item, now))
 	case providers.EventToolUseDelta:
@@ -765,15 +765,15 @@ func (th *threadState) applyMessageItemLocked(turnID string, msg providers.ChatM
 		if th.activeAgentItemID == "" && th.hasAgentTextLocked(turnID, msg.Content) {
 			return out
 		}
-		phase := assistantMessagePhase(msg)
-		item, started := th.ensureActiveAgentItemLocked(turnID, now, phase)
+		terminal := assistantMessageTerminal(msg)
+		item, started := th.ensureActiveAgentItemLocked(turnID, now)
 		if started {
 			out = append(out, itemStarted(th.ID, turnID, item, now))
 		}
 		item.Text = msg.Content
 		item.Seq = msg.Seq
 		item.SourceID = msg.ProviderItemID
-		item.Phase = phase
+		item.Terminal = terminal
 		item.Status = ThreadItemStatusCompleted
 		item.FinishReason = string(msg.FinishReason)
 		item.StopReason = msg.StopReason
@@ -820,13 +820,9 @@ func (th *threadState) applyMessageItemLocked(turnID string, msg providers.ChatM
 	}
 }
 
-func (th *threadState) ensureActiveAgentItemLocked(turnID string, now time.Time, phase ThreadItemPhase) (ThreadItem, bool) {
+func (th *threadState) ensureActiveAgentItemLocked(turnID string, now time.Time) (ThreadItem, bool) {
 	if th.activeAgentItemID != "" {
 		if item, ok := th.itemLocked(turnID, th.activeAgentItemID); ok {
-			if shouldUpdateAgentPhase(item.Phase, phase) {
-				item.Phase = phase
-				th.upsertItemLocked(turnID, item, now)
-			}
 			return item, false
 		}
 	}
@@ -834,7 +830,6 @@ func (th *threadState) ensureActiveAgentItemLocked(turnID string, now time.Time,
 		ID:     th.nextItemIDLocked(turnID),
 		Type:   ThreadItemAgentMessage,
 		Status: ThreadItemStatusInProgress,
-		Phase:  phase,
 		Role:   "assistant",
 	}
 	th.activeAgentItemID = item.ID
@@ -842,14 +837,7 @@ func (th *threadState) ensureActiveAgentItemLocked(turnID string, now time.Time,
 	return item, true
 }
 
-func shouldUpdateAgentPhase(current, next ThreadItemPhase) bool {
-	if next == "" || current == next {
-		return false
-	}
-	return current == ""
-}
-
-func (th *threadState) completeActiveAgentItemLocked(turnID string, now time.Time, phase ThreadItemPhase) []outboundNotification {
+func (th *threadState) completeActiveAgentItemLocked(turnID string, now time.Time, terminal bool) []outboundNotification {
 	if th.activeAgentItemID == "" {
 		return nil
 	}
@@ -858,9 +846,7 @@ func (th *threadState) completeActiveAgentItemLocked(turnID string, now time.Tim
 	if !ok {
 		return nil
 	}
-	if phase != "" {
-		item.Phase = phase
-	}
+	item.Terminal = terminal
 	item.Status = ThreadItemStatusCompleted
 	th.upsertItemLocked(turnID, item, now)
 	return []outboundNotification{itemCompleted(th.ID, turnID, item, now)}
@@ -1248,7 +1234,7 @@ func projectPersistedHistory(threadID string, history []persistedMessage, now ti
 					SourceID:     msg.ProviderItemID,
 					Type:         ThreadItemAgentMessage,
 					Status:       ThreadItemStatusCompleted,
-					Phase:        assistantMessagePhase(msg),
+					Terminal:     assistantMessageTerminal(msg),
 					Role:         "assistant",
 					Text:         msg.Content,
 					FinishReason: string(msg.FinishReason),
@@ -1366,7 +1352,7 @@ func chatMessageItem(id string, msg providers.ChatMessage) ThreadItem {
 				SourceID:     msg.ProviderItemID,
 				Type:         ThreadItemAgentMessage,
 				Status:       ThreadItemStatusCompleted,
-				Phase:        assistantMessagePhase(msg),
+				Terminal:     assistantMessageTerminal(msg),
 				Role:         "assistant",
 				Text:         msg.Content,
 				FinishReason: string(msg.FinishReason),
@@ -1466,25 +1452,8 @@ func isToolResultMessage(msg providers.ChatMessage) bool {
 	return msg.Role == "tool" || msg.ToolCallID != ""
 }
 
-func assistantMessagePhase(msg providers.ChatMessage) ThreadItemPhase {
-	if phase := threadItemPhaseFromProvider(msg.Phase); phase != "" {
-		return phase
-	}
-	if len(msg.ToolCalls) > 0 {
-		return ThreadItemPhaseCommentary
-	}
-	return ThreadItemPhaseFinalAnswer
-}
-
-func threadItemPhaseFromProvider(phase providers.MessagePhase) ThreadItemPhase {
-	switch phase {
-	case providers.MessagePhaseCommentary:
-		return ThreadItemPhaseCommentary
-	case providers.MessagePhaseFinalAnswer:
-		return ThreadItemPhaseFinalAnswer
-	default:
-		return ""
-	}
+func assistantMessageTerminal(msg providers.ChatMessage) bool {
+	return len(msg.ToolCalls) == 0
 }
 
 func threadPreview(history []providers.ChatMessage) string {

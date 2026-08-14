@@ -19,7 +19,7 @@ function makeCommentary(text: string): ThreadItem {
     id: nextID("commentary"),
     type: "agent_message",
     status: "completed",
-    phase: "commentary",
+    terminal: false,
     role: "assistant",
     text,
   };

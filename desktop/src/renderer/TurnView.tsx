@@ -121,7 +121,7 @@ function TurnContent({
         (item) =>
           item.id === actionableAgentMessageID &&
           item.type === "agent_message" &&
-          item.phase !== "commentary" &&
+          item.terminal === true &&
           item.text?.trim(),
       )
     : undefined;

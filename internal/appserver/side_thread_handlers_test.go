@@ -288,8 +288,16 @@ func TestSideThreadItemProjectorPreservesCanonicalToolFlow(t *testing.T) {
 		t.Fatalf("answer items = %+v, changed=%v", items, changed)
 	}
 
+	items, changed = projector.apply(providers.StreamEvent{
+		Type:    providers.EventMessage,
+		Message: &providers.ChatMessage{Role: "assistant", Content: "final answer"},
+	}, now.Add(2500*time.Microsecond))
+	if !changed {
+		t.Fatalf("complete assistant message should change items, got %+v", items)
+	}
+
 	items = projector.finish(TurnStatusCompleted, nil, now.Add(3*time.Millisecond))
-	if items[1].Status != ThreadItemStatusCompleted || items[1].Phase != ThreadItemPhaseFinalAnswer {
+	if items[1].Status != ThreadItemStatusCompleted || !items[1].Terminal {
 		t.Fatalf("finished answer item = %+v", items[1])
 	}
 	stored := sideThreadStoredItems(items)

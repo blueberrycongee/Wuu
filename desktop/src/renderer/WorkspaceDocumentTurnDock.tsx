@@ -30,7 +30,7 @@ function latestUserItem(turn: Turn): ThreadItem | undefined {
 
 function finalAnswerItems(turn: Turn): ThreadItem[] {
   return turn.items.filter(
-    (item) => item.type === "agent_message" && item.phase === "final_answer",
+    (item) => item.type === "agent_message" && item.terminal,
   );
 }
 

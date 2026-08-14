@@ -146,7 +146,12 @@ function conversationMessageSurfaceContext(
     ...(threadId === undefined ? {} : { threadId }),
     kind,
     status,
-    phase: item.phase,
+    phase:
+      item.type === "agent_message"
+        ? item.terminal
+          ? "final_answer"
+          : "commentary"
+        : undefined,
     streaming,
     attachmentCount: (item.images?.length ?? 0) + (item.files?.length ?? 0),
     actions: Object.freeze({
@@ -287,7 +292,7 @@ function BuiltInThreadItemView({
         ? streamTextStore.get(streamKeyValue)
         : (item.text ?? "");
       const copyable = streaming || agentText.trim() !== "";
-      const isProcessText = item.phase === "commentary";
+      const isProcessText = !item.terminal;
       const actionsVisible =
         turnStatus === "completed" &&
         item.id === actionableAgentMessageID &&
@@ -724,8 +729,7 @@ function AgentMessageContent({
       onOpenFile={onOpenFile}
       isLive={isLive && cursorArmed}
       phase={
-        item.phase === "final_answer" ||
-        (!item.phase && item.status === "in_progress")
+        item.terminal || item.status === "in_progress"
           ? "final_answer"
           : "commentary"
       }

@@ -15,7 +15,7 @@ function agentMessage(partial: Partial<ThreadItem> & { text: string }): ThreadIt
   return {
     id: partial.id ?? "msg",
     type: "agent_message",
-    phase: partial.phase,
+    terminal: partial.terminal,
     status: partial.status,
     text: partial.text,
   };
@@ -52,11 +52,11 @@ describe("latestAgentMessageText", () => {
     const t = thread({
       turns: [
         turn([
-          agentMessage({ id: "old", text: "更早的回复", phase: "commentary" }),
+          agentMessage({ id: "old", text: "更早的回复", terminal: false }),
         ]),
         turn([
-          agentMessage({ id: "m1", text: "分析问题中…", phase: "commentary", status: "in_progress" }),
-          agentMessage({ id: "m2", text: "正在读取文件", phase: "commentary", status: "completed" }),
+          agentMessage({ id: "m1", text: "分析问题中…", terminal: false, status: "in_progress" }),
+          agentMessage({ id: "m2", text: "正在读取文件", terminal: false, status: "completed" }),
         ]),
       ],
     });
@@ -67,8 +67,8 @@ describe("latestAgentMessageText", () => {
     const t = thread({
       turns: [
         turn([
-          agentMessage({ id: "stale", text: "实际内容", phase: "commentary" }),
-          agentMessage({ id: "fresh", text: "", phase: "commentary", status: "in_progress" }),
+          agentMessage({ id: "stale", text: "实际内容", terminal: false }),
+          agentMessage({ id: "fresh", text: "", terminal: false, status: "in_progress" }),
         ]),
       ],
     });
@@ -79,7 +79,7 @@ describe("latestAgentMessageText", () => {
     const t = thread({
       turns: [
         turn([
-          agentMessage({ id: "earlier-final", text: "上一轮结论", phase: "final_answer", status: "completed" }),
+          agentMessage({ id: "earlier-final", text: "上一轮结论", terminal: true, status: "completed" }),
         ]),
         turn([
           // Tool calls only; no assistant text yet in this turn.
@@ -93,8 +93,8 @@ describe("latestAgentMessageText", () => {
     const t = thread({
       turns: [
         turn([
-          agentMessage({ id: "commentary", text: "先写注释", phase: "commentary", status: "completed" }),
-          agentMessage({ id: "final", text: "完成后的回答", phase: "final_answer", status: "completed" }),
+          agentMessage({ id: "commentary", text: "先写注释", terminal: false, status: "completed" }),
+          agentMessage({ id: "final", text: "完成后的回答", terminal: true, status: "completed" }),
         ]),
       ],
     });
@@ -106,7 +106,7 @@ describe("latestAgentMessageText", () => {
       turns: [
         turn([
           { id: "tool", type: "tool_call", text: "忽略我" } as ThreadItem,
-          agentMessage({ id: "reply", text: "我是回复", phase: "commentary" }),
+          agentMessage({ id: "reply", text: "我是回复", terminal: false }),
         ]),
       ],
     });

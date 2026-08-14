@@ -22,7 +22,7 @@ function turn(
       {
         id: `${id}-agent`,
         type: "agent_message",
-        phase: "final_answer",
+        terminal: true,
         status: "completed",
         text: "I am **tightening** that section now.",
       },
@@ -111,7 +111,7 @@ describe("WorkspaceDocumentTurnDock", () => {
       {
         id: "turn-running-commentary",
         type: "agent_message",
-        phase: "commentary",
+        terminal: false,
         status: "in_progress",
         text: "Internal progress that does not belong in the result.",
       },
@@ -167,7 +167,7 @@ describe("WorkspaceDocumentTurnDock", () => {
       {
         id: "turn-live-final-agent",
         type: "agent_message",
-        phase: "final_answer",
+        terminal: true,
         status: "completed",
         text: "The **final result** is ready.",
       },

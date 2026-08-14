@@ -375,7 +375,7 @@ function pickAssistantText(turn: Turn): string {
     const text = (item.text ?? "").trim();
     if (!text) continue;
     lastAgentMessage = text;
-    if (item.phase === "final_answer") finalAnswer = text;
+    if (item.terminal) finalAnswer = text;
   }
   return finalAnswer || lastAgentMessage;
 }

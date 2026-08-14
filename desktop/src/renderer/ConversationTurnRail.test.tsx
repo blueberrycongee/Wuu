@@ -26,7 +26,7 @@ function agentMessage(id: string): ThreadItem {
     id,
     type: "agent_message",
     status: "completed",
-    phase: "final_answer",
+    terminal: true,
     text: "reply",
   };
 }
