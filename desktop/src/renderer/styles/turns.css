@@ -2342,7 +2342,7 @@
 }
 
 .process-surface-row.is-live-gray .process-surface-summary-line {
-  display: inline-block;
+  display: inline-flex;
 }
 
 .turn-reasoning-summary-text.is-live-gray {
