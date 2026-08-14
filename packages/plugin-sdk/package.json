@@ -9,7 +9,7 @@
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "test": "npm run build && node dist/index.test.js",
+    "test": "npm run build && node dist/index.test.js && node dist/bundle-contract.test.js",
     "prepack": "npm run build"
   },
   "devDependencies": {

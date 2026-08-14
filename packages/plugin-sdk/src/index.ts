@@ -1717,3 +1717,5 @@ export function createManifest(options: {
     ...(options.icon ? { icon: options.icon } : {}),
   };
 }
+
+export * from "./bundle-contract.js";
