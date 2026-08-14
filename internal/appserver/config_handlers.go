@@ -1377,14 +1377,9 @@ func (s *Server) handleConfigModelUpdate(req Request) error {
 	if err != nil {
 		return s.writeResponse(req.ID, nil, err)
 	}
+	s.configRefreshMu.Lock()
+	defer s.configRefreshMu.Unlock()
 	previousRuntimeProvider := s.rt.ProviderName
-	if explicitSelection {
-		s.rt.ProviderName = resolvedName
-		s.rt.Model = model
-	}
-	if client != nil || len(s.rt.ReadinessIssues) == 0 {
-		s.rt.ReadinessIssues = nil
-	}
 	roleSelections, err := modelroles.Resolve(cfg, modelroles.ResolveOptions{
 		ProviderName:   resolvedName,
 		ProviderConfig: providerCfg,
@@ -1395,34 +1390,6 @@ func (s *Server) handleConfigModelUpdate(req Request) error {
 	if err != nil {
 		return s.writeResponse(req.ID, nil, err)
 	}
-	s.rt.ModelRoles = roleSelections
-	apiModel := modelcatalog.APIModel(ruleProviderCfg, model)
-	if roleSelections.Title.Inherited {
-		if client != nil {
-			s.rt.TitleClient = client
-		}
-	} else {
-		titleClient, titleErr := providerfactory.BuildStreamClient(roleSelections.Title.RuleProviderConfig, roleSelections.Title.Provider)
-		if titleErr != nil {
-			return s.writeResponse(req.ID, nil, fmt.Errorf("build title client: %w", titleErr))
-		}
-		s.rt.TitleClient = titleClient
-	}
-	if s.rt.Toolkit != nil && (!roleSelections.Worker.Inherited || connectionChanged || providerClientChanged || resolvedName != previousRuntimeProvider) {
-		workerClient, workerErr := providerfactory.BuildStreamClient(roleSelections.Worker.RuleProviderConfig, roleSelections.Worker.Provider)
-		if workerErr != nil {
-			return s.writeResponse(req.ID, nil, fmt.Errorf("build worker client: %w", workerErr))
-		}
-		s.rt.WorkerClient = workerClient
-	}
-	if explicitSelection && s.rt.Toolkit != nil {
-		s.rt.Toolkit.ConfigureSurfaceForProviderModel(ruleProviderName, apiModel, true)
-	}
-	if explicitSelection {
-		if err := s.rt.ReconfigureToolLoading(cfg.Agent, ruleProviderCfg, apiModel, selection.ProviderOptions); err != nil {
-			return s.writeResponse(req.ID, nil, fmt.Errorf("reconfigure tool loading: %w", err))
-		}
-	}
 	if params.PermissionMode != nil {
 		permissions := config.ResolvedPermissions{Mode: config.NormalizePermissionMode(*params.PermissionMode)}
 		s.rt.Permissions = permissions
@@ -1430,33 +1397,8 @@ func (s *Server) handleConfigModelUpdate(req Request) error {
 			runtime.ConfigureToolkitPermissions(s.rt.Toolkit, s.rt.Permissions)
 		}
 	}
-	if s.rt.StreamRunner != nil && client != nil {
-		s.rt.StreamRunner.Client = client
-	}
-	if explicitSelection {
-		s.rt.RefreshSystemPrompt(resolvedName, apiModel)
-		modelBudget := runtime.ResolveModelBudget(model, ruleProviderCfg, cfg.Agent.MaxContextTokens)
-		s.rt.ModelBudget = modelBudget
-		s.rt.WorkerModelBudget = runtime.ResolveModelBudget(roleSelections.Worker.Model, roleSelections.Worker.RuleProviderConfig, cfg.Agent.MaxContextTokens)
-		if s.rt.StreamRunner != nil {
-			s.rt.StreamRunner.ProviderName = resolvedName
-			s.rt.StreamRunner.Model = model
-			s.rt.StreamRunner.APIModel = apiModel
-			s.rt.StreamRunner.Effort = selection.LegacyEffort
-			s.rt.StreamRunner.Variant = selection.Variant
-			s.rt.StreamRunner.ProviderOptions = modelvariant.CloneOptions(selection.ProviderOptions)
-			s.rt.StreamRunner.ContextWindowOverride = modelBudget.ContextWindowTokens
-			s.rt.StreamRunner.MaxInputTokens = modelBudget.InputLimitTokens
-			s.rt.StreamRunner.OutputReserveTokens = modelBudget.OutputReserveTokens
-			s.rt.StreamRunner.CompactThresholdTokens = modelBudget.CompactThresholdTokens
-		}
-	}
-	s.updateRootAgentControlWorkerDefaults()
-	if connectionChanged {
-		// Connection credentials/endpoints are workspace configuration, so every
-		// cached runtime must rebuild before its next
-		// turn. Running turns keep their admitted snapshot until they settle.
-		s.resetThreadRuntimesForGeneralSettings("")
+	if err := s.applyModelSelectionToRuntime(cfg, resolvedName, model, ruleProviderName, ruleProviderCfg, selection, roleSelections, connectionChanged, providerClientChanged, previousRuntimeProvider, client, explicitSelection); err != nil {
+		return s.writeResponse(req.ID, nil, err)
 	}
 	if targetThread != nil {
 		// The thread pins explicit params layered over its own current
@@ -1526,6 +1468,93 @@ func (s *Server) handleConfigModelUpdate(req Request) error {
 		Providers:        s.providerSummaries(),
 		AdvancedSettings: s.currentAdvancedSettingsSummary(),
 	}, nil)
+}
+
+// applyModelSelectionToRuntime swaps the workspace runtime onto a resolved
+// provider/model/variant selection in place. It is shared by the interactive
+// config/model/update handler and the config-file watcher so an external edit
+// to the effective config can be hot-applied without restarting the app-server.
+func (s *Server) applyModelSelectionToRuntime(
+	cfg config.Config,
+	resolvedName string,
+	model string,
+	ruleProviderName string,
+	ruleProviderCfg config.ProviderConfig,
+	selection modelvariant.Selection,
+	roleSelections modelroles.Set,
+	connectionChanged bool,
+	providerClientChanged bool,
+	previousRuntimeProvider string,
+	client providers.StreamClient,
+	explicitSelection bool,
+) error {
+	if s == nil || s.rt == nil {
+		return errors.New("runtime session is required")
+	}
+	if explicitSelection {
+		s.rt.ProviderName = resolvedName
+		s.rt.Model = model
+	}
+	if client != nil || len(s.rt.ReadinessIssues) == 0 {
+		s.rt.ReadinessIssues = nil
+	}
+	s.rt.ModelRoles = roleSelections
+	apiModel := modelcatalog.APIModel(ruleProviderCfg, model)
+	if roleSelections.Title.Inherited {
+		if client != nil {
+			s.rt.TitleClient = client
+		}
+	} else {
+		titleClient, err := providerfactory.BuildStreamClient(roleSelections.Title.RuleProviderConfig, roleSelections.Title.Provider)
+		if err != nil {
+			return fmt.Errorf("build title client: %w", err)
+		}
+		s.rt.TitleClient = titleClient
+	}
+	if s.rt.Toolkit != nil && (!roleSelections.Worker.Inherited || connectionChanged || providerClientChanged || resolvedName != previousRuntimeProvider) {
+		workerClient, err := providerfactory.BuildStreamClient(roleSelections.Worker.RuleProviderConfig, roleSelections.Worker.Provider)
+		if err != nil {
+			return fmt.Errorf("build worker client: %w", err)
+		}
+		s.rt.WorkerClient = workerClient
+	}
+	if explicitSelection && s.rt.Toolkit != nil {
+		s.rt.Toolkit.ConfigureSurfaceForProviderModel(ruleProviderName, apiModel, true)
+	}
+	if explicitSelection {
+		if err := s.rt.ReconfigureToolLoading(cfg.Agent, ruleProviderCfg, apiModel, selection.ProviderOptions); err != nil {
+			return fmt.Errorf("reconfigure tool loading: %w", err)
+		}
+	}
+	if s.rt.StreamRunner != nil && client != nil {
+		s.rt.StreamRunner.Client = client
+	}
+	if explicitSelection {
+		s.rt.RefreshSystemPrompt(resolvedName, apiModel)
+		modelBudget := runtime.ResolveModelBudget(model, ruleProviderCfg, cfg.Agent.MaxContextTokens)
+		s.rt.ModelBudget = modelBudget
+		s.rt.WorkerModelBudget = runtime.ResolveModelBudget(roleSelections.Worker.Model, roleSelections.Worker.RuleProviderConfig, cfg.Agent.MaxContextTokens)
+		if s.rt.StreamRunner != nil {
+			s.rt.StreamRunner.ProviderName = resolvedName
+			s.rt.StreamRunner.Model = model
+			s.rt.StreamRunner.APIModel = apiModel
+			s.rt.StreamRunner.Effort = selection.LegacyEffort
+			s.rt.StreamRunner.Variant = selection.Variant
+			s.rt.StreamRunner.ProviderOptions = modelvariant.CloneOptions(selection.ProviderOptions)
+			s.rt.StreamRunner.ContextWindowOverride = modelBudget.ContextWindowTokens
+			s.rt.StreamRunner.MaxInputTokens = modelBudget.InputLimitTokens
+			s.rt.StreamRunner.OutputReserveTokens = modelBudget.OutputReserveTokens
+			s.rt.StreamRunner.CompactThresholdTokens = modelBudget.CompactThresholdTokens
+		}
+	}
+	s.updateRootAgentControlWorkerDefaults()
+	if connectionChanged {
+		// Connection credentials/endpoints are workspace configuration, so every
+		// cached runtime must rebuild before its next turn. Running turns keep
+		// their admitted snapshot until they settle.
+		s.resetThreadRuntimesForGeneralSettings("")
+	}
+	return nil
 }
 
 func providerClientConfigChanged(previous, next config.ProviderConfig) bool {

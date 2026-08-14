@@ -490,6 +490,17 @@ export type PluginInventoryChangedNotification = {
   skills: SkillSummary[];
 };
 
+/** Published after the core hot-applies an external change to the effective config. */
+export type ConfigChangedNotification = {
+  provider: string;
+  model: string;
+  effort?: string;
+  variant?: string;
+  model_roles?: ModelRoleSummary[];
+  model_aliases?: Record<string, ModelAliasSummary>;
+  providers?: ProviderSummary[];
+};
+
 export type PluginPackageSourceKind = "directory" | "zip";
 
 export type PluginPackageMetadata = {

@@ -2,6 +2,7 @@ import type {
   Agent,
   AppServerNotification,
   ChannelRoom,
+  ConfigChangedNotification,
   DesktopProject,
   ExtensionInventoryRecord,
   GitStatusResult,
@@ -574,6 +575,24 @@ function reduceNotification(
 ): AppState {
   const params = notification.params as Record<string, unknown> | undefined;
   switch (notification.method) {
+    case "config/changed": {
+      if (!state.initialized || !isConfigChangedNotification(params)) {
+        return state;
+      }
+      return {
+        ...state,
+        initialized: {
+          ...state.initialized,
+          provider: params.provider,
+          model: params.model,
+          effort: params.effort,
+          variant: params.variant,
+          model_roles: params.model_roles,
+          model_aliases: params.model_aliases,
+          providers: params.providers,
+        },
+      };
+    }
     case "plugin/inventory/changed": {
       if (!state.initialized || !isPluginInventoryChangedNotification(params)) {
         return state;
@@ -811,6 +830,21 @@ function isPluginInventoryChangedNotification(
     && typeof item.state === "string"
     && isRecord(item.provenance),
   );
+}
+
+function isConfigChangedNotification(
+  value: unknown,
+): value is ConfigChangedNotification {
+  if (!isRecord(value) || typeof value.provider !== "string" || typeof value.model !== "string") {
+    return false;
+  }
+  if (value.effort !== undefined && typeof value.effort !== "string") {
+    return false;
+  }
+  if (value.variant !== undefined && typeof value.variant !== "string") {
+    return false;
+  }
+  return Array.isArray(value.model_roles) && Array.isArray(value.providers);
 }
 
 function setTurnStreamStatus(

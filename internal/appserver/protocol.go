@@ -173,6 +173,7 @@ const (
 	NotificationAgentMailbox           = "agent/mailbox"
 	NotificationMCPStatusUpdated       = "mcp/status/updated"
 	NotificationPluginInventoryChanged = "plugin/inventory/changed"
+	NotificationConfigChanged          = "config/changed"
 	NotificationUserQuestionRequested  = "user-question/requested"
 	NotificationUserQuestionResolved   = "user-question/resolved"
 )
@@ -181,6 +182,16 @@ type PluginInventoryChangedNotification struct {
 	Epoch              uint64                     `json:"epoch"`
 	ExtensionInventory []ExtensionInventoryRecord `json:"extension_inventory"`
 	Skills             []SkillSummary             `json:"skills"`
+}
+
+type ConfigChangedNotification struct {
+	Provider     string                       `json:"provider"`
+	Model        string                       `json:"model"`
+	Effort       string                       `json:"effort,omitempty"`
+	Variant      string                       `json:"variant,omitempty"`
+	ModelRoles   []ModelRoleSummary           `json:"model_roles,omitempty"`
+	ModelAliases map[string]ModelAliasSummary `json:"model_aliases,omitempty"`
+	Providers    []ProviderSummary            `json:"providers,omitempty"`
 }
 
 type Request struct {

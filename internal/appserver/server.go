@@ -242,6 +242,8 @@ type Server struct {
 	pluginGenerationMutation     atomic.Bool
 	pluginGenerationEpoch        atomic.Uint64
 	pluginGenerationRefreshMu    sync.Mutex
+	configRefreshMu              sync.Mutex
+	configFingerprint            string
 	pluginLifecycleReplayPending atomic.Bool
 	refreshExtensionsForTest     func(config.Config) error
 	presenceLease                *session.AppServerPresenceLease
@@ -387,6 +389,7 @@ func NewWithCredentialStore(rt *runtime.Session, out io.Writer, store credential
 		s.startBackground(s.restoreNamedAgentWakes)
 	}
 	s.startPluginGenerationWatch()
+	s.startConfigWatch()
 	return s
 }
 
