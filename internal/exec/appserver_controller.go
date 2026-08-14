@@ -16,7 +16,7 @@ import (
 	"github.com/blueberrycongee/wuu/internal/config"
 	"github.com/blueberrycongee/wuu/internal/runtime"
 	"github.com/blueberrycongee/wuu/internal/runtimeconfig"
-	wuusdk "github.com/blueberrycongee/wuu/sdk"
+	wuusdk "github.com/blueberrycongee/wuu/internal/sdk"
 )
 
 type localAppServerController struct {
