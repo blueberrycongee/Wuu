@@ -56,6 +56,9 @@ func (s *Server) handleThreadStart(req Request) error {
 		if _, err := session.CreateWithMetadata(s.rt.SessionDir, id, threadCWD); err != nil {
 			return s.writeResponse(req.ID, nil, err)
 		}
+		if err := session.WritePluginGenerationSnapshot(s.rt.SessionDir, id, s.rt.PluginGenerationSnapshot()); err != nil {
+			return s.writeResponse(req.ID, nil, err)
+		}
 		if _, err := session.SetRuntimeSelection(s.rt.SessionDir, id, s.currentSessionRuntimeSelection()); err != nil {
 			return s.writeResponse(req.ID, nil, err)
 		}
@@ -241,6 +244,7 @@ type persistedThreadSnapshot struct {
 	displayHistory  []persistedMessage
 	rawHistory      []persistedMessage
 	tokenMetas      []persistedMessage
+	pluginGeneration session.PluginGenerationSnapshot
 }
 
 // loadPersistedThreadSnapshot is deliberately read-only. Loading or resuming a
@@ -258,6 +262,10 @@ func (s *Server) loadPersistedThreadSnapshot(id string) (persistedThreadSnapshot
 	}
 	if !ok {
 		return persistedThreadSnapshot{}, session.ErrSessionNotFound
+	}
+	pluginGeneration, _, err := session.ReadPluginGenerationSnapshot(s.rt.SessionDir, id)
+	if err != nil {
+		return persistedThreadSnapshot{}, err
 	}
 	providerRecords, historyHeadSeq, err := loadProviderPersistedMessages(s.rt.SessionDir, id, true)
 	if err != nil {
@@ -286,13 +294,14 @@ func (s *Server) loadPersistedThreadSnapshot(id string) (persistedThreadSnapshot
 		return persistedThreadSnapshot{}, err
 	}
 	loaded := persistedThreadSnapshot{
-		metadata:        metadata,
-		repairedHistory: repaired,
-		repairNeeded:    !reflect.DeepEqual(repaired, history),
-		baselineSeq:     historyHeadSeq,
-		displayHistory:  displayHistory,
-		rawHistory:      rawHistory,
-		tokenMetas:      tokenMetas,
+		metadata:         metadata,
+		repairedHistory:  repaired,
+		repairNeeded:     !reflect.DeepEqual(repaired, history),
+		baselineSeq:      historyHeadSeq,
+		displayHistory:   displayHistory,
+		rawHistory:       rawHistory,
+		tokenMetas:       tokenMetas,
+		pluginGeneration: pluginGeneration,
 	}
 	systemPrompt := s.rt.StreamRunner.SystemPrompt
 	// The active runtime prompt is configuration, not conversation data. Use it
