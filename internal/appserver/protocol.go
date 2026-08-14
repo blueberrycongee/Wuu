@@ -1993,11 +1993,11 @@ type ThreadItem struct {
 	// Seq is the message's stable per-thread address (session_messages.seq),
 	// present on persisted chat messages.
 	// 0/absent for synthetic or not-yet-persisted items.
-	Seq              int                        `json:"seq,omitempty"`
-	SourceID         string                     `json:"source_id,omitempty"`
-	AgentID          string                     `json:"agent_id,omitempty"`
-	Type             ThreadItemType             `json:"type"`
-	Status           ThreadItemStatus           `json:"status,omitempty"`
+	Seq      int              `json:"seq,omitempty"`
+	SourceID string           `json:"source_id,omitempty"`
+	AgentID  string           `json:"agent_id,omitempty"`
+	Type     ThreadItemType   `json:"type"`
+	Status   ThreadItemStatus `json:"status,omitempty"`
 	// Terminal marks an assistant message that carried no tool calls and is
 	// therefore the turn's final answer. It is derived structurally from the
 	// assistant message, not from a provider phase signal.
