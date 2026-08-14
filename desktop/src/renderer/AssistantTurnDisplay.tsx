@@ -1,7 +1,7 @@
 import { type JSX } from "react";
 import type { ThreadItem, Turn } from "../shared/protocol";
 import { streamFieldValue } from "./ThreadItemText";
-import { readableToolActivityCommand } from "./ToolActivityHelpers";
+import { summarizeToolActivity } from "./ToolActivityHelpers";
 import { isCancellationMessage } from "./UserFacingErrors";
 import { translateCurrent } from "./i18n";
 
@@ -321,44 +321,29 @@ function latestInProgressProcessPreview(
   turn: Turn,
 ): TurnProcessPreview | undefined {
   for (let index = turn.items.length - 1; index >= 0; index--) {
-    const preview = processPreviewForItem(turn.items[index]);
-    if (preview) {
-      return preview;
+    const item = turn.items[index];
+    if (item.type === "agent_message" && !item.terminal) {
+      // The fold-header preview is a committed snapshot, not a live mirror
+      // of the streaming store. Read item.text (last settled value) so the
+      // preview either shows a previously committed topic or stays empty
+      // until the stream settles.
+      const text = compactProcessPreview(item.text ?? "");
+      if (text) {
+        return { text, kind: "commentary" };
+      }
     }
   }
-  return undefined;
-}
 
-function processPreviewForItem(
-  item: ThreadItem,
-): TurnProcessPreview | undefined {
-  if (item.type === "agent_message") {
-    if (item.terminal) {
-      return undefined;
-    }
-    // The fold-header preview is a committed snapshot, not a live
-    // mirror of the streaming store. The body's StreamingMarkdown is
-    // the single live surface; if the preview also advanced, the user
-    // would see two surfaces incrementing in lockstep, which reads as
-    // a duplicated or racing stream rather than one typing assistant.
-    // Read item.text (last settled value) so the preview either shows
-    // a previously committed topic or stays empty until the stream
-    // settles and item.text is populated.
-    const text = compactProcessPreview(item.text ?? "");
-    return text
-      ? {
-          text,
-          kind: "commentary",
-        }
-      : undefined;
+  const toolItems = turn.items.filter((item) => item.type === "tool_call");
+  if (toolItems.length === 0) {
+    return undefined;
   }
-
-  if (item.type === "tool_call") {
-    const text = compactProcessPreview(readableToolActivityCommand(item));
-    return text ? { text, kind: "activity" } : undefined;
-  }
-
-  return undefined;
+  // No model narration: synthesize a deterministic progress summary from the
+  // tool activity itself. This is the shell-owned fallback that keeps long
+  // silent tool chains readable instead of showing only the latest tool call.
+  const summary = summarizeToolActivity(toolItems);
+  const text = compactProcessPreview(summary.text);
+  return text ? { text, kind: "activity" } : undefined;
 }
 
 function compactProcessPreview(raw: string | undefined): string | undefined {

@@ -237,10 +237,10 @@ describe("assistant turn entries layout", () => {
     expect(processItemIDs(inProgressDisplay)).toEqual([toolA.id]);
     expect(inProgressDisplay?.hasAnswer).toBe(false);
     expect(inProgressDisplay?.missingReplyMessage).toBeUndefined();
-    // Both tools lack arguments (pure-tool fixture), so under unified
-    // rendering timing readableToolActivityCommand returns "" for each
-    // and the fold header has no activity preview to surface yet.
-    expect(inProgressDisplay?.latestProcessPreview).toBeUndefined();
+    // Both tools lack arguments, so the deterministic summary falls back to
+    // the search count rather than the latest raw tool command.
+    expect(inProgressDisplay?.latestProcessPreview?.kind).toBe("activity");
+    expect(inProgressDisplay?.latestProcessPreview?.text).toBe("1 次搜索");
 
     // completed with no final answer: pure tool with no text is not a
     // bug. No empty-reply notice because there was no commentary.
@@ -411,11 +411,7 @@ describe("assistant turn fold header preview", () => {
     expect(display?.latestProcessPreview?.text).toBe("Got it. The file says...");
   });
 
-  it("in_progress + tool whose args haven't arrived yet → no latest preview", () => {
-    // makeToolCall() ships no arguments, so readableToolActivityCommand
-    // returns "" and compactProcessPreview collapses that to undefined.
-    // With no commentary in the turn, the process fold has nothing to
-    // preview yet.
+  it("in_progress + tool whose args haven't arrived yet → synthesized generic summary", () => {
     const tool = makeToolCall("read_file");
     const turn = makeTurn({
       status: "in_progress",
@@ -425,7 +421,10 @@ describe("assistant turn fold header preview", () => {
     const display = buildAssistantTurnDisplay(turn, undefined, renderItem);
 
     expect(display).toBeDefined();
-    expect(display?.latestProcessPreview).toBeUndefined();
+    // makeToolCall() ships no arguments, so the deterministic summary falls
+    // back to the generic "using tools" text.
+    expect(display?.latestProcessPreview?.kind).toBe("activity");
+    expect(display?.latestProcessPreview?.text).toBe("已使用工具");
   });
 
   it("in_progress + tool with parsed args → preview = the rendered tool action", () => {
@@ -445,7 +444,7 @@ describe("assistant turn fold header preview", () => {
 
     const display = buildAssistantTurnDisplay(turn, undefined, renderItem);
 
-    expect(display?.latestProcessPreview?.text).toBe("读取 bar.ts");
+    expect(display?.latestProcessPreview?.text).toBe("已探索 1 个文件");
     expect(display?.latestProcessPreview?.kind).toBe("activity");
   });
 
