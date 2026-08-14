@@ -1300,6 +1300,12 @@ func migrateSchema(db *sql.DB) error {
 			)`,
 		`CREATE INDEX IF NOT EXISTS idx_execution_run_turns_turn
 		 ON execution_run_turns(turn_id, run_id)`,
+		`CREATE TABLE IF NOT EXISTS session_plugin_generation_snapshots (
+			session_id    TEXT PRIMARY KEY,
+			snapshot_json TEXT NOT NULL,
+			updated_at    TEXT NOT NULL,
+			FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE CASCADE
+		)`,
 	}
 	for _, stmt := range stmts {
 		if _, err := db.Exec(stmt); err != nil {
