@@ -11,6 +11,7 @@ import (
 
 	"github.com/blueberrycongee/wuu/internal/agent"
 	"github.com/blueberrycongee/wuu/internal/providers"
+	"github.com/blueberrycongee/wuu/internal/runtime"
 )
 
 // blockingProvider blocks on stream events until released or context done.
@@ -67,22 +68,23 @@ func TestCancellationEmitsTurnInterrupted(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	controller, err := NewLocalAppServerController(ctx, Options{
-		Workdir:    root,
-		ConfigPath: configPath,
-		NoTools:    true,
+	cfg, loadedPath, err := loadExecConfig(root, os.Getenv("HOME"), Options{ConfigPath: configPath})
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	rt, err := runtime.NewSession(runtime.Options{
+		RootDir: root, HomeDir: os.Getenv("HOME"), ConfigPath: loadedPath,
+		ConfigLoadMode: runtime.ConfigLoadFile, Config: cfg, NoTools: true,
 	})
 	if err != nil {
-		t.Fatalf("NewLocalAppServerController: %v", err)
+		t.Fatalf("NewSession: %v", err)
 	}
-	// Swap the StreamRunner's client for our blocking one.
-	if lc, ok := controller.(*localAppServerController); ok {
-		lc.rt.StreamRunner = &agent.StreamRunner{
-			Client:       providers.AdaptStreamClient(provider),
-			Model:        "fake-model",
-			SystemPrompt: "fake prompt",
-		}
+	rt.StreamRunner = &agent.StreamRunner{
+		Client:       providers.AdaptStreamClient(provider),
+		Model:        "fake-model",
+		SystemPrompt: "fake prompt",
 	}
+	controller := newLocalControllerForRuntime(ctx, rt)
 
 	var stdout bytes.Buffer
 	runCtx, runCancel := context.WithCancel(context.Background())

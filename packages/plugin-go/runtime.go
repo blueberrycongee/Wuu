@@ -2,7 +2,8 @@
 // by Wuu plugin helper processes. Host requests and plugin-initiated host
 // service calls share one full-duplex channel and may be in flight at the same
 // time. The package intentionally contains no imports from Wuu's internal
-// Agent, app-server, or Desktop implementations.
+// Agent, app-server, or Desktop implementations. The host embedding facade
+// lives in github.com/blueberrycongee/wuu/internal/sdk and is not a public API.
 package pluginapi
 
 import (
