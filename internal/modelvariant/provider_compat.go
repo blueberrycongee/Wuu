@@ -356,8 +356,9 @@ func isGLM52Or53(id string) bool {
 }
 
 // compatGrokFallbackEfforts fills the reasoning tiers for Grok models that are
-// not yet in the embedded catalog. Grok 4.6 tiers come from OpenRouter's model
-// metadata; earlier Grok 4.x fall back to the conservative low/medium/high set.
+// not yet in the embedded catalog. Grok 4.6 follows xAI's documented effort
+// vocabulary (low/medium/high plus xhigh for the latest models), corroborated
+// by OpenRouter's model metadata; earlier Grok 4.x fall back to low/medium/high.
 func compatGrokFallbackEfforts(id string) []string {
 	if strings.Contains(id, "grok-4.6") {
 		return []string{"low", "medium", "high", "xhigh"}
