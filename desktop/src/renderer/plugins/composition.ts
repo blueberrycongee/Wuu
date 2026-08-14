@@ -1,6 +1,7 @@
 import { Context, Service } from "cordis";
 
 import type { PluginHost } from "./PluginHost";
+import type { WorkbenchController } from "./Workbench";
 
 // DesktopService is the root type for the composable desktop kernel. PluginHost
 // and Workbench will migrate onto this base in later steps; today it only
@@ -17,6 +18,14 @@ export abstract class DesktopService extends Service {
 export class PluginHostService extends DesktopService {
   constructor(ctx: Context, readonly host: PluginHost) {
     super(ctx, "plugin-host");
+  }
+}
+
+// WorkbenchService exposes the existing renderer WorkbenchController on the
+// composition kernel under the same zero-behavior-change seam.
+export class WorkbenchService extends DesktopService {
+  constructor(ctx: Context, readonly controller: WorkbenchController) {
+    super(ctx, "workbench");
   }
 }
 

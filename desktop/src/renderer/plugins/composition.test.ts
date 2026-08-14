@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import type { Context } from "cordis";
 
 import type { PluginHost } from "./PluginHost";
-import { DesktopService, PluginHostService, createDesktopCompositionRoot } from "./composition";
+import type { WorkbenchController } from "./Workbench";
+import { DesktopService, PluginHostService, WorkbenchService, createDesktopCompositionRoot } from "./composition";
 
 class DemoService extends DesktopService {
   constructor(ctx: Context) {
@@ -31,5 +32,16 @@ describe("desktop composition root", () => {
     const service = root.get("plugin-host");
     expect(service).toBeInstanceOf(PluginHostService);
     expect((service as PluginHostService).host).toBe(host);
+  });
+
+  it("exposes the Workbench seam without changing the controller instance", async () => {
+    const controller = {} as WorkbenchController;
+    const root = createDesktopCompositionRoot();
+    const fiber = root.plugin(WorkbenchService, controller);
+    await fiber;
+
+    const service = root.get("workbench");
+    expect(service).toBeInstanceOf(WorkbenchService);
+    expect((service as WorkbenchService).controller).toBe(controller);
   });
 });

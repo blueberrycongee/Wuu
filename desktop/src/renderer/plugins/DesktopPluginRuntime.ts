@@ -10,7 +10,7 @@ import {
   type PluginGenerationApi,
 } from "./PluginHost";
 import { WorkbenchController } from "./Workbench";
-import { PluginHostService, createDesktopCompositionRoot } from "./composition";
+import { PluginHostService, WorkbenchService, createDesktopCompositionRoot } from "./composition";
 
 interface DesktopPluginModule {
   activate(api: PluginGenerationApi): void | Promise<void>;
@@ -40,6 +40,7 @@ export const desktopPluginHost = new PluginHost({
 export const desktopCompositionRoot = createDesktopCompositionRoot();
 void desktopCompositionRoot.plugin(PluginHostService, desktopPluginHost);
 export const desktopWorkbenchController = new WorkbenchController(desktopPluginHost);
+void desktopCompositionRoot.plugin(WorkbenchService, desktopWorkbenchController);
 
 export class DesktopPluginRuntime {
   private readonly activeGenerations = new Map<string, string>();
