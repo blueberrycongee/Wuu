@@ -748,6 +748,22 @@ func TestNewSessionKeepsGitContextOutOfBaseSystemPrompt(t *testing.T) {
 }
 
 func TestApplyGeneralConfigRefreshesPromptAndGitAttribution(t *testing.T) {
+	// Strip inherited wuu git-wrapper shim dirs from PATH. Agent shells (and
+	// any process spawned from one, like `go test` run inside wuu) carry the
+	// attribution wrapper first on PATH. The structured git tool resolves
+	// "git" through this process's PATH, and the shim appends the co-author
+	// trailer unconditionally, which breaks the attribution-disabled
+	// assertion below.
+	pathEntries := strings.Split(os.Getenv("PATH"), string(os.PathListSeparator))
+	kept := pathEntries[:0]
+	for _, entry := range pathEntries {
+		if strings.Contains(entry, "git-wrapper") {
+			continue
+		}
+		kept = append(kept, entry)
+	}
+	t.Setenv("PATH", strings.Join(kept, string(os.PathListSeparator)))
+
 	root := t.TempDir()
 	home := t.TempDir()
 	t.Setenv("WUU_HOME", filepath.Join(home, "state"))
