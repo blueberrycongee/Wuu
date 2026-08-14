@@ -8,6 +8,49 @@ Versioning rules are documented in [the release guide](docs/en/project/release.m
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-08-14
+
+### Added
+
+- Added a read-only plugin host data query service so plugins can surface
+  conversation context, with queries filtered by type and turn.
+- Exposed active conversation thread IDs to plugins across message and
+  timeline surfaces.
+- Added live thinking token counts, persistent token totals, and execution
+  state markers to desktop process rows.
+- Added a first-launch model provider setup flow that guides users to
+  configure a provider when none is set.
+- Added macOS system notifications for finished turns and user questions.
+- Added an inline panel form for user questions and expiration of unanswered
+  questions after five minutes.
+- Added sidebar activity aggregation across workspaces and plugin development
+  reporting for how changes take effect.
+
+### Changed
+
+- Reworked process preview rendering to synthesize summaries from tool
+  activity and signal turn completion structurally instead of a commentary
+  phase.
+- Replaced the plan plugin with the todo plugin.
+- Hot-reloaded effective configuration changes in the app server.
+
+### Removed
+
+- Removed the Goal capability and its bundled plugin.
+- Removed the bundled single-pass model-loop driver.
+- Removed like/dislike feedback buttons from message actions.
+
+### Fixed
+
+- Retried HTTP/2 stream resets as transient network failures.
+- Kept plugin-wrapped turns on the conversation grid and cleaned stale plugin
+  binaries and empty command directories.
+- Stabilized streaming text, context compaction notices, and composer
+  alignment in the desktop UI.
+- Cleared the composer after IME sends and exited cleanly when the dev
+  renderer disappears.
+- Resolved fork projection origins by provider source ID.
+
 ## [0.16.0] - 2026-08-12
 
 ### Added
