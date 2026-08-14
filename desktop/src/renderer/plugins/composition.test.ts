@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { Context } from "cordis";
 
-import { DesktopService, createDesktopCompositionRoot } from "./composition";
+import type { PluginHost } from "./PluginHost";
+import { DesktopService, PluginHostService, createDesktopCompositionRoot } from "./composition";
 
 class DemoService extends DesktopService {
   constructor(ctx: Context) {
@@ -19,5 +20,16 @@ describe("desktop composition root", () => {
 
     await fiber.dispose();
     expect(root.get("demo")).toBeUndefined();
+  });
+
+  it("exposes the PluginHost seam without changing the host instance", async () => {
+    const host = {} as PluginHost;
+    const root = createDesktopCompositionRoot();
+    const fiber = root.plugin(PluginHostService, host);
+    await fiber;
+
+    const service = root.get("plugin-host");
+    expect(service).toBeInstanceOf(PluginHostService);
+    expect((service as PluginHostService).host).toBe(host);
   });
 });
