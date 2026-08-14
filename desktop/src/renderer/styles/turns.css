@@ -2212,7 +2212,8 @@
 }
 
 .process-surface-row {
-  display: inline-flex;
+  display: flex;
+  width: 100%;
   max-width: 100%;
   min-height: 20px;
   align-items: center;
@@ -2254,7 +2255,9 @@
 }
 
 .process-surface-summary-line {
-  display: inline-flex;
+  display: flex;
+  flex: 1 1 auto;
+  width: 0;
   min-width: 0;
   align-items: baseline;
   gap: 8px;
@@ -2348,7 +2351,8 @@
 .turn-reasoning-summary-text.is-live-gray {
   display: inline-flex;
   align-items: baseline;
-  flex-grow: 0;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .turn-reasoning-summary-text.is-live-gray + .turn-reasoning-chevron {
