@@ -236,14 +236,14 @@ func (s *Server) loadPersistedThreadState(id string, now time.Time) (*threadStat
 }
 
 type persistedThreadSnapshot struct {
-	metadata        session.Session
-	history         []providers.ChatMessage
-	repairedHistory []providers.ChatMessage
-	repairNeeded    bool
-	baselineSeq     int
-	displayHistory  []persistedMessage
-	rawHistory      []persistedMessage
-	tokenMetas      []persistedMessage
+	metadata         session.Session
+	history          []providers.ChatMessage
+	repairedHistory  []providers.ChatMessage
+	repairNeeded     bool
+	baselineSeq      int
+	displayHistory   []persistedMessage
+	rawHistory       []persistedMessage
+	tokenMetas       []persistedMessage
 	pluginGeneration session.PluginGenerationSnapshot
 }
 

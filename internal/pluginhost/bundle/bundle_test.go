@@ -33,7 +33,7 @@ func testFixtures() []struct {
   "desktop": { "entry": "dist/desktop.mjs" }
 }`,
 			content: map[string]string{
-				"dist/agent":      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+				"dist/agent":       "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 				"dist/desktop.mjs": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
 			},
 			golden: "8dbc76c3e01ddc5b80ec1b381a3230dc6119bdeec7b49d770e506df9817cbc0e",

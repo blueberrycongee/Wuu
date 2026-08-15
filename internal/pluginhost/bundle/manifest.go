@@ -17,12 +17,12 @@ const ManifestSchemaVersion = 2
 // from the raw authored tree (ParseManifestValue), not from this re-serialized
 // struct, so unknown fields still participate in identity.
 type Manifest struct {
-	SchemaVersion int                `json:"schema_version"`
-	ID            string             `json:"id"`
-	Version       string             `json:"version"`
-	Name          string             `json:"name,omitempty"`
-	Description   string             `json:"description,omitempty"`
-	Agent         *AgentDeclaration  `json:"agent,omitempty"`
+	SchemaVersion int                 `json:"schema_version"`
+	ID            string              `json:"id"`
+	Version       string              `json:"version"`
+	Name          string              `json:"name,omitempty"`
+	Description   string              `json:"description,omitempty"`
+	Agent         *AgentDeclaration   `json:"agent,omitempty"`
 	Desktop       *DesktopDeclaration `json:"desktop,omitempty"`
 }
 
