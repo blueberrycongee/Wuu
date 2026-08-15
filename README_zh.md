@@ -1,6 +1,6 @@
 <h1 align="center">wuu</h1>
 
-<p align="center"><strong>把 Coding Agent 放进桌面工作区。</strong></p>
+<p align="center"><strong>与其 fork,不如扩展。</strong></p>
 
 <p align="center">开源 · macOS · 自选模型 · 可扩展</p>
 

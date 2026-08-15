@@ -1,6 +1,6 @@
 <h1 align="center">wuu</h1>
 
-<p align="center"><strong>Your coding agent, in a desktop workspace.</strong></p>
+<p align="center"><strong>Don't fork the agent. Extend it.</strong></p>
 
 <p align="center">Open source · macOS · Bring your own model · Extensible</p>
 
