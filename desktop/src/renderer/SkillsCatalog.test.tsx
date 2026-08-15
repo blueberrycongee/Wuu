@@ -205,7 +205,9 @@ describe("SkillsCatalog", () => {
 
     expect(container.textContent).toContain("插件");
     expect(container.textContent).toContain("Control macOS apps through Accessibility.");
-    expect(container.textContent).toContain("官方");
+    // Official provenance no longer gets a label in the list; the row carries
+    // its runtime state instead.
+    expect(container.textContent).toContain("已启用");
     expect(container.textContent).toContain("插件 · cua-mac");
     expect(container.querySelector('[data-skill-artwork="custom-plugin"]')).toBeTruthy();
     // Non-plugin inventory records (the plugin's MCP server) stay out of the

@@ -53,11 +53,13 @@ describe("conversation message-flow rhythm", () => {
 
 describe("extension package layout", () => {
   it("keeps catalog rows readable in wide and narrow catalogs", () => {
+    // Plugin rows span the shared list grid and adopt its tracks via subgrid,
+    // so status dots share one column axis across every row.
     expect(cssRuleBody(".extension-package-row")).toMatch(
-      /grid-template-columns:\s*36px\s+minmax\(0,\s*1fr\)\s+16px;/,
+      /grid-column:\s*1\s*\/\s*-1;[\s\S]*?grid-template-columns:\s*subgrid;/,
     );
     expect(workspaceCss).toMatch(
-      /@media \(max-width:\s*720px\)[\s\S]*?\.skill-row\.extension-package-row\s*\{[\s\S]*?grid-template-columns:\s*36px\s+minmax\(0,\s*1fr\)\s+16px;/,
+      /@media \(max-width:\s*720px\)[\s\S]*?\.extension-package-list\s*\{[\s\S]*?grid-template-columns:\s*36px\s+minmax\(0,\s*1fr\)\s+max-content\s+16px;/,
     );
   });
 });

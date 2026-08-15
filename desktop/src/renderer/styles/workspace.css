@@ -2344,13 +2344,18 @@ html.resizing-workspace-terminal-split * {
   padding-top: 4px;
 }
 
+/* Plugin rows share one set of column tracks across the whole list so the
+ * status dots line up on a common vertical axis regardless of label length. */
 .extension-package-list {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: 36px minmax(0, 1fr) max-content 16px;
+  column-gap: 12px;
 }
 
 .skill-row.extension-package-row {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
   min-height: 72px;
-  grid-template-columns: 36px minmax(0, 1fr) 16px;
   align-items: center;
   gap: 12px;
   padding: 9px 8px;
@@ -2939,8 +2944,9 @@ html.resizing-workspace-terminal-split * {
   white-space: nowrap;
 }
 
-/* Source tags are reserved for plugin ownership; official skills are already
-   identified by their section and bespoke artwork. */
+/* The pill chrome below stays reserved for the detail dialog badge and
+ * plugin-sourced skill source tags. Plugin rows keep the typographic rhythm of
+ * skill rows; runtime state is a right-aligned dot + label in its own column. */
 .skill-row-tag {
   flex: none;
   display: inline-flex;
@@ -2958,6 +2964,44 @@ html.resizing-workspace-terminal-split * {
 .skill-row-tag-neutral {
   background: var(--wuu-badge-neutral-background, var(--skill-artwork-neutral-bg));
   color: var(--wuu-color-text-muted, var(--skill-artwork-neutral-fg));
+}
+
+.skill-row-status {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: transparent;
+  color: var(--ink-secondary);
+  font-size: 11px;
+  font-weight: var(--weight-medium);
+  letter-spacing: 0.01em;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.skill-row-status-dot {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--ink-tertiary);
+}
+
+.skill-row-status.extension-status-good .skill-row-status-dot {
+  background: var(--success);
+}
+
+.skill-row-status.extension-status-warning .skill-row-status-dot {
+  background: var(--warning);
+}
+
+.skill-row-status.extension-status-danger .skill-row-status-dot {
+  background: var(--danger);
+}
+
+.skill-row-status.extension-status-danger {
+  color: var(--danger);
 }
 
 .skill-row p {
@@ -3048,10 +3092,16 @@ html.resizing-workspace-terminal-split * {
     padding: 9px 6px;
   }
 
+  .extension-package-list {
+    grid-template-columns: 36px minmax(0, 1fr) max-content 16px;
+    column-gap: 12px;
+  }
+
   .skill-row.extension-package-row {
+    grid-template-columns: subgrid;
     min-height: 72px;
-    grid-template-columns: 36px minmax(0, 1fr) 16px;
     align-items: center;
+    gap: 12px;
     padding: 9px 6px;
   }
 

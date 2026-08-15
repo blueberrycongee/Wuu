@@ -385,21 +385,14 @@ export function SkillsCatalog({
                   <span className="skill-row-copy">
                     <span className="skill-row-titlebar">
                       <h2>{record.name}</h2>
-                      {record.provenance.official ? (
-                        <span
-                          className="skill-row-tag"
-                          title={t("skills.officialPluginTitle")}
-                        >
-                          {t("skills.official")}
-                        </span>
-                      ) : null}
-                      <span
-                        className={`skill-row-tag skill-row-tag-neutral extension-status extension-status-${extensionPackageTone(managed)}`}
-                      >
-                        {extensionPackageStatusLabel(managed, t)}
-                      </span>
                     </span>
                     {record.description ? <p>{record.description}</p> : null}
+                  </span>
+                  <span
+                    className={`skill-row-status extension-status extension-status-${extensionPackageTone(managed)}`}
+                  >
+                    <span className="skill-row-status-dot" aria-hidden="true" />
+                    {extensionPackageStatusLabel(managed, t)}
                   </span>
                   <ChevronRight className="skill-row-chevron" aria-hidden="true" />
                 </button>
@@ -502,7 +495,10 @@ function extensionPackageTone(record: ManagedExtensionPackage): "good" | "warnin
   if (record.activation_issues?.some((issue) => issue.kind === "conflict")) {
     return "warning";
   }
-  if (record.runtime_state === "active" || extensionPackageApproval(record) === "official") {
+  if (record.enabled === false) {
+    return "muted";
+  }
+  if (record.runtime_state === "active") {
     return "good";
   }
   if (extensionPackageApproval(record) === "pending") {
@@ -520,7 +516,7 @@ function extensionPackageStatusLabel(record: ManagedExtensionPackage, t: ReturnT
     return t("skills.pluginStatusBlocked");
   }
   switch (extensionPackageApproval(record)) {
-    case "official": return record.enabled === false ? t("skills.pluginStatusDisabled") : t("skills.pluginStatusOfficial");
+    case "official": return record.enabled === false ? t("skills.pluginStatusDisabled") : t("skills.pluginStatusEnabled");
     case "granted": return record.enabled === false ? t("skills.pluginStatusDisabled") : t("skills.pluginStatusGranted");
     case "changed": return t("skills.pluginStatusChanged");
     case "rejected": return t("skills.pluginStatusRejected");
