@@ -4,6 +4,7 @@ import { App } from "./App";
 import { applyMessageFlowFontSize } from "./MessageFlowFontSizeSection";
 import { applyPlatformStamp } from "./platform";
 import { startRendererVisibilitySync } from "./RendererVisibility";
+import { applyMeasuredScrollbarWidth, startScrollbarWidthSync } from "./ScrollbarMetrics";
 import { applyThemePreference, startThemePreferenceSync } from "./Theme";
 import "./styles.css";
 import { I18nProvider } from "./i18n";
@@ -23,6 +24,14 @@ startThemePreferenceSync();
 // Same story for data-platform: the preload stamps it pre-paint; this
 // covers boots whose preload was replaced (e2e mocks).
 applyPlatformStamp();
+
+// Stamp the platform's real scrollbar gutter width before React renders so
+// the dock composer and the message flow are centered in the same visible
+// content box from the very first paint.
+applyMeasuredScrollbarWidth();
+// Re-sync on focus for rare mid-session OS scrollbar-mode changes. Not on
+// resize: the gutter is constant during a live resize.
+startScrollbarWidthSync();
 
 // Pause ambient infinite animations while the native window is hidden or
 // minimized. Finite UI transitions remain untouched so their lifecycle events

@@ -253,7 +253,13 @@
    * still claims its gutter (scrollbar-gutter: stable) so layout never
    * shifts. .scrollbar-visible (added by JS on scroll) or :hover paints
    * the thumb at the three opacity tiers. Alpha tuned low so the thumb
-   * reads as a quiet hint rather than a chrome element. */
+   * reads as a quiet hint rather than a chrome element.
+   *
+   * --scrollbar-width below is only the pre-measurement fallback (legacy
+   * ::-webkit-scrollbar sizing and Monaco's editor-scrollbar sizing).
+   * ScrollbarMetrics.ts replaces it on the document root with the
+   * platform's real scrollbar gutter width before first paint so the dock
+   * composer and message flow share one centerline on every machine. */
   --scrollbar-width: 10px;
   --scrollbar-radius: var(--radius-pill);
   --scrollbar-track-bg: transparent;

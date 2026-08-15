@@ -383,8 +383,8 @@ async function run() {
   );
   const maxComposerInsetDelta = Math.max(
     ...flowProbe.samples.flatMap((sample) => [
-      Math.abs(sample.conversationContentLeft - sample.composerStackLeft - 2),
-      Math.abs(sample.composerStackRight - sample.conversationContentRight - 2)
+      Math.abs(sample.conversationContentLeft - sample.composerStackLeft),
+      Math.abs(sample.composerStackRight - sample.conversationContentRight)
     ])
   );
   assert.ok(
@@ -394,7 +394,7 @@ async function run() {
   assert.ok(maxFlowCenterDelta <= 2, "Message flow should stay centered throughout continuous right-side resize.");
   assert.ok(
     maxComposerInsetDelta <= 1,
-    `Message flow should stay inset 2px per side from the composer throughout resize. Max delta=${maxComposerInsetDelta}`
+    `Message flow and composer should share their left and right edges throughout resize. Max delta=${maxComposerInsetDelta}`
   );
   assert.ok(maxFrameMs < 80, `Continuous right-side resize should not stall the renderer for ${Math.round(maxFrameMs)}ms.`);
 
@@ -931,8 +931,8 @@ function assertFlowInset(flow, label) {
   const leftInset = flow.conversationContentLeft - flow.composerStackLeft;
   const rightInset = flow.composerStackRight - flow.conversationContentRight;
   assert.ok(
-    Math.abs(leftInset - 2) <= 1 && Math.abs(rightInset - 2) <= 1,
-    `${label} message flow should inset 2px per side from the composer. Left=${leftInset} Right=${rightInset} Flow=${JSON.stringify(flow)}`
+    Math.abs(leftInset) <= 1 && Math.abs(rightInset) <= 1,
+    `${label} message flow and composer should share their left and right edges. Left=${leftInset} Right=${rightInset} Flow=${JSON.stringify(flow)}`
   );
 }
 
