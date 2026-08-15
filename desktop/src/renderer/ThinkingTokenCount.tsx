@@ -14,12 +14,15 @@ import {
  * Live token counter rendered right after the "正在思考" process label.
  *
  * Subscribes to the same turn-telemetry store as the composer meters and
- * shows the turn's cumulative input and output tokens, provider-reported
- * when available (input) or estimated from reasoning deltas (output). The
- * arrows encode direction without label text: ↑ tokens consumed by the
- * model, ↓ tokens streamed out. Digits ease toward each new sample so rapid
- * usage snapshots read as a climbing number instead of a strobing label,
- * and each increment triggers a one-shot jump on the value.
+ * shows the turn's cumulative input and output tokens. Output is
+ * provider-reported when a usage sample has arrived plus the delta estimate
+ * streamed since that sample, and estimated from reasoning/text deltas before
+ * the first usage sample. Input is provider-reported only, so it appears once
+ * the provider has billed a request. The arrows encode direction without
+ * label text: ↑ tokens consumed by the model, ↓ tokens streamed out. Digits
+ * ease toward each new sample so rapid usage snapshots read as a climbing
+ * number instead of a strobing label, and each increment triggers a one-shot
+ * jump on the value.
  */
 
 export function formatTokenCount(value: number, locale: string): string {

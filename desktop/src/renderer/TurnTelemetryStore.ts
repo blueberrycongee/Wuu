@@ -23,9 +23,11 @@ export type TurnTelemetrySnapshot = {
    */
   inputTokens: number;
   /**
-   * Cumulative streamed output tokens for the turn. Provider-reported when
-   * `source === "real"`, otherwise the running estimate built from
-   * agent-message and reasoning text deltas. Monotonic while the turn runs.
+   * Cumulative streamed output tokens for the turn. When
+   * `source === "real"` this is the latest provider-reported total plus the
+   * delta estimate accumulated since that sample arrived; before any real
+   * usage it is the running estimate built from agent-message and reasoning
+   * text deltas. Monotonic while the turn runs.
    */
   outputTokens: number;
 };
@@ -36,6 +38,12 @@ type TurnTelemetryEntry = {
   realSeen: boolean;
   realInputTokens: number;
   realTokens: number;
+  /**
+   * Delta-estimated output streamed since the last real usage sample. Once
+   * real usage arrives this is re-anchored to zero because the provider
+   * total already bills everything streamed so far; it then measures only
+   * the in-flight output the provider has not reported yet.
+   */
   estimatedTokens: number;
   realSamples: TokenSample[];
   estimatedSamples: TokenSample[];
@@ -107,6 +115,13 @@ export class TurnTelemetryStore {
     if (outputTokens > entry.realTokens) {
       entry.realTokens = outputTokens;
       entry.realSamples = appendSample(entry.realSamples, outputTokens, at);
+      // The provider total bills every token streamed up to this sample, so
+      // re-anchor the delta estimate to zero. From here on it measures only
+      // output streamed since this sample, which most providers will not
+      // report again until the next request ends. Without this re-anchor the
+      // estimate would keep double-counting already-billed output.
+      entry.estimatedTokens = 0;
+      entry.estimatedSamples = [];
     }
     // Input is cumulative per provider request too; keep the max so later
     // requests in the same turn never regress the displayed total.
@@ -142,18 +157,27 @@ export class TurnTelemetryStore {
     at: number,
   ): void {
     const entry = this.entry(turnID);
-    if (entry.realSeen) return;
     const delta = stringValue(params, "delta");
     if (!delta) return;
     const estimatedTokens = estimateStreamingOutputTokens(delta);
     if (estimatedTokens <= 0) return;
+    // Providers report stream-time usage only at request boundaries (most of
+    // them only at request end), so during a thinking or text phase the
+    // deltas are the only live signal. Keep accumulating them even after
+    // real usage has been seen: they now represent output streamed since the
+    // last real sample and are added on top of that real baseline, which
+    // keeps the counter climbing while the model is thinking. Skipping them
+    // here froze the counter for every thinking phase after the first
+    // provider request of a turn.
     entry.estimatedTokens += estimatedTokens;
-    entry.estimatedSamples = appendSample(
-      entry.estimatedSamples,
-      entry.estimatedTokens,
-      at,
-    );
-    this.refreshSnapshot(entry, "estimated");
+    if (!entry.realSeen) {
+      entry.estimatedSamples = appendSample(
+        entry.estimatedSamples,
+        entry.estimatedTokens,
+        at,
+      );
+    }
+    this.refreshSnapshot(entry, entry.realSeen ? "real" : "estimated");
     this.scheduleNotify();
   }
 
@@ -188,7 +212,10 @@ export class TurnTelemetryStore {
       source,
       sampledAt: samples.at(-1)?.at,
       inputTokens: source === "real" ? entry.realInputTokens : 0,
-      outputTokens: source === "real" ? entry.realTokens : entry.estimatedTokens,
+      outputTokens:
+        source === "real"
+          ? entry.realTokens + entry.estimatedTokens
+          : entry.estimatedTokens,
       ...(entry.contextUsage ? { contextUsage: entry.contextUsage } : {}),
     };
   }
