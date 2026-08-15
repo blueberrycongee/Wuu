@@ -352,6 +352,7 @@ const COLOR_PAINT_PROPS = new Set([
   "outline-color",
   "fill",
   "stroke",
+  "stop-color",
   "box-shadow",
   "text-shadow",
   "caret-color",

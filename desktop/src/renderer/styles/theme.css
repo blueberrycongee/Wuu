@@ -146,6 +146,28 @@
   --skill-artwork-neutral-fg: var(--wuu-color-text-muted, #a5abb0);
   --skill-artwork-official-bg: var(--wuu-color-surface-elevated, #292d31);
   --skill-artwork-official-fg: var(--wuu-color-on-accent, #ffffff);
+  /* Skill artwork marks: the token light values live in workspace.css.
+     Dark keeps the same hue families but steps saturation and luminance
+     down a notch so the marks read as calm identity colors instead of
+     neon accents against the dark ground. */
+  --wuu-skill-mark-browser-a: #26c6d2;
+  --wuu-skill-mark-browser-b: #3d79e4;
+  --wuu-skill-mark-browser-c: #6a52d4;
+  --wuu-skill-mark-commit-a: #ecb03c;
+  --wuu-skill-mark-commit-b: #e6644e;
+  --wuu-skill-mark-commit-c: #c93a77;
+  --wuu-skill-mark-presentation-a: #e9c645;
+  --wuu-skill-mark-presentation-b: #dd8c17;
+  --wuu-skill-mark-presentation-c: #d04631;
+  --wuu-skill-mark-creator-a: #8263e0;
+  --wuu-skill-mark-creator-b: #bf4bb6;
+  --wuu-skill-mark-creator-c: #2ba9ce;
+  --wuu-skill-mark-plugin-a: #5dc046;
+  --wuu-skill-mark-plugin-b: #1ba79a;
+  --wuu-skill-mark-plugin-c: #3d68d4;
+  --wuu-skill-mark-default-a: #e57c48;
+  --wuu-skill-mark-default-b: #d64a6a;
+  --wuu-skill-mark-default-c: #7f4cd0;
   --hljs-keyword: var(--wuu-syntax-keyword, #79b8ff);
   --hljs-function: var(--wuu-syntax-function, #c39ee8);
   --hljs-string: var(--wuu-syntax-string, #7ecb9e);

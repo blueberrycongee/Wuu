@@ -27,9 +27,9 @@ token, so anything you do not override keeps the built-in appearance:
 
 ## Token list
 
-The contract defines **63 public tokens** (**7**
+The contract defines **81 public tokens** (**7**
 legacy compatibility aliases) and **16 syntax-highlighting
-tokens**; **56** of them are currently wired into host surfaces.
+tokens**; **74** of them are currently wired into host surfaces.
 "Wired" means host styles already reference the token and overrides take effect;
 "Not wired (reserved)" means the token is declared but the host does not consume
 it yet, so overrides do not change anything.
@@ -74,6 +74,24 @@ it yet, so overrides do not change anything.
 | `--wuu-message-user-color` | User message text color | Wired |
 | `--wuu-nav-item-hover-background` | Navigation item hover background | Wired |
 | `--wuu-nav-item-hover-ring` | Navigation item hover ring | Wired |
+| `--wuu-skill-mark-browser-a` | Browser skill mark gradient start color | Wired |
+| `--wuu-skill-mark-browser-b` | Browser skill mark gradient middle color | Wired |
+| `--wuu-skill-mark-browser-c` | Browser skill mark gradient end color | Wired |
+| `--wuu-skill-mark-commit-a` | Commit skill mark gradient start color | Wired |
+| `--wuu-skill-mark-commit-b` | Commit skill mark gradient middle color | Wired |
+| `--wuu-skill-mark-commit-c` | Commit skill mark gradient end color | Wired |
+| `--wuu-skill-mark-presentation-a` | Presentation skill mark gradient start color | Wired |
+| `--wuu-skill-mark-presentation-b` | Presentation skill mark gradient middle color | Wired |
+| `--wuu-skill-mark-presentation-c` | Presentation skill mark gradient end color | Wired |
+| `--wuu-skill-mark-creator-a` | Skill creator mark gradient start color | Wired |
+| `--wuu-skill-mark-creator-b` | Skill creator mark gradient middle color | Wired |
+| `--wuu-skill-mark-creator-c` | Skill creator mark gradient end color | Wired |
+| `--wuu-skill-mark-plugin-a` | Plugin mark gradient start color | Wired |
+| `--wuu-skill-mark-plugin-b` | Plugin mark gradient middle color | Wired |
+| `--wuu-skill-mark-plugin-c` | Plugin mark gradient end color | Wired |
+| `--wuu-skill-mark-default-a` | Default skill mark gradient start color | Wired |
+| `--wuu-skill-mark-default-b` | Default skill mark gradient middle color | Wired |
+| `--wuu-skill-mark-default-c` | Default skill mark gradient end color | Wired |
 
 ### Typography
 
