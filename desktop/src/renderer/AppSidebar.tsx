@@ -165,7 +165,10 @@ function ChannelRoomSidebarRow({
  * Rules:
  *   1. Drop any stored key that is neither a real project id nor
  *      `SCRATCH_PSEUDO_PROJECT_ID` (including stale fixed or legacy section
- *      ids).
+ *      ids) once `projectIDs` is known. When `projectIDs` is empty the real
+ *      project list has not been loaded yet, so stored keys are preserved —
+ *      pruning them against an empty list would destroy the user's persisted
+ *      workspace order on every launch.
  *   2. Append newly-seen project ids in `projectIDs` order.
  *   3. Ensure the scratch entry is present while preserving workspace order.
  */
@@ -173,6 +176,7 @@ export function reconcileSidebarSectionOrder(
   stored: string[] | undefined,
   projectIDs: string[],
 ): string[] {
+  const projectIDsKnown = projectIDs.length > 0;
   const knownIDs = new Set<string>([
     SCRATCH_PSEUDO_PROJECT_ID,
     ...projectIDs,
@@ -182,7 +186,7 @@ export function reconcileSidebarSectionOrder(
     for (const key of stored) {
       if (typeof key !== "string" || key.length === 0) continue;
       if (key === SIDEBAR_SECTION_PINNED) continue;
-      if (!knownIDs.has(key)) continue;
+      if (projectIDsKnown && !knownIDs.has(key)) continue;
       if (out.includes(key)) continue;
       out.push(key);
     }

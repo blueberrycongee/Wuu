@@ -333,6 +333,7 @@ export function useSidebarProjectState({
     const validSectionIDs = new Set([
       ...validProjectIDs,
       SIDEBAR_SECTION_PINNED,
+      SIDEBAR_SECTION_COLLAB,
       SCRATCH_PSEUDO_PROJECT_ID,
     ]);
     setCollapsedSidebarSectionIDs((current) =>
