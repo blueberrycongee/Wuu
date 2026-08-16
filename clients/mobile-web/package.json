@@ -1,0 +1,28 @@
+{
+  "name": "@wuu/mobile-web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Wuu phone companion as a plain web app: pair via pasted URI, browse sessions, chat. Reuses @wuu/remote-core (pairing, sealed channel, app-server RPC) in a browser context.",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "vite build",
+    "preview": "vite preview --host",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@wuu/protocol": "file:../../packages/protocol",
+    "@wuu/remote-core": "file:../core",
+    "react": "19.2.3",
+    "react-dom": "19.2.3"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.2",
+    "@vitejs/plugin-react": "^5.0.0",
+    "typescript": "^7.0.2",
+    "vite": "^7.0.0",
+    "vitest": "^4.0.17"
+  }
+}
