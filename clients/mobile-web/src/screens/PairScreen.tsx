@@ -13,7 +13,17 @@ export function PairScreen({
   onPair: (uri: string, deviceName: string) => Promise<string>;
   onDone: () => void;
 }): React.JSX.Element {
-  const [uri, setUri] = useState("");
+  // QR onboarding: a ?pair=wuu%3A%2F%2Fpair... link pre-fills the pairing
+  // URI so scanning one code opens the app with everything filled in.
+  const [uri, setUri] = useState(() => {
+    const fromLink = new URLSearchParams(window.location.search).get("pair");
+    if (fromLink) {
+      // Clean the query so a later refresh re-shows an empty form.
+      window.history.replaceState(null, "", window.location.pathname);
+      return fromLink;
+    }
+    return "";
+  });
   const [name, setName] = useState("手机");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
