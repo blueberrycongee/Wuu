@@ -65,6 +65,7 @@ export default function App(): React.JSX.Element {
             onRefresh={() => void controller.refreshThreads().catch(() => {})}
             onOpenThread={(thread) => openThread(thread.id)}
             onTogglePin={(thread) => void controller.togglePin(thread).catch(() => {})}
+            onNewThread={() => controller.startThread()}
             onUnpair={() => {
               void controller.unpair().then(() => setRoute({ name: "pair" }));
             }}

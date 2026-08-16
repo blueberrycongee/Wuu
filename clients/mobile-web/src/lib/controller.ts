@@ -28,6 +28,7 @@ export interface CredentialStore {
 
 type ThreadListResult = { threads: Thread[] };
 type ThreadResult = { thread: Thread };
+type ThreadStartResult = { thread: Thread };
 type TurnResult = { turn: Turn };
 type QueueResult = { queued: { id: string } };
 
@@ -235,5 +236,14 @@ export class WuuMobile {
   async togglePin(thread: Thread): Promise<void> {
     await this.call("thread/pin", { thread_id: thread.id, pinned: !thread.pinned });
     await this.refreshThreads();
+  }
+
+  /** Create a new conversation in the paired workspace. Mirrors the CLI
+   *  phone's new-thread path: thread/start with empty params; the workspace
+   *  context comes from the host the device is paired to. */
+  async startThread(): Promise<Thread> {
+    const result = await this.call<ThreadStartResult>("thread/start", {});
+    await this.refreshThreads();
+    return result.thread;
   }
 }

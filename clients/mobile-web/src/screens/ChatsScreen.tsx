@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { Thread } from "@wuu/protocol";
 
 import { Avatar } from "../components/Avatar";
@@ -10,14 +11,18 @@ export function ChatsScreen({
   onRefresh,
   onOpenThread,
   onTogglePin,
+  onNewThread,
   onUnpair,
 }: {
   snapshot: AppSnapshot;
   onRefresh: () => void;
   onOpenThread: (thread: Thread) => void;
   onTogglePin: (thread: Thread) => void;
+  /** Creates a conversation in the paired workspace and returns it. */
+  onNewThread: () => Promise<Thread>;
   onUnpair: () => void;
 }): React.JSX.Element {
+  const [creating, setCreating] = useState(false);
   const threads = sortThreads(snapshot.threads.filter(isVisibleThread));
   const phaseLabel =
     snapshot.phase === "attached"
@@ -28,6 +33,19 @@ export function ChatsScreen({
           ? "重连中…"
           : "未连接";
 
+  const newThread = async (): Promise<void> => {
+    if (creating) return;
+    setCreating(true);
+    try {
+      const thread = await onNewThread();
+      onOpenThread(thread);
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : String(err));
+    } finally {
+      setCreating(false);
+    }
+  };
+
   return (
     <>
       <div className="header">
@@ -35,6 +53,14 @@ export function ChatsScreen({
           <div className="header-title">{snapshot.hostName || "Wuu"}</div>
           <div className="header-subtitle">{phaseLabel}</div>
         </div>
+        <button
+          className="header-action"
+          onClick={() => void newThread()}
+          disabled={creating || snapshot.phase !== "attached"}
+          title="新建对话"
+        >
+          {creating ? "…" : "＋ 新建"}
+        </button>
         <button className="header-action" onClick={onRefresh}>
           刷新
         </button>
@@ -45,7 +71,7 @@ export function ChatsScreen({
           <div className="chats-empty">
             还没有会话。
             <br />
-            在电脑上开始一个对话后，它会出现在这里。
+            点右上角「＋ 新建」开始一个，或在电脑上新建后它会出现在这里。
           </div>
         ) : (
           threads.map((thread) => (
