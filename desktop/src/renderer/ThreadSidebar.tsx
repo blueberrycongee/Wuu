@@ -64,6 +64,7 @@ function cleanSidebarPath(path: string): string {
 const PROJECT_THREAD_INITIAL_VISIBLE_COUNT = 8;
 const PROJECT_THREAD_VISIBLE_INCREMENT = 10;
 const SIDEBAR_THREAD_ORDER_KEY = "wuu.desktop.sidebarThreadOrderByWorkspace";
+const PINNED_THREAD_ORDER_ID = "__wuu_pinned_threads__";
 
 type SidebarThreadOrderByWorkspace = Record<string, string[]>;
 
@@ -936,10 +937,33 @@ export function PinnedThreadList({
   onRename?: (thread: ThreadSummary, title: string) => void;
   
 }): JSX.Element {
+  const [threadOrder, setThreadOrder] = useState<string[]>(() =>
+    storedThreadOrder(PINNED_THREAD_ORDER_ID),
+  );
+  const reconciledThreadOrder = useMemo(
+    () => reconcileThreadOrder(threads, threadOrder),
+    [threadOrder, threads],
+  );
+  const threadsByID = new Map(threads.map((thread) => [thread.id, thread]));
+  const orderedThreads = reconciledThreadOrder
+    .map((id) => threadsByID.get(id))
+    .filter((thread): thread is ThreadSummary => thread !== undefined);
+
+  function reorderPinnedThreads(activeThreadID: string, overThreadID: string): void {
+    const oldIndex = reconciledThreadOrder.indexOf(activeThreadID);
+    const newIndex = reconciledThreadOrder.indexOf(overThreadID);
+    if (oldIndex < 0 || newIndex < 0 || oldIndex === newIndex) {
+      return;
+    }
+    const next = arrayMove(reconciledThreadOrder, oldIndex, newIndex);
+    setThreadOrder(next);
+    persistThreadOrder(PINNED_THREAD_ORDER_ID, next);
+  }
+
   return (
     <div className="pinned-thread-list">
       <ThreadRows
-        threads={threads}
+        threads={orderedThreads}
         activeID={activeID}
         pendingThreadID={pendingThreadID}
         lastViewedTurnByThreadID={lastViewedTurnByThreadID}
@@ -948,7 +972,7 @@ export function PinnedThreadList({
         onArchive={onArchive}
         onDelete={onDelete}
         onRename={onRename}
-        
+        onReorder={reorderPinnedThreads}
       />
     </div>
   );
