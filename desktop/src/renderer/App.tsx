@@ -118,6 +118,7 @@ import {
   queryTextsForThread,
   reconcileChannelRoomSessionTabs,
   reduceServerEvent,
+  mergeListedThreads,
   resolveComposerRunningAction,
   requireThread,
   runtimeContextKey,
@@ -229,7 +230,7 @@ import { WINDOW_RESIZING_CLASS } from "./WindowResizeState";
 import { useComposerDraftState } from "./ComposerDraftState";
 import { useComposerPendingState } from "./ComposerPendingState";
 import { useSidebarDrawerState } from "./SidebarDrawerState";
-import { useSidebarProjectState } from "./SidebarProjectState";
+import { useSidebarProjectState, threadListsEquivalent } from "./SidebarProjectState";
 import { useViewSwitchState } from "./ViewSwitchState";
 import { turnTelemetryStore } from "./TurnTelemetryStore";
 import {
@@ -1703,6 +1704,73 @@ export function App(): JSX.Element {
       }
     };
   }, [popOutInit]);
+
+  // Cross-process session pickup: sessions started from a paired phone are
+  // written to the shared store by the remote host process, which emits no
+  // events this renderer's app-server can forward. Re-list on window focus /
+  // visibility regain plus a slow heartbeat so the sidebar converges to the
+  // shared store when the user returns to the desktop. Failures stay silent:
+  // the next trigger retries.
+  useEffect(() => {
+    const REFRESH_MIN_INTERVAL_MS = 10_000;
+    const HEARTBEAT_MS = 60_000;
+    let lastRefreshAt = 0;
+    let disposed = false;
+
+    const refreshThreads = async (): Promise<void> => {
+      const now = Date.now();
+      if (now - lastRefreshAt < REFRESH_MIN_INTERVAL_MS) {
+        return;
+      }
+      lastRefreshAt = now;
+      try {
+        const listed = await window.wuu.listThreads();
+        if (disposed) {
+          return;
+        }
+        setState((current) => {
+          if (!current.initialized) {
+            return current;
+          }
+          // thread/list carries live threads only; archived entries live in
+          // state and must survive the merge (Settings → Archive reads them).
+          const archived = current.threads.filter((thread) => thread.archived);
+          const merged = mergeListedThreads(current.threads, [
+            ...listed.threads,
+            ...archived,
+          ]);
+          return threadListsEquivalent(current.threads, merged)
+            ? current
+            : { ...current, threads: merged };
+        });
+      } catch {
+        // Transient listing failure; do not surface into app status.
+      }
+    };
+
+    const onVisibility = (): void => {
+      if (document.visibilityState === "visible") {
+        void refreshThreads();
+      }
+    };
+    const onFocus = (): void => {
+      void refreshThreads();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("focus", onFocus);
+    const heartbeat = window.setInterval(() => {
+      if (document.visibilityState === "visible") {
+        void refreshThreads();
+      }
+    }, HEARTBEAT_MS);
+
+    return () => {
+      disposed = true;
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("focus", onFocus);
+      window.clearInterval(heartbeat);
+    };
+  }, []);
 
   useEffect(() => {
     function handlePointerDown(event: PointerEvent): void {
