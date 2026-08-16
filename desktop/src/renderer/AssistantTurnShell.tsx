@@ -249,9 +249,19 @@ function TurnProcessFold({
   const previousExpanded = useRef(expanded);
   const detailsID = `${turn.id}-process-fold`;
 
-  const completedDuration =
-    typeof turn.duration_ms === "number" ? turn.duration_ms : undefined;
   const parsedStartedAt = parseTurnTimestampMs(turn.started_at);
+  const parsedCompletedAt = parseTurnTimestampMs(turn.completed_at);
+  // Recovered/provider-backed turns do not always carry duration_ms even
+  // though their boundary timestamps are present. Treating that omission as
+  // zero makes any such completed turn read "under 1 second".
+  const timestampDuration =
+    Number.isFinite(parsedStartedAt) && Number.isFinite(parsedCompletedAt)
+      ? Math.max(0, parsedCompletedAt - parsedStartedAt)
+      : undefined;
+  const completedDuration =
+    typeof turn.duration_ms === "number" && Number.isFinite(turn.duration_ms)
+      ? Math.max(0, turn.duration_ms)
+      : timestampDuration;
   const liveDuration =
     completedDuration === undefined &&
     turn.status === "in_progress";
