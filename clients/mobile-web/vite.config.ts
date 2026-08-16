@@ -8,6 +8,11 @@ export default defineConfig({
   plugins: [react()],
   server: {
     host: true,
+    // The desktop app's electron-vite dev server owns 5173 on the same
+    // machine; pin the phone companion to its own port so plain-browser
+    // loads never collide with the Electron renderer.
+    port: 5174,
+    strictPort: true,
     fs: { allow: ["../.."] },
   },
   build: {
