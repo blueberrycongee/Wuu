@@ -2367,17 +2367,17 @@ html.resizing-workspace-terminal-split * {
   padding-top: 4px;
 }
 
-/* Plugin rows share one set of column tracks across the whole list so the
- * status dots line up on a common vertical axis regardless of label length. */
+/* Keep plugins on the same two-column catalog grid as the skill sections.
+ * Each plugin row owns its internal tracks for artwork, copy, status, and
+ * chevron. */
 .extension-package-list {
-  grid-template-columns: 36px minmax(0, 1fr) max-content 16px;
-  column-gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 38px;
 }
 
 .skill-row.extension-package-row {
   display: grid;
-  grid-column: 1 / -1;
-  grid-template-columns: subgrid;
+  grid-template-columns: 36px minmax(0, 1fr) max-content 16px;
   min-height: 72px;
   align-items: center;
   gap: 12px;
@@ -3116,12 +3116,11 @@ html.resizing-workspace-terminal-split * {
   }
 
   .extension-package-list {
-    grid-template-columns: 36px minmax(0, 1fr) max-content 16px;
-    column-gap: 12px;
+    grid-template-columns: 1fr;
   }
 
   .skill-row.extension-package-row {
-    grid-template-columns: subgrid;
+    grid-template-columns: 36px minmax(0, 1fr) max-content 16px;
     min-height: 72px;
     align-items: center;
     gap: 12px;
