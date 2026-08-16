@@ -22,7 +22,7 @@ import {
  * label text: ↑ tokens consumed by the model, ↓ tokens streamed out. Digits
  * ease toward each new sample so rapid usage snapshots read as a climbing
  * number instead of a strobing label, and each increment triggers a one-shot
- * jump on the value.
+ * jump when the formatted value visibly changes.
  */
 
 export function formatTokenCount(value: number, locale: string): string {
@@ -102,8 +102,10 @@ function useAnimatedCount(target: number): number {
   return displayed;
 }
 
-// One-shot jump highlight on each increment, the "跳动" cue while thinking.
-function useFlashOnChange(value: number): boolean {
+// One-shot jump highlight when the rendered value changes. Once counts are
+// compacted (for example, 1.1k), raw token updates that keep the same label
+// should not make an apparently static value bounce.
+function useFlashOnChange(value: string): boolean {
   const [changing, setChanging] = useState(false);
   const previous = useRef(value);
   useEffect(() => {
@@ -130,8 +132,8 @@ function TokenStat({
   locale: string;
 }): JSX.Element {
   const displayed = useAnimatedCount(target);
-  const changing = useFlashOnChange(target);
   const formatted = formatTokenCount(displayed, locale);
+  const changing = useFlashOnChange(formatted);
   const ariaLabel =
     direction === "input"
       ? locale === "zh-CN"
