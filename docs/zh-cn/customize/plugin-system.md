@@ -50,17 +50,17 @@ Bundled default plugins
   ├── default Agent/Session services
   ├── default ReAct Loop Driver
   ├── default Prompt / Tools / TODO / Conversation UI
-  └── Goal / Subagent / Automation / Memory / Dream
+  └── Subagent / Automation / Memory / Dream
 ```
 
 TODO 已作为 bundled 一方插件运行：runtime 拥有 Tool、参数校验和结果合同，Desktop 模块拥有
 Tool Activity Presenter 与 Inspector section。宿主只保存普通 Tool call/result 事实，并依据公开的
 `display.capability = "todo"` 生成版本化事件和只读 snapshot；它不维护或恢复
 可变 TODO 状态、注入过期提醒或渲染原生 TODO 界面。TODO 不扩张成跨 Turn 自动续跑、定时唤醒或
-长期 Goal。
+长期目标。
 
 Provider 协议不变量、取消、执行租约、持久化完整性、最终权限边界和崩溃恢复仍由 Kernel 保证；
-memory、dream、Cron、Goal、Subagent 等高级产品不应作为默认循环里的产品分支。HelpMe 直接从
+memory、dream、Cron、Subagent 等高级产品不应作为默认循环里的产品分支。HelpMe 和 Goal 直接从
 产品与代码中删除，不迁移成插件；协作比这些能力更高层，暂不纳入已完成的一方迁移范围。
 
 这些高级产品应成为一方插件，而且与第三方插件使用同一套公开能力。插件拥有自己的业务模型、
@@ -75,7 +75,7 @@ memory、dream、Cron、Goal、Subagent 等高级产品不应作为默认循环�
 
 ### 少量可组合链路，而不是工作流 API
 
-Cron、Memory、Dream、Goal 和 Subagent 看起来是五套产品，实际都可以落在同一个闭环：
+Cron、Memory、Dream 和 Subagent 看起来是四套产品，实际都可以落在同一个闭环：
 
 ```text
 注册 Tool / Prompt / View
@@ -94,7 +94,7 @@ Kernel 可靠接纳输入，所选 Loop Driver 消费并执行
 这里的 Session 指一个可持续投递 Turn 的对话执行单元，当前代码内部主要称为 Thread。公开合同
 最终采用哪个名字可以随 SDK 版本确定，但不能同时保留两套语义重复的执行系统。
 
-插件平台需要的不是 `cron.run`、`goal.continue` 或 `subagent.spawn`，而是四组横向能力：
+插件平台需要的不是 `cron.run` 或 `subagent.spawn`，而是四组横向能力：
 
 | 公共能力 | 最小职责 |
 | --- | --- |
@@ -116,7 +116,7 @@ Timer、Cron 表达式、错过触发后的补跑策略和运行记录属于 Cro
 
 ### 唤醒主 Agent 与“生成的 query”
 
-Goal 自动续跑和 Subagent 完成回投共享一条尤其重要的公共链路：它们都会向已有主 Session 投递
+Subagent 完成回投是尤其重要的一条公共链路：插件会向已有主 Session 投递
 一次新输入，从而唤醒主 Agent。Cron 向用户可见 Session 投递时也可复用同一语义。产品表现统一
 使用现有 query 气泡：用户发送和插件唤醒不需要两套布局、颜色或交互节奏。这里“不把它记录成
 用户亲自发送的消息”只约束持久化来源和可编辑性，不要求前端把生成 query 画成另一种组件。
@@ -147,14 +147,14 @@ session.send({
 协议角色，不是声称真人亲手发送；产品数据里的可信来源仍是插件，前端也只能使用经过区分的
 展示摘要，不能用完整内部 Prompt 冒充用户原文。宿主负责幂等、持久化、执行租约、排队、取消
 和恢复，并保证真实用户工作优先；插件只决定何时投递、模型看什么以及用户看到什么。
-Subagent 的完成通知可以把完整交接内容作为模型输入，只把“子任务 A 已更新”显示在气泡里；Goal
-可以把目标继续提示作为模型输入，只显示“Goal 持续推进中”。前端只接收经过区分的展示摘要和
+Subagent 的完成通知可以把完整交接内容作为模型输入，只把“子任务 A 已更新”显示在气泡里；后台
+插件可以把续跑提示作为模型输入，只显示“持续推进中”。前端只接收经过区分的展示摘要和
 来源元数据，不直接拿完整内部 Prompt 生成气泡。这不需要两条产品专用唤醒链路。
 
-这条能力也不是 Goal 或 Automation 的变相专用接口。任何插件只要需要把后台结果、定时触发、
+这条能力也不是 Automation 的变相专用接口。任何插件只要需要把后台结果、定时触发、
 审批恢复、重试结果或外部事件交还给一个持续存在的 Agent，都需要同一条“向 Session 投递普通
 query”的链路。Kernel 因此保留的是 `session.send` 的可靠接纳、持久化、优先级和执行租约，
-所选 Loop Driver 决定何时以及怎样消费；“定时唤醒”“目标续跑”或“子任务交付”等业务含义
+所选 Loop Driver 决定何时以及怎样消费；“定时唤醒”“自动续跑”或“子任务交付”等业务含义
 完全属于插件。
 
 ### 插件自定义 Agent 编排与取消
@@ -197,11 +197,10 @@ RPC。
 | Cron | Timer → 创建或复用用户可见 Session → 投递 Prompt；注册管理 Tool 和 View | Cron 表达、任务和运行记录、补跑策略、提示、Tool、Timer 与完整界面 | `automation/create`、`AutomationRunID` 和 Turn 中的自动化分支 |
 | Memory | 注册提示与文件 Tool → 在合适时机读写文件；管理 View 可调用 Agent 修改文件 | 用户、工作区和会话记忆格式，读写 Tool、安全策略、概览与修改提示、审计和设置界面 | `memory/overview`、`memory/chat`、`session_memory` 核心 Tool 和核心配置字段 |
 | Dream | Timer + Memory → 插件私有 Session → 整理后通过 Memory Tool 写回 | 候选选择、整合提示、失败退避、结果状态和管理界面 | `sessionDreamScheduler` 和 StreamRunner 的产品专用 AfterTurn Hook |
-| Goal | Turn 完成事件 → 检查目标状态 → 向同一主 Session 投递生成的 query | 目标状态机、预算、提示、Tool、存储和界面 | `agent.turn.continuation` 及 Goal 专用的 probe/prepare 调度 |
 | Subagent | 创建私有子 Session → fresh/fork 上下文 → 投递任务 → 完成后向父 Session 回投生成的 query | `spawn_agent` 等 Tool、任务命名、worker 策略、主动委派设置与请求 Prompt、报告和界面 | `host.child_session.request` 的 spawn/send/close/list/await/report 产品动作，以及核心 Ultra 配置、Turn 快照、CLI/API 与 Composer 控件 |
 | TODO | 注册带语义 capability 的 Tool → 普通 Tool 事实进入日志 → Presenter 与 Inspector 读取公开 snapshot | Tool schema、校验、结果合同、Presenter、Inspector section 和样式 | 核心可变状态、恢复、stale reminder 和原生展示 |
 
-表中说明公共能力模型；六个一方迁移的当前完成情况见下文。字段和方法仍必须在真实调用点形成
+表中说明公共能力模型；五个一方迁移的当前完成情况见下文。字段和方法仍必须在真实调用点形成
 版本化合同。例如 memory 概览和修改不需要宿主“受约束模型任务”：它可以创建或复用一个 Session
 并发送 Prompt。只有这条公共链路确实无法保护宿主不变量时，才继续提炼更底层能力。
 
@@ -265,30 +264,30 @@ fork 继承和显式派生选择属于后续选择语义；当前高速迭代阶
 并注册自己的 Presenter/View；插件缺失或渲染失败时，宿主使用通用只读 fallback，而不是让整段
 历史无法打开。凡是模型可见的内容都必须能从 Session 事实重建。
 
-### 借鉴 Cordis 的运行模型，而不是绑定 TypeScript 实现
+### 借鉴插件运行时的通用模型，而不是绑定 TypeScript 实现
 
-Cordis 提供 Context、Service、typed Event、Fiber、Effect 和 Loader EntryTree。它展示了一种
+TypeScript 插件生态的运行库提供 Context、Service、typed Event、Fiber、Effect 和 Loader EntryTree。它们展示了一种
 以可替换 Service、显式依赖和可回收插件生命周期装配应用的运行模型；Wuu 借鉴的是这些通用
 架构概念，而不是任何特定 Agent 产品的实现或未公开设计。
 
-Cordis 的具体便利部分依赖 TypeScript/Node：动态 `import`、同进程对象 Service、声明合并和浏览器
+这些便利部分依赖 TypeScript/Node：动态 `import`、同进程对象 Service、声明合并和浏览器
 bundle 加载。Wuu 不复制这些实现细节，而是在 Go core + 独立 runtime 进程 + Electron shell 上
 实现同一运行模型：
 
-| Cordis 概念 | Wuu 对应模型 |
+| 参考概念 | Wuu 对应模型 |
 | --- | --- |
 | Context | generation-bound Plugin Scope |
 | Service object | 版本化 RPC Service / Host endpoint |
 | typed Event | 版本化事件目录与命名空间 payload |
 | Fiber | runtime 进程、Renderer 模块和贡献的统一插件实例 |
-| `ctx.effect()` | 由 Scope 记录并等待的资源、订阅、子 Session 和后台工作 |
+| 上下文作用域的 `effect()` | 由 Scope 记录并等待的资源、订阅、子 Session 和后台工作 |
 | `inject` | Manifest/handshake 中的 `requires` / `provides` |
-| Loader EntryTree | 经校验的 Activation Plan 与依赖图 |
+| Loader entry tree | 经校验的 Activation Plan 与依赖图 |
 
 Go 生态中最接近进程插件边界的是 HashiCorp `go-plugin` 一类 subprocess + RPC 方案；`plugin` 标准库
 的进程内 `.so` 机制不适合作为跨平台桌面插件基础，`dig`/`fx`/`wire` 解决依赖注入但不提供运行时
 安装、卸载和 generation。Wuu 已经有自己的双工插件进程协议、fingerprint 和原子 generation，
-因此无需为追求 Cordis 体验把核心改写成 TypeScript。当前 runtime 进程由 Go generation 拥有并在
+因此无需为追求这类运行库体验把核心改写成 TypeScript。当前 runtime 进程由 Go generation 拥有并在
 关闭时限内 shutdown，Desktop generation 统一拥有注册项和 cleanup 并逆序释放；Manifest 的
 `requires`、`breaks`、`conflicts` 已形成简单 Activation Plan；运行时组合已收敛为
 generation-scoped Service Registry，内核服务、自省与执行作用域都走同一个 provide/consume
@@ -299,12 +298,8 @@ generation-scoped Service Registry，内核服务、自省与执行作用域都�
 下面按真实分发中的高级功能记录已经完成的纵向切片。验收依据是业务状态、Prompt、Tool、后台
 链路和 Desktop 展示都由插件拥有，而不只是把代码移动到 `plugins/`：
 
-1. **Goal 已迁移到公共 Session 链路。** Goal 的状态机、存储、Tool、提示和 UI 均由插件拥有；
-   插件观察 `agent.turn.completed` 决定是否续跑，通过 `host.session.send` 向同一 Session 投递只读 query，
-   并声明 owner-scoped 的 `agent.turn.lifecycle` 跟踪自己投递的 Turn 的
-   `queued`/`running`/`completed`/`failed`/`interrupted`/`discarded` 状态（初始
-   `queued`/`running` 状态由 `host.session.send` 同步返回，lifecycle 事件报告后续转移与终态）。
-   `agent.turn.continuation`、`probe/prepare` 两阶段轮询以及 Turn 主链路里的 Goal 续跑分支已经删除。
+1. **Goal 已从产品中移除。** Goal 能力和它的 bundled 插件直接删除，没有迁移成插件；自动续跑
+   不再是产品功能。其余插件自行观察 `agent.turn.completed`，并通过 `host.session.send` 投递。
 2. **Subagent 已迁移到公共 Session 链路。** 插件通过 `host.session.create/send/list/cancel` 创建和
    管理私有子 Session，用插件存储维护任务名与交付状态，观察 owner-scoped Turn lifecycle 后再向
    父 Session 回投只读 query。fresh/fork、共享目录/worktree、模型别名、所有权、取消与最终输出
@@ -345,7 +340,7 @@ generation-scoped Service Registry，内核服务、自省与执行作用域都�
    Timer、间隔、失败退避和运行状态，再通过 `host.session.create/send` 创建 fork 私有 Session；Prompt
    和设置 View 也由插件拥有，并让该 Session 通过 Memory 插件提供的 `session_memory` Tool 写回。
    核心 `sessionDreamScheduler`、Dream 状态/锁、AfterTurn Hook、配置字段和原生设置已经删除。
-9. **Desktop 生命周期已由真实一方模块证明。** Goal、Subagent、Automation、Memory、Dream、TODO 的
+9. **Desktop 生命周期已由真实一方模块证明。** Subagent、Automation、Memory、Dream、TODO 的
    bundled `desktop.js` 直接运行在 `WorkbenchController`/`PluginHost` 产品路径；View、Slot、导航、
    设置入口、Locale 和 Style 随 generation 原子激活与替换，禁用后全部撤回。测试不使用伪造的
    注册清单来代替模块执行。
@@ -356,26 +351,24 @@ generation-scoped Service Registry，内核服务、自省与执行作用域都�
 
 1. 以现有 Turn submission 为基础定义通用 Session create/send/lifecycle；补齐 owner、visibility、
    parent、fresh/fork、workspace、来源、展示摘要和 request id，统一用户工作优先及幂等规则。
-2. 先迁移 Goal：在 Turn 完成事件后由插件主动向同一 Session 投递，验证生成 query、连续唤醒、
-   排队、暂停/完成、崩溃恢复和禁用插件；随后删除 `agent.turn.continuation`。
-3. Subagent 已使用公共 API 创建和管理私有子 Session；`host.child_session.request` 已删除，任务
+2. Subagent 已使用公共 API 创建和管理私有子 Session；`host.child_session.request` 已删除，任务
    提示、状态、桌面状态条和父 Session 回投由插件拥有。宿主不再识别 `spawn_agent` Tool 名、解析
    `<subagent_notification>`、生成专用 Tool item 或维护原生子任务面板；插件生成的回投只依赖通用
    `display_content/origin/cause/read_only` query 元数据，不改变公共合同。
-4. HelpMe 全链路已删除；TODO 作为 bundled 插件运行，核心没有对应 Tool、状态、恢复和原生展示分支。
-5. Cron、Memory 和 Dream 已分别完成“插件 Timer → 用户可见 Session”、“Prompt + Tool + 私有
+3. HelpMe 全链路已删除；TODO 作为 bundled 插件运行，核心没有对应 Tool、状态、恢复和原生展示分支。
+4. Cron、Memory 和 Dream 已分别完成“插件 Timer → 用户可见 Session”、“Prompt + Tool + 私有
    Session + View”和“Timer + Memory Tool + 插件私有 Session”的纵向切片，三者没有产品专用
    宿主服务。
-6. 每项迁移都必须验证插件禁用、升级和卸载后不再唤醒、不残留 UI、Prompt、Tool、订阅或后台
+5. 每项迁移都必须验证插件禁用、升级和卸载后不再唤醒、不残留 UI、Prompt、Tool、订阅或后台
    generation；核心删除旧协议、死代码和只为旧边界存在的测试。
-7. Go runtime 和 Desktop 注册项已分别收敛到 generation owner，Manifest 已支持简单依赖与冲突；
+6. Go runtime 和 Desktop 注册项已分别收敛到 generation owner，Manifest 已支持简单依赖与冲突；
    运行时平面的组合已收敛为 generation-scoped Service Registry：内核服务、自省与执行作用域均
    经同一注册入口（`host.service.call`），不再另造平行的固定宿主服务表。
-8. 现有执行循环已包装成 Experimental v1 `DefaultDriver`，产品行为不变；Session 持久化 Driver
+7. 现有执行循环已包装成 Experimental v1 `DefaultDriver`，产品行为不变；Session 持久化 Driver
    身份、checkpoint 与最终 model-input receipt，恢复只从稳定边界进行。
 
-插件链路的验收不是接口存在，而是：核心不存在 Cron、Memory、Dream、Goal、Subagent、TODO 的
-产品专用执行或可变状态分支时，这六个一方插件仍能仅通过公开合同保持现有体验；外部插件在相同
+插件链路的验收不是接口存在，而是：核心不存在 Cron、Memory、Dream、Subagent、TODO 的
+产品专用执行或可变状态分支时，这五个一方插件仍能仅通过公开合同保持现有体验；外部插件在相同
 权限和生命周期下也能组合出同类能力。
 
 ## 一个插件包，四类贡献
@@ -579,7 +572,7 @@ generation 发布与撤销，不另设平行生命周期。
 
 ## 一方插件与第三方插件同构
 
-Goal、Subagent、Automation、Memory、Dream、TODO 已经通过与第三方插件相同的 generation、capability
+Subagent、Automation、Memory、Dream、TODO 已经通过与第三方插件相同的 generation、capability
 和公开宿主合同运行。它们各自拥有 Prompt、Tool、状态、后台策略和 Desktop 贡献，专用宿主
 执行 seam 与原生产品外壳已经删除，是当前“一方/三方同构”的纵向证明。协作暂不纳入当前改造
 范围，不应为了它预建接口。
@@ -615,8 +608,8 @@ Goal、Subagent、Automation、Memory、Dream、TODO 已经通过与第三方插
 - 部分 Presenter 的 `replace` 快照和 Action 还不足以无损重建完整原生语义，优先使用 `wrap`；
 - 画布、终端、Webview、PDF ShadowRoot 和专用预览仍是明确的主题边界；
 - Marketplace、远程自动更新、排名、依赖解析和签名分发不属于当前本地优先平台；
-- Goal、Subagent、Automation、用户/工作区/会话 Memory、Dream 和 TODO 已完成纵向迁移，并去除专用宿主执行 seam；
-- HelpMe 已从代码和产品中删除；TODO 没有核心 Tool、状态、恢复与原生展示；
+- Subagent、Automation、用户/工作区/会话 Memory、Dream 和 TODO 已完成纵向迁移，并去除专用宿主执行 seam；
+- HelpMe 和 Goal 已从代码和产品中删除；TODO 没有核心 Tool、状态、恢复与原生展示；
 - Go runtime 与 Desktop contribution 已按 generation 统一回收，简单 Activation Plan、Default
   Driver、checkpoint 和 model-input receipt 已实现；Service Registry
   （内核服务 + 自省 + 执行作用域）已作为运行时组合原语落地；跨 Go/Desktop 的统一

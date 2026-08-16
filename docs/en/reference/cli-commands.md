@@ -122,7 +122,7 @@ development and packaging are in [writing plugins](../customize/plugin-authoring
 wuu plugin list                        # view installed plugins and status
 wuu plugin inspect ./path/to/plugin    # inspect package content, permission requests, and fingerprint before installing
 wuu plugin install ./plugin-1.0.0.zip  # install a directory or zip package
-wuu plugin update my-plugin            # update an installed plugin
+wuu plugin update my-plugin ./plugin-1.1.0.zip # stage a replacement directory or zip
 wuu plugin approve my-plugin           # approve after inspection
 wuu plugin reject my-plugin
 wuu plugin enable my-plugin

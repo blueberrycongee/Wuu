@@ -106,11 +106,12 @@ wuu plugin dev .
 
 ```bash
 wuu plugin pack .
-wuu extension install ./focus-mode-0.1.0.zip
+wuu plugin install ./focus-mode-0.1.0.zip
+wuu plugin approve focus-mode
 ```
 
-安装就是信任决定：插件以你的用户权限执行。同一来源身份的更新延续信任。
-开发目录授权不会随 zip 一起转移。
+批准就是信任决定：插件以你的用户权限执行。Desktop 插件目录把同一操作呈现为一次
+**批准并启用**确认。开发目录授权不会随 zip 一起转移。
 
 ## 下一步
 

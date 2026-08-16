@@ -229,6 +229,7 @@ kernel services are:
 | `host.storage.get` / `set` / `delete` / `keys` / `compare-exchange` | Namespaced storage; every call must pass `scope: "user" \| "workspace"` |
 | `host.settings.get` / `list` | Settings, read-only at runtime |
 | `host.session.create` / `send` / `list` / `cancel` | Create, deliver to, list, and cancel plugin-owned Sessions |
+| `host.data.query` | Read a versioned, read-only event snapshot for one thread |
 | `registry.introspect` | Read-only introspection: which services exist, at what version, provided by which generation |
 | `execution.update` | Report progress for one in-flight execution (see "Execution scope") |
 
@@ -236,6 +237,18 @@ Service names, parameters, and result types follow the SDK's
 `KERNEL_SERVICE_NAMES`, `kernelServiceCall`, and `HostServiceContracts`.
 `host.session.info`, `host.workspace.*`, and `host.diagnostics.log` are not
 part of the production contract.
+
+`host.data.query` version `1.0.0` exposes persisted session facts without giving a
+plugin filesystem paths or private host objects. Declare it in `required_services` with
+major version `1`, then call method `call` through `host.service.call`. Parameters are
+`{ thread_id, types?, turn_id?, limit? }`; the result is
+`{ version, thread_id, events }`. Each event has the stable envelope
+`{ type, thread_id?, turn_id?, created_at?, data? }`. Current event types include
+`turn`, `step`, `model_call`, `tool_call`, `tool_result`, `streaming_chunk`,
+`context_requests`, `provider_states`, `compact_attempts`,
+`barrier_tool_batch_rejected`, `tool_inventory`, `tool_records`, and `final`.
+Unknown requested types return no matches rather than failing. This is a snapshot API;
+`host.data.subscribe` is not yet a production-registered plugin service.
 
 To start ordinary agent work in the background, plugins compose the
 product-neutral Session services: `host.session.create` creates a Session with
@@ -749,16 +762,16 @@ installed from downloaded packages.
 
 ```bash
 wuu plugin pack .                    # package for distribution
-wuu extension install ./my-plugin-1.0.0.zip
-wuu extension install npm:foo        # or from npm
-wuu extension install git:github.com/example/foo
+wuu plugin install ./my-plugin-1.0.0.zip
+wuu plugin approve my-plugin
 wuu plugin dev .                     # iterate during development
 ```
 
-Install or enable is the trust decision: the plugin runs with your user
-authority. Updates from the same npm package identity or the same Git remote
-keep the trust; a change of source identity asks for confirmation again. Wuu
-does not re-approve per file change.
+Approval and enablement are the trust decision: the plugin runs with your user
+authority. The current installer accepts a local directory or zip; direct npm and Git
+sources are not available yet. The CLI stages each new package fingerprint until
+`approve`, while the Desktop catalog combines approval and enablement into one
+confirmation.
 
 ### Examples
 
@@ -801,7 +814,7 @@ publishing and re-validate after Wuu upgrades.
 
 - Plugin code runs with the user's authority; Wuu does not sandbox it. The
   Renderer never reads a plugin's absolute path. Before load, app-server
-  records the source identity (npm package name, Git remote, or local path)
+  records the installed package identity and fingerprint
   and confirms the plugin is enabled for the current workspace; the Electron
   main process loads the module through a content-addressed `wuu-plugin:` URL.
   The Content Security Policy does not enable `unsafe-eval` or arbitrary local

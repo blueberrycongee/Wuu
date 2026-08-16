@@ -67,7 +67,7 @@ Bundled default plugins
   ├── default Agent/Session services
   ├── default ReAct Loop Driver
   ├── default Prompt / Tools / TODO / Conversation UI
-  └── Goal / Subagent / Automation / Memory / Dream
+  └── Subagent / Automation / Memory / Dream
 ```
 
 TODO already runs as a bundled first-party plugin: the runtime owns the tool,
@@ -77,13 +77,13 @@ Tool call/result facts and emits versioned events and read-only snapshots based 
 public `display.capability = "todo"`; it does not maintain or restore mutable TODO
 state, inject staleness reminders, or render a native TODO UI. TODO does not expand
 into cross-turn auto-continuation, scheduled wake-ups, or a
-long-term Goal.
+long-term goal.
 
 Provider protocol invariants, cancellation, execution leases, persistence integrity,
 the final permission boundary, and crash recovery remain guaranteed by the Kernel;
-advanced products such as memory, dream, Cron, Goal, and Subagent should not exist as
-product branches inside the default loop. HelpMe was removed from the product and the
-code entirely, not migrated into a plugin; collaboration sits above these
+advanced products such as memory, dream, Cron, and Subagent should not exist as
+product branches inside the default loop. HelpMe and Goal were removed from the
+product and the code entirely, not migrated into plugins; collaboration sits above these
 capabilities and is not yet part of the completed first-party migration scope.
 
 These advanced products should become first-party plugins and use the same public
@@ -105,7 +105,7 @@ the core does not need to know what a "memory overview" is.
 
 ### A few composable chains, not a workflow API
 
-Cron, Memory, Dream, Goal, and Subagent look like five products, but all fit the same
+Cron, Memory, Dream, and Subagent look like four products, but all fit the same
 closed loop:
 
 ```text
@@ -127,7 +127,7 @@ in the current code it is mainly called a Thread. Which final name is chosen can
 settled with the SDK version, but two semantically duplicate execution systems must
 not coexist.
 
-What the plugin platform needs is not `cron.run`, `goal.continue`, or
+What the plugin platform needs is not `cron.run` or
 `subagent.spawn`, but four groups of horizontal capabilities:
 
 | Public capability | Minimal responsibility |
@@ -155,8 +155,8 @@ capability.
 
 ### Waking the main agent and "generated queries"
 
-Goal auto-continuation and Subagent completion callbacks share one especially
-important public chain: both deliver a new input to an existing main Session, waking
+Subagent completion callbacks are one especially important public chain: the plugin
+delivers a new input to an existing main Session, waking
 the main agent. Cron can reuse the same semantics when delivering to a user-visible
 Session. The product surface uniformly uses the existing query bubble: user-sent and
 plugin-woken messages do not need two sets of layout, color, or interaction rhythm.
@@ -198,18 +198,19 @@ persistence, execution leases, queueing, cancellation, and recovery, and guarant
 that real user work goes first; the plugin only decides when to deliver, what the
 model sees, and what the user sees. A Subagent completion notice can use the full
 handoff content as model input while only showing "subtask A has updated" in the
-bubble; Goal can use the continuation prompt as model input while only showing "Goal
-continuing". The frontend only receives the distinguished display summary and source
+bubble; a background plugin can use its continuation prompt as model input while only
+showing a brief status like "continuing". The frontend only receives the
+distinguished display summary and source
 metadata; it does not build bubbles from full internal prompts. This needs no
 product-specific wake chains.
 
-This capability is also not a disguised Goal- or Automation-specific interface. Any
+This capability is also not a disguised Automation-specific interface. Any
 plugin that needs to hand background results, scheduled triggers, approval resumes,
 retry results, or external events back to a persistent agent needs the same "deliver
 an ordinary query to a Session" chain. The Kernel therefore keeps `session.send`'s
 reliable acceptance, persistence, priority, and execution lease; the chosen Loop
 Driver decides when and how to consume it. Business meanings such as "scheduled
-wake-up", "goal continuation", or "subtask delivery" belong entirely to the plugin.
+wake-up", "auto-continuation", or "subtask delivery" belong entirely to the plugin.
 
 ### Deriving public capabilities from product needs, not exposing product internals
 
@@ -244,12 +245,11 @@ The current code gives several clear migration directions:
 | Cron | Timer → create or reuse a user-visible Session → deliver a prompt; register management Tool and View | Cron expressions, tasks and run records, catch-up policy, prompts, Tool, Timer, and full UI | `automation/create`, `AutomationRunID`, and the automation branch in Turns |
 | Memory | Register prompts and file Tools → read/write files at the right time; the management View can call the agent to modify files | User, workspace, and session memory formats, read/write Tools, safety policy, overview and modification prompts, audit and settings UI | `memory/overview`, `memory/chat`, the `session_memory` core Tool, and core configuration fields |
 | Dream | Timer + Memory → plugin-private Session → write back through the Memory Tool after consolidation | Candidate selection, consolidation prompts, failure backoff, result state, and management UI | `sessionDreamScheduler` and the StreamRunner product-specific AfterTurn Hook |
-| Goal | Turn-completion events → check goal state → deliver a generated query to the same main Session | Goal state machine, budgets, prompts, Tools, storage, and UI | `agent.turn.continuation` and the Goal-specific probe/prepare scheduling |
 | Subagent | Create a private child Session → fresh/fork context → deliver a task → report back to the parent Session with a generated query when done | `spawn_agent` and similar Tools, task naming, worker policy, proactive-delegation settings and request prompts, reports, and UI | The spawn/send/close/list/await/report product actions of `host.child_session.request`, plus core Ultra configuration, Turn snapshots, CLI/API, and Composer controls |
 | TODO | Register a Tool with a semantic capability → ordinary Tool facts enter the log → Presenter and Inspector read the public snapshot | Tool schema, validation, result contract, Presenter, Inspector section, and styling | Core mutable state, recovery, staleness reminders, and native display |
 
 The table describes the public capability model; the current completion status of the
-six first-party migrations follows below. Fields and methods must still form
+five first-party migrations follows below. Fields and methods must still form
 versioned contracts at real call sites. For example, the memory overview and
 modification do not need a host "constrained model task": the plugin can create or
 reuse a Session and send a prompt. Only when this public chain genuinely cannot
@@ -347,28 +347,28 @@ rendering fails, the host uses a generic read-only fallback instead of making th
 whole history unopenable. Anything the model can see must be rebuildable from Session
 facts.
 
-### Borrowing Cordis's runtime model, not the TypeScript implementation
+### Borrowing a plugin-runtime model, not a TypeScript implementation
 
-Cordis provides Context, Service, typed Event, Fiber, Effect, and the Loader
-EntryTree. It demonstrates a runtime model for assembling applications from
-replaceable Services, explicit dependencies, and reclaimable plugin lifecycles; wuu
-borrows those generic architectural concepts, not any specific agent product's
-implementation or unpublished design.
+Plugin runtimes in the TypeScript ecosystem provide Context, Service, typed Event,
+Fiber, Effect, and a Loader EntryTree. They demonstrate a runtime model for
+assembling applications from replaceable Services, explicit dependencies, and
+reclaimable plugin lifecycles; wuu borrows those generic architectural concepts, not
+any specific agent product's implementation or unpublished design.
 
-Cordis's convenient specifics depend on TypeScript/Node: dynamic `import`, same-process
+Those convenient specifics depend on TypeScript/Node: dynamic `import`, same-process
 object Services, declaration merging, and browser bundle loading. wuu does not copy
 those implementation details, but implements the same runtime model on the Go core +
 separate runtime process + Electron shell:
 
-| Cordis concept | wuu's corresponding model |
+| Reference concept | wuu's corresponding model |
 | --- | --- |
 | Context | generation-bound Plugin Scope |
 | Service object | versioned RPC Service / Host endpoint |
 | typed Event | versioned event catalog with namespaced payloads |
 | Fiber | the unified plugin instance spanning the runtime process, Renderer modules, and contributions |
-| `ctx.effect()` | resources, subscriptions, child Sessions, and background work recorded and awaited by the Scope |
+| context-scoped `effect()` | resources, subscriptions, child Sessions, and background work recorded and awaited by the Scope |
 | `inject` | `requires` / `provides` in the Manifest/handshake |
-| Loader EntryTree | the validated Activation Plan and dependency graph |
+| Loader entry tree | the validated Activation Plan and dependency graph |
 
 In the Go ecosystem, the closest process-plugin boundary is a subprocess + RPC
 approach like HashiCorp's `go-plugin`; the in-process `.so` mechanism of the `plugin`
@@ -376,7 +376,7 @@ standard library is not suitable as a cross-platform desktop plugin base, and
 `dig`/`fx`/`wire` solve dependency injection but do not provide runtime install,
 uninstall, or generations. wuu already has its own duplex plugin process protocol,
 fingerprint, and atomic generation, so it does not need to rewrite the core in
-TypeScript to chase a Cordis experience. The current runtime process is owned by the
+TypeScript to chase the same runtime experience. The current runtime process is owned by the
 Go generation and shuts down within the close deadline; the Desktop generation owns
 registrations and cleanup uniformly and releases them in reverse order; the Manifest's
 `requires`, `breaks`, and `conflicts` already form a simple Activation Plan.
@@ -393,16 +393,10 @@ real distribution. The acceptance criterion is that business state, prompts, too
 background chains, and Desktop display are all owned by the plugin — not merely that
 code was moved into `plugins/`:
 
-1. **Goal has migrated to the public Session chain.** Goal's state machine, storage,
-   Tool, prompts, and UI are all plugin-owned; the plugin observes
-   `agent.turn.completed` to decide whether to continue, delivers a read-only query to
-   the same Session through `host.session.send`, and declares an owner-scoped
-   `agent.turn.lifecycle` to track the `queued`/`running`/`completed`/`failed`/
-   `interrupted`/`discarded` states of the Turns it delivers (the initial
-   `queued`/`running` states are returned synchronously by `host.session.send`, and
-   lifecycle events report later transitions and terminal states). The
-   `agent.turn.continuation`, the two-phase probe/prepare polling, and the Goal
-   continuation branch in the main Turn chain have been removed.
+1. **Goal has been removed.** The Goal capability and its bundled plugin were removed
+   from the product rather than migrated; its auto-continuation flow is no longer a
+   product feature. The remaining plugins observe `agent.turn.completed` and deliver
+   through `host.session.send` on their own.
 2. **Subagent has migrated to the public Session chain.** The plugin creates and
    manages private child Sessions through `host.session.create/send/list/cancel`,
    keeps task names and delivery state in plugin storage, and, after observing the
@@ -467,7 +461,7 @@ code was moved into `plugins/`:
    plugin. The core `sessionDreamScheduler`, Dream state/locks, the AfterTurn Hook, the
    configuration fields, and the native settings have been removed.
 9. **Desktop lifecycle is proven by real first-party modules.** The bundled
-   `desktop.js` of Goal, Subagent, Automation, Memory, Dream, and TODO runs directly on
+   `desktop.js` of Subagent, Automation, Memory, Dream, and TODO runs directly on
    the `WorkbenchController`/`PluginHost` product path; Views, Slots, navigation,
    settings entries, Locale, and Style activate and replace atomically with the
    generation, and all are withdrawn when disabled. Tests do not use a fake registry
@@ -481,40 +475,36 @@ public boundary first, then delete the product-specific entry points:
 1. Define generic Session create/send/lifecycle on top of the existing Turn
    submission; fill in owner, visibility, parent, fresh/fork, workspace, source,
    display summary, and request id, and unify user-work-first and idempotency rules.
-2. Migrate Goal first: after Turn-completion events the plugin proactively delivers to
-   the same Session, verifying generated queries, continuous wake-ups, queueing,
-   pause/completion, crash recovery, and plugin disabling; then remove
-   `agent.turn.continuation`.
-3. Subagent already creates and manages private child Sessions with the public API;
+2. Subagent already creates and manages private child Sessions with the public API;
    `host.child_session.request` has been removed, and the task prompt, state, desktop
    status bar, and parent-Session callback are plugin-owned. The host no longer
    recognizes the `spawn_agent` Tool name, parses `<subagent_notification>`, generates
    a dedicated Tool item, or maintains a native subtask panel; the plugin's generated
    callback only relies on the generic `display_content/origin/cause/read_only` query
    metadata and does not change the public contract.
-4. HelpMe has been removed end to end; TODO runs as a bundled plugin, and the
+3. HelpMe has been removed end to end; TODO runs as a bundled plugin, and the
    core Tool, state, recovery, and native display branches were removed.
-5. Cron, Memory, and Dream have each completed the vertical slices of "plugin Timer →
+4. Cron, Memory, and Dream have each completed the vertical slices of "plugin Timer →
    user-visible Session", "Prompt + Tool + private Session + View", and "Timer +
    Memory Tool + plugin-private Session"; none of them has a product-specific host
    service.
-6. Every migration must verify that after disabling, upgrading, or uninstalling the
+5. Every migration must verify that after disabling, upgrading, or uninstalling the
    plugin, it no longer wakes, and no UI, Prompt, Tool, subscription, or background
    generation remains; the core deletes old protocols, dead code, and tests that only
    existed for the old boundary.
-7. The Go runtime and Desktop registrations have each converged on the generation
+6. The Go runtime and Desktop registrations have each converged on the generation
    owner, and the Manifest supports simple dependencies and conflicts; runtime
    composition has converged on the generation-scoped Service Registry — kernel
    services, introspection, and the execution scope all ride the same
    `host.service.call` entry point, and no parallel fixed host-service table is
    being kept.
-8. The existing execution loop has been wrapped as the Experimental v1 `DefaultDriver`
+7. The existing execution loop has been wrapped as the Experimental v1 `DefaultDriver`
    with unchanged product behavior; Sessions persist the Driver identity, checkpoint,
    and final model-input receipt, and recovery only proceeds from stable boundaries.
 
 The acceptance of the plugin chain is not that interfaces exist, but that when the
 core has no product-specific execution or mutable state branches for Cron, Memory,
-Dream, Goal, Subagent, or TODO, these six first-party plugins can still keep the
+Dream, Subagent, or TODO, these five first-party plugins can still keep the
 existing experience solely through public contracts; external plugins can compose
 equivalent capabilities under the same permissions and lifecycle.
 
@@ -791,7 +781,7 @@ the corresponding entry, subscriptions, and state.
 
 ## First-party and third-party plugins are isomorphic
 
-Goal, Subagent, Automation, Memory, Dream, and TODO already run through the same
+Subagent, Automation, Memory, Dream, and TODO already run through the same
 generation, capability, and public host contracts as third-party plugins. Each owns
 its prompts, Tools, state, background policy, and Desktop contributions; the
 product-specific host execution seams and the native product shells have been
@@ -842,11 +832,11 @@ The following must not be written as completed compatibility promises:
   explicit theme boundaries;
 - a Marketplace, remote auto-update, ranking, dependency resolution, and signed
   distribution are not part of the current local-first platform;
-- Goal, Subagent, Automation, user/workspace/session Memory, Dream, and TODO have
+- Subagent, Automation, user/workspace/session Memory, Dream, and TODO have
   completed their vertical migrations, and the product-specific host execution seams
   were removed;
-- HelpMe has been removed from the code and the product; TODO has no core Tool, state,
-  recovery, and native display were also removed;
+- HelpMe and Goal have been removed from the code and the product; TODO has no core
+  Tool, state, recovery, and native display were also removed;
 - the Go runtime and Desktop contributions are now reclaimed uniformly per
   generation, and a simple Activation Plan, Default Driver, checkpoints, and
   model-input receipts are implemented; the Service Registry

@@ -8,8 +8,8 @@ Agent runtime、Desktop UI、主题、设置、Skills、Hooks、MCP server 和�
 Skill，一个已有工具服务适合 MCP；需要代码生命周期、宿主服务或桌面 UI 时才需要
 Wuu Plugin。
 
-插件平台当前是本地优先的：没有市场或中心仓库，插件作者通常在自己的 GitHub 仓库中
-开发和发布，使用者从 npm、Git remote 或本地路径安装，不需要 fork Wuu。
+插件平台当前是本地优先的：没有市场或中心仓库，插件作者通常在自己的仓库中开发和发布。
+当前安装器只接受本地目录或 zip 包，尚不能直接从 npm 或 Git source 安装。
 
 ## 一个插件包可以包含什么
 
@@ -35,34 +35,35 @@ Wuu Plugin。
 
 ## 获取与安装
 
-一条命令完成 npm、Git remote 或本地路径的安装：
+在 Wuu Desktop 的插件目录中选择本地目录或 zip 包。安装后会直接打开该插件详情；点击一次
+**批准并启用**就是信任确认，并立即启用插件。
+
+包管理 CLI 当前提供的是较底层的本地包流程：
 
 ```bash
-wuu extension install npm:foo
-wuu extension install git:github.com/example/foo
-wuu extension install ./foo
+wuu plugin install ./foo
+wuu plugin install ./foo-1.0.0.zip
 ```
 
-桌面端的同一次安装操作同样可以指向包名、仓库、目录或 zip 包。插件文件安装在
-`~/.wuu/plugins/`（设置 `WUU_HOME` 时在其下）。安装或启用来源就是信任决定：代码以你的
-用户权限执行。UI 上这表现为一次注明来源的确认；CLI 里用户主动执行 install 本身就是确认。
+CLI 会先暂存本地包；使用 `wuu plugin approve <id>` 激活该 fingerprint。这个拆分的 CLI
+属于兼容入口，并不代表另一套信任模型。插件文件安装在 `~/.wuu/plugins/`（设置 `WUU_HOME`
+时在其下）。无论从哪个入口操作，批准并启用代码都是信任决定：代码以你的用户权限执行。
 
 ## 信任延续、更新与用户可见状态
 
-- 安装或启用来源表示信任该来源的代码；
-- 同一 npm 包身份或同一 Git remote 的更新延续信任，Wuu 不按文件变化重新审批；
-- 来源身份改变时重新确认；
+- 批准并启用包表示信任该包的代码；
+- 当前本地包更新器会暂存每个新 fingerprint；确认替换前，已安装 generation 继续运行；
 - 受信任项目目录中的扩展随项目信任加载，不逐插件确认；
-- 本地 `-e` 路径是明确的开发执行，不进入安装审批；
+- 传给 `wuu plugin dev` 的路径属于明确的开发执行，不继承已安装包的信任；
 - 更新失败时报告失败并保留可恢复入口，不会把用户送回 onboarding。
 
 插件只有三种用户可见状态：`Enabled`（已安装并运行）、`Disabled`（用户明确停用）、
 `Failed`（加载或运行失败，可查看错误并禁用）。
 
 ```bash
-wuu extension list
-wuu extension disable my-plugin
-wuu extension remove my-plugin
+wuu plugin list
+wuu plugin disable my-plugin
+wuu plugin remove my-plugin
 ```
 
 ## 恢复与故障处理
@@ -70,9 +71,9 @@ wuu extension remove my-plugin
 - **加载失败：**错误在插件列表和设置页可见；禁用该插件或重装即可，其余启用的插件继续运行。
 - **界面渲染失败：**Wuu 只回退出错的 Slot、Presenter、Surface 或 View，插件管理和
   默认 UI 恢复入口仍可用。
-- **需要立即隔离：**运行 `wuu extension disable <id>`。即使 Desktop 贡献有问题，也可以
+- **需要立即隔离：**运行 `wuu plugin disable <id>`。即使 Desktop 贡献有问题，也可以
   使用 CLI 禁用插件；若 Wuu 因崩溃进入安全模式，先保持问题插件禁用。
-- **不再需要：**运行 `wuu extension remove <id>`。当前默认保留插件设置和 Storage，不要把
+- **不再需要：**运行 `wuu plugin remove <id>`。当前默认保留插件设置和 Storage，不要把
   “移除包”理解为清除全部用户数据。
 
 ## 常见能力

@@ -182,14 +182,14 @@ plugins installed from downloaded packages.
 
 ```bash
 wuu plugin pack .                      # outputs hello-plugin-0.1.0.zip
-wuu extension install ./hello-plugin-0.1.0.zip
+wuu plugin install ./hello-plugin-0.1.0.zip
+wuu plugin approve hello-plugin
 ```
 
-Install is the trust decision: the plugin runs with your user authority.
-Installing or enabling a source means trusting that source's code. Updates from
-the same npm package identity or the same Git remote keep the trust; a change of
-source identity asks for confirmation again. Wuu does not review, certify, or
-sandbox plugin code — install only code you trust.
+Approval is the trust decision: the plugin runs with your user authority. The current
+CLI stages a local directory or zip and requires `approve` before activation; the
+Desktop catalog combines approval and enablement into one confirmation. Wuu does not
+review, certify, or sandbox plugin code — install only code you trust.
 
 ## Step 6: use it
 
@@ -198,8 +198,8 @@ the tool activity card. Ask it to greet again — the count in the result
 increments, which shows the Storage persistence working.
 
 ```bash
-wuu extension disable hello-plugin   # the tool disappears from sessions
-wuu extension remove hello-plugin    # uninstall
+wuu plugin disable hello-plugin   # the tool disappears from new plugin generations
+wuu plugin remove hello-plugin    # uninstall
 ```
 
 ## Next steps

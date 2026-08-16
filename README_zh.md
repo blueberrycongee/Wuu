@@ -24,23 +24,22 @@
 
 wuu 是独立开发的项目，不是 OpenCode、Claude Code 或 Codex 的官方客户端。
 
-在真实代码仓库的内部 bench 中，wuu 普通 session 每次成功修复的成本约为 [pi](https://github.com/badlogic/pi-mono) 的一半。
-
 ## 为扩展而生
 
 wuu 当前的主线是它的插件体系：一个让生态可以共同生长、而无需 fork 项目的插件平台。
 
 - **一个包承载多种能力**：Wuu Plugin 是可安装、可升级的扩展包，能把 Agent 工具、上下文、桌面视图、主题、设置、技能、Hook、MCP 服务器和命令打包在一起，共享同一套安装与升级生命周期。
 - **功能插件自由扩展，外观插件统一换肤**：两者正交且可组合，无需感知彼此的存在。
-- **内置功能走同一套 API**：目标、子 Agent、自动化、记忆和待办都以插件形式提供，使用与第三方相同的机制。
-- **本地优先，无需 fork**：从 npm、Git 仓库或本地路径安装；没有应用市场或中心注册表。
+- **内置功能走同一套 API**：子 Agent、自动化、记忆和待办都以插件形式提供，使用与第三方相同的机制。
+- **本地优先，无需 fork**：安装本地目录或 zip 包，一次批准即可启用；没有应用市场或中心注册表。
 
 ```bash
 wuu plugin create --type agent my-agent
 wuu plugin create --type desktop my-ui
 
-wuu plugin build ./my-agent
-wuu extension install npm:my-agent
+wuu plugin pack ./my-agent
+wuu plugin install ./my-agent.zip
+wuu plugin approve my-agent
 ```
 
 从 [Wuu Plugin 指南](docs/zh-cn/customize/plugins.md)开始，或查看[扩展 Wuu](docs/zh-cn/customize/index.md)选择最合适的扩展。
@@ -64,7 +63,7 @@ xattr -dr com.apple.quarantine /Applications/wuu.app && open /Applications/wuu.a
 - **文件、改动和终端**：浏览仓库、检查当前 Git diff、预览图片和文档、回看命令输出，不必离开应用。
 - **可见的 Agent 过程**：任务运行时可以看到工具调用、后台进程、委派工作和附件。
 - **不必折腾繁琐的配置文件**：可以在桌面端管理模型服务、权限、技能和记忆，并查看已加载的项目规则。
-- **开箱即用的完整 Agent 体验**：计划、持久目标、子 Agent、后台任务和持久会话都已内置，无需自行拼装。
+- **开箱即用的完整 Agent 体验**：待办、子 Agent、后台任务和持久会话都已内置，无需自行拼装。
 
 ## 开始使用
 

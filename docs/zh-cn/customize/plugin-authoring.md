@@ -184,12 +184,23 @@ initialize 里用 `required_services` 声明消费项，声明是获得调用权
 | `host.storage.get` / `set` / `delete` / `keys` / `compare-exchange` | 命名空间存储；每次调用都必须传 `scope: "user" | "workspace"` |
 | `host.settings.get` / `list` | 设置，运行时只读 |
 | `host.session.create` / `send` / `list` / `cancel` | 插件拥有的 Session 创建、投递、列表与取消 |
+| `host.data.query` | 读取一个 thread 的版本化只读事件快照 |
 | `registry.introspect` | 只读自省：注册表里有哪些服务、什么版本、由哪个 generation 提供 |
 | `execution.update` | 为一次正在执行的调用报告进度（见"执行作用域"） |
 
 服务名、参数和结果类型以 SDK 的 `KERNEL_SERVICE_NAMES`、`kernelServiceCall` 与
 `HostServiceContracts` 为准。`host.session.info`、`host.workspace.*` 和 `host.diagnostics.log`
 不属于生产合同。
+
+`host.data.query` `1.0.0` 在不暴露文件系统路径或宿主私有对象的前提下提供持久化 Session
+事实。插件先在 `required_services` 中声明主版本 `1`，再经 `host.service.call` 调用其 `call`
+方法。参数是 `{ thread_id, types?, turn_id?, limit? }`，结果是
+`{ version, thread_id, events }`；每个事件使用稳定 envelope
+`{ type, thread_id?, turn_id?, created_at?, data? }`。当前事件类型包括 `turn`、`step`、
+`model_call`、`tool_call`、`tool_result`、`streaming_chunk`、`context_requests`、
+`provider_states`、`compact_attempts`、`barrier_tool_batch_rejected`、`tool_inventory`、
+`tool_records` 和 `final`。请求未知类型会得到空匹配，不会报错。这是快照 API；
+`host.data.subscribe` 尚未注册成生产可用的插件 Service。
 
 需要在后台发起普通 Agent 工作时，插件组合产品中立的 Session 服务：`host.session.create` 创建具有明确
 owner、visibility、parent、fresh/fork、workspace 和可选模型别名语义的 Session；`host.session.send` 向已有
@@ -598,14 +609,14 @@ wuu plugin dev .
 
 ```bash
 wuu plugin pack .                    # 打包后分发
-wuu extension install ./my-plugin-1.0.0.zip
-wuu extension install npm:foo        # 或从 npm 安装
-wuu extension install git:github.com/example/foo
+wuu plugin install ./my-plugin-1.0.0.zip
+wuu plugin approve my-plugin
 wuu plugin dev .                     # 开发期修改
 ```
 
-安装或启用就是信任决定：插件以你的用户权限执行。同一 npm 包身份或同一 Git remote
-的更新延续信任，来源身份改变时重新确认。Wuu 不按文件变化重新审批。
+批准并启用就是信任决定：插件以你的用户权限执行。当前安装器只接受本地目录或 zip，尚不
+支持直接 npm/Git source。CLI 会暂存每个新包 fingerprint 直至 `approve`；Desktop 插件目录
+则把批准与启用合并为一次确认。
 
 ### 示例
 
@@ -639,7 +650,7 @@ previous-minor/current-minor 的 SDK 与宿主兼容矩阵。在矩阵验证完�
 ## 信任边界与安全内核
 
 - 插件代码以用户权限执行，Wuu 不提供沙箱。Renderer 不会读取插件的绝对路径，
-  Wuu 在加载前由 app-server 记录来源身份（npm 包名、Git remote 或本地路径），
+  Wuu 在加载前由 app-server 记录已安装包身份和 fingerprint，
   并确认插件在当前 workspace 中已启用；Electron 主进程通过内容寻址的
   `wuu-plugin:` 协议加载模块；CSP 不开放 `unsafe-eval` 或任意本地脚本。
 - 插件管理、安全模式、崩溃恢复、原生窗口与 app-server 生命周期，以及用户逃生路径

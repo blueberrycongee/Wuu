@@ -112,7 +112,7 @@ wuu exec review --uncommitted --permission-mode read_only
 wuu plugin list                        # 查看已安装插件与状态
 wuu plugin inspect ./path/to/plugin    # 安装前检查包内容、权限请求与 fingerprint
 wuu plugin install ./plugin-1.0.0.zip  # 安装目录或 zip 包
-wuu plugin update my-plugin            # 更新已安装插件
+wuu plugin update my-plugin ./plugin-1.1.0.zip # 暂存替换目录或 zip
 wuu plugin approve my-plugin           # 检查后批准
 wuu plugin reject my-plugin
 wuu plugin enable my-plugin

@@ -173,12 +173,13 @@ generation；构建或激活失败时保留上一代。目录授权是开发专�
 
 ```bash
 wuu plugin pack .                      # 输出 hello-plugin-0.1.0.zip
-wuu extension install ./hello-plugin-0.1.0.zip
+wuu plugin install ./hello-plugin-0.1.0.zip
+wuu plugin approve hello-plugin
 ```
 
-安装就是信任决定：插件以你的用户权限执行。安装或启用来源表示信任该来源的代码；
-同一 npm 包身份或同一 Git remote 的更新延续信任，来源身份改变时重新确认。Wuu
-不审核、不认证、也不沙箱插件代码——只安装你信任的代码。
+批准就是信任决定：插件以你的用户权限执行。当前 CLI 会先暂存本地目录或 zip 包，执行
+`approve` 后才激活；Desktop 插件目录把批准与启用合并成一次确认。Wuu 不审核、不认证、
+也不沙箱插件代码——只安装你信任的代码。
 
 ## 第 6 步：使用
 
@@ -186,8 +187,8 @@ wuu extension install ./hello-plugin-0.1.0.zip
 结果里的计数会 +1——说明 Storage 持久化生效了。
 
 ```bash
-wuu extension disable hello-plugin   # 工具从会话中消失
-wuu extension remove hello-plugin    # 卸载
+wuu plugin disable hello-plugin   # 工具从新的插件 generation 中消失
+wuu plugin remove hello-plugin    # 卸载
 ```
 
 ## 下一步

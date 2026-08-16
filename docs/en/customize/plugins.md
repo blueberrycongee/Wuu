@@ -11,8 +11,9 @@ only need MCP. Use a Wuu Plugin when you need code lifecycle, host services, or
 desktop UI.
 
 The platform is local-first: there is no marketplace or central registry. Authors
-normally develop and release plugins from their own GitHub repositories, and users
-install from npm, a Git remote, or a local path without forking Wuu.
+normally develop and release plugins from their own repositories. The current installer
+accepts a local directory or zip package; direct npm and Git-source installation are not
+available yet.
 
 ## What one package can contain
 
@@ -38,29 +39,32 @@ Choose a first path:
 
 ## Get and install plugins
 
-Install from npm, a Git repository, or a local directory with one action:
+In Wuu Desktop, choose a local directory or zip package in the plugin catalog. Wuu then
+opens that plugin's detail page; **Approve and enable** is the single trust confirmation
+and enables the package immediately.
+
+The package-management CLI currently exposes the lower-level local-package flow:
 
 ```bash
-wuu extension install npm:foo
-wuu extension install git:github.com/example/foo
-wuu extension install ./foo
+wuu plugin install ./foo
+wuu plugin install ./foo-1.0.0.zip
 ```
 
-In the Desktop app, the same install action can target a package name, repository,
-directory, or zip. Wuu installs packages under `~/.wuu/plugins/`, or below `WUU_HOME`
-when set. Installing or enabling a source is the trust decision: the code runs with
-your user authority. In the UI this appears as one confirmation that names the source;
-the CLI treats an explicit `install` command as the confirmation.
+The CLI stages the local package; use `wuu plugin approve <id>` to activate that staged
+fingerprint. This split CLI is a compatibility surface, not an extra trust model. Wuu
+installs packages under `~/.wuu/plugins/`, or below `WUU_HOME` when set. In every entry
+point, approving and enabling code is the trust decision: it runs with your user
+authority.
 
 ## Trust, update, and user-visible state
 
-- Installing or enabling a source means trusting that source's code.
-- Updates from the same npm package identity or the same Git remote keep the trust;
-  Wuu does not re-approve per file change.
-- A change of source identity asks for confirmation again.
+- Approving and enabling a package means trusting that package's code.
+- The current local-package updater stages each new package fingerprint and keeps the
+  installed generation active until the replacement is confirmed.
 - Extensions in a trusted project directory load with the project's trust, without
   per-plugin confirmation.
-- A local `-e` path is explicit development execution and never enters install approval.
+- A path passed to `wuu plugin dev` is explicit development execution and never inherits
+  trust from an installed package.
 - A failed update reports the failure and keeps a recoverable entry; the user is not
   sent through onboarding again.
 
@@ -69,9 +73,9 @@ running), `Disabled` (the user turned it off), or `Failed` (load or run failure;
 error is viewable and the plugin can be disabled).
 
 ```bash
-wuu extension list
-wuu extension disable my-plugin
-wuu extension remove my-plugin
+wuu plugin list
+wuu plugin disable my-plugin
+wuu plugin remove my-plugin
 ```
 
 ## Recovery and troubleshooting
@@ -80,10 +84,10 @@ wuu extension remove my-plugin
   plugin or reinstall it. Other enabled plugins keep running.
 - **Render failure:** Wuu falls back only at the failed Slot, Presenter, Surface, or View;
   plugin management and default-UI recovery remain available.
-- **Immediate isolation:** run `wuu extension disable <id>`. The CLI can disable a plugin
+- **Immediate isolation:** run `wuu plugin disable <id>`. The CLI can disable a plugin
   even when its Desktop contribution is broken. If Wuu enters safe mode after a crash,
   leave the suspected plugin disabled while investigating.
-- **Removal:** run `wuu extension remove <id>`. Wuu currently preserves plugin settings and
+- **Removal:** run `wuu plugin remove <id>`. Wuu currently preserves plugin settings and
   Storage by default, so removing a package is not the same as erasing all user data.
 
 ## Common capabilities

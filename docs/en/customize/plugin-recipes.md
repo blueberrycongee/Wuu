@@ -182,7 +182,8 @@ loading Desktop code:
 }
 ```
 
-Run `wuu plugin validate .`, then install the package with `wuu extension install .`.
+Run `wuu plugin validate .`, then add the local directory from the Desktop plugin
+catalog and choose **Approve and enable**.
 The theme appears under **Settings → Appearance**; selecting a built-in theme removes
 its overrides. See the [theme token reference](theme-surface-matrix.md) for available
 tokens and [plugin themes and settings](themes-settings.md) for user actions.
