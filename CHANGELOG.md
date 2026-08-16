@@ -8,6 +8,34 @@ Versioning rules are documented in [the release guide](docs/en/project/release.m
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-08-16
+
+### Added
+
+- Added workspace session reordering with persisted sidebar order.
+- Added scope-bound host data subscriptions and a cross-runtime bundle contract
+  for extensions.
+- Exposed thread titles and final assistant replies to Stop hooks.
+
+### Changed
+
+- Refined long-paste folding and preserved its layout across tab switches.
+- Expanded skin-overridable theme tokens for skill mark palettes.
+- Updated supported model reasoning tiers and context-window metadata.
+- Simplified plugin onboarding and clarified runtime state in the skills catalog.
+
+### Fixed
+
+- Refreshed media policy when switching models.
+- Kept live token counts stable and limited their animation to visible changes.
+- Preserved sidebar ordering while projects load and allowed collaboration
+  sessions in the ordered list.
+- Kept the composer and conversation flow aligned with the real scrollbar
+  gutter.
+- Derived completed turn duration from boundary timestamps when providers omit
+  an explicit duration.
+- Normalized Windows SQLite file DSN paths.
+
 ## [0.17.0] - 2026-08-14
 
 ### Added
