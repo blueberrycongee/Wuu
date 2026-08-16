@@ -1,5 +1,28 @@
 import { Archive, Folder, FolderOpen, GitFork, MessageSquare, MessageSquarePlus, MessagesSquare, Pin } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import {
+  closestCenter,
+  DndContext,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import { restrictToVerticalAxis } from "@dnd-kit/modifiers";
+import {
+  arrayMove,
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import {
+  type CSSProperties,
+  type HTMLAttributes,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { SidebarNameDialog } from "./SidebarNameDialog";
 import type { DesktopProject } from "../shared/protocol";
 import { copyToClipboard, ThreadContextMenu } from "./ThreadContextMenu";
@@ -40,6 +63,51 @@ function cleanSidebarPath(path: string): string {
 
 const PROJECT_THREAD_INITIAL_VISIBLE_COUNT = 8;
 const PROJECT_THREAD_VISIBLE_INCREMENT = 10;
+const SIDEBAR_THREAD_ORDER_KEY = "wuu.desktop.sidebarThreadOrderByWorkspace";
+
+type SidebarThreadOrderByWorkspace = Record<string, string[]>;
+
+function storedThreadOrder(workspaceID: string): string[] {
+  try {
+    const stored = window.localStorage.getItem(SIDEBAR_THREAD_ORDER_KEY);
+    const parsed: unknown = stored ? JSON.parse(stored) : {};
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return [];
+    }
+    const order = (parsed as SidebarThreadOrderByWorkspace)[workspaceID];
+    return Array.isArray(order)
+      ? order.filter((id): id is string => typeof id === "string" && id.length > 0)
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function persistThreadOrder(workspaceID: string, order: string[]): void {
+  try {
+    const stored = window.localStorage.getItem(SIDEBAR_THREAD_ORDER_KEY);
+    const parsed: unknown = stored ? JSON.parse(stored) : {};
+    const current = parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? parsed as SidebarThreadOrderByWorkspace
+      : {};
+    window.localStorage.setItem(
+      SIDEBAR_THREAD_ORDER_KEY,
+      JSON.stringify({ ...current, [workspaceID]: order }),
+    );
+  } catch {
+    // A blocked or full localStorage should not prevent in-memory reordering.
+  }
+}
+
+function reconcileThreadOrder(threads: ThreadSummary[], storedOrder: string[]): string[] {
+  const threadIDs = new Set(threads.map((thread) => thread.id));
+  const known = storedOrder.filter((id) => threadIDs.has(id));
+  const knownIDs = new Set(known);
+  const newIDs = threads
+    .map((thread) => thread.id)
+    .filter((id) => !knownIDs.has(id));
+  return [...newIDs, ...known];
+}
 
 export function ProjectList({
   projects,
@@ -212,7 +280,7 @@ export function ProjectGroup({
   // directly: App.tsx already filtered scratch threads. Real
   // projects still go through the cwd-path filter so stale entries
   // can't leak into the wrong group.
-  const projectThreads = unpinnedThreads(
+  const unorderedProjectThreads = unpinnedThreads(
     isScratchPseudo
       ? threadsByProjectID[project.id] ?? []
       : threadsForProjectPath(
@@ -220,6 +288,30 @@ export function ProjectGroup({
           project.path,
         ),
   );
+  const [threadOrder, setThreadOrder] = useState<string[]>(() =>
+    storedThreadOrder(project.id),
+  );
+  const reconciledThreadOrder = useMemo(
+    () => reconcileThreadOrder(unorderedProjectThreads, threadOrder),
+    [threadOrder, unorderedProjectThreads],
+  );
+  const threadsByID = new Map(
+    unorderedProjectThreads.map((thread) => [thread.id, thread]),
+  );
+  const projectThreads = reconciledThreadOrder
+    .map((id) => threadsByID.get(id))
+    .filter((thread): thread is ThreadSummary => thread !== undefined);
+
+  function reorderProjectThreads(activeThreadID: string, overThreadID: string): void {
+    const oldIndex = reconciledThreadOrder.indexOf(activeThreadID);
+    const newIndex = reconciledThreadOrder.indexOf(overThreadID);
+    if (oldIndex < 0 || newIndex < 0 || oldIndex === newIndex) {
+      return;
+    }
+    const next = arrayMove(reconciledThreadOrder, oldIndex, newIndex);
+    setThreadOrder(next);
+    persistThreadOrder(project.id, next);
+  }
   const projectHasUnread = projectThreads.some((thread) =>
     projectThreadUnread(
       thread,
@@ -315,7 +407,7 @@ export function ProjectGroup({
             onArchive={onArchiveThread}
             onDelete={onDeleteThread}
             onRename={onRenameThread}
-            
+            onReorder={reorderProjectThreads}
             onShowMore={showMoreProjectThreads}
             onCollapse={collapseProjectThreads}
           />
@@ -396,6 +488,7 @@ function ThreadList({
   onArchive,
   onDelete,
   onRename,
+  onReorder,
   onShowMore,
   onCollapse
 }: {
@@ -409,6 +502,7 @@ function ThreadList({
   onArchive: (thread: ThreadSummary) => void;
   onDelete: (thread: ThreadSummary) => void;
   onRename?: (thread: ThreadSummary, title: string) => void;
+  onReorder: (activeThreadID: string, overThreadID: string) => void;
   onShowMore: () => void;
   onCollapse: () => void;
 }): JSX.Element {
@@ -462,7 +556,7 @@ function ThreadList({
         onArchive={onArchive}
         onDelete={onDelete}
         onRename={onRename}
-        
+        onReorder={onReorder}
       />
       {showFooter ? (
         <div className="thread-list-footer">
@@ -559,6 +653,7 @@ function ThreadRows({
   onArchive,
   onDelete,
   onRename,
+  onReorder,
 }: {
   threads: ThreadSummary[];
   activeID?: string;
@@ -569,6 +664,7 @@ function ThreadRows({
   onArchive: (thread: ThreadSummary) => void;
   onDelete: (thread: ThreadSummary) => void;
   onRename?: (thread: ThreadSummary, title: string) => void;
+  onReorder?: (activeThreadID: string, overThreadID: string) => void;
 }): JSX.Element {
   const { t } = useI18n();
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; thread: ThreadSummary } | null>(null);
@@ -577,6 +673,16 @@ function ThreadRows({
     initialTitle: string;
   } | null>(null);
   const [renameTitle, setRenameTitle] = useState("");
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+  );
+
+  function handleDragEnd(event: DragEndEvent): void {
+    if (!event.over || event.active.id === event.over.id) {
+      return;
+    }
+    onReorder?.(String(event.active.id), String(event.over.id));
+  }
 
   function handleContextMenu(
     targetThread: ThreadSummary,
@@ -621,7 +727,16 @@ function ThreadRows({
   }
 
   return (
-    <>
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      modifiers={[restrictToVerticalAxis]}
+      onDragEnd={handleDragEnd}
+    >
+      <SortableContext
+        items={threads.map((thread) => thread.id)}
+        strategy={verticalListSortingStrategy}
+      >
       {threads.map((thread) => {
         const pendingSwitch = pendingThreadID === thread.id;
         const running = isThreadExecuting(thread);
@@ -636,8 +751,10 @@ function ThreadRows({
             lastViewedTurnByThreadID[thread.id],
           );
         return (
-          <div
+          <SortableThreadRow
             key={thread.id}
+            id={thread.id}
+            disabled={!onReorder}
             className={`thread-row sidebar-session-row ${thread.id === activeID ? "active" : ""}${running ? " running" : ""}${
               pendingSwitch ? " pending-switch" : ""
             }${unread ? " has-unread" : ""}`}
@@ -692,9 +809,10 @@ function ThreadRows({
                   <Archive className="icon-sm" />
                 </button>
               </div>
-          </div>
+          </SortableThreadRow>
         );
       })}
+      </SortableContext>
       {contextMenu ? (
         <ThreadContextMenu
           x={contextMenu.x}
@@ -760,7 +878,38 @@ function ThreadRows({
         submitLabel={t("common.save")}
         cancelLabel={t("common.cancel")}
       />
-    </>
+    </DndContext>
+  );
+}
+
+function SortableThreadRow({
+  id,
+  className,
+  children,
+  disabled,
+  ...props
+}: HTMLAttributes<HTMLDivElement> & { id: string; disabled?: boolean }): JSX.Element {
+  const { setNodeRef, transform, transition, isDragging, listeners } = useSortable({
+    id,
+    disabled,
+  });
+  const style: CSSProperties = {
+    ...props.style,
+    transform: CSS.Transform.toString(transform),
+    transition,
+    zIndex: isDragging ? 1 : undefined,
+  };
+  return (
+    <div
+      {...props}
+      {...listeners}
+      ref={setNodeRef}
+      data-sortable={!disabled || undefined}
+      className={`${className ?? ""}${isDragging ? " dragging" : ""}`}
+      style={style}
+    >
+      {children}
+    </div>
   );
 }
 

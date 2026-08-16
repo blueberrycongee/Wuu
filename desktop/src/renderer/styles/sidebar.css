@@ -1461,6 +1461,15 @@
   padding-left: var(--sidebar-row-pad-x);
 }
 
+.sidebar-session-row[data-sortable="true"] {
+  cursor: grab;
+}
+
+.sidebar-session-row.dragging {
+  cursor: grabbing;
+  opacity: 0.72;
+}
+
 .thread-row {
   grid-template-columns:
     var(--sidebar-session-status-col)
