@@ -83,6 +83,8 @@ export function AssistantTurnShell({
   onForkMessage,
   onOpenRuns,
   onCollapseComplete,
+  trailingContent,
+  editSummaryCard,
 }: {
   turn: Turn;
   display: AssistantTurnDisplay;
@@ -95,6 +97,19 @@ export function AssistantTurnShell({
   onForkMessage?: (turnID: string, itemID: string) => void;
   onOpenRuns?: () => void;
   onCollapseComplete?: () => void;
+  /**
+   * Turn-owned output rendered at the end of the turn content region (after
+   * the answer body). The turn-level governance notices (event chips, stream
+   * reconnect) stay outside the shell; anything passed here belongs to the
+   * turn's own content.
+   */
+  trailingContent?: JSX.Element;
+  /**
+   * Turn-owned output attached inside the actionable answer message (between
+   * its text and its action bar). Mounted by the renderer that actually
+   * paints the message — the display-builder filter never renders JSX.
+   */
+  editSummaryCard?: JSX.Element;
 }): JSX.Element {
   const processEntries = display.entries.filter(
     (entry) => entry.position === "process",
@@ -160,6 +175,7 @@ export function AssistantTurnShell({
     onForkMessage,
     onOpenRuns,
     onCollapseComplete,
+    editSummaryCard,
   };
 
   return (
@@ -183,6 +199,7 @@ export function AssistantTurnShell({
           ))}
         </div>
       ) : null}
+      {trailingContent}
       {/*
         No inline "missing reply" notice here. The hand-rolled legacy
         aside used to live here, but it bypassed the chip pipeline
@@ -214,6 +231,7 @@ function TurnProcessFold({
   onForkMessage,
   onOpenRuns,
   onCollapseComplete,
+  editSummaryCard,
 }: {
   turn: Turn;
   entries: TurnEntry[];
@@ -238,6 +256,7 @@ function TurnProcessFold({
    * jumping upward at turn-settle.
    */
   onCollapseComplete?: () => void;
+  editSummaryCard?: JSX.Element;
 }): JSX.Element {
   const renderActive = useConversationRenderActive();
   const [expanded, setExpanded] = useState(!collapseRequested);
@@ -442,6 +461,7 @@ return (
                     onStreamFrame={onStreamFrame}
                     onForkMessage={onForkMessage}
                     onOpenRuns={onOpenRuns}
+                    editSummaryCard={editSummaryCard}
                   />
                 </div>
               ))}
@@ -480,6 +500,7 @@ function EntryRenderer({
   onStreamFrame,
   onForkMessage,
   onOpenRuns,
+  editSummaryCard,
 }: {
   entry: TurnEntry;
   activeGray?: boolean;
@@ -492,6 +513,7 @@ function EntryRenderer({
   onStreamFrame: () => void;
   onForkMessage?: (turnID: string, itemID: string) => void;
   onOpenRuns?: () => void;
+  editSummaryCard?: JSX.Element;
 }): JSX.Element | null {
   const { item, kind, streaming } = entry;
   if (kind === "activity" || kind === "process_group") {
@@ -552,6 +574,11 @@ function EntryRenderer({
         onStreamFrame={onStreamFrame}
         onForkMessage={onForkMessage}
         onOpenRuns={onOpenRuns}
+        editSummaryCard={
+          editSummaryCard !== undefined && item.id === actionableAgentMessageID
+            ? editSummaryCard
+            : undefined
+        }
       />
     );
   }

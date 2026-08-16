@@ -210,9 +210,9 @@ describe("turns.css message-flow typography", () => {
     );
   });
 
-  it("reserves the historical action overlay before a turn output card", () => {
+  it("keeps the turn output card inside the shell, spaced by the shell gap", () => {
     expect(turnsCss).toMatch(
-      /\.assistant-turn-shell:has\(\.agent-actions-overlay\)\s*\+\s*\.turn-edit-summary-card\s*\{[\s\S]*?margin-top:\s*calc\(\s*14px\s*\+\s*var\(--conversation-answer-hover-action-gap\)\s*\+\s*var\(--conversation-message-action-size\)\s*\);/,
+      /\.assistant-turn-shell\s*>\s*\.turn-edit-summary-card\s*\{[\s\S]*?margin-top:\s*0;/,
     );
     expect(cssRuleBody(".message-actions")).toMatch(
       /min-height:\s*var\(--conversation-message-action-size\);/,

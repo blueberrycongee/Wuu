@@ -159,16 +159,6 @@ function TurnContent({
         onCancelEditMessage={onCancelEditMessage}
         onSubmitEditMessage={onSubmitEditMessage}
         onOpenAgent={onOpenAgent}
-        editSummaryCard={
-          runActionAttachedToMessage && item.id === actionableAgentMessageID ? (
-            <TurnEditSummaryCard
-              turn={turn}
-              cwd={cwd}
-              onOpenFile={onOpenFile}
-              onOpenFileDiff={onOpenFileDiff}
-            />
-          ) : undefined
-        }
       />
     );
   }
@@ -217,14 +207,26 @@ function TurnContent({
           onOpenRuns={onOpenRuns}
           onCollapseComplete={onCollapseComplete}
           onOpenAgent={onOpenAgent}
-        />
-      ) : null}
-      {!runActionAttachedToMessage ? (
-        <TurnEditSummaryCard
-          turn={turn}
-          cwd={cwd}
-          onOpenFile={onOpenFile}
-          onOpenFileDiff={onOpenFileDiff}
+          editSummaryCard={
+            runActionAttachedToMessage ? (
+              <TurnEditSummaryCard
+                turn={turn}
+                cwd={cwd}
+                onOpenFile={onOpenFile}
+                onOpenFileDiff={onOpenFileDiff}
+              />
+            ) : undefined
+          }
+          trailingContent={
+            runActionAttachedToMessage ? undefined : (
+              <TurnEditSummaryCard
+                turn={turn}
+                cwd={cwd}
+                onOpenFile={onOpenFile}
+                onOpenFileDiff={onOpenFileDiff}
+              />
+            )
+          }
         />
       ) : null}
       {isLatestTurn && turn.status === "in_progress" && streamStatus?.liveProgress ? (
