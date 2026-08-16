@@ -71,6 +71,7 @@ export function toConversationProcessSnapshot(
         kind: "tool-activity" as const,
         status: publicProcessStatus(item),
         toolName: item.name,
+        displayLabel: item.display?.label,
         capability: item.display?.capability,
         toolKind: item.display?.kind,
         error: item.error,

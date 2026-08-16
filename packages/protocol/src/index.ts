@@ -1358,6 +1358,9 @@ export type ThreadItemStatus = "in_progress" | "completed" | "failed";
 
 export type ToolCallDisplay = {
   kind?: string;
+  // Short user-facing name. The raw tool name remains the stable dispatch
+  // identity used by the model and runtime.
+  label?: string;
   text?: string;
   // Capability is the stable dotted identifier the runtime surface
   // maps this tool to (e.g. "command.bash"). Optional: legacy

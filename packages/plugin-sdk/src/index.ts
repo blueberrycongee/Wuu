@@ -297,6 +297,7 @@ export interface ToolActivitySnapshot {
   readonly contractVersion: 1;
   readonly id: string;
   readonly toolName: string;
+  readonly displayLabel?: string;
   readonly capability?: string;
   readonly kind?: string;
   readonly status: ToolActivityStatus;
@@ -669,6 +670,8 @@ export interface ProcessSandboxResult {
 }
 
 export interface ToolDisplayMetadata {
+  /** Short stable user-facing tool name. Dispatch identity remains host-owned. */
+  label?: string;
   kind?: string;
   text?: string;
   capability?: string;
@@ -1352,6 +1355,7 @@ export interface ConversationProcessItemV1 {
   /** Reasoning text only. Tool arguments and results are intentionally excluded. */
   readonly text?: string;
   readonly toolName?: string;
+  readonly displayLabel?: string;
   readonly capability?: string;
   readonly toolKind?: string;
   readonly error?: string;

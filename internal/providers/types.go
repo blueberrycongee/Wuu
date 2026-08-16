@@ -48,6 +48,7 @@ func LoadableToolFromDefinition(def ToolDefinition) LoadableToolDefinition {
 // ToolCallDisplay carries a user-facing summary for a tool invocation.
 type ToolCallDisplay struct {
 	Kind       string `json:"kind,omitempty"`
+	Label      string `json:"label,omitempty"`
 	Text       string `json:"text,omitempty"`
 	Capability string `json:"capability,omitempty"`
 }

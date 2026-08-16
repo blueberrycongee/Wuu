@@ -395,6 +395,14 @@ a generation and declares the `kind` it implements (observe / transform /
 decision) plus `priority`. `guard` and `around` have no host implementation
 and are not declarable public kinds.
 
+Tool naming has two separate contracts. The host owns the model-visible
+dispatch name and namespaces it to avoid collisions; plugins must not present
+that value as UI. A registration may set `display.label` to a short, stable
+user-facing name. `display.kind` classifies familiar activity, while
+`display.capability` is the stable semantic identity used for presentation and
+aggregation. Unknown capabilities aggregate only with the same capability (or
+the same raw tool identity), rather than being merged into one generic group.
+
 The legacy `hook.invoke` has been removed; host→plugin traffic goes only
 through the versioned capabilities above or tool execution, and plugin→host
 traffic only through host services. When a candidate prepare fails, the old

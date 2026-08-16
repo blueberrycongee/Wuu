@@ -256,7 +256,7 @@ function readableToolActivityCommandInner(
     case "browser":
       return readableBrowserLabel(args);
     default:
-      return readableToolName(name);
+      return readableToolActivityName(item);
   }
 }
 
@@ -359,7 +359,9 @@ function toolActivitySectionKey(item: ThreadItem): string {
     case "load_skill":
       return "skill";
     default:
-      return "other";
+      // Preserve semantic identity so unrelated extension tools are not merged
+      // into one generic aggregate section.
+      return `other:${item.display?.capability?.trim() || name || item.display?.label?.trim() || "tool"}`;
   }
 }
 
@@ -505,7 +507,7 @@ function toolActivitySectionFromItems(
         kind: "unknown",
         title: t("toolActivity.tool"),
         detail: compactDetailText(
-          uniqueStrings(items.map((item) => readableToolName(item.name))),
+          uniqueStrings(items.map(readableToolActivityName)),
         ),
         status: combinedToolStatus(items),
         commands: toolCommands(items),
@@ -670,7 +672,7 @@ function toolActivityProcessSegmentFromItems(
       };
     default: {
       const names = uniqueStrings(
-        items.map((item) => readableToolName(item.name)),
+        items.map(readableToolActivityName),
       );
       const count = names.length || items.length;
       return count > 1
@@ -817,7 +819,7 @@ function compactSearchTargets(items: ThreadItem[]): string[] {
         return (
           stringValue(args, "pattern") ??
           stringValue(args, "query") ??
-          readableToolName(item.name)
+          readableToolActivityName(item)
         );
       })
       .filter((value): value is string => Boolean(value)),
@@ -836,7 +838,7 @@ function compactAgentLabels(items: ThreadItem[]): string[] {
         stringValue(args, "name") ??
         stringValue(args, "description") ??
         stringValue(args, "task_name") ??
-        readableToolName(item.name)
+        readableToolActivityName(item)
       );
     }),
   );
@@ -1037,6 +1039,13 @@ export function readableToolName(name: string | undefined): string {
     default:
       return name?.trim() || t("toolActivity.tool");
   }
+}
+
+/** Resolve user-facing identity without replacing the raw dispatch name. */
+export function readableToolActivityName(
+  item: Pick<ThreadItem, "name" | "display">,
+): string {
+  return item.display?.label?.trim() || readableToolName(item.name);
 }
 
 function uniqueStrings(values: string[]): string[] {

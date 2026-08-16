@@ -68,6 +68,7 @@ export function toToolActivitySnapshot(item: ThreadItem): ToolActivitySnapshot {
     contractVersion: 1,
     id: item.id,
     toolName: item.name ?? "",
+    displayLabel: item.display?.label,
     capability: item.display?.capability,
     kind: item.display?.kind,
     status: item.status === "in_progress"

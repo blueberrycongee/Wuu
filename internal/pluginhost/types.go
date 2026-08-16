@@ -13,10 +13,11 @@ import (
 )
 
 const (
-	maxToolRegistrations  = 64
-	maxToolDescriptionLen = 16 * 1024
-	maxToolSchemaLen      = 128 * 1024
-	maxToolMetadataLen    = 1024
+	maxToolRegistrations   = 64
+	maxToolDescriptionLen  = 16 * 1024
+	maxToolSchemaLen       = 128 * 1024
+	maxToolMetadataLen     = 1024
+	maxToolDisplayLabelLen = 80
 )
 
 var localToolIDPattern = regexp.MustCompile(`^[a-zA-Z0-9_-]{1,64}$`)
@@ -126,11 +127,15 @@ func validateToolRegistrations(tools []ToolRegistration) error {
 			}
 		}
 		if tool.Display != nil {
-			if strings.TrimSpace(tool.Display.Kind) == "" && strings.TrimSpace(tool.Display.Text) == "" && strings.TrimSpace(tool.Display.Capability) == "" {
+			if strings.TrimSpace(tool.Display.Kind) == "" && strings.TrimSpace(tool.Display.Label) == "" && strings.TrimSpace(tool.Display.Text) == "" && strings.TrimSpace(tool.Display.Capability) == "" {
 				return fmt.Errorf("%s display metadata is empty", prefix)
+			}
+			if len(tool.Display.Label) > maxToolDisplayLabelLen {
+				return fmt.Errorf("%s: display.label exceeds %d bytes", prefix, maxToolDisplayLabelLen)
 			}
 			for field, value := range map[string]string{
 				"display.kind":       tool.Display.Kind,
+				"display.label":      tool.Display.Label,
 				"display.text":       tool.Display.Text,
 				"display.capability": tool.Display.Capability,
 			} {
