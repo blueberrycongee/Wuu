@@ -1545,6 +1545,12 @@ func (s *Server) applyModelSelectionToRuntime(
 			s.rt.StreamRunner.ProviderName = resolvedName
 			s.rt.StreamRunner.Model = model
 			s.rt.StreamRunner.APIModel = apiModel
+			s.rt.StreamRunner.MediaInput = providers.MediaInputPolicy{
+				Image:      roleSelections.Main.Capabilities.ImageInput,
+				File:       roleSelections.Main.Capabilities.FileInput,
+				ImageKnown: roleSelections.Main.Capabilities.ImageInputKnown,
+				FileKnown:  roleSelections.Main.Capabilities.FileInputKnown,
+			}
 			s.rt.StreamRunner.Effort = selection.LegacyEffort
 			s.rt.StreamRunner.Variant = selection.Variant
 			s.rt.StreamRunner.ProviderOptions = modelvariant.CloneOptions(selection.ProviderOptions)
