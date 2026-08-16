@@ -24,6 +24,8 @@
 
 wuu 是独立开发的项目，不是 OpenCode、Claude Code 或 Codex 的官方客户端。
 
+在真实代码仓库的内部 bench 中，wuu 普通 session 每次成功修复的成本约为 [pi](https://github.com/badlogic/pi-mono) 的一半。
+
 ## 为扩展而生
 
 wuu 当前的主线是它的插件体系：一个让生态可以共同生长、而无需 fork 项目的插件平台。
