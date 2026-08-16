@@ -1,14 +1,11 @@
 import {
   ChevronDown,
-  ChevronRight,
   ChevronUp,
-  FileText,
   Folder,
   FolderOpen,
   FolderX,
   Send,
-  Square,
-  X
+  Square
 } from "lucide-react";
 import {
   type ClipboardEvent as ReactClipboardEvent,
@@ -53,9 +50,12 @@ import { translateCurrent as translate, useI18n } from "./i18n";
 import { Tooltip } from "./Tooltip";
 import { TruncatedText } from "./TruncatedText";
 import {
+  CollapsedComposerPromptCard,
+  useCollapsedComposerPrompt
+} from "./ComposerCollapsedPrompt";
+import {
   WORKSPACE_FILE_DRAG_MIME,
   appendWorkspacePathToPrompt,
-  clipboardAttachmentFiles,
   type ComposerFile,
   type ComposerImage,
   type QueuedComposerMessage
@@ -95,16 +95,7 @@ import type { TurnContextUsage } from "./AppState";
 const MemoizedComposerPluginSlot = memo(PluginSlot);
 const MemoizedComposerPluginToolbar = memo(ComposerPluginToolbar);
 
-type CollapsedComposerPromptBlock = {
-  id: string;
-  text: string;
-};
-
 type ExpandedComposerDrawer = "pending" | null;
-
-const COLLAPSIBLE_COMPOSER_PROMPT_LINE_THRESHOLD = 14;
-const COLLAPSIBLE_COMPOSER_PROMPT_CHAR_THRESHOLD = 1200;
-const COLLAPSIBLE_COMPOSER_PROMPT_SOFT_LINE_CHARS = 84;
 
 export type {
   CodexModelLoadState,
@@ -391,8 +382,6 @@ export function Composer({
   const composerFrameRef = useRef<HTMLDivElement>(null);
   const collapsedComposerFrameHeightRef = useRef<number | null>(null);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
-  const collapsedPromptListRef = useRef<HTMLDivElement>(null);
-  const collapsedPromptBlockIDRef = useRef(0);
   const submitAfterCompositionRef = useRef(false);
   const documentDrawer = useContext(WorkspaceDocumentDrawerContext);
   const [isComposerExpanded, setIsComposerExpanded] = useState(false);
@@ -408,7 +397,6 @@ export function Composer({
       : composerSendLabel;
   const [expandedDrawer, setExpandedDrawer] = useState<ExpandedComposerDrawer>(null);
   const [dropActive, setDropActive] = useState(false);
-  const [collapsedPromptBlocks, setCollapsedPromptBlocks] = useState<CollapsedComposerPromptBlock[]>([]);
   const [selectedSlashIndex, setSelectedSlashIndex] = useState(0);
   const [slashDismissedValue, setSlashDismissedValue] = useState("");
   const [compositionSubmitRequest, setCompositionSubmitRequest] = useState(0);
@@ -460,15 +448,21 @@ export function Composer({
     y: number;
     hasSelection: boolean;
   } | null>(null);
-  const collapsedPromptPrefix = useMemo(
-    () => collapsedPromptBlocks.map((block) => block.text).join(""),
-    [collapsedPromptBlocks]
-  );
-  const hasCollapsedPromptBlocks = collapsedPromptBlocks.length > 0 && prompt.startsWith(collapsedPromptPrefix);
-  const activeCollapsedPromptBlocks = hasCollapsedPromptBlocks ? collapsedPromptBlocks : [];
-  const visiblePromptValue = hasCollapsedPromptBlocks
-    ? prompt.slice(collapsedPromptPrefix.length)
-    : prompt;
+  const {
+    blocks: activeCollapsedPromptBlocks,
+    hasBlocks: hasCollapsedPromptBlocks,
+    prefix: collapsedPromptPrefix,
+    visiblePrompt: visiblePromptValue,
+    listRef: collapsedPromptListRef,
+    handlePaste: handleCollapsedComposerPaste,
+    revealBlock: revealCollapsedPromptBlock,
+    removeBlock: removeCollapsedPromptBlock
+  } = useCollapsedComposerPrompt({
+    prompt,
+    setPrompt,
+    focusComposerSoon,
+    storageKey: queryHistorySessionID
+  });
   const composerPlaceholder = placeholder ?? (readOnly
     ? t("composer.readOnly")
     : hasCollapsedPromptBlocks
@@ -575,12 +569,6 @@ export function Composer({
     }
   }, [readOnly]);
 
-  useEffect(() => {
-    if (collapsedPromptBlocks.length > 0 && !prompt.startsWith(collapsedPromptPrefix)) {
-      setCollapsedPromptBlocks([]);
-    }
-  }, [collapsedPromptBlocks.length, collapsedPromptPrefix, prompt]);
-
   useLayoutEffect(() => {
     const frame = composerFrameRef.current;
     if (!frame) {
@@ -606,14 +594,6 @@ export function Composer({
     queuedMessages.length,
     activeCollapsedPromptBlocks.length
   ]);
-
-  useLayoutEffect(() => {
-    const list = collapsedPromptListRef.current;
-    if (!list || activeCollapsedPromptBlocks.length === 0) {
-      return;
-    }
-    list.scrollTop = list.scrollHeight;
-  }, [activeCollapsedPromptBlocks.length]);
 
   function focusComposerSoon(): void {
     window.requestAnimationFrame(() => textareaRef.current?.focus());
@@ -707,41 +687,15 @@ export function Composer({
   }
 
   function handleComposerPaste(event: ReactClipboardEvent<HTMLTextAreaElement>): void {
-    if (readOnly) {
-      return;
-    }
-    if (!textOnly) {
-      const pasted = clipboardAttachmentFiles(event);
-      if (pasted.length > 0) {
-        event.preventDefault();
-        onPasteAttachmentFiles(pasted);
-        return;
+    handleCollapsedComposerPaste(event, {
+      readOnly,
+      fileAttachmentsEnabled: !textOnly,
+      onPasteAttachmentFiles,
+      onFold: () => {
+        resetQueryHistoryNavigation();
+        setSlashDismissedValue("");
       }
-    }
-
-    const pastedText = event.clipboardData?.getData("text/plain") ?? "";
-    if (!isCollapsibleComposerPrompt(pastedText)) {
-      return;
-    }
-
-    const selectionStart = event.currentTarget.selectionStart ?? 0;
-    const selectionEnd = event.currentTarget.selectionEnd ?? 0;
-    const visibleValue = event.currentTarget.value;
-    const replacingVisiblePrompt = selectionStart === 0 && selectionEnd === visibleValue.length;
-    if (visibleValue.length > 0 && !replacingVisiblePrompt) {
-      return;
-    }
-
-    event.preventDefault();
-    resetQueryHistoryNavigation();
-    setSlashDismissedValue("");
-    const nextBlock = {
-      id: `composer-prompt-block-${collapsedPromptBlockIDRef.current++}`,
-      text: pastedText
-    };
-    setCollapsedPromptBlocks(hasCollapsedPromptBlocks ? [...collapsedPromptBlocks, nextBlock] : [nextBlock]);
-    setPrompt(`${hasCollapsedPromptBlocks ? collapsedPromptPrefix : ""}${pastedText}`);
-    focusComposerSoon();
+    });
   }
 
   // A drop carries either a workspace path reference (file tree drag) or
@@ -797,33 +751,6 @@ export function Composer({
     }
     event.preventDefault();
     onPasteAttachmentFiles(dropped);
-  }
-
-  function revealCollapsedPromptBlock(index: number): void {
-    if (!hasCollapsedPromptBlocks) {
-      return;
-    }
-    const revealedBlock = activeCollapsedPromptBlocks[index];
-    if (!revealedBlock) {
-      return;
-    }
-    const nextBlocks = activeCollapsedPromptBlocks.filter((_, blockIndex) => blockIndex !== index);
-    const nextPrefix = nextBlocks.map((block) => block.text).join("");
-    const nextVisiblePrompt = `${visiblePromptValue}${revealedBlock.text}`;
-    setCollapsedPromptBlocks(nextBlocks);
-    setPrompt(`${nextPrefix}${nextVisiblePrompt}`);
-    focusComposerSoon();
-  }
-
-  function removeCollapsedPromptBlock(index: number): void {
-    if (!hasCollapsedPromptBlocks) {
-      return;
-    }
-    const nextBlocks = activeCollapsedPromptBlocks.filter((_, blockIndex) => blockIndex !== index);
-    const nextPrefix = nextBlocks.map((block) => block.text).join("");
-    setCollapsedPromptBlocks(nextBlocks);
-    setPrompt(`${nextPrefix}${visiblePromptValue}`);
-    focusComposerSoon();
   }
 
   function applySlashCommand(command: ComposerSlashCommand | undefined, draft: ComposerSlashDraft | undefined): void {
@@ -1522,47 +1449,6 @@ const ComposerTextarea = forwardRef<HTMLTextAreaElement, ComposerTextareaProps>(
   },
 );
 
-function CollapsedComposerPromptCard({
-  text,
-  onReveal,
-  onRemove
-}: {
-  text: string;
-  onReveal: () => void;
-  onRemove: () => void;
-}): JSX.Element {
-  const title = collapsedComposerPromptTitle(text);
-  return (
-    <div className="composer-collapsed-prompt-card">
-      <button
-        className="composer-collapsed-prompt-main"
-        type="button"
-        aria-label={translate("composer.showCollapsedTextNamed", { title })}
-        onClick={onReveal}
-      >
-        <span className="composer-collapsed-prompt-icon" aria-hidden="true">
-          <FileText className="icon" />
-        </span>
-        <span className="composer-collapsed-prompt-copy">
-          <TruncatedText as="strong" className="composer-collapsed-prompt-title" text={title} />
-          <span className="composer-collapsed-prompt-action">
-            {translate("composer.showInTextBox")}
-            <ChevronRight aria-hidden="true" />
-          </span>
-        </span>
-      </button>
-      <button
-        className="composer-collapsed-prompt-remove"
-        type="button"
-        aria-label={translate("composer.removeCollapsedText")}
-        onClick={onRemove}
-      >
-        <X aria-hidden="true" />
-      </button>
-    </div>
-  );
-}
-
 function composerRuntimeContextKey(context: RuntimeContext): string {
   return context.kind === "project" ? `project:${context.project_id}` : `no_project:${context.cwd}`;
 }
@@ -1587,34 +1473,6 @@ function exactRunnableSlashCommand(commands: ComposerSlashCommand[], draft: Comp
       (command.kind === "prompt" || command.kind === "skill") &&
       command.name.toLowerCase() === draft.query
   );
-}
-
-function isCollapsibleComposerPrompt(text: string): boolean {
-  if (text.trim().length === 0) {
-    return false;
-  }
-  if (text.length > COLLAPSIBLE_COMPOSER_PROMPT_CHAR_THRESHOLD) {
-    return true;
-  }
-  let estimatedLines = 0;
-  for (const line of text.split(/\r\n|\r|\n/)) {
-    estimatedLines += Math.max(
-      1,
-      Math.ceil(line.length / COLLAPSIBLE_COMPOSER_PROMPT_SOFT_LINE_CHARS)
-    );
-    if (estimatedLines > COLLAPSIBLE_COMPOSER_PROMPT_LINE_THRESHOLD) {
-      return true;
-    }
-  }
-  return false;
-}
-
-function collapsedComposerPromptTitle(text: string): string {
-  const firstLine = text
-    .split(/\r\n|\r|\n/)
-    .map((line) => line.trim())
-    .find(Boolean);
-  return firstLine || translate("composer.longText");
 }
 
 function exactActionSlashCommand(commands: ComposerSlashCommand[], draft: ComposerSlashDraft): ComposerSlashCommand | undefined {

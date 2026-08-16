@@ -687,7 +687,6 @@ export const zhCN = {
   "composer.plusSectionCommands": "命令",
   "composer.permissionMode": "权限模式：{mode}",
   "composer.showCollapsedTextNamed": "在文本框中显示折叠长文本：{title}",
-  "composer.showInTextBox": "在文本框中显示",
   "composer.removeCollapsedText": "移除折叠长文本",
   "composer.currentProject": "当前项目",
   "composer.conversation": "对话",

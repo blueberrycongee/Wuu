@@ -243,6 +243,7 @@ function renderStatefulSplitPaneComposer(props: {
   initialPrompt?: string;
   readOnly?: boolean;
   onPasteAttachmentFiles?: (files: File[]) => void;
+  onSend?: (prompt: string) => void;
 }): void {
   function Harness(): JSX.Element {
     const [prompt, setPrompt] = useState(props.initialPrompt ?? "");
@@ -259,7 +260,7 @@ function renderStatefulSplitPaneComposer(props: {
           onPasteAttachmentFiles={props.onPasteAttachmentFiles ?? (() => {})}
           onRemoveFile={() => {}}
           onRemoveImage={() => {}}
-          onSend={() => {}}
+          onSend={() => props.onSend?.(prompt)}
           onInterrupt={() => {}}
         />
       </ImagePreviewProvider>
@@ -315,6 +316,7 @@ function renderStatefulComposer(props: {
   readOnly?: boolean;
   textOnly?: boolean;
   onPasteAttachmentFiles?: (files: File[]) => void;
+  queryHistorySessionID?: string;
 }): { replacePrompt: (prompt: string) => void } {
   const codexModels: CodexModelLoadState = {
     loading: false,
@@ -391,6 +393,7 @@ function renderStatefulComposer(props: {
           onSend={(promptOverride) => props.onSend?.(promptOverride ?? prompt)}
           onInterrupt={() => {}}
           tokensPerSecond={0}
+          queryHistorySessionID={props.queryHistorySessionID}
         />
       </ImagePreviewProvider>
     );
@@ -448,6 +451,15 @@ function setTextareaValue(textarea: HTMLTextAreaElement, value: string): void {
   const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
   setter?.call(textarea, value);
   textarea.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+function cssRuleBlock(css: string, selector: string): string {
+  const start = css.indexOf(`${selector} {`);
+  if (start < 0) {
+    throw new Error(`missing css rule: ${selector}`);
+  }
+  const end = css.indexOf("}", start);
+  return css.slice(start, end + 1);
 }
 
 describe("Composer send control", () => {
@@ -1663,14 +1675,24 @@ describe("Composer send control", () => {
 });
 
 describe("Composer long text folding", () => {
-  it("bounds folded paste rows inside a scrollable list", () => {
-    expect(composerCSS).toContain(".composer-collapsed-prompt-list");
-    expect(composerCSS).toContain("display: grid");
-    expect(composerCSS).toContain("width: auto");
-    expect(composerCSS).toContain("grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr))");
-    expect(composerCSS).toContain("max-height: min(168px, 26vh)");
-    expect(composerCSS).toContain("overflow-y: auto");
-    expect(composerCSS).toContain("overscroll-behavior: contain");
+  it("bounds folded paste chips inside a scrollable wrapping strip", () => {
+    const listRule = cssRuleBlock(composerCSS, ".composer-collapsed-prompt-list");
+    expect(listRule).toContain("display: flex");
+    expect(listRule).toContain("flex-wrap: wrap");
+    expect(listRule).toContain("max-height: min(168px, 26vh)");
+    expect(listRule).toContain("overflow-y: auto");
+    expect(listRule).toContain("overscroll-behavior: contain");
+
+    const cardRule = cssRuleBlock(composerCSS, ".composer-collapsed-prompt-card");
+    expect(cardRule).toContain("max-width: min(260px, 100%)");
+    expect(cardRule).toContain("min-height: 38px");
+
+    const removeRule = cssRuleBlock(composerCSS, ".composer-collapsed-prompt-remove");
+    expect(removeRule).toContain("position: absolute");
+    expect(removeRule).toContain("border-radius: var(--radius-pill)");
+
+    const splitRule = cssRuleBlock(workspaceCSS, ".split-composer .composer-collapsed-prompt-list");
+    expect(splitRule).toContain("margin: 0");
   });
 
   it("folds a long paste while sending the original text plus follow-up", () => {
@@ -1842,6 +1864,50 @@ describe("Composer long text folding", () => {
     });
 
     expect(onSend).toHaveBeenCalledWith("要求后续变更");
+  });
+
+  it("keeps the folded chip across a draft swap and return (tab switch)", () => {
+    const longText = longPastedPrompt();
+    const harness = renderStatefulComposer({ queryHistorySessionID: "session-a" });
+    const textarea = container.querySelector<HTMLTextAreaElement>("textarea");
+    expect(textarea).not.toBeNull();
+
+    act(() => {
+      pastePlainText(textarea as HTMLTextAreaElement, longText);
+    });
+    expect(container.querySelector(".composer-collapsed-prompt-card")).not.toBeNull();
+
+    // Switching to another tab replaces the draft with that tab's prompt and
+    // clears the chip; the fold layout itself must survive the swap.
+    harness.replacePrompt("另一个 tab 的草稿");
+    expect(container.querySelector(".composer-collapsed-prompt-card")).toBeNull();
+
+    harness.replacePrompt(longText);
+    expect(container.querySelector(".composer-collapsed-prompt-card")).not.toBeNull();
+    expect(container.querySelector<HTMLTextAreaElement>("textarea")?.value).toBe("");
+  });
+
+  it("does not re-fold a revealed paste after a draft swap and return", () => {
+    const longText = longPastedPrompt();
+    const harness = renderStatefulComposer({ queryHistorySessionID: "session-b" });
+    const textarea = container.querySelector<HTMLTextAreaElement>("textarea");
+    expect(textarea).not.toBeNull();
+
+    act(() => {
+      pastePlainText(textarea as HTMLTextAreaElement, longText);
+    });
+    act(() => {
+      container
+        .querySelector<HTMLButtonElement>(".composer-collapsed-prompt-main")
+        ?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    });
+    expect(container.querySelector(".composer-collapsed-prompt-card")).toBeNull();
+
+    harness.replacePrompt("另一个 tab 的草稿");
+    harness.replacePrompt(longText);
+
+    expect(container.querySelector(".composer-collapsed-prompt-card")).toBeNull();
+    expect(container.querySelector<HTMLTextAreaElement>("textarea")?.value).toBe(longText);
   });
 });
 
@@ -2752,6 +2818,53 @@ describe("composer drag and drop", () => {
     expect(container.querySelector<HTMLTextAreaElement>("textarea")?.value).toBe(
       "review src/Button.tsx ",
     );
+  });
+
+  it("folds a long paste in the split pane composer while sending the original text plus follow-up", () => {
+    const longText = longPastedPrompt();
+    const onSend = vi.fn();
+    renderStatefulSplitPaneComposer({ onSend });
+    const textarea = container.querySelector<HTMLTextAreaElement>("textarea");
+    expect(textarea).not.toBeNull();
+
+    act(() => {
+      pastePlainText(textarea as HTMLTextAreaElement, longText);
+    });
+
+    expect(container.querySelector(".composer-collapsed-prompt-card")).not.toBeNull();
+    expect(container.querySelector(".composer-collapsed-prompt-title")?.textContent).toBe("# 交接提示词(直接粘贴)");
+    expect((textarea as HTMLTextAreaElement).value).toBe("");
+    expect((textarea as HTMLTextAreaElement).placeholder).toBe("要求后续变更");
+
+    act(() => {
+      setTextareaValue(textarea as HTMLTextAreaElement, "要求后续变更");
+    });
+    act(() => {
+      textarea?.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+    });
+
+    expect(onSend).toHaveBeenCalledWith(`${longText}要求后续变更`);
+  });
+
+  it("reveals a folded long paste back into the split pane textarea", () => {
+    const longText = longPastedPrompt();
+    renderStatefulSplitPaneComposer({});
+    const textarea = container.querySelector<HTMLTextAreaElement>("textarea");
+    expect(textarea).not.toBeNull();
+
+    act(() => {
+      pastePlainText(textarea as HTMLTextAreaElement, longText);
+    });
+
+    const revealButton = container.querySelector<HTMLButtonElement>(".composer-collapsed-prompt-main");
+    expect(revealButton).not.toBeNull();
+
+    act(() => {
+      revealButton?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    });
+
+    expect(container.querySelector(".composer-collapsed-prompt-card")).toBeNull();
+    expect(container.querySelector<HTMLTextAreaElement>("textarea")?.value).toBe(longText);
   });
 
   it("forwards dropped files in the split pane composer and highlights its shell", () => {

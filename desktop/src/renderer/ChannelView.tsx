@@ -1510,6 +1510,7 @@ export function ChannelView({ initialized, section = "rooms", archivedRoomIDs = 
               files={composerFiles}
               images={composerImages}
               mentionAgents={selectedRoomAgents}
+              queryHistorySessionID={selectedRoomID}
               onChangeDraft={setBody}
               onPasteAttachmentFiles={(files) => void attachMessageFiles(files)}
               onRemoveFile={(id) => setComposerFiles((current) => current.filter((file) => file.id !== id))}
@@ -1623,6 +1624,7 @@ export function ChannelView({ initialized, section = "rooms", archivedRoomIDs = 
                 files={threadComposerFiles}
                 images={threadComposerImages}
                 mentionAgents={selectedRoomAgents}
+                queryHistorySessionID={activeThreadRoot.id}
                 onChangeDraft={setThreadBody}
                 onPasteAttachmentFiles={(files) => void attachThreadMessageFiles(files)}
                 onRemoveFile={(id) => setThreadComposerFiles((current) => current.filter((file) => file.id !== id))}

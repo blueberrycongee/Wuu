@@ -15,9 +15,12 @@ import { type DragEvent as ReactDragEvent, type KeyboardEvent as ReactKeyboardEv
 import { useOptionalImagePreview } from "./ImagePreview";
 import { isComposerTextComposing } from "./ComposerSlashCommands";
 import {
+  CollapsedComposerPromptCard,
+  useCollapsedComposerPrompt
+} from "./ComposerCollapsedPrompt";
+import {
   WORKSPACE_FILE_DRAG_MIME,
   appendWorkspacePathToPrompt,
-  clipboardAttachmentFiles,
   imageSource,
   queuedMessageFullPreview,
   queuedMessagePreview,
@@ -150,14 +153,6 @@ export function SplitPaneComposer({
   const sendLabel = running ? t("composer.queueSend") : t("composer.send");
   const statusText = composerStatusText(status);
   const statusIsLiveProgress = composerStatusIsLiveProgress(statusLiveProgress);
-  const { resetQueryHistoryNavigation, handleQueryHistoryKeyDown } = useComposerQueryHistory({
-    disabled: readOnly || hasAttachments,
-    prompt,
-    queryHistory,
-    queryHistorySessionID,
-    setPrompt,
-    textareaRef
-  });
 
   function focusComposerSoon(): void {
     window.requestAnimationFrame(() => textareaRef.current?.focus());
@@ -174,6 +169,31 @@ export function SplitPaneComposer({
       textarea.setSelectionRange(end, end);
     });
   }
+
+  const {
+    blocks: collapsedPromptBlocks,
+    hasBlocks: hasCollapsedPromptBlocks,
+    prefix: collapsedPromptPrefix,
+    visiblePrompt: visiblePromptValue,
+    listRef: collapsedPromptListRef,
+    handlePaste: handleCollapsedComposerPaste,
+    revealBlock: revealCollapsedPromptBlock,
+    removeBlock: removeCollapsedPromptBlock
+  } = useCollapsedComposerPrompt({
+    prompt,
+    setPrompt,
+    focusComposerSoon,
+    storageKey: queryHistorySessionID
+  });
+
+  const { resetQueryHistoryNavigation, handleQueryHistoryKeyDown } = useComposerQueryHistory({
+    disabled: readOnly || hasAttachments || hasCollapsedPromptBlocks,
+    prompt,
+    queryHistory,
+    queryHistorySessionID,
+    setPrompt,
+    textareaRef
+  });
 
   // Mirrors the dock composer: a drop carries either a workspace path
   // reference (inserted as plain text) or external files (forwarded to the
@@ -265,27 +285,44 @@ export function SplitPaneComposer({
             }
           }}
         />
+        {hasCollapsedPromptBlocks ? (
+          <div
+            className="composer-collapsed-prompt-list"
+            ref={collapsedPromptListRef}
+            aria-label={t("composer.collapsedLongText")}
+          >
+            {collapsedPromptBlocks.map((block, index) => (
+              <CollapsedComposerPromptCard
+                text={block.text}
+                key={block.id}
+                onReveal={() => revealCollapsedPromptBlock(index)}
+                onRemove={() => removeCollapsedPromptBlock(index)}
+              />
+            ))}
+          </div>
+        ) : null}
         <textarea
           ref={textareaRef}
-          value={prompt}
-          placeholder={readOnly ? t("composer.readOnly") : hasAttachments ? t("composer.addDescription") : t("composer.continueBranch")}
+          value={visiblePromptValue}
+          placeholder={readOnly ? t("composer.readOnly") : hasCollapsedPromptBlocks ? t("composer.followupChanges") : hasAttachments ? t("composer.addDescription") : t("composer.continueBranch")}
           disabled={readOnly}
           aria-readonly={readOnly}
           onChange={(event) => {
             resetQueryHistoryNavigation();
-            setPrompt(event.target.value);
+            setPrompt(
+              hasCollapsedPromptBlocks
+                ? `${collapsedPromptPrefix}${event.target.value}`
+                : event.target.value
+            );
           }}
-          onPaste={(event) => {
-            if (readOnly) {
-              return;
-            }
-            const pasted = clipboardAttachmentFiles(event);
-            if (pasted.length === 0) {
-              return;
-            }
-            event.preventDefault();
-            onPasteAttachmentFiles(pasted);
-          }}
+          onPaste={(event) =>
+            handleCollapsedComposerPaste(event, {
+              readOnly,
+              fileAttachmentsEnabled: true,
+              onPasteAttachmentFiles,
+              onFold: resetQueryHistoryNavigation
+            })
+          }
           onKeyDown={handleKeyDown}
         />
         <div className="split-composer-bar">

@@ -689,7 +689,6 @@ export const enUS = {
   "composer.plusSectionCommands": "Commands",
   "composer.permissionMode": "Permission mode: {mode}",
   "composer.showCollapsedTextNamed": "Show collapsed long text in the text box: {title}",
-  "composer.showInTextBox": "Show in text box",
   "composer.removeCollapsedText": "Remove collapsed long text",
   "composer.currentProject": "Current project",
   "composer.conversation": "Conversation",

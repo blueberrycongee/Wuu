@@ -52,6 +52,7 @@ export const ChannelComposer = forwardRef<ChannelComposerHandle, {
   images: ComposerImage[];
   hideExpandButton?: boolean;
   mentionAgents?: NamedAgent[];
+  queryHistorySessionID?: string;
   onChangeDraft: (draft: string) => void;
   onPasteAttachmentFiles: (files: File[]) => void;
   onRemoveFile: (id: string) => void;
@@ -66,6 +67,7 @@ export const ChannelComposer = forwardRef<ChannelComposerHandle, {
   images,
   hideExpandButton = false,
   mentionAgents = [],
+  queryHistorySessionID,
   onChangeDraft,
   onPasteAttachmentFiles,
   onRemoveFile,
@@ -204,6 +206,7 @@ export const ChannelComposer = forwardRef<ChannelComposerHandle, {
         slashCommandsEnabled={false}
         placeholder={placeholder}
         maxLength={4000}
+        queryHistorySessionID={queryHistorySessionID}
         prompt={draft}
         setPrompt={(value) => {
           onChangeDraft(value);

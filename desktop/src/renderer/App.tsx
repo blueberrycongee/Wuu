@@ -2636,7 +2636,7 @@ export function App(): JSX.Element {
             : undefined
         }
         onInterrupt={() => void interrupt()}
-        queryHistorySessionID={activeThread?.id}
+        queryHistorySessionID={activeThread?.id ?? currentSessionTab?.id}
         queryHistory={queryTextsForThread(activeThread)}
       />
       </>

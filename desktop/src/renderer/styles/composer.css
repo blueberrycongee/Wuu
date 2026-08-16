@@ -210,7 +210,6 @@
   --composer-frame-shadow: 0 8px 24px rgba(20, 24, 28, 0.06);
   --composer-image-attachment-button-shadow: 0 2px 8px rgba(20, 24, 28, 0.12);
   --composer-file-attachment-button-hover-bg: #eceee9;
-  --composer-collapsed-prompt-card-shadow: 0 1px 2px rgba(20, 24, 28, 0.05);
   --composer-textarea-placeholder: var(--wuu-color-text-muted, #a0a3a5);
   --composer-textarea-disabled: var(--wuu-color-text-muted, #6d7471);
   --composer-send-button-disabled-text: rgba(255, 255, 255, 0.86);
@@ -934,14 +933,17 @@
   padding-bottom: 2px;
 }
 
+/* Folded long pastes render as compact attachment-like chips above the
+   textarea. The strip shares the file-attachment visual language: wrap,
+   chip-width cards, and a circular remove button overlaying the top-right
+   corner instead of a full-height column. */
 .composer-collapsed-prompt-list {
-  display: grid;
-  width: auto;
-  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
   max-height: min(168px, 26vh);
   box-sizing: border-box;
-  grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr));
-  gap: 6px;
+  align-items: flex-start;
   margin: 10px 44px 0 14px;
   overflow-x: hidden;
   overflow-y: auto;
@@ -951,15 +953,17 @@
 }
 
 .composer-collapsed-prompt-card {
-  display: grid;
-  width: 100%;
+  position: relative;
+  display: inline-flex;
   min-width: 0;
-  grid-template-columns: minmax(0, 1fr) 24px;
-  align-items: stretch;
+  max-width: min(260px, 100%);
+  min-height: 38px;
+  flex: 0 1 auto;
+  align-items: center;
   border: 1px solid var(--surface-4);
   border-radius: var(--radius-sm);
-  background: var(--paper);
-  box-shadow: var(--composer-collapsed-prompt-card-shadow);
+  background: var(--surface-1);
+  box-shadow: var(--shadow-soft);
 }
 
 .hero-composer-wrap .composer-collapsed-prompt-list {
@@ -972,7 +976,7 @@
   flex: 1 1 auto;
   align-items: center;
   gap: 8px;
-  padding: 7px 8px;
+  padding: 7px 32px 7px 8px;
   border: 0;
   border-radius: inherit;
   background: transparent;
@@ -981,7 +985,7 @@
 }
 
 .composer-collapsed-prompt-main:hover {
-  background: var(--surface-1);
+  background: var(--surface-2);
 }
 
 .composer-collapsed-prompt-main:focus-visible,
@@ -1006,12 +1010,6 @@
   height: var(--icon-size-sm);
 }
 
-.composer-collapsed-prompt-copy {
-  display: grid;
-  min-width: 0;
-  gap: 2px;
-}
-
 .composer-collapsed-prompt-title {
   min-width: 0;
   overflow: hidden;
@@ -1023,38 +1021,23 @@
   white-space: nowrap;
 }
 
-.composer-collapsed-prompt-action {
-  display: inline-flex;
-  min-width: 0;
-  align-items: center;
-  gap: 3px;
-  color: var(--ink-muted);
-  font-size: var(--font-xs);
-  font-weight: var(--weight-medium);
-  line-height: 1;
-  text-decoration: underline;
-  text-decoration-thickness: 1px;
-  text-underline-offset: 2px;
-}
-
-.composer-collapsed-prompt-action svg {
-  width: var(--icon-size-sm);
-  height: var(--icon-size-sm);
-}
-
 .composer-collapsed-prompt-remove {
+  position: absolute;
+  top: 7px;
+  right: 7px;
   display: grid;
-  width: 24px;
-  height: 100%;
+  width: 22px;
+  height: 22px;
   place-items: center;
-  border: 0;
-  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
   background: transparent;
-  color: var(--ink-muted);
+  color: var(--ink-tertiary);
 }
 
 .composer-collapsed-prompt-remove:hover {
-  background: var(--surface-2);
+  background: var(--composer-file-attachment-button-hover-bg);
   color: var(--ink);
 }
 
