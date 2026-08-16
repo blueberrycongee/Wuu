@@ -36,14 +36,26 @@ export default function App(): React.JSX.Element {
   }, []);
 
   const openThread = (threadId: string): void => {
+    // Switching conversations from the drawer marks the previous one viewed
+    // before the new active thread advances its own unread cursor.
+    const active = controller.store.getSnapshot().activeThreadId;
+    if (active && active !== threadId) controller.closeThread();
     setRoute({ name: "thread", threadId });
     void controller.openThread(threadId).catch(() => {});
   };
 
-  const closeThread = (): void => {
-    controller.closeThread();
-    setRoute({ name: "chats" });
-  };
+  const chatList = (
+    <ChatsScreen
+      snapshot={snapshot}
+      onRefresh={() => void controller.refreshThreads().catch(() => {})}
+      onOpenThread={(thread) => openThread(thread.id)}
+      onTogglePin={(thread) => void controller.togglePin(thread).catch(() => {})}
+      onNewThread={() => controller.startThread()}
+      onUnpair={() => {
+        void controller.unpair().then(() => setRoute({ name: "pair" }));
+      }}
+    />
+  );
 
   return (
     <div className="app">
@@ -60,16 +72,7 @@ export default function App(): React.JSX.Element {
       ) : route.name === "chats" ? (
         <>
           <ConnectionBanner phase={snapshot.phase} syncError={snapshot.syncError} />
-          <ChatsScreen
-            snapshot={snapshot}
-            onRefresh={() => void controller.refreshThreads().catch(() => {})}
-            onOpenThread={(thread) => openThread(thread.id)}
-            onTogglePin={(thread) => void controller.togglePin(thread).catch(() => {})}
-            onNewThread={() => controller.startThread()}
-            onUnpair={() => {
-              void controller.unpair().then(() => setRoute({ name: "pair" }));
-            }}
-          />
+          {chatList}
         </>
       ) : (
         <>
@@ -77,9 +80,9 @@ export default function App(): React.JSX.Element {
           <ThreadScreen
             snapshot={snapshot}
             threadId={route.threadId}
-            onBack={closeThread}
             onSend={(thread, text) => void controller.sendMessage(thread, text).catch(() => {})}
             onInterrupt={(threadId) => void controller.interrupt(threadId).catch(() => {})}
+            drawerContent={chatList}
           />
         </>
       )}

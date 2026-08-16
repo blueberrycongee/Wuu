@@ -1,47 +1,62 @@
-/* Wuu phone companion — mobile-first chat UI.
-   Light + dark via prefers-color-scheme; no external CSS deps. */
+/* Wuu phone companion — mobile adaptation of the desktop visual language:
+   warm-orange brand accent, mascot cast avatars, serif greeting hero, and
+   a left slide-out drawer for recent conversations (the desktop's session
+   sidebar collapsed into one pane for a phone). Light + dark via
+   prefers-color-scheme; no external CSS deps. */
 
 :root {
-  --bg: #f2f3f5;
+  /* Brand accent mirrors the desktop --wuu-color-accent. */
+  --accent: #ef5b18;
+  --accent-pressed: #d64f12;
+  --accent-soft: #fdeee6;
+  --accent-ink: #ffffff;
+
+  --bg: #f5f4f1;
   --surface: #ffffff;
-  --surface-soft: #f7f8fa;
-  --text: #1b1e23;
-  --text-secondary: #8a919c;
-  --border: #e4e7ec;
-  --accent: #2f6fed;
-  --accent-pressed: #275fd0;
-  --accent-soft: #e9f0fe;
-  --bubble-user: #2f6fed;
+  --surface-soft: #faf9f6;
+  --text: #1f2328;
+  --text-secondary: #7d8490;
+  --border: #e7e4dd;
+
+  --bubble-user: #ef5b18;
   --bubble-user-text: #ffffff;
   --bubble-agent: #ffffff;
-  --danger: #d23c3c;
-  --danger-soft: #fdecec;
-  --unread: #f04a4a;
-  --ok: #2eb872;
-  --warn: #e8a13c;
-  --shadow: 0 1px 2px rgba(16, 24, 40, 0.06);
+
+  --danger: #c8322b;
+  --danger-soft: #fbeae7;
+  --unread: #ef5b18;
+  --ok: #2e9e63;
+  --warn: #e08f2e;
+
+  --shadow: 0 1px 2px rgba(31, 35, 40, 0.06);
+  --shadow-float: 0 8px 28px rgba(31, 35, 40, 0.16);
+
+  /* Editorial serif for the greeting, mirroring the desktop empty home. */
+  --serif:
+    Georgia, "Iowan Old Style", Palatino, "Songti SC", "Noto Serif SC",
+    "Noto Serif CJK SC", serif;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #101216;
-    --surface: #191c22;
-    --surface-soft: #1f232b;
-    --text: #e8eaee;
-    --text-secondary: #7d8590;
-    --border: #2a2f39;
-    --accent: #5b8cf5;
-    --accent-pressed: #4a7ce8;
-    --accent-soft: #1e2c4a;
-    --bubble-user: #3b6fe0;
-    --bubble-user-text: #ffffff;
-    --bubble-agent: #232730;
-    --danger: #e06a6a;
-    --danger-soft: #3a2326;
-    --unread: #f26363;
-    --ok: #3ec98a;
-    --warn: #ecb45e;
-    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --accent: #ff7a3d;
+    --accent-pressed: #ef6a2c;
+    --accent-soft: #38200f;
+    --bg: #141518;
+    --surface: #1d1f24;
+    --surface-soft: #23262c;
+    --text: #ece9e2;
+    --text-secondary: #8b929c;
+    --border: #31343b;
+    --bubble-user: #e35b1c;
+    --bubble-agent: #262930;
+    --danger: #e2706a;
+    --danger-soft: #3a2322;
+    --unread: #ff7a3d;
+    --ok: #46c083;
+    --warn: #eab15c;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+    --shadow-float: 0 8px 28px rgba(0, 0, 0, 0.55);
   }
 }
 
@@ -74,6 +89,8 @@ body {
   display: flex;
   flex-direction: column;
   background: var(--bg);
+  position: relative;
+  overflow: hidden;
 }
 
 button {
@@ -104,16 +121,16 @@ button:disabled {
 }
 
 .header-back {
-  font-size: 20px;
+  font-size: 22px;
   line-height: 1;
   padding: 6px 8px;
   border-radius: 8px;
-  color: var(--accent);
+  color: var(--text-secondary);
   flex: none;
 }
 
 .header-back:active {
-  background: var(--accent-soft);
+  background: var(--surface-soft);
 }
 
 .header-title-wrap {
@@ -139,16 +156,28 @@ button:disabled {
 
 .header-action {
   font-size: 13px;
-  color: var(--accent);
+  color: var(--text);
   padding: 6px 10px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 999px;
   background: var(--surface);
   flex: none;
+  white-space: nowrap;
 }
 
 .header-action:active {
-  background: var(--accent-soft);
+  background: var(--surface-soft);
+}
+
+.header-action.primary {
+  background: var(--accent);
+  border-color: transparent;
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+
+.header-action.primary:active {
+  background: var(--accent-pressed);
 }
 
 .header-action.danger {
@@ -174,12 +203,32 @@ button:disabled {
   color: var(--danger);
 }
 
+/* --- mascot avatar -------------------------------------------------------- */
+
+.mascot-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  flex: none;
+  overflow: hidden;
+}
+
+.mascot-avatar img {
+  width: 100%;
+  height: 100%;
+  padding: 6%;
+  object-fit: contain;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
 /* --- pair screen ----------------------------------------------------------- */
 
 .pair {
   flex: 1;
   overflow-y: auto;
-  padding: 24px 20px;
+  padding: 28px 20px;
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -189,8 +238,16 @@ button:disabled {
   text-align: center;
 }
 
+.pair-hero .mascot-avatar {
+  width: 88px;
+  height: 88px;
+  margin: 0 auto 10px;
+}
+
 .pair-hero h1 {
-  font-size: 20px;
+  font-family: var(--serif);
+  font-size: 24px;
+  font-weight: 600;
   margin: 0 0 6px;
 }
 
@@ -203,15 +260,14 @@ button:disabled {
 .pair-steps {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 14px;
   padding: 14px 16px;
   font-size: 13.5px;
-  color: var(--text);
   list-style: none;
   margin: 0;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
   box-shadow: var(--shadow);
 }
 
@@ -252,7 +308,7 @@ button:disabled {
   color: var(--text);
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 12px;
   padding: 10px 12px;
   outline: none;
 }
@@ -272,7 +328,7 @@ button:disabled {
 
 .pair-submit {
   background: var(--accent);
-  color: #fff;
+  color: var(--accent-ink);
   border-radius: 12px;
   padding: 13px;
   font-size: 15px;
@@ -292,12 +348,13 @@ button:disabled {
   font-size: 13px;
 }
 
-/* --- chats screen ----------------------------------------------------------- */
+/* --- conversation list (chats route and drawer content) --------------------- */
 
 .chats {
   flex: 1;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+  background: var(--surface);
 }
 
 .chat-row {
@@ -391,12 +448,14 @@ button:disabled {
   flex: none;
   font-size: 15px;
   color: var(--text-secondary);
+  opacity: 0.4;
   padding: 4px;
   border-radius: 8px;
 }
 
 .chat-row-pin.pinned {
   color: var(--accent);
+  opacity: 1;
 }
 
 .chats-empty {
@@ -418,6 +477,48 @@ button:disabled {
   padding: 6px 12px;
 }
 
+/* --- drawer ---------------------------------------------------------------- */
+
+.drawer-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(16, 18, 22, 0.4);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.22s ease;
+  z-index: 40;
+}
+
+.drawer-overlay.open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.drawer-panel {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: min(86%, 340px);
+  background: var(--surface);
+  box-shadow: var(--shadow-float);
+  transform: translateX(-102%);
+  transition: transform 0.24s cubic-bezier(0.2, 0.8, 0.2, 1);
+  z-index: 41;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.drawer-panel.open {
+  transform: translateX(0);
+}
+
+.drawer-panel .chats {
+  flex: 1;
+  min-height: 0;
+}
+
 /* --- thread screen ---------------------------------------------------------- */
 
 .thread {
@@ -435,6 +536,50 @@ button:disabled {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+/* Empty conversation home: mascot + serif greeting above the composer,
+   mirroring the desktop empty home. */
+
+.hero {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  text-align: center;
+  gap: 6px;
+}
+
+.hero-mascot {
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+
+.hero-mascot img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.hero h2 {
+  font-family: var(--serif);
+  font-size: 21px;
+  font-weight: 600;
+  margin: 0;
+  line-height: 1.4;
+}
+
+.hero p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 13px;
 }
 
 .msg {
@@ -480,10 +625,6 @@ button:disabled {
   text-align: right;
 }
 
-.msg.user .msg-meta.pending {
-  color: var(--text-secondary);
-}
-
 .msg.user .msg-bubble.pending {
   opacity: 0.65;
 }
@@ -492,7 +633,7 @@ button:disabled {
   align-self: center;
   font-size: 12px;
   color: var(--text-secondary);
-  background: var(--surface-soft);
+  background: var(--surface);
   border: 1px solid var(--border);
   padding: 4px 12px;
   border-radius: 999px;
@@ -523,7 +664,7 @@ button:disabled {
   width: 5px;
   height: 5px;
   border-radius: 50%;
-  background: var(--text-secondary);
+  background: var(--accent);
   animation: blink 1.2s infinite ease-in-out;
 }
 
@@ -583,7 +724,7 @@ button:disabled {
   height: 38px;
   border-radius: 19px;
   background: var(--accent);
-  color: #fff;
+  color: var(--accent-ink);
   font-size: 14px;
   font-weight: 600;
   padding: 0 16px;
@@ -601,31 +742,4 @@ button:disabled {
   color: var(--danger);
   font-size: 13px;
   padding: 0 14px;
-}
-
-/* --- avatar ----------------------------------------------------------------- */
-
-.avatar {
-  flex: none;
-  width: 42px;
-  height: 42px;
-  border-radius: 10px;
-  color: #fff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 16px;
-  font-weight: 600;
-  user-select: none;
-}
-
-.avatar.small {
-  width: 30px;
-  height: 30px;
-  border-radius: 8px;
-  font-size: 12px;
-}
-
-.avatar.round {
-  border-radius: 50%;
 }

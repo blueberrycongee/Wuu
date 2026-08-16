@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { Thread } from "@wuu/protocol";
 
-import { Avatar } from "../components/Avatar";
+import { MascotAvatar } from "../components/MascotAvatar";
 import { formatListTimestamp } from "../lib/format";
 import type { AppSnapshot } from "../lib/store";
 import { isThreadUnread, isVisibleThread, sortThreads, threadDisplayTitle } from "../lib/threads";
@@ -123,7 +123,7 @@ function ThreadRow({
         if (e.key === "Enter") onOpen();
       }}
     >
-      <Avatar name={title} />
+      <MascotAvatar id={thread.id} name={title} size={44} />
       <div className="chat-row-main">
         <div className="chat-row-line1">
           <span className="chat-row-title">{title}</span>
