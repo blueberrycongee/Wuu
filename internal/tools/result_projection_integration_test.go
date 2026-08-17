@@ -16,15 +16,15 @@ func ptrToolResult(text string) *toolresult.Result {
 	return &r
 }
 
-type fakeGrepTool struct{ text string }
+type fakeListTool struct{ text string }
 
-func (f fakeGrepTool) Name() string { return "grep" }
-func (f fakeGrepTool) Definition() providers.ToolDefinition {
-	return providers.ToolDefinition{Name: "grep"}
+func (f fakeListTool) Name() string { return "list_files" }
+func (f fakeListTool) Definition() providers.ToolDefinition {
+	return providers.ToolDefinition{Name: "list_files"}
 }
-func (f fakeGrepTool) Execute(context.Context, string) (string, error) { return f.text, nil }
-func (f fakeGrepTool) IsReadOnly() bool                                { return true }
-func (f fakeGrepTool) IsConcurrencySafe() bool                         { return true }
+func (f fakeListTool) Execute(context.Context, string) (string, error) { return f.text, nil }
+func (f fakeListTool) IsReadOnly() bool                                { return true }
+func (f fakeListTool) IsConcurrencySafe() bool                         { return true }
 
 type fakeRichMediaTool struct{ text string }
 
@@ -48,7 +48,7 @@ func (f fakeRichMediaTool) ExecuteResult(context.Context, string) (toolresult.Re
 func (f fakeRichMediaTool) IsReadOnly() bool        { return true }
 func (f fakeRichMediaTool) IsConcurrencySafe() bool { return true }
 
-func runFakeGrep(t *testing.T, mode string) (providers.ToolCall, string, []ToolExecutionRecord) {
+func runFakeList(t *testing.T, mode string) (providers.ToolCall, string, []ToolExecutionRecord) {
 	t.Helper()
 	t.Setenv(projectionModeEnvVar, "") // isolate from any ambient override
 	kit, err := New(t.TempDir())
@@ -58,9 +58,9 @@ func runFakeGrep(t *testing.T, mode string) (providers.ToolCall, string, []ToolE
 	kit.env.SessionDir = t.TempDir()
 	kit.env.ToolResultProjectionMode = mode
 
-	call := providers.ToolCall{ID: "call-int", Name: "grep", Arguments: "{}"}
+	call := providers.ToolCall{ID: "call-int", Name: "list_files", Arguments: "{}"}
 	returned, err := kit.executeKnownToolResultWithRepeatPolicy(
-		context.Background(), call, fakeGrepTool{text: grepContentEnvelope(3000)}, true)
+		context.Background(), call, fakeListTool{text: listEnvelope(3000)}, true)
 	if err != nil {
 		t.Fatalf("execute (mode=%s): %v", mode, err)
 	}
@@ -89,7 +89,7 @@ func assertGenericContinuation(t *testing.T, text string) {
 }
 
 func TestChokePoint_ModeOff_UsesGenericBudgetNoDiagnostics(t *testing.T) {
-	call, text, records := runFakeGrep(t, "off")
+	call, text, records := runFakeList(t, "off")
 	assertGenericContinuation(t, text)
 	rec := recordFor(records, call.ID)
 	if rec == nil || rec.Projection != nil {
@@ -98,7 +98,7 @@ func TestChokePoint_ModeOff_UsesGenericBudgetNoDiagnostics(t *testing.T) {
 }
 
 func TestChokePoint_ModeShadow_MeasuresButDoesNotApply(t *testing.T) {
-	call, text, records := runFakeGrep(t, "shadow")
+	call, text, records := runFakeList(t, "shadow")
 	assertGenericContinuation(t, text)
 	rec := recordFor(records, call.ID)
 	if rec == nil || rec.Projection == nil {
@@ -113,7 +113,7 @@ func TestChokePoint_ModeShadow_MeasuresButDoesNotApply(t *testing.T) {
 }
 
 func TestChokePoint_ModeActive_AppliesBoundedProjection(t *testing.T) {
-	call, text, records := runFakeGrep(t, "active")
+	call, text, records := runFakeList(t, "active")
 	if !strings.HasPrefix(strings.TrimSpace(text), "{") {
 		t.Fatalf("active mode must return the projected JSON envelope, got: %s", snip(text, 80))
 	}
@@ -143,9 +143,9 @@ func TestChokePoint_EnvOverrideBeatsConfiguredMode(t *testing.T) {
 	}
 	kit.env.SessionDir = t.TempDir()
 	kit.env.ToolResultProjectionMode = "off" // env override should win
-	call := providers.ToolCall{ID: "c", Name: "grep", Arguments: "{}"}
+	call := providers.ToolCall{ID: "c", Name: "list_files", Arguments: "{}"}
 	returned, err := kit.executeKnownToolResultWithRepeatPolicy(
-		context.Background(), call, fakeGrepTool{text: grepContentEnvelope(3000)}, true)
+		context.Background(), call, fakeListTool{text: listEnvelope(3000)}, true)
 	if err != nil {
 		t.Fatalf("execute: %v", err)
 	}
@@ -159,18 +159,18 @@ func TestChokePoint_EnvOverrideBeatsConfiguredMode(t *testing.T) {
 // projection cannot restore a larger result, and repeated preparation is
 // byte-identical (cache-safe within an epoch).
 func TestActiveProjection_IsStableThroughWireProjection(t *testing.T) {
-	call, projectedText, _ := runFakeGrep(t, "active")
+	call, projectedText, _ := runFakeList(t, "active")
 
 	stable := providers.ChatMessage{
 		Role:       "tool",
-		Name:       "grep",
+		Name:       "list_files",
 		ToolCallID: call.ID,
 		Content:    projectedText,
 		ToolResult: ptrToolResult(projectedText),
 	}
 	msgs := []providers.ChatMessage{
 		{Role: "user", Content: "search"},
-		{Role: "assistant", ToolCalls: []providers.ToolCall{{ID: call.ID, Name: "grep"}}},
+		{Role: "assistant", ToolCalls: []providers.ToolCall{{ID: call.ID, Name: "list_files"}}},
 		stable,
 	}
 

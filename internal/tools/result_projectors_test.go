@@ -222,10 +222,10 @@ func TestProjectors_MalformedFailOpen(t *testing.T) {
 	}
 }
 
-func TestProjectGlob_EndToEndFinalize(t *testing.T) {
+func TestProjectListFiles_EndToEndFinalize(t *testing.T) {
 	dir := t.TempDir()
-	raw := toolresult.FromText(globEnvelope(5000))
-	got, d := finalizeBuiltInToolResult(dir, "glob", "c-e2e", raw, 0)
+	raw := toolresult.FromText(listEnvelope(5000))
+	got, d := finalizeBuiltInToolResult(dir, "list_files", "c-e2e", raw, 0)
 	if !d.Applied || d.Reason != reasonProjected {
 		t.Fatalf("finalize diag = %+v", d)
 	}

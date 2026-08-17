@@ -2025,8 +2025,8 @@ func TestToolkit_SearchResultsIncludeNextSuggestions(t *testing.T) {
 	if grepParsed.Action != "grep" {
 		t.Fatalf("grep action = %q, want grep", grepParsed.Action)
 	}
-	if grepParsed.ContinuationSupported {
-		t.Fatalf("bounded grep unexpectedly advertised continuation: %+v", grepParsed)
+	if !grepParsed.ContinuationSupported {
+		t.Fatalf("grep did not advertise stable continuation: %+v", grepParsed)
 	}
 	if len(grepParsed.Suggestions) == 0 || !strings.Contains(strings.Join(grepParsed.Suggestions, " "), "read_file") {
 		t.Fatalf("grep response missing read_file suggestion: %+v", grepParsed.Suggestions)
@@ -2054,8 +2054,8 @@ func TestToolkit_SearchResultsIncludeNextSuggestions(t *testing.T) {
 	if globParsed.Action != "glob" {
 		t.Fatalf("glob action = %q, want glob", globParsed.Action)
 	}
-	if globParsed.ContinuationSupported {
-		t.Fatalf("bounded glob unexpectedly advertised continuation: %+v", globParsed)
+	if !globParsed.ContinuationSupported {
+		t.Fatalf("glob did not advertise stable continuation: %+v", globParsed)
 	}
 	if len(globParsed.Suggestions) == 0 || !strings.Contains(strings.Join(globParsed.Suggestions, " "), "broader glob") {
 		t.Fatalf("empty glob response missing broaden suggestion: %+v", globParsed.Suggestions)

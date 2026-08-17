@@ -20,12 +20,12 @@ func TestFinalize_EligibilityExactNameOnly(t *testing.T) {
 		eligible bool
 	}{
 		{"read_file", true},
-		{"grep", true},
-		{"glob", true},
 		{"list_files", true},
 		{"bash", true},
 		// Exact-match discipline: MCP, mutation, coordination, and case/space
 		// variants must never be eligible.
+		{"grep", false},
+		{"glob", false},
 		{"mcp_server_bash", false},
 		{"mcp_x_grep", false},
 		{"apply_patch", false},
@@ -49,12 +49,12 @@ func TestFinalize_EligibilityExactNameOnly(t *testing.T) {
 }
 
 func TestFinalize_UnderBudgetIsStableIdentity(t *testing.T) {
-	small := toolresult.FromText("short grep result")
-	got, d := finalizeBuiltInToolResult("", "grep", "c1", small, 0)
+	small := toolresult.FromText("short list result")
+	got, d := finalizeBuiltInToolResult("", "list_files", "c1", small, 0)
 	if !d.Eligible || d.Reason != reasonUnderBudget || d.Applied {
 		t.Fatalf("under-budget diag = %+v", d)
 	}
-	if got.TextProjection() != "short grep result" {
+	if got.TextProjection() != "short list result" {
 		t.Fatalf("under-budget result must be unchanged, got %q", got.TextProjection())
 	}
 	if d.OriginalTokens != d.ProjectedTokens || d.ProjectionHash != d.OriginalHash {
@@ -63,10 +63,10 @@ func TestFinalize_UnderBudgetIsStableIdentity(t *testing.T) {
 }
 
 func TestFinalize_OverBudgetNoProjectorFailsOpen(t *testing.T) {
-	// Remove grep's real projector to exercise the no-projector branch.
-	withoutProjector(t, "grep")
+	// Remove list_files's real projector to exercise the no-projector branch.
+	withoutProjector(t, "list_files")
 	big := toolresult.FromText(overBudgetText())
-	got, d := finalizeBuiltInToolResult("", "grep", "c1", big, 0)
+	got, d := finalizeBuiltInToolResult("", "list_files", "c1", big, 0)
 	if !d.Eligible || d.Reason != reasonNoProjector || d.Applied {
 		t.Fatalf("no-projector diag = %+v", d)
 	}
@@ -140,14 +140,14 @@ func withFakeProjector(t *testing.T, tool string, p toolProjector) {
 }
 
 func TestFinalize_ProjectedPathAppliesAndIsDeterministic(t *testing.T) {
-	withFakeProjector(t, "grep", func(raw string, pc projectorContext) (string, projectionOmission, bool) {
+	withFakeProjector(t, "list_files", func(raw string, pc projectorContext) (string, projectionOmission, bool) {
 		return "PROJECTED ref=" + pc.ArtifactRef, projectionOmission{Records: 3, Lines: 7, Bytes: 42}, true
 	})
 	dir := t.TempDir()
 	big := toolresult.FromText(overBudgetText())
 	big.IsError = true // must be preserved through projection
 
-	got, d := finalizeBuiltInToolResult(dir, "grep", "c1", big, 0)
+	got, d := finalizeBuiltInToolResult(dir, "list_files", "c1", big, 0)
 	if !d.Applied || d.Reason != reasonProjected {
 		t.Fatalf("projected diag = %+v", d)
 	}
@@ -167,19 +167,19 @@ func TestFinalize_ProjectedPathAppliesAndIsDeterministic(t *testing.T) {
 		t.Fatalf("projection must change hash and reduce tokens: %+v", d)
 	}
 
-	got2, d2 := finalizeBuiltInToolResult(dir, "grep", "c1", big, 0)
+	got2, d2 := finalizeBuiltInToolResult(dir, "list_files", "c1", big, 0)
 	if got2.TextProjection() != got.TextProjection() || d2.ProjectionHash != d.ProjectionHash {
 		t.Fatalf("projection must be deterministic: %q/%q", got.TextProjection(), got2.TextProjection())
 	}
 }
 
 func TestFinalize_ProjectorDeclineFailsOpenButKeepsArtifact(t *testing.T) {
-	withFakeProjector(t, "grep", func(raw string, pc projectorContext) (string, projectionOmission, bool) {
+	withFakeProjector(t, "list_files", func(raw string, pc projectorContext) (string, projectionOmission, bool) {
 		return "", projectionOmission{}, false
 	})
 	dir := t.TempDir()
 	big := toolresult.FromText(overBudgetText())
-	got, d := finalizeBuiltInToolResult(dir, "grep", "c1", big, 0)
+	got, d := finalizeBuiltInToolResult(dir, "list_files", "c1", big, 0)
 	if d.Applied || d.Reason != reasonFailOpen {
 		t.Fatalf("decline diag = %+v", d)
 	}
@@ -192,12 +192,12 @@ func TestFinalize_ProjectorDeclineFailsOpenButKeepsArtifact(t *testing.T) {
 }
 
 func TestFinalize_ArtifactUnrecoverableFailsOpen(t *testing.T) {
-	withFakeProjector(t, "grep", func(raw string, pc projectorContext) (string, projectionOmission, bool) {
+	withFakeProjector(t, "list_files", func(raw string, pc projectorContext) (string, projectionOmission, bool) {
 		return "PROJECTED", projectionOmission{}, true
 	})
 	big := toolresult.FromText(overBudgetText())
 	// Empty sessionDir and no embedded ref -> artifact cannot be guaranteed.
-	got, d := finalizeBuiltInToolResult("", "grep", "c1", big, 0)
+	got, d := finalizeBuiltInToolResult("", "list_files", "c1", big, 0)
 	if d.Applied || d.Reason != reasonFailOpen || !d.ArtifactFailed {
 		t.Fatalf("unrecoverable-artifact diag = %+v", d)
 	}

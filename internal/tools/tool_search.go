@@ -42,7 +42,7 @@ func (t *GrepTool) IsConcurrencySafe() bool { return true }
 func (t *GrepTool) Definition() providers.ToolDefinition {
 	return providers.ToolDefinition{
 		Name:        "grep",
-		Description: "Search file contents with a regex. Content and file results are streamed and bounded; narrow broad searches when truncated. Count mode supports stable offset continuation.",
+		Description: "Search file contents with a regex. Results are streamed and paged; use page.next with the same arguments for stable continuation. Use read_file to inspect match ranges.",
 		InputSchema: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -80,11 +80,11 @@ func (t *GrepTool) Definition() providers.ToolDefinition {
 				},
 				"offset": map[string]any{
 					"type":        "integer",
-					"description": "Zero-based record offset for output_mode=count continuation.",
+					"description": "Zero-based record offset for continuation. Use page.next.offset from the previous result.",
 				},
 				"expected_revision": map[string]any{
 					"type":        "string",
-					"description": "Required with non-zero offset when continuing output_mode=count.",
+					"description": "Required with non-zero offset; use page.next.expected_revision to reject stale continuation.",
 				},
 			},
 			"required": []string{"pattern"},
@@ -179,31 +179,29 @@ func (t *GrepTool) Execute(ctx context.Context, argsJSON string) (string, error)
 
 	switch opts.outputMode {
 	case "files_with_matches":
-		if args.Offset != 0 {
-			return "", errors.New("grep offset continuation is only supported for output_mode=count; narrow the search instead")
-		}
-		files, err := grepFilesWithMatches(ctx, execRoot, args.Pattern, searchRoot, args.Include, opts, grepPageSize+1)
+		files, err := grepFilesWithMatches(ctx, execRoot, args.Pattern, searchRoot, args.Include, opts, 0)
 		if err != nil {
 			return "", err
 		}
-		page, hasMore := pageWindow(files, 0, grepPageSize)
-		matchedAtLeast := len(page)
-		if hasMore {
-			matchedAtLeast++
+		revision := continuationSnapshotRevision(workspaceRevision(ctx, t.env.RevisionRoot(ctx)), "grep:files", files)
+		if err := validateStableOffset("grep", args.Offset, args.ExpectedRevision, revision); err != nil {
+			return "", err
 		}
+		page, hasMore := pageWindow(files, args.Offset, grepPageSize)
 		result := map[string]any{
 			"action":                 "grep",
 			"pattern":                args.Pattern,
-			"continuation_supported": false,
-			"total":                  matchedAtLeast,
-			"total_is_lower_bound":   hasMore,
-			"offset":                 0,
+			"continuation_supported": true,
+			"workspace_revision":     revision,
+			"total":                  len(files),
+			"record_total":           len(files),
+			"offset":                 args.Offset,
 			"returned_count":         len(page),
 			"has_more":               hasMore,
-			"page":                   boundedSearchPage(len(page), hasMore),
+			"page":                   continuationPage(args.Offset, len(page), hasMore, revision),
 			"truncated":              hasMore,
 			"files":                  page,
-			"next_suggestions":       searchNextSuggestions("grep", "files_with_matches", len(page), hasMore),
+			"next_suggestions":       searchNextSuggestions("grep", "files_with_matches", len(files), hasMore),
 		}
 		return mustJSON(result)
 
@@ -218,41 +216,38 @@ func (t *GrepTool) Execute(ctx context.Context, argsJSON string) (string, error)
 		}
 		page, hasMore := pageWindow(counts, args.Offset, grepPageSize)
 		result := map[string]any{
-			"action":             "grep",
-			"pattern":            args.Pattern,
-			"workspace_revision": revision,
-			"total":              total,
-			"record_total":       len(counts),
-			"offset":             args.Offset,
-			"returned_count":     len(page),
-			"has_more":           hasMore,
-			"page":               continuationPage(args.Offset, len(page), hasMore, revision),
-			"truncated":          hasMore,
-			"counts":             page,
-			"next_suggestions":   searchNextSuggestions("grep", "count", total, hasMore),
+			"action":                 "grep",
+			"pattern":                args.Pattern,
+			"continuation_supported": true,
+			"workspace_revision":     revision,
+			"total":                  total,
+			"record_total":           len(counts),
+			"offset":                 args.Offset,
+			"returned_count":         len(page),
+			"has_more":               hasMore,
+			"page":                   continuationPage(args.Offset, len(page), hasMore, revision),
+			"truncated":              hasMore,
+			"counts":                 page,
+			"next_suggestions":       searchNextSuggestions("grep", "count", total, hasMore),
 		}
 		return mustJSON(result)
 
 	default: // "content"
-		if args.Offset != 0 {
-			return "", errors.New("grep offset continuation is only supported for output_mode=count; narrow the search instead")
-		}
-		matches, err := grepWithRipgrep(ctx, t.env, execRoot, args.Pattern, searchRoot, args.Include, opts, grepPageSize+1)
+		matches, err := grepWithRipgrep(ctx, t.env, execRoot, args.Pattern, searchRoot, args.Include, opts, 0)
 		if err != nil {
 			if !errors.Is(err, errRipgrepUnavailable) {
 				return "", err
 			}
-			matches, err = grepWithFallback(t.env, execRoot, args.Pattern, searchRoot, args.Include, opts, grepPageSize+1)
+			matches, err = grepWithFallback(t.env, execRoot, args.Pattern, searchRoot, args.Include, opts, 0)
 			if err != nil {
 				return "", err
 			}
 		}
-		page, hasMore := pageWindow(matches, 0, grepPageSize)
-		matchedAtLeast := len(page)
-		if hasMore {
-			matchedAtLeast++
+		revision := continuationSnapshotRevision(workspaceRevision(ctx, t.env.RevisionRoot(ctx)), "grep:content", matches)
+		if err := validateStableOffset("grep", args.Offset, args.ExpectedRevision, revision); err != nil {
+			return "", err
 		}
-		return grepContentResultJSON(args.Pattern, page, matchedAtLeast, hasMore, 0, hasMore, "")
+		return grepContentResultJSON(args.Pattern, matches, args.Offset, revision)
 	}
 }
 
@@ -271,7 +266,7 @@ func (t *GlobTool) IsConcurrencySafe() bool { return true }
 func (t *GlobTool) Definition() providers.ToolDefinition {
 	return providers.ToolDefinition{
 		Name:        "glob",
-		Description: "Find files by glob pattern. Results are streamed and bounded; narrow the path or pattern when truncated. Use grep for content search.",
+		Description: "Find files by glob pattern. Results are streamed and paged; use page.next with the same arguments for stable continuation. Use grep for content search.",
 		InputSchema: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -285,11 +280,11 @@ func (t *GlobTool) Definition() providers.ToolDefinition {
 				},
 				"offset": map[string]any{
 					"type":        "integer",
-					"description": "Deprecated. Narrow the path or pattern when glob results are truncated.",
+					"description": "Zero-based record offset for continuation. Use page.next.offset from the previous result.",
 				},
 				"expected_revision": map[string]any{
 					"type":        "string",
-					"description": "Deprecated with glob offset continuation.",
+					"description": "Required with non-zero offset; use page.next.expected_revision to reject stale continuation.",
 				},
 			},
 			"required": []string{"pattern"},
@@ -327,9 +322,6 @@ func (t *GlobTool) Execute(ctx context.Context, argsJSON string) (string, error)
 	if strings.TrimSpace(args.Pattern) == "" {
 		return "", errors.New("glob requires pattern")
 	}
-	if args.Offset != 0 {
-		return "", errors.New("glob offset continuation is not supported; narrow the path or pattern instead")
-	}
 
 	// Worktree-bound execution: the search root switches to the checkout
 	// after the ordinary sandbox check accepted the workspace path.
@@ -350,35 +342,36 @@ func (t *GlobTool) Execute(ctx context.Context, argsJSON string) (string, error)
 		searchRoot = resolved
 	}
 
-	matches, err := globWithRipgrep(ctx, execRoot, searchRoot, args.Pattern, globPageSize+1)
+	matches, err := globWithRipgrep(ctx, execRoot, searchRoot, args.Pattern, 0)
 	if err != nil {
 		if !errors.Is(err, errRipgrepUnavailable) {
 			return "", err
 		}
-		matches, err = globWithFallback(execRoot, searchRoot, args.Pattern, globPageSize+1)
+		matches, err = globWithFallback(execRoot, searchRoot, args.Pattern, 0)
 		if err != nil {
 			return "", err
 		}
 	}
-	page, hasMore := pageWindow(matches, 0, globPageSize)
-	matchedAtLeast := len(page)
-	if hasMore {
-		matchedAtLeast++
+	revision := continuationSnapshotRevision(workspaceRevision(ctx, t.env.RevisionRoot(ctx)), "glob", matches)
+	if err := validateStableOffset("glob", args.Offset, args.ExpectedRevision, revision); err != nil {
+		return "", err
 	}
+	page, hasMore := pageWindow(matches, args.Offset, globPageSize)
 
 	result := map[string]any{
 		"action":                 "glob",
 		"pattern":                args.Pattern,
-		"continuation_supported": false,
-		"total":                  matchedAtLeast,
-		"total_is_lower_bound":   hasMore,
-		"offset":                 0,
+		"continuation_supported": true,
+		"workspace_revision":     revision,
+		"total":                  len(matches),
+		"record_total":           len(matches),
+		"offset":                 args.Offset,
 		"returned_count":         len(page),
 		"has_more":               hasMore,
-		"page":                   boundedSearchPage(len(page), hasMore),
+		"page":                   continuationPage(args.Offset, len(page), hasMore, revision),
 		"truncated":              hasMore,
 		"files":                  page,
-		"next_suggestions":       searchNextSuggestions("glob", "", len(page), hasMore),
+		"next_suggestions":       searchNextSuggestions("glob", "", len(matches), hasMore),
 	}
 	return mustJSON(result)
 }
@@ -387,12 +380,16 @@ func searchNextSuggestions(toolName, outputMode string, total int, truncated boo
 	if truncated {
 		switch toolName {
 		case "glob":
-			return []string{"narrow the glob path or pattern to inspect omitted files"}
+			return []string{"use page.next with the same glob arguments for more files, or narrow the path or pattern"}
 		default:
-			if outputMode == "count" {
+			switch outputMode {
+			case "count":
 				return []string{"use page.next with the same grep arguments for more count records, or narrow the search"}
+			case "files_with_matches":
+				return []string{"use page.next with the same grep arguments for more files, or narrow the search"}
+			default:
+				return []string{"use page.next with the same grep arguments for more matches, or narrow the search"}
 			}
-			return []string{"narrow the grep path, include, or pattern to inspect omitted matches"}
 		}
 	}
 	if total == 0 {
@@ -416,10 +413,11 @@ func searchNextSuggestions(toolName, outputMode string, total int, truncated boo
 	}
 }
 
-func grepContentResultJSON(pattern string, matches []grepMatch, totalRecords int, totalIsLowerBound bool, offset int, sourceHasMore bool, revision string) (string, error) {
-	budgetedMatches := make([]grepMatch, len(matches))
+func grepContentResultJSON(pattern string, matches []grepMatch, offset int, revision string) (string, error) {
+	page, _ := pageWindow(matches, offset, grepPageSize)
+	budgetedMatches := make([]grepMatch, len(page))
 	contentTruncated := false
-	for i, match := range matches {
+	for i, match := range page {
 		if len(match.Content) > maxGrepMatchContentBytes {
 			match.Content = stringutil.HeadTail(match.Content, maxGrepMatchContentBytes/2, maxGrepMatchContentBytes/4, "\n...[line truncated]...\n")
 			contentTruncated = true
@@ -429,25 +427,27 @@ func grepContentResultJSON(pattern string, matches []grepMatch, totalRecords int
 
 	omitted := 0
 	for {
-		hasMore := sourceHasMore || omitted > 0
+		shownCount := len(budgetedMatches)
+		hasMore := offset+shownCount < len(matches)
 		truncated := hasMore || contentTruncated
 		result := map[string]any{
 			"action":                 "grep",
 			"pattern":                pattern,
-			"continuation_supported": false,
-			"total":                  totalRecords,
-			"total_is_lower_bound":   totalIsLowerBound,
+			"continuation_supported": true,
+			"workspace_revision":     revision,
+			"total":                  len(matches),
+			"record_total":           len(matches),
 			"offset":                 offset,
 			"has_more":               hasMore,
 			"truncated":              truncated,
 			"matches":                budgetedMatches,
 			"omitted_match_count":    omitted,
 			"content_truncated":      contentTruncated,
-			"next_suggestions":       searchNextSuggestions("grep", "content", totalRecords, truncated),
+			"next_suggestions":       searchNextSuggestions("grep", "content", len(matches), hasMore),
 			"result_budget_bytes":    maxGrepOutputBytes,
-			"returned_match_count":   len(budgetedMatches),
-			"returned_count":         len(budgetedMatches),
-			"page":                   boundedSearchPage(len(budgetedMatches), hasMore),
+			"returned_match_count":   shownCount,
+			"returned_count":         shownCount,
+			"page":                   continuationPage(offset, shownCount, hasMore, revision),
 		}
 		out, err := mustJSON(result)
 		if err != nil {

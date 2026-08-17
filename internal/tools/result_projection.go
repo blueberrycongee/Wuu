@@ -90,8 +90,6 @@ func resolveProjectionMode(configured string) projectionMode {
 // prefix/substring match: "mcp_x_bash" must not match "bash".
 var builtInProjectionAllowlist = map[string]bool{
 	"read_file":  true,
-	"grep":       true,
-	"glob":       true,
 	"list_files": true,
 	"bash":       true,
 	"thread_get": true,
