@@ -371,7 +371,7 @@ workspace.css:578 box-shadow --ink-overlay-12
 workspace.css:3180 box-shadow --ink-overlay-12
 workspace.css:4602 box-shadow --ink-overlay-12
 workspace.css:4618 box-shadow --ink-overlay-18
-workspace.css:4961 box-shadow --ink-overlay-18
+workspace.css:4932 box-shadow --ink-overlay-18
 workspace.css:673 background --ink-overlay-4
 workspace.css:1438 background --ink-overlay-4
 workspace.css:4315 box-shadow --ink-overlay-4
@@ -402,10 +402,9 @@ workspace.css:2772 box-shadow --skill-artwork-shadow
 workspace.css:2933 fill --skill-mark-highlight
 workspace.css:2983 background --skill-tag-bundled-bg
 workspace.css:2984 color --skill-tag-bundled-fg
-workspace.css:4945 background --split-composer-bg
-workspace.css:4956 box-shadow --split-composer-shadow
-workspace.css:4961 box-shadow --split-composer-shadow
-workspace.css:4890 background --split-header-bg
+workspace.css:4916 background --split-composer-bg
+workspace.css:4927 box-shadow --split-composer-shadow
+workspace.css:4932 box-shadow --split-composer-shadow
 workspace.css:2490 background --success-soft
 workspace.css:2739 background --success-soft
 workspace.css:2042 background --warning-soft

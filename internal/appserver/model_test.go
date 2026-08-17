@@ -828,9 +828,9 @@ func TestApplyTokenUsageMetasToTurnsAlignsFromNewestTurn(t *testing.T) {
 
 func TestChatMessageInputTextExposesOnlyHiddenDeliveredPrompts(t *testing.T) {
 	cases := []struct {
-		name     string
-		msg      providers.ChatMessage
-		want     string
+		name string
+		msg  providers.ChatMessage
+		want string
 	}{
 		{
 			name: "ordinary user message exposes nothing",

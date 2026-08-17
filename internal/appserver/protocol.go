@@ -2015,9 +2015,9 @@ type ThreadItem struct {
 	// Terminal marks an assistant message that carried no tool calls and is
 	// therefore the turn's final answer. It is derived structurally from the
 	// assistant message, not from a provider phase signal.
-	Terminal         bool                       `json:"terminal,omitempty"`
-	Role             string                     `json:"role,omitempty"`
-	Text             string                     `json:"text,omitempty"`
+	Terminal bool   `json:"terminal,omitempty"`
+	Role     string `json:"role,omitempty"`
+	Text     string `json:"text,omitempty"`
 	// InputText carries the raw user input when it differs from the displayed
 	// bubble text (for example a plugin-generated wake message that shows a
 	// generic query bubble but delivers a specific prompt to the model).
