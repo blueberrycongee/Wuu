@@ -1,31 +1,32 @@
-import { useEffect, useRef, useState } from "react";
-import type { ReactNode, TouchEvent } from "react";
+import { useEffect, useRef } from "react";
+import type { TouchEvent } from "react";
 import type { Thread } from "@wuu/protocol";
 
-import mascotFace from "../assets/mascot-face.png";
-import { MascotAvatar } from "../components/MascotAvatar";
+import { Composer } from "../components/Composer";
+import { IconMenu } from "../components/icons";
+import { Markdown } from "../components/Markdown";
 import { chatRowsFromTurns } from "../lib/chatModel";
 import { greetingFor } from "../lib/greetings";
 import type { AppSnapshot } from "../lib/store";
 import { isThreadRunning, threadDisplayTitle } from "../lib/threads";
 
+/** Conversation view, ChatGPT-style: the user's messages are right-aligned
+ *  bubbles, agent replies render as full-width Markdown documents, and the
+ *  composer's action button turns into stop while a turn runs. */
 export function ThreadScreen({
   snapshot,
   threadId,
   onSend,
   onInterrupt,
-  drawerContent,
+  onOpenDrawer,
 }: {
   snapshot: AppSnapshot;
   threadId: string;
   onSend: (thread: Thread, text: string) => void;
   onInterrupt: (threadId: string) => void;
-  /** Conversation list rendered inside the left slide-out drawer. */
-  drawerContent: ReactNode;
+  onOpenDrawer: () => void;
 }): React.JSX.Element {
   const thread = snapshot.threads.find((t) => t.id === threadId);
-  const [draft, setDraft] = useState("");
-  const [drawerOpen, setDrawerOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const nearBottomRef = useRef(true);
   const touchStartRef = useRef<number | null>(null);
@@ -56,15 +57,6 @@ export function ThreadScreen({
     nearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
   };
 
-  const send = (): void => {
-    if (!thread) return;
-    const text = draft.trim();
-    if (!text) return;
-    setDraft("");
-    nearBottomRef.current = true;
-    onSend(thread, text);
-  };
-
   // Edge swipe from the left opens the conversation drawer, mirroring the
   // desktop's always-visible session sidebar on a one-pane phone.
   const onTouchStart = (e: TouchEvent): void => {
@@ -79,41 +71,26 @@ export function ThreadScreen({
     touchStartRef.current = null;
     if (startX === null) return;
     const endX = e.changedTouches[0]?.clientX ?? startX;
-    if (endX - startX > 70) setDrawerOpen(true);
+    if (endX - startX > 70) onOpenDrawer();
   };
 
   const title = thread ? threadDisplayTitle(thread) : "会话";
-  const hostName = snapshot.hostName || "Wuu";
 
   return (
     <div className="thread" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
       <div className="header">
-        <button
-          className="header-back"
-          onClick={() => setDrawerOpen(true)}
-          aria-label="打开会话列表"
-        >
-          ☰
+        <button className="icon-btn" onClick={onOpenDrawer} aria-label="打开会话列表">
+          <IconMenu />
         </button>
-        <MascotAvatar id={threadId} name={title} size={32} />
-        <div className="header-title-wrap">
-          <div className="header-title">{title}</div>
-          <div className="header-subtitle">{hostName}</div>
+        <div className="header-title" title={title}>
+          {title}
         </div>
-        {running ? (
-          <button className="header-action danger" onClick={() => onInterrupt(threadId)}>
-            打断
-          </button>
-        ) : null}
+        <span className="header-spacer" />
       </div>
 
       {isEmpty ? (
-        <div className="hero">
-          <span className="hero-mascot">
-            <img src={mascotFace} alt="" draggable={false} />
-          </span>
-          <h2>{greetingFor(new Date().getHours())}</h2>
-          <p>在下方输入消息，开始这段对话</p>
+        <div className="home-body">
+          <h2 className="home-greeting">{greetingFor(new Date().getHours())}</h2>
         </div>
       ) : (
         <div className="messages" ref={scrollRef} onScroll={trackScroll}>
@@ -124,10 +101,7 @@ export function ThreadScreen({
               </div>
             ) : (
               <div key={row.id} className="msg agent">
-                <span className="hero-mascot" style={{ width: 30, height: 30, marginBottom: 0 }}>
-                  <img src={mascotFace} alt="" draggable={false} />
-                </span>
-                <div className="msg-bubble">{row.item.text ?? ""}</div>
+                <Markdown text={row.item.text ?? ""} />
               </div>
             ),
           )}
@@ -142,18 +116,13 @@ export function ThreadScreen({
           ))}
 
           {running && !turnError ? (
-            <div className="msg agent">
-              <span className="hero-mascot" style={{ width: 30, height: 30, marginBottom: 0 }}>
-                <img src={mascotFace} alt="" draggable={false} />
+            <div className="thinking">
+              <span>正在思考</span>
+              <span className="thinking-dots">
+                <i />
+                <i />
+                <i />
               </span>
-              <div className="msg-bubble thinking">
-                <span>正在思考</span>
-                <span className="thinking-dots">
-                  <i />
-                  <i />
-                  <i />
-                </span>
-              </div>
             </div>
           ) : null}
 
@@ -161,29 +130,16 @@ export function ThreadScreen({
         </div>
       )}
 
-      <div className="composer">
-        <textarea
-          value={draft}
-          placeholder="发消息…"
-          rows={1}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
-              e.preventDefault();
-              send();
-            }
-          }}
-        />
-        <button className="composer-send" disabled={!draft.trim() || !thread} onClick={send}>
-          发送
-        </button>
-      </div>
-
-      <div
-        className={`drawer-overlay${drawerOpen ? " open" : ""}`}
-        onClick={() => setDrawerOpen(false)}
+      <Composer
+        placeholder="发消息…"
+        running={running}
+        onSend={(text) => {
+          if (!thread) return;
+          nearBottomRef.current = true;
+          onSend(thread, text);
+        }}
+        onStop={() => onInterrupt(threadId)}
       />
-      <aside className={`drawer-panel${drawerOpen ? " open" : ""}`}>{drawerContent}</aside>
     </div>
   );
 }
