@@ -16,6 +16,7 @@ import {
   composerImageFromFile,
   isSupportedComposerAttachment
 } from "./ComposerMessages";
+import { isComposerTextComposing } from "./ComposerSlashCommands";
 import {
   isInternalUserNotificationItem,
   isProcessNotificationItem,
@@ -530,7 +531,10 @@ function UserMessageInlineEditor({
       onCancel?.();
       return;
     }
-    if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+    if (isComposerTextComposing(event)) {
+      return;
+    }
+    if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
       submit();
     }
