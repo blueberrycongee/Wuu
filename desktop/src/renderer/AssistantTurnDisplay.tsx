@@ -3,7 +3,6 @@ import type { ThreadItem, Turn } from "../shared/protocol";
 import { streamFieldValue } from "./ThreadItemText";
 import { summarizeToolActivity } from "./ToolActivityHelpers";
 import { isCancellationMessage } from "./UserFacingErrors";
-import { translateCurrent } from "./i18n";
 
 /**
  * The single, ordered list of items that make up an assistant turn.
@@ -50,9 +49,6 @@ export type AssistantTurnDisplay = {
    *  separately checks that its streamed text is non-empty before starting
    *  the process-to-answer handoff. */
   hasAnswer: boolean;
-  /** Present when a completed turn produced process text but no final
-   *  answer. This is a user-facing outcome, not an internal bug label. */
-  missingReplyMessage?: string;
   /** Latest process record shown in the fold header while the turn is
    *  live. Usually commentary text, but it can also be the latest tool
    *  action when no newer text has arrived yet. */
@@ -209,17 +205,6 @@ export function buildAssistantTurnDisplay(
     return undefined;
   }
 
-  const isCompleted = turn.status === "completed";
-  let missingReplyMessage: string | undefined;
-  if (isCompleted && !hasAnswer) {
-    const hasProcessText = turn.items.some(
-      (item) => item.type === "agent_message" && !item.terminal,
-    );
-    if (hasProcessText) {
-      missingReplyMessage = translateCurrent("turn.missingFinalAnswer");
-    }
-  }
-
   const latestProcessPreview = isInProgress
     ? latestInProgressProcessPreview(turn)
     : undefined;
@@ -235,7 +220,6 @@ export function buildAssistantTurnDisplay(
   return {
     entries: groupProcessEntries(entries),
     hasAnswer,
-    missingReplyMessage,
     latestProcessPreview,
   };
 }

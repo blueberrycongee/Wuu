@@ -16,10 +16,6 @@
  * Multi-`final_answer` turns keep all answer text in arrival order so
  * they don't expose internal stream shape.
  *
- * Empty reply: a completed turn that produced commentary but no
- * `final_answer` carries a `missingReplyMessage` — a user-facing
- * outcome, not an internal bug label.
- *
  * Live preview: the fold header shows the latest commentary text or
  * the latest tool command while the turn is `in_progress`.
  * Completed turns drop the preview; the fold header collapses to
@@ -169,10 +165,9 @@ describe("assistant turn entries layout", () => {
     expect(activityItemIDs(display)).toEqual([tool.id]);
     expect(answerItemIDs(display)).toEqual([final.id]);
     expect(display?.hasAnswer).toBe(true);
-    expect(display?.missingReplyMessage).toBeUndefined();
   });
 
-  it("missing final: commentary + tool + commentary, no final_answer → empty-reply notice", () => {
+  it("no final: commentary + tool + commentary keeps process entries without an answer", () => {
     const commentaryA = makeCommentary("Let me check.");
     const tool = makeToolCall("ls");
     const commentaryB = makeCommentary("Found something.");
@@ -185,11 +180,6 @@ describe("assistant turn entries layout", () => {
     expect(processItemIDs(display)).toEqual([commentaryA.id, commentaryB.id]);
     expect(activityItemIDs(display)).toEqual([tool.id]);
     expect(display?.hasAnswer).toBe(false);
-    // The turn started talking (commentary present) but never produced
-    // a final answer → show a user-facing empty reply outcome.
-    expect(display?.missingReplyMessage).toBe(
-      "这轮只保留了过程记录，没有生成最终回答。",
-    );
     // Completed turn → no live process preview.
     expect(display?.latestProcessPreview?.text).toBeUndefined();
   });
@@ -209,7 +199,6 @@ describe("assistant turn entries layout", () => {
     expect(processItemIDs(display)).toEqual([commentaryA.id, commentaryB.id]);
     expect(answerItemIDs(display)).toEqual([finalOne.id, finalTwo.id]);
     expect(display?.hasAnswer).toBe(true);
-    expect(display?.missingReplyMessage).toBeUndefined();
     expect(display?.latestProcessPreview?.text).toBeUndefined();
   });
 
@@ -236,14 +225,12 @@ describe("assistant turn entries layout", () => {
     expect(processEntries?.[0]?.count).toBe(2);
     expect(processItemIDs(inProgressDisplay)).toEqual([toolA.id]);
     expect(inProgressDisplay?.hasAnswer).toBe(false);
-    expect(inProgressDisplay?.missingReplyMessage).toBeUndefined();
     // Both tools lack arguments, so the deterministic summary falls back to
     // the search count rather than the latest raw tool command.
     expect(inProgressDisplay?.latestProcessPreview?.kind).toBe("activity");
     expect(inProgressDisplay?.latestProcessPreview?.text).toBe("1 次搜索");
 
-    // completed with no final answer: pure tool with no text is not a
-    // bug. No empty-reply notice because there was no commentary.
+    // Completed with no final answer: pure tool output remains process-only.
     const completedTurn = makeTurn({
       status: "completed",
       items: [toolA, toolB],
@@ -263,7 +250,6 @@ describe("assistant turn entries layout", () => {
     expect(completedProcess?.[0]?.count).toBe(2);
     expect(processItemIDs(completedDisplay)).toEqual([toolA.id]);
     expect(completedDisplay?.hasAnswer).toBe(false);
-    expect(completedDisplay?.missingReplyMessage).toBeUndefined();
     expect(completedDisplay?.latestProcessPreview?.text).toBeUndefined();
   });
 

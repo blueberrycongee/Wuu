@@ -70,14 +70,13 @@ describe("ChipGalleryPanel", () => {
     const host = mount({ open: true, onClose: () => {} });
 
     const entries = host.querySelectorAll(".chip-gallery-entry");
-    // 12 entries: missing reply + 3 context compaction
+    // 11 entries: 3 context compaction
     // + 4 provider/network + 2 auth + 2 tool/internal.
-    expect(entries.length).toBe(12);
+    expect(entries.length).toBe(11);
 
     // Manual interruptions are intentionally silent and are not chip variants.
     expect(host.textContent).not.toContain("已停止");
     expect(host.textContent).not.toContain("回复已中断");
-    expect(host.textContent).toContain("无最终回答");
     // A few representative chip titles from the error / auth path.
     expect(host.textContent).toContain("401 unauthorized");
     expect(host.textContent).toContain("context_length_exceeded");
@@ -88,13 +87,13 @@ describe("ChipGalleryPanel", () => {
 
     const firstEntry = host.querySelector(".chip-gallery-entry");
     expect(firstEntry).not.toBeNull();
-    // The chip itself (turn-event-notice) is rendered inside the entry.
+    // The chip itself is rendered inside the entry.
     expect(
-      firstEntry?.querySelector(".turn-event-notice"),
+      firstEntry?.querySelector(".turn-event-notice, .context-compaction-notice"),
     ).not.toBeNull();
     // The kind badge is a <code> with the "kind · tone" string.
     expect(firstEntry?.querySelector("code")?.textContent).toMatch(
-      /· (neutral|warning|auth|error|gray)/,
+      /· (neutral|warning|auth|error|gray|progress)/,
     );
     // The description is a one-liner explaining when the chip fires.
     expect(firstEntry?.querySelector(".chip-gallery-entry-description")?.textContent?.length).toBeGreaterThan(0);
@@ -110,14 +109,13 @@ describe("ChipGalleryPanel", () => {
     });
 
     const items = host.querySelectorAll(".chip-gallery-context-item");
-    // 3 representative scenarios: missing-reply, context-compaction,
-    // failed-provider.
-    expect(items.length).toBe(3);
+    // 2 representative scenarios: context-compaction and failed-provider.
+    expect(items.length).toBe(2);
 
     // Each item has a heading and a framed mock turn.
     const firstItem = items[0];
     expect(firstItem?.querySelector("h4")?.textContent).toBe(
-      "完成但只有 commentary，无 final_answer",
+      "Turn 中含 context_compaction item",
     );
     expect(
       firstItem?.querySelector(".chip-gallery-context-frame"),

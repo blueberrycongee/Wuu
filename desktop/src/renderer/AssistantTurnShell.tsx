@@ -159,7 +159,6 @@ export function AssistantTurnShell({
     "assistant-turn-shell",
     hasProcess ? "has-process" : "",
     hasAnswer ? "has-answer" : "",
-    display.missingReplyMessage ? "missing-reply-turn" : "",
   ]
     .filter(Boolean)
     .join(" ");
@@ -200,17 +199,6 @@ export function AssistantTurnShell({
         </div>
       ) : null}
       {trailingContent}
-      {/*
-        No inline "missing reply" notice here. The hand-rolled legacy
-        aside used to live here, but it bypassed the chip pipeline
-        (TurnEvents → TurnEventNotice) that every other turn-level
-        outcome uses, so the visual treatment diverged from the
-        cancelled / failed / context-compaction chips. The unified chip
-        is now rendered as a sibling by TurnView based on
-        `assistantDisplay.missingReplyMessage`. The shell still applies
-        the `missing-reply-turn` className above so any shell-level
-        styling (transparent background, etc.) keeps firing.
-      */}
     </div>
   );
 }

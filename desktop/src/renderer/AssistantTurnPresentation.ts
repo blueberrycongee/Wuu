@@ -102,7 +102,6 @@ function displayStructureSignature(
   }
   return [
     display.hasAnswer ? "answer" : "no-answer",
-    display.missingReplyMessage ? "missing" : "ok",
     display.latestProcessPreview?.kind ?? "no-preview",
     display.entries.map(entryStructureSignature).join("|"),
   ].join(";");

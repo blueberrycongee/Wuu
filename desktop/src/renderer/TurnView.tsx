@@ -173,16 +173,9 @@ function TurnContent({
     turn.id,
     rawAssistantDisplay,
   );
-  // `buildAssistantTurnDisplay` already classifies "turn completed but
-  // only commentary, no `final_answer`" and surfaces it as
-  // `missingReplyMessage`. Forward that to the event pipeline so the
-  // chip shows up in the same place as cancelled / failed notices,
-  // instead of being hand-rolled inside the assistant turn shell.
-  const hasMissingReply = assistantDisplay?.missingReplyMessage !== undefined;
   const event = turnEventForTurn(
     turn,
     turnHasAssistantOutput(turn),
-    hasMissingReply,
   );
 
   return (

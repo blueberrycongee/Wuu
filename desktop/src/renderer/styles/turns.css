@@ -246,13 +246,6 @@
                                                                      
                                                                       
                                         
-.assistant-turn-shell.missing-reply-turn {
-  padding: 0;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-}
-
 .message {
   max-width: min(var(--conversation-message-max-width), var(--conversation-message-max-inline));
   border-radius: var(--radius-sm);

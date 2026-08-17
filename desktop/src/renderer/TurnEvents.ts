@@ -2,7 +2,6 @@ import type { ThreadItem, ThreadItemStatus, Turn } from "../shared/protocol";
 import {
   isCancellationMessage,
   userFacingErrorForMessage,
-  userFacingErrorForMissingReply,
   type UserFacingErrorDisplay,
 } from "./UserFacingErrors";
 import { translateCurrent } from "./i18n";
@@ -17,8 +16,7 @@ export type TurnEventKind =
   | "internal_error"
   | "context_compacting"
   | "context_compacted"
-  | "context_compaction_failed"
-  | "missing_final_answer";
+  | "context_compaction_failed";
 
 export type TurnEventSource = "turn" | "item";
 
@@ -46,7 +44,6 @@ export type TurnEventDisplay =
 export function turnEventForTurn(
   turn: Turn,
   hasAssistantOutput: boolean,
-  hasMissingReply: boolean = false,
 ): TurnEventDisplay | undefined {
   // A manual stop is an expected user action. Preserve any generated output,
   // but do not add a redundant turn-level divider after the user just clicked
@@ -58,21 +55,6 @@ export function turnEventForTurn(
     (!interruptionError || isCancellationMessage(interruptionError.toLowerCase()))
   ) {
     return undefined;
-  }
-  // Soft outcome: turn completed but only produced commentary, no
-  // `final_answer`. Rendered as a warning system event (not an error) and
-  // checked first so a completed turn with commentary but no answer
-  // does not get re-routed to the cancelled / failed branches below.
-  // The flag is computed by the caller from `AssistantTurnDisplay`,
-  // which has the full item list and is the only place that already
-  // does this classification.
-  if (hasMissingReply) {
-    return {
-      kind: "missing_final_answer",
-      source: "turn",
-      presentation: "notice",
-      notice: userFacingErrorForMissingReply(),
-    };
   }
   if (turn.kind === "compact" && hasContextCompactionOutcome(turn)) {
     return undefined;

@@ -5,7 +5,7 @@
  * Two sections:
  *   1. Gallery: each chip rendered in isolation with its kind / tone /
  *      description. Built by calling the same `userFacingErrorForMessage`
- *      / `userFacingErrorForMissingReply` / `ContextCompactionNotice`
+ *      / `ContextCompactionNotice`
  *      entry points the real turn pipeline uses, so what you see here
  *      is what the user sees in the conversation.
  *   2. In-Context: three mock `Turn` records rendered through the real
@@ -19,10 +19,7 @@
 import { X } from "lucide-react";
 import { type JSX } from "react";
 import type { Turn } from "../shared/protocol";
-import {
-  userFacingErrorForMessage,
-  userFacingErrorForMissingReply,
-} from "./UserFacingErrors";
+import { userFacingErrorForMessage } from "./UserFacingErrors";
 import { ContextCompactionNotice, TurnNotice } from "./TurnNotice";
 import { TurnView } from "./TurnView";
 import { translateCurrent, useI18n } from "./i18n";
@@ -57,7 +54,6 @@ export function ChipGalleryPanel({
             <p>
               {t("chipGallery.descriptionPrefix")}{" "}
               <code>userFacingErrorForMessage</code> /
-              <code>userFacingErrorForMissingReply</code> /
               <code>ContextCompactionNotice</code>{" "}{t("chipGallery.descriptionSuffix")}
             </p>
           </div>
@@ -96,16 +92,6 @@ type GalleryEntry = {
 
 function galleryEntries(): GalleryEntry[] {
   return [
-  // -----------------------------------------------------------------------
-  // Soft outcomes
-  // -----------------------------------------------------------------------
-  {
-    label: translateCurrent("chipGallery.noFinalAnswer"),
-    kind: "missing_final_answer · warning",
-    description: translateCurrent("chipGallery.commentaryOnly"),
-    render: () => <TurnNotice display={userFacingErrorForMissingReply()} />,
-  },
-
   // -----------------------------------------------------------------------
   // Context compaction
   // -----------------------------------------------------------------------
@@ -294,26 +280,12 @@ type ContextTurn = {
 };
 
 /**
- * Three representative scenarios. Each one constructs a `Turn` with the
+ * Representative scenarios. Each one constructs a `Turn` with the
  * minimum items needed to surface the target chip via the real
  * `turnEventForTurn` / `turnEventForItem` pipeline.
  */
 function contextTurns(): ContextTurn[] {
   return [
-  {
-    heading: translateCurrent("chipGallery.commentaryOnly"),
-    turn: {
-      id: "demo-missing-reply",
-      items: [
-        userMessage(translateCurrent("chipGallery.mock.summarize")),
-        commentary(translateCurrent("chipGallery.mock.review")),
-        commentary(translateCurrent("chipGallery.mock.keyPoints")),
-        commentary(translateCurrent("chipGallery.mock.thirdFile")),
-      ],
-      items_view: "full",
-      status: "completed",
-    },
-  },
   {
     heading: translateCurrent("chipGallery.contextTurn"),
     turn: {
@@ -354,16 +326,6 @@ function userMessage(text: string): Turn["items"][number] {
     id: `u-${text.slice(0, 8)}`,
     type: "user_message",
     role: "user",
-    status: "completed",
-    text,
-  };
-}
-
-function commentary(text: string): Turn["items"][number] {
-  return {
-    id: `c-${text.slice(0, 8)}`,
-    type: "agent_message",
-    role: "assistant",
     status: "completed",
     text,
   };
