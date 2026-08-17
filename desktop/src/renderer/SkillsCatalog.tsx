@@ -20,8 +20,8 @@ import type {
 } from "../shared/protocol";
 import { CatalogSearchField } from "./CatalogSearchField";
 import { translateCurrent, useI18n } from "./i18n";
+import type { TranslationKey } from "./i18n/resources/zh-CN";
 import { Modal } from "./Modal";
-import { PluginBlocksIcon } from "./PluginBlocksIcon";
 import { PluginIcon } from "./PublicIcon";
 import { PluginSettingsEditor } from "./PluginSettingsEditor";
 import { RichContent } from "./RichContent";
@@ -540,11 +540,90 @@ function extensionPackageActionLabel(
   return t("skills.pluginDisable");
 }
 
-function extensionContributionSummary(record: ManagedExtensionPackage, t: ReturnType<typeof useI18n>["t"]): string {
-  const commands = record.contributions?.commands?.length ?? 0;
-  const settings = record.contributions?.settings?.length ?? 0;
-  const themes = record.contributions?.themes?.length ?? 0;
-  return t("skills.pluginContributions", { commands, settings, themes });
+type PluginPermissionGroup = {
+  key: string;
+  labelKey: TranslationKey;
+  permissions: { code: string; labelKey: TranslationKey }[];
+};
+
+// Mirrors the closed permission catalog owned by the runtime. Groups turn
+// raw manifest codes into scannable, human-language rows; unknown codes fall
+// back to a raw "other" group so the detail view never hides a grant.
+const PLUGIN_PERMISSION_GROUPS: readonly PluginPermissionGroup[] = [
+  {
+    key: "files",
+    labelKey: "skills.permissionGroupFiles",
+    permissions: [
+      { code: "files.read", labelKey: "skills.permissionFilesRead" },
+      { code: "files.write", labelKey: "skills.permissionFilesWrite" },
+    ],
+  },
+  {
+    key: "network",
+    labelKey: "skills.permissionGroupNetwork",
+    permissions: [
+      { code: "network.connect", labelKey: "skills.permissionNetworkConnect" },
+    ],
+  },
+  {
+    key: "session",
+    labelKey: "skills.permissionGroupSession",
+    permissions: [
+      { code: "session.read", labelKey: "skills.permissionSessionRead" },
+      { code: "session.write", labelKey: "skills.permissionSessionWrite" },
+    ],
+  },
+  {
+    key: "tools",
+    labelKey: "skills.permissionGroupTools",
+    permissions: [
+      { code: "tools.define", labelKey: "skills.permissionToolsDefine" },
+      { code: "tools.intercept", labelKey: "skills.permissionToolsIntercept" },
+      { code: "commands.execute", labelKey: "skills.permissionCommandsExecute" },
+    ],
+  },
+  {
+    key: "system",
+    labelKey: "skills.permissionGroupSystem",
+    permissions: [
+      { code: "process.spawn", labelKey: "skills.permissionProcessSpawn" },
+      { code: "shell.env", labelKey: "skills.permissionShellEnv" },
+    ],
+  },
+  {
+    key: "desktop",
+    labelKey: "skills.permissionGroupDesktop",
+    permissions: [
+      { code: "accessibility.read", labelKey: "skills.permissionAccessibilityRead" },
+      { code: "accessibility.control", labelKey: "skills.permissionAccessibilityControl" },
+      { code: "screen.capture", labelKey: "skills.permissionScreenCapture" },
+      { code: "app.activate", labelKey: "skills.permissionAppActivate" },
+      { code: "input.synthesize", labelKey: "skills.permissionInputSynthesize" },
+    ],
+  },
+];
+
+// Trust follows source identity, so the origin is the one provenance fact
+// worth surfacing in the summary line — as readable language, not a raw enum.
+function pluginSourceLabel(record: ExtensionInventoryRecord, t: ReturnType<typeof useI18n>["t"]): string {
+  if (record.provenance.official) return t("skills.pluginSourceOfficial");
+  switch (record.package_source) {
+    case "user": return t("skills.pluginSourceUser");
+    case "project": return t("skills.pluginSourceProject");
+    case "dev": return t("skills.pluginSourceDev");
+    case "bundled": return t("skills.pluginSourceBundled");
+    default: return t("skills.pluginSourceOther");
+  }
+}
+
+function pluginGrantScopeLabel(scope: string | undefined, t: ReturnType<typeof useI18n>["t"]): string | undefined {
+  switch (scope) {
+    case "action": return t("skills.pluginGrantScopeAction");
+    case "session": return t("skills.pluginGrantScopeSession");
+    case "project": return t("skills.pluginGrantScopeProject");
+    case "user": return t("skills.pluginGrantScopeUser");
+    default: return undefined;
+  }
 }
 
 function PluginDetailDialog({
@@ -578,21 +657,31 @@ function PluginDetailDialog({
   const hasMoreActions =
     (canUpdate && Boolean(secondaryAction)) ||
     (canRemove && isRemovableUserPlugin(record));
+  const requestedPermissions = record.requested_permissions ?? [];
+  const groupedPermissions = PLUGIN_PERMISSION_GROUPS
+    .map((group) => ({
+      group,
+      present: group.permissions.filter((permission) => requestedPermissions.includes(permission.code)),
+    }))
+    .filter(({ present }) => present.length > 0);
+  const unknownPermissions = requestedPermissions.filter(
+    (permission) => !PLUGIN_PERMISSION_GROUPS.some((group) =>
+      group.permissions.some((candidate) => candidate.code === permission),
+    ),
+  );
 
   return (
     <Modal
       ariaLabel={t("skills.pluginDetailLabel", { name: record.name })}
-      icon={
-        <span className="skill-preview-icon-title">
-          {record.icon && record.fingerprint ? (
-            <PluginIcon icon={record.icon} pluginId={record.id} fingerprint={record.fingerprint} />
-          ) : (
-            <PluginBlocksIcon />
-          )}
-          <span>{t("skills.sectionPlugins")}</span>
-        </span>
+      icon={<PluginArtwork record={record} />}
+      title={
+        <>
+          <span className="plugin-detail-name">{record.name}</span>
+          {managed.version ? (
+            <span className="plugin-detail-version">v{managed.version}</span>
+          ) : null}
+        </>
       }
-      title={record.name}
       subtitle={record.description}
       panelClassName="skill-preview-dialog plugin-detail-dialog"
       closeDisabled={Boolean(packageMutation)}
@@ -627,29 +716,17 @@ function PluginDetailDialog({
       ) : undefined}
     >
       <div className="plugin-detail-body">
-        <div className="plugin-detail-summary">
+        <div className="plugin-detail-meta">
           <span
             className={`skill-row-tag extension-status extension-status-${tone} plugin-detail-status${tone === "muted" ? " skill-row-tag-neutral" : ""}`}
           >
             <span className="plugin-detail-status-dot" aria-hidden="true" />
             {extensionPackageStatusLabel(managed, t)}
           </span>
-          <span className="plugin-detail-facts">
-            {managed.version ? (
-              <span className="plugin-detail-fact">
-                <span className="plugin-detail-fact-label">{t("skills.pluginVersionLabel")}</span>
-                <span>v{managed.version}</span>
-              </span>
-            ) : null}
-            <span className="plugin-detail-fact">
-              <span className="plugin-detail-fact-label">{t("skills.pluginScopeLabel")}</span>
-              <span>{record.provenance.scope}</span>
-            </span>
-            <span className="plugin-detail-fact">
-              <span className="plugin-detail-fact-label">{t("skills.pluginContributionsLabel")}</span>
-              <span>{extensionContributionSummary(managed, t)}</span>
-            </span>
-          </span>
+          <span className="plugin-detail-meta-item">{pluginSourceLabel(record, t)}</span>
+          {pluginGrantScopeLabel(record.grant_scope, t) ? (
+            <span className="plugin-detail-meta-item">{pluginGrantScopeLabel(record.grant_scope, t)}</span>
+          ) : null}
         </div>
 
         {record.pending_update || (managed.runtime_state === "failed" && managed.last_error) || (record.activation_issues?.length ?? 0) > 0 ? (
@@ -688,39 +765,62 @@ function PluginDetailDialog({
         ) : null}
 
         <section className="plugin-detail-section">
-          <h3 className="plugin-detail-section-title">{t("skills.pluginActivePackage")}</h3>
-          <dl className="plugin-detail-provenance">
-            <div className="plugin-detail-provenance-row">
-              <dt>{t("skills.pluginPackageSource")}</dt>
-              <dd>{record.package_source ?? record.provenance.scope}</dd>
-            </div>
-            {record.provenance.path ? (
-              <div className="plugin-detail-provenance-row">
-                <dt>{t("skills.pluginActivePath")}</dt>
-                <dd><code>{record.provenance.path}</code></dd>
-              </div>
-            ) : null}
-            {record.fingerprint ? (
-              <div className="plugin-detail-provenance-row">
-                <dt>{t("skills.pluginFingerprint")}</dt>
-                <dd title={record.fingerprint}><code>{abbreviateFingerprint(record.fingerprint)}</code></dd>
-              </div>
-            ) : null}
-          </dl>
-        </section>
-        <section className="plugin-detail-section">
           <h3 className="plugin-detail-section-title">{t("skills.pluginPermissions")}</h3>
-          <div className="extension-package-permissions">
-            {(record.requested_permissions ?? []).length > 0 ? (
-              record.requested_permissions?.map((permission) => (
-                <code key={permission}>{permission}</code>
-              ))
-            ) : (
-              <span>{t("skills.pluginNoPermissions")}</span>
-            )}
-          </div>
+          {requestedPermissions.length > 0 ? (
+            <div className="plugin-permission-groups">
+              {groupedPermissions.map(({ group, present }) => (
+                <div className="plugin-permission-group" key={group.key}>
+                  <span className="plugin-permission-group-label">{t(group.labelKey)}</span>
+                  <span className="plugin-permission-chips">
+                    {present.map((permission) => (
+                      <code
+                        className="plugin-permission-chip"
+                        key={permission.code}
+                        title={permission.code}
+                      >
+                        {t(permission.labelKey)}
+                      </code>
+                    ))}
+                  </span>
+                </div>
+              ))}
+              {unknownPermissions.length > 0 ? (
+                <div className="plugin-permission-group">
+                  <span className="plugin-permission-group-label">{t("skills.permissionGroupOther")}</span>
+                  <span className="plugin-permission-chips">
+                    {unknownPermissions.map((permission) => (
+                      <code className="plugin-permission-chip" key={permission}>{permission}</code>
+                    ))}
+                  </span>
+                </div>
+              ) : null}
+            </div>
+          ) : (
+            <span className="plugin-detail-empty">{t("skills.pluginNoPermissions")}</span>
+          )}
         </section>
+
         <PluginSettingsEditor plugin={record} title={t("skills.pluginSettingsLabel")} />
+
+        {record.provenance.path || record.fingerprint ? (
+          <details className="plugin-detail-technical">
+            <summary>{t("skills.pluginTechnicalInfo")}</summary>
+            <dl className="plugin-detail-provenance">
+              {record.provenance.path ? (
+                <div className="plugin-detail-provenance-row">
+                  <dt>{t("skills.pluginActivePath")}</dt>
+                  <dd><code>{record.provenance.path}</code></dd>
+                </div>
+              ) : null}
+              {record.fingerprint ? (
+                <div className="plugin-detail-provenance-row">
+                  <dt>{t("skills.pluginFingerprint")}</dt>
+                  <dd title={record.fingerprint}><code>{abbreviateFingerprint(record.fingerprint)}</code></dd>
+                </div>
+              ) : null}
+            </dl>
+          </details>
+        ) : null}
       </div>
     </Modal>
   );

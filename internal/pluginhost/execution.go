@@ -51,6 +51,7 @@ type ExecutionSnapshot struct {
 	ActorID   string          `json:"actor_id,omitempty"`
 	CallID    string          `json:"call_id,omitempty"`
 	Tool      string          `json:"tool,omitempty"`
+	CWD       string          `json:"cwd,omitempty"`
 	Message   string          `json:"message,omitempty"`
 	Detail    json.RawMessage `json:"detail,omitempty"`
 	UpdatedAt time.Time       `json:"updated_at,omitempty"`
@@ -102,7 +103,7 @@ func (t *ExecutionTracker) begin(pluginID string, ctx context.Context, input Too
 	t.live[id] = &executionRecord{
 		snapshot: &ExecutionSnapshot{
 			ID: id, PluginID: pluginID, SessionID: input.SessionID, ThreadID: input.ThreadID,
-			TurnID: input.TurnID, ActorID: input.ActorID, CallID: input.CallID, Tool: input.Tool,
+			TurnID: input.TurnID, ActorID: input.ActorID, CallID: input.CallID, Tool: input.Tool, CWD: input.CWD,
 		},
 		ctx: executionCtx, cancel: cancel, tool: tool,
 	}
@@ -141,7 +142,7 @@ func (t *ExecutionTracker) CancelAll(cause error) {
 func (t *ExecutionTracker) ResolveTool(callerPluginID, executionID string) (ToolExecutionScope, *HostServiceError) {
 	id := strings.TrimSpace(executionID)
 	if id == "" {
-		return ToolExecutionScope{}, &HostServiceError{Code: "invalid_request", Message: "user question requires execution_id"}
+		return ToolExecutionScope{}, &HostServiceError{Code: "invalid_request", Message: "execution-scoped service requires execution_id"}
 	}
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -153,7 +154,7 @@ func (t *ExecutionTracker) ResolveTool(callerPluginID, executionID string) (Tool
 		return ToolExecutionScope{}, &HostServiceError{Code: "service_not_authorized", Message: fmt.Sprintf("execution %s belongs to plugin %q", id, record.snapshot.PluginID)}
 	}
 	if !record.tool || strings.TrimSpace(record.snapshot.ThreadID) == "" || strings.TrimSpace(record.snapshot.TurnID) == "" || strings.TrimSpace(record.snapshot.CallID) == "" {
-		return ToolExecutionScope{}, &HostServiceError{Code: "invalid_execution_scope", Message: "user questions require a live scoped tool execution"}
+		return ToolExecutionScope{}, &HostServiceError{Code: "invalid_execution_scope", Message: "service requires a live scoped tool execution"}
 	}
 	return ToolExecutionScope{ExecutionSnapshot: *record.snapshot, Context: record.ctx}, nil
 }

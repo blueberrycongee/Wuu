@@ -47,6 +47,11 @@ import {
 } from "./ThinkingTokenCount";
 import { useConversationRenderActive } from "./ConversationRenderActivity";
 import { translateCurrent as translate, useI18n } from "./i18n";
+import {
+  collectTurnArtifacts,
+  TurnEndArtifactOutputs,
+  TurnInlineArtifactOutputs,
+} from "./ArtifactOutputs";
 
 const recoveredTurnStartedAt = new Map<string, number>();
 const MAX_RECOVERED_TURN_STARTS = 1_000;
@@ -117,6 +122,7 @@ export function AssistantTurnShell({
   const answerEntries = display.entries.filter(
     (entry) => entry.position === "answer",
   );
+  const artifacts = useMemo(() => collectTurnArtifacts(turn), [turn]);
   // Sources derive from the full turn — web_search and web_fetch happen
   // in the process region, but the source affordance belongs beside the
   // process header so it reads as turn metadata instead of extra answer
@@ -191,6 +197,7 @@ export function AssistantTurnShell({
           {...entryProps}
         />
       ) : null}
+      <TurnInlineArtifactOutputs artifacts={artifacts} cwd={cwd} onOpenFile={onOpenFile} />
       {hasAnswer ? (
         <div className="turn-answer-body">
           {answerEntries.map((entry) => (
@@ -198,6 +205,7 @@ export function AssistantTurnShell({
           ))}
         </div>
       ) : null}
+      <TurnEndArtifactOutputs artifacts={artifacts} cwd={cwd} onOpenFile={onOpenFile} />
       {trailingContent}
     </div>
   );

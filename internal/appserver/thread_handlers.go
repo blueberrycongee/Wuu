@@ -440,13 +440,27 @@ func (s *Server) handleThreadFork(req Request) error {
 			return s.writeResponse(req.ID, nil, err)
 		}
 	}
+	stateDir, stateDirErr := s.workspaceStateDir()
+	if stateDirErr != nil {
+		_, _ = session.Delete(s.rt.SessionDir, sess.ID)
+		cleanupWorktree()
+		return s.writeResponse(req.ID, nil, stateDirErr)
+	}
+	if err := preserveForkArtifacts(stateDir, source.thread.ID, sess.ID, history); err != nil {
+		_, _ = session.Delete(s.rt.SessionDir, sess.ID)
+		_ = os.RemoveAll(statepath.SessionArtifactDir(stateDir, sess.ID))
+		cleanupWorktree()
+		return s.writeResponse(req.ID, nil, err)
+	}
 	if err := rewriteChatHistory(s.rt.SessionDir, sess.ID, history); err != nil {
 		_, _ = session.Delete(s.rt.SessionDir, sess.ID)
+		_ = os.RemoveAll(statepath.SessionArtifactDir(stateDir, sess.ID))
 		cleanupWorktree()
 		return s.writeResponse(req.ID, nil, err)
 	}
 	if err := session.UpdateIndex(s.rt.SessionDir, sess.ID, persistableMessageCount(history), threadPreview(history)); err != nil {
 		_, _ = session.Delete(s.rt.SessionDir, sess.ID)
+		_ = os.RemoveAll(statepath.SessionArtifactDir(stateDir, sess.ID))
 		cleanupWorktree()
 		return s.writeResponse(req.ID, nil, err)
 	}

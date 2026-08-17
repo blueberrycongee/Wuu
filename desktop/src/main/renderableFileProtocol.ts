@@ -2,15 +2,18 @@ import { net, protocol } from "electron";
 import { pathToFileURL } from "node:url";
 import { pdfResponseHeaders, rangedPdfResponse } from "./renderableFileRange";
 import {
+  managedArtifactFileFromURL,
   filePathFromRenderableURL,
+  isRenderableHtmlFile,
   isRenderableImageFile,
   isRenderablePdfFile,
+  verifyManagedArtifactFile,
 } from "./renderableFileURLs";
 
 export function registerRenderableFileScheme(): void {
-  protocol.registerSchemesAsPrivileged([
-    {
-      scheme: "wuu-file",
+  protocol.registerSchemesAsPrivileged(
+    ["wuu-file", "wuu-artifact"].map((scheme) => ({
+      scheme,
       privileges: {
         standard: true,
         secure: true,
@@ -20,11 +23,11 @@ export function registerRenderableFileScheme(): void {
         corsEnabled: true,
         stream: true,
       },
-    },
-  ]);
+    })),
+  );
 }
 
-export function registerRenderableFileProtocol(): void {
+export function registerRenderableFileProtocol(wuuHome: string): void {
   protocol.handle("wuu-file", async (request) => {
     const filePath = filePathFromRenderableURL(request.url);
     if (!filePath) {
@@ -48,5 +51,31 @@ export function registerRenderableFileProtocol(): void {
       return new Response("Not found", { status: 404 });
     }
     return net.fetch(pathToFileURL(filePath).toString());
+  });
+  protocol.handle("wuu-artifact", async (request) => {
+    const artifact = managedArtifactFileFromURL(request.url, wuuHome);
+    if (!artifact || !await verifyManagedArtifactFile(artifact)) {
+      return new Response("Not found", { status: 404 });
+    }
+    const filePath = artifact.filePath;
+    if (isRenderablePdfFile(filePath)) {
+      const ranged = rangedPdfResponse(request, filePath);
+      if (ranged) return ranged;
+      const response = await net.fetch(pathToFileURL(filePath).toString());
+      return new Response(response.body, {
+        status: response.status,
+        headers: pdfResponseHeaders(response.headers),
+      });
+    }
+    const response = await net.fetch(pathToFileURL(filePath).toString());
+    if (!isRenderableHtmlFile(filePath)) return response;
+    const headers = new Headers(response.headers);
+    headers.set("Content-Type", "text/html; charset=utf-8");
+    headers.set("Content-Security-Policy", "sandbox; default-src 'none'; img-src data: blob:; style-src 'unsafe-inline'; font-src data:; media-src data: blob:");
+    headers.set("X-Content-Type-Options", "nosniff");
+    return new Response(response.body, {
+      status: response.status,
+      headers,
+    });
   });
 }

@@ -211,8 +211,10 @@ context blocks、稳定 cause，以及可选的 `presentation: { kind: "query_bu
 `steered: true` 和当前 `turn_id`。steer 不会创建第二组生命周期事件，也不能携带
 `context_blocks`；完成事件仍关联当前 Turn 的原始请求。
 
-`host.session.list` 只返回当前 generation 所属插件拥有的 Session；`host.session.cancel` 也执行同样
-的所有权校验。cancel 可以用 send 返回的 `turn_id` 精确取消当前 Turn，或用 `queue_id` 移除尚未
+`host.session.list` 默认只返回当前 generation 所属插件拥有的 Session；传入 `scope: "shared"`
+时，则返回跨 owner、跨 workspace 的未归档用户可见 Session 元数据，用于只读发现，插件私有 Session
+仍不会暴露。即使 Session 来自 shared scope，`host.session.cancel` 也始终执行原有的所有权校验。
+cancel 可以用 send 返回的 `turn_id` 精确取消当前 Turn，或用 `queue_id` 移除尚未
 开始的投递；两者都不删除 Session。省略两者表示插件有意取消该 Session 当前拥有的执行。生命周期
 完成事件包含最终模型输出，但只发送给原始提交插件，便于插件在不读取宿主私有历史结构的前提下
 更新自己的状态或向父 Session 交付结果。
@@ -357,6 +359,65 @@ const plugin: RuntimePlugin = {
 
 await runJSONLRuntime(plugin, { input: process.stdin, output: process.stdout });
 ```
+
+### 返回生成产物
+
+工具通过富 `content` part 返回图片、文档、音频或资源链接。Wuu 将这些 part 保留在
+可恢复的工具结果中，并投影到消息流，而不是伪装成 assistant message。图片默认按结果
+顺序显示在过程与回答之间；HTML、PDF 等文档型产物默认汇总在 turn 末尾的产物卡片中。
+
+```ts
+const report = await importArtifact(host, {
+  path: "output/report.html",
+  name: "report.html",
+  mime_type: "text/html",
+});
+
+return {
+  result: {
+    content: [
+      { type: "text", text: "已生成请求的内容。" },
+      {
+        type: "image",
+        mime_type: "image/png",
+        name: "cover.png",
+        data: pngBytes.toString("base64"),
+      },
+      {
+        type: "file",
+        mime_type: report.mime_type,
+        name: report.name,
+        uri: report.uri,
+        artifact: {
+          placement: "turn_end",
+          ref: report.id,
+          sha256: report.sha256,
+          size_bytes: report.size,
+        },
+      },
+    ],
+  },
+};
+```
+
+在 `required_services` 中声明 `requireArtifactImportService()`，并在工具执行仍存活时
+调用 `importArtifact()`。宿主会把文件复制到 thread-owned storage，并返回绑定摘要的
+Renderer URI。`report.id`（以及 content part 的 `artifact.ref`）才是不透明 Artifact
+身份；URI 是宿主能力，可能在 fork 或解析时被重写，不能作为身份比较或持久化。删除所属
+thread 会撤销该 Artifact；HTML 本地预览只读取这种受管 URI。
+内联 `data` 使用 base64，适合较小产物；远程 `https` 资源仍可直接返回。
+`artifact.placement` 只是可选展示提示，支持 `inline` 和 `turn_end`；省略时由 Wuu
+根据媒体类型决定。Desktop 插件可以为对应 MIME 类型注册 `tool-result` Renderer；
+插件被禁用或渲染失败时，宿主默认 Renderer 仍可显示和打开产物。生成的 HTML 会在
+隔离预览中打开，不会直接进入宿主 DOM。
+`artifact.ref`、`artifact.sha256` 和 `artifact.size_bytes` 会继续附着在有序 content
+part 上；Wuu 不会另外维护第二套顶层 artifact 列表。不要把绝对路径、`file:` 或
+`wuu-file:` URL 持久化为 Artifact 引用。
+
+ToolResult 是 JSON 线协议，不是任意 JavaScript 对象。循环引用和 `BigInt` 会导致序列化
+失败，`undefined`、函数和 symbol 会被丢弃，宿主也会忽略未知字段。扩展元数据应放入
+已声明的 `meta` 或内容级 `artifact` 字段。Capability 的消息视图只暴露文本与
+`has_tool_result` 等存在性标志，不会暴露 `tool.execute` 返回的完整富结果。
 
 完整的 TypeScript 双工示例位于 `examples/plugins/stateful-runtime`：activate 后台使用 Storage CAS，
 capability handler 使用 Storage，并按显式客户端请求创建和投递 Session。

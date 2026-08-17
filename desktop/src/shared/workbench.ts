@@ -193,8 +193,8 @@ export interface PluginUILiveDurationProps extends Omit<React.HTMLAttributes<HTM
 }
 
 /**
- * Small host-owned component set for plugin views. These components own the
- * common visual rhythm while plugins retain full freedom inside their view.
+ * Small host-owned component set for plugin surfaces. These components own the
+ * common visual rhythm while plugins retain freedom inside their contribution.
  */
 export interface PluginUIKit {
   readonly Page: React.ComponentType<PluginUIPageProps>;
@@ -867,6 +867,12 @@ export interface ToolActivityResultContentPart {
   readonly uri?: string;
   readonly name?: string;
   readonly resource?: unknown;
+  readonly artifact?: Readonly<{
+    placement?: "inline" | "turn_end";
+    ref?: string;
+    sha256?: string;
+    sizeBytes?: number;
+  }>;
 }
 
 export interface ToolActivityStructuredResult {

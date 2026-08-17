@@ -1378,6 +1378,12 @@ export type ToolResultContentPart = {
   uri?: string;
   name?: string;
   resource?: JsonValue;
+  artifact?: {
+    placement?: "inline" | "turn_end";
+    ref?: string;
+    sha256?: string;
+    size_bytes?: number;
+  };
 };
 
 export type ToolResultActivityRef = {

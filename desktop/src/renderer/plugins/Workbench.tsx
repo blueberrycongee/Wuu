@@ -716,6 +716,11 @@ export interface WorkbenchContentRendererProps {
 }
 
 export function WorkbenchContentRenderer(props: WorkbenchContentRendererProps): JSX.Element {
+  React.useSyncExternalStore(
+    props.controller.subscribe,
+    props.controller.getSnapshot,
+    props.controller.getSnapshot,
+  );
   const renderer = props.controller.getRenderer(props.category, props.contentType);
   if (!renderer) return <>{props.fallback}</>;
   const Renderer = renderer.render;

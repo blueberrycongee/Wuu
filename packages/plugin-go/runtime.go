@@ -40,6 +40,7 @@ const (
 	// ExecutionUpdateService is the kernel service a plugin calls to report
 	// progress for an execution it owns.
 	ExecutionUpdateService   = "execution.update"
+	ArtifactImportService    = "host.artifact.import"
 	SecurityAuthorizeService = "security.authorize"
 	ProcessSandboxService    = "sandbox.process"
 	SecurityAuthorizeMethod  = "authorize"
@@ -63,6 +64,8 @@ const (
 	CapabilityAgentPreStep            = "agent.pre_step"
 	SessionIfRunningQueue             = "queue"
 	SessionIfRunningSteer             = "steer"
+	SessionListScopeOwned             = "owned"
+	SessionListScopeShared            = "shared"
 )
 
 const (
@@ -83,6 +86,7 @@ const (
 	KernelSessionListService            = "host.session.list"
 	KernelSessionCancelService          = "host.session.cancel"
 	KernelUserQuestionAskService        = "host.user-question.ask"
+	KernelArtifactImportService         = "host.artifact.import"
 	KernelServiceMethod                 = "call"
 )
 
@@ -252,8 +256,31 @@ type ToolCall struct {
 }
 
 type ContentPart struct {
-	Type string `json:"type"`
-	Text string `json:"text,omitempty"`
+	Type     string                `json:"type"`
+	Text     string                `json:"text,omitempty"`
+	Data     string                `json:"data,omitempty"`
+	MIMEType string                `json:"mime_type,omitempty"`
+	URI      string                `json:"uri,omitempty"`
+	Name     string                `json:"name,omitempty"`
+	Resource json.RawMessage       `json:"resource,omitempty"`
+	Artifact *ArtifactPresentation `json:"artifact,omitempty"`
+}
+
+type ArtifactPresentation struct {
+	// Placement may be "inline" or "turn_end". Empty lets Wuu choose a
+	// media-appropriate default.
+	Placement string `json:"placement,omitempty"`
+	Ref       string `json:"ref,omitempty"`
+	SHA256    string `json:"sha256,omitempty"`
+	SizeBytes int64  `json:"size_bytes,omitempty"`
+}
+
+type ActivityRef struct {
+	ID         string `json:"id"`
+	Kind       string `json:"kind"`
+	State      string `json:"state,omitempty"`
+	ThreadID   string `json:"thread_id,omitempty"`
+	PreviewURI string `json:"preview_uri,omitempty"`
 }
 
 type ToolResult struct {
@@ -261,6 +288,7 @@ type ToolResult struct {
 	StructuredContent json.RawMessage `json:"structured_content,omitempty"`
 	Meta              json.RawMessage `json:"meta,omitempty"`
 	IsError           bool            `json:"is_error,omitempty"`
+	Activity          *ActivityRef    `json:"activity,omitempty"`
 }
 
 type UserQuestionOption struct {
@@ -312,14 +340,27 @@ type TurnContextBlock struct {
 }
 
 type ModelMessageViewV1 struct {
-	Role     string `json:"role"`
-	Name     string `json:"name,omitempty"`
-	Content  string `json:"content,omitempty"`
-	Hidden   bool   `json:"hidden,omitempty"`
-	Origin   string `json:"origin,omitempty"`
-	OriginID string `json:"origin_id,omitempty"`
-	Cause    string `json:"cause,omitempty"`
-	ReadOnly bool   `json:"read_only,omitempty"`
+	Role            string                `json:"role"`
+	Name            string                `json:"name,omitempty"`
+	Content         string                `json:"content,omitempty"`
+	Hidden          bool                  `json:"hidden,omitempty"`
+	Origin          string                `json:"origin,omitempty"`
+	OriginID        string                `json:"origin_id,omitempty"`
+	Cause           string                `json:"cause,omitempty"`
+	ReadOnly        bool                  `json:"read_only,omitempty"`
+	HasImages       bool                  `json:"has_images,omitempty"`
+	HasFiles        bool                  `json:"has_files,omitempty"`
+	ToolCallID      string                `json:"tool_call_id,omitempty"`
+	ToolCalls       []ModelToolCallViewV1 `json:"tool_calls,omitempty"`
+	HasToolResult   bool                  `json:"has_tool_result,omitempty"`
+	DiscoveredTools []string              `json:"discovered_tools,omitempty"`
+}
+
+type ModelToolCallViewV1 struct {
+	ID        string `json:"id,omitempty"`
+	Name      string `json:"name,omitempty"`
+	Arguments string `json:"arguments,omitempty"`
+	Kind      string `json:"kind,omitempty"`
 }
 
 type AgentPreStepInput struct {
@@ -438,6 +479,9 @@ type SessionSendResult struct {
 
 type SessionListParams struct {
 	ParentSessionID string `json:"parent_session_id,omitempty"`
+	// Scope defaults to owned. shared lists active user-visible sessions while
+	// keeping plugin-private sessions hidden from other plugins.
+	Scope string `json:"scope,omitempty"`
 }
 
 type SessionSummary struct {
@@ -446,6 +490,7 @@ type SessionSummary struct {
 	ParentSessionID string `json:"parent_session_id,omitempty"`
 	Visibility      string `json:"visibility"`
 	State           string `json:"state"`
+	WorkspaceID     string `json:"workspace_id,omitempty"`
 	CreatedAt       string `json:"created_at,omitempty"`
 	UpdatedAt       string `json:"updated_at,omitempty"`
 }
@@ -521,12 +566,36 @@ type ExecutionUpdate struct {
 	Detail      json.RawMessage `json:"detail,omitempty"`
 }
 
+type ArtifactImportParams struct {
+	Path     string `json:"path,omitempty"`
+	Data     string `json:"data,omitempty"`
+	Name     string `json:"name,omitempty"`
+	MIMEType string `json:"mime_type,omitempty"`
+}
+
+type ImportedArtifact struct {
+	ID       string `json:"id"`
+	URI      string `json:"uri"`
+	Name     string `json:"name"`
+	MIMEType string `json:"mime_type"`
+	Size     int64  `json:"size"`
+	SHA256   string `json:"sha256"`
+}
+
 // ReportExecutionUpdate reports progress for one live execution through the
 // kernel's execution.update service. The plugin must declare the service in
 // its Definition's RequiredServices; updates for executions that are not live
 // or not owned by the caller fail with typed errors.
 func ReportExecutionUpdate(ctx context.Context, host Host, update ExecutionUpdate) error {
 	return CallService(ctx, host, ExecutionUpdateService, KernelServiceMethod, update, nil)
+}
+
+// ImportArtifact copies a generated file into storage owned by the current
+// tool execution's thread and returns a durable URI for a ToolResult part.
+func ImportArtifact(ctx context.Context, host Host, input ArtifactImportParams) (ImportedArtifact, error) {
+	var artifact ImportedArtifact
+	err := CallService(ctx, host, KernelArtifactImportService, KernelServiceMethod, input, &artifact)
+	return artifact, err
 }
 
 // AskUserQuestions pauses the current Tool execution until a shell answers or

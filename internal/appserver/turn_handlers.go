@@ -1263,14 +1263,24 @@ func normalizeTurnStartFiles(files []TurnStartFile) ([]providers.InputFile, erro
 
 func userMessageFromPrompt(prompt string, images []providers.InputImage, files []providers.InputFile) (providers.ChatMessage, error) {
 	content, display, ok := renderLightweightSlashCommandPrompt(prompt)
-	msg := providers.ChatMessage{
-		Role:    "user",
-		Content: content,
-		Images:  images,
-		Files:   files,
+	msg, err := literalUserMessageFromPrompt(content, images, files)
+	if err != nil {
+		return providers.ChatMessage{}, err
 	}
 	if ok {
 		msg.DisplayContent = display
+	}
+	return msg, nil
+}
+
+// literalUserMessageFromPrompt builds a user-role message without interpreting
+// slash-prefixed text. Plugin-origin input is data, not a user command.
+func literalUserMessageFromPrompt(prompt string, images []providers.InputImage, files []providers.InputFile) (providers.ChatMessage, error) {
+	msg := providers.ChatMessage{
+		Role:    "user",
+		Content: prompt,
+		Images:  images,
+		Files:   files,
 	}
 	return msg, nil
 }

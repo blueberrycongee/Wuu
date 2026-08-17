@@ -265,8 +265,12 @@ Steering does not create a second lifecycle event, and cannot carry
 `context_blocks`; completion remains correlated with the active Turn's original
 request.
 
-`host.session.list` returns only Sessions owned by the calling plugin's
-generation; `host.session.cancel` enforces the same ownership check.
+`host.session.list` defaults to Sessions owned by the calling plugin's
+generation. Passing `scope: "shared"` instead returns non-archived,
+user-visible Session metadata across owners and workspaces for read-only discovery;
+plugin-private Sessions remain excluded. `host.session.cancel` always enforces
+the original ownership check, including for Sessions discovered through the
+shared scope.
 Lifecycle completion events include the final model output but are delivered
 only to the plugin that submitted the turn, so a plugin can update its own
 state or deliver results to a parent Session without reading private host
@@ -415,6 +419,74 @@ user-facing name. `display.kind` classifies familiar activity, while
 `display.capability` is the stable semantic identity used for presentation and
 aggregation. Unknown capabilities aggregate only with the same capability (or
 the same raw tool identity), rather than being merged into one generic group.
+
+#### Returning generated artifacts
+
+A tool returns generated images, documents, audio, or links as rich `content`
+parts. Wuu keeps those parts on the durable tool result and projects them into
+the conversation without turning them into assistant messages. Images appear
+in result order between the process trail and the answer; document-like outputs
+such as HTML and PDF collect in a generated-artifacts card at the turn end.
+
+```ts
+const report = await importArtifact(host, {
+  path: "output/report.html",
+  name: "report.html",
+  mime_type: "text/html",
+});
+
+return {
+  result: {
+    content: [
+      { type: "text", text: "Generated the requested assets." },
+      {
+        type: "image",
+        mime_type: "image/png",
+        name: "cover.png",
+        data: pngBytes.toString("base64"),
+      },
+      {
+        type: "file",
+        mime_type: report.mime_type,
+        name: report.name,
+        uri: report.uri,
+        artifact: {
+          placement: "turn_end",
+          ref: report.id,
+          sha256: report.sha256,
+          size_bytes: report.size,
+        },
+      },
+    ],
+  },
+};
+```
+
+Declare `requireArtifactImportService()` in `required_services` and call
+`importArtifact()` during the live tool execution for files that must survive
+source deletion, restart, and thread forks. The host copies the file into
+thread-owned storage and returns a digest-bound renderer URI. `report.id` (and
+the content part's `artifact.ref`) is the opaque artifact identity; the URI is
+a host capability that may be rewritten during fork or resolution and must not
+be used as identity. Deleting the owning thread revokes the artifact. Inline
+`data` is base64 and is intended for smaller payloads; remote
+`https` resources can still be returned directly. The optional
+`artifact.placement` is only a presentation hint:
+`inline` or `turn_end`; when omitted, Wuu chooses by media type. Desktop
+plugins can register a `tool-result` Renderer for the artifact MIME type. Wuu's
+default renderer remains the fallback when that plugin is disabled or fails.
+Generated HTML opens in a sandboxed preview rather than the host DOM.
+`artifact.ref`, `artifact.sha256`, and `artifact.size_bytes` remain attached to
+the ordered content part; Wuu does not maintain a second top-level artifact list.
+Do not persist an absolute path, `file:`, or `wuu-file:` URL as an artifact
+reference.
+
+Tool results are a JSON wire contract, not arbitrary JavaScript objects. Cycles
+and `BigInt` fail serialization; `undefined`, functions, and symbols are omitted,
+and unknown fields are ignored by the host. Put extension metadata in declared
+fields such as `meta` or the content-level `artifact` object. Capability message
+views expose text and presence flags such as `has_tool_result`, not the complete
+rich result returned by `tool.execute`.
 
 The legacy `hook.invoke` has been removed; host→plugin traffic goes only
 through the versioned capabilities above or tool execution, and plugin→host

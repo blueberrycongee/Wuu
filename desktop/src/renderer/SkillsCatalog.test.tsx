@@ -260,7 +260,8 @@ describe("SkillsCatalog", () => {
       skillButton("docs")?.click();
     });
     expect(document.body.textContent).toContain("file.read");
-    expect(document.body.textContent).toContain("命令 1 · 设置 0 · 主题 0");
+    expect(document.body.textContent).toContain("第三方");
+    expect(document.body.textContent).toContain("技术信息");
 
     const grantButton = buttonByText("授权并启用");
     await act(async () => {

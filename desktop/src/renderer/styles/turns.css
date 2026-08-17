@@ -4308,6 +4308,335 @@ pre {
 }
 
 /*
+ * Rich tool-result artifacts
+ * Images remain in result order between process and answer content. Document
+ * outputs collect at the turn end, matching the existing file-change summary.
+ */
+.turn-artifact-inline-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.turn-artifact-text-part {
+  width: min(100%, 620px);
+  min-width: 0;
+  padding: 2px 0;
+  color: var(--ink);
+}
+
+.turn-artifact-summary-list > .turn-artifact-text-part {
+  padding: 8px 12px;
+}
+
+.turn-artifact-inline-image {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 0;
+  min-width: 0;
+}
+
+.turn-artifact-inline-image button {
+  display: block;
+  width: min(100%, 620px);
+  max-height: 520px;
+  padding: 0;
+  border: 1px solid var(--surface-3);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--surface-1);
+  cursor: zoom-in;
+}
+
+.turn-artifact-inline-image img {
+  display: block;
+  width: 100%;
+  max-height: 518px;
+  object-fit: contain;
+}
+
+.turn-artifact-inline-image figcaption,
+.turn-artifact-unavailable {
+  color: var(--ink-muted);
+  font-size: var(--font-xs);
+}
+
+.turn-artifact-inline-card {
+  width: min(100%, 620px);
+  overflow: hidden;
+  border: 1px solid var(--surface-3);
+  border-radius: var(--radius-md);
+  background: var(--paper);
+}
+
+.turn-artifact-summary-card {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--surface-3);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--paper);
+  box-shadow: 0 2px 10px var(--ink-overlay-8);
+}
+
+.turn-artifact-summary-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--surface-2);
+  background: var(--surface-1);
+}
+
+.turn-artifact-summary-header strong {
+  color: var(--ink);
+  font-size: var(--font-sm);
+}
+
+.turn-artifact-summary-header span {
+  color: var(--ink-muted);
+  font-size: var(--font-xs);
+}
+
+.turn-artifact-summary-list {
+  display: flex;
+  flex-direction: column;
+  padding: 5px 0;
+}
+
+.turn-artifact-summary-row {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.turn-artifact-summary-row:hover {
+  background: var(--surface-1);
+}
+
+.turn-artifact-summary-row:focus-visible {
+  outline: 0;
+  box-shadow: inset 0 0 0 2px var(--ink-overlay-18);
+}
+
+.turn-artifact-summary-icon {
+  display: grid;
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--ink-muted);
+}
+
+.turn-artifact-summary-icon .icon,
+.turn-artifact-summary-row > .icon {
+  width: 15px;
+  height: 15px;
+}
+
+.turn-artifact-summary-row > .icon {
+  flex: 0 0 auto;
+  color: var(--ink-muted);
+}
+
+.turn-artifact-summary-copy {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.turn-artifact-summary-copy strong,
+.turn-artifact-summary-copy span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.turn-artifact-summary-copy strong {
+  color: var(--ink);
+  font-size: var(--font-sm);
+  font-weight: var(--weight-medium);
+}
+
+.turn-artifact-summary-copy span {
+  color: var(--ink-muted);
+  font-size: var(--font-xs);
+}
+
+.artifact-preview-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2147482990;
+  display: grid;
+  place-items: center;
+  padding: 28px;
+  background: rgba(8, 10, 12, 0.78);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.artifact-preview-shell {
+  display: flex;
+  width: min(1180px, 94vw);
+  height: min(860px, 92vh);
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: var(--radius-lg);
+  background: var(--paper);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.36);
+}
+
+.artifact-preview-toolbar {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--surface-3);
+  background: var(--surface-1);
+}
+
+.artifact-preview-toolbar > div:first-child {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.artifact-preview-toolbar strong,
+.artifact-preview-toolbar span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.artifact-preview-toolbar strong {
+  color: var(--ink);
+  font-size: var(--font-sm);
+}
+
+.artifact-preview-toolbar span {
+  color: var(--ink-muted);
+  font-size: var(--font-xs);
+}
+
+.artifact-preview-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 6px;
+}
+
+.artifact-preview-actions button {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink-muted);
+  cursor: pointer;
+}
+
+.artifact-preview-actions button:hover {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+
+.artifact-preview-actions .icon {
+  width: 16px;
+  height: 16px;
+}
+
+.artifact-preview-body {
+  position: relative;
+  display: grid;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  place-items: stretch;
+  overflow: auto;
+  background: var(--surface-1);
+}
+
+.artifact-preview-frame,
+.artifact-preview-body > .workspace-file-pdf-preview {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  border: 0;
+  background: white;
+}
+
+.artifact-preview-image {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  margin: auto;
+  object-fit: contain;
+}
+
+.artifact-preview-audio {
+  width: min(680px, 90%);
+  margin: auto;
+}
+
+.artifact-preview-text {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 100%;
+  margin: 0;
+  padding: 18px;
+  overflow: auto;
+  color: var(--ink);
+  background: var(--paper);
+  font: var(--font-sm)/1.55 var(--font-mono);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.artifact-preview-empty {
+  display: grid;
+  min-height: 240px;
+  place-items: center;
+  color: var(--ink-muted);
+  font-size: var(--font-sm);
+}
+
+@media (max-width: 720px) {
+  .artifact-preview-overlay {
+    padding: 10px;
+  }
+
+  .artifact-preview-shell {
+    width: 100%;
+    height: 100%;
+  }
+}
+
+/*
  * Turn output summary card
  * Shown at the bottom of the latest turn when file artifacts were created or
  * edited. The stable right-side artifact panel owns the full preview.

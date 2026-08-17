@@ -46,38 +46,48 @@ export function toToolActivitySnapshot(item: ThreadItem): ToolActivitySnapshot {
         ? undefined
         : Object.freeze(detail.content.map((part) => Object.freeze({
           type: part.type,
-          text: part.text,
-          data: part.data,
-          mimeType: part.mime_type,
-          uri: part.uri,
-          name: part.name,
-          resource: immutableValue(part.resource),
+          ...(part.text === undefined ? {} : { text: part.text }),
+          ...(part.data === undefined ? {} : { data: part.data }),
+          ...(part.mime_type === undefined ? {} : { mimeType: part.mime_type }),
+          ...(part.uri === undefined ? {} : { uri: part.uri }),
+          ...(part.name === undefined ? {} : { name: part.name }),
+          ...(part.resource === undefined ? {} : { resource: immutableValue(part.resource) }),
+          ...(part.artifact === undefined ? {} : {
+            artifact: Object.freeze({
+              ...(part.artifact.placement === undefined ? {} : { placement: part.artifact.placement }),
+              ...(part.artifact.ref === undefined ? {} : { ref: part.artifact.ref }),
+              ...(part.artifact.sha256 === undefined ? {} : { sha256: part.artifact.sha256 }),
+              ...(part.artifact.size_bytes === undefined ? {} : { sizeBytes: part.artifact.size_bytes }),
+            }),
+          }),
         }))),
-      structuredContent: immutableValue(detail.structured_content),
-      metadata: immutableValue(detail.meta),
-      isError: detail.is_error,
-      activity: detail.activity === undefined ? undefined : Object.freeze({
-        id: detail.activity.id,
-        kind: detail.activity.kind,
-        state: detail.activity.state,
-        threadId: detail.activity.thread_id,
-        previewUri: detail.activity.preview_uri,
+      ...(detail.structured_content === undefined ? {} : { structuredContent: immutableValue(detail.structured_content) }),
+      ...(detail.meta === undefined ? {} : { metadata: immutableValue(detail.meta) }),
+      ...(detail.is_error === undefined ? {} : { isError: detail.is_error }),
+      ...(detail.activity === undefined ? {} : {
+        activity: Object.freeze({
+          id: detail.activity.id,
+          kind: detail.activity.kind,
+          ...(detail.activity.state === undefined ? {} : { state: detail.activity.state }),
+          ...(detail.activity.thread_id === undefined ? {} : { threadId: detail.activity.thread_id }),
+          ...(detail.activity.preview_uri === undefined ? {} : { previewUri: detail.activity.preview_uri }),
+        }),
       }),
     });
   return Object.freeze({
     contractVersion: 1,
     id: item.id,
     toolName: item.name ?? "",
-    displayLabel: item.display?.label,
-    capability: item.display?.capability,
-    kind: item.display?.kind,
+    ...(item.display?.label === undefined ? {} : { displayLabel: item.display.label }),
+    ...(item.display?.capability === undefined ? {} : { capability: item.display.capability }),
+    ...(item.display?.kind === undefined ? {} : { kind: item.display.kind }),
     status: item.status === "in_progress"
       ? "running"
       : item.status === "failed" ? "failed" : "completed",
-    argumentsText: item.arguments,
-    resultText: item.result,
-    structuredResult,
-    error: item.error,
+    ...(item.arguments === undefined ? {} : { argumentsText: item.arguments }),
+    ...(item.result === undefined ? {} : { resultText: item.result }),
+    ...(structuredResult === undefined ? {} : { structuredResult }),
+    ...(item.error === undefined ? {} : { error: item.error }),
   });
 }
 

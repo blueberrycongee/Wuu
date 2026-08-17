@@ -1046,7 +1046,7 @@ app.whenReady().then(async () => {
   await clearOversizedDevCaches();
   await removeLegacyDesktopCliLink().catch(() => false);
   projectManager.load();
-  registerRenderableFileProtocol();
+  registerRenderableFileProtocol(wuuHomePath());
   registerPluginModuleProtocol();
   // Sort permission/download traffic on the shared browser partition by
   // webContents ownership: only agent-driven views are denied sensitive

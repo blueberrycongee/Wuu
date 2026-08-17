@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/blueberrycongee/wuu/internal/providers"
 	"github.com/blueberrycongee/wuu/internal/runtime"
 	"github.com/blueberrycongee/wuu/internal/session"
+	"github.com/blueberrycongee/wuu/internal/statepath"
 )
 
 type pluginTurnReference struct {
@@ -99,8 +101,15 @@ func (s *Server) createPluginSession(_ context.Context, pluginID string, params 
 func (s *Server) listPluginSessions(_ context.Context, pluginID string, params pluginhost.SessionListParams) (pluginhost.SessionListResult, error) {
 	pluginID = strings.TrimSpace(pluginID)
 	parentID := strings.TrimSpace(params.ParentSessionID)
+	scope := strings.TrimSpace(params.Scope)
+	if scope == "" {
+		scope = pluginhost.SessionListScopeOwned
+	}
 	if pluginID == "" {
 		return pluginhost.SessionListResult{}, errors.New("plugin owner is required")
+	}
+	if scope != pluginhost.SessionListScopeOwned && scope != pluginhost.SessionListScopeShared {
+		return pluginhost.SessionListResult{}, errors.New("session list scope must be owned or shared")
 	}
 	items, err := session.List(s.rt.SessionDir, 0)
 	if err != nil {
@@ -109,7 +118,13 @@ func (s *Server) listPluginSessions(_ context.Context, pluginID string, params p
 	owner := "plugin:" + pluginID
 	result := pluginhost.SessionListResult{Sessions: make([]pluginhost.SessionSummary, 0)}
 	for _, item := range items {
-		if item.Owner != owner || (parentID != "" && item.ParentID != parentID) {
+		if parentID != "" && item.ParentID != parentID {
+			continue
+		}
+		if scope == pluginhost.SessionListScopeOwned && item.Owner != owner {
+			continue
+		}
+		if scope == pluginhost.SessionListScopeShared && (item.Visibility == pluginhost.SessionVisibilityPlugin || item.ArchivedAt != nil) {
 			continue
 		}
 		state := pluginhost.TurnLifecycleCompleted
@@ -125,7 +140,7 @@ func (s *Server) listPluginSessions(_ context.Context, pluginID string, params p
 			state = pluginhost.TurnLifecycleQueued
 		}
 		s.queuedTurnMu.Unlock()
-		result.Sessions = append(result.Sessions, pluginhost.SessionSummary{SessionID: item.ID, Name: item.Title, ParentSessionID: item.ParentID, Visibility: item.Visibility, State: state, CreatedAt: item.CreatedAt.Format(time.RFC3339Nano), UpdatedAt: item.UpdatedAt.Format(time.RFC3339Nano)})
+		result.Sessions = append(result.Sessions, pluginhost.SessionSummary{SessionID: item.ID, Name: item.Title, ParentSessionID: item.ParentID, Visibility: item.Visibility, State: state, WorkspaceID: item.WorkspaceID, CreatedAt: item.CreatedAt.Format(time.RFC3339Nano), UpdatedAt: item.UpdatedAt.Format(time.RFC3339Nano)})
 	}
 	return result, nil
 }
@@ -240,7 +255,7 @@ func (s *Server) sendPluginSession(ctx context.Context, pluginID string, params 
 	if existing, ok := s.findPluginSessionRequest(th, clientID); ok {
 		return existing, nil
 	}
-	msg, err := userMessageFromPrompt(params.Input.Prompt, nil, nil)
+	msg, err := literalUserMessageFromPrompt(params.Input.Prompt, nil, nil)
 	if err != nil {
 		return pluginhost.SessionSendResult{}, err
 	}
@@ -267,7 +282,11 @@ func (s *Server) sendPluginSession(ctx context.Context, pluginID string, params 
 			}, nil
 		}
 	}
-	snapshot := turnRuntimeSnapshot{}.withPermissions(normalizeTurnPermissions(s.rt.Permissions))
+	permissions, err := s.resolveThreadTurnPermissions(th, nil)
+	if err != nil {
+		return pluginhost.SessionSendResult{}, err
+	}
+	snapshot := turnRuntimeSnapshot{}.withPermissions(permissions)
 	snapshot.RequestContext = requestContext
 	snapshot.PluginTurn = &pluginTurnReference{PluginID: pluginID, RequestID: params.RequestID}
 
@@ -435,11 +454,24 @@ func (s *Server) createPluginSessionThread(owner string, params pluginhost.Sessi
 		Effort: selection.Effort, PermissionMode: selection.PermissionMode,
 	}
 	var records []session.HistoryRecord
+	artifactStateDir := ""
 	if params.ContextSource == pluginhost.SessionContextFork {
+		stateDir, stateErr := s.workspaceStateDir()
+		if stateErr != nil {
+			return nil, stateErr
+		}
+		artifactStateDir = stateDir
+		if err := preserveForkArtifacts(artifactStateDir, params.ParentSessionID, id, history); err != nil {
+			_ = os.RemoveAll(statepath.SessionArtifactDir(artifactStateDir, id))
+			return nil, err
+		}
 		records = historyRecordsFromChatMessages(history)
 	}
 	created, err := session.CreateInitialized(s.rt.SessionDir, initial, records)
 	if err != nil {
+		if artifactStateDir != "" {
+			_ = os.RemoveAll(statepath.SessionArtifactDir(artifactStateDir, id))
+		}
 		return nil, err
 	}
 	cleanupWorktree = false

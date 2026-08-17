@@ -50,6 +50,8 @@ func buildPluginHost(plugins []pluginpkg.Plugin, projectRoot, wuuHome, workspace
 	}, host)
 	kernel.bindUserQuestions(userQuestions)
 	kernel.bindWorkspaceStateDir(workspaceStateDir)
+	kernel.bindWuuHome(wuuHome)
+	host.SetToolResultMaterializer(kernel.materializeToolResult)
 	registry, conflicts := pluginhost.BuildServiceRegistry(kernel)
 	kernel.bindRegistry(registry)
 	closeStarted := func() error {

@@ -9,6 +9,7 @@ interface WorkspaceDocumentTurnDockProps {
   children: ReactNode;
   cwd?: string;
   onOpenFile?: (path: string) => void;
+  topAccessory?: ReactNode;
   turns: Turn[];
   waitingQuery?: string;
 }
@@ -48,6 +49,7 @@ export function WorkspaceDocumentTurnDock({
   children,
   cwd,
   onOpenFile,
+  topAccessory,
   turns,
   waitingQuery,
 }: WorkspaceDocumentTurnDockProps): JSX.Element {
@@ -84,7 +86,10 @@ export function WorkspaceDocumentTurnDock({
   if (!turn || finalAnswers.length === 0) {
     return (
       <WorkspaceDocumentDrawerContext.Provider value={drawerContext}>
-        <div className="workspace-document-turn-dock" data-wuu-component="workspace-document-turn">{children}</div>
+        <div className="workspace-document-turn-dock" data-wuu-component="workspace-document-turn">
+          {topAccessory ? <div className="composer-top-accessory">{topAccessory}</div> : null}
+          {children}
+        </div>
       </WorkspaceDocumentDrawerContext.Provider>
     );
   }
@@ -97,6 +102,7 @@ export function WorkspaceDocumentTurnDock({
   return (
     <WorkspaceDocumentDrawerContext.Provider value={drawerContext}>
       <div className="workspace-document-turn-dock" data-wuu-component="workspace-document-turn">
+        {topAccessory ? <div className="composer-top-accessory">{topAccessory}</div> : null}
         <section
           className={`workspace-document-turn-drawer${expanded ? " expanded" : ""}`}
           data-testid="workspace-document-turn-drawer"

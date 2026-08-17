@@ -43,6 +43,7 @@ import {
   replaceOptimisticTurn,
   type QueuedComposerMessage,
 } from "./ComposerMessages";
+import { ActiveFileComposerChip } from "./ComposerInputSections";
 import {
   greetingFor,
   useCurrentHour,
@@ -367,6 +368,11 @@ export function App(): JSX.Element {
   const poppedOutMode = Boolean(popOutInit?.kind && popOutInit.context);
   const [state, setState] = useState<AppState>(initialState);
   const [userQuestions, setUserQuestions] = useState<UserQuestionRequest[]>([]);
+  // The workspace file the user excluded from the next message. It stays
+  // suppressed only while that file remains the focused tab; switching files
+  // re-arms the (visible) active-file attachment.
+  const [dismissedActiveDocumentPath, setDismissedActiveDocumentPath] =
+    useState<string | null>(null);
   const resolvedUserQuestionIDsRef = useRef(new Set<string>());
   const userQuestionApiAvailable =
     typeof window.wuu.listUserQuestions === "function" &&
@@ -1094,6 +1100,11 @@ export function App(): JSX.Element {
     activeWorkspaceFileTab?.kind === "file" && activeWorkspaceFileTabID
       ? activeWorkspaceFileTab.path
       : undefined;
+  useEffect(() => {
+    setDismissedActiveDocumentPath((current) =>
+      current !== null && current !== activeWorkspaceFile ? null : current,
+    );
+  }, [activeWorkspaceFile]);
   const activeThread = activeThreadForState(state);
   const activeThreadID = activeThread?.id;
   useEffect(() => {
@@ -2572,6 +2583,17 @@ export function App(): JSX.Element {
     [],
   );
 
+  function renderActiveFileAccessory(): JSX.Element | null {
+    return activeWorkspaceFile ? (
+      <ActiveFileComposerChip
+        filePath={activeWorkspaceFile}
+        suppressed={dismissedActiveDocumentPath === activeWorkspaceFile}
+        onExclude={() => setDismissedActiveDocumentPath(activeWorkspaceFile)}
+        onInclude={() => setDismissedActiveDocumentPath(null)}
+      />
+    ) : null;
+  }
+
   function renderComposer(variant: ComposerVariant): JSX.Element {
     const telemetryTurnID = activeThread
       ? activeTurnIDForThread(activeThread)
@@ -2590,6 +2612,7 @@ export function App(): JSX.Element {
       <Composer
         variant={variant}
         mainConversation
+        topAccessory={variant === "document" ? null : renderActiveFileAccessory()}
         containerRef={variant === "dock" ? dockComposerRef : undefined}
         prompt={prompt}
         promptRevision={promptRevision}
@@ -3374,9 +3397,13 @@ export function App(): JSX.Element {
       composerImages,
       composerFiles,
     );
+    const activeDocumentPath =
+      activeWorkspaceFile && activeWorkspaceFile !== dismissedActiveDocumentPath
+        ? activeWorkspaceFile
+        : undefined;
     const message =
-      draftMessage && activeWorkspaceFile
-        ? { ...draftMessage, activeDocument: { path: activeWorkspaceFile } }
+      draftMessage && activeDocumentPath
+        ? { ...draftMessage, activeDocument: { path: activeDocumentPath } }
         : draftMessage;
     const currentState = appStateRef.current;
     const targetThread = activeThreadForState(currentState);
@@ -5034,6 +5061,7 @@ export function App(): JSX.Element {
                     key={activeThreadID ?? state.activeSessionTabID}
                     cwd={activeThread?.cwd ?? state.activeContext?.cwd}
                     onOpenFile={openWorkspaceFile}
+                    topAccessory={renderActiveFileAccessory()}
                     waitingQuery={
                       activeThreadIsRunning
                         ? firstUserMessageText(activeTurnForThread(activeThread))

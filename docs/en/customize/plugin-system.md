@@ -133,7 +133,7 @@ What the plugin platform needs is not `cron.run` or
 | Public capability | Minimal responsibility |
 | --- | --- |
 | Register contributions | Register model-visible Tools, prompts and request context, commands, settings, Views, and product entry points |
-| Session operations | Create, deliver to, cancel, and list the Sessions the current plugin owns |
+| Session operations | Create, deliver to, cancel, and list owned Sessions; explicitly discover shareable user-visible Sessions |
 | Lifecycle events | Observe Session creation/close and Turn queuing, start, completion, failure, and cancellation |
 | State and resources | Namespaced storage, controlled files/processes/workspaces, and Timers and business state machines the plugin runtime maintains itself |
 

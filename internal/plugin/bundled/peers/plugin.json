@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "id": "peers",
+  "name": "Peers",
+  "description": "Coordinate independent user-visible sessions with bounded request and reply turns.",
+  "version": "0.1.0",
+  "defaultEnabled": false,
+  "author": { "name": "Wuu" },
+  "minimumWuuVersion": "0.1.0",
+  "runtime": { "protocol": "wuu-plugin-v1", "command": "@wuu-official-helper:peers", "timeout": 30 },
+  "contributes": {
+    "commands": [
+      {
+        "id": "peer",
+        "title": "Contact peer session",
+        "description": "List peer sessions or send one a bounded request.",
+        "kind": "prompt_template",
+        "prompt": "./prompts/peer.md",
+        "aliases": ["peers"],
+        "keywords": ["session", "message", "coordinate", "会话", "协作"]
+      }
+    ]
+  },
+  "interface": { "displayName": "Peers", "shortDescription": "Coordinate independent sessions.", "developerName": "Wuu", "category": "Productivity", "capabilities": ["Write"] },
+  "officialNativeHelper": { "id": "peers", "environment": "WUU_PEERS_PLUGIN_HELPER", "executable": "wuu-peers-plugin" }
+}

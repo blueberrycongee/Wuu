@@ -70,6 +70,7 @@ type Host struct {
 	diagnostics     map[string]map[string]string
 	serviceRegistry *ServiceRegistry
 	executions      *ExecutionTracker
+	materialize     func(context.Context, ToolExecutionScope, *toolresult.Result) error
 }
 
 type ContributionDiagnostic struct {
@@ -83,6 +84,17 @@ func New(clients ...Client) *Host {
 		host.addLocked(client)
 	}
 	return host
+}
+
+// SetToolResultMaterializer installs the kernel boundary that turns transient
+// plugin file references into thread-owned artifacts before execution closes.
+func (h *Host) SetToolResultMaterializer(materialize func(context.Context, ToolExecutionScope, *toolresult.Result) error) {
+	if h == nil {
+		return
+	}
+	h.mu.Lock()
+	h.materialize = materialize
+	h.mu.Unlock()
 }
 
 // Failed preserves a plugin load failure in the runtime inventory without
@@ -387,6 +399,21 @@ func (h *Host) ExecuteTool(ctx context.Context, name string, input ToolExecuteIn
 	}
 	if err := response.Result.Validate(); err != nil {
 		return toolresult.Result{}, fmt.Errorf("plugin %q tool %q returned invalid result: %w", tool.PluginID, name, err)
+	}
+	h.mu.RLock()
+	materialize := h.materialize
+	h.mu.RUnlock()
+	if materialize != nil {
+		scope, scopeErr := h.executions.ResolveTool(tool.PluginID, input.ExecutionID)
+		if scopeErr != nil {
+			return toolresult.Result{}, scopeErr
+		}
+		if err := materialize(ctx, scope, &response.Result); err != nil {
+			return toolresult.Result{}, fmt.Errorf("plugin %q tool %q materialize artifacts: %w", tool.PluginID, name, err)
+		}
+		if err := response.Result.Validate(); err != nil {
+			return toolresult.Result{}, fmt.Errorf("plugin %q tool %q returned invalid materialized result: %w", tool.PluginID, name, err)
+		}
 	}
 	return response.Result.Clone(), nil
 }

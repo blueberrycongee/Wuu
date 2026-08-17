@@ -276,6 +276,7 @@ export interface ToolActivityResultContentPart {
   readonly uri?: string;
   readonly name?: string;
   readonly resource?: unknown;
+  readonly artifact?: ArtifactPresentation;
 }
 
 export interface ToolActivityStructuredResult {
@@ -502,6 +503,7 @@ export type HostServiceMethod = (typeof HOST_SERVICE_METHODS)[number];
 export const KERNEL_SERVICE_METHOD = "call" as const;
 export const EXECUTION_UPDATE_SERVICE = "execution.update" as const;
 export const USER_QUESTION_ASK_SERVICE = "host.user-question.ask" as const;
+export const ARTIFACT_IMPORT_SERVICE = "host.artifact.import" as const;
 export const SECURITY_AUTHORIZE_SERVICE = "security.authorize" as const;
 export const PROCESS_SANDBOX_SERVICE = "sandbox.process" as const;
 export const SECURITY_AUTHORIZE_METHOD = "authorize" as const;
@@ -537,6 +539,10 @@ export function kernelServiceCall<M extends KernelHostServiceMethod>(
 
 export function requireKernelService(method: KernelHostServiceMethod): ServiceRequirement {
   return { name: KERNEL_SERVICE_NAMES[method], major_version: 1, required: true };
+}
+
+export function requireArtifactImportService(): ServiceRequirement {
+  return { name: ARTIFACT_IMPORT_SERVICE, major_version: 1, required: true };
 }
 
 export interface HostServiceDescriptor {
@@ -838,6 +844,15 @@ export interface UserQuestionAnswer {
 
 export type ToolContentType = "text" | "image" | "audio" | "file" | "resource" | "resource_link";
 
+export interface ArtifactPresentation {
+  /** Optional placement hint. Images default inline; other artifacts default to the turn end. */
+  placement?: "inline" | "turn_end";
+  /** Stable identity returned by host.artifact.import. */
+  ref?: string;
+  sha256?: string;
+  size_bytes?: number;
+}
+
 export interface ToolContentPart {
   type: ToolContentType;
   text?: string;
@@ -846,6 +861,7 @@ export interface ToolContentPart {
   uri?: string;
   name?: string;
   resource?: unknown;
+  artifact?: ArtifactPresentation;
 }
 
 export interface ToolResult {
@@ -972,6 +988,24 @@ export interface ExecutionUpdate {
   detail?: unknown;
 }
 
+export interface ArtifactImportParams {
+  /** Absolute path, or a path relative to the current tool execution's cwd. */
+  path?: string;
+  /** Standard-base64 bytes. Exactly one of path or data must be provided. */
+  data?: string;
+  name?: string;
+  mime_type?: string;
+}
+
+export interface ImportedArtifact {
+  id: string;
+  uri: string;
+  name: string;
+  mime_type: string;
+  size: number;
+  sha256: string;
+}
+
 export async function reportExecutionUpdate(host: RuntimeHost, update: ExecutionUpdate): Promise<void> {
   await host.call("host.service.call", {
     service: EXECUTION_UPDATE_SERVICE,
@@ -989,6 +1023,18 @@ export async function askUserQuestions(
     method: KERNEL_SERVICE_METHOD,
     params: { questions },
   }) as UserQuestionAnswer;
+}
+
+/** Copy a generated file into storage owned by the current tool execution's thread. */
+export async function importArtifact(
+  host: RuntimeHost,
+  artifact: ArtifactImportParams,
+): Promise<ImportedArtifact> {
+  return await host.call("host.service.call", {
+    service: ARTIFACT_IMPORT_SERVICE,
+    method: KERNEL_SERVICE_METHOD,
+    params: artifact,
+  }) as ImportedArtifact;
 }
 
 export interface RuntimePlugin {

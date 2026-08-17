@@ -44,6 +44,7 @@ const (
 	KernelSessionListService            = "host.session.list"
 	KernelSessionCancelService          = "host.session.cancel"
 	KernelUserQuestionAskService        = "host.user-question.ask"
+	KernelArtifactImportService         = "host.artifact.import"
 
 	// KernelRegistryIntrospectService is the kernel's read-only registry
 	// introspection service: which services exist, at what version, provided
@@ -127,6 +128,13 @@ func KernelUserQuestionAskDescriptor() ServiceDescriptor {
 	return ServiceDescriptor{
 		Name: KernelUserQuestionAskService, Version: "1.0.0",
 		Methods: []ServiceMethodDescriptor{{Name: KernelServiceMethod, InputSchema: "host.user-question.ask.input.v1", OutputSchema: "host.user-question.ask.output.v1"}},
+	}
+}
+
+func KernelArtifactImportDescriptor() ServiceDescriptor {
+	return ServiceDescriptor{
+		Name: KernelArtifactImportService, Version: "1.0.0",
+		Methods: []ServiceMethodDescriptor{{Name: KernelServiceMethod, InputSchema: "host.artifact.import.input.v1", OutputSchema: "host.artifact.import.output.v1"}},
 	}
 }
 

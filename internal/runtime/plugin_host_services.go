@@ -283,6 +283,7 @@ type kernelHostServices struct {
 	userQuestions     *pluginhost.UserQuestionBroker
 	driverGateways    *driverGatewayTable
 	workspaceStateDir string
+	wuuHome           string
 }
 
 func newKernelHostServices(generation func() uint64, executions executionUpdateRecorder) *kernelHostServices {
@@ -294,6 +295,12 @@ func newKernelHostServices(generation func() uint64, executions executionUpdateR
 func (k *kernelHostServices) bindWorkspaceStateDir(dir string) {
 	k.mu.Lock()
 	k.workspaceStateDir = strings.TrimSpace(dir)
+	k.mu.Unlock()
+}
+
+func (k *kernelHostServices) bindWuuHome(dir string) {
+	k.mu.Lock()
+	k.wuuHome = strings.TrimSpace(dir)
 	k.mu.Unlock()
 }
 
@@ -344,7 +351,7 @@ func (k *kernelHostServices) KernelServiceRegistrations() []pluginhost.ServiceRe
 		pluginhost.HostServiceSessionSend, pluginhost.HostServiceSessionList,
 		pluginhost.HostServiceSessionCancel,
 	}
-	registrations := make([]pluginhost.ServiceRegistration, 0, len(descriptors)+1)
+	registrations := make([]pluginhost.ServiceRegistration, 0, len(descriptors)+8)
 	for index, descriptor := range descriptors {
 		registrations = append(registrations, pluginhost.ServiceRegistration{
 			Descriptor: descriptor, Invoker: &kernelServiceInvoker{parent: k, method: methods[index]}, Kernel: true,
@@ -362,6 +369,10 @@ func (k *kernelHostServices) KernelServiceRegistrations() []pluginhost.ServiceRe
 		pluginhost.ServiceRegistration{
 			Descriptor: pluginhost.KernelUserQuestionAskDescriptor(),
 			Invoker:    &userQuestionAskInvoker{parent: k}, Kernel: true,
+		},
+		pluginhost.ServiceRegistration{
+			Descriptor: pluginhost.KernelArtifactImportDescriptor(),
+			Invoker:    &artifactImportInvoker{parent: k}, Kernel: true,
 		},
 		pluginhost.ServiceRegistration{
 			Descriptor: pluginhost.KernelDataQueryDescriptor(),

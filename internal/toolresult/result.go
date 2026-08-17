@@ -2,7 +2,9 @@ package toolresult
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -16,16 +18,37 @@ const (
 	ContentTypeFile         = "file"
 	ContentTypeResource     = "resource"
 	ContentTypeResourceLink = "resource_link"
+
+	ArtifactPlacementInline  = "inline"
+	ArtifactPlacementTurnEnd = "turn_end"
+
+	MaxContentParts       = 128
+	MaxInlineDataBytes    = 2 * 1024 * 1024
+	MaxStructuredJSONSize = 1 * 1024 * 1024
+	MaxResultBytes        = 3 * 1024 * 1024
 )
 
+type ArtifactPresentation struct {
+	// Placement is a presentation hint only. Empty lets the host choose from
+	// the media type (images inline, document-like outputs at the turn end).
+	Placement string `json:"placement,omitempty"`
+	// Ref is an opaque host identity, independent from the renderer URI. The
+	// integrity fields remain content-level metadata so ordered ToolResult parts
+	// stay the single artifact protocol.
+	Ref       string `json:"ref,omitempty"`
+	SHA256    string `json:"sha256,omitempty"`
+	SizeBytes *int64 `json:"size_bytes,omitempty"`
+}
+
 type ContentPart struct {
-	Type     string          `json:"type"`
-	Text     string          `json:"text,omitempty"`
-	Data     string          `json:"data,omitempty"`
-	MIMEType string          `json:"mime_type,omitempty"`
-	URI      string          `json:"uri,omitempty"`
-	Name     string          `json:"name,omitempty"`
-	Resource json.RawMessage `json:"resource,omitempty"`
+	Type     string                `json:"type"`
+	Text     string                `json:"text,omitempty"`
+	Data     string                `json:"data,omitempty"`
+	MIMEType string                `json:"mime_type,omitempty"`
+	URI      string                `json:"uri,omitempty"`
+	Name     string                `json:"name,omitempty"`
+	Resource json.RawMessage       `json:"resource,omitempty"`
+	Artifact *ArtifactPresentation `json:"artifact,omitempty"`
 }
 
 type ActivityRef struct {
@@ -58,6 +81,9 @@ func FromErrorText(text string) Result {
 }
 
 func (r Result) Validate() error {
+	if len(r.Content) > MaxContentParts {
+		return fmt.Errorf("content has %d parts, limit is %d", len(r.Content), MaxContentParts)
+	}
 	for index, part := range r.Content {
 		if err := validateContentPart(index, part); err != nil {
 			return err
@@ -69,6 +95,12 @@ func (r Result) Validate() error {
 	if err := validateRawJSON("meta", r.Meta); err != nil {
 		return err
 	}
+	if len(r.StructuredContent) > MaxStructuredJSONSize {
+		return fmt.Errorf("structured_content exceeds %d bytes", MaxStructuredJSONSize)
+	}
+	if len(r.Meta) > MaxStructuredJSONSize {
+		return fmt.Errorf("meta exceeds %d bytes", MaxStructuredJSONSize)
+	}
 	if r.Activity != nil {
 		if strings.TrimSpace(r.Activity.ID) == "" {
 			return errors.New("activity.id is required")
@@ -76,6 +108,9 @@ func (r Result) Validate() error {
 		if strings.TrimSpace(r.Activity.Kind) == "" {
 			return errors.New("activity.kind is required")
 		}
+	}
+	if size := r.SizeBytes(); size > MaxResultBytes {
+		return fmt.Errorf("tool result exceeds %d bytes", MaxResultBytes)
 	}
 	return nil
 }
@@ -94,6 +129,9 @@ func validateContentPart(index int, part ContentPart) error {
 			return fmt.Errorf("%s.mime_type is required", prefix)
 		}
 		if part.Data != "" {
+			if len(part.Data) > base64.StdEncoding.EncodedLen(MaxInlineDataBytes)+4 {
+				return fmt.Errorf("%s.data exceeds %d decoded bytes", prefix, MaxInlineDataBytes)
+			}
 			if _, err := base64.StdEncoding.DecodeString(part.Data); err != nil {
 				return fmt.Errorf("%s.data must be base64: %w", prefix, err)
 			}
@@ -108,6 +146,34 @@ func validateContentPart(index int, part ContentPart) error {
 		}
 	default:
 		return fmt.Errorf("%s.type %q is unsupported", prefix, part.Type)
+	}
+	if part.Artifact != nil {
+		switch strings.TrimSpace(part.Artifact.Placement) {
+		case "", ArtifactPlacementInline, ArtifactPlacementTurnEnd:
+		default:
+			return fmt.Errorf("%s.artifact.placement %q is unsupported", prefix, part.Artifact.Placement)
+		}
+		if len(part.Artifact.Ref) > 512 {
+			return fmt.Errorf("%s.artifact.ref exceeds 512 bytes", prefix)
+		}
+		if part.Artifact.SizeBytes != nil && *part.Artifact.SizeBytes < 0 {
+			return fmt.Errorf("%s.artifact.size_bytes must not be negative", prefix)
+		}
+		if checksum := strings.TrimSpace(part.Artifact.SHA256); checksum != "" {
+			decoded, err := hex.DecodeString(checksum)
+			if err != nil || len(decoded) != sha256.Size {
+				return fmt.Errorf("%s.artifact.sha256 must be a 64-character hexadecimal digest", prefix)
+			}
+		}
+	}
+	if len(part.Text) > MaxStructuredJSONSize {
+		return fmt.Errorf("%s.text exceeds %d bytes", prefix, MaxStructuredJSONSize)
+	}
+	if len(part.Resource) > MaxStructuredJSONSize {
+		return fmt.Errorf("%s.resource exceeds %d bytes", prefix, MaxStructuredJSONSize)
+	}
+	if len(part.URI) > 8*1024 || len(part.Name) > 1024 || len(part.MIMEType) > 256 {
+		return fmt.Errorf("%s metadata exceeds its size limit", prefix)
 	}
 	return nil
 }
@@ -134,6 +200,14 @@ func (r Result) Clone() Result {
 		copy(out.Content, r.Content)
 		for index := range out.Content {
 			out.Content[index].Resource = cloneRaw(r.Content[index].Resource)
+			if r.Content[index].Artifact != nil {
+				artifact := *r.Content[index].Artifact
+				if artifact.SizeBytes != nil {
+					size := *artifact.SizeBytes
+					artifact.SizeBytes = &size
+				}
+				out.Content[index].Artifact = &artifact
+			}
 		}
 	}
 	if r.Activity != nil {

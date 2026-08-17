@@ -204,6 +204,8 @@ const (
 const (
 	SessionVisibilityUser          = "user"
 	SessionVisibilityPlugin        = "plugin"
+	SessionListScopeOwned          = "owned"
+	SessionListScopeShared         = "shared"
 	SessionContextFresh            = "fresh"
 	SessionContextFork             = "fork"
 	SessionInputPlugin             = "plugin"
@@ -257,6 +259,9 @@ type SessionSendResult struct {
 
 type SessionListParams struct {
 	ParentSessionID string `json:"parent_session_id,omitempty"`
+	// Scope defaults to owned for compatibility. shared exposes active,
+	// non-private session metadata without exposing conversation history.
+	Scope string `json:"scope,omitempty"`
 }
 
 type SessionSummary struct {
@@ -265,6 +270,7 @@ type SessionSummary struct {
 	ParentSessionID string `json:"parent_session_id,omitempty"`
 	Visibility      string `json:"visibility"`
 	State           string `json:"state"`
+	WorkspaceID     string `json:"workspace_id,omitempty"`
 	CreatedAt       string `json:"created_at,omitempty"`
 	UpdatedAt       string `json:"updated_at,omitempty"`
 }

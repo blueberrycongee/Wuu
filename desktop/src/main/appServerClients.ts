@@ -875,6 +875,7 @@ interface AppServerHelper {
 
 const APP_SERVER_HELPERS: readonly AppServerHelper[] = [
   { environment: "WUU_SUBAGENT_PLUGIN_HELPER", executable: "wuu-subagent-plugin" },
+  { environment: "WUU_PEERS_PLUGIN_HELPER", executable: "wuu-peers-plugin" },
   { environment: "WUU_AUTOMATION_PLUGIN_HELPER", executable: "wuu-automation-plugin" },
   { environment: "WUU_MEMORY_PLUGIN_HELPER", executable: "wuu-memory-plugin" },
   { environment: "WUU_DREAM_PLUGIN_HELPER", executable: "wuu-dream-plugin" },
