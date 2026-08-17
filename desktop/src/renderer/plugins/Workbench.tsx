@@ -468,24 +468,26 @@ export function DesktopWorkbench({
     const activeId = snapshot.activeViewByRegion[region] ?? views[views.length - 1]?.id;
     if (activeId === HIDDEN_REGION_VIEW_ID) return [];
     const active = views.find((view) => view.id === activeId) ?? views[views.length - 1];
-    const target = resolveRegionTarget(region);
-    if (!active || !target) return [];
+    if (!active) return [];
     const definition = snapshot.viewTypes.find((view) =>
       view.pluginId === active.pluginId
       && view.id === active.viewTypeId
       && view.generation === active.generation);
     if (!definition) return [];
-    return [createPortal(
-      <WorkbenchView
-        key={`${active.id}:${active.generation}`}
-        controller={controller}
-        definition={definition}
-        view={active}
-        siblingViews={views}
-      />,
-      target,
-      `${active.id}:${active.generation}`,
-    )];
+    return [
+      <WorkbenchRegionPortal
+        key={`${region}:${active.id}:${active.generation}`}
+        region={region}
+      >
+        <WorkbenchView
+          key={`${active.id}:${active.generation}`}
+          controller={controller}
+          definition={definition}
+          view={active}
+          siblingViews={views}
+        />
+      </WorkbenchRegionPortal>,
+    ];
   });
 
   portals.push(createPortal(
@@ -494,6 +496,30 @@ export function DesktopWorkbench({
     "plugin-workbench-status",
   ));
   return <>{portals}</>;
+}
+
+function WorkbenchRegionPortal({
+  region,
+  children,
+}: {
+  region: ViewPlacementRegion;
+  children: React.ReactNode;
+}): React.ReactNode {
+  const [target, setTarget] = React.useState<Element | null>(null);
+
+  // Region containers are owned by the app shell and may not exist until the
+  // same React commit that mounts the workbench. Resolve them after commit so
+  // a restored/opened tab cannot exist without its corresponding view body.
+  React.useLayoutEffect(() => {
+    const nextTarget = resolveRegionTarget(region);
+    setTarget((current) => current === nextTarget ? current : nextTarget);
+  });
+
+  return target ? createPortal(
+    children,
+    target,
+    `plugin-workbench-region:${region}`,
+  ) : null;
 }
 
 interface StatusPresentationProps {

@@ -121,7 +121,7 @@ export async function activate(api) {
     return h("main", { className: "plugin-automation" }, h(Page, null, h(Stack, { gap: "large" },
       h(Row, { className: "plugin-automation-head" },
         h("h1", { className: "plugin-automation-title" }, tr("automation.title")),
-        creating ? null : h(Button, { className: "plugin-automation-new", variant: "primary", onClick: () => setCreating(true) }, tr("automation.new"))),
+        creating || tasks.length === 0 ? null : h(Button, { className: "plugin-automation-new", variant: "primary", onClick: () => setCreating(true) }, tr("automation.new"))),
       creating ? h(Panel, null, h("div", { className: "plugin-automation-form" },
         h(TextInput, { label: tr("automation.name"), value: draft.title, onChange: (event) => setDraft({ ...draft, title: event.target.value }) }),
         h(TextArea, { label: tr("automation.prompt"), rows: 4, placeholder: tr("automation.placeholder.prompt"), value: draft.prompt, onChange: (event) => setDraft({ ...draft, prompt: event.target.value }) }),
