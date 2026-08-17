@@ -194,7 +194,7 @@ func TestPluginSessionCreateAndSendPersistProvenanceAndTargetLifecycle(t *testin
 	loaded.mu.Lock()
 	item := loaded.Turns[0].Items[0]
 	loaded.mu.Unlock()
-	if item.Text != "后台任务已唤醒 Agent" || strings.Contains(item.Text, "internal inspect prompt") || item.Origin != pluginhost.SessionInputPlugin || !item.ReadOnly || item.PresentationKind != pluginhost.SessionPresentationQueryBubble {
+	if item.Text != "后台任务已唤醒 Agent" || item.InputText != "internal inspect prompt" || strings.Contains(item.Text, "internal inspect prompt") || item.Origin != pluginhost.SessionInputPlugin || !item.ReadOnly || item.PresentationKind != pluginhost.SessionPresentationQueryBubble {
 		t.Fatalf("query bubble projection = %+v", item)
 	}
 }

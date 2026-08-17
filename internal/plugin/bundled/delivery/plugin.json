@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "delivery",
+  "name": "Delivery",
+  "description": "Inspect hidden agent delivery and wake prompts.",
+  "icon": { "path": "assets/icon.svg" },
+  "version": "0.1.0",
+  "author": { "name": "Wuu" },
+  "minimumWuuVersion": "0.1.0",
+  "desktop": { "entry": "desktop.js" },
+  "contributes": {
+    "presenters": [
+      { "id": "delivery.inspect", "target": "conversation.item", "mode": "wrap", "priority": 10, "title": "Delivery detail action" }
+    ]
+  },
+  "interface": { "displayName": "Delivery", "shortDescription": "Inspect hidden agent delivery and wake prompts.", "developerName": "Wuu", "category": "Productivity", "capabilities": ["Read"] }
+}

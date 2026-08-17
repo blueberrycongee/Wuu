@@ -1927,6 +1927,10 @@ export type ThreadItem = {
   terminal?: boolean;
   role?: string;
   text?: string;
+  // input_text is the raw user input when it differs from the displayed
+  // bubble text (for example a plugin-generated wake message with a generic
+  // query bubble but a specific delivered prompt).
+  input_text?: string;
   images?: InputImage[];
   files?: InputFile[];
   name?: string;

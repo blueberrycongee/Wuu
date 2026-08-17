@@ -1335,6 +1335,7 @@ func chatMessageItem(id string, msg providers.ChatMessage) ThreadItem {
 			Status:           ThreadItemStatusCompleted,
 			Role:             "user",
 			Text:             chatMessageDisplayContent(msg),
+			InputText:        chatMessageInputText(msg),
 			Images:           threadItemImages(msg.Images),
 			Files:            threadItemFiles(msg.Files),
 			Name:             strings.TrimSpace(msg.Name),
@@ -1496,6 +1497,18 @@ func isThreadTitleUserMessage(msg providers.ChatMessage) bool {
 func chatMessageDisplayContent(msg providers.ChatMessage) string {
 	if strings.TrimSpace(msg.DisplayContent) != "" {
 		return msg.DisplayContent
+	}
+	return msg.Content
+}
+
+// chatMessageInputText exposes the raw user input only when it differs from
+// the displayed bubble text. This keeps the public thread item small for
+// ordinary user messages while letting plugin-generated wake messages reveal
+// the prompt they actually delivered.
+func chatMessageInputText(msg providers.ChatMessage) string {
+	content := strings.TrimSpace(msg.Content)
+	if content == "" || content == strings.TrimSpace(msg.DisplayContent) {
+		return ""
 	}
 	return msg.Content
 }

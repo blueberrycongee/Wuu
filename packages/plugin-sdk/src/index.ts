@@ -1342,6 +1342,8 @@ export interface ConversationItemSnapshotV1 {
   readonly createdAt?: string;
   /** Replacement-context body of a completed context-compaction notice. */
   readonly summary?: string;
+  /** Raw user input when it differs from the displayed bubble text. */
+  readonly inputText?: string;
 }
 
 export type ConversationProcessKindV1 = "reasoning" | "tool-group" | "mixed";

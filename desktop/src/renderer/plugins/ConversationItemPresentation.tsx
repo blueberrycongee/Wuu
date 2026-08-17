@@ -111,6 +111,9 @@ export function toConversationItemSnapshot(
     // Context-compaction notices carry the replacement-context body so
     // notice presenters can show what the model now runs on.
     summary: item.summary,
+    // Plugin-generated wake messages can hide the real delivered prompt
+    // behind a generic query bubble; expose that raw input to presenters.
+    inputText: item.input_text,
   });
 }
 

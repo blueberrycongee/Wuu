@@ -2004,6 +2004,10 @@ type ThreadItem struct {
 	Terminal         bool                       `json:"terminal,omitempty"`
 	Role             string                     `json:"role,omitempty"`
 	Text             string                     `json:"text,omitempty"`
+	// InputText carries the raw user input when it differs from the displayed
+	// bubble text (for example a plugin-generated wake message that shows a
+	// generic query bubble but delivers a specific prompt to the model).
+	InputText        string                     `json:"input_text,omitempty"`
 	Images           []ThreadItemImage          `json:"images,omitempty"`
 	Files            []ThreadItemFile           `json:"files,omitempty"`
 	Name             string                     `json:"name,omitempty"`
