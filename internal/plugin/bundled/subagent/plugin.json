@@ -11,9 +11,6 @@
   "runtime": { "protocol": "wuu-plugin-v1", "command": "@wuu-official-helper:subagent", "timeout": 30 },
   "desktop": { "entry": "desktop.js" },
   "contributes": {
-    "slots": [
-      { "id": "subagent-status", "target": "composer.cluster", "order": 30, "title": "Subagent status" }
-    ],
     "settingsPages": [
       { "id": "subagent", "title": "Subagent", "description": "Configure model aliases used by delegated tasks", "view": "subagent.settings", "icon": "bot", "order": 30 }
     ]

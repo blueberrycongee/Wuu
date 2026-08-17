@@ -20,9 +20,6 @@ export async function activate(api) {
     "subagent.aliases.invalid": "别名配置必须是 JSON 对象。"
   } });
   api.registerStyle({ id: "subagent-status", css: `
-    .plugin-subagent-status { display:flex; gap:6px; flex-wrap:wrap; margin:0; }
-    .plugin-subagent-chip { padding:3px 7px; border:1px solid var(--wuu-color-border-subtle); border-radius:var(--wuu-radius-control, 999px); background:var(--wuu-color-surface-muted); color:var(--wuu-color-text-muted); font-size:11px; }
-    .plugin-subagent-chip[data-status="running"] { color:var(--wuu-color-text); }
     .plugin-subagent-settings { min-width:0; }
     .plugin-subagent-intro { margin:0; max-width:52ch; color:var(--wuu-color-text-muted,var(--ink-soft)); font-size:var(--font-ui,13px); line-height:1.5; }
     .plugin-subagent-field textarea { width:100%; min-height:180px; resize:vertical; font:12px/1.6 var(--wuu-font-mono,ui-monospace,monospace); font-variant-numeric:tabular-nums; }
@@ -31,49 +28,76 @@ export async function activate(api) {
     @keyframes plugin-subagent-fade { 0% { opacity:0; } 12% { opacity:1; } 70% { opacity:1; } 100% { opacity:0; } }
     .plugin-subagent-settings-error { color:var(--wuu-color-danger); font-size:var(--font-ui,13px); overflow-wrap:anywhere; }
   ` });
-  function ChildTaskStatus(props) {
-    const threadId = typeof props.threadId === "string" ? props.threadId : "";
-    const [taskState, setTaskState] = React.useState({ threadId: "", tasks: [] });
-    const refreshGeneration = React.useRef(0);
-    const refresh = React.useCallback(() => {
-      const generation = ++refreshGeneration.current;
-      if (!threadId) { setTaskState({ threadId, tasks: [] }); return Promise.resolve(); }
-      return api.invokeRuntime("status.list", { parent_session_id: threadId })
-		.then((value) => {
-		  if (refreshGeneration.current === generation) setTaskState({ threadId, tasks: Array.isArray(value?.sessions) ? value.sessions : [] });
-		})
-		.catch(() => {
-		  if (refreshGeneration.current === generation) setTaskState({ threadId, tasks: [] });
-		});
-    }, [threadId]);
-    React.useEffect(() => {
-      void refresh();
-      return () => { refreshGeneration.current += 1; };
-    }, [refresh]);
-    React.useEffect(() => {
-      const subscription = api.onHostEvent((event) => {
-        const method = event && typeof event === "object" && event.message && typeof event.message === "object" ? event.message.method : "";
-        if (typeof method === "string" && [
-          "thread/started",
-          "thread/resumed",
-          "thread/updated",
-          "turn/started",
-          "turn/queued",
-          "turn/dequeued",
-          "turn/held",
-          "turn/completed",
-          "turn/error",
-        ].includes(method)) void refresh();
-      });
-      return () => subscription.dispose();
-    }, [refresh]);
-    const tasks = taskState.threadId === threadId ? taskState.tasks : [];
-    const visible = tasks.filter((task) => task && task.state && task.state !== "completed");
-    if (!props.mainConversation || visible.length === 0) return null;
-    return h("div", { className: "plugin-subagent-status" }, visible.map((task) => h("span", {
-      className: "plugin-subagent-chip", "data-status": task.state, key: task.session_id,
-    }, `${task.name || "Child task"} · ${task.state}`)));
-  }
+
+  const emptyStatusItems = Object.freeze([]);
+  const statusItemsByThread = new Map();
+  const statusListenersByThread = new Map();
+  const refreshGenerationByThread = new Map();
+  const statusState = (state) => {
+    if (state === "running") return "running";
+    if (state === "queued" || state === "pending") return "queued";
+    if (state === "failed") return "error";
+    if (state === "waiting_children" || state === "awaiting_report") return "waiting";
+    return "idle";
+  };
+  const refreshStatus = async (threadId) => {
+    if (!threadId) return;
+    const generation = (refreshGenerationByThread.get(threadId) || 0) + 1;
+    refreshGenerationByThread.set(threadId, generation);
+    let tasks = [];
+    try {
+      const value = await api.invokeRuntime("status.list", { parent_session_id: threadId });
+      tasks = Array.isArray(value?.sessions) ? value.sessions : [];
+    } catch {
+      tasks = [];
+    }
+    if (refreshGenerationByThread.get(threadId) !== generation) return;
+    const items = tasks
+      .filter((task) => task && task.session_id && task.state && task.state !== "completed")
+      .map((task) => Object.freeze({
+        id: task.session_id,
+        label: task.name || "Child task",
+        state: statusState(task.state),
+        secondaryText: String(task.state).replaceAll("_", " "),
+        tooltip: task.name || "Child task",
+        updatedAt: typeof task.updated_at === "string" ? task.updated_at : undefined,
+        action: Object.freeze({ kind: "open-session", sessionId: task.session_id }),
+      }));
+    statusItemsByThread.set(threadId, Object.freeze(items));
+    for (const listener of statusListenersByThread.get(threadId) || []) listener();
+  };
+  api.onHostEvent((event) => {
+    const method = event && typeof event === "object" && event.message && typeof event.message === "object" ? event.message.method : "";
+    if (typeof method === "string" && [
+      "thread/started", "thread/resumed", "thread/updated", "turn/started", "turn/queued",
+      "turn/dequeued", "turn/held", "turn/completed", "turn/error",
+    ].includes(method)) {
+      for (const threadId of statusListenersByThread.keys()) void refreshStatus(threadId);
+    }
+  });
+  api.registerComposerStatusSource({
+    id: "subagent-status",
+    order: 30,
+    getSnapshot: ({ threadId }) => threadId ? statusItemsByThread.get(threadId) || emptyStatusItems : emptyStatusItems,
+    subscribe: ({ threadId }, listener) => {
+      if (!threadId) return () => {};
+      let listeners = statusListenersByThread.get(threadId);
+      if (!listeners) {
+        listeners = new Set();
+        statusListenersByThread.set(threadId, listeners);
+      }
+      listeners.add(listener);
+      void refreshStatus(threadId);
+      return () => {
+        listeners.delete(listener);
+        if (listeners.size === 0) {
+          statusListenersByThread.delete(threadId);
+          refreshGenerationByThread.set(threadId, (refreshGenerationByThread.get(threadId) || 0) + 1);
+        }
+      };
+    },
+  });
+
   function ModelAliases({ host, translate }) {
     const { Page, Section, Stack, Row, Button, TextArea } = api.ui;
     const tr = typeof translate === "function" ? translate : (key) => key;
@@ -106,6 +130,5 @@ export async function activate(api) {
           savedTick ? h("span", { key: savedTick, className: "plugin-subagent-saved" }, tr("subagent.aliases.saved")) : null),
         error ? h("div", { className: "plugin-subagent-settings-error", role: "alert" }, error) : null))));
   }
-  api.registerSlot("composer.cluster", { id: "subagent-status", order: 30, render: (context) => h(ChildTaskStatus, context) });
   api.registerViewType({ id: "subagent.settings", title: "Subagent", icon: "bot", defaultRegion: "settings", persistence: "durable", render: ModelAliases });
 }

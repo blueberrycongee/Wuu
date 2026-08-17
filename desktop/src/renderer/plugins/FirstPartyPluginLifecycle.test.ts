@@ -11,7 +11,6 @@ import {
   type PluginContributionDeclarations,
   type PluginGenerationApi,
 } from "./PluginHost";
-import { PluginSlot } from "./PluginSlot";
 import { PluginViewContent, WorkbenchController } from "./Workbench";
 
 interface FirstPartyManifest {
@@ -57,7 +56,7 @@ describe("first-party desktop plugin lifecycle", () => {
       });
     }
 
-    expect(host.getSlotSnapshot("composer.cluster").map((item) => item.pluginId)).toEqual([
+    expect(host.getComposerStatusSources().map((item) => item.pluginId)).toEqual([
       "subagent",
     ]);
     expect(host.getSlotSnapshot("composer.toolbar")).toEqual([]);
@@ -87,6 +86,7 @@ describe("first-party desktop plugin lifecycle", () => {
 
     expect(host.getSlotSnapshot("composer.above")).toEqual([]);
     expect(host.getSlotSnapshot("composer.toolbar")).toEqual([]);
+    expect(host.getComposerStatusSources()).toEqual([]);
     expect(host.getViewTypes()).toEqual([]);
     expect(host.getNavigationEntries()).toEqual([]);
     expect(host.getSettingsPages()).toEqual([]);
@@ -118,14 +118,14 @@ describe("first-party desktop plugin lifecycle", () => {
     expect(document.head.querySelector(`style[data-wuu-plugin-id="${pluginId}"][data-wuu-plugin-generation="old-generation"]`)).toBeNull();
     expect(document.head.querySelectorAll(`style[data-wuu-plugin-id="${pluginId}"][data-wuu-plugin-generation="new-generation"]`)).toHaveLength(1);
     expect([
-      ...host.getSlotSnapshot("composer.cluster"),
+      ...host.getComposerStatusSources(),
       ...host.getSlotSnapshot("composer.toolbar"),
       ...host.getViewTypes(),
     ].filter((item) => item.pluginId === pluginId).every((item) => item.generation === "new-generation"))
       .toBe(true);
   });
 
-  it("hides the previous session's subagent status while the next session loads", async () => {
+  it("scopes structured subagent status snapshots to the active session", async () => {
     const pending = new Map<string, (value: unknown) => void>();
     let runtimeCalls = 0;
     const host = new PluginHost({
@@ -146,17 +146,13 @@ describe("first-party desktop plugin lifecycle", () => {
       contributions: contributionDeclarations(manifest),
       register: module.activate,
     });
-    const container = document.createElement("div");
-    document.body.appendChild(container);
-    const root = createRoot(container);
+    const source = host.getComposerStatusSources()[0];
+    if (!source) throw new Error("Missing subagent composer status source");
+    const contextA = Object.freeze({ threadId: "thread-a", mainConversation: true as const });
+    const contextB = Object.freeze({ threadId: "thread-b", mainConversation: true as const });
+    let updates = 0;
+    const cleanup = source.subscribe(contextA, () => { updates += 1; });
     try {
-      await act(async () => {
-        root.render(React.createElement(PluginSlot, {
-          host,
-          id: "composer.cluster",
-          context: { threadId: "thread-a", mainConversation: true },
-        }));
-      });
       act(() => {
         host.publishHostEvent({ kind: "notification", message: { method: "turn/event" } });
         host.publishHostEvent({ kind: "notification", message: { method: "turn/usage" } });
@@ -165,20 +161,13 @@ describe("first-party desktop plugin lifecycle", () => {
       await act(async () => {
         pending.get("thread-a")?.({ sessions: [{ session_id: "child-a", name: "from-a", state: "running" }] });
       });
-      expect(container.textContent).toContain("from-a · running");
-
-      await act(async () => {
-        root.render(React.createElement(PluginSlot, {
-          host,
-          id: "composer.cluster",
-          context: { threadId: "thread-b", mainConversation: true },
-        }));
-      });
-
-      expect(container.textContent).not.toContain("from-a");
+      expect(updates).toBe(1);
+      expect(source.getSnapshot(contextA)).toMatchObject([
+        { id: "child-a", label: "from-a", state: "running", action: { kind: "open-session", sessionId: "child-a" } },
+      ]);
+      expect(source.getSnapshot(contextB)).toEqual([]);
     } finally {
-      act(() => root.unmount());
-      container.remove();
+      cleanup();
       host.disable("subagent");
     }
   });

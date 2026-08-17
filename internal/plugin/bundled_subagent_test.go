@@ -27,7 +27,7 @@ func TestBundledSubagentResolvesIndependentRuntimeHelper(t *testing.T) {
 		if item.Runtime == nil || item.Runtime.Command != helper || item.Runtime.Protocol != "wuu-plugin-v1" {
 			t.Fatalf("subagent runtime = %+v", item.Runtime)
 		}
-		if len(item.Slots) != 1 || item.Slots[0].ID != "subagent-status" {
+		if len(item.Slots) != 0 {
 			t.Fatalf("subagent slots = %+v", item.Slots)
 		}
 		if len(item.SettingsPages) != 1 || item.SettingsPages[0].View != "subagent.settings" {

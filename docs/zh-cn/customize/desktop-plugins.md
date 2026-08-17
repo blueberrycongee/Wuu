@@ -28,7 +28,7 @@ Wuu Desktop
     └── conversation.composer           Presenter
         ├── composer.above               Slot
         ├── composer.toolbar             Slot
-        └── composer.cluster             Slot
+        └── Composer 状态行              结构化状态源
 ```
 
 插件在运行时注册贡献，Wuu 把它们和原生 UI 组合。禁用、升级或卸载插件时，当前 generation
@@ -44,6 +44,7 @@ Wuu Desktop
 | 增加完整页面或复杂工具 | View | Dashboard、历史列表、编辑器、可视化面板 |
 | 在环境面板显示短摘要 | Inspector Section | 运行状态、计划摘要、仓库信息 |
 | 在对话底部显示临时交互 | Conversation Card | 一次命令的状态和操作 |
+| 发布紧凑的 Composer 状态 | Composer 状态源 | 活跃子任务、后台工作 |
 | 只改变主题或样式 | Theme tokens / CSS snippets | 配色、字体、密度、语义装饰 |
 
 优先使用能完成需求的最小边界。一个按钮不要替换整个 Composer；长列表不要塞进工具栏。
@@ -62,14 +63,29 @@ Wuu Desktop
 | `conversation.message.after` | 每条消息之后 |
 | `composer.above` | Composer 上方 |
 | `composer.toolbar` | Composer 工具栏 |
-| `composer.cluster` | Composer 上方的悬浮状态胶囊行（TODO 进度 / 跳到最新所在的区域） |
 
 Slot 是增量贡献，不接管原生边界。多个插件可以按 `order` 一起出现。
+
+## Composer 状态源：发布紧凑状态
+
+Composer 附近的状态应使用 `api.registerComposerStatusSource`。状态源提供
+`getSnapshot(context)` 和 `subscribe(context, listener)`，并返回结构化的
+`ComposerStatusItem`。每项包含 `id`、`label`、可选状态和详情，以及类似
+`{ kind: "open-session", sessionId }` 的可选声明式动作。
+
+插件只提供数据。Wuu 为每项渲染一个独立胶囊，并统一负责截断、溢出、焦点样式、
+排列和动作分发。任意 React 内容和插件 CSS 都不能进入该状态行。状态源通知监听器
+之前，应保持 snapshot 的引用稳定。
 
 ## Presenter：改造一个产品概念
 
 Presenter 收到四样东西：版本化 snapshot、当前边界可用的 `host.actions`、原生 `fallback`，
 以及目标和匹配 key。`mode: "wrap"` 保留并包装当前结果；`mode: "replace"` 接管整个边界。
+
+Tool activity Presenter 只拥有过程外壳和摘要，不拥有富 ToolResult body 的落位。宿主会把有序 `inline` part 放在
+过程折叠区与回答之间，把 `turn_end` part 放在回答之后；插件应使用 `tool-result` Renderer
+定制每个 body。Presenter 再次渲染 `structuredResult.content` 会造成宿主输出重复。View 是
+稳定 Workbench 区域，不是消息时间线插槽。
 
 主要目标包括：
 

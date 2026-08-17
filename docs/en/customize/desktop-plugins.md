@@ -31,7 +31,7 @@ Wuu Desktop
     └── conversation.composer           Presenter
         ├── composer.above               Slot
         ├── composer.toolbar             Slot
-        └── composer.cluster             Slot
+        └── Composer status row          Structured status sources
 ```
 
 Plugins register contributions at runtime. Wuu composes them with native UI and
@@ -47,6 +47,7 @@ removes every contribution from a generation together on disable, upgrade, or un
 | Add a full page or complex tool | View | Dashboard, history, editor, visualization |
 | Show a short environment summary | Inspector Section | Run status, plan, repository summary |
 | Show temporary interaction in a conversation | Conversation Card | Status and actions for one command |
+| Publish compact Composer status | Composer status source | Active child tasks, background work |
 | Change appearance only | Theme tokens / CSS snippets | Colors, type, density, semantic decoration |
 
 Prefer the smallest boundary that fits. Do not replace the Composer to add one button,
@@ -66,16 +67,33 @@ Current production Slots:
 | `conversation.message.after` | After each message |
 | `composer.above` | Above the Composer |
 | `composer.toolbar` | Composer toolbar |
-| `composer.cluster` | Floating status capsule row above the Composer (TODO progress / jump-to-latest home) |
 
 Slots are additive. Multiple plugins can compose in `order` without taking ownership
 of the native boundary.
+
+## Composer status source: publish compact state
+
+Use `api.registerComposerStatusSource` for Composer-adjacent status. A source exposes
+`getSnapshot(context)` and `subscribe(context, listener)`, and returns structured
+`ComposerStatusItem` values. Each item has an `id`, `label`, optional state and detail,
+and an optional declarative action such as `{ kind: "open-session", sessionId }`.
+
+Plugins provide data only. Wuu renders one atomic capsule per item and owns truncation,
+overflow, focus treatment, placement, and action dispatch. Arbitrary React content and
+plugin CSS cannot enter this row. Keep snapshots referentially stable until the source
+notifies its listeners.
 
 ## Presenter: change a product concept
 
 A Presenter receives a versioned snapshot, the actions available at that boundary,
 the native fallback, and a target plus optional match key. `mode: "wrap"` preserves and
 wraps the current result; `mode: "replace"` owns the entire boundary.
+
+Tool activity Presenters own process chrome and summaries, not placement of rich
+ToolResult bodies. The host places ordered `inline` parts between the process fold and answer and
+`turn_end` parts after the answer. Customize each body with a `tool-result`
+Renderer; rendering `structuredResult.content` again from a Presenter duplicates
+host-owned output. Views are stable workbench regions and are not timeline slots.
 
 Built-in targets include:
 
