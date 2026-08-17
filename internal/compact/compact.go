@@ -32,8 +32,15 @@ const (
 	compactSummaryInputMaxTokens    = 80_000
 	compactSummaryInputMinTokens    = 4_000
 	compactSummaryInputFraction     = 0.5
-	compactPromptContentMaxChars    = 500
-	compactPromptToolArgsMaxChars   = 200
+	// Ordinary conversation text carries user requirements and engineering
+	// rationale, so retain substantially more of it than tool output. Runtime
+	// limits are also clamped to the current summary-input budget below.
+	compactPromptMessageMaxBytes    = 80_000
+	compactPromptToolResultMaxBytes = 8_000
+	compactPromptToolArgsMaxBytes   = 4_000
+	// Structured-only results may contain large or private producer payloads.
+	// Keep using their bounded semantic index instead of copying the raw body.
+	compactPromptStructuredMaxBytes = 500
 )
 
 // A length-limited summary is unusable. Retry once from the same history with
@@ -275,7 +282,7 @@ func summarizeCompactChunk(ctx context.Context, client providers.Client, model s
 	maxTokens := compactSummaryMaxTokensForBudget(budget)
 	outputLimitCount := 0
 	for overflowAttempt := 0; ; overflowAttempt++ {
-		prompt := buildSummaryPrompt(toSummarize, previousSummary)
+		prompt := buildSummaryPromptForBudget(toSummarize, previousSummary, compactSummaryInputBudgetForBudget(model, budget))
 		for {
 			attemptPrompt := prompt
 			if outputLimitCount > 0 {
@@ -694,10 +701,11 @@ func compactSummaryChunkSize(messages []providers.ChatMessage, previousSummary s
 	if inputBudget <= 0 {
 		inputBudget = compactSummaryInputMinTokens
 	}
-	total := EstimateTokens(buildSummaryPrompt(nil, previousSummary))
+	limits := compactPromptLimitsForSummary(previousSummary, inputBudget)
+	total := EstimateTokens(buildSummaryPromptWithLimits(nil, previousSummary, limits))
 	keep := 0
 	for keep < len(messages) {
-		next := compactSummaryPromptMessageTokens(messages[keep])
+		next := compactSummaryPromptMessageTokens(messages[keep], limits)
 		if keep > 0 && total+next > inputBudget {
 			break
 		}
@@ -710,9 +718,9 @@ func compactSummaryChunkSize(messages []providers.ChatMessage, previousSummary s
 	return keep
 }
 
-func compactSummaryPromptMessageTokens(msg providers.ChatMessage) int {
+func compactSummaryPromptMessageTokens(msg providers.ChatMessage, limits compactPromptLimits) int {
 	var b strings.Builder
-	writeSummaryPromptMessage(&b, msg)
+	writeSummaryPromptMessageWithLimits(&b, msg, limits)
 	return EstimateTokens(b.String())
 }
 
@@ -958,6 +966,49 @@ Tone: brief a teammate taking over mid-task. Include enough detail that they can
 // buildSummaryPrompt is the inner formatting helper extracted so the
 // retry loop above doesn't have to duplicate the string-builder code.
 func buildSummaryPrompt(toSummarize []providers.ChatMessage, previousSummary string) string {
+	return buildSummaryPromptWithLimits(toSummarize, previousSummary, compactPromptLimitsForInputBudget(0))
+}
+
+func buildSummaryPromptForBudget(toSummarize []providers.ChatMessage, previousSummary string, inputBudget int) string {
+	return buildSummaryPromptWithLimits(toSummarize, previousSummary, compactPromptLimitsForSummary(previousSummary, inputBudget))
+}
+
+type compactPromptLimits struct {
+	messageBytes    int
+	toolResultBytes int
+	toolArgsBytes   int
+}
+
+func compactPromptLimitsForInputBudget(inputBudget int) compactPromptLimits {
+	messageBytes := compactPromptMessageMaxBytes
+	if inputBudget > 0 {
+		// A conservative three-byte allowance per input token leaves room for
+		// framing and the anchored summary while still retaining far more than
+		// the old fixed 500-byte projection on small context windows.
+		budgetBytes := inputBudget * 3
+		if budgetBytes < messageBytes {
+			messageBytes = budgetBytes
+		}
+	}
+	if messageBytes < 1 {
+		messageBytes = 1
+	}
+	return compactPromptLimits{
+		messageBytes:    messageBytes,
+		toolResultBytes: min(compactPromptToolResultMaxBytes, messageBytes),
+		toolArgsBytes:   min(compactPromptToolArgsMaxBytes, messageBytes),
+	}
+}
+
+func compactPromptLimitsForSummary(previousSummary string, inputBudget int) compactPromptLimits {
+	if inputBudget <= 0 {
+		return compactPromptLimitsForInputBudget(0)
+	}
+	baseTokens := EstimateTokens(buildSummaryPromptWithLimits(nil, previousSummary, compactPromptLimitsForInputBudget(0)))
+	return compactPromptLimitsForInputBudget(max(1, inputBudget-baseTokens))
+}
+
+func buildSummaryPromptWithLimits(toSummarize []providers.ChatMessage, previousSummary string, limits compactPromptLimits) string {
 	var b strings.Builder
 	b.WriteString(compactInstructionPrompt)
 	previousSummary = strings.TrimSpace(previousSummary)
@@ -968,17 +1019,21 @@ func buildSummaryPrompt(toSummarize []providers.ChatMessage, previousSummary str
 	}
 	b.WriteString("--- Conversation to summarize ---\n\n")
 	for _, msg := range toSummarize {
-		writeSummaryPromptMessage(&b, msg)
+		writeSummaryPromptMessageWithLimits(&b, msg, limits)
 	}
 	return b.String()
 }
 
-func writeSummaryPromptMessage(b *strings.Builder, msg providers.ChatMessage) {
+func writeSummaryPromptMessageWithLimits(b *strings.Builder, msg providers.ChatMessage, limits compactPromptLimits) {
 	content := msg.Content
-	if msg.ToolResult != nil && len(msg.ToolResult.Content) == 0 && len(strings.TrimSpace(string(msg.ToolResult.StructuredContent))) > compactPromptContentMaxChars {
+	if msg.ToolResult != nil && len(msg.ToolResult.Content) == 0 && len(strings.TrimSpace(string(msg.ToolResult.StructuredContent))) > compactPromptStructuredMaxBytes {
 		content = "[Structured tool result omitted from summary body; see semantic index below.]"
 	}
-	fmt.Fprintf(b, "[%s]: %s\n", msg.Role, truncate(content, compactPromptContentMaxChars))
+	contentLimit := limits.messageBytes
+	if msg.ToolResult != nil || strings.EqualFold(msg.Role, "tool") {
+		contentLimit = limits.toolResultBytes
+	}
+	fmt.Fprintf(b, "[%s]: %s\n", msg.Role, compactPromptExcerpt(content, contentLimit))
 	writeSummaryPromptToolResultIndex(b, msg.ToolResult)
 	for _, image := range msg.Images {
 		mediaType := strings.TrimSpace(image.MediaType)
@@ -999,7 +1054,7 @@ func writeSummaryPromptMessage(b *strings.Builder, msg providers.ChatMessage) {
 		fmt.Fprintf(b, "  [file omitted: %s, %s, %s]\n", mediaType, name, compactMediaEvidence(file.Data, false))
 	}
 	for _, tc := range msg.ToolCalls {
-		fmt.Fprintf(b, "  -> tool_call: %s(%s)\n", tc.Name, truncate(tc.Arguments, compactPromptToolArgsMaxChars))
+		fmt.Fprintf(b, "  -> tool_call: %s(%s)\n", tc.Name, compactPromptExcerpt(tc.Arguments, limits.toolArgsBytes))
 	}
 	if msg.ToolCallID != "" {
 		fmt.Fprintf(b, "  (result for tool call %s)\n", msg.ToolCallID)
@@ -1024,7 +1079,7 @@ func writeSummaryPromptToolResultIndex(b *strings.Builder, result *toolresult.Re
 				mediaType = part.Type
 			}
 			if uri := strings.TrimSpace(part.URI); uri != "" {
-				fmt.Fprintf(b, "  [tool %s index: %s, %s, uri=%s]\n", part.Type, name, mediaType, truncate(uri, compactPromptToolArgsMaxChars))
+				fmt.Fprintf(b, "  [tool %s index: %s, %s, uri=%s]\n", part.Type, name, mediaType, truncate(uri, compactPromptToolArgsMaxBytes))
 			} else {
 				fmt.Fprintf(b, "  [tool %s index: %s, %s, %s]\n", part.Type, name, mediaType, compactMediaEvidence(part.Data, part.Type == toolresult.ContentTypeImage))
 			}
@@ -1039,17 +1094,30 @@ func writeSummaryPromptToolResultIndex(b *strings.Builder, result *toolresult.Re
 			if name == "" {
 				name = "resource"
 			}
-			fmt.Fprintf(b, "  [tool resource link: %s, uri=%s]\n", name, truncate(strings.TrimSpace(part.URI), compactPromptToolArgsMaxChars))
+			fmt.Fprintf(b, "  [tool resource link: %s, uri=%s]\n", name, truncate(strings.TrimSpace(part.URI), compactPromptToolArgsMaxBytes))
 		}
 	}
 	if result.Activity != nil {
 		fmt.Fprintf(b, "  [tool activity index: kind=%s, id=%s, state=%s, preview=%s]\n",
-			truncate(strings.TrimSpace(result.Activity.Kind), compactPromptToolArgsMaxChars),
-			truncate(strings.TrimSpace(result.Activity.ID), compactPromptToolArgsMaxChars),
-			truncate(strings.TrimSpace(result.Activity.State), compactPromptToolArgsMaxChars),
-			truncate(strings.TrimSpace(result.Activity.PreviewURI), compactPromptToolArgsMaxChars),
+			truncate(strings.TrimSpace(result.Activity.Kind), compactPromptToolArgsMaxBytes),
+			truncate(strings.TrimSpace(result.Activity.ID), compactPromptToolArgsMaxBytes),
+			truncate(strings.TrimSpace(result.Activity.State), compactPromptToolArgsMaxBytes),
+			truncate(strings.TrimSpace(result.Activity.PreviewURI), compactPromptToolArgsMaxBytes),
 		)
 	}
+}
+
+func compactPromptExcerpt(text string, maxBytes int) string {
+	if len(text) <= maxBytes {
+		return text
+	}
+	if maxBytes <= 0 {
+		return fmt.Sprintf("[content omitted from compact summary input; original_bytes=%d]", len(text))
+	}
+	headBytes := maxBytes * 3 / 4
+	tailBytes := maxBytes - headBytes
+	marker := fmt.Sprintf("\n\n[... middle omitted from compact summary input; original_bytes=%d ...]\n\n", len(text))
+	return stringutil.HeadTail(text, headBytes, tailBytes, marker)
 }
 
 func writeSummaryPromptStructuredResultIndex(b *strings.Builder, raw json.RawMessage) {
