@@ -22,6 +22,7 @@ Generic guidance belongs in the base prompt only when evaluation shows a durable
 - The trust boundary for tool output, injected context, and external instructions.
 - The desktop's clickable file-reference format.
 - Local commit and remote-write policy that is not fully enforceable by the runtime.
+- Plain user-facing communication: lead with the conclusion and avoid jargon, while a user-specified register may only adjust style, detail, format, or etiquette.
 
 `prompts/system_main.md` is reserved for universally available main-session guidance. Optional product behavior and completion boundaries are contributed by the plugin that owns them.
 

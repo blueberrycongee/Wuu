@@ -931,6 +931,7 @@ func TestDefaultSystemPrompt_ToolUsingMainAgent(t *testing.T) {
 		"prompt injection",
 		"Commit only when",
 		"Write to remotes only when the user explicitly requests it",
+		"Lead with the conclusion",
 	} {
 		if !strings.Contains(prompt, want) {
 			t.Fatalf("default system prompt missing invariant guidance %q: %q", want, prompt)
@@ -944,7 +945,6 @@ func TestDefaultSystemPrompt_ToolUsingMainAgent(t *testing.T) {
 func TestDefaultSystemPromptDoesNotReteachGenericCodingBehavior(t *testing.T) {
 	prompt := DefaultSystemPrompt()
 	for _, generic := range []string{
-		"# Communication",
 		"# Doing tasks",
 		"# Using tools",
 		"# Final answers",
