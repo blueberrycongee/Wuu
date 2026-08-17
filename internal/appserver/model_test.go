@@ -241,12 +241,12 @@ func TestThreadStateUsesProviderPhaseOnStreamingText(t *testing.T) {
 		t.Fatalf("expected user and live assistant items, got %+v", turn.Items)
 	}
 	live := turn.Items[1]
-	if live.Terminal {
-		t.Fatalf("streaming text should remain non-terminal until the complete message arrives, got %+v", live)
+	if !live.Terminal {
+		t.Fatalf("final_answer phase text should mark the streaming item terminal so the front end can collapse the process fold, got %+v", live)
 	}
 	started, ok := out[0].params.(ItemStartedNotification)
-	if !ok || started.Item.Terminal {
-		t.Fatalf("started notification should not mark the item terminal, got %#v", out[0].params)
+	if !ok || !started.Item.Terminal {
+		t.Fatalf("started notification should mark a final_answer phase item terminal, got %#v", out[0].params)
 	}
 }
 

@@ -509,6 +509,9 @@ func (th *threadState) applyStreamEventLocked(turnID string, ev providers.Stream
 		// Streaming text usually has unknown phase. If the provider exposes
 		// Codex-style phase metadata on the active output item, keep it.
 		item, started := th.ensureActiveAgentItemLocked(turnID, now)
+		if ev.Phase == providers.MessagePhaseFinalAnswer {
+			item.Terminal = true
+		}
 		if started {
 			out = append(out, itemStarted(th.ID, turnID, item, now))
 		}
@@ -528,6 +531,9 @@ func (th *threadState) applyStreamEventLocked(turnID string, ev providers.Stream
 			return nil
 		}
 		item, started := th.ensureActiveAgentItemLocked(turnID, now)
+		if ev.Phase == providers.MessagePhaseFinalAnswer {
+			item.Terminal = true
+		}
 		if started {
 			out = append(out, itemStarted(th.ID, turnID, item, now))
 		}
