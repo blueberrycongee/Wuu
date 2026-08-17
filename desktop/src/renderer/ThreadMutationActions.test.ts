@@ -386,4 +386,130 @@ describe("createThreadMutationActions", () => {
     expect(harness.removeCachedSidebarThread).toHaveBeenCalledWith(base.id);
     expect(harness.getAppState().threads).toHaveLength(0);
   });
+
+  it("optimistically unarchives before the server confirms", async () => {
+    const context = projectContext();
+    const archived = { ...thread(), archived: true };
+    let resolveUnarchive: ((value: { thread: Thread }) => void) | undefined;
+    Object.defineProperty(window, "wuu", {
+      configurable: true,
+      value: {
+        archiveThread: vi.fn().mockReturnValue(
+          new Promise<{ thread: Thread }>((resolve) => {
+            resolveUnarchive = resolve;
+          }),
+        ),
+      },
+    });
+    const harness = buildActions({
+      initial: {
+        ...initialState,
+        activeContext: context,
+        threads: [archived],
+        status: "ready",
+      },
+    });
+
+    const pending = harness.actions.unarchiveThread({ id: archived.id });
+
+    expect(harness.updateCachedSidebarThread).toHaveBeenCalledWith({
+      ...archived,
+      archived: false,
+    });
+    expect(harness.getAppState().threads[0]?.archived).toBe(false);
+
+    resolveUnarchive?.({ thread: { ...archived, archived: false } });
+    await pending;
+    expect(harness.getAppState().threads[0]?.archived).toBe(false);
+  });
+
+  it("rolls back an optimistic unarchive when persistence fails", async () => {
+    const context = projectContext();
+    const archived = { ...thread(), archived: true };
+    Object.defineProperty(window, "wuu", {
+      configurable: true,
+      value: {
+        archiveThread: vi.fn().mockRejectedValue(new Error("unarchive failed")),
+      },
+    });
+    const harness = buildActions({
+      initial: {
+        ...initialState,
+        activeContext: context,
+        threads: [archived],
+        status: "ready",
+      },
+    });
+
+    await harness.actions.unarchiveThread({ id: archived.id });
+
+    expect(harness.removeCachedSidebarThread).toHaveBeenCalledWith(archived.id);
+    expect(harness.getAppState().threads[0]?.archived).toBe(true);
+    expect(toastMocks.showErrorToast).toHaveBeenCalledWith("unarchive failed");
+  });
+
+  it("optimistically hides the archived row and defers pane teardown until confirmation", async () => {
+    const context = projectContext();
+    const base = thread();
+    let resolveArchive: ((value: { thread: Thread }) => void) | undefined;
+    Object.defineProperty(window, "wuu", {
+      configurable: true,
+      value: {
+        archiveThread: vi.fn().mockReturnValue(
+          new Promise<{ thread: Thread }>((resolve) => {
+            resolveArchive = resolve;
+          }),
+        ),
+      },
+    });
+    const threadTab = createThreadSessionTab(base, context);
+    const harness = buildActions({
+      initial: {
+        ...initialState,
+        activeContext: context,
+        thread: base,
+        threads: [base],
+        sessionTabs: [threadTab],
+        activeSessionTabID: threadTab.id,
+        status: "ready",
+      },
+      activeThreadID: base.id,
+    });
+
+    const pending = harness.actions.archiveThread(summary(base));
+
+    expect(harness.removeCachedSidebarThread).toHaveBeenCalledWith(base.id);
+    expect(harness.getAppState().threads[0]?.archived).toBe(true);
+    expect(harness.getAppState().thread?.id).toBe(base.id);
+    expect(harness.getAppState().activeSessionTabID).toBe(threadTab.id);
+
+    resolveArchive?.({ thread: { ...base, archived: true } });
+    await pending;
+
+    expect(harness.getAppState().thread).toBeUndefined();
+    expect(harness.getAppState().activeSessionTabID).toBe("draft:fallback");
+  });
+
+  it("rolls back an optimistic archive when the server rejects", async () => {
+    const context = projectContext();
+    const base = thread();
+    const api = installWuuApi(base);
+    api.archiveThread.mockRejectedValueOnce(new Error("archive failed"));
+    const harness = buildActions({
+      initial: {
+        ...initialState,
+        activeContext: context,
+        thread: base,
+        threads: [base],
+        status: "ready",
+      },
+    });
+
+    const outcome = await harness.actions.archiveThread(summary(base));
+
+    expect(outcome.ok).toBe(false);
+    expect(harness.updateCachedSidebarThread).toHaveBeenCalledWith(base);
+    expect(harness.getAppState().threads[0]?.archived).toBe(false);
+    expect(harness.getAppState().thread?.id).toBe(base.id);
+  });
 });

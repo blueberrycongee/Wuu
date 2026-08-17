@@ -271,16 +271,27 @@ export function createThreadMutationActions(
       });
       return { ok: true };
     }
+    // Reflect the archive in the visible lists on the click: the sidebar row
+    // disappears and Settings → Archive gains the entry immediately. Pane and
+    // session-tab teardown stays on the server confirmation so a rejection
+    // never has to rebuild an open conversation; failures flip the row back.
+    const previousThread = currentState.threads.find(
+      (candidate) => candidate.id === thread.id,
+    );
+    deps.removeCachedSidebarThread(thread.id);
+    deps.setAppState((current) => ({
+      ...current,
+      threads: current.threads.map((candidate) =>
+        candidate.id === thread.id ? { ...candidate, archived: true } : candidate,
+      ),
+    }));
     try {
       const result = force
         ? await window.wuu.archiveThread(thread.id, true, true)
         : await window.wuu.archiveThread(thread.id, true);
-      // Archived conversations remain in AppState for Settings → Archive, but
-      // the project sidebar cache only represents visible conversations. An
-      // archived response cannot be upserted through cacheSidebarThreads
-      // because that helper filters it out and leaves the stale pre-archive
-      // snapshot behind.
-      deps.removeCachedSidebarThread(result.thread.id);
+      // Archived conversations remain in AppState for Settings → Archive, and
+      // the optimistic flip already dropped the sidebar row; the confirmation
+      // only needs to tear down the panes/tabs that still show the thread.
       deps.setAppState((current) => {
         const nextTabs = removeSessionTab(
           current.sessionTabs,
@@ -296,6 +307,17 @@ export function createThreadMutationActions(
       });
       return { ok: true };
     } catch (error) {
+      if (previousThread) {
+        deps.updateCachedSidebarThread(previousThread);
+      }
+      deps.setAppState((current) => ({
+        ...current,
+        threads: current.threads.map((candidate) =>
+          candidate.id === thread.id
+            ? { ...candidate, archived: false }
+            : candidate,
+        ),
+      }));
       const failure = archiveThreadFailure(error);
       setStatus(failure.message);
       return { ok: false, error: failure.message, forceRetryable: failure.forceRetryable };
@@ -324,6 +346,31 @@ export function createThreadMutationActions(
       }));
       return;
     }
+    // Un-archiving is optimistic: the Settings → Archive row leaves the list
+    // and the thread rejoins the sidebar on the click, before the server
+    // round-trip. The server response stays the persisted source of truth;
+    // failures roll the row back into the archive list.
+    const previousThread = deps
+      .getAppState()
+      .threads.find((candidate) => candidate.id === thread.id);
+    const markThread = (archived: boolean, candidate: Thread): Thread =>
+      candidate.id === thread.id ? { ...candidate, archived } : candidate;
+    if (previousThread) {
+      deps.updateCachedSidebarThread({ ...previousThread, archived: false });
+    }
+    deps.setAppState((current) => ({
+      ...current,
+      thread:
+        current.thread?.id === thread.id
+          ? { ...current.thread, archived: false }
+          : current.thread,
+      secondaryThread:
+        current.secondaryThread?.id === thread.id
+          ? { ...current.secondaryThread, archived: false }
+          : current.secondaryThread,
+      threads: current.threads.map((candidate) => markThread(false, candidate)),
+      status: current.status === "ready" ? "ready" : current.status,
+    }));
     try {
       const result = await window.wuu.archiveThread(thread.id, false);
       deps.updateCachedSidebarThread(result.thread);
@@ -339,6 +386,22 @@ export function createThreadMutationActions(
         status: current.status === "ready" ? "ready" : current.status,
       }));
     } catch (error) {
+      if (previousThread) {
+        deps.removeCachedSidebarThread(thread.id);
+      }
+      deps.setAppState((current) => ({
+        ...current,
+        thread:
+          current.thread?.id === thread.id
+            ? { ...current.thread, archived: true }
+            : current.thread,
+        secondaryThread:
+          current.secondaryThread?.id === thread.id
+            ? { ...current.secondaryThread, archived: true }
+            : current.secondaryThread,
+        threads: current.threads.map((candidate) => markThread(true, candidate)),
+        status: current.status === "ready" ? "ready" : current.status,
+      }));
       setStatus(
         error instanceof Error
           ? error.message
