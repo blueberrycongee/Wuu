@@ -531,6 +531,10 @@ describe("ThreadItemView", () => {
     expect(actions).toHaveLength(2);
     const details = [...(actions ?? [])].find((button) => button.getAttribute("aria-label") === "投递详情");
     expect(details).toBeDefined();
+    // The details action matches the copy/edit action buttons: same box and
+    // same 15px icon so the row stays visually uniform.
+    expect(details?.querySelector("svg")?.getAttribute("width")).toBe("15");
+    expect(details?.className).toContain("message-action-button");
 
     act(() => details!.click());
     expect(openPluginView).toHaveBeenCalledWith("delivery", "delivery.inspector", expect.objectContaining({

@@ -301,7 +301,7 @@ function BuiltInThreadItemView({
                   title={t("message.deliveryDetails")}
                   onClick={openDeliveryDetails}
                 >
-                  <Info className="icon" />
+                  <Info size={15} />
                 </button>
               ) : null}
               {editActionVisible && onEditMessage ? (
