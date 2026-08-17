@@ -128,6 +128,10 @@ export function ToolActivityRow({
   // same row join with "，".
   const summaryText = sections
     .map((s) => {
+      // Command details are already complete action phrases such as
+      // "搜索软件包" or "运行测试". Prefixing them with the generic section
+      // title produced awkward rows like "检查 运行命令".
+      if (s.kind === "command" && s.detail) return s.detail;
       if (s.detail && s.title) return `${s.title} ${s.detail}`;
       return s.detail || s.title;
     })

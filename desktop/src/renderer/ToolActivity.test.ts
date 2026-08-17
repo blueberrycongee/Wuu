@@ -342,6 +342,28 @@ describe("buildToolActivityProcessSegments", () => {
     });
   });
 
+  it("describes package, download, and filesystem commands by their purpose", () => {
+    const label = (command: string) => {
+      const [segment] = buildToolActivityProcessSegments([
+        {
+          id: `cmd-${command}`,
+          type: "tool_call",
+          name: "bash",
+          status: "completed",
+          arguments: JSON.stringify({ command }),
+        },
+      ] satisfies ThreadItem[]);
+      return segment.text;
+    };
+
+    expect(label("brew search herdr")).toBe("搜索软件包");
+    expect(label("brew install herdr")).toBe("安装软件包");
+    expect(label("npm uninstall herdr")).toBe("卸载软件包");
+    expect(label("curl -L https://example.test/archive.tgz -o archive.tgz")).toBe("下载网络内容");
+    expect(label("command -v herdr")).toBe("检查命令是否可用");
+    expect(label("rm archive.tgz")).toBe("删除文件");
+  });
+
   it("does not mislabel commands that merely mention sqlite3 or date", () => {
     const label = (command: string) => {
       const [segment] = buildToolActivityProcessSegments([
@@ -358,7 +380,7 @@ describe("buildToolActivityProcessSegments", () => {
 
     expect(label("rm sessions.sqlite3")).toMatchObject({
       kind: "command",
-      text: "运行命令",
+      text: "删除文件",
     });
     expect(label("go test ./internal/sqlite3/...")).toMatchObject({
       kind: "command",

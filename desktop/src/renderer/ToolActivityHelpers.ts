@@ -955,6 +955,24 @@ function readableCommandLabel(
   if (/go\s+test|npm\s+test|pnpm\s+test|yarn\s+test/.test(command)) {
     return t("toolActivity.runTests");
   }
+  if (/(?:^|[;&|]\s*)(?:brew\s+search|apt(?:-cache)?\s+search|npm\s+(?:search|view)|pnpm\s+(?:search|view)|yarn\s+(?:search|info)|cargo\s+search|pip\d*\s+(?:search|index))\b/.test(command)) {
+    return t("toolActivity.searchPackages");
+  }
+  if (/(?:^|[;&|]\s*)(?:brew\s+(?:install|reinstall)|apt(?:-get)?\s+install|npm\s+(?:install|i)|pnpm\s+(?:add|install)|yarn\s+(?:add|install)|pip\d*\s+install|cargo\s+install|go\s+install)\b/.test(command)) {
+    return t("toolActivity.installPackages");
+  }
+  if (/(?:^|[;&|]\s*)(?:brew\s+(?:uninstall|remove)|apt(?:-get)?\s+(?:remove|purge)|npm\s+(?:uninstall|remove|rm)|pnpm\s+(?:remove|rm)|yarn\s+remove|pip\d*\s+uninstall|cargo\s+uninstall)\b/.test(command)) {
+    return t("toolActivity.uninstallPackages");
+  }
+  if (/(?:^|[;&|]\s*)(?:curl|wget)\b/.test(command)) {
+    return t("toolActivity.downloadContent");
+  }
+  if (/(?:^|[;&|]\s*)(?:command\s+-v|which|where|type\s+-[a-zA-Z]*)\b/.test(command)) {
+    return t("toolActivity.checkCommandAvailability");
+  }
+  if (/(?:^|[;&|]\s*)rm\s/.test(command)) {
+    return t("toolActivity.removeFiles");
+  }
   if (/(?:^|[;&|]\s*)date(?:\s|$)/.test(command)) {
     return t("toolActivity.viewLocalTime");
   }

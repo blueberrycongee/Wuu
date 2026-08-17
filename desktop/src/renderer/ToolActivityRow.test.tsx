@@ -110,6 +110,20 @@ describe("ToolActivityRow", () => {
     expect(surfaceText()).toBe(SUMMARY_TEXT);
   });
 
+  it("shows a command purpose without a generic inspect prefix", () => {
+    mount({
+      items: [{
+        id: "tool-command",
+        type: "tool_call",
+        status: "completed",
+        name: "bash",
+        arguments: JSON.stringify({ command: "brew search herdr" }),
+      }],
+      streaming: false,
+    });
+    expect(surfaceText()).toBe("搜索软件包");
+  });
+
   it("renders an initial live summary in full", () => {
     mount({ items: [fakeReadFileTool()], streaming: true });
     expect(surfaceText()).toBe(SUMMARY_TEXT);
