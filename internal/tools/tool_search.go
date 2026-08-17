@@ -4,6 +4,8 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -176,14 +178,22 @@ func (t *GrepTool) Execute(ctx context.Context, argsJSON string) (string, error)
 	if opts.outputMode == "" {
 		opts.outputMode = "content"
 	}
+	revisionKey := workspaceRevision(ctx, t.env.RevisionRoot(ctx))
 
 	switch opts.outputMode {
 	case "files_with_matches":
-		files, err := grepFilesWithMatches(ctx, execRoot, args.Pattern, searchRoot, args.Include, opts, 0)
-		if err != nil {
-			return "", err
+		key := searchCursorKey("grep:files", execRoot, searchRoot, args.Pattern, args.Include, fmt.Sprintf("%t", opts.ignoreCase), revisionKey)
+		cachePath := searchCursorPath(t.env, key)
+		files, ok := loadSearchCursor[string](cachePath)
+		if !ok {
+			var err error
+			files, err = grepFilesWithMatches(ctx, execRoot, args.Pattern, searchRoot, args.Include, opts, 0)
+			if err != nil {
+				return "", err
+			}
+			_ = saveSearchCursor(cachePath, files)
 		}
-		revision := continuationSnapshotRevision(workspaceRevision(ctx, t.env.RevisionRoot(ctx)), "grep:files", files)
+		revision := continuationSnapshotRevision(revisionKey, "grep:files", files)
 		if err := validateStableOffset("grep", args.Offset, args.ExpectedRevision, revision); err != nil {
 			return "", err
 		}
@@ -206,11 +216,23 @@ func (t *GrepTool) Execute(ctx context.Context, argsJSON string) (string, error)
 		return mustJSON(result)
 
 	case "count":
-		counts, total, err := grepCountMatches(ctx, execRoot, args.Pattern, searchRoot, args.Include, opts, 0)
-		if err != nil {
-			return "", err
+		key := searchCursorKey("grep:count", execRoot, searchRoot, args.Pattern, args.Include, fmt.Sprintf("%t", opts.ignoreCase), revisionKey)
+		cachePath := searchCursorPath(t.env, key)
+		counts, ok := loadSearchCursor[grepCountResult](cachePath)
+		var total int
+		if !ok {
+			var err error
+			counts, total, err = grepCountMatches(ctx, execRoot, args.Pattern, searchRoot, args.Include, opts, 0)
+			if err != nil {
+				return "", err
+			}
+			_ = saveSearchCursor(cachePath, counts)
+		} else {
+			for _, count := range counts {
+				total += count.Count
+			}
 		}
-		revision := continuationSnapshotRevision(workspaceRevision(ctx, t.env.RevisionRoot(ctx)), "grep:count", counts)
+		revision := continuationSnapshotRevision(revisionKey, "grep:count", counts)
 		if err := validateStableOffset("grep", args.Offset, args.ExpectedRevision, revision); err != nil {
 			return "", err
 		}
@@ -233,17 +255,24 @@ func (t *GrepTool) Execute(ctx context.Context, argsJSON string) (string, error)
 		return mustJSON(result)
 
 	default: // "content"
-		matches, err := grepWithRipgrep(ctx, t.env, execRoot, args.Pattern, searchRoot, args.Include, opts, 0)
-		if err != nil {
-			if !errors.Is(err, errRipgrepUnavailable) {
-				return "", err
-			}
-			matches, err = grepWithFallback(t.env, execRoot, args.Pattern, searchRoot, args.Include, opts, 0)
+		key := searchCursorKey("grep:content", execRoot, searchRoot, args.Pattern, args.Include, fmt.Sprintf("%d:%d:%d:%t", opts.context, opts.before, opts.after, opts.ignoreCase), revisionKey)
+		cachePath := searchCursorPath(t.env, key)
+		matches, ok := loadSearchCursor[grepMatch](cachePath)
+		if !ok {
+			var err error
+			matches, err = grepWithRipgrep(ctx, t.env, execRoot, args.Pattern, searchRoot, args.Include, opts, 0)
 			if err != nil {
-				return "", err
+				if !errors.Is(err, errRipgrepUnavailable) {
+					return "", err
+				}
+				matches, err = grepWithFallback(t.env, execRoot, args.Pattern, searchRoot, args.Include, opts, 0)
+				if err != nil {
+					return "", err
+				}
 			}
+			_ = saveSearchCursor(cachePath, matches)
 		}
-		revision := continuationSnapshotRevision(workspaceRevision(ctx, t.env.RevisionRoot(ctx)), "grep:content", matches)
+		revision := continuationSnapshotRevision(revisionKey, "grep:content", matches)
 		if err := validateStableOffset("grep", args.Offset, args.ExpectedRevision, revision); err != nil {
 			return "", err
 		}
@@ -342,17 +371,25 @@ func (t *GlobTool) Execute(ctx context.Context, argsJSON string) (string, error)
 		searchRoot = resolved
 	}
 
-	matches, err := globWithRipgrep(ctx, execRoot, searchRoot, args.Pattern, 0)
-	if err != nil {
-		if !errors.Is(err, errRipgrepUnavailable) {
-			return "", err
-		}
-		matches, err = globWithFallback(execRoot, searchRoot, args.Pattern, 0)
+	revisionKey := workspaceRevision(ctx, t.env.RevisionRoot(ctx))
+	key := searchCursorKey("glob", execRoot, searchRoot, args.Pattern, revisionKey)
+	cachePath := searchCursorPath(t.env, key)
+	matches, ok := loadSearchCursor[string](cachePath)
+	if !ok {
+		var err error
+		matches, err = globWithRipgrep(ctx, execRoot, searchRoot, args.Pattern, 0)
 		if err != nil {
-			return "", err
+			if !errors.Is(err, errRipgrepUnavailable) {
+				return "", err
+			}
+			matches, err = globWithFallback(execRoot, searchRoot, args.Pattern, 0)
+			if err != nil {
+				return "", err
+			}
 		}
+		_ = saveSearchCursor(cachePath, matches)
 	}
-	revision := continuationSnapshotRevision(workspaceRevision(ctx, t.env.RevisionRoot(ctx)), "glob", matches)
+	revision := continuationSnapshotRevision(revisionKey, "glob", matches)
 	if err := validateStableOffset("glob", args.Offset, args.ExpectedRevision, revision); err != nil {
 		return "", err
 	}
@@ -470,6 +507,54 @@ func searchResultCapacity(limit int) int {
 		return 16
 	}
 	return limit
+}
+
+// searchCursorKey hashes the full result identity so a session can reuse one
+// materialized search result across offset pages without re-running ripgrep.
+// It is internal to the search tools and never surfaces to the model.
+func searchCursorKey(parts ...string) string {
+	h := sha256.New()
+	for _, part := range parts {
+		_, _ = h.Write([]byte(part))
+		_, _ = h.Write([]byte{0})
+	}
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+func searchCursorPath(env *Env, key string) string {
+	if env == nil || strings.TrimSpace(env.SessionDir) == "" {
+		return ""
+	}
+	return filepath.Join(env.SessionDir, "tool-results", "search-cursors", key+".json")
+}
+
+func saveSearchCursor(path string, records any) error {
+	if path == "" {
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	data, err := json.Marshal(records)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, data, 0o644)
+}
+
+func loadSearchCursor[T any](path string) ([]T, bool) {
+	if path == "" {
+		return nil, false
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, false
+	}
+	var records []T
+	if err := json.Unmarshal(data, &records); err != nil {
+		return nil, false
+	}
+	return records, true
 }
 
 func boundedSearchPage(returned int, hasMore bool) map[string]any {

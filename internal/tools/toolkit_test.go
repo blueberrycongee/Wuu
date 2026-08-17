@@ -2089,6 +2089,75 @@ func TestToolkit_SearchResultsIncludeNextSuggestions(t *testing.T) {
 	}
 }
 
+func TestToolkit_SearchCursorReusesMaterializedResult(t *testing.T) {
+	root := t.TempDir()
+	for i := 0; i < globPageSize+20; i++ {
+		if err := os.WriteFile(filepath.Join(root, fmt.Sprintf("f%04d.go", i)), []byte("package p\n"), 0o644); err != nil {
+			t.Fatalf("write fixture: %v", err)
+		}
+	}
+	kit, err := New(root)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	sessionDir := t.TempDir()
+	kit.SetSessionDir(sessionDir)
+
+	first, err := kit.Execute(context.Background(), providers.ToolCall{
+		Name:      "glob",
+		Arguments: `{"pattern":"*.go"}`,
+	})
+	if err != nil {
+		t.Fatalf("first glob: %v", err)
+	}
+	var firstParsed struct {
+		Files   []string `json:"files"`
+		Total   int      `json:"total"`
+		HasMore bool     `json:"has_more"`
+		Page    struct {
+			Offset int `json:"offset"`
+			Next   struct {
+				Offset           int    `json:"offset"`
+				ExpectedRevision string `json:"expected_revision"`
+			} `json:"next"`
+		} `json:"page"`
+	}
+	if err := json.Unmarshal([]byte(first), &firstParsed); err != nil {
+		t.Fatalf("parse first glob response: %v", err)
+	}
+	if firstParsed.Total != globPageSize+20 || !firstParsed.HasMore || firstParsed.Page.Next.Offset != globPageSize {
+		t.Fatalf("first glob page metadata = %+v", firstParsed)
+	}
+	cursors, _ := filepath.Glob(filepath.Join(sessionDir, "tool-results", "search-cursors", "*.json"))
+	if len(cursors) != 1 {
+		t.Fatalf("expected one materialized search cursor, got %d", len(cursors))
+	}
+
+	second, err := kit.Execute(context.Background(), providers.ToolCall{
+		Name: "glob",
+		Arguments: mustMarshalMap(map[string]any{
+			"pattern":           "*.go",
+			"offset":            firstParsed.Page.Next.Offset,
+			"expected_revision": firstParsed.Page.Next.ExpectedRevision,
+		}),
+	})
+	if err != nil {
+		t.Fatalf("second glob: %v", err)
+	}
+	var secondParsed struct {
+		Files   []string `json:"files"`
+		Total   int      `json:"total"`
+		HasMore bool     `json:"has_more"`
+		Offset  int      `json:"offset"`
+	}
+	if err := json.Unmarshal([]byte(second), &secondParsed); err != nil {
+		t.Fatalf("parse second glob response: %v", err)
+	}
+	if secondParsed.Offset != globPageSize || secondParsed.Total != globPageSize+20 || len(secondParsed.Files) != 20 || secondParsed.HasMore {
+		t.Fatalf("second glob page metadata = %+v", secondParsed)
+	}
+}
+
 func TestToolkit_GrepLargeContentReturnsValidBudgetedJSON(t *testing.T) {
 	root := t.TempDir()
 	kit, err := New(root)
