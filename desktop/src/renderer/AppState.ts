@@ -15,7 +15,11 @@ import type {
   ThreadItem,
   Turn,
 } from "../shared/protocol";
-import type { ComposerFile, ComposerImage } from "./ComposerMessages";
+import {
+  OPTIMISTIC_TURN_ID_PREFIX,
+  type ComposerFile,
+  type ComposerImage,
+} from "./ComposerMessages";
 import { isInternalUserNotificationItem } from "./InternalUserNotification";
 import { threadDisplayTitle } from "./ThreadTitles";
 import { sortChildAgents } from "./ThreadAgents";
@@ -672,7 +676,7 @@ function reduceNotification(
       }
       return updateThreadByID(state, thread.id, (current) => ({
         ...thread,
-        turns: thread.turns.length > 0 ? thread.turns : current.turns,
+        turns: mergeThreadUpdatedTurns(thread.turns, current.turns),
         child_agents: thread.child_agents ?? current.child_agents,
       }));
     }
@@ -1445,6 +1449,27 @@ export function reconcileResumedThreadTurns(
   return changed
     ? { ...resumed, turns: [...mergedTurns, ...salvagedTail] }
     : resumed;
+}
+
+// A history edit first rewinds the server thread, then immediately starts a
+// replacement turn. Preserve that local placeholder when the rewind's
+// thread/updated notification arrives after the optimistic render.
+function mergeThreadUpdatedTurns(incoming: Turn[], current: Turn[]): Turn[] {
+  if (incoming.length === 0) {
+    return current;
+  }
+  if (incoming.length >= current.length) {
+    return incoming;
+  }
+  for (let index = 0; index < incoming.length; index += 1) {
+    if (incoming[index].id !== current[index].id) {
+      return incoming;
+    }
+  }
+  const localTail = current.slice(incoming.length);
+  return localTail.every((turn) => turn.id.startsWith(OPTIMISTIC_TURN_ID_PREFIX))
+    ? [...incoming, ...localTail]
+    : incoming;
 }
 
 function turnItemsArePrefix(resumed: Turn, local: Turn): boolean {
