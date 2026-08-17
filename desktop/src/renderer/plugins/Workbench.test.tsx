@@ -85,6 +85,29 @@ describe("WorkbenchController", () => {
     restored.dispose();
   });
 
+  it("asks the shell to reveal the placement region when opening a view", async () => {
+    const host = new PluginHost({ react: React });
+    await host.activateGeneration({
+      pluginId: "user:views",
+      generation: "one",
+      register(api) {
+        api.registerViewType({ id: "views.dashboard", title: "Dashboard", render: () => null });
+      },
+    });
+    const requestRegionVisible = vi.fn();
+    const controller = new WorkbenchController(host);
+    controller.updateServices({ requestRegionVisible });
+
+    await controller.openView("views.dashboard", { region: "auxiliary" });
+    expect(requestRegionVisible).toHaveBeenCalledWith("auxiliary");
+
+    // Revealing an already-open view also asks for the region.
+    requestRegionVisible.mockClear();
+    await controller.openView("views.dashboard", { region: "auxiliary" });
+    expect(requestRegionVisible).toHaveBeenCalledWith("auxiliary");
+    controller.dispose();
+  });
+
   it("reveals an existing plugin View and can hide its region without destroying state", async () => {
     const host = new PluginHost({ react: React });
     await host.activateGeneration({

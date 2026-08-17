@@ -48,6 +48,8 @@ export interface WorkbenchServices {
   openSettings?(): void;
   disablePlugin?(pluginId: string): void | Promise<void>;
   reportError?(pluginId: string, generation: string, error: unknown): void;
+  /** Ask the shell to reveal a placement region (e.g. open a collapsible panel). */
+  requestRegionVisible?(region: ViewPlacementRegion): void;
 }
 
 export interface WorkbenchSnapshot extends WorkbenchLayoutState {
@@ -135,6 +137,9 @@ export class WorkbenchController {
       throw new Error(`Plugin view type is not available: ${viewTypeId}`);
     }
     const region = options.region ?? definition.defaultRegion ?? "primary";
+    // Reveal the placement region so the newly opened view is actually
+    // visible (the auxiliary panel can be collapsed independently).
+    this.services.requestRegionVisible?.(region);
     if (options.reveal !== false) {
       const existing = this.state.views.find((view) =>
         view.pluginId === definition.pluginId && view.viewTypeId === definition.id && view.region === region);

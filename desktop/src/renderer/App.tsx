@@ -5158,6 +5158,11 @@ export function App(): JSX.Element {
           reportError: (pluginId, generation, error) => {
             console.error(`Plugin view ${pluginId}@${generation} failed to render`, error);
           },
+          // Auxiliary views portal into the right panel, which can be
+          // collapsed independently; reveal it so the opened view shows.
+          requestRegionVisible: (region) => {
+            if (region === "auxiliary") setRightPanelOpenWithMotion(true);
+          },
         }}
       />
       <ProviderSetupDialog
