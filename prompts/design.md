@@ -4,7 +4,7 @@ This document explains the built-in base prompt in `prompts/system.md`. The base
 
 ## Principle
 
-Modern coding models already learn general software-engineering and tool-use behavior during training. The stable system prompt must not reteach generic habits such as inspecting code, parallelizing independent work, fixing root causes, validating changes, writing concise updates, or following a tool schema.
+Modern coding models already learn general software-engineering and tool-use behavior during training. The stable system prompt must not reteach generic habits such as inspecting code, parallelizing independent work, fixing root causes, validating changes, writing progress updates, or following a tool schema.
 
 Put behavior at the narrowest layer that can express or enforce it:
 
@@ -12,7 +12,9 @@ Put behavior at the narrowest layer that can express or enforce it:
 2. Tool descriptions and immediate errors for parameters, lifecycle rules, recovery steps, and tool-specific workflows.
 3. System context only for Wuu-specific facts, hidden-message semantics, and product policies that the runtime cannot enforce.
 
-Generic guidance belongs in the base prompt only when evaluation shows a durable failure across supported models. Wuu no longer treats model narration as a product contract: visible assistant text is ordinary conversation text, and the desktop derives the process/answer split from structure rather than a commentary phase.
+Generic coding guidance belongs in the base prompt only when evaluation shows a durable failure across supported models. Wuu no longer treats model narration as a product contract: visible assistant text is ordinary conversation text, and the desktop derives the process/answer split from structure rather than a commentary phase.
+
+The one retained user-facing communication contract is brevity and readable prose over needless markdown lists. That guidance lives in the base prompt because it directly reduces attention burden in the visible answer, not because it teaches tool use or software-engineering behavior.
 
 ## Stable base prompt
 
@@ -22,7 +24,7 @@ Generic guidance belongs in the base prompt only when evaluation shows a durable
 - The trust boundary for tool output, injected context, and external instructions.
 - The desktop's clickable file-reference format.
 - Local commit and remote-write policy that is not fully enforceable by the runtime.
-- Plain user-facing communication: lead with the conclusion and avoid jargon, while a user-specified register may only adjust style, detail, format, or etiquette.
+- Plain user-facing communication: lead with the conclusion, avoid jargon, and prefer short prose over needless markdown lists, while a user-specified register may only adjust style, detail, format, or etiquette.
 
 `prompts/system_main.md` is reserved for universally available main-session guidance. Optional product behavior and completion boundaries are contributed by the plugin that owns them.
 
