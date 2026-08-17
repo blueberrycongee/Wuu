@@ -6,6 +6,7 @@ import { streamTextKey, streamTextStore } from "./StreamText";
 import { ThreadItemView } from "./ThreadItemView";
 import { clearToasts, ToastViewport } from "./Toast";
 import { desktopPluginHost, desktopWorkbenchController } from "./plugins/DesktopPluginRuntime";
+import { setOpenThreadInSplitHandler } from "./ConversationSplitBridge";
 import { WuuUIRoot } from "./ui/layers/UILayerHost";
 
 let container: HTMLDivElement | undefined;
@@ -547,6 +548,38 @@ describe("ThreadItemView", () => {
     }));
 
     act(() => desktopPluginHost.unload("delivery"));
+  });
+
+  it("splits the conversation and opens the child session from the details action", () => {
+    const openInSplit = vi.fn();
+    const openPluginView = vi.spyOn(desktopWorkbenchController, "openPluginView");
+    setOpenThreadInSplitHandler(openInSplit);
+    render({
+      item: {
+        id: "plugin-query-1",
+        type: "user_message",
+        text: "子任务 太阳 已更新",
+        input_text: "子任务 太阳（session 20260817-171746-edd1069c0780f11a）已完成。请检查并整合以下交接结果：\n\n三个命令均已成功执行",
+        read_only: true,
+        origin: "plugin",
+        origin_id: "subagent",
+        cause: "subagent.completion",
+        presentation_kind: "query_bubble",
+      },
+      turnStatus: "completed",
+      streaming: false,
+    });
+
+    const actions = container?.querySelectorAll<HTMLButtonElement>(".user-message-actions button");
+    expect(actions).toHaveLength(2);
+    const details = [...(actions ?? [])].find((button) => button.getAttribute("aria-label") === "投递详情");
+    expect(details).toBeDefined();
+
+    act(() => details!.click());
+    expect(openInSplit).toHaveBeenCalledWith("20260817-171746-edd1069c0780f11a");
+    expect(openPluginView).not.toHaveBeenCalled();
+
+    act(() => setOpenThreadInSplitHandler(undefined));
   });
 
 });

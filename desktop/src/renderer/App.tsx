@@ -195,6 +195,7 @@ import { ArchiveTip } from "./ArchiveTip";
 import { TopNotice } from "./TopNotice";
 import { UILayerPortal } from "./ui/layers/UILayerHost";
 import { showErrorToast, showToast } from "./Toast";
+import { setOpenThreadInSplitHandler } from "./ConversationSplitBridge";
 import { CircleAlert, RefreshCw } from "lucide-react";
 import type {
 } from "../shared/protocol";
@@ -2177,6 +2178,33 @@ export function App(): JSX.Element {
   const handleCachedPaneOpenAgent = useStableCallback((agent: Agent) => {
     void selectChildAgent(agent);
   });
+  // Details actions on subagent completion messages split the conversation
+  // and open the child session in the secondary pane. The App owns thread
+  // state, so it registers the bridge handler once; message buttons call it.
+  const handleOpenThreadInSplit = useStableCallback((threadID: string) => {
+    void (async () => {
+      try {
+        const thread = requireThread(
+          await window.wuu.resumeThread(threadID),
+          t("thread.childResumeMissing"),
+        );
+        setState((current) => ({
+          ...current,
+          secondaryThread: thread,
+          activePane: current.activePane === "secondary" ? "secondary" : "primary",
+          threads: upsertThread(current.threads, thread),
+        }));
+      } catch (error) {
+        showErrorToast(
+          error instanceof Error ? error.message : t("thread.childLoadFailed"),
+        );
+      }
+    })();
+  });
+  useEffect(() => {
+    setOpenThreadInSplitHandler(handleOpenThreadInSplit);
+    return () => setOpenThreadInSplitHandler(undefined);
+  }, [handleOpenThreadInSplit]);
   const handleCachedPaneOpenFileDiff = useStableCallback(
     (thread: Thread, selection: TurnFileDiffSelection) => {
       openTurnFileDiffPanel(thread.id, selection);

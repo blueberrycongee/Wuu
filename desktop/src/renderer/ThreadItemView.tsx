@@ -42,6 +42,7 @@ import {
   TurnNotice,
 } from "./TurnNotice";
 import { userMessageAnchorID } from "./TurnViewHelpers";
+import { requestOpenThreadInSplit } from "./ConversationSplitBridge";
 import {
   userFacingErrorForMessage,
 } from "./UserFacingErrors";
@@ -54,6 +55,17 @@ import {
 import { desktopPluginHost, desktopWorkbenchController } from "./plugins/DesktopPluginRuntime";
 import type { PluginHost } from "./plugins/PluginHost";
 import { PluginSlot } from "./plugins/PluginSlot";
+
+// Subagent completions embed the child session id in the delivered text as
+// "（session <id>）". Extracting it lets the details action open that session
+// in the conversation split instead of the auxiliary panel.
+const DELIVERY_SESSION_ID_PATTERN = /session\s+(\d{8}-\d{6}-[0-9a-f]{16})/;
+
+function deliverySessionIDFromInputText(inputText: string | undefined): string | undefined {
+  const text = inputText?.trim();
+  if (!text) return undefined;
+  return DELIVERY_SESSION_ID_PATTERN.exec(text)?.[1];
+}
 
 interface ThreadItemViewProps {
   turnID: string;
@@ -234,13 +246,22 @@ function BuiltInThreadItemView({
       );
       const editActionVisible = editable;
       // Plugin wake messages can hide the real delivered prompt behind a
-      // generic query bubble; expose the raw input through a details action
-      // that opens the delivery inspector in the auxiliary panel.
+      // generic query bubble. Subagent completions embed the child session
+      // id ("session <id>") in the delivered text: the details action then
+      // splits the conversation and opens that session in the secondary
+      // pane. Other deliveries fall back to the delivery inspector in the
+      // auxiliary panel.
       const deliveryText = item.input_text?.trim() ?? "";
+      const deliverySessionID = deliverySessionIDFromInputText(deliveryText);
       const deliveryViewAvailable = deliveryText !== ""
-        && desktopPluginHost.getViewTypes().some((view) => view.id === "delivery.inspector");
+        && (deliverySessionID !== undefined
+          || desktopPluginHost.getViewTypes().some((view) => view.id === "delivery.inspector"));
       const openDeliveryDetails = (): void => {
         if (!deliveryViewAvailable) return;
+        if (deliverySessionID !== undefined) {
+          requestOpenThreadInSplit(deliverySessionID);
+          return;
+        }
         void desktopWorkbenchController.openPluginView("delivery", "delivery.inspector", {
           region: "auxiliary",
           persistence: "session",
