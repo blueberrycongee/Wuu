@@ -15,7 +15,6 @@ import {
   type TurnStreamStatus,
 } from "./AppState";
 import { ConversationTurnList } from "./ConversationTurnList";
-import { threadDisplayTitle } from "./ThreadTitles";
 import { TurnView, latestAgentMessageItemID } from "./TurnView";
 import { UserQuestionCard } from "./UserQuestionCard";
 import type { TurnFileDiffSelection } from "./TurnFileDiffTypes";
@@ -24,7 +23,6 @@ import { useI18n } from "./i18n";
 export function ConversationSplitPane({
   pane,
   thread,
-  threads,
   active,
   activeContextCwd,
   appStatus,
@@ -57,7 +55,6 @@ export function ConversationSplitPane({
 }: {
   pane: ConversationPaneID;
   thread: Thread;
-  threads: Thread[];
   active: boolean;
   activeContextCwd?: string;
   appStatus: string;
@@ -147,25 +144,15 @@ export function ConversationSplitPane({
       )}
       onPointerDown={onActivate}
     >
-      <div className="conversation-split-header">
-        <div className="conversation-split-title">
-          <span>
-            {t(pane === "secondary" ? "split.fork" : "split.source")}
-          </span>
-          <strong>
-            {threadDisplayTitle(thread, threads, t("tabs.newConversation"))}
-          </strong>
-        </div>
-        <button
-          className="icon-button conversation-split-close"
-          type="button"
-          aria-label={closeLabel}
-          title={closeLabel}
-          onClick={onClose}
-        >
-          <X className="icon" />
-        </button>
-      </div>
+      <button
+        className="icon-button conversation-split-close"
+        type="button"
+        aria-label={closeLabel}
+        title={closeLabel}
+        onClick={onClose}
+      >
+        <X className="icon" />
+      </button>
       <div
         ref={onBodyRef}
         className="conversation-split-body"

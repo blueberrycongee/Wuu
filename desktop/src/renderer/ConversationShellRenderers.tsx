@@ -144,7 +144,6 @@ export function ConversationSplitPaneRenderer({
     <ConversationSplitPane
       pane={pane}
       thread={thread}
-      threads={state.threads}
       active={state.activePane === pane}
       activeContextCwd={state.activeContext?.cwd}
       appStatus={state.status}
