@@ -78,6 +78,23 @@ afterEach(() => {
 });
 
 describe("StreamingMarkdown", () => {
+  it("renders strong markers next to Chinese prose and opening punctuation", async () => {
+    const key = streamTextKey("turn", "s1", "text");
+    const text = "但**「多想的意愿」来自 RL 训练，「预算」是工程兜底**——所以不是换了一句话。";
+    streamTextStore.seed(key, text);
+    mount({ streamKey: key, initialText: text, isLive: false, phase: "final_answer" });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const paragraph = document.querySelector(".rich-paragraph");
+    const strong = paragraph?.querySelector("strong");
+    expect(paragraph?.textContent).toBe("但「多想的意愿」来自 RL 训练，「预算」是工程兜底——所以不是换了一句话。");
+    expect(strong?.textContent).toBe("「多想的意愿」来自 RL 训练，「预算」是工程兜底");
+    expect(paragraph?.textContent).not.toContain("**");
+  });
+
   it("keeps bold CJK prose with inline code parsed after the stream settles", async () => {
     const key = streamTextKey("turn", "s2", "text");
     const text =

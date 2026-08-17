@@ -2,6 +2,7 @@ import { Bot, ChevronDown, ChevronUp, ClipboardList, ImagePlus, MessageCircle, N
 import { type CSSProperties, type KeyboardEvent, type PointerEvent as ReactPointerEvent, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
+import remarkCjkStrongBoundary from "./remarkCjkStrongBoundary";
 import type { ChannelAgentInsight, ChannelMessage, ChannelRoom, InitializeResult, NamedAgent } from "../shared/protocol";
 import { AGENT_AVATAR_KEYS, AgentAvatarMark, randomAgentAvatarKey } from "./AgentAvatarMark";
 import { AgentRelationshipGraph } from "./AgentRelationshipGraph";
@@ -163,7 +164,7 @@ function ChannelThreadMarkdownPreview({ text }: { text: string }): JSX.Element {
   return (
     <ReactMarkdown
       components={CHANNEL_THREAD_PREVIEW_COMPONENTS}
-      remarkPlugins={[remarkGfm]}
+      remarkPlugins={[remarkGfm, remarkCjkStrongBoundary]}
     >
       {text}
     </ReactMarkdown>

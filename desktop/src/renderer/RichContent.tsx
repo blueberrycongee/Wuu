@@ -4,6 +4,7 @@ import ReactMarkdown, { defaultUrlTransform, type Components, type UrlTransform 
 import rehypeRaw from "rehype-raw";
 import remarkGfm from "remark-gfm";
 import remarkCjkAutolinkBoundary from "./remarkCjkAutolinkBoundary";
+import remarkCjkStrongBoundary from "./remarkCjkStrongBoundary";
 import type { WorkspaceFileReferenceResolveResult } from "../shared/protocol";
 import { useImagePreview } from "./ImagePreview";
 import {
@@ -210,7 +211,7 @@ function MarkdownContentView({
   return (
     <ReactMarkdown
       components={components}
-      remarkPlugins={[remarkGfm, remarkCjkAutolinkBoundary]}
+      remarkPlugins={[remarkGfm, remarkCjkAutolinkBoundary, remarkCjkStrongBoundary]}
       rehypePlugins={allowRawHtml ? [rehypeRaw, rehypeHeadingIDs] : [rehypeHeadingIDs]}
       urlTransform={richMarkdownUrlTransform}
     >
