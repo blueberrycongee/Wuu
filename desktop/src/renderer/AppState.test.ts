@@ -2672,6 +2672,21 @@ describe("mergeListedThreads", () => {
     expect(merged.child_agents?.[0]?.status).toBe("running");
     expect(isThreadUnread(merged, undefined)).toBe(true);
   });
+
+  it("dedupes a live snapshot and a local archived copy of the same thread", () => {
+    const live = {
+      ...threadWithUserTexts(["thread work"]),
+      id: "thread-1",
+      archived: false,
+    };
+    const archivedCopy = { ...live, archived: true };
+
+    const merged = mergeListedThreads([], [live, archivedCopy]);
+
+    expect(merged).toHaveLength(1);
+    expect(merged[0].id).toBe("thread-1");
+    expect(merged[0].archived).toBe(true);
+  });
 });
 
 describe("latestContextUsageForThread", () => {

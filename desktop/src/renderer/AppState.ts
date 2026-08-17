@@ -1632,8 +1632,16 @@ function mergeListedThreads(current: Thread[], listed: Thread[]): Thread[] {
   const currentByID = new Map(
     current.filter(isThread).map((thread) => [thread.id, thread]),
   );
+  // `listed` is built as [...live, ...archived-local-copies], so the same id can
+  // appear twice when a listing fetched before a local archive/unarchive flip
+  // lands after the optimistic update. Keep the later (local intent) snapshot
+  // instead of emitting two rows for one conversation.
+  const deduped = new Map<string, Thread>();
+  for (const thread of listed) {
+    deduped.set(thread.id, thread);
+  }
   return sortThreads(
-    listed.map((thread) => {
+    [...deduped.values()].map((thread) => {
       const existing = currentByID.get(thread.id);
       if (!existing) {
         return thread;
