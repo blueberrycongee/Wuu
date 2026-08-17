@@ -103,12 +103,23 @@ func projectRecordArray(rawText, arrayKey, recover string, pc projectorContext, 
 	offset := intJSONNumber(m["offset"])
 	revision, _ := m["workspace_revision"].(string)
 	sourceHasMore, _ := m["has_more"].(bool)
+	continuationSupported := true
+	if value, exists := m["continuation_supported"].(bool); exists {
+		continuationSupported = value
+	}
+	if !continuationSupported {
+		recover = fmt.Sprintf("read the full bounded result at %s; narrow the search to inspect matches beyond the execution limit", pc.ArtifactRef)
+	}
 	setPage := func(candidate map[string]any, kept int) {
 		hasMore := sourceHasMore || kept < total
 		candidate["offset"] = offset
 		candidate["returned_count"] = kept
 		candidate["has_more"] = hasMore
-		candidate["page"] = continuationPage(offset, kept, hasMore, revision)
+		if continuationSupported {
+			candidate["page"] = continuationPage(offset, kept, hasMore, revision)
+		} else {
+			candidate["page"] = boundedSearchPage(kept, hasMore)
+		}
 	}
 
 	size := func(keep int) int {

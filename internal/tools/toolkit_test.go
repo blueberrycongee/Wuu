@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -1885,6 +1886,32 @@ func withRGTestHooks(t *testing.T, lookup func(string) (string, error), cmd exec
 	})
 }
 
+func TestRipgrepCommandsUseExplicitRootAndIgnoreHostConfig(t *testing.T) {
+	withRGTestHooks(t, func(string) (string, error) { return "/usr/bin/rg", nil }, exec.CommandContext)
+
+	grepCmd := buildRGGrepCommand(context.Background(), "needle", "", "*.go", grepOptions{})
+	if grepCmd == nil {
+		t.Fatal("grep command was not built")
+	}
+	grepArgs := grepCmd.Args[1:]
+	if len(grepArgs) == 0 || grepArgs[0] != "--no-config" || grepArgs[len(grepArgs)-1] != "." {
+		t.Fatalf("grep args do not bind config and root explicitly: %q", grepArgs)
+	}
+	separator := slices.Index(grepArgs, "--")
+	if separator < 0 || separator+1 >= len(grepArgs) || grepArgs[separator+1] != "needle" {
+		t.Fatalf("grep pattern is not protected by --: %q", grepArgs)
+	}
+
+	globCmd := buildRGFilesCommand(context.Background(), "*.go")
+	if globCmd == nil {
+		t.Fatal("glob command was not built")
+	}
+	globArgs := globCmd.Args[1:]
+	if len(globArgs) == 0 || globArgs[0] != "--no-config" || globArgs[len(globArgs)-1] != "." {
+		t.Fatalf("glob args do not bind config and root explicitly: %q", globArgs)
+	}
+}
+
 func TestToolkit_GlobRipgrepIncludesHiddenFiles(t *testing.T) {
 	root := t.TempDir()
 	kit, err := New(root)
@@ -1984,10 +2011,10 @@ func TestToolkit_SearchResultsIncludeNextSuggestions(t *testing.T) {
 		t.Fatalf("grep: %v", err)
 	}
 	var grepParsed struct {
-		Action            string      `json:"action"`
-		Matches           []grepMatch `json:"matches"`
-		WorkspaceRevision string      `json:"workspace_revision"`
-		Suggestions       []string    `json:"next_suggestions"`
+		Action                string      `json:"action"`
+		Matches               []grepMatch `json:"matches"`
+		ContinuationSupported bool        `json:"continuation_supported"`
+		Suggestions           []string    `json:"next_suggestions"`
 	}
 	if err := json.Unmarshal([]byte(grepResp), &grepParsed); err != nil {
 		t.Fatalf("parse grep response: %v", err)
@@ -1998,8 +2025,8 @@ func TestToolkit_SearchResultsIncludeNextSuggestions(t *testing.T) {
 	if grepParsed.Action != "grep" {
 		t.Fatalf("grep action = %q, want grep", grepParsed.Action)
 	}
-	if !strings.HasPrefix(grepParsed.WorkspaceRevision, "fs:worktree:") {
-		t.Fatalf("grep response missing filesystem workspace revision: %+v", grepParsed)
+	if grepParsed.ContinuationSupported {
+		t.Fatalf("bounded grep unexpectedly advertised continuation: %+v", grepParsed)
 	}
 	if len(grepParsed.Suggestions) == 0 || !strings.Contains(strings.Join(grepParsed.Suggestions, " "), "read_file") {
 		t.Fatalf("grep response missing read_file suggestion: %+v", grepParsed.Suggestions)
@@ -2013,10 +2040,10 @@ func TestToolkit_SearchResultsIncludeNextSuggestions(t *testing.T) {
 		t.Fatalf("glob: %v", err)
 	}
 	var globParsed struct {
-		Action            string   `json:"action"`
-		Files             []string `json:"files"`
-		WorkspaceRevision string   `json:"workspace_revision"`
-		Suggestions       []string `json:"next_suggestions"`
+		Action                string   `json:"action"`
+		Files                 []string `json:"files"`
+		ContinuationSupported bool     `json:"continuation_supported"`
+		Suggestions           []string `json:"next_suggestions"`
 	}
 	if err := json.Unmarshal([]byte(globResp), &globParsed); err != nil {
 		t.Fatalf("parse glob response: %v", err)
@@ -2027,8 +2054,8 @@ func TestToolkit_SearchResultsIncludeNextSuggestions(t *testing.T) {
 	if globParsed.Action != "glob" {
 		t.Fatalf("glob action = %q, want glob", globParsed.Action)
 	}
-	if !strings.HasPrefix(globParsed.WorkspaceRevision, "fs:worktree:") {
-		t.Fatalf("glob response missing filesystem workspace revision: %+v", globParsed)
+	if globParsed.ContinuationSupported {
+		t.Fatalf("bounded glob unexpectedly advertised continuation: %+v", globParsed)
 	}
 	if len(globParsed.Suggestions) == 0 || !strings.Contains(strings.Join(globParsed.Suggestions, " "), "broader glob") {
 		t.Fatalf("empty glob response missing broaden suggestion: %+v", globParsed.Suggestions)

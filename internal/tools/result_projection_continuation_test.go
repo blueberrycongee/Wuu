@@ -51,6 +51,37 @@ func TestRecordProjectorContinuationAdvancesByDisplayedRecords(t *testing.T) {
 	}
 }
 
+func TestBoundedSearchProjectionUsesArtifactWithoutInventingContinuation(t *testing.T) {
+	files := make([]string, 1000)
+	for i := range files {
+		files[i] = fmt.Sprintf("file-%05d-%s.go", i, strings.Repeat("path", 8))
+	}
+	raw := mustMarshalMap(map[string]any{
+		"action":                 "glob",
+		"pattern":                "**/*.go",
+		"continuation_supported": false,
+		"offset":                 0,
+		"has_more":               true,
+		"files":                  files,
+	})
+	out, _, ok := projectGlobResult(raw, projectorContext{
+		CallID: "bounded", BudgetTokens: defaultProjectionTokenBudget, ArtifactRef: "/s/bounded.txt",
+	})
+	if !ok {
+		t.Fatal("bounded projection declined")
+	}
+	parsed := parseOut(t, out)
+	page := parsed["page"].(map[string]any)
+	if _, exists := page["next"]; exists {
+		t.Fatalf("bounded projection invented an unstable continuation: %+v", page)
+	}
+	projection := parsed["projection"].(map[string]any)
+	recover, _ := projection["recover"].(string)
+	if !strings.Contains(recover, "/s/bounded.txt") || !strings.Contains(recover, "narrow") {
+		t.Fatalf("bounded projection recovery is not actionable: %+v", projection)
+	}
+}
+
 func TestSearchHelpersSortFullSetBeforePaging(t *testing.T) {
 	root := t.TempDir()
 	for i := 519; i >= 0; i-- {

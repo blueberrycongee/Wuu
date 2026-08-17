@@ -22,7 +22,10 @@ const (
 	maxGrepMatchContentBytes = 4 * 1024
 	grepPageSize             = 250
 	globPageSize             = 500
+	maxRGRecordBytes         = 1024 * 1024
 )
+
+var errRipgrepUnavailable = errors.New("ripgrep not available")
 
 // ---------------------------------------------------------------------------
 // grep
@@ -39,7 +42,7 @@ func (t *GrepTool) IsConcurrencySafe() bool { return true }
 func (t *GrepTool) Definition() providers.ToolDefinition {
 	return providers.ToolDefinition{
 		Name:        "grep",
-		Description: "Search file contents with a regex. Supports include globs, context lines, output modes, case-insensitive search, and stable offset continuation. Returns file paths, line numbers, matches, workspace_revision, and page.next when more records are available.",
+		Description: "Search file contents with a regex. Content and file results are streamed and bounded; narrow broad searches when truncated. Count mode supports stable offset continuation.",
 		InputSchema: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -77,11 +80,11 @@ func (t *GrepTool) Definition() providers.ToolDefinition {
 				},
 				"offset": map[string]any{
 					"type":        "integer",
-					"description": "Zero-based record offset. For continuation, use page.next.offset from the previous result.",
+					"description": "Zero-based record offset for output_mode=count continuation.",
 				},
 				"expected_revision": map[string]any{
 					"type":        "string",
-					"description": "Required with non-zero offset; use page.next.expected_revision to reject stale continuation.",
+					"description": "Required with non-zero offset when continuing output_mode=count.",
 				},
 			},
 			"required": []string{"pattern"},
@@ -176,32 +179,36 @@ func (t *GrepTool) Execute(ctx context.Context, argsJSON string) (string, error)
 
 	switch opts.outputMode {
 	case "files_with_matches":
-		files, err := grepFilesWithMatches(t.env, execRoot, args.Pattern, searchRoot, args.Include, opts, 0)
+		if args.Offset != 0 {
+			return "", errors.New("grep offset continuation is only supported for output_mode=count; narrow the search instead")
+		}
+		files, err := grepFilesWithMatches(ctx, execRoot, args.Pattern, searchRoot, args.Include, opts, grepPageSize+1)
 		if err != nil {
 			return "", err
 		}
-		revision := continuationSnapshotRevision(workspaceRevision(ctx, t.env.RevisionRoot(ctx)), "grep:files_with_matches", files)
-		if err := validateStableOffset("grep", args.Offset, args.ExpectedRevision, revision); err != nil {
-			return "", err
+		page, hasMore := pageWindow(files, 0, grepPageSize)
+		matchedAtLeast := len(page)
+		if hasMore {
+			matchedAtLeast++
 		}
-		page, hasMore := pageWindow(files, args.Offset, grepPageSize)
 		result := map[string]any{
-			"action":             "grep",
-			"pattern":            args.Pattern,
-			"workspace_revision": revision,
-			"total":              len(files),
-			"offset":             args.Offset,
-			"returned_count":     len(page),
-			"has_more":           hasMore,
-			"page":               continuationPage(args.Offset, len(page), hasMore, revision),
-			"truncated":          hasMore,
-			"files":              page,
-			"next_suggestions":   searchNextSuggestions("grep", "files_with_matches", len(page), hasMore),
+			"action":                 "grep",
+			"pattern":                args.Pattern,
+			"continuation_supported": false,
+			"total":                  matchedAtLeast,
+			"total_is_lower_bound":   hasMore,
+			"offset":                 0,
+			"returned_count":         len(page),
+			"has_more":               hasMore,
+			"page":                   boundedSearchPage(len(page), hasMore),
+			"truncated":              hasMore,
+			"files":                  page,
+			"next_suggestions":       searchNextSuggestions("grep", "files_with_matches", len(page), hasMore),
 		}
 		return mustJSON(result)
 
 	case "count":
-		counts, total, err := grepCountMatches(execRoot, args.Pattern, searchRoot, args.Include, opts, 0)
+		counts, total, err := grepCountMatches(ctx, execRoot, args.Pattern, searchRoot, args.Include, opts, 0)
 		if err != nil {
 			return "", err
 		}
@@ -227,19 +234,25 @@ func (t *GrepTool) Execute(ctx context.Context, argsJSON string) (string, error)
 		return mustJSON(result)
 
 	default: // "content"
-		matches, err := grepWithRipgrep(t.env, execRoot, args.Pattern, searchRoot, args.Include, opts, 0)
+		if args.Offset != 0 {
+			return "", errors.New("grep offset continuation is only supported for output_mode=count; narrow the search instead")
+		}
+		matches, err := grepWithRipgrep(ctx, t.env, execRoot, args.Pattern, searchRoot, args.Include, opts, grepPageSize+1)
 		if err != nil {
-			matches, err = grepWithFallback(t.env, execRoot, args.Pattern, searchRoot, args.Include, opts, 0)
+			if !errors.Is(err, errRipgrepUnavailable) {
+				return "", err
+			}
+			matches, err = grepWithFallback(t.env, execRoot, args.Pattern, searchRoot, args.Include, opts, grepPageSize+1)
 			if err != nil {
 				return "", err
 			}
 		}
-		revision := continuationSnapshotRevision(workspaceRevision(ctx, t.env.RevisionRoot(ctx)), "grep:content", matches)
-		if err := validateStableOffset("grep", args.Offset, args.ExpectedRevision, revision); err != nil {
-			return "", err
+		page, hasMore := pageWindow(matches, 0, grepPageSize)
+		matchedAtLeast := len(page)
+		if hasMore {
+			matchedAtLeast++
 		}
-		page, hasMore := pageWindow(matches, args.Offset, grepPageSize)
-		return grepContentResultJSON(args.Pattern, page, len(matches), args.Offset, hasMore, revision)
+		return grepContentResultJSON(args.Pattern, page, matchedAtLeast, hasMore, 0, hasMore, "")
 	}
 }
 
@@ -258,7 +271,7 @@ func (t *GlobTool) IsConcurrencySafe() bool { return true }
 func (t *GlobTool) Definition() providers.ToolDefinition {
 	return providers.ToolDefinition{
 		Name:        "glob",
-		Description: "Find files by glob pattern. Returns matching paths, workspace_revision, and page.next for stable non-overlapping continuation; use grep for content search.",
+		Description: "Find files by glob pattern. Results are streamed and bounded; narrow the path or pattern when truncated. Use grep for content search.",
 		InputSchema: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -272,11 +285,11 @@ func (t *GlobTool) Definition() providers.ToolDefinition {
 				},
 				"offset": map[string]any{
 					"type":        "integer",
-					"description": "Zero-based record offset. For continuation, use page.next.offset from the previous result.",
+					"description": "Deprecated. Narrow the path or pattern when glob results are truncated.",
 				},
 				"expected_revision": map[string]any{
 					"type":        "string",
-					"description": "Required with non-zero offset; use page.next.expected_revision to reject stale continuation.",
+					"description": "Deprecated with glob offset continuation.",
 				},
 			},
 			"required": []string{"pattern"},
@@ -314,6 +327,9 @@ func (t *GlobTool) Execute(ctx context.Context, argsJSON string) (string, error)
 	if strings.TrimSpace(args.Pattern) == "" {
 		return "", errors.New("glob requires pattern")
 	}
+	if args.Offset != 0 {
+		return "", errors.New("glob offset continuation is not supported; narrow the path or pattern instead")
+	}
 
 	// Worktree-bound execution: the search root switches to the checkout
 	// after the ordinary sandbox check accepted the workspace path.
@@ -334,31 +350,35 @@ func (t *GlobTool) Execute(ctx context.Context, argsJSON string) (string, error)
 		searchRoot = resolved
 	}
 
-	matches, err := globWithRipgrep(execRoot, searchRoot, args.Pattern, 0)
+	matches, err := globWithRipgrep(ctx, execRoot, searchRoot, args.Pattern, globPageSize+1)
 	if err != nil {
-		matches, err = globWithFallback(execRoot, searchRoot, args.Pattern, 0)
+		if !errors.Is(err, errRipgrepUnavailable) {
+			return "", err
+		}
+		matches, err = globWithFallback(execRoot, searchRoot, args.Pattern, globPageSize+1)
 		if err != nil {
 			return "", err
 		}
 	}
-	revision := continuationSnapshotRevision(workspaceRevision(ctx, t.env.RevisionRoot(ctx)), "glob", matches)
-	if err := validateStableOffset("glob", args.Offset, args.ExpectedRevision, revision); err != nil {
-		return "", err
+	page, hasMore := pageWindow(matches, 0, globPageSize)
+	matchedAtLeast := len(page)
+	if hasMore {
+		matchedAtLeast++
 	}
-	page, hasMore := pageWindow(matches, args.Offset, globPageSize)
 
 	result := map[string]any{
-		"action":             "glob",
-		"pattern":            args.Pattern,
-		"workspace_revision": revision,
-		"total":              len(matches),
-		"offset":             args.Offset,
-		"returned_count":     len(page),
-		"has_more":           hasMore,
-		"page":               continuationPage(args.Offset, len(page), hasMore, revision),
-		"truncated":          hasMore,
-		"files":              page,
-		"next_suggestions":   searchNextSuggestions("glob", "", len(page), hasMore),
+		"action":                 "glob",
+		"pattern":                args.Pattern,
+		"continuation_supported": false,
+		"total":                  matchedAtLeast,
+		"total_is_lower_bound":   hasMore,
+		"offset":                 0,
+		"returned_count":         len(page),
+		"has_more":               hasMore,
+		"page":                   boundedSearchPage(len(page), hasMore),
+		"truncated":              hasMore,
+		"files":                  page,
+		"next_suggestions":       searchNextSuggestions("glob", "", len(page), hasMore),
 	}
 	return mustJSON(result)
 }
@@ -367,9 +387,12 @@ func searchNextSuggestions(toolName, outputMode string, total int, truncated boo
 	if truncated {
 		switch toolName {
 		case "glob":
-			return []string{"use page.next with the same glob pattern and path for more files, or narrow the search"}
+			return []string{"narrow the glob path or pattern to inspect omitted files"}
 		default:
-			return []string{"use page.next with the same grep arguments for more records, or narrow the search"}
+			if outputMode == "count" {
+				return []string{"use page.next with the same grep arguments for more count records, or narrow the search"}
+			}
+			return []string{"narrow the grep path, include, or pattern to inspect omitted matches"}
 		}
 	}
 	if total == 0 {
@@ -393,7 +416,7 @@ func searchNextSuggestions(toolName, outputMode string, total int, truncated boo
 	}
 }
 
-func grepContentResultJSON(pattern string, matches []grepMatch, totalRecords, offset int, sourceHasMore bool, revision string) (string, error) {
+func grepContentResultJSON(pattern string, matches []grepMatch, totalRecords int, totalIsLowerBound bool, offset int, sourceHasMore bool, revision string) (string, error) {
 	budgetedMatches := make([]grepMatch, len(matches))
 	contentTruncated := false
 	for i, match := range matches {
@@ -409,21 +432,22 @@ func grepContentResultJSON(pattern string, matches []grepMatch, totalRecords, of
 		hasMore := sourceHasMore || omitted > 0
 		truncated := hasMore || contentTruncated
 		result := map[string]any{
-			"action":               "grep",
-			"pattern":              pattern,
-			"workspace_revision":   revision,
-			"total":                totalRecords,
-			"offset":               offset,
-			"has_more":             hasMore,
-			"truncated":            truncated,
-			"matches":              budgetedMatches,
-			"omitted_match_count":  omitted,
-			"content_truncated":    contentTruncated,
-			"next_suggestions":     searchNextSuggestions("grep", "content", totalRecords, truncated),
-			"result_budget_bytes":  maxGrepOutputBytes,
-			"returned_match_count": len(budgetedMatches),
-			"returned_count":       len(budgetedMatches),
-			"page":                 continuationPage(offset, len(budgetedMatches), hasMore, revision),
+			"action":                 "grep",
+			"pattern":                pattern,
+			"continuation_supported": false,
+			"total":                  totalRecords,
+			"total_is_lower_bound":   totalIsLowerBound,
+			"offset":                 offset,
+			"has_more":               hasMore,
+			"truncated":              truncated,
+			"matches":                budgetedMatches,
+			"omitted_match_count":    omitted,
+			"content_truncated":      contentTruncated,
+			"next_suggestions":       searchNextSuggestions("grep", "content", totalRecords, truncated),
+			"result_budget_bytes":    maxGrepOutputBytes,
+			"returned_match_count":   len(budgetedMatches),
+			"returned_count":         len(budgetedMatches),
+			"page":                   boundedSearchPage(len(budgetedMatches), hasMore),
 		}
 		out, err := mustJSON(result)
 		if err != nil {
@@ -448,7 +472,15 @@ func searchResultCapacity(limit int) int {
 	return limit
 }
 
-func grepWithRipgrep(env *Env, rootDir, pattern, searchRoot, include string, opts grepOptions, limit int) ([]grepMatch, error) {
+func boundedSearchPage(returned int, hasMore bool) map[string]any {
+	return map[string]any{
+		"offset":   0,
+		"returned": returned,
+		"has_more": hasMore,
+	}
+}
+
+func grepWithRipgrep(ctx context.Context, env *Env, rootDir, pattern, searchRoot, include string, opts grepOptions, limit int) ([]grepMatch, error) {
 	relSearchRoot, err := filepath.Rel(rootDir, searchRoot)
 	if err != nil {
 		return nil, err
@@ -456,28 +488,34 @@ func grepWithRipgrep(env *Env, rootDir, pattern, searchRoot, include string, opt
 	if relSearchRoot == "." {
 		relSearchRoot = ""
 	}
-	cmd := buildRGGrepCommand(context.Background(), pattern, relSearchRoot, include, opts)
+	cmd := buildRGGrepCommand(ctx, pattern, relSearchRoot, include, opts)
 	if cmd == nil {
-		return nil, errors.New("ripgrep not available")
+		return nil, errRipgrepUnavailable
 	}
 	cmd.Dir = rootDir
-
-	output, err := cmd.Output()
+	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
-			return []grepMatch{}, nil
-		}
+		return nil, err
+	}
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Start(); err != nil {
 		return nil, err
 	}
 
 	matches := make([]grepMatch, 0, searchResultCapacity(limit))
-	for _, line := range bytes.Split(bytes.TrimSpace(output), []byte{'\n'}) {
+	earlyStop := false
+	scanner := bufio.NewScanner(stdout)
+	scanner.Buffer(make([]byte, 64*1024), maxRGRecordBytes)
+	for scanner.Scan() {
+		line := scanner.Bytes()
 		if len(line) == 0 {
 			continue
 		}
 		var event rgJSONEvent
 		if err := json.Unmarshal(line, &event); err != nil {
+			_ = cmd.Process.Kill()
+			_ = cmd.Wait()
 			return nil, fmt.Errorf("parse ripgrep output: %w", err)
 		}
 		if event.Type != "match" {
@@ -497,8 +535,29 @@ func grepWithRipgrep(env *Env, rootDir, pattern, searchRoot, include string, opt
 			Content: grepMatchContentForPath(env, filepath.ToSlash(rel), strings.TrimRight(event.Data.Lines.Text, "\r\n")),
 		})
 		if limit > 0 && len(matches) >= limit {
+			earlyStop = true
+			_ = cmd.Process.Kill()
 			break
 		}
+	}
+	scanErr := scanner.Err()
+	waitErr := cmd.Wait()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if scanErr != nil && !earlyStop {
+		return nil, fmt.Errorf("read ripgrep output: %w", scanErr)
+	}
+	if waitErr != nil && !earlyStop {
+		var exitErr *exec.ExitError
+		if errors.As(waitErr, &exitErr) && exitErr.ExitCode() == 1 {
+			return []grepMatch{}, nil
+		}
+		message := strings.TrimSpace(stderr.String())
+		if message != "" {
+			return nil, fmt.Errorf("ripgrep failed: %s", message)
+		}
+		return nil, waitErr
 	}
 	sort.SliceStable(matches, func(i, j int) bool {
 		if matches[i].File == matches[j].File {
@@ -596,24 +655,29 @@ func grepMatchContentForPath(env *Env, path, content string) string {
 	return "[REDACTED: sensitive file content]"
 }
 
-func globWithRipgrep(rootDir, searchRoot, pattern string, limit int) ([]string, error) {
-	cmd := buildRGFilesCommand(context.Background(), pattern)
+func globWithRipgrep(ctx context.Context, rootDir, searchRoot, pattern string, limit int) ([]string, error) {
+	cmd := buildRGFilesCommand(ctx, pattern)
 	if cmd == nil {
-		return nil, errors.New("ripgrep not available")
+		return nil, errRipgrepUnavailable
 	}
 	cmd.Dir = searchRoot
-
-	output, err := cmd.Output()
+	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
-			return []string{}, nil
-		}
+		return nil, err
+	}
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Start(); err != nil {
 		return nil, err
 	}
 
 	matches := make([]string, 0, searchResultCapacity(limit))
-	for _, entry := range bytes.Split(output, []byte{0}) {
+	earlyStop := false
+	scanner := bufio.NewScanner(stdout)
+	scanner.Split(splitNullTerminated)
+	scanner.Buffer(make([]byte, 64*1024), maxRGRecordBytes)
+	for scanner.Scan() {
+		entry := scanner.Bytes()
 		if len(entry) == 0 {
 			continue
 		}
@@ -629,11 +693,42 @@ func globWithRipgrep(rootDir, searchRoot, pattern string, limit int) ([]string, 
 		}
 		matches = append(matches, filepath.ToSlash(rel))
 		if limit > 0 && len(matches) >= limit {
+			earlyStop = true
+			_ = cmd.Process.Kill()
 			break
 		}
 	}
+	scanErr := scanner.Err()
+	waitErr := cmd.Wait()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if scanErr != nil && !earlyStop {
+		return nil, fmt.Errorf("read ripgrep output: %w", scanErr)
+	}
+	if waitErr != nil && !earlyStop {
+		var exitErr *exec.ExitError
+		if errors.As(waitErr, &exitErr) && exitErr.ExitCode() == 1 {
+			return []string{}, nil
+		}
+		message := strings.TrimSpace(stderr.String())
+		if message != "" {
+			return nil, fmt.Errorf("ripgrep failed: %s", message)
+		}
+		return nil, waitErr
+	}
 	sort.Strings(matches)
 	return matches, nil
+}
+
+func splitNullTerminated(data []byte, atEOF bool) (advance int, token []byte, err error) {
+	if i := bytes.IndexByte(data, 0); i >= 0 {
+		return i + 1, data[:i], nil
+	}
+	if atEOF && len(data) > 0 {
+		return len(data), data, nil
+	}
+	return 0, nil, nil
 }
 
 func globWithFallback(rootDir, searchRoot, pattern string, limit int) ([]string, error) {
@@ -670,18 +765,21 @@ func globWithFallback(rootDir, searchRoot, pattern string, limit int) ([]string,
 // grep output_mode: files_with_matches
 // ---------------------------------------------------------------------------
 
-func grepFilesWithMatches(env *Env, rootDir, pattern, searchRoot, include string, opts grepOptions, limit int) ([]string, error) {
-	files, err := grepFilesWithMatchesRG(rootDir, pattern, searchRoot, include, opts, limit)
+func grepFilesWithMatches(ctx context.Context, rootDir, pattern, searchRoot, include string, opts grepOptions, limit int) ([]string, error) {
+	files, err := grepFilesWithMatchesRG(ctx, rootDir, pattern, searchRoot, include, opts, limit)
 	if err != nil {
+		if !errors.Is(err, errRipgrepUnavailable) {
+			return nil, err
+		}
 		return grepFilesWithMatchesFallback(rootDir, pattern, searchRoot, include, opts, limit)
 	}
 	return files, nil
 }
 
-func grepFilesWithMatchesRG(rootDir, pattern, searchRoot, include string, opts grepOptions, limit int) ([]string, error) {
+func grepFilesWithMatchesRG(ctx context.Context, rootDir, pattern, searchRoot, include string, opts grepOptions, limit int) ([]string, error) {
 	name := lookupRG()
 	if name == "" {
-		return nil, errors.New("ripgrep not available")
+		return nil, errRipgrepUnavailable
 	}
 
 	relSearchRoot, err := filepath.Rel(rootDir, searchRoot)
@@ -692,32 +790,38 @@ func grepFilesWithMatchesRG(rootDir, pattern, searchRoot, include string, opts g
 		relSearchRoot = ""
 	}
 
-	args := []string{"--files-with-matches", "--hidden", "-H"}
+	args := []string{"--no-config", "--files-with-matches", "--hidden", "-H"}
 	if opts.ignoreCase {
 		args = append(args, "-i")
 	}
-	args = append(args, pattern)
 	if include != "" {
 		args = append(args, "--glob", include)
 	}
+	args = append(args, "--", pattern)
 	if strings.TrimSpace(relSearchRoot) != "" {
 		args = append(args, relSearchRoot)
+	} else {
+		args = append(args, ".")
 	}
 
-	cmd := rgCommand(context.Background(), name, args...)
+	cmd := rgCommand(ctx, name, args...)
 	cmd.Dir = rootDir
-
-	output, err := cmd.Output()
+	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
-			return []string{}, nil
-		}
+		return nil, err
+	}
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Start(); err != nil {
 		return nil, err
 	}
 
 	files := make([]string, 0, searchResultCapacity(limit))
-	for _, line := range bytes.Split(bytes.TrimSpace(output), []byte{'\n'}) {
+	earlyStop := false
+	scanner := bufio.NewScanner(stdout)
+	scanner.Buffer(make([]byte, 64*1024), maxRGRecordBytes)
+	for scanner.Scan() {
+		line := scanner.Bytes()
 		if len(line) == 0 {
 			continue
 		}
@@ -731,8 +835,29 @@ func grepFilesWithMatchesRG(rootDir, pattern, searchRoot, include string, opts g
 		}
 		files = append(files, filepath.ToSlash(rel))
 		if limit > 0 && len(files) >= limit {
+			earlyStop = true
+			_ = cmd.Process.Kill()
 			break
 		}
+	}
+	scanErr := scanner.Err()
+	waitErr := cmd.Wait()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if scanErr != nil && !earlyStop {
+		return nil, fmt.Errorf("read ripgrep output: %w", scanErr)
+	}
+	if waitErr != nil && !earlyStop {
+		var exitErr *exec.ExitError
+		if errors.As(waitErr, &exitErr) && exitErr.ExitCode() == 1 {
+			return []string{}, nil
+		}
+		message := strings.TrimSpace(stderr.String())
+		if message != "" {
+			return nil, fmt.Errorf("ripgrep failed: %s", message)
+		}
+		return nil, waitErr
 	}
 	sort.Strings(files)
 	return files, nil
@@ -795,18 +920,21 @@ func grepFilesWithMatchesFallback(rootDir, pattern, searchRoot, include string, 
 // grep output_mode: count
 // ---------------------------------------------------------------------------
 
-func grepCountMatches(rootDir, pattern, searchRoot, include string, opts grepOptions, limit int) ([]grepCountResult, int, error) {
-	counts, total, err := grepCountMatchesRG(rootDir, pattern, searchRoot, include, opts, limit)
+func grepCountMatches(ctx context.Context, rootDir, pattern, searchRoot, include string, opts grepOptions, limit int) ([]grepCountResult, int, error) {
+	counts, total, err := grepCountMatchesRG(ctx, rootDir, pattern, searchRoot, include, opts, limit)
 	if err != nil {
+		if !errors.Is(err, errRipgrepUnavailable) {
+			return nil, 0, err
+		}
 		return grepCountMatchesFallback(rootDir, pattern, searchRoot, include, opts, limit)
 	}
 	return counts, total, nil
 }
 
-func grepCountMatchesRG(rootDir, pattern, searchRoot, include string, opts grepOptions, limit int) ([]grepCountResult, int, error) {
+func grepCountMatchesRG(ctx context.Context, rootDir, pattern, searchRoot, include string, opts grepOptions, limit int) ([]grepCountResult, int, error) {
 	name := lookupRG()
 	if name == "" {
-		return nil, 0, errors.New("ripgrep not available")
+		return nil, 0, errRipgrepUnavailable
 	}
 
 	relSearchRoot, err := filepath.Rel(rootDir, searchRoot)
@@ -817,19 +945,21 @@ func grepCountMatchesRG(rootDir, pattern, searchRoot, include string, opts grepO
 		relSearchRoot = ""
 	}
 
-	args := []string{"--count", "--hidden", "-H"}
+	args := []string{"--no-config", "--count", "--hidden", "-H"}
 	if opts.ignoreCase {
 		args = append(args, "-i")
 	}
-	args = append(args, pattern)
 	if include != "" {
 		args = append(args, "--glob", include)
 	}
+	args = append(args, "--", pattern)
 	if strings.TrimSpace(relSearchRoot) != "" {
 		args = append(args, relSearchRoot)
+	} else {
+		args = append(args, ".")
 	}
 
-	cmd := rgCommand(context.Background(), name, args...)
+	cmd := rgCommand(ctx, name, args...)
 	cmd.Dir = rootDir
 
 	output, err := cmd.Output()
