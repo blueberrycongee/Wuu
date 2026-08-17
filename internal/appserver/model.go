@@ -1513,7 +1513,7 @@ func chatMessageDisplayContent(msg providers.ChatMessage) string {
 // the prompt they actually delivered.
 func chatMessageInputText(msg providers.ChatMessage) string {
 	content := strings.TrimSpace(msg.Content)
-	if content == "" || content == strings.TrimSpace(msg.DisplayContent) {
+	if content == "" || content == strings.TrimSpace(chatMessageDisplayContent(msg)) {
 		return ""
 	}
 	return msg.Content

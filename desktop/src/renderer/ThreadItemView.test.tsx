@@ -501,6 +501,26 @@ describe("ThreadItemView", () => {
     expect(onEditMessage).not.toHaveBeenCalled();
   });
 
+  it("does not show a details action when input_text equals the bubble text", () => {
+    render({
+      item: {
+        id: "user-own-1",
+        type: "user_message",
+        text: "这是我的普通消息",
+        // Stale server projections used to leak the content back as
+        // input_text for ordinary messages; the action must stay hidden.
+        input_text: "这是我的普通消息",
+        status: "completed",
+      },
+      turnStatus: "completed",
+      streaming: false,
+    });
+
+    const actions = container?.querySelectorAll<HTMLButtonElement>(".user-message-actions button");
+    expect(actions).toHaveLength(1);
+    expect([...(actions ?? [])].some((button) => button.getAttribute("aria-label") === "投递详情")).toBe(false);
+  });
+
   it("opens the delivery inspector from the details action on hidden wake prompts", async () => {
     const openPluginView = vi
       .spyOn(desktopWorkbenchController, "openPluginView")

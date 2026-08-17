@@ -825,3 +825,47 @@ func TestApplyTokenUsageMetasToTurnsAlignsFromNewestTurn(t *testing.T) {
 		t.Fatalf("usage should attach to newest turn: %+v", turns[1])
 	}
 }
+
+func TestChatMessageInputTextExposesOnlyHiddenDeliveredPrompts(t *testing.T) {
+	cases := []struct {
+		name     string
+		msg      providers.ChatMessage
+		want     string
+	}{
+		{
+			name: "ordinary user message exposes nothing",
+			msg:  providers.ChatMessage{Role: "user", Content: "帮我看看这个报错"},
+			want: "",
+		},
+		{
+			name: "plugin wake with a hidden prompt exposes the raw input",
+			msg: providers.ChatMessage{
+				Role:           "user",
+				Content:        "internal inspect prompt",
+				DisplayContent: "后台任务已唤醒 Agent",
+			},
+			want: "internal inspect prompt",
+		},
+		{
+			name: "explicit display text equal to content exposes nothing",
+			msg: providers.ChatMessage{
+				Role:           "user",
+				Content:        "visible prompt",
+				DisplayContent: "visible prompt",
+			},
+			want: "",
+		},
+		{
+			name: "empty content exposes nothing",
+			msg:  providers.ChatMessage{Role: "user", Content: "   "},
+			want: "",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := chatMessageInputText(tc.msg); got != tc.want {
+				t.Fatalf("chatMessageInputText(%+v) = %q, want %q", tc.msg, got, tc.want)
+			}
+		})
+	}
+}

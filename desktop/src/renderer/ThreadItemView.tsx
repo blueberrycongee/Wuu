@@ -253,7 +253,11 @@ function BuiltInThreadItemView({
       // auxiliary panel.
       const deliveryText = item.input_text?.trim() ?? "";
       const deliverySessionID = deliverySessionIDFromInputText(deliveryText);
+      // input_text equals the bubble for ordinary messages (or would, if a
+      // stale server projection ever leaks it); only hidden deliveries get
+      // a details action.
       const deliveryViewAvailable = deliveryText !== ""
+        && deliveryText !== displayText.trim()
         && (deliverySessionID !== undefined
           || desktopPluginHost.getViewTypes().some((view) => view.id === "delivery.inspector"));
       const openDeliveryDetails = (): void => {
