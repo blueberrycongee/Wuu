@@ -53,13 +53,17 @@ describe("conversation message-flow rhythm", () => {
 
 describe("extension package layout", () => {
   it("keeps catalog rows readable in wide and narrow catalogs", () => {
-    // Plugin rows span the shared list grid and adopt its tracks via subgrid,
-    // so status dots share one column axis across every row.
+    // The catalog list owns the outer two-column grid; each plugin row then
+    // owns the same internal tracks (artwork, flexible copy, status, chevron)
+    // so rows stay readable in both layouts.
+    expect(cssRuleBody(".extension-package-list")).toMatch(
+      /grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\);/,
+    );
     expect(cssRuleBody(".extension-package-row")).toMatch(
-      /grid-column:\s*1\s*\/\s*-1;[\s\S]*?grid-template-columns:\s*subgrid;/,
+      /grid-template-columns:\s*36px\s+minmax\(0,\s*1fr\)\s+max-content\s+16px;/,
     );
     expect(workspaceCss).toMatch(
-      /@media \(max-width:\s*720px\)[\s\S]*?\.extension-package-list\s*\{[\s\S]*?grid-template-columns:\s*36px\s+minmax\(0,\s*1fr\)\s+max-content\s+16px;/,
+      /@media \(max-width:\s*720px\)[\s\S]*?\.extension-package-list\s*\{[\s\S]*?grid-template-columns:\s*1fr;/,
     );
   });
 });
