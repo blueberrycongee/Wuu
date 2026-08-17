@@ -422,6 +422,7 @@ export interface PluginGenerationApi {
   showConversationCard(card: ConversationCardRegistration): ConversationCardHandle;
   registerStyle(style: StyleRegistration): Disposable;
   registerLocale(locale: LocaleRegistration): Disposable;
+  registerComposerStatusSource(source: ComposerStatusSourceRegistration): Disposable;
   registerCleanup(cleanup: () => void): Disposable;
   registerViewType(definition: ViewTypeDefinition): Disposable;
   registerViewPlacement(contribution: ViewPlacementContribution): Disposable;
@@ -1637,6 +1638,30 @@ export interface SlotRegistration {
   id: string;
   order?: number;
   render(context: Readonly<Record<string, unknown>>): unknown;
+}
+
+export type ComposerStatusState = "running" | "queued" | "waiting" | "error" | "idle";
+
+export interface ComposerStatusItem {
+  readonly id: string;
+  readonly label: string;
+  readonly state?: ComposerStatusState;
+  readonly secondaryText?: string;
+  readonly tooltip?: string;
+  readonly updatedAt?: string;
+  readonly action?: Readonly<{ kind: "open-session"; sessionId: string }>;
+}
+
+export interface ComposerStatusContext {
+  readonly threadId?: string;
+  readonly mainConversation: true;
+}
+
+export interface ComposerStatusSourceRegistration {
+  readonly id: string;
+  readonly order?: number;
+  getSnapshot(context: ComposerStatusContext): readonly ComposerStatusItem[];
+  subscribe(context: ComposerStatusContext, listener: () => void): () => void;
 }
 
 export type SurfaceMode = "replace" | "wrap";

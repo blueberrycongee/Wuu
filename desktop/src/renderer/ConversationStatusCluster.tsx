@@ -1,125 +1,231 @@
-import { useCallback, useMemo, useSyncExternalStore } from "react";
-
+import { useMemo, useSyncExternalStore } from "react";
 import type { TodoUpdate } from "../shared/protocol";
+import type {
+  ComposerStatusContext,
+  ComposerStatusItem,
+  ComposerStatusState,
+  PluginHost,
+  RegisteredComposerStatusSource,
+} from "./plugins/PluginHost";
 import { useI18n } from "./i18n";
-import { desktopPluginHost } from "./plugins/DesktopPluginRuntime";
-import type { PluginHost } from "./plugins/PluginHost";
-import { PluginSlot } from "./plugins/PluginSlot";
 
-export interface ConversationStatusClusterProps {
-  /**
-   * Master visibility switch. App sets this to the dock composer being
-   * visible while the user is not scrolled away; the "jump to latest" pill
-   * takes over this floating slot once the user scrolls up.
-   */
+const EMPTY_ITEMS: readonly ResolvedStatusItem[] = Object.freeze([]);
+const MAX_VISIBLE_ITEMS = 3;
+
+type ResolvedStatusItem = ComposerStatusItem & Readonly<{ key: string }>;
+
+interface ConversationStatusClusterProps {
+  host: PluginHost;
   visible: boolean;
-  /**
-   * Main conversation session id, passed to the `composer.cluster` slot so
-   * plugins can scope status lookups to the active thread.
-   */
-  threadId: string | undefined;
-  /**
-   * In-flight TODO list for the active turn. Progress is shown only while
-   * items remain; the pill disappears once the list is fully completed.
-   */
+  threadId?: string;
   todoUpdate: TodoUpdate | undefined;
-  host?: PluginHost;
+  onOpenSession: (sessionId: string) => void;
 }
 
-/**
- * Floating capsule row above the dock composer. It hosts the in-flight TODO
- * progress pill plus plugin contributions registered to the `composer.cluster`
- * slot (e.g. the bundled subagent status chips), so composer-adjacent status
- * shares one visual home instead of stacking rows above the input.
- */
+interface ComposerStatusStore {
+  getSnapshot(): readonly ResolvedStatusItem[];
+  subscribe(listener: () => void): () => void;
+}
+
 export function ConversationStatusCluster({
+  host,
   visible,
   threadId,
   todoUpdate,
-  host = desktopPluginHost,
-}: ConversationStatusClusterProps): React.ReactElement | null {
+  onOpenSession,
+}: ConversationStatusClusterProps) {
   const { t, formatNumber } = useI18n();
-
-  const subscribeCluster = useCallback(
-    (listener: () => void) => host.subscribeSlot("composer.cluster", listener),
-    [host],
+  const sources = useSyncExternalStore(
+    (listener) => host.subscribeComposerStatusSources(listener),
+    () => host.getComposerStatusSources(),
+    () => host.getComposerStatusSources(),
   );
-  const snapshotCluster = useCallback(
-    () => host.getSlotSnapshot("composer.cluster"),
-    [host],
+  const context = useMemo<ComposerStatusContext>(
+    () => Object.freeze({ threadId: visible ? threadId : undefined, mainConversation: true as const }),
+    [threadId, visible],
   );
-  const clusterContributions = useSyncExternalStore(
-    subscribeCluster,
-    snapshotCluster,
-    snapshotCluster,
-  );
+  const store = useMemo(() => createComposerStatusStore(sources, context), [sources, context]);
+  const pluginItems = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
+  const todoItem = useMemo<ResolvedStatusItem | undefined>(() => {
+    if (!todoUpdate || todoUpdate.todos.length === 0) return undefined;
+    const completed = todoUpdate.todos.filter((item) => item.status === "completed").length;
+    const activeItem = todoUpdate.todos.find((item) => item.status === "in_progress");
+    return Object.freeze({
+      key: "host:todo",
+      id: "todo",
+      label: t("shell.todoPanel"),
+      state: activeItem ? "running" : "idle",
+      secondaryText: `${formatNumber(completed)}/${formatNumber(todoUpdate.todos.length)}`,
+      tooltip: activeItem?.content,
+    });
+  }, [formatNumber, t, todoUpdate]);
+  const items = todoItem ? [todoItem, ...pluginItems] : pluginItems;
 
-  const pluginSlotContext = useMemo(
-    () =>
-      Object.freeze({
-        threadId,
-        mainConversation: true,
-      }),
-    [threadId],
-  );
+  if (!visible || items.length === 0) return null;
 
-  const total = todoUpdate?.todos.length ?? 0;
-  const completed =
-    todoUpdate?.todos.filter((item) => item.status === "completed").length ?? 0;
-  const todoVisible = Boolean(todoUpdate && total > 0 && completed < total);
-
-  const currentItem = todoUpdate?.todos.find(
-    (item) => item.status === "in_progress",
-  );
-  const nextItem = todoUpdate?.todos.find((item) => item.status === "pending");
-  const detailItems = [currentItem, nextItem].flatMap((item, index, items) =>
-    item && items.findIndex((other) => other === item) === index ? [item] : [],
-  );
-
-  if (!visible) {
-    return null;
-  }
-  if (!todoVisible && clusterContributions.length === 0) {
-    return null;
-  }
-
+  const visibleItems = items.slice(0, MAX_VISIBLE_ITEMS);
+  const hiddenItems = items.slice(MAX_VISIBLE_ITEMS);
   return (
-    <div
-      className="jump-to-latest-cluster"
-      aria-label={todoVisible ? t("app.currentPositionAndProgress") : undefined}
-    >
-      {todoVisible ? (
-        <div
-          className="jump-to-latest-progress"
-          aria-label={t("app.todoProgressLabel", {
-            completed: formatNumber(completed),
-            total: formatNumber(total),
-          })}
-        >
-          {t("app.progressFraction", {
-            completed: formatNumber(completed),
-            total: formatNumber(total),
-          })}
-          {detailItems.length > 0 ? (
-            <span className="jump-to-latest-progress-detail" aria-hidden="true">
-              {detailItems.map((item) => (
-                <span
-                  className={`jump-to-latest-progress-step ${item.status}`}
-                  key={item.content}
-                >
-                  {t(
-                    item.status === "in_progress"
-                      ? "app.todoInProgress"
-                      : "app.todoNext",
-                    { content: item.content },
-                  )}
-                </span>
-              ))}
-            </span>
-          ) : null}
-        </div>
+    <div className="conversation-status-cluster" aria-label={t("channels.status")}>
+      {visibleItems.map((item) => (
+        <ComposerStatusCapsule key={item.key} item={item} onOpenSession={onOpenSession} />
+      ))}
+      {hiddenItems.length > 0 ? (
+        <details className="conversation-status-overflow">
+          <summary
+            className="conversation-status-capsule conversation-status-overflow-trigger"
+            aria-label={t("common.showMore")}
+          >
+            +{formatNumber(hiddenItems.length)}
+          </summary>
+          <div className="conversation-status-overflow-menu">
+            {hiddenItems.map((item) => (
+              <ComposerStatusCapsule key={item.key} item={item} onOpenSession={onOpenSession} overflow />
+            ))}
+          </div>
+        </details>
       ) : null}
-      <PluginSlot host={host} id="composer.cluster" context={pluginSlotContext} />
     </div>
   );
+}
+
+function ComposerStatusCapsule({
+  item,
+  onOpenSession,
+  overflow = false,
+}: {
+  item: ResolvedStatusItem;
+  onOpenSession: (sessionId: string) => void;
+  overflow?: boolean;
+}) {
+  const content = (
+    <>
+      {item.state ? <span className={`conversation-status-dot is-${item.state}`} aria-hidden="true" /> : null}
+      <span className="conversation-status-label">{item.label}</span>
+      {item.secondaryText ? (
+        <span className="conversation-status-secondary">{item.secondaryText}</span>
+      ) : null}
+    </>
+  );
+  const className = `conversation-status-capsule${overflow ? " is-overflow-item" : ""}`;
+  if (item.action?.kind === "open-session") {
+    return (
+      <button
+        type="button"
+        className={className}
+        title={item.tooltip}
+        onClick={() => onOpenSession(item.action!.sessionId)}
+      >
+        {content}
+      </button>
+    );
+  }
+  return <div className={className} title={item.tooltip}>{content}</div>;
+}
+
+function createComposerStatusStore(
+  sources: readonly RegisteredComposerStatusSource[],
+  context: ComposerStatusContext,
+): ComposerStatusStore {
+  let cachedItems: readonly ResolvedStatusItem[] = EMPTY_ITEMS;
+
+  const getSnapshot = (): readonly ResolvedStatusItem[] => {
+    const next: ResolvedStatusItem[] = [];
+    const seenKeys = new Set<string>();
+    for (const source of sources) {
+      let sourceItems: readonly ComposerStatusItem[];
+      try {
+        sourceItems = source.getSnapshot(context);
+      } catch {
+        continue;
+      }
+      if (!Array.isArray(sourceItems)) continue;
+      for (const item of sourceItems) {
+        const normalized = normalizeStatusItem(source, item);
+        if (normalized && !seenKeys.has(normalized.key)) {
+          seenKeys.add(normalized.key);
+          next.push(normalized);
+        }
+      }
+    }
+    if (sameStatusItems(cachedItems, next)) return cachedItems;
+    cachedItems = Object.freeze(next);
+    return cachedItems;
+  };
+
+  const subscribe = (listener: () => void): (() => void) => {
+    const cleanups: Array<() => void> = [];
+    for (const source of sources) {
+      try {
+        const cleanup = source.subscribe(context, listener);
+        if (typeof cleanup === "function") cleanups.push(cleanup);
+      } catch {
+        // One invalid source must not prevent other status sources from updating.
+      }
+    }
+    return () => {
+      for (const cleanup of cleanups) {
+        try {
+          cleanup();
+        } catch {
+          // Cleanup is best-effort at the untrusted plugin boundary.
+        }
+      }
+    };
+  };
+
+  return { getSnapshot, subscribe };
+}
+
+function normalizeStatusItem(
+  source: RegisteredComposerStatusSource,
+  item: ComposerStatusItem,
+): ResolvedStatusItem | undefined {
+  if (!item || typeof item !== "object") return undefined;
+  const id = typeof item.id === "string" ? item.id.trim() : "";
+  const label = typeof item.label === "string" ? item.label.trim() : "";
+  if (!id || !label) return undefined;
+  const action = item.action?.kind === "open-session" && typeof item.action.sessionId === "string"
+    && item.action.sessionId.trim()
+    ? Object.freeze({ kind: "open-session" as const, sessionId: item.action.sessionId.trim() })
+    : undefined;
+  return Object.freeze({
+    key: `${source.pluginId}:${source.id}:${id}`,
+    id,
+    label,
+    state: normalizeStatusState(item.state),
+    secondaryText: cleanOptionalText(item.secondaryText),
+    tooltip: cleanOptionalText(item.tooltip),
+    updatedAt: cleanOptionalText(item.updatedAt),
+    action,
+  });
+}
+
+function normalizeStatusState(value: unknown): ComposerStatusState | undefined {
+  return value === "running" || value === "queued" || value === "waiting"
+    || value === "error" || value === "idle"
+    ? value
+    : undefined;
+}
+
+function cleanOptionalText(value: string | undefined): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function sameStatusItems(
+  previous: readonly ResolvedStatusItem[],
+  next: readonly ResolvedStatusItem[],
+): boolean {
+  return previous.length === next.length && previous.every((item, index) => {
+    const candidate = next[index];
+    return candidate !== undefined
+      && item.key === candidate.key
+      && item.label === candidate.label
+      && item.state === candidate.state
+      && item.secondaryText === candidate.secondaryText
+      && item.tooltip === candidate.tooltip
+      && item.updatedAt === candidate.updatedAt
+      && item.action?.kind === candidate.action?.kind
+      && item.action?.sessionId === candidate.action?.sessionId;
+  });
 }

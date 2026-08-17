@@ -1075,7 +1075,8 @@
 }
 
 .jump-to-latest-pill,
-.jump-to-latest-progress {
+.jump-to-latest-progress,
+.conversation-status-capsule {
   box-sizing: border-box;
   position: relative;
   isolation: isolate;
@@ -1111,6 +1112,7 @@
   transition:
     background-color var(--motion-fast) var(--ease-out),
     border-color var(--motion-fast) var(--ease-out),
+    border-radius var(--motion-fast) var(--ease-out),
     box-shadow var(--motion-fast) var(--ease-out);
 }
 
@@ -1122,7 +1124,8 @@
  * height so only the very top edge gets a bright band, matching iOS.
  */
 .jump-to-latest-pill::before,
-.jump-to-latest-progress::before {
+.jump-to-latest-progress::before,
+.conversation-status-capsule::before {
   content: "";
   position: absolute;
   inset: 0;
@@ -1138,6 +1141,7 @@
 
 .jump-to-latest-pill {
   flex: 0 0 auto;
+  height: 34px;
   padding: 0 12px;
   cursor: pointer;
 }
@@ -1170,9 +1174,110 @@
   white-space: nowrap;
 }
 
+.conversation-status-capsule {
+  appearance: none;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: min(240px, 36vw);
+  gap: 6px;
+  padding: 0 12px;
+  overflow: hidden;
+  text-decoration: none;
+}
+
+button.conversation-status-capsule,
+.conversation-status-overflow-trigger {
+  cursor: pointer;
+}
+
+.conversation-status-cluster {
+  display: contents;
+}
+
+.conversation-status-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conversation-status-secondary {
+  flex: 0 0 auto;
+  color: var(--ink-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.conversation-status-dot {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 auto;
+  border-radius: var(--radius-pill);
+  background: var(--ink-muted);
+}
+
+.conversation-status-dot.is-running {
+  background: var(--wuu-accent);
+  animation: composer-status-pulse 1.4s ease-in-out infinite;
+}
+
+.conversation-status-dot.is-error {
+  background: var(--danger);
+}
+
+.conversation-status-dot.is-queued,
+.conversation-status-dot.is-waiting {
+  background: var(--warning);
+}
+
+.conversation-status-overflow {
+  position: relative;
+  flex: 0 0 auto;
+  pointer-events: auto;
+}
+
+.conversation-status-overflow > summary {
+  display: inline-flex;
+  min-width: 34px;
+  justify-content: center;
+  list-style: none;
+}
+
+.conversation-status-overflow > summary::-webkit-details-marker {
+  display: none;
+}
+
+.conversation-status-overflow-menu {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 8px);
+  display: flex;
+  width: max-content;
+  max-width: min(320px, 70vw);
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px;
+  border: 1px solid var(--shell-jump-pill-border);
+  border-radius: var(--radius-md);
+  background: var(--surface-1);
+  box-shadow: 0 12px 36px var(--shell-jump-pill-shadow);
+}
+
+.conversation-status-capsule.is-overflow-item {
+  width: 100%;
+  max-width: 300px;
+  justify-content: flex-start;
+  box-shadow: none;
+}
+
+@keyframes composer-status-pulse {
+  0%, 100% { opacity: 0.45; }
+  50% { opacity: 1; }
+}
+
 .jump-to-latest-pill:hover,
 .jump-to-latest-progress:hover,
-.jump-to-latest-progress:focus-within {
+.jump-to-latest-progress:focus-within,
+.conversation-status-capsule:hover {
   background: var(--shell-jump-pill-hover-bg);
   border-color: var(--shell-jump-pill-hover-border);
   box-shadow:
@@ -1180,7 +1285,8 @@
     0 10px 30px var(--shell-jump-pill-hover-shadow);
 }
 
-.jump-to-latest-pill:focus-visible {
+.jump-to-latest-pill:focus-visible,
+.conversation-status-capsule:focus-visible {
   outline: 0;
   box-shadow:
     0 0 0 2px var(--shell-jump-pill-focus-shadow-1),
@@ -1198,6 +1304,7 @@
   min-width: 0;
   max-width: 0;
   max-height: 0;
+  align-items: center;
   gap: 4px;
   opacity: 0;
   overflow: hidden;

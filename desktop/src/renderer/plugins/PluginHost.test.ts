@@ -27,7 +27,6 @@ describe("PluginHost", () => {
       "conversation.message.after",
       "composer.above",
       "composer.toolbar",
-      "composer.cluster",
     ]);
 
     const host = new PluginHost({ react: React });

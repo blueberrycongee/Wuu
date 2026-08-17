@@ -32,7 +32,6 @@ export const PLUGIN_SLOT_IDS = [
   "conversation.message.after",
   "composer.above",
   "composer.toolbar",
-  "composer.cluster",
 ] as const;
 
 export type PluginSlotId = (typeof PLUGIN_SLOT_IDS)[number];
@@ -129,6 +128,35 @@ export interface PluginLocaleRegistration {
   order?: number;
 }
 
+export type ComposerStatusState = "running" | "queued" | "waiting" | "error" | "idle";
+
+export type ComposerStatusAction = Readonly<{
+  kind: "open-session";
+  sessionId: string;
+}>;
+
+export interface ComposerStatusItem {
+  readonly id: string;
+  readonly label: string;
+  readonly state?: ComposerStatusState;
+  readonly secondaryText?: string;
+  readonly tooltip?: string;
+  readonly updatedAt?: string;
+  readonly action?: ComposerStatusAction;
+}
+
+export type ComposerStatusContext = Readonly<{
+  threadId?: string;
+  mainConversation: true;
+}>;
+
+export interface ComposerStatusSourceRegistration {
+  readonly id: string;
+  readonly order?: number;
+  getSnapshot(context: ComposerStatusContext): readonly ComposerStatusItem[];
+  subscribe(context: ComposerStatusContext, listener: () => void): () => void;
+}
+
 export interface PluginGenerationApi {
   /** The React runtime owned by the Wuu renderer. Plugin bundles should use this object. */
   readonly react: typeof React;
@@ -145,6 +173,8 @@ export interface PluginGenerationApi {
   showConversationCard(card: ConversationCardRegistration): ConversationCardHandle;
   registerStyle(style: PluginStyleRegistration): Disposable;
   registerLocale(locale: PluginLocaleRegistration): Disposable;
+  /** Publish structured status data for the host-owned composer capsule row. */
+  registerComposerStatusSource(source: ComposerStatusSourceRegistration): Disposable;
   registerCleanup(cleanup: () => void): Disposable;
 
   // Phase C — Workbench API
@@ -188,6 +218,12 @@ export interface RegisteredPluginSurfaceContribution extends PluginSurfaceRegist
 export interface RegisteredPluginCommand extends PluginCommandRegistration {
   readonly pluginId: string;
   readonly generation: string;
+}
+
+export interface RegisteredComposerStatusSource extends ComposerStatusSourceRegistration {
+  readonly pluginId: string;
+  readonly generation: string;
+  readonly order: number;
 }
 
 export interface RegisteredConversationCard {
@@ -374,6 +410,11 @@ interface StatusItemRecord extends OrderedRecord {
   readonly item: StatusItemDefinition;
 }
 
+interface ComposerStatusSourceRecord extends OrderedRecord {
+  readonly getSnapshot: ComposerStatusSourceRegistration["getSnapshot"];
+  readonly subscribe: ComposerStatusSourceRegistration["subscribe"];
+}
+
 interface PresenterRecord extends OrderedRecord {
   readonly target: PresentationTarget;
   readonly key?: string;
@@ -401,6 +442,7 @@ interface GenerationState {
   readonly themeTokens: ThemeTokenRecord[];
   readonly cssSnippets: CSSSnippetRecord[];
   readonly statusItems: StatusItemRecord[];
+  readonly composerStatusSources: ComposerStatusSourceRecord[];
   readonly toolActivityPresenters: PresenterRecord[];
   readonly registrationKeys: Set<string>;
   readonly hostEventHandlers: Set<(event: unknown) => void>;
@@ -426,6 +468,7 @@ const EMPTY_VIEW_ENTRY_SNAPSHOT: readonly RegisteredPluginViewEntry[] = Object.f
 const EMPTY_RENDERER_SNAPSHOT: readonly RegisteredRenderer[] = Object.freeze([]);
 const EMPTY_THEME_TOKEN_SNAPSHOT: readonly RegisteredThemeTokens[] = Object.freeze([]);
 const EMPTY_STATUS_ITEM_SNAPSHOT: readonly RegisteredStatusItem[] = Object.freeze([]);
+const EMPTY_COMPOSER_STATUS_SOURCE_SNAPSHOT: readonly RegisteredComposerStatusSource[] = Object.freeze([]);
 const EMPTY_PRESENTER_SNAPSHOT: readonly RegisteredPresenter[] = Object.freeze([]);
 const EMPTY_TOOL_ACTIVITY_PRESENTER_SNAPSHOT: readonly RegisteredToolActivityPresenter[] = Object.freeze([]);
 const EMPTY_LOCALE_SNAPSHOT: Readonly<Record<string, string>> = Object.freeze({});
@@ -474,6 +517,8 @@ export class PluginHost {
   private rendererSnapshot: readonly RegisteredRenderer[] = EMPTY_RENDERER_SNAPSHOT;
   private themeTokenSnapshot: readonly RegisteredThemeTokens[] = EMPTY_THEME_TOKEN_SNAPSHOT;
   private statusItemSnapshot: readonly RegisteredStatusItem[] = EMPTY_STATUS_ITEM_SNAPSHOT;
+  private composerStatusSourceSnapshot: readonly RegisteredComposerStatusSource[] = EMPTY_COMPOSER_STATUS_SOURCE_SNAPSHOT;
+  private readonly composerStatusSourceListeners = new Set<() => void>();
   private presenterSnapshot: readonly RegisteredPresenter[] = EMPTY_PRESENTER_SNAPSHOT;
   private toolActivityPresenterSnapshot: readonly RegisteredToolActivityPresenter[] = EMPTY_TOOL_ACTIVITY_PRESENTER_SNAPSHOT;
 
@@ -659,6 +704,15 @@ export class PluginHost {
 
   getStatusItems(): readonly RegisteredStatusItem[] {
     return this.statusItemSnapshot;
+  }
+
+  getComposerStatusSources(): readonly RegisteredComposerStatusSource[] {
+    return this.composerStatusSourceSnapshot;
+  }
+
+  subscribeComposerStatusSources(listener: () => void): () => void {
+    this.composerStatusSourceListeners.add(listener);
+    return () => this.composerStatusSourceListeners.delete(listener);
   }
 
   getToolActivityPresenters(): readonly RegisteredToolActivityPresenter[] {
@@ -965,6 +1019,24 @@ export class PluginHost {
           removed: false,
         };
         state.locales.push(record);
+        return this.ownRecord(state, record);
+      },
+      registerComposerStatusSource: (source: ComposerStatusSourceRegistration) => {
+        this.assertAccepting(state);
+        const id = this.claimRegistrationId(state, "composer-status-source", source.id);
+        if (typeof source.getSnapshot !== "function" || typeof source.subscribe !== "function") {
+          throw new Error("Composer status source requires getSnapshot and subscribe functions");
+        }
+        const record: ComposerStatusSourceRecord = {
+          pluginId: state.pluginId,
+          generation: state.generation,
+          id,
+          order: normalizeOrder(source.order),
+          getSnapshot: source.getSnapshot,
+          subscribe: source.subscribe,
+          removed: false,
+        };
+        state.composerStatusSources.push(record);
         return this.ownRecord(state, record);
       },
       registerCleanup: (cleanup: () => void) => {
@@ -1284,6 +1356,7 @@ export class PluginHost {
     const themeTokens: ThemeTokenRecord[] = [];
     const cssSnippets: CSSSnippetRecord[] = [];
     const statusItems: StatusItemRecord[] = [];
+    const composerStatusSources: ComposerStatusSourceRecord[] = [];
     const toolActivityPresenters: PresenterRecord[] = [];
     const navigationEntries: RegisteredPluginViewEntry[] = [];
     const workspaceTools: RegisteredPluginViewEntry[] = [];
@@ -1314,6 +1387,7 @@ export class PluginHost {
       themeTokens.push(...state.themeTokens.filter((record) => !record.removed));
       cssSnippets.push(...state.cssSnippets.filter((record) => !record.removed));
       statusItems.push(...state.statusItems.filter((record) => !record.removed));
+      composerStatusSources.push(...state.composerStatusSources.filter((record) => !record.removed));
       toolActivityPresenters.push(...state.toolActivityPresenters.filter((record) => !record.removed));
       const declaredEntry = (entry: PluginViewEntryDeclaration): RegisteredPluginViewEntry => Object.freeze({
         ...entry,
@@ -1423,6 +1497,15 @@ export class PluginHost {
     if (!sameContributions(this.statusItemSnapshot, nextStatusItems)) {
       this.statusItemSnapshot = nextStatusItems;
       changed = true;
+    }
+
+    const nextComposerStatusSources = Object.freeze(
+      composerStatusSources.sort(compareOrdered).map(toPublicComposerStatusSource),
+    );
+    if (!sameContributions(this.composerStatusSourceSnapshot, nextComposerStatusSources)) {
+      this.composerStatusSourceSnapshot = nextComposerStatusSources;
+      changed = true;
+      for (const listener of this.composerStatusSourceListeners) listener();
     }
 
     const resolvedPresenters = resolvePresenterConflicts(
@@ -1610,6 +1693,7 @@ function createGenerationState(
     themeTokens: [],
     cssSnippets: [],
     statusItems: [],
+    composerStatusSources: [],
     toolActivityPresenters: [],
     registrationKeys: new Set(),
     hostEventHandlers: new Set(),
@@ -1718,6 +1802,19 @@ function toPublicStatusItem(record: StatusItemRecord): RegisteredStatusItem {
     generation: record.generation,
     id: record.id,
     order: record.order,
+  });
+}
+
+function toPublicComposerStatusSource(
+  record: ComposerStatusSourceRecord,
+): RegisteredComposerStatusSource {
+  return Object.freeze({
+    pluginId: record.pluginId,
+    generation: record.generation,
+    id: record.id,
+    order: record.order,
+    getSnapshot: record.getSnapshot,
+    subscribe: record.subscribe,
   });
 }
 

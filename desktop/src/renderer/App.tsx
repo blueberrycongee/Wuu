@@ -4964,11 +4964,13 @@ export function App(): JSX.Element {
         ) : null}
 
         <ConversationStatusCluster
+          host={desktopPluginHost}
           visible={
             mainConversationDockVisible && !mainConversationScrolledAway
           }
           threadId={activeThreadID}
           todoUpdate={activeTodoUpdateForThread(activeThread)}
+          onOpenSession={handleOpenThreadInSplit}
         />
           </>
         )}
