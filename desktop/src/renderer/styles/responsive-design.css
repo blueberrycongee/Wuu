@@ -10,13 +10,6 @@
   --responsive-design-panel-shadow: rgba(0, 0, 0, 0.08);
 }
 
-@media (max-width: 920px) {
-  .conversation-split {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
   .project-add-menu,
   .codex-runtime-menu,

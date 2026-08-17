@@ -4818,6 +4818,11 @@ html.resizing-workspace-terminal-split * {
   overflow: hidden;
 }
 
+.split-scroll-region > .scroll-region-content {
+  height: 100%;
+  min-height: 0;
+}
+
 .conversation-split {
   position: relative;
   display: grid;
@@ -4834,7 +4839,7 @@ html.resizing-workspace-terminal-split * {
   bottom: 0;
   left: var(--conversation-split-left, 50%);
   z-index: 6;
-  width: 12px;
+  width: 10px;
   cursor: col-resize;
   outline: 0;
   transform: translateX(-50%);
@@ -4843,17 +4848,18 @@ html.resizing-workspace-terminal-split * {
 
 .conversation-split-resizer::before {
   position: absolute;
-  top: 12px;
-  bottom: 12px;
+  inset: 0;
   left: 50%;
-  width: 2px;
+  width: 1px;
   border-radius: var(--radius-pill);
   background: transparent;
   content: "";
   transform: translateX(-50%);
   transition:
     background var(--motion-fast) var(--ease-out),
-    box-shadow var(--motion-fast) var(--ease-out);
+    box-shadow var(--motion-fast) var(--ease-out),
+    opacity var(--motion-fast) var(--ease-out),
+    transform var(--motion-fast) var(--ease-out);
 }
 
 .conversation-split-resizer:hover::before,
@@ -4863,8 +4869,9 @@ html.resizing-workspace-terminal-split * {
   box-shadow: 0 0 0 1px var(--sidebar-resizer-hover-ring);
 }
 
-.resizing-split {
-  cursor: col-resize;
+.resizing-split,
+.resizing-split * {
+  cursor: col-resize !important;
   user-select: none;
 }
 
@@ -4879,7 +4886,7 @@ html.resizing-workspace-terminal-split * {
 }
 
 .conversation-split-pane.active {
-  box-shadow: inset 0 2px 0 var(--ink);
+  --composer-frame-shadow: 0 3px 14px color-mix(in srgb, var(--ink) 9%, transparent);
 }
 
 .conversation-split-close {
@@ -4912,75 +4919,50 @@ html.resizing-workspace-terminal-split * {
 
 .split-composer {
   flex: 0 0 auto;
-  border-top: 1px solid var(--surface-3);
-  background: var(--split-composer-bg);
-  padding: 10px 14px 12px;
+  padding: 16px 0 24px;
 }
 
-.split-composer-shell {
-  display: grid;
-  gap: 8px;
-  border: 1px solid var(--split-composer-border);
-  border-radius: var(--radius-sm);
-  background: var(--paper);
-  padding: 9px;
-  box-shadow: 0 10px 26px var(--split-composer-shadow);
+.split-composer .composer-stack {
+  width: min(
+    var(--session-composer-width),
+    calc(100% - clamp(18px, 3vw, 34px) - clamp(18px, 3vw, 34px))
+  );
 }
 
-.split-composer-shell.split-composer-shell-drop-active {
+.split-composer .composer-frame {
+  box-shadow: var(--composer-frame-shadow);
+}
+
+.split-composer-shell.split-composer-shell-drop-active::after {
   border-color: var(--ink);
-  box-shadow:
-    0 10px 26px var(--split-composer-shadow),
-    inset 0 0 0 1px var(--ink-overlay-18);
+  box-shadow: inset 0 0 0 1px var(--ink-overlay-18);
 }
 
-/* Folded long pastes share the main composer chip layout; the split shell
-   already owns the 8px grid gap and its own padding, so only the dock
-   composer's expand-button gutters need clearing. */
 .split-composer .composer-collapsed-prompt-list {
   margin: 0;
   max-height: min(120px, 18vh);
 }
 
-.split-composer textarea {
-  width: 100%;
-  height: 60px;
-  min-height: 60px;
-  max-height: 130px;
-  resize: none;
-  border: 0;
-  outline: 0;
-  background: transparent;
-  color: var(--ink);
-  font: inherit;
-  line-height: 1.45;
-}
-
-.split-composer textarea::placeholder {
-  color: var(--ink-muted);
-}
-
-.split-composer textarea:disabled {
-  cursor: not-allowed;
-  color: var(--ink-muted);
-}
-
 .split-composer-bar {
-  display: flex;
-  min-height: 32px;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
+  container: split-composer-toolbar / inline-size;
 }
 
 .split-composer-status {
+  display: block;
   min-width: 0;
+  flex: 1 1 auto;
   overflow: hidden;
   color: var(--ink-tertiary);
   font-size: var(--font-xs);
   font-weight: var(--weight-medium);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+@container split-composer-toolbar (max-width: 300px) {
+  .split-composer-status {
+    display: none;
+  }
 }
 
 /* Global scrollbar styling lives in styles/scrollbars.css. The conversation

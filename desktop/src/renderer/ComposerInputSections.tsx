@@ -262,112 +262,123 @@ export function SplitPaneComposer({
   }
 
   return (
-    <footer className="split-composer">
-      <div
-        className={`split-composer-shell${dropActive ? " split-composer-shell-drop-active" : ""}`}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
-      >
-        <ComposerAttachmentStrip files={files} images={images} onRemoveFile={onRemoveFile} onRemoveImage={onRemoveImage} />
-        <input
-          ref={attachmentInputRef}
-          className="composer-file-input"
-          type="file"
-          accept="image/*,application/pdf"
-          multiple
-          tabIndex={-1}
-          onChange={(event) => {
-            const selected = Array.from(event.currentTarget.files ?? []);
-            event.currentTarget.value = "";
-            if (selected.length > 0) {
-              onPasteAttachmentFiles(selected);
-            }
-          }}
-        />
-        {hasCollapsedPromptBlocks ? (
-          <div
-            className="composer-collapsed-prompt-list"
-            ref={collapsedPromptListRef}
-            aria-label={t("composer.collapsedLongText")}
-          >
-            {collapsedPromptBlocks.map((block, index) => (
-              <CollapsedComposerPromptCard
-                text={block.text}
-                key={block.id}
-                onReveal={() => revealCollapsedPromptBlock(index)}
-                onRemove={() => removeCollapsedPromptBlock(index)}
-              />
-            ))}
+    <footer className="composer-wrap dock-composer-wrap split-composer">
+      <div className="composer-stack">
+        <div className="composer-shell">
+          <div className="composer-frame-shell">
+            <div
+              className={`composer-frame split-composer-shell${dropActive ? " composer-frame-drop-active split-composer-shell-drop-active" : ""}`}
+              data-wuu-component="composer-frame"
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+            >
+              <div className={`composer${hasCollapsedPromptBlocks ? " has-collapsed-prompt" : ""}`}>
+                <ComposerAttachmentStrip files={files} images={images} onRemoveFile={onRemoveFile} onRemoveImage={onRemoveImage} />
+                <input
+                  ref={attachmentInputRef}
+                  className="composer-file-input"
+                  type="file"
+                  accept="image/*,application/pdf"
+                  multiple
+                  tabIndex={-1}
+                  onChange={(event) => {
+                    const selected = Array.from(event.currentTarget.files ?? []);
+                    event.currentTarget.value = "";
+                    if (selected.length > 0) {
+                      onPasteAttachmentFiles(selected);
+                    }
+                  }}
+                />
+                {hasCollapsedPromptBlocks ? (
+                  <div
+                    className="composer-collapsed-prompt-list"
+                    ref={collapsedPromptListRef}
+                    aria-label={t("composer.collapsedLongText")}
+                  >
+                    {collapsedPromptBlocks.map((block, index) => (
+                      <CollapsedComposerPromptCard
+                        text={block.text}
+                        key={block.id}
+                        onReveal={() => revealCollapsedPromptBlock(index)}
+                        onRemove={() => removeCollapsedPromptBlock(index)}
+                      />
+                    ))}
+                  </div>
+                ) : null}
+                <textarea
+                  ref={textareaRef}
+                  value={visiblePromptValue}
+                  placeholder={readOnly ? t("composer.readOnly") : hasCollapsedPromptBlocks ? t("composer.followupChanges") : hasAttachments ? t("composer.addDescription") : t("composer.continueBranch")}
+                  disabled={readOnly}
+                  aria-readonly={readOnly}
+                  onChange={(event) => {
+                    resetQueryHistoryNavigation();
+                    setPrompt(
+                      hasCollapsedPromptBlocks
+                        ? `${collapsedPromptPrefix}${event.target.value}`
+                        : event.target.value
+                    );
+                  }}
+                  onPaste={(event) =>
+                    handleCollapsedComposerPaste(event, {
+                      readOnly,
+                      fileAttachmentsEnabled: true,
+                      onPasteAttachmentFiles,
+                      onFold: resetQueryHistoryNavigation
+                    })
+                  }
+                  onKeyDown={handleKeyDown}
+                />
+                <div className="composer-bar split-composer-bar">
+                  <div className="composer-bar-left">
+                    <button
+                      className="composer-action-button composer-attach-button"
+                      type="button"
+                      aria-label={t("composer.addAttachment")}
+                      title={t("composer.addAttachment")}
+                      disabled={readOnly}
+                      onClick={() => attachmentInputRef.current?.click()}
+                    >
+                      <Paperclip aria-hidden="true" />
+                    </button>
+                    {statusText ? (
+                      <span className="split-composer-status">
+                        <TruncatedText
+                          className={`split-composer-status-text${statusIsLiveProgress ? " live-progress-chip" : ""}`}
+                          text={statusText}
+                        />
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className="composer-bar-right">
+                    {showStop ? (
+                      <button
+                        className="composer-action-button composer-stop-button"
+                        type="button"
+                        onClick={onInterrupt}
+                        aria-label={t("composer.pause")}
+                        title={t("composer.pause")}
+                      >
+                        <Square aria-hidden="true" />
+                      </button>
+                    ) : (
+                      <button
+                        className="composer-action-button composer-send-button"
+                        type="button"
+                        onClick={submitComposer}
+                        aria-label={sendLabel}
+                        title={sendLabel}
+                        disabled={readOnly || !hasDraft}
+                      >
+                        <Send aria-hidden="true" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
-        ) : null}
-        <textarea
-          ref={textareaRef}
-          value={visiblePromptValue}
-          placeholder={readOnly ? t("composer.readOnly") : hasCollapsedPromptBlocks ? t("composer.followupChanges") : hasAttachments ? t("composer.addDescription") : t("composer.continueBranch")}
-          disabled={readOnly}
-          aria-readonly={readOnly}
-          onChange={(event) => {
-            resetQueryHistoryNavigation();
-            setPrompt(
-              hasCollapsedPromptBlocks
-                ? `${collapsedPromptPrefix}${event.target.value}`
-                : event.target.value
-            );
-          }}
-          onPaste={(event) =>
-            handleCollapsedComposerPaste(event, {
-              readOnly,
-              fileAttachmentsEnabled: true,
-              onPasteAttachmentFiles,
-              onFold: resetQueryHistoryNavigation
-            })
-          }
-          onKeyDown={handleKeyDown}
-        />
-        <div className="split-composer-bar">
-          <button
-            className="composer-action-button composer-attach-button"
-            type="button"
-            aria-label={t("composer.addAttachment")}
-            title={t("composer.addAttachment")}
-            disabled={readOnly}
-            onClick={() => attachmentInputRef.current?.click()}
-          >
-            <Paperclip aria-hidden="true" />
-          </button>
-          {statusText ? (
-            <span className="split-composer-status">
-              <TruncatedText
-                className={`split-composer-status-text${statusIsLiveProgress ? " live-progress-chip" : ""}`}
-                text={statusText}
-              />
-            </span>
-          ) : (
-            <span />
-          )}
-          {showStop ? (
-            <button
-              className="composer-action-button composer-stop-button"
-              type="button"
-              onClick={onInterrupt}
-              aria-label={t("composer.pause")}
-              title={t("composer.pause")}
-            >
-              <Square aria-hidden="true" />
-            </button>
-          ) : (
-            <button
-              className="composer-action-button composer-send-button"
-              type="button"
-              onClick={submitComposer}
-              aria-label={sendLabel}
-              title={sendLabel}
-              disabled={readOnly || !hasDraft}
-            >
-              <Send aria-hidden="true" />
-            </button>
-          )}
         </div>
       </div>
     </footer>
