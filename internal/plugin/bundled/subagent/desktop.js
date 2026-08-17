@@ -20,7 +20,7 @@ export async function activate(api) {
     "subagent.aliases.invalid": "别名配置必须是 JSON 对象。"
   } });
   api.registerStyle({ id: "subagent-status", css: `
-    .plugin-subagent-status { display:flex; gap:6px; flex-wrap:wrap; margin:0 2px 8px; }
+    .plugin-subagent-status { display:flex; gap:6px; flex-wrap:wrap; margin:0; }
     .plugin-subagent-chip { padding:3px 7px; border:1px solid var(--wuu-color-border-subtle); border-radius:var(--wuu-radius-control, 999px); background:var(--wuu-color-surface-muted); color:var(--wuu-color-text-muted); font-size:11px; }
     .plugin-subagent-chip[data-status="running"] { color:var(--wuu-color-text); }
     .plugin-subagent-settings { min-width:0; }
@@ -106,6 +106,6 @@ export async function activate(api) {
           savedTick ? h("span", { key: savedTick, className: "plugin-subagent-saved" }, tr("subagent.aliases.saved")) : null),
         error ? h("div", { className: "plugin-subagent-settings-error", role: "alert" }, error) : null))));
   }
-  api.registerSlot("composer.above", { id: "subagent-status", order: 30, render: (context) => h(ChildTaskStatus, context) });
+  api.registerSlot("composer.cluster", { id: "subagent-status", order: 30, render: (context) => h(ChildTaskStatus, context) });
   api.registerViewType({ id: "subagent.settings", title: "Subagent", icon: "bot", defaultRegion: "settings", persistence: "durable", render: ModelAliases });
 }

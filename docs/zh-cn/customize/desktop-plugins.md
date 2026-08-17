@@ -27,7 +27,8 @@ Wuu Desktop
     │       └── conversation.message.after    Slot
     └── conversation.composer           Presenter
         ├── composer.above               Slot
-        └── composer.toolbar             Slot
+        ├── composer.toolbar             Slot
+        └── composer.cluster             Slot
 ```
 
 插件在运行时注册贡献，Wuu 把它们和原生 UI 组合。禁用、升级或卸载插件时，当前 generation
@@ -61,6 +62,7 @@ Wuu Desktop
 | `conversation.message.after` | 每条消息之后 |
 | `composer.above` | Composer 上方 |
 | `composer.toolbar` | Composer 工具栏 |
+| `composer.cluster` | Composer 上方的悬浮状态胶囊行（TODO 进度 / 跳到最新所在的区域） |
 
 Slot 是增量贡献，不接管原生边界。多个插件可以按 `order` 一起出现。
 

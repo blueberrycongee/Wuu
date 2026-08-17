@@ -57,7 +57,7 @@ describe("first-party desktop plugin lifecycle", () => {
       });
     }
 
-    expect(host.getSlotSnapshot("composer.above").map((item) => item.pluginId)).toEqual([
+    expect(host.getSlotSnapshot("composer.cluster").map((item) => item.pluginId)).toEqual([
       "subagent",
     ]);
     expect(host.getSlotSnapshot("composer.toolbar")).toEqual([]);
@@ -118,7 +118,7 @@ describe("first-party desktop plugin lifecycle", () => {
     expect(document.head.querySelector(`style[data-wuu-plugin-id="${pluginId}"][data-wuu-plugin-generation="old-generation"]`)).toBeNull();
     expect(document.head.querySelectorAll(`style[data-wuu-plugin-id="${pluginId}"][data-wuu-plugin-generation="new-generation"]`)).toHaveLength(1);
     expect([
-      ...host.getSlotSnapshot("composer.above"),
+      ...host.getSlotSnapshot("composer.cluster"),
       ...host.getSlotSnapshot("composer.toolbar"),
       ...host.getViewTypes(),
     ].filter((item) => item.pluginId === pluginId).every((item) => item.generation === "new-generation"))
@@ -153,7 +153,7 @@ describe("first-party desktop plugin lifecycle", () => {
       await act(async () => {
         root.render(React.createElement(PluginSlot, {
           host,
-          id: "composer.above",
+          id: "composer.cluster",
           context: { threadId: "thread-a", mainConversation: true },
         }));
       });
@@ -170,7 +170,7 @@ describe("first-party desktop plugin lifecycle", () => {
       await act(async () => {
         root.render(React.createElement(PluginSlot, {
           host,
-          id: "composer.above",
+          id: "composer.cluster",
           context: { threadId: "thread-b", mainConversation: true },
         }));
       });

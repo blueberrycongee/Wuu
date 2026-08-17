@@ -202,6 +202,7 @@ import type {
 import { useSettingsRuntimeState } from "./SettingsRuntimeState";
 import { SidePanelToggleIcon } from "./SidePanelToggleIcon";
 import { JumpToLatestPill } from "./JumpToLatestPill";
+import { ConversationStatusCluster } from "./ConversationStatusCluster";
 import { SkillsCatalog } from "./SkillsCatalog";
 import { skillsAssistantPrompt, userVisibleThreads } from "./SkillsAssistant";
 import { runDebugPhaseForState } from "./RunDebugPanel";
@@ -361,7 +362,7 @@ type MainComposerFocusRequest = {
 };
 
 export function App(): JSX.Element {
-  const { locale, t, formatNumber } = useI18n();
+  const { locale, t } = useI18n();
   const [popOutInit] = useState<PopOutInitResult | null>(() => readPopOutInit());
   const poppedOutMode = Boolean(popOutInit?.kind && popOutInit.context);
   const [state, setState] = useState<AppState>(initialState);
@@ -1378,35 +1379,9 @@ export function App(): JSX.Element {
       ),
   });
   const activeTodoUpdate = latestTodoUpdateForThread(activeThread);
-  // Distinct from `activeTodoUpdate` above: the floating "jump to latest /
-  // progress" pill cluster only tracks a TODO list while its turn is still
-  // running (see `activeTodoUpdateForThread`), whereas the environment
-  // side panel keeps showing the most recent TODO list — running or completed —
-  // as a persistent checklist once the user opens it.
-  const activeTodoPillUpdate = activeTodoUpdateForThread(activeThread);
   const activeContextKey = state.activeContext
     ? runtimeContextKey(state.activeContext)
     : "";
-  const activeTodoTotal = activeTodoPillUpdate?.todos.length ?? 0;
-  const activeTodoCompleted =
-    activeTodoPillUpdate?.todos.filter((item) => item.status === "completed").length ?? 0;
-  // Hide the pill once the active TODO list is fully done; it will reappear
-  // when the next list arrives with pending work (or more items are appended).
-  const activeTodoVisible = Boolean(
-    activeTodoPillUpdate &&
-      activeTodoTotal > 0 &&
-      activeTodoCompleted < activeTodoTotal,
-  );
-  const activeTodoCurrentItem = activeTodoPillUpdate?.todos.find(
-    (item) => item.status === "in_progress",
-  );
-  const activeTodoNextItem = activeTodoPillUpdate?.todos.find(
-    (item) => item.status === "pending",
-  );
-  const activeTodoDetailItems = [activeTodoCurrentItem, activeTodoNextItem].flatMap(
-    (item, index, items) =>
-      item && items.findIndex((other) => other === item) === index ? [item] : [],
-  );
   const forkWorktreeDisabledReason =
     state.gitStatus?.is_repo === false
       ? t("app.worktreeRequiresGit")
@@ -4988,41 +4963,13 @@ export function App(): JSX.Element {
           </div>
         ) : null}
 
-        {mainConversationDockVisible && activeTodoVisible && !mainConversationScrolledAway ? (
-          <div
-            className="jump-to-latest-cluster"
-            aria-label={t("app.currentPositionAndProgress")}
-          >
-            {activeTodoVisible ? (
-              <div
-                className="jump-to-latest-progress"
-                aria-label={t("app.todoProgressLabel", {
-                  completed: formatNumber(activeTodoCompleted),
-                  total: formatNumber(activeTodoTotal),
-                })}
-              >
-                {t("app.progressFraction", {
-                  completed: formatNumber(activeTodoCompleted),
-                  total: formatNumber(activeTodoTotal),
-                })}
-                {activeTodoDetailItems.length > 0 ? (
-                  <span className="jump-to-latest-progress-detail" aria-hidden="true">
-                    {activeTodoDetailItems.map((item) => (
-                      <span className={`jump-to-latest-progress-step ${item.status}`} key={item.content}>
-                        {t(
-                          item.status === "in_progress"
-                            ? "app.todoInProgress"
-                            : "app.todoNext",
-                          { content: item.content },
-                        )}
-                      </span>
-                    ))}
-                  </span>
-                ) : null}
-              </div>
-            ) : null}
-          </div>
-        ) : null}
+        <ConversationStatusCluster
+          visible={
+            mainConversationDockVisible && !mainConversationScrolledAway
+          }
+          threadId={activeThreadID}
+          todoUpdate={activeTodoUpdateForThread(activeThread)}
+        />
           </>
         )}
       </main>

@@ -30,7 +30,8 @@ Wuu Desktop
     │       └── conversation.message.after    Slot
     └── conversation.composer           Presenter
         ├── composer.above               Slot
-        └── composer.toolbar             Slot
+        ├── composer.toolbar             Slot
+        └── composer.cluster             Slot
 ```
 
 Plugins register contributions at runtime. Wuu composes them with native UI and
@@ -65,6 +66,7 @@ Current production Slots:
 | `conversation.message.after` | After each message |
 | `composer.above` | Above the Composer |
 | `composer.toolbar` | Composer toolbar |
+| `composer.cluster` | Floating status capsule row above the Composer (TODO progress / jump-to-latest home) |
 
 Slots are additive. Multiple plugins can compose in `order` without taking ownership
 of the native boundary.

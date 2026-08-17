@@ -12,6 +12,7 @@ const PRODUCTION_SLOT_OWNERS = Object.freeze({
   "conversation.message.after": "../ThreadItemView.tsx",
   "composer.above": "../ComposerView.tsx",
   "composer.toolbar": "./ComposerPluginToolbar.tsx",
+  "composer.cluster": "../ConversationStatusCluster.tsx",
 } as const);
 
 describe("production plugin slot mounts", () => {

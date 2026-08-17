@@ -32,6 +32,7 @@ export const PLUGIN_SLOT_IDS = [
   "conversation.message.after",
   "composer.above",
   "composer.toolbar",
+  "composer.cluster",
 ] as const;
 
 export type PluginSlotId = (typeof PLUGIN_SLOT_IDS)[number];
