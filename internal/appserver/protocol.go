@@ -86,6 +86,7 @@ const (
 	MethodThreadRegenerateTitle    = "thread/regenerate-title"
 	MethodThreadRename             = "thread/rename"
 	MethodThreadDelete             = "thread/delete"
+	MethodWorkspaceList            = "workspace/list"
 	MethodWorkspaceStateCleanup    = "workspace/state/cleanup"
 	MethodTextPolish               = "text/polish"
 	MethodGitCommitMessage         = "git/commit-message"
@@ -1183,7 +1184,9 @@ type ProviderModelVariantSummary struct {
 }
 
 type ThreadStartParams struct {
-	Ephemeral bool `json:"ephemeral,omitempty"`
+	Ephemeral   bool   `json:"ephemeral,omitempty"`
+	CWD         string `json:"cwd,omitempty"`
+	WorkspaceID string `json:"workspace_id,omitempty"`
 }
 
 type ThreadStartResult struct {
@@ -1401,6 +1404,17 @@ type ThreadListResult struct {
 
 type ThreadListParams struct {
 	CWD string `json:"cwd,omitempty"`
+}
+
+type WorkspaceInfo struct {
+	ID   string `json:"id,omitempty"`
+	Name string `json:"name"`
+	Path string `json:"path"`
+}
+
+type WorkspaceListResult struct {
+	Workspaces []WorkspaceInfo `json:"workspaces"`
+	Current    string          `json:"current,omitempty"`
 }
 
 type ThreadSearchParams struct {

@@ -13,7 +13,7 @@ import {
 } from "@wuu/remote-core";
 import type { Thread, Turn } from "@wuu/protocol";
 
-import { AppStore } from "./store";
+import { AppStore, type WorkspaceInfo } from "./store";
 import { isThreadRunning } from "./threads";
 
 export interface CredentialStore {
@@ -31,6 +31,7 @@ type ThreadResult = { thread: Thread };
 type ThreadStartResult = { thread: Thread };
 type TurnResult = { turn: Turn };
 type QueueResult = { queued: { id: string } };
+type WorkspaceListResult = { workspaces: WorkspaceInfo[]; current?: string };
 
 /** How long a brief link drop is allowed to last before the "重连中…" strip
  *  appears. Short enough that a real outage still surfaces within a second,
@@ -95,6 +96,7 @@ export class WuuMobile {
     this.client = new RemoteClient(creds, {
       clientProfile: CLIENT_PROFILE_MOBILE_CHAT,
       onNotification: (method, params) => this.store.applyNotification(method, params),
+      onState: (state) => this.store.setWorkdir(state.host?.workdir ?? ""),
       onAttach: (ev) => void this.onAttach(ev.resumed),
       onDetach: () => this.scheduleReconnecting(),
     });
@@ -129,6 +131,7 @@ export class WuuMobile {
         this.store.resetServerState();
         await this.call("initialize");
       }
+      await this.refreshWorkspaces();
       await this.refreshThreads();
       // The thread the user is looking at lost its full history
       // with the reset — re-resume it in place so the open chat refills.
@@ -159,8 +162,34 @@ export class WuuMobile {
   }
 
   async refreshThreads(): Promise<void> {
-    const result = await this.call<ThreadListResult>("thread/list");
+    const cwd = this.store.getSnapshot().activeWorkspacePath;
+    const params = cwd ? { cwd } : undefined;
+    const result = await this.call<ThreadListResult>("thread/list", params);
     this.store.setThreads(result.threads ?? []);
+  }
+
+  /** Pull the host's registered workspaces and keep the current selection
+   *  pinned to the host's default workspace until the user chooses another. */
+  async refreshWorkspaces(): Promise<void> {
+    const result = await this.call<WorkspaceListResult>("workspace/list");
+    const workspaces = result.workspaces ?? [];
+    this.store.setWorkspaces(workspaces);
+    const snapshot = this.store.getSnapshot();
+    if (!snapshot.activeWorkspacePath) {
+      const registered =
+        workspaces.find((w) => w.path === result.current) ??
+        workspaces.find((w) => w.path === snapshot.workdir) ??
+        workspaces[0];
+      const current = registered?.path || result.current || snapshot.workdir || "";
+      if (current) this.store.setActiveWorkspacePath(current);
+    }
+  }
+
+  /** Switch which registered workspace new conversations are created in. */
+  async selectWorkspace(workspace: WorkspaceInfo): Promise<void> {
+    this.closeThread();
+    this.store.setActiveWorkspacePath(workspace.path);
+    await this.refreshThreads();
   }
 
   private scheduleThreadsRefresh(): void {
@@ -238,11 +267,14 @@ export class WuuMobile {
     await this.refreshThreads();
   }
 
-  /** Create a new conversation in the paired workspace. Mirrors the CLI
-   *  phone's new-thread path: thread/start with empty params; the workspace
-   *  context comes from the host the device is paired to. */
+  /** Create a new conversation in the selected workspace. */
   async startThread(): Promise<Thread> {
-    const result = await this.call<ThreadStartResult>("thread/start", {});
+    const snapshot = this.store.getSnapshot();
+    const workspace = snapshot.workspaces.find((w) => w.path === snapshot.activeWorkspacePath);
+    const params: Record<string, unknown> = {};
+    if (snapshot.activeWorkspacePath) params.cwd = snapshot.activeWorkspacePath;
+    if (workspace?.id) params.workspace_id = workspace.id;
+    const result = await this.call<ThreadStartResult>("thread/start", params);
     await this.refreshThreads();
     return result.thread;
   }

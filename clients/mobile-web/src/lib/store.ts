@@ -21,10 +21,19 @@ export type PendingSend = {
   queued: boolean; // true once turn/queue acked it server-side
 };
 
+export type WorkspaceInfo = {
+  id?: string;
+  name: string;
+  path: string;
+};
+
 export type AppSnapshot = {
   phase: ConnectionPhase;
   syncError: string | null;
   hostName: string;
+  workdir: string;
+  workspaces: WorkspaceInfo[];
+  activeWorkspacePath: string;
   threads: Thread[];
   lastViewed: Readonly<Record<string, string>>;
   pending: PendingSend[];
@@ -40,6 +49,9 @@ export class AppStore {
   private phase: ConnectionPhase = "idle";
   private syncError: string | null = null;
   private hostName = "";
+  private workdir = "";
+  private workspaces: WorkspaceInfo[] = [];
+  private activeWorkspacePath = "";
   private activeThreadId: string | null = null;
   private listeners = new Set<Listener>();
   private snapshot: AppSnapshot | null = null;
@@ -60,6 +72,9 @@ export class AppStore {
         phase: this.phase,
         syncError: this.syncError,
         hostName: this.hostName,
+        workdir: this.workdir,
+        workspaces: [...this.workspaces],
+        activeWorkspacePath: this.activeWorkspacePath,
         threads: [...this.threads.values()],
         lastViewed: { ...this.lastViewed },
         pending: [...this.pending],
@@ -94,11 +109,31 @@ export class AppStore {
     this.bump();
   }
 
+  setWorkdir(workdir: string): void {
+    if (this.workdir === workdir) return;
+    this.workdir = workdir;
+    this.bump();
+  }
+
+  setWorkspaces(workspaces: WorkspaceInfo[]): void {
+    this.workspaces = workspaces;
+    this.bump();
+  }
+
+  setActiveWorkspacePath(path: string): void {
+    if (this.activeWorkspacePath === path) return;
+    this.activeWorkspacePath = path;
+    this.bump();
+  }
+
   /** Fresh app-server connection (attach resumed=false): every in-memory
    *  mirror of server state is stale; local-only state survives. */
   resetServerState(): void {
     this.threads.clear();
     this.pending = [];
+    this.workdir = "";
+    this.workspaces = [];
+    this.activeWorkspacePath = "";
     this.bump();
   }
 

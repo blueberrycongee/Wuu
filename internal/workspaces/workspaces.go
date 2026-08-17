@@ -15,6 +15,7 @@ import (
 
 // Workspace is one registered workspace root.
 type Workspace struct {
+	ID   string `json:"id,omitempty"`
 	Name string `json:"name"`
 	Root string `json:"path"`
 }
@@ -53,6 +54,7 @@ func List(wuuHome string) ([]Workspace, error) {
 			continue
 		}
 		out = append(out, Workspace{
+			ID:   strings.TrimSpace(project.ID),
 			Name: strings.TrimSpace(project.Name),
 			Root: root,
 		})

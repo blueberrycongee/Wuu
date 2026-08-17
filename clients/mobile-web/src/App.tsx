@@ -9,6 +9,7 @@ import { ConnectionBanner } from "./components/ConnectionBanner";
 import { webCredStore } from "./lib/credStore";
 import { WuuMobile } from "./lib/controller";
 import { PairScreen } from "./screens/PairScreen";
+import { HomeScreen } from "./screens/HomeScreen";
 import { ChatsScreen } from "./screens/ChatsScreen";
 import { ThreadScreen } from "./screens/ThreadScreen";
 
@@ -44,6 +45,15 @@ export default function App(): React.JSX.Element {
     void controller.openThread(threadId).catch(() => {});
   };
 
+  /** Home composer: create a conversation in the host workspace, send the
+   *  first message, then move into that thread's full chat view. */
+  const startChat = async (text: string): Promise<void> => {
+    const thread = await controller.startThread();
+    await controller.sendMessage(thread, text);
+    setRoute({ name: "thread", threadId: thread.id });
+    await controller.openThread(thread.id).catch(() => {});
+  };
+
   const chatList = (
     <ChatsScreen
       snapshot={snapshot}
@@ -72,7 +82,14 @@ export default function App(): React.JSX.Element {
       ) : route.name === "chats" ? (
         <>
           <ConnectionBanner phase={snapshot.phase} syncError={snapshot.syncError} />
-          {chatList}
+          <HomeScreen
+            snapshot={snapshot}
+            onCompose={startChat}
+            onSelectWorkspace={(workspace) =>
+              void controller.selectWorkspace(workspace).catch(() => {})
+            }
+            drawerContent={chatList}
+          />
         </>
       ) : (
         <>

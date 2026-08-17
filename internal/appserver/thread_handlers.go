@@ -49,8 +49,21 @@ func (s *Server) handleThreadStart(req Request) error {
 	}
 	id := session.NewID()
 	persistHistory := !params.Ephemeral
-	threadCWD := s.rt.RootDir
-	workspaceKind := workspaceKindForCWD(s.rt.WuuHome, s.rt.RootDir)
+	threadCWD := strings.TrimSpace(params.CWD)
+	if threadCWD == "" {
+		threadCWD = s.rt.RootDir
+	} else {
+		canonical, err := canonicalWorkspaceDirectory(threadCWD)
+		if err != nil {
+			return s.writeResponse(req.ID, nil, err)
+		}
+		threadCWD = canonical
+	}
+	workspaceID := strings.TrimSpace(params.WorkspaceID)
+	if workspaceID == "" {
+		workspaceID = s.rt.WorkspaceID
+	}
+	workspaceKind := workspaceKindForCWD(s.rt.WuuHome, threadCWD)
 	threadSource := ""
 	if !params.Ephemeral {
 		if _, err := session.CreateWithMetadata(s.rt.SessionDir, id, threadCWD); err != nil {
@@ -65,7 +78,7 @@ func (s *Server) handleThreadStart(req Request) error {
 		// Bind project threads to the active workspace's stable id so their
 		// state and listing survive the project moving. Scratch threads carry
 		// no project id.
-		if wsID := strings.TrimSpace(s.rt.WorkspaceID); wsID != "" {
+		if wsID := strings.TrimSpace(workspaceID); wsID != "" {
 			if _, err := session.SetWorkspaceID(s.rt.SessionDir, id, wsID); err != nil {
 				return s.writeResponse(req.ID, nil, err)
 			}
