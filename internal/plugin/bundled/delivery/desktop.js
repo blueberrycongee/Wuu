@@ -1,7 +1,6 @@
 export async function activate(api) {
   const React = api.react;
   const h = React.createElement;
-  const { Fragment } = React;
   const { Page, Section, Stack, Row, Button } = api.ui;
 
   api.registerLocale({ id: "delivery-en", locale: "en-US", entries: {
@@ -25,7 +24,6 @@ export async function activate(api) {
 
   api.registerStyle({ id: "delivery", css: `
     .plugin-delivery-actions { display:flex; align-items:center; gap:6px; margin:6px 0 2px; }
-    .plugin-delivery-detail-button { flex:none; }
     .plugin-delivery-detail { min-width:0; }
     .plugin-delivery-prompt {
       white-space:pre-wrap; word-break:break-word; overflow-wrap:anywhere;
@@ -41,49 +39,6 @@ export async function activate(api) {
   ` });
 
   const tr = (translate, key) => (typeof translate === "function" ? translate(key) : key);
-
-  function detailLabel() {
-    if (typeof document !== "undefined" && document.documentElement?.lang?.toLowerCase().startsWith("zh")) {
-      return "详情";
-    }
-    return "Details";
-  }
-
-  function DeliveryDetailAction({ snapshot, host }) {
-    const inputText = typeof snapshot?.inputText === "string" ? snapshot.inputText.trim() : "";
-    if (!inputText) return null;
-
-    const open = () => {
-      void host.openView("delivery.inspector", {
-        region: "auxiliary",
-        context: {
-          messageId: snapshot.id,
-          displayText: snapshot.text ?? "",
-          inputText,
-        },
-      });
-    };
-
-    return h("div", { className: "plugin-delivery-actions" },
-      h(Button, { variant: "ghost", className: "plugin-delivery-detail-button", onClick: open }, detailLabel()));
-  }
-
-  api.registerPresenter({
-    id: "delivery.inspect",
-    target: "conversation.item",
-    key: "user-message",
-    mode: "wrap",
-    priority: 10,
-    render: ({ snapshot, host, fallback }) => {
-      if (!snapshot || typeof snapshot.inputText !== "string" || snapshot.inputText.trim() === "") {
-        return fallback;
-      }
-      return h(Fragment, null,
-        fallback,
-        h(DeliveryDetailAction, { snapshot, host }),
-      );
-    },
-  });
 
   function DeliveryInspector(props) {
     const context = props.context || {};

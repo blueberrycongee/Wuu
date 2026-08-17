@@ -8,7 +8,7 @@ import {
   useRef,
   useState
 } from "react";
-import { ChevronDown, ChevronUp, Plus, Send } from "lucide-react";
+import { ChevronDown, ChevronUp, Info, Plus, Send } from "lucide-react";
 import type { InputFile, InputImage, ThreadItem, Turn } from "../shared/protocol";
 import {
   clipboardAttachmentFiles,
@@ -51,7 +51,7 @@ import {
   ConversationMessageSurface,
   type ConversationMessageSurfaceContext,
 } from "./plugins/ConversationMessageSurface";
-import { desktopPluginHost } from "./plugins/DesktopPluginRuntime";
+import { desktopPluginHost, desktopWorkbenchController } from "./plugins/DesktopPluginRuntime";
 import type { PluginHost } from "./plugins/PluginHost";
 import { PluginSlot } from "./plugins/PluginSlot";
 
@@ -233,6 +233,24 @@ function BuiltInThreadItemView({
           (copyable || (item.images?.length ?? 0) > 0 || (item.files?.length ?? 0) > 0),
       );
       const editActionVisible = editable;
+      // Plugin wake messages can hide the real delivered prompt behind a
+      // generic query bubble; expose the raw input through a details action
+      // that opens the delivery inspector in the auxiliary panel.
+      const deliveryText = item.input_text?.trim() ?? "";
+      const deliveryViewAvailable = deliveryText !== ""
+        && desktopPluginHost.getViewTypes().some((view) => view.id === "delivery.inspector");
+      const openDeliveryDetails = (): void => {
+        if (!deliveryViewAvailable) return;
+        void desktopWorkbenchController.openPluginView("delivery", "delivery.inspector", {
+          region: "auxiliary",
+          persistence: "session",
+          context: {
+            messageId: item.id,
+            displayText,
+            inputText: deliveryText,
+          },
+        }).catch(() => {});
+      };
       return (
         <div
           className={`user-message-block${copyable || editActionVisible ? " user-message-block-with-actions" : ""}`}
@@ -261,7 +279,7 @@ function BuiltInThreadItemView({
               onOpenFile={onOpenFile}
             />
           )}
-          {!editing && (copyable || editActionVisible) ? (
+          {!editing && (copyable || editActionVisible || deliveryViewAvailable) ? (
             <div
               className="message-actions user-message-actions"
               data-wuu-component="message-actions"
@@ -274,6 +292,17 @@ function BuiltInThreadItemView({
                   className="message-action-button"
                   iconSize={15}
                 />
+              ) : null}
+              {deliveryViewAvailable ? (
+                <button
+                  type="button"
+                  className="message-action-button"
+                  aria-label={t("message.deliveryDetails")}
+                  title={t("message.deliveryDetails")}
+                  onClick={openDeliveryDetails}
+                >
+                  <Info className="icon" />
+                </button>
               ) : null}
               {editActionVisible && onEditMessage ? (
                 <MessageEditButton

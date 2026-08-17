@@ -833,6 +833,7 @@ export const zhCN = {
   "process.finishedUnderSecond": "用时不到 1 秒",
   "process.finishedIn": "用时 {duration}",
   "message.userActions": "用户消息操作",
+  "message.deliveryDetails": "投递详情",
   "message.viewFullProcess": "查看完整过程",
   "message.viewProcess": "查看过程",
   "message.addImageOrPdf": "添加图片或 PDF",

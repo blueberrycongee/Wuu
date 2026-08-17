@@ -835,6 +835,7 @@ export const enUS = {
   "process.finishedUnderSecond": "Finished in under 1 second",
   "process.finishedIn": "Finished in {duration}",
   "message.userActions": "User message actions",
+  "message.deliveryDetails": "Delivery details",
   "message.viewFullProcess": "View full process",
   "message.viewProcess": "View process",
   "message.addImageOrPdf": "Add an image or PDF",

@@ -5,7 +5,7 @@ import type { ThreadItem, Turn } from "../shared/protocol";
 import { streamTextKey, streamTextStore } from "./StreamText";
 import { ThreadItemView } from "./ThreadItemView";
 import { clearToasts, ToastViewport } from "./Toast";
-import { desktopPluginHost } from "./plugins/DesktopPluginRuntime";
+import { desktopPluginHost, desktopWorkbenchController } from "./plugins/DesktopPluginRuntime";
 import { WuuUIRoot } from "./ui/layers/UILayerHost";
 
 let container: HTMLDivElement | undefined;
@@ -498,6 +498,51 @@ describe("ThreadItemView", () => {
     expect(actions).toHaveLength(1);
     expect(container?.querySelector<HTMLElement>(".user-message-actions")?.dataset.wuuPlacement).toBe("overlay");
     expect(onEditMessage).not.toHaveBeenCalled();
+  });
+
+  it("opens the delivery inspector from the details action on hidden wake prompts", async () => {
+    const openPluginView = vi
+      .spyOn(desktopWorkbenchController, "openPluginView")
+      .mockResolvedValue("delivery:delivery.inspector:1");
+    await desktopPluginHost.activateGeneration({
+      pluginId: "delivery",
+      generation: "one",
+      register(api) {
+        api.registerViewType({ id: "delivery.inspector", title: "Delivery details", render: () => null });
+      },
+    });
+    render({
+      item: {
+        id: "plugin-query-1",
+        type: "user_message",
+        text: "子任务 太阳 已更新",
+        input_text: "这是实际投递给子任务 太阳 的完整提示词",
+        read_only: true,
+        origin: "plugin",
+        origin_id: "subagent",
+        cause: "subagent.completion",
+        presentation_kind: "query_bubble",
+      },
+      turnStatus: "completed",
+      streaming: false,
+    });
+
+    const actions = container?.querySelectorAll<HTMLButtonElement>(".user-message-actions button");
+    expect(actions).toHaveLength(2);
+    const details = [...(actions ?? [])].find((button) => button.getAttribute("aria-label") === "投递详情");
+    expect(details).toBeDefined();
+
+    act(() => details!.click());
+    expect(openPluginView).toHaveBeenCalledWith("delivery", "delivery.inspector", expect.objectContaining({
+      region: "auxiliary",
+      context: expect.objectContaining({
+        messageId: "plugin-query-1",
+        displayText: "子任务 太阳 已更新",
+        inputText: "这是实际投递给子任务 太阳 的完整提示词",
+      }),
+    }));
+
+    act(() => desktopPluginHost.unload("delivery"));
   });
 
 });

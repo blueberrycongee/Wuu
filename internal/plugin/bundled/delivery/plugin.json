@@ -8,10 +8,6 @@
   "author": { "name": "Wuu" },
   "minimumWuuVersion": "0.1.0",
   "desktop": { "entry": "desktop.js" },
-  "contributes": {
-    "presenters": [
-      { "id": "delivery.inspect", "target": "conversation.item", "mode": "wrap", "priority": 10, "title": "Delivery detail action" }
-    ]
-  },
+  "contributes": {},
   "interface": { "displayName": "Delivery", "shortDescription": "Inspect hidden agent delivery and wake prompts.", "developerName": "Wuu", "category": "Productivity", "capabilities": ["Read"] }
 }
