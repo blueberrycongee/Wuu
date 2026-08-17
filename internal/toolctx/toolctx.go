@@ -11,6 +11,41 @@ type worktreePathKey struct{}
 
 type waitInterruptKey struct{}
 
+type workspaceRevisionKey struct{}
+
+type workspaceRevisionValue struct {
+	Root     string
+	Revision string
+}
+
+// WithWorkspaceRevision annotates tool execution context with the workspace
+// revision the toolkit computed just before the tool ran. Read-only tools may
+// reuse it instead of re-running git, but only when it was computed for the
+// same root the tool would use — a bound worktree checkout has a different
+// revision and must compute its own.
+func WithWorkspaceRevision(ctx context.Context, root, revision string) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return context.WithValue(ctx, workspaceRevisionKey{}, workspaceRevisionValue{
+		Root:     strings.TrimSpace(root),
+		Revision: revision,
+	})
+}
+
+// WorkspaceRevision returns the precomputed workspace revision stashed by the
+// toolkit for this tool execution, if any.
+func WorkspaceRevision(ctx context.Context) (root, revision string, ok bool) {
+	if ctx == nil {
+		return "", "", false
+	}
+	value, ok := ctx.Value(workspaceRevisionKey{}).(workspaceRevisionValue)
+	if !ok || value.Root == "" {
+		return "", "", false
+	}
+	return value.Root, value.Revision, true
+}
+
 // WithStepIndex annotates tool execution context with the model step that
 // requested the tool. The value is telemetry-only; tools must not branch on it.
 func WithStepIndex(ctx context.Context, stepIndex int) context.Context {

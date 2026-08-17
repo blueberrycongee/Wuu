@@ -18,6 +18,7 @@ import (
 
 	"github.com/blueberrycongee/wuu/internal/providers"
 	"github.com/blueberrycongee/wuu/internal/stringutil"
+	"github.com/blueberrycongee/wuu/internal/toolctx"
 )
 
 const (
@@ -178,7 +179,7 @@ func (t *GrepTool) Execute(ctx context.Context, argsJSON string) (string, error)
 	if opts.outputMode == "" {
 		opts.outputMode = "content"
 	}
-	revisionKey := workspaceRevision(ctx, t.env.RevisionRoot(ctx))
+	revisionKey := searchWorkspaceRevision(ctx, t.env)
 
 	switch opts.outputMode {
 	case "files_with_matches":
@@ -371,7 +372,7 @@ func (t *GlobTool) Execute(ctx context.Context, argsJSON string) (string, error)
 		searchRoot = resolved
 	}
 
-	revisionKey := workspaceRevision(ctx, t.env.RevisionRoot(ctx))
+	revisionKey := searchWorkspaceRevision(ctx, t.env)
 	key := searchCursorKey("glob", execRoot, searchRoot, args.Pattern, revisionKey)
 	cachePath := searchCursorPath(t.env, key)
 	matches, ok := loadSearchCursor[string](cachePath)
@@ -452,55 +453,114 @@ func searchNextSuggestions(toolName, outputMode string, total int, truncated boo
 
 func grepContentResultJSON(pattern string, matches []grepMatch, offset int, revision string) (string, error) {
 	page, _ := pageWindow(matches, offset, grepPageSize)
-	budgetedMatches := make([]grepMatch, len(page))
+	truncatedPage := make([]grepMatch, len(page))
 	contentTruncated := false
 	for i, match := range page {
 		if len(match.Content) > maxGrepMatchContentBytes {
 			match.Content = stringutil.HeadTail(match.Content, maxGrepMatchContentBytes/2, maxGrepMatchContentBytes/4, "\n...[line truncated]...\n")
 			contentTruncated = true
 		}
-		budgetedMatches[i] = match
+		truncatedPage[i] = match
 	}
 
-	omitted := 0
-	for {
-		shownCount := len(budgetedMatches)
-		hasMore := offset+shownCount < len(matches)
-		truncated := hasMore || contentTruncated
-		result := map[string]any{
-			"action":                 "grep",
-			"pattern":                pattern,
-			"continuation_supported": true,
-			"workspace_revision":     revision,
-			"total":                  len(matches),
-			"record_total":           len(matches),
-			"offset":                 offset,
-			"has_more":               hasMore,
-			"truncated":              truncated,
-			"matches":                budgetedMatches,
-			"omitted_match_count":    omitted,
-			"content_truncated":      contentTruncated,
-			"next_suggestions":       searchNextSuggestions("grep", "content", len(matches), hasMore),
-			"result_budget_bytes":    maxGrepOutputBytes,
-			"returned_match_count":   shownCount,
-			"returned_count":         shownCount,
-			"page":                   continuationPage(offset, shownCount, hasMore, revision),
-		}
-		out, err := mustJSON(result)
+	// Encode every match exactly once. The previous loop re-marshaled the
+	// whole page after each dropped record, so a full page of long matches
+	// cost hundreds of megabyte-scale JSON passes.
+	encoded := make([][]byte, len(truncatedPage))
+	for i := range truncatedPage {
+		data, err := json.Marshal(truncatedPage[i])
 		if err != nil {
 			return "", err
 		}
-		if len(out) <= maxGrepOutputBytes || len(budgetedMatches) == 0 {
-			return out, nil
+		encoded[i] = data
+	}
+
+	upper := grepEnvelopeUpperBound(pattern, len(matches), offset, len(page), contentTruncated, revision)
+	// Keep the longest prefix of matches whose exact JSON array size fits.
+	// Replacing the empty array (2 bytes) with k elements costs
+	// sum(len(encoded[:k])) + k + 1 bytes, i.e. sum + k - 1 extra.
+	kept := 0
+	sum := 0
+	for i := 0; i < len(encoded); i++ {
+		sum += len(encoded[i])
+		if upper+sum+i > maxGrepOutputBytes {
+			break
 		}
-		budgetedMatches = budgetedMatches[:len(budgetedMatches)-1]
-		omitted++
+		kept = i + 1
+	}
+
+	omitted := len(truncatedPage) - kept
+	hasMore := offset+kept < len(matches)
+	result := grepContentResultMap(
+		pattern,
+		len(matches),
+		offset,
+		kept,
+		omitted,
+		truncatedPage[:kept],
+		contentTruncated,
+		hasMore,
+		revision,
+	)
+	return mustJSON(result)
+}
+
+// grepEnvelopeUpperBound returns a conservative size for the grep content
+// result minus its matches array. Both has_more states and max-width counts
+// are considered so the bound covers every candidate page length.
+func grepEnvelopeUpperBound(pattern string, total, offset, pageLen int, contentTruncated bool, revision string) int {
+	largest := 0
+	for _, hasMore := range []bool{true, false} {
+		out, err := mustJSON(grepContentResultMap(pattern, total, offset, pageLen, pageLen, nil, contentTruncated, hasMore, revision))
+		if err != nil {
+			return maxGrepOutputBytes + 1
+		}
+		if len(out) > largest {
+			largest = len(out)
+		}
+	}
+	return largest
+}
+
+func grepContentResultMap(pattern string, total, offset, shown, omitted int, matchesValue any, contentTruncated, hasMore bool, revision string) map[string]any {
+	truncated := hasMore || contentTruncated
+	return map[string]any{
+		"action":                 "grep",
+		"pattern":                pattern,
+		"continuation_supported": true,
+		"workspace_revision":     revision,
+		"total":                  total,
+		"record_total":           total,
+		"offset":                 offset,
+		"has_more":               hasMore,
+		"truncated":              truncated,
+		"matches":                matchesValue,
+		"omitted_match_count":    omitted,
+		"content_truncated":      contentTruncated,
+		"next_suggestions":       searchNextSuggestions("grep", "content", total, hasMore),
+		"result_budget_bytes":    maxGrepOutputBytes,
+		"returned_match_count":   shown,
+		"returned_count":         shown,
+		"page":                   continuationPage(offset, shown, hasMore, revision),
 	}
 }
 
 // ---------------------------------------------------------------------------
 // Shared grep/glob implementation (extracted from old Toolkit methods)
 // ---------------------------------------------------------------------------
+
+// searchWorkspaceRevision returns the revision of the root search executes
+// in. The toolkit computes the workspace revision once per tool call and
+// stashes it in the context; search tools reuse that value when the stash was
+// computed for the same root, which is always true except for threads bound
+// to an isolated worktree checkout (those compute their own).
+func searchWorkspaceRevision(ctx context.Context, env *Env) string {
+	root := env.RevisionRoot(ctx)
+	if stashedRoot, revision, ok := toolctx.WorkspaceRevision(ctx); ok && stashedRoot == root {
+		return revision
+	}
+	return workspaceRevision(ctx, root)
+}
 
 func searchResultCapacity(limit int) int {
 	if limit <= 0 || limit > 16 {

@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -117,6 +118,9 @@ func (t *Toolkit) executeKnownToolResultWithRepeatPolicy(ctx context.Context, ca
 	info := buildToolInfoForArgs(tool, t.toolExposure(call.Name), call.Arguments)
 	startedAt := time.Now()
 	revisionBefore := workspaceRevision(ctx, t.env.RootDir)
+	// Hand the freshly computed revision to the tool so read-only tools can
+	// reuse it instead of re-running git for the same root.
+	ctx = toolctx.WithWorkspaceRevision(ctx, t.env.RootDir, revisionBefore)
 	decision := ToolPolicyDecision{Action: ToolPolicyAllow, Reason: "workspace boundary"}
 
 	if err := validateToolArgumentsJSON(call.Arguments); err != nil {
@@ -201,7 +205,14 @@ func (t *Toolkit) executeKnownToolResultWithRepeatPolicy(ctx context.Context, ca
 		}
 	}
 
-	revisionAfter := workspaceRevision(ctx, t.env.RootDir)
+	revisionAfter := revisionBefore
+	if !info.ReadOnly {
+		// A mutating tool may have changed the workspace; recompute so the
+		// telemetry record shows the post-execution state. Read-only tools
+		// cannot mutate, so their before/after revisions are identical and
+		// the second git round-trip is pure overhead.
+		revisionAfter = workspaceRevision(ctx, t.env.RootDir)
+	}
 	t.recordToolExecution(ctx, call, info, decision, startedAt, revisionBefore, revisionAfter, rawProjection, returnedProjection, resultRef, resultBudgeted, err, projectionDiag)
 	return returned, err
 }
@@ -589,24 +600,52 @@ func workspaceRevision(ctx context.Context, rootDir string) string {
 	}
 	revCtx, cancel := context.WithTimeout(ctx, workspaceRevisionTimeout)
 	defer cancel()
-	headCmd := exec.CommandContext(revCtx, "git", "rev-parse", "HEAD")
-	headCmd.Dir = rootDir
-	headOut, err := headCmd.Output()
-	if err == nil {
-		statusCmd := exec.CommandContext(revCtx, "git", "status", "--porcelain=v1", "-z")
-		statusCmd.Dir = rootDir
-		statusOut, err := statusCmd.Output()
-		if err == nil {
-			sum := sha256.Sum256(statusOut)
-			head := string(headOut)
-			if len(head) >= 12 {
-				head = head[:12]
-			}
-			return "git:" + trimRevisionToken(head) + ":worktree:" + hex.EncodeToString(sum[:])[:16]
-		}
+
+	// One subprocess yields both the HEAD commit and the worktree status:
+	// porcelain v2 --branch opens with a "# branch.oid <sha>" record and the
+	// remaining NUL-terminated records are the status entries. Unborn repos
+	// print "# branch.oid (initial)", which is treated the same as a missing
+	// HEAD below (the filesystem digest fallback).
+	statusCmd := exec.CommandContext(revCtx, "git", "status", "--porcelain=v2", "-z", "--branch")
+	statusCmd.Dir = rootDir
+	statusOut, err := statusCmd.Output()
+	if err != nil {
+		return filesystemRevisionFallback(revCtx, rootDir)
 	}
 
-	digest, ok := filesystemWorkspaceRevision(revCtx, rootDir)
+	head := ""
+	records := make([]byte, 0, len(statusOut))
+	for _, record := range bytes.Split(statusOut, []byte{0}) {
+		if len(record) == 0 {
+			continue
+		}
+		if bytes.HasPrefix(record, []byte("# branch.oid ")) {
+			head = strings.TrimSpace(string(bytes.TrimPrefix(record, []byte("# branch.oid "))))
+			continue
+		}
+		// Header records (branch.head/upstream/ab) describe repo position, not
+		// worktree content; file records alone keep the digest stable across
+		// fetch/push of unrelated refs.
+		if bytes.HasPrefix(record, []byte("# ")) {
+			continue
+		}
+		records = append(records, record...)
+		records = append(records, 0)
+	}
+
+	head = trimRevisionToken(head)
+	if head == "" {
+		return filesystemRevisionFallback(revCtx, rootDir)
+	}
+	if len(head) >= 12 {
+		head = head[:12]
+	}
+	sum := sha256.Sum256(records)
+	return "git:" + head + ":worktree:" + hex.EncodeToString(sum[:])[:16]
+}
+
+func filesystemRevisionFallback(ctx context.Context, rootDir string) string {
+	digest, ok := filesystemWorkspaceRevision(ctx, rootDir)
 	if !ok {
 		return ""
 	}
