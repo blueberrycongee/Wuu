@@ -34,6 +34,21 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function toolResultRecord(item: ThreadItem): Record<string, unknown> | undefined {
+  const structured = item.result_detail?.structured_content;
+  if (isRecord(structured)) return structured;
+
+  const direct = parseJSON(item.result);
+  if (isRecord(direct)) return direct;
+
+  for (const part of item.result_detail?.content ?? []) {
+    if (part.type !== "text") continue;
+    const parsed = parseJSON(part.text);
+    if (isRecord(parsed)) return parsed;
+  }
+  return undefined;
+}
+
 function stringValue(record: unknown, key: string): string | undefined {
   if (!isRecord(record)) return undefined;
   const value = record[key];
@@ -204,8 +219,8 @@ function extractFileEdits(item: ThreadItem): FileEdit[] {
     capability === "file.edit";
   if (!isEditTool) return [];
 
-  const result = parseJSON(item.result);
-  if (!isRecord(result)) return [];
+  const result = toolResultRecord(item);
+  if (!result) return [];
 
   const patchFileEdits = extractPatchFileEdits(item, result);
   if (patchFileEdits.length > 0) {

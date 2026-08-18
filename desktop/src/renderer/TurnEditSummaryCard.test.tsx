@@ -1,7 +1,7 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import type { ThreadItem, Turn } from "../shared/protocol";
+import type { JsonValue, ThreadItem, Turn } from "../shared/protocol";
 import { TurnEditSummaryCard } from "./TurnEditSummaryCard";
 
 beforeAll(() => {
@@ -47,6 +47,32 @@ function buildEditItem(path: string, additions: number, deletions: number): Thre
 }
 
 function buildApplyPatchItem(): ThreadItem {
+  const structuredContent: JsonValue = {
+    files: [
+      {
+        path: "src/a.ts",
+        action: "update",
+        diff: {
+          hunks: [
+            {
+              old_start: 2,
+              new_start: 2,
+              lines: [
+                { op: "equal", content: "const oldName = true;" },
+                { op: "delete", content: "export const value = oldName;" },
+                { op: "insert", content: "export const value = true;" },
+              ],
+            },
+          ],
+        },
+      },
+      {
+        path: "src/b.ts",
+        action: "add",
+        diff: { new_file: true, lines: 3 },
+      },
+    ],
+  };
   return {
     id: "item-apply-patch",
     type: "tool_call",
@@ -56,39 +82,14 @@ function buildApplyPatchItem(): ThreadItem {
       patchText:
         "*** Begin Patch\n*** Update File: src/a.ts\n@@\n-old\n+new\n*** Add File: src/b.ts\n+first\n+second\n+third\n*** End Patch",
     }),
-    result: JSON.stringify({
-      changed_files: ["src/a.ts", "src/b.ts"],
-      risk_summary: {
-        file_count: 2,
-        hunk_count: 2,
-        added_lines: 4,
-        deleted_lines: 1,
-      },
-      files: [
-        {
-          path: "src/a.ts",
-          action: "update",
-          diff: {
-            hunks: [
-              {
-                old_start: 2,
-                new_start: 2,
-                lines: [
-                  { op: "equal", content: "const oldName = true;" },
-                  { op: "delete", content: "export const value = oldName;" },
-                  { op: "insert", content: "export const value = true;" },
-                ],
-              },
-            ],
-          },
-        },
-        {
-          path: "src/b.ts",
-          action: "add",
-          diff: { new_file: true, lines: 3 },
-        },
-      ],
-    }),
+    result: "Success. Updated the following files:\nM src/a.ts\nA src/b.ts",
+    result_detail: {
+      content: [{
+        type: "text",
+        text: "Success. Updated the following files:\nM src/a.ts\nA src/b.ts",
+      }],
+      structured_content: structuredContent,
+    },
   };
 }
 
@@ -178,7 +179,7 @@ describe("TurnEditSummaryCard", () => {
     expect(container?.textContent).toContain("b.txt");
   });
 
-  it("renders each file from apply_patch with per-file stats", () => {
+  it("renders each file from Codex apply_patch structured results with per-file stats", () => {
     const turn: Turn = {
       id: "turn-1",
       status: "completed",
