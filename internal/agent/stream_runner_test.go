@@ -1237,14 +1237,14 @@ func TestStreamRunner_PreRequestCompactUsesColdStartEstimate(t *testing.T) {
 		},
 		chatResponses: []providers.ChatResponse{
 			{Content: "summarized"},
-			{Content: "summarized"},
 		},
 	}
 
 	runner := StreamRunner{
-		Client:                client,
-		Model:                 "gpt-4-turbo",
-		ContextWindowOverride: 5000,
+		Client:                 client,
+		Model:                  "gpt-4-turbo",
+		ContextWindowOverride:  16000,
+		CompactThresholdTokens: 5000,
 	}
 
 	history := []providers.ChatMessage{
@@ -1268,14 +1268,14 @@ func TestStreamRunner_PreRequestCompactUsesColdStartEstimate(t *testing.T) {
 	if !res.HistoryRewritten {
 		t.Fatal("expected history rewrite after cold-start compact")
 	}
-	if len(client.requests) != 3 {
-		t.Fatalf("expected two compact requests plus stream request, got %d", len(client.requests))
+	if len(client.requests) != 2 {
+		t.Fatalf("expected compact request plus stream request, got %d", len(client.requests))
 	}
-	if len(visibleMessagesForTest(client.requests[2].Messages)) >= len(history) {
+	if len(visibleMessagesForTest(client.requests[1].Messages)) >= len(history) {
 		t.Fatalf("expected compacted stream request, got %d messages from %d-history input",
-			len(client.requests[2].Messages), len(history))
+			len(client.requests[1].Messages), len(history))
 	}
-	if got := client.requests[2].Messages[1].Content; !compact.IsConversationSummaryContent(got) || !strings.Contains(got, "summarized") {
+	if got := client.requests[1].Messages[1].Content; !compact.IsConversationSummaryContent(got) || !strings.Contains(got, "summarized") {
 		t.Fatalf("expected compacted summary after system prompt, got %q", got)
 	}
 	if len(compactEvents) != 2 {
@@ -1440,14 +1440,14 @@ func TestStreamRunner_CompactedHistoryDoesNotTriggerImmediateSecondCompact(t *te
 		},
 		chatResponses: []providers.ChatResponse{
 			{Content: "summarized older context"},
-			{Content: "summarized older context"},
 		},
 	}
 
 	runner := StreamRunner{
-		Client:                client,
-		Model:                 "gpt-4-turbo",
-		ContextWindowOverride: 5000,
+		Client:                 client,
+		Model:                  "gpt-4-turbo",
+		ContextWindowOverride:  16000,
+		CompactThresholdTokens: 5000,
 	}
 
 	firstHistory := []providers.ChatMessage{
@@ -1480,24 +1480,23 @@ func TestStreamRunner_CompactedHistoryDoesNotTriggerImmediateSecondCompact(t *te
 		t.Fatal("did not expect immediate second history rewrite")
 	}
 
-	if len(client.requests) != 4 {
-		t.Fatalf("expected two compact requests plus two stream requests, got %d", len(client.requests))
+	if len(client.requests) != 3 {
+		t.Fatalf("expected compact request plus two stream requests, got %d", len(client.requests))
 	}
-	if !isCompactSummaryRequest(client.requests[0]) || !isCompactSummaryRequest(client.requests[1]) {
-		t.Fatalf("expected first two requests to summarize compact chunks, got flags: %t %t",
+	if !isCompactSummaryRequest(client.requests[0]) {
+		t.Fatalf("expected first request to summarize for compact, got %+v", client.requests[0].Messages)
+	}
+	if isCompactSummaryRequest(client.requests[1]) || isCompactSummaryRequest(client.requests[2]) {
+		t.Fatalf("expected only one compact request, got compact flags: %t %t %t",
 			isCompactSummaryRequest(client.requests[0]),
-			isCompactSummaryRequest(client.requests[1]))
+			isCompactSummaryRequest(client.requests[1]),
+			isCompactSummaryRequest(client.requests[2]))
 	}
-	if isCompactSummaryRequest(client.requests[2]) || isCompactSummaryRequest(client.requests[3]) {
-		t.Fatalf("expected final two requests to be model streams, got compact flags: %t %t",
-			isCompactSummaryRequest(client.requests[2]),
-			isCompactSummaryRequest(client.requests[3]))
-	}
-	if client.chatCallCount != 2 {
-		t.Fatalf("expected two compact summary calls, got %d", client.chatCallCount)
+	if client.chatCallCount != 1 {
+		t.Fatalf("expected one compact summary call, got %d", client.chatCallCount)
 	}
 
-	secondSent := client.requests[3].Messages
+	secondSent := client.requests[2].Messages
 	if len(visibleMessagesForTest(secondSent)) != len(visibleMessagesForTest(secondHistory)) {
 		t.Fatalf("expected second request to preserve visible compacted history, got %d messages from %d-history input",
 			len(secondSent), len(secondHistory))
@@ -1526,14 +1525,14 @@ func TestStreamRunner_ContextOverflowStreamErrorCompactsSingleUserTurn(t *testin
 		},
 		chatResponses: []providers.ChatResponse{
 			{Content: "summarized single-turn tool run"},
-			{Content: "summarized single-turn tool run"},
 		},
 	}
 
 	runner := StreamRunner{
-		Client:                client,
-		Model:                 "test-model",
-		ContextWindowOverride: 1000,
+		Client:                  client,
+		Model:                   "test-model",
+		ContextWindowOverride:   16000,
+		CompactKeepRecentTokens: 1000,
 	}
 	history := []providers.ChatMessage{
 		{Role: "user", Content: "debug the issue"},
@@ -1574,23 +1573,19 @@ func TestStreamRunner_ContextOverflowStreamErrorCompactsSingleUserTurn(t *testin
 	if eventErrorSeen {
 		t.Fatal("context overflow recovery should not surface a terminal error event")
 	}
-	if len(client.requests) != 4 {
-		t.Fatalf("expected stream, two compact chunks, stream requests, got %d", len(client.requests))
+	if len(client.requests) != 3 {
+		t.Fatalf("expected stream, compact, stream requests, got %d", len(client.requests))
 	}
 	initialOperation := client.requests[0].Operation
-	firstCompactOperation := client.requests[1].Operation
-	secondCompactOperation := client.requests[2].Operation
-	resumedOperation := client.requests[3].Operation
-	if firstCompactOperation.ParentOperationID != initialOperation.ID {
-		t.Fatalf("first compact parent = %q, want overflow operation %q", firstCompactOperation.ParentOperationID, initialOperation.ID)
+	compactOperation := client.requests[1].Operation
+	resumedOperation := client.requests[2].Operation
+	if compactOperation.ParentOperationID != initialOperation.ID {
+		t.Fatalf("compact parent = %q, want overflow operation %q", compactOperation.ParentOperationID, initialOperation.ID)
 	}
-	if secondCompactOperation.ParentOperationID != firstCompactOperation.ID {
-		t.Fatalf("second compact parent = %q, want first compact operation %q", secondCompactOperation.ParentOperationID, firstCompactOperation.ID)
+	if resumedOperation.ParentOperationID != compactOperation.ID {
+		t.Fatalf("resumed parent = %q, want compact operation %q", resumedOperation.ParentOperationID, compactOperation.ID)
 	}
-	if resumedOperation.ParentOperationID != secondCompactOperation.ID {
-		t.Fatalf("resumed parent = %q, want final compact operation %q", resumedOperation.ParentOperationID, secondCompactOperation.ID)
-	}
-	finalRequest := client.requests[3]
+	finalRequest := client.requests[2]
 	if got := finalRequest.Messages[0].Content; !compact.IsConversationSummaryContent(got) ||
 		!strings.Contains(got, "summarized single-turn tool run") {
 		t.Fatalf("expected compact summary in retry request, got %q", got)
