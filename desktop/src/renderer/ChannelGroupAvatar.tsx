@@ -26,12 +26,7 @@ function MemberAvatar({ member, agent }: { member: ChannelRoomMember; agent?: Na
   if (member.member_type === "agent" && agent) {
     return <AgentAvatarMark avatarKey={agent.avatar_key} avatarImage={agent.avatar_image} />;
   }
-  return (
-    <DefaultAvatarMark
-      seed={member.member_id || agent?.id || "local-user"}
-      kind={member.member_type === "agent" ? "named" : undefined}
-    />
-  );
+  return <DefaultAvatarMark seed={member.member_id || agent?.id || "local-user"} />;
 }
 
 export function ChannelGroupAvatar({ room, agents }: { room: ChannelRoom; agents: NamedAgent[] }): JSX.Element {

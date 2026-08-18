@@ -1,5 +1,8 @@
+import { Blobatar } from "blobatar/react";
+import "blobatar/motion.css";
 import mascotFace from "./assets/mascot-face.png";
 import { useI18n } from "./i18n";
+import { AVATAR_HUES, avatarHueIndex } from "./DefaultAvatar";
 
 export function RuntimeLoading({
   status,
@@ -69,13 +72,20 @@ export function EmptyConversationHome({
     <section className="empty-home" data-wuu-component="empty-session">
       <div className="empty-home-inner session-flow">
         <div className="empty-home-header">
-          {/* The mascot greeting; see .empty-home-mascot in turns.css. */}
-          <img
+          {/* The wuu blobatar greeting, always idling; see .empty-home-mascot
+              in turns.css. Hue is pinned the same way default avatars are, so
+              the mark matches the pairing hero on the phone companion. Shape
+              is pinned to "round" (the first silhouette, shape < 0.28) with
+              the aspect ratio locked to 1, and the plate is off (none), so
+              the mascot is a pure round ball floating on the paper. */}
+          <Blobatar
             className="empty-home-mascot"
-            src={mascotFace}
-            alt=""
+            name="wuu"
+            hue={AVATAR_HUES[avatarHueIndex("wuu")]}
+            background={false}
+            traits={{ shape: 0.2, "body.ratio": 0.5 }}
+            animate="always"
             aria-hidden="true"
-            draggable={false}
           />
           <h2>{title}</h2>
           {belowTitle ?? null}

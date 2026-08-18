@@ -70,36 +70,3 @@ export function usePalette(): Palette {
 // The empty-state serif moment (desktop --empty-home-title-font). CJK falls
 // back to the platform serif family.
 export const serifFamily = "serif" as const;
-
-// Twelve avatar background tints, byte-identical to the desktop values
-// (default-avatar.css light / theme.css dark) so the same participant looks
-// the same on both ends.
-export const avatarTintsLight = [
-  "hsl(14 35% 90%)",
-  "hsl(33 37% 90%)",
-  "hsl(52 29% 90%)",
-  "hsl(96 24% 90%)",
-  "hsl(150 24% 90%)",
-  "hsl(182 25% 90%)",
-  "hsl(202 29% 90%)",
-  "hsl(222 28% 90%)",
-  "hsl(250 25% 90%)",
-  "hsl(288 22% 90%)",
-  "hsl(322 24% 90%)",
-  "hsl(350 31% 90%)",
-] as const;
-
-export const avatarTintsDark = [
-  "hsl(14 29% 21%)",
-  "hsl(33 31% 21%)",
-  "hsl(52 24% 21%)",
-  "hsl(96 20% 21%)",
-  "hsl(150 20% 21%)",
-  "hsl(182 21% 21%)",
-  "hsl(202 24% 21%)",
-  "hsl(222 23% 21%)",
-  "hsl(250 21% 21%)",
-  "hsl(288 18% 21%)",
-  "hsl(322 20% 21%)",
-  "hsl(350 26% 21%)",
-] as const;

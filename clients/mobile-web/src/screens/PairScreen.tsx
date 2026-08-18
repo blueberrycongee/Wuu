@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import { MascotAvatar } from "../components/MascotAvatar";
+import { BlobatarAvatar } from "../components/BlobatarAvatar";
 
 /** First-run pairing: paste the URI shown on the desktop's 设置 → 远程 page
  *  (or scan-free copy of the QR payload) and complete the sealed handshake. */
@@ -48,7 +48,7 @@ export function PairScreen({
   return (
     <div className="pair">
       <div className="pair-hero">
-        <MascotAvatar name="wuu" size={88} />
+        <BlobatarAvatar name="wuu" size={88} />
         <h1>连接电脑上的 Wuu</h1>
         <p>手机作为遥控器：会话和 agent 都跑在你的电脑上</p>
       </div>

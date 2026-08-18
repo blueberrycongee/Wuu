@@ -1,15 +1,14 @@
 // Default-avatar assignment, mirrored from the desktop DefaultAvatar.tsx so
-// the same participant renders the same mascot + tint on both ends. Pure
-// logic only (no react-native imports) — the image require table lives in
-// components/Avatar.tsx because Metro needs static require() calls.
+// the same participant renders the same blobatar on both ends. Pure logic
+// only (no react-native imports) so vitest can cover it without mocks.
 
-export const DEFAULT_AVATAR_COUNT = 12;
+import { blobatar } from "blobatar";
 
-// Named agents draw from the dressed cast (mascot-7..11: 巫师、
-// 耳机程序员、侦探、读书人、学者); everything else from the plain
-// expression cast (mascot-0..6).
-export const DRESSED_CAST_INDICES = [7, 8, 9, 10, 11] as const;
-export const PLAIN_CAST_INDICES = [0, 1, 2, 3, 4, 5, 6] as const;
+// The 12 muted hues the desktop pins blobatar colors to, preserved from the
+// old mascot tint palette (--avatar-N in desktop default-avatar.css).
+export const AVATAR_HUES = [14, 33, 52, 96, 150, 182, 202, 222, 250, 288, 322, 350] as const;
+
+export const DEFAULT_AVATAR_COUNT = AVATAR_HUES.length;
 
 /** FNV-1a 32-bit over UTF-16 code units — identical to the desktop. */
 export function fnv1a(seed: string): number {
@@ -21,15 +20,9 @@ export function fnv1a(seed: string): number {
   return h >>> 0;
 }
 
-/** Background tint index — spans all 12 hues regardless of cast. */
-export function avatarTintIndex(seed: string): number {
+/** Hue bucket in [0, DEFAULT_AVATAR_COUNT) for the seed. */
+export function avatarHueIndex(seed: string): number {
   return fnv1a(seed) % DEFAULT_AVATAR_COUNT;
-}
-
-/** Which mascot-N.png this participant falls back to. */
-export function avatarMascotIndex(seed: string, kind?: string): number {
-  const cast = kind === "named" ? DRESSED_CAST_INDICES : PLAIN_CAST_INDICES;
-  return cast[fnv1a(seed) % cast.length];
 }
 
 /** Stable identity seed: participant id where available, else the name. */
@@ -37,4 +30,55 @@ export function avatarSeed(id?: string, name?: string): string {
   const trimmedId = id?.trim() ?? "";
   if (trimmedId !== "") return trimmedId;
   return name?.trim() ?? "";
+}
+
+// --- React Native rendering ---------------------------------------------------
+// RN's <Image> cannot decode SVG, so the blobatar string API output is parsed
+// into the parts react-native-svg needs. The serialization is part of
+// blobatar's public output: an optional plate <path fill=…> (when a
+// background is set), then <g fill=head> holding the blob path (plus any
+// petal circles), then <g fill=eye> holding the eye paths.
+
+export interface BlobatarSvgParts {
+  plate?: { d: string; fill: string };
+  head: { fill: string; paths: string[]; circles: { cx: number; cy: number; r: number }[] };
+  eyes: { fill: string; paths: string[] };
+}
+
+const PLATE_RE = /<path d="([^"]*)" fill="([^"]*)"\s*\/?>/;
+const GROUP_RE = /<g fill="([^"]*)">([\s\S]*?)<\/g>/g;
+const PATH_RE = /<path d="([^"]*)"\s*\/?>/g;
+const CIRCLE_RE = /<circle cx="([\d.-]+)" cy="([\d.-]+)" r="([\d.-]+)"\s*\/?>/g;
+
+export function blobatarSvgToParts(svg: string): BlobatarSvgParts {
+  const parts: BlobatarSvgParts = {
+    head: { fill: "", paths: [], circles: [] },
+    eyes: { fill: "", paths: [] },
+  };
+  const plateMatch = svg.match(PLATE_RE);
+  if (plateMatch) parts.plate = { d: plateMatch[1], fill: plateMatch[2] };
+  const groups = [...svg.matchAll(GROUP_RE)];
+  const [headGroup, eyeGroup] = groups;
+  if (headGroup) {
+    parts.head.fill = headGroup[1];
+    parts.head.paths = [...headGroup[2].matchAll(PATH_RE)].map((match) => match[1]);
+    parts.head.circles = [...headGroup[2].matchAll(CIRCLE_RE)].map((match) => ({
+      cx: Number(match[1]),
+      cy: Number(match[2]),
+      r: Number(match[3]),
+    }));
+  }
+  if (eyeGroup) {
+    parts.eyes.fill = eyeGroup[1];
+    parts.eyes.paths = [...eyeGroup[2].matchAll(PATH_RE)].map((match) => match[1]);
+  }
+  return parts;
+}
+
+/** The blobatar SVG parts for a participant, ready for react-native-svg. */
+export function avatarSvgParts(id?: string, name?: string): BlobatarSvgParts {
+  const seed = avatarSeed(id, name);
+  return blobatarSvgToParts(
+    blobatar(seed, { hue: AVATAR_HUES[avatarHueIndex(seed)], background: "circle" }),
+  );
 }

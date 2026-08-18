@@ -42,7 +42,7 @@
   --empty-home-action-border: var(--wuu-border-subtle, var(--gray-200));
   --empty-home-action-border-hover: var(--wuu-border-strong, var(--gray-350));
   --empty-home-action-icon-color: var(--wuu-color-text-muted, var(--gray-500));
-  /* The empty-state greeting: mascot shown, serif title. */
+  /* The empty-state greeting: animated blobatar shown, serif title. */
   --empty-home-mascot-display: block;
   --empty-home-title-font: Georgia, "Iowan Old Style", Palatino,
     "Songti SC", "Noto Serif SC", "Noto Serif CJK SC", serif;

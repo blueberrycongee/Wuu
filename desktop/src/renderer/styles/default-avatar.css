@@ -1,13 +1,15 @@
 /*
  * Default participant avatars.
  *
- * A fixed cast of 12 mascot characters (see DefaultAvatar.tsx) shown
- * when a participant has no uploaded avatar_image, each on one of 12
- * muted background tints. Light tint values live here; theme.css
- * carries the dark redefinitions under :root[data-theme="dark"].
- * Palette is deliberately low-saturation to sit inside the paper-ink
- * system rather than shout over it. (--avatar-N-fg is kept for the
- * few surfaces that color text/marks by participant index.)
+ * A blobatar (see DefaultAvatar.tsx) shown when a participant has no
+ * uploaded avatar_image: an organic blob with eyes on a matching tinted
+ * plate, hue-pinned to one of 12 muted hues. Light tint values live
+ * here; theme.css carries the dark redefinitions under
+ * :root[data-theme="dark"]. Palette is deliberately low-saturation to
+ * sit inside the paper-ink system rather than shout over it.
+ * (--avatar-N-fg is kept for the few surfaces that color text/marks by
+ * participant index, and AgentAvatarMark draws its motif colors from
+ * the same 12-hue palette.)
  */
 
 :root {
@@ -41,17 +43,14 @@
   display: block;
   width: 100%;
   height: 100%;
-  /* Background tint is wired per index by DefaultAvatar.tsx. */
 }
 
 .default-avatar img {
   display: block;
   width: 100%;
   height: 100%;
-  /* The die-cut character keeps a little air inside the circle so hat
-     tips and feet survive the caller's circular clip. */
-  padding: 5%;
-  box-sizing: border-box;
+  /* The blobatar plate is a full-bleed circle that fills the caller's
+     circular clip edge to edge; no inset needed. */
   object-fit: contain;
   user-select: none;
   -webkit-user-drag: none;

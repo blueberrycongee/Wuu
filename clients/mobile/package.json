@@ -19,6 +19,7 @@
     "@expo/metro-runtime": "~57.0.3",
     "@wuu/protocol": "file:../../packages/protocol",
     "@wuu/remote-core": "file:../core",
+    "blobatar": "^0.2.0",
     "expo": "~57.0.3",
     "expo-camera": "~57.0.1",
     "expo-constants": "~57.0.3",
@@ -29,11 +30,12 @@
     "react-dom": "19.2.3",
     "react-native": "0.86.0",
     "react-native-get-random-values": "~1.11.0",
+    "react-native-svg": "15.15.4",
     "react-native-web": "^0.21.2"
   },
   "devDependencies": {
-    "@typescript/native": "npm:typescript@~7.0.2",
     "@types/react": "~19.2.2",
+    "@typescript/native": "npm:typescript@~7.0.2",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
     "vitest": "^4.0.17"
   }

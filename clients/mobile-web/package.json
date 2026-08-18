@@ -14,6 +14,7 @@
   "dependencies": {
     "@wuu/protocol": "file:../../packages/protocol",
     "@wuu/remote-core": "file:../core",
+    "blobatar": "^0.2.0",
     "react": "19.2.3",
     "react-dom": "19.2.3"
   },

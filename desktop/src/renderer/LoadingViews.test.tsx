@@ -1,7 +1,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vitest";
-import { RuntimeLoading, ViewSwitchLoading } from "./LoadingViews";
+import { EmptyConversationHome, RuntimeLoading, ViewSwitchLoading } from "./LoadingViews";
 
 let root: Root | undefined;
 let container: HTMLDivElement | undefined;
@@ -42,5 +42,24 @@ describe("RuntimeLoading", () => {
     expect(view.querySelector(".wuu-launch-mark")).not.toBeNull();
     expect(view.querySelector(".wuu-launch-rail")).not.toBeNull();
     expect(view.querySelector(".wuu-launch-glass")).toBeNull();
+  });
+});
+
+describe("EmptyConversationHome", () => {
+  it("greets with an always-animating round blobatar", () => {
+    const view = render(
+      <EmptyConversationHome title="Hello">
+        <div className="hero-composer" />
+      </EmptyConversationHome>,
+    );
+
+    // The mascot is now an inline-SVG blobatar; "always" animation puts the
+    // mo-root/mo-always classes on an inner <g> and the seeded timing custom
+    // properties on the <svg> itself (see blobatar/react).
+    const mascot = view.querySelector<SVGSVGElement>("svg.empty-home-mascot");
+    expect(mascot).not.toBeNull();
+    expect(mascot?.getAttribute("aria-hidden")).toBe("true");
+    expect(mascot?.querySelector("g.mo-root.mo-always")).not.toBeNull();
+    expect(mascot?.getAttribute("style")).toContain("--mo-phase");
   });
 });
