@@ -41,6 +41,7 @@ import { AVATAR_HUES, avatarHueIndex } from "./DefaultAvatar";
  */
 const REASONING_FOLD_OPEN_SNAP_DELAY_MS = 280;
 const PROCESS_BLOBATAR_NAME = "wuu";
+const PROCESS_BLOBATAR_EXIT_FALLBACK_MS = 180;
 
 /**
  * Unified render surface for the process region of a single turn.
@@ -172,13 +173,35 @@ export function ProcessSurface({
   const useCondensedSummary =
     toolItems.length >= CONDENSED_SUMMARY_MIN_TOOL_COUNT &&
     toolSegments.length > 1;
-  const activeGrayText = active ?? streaming;
+  // Activity belongs to the synthesized process entry, not to any individual
+  // tool item's running/completed status. In the real turn shell `active` is
+  // assigned to the latest gray process entry; `streaming` is only the legacy
+  // fallback for direct callers that do not provide that entry-level state.
+  const processEntryActive = active ?? streaming;
   // The token counter belongs to the reasoning trail and stays visible after
   // thinking settles: the total freezes at the last sample and resumes
   // climbing on the next thinking phase. It persists for the live session
   // even once the process row stops sweeping.
   const showThinkingToken = Boolean(turnID) && hasReasoning;
-  const summaryWaveRef = useLiveTextWave<HTMLSpanElement>(activeGrayText);
+  const summaryWaveRef = useLiveTextWave<HTMLSpanElement>(processEntryActive);
+  const [keepBlobatarMounted, setKeepBlobatarMounted] = useState(processEntryActive);
+
+  // The mascot follows the synthesized entry's lifecycle. Keep it mounted
+  // briefly after that entry loses active ownership so its exit can finish;
+  // a later synthesized entry mounts a separate mascot for the next entrance.
+  useEffect(() => {
+    if (processEntryActive) {
+      setKeepBlobatarMounted(true);
+      return undefined;
+    }
+    if (!keepBlobatarMounted) return undefined;
+
+    const timeoutID = window.setTimeout(
+      () => setKeepBlobatarMounted(false),
+      PROCESS_BLOBATAR_EXIT_FALLBACK_MS,
+    );
+    return () => window.clearTimeout(timeoutID);
+  }, [processEntryActive, keepBlobatarMounted]);
 
   // Details are opt-in. The running row itself should stay compact by
   // default; expanding it is a user request to inspect the process trail.
@@ -242,21 +265,26 @@ export function ProcessSurface({
 
   const summaryLine = (
     <span className="process-surface-summary-line" aria-label={summaryText}>
-      {activeGrayText ? (
+      {processEntryActive || keepBlobatarMounted ? (
         <Blobatar
-          className="process-surface-blobatar"
+          className={`process-surface-blobatar ${
+            processEntryActive ? "is-entering" : "is-exiting"
+          }`}
           name={PROCESS_BLOBATAR_NAME}
           hue={AVATAR_HUES[avatarHueIndex(PROCESS_BLOBATAR_NAME)]}
           background={false}
           traits={{ shape: 0.2, "body.ratio": 0.5 }}
           size={28}
           alt=""
+          onAnimationEnd={() => {
+            if (!processEntryActive) setKeepBlobatarMounted(false);
+          }}
         />
       ) : null}
       <span
         ref={summaryWaveRef}
         className={`process-surface-summary-text${
-          activeGrayText ? " wuu-live-text-wave" : ""
+          processEntryActive ? " wuu-live-text-wave" : ""
         }`}
         data-text={summaryWaveText}
       >
@@ -323,7 +351,7 @@ export function ProcessSurface({
         disabled={!hasDetails}
         open={expanded}
         onToggle={handleToggle}
-        rowClassName={`${activeGrayText ? " is-live-gray" : ""}${
+        rowClassName={`${processEntryActive ? " is-live-gray" : ""}${
           streaming ? " is-streaming" : ""
         }`}
         bodyRef={processScroll.scrollRef}
