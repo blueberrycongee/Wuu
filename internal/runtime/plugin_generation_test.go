@@ -265,6 +265,56 @@ func TestSuccessfulCandidateSwapsThenClosesOldGeneration(t *testing.T) {
 	}
 }
 
+// preparedGenerationClient reports StatePrepared so Host.Activate invokes its
+// lifecycle hook, letting tests exercise candidate activation success/failure.
+type preparedGenerationClient struct {
+	*generationClient
+	activateErr  error
+	activateCall int
+}
+
+func (c *preparedGenerationClient) Status() pluginhost.Status {
+	return pluginhost.Status{ID: c.id, State: pluginhost.StatePrepared}
+}
+
+func (c *preparedGenerationClient) Activate(context.Context) error {
+	c.activateCall++
+	return c.activateErr
+}
+
+func TestCandidateActivationFailureLeavesCurrentGenerationUntouched(t *testing.T) {
+	oldClient := &generationClient{id: "old"}
+	old := testPluginGeneration("old", oldClient)
+	session := testGenerationSession(old)
+
+	broken := &preparedGenerationClient{
+		generationClient: &generationClient{id: "broken"},
+		activateErr:      errors.New("activate failed"),
+	}
+	candidate := testPluginGeneration("broken", broken)
+
+	commitCalled := false
+	err := session.ActivatePluginGeneration(candidate, func() error {
+		commitCalled = true
+		return nil
+	})
+	if err == nil {
+		t.Fatal("activation unexpectedly succeeded")
+	}
+	if commitCalled {
+		t.Fatal("commit ran after activation failure")
+	}
+	if session.pluginGeneration != old || session.PluginHost != old.host || session.ActivePlugins[0].ID != "old" {
+		t.Fatalf("current generation changed after failed activation: active=%+v", session.ActivePlugins)
+	}
+	if oldClient.closed {
+		t.Fatal("old generation was closed by the failed candidate")
+	}
+	if !broken.closed {
+		t.Fatal("failed candidate kept candidate-owned resources")
+	}
+}
+
 func TestCandidateCommitFailureRollsBackAllLiveSurfaces(t *testing.T) {
 	oldClient := &generationClient{id: "old"}
 	old := testPluginGeneration("old", oldClient)

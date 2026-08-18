@@ -210,9 +210,12 @@ func (s *Session) buildPluginGeneration(cfg config.Config, discovered []pluginpk
 	return generation, nil
 }
 
-// ActivatePluginGeneration swaps a prebuilt candidate into the Session. commit
-// runs while the old generation is retained. Its failure restores the old
-// bindings and closes the candidate; success closes the old generation.
+// ActivatePluginGeneration swaps a prebuilt candidate into the Session as a
+// transaction: runtime activation is validated first, then live bindings are
+// applied, then commit persists policy, and only then is the candidate
+// published and the old generation retired. Any failure before publication
+// restores the old bindings, closes the candidate, and returns the error; a
+// failed candidate never touches the current generation.
 func (s *Session) ActivatePluginGeneration(candidate *PluginGeneration, commit func() error) error {
 	if s == nil {
 		return errors.New("runtime is not initialized")
@@ -226,6 +229,9 @@ func (s *Session) ActivatePluginGeneration(candidate *PluginGeneration, commit f
 	if old == nil {
 		old = s.capturePluginGeneration()
 	}
+	if err := activatePluginHost(context.Background(), candidate.host); err != nil {
+		return errors.Join(fmt.Errorf("activate plugin candidate: %w", err), candidate.close())
+	}
 	s.applyPluginGeneration(candidate)
 	if commit != nil {
 		if err := commit(); err != nil {
@@ -234,9 +240,6 @@ func (s *Session) ActivatePluginGeneration(candidate *PluginGeneration, commit f
 		}
 	}
 	s.pluginGeneration = candidate
-	if err := activatePluginHost(context.Background(), candidate.host); err != nil {
-		providers.DebugLogf("activate committed plugin generation: %v", err)
-	}
 	if err := old.close(); err != nil {
 		providers.DebugLogf("plugin generation cleanup: %v", err)
 	}
