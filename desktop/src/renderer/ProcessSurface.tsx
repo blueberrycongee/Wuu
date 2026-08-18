@@ -29,6 +29,7 @@ import {
   turnTokenCountText,
 } from "./ThinkingTokenCount";
 import { translateCurrent as translate, useI18n } from "./i18n";
+import { AVATAR_HUES, avatarHueIndex } from "./DefaultAvatar";
 
 /**
  * How long to wait after the fold opens before snapping the reasoning
@@ -39,24 +40,7 @@ import { translateCurrent as translate, useI18n } from "./i18n";
  * mid-transition value.
  */
 const REASONING_FOLD_OPEN_SNAP_DELAY_MS = 280;
-const PROCESS_BLOBATAR_HUE = 350;
-const PROCESS_BLOBATAR_TRAITS = {
-  shape: 0.2,
-  "body.r": 0.5,
-  "body.ratio": 0.5,
-  "body.n": 1 / 6,
-  "body.x": 0.5,
-  "body.y": 0.5,
-  "body.pts": 0.5,
-  "body.r0": 0.5,
-  "body.r1": 0.5,
-  "body.r2": 0.5,
-  "body.r3": 0.5,
-  "body.r4": 0.5,
-  "body.r5": 0.5,
-  "body.r6": 0.5,
-  "body.r7": 0.5,
-} as const;
+const PROCESS_BLOBATAR_NAME = "wuu";
 
 /**
  * Unified render surface for the process region of a single turn.
@@ -189,14 +173,6 @@ export function ProcessSurface({
     toolItems.length >= CONDENSED_SUMMARY_MIN_TOOL_COUNT &&
     toolSegments.length > 1;
   const activeGrayText = active ?? streaming;
-  let blobatarSeed = "wuu";
-  for (let index = toolItems.length - 1; index >= 0; index--) {
-    const item = toolItems[index];
-    if (item.type === "tool_call") {
-      blobatarSeed = item.name?.trim() || "wuu";
-      break;
-    }
-  }
   // The token counter belongs to the reasoning trail and stays visible after
   // thinking settles: the total freezes at the last sample and resumes
   // climbing on the next thinking phase. It persists for the live session
@@ -274,10 +250,10 @@ export function ProcessSurface({
       {activeGrayText ? (
         <Blobatar
           className="process-surface-blobatar"
-          name={blobatarSeed}
-          hue={PROCESS_BLOBATAR_HUE}
+          name={PROCESS_BLOBATAR_NAME}
+          hue={AVATAR_HUES[avatarHueIndex(PROCESS_BLOBATAR_NAME)]}
           background={false}
-          traits={PROCESS_BLOBATAR_TRAITS}
+          traits={{ shape: 0.2, "body.ratio": 0.5 }}
           size={28}
           alt=""
         />
