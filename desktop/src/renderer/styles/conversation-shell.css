@@ -1195,7 +1195,7 @@ button.conversation-status-capsule,
 }
 
 .conversation-status-cluster {
-  display: contents;
+  display: flex;
 }
 
 .conversation-status-label {
@@ -1211,26 +1211,120 @@ button.conversation-status-capsule,
   font-variant-numeric: tabular-nums;
 }
 
-.conversation-status-dot {
-  width: 6px;
-  height: 6px;
-  flex: 0 0 auto;
-  border-radius: var(--radius-pill);
-  background: var(--ink-muted);
+.conversation-status-todo {
+  position: relative;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: min(240px, 36vw);
 }
 
-.conversation-status-dot.is-running {
-  background: var(--wuu-accent);
-  animation: composer-status-pulse 1.4s ease-in-out infinite;
+.conversation-status-todo::after {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  width: 100%;
+  height: 8px;
+  content: "";
 }
 
-.conversation-status-dot.is-error {
-  background: var(--danger);
+.conversation-status-todo-trigger {
+  width: 100%;
+  max-width: 100%;
 }
 
-.conversation-status-dot.is-queued,
-.conversation-status-dot.is-waiting {
-  background: var(--warning);
+.conversation-status-todo-card {
+  --conversation-todo-card-ink: #111315;
+  --conversation-todo-card-soft: #3e4449;
+  --conversation-todo-card-muted: #74797e;
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  display: flex;
+  width: min(360px, calc(100vw - 48px));
+  max-height: min(360px, 50vh);
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  overflow: auto;
+  border: 1px solid rgba(17, 19, 21, 0.12);
+  border-radius: var(--radius-md);
+  background: #fff;
+  box-shadow: 0 16px 40px rgba(17, 19, 21, 0.14);
+  opacity: 0;
+  visibility: hidden;
+  transform: translate(-50%, 4px);
+  transform-origin: bottom center;
+  transition:
+    opacity var(--motion-fast) var(--ease-out),
+    transform var(--motion-fast) var(--ease-out),
+    visibility 0s linear var(--motion-fast);
+  pointer-events: none;
+}
+
+.conversation-status-todo:hover .conversation-status-todo-card,
+.conversation-status-todo:focus-within .conversation-status-todo-card {
+  opacity: 1;
+  visibility: visible;
+  transform: translate(-50%, 0);
+  transition-delay: 0s;
+  pointer-events: auto;
+}
+
+.conversation-status-todo-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--conversation-todo-card-ink);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.conversation-status-todo-card-header strong {
+  font-weight: var(--weight-semibold);
+}
+
+.conversation-status-todo-card-header span,
+.conversation-status-todo-explanation {
+  color: var(--conversation-todo-card-muted);
+}
+
+.conversation-status-todo-explanation {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.conversation-status-todo-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.conversation-status-todo-list li {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 7px;
+  color: var(--conversation-todo-card-soft);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.conversation-status-todo-list li > span:first-child {
+  color: var(--conversation-todo-card-muted);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.conversation-status-todo-list li.is-in_progress {
+  color: var(--conversation-todo-card-ink);
+  font-weight: var(--weight-medium);
+}
+
+.conversation-status-todo-list li.is-completed {
+  color: var(--conversation-todo-card-muted);
 }
 
 .conversation-status-overflow {
@@ -1271,11 +1365,6 @@ button.conversation-status-capsule,
   max-width: 300px;
   justify-content: flex-start;
   box-shadow: none;
-}
-
-@keyframes composer-status-pulse {
-  0%, 100% { opacity: 0.45; }
-  50% { opacity: 1; }
 }
 
 .jump-to-latest-pill:hover,

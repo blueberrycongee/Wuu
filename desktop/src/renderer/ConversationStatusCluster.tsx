@@ -45,28 +45,24 @@ export function ConversationStatusCluster({
     [threadId, visible],
   );
   const store = useMemo(() => createComposerStatusStore(sources, context), [sources, context]);
-  const pluginItems = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
-  const todoItem = useMemo<ResolvedStatusItem | undefined>(() => {
-    if (!todoUpdate || todoUpdate.todos.length === 0) return undefined;
-    const completed = todoUpdate.todos.filter((item) => item.status === "completed").length;
-    const activeItem = todoUpdate.todos.find((item) => item.status === "in_progress");
-    return Object.freeze({
-      key: "host:todo",
-      id: "todo",
-      label: t("shell.todoPanel"),
-      state: activeItem ? "running" : "idle",
-      secondaryText: `${formatNumber(completed)}/${formatNumber(todoUpdate.todos.length)}`,
-      tooltip: activeItem?.content,
-    });
-  }, [formatNumber, t, todoUpdate]);
-  const items = todoItem ? [todoItem, ...pluginItems] : pluginItems;
+  const items = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
+  const todoVisible = Boolean(
+    todoUpdate
+      && todoUpdate.todos.length > 0
+      && todoUpdate.todos.some((item) => item.status !== "completed"),
+  );
 
-  if (!visible || items.length === 0) return null;
+  if (!visible || (!todoVisible && items.length === 0)) return null;
 
-  const visibleItems = items.slice(0, MAX_VISIBLE_ITEMS);
-  const hiddenItems = items.slice(MAX_VISIBLE_ITEMS);
+  const visibleItemLimit = MAX_VISIBLE_ITEMS - (todoVisible ? 1 : 0);
+  const visibleItems = items.slice(0, visibleItemLimit);
+  const hiddenItems = items.slice(visibleItemLimit);
   return (
-    <div className="conversation-status-cluster" aria-label={t("channels.status")}>
+    <div
+      className="jump-to-latest-cluster conversation-status-cluster"
+      aria-label={t("channels.status")}
+    >
+      {todoVisible && todoUpdate ? <TodoStatusCapsule todoUpdate={todoUpdate} /> : null}
       {visibleItems.map((item) => (
         <ComposerStatusCapsule key={item.key} item={item} onOpenSession={onOpenSession} />
       ))}
@@ -89,6 +85,47 @@ export function ConversationStatusCluster({
   );
 }
 
+function TodoStatusCapsule({ todoUpdate }: { todoUpdate: TodoUpdate }) {
+  const { t, formatNumber } = useI18n();
+  const completed = todoUpdate.todos.filter((item) => item.status === "completed").length;
+  const total = todoUpdate.todos.length;
+  const progressLabel = t("app.todoProgressLabel", {
+    completed: formatNumber(completed),
+    total: formatNumber(total),
+  });
+  return (
+    <div className="conversation-status-todo">
+      <div
+        className="conversation-status-capsule conversation-status-todo-trigger"
+        tabIndex={0}
+        aria-label={progressLabel}
+      >
+        <span className="conversation-status-label">TODO</span>
+        <span className="conversation-status-secondary">
+          {formatNumber(completed)}/{formatNumber(total)}
+        </span>
+      </div>
+      <div className="conversation-status-todo-card" role="tooltip">
+        <div className="conversation-status-todo-card-header">
+          <strong>TODO</strong>
+          <span>{formatNumber(completed)}/{formatNumber(total)}</span>
+        </div>
+        {todoUpdate.explanation ? (
+          <p className="conversation-status-todo-explanation">{todoUpdate.explanation}</p>
+        ) : null}
+        <ol className="conversation-status-todo-list">
+          {todoUpdate.todos.map((item, index) => (
+            <li className={`is-${item.status}`} key={`${index}:${item.content}`}>
+              <span aria-hidden="true">{item.status === "completed" ? "✓" : index + 1}</span>
+              <span>{item.content}</span>
+            </li>
+          ))}
+        </ol>
+      </div>
+    </div>
+  );
+}
+
 function ComposerStatusCapsule({
   item,
   onOpenSession,
@@ -100,7 +137,6 @@ function ComposerStatusCapsule({
 }) {
   const content = (
     <>
-      {item.state ? <span className={`conversation-status-dot is-${item.state}`} aria-hidden="true" /> : null}
       <span className="conversation-status-label">{item.label}</span>
       {item.secondaryText ? (
         <span className="conversation-status-secondary">{item.secondaryText}</span>
