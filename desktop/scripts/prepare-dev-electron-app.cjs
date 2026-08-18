@@ -28,17 +28,17 @@ function prepareDevElectronApp(signing = { identity: "-", fingerprint: "adhoc", 
   const builtHelperHash = hashFile(builtHelper);
   const builtPiPHelperHash = hashFile(builtPiPHelper);
   const builtSpeechHelperHash = hashFile(builtSpeechHelper);
-  if (devHostIsCurrent(
+  const current = devHostIsCurrent(
     electronVersion,
     helperHash,
     builtHelperHash,
     builtPiPHelperHash,
     builtSpeechHelperHash,
     signing.fingerprint,
-  )) return devApp;
+  );
+  if (!ensureSourceForStaleDevHost({ current })) return devApp;
 
   console.log(`preparing stable Wuu Dev host for Electron ${electronVersion}...`);
-  ensureSourceElectronApp({ electronVersion });
   mkdirSync(hostRoot, { recursive: true });
   rmSync(devApp, { recursive: true, force: true });
 
@@ -231,9 +231,19 @@ function ensureSourceElectronApp({
   return true;
 }
 
+function ensureSourceForStaleDevHost({
+  current,
+  ensureSource = ensureSourceElectronApp,
+} = {}) {
+  if (current) return false;
+  ensureSource();
+  return true;
+}
+
 module.exports = {
   electronInstallerScriptFromManifest,
   ensureSourceElectronApp,
+  ensureSourceForStaleDevHost,
   helperPathForApp,
   pipHelperPathForApp,
   speechHelperPathForApp,

@@ -23,7 +23,7 @@
     "pack:win": "npm run build:core:win && npm run build && electron-builder --win dir --publish=never",
     "dist:win": "npm run build:core:win && npm run build && electron-builder --win nsis zip --publish=never",
     "release:desktop": "npm run dist:mac",
-    "test": "npm run test:dev-launcher && node scripts/run-parallel.cjs typecheck test:unit test:perf && npm run test:cua-mac",
+    "test": "npm run test:dev-launcher && node scripts/run-parallel.cjs test:unit test:perf",
     "test:dev-launcher": "node scripts/test-dev-launcher.cjs",
     "test:unit": "vitest run --exclude=src/renderer/StreamingMarkdown.perf.test.tsx --exclude=src/main/gitService.test.ts && vitest run src/main/gitService.test.ts --maxWorkers=1 --minWorkers=1 --testTimeout=15000",
     "test:perf": "vitest run src/renderer/StreamingMarkdown.perf.test.tsx --maxWorkers=1 --minWorkers=1",

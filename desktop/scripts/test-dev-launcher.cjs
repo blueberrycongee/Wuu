@@ -10,6 +10,7 @@ const {
 const {
   electronInstallerScriptFromManifest,
   ensureSourceElectronApp,
+  ensureSourceForStaleDevHost,
   helperPathForApp,
   pipHelperPathForApp,
   speechHelperPathForApp,
@@ -232,18 +233,15 @@ assert.throws(
   /status 1/,
 );
 
-// Test 5: an already-current Wuu Dev.app fast-returns before the source
-// Electron.app is ever checked or installed. The source order in
-// prepareDevElectronApp encodes that guarantee: the `return devApp;` short
-// circuit must appear before the `ensureSourceElectronApp(` call.
-const prepareSource = readFileSync(resolve(__dirname, "prepare-dev-electron-app.cjs"), "utf8");
-const fastReturnIndex = prepareSource.indexOf("return devApp;");
-const bootstrapCallIndex = prepareSource.indexOf("ensureSourceElectronApp({ electronVersion });");
-assert.ok(fastReturnIndex >= 0, "fast path return must exist");
-assert.ok(bootstrapCallIndex >= 0, "bootstrap call must exist");
-assert.ok(
-  bootstrapCallIndex > fastReturnIndex,
-  "existing Wuu Dev.app must return before checking/installing source Electron.app",
-);
+// Test 5: an already-current Wuu Dev.app never checks or installs the source
+// Electron.app, while a stale host prepares it exactly once.
+let sourcePreparationCalls = 0;
+const ensureSource = () => {
+  sourcePreparationCalls += 1;
+};
+assert.equal(ensureSourceForStaleDevHost({ current: true, ensureSource }), false);
+assert.equal(sourcePreparationCalls, 0);
+assert.equal(ensureSourceForStaleDevHost({ current: false, ensureSource }), true);
+assert.equal(sourcePreparationCalls, 1);
 
 console.log("dev launcher tests passed");

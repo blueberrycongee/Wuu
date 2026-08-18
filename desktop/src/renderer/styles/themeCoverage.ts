@@ -36,6 +36,7 @@ export interface CssFile {
 export interface Violation {
   file: string;
   line: number;
+  selector: string;
   prop: string;
   variable: string;
 }
@@ -476,10 +477,17 @@ function createResolver(defs: Map<string, string[]>): Resolver {
 
 export function analyzeCoverage(files: CssFile[]): Violation[] {
   const defs = new Map<string, string[]>();
-  const paintDecls: Array<{ file: string; line: number; prop: string; value: string }> = [];
+  const paintDecls: Array<{
+    file: string;
+    line: number;
+    selector: string;
+    prop: string;
+    value: string;
+  }> = [];
 
   for (const file of files) {
-    for (const declaration of scanDeclarations(file.source)) {
+    for (const scoped of scanScopedDeclarations(file.source)) {
+      const declaration = scoped.declaration;
       if (declaration.prop.startsWith("--")) {
         const list = defs.get(declaration.prop) ?? [];
         list.push(declaration.value);
@@ -488,6 +496,7 @@ export function analyzeCoverage(files: CssFile[]): Violation[] {
         paintDecls.push({
           file: file.name,
           line: declaration.line,
+          selector: normalizeSelector(scoped.selector),
           prop: declaration.prop,
           value: declaration.value,
         });
@@ -507,7 +516,13 @@ export function analyzeCoverage(files: CssFile[]): Violation[] {
       if (!defs.has(ref)) continue; // defined outside the stylesheets: out of scope
       if (reachable(ref)) continue;
       if (!isColorKind(ref)) continue; // geometry / coordination variable
-      violations.push({ file: paint.file, line: paint.line, prop: paint.prop, variable: ref });
+      violations.push({
+        file: paint.file,
+        line: paint.line,
+        selector: paint.selector,
+        prop: paint.prop,
+        variable: ref,
+      });
     }
   }
   return violations;
@@ -521,6 +536,7 @@ export function sortViolations(violations: Violation[]): Violation[] {
   return [...violations].sort(
     (a, b) =>
       a.file.localeCompare(b.file) ||
+      a.selector.localeCompare(b.selector) ||
       a.variable.localeCompare(b.variable) ||
       a.prop.localeCompare(b.prop) ||
       a.line - b.line,
@@ -528,7 +544,7 @@ export function sortViolations(violations: Violation[]): Violation[] {
 }
 
 export function formatViolation(violation: Violation): string {
-  return `${violation.file}:${violation.line} ${violation.prop} ${violation.variable}`;
+  return `${violation.file} ${violation.selector} ${violation.prop} ${violation.variable}`;
 }
 
 export function formatBaseline(files: CssFile[]): string[] {
@@ -540,6 +556,10 @@ export function formatBaseline(files: CssFile[]): string[] {
 /* ------------------------------------------------------------------ */
 
 export type SurfaceState = "default" | "hover" | "selected" | "disabled";
+
+export function normalizeSelector(selector: string): string {
+  return selector.replace(/\s+/g, " ").trim();
+}
 
 const ANCHOR_ATTR = /\[data-wuu-component=(?:"([^"]+)"|'([^']+)')\]/;
 
@@ -605,7 +625,7 @@ export interface MatrixRow {
   anchor: string;
   state: SurfaceState;
   file: string;
-  line: number;
+  selector: string;
   prop: string;
   variable: string;
   status: "bridged" | "unbridged";
@@ -613,7 +633,7 @@ export interface MatrixRow {
 }
 
 export interface SurfaceMatrix {
-  schemaVersion: 1;
+  schemaVersion: 2;
   generatedBy: string;
   anchors: Array<{ name: string; synthetic: boolean; rows: number }>;
   tokenSet: string[];
@@ -678,7 +698,7 @@ export function analyzeSurfaceMatrix(
           anchor,
           state,
           file: paint.file,
-          line: paint.line,
+          selector: normalizeSelector(paint.selector),
           prop: paint.prop,
           variable: ref,
           status: "bridged",
@@ -693,7 +713,7 @@ export function analyzeSurfaceMatrix(
         anchor,
         state,
         file: paint.file,
-        line: paint.line,
+        selector: normalizeSelector(paint.selector),
         prop: paint.prop,
         variable: ref,
         status: tokens.length > 0 ? "bridged" : "unbridged",
@@ -707,7 +727,7 @@ export function analyzeSurfaceMatrix(
       a.anchor.localeCompare(b.anchor) ||
       a.state.localeCompare(b.state) ||
       a.file.localeCompare(b.file) ||
-      a.line - b.line ||
+      a.selector.localeCompare(b.selector) ||
       a.prop.localeCompare(b.prop) ||
       a.variable.localeCompare(b.variable),
   );
@@ -732,8 +752,8 @@ export function analyzeSurfaceMatrix(
   const tokenSet = [...new Set(rows.flatMap((row) => row.tokens))].sort();
 
   return {
-    schemaVersion: 1,
-    generatedBy: "scripts/generate-theme-surface-matrix.mjs",
+    schemaVersion: 2,
+    generatedBy: "scripts/generate-theme-surface-matrix.ts",
     anchors,
     tokenSet,
     rows,

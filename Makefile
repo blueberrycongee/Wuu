@@ -1,4 +1,4 @@
-.PHONY: setup dev docs-dev check repository-check version-check eval-check theme-contract-check generate-theme-contract theme-surface-matrix-check generate-theme-surface-matrix check-go check-desktop check-clients check-docs test test-go \
+.PHONY: setup dev docs-dev check repository-check repository-metadata-check version-check eval-check theme-contract-check generate-theme-contract theme-surface-matrix-check generate-theme-surface-matrix check-go check-desktop check-clients check-docs test test-go \
 	test-desktop test-clients test-native build build-go build-desktop \
 	build-clients build-docs build-macos ci install vet clean release-check \
 	print-version tag-release version-check release-prepare
@@ -30,7 +30,9 @@ docs-dev:
 
 check: repository-check check-go check-desktop check-clients
 
-repository-check: version-check eval-check theme-contract-check theme-surface-matrix-check
+repository-check: repository-metadata-check theme-surface-matrix-check
+
+repository-metadata-check: version-check eval-check theme-contract-check
 
 eval-check:
 	node scripts/check-evals.mjs --self-test
@@ -43,10 +45,10 @@ generate-theme-contract:
 	node scripts/generate-desktop-theme-contract.mjs
 
 theme-surface-matrix-check:
-	cd desktop && npx vite-node ../scripts/generate-theme-surface-matrix.ts --check
+	cd desktop && ./node_modules/.bin/vite-node ../scripts/generate-theme-surface-matrix.ts --check
 
 generate-theme-surface-matrix:
-	cd desktop && npx vite-node ../scripts/generate-theme-surface-matrix.ts
+	cd desktop && ./node_modules/.bin/vite-node ../scripts/generate-theme-surface-matrix.ts
 
 check-go:
 	go mod tidy -diff
@@ -90,7 +92,7 @@ build-go:
 build-desktop:
 	npm --prefix desktop run build
 
-build-clients: check-clients
+build-clients:
 	npm --prefix clients/mobile run export:web
 
 build-docs:
@@ -110,7 +112,7 @@ vet:
 clean:
 	rm -rf bin/ dist/
 
-release-check: version-check check-go test-go test-desktop
+release-check: version-check check-go test-go test-desktop test-native
 
 version-check:
 	node scripts/release-version.mjs check

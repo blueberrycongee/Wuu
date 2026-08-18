@@ -51,7 +51,9 @@ jobs:
           node -e 'require("electron")'
 
       - name: Test
-        run: npm test
+        run: |
+          npm test
+          npm run test:cua-mac
 
       - name: Build desktop release
         run: npm run release:desktop

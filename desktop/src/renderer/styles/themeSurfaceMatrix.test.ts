@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -10,10 +10,7 @@ import {
 } from "../../shared/themeContract.generated";
 
 import {
-  analyzeSurfaceMatrix,
-  listProductionSources,
   parsePinnedAnchors,
-  type CssFile,
   type SurfaceMatrix,
 } from "./themeCoverage";
 
@@ -28,24 +25,6 @@ const stylesDir = __dirname;
 const rendererDir = resolve(__dirname, "..");
 const repoRoot = resolve(__dirname, "../../../../");
 const configDir = resolve(repoRoot, "config");
-
-const cssFiles = readdirSync(stylesDir)
-  .filter((name) => name.endsWith(".css"))
-  .sort();
-const files: CssFile[] = cssFiles.map((name) => ({
-  name,
-  source: readFileSync(resolve(stylesDir, name), "utf8"),
-}));
-
-function computeMatrix(): SurfaceMatrix {
-  const anchorSources = listProductionSources(rendererDir).map((path) =>
-    readFileSync(path, "utf8"),
-  );
-  const pinned = parsePinnedAnchors(
-    readFileSync(resolve(rendererDir, "plugins/ProductionSemanticAnchors.test.ts"), "utf8"),
-  );
-  return analyzeSurfaceMatrix(files, anchorSources, pinned);
-}
 
 function committedMatrix(): SurfaceMatrix {
   return JSON.parse(
@@ -62,16 +41,12 @@ function baselineEntries(): Set<string> {
 }
 
 describe("theme surface matrix consistency", () => {
-  it("matches a fresh analysis exactly (regeneration is deterministic)", () => {
-    expect(computeMatrix()).toEqual(committedMatrix());
-  });
-
   it("maps the U1 baseline to unbridged rows bijectively", () => {
     const matrix = committedMatrix();
     const unbridged = new Set(
       matrix.rows
         .filter((row) => row.status === "unbridged")
-        .map((row) => `${row.file}:${row.line} ${row.prop} ${row.variable}`),
+        .map((row) => `${row.file} ${row.selector} ${row.prop} ${row.variable}`),
     );
     expect(unbridged).toEqual(baselineEntries());
     for (const row of matrix.rows) {

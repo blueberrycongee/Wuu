@@ -2,12 +2,22 @@ name: CI
 
 on:
   pull_request:
+    paths-ignore:
+      - "docs/**"
+      - "docs-site/**"
   push:
     branches:
       - main
+    paths-ignore:
+      - "docs/**"
+      - "docs-site/**"
 
 permissions:
   contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   repository-check:
@@ -21,7 +31,7 @@ jobs:
           node-version-file: .node-version
 
       - name: Check repository metadata
-        run: make repository-check
+        run: make repository-metadata-check
 
   go-check:
     name: Go check
@@ -53,7 +63,7 @@ jobs:
         run: npm ci --prefix desktop
 
       - name: Check, test, and build
-        run: make check-desktop test-desktop build-desktop
+        run: make theme-surface-matrix-check check-desktop test-desktop build-desktop
 
   clients-check:
     name: Clients check
