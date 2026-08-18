@@ -100,6 +100,7 @@ wuu exec review --uncommitted
 
 ## 项目
 
+- Agent 的圆球头像由 [`blobatar`](https://github.com/Alain00/blobatar) 提供，这是一个采用 MIT 许可证的确定性几何头像库。
 - [文档](https://blueberrycongee.github.io/wuu/zh-cn/)
 - [更新记录](CHANGELOG.md)
 - [公开评测](evals/)

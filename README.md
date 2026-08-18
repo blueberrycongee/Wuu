@@ -101,6 +101,7 @@ Read the [security model](docs/en/reference/security-model.md) before using wuu 
 
 ## Project
 
+- Agent blob avatars are powered by [`blobatar`](https://github.com/Alain00/blobatar), an MIT-licensed deterministic geometric avatar library.
 - [Documentation](https://blueberrycongee.github.io/wuu/en/)
 - [Changelog](CHANGELOG.md)
 - [Public evaluations](evals/)
