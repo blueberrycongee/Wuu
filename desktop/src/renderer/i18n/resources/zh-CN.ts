@@ -833,7 +833,7 @@ export const zhCN = {
   "process.kind.todo": "更新 TODO",
   "process.kind.interaction": "等待回复",
   "process.kind.browser": "操作页面",
-  "process.kind.skill": "加载技能",
+  "process.kind.skill": "加载 skills",
   "process.kind.context": "整理上下文",
   "process.kind.unknown": "使用工具",
   "process.thinkingAfterOperations": "完成 {count} 项操作后，正在思考",

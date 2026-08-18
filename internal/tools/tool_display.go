@@ -125,9 +125,9 @@ func builtInToolDisplay(call providers.ToolCall) providers.ToolCallDisplay {
 	case "load_skill":
 		skill := strings.TrimPrefix(displayString(args, "name"), "/")
 		if skill == "" {
-			return toolDisplay("skill", "加载技能")
+			return toolDisplay("skill", "加载 skills")
 		}
-		return toolDisplay("skill", "加载技能 "+displayTruncate(skill, 70))
+		return toolDisplay("skill", "加载 skills "+displayTruncate(skill, 70))
 	case "list_agent_profiles":
 		return toolDisplay("agent", "查看长期 Agent")
 	case "create_agent_profile":
