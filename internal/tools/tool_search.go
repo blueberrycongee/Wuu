@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -456,8 +457,12 @@ func grepContentResultJSON(pattern string, matches []grepMatch, offset int, revi
 	truncatedPage := make([]grepMatch, len(page))
 	contentTruncated := false
 	for i, match := range page {
+		if match.ContentTruncated {
+			contentTruncated = true
+		}
 		if len(match.Content) > maxGrepMatchContentBytes {
 			match.Content = stringutil.HeadTail(match.Content, maxGrepMatchContentBytes/2, maxGrepMatchContentBytes/4, "\n...[line truncated]...\n")
+			match.ContentTruncated = true
 			contentTruncated = true
 		}
 		truncatedPage[i] = match
@@ -650,11 +655,35 @@ func grepWithRipgrep(ctx context.Context, env *Env, rootDir, pattern, searchRoot
 
 	matches := make([]grepMatch, 0, searchResultCapacity(limit))
 	earlyStop := false
-	scanner := bufio.NewScanner(stdout)
-	scanner.Buffer(make([]byte, 64*1024), maxRGRecordBytes)
-	for scanner.Scan() {
-		line := scanner.Bytes()
+	reader := bufio.NewReaderSize(stdout, 64*1024)
+	currentFile := ""
+	var readErr error
+	for {
+		line, oversized, err := readBoundedRGRecord(reader, maxRGRecordBytes)
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			readErr = err
+			_ = cmd.Process.Kill()
+			break
+		}
 		if len(line) == 0 {
+			continue
+		}
+		if oversized {
+			if currentFile != "" && bytes.Contains(line, []byte(`"type":"match"`)) {
+				matches = append(matches, grepMatch{
+					File:             currentFile,
+					Content:          "[match omitted: line exceeds 1 MiB; use read_file on this file to inspect]",
+					ContentTruncated: true,
+				})
+				if limit > 0 && len(matches) >= limit {
+					earlyStop = true
+					_ = cmd.Process.Kill()
+					break
+				}
+			}
 			continue
 		}
 		var event rgJSONEvent
@@ -663,21 +692,25 @@ func grepWithRipgrep(ctx context.Context, env *Env, rootDir, pattern, searchRoot
 			_ = cmd.Wait()
 			return nil, fmt.Errorf("parse ripgrep output: %w", err)
 		}
-		if event.Type != "match" {
+		switch event.Type {
+		case "begin":
+			currentFile = relativeRGPath(rootDir, event.Data.Path.Text)
+			continue
+		case "end":
+			currentFile = ""
+			continue
+		case "match":
+		default:
 			continue
 		}
-		matchPath := event.Data.Path.Text
-		if !filepath.IsAbs(matchPath) {
-			matchPath = filepath.Join(rootDir, matchPath)
-		}
-		rel, err := filepath.Rel(rootDir, matchPath)
-		if err != nil {
+		rel := relativeRGPath(rootDir, event.Data.Path.Text)
+		if rel == "" {
 			continue
 		}
 		matches = append(matches, grepMatch{
-			File:    filepath.ToSlash(rel),
+			File:    rel,
 			Line:    event.Data.LineNumber,
-			Content: grepMatchContentForPath(env, filepath.ToSlash(rel), strings.TrimRight(event.Data.Lines.Text, "\r\n")),
+			Content: grepMatchContentForPath(env, rel, strings.TrimRight(event.Data.Lines.Text, "\r\n")),
 		})
 		if limit > 0 && len(matches) >= limit {
 			earlyStop = true
@@ -685,16 +718,12 @@ func grepWithRipgrep(ctx context.Context, env *Env, rootDir, pattern, searchRoot
 			break
 		}
 	}
-	scanErr := scanner.Err()
-	if scanErr != nil {
-		_ = cmd.Process.Kill()
-	}
 	waitErr := cmd.Wait()
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if scanErr != nil && !earlyStop {
-		return nil, fmt.Errorf("read ripgrep output: %w", scanErr)
+	if readErr != nil && !earlyStop {
+		return nil, fmt.Errorf("read ripgrep output: %w", readErr)
 	}
 	if waitErr != nil && !earlyStop {
 		var exitErr *exec.ExitError
@@ -714,6 +743,51 @@ func grepWithRipgrep(ctx context.Context, env *Env, rootDir, pattern, searchRoot
 		return matches[i].File < matches[j].File
 	})
 	return matches, nil
+}
+
+func readBoundedRGRecord(reader *bufio.Reader, maxBytes int) ([]byte, bool, error) {
+	record := make([]byte, 0, min(maxBytes, 64*1024))
+	oversized := false
+	for {
+		fragment, err := reader.ReadSlice('\n')
+		if !oversized {
+			remaining := maxBytes - len(record)
+			if len(fragment) > remaining {
+				record = append(record, fragment[:remaining]...)
+				oversized = true
+			} else {
+				record = append(record, fragment...)
+			}
+		}
+
+		switch err {
+		case nil:
+			return bytes.TrimSuffix(record, []byte{'\n'}), oversized, nil
+		case bufio.ErrBufferFull:
+			continue
+		case io.EOF:
+			if len(record) == 0 && !oversized {
+				return nil, false, io.EOF
+			}
+			return record, oversized, nil
+		default:
+			return nil, oversized, err
+		}
+	}
+}
+
+func relativeRGPath(rootDir, matchPath string) string {
+	if matchPath == "" {
+		return ""
+	}
+	if !filepath.IsAbs(matchPath) {
+		matchPath = filepath.Join(rootDir, matchPath)
+	}
+	rel, err := filepath.Rel(rootDir, matchPath)
+	if err != nil {
+		return ""
+	}
+	return filepath.ToSlash(rel)
 }
 
 func grepWithFallback(env *Env, rootDir, pattern, searchRoot, include string, opts grepOptions, limit int) ([]grepMatch, error) {

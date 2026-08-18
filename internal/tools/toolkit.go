@@ -1467,9 +1467,10 @@ func globToRegexp(pattern string) string {
 // ── Ripgrep helpers ────────────────────────────────────────────────
 
 type grepMatch struct {
-	File    string `json:"file"`
-	Line    int    `json:"line"`
-	Content string `json:"content"`
+	File             string `json:"file"`
+	Line             int    `json:"line"`
+	Content          string `json:"content"`
+	ContentTruncated bool   `json:"content_truncated,omitempty"`
 }
 
 type grepOptions struct {

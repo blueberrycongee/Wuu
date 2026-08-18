@@ -2208,16 +2208,63 @@ func TestGrepRipgrepOversizedRecordDoesNotDeadlock(t *testing.T) {
 
 	root := t.TempDir()
 	mustWriteFile(t, filepath.Join(root, "large.txt"), "needle"+strings.Repeat("x", 2*maxRGRecordBytes))
+	mustWriteFile(t, filepath.Join(root, "normal.txt"), "needle after oversized record\n")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	started := time.Now()
-	_, err := grepWithRipgrep(ctx, nil, root, "needle", root, "", grepOptions{}, 0)
-	if err == nil || !strings.Contains(err.Error(), "token too long") {
-		t.Fatalf("grep oversized record error = %v, want token-too-long error", err)
+	matches, err := grepWithRipgrep(ctx, nil, root, "needle", root, "", grepOptions{}, 0)
+	if err != nil {
+		t.Fatalf("grep oversized record: %v", err)
+	}
+	if len(matches) != 2 {
+		t.Fatalf("grep oversized matches = %+v, want placeholder and normal match", matches)
+	}
+	if matches[0].File != "large.txt" || !matches[0].ContentTruncated || !strings.Contains(matches[0].Content, "match omitted") {
+		t.Fatalf("oversized match placeholder = %+v", matches[0])
+	}
+	if matches[1].File != "normal.txt" || matches[1].Line != 1 || matches[1].ContentTruncated {
+		t.Fatalf("normal match after oversized record = %+v", matches[1])
+	}
+	result, err := grepContentResultJSON("needle", matches, 0, "revision")
+	if err != nil {
+		t.Fatalf("build oversized grep result: %v", err)
+	}
+	var envelope struct {
+		ContentTruncated bool        `json:"content_truncated"`
+		Matches          []grepMatch `json:"matches"`
+	}
+	if err := json.Unmarshal([]byte(result), &envelope); err != nil {
+		t.Fatalf("parse oversized grep result: %v", err)
+	}
+	if !envelope.ContentTruncated || len(envelope.Matches) != 2 || !envelope.Matches[0].ContentTruncated {
+		t.Fatalf("oversized grep envelope = %+v", envelope)
 	}
 	if elapsed := time.Since(started); elapsed > 2*time.Second {
 		t.Fatalf("grep oversized record took %s; child process likely blocked on a full output pipe", elapsed)
+	}
+}
+
+func TestGrepRipgrepSkipsOversizedContextRecord(t *testing.T) {
+	if lookupRG() == "" {
+		t.Skip("ripgrep is not available")
+	}
+
+	root := t.TempDir()
+	content := "needle first\n" + strings.Repeat("x", 2*maxRGRecordBytes) + "\nneedle last\n"
+	mustWriteFile(t, filepath.Join(root, "context.txt"), content)
+
+	matches, err := grepWithRipgrep(context.Background(), nil, root, "needle", root, "", grepOptions{context: 1}, 0)
+	if err != nil {
+		t.Fatalf("grep oversized context record: %v", err)
+	}
+	if len(matches) != 2 || matches[0].Line != 1 || matches[1].Line != 3 {
+		t.Fatalf("matches around oversized context = %+v, want lines 1 and 3", matches)
+	}
+	for _, match := range matches {
+		if match.ContentTruncated {
+			t.Fatalf("oversized context should not create a match placeholder: %+v", matches)
+		}
 	}
 }
 
