@@ -139,6 +139,33 @@ func (t *ExecutionTracker) CancelAll(cause error) {
 	}
 }
 
+// CancelPlugin cancels only executions owned by pluginID. Records stay live
+// until their dispatch returns and calls End, so late updates cannot attach to
+// a replacement plugin generation.
+func (t *ExecutionTracker) CancelPlugin(pluginID string, cause error) {
+	if t == nil {
+		return
+	}
+	pluginID = strings.TrimSpace(pluginID)
+	if pluginID == "" {
+		return
+	}
+	if cause == nil {
+		cause = context.Canceled
+	}
+	t.mu.Lock()
+	var records []*executionRecord
+	for _, record := range t.live {
+		if record.snapshot.PluginID == pluginID {
+			records = append(records, record)
+		}
+	}
+	t.mu.Unlock()
+	for _, record := range records {
+		record.cancel(cause)
+	}
+}
+
 func (t *ExecutionTracker) ResolveTool(callerPluginID, executionID string) (ToolExecutionScope, *HostServiceError) {
 	id := strings.TrimSpace(executionID)
 	if id == "" {

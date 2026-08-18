@@ -251,7 +251,7 @@ func (h *Host) Capability(pluginID, id string) (RegisteredCapability, bool) {
 
 // InvokeCapability invokes one exact plugin registration.
 func (h *Host) InvokeCapability(ctx context.Context, capability RegisteredCapability, input, output any) error {
-	if capability.client == nil || !capabilityStateReady(capability.client.Status().State) {
+	if capability.client == nil {
 		return fmt.Errorf("plugin %q capability %q is not active", capability.PluginID, capability.Descriptor.ID)
 	}
 	inputJSON, err := json.Marshal(input)
@@ -262,7 +262,20 @@ func (h *Host) InvokeCapability(ctx context.Context, capability RegisteredCapabi
 	if err != nil {
 		return fmt.Errorf("marshal capability %q output: %w", capability.Descriptor.ID, err)
 	}
+	h.mu.RLock()
+	admitted := false
+	for _, current := range h.capabilities {
+		if current.PluginID == capability.PluginID && current.Descriptor.ID == capability.Descriptor.ID && current.client == capability.client && capabilityStateReady(current.client.Status().State) {
+			admitted = true
+			break
+		}
+	}
+	if !admitted {
+		h.mu.RUnlock()
+		return fmt.Errorf("plugin %q capability %q is not active", capability.PluginID, capability.Descriptor.ID)
+	}
 	executionID := h.executions.Begin(capability.PluginID)
+	h.mu.RUnlock()
 	defer h.executions.End(executionID)
 	result, err := capability.client.InvokeCapability(ctx, CapabilityInvokeParams{
 		Capability:  capability.Descriptor.ID,
@@ -383,12 +396,15 @@ func (h *Host) SupportsTool(name string) bool {
 // ExecuteTool routes a public tool call to its owning plugin and validates the
 // structured result before returning it to the runtime.
 func (h *Host) ExecuteTool(ctx context.Context, name string, input ToolExecuteInput) (toolresult.Result, error) {
-	tool, ok := h.Tool(name)
-	if !ok {
+	h.mu.RLock()
+	tool, ok := h.tools[name]
+	if !ok || tool.client.Status().State != StateActive {
+		h.mu.RUnlock()
 		return toolresult.Result{}, fmt.Errorf("plugin tool %q is not registered", name)
 	}
 	input.Tool = name
 	input.ExecutionID = h.executions.BeginTool(tool.PluginID, ctx, input)
+	h.mu.RUnlock()
 	defer h.executions.End(input.ExecutionID)
 	response, err := tool.client.ExecuteTool(ctx, ToolExecuteParams{
 		ToolExecuteInput: input,
@@ -443,6 +459,67 @@ func (h *Host) CancelExecutions(cause error) {
 	if h != nil && h.executions != nil {
 		h.executions.CancelAll(cause)
 	}
+}
+
+// RetirePlugin revokes one plugin's executable paths and closes only its
+// client. Unrelated clients and contributions remain active so runtimes can
+// replace plugin generations independently.
+func (h *Host) RetirePlugin(ctx context.Context, pluginID string, cause error) (ClientShutdownOutcome, bool) {
+	if h == nil {
+		return ClientShutdownOutcome{}, false
+	}
+	pluginID = strings.TrimSpace(pluginID)
+	if pluginID == "" {
+		return ClientShutdownOutcome{}, false
+	}
+	h.mu.Lock()
+	var client Client
+	keptClients := h.clients[:0]
+	for _, candidate := range h.clients {
+		if candidate.ID() == pluginID && client == nil {
+			client = candidate
+			continue
+		}
+		keptClients = append(keptClients, candidate)
+	}
+	if client == nil {
+		h.mu.Unlock()
+		return ClientShutdownOutcome{}, false
+	}
+	h.clients = keptClients
+	for name, tool := range h.tools {
+		if tool.PluginID == pluginID {
+			delete(h.tools, name)
+		}
+	}
+	keptTools := h.toolOrder[:0]
+	for _, name := range h.toolOrder {
+		if tool, ok := h.tools[name]; ok && tool.PluginID != pluginID {
+			keptTools = append(keptTools, name)
+		}
+	}
+	h.toolOrder = keptTools
+	keptCapabilities := h.capabilities[:0]
+	for _, capability := range h.capabilities {
+		if capability.PluginID != pluginID {
+			keptCapabilities = append(keptCapabilities, capability)
+		}
+	}
+	h.capabilities = keptCapabilities
+	delete(h.diagnostics, pluginID)
+	registry := h.serviceRegistry
+	h.mu.Unlock()
+
+	if cause == nil {
+		cause = &UserQuestionError{Code: "generation_closed", Message: "plugin generation retired"}
+	}
+	if h.executions != nil {
+		h.executions.CancelPlugin(pluginID, cause)
+	}
+	if registry != nil {
+		registry.RevokePlugin(ctx, pluginID)
+	}
+	return ClientShutdownOutcome{PluginID: pluginID, Err: client.Close(ctx)}, true
 }
 
 // ExecutionSnapshots returns the host's live execution table for diagnostics.

@@ -240,6 +240,38 @@ drained:
 	}
 }
 
+// RevokePlugin removes one plugin's provider and consumer bindings without
+// closing unrelated services. New calls are rejected immediately; executions
+// involving the retired plugin are canceled before its process is closed.
+func (r *ServiceRegistry) RevokePlugin(ctx context.Context, pluginID string) {
+	if r == nil {
+		return
+	}
+	pluginID = strings.TrimSpace(pluginID)
+	if pluginID == "" {
+		return
+	}
+	r.mu.Lock()
+	var revoked []serviceKey
+	for key, provider := range r.providers {
+		if provider.pluginID == pluginID && !provider.kernel {
+			delete(r.providers, key)
+			revoked = append(revoked, key)
+		}
+	}
+	delete(r.consumers, pluginID)
+	delete(r.notifiers, pluginID)
+	for _, execution := range r.executions {
+		if _, involved := execution.participants[pluginID]; involved {
+			execution.cancel()
+		}
+	}
+	r.mu.Unlock()
+	for _, key := range revoked {
+		r.notifyConsumers(ctx, key, "provider_closed")
+	}
+}
+
 func (r *ServiceRegistry) executionContinuation(executionID, caller string) bool {
 	executionID = strings.TrimSpace(executionID)
 	if executionID == "" {
@@ -255,8 +287,13 @@ func (r *ServiceRegistry) executionContinuation(executionID, caller string) bool
 	return caller == "kernel" || allowed
 }
 
-func (r *ServiceRegistry) acquireExecution(ctx context.Context, requestedID, caller, provider string, canStart bool) (context.Context, string, func(), *HostServiceError) {
+func (r *ServiceRegistry) acquireExecution(ctx context.Context, requestedID, caller string, key serviceKey, provider string, canStart bool) (context.Context, string, func(), *HostServiceError) {
 	r.mu.Lock()
+	current, registered := r.providers[key]
+	if !registered || current.pluginID != provider {
+		r.mu.Unlock()
+		return nil, "", nil, &HostServiceError{Code: "service_unavailable", Message: "service provider was revoked"}
+	}
 	id := strings.TrimSpace(requestedID)
 	if execution := r.executions[id]; id != "" && execution != nil {
 		if _, allowed := execution.participants[caller]; caller != "kernel" && !allowed {
@@ -428,7 +465,7 @@ func (r *ServiceRegistry) Call(ctx context.Context, consumerPluginID string, par
 		go r.notifyConsumers(context.Background(), key, "provider_unavailable")
 		return nil, &HostServiceError{Code: "service_unavailable", Message: fmt.Sprintf("service %s provider %q is %s", service, provider.pluginID, state)}
 	}
-	execCtx, executionID, release, executionErr := r.acquireExecution(ctx, params.ExecutionID, consumerPluginID, provider.pluginID, active || provider.kernel)
+	execCtx, executionID, release, executionErr := r.acquireExecution(ctx, params.ExecutionID, consumerPluginID, key, provider.pluginID, active || provider.kernel)
 	if executionErr != nil {
 		return nil, executionErr
 	}
@@ -497,7 +534,7 @@ func (r *ServiceRegistry) CallProvider(ctx context.Context, service string, majo
 	if state := provider.invoker.Status().State; state != StateActive && !(provider.kernel && !active) {
 		return nil, &HostServiceError{Code: "service_unavailable", Message: fmt.Sprintf("service %s provider %q is %s", service, provider.pluginID, state)}
 	}
-	execCtx, executionID, release, executionErr := r.acquireExecution(ctx, executionID, "kernel", provider.pluginID, active || provider.kernel)
+	execCtx, executionID, release, executionErr := r.acquireExecution(ctx, executionID, "kernel", key, provider.pluginID, active || provider.kernel)
 	if executionErr != nil {
 		return nil, executionErr
 	}
