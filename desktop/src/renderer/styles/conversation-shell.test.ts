@@ -125,7 +125,7 @@ describe("conversation shell message typography tokens", () => {
     // rather than via a hard-coded redeclaration.
     const root = cssRuleBody(":root");
     expect(root).toMatch(/"SF Pro Text"/);
-    expect(root).toMatch(/--conversation-message-font-weight:\s*450;/);
+    expect(root).toMatch(/--conversation-message-font-weight:\s*400;/);
 
     const body = cssRuleBody(".conversation-pane");
     expect(body).not.toMatch(/--conversation-message-font-family\s*:/);

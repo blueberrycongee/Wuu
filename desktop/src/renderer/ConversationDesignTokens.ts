@@ -90,7 +90,7 @@ export const CONVERSATION_DESIGN_TOKENS = [
     max: 48,
     step: 1,
     unit: "px",
-    defaultValue: 18,
+    defaultValue: 24,
   },
   {
     key: "meta-line-height",

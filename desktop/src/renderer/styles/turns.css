@@ -1421,7 +1421,7 @@
   display: flex;
   min-width: 0;
   flex-direction: column;
-  gap: var(--conversation-prose-block-gap, 18px);
+  gap: var(--conversation-prose-block-gap, 24px);
 }
 
                                                                      
