@@ -86,16 +86,11 @@ func RunToolLoop(
 	}
 
 	// Resolve the effective compaction strategy. When CompactionRegistry
-	// is set, the highest-priority registered provider wins. Falls back
-	// to cfg.Compact for backward compatibility.
-	effectiveCompact := cfg.Compact
-	if cfg.CompactionRegistry != nil {
-		if resolved := cfg.CompactionRegistry.Resolve(nil); resolved != nil {
-			effectiveCompact = func(ctx context.Context, messages []providers.ChatMessage) ([]providers.ChatMessage, error) {
-				return resolved.Compact(ctx, cfg.Model, messages)
-			}
-		}
-	}
+	// is set, the highest-priority registered provider wins. A provider
+	// that reports ErrCompactionUnavailable defers to cfg.Compact, so
+	// experimental strategies can fall back to the default summarizer
+	// when they have no strategy for the current transcript.
+	effectiveCompact := resolveEffectiveCompaction(cfg)
 	ctx, workflow, ownsWorkflow := providers.EnsureInferenceWorkflow(ctx, cfg.InferenceWorkloadProfile)
 	if ownsWorkflow {
 		defer func() {
@@ -905,6 +900,30 @@ func canProactivelyCompact(messages []providers.ChatMessage, cfg LoopConfig) boo
 		OutputReserveTokens: cfg.OutputReserveTokens,
 		KeepRecentTokens:    cfg.CompactKeepRecentTokens,
 	})
+}
+
+// resolveEffectiveCompaction picks the compaction strategy for a run. A
+// registered provider that reports ErrCompactionUnavailable hands the same
+// transcript to cfg.Compact; any other provider error propagates unchanged.
+func resolveEffectiveCompaction(cfg LoopConfig) CompactFn {
+	fallback := cfg.Compact
+	if cfg.CompactionRegistry == nil {
+		return fallback
+	}
+	resolved := cfg.CompactionRegistry.Resolve(nil)
+	if resolved == nil {
+		return fallback
+	}
+	return func(ctx context.Context, messages []providers.ChatMessage) ([]providers.ChatMessage, error) {
+		compacted, err := resolved.Compact(ctx, cfg.Model, messages)
+		if err == nil || !errors.Is(err, ErrCompactionUnavailable) {
+			return compacted, err
+		}
+		if fallback == nil {
+			return messages, nil
+		}
+		return fallback(ctx, messages)
+	}
 }
 
 func compactChanged(before, after []providers.ChatMessage) bool {

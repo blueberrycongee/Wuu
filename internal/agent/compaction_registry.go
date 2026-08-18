@@ -2,10 +2,17 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"sync"
 
 	"github.com/blueberrycongee/wuu/internal/providers"
 )
+
+// ErrCompactionUnavailable reports that the active compaction provider has
+// no strategy for the current transcript (for example, a note-driven
+// provider before the model has authored a checkpoint). The loop falls back
+// to the default conversation compaction when it receives this error.
+var ErrCompactionUnavailable = errors.New("compaction provider has no strategy for this transcript")
 
 // CompactionProvider contributes a named compaction strategy. Plugins
 // register compaction providers to replace or augment the default

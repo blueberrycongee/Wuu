@@ -653,6 +653,10 @@ type CompactionInput struct {
 // CompactionOutput is the experimental replacement transcript returned by a compactor.
 type CompactionOutput struct {
 	Messages []providers.ChatMessage `json:"messages"`
+	// Unavailable reports that the provider has no strategy for this
+	// transcript. The host translates it into a fallback signal so the
+	// default compactor can take over; Messages is ignored in that case.
+	Unavailable bool `json:"unavailable,omitempty"`
 }
 
 // ---------------------------------------------------------------------------

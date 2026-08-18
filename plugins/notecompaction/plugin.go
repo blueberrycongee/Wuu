@@ -26,7 +26,6 @@ const (
 	minimumCheckpointIntervalTokens = 2_000
 	maximumCheckpointIntervalTokens = 100_000
 	maxContextNoteBytes             = 24_000
-	maxFallbackNoteBytes            = 16_000
 )
 
 const systemPrompt = `Experimental context-note compaction is active.
@@ -44,7 +43,8 @@ type rawCompactionInput struct {
 }
 
 type rawCompactionOutput struct {
-	Messages []json.RawMessage `json:"messages"`
+	Messages    []json.RawMessage `json:"messages"`
+	Unavailable bool              `json:"unavailable,omitempty"`
 }
 
 // compactionMessageView mirrors only the public fields the experiment needs.
@@ -256,16 +256,17 @@ func compactFromLatestNote(raw json.RawMessage) (json.RawMessage, error) {
 		}
 	}
 
-	systemPrefix, conversationStart := preservedSystemPrefix(input.Messages, views)
+	systemPrefix := preservedSystemPrefix(input.Messages, views)
 	latest, ok := latestCheckpoint(views)
-	keepStart := len(input.Messages)
-	note := ""
-	if ok {
-		note = latest.note
-		keepStart = checkpointBoundary(views, latest.messageIndex)
-	} else {
-		note, keepStart = fallbackNote(views, conversationStart)
+	if !ok {
+		// Without a model-authored checkpoint there is nothing trustworthy
+		// to replace the older context with. Declare the strategy
+		// unavailable so the host falls back to the default compactor
+		// instead of collapsing the history into lossy transcript excerpts.
+		return json.Marshal(rawCompactionOutput{Unavailable: true})
 	}
+	keepStart := checkpointBoundary(views, latest.messageIndex)
+	note := latest.note
 
 	discoveredTools := collectDiscoveredTools(views[:keepStart])
 	summary, err := json.Marshal(struct {
@@ -288,16 +289,14 @@ func compactFromLatestNote(raw json.RawMessage) (json.RawMessage, error) {
 	return json.Marshal(rawCompactionOutput{Messages: output})
 }
 
-func preservedSystemPrefix(raw []json.RawMessage, views []compactionMessageView) ([]json.RawMessage, int) {
+func preservedSystemPrefix(raw []json.RawMessage, views []compactionMessageView) []json.RawMessage {
 	prefix := make([]json.RawMessage, 0)
-	index := 0
-	for index < len(views) && strings.EqualFold(strings.TrimSpace(views[index].Role), "system") {
+	for index := 0; index < len(views) && strings.EqualFold(strings.TrimSpace(views[index].Role), "system"); index++ {
 		if !strings.HasPrefix(strings.TrimSpace(views[index].Content), conversationSummaryMark) {
 			prefix = append(prefix, raw[index])
 		}
-		index++
 	}
-	return prefix, index
+	return prefix
 }
 
 func latestCheckpoint(messages []compactionMessageView) (checkpoint, bool) {
@@ -306,7 +305,11 @@ func latestCheckpoint(messages []compactionMessageView) (checkpoint, bool) {
 	for index, message := range messages {
 		if strings.HasPrefix(strings.TrimSpace(message.Content), conversationSummaryMark) {
 			if note := summaryBody(message.Content); note != "" {
-				latest = checkpoint{messageIndex: index, note: truncateUTF8(note, maxContextNoteBytes)}
+				// A persisted summary (including one written by the default
+				// compactor after a fallback pass) is already bounded by its
+				// own output limits; keep it intact so re-compaction does not
+				// silently cut off the tail of a long summary.
+				latest = checkpoint{messageIndex: index, note: note}
 				found = true
 			}
 		}
@@ -335,52 +338,6 @@ func checkpointBoundary(messages []compactionMessageView, noteMessageIndex int) 
 		index++
 	}
 	return index
-}
-
-func fallbackNote(messages []compactionMessageView, conversationStart int) (string, int) {
-	keepStart := len(messages)
-	for index := len(messages) - 1; index >= conversationStart; index-- {
-		message := messages[index]
-		if strings.EqualFold(strings.TrimSpace(message.Role), "user") && !message.Hidden && !strings.Contains(message.Content, checkpointReminderMarker) {
-			keepStart = index
-			break
-		}
-	}
-
-	excerpts := make([]string, 0, 8)
-	total := 0
-	for index := keepStart - 1; index >= conversationStart; index-- {
-		message := messages[index]
-		if strings.Contains(message.Content, checkpointReminderMarker) {
-			continue
-		}
-		text := strings.TrimSpace(message.Content)
-		if text == "" && len(message.ToolCalls) > 0 {
-			var calls []string
-			for _, call := range message.ToolCalls {
-				calls = append(calls, strings.TrimSpace(call.Name))
-			}
-			text = "tool calls: " + strings.Join(calls, ", ")
-		}
-		if text == "" {
-			continue
-		}
-		excerpt := fmt.Sprintf("%s: %s", normalizedRole(message.Role), truncateUTF8(text, 4_000))
-		if total+len(excerpt) > maxFallbackNoteBytes {
-			break
-		}
-		excerpts = append(excerpts, excerpt)
-		total += len(excerpt)
-	}
-	for left, right := 0, len(excerpts)-1; left < right; left, right = left+1, right-1 {
-		excerpts[left], excerpts[right] = excerpts[right], excerpts[left]
-	}
-
-	note := "# Experimental continuation note\n\nNo model-written checkpoint was available. Older context was reduced to bounded transcript excerpts; verify uncertain state before acting."
-	if len(excerpts) > 0 {
-		note += "\n\n## Recent transcript excerpts\n\n" + strings.Join(excerpts, "\n\n")
-	}
-	return note, keepStart
 }
 
 func collectDiscoveredTools(messages []compactionMessageView) []json.RawMessage {
@@ -429,14 +386,6 @@ func validNoteArguments(raw string) bool {
 
 func isContextNoteTool(name string) bool {
 	return strings.Contains(strings.ToLower(strings.TrimSpace(name)), toolWriteContextNote)
-}
-
-func normalizedRole(role string) string {
-	role = strings.ToLower(strings.TrimSpace(role))
-	if role == "" {
-		return "message"
-	}
-	return role
 }
 
 func truncateUTF8(text string, maxBytes int) string {

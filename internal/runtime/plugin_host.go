@@ -373,6 +373,9 @@ func (p *pluginCompactionProvider) Compact(ctx context.Context, model string, me
 		}
 		return providers.CloneChatMessages(messages), nil
 	}
+	if output.Unavailable {
+		return nil, agent.ErrCompactionUnavailable
+	}
 	compacted := providers.CloneChatMessages(output.Messages)
 	if err := providers.ValidateToolCallHistory(compacted); err != nil {
 		return nil, fmt.Errorf("plugin compaction returned invalid tool-call history: %w", err)
