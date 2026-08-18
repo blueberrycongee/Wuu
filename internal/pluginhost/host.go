@@ -490,7 +490,27 @@ func (h *Host) Statuses() []Status {
 	return out
 }
 
+// ClientShutdownOutcome reports how one plugin client shut down when its
+// owning generation retired, so failures stay attributable to the plugin.
+type ClientShutdownOutcome struct {
+	PluginID string
+	Err      error
+}
+
 func (h *Host) Close(ctx context.Context) error {
+	var firstErr error
+	for _, outcome := range h.CloseWithOutcomes(ctx) {
+		if outcome.Err != nil && firstErr == nil {
+			firstErr = fmt.Errorf("close plugin %q: %w", outcome.PluginID, outcome.Err)
+		}
+	}
+	return firstErr
+}
+
+// CloseWithOutcomes shuts clients down in reverse start order and reports one
+// structured outcome per client instead of collapsing everything into a
+// single joined error.
+func (h *Host) CloseWithOutcomes(ctx context.Context) []ClientShutdownOutcome {
 	if h == nil {
 		return nil
 	}
@@ -503,13 +523,11 @@ func (h *Host) Close(ctx context.Context) error {
 	h.capabilities = nil
 	h.mu.Unlock()
 
-	var firstErr error
+	outcomes := make([]ClientShutdownOutcome, 0, len(clients))
 	for i := len(clients) - 1; i >= 0; i-- {
-		if err := clients[i].Close(ctx); err != nil && firstErr == nil {
-			firstErr = fmt.Errorf("close plugin %q: %w", clients[i].ID(), err)
-		}
+		outcomes = append(outcomes, ClientShutdownOutcome{PluginID: clients[i].ID(), Err: clients[i].Close(ctx)})
 	}
-	return firstErr
+	return outcomes
 }
 
 func (h *Host) availablePublicToolName(pluginID, localID string) string {

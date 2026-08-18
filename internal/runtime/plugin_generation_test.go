@@ -416,6 +416,7 @@ func testGenerationSession(generation *PluginGeneration) *Session {
 func testPluginGeneration(id string, client pluginhost.Client) *PluginGeneration {
 	plugin := pluginpkg.Plugin{Manifest: pluginpkg.Manifest{ID: id}}
 	return &PluginGeneration{
+		id:      "gen-test-" + id,
 		plugins: []pluginpkg.Plugin{plugin},
 		active:  []pluginpkg.Plugin{plugin},
 		host:    pluginhost.New(client),

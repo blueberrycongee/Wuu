@@ -11,6 +11,7 @@ import (
 	pluginpkg "github.com/blueberrycongee/wuu/internal/plugin"
 	"github.com/blueberrycongee/wuu/internal/pluginhost"
 	"github.com/blueberrycongee/wuu/internal/pluginsettings"
+	"github.com/blueberrycongee/wuu/internal/runtime"
 )
 
 func (s *Server) handlePluginSettingGet(req Request) error {
@@ -106,6 +107,27 @@ func (s *Server) handlePluginDiagnosticsList(req Request) error {
 		})
 	}
 	return s.writeResponse(req.ID, PluginDiagnosticsResult{ID: plugin.SubjectID, Diagnostics: result}, nil)
+}
+
+// handlePluginGenerationDiagnosticsList exposes retired plugin generation
+// revocation reports: per-resource, per-phase outcomes with plugin and
+// generation attribution, so failed revocations stay publicly visible.
+func (s *Server) handlePluginGenerationDiagnosticsList(req Request) error {
+	if s.rt == nil {
+		return s.writeResponse(req.ID, nil, errors.New("runtime is not initialized"))
+	}
+	var params PluginGenerationDiagnosticsParams
+	if err := decodeParams(req.Params, &params); err != nil {
+		return s.writeResponse(req.ID, nil, err)
+	}
+	reports, err := s.rt.PluginGenerationRevocations(params.Limit)
+	if err != nil {
+		return s.writeResponse(req.ID, nil, err)
+	}
+	if reports == nil {
+		reports = []runtime.GenerationRevocationReport{}
+	}
+	return s.writeResponse(req.ID, PluginGenerationDiagnosticsResult{Reports: reports}, nil)
 }
 
 func (s *Server) handlePluginStorageGet(req Request) error {

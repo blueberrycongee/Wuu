@@ -26,7 +26,10 @@ import (
 
 // PluginGeneration is a complete, inactive replacement for the plugin-owned
 // surfaces of a Session. It owns every process and private package snapshot.
+// Its resources form an ordered ledger that close retires in reverse,
+// recording a structured revocation report.
 type PluginGeneration struct {
+	id                string
 	settings          config.Config
 	plugins           []pluginpkg.Plugin
 	active            []pluginpkg.Plugin
@@ -39,6 +42,7 @@ type PluginGeneration struct {
 	systemPrompts     *agent.SystemPromptAssembler
 	compactions       *agent.CompactionRegistry
 	ownedRoots        []string
+	revocation        *GenerationRevocationReport
 	// driverGateways is this generation's remote-driver gateway routing
 	// table; executions registered here route only to this generation's
 	// kernel services.
@@ -156,6 +160,7 @@ func (s *Session) PreflightPluginUpdate(cfg config.Config, id, fingerprint, pack
 	}
 	if !containsPluginGeneration(generation.active, id, fingerprint) {
 		_ = generation.close()
+		s.persistRevocationReport(generation)
 		return nil, fmt.Errorf("plugin %q candidate is not approved for its exact fingerprint", id)
 	}
 	cleanupSnapshot = false
@@ -189,6 +194,7 @@ func (s *Session) buildPluginGeneration(cfg config.Config, discovered []pluginpk
 		return nil, errors.Join(err, closeErr)
 	}
 	generation := &PluginGeneration{
+		id:                newPluginGenerationID(s.WuuHome),
 		settings:          cfg,
 		plugins:           append([]pluginpkg.Plugin(nil), discovered...),
 		active:            append([]pluginpkg.Plugin(nil), active...),
@@ -205,6 +211,7 @@ func (s *Session) buildPluginGeneration(cfg config.Config, discovered []pluginpk
 	generation.mcp, err = startMCPManager(cfg, active, required)
 	if err != nil {
 		_ = generation.close()
+		s.persistRevocationReport(generation)
 		return nil, err
 	}
 	return generation, nil
@@ -230,19 +237,24 @@ func (s *Session) ActivatePluginGeneration(candidate *PluginGeneration, commit f
 		old = s.capturePluginGeneration()
 	}
 	if err := activatePluginHost(context.Background(), candidate.host); err != nil {
-		return errors.Join(fmt.Errorf("activate plugin candidate: %w", err), candidate.close())
+		activationErr := errors.Join(fmt.Errorf("activate plugin candidate: %w", err), candidate.close())
+		s.persistRevocationReport(candidate)
+		return activationErr
 	}
 	s.applyPluginGeneration(candidate)
 	if commit != nil {
 		if err := commit(); err != nil {
 			s.applyPluginGeneration(old)
-			return errors.Join(err, candidate.close())
+			commitErr := errors.Join(err, candidate.close())
+			s.persistRevocationReport(candidate)
+			return commitErr
 		}
 	}
 	s.pluginGeneration = candidate
 	if err := old.close(); err != nil {
 		providers.DebugLogf("plugin generation cleanup: %v", err)
 	}
+	s.persistRevocationReport(old)
 	return nil
 }
 
@@ -254,6 +266,7 @@ func (s *Session) capturePluginGeneration() *PluginGeneration {
 	hookSnapshot := hooks.NewDispatcher(nil)
 	hookSnapshot.Replace(s.HookDispatcher)
 	generation := &PluginGeneration{
+		id:                newPluginGenerationID(s.WuuHome),
 		settings:          config.Config{Extensions: s.ExtensionSettings},
 		plugins:           append([]pluginpkg.Plugin(nil), s.Plugins...),
 		active:            append([]pluginpkg.Plugin(nil), s.ActivePlugins...),
@@ -301,39 +314,88 @@ func (s *Session) applyPluginGeneration(generation *PluginGeneration) {
 	s.RefreshSystemPrompt(s.ProviderName, s.Model)
 }
 
+// close retires every generation-owned resource in reverse ownership order
+// and records the structured revocation report on the generation. The report
+// attributes failures by plugin, resource, and phase; close still returns the
+// joined error for callers that only need success or failure.
 func (g *PluginGeneration) close() error {
 	if g == nil {
 		return nil
 	}
+	report := &GenerationRevocationReport{GenerationID: g.id, RetiredAt: time.Now().UTC()}
+	g.revocation = report
 	var err error
 	if g.mcp != nil {
-		err = errors.Join(err, g.mcp.Close())
+		mcpErr := g.mcp.Close()
+		report.record("", "mcp-manager", RevocationPhaseShutdown, mcpErr)
+		err = errors.Join(err, mcpErr)
 		g.mcp = nil
 	}
 	if g.systemPrompts != nil {
 		g.systemPrompts.Clear()
+		report.record("", "system-prompts", RevocationPhaseCleanup, nil)
 		g.systemPrompts = nil
 	}
 	if g.compactions != nil {
 		g.compactions.Clear()
+		report.record("", "compaction-registry", RevocationPhaseCleanup, nil)
 		g.compactions = nil
 	}
 	if g.host != nil {
 		g.host.CancelExecutions(&pluginhost.UserQuestionError{Code: "generation_closed", Message: "plugin generation retired"})
+		report.record("", "plugin-executions", RevocationPhaseCancelExecutions, nil)
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		if registry := g.host.ServiceRegistry(); registry != nil {
 			registry.Close(ctx)
+			report.record("", "service-registry", RevocationPhaseRevokeServices, nil)
 		}
-		err = errors.Join(err, g.host.Close(ctx))
+		for _, outcome := range g.host.CloseWithOutcomes(ctx) {
+			report.record(outcome.PluginID, "plugin-process", RevocationPhaseShutdown, outcome.Err)
+			if outcome.Err != nil {
+				err = errors.Join(err, fmt.Errorf("close plugin %q: %w", outcome.PluginID, outcome.Err))
+			}
+		}
 		cancel()
 		g.host = nil
 	}
 	g.requestTransforms = nil
 	for index := len(g.ownedRoots) - 1; index >= 0; index-- {
-		err = errors.Join(err, os.RemoveAll(g.ownedRoots[index]))
+		rootErr := os.RemoveAll(g.ownedRoots[index])
+		report.recordDetail("", "package-snapshot", RevocationPhaseCleanup, g.ownedRoots[index], rootErr)
+		err = errors.Join(err, rootErr)
 	}
 	g.ownedRoots = nil
 	return err
+}
+
+// revocationReport returns the structured retirement record after close.
+func (g *PluginGeneration) revocationReport() *GenerationRevocationReport {
+	if g == nil {
+		return nil
+	}
+	return g.revocation
+}
+
+// persistRevocationReport retains a retired or rejected generation's
+// revocation report so cleanup failures stay visible after the generation is
+// gone. Persistence failure is only debug-logged: it must not block the
+// lifecycle transition the report describes.
+func (s *Session) persistRevocationReport(g *PluginGeneration) {
+	if s == nil || g == nil || g.revocation == nil {
+		return
+	}
+	if err := appendGenerationRevocation(s.WuuHome, g.revocation); err != nil {
+		providers.DebugLogf("persist plugin generation revocation: %v", err)
+	}
+}
+
+// PluginGenerationRevocations returns retained generation retirement reports,
+// newest first. limit bounds the result; zero returns everything retained.
+func (s *Session) PluginGenerationRevocations(limit int) ([]GenerationRevocationReport, error) {
+	if s == nil {
+		return nil, errors.New("runtime is not initialized")
+	}
+	return readGenerationRevocations(s.WuuHome, limit)
 }
 
 func containsPluginGeneration(plugins []pluginpkg.Plugin, id, fingerprint string) bool {
