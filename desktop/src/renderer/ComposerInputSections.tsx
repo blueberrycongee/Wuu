@@ -334,7 +334,7 @@ export function SplitPaneComposer({
                 <div className="composer-bar split-composer-bar">
                   <div className="composer-bar-left">
                     <button
-                      className="composer-action-button composer-attach-button"
+                      className="composer-tool-button composer-attach-button"
                       type="button"
                       aria-label={t("composer.addAttachment")}
                       title={t("composer.addAttachment")}

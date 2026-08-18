@@ -1590,11 +1590,10 @@
   flex: 1 1 8px;
 }
 
-/* The composer status row is a filled chip — same family as the inline
-   turn notices above. The host sizes to its content (no growth) so the
-   chip sits naturally between the runtime picker and the send button. */
-.status-label,
-.split-composer-status {
+/* The main composer status row is a filled chip — same family as the inline
+   turn notices above. Split panes use a quieter inline status because their
+   toolbar is narrower and already sits beside the attachment control. */
+.status-label {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1611,9 +1610,7 @@
 }
 
 .status-label::before,
-.status-label::after,
-.split-composer-status::before,
-.split-composer-status::after {
+.status-label::after {
   display: none;
 }
 

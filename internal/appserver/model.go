@@ -8,6 +8,7 @@ import (
 	"github.com/blueberrycongee/wuu/internal/compact"
 	wuucontext "github.com/blueberrycongee/wuu/internal/context"
 	"github.com/blueberrycongee/wuu/internal/participant"
+	"github.com/blueberrycongee/wuu/internal/pluginhost"
 	"github.com/blueberrycongee/wuu/internal/providers"
 	"github.com/blueberrycongee/wuu/internal/toolresult"
 )
@@ -61,7 +62,9 @@ func (th *threadState) snapshotLocked() Thread {
 		WorkspaceKind:    th.WorkspaceKind,
 		Status:           status,
 		TreeInterrupted:  th.workerTreeFrozen,
-		ReadOnly:         th.ReadOnly,
+		// Plugin-visible sessions remain writable by their owning plugin, but the
+		// user-facing conversation is an inspector and must not expose a composer.
+		ReadOnly:         th.ReadOnly || th.Visibility == pluginhost.SessionVisibilityPlugin,
 		Ephemeral:        th.Ephemeral,
 		Pinned:           th.PinnedAt != nil,
 		Archived:         th.ArchivedAt != nil,

@@ -212,25 +212,29 @@ export function ConversationSplitPane({
           />
         </div>
       </div>
-      <SplitPaneComposer
-        prompt={draft.prompt}
-        setPrompt={onSetPrompt}
-        files={draft.files}
-        images={draft.images}
-        running={(!paneReadOnly && paneRunning) || viewSwitchPending}
-        readOnly={paneReadOnly}
-        status={paneStatus}
-        statusLiveProgress={
-          !paneReadOnly && paneRunning ? streamStatus?.liveProgress : false
-        }
-        onPasteAttachmentFiles={onPasteAttachmentFiles}
-        onRemoveFile={onRemoveFile}
-        onRemoveImage={onRemoveImage}
-        onSend={onSend}
-        onInterrupt={onInterrupt}
-        queryHistorySessionID={thread.id}
-        queryHistory={queryHistory}
-      />
+      {paneReadOnly ? (
+        <footer className="split-read-only-footer" aria-live="polite">
+          <span className="split-read-only-status">{paneStatus}</span>
+        </footer>
+      ) : (
+        <SplitPaneComposer
+          prompt={draft.prompt}
+          setPrompt={onSetPrompt}
+          files={draft.files}
+          images={draft.images}
+          running={paneRunning || viewSwitchPending}
+          readOnly={false}
+          status={paneStatus}
+          statusLiveProgress={paneRunning ? streamStatus?.liveProgress : false}
+          onPasteAttachmentFiles={onPasteAttachmentFiles}
+          onRemoveFile={onRemoveFile}
+          onRemoveImage={onRemoveImage}
+          onSend={onSend}
+          onInterrupt={onInterrupt}
+          queryHistorySessionID={thread.id}
+          queryHistory={queryHistory}
+        />
+      )}
     </section>
   );
 }
