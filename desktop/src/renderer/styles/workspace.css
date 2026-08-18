@@ -183,7 +183,7 @@
   height: 48px;
   align-items: center;
   gap: 4px;
-  border-bottom: 1px solid var(--surface-3);
+  box-shadow: inset 0 -1px 0 var(--surface-3);
   /* The docked panel sits at the window's right edge, so the tabbar is
    * what clears the Windows controls overlay; a no-op elsewhere. */
   padding: 0 max(8px, var(--window-controls-inset-right)) 0 8px;

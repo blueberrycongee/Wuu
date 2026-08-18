@@ -23,5 +23,9 @@ describe("conversation titlebar layout", () => {
     expect(cssRule(".conversation-pane")).toMatch(
       /grid-template-rows:\s*48px\s+minmax\(0,\s*1fr\);/,
     );
+    expect(cssRule(".titlebar")).toContain(
+      "box-shadow: inset 0 -1px 0 var(--surface-3);",
+    );
+    expect(cssRule(".titlebar")).not.toContain("border-bottom:");
   });
 });

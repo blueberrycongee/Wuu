@@ -26,7 +26,7 @@ describe("window chrome platform branches", () => {
     // options Pick<>, so match the value assignments.)
     expect(mainSource.match(/titleBarStyle: "hiddenInset"/g)).toHaveLength(1);
     expect(mainSource.match(/trafficLightPosition: \{/g)).toHaveLength(1);
-    expect(mainSource).toContain("trafficLightPosition: { x: 18, y: 15 }");
+    expect(mainSource).toContain("trafficLightPosition: { x: 18, y: 17 }");
   });
 
   it("gives Windows a hidden titlebar with a themed controls overlay", () => {
@@ -64,6 +64,18 @@ describe("window controls corner reservations", () => {
     expect(shellCSS).toContain("max(24px, var(--window-controls-inset-right))");
     expect(settingsCSS).toContain("max(24px, var(--window-controls-inset-right))");
     expect(workspaceCSS).toContain("max(8px, var(--window-controls-inset-right))");
+  });
+
+  it("keeps top-strip dividers out of the 48px centering box", () => {
+    expect(shellCSS).toMatch(
+      /\.titlebar\s*\{[\s\S]*?box-shadow:\s*inset 0 -1px 0 var\(--surface-3\);/,
+    );
+    expect(settingsCSS).toMatch(
+      /\.settings-titlebar\s*\{[\s\S]*?box-shadow:\s*inset 0 -1px 0 var\(--hairline\);/,
+    );
+    expect(workspaceCSS).toMatch(
+      /\.workspace-panel-tabbar\s*\{[\s\S]*?box-shadow:\s*inset 0 -1px 0 var\(--surface-3\);/,
+    );
   });
 
   it("gives the win32 sidebar an opaque fill in both themes", () => {

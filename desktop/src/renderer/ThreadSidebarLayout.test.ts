@@ -109,7 +109,7 @@ describe("globalized right panel chrome", () => {
 
     const toggleRegion = cssRule(".globalized-sidebar-toggle-region");
     expect(toggleRegion).toMatch(
-      /top:\s*calc\(\(48px - 1px - 30px\) \/ 2\);/,
+      /top:\s*calc\(\(48px - 30px\) \/ 2\);/,
     );
     expect(toggleRegion).toMatch(/z-index:\s*150;/);
     expect(toggleRegion).toMatch(/-webkit-app-region:\s*drag;/);
