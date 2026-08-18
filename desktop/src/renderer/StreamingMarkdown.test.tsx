@@ -14,6 +14,7 @@ import {
   containsMermaidFence,
   StreamingMarkdown,
   splitIntoStableBlocks,
+  splitStreamWords,
 } from "./StreamingMarkdown";
 import {
   STREAM_TEXT_NOTIFY_INTERVAL_MS,
@@ -447,6 +448,36 @@ describe("StreamingMarkdown", () => {
     expect(surface.textContent).not.toContain("\uE000");
     expect(cursor?.closest("li")).toBeTruthy();
   });
+
+  it("wraps live streamed words in arrival spans and settles to plain text", async () => {
+    const key = streamTextKey("turn", "s-words", "text");
+    streamTextStore.seed(key, "");
+    mount({ streamKey: key, initialText: "", isLive: true, phase: "final_answer" });
+
+    await act(async () => {
+      streamTextStore.append(key, "你好 world");
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    });
+
+    const surface = document.querySelector(".streaming-markdown") as HTMLElement;
+    // CJK and Latin words both ride the arrival animation while live.
+    expect(surface.querySelectorAll(".stream-word").length).toBeGreaterThanOrEqual(2);
+    // Word spans never alter the visible text.
+    expect(surface.textContent).toContain("你好 world");
+
+    rerender({ streamKey: key, initialText: "", isLive: false, phase: "final_answer" });
+    expect(surface.querySelector(".stream-word")).toBeNull();
+    expect(surface.textContent).toContain("你好 world");
+  });
+
+  it("drives the word arrival animation from the motion ladder", () => {
+    const rule =
+      turnsCSS.match(/\.streaming-markdown \.stream-word\s*\{([\s\S]*?)\n\}/)?.[1] ?? "";
+    expect(rule).toContain("stream-word-in");
+    // Token-driven duration: prefers-reduced-motion zeroes the whole ladder.
+    expect(rule).toContain("var(--motion-base)");
+    expect(turnsCSS).toContain("@keyframes stream-word-in");
+  });
 });
 
 describe("containsMermaidFence", () => {
@@ -533,5 +564,41 @@ describe("splitIntoStableBlocks", () => {
     const result = splitIntoStableBlocks(text);
     expect(result.blocks).toEqual(["```ts\ncode\n```\n\n"]);
     expect(result.tail).toBe("after");
+  });
+});
+
+describe("splitStreamWords", () => {
+  it("splits CJK and Latin text into word-shaped segments without losing a character", () => {
+    const text = "你好 world，这 is 混排";
+    const segments = splitStreamWords(text);
+    // Concatenation invariant: segments always rebuild the exact input.
+    expect(segments.map((segment) => segment.text).join("")).toBe(text);
+    // CJK prose rides the animation as word segments, not a raw text run.
+    expect(
+      segments
+        .filter((segment) => segment.word)
+        .map((segment) => segment.text)
+        .join("")
+    ).toContain("你好");
+    expect(
+      segments
+        .filter((segment) => segment.word)
+        .map((segment) => segment.text)
+        .join("")
+    ).toContain("world");
+  });
+
+  it("keeps whitespace as plain segments so spacing stays pixel-exact", () => {
+    const segments = splitStreamWords("你好 world");
+    expect(segments.some((segment) => !segment.word && segment.text === " ")).toBe(
+      true
+    );
+  });
+
+  it("handles empty and whitespace-only input", () => {
+    expect(splitStreamWords("")).toEqual([]);
+    expect(
+      splitStreamWords("  ").every((segment) => !segment.word)
+    ).toBe(true);
   });
 });

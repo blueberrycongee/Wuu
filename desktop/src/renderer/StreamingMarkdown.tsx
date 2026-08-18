@@ -25,7 +25,9 @@ import { useConversationRenderActive } from "./ConversationRenderActivity";
  * streaming/settling/settled state machine — `isLive` flips the renderer
  * between two modes:
  *   - `isLive=true`: server-streamed chunks render on the store's coalesced
- *                    cadence with a stable cursor marking the output edge.
+ *                    cadence; newly arrived words play a one-shot blur-fade
+ *                    so variable-size batches read as one continuous reveal,
+ *                    with a stable cursor marking the output edge.
  *   - `isLive=false`: text remains rendered in full. The cursor fades out
  *                     and `onSettled` fires once the final snapshot lands.
  *
@@ -57,8 +59,8 @@ const CURSOR_CLASS_NAME = "stream-cursor";
 const CURSOR_BLOCK_TAIL_CLASS_NAME = "stream-cursor-block-tail";
 const CURSOR_SENTINEL = "";
 const CURSOR_MARKDOWN_BOUNDARY = " ";
-const CURSOR_PULSE_MAX_DELTA = 64;
-const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
+const STREAM_WORD_CLASS_NAME = "stream-word";
+const WORD_SEGMENTER_LOCALE = "zh";
 
 export function StreamingMarkdown({
   streamKey,
@@ -114,9 +116,6 @@ export function StreamingMarkdown({
   const phase: StreamPhase = isLive ? "streaming" : "settled";
 
   /* ------------------------------- Refs ---------------------------------- */
-  const surfaceRef = useRef<HTMLDivElement | null>(null);
-  const previousRenderedTextRef = useRef(renderedText);
-  const cursorPulseAnimationRef = useRef<Animation | null>(null);
   const onFrameRef = useRef(onFrame);
   const onSettledRef = useRef(onSettled);
   const settledNotifiedRef = useRef(false);
@@ -152,63 +151,8 @@ export function StreamingMarkdown({
       settledNotifiedRef.current = false;
       return;
     }
-    cursorPulseAnimationRef.current?.cancel();
-    cursorPulseAnimationRef.current = null;
     trySettle();
   }, [isLive, trySettle]);
-
-  /* ----------------------- Cursor arrival feedback ----------------------- */
-  // Streamed prose becomes fully legible immediately. Only the stable cursor
-  // receives a short arrival cue, keeping previously rendered lines visually
-  // inert while rapid wrapping and auto-follow move them through the viewport.
-  // Dense batches and line breaks already carry enough motion, so they skip
-  // the pulse rather than stacking another signal on top.
-  useLayoutEffect(() => {
-    const previousText = previousRenderedTextRef.current;
-    previousRenderedTextRef.current = renderedText;
-    cursorPulseAnimationRef.current?.cancel();
-    cursorPulseAnimationRef.current = null;
-
-    if (
-      !renderActive ||
-      !isLive ||
-      !renderedText.startsWith(previousText) ||
-      renderedText.length <= previousText.length
-    ) {
-      return;
-    }
-
-    const appendedText = renderedText.slice(previousText.length);
-    if (
-      appendedText.length > CURSOR_PULSE_MAX_DELTA ||
-      appendedText.includes("\n") ||
-      window.matchMedia?.(REDUCED_MOTION_QUERY).matches
-    ) {
-      return;
-    }
-
-    const cursor = surfaceRef.current?.querySelector<HTMLElement>(
-      `.${CURSOR_CLASS_NAME}`,
-    );
-    if (!cursor || typeof cursor.animate !== "function") {
-      return;
-    }
-    cursorPulseAnimationRef.current = cursor.animate(
-      [
-        { opacity: 0.68, transform: "scaleX(1)" },
-        { opacity: 1, transform: "scaleX(1.45)", offset: 0.35 },
-        { opacity: 1, transform: "scaleX(1)" },
-      ],
-      {
-        duration: 140,
-        easing: "cubic-bezier(0.16, 1, 0.3, 1)",
-      },
-    );
-  }, [isLive, renderActive, renderedText]);
-
-  useEffect(() => () => {
-    cursorPulseAnimationRef.current?.cancel();
-  }, []);
 
   /* ------------------------- Derived view data -------------------------- */
   const visibleText = renderedText;
@@ -224,7 +168,16 @@ export function StreamingMarkdown({
   // into a V-shape jitter. Visibility is controlled by the parent
   // data-cursor-state attribute (see turns.css) instead.
   const showCursor = true;
-  const cursorTextRenderer = useMemo(() => createCursorTextRenderer(), []);
+  // Live tails wrap each freshly arrived word in a one-shot blur-fade span
+  // (`.stream-word` in turns.css). React reconciliation animates only newly
+  // mounted spans, so the store's variable-size 100ms batches read as one
+  // continuous reveal. Stable blocks and settled text stay span-free; reduced
+  // motion zeroes the animation at the motion-token layer.
+  const animateWords = isLive && renderActive;
+  const cursorTextRenderer = useMemo(
+    () => createCursorTextRenderer(animateWords),
+    [animateWords]
+  );
   // Mermaid is expensive; do not flip the markdown renderer at settle for
   // ordinary text. Only messages that actually contain a Mermaid fence enter
   // the diagram renderer after streaming ends.
@@ -275,7 +228,6 @@ export function StreamingMarkdown({
   /* ------------------------------- Render -------------------------------- */
   return (
     <div
-      ref={surfaceRef}
       className={className}
       data-stream-state={phase}
       data-cursor-state={cursorState}
@@ -316,14 +268,108 @@ export function StreamingMarkdown({
  */
 const MemoMarkdownContent = MarkdownContent;
 
-function createCursorTextRenderer(): RichTextRenderer {
+type StreamWordSegment = { text: string; word: boolean };
+
+type StreamWordSegmenter = {
+  segment(text: string): Iterable<{ segment: string }>;
+};
+
+let sharedWordSegmenter: StreamWordSegmenter | null | undefined;
+
+/**
+ * zh-locale word segmentation also splits Latin text on UAX #29 word
+ * boundaries, and it is the only option that keeps CJK prose word-shaped
+ * (space-based splitting is meaningless for Chinese). Typed structurally so
+ * we do not depend on lib-dom Intl.Segmenter declarations; every supported
+ * Electron/Chromium and the Node test runtime provide it. The regex fallback
+ * keeps ASCII word runs if it is ever missing.
+ */
+function getWordSegmenter(): StreamWordSegmenter | null {
+  if (sharedWordSegmenter !== undefined) {
+    return sharedWordSegmenter;
+  }
+  const Segmenter = (
+    Intl as unknown as {
+      Segmenter?: new (
+        locale: string,
+        options: { granularity: "word" }
+      ) => StreamWordSegmenter;
+    }
+  ).Segmenter;
+  sharedWordSegmenter = Segmenter
+    ? new Segmenter(WORD_SEGMENTER_LOCALE, { granularity: "word" })
+    : null;
+  return sharedWordSegmenter;
+}
+
+/**
+ * Split a streamed text fragment into display segments. Non-whitespace
+ * segments are word-shaped units that can carry the arrival animation;
+ * whitespace stays a plain string so spacing remains pixel-exact. The
+ * concatenation of all segments always equals the input. Exported for tests.
+ */
+export function splitStreamWords(text: string): StreamWordSegment[] {
+  const segmenter = getWordSegmenter();
+  if (!segmenter) {
+    return text
+      .split(/(\s+)/)
+      .filter(Boolean)
+      .map((part) => ({ text: part, word: /\S/.test(part) }));
+  }
+  const segments: StreamWordSegment[] = [];
+  for (const part of segmenter.segment(text)) {
+    segments.push({ text: part.segment, word: /\S/.test(part.segment) });
+  }
+  return segments;
+}
+
+/**
+ * Wrap each word in its own span so the CSS arrival animation plays exactly
+ * once per word as it mounts. Reconciliation preserves already-visible spans
+ * across commits, so existing words never replay — only fresh text animates.
+ */
+function renderStreamWords(
+  text: string,
+  keyPrefix: string
+): Array<JSX.Element | string> {
+  if (!text) {
+    return [];
+  }
+  const output: Array<JSX.Element | string> = [];
+  let wordIndex = 0;
+  for (const segment of splitStreamWords(text)) {
+    if (!segment.word) {
+      output.push(segment.text);
+      continue;
+    }
+    output.push(
+      <span
+        key={`${keyPrefix}-w${wordIndex}`}
+        className={STREAM_WORD_CLASS_NAME}
+      >
+        {segment.text}
+      </span>
+    );
+    wordIndex += 1;
+  }
+  return output;
+}
+
+function createCursorTextRenderer(animateWords = false): RichTextRenderer {
   return (text, keyPrefix) => {
     const cursorIndex = text.indexOf(CURSOR_SENTINEL);
     const textBeforeCursor = cursorIndex >= 0 ? text.slice(0, cursorIndex) : text;
     const visibleText = cursorIndex >= 0 && textBeforeCursor.endsWith(CURSOR_MARKDOWN_BOUNDARY)
       ? textBeforeCursor.slice(0, -CURSOR_MARKDOWN_BOUNDARY.length)
       : textBeforeCursor;
-    const output: Array<JSX.Element | string> = visibleText ? [visibleText] : [];
+    // Inline code stays plain: per-word spans inside the monospace chip read
+    // as flicker, not arrival, and code tokens arrive too densely to fade.
+    const animate = animateWords && !keyPrefix.startsWith("code");
+    const output: Array<JSX.Element | string> = animate
+      ? renderStreamWords(visibleText, keyPrefix)
+      : visibleText
+        ? [visibleText]
+        : [];
 
     if (cursorIndex >= 0) {
       output.push(
@@ -335,7 +381,11 @@ function createCursorTextRenderer(): RichTextRenderer {
       );
       const trailingText = text.slice(cursorIndex + CURSOR_SENTINEL.length);
       if (trailingText) {
-        output.push(trailingText);
+        if (animate) {
+          output.push(...renderStreamWords(trailingText, `${keyPrefix}-trail`));
+        } else {
+          output.push(trailingText);
+        }
       }
     }
     return output;
