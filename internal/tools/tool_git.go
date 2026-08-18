@@ -97,7 +97,7 @@ func (t *GitTool) Definition() providers.ToolDefinition {
 			"commit (non-interactive explicit message via -m/--message or -F/--file, no staged sensitive paths), push (plain or -u origin <branch>).\n\n" +
 			"Git workflow: use status to inspect {staged, unstaged, untracked}; use diff and diff --cached before deciding; " +
 			"use add with explicit paths from status to stage intended files; use restore --staged with explicit paths to remove accidental staged files; " +
-			"then commit and push only when the user explicitly requested those write actions.\n\n" +
+			"review staged changes with diff --cached before committing.\n\n" +
 			"git status returns structured {staged, unstaged, untracked} output.\n\n" +
 			"add and restore --staged reject root/current-directory/pathspec magic/wildcard forms; pass explicit workspace-relative paths. " +
 			"Content output for sensitive credential paths is rejected or redacted.\n\n" +
