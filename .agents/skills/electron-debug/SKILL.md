@@ -20,3 +20,11 @@ Debug the running stack, not only the source tree.
 5. Keep production debug UI gated behind debug controls.
 
 When runtime behavior contradicts source, treat the live process as the ground truth.
+
+## Product and visual gates
+
+- Production builds must never expose debug UI or the debug-controls switch.
+- Development builds hide debug UI by default. Gate every developer-only control through the development-only Settings switch.
+- Tests that need debug UI must enable it explicitly and preserve production coverage proving it is hidden.
+- The user owns final visual validation. Do not take screenshots, automate the UI, or claim visual approval unless explicitly asked in that turn.
+- For UI changes, verify code correctness, relevant tests/builds, and that the latest Desktop runtime starts. Leave the current build running for the user to inspect.
