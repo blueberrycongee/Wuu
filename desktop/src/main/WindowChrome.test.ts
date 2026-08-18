@@ -26,7 +26,7 @@ describe("window chrome platform branches", () => {
     // options Pick<>, so match the value assignments.)
     expect(mainSource.match(/titleBarStyle: "hiddenInset"/g)).toHaveLength(1);
     expect(mainSource.match(/trafficLightPosition: \{/g)).toHaveLength(1);
-    expect(mainSource).toContain("trafficLightPosition: { x: 18, y: 17 }");
+    expect(mainSource).toContain("trafficLightPosition: { x: 18, y: 15 }");
   });
 
   it("gives Windows a hidden titlebar with a themed controls overlay", () => {
