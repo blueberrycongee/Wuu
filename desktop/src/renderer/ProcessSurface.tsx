@@ -29,7 +29,6 @@ import {
   turnTokenCountText,
 } from "./ThinkingTokenCount";
 import { translateCurrent as translate, useI18n } from "./i18n";
-import { AVATAR_HUES, avatarHueIndex } from "./DefaultAvatar";
 
 /**
  * How long to wait after the fold opens before snapping the reasoning
@@ -40,6 +39,24 @@ import { AVATAR_HUES, avatarHueIndex } from "./DefaultAvatar";
  * mid-transition value.
  */
 const REASONING_FOLD_OPEN_SNAP_DELAY_MS = 280;
+const PROCESS_BLOBATAR_HUE = 350;
+const PROCESS_BLOBATAR_TRAITS = {
+  shape: 0.2,
+  "body.r": 0.5,
+  "body.ratio": 0.5,
+  "body.n": 1 / 6,
+  "body.x": 0.5,
+  "body.y": 0.5,
+  "body.pts": 0.5,
+  "body.r0": 0.5,
+  "body.r1": 0.5,
+  "body.r2": 0.5,
+  "body.r3": 0.5,
+  "body.r4": 0.5,
+  "body.r5": 0.5,
+  "body.r6": 0.5,
+  "body.r7": 0.5,
+} as const;
 
 /**
  * Unified render surface for the process region of a single turn.
@@ -258,9 +275,9 @@ export function ProcessSurface({
         <Blobatar
           className="process-surface-blobatar"
           name={blobatarSeed}
-          hue={AVATAR_HUES[avatarHueIndex(blobatarSeed)]}
+          hue={PROCESS_BLOBATAR_HUE}
           background={false}
-          traits={{ shape: 0.2, "body.ratio": 0.5 }}
+          traits={PROCESS_BLOBATAR_TRAITS}
           size={28}
           alt=""
         />
