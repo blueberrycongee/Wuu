@@ -507,17 +507,29 @@ function scanStableBlocks(
       break;
     }
     const lineStart = scanOffset;
+    let fenceStart = lineStart;
+    // CommonMark allows fenced code blocks to be indented by up to three
+    // spaces. The Markdown parser accepts that form, so this lightweight
+    // boundary scanner must do the same or a blank line inside the fence gets
+    // promoted into a stable-block boundary.
+    while (
+      fenceStart < lineEnd &&
+      fenceStart - lineStart < 3 &&
+      text.charCodeAt(fenceStart) === 32 /* space */
+    ) {
+      fenceStart += 1;
+    }
     const startsBacktickFence =
-      lineEnd - lineStart >= 3 &&
-      text.charCodeAt(lineStart) === 96 &&
-      text.charCodeAt(lineStart + 1) === 96 &&
-      text.charCodeAt(lineStart + 2) === 96;
+      lineEnd - fenceStart >= 3 &&
+      text.charCodeAt(fenceStart) === 96 &&
+      text.charCodeAt(fenceStart + 1) === 96 &&
+      text.charCodeAt(fenceStart + 2) === 96;
     if (startsBacktickFence) {
       if (!inFence) {
         inFence = true;
       } else {
         let isCloser = true;
-        for (let index = lineStart + 3; index < lineEnd; index += 1) {
+        for (let index = fenceStart + 3; index < lineEnd; index += 1) {
           const code = text.charCodeAt(index);
           if (code !== 32 /* space */ && code !== 9 /* tab */) {
             isCloser = false;
