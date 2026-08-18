@@ -30,7 +30,7 @@ export const CONVERSATION_DESIGN_TOKENS = [
     max: 1280,
     step: 16,
     unit: "px",
-    defaultValue: 776,
+    defaultValue: 816,
   },
   {
     key: "message-max-width",
@@ -40,7 +40,7 @@ export const CONVERSATION_DESIGN_TOKENS = [
     max: 1080,
     step: 16,
     unit: "px",
-    defaultValue: 680,
+    defaultValue: 720,
   },
   {
     key: "composer-width",
@@ -50,7 +50,7 @@ export const CONVERSATION_DESIGN_TOKENS = [
     max: 1200,
     step: 20,
     unit: "px",
-    defaultValue: 680,
+    defaultValue: 720,
   },
   {
     key: "composer-radius",

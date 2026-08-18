@@ -1586,5 +1586,5 @@ button.conversation-status-capsule,
   font-weight: var(--conversation-message-font-weight);
   line-height: var(--conversation-reading-line-height);
   color: var(--ink);
-  max-width: var(--conversation-message-max-width, 680px);
+  max-width: var(--conversation-message-max-width, 720px);
 }
