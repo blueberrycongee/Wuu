@@ -87,6 +87,8 @@ assert.equal(
 assert.equal(sourceHashFromBuildInfo({}, () => "fallback"), "fallback");
 assert.match(packageJSON.scripts["pack:mac"], /CSC_IDENTITY_AUTO_DISCOVERY=false/);
 assert.match(packageJSON.scripts["dist:mac"], /CSC_IDENTITY_AUTO_DISCOVERY=false/);
+assert.match(packageJSON.scripts["pack:mac"], /--config\.electronDist=node_modules\/electron\/dist/);
+assert.match(packageJSON.scripts["dist:mac"], /--config\.electronDist=node_modules\/electron\/dist/);
 // The env assignment rides the cross-shell env-run launcher; the point
 // stays the same — CUA dev mode is opt-in per invocation, never baked
 // into dev.cjs itself (the doesNotMatch below).
