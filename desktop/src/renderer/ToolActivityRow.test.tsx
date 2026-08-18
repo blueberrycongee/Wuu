@@ -7,7 +7,7 @@
  * moment `streaming` flips false (the catch-up signal AssistantTurnShell
  * raises when an agent_message in the same turn starts streaming).
  */
-import { afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { ToolActivityRow } from "./ToolActivity";
@@ -64,6 +64,10 @@ const SUMMARY_TEXT = "查看 foo.ts";
 let container: HTMLDivElement | null = null;
 let root: Root | null = null;
 
+beforeEach(() => {
+  vi.useFakeTimers();
+});
+
 function mount(props: Parameters<typeof ToolActivityRow>[0]): void {
   if (container) unmount();
   container = document.createElement("div");
@@ -102,6 +106,7 @@ function surfaceText(): string {
 
 afterEach(() => {
   unmount();
+  vi.useRealTimers();
 });
 
 describe("ToolActivityRow", () => {
@@ -129,7 +134,7 @@ describe("ToolActivityRow", () => {
     expect(surfaceText()).toBe(SUMMARY_TEXT);
   });
 
-  it("renders summary text progressively when it grows during streaming", async () => {
+  it("renders summary text progressively when it grows during streaming", () => {
     mount({ items: [fakeInFlightReadFileTool()], streaming: true });
     expect(surfaceText()).toBe("查看");
 
@@ -138,29 +143,29 @@ describe("ToolActivityRow", () => {
     // Mid-reveal: visible is partial (strictly less than full text).
     // The LightweightStreamingText pace is ~12 cps with a 100 ms base,
     // so 200 ms in we should be partway through.
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 200));
+    act(() => {
+      vi.advanceTimersByTime(200);
     });
     const mid = surfaceText();
     expect(mid.length).toBeGreaterThan(0);
     expect(mid.length).toBeLessThan(SUMMARY_TEXT.length);
     expect(SUMMARY_TEXT.startsWith(mid)).toBe(true);
 
-    // After enough wall time the reveal settles. The full string is
+    // After enough virtual time the reveal settles. The full string is
     // 7 chars, well within the 1800 ms ceiling.
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 2000));
+    act(() => {
+      vi.advanceTimersByTime(2000);
     });
     expect(surfaceText()).toBe(SUMMARY_TEXT);
   });
 
-  it("snaps to full text when streaming flips to false mid-reveal (catch-up)", async () => {
+  it("snaps to full text when streaming flips to false mid-reveal (catch-up)", () => {
     mount({ items: [fakeInFlightReadFileTool()], streaming: true });
     rerender({ items: [fakeReadFileTool()], streaming: true });
 
     // Let the reveal advance partway.
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 200));
+    act(() => {
+      vi.advanceTimersByTime(200);
     });
     const mid = surfaceText();
     expect(mid.length).toBeGreaterThan(0);

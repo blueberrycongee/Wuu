@@ -17,12 +17,16 @@
  */
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TurnSource } from "./ToolActivityHelpers";
 import { TurnSourcesRow } from "./TurnSourcesRow";
 import { hoverTooltipText, unhoverTooltip } from "./tooltipTestUtils";
 
 let mountedRoots: Root[] = [];
+
+beforeEach(() => {
+  vi.useFakeTimers();
+});
 
 afterEach(() => {
   unhoverTooltip();
@@ -31,6 +35,7 @@ afterEach(() => {
   }
   mountedRoots = [];
   vi.restoreAllMocks();
+  vi.useRealTimers();
   // Don't leak the stubbed `window.wuu` across cases — the test that
   // needs it re-creates it explicitly so we know when it's set.
   delete (window as { wuu?: unknown }).wuu;

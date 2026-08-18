@@ -6,7 +6,7 @@
  */
 import { act, type ReactElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { ContextCompactionNotice, TurnNotice } from "./TurnNotice";
 import { userFacingErrorForMessage } from "./UserFacingErrors";
 import { setActiveLocale } from "./i18n";
@@ -35,6 +35,10 @@ beforeAll(() => {
 let root: Root | null = null;
 let container: HTMLDivElement | null = null;
 
+beforeEach(() => {
+  vi.useFakeTimers();
+});
+
 afterEach(() => {
   setActiveLocale("zh-CN");
   unhoverTooltip();
@@ -48,6 +52,7 @@ afterEach(() => {
     container.remove();
     container = null;
   }
+  vi.useRealTimers();
 });
 
 function mount(element: ReactElement): HTMLDivElement {

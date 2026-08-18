@@ -1,5 +1,5 @@
 .PHONY: setup dev docs-dev check repository-check repository-metadata-check version-check eval-check theme-contract-check generate-theme-contract theme-surface-matrix-check generate-theme-surface-matrix check-go check-desktop check-clients check-docs test test-go \
-	test-desktop test-clients test-native build build-go build-desktop \
+	test-go-uncached test-desktop test-clients test-native build build-go build-desktop \
 	build-clients build-docs build-macos ci install vet clean release-check \
 	print-version tag-release version-check release-prepare
 
@@ -72,6 +72,9 @@ check-docs:
 test: test-go test-desktop test-clients
 
 test-go:
+	go test $(GO_PACKAGES)
+
+test-go-uncached:
 	go test $(GO_PACKAGES) -count=1
 
 test-desktop:
@@ -112,7 +115,7 @@ vet:
 clean:
 	rm -rf bin/ dist/
 
-release-check: version-check check-go test-go test-desktop test-native
+release-check: version-check check-go test-go-uncached test-desktop test-native
 
 version-check:
 	node scripts/release-version.mjs check

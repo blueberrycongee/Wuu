@@ -7,7 +7,7 @@
  * base), never resets when the target grows, and snaps on non-live,
  * shrink, and unmount paths.
  */
-import { afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { LightweightStreamingText } from "./LightweightStreamingText";
@@ -34,6 +34,10 @@ beforeAll(() => {
 
 let container: HTMLDivElement | null = null;
 let root: Root | null = null;
+
+beforeEach(() => {
+  vi.useFakeTimers();
+});
 
 function mount(props: Parameters<typeof LightweightStreamingText>[0]): void {
   if (container) unmount();
@@ -71,7 +75,14 @@ function surfaceText(): string {
 
 afterEach(() => {
   unmount();
+  vi.useRealTimers();
 });
+
+function advanceReveal(ms: number): void {
+  act(() => {
+    vi.advanceTimersByTime(ms);
+  });
+}
 
 describe("LightweightStreamingText", () => {
   it("renders short text in full immediately (no animation)", () => {
@@ -103,7 +114,7 @@ describe("LightweightStreamingText", () => {
     expect(surfaceText()).toBe("Looking at the file");
   });
 
-  it("continues reveal when target text grows (never resets visible position)", async () => {
+  it("continues reveal when target text grows (never resets visible position)", () => {
     mount({
       text: "",
       live: true,
@@ -119,9 +130,7 @@ describe("LightweightStreamingText", () => {
     // base needs a settle wait comfortably past the base window;
     // 300 ms lands the reveal around 6 chars, which is clearly
     // partial and well above zero.
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 300));
-    });
+    advanceReveal(300);
     const before = surfaceText();
     expect(before.length).toBeGreaterThan(0);
     expect(before.length).toBeLessThan("Reading file".length);
@@ -137,28 +146,20 @@ describe("LightweightStreamingText", () => {
     const justAfter = surfaceText();
     expect(justAfter.length).toBeGreaterThanOrEqual(before.length);
 
-    // Eventually the full new text is revealed. 32 chars at ~12 cps
-    // with a 100 ms base lands under 3000 ms, so 3000 ms is a safe
-    // settle wait that is robust to CI jitter.
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 3000));
-    });
+    // Advance past the duration cap to finish the new target deterministically.
+    advanceReveal(3000);
     expect(surfaceText()).toBe("Reading file content for analysis");
   });
 
-  it("snaps to a shorter snapshot when the back-end shrinks the text", async () => {
+  it("snaps to a shorter snapshot when the back-end shrinks the text", () => {
     mount({
       text: "Reading file content for analysis",
       live: true,
       className: "lightweight-stream",
     });
 
-    // 35 chars at ~12 cps with a 100 ms base lands under 3000 ms,
-    // so 3000 ms is enough for the reveal to settle before the
-    // back-end pushes the shorter snapshot.
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 3000));
-    });
+    // Finish the reveal before the back-end pushes the shorter snapshot.
+    advanceReveal(3000);
     expect(surfaceText()).toBe("Reading file content for analysis");
 
     rerender({
@@ -169,7 +170,7 @@ describe("LightweightStreamingText", () => {
     expect(surfaceText()).toBe("Reading file");
   });
 
-  it("snaps to full text when live flips false mid-reveal", async () => {
+  it("snaps to full text when live flips false mid-reveal", () => {
     mount({
       text: "",
       live: true,
@@ -181,9 +182,7 @@ describe("LightweightStreamingText", () => {
       className: "lightweight-stream",
     });
 
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 100));
-    });
+    advanceReveal(100);
     const mid = surfaceText();
     expect(mid.length).toBeGreaterThan(0);
     expect(mid.length).toBeLessThan(
@@ -200,7 +199,7 @@ describe("LightweightStreamingText", () => {
     );
   });
 
-  it("respects the duration cap for very long text", async () => {
+  it("respects the duration cap for very long text", () => {
     const longText = "a".repeat(500);
     mount({
       text: "",
@@ -215,13 +214,11 @@ describe("LightweightStreamingText", () => {
 
     // 500 chars would naively take 100 + 500*80 = 40100 ms. The cap is
     // 1800 ms, so 2000 ms is enough for the reveal to settle.
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-    });
+    advanceReveal(2000);
     expect(surfaceText()).toBe(longText);
   });
 
-  it("does not leave a running RAF after unmount", async () => {
+  it("does not leave a running RAF after unmount", () => {
     mount({
       text: "",
       live: true,
@@ -236,9 +233,7 @@ describe("LightweightStreamingText", () => {
     // a null ref, but the bigger concern is a leaked loop: we assert
     // unmount completes cleanly with no errors and no further DOM
     // mutations.
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 100));
-    });
+    advanceReveal(100);
     unmount();
     expect(document.querySelector(".lightweight-stream")).toBeNull();
   });

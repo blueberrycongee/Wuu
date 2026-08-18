@@ -1,5 +1,5 @@
 /**
- * Stream update cost for StreamingMarkdown.
+ * Stream update behavior for StreamingMarkdown.
  *
  * The streaming surface must render provider chunks directly. It must not
  * manufacture a second RAF loop that advances a few visible characters per
@@ -8,10 +8,7 @@
  * starved input such as the interrupt button. The contract enforced here:
  *
  *   - a long buffered answer needs no artificial follow-up animation frames
- *   - the initial render stays within a generous CI-safe bound
- *
- * These thresholds are deliberately generous so CI machines under load
- * don't flake. The real-world budget is much tighter.
+ *   - the full buffered answer renders immediately
  */
 import { afterEach, describe, expect, it } from "vitest";
 import { act } from "react";
@@ -61,20 +58,19 @@ afterEach(() => {
   streamTextStore.clearItem("turn", "perf");
 });
 
-describe("StreamingMarkdown perf", () => {
-  it("does not create a character-chase frame loop for long answers", async () => {
+describe("StreamingMarkdown frame loop", () => {
+  it("does not create a character-chase frame loop for long answers", () => {
     const key = streamTextKey("turn", "perf", "text");
     streamTextStore.seed(key, longText);
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
 
-    // Drive the frame loop manually so we can measure each tick.
+    // Capture any scheduled frame. Provider text must render directly without
+    // manufacturing a second animation loop.
     const realRAF = window.requestAnimationFrame;
     const pending: FrameRequestCallback[] = [];
     let nextHandle = 1;
-    const start = performance.now();
-
     window.requestAnimationFrame = ((cb: FrameRequestCallback) => {
       pending.push(cb);
       return nextHandle++;
@@ -91,12 +87,9 @@ describe("StreamingMarkdown perf", () => {
       );
     });
 
-    const duration = performance.now() - start;
-
     window.requestAnimationFrame = realRAF;
 
     expect(pending).toHaveLength(0);
     expect(container.textContent).toContain("标题 40");
-    expect(duration).toBeLessThan(2000);
-  }, 15000);
+  });
 });

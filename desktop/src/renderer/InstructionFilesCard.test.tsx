@@ -9,6 +9,7 @@ let container: HTMLDivElement;
 let root: Root | null = null;
 
 beforeEach(() => {
+  vi.useFakeTimers();
   container = document.createElement("div");
   document.body.appendChild(container);
 });
@@ -21,6 +22,7 @@ afterEach(() => {
   root = null;
   container.remove();
   setActiveLocale("zh-CN");
+  vi.useRealTimers();
 });
 
 function renderCard(entry: InstructionFilesEntry, onDismiss?: (id: string) => void): void {
