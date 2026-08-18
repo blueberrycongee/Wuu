@@ -133,7 +133,7 @@ describe("channel message resizing", () => {
     expect(view).toMatch(/--channel-avatar-size:\s*30px/);
     expect(view).toMatch(/--channel-message-column-gap:\s*10px/);
     expect(stream).toMatch(/padding:\s*12px var\(--channel-horizontal-gutter\)/);
-    expect(stream).toMatch(/--channel-composer-height,[\s\S]*?--conversation-composer-min-height, 100px[\s\S]*?\+ 30px[\s\S]*?\+ 8px/);
+    expect(stream).toMatch(/--channel-composer-height,[\s\S]*?--conversation-composer-min-height, 112px[\s\S]*?\+ 30px[\s\S]*?\+ 8px/);
     expect(composer).toMatch(/padding:\s*0 clamp\(20px, 4vw, 72px\) 24px/);
     expect(roomComposer).toMatch(/width:\s*100%/);
     expect(roomComposer).toMatch(/padding:\s*0 0 24px/);

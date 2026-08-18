@@ -100,7 +100,7 @@ describe("conversation shell message typography tokens", () => {
     );
     expect(body).toMatch(/--conversation-activity-gap:\s*8px;/);
     expect(body).not.toMatch(/--conversation-process-gap\s*:/);
-    expect(body).toMatch(/--conversation-composer-min-height:\s*100px;/);
+    expect(body).toMatch(/--conversation-composer-min-height:\s*112px;/);
   });
 
   it("owns the message-font-size default on :root so the user setting on <html> cascades", () => {

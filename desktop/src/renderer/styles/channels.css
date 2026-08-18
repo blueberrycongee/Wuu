@@ -556,7 +556,7 @@
     calc(
       var(
           --channel-composer-height,
-          calc(var(--conversation-composer-min-height, 100px) + 30px)
+          calc(var(--conversation-composer-min-height, 112px) + 30px)
         ) + 8px
     );
 }
