@@ -430,3 +430,6 @@ workspace.css .workspace-tree-context-menu border --ink-overlay-12
 workspace.css .workspace-tree-context-menu box-shadow --ink-overlay-6
 workspace.css .workspace-tree-context-menu box-shadow --ink-overlay-8
 workspace.css .workspace-tree-context-menu-item:hover, .workspace-tree-context-menu-item:focus-visible background --ink-overlay-4
+wuu-mascot.css .wuu-mascot-fill fill --wuu-mascot-mix-white
+wuu-mascot.css .wuu-mascot-halo stroke --wuu-mascot-mix-white
+wuu-mascot.css .wuu-mascot-petal fill --wuu-mascot-mix-white

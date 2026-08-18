@@ -526,6 +526,11 @@
       "name": "unanchored:workspace.css",
       "synthetic": true,
       "rows": 446
+    },
+    {
+      "name": "unanchored:wuu-mascot.css",
+      "synthetic": true,
+      "rows": 3
     }
   ],
   "tokenSet": [
@@ -2813,6 +2818,9 @@
     {"anchor":"unanchored:workspace.css","state":"hover","file":"workspace.css","selector":".workspace-tool-tab:hover, .workspace-tool-tab:focus-within","prop":"background","variable":"--ink-overlay-4","status":"unbridged","tokens":[]},
     {"anchor":"unanchored:workspace.css","state":"hover","file":"workspace.css","selector":".workspace-tool-tab:hover, .workspace-tool-tab:focus-within","prop":"color","variable":"--ink","status":"bridged","tokens":["--wuu-color-text"]},
     {"anchor":"unanchored:workspace.css","state":"hover","file":"workspace.css","selector":".workspace-tree-context-menu-item:hover, .workspace-tree-context-menu-item:focus-visible","prop":"background","variable":"--ink-overlay-4","status":"unbridged","tokens":[]},
-    {"anchor":"unanchored:workspace.css","state":"selected","file":"workspace.css","selector":".workspace-terminal-host .xterm-viewport::-webkit-scrollbar-thumb:active","prop":"background-color","variable":"--scrollbar-thumb-active","status":"unbridged","tokens":[]}
+    {"anchor":"unanchored:workspace.css","state":"selected","file":"workspace.css","selector":".workspace-terminal-host .xterm-viewport::-webkit-scrollbar-thumb:active","prop":"background-color","variable":"--scrollbar-thumb-active","status":"unbridged","tokens":[]},
+    {"anchor":"unanchored:wuu-mascot.css","state":"default","file":"wuu-mascot.css","selector":".wuu-mascot-fill","prop":"fill","variable":"--wuu-mascot-mix-white","status":"unbridged","tokens":[]},
+    {"anchor":"unanchored:wuu-mascot.css","state":"default","file":"wuu-mascot.css","selector":".wuu-mascot-halo","prop":"stroke","variable":"--wuu-mascot-mix-white","status":"unbridged","tokens":[]},
+    {"anchor":"unanchored:wuu-mascot.css","state":"default","file":"wuu-mascot.css","selector":".wuu-mascot-petal","prop":"fill","variable":"--wuu-mascot-mix-white","status":"unbridged","tokens":[]}
   ]
 }

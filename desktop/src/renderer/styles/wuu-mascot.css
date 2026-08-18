@@ -1,4 +1,5 @@
 .wuu-mascot-accessory {
+  --wuu-mascot-mix-white: white;
   pointer-events: none;
   transform-box: view-box;
   transform-origin: center;
@@ -14,7 +15,7 @@
 }
 
 .wuu-mascot-fill {
-  fill: color-mix(in oklab, var(--mo-head) 48%, white);
+  fill: color-mix(in oklab, var(--mo-head) 48%, var(--wuu-mascot-mix-white));
   stroke: var(--mo-eye);
   stroke-linecap: round;
   stroke-linejoin: round;
@@ -30,7 +31,7 @@
 }
 
 .wuu-mascot-petal {
-  fill: color-mix(in oklab, var(--mo-head) 42%, white);
+  fill: color-mix(in oklab, var(--mo-head) 42%, var(--wuu-mascot-mix-white));
 }
 
 .wuu-mascot-flower-center {
@@ -39,7 +40,7 @@
 
 .wuu-mascot-halo {
   fill: none;
-  stroke: color-mix(in oklab, var(--mo-head) 42%, white);
+  stroke: color-mix(in oklab, var(--mo-head) 42%, var(--wuu-mascot-mix-white));
   stroke-linecap: round;
   stroke-width: 3.4;
 }

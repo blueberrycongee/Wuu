@@ -33,6 +33,7 @@ const INTENTIONAL_DIRECT_PORTAL_OWNERS = Object.freeze([
   "Modal.tsx",
   "WorkspacePanels.tsx",
   "WorkspacePdfPreview.tsx",
+  "WuuMascot.tsx",
   "plugins/Workbench.tsx",
   "ui/layers/UILayerHost.tsx",
 ]);

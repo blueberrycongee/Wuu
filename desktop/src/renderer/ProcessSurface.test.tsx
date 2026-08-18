@@ -577,12 +577,12 @@ describe("ProcessSurface", () => {
       container.querySelector(".process-surface-summary-line")?.textContent,
     ).toBe("完成 4 项操作后，正在思考");
     const summary = container.querySelector(".process-surface-summary-line");
-    const blobatar = summary?.querySelector<HTMLImageElement>(
-      "img.process-surface-blobatar",
+    const blobatar = summary?.querySelector<SVGSVGElement>(
+      "svg.process-surface-blobatar",
     );
     expect(blobatar).not.toBeNull();
     expect(summary?.firstElementChild).toBe(blobatar);
-    expect(blobatar?.getAttribute("src")).toContain("data:image/svg+xml");
+    expect(blobatar?.tagName.toLowerCase()).toBe("svg");
   });
 
   it("keeps the blobatar off a settled synthesized toolcall row", () => {
@@ -621,7 +621,7 @@ describe("ProcessSurface", () => {
 
     const summary = container.querySelector(".process-surface-summary-line");
     expect(
-      summary?.querySelector("img.process-surface-blobatar"),
+      summary?.querySelector("svg.process-surface-blobatar"),
     ).not.toBeNull();
     expect(summary?.textContent).toBe("正在思考");
   });
