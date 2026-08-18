@@ -834,7 +834,7 @@ func (s *Server) handleExtensionPackageUpdate(req Request) error {
 	if s.rt == nil {
 		return s.writeResponse(req.ID, nil, errors.New("runtime is not initialized"))
 	}
-	releaseMutation, err := s.beginPluginGenerationMutation("change")
+	releaseMutation, err := s.beginPluginGenerationMutation("change", pluginGenerationMutationActivation)
 	if err != nil {
 		return s.writeResponse(req.ID, nil, err)
 	}
@@ -935,7 +935,7 @@ func (s *Server) handleExtensionCatalogRefresh(req Request) error {
 	if s.rt == nil {
 		return s.writeResponse(req.ID, nil, errors.New("runtime is not initialized"))
 	}
-	releaseMutation, err := s.beginPluginGenerationMutation("refresh")
+	releaseMutation, err := s.beginPluginGenerationMutation("refresh", pluginGenerationMutationActivation)
 	if err != nil {
 		return s.writeResponse(req.ID, nil, err)
 	}

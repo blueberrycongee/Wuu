@@ -179,7 +179,7 @@ func (s *Server) handlePluginPackageInstall(req Request) error {
 	if err := decodeParams(req.Params, &params); err != nil {
 		return s.writeResponse(req.ID, nil, err)
 	}
-	releaseMutation, err := s.beginPluginGenerationMutation("install")
+	releaseMutation, err := s.beginPluginGenerationMutation("install", pluginGenerationMutationCatalog)
 	if err != nil {
 		return s.writeResponse(req.ID, nil, err)
 	}
@@ -210,7 +210,7 @@ func (s *Server) handlePluginPackageInstall(req Request) error {
 	if err != nil {
 		return s.writeResponse(req.ID, nil, fmt.Errorf("install plugin package: %w", err))
 	}
-	inventory, skills, err := s.refreshPluginPackages()
+	inventory, skills, err := s.refreshPluginCatalog()
 	if err != nil {
 		return s.writeResponse(req.ID, nil, fmt.Errorf("plugin %q was installed, but extension refresh failed: %w", installed.Package.ID, err))
 	}
@@ -228,7 +228,7 @@ func (s *Server) handlePluginPackageRemove(req Request) error {
 	if err := decodeParams(req.Params, &params); err != nil {
 		return s.writeResponse(req.ID, nil, err)
 	}
-	releaseMutation, err := s.beginPluginGenerationMutation("remove")
+	releaseMutation, err := s.beginPluginGenerationMutation("remove", pluginGenerationMutationActivation)
 	if err != nil {
 		return s.writeResponse(req.ID, nil, err)
 	}
@@ -433,7 +433,18 @@ func cloneExtensionSettings(current *extensions.Settings) extensions.Settings {
 	return clone
 }
 
-func (s *Server) beginPluginGenerationMutation(action string) (func(), error) {
+// pluginGenerationMutationKind distinguishes catalog-only changes (install,
+// stage, validate) from changes that swap the live generation (grant,
+// enable, disable, remove). Catalog changes never touch active bindings, so
+// they must not be rejected while threads are busy.
+type pluginGenerationMutationKind int
+
+const (
+	pluginGenerationMutationCatalog pluginGenerationMutationKind = iota
+	pluginGenerationMutationActivation
+)
+
+func (s *Server) beginPluginGenerationMutation(action string, kind pluginGenerationMutationKind) (func(), error) {
 	if s == nil || s.rt == nil {
 		return func() {}, errors.New("runtime is not initialized")
 	}
@@ -445,23 +456,25 @@ func (s *Server) beginPluginGenerationMutation(action string) (func(), error) {
 	}
 	releaseAdmission := func() { s.pluginGenerationMutation.Store(false) }
 
-	s.mu.Lock()
-	threads := make([]*threadState, 0, len(s.threads))
-	for _, th := range s.threads {
-		threads = append(threads, th)
-	}
-	s.mu.Unlock()
-	for _, th := range threads {
-		if th == nil {
-			continue
+	if kind == pluginGenerationMutationActivation {
+		s.mu.Lock()
+		threads := make([]*threadState, 0, len(s.threads))
+		for _, th := range s.threads {
+			threads = append(threads, th)
 		}
-		th.mu.Lock()
-		busy := th.running || th.executionLease != nil || th.admissionReserved || th.runtimeSelectionMutation ||
-			(th.execRuntime != nil && threadRuntimeHasOutstandingWork(th.ID, th.execRuntime))
-		th.mu.Unlock()
-		if busy {
-			releaseAdmission()
-			return func() {}, fmt.Errorf("cannot %s plugin packages while a turn is running or background work remains on thread %q", action, th.ID)
+		s.mu.Unlock()
+		for _, th := range threads {
+			if th == nil {
+				continue
+			}
+			th.mu.Lock()
+			busy := th.running || th.executionLease != nil || th.admissionReserved || th.runtimeSelectionMutation ||
+				(th.execRuntime != nil && threadRuntimeHasOutstandingWork(th.ID, th.execRuntime))
+			th.mu.Unlock()
+			if busy {
+				releaseAdmission()
+				return func() {}, fmt.Errorf("cannot %s plugin packages while a turn is running or background work remains on thread %q", action, th.ID)
+			}
 		}
 	}
 
@@ -474,6 +487,35 @@ func (s *Server) beginPluginGenerationMutation(action string) (func(), error) {
 		s.pluginGenerationRefreshMu.Unlock()
 		releaseAdmission()
 	}
+
+	// Catalog-only mutations use a lease that is compatible with in-flight
+	// executions: installing a package must not block turns. The epoch is
+	// advanced on release, after the caller's disk work, so peers only
+	// revalidate complete state.
+	if kind == pluginGenerationMutationCatalog {
+		catalogLease, acquired, err := session.TryAcquirePluginCatalogMutationLease(s.rt.WuuHome)
+		if err != nil {
+			releaseLocal()
+			return func() {}, fmt.Errorf("acquire plugin catalog mutation lease: %w", err)
+		}
+		if !acquired {
+			releaseLocal()
+			return func() {}, fmt.Errorf("cannot %s plugin packages while another app-server is changing the plugin catalog", action)
+		}
+		return func() {
+			epoch, advanceErr := catalogLease.Advance()
+			if advanceErr != nil {
+				providers.DebugLogf("advance plugin catalog generation: %v", advanceErr)
+			} else {
+				s.pluginGenerationEpoch.Store(epoch)
+			}
+			if err := catalogLease.Release(); err != nil {
+				providers.DebugLogf("release plugin catalog mutation lease: %v", err)
+			}
+			releaseLocal()
+		}, nil
+	}
+
 	lease, acquired, err := session.TryAcquirePluginGenerationMutationLease(s.rt.WuuHome)
 	if err != nil {
 		releaseLocal()
@@ -507,6 +549,17 @@ func (s *Server) refreshPluginPackages() ([]ExtensionInventoryRecord, []SkillSum
 	}
 	s.schedulePluginTurnLifecycleReplay()
 	s.resetThreadRuntimesForGeneralSettings("")
+	return s.currentExtensionInventory(), skillSummaries(s.rt.Skills), nil
+}
+
+// refreshPluginCatalog updates the installed-package inventory without
+// touching the active plugin generation, thread runtimes, or any in-flight
+// turn. Installation and staging are catalog-only until the user grants or
+// enables a package.
+func (s *Server) refreshPluginCatalog() ([]ExtensionInventoryRecord, []SkillSummary, error) {
+	if err := s.rt.RefreshPluginCatalog(); err != nil {
+		return nil, nil, err
+	}
 	return s.currentExtensionInventory(), skillSummaries(s.rt.Skills), nil
 }
 

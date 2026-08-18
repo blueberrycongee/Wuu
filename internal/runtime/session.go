@@ -1919,6 +1919,22 @@ func (s *Session) RefreshExtensions(cfg config.Config) error {
 	return s.ActivatePluginGeneration(candidate, nil)
 }
 
+// RefreshPluginCatalog updates the installed-package inventory only. It never
+// rebuilds or swaps the active plugin generation, so installation and
+// validation can proceed while Sessions and Turns are running. Newly
+// installed packages become eligible for later compositions but add no
+// model-facing surfaces to the current one.
+func (s *Session) RefreshPluginCatalog() error {
+	if s == nil {
+		return errors.New("runtime is not initialized")
+	}
+	discovered := discoverPlugins(s.RootDir, s.WuuHome)
+	s.pluginGenerationMu.Lock()
+	defer s.pluginGenerationMu.Unlock()
+	s.Plugins = discovered
+	return nil
+}
+
 func discoverSkills(rootDir, homeDir, wuuHome string, plugins []pluginpkg.Plugin) []skills.Skill {
 	var projectDirs []skills.SourceDir
 	var userDirs []skills.SourceDir

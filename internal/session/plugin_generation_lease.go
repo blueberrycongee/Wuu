@@ -14,6 +14,7 @@ import (
 )
 
 const pluginGenerationLeaseFile = ".plugin-generation.lock"
+const pluginCatalogMutationLeaseFile = ".plugin-catalog.lock"
 
 // PluginGenerationLease coordinates plugin execution and mutation across every
 // app-server that shares a Wuu home. Executions hold shared leases; package or
@@ -105,16 +106,34 @@ func (l *PluginGenerationLease) Advance() (uint64, error) {
 	if l.file == nil || !l.exclusive {
 		return 0, errors.New("exclusive plugin generation lease is required")
 	}
-	l.epoch++
-	var encoded [8]byte
-	binary.BigEndian.PutUint64(encoded[:], l.epoch)
-	if _, err := l.file.WriteAt(encoded[:], 0); err != nil {
-		return 0, fmt.Errorf("write plugin generation epoch: %w", err)
+	return l.advanceEpochLocked()
+}
+
+// advanceEpochLocked increments and persists the epoch without requiring the
+// exclusive lock. Writers must serialize themselves (catalog mutations use
+// the dedicated catalog lock) and hold the shared generation lock to exclude
+// concurrent activations.
+func (l *PluginGenerationLease) advanceEpochLocked() (uint64, error) {
+	if l == nil || l.file == nil {
+		return 0, errors.New("plugin generation lease is not held")
 	}
-	if err := l.file.Sync(); err != nil {
-		return 0, fmt.Errorf("sync plugin generation epoch: %w", err)
+	l.epoch++
+	if err := writePluginGenerationEpoch(l.file, l.epoch); err != nil {
+		return 0, err
 	}
 	return l.epoch, nil
+}
+
+func writePluginGenerationEpoch(file *os.File, epoch uint64) error {
+	var encoded [8]byte
+	binary.BigEndian.PutUint64(encoded[:], epoch)
+	if _, err := file.WriteAt(encoded[:], 0); err != nil {
+		return fmt.Errorf("write plugin generation epoch: %w", err)
+	}
+	if err := file.Sync(); err != nil {
+		return fmt.Errorf("sync plugin generation epoch: %w", err)
+	}
+	return nil
 }
 
 func (l *PluginGenerationLease) Release() error {
@@ -144,4 +163,85 @@ func readPluginGenerationEpoch(file *os.File) (uint64, error) {
 		return 0, errors.New("plugin generation epoch is corrupt")
 	}
 	return binary.BigEndian.Uint64(encoded[:]), nil
+}
+
+// PluginCatalogMutationLease coordinates catalog-only package changes across
+// app-servers sharing one Wuu home: compatible with in-flight executions
+// (turns keep running), mutually exclusive with generation activations and
+// with other catalog mutations. The epoch advances only after the caller's
+// disk work completes, so peers revalidate complete state.
+type PluginCatalogMutationLease struct {
+	mu         sync.Mutex
+	generation *PluginGenerationLease
+	catalog    *os.File
+}
+
+func TryAcquirePluginCatalogMutationLease(wuuHome string) (*PluginCatalogMutationLease, bool, error) {
+	wuuHome = strings.TrimSpace(wuuHome)
+	if wuuHome == "" {
+		return nil, false, errors.New("Wuu home is required")
+	}
+	if err := securefs.Mkdir(wuuHome); err != nil {
+		return nil, false, fmt.Errorf("create Wuu home for plugin catalog lease: %w", err)
+	}
+	generation, acquired, err := tryAcquirePluginGenerationLease(wuuHome, false)
+	if err != nil {
+		return nil, false, err
+	}
+	if !acquired {
+		return nil, false, nil
+	}
+	catalog, err := securefs.OpenFile(filepath.Join(wuuHome, pluginCatalogMutationLeaseFile), os.O_CREATE|os.O_RDWR, securefs.FileMode)
+	if err != nil {
+		_ = generation.Release()
+		return nil, false, fmt.Errorf("open plugin catalog mutation lease: %w", err)
+	}
+	locked, err := tryLockPluginGenerationFile(catalog, true)
+	if err != nil {
+		_ = catalog.Close()
+		_ = generation.Release()
+		return nil, false, fmt.Errorf("lock plugin catalog mutation lease: %w", err)
+	}
+	if !locked {
+		_ = catalog.Close()
+		_ = generation.Release()
+		return nil, false, nil
+	}
+	return &PluginCatalogMutationLease{generation: generation, catalog: catalog}, true, nil
+}
+
+func (l *PluginCatalogMutationLease) Epoch() uint64 {
+	if l == nil || l.generation == nil {
+		return 0
+	}
+	return l.generation.Epoch()
+}
+
+// Advance persists the next mutation epoch. Callers must advance after their
+// disk changes are complete and while the lease is still held.
+func (l *PluginCatalogMutationLease) Advance() (uint64, error) {
+	if l == nil || l.generation == nil {
+		return 0, errors.New("plugin catalog mutation lease is required")
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.generation.advanceEpochLocked()
+}
+
+func (l *PluginCatalogMutationLease) Release() error {
+	if l == nil {
+		return nil
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	var err error
+	if l.catalog != nil {
+		err = errors.Join(err, unlockPluginGenerationFile(l.catalog), l.catalog.Close())
+		l.catalog = nil
+	}
+	if l.generation != nil {
+		err = errors.Join(err, l.generation.Release())
+		l.generation = nil
+	}
+	return err
 }

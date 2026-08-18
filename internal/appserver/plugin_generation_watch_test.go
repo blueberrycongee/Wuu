@@ -88,7 +88,7 @@ func TestPluginGenerationMutationWaitsForSameServerRefresh(t *testing.T) {
 	}
 	mutationDone := make(chan mutationResult, 1)
 	go func() {
-		release, err := srv.beginPluginGenerationMutation("change")
+		release, err := srv.beginPluginGenerationMutation("change", pluginGenerationMutationActivation)
 		mutationDone <- mutationResult{release: release, err: err}
 	}()
 	waitPluginGenerationWatchTest(t, srv.pluginGenerationMutation.Load)

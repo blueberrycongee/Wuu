@@ -393,7 +393,7 @@ func TestPluginGenerationMutationExcludesActiveAndNewThreadWork(t *testing.T) {
 	active := &threadState{ID: "active", admissionReserved: true}
 	srv := &Server{rt: rt, threads: map[string]*threadState{"active": active}}
 
-	if _, err := srv.beginPluginGenerationMutation("change"); err == nil {
+	if _, err := srv.beginPluginGenerationMutation("change", pluginGenerationMutationActivation); err == nil {
 		t.Fatal("mutation unexpectedly admitted while a thread reservation was active")
 	}
 	if srv.pluginGenerationMutation.Load() {
@@ -401,7 +401,7 @@ func TestPluginGenerationMutationExcludesActiveAndNewThreadWork(t *testing.T) {
 	}
 
 	active.admissionReserved = false
-	release, err := srv.beginPluginGenerationMutation("change")
+	release, err := srv.beginPluginGenerationMutation("change", pluginGenerationMutationActivation)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -447,7 +447,7 @@ func TestPluginGenerationMutationIsBlockedByAnotherAppServerExecution(t *testing
 	thread.running = true
 	thread.releaseThreadExecutionLeaseLocked()
 	thread.mu.Unlock()
-	if _, err := mutatingServer.beginPluginGenerationMutation("change"); err == nil {
+	if _, err := mutatingServer.beginPluginGenerationMutation("change", pluginGenerationMutationActivation); err == nil {
 		t.Fatal("mutation unexpectedly crossed another app-server's active turn generation")
 	}
 
@@ -455,7 +455,7 @@ func TestPluginGenerationMutationIsBlockedByAnotherAppServerExecution(t *testing
 	thread.running = false
 	thread.maybeReleasePluginGenerationExecutionLeaseLocked()
 	thread.mu.Unlock()
-	release, err := mutatingServer.beginPluginGenerationMutation("change")
+	release, err := mutatingServer.beginPluginGenerationMutation("change", pluginGenerationMutationActivation)
 	if err != nil {
 		t.Fatalf("mutation remained blocked after execution release: %v", err)
 	}
@@ -657,7 +657,7 @@ func TestPluginPackageHandlersRejectInvalidPathAndID(t *testing.T) {
 	}
 }
 
-func TestPluginPackageMutationsRejectRunningTurn(t *testing.T) {
+func TestPluginPackageActivationMutationsRejectRunningTurn(t *testing.T) {
 	rt := newTestRuntime(t, &fakeClient{})
 	rt.WuuHome = retryingTempDir(t)
 	source := t.TempDir()
@@ -669,17 +669,21 @@ func TestPluginPackageMutationsRejectRunningTurn(t *testing.T) {
 	srv.threads[thread.ID] = thread
 	srv.mu.Unlock()
 
+	// Installation is catalog-only and must proceed while a turn runs.
 	callPluginPackageRPC(t, srv, "install-busy", MethodPluginPackageInstall, PluginPackageInstallParams{Path: source})
+	// Activation-class mutations swap the live generation and must wait.
 	callPluginPackageRPC(t, srv, "remove-busy", MethodPluginPackageRemove, PluginPackageRemoveParams{ID: "busy-demo"})
 	messages := parseOutput(t, out.String())
-	for _, id := range []string{"install-busy", "remove-busy"} {
-		message := responseErrorMessage(t, responseByID(t, messages, id))
-		if !strings.Contains(message, "while a turn is running") {
-			t.Fatalf("%s error = %q", id, message)
-		}
+	install := responseByID(t, messages, "install-busy")
+	if _, hasError := install["error"]; hasError {
+		t.Fatalf("install error = %v", install["error"])
 	}
-	if _, err := os.Stat(filepath.Join(rt.WuuHome, "plugins", "busy-demo")); !os.IsNotExist(err) {
-		t.Fatalf("running-turn rejection mutated package: %v", err)
+	message := responseErrorMessage(t, responseByID(t, messages, "remove-busy"))
+	if !strings.Contains(message, "while a turn is running") {
+		t.Fatalf("remove error = %q", message)
+	}
+	if _, err := os.Stat(filepath.Join(rt.WuuHome, "plugins", "busy-demo")); err != nil {
+		t.Fatalf("running-turn install did not write the package: %v", err)
 	}
 }
 
