@@ -30,7 +30,7 @@ import {
   formatDuration,
   useLiveNow,
 } from "./TurnProgress";
-import { ProcessSurface } from "./ProcessSurface";
+import { ProcessSurface, ProcessSurfaceMascot } from "./ProcessSurface";
 import { turnProgressContent } from "./TurnViewHelpers";
 import { collectTurnSources } from "./ToolActivityHelpers";
 import { TurnSourcesRow } from "./TurnSourcesRow";
@@ -674,6 +674,7 @@ function ReasoningFold({
       onToggle={handleToggle}
     >
       <summary className="turn-reasoning-summary">
+        <ProcessSurfaceMascot active={Boolean(activeGray)} />
         <span ref={waveRef} className={textClass} data-text={reasoningWaveText}>
           <AnimatedProcessText
             className="turn-reasoning-summary-label"

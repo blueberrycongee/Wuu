@@ -2291,21 +2291,31 @@
   white-space: nowrap;
 }
 
-.process-surface-summary-line .process-surface-blobatar {
+.process-surface-summary-line .process-surface-blobatar,
+.turn-reasoning-summary > .process-surface-blobatar {
   flex: 0 0 auto;
   width: 28px;
   height: 28px;
   align-self: center;
-  margin-right: 8px;
   border-radius: 50%;
   transform-origin: center;
 }
 
-.process-surface-summary-line .process-surface-blobatar.is-entering {
+.process-surface-summary-line .process-surface-blobatar {
+  margin-right: 8px;
+}
+
+/* The standalone reasoning fold uses a 6px flex gap; another 2px preserves
+ * the same 8px mascot-to-label spacing as the unified process row. */
+.turn-reasoning-summary > .process-surface-blobatar {
+  margin-right: 2px;
+}
+
+.process-surface-blobatar.is-entering {
   animation: process-surface-blobatar-enter var(--motion-base) var(--ease-bounce) both;
 }
 
-.process-surface-summary-line .process-surface-blobatar.is-exiting {
+.process-surface-blobatar.is-exiting {
   pointer-events: none;
   animation: process-surface-blobatar-exit var(--motion-fast) var(--ease-in) both;
 }
