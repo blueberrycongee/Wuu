@@ -100,7 +100,7 @@
   grid-column: 1;
   /* Match the non-popped-out titlebar height (48px when session-tabs-visible)
    * so the title text vertically centers with the macOS traffic lights at
-   * trafficLightPosition (18, 16). The default 56px row pushes the text 6px
+   * trafficLightPosition (18, 15). The default 56px row pushes the text 6px
    * below the lights. */
   grid-template-rows: 48px minmax(0, 1fr);
 }
@@ -199,7 +199,7 @@
 
 /* In globalized mode the right panel fills column 1 starting at x=0; reserve
  * room on the left of its tabbar so the macOS traffic lights
- * (trafficLightPosition 18, 16) don't sit on top of the tabs. Mirrors the
+ * (trafficLightPosition 18, 15) don't sit on top of the tabs. Mirrors the
  * popped-out titlebar reservation. The main titlebar (which normally
  * provides the window drag region) lives inside the now-hidden
  * conversation-pane, so the tabbar itself takes over as the drag handle.

@@ -717,7 +717,7 @@ function windowFrameOptions(): Pick<
   if (process.platform === "darwin") {
     return {
       titleBarStyle: "hiddenInset",
-      trafficLightPosition: { x: 18, y: 16 },
+      trafficLightPosition: { x: 18, y: 15 },
     };
   }
   if (process.platform === "win32") {
