@@ -3133,11 +3133,13 @@ document.querySelectorAll('.copy-btn').forEach(btn=>{
   /* ---- hero：滚动淡出 ---- */
   const heroSec = document.getElementById('hero');
   const heroStage = heroSec ? heroSec.querySelector('.stage') : null;
+  const heroWindow = heroSec ? heroSec.querySelector('.hero-window-wrap') : null;
   const heroGrid = heroSec ? heroSec.querySelector('.bg-grid') : null;
-  if(heroStage) FX.push(()=>{
-    const vh = innerHeight, r = heroSec.getBoundingClientRect();
-    if(r.top >= 0) return;
-    const p = clampN(-r.top/(vh*.72), 0, 1);
+  if(heroStage && heroWindow) FX.push(()=>{
+    const vh = innerHeight, r = heroWindow.getBoundingClientRect();
+    /* 产品窗口还完整留在视口里时保持清晰；只有上沿真正离开视口后才开始退场。 */
+    const fadeDistance = Math.max(1,Math.min(vh*.55,r.height*.6));
+    const p = clampN(-r.top/fadeDistance, 0, 1);
     heroStage.style.opacity = (1-p).toFixed(3);
     heroStage.style.transform = p ? `translate3d(0,${(-p*56).toFixed(1)}px,0)` : '';
     if(heroGrid) heroGrid.style.opacity = (.7*(1-p)).toFixed(3);
