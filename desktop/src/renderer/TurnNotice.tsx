@@ -4,6 +4,7 @@ import type { TurnEventDisplay } from "./TurnEvents";
 import type { UserFacingErrorDisplay, UserFacingErrorTone } from "./UserFacingErrors";
 import { translateCurrent as t } from "./i18n";
 import { ProcessSurfaceFold } from "./ProcessSurfaceFold";
+import { ProcessSurfaceMascot } from "./ProcessSurface";
 import { useLiveTextWave } from "./LiveTextWave";
 import { Tooltip } from "./Tooltip";
 
@@ -146,22 +147,27 @@ export function ContextCompactionNotice({
       <ProcessSurfaceFold
         summary={
           <span
-            ref={waveRef}
-            className={`process-surface-summary-line${inProgress ? " wuu-live-text-wave" : ""}`}
+            className="process-surface-summary-line"
             aria-label={description}
-            data-text={title}
           >
-            <span className="process-surface-segment context-compaction-title">
-              {title}
+            <ProcessSurfaceMascot active={inProgress} />
+            <span
+              ref={waveRef}
+              className={`process-surface-summary-text${inProgress ? " wuu-live-text-wave" : ""}`}
+              data-text={title}
+            >
+              <span className="process-surface-segment context-compaction-title">
+                {title}
+              </span>
+              {detail ? (
+                <>
+                  <span className="process-surface-separator">·</span>
+                  <span className="process-surface-segment context-compaction-detail">
+                    {detail}
+                  </span>
+                </>
+              ) : null}
             </span>
-            {detail ? (
-              <>
-                <span className="process-surface-separator">·</span>
-                <span className="process-surface-segment context-compaction-detail">
-                  {detail}
-                </span>
-              </>
-            ) : null}
           </span>
         }
         disabled={!hasSummary}

@@ -43,6 +43,41 @@ const REASONING_FOLD_OPEN_SNAP_DELAY_MS = 280;
 const PROCESS_BLOBATAR_NAME = "wuu";
 const PROCESS_BLOBATAR_EXIT_FALLBACK_MS = 180;
 
+export function ProcessSurfaceMascot({ active }: { active: boolean }): JSX.Element | null {
+  const [keepMounted, setKeepMounted] = useState(active);
+
+  useEffect(() => {
+    if (active) {
+      setKeepMounted(true);
+      return undefined;
+    }
+    if (!keepMounted) return undefined;
+
+    const timeoutID = window.setTimeout(
+      () => setKeepMounted(false),
+      PROCESS_BLOBATAR_EXIT_FALLBACK_MS,
+    );
+    return () => window.clearTimeout(timeoutID);
+  }, [active, keepMounted]);
+
+  if (!active && !keepMounted) return null;
+
+  return (
+    <Blobatar
+      className={`process-surface-blobatar ${active ? "is-entering" : "is-exiting"}`}
+      name={PROCESS_BLOBATAR_NAME}
+      hue={AVATAR_HUES[avatarHueIndex(PROCESS_BLOBATAR_NAME)]}
+      background={false}
+      traits={{ shape: 0.2, "body.ratio": 0.5 }}
+      size={28}
+      alt=""
+      onAnimationEnd={() => {
+        if (!active) setKeepMounted(false);
+      }}
+    />
+  );
+}
+
 /**
  * Unified render surface for the process region of a single turn.
  *
@@ -184,24 +219,6 @@ export function ProcessSurface({
   // even once the process row stops sweeping.
   const showThinkingToken = Boolean(turnID) && hasReasoning;
   const summaryWaveRef = useLiveTextWave<HTMLSpanElement>(processEntryActive);
-  const [keepBlobatarMounted, setKeepBlobatarMounted] = useState(processEntryActive);
-
-  // The mascot follows the synthesized entry's lifecycle. Keep it mounted
-  // briefly after that entry loses active ownership so its exit can finish;
-  // a later synthesized entry mounts a separate mascot for the next entrance.
-  useEffect(() => {
-    if (processEntryActive) {
-      setKeepBlobatarMounted(true);
-      return undefined;
-    }
-    if (!keepBlobatarMounted) return undefined;
-
-    const timeoutID = window.setTimeout(
-      () => setKeepBlobatarMounted(false),
-      PROCESS_BLOBATAR_EXIT_FALLBACK_MS,
-    );
-    return () => window.clearTimeout(timeoutID);
-  }, [processEntryActive, keepBlobatarMounted]);
 
   // Details are opt-in. The running row itself should stay compact by
   // default; expanding it is a user request to inspect the process trail.
@@ -265,22 +282,7 @@ export function ProcessSurface({
 
   const summaryLine = (
     <span className="process-surface-summary-line" aria-label={summaryText}>
-      {processEntryActive || keepBlobatarMounted ? (
-        <Blobatar
-          className={`process-surface-blobatar ${
-            processEntryActive ? "is-entering" : "is-exiting"
-          }`}
-          name={PROCESS_BLOBATAR_NAME}
-          hue={AVATAR_HUES[avatarHueIndex(PROCESS_BLOBATAR_NAME)]}
-          background={false}
-          traits={{ shape: 0.2, "body.ratio": 0.5 }}
-          size={28}
-          alt=""
-          onAnimationEnd={() => {
-            if (!processEntryActive) setKeepBlobatarMounted(false);
-          }}
-        />
-      ) : null}
+      <ProcessSurfaceMascot active={processEntryActive} />
       <span
         ref={summaryWaveRef}
         className={`process-surface-summary-text${
