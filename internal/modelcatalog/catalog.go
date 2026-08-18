@@ -207,6 +207,7 @@ func EnrichProvider(providerName string, provider config.ProviderConfig, modelID
 	return catalogProvider.ID, applyProviderCompatibilityDefaults(
 		catalogProvider.ID,
 		MergeProvider(provider, catalogProvider, modelIDs...),
+		modelIDs...,
 	)
 }
 
@@ -356,7 +357,7 @@ func nativeProviderTypeForNPM(npm string) string {
 		return "anthropic"
 	case "@ai-sdk/openai":
 		return "openai"
-	case "@ai-sdk/openai-compatible", "@openrouter/ai-sdk-provider":
+	case "@ai-sdk/openai-compatible", "@openrouter/ai-sdk-provider", "@ai-sdk/xai":
 		return "openai-compatible"
 	default:
 		return ""
@@ -635,10 +636,12 @@ func providerIDCandidates(providerName string, provider config.ProviderConfig, i
 		raw = append(raw, provider.Type)
 	}
 	aliases := map[string]string{
-		"anthropic-official": "anthropic",
-		"bedrock":            "amazon-bedrock",
-		"claude":             "anthropic",
-		"gemini":             "google",
+		"anthropic-official":  "anthropic",
+		"bedrock":             "amazon-bedrock",
+		"claude":              "anthropic",
+		"gemini":              "google",
+		"zhipuai":             "zai",
+		"zhipuai-coding-plan": "zai-coding-plan",
 	}
 	var out []string
 	seen := map[string]bool{}
@@ -692,13 +695,19 @@ func isOpenAICompatibleProviderType(providerType string) bool {
 }
 
 func isOfficialEndpointForType(providerType, endpoint string) bool {
+	host := endpointHost(endpoint)
+	path := endpointPath(endpoint)
 	switch providerType {
 	case "openai", "codex":
-		return endpointHost(endpoint) == "api.openai.com"
+		return host == "api.openai.com"
+	case "openai-compatible":
+		return host == "api.z.ai" && path == "/api/v1"
 	case "anthropic", "claude", "anthropic-official":
-		return endpointHost(endpoint) == "api.anthropic.com"
+		return host == "api.anthropic.com" ||
+			(host == "api.deepseek.com" && path == "/anthropic") ||
+			(host == "api.z.ai" && path == "/api/anthropic")
 	case "gemini", "google":
-		return strings.HasSuffix(endpointHost(endpoint), "generativelanguage.googleapis.com")
+		return strings.HasSuffix(host, "generativelanguage.googleapis.com")
 	default:
 		return false
 	}
@@ -772,4 +781,12 @@ func endpointHost(endpoint string) string {
 		return ""
 	}
 	return strings.ToLower(parsed.Host)
+}
+
+func endpointPath(endpoint string) string {
+	parsed, err := url.Parse(endpoint)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimRight(strings.ToLower(parsed.Path), "/")
 }

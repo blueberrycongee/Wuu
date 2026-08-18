@@ -53,6 +53,7 @@ func decodeCatalog(data []byte) (catalogData, error) {
 	if err := json.Unmarshal(data, &decoded); err != nil {
 		return catalogData{}, err
 	}
+	applyOfficialCatalogCorrections(&decoded)
 	counts := countCatalog(decoded)
 	if counts.Providers == 0 || counts.Models == 0 {
 		return catalogData{}, errors.New("model catalog is empty")
@@ -150,7 +151,7 @@ func Refresh(ctx context.Context, options RefreshOptions) (CatalogCounts, error)
 	if len(raw) > maxModelsDevResponseBytes {
 		return CatalogCounts{}, errors.New("models.dev response exceeds size limit")
 	}
-	normalized, counts, err := NormalizeModelsDev(raw)
+	normalized, _, err := NormalizeModelsDev(raw)
 	if err != nil {
 		return CatalogCounts{}, err
 	}
@@ -162,7 +163,7 @@ func Refresh(ctx context.Context, options RefreshOptions) (CatalogCounts, error)
 		return CatalogCounts{}, err
 	}
 	publishCatalog(decoded)
-	return counts, nil
+	return countCatalog(decoded), nil
 }
 
 func writeCatalogAtomically(path string, data []byte) error {

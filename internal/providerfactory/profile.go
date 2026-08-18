@@ -73,7 +73,7 @@ func nativeProviderTypeForNPM(npm string) string {
 		return "anthropic"
 	case "@ai-sdk/openai":
 		return "openai"
-	case "@ai-sdk/openai-compatible", "@openrouter/ai-sdk-provider":
+	case "@ai-sdk/openai-compatible", "@openrouter/ai-sdk-provider", "@ai-sdk/xai":
 		return "openai-compatible"
 	default:
 		return ""

@@ -199,8 +199,8 @@ func TestCatalogSnapshotMatchesOpenCodeDefaultVisibleCounts(t *testing.T) {
 			}
 		}
 	}
-	if modelCount != 5821 {
-		t.Fatalf("model count = %d, want 5821", modelCount)
+	if modelCount != 5824 {
+		t.Fatalf("model count = %d, want 5824", modelCount)
 	}
 }
 

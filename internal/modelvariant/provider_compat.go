@@ -83,10 +83,34 @@ func BaseOptionsForProvider(providerName string, provider config.ProviderConfig,
 		setOptionDefault(result, "chat_template_args", map[string]any{"enable_thinking": true})
 	}
 	if (strings.Contains(desc.ProviderID, "zai") || strings.Contains(desc.ProviderID, "zhipuai")) && desc.APINPM == compatNPMOpenAICompatible {
-		setOptionDefault(result, "thinking", map[string]any{
+		thinking := map[string]any{
 			"type":           "enabled",
 			"clear_thinking": false,
-		})
+		}
+		if isGLM53(desc.APIID) {
+			// GLM-5.3 rejects disabled thinking, including stale explicit
+			// settings left behind by earlier GLM versions.
+			result["thinking"] = thinking
+			setOptionDefault(result, "toolChoiceAutoOnly", true)
+			if !isResponsesWire(provider) {
+				setOptionDefault(result, "tool_stream", true)
+			}
+		} else {
+			setOptionDefault(result, "thinking", thinking)
+		}
+	}
+	if (strings.Contains(desc.ProviderID, "zai") || strings.Contains(desc.ProviderID, "zhipuai")) &&
+		desc.APINPM == compatNPMAnthropic && isGLM53(desc.APIID) {
+		result["thinking"] = map[string]any{"type": "enabled"}
+	}
+	if isDirectXAI(desc) && isGrok46(desc.APIID) && isResponsesWire(provider) {
+		setOptionDefault(result, "store", false)
+		setOptionDefault(result, "include", []any{"reasoning.encrypted_content"})
+		setOptionDefault(result, "maxOutputTokens", 128_000)
+	}
+	if isDirectDeepSeek(desc) && strings.Contains(desc.APIID, "deepseek-v4") && isResponsesWire(provider) {
+		setOptionDefault(result, "omitStore", true)
+		setOptionDefault(result, "omitPromptCacheKey", true)
 	}
 	if desc.APINPM == compatNPMGoogle || desc.APINPM == compatNPMGoogleVertex {
 		if desc.Reasoning {
@@ -204,7 +228,13 @@ func inferredOptionsForProvider(providerName string, provider config.ProviderCon
 			"thinking": {"thinking": map[string]any{"type": "adaptive"}},
 		}
 	}
-	if isGLM52Or53(id) && desc.APINPM == compatNPMOpenAICompatible {
+	if isGLM53(id) && desc.APINPM == compatNPMOpenAICompatible {
+		return compatGLM53Variants()
+	}
+	if isGLM53(id) && desc.APINPM == compatNPMAnthropic {
+		return compatGLM53AnthropicVariants()
+	}
+	if isGLM52(id) && desc.APINPM == compatNPMOpenAICompatible {
 		return compatGLM52Variants()
 	}
 	if compatExcludedReasoningModel(id) {
@@ -224,6 +254,9 @@ func inferredOptionsForProvider(providerName string, provider config.ProviderCon
 			efforts = compatGrokFallbackEfforts(id)
 		}
 		return compatReasoningEffortVariants(efforts)
+	}
+	if strings.Contains(apiID, "deepseek-v4") && desc.APINPM == compatNPMAnthropic {
+		return compatDeepSeekV4AnthropicVariants()
 	}
 
 	switch desc.APINPM {
@@ -264,7 +297,7 @@ func inferredOptionsForProvider(providerName string, provider config.ProviderCon
 		return compatVariantsFromEfforts(efforts, compatOpenAIProviderVariantOptions)
 	case compatNPMCerebras, compatNPMTogetherAI, compatNPMXAI, compatNPMDeepInfra, compatNPMVenice, compatNPMOpenAICompatible:
 		if strings.Contains(apiID, "deepseek-v4") {
-			return compatDeepSeekV4Variants()
+			return compatDeepSeekV4Variants(provider.WireAPI)
 		}
 		efforts := modelReasoningEfforts(provider.Models[model])
 		if len(efforts) == 0 {
@@ -349,10 +382,31 @@ func stringOption(value any) string {
 	return text
 }
 
-func isGLM52Or53(id string) bool {
+func isGLM52(id string) bool {
 	id = strings.ToLower(strings.TrimSpace(id))
-	return strings.Contains(id, "glm-5.2") || strings.Contains(id, "glm-5.3") ||
-		strings.Contains(id, "glm5.2") || strings.Contains(id, "glm5.3")
+	return strings.Contains(id, "glm-5.2") || strings.Contains(id, "glm5.2")
+}
+
+func isGLM53(id string) bool {
+	id = strings.ToLower(strings.TrimSpace(id))
+	return strings.Contains(id, "glm-5.3") || strings.Contains(id, "glm5.3")
+}
+
+func isGrok46(id string) bool {
+	id = strings.ToLower(strings.TrimSpace(id))
+	return strings.Contains(id, "grok-4.6")
+}
+
+func isResponsesWire(provider config.ProviderConfig) bool {
+	return strings.EqualFold(strings.TrimSpace(provider.WireAPI), "responses")
+}
+
+func isDirectXAI(desc compatModelDescriptor) bool {
+	return desc.ProviderID == "xai" || strings.Contains(desc.BaseURL, "api.x.ai")
+}
+
+func isDirectDeepSeek(desc compatModelDescriptor) bool {
+	return desc.ProviderID == "deepseek" || strings.Contains(desc.BaseURL, "api.deepseek.com")
 }
 
 // compatGrokFallbackEfforts fills the reasoning tiers for Grok models that are

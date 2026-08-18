@@ -197,6 +197,9 @@ func (c *Client) Chat(ctx context.Context, req providers.ChatRequest) (providers
 	if c.wireAPI == wireAPIResponses {
 		return c.responsesChat(ctx, req)
 	}
+	if autoToolChoiceOnly(req.ProviderOptions) {
+		req.ForceToolName = ""
+	}
 
 	payload := chatCompletionsRequest{
 		Model:           req.Model,
@@ -347,6 +350,9 @@ func (c *Client) StreamChat(ctx context.Context, req providers.ChatRequest) (<-c
 	}
 	if c.wireAPI == wireAPIResponses {
 		return c.responsesStreamChat(ctx, req)
+	}
+	if autoToolChoiceOnly(req.ProviderOptions) {
+		req.ForceToolName = ""
 	}
 
 	payload := chatCompletionsRequest{
@@ -1016,6 +1022,12 @@ func mergeChatProviderOptions(object map[string]any, options map[string]any, for
 			object["top_p"] = value
 		case "topK":
 			object["top_k"] = value
+		case "tool_stream":
+			stream, _ := object["stream"].(bool)
+			tools, _ := object["tools"].([]any)
+			if stream && len(tools) > 0 {
+				object["tool_stream"] = value
+			}
 		case "include":
 			// OpenAI Responses uses include for encrypted reasoning replay.
 			// Chat Completions endpoints commonly reject it as an unknown field.
@@ -1031,12 +1043,22 @@ func mergeChatProviderOptions(object map[string]any, options map[string]any, for
 
 func chatProviderOptionIsAISDKOnly(key string) bool {
 	switch key {
-	case "toolStreaming", "thinkingConfig", "reasoningConfig", "modelParams", "gateway",
+	case "toolStreaming", "toolChoiceAutoOnly", "omitStore", "omitPromptCacheKey", "thinkingConfig", "reasoningConfig", "modelParams", "gateway",
 		"temperatureSupported", "temperature_supported", "promptCacheKeySupported":
 		return true
 	default:
 		return false
 	}
+}
+
+func autoToolChoiceOnly(options map[string]any) bool {
+	value, _ := options["toolChoiceAutoOnly"].(bool)
+	return value
+}
+
+func providerOptionEnabled(options map[string]any, key string) bool {
+	value, _ := options[key].(bool)
+	return value
 }
 
 func mergeProviderOptionValue(object map[string]any, key string, value any) {

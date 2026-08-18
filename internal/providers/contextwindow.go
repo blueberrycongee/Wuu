@@ -257,7 +257,10 @@ var maxOutputTokensRegistry = []contextWindowEntry{
 	{"deepseek", 8_192},
 	// GLM
 	{"glm-5.2", 128_000},
-	{"glm-5.3", 128_000},
+	{"glm-5.3", 131_072},
+	// xAI documents 128K as Grok 4.6's default request generation budget,
+	// not as a fixed model-level output ceiling.
+	{"grok-4.6", 128_000},
 	// MiniMax-M3 documents 128K as the recommended Chat Completions output
 	// cap, with larger values allowed by explicit request.
 	{"minimax-m3", 131_072},

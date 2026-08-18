@@ -167,14 +167,18 @@ func (c *Client) buildResponsesRequest(req providers.ChatRequest, stream bool) (
 		Options:         provideroptions.Clone(req.ProviderOptions),
 		Attempt:         req.Attempt,
 	}
-	if c.responsesStore != nil {
-		payload.Store = c.responsesStore
-	} else {
-		store := false
-		payload.Store = &store
+	if !providerOptionEnabled(req.ProviderOptions, "omitStore") {
+		if c.responsesStore != nil {
+			payload.Store = c.responsesStore
+		} else {
+			store := false
+			payload.Store = &store
+		}
 	}
-	if key := responsePromptCacheKey(req.CacheHint); key != "" {
-		payload.PromptCacheKey = key
+	if !providerOptionEnabled(req.ProviderOptions, "omitPromptCacheKey") {
+		if key := responsePromptCacheKey(req.CacheHint); key != "" {
+			payload.PromptCacheKey = key
+		}
 	}
 	if strings.TrimSpace(req.Effort) != "" {
 		payload.Reasoning = &responsesReasoning{Effort: req.Effort}
@@ -210,7 +214,7 @@ func (c *Client) buildResponsesRequest(req providers.ChatRequest, stream bool) (
 	// key turn-local state off session-id / x-client-request-id. Public OpenAI
 	// ignores these fields, so it is safe to attach them whenever a cache hint
 	// exists.
-	if req.CacheHint != nil {
+	if req.CacheHint != nil && !providerOptionEnabled(req.ProviderOptions, "omitPromptCacheKey") {
 		if key := strings.TrimSpace(req.CacheHint.PromptCacheKey); key != "" {
 			payload.ExtraHeaders = map[string]string{
 				"session-id":          key,
@@ -286,7 +290,7 @@ func mergeResponsesProviderOptions(object map[string]any, options map[string]any
 
 func responsesProviderOptionUnsupported(key string) bool {
 	switch key {
-	case "toolStreaming", "thinkingConfig", "reasoningConfig", "modelParams", "gateway",
+	case "toolStreaming", "toolChoiceAutoOnly", "omitStore", "omitPromptCacheKey", "thinkingConfig", "reasoningConfig", "modelParams", "gateway",
 		"usage", "chat_template_args", "enable_thinking", "thinking",
 		"temperatureSupported", "temperature_supported", "promptCacheKeySupported":
 		return true

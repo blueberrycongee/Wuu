@@ -522,7 +522,7 @@ func TestGLM52UsesVendorEffortTiers(t *testing.T) {
 	}
 }
 
-func TestGLM53UsesSameEffortTiersAsGLM52(t *testing.T) {
+func TestGLM53UsesAlwaysOnVendorEffortTiers(t *testing.T) {
 	reasoning := true
 	provider := config.ProviderConfig{
 		Type:  "openai-compatible",
@@ -534,8 +534,13 @@ func TestGLM53UsesSameEffortTiersAsGLM52(t *testing.T) {
 	}
 
 	variants := SummariesForProvider("zai", provider, "glm-5.3")
-	if got := strings.Join(variantIDs(variants), ","); got != "none,high,max" {
-		t.Fatalf("variants = %q, want none,high,max", got)
+	if got := strings.Join(variantIDs(variants), ","); got != "low,high,max" {
+		t.Fatalf("variants = %q, want low,high,max", got)
+	}
+
+	migrated := ResolveForProvider("zai", provider, "glm-5.3", "none", "")
+	if migrated.Variant != "low" || migrated.ProviderOptions["reasoningEffort"] != "low" {
+		t.Fatalf("legacy none was not migrated to low: %#v", migrated)
 	}
 }
 

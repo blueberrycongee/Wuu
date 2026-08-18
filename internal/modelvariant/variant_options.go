@@ -69,7 +69,15 @@ func compatReasoningEffortVariants(efforts []string) map[string]map[string]any {
 // DeepSeek V4 (identical for deepseek-v4-flash and deepseek-v4-pro).
 // medium and xhigh are accepted by the API for compatibility but are mapped to
 // high by DeepSeek, so wuu does not expose them as distinct tiers.
-func compatDeepSeekV4Variants() map[string]map[string]any {
+func compatDeepSeekV4Variants(wireAPI string) map[string]map[string]any {
+	if strings.EqualFold(strings.TrimSpace(wireAPI), "responses") {
+		return map[string]map[string]any{
+			"none": {"thinking": map[string]any{"type": "disabled"}, "reasoningEffort": "none"},
+			"low":  {"thinking": map[string]any{"type": "enabled"}, "reasoningEffort": "low"},
+			"high": {"thinking": map[string]any{"type": "enabled"}, "reasoningEffort": "high"},
+			"max":  {"thinking": map[string]any{"type": "enabled"}, "reasoningEffort": "max"},
+		}
+	}
 	return map[string]map[string]any{
 		"none": {"thinking": map[string]any{"type": "disabled"}},
 		"low":  {"thinking": map[string]any{"type": "enabled"}, "reasoningEffort": "low"},
@@ -78,15 +86,41 @@ func compatDeepSeekV4Variants() map[string]map[string]any {
 	}
 }
 
+func compatDeepSeekV4AnthropicVariants() map[string]map[string]any {
+	return map[string]map[string]any{
+		"none": {"thinking": map[string]any{"type": "disabled"}},
+		"low":  {"thinking": map[string]any{"type": "enabled"}, "effort": "low"},
+		"high": {"thinking": map[string]any{"type": "enabled"}, "effort": "high"},
+		"max":  {"thinking": map[string]any{"type": "enabled"}, "effort": "max"},
+	}
+}
+
 // compatGLM52Variants returns the vendor-documented reasoning tiers for
-// GLM-5.2/5.3. Only high and max are real effort levels; none/minimal skip
-// thinking and low/medium/xhigh are aliases, so wuu exposes only none/high/max.
+// GLM-5.2. GLM-5.3 has a different, always-on reasoning contract below.
 func compatGLM52Variants() map[string]map[string]any {
 	return map[string]map[string]any{
 		"none": {"thinking": map[string]any{"type": "disabled"}},
 		"high": {"reasoningEffort": "high"},
 		"max":  {"reasoningEffort": "max"},
 	}
+}
+
+func compatGLM53Variants() map[string]map[string]any {
+	return compatVariantsFromEfforts([]string{"low", "high", "max"}, func(effort string) map[string]any {
+		return map[string]any{
+			"thinking":        map[string]any{"type": "enabled", "clear_thinking": false},
+			"reasoningEffort": effort,
+		}
+	})
+}
+
+func compatGLM53AnthropicVariants() map[string]map[string]any {
+	return compatVariantsFromEfforts([]string{"low", "high", "max"}, func(effort string) map[string]any {
+		return map[string]any{
+			"thinking": map[string]any{"type": "enabled"},
+			"effort":   effort,
+		}
+	})
 }
 
 func compatOpenAIProviderVariantOptions(effort string) map[string]any {

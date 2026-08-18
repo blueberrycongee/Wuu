@@ -112,6 +112,10 @@ func compatReasoningEnabled(desc compatModelDescriptor, configured *bool) bool {
 	if strings.Contains(id, "grok-3-mini") || strings.Contains(apiID, "grok-3-mini") {
 		return true
 	}
+	if strings.Contains(id, "grok-4.6") || strings.Contains(apiID, "grok-4.6") ||
+		strings.Contains(id, "glm-5.3") || strings.Contains(apiID, "glm-5.3") {
+		return true
+	}
 	if strings.Contains(apiID, "deepseek-v4") || strings.Contains(id, "deepseek-v4") {
 		return true
 	}
