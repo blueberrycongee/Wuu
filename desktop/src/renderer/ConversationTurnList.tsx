@@ -9,14 +9,20 @@ import {
 import type { Turn } from "../shared/protocol";
 import { queryTextForUserItem } from "./AppState";
 import {
+  TURN_LIST_COLLAPSE_THRESHOLD,
+  TURN_LIST_RECENT_FULL_TURNS,
+} from "./ConversationTurnPolicy";
+import {
   turnAnchorID,
   turnReplySnippet,
   userMessageAnchorID,
 } from "./TurnViewHelpers";
 import { useI18n } from "./i18n";
 
-export const TURN_LIST_COLLAPSE_THRESHOLD = 80;
-export const TURN_LIST_RECENT_FULL_TURNS = 40;
+export {
+  TURN_LIST_COLLAPSE_THRESHOLD,
+  TURN_LIST_RECENT_FULL_TURNS,
+} from "./ConversationTurnPolicy";
 
 type ConversationTurnListProps = {
   threadID: string;

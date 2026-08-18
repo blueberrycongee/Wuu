@@ -263,6 +263,7 @@ import {
 } from "./ConversationHistoryActions";
 import { localizedText, resolveLocalizedText, translateCurrent, useI18n } from "./i18n";
 import { CachedConversationPanes } from "./CachedConversationPanes";
+import { selectCachedConversationPaneIDs } from "./ConversationPaneCache";
 import {
   ConversationSidePanels,
   ConversationSplitLayoutRenderer,
@@ -1227,11 +1228,21 @@ export function App(): JSX.Element {
     () => runtimeViewForConversation(state.initialized, activeThread, activeTurn),
     [state.initialized, activeThread, activeTurn],
   );
-  // Per-thread keep-alive for the main conversation pane. An open tab that has
-  // already been visited stays mounted, so switching back never falls over an
-  // arbitrary cache boundary and synchronously rebuilds a long <TurnView> tree.
-  // Hidden panes suspend their presentation work in CachedConversationPanes;
-  // closing the tab releases the retained subtree.
+  const cachedConversationThreadsByID = useMemo(
+    () =>
+      conversationPaneThreadsByID(
+        state.threads,
+        state.thread,
+        state.secondaryThread,
+      ),
+    [state.threads, state.thread, state.secondaryThread],
+  );
+  const cachedConversationThreadsByIDRef = useRef(cachedConversationThreadsByID);
+  cachedConversationThreadsByIDRef.current = cachedConversationThreadsByID;
+  // Per-thread keep-alive for the main conversation pane. Recently visited
+  // tabs stay mounted within both a pane-count cap and an estimated rendered-
+  // turn budget. This avoids the old three-tab performance cliff without
+  // allowing many long conversations to retain unbounded DOM.
   //
   // Crucially we derive the cache synchronously from state.sessionTabs
   // and state.thread via useMemo, not via useState + useEffect. The
@@ -1253,22 +1264,15 @@ export function App(): JSX.Element {
     if (activeID) {
       openThreadIDs.add(activeID);
     }
-    const recentIDs = cachedThreadPaneHistoryRef.current.filter(
-      (id) => openThreadIDs.has(id) && id !== activeID,
-    );
-    const next = [...(activeID ? [activeID] : []), ...recentIDs];
+    const next = selectCachedConversationPaneIDs({
+      activeThreadID: activeID,
+      previousThreadIDs: cachedThreadPaneHistoryRef.current,
+      openThreadIDs,
+      threadsByID: cachedConversationThreadsByIDRef.current,
+    });
     cachedThreadPaneHistoryRef.current = next;
     return next;
   }, [state.thread?.id, state.sessionTabs]);
-  const cachedConversationThreadsByID = useMemo(
-    () =>
-      conversationPaneThreadsByID(
-        state.threads,
-        state.thread,
-        state.secondaryThread,
-      ),
-    [state.threads, state.thread, state.secondaryThread],
-  );
   const openTurnFileDiffPanel = useStableCallback(
     (threadID: string, selection: TurnFileDiffSelection) => {
       openWorkspaceDiffTab({ threadID, path: selection.path, selection });
